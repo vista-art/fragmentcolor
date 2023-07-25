@@ -47,13 +47,15 @@ def init():
 
     resolution = np.array([window.width, window.height], dtype=np.float32)
     resolution *= pixel_density
+    aa_thresold = 2. / resolution.min()
 
     program.uniforms['resolution'].set(resolution)
+    program.uniforms['antialiaser'].set(aa_thresold)
     program.uniforms['radius'].set(circle.radius)
     program.uniforms['border'].set(circle.border)
     program.uniforms['color'].set(circle.color)
 
-    size = circle.radius + circle.border
+    size = circle.radius + circle.border + aa_thresold
     vertices = np.array([
         -size, -size,
         -size, size,
