@@ -2,6 +2,7 @@ import av
 import pyglet
 from pyglet.gl import *
 import numpy as np
+from pathlib import Path
 from dataclasses import dataclass
 from pyglet.graphics.shader import Shader, ShaderProgram
 
@@ -20,47 +21,8 @@ class Circle:
     position: tuple = (stream.width // 2, stream.height // 2)
 
 
-vertex_source = """
-    #version 330
-    in vec2 position;
-    uniform vec2 resolution;
-    
-    void main()
-    {
-        float ratio = resolution.x / resolution.y;
-        gl_Position = vec4(position.x / ratio, position.y, 0., 1.);
-    }
-"""
-
-fragment_source = """
-    #version 330
-    uniform vec2 resolution;
-    uniform float radius;
-    uniform float border;
-    uniform vec3 color;
-
-    out vec4 fragColor;
-    void main()
-    {
-        vec2 normalized = gl_FragCoord.xy / resolution;
-        vec2 uv = normalized * 2. - 1.;
-        
-        float ratio = resolution.x / resolution.y;
-        uv.x *= ratio;
-        
-        vec2 center = vec2(0.);
-        
-        float dist = distance(uv, center);
-        
-        float alpha = 1. - smoothstep(0., border, abs(dist-radius));
-        
-        if (alpha > 0.) {
-            fragColor = vec4(color, 1.);
-        } else {
-            discard;
-        }
-    }
-"""
+vertex_source = Path('shaders/gaze.vert').read_text()
+fragment_source = Path('shaders/gaze.frag').read_text()
 
 
 @window.event
