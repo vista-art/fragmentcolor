@@ -3,11 +3,12 @@
 uniform vec2 resolution;
 uniform float radius;
 uniform float border;
-uniform vec3 color;
+uniform vec4 color;
 
 out vec4 fragColor;
 void main()
 {
+    vec3 rgb = color.rgb;
     vec2 normalized = gl_FragCoord.xy / resolution;
     vec2 uv = normalized * 2. - 1.;
     
@@ -19,6 +20,7 @@ void main()
     float dist = distance(uv, center);
     
     float alpha = 1. - smoothstep(0., border, abs(dist-radius));
+    alpha *= color.a;
     
-    fragColor = vec4(color, alpha);
+    fragColor = vec4(rgb, alpha);
 }

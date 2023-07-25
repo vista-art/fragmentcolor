@@ -19,8 +19,8 @@ fragment_source = Path('shaders/gaze.frag').read_text()
 @dataclass
 class Circle:
     radius: float = .05
-    border: float = .003
-    color: tuple = (1., 0., 0.)
+    border: float = .004
+    color: tuple = (1., 0., 0., .5)
     position: tuple = (stream.width // 2, stream.height // 2)
 
 
