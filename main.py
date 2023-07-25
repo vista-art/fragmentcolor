@@ -2,6 +2,7 @@ import av
 import pyglet
 from pyglet.gl import *
 import numpy as np
+from dataclasses import dataclass
 from pyglet.graphics.shader import Shader, ShaderProgram
 
 container = av.open('videos/charge_teaser.mp4')
@@ -10,10 +11,14 @@ window = pyglet.window.Window(width=stream.width, height=stream.height)
 pixel_density = window.get_pixel_ratio()
 batch = pyglet.graphics.Batch()
 
-circle_radius = .05
-circle_color = (1., 0., 0.)
-circle_stroke_width = .003
-circle_position = (stream.width // 2, stream.height // 2)
+
+@dataclass
+class Circle:
+    radius: float = .05
+    border: float = .003
+    color: tuple = (1., 0., 0.)
+    position: tuple = (stream.width // 2, stream.height // 2)
+
 
 vertex_source = """
     #version 330
@@ -23,7 +28,7 @@ vertex_source = """
     void main()
     {
         float ratio = resolution.x / resolution.y;
-        gl_Position = vec4(position.x / ratio, position.y, 0.0, 1.0);
+        gl_Position = vec4(position.x / ratio, position.y, 0., 1.);
     }
 """
 
@@ -47,10 +52,10 @@ fragment_source = """
         
         float dist = distance(uv, center);
         
-        float alpha = 1. - smoothstep(0.0, border, abs(dist-radius));
+        float alpha = 1. - smoothstep(0., border, abs(dist-radius));
         
-        if (alpha) {
-            fragColor = vec4(color, 1.0);  // Inside the circle
+        if (alpha > 0.) {
+            fragColor = vec4(color, 1.);
         } else {
             discard;
         }
@@ -70,6 +75,8 @@ def on_draw():
 
 
 def init():
+    circle = Circle()
+
     glClearColor(1, 1, 1, 0)
     vertex_shader = Shader(vertex_source, 'vertex')
     fragment_shader = Shader(fragment_source, 'fragment')
@@ -79,11 +86,11 @@ def init():
     resolution *= pixel_density
 
     program.uniforms['resolution'].set(resolution)
-    program.uniforms['radius'].set(circle_radius)
-    program.uniforms['border'].set(circle_stroke_width)
-    program.uniforms['color'].set(circle_color)
+    program.uniforms['radius'].set(circle.radius)
+    program.uniforms['border'].set(circle.border)
+    program.uniforms['color'].set(circle.color)
 
-    size = circle_radius + circle_stroke_width
+    size = circle.radius + circle.border
     vertices = np.array([
         -size, -size,
         -size, size,
