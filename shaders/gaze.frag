@@ -1,4 +1,5 @@
 #version 330
+
 uniform vec2 resolution;
 uniform float radius;
 uniform float border;
@@ -19,9 +20,5 @@ void main()
     
     float alpha = 1. - smoothstep(0., border, abs(dist-radius));
     
-    if (alpha > 0.) {
-        fragColor = vec4(color, 1.);
-    } else {
-        discard;
-    }
+    fragColor = vec4(color, alpha);
 }

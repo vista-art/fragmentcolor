@@ -12,6 +12,9 @@ window = pyglet.window.Window(width=stream.width, height=stream.height)
 pixel_density = window.get_pixel_ratio()
 batch = pyglet.graphics.Batch()
 
+vertex_source = Path('shaders/gaze.vert').read_text()
+fragment_source = Path('shaders/gaze.frag').read_text()
+
 
 @dataclass
 class Circle:
@@ -19,10 +22,6 @@ class Circle:
     border: float = .003
     color: tuple = (1., 0., 0.)
     position: tuple = (stream.width // 2, stream.height // 2)
-
-
-vertex_source = Path('shaders/gaze.vert').read_text()
-fragment_source = Path('shaders/gaze.frag').read_text()
 
 
 @window.event
@@ -40,6 +39,8 @@ def init():
     circle = Circle()
 
     glClearColor(1, 1, 1, 0)
+    glEnable(GL_BLEND)
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
     vertex_shader = Shader(vertex_source, 'vertex')
     fragment_shader = Shader(fragment_source, 'fragment')
     program = ShaderProgram(vertex_shader, fragment_shader)
