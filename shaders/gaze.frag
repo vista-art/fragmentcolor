@@ -2,6 +2,7 @@
 
 uniform float antialiaser;
 uniform vec2 resolution;
+uniform vec2 position;
 uniform float radius;
 uniform float border;
 uniform vec4 color;
@@ -17,8 +18,7 @@ void main()
     float ratio = resolution.x / resolution.y;
     uv.x *= ratio;
     
-    vec2 center = vec2(0.);
-    float dist = distance(uv, center);
+    float dist = distance(uv, position);
 
     float alpha = 1. - smoothstep(border - aa, border + aa, abs(dist-radius));
     alpha *= color.a;
