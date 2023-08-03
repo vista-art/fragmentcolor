@@ -226,7 +226,7 @@ FixationVis ['config.fixation']:
     Diameter of target, in pixels or percent of video frame (default: 5%)
 
   --fixation.fill Size
-  Amount of target to fill from outer to center, for a target of diameter 100px default will make an outline of 4px (default: 4%)
+    Amount of target to fill from outer to center, for a target of diameter 100px default will make an outline of 4px (default: 4%)
 
   --fixation.color RGBA
     Color of target (default: #F4433699)
@@ -323,7 +323,7 @@ Additionally, because we need to care about types and manage memory manually, th
     - It would greatly decrease performance.
     - It can introduce complex dependencies (ex. OpenCV) that could hurt portability.
 
-- **Build it in Python** with the Python bindings for [wgpu-native](https://github.com/gfx-rs/wgpu-native). We could use the same GPU abstraction library as the original solution, and leverage the existing Python knowledge in our team.
+- **Build it in Python** with the Python bindings for [wgpu-native](https://github.com/gfx-rs/wgpu-native). We can use the same GPU abstraction library as the original solution, and leverage the existing Python knowledge in our team.
 
   - **Pros:**
     - Probably the fastest development cycle from all options.
@@ -331,12 +331,12 @@ Additionally, because we need to care about types and manage memory manually, th
   - **Cons:**
     - It would increase the package size.
     - It would greatly decrease performance.
-    - Distribution to WebAssembly or native Android/iOS is not clear, it could be more complex.
+    - Distribution to WebAssembly or native Android/iOS can be more complex.
 
 - **Reduce scope: Make a tiny GPU rendering library** in Rust and expose simple primitives such as "circle", "cross", "line", "square", "text", "histogram", etc. and let each platform use it as needed.
   - **Pros:**
     - Simple to implement.
-    - Still extremely portable.
+    - Extremely portable.
     - Can also have Python embedded like the options above.
     - Can be used as a building block for other projects.
   - **Cons:**
