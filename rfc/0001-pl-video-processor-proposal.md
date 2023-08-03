@@ -1,4 +1,4 @@
-# RFC: PL Video Processor
+# RFC: PL Video Processor (vip)
 
 ## Request for Comments
 
