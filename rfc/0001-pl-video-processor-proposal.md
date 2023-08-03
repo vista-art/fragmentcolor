@@ -40,8 +40,10 @@ Support for our companion Andriod app is also planned for a later stage.
 
   ```javascript
   import "pl-video-processor";
-
   // Use it as a web component that wraps a video element
+  ```
+  
+  ```html
   <pl-video-processor>
     <video src="scene.mp4" slot="scene" />
     <video src="eye.mp4" slot="eye" />
