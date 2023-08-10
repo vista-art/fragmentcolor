@@ -69,7 +69,7 @@ Support for our companion Andriod app is also planned for a later stage.
 - **CLI application**
 
   ```bash
-  vip --scene scene.mp4 --gaze eye.mp4 --output output.mp4
+  vip --scene scene.mp4 --eye eye.mp4 --output output.mp4
   ```
 
   - **Implementation options:**
@@ -99,8 +99,8 @@ The library receives two video streams as input: the **Scene Video** and the **E
 It then outputs a single video stream with the enrichments applied:
 
 ```bash
-vip --scene scene.mp4 --gaze eye.mp4 --output output.mp4
-vip --scene scene.mp4 --gaze eye.mp4 --output pipe:1 | ffplay -fs -
+vip --scene scene.mp4 --eye eye.mp4 --output output.mp4
+vip --scene scene.mp4 --eye eye.mp4 --output pipe:1 | ffplay -fs -
 ```
 
 ### Calculate gaze from timeseries data
@@ -108,8 +108,8 @@ vip --scene scene.mp4 --gaze eye.mp4 --output pipe:1 | ffplay -fs -
 The library receives a scene video as input, and reads the **gaze positions from timeseries data**, either from a CSV file or from Clickhouse DB.
 
 ```bash
-vip --scene scene.mp4 --gaze gaze.csv --output output.mp4
-vip --scene scene.mp4 --gaze "<url to clickhouse db>" --output output.mp4
+vip --scene scene.mp4 --eye eye.mp4 --gaze gaze.csv --output output.mp4
+vip --scene scene.mp4 --eye eye.mp4 --gaze "<url to clickhouse db>" --output output.mp4
 ```
 
 ### Scene video undistortion
@@ -117,7 +117,7 @@ vip --scene scene.mp4 --gaze "<url to clickhouse db>" --output output.mp4
 Optionally, the library can undistort the scene video and recalculate the gaze positions to match it:
 
 ```bash
-vip --scene scene.mp4 --gaze eye.mp4 --output output.mp4 --undistort
+vip --scene scene.mp4 --eye eye.mp4 --gaze gaze.csv --output output.mp4 --undistort
 ```
 
 ### Enrichment Options (WIP)
@@ -125,11 +125,14 @@ vip --scene scene.mp4 --gaze eye.mp4 --output output.mp4 --undistort
 #### Main options
 
 ```txt
-  --scene, -s (Path; mandatory)
-    Path to scene video file (default: None)
+  --scene, -s (Path or URL; mandatory)
+    Path or URL to scene video file (default: None)
+
+  --eye, -e (Path or URL; mandatory)
+    Path or URL to eye video file (default: None)
 
   --gaze, -g (Path or URL; mandatory)
-    Path to gaze video/csv file or URL to Clickhouse DB (default: None)
+    Path to gaze csv file or URL to Clickhouse DB (default: None)
 
   --output, -o (Path or pipe)
     Renders output video to file or stdout.
@@ -346,12 +349,19 @@ Additionally, because we need to care about types and manage memory manually, th
 
 ## Roadmap
 
+### Milestone 1: API design and planning
+
 - [x] Build a simple POC to render gaze enrichment in the GPU
 - [x] Figure out a way to target Python and Web Frontend (React) at the same time
 - [x] Create the draft of the project and draft architecture
-- [ ] **Collect feedback from the team** (this RFC)
-- [ ] Adjust design as needed
+- [x] **Collect feedback from the team** (this RFC)
+- [ ] [in-progress] Adjust design as needed
+  - [x] **Adjust design:** bring back the `--eye` option
+  - [ ] [in-progress] Validate cross-compilation with CPU fallback
 - [ ] Basic project skeleton setup
+
+### Milestone 2: Build System for all targets
+
 - [ ] Create build pipeline for all targets
 - [ ] Test hello-world with Python and WebAssembly
 - [ ] Implement basic CLI setup (clap)
@@ -359,8 +369,13 @@ Additionally, because we need to care about types and manage memory manually, th
 - [ ] Implement reading video from file or pipe
 - [ ] Implement streaming video to file or stdout as-is
 - [ ] Import and set up the wgpu library internally
-- [ ] Hello triangle on top of the video
-- [ ] Implement code for handling gaze data (200hz)
+- [ ] Render hello-triangle on top of the video
+- [ ] Render hello-triangle in Python and WebAssembly
+- [ ] Adjust API design as needed, minor version bump
+
+### Milestone 3: Implement enrichments
+
+- [ ] Implement code for syncing gaze data (200hz -> 30hz)
 - [ ] Implement Overlay (gaze from CSV time series):
   - [ ] Implement gaze rendering
   - [ ] Implement fixation/scanpath rendering
