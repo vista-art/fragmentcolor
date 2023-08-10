@@ -13,8 +13,15 @@ with native performance and minimal footprint.
 
 The library will be implemented in Rust,
 leveraging the [wgpu](https://github.com/gfx-rs/wgpu) library for rendering,
-which enables it to target a wide range of platforms,
-including native (CLI), WebAssembly, Python, and Android/iOS.
+which enables it to target a wide range of platforms:
+
+| Backend   |   CPU   |   GPU   |  Linux  |  MacOS  | Windows | Android |   iOS   |  WASM   |
+| :-------- | :-----: | :-----: | :-----: | :-----: | :-----: | :-----: | :-----: | :-----: |
+| Metal     |   no    | **Yes** |   no    | **Yes** |   no    |   no    | **Yes** |   no    |
+| Vulkan    | **Yes** | **Yes** | **Yes** | **Yes** | **Yes** | **Yes** | **Yes** |   no    |
+| OpenGL    |   no    | **Yes** | **Yes** | **Yes** | **Yes** | **Yes** | **Yes** |   no    |
+| WebGpu    |   no    | **Yes** |   no    |   no    |   no    |   no    |   no    | **Yes** |
+| Dx11/Dx12 |   no    | **Yes** |   no    |   no    | **Yes** |   no    |   no    |   no    |
 
 ## Motivation
 
@@ -42,7 +49,7 @@ Support for our companion Andriod app is also planned for a later stage.
   import "pl-video-processor";
   // Use it as a web component that wraps a video element
   ```
-  
+
   ```html
   <pl-video-processor>
     <video src="scene.mp4" slot="scene" />
