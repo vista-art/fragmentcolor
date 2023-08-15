@@ -1,10 +1,53 @@
 [package]
 name = "pl_video_processor"
+description = "An unified API to render Pupil Labs' video enrichments across multiple platforms"
+repository = "https://gitlab.com/pupil-labs/pupil-cloud/pl-video-processor"
+authors = ["Pupil Labs GmbH"]
+license-file = "LICENCE.md"
 version = "0.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[lib]
+name = "pl_video_processor"
+description = "Dynamic library to be used by other apps or in the browser"
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "pl_video_processor"
+description = "Desktop application"
+
 [dependencies]
+serde = { version = "1", features = ["derive"] }
+cfg-if = "1"
+winit = "0.28"
+env_logger = "0.10"
+log = "0.4"
 wgpu = "0.17"
-image = "0.24"
+pollster = "0.3"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+console_error_panic_hook = "0.1.6"
+console_log = "1.0"
+wgpu = { version = "0.17", features = ["webgl"]}
+wasm-bindgen = { version = "0.2" }
+wasm-bindgen-futures = "0.4"
+gloo-utils = { version = "0.2", features = ["serde"] }
+web-sys = { version = "0.3", features = [
+    'Document',
+    'Element',
+    'HtmlCanvasElement',
+    'WebGlBuffer',
+    'WebGlVertexArrayObject',
+    'WebGl2RenderingContext',
+    'WebGlProgram',
+    'WebGlShader',
+    'Window',
+]}
+
+[dev-dependencies]
+"wasm-bindgen-test" = "0.3"
+
+[profile.release]
+opt-level = "s" # Optimize for small binary size
