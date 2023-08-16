@@ -52,8 +52,8 @@ Support for our companion Andriod app is also planned for a later stage.
 
   ```html
   <pl-video-processor>
-    <video src="scene.mp4" slot="scene" />
-    <video src="eye.mp4" slot="eye" />
+    <video src="scene.mp4" slot="scene"></video>
+    <video src="eye.mp4" slot="eye"></video>
   </pl-video-processor>
   ```
 
