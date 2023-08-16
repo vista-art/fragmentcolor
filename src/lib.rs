@@ -41,7 +41,7 @@ pub async fn run(options: Options) {
     let event_loop = EventLoop::new();
 
     cfg_if! { if #[cfg(target_arch = "wasm32")] {
-        let window = init_canvas_window(&event_loop, &options);
+        let window = init_window(&event_loop, &options);
     } else {
         let window = init_window(&event_loop);
     }}
@@ -69,6 +69,7 @@ fn init_logger() {
     }}
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn init_window(event_loop: &EventLoop<()>) -> Window {
     let window = WindowBuilder::new()
         .build(event_loop)
@@ -78,7 +79,7 @@ fn init_window(event_loop: &EventLoop<()>) -> Window {
 }
 
 #[cfg(target_arch = "wasm32")]
-fn init_canvas_window(event_loop: &EventLoop<()>, options: &Options) -> Window {
+fn init_window(event_loop: &EventLoop<()>, options: &Options) -> Window {
     let canvas_selector = options
         .canvas_selector
         .as_ref()
