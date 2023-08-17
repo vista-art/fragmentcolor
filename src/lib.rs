@@ -2,6 +2,14 @@ mod enrichments;
 mod events;
 mod state;
 mod utils;
+mod vertex;
+
+#[cfg(feature = "camera")]
+mod camera;
+#[cfg(feature = "instances")]
+mod instances;
+#[cfg(feature = "texture")]
+mod texture;
 
 use cfg_if::cfg_if;
 use enrichments::gaze::GazeConfig;
@@ -144,6 +152,12 @@ cfg_if! { if #[cfg(target_arch = "wasm32")] {
 
     #[wasm_bindgen]
     pub fn render() {
+        // NOTE:
+        // Decoding jpegs in WASM isn't performant, as it does not support threads.
+        // If you want to speed up image loading in general in WASM you could
+        // use the browser's built-in decoders instead of image when building
+        // with wasm-bindgen. This will involve creating an <img> tag in Rust
+        // to get the image, and then a <canvas> to get the pixel data.
         let _ = gloo_utils::window().alert_with_message("Hello, render!");
     }
 
