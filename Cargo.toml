@@ -18,14 +18,26 @@ crate-type = ["cdylib", "rlib"]
 name = "pl_video_processor"
 description = "Desktop application"
 
+[features]
+texture = ["dep:image"]
+camera = ["dep:cgmath", "texture"]
+instances = ["dep:cgmath", "camera"]
+depth = ["camera", "texture"]
+
 [dependencies]
-serde = { version = "1", features = ["derive"] }
+anyhow = "1.0"
 cfg-if = "1"
 winit = "0.28"
 env_logger = "0.10"
 log = "0.4"
 wgpu = "0.17"
 pollster = "0.3"
+serde = { version = "1", features = ["derive"] }
+bytemuck = { version = "1.13", features = [ "derive" ] }
+cgmath = { version = "0.18", optional = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+image = {version = "0.24", optional = true}
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 console_error_panic_hook = "0.1.6"
@@ -34,6 +46,7 @@ wgpu = { version = "0.17", features = ["webgl"]}
 wasm-bindgen = { version = "0.2" }
 wasm-bindgen-futures = "0.4"
 gloo-utils = { version = "0.2", features = ["serde"] }
+image = {version = "0.24", optional = true, default-features = false, features = ["jpeg", "png"]}
 web-sys = { version = "0.3", features = [
     'Document',
     'Element',
