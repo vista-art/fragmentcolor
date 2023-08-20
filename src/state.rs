@@ -524,7 +524,7 @@ impl State {
         }}
     }
 
-    #[cfg(target_arch = "wasm32")] // @TODO convert enrichments to a feature. This should not be platform-specific
+    #[cfg(not(feature = "texture"))]
     pub fn handle_mouse_move_vip_event(&mut self, x: f32, y: f32) {
         self.gaze_uniform.set_position([x, y]);
         self.queue.write_buffer(

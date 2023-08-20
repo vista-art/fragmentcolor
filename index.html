@@ -7,7 +7,7 @@
   <body>
     <canvas id="test_canvas" width="600" height="400"></canvas>
     <script type="module" async>
-      import load, { init } from "./pkg/pl_video_processor.js";
+      import load, { Vip } from "./pkg/pl_video_processor.js";
 
       // This will not be needed in the near future.
       // Winit EventLoop 3.0 Changes: https://github.com/rust-windowing/winit/issues/2900
@@ -19,16 +19,11 @@
         }
       });
 
-      console.log("Loading wasm...");
       await load();
 
-      console.log("Initializing VIP...");
-      const vip = init();
-
-      console.log("vip", vip);
-
-      console.log("Configuring and Running VIP...");
-      await vip.config_and_run("#test_canvas", {
+      const vip = new Vip();
+      await vip.config_and_run({
+        canvas_selector: "#test_canvas",
         enrichments: {
           gaze: {
             radius: 0.2,
@@ -39,7 +34,6 @@
         },
       });
 
-      console.log("Setting VIP position...");
       document
         .getElementById("test_canvas")
         .addEventListener("mousemove", (event) => {

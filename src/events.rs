@@ -92,7 +92,7 @@ pub fn init_window(event_loop: &EventLoop<VipEvent>, canvas_selector: &str) -> W
     window
 }
 
-pub fn run_event_loop(event_loop: EventLoop<VipEvent>, mut state: State) -> ! {
+pub async fn run_event_loop(event_loop: EventLoop<VipEvent>, mut state: State) {
     event_loop.run(move |event, _, control_flow| match event {
         Event::WindowEvent {
             ref event,
@@ -121,7 +121,7 @@ pub fn run_event_loop(event_loop: EventLoop<VipEvent>, mut state: State) -> ! {
             _ => {}
         },
 
-        #[cfg(target_arch = "wasm32")] // @TODO convert enrichments to a feature.
+        #[cfg(not(feature = "texture"))]
         Event::UserEvent(event) => match event {
             VipEvent::MouseMove { x, y } => state.handle_mouse_move_vip_event(x, y),
         },
