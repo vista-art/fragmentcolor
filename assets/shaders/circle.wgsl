@@ -23,7 +23,7 @@ struct Circle {
     border: f32,
     color: vec4<f32>,
 };
-@group(1) @binding(0)
+@group(0) @binding(1)
 var<uniform> circle: Circle;
 
 @vertex

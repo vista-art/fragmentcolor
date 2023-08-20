@@ -364,10 +364,13 @@ Additionally, because we need to care about types and manage memory manually, th
 - [x] Figure out a way to target Python and Web Frontend (React) at the same time
 - [x] Create the draft of the project and draft architecture
 - [x] **Collect feedback from the team** (this RFC)
-- [ ] [in-progress] Adjust design as needed
+- [x] Adjust design as needed
   - [x] **Adjust design:** bring back the `--eye` option
-  - [ ] [in-progress] Validate cross-compilation with CPU fallback
+  - [x] Validate cross-compilation with CPU fallback
 - [ ] Basic project skeleton setup
+  - [x] Make a basic build for Desktop and Web
+  - [ ] [**in-progress**] Organize the project's file structure
+  - [ ] Implement the Gaze circle in our Web UI
 
 ### Milestone 2: Build System for all targets
 
@@ -378,8 +381,8 @@ Additionally, because we need to care about types and manage memory manually, th
 - [ ] Implement reading video from file or pipe
 - [ ] Implement streaming video to file or stdout as-is
 - [ ] Import and set up the wgpu library internally
-- [ ] Render hello-triangle on top of the video
-- [ ] Render hello-triangle in Python and WebAssembly
+- [ ] Render the gaze circle on top of the video
+- [ ] Render the gaze circle in Python and WebAssembly
 - [ ] Adjust API design as needed, minor version bump
 
 ### Milestone 3: Implement enrichments

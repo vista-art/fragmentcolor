@@ -1,10 +1,26 @@
 # PL Video Processor (vip)
 
-This is the future home for the **PL Video Processor** library, or `vip` for short.
+The `pl-video-processor` library (or `vip` for short) aims to provide a unified API
+to render **Pupil Labs' video enrichments** in the GPU (with a CPU fallback) across
+multiple platforms and environments with native performance and minimal footprint.
 
-Please check our [First RFC](./rfc/0001-pl-video-processor-proposal.md) for more information about this project.
+The library will be implemented in Rust,
+leveraging the [wgpu](https://github.com/gfx-rs/wgpu) library for rendering,
+which enables it to target a wide range of platforms:
 
-Contributions are welcome! Please open a PR with changes in the RFC, or reach **@dan** or **@rgb** on Discord.
+| Backend   |   CPU   |   GPU   |  WASM   |  Linux  |  MacOS  | Windows | Android |   iOS   |
+| :-------- | :-----: | :-----: | :-----: | :-----: | :-----: | :-----: | :-----: | :-----: |
+| Metal     |   no    | **Yes** |   no    |   no    | **Yes** |   no    |   no    | **Yes** |
+| Vulkan    | **Yes** | **Yes** |   no    | **Yes** | Yes[^2] | **Yes** | **Yes** | **Yes** |
+| OpenGL    |   no    | **Yes** |   no    | **Yes** | Yes[^3] | **Yes** | **Yes** | Yes[^4] |
+| WebGL     | **Yes** | **Yes** | Yes[^1] |   no    |   no    |   no    |   no    |   no    |
+| WebGPU    | **Yes** | **Yes** | **Yes** |   no    |   no    |   no    |   no    |   no    |
+| Dx11/Dx12 |   no    | **Yes** |   no    |   no    |   no    | **Yes** |   no    |   no    |
+
+[^1]: Vertex and Fragment shaders only. No support for Compute shaders.
+[^2]: Available through [MoltenVK](https://github.com/KhronosGroup/MoltenVK), a translation layer to Metal.
+[^3]: OpenGL is deprecated in MacOS. It runs up to version 4.1 only: no support for Compute shaders.
+[^4]: OpenGL is deprecated in iOS. It runs up to version 4.1 only: no support for Compute shaders.
 
 ## Building this project
 
