@@ -18,12 +18,7 @@ mod instances;
 mod texture;
 
 #[cfg(target_arch = "wasm32")]
-use {
-    gloo_utils::format::JsValueSerdeExt,
-    js_sys::Promise,
-    wasm_bindgen::prelude::*,
-    wasm_bindgen_futures::{future_to_promise, JsFuture},
-};
+use {gloo_utils::format::JsValueSerdeExt, wasm_bindgen::prelude::*};
 
 use log::info;
 use serde::{Deserialize, Serialize};
@@ -56,32 +51,19 @@ impl Vip {
     #[cfg(target_arch = "wasm32")]
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
     pub async fn config_and_run(&self, options: JsValue) {
-        let options: Options = options.into_serde().unwrap();
+        let options: Options = options.into_serde().expect("Couldn't deserialize options");
 
         let mut event_manager = self.event_manager.borrow_mut();
         let event_loop = event_manager.event_loop.take().expect("Event loop not set");
-        let window = events::init_window(&event_loop, options.canvas_selector.as_ref().unwrap());
+        let canvas_selector = options
+            .canvas_selector
+            .as_ref()
+            .expect("Canvas selector not set");
+        let window = events::init_window(&event_loop, canvas_selector);
 
-        wasm_bindgen_futures::spawn_local(async {
-            let state = state::State::new(window, options.enrichments).await;
-            events::run_event_loop(event_loop, state)
-        });
+        let state = state::State::new(window, options.enrichments).await;
 
-        // let promise = Promise::new(&mut |resolve, reject| {
-
-        //     let returns_future_result = || async { Result::<_, ()>::Ok(()) };
-
-        //     wasm_bindgen_futures::spawn_local(async move {
-        //         match returns_future_result.await {
-        //             Ok(val) => {
-        //                 resolve.call1(&JsValue::undefined(), &val).unwrap_throw();
-        //             }
-        //             Err(val) => {
-        //                 reject.call1(&JsValue::undefined(), &val).unwrap_throw();
-        //             }
-        //         }
-        //     });
-        // });
+        wasm_bindgen_futures::spawn_local(events::run_event_loop(event_loop, state));
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -114,8 +96,9 @@ impl Vip {
         let _ = gloo_utils::window().alert_with_message("Hello, resize!");
     }
 
+    #[cfg(target_arch = "wasm32")]
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
-    pub fn set_position(x: u32, y: u32) {
+    pub fn set_position(&self, x: u32, y: u32) {
         let message = format!("Position: {}, {}", x, y);
         info!("{}", message);
     }
@@ -145,10 +128,4 @@ impl Vip {
     pub fn show() {
         let _ = gloo_utils::window().alert_with_message("Hello, show!");
     }
-}
-
-#[cfg(target_arch = "wasm32")]
-#[wasm_bindgen]
-pub fn init() -> Vip {
-    Vip::new()
 }
