@@ -1,10 +1,14 @@
+use anyhow::Result;
 use cfg_if::cfg_if;
 use wgpu::util::DeviceExt;
 use winit::{event::*, window::Window};
 
+use crate::enrichments::{gaze::GazeUniform, Enrichments};
+use crate::screen::ScreenUniform;
+
 cfg_if!( if #[cfg(feature = "texture")] {
     use crate::texture::Texture;
-    use crate::vertex::{Vertex, TEXTURED_PENTAGON};
+    use crate::vertex::{Vertex, TEXTURED_PENTAGON}; // @TODO get rid of this
 } else {
     use crate::vertex::{Vertex, FULL_SCREEN_QUAD};
 });
@@ -24,11 +28,20 @@ pub struct State {
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
     window: winit::window::Window,
-    pub size: winit::dpi::LogicalSize<u32>,
+    window_physical_size: winit::dpi::PhysicalSize<u32>,
     render_pipeline: wgpu::RenderPipeline,
     vertex_buffer: wgpu::Buffer,
     index_buffer: wgpu::Buffer,
     num_indices: u32,
+
+    #[cfg(not(feature = "texture"))]
+    gaze_buffer: wgpu::Buffer,
+
+    #[cfg(not(feature = "texture"))]
+    gaze_uniform: GazeUniform,
+
+    #[cfg(not(feature = "texture"))]
+    gaze_bind_group: wgpu::BindGroup,
 
     #[cfg(feature = "texture")]
     _texture: Texture, // unused for now
@@ -56,7 +69,7 @@ pub struct State {
 }
 
 impl State {
-    pub async fn new(window: Window) -> Self {
+    pub async fn new(window: Window, enrichments: Enrichments) -> Self {
         // The instance is a handle to our GPU
         // Backends::all => Vulkan + Metal + DX12 + Browser WebGPU
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
@@ -64,7 +77,7 @@ impl State {
             dx12_shader_compiler: Default::default(),
         });
 
-        let size = window.inner_size().to_logical(window.scale_factor());
+        let window_physical_size = window.inner_size();
 
         // The unsafe API is about to change: https://github.com/gfx-rs/wgpu/issues/1463
         // Winit EventLoop 3.0 Changes: https://github.com/rust-windowing/winit/issues/2900
@@ -113,8 +126,8 @@ impl State {
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format: surface_format,
-            width: size.width,
-            height: size.height,
+            width: window_physical_size.width,
+            height: window_physical_size.height,
             present_mode: surface_capabilities.present_modes[0],
             alpha_mode: surface_capabilities.alpha_modes[0],
             view_formats: vec![],
@@ -172,6 +185,67 @@ impl State {
             });
 
         } else {
+            let screen_uniform = ScreenUniform::new(config.width as f32, config.height as f32);
+            let gaze_uniform = GazeUniform::new(enrichments.gaze.unwrap()).unwrap();
+
+            // @TODO they should be two separated bind groups
+            let screen_buffer = device.create_buffer_init(
+                &wgpu::util::BufferInitDescriptor {
+                    label: Some("Screen Uniform Buffer"),
+                    contents: bytemuck::cast_slice(&[screen_uniform]),
+                    usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                }
+            );
+
+            let gaze_buffer = device.create_buffer_init(
+                &wgpu::util::BufferInitDescriptor {
+                    label: Some("Gaze Uniform Buffer"),
+                    contents: bytemuck::cast_slice(&[gaze_uniform]),
+                    usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                }
+            );
+
+            let gaze_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    }
+                ],
+                label: Some("gaze_bind_group_layout"),
+            });
+
+            let gaze_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                layout: &gaze_bind_group_layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: screen_buffer.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: gaze_buffer.as_entire_binding(),
+                    }
+                ],
+                label: Some("gaze_bind_group"),
+            });
+
             let shader_source = include_str!("../assets/shaders/circle.wgsl").into();
             let vertices = FULL_SCREEN_QUAD.vertices;
             let indices = FULL_SCREEN_QUAD.indices;
@@ -303,15 +377,22 @@ impl State {
 
         let num_indices = indices.len() as u32;
 
+        cfg_if! { if #[cfg(feature = "texture")] {
+            let bind_group_layouts = &[
+                &texture_bind_group_layout, // @group(0)
+                #[cfg(feature = "camera")]
+                &camera_bind_group_layout, // @group(1)
+            ];
+        } else {
+            let bind_group_layouts = &[
+                &gaze_bind_group_layout, // @group(0)
+            ];
+        }};
+
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
-                bind_group_layouts: &[
-                    #[cfg(feature = "texture")]
-                    &texture_bind_group_layout, // @group(0)
-                    #[cfg(feature = "camera")]
-                    &camera_bind_group_layout, // @group(1)
-                ],
+                bind_group_layouts,
                 push_constant_ranges: &[],
             });
 
@@ -364,11 +445,20 @@ impl State {
             device,
             queue,
             config,
-            size,
+            window_physical_size,
             render_pipeline,
             vertex_buffer,
             index_buffer,
             num_indices,
+
+            #[cfg(not(feature = "texture"))]
+            gaze_buffer,
+
+            #[cfg(not(feature = "texture"))]
+            gaze_uniform,
+
+            #[cfg(not(feature = "texture"))]
+            gaze_bind_group,
 
             #[cfg(feature = "texture")]
             _texture: texture,
@@ -401,12 +491,10 @@ impl State {
     }
 
     pub fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
-        let scale_factor = self.window.scale_factor();
-
         if new_size.width > 0 && new_size.height > 0 {
-            self.size = new_size.to_logical(scale_factor);
-            self.config.width = new_size.width;
-            self.config.height = new_size.height;
+            self.window_physical_size = new_size;
+            self.config.width = self.window_physical_size.width;
+            self.config.height = self.window_physical_size.height;
             self.surface.configure(&self.device, &self.config);
 
             cfg_if! { if #[cfg(feature = "camera")] {
@@ -422,6 +510,10 @@ impl State {
         }
     }
 
+    pub fn recover(&mut self) {
+        self.resize(self.window_physical_size);
+    }
+
     pub fn input(&mut self, event: &WindowEvent) -> bool {
         cfg_if! { if #[cfg(feature = "camera")] {
             self.camera_controller.handle_event(event)
@@ -430,6 +522,16 @@ impl State {
                 _ => false,
             }
         }}
+    }
+
+    #[cfg(target_arch = "wasm32")] // @TODO convert enrichments to a feature. This should not be platform-specific
+    pub fn handle_mouse_move_vip_event(&mut self, x: f32, y: f32) {
+        self.gaze_uniform.set_position([x, y]);
+        self.queue.write_buffer(
+            &self.gaze_buffer,
+            0,
+            bytemuck::cast_slice(&[self.gaze_uniform]),
+        );
     }
 
     pub fn update(&mut self) {
@@ -495,10 +597,13 @@ impl State {
             }}
 
             render_pass.set_pipeline(&self.render_pipeline);
-            #[cfg(feature = "texture")]
-            render_pass.set_bind_group(0, &self.texture_bind_group, &[]);
-            #[cfg(feature = "camera")]
-            render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
+            cfg_if! { if #[cfg(feature = "texture")] {
+                render_pass.set_bind_group(0, &self.texture_bind_group, &[]);
+                #[cfg(feature = "camera")]
+                render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
+            } else {
+                render_pass.set_bind_group(0, &self.gaze_bind_group, &[]);
+            }}
             render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
             #[cfg(feature = "instances")]
             render_pass.set_vertex_buffer(1, self.instance_buffer.slice(..));

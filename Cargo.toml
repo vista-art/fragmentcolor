@@ -32,12 +32,18 @@ env_logger = "0.10"
 log = "0.4"
 wgpu = "0.17"
 pollster = "0.3"
+palette = "0.7"
 serde = { version = "1", features = ["derive"] }
 bytemuck = { version = "1.13", features = [ "derive" ] }
 cgmath = { version = "0.18", optional = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 image = {version = "0.24", optional = true}
+
+[target.'cfg(target_arch = "wasm32")'.dependencies.image]
+version = "0.24"
+default-features = false
+features = ["jpeg", "png"]
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 console_error_panic_hook = "0.1.6"
@@ -46,16 +52,11 @@ wgpu = { version = "0.17", features = ["webgl"]}
 wasm-bindgen = { version = "0.2" }
 wasm-bindgen-futures = "0.4"
 gloo-utils = { version = "0.2", features = ["serde"] }
-image = {version = "0.24", optional = true, default-features = false, features = ["jpeg", "png"]}
+js-sys = "0.3"
 web-sys = { version = "0.3", features = [
     'Document',
     'Element',
     'HtmlCanvasElement',
-    'WebGlBuffer',
-    'WebGlVertexArrayObject',
-    'WebGl2RenderingContext',
-    'WebGlProgram',
-    'WebGlShader',
     'Window',
 ]}
 

@@ -1,8 +1,14 @@
-mod enrichments;
+mod color;
+pub mod enrichments;
 mod events;
+mod screen;
 mod state;
 mod utils;
 mod vertex;
+
+use std::cell::RefCell;
+
+use cfg_if::cfg_if;
 
 #[cfg(feature = "camera")]
 mod camera;
@@ -11,146 +17,110 @@ mod instances;
 #[cfg(feature = "texture")]
 mod texture;
 
-use cfg_if::cfg_if;
-use enrichments::gaze::GazeConfig;
-use state::State;
-use winit::{
-    event_loop::EventLoop,
-    window::{Window, WindowBuilder},
-};
-
 #[cfg(target_arch = "wasm32")]
 use {
-    gloo_utils::{document, format::JsValueSerdeExt},
-    wasm_bindgen::JsValue,
-    winit::platform::web::WindowBuilderExtWebSys,
+    gloo_utils::format::JsValueSerdeExt,
+    js_sys::Promise,
+    wasm_bindgen::prelude::*,
+    wasm_bindgen_futures::{future_to_promise, JsFuture},
 };
 
+use log::info;
+use serde::{Deserialize, Serialize};
+
+use enrichments::Enrichments;
+use events::EventManager;
+
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen(getter_with_clone))]
+#[derive(Serialize, Deserialize, Default)]
 pub struct Options {
-    canvas_selector: Option<String>,
-    gaze: Option<GazeConfig>,
+    pub canvas_selector: Option<String>,
+    pub enrichments: Enrichments,
+}
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
+pub struct Vip {
+    event_manager: RefCell<EventManager>,
 }
 
-impl Default for Options {
-    fn default() -> Self {
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
+impl Vip {
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen(constructor))]
+    pub fn new() -> Vip {
+        Self::init_logger();
+
         Self {
-            canvas_selector: None,
-            gaze: None,
+            event_manager: RefCell::new(EventManager::new()),
         }
     }
-}
 
-#[cfg(target_arch = "wasm32")]
-use wasm_bindgen::prelude::*;
+    #[cfg(target_arch = "wasm32")]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
+    pub async fn config_and_run(&self, options: JsValue) {
+        let options: Options = options.into_serde().unwrap();
 
-pub async fn run(options: Options) {
-    init_logger();
+        let mut event_manager = self.event_manager.borrow_mut();
+        let event_loop = event_manager.event_loop.take().expect("Event loop not set");
+        let window = events::init_window(&event_loop, options.canvas_selector.as_ref().unwrap());
 
-    let event_loop = EventLoop::new();
+        wasm_bindgen_futures::spawn_local(async {
+            let state = state::State::new(window, options.enrichments).await;
+            events::run_event_loop(event_loop, state)
+        });
 
-    cfg_if! { if #[cfg(target_arch = "wasm32")] {
-        let window = init_window(&event_loop, &options);
-    } else {
-        let window = init_window(&event_loop);
-    }}
+        // let promise = Promise::new(&mut |resolve, reject| {
 
-    if options.canvas_selector.is_none() {}
-    if options.gaze.is_some() {
-        let GazeConfig {
-            size: _size,
-            color: _color,
-            opacity: _opacity,
-        } = options.gaze.expect("Couldn't get gaze config");
+        //     let returns_future_result = || async { Result::<_, ()>::Ok(()) };
+
+        //     wasm_bindgen_futures::spawn_local(async move {
+        //         match returns_future_result.await {
+        //             Ok(val) => {
+        //                 resolve.call1(&JsValue::undefined(), &val).unwrap_throw();
+        //             }
+        //             Err(val) => {
+        //                 reject.call1(&JsValue::undefined(), &val).unwrap_throw();
+        //             }
+        //         }
+        //     });
+        // });
     }
 
-    let state = State::new(window).await;
-
-    events::run_event_loop(event_loop, state);
-}
-
-fn init_logger() {
-    cfg_if! { if #[cfg(target_arch = "wasm32")] {
-        utils::set_panic_hook();
-        console_log::init_with_level(log::Level::Warn).expect("Couldn't initialize logger");
-    } else {
-        env_logger::init();
-    }}
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-fn init_window(event_loop: &EventLoop<()>) -> Window {
-    let window = WindowBuilder::new()
-        .build(event_loop)
-        .expect("Couldn't build window");
-
-    window
-}
-
-#[cfg(target_arch = "wasm32")]
-fn init_window(event_loop: &EventLoop<()>, options: &Options) -> Window {
-    let canvas_selector = options
-        .canvas_selector
-        .as_ref()
-        .expect("Invalid canvas selector");
-
-    let canvas: Option<web_sys::HtmlCanvasElement> = document()
-        .query_selector(canvas_selector)
-        .unwrap()
-        .expect("Couldn't get canvas")
-        .dyn_into::<web_sys::HtmlCanvasElement>()
-        .ok();
-
-    let size = canvas
-        .as_ref()
-        .expect("Couldn't get canvas size")
-        .get_bounding_client_rect();
-
-    let window = WindowBuilder::new()
-        .with_canvas(canvas)
-        .build(event_loop)
-        .expect("Couldn't build canvas context");
-
-    window.set_inner_size(winit::dpi::LogicalSize::new(
-        size.width() as u32,
-        size.height() as u32,
-    ));
-
-    window
-}
-
-cfg_if! { if #[cfg(target_arch = "wasm32")] {
-
-    #[wasm_bindgen]
-    pub fn greet(name: &str) {
-        let _ = gloo_utils::window().alert_with_message(&format!("Hello, {}!", name));
+    #[cfg(not(target_arch = "wasm32"))]
+    pub async fn config(&self, options: Options) {
+        let mut event_manager = self.event_manager.borrow_mut();
+        event_manager.create_state(options).await;
     }
 
-    #[wasm_bindgen]
-    pub async fn config(canvas_selector: &str, config: JsValue) {
-        let gaze = config.into_serde::<GazeConfig>().ok();
-
-        wasm_bindgen_futures::spawn_local(run(Options {
-            canvas_selector: Some(canvas_selector.to_string()),
-            gaze,
-        }));
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn run(&self) {
+        pollster::block_on((self.event_manager.borrow_mut()).run());
     }
 
-    #[wasm_bindgen]
+    fn init_logger() {
+        cfg_if! { if #[cfg(target_arch = "wasm32")] {
+            utils::set_panic_hook();
+            console_log::init_with_level(log::Level::Info).expect("Couldn't initialize logger");
+        } else {
+            env_logger::init();
+        }}
+    }
+
+    #[cfg(target_arch = "wasm32")]
     pub fn update(_config: &[u8]) {
         let _ = gloo_utils::window().alert_with_message("Hello, update!");
     }
 
-    #[wasm_bindgen]
+    #[cfg(target_arch = "wasm32")]
     pub fn resize(_width: u32, _height: u32) {
         let _ = gloo_utils::window().alert_with_message("Hello, resize!");
     }
 
-    #[wasm_bindgen]
-    pub fn position(_x: u32, _y: u32) {
-        let _ = gloo_utils::window().alert_with_message("Hello, position!");
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
+    pub fn set_position(x: u32, y: u32) {
+        let message = format!("Position: {}, {}", x, y);
+        info!("{}", message);
     }
 
-    #[wasm_bindgen]
+    #[cfg(target_arch = "wasm32")]
     pub fn render() {
         // NOTE:
         // Decoding jpegs in WASM isn't performant, as it does not support threads.
@@ -161,20 +131,24 @@ cfg_if! { if #[cfg(target_arch = "wasm32")] {
         let _ = gloo_utils::window().alert_with_message("Hello, render!");
     }
 
-    #[wasm_bindgen]
+    #[cfg(target_arch = "wasm32")]
     pub fn clear() {
         let _ = gloo_utils::window().alert_with_message("Hello, clear!");
     }
 
-    #[wasm_bindgen]
+    #[cfg(target_arch = "wasm32")]
     pub fn hide() {
         let _ = gloo_utils::window().alert_with_message("Hello, hide!");
     }
 
-    #[wasm_bindgen]
+    #[cfg(target_arch = "wasm32")]
     pub fn show() {
         let _ = gloo_utils::window().alert_with_message("Hello, show!");
     }
+}
 
-} else {
-}}
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+pub fn init() -> Vip {
+    Vip::new()
+}
