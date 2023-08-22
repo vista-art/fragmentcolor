@@ -9,16 +9,6 @@
     <script type="module" async>
       import load, { Vip } from "./pkg/pl_video_processor.js";
 
-      // This will not be needed in the near future.
-      // Winit EventLoop 3.0 Changes: https://github.com/rust-windowing/winit/issues/2900
-      // @TODO keep track of the upstream changes and remove this hack
-      window.addEventListener("unhandledrejection", (event) => {
-        const message = event.reason.message;
-        if (message.startsWith("Using exceptions for control flow")) {
-          event.preventDefault();
-        }
-      });
-
       await load();
 
       const vip = new Vip();
@@ -37,7 +27,7 @@
       document
         .getElementById("test_canvas")
         .addEventListener("mousemove", (event) => {
-          vip.set_position(event.clientX, event.clientY);
+          vip.set_gaze_position(event.clientX, event.clientY);
         });
     </script>
   </body>

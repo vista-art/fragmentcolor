@@ -1,30 +1,20 @@
-mod color;
 pub mod enrichments;
 mod events;
-mod screen;
+mod renderer;
 mod state;
-mod utils;
-mod vertex;
 
-use std::cell::RefCell;
+use std::{sync::Arc, sync::RwLock};
 
 use cfg_if::cfg_if;
-
-#[cfg(feature = "camera")]
-mod camera;
-#[cfg(feature = "instances")]
-mod instances;
-#[cfg(feature = "texture")]
-mod texture;
 
 #[cfg(target_arch = "wasm32")]
 use {gloo_utils::format::JsValueSerdeExt, wasm_bindgen::prelude::*};
 
-use log::info;
 use serde::{Deserialize, Serialize};
 
-use enrichments::Enrichments;
-use events::EventManager;
+use enrichments::{gaze::GazeEvent, Enrichments};
+use events::{EventManager, VipEvent};
+use winit::event_loop::EventLoopClosed;
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen(getter_with_clone))]
 #[derive(Serialize, Deserialize, Default)]
@@ -32,10 +22,14 @@ pub struct Options {
     pub canvas_selector: Option<String>,
     pub enrichments: Enrichments,
 }
+
+#[derive(Clone)]
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 pub struct Vip {
-    event_manager: RefCell<EventManager>,
+    pub event_manager: Arc<RwLock<EventManager>>,
 }
+
+unsafe impl Send for Vip {}
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 impl Vip {
@@ -44,8 +38,14 @@ impl Vip {
         Self::init_logger();
 
         Self {
-            event_manager: RefCell::new(EventManager::new()),
+            event_manager: Arc::new(RwLock::new(EventManager::new())),
         }
+    }
+
+    fn event_manager(&self) -> std::sync::RwLockWriteGuard<'_, EventManager> {
+        self.event_manager
+            .write()
+            .expect("Couldn't get event manager")
     }
 
     #[cfg(target_arch = "wasm32")]
@@ -67,14 +67,24 @@ impl Vip {
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    pub async fn config(&self, options: Options) {
-        let mut event_manager = self.event_manager.borrow_mut();
-        event_manager.create_state(options).await;
+    pub async fn config(&mut self, options: Options) {
+        let mut event_manager = self.event_manager.write().unwrap();
+        event_manager.config(options).await;
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    pub fn run(&self) {
-        pollster::block_on((self.event_manager.borrow_mut()).run());
+    pub fn run(&mut self) {
+        let mut event_manager = self.event_manager.write().unwrap();
+        let event_loop_container = *event_manager.event_loop_container.take().unwrap();
+
+        // release to avoid deadlock
+        drop(event_manager);
+
+        event_loop_container.run();
+    }
+
+    pub fn trigger(&self, event: events::VipEvent) -> Result<(), EventLoopClosed<VipEvent>> {
+        self.event_manager().trigger(event)
     }
 
     fn init_logger() {
@@ -86,6 +96,42 @@ impl Vip {
         }}
     }
 
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
+    pub fn set_position(&self, x: u32, y: u32) -> Result<(), EventLoopClosed<VipEvent>> {
+        self.event_manager
+            .read()
+            .expect("Couldn't get event manager")
+            .event_loop_proxy
+            .read()
+            .unwrap()
+            .send_event(VipEvent::Gaze(GazeEvent::ChangePosition { x, y }))
+
+        //self.trigger(VipEvent::Gaze(GazeEvent::ChangePosition { x, y }))
+    }
+
+    pub fn set_normalized_position(&self, x: f32, y: f32) {
+        println!("setting event manager for x: {}, y: {}", &x, &y);
+        let event_manager_rwlock = &self.event_manager;
+
+        println!("read locking event manager");
+        let result = event_manager_rwlock.read();
+
+        println!("event manager locked. getting event manager");
+        let event_manager = result.expect("Couldn't get event manager");
+
+        println!("got event manager. locking event loop proxy");
+        let event_manager_proxy = event_manager.event_loop_proxy.read().unwrap();
+
+        println!("got event loop proxy. sending event");
+        event_manager_proxy
+            .send_event(VipEvent::Gaze(GazeEvent::ChangeNormalizedPosition { x, y }))
+            .ok();
+
+        println!("sent event");
+
+        //self.trigger(VipEvent::Gaze(GazeEvent::ChangeNormalizedPosition { x, y }))
+    }
+
     #[cfg(target_arch = "wasm32")]
     pub fn update(_config: &[u8]) {
         let _ = gloo_utils::window().alert_with_message("Hello, update!");
@@ -94,13 +140,6 @@ impl Vip {
     #[cfg(target_arch = "wasm32")]
     pub fn resize(_width: u32, _height: u32) {
         let _ = gloo_utils::window().alert_with_message("Hello, resize!");
-    }
-
-    #[cfg(target_arch = "wasm32")]
-    #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
-    pub fn set_position(&self, x: u32, y: u32) {
-        let message = format!("Position: {}, {}", x, y);
-        info!("{}", message);
     }
 
     #[cfg(target_arch = "wasm32")]
