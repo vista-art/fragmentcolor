@@ -4,31 +4,34 @@ use wgpu::util::DeviceExt;
 use winit::{event::*, window::Window};
 
 use crate::enrichments::{gaze::GazeUniform, Enrichments};
-use crate::screen::ScreenUniform;
+use crate::renderer::screen::ScreenUniform;
 
 cfg_if!( if #[cfg(feature = "texture")] {
-    use crate::texture::Texture;
-    use crate::vertex::{Vertex, TEXTURED_PENTAGON}; // @TODO get rid of this
+    use crate::renderer::texture::Texture;
+    use crate::renderer::vertex::{Vertex, TEXTURED_PENTAGON}; // @TODO get rid of this
 } else {
-    use crate::vertex::{Vertex, FULL_SCREEN_QUAD};
+    use crate::renderer::vertex::{Vertex, FULL_SCREEN_QUAD};
 });
 
 #[cfg(feature = "camera")]
-use crate::camera::{Camera, CameraController, CameraUniform};
+use crate::renderer::camera::{Camera, CameraController, CameraUniform};
 
 #[cfg(feature = "instances")]
 use {
-    crate::instances::{Instance, InstanceRaw, INSTANCE_DISPLACEMENT, NUM_INSTANCES_PER_ROW},
+    crate::renderer::instances::{
+        Instance, InstanceRaw, INSTANCE_DISPLACEMENT, NUM_INSTANCES_PER_ROW,
+    },
     cgmath::{InnerSpace, Rotation3, Zero},
 };
 
+#[derive(Debug)]
 pub struct State {
     surface: wgpu::Surface,
     device: wgpu::Device,
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
     window: winit::window::Window,
-    window_physical_size: winit::dpi::PhysicalSize<u32>,
+    pub window_physical_size: winit::dpi::PhysicalSize<u32>,
     render_pipeline: wgpu::RenderPipeline,
     vertex_buffer: wgpu::Buffer,
     index_buffer: wgpu::Buffer,
@@ -185,6 +188,9 @@ impl State {
             });
 
         } else {
+            //@TODO ideally, we should inject a list of uniforms here and mount them dynamically
+            //      one uniform for each enrichment. Perhaps defining a "renderable" trait
+            //      would be a good idea. Check bevy's material system for inspiration.
             let screen_uniform = ScreenUniform::new(config.width as f32, config.height as f32);
             let gaze_uniform = GazeUniform::new(enrichments.gaze.unwrap()).unwrap();
 
@@ -246,7 +252,11 @@ impl State {
                 label: Some("gaze_bind_group"),
             });
 
-            let shader_source = include_str!("../assets/shaders/circle.wgsl").into();
+            // @TODO every enrichment should reference their own shader.
+            //       Better yet, we should have a "shapes" module that
+            //       defines all the basic shapes we'll use, and the
+            //       enrichments would use and combine them.
+            let shader_source = include_str!("../../assets/shaders/circle.wgsl").into();
             let vertices = FULL_SCREEN_QUAD.vertices;
             let indices = FULL_SCREEN_QUAD.indices;
         }}
@@ -525,13 +535,23 @@ impl State {
     }
 
     #[cfg(not(feature = "texture"))]
-    pub fn handle_mouse_move_vip_event(&mut self, x: f32, y: f32) {
+    pub fn handle_gaze_change_position_event(&mut self, x: u32, y: u32) {
+        let x = x as f32 / self.window_physical_size.width as f32;
+        let y = y as f32 / self.window_physical_size.height as f32;
+
+        self.handle_gaze_change_position_event_normalized(x, y);
+    }
+
+    #[cfg(not(feature = "texture"))]
+    pub fn handle_gaze_change_position_event_normalized(&mut self, x: f32, y: f32) {
+        println!("from state manager: x: {}, y: {}", &x, &y);
         self.gaze_uniform.set_position([x, y]);
         self.queue.write_buffer(
             &self.gaze_buffer,
             0,
             bytemuck::cast_slice(&[self.gaze_uniform]),
         );
+        println!("Buffer updated");
     }
 
     pub fn update(&mut self) {

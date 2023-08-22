@@ -4,7 +4,13 @@ use serde::{Deserialize, Serialize};
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
-use crate::color::hex_to_rgba;
+use crate::renderer::color::hex_to_rgba;
+
+#[derive(Debug, Clone, Copy)]
+pub enum GazeEvent {
+    ChangePosition { x: u32, y: u32 },
+    ChangeNormalizedPosition { x: f32, y: f32 },
+}
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen(getter_with_clone))]
 #[derive(Serialize, Deserialize, Clone)]
