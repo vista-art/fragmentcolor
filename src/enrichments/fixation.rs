@@ -4,8 +4,8 @@ use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen(getter_with_clone))]
-#[derive(Serialize, Deserialize, Clone)]
-pub struct Fixation {
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct FixationOptions {
     pub radius: f32,
     pub border: f32,
     pub color: String,

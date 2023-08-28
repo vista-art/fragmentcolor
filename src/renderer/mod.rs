@@ -1,10 +1,12 @@
 pub mod color;
-pub mod screen;
-pub mod vertex;
+pub mod debug;
+pub mod renderable;
+pub mod renderer;
+mod screen;
+mod state;
+//pub mod uniform;
+mod vertex;
 
-#[cfg(feature = "camera")]
-pub mod camera;
-#[cfg(feature = "instances")]
-pub mod instances;
-#[cfg(feature = "texture")]
-pub mod texture;
+pub use renderable::*;
+pub use renderer::*;
+//pub use uniform::*;

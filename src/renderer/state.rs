@@ -1,15 +1,14 @@
-use anyhow::Result;
+use crate::renderer::renderable::Renderables;
 use cfg_if::cfg_if;
+use std::collections::HashMap;
 use wgpu::util::DeviceExt;
-use winit::{event::*, window::Window};
-
-use crate::enrichments::{gaze::GazeUniform, Enrichments};
-use crate::renderer::screen::ScreenUniform;
+use winit::window::Window;
 
 cfg_if!( if #[cfg(feature = "texture")] {
     use crate::renderer::texture::Texture;
-    use crate::renderer::vertex::{Vertex, TEXTURED_PENTAGON}; // @TODO get rid of this
+    use crate::renderer::vertex::{Vertex, TEXTURED_PENTAGON};
 } else {
+    use crate::renderer::screen::ScreenUniform; //@TODO make it common or define a globals shader
     use crate::renderer::vertex::{Vertex, FULL_SCREEN_QUAD};
 });
 
@@ -25,54 +24,48 @@ use {
 };
 
 #[derive(Debug)]
-pub struct State {
-    surface: wgpu::Surface,
-    device: wgpu::Device,
-    queue: wgpu::Queue,
-    config: wgpu::SurfaceConfiguration,
-    window: winit::window::Window,
-    pub window_physical_size: winit::dpi::PhysicalSize<u32>,
-    render_pipeline: wgpu::RenderPipeline,
-    vertex_buffer: wgpu::Buffer,
-    index_buffer: wgpu::Buffer,
-    num_indices: u32,
+pub(super) struct State {
+    pub(super) surface: wgpu::Surface,
+    pub(super) device: wgpu::Device,
+    pub(super) queue: wgpu::Queue,
+    pub(super) config: wgpu::SurfaceConfiguration,
+    pub(super) render_pipeline: wgpu::RenderPipeline,
+    pub(super) vertex_buffer: wgpu::Buffer,
+    pub(super) index_buffer: wgpu::Buffer,
+    pub(super) num_indices: u32,
 
-    #[cfg(not(feature = "texture"))]
-    gaze_buffer: wgpu::Buffer,
+    pub(super) buffers: HashMap<String, wgpu::Buffer>,
+    pub(super) bind_groups: HashMap<String, wgpu::BindGroup>,
 
-    #[cfg(not(feature = "texture"))]
-    gaze_uniform: GazeUniform,
-
-    #[cfg(not(feature = "texture"))]
-    gaze_bind_group: wgpu::BindGroup,
-
+    // manually-enabled features
+    // for quick visual testing
     #[cfg(feature = "texture")]
-    _texture: Texture, // unused for now
+    pub(super) _textures: Vec<Texture>,
     #[cfg(feature = "texture")]
-    texture_bind_group: wgpu::BindGroup,
+    pub(super) texture_bind_group: wgpu::BindGroup,
 
     #[cfg(feature = "camera")]
-    camera: Camera,
+    pub(super) camera: Camera,
     #[cfg(feature = "camera")]
-    camera_buffer: wgpu::Buffer,
+    pub(super) camera_buffer: wgpu::Buffer,
     #[cfg(feature = "camera")]
-    camera_uniform: CameraUniform,
+    pub(super) camera_uniform: CameraUniform,
     #[cfg(feature = "camera")]
-    camera_bind_group: wgpu::BindGroup,
+    pub(super) camera_bind_group: wgpu::BindGroup,
     #[cfg(feature = "camera")]
-    camera_controller: CameraController,
+    pub(super) camera_controller: CameraController,
 
     #[cfg(feature = "instances")]
-    instances: Vec<Instance>,
+    pub(super) instances: Vec<Instance>,
     #[cfg(feature = "instances")]
-    instance_buffer: wgpu::Buffer,
+    pub(super) instance_buffer: wgpu::Buffer,
 
     #[cfg(feature = "depth")]
-    depth_texture: Texture,
+    pub(super) depth_texture: Texture,
 }
 
 impl State {
-    pub async fn new(window: Window, enrichments: Enrichments) -> Self {
+    pub async fn new(window: &Window, renderables: &Renderables) -> State {
         // The instance is a handle to our GPU
         // Backends::all => Vulkan + Metal + DX12 + Browser WebGPU
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
@@ -80,12 +73,10 @@ impl State {
             dx12_shader_compiler: Default::default(),
         });
 
-        let window_physical_size = window.inner_size();
-
         // The unsafe API is about to change: https://github.com/gfx-rs/wgpu/issues/1463
         // Winit EventLoop 3.0 Changes: https://github.com/rust-windowing/winit/issues/2900
         // @TODO keep track of the upstream changes and remove this unsafe call
-        let surface = unsafe { instance.create_surface(&window) }.unwrap();
+        let surface = unsafe { instance.create_surface(window) }.unwrap();
 
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
@@ -94,7 +85,7 @@ impl State {
                 force_fallback_adapter: false,
             })
             .await
-            .unwrap();
+            .expect("Failed to find a GPU adapter");
 
         let (device, queue) = adapter
             .request_device(
@@ -112,7 +103,7 @@ impl State {
                 None, // Trace path
             )
             .await
-            .unwrap();
+            .expect("Failed to create device");
 
         let surface_capabilities = surface.get_capabilities(&adapter);
 
@@ -126,20 +117,121 @@ impl State {
             .find(|f| f.is_srgb())
             .unwrap_or(surface_capabilities.formats[0]);
 
+        let window_physical_size = window.inner_size();
         let config = wgpu::SurfaceConfiguration {
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-            format: surface_format,
             width: window_physical_size.width,
             height: window_physical_size.height,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             present_mode: surface_capabilities.present_modes[0],
             alpha_mode: surface_capabilities.alpha_modes[0],
+            format: surface_format,
             view_formats: vec![],
         };
 
         surface.configure(&device, &config);
 
-        cfg_if! {
-        if #[cfg(feature = "texture")] {
+        //cfg_if! { if #[cfg(not(feature = "texture"))] {
+
+        let screen_uniform = ScreenUniform::new(config.width as f32, config.height as f32);
+        let screen_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Screen Uniform Buffer"),
+            contents: bytemuck::cast_slice(&[screen_uniform]),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+        let screen_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }],
+                label: Some("Screen Bind Group Layout"),
+            });
+        let screen_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &screen_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: screen_buffer.as_entire_binding(),
+            }],
+            label: Some("Screen Bind Group"),
+        });
+
+        //let uniforms: Vec<Uniform> = vec![];
+        let mut buffers: HashMap<String, wgpu::Buffer> = HashMap::new();
+        let mut bind_groups: HashMap<String, wgpu::BindGroup> = HashMap::new();
+        let mut bind_group_layouts: Vec<wgpu::BindGroupLayout> = vec![];
+
+        // Items here are referenced by the GPU shader in
+        // WGSL using the `@group(n)` syntax, where `n` is
+        // the index of the item in this list.
+        bind_group_layouts.push(screen_bind_group_layout);
+        bind_groups.insert("Screen".to_string(), screen_bind_group);
+
+        for (i, renderable) in renderables.iter().enumerate() {
+            //let buffer = renderable.buffer();
+            //let uniform = renderable.uniform();
+            //let bind_group = renderable.bind_group();
+            //let bind_group_layout = renderable.bind_group_layout();
+
+            // buffers.push(buffer);
+            // uniforms.push(uniform);
+            // bind_groups.push(bind_group);
+
+            let label = renderable.label();
+            let renderable_buffer = renderable.buffer(&device);
+
+            // let renderable_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            //     label: Some(format!("{} Uniform Buffer", &label).as_str()),
+            //     contents: bytemuck::cast_slice(&[*renderable_uniform]),
+            //     usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            // });
+
+            let renderable_bind_group_layout =
+                device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                    entries: &[wgpu::BindGroupLayoutEntry {
+                        binding: i as u32,
+                        visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    }],
+                    label: Some(format!("{} Bind Group Layout", &label).as_str()),
+                });
+
+            let renderable_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                layout: &renderable_bind_group_layout,
+                entries: &[wgpu::BindGroupEntry {
+                    binding: i as u32,
+                    resource: renderable_buffer.as_entire_binding(),
+                }],
+                label: Some(format!("{} Bind Group", &label).as_str()),
+            });
+
+            bind_group_layouts.push(renderable_bind_group_layout);
+            bind_groups.insert(label.to_string(), renderable_bind_group);
+            buffers.insert(label.to_string(), renderable_buffer);
+        }
+
+        let bind_group_layouts_refs = bind_group_layouts.iter().collect::<Vec<_>>();
+
+        // @TODO every enrichment should reference their own shader.
+        //       Better yet, we should have a "shapes" module that
+        //       defines all the basic shapes we'll use, and the
+        //       enrichments would use and combine them.
+        let shader_source = include_str!("../../assets/shaders/circle.wgsl").into();
+        let vertices = FULL_SCREEN_QUAD.vertices;
+        let indices = FULL_SCREEN_QUAD.indices;
+
+        cfg_if! { if #[cfg(not(feature = "texture"))] {
+        } else {
             #[cfg(not(feature = "camera"))]
             let shader_source = include_str!("../assets/shaders/texture.wgsl").into();
 
@@ -147,7 +239,10 @@ impl State {
             let indices = TEXTURED_PENTAGON.indices;
 
             let texture_bytes = include_bytes!("../assets/images/happy-tree.png");
-            let texture = Texture::from_bytes(&device, &queue, texture_bytes, "happy_tree").unwrap();
+            let textures = vec![
+                Texture::from_bytes(&device, &queue, texture_bytes, "happy_tree").unwrap(),
+            ];
+            let texture = &textures[0];
 
             let texture_bind_group_layout =
                 device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -172,6 +267,7 @@ impl State {
                     ],
                     label: Some("texture_bind_group_layout"),
                 });
+
             let texture_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
                 layout: &texture_bind_group_layout,
                 entries: &[
@@ -187,78 +283,6 @@ impl State {
                 label: Some("texture_bind_group"),
             });
 
-        } else {
-            //@TODO ideally, we should inject a list of uniforms here and mount them dynamically
-            //      one uniform for each enrichment. Perhaps defining a "renderable" trait
-            //      would be a good idea. Check bevy's material system for inspiration.
-            let screen_uniform = ScreenUniform::new(config.width as f32, config.height as f32);
-            let gaze_uniform = GazeUniform::new(enrichments.gaze.unwrap()).unwrap();
-
-            // @TODO they should be two separated bind groups
-            let screen_buffer = device.create_buffer_init(
-                &wgpu::util::BufferInitDescriptor {
-                    label: Some("Screen Uniform Buffer"),
-                    contents: bytemuck::cast_slice(&[screen_uniform]),
-                    usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-                }
-            );
-
-            let gaze_buffer = device.create_buffer_init(
-                &wgpu::util::BufferInitDescriptor {
-                    label: Some("Gaze Uniform Buffer"),
-                    contents: bytemuck::cast_slice(&[gaze_uniform]),
-                    usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-                }
-            );
-
-            let gaze_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                entries: &[
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Uniform,
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Uniform,
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
-                    }
-                ],
-                label: Some("gaze_bind_group_layout"),
-            });
-
-            let gaze_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-                layout: &gaze_bind_group_layout,
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: screen_buffer.as_entire_binding(),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: gaze_buffer.as_entire_binding(),
-                    }
-                ],
-                label: Some("gaze_bind_group"),
-            });
-
-            // @TODO every enrichment should reference their own shader.
-            //       Better yet, we should have a "shapes" module that
-            //       defines all the basic shapes we'll use, and the
-            //       enrichments would use and combine them.
-            let shader_source = include_str!("../../assets/shaders/circle.wgsl").into();
-            let vertices = FULL_SCREEN_QUAD.vertices;
-            let indices = FULL_SCREEN_QUAD.indices;
         }}
 
         cfg_if! { if #[cfg(feature = "camera")] {
@@ -276,7 +300,7 @@ impl State {
             };
 
             let mut camera_uniform = CameraUniform::new();
-            camera_uniform.update_view_proj(&camera);
+            camera_uniform.update(&camera);
 
             let camera_buffer = device.create_buffer_init(
                 &wgpu::util::BufferInitDescriptor {
@@ -387,22 +411,19 @@ impl State {
 
         let num_indices = indices.len() as u32;
 
-        cfg_if! { if #[cfg(feature = "texture")] {
-            let bind_group_layouts = &[
-                &texture_bind_group_layout, // @group(0)
-                #[cfg(feature = "camera")]
-                &camera_bind_group_layout, // @group(1)
-            ];
-        } else {
-            let bind_group_layouts = &[
-                &gaze_bind_group_layout, // @group(0)
-            ];
-        }};
+        #[cfg(feature = "texture")]
+        let bind_group_layouts = &[
+            &texture_bind_group_layout, // @group(0)
+            #[cfg(feature = "camera")]
+            &camera_bind_group_layout, // @group(1)
+        ];
 
+        #[cfg(not(feature = "texture"))]
+        // convert bind_group_layouts to a slice
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
-                bind_group_layouts,
+                bind_group_layouts: bind_group_layouts_refs.as_slice(),
                 push_constant_ranges: &[],
             });
 
@@ -450,28 +471,20 @@ impl State {
         });
 
         Self {
-            window,
             surface,
             device,
             queue,
             config,
-            window_physical_size,
             render_pipeline,
             vertex_buffer,
             index_buffer,
             num_indices,
 
-            #[cfg(not(feature = "texture"))]
-            gaze_buffer,
-
-            #[cfg(not(feature = "texture"))]
-            gaze_uniform,
-
-            #[cfg(not(feature = "texture"))]
-            gaze_bind_group,
+            buffers,
+            bind_groups,
 
             #[cfg(feature = "texture")]
-            _texture: texture,
+            _textures: textures,
             #[cfg(feature = "texture")]
             texture_bind_group,
 
@@ -494,147 +507,5 @@ impl State {
             #[cfg(feature = "depth")]
             depth_texture,
         }
-    }
-
-    pub fn window(&self) -> &Window {
-        &self.window
-    }
-
-    pub fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
-        if new_size.width > 0 && new_size.height > 0 {
-            self.window_physical_size = new_size;
-            self.config.width = self.window_physical_size.width;
-            self.config.height = self.window_physical_size.height;
-            self.surface.configure(&self.device, &self.config);
-
-            cfg_if! { if #[cfg(feature = "camera")] {
-                self.camera.aspect = self.config.width as f32 / self.config.height as f32;
-            } else {
-            }}
-
-            cfg_if! { if #[cfg(feature = "depth")] {
-                self.depth_texture =
-                    Texture::create_depth_texture(&self.device, &self.config, "depth_texture");
-            } else {
-            }}
-        }
-    }
-
-    pub fn recover(&mut self) {
-        self.resize(self.window_physical_size);
-    }
-
-    pub fn input(&mut self, event: &WindowEvent) -> bool {
-        cfg_if! { if #[cfg(feature = "camera")] {
-            self.camera_controller.handle_event(event)
-        } else {
-            match event {
-                _ => false,
-            }
-        }}
-    }
-
-    #[cfg(not(feature = "texture"))]
-    pub fn handle_gaze_change_position_event(&mut self, x: u32, y: u32) {
-        let x = x as f32 / self.window_physical_size.width as f32;
-        let y = y as f32 / self.window_physical_size.height as f32;
-
-        self.handle_gaze_change_position_event_normalized(x, y);
-    }
-
-    #[cfg(not(feature = "texture"))]
-    pub fn handle_gaze_change_position_event_normalized(&mut self, x: f32, y: f32) {
-        println!("from state manager: x: {}, y: {}", &x, &y);
-        self.gaze_uniform.set_position([x, y]);
-        self.queue.write_buffer(
-            &self.gaze_buffer,
-            0,
-            bytemuck::cast_slice(&[self.gaze_uniform]),
-        );
-        println!("Buffer updated");
-    }
-
-    pub fn update(&mut self) {
-        cfg_if! { if #[cfg(feature = "camera")] {
-            self.camera_controller.update_camera(&mut self.camera);
-            self.camera_uniform.update_view_proj(&self.camera);
-            self.queue.write_buffer(
-                &self.camera_buffer,
-                0,
-                bytemuck::cast_slice(&[self.camera_uniform]),
-            );
-        } else {
-        }}
-    }
-
-    pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
-        let output = self.surface.get_current_texture()?;
-        let view = output
-            .texture
-            .create_view(&wgpu::TextureViewDescriptor::default());
-        let mut encoder = self
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("Render Encoder"),
-            });
-
-        {
-            cfg_if! { if #[cfg(feature = "depth")] {
-                let depth_stencil_attachment = Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: &self.depth_texture.view,
-                    depth_ops: Some(wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(1.0),
-                        store: true,
-                    }),
-                    stencil_ops: None,
-                });
-            } else {
-                let depth_stencil_attachment: Option<wgpu::RenderPassDepthStencilAttachment> = None;
-            }}
-
-            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Render Pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.1,
-                            g: 0.2,
-                            b: 0.3,
-                            a: 1.0,
-                        }),
-                        store: true,
-                    },
-                })],
-                depth_stencil_attachment,
-            });
-
-            cfg_if! { if #[cfg(feature = "instances")] {
-                let instances = 0..self.instances.len() as u32;
-            } else {
-                let instances = 0..1;
-            }}
-
-            render_pass.set_pipeline(&self.render_pipeline);
-            cfg_if! { if #[cfg(feature = "texture")] {
-                render_pass.set_bind_group(0, &self.texture_bind_group, &[]);
-                #[cfg(feature = "camera")]
-                render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
-            } else {
-                render_pass.set_bind_group(0, &self.gaze_bind_group, &[]);
-            }}
-            render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-            #[cfg(feature = "instances")]
-            render_pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
-            render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-            render_pass.draw_indexed(0..self.num_indices, 0, instances);
-        }
-
-        // submit will accept anything that implements IntoIter
-        self.queue.submit(std::iter::once(encoder.finish()));
-        output.present();
-
-        Ok(())
     }
 }

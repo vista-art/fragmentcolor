@@ -1,7 +1,8 @@
 pub mod enrichments;
 mod events;
+mod platform;
 mod renderer;
-mod state;
+mod shapes;
 
 use std::{sync::Arc, sync::RwLock};
 
@@ -12,23 +13,25 @@ use {gloo_utils::format::JsValueSerdeExt, wasm_bindgen::prelude::*};
 
 use serde::{Deserialize, Serialize};
 
-use enrichments::{gaze::GazeEvent, Enrichments};
-use events::{EventManager, VipEvent};
-use winit::event_loop::EventLoopClosed;
+use enrichments::EnrichmentOptions;
+// use enrichments::Enrichment; //@TODO
+use events::{window::WindowOptions, EventManager};
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen(getter_with_clone))]
 #[derive(Serialize, Deserialize, Default)]
 pub struct Options {
-    pub canvas_selector: Option<String>,
-    pub enrichments: Enrichments,
+    pub window: Option<WindowOptions>,
+    pub enrichments: Option<EnrichmentOptions>,
 }
 
 #[derive(Clone)]
-#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen(getter_with_clone))]
 pub struct Vip {
-    pub event_manager: Arc<RwLock<EventManager>>,
+    event_manager: Arc<RwLock<EventManager>>,
+    //enrichment: Vec<Box<dyn Enrichment>>, //@TODO
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 unsafe impl Send for Vip {}
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
@@ -50,46 +53,59 @@ impl Vip {
 
     #[cfg(target_arch = "wasm32")]
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
-    pub async fn config_and_run(&self, options: JsValue) {
+    pub async fn config(&self, options: JsValue) {
         let options: Options = options.into_serde().expect("Couldn't deserialize options");
+        let mut event_manager = self.event_manager();
 
-        let mut event_manager = self.event_manager.borrow_mut();
-        let event_loop = event_manager.event_loop.take().expect("Event loop not set");
-        let canvas_selector = options
-            .canvas_selector
-            .as_ref()
-            .expect("Canvas selector not set");
-        let window = events::init_window(&event_loop, canvas_selector);
+        event_manager.config(options);
 
-        let state = state::State::new(window, options.enrichments).await;
+        // wasm_bindgen_futures::spawn_local(&event_manager.config(options));
 
-        wasm_bindgen_futures::spawn_local(events::run_event_loop(event_loop, state));
+        // let event_loop = event_manager.event_loop.take().expect("Event loop not set");
+        // let canvas_selector = options
+        //     .canvas_selector
+        //     .as_ref()
+        //     .expect("Canvas selector not set");
+        // let window = events::window::init_window(&event_loop, canvas_selector);
+
+        // let state = state::State::new(window, options.enrichments).await;
+
+        // wasm_bindgen_futures::spawn_local(events::run_event_loop(event_loop, state));
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub fn run(&mut self) {
+        let mut event_manager = self.event_manager();
+        let event_handler = event_manager.get_event_handler();
+
+        wasm_bindgen_futures::spawn_local(event_handler.run()); // this function never returns
     }
 
     #[cfg(not(target_arch = "wasm32"))]
     pub async fn config(&mut self, options: Options) {
-        let mut event_manager = self.event_manager.write().unwrap();
+        let mut event_manager = self.event_manager();
         event_manager.config(options).await;
     }
 
     #[cfg(not(target_arch = "wasm32"))]
     pub fn run(&mut self) {
-        let mut event_manager = self.event_manager.write().unwrap();
-        let event_loop_container = *event_manager.event_loop_container.take().unwrap();
+        let mut event_manager = self.event_manager();
+        let event_listener = event_manager.get_event_handler();
+        drop(event_manager); // release to avoid deadlock
 
-        // release to avoid deadlock
-        drop(event_manager);
-
-        event_loop_container.run();
+        pollster::block_on(event_listener.run()); // this function never returns
     }
 
-    pub fn trigger(&self, event: events::VipEvent) -> Result<(), EventLoopClosed<VipEvent>> {
-        self.event_manager().trigger(event)
+    // @TODO params should be dynamic and of arbitrary type
+    pub fn trigger(&self, event: &str, param1: f32, param2: f32) {
+        self.event_manager()
+            .trigger(event, param1, param2)
+            .expect("Event loop closed");
     }
 
     fn init_logger() {
         cfg_if! { if #[cfg(target_arch = "wasm32")] {
-            utils::set_panic_hook();
+            crate::platform::web::utils::set_panic_hook();
             console_log::init_with_level(log::Level::Info).expect("Couldn't initialize logger");
         } else {
             env_logger::init();
@@ -97,16 +113,15 @@ impl Vip {
     }
 
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
-    pub fn set_position(&self, x: u32, y: u32) -> Result<(), EventLoopClosed<VipEvent>> {
-        self.event_manager
-            .read()
-            .expect("Couldn't get event manager")
-            .event_loop_proxy
-            .read()
-            .unwrap()
-            .send_event(VipEvent::Gaze(GazeEvent::ChangePosition { x, y }))
+    pub fn set_position(&self, _x: u32, _y: u32) {
+        //@TODO figure out a way to expose enriichment-specific
+        //      events in the public API dynamically.
 
-        //self.trigger(VipEvent::Gaze(GazeEvent::ChangePosition { x, y }))
+        // self.trigger(
+        //     "gaze:set_position",
+        //     &VipEvent::Gaze(GazeEvent::ChangePosition { x, y }),
+        // )
+        // .expect("Event loop closed");
     }
 
     pub fn set_normalized_position(&self, x: f32, y: f32) {
@@ -117,17 +132,19 @@ impl Vip {
         let result = event_manager_rwlock.read();
 
         println!("event manager locked. getting event manager");
-        let event_manager = result.expect("Couldn't get event manager");
+        let _event_manager = result.expect("Couldn't get event manager");
 
-        println!("got event manager. locking event loop proxy");
-        let event_manager_proxy = event_manager.event_loop_proxy.read().unwrap();
+        println!("got event loop manager. sending event");
+        //@TODO figure out a way to expose enriichment-specific
+        //      events in the public API dynamically.
 
-        println!("got event loop proxy. sending event");
-        event_manager_proxy
-            .send_event(VipEvent::Gaze(GazeEvent::ChangeNormalizedPosition { x, y }))
-            .ok();
+        // let event_manager =
+        //     event_manager.trigger(&VipEvent::Gaze(GazeEvent::ChangeNormalizedPosition {
+        //         x,
+        //         y,
+        //     }));
 
-        println!("sent event");
+        println!("did not send event: not implemented");
 
         //self.trigger(VipEvent::Gaze(GazeEvent::ChangeNormalizedPosition { x, y }))
     }

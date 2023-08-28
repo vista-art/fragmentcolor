@@ -1,6 +1,6 @@
 #[cfg(not(target_arch = "wasm32"))]
 use pl_video_processor::{
-    enrichments::{gaze::Gaze, Enrichments},
+    enrichments::{gaze::GazeOptions, EnrichmentOptions},
     Options, Vip,
 };
 
@@ -18,15 +18,10 @@ async fn init() {
 
     vip.config(Options {
         enrichments: {
-            Enrichments {
-                gaze: Some(Gaze {
-                    radius: 0.2,
-                    border: 0.05,
-                    color: "#ff0000ff".to_string(),
-                    alpha: 1.0,
-                }),
+            Some(EnrichmentOptions {
+                gaze: Some(GazeOptions::default()),
                 ..Default::default()
-            }
+            })
         },
         ..Default::default()
     })

@@ -1,11 +1,10 @@
-use anyhow::{anyhow, Result};
 use palette::{
-    rgb::{LinSrgb, LinSrgba},
+    rgb::{FromHexError, LinSrgb, LinSrgba},
     WithAlpha,
 };
 use std::str::FromStr;
 
-pub fn hex_to_rgba(hex: &str) -> Result<LinSrgba<f32>> {
+pub fn hex_to_rgba(hex: &str) -> Result<LinSrgba<f32>, FromHexError> {
     let hex = hex.strip_prefix('#').map_or(hex, |stripped| stripped);
 
     match hex.len() {
@@ -22,6 +21,6 @@ pub fn hex_to_rgba(hex: &str) -> Result<LinSrgba<f32>> {
 
             Ok(color)
         }
-        _ => Err(anyhow!("Invalid hex code")),
+        _ => Err("invalid hex code format".into()),
     }
 }
