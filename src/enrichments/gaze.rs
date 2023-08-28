@@ -1,10 +1,32 @@
-use anyhow::Result;
+use crate::renderer::Renderable;
+//use crate::enrichments::Enrichment;
+use crate::shapes::circle::Circle;
+use crate::{renderer::color::hex_to_rgba, shapes::CircleOptions};
+use palette::rgb::LinSrgba;
 use serde::{Deserialize, Serialize};
-
+use smart_default::SmartDefault;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
-use crate::renderer::color::hex_to_rgba;
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen(getter_with_clone))]
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct GazeOptions {
+    pub radius: Option<f32>,
+    pub border: Option<f32>,
+    pub color: Option<String>,
+    pub alpha: Option<f32>,
+}
+
+impl Default for GazeOptions {
+    fn default() -> Self {
+        Self {
+            radius: Some(0.2),
+            border: Some(0.05),
+            color: Some("#ff000088".to_string()),
+            alpha: Some(1.0),
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy)]
 pub enum GazeEvent {
@@ -12,48 +34,49 @@ pub enum GazeEvent {
     ChangeNormalizedPosition { x: f32, y: f32 },
 }
 
-#[cfg_attr(target_arch = "wasm32", wasm_bindgen(getter_with_clone))]
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Debug, SmartDefault)]
 pub struct Gaze {
-    pub radius: f32,
-    pub border: f32,
-    pub color: String,
-    pub alpha: f32,
+    #[default(cgmath::Point2::new(0.0, 0.0))]
+    position: cgmath::Point2<f32>,
+    circle: Circle,
 }
 
-impl Default for Gaze {
-    fn default() -> Self {
+impl Gaze {
+    pub fn new(options: GazeOptions) -> Self {
         Self {
-            radius: 0.2,
-            border: 0.05,
-            color: "#ff0000ff".to_string(),
-            alpha: 1.0,
+            circle: Circle::new(CircleOptions {
+                radius: options.radius.unwrap_or_default(),
+                border_size: options.border.unwrap_or_default(),
+                border_color: hex_to_rgba(&options.color.unwrap_or_default()).unwrap_or_default(),
+                color: LinSrgba::new(0.0, 0.0, 0.0, 0.0),
+                alpha: 1.0,
+            }),
+            ..Default::default()
         }
     }
-}
 
-#[repr(C)]
-#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct GazeUniform {
-    position: [f32; 2],
-    radius: f32,
-    border: f32,
-    color: [f32; 4],
-}
-
-impl GazeUniform {
-    pub fn new(gaze: Gaze) -> Result<Self> {
-        let color = hex_to_rgba(&gaze.color)?;
-
-        Ok(Self {
-            position: [0.0, 0.0],
-            radius: gaze.radius,
-            border: gaze.border,
-            color: [color.red, color.green, color.blue, color.alpha * gaze.alpha],
-        })
+    pub fn handle(&mut self, event: GazeEvent) {
+        match event {
+            GazeEvent::ChangePosition { x, y } => self.set_position(x, y),
+            GazeEvent::ChangeNormalizedPosition { x, y } => self.set_normalized_position(x, y),
+        }
     }
 
-    pub fn set_position(&mut self, position: [f32; 2]) {
-        self.position = position;
+    fn set_position(&mut self, _x: u32, _y: u32) {
+        todo!("not yet implemented. TODO: inject screen resolution here somehow, or make it available for querying")
+    }
+
+    fn set_normalized_position(&mut self, x: f32, y: f32) {
+        self.position = cgmath::Point2::new(x, y);
+        self.circle.set_position(self.position);
+        self.circle.update();
+    }
+
+    pub fn renderables(&self) -> Vec<Circle> {
+        vec![self.circle.clone()]
+    }
+
+    pub fn renderable(&self) -> Circle {
+        self.circle.clone()
     }
 }

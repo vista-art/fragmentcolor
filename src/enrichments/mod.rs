@@ -1,5 +1,5 @@
-mod enrichments;
+pub mod enrichment;
 pub mod fixation;
 pub mod gaze;
 
-pub use enrichments::*;
+pub use enrichment::*;
