@@ -1,23 +1,23 @@
 use crate::renderer::renderable::Renderables;
 use cfg_if::cfg_if;
-use std::collections::HashMap;
 use wgpu::util::DeviceExt;
 use winit::window::Window;
 
 cfg_if!( if #[cfg(feature = "texture")] {
-    use crate::renderer::texture::Texture;
-    use crate::renderer::vertex::{Vertex, TEXTURED_PENTAGON};
+    use crate::renderer::debug::texture::Texture;
+    use crate::renderer::vertex::{Vertex, ShapeVertex, TEXTURED_PENTAGON};
 } else {
+    use std::collections::HashMap;
     use crate::renderer::screen::ScreenUniform; //@TODO make it common or define a globals shader
-    use crate::renderer::vertex::{Vertex, FULL_SCREEN_QUAD};
+    use crate::renderer::vertex::{Vertex, ShapeVertex, FULL_SCREEN_QUAD};
 });
 
 #[cfg(feature = "camera")]
-use crate::renderer::camera::{Camera, CameraController, CameraUniform};
+use crate::renderer::debug::camera::{Camera, CameraController, CameraUniform};
 
 #[cfg(feature = "instances")]
 use {
-    crate::renderer::instances::{
+    crate::renderer::debug::instances::{
         Instance, InstanceRaw, INSTANCE_DISPLACEMENT, NUM_INSTANCES_PER_ROW,
     },
     cgmath::{InnerSpace, Rotation3, Zero},
@@ -34,7 +34,9 @@ pub(super) struct State {
     pub(super) index_buffer: wgpu::Buffer,
     pub(super) num_indices: u32,
 
+    #[cfg(not(feature = "texture"))]
     pub(super) buffers: HashMap<String, wgpu::Buffer>,
+    #[cfg(not(feature = "texture"))]
     pub(super) bind_groups: HashMap<String, wgpu::BindGroup>,
 
     // manually-enabled features
@@ -130,71 +132,22 @@ impl State {
 
         surface.configure(&device, &config);
 
-        //cfg_if! { if #[cfg(not(feature = "texture"))] {
+        // @TODO remove this condition and make the screen uniform and the
+        //       renderable buffers shared across all compile-enabled features.
+        //       You have to move the camera and the other debuggers to another
+        //       binding group and increase their indices.
+        cfg_if! { if #[cfg(not(feature = "texture"))] {
 
-        let screen_uniform = ScreenUniform::new(config.width as f32, config.height as f32);
-        let screen_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Screen Uniform Buffer"),
-            contents: bytemuck::cast_slice(&[screen_uniform]),
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-        });
-        let screen_bind_group_layout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                entries: &[wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                }],
-                label: Some("Screen Bind Group Layout"),
+            let screen_uniform = ScreenUniform::new(config.width as f32, config.height as f32);
+            let screen_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Screen Uniform Buffer"),
+                contents: bytemuck::cast_slice(&[screen_uniform]),
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             });
-        let screen_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            layout: &screen_bind_group_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: screen_buffer.as_entire_binding(),
-            }],
-            label: Some("Screen Bind Group"),
-        });
-
-        //let uniforms: Vec<Uniform> = vec![];
-        let mut buffers: HashMap<String, wgpu::Buffer> = HashMap::new();
-        let mut bind_groups: HashMap<String, wgpu::BindGroup> = HashMap::new();
-        let mut bind_group_layouts: Vec<wgpu::BindGroupLayout> = vec![];
-
-        // Items here are referenced by the GPU shader in
-        // WGSL using the `@group(n)` syntax, where `n` is
-        // the index of the item in this list.
-        bind_group_layouts.push(screen_bind_group_layout);
-        bind_groups.insert("Screen".to_string(), screen_bind_group);
-
-        for (i, renderable) in renderables.iter().enumerate() {
-            //let buffer = renderable.buffer();
-            //let uniform = renderable.uniform();
-            //let bind_group = renderable.bind_group();
-            //let bind_group_layout = renderable.bind_group_layout();
-
-            // buffers.push(buffer);
-            // uniforms.push(uniform);
-            // bind_groups.push(bind_group);
-
-            let label = renderable.label();
-            let renderable_buffer = renderable.buffer(&device);
-
-            // let renderable_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            //     label: Some(format!("{} Uniform Buffer", &label).as_str()),
-            //     contents: bytemuck::cast_slice(&[*renderable_uniform]),
-            //     usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            // });
-
-            let renderable_bind_group_layout =
+            let screen_bind_group_layout =
                 device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                     entries: &[wgpu::BindGroupLayoutEntry {
-                        binding: i as u32,
+                        binding: 0,
                         visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
                         ty: wgpu::BindingType::Buffer {
                             ty: wgpu::BufferBindingType::Uniform,
@@ -203,42 +156,91 @@ impl State {
                         },
                         count: None,
                     }],
-                    label: Some(format!("{} Bind Group Layout", &label).as_str()),
+                    label: Some("Screen Bind Group Layout"),
                 });
-
-            let renderable_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-                layout: &renderable_bind_group_layout,
+            let screen_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                layout: &screen_bind_group_layout,
                 entries: &[wgpu::BindGroupEntry {
-                    binding: i as u32,
-                    resource: renderable_buffer.as_entire_binding(),
+                    binding: 0,
+                    resource: screen_buffer.as_entire_binding(),
                 }],
-                label: Some(format!("{} Bind Group", &label).as_str()),
+                label: Some("Screen Bind Group"),
             });
 
-            bind_group_layouts.push(renderable_bind_group_layout);
-            bind_groups.insert(label.to_string(), renderable_bind_group);
-            buffers.insert(label.to_string(), renderable_buffer);
-        }
+            //let uniforms: Vec<Uniform> = vec![];
+            let mut buffers: HashMap<String, wgpu::Buffer> = HashMap::new();
+            let mut bind_groups: HashMap<String, wgpu::BindGroup> = HashMap::new();
+            let mut bind_group_layouts: Vec<wgpu::BindGroupLayout> = vec![];
 
-        let bind_group_layouts_refs = bind_group_layouts.iter().collect::<Vec<_>>();
+            // Items here are referenced by the GPU shader in
+            // WGSL using the `@group(n)` syntax, where `n` is
+            // the index of the item in this list.
+            bind_group_layouts.push(screen_bind_group_layout);
+            bind_groups.insert("Screen".to_string(), screen_bind_group);
 
-        // @TODO every enrichment should reference their own shader.
-        //       Better yet, we should have a "shapes" module that
-        //       defines all the basic shapes we'll use, and the
-        //       enrichments would use and combine them.
-        let shader_source = include_str!("../../assets/shaders/circle.wgsl").into();
-        let vertices = FULL_SCREEN_QUAD.vertices;
-        let indices = FULL_SCREEN_QUAD.indices;
+            for (i, renderable) in renderables.iter().enumerate() {
+                let label = renderable.label();
+                let renderable_buffer = renderable.buffer(&device);
 
-        cfg_if! { if #[cfg(not(feature = "texture"))] {
+                //@TODO consider moving bind_group definition to the renderable trait too
+                let renderable_bind_group_layout =
+                    device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                        entries: &[wgpu::BindGroupLayoutEntry {
+                            binding: i as u32,
+                            visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+                            ty: wgpu::BindingType::Buffer {
+                                ty: wgpu::BufferBindingType::Uniform,
+                                has_dynamic_offset: false,
+                                min_binding_size: None,
+                            },
+                            count: None,
+                        }],
+                        label: Some(format!("{} Bind Group Layout", &label).as_str()),
+                    });
+
+                let renderable_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    layout: &renderable_bind_group_layout,
+                    entries: &[wgpu::BindGroupEntry {
+                        binding: i as u32,
+                        resource: renderable_buffer.as_entire_binding(),
+                    }],
+                    label: Some(format!("{} Bind Group", &label).as_str()),
+                });
+
+                bind_group_layouts.push(renderable_bind_group_layout);
+                bind_groups.insert(label.to_string(), renderable_bind_group);
+                buffers.insert(label.to_string(), renderable_buffer);
+            }
+
+            let bind_group_layouts_refs = bind_group_layouts.iter().collect::<Vec<_>>();
+
+            // If you came from other languages and is seeing this pattern for the first time, this line is
+            // not redeclaring bind_group_layouts. Because Rust is modeled after the concept of ownership,
+            // the "let" keyword is used to shadow the previous variable, which is immediately dropped.
+            // We're converting the raw instances in the collection into references, as wgpu expects.
+            let bind_group_layouts = bind_group_layouts_refs.as_slice();
+
+            // @TODO every renderable should reference their own shader.
+            let shader_source = include_str!("../../assets/shaders/circle.wgsl").into();
+            let vertices = FULL_SCREEN_QUAD.vertices;
+            let indices = FULL_SCREEN_QUAD.indices;
+
         } else {
+            for renderable in renderables.iter() {
+                // remove the compiler warning and do nothing. See TODO above this cfg_if! condition.
+                let label = renderable.label();
+                println!("renderable: {}", label); // will never run
+            }
+
             #[cfg(not(feature = "camera"))]
-            let shader_source = include_str!("../assets/shaders/texture.wgsl").into();
+            let shader_source = include_str!("../../assets/shaders/texture.wgsl").into();
 
             let vertices = TEXTURED_PENTAGON.vertices;
             let indices = TEXTURED_PENTAGON.indices;
 
-            let texture_bytes = include_bytes!("../assets/images/happy-tree.png");
+            // @TODO load the texture from the root dir (needs build.rs)
+            //       check: https://sotrh.github.io/learn-wgpu/beginner/tutorial9-models/#accessing-files-in-the-res-folder
+            let texture_bytes = include_bytes!("../../assets/images/happy-tree.png");
             let textures = vec![
                 Texture::from_bytes(&device, &queue, texture_bytes, "happy_tree").unwrap(),
             ];
@@ -287,7 +289,7 @@ impl State {
 
         cfg_if! { if #[cfg(feature = "camera")] {
             #[cfg(not(feature = "instances"))]
-            let shader_source = include_str!("../assets/shaders/camera.wgsl").into();
+            let shader_source = include_str!("../../assets/shaders/camera.wgsl").into();
 
             let camera = Camera {
                 eye: (0.0, 1.0, 2.0).into(), // position the camera one unit up and 2 back
@@ -344,7 +346,7 @@ impl State {
         }}
 
         cfg_if! { if #[cfg(feature = "instances")] {
-            let shader_source = include_str!("../assets/shaders/instances.wgsl").into();
+            let shader_source = include_str!("../../assets/shaders/instances.wgsl").into();
 
             let instances = (0..NUM_INSTANCES_PER_ROW).flat_map(|z| {
                 (0..NUM_INSTANCES_PER_ROW).map(move |x| {
@@ -418,15 +420,18 @@ impl State {
             &camera_bind_group_layout, // @group(1)
         ];
 
-        #[cfg(not(feature = "texture"))]
         // convert bind_group_layouts to a slice
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
-                bind_group_layouts: bind_group_layouts_refs.as_slice(),
+                bind_group_layouts,
                 push_constant_ranges: &[],
             });
 
+        // @FIXME
+        // Error matching ShaderStages(FRAGMENT) shader requirements against the pipeline
+        // Shader global ResourceBinding { group: 0, binding: 1 } is not available in the layout pipeline layout
+        // Binding is missing from the pipeline layout
         let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("Render Pipeline"),
             layout: Some(&render_pipeline_layout),
@@ -434,7 +439,7 @@ impl State {
                 module: &shader,
                 entry_point: "vs_main",
                 buffers: &[
-                    Vertex::descriptor(),
+                    ShapeVertex::descriptor(),
                     #[cfg(feature = "instances")]
                     InstanceRaw::descriptor(),
                 ],
@@ -480,7 +485,9 @@ impl State {
             index_buffer,
             num_indices,
 
+            #[cfg(not(feature = "texture"))]
             buffers,
+            #[cfg(not(feature = "texture"))]
             bind_groups,
 
             #[cfg(feature = "texture")]

@@ -53,38 +53,26 @@ impl Vip {
 
     #[cfg(target_arch = "wasm32")]
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
-    pub async fn config(&self, options: JsValue) {
+    pub async fn config(&mut self, options: JsValue) {
         let options: Options = options.into_serde().expect("Couldn't deserialize options");
         let mut event_manager = self.event_manager();
 
-        event_manager.config(options);
-
-        // wasm_bindgen_futures::spawn_local(&event_manager.config(options));
-
-        // let event_loop = event_manager.event_loop.take().expect("Event loop not set");
-        // let canvas_selector = options
-        //     .canvas_selector
-        //     .as_ref()
-        //     .expect("Canvas selector not set");
-        // let window = events::window::init_window(&event_loop, canvas_selector);
-
-        // let state = state::State::new(window, options.enrichments).await;
-
-        // wasm_bindgen_futures::spawn_local(events::run_event_loop(event_loop, state));
-    }
-
-    #[cfg(target_arch = "wasm32")]
-    pub fn run(&mut self) {
-        let mut event_manager = self.event_manager();
-        let event_handler = event_manager.get_event_handler();
-
-        wasm_bindgen_futures::spawn_local(event_handler.run()); // this function never returns
+        pollster::block_on(event_manager.config(options));
     }
 
     #[cfg(not(target_arch = "wasm32"))]
     pub async fn config(&mut self, options: Options) {
         let mut event_manager = self.event_manager();
         event_manager.config(options).await;
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub fn run(&mut self) {
+        let mut event_manager = self.event_manager();
+        let event_handler = event_manager.get_event_handler();
+        drop(event_manager); // release to avoid deadlock
+
+        wasm_bindgen_futures::spawn_local(event_handler.run()); // this function never returns
     }
 
     #[cfg(not(target_arch = "wasm32"))]

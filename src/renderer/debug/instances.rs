@@ -1,5 +1,6 @@
 use cgmath::{Matrix4, Quaternion, Vector3};
 
+#[derive(Debug)]
 pub struct Instance {
     pub position: Vector3<f32>,
     pub rotation: Quaternion<f32>,

@@ -8,40 +8,7 @@ pub trait Uniform<T>: Debug + Default + Copy + Clone + bytemuck::Pod + bytemuck:
     }
     fn update(&mut self, data: &T);
     fn buffer(&self, device: &wgpu::Device) -> wgpu::Buffer;
-    // fn bind_group(&self, device: &wgpu::Device) -> wgpu::BindGroup;
-    // fn bind_group_layout(&self, device: &wgpu::Device) -> wgpu::BindGroupLayout;
 }
-/*
-let renderable_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-    label: Some(format!("{} Uniform Buffer", &label).as_str()),
-    contents: bytemuck::cast_slice(&[*renderable_uniform]),
-    usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-});
-
-let renderable_bind_group_layout =
-    device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-        entries: &[wgpu::BindGroupLayoutEntry {
-            binding: i,
-            visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
-            ty: wgpu::BindingType::Buffer {
-                ty: wgpu::BufferBindingType::Uniform,
-                has_dynamic_offset: false,
-                min_binding_size: None,
-            },
-            count: None,
-        }],
-        label: Some(format!("{} Bind Group Layout", &label)),
-    });
-
-let renderable_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-    layout: &renderable_bind_group_layout,
-    entries: &[wgpu::BindGroupEntry {
-        binding: i,
-        resource: renderable_buffer.as_entire_binding(),
-    }],
-    label: Some(format!("{} Bind Group", &label)),
-});
-*/
 
 #[macro_export]
 macro_rules! uniform {
@@ -65,33 +32,6 @@ macro_rules! uniform {
                     usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
                 })
             }
-            // fn bind_group(&self, device: &wgpu::Device) -> wgpu::BindGroup {
-            //     let layout = self.bind_group_layout(device);
-            //     let buffer = self.buffer(device);
-            //     device.create_bind_group(&wgpu::BindGroupDescriptor {
-            //         layout,
-            //         entries: &[wgpu::BindGroupEntry {
-            //             binding: 0,
-            //             resource: buffer.as_entire_binding(),
-            //         }],
-            //         label: Some(format!("{} Bind Group", stringify!($name))),
-            //     })
-            // }
-            // fn bind_group_layout(&self, device: &wgpu::Device) -> wgou::BindGroupLayout {
-            //     device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            //         entries: &[wgpu::BindGroupLayoutEntry {
-            //             binding: 0,
-            //             visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
-            //             ty: wgpu::BindingType::Buffer {
-            //                 ty: wgpu::BufferBindingType::Uniform,
-            //                 has_dynamic_offset: false,
-            //                 min_binding_size: None,
-            //             },
-            //             count: None,
-            //         }],
-            //         label: Some(format!("{} Bind Group Layout", stringify!($name))),
-            //     })
-            // }
         }
     };
 }
@@ -107,20 +47,9 @@ pub trait Renderable: Sized {
     /// The implementor must provide a way to update the uniform
     fn update(&self);
 
-    // The renderer expects getters and setters for
-    // buffers, bind groups, and bind group layouts.
-    //
-    // The implementor does not need to build them,
-    // the renderer will do that from the uniform
-    // definition and then call the setters.
+    // The renderer injects the GPU device instance to the Uniform
+    // and expects a raw bytes representation of its data as a buffer.
     fn buffer(&self, device: &wgpu::Device) -> wgpu::Buffer;
-    //fn set_buffer(&self, buffer: wgpu::Buffer);
-
-    //fn bind_group(&self, device: &wgpu::Device) -> wgpu::BindGroup;
-    //fn set_bind_group(&self, bind_group: wgpu::BindGroup);
-
-    //fn bind_group_layout(&self, device: &wgpu::Device) -> wgpu::BindGroupLayout;
-    //fn set_bind_group_layout(&self, bind_group_layout: wgpu::BindGroupLayout);
 }
 
 pub trait RenderableOperations {

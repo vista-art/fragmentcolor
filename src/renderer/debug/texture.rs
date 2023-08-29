@@ -1,5 +1,7 @@
 use image::GenericImageView;
+use std::error::Error;
 
+#[derive(Debug)]
 pub struct Texture {
     pub texture: wgpu::Texture,
     pub view: wgpu::TextureView,
