@@ -33,8 +33,6 @@ impl EventManager {
         let event_loop = handler.get_event_loop();
 
         // @TODO  EventManager should not care about renderer or window at all.
-        //
-
         let window = window::init_window(event_loop, &options.window.unwrap_or_default());
         let mut renderer = Renderer::new(window);
 

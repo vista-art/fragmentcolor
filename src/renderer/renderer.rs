@@ -1,10 +1,9 @@
-use crate::{
-    renderer::{
-        renderable::{AnyRenderable, RenderableOperations, Renderables},
-        state::State,
-    },
-    shapes::{Circle, CircleUniform},
+use crate::renderer::{
+    renderable::{AnyRenderable, RenderableOperations, Renderables},
+    state::State,
 };
+#[cfg(not(feature = "texture"))]
+use crate::shapes::{Circle, CircleUniform};
 use cfg_if::cfg_if;
 use winit::{event::WindowEvent, window::Window};
 
@@ -68,6 +67,7 @@ impl Renderer {
             }}
 
             cfg_if! { if #[cfg(feature = "depth")] {
+                use crate::renderer::debug::texture::Texture;
                 state.depth_texture =
                     Texture::create_depth_texture(&state.device, &state.config, "depth_texture");
             } else {
@@ -79,9 +79,13 @@ impl Renderer {
         self.resize(self.window_size);
     }
 
+    // @TODO input should be Event<VipEvent>
+    //       or we should attach the event handler to the renderer
+    //       and delegate the event to the event handler.
     pub fn input(&mut self, event: &WindowEvent) -> bool {
         cfg_if! { if #[cfg(feature = "camera")] {
-            self.camera_controller.handle_event(event)
+            let state = self.state.as_mut().unwrap();
+            state.camera_controller.handle_event(event)
         } else {
             match event {
                 _ => false,
