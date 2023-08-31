@@ -5,8 +5,9 @@ use crate::renderer::{
 #[cfg(not(feature = "texture"))]
 use crate::shapes::{Circle, CircleUniform};
 use cfg_if::cfg_if;
-use winit::{event::WindowEvent, window::Window};
+use winit::window::Window;
 
+#[derive(Debug)]
 pub struct Renderer {
     renderables: Renderables,
     state: Option<State>,
@@ -52,6 +53,12 @@ impl Renderer {
         &self.window
     }
 
+    #[cfg(feature = "camera")]
+    pub fn window_input(&mut self, event: &winit::event::WindowEvent) {
+        let state = self.state.as_mut().unwrap();
+        state.camera_controller.handle_event(event);
+    }
+
     pub fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
         let state = self.state.as_mut().unwrap();
 
@@ -79,20 +86,6 @@ impl Renderer {
         self.resize(self.window_size);
     }
 
-    // @TODO input should be Event<VipEvent>
-    //       or we should attach the event handler to the renderer
-    //       and delegate the event to the event handler.
-    pub fn input(&mut self, event: &WindowEvent) -> bool {
-        cfg_if! { if #[cfg(feature = "camera")] {
-            let state = self.state.as_mut().unwrap();
-            state.camera_controller.handle_event(event)
-        } else {
-            match event {
-                _ => false,
-            }
-        }}
-    }
-
     pub fn update(&mut self) {
         let state = self.state.as_mut().unwrap();
 
@@ -100,26 +93,19 @@ impl Renderer {
             state.camera_controller.update_camera(&mut state.camera);
             state.camera_uniform.update(&state.camera);
 
-            state.queue.write_buffer(
-                &state.camera_buffer,
-                0,
-                bytemuck::cast_slice(&[state.camera_uniform]),
-            );
+            let buffer = &state.camera_buffer;
+            state.queue.write_buffer(buffer, 0, bytemuck::cast_slice(&[state.camera_uniform]));
         } else {
             for renderable in &self.renderables {
-                let label = renderable.label();
-
                 renderable.update();
+
+                let label = renderable.label();
+                let buffer = &state.buffers[&label];
 
                 // Look ma, now I can access the concrete types!
                 if let Some(_) = renderable.as_any().downcast_ref::<Circle>() {
                     let circle_uniform = *renderable.uniform().borrow_mut().downcast_mut::<CircleUniform>().unwrap();
-
-                    state.queue.write_buffer(
-                        &state.buffers[&label],
-                        0,
-                        bytemuck::cast_slice(&[circle_uniform]),
-                    );
+                    state.queue.write_buffer(buffer, 0, bytemuck::cast_slice(&[circle_uniform]));
                 }
             }
         }}
@@ -184,10 +170,8 @@ impl Renderer {
                 #[cfg(feature = "camera")]
                 render_pass.set_bind_group(1, &state.camera_bind_group, &[]);
             } else {
-                for (i, renderable) in self.renderables.iter().enumerate() {
-                    let label = renderable.label();
-                    render_pass.set_bind_group(i as u32, &state.bind_groups[&label], &[]);
-                }
+                render_pass.set_bind_group(0, &state.bind_groups["Screen"], &[]);
+                render_pass.set_bind_group(1, &state.bind_groups["Renderables"], &[]);
             }}
             render_pass.set_vertex_buffer(0, state.vertex_buffer.slice(..));
             #[cfg(feature = "instances")]

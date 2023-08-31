@@ -1,14 +1,12 @@
-use crate::renderer::Renderable;
-//use crate::enrichments::Enrichment;
 use crate::shapes::circle::Circle;
 use crate::{renderer::color::hex_to_rgba, shapes::CircleOptions};
 use palette::rgb::LinSrgba;
 use serde::{Deserialize, Serialize};
 use smart_default::SmartDefault;
-#[cfg(target_arch = "wasm32")]
+#[cfg(wasm)]
 use wasm_bindgen::prelude::*;
 
-#[cfg_attr(target_arch = "wasm32", wasm_bindgen(getter_with_clone))]
+#[cfg_attr(wasm, wasm_bindgen(getter_with_clone))]
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct GazeOptions {
     pub radius: Option<f32>,
@@ -67,9 +65,13 @@ impl Gaze {
     }
 
     fn set_normalized_position(&mut self, x: f32, y: f32) {
+        use log::info;
+
         self.position = cgmath::Point2::new(x, y);
         self.circle.set_position(self.position);
-        self.circle.update();
+
+        info!("from gaze enrichment, set circle pos: x: {}, y: {}", &x, &y);
+        //self.circle.update();
     }
 
     pub fn renderables(&self) -> Vec<Circle> {

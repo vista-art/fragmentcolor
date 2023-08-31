@@ -4,20 +4,16 @@ mod platform;
 mod renderer;
 mod shapes;
 
-use std::{sync::Arc, sync::RwLock};
-
 use cfg_if::cfg_if;
-
-#[cfg(target_arch = "wasm32")]
-use {gloo_utils::format::JsValueSerdeExt, wasm_bindgen::prelude::*};
-
-use serde::{Deserialize, Serialize};
-
 use enrichments::EnrichmentOptions;
-// use enrichments::Enrichment; //@TODO
 use events::{window::WindowOptions, EventManager};
+use serde::{Deserialize, Serialize};
+use std::{sync::Arc, sync::RwLock};
+#[cfg(wasm)]
+use {gloo_utils::format::JsValueSerdeExt, wasm_bindgen::prelude::*};
+// use enrichments::Enrichment; //@TODO
 
-#[cfg_attr(target_arch = "wasm32", wasm_bindgen(getter_with_clone))]
+#[cfg_attr(wasm, wasm_bindgen(getter_with_clone))]
 #[derive(Serialize, Deserialize, Default)]
 pub struct Options {
     pub window: Option<WindowOptions>,
@@ -25,18 +21,18 @@ pub struct Options {
 }
 
 #[derive(Clone)]
-#[cfg_attr(target_arch = "wasm32", wasm_bindgen(getter_with_clone))]
+#[cfg_attr(wasm, wasm_bindgen(getter_with_clone))]
 pub struct Vip {
     event_manager: Arc<RwLock<EventManager>>,
     //enrichment: Vec<Box<dyn Enrichment>>, //@TODO
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(wasm))]
 unsafe impl Send for Vip {}
 
-#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
+#[cfg_attr(wasm, wasm_bindgen)]
 impl Vip {
-    #[cfg_attr(target_arch = "wasm32", wasm_bindgen(constructor))]
+    #[cfg_attr(wasm, wasm_bindgen(constructor))]
     pub fn new() -> Vip {
         Self::init_logger();
 
@@ -45,43 +41,49 @@ impl Vip {
         }
     }
 
-    fn event_manager(&self) -> std::sync::RwLockWriteGuard<'_, EventManager> {
+    fn event_manager_write_lock(&self) -> std::sync::RwLockWriteGuard<'_, EventManager> {
         self.event_manager
             .write()
-            .expect("Couldn't get event manager")
+            .expect("Couldn't get event manager write lock")
     }
 
-    #[cfg(target_arch = "wasm32")]
-    #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
-    pub async fn config(&mut self, options: JsValue) {
+    fn event_manager(&self) -> std::sync::RwLockReadGuard<'_, EventManager> {
+        self.event_manager
+            .read()
+            .expect("Couldn't get event manager read lock")
+    }
+
+    #[cfg(wasm)]
+    pub fn config(&mut self, options: JsValue) {
         let options: Options = options.into_serde().expect("Couldn't deserialize options");
-        let mut event_manager = self.event_manager();
 
-        pollster::block_on(event_manager.config(options));
+        let mut event_manager = self.event_manager_write_lock();
+        let renderer = event_manager.config(options);
+
+        let future = async move {
+            renderer.borrow_mut().initialize().await;
+        };
+
+        wasm_bindgen_futures::spawn_local(future);
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(not(wasm))]
     pub async fn config(&mut self, options: Options) {
-        let mut event_manager = self.event_manager();
-        event_manager.config(options).await;
+        let mut event_manager = self.event_manager_write_lock();
+        let renderer = event_manager.config(options);
+        renderer.borrow_mut().initialize().await;
     }
 
-    #[cfg(target_arch = "wasm32")]
     pub fn run(&mut self) {
-        let mut event_manager = self.event_manager();
+        let mut event_manager = self.event_manager_write_lock();
         let event_handler = event_manager.get_event_handler();
-        drop(event_manager); // release to avoid deadlock
+        drop(event_manager);
 
-        wasm_bindgen_futures::spawn_local(event_handler.run()); // this function never returns
-    }
+        #[cfg(wasm)]
+        wasm_bindgen_futures::spawn_local(event_handler.run());
 
-    #[cfg(not(target_arch = "wasm32"))]
-    pub fn run(&mut self) {
-        let mut event_manager = self.event_manager();
-        let event_listener = event_manager.get_event_handler();
-        drop(event_manager); // release to avoid deadlock
-
-        pollster::block_on(event_listener.run()); // this function never returns
+        #[cfg(not(wasm))]
+        pollster::block_on(event_handler.run()); // this function never returns
     }
 
     // @TODO params should be dynamic and of arbitrary type
@@ -92,62 +94,33 @@ impl Vip {
     }
 
     fn init_logger() {
-        cfg_if! { if #[cfg(target_arch = "wasm32")] {
+        cfg_if! { if #[cfg(wasm)] {
             crate::platform::web::utils::set_panic_hook();
-            console_log::init_with_level(log::Level::Info).expect("Couldn't initialize logger");
+            console_log::init_with_level(log::Level::Info).unwrap_or(());
         } else {
-            env_logger::init();
+            env_logger::try_init().unwrap_or(());
         }}
     }
 
-    #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
-    pub fn set_position(&self, _x: u32, _y: u32) {
-        //@TODO figure out a way to expose enriichment-specific
-        //      events in the public API dynamically.
-
-        // self.trigger(
-        //     "gaze:set_position",
-        //     &VipEvent::Gaze(GazeEvent::ChangePosition { x, y }),
-        // )
-        // .expect("Event loop closed");
-    }
-
+    // @TODO this is a temporary debug function to inject
+    // events in the renderer. This will be dynamic later.
     pub fn set_normalized_position(&self, x: f32, y: f32) {
-        println!("setting event manager for x: {}, y: {}", &x, &y);
-        let event_manager_rwlock = &self.event_manager;
-
-        println!("read locking event manager");
-        let result = event_manager_rwlock.read();
-
-        println!("event manager locked. getting event manager");
-        let _event_manager = result.expect("Couldn't get event manager");
-
-        println!("got event loop manager. sending event");
-        //@TODO figure out a way to expose enriichment-specific
-        //      events in the public API dynamically.
-
-        // let event_manager =
-        //     event_manager.trigger(&VipEvent::Gaze(GazeEvent::ChangeNormalizedPosition {
-        //         x,
-        //         y,
-        //     }));
-
-        println!("did not send event: not implemented");
-
-        //self.trigger(VipEvent::Gaze(GazeEvent::ChangeNormalizedPosition { x, y }))
+        use log::info;
+        info!("from set_normalized_position: x: {}, y: {}", &x, &y);
+        self.trigger("gaze::set_normalized_position", x, y);
     }
 
-    #[cfg(target_arch = "wasm32")]
+    #[cfg(wasm)]
     pub fn update(_config: &[u8]) {
         let _ = gloo_utils::window().alert_with_message("Hello, update!");
     }
 
-    #[cfg(target_arch = "wasm32")]
+    #[cfg(wasm)]
     pub fn resize(_width: u32, _height: u32) {
         let _ = gloo_utils::window().alert_with_message("Hello, resize!");
     }
 
-    #[cfg(target_arch = "wasm32")]
+    #[cfg(wasm)]
     pub fn render() {
         // NOTE:
         // Decoding jpegs in WASM isn't performant, as it does not support threads.
@@ -158,17 +131,17 @@ impl Vip {
         let _ = gloo_utils::window().alert_with_message("Hello, render!");
     }
 
-    #[cfg(target_arch = "wasm32")]
+    #[cfg(wasm)]
     pub fn clear() {
         let _ = gloo_utils::window().alert_with_message("Hello, clear!");
     }
 
-    #[cfg(target_arch = "wasm32")]
+    #[cfg(wasm)]
     pub fn hide() {
         let _ = gloo_utils::window().alert_with_message("Hello, hide!");
     }
 
-    #[cfg(target_arch = "wasm32")]
+    #[cfg(wasm)]
     pub fn show() {
         let _ = gloo_utils::window().alert_with_message("Hello, show!");
     }

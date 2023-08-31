@@ -95,7 +95,7 @@ impl State {
                     features: wgpu::Features::empty(),
                     // WebGL doesn't support all of wgpu's features, so if
                     // we're building for the web we'll have to disable some.
-                    limits: if cfg!(target_arch = "wasm32") {
+                    limits: if cfg!(wasm) {
                         wgpu::Limits::downlevel_webgl2_defaults()
                     } else {
                         wgpu::Limits::default()
@@ -167,58 +167,66 @@ impl State {
                 label: Some("Screen Bind Group"),
             });
 
-            //let uniforms: Vec<Uniform> = vec![];
             let mut buffers: HashMap<String, wgpu::Buffer> = HashMap::new();
             let mut bind_groups: HashMap<String, wgpu::BindGroup> = HashMap::new();
-            let mut bind_group_layouts: Vec<wgpu::BindGroupLayout> = vec![];
+            let mut bind_group_layouts: Vec<&wgpu::BindGroupLayout> = vec![];
 
             // Items here are referenced by the GPU shader in
             // WGSL using the `@group(n)` syntax, where `n` is
             // the index of the item in this list.
-            bind_group_layouts.push(screen_bind_group_layout);
+            bind_group_layouts.push(&screen_bind_group_layout);
+            buffers.insert("Screen".to_string(), screen_buffer);
             bind_groups.insert("Screen".to_string(), screen_bind_group);
+
+            // @TODO for now, all renderables will be bound to group 1, and
+            // all globals will be bound to group 0. In the future, we might
+            // introduce custom grouping as well.
+            let mut renderables_bind_group_layout_entries: Vec<wgpu::BindGroupLayoutEntry> = vec![];
+            let mut renderables_bind_group_entries: Vec<wgpu::BindGroupEntry> = vec![];
+
+            for renderable in renderables {
+                let label = renderable.label();
+                let buffer = renderable.buffer(&device);
+                buffers.insert(label.to_string(), buffer);
+            }
 
             for (i, renderable) in renderables.iter().enumerate() {
                 let label = renderable.label();
-                let renderable_buffer = renderable.buffer(&device);
 
-                //@TODO consider moving bind_group definition to the renderable trait too
-                let renderable_bind_group_layout =
-                    device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                        entries: &[wgpu::BindGroupLayoutEntry {
-                            binding: i as u32,
-                            visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
-                            ty: wgpu::BindingType::Buffer {
-                                ty: wgpu::BufferBindingType::Uniform,
-                                has_dynamic_offset: false,
-                                min_binding_size: None,
-                            },
-                            count: None,
-                        }],
-                        label: Some(format!("{} Bind Group Layout", &label).as_str()),
-                    });
+                let renderables_bind_group_layout_entry = wgpu::BindGroupLayoutEntry {
+                    binding: i as u32,
+                    visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                };
+                let renderables_bind_group_entry = wgpu::BindGroupEntry {
+                    binding: i as u32,
+                    resource: buffers[&label].as_entire_binding(),
+                };
 
-                let renderable_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-                    layout: &renderable_bind_group_layout,
-                    entries: &[wgpu::BindGroupEntry {
-                        binding: i as u32,
-                        resource: renderable_buffer.as_entire_binding(),
-                    }],
-                    label: Some(format!("{} Bind Group", &label).as_str()),
-                });
-
-                bind_group_layouts.push(renderable_bind_group_layout);
-                bind_groups.insert(label.to_string(), renderable_bind_group);
-                buffers.insert(label.to_string(), renderable_buffer);
+                renderables_bind_group_layout_entries.push(renderables_bind_group_layout_entry);
+                renderables_bind_group_entries.push(renderables_bind_group_entry);
             }
 
-            let bind_group_layouts_refs = bind_group_layouts.iter().collect::<Vec<_>>();
+            let renderables_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                entries: renderables_bind_group_layout_entries.as_slice(),
+                label: Some("Renderables Bind Group Layout"),
+            });
 
-            // If you came from other languages and is seeing this pattern for the first time, this line is
-            // not redeclaring bind_group_layouts. Because Rust is modeled after the concept of ownership,
-            // the "let" keyword is used to shadow the previous variable, which is immediately dropped.
-            // We're converting the raw instances in the collection into references, as wgpu expects.
-            let bind_group_layouts = bind_group_layouts_refs.as_slice();
+            let renderables_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                layout: &renderables_bind_group_layout,
+                entries: renderables_bind_group_entries.as_slice(),
+                label: Some("Renderables Bind Group"),
+            });
+
+            bind_group_layouts.push(&renderables_bind_group_layout);
+            let bind_group_layouts = bind_group_layouts.as_slice();
+
+            bind_groups.insert("Renderables".to_string(), renderables_bind_group);
 
             // @TODO every renderable should reference their own shader.
             let shader_source = include_str!("../../assets/shaders/circle.wgsl").into();

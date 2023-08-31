@@ -23,10 +23,6 @@ pub struct Circle {
     pub color: LinSrgba,
     pub alpha: f32,
     uniform: Arc<RefCell<CircleUniform>>,
-    // figure how to clone these
-    // buffer: Box<wgpu::Buffer>,
-    // bind_group: Box<wgpu::BindGroup>,
-    // bind_group_layout: Box<wgpu::BindGroupLayout>,
 }
 
 impl Renderable for Circle {
@@ -40,23 +36,15 @@ impl Renderable for Circle {
         self.uniform.clone()
     }
 
-    fn update(&self) {
-        self.uniform.borrow_mut().update(self);
-    }
-
     fn buffer(&self, device: &wgpu::Device) -> wgpu::Buffer {
         let uniform = self.uniform.borrow();
         let buffer = uniform.buffer(device);
         buffer
     }
 
-    // fn bind_group(&self, device: &wgpu::Device) -> &wgpu::BindGroup {
-    //     todo!()
-    // }
-
-    // fn bind_group_layout(&self, device: &wgpu::Device) -> &wgpu::BindGroupLayout {
-    //     todo!()
-    // }
+    fn update(&self) {
+        self.uniform.borrow_mut().update(self);
+    }
 }
 
 impl Circle {
@@ -88,8 +76,6 @@ uniform!(CircleUniform for Circle {
 
 impl CircleUniform {
     pub fn update(&mut self, circle: &Circle) {
-        println!("updating circle uniform from concrete implementation");
-
         self.position = circle.position.into();
         self.radius = circle.radius;
         self.border = circle.border_size;

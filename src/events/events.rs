@@ -1,9 +1,10 @@
+use std::cell::RefCell;
 use std::sync::{Arc, RwLock};
 
 use winit::event_loop::{EventLoopClosed, EventLoopProxy};
 
 use crate::enrichments::gaze::{Gaze, GazeEvent};
-use crate::events::runner::EventHandler;
+use crate::events::handler::EventHandler;
 use crate::events::window;
 use crate::renderer::Renderer;
 
@@ -28,29 +29,26 @@ impl EventManager {
         }
     }
 
-    pub async fn config(&mut self, options: crate::Options) {
+    pub fn config(&mut self, options: crate::Options) -> Arc<RefCell<Renderer>> {
         let handler = self.handler.as_mut().unwrap();
         let event_loop = handler.get_event_loop();
 
         // @TODO  EventManager should not care about renderer or window at all.
         let window = window::init_window(event_loop, &options.window.unwrap_or_default());
-        let mut renderer = Renderer::new(window);
+        let renderer = Arc::new(RefCell::new(Renderer::new(window)));
 
         // add renderables form enrichment definitions
         for enrichment_options in options.enrichments.iter() {
             if enrichment_options.gaze.is_some() {
                 let gaze_options = enrichment_options.gaze.as_ref().unwrap().clone();
                 let gaze = Gaze::new(gaze_options);
-
                 let renderable = gaze.renderable();
-
-                renderer.add_renderable(renderable);
+                renderer.borrow_mut().add_renderable(renderable);
             }
         }
 
-        renderer.initialize().await;
-
-        handler.attach_renderer(renderer)
+        handler.attach_renderer(renderer.clone());
+        renderer
     }
 
     /// Trigger an event on the event loop.
