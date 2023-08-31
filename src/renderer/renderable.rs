@@ -1,4 +1,3 @@
-//use crate::renderer::Uniform;
 use std::{any::Any, cell::RefCell, fmt::Debug, sync::Arc};
 
 /// The raw Uniform bytes that will be sent to the GPU
@@ -47,8 +46,8 @@ pub trait Renderable: Sized {
     /// The implementor must provide a way to update the uniform
     fn update(&self);
 
-    // The renderer injects the GPU device instance to the Uniform
-    // and expects a raw bytes representation of its data as a buffer.
+    /// The renderer injects the GPU device instance to the Uniform
+    /// and expects a raw bytes representation of its data as a buffer.
     fn buffer(&self, device: &wgpu::Device) -> wgpu::Buffer;
 }
 

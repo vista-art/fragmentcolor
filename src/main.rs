@@ -1,20 +1,19 @@
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(wasm))]
 use pl_video_processor::{
     enrichments::{gaze::GazeOptions, EnrichmentOptions},
     Options, Vip,
 };
 
 fn main() {
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(not(wasm))]
     pollster::block_on(init());
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(wasm))]
 async fn init() {
     use rand::Rng;
 
     let mut vip = Vip::new();
-    let vip1 = vip.clone();
 
     vip.config(Options {
         enrichments: {
@@ -27,6 +26,7 @@ async fn init() {
     })
     .await;
 
+    let vip1 = vip.clone();
     std::thread::spawn(move || {
         let mut rng = rand::thread_rng();
         loop {

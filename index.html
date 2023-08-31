@@ -6,14 +6,16 @@
   </head>
   <body>
     <canvas id="test_canvas" width="600" height="400"></canvas>
+    <canvas id="test_canvas2" width="600" height="400"></canvas>
     <script type="module" async>
-      import load, { Vip } from "./pkg/pl_video_processor.js";
-
-      await load();
+      import load_wasm, { Vip } from "./pkg/pl_video_processor.js";
+      await load_wasm();
 
       const vip = new Vip();
-      await vip.config_and_run({
-        canvas_selector: "#test_canvas",
+      vip.config({
+        window: {
+          canvas_selector: "#test_canvas",
+        },
         enrichments: {
           gaze: {
             radius: 0.2,
@@ -24,11 +26,16 @@
         },
       });
 
+      console.log("Attaching event listeners...");
       document
         .getElementById("test_canvas")
         .addEventListener("mousemove", (event) => {
-          vip.set_gaze_position(event.clientX, event.clientY);
+          vip.set_normalized_position(event.clientX, event.clientY);
+          // @TODO it should be
+          //vip.enrichments.gaze.set_position(event.clientX, event.clientY);
         });
+
+      vip.run();
     </script>
   </body>
 </html>

@@ -24,6 +24,9 @@ camera = ["texture"]
 instances = ["camera"]
 depth = ["camera", "texture"]
 
+[build-dependencies]
+cfg_aliases = "0.1"
+
 [dependencies]
 thiserror = "1.0"
 cfg-if = "1"
