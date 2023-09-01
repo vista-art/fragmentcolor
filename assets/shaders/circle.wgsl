@@ -51,6 +51,6 @@ fn fs_main(in: VertexOutput) -> FragmentOutput {
 
     let alpha = (1.0 - smoothstep(border - aa, border + aa, abs(dist - radius))) * color.a;
 
-    out.color = vec4<f32>(rgb, alpha);
+    out.color = vec4<f32>(rgb.r, rgb.g, 1.0, 1.0);
     return out;
 }
