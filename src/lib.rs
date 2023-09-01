@@ -1,11 +1,11 @@
-pub mod enrichments;
+pub mod controllers;
 mod events;
 mod platform;
 mod renderer;
 mod shapes;
 
 use cfg_if::cfg_if;
-use enrichments::EnrichmentOptions;
+use controllers::ControllerOptions;
 use events::{window::WindowOptions, EventManager};
 use serde::{Deserialize, Serialize};
 use std::{sync::Arc, sync::RwLock};
@@ -17,7 +17,7 @@ use {gloo_utils::format::JsValueSerdeExt, wasm_bindgen::prelude::*};
 #[derive(Serialize, Deserialize, Default)]
 pub struct Options {
     pub window: Option<WindowOptions>,
-    pub enrichments: Option<EnrichmentOptions>,
+    pub controllers: Option<ControllerOptions>,
 }
 
 #[derive(Clone)]
