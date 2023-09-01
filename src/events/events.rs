@@ -4,7 +4,6 @@ use std::sync::{Arc, RwLock};
 use winit::event_loop::{EventLoopClosed, EventLoopProxy};
 
 use crate::controllers::gaze::{Gaze, GazeEvent};
-use crate::controllers::Controller;
 use crate::events::handler::EventHandler;
 use crate::events::window;
 use crate::renderer::Renderer;
@@ -55,19 +54,13 @@ impl EventManager {
         let window = window::init_window(event_loop, &options.window.unwrap_or_default());
         let renderer = Arc::new(RefCell::new(Renderer::new(window)));
 
+        // @TODO make this dynamic
         for controller_option in options.controllers.iter() {
-            // @TODO make this dynamic
             if controller_option.gaze.is_some() {
                 let gaze_options = controller_option.gaze.as_ref().unwrap().clone();
                 let gaze = Box::new(Gaze::new(gaze_options));
-                let renderables = gaze.renderables();
-
                 let mut renderer = renderer.borrow_mut();
                 renderer.add_controller("Gaze".to_string(), gaze);
-
-                for renderable in renderables {
-                    renderer.add_renderable(*renderable); // @TODO figure this out. clone, whatever.
-                }
             }
         }
 

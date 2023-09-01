@@ -1,7 +1,7 @@
 use crate::{
     controllers::{fixation::FixationOptions, gaze::GazeOptions},
     events::VipEvent,
-    renderer::Renderables,
+    renderer::RenderableRefs,
 };
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
@@ -13,7 +13,7 @@ use wasm_bindgen::prelude::*;
 /// after receiving events from the event manager.
 pub trait Controller<E> {
     fn handle(&mut self, event: E);
-    fn renderables(&self) -> &Renderables;
+    fn renderables(&self) -> &RenderableRefs;
     fn should_update(&self) -> bool;
 }
 

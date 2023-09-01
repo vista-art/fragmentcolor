@@ -1,4 +1,4 @@
-use crate::renderer::{renderable::Renderables, Renderable};
+use crate::renderer::{RenderableRefs, RenderableTrait};
 use cfg_if::cfg_if;
 use wgpu::util::DeviceExt;
 use winit::window::Window;
@@ -67,7 +67,7 @@ pub(super) struct State {
 }
 
 impl State {
-    pub async fn new(window: &Window, renderables: &Renderables) -> State {
+    pub async fn new(window: &Window, renderables: &RenderableRefs) -> State {
         // The instance is a handle to our GPU
         // Backends::all => Vulkan + Metal + DX12 + Browser WebGPU
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
@@ -184,14 +184,14 @@ impl State {
             let mut renderables_bind_group_layout_entries: Vec<wgpu::BindGroupLayoutEntry> = vec![];
             let mut renderables_bind_group_entries: Vec<wgpu::BindGroupEntry> = vec![];
 
-            for renderable in renderables {
-                let label = renderable.label();
-                let buffer = renderable.buffer(&device);
+            for renderable in renderables.iter() {
+                let label = renderable.read().unwrap().label();
+                let buffer = renderable.read().unwrap().buffer(&device);
                 buffers.insert(label.to_string(), buffer);
             }
 
             for (i, renderable) in renderables.iter().enumerate() {
-                let label = renderable.label();
+                let label = renderable.read().unwrap().label();
 
                 let renderables_bind_group_layout_entry = wgpu::BindGroupLayoutEntry {
                     binding: i as u32,
@@ -236,7 +236,7 @@ impl State {
         } else {
             for renderable in renderables.iter() {
                 // remove the compiler warning and do nothing. See TODO above this cfg_if! condition.
-                let label = renderable.label();
+                let label = renderable.read().unwrap().label();
                 println!("renderable: {}", label); // will never run
             }
 
@@ -457,7 +457,8 @@ impl State {
                 entry_point: "fs_main",
                 targets: &[Some(wgpu::ColorTargetState {
                     format: config.format,
-                    blend: Some(wgpu::BlendState::REPLACE),
+                    // enable alpha blending
+                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
             }),

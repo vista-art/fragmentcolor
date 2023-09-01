@@ -1,9 +1,8 @@
-use crate::renderer::{AnyRenderable, AnyUniform, Renderable, UniformOperations};
+use crate::renderer::{Renderable, RenderableTrait, Uniform, UniformOperations};
 use crate::uniform;
 use palette::rgb::LinSrgba;
 use smart_default::SmartDefault;
-use std::cell::RefCell;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 pub struct CircleOptions {
     pub radius: f32,
@@ -22,27 +21,28 @@ pub struct Circle {
     pub border_color: LinSrgba,
     pub color: LinSrgba,
     pub alpha: f32,
-    uniform: Arc<RefCell<AnyUniform>>,
+    uniform: Arc<RwLock<Uniform>>,
 }
 
-impl Renderable for Circle {
+impl RenderableTrait for Circle {
     fn label(&self) -> String {
         "Circle".to_string()
     }
 
-    fn uniform(&self) -> Arc<RefCell<AnyUniform>> {
+    fn uniform(&self) -> Arc<RwLock<Uniform>> {
         self.uniform.clone()
     }
 
     fn buffer(&self, device: &wgpu::Device) -> wgpu::Buffer {
-        let uniform = self.uniform.borrow();
+        let uniform = self.uniform.read().unwrap();
         let buffer = uniform.buffer(device);
         buffer
     }
 
     fn update(&self) {
-        let any_renderable = AnyRenderable::from(self.to_owned());
-        self.uniform.borrow_mut().update(&any_renderable);
+        let any_renderable = Renderable::from(self.to_owned());
+
+        self.uniform.write().unwrap().update(&any_renderable);
     }
 }
 
@@ -55,7 +55,7 @@ impl Circle {
             border_color: options.border_color,
             color: options.color,
             alpha: options.alpha,
-            uniform: Arc::new(RefCell::new(AnyUniform::Circle(CircleUniform::default()))),
+            uniform: Arc::new(RwLock::new(Uniform::Circle(CircleUniform::default()))),
         };
 
         circle
@@ -74,9 +74,12 @@ uniform!(CircleUniform for Circle {
 });
 
 impl CircleUniform {
-    pub fn update(&mut self, renderable: &AnyRenderable) {
+    pub fn update(&mut self, renderable: &Renderable) {
+        use log::info;
+
         match renderable {
-            AnyRenderable::Circle(circle) => {
+            Renderable::Circle(circle) => {
+                info!("Inside CircleUniform Update: {:?}", circle.position);
                 self.position = circle.position.into();
                 self.radius = circle.radius;
                 self.border = circle.border_size;

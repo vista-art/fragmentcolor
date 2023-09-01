@@ -49,15 +49,14 @@ fn run_event_loop(event_loop: EventLoop<VipEvent>, mut renderer: Renderer) {
     type T<'b> = &'b EventLoopWindowTarget<VipEvent>;
     type C<'c> = &'c mut ControlFlow;
 
-    let event_handler = Box::new(move |vip_event: E, target: T, control_flow: C| {
-        info!("Window Target: {:?}", &target);
-
+    let event_handler = Box::new(move |vip_event: E, _target: T, control_flow: C| {
         match vip_event {
             Event::UserEvent(vip_event) => match vip_event {
                 VipEvent::Gaze(_) => {
-                    let controller = renderer.get_controller_for("Gaze".to_string());
+                    let controller = renderer.get_controller("Gaze".to_string());
 
                     if controller.is_some() {
+                        info!("Gaze event received");
                         controller.unwrap().handle(vip_event);
                     }
                 }
@@ -87,7 +86,10 @@ fn run_event_loop(event_loop: EventLoop<VipEvent>, mut renderer: Renderer) {
                     renderer.resize(**new_inner_size);
                 }
 
-                _ => renderer.window_input(&event),
+                _ => {
+                    #[cfg(feature = "camera")]
+                    renderer.window_input(&event);
+                }
             },
 
             Event::RedrawRequested(window_id) if window_id == renderer.window().id() => {
