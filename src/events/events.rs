@@ -3,14 +3,32 @@ use std::sync::{Arc, RwLock};
 
 use winit::event_loop::{EventLoopClosed, EventLoopProxy};
 
-use crate::enrichments::gaze::{Gaze, GazeEvent};
+use crate::controllers::gaze::{Gaze, GazeEvent};
+use crate::controllers::Controller;
 use crate::events::handler::EventHandler;
 use crate::events::window;
 use crate::renderer::Renderer;
 
+// @TODO investigate how Bevy uses the () event type for their event loop.
+//
+//       CONTEXT:
+//       --------------------------------------------------------------
+//       We follow the official Winit example for user events, which uses
+//       a custom enum, but it does not ellaborate on how to manage it
+//       in a large codebase. We follow their example implementation.
+//
+//       This enum is causing some issues, because Rust enums cannot be
+//       serialized as C enums, and support for bindings is not yet
+//       implemented in wasm-bindgen.
+//
+//       The End Goal is to have a customizable event type that users of
+//       our API can use to register callbacks, and we have to handle them
+//       dynamically. This struct works for now, but it's hard to extend.
 #[derive(Debug, Clone, Copy)]
 pub enum VipEvent {
     Gaze(GazeEvent),
+    // Fixation(FixationEvent),
+    // ... etc
 }
 
 pub struct EventManager {
@@ -37,13 +55,19 @@ impl EventManager {
         let window = window::init_window(event_loop, &options.window.unwrap_or_default());
         let renderer = Arc::new(RefCell::new(Renderer::new(window)));
 
-        // add renderables form enrichment definitions
-        for enrichment_options in options.enrichments.iter() {
-            if enrichment_options.gaze.is_some() {
-                let gaze_options = enrichment_options.gaze.as_ref().unwrap().clone();
-                let gaze = Gaze::new(gaze_options);
-                let renderable = gaze.renderable();
-                renderer.borrow_mut().add_renderable(renderable);
+        for controller_option in options.controllers.iter() {
+            // @TODO make this dynamic
+            if controller_option.gaze.is_some() {
+                let gaze_options = controller_option.gaze.as_ref().unwrap().clone();
+                let gaze = Box::new(Gaze::new(gaze_options));
+                let renderables = gaze.renderables();
+
+                let mut renderer = renderer.borrow_mut();
+                renderer.add_controller("Gaze".to_string(), gaze);
+
+                for renderable in renderables {
+                    renderer.add_renderable(*renderable); // @TODO figure this out. clone, whatever.
+                }
             }
         }
 
@@ -62,21 +86,10 @@ impl EventManager {
         //       I have to find a way to statically map strings to Rust enums without exposing
         //       the enum to the public API side. Consider using the `strum` crate.
         let event = match event {
-            "gaze::set_normalized_position" => {
-                VipEvent::Gaze(GazeEvent::ChangeNormalizedPosition {
-                    x: param1,
-                    y: param2,
-                })
-            }
-            "gaze::set_position" => {
-                // let size = self.handler.as_mut().unwrap().get_renderer().window_size;
-                // let x = (param1 * size.width as f32) as u32;
-                // let y = (param2 * size.height as f32) as u32;
-                VipEvent::Gaze(GazeEvent::ChangeNormalizedPosition {
-                    x: param1,
-                    y: param2,
-                })
-            }
+            "gaze::set_normalized_position" => VipEvent::Gaze(GazeEvent::ChangePosition {
+                x: param1,
+                y: param2,
+            }),
             _ => panic!("Event not found"),
         };
 

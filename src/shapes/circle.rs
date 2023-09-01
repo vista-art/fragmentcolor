@@ -1,4 +1,4 @@
-use crate::renderer::{Renderable, Uniform};
+use crate::renderer::{AnyRenderable, AnyUniform, Renderable, UniformOperations};
 use crate::uniform;
 use palette::rgb::LinSrgba;
 use smart_default::SmartDefault;
@@ -22,17 +22,15 @@ pub struct Circle {
     pub border_color: LinSrgba,
     pub color: LinSrgba,
     pub alpha: f32,
-    uniform: Arc<RefCell<CircleUniform>>,
+    uniform: Arc<RefCell<AnyUniform>>,
 }
 
 impl Renderable for Circle {
-    type U = CircleUniform;
-
     fn label(&self) -> String {
         "Circle".to_string()
     }
 
-    fn uniform(&self) -> Arc<RefCell<CircleUniform>> {
+    fn uniform(&self) -> Arc<RefCell<AnyUniform>> {
         self.uniform.clone()
     }
 
@@ -43,7 +41,8 @@ impl Renderable for Circle {
     }
 
     fn update(&self) {
-        self.uniform.borrow_mut().update(self);
+        let any_renderable = AnyRenderable::from(self.to_owned());
+        self.uniform.borrow_mut().update(&any_renderable);
     }
 }
 
@@ -56,7 +55,7 @@ impl Circle {
             border_color: options.border_color,
             color: options.color,
             alpha: options.alpha,
-            uniform: Arc::new(RefCell::new(CircleUniform::default())),
+            uniform: Arc::new(RefCell::new(AnyUniform::Circle(CircleUniform::default()))),
         };
 
         circle
@@ -75,15 +74,19 @@ uniform!(CircleUniform for Circle {
 });
 
 impl CircleUniform {
-    pub fn update(&mut self, circle: &Circle) {
-        self.position = circle.position.into();
-        self.radius = circle.radius;
-        self.border = circle.border_size;
-        self.color = [
-            circle.color.red,
-            circle.color.green,
-            circle.color.blue,
-            circle.color.alpha * circle.alpha,
-        ];
+    pub fn update(&mut self, renderable: &AnyRenderable) {
+        match renderable {
+            AnyRenderable::Circle(circle) => {
+                self.position = circle.position.into();
+                self.radius = circle.radius;
+                self.border = circle.border_size;
+                self.color = [
+                    circle.color.red,
+                    circle.color.green,
+                    circle.color.blue,
+                    circle.color.alpha * circle.alpha,
+                ];
+            }
+        }
     }
 }

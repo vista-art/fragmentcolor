@@ -1,6 +1,6 @@
 #[cfg(not(wasm))]
 use pl_video_processor::{
-    enrichments::{gaze::GazeOptions, EnrichmentOptions},
+    controllers::{gaze::GazeOptions, ControllerOptions},
     Options, Vip,
 };
 
@@ -16,8 +16,8 @@ async fn init() {
     let mut vip = Vip::new();
 
     vip.config(Options {
-        enrichments: {
-            Some(EnrichmentOptions {
+        controllers: {
+            Some(ControllerOptions {
                 gaze: Some(GazeOptions::default()),
                 ..Default::default()
             })

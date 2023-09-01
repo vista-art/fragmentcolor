@@ -1,6 +1,5 @@
 use std::{cell::RefCell, sync::Arc};
 
-use crate::enrichments::gaze::GazeEvent;
 use crate::events::VipEvent;
 use crate::renderer::Renderer;
 #[cfg(wasm)]
@@ -46,23 +45,22 @@ impl EventHandler<VipEvent> {
 
 fn run_event_loop(event_loop: EventLoop<VipEvent>, mut renderer: Renderer) {
     use log::info;
-
     type E<'a> = Event<'a, VipEvent>;
     type T<'b> = &'b EventLoopWindowTarget<VipEvent>;
     type C<'c> = &'c mut ControlFlow;
 
-    let event_handler = Box::new(move |event: E, _target: T, control_flow: C| {
-        match event {
-            Event::UserEvent(event) => match event {
-                VipEvent::Gaze(event) => match event {
-                    GazeEvent::ChangePosition { x, y } => {
-                        info!("from event_loop runner: x: {}, y: {}", &x, &y);
-                        //renderer.update(x, y), // @TODO
+    let event_handler = Box::new(move |vip_event: E, target: T, control_flow: C| {
+        info!("Window Target: {:?}", &target);
+
+        match vip_event {
+            Event::UserEvent(vip_event) => match vip_event {
+                VipEvent::Gaze(_) => {
+                    let controller = renderer.get_controller_for("Gaze".to_string());
+
+                    if controller.is_some() {
+                        controller.unwrap().handle(vip_event);
                     }
-                    GazeEvent::ChangeNormalizedPosition { x, y } => {
-                        info!("from event_loop runner: x: {}, y: {}", &x, &y);
-                    }
-                },
+                }
             },
 
             Event::WindowEvent {
@@ -89,10 +87,7 @@ fn run_event_loop(event_loop: EventLoop<VipEvent>, mut renderer: Renderer) {
                     renderer.resize(**new_inner_size);
                 }
 
-                _ => {
-                    #[cfg(feature = "camera")]
-                    renderer.window_input(event);
-                }
+                _ => renderer.window_input(&event),
             },
 
             Event::RedrawRequested(window_id) if window_id == renderer.window().id() => {

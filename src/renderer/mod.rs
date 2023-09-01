@@ -5,9 +5,9 @@ pub mod renderer;
 #[cfg(not(feature = "texture"))]
 mod screen;
 mod state;
-//pub mod uniform;
+pub mod uniform;
 mod vertex;
 
 pub use renderable::*;
 pub use renderer::*;
-//pub use uniform::*;
+pub use uniform::*;

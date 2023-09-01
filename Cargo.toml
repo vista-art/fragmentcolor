@@ -40,6 +40,7 @@ cgmath = "0.18"
 serde = { version = "1", features = ["derive"] }
 bytemuck = { version = "1.13", features = [ "derive" ] }
 smart-default = "0.7.1"
+enum_dispatch = "0.3.12"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 image = {version = "0.24", optional = true}

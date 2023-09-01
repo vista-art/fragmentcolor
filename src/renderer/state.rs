@@ -1,4 +1,4 @@
-use crate::renderer::renderable::Renderables;
+use crate::renderer::{renderable::Renderables, Renderable};
 use cfg_if::cfg_if;
 use wgpu::util::DeviceExt;
 use winit::window::Window;

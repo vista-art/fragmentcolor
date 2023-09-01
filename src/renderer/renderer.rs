@@ -1,15 +1,18 @@
+use std::collections::HashMap;
+
+#[cfg(not(feature = "texture"))]
 use crate::renderer::{
-    renderable::{AnyRenderable, RenderableOperations, Renderables},
+    renderable::{AnyRenderable, Renderables},
     state::State,
 };
-#[cfg(not(feature = "texture"))]
-use crate::shapes::{Circle, CircleUniform};
+use crate::{controllers::VipController, renderer::Renderable};
 use cfg_if::cfg_if;
-use winit::window::Window;
+use winit::{event::WindowEvent, window::Window};
 
 #[derive(Debug)]
 pub struct Renderer {
-    renderables: Renderables,
+    controllers: HashMap<String, VipController>,
+    renderables: Renderables, // maybe not needed, because the controllers own them
     state: Option<State>,
     pub window: Window,
     pub window_size: winit::dpi::PhysicalSize<u32>,
@@ -21,24 +24,28 @@ impl Renderer {
         Self {
             window,
             window_size,
+            controllers: HashMap::new(),
             renderables: Vec::new(),
             state: None,
         }
     }
 
     #[allow(dead_code)]
-    pub fn add_renderables<T: RenderableOperations + 'static>(&mut self, renderables: Vec<T>) {
-        let renderables: Renderables = renderables
-            .into_iter()
-            .map(|renderable| Box::new(renderable) as AnyRenderable)
-            .collect();
+    pub fn add_controller(&mut self, key: String, controller: VipController) {
+        self.controllers.insert(key, controller);
+    }
 
+    pub fn get_controller_for(&mut self, key: String) -> Option<&mut VipController> {
+        self.controllers.get_mut(&key)
+    }
+
+    #[allow(dead_code)]
+    pub fn add_renderables(&mut self, renderables: Renderables) {
         self.renderables.extend(renderables);
     }
 
-    pub fn add_renderable<T: RenderableOperations + 'static>(&mut self, renderable: T) {
-        let renderable: AnyRenderable = Box::new(renderable);
-
+    #[allow(dead_code)]
+    pub fn add_renderable(&mut self, renderable: AnyRenderable) {
         self.renderables.push(renderable);
     }
 
@@ -53,10 +60,18 @@ impl Renderer {
         &self.window
     }
 
-    #[cfg(feature = "camera")]
-    pub fn window_input(&mut self, event: &winit::event::WindowEvent) {
-        let state = self.state.as_mut().unwrap();
-        state.camera_controller.handle_event(event);
+    pub fn window_input(&mut self, event: &WindowEvent) {
+        match event {
+            #[cfg(feature = "camera")]
+            Event::WindowEvent {
+                ref event,
+                window_id,
+            } if window_id == &self.window.id() => {
+                let state = self.state.as_mut().unwrap();
+                state.camera_controller.handle_event(event)
+            }
+            _ => {}
+        }
     }
 
     pub fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
@@ -96,16 +111,15 @@ impl Renderer {
             let buffer = &state.camera_buffer;
             state.queue.write_buffer(buffer, 0, bytemuck::cast_slice(&[state.camera_uniform]));
         } else {
-            for renderable in &self.renderables {
-                renderable.update();
+            for (_, controller) in &self.controllers {
+                if controller.should_update() {
+                    for renderable in controller.renderables() {
+                        renderable.update();
+                        let label = renderable.label();
+                        let buffer = &state.buffers[&label];
 
-                let label = renderable.label();
-                let buffer = &state.buffers[&label];
-
-                // Look ma, now I can access the concrete types!
-                if let Some(_) = renderable.as_any().downcast_ref::<Circle>() {
-                    let circle_uniform = *renderable.uniform().borrow_mut().downcast_mut::<CircleUniform>().unwrap();
-                    state.queue.write_buffer(buffer, 0, bytemuck::cast_slice(&[circle_uniform]));
+                        state.queue.write_buffer(buffer, 0, &renderable.uniform_bytes().as_slice());
+                    }
                 }
             }
         }}
