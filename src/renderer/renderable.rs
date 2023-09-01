@@ -1,22 +1,26 @@
-use crate::{renderer::AnyUniform, shapes::Circle};
+use crate::{
+    renderer::{Uniform, UniformOperations},
+    shapes::Circle,
+};
 use enum_dispatch::enum_dispatch;
-use std::{cell::RefCell, fmt::Debug, sync::Arc};
-
-use super::UniformOperations;
+use std::{
+    fmt::Debug,
+    sync::{Arc, RwLock},
+};
 
 /// Represents objects that can be rendered in the screen
 #[enum_dispatch]
-pub trait Renderable: Sized {
+pub trait RenderableTrait: Sized {
     /// A label must be provided by the implementor
     fn label(&self) -> String;
     /// A uniform definition must be provided by the implementor
-    fn uniform(&self) -> Arc<RefCell<AnyUniform>>;
+    fn uniform(&self) -> Arc<RwLock<Uniform>>;
     /// The implementor must provide a way to update the uniform
     fn update(&self);
     /// The implementor must provide a way to convert the uniform
     /// into a raw bytes representation.
     fn uniform_bytes(&self) -> Vec<u8> {
-        self.uniform().borrow().bytes()
+        self.uniform().read().unwrap().bytes()
     }
 
     /// The renderer injects the GPU device instance to the Uniform
@@ -24,16 +28,17 @@ pub trait Renderable: Sized {
     fn buffer(&self, device: &wgpu::Device) -> wgpu::Buffer;
 }
 
-#[enum_dispatch(Renderable)]
-pub enum AnyRenderable {
+#[enum_dispatch(RenderableTrait)]
+pub enum Renderable {
     Circle(Circle),
     //Rectangle(crate::shapes::Rectangle),
     //Text(crate::shapes::Text),
 }
 
-pub type Renderables = Vec<AnyRenderable>;
+pub type RenderableRef = Arc<RwLock<Renderable>>;
+pub type RenderableRefs = Vec<Arc<RwLock<Renderable>>>;
 
-impl Debug for AnyRenderable {
+impl Debug for Renderable {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(
             f,

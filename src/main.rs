@@ -30,10 +30,13 @@ async fn init() {
     std::thread::spawn(move || {
         let mut rng = rand::thread_rng();
         loop {
+            use log::info;
+
             std::thread::sleep(std::time::Duration::from_secs(1));
             let x = rng.gen::<f32>() * 2.0 - 1.0;
             let y = rng.gen::<f32>() * 2.0 - 1.0;
 
+            info!("from main, set_normalized_position: x: {}, y: {}", &x, &y);
             vip1.set_normalized_position(x, y);
         }
     });

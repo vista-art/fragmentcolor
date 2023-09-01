@@ -1,28 +1,31 @@
-use crate::renderer::AnyRenderable;
+use crate::renderer::Renderable;
 use enum_dispatch::enum_dispatch;
 use std::fmt::Debug;
 
 /// The raw Uniform bytes that will be sent to the GPU
-pub trait Uniform: Debug + Default + Copy + Clone + bytemuck::Pod + bytemuck::Zeroable {}
+pub trait UniformTrait:
+    Debug + Default + Copy + Clone + bytemuck::Pod + bytemuck::Zeroable
+{
+}
 
 #[enum_dispatch]
 pub trait UniformOperations: Default + Debug {
-    fn update(&mut self, data: &AnyRenderable);
+    fn update(&mut self, data: &Renderable);
     fn buffer(&self, device: &wgpu::Device) -> wgpu::Buffer;
     fn bytes(&self) -> Vec<u8>;
 }
 
 #[derive(Debug)]
 #[enum_dispatch(UniformOperations)]
-pub enum AnyUniform {
+pub enum Uniform {
     Circle(crate::shapes::CircleUniform),
     //Rectangle(crate::shapes::RectangleUniform),
     //Text(crate::shapes::TextUniform),
 }
 
-impl Default for AnyUniform {
+impl Default for Uniform {
     fn default() -> Self {
-        AnyUniform::Circle(crate::shapes::CircleUniform::default())
+        Uniform::Circle(crate::shapes::CircleUniform::default())
     }
 }
 
@@ -36,10 +39,10 @@ macro_rules! uniform {
         pub struct $name {
             $($field: $type),*
         }
-        impl crate::renderer::Uniform for $name {}
+        impl crate::renderer::UniformTrait for $name {}
         impl crate::renderer::UniformOperations for $name {
-            fn update(&mut self, _data: &crate::renderer::AnyRenderable) {
-                unimplemented!("User should implement uniform update() for {}", stringify!($name));
+            fn update(&mut self, data: &crate::renderer::Renderable) {
+                self.update(data);
             }
             fn buffer(&self, device: &wgpu::Device) -> wgpu::Buffer {
                 use wgpu::util::DeviceExt;

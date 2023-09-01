@@ -115,5 +115,5 @@ cfg_if! { if #[cfg(feature = "texture")] {
         },
     ];
 
-    const FULL_SCREEN_QUAD_INDICES: &[u16] = &[0, 1, 2, 2, 1, 3];
+    const FULL_SCREEN_QUAD_INDICES: &[u16] = &[0, 2, 1, 2, 3, 1];
 }}

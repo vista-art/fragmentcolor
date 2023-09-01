@@ -1,7 +1,9 @@
+use std::sync::{Arc, RwLock};
+
 use crate::{
     controllers::Controller,
     events::VipEvent,
-    renderer::{color::hex_to_rgba, AnyRenderable, Renderables},
+    renderer::{color::hex_to_rgba, Renderable, RenderableRefs},
     shapes::{Circle, CircleOptions},
 };
 use palette::rgb::LinSrgba;
@@ -42,7 +44,7 @@ pub enum GazeEvent {
 pub struct Gaze {
     #[default(cgmath::Point2::new(0.0, 0.0))]
     position: cgmath::Point2<f32>,
-    renderables: Renderables,
+    renderables: RenderableRefs,
     should_update: bool,
 }
 
@@ -58,7 +60,7 @@ impl Controller<VipEvent> for Gaze {
         }
     }
 
-    fn renderables(&self) -> &Renderables {
+    fn renderables(&self) -> &RenderableRefs {
         &self.renderables
     }
 
@@ -78,7 +80,7 @@ impl Gaze {
         });
 
         Self {
-            renderables: vec![AnyRenderable::Circle(circle)],
+            renderables: vec![Arc::new(RwLock::new(Renderable::Circle(circle)))],
             ..Default::default()
         }
     }
@@ -88,10 +90,13 @@ impl Gaze {
 
         self.position = cgmath::Point2::new(x, y);
 
-        for renderable in self.renderables.iter_mut() {
-            // @TODO refactor as enums
-            match renderable {
-                AnyRenderable::Circle(circle) => {
+        let renderables = self.renderables.clone();
+
+        for renderable in renderables {
+            let mut renderable = &mut *renderable.write().unwrap();
+
+            match &mut renderable {
+                Renderable::Circle(ref mut circle) => {
                     circle.set_position(self.position);
                     info!("from gaze controller, set circle pos: x: {}, y: {}", &x, &y);
                 }

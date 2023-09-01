@@ -1,18 +1,15 @@
-use std::collections::HashMap;
-
-#[cfg(not(feature = "texture"))]
-use crate::renderer::{
-    renderable::{AnyRenderable, Renderables},
-    state::State,
-};
-use crate::{controllers::VipController, renderer::Renderable};
+use crate::controllers::VipController;
+use crate::renderer::{state::State, RenderableRef, RenderableRefs, RenderableTrait};
 use cfg_if::cfg_if;
-use winit::{event::WindowEvent, window::Window};
+use std::collections::HashMap;
+#[cfg(feature = "camera")]
+use winit::event::WindowEvent;
+use winit::window::Window;
 
 #[derive(Debug)]
 pub struct Renderer {
     controllers: HashMap<String, VipController>,
-    renderables: Renderables, // maybe not needed, because the controllers own them
+    renderables: RenderableRefs, // maybe not needed, because the controllers own them
     state: Option<State>,
     pub window: Window,
     pub window_size: winit::dpi::PhysicalSize<u32>,
@@ -32,20 +29,20 @@ impl Renderer {
 
     #[allow(dead_code)]
     pub fn add_controller(&mut self, key: String, controller: VipController) {
+        let renderables = controller.renderables();
+        for renderable in renderables {
+            self.add_renderable(renderable.clone());
+        }
+
         self.controllers.insert(key, controller);
     }
 
-    pub fn get_controller_for(&mut self, key: String) -> Option<&mut VipController> {
+    pub fn get_controller(&mut self, key: String) -> Option<&mut VipController> {
         self.controllers.get_mut(&key)
     }
 
     #[allow(dead_code)]
-    pub fn add_renderables(&mut self, renderables: Renderables) {
-        self.renderables.extend(renderables);
-    }
-
-    #[allow(dead_code)]
-    pub fn add_renderable(&mut self, renderable: AnyRenderable) {
+    fn add_renderable(&mut self, renderable: RenderableRef) {
         self.renderables.push(renderable);
     }
 
@@ -60,18 +57,10 @@ impl Renderer {
         &self.window
     }
 
+    #[cfg(feature = "camera")]
     pub fn window_input(&mut self, event: &WindowEvent) {
-        match event {
-            #[cfg(feature = "camera")]
-            Event::WindowEvent {
-                ref event,
-                window_id,
-            } if window_id == &self.window.id() => {
-                let state = self.state.as_mut().unwrap();
-                state.camera_controller.handle_event(event)
-            }
-            _ => {}
-        }
+        let state = self.state.as_mut().unwrap();
+        state.camera_controller.handle_event(event)
     }
 
     pub fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
@@ -114,11 +103,12 @@ impl Renderer {
             for (_, controller) in &self.controllers {
                 if controller.should_update() {
                     for renderable in controller.renderables() {
+                        let renderable = renderable.read().unwrap();
                         renderable.update();
                         let label = renderable.label();
                         let buffer = &state.buffers[&label];
 
-                        state.queue.write_buffer(buffer, 0, &renderable.uniform_bytes().as_slice());
+                        state.queue.write_buffer(buffer, 0, renderable.uniform_bytes().as_slice());
                     }
                 }
             }

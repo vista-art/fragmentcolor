@@ -69,7 +69,7 @@ impl CameraController {
         }
     }
 
-    pub fn handle_event(&mut self, event: &WindowEvent) -> bool {
+    pub fn handle_event(&mut self, event: &WindowEvent) {
         match event {
             WindowEvent::KeyboardInput {
                 input:
@@ -84,24 +84,20 @@ impl CameraController {
                 match keycode {
                     VirtualKeyCode::W | VirtualKeyCode::Up => {
                         self.is_forward_pressed = is_pressed;
-                        true
                     }
                     VirtualKeyCode::A | VirtualKeyCode::Left => {
                         self.is_left_pressed = is_pressed;
-                        true
                     }
                     VirtualKeyCode::S | VirtualKeyCode::Down => {
                         self.is_backward_pressed = is_pressed;
-                        true
                     }
                     VirtualKeyCode::D | VirtualKeyCode::Right => {
                         self.is_right_pressed = is_pressed;
-                        true
                     }
-                    _ => false,
+                    _ => {}
                 }
             }
-            _ => false,
+            _ => {}
         }
     }
 
