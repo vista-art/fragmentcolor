@@ -7,6 +7,7 @@ mod screen;
 mod state;
 pub mod uniform;
 mod vertex;
+pub mod window;
 
 pub use renderable::*;
 pub use renderer::*;

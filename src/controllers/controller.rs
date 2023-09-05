@@ -12,9 +12,10 @@ use wasm_bindgen::prelude::*;
 /// and is responsible for updating their state
 /// after receiving events from the event manager.
 pub trait Controller<E> {
+    fn name(&self) -> String;
     fn handle(&mut self, event: E);
     fn renderables(&self) -> &RenderableRefs;
-    fn should_update(&self) -> bool;
+    // @TODO add methods to add/remove renderables
 }
 
 pub type VipController = Box<dyn Controller<VipEvent>>;

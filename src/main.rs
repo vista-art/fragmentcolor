@@ -36,8 +36,9 @@ async fn init() {
             let x = rng.gen::<f32>() * 2.0 - 1.0;
             let y = rng.gen::<f32>() * 2.0 - 1.0;
 
-            info!("from main, set_normalized_position: x: {}, y: {}", &x, &y);
-            vip1.set_normalized_position(x, y);
+            info!("from main: x: {}, y: {}", &x, &y);
+
+            vip1.trigger("gaze", "set_position", vec![x.to_string(), y.to_string()]);
         }
     });
 

@@ -1,8 +1,8 @@
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct ScreenUniform {
-    antialiaser: f32,
     resolution: [f32; 2],
+    antialiaser: f32,
     _padding: f32,
 }
 

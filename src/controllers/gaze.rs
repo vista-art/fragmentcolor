@@ -15,6 +15,7 @@ use wasm_bindgen::prelude::*;
 #[cfg_attr(wasm, wasm_bindgen(getter_with_clone))]
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct GazeOptions {
+    pub name: Option<String>,
     pub radius: Option<f32>,
     pub border: Option<f32>,
     pub color: Option<String>,
@@ -24,48 +25,55 @@ pub struct GazeOptions {
 impl Default for GazeOptions {
     fn default() -> Self {
         Self {
-            radius: Some(0.2),
-            border: Some(0.05),
-            color: Some("#ff000088".to_string()),
+            name: Some("gaze".to_string()),
+            radius: Some(0.05),
+            border: Some(0.005),
+            color: Some("#ff000080".to_string()),
             alpha: Some(1.0),
         }
     }
 }
 
-// NotNan is needed around floats to make this enum
-// hashable, which is required for the event manager
-// to find the correct controller to send events to.
-#[derive(Debug, Clone, Copy)]
-pub enum GazeEvent {
-    ChangePosition { x: f32, y: f32 },
-}
-
 #[derive(Debug, SmartDefault)]
 pub struct Gaze {
+    #[default("gaze".to_string())]
+    name: String,
     #[default(cgmath::Point2::new(0.0, 0.0))]
     position: cgmath::Point2<f32>,
     renderables: RenderableRefs,
-    should_update: bool,
 }
 
 impl Controller<VipEvent> for Gaze {
+    fn name(&self) -> String {
+        self.name.clone()
+    }
+
     fn handle(&mut self, event: VipEvent) {
-        match event {
-            VipEvent::Gaze(event) => match event {
-                GazeEvent::ChangePosition { x, y } => {
-                    self.should_update = true;
-                    self.set_position(x, y)
+        let VipEvent {
+            controller,
+            event,
+            args,
+        } = event;
+
+        if controller == self.name {
+            use log::info;
+            match event.as_str() {
+                "set_position" => {
+                    let [x, y] = args.as_slice() else { return };
+                    info!("from gaze controller, set position: x: {}, y: {}", &x, &y);
+
+                    let x = x.parse().expect("Failed to parse x coordinate");
+                    let y = y.parse().expect("Failed to parse y coordinate");
+
+                    self.set_position(x, y);
                 }
-            },
+                _ => (),
+            }
         }
     }
 
     fn renderables(&self) -> &RenderableRefs {
-        &self.renderables
-    }
-
-    fn should_update(&self) -> bool {
-        self.should_update
+        self.renderables.as_ref()
     }
 }
 
@@ -74,8 +82,8 @@ impl Gaze {
         let circle = Circle::new(CircleOptions {
             radius: options.radius.unwrap_or_default(),
             border_size: options.border.unwrap_or_default(),
-            border_color: hex_to_rgba(&options.color.unwrap_or_default()).unwrap_or_default(),
-            color: LinSrgba::new(0.0, 0.0, 0.0, 0.0),
+            border_color: LinSrgba::new(0.0, 0.0, 0.0, 0.0),
+            color: hex_to_rgba(&options.color.unwrap_or_default()).unwrap_or_default(),
             alpha: 1.0,
         });
 

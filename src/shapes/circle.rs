@@ -22,6 +22,7 @@ pub struct Circle {
     pub color: LinSrgba,
     pub alpha: f32,
     uniform: Arc<RwLock<Uniform>>,
+    should_update: bool,
 }
 
 impl RenderableTrait for Circle {
@@ -39,10 +40,16 @@ impl RenderableTrait for Circle {
         buffer
     }
 
-    fn update(&self) {
-        let any_renderable = Renderable::from(self.to_owned());
+    fn update(&mut self) {
+        if self.should_update {
+            let renderable = Renderable::from(self.to_owned());
+            self.uniform.write().unwrap().update(&renderable);
+            self.should_update = false;
+        }
+    }
 
-        self.uniform.write().unwrap().update(&any_renderable);
+    fn should_update(&self) -> bool {
+        self.should_update
     }
 }
 
@@ -55,7 +62,18 @@ impl Circle {
             border_color: options.border_color,
             color: options.color,
             alpha: options.alpha,
-            uniform: Arc::new(RwLock::new(Uniform::Circle(CircleUniform::default()))),
+            should_update: true,
+            uniform: Arc::new(RwLock::new(Uniform::Circle(CircleUniform {
+                position: [0.0, 0.0],
+                radius: options.radius,
+                border: options.border_size,
+                color: [
+                    options.color.red,
+                    options.color.green,
+                    options.color.blue,
+                    options.color.alpha * options.alpha,
+                ],
+            }))),
         };
 
         circle
@@ -63,6 +81,7 @@ impl Circle {
 
     pub fn set_position(&mut self, position: cgmath::Point2<f32>) {
         self.position = position;
+        self.should_update = true;
     }
 }
 

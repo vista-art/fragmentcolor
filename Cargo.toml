@@ -37,8 +37,10 @@ wgpu = "0.17"
 pollster = "0.3"
 palette = "0.7"
 cgmath = "0.18"
+serde_json = "1"
 serde = { version = "1", features = ["derive"] }
 bytemuck = { version = "1.13", features = [ "derive" ] }
+phf = { version = "0.11", features = ["macros"] }
 smart-default = "0.7.1"
 enum_dispatch = "0.3.12"
 
