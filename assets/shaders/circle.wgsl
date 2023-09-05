@@ -20,8 +20,9 @@ struct FragmentOutput {
 }
 
 struct Screen {
-    antialiaser: f32,
     resolution: vec2<f32>,
+    antialiaser: f32,
+    _padding: f32,
 };
 @group(0) @binding(0)
 var<uniform> screen: Screen;
@@ -39,18 +40,17 @@ var<uniform> circle: Circle;
 fn fs_main(in: VertexOutput) -> FragmentOutput {
     var out: FragmentOutput;
     let aa = screen.antialiaser;
-    let border = circle.border;
     let radius = circle.radius;
-    let color = circle.color;
+    let border = circle.border;
 
-    let rgb = circle.color.rgb;
     let normalized = in.position.xy / screen.resolution;
-    var uv = (normalized * 2.0) - vec2<f32>(1.0);
+    var uv = (normalized * 2.0) - vec2(1.0);
     uv.x *= screen.resolution.x / screen.resolution.y;
-    let dist = distance(uv, in.position.xy);
 
-    let alpha = (1.0 - smoothstep(border - aa, border + aa, abs(dist - radius))) * color.a;
+    let dist = distance(uv, circle.position.xy);
+    let alpha = (1.0 - smoothstep(border - aa, border + aa, abs(dist - radius))) * circle.color.a;
 
-    out.color = vec4<f32>(rgb.r, rgb.g, 1.0, 1.0);
+    out.color = vec4<f32>(circle.color.rgb, alpha);
+
     return out;
 }

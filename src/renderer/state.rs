@@ -25,14 +25,17 @@ use {
 
 #[derive(Debug)]
 pub(super) struct State {
-    pub(super) surface: wgpu::Surface,
     pub(super) device: wgpu::Device,
     pub(super) queue: wgpu::Queue,
+
+    pub(super) surface: wgpu::Surface,
     pub(super) config: wgpu::SurfaceConfiguration,
-    pub(super) render_pipeline: wgpu::RenderPipeline,
+
     pub(super) vertex_buffer: wgpu::Buffer,
     pub(super) index_buffer: wgpu::Buffer,
     pub(super) num_indices: u32,
+
+    pub(super) render_pipeline: wgpu::RenderPipeline,
 
     #[cfg(not(feature = "texture"))]
     pub(super) buffers: HashMap<String, wgpu::Buffer>,

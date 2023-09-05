@@ -16,7 +16,11 @@ pub trait RenderableTrait: Sized {
     /// A uniform definition must be provided by the implementor
     fn uniform(&self) -> Arc<RwLock<Uniform>>;
     /// The implementor must provide a way to update the uniform
-    fn update(&self);
+    fn update(&mut self);
+    /// Tells the renderer if the uniform should be updated
+    fn should_update(&self) -> bool {
+        true
+    }
     /// The implementor must provide a way to convert the uniform
     /// into a raw bytes representation.
     fn uniform_bytes(&self) -> Vec<u8> {

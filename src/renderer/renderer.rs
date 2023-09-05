@@ -9,8 +9,10 @@ use winit::window::Window;
 #[derive(Debug)]
 pub struct Renderer {
     controllers: HashMap<String, VipController>,
-    renderables: RenderableRefs, // maybe not needed, because the controllers own them
+    renderables: RenderableRefs,
     state: Option<State>,
+
+    // @TODO support multiple targets
     pub window: Window,
     pub window_size: winit::dpi::PhysicalSize<u32>,
 }
@@ -27,21 +29,19 @@ impl Renderer {
         }
     }
 
-    #[allow(dead_code)]
-    pub fn add_controller(&mut self, key: String, controller: VipController) {
+    pub fn add_controller(&mut self, controller: VipController) {
         let renderables = controller.renderables();
         for renderable in renderables {
             self.add_renderable(renderable.clone());
         }
 
-        self.controllers.insert(key, controller);
+        self.controllers.insert(controller.name(), controller);
     }
 
-    pub fn get_controller(&mut self, key: String) -> Option<&mut VipController> {
-        self.controllers.get_mut(&key)
+    pub fn get_controller(&mut self, key: &str) -> Option<&mut VipController> {
+        self.controllers.get_mut(&key.to_string())
     }
 
-    #[allow(dead_code)]
     fn add_renderable(&mut self, renderable: RenderableRef) {
         self.renderables.push(renderable);
     }
@@ -94,6 +94,7 @@ impl Renderer {
         let state = self.state.as_mut().unwrap();
 
         cfg_if! { if #[cfg(feature = "camera")] {
+            // @TODO remove this condition; make the camera a renderable
             state.camera_controller.update_camera(&mut state.camera);
             state.camera_uniform.update(&state.camera);
 
@@ -101,16 +102,18 @@ impl Renderer {
             state.queue.write_buffer(buffer, 0, bytemuck::cast_slice(&[state.camera_uniform]));
         } else {
             for (_, controller) in &self.controllers {
-                if controller.should_update() {
+                //if controller.should_update() { // @TODO the renderer should be responsible for keeping track of this.
                     for renderable in controller.renderables() {
-                        let renderable = renderable.read().unwrap();
-                        renderable.update();
-                        let label = renderable.label();
-                        let buffer = &state.buffers[&label];
+                        let mut renderable = renderable.write().unwrap();
+                        if renderable.should_update() {
+                            renderable.update();
+                            let label = renderable.label();
+                            let buffer = &state.buffers[&label];
 
-                        state.queue.write_buffer(buffer, 0, renderable.uniform_bytes().as_slice());
+                            state.queue.write_buffer(buffer, 0, renderable.uniform_bytes().as_slice());
+                        }
                     }
-                }
+                //}
             }
         }}
     }

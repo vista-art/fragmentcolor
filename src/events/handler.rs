@@ -1,7 +1,6 @@
-use std::{cell::RefCell, sync::Arc};
-
 use crate::events::VipEvent;
 use crate::renderer::Renderer;
+use std::{sync::Arc, sync::RwLock};
 #[cfg(wasm)]
 use winit::platform::web::EventLoopExtWebSys;
 use winit::{
@@ -10,9 +9,9 @@ use winit::{
 };
 
 pub struct EventHandler<T: 'static> {
-    renderer: Option<Arc<RefCell<Renderer>>>,
+    renderer: Option<Arc<RwLock<Renderer>>>,
     event_loop: EventLoop<T>,
-    event_loop_runner: Box<dyn FnOnce(EventLoop<T>, Renderer) + Send>,
+    event_loop_runner: Box<dyn FnOnce(EventLoop<T>, Arc<RwLock<Renderer>>) + Send>,
 }
 
 impl EventHandler<VipEvent> {
@@ -24,7 +23,7 @@ impl EventHandler<VipEvent> {
         }
     }
 
-    pub fn attach_renderer(&mut self, renderer: Arc<RefCell<Renderer>>) {
+    pub fn attach_renderer(&mut self, renderer: Arc<RwLock<Renderer>>) {
         self.renderer = Some(renderer);
     }
 
@@ -32,35 +31,27 @@ impl EventHandler<VipEvent> {
         &self.event_loop
     }
 
-    pub async fn run(mut self) {
-        let renderer = self.renderer.take().expect("Renderer not set");
-        let renderer = Arc::try_unwrap(renderer)
-            .expect("Couldn't unwrap Arc<RefCell<Renderer>>")
-            .into_inner();
-
-        // The runner takes ownership of the event loop and renderer
-        (self.event_loop_runner)(self.event_loop, renderer)
+    pub async fn run_event_loop(self) {
+        let renderer = self.renderer.expect("Renderer not set");
+        (self.event_loop_runner)(self.event_loop, renderer.clone())
     }
 }
 
-fn run_event_loop(event_loop: EventLoop<VipEvent>, mut renderer: Renderer) {
-    use log::info;
-    type E<'a> = Event<'a, VipEvent>;
-    type T<'b> = &'b EventLoopWindowTarget<VipEvent>;
-    type C<'c> = &'c mut ControlFlow;
+type E<'a> = Event<'a, VipEvent>;
+type L<'b> = &'b EventLoopWindowTarget<VipEvent>;
+type C<'c> = &'c mut ControlFlow;
 
-    let event_handler = Box::new(move |vip_event: E, _target: T, control_flow: C| {
-        match vip_event {
-            Event::UserEvent(vip_event) => match vip_event {
-                VipEvent::Gaze(_) => {
-                    let controller = renderer.get_controller("Gaze".to_string());
+fn run_event_loop(event_loop: EventLoop<VipEvent>, renderer: Arc<RwLock<Renderer>>) {
+    let event_handler = Box::new(move |event: E, _event_loop: L, control_flow: C| {
+        let mut renderer = renderer.write().expect("Couldn't get renderer write lock");
 
-                    if controller.is_some() {
-                        info!("Gaze event received");
-                        controller.unwrap().handle(vip_event);
-                    }
+        match event {
+            Event::UserEvent(event) => {
+                let controller = renderer.get_controller(&event.controller);
+                if controller.is_some() {
+                    controller.unwrap().handle(event);
                 }
-            },
+            }
 
             Event::WindowEvent {
                 ref event,

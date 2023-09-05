@@ -16,8 +16,9 @@
         window: {
           canvas_selector: "#test_canvas",
         },
-        enrichments: {
+        controllers: {
           gaze: {
+            name: "gaze",
             radius: 0.2,
             border: 0.05,
             color: "#ff0000ff",
@@ -26,14 +27,19 @@
         },
       });
 
+      const canvas = document.getElementById("test_canvas");
+
       console.log("Attaching event listeners...");
-      document
-        .getElementById("test_canvas")
-        .addEventListener("mousemove", (event) => {
-          vip.set_normalized_position(event.clientX, event.clientY);
-          // @TODO it should be
-          //vip.enrichments.gaze.set_position(event.clientX, event.clientY);
-        });
+      canvas.addEventListener("mousemove", (event) => {
+        //@TODO create a callback for window resize events
+
+        const x = (4 * event.offsetX) / canvas.width - 1;
+        const y = (4 * event.offsetY) / canvas.height - 1;
+
+        console.log(`Setting gaze position to (${x}, ${y})`);
+
+        vip.trigger("gaze", "set_position", [x, y]);
+      });
 
       vip.run();
     </script>
