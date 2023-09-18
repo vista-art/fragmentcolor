@@ -1,6 +1,6 @@
 # RFC 01: PL Video Processor (vip)
 
-## Conclusion: Dropped in Favor of RFC 02: Rendering API Design
+## Archived: The API described here was dropped in favor of the new [Rendering API Design](https://hackmd.io/@crkcHgUfRSuhK8txmTiDtA/BkYhUG262/%2F_pf5CHKjSoCb9u1-NCzoTA)
 
 ## Request for Comments
 
