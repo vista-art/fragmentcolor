@@ -46,6 +46,7 @@ pub fn init_window<T>(event_loop: &EventLoop<T>, options: &WindowOptions) -> Win
 
     let window = WindowBuilder::new()
         .with_canvas(canvas)
+        .with_transparent(true)
         .build(event_loop)
         .expect("Couldn't build canvas context");
 

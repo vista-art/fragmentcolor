@@ -1,4 +1,6 @@
-# RFC: PL Video Processor (vip)
+# RFC 01: PL Video Processor (vip)
+
+## Conclusion: Dropped in Favor of RFC 02: Rendering API Design
 
 ## Request for Comments
 
@@ -367,10 +369,14 @@ Additionally, because we need to care about types and manage memory manually, th
 - [x] Adjust design as needed
   - [x] **Adjust design:** bring back the `--eye` option
   - [x] Validate cross-compilation with CPU fallback
-- [ ] Basic project skeleton setup
+- [x] Basic project skeleton setup
   - [x] Make a basic build for Desktop and Web
-  - [ ] [**in-progress**] Organize the project's file structure
-  - [ ] Implement the Gaze circle in our Web UI
+  - [x] Organize the project's file structure
+  - [x] Implement the Gaze circle in our Web UI
+
+#### UPDATE: Milestone 1 is complete
+
+**The next milestones are going to be redesigned and written in [RFC 02: Rendering API Design](0002-rendering-api-design.md)**
 
 ### Milestone 2: Build System for all targets
 
