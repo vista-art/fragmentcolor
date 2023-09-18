@@ -122,13 +122,21 @@ impl State {
             .find(|f| f.is_srgb())
             .unwrap_or(surface_capabilities.formats[0]);
 
+        // alpha_mode should be transparent if the surface supports it
+        let alpha_mode = surface_capabilities
+            .alpha_modes
+            .iter()
+            .find(|m| *m == &wgpu::CompositeAlphaMode::PreMultiplied)
+            .unwrap_or(&wgpu::CompositeAlphaMode::Auto)
+            .to_owned();
+
         let window_physical_size = window.inner_size();
         let config = wgpu::SurfaceConfiguration {
             width: window_physical_size.width,
             height: window_physical_size.height,
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             present_mode: surface_capabilities.present_modes[0],
-            alpha_mode: surface_capabilities.alpha_modes[0],
+            alpha_mode,
             format: surface_format,
             view_formats: vec![],
         };
