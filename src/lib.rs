@@ -26,7 +26,7 @@ pub struct Options {
 
 #[derive(Clone)]
 #[cfg_attr(wasm, wasm_bindgen(getter_with_clone))]
-pub struct Vip {
+pub struct PLRender {
     event_manager: Arc<RwLock<EventManager>>,
     renderer: Option<Arc<RwLock<Renderer>>>,
     // controllers: Controllers,
@@ -39,12 +39,12 @@ pub struct Resolution {
 }
 
 #[cfg(not(wasm))]
-unsafe impl Send for Vip {}
+unsafe impl Send for PLRender {}
 
 #[cfg_attr(wasm, wasm_bindgen)]
-impl Vip {
+impl PLRender {
     #[cfg_attr(wasm, wasm_bindgen(constructor))]
-    pub fn new() -> Vip {
+    pub fn new() -> PLRender {
         Self::init_logger();
 
         Self {

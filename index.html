@@ -5,14 +5,19 @@
     <title>hello-wasm example</title>
   </head>
   <body>
+    <video id="test_video" controls autoplay>
+      <source
+        type="video/mp4"
+        src="http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"
+      />
+    </video>
     <canvas id="test_canvas" width="600" height="400"></canvas>
-    <canvas id="test_canvas2" width="600" height="400"></canvas>
     <script type="module" async>
-      import load_wasm, { Vip } from "./pkg/pl_video_processor.js";
+      import load_wasm, { PLRender } from "./pkg/pl_video_processor.js";
       await load_wasm();
 
-      const vip = new Vip();
-      vip.config({
+      const plrender = new PLRender();
+      plrender.config({
         window: {
           canvas_selector: "#test_canvas",
         },
@@ -31,17 +36,13 @@
 
       console.log("Attaching event listeners...");
       canvas.addEventListener("mousemove", (event) => {
-        //@TODO create a callback for window resize events
-
         const x = (4 * event.offsetX) / canvas.width - 1;
         const y = (4 * event.offsetY) / canvas.height - 1;
 
-        console.log(`Setting gaze position to (${x}, ${y})`);
-
-        vip.trigger("gaze", "set_position", [x, y]);
+        plrender.trigger("gaze", "set_position", [x, y]);
       });
 
-      vip.run();
+      plrender.run();
     </script>
   </body>
 </html>

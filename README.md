@@ -1,6 +1,6 @@
-# PL Video Processor (vip)
+# PL Render Library
 
-The `pl-video-processor` library (or `vip` for short) aims to provide a unified API
+The `pl-render` library (or `render` for short) aims to provide a unified API
 to render **Pupil Labs' video enrichments** in the GPU (with a CPU fallback) across
 multiple platforms and environments with native performance and minimal footprint.
 

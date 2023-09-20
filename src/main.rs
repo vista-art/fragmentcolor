@@ -1,7 +1,7 @@
 #[cfg(not(wasm))]
 use pl_video_processor::{
     controllers::{gaze::GazeOptions, ControllerOptions},
-    Options, Vip,
+    Options, PLRender,
 };
 
 fn main() {
@@ -13,20 +13,21 @@ fn main() {
 async fn init() {
     use rand::Rng;
 
-    let mut vip = Vip::new();
+    let mut plrender = PLRender::new();
 
-    vip.config(Options {
-        controllers: {
-            Some(ControllerOptions {
-                gaze: Some(GazeOptions::default()),
-                ..Default::default()
-            })
-        },
-        ..Default::default()
-    })
-    .await;
+    plrender
+        .config(Options {
+            controllers: {
+                Some(ControllerOptions {
+                    gaze: Some(GazeOptions::default()),
+                    ..Default::default()
+                })
+            },
+            ..Default::default()
+        })
+        .await;
 
-    let vip1 = vip.clone();
+    let plrender1 = plrender.clone();
     std::thread::spawn(move || {
         let mut rng = rand::thread_rng();
         loop {
@@ -38,9 +39,9 @@ async fn init() {
 
             info!("from main: x: {}, y: {}", &x, &y);
 
-            vip1.trigger("gaze", "set_position", vec![x.to_string(), y.to_string()]);
+            plrender1.trigger("gaze", "set_position", vec![x.to_string(), y.to_string()]);
         }
     });
 
-    vip.run();
+    plrender.run();
 }
