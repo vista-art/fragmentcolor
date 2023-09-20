@@ -172,6 +172,7 @@ impl Renderer {
                 let instances = 0..1;
             }}
 
+
             render_pass.set_pipeline(&state.render_pipeline);
             cfg_if! { if #[cfg(feature = "texture")] {
                 render_pass.set_bind_group(0, &state.texture_bind_group, &[]);
