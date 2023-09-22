@@ -6,7 +6,7 @@
   <video id="eye_video" src="https://www.w3schools.com/html/eye.mp4"></video>
   <canvas width="1000" height="800" id="input-canvas"></canvas>
   <canvas width="600" height="400" id="output-canvas"></canvas>
-  <script>
+  <script type="module" async>
     eye_video = document.getElementById("eye_video");
     world_video = document.getElementById("world_video");
 
@@ -94,29 +94,5 @@
     callback_target = context.add_callback_target((image_rgb: ArrayBuffer) => {
       console.log(image_rgb);
     });
-
-    // abort
-    // canplay
-    // canplaythrough
-    // durationchange
-    // emptied
-    // encrypted
-    // ended
-    // error
-    // loadeddata
-    // loadedmetadata
-    // loadstart
-    // pause
-    // play
-    // playing
-    // progress
-    // ratechange
-    // seeked
-    // seeking
-    // stalled
-    // suspend
-    // timeupdate
-    // volumechange
-    // waiting
   </script>
 </html>

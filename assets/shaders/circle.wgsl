@@ -42,12 +42,15 @@ fn fs_main(in: VertexOutput) -> FragmentOutput {
     let aa = screen.antialiaser;
     let radius = circle.radius;
     let border = circle.border;
+    var position = circle.position.xy;
 
     let normalized = in.position.xy / screen.resolution;
     var uv = (normalized * 2.0) - vec2(1.0);
-    uv.x *= screen.resolution.x / screen.resolution.y;
 
-    let dist = distance(uv, circle.position.xy);
+    uv.x *= screen.resolution.x / screen.resolution.y;
+    position.x *= screen.resolution.x / screen.resolution.y;
+
+    let dist = distance(uv, position);
     let alpha = (1.0 - smoothstep(border - aa, border + aa, abs(dist - radius))) * circle.color.a;
 
     out.color = vec4<f32>(circle.color.rgb, alpha);

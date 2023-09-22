@@ -1,5 +1,5 @@
 [package]
-name = "pl_video_processor"
+name = "plrender"
 description = "An unified API to render Pupil Labs' video enrichments across multiple platforms"
 repository = "https://gitlab.com/pupil-labs/pupil-cloud/pl-video-processor"
 authors = ["Pupil Labs GmbH"]
@@ -10,12 +10,12 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [lib]
-name = "pl_video_processor"
+name = "plrender"
 description = "Dynamic library to be used by other apps or in the browser"
 crate-type = ["cdylib", "rlib"]
 
 [[bin]]
-name = "pl_video_processor"
+name = "plrender"
 description = "Desktop application"
 
 [features]
