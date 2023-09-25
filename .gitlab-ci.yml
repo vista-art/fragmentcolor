@@ -7,3 +7,5 @@ pages:
       - public
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  script:
+    - echo "The site will be deployed to $CI_PAGES_URL"
