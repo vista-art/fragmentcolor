@@ -1,4 +1,4 @@
-# PL Video Processor (vip) Licence
+# PLRender Licence
 
 Copyright (c) Pupil Labs GmbH
 
