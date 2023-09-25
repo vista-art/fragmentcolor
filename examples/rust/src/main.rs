@@ -1,15 +1,12 @@
-#[cfg(not(wasm))]
-use pl_video_processor::{
+use plrender::{
     controllers::{gaze::GazeOptions, ControllerOptions},
     Options, PLRender,
 };
 
 fn main() {
-    #[cfg(not(wasm))]
     pollster::block_on(init());
 }
 
-#[cfg(not(wasm))]
 async fn init() {
     use rand::Rng;
 
