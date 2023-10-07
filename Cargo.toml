@@ -2,5 +2,8 @@
 
 members = [
     "plrender",
+    "platforms/*",
     "examples/rust",
 ]
+
+workspace.resolver = "2"
