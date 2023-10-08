@@ -2,7 +2,8 @@
 
 members = [
     "plrender",
-    "platforms/*",
+    "plrender-wasm",
+    "plrender-py",
     "examples/rust",
 ]
 
