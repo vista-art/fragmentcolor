@@ -1,7 +1,4 @@
-use plrender::{
-    controllers::{gaze::GazeOptions, ControllerOptions},
-    Options, PLRender,
-};
+use plrender::{entities::shapes::Circle, entities::Display, PLRender};
 
 fn main() {
     pollster::block_on(init());
@@ -10,12 +7,16 @@ fn main() {
 async fn init() {
     use rand::Rng;
 
-    let mut plrender = PLRender::new();
+    let mut plrender = PLRender::default();
+
+    let scene = plrender.create_scene();
+
+    let target = scene.create_target();
 
     plrender
         .config(Options {
-            controllers: {
-                Some(ControllerOptions {
+            scenes: {
+                Some(SceneOptions {
                     gaze: Some(GazeOptions::default()),
                     ..Default::default()
                 })
