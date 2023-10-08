@@ -1,3 +1,0 @@
-# Separation of Concerns
-
-TBD
