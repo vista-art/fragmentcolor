@@ -1782,32 +1782,23 @@ dependencies = [
  "cfg-if",
  "cfg_aliases",
  "cgmath",
- "console_error_panic_hook",
- "console_log",
  "csscolorparser",
  "enum_dispatch",
  "env_logger",
  "fs_extra",
  "glob",
- "gloo-utils",
  "hecs",
  "image",
- "js-sys",
  "log",
  "naga_oil",
  "palette",
  "phf",
  "pollster",
- "reqwest",
  "serde",
  "serde_json",
  "smart-default",
  "thiserror",
  "tobj",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "wasm-bindgen-test",
- "web-sys",
  "wgpu",
  "wgpu_text",
  "winit",
@@ -1832,13 +1823,20 @@ dependencies = [
 ]
 
 [[package]]
-name = "plrender-web"
+name = "plrender-wasm"
 version = "0.1.0"
 dependencies = [
  "console_error_panic_hook",
+ "console_log",
+ "gloo-utils",
+ "js-sys",
  "plrender",
+ "reqwest",
  "wasm-bindgen",
+ "wasm-bindgen-futures",
  "wasm-bindgen-test",
+ "web-sys",
+ "wgpu",
 ]
 
 [[package]]
