@@ -10,45 +10,26 @@ const target = plr.Target({
   target: "#output_canvas",
 });
 
-const backgroundVideo = plr.Display({ source: "#video" });
+const backgroundVideo = plr.Background({ source: "#video" });
 scene.add(backgroundVideo);
 
-// applies lens correction; the user does not need to update it every frame
 const { camera_matrix, distortion_coefficients } = undistortParams();
 backgroundVideo.undistort({ camera_matrix, distortion_coefficients });
 
-// The circle renders on top of the video because it is created later
-const gaze = scene.add(
-  new Circle({
-    color: "#ff000088",
-    radius: 0.05,
-    border: 0.01,
-    position: { x: 0.5, y: 0.5 },
-  })
-);
-// undistorts position only, does not warp the circle
+const gaze = plr.Circle({
+  color: "#ff000088",
+  radius: 0.05,
+  border: 0.01,
+});
+scene.add(gaze);
+
 gaze.undistortPosition({
   camera_matrix,
   distortion_coefficients,
 });
 
-// Scene objects can be reordered or hidden
-// gaze.moveToBack();
-// gaze.moveToFront();
-// gaze.moveForward();
-// gaze.moveBackward();
-// gaze.hide();
-// gaze.show();
-//
-// Order can be set manually too:
-// scene.swapOrder(gaze, backgroundVideo);
-// scene.setOrder([gaze, backgroundVideo]);
-
-// Starts the event loop
-// it will fail if we don't have at least one scene to render
 plr.run();
 
-// Updates gaze position every video frame.
 function updateLoop() {
   const currentTime = video.currentTime;
   const { x, y } = positionForTime(currentTime);
@@ -59,6 +40,4 @@ function updateLoop() {
 
   video.requestVideoFrameCallback(updateLoop);
 }
-// Actual video frame rate, Chrome/Webkit only.
-// Alternatively, use requestAnimationFrame(updateLoop) for 60fps.
 video.requestVideoFrameCallback(updateLoop);
