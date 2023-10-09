@@ -4,7 +4,7 @@
 
 File Targets (for video and image sequence) have been deprecated in favor of a `post_rendering:` callback property in the **Target** object. This property accepts a user-defined function and will call it every frame with the last rendered image.
 
-Additionally, the **Target** object has an ad-hoc `request_frame()` function that returns the next rendered frame.
+Additionally, the **Target** object has an ad-hoc `request_frame()` function that returns the next rendered frame. This can be useful for usecases where the user needs a custom framerate.
 
 ## Context
 
@@ -30,4 +30,62 @@ scene.addCallbackTarget({
     console.log(image_rgb);
   },
 });
+```
+
+## New API design
+
+```Javascript
+// The Scene is a container of renderable entities
+// It manages the spatial relationship between them
+const scene = plr.Scene();
+
+// Targets are platform-specific surfaces.
+const canvas = document.getElementById("output_canvas");
+
+// A Renderer draws a scene to one or multiple targets
+const renderer = plr.Renderer({
+  source: scene,
+
+  // optional: defaults to empty array []
+  // supports: QuerySelector, CanvasElement, OffscreenCanvas
+  targets: [canvas],
+
+  // optional: defaults to first element's CSS size
+  // units are in pixels
+  width: canvas.width,
+  height: canvas.height,
+
+  // optional: defaults to fully transparent
+  clear_color: "#00000000", // supports any CSS color string
+
+  // optionsl: defaults to fullscreen
+  // this is the region of the target to draw the scene
+  viewport: {
+    x: 0,
+    y: 0,
+    width: canvas.width,
+    height: canvas.height,
+  },
+
+  // optional: defaults to screen's refresh rate
+  // in the web, this is the frequency of the requestAnimationFrame loop
+  fps: 60,
+
+  // optional: defaults to empty function
+  before_render: () => {
+    // if you want to synchronize the scene state
+    // use this callback to update any scene object
+    // right before render,
+    //  with the rendering loop
+    // do something before rendering the scene
+  },
+
+  // optional: defaults to empty function
+  after_render: (frame) => {
+    // frame is a ImageBitmap
+  },
+});
+
+// can be requested at any time
+renderer.requestFrame(); // returns a Promise of a single frame
 ```
