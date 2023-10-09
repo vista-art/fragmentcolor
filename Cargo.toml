@@ -5,6 +5,7 @@ members = [
     "plrender-wasm",
     "plrender-py",
     "examples/rust",
+    "xtask"
 ]
 
 workspace.resolver = "2"

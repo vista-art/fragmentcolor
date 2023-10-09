@@ -1724,6 +1724,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "phf_codegen"
+version = "0.11.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e8d39688d359e6b34654d328e262234662d16cc0f60ec8dcbe5e718709342a5a"
+dependencies = [
+ "phf_generator",
+ "phf_shared",
+]
+
+[[package]]
 name = "phf_generator"
 version = "0.11.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1815,10 +1825,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "plrender-macros"
+version = "0.1.0"
+dependencies = [
+ "phf",
+ "plrender",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.37",
+]
+
+[[package]]
 name = "plrender-py"
 version = "0.1.0"
 dependencies = [
  "plrender",
+ "plrender-macros",
  "pyo3",
 ]
 
@@ -1831,6 +1853,7 @@ dependencies = [
  "gloo-utils",
  "js-sys",
  "plrender",
+ "plrender-macros",
  "reqwest",
  "wasm-bindgen",
  "wasm-bindgen-futures",
@@ -3278,6 +3301,15 @@ name = "xml-rs"
 version = "0.8.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0fcb9cbac069e033553e8bb871be2fbdffcab578eb25bd0f7c508cedc6dcd75a"
+
+[[package]]
+name = "xtask"
+version = "0.1.0"
+dependencies = [
+ "phf",
+ "phf_codegen",
+ "syn 2.0.37",
+]
 
 [[package]]
 name = "zune-inflate"
