@@ -4,55 +4,64 @@ await load_wasm();
 
 const plr = new PLRender();
 
-// The Scene is the main building
+// The Scene is a container of renderable entities
+// It manages the spatial relationship between them
 const scene = plr.Scene();
 
 const canvas = document.getElementById("output_canvas");
 const target = plr.Target({
   source: scene,
 
-  //
-  targets: canvas,
+  // optional: defaults to empty array []
+  // supports: QuerySelector, CanvasElement, OffscreenCanvas
+  targets: [canvas],
 
-  // optional: defaults to element size
+  // optional: defaults to first element's CSS size
+  // units are in pixels
   width: canvas.width,
   height: canvas.height,
 
   // optional: defaults to fully transparent
   clear_color: "#00000000", // supports any CSS color string
 
-  // defaults to fullscreen
-  rect: {
+  // optionsl: defaults to fullscreen
+  // this is the region of the target to draw the scene
+  viewport: {
     x: 0,
     y: 0,
     width: canvas.width,
     height: canvas.height,
   },
 
-  frequency: 60, // optional: defaults to 60
-});
+  // optional: defaults to screen's refresh rate
+  // in the web, this is the frequency of the requestAnimationFrame loop
+  fps: 60,
 
-// or scene.addTarget({ type: "canvas", selector: "#output_canvas" });
-// supports: canvas (web only), window (native only), file (native only), callback
-// examples:
-// scene.addWindowTarget({ height: 1000, width: 800, name: "Window Title" });
-// scene.addCallbackTarget({
-//   height: 1000,
-//   width: 800,
-//   callback: (image_rgb) => {
-//     console.log(image_rgb);
-//   },
-// });
+  // optional: defaults to empty function
+  before_render: () => {
+    // if you want to synchronize the scene state
+    // use this callback to update any scene object
+    // right before render,
+    //  with the rendering loop
+    // do something before rendering the scene
+  },
+
+  // optional: defaults to empty function
+  after_render: (frame) => {
+    // frame is a ImageBitmap
+  },
+});
 
 // Create a display entity with a video texture
 const video = document.getElementById("video");
-const videoDisplay = new Display({ source: video }); // fullscreen by default
+const videoBackground = new Background({ source: video }); // fullscreen by default
 // Supports: ImageBitmap, ImageData, HTMLVideoElement, VideoFrame, HTMLCanvasElement, OffscreenCanvas, URL
-// example: const videoDisplay = new Display({ source: "https://example.com/video.mp4" });
-// Options: position, size, rotation, flip, opacity, undistorted, hidden, group
+// example: const videoBackground = new Background({ source: "https://example.com/video.mp4" });
+// Options: size, rotation, flip, opacity, undistorted, hidden, group
+// Background is a subclass of Display with position locked to (0, 0, camera_far_plane)
 
 scene.add(
-  plr.Display({
+  plr.Background({
     source: video,
   })
 );
@@ -60,9 +69,9 @@ scene.add(
 
 // applies lens correction; the user does not need to update it every frame
 const { camera_matrix, distortion_coefficients } = undistortParams();
-videoDisplay.undistort({ camera_matrix, distortion_coefficients });
-// videoDisplay.undistorted = true; // enables undistortion, original image is preserved
-// videoDisplay.undistorted = false; // disables undistortion, displays original distorted image
+videoBackground.undistort({ camera_matrix, distortion_coefficients });
+// videoBackground.undistorted = true; // enables undistortion, original image is preserved
+// videoBackground.undistorted = false; // disables undistortion, displays original distorted image
 
 // The circle renders on top of the video because it is created later
 const gaze = scene.add(
@@ -88,8 +97,8 @@ gaze.undistortPosition({
 // gaze.show();
 //
 // Order can be set manually too:
-// scene.swapOrder(gaze, videoDisplay);
-// scene.setOrder([gaze, videoDisplay]);
+// scene.swapOrder(gaze, videoBackground);
+// scene.setOrder([gaze, videoBackground]);
 
 // Starts the event loop
 // it will fail if we don't have at least one scene to render
@@ -101,7 +110,7 @@ function updateLoop() {
   const { x, y } = positionForTime(currentTime);
 
   gaze.setPosition(x, y);
-  videoDisplay.update(video);
+  videoBackground.update(video);
   scene.update();
 
   video.requestVideoFrameCallback(updateLoop);
