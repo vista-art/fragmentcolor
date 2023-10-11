@@ -1,3 +1,4 @@
+mod api_mapper;
 use std::process::Command;
 
 fn main() {
@@ -8,7 +9,7 @@ fn main() {
     // @TODO bump version in Cargo.toml and documentation
 
     generate_api_map(
-        "../../plrender/src/api.rs",
+        "../../plrender",
         "../../generated/api_map.rs",
         "🗺️ Generating API map...",
     );
@@ -42,7 +43,7 @@ fn compile_crate(crate_name: &str, message: &str, required: bool) {
     }
 }
 
-fn generate_api_map(from: &str, to: &str, message: &str) {
+fn generate_api_map(_from: &str, _to: &str, message: &str) {
     println!("{}", message);
 
     // Here, you'd have the logic to parse the `api.rs` file in the `plrender` crate's root
