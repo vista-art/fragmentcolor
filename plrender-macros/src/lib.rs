@@ -12,13 +12,6 @@ use syn::{parse::Parse, parse_macro_input, Ident};
 // Static map of object names to their method signatures
 include!("../../generated/api_map.rs");
 
-#[derive(Clone)]
-pub struct FunctionSignature {
-    pub name: &'static str,
-    pub parameters: Vec<&'static str>,
-    pub return_type: Option<&'static str>,
-}
-
 pub(crate) struct MacroInput {
     struct_name: Ident,
 }
@@ -33,7 +26,7 @@ impl Parse for MacroInput {
 
 #[proc_macro]
 pub fn wrap_py(tokens: TokenStream) -> TokenStream {
-    let method_signatures: phf::OrderedMap<&str, FunctionSignature> = API_MAP
+    let method_signatures: phf::Map<&'static str, FunctionSignature> = API_MAP
         .get(&struct_name.to_string())
         .expect("Unknown struct!");
 
