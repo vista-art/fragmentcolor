@@ -2,7 +2,7 @@
 name = "plrender-wasm"
 version = "0.1.0"
 authors = ["Rafael Beckel <rgb@pupil-labs.com>"]
-edition = "2018"
+edition = "2021"
 
 [lib]
 name = "plrender"
@@ -12,7 +12,7 @@ crate-type = ["cdylib", "rlib"]
 default = ["console_error_panic_hook"]
 
 [dependencies]
-plrender = { path = "../plrender" }
+plrender = { path = "../crates/plrender" }
 plrender-macros = { path = "../plrender-macros" }
 wgpu = { version = "0.17", features = ["webgl"]}
 wasm-bindgen = "0.2"
@@ -34,5 +34,5 @@ web-sys = { version = "0.3", features = [
 [dev-dependencies]
 wasm-bindgen-test = "0.3"
 
-[profile.release]
-opt-level = "s"  # optimize for small binary size
+[build-dependencies]
+cfg_aliases = "0.1"

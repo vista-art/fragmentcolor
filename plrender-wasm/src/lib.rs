@@ -1,3 +1,8 @@
+#![cfg(wasm)]
+
+#[cfg(not(wasm))]
+compile_error!("This library only supports Wasm target!");
+
 mod utils;
 
 use plrender::prelude::*;
@@ -25,5 +30,10 @@ impl PLRenderAPI for PLRenderWasm {
 
     pub fn update(&mut self) {
         self.plrender.update();
+    }
+
+    fn init_logger(level: Option<log::Level>) {
+        console_error_panic_hook::set_once();
+        console_log::init_with_level(level).unwrap_or(());
     }
 }
