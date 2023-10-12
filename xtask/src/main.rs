@@ -16,7 +16,7 @@ fn main() {
     // @TODO bump version in Cargo.toml and documentation
 
     generate_api_map(
-        &Path::new("../../plrender"),
+        &Path::new("../../crates/plrender"),
         &Path::new("../../generated/api_map.rs"),
         "🗺️ Generating API map...",
     );
@@ -56,11 +56,16 @@ fn compile_crate(crate_name: &str, message: &str, required: bool) {
 }
 
 fn generate_api_map(crate_root: &Path, generated_file: &Path, message: &str) {
+    println!();
     println!("{}", message);
+    println!("📂 Crate root: {}", crate_root.display());
+    println!("📄 Generating file: {}", generated_file.display());
+    println!();
 
     let mut static_map_builder = phf_codegen::Map::new();
-    let mut generated_file = BufWriter::new(File::create(&generated_file).unwrap());
-    let api_functions_map = api_mapper::extract_function_signatures_from_crate(crate_root);
+    let mut generated_file = File::create(&generated_file).unwrap();
+    let mut writer = BufWriter::new(&mut generated_file);
+    let api_functions_map = api_mapper::extract_public_functions(crate_root);
 
     for (struct_name, functions) in api_functions_map {
         static_map_builder.entry(
@@ -91,13 +96,12 @@ fn generate_api_map(crate_root: &Path, generated_file: &Path, message: &str) {
     }
 
     write!(
-        &mut generated_file,
+        &mut writer,
         "static {}: phf::Map<&'static str, &'static str> = \n{};\n",
         API_MAP_KEYWORD,
         static_map_builder.build()
     )
     .unwrap();
-}
 
-#[cfg(test)]
-mod tests {}
+    println!();
+}

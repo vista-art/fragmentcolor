@@ -21,7 +21,7 @@ fn test_extract_function_signatures_from_crate() {
     let dir = tempdir().unwrap();
     crate_builder::create_temp_files(&dir, TEMP_FILESYSTEM);
 
-    let signatures = api_mapper::extract_function_signatures_from_crate(&dir.path());
+    let signatures = api_mapper::extract_public_functions(&dir.path());
 
     assert_eq!(signatures.len(), 2);
     assert!(signatures.contains_key("LibStruct"));
