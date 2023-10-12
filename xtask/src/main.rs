@@ -1,5 +1,12 @@
-mod api_mapper;
-use std::process::Command;
+use std::{
+    fs::File,
+    io::{BufWriter, Write},
+    path::Path,
+    process::Command,
+};
+use xtask::api_mapper;
+
+pub const API_MAP_KEYWORD: &str = "API_MAP";
 
 fn main() {
     println!("🚀 Running xtask...");
@@ -9,8 +16,8 @@ fn main() {
     // @TODO bump version in Cargo.toml and documentation
 
     generate_api_map(
-        "../../plrender",
-        "../../generated/api_map.rs",
+        &Path::new("../../plrender"),
+        &Path::new("../../generated/api_map.rs"),
         "🗺️ Generating API map...",
     );
 
@@ -26,10 +33,13 @@ fn main() {
 
     // @TODO update /pkg for running the JS examples
 
-    println!("✅ All done!");
+    println!("🎉 All done! 🎉");
+
+    // @TODO inform the user about next steps and link to docs
 }
 
 fn compile_crate(crate_name: &str, message: &str, required: bool) {
+    println!();
     println!("{}", message);
     let status = Command::new("cargo")
         .args(&["build", "--package", crate_name])
@@ -37,18 +47,57 @@ fn compile_crate(crate_name: &str, message: &str, required: bool) {
         .expect(&format!("Failed to compile {}", crate_name));
     if !status.success() {
         match required {
-            true => panic!("🛑 Compilation of {} failed!", crate_name),
-            false => println!("⚠️ Compilation of {} failed!", crate_name),
+            true => panic!("🛑 Compilation of required crate {} failed!", crate_name),
+            false => println!("⚠️ Compilation of optional crate {} failed!", crate_name),
         }
     }
+    println!("✅ compilation successful!");
+    println!();
 }
 
-fn generate_api_map(_from: &str, _to: &str, message: &str) {
+fn generate_api_map(crate_root: &Path, generated_file: &Path, message: &str) {
     println!("{}", message);
 
-    // Here, you'd have the logic to parse the `api.rs` file in the `plrender` crate's root
-    // and generate the API map. This might involve reading the file, parsing it with `syn`,
-    // and generating the map using `quote` and `phf-codegen`.
+    let mut static_map_builder = phf_codegen::Map::new();
+    let mut generated_file = BufWriter::new(File::create(&generated_file).unwrap());
+    let api_functions_map = api_mapper::extract_function_signatures_from_crate(crate_root);
 
-    // [Your code to generate the API map goes here]
+    for (struct_name, functions) in api_functions_map {
+        static_map_builder.entry(
+            struct_name.clone(),
+            &format!(
+                "{}",
+                functions
+                    .iter()
+                    .map(|function| {
+                        format!(
+                            "fn {}({}){};",
+                            function.name,
+                            function
+                                .parameters
+                                .iter()
+                                .map(|param| { format!("{}: {}, ", param.name, param.type_name) })
+                                .collect::<String>(),
+                            function
+                                .return_type
+                                .as_ref()
+                                .map(|return_type| { format!(" -> {}", return_type) })
+                                .unwrap_or("".to_string())
+                        )
+                    })
+                    .collect::<String>()
+            ),
+        );
+    }
+
+    write!(
+        &mut generated_file,
+        "static {}: phf::Map<&'static str, &'static str> = \n{};\n",
+        API_MAP_KEYWORD,
+        static_map_builder.build()
+    )
+    .unwrap();
 }
+
+#[cfg(test)]
+mod tests {}

@@ -1,4 +1,4 @@
-use crate::FunctionSignature;
+use crate::{FunctionSignature, MacroInput};
 use plrender::*;
 use proc_macro::TokenStream;
 use quote::quote;
@@ -6,9 +6,8 @@ use syn::{parse::Parse, parse_macro_input, Ident};
 
 pub fn wrap(tokens: TokenStream, method_signatures: FunctionSignature) -> TokenStream {
     let input = parse_macro_input!(tokens as MacroInput);
-    let struct_name = &input.struct_name;
 
-    let wrapper_ident = utility::get_reflect_ident(&struct_name.to_string());
+    let struct_name = &input.struct_name;
     let wrapper_name = format!("Py{}", struct_name);
     let wrapper_ident = syn::Ident::new(&wrapper_name, struct_name.span());
 
@@ -24,7 +23,6 @@ pub fn wrap(tokens: TokenStream, method_signatures: FunctionSignature) -> TokenS
         })
         .collect();
 
-    // @FIXME it would be safer if the wrapper also implemented the trait
     let expanded = quote! {
         #[pyclass(name = #struct_name)]
         pub struct #wrapper_ident {

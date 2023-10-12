@@ -26,7 +26,7 @@ The best way to create an xtask is to do so inside of a Cargo workspace. If you 
 you can create one inside your package by moving the contents into a new directory. Let's say that our package
 is named "testing." We first move everything into a sub-directory:
 
-```console
+```bash
 $ mkdir testing
 
 # then move all of the stuff except your .git directory into the new testing directory:
@@ -40,8 +40,8 @@ $ mv README.md testing
 
 Then, add a new package named `xtask`:
 
-```console
-$ cargo new --bin xtask
+```bash
+cargo new --bin xtask
 ```
 
 Then, we need to create a `Cargo.toml` for our workspace:
@@ -58,8 +58,8 @@ If you had a workspace previously, you'd add `xtask` to your existing workspace 
 
 Then, the alias. This is where the magic happens. Create a `.cargo`:
 
-```console
-$ mkdir .cargo
+```bash
+mkdir .cargo
 ```
 
 and create a file in it named `config.toml` with these contents:
@@ -71,7 +71,7 @@ xtask = "run --package xtask --"
 
 Example directory layout:
 
-```
+```text
 /testing
   .git
   .cargo/
