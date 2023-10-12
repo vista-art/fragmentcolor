@@ -26,11 +26,10 @@ enum NameFilter {
     Rename(String, String),
 }
 
-pub fn extract_function_signatures_from_crate(
-    crate_path: &Path,
-) -> HashMap<String, Vec<FunctionSignature>> {
+pub fn extract_public_functions(crate_path: &Path) -> HashMap<String, Vec<FunctionSignature>> {
     let mut signatures = HashMap::new();
-    let (entry_path, parsed_file) = parse_crate_entry_point(crate_path.as_ref());
+    let (entry_path, parsed_file) = parse_entry_point_file(crate_path.as_ref());
+
     traverse_and_extract(
         entry_path.as_ref(),
         parsed_file.items,
@@ -41,7 +40,7 @@ pub fn extract_function_signatures_from_crate(
     signatures
 }
 
-fn parse_crate_entry_point(file_path: &Path) -> (PathBuf, syn::File) {
+fn parse_entry_point_file(file_path: &Path) -> (PathBuf, syn::File) {
     let entry_point = if file_path.join("src/lib.rs").exists() {
         file_path.join("src/lib.rs")
     } else {

@@ -3,10 +3,8 @@ extern crate proc_macro;
 mod python;
 mod wasm;
 
-use plrender::*;
 use proc_macro::TokenStream;
-use quote::quote;
-use syn::{parse::Parse, parse_macro_input, Ident};
+use syn::{parse::Parse, Ident};
 
 // API map of the most recent `plrender` build
 // Static map of object names to their method signatures
@@ -26,11 +24,20 @@ impl Parse for MacroInput {
 
 #[proc_macro]
 pub fn wrap_py(tokens: TokenStream) -> TokenStream {
-    let method_signatures: phf::Map<&'static str, FunctionSignature> = API_MAP
-        .get(&struct_name.to_string())
-        .expect("Unknown struct!");
+    let input = syn::parse_macro_input!(tokens as MacroInput);
+    let struct_name = input.struct_name;
 
-    let wrapped = python::wrap(tokens, method_signatures);
+    let method_signatures: String = API_MAP
+        .get(struct_name.to_string().as_str())
+        .expect("Unknown struct!")
+        .to_string();
+
+    let wrapped = python::wrap(struct_name, &method_signatures);
 
     TokenStream::from(wrapped)
+}
+
+#[proc_macro]
+pub fn wrap_wasm(tokens: TokenStream) -> TokenStream {
+    wasm::wrap(tokens)
 }
