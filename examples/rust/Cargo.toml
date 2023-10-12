@@ -1,6 +1,6 @@
 [package]
 name = "plrender-example"
-description = "Example desktop application using PLRender library"
+description = "Example desktop application using PLRender"
 repository = "https://gitlab.com/pupil-labs/pupil-cloud/pl-render/examples/rust"
 authors = ["Pupil Labs GmbH"]
 license-file = "LICENCE.md"
@@ -9,10 +9,11 @@ edition = "2021"
 
 [[bin]]
 name = "plrender-example"
-description = "Example desktop application"
+description = "Example PLRender desktop application"
 
 [dependencies]
 plrender = { path = "../../plrender" }
 pollster = "0.3"
+instant = "0.1"
 rand = "0.8.5"
 log = "0.4"
