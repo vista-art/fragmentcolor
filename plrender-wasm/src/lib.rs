@@ -5,7 +5,7 @@ compile_error!("This library only supports Wasm target!");
 
 mod utils;
 
-use plrender::prelude::*;
+use plrender::*;
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen(js_name = PLRender, getter_with_clone)]
