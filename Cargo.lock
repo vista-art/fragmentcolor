@@ -1728,7 +1728,7 @@ checksum = "26072860ba924cbfa98ea39c8c19b4dd6a4a25423dbdf219c1eca91aa0cf6964"
 
 [[package]]
 name = "plrender"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "bitflags 2.4.0",
  "bytemuck",
@@ -1752,7 +1752,7 @@ dependencies = [
 
 [[package]]
 name = "plrender-core"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "bytemuck",
  "cfg_aliases",
