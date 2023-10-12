@@ -1,4 +1,5 @@
 use plrender::{entities::shapes::Circle, entities::Display, PLRender};
+use instant::{Duration, Instant};
 
 fn main() {
     pollster::block_on(init());
@@ -31,7 +32,7 @@ async fn init() {
         loop {
             use log::info;
 
-            std::thread::sleep(std::time::Duration::from_secs(1));
+            std::thread::sleep(instant::Duration::from_secs(1));
             let x = rng.gen::<f32>() * 2.0 - 1.0;
             let y = rng.gen::<f32>() * 2.0 - 1.0;
 

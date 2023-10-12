@@ -2,22 +2,32 @@ import { positionForTime, undistortParams } from "./mocks.js";
 import load_wasm, { PLRender } from "../pkg/plrender.js";
 await load_wasm();
 
-const plr = new PLRender();
+// All settings are optional.
+// The defaults are shown below.
+const plr = new PLRender({
+  log_level: "info", // or 'trace', 'debug', 'warn', 'error'
+  power_preference: "high-performance", // or 'low-power', 'no-preference'
+  force_software_rendering: false,
+});
 
 // The Scene is a container of renderable entities
 // It manages the spatial relationship between them
 const scene = plr.Scene();
 
+// Targets are platform-specific surfaces.
+// Examples: OS window, Jupyter cell, Web Canvas
 const canvas = document.getElementById("output_canvas");
-const target = plr.Target({
-  source: scene,
+
+// A Renderer draws a scene to one or multiple targets
+const renderer = plr.Renderer({
+  source: scene, // required: a Scene instance
 
   // optional: defaults to empty array []
   // supports: QuerySelector, CanvasElement, OffscreenCanvas
   targets: [canvas],
 
   // optional: defaults to first element's CSS size
-  // units are in pixels
+  // All renderer units are in pixels
   width: canvas.width,
   height: canvas.height,
 
@@ -26,46 +36,50 @@ const target = plr.Target({
 
   // optionsl: defaults to fullscreen
   // this is the region of the target to draw the scene
-  viewport: {
+  // you can use it to draw multiple scenes to the same target
+  clip: {
     x: 0,
     y: 0,
     width: canvas.width,
     height: canvas.height,
   },
 
-  // optional: defaults to screen's refresh rate
-  // in the web, this is the frequency of the requestAnimationFrame loop
-  fps: 60,
+  // optional: defaults to screen's refresh rate, normally 60 hz
+  // In the web, this is the same frequency as requestAnimationFrame()
+  framerate: 60,
+  // if you set it to 0, it will only render
+  // when you call renderer.requestFrame()
 
   // optional: defaults to empty function
   before_render: () => {
     // if you want to synchronize the scene state
-    // use this callback to update any scene object
-    // right before render,
-    //  with the rendering loop
-    // do something before rendering the scene
+    // with the rendering loop, use this callback
+    // to update scene objects right before render
   },
 
   // optional: defaults to empty function
   after_render: (frame) => {
-    // frame is a ImageBitmap
+    // frame is an ImageBitmap instance.
+    // Note that ImageBitmap is immutable. You
+    // have to copy it if you want to manipulate it.
   },
 });
+
+// Can be called at any time.
+// Returns a Promise of a single frame
+let frame = renderer.requestFrame();
 
 // Create a display entity with a video texture
 const video = document.getElementById("video");
 const videoBackground = new Background({ source: video }); // fullscreen by default
-// Supports: ImageBitmap, ImageData, HTMLVideoElement, VideoFrame, HTMLCanvasElement, OffscreenCanvas, URL
+// Supports: blob, ImageBitmap, ImageData, HTMLVideoElement, VideoFrame, HTMLCanvasElement, OffscreenCanvas, URL
 // example: const videoBackground = new Background({ source: "https://example.com/video.mp4" });
-// Options: size, rotation, flip, opacity, undistorted, hidden, group
-// Background is a subclass of Display with position locked to (0, 0, camera_far_plane)
+// Options: flip, opacity, undistorted, hidden, group
 
-scene.add(
-  plr.Background({
-    source: video,
-  })
-);
-// scene.removeEntity('World Video');
+// Background is a subclass of Billboard with position locked to (0, 0, camera_far_plane)
+// Billboard is a subclass of Sprite with rotation locked to the viewer
+
+scene.add(videoBackground);
 
 // applies lens correction; the user does not need to update it every frame
 const { camera_matrix, distortion_coefficients } = undistortParams();
@@ -82,27 +96,20 @@ const gaze = scene.add(
     position: { x: 0.5, y: 0.5 },
   })
 );
+
 // undistorts position only, does not warp the circle
 gaze.undistortPosition({
   camera_matrix,
   distortion_coefficients,
 });
 
-// Scene objects can be reordered or hidden
-// gaze.moveToBack();
-// gaze.moveToFront();
-// gaze.moveForward();
-// gaze.moveBackward();
-// gaze.hide();
-// gaze.show();
-//
-// Order can be set manually too:
-// scene.swapOrder(gaze, videoBackground);
-// scene.setOrder([gaze, videoBackground]);
+// Starts the rendering loop.
+// You can pass configurations here as well:
+renderer.render({
+  framerate: 60,
+});
 
-// Starts the event loop
-// it will fail if we don't have at least one scene to render
-plr.run();
+// you can pass configuration here as well.
 
 // Updates gaze position every video frame.
 function updateLoop() {
