@@ -1,11 +1,15 @@
 [workspace]
 
 members = [
-    "plrender",
+    "crates/core",
+    "crates/plrender",
     "plrender-wasm",
     "plrender-py",
-    "examples/rust",
+    # "examples/rust",
     "xtask"
 ]
 
-workspace.resolver = "2"
+resolver = "2"
+
+[profile.release]
+opt-level = "s" # Optimize for small binary size
