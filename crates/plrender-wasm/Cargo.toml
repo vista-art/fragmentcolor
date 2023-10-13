@@ -5,14 +5,13 @@ authors = ["Rafael Beckel <rgb@pupil-labs.com>"]
 edition = "2021"
 
 [lib]
-name = "plrender"
 crate-type = ["cdylib", "rlib"]
 
 [features]
 default = ["console_error_panic_hook"]
 
 [dependencies]
-plrender = { path = "../crates/plrender" }
+plrender = { path = "../plrender" }
 plrender-macros = { path = "../plrender-macros" }
 wgpu = { version = "0.17", features = ["webgl"]}
 wasm-bindgen = "0.2"

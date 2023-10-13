@@ -1,31 +1,26 @@
 use std::{
     fs::File,
     io::{BufWriter, Write},
-    path::Path,
+    path::{Path, PathBuf},
     process::Command,
 };
 use xtask::api_mapper;
 
 pub const API_MAP_KEYWORD: &str = "API_MAP";
+pub const API_MAP_FILE: &str = "generated/api_map.rs";
 
 fn main() {
     println!("🚀 Running xtask...");
 
     compile_crate("plrender", "⭕ Building PLRender...", true);
 
-    // @TODO bump version in Cargo.toml and documentation
+    // @TODO bump version in documentation from project's Cargo.toml manifest
 
-    generate_api_map(
-        &Path::new("../../crates/plrender"),
-        &Path::new("../../generated/api_map.rs"),
-        "🗺️ Generating API map...",
-    );
+    let plrender_path = crate_root("plrender");
+    let api_map_file = workspace_root().join(API_MAP_FILE);
+    generate_api_map(&plrender_path, &api_map_file, "🗺️ Generating API map...");
 
-    compile_crate(
-        "plrender-macros",
-        "🧙‍♂️ Building API wrapper macros...",
-        true,
-    );
+    compile_crate("plrender-macros", "🧙‍♂️ Building API wrapper...", true);
 
     compile_crate("plrender-py", "🐍 Building Python module...", false);
 
@@ -39,56 +34,48 @@ fn main() {
 }
 
 fn compile_crate(crate_name: &str, message: &str, required: bool) {
-    println!();
-    println!("{}", message);
+    println!("\n{}", message);
+
     let status = Command::new("cargo")
         .args(&["build", "--package", crate_name])
         .status()
-        .expect(&format!("Failed to compile {}", crate_name));
+        .expect(&format!("Failed to run build command for {}", crate_name));
+
     if !status.success() {
         match required {
-            true => panic!("🛑 Compilation of required crate {} failed!", crate_name),
-            false => println!("⚠️ Compilation of optional crate {} failed!", crate_name),
-        }
-    }
-    println!("✅ compilation successful!");
+            true => panic!("🛑 Compilation of required crate {} failed!\n", crate_name),
+            false => println!("⚠️ Compilation of optional crate {} failed!\n", crate_name),
+        };
+    } else {
+        println!("✅ compilation successful!\n");
+    };
+}
+
+fn generate_api_map(crate_root: &Path, target_file: &Path, message: &str) {
+    println!();
+    println!("{}", message);
+
+    let api_map = api_mapper::extract_public_functions(crate_root);
+    export_api_map(api_map, target_file);
+
+    println!("✅ API map successfully generated!");
     println!();
 }
 
-fn generate_api_map(crate_root: &Path, generated_file: &Path, message: &str) {
-    println!();
-    println!("{}", message);
-    println!("📂 Crate root: {}", crate_root.display());
-    println!("📄 Generating file: {}", generated_file.display());
-    println!();
-
+fn export_api_map(api_map: api_mapper::ApiMap, target_file: &Path) {
     let mut static_map_builder = phf_codegen::Map::new();
-    let mut generated_file = File::create(&generated_file).unwrap();
-    let mut writer = BufWriter::new(&mut generated_file);
-    let api_functions_map = api_mapper::extract_public_functions(crate_root);
+    let mut target_file = File::create(&target_file).unwrap();
+    let mut writer = BufWriter::new(&mut target_file);
 
-    for (struct_name, functions) in api_functions_map {
+    for (struct_name, functions) in api_map {
         static_map_builder.entry(
             struct_name.clone(),
             &format!(
-                "{}",
+                "&[{}]",
                 functions
                     .iter()
                     .map(|function| {
-                        format!(
-                            "fn {}({}){};",
-                            function.name,
-                            function
-                                .parameters
-                                .iter()
-                                .map(|param| { format!("{}: {}, ", param.name, param.type_name) })
-                                .collect::<String>(),
-                            function
-                                .return_type
-                                .as_ref()
-                                .map(|return_type| { format!(" -> {}", return_type) })
-                                .unwrap_or("".to_string())
-                        )
+                        format!("{:?}, ", function).replace("parameters: [", "parameters: &[")
                     })
                     .collect::<String>()
             ),
@@ -97,11 +84,26 @@ fn generate_api_map(crate_root: &Path, generated_file: &Path, message: &str) {
 
     write!(
         &mut writer,
-        "static {}: phf::Map<&'static str, &'static str> = \n{};\n",
+        "{}\n\nstatic {}: phf::Map<&'static str, &[FunctionSignature]> = {};\n",
+        api_mapper::FUNCTION_SIGNATURE_STRUCT_DEFINITION,
         API_MAP_KEYWORD,
         static_map_builder.build()
     )
     .unwrap();
+}
 
-    println!();
+fn workspace_root() -> PathBuf {
+    let output = Command::new(env!("CARGO"))
+        .arg("locate-project")
+        .arg("--workspace")
+        .arg("--message-format=plain")
+        .output()
+        .unwrap()
+        .stdout;
+    let cargo_path = Path::new(std::str::from_utf8(&output).unwrap().trim());
+    cargo_path.parent().unwrap().to_path_buf()
+}
+
+fn crate_root(crate_name: &str) -> PathBuf {
+    workspace_root().join(format!("crates/{}", crate_name))
 }

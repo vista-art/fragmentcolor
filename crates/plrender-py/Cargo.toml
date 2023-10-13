@@ -5,10 +5,9 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [lib]
-name = "plrender"
 crate-type = ["cdylib"]
 
 [dependencies]
 pyo3 = "0.20.0"
-plrender = { path = "../crates/plrender" }
+plrender = { path = "../plrender" }
 plrender-macros = { path = "../plrender-macros" }

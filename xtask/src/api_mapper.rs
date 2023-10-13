@@ -1,11 +1,29 @@
 use quote::ToTokens;
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{hash_map::Entry, HashMap, HashSet},
     convert::AsRef,
     fs,
     path::{Path, PathBuf},
 };
-use syn::{parse_file, Ident, ImplItem, Item, ItemImpl, ReturnType, Visibility};
+use syn::{parse_file, Ident, ImplItem, Item, ItemFn, ItemImpl, ReturnType, Visibility};
+
+// This will work, but it is an indication that
+// this file should be moved to a separate crate
+pub const FUNCTION_SIGNATURE_STRUCT_NAME: &str = "FunctionSignature";
+pub const FUNCTION_SIGNATURE_STRUCT_DEFINITION: &str = "
+#[derive(Clone, Debug, PartialEq)]
+struct FunctionParameter {
+    pub name: &'static str,
+    pub type_name: &'static str,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct FunctionSignature {
+    pub name: &'static str,
+    pub parameters: &'static [FunctionParameter],
+    pub return_type: Option<&'static str>,
+}
+";
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct FunctionParameter {
@@ -19,6 +37,8 @@ pub struct FunctionSignature {
     pub return_type: Option<String>,
 }
 
+pub type ApiMap = HashMap<String, Vec<FunctionSignature>>;
+
 #[derive(Clone, Debug, PartialEq)]
 enum NameFilter {
     Global,
@@ -26,9 +46,9 @@ enum NameFilter {
     Rename(String, String),
 }
 
-pub fn extract_public_functions(crate_path: &Path) -> HashMap<String, Vec<FunctionSignature>> {
-    let mut signatures = HashMap::new();
-    let (entry_path, parsed_file) = parse_entry_point_file(crate_path.as_ref());
+pub fn extract_public_functions(crate_path: &Path) -> ApiMap {
+    let mut signatures = ApiMap::new();
+    let (entry_path, parsed_file) = parse_entry_point(crate_path.as_ref());
 
     traverse_and_extract(
         entry_path.as_ref(),
@@ -40,31 +60,18 @@ pub fn extract_public_functions(crate_path: &Path) -> HashMap<String, Vec<Functi
     signatures
 }
 
-fn parse_entry_point_file(file_path: &Path) -> (PathBuf, syn::File) {
-    let entry_point = if file_path.join("src/lib.rs").exists() {
-        file_path.join("src/lib.rs")
-    } else {
-        file_path.join("src/main.rs")
-    };
+fn parse_entry_point(file_path: &Path) -> (PathBuf, syn::File) {
+    let entry_point = file_path.join("src/lib.rs");
+    let content = fs::read_to_string(&entry_point).expect("Couldn't find src/lib.rs file");
+    let parsed_file = parse_file(&content).expect("Failed to parse lib.rs file");
 
-    let content = fs::read_to_string(entry_point.as_path()).expect("Failed to read file");
-    (
-        entry_point.clone(),
-        parse_file(&content).expect(
-            format!(
-                "Failed to parse file: {}, content: {}",
-                entry_point.display(),
-                content
-            )
-            .as_str(),
-        ),
-    )
+    (entry_point, parsed_file)
 }
 
 fn traverse_and_extract(
     current_path: &Path,
     items: Vec<Item>,
-    signatures: &mut HashMap<String, Vec<FunctionSignature>>,
+    signatures: &mut ApiMap,
     name_filter: NameFilter,
 ) {
     let mut pub_uses = Vec::new();
@@ -99,6 +106,7 @@ fn traverse_and_extract(
                 let full_path = extract_full_path_from_use_tree(&item_use.tree);
                 let last_segment = full_path.last().unwrap();
                 let mod_name = last_segment.to_string();
+
                 if private_modules.get(&mod_name).is_some() {
                     let mod_structs = extract_names_from_use_tree(&use_path.tree);
                     reexported_modules.insert(mod_name, mod_structs);
@@ -126,6 +134,9 @@ fn traverse_and_extract(
             }
             Item::Impl(item_impl) => {
                 extract_impl(item_impl, signatures, name_filter.clone());
+            }
+            Item::Fn(item_fn) => {
+                extract_fn(current_path, item_fn, signatures, name_filter.clone());
             }
             _ => {}
         }
@@ -210,11 +221,7 @@ fn parse_external_module(current_path: &Path, module_name: String) -> (PathBuf, 
 }
 
 /// Maps a struct name to its public method signatures
-fn extract_impl(
-    item_impl: ItemImpl,
-    signatures: &mut HashMap<String, Vec<FunctionSignature>>,
-    filter: NameFilter,
-) {
+fn extract_impl(item_impl: ItemImpl, signatures: &mut ApiMap, filter: NameFilter) {
     let struct_name = match *item_impl.self_ty {
         syn::Type::Path(type_path) => type_path.path.segments.last().unwrap().ident.to_string(),
         _ => return,
@@ -222,7 +229,7 @@ fn extract_impl(
 
     let struct_name = match filter {
         NameFilter::Global => struct_name,
-        NameFilter::Specific(name) if struct_name == name => struct_name,
+        NameFilter::Specific(name) if struct_name == name => name,
         NameFilter::Rename(name, rename) if struct_name == name => rename,
         _ => return,
     };
@@ -236,8 +243,53 @@ fn extract_impl(
         }
     }
 
-    if !methods.is_empty() {
-        signatures.insert(struct_name, methods);
+    match signatures.entry(struct_name) {
+        Entry::Vacant(entry) => {
+            entry.insert(methods);
+        }
+        Entry::Occupied(mut entry) => {
+            entry.get_mut().append(&mut methods);
+        }
+    }
+}
+
+fn extract_fn(path: &Path, item_fn: ItemFn, signatures: &mut ApiMap, filter: NameFilter) {
+    if let Visibility::Public(_) = item_fn.vis {
+        let mut signature = extract_signature(&item_fn.sig);
+
+        signature.name = match filter {
+            NameFilter::Global => signature.name,
+            NameFilter::Specific(name) if signature.name == name => name,
+            NameFilter::Rename(name, rename) if signature.name == name => rename,
+            _ => return,
+        };
+
+        let ancestor = path
+            .ancestors()
+            .find_map(|ancestor| {
+                if ancestor.ends_with("src") {
+                    Some(ancestor)
+                } else {
+                    None
+                }
+            })
+            .expect("Couldn't find parent /src directory");
+
+        let key = path
+            .strip_prefix(ancestor)
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .replace("/", "_");
+
+        match signatures.entry(key) {
+            Entry::Vacant(entry) => {
+                entry.insert(vec![signature]);
+            }
+            Entry::Occupied(mut entry) => {
+                entry.get_mut().push(signature);
+            }
+        }
     }
 }
 
@@ -252,6 +304,7 @@ fn extract_signature(method: &syn::Signature) -> FunctionSignature {
             if let syn::FnArg::Typed(pattern) = arg {
                 let name = pattern.pat.to_token_stream().to_string();
                 let type_name = pattern.ty.to_token_stream().to_string();
+
                 Some(FunctionParameter { name, type_name })
             } else {
                 None

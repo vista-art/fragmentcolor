@@ -1,10 +1,7 @@
 [workspace]
 
 members = [
-    "crates/core",
-    "crates/plrender",
-    "plrender-wasm",
-    "plrender-py",
+    "crates/*",
     # "examples/rust",
     "xtask"
 ]

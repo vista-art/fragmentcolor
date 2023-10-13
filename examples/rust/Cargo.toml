@@ -1,5 +1,5 @@
 [package]
-name = "plrender-example"
+name = "plrender-example-simple"
 description = "Example desktop application using PLRender"
 repository = "https://gitlab.com/pupil-labs/pupil-cloud/pl-render/examples/rust"
 authors = ["Pupil Labs GmbH"]
@@ -8,7 +8,11 @@ version = "0.1.0"
 edition = "2021"
 
 [[bin]]
-name = "plrender-example"
+name = "plrender-example-simple"
+description = "Example PLRender desktop application"
+
+[[example]]
+name = "plrender-example-cubes"
 description = "Example PLRender desktop application"
 
 [dependencies]
