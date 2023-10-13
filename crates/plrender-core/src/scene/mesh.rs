@@ -1,12 +1,16 @@
+use crate::gpu;
 use std::{any::TypeId, marker::PhantomData, mem};
-use wgpu::util::DeviceExt as _;
+use wgpu::util::DeviceExt;
 
-/// A freshly created Mesh that comes with metadata,
-/// which is necessary to instantiate it.
-pub struct Prototype {
-    pub reference: super::MeshRef,
-    type_ids: Box<[TypeId]>,
-    type_infos: Box<[hecs::TypeInfo]>,
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct MeshRef(pub u32);
+
+pub struct Mesh {
+    pub buffer: wgpu::Buffer,
+    pub index_stream: Option<IndexStream>,
+    vertex_streams: Box<[VertexStream]>,
+    pub vertex_count: u32,
+    pub bound_radius: f32,
 }
 
 pub struct IndexStream {
@@ -19,6 +23,14 @@ pub struct VertexStream {
     type_id: TypeId,
     pub offset: wgpu::BufferAddress,
     pub stride: wgpu::BufferAddress,
+}
+
+/// A freshly created Mesh that comes with metadata,
+/// which is necessary to instantiate it.
+pub struct Prototype {
+    pub reference: MeshRef,
+    type_ids: Box<[TypeId]>,
+    type_infos: Box<[hecs::TypeInfo]>,
 }
 
 //HACK: `hecs` doesn't want anybody to implement this, but we have no choice.
@@ -39,14 +51,6 @@ unsafe impl<'a> hecs::DynamicBundle for &'a Prototype {
     }
 }
 
-pub struct Mesh {
-    pub buffer: wgpu::Buffer,
-    pub index_stream: Option<IndexStream>,
-    vertex_streams: Box<[VertexStream]>,
-    pub vertex_count: u32,
-    pub bound_radius: f32,
-}
-
 impl Mesh {
     pub fn vertex_stream<T: 'static>(&self) -> Option<&VertexStream> {
         self.vertex_streams
@@ -63,7 +67,7 @@ impl Mesh {
 pub struct Vertex<T>(PhantomData<T>);
 
 pub struct MeshBuilder<'a> {
-    context: &'a mut super::Context,
+    context: &'a mut gpu::context::Context,
     name: String,
     data: Vec<u8>, // could be moved up to the context
     index_stream: Option<IndexStream>,
@@ -74,7 +78,7 @@ pub struct MeshBuilder<'a> {
 }
 
 impl<'a> MeshBuilder<'a> {
-    pub fn new(context: &'a mut super::Context) -> Self {
+    pub fn new(context: &'a mut gpu::context::Context) -> Self {
         Self {
             context,
             name: String::new(),
@@ -154,6 +158,7 @@ impl<'a> MeshBuilder<'a> {
             .map(|vs| vs.type_id)
             .collect::<Vec<_>>()
             .into_boxed_slice();
+
         self.context.meshes.push(Mesh {
             buffer,
             index_stream: self.index_stream.take(),
@@ -163,7 +168,7 @@ impl<'a> MeshBuilder<'a> {
         });
 
         Prototype {
-            reference: super::MeshRef(index as u32),
+            reference: MeshRef(index as u32),
             type_ids,
             type_infos: mem::take(&mut self.type_infos).into_boxed_slice(),
         }
