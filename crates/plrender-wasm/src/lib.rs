@@ -4,7 +4,6 @@
 compile_error!("This library only supports Wasm target!");
 
 mod utils;
-
 use plrender::*;
 use wasm_bindgen::prelude::*;
 
@@ -14,7 +13,7 @@ pub struct PLRenderWasm {
 }
 
 #[wasm_bindgen(js_class = PLRender)]
-impl PLRenderAPI for PLRenderWasm {
+impl PLRenderWasm {
     #[wasm_bindgen(constructor)]
     pub fn new(options: JsValue) -> Self {
         let options: Options = options.into_serde().unwrap();

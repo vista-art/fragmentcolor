@@ -4,13 +4,12 @@ version = "0.1.0"
 edition = "2021"
 
 [lib]
-name = "plrender_macros"
 path = "src/lib.rs"
 proc-macro = true
 
 [dependencies]
 phf = { version = "0.11", features = ["macros"] }
-plrender = { path = "../crates/plrender" }
+plrender = { path = "../plrender" }
 quote = "1.0"
 syn = { version = "2.0", features = ["extra-traits", "full"] }
 proc-macro2 = "1.0"

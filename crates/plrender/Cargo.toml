@@ -20,7 +20,7 @@ shape = ["lyon"]
 cfg_aliases = "0.1"
 
 [dependencies]
-plr = { package="plrender-core", path = "../core" }
+plr = { package="plrender-core", path = "../plrender-core" }
 mint = "0.5"
 bitflags = "2.4"
 bytemuck = { version = "1.14", features = ["derive"] }
