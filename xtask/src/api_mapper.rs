@@ -3,6 +3,7 @@ use std::{
     collections::{hash_map::Entry, HashMap, HashSet},
     convert::AsRef,
     fs,
+    hash::Hash,
     path::{Path, PathBuf},
 };
 use syn::{parse_file, Ident, ImplItem, Item, ItemFn, ItemImpl, ReturnType, Visibility};
@@ -30,14 +31,27 @@ pub struct FunctionParameter {
     pub name: String,
     pub type_name: String,
 }
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct FunctionSignature {
     pub name: String,
     pub parameters: Vec<FunctionParameter>,
     pub return_type: Option<String>,
 }
 
-pub type ApiMap = HashMap<String, Vec<FunctionSignature>>;
+impl Eq for FunctionSignature {}
+impl PartialEq for FunctionSignature {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name
+    }
+}
+
+impl Hash for FunctionSignature {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.name.hash(state);
+    }
+}
+
+pub type ApiMap = HashMap<String, HashSet<FunctionSignature>>;
 
 #[derive(Clone, Debug, PartialEq)]
 enum NameFilter {
@@ -108,8 +122,17 @@ fn traverse_and_extract(
                 let mod_name = last_segment.to_string();
 
                 if private_modules.get(&mod_name).is_some() {
-                    let mod_structs = extract_names_from_use_tree(&use_path.tree);
-                    reexported_modules.insert(mod_name, mod_structs);
+                    let mut mod_structs = extract_names_from_use_tree(&use_path.tree);
+
+                    match reexported_modules.entry(mod_name) {
+                        Entry::Vacant(entry) if !mod_structs.is_empty() => {
+                            entry.insert(mod_structs);
+                        }
+                        Entry::Occupied(mut entry) => {
+                            entry.get_mut().append(&mut mod_structs);
+                        }
+                        _ => {}
+                    }
                 }
             }
             _ => {}
@@ -125,8 +148,12 @@ fn traverse_and_extract(
                     traverse_and_extract(&mod_path, mod_items, signatures, NameFilter::Global)
                 } else {
                     let mod_name = item_mod.ident.to_string();
-                    let reexported = reexported_modules.get(&mod_name).unwrap();
-                    reexported.iter().for_each(|name_filter| {
+                    let reexported = reexported_modules.get(&mod_name);
+                    if reexported.is_none() {
+                        continue;
+                    }
+
+                    reexported.unwrap().iter().for_each(|name_filter| {
                         let (mod_path, mod_items) = parse_module(current_path, &item_mod);
                         traverse_and_extract(&mod_path, mod_items, signatures, name_filter.clone());
                     });
@@ -245,10 +272,10 @@ fn extract_impl(item_impl: ItemImpl, signatures: &mut ApiMap, filter: NameFilter
 
     match signatures.entry(struct_name) {
         Entry::Vacant(entry) => {
-            entry.insert(methods);
+            entry.insert(HashSet::from_iter(methods));
         }
         Entry::Occupied(mut entry) => {
-            entry.get_mut().append(&mut methods);
+            entry.get_mut().extend(methods);
         }
     }
 }
@@ -284,10 +311,10 @@ fn extract_fn(path: &Path, item_fn: ItemFn, signatures: &mut ApiMap, filter: Nam
 
         match signatures.entry(key) {
             Entry::Vacant(entry) => {
-                entry.insert(vec![signature]);
+                entry.insert(HashSet::from([signature]));
             }
             Entry::Occupied(mut entry) => {
-                entry.get_mut().push(signature);
+                entry.get_mut().insert(signature);
             }
         }
     }
