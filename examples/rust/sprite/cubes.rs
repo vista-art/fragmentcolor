@@ -1,4 +1,4 @@
-use instant;
+use instant::Instant;
 
 struct Cube {
     node: plrender::NodeRef,
@@ -122,12 +122,8 @@ const LEVELS: &[Level] = &[
         speed: -60.0,
     },
     Level {
-        color: plrender::Color(0xFF80FFFF),
+        color: plrender::Color(0x8880FF55),
         speed: 80.0,
-    },
-    Level {
-        color: plrender::Color(0xFFFF80FF),
-        speed: -100.0,
     },
 ];
 
@@ -161,7 +157,7 @@ fn main() {
         },
     )
     .bake(&mut context);
-    let cubes = fill_scene(&LEVELS[..6], &mut scene, &prototype);
+    let cubes = fill_scene(&LEVELS[..], &mut scene, &prototype);
     println!("Initialized {} cubes", cubes.len());
 
     let mut pass = plrender::pass::Solid::new(
@@ -171,7 +167,7 @@ fn main() {
         &context,
     );
 
-    let mut moment = time::Instant::now();
+    let mut moment = Instant::now();
 
     window.run(move |event| match event {
         Event::Resize { width, height } => {
@@ -179,7 +175,7 @@ fn main() {
         }
         Event::Draw => {
             let delta = moment.elapsed().as_secs_f32();
-            moment = time::Instant::now();
+            moment = Instant::now();
             for cube in cubes.iter() {
                 let level = &LEVELS[cube.level as usize];
                 scene[cube.node].pre_rotate(
