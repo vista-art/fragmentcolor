@@ -54,8 +54,8 @@ fn load_texture(mut data: gltf::image::Data, context: &mut crate::Context) -> Te
     let desc = wgpu::TextureDescriptor {
         label: None,
         size: wgpu::Extent3d {
-            width: data.width,
-            height: data.height,
+            width,
+            height,
             depth_or_array_layers: 1,
         },
         mip_level_count: 1,
@@ -63,8 +63,10 @@ fn load_texture(mut data: gltf::image::Data, context: &mut crate::Context) -> Te
         dimension: wgpu::TextureDimension::D2,
         format,
         usage: wgpu::TextureUsages::TEXTURE_BINDING,
+        view_formats: &[format],
     };
-    let image = context.add_image_from_data(&desc, &data.pixels);
+
+    let image = context.add_image_from_bytes(&desc, &data.pixels);
     Texture { image }
 }
 
