@@ -155,7 +155,7 @@ impl Solid {
     }
 }
 
-impl plr::Pass for Solid {
+impl plr::RenderPass for Solid {
     fn draw(
         &mut self,
         targets: &[crate::TargetRef],

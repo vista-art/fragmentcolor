@@ -1,7 +1,7 @@
 pub use plrender::{
     window::Window, Camera, Color, Context, Entity, EntityRef, ImageRef, Light, LightBuilder,
-    LightRef, MeshBuilder, MeshRef, Node, NodeRef, Pass, Projection, Prototype, Scene, Sprite,
-    SpriteBuilder, TargetInfo, TargetRef, UvRange,
+    LightRef, MeshBuilder, MeshRef, Node, NodeRef, Projection, Prototype, RenderPass, Scene,
+    Sprite, SpriteBuilder, TargetInfo, TargetRef, UvRange,
 };
 use pyo3::prelude::*;
 
@@ -16,7 +16,7 @@ use pyo3::prelude::*;
 // wrap_py!(Scene);
 
 // Context
-#[pyclass]
+#[pyclass(module = "plrender")]
 pub struct PyContext {
     inner: plrender::Context,
 }

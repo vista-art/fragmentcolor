@@ -1,14 +1,14 @@
 mod color;
-mod gpu;
+mod renderer;
 mod scene;
 
 pub use color::Color;
 
-pub use gpu::{
+pub use renderer::{
     context::{Context, ContextBuilder, ContextDetail},
-    renderpass::{Pass, RemderPass},
     target::{HasWindow, Target, TargetInfo, TargetRef},
     texture::{Image, ImageInfo, ImageRef},
+    RenderPass,
 };
 
 pub use scene::{

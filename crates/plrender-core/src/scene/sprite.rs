@@ -1,4 +1,4 @@
-use crate::gpu::texture::ImageRef;
+use crate::renderer::texture::ImageRef;
 use crate::scene::{entity::EntityRef, node::NodeRef, space::Space, ObjectBuilder};
 use std::ops::Range;
 

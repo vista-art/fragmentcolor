@@ -4,3 +4,4 @@ pub mod target;
 pub mod texture;
 
 pub use context::*;
+pub use renderpass::*;

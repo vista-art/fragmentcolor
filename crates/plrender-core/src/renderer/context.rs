@@ -1,7 +1,7 @@
-use crate::gpu::{
-    renderpass::Pass,
+use crate::renderer::{
     target::{HasWindow, SurfaceContext, Target, TargetInfo, TargetRef},
     texture::{Image, ImageInfo, ImageRef},
+    RenderPass,
 };
 use crate::scene::{
     camera::Camera,
@@ -73,7 +73,7 @@ impl Context {
         surface.instance.configure(&self.device, &surface.config);
     }
 
-    pub fn present<P: Pass>(&mut self, pass: &mut P, scene: &Scene, camera: &Camera) {
+    pub fn present<P: RenderPass>(&mut self, pass: &mut P, scene: &Scene, camera: &Camera) {
         let surface = self.surface.as_mut().expect("No screen is configured!");
         let frame = surface.instance.get_current_texture().unwrap();
         let view = frame

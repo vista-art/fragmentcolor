@@ -3,9 +3,14 @@ use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 pub trait HasWindow: HasRawDisplayHandle + HasRawWindowHandle {
     fn size(&self) -> mint::Vector2<u32>;
 }
-
 // @TODO consider renaming it to Window or Framebuffer
 // and the internal `instance` property to `surface`
+//
+// In Ruffle, this is called SwapChainTarget
+// which is a concrete impl of the RenderTarget trait
+//
+// Ruffle also contains the TextureTarget struct
+// which implements the same trait.
 pub struct SurfaceContext {
     pub(super) instance: wgpu::Surface,
     pub(super) config: wgpu::SurfaceConfiguration,

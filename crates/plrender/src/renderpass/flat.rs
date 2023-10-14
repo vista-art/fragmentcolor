@@ -182,7 +182,7 @@ impl Flat {
     }
 }
 
-impl plr::Pass for Flat {
+impl plr::RenderPass for Flat {
     fn draw(
         &mut self,
         targets: &[crate::TargetRef],

@@ -160,8 +160,8 @@ fn main() {
     let cubes = fill_scene(&LEVELS[..], &mut scene, &prototype);
     println!("Initialized {} cubes", cubes.len());
 
-    let mut pass = plrender::pass::Solid::new(
-        &plrender::pass::SolidConfig {
+    let mut pass = plrender::renderpass::Solid::new(
+        &plrender::renderpass::SolidConfig {
             cull_back_faces: true,
         },
         &context,

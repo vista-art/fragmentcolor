@@ -1,5 +1,5 @@
 use crate::color::Color;
-use crate::gpu::texture::ImageRef;
+use crate::renderer::texture::ImageRef;
 use crate::scene::{
     builder::ObjectBuilder,
     entity::EntityBuilder,
