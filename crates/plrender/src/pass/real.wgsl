@@ -1,40 +1,40 @@
 struct Attributes {
-    [[location(0)]] position: vec3<f32>;
-    [[location(1)]] tex_coords: vec2<f32>;
-    [[location(2)]] normal: vec3<f32>;
+    @location(0) position: vec3<f32>,
+    @location(1) tex_coords: vec2<f32>,
+    @location(2) normal: vec3<f32>,
 };
 
 struct Varyings {
-    [[builtin(position)]] clip_position: vec4<f32>;
-    [[location(0)]] world_pos: vec3<f32>;
-    [[location(1)]] tex_coords: vec2<f32>;
-    [[location(2)]] normal: vec3<f32>;
+    @builtin(position) clip_position: vec4<f32>,
+    @location(0) world_pos: vec3<f32>,
+    @location(1) tex_coords: vec2<f32>,
+    @location(2) normal: vec3<f32>,
 };
 
 struct Globals {
-    view_proj: mat4x4<f32>;
-    camerate_pos: vec4<f32>;
+    view_proj: mat4x4<f32>,
+    camerate_pos: vec4<f32>,
 };
-[[group(0), binding(0)]]
+@group(0) @binding(0)
 var<uniform> globals: Globals;
 
 struct Locals {
-    pos_scale: vec4<f32>;
-    rot: vec4<f32>;
-    base_color_factor: vec4<f32>;
-    emissive_factor: vec4<f32>;
-    metallic_roughness_values: vec2<f32>;
-    normal_scale: f32;
-    occlusion_strength: f32;
+    pos_scale: vec4<f32>,
+    rot: vec4<f32>,
+    base_color_factor: vec4<f32>,
+    emissive_factor: vec4<f32>,
+    metallic_roughness_values: vec2<f32>,
+    normal_scale: f32,
+    occlusion_strength: f32,
 };
-[[group(1), binding(0)]]
+@group(1) @binding(0)
 var<uniform> locals: Locals;
 
 fn qrot(q: vec4<f32>, v: vec3<f32>) -> vec3<f32> {
-    return v + 2.0*cross(q.xyz, cross(q.xyz,v) + q.w*v);
+    return v + 2.0 * cross(q.xyz, cross(q.xyz, v) + q.w * v);
 }
 
-[[stage(vertex)]]
+@stage(vertex)
 fn main_vs(in: Attributes) -> Varyings {
     let world = locals.pos_scale.w * qrot(locals.rot, in.position) + locals.pos_scale.xyz;
     let normal = qrot(locals.rot, in.normal);
@@ -59,13 +59,13 @@ struct Light {
 struct LightArray {
     data: array<Light>;
 };
-[[group(0), binding(1)]]
+@group(0) @binding(1)
 var<storage> lights: LightArray;
 
-[[group(0), binding(2)]]
+@group(0) @binding(2)
 var sam: sampler;
 
-[[group(1), binding(1)]]
+@group(1) @binding(1)
 var base_color_map: texture_2d<f32>;
 
 
@@ -94,7 +94,7 @@ fn geometric_occlusion_smith_ggx(pbr: PbrInfo) -> f32 {
 
 // Basic Lambertian diffuse, implementation from Lambert's Photometria
 // https://archive.org/details/lambertsphotome00lambgoog
-fn lambertian_diffuse(pbr: PbrInfo) -> vec3<f32>{
+fn lambertian_diffuse(pbr: PbrInfo) -> vec3<f32> {
     return pbr.base_color / PI;
 }
 
@@ -115,8 +115,8 @@ fn ggx(pbr: PbrInfo) -> f32 {
     return roughness_sq / (PI * f * f);
 }
 
-[[stage(fragment)]]
-fn main_fs(in: Varyings) -> [[location(0)]] vec4<f32> {
+@stage(fragment)
+fn main_fs(in: Varyings) -> @location(0) vec4<f32> {
     let v = normalize(globals.camerate_pos.xyz - in.world_pos);
     let n = normalize(in.normal);
 
@@ -144,7 +144,7 @@ fn main_fs(in: Varyings) -> [[location(0)]] vec4<f32> {
 
     var color = vec3<f32>(0.0);
     let num_lights = min(MAX_LIGHTS, arrayLength(&lights.data));
-    for (var i = 0u; i<num_lights; i = i + 1u) {
+    for (var i = 0u; i < num_lights; i = i + 1u) {
         let light = lights.data[i];
         let l = normalize(light.pos.xyz - light.pos.w * in.world_pos);
         let h = normalize(l + v);
