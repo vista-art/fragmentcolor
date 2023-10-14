@@ -8,6 +8,10 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-pyo3 = "0.20.0"
+pyo3 = { version = "0.20", features = ["extension-module"] }
+pollster = "0.3"
+numpy = "0.20"
+ndarray = "0.15"
+mint = "0.5"
 plrender = { path = "../plrender" }
 plrender-macros = { path = "../plrender-macros" }
