@@ -1,38 +1,22 @@
 use fxhash::FxHashMap;
 use plr::ContextDetail as _;
 use std::mem;
-use wgpu::util::DeviceExt as _;
 
-#[derive(Clone, Copy, Debug)]
-pub struct Material {
-    pub base_color_map: Option<crate::ImageRef>,
-    pub emissive_color: crate::Color,
-    pub metallic_factor: f32,
-    pub roughness_factor: f32,
-    pub normal_scale: f32,
-    pub occlusion_strength: f32,
-}
-
-impl Default for Material {
-    fn default() -> Self {
-        Self {
-            base_color_map: None,
-            emissive_color: crate::Color(0),
-            metallic_factor: 1.0,
-            roughness_factor: 0.0,
-            normal_scale: 1.0,
-            occlusion_strength: 1.0,
-        }
-    }
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Shader {
+    Gouraud { flat: bool },
+    Phong { glossiness: u8 },
 }
 
 const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth24Plus;
+const INTENSITY_THRESHOLD: f32 = 0.1;
+const LIGHT_COUNT: usize = 4;
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 struct Globals {
     view_proj: [[f32; 4]; 4],
-    camera_pos: [f32; 4],
+    ambient: [f32; 4],
 }
 
 #[repr(C)]
@@ -48,47 +32,56 @@ struct Light {
 struct Locals {
     pos_scale: [f32; 4],
     rot: [f32; 4],
-    base_color_factor: [f32; 4],
-    emissive_factor: [f32; 4],
-    metallic_roughness_values: [f32; 2],
-    normal_scale: f32,
-    occlusion_strength: f32,
+    color: [f32; 4],
+    lights: [u32; LIGHT_COUNT],
+    glossiness: f32,
+    _pad: [f32; 3],
+}
+
+struct Pipelines {
+    flat: wgpu::RenderPipeline,
+    gouraud: wgpu::RenderPipeline,
+    phong: wgpu::RenderPipeline,
 }
 
 #[derive(Eq, Hash, PartialEq)]
 struct LocalKey {
     uniform_buf_index: usize,
-    base_color_map: Option<crate::ImageRef>,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct Ambient {
+    pub color: crate::Color,
+    pub intensity: f32,
+}
+
+impl Default for Ambient {
+    fn default() -> Self {
+        Self {
+            color: crate::Color(0xFFFFFFFF),
+            intensity: 0.0,
+        }
+    }
 }
 
 #[derive(Debug)]
-pub struct RealConfig {
+pub struct PhongConfig {
     pub cull_back_faces: bool,
+    pub ambient: Ambient,
     pub max_lights: usize,
 }
 
-impl Default for RealConfig {
+impl Default for PhongConfig {
     fn default() -> Self {
         Self {
             cull_back_faces: true,
+            ambient: Ambient::default(),
             max_lights: 16,
         }
     }
 }
 
-struct Pipelines {
-    main: wgpu::RenderPipeline,
-}
-
-struct Instance {
-    mesh: crate::MeshRef,
-    locals_bl: super::BufferLocation,
-    base_color_map: Option<crate::ImageRef>,
-}
-
-/// Realistic renderer.
-/// Follows Disney PBR.
-pub struct Real {
+pub struct Phong {
     depth_texture: Option<(wgpu::TextureView, wgpu::Extent3d)>,
     global_uniform_buf: wgpu::Buffer,
     light_buf: wgpu::Buffer,
@@ -98,32 +91,32 @@ pub struct Real {
     local_bind_groups: FxHashMap<LocalKey, wgpu::BindGroup>,
     uniform_pool: super::BufferPool,
     pipelines: Pipelines,
-    blank_color_view: wgpu::TextureView,
-    instances: Vec<Instance>,
+    ambient: Ambient,
+    temp_lights: Vec<(f32, u32)>,
 }
 
-impl Real {
-    pub fn new(config: &RealConfig, context: &crate::Context) -> Self {
+impl Phong {
+    pub fn new(config: &PhongConfig, context: &crate::Context) -> Self {
         Self::new_offscreen(config, context.surface_info().unwrap(), context)
     }
     pub fn new_offscreen(
-        config: &RealConfig,
+        config: &PhongConfig,
         target_info: crate::TargetInfo,
         context: &crate::Context,
     ) -> Self {
         let d = context.device();
         let shader_module = d.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("real"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("real.wgsl").into()),
+            label: Some("phong"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("phong.wgsl").into()),
         });
 
         let globals_size = mem::size_of::<Globals>() as wgpu::BufferAddress;
         let global_bgl = d.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("real globals"),
+            label: Some("phong globals"),
             entries: &[
                 wgpu::BindGroupLayoutEntry {
                     binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+                    visibility: wgpu::ShaderStages::VERTEX,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Uniform,
                         has_dynamic_offset: false,
@@ -133,7 +126,7 @@ impl Real {
                 },
                 wgpu::BindGroupLayoutEntry {
                     binding: 1,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Storage { read_only: true },
                         has_dynamic_offset: false,
@@ -143,34 +136,22 @@ impl Real {
                     },
                     count: None,
                 },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 2,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                    count: None,
-                },
             ],
         });
         let global_uniform_buf = d.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("real globals"),
+            label: Some("phong globals"),
             size: globals_size,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
         let light_buf = d.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("real lights"),
+            label: Some("phong lights"),
             size: (config.max_lights * mem::size_of::<Light>()) as wgpu::BufferAddress,
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        let sampler = d.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("real sampler"),
-            min_filter: wgpu::FilterMode::Linear,
-            mag_filter: wgpu::FilterMode::Linear,
-            ..Default::default()
-        });
         let global_bind_group = d.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("real globals"),
+            label: Some("phong globals"),
             layout: &global_bgl,
             entries: &[
                 wgpu::BindGroupEntry {
@@ -181,46 +162,31 @@ impl Real {
                     binding: 1,
                     resource: light_buf.as_entire_binding(),
                 },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: wgpu::BindingResource::Sampler(&sampler),
-                },
             ],
         });
 
         let locals_size = mem::size_of::<Locals>() as wgpu::BufferAddress;
         let local_bgl = d.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("real locals"),
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: true,
-                        min_binding_size: wgpu::BufferSize::new(locals_size),
-                    },
-                    count: None,
+            label: Some("phong locals"),
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: true,
+                    min_binding_size: wgpu::BufferSize::new(locals_size),
                 },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        multisampled: false,
-                    },
-                    count: None,
-                },
-            ],
+                count: None,
+            }],
         });
 
         let pipelines = {
             let pipeline_layout = d.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("real"),
+                label: Some("phong"),
                 bind_group_layouts: &[&global_bgl, &local_bgl],
                 push_constant_ranges: &[],
             });
+            let vertex_buffers = [crate::Position::layout::<0>(), crate::Normal::layout::<1>()];
             let primitive = wgpu::PrimitiveState {
                 cull_mode: if config.cull_back_faces {
                     Some(wgpu::Face::Back)
@@ -229,60 +195,74 @@ impl Real {
                 },
                 ..Default::default()
             };
+            let ds = Some(wgpu::DepthStencilState {
+                format: DEPTH_FORMAT,
+                depth_compare: wgpu::CompareFunction::LessEqual,
+                depth_write_enabled: true,
+                bias: Default::default(),
+                stencil: Default::default(),
+            });
             let multisample = wgpu::MultisampleState {
                 count: target_info.sample_count,
                 ..Default::default()
             };
 
             Pipelines {
-                main: d.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                    label: Some("real"),
+                flat: d.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                    label: Some("phong/flat"),
                     layout: Some(&pipeline_layout),
                     vertex: wgpu::VertexState {
-                        buffers: &[
-                            crate::Position::layout::<0>(),
-                            crate::TexCoords::layout::<1>(),
-                            crate::Normal::layout::<2>(),
-                        ],
+                        buffers: &vertex_buffers,
                         module: &shader_module,
-                        entry_point: "main_vs",
+                        entry_point: "vs_flat",
                     },
                     primitive,
-                    depth_stencil: Some(wgpu::DepthStencilState {
-                        format: DEPTH_FORMAT,
-                        depth_compare: wgpu::CompareFunction::LessEqual,
-                        depth_write_enabled: true,
-                        bias: Default::default(),
-                        stencil: Default::default(),
-                    }),
+                    depth_stencil: ds.clone(),
                     multisample,
                     fragment: Some(wgpu::FragmentState {
                         targets: &[Some(target_info.format.into())],
                         module: &shader_module,
-                        entry_point: "main_fs",
+                        entry_point: "fs_flat",
+                    }),
+                    multiview: None,
+                }),
+                gouraud: d.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                    label: Some("phong/gouraud"),
+                    layout: Some(&pipeline_layout),
+                    vertex: wgpu::VertexState {
+                        buffers: &vertex_buffers,
+                        module: &shader_module,
+                        entry_point: "vs_flat",
+                    },
+                    primitive,
+                    depth_stencil: ds.clone(),
+                    multisample,
+                    fragment: Some(wgpu::FragmentState {
+                        targets: &[Some(target_info.format.into())],
+                        module: &shader_module,
+                        entry_point: "fs_gouraud",
+                    }),
+                    multiview: None,
+                }),
+                phong: d.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                    label: Some("phong"),
+                    layout: Some(&pipeline_layout),
+                    vertex: wgpu::VertexState {
+                        buffers: &vertex_buffers,
+                        module: &shader_module,
+                        entry_point: "vs_phong",
+                    },
+                    primitive,
+                    depth_stencil: ds.clone(),
+                    multisample,
+                    fragment: Some(wgpu::FragmentState {
+                        targets: &[Some(target_info.format.into())],
+                        module: &shader_module,
+                        entry_point: "fs_phong",
                     }),
                     multiview: None,
                 }),
             }
-        };
-
-        let blank_color_view = {
-            let desc = wgpu::TextureDescriptor {
-                label: Some("dummy"),
-                size: wgpu::Extent3d {
-                    width: 1,
-                    height: 1,
-                    depth_or_array_layers: 1,
-                },
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: wgpu::TextureDimension::D2,
-                format: wgpu::TextureFormat::Rgba8UnormSrgb,
-                usage: wgpu::TextureUsages::TEXTURE_BINDING,
-                view_formats: &[wgpu::TextureFormat::Rgba8UnormSrgb],
-            };
-            let texture = d.create_texture_with_data(context.queue(), &desc, &[0xFF; 4]);
-            texture.create_view(&wgpu::TextureViewDescriptor::default())
         };
 
         Self {
@@ -293,15 +273,15 @@ impl Real {
             global_bind_group,
             local_bind_group_layout: local_bgl,
             local_bind_groups: Default::default(),
-            uniform_pool: super::BufferPool::uniform("real locals", d),
+            uniform_pool: super::BufferPool::uniform("phong locals", d),
             pipelines,
-            blank_color_view,
-            instances: Vec::new(),
+            ambient: config.ambient,
+            temp_lights: Vec::new(),
         }
     }
 }
 
-impl plr::Pass for Real {
+impl plr::RenderPass for Phong {
     fn draw(
         &mut self,
         targets: &[crate::TargetRef],
@@ -316,7 +296,6 @@ impl plr::Pass for Real {
             Some((_, size)) => size != target.size,
             None => true,
         };
-        //TODO: abstract this part away
         if reset_depth {
             let texture = device.create_texture(&wgpu::TextureDescriptor {
                 label: Some("depth"),
@@ -338,12 +317,17 @@ impl plr::Pass for Real {
 
         {
             let m_proj = camera.projection_matrix(target.aspect());
-            let node = &nodes[camera.node];
-            let m_view_inv = node.inverse_matrix();
+            let m_view_inv = nodes[camera.node].inverse_matrix();
             let m_final = glam::Mat4::from(m_proj) * glam::Mat4::from(m_view_inv);
+            let ambient = self.ambient.color.into_vec4();
             let globals = Globals {
                 view_proj: m_final.to_cols_array_2d(),
-                camera_pos: node.pos_scale,
+                ambient: [
+                    ambient[0] * self.ambient.intensity,
+                    ambient[1] * self.ambient.intensity,
+                    ambient[2] * self.ambient.intensity,
+                    0.0,
+                ],
             };
             queue.write_buffer(&self.global_uniform_buf, 0, bytemuck::bytes_of(&globals));
         }
@@ -373,72 +357,39 @@ impl plr::Pass for Real {
             bytemuck::cast_slice(&lights[..light_count]),
         );
 
-        //TODO: we can do everything in a single pass if we use
-        // some arena-based hashmap.
-        self.instances.clear();
-
-        for (_, (entity, &color, mat)) in scene
+        // pre-create the bind groups so that we don't need to do it on the fly
+        let local_bgl = &self.local_bind_group_layout;
+        let entity_count = scene
             .world
-            .query::<(&plr::Entity, &plr::Color, &Material)>()
+            .query::<(&plr::Entity, &plr::Color, &Shader)>()
             .with::<&plr::Vertex<crate::Position>>()
-            .with::<&plr::Vertex<crate::TexCoords>>()
             .with::<&plr::Vertex<crate::Normal>>()
             .iter()
-        {
-            let space = &nodes[entity.node];
-
-            let locals = Locals {
-                pos_scale: space.pos_scale,
-                rot: space.rot,
-                base_color_factor: color.into_vec4(),
-                emissive_factor: mat.emissive_color.into_vec4(),
-                metallic_roughness_values: [mat.metallic_factor, mat.roughness_factor],
-                normal_scale: mat.normal_scale,
-                occlusion_strength: mat.occlusion_strength,
-            };
-            let locals_bl = self.uniform_pool.alloc(&locals, queue);
-
-            // pre-create local bind group, if needed
-            let key = LocalKey {
-                uniform_buf_index: locals_bl.index,
-                base_color_map: mat.base_color_map,
-            };
-            let binding = self.uniform_pool.binding::<Locals>(locals_bl.index);
-            let local_bgl = &self.local_bind_group_layout;
-            let blank_color_view = &self.blank_color_view;
+            .count();
+        let uniform_pool_size = self
+            .uniform_pool
+            .prepare_for_count::<Locals>(entity_count, device);
+        for uniform_buf_index in 0..uniform_pool_size {
+            let key = LocalKey { uniform_buf_index };
+            let binding = self.uniform_pool.binding::<Locals>(uniform_buf_index);
 
             self.local_bind_groups.entry(key).or_insert_with(|| {
-                let base_color_view = match mat.base_color_map {
-                    Some(image) => &context.get_image(image).view,
-                    None => blank_color_view,
-                };
                 device.create_bind_group(&wgpu::BindGroupDescriptor {
-                    label: Some("real locals"),
+                    label: Some("phong locals"),
                     layout: local_bgl,
-                    entries: &[
-                        wgpu::BindGroupEntry {
-                            binding: 0,
-                            resource: wgpu::BindingResource::Buffer(binding),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 1,
-                            resource: wgpu::BindingResource::TextureView(base_color_view),
-                        },
-                    ],
+                    entries: &[wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::Buffer(binding),
+                    }],
                 })
-            });
-
-            self.instances.push(Instance {
-                mesh: entity.mesh,
-                locals_bl,
-                base_color_map: mat.base_color_map,
             });
         }
 
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("real"),
+                label: Some("phong"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: &target.view,
                     resolve_target: None,
@@ -457,22 +408,75 @@ impl plr::Pass for Real {
                 }),
             });
 
-            pass.set_pipeline(&self.pipelines.main);
             pass.set_bind_group(0, &self.global_bind_group, &[]);
 
-            for inst in self.instances.drain(..) {
-                let mesh = context.get_mesh(inst.mesh);
+            for (_, (entity, &color, &shader)) in scene
+                .world
+                .query::<(&plr::Entity, &plr::Color, &Shader)>()
+                .with::<&plr::Vertex<crate::Position>>()
+                .with::<&plr::Vertex<crate::Normal>>()
+                .iter()
+            {
+                let space = &nodes[entity.node];
+                let mesh = context.get_mesh(entity.mesh);
+                let entity_radius = mesh.bound_radius * space.pos_scale[3];
+
+                // collect the `LIGHT_COUNT` lights most affecting the entity
+                self.temp_lights.clear();
+                let entity_pos = glam::Vec3::from_slice(&space.pos_scale[..3]);
+                for (index, (_, light)) in scene.lights().enumerate() {
+                    let light_pos = glam::Vec3::from_slice(&nodes[light.node].pos_scale[..3]);
+                    let intensity = match light.kind {
+                        plr::LightKind::Point => {
+                            let distance = (entity_pos - light_pos).length();
+                            if distance <= entity_radius {
+                                light.intensity
+                            } else {
+                                let bound_distance = (distance - entity_radius).max(1.0);
+                                light.intensity / bound_distance * bound_distance
+                            }
+                        }
+                        plr::LightKind::Directional => light.intensity,
+                    };
+                    if intensity > INTENSITY_THRESHOLD {
+                        self.temp_lights.push((intensity, index as u32));
+                    }
+                }
+                self.temp_lights
+                    .sort_by_key(|&(intensity, _)| (1.0 / intensity) as usize);
+                let mut light_indices = [0u32; LIGHT_COUNT];
+                for (li, &(_, index)) in light_indices.iter_mut().zip(&self.temp_lights) {
+                    *li = index;
+                }
+
+                //TODO: check for texture coordinates
+                pass.set_pipeline(match shader {
+                    Shader::Gouraud { flat: true } => &self.pipelines.flat,
+                    Shader::Gouraud { flat: false } => &self.pipelines.gouraud,
+                    Shader::Phong { .. } => &self.pipelines.phong,
+                });
+
+                let locals = Locals {
+                    pos_scale: space.pos_scale,
+                    rot: space.rot,
+                    color: color.into_vec4_gamma(),
+                    lights: light_indices,
+                    glossiness: match shader {
+                        Shader::Phong { glossiness } => glossiness as f32,
+                        _ => 0.0,
+                    },
+                    _pad: [0.0; 3],
+                };
+                let bl = self.uniform_pool.alloc(&locals, queue);
 
                 let key = LocalKey {
-                    uniform_buf_index: inst.locals_bl.index,
-                    base_color_map: inst.base_color_map,
+                    uniform_buf_index: bl.index,
                 };
                 let local_bg = &self.local_bind_groups[&key];
-                pass.set_bind_group(1, local_bg, &[inst.locals_bl.offset]);
+                pass.set_bind_group(1, local_bg, &[bl.offset]);
 
                 pass.set_vertex_buffer(0, mesh.vertex_slice::<crate::Position>());
-                pass.set_vertex_buffer(1, mesh.vertex_slice::<crate::TexCoords>());
-                pass.set_vertex_buffer(2, mesh.vertex_slice::<crate::Normal>());
+                pass.set_vertex_buffer(1, mesh.vertex_slice::<crate::Normal>());
 
                 if let Some(ref is) = mesh.index_stream {
                     pass.set_index_buffer(mesh.buffer.slice(is.offset..), is.format);

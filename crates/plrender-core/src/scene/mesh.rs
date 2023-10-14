@@ -1,4 +1,4 @@
-use crate::gpu;
+use crate::renderer;
 use std::{any::TypeId, marker::PhantomData, mem};
 use wgpu::util::DeviceExt;
 
@@ -67,7 +67,7 @@ impl Mesh {
 pub struct Vertex<T>(PhantomData<T>);
 
 pub struct MeshBuilder<'a> {
-    context: &'a mut gpu::context::Context,
+    context: &'a mut renderer::context::Context,
     name: String,
     data: Vec<u8>, // could be moved up to the context
     index_stream: Option<IndexStream>,
@@ -78,7 +78,7 @@ pub struct MeshBuilder<'a> {
 }
 
 impl<'a> MeshBuilder<'a> {
-    pub fn new(context: &'a mut gpu::context::Context) -> Self {
+    pub fn new(context: &'a mut renderer::context::Context) -> Self {
         Self {
             context,
             name: String::new(),

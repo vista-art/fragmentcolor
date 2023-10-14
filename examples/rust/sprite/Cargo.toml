@@ -16,4 +16,5 @@ plrender = { path = "../../../crates/plrender" }
 pollster = "0.3"
 instant = "0.1"
 rand = "0.8.5"
+mint = "0.5"
 log = "0.4"
