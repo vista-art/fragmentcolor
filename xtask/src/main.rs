@@ -12,13 +12,14 @@ pub const API_MAP_FILE: &str = "generated/api_map.rs";
 fn main() {
     println!("🚀 Running xtask...");
 
+    compile_crate("plrender-core", "❤️ Building PLRender Core...", true);
     compile_crate("plrender", "⭕ Building PLRender...", true);
 
     // @TODO bump version in documentation from project's Cargo.toml manifest
 
-    let plrender_path = crate_root("plrender");
+    let crates = [crate_root("plrender"), crate_root("plrender-core")];
     let api_map_file = workspace_root().join(API_MAP_FILE);
-    generate_api_map(&plrender_path, &api_map_file, "🗺️ Generating API map...");
+    generate_api_map(&crates, &api_map_file, "🗺️ Generating API map...");
 
     compile_crate("plrender-macros", "🧙‍♂️ Building API wrapper...", true);
 
@@ -51,11 +52,16 @@ fn compile_crate(crate_name: &str, message: &str, required: bool) {
     };
 }
 
-fn generate_api_map(crate_root: &Path, target_file: &Path, message: &str) {
+fn generate_api_map(crate_roots: &[PathBuf], target_file: &Path, message: &str) {
     println!();
     println!("{}", message);
 
-    let api_map = api_mapper::extract_public_functions(crate_root);
+    let mut api_map: api_mapper::ApiMap = api_mapper::ApiMap::new();
+    for crate_root in crate_roots {
+        let crate_api_map = api_mapper::extract_public_functions(crate_root);
+        api_map.extend(crate_api_map);
+    }
+
     export_api_map(api_map, target_file);
 
     println!("✅ API map successfully generated!");
