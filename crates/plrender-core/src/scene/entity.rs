@@ -1,4 +1,5 @@
-use crate::scene::{builder::ObjectBuilder, mesh::MeshRef, node::NodeRef, space::Space};
+use crate::renderer::resources::mesh::MeshRef;
+use crate::scene::{builder::ObjectBuilder, node::NodeRef, space::Space};
 
 pub type EntityRef = hecs::Entity;
 
