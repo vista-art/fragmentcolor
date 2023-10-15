@@ -1,3 +1,5 @@
+use csscolorparser; // @TODO feature flag?
+
 /// Can be specified as 0xAARRGGBB
 #[derive(Clone, Copy, Debug, Hash, PartialEq, PartialOrd)]
 pub struct Color(pub u32);
@@ -5,12 +7,6 @@ pub struct Color(pub u32);
 const GAMMA: f32 = 2.2;
 
 impl Color {
-    pub const BLACK_TRANSPARENT: Self = Self(0x0);
-    pub const BLACK_OPAQUE: Self = Self(0xFF000000);
-    pub const RED: Self = Self(0xFFFF0000);
-    pub const GREEN: Self = Self(0xFF00FF00);
-    pub const BLUE: Self = Self(0xFF0000FF);
-
     fn import(value: f32) -> u32 {
         (value.clamp(0.0, 1.0) * 255.0) as u32
     }
@@ -29,6 +25,23 @@ impl Color {
     }
     pub fn from_rgb_alpha(d: [f32; 3], alpha: f32) -> Self {
         Self::new(d[0], d[1], d[2], alpha)
+    }
+
+    /// Create a new color from a hex string
+    pub fn from_hex(hex: &str) -> Result<Self, csscolorparser::ParseColorError> {
+        Self::from_css(hex)
+    }
+
+    /// Create a new color from a CSS string
+    pub fn from_css(color: &str) -> Result<Self, csscolorparser::ParseColorError> {
+        let color = csscolorparser::parse(color)?;
+
+        Ok(Self::new(
+            color.r as f32,
+            color.g as f32,
+            color.b as f32,
+            color.a as f32,
+        ))
     }
 
     fn export(self, index: u32) -> f32 {
@@ -72,6 +85,6 @@ impl From<Color> for wgpu::Color {
 
 impl Default for Color {
     fn default() -> Self {
-        Color::BLACK_OPAQUE
+        Self(0x00000000)
     }
 }
