@@ -24,6 +24,7 @@ ddsfile = "0.5"
 glam = { version = "0.24", features = ["mint"] }
 image = { version = "0.24", default-features = false, features = ["jpeg", "png", "bmp", "hdr", "dds"] }
 log = "0.4"
+csscolorparser = "0.6"
 
 [build-dependencies]
 cfg_aliases = "0.1"

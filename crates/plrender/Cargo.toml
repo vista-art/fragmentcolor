@@ -34,7 +34,6 @@ raw-window-handle = { version = "0.5", optional = true }
 winit = { version = "0.28", optional = true }
 wgpu = "0.17"
 lyon = { version = "1", optional = true }
-csscolorparser = "0.6"
 instant = "0.1"
 
 # old dependencies, reintroduce them as needed
