@@ -8,7 +8,7 @@ pub use renderer::{
     context::{Context, ContextBuilder, ContextDetail},
     mesh::{IndexStream, Mesh, MeshBuilder, MeshRef, Prototype, Vertex, VertexStream},
     target::{HasWindow, Target, TargetInfo, TargetRef},
-    texture::{Image, ImageInfo, ImageRef},
+    texture::{Image, ImageInfo, ImageRef, Texture, TextureRef},
     RenderPass,
 };
 
