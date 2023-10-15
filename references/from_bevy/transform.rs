@@ -1,14 +1,9 @@
-use cgmath::{
-    Affine3A, InnerSpace, Matrix3, Matrix4, One, Quaternion, Rotation3, SquareMatrix,
-    Transform as CgTransform, Vector3, Zero,
-};
+use super::GlobalTransform;
+use bevy_ecs::{component::Component, reflect::ReflectComponent};
+use bevy_math::{Affine3A, Mat3, Mat4, Quat, Vec3};
+use bevy_reflect::prelude::*;
+use bevy_reflect::Reflect;
 use std::ops::Mul;
-
-pub struct Transform {
-    pub translation: Vector3<f32>,
-    pub rotation: Quaternion<f32>,
-    pub scale: Vector3<f32>,
-}
 
 /// Describe the position of an entity. If the entity has a parent, the position is relative
 /// to its parent position.
@@ -40,35 +35,36 @@ pub struct Transform {
 /// [`global_vs_local_translation`]: https://github.com/bevyengine/bevy/blob/latest/examples/transforms/global_vs_local_translation.rs
 /// [`transform`]: https://github.com/bevyengine/bevy/blob/latest/examples/transforms/transform.rs
 /// [`Transform`]: super::Transform
-#[derive(Debug, PartialEq, Clone, Copy, Reflect)]
+#[derive(Component, Debug, PartialEq, Clone, Copy, Reflect)]
 #[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
+#[reflect(Component, Default, PartialEq)]
 pub struct Transform {
-    /// Position of the entity. In 2d, the last value of the `Vector3` is used for z-ordering.
+    /// Position of the entity. In 2d, the last value of the `Vec3` is used for z-ordering.
     ///
     /// See the [`translations`] example for usage.
     ///
     /// [`translations`]: https://github.com/bevyengine/bevy/blob/latest/examples/transforms/translation.rs
-    pub translation: Vector3<f32>,
+    pub translation: Vec3,
     /// Rotation of the entity.
     ///
     /// See the [`3d_rotation`] example for usage.
     ///
     /// [`3d_rotation`]: https://github.com/bevyengine/bevy/blob/latest/examples/transforms/3d_rotation.rs
-    pub rotation: Quaternion<f32>,
+    pub rotation: Quat,
     /// Scale of the entity.
     ///
     /// See the [`scale`] example for usage.
     ///
     /// [`scale`]: https://github.com/bevyengine/bevy/blob/latest/examples/transforms/scale.rs
-    pub scale: Vector3<f32>,
+    pub scale: Vec3,
 }
 
 impl Transform {
     /// An identity [`Transform`] with no translation, rotation, and a scale of 1 on all axes.
     pub const IDENTITY: Self = Transform {
-        translation: cgmath::Vector3::zero(),
-        rotation: cgmath::Quaternion::one(),
-        scale: cgmath::Vector3::one(),
+        translation: Vec3::ZERO,
+        rotation: Quat::IDENTITY,
+        scale: Vec3::ONE,
     };
 
     /// Creates a new [`Transform`] at the position `(x, y, z)`. In 2d, the `z` component
@@ -76,7 +72,7 @@ impl Transform {
     /// `z`-value.
     #[inline]
     pub const fn from_xyz(x: f32, y: f32, z: f32) -> Self {
-        Self::from_translation(Vector3::new(x, y, z))
+        Self::from_translation(Vec3::new(x, y, z))
     }
 
     /// Extracts the translation, rotation, and scale from `matrix`. It must be a 3d affine
@@ -95,7 +91,7 @@ impl Transform {
     /// Creates a new [`Transform`], with `translation`. Rotation will be 0 and scale 1 on
     /// all axes.
     #[inline]
-    pub const fn from_translation(translation: Vector3) -> Self {
+    pub const fn from_translation(translation: Vec3) -> Self {
         Transform {
             translation,
             ..Self::IDENTITY
@@ -115,7 +111,7 @@ impl Transform {
     /// Creates a new [`Transform`], with `scale`. Translation will be 0 and rotation 0 on
     /// all axes.
     #[inline]
-    pub const fn from_scale(scale: Vector3) -> Self {
+    pub const fn from_scale(scale: Vec3) -> Self {
         Transform {
             scale,
             ..Self::IDENTITY
@@ -126,12 +122,12 @@ impl Transform {
     /// points towards the `target` position and [`Transform::up`] points towards `up`.
     ///
     /// In some cases it's not possible to construct a rotation. Another axis will be picked in those cases:
-    /// * if `target` is the same as the transform translation, `Vector3::Z` is used instead
-    /// * if `up` is zero, `Vector3::Y` is used instead
+    /// * if `target` is the same as the transform translation, `Vec3::Z` is used instead
+    /// * if `up` is zero, `Vec3::Y` is used instead
     /// * if the resulting forward direction is parallel with `up`, an orthogonal vector is used as the "right" direction
     #[inline]
     #[must_use]
-    pub fn looking_at(mut self, target: Vector3, up: Vector3) -> Self {
+    pub fn looking_at(mut self, target: Vec3, up: Vec3) -> Self {
         self.look_at(target, up);
         self
     }
@@ -140,12 +136,12 @@ impl Transform {
     /// points in the given `direction` and [`Transform::up`] points towards `up`.
     ///
     /// In some cases it's not possible to construct a rotation. Another axis will be picked in those cases:
-    /// * if `direction` is zero, `Vector3::Z` is used instead
-    /// * if `up` is zero, `Vector3::Y` is used instead
+    /// * if `direction` is zero, `Vec3::Z` is used instead
+    /// * if `up` is zero, `Vec3::Y` is used instead
     /// * if `direction` is parallel with `up`, an orthogonal vector is used as the "right" direction
     #[inline]
     #[must_use]
-    pub fn looking_to(mut self, direction: Vector3, up: Vector3) -> Self {
+    pub fn looking_to(mut self, direction: Vec3, up: Vec3) -> Self {
         self.look_to(direction, up);
         self
     }
@@ -153,7 +149,7 @@ impl Transform {
     /// Returns this [`Transform`] with a new translation.
     #[inline]
     #[must_use]
-    pub const fn with_translation(mut self, translation: Vector3) -> Self {
+    pub const fn with_translation(mut self, translation: Vec3) -> Self {
         self.translation = translation;
         self
     }
@@ -169,7 +165,7 @@ impl Transform {
     /// Returns this [`Transform`] with a new scale.
     #[inline]
     #[must_use]
-    pub const fn with_scale(mut self, scale: Vector3) -> Self {
+    pub const fn with_scale(mut self, scale: Vec3) -> Self {
         self.scale = scale;
         self
     }
@@ -190,55 +186,55 @@ impl Transform {
 
     /// Get the unit vector in the local `X` direction.
     #[inline]
-    pub fn local_x(&self) -> Vector3 {
-        self.rotation * Vector3::X
+    pub fn local_x(&self) -> Vec3 {
+        self.rotation * Vec3::X
     }
 
     /// Equivalent to [`-local_x()`][Transform::local_x()]
     #[inline]
-    pub fn left(&self) -> Vector3 {
+    pub fn left(&self) -> Vec3 {
         -self.local_x()
     }
 
     /// Equivalent to [`local_x()`][Transform::local_x()]
     #[inline]
-    pub fn right(&self) -> Vector3 {
+    pub fn right(&self) -> Vec3 {
         self.local_x()
     }
 
     /// Get the unit vector in the local `Y` direction.
     #[inline]
-    pub fn local_y(&self) -> Vector3 {
-        self.rotation * Vector3::Y
+    pub fn local_y(&self) -> Vec3 {
+        self.rotation * Vec3::Y
     }
 
     /// Equivalent to [`local_y()`][Transform::local_y]
     #[inline]
-    pub fn up(&self) -> Vector3 {
+    pub fn up(&self) -> Vec3 {
         self.local_y()
     }
 
     /// Equivalent to [`-local_y()`][Transform::local_y]
     #[inline]
-    pub fn down(&self) -> Vector3 {
+    pub fn down(&self) -> Vec3 {
         -self.local_y()
     }
 
     /// Get the unit vector in the local `Z` direction.
     #[inline]
-    pub fn local_z(&self) -> Vector3 {
-        self.rotation * Vector3::Z
+    pub fn local_z(&self) -> Vec3 {
+        self.rotation * Vec3::Z
     }
 
     /// Equivalent to [`-local_z()`][Transform::local_z]
     #[inline]
-    pub fn forward(&self) -> Vector3 {
+    pub fn forward(&self) -> Vec3 {
         -self.local_z()
     }
 
     /// Equivalent to [`local_z()`][Transform::local_z]
     #[inline]
-    pub fn back(&self) -> Vector3 {
+    pub fn back(&self) -> Vec3 {
         self.local_z()
     }
 
@@ -260,7 +256,7 @@ impl Transform {
     ///
     /// If this [`Transform`] has a parent, the `axis` is relative to the rotation of the parent.
     #[inline]
-    pub fn rotate_axis(&mut self, axis: Vector3, angle: f32) {
+    pub fn rotate_axis(&mut self, axis: Vec3, angle: f32) {
         self.rotate(Quat::from_axis_angle(axis, angle));
     }
 
@@ -298,7 +294,7 @@ impl Transform {
 
     /// Rotates this [`Transform`] around its local `axis` by `angle` (in radians).
     #[inline]
-    pub fn rotate_local_axis(&mut self, axis: Vector3, angle: f32) {
+    pub fn rotate_local_axis(&mut self, axis: Vec3, angle: f32) {
         self.rotate_local(Quat::from_axis_angle(axis, angle));
     }
 
@@ -324,7 +320,7 @@ impl Transform {
     ///
     /// If this [`Transform`] has a parent, the `point` is relative to the [`Transform`] of the parent.
     #[inline]
-    pub fn translate_around(&mut self, point: Vector3, rotation: Quat) {
+    pub fn translate_around(&mut self, point: Vec3, rotation: Quat) {
         self.translation = point + rotation * (self.translation - point);
     }
 
@@ -332,7 +328,7 @@ impl Transform {
     ///
     /// If this [`Transform`] has a parent, the `point` is relative to the [`Transform`] of the parent.
     #[inline]
-    pub fn rotate_around(&mut self, point: Vector3, rotation: Quat) {
+    pub fn rotate_around(&mut self, point: Vec3, rotation: Quat) {
         self.translate_around(point, rotation);
         self.rotate(rotation);
     }
@@ -341,11 +337,11 @@ impl Transform {
     /// and [`Transform::up`] points towards `up`.
     ///
     /// In some cases it's not possible to construct a rotation. Another axis will be picked in those cases:
-    /// * if `target` is the same as the transform translation, `Vector3::Z` is used instead
-    /// * if `up` is zero, `Vector3::Y` is used instead
+    /// * if `target` is the same as the transform translation, `Vec3::Z` is used instead
+    /// * if `up` is zero, `Vec3::Y` is used instead
     /// * if the resulting forward direction is parallel with `up`, an orthogonal vector is used as the "right" direction
     #[inline]
-    pub fn look_at(&mut self, target: Vector3, up: Vector3) {
+    pub fn look_at(&mut self, target: Vec3, up: Vec3) {
         self.look_to(target - self.translation, up);
     }
 
@@ -353,13 +349,13 @@ impl Transform {
     /// and [`Transform::up`] points towards `up`.
     ///
     /// In some cases it's not possible to construct a rotation. Another axis will be picked in those cases:
-    /// * if `direction` is zero, `Vector3::NEG_Z` is used instead
-    /// * if `up` is zero, `Vector3::Y` is used instead
+    /// * if `direction` is zero, `Vec3::NEG_Z` is used instead
+    /// * if `up` is zero, `Vec3::Y` is used instead
     /// * if `direction` is parallel with `up`, an orthogonal vector is used as the "right" direction
     #[inline]
-    pub fn look_to(&mut self, direction: Vector3, up: Vector3) {
-        let back = -direction.try_normalize().unwrap_or(Vector3::NEG_Z);
-        let up = up.try_normalize().unwrap_or(Vector3::Y);
+    pub fn look_to(&mut self, direction: Vec3, up: Vec3) {
+        let back = -direction.try_normalize().unwrap_or(Vec3::NEG_Z);
+        let up = up.try_normalize().unwrap_or(Vec3::Y);
         let right = up
             .cross(back)
             .try_normalize()
@@ -394,7 +390,7 @@ impl Transform {
     /// If you want to transform a `point` in global space to the local space of this [`Transform`],
     /// consider using [`GlobalTransform::transform_point()`] instead.
     #[inline]
-    pub fn transform_point(&self, mut point: Vector3) -> Vector3 {
+    pub fn transform_point(&self, mut point: Vec3) -> Vec3 {
         point = self.scale * point;
         point = self.rotation * point;
         point += self.translation;
@@ -424,10 +420,10 @@ impl Mul<Transform> for Transform {
     }
 }
 
-impl Mul<Vector3> for Transform {
-    type Output = Vector3;
+impl Mul<Vec3> for Transform {
+    type Output = Vec3;
 
-    fn mul(self, value: Vector3) -> Self::Output {
+    fn mul(self, value: Vec3) -> Self::Output {
         self.transform_point(value)
     }
 }
