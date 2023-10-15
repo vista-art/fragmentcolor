@@ -2,7 +2,6 @@ pub mod builder;
 pub mod camera;
 pub mod entity;
 pub mod light;
-pub mod mesh;
 pub mod node;
 pub mod scene;
 pub mod space;

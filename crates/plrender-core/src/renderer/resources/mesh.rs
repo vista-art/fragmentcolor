@@ -5,10 +5,13 @@ use wgpu::util::DeviceExt;
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct MeshRef(pub u32);
 
+/// Mesh is a GPU resource, not a Scene resource.
 pub struct Mesh {
     pub buffer: wgpu::Buffer,
-    pub index_stream: Option<IndexStream>,
+    // This is an slice because a Vertex might hold
+    // multiple types of data (position, normal, etc)
     vertex_streams: Box<[VertexStream]>,
+    pub index_stream: Option<IndexStream>,
     pub vertex_count: u32,
     pub bound_radius: f32,
 }
@@ -25,15 +28,35 @@ pub struct VertexStream {
     pub stride: wgpu::BufferAddress,
 }
 
-/// A freshly created Mesh that comes with metadata,
-/// which is necessary to instantiate it.
+/// The original engine defines this struct as a
+/// renamed hecs::Bundle implementor which holds
+/// a reference to a Mesh.
+///
+/// This is the original description:
+///   A freshly created Mesh that comes with metadata,
+///   which is necessary to instantiate it.
+///
+///
+#[derive(hecs::Bundle, hecs::DynamicBundleClone)]
 pub struct Prototype {
     pub reference: MeshRef,
     type_ids: Box<[TypeId]>,
     type_infos: Box<[hecs::TypeInfo]>,
 }
 
-//HACK: `hecs` doesn't want anybody to implement this, but we have no choice.
+// Apparently, this hack is there to enable this Prototype to be
+// to be added to Scenes as references, so we can have the builder
+// pattern of the original engine.
+//
+// When a user injects it in the scene as a reference, the Scene
+// adds it to the hecs::World as a reference too, so it can return
+// a builder which holds the same reference.
+//
+// The unusual bit of this pattern is that the "add" method of
+// the scene, instead of returning an ID, will return a builder.
+// Additionally, the "build" method of the builder, instead of
+// returning a new instance of the type, implicitly injects the
+// type into the Scene and returns a this Prototype reference back.
 unsafe impl<'a> hecs::DynamicBundle for &'a Prototype {
     fn with_ids<T>(&self, f: impl FnOnce(&[TypeId]) -> T) -> T {
         f(&self.type_ids)

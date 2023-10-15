@@ -13,7 +13,7 @@ default = []
 [dependencies]
 # public
 bytemuck = { version = "1.14", features = ["derive"] }
-hecs = "0.10"
+hecs = { version = "0.10", features=["macros"] }
 mint = "0.5"
 # the latest version deprecates the RawWindowHandle trait
 # and not all upstream window vendors have implemented it

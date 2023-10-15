@@ -1,7 +1,7 @@
 pub mod context;
 pub mod renderpass;
-pub mod target;
-pub mod texture;
+pub mod resources;
 
 pub use context::*;
 pub use renderpass::*;
+pub use resources::*;

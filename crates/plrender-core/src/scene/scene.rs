@@ -1,10 +1,9 @@
 use crate::color::Color;
-use crate::renderer::texture::ImageRef;
+use crate::renderer::{resources::mesh::Prototype, texture::ImageRef};
 use crate::scene::{
     builder::ObjectBuilder,
     entity::EntityBuilder,
     light::{Light, LightBuilder, LightKind, LightRef},
-    mesh::Prototype,
     node::{Node, NodeRef},
     space::RawSpace,
     sprite::SpriteBuilder,
@@ -75,6 +74,10 @@ impl Scene {
         }
     }
 
+    pub fn add(&mut self, _components: impl hecs::DynamicBundle) -> hecs::Entity {
+        todo!()
+    }
+
     pub(super) fn add_node_impl(&mut self, node: &mut Node) -> NodeRef {
         let index = self.nodes.0.len();
         self.nodes.0.push(mem::take(node));
@@ -90,15 +93,13 @@ impl Scene {
     }
 
     pub fn add_entity(&mut self, prototype: &Prototype) -> ObjectBuilder<EntityBuilder> {
+        let mesh = prototype.reference;
         let mut raw = hecs::EntityBuilder::new();
         raw.add_bundle(prototype);
         ObjectBuilder {
             scene: self,
             node: Node::default(),
-            kind: EntityBuilder {
-                raw,
-                mesh: prototype.reference,
-            },
+            kind: EntityBuilder { raw, mesh },
         }
     }
 

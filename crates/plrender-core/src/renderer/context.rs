@@ -1,13 +1,10 @@
 use crate::renderer::{
+    resources::mesh::{Mesh, MeshBuilder, MeshRef},
     target::{HasWindow, SurfaceContext, Target, TargetInfo, TargetRef},
     texture::{Image, ImageInfo, ImageRef},
     RenderPass,
 };
-use crate::scene::{
-    camera::Camera,
-    mesh::{Mesh, MeshBuilder, MeshRef},
-    Scene,
-};
+use crate::scene::{camera::Camera, Scene};
 use std::{fs::File, io, path::Path};
 use wgpu::util::DeviceExt;
 

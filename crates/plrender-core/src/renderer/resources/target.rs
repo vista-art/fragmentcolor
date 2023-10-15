@@ -12,8 +12,8 @@ pub trait HasWindow: HasRawDisplayHandle + HasRawWindowHandle {
 // Ruffle also contains the TextureTarget struct
 // which implements the same trait.
 pub struct SurfaceContext {
-    pub(super) instance: wgpu::Surface,
-    pub(super) config: wgpu::SurfaceConfiguration,
+    pub(in crate::renderer) instance: wgpu::Surface,
+    pub(in crate::renderer) config: wgpu::SurfaceConfiguration,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
