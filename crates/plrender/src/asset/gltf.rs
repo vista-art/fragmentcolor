@@ -9,7 +9,7 @@ struct MeshScratch {
 }
 
 struct Texture {
-    image: crate::ImageRef,
+    image: crate::TextureRef,
 }
 
 struct Primitive {
@@ -19,7 +19,7 @@ struct Primitive {
     material: crate::pass::Material,
 }
 
-fn load_texture(mut data: gltf::image::Data, context: &mut crate::Context) -> Texture {
+fn load_texture(mut data: gltf::image::Data, context: &mut crate::Renderer) -> Texture {
     let format = match data.format {
         gltf::image::Format::R8 => wgpu::TextureFormat::R8Unorm,
         gltf::image::Format::R8G8 => wgpu::TextureFormat::Rg8Unorm,
@@ -74,7 +74,7 @@ fn load_primitive<'a>(
     primitive: gltf::Primitive<'a>,
     buffers: &[gltf::buffer::Data],
     textures: &[Texture],
-    context: &mut crate::Context,
+    context: &mut crate::Renderer,
     scratch: &mut MeshScratch,
 ) -> Primitive {
     let reader = primitive.reader(|buffer| Some(&buffers[buffer.index()].0));
@@ -175,7 +175,7 @@ pub fn load_gltf(
     path: impl AsRef<Path>,
     scene: &mut crate::Scene,
     global_parent: crate::NodeRef,
-    context: &mut crate::Context,
+    context: &mut crate::Renderer,
 ) -> Module {
     let mut module = Module::default();
     let (gltf, buffers, images) = gltf::import(path).expect("invalid glTF 2.0");

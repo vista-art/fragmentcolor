@@ -1,9 +1,13 @@
+use plr::Renderer;
 use raw_window_handle::{
     HasRawDisplayHandle, HasRawWindowHandle, RawDisplayHandle, RawWindowHandle,
 };
 
+type Error = Box<dyn std::error::Error>;
+
 const TARGET_FRAME_TIME: f64 = 1.0 / 120.0;
 
+#[derive(Debug)]
 pub struct Window {
     event_loop: winit::event_loop::EventLoop<()>,
     raw: winit::window::Window,
@@ -21,13 +25,46 @@ unsafe impl HasRawDisplayHandle for Window {
     }
 }
 
-impl plr::HasWindow for Window {
-    fn size(&self) -> mint::Vector2<u32> {
+impl plr::HasWindow for Window {}
+impl plr::RenderTarget for Window {
+    fn size(&self) -> wgpu::Extent3d {
         let size = self.raw.inner_size();
-        mint::Vector2 {
-            x: size.width,
-            y: size.height,
+
+        wgpu::Extent3d {
+            width: size.width,
+            height: size.height,
+            depth_or_array_layers: 1,
         }
+    }
+
+    fn aspect(&self) -> f32 {
+        let size = self.size();
+        size.width as f32 / size.height as f32
+    }
+
+    // @TODO meybe we don't need to inject the window after all...
+    //       as of this itarection, it still lives in the Renderer as a single instance,
+    //       but we might need to have multiple windows / canvases in the future.
+    fn resize(&mut self, _: &Renderer, size: wgpu::Extent3d) -> Result<(), Error> {
+        self.raw
+            .set_inner_size(winit::dpi::Size::Physical(winit::dpi::PhysicalSize {
+                width: size.width,
+                height: size.height,
+            }));
+
+        Ok(())
+    }
+
+    fn format(&self) -> wgpu::TextureFormat {
+        wgpu::TextureFormat::Bgra8UnormSrgb
+    }
+
+    fn sample_count(&self) -> u32 {
+        1
+    }
+
+    fn view(&self) -> Option<&wgpu::TextureView> {
+        None
     }
 }
 

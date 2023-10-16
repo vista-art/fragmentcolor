@@ -1,4 +1,4 @@
-use crate::renderer::texture::ImageRef;
+use crate::renderer::texture::TextureRef;
 use crate::scene::{entity::EntityRef, node::NodeRef, space::Space, ObjectBuilder};
 use std::ops::Range;
 
@@ -6,13 +6,13 @@ pub type UvRange = Range<mint::Point2<i16>>;
 
 pub struct Sprite {
     pub node: NodeRef,
-    pub image: ImageRef,
+    pub image: TextureRef,
     pub uv: Option<UvRange>,
 }
 
 pub struct SpriteBuilder {
     pub(super) raw: hecs::EntityBuilder,
-    pub(super) image: ImageRef,
+    pub(super) image: TextureRef,
     pub(super) uv: Option<UvRange>,
 }
 
@@ -38,7 +38,18 @@ impl ObjectBuilder<'_, SpriteBuilder> {
             image: self.kind.image,
             uv: self.kind.uv.take(),
         };
+
+        // DESIGN note:
+        // The pattern below is what I want to expose in my public API
+        // with nicer names.
+        // let object = plr::SomeObject()
+        // scene.add(object);
+
+        // @TODO nitpick: this line joins the two words that I want to remove
+        // from the engine: "kind" and "raw". I wanted to replace them before,
+        // and now I want to replace them even more!
         let built = self.kind.raw.add(sprite).build();
+
         self.scene.world.spawn(built)
     }
 }

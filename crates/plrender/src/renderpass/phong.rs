@@ -1,5 +1,5 @@
 use fxhash::FxHashMap;
-use plr::ContextDetail as _;
+use plr::{RenderContext as _, RenderTarget};
 use std::mem;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -96,13 +96,13 @@ pub struct Phong {
 }
 
 impl Phong {
-    pub fn new(config: &PhongConfig, context: &crate::Context) -> Self {
+    pub fn new(config: &PhongConfig, context: &crate::Renderer) -> Self {
         Self::new_offscreen(config, context.surface_info().unwrap(), context)
     }
     pub fn new_offscreen(
         config: &PhongConfig,
         target_info: crate::TargetInfo,
-        context: &crate::Context,
+        context: &crate::Renderer,
     ) -> Self {
         let d = context.device();
         let shader_module = d.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -287,13 +287,13 @@ impl plr::RenderPass for Phong {
         targets: &[crate::TargetRef],
         scene: &crate::Scene,
         camera: &crate::Camera,
-        context: &crate::Context,
+        context: &crate::Renderer,
     ) {
         let target = context.get_target(targets[0]);
         let device = context.device();
 
         let reset_depth = match self.depth_texture {
-            Some((_, size)) => size != target.size,
+            Some((_, size)) => size != target.size(),
             None => true,
         };
         if reset_depth {
@@ -301,14 +301,14 @@ impl plr::RenderPass for Phong {
                 label: Some("depth"),
                 dimension: wgpu::TextureDimension::D2,
                 format: DEPTH_FORMAT,
-                size: target.size,
+                size: target.size(),
                 sample_count: 1,
                 mip_level_count: 1,
                 usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
                 view_formats: &[DEPTH_FORMAT],
             });
             let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-            self.depth_texture = Some((view, target.size));
+            self.depth_texture = Some((view, target.size()));
         }
 
         let nodes = scene.bake();
@@ -391,7 +391,7 @@ impl plr::RenderPass for Phong {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("phong"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &target.view,
+                    view: &target.view().unwrap(),
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(camera.background.into()),

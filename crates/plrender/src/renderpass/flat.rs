@@ -1,4 +1,4 @@
-use plr::ContextDetail as _;
+use plr::{RenderContext as _, RenderTarget};
 use std::mem;
 
 #[repr(C)]
@@ -21,7 +21,7 @@ struct Locals {
 #[derive(Eq, Hash, PartialEq)]
 struct LocalKey {
     uniform_buf_index: usize,
-    image: crate::ImageRef,
+    image: crate::TextureRef,
 }
 
 struct Pipelines {
@@ -31,7 +31,7 @@ struct Pipelines {
 struct Instance {
     camera_distance: f32,
     locals_bl: super::BufferLocation,
-    image: crate::ImageRef,
+    image: crate::TextureRef,
 }
 
 pub struct Flat {
@@ -45,10 +45,10 @@ pub struct Flat {
 }
 
 impl Flat {
-    pub fn new(context: &crate::Context) -> Self {
+    pub fn new(context: &crate::Renderer) -> Self {
         Self::new_offscreen(context.surface_info().unwrap(), context)
     }
-    pub fn new_offscreen(target_info: crate::TargetInfo, context: &crate::Context) -> Self {
+    pub fn new_offscreen(target_info: crate::TargetInfo, context: &crate::Renderer) -> Self {
         let d = context.device();
         let shader_module = d.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("flat"),
@@ -188,7 +188,7 @@ impl plr::RenderPass for Flat {
         targets: &[crate::TargetRef],
         scene: &crate::Scene,
         camera: &crate::Camera,
-        context: &crate::Context,
+        context: &crate::Renderer,
     ) {
         let target = context.get_target(targets[0]);
         let device = context.device();
@@ -219,7 +219,7 @@ impl plr::RenderPass for Flat {
                 - glam::Vec3::from_slice(&cam_node.pos_scale);
             let camera_distance = cam_vector.dot(cam_dir);
 
-            let image = context.get_image(sprite.image);
+            let image = context.get_texture(sprite.image);
             let locals = Locals {
                 pos_scale: space.pos_scale,
                 rot: space.rot,
@@ -288,7 +288,7 @@ impl plr::RenderPass for Flat {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("flat"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &target.view,
+                    view: &target.view().unwrap(),
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(camera.background.into()),

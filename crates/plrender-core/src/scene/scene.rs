@@ -1,5 +1,5 @@
 use crate::color::Color;
-use crate::renderer::{resources::mesh::Prototype, texture::ImageRef};
+use crate::renderer::{resources::mesh::Prototype, texture::TextureRef};
 use crate::scene::{
     builder::ObjectBuilder,
     entity::EntityBuilder,
@@ -67,6 +67,15 @@ impl ops::IndexMut<NodeRef> for Scene {
 
 impl Scene {
     pub fn new() -> Self {
+        let camera = plrender::Camera {
+            projection: plrender::Projection::Orthographic {
+                // the sprite configuration is not centered
+                center: [0.0, -10.0].into(),
+                extent_y: 40.0,
+            },
+            ..Default::default()
+        };
+
         Self {
             world: Default::default(),
             nodes: Array(vec![Node::default()]),
@@ -74,6 +83,7 @@ impl Scene {
         }
     }
 
+    // @TODO this method is intended to replace all the other "add" methods below.
     pub fn add(&mut self, _components: impl hecs::DynamicBundle) -> hecs::Entity {
         todo!()
     }
@@ -103,7 +113,7 @@ impl Scene {
         }
     }
 
-    pub fn add_sprite(&mut self, image: ImageRef) -> ObjectBuilder<SpriteBuilder> {
+    pub fn add_sprite(&mut self, image: TextureRef) -> ObjectBuilder<SpriteBuilder> {
         let raw = hecs::EntityBuilder::new();
         ObjectBuilder {
             scene: self,
