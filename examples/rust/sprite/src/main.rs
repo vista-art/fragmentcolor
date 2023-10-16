@@ -93,9 +93,10 @@ fn main() {
 
     // In my API, this is called Renderer
     // @TODO rename to `Renderer`
-    let mut context = pollster::block_on(plrender::Context::init().build(&window));
+    let mut renderer = pollster::block_on(plrender::Renderer::init().build(&window));
 
     let mut scene = plrender::Scene::new();
+
     let camera = plrender::Camera {
         projection: plrender::Projection::Orthographic {
             // the sprite configuration is not centered
@@ -104,9 +105,10 @@ fn main() {
         },
         ..Default::default()
     };
-    let mut pass = plrender::renderpass::Flat::new(&context);
 
-    let image = context.load_image(format!(
+    let mut pass = plrender::renderpass::Flat::new(&renderer);
+
+    let image = renderer.load_image(format!(
         "{}/assets/images/pickachu.png",
         env!("CARGO_MANIFEST_DIR")
     ));
@@ -127,7 +129,7 @@ fn main() {
 
     window.run(move |event| match event {
         Event::Resize { width, height } => {
-            context.resize(width, height);
+            renderer.resize(width, height);
         }
         Event::Keyboard { key, pressed: true } => {
             let new_state = match key {
@@ -146,7 +148,7 @@ fn main() {
         }
         Event::Draw => {
             anim.tick(&mut scene);
-            context.present(&mut pass, &scene, &camera);
+            renderer.present(&mut pass, &scene, &scene.camera());
         }
         _ => {}
     })

@@ -1,11 +1,11 @@
 use fxhash::FxHashMap;
-use plr::ContextDetail as _;
+use plr::{RenderContext as _, RenderTarget};
 use std::mem;
 use wgpu::util::DeviceExt as _;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Material {
-    pub base_color_map: Option<crate::ImageRef>,
+    pub base_color_map: Option<crate::TextureRef>,
     pub emissive_color: crate::Color,
     pub metallic_factor: f32,
     pub roughness_factor: f32,
@@ -58,7 +58,7 @@ struct Locals {
 #[derive(Eq, Hash, PartialEq)]
 struct LocalKey {
     uniform_buf_index: usize,
-    base_color_map: Option<crate::ImageRef>,
+    base_color_map: Option<crate::TextureRef>,
 }
 
 #[derive(Debug)]
@@ -83,7 +83,7 @@ struct Pipelines {
 struct Instance {
     mesh: crate::MeshRef,
     locals_bl: super::BufferLocation,
-    base_color_map: Option<crate::ImageRef>,
+    base_color_map: Option<crate::TextureRef>,
 }
 
 /// Realistic renderer.
@@ -103,13 +103,13 @@ pub struct Real {
 }
 
 impl Real {
-    pub fn new(config: &RealConfig, context: &crate::Context) -> Self {
+    pub fn new(config: &RealConfig, context: &crate::Renderer) -> Self {
         Self::new_offscreen(config, context.surface_info().unwrap(), context)
     }
     pub fn new_offscreen(
         config: &RealConfig,
         target_info: crate::TargetInfo,
-        context: &crate::Context,
+        context: &crate::Renderer,
     ) -> Self {
         let d = context.device();
         let shader_module = d.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -307,13 +307,13 @@ impl plr::RenderPass for Real {
         targets: &[crate::TargetRef],
         scene: &crate::Scene,
         camera: &crate::Camera,
-        context: &crate::Context,
+        context: &crate::Renderer,
     ) {
         let target = context.get_target(targets[0]);
         let device = context.device();
 
         let reset_depth = match self.depth_texture {
-            Some((_, size)) => size != target.size,
+            Some((_, size)) => size != target.size(),
             None => true,
         };
         //TODO: abstract this part away
@@ -322,14 +322,14 @@ impl plr::RenderPass for Real {
                 label: Some("depth"),
                 dimension: wgpu::TextureDimension::D2,
                 format: DEPTH_FORMAT,
-                size: target.size,
+                size: target.size(),
                 sample_count: 1,
                 mip_level_count: 1,
                 usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
                 view_formats: &[DEPTH_FORMAT],
             });
             let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-            self.depth_texture = Some((view, target.size));
+            self.depth_texture = Some((view, target.size()));
         }
 
         let nodes = scene.bake();
@@ -409,7 +409,7 @@ impl plr::RenderPass for Real {
 
             self.local_bind_groups.entry(key).or_insert_with(|| {
                 let base_color_view = match mat.base_color_map {
-                    Some(image) => &context.get_image(image).view,
+                    Some(texture) => &context.get_texture(texture).view,
                     None => blank_color_view,
                 };
                 device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -440,7 +440,7 @@ impl plr::RenderPass for Real {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("real"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &target.view,
+                    view: &target.view().unwrap(),
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(camera.background.into()),

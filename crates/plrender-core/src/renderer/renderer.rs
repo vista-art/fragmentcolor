@@ -1,48 +1,57 @@
 use crate::renderer::{
-    resources::mesh::{Mesh, MeshBuilder, MeshRef},
-    target::{HasWindow, SurfaceContext, Target, TargetInfo, TargetRef},
-    texture::{Image, ImageInfo, ImageRef},
+    resources::{
+        mesh::{Mesh, MeshBuilder, MeshRef},
+        sampler::create_default_sampler,
+    },
+    target::{FrameTarget, HasWindow, Target, TargetInfo, TargetRef, WindowTarget},
+    texture::{Texture, TextureRef},
     RenderPass,
 };
 use crate::scene::{camera::Camera, Scene};
 use std::{fs::File, io, path::Path};
 use wgpu::util::DeviceExt;
 
+type Error = Box<dyn std::error::Error>;
+
 /// Trait that exposes `Context` details that depend on `wgpu`
-pub trait ContextDetail {
+pub trait RenderContext {
+    fn get_texture(&self, ir: TextureRef) -> &Texture;
     fn get_target(&self, tr: TargetRef) -> &Target;
     fn get_mesh(&self, mr: MeshRef) -> &Mesh;
-    fn get_image(&self, ir: ImageRef) -> &Image;
     fn device(&self) -> &wgpu::Device;
     fn queue(&self) -> &wgpu::Queue;
 }
 
 #[derive(Default, Debug)]
-pub struct ContextBuilder {
+pub struct RendererBuilder {
     power_preference: wgpu::PowerPreference,
     software: bool,
 }
 
-pub struct Context {
-    #[allow(unused)]
-    pub(super) instance: wgpu::Instance,
-    pub(crate) surface: Option<SurfaceContext>,
+pub struct Renderer {
     pub(crate) device: wgpu::Device,
     pub(crate) queue: wgpu::Queue,
     pub(crate) targets: Vec<Target>,
-    pub(crate) images: Vec<Image>,
+    pub(crate) window: Option<WindowTarget>, // @TODO: remove this (will be part of Targets)
+    pub(crate) resources: Resources,
+}
+
+// NOTE: If you ever need to refine this, look
+// at Ruffle's TexturePool and BufferPool structs
+pub struct Resources {
+    pub(crate) textures: Vec<Texture>,
     pub(crate) meshes: Vec<Mesh>,
 }
 
-impl ContextDetail for Context {
+impl RenderContext for Renderer {
+    fn get_texture(&self, ir: TextureRef) -> &Texture {
+        &self.resources.textures[ir.0 as usize]
+    }
     fn get_target(&self, tr: TargetRef) -> &Target {
         &self.targets[tr.0 as usize]
     }
     fn get_mesh(&self, mr: MeshRef) -> &Mesh {
-        &self.meshes[mr.0 as usize]
-    }
-    fn get_image(&self, ir: ImageRef) -> &Image {
-        &self.images[ir.0 as usize]
+        &self.resources.meshes[mr.0 as usize]
     }
     fn device(&self) -> &wgpu::Device {
         &self.device
@@ -52,68 +61,79 @@ impl ContextDetail for Context {
     }
 }
 
-impl Context {
-    pub fn init() -> ContextBuilder {
-        ContextBuilder::default()
+impl Renderer {
+    // @TODO: remove this
+    pub fn init() -> RendererBuilder {
+        RendererBuilder::default()
     }
 
     pub fn resize(&mut self, width: u32, height: u32) {
-        let surface = match self.surface {
+        // @TODO Here we should loop all the targets and resize them
+        let window = match self.window {
             Some(ref mut suf) => suf,
             None => return,
         };
-        if (surface.config.width, surface.config.height) == (width, height) {
+        if (window.config.width, window.config.height) == (width, height) {
             return;
         }
-        surface.config.width = width;
-        surface.config.height = height;
-        surface.instance.configure(&self.device, &surface.config);
+        window.config.width = width;
+        window.config.height = height;
+        window.surface.configure(&self.device, &window.config);
+
+        // for target in self.targets.iter_mut() {
+        //     target.resize(&self.device, width, height);
+        // }
     }
 
-    pub fn present<P: RenderPass>(&mut self, pass: &mut P, scene: &Scene, camera: &Camera) {
-        let surface = self.surface.as_mut().expect("No screen is configured!");
-        let frame = surface.instance.get_current_texture().unwrap();
+    pub fn present<P: RenderPass>(
+        &mut self,
+        pass: &mut P,
+        scene: &Scene,
+        camera: &Camera,
+    ) -> Result<(), Error> {
+        let window = self.window.as_mut().expect("No screen is configured!");
+
+        // @TODO implement Ruffle's interface for render targets
+        let frame = window.surface.get_current_texture()?;
         let view = frame
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
 
         let tr = TargetRef(self.targets.len() as _);
-        self.targets.push(Target {
+        self.targets.push(Target::Frame(FrameTarget {
             view,
-            format: surface.config.format,
+            format: frame.texture.format(),
             size: wgpu::Extent3d {
-                width: surface.config.width,
-                height: surface.config.height,
+                width: window.config.width,
+                height: window.config.height,
                 depth_or_array_layers: 1,
             },
-        });
+        }));
 
+        // @TODO multiple passes
         pass.draw(&[tr], scene, camera, self);
 
         self.targets.pop();
         frame.present();
+
+        Ok(())
     }
 
+    // @TODO remove this
     pub fn add_mesh(&mut self) -> MeshBuilder {
         MeshBuilder::new(self)
     }
 
+    // @TODO remove this
     pub fn surface_info(&self) -> Option<TargetInfo> {
-        self.surface.as_ref().map(|s| TargetInfo {
+        self.window.as_ref().map(|s| TargetInfo {
             format: s.config.format,
             sample_count: 1,
             aspect_ratio: s.config.width as f32 / s.config.height as f32,
         })
     }
 
-    pub fn get_image_info(&self, image_ref: ImageRef) -> ImageInfo {
-        let image = &self.images[image_ref.0 as usize];
-        ImageInfo {
-            size: [image.size.width as i16, image.size.height as i16].into(),
-        }
-    }
-
-    pub fn load_image(&mut self, path_ref: impl AsRef<Path>) -> ImageRef {
+    pub fn load_image(&mut self, path_ref: impl AsRef<Path>) -> TextureRef {
         let path = path_ref.as_ref();
         let image_format = image::ImageFormat::from_extension(path.extension().unwrap())
             .unwrap_or_else(|| panic!("Unrecognized image extension: {:?}", path.extension()));
@@ -216,40 +236,39 @@ impl Context {
             (texture, size)
         };
 
-        self.add_image_from_texture(texture, size)
+        self.add_texture(texture, size)
     }
 
-    pub fn add_image_from_texture(
-        &mut self,
-        texture: wgpu::Texture,
-        size: wgpu::Extent3d,
-    ) -> ImageRef {
-        let index = self.images.len();
+    // @TODO receive our texture instead
+    pub fn add_texture(&mut self, texture: wgpu::Texture, size: wgpu::Extent3d) -> TextureRef {
+        let index = self.resources.textures.len();
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-        self.images.push(Image { view, size });
-        ImageRef(index as u32)
+        let sampler = create_default_sampler(&self.device);
+        let format = texture.format();
+        self.resources.textures.push(Texture {
+            data: texture,
+            view,
+            size,
+            format,
+            sampler,
+        });
+        TextureRef(index as u32)
     }
 
     pub fn add_image_from_bytes(
         &mut self,
         desc: &wgpu::TextureDescriptor,
         data: &[u8],
-    ) -> ImageRef {
+    ) -> TextureRef {
         let texture = self
             .device
             .create_texture_with_data(&self.queue, &desc, data);
 
-        self.add_image_from_texture(texture, desc.size.clone())
+        self.add_texture(texture, desc.size.clone())
     }
 }
 
-impl Drop for Context {
-    fn drop(&mut self) {
-        // Do we need explicit cleanup?
-    }
-}
-
-impl ContextBuilder {
+impl RendererBuilder {
     pub fn power_hungry(self, hungry: bool) -> Self {
         Self {
             power_preference: if hungry {
@@ -265,8 +284,9 @@ impl ContextBuilder {
         Self { software, ..self }
     }
 
-    pub async fn build_offscreen(self) -> Context {
+    pub async fn build_offscreen(self) -> Renderer {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::default());
+
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
                 power_preference: self.power_preference,
@@ -281,18 +301,21 @@ impl ContextBuilder {
             .await
             .unwrap();
 
-        Context {
-            instance,
-            surface: None,
+        let resources = Resources {
+            textures: Vec::new(),
+            meshes: Vec::new(),
+        };
+
+        Renderer {
             device,
             queue,
             targets: Vec::new(),
-            images: Vec::new(),
-            meshes: Vec::new(),
+            resources,
+            window: None,
         }
     }
 
-    pub async fn build<W: HasWindow>(self, window: &W) -> Context {
+    pub async fn build<W: HasWindow>(self, window: &W) -> Renderer {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::default());
         let surface = unsafe { instance.create_surface(window) }.unwrap();
         let size = window.size();
@@ -347,8 +370,8 @@ impl ContextBuilder {
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format: surface_format,
-            width: size.x,
-            height: size.y,
+            width: size.width,
+            height: size.height,
             alpha_mode,
             present_mode: surface_capabilities.present_modes[0],
             view_formats: vec![surface_format],
@@ -356,21 +379,32 @@ impl ContextBuilder {
 
         surface.configure(&device, &config);
 
-        // @TODO adopt Ruffle's convention:
-        // this is a FramebufferTarget
-        let context = SurfaceContext {
-            instance: surface,
-            config,
+        let window = WindowTarget { surface, config };
+
+        // @TODO add window to targets list
+        //       Targets could be an enum.
+        // let targets = vec![Target {
+        //     size,
+        //     view: window
+        //         .surface
+        //         .get_current_texture()?
+        //         .texture
+        //         .create_view(&wgpu::TextureViewDescriptor::default()),
+        //     format: config.format,
+        //     window: Some(window),
+        // }];
+
+        let resources = Resources {
+            textures: Vec::new(),
+            meshes: Vec::new(),
         };
 
-        Context {
-            instance,
-            surface: Some(context),
+        Renderer {
             device,
             queue,
+            window: Some(window),
             targets: Vec::new(),
-            images: Vec::new(),
-            meshes: Vec::new(),
+            resources,
         }
     }
 }

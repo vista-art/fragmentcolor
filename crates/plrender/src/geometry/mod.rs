@@ -19,7 +19,7 @@ pub struct Geometry {
 }
 
 impl Geometry {
-    pub fn bake(&self, context: &mut plr::Context) -> plr::Prototype {
+    pub fn bake(&self, context: &mut plr::Renderer) -> plr::Prototype {
         let mut mb = context.add_mesh();
         mb.radius(self.radius);
         mb.vertex(&self.positions);

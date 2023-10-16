@@ -19,11 +19,10 @@ fn fill_scene(
     prototype: &plrender::Prototype,
 ) -> Vec<Cube> {
     let root_node = scene.add_node().scale(SCALE_ROOT).build();
-    scene
-        .add_entity(prototype)
-        .parent(root_node)
-        .component(levels[0].color)
-        .build();
+
+    let mut cube = scene.add_entity(prototype);
+    let _cube = cube.parent(root_node).component(levels[0].color).build();
+
     let mut list = vec![Cube {
         node: root_node,
         level: 0,
@@ -39,31 +38,11 @@ fn fill_scene(
     }];
 
     let children = [
-        mint::Vector3 {
-            x: 0.0,
-            y: 0.0,
-            z: 1.0,
-        },
-        mint::Vector3 {
-            x: 1.0,
-            y: 0.0,
-            z: 0.0,
-        },
-        mint::Vector3 {
-            x: -1.0,
-            y: 0.0,
-            z: 0.0,
-        },
-        mint::Vector3 {
-            x: 0.0,
-            y: 1.0,
-            z: 0.0,
-        },
-        mint::Vector3 {
-            x: 0.0,
-            y: -1.0,
-            z: 0.0,
-        },
+        mint::Vector3::from([0.0, 0.0, 1.0]),
+        mint::Vector3::from([1.0, 0.0, 0.0]),
+        mint::Vector3::from([-1.0, 0.0, 0.0]),
+        mint::Vector3::from([0.0, 1.0, 0.0]),
+        mint::Vector3::from([0.0, -1.0, 0.0]),
     ];
 
     while let Some(next) = stack.pop() {
@@ -82,6 +61,7 @@ fn fill_scene(
                 .scale(SCALE_LEVEL)
                 .parent(next.parent)
                 .build();
+
             scene[node].post_rotate(child, 90.0);
 
             scene
@@ -89,6 +69,7 @@ fn fill_scene(
                 .parent(node)
                 .component(level.color)
                 .build();
+
             list.push(Cube {
                 node,
                 level: next.level,
@@ -134,7 +115,7 @@ fn main() {
     };
 
     let window = Window::new().title("Cubeception").build();
-    let mut context = pollster::block_on(plrender::Context::init().build(&window));
+    let mut context = pollster::block_on(plrender::Renderer::init().build(&window));
     let mut scene = plrender::Scene::new();
 
     let camera = plrender::Camera {
@@ -157,6 +138,7 @@ fn main() {
         },
     )
     .bake(&mut context);
+
     let cubes = fill_scene(&LEVELS[..], &mut scene, &prototype);
     println!("Initialized {} cubes", cubes.len());
 

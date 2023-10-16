@@ -45,7 +45,7 @@ pub struct Prototype {
 }
 
 // Apparently, this hack is there to enable this Prototype to be
-// to be added to Scenes as references, so we can have the builder
+// added to Scenes as references - so we can have the builder
 // pattern of the original engine.
 //
 // When a user injects it in the scene as a reference, the Scene
@@ -56,7 +56,7 @@ pub struct Prototype {
 // the scene, instead of returning an ID, will return a builder.
 // Additionally, the "build" method of the builder, instead of
 // returning a new instance of the type, implicitly injects the
-// type into the Scene and returns a this Prototype reference back.
+// type into the Scene and returns this Prototype reference back.
 unsafe impl<'a> hecs::DynamicBundle for &'a Prototype {
     fn with_ids<T>(&self, f: impl FnOnce(&[TypeId]) -> T) -> T {
         f(&self.type_ids)
@@ -90,7 +90,7 @@ impl Mesh {
 pub struct Vertex<T>(PhantomData<T>);
 
 pub struct MeshBuilder<'a> {
-    context: &'a mut renderer::context::Context,
+    renderer: &'a mut renderer::Renderer,
     name: String,
     data: Vec<u8>, // could be moved up to the context
     index_stream: Option<IndexStream>,
@@ -101,9 +101,9 @@ pub struct MeshBuilder<'a> {
 }
 
 impl<'a> MeshBuilder<'a> {
-    pub fn new(context: &'a mut renderer::context::Context) -> Self {
+    pub fn new(renderer: &'a mut renderer::Renderer) -> Self {
         Self {
-            context,
+            renderer,
             name: String::new(),
             data: Vec::new(),
             index_stream: None,
@@ -158,12 +158,12 @@ impl<'a> MeshBuilder<'a> {
     }
 
     pub fn build(&mut self) -> Prototype {
-        let index = self.context.meshes.len();
+        let index = self.renderer.resources.meshes.len();
 
         let mut usage = wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::VERTEX;
         usage.set(wgpu::BufferUsages::INDEX, self.index_stream.is_some());
         let buffer = self
-            .context
+            .renderer
             .device
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: if self.name.is_empty() {
@@ -182,7 +182,7 @@ impl<'a> MeshBuilder<'a> {
             .collect::<Vec<_>>()
             .into_boxed_slice();
 
-        self.context.meshes.push(Mesh {
+        self.renderer.resources.meshes.push(Mesh {
             buffer,
             index_stream: self.index_stream.take(),
             vertex_streams: mem::take(&mut self.vertex_streams).into_boxed_slice(),

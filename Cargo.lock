@@ -556,7 +556,7 @@ version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "55ac459de2512911e4b674ce33cf20befaba382d05b62b008afc1c8b57cbf181"
 dependencies = [
- "spin",
+ "spin 0.9.8",
 ]
 
 [[package]]
@@ -896,7 +896,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9d2711ad60b74f2f3d0c0ac338a58410a5249da44005971ae806d2925e6b5167"
 dependencies = [
  "hashbrown 0.13.2",
- "spin",
+ "hecs-macros",
+ "lazy_static",
+ "spin 0.9.8",
+]
+
+[[package]]
+name = "hecs-macros"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7803820ce0c5059334026899872ff242b39a31e019298f2f21ad409eac81ded0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
 ]
 
 [[package]]
@@ -1110,6 +1123,9 @@ name = "lazy_static"
 version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e2abad23fbc42b3700f2f279844dc832adb2b2eb069b2df918f455c4e18cc646"
+dependencies = [
+ "spin 0.5.2",
+]
 
 [[package]]
 name = "lebe"
@@ -1791,7 +1807,6 @@ dependencies = [
  "bitflags 2.4.0",
  "bytemuck",
  "cfg_aliases",
- "csscolorparser",
  "fxhash",
  "glam",
  "gltf",
@@ -1810,10 +1825,11 @@ dependencies = [
 
 [[package]]
 name = "plrender-core"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "bytemuck",
  "cfg_aliases",
+ "csscolorparser",
  "ddsfile",
  "glam",
  "hecs",
@@ -1842,6 +1858,7 @@ version = "0.1.0"
 dependencies = [
  "instant",
  "log",
+ "mint",
  "plrender",
  "pollster",
  "rand",
@@ -2345,6 +2362,12 @@ dependencies = [
  "libc",
  "windows-sys 0.48.0",
 ]
+
+[[package]]
+name = "spin"
+version = "0.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6e63cff320ae2c57904679ba7cb63280a3dc4613885beafb148ee7bf9aa9042d"
 
 [[package]]
 name = "spin"
