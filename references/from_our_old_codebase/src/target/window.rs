@@ -17,6 +17,7 @@ pub struct WindowOptions {
     fullscreen: Option<bool>,
     resizable: Option<bool>,
     title: Option<String>,
+    sizd: Option<(u32, u32)>,
 }
 
 #[cfg(not(wasm))]
