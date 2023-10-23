@@ -1,10 +1,10 @@
 use crate::color::Color;
-use crate::renderer::{resources::mesh::Prototype, texture::TextureRef};
+use crate::renderer::{resources::mesh::Prototype, texture::TextureId};
 use crate::scene::{
     builder::ObjectBuilder,
     entity::EntityBuilder,
     light::{Light, LightBuilder, LightKind, LightRef},
-    node::{Node, NodeRef},
+    node::{Node, NodeId},
     space::RawSpace,
     sprite::SpriteBuilder,
 };
@@ -13,14 +13,14 @@ use std::{mem, ops};
 // @TODO is this really necessary?
 pub struct Array<T>(pub Vec<T>);
 
-impl ops::Index<NodeRef> for Array<Node> {
+impl ops::Index<NodeId> for Array<Node> {
     type Output = Node;
-    fn index(&self, node: NodeRef) -> &Node {
+    fn index(&self, node: NodeId) -> &Node {
         &self.0[node.0 as usize]
     }
 }
-impl ops::IndexMut<NodeRef> for Array<Node> {
-    fn index_mut(&mut self, node: NodeRef) -> &mut Node {
+impl ops::IndexMut<NodeId> for Array<Node> {
+    fn index_mut(&mut self, node: NodeId) -> &mut Node {
         &mut self.0[node.0 as usize]
     }
 }
@@ -40,9 +40,9 @@ pub struct BakedScene {
     spaces: Box<[RawSpace]>,
 }
 
-impl ops::Index<NodeRef> for BakedScene {
+impl ops::Index<NodeId> for BakedScene {
     type Output = RawSpace;
-    fn index(&self, node: NodeRef) -> &RawSpace {
+    fn index(&self, node: NodeId) -> &RawSpace {
         &self.spaces[node.0 as usize]
     }
 }
@@ -53,28 +53,32 @@ pub struct Scene {
     pub lights: Array<Light>,
 }
 
-impl ops::Index<NodeRef> for Scene {
+impl ops::Index<NodeId> for Scene {
     type Output = Node;
-    fn index(&self, node: NodeRef) -> &Node {
+    fn index(&self, node: NodeId) -> &Node {
         &self.nodes.0[node.0 as usize]
     }
 }
-impl ops::IndexMut<NodeRef> for Scene {
-    fn index_mut(&mut self, node: NodeRef) -> &mut Node {
+impl ops::IndexMut<NodeId> for Scene {
+    fn index_mut(&mut self, node: NodeId) -> &mut Node {
         &mut self.nodes.0[node.0 as usize]
     }
 }
 
 impl Scene {
     pub fn new() -> Self {
-        let camera = plrender::Camera {
-            projection: plrender::Projection::Orthographic {
-                // the sprite configuration is not centered
-                center: [0.0, -10.0].into(),
-                extent_y: 40.0,
-            },
-            ..Default::default()
-        };
+        // @TODO Scene should pick a default camera
+        //       without the user having to manually
+        //       set it up.
+        //
+        // let camera = plrender::Camera {
+        //     projection: plrender::Projection::Orthographic {
+        //         // the sprite configuration is not centered
+        //         center: [0.0, -10.0].into(),
+        //         extent_y: 40.0,
+        //     },
+        //     ..Default::default()
+        // };
 
         Self {
             world: Default::default(),
@@ -83,17 +87,26 @@ impl Scene {
         }
     }
 
+    // @TODO a scene can contain many cameras, but only one active at a time.
+    pub fn active_camera() {
+        todo!()
+    }
+
     // @TODO this method is intended to replace all the other "add" methods below.
     pub fn add(&mut self, _components: impl hecs::DynamicBundle) -> hecs::Entity {
         todo!()
     }
 
-    pub(super) fn add_node_impl(&mut self, node: &mut Node) -> NodeRef {
+    // this is supposed to be called by the builder
+    pub(super) fn set_node_id(&mut self, node: &mut Node) -> NodeId {
         let index = self.nodes.0.len();
         self.nodes.0.push(mem::take(node));
-        NodeRef(index as u32)
+        NodeId(index as u32)
     }
 
+    // I got the pattern now. Every "add" function in Baryon
+    // returns a BUILDER. The set_node_id is what actually
+    // ADDS the node in the scene.
     pub fn add_node(&mut self) -> ObjectBuilder<()> {
         ObjectBuilder {
             scene: self,
@@ -113,7 +126,7 @@ impl Scene {
         }
     }
 
-    pub fn add_sprite(&mut self, image: TextureRef) -> ObjectBuilder<SpriteBuilder> {
+    pub fn add_sprite(&mut self, image: TextureId) -> ObjectBuilder<SpriteBuilder> {
         let raw = hecs::EntityBuilder::new();
         ObjectBuilder {
             scene: self,
@@ -146,7 +159,10 @@ impl Scene {
         self.add_light(LightKind::Point)
     }
 
+    /// Lists all lights in the Scene
     pub fn lights<'a>(&'a self) -> impl Iterator<Item = (LightRef, &'a Light)> {
+        // In this case, we should iterate over all Entities
+        // containing a Light Component (maybe emissive component)
         self.lights
             .0
             .iter()
@@ -157,7 +173,7 @@ impl Scene {
     pub fn bake(&self) -> BakedScene {
         let mut spaces: Vec<RawSpace> = Vec::with_capacity(self.nodes.0.len());
         for n in self.nodes.0.iter() {
-            let space = if n.parent == NodeRef::default() {
+            let space = if n.parent == NodeId::default() {
                 n.local.clone()
             } else {
                 let parent_space = spaces[n.parent.0 as usize].to_space();

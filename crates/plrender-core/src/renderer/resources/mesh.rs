@@ -3,7 +3,7 @@ use std::{any::TypeId, marker::PhantomData, mem};
 use wgpu::util::DeviceExt;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct MeshRef(pub u32);
+pub struct MeshId(pub u32);
 
 /// Mesh is a GPU resource, not a Scene resource.
 pub struct Mesh {
@@ -39,7 +39,7 @@ pub struct VertexStream {
 ///
 #[derive(hecs::Bundle, hecs::DynamicBundleClone)]
 pub struct Prototype {
-    pub reference: MeshRef,
+    pub reference: MeshId,
     type_ids: Box<[TypeId]>,
     type_infos: Box<[hecs::TypeInfo]>,
 }
@@ -158,8 +158,6 @@ impl<'a> MeshBuilder<'a> {
     }
 
     pub fn build(&mut self) -> Prototype {
-        let index = self.renderer.resources.meshes.len();
-
         let mut usage = wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::VERTEX;
         usage.set(wgpu::BufferUsages::INDEX, self.index_stream.is_some());
         let buffer = self
@@ -182,16 +180,19 @@ impl<'a> MeshBuilder<'a> {
             .collect::<Vec<_>>()
             .into_boxed_slice();
 
-        self.renderer.resources.meshes.push(Mesh {
-            buffer,
-            index_stream: self.index_stream.take(),
-            vertex_streams: mem::take(&mut self.vertex_streams).into_boxed_slice(),
-            vertex_count: self.vertex_count as u32,
-            bound_radius: self.bound_radius,
-        });
+        let index = self
+            .renderer
+            .add_mesh(Mesh {
+                buffer,
+                index_stream: self.index_stream.take(),
+                vertex_streams: mem::take(&mut self.vertex_streams).into_boxed_slice(),
+                vertex_count: self.vertex_count as u32,
+                bound_radius: self.bound_radius,
+            })
+            .expect("Could not build mesh");
 
         Prototype {
-            reference: MeshRef(index as u32),
+            reference: index,
             type_ids,
             type_infos: mem::take(&mut self.type_infos).into_boxed_slice(),
         }

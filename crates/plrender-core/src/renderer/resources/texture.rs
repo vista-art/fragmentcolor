@@ -7,7 +7,7 @@ use image::{GenericImageView, RgbaImage};
 type Error = Box<dyn std::error::Error>;
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub struct TextureRef(pub u32);
+pub struct TextureId(pub u32);
 
 #[derive(Debug)]
 pub struct Texture {

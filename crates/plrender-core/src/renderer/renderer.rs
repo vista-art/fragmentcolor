@@ -1,57 +1,47 @@
 use crate::renderer::{
+    options::POWER_PREFERENCE,
     resources::{
-        mesh::{Mesh, MeshBuilder, MeshRef},
-        sampler::create_default_sampler,
+        mesh::{Mesh, MeshId},
+        Resources,
     },
-    target::{FrameTarget, HasWindow, Target, TargetInfo, TargetRef, WindowTarget},
-    texture::{Texture, TextureRef},
-    RenderPass,
+    target::{IsWindow, Target, Targets, WindowTarget},
+    texture::{Texture, TextureId},
+    RenderOptions, RenderPass,
 };
 use crate::scene::{camera::Camera, Scene};
-use std::{fs::File, io, path::Path};
+use std::{
+    fs::File,
+    io,
+    path::Path,
+    sync::{Arc, Mutex, MutexGuard},
+};
 use wgpu::util::DeviceExt;
 
 type Error = Box<dyn std::error::Error>;
+type SizedSurfaces = Vec<(wgpu::Surface, wgpu::Extent3d)>;
 
-/// Trait that exposes `Context` details that depend on `wgpu`
 pub trait RenderContext {
-    fn get_texture(&self, ir: TextureRef) -> &Texture;
-    fn get_target(&self, tr: TargetRef) -> &Target;
-    fn get_mesh(&self, mr: MeshRef) -> &Mesh;
+    fn resources(&mut self) -> MutexGuard<'_, Resources>;
+    fn targets(&mut self) -> MutexGuard<'_, Targets>;
     fn device(&self) -> &wgpu::Device;
     fn queue(&self) -> &wgpu::Queue;
-}
-
-#[derive(Default, Debug)]
-pub struct RendererBuilder {
-    power_preference: wgpu::PowerPreference,
-    software: bool,
 }
 
 pub struct Renderer {
     pub(crate) device: wgpu::Device,
     pub(crate) queue: wgpu::Queue,
-    pub(crate) targets: Vec<Target>,
-    pub(crate) window: Option<WindowTarget>, // @TODO: remove this (will be part of Targets)
-    pub(crate) resources: Resources,
+    pub(crate) targets: Arc<Mutex<Targets>>,
+    pub(crate) resources: Arc<Mutex<Resources>>,
 }
 
-// NOTE: If you ever need to refine this, look
-// at Ruffle's TexturePool and BufferPool structs
-pub struct Resources {
-    pub(crate) textures: Vec<Texture>,
-    pub(crate) meshes: Vec<Mesh>,
-}
+struct Internal;
 
 impl RenderContext for Renderer {
-    fn get_texture(&self, ir: TextureRef) -> &Texture {
-        &self.resources.textures[ir.0 as usize]
+    fn resources(&mut self) -> MutexGuard<'_, Resources> {
+        self.resources.try_lock().unwrap()
     }
-    fn get_target(&self, tr: TargetRef) -> &Target {
-        &self.targets[tr.0 as usize]
-    }
-    fn get_mesh(&self, mr: MeshRef) -> &Mesh {
-        &self.resources.meshes[mr.0 as usize]
+    fn targets(&mut self) -> MutexGuard<'_, Targets> {
+        self.targets.try_lock().unwrap()
     }
     fn device(&self) -> &wgpu::Device {
         &self.device
@@ -62,78 +52,73 @@ impl RenderContext for Renderer {
 }
 
 impl Renderer {
-    // @TODO: remove this
-    pub fn init() -> RendererBuilder {
-        RendererBuilder::default()
+    pub async fn new<W: IsWindow>(options: RenderOptions<'_, W>) -> Result<Renderer, Error> {
+        let (surfaces, adapter, device, queue) = Internal::build_gpu_objects(options).await?;
+        let targets = Internal::build_targets(&device, &adapter, surfaces);
+        let resources = Arc::new(Mutex::new(Resources::new()));
+        let targets = Arc::new(Mutex::new(targets));
+
+        Ok(Renderer {
+            device,
+            queue,
+            targets,
+            resources,
+        })
     }
 
-    pub fn resize(&mut self, width: u32, height: u32) {
-        // @TODO Here we should loop all the targets and resize them
-        let window = match self.window {
-            Some(ref mut suf) => suf,
-            None => return,
-        };
-        if (window.config.width, window.config.height) == (width, height) {
-            return;
-        }
-        window.config.width = width;
-        window.config.height = height;
-        window.surface.configure(&self.device, &window.config);
-
-        // for target in self.targets.iter_mut() {
-        //     target.resize(&self.device, width, height);
-        // }
+    pub fn add_mesh(&mut self, mesh: Mesh) -> Result<MeshId, Error> {
+        let ref mut resources = self.resources();
+        Ok(resources.add_mesh(mesh))
     }
 
-    pub fn present<P: RenderPass>(
+    pub fn add_texture(&mut self, texture: wgpu::Texture) -> Result<TextureId, Error> {
+        let texture = Texture::from_wgpu_texture(&self, texture);
+        let index = self.resources().add_texture(texture);
+
+        Ok(index)
+    }
+
+    // pub async fn add_target<W: IsWindow>(self, window: &W) -> Renderer {
+    //     let size = window.size();
+    // }
+
+    pub fn render<P: RenderPass>(
         &mut self,
         pass: &mut P,
         scene: &Scene,
         camera: &Camera,
     ) -> Result<(), Error> {
-        let window = self.window.as_mut().expect("No screen is configured!");
+        // removed a lot of things before that line
+        // which assumed that we would always render to a window.
 
-        // @TODO implement Ruffle's interface for render targets
-        let frame = window.surface.get_current_texture()?;
-        let view = frame
-            .texture
-            .create_view(&wgpu::TextureViewDescriptor::default());
+        // let frame = target.next_frame()?;
 
-        let tr = TargetRef(self.targets.len() as _);
-        self.targets.push(Target::Frame(FrameTarget {
-            view,
-            format: frame.texture.format(),
-            size: wgpu::Extent3d {
-                width: window.config.width,
-                height: window.config.height,
-                depth_or_array_layers: 1,
-            },
-        }));
+        // Will you delegate the targets callbacks to the RenderPass?
+        // it makes sense, since it creates and holds the command encoder and command buffer
+        //
+        // doing it outside the pass would make reading difficult (splitting context)
 
-        // @TODO multiple passes
-        pass.draw(&[tr], scene, camera, self);
+        //let resources = self.resources()?;
 
-        self.targets.pop();
-        frame.present();
+        // @TODO consider acquiring the frame here
+
+        pass.draw(scene, camera, self);
+
+        // @TODO2 ... and submitting it here
+        // (so this frame management won't be responsibility of the RenderPass.
+        //                                      the renderpass would only draw)
+
+        // @TODO multiple passes?
+        // for target in self.targets {
+        // ...
+        //}
 
         Ok(())
     }
 
-    // @TODO remove this
-    pub fn add_mesh(&mut self) -> MeshBuilder {
-        MeshBuilder::new(self)
-    }
-
-    // @TODO remove this
-    pub fn surface_info(&self) -> Option<TargetInfo> {
-        self.window.as_ref().map(|s| TargetInfo {
-            format: s.config.format,
-            sample_count: 1,
-            aspect_ratio: s.config.width as f32 / s.config.height as f32,
-        })
-    }
-
-    pub fn load_image(&mut self, path_ref: impl AsRef<Path>) -> TextureRef {
+    // @TODO this logic exists in the Texture impl block;
+    //       we should delegate all this part to it
+    pub fn load_image(&mut self, path_ref: impl AsRef<Path>) -> Result<TextureId, Error> {
         let path = path_ref.as_ref();
         let image_format = image::ImageFormat::from_extension(path.extension().unwrap())
             .unwrap_or_else(|| panic!("Unrecognized image extension: {:?}", path.extension()));
@@ -143,7 +128,7 @@ impl Renderer {
             .unwrap_or_else(|e| panic!("Unable to open {}: {:?}", path.display(), e));
         let mut buf_reader = io::BufReader::new(file);
 
-        let (texture, size) = if image_format == image::ImageFormat::Dds {
+        let texture = if image_format == image::ImageFormat::Dds {
             let dds = ddsfile::Dds::read(&mut buf_reader)
                 .unwrap_or_else(|e| panic!("Unable to read {}: {:?}", path.display(), e));
 
@@ -199,7 +184,7 @@ impl Renderer {
                 .device
                 .create_texture_with_data(&self.queue, &desc, &dds.data);
 
-            (texture, desc.size)
+            texture
         } else {
             let img = image::load(buf_reader, image_format)
                 .unwrap_or_else(|e| panic!("Unable to decode {}: {:?}", path.display(), e))
@@ -233,178 +218,146 @@ impl Renderer {
                 },
                 size,
             );
-            (texture, size)
+
+            texture
         };
 
-        self.add_texture(texture, size)
+        self.add_texture(texture)
     }
 
-    // @TODO receive our texture instead
-    pub fn add_texture(&mut self, texture: wgpu::Texture, size: wgpu::Extent3d) -> TextureRef {
-        let index = self.resources.textures.len();
-        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-        let sampler = create_default_sampler(&self.device);
-        let format = texture.format();
-        self.resources.textures.push(Texture {
-            data: texture,
-            view,
-            size,
-            format,
-            sampler,
-        });
-        TextureRef(index as u32)
-    }
-
-    pub fn add_image_from_bytes(
+    // @TODO delegate to Texture impl
+    pub fn add_texture_from_bytes(
         &mut self,
         desc: &wgpu::TextureDescriptor,
         data: &[u8],
-    ) -> TextureRef {
+    ) -> Result<TextureId, Error> {
         let texture = self
             .device
             .create_texture_with_data(&self.queue, &desc, data);
 
-        self.add_texture(texture, desc.size.clone())
+        self.add_texture(texture)
     }
 }
 
-impl RendererBuilder {
-    pub fn power_hungry(self, hungry: bool) -> Self {
-        Self {
-            power_preference: if hungry {
-                wgpu::PowerPreference::HighPerformance
-            } else {
-                wgpu::PowerPreference::LowPower
-            },
-            ..self
-        }
-    }
-
-    pub fn software(self, software: bool) -> Self {
-        Self { software, ..self }
-    }
-
-    pub async fn build_offscreen(self) -> Renderer {
+// Helper static methods
+impl Internal {
+    async fn build_gpu_objects<W: IsWindow>(
+        options: RenderOptions<'_, W>,
+    ) -> Result<(SizedSurfaces, wgpu::Adapter, wgpu::Device, wgpu::Queue), Error> {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::default());
+
+        let (power_preference, force_fallback_adapter, window_list, limits) =
+            Internal::parse_options(options);
+        let surfaces = Internal::build_surfaces(&instance, window_list);
 
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: self.power_preference,
-                force_fallback_adapter: self.software,
-                compatible_surface: None,
+                power_preference,
+                force_fallback_adapter,
+                compatible_surface: surfaces.first().map(|(surface, _)| surface),
             })
             .await
-            .unwrap();
-
-        let (device, queue) = adapter
-            .request_device(&wgpu::DeviceDescriptor::default(), None)
-            .await
-            .unwrap();
-
-        let resources = Resources {
-            textures: Vec::new(),
-            meshes: Vec::new(),
-        };
-
-        Renderer {
-            device,
-            queue,
-            targets: Vec::new(),
-            resources,
-            window: None,
-        }
-    }
-
-    pub async fn build<W: HasWindow>(self, window: &W) -> Renderer {
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::default());
-        let surface = unsafe { instance.create_surface(window) }.unwrap();
-        let size = window.size();
-
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: self.power_preference,
-                force_fallback_adapter: self.software,
-                compatible_surface: Some(&surface),
-            })
-            .await
-            .unwrap();
+            .ok_or("Failed to find an appropriate GPU adapter")?;
 
         let (device, queue) = adapter
             .request_device(
                 &wgpu::DeviceDescriptor {
                     features: wgpu::Features::empty(),
-                    // WebGL doesn't support all of wgpu's features, so if
-                    // we're building for the web we'll have to disable some.
-                    limits: if cfg!(wasm) {
-                        wgpu::Limits::downlevel_webgl2_defaults()
-                    } else {
-                        wgpu::Limits::default()
-                    },
+                    limits,
                     label: None,
                 },
                 None, // Trace path
             )
-            .await
-            .expect("Failed to create device");
+            .await?;
 
-        let surface_capabilities = surface.get_capabilities(&adapter);
+        Ok((surfaces, adapter, device, queue))
+    }
 
-        // The shader code assumes an sRGB surface texture. Using a different one
-        // will result all the colors coming out darker. If you want to support non
-        // sRGB surfaces, you'll need to account for that when drawing to the frame.
-        let surface_format = surface_capabilities
-            .formats
-            .iter()
-            .copied()
-            .find(|f| f.is_srgb())
-            .unwrap_or(surface_capabilities.formats[0]);
-
-        // alpha_mode should be transparent if the surface supports it
-        let alpha_mode = surface_capabilities
-            .alpha_modes
-            .iter()
-            .find(|m| *m == &wgpu::CompositeAlphaMode::PreMultiplied)
-            .unwrap_or(&wgpu::CompositeAlphaMode::Auto)
-            .to_owned();
-
-        let config = wgpu::SurfaceConfiguration {
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-            format: surface_format,
-            width: size.width,
-            height: size.height,
-            alpha_mode,
-            present_mode: surface_capabilities.present_modes[0],
-            view_formats: vec![surface_format],
+    fn parse_options<W: IsWindow>(
+        options: RenderOptions<'_, W>,
+    ) -> (wgpu::PowerPreference, bool, Vec<&W>, wgpu::Limits) {
+        let preference = options.power_preference.unwrap_or("high-performance");
+        let power_preference = POWER_PREFERENCE.get(preference).unwrap().to_owned();
+        let force_fallback_adapter = options.force_software_rendering.unwrap_or(false);
+        let window_targets = match options.targets {
+            Some(targets) => targets,
+            None => Vec::new(),
         };
 
-        surface.configure(&device, &config);
-
-        let window = WindowTarget { surface, config };
-
-        // @TODO add window to targets list
-        //       Targets could be an enum.
-        // let targets = vec![Target {
-        //     size,
-        //     view: window
-        //         .surface
-        //         .get_current_texture()?
-        //         .texture
-        //         .create_view(&wgpu::TextureViewDescriptor::default()),
-        //     format: config.format,
-        //     window: Some(window),
-        // }];
-
-        let resources = Resources {
-            textures: Vec::new(),
-            meshes: Vec::new(),
+        // @TODO this should come from the RenderOptions
+        //       and the JS wrapper would set it to "webgl2"
+        let device_limits = if cfg!(wasm) {
+            wgpu::Limits::downlevel_webgl2_defaults()
+        } else {
+            wgpu::Limits::default()
         };
 
-        Renderer {
-            device,
-            queue,
-            window: Some(window),
-            targets: Vec::new(),
-            resources,
+        (
+            power_preference,
+            force_fallback_adapter,
+            window_targets,
+            device_limits,
+        )
+    }
+
+    fn build_surfaces<W: IsWindow>(
+        instance: &wgpu::Instance,
+        window_list: Vec<&W>,
+    ) -> SizedSurfaces {
+        window_list
+            .into_iter()
+            .filter_map(|window| {
+                let surface = unsafe { instance.create_surface(window) }.ok()?;
+                let size = window.size();
+                Some((surface, size))
+            })
+            .collect()
+    }
+
+    fn build_targets(
+        device: &wgpu::Device,
+        adapter: &wgpu::Adapter,
+        surfaces: SizedSurfaces,
+    ) -> Targets {
+        let mut targets = Targets(Vec::new());
+        for (surface, size) in surfaces.into_iter() {
+            let surface_capabilities = surface.get_capabilities(&adapter);
+
+            // The shader code assumes an sRGB surface texture. Using a different one
+            // will result all the colors coming out darker. If you want to support non
+            // sRGB surfaces, you'll need to account for that when drawing to the frame.
+            let format = surface_capabilities
+                .formats
+                .iter()
+                .copied()
+                .find(|f| f.is_srgb())
+                .unwrap_or(surface_capabilities.formats[0]);
+
+            // alpha_mode should be transparent if the surface supports it
+            let alpha_mode = surface_capabilities
+                .alpha_modes
+                .iter()
+                .find(|m| *m == &wgpu::CompositeAlphaMode::PreMultiplied)
+                .unwrap_or(&wgpu::CompositeAlphaMode::Auto)
+                .to_owned();
+
+            let config = wgpu::SurfaceConfiguration {
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                format,
+                width: size.width,
+                height: size.height,
+                alpha_mode,
+                present_mode: surface_capabilities.present_modes[0],
+                view_formats: vec![],
+            };
+
+            surface.configure(&device, &config);
+
+            targets
+                .0
+                .push(Target::Window(WindowTarget { surface, config }))
         }
+
+        targets
     }
 }

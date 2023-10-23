@@ -1,18 +1,18 @@
-use crate::renderer::texture::TextureRef;
-use crate::scene::{entity::EntityRef, node::NodeRef, space::Space, ObjectBuilder};
+use crate::renderer::texture::TextureId;
+use crate::scene::{entity::EntityRef, node::NodeId, space::Space, ObjectBuilder};
 use std::ops::Range;
 
 pub type UvRange = Range<mint::Point2<i16>>;
 
 pub struct Sprite {
-    pub node: NodeRef,
-    pub image: TextureRef,
+    pub node: NodeId,
+    pub image: TextureId,
     pub uv: Option<UvRange>,
 }
 
 pub struct SpriteBuilder {
     pub(super) raw: hecs::EntityBuilder,
-    pub(super) image: TextureRef,
+    pub(super) image: TextureId,
     pub(super) uv: Option<UvRange>,
 }
 
@@ -33,7 +33,7 @@ impl ObjectBuilder<'_, SpriteBuilder> {
             node: if self.node.local == Space::default() {
                 self.node.parent
             } else {
-                self.scene.add_node_impl(&mut self.node)
+                self.scene.set_node_id(&mut self.node)
             },
             image: self.kind.image,
             uv: self.kind.uv.take(),

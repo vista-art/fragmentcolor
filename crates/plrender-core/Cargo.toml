@@ -1,6 +1,6 @@
 [package]
 name = "plrender-core"
-version = "0.4.0"
+version = "0.4.1"
 edition = "2021"
 authors = ["Pupil Labs GmbH"]
 license-file = "LICENCE.md"
@@ -15,6 +15,7 @@ default = []
 bytemuck = { version = "1.14", features = ["derive"] }
 hecs = { version = "0.10", features=["macros"] }
 mint = "0.5"
+phf = { version = "0.11", features = ["macros"] }
 # the latest version deprecates the RawWindowHandle trait
 # and not all upstream window vendors have implemented it
 raw-window-handle = "0.5"
