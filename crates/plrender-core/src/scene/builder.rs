@@ -1,5 +1,5 @@
 use crate::scene::{
-    node::{Node, NodeRef},
+    node::{Node, NodeId},
     Scene,
 };
 
@@ -10,13 +10,17 @@ pub struct ObjectBuilder<'a, T> {
 }
 
 impl ObjectBuilder<'_, ()> {
-    pub fn build(&mut self) -> NodeRef {
-        self.scene.add_node_impl(&mut self.node)
+    pub fn build(&mut self) -> NodeId {
+        // The object builder is tightly
+        // integrated with the Scene
+        self.scene.set_node_id(&mut self.node)
     }
 }
 
+// This Builder is actually responsible
+// for POSITIONING the object in a Scene
 impl<T> ObjectBuilder<'_, T> {
-    pub fn parent(&mut self, parent: NodeRef) -> &mut Self {
+    pub fn parent(&mut self, parent: NodeId) -> &mut Self {
         self.node.parent = parent;
         self
     }

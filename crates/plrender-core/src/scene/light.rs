@@ -1,5 +1,5 @@
 use crate::color::Color;
-use crate::scene::{node::NodeRef, space::Space, ObjectBuilder};
+use crate::scene::{node::NodeId, space::Space, ObjectBuilder};
 
 #[derive(Clone, Copy, Debug)]
 pub enum LightKind {
@@ -12,7 +12,7 @@ pub struct LightRef(pub u32);
 
 #[derive(Debug)]
 pub struct Light {
-    pub node: NodeRef,
+    pub node: NodeId,
     pub color: Color,
     pub intensity: f32,
     pub kind: LightKind,
@@ -24,6 +24,10 @@ pub struct LightBuilder {
     pub(super) kind: LightKind,
 }
 
+// Note that UNLIKE the Entity Builder, this "subclass"
+// contains only light-related information. If we are
+// going to go all-in into ECS, Light should be just
+// a regular entity containing Emissive properties
 impl ObjectBuilder<'_, LightBuilder> {
     pub fn intensity(&mut self, intensity: f32) -> &mut Self {
         self.kind.intensity = intensity;
@@ -40,7 +44,7 @@ impl ObjectBuilder<'_, LightBuilder> {
             node: if self.node.local == Space::default() {
                 self.node.parent
             } else {
-                self.scene.add_node_impl(&mut self.node)
+                self.scene.set_node_id(&mut self.node)
             },
             color: self.kind.color,
             intensity: self.kind.intensity,
