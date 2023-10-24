@@ -1,5 +1,5 @@
 use fxhash::FxHashMap;
-use plr::{RenderContext as _, RenderTarget};
+use plr::{Camera, Color, HasSize, RenderContext, RenderTarget, Renderer, Scene};
 use std::mem;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -51,14 +51,14 @@ struct LocalKey {
 
 #[derive(Clone, Copy, Debug)]
 pub struct Ambient {
-    pub color: crate::Color,
+    pub color: Color,
     pub intensity: f32,
 }
 
 impl Default for Ambient {
     fn default() -> Self {
         Self {
-            color: crate::Color(0xFFFFFFFF),
+            color: Color(0xFFFFFFFF),
             intensity: 0.0,
         }
     }
@@ -96,15 +96,12 @@ pub struct Phong {
 }
 
 impl Phong {
-    pub fn new(config: &PhongConfig, context: &crate::Renderer) -> Self {
-        Self::new_offscreen(config, context.surface_info().unwrap(), context)
-    }
-    pub fn new_offscreen(
-        config: &PhongConfig,
-        target_info: crate::TargetInfo,
-        context: &crate::Renderer,
-    ) -> Self {
-        let d = context.device();
+    pub fn new(config: &PhongConfig, renderer: &Renderer) -> Self {
+        let d = renderer.device();
+        // @TODO handle multiple targets
+        let targets = renderer.targets();
+        let target = targets.get_target(plr::TargetId(0));
+
         let shader_module = d.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("phong"),
             source: wgpu::ShaderSource::Wgsl(include_str!("phong.wgsl").into()),
@@ -203,7 +200,7 @@ impl Phong {
                 stencil: Default::default(),
             });
             let multisample = wgpu::MultisampleState {
-                count: target_info.sample_count,
+                count: target.sample_count(),
                 ..Default::default()
             };
 
@@ -220,7 +217,7 @@ impl Phong {
                     depth_stencil: ds.clone(),
                     multisample,
                     fragment: Some(wgpu::FragmentState {
-                        targets: &[Some(target_info.format.into())],
+                        targets: &[Some(target.format().into())],
                         module: &shader_module,
                         entry_point: "fs_flat",
                     }),
@@ -238,7 +235,7 @@ impl Phong {
                     depth_stencil: ds.clone(),
                     multisample,
                     fragment: Some(wgpu::FragmentState {
-                        targets: &[Some(target_info.format.into())],
+                        targets: &[Some(target.format().into())],
                         module: &shader_module,
                         entry_point: "fs_gouraud",
                     }),
@@ -256,7 +253,7 @@ impl Phong {
                     depth_stencil: ds.clone(),
                     multisample,
                     fragment: Some(wgpu::FragmentState {
-                        targets: &[Some(target_info.format.into())],
+                        targets: &[Some(target.format().into())],
                         module: &shader_module,
                         entry_point: "fs_phong",
                     }),
@@ -282,15 +279,11 @@ impl Phong {
 }
 
 impl plr::RenderPass for Phong {
-    fn draw(
-        &mut self,
-        targets: &[crate::TargetRef],
-        scene: &crate::Scene,
-        camera: &crate::Camera,
-        context: &crate::Renderer,
-    ) {
-        let target = context.get_target(targets[0]);
-        let device = context.device();
+    fn draw(&mut self, scene: &Scene, camera: &Camera, renderer: &Renderer) {
+        // @TODO handle multiple targets
+        let targets = renderer.targets();
+        let target = targets.get_target(plr::TargetId(0));
+        let device = renderer.device();
 
         let reset_depth = match self.depth_texture {
             Some((_, size)) => size != target.size(),
@@ -313,7 +306,7 @@ impl plr::RenderPass for Phong {
 
         let nodes = scene.bake();
         self.uniform_pool.reset();
-        let queue = context.queue();
+        let queue = renderer.queue();
 
         {
             let m_proj = camera.projection_matrix(target.aspect());
@@ -387,11 +380,15 @@ impl plr::RenderPass for Phong {
 
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
 
+        // @TODO propagate or inject frame!!!!
+        let frame = target.next_frame().unwrap();
+        let resources = renderer.resources();
+
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("phong"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &target.view().unwrap(),
+                    view: &frame.view,
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(camera.background.into()),
@@ -418,7 +415,7 @@ impl plr::RenderPass for Phong {
                 .iter()
             {
                 let space = &nodes[entity.node];
-                let mesh = context.get_mesh(entity.mesh);
+                let mesh = resources.get_mesh(entity.mesh);
                 let entity_radius = mesh.bound_radius * space.pos_scale[3];
 
                 // collect the `LIGHT_COUNT` lights most affecting the entity
@@ -487,6 +484,7 @@ impl plr::RenderPass for Phong {
             }
         }
 
-        queue.submit(Some(encoder.finish()));
+        let commands = vec![encoder.finish()];
+        target.submit(renderer, commands, frame);
     }
 }

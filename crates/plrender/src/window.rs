@@ -1,6 +1,13 @@
-use plr::Renderer;
+// Waiting for https://github.com/gfx-rs/wgpu/pull/4202
+// use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 use raw_window_handle::{
     HasRawDisplayHandle, HasRawWindowHandle, RawDisplayHandle, RawWindowHandle,
+};
+use serde::{Deserialize, Serialize};
+use winit::{
+    event::{KeyboardInput, VirtualKeyCode},
+    event_loop::EventLoop,
+    window::Fullscreen,
 };
 
 type Error = Box<dyn std::error::Error>;
@@ -9,26 +16,42 @@ const TARGET_FRAME_TIME: f64 = 1.0 / 120.0;
 
 #[derive(Debug)]
 pub struct Window {
-    event_loop: winit::event_loop::EventLoop<()>,
-    raw: winit::window::Window,
+    event_loop: EventLoop<()>,
+    instance: winit::window::Window,
 }
+
+// Waiting for https://github.com/gfx-rs/wgpu/pull/4202
+//
+// impl HasWindowHandle for Window {
+//     fn raw_window_handle(&self) -> WindowHandle {
+//         self.instance.window_handle()
+//     }
+// }
+//
+// impl HasDisplayHandle for Window {
+//     fn raw_display_handle(&self) -> DisplayHandle {
+//         self.instance.display_handle()
+//     }
+// }
+
+type KeyCode = VirtualKeyCode;
 
 unsafe impl HasRawWindowHandle for Window {
     fn raw_window_handle(&self) -> RawWindowHandle {
-        self.raw.raw_window_handle()
+        self.instance.raw_window_handle()
     }
 }
 
 unsafe impl HasRawDisplayHandle for Window {
     fn raw_display_handle(&self) -> RawDisplayHandle {
-        self.raw.raw_display_handle()
+        self.instance.raw_display_handle()
     }
 }
 
-impl plr::HasWindow for Window {}
-impl plr::RenderTarget for Window {
+impl plr::IsWindow for Window {}
+impl plr::HasSize for Window {
     fn size(&self) -> wgpu::Extent3d {
-        let size = self.raw.inner_size();
+        let size = self.instance.inner_size();
 
         wgpu::Extent3d {
             width: size.width,
@@ -41,37 +64,6 @@ impl plr::RenderTarget for Window {
         let size = self.size();
         size.width as f32 / size.height as f32
     }
-
-    // @TODO meybe we don't need to inject the window after all...
-    //       as of this itarection, it still lives in the Renderer as a single instance,
-    //       but we might need to have multiple windows / canvases in the future.
-    fn resize(&mut self, _: &Renderer, size: wgpu::Extent3d) -> Result<(), Error> {
-        self.raw
-            .set_inner_size(winit::dpi::Size::Physical(winit::dpi::PhysicalSize {
-                width: size.width,
-                height: size.height,
-            }));
-
-        Ok(())
-    }
-
-    fn format(&self) -> wgpu::TextureFormat {
-        wgpu::TextureFormat::Bgra8UnormSrgb
-    }
-
-    fn sample_count(&self) -> u32 {
-        1
-    }
-
-    fn view(&self) -> Option<&wgpu::TextureView> {
-        None
-    }
-}
-
-#[derive(Default)]
-pub struct WindowBuilder {
-    title: Option<String>,
-    size: Option<wgpu::Extent3d>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -106,17 +98,49 @@ pub enum Event {
     Exit,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub struct WindowOptions {
+    pub decorations: Option<bool>,
+    pub fullscreen: Option<bool>,
+    pub resizable: Option<bool>,
+    pub title: Option<String>,
+    pub size: Option<(u32, u32)>,
+}
+
 impl Window {
-    pub fn new() -> WindowBuilder {
-        WindowBuilder::default()
+    pub fn new(options: WindowOptions) -> Result<Self, winit::error::OsError> {
+        let event_loop = winit::event_loop::EventLoop::new();
+        let window = winit::window::WindowBuilder::new()
+            .with_title(options.title.as_ref().unwrap_or(&"PLRender".to_string()))
+            .with_inner_size(winit::dpi::Size::Logical(
+                options.size.unwrap_or((800, 600)).into(),
+            ))
+            .with_min_inner_size(winit::dpi::Size::Logical((64, 64).into()))
+            .with_fullscreen(
+                options
+                    .fullscreen
+                    .unwrap_or(false)
+                    .then(|| Fullscreen::Borderless(None)),
+            )
+            .with_decorations(options.decorations.unwrap_or(true))
+            .with_resizable(options.resizable.unwrap_or(true))
+            .build(&event_loop)?;
+
+        Ok(Window {
+            event_loop,
+            instance: window,
+        })
     }
+
+    // pub fn add_event_listener(callback: impl FnMut) {
+    //     todo!()
+    // }
 
     pub fn run(self, mut runner: impl 'static + FnMut(Event)) -> ! {
         use instant::{Duration, Instant};
         use winit::{
             event::{
-                ElementState, Event as WinEvent, KeyboardInput, MouseButton, MouseScrollDelta,
-                VirtualKeyCode as Vkc, WindowEvent,
+                ElementState, Event as WinitEvent, MouseButton, MouseScrollDelta, WindowEvent,
             },
             event_loop::ControlFlow,
         };
@@ -124,12 +148,12 @@ impl Window {
         let mut last_update_inst = Instant::now();
         let Self {
             event_loop,
-            raw: window,
+            instance: window,
         } = self;
 
         event_loop.run(move |event, _, control_flow| {
             *control_flow = match event {
-                WinEvent::WindowEvent {
+                WinitEvent::WindowEvent {
                     event: WindowEvent::Resized(size),
                     ..
                 } => {
@@ -139,7 +163,8 @@ impl Window {
                     });
                     ControlFlow::Poll
                 }
-                WinEvent::WindowEvent {
+                WinitEvent::WindowEvent {
+                    window_id: _, // we'll use this later...
                     event:
                         WindowEvent::KeyboardInput {
                             input:
@@ -150,23 +175,22 @@ impl Window {
                                 },
                             ..
                         },
-                    ..
                 } => {
                     runner(Event::Keyboard {
-                        key: if code >= Vkc::Key1 && code <= Vkc::Key0 {
-                            Key::Digit(code as u8 - Vkc::Key1 as u8)
-                        } else if code >= Vkc::A && code <= Vkc::Z {
-                            Key::Letter((code as u8 - Vkc::A as u8) as char)
-                        } else if code >= Vkc::F1 && code <= Vkc::F12 {
-                            Key::Function(code as u8 - Vkc::F1 as u8)
+                        key: if code >= KeyCode::Key1 && code <= KeyCode::Key0 {
+                            Key::Digit(code as u8 - KeyCode::Key1 as u8)
+                        } else if code >= KeyCode::A && code <= KeyCode::Z {
+                            Key::Letter((code as u8 - KeyCode::A as u8) as char)
+                        } else if code >= KeyCode::F1 && code <= KeyCode::F12 {
+                            Key::Function(code as u8 - KeyCode::F1 as u8)
                         } else {
                             match code {
-                                Vkc::Left => Key::Left,
-                                Vkc::Right => Key::Right,
-                                Vkc::Up => Key::Up,
-                                Vkc::Down => Key::Down,
-                                Vkc::Space => Key::Space,
-                                Vkc::Escape => Key::Escape,
+                                KeyCode::Left => Key::Left,
+                                KeyCode::Right => Key::Right,
+                                KeyCode::Up => Key::Up,
+                                KeyCode::Down => Key::Down,
+                                KeyCode::Space => Key::Space,
+                                KeyCode::Escape => Key::Escape,
                                 _ => {
                                     log::debug!("Unrecognized key {:?}", code);
                                     Key::Other
@@ -177,7 +201,7 @@ impl Window {
                     });
                     ControlFlow::Poll
                 }
-                WinEvent::WindowEvent {
+                WinitEvent::WindowEvent {
                     event: WindowEvent::CursorMoved { position, .. },
                     ..
                 } => {
@@ -189,7 +213,7 @@ impl Window {
                     });
                     ControlFlow::Poll
                 }
-                WinEvent::WindowEvent {
+                WinitEvent::WindowEvent {
                     event: WindowEvent::MouseInput { button, state, .. },
                     ..
                 } => {
@@ -204,7 +228,7 @@ impl Window {
                     });
                     ControlFlow::Poll
                 }
-                WinEvent::WindowEvent {
+                WinitEvent::WindowEvent {
                     event: WindowEvent::MouseWheel { delta, .. },
                     ..
                 } => {
@@ -225,11 +249,11 @@ impl Window {
                     }
                     ControlFlow::Poll
                 }
-                WinEvent::RedrawRequested(_) => {
+                WinitEvent::RedrawRequested(_) => {
                     runner(Event::Draw);
                     ControlFlow::Poll
                 }
-                WinEvent::RedrawEventsCleared => {
+                WinitEvent::RedrawEventsCleared => {
                     let target_frametime = Duration::from_secs_f64(TARGET_FRAME_TIME);
                     let now = Instant::now();
                     match target_frametime.checked_sub(last_update_inst.elapsed()) {
@@ -241,51 +265,16 @@ impl Window {
                         }
                     }
                 }
-                WinEvent::WindowEvent {
+                WinitEvent::WindowEvent {
                     event: WindowEvent::CloseRequested,
                     ..
                 } => ControlFlow::Exit,
-                WinEvent::LoopDestroyed => {
+                WinitEvent::LoopDestroyed => {
                     runner(Event::Exit);
                     ControlFlow::Exit
                 }
                 _ => ControlFlow::Poll,
             }
         })
-    }
-}
-
-impl WindowBuilder {
-    pub fn title(self, title: &str) -> Self {
-        Self {
-            title: Some(title.to_string()),
-            ..self
-        }
-    }
-
-    pub fn size(self, width: u32, height: u32) -> Self {
-        Self {
-            size: Some(wgpu::Extent3d {
-                width,
-                height,
-                depth_or_array_layers: 1,
-            }),
-            ..self
-        }
-    }
-
-    pub fn build(self) -> Window {
-        let event_loop = winit::event_loop::EventLoop::new();
-        let mut builder = winit::window::WindowBuilder::new()
-            .with_min_inner_size(winit::dpi::Size::Logical((64, 64).into()));
-        if let Some(title) = self.title {
-            builder = builder.with_title(title);
-        }
-        if let Some(size) = self.size {
-            builder = builder
-                .with_inner_size(winit::dpi::Size::Logical((size.width, size.height).into()));
-        }
-        let raw = builder.build(&event_loop).unwrap();
-        Window { raw, event_loop }
     }
 }

@@ -1,4 +1,5 @@
 use instant::{Duration, Instant};
+use plrender::{window::WindowOptions, RenderOptions, RenderPass};
 
 //TODO: a mechanism like this should be a part of the engine
 struct Animator {
@@ -89,11 +90,17 @@ fn main() {
     //     # or
     //     window = plrender::Window(size: (800, 600), title: "My Window")
     // ```
-    let window = Window::new().title("Sprite").build();
+    let window = Window::new(WindowOptions {
+        title: Some("Sprite".to_string()),
+        size: Some((400, 300)),
+        ..Default::default()
+    })
+    .unwrap();
 
-    // In my API, this is called Renderer
-    // @TODO rename to `Renderer`
-    let mut renderer = pollster::block_on(plrender::Renderer::init().build(&window));
+    let mut renderer = pollster::block_on(plrender::Renderer::new(RenderOptions {
+        targets: vec![window],
+    }))
+    .unwrap();
 
     let mut scene = plrender::Scene::new();
 
@@ -106,12 +113,15 @@ fn main() {
         ..Default::default()
     };
 
-    let mut pass = plrender::renderpass::Flat::new(&renderer);
+    let mut pass = plrender::renderpass::Flat::new(&mut renderer);
 
-    let image = renderer.load_image(format!(
-        "{}/assets/images/pickachu.png",
-        env!("CARGO_MANIFEST_DIR")
-    ));
+    let image = renderer
+        .load_image(format!(
+            "{}/assets/images/pickachu.png",
+            env!("CARGO_MANIFEST_DIR")
+        ))
+        .unwrap();
+
     let sprite = scene.add_sprite(image).build();
 
     let mut anim = Animator {
@@ -129,7 +139,7 @@ fn main() {
 
     window.run(move |event| match event {
         Event::Resize { width, height } => {
-            renderer.resize(width, height);
+            // renderer.resize(width, height);
         }
         Event::Keyboard { key, pressed: true } => {
             let new_state = match key {
@@ -148,7 +158,8 @@ fn main() {
         }
         Event::Draw => {
             anim.tick(&mut scene);
-            renderer.present(&mut pass, &scene, &scene.camera());
+            //                                 @TODO
+            renderer.render(&mut pass, &scene, &scene.camera());
         }
         _ => {}
     })

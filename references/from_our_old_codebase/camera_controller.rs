@@ -26,8 +26,8 @@ pub enum Projection {
 
 #[derive(Debug, Clone)]
 pub struct Camera {
-    pub eye: super::NodeRef,
-    pub target: super::NodeRef,
+    pub eye: super::NodeId,
+    pub target: super::NodeId,
     pub up: cgmath::Vector3<f32>,
     pub projection: Projection,
     pub aspect: f32,
@@ -38,14 +38,14 @@ pub struct Camera {
 impl Default for Camera {
     fn default() -> Self {
         Self {
-            eye: super::NodeRef::default(),
-            
+            eye: super::NodeId::default(),
+
             projection: Projection::Orthographic {
                 center: cgmath::Vector2 { x: 0.0, y: 0.0 },
                 extent_y: 1.0,
             },
             depth: 0.0..1.0,
-            node: super::NodeRef::default(),
+            node: super::NodeId::default(),
         }
     }
 }

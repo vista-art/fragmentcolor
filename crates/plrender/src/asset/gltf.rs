@@ -9,7 +9,7 @@ struct MeshScratch {
 }
 
 struct Texture {
-    image: crate::TextureRef,
+    image: crate::TextureId,
 }
 
 struct Primitive {
@@ -66,7 +66,7 @@ fn load_texture(mut data: gltf::image::Data, context: &mut crate::Renderer) -> T
         view_formats: &[format],
     };
 
-    let image = context.add_image_from_bytes(&desc, &data.pixels);
+    let image = context.add_texture_from_bytes(&desc, &data.pixels);
     Texture { image }
 }
 
@@ -174,7 +174,7 @@ pub struct Module {
 pub fn load_gltf(
     path: impl AsRef<Path>,
     scene: &mut crate::Scene,
-    global_parent: crate::NodeRef,
+    global_parent: crate::NodeId,
     context: &mut crate::Renderer,
 ) -> Module {
     let mut module = Module::default();
@@ -200,7 +200,7 @@ pub fn load_gltf(
 
     struct PreNode<'a> {
         gltf_node: gltf::Node<'a>,
-        parent: crate::NodeRef,
+        parent: crate::NodeId,
     }
 
     let mut deque = VecDeque::new();

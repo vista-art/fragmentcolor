@@ -1,11 +1,11 @@
 use fxhash::FxHashMap;
-use plr::{RenderContext as _, RenderTarget};
+use plr::{Camera, HasSize, RenderContext, RenderTarget, Renderer, Scene};
 use std::mem;
 use wgpu::util::DeviceExt as _;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Material {
-    pub base_color_map: Option<crate::TextureRef>,
+    pub base_color_map: Option<crate::TextureId>,
     pub emissive_color: crate::Color,
     pub metallic_factor: f32,
     pub roughness_factor: f32,
@@ -58,7 +58,7 @@ struct Locals {
 #[derive(Eq, Hash, PartialEq)]
 struct LocalKey {
     uniform_buf_index: usize,
-    base_color_map: Option<crate::TextureRef>,
+    base_color_map: Option<crate::TextureId>,
 }
 
 #[derive(Debug)]
@@ -81,9 +81,9 @@ struct Pipelines {
 }
 
 struct Instance {
-    mesh: crate::MeshRef,
+    mesh: crate::MeshId,
     locals_bl: super::BufferLocation,
-    base_color_map: Option<crate::TextureRef>,
+    base_color_map: Option<crate::TextureId>,
 }
 
 /// Realistic renderer.
@@ -103,15 +103,12 @@ pub struct Real {
 }
 
 impl Real {
-    pub fn new(config: &RealConfig, context: &crate::Renderer) -> Self {
-        Self::new_offscreen(config, context.surface_info().unwrap(), context)
-    }
-    pub fn new_offscreen(
-        config: &RealConfig,
-        target_info: crate::TargetInfo,
-        context: &crate::Renderer,
-    ) -> Self {
-        let d = context.device();
+    pub fn new(config: &RealConfig, renderer: &Renderer) -> Self {
+        // @TODO handle multiple targets
+        let targets = renderer.targets();
+        let target = targets.get_target(plr::TargetId(0));
+
+        let d = renderer.device();
         let shader_module = d.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("real"),
             source: wgpu::ShaderSource::Wgsl(include_str!("real.wgsl").into()),
@@ -230,7 +227,7 @@ impl Real {
                 ..Default::default()
             };
             let multisample = wgpu::MultisampleState {
-                count: target_info.sample_count,
+                count: target.sample_count(),
                 ..Default::default()
             };
 
@@ -257,7 +254,7 @@ impl Real {
                     }),
                     multisample,
                     fragment: Some(wgpu::FragmentState {
-                        targets: &[Some(target_info.format.into())],
+                        targets: &[Some(target.format().into())],
                         module: &shader_module,
                         entry_point: "main_fs",
                     }),
@@ -281,7 +278,7 @@ impl Real {
                 usage: wgpu::TextureUsages::TEXTURE_BINDING,
                 view_formats: &[wgpu::TextureFormat::Rgba8UnormSrgb],
             };
-            let texture = d.create_texture_with_data(context.queue(), &desc, &[0xFF; 4]);
+            let texture = d.create_texture_with_data(renderer.queue(), &desc, &[0xFF; 4]);
             texture.create_view(&wgpu::TextureViewDescriptor::default())
         };
 
@@ -302,15 +299,12 @@ impl Real {
 }
 
 impl plr::RenderPass for Real {
-    fn draw(
-        &mut self,
-        targets: &[crate::TargetRef],
-        scene: &crate::Scene,
-        camera: &crate::Camera,
-        context: &crate::Renderer,
-    ) {
-        let target = context.get_target(targets[0]);
-        let device = context.device();
+    fn draw(&mut self, scene: &Scene, camera: &Camera, renderer: &Renderer) {
+        // @TODO handle multiple targets
+        let targets = renderer.targets();
+        let target = targets.get_target(plr::TargetId(0)); // @TODO convert from usize internally
+        let resources = renderer.resources();
+        let device = renderer.device();
 
         let reset_depth = match self.depth_texture {
             Some((_, size)) => size != target.size(),
@@ -334,7 +328,7 @@ impl plr::RenderPass for Real {
 
         let nodes = scene.bake();
         self.uniform_pool.reset();
-        let queue = context.queue();
+        let queue = renderer.queue();
 
         {
             let m_proj = camera.projection_matrix(target.aspect());
@@ -409,7 +403,7 @@ impl plr::RenderPass for Real {
 
             self.local_bind_groups.entry(key).or_insert_with(|| {
                 let base_color_view = match mat.base_color_map {
-                    Some(texture) => &context.get_texture(texture).view,
+                    Some(texture) => &resources.get_texture(texture).view,
                     None => blank_color_view,
                 };
                 device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -422,7 +416,7 @@ impl plr::RenderPass for Real {
                         },
                         wgpu::BindGroupEntry {
                             binding: 1,
-                            resource: wgpu::BindingResource::TextureView(base_color_view),
+                            resource: wgpu::BindingResource::TextureView(&base_color_view),
                         },
                     ],
                 })
@@ -435,12 +429,15 @@ impl plr::RenderPass for Real {
             });
         }
 
+        // @TODO propagate error or inject frame into the pass
+        let frame = target.next_frame().unwrap();
+
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("real"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &target.view().unwrap(),
+                    view: &frame.view,
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(camera.background.into()),
@@ -461,7 +458,7 @@ impl plr::RenderPass for Real {
             pass.set_bind_group(0, &self.global_bind_group, &[]);
 
             for inst in self.instances.drain(..) {
-                let mesh = context.get_mesh(inst.mesh);
+                let mesh = resources.get_mesh(inst.mesh);
 
                 let key = LocalKey {
                     uniform_buf_index: inst.locals_bl.index,
@@ -483,6 +480,7 @@ impl plr::RenderPass for Real {
             }
         }
 
-        queue.submit(Some(encoder.finish()));
+        let commands = vec![encoder.finish()];
+        target.submit(renderer, commands, frame);
     }
 }

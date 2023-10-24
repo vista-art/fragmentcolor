@@ -30,11 +30,16 @@ fxhash = "0.2"
 log = "0.4"
 hecs = "0.10"
 obj = { version = "0.10", optional = true }
+
+# We can update both of them when wgpu implements
+# https://github.com/gfx-rs/wgpu/pull/4202
 raw-window-handle = { version = "0.5", optional = true }
-winit = { version = "0.28", optional = true }
+winit = { version = "0.28.7", optional = true }
+
 wgpu = "0.17"
 lyon = { version = "1", optional = true }
 instant = "0.1"
+serde = { version = "1", features = ["derive"] }
 
 # old dependencies, reintroduce them as needed
 # anyhow = "1.0"
@@ -46,7 +51,6 @@ instant = "0.1"
 # serde_json = "1"
 # naga_oil = "0.9"
 # wgpu_text = "0.8"
-# serde = { version = "1", features = ["derive"] }
 # smart-default = "0.7.1"
 # enum_dispatch = "0.3.12"
 # tobj = { version = "4", features = [
