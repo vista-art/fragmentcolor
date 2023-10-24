@@ -1,15 +1,13 @@
-#[cfg(wasm)]
-use {
-    gloo_utils::document, wasm_bindgen::prelude::*, winit::platform::web::WindowBuilderExtWebSys,
-};
-
+use gloo_utils::document;
 use serde::{Deserialize, Serialize};
+use wasm_bindgen::prelude::*;
 use winit::{
     event_loop::EventLoop,
+    platform::web::WindowBuilderExtWebSys,
     window::{Window, WindowBuilder},
 };
 
-#[cfg_attr(wasm, wasm_bindgen(getter_with_clone))]
+#[wasm_bindgen(getter_with_clone)]
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct WindowOptions {
     canvas_selector: Option<String>,
@@ -17,23 +15,9 @@ pub struct WindowOptions {
     fullscreen: Option<bool>,
     resizable: Option<bool>,
     title: Option<String>,
-    sizd: Option<(u32, u32)>,
+    size: Option<(u32, u32)>,
 }
 
-#[cfg(not(wasm))]
-pub fn init_window<T>(event_loop: &EventLoop<T>, options: &WindowOptions) -> Window {
-    let window = WindowBuilder::new()
-        .build(event_loop)
-        .with_title(options.title.as_ref().unwrap_or(&"PLRender".to_string()))
-        .with_fullscreen(options.fullscreen.unwrap_or(false))
-        .with_decorations(options.decorations.unwrap_or(true))
-        .with_resizable(options.resizable.unwrap_or(true))
-        .expect("Couldn't build window");
-
-    window
-}
-
-#[cfg(wasm)]
 pub fn init_window<T>(event_loop: &EventLoop<T>, options: &WindowOptions) -> Window {
     let canvas_selector = options
         .canvas_selector

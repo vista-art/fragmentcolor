@@ -1,3 +1,5 @@
+use plr::MeshBuilder;
+
 pub mod cuboid;
 pub mod plane;
 #[cfg(feature = "shape")]
@@ -19,8 +21,11 @@ pub struct Geometry {
 }
 
 impl Geometry {
-    pub fn bake(&self, context: &mut plr::Renderer) -> plr::Prototype {
-        let mut mb = context.add_mesh();
+    pub fn bake(&self, renderer: &mut plr::Renderer) -> plr::Prototype {
+        // Provisory until we refactor the Mesh API to remove the builder
+        // and implement a regular new() constructor method.
+        let mut mb = MeshBuilder::new(renderer);
+
         mb.radius(self.radius);
         mb.vertex(&self.positions);
         if let Some(ref stream) = self.normals {

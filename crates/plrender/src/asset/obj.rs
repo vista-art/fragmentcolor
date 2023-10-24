@@ -4,7 +4,7 @@ use std::{iter, path::Path};
 pub fn load_obj(
     path: impl AsRef<Path>,
     scene: &mut crate::Scene,
-    node: crate::NodeRef,
+    node: crate::NodeId,
     context: &mut crate::Renderer,
 ) -> fxhash::FxHashMap<String, (crate::EntityRef, crate::Prototype)> {
     let mut obj = obj::Obj::load(path).unwrap();

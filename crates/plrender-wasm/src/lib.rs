@@ -4,6 +4,7 @@
 compile_error!("This library only supports Wasm target!");
 
 mod utils;
+mod window;
 use plrender::*;
 use wasm_bindgen::prelude::*;
 

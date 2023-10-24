@@ -6,20 +6,28 @@ use crate::renderer::{
     },
     Renderer,
 };
-use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
+use raw_window_handle::{
+    // waiting for https://github.com/gfx-rs/wgpu/pull/4202
+    /* HasDisplayHandle, HasWindowHandle, */
+    HasRawDisplayHandle,
+    HasRawWindowHandle,
+};
 use std::{fmt::Debug, sync::Arc};
 
 type Error = Box<dyn std::error::Error>;
-type Encoder = wgpu::CommandEncoder;
+type Commands = Vec<wgpu::CommandBuffer>;
 type SubmissionIndex = wgpu::SubmissionIndex;
 
 pub trait HasSize {
     fn size(&self) -> wgpu::Extent3d;
     fn aspect(&self) -> f32;
-    fn resize(&mut self, renderer: &Renderer, size: wgpu::Extent3d) -> Result<(), Error>;
 }
 
-pub trait IsWindow: HasRawDisplayHandle + HasRawWindowHandle + HasSize {}
+// @TODO remove deprecated "raw"s, waiting for https://github.com/gfx-rs/wgpu/pull/4202
+pub trait IsWindow:
+    HasRawDisplayHandle + HasRawWindowHandle /* + HasDisplayHandle + HasWindowHandle*/ + HasSize
+{
+}
 
 pub struct Frame {
     surface_texture: Option<wgpu::SurfaceTexture>,
@@ -36,8 +44,9 @@ impl Frame {
 pub trait RenderTarget: Debug + 'static + HasSize {
     fn format(&self) -> wgpu::TextureFormat;
     fn sample_count(&self) -> u32;
-    fn next_frame(&mut self) -> Result<Frame, wgpu::SurfaceError>;
-    fn submit(&self, renderer: &Renderer, encoder: Encoder, frame: Frame) -> SubmissionIndex;
+    fn resize(&mut self, renderer: &Renderer, size: wgpu::Extent3d) -> Result<(), Error>;
+    fn next_frame(&self) -> Result<Frame, wgpu::SurfaceError>;
+    fn submit(&self, renderer: &Renderer, commands: Commands, frame: Frame) -> SubmissionIndex;
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -53,6 +62,12 @@ pub enum Target {
 pub struct Targets(pub Vec<Target>);
 
 impl Targets {
+    pub fn add_target(&mut self, target: Target) -> TargetId {
+        let index = self.0.len();
+        self.0.push(target);
+
+        TargetId(index as u8)
+    }
     pub fn get_target(&self, tr: TargetId) -> &Target {
         &self.0[tr.0 as usize]
     }
@@ -81,17 +96,6 @@ impl HasSize for Target {
         let size = self.size();
         size.width as f32 / size.height as f32
     }
-    fn resize(&mut self, renderer: &Renderer, size: wgpu::Extent3d) -> Result<(), Error> {
-        match self {
-            Self::Texture(_) => {
-                let new_target = TextureTarget::new(renderer, size)?;
-                *self = Target::Texture(new_target);
-            }
-            Self::Window(window) => window.resize(renderer, size),
-        };
-
-        Ok(())
-    }
 }
 
 impl RenderTarget for Target {
@@ -109,7 +113,19 @@ impl RenderTarget for Target {
         }
     }
 
-    fn next_frame(&mut self) -> Result<Frame, wgpu::SurfaceError> {
+    fn resize(&mut self, renderer: &Renderer, size: wgpu::Extent3d) -> Result<(), Error> {
+        match self {
+            Self::Texture(_) => {
+                let new_target = TextureTarget::new(renderer, size)?;
+                *self = Target::Texture(new_target);
+            }
+            Self::Window(window) => window.resize(renderer, size),
+        };
+
+        Ok(())
+    }
+
+    fn next_frame(&self) -> Result<Frame, wgpu::SurfaceError> {
         match self {
             Self::Texture(target) => Ok(Frame {
                 surface_texture: None,
@@ -129,13 +145,13 @@ impl RenderTarget for Target {
     // Maybe this is not the right abstraction if we want multiple targets of different types.
     // Queue.submit() happens once per frame, but this method will be called for every target.
     // They should add things to the queue, but not submit it.
-    fn submit(&self, renderer: &Renderer, encoder: Encoder, frame: Frame) -> SubmissionIndex {
+    fn submit(&self, renderer: &Renderer, commands: Commands, frame: Frame) -> SubmissionIndex {
         match self {
             // Texture does things BEFORE submit (adds copy command to CommandBuffer)
-            Self::Texture(target) => target.submit(renderer, encoder),
+            Self::Texture(target) => target.submit(renderer, commands),
             // Window does things AFTER submit (present to the screen)
             //
-            Self::Window(window) => window.present(renderer, encoder, frame),
+            Self::Window(window) => window.present(renderer, commands, frame),
         }
     }
 }
@@ -157,9 +173,8 @@ impl WindowTarget {
 
     // NOTE: window.present() happens once per target,
     //       but queue.submit() should happen once per frame.
-    fn present(&self, renderer: &Renderer, encoder: Encoder, frame: Frame) -> SubmissionIndex {
-        let commands = encoder.finish();
-        let index = renderer.queue.submit(std::iter::once(commands));
+    fn present(&self, renderer: &Renderer, commands: Commands, frame: Frame) -> SubmissionIndex {
+        let index = renderer.queue.submit(commands);
         frame.present();
         index
     }
@@ -218,7 +233,7 @@ impl TextureTarget {
         Ok(())
     }
 
-    fn submit(&self, renderer: &Renderer, encoder: Encoder) -> SubmissionIndex {
+    fn submit(&self, renderer: &Renderer, commands: Commands) -> SubmissionIndex {
         if let Some(TextureBuffer { buffer, clip_area }) = &self.buffer {
             let mut encoder =
                 renderer
@@ -257,11 +272,10 @@ impl TextureTarget {
                 },
             );
 
-            let command_buffer = encoder.finish();
-            renderer.queue.submit(std::iter::once(command_buffer))
+            let commands = commands.into_iter().chain(Some(encoder.finish()));
+            renderer.queue.submit(commands)
         } else {
-            let command_buffer = encoder.finish();
-            renderer.queue.submit(std::iter::once(command_buffer))
+            renderer.queue.submit(commands)
         }
     }
 }

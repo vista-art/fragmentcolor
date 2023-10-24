@@ -1,9 +1,11 @@
+use pl::window::WindowOptions;
 pub use pl::{
     window::Window, Camera, Color, Entity, EntityRef, Light, LightBuilder, LightRef, MeshBuilder,
-    MeshRef, Node, NodeRef, Projection, Prototype, RenderPass, Renderer, Scene, Sprite,
-    SpriteBuilder, TargetInfo, TargetRef, TextureRef, UvRange,
+    MeshId, Node, NodeId, Projection, Prototype, RenderPass, Renderer, Scene, Sprite,
+    SpriteBuilder, TextureId, UvRange,
 };
 use pyo3::prelude::*;
+use pyo3::types::*;
 
 // @FIXME code generation works partially.
 // It's still unrealiable for production.
@@ -33,8 +35,8 @@ unsafe impl Send for PyWindow {}
 //          title="Spritesheet Example", clear_color="#FFccffff")
 
 #[derive(FromPyObject)]
-enum ClearColor {
-    CssString(String),
+pub enum ClearColor<'a> {
+    CssString(&'a str),
     RgbaTuple(f32, f32, f32, f32),
     RgbTuple(f32, f32, f32),
     RgbaDict {
@@ -71,21 +73,21 @@ enum WindowSize {
 #[pymethods]
 impl PyWindow {
     #[new]
-    #[pyo3(signature = (size=(800, 600), title="PLRender", clear_color="#aaccffff"))]
-    fn new(size: Py, title: &str, clear_color: PyAny) -> PyResult<Self> {
+    #[pyo3(signature = (size=WindowSize::SizeTuple(800, 600), title="PLRender", clear_color=ClearColor::CssString("#aaccffff")))]
+    fn new(size: WindowSize, title: &str, clear_color: ClearColor) -> PyResult<Self> {
         let (width, height) = match size {
             WindowSize::SizeTuple(w, h) => (w, h),
             WindowSize::SizeDict { w, h } => (w, h),
             WindowSize::SizeFullDict { width, height } => (width, height),
         };
 
-        let window = Window::new().title("PLRender").build();
+        let window = Window::new(WindowOptions {
+            title: Some(title.to_string()),
+            size: Some((width, height)),
+            ..Default::default()
+        });
 
         Ok(PyWindow { inner: window })
-    }
-
-    fn resize(&mut self, width: u32, height: u32) {
-        self.inner.resize(width, height);
     }
 }
 

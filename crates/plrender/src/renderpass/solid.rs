@@ -1,6 +1,6 @@
 use bytemuck::{Pod, Zeroable};
 use fxhash::FxHashMap;
-use plr::{RenderContext as _, RenderTarget};
+use plr::{Camera, HasSize, RenderContext, RenderTarget, Renderer, Scene};
 use std::mem;
 
 const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth24Plus;
@@ -48,15 +48,12 @@ pub struct Solid {
 }
 
 impl Solid {
-    pub fn new(config: &SolidConfig, context: &crate::Renderer) -> Self {
-        Self::new_offscreen(config, context.surface_info().unwrap(), context)
-    }
-    pub fn new_offscreen(
-        config: &SolidConfig,
-        target_info: crate::TargetInfo,
-        context: &crate::Renderer,
-    ) -> Self {
-        let d = context.device();
+    pub fn new(config: &SolidConfig, renderer: &Renderer) -> Self {
+        // @TODO handle multiple targets
+        let targets = renderer.targets();
+        let target = targets.get_target(plr::TargetId(0));
+
+        let d = renderer.device();
         let shader_module = d.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("solid"),
             source: wgpu::ShaderSource::Wgsl(include_str!("solid.wgsl").into()),
@@ -136,7 +133,7 @@ impl Solid {
             }),
             multisample: wgpu::MultisampleState::default(),
             fragment: Some(wgpu::FragmentState {
-                targets: &[Some(target_info.format.into())],
+                targets: &[Some(target.format().into())],
                 module: &shader_module,
                 entry_point: "main_fs",
             }),
@@ -156,21 +153,20 @@ impl Solid {
 }
 
 impl plr::RenderPass for Solid {
-    fn draw(
-        &mut self,
-        targets: &[crate::TargetRef],
-        scene: &crate::Scene,
-        camera: &crate::Camera,
-        context: &crate::Renderer,
-    ) {
-        let target = context.get_target(targets[0]);
-        let device = context.device();
+    fn draw(&mut self, scene: &Scene, camera: &Camera, renderer: &Renderer) {
+        let device = renderer.device();
+        let resources = renderer.resources();
+        // @TODO support multiple targets
+        let targets = renderer.targets();
+        let target = targets.get_target(plr::TargetId(0));
 
         let reset_depth = match self.depth_texture {
             Some((_, size)) => size != target.size(),
             None => true,
         };
         if reset_depth {
+            // @TODO this should not happen here. Our Texture
+            //       implementation contains a method to do this.
             let texture = device.create_texture(&wgpu::TextureDescriptor {
                 label: Some("depth"),
                 dimension: wgpu::TextureDimension::D2,
@@ -187,7 +183,7 @@ impl plr::RenderPass for Solid {
 
         let nodes = scene.bake();
         self.uniform_pool.reset();
-        let queue = context.queue();
+        let queue = renderer.queue();
 
         {
             let m_proj = camera.projection_matrix(target.aspect());
@@ -228,15 +224,23 @@ impl plr::RenderPass for Solid {
             });
         }
 
+        // @TODO propagate error or inject the frame in the function
+        let frame = target.next_frame().unwrap();
+
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
 
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("solid"),
+
+                // @TODO loop all targets and add them as views simultaneously
+                //       OPEN QUESTION: must them all be of the same size?
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &target.view().unwrap(),
+                    view: &frame.view, // <- here
                     resolve_target: None,
                     ops: wgpu::Operations {
+                        // @TODO this should be a property of the target,
+                        //       instead of the camera.
                         load: wgpu::LoadOp::Clear(camera.background.into()),
                         store: true,
                     },
@@ -273,7 +277,7 @@ impl plr::RenderPass for Solid {
                 let local_bg = &self.local_bind_groups[&key];
                 pass.set_bind_group(1, local_bg, &[bl.offset]);
 
-                let mesh = context.get_mesh(entity.mesh);
+                let mesh = resources.get_mesh(entity.mesh);
                 let pos_vs = mesh.vertex_stream::<crate::Position>().unwrap();
                 pass.set_vertex_buffer(0, mesh.buffer.slice(pos_vs.offset..));
 
@@ -286,6 +290,7 @@ impl plr::RenderPass for Solid {
             }
         }
 
-        queue.submit(Some(encoder.finish()));
+        let commands = vec![encoder.finish()];
+        target.submit(renderer, commands, frame);
     }
 }

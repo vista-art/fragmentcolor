@@ -1,4 +1,4 @@
-use plr::{RenderContext as _, RenderTarget};
+use plr::{Camera, HasSize, RenderContext as _, RenderTarget, Renderer, Scene};
 use std::mem;
 
 #[repr(C)]
@@ -21,7 +21,7 @@ struct Locals {
 #[derive(Eq, Hash, PartialEq)]
 struct LocalKey {
     uniform_buf_index: usize,
-    image: crate::TextureRef,
+    image: crate::TextureId,
 }
 
 struct Pipelines {
@@ -31,7 +31,7 @@ struct Pipelines {
 struct Instance {
     camera_distance: f32,
     locals_bl: super::BufferLocation,
-    image: crate::TextureRef,
+    image: crate::TextureId,
 }
 
 pub struct Flat {
@@ -45,11 +45,12 @@ pub struct Flat {
 }
 
 impl Flat {
-    pub fn new(context: &crate::Renderer) -> Self {
-        Self::new_offscreen(context.surface_info().unwrap(), context)
-    }
-    pub fn new_offscreen(target_info: crate::TargetInfo, context: &crate::Renderer) -> Self {
-        let d = context.device();
+    pub fn new(renderer: &mut Renderer) -> Self {
+        // @TODO handle multiple targets
+        let targets = renderer.targets();
+        let target = targets.get_target(plr::TargetId(0));
+
+        let d = renderer.device();
         let shader_module = d.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("flat"),
             source: wgpu::ShaderSource::Wgsl(include_str!("flat.wgsl").into()),
@@ -152,12 +153,12 @@ impl Flat {
                 },
                 depth_stencil: None,
                 multisample: wgpu::MultisampleState {
-                    count: target_info.sample_count,
+                    count: target.sample_count(),
                     ..Default::default()
                 },
                 fragment: Some(wgpu::FragmentState {
                     targets: &[Some(wgpu::ColorTargetState {
-                        format: target_info.format,
+                        format: target.format(),
                         blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
                         write_mask: wgpu::ColorWrites::all(),
                     })],
@@ -175,7 +176,7 @@ impl Flat {
             global_bind_group,
             local_bind_group_layout: local_bgl,
             local_bind_groups: Default::default(),
-            uniform_pool: super::BufferPool::uniform("flat locals", d),
+            uniform_pool: super::BufferPool::uniform("flat locals", &d),
             pipelines,
             temp: Vec::new(),
         }
@@ -183,20 +184,16 @@ impl Flat {
 }
 
 impl plr::RenderPass for Flat {
-    fn draw(
-        &mut self,
-        targets: &[crate::TargetRef],
-        scene: &crate::Scene,
-        camera: &crate::Camera,
-        context: &crate::Renderer,
-    ) {
-        let target = context.get_target(targets[0]);
-        let device = context.device();
+    fn draw(&mut self, scene: &Scene, camera: &Camera, renderer: &Renderer) {
+        // @TODO handle multiple targets
+        let targets = renderer.targets();
+        let target = targets.get_target(plr::TargetId(0));
+        let device = renderer.device();
 
         let nodes = scene.bake();
         let cam_node = &nodes[camera.node];
         self.uniform_pool.reset();
-        let queue = context.queue();
+        let queue = renderer.queue();
 
         {
             let m_proj = camera.projection_matrix(target.aspect());
@@ -219,7 +216,8 @@ impl plr::RenderPass for Flat {
                 - glam::Vec3::from_slice(&cam_node.pos_scale);
             let camera_distance = cam_vector.dot(cam_dir);
 
-            let image = context.get_texture(sprite.image);
+            let resources = renderer.resources();
+            let image = resources.get_texture(sprite.image);
             let locals = Locals {
                 pos_scale: space.pos_scale,
                 rot: space.rot,
@@ -282,13 +280,17 @@ impl plr::RenderPass for Flat {
         self.temp
             .sort_by_key(|s| (s.camera_distance * -1000.0) as i64);
 
+        // @TODO propagate this error (change function signature) or
+        // acquire the frame outside the function and inject it here
+        let frame = target.next_frame().expect("Could not get frame");
+
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
 
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("flat"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &target.view().unwrap(),
+                    view: &frame.view,
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(camera.background.into()),
@@ -311,6 +313,9 @@ impl plr::RenderPass for Flat {
             }
         }
 
-        queue.submit(Some(encoder.finish()));
+        let commands = vec![encoder.finish()];
+
+        target.submit(renderer, commands, frame);
+        //queue.submit(Some(encoder.finish()));
     }
 }

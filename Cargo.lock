@@ -1819,13 +1819,14 @@ dependencies = [
  "obj",
  "plrender-core",
  "raw-window-handle",
+ "serde",
  "wgpu",
  "winit",
 ]
 
 [[package]]
 name = "plrender-core"
-version = "0.4.0"
+version = "0.4.2"
 dependencies = [
  "bytemuck",
  "cfg_aliases",
@@ -1836,6 +1837,7 @@ dependencies = [
  "image",
  "log",
  "mint",
+ "phf",
  "raw-window-handle",
  "wgpu",
 ]

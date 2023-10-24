@@ -6,8 +6,8 @@ pub mod vertex;
 pub mod window;
 
 pub use plr::{
-    Camera, Color, Entity, EntityRef, Light, LightBuilder, LightRef, MeshBuilder, MeshRef, Node,
-    NodeRef, Projection, Prototype, RenderPass, Renderer, Scene, Sprite, SpriteBuilder, TargetInfo,
-    TargetRef, TextureRef, UvRange,
+    Camera, Color, Entity, EntityRef, Light, LightBuilder, LightRef, MeshBuilder, MeshId, Node,
+    NodeId, Projection, Prototype, RenderPass, Renderer, Scene, Sprite, SpriteBuilder, TextureId,
+    UvRange,
 };
 pub use vertex::*;

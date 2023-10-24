@@ -4,7 +4,7 @@ use crate::renderer::{
         mesh::{Mesh, MeshId},
         Resources,
     },
-    target::{IsWindow, Target, Targets, WindowTarget},
+    target::{IsWindow, Target, TargetId, Targets, WindowTarget},
     texture::{Texture, TextureId},
     RenderOptions, RenderPass,
 };
@@ -18,16 +18,19 @@ use std::{
 use wgpu::util::DeviceExt;
 
 type Error = Box<dyn std::error::Error>;
-type SizedSurfaces = Vec<(wgpu::Surface, wgpu::Extent3d)>;
+type SizedSurface = (wgpu::Surface, wgpu::Extent3d);
+type SizedSurfaces = Vec<SizedSurface>;
 
 pub trait RenderContext {
-    fn resources(&mut self) -> MutexGuard<'_, Resources>;
-    fn targets(&mut self) -> MutexGuard<'_, Targets>;
+    fn resources(&self) -> MutexGuard<'_, Resources>;
+    fn targets(&self) -> MutexGuard<'_, Targets>;
     fn device(&self) -> &wgpu::Device;
     fn queue(&self) -> &wgpu::Queue;
 }
 
 pub struct Renderer {
+    pub(crate) instance: wgpu::Instance,
+    pub(crate) adapter: wgpu::Adapter,
     pub(crate) device: wgpu::Device,
     pub(crate) queue: wgpu::Queue,
     pub(crate) targets: Arc<Mutex<Targets>>,
@@ -37,11 +40,15 @@ pub struct Renderer {
 struct Internal;
 
 impl RenderContext for Renderer {
-    fn resources(&mut self) -> MutexGuard<'_, Resources> {
-        self.resources.try_lock().unwrap()
+    fn resources(&self) -> MutexGuard<'_, Resources> {
+        self.resources
+            .try_lock()
+            .expect("Could not get resources mutex lock")
     }
-    fn targets(&mut self) -> MutexGuard<'_, Targets> {
-        self.targets.try_lock().unwrap()
+    fn targets(&self) -> MutexGuard<'_, Targets> {
+        self.targets
+            .try_lock()
+            .expect("Could not get targets mutex lock")
     }
     fn device(&self) -> &wgpu::Device {
         &self.device
@@ -53,12 +60,13 @@ impl RenderContext for Renderer {
 
 impl Renderer {
     pub async fn new<W: IsWindow>(options: RenderOptions<'_, W>) -> Result<Renderer, Error> {
-        let (surfaces, adapter, device, queue) = Internal::build_gpu_objects(options).await?;
-        let targets = Internal::build_targets(&device, &adapter, surfaces);
+        let (instance, adapter, device, queue, surfaces) = Internal::gpu_objects(options).await?;
+        let targets = Arc::new(Mutex::new(Internal::targets(&device, &adapter, surfaces)));
         let resources = Arc::new(Mutex::new(Resources::new()));
-        let targets = Arc::new(Mutex::new(targets));
 
         Ok(Renderer {
+            instance,
+            adapter,
             device,
             queue,
             targets,
@@ -66,21 +74,22 @@ impl Renderer {
         })
     }
 
-    pub fn add_mesh(&mut self, mesh: Mesh) -> Result<MeshId, Error> {
-        let ref mut resources = self.resources();
-        Ok(resources.add_mesh(mesh))
+    pub fn add_mesh(&mut self, mesh: Mesh) -> MeshId {
+        let mut resources = self.resources();
+        resources.add_mesh(mesh)
     }
 
-    pub fn add_texture(&mut self, texture: wgpu::Texture) -> Result<TextureId, Error> {
+    pub fn add_texture(&mut self, texture: wgpu::Texture) -> TextureId {
         let texture = Texture::from_wgpu_texture(&self, texture);
-        let index = self.resources().add_texture(texture);
-
-        Ok(index)
+        self.resources().add_texture(texture)
     }
 
-    // pub async fn add_target<W: IsWindow>(self, window: &W) -> Renderer {
-    //     let size = window.size();
-    // }
+    pub async fn add_target<W: IsWindow>(&mut self, window: &W) -> Result<TargetId, Error> {
+        let surface = Internal::build_surface(&self.instance, window)?;
+        let target = Internal::build_target(&self.device, &self.adapter, surface);
+
+        Ok(self.targets().add_target(target))
+    }
 
     pub fn render<P: RenderPass>(
         &mut self,
@@ -120,19 +129,22 @@ impl Renderer {
     //       we should delegate all this part to it
     pub fn load_image(&mut self, path_ref: impl AsRef<Path>) -> Result<TextureId, Error> {
         let path = path_ref.as_ref();
-        let image_format = image::ImageFormat::from_extension(path.extension().unwrap())
-            .unwrap_or_else(|| panic!("Unrecognized image extension: {:?}", path.extension()));
+        let extension = path.extension().ok_or("No file extension detected")?;
+
+        let image_format = image::ImageFormat::from_extension(extension).ok_or(format!(
+            "Unrecognized image extension: {:?}",
+            path.extension()
+        ))?;
 
         let label = path.display().to_string();
-        let file = File::open(path)
-            .unwrap_or_else(|e| panic!("Unable to open {}: {:?}", path.display(), e));
+        let file = File::open(path)?;
+
         let mut buf_reader = io::BufReader::new(file);
 
         let texture = if image_format == image::ImageFormat::Dds {
-            let dds = ddsfile::Dds::read(&mut buf_reader)
-                .unwrap_or_else(|e| panic!("Unable to read {}: {:?}", path.display(), e));
+            let dds = ddsfile::Dds::read(&mut buf_reader)?;
 
-            println!("Header {:?}", dds.header);
+            log::info!("Header {:?}", dds.header);
             let mip_level_count = dds.get_num_mipmap_levels();
             let (dimension, depth_or_array_layers) = match dds.header10 {
                 Some(ref h) => match h.resource_dimension {
@@ -222,7 +234,7 @@ impl Renderer {
             texture
         };
 
-        self.add_texture(texture)
+        Ok(self.add_texture(texture))
     }
 
     // @TODO delegate to Texture impl
@@ -230,7 +242,7 @@ impl Renderer {
         &mut self,
         desc: &wgpu::TextureDescriptor,
         data: &[u8],
-    ) -> Result<TextureId, Error> {
+    ) -> TextureId {
         let texture = self
             .device
             .create_texture_with_data(&self.queue, &desc, data);
@@ -241,11 +253,19 @@ impl Renderer {
 
 // Helper static methods
 impl Internal {
-    async fn build_gpu_objects<W: IsWindow>(
+    async fn gpu_objects<W: IsWindow>(
         options: RenderOptions<'_, W>,
-    ) -> Result<(SizedSurfaces, wgpu::Adapter, wgpu::Device, wgpu::Queue), Error> {
+    ) -> Result<
+        (
+            wgpu::Instance,
+            wgpu::Adapter,
+            wgpu::Device,
+            wgpu::Queue,
+            SizedSurfaces,
+        ),
+        Error,
+    > {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::default());
-
         let (power_preference, force_fallback_adapter, window_list, limits) =
             Internal::parse_options(options);
         let surfaces = Internal::build_surfaces(&instance, window_list);
@@ -270,7 +290,7 @@ impl Internal {
             )
             .await?;
 
-        Ok((surfaces, adapter, device, queue))
+        Ok((instance, adapter, device, queue, surfaces))
     }
 
     fn parse_options<W: IsWindow>(
@@ -307,57 +327,70 @@ impl Internal {
         window_list
             .into_iter()
             .filter_map(|window| {
-                let surface = unsafe { instance.create_surface(window) }.ok()?;
-                let size = window.size();
-                Some((surface, size))
+                let sized_surface = Self::build_surface(instance, window).ok()?;
+                Some(sized_surface)
             })
             .collect()
     }
 
-    fn build_targets(
-        device: &wgpu::Device,
-        adapter: &wgpu::Adapter,
-        surfaces: SizedSurfaces,
-    ) -> Targets {
+    fn build_surface<W: IsWindow>(
+        instance: &wgpu::Instance,
+        window: &W,
+    ) -> Result<SizedSurface, Error> {
+        let surface = unsafe { instance.create_surface(window) }?;
+        let size = window.size();
+
+        Ok((surface, size))
+    }
+
+    fn targets(device: &wgpu::Device, adapter: &wgpu::Adapter, surfaces: SizedSurfaces) -> Targets {
         let mut targets = Targets(Vec::new());
-        for (surface, size) in surfaces.into_iter() {
-            let surface_capabilities = surface.get_capabilities(&adapter);
-
-            // The shader code assumes an sRGB surface texture. Using a different one
-            // will result all the colors coming out darker. If you want to support non
-            // sRGB surfaces, you'll need to account for that when drawing to the frame.
-            let format = surface_capabilities
-                .formats
-                .iter()
-                .copied()
-                .find(|f| f.is_srgb())
-                .unwrap_or(surface_capabilities.formats[0]);
-
-            // alpha_mode should be transparent if the surface supports it
-            let alpha_mode = surface_capabilities
-                .alpha_modes
-                .iter()
-                .find(|m| *m == &wgpu::CompositeAlphaMode::PreMultiplied)
-                .unwrap_or(&wgpu::CompositeAlphaMode::Auto)
-                .to_owned();
-
-            let config = wgpu::SurfaceConfiguration {
-                usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-                format,
-                width: size.width,
-                height: size.height,
-                alpha_mode,
-                present_mode: surface_capabilities.present_modes[0],
-                view_formats: vec![],
-            };
-
-            surface.configure(&device, &config);
-
-            targets
-                .0
-                .push(Target::Window(WindowTarget { surface, config }))
+        for surface in surfaces.into_iter() {
+            let target = Internal::build_target(device, adapter, surface);
+            targets.0.push(target)
         }
 
         targets
+    }
+
+    fn build_target(
+        device: &wgpu::Device,
+        adapter: &wgpu::Adapter,
+        surface: SizedSurface,
+    ) -> Target {
+        let (surface, size) = surface;
+        let surface_capabilities = surface.get_capabilities(&adapter);
+
+        // The shader code assumes an sRGB surface texture. Using a different one
+        // will result all the colors coming out darker. If you want to support non
+        // sRGB surfaces, you'll need to account for that when drawing to the frame.
+        let format = surface_capabilities
+            .formats
+            .iter()
+            .copied()
+            .find(|f| f.is_srgb())
+            .unwrap_or(surface_capabilities.formats[0]);
+
+        // alpha_mode should be transparent if the surface supports it
+        let alpha_mode = surface_capabilities
+            .alpha_modes
+            .iter()
+            .find(|m| *m == &wgpu::CompositeAlphaMode::PreMultiplied)
+            .unwrap_or(&wgpu::CompositeAlphaMode::Auto)
+            .to_owned();
+
+        let config = wgpu::SurfaceConfiguration {
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            format,
+            width: size.width,
+            height: size.height,
+            alpha_mode,
+            present_mode: surface_capabilities.present_modes[0],
+            view_formats: vec![],
+        };
+
+        surface.configure(&device, &config);
+
+        Target::Window(WindowTarget { surface, config })
     }
 }

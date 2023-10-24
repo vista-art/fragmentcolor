@@ -180,16 +180,13 @@ impl<'a> MeshBuilder<'a> {
             .collect::<Vec<_>>()
             .into_boxed_slice();
 
-        let index = self
-            .renderer
-            .add_mesh(Mesh {
-                buffer,
-                index_stream: self.index_stream.take(),
-                vertex_streams: mem::take(&mut self.vertex_streams).into_boxed_slice(),
-                vertex_count: self.vertex_count as u32,
-                bound_radius: self.bound_radius,
-            })
-            .expect("Could not build mesh");
+        let index = self.renderer.add_mesh(Mesh {
+            buffer,
+            index_stream: self.index_stream.take(),
+            vertex_streams: mem::take(&mut self.vertex_streams).into_boxed_slice(),
+            vertex_count: self.vertex_count as u32,
+            bound_radius: self.bound_radius,
+        });
 
         Prototype {
             reference: index,

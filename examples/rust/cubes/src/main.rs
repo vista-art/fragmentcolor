@@ -1,7 +1,7 @@
 use instant::Instant;
 
 struct Cube {
-    node: plrender::NodeRef,
+    node: plrender::NodeId,
     level: u8,
 }
 
@@ -29,7 +29,7 @@ fn fill_scene(
     }];
 
     struct Stack {
-        parent: plrender::NodeRef,
+        parent: plrender::NodeId,
         level: u8,
     }
     let mut stack = vec![Stack {
@@ -45,6 +45,9 @@ fn fill_scene(
         mint::Vector3::from([0.0, -1.0, 0.0]),
     ];
 
+    // @TODO After you compile the next version of the core,
+    // Swap the pre and post rotates below and see what happens.
+    // Also link the StackOverflow answer in the documentation.
     while let Some(next) = stack.pop() {
         let level = match levels.get(next.level as usize) {
             Some(level) => level,
@@ -62,6 +65,9 @@ fn fill_scene(
                 .parent(next.parent)
                 .build();
 
+            // OPEN QUESTION:
+            // Why does it use POST rotate here
+            // and pre_rotate in the other transform?
             scene[node].post_rotate(child, 90.0);
 
             scene
@@ -115,7 +121,7 @@ fn main() {
     };
 
     let window = Window::new().title("Cubeception").build();
-    let mut context = pollster::block_on(plrender::Renderer::init().build(&window));
+    let mut renderer = pollster::block_on(plrender::Renderer::init().build(&window));
     let mut scene = plrender::Scene::new();
 
     let camera = plrender::Camera {
@@ -137,7 +143,7 @@ fn main() {
             z: 1.0,
         },
     )
-    .bake(&mut context);
+    .bake(&mut renderer);
 
     let cubes = fill_scene(&LEVELS[..], &mut scene, &prototype);
     println!("Initialized {} cubes", cubes.len());
@@ -146,20 +152,23 @@ fn main() {
         &plrender::renderpass::SolidConfig {
             cull_back_faces: true,
         },
-        &context,
+        &renderer,
     );
 
     let mut moment = Instant::now();
 
     window.run(move |event| match event {
         Event::Resize { width, height } => {
-            context.resize(width, height);
+            renderer.resize(width, height);
         }
         Event::Draw => {
             let delta = moment.elapsed().as_secs_f32();
             moment = Instant::now();
             for cube in cubes.iter() {
                 let level = &LEVELS[cube.level as usize];
+                // OPEN QUESTION:
+                // Why does it use PRE rotate here
+                // and post_rotate in the first transform?
                 scene[cube.node].pre_rotate(
                     mint::Vector3 {
                         x: 0.0,
@@ -170,7 +179,7 @@ fn main() {
                 );
             }
 
-            context.present(&mut pass, &scene, &camera);
+            renderer.render(&mut pass, &scene, &camera);
         }
         _ => {}
     })
