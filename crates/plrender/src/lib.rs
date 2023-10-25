@@ -1,13 +1,32 @@
-pub mod asset;
-pub mod geometry;
-pub mod renderpass;
-pub mod vertex;
-#[cfg(feature = "window")]
+mod color;
+mod geometry;
+pub mod loader;
+mod renderer;
+mod renderpass;
+mod scene;
 pub mod window;
 
-pub use plr::{
-    Camera, Color, Entity, EntityRef, Light, LightBuilder, LightRef, MeshBuilder, MeshId, Node,
-    NodeId, Projection, Prototype, RenderPass, Renderer, Scene, Sprite, SpriteBuilder, TextureId,
-    UvRange,
+pub use color::Color;
+
+pub use geometry::{Geometry, Vertex};
+
+pub use renderpass::{Flat, Phong, Real, Shader, Solid};
+
+pub use renderer::{
+    mesh::{IndexStream, Mesh, MeshBuilder, MeshId, Prototype, VertexStream},
+    renderer::{RenderContext, Renderer},
+    target::{HasSize, IsWindow, RenderTarget, Target, TargetId},
+    texture::{Texture, TextureId},
+    RenderPass,
 };
-pub use vertex::*;
+
+pub use scene::{
+    builder::ObjectBuilder,
+    camera::{Camera, Projection},
+    entity::{Entity, EntityBuilder, EntityId},
+    light::{Light, LightBuilder, LightId, LightKind},
+    node::{Node, NodeId},
+    space::{RawSpace, Space},
+    sprite::{Sprite, SpriteBuilder, UvRange},
+    Array, BakedScene, Scene,
+};

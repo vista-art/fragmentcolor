@@ -9,7 +9,6 @@ edition = "2021"
 
 [[bin]]
 name = "plrender-example-sprite"
-description = "Example PLRender desktop application"
 
 [dependencies]
 plrender = { path = "../../../crates/plrender" }

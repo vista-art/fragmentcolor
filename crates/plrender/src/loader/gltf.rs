@@ -165,9 +165,9 @@ impl<T> NamedVec<T> {
 
 #[derive(Default)]
 pub struct Module {
-    pub entities: NamedVec<plr::EntityRef>,
+    pub entities: NamedVec<plr::EntityId>,
     pub cameras: NamedVec<plr::Camera>,
-    pub lights: NamedVec<plr::LightRef>,
+    pub lights: NamedVec<plr::LightId>,
 }
 
 /// Load mesh from glTF 2.0 format.

@@ -1,5 +1,5 @@
 use crate::renderer::texture::TextureId;
-use crate::scene::{entity::EntityRef, node::NodeId, space::Space, ObjectBuilder};
+use crate::scene::{entity::EntityId, node::NodeId, space::Space, ObjectBuilder};
 use std::ops::Range;
 
 pub type UvRange = Range<mint::Point2<i16>>;
@@ -28,7 +28,7 @@ impl ObjectBuilder<'_, SpriteBuilder> {
         self
     }
 
-    pub fn build(&mut self) -> EntityRef {
+    pub fn build(&mut self) -> EntityId {
         let sprite = Sprite {
             node: if self.node.local == Space::default() {
                 self.node.parent

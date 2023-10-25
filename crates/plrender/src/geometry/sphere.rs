@@ -1,3 +1,5 @@
+use crate::geometry::vertex;
+
 // See https://github.com/gfx-rs/genmesh/blob/master/src/icosphere.rs
 
 const F: f32 = 1.618034; // 0.5 * (1.0 + 5f32.sqrt());
@@ -96,9 +98,9 @@ impl super::Geometry {
 
         for v in vertices {
             let n = v.normalize();
-            positions.push(crate::Position((n * radius).into()));
+            positions.push(vertex::Position((n * radius).into()));
             if let Some(ref mut normals) = normals {
-                normals.push(crate::Normal(n.into()));
+                normals.push(vertex::Normal(n.into()));
             }
         }
 

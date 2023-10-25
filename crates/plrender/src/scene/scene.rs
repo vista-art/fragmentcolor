@@ -3,7 +3,7 @@ use crate::renderer::{resources::mesh::Prototype, texture::TextureId};
 use crate::scene::{
     builder::ObjectBuilder,
     entity::EntityBuilder,
-    light::{Light, LightBuilder, LightKind, LightRef},
+    light::{Light, LightBuilder, LightId, LightKind},
     node::{Node, NodeId},
     space::RawSpace,
     sprite::SpriteBuilder,
@@ -24,14 +24,14 @@ impl ops::IndexMut<NodeId> for Array<Node> {
         &mut self.0[node.0 as usize]
     }
 }
-impl ops::Index<LightRef> for Array<Light> {
+impl ops::Index<LightId> for Array<Light> {
     type Output = Light;
-    fn index(&self, light: LightRef) -> &Light {
+    fn index(&self, light: LightId) -> &Light {
         &self.0[light.0 as usize]
     }
 }
-impl ops::IndexMut<LightRef> for Array<Light> {
-    fn index_mut(&mut self, light: LightRef) -> &mut Light {
+impl ops::IndexMut<LightId> for Array<Light> {
+    fn index_mut(&mut self, light: LightId) -> &mut Light {
         &mut self.0[light.0 as usize]
     }
 }
@@ -160,14 +160,14 @@ impl Scene {
     }
 
     /// Lists all lights in the Scene
-    pub fn lights<'a>(&'a self) -> impl Iterator<Item = (LightRef, &'a Light)> {
+    pub fn lights<'a>(&'a self) -> impl Iterator<Item = (LightId, &'a Light)> {
         // In this case, we should iterate over all Entities
         // containing a Light Component (maybe emissive component)
         self.lights
             .0
             .iter()
             .enumerate()
-            .map(|(i, light)| (LightRef(i as u32), light))
+            .map(|(i, light)| (LightId(i as u32), light))
     }
 
     pub fn bake(&self) -> BakedScene {

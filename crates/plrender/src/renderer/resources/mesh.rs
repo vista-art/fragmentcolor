@@ -1,5 +1,6 @@
+use crate::geometry::vertex::Vertex;
 use crate::renderer;
-use std::{any::TypeId, marker::PhantomData, mem};
+use std::{any::TypeId, mem};
 use wgpu::util::DeviceExt;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -86,8 +87,6 @@ impl Mesh {
         self.buffer.slice(stream.offset..)
     }
 }
-
-pub struct Vertex<T>(PhantomData<T>);
 
 pub struct MeshBuilder<'a> {
     renderer: &'a mut renderer::Renderer,

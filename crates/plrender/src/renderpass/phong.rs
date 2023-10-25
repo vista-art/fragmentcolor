@@ -1,5 +1,6 @@
+use crate::geometry::vertex;
+use crate::{Camera, Color, HasSize, RenderContext, RenderTarget, Renderer, Scene};
 use fxhash::FxHashMap;
-use plr::{Camera, Color, HasSize, RenderContext, RenderTarget, Renderer, Scene};
 use std::mem;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -100,7 +101,7 @@ impl Phong {
         let d = renderer.device();
         // @TODO handle multiple targets
         let targets = renderer.targets();
-        let target = targets.get_target(plr::TargetId(0));
+        let target = targets.get_target(crate::TargetId(0));
 
         let shader_module = d.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("phong"),
@@ -183,7 +184,10 @@ impl Phong {
                 bind_group_layouts: &[&global_bgl, &local_bgl],
                 push_constant_ranges: &[],
             });
-            let vertex_buffers = [crate::Position::layout::<0>(), crate::Normal::layout::<1>()];
+            let vertex_buffers = [
+                vertex::Position::layout::<0>(),
+                vertex::Normal::layout::<1>(),
+            ];
             let primitive = wgpu::PrimitiveState {
                 cull_mode: if config.cull_back_faces {
                     Some(wgpu::Face::Back)
@@ -278,11 +282,11 @@ impl Phong {
     }
 }
 
-impl plr::RenderPass for Phong {
+impl crate::RenderPass for Phong {
     fn draw(&mut self, scene: &Scene, camera: &Camera, renderer: &Renderer) {
         // @TODO handle multiple targets
         let targets = renderer.targets();
-        let target = targets.get_target(plr::TargetId(0));
+        let target = targets.get_target(crate::TargetId(0));
         let device = renderer.device();
 
         let reset_depth = match self.depth_texture {
@@ -331,8 +335,8 @@ impl plr::RenderPass for Phong {
                 let space = &nodes[light.node];
                 let mut pos = space.pos_scale;
                 pos[3] = match light.kind {
-                    plr::LightKind::Directional => 0.0,
-                    plr::LightKind::Point => 1.0,
+                    crate::LightKind::Directional => 0.0,
+                    crate::LightKind::Point => 1.0,
                 };
                 let mut color_intensity = light.color.into_vec4();
                 color_intensity[3] = light.intensity;
@@ -354,9 +358,9 @@ impl plr::RenderPass for Phong {
         let local_bgl = &self.local_bind_group_layout;
         let entity_count = scene
             .world
-            .query::<(&plr::Entity, &plr::Color, &Shader)>()
-            .with::<&plr::Vertex<crate::Position>>()
-            .with::<&plr::Vertex<crate::Normal>>()
+            .query::<(&crate::Entity, &crate::Color, &Shader)>()
+            .with::<&crate::Vertex<vertex::Position>>()
+            .with::<&crate::Vertex<vertex::Normal>>()
             .iter()
             .count();
         let uniform_pool_size = self
@@ -409,9 +413,9 @@ impl plr::RenderPass for Phong {
 
             for (_, (entity, &color, &shader)) in scene
                 .world
-                .query::<(&plr::Entity, &plr::Color, &Shader)>()
-                .with::<&plr::Vertex<crate::Position>>()
-                .with::<&plr::Vertex<crate::Normal>>()
+                .query::<(&crate::Entity, &crate::Color, &Shader)>()
+                .with::<&crate::Vertex<vertex::Position>>()
+                .with::<&crate::Vertex<vertex::Normal>>()
                 .iter()
             {
                 let space = &nodes[entity.node];
@@ -424,7 +428,7 @@ impl plr::RenderPass for Phong {
                 for (index, (_, light)) in scene.lights().enumerate() {
                     let light_pos = glam::Vec3::from_slice(&nodes[light.node].pos_scale[..3]);
                     let intensity = match light.kind {
-                        plr::LightKind::Point => {
+                        crate::LightKind::Point => {
                             let distance = (entity_pos - light_pos).length();
                             if distance <= entity_radius {
                                 light.intensity
@@ -433,7 +437,7 @@ impl plr::RenderPass for Phong {
                                 light.intensity / bound_distance * bound_distance
                             }
                         }
-                        plr::LightKind::Directional => light.intensity,
+                        crate::LightKind::Directional => light.intensity,
                     };
                     if intensity > INTENSITY_THRESHOLD {
                         self.temp_lights.push((intensity, index as u32));
@@ -472,8 +476,8 @@ impl plr::RenderPass for Phong {
                 let local_bg = &self.local_bind_groups[&key];
                 pass.set_bind_group(1, local_bg, &[bl.offset]);
 
-                pass.set_vertex_buffer(0, mesh.vertex_slice::<crate::Position>());
-                pass.set_vertex_buffer(1, mesh.vertex_slice::<crate::Normal>());
+                pass.set_vertex_buffer(0, mesh.vertex_slice::<vertex::Position>());
+                pass.set_vertex_buffer(1, mesh.vertex_slice::<vertex::Normal>());
 
                 if let Some(ref is) = mesh.index_stream {
                     pass.set_index_buffer(mesh.buffer.slice(is.offset..), is.format);

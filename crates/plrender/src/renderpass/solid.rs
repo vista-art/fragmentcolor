@@ -1,6 +1,7 @@
+use crate::geometry::{Position, Vertex};
+use crate::{Camera, HasSize, RenderContext, RenderPass, RenderTarget, Renderer, Scene, TargetId};
 use bytemuck::{Pod, Zeroable};
 use fxhash::FxHashMap;
-use plr::{Camera, HasSize, RenderContext, RenderTarget, Renderer, Scene};
 use std::mem;
 
 const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth24Plus;
@@ -51,7 +52,7 @@ impl Solid {
     pub fn new(config: &SolidConfig, renderer: &Renderer) -> Self {
         // @TODO handle multiple targets
         let targets = renderer.targets();
-        let target = targets.get_target(plr::TargetId(0));
+        let target = targets.get_target(TargetId(0));
 
         let d = renderer.device();
         let shader_module = d.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -112,7 +113,7 @@ impl Solid {
             label: Some("solid"),
             layout: Some(&pipeline_layout),
             vertex: wgpu::VertexState {
-                buffers: &[crate::Position::layout::<0>()],
+                buffers: &[Position::layout::<0>()],
                 module: &shader_module,
                 entry_point: "main_vs",
             },
@@ -152,13 +153,13 @@ impl Solid {
     }
 }
 
-impl plr::RenderPass for Solid {
+impl RenderPass for Solid {
     fn draw(&mut self, scene: &Scene, camera: &Camera, renderer: &Renderer) {
         let device = renderer.device();
         let resources = renderer.resources();
         // @TODO support multiple targets
         let targets = renderer.targets();
-        let target = targets.get_target(plr::TargetId(0));
+        let target = targets.get_target(TargetId(0));
 
         let reset_depth = match self.depth_texture {
             Some((_, size)) => size != target.size(),
@@ -200,8 +201,8 @@ impl plr::RenderPass for Solid {
 
         let entity_count = scene
             .world
-            .query::<(&plr::Entity, &plr::Color)>()
-            .with::<&plr::Vertex<crate::Position>>()
+            .query::<(&crate::Entity, &crate::Color)>()
+            .with::<&Vertex<Position>>()
             .iter()
             .count();
 
@@ -259,8 +260,8 @@ impl plr::RenderPass for Solid {
 
             for (_, (entity, color)) in scene
                 .world
-                .query::<(&plr::Entity, &plr::Color)>()
-                .with::<&plr::Vertex<crate::Position>>()
+                .query::<(&crate::Entity, &crate::Color)>()
+                .with::<&Vertex<Position>>()
                 .iter()
             {
                 let space = &nodes[entity.node];
@@ -278,7 +279,7 @@ impl plr::RenderPass for Solid {
                 pass.set_bind_group(1, local_bg, &[bl.offset]);
 
                 let mesh = resources.get_mesh(entity.mesh);
-                let pos_vs = mesh.vertex_stream::<crate::Position>().unwrap();
+                let pos_vs = mesh.vertex_stream::<Position>().unwrap();
                 pass.set_vertex_buffer(0, mesh.buffer.slice(pos_vs.offset..));
 
                 if let Some(ref is) = mesh.index_stream {
