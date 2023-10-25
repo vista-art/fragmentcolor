@@ -1,9 +1,4 @@
-use pl::window::WindowOptions;
-pub use pl::{
-    window::Window, Camera, Color, Entity, EntityRef, Light, LightBuilder, LightRef, MeshBuilder,
-    MeshId, Node, NodeId, Projection, Prototype, RenderPass, Renderer, Scene, Sprite,
-    SpriteBuilder, TextureId, UvRange,
-};
+pub use plr::window::{Window, WindowOptions};
 use pyo3::prelude::*;
 use pyo3::types::*;
 
@@ -18,7 +13,7 @@ use pyo3::types::*;
 // wrap_py!(Scene);
 
 #[pymodule]
-fn plrender(py: Python<'_>, m: &PyModule) -> PyResult<()> {
+fn plrender(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
     m.add_class::<PyWindow>()?;
     Ok(())
 }
@@ -26,7 +21,7 @@ fn plrender(py: Python<'_>, m: &PyModule) -> PyResult<()> {
 // Context
 #[pyclass(name = "Window")]
 pub struct PyWindow {
-    inner: Window,
+    _inner: Window,
 }
 
 unsafe impl Send for PyWindow {}
@@ -34,37 +29,37 @@ unsafe impl Send for PyWindow {}
 // window = plr.Window(width=400, heigth=300,
 //          title="Spritesheet Example", clear_color="#FFccffff")
 
-#[derive(FromPyObject)]
-pub enum ClearColor<'a> {
-    CssString(&'a str),
-    RgbaTuple(f32, f32, f32, f32),
-    RgbTuple(f32, f32, f32),
-    RgbaDict {
-        r: f32,
-        g: f32,
-        b: f32,
-        a: f32,
-    },
-    RgbDict {
-        r: f32,
-        g: f32,
-        b: f32,
-    },
-    RgbaFullDict {
-        red: f32,
-        green: f32,
-        blue: f32,
-        alpha: f32,
-    },
-    RgbFullDict {
-        red: f32,
-        green: f32,
-        blue: f32,
-    },
-}
+// #[derive(FromPyObject)]
+// pub enum ClearColor<'a> {
+//     CssString(&'a str),
+//     RgbaTuple(f32, f32, f32, f32),
+//     RgbTuple(f32, f32, f32),
+//     RgbaDict {
+//         r: f32,
+//         g: f32,
+//         b: f32,
+//         a: f32,
+//     },
+//     RgbDict {
+//         r: f32,
+//         g: f32,
+//         b: f32,
+//     },
+//     RgbaFullDict {
+//         red: f32,
+//         green: f32,
+//         blue: f32,
+//         alpha: f32,
+//     },
+//     RgbFullDict {
+//         red: f32,
+//         green: f32,
+//         blue: f32,
+//     },
+// }
 
 #[derive(FromPyObject)]
-enum WindowSize {
+pub enum WindowSize {
     SizeTuple(u32, u32),
     SizeDict { w: u32, h: u32 },
     SizeFullDict { width: u32, height: u32 },
@@ -73,8 +68,8 @@ enum WindowSize {
 #[pymethods]
 impl PyWindow {
     #[new]
-    #[pyo3(signature = (size=WindowSize::SizeTuple(800, 600), title="PLRender", clear_color=ClearColor::CssString("#aaccffff")))]
-    fn new(size: WindowSize, title: &str, clear_color: ClearColor) -> PyResult<Self> {
+    #[pyo3(signature = (size=WindowSize::SizeTuple(800, 600), title="PLRender"))]
+    pub fn new(size: WindowSize, title: &str) -> PyResult<Self> {
         let (width, height) = match size {
             WindowSize::SizeTuple(w, h) => (w, h),
             WindowSize::SizeDict { w, h } => (w, h),
@@ -87,8 +82,31 @@ impl PyWindow {
             ..Default::default()
         });
 
-        Ok(PyWindow { inner: window })
+        if window.is_err() {
+            Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, &str>(
+                "Failed to create window",
+            ))
+        } else {
+            Ok(PyWindow {
+                _inner: window.unwrap(),
+            })
+        }
     }
+
+    pub fn run(&self) {
+        //self.inner.run();
+        todo!()
+    }
+
+    // pub fn on(&mut self, event: &str, callback: PyObject) {
+    //     let caller = || -> PyResult<()> {
+    //         let gil = Python::acquire_gil();
+    //         let py = gil.python();
+    //         let _ = callback.call0(py);
+    //         Ok(())
+    //     };
+    //     self.inner.on(event, callback);
+    // }
 }
 
 // PYO3 EXAMPLES

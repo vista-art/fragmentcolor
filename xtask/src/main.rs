@@ -12,12 +12,11 @@ pub const API_MAP_FILE: &str = "generated/api_map.rs";
 fn main() {
     println!("🚀 Running xtask...");
 
-    compile_crate("plrender-core", "❤️ Building PLRender Core...", true);
     compile_crate("plrender", "⭕ Building PLRender...", true);
 
     // @TODO bump version in documentation from project's Cargo.toml manifest
 
-    let crates = [crate_root("plrender"), crate_root("plrender-core")];
+    let crates = [crate_root("plrender")];
     let api_map_file = workspace_root().join(API_MAP_FILE);
     generate_api_map(&crates, &api_map_file, "🗺️ Generating API map...");
 

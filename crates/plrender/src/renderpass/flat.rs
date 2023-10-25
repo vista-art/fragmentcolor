@@ -1,4 +1,4 @@
-use plr::{Camera, HasSize, RenderContext as _, RenderTarget, Renderer, Scene};
+use crate::{Camera, HasSize, RenderContext as _, RenderTarget, Renderer, Scene};
 use std::mem;
 
 #[repr(C)]
@@ -48,7 +48,7 @@ impl Flat {
     pub fn new(renderer: &mut Renderer) -> Self {
         // @TODO handle multiple targets
         let targets = renderer.targets();
-        let target = targets.get_target(plr::TargetId(0));
+        let target = targets.get_target(crate::TargetId(0));
 
         let d = renderer.device();
         let shader_module = d.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -183,11 +183,11 @@ impl Flat {
     }
 }
 
-impl plr::RenderPass for Flat {
+impl crate::RenderPass for Flat {
     fn draw(&mut self, scene: &Scene, camera: &Camera, renderer: &Renderer) {
         // @TODO handle multiple targets
         let targets = renderer.targets();
-        let target = targets.get_target(plr::TargetId(0));
+        let target = targets.get_target(crate::TargetId(0));
         let device = renderer.device();
 
         let nodes = scene.bake();
@@ -210,7 +210,7 @@ impl plr::RenderPass for Flat {
         self.uniform_pool.reset();
         let cam_dir = glam::Quat::from_slice(&cam_node.rot) * -glam::Vec3::Z;
 
-        for (_, (sprite,)) in scene.world.query::<(&plr::Sprite,)>().iter() {
+        for (_, (sprite,)) in scene.world.query::<(&crate::Sprite,)>().iter() {
             let space = &nodes[sprite.node];
             let cam_vector = glam::Vec3::from_slice(&space.pos_scale)
                 - glam::Vec3::from_slice(&cam_node.pos_scale);
@@ -316,6 +316,5 @@ impl plr::RenderPass for Flat {
         let commands = vec![encoder.finish()];
 
         target.submit(renderer, commands, frame);
-        //queue.submit(Some(encoder.finish()));
     }
 }

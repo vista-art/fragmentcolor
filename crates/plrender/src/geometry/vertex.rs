@@ -1,5 +1,7 @@
 use bytemuck::{Pod, Zeroable};
-use std::mem;
+use std::{marker::PhantomData, mem};
+
+pub struct Vertex<T>(PhantomData<T>);
 
 #[repr(transparent)]
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]

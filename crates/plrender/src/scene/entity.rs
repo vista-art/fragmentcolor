@@ -1,7 +1,7 @@
 use crate::renderer::resources::mesh::MeshId;
 use crate::scene::{builder::ObjectBuilder, node::NodeId, space::Space};
 
-pub type EntityRef = hecs::Entity;
+pub type EntityId = hecs::Entity;
 
 pub struct EntityBuilder {
     pub(super) raw: hecs::EntityBuilder,
@@ -21,7 +21,7 @@ impl ObjectBuilder<'_, EntityBuilder> {
         self
     }
 
-    pub fn build(&mut self) -> EntityRef {
+    pub fn build(&mut self) -> EntityId {
         let entity = Entity {
             node: if self.node.local == Space::default() {
                 self.node.parent

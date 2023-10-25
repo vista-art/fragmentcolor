@@ -8,10 +8,12 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-pyo3 = { version = "0.20", features = ["extension-module"] }
+# @TODO https://github.com/PyO3/pyo3/issues/1857
+# pyo3 = { version = "0.20", features = ["extension-module"] }
+pyo3 = { version = "0.20" }
 pollster = "0.3"
 numpy = "0.20"
 ndarray = "0.15"
 mint = "0.5"
-pl = { package="plrender", path = "../plrender" }
-plrender-macros = { path = "../plrender-macros" }
+plr = { package="plrender", path = "../plrender" }
+#plrender-macros = { path = "../plrender-macros" }

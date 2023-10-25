@@ -1,5 +1,6 @@
+use crate::geometry::{Normal, Position, TexCoords, Vertex};
+use crate::{Camera, HasSize, RenderContext, RenderTarget, Renderer, Scene};
 use fxhash::FxHashMap;
-use plr::{Camera, HasSize, RenderContext, RenderTarget, Renderer, Scene};
 use std::mem;
 use wgpu::util::DeviceExt as _;
 
@@ -106,7 +107,7 @@ impl Real {
     pub fn new(config: &RealConfig, renderer: &Renderer) -> Self {
         // @TODO handle multiple targets
         let targets = renderer.targets();
-        let target = targets.get_target(plr::TargetId(0));
+        let target = targets.get_target(crate::TargetId(0));
 
         let d = renderer.device();
         let shader_module = d.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -237,9 +238,9 @@ impl Real {
                     layout: Some(&pipeline_layout),
                     vertex: wgpu::VertexState {
                         buffers: &[
-                            crate::Position::layout::<0>(),
-                            crate::TexCoords::layout::<1>(),
-                            crate::Normal::layout::<2>(),
+                            Position::layout::<0>(),
+                            TexCoords::layout::<1>(),
+                            Normal::layout::<2>(),
                         ],
                         module: &shader_module,
                         entry_point: "main_vs",
@@ -298,11 +299,11 @@ impl Real {
     }
 }
 
-impl plr::RenderPass for Real {
+impl crate::RenderPass for Real {
     fn draw(&mut self, scene: &Scene, camera: &Camera, renderer: &Renderer) {
         // @TODO handle multiple targets
         let targets = renderer.targets();
-        let target = targets.get_target(plr::TargetId(0)); // @TODO convert from usize internally
+        let target = targets.get_target(crate::TargetId(0)); // @TODO convert from usize internally
         let resources = renderer.resources();
         let device = renderer.device();
 
@@ -348,8 +349,8 @@ impl plr::RenderPass for Real {
                 let space = &nodes[light.node];
                 let mut pos = space.pos_scale;
                 pos[3] = match light.kind {
-                    plr::LightKind::Directional => 0.0,
-                    plr::LightKind::Point => 1.0,
+                    crate::LightKind::Directional => 0.0,
+                    crate::LightKind::Point => 1.0,
                 };
                 let mut color_intensity = light.color.into_vec4();
                 color_intensity[3] = light.intensity;
@@ -373,10 +374,10 @@ impl plr::RenderPass for Real {
 
         for (_, (entity, &color, mat)) in scene
             .world
-            .query::<(&plr::Entity, &plr::Color, &Material)>()
-            .with::<&plr::Vertex<crate::Position>>()
-            .with::<&plr::Vertex<crate::TexCoords>>()
-            .with::<&plr::Vertex<crate::Normal>>()
+            .query::<(&crate::Entity, &crate::Color, &Material)>()
+            .with::<&Vertex<Position>>()
+            .with::<&Vertex<TexCoords>>()
+            .with::<&Vertex<Normal>>()
             .iter()
         {
             let space = &nodes[entity.node];
@@ -467,9 +468,9 @@ impl plr::RenderPass for Real {
                 let local_bg = &self.local_bind_groups[&key];
                 pass.set_bind_group(1, local_bg, &[inst.locals_bl.offset]);
 
-                pass.set_vertex_buffer(0, mesh.vertex_slice::<crate::Position>());
-                pass.set_vertex_buffer(1, mesh.vertex_slice::<crate::TexCoords>());
-                pass.set_vertex_buffer(2, mesh.vertex_slice::<crate::Normal>());
+                pass.set_vertex_buffer(0, mesh.vertex_slice::<Position>());
+                pass.set_vertex_buffer(1, mesh.vertex_slice::<TexCoords>());
+                pass.set_vertex_buffer(2, mesh.vertex_slice::<Normal>());
 
                 if let Some(ref is) = mesh.index_stream {
                     pass.set_index_buffer(mesh.buffer.slice(is.offset..), is.format);

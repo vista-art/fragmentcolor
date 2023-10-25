@@ -1,3 +1,6 @@
+// use std::collections::HashMap;
+use crate::renderer::target::{HasSize, IsWindow};
+
 // Waiting for https://github.com/gfx-rs/wgpu/pull/4202
 // use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 use raw_window_handle::{
@@ -10,13 +13,12 @@ use winit::{
     window::Fullscreen,
 };
 
-type Error = Box<dyn std::error::Error>;
-
 const TARGET_FRAME_TIME: f64 = 1.0 / 120.0;
 
-#[derive(Debug)]
+// #[derive(Debug)] //@TODO move the hashmap outside like in the renderer
 pub struct Window {
     event_loop: EventLoop<()>,
+    //callbacks: HashMap<String, Box<dyn FnMut(Event)>>,
     instance: winit::window::Window,
 }
 
@@ -48,8 +50,8 @@ unsafe impl HasRawDisplayHandle for Window {
     }
 }
 
-impl plr::IsWindow for Window {}
-impl plr::HasSize for Window {
+impl IsWindow for Window {}
+impl HasSize for Window {
     fn size(&self) -> wgpu::Extent3d {
         let size = self.instance.inner_size();
 
@@ -80,7 +82,7 @@ pub enum Key {
     Other,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+// #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Button {
     Left,
     Middle,
@@ -88,6 +90,11 @@ pub enum Button {
     Other(u16),
 }
 
+// @TODO remove this
+// it assumes we will always have only one window
+// we can use Winit's system directly instead so
+// we can access the WindowId and add a custom
+// event listener. My old version is better.
 pub enum Event {
     Resize { width: u32, height: u32 },
     Keyboard { key: Key, pressed: bool },
@@ -105,6 +112,8 @@ pub struct WindowOptions {
     pub resizable: Option<bool>,
     pub title: Option<String>,
     pub size: Option<(u32, u32)>,
+    pub min_size: Option<(u32, u32)>,
+    pub max_size: Option<(u32, u32)>,
 }
 
 impl Window {
@@ -115,7 +124,12 @@ impl Window {
             .with_inner_size(winit::dpi::Size::Logical(
                 options.size.unwrap_or((800, 600)).into(),
             ))
-            .with_min_inner_size(winit::dpi::Size::Logical((64, 64).into()))
+            .with_min_inner_size(winit::dpi::Size::Logical(
+                options.min_size.unwrap_or(Default::default()).into(),
+            ))
+            .with_max_inner_size(winit::dpi::Size::Logical(
+                options.max_size.unwrap_or(Default::default()).into(),
+            ))
             .with_fullscreen(
                 options
                     .fullscreen
@@ -132,11 +146,17 @@ impl Window {
         })
     }
 
-    // pub fn add_event_listener(callback: impl FnMut) {
-    //     todo!()
-    // }
+    // @TODO implement this interface
+    pub fn on(_event_name: &str, _callback: impl FnMut(Event)) {
+        todo!()
+    }
 
+    // @TODO The user should not care about injecting the runner here.
+    //       this method should be just run() or open(), without arguments.
+    //
+    // old signature: (delete this comment after transition is complete)
     pub fn run(self, mut runner: impl 'static + FnMut(Event)) -> ! {
+        // pub fn run(self) -> ! {
         use instant::{Duration, Instant};
         use winit::{
             event::{
@@ -151,7 +171,14 @@ impl Window {
             instance: window,
         } = self;
 
-        event_loop.run(move |event, _, control_flow| {
+        // NOTE: the original author uses this "runner" function as a callback.
+        //       this works for Rust because match() expressions, but it is clucky
+        //       for other languages.
+        //
+        // @TODO instead of a global "runner" callback function:
+        //       For each Winit event, we should create a on_<event> method which accepts
+        //       a callback function. This is more flexible and ergonomic for other languages.
+        event_loop.run(move |event, _window_target, control_flow| {
             *control_flow = match event {
                 WinitEvent::WindowEvent {
                     event: WindowEvent::Resized(size),

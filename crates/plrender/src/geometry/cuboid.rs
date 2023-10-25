@@ -1,9 +1,10 @@
+use crate::geometry::vertex;
 use std::iter;
 
 impl super::Geometry {
     pub fn cuboid(streams: super::Streams, half_extent: mint::Vector3<f32>) -> Self {
         let pos = |x, y, z| {
-            crate::Position([
+            vertex::Position([
                 (x as f32) * half_extent.x,
                 (y as f32) * half_extent.y,
                 (z as f32) * half_extent.z,
@@ -51,12 +52,12 @@ impl super::Geometry {
             ];
 
             let normals = [
-                crate::Normal([0.0, 0.0, 1.0]),
-                crate::Normal([0.0, 0.0, -1.0]),
-                crate::Normal([1.0, 0.0, 0.0]),
-                crate::Normal([-1.0, 0.0, 0.0]),
-                crate::Normal([0.0, 1.0, 0.0]),
-                crate::Normal([0.0, -1.0, 0.0]),
+                vertex::Normal([0.0, 0.0, 1.0]),
+                vertex::Normal([0.0, 0.0, -1.0]),
+                vertex::Normal([1.0, 0.0, 0.0]),
+                vertex::Normal([-1.0, 0.0, 0.0]),
+                vertex::Normal([0.0, 1.0, 0.0]),
+                vertex::Normal([0.0, -1.0, 0.0]),
             ]
             .iter()
             .flat_map(|&n| iter::repeat(n).take(4))

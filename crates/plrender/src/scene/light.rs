@@ -8,7 +8,7 @@ pub enum LightKind {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct LightRef(pub u32);
+pub struct LightId(pub u32);
 
 #[derive(Debug)]
 pub struct Light {
@@ -39,7 +39,7 @@ impl ObjectBuilder<'_, LightBuilder> {
         self
     }
 
-    pub fn build(&mut self) -> LightRef {
+    pub fn build(&mut self) -> LightId {
         let light = Light {
             node: if self.node.local == Space::default() {
                 self.node.parent
@@ -52,6 +52,6 @@ impl ObjectBuilder<'_, LightBuilder> {
         };
         let index = self.scene.lights.0.len();
         self.scene.lights.0.push(light);
-        LightRef(index as u32)
+        LightId(index as u32)
     }
 }

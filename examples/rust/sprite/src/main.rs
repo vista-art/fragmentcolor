@@ -3,10 +3,10 @@ use plrender::{window::WindowOptions, RenderOptions, RenderPass};
 
 //TODO: a mechanism like this should be a part of the engine
 struct Animator {
-    map: plrender::asset::SpriteMap,
+    map: plrender::loader::SpriteMap,
     cell_counts: mint::Vector2<usize>,
     duration: Duration,
-    sprite: plrender::EntityRef,
+    sprite: plrender::EntityId,
     current: mint::Point2<usize>,
     moment: Instant,
 }
@@ -104,6 +104,8 @@ fn main() {
 
     let mut scene = plrender::Scene::new();
 
+    // this has to be part of the scene and created
+    // by default without user input
     let camera = plrender::Camera {
         projection: plrender::Projection::Orthographic {
             // the sprite configuration is not centered
@@ -113,6 +115,8 @@ fn main() {
         ..Default::default()
     };
 
+    // this needs to be abstracted away. Ideally, we should have some
+    // preset render passes as attributes of the renderer
     let mut pass = plrender::renderpass::Flat::new(&mut renderer);
 
     let image = renderer
@@ -125,7 +129,7 @@ fn main() {
     let sprite = scene.add_sprite(image).build();
 
     let mut anim = Animator {
-        map: plrender::asset::SpriteMap {
+        map: plrender::loader::SpriteMap {
             origin: mint::Point2 { x: 0, y: 0 },
             cell_size: mint::Vector2 { x: 96, y: 96 },
         },
@@ -136,6 +140,10 @@ fn main() {
         sprite,
     };
     anim.switch(State::Idle, &mut scene);
+
+    window.on_resize(|width, height| {
+        // renderer.resize(width, height);
+    });
 
     window.run(move |event| match event {
         Event::Resize { width, height } => {
