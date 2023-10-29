@@ -1,6 +1,7 @@
 use crate::target::{events::Event, HasSize};
 use std::collections::HashMap;
 use std::fmt::Debug;
+use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use winit::window::WindowId;
 
 // Waiting for https://github.com/gfx-rs/wgpu/pull/4202
@@ -10,76 +11,70 @@ use raw_window_handle::{
 };
 use serde::{Deserialize, Serialize};
 
+const READ_LOCK_ERROR: &str = "Failed to acquire Read lock";
+const WRITE_LOCK_ERROR: &str = "Failed to acquire Write lock";
+
 // @TODO remove deprecated "raw"s, waiting for https://github.com/gfx-rs/wgpu/pull/4202
 pub trait IsWindow:
     HasRawDisplayHandle + HasRawWindowHandle /* + HasDisplayHandle + HasWindowHandle*/ + HasSize
 {
-    fn id(&self) -> WindowId;
+    fn id(&self) -> winit::window::WindowId;
     // workaround for casting it to the 
     // only concrete type we currently have.
-    fn instance(self) -> Window;
+    fn instance(&mut self) -> Arc<RwLock<winit::window::Window>>;
     fn request_redraw(&self);
 }
 
-pub trait WindowContainer {
-    type Window: IsWindow;
-
-    fn new() -> Self;
-    fn get(&self, id: WindowId) -> Option<&Box<Self::Window>>;
-    fn get_mut(&mut self, id: WindowId) -> Option<&mut Self::Window>;
-    fn insert(&mut self, id: WindowId, window: Self::Window);
-    fn remove(&mut self, id: WindowId) -> Option<Self::Window>;
-}
-
-pub trait From<W: IsWindow> {
-    fn from(window: W) -> Self;
-}
-
-impl<W: IsWindow> From<W> for Window {
-    fn from(w: W) -> Window {
-        w.instance()
-    }
-}
-
 #[derive(Debug)]
-pub struct Windows {
-    windows: HashMap<winit::window::WindowId, Box<self::Window>>,
+pub struct Window {
+    instance: Arc<RwLock<winit::window::Window>>,
 }
+
 impl Debug for dyn IsWindow {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "Window ID: {:?}", self.id())
     }
 }
 
-impl WindowContainer for Windows {
-    type Window = Window;
-
-    fn new() -> Self {
-        Self {
-            windows: HashMap::new(),
-        }
-    }
-
-    fn get(&self, id: WindowId) -> Option<&Box<Self::Window>> {
-        self.windows.get(&id)
-    }
-
-    fn get_mut(&mut self, id: WindowId) -> Option<&mut Self::Window> {
-        self.windows.get_mut(&id).map(|boxed| Box::as_mut(boxed))
-    }
-
-    fn insert(&mut self, id: WindowId, window: Self::Window) {
-        self.windows.insert(id, Box::new(window));
-    }
-
-    fn remove(&mut self, id: WindowId) -> Option<Self::Window> {
-        self.windows.remove(&id).map(|boxed| *boxed)
-    }
+pub trait WindowContainer<W> {
+    fn new() -> Self;
+    fn get(&self, id: WindowId) -> Option<RwLockReadGuard<'_, W>>;
+    fn get_mut(&mut self, id: WindowId) -> Option<RwLockWriteGuard<'_, W>>;
+    fn insert(&mut self, id: WindowId, window: Arc<RwLock<W>>);
+    fn remove(&mut self, id: WindowId) -> Option<Arc<RwLock<W>>>;
 }
 
 #[derive(Debug)]
-pub struct Window {
-    instance: winit::window::Window,
+pub struct Windows {
+    container: HashMap<winit::window::WindowId, Arc<RwLock<winit::window::Window>>>,
+}
+
+impl WindowContainer<winit::window::Window> for Windows {
+    fn new() -> Self {
+        Self {
+            container: HashMap::new(),
+        }
+    }
+
+    fn get(&self, id: WindowId) -> Option<RwLockReadGuard<'_, winit::window::Window>> {
+        let window = self.container.get(&id)?;
+        let window = window.read().expect(READ_LOCK_ERROR);
+        Some(window)
+    }
+
+    fn get_mut(&mut self, id: WindowId) -> Option<RwLockWriteGuard<'_, winit::window::Window>> {
+        let window = self.container.get_mut(&id)?;
+        let window = window.write().expect(WRITE_LOCK_ERROR);
+        Some(window)
+    }
+
+    fn insert(&mut self, id: WindowId, window: Arc<RwLock<winit::window::Window>>) {
+        self.container.insert(id, window);
+    }
+
+    fn remove(&mut self, id: WindowId) -> Option<Arc<RwLock<winit::window::Window>>> {
+        self.container.remove(&id)
+    }
 }
 
 // Waiting for https://github.com/gfx-rs/wgpu/pull/4202
@@ -98,31 +93,40 @@ pub struct Window {
 
 unsafe impl HasRawWindowHandle for Window {
     fn raw_window_handle(&self) -> RawWindowHandle {
-        self.instance.raw_window_handle()
+        self.instance
+            .read()
+            .expect(READ_LOCK_ERROR)
+            .raw_window_handle()
     }
 }
 
 unsafe impl HasRawDisplayHandle for Window {
     fn raw_display_handle(&self) -> RawDisplayHandle {
-        self.instance.raw_display_handle()
+        self.instance
+            .read()
+            .expect(READ_LOCK_ERROR)
+            .raw_display_handle()
     }
 }
 
 impl IsWindow for Window {
     fn id(&self) -> winit::window::WindowId {
-        self.instance.id()
+        self.instance.read().expect(READ_LOCK_ERROR).id()
     }
-    fn instance(self) -> Window {
-        self
+    fn instance(&mut self) -> Arc<RwLock<winit::window::Window>> {
+        self.instance.clone()
     }
     fn request_redraw(&self) {
-        self.instance.request_redraw()
+        self.instance
+            .read()
+            .expect(READ_LOCK_ERROR)
+            .request_redraw()
     }
 }
 
 impl HasSize for Window {
     fn size(&self) -> wgpu::Extent3d {
-        let size = self.instance.inner_size();
+        let size = self.instance.read().expect(READ_LOCK_ERROR).inner_size();
 
         wgpu::Extent3d {
             width: size.width,
@@ -137,6 +141,14 @@ impl HasSize for Window {
     }
 }
 
+/// All properties are optional, so this can be serialized
+/// to JSON. The user can inject a configuration object in
+/// in Javascript. In Python, we convert the input to named
+/// arguments or a single dict.
+///
+/// While this is a nice interface for Python and Javascript,
+/// it's not idiomatic in Rust. For Rust users, we provide a
+/// default() construcxtor and chainable setters.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct WindowOptions {
     pub decorations: Option<bool>,
@@ -176,12 +188,6 @@ impl Window {
             .with_inner_size(winit::dpi::Size::Logical(
                 options.size.unwrap_or((800, 600)).into(),
             ))
-            .with_min_inner_size(winit::dpi::Size::Logical(
-                options.min_size.unwrap_or_default().into(),
-            ))
-            .with_max_inner_size(winit::dpi::Size::Logical(
-                options.max_size.unwrap_or_default().into(),
-            ))
             .with_fullscreen(
                 options
                     .fullscreen
@@ -192,44 +198,74 @@ impl Window {
             .with_resizable(options.resizable.unwrap_or(true))
             .build(&event_loop)?;
 
-        Ok(Window { instance: window })
+        window.set_min_inner_size(
+            options
+                .min_size
+                .map(|size| winit::dpi::Size::Logical(size.into())),
+        );
+        window.set_max_inner_size(
+            options
+                .max_size
+                .map(|size| winit::dpi::Size::Logical(size.into())),
+        );
+
+        Ok(Window {
+            instance: Arc::new(RwLock::new(window)),
+        })
     }
 
     pub fn set_title(&mut self, title: &str) -> &mut Self {
-        self.instance.set_title(title);
+        self.instance
+            .write()
+            .expect(WRITE_LOCK_ERROR)
+            .set_title(title);
         self
     }
 
     pub fn set_size(&mut self, size: (u32, u32)) -> &mut Self {
         self.instance
+            .write()
+            .expect(WRITE_LOCK_ERROR)
             .set_inner_size(winit::dpi::Size::Logical(size.into()));
         self
     }
 
     pub fn set_min_size(&mut self, size: Option<(u32, u32)>) -> &mut Self {
         self.instance
+            .write()
+            .expect(WRITE_LOCK_ERROR)
             .set_min_inner_size(size.map(|size| winit::dpi::Size::Logical(size.into())));
         self
     }
 
     pub fn set_max_size(&mut self, size: Option<(u32, u32)>) -> &mut Self {
         self.instance
+            .write()
+            .expect(WRITE_LOCK_ERROR)
             .set_max_inner_size(size.map(|size| winit::dpi::Size::Logical(size.into())));
         self
     }
     pub fn set_fullscreen(&mut self, fullscreen: bool) -> &mut Self {
         self.instance
+            .write()
+            .expect(WRITE_LOCK_ERROR)
             .set_fullscreen(fullscreen.then(|| winit::window::Fullscreen::Borderless(None)));
         self
     }
 
     pub fn set_decorations(&mut self, decorations: bool) -> &mut Self {
-        self.instance.set_decorations(decorations);
+        self.instance
+            .write()
+            .expect(WRITE_LOCK_ERROR)
+            .set_decorations(decorations);
         self
     }
 
     pub fn set_resizable(&mut self, resizable: bool) -> &mut Self {
-        self.instance.set_resizable(resizable);
+        self.instance
+            .write()
+            .expect(WRITE_LOCK_ERROR)
+            .set_resizable(resizable);
         self
     }
 

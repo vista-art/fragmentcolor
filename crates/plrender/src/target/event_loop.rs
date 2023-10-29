@@ -1,6 +1,6 @@
 use crate::target::{events::Event, window::WindowContainer};
 use crate::{renderer::Renderer, RenderContext};
-use crate::{IsWindow, RenderTarget, Target, TargetId};
+use crate::{RenderTarget, Target, TargetId};
 use instant::{Duration, Instant};
 use std::{sync::Arc, sync::Mutex};
 #[cfg(wasm)]
