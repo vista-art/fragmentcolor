@@ -22,14 +22,14 @@ pub static POWER_PREFERENCE: phf::Map<&str, wgpu::PowerPreference> = phf_map! {
 };
 
 #[derive(Debug)]
-pub struct RenderOptions<W: IsWindow> {
+pub struct RenderOptions<'w, W: IsWindow> {
     pub force_software_rendering: Option<bool>,
     pub power_preference: Option<&'static str>,
     pub device_limits: Option<&'static str>,
-    pub targets: Option<Vec<W>>,
+    pub targets: Option<Vec<&'w mut W>>,
 }
 
-impl<W: IsWindow> Default for RenderOptions<W> {
+impl<'w, W: IsWindow> Default for RenderOptions<'w, W> {
     fn default() -> Self {
         Self {
             force_software_rendering: Some(false),

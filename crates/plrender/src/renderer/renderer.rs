@@ -69,7 +69,7 @@ impl RenderContext for Renderer {
 }
 
 impl Renderer {
-    pub async fn new<W: IsWindow>(options: RenderOptions<W>) -> Result<Renderer, Error> {
+    pub async fn new<'w, W: IsWindow>(options: RenderOptions<'w, W>) -> Result<Renderer, Error> {
         let (instance, adapter, device, queue, windows, targets) =
             Internal::gpu_objects(options).await?;
         let targets = Arc::new(Mutex::new(targets));
@@ -271,8 +271,8 @@ impl Renderer {
 // Helper static methods
 struct Internal;
 impl Internal {
-    async fn gpu_objects<W: IsWindow>(
-        options: RenderOptions<W>,
+    async fn gpu_objects<'w, W: IsWindow>(
+        options: RenderOptions<'w, W>,
     ) -> Result<
         (
             wgpu::Instance,
@@ -315,9 +315,9 @@ impl Internal {
         Ok((instance, adapter, device, queue, windows, targets))
     }
 
-    fn parse_options<W: IsWindow>(
-        options: RenderOptions<W>,
-    ) -> (wgpu::PowerPreference, bool, Vec<W>, wgpu::Limits) {
+    fn parse_options<'w, W: IsWindow>(
+        options: RenderOptions<'w, W>,
+    ) -> (wgpu::PowerPreference, bool, Vec<&'w mut W>, wgpu::Limits) {
         let preference = options.power_preference.unwrap_or("high-performance");
         let power_preference = POWER_PREFERENCE.get(preference).unwrap().to_owned();
         let force_fallback_adapter = options.force_software_rendering.unwrap_or(false);
@@ -342,17 +342,23 @@ impl Internal {
         )
     }
 
-    fn surfaces<W: IsWindow>(instance: &wgpu::Instance, window_list: &Vec<W>) -> WindowSurfaces {
+    fn surfaces<'w, W: IsWindow>(
+        instance: &wgpu::Instance,
+        window_list: &Vec<&'w mut W>,
+    ) -> WindowSurfaces {
         window_list
             .into_iter()
             .filter_map(|window| {
-                let surface = Self::surface(instance, window).ok()?;
+                let surface = Self::surface(instance, *window).ok()?;
                 Some(surface)
             })
             .collect()
     }
 
-    fn surface<W: IsWindow>(instance: &wgpu::Instance, window: &W) -> Result<WindowSurface, Error> {
+    fn surface<'w, W: IsWindow>(
+        instance: &wgpu::Instance,
+        window: &'w W,
+    ) -> Result<WindowSurface, Error> {
         let surface = unsafe { instance.create_surface(window) }?;
         let size = window.size();
         let id = window.id();
@@ -415,7 +421,7 @@ impl Internal {
         })
     }
 
-    fn windows<W: IsWindow>(window_list: Vec<W>) -> Windows {
+    fn windows<'w, W: IsWindow>(window_list: Vec<&'w mut W>) -> Windows {
         let mut windows = Windows::new();
         for window in window_list {
             windows.insert(window.id(), window.instance());
