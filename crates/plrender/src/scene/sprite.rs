@@ -48,6 +48,10 @@ impl ObjectBuilder<'_, SpriteBuilder> {
         // @TODO nitpick: this line joins the two words that I want to remove
         // from the engine: "kind" and "raw". I wanted to replace them before,
         // and now I want to replace them even more!
+
+        // In this context, "kind" is the type of object (Sprite in this case),
+        // and "raw" is the hecs::EntityBuilder that is used to build the object.
+        // The method "add" is used to add Components to the Entity.
         let built = self.kind.raw.add(sprite).build();
 
         self.scene.world.spawn(built)

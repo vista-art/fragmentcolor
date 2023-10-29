@@ -1,18 +1,16 @@
-use crate::renderer::{
-    resources::{
-        buffer::{Buffer, BufferSize, TextureBuffer},
-        region::TextureRegion,
-        texture::Texture,
+use crate::{
+    renderer::{
+        resources::{
+            buffer::{Buffer, BufferSize, TextureBuffer},
+            region::TextureRegion,
+            texture::Texture,
+        },
+        Renderer,
     },
-    Renderer,
+    target::{event_loop::EventLoop, events::Event},
 };
-use raw_window_handle::{
-    // waiting for https://github.com/gfx-rs/wgpu/pull/4202
-    /* HasDisplayHandle, HasWindowHandle, */
-    HasRawDisplayHandle,
-    HasRawWindowHandle,
-};
-use std::{fmt::Debug, sync::Arc};
+use std::{collections::HashMap, fmt::Debug, sync::Arc};
+use winit::window::WindowId;
 
 type Error = Box<dyn std::error::Error>;
 type Commands = Vec<wgpu::CommandBuffer>;
@@ -21,12 +19,6 @@ type SubmissionIndex = wgpu::SubmissionIndex;
 pub trait HasSize {
     fn size(&self) -> wgpu::Extent3d;
     fn aspect(&self) -> f32;
-}
-
-// @TODO remove deprecated "raw"s, waiting for https://github.com/gfx-rs/wgpu/pull/4202
-pub trait IsWindow:
-    HasRawDisplayHandle + HasRawWindowHandle /* + HasDisplayHandle + HasWindowHandle*/ + HasSize
-{
 }
 
 pub struct Frame {
@@ -49,8 +41,11 @@ pub trait RenderTarget: Debug + 'static + HasSize {
     fn submit(&self, renderer: &Renderer, commands: Commands, frame: Frame) -> SubmissionIndex;
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct TargetId(pub u8);
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum TargetId {
+    Texture(u8),
+    Window(WindowId),
+}
 
 #[derive(Debug)]
 pub enum Target {
@@ -59,28 +54,61 @@ pub enum Target {
 }
 
 #[derive(Debug)]
-pub struct Targets(pub Vec<Target>);
+pub struct Targets {
+    texture_count: u8,
+    pub targets: HashMap<TargetId, Target>,
+    pub event_loop: Option<EventLoop<Event>>,
+}
 
 impl Targets {
-    pub fn add_target(&mut self, target: Target) -> TargetId {
-        let index = self.0.len();
-        self.0.push(target);
-
-        TargetId(index as u8)
+    pub fn new() -> Self {
+        Self {
+            texture_count: 0,
+            targets: HashMap::new(),
+            event_loop: None,
+        }
     }
-    pub fn get_target(&self, tr: TargetId) -> &Target {
-        &self.0[tr.0 as usize]
+
+    pub fn add(&mut self, target: Target) -> TargetId {
+        let id = match target {
+            Target::Texture(_) => {
+                self.texture_count += 1;
+                TargetId::Texture(self.texture_count)
+            }
+            Target::Window(ref target) => TargetId::Window(target.id),
+        };
+
+        self.targets.insert(id, target);
+
+        id
+    }
+
+    pub fn get(&self, id: &TargetId) -> Option<&Target> {
+        self.targets.get(id)
+    }
+
+    pub fn get_mut(&mut self, id: &TargetId) -> Option<&mut Target> {
+        self.targets.get_mut(id)
+    }
+
+    pub fn remove(&mut self, id: &TargetId) -> Option<Target> {
+        self.targets.remove(id)
+    }
+
+    pub fn all(&self) -> impl Iterator<Item = &Target> {
+        self.targets.values()
     }
 }
 
 #[derive(Debug)]
 pub struct TextureTarget {
-    pub texture: Arc<crate::Texture>,
+    pub texture: Arc<Texture>,
     pub buffer: Option<TextureBuffer>,
 }
 
 #[derive(Debug)]
 pub struct WindowTarget {
+    pub id: WindowId,
     pub surface: wgpu::Surface,
     pub config: wgpu::SurfaceConfiguration,
 }

@@ -3,6 +3,8 @@ use crate::scene::{
     Scene,
 };
 
+// What's the difference between ObjectBuilder and EntityBuilder?
+// @TODO anser
 pub struct ObjectBuilder<'a, T> {
     pub(super) scene: &'a mut Scene,
     pub(super) node: Node,
