@@ -3,6 +3,7 @@ use crate::renderer::resources::{
     texture::{Texture, TextureId},
 };
 
+#[derive(Debug)]
 pub struct Resources {
     textures: Vec<Texture>,
     meshes: Vec<Mesh>,

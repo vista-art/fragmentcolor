@@ -1,21 +1,18 @@
-mod color;
-mod geometry;
+pub mod color;
+pub mod geometry;
 pub mod loader;
-mod renderer;
-mod renderpass;
-mod scene;
-pub mod window;
+pub mod renderer;
+pub mod scene;
+pub mod target;
 
 pub use color::Color;
 
 pub use geometry::{Geometry, Vertex};
 
-pub use renderpass::{Flat, Phong, Real, Shader, Solid};
-
 pub use renderer::{
     mesh::{IndexStream, Mesh, MeshBuilder, MeshId, Prototype, VertexStream},
     renderer::{RenderContext, Renderer},
-    target::{HasSize, IsWindow, RenderTarget, Target, TargetId},
+    renderpass::{Flat2D, Phong, Real, Shader, Solid},
     texture::{Texture, TextureId},
     RenderPass,
 };
@@ -30,3 +27,5 @@ pub use scene::{
     sprite::{Sprite, SpriteBuilder, UvRange},
     Array, BakedScene, Scene,
 };
+
+pub use target::{HasSize, IsWindow, RenderTarget, Target, TargetId, Window};

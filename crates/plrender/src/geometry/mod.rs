@@ -1,4 +1,4 @@
-use crate::renderer;
+use crate::renderer::{resources::mesh, Renderer};
 use crate::MeshBuilder;
 
 pub mod cuboid;
@@ -25,15 +25,15 @@ pub struct Geometry {
 }
 
 impl Geometry {
-    pub fn bake(&self, renderer: &mut renderer::Renderer) -> renderer::resources::mesh::Prototype {
+    pub fn bake(&self, renderer: &mut Renderer) -> mesh::Prototype {
         // Provisory until we refactor the Mesh API to remove the builder
         // and implement a regular new() constructor method.
         let mut mb = MeshBuilder::new(renderer);
 
         mb.radius(self.radius);
         mb.vertex(&self.positions);
-        if let Some(ref stream) = self.normals {
-            mb.vertex(stream);
+        if let Some(ref normals) = self.normals {
+            mb.vertex(normals);
         }
         if let Some(ref indices) = self.indices {
             mb.index(indices);

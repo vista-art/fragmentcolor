@@ -41,9 +41,9 @@ impl Normal {
 
 #[repr(transparent)]
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]
-pub struct TexCoords(pub [u16; 2]);
+pub struct TextureCoordinates(pub [u16; 2]);
 
-impl TexCoords {
+impl TextureCoordinates {
     pub(crate) const fn layout<const LOCATION: u32>() -> wgpu::VertexBufferLayout<'static> {
         wgpu::VertexBufferLayout {
             array_stride: mem::size_of::<Self>() as u64,

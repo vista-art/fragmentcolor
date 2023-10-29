@@ -1,6 +1,6 @@
-pub use plr::window::{Window, WindowOptions};
+pub use plr::target::window::{Window, WindowOptions};
 use pyo3::prelude::*;
-use pyo3::types::*;
+// use pyo3::types::*;
 
 // @FIXME code generation works partially.
 // It's still unrealiable for production.

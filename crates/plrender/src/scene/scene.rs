@@ -88,7 +88,7 @@ impl Scene {
     }
 
     // @TODO a scene can contain many cameras, but only one active at a time.
-    pub fn active_camera() {
+    pub fn camera() {
         todo!()
     }
 

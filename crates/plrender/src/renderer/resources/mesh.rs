@@ -7,6 +7,7 @@ use wgpu::util::DeviceExt;
 pub struct MeshId(pub u32);
 
 /// Mesh is a GPU resource, not a Scene resource.
+#[derive(Debug)]
 pub struct Mesh {
     pub buffer: wgpu::Buffer,
     // This is an slice because a Vertex might hold
@@ -17,12 +18,14 @@ pub struct Mesh {
     pub bound_radius: f32,
 }
 
+#[derive(Clone, Copy, Debug)]
 pub struct IndexStream {
     pub offset: wgpu::BufferAddress,
     pub format: wgpu::IndexFormat,
     pub count: u32,
 }
 
+#[derive(Clone, Copy, Debug)]
 pub struct VertexStream {
     type_id: TypeId,
     pub offset: wgpu::BufferAddress,

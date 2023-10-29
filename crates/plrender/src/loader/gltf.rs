@@ -4,7 +4,7 @@ use std::{collections::VecDeque, ops, path::Path};
 struct MeshScratch {
     indices: Vec<u16>,
     positions: Vec<crate::Position>,
-    tex_coords: Vec<crate::TexCoords>,
+    tex_coords: Vec<crate::TextureCoordinates>,
     normals: Vec<crate::Normal>,
 }
 
@@ -19,7 +19,7 @@ struct Primitive {
     material: crate::pass::Material,
 }
 
-fn load_texture(mut data: gltf::image::Data, context: &mut crate::Renderer) -> Texture {
+fn load_texture(mut data: gltf::image::Data, renderer: &mut crate::Renderer) -> Texture {
     let format = match data.format {
         gltf::image::Format::R8 => wgpu::TextureFormat::R8Unorm,
         gltf::image::Format::R8G8 => wgpu::TextureFormat::Rg8Unorm,
@@ -66,7 +66,7 @@ fn load_texture(mut data: gltf::image::Data, context: &mut crate::Renderer) -> T
         view_formats: &[format],
     };
 
-    let image = context.add_texture_from_bytes(&desc, &data.pixels);
+    let image = renderer.add_texture_from_bytes(&desc, &data.pixels);
     Texture { image }
 }
 
@@ -74,11 +74,11 @@ fn load_primitive<'a>(
     primitive: gltf::Primitive<'a>,
     buffers: &[gltf::buffer::Data],
     textures: &[Texture],
-    context: &mut crate::Renderer,
+    renderer: &mut crate::Renderer,
     scratch: &mut MeshScratch,
 ) -> Primitive {
     let reader = primitive.reader(|buffer| Some(&buffers[buffer.index()].0));
-    let mut mesh_builder = context.add_mesh();
+    let mut mesh_builder = renderer.add_mesh();
 
     if let Some(indices) = reader.read_indices() {
         scratch.indices.clear();
@@ -96,7 +96,7 @@ fn load_primitive<'a>(
         scratch.tex_coords.clear();
         scratch
             .tex_coords
-            .extend(tex_coords.into_u16().map(crate::TexCoords));
+            .extend(tex_coords.into_u16().map(crate::TextureCoordinates));
         mesh_builder.vertex(&scratch.tex_coords);
     }
 
@@ -123,7 +123,7 @@ fn load_primitive<'a>(
     Primitive {
         prototype: mesh_builder.build(),
         color: crate::Color::from_rgba(base_color),
-        shader: crate::pass::Shader::Gouraud { flat: true }, //TODO
+        shader: crate::pass::Shader::Gouraud { flat: true },
         material,
     }
 }
@@ -175,14 +175,14 @@ pub fn load_gltf(
     path: impl AsRef<Path>,
     scene: &mut crate::Scene,
     global_parent: crate::NodeId,
-    context: &mut crate::Renderer,
+    renderer: &mut crate::Renderer,
 ) -> Module {
     let mut module = Module::default();
     let (gltf, buffers, images) = gltf::import(path).expect("invalid glTF 2.0");
 
     let mut textures = Vec::with_capacity(images.len());
     for (_texture, data) in gltf.textures().zip(images.into_iter()) {
-        let texture = load_texture(data, context);
+        let texture = load_texture(data, renderer);
         textures.push(texture);
     }
 
@@ -192,7 +192,7 @@ pub fn load_gltf(
         let mut primitives = Vec::new();
         for gltf_primitive in gltf_mesh.primitives() {
             let primitive =
-                load_primitive(gltf_primitive, &buffers, &textures, context, &mut scratch);
+                load_primitive(gltf_primitive, &buffers, &textures, renderer, &mut scratch);
             primitives.push(primitive);
         }
         prototypes.push(primitives);

@@ -1,14 +1,17 @@
-use crate::renderer::{
-    options::POWER_PREFERENCE,
-    resources::{
-        mesh::{Mesh, MeshId},
-        Resources,
-    },
-    target::{IsWindow, Target, TargetId, Targets, WindowTarget},
-    texture::{Texture, TextureId},
-    RenderOptions, RenderPass,
-};
 use crate::scene::{camera::Camera, Scene};
+use crate::target::{IsWindow, Target, TargetId, Targets, WindowContainer, WindowTarget};
+use crate::{
+    renderer::{
+        options::POWER_PREFERENCE,
+        resources::{
+            mesh::{Mesh, MeshId},
+            Resources,
+        },
+        texture::{Texture, TextureId},
+        RenderOptions, RenderPass,
+    },
+    target::Windows,
+};
 use std::{
     fs::File,
     io,
@@ -16,28 +19,30 @@ use std::{
     sync::{Arc, Mutex, MutexGuard},
 };
 use wgpu::util::DeviceExt;
+use winit::window::WindowId;
 
 type Error = Box<dyn std::error::Error>;
-type SizedSurface = (wgpu::Surface, wgpu::Extent3d);
-type SizedSurfaces = Vec<SizedSurface>;
+type WindowSurface = (WindowId, wgpu::Extent3d, wgpu::Surface);
+type WindowSurfaces = Vec<WindowSurface>;
 
 pub trait RenderContext {
     fn resources(&self) -> MutexGuard<'_, Resources>;
     fn targets(&self) -> MutexGuard<'_, Targets>;
+    fn windows(&self) -> MutexGuard<'_, Windows>;
     fn device(&self) -> &wgpu::Device;
     fn queue(&self) -> &wgpu::Queue;
 }
 
+#[derive(Debug)]
 pub struct Renderer {
     pub(crate) instance: wgpu::Instance,
     pub(crate) adapter: wgpu::Adapter,
     pub(crate) device: wgpu::Device,
     pub(crate) queue: wgpu::Queue,
+    pub(crate) windows: Arc<Mutex<Windows>>,
     pub(crate) targets: Arc<Mutex<Targets>>,
     pub(crate) resources: Arc<Mutex<Resources>>,
 }
-
-struct Internal;
 
 impl RenderContext for Renderer {
     fn resources(&self) -> MutexGuard<'_, Resources> {
@@ -50,6 +55,11 @@ impl RenderContext for Renderer {
             .try_lock()
             .expect("Could not get targets mutex lock")
     }
+    fn windows(&self) -> MutexGuard<'_, Windows> {
+        self.windows
+            .try_lock()
+            .expect("Could not get windows mutex lock")
+    }
     fn device(&self) -> &wgpu::Device {
         &self.device
     }
@@ -59,9 +69,11 @@ impl RenderContext for Renderer {
 }
 
 impl Renderer {
-    pub async fn new<W: IsWindow>(options: RenderOptions<'_, W>) -> Result<Renderer, Error> {
-        let (instance, adapter, device, queue, surfaces) = Internal::gpu_objects(options).await?;
-        let targets = Arc::new(Mutex::new(Internal::targets(&device, &adapter, surfaces)));
+    pub async fn new<W: IsWindow>(options: RenderOptions<W>) -> Result<Renderer, Error> {
+        let (instance, adapter, device, queue, windows, targets) =
+            Internal::gpu_objects(options).await?;
+        let targets = Arc::new(Mutex::new(targets));
+        let windows = Arc::new(Mutex::new(windows));
         let resources = Arc::new(Mutex::new(Resources::new()));
 
         Ok(Renderer {
@@ -69,14 +81,14 @@ impl Renderer {
             adapter,
             device,
             queue,
+            windows,
             targets,
             resources,
         })
     }
 
     pub fn add_mesh(&mut self, mesh: Mesh) -> MeshId {
-        let mut resources = self.resources();
-        resources.add_mesh(mesh)
+        self.resources().add_mesh(mesh)
     }
 
     pub fn add_texture(&mut self, texture: wgpu::Texture) -> TextureId {
@@ -84,16 +96,21 @@ impl Renderer {
         self.resources().add_texture(texture)
     }
 
-    pub async fn add_target<W: IsWindow>(&mut self, window: &W) -> Result<TargetId, Error> {
-        let surface = Internal::build_surface(&self.instance, window)?;
-        let target = Internal::build_target(&self.device, &self.adapter, surface);
-
-        Ok(self.targets().add_target(target))
+    /// Registers an OS Window or a Web Canvas element as a rendering target.
+    /// This method expects the Window to implement the `IsWindow` trait,
+    /// which allows the renderer to assign a unique Target ID to it.
+    pub async fn add_target<W: IsWindow>(&mut self, window: W) -> Result<TargetId, Error> {
+        let surface = Internal::surface(&self.instance, &window)?;
+        let target = Internal::target(&self.device, &self.adapter, surface);
+        Ok(self.targets().add(target))
     }
 
+    // @TODO consider removing the arguments for this method.
+    // The renderer will hold them internally, the user can
+    // set them, and just call renderer.render() without arguments
     pub fn render<P: RenderPass>(
         &mut self,
-        pass: &mut P,
+        pass: &mut P, // how to abstract this from my user?
         scene: &Scene,
         camera: &Camera,
     ) -> Result<(), Error> {
@@ -125,8 +142,8 @@ impl Renderer {
         Ok(())
     }
 
-    // @TODO this logic exists in the Texture impl block;
-    //       we should delegate all this part to it
+    // @TODO this logic exists in the Texture module;
+    //       we should delegate all this part to it.
     pub fn load_image(&mut self, path_ref: impl AsRef<Path>) -> Result<TextureId, Error> {
         let path = path_ref.as_ref();
         let extension = path.extension().ok_or("No file extension detected")?;
@@ -252,29 +269,32 @@ impl Renderer {
 }
 
 // Helper static methods
+struct Internal;
 impl Internal {
     async fn gpu_objects<W: IsWindow>(
-        options: RenderOptions<'_, W>,
+        options: RenderOptions<W>,
     ) -> Result<
         (
             wgpu::Instance,
             wgpu::Adapter,
             wgpu::Device,
             wgpu::Queue,
-            SizedSurfaces,
+            Windows,
+            Targets,
         ),
         Error,
     > {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::default());
         let (power_preference, force_fallback_adapter, window_list, limits) =
             Internal::parse_options(options);
-        let surfaces = Internal::build_surfaces(&instance, window_list);
+        let surfaces = Internal::surfaces(&instance, &window_list);
+        let windows = Internal::windows(window_list);
 
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
                 power_preference,
                 force_fallback_adapter,
-                compatible_surface: surfaces.first().map(|(surface, _)| surface),
+                compatible_surface: surfaces.first().map(|(_, _, surface)| surface),
             })
             .await
             .ok_or("Failed to find an appropriate GPU adapter")?;
@@ -290,12 +310,14 @@ impl Internal {
             )
             .await?;
 
-        Ok((instance, adapter, device, queue, surfaces))
+        let targets = Internal::targets(&device, &adapter, surfaces);
+
+        Ok((instance, adapter, device, queue, windows, targets))
     }
 
     fn parse_options<W: IsWindow>(
-        options: RenderOptions<'_, W>,
-    ) -> (wgpu::PowerPreference, bool, Vec<&W>, wgpu::Limits) {
+        options: RenderOptions<W>,
+    ) -> (wgpu::PowerPreference, bool, Vec<W>, wgpu::Limits) {
         let preference = options.power_preference.unwrap_or("high-performance");
         let power_preference = POWER_PREFERENCE.get(preference).unwrap().to_owned();
         let force_fallback_adapter = options.force_software_rendering.unwrap_or(false);
@@ -320,45 +342,40 @@ impl Internal {
         )
     }
 
-    fn build_surfaces<W: IsWindow>(
-        instance: &wgpu::Instance,
-        window_list: Vec<&W>,
-    ) -> SizedSurfaces {
+    fn surfaces<W: IsWindow>(instance: &wgpu::Instance, window_list: &Vec<W>) -> WindowSurfaces {
         window_list
             .into_iter()
             .filter_map(|window| {
-                let sized_surface = Self::build_surface(instance, window).ok()?;
-                Some(sized_surface)
+                let surface = Self::surface(instance, window).ok()?;
+                Some(surface)
             })
             .collect()
     }
 
-    fn build_surface<W: IsWindow>(
-        instance: &wgpu::Instance,
-        window: &W,
-    ) -> Result<SizedSurface, Error> {
+    fn surface<W: IsWindow>(instance: &wgpu::Instance, window: &W) -> Result<WindowSurface, Error> {
         let surface = unsafe { instance.create_surface(window) }?;
         let size = window.size();
-
-        Ok((surface, size))
+        let id = window.id();
+        Ok((id, size, surface))
     }
 
-    fn targets(device: &wgpu::Device, adapter: &wgpu::Adapter, surfaces: SizedSurfaces) -> Targets {
-        let mut targets = Targets(Vec::new());
+    fn targets(
+        device: &wgpu::Device,
+        adapter: &wgpu::Adapter,
+        surfaces: WindowSurfaces,
+    ) -> Targets {
+        let mut targets = Targets::new();
         for surface in surfaces.into_iter() {
-            let target = Internal::build_target(device, adapter, surface);
-            targets.0.push(target)
+            let target = Internal::target(device, adapter, surface);
+            targets.add(target);
         }
 
         targets
     }
 
-    fn build_target(
-        device: &wgpu::Device,
-        adapter: &wgpu::Adapter,
-        surface: SizedSurface,
-    ) -> Target {
-        let (surface, size) = surface;
+    fn target(device: &wgpu::Device, adapter: &wgpu::Adapter, surface: WindowSurface) -> Target {
+        let (id, size, surface) = surface;
+
         let surface_capabilities = surface.get_capabilities(&adapter);
 
         // The shader code assumes an sRGB surface texture. Using a different one
@@ -391,6 +408,19 @@ impl Internal {
 
         surface.configure(&device, &config);
 
-        Target::Window(WindowTarget { surface, config })
+        Target::Window(WindowTarget {
+            id,
+            surface,
+            config,
+        })
+    }
+
+    fn windows<W: IsWindow>(window_list: Vec<W>) -> Windows {
+        let mut windows = Windows::new();
+        for window in window_list {
+            windows.insert(window.id(), window.instance());
+        }
+
+        windows
     }
 }

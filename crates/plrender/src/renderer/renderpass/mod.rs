@@ -3,12 +3,19 @@ mod phong;
 mod real;
 mod solid;
 
-pub use flat::Flat;
+pub use flat::Flat2D;
 pub use phong::{Ambient, Phong, PhongConfig, Shader};
 pub use real::{Material, Real, RealConfig};
 pub use solid::{Solid, SolidConfig};
 
 use std::mem;
+
+use crate::renderer::Renderer;
+use crate::scene::{camera::Camera, Scene};
+
+pub trait RenderPass {
+    fn draw(&mut self, scene: &Scene, camera: &Camera, context: &Renderer);
+}
 
 fn align_up(offset: u32, align: u32) -> u32 {
     (offset + align - 1) & !(align - 1)
