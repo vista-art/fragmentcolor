@@ -4,7 +4,7 @@ use crate::scene::{builder::ObjectBuilder, node::NodeId, space::Space};
 pub type EntityId = hecs::Entity;
 
 pub struct EntityBuilder {
-    pub(super) raw: hecs::EntityBuilder,
+    pub(super) builder: hecs::EntityBuilder,
     pub(super) mesh: MeshId,
 }
 
@@ -13,11 +13,18 @@ pub struct Entity {
     pub mesh: MeshId,
 }
 
+impl EntityBuilder {
+    pub fn component<T: hecs::Component>(&mut self, component: T) -> &mut Self {
+        self.builder.add(component);
+        self
+    }
+}
+
 // ACHEI O QUE EU QUERIA!
 // Provavelmente essa é a parte que vou MANTER
 impl ObjectBuilder<'_, EntityBuilder> {
     pub fn component<T: hecs::Component>(&mut self, component: T) -> &mut Self {
-        self.kind.raw.add(component);
+        self.kind.builder.add(component);
         self
     }
 
@@ -30,7 +37,7 @@ impl ObjectBuilder<'_, EntityBuilder> {
             },
             mesh: self.kind.mesh,
         };
-        let built = self.kind.raw.add(entity).build();
+        let built = self.kind.builder.add(entity).build();
         self.scene.world.spawn(built)
     }
 }

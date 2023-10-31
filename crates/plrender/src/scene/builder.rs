@@ -4,7 +4,15 @@ use crate::scene::{
 };
 
 // What's the difference between ObjectBuilder and EntityBuilder?
-// @TODO anser
+//
+// EntityBuilder wraps a hecs::EntityBuilder and a MeshId.
+//
+// ObjectBuilder can have many types, including EntityBuilder.
+// This is because the original engine had many types of objects,
+// and they all shared the same builder interface.
+//
+// Because I'm going all-in into ECS pattern, I want to remove the
+// other types of objects and let them be components instead.
 pub struct ObjectBuilder<'a, T> {
     pub(super) scene: &'a mut Scene,
     pub(super) node: Node,

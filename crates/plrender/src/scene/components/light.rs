@@ -2,7 +2,7 @@ use crate::color::Color;
 use crate::scene::{node::NodeId, space::Space, ObjectBuilder};
 
 #[derive(Clone, Copy, Debug)]
-pub enum LightKind {
+pub enum LightVariant {
     Directional,
     Point,
 }
@@ -15,19 +15,19 @@ pub struct Light {
     pub node: NodeId,
     pub color: Color,
     pub intensity: f32,
-    pub kind: LightKind,
+    pub variant: LightVariant,
 }
 
 pub struct LightBuilder {
-    pub(super) color: Color,
-    pub(super) intensity: f32,
-    pub(super) kind: LightKind,
+    pub(crate) color: Color,
+    pub(crate) intensity: f32,
+    pub(crate) variant: LightVariant,
 }
 
 // Note that UNLIKE the Entity Builder, this "subclass"
 // contains only light-related information. If we are
 // going to go all-in into ECS, Light should be just
-// a regular entity containing Emissive properties
+// a regular entity containing an Emissive component
 impl ObjectBuilder<'_, LightBuilder> {
     pub fn intensity(&mut self, intensity: f32) -> &mut Self {
         self.kind.intensity = intensity;
@@ -48,10 +48,10 @@ impl ObjectBuilder<'_, LightBuilder> {
             },
             color: self.kind.color,
             intensity: self.kind.intensity,
-            kind: self.kind.kind,
+            variant: self.kind.variant,
         };
-        let index = self.scene.lights.0.len();
-        self.scene.lights.0.push(light);
+        let index = self.scene.lights.len();
+        self.scene.lights.push(light);
         LightId(index as u32)
     }
 }

@@ -13,7 +13,7 @@ struct Texture {
 }
 
 struct Primitive {
-    prototype: crate::Prototype,
+    prototype: crate::Bundle,
     color: crate::Color,
     shader: crate::pass::Shader,
     material: crate::pass::Material,
@@ -294,11 +294,11 @@ pub fn load_gltf(
         }
 
         if let Some(gltf_light) = gltf_node.light() {
-            use gltf::khr_lights_punctual::Kind as LightKind;
+            use gltf::khr_lights_punctual::Kind as LightVariant;
             let kind = match gltf_light.kind() {
-                LightKind::Directional => plr::LightKind::Directional,
-                LightKind::Point => plr::LightKind::Point,
-                LightKind::Spot { .. } => {
+                LightVariant::Directional => plr::LightVariant::Directional,
+                LightVariant::Point => plr::LightVariant::Point,
+                LightVariant::Spot { .. } => {
                     log::warn!("Spot lights are not supported: {:?}", gltf_light.name());
                     continue;
                 }

@@ -1,13 +1,10 @@
-use crate::{
-    renderer::{
-        resources::{
-            buffer::{Buffer, BufferSize, TextureBuffer},
-            region::TextureRegion,
-            texture::Texture,
-        },
-        Renderer,
+use crate::renderer::{
+    resources::{
+        buffer::{Buffer, BufferSize, TextureBuffer},
+        region::TextureRegion,
+        texture::Texture,
     },
-    target::{event_loop::EventLoop, events::Event},
+    Renderer,
 };
 use std::{collections::HashMap, fmt::Debug, sync::Arc};
 use winit::window::WindowId;
@@ -57,7 +54,6 @@ pub enum Target {
 pub struct Targets {
     texture_count: u8,
     pub targets: HashMap<TargetId, Target>,
-    pub event_loop: Option<EventLoop<Event>>,
 }
 
 impl Targets {
@@ -65,7 +61,6 @@ impl Targets {
         Self {
             texture_count: 0,
             targets: HashMap::new(),
-            event_loop: None,
         }
     }
 

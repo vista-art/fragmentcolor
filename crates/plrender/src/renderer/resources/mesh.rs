@@ -42,13 +42,13 @@ pub struct VertexStream {
 ///
 ///
 #[derive(hecs::Bundle, hecs::DynamicBundleClone)]
-pub struct Prototype {
+pub struct Bundle {
     pub reference: MeshId,
     type_ids: Box<[TypeId]>,
     type_infos: Box<[hecs::TypeInfo]>,
 }
 
-// Apparently, this hack is there to enable this Prototype to be
+// Apparently, this hack is there to enable this Bundle to be
 // added to Scenes as references - so we can have the builder
 // pattern of the original engine.
 //
@@ -60,8 +60,8 @@ pub struct Prototype {
 // the scene, instead of returning an ID, will return a builder.
 // Additionally, the "build" method of the builder, instead of
 // returning a new instance of the type, implicitly injects the
-// type into the Scene and returns this Prototype reference back.
-unsafe impl<'a> hecs::DynamicBundle for &'a Prototype {
+// type into the Scene and returns this Bundle reference back.
+unsafe impl<'a> hecs::DynamicBundle for &'a Bundle {
     fn with_ids<T>(&self, f: impl FnOnce(&[TypeId]) -> T) -> T {
         f(&self.type_ids)
     }
@@ -159,7 +159,7 @@ impl<'a> MeshBuilder<'a> {
         self
     }
 
-    pub fn build(&mut self) -> Prototype {
+    pub fn build(&mut self) -> Bundle {
         let mut usage = wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::VERTEX;
         usage.set(wgpu::BufferUsages::INDEX, self.index_stream.is_some());
         let buffer = self
@@ -190,7 +190,7 @@ impl<'a> MeshBuilder<'a> {
             bound_radius: self.bound_radius,
         });
 
-        Prototype {
+        Bundle {
             reference: index,
             type_ids,
             type_infos: mem::take(&mut self.type_infos).into_boxed_slice(),

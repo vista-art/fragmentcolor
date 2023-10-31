@@ -11,9 +11,9 @@ pub struct Sprite {
 }
 
 pub struct SpriteBuilder {
-    pub(super) raw: hecs::EntityBuilder,
-    pub(super) image: TextureId,
-    pub(super) uv: Option<UvRange>,
+    pub(crate) raw: hecs::EntityBuilder,
+    pub(crate) image: TextureId,
+    pub(crate) uv: Option<UvRange>,
 }
 
 impl ObjectBuilder<'_, SpriteBuilder> {

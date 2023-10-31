@@ -1,4 +1,4 @@
-use crate::target::{events::Event, window::WindowContainer};
+use crate::{events::Event, target::window::WindowContainer};
 use crate::{renderer::Renderer, RenderContext};
 use crate::{RenderTarget, Target, TargetId};
 use instant::{Duration, Instant};
@@ -28,27 +28,25 @@ impl std::fmt::Debug for dyn Runner {
 
 #[derive(Debug)]
 pub struct EventLoop<T: 'static> {
-    renderer: Arc<Mutex<Renderer>>,
     event_loop: WinitEventLoop<T>,
     event_loop_runner: EventLoopRunner,
 }
 
 impl EventLoop<Event> {
-    pub fn new(renderer: Arc<Mutex<Renderer>>) -> Self {
+    pub fn new() -> Self {
         Self {
-            renderer,
             event_loop: EventLoopBuilder::<Event>::with_user_event().build(),
             event_loop_runner: Box::new(run_event_loop),
         }
     }
 
-    pub fn create_event_dispatcher(&self) -> EventLoopProxy<Event> {
+    pub fn create_dispatcher(&self) -> EventLoopProxy<Event> {
         let dispatcher = self.event_loop.create_proxy();
         dispatcher
     }
 
-    pub async fn run_event_loop(self) {
-        (self.event_loop_runner)(self.event_loop, self.renderer.clone())
+    pub async fn run(self, renderer: Arc<Mutex<Renderer>>) {
+        (self.event_loop_runner)(self.event_loop, renderer.clone())
     }
 }
 

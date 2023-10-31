@@ -4,7 +4,7 @@ use crate::scene::space::Space;
 pub struct NodeId(pub u32);
 
 /// A Node represents a position in a Scene space
-/// It contains a Translation and a Parent node.
+/// It contains a Transform and a Parent node.
 #[derive(Default, Debug, PartialEq)]
 pub struct Node {
     pub(super) parent: NodeId,
