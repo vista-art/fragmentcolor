@@ -371,9 +371,9 @@ impl crate::RenderPass for Phong {
                 .map(|(_, light)| {
                     let space = &nodes[light.node];
                     let mut pos = space.pos_scale;
-                    pos[3] = match light.kind {
-                        crate::LightKind::Directional => 0.0,
-                        crate::LightKind::Point => 1.0,
+                    pos[3] = match light.variant {
+                        crate::LightVariant::Directional => 0.0,
+                        crate::LightVariant::Point => 1.0,
                     };
                     let mut color_intensity = light.color.into_vec4();
                     color_intensity[3] = light.intensity;
@@ -465,8 +465,8 @@ impl crate::RenderPass for Phong {
                     let entity_pos = glam::Vec3::from_slice(&space.pos_scale[..3]);
                     for (index, (_, light)) in scene.lights().enumerate() {
                         let light_pos = glam::Vec3::from_slice(&nodes[light.node].pos_scale[..3]);
-                        let intensity = match light.kind {
-                            crate::LightKind::Point => {
+                        let intensity = match light.variant {
+                            crate::LightVariant::Point => {
                                 let distance = (entity_pos - light_pos).length();
                                 if distance <= entity_radius {
                                     light.intensity
@@ -475,7 +475,7 @@ impl crate::RenderPass for Phong {
                                     light.intensity / bound_distance * bound_distance
                                 }
                             }
-                            crate::LightKind::Directional => light.intensity,
+                            crate::LightVariant::Directional => light.intensity,
                         };
                         if intensity > INTENSITY_THRESHOLD {
                             self.temp_lights.push((intensity, index as u32));

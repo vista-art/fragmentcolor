@@ -384,9 +384,9 @@ impl crate::RenderPass for Real {
                 .map(|(_, light)| {
                     let space = &nodes[light.node];
                     let mut pos = space.pos_scale;
-                    pos[3] = match light.kind {
-                        crate::LightKind::Directional => 0.0,
-                        crate::LightKind::Point => 1.0,
+                    pos[3] = match light.variant {
+                        crate::LightVariant::Directional => 0.0,
+                        crate::LightVariant::Point => 1.0,
                     };
                     let mut color_intensity = light.color.into_vec4();
                     color_intensity[3] = light.intensity;

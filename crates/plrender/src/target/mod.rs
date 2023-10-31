@@ -1,5 +1,3 @@
-mod event_loop;
-pub mod events;
 pub mod target;
 pub mod window;
 

@@ -6,7 +6,7 @@ pub fn load_obj(
     scene: &mut crate::Scene,
     node: crate::NodeId,
     context: &mut crate::Renderer,
-) -> fxhash::FxHashMap<String, (crate::EntityId, crate::Prototype)> {
+) -> fxhash::FxHashMap<String, (crate::EntityId, crate::Bundle)> {
     let mut obj = obj::Obj::load(path).unwrap();
     obj.load_mtls().unwrap();
 
