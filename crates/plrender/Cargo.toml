@@ -4,7 +4,7 @@ description = "An unified API to render video enrichments across multiple platfo
 repository = "https://gitlab.com/pupil-labs/pupil-cloud/pl-render"
 authors = ["Pupil Labs GmbH"]
 license-file = "LICENCE.md"
-version = "0.4.5"
+version = "0.4.6"
 edition = "2021"
 
 [lib]
@@ -23,6 +23,7 @@ bytemuck = { version = "1.14", features = ["derive"] }
 hecs = { version = "0.10", features=["macros"] }
 phf = { version = "0.11", features = ["macros"] }
 serde = { version = "1", features = ["derive"] }
+pollster = "0.3"
 bitflags = "2.4"
 fxhash = "0.2"
 mint = "0.5"

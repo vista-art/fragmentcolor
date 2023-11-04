@@ -3,12 +3,13 @@ use crate::renderer::{resources::mesh::Bundle, texture::TextureId};
 use crate::scene::{
     builder::ObjectBuilder,
     entity::EntityBuilder,
-    light::{Light, LightBuilder, LightId, LightVariant},
+    light::{LightBuilder, LightType},
     node::{Node, NodeId},
     space::RawSpace,
     sprite::SpriteBuilder,
 };
-use std::{mem, ops};
+use crate::EntityId;
+use std::{fmt::Debug, mem, ops};
 
 impl ops::Index<NodeId> for Vec<Node> {
     type Output = Node;
@@ -19,17 +20,6 @@ impl ops::Index<NodeId> for Vec<Node> {
 impl ops::IndexMut<NodeId> for Vec<Node> {
     fn index_mut(&mut self, node: NodeId) -> &mut Node {
         &mut self[node.0 as usize]
-    }
-}
-impl ops::Index<LightId> for Vec<Light> {
-    type Output = Light;
-    fn index(&self, light: LightId) -> &Light {
-        &self[light.0 as usize]
-    }
-}
-impl ops::IndexMut<LightId> for Vec<Light> {
-    fn index_mut(&mut self, light: LightId) -> &mut Light {
-        &mut self[light.0 as usize]
     }
 }
 
@@ -47,7 +37,12 @@ impl ops::Index<NodeId> for BakedScene {
 pub struct Scene {
     pub world: hecs::World,
     pub nodes: Vec<Node>,
-    pub lights: Vec<Light>,
+}
+
+impl Debug for Scene {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Scene").field("nodes", &self.nodes).finish()
+    }
 }
 
 impl ops::Index<NodeId> for Scene {
@@ -80,7 +75,6 @@ impl Scene {
         Self {
             world: Default::default(),
             nodes: vec![Node::default()],
-            lights: Vec::new(),
         }
     }
 
@@ -92,8 +86,8 @@ impl Scene {
     }
 
     // @TODO this method is intended to replace all the other "add" methods below.
-    pub fn add(&mut self, _components: impl hecs::DynamicBundle) -> hecs::Entity {
-        todo!()
+    pub fn add(&mut self, components: impl hecs::DynamicBundle) -> EntityId {
+        self.world.spawn(components)
     }
 
     // this is supposed to be called by the builder
@@ -110,18 +104,18 @@ impl Scene {
         ObjectBuilder {
             scene: self,
             node: Node::default(),
-            kind: (),
+            object: (),
         }
     }
 
-    pub fn add_entity(&mut self, prototype: &Bundle) -> ObjectBuilder<EntityBuilder> {
-        let mesh = prototype.reference;
+    pub fn add_entity(&mut self, bundle: &Bundle) -> ObjectBuilder<EntityBuilder> {
+        let mesh = bundle.reference;
         let mut builder = hecs::EntityBuilder::new();
-        builder.add_bundle(prototype);
+        builder.add_bundle(bundle);
         ObjectBuilder {
             scene: self,
             node: Node::default(),
-            kind: EntityBuilder { builder, mesh },
+            object: EntityBuilder { builder, mesh },
         }
     }
 
@@ -132,7 +126,7 @@ impl Scene {
         ObjectBuilder {
             scene: self,
             node: Node::default(),
-            kind: SpriteBuilder {
+            object: SpriteBuilder {
                 raw,
                 image,
                 uv: None,
@@ -141,11 +135,11 @@ impl Scene {
     }
 
     // Try to implement this method using the generic add() method above.
-    pub fn add_light(&mut self, variant: LightVariant) -> ObjectBuilder<LightBuilder> {
+    pub fn add_light(&mut self, variant: LightType) -> ObjectBuilder<LightBuilder> {
         ObjectBuilder {
             scene: self,
             node: Node::default(),
-            kind: LightBuilder {
+            object: LightBuilder {
                 color: Color(0xFFFFFFFF),
                 intensity: 1.0,
                 variant,
@@ -154,21 +148,11 @@ impl Scene {
     }
 
     pub fn add_directional_light(&mut self) -> ObjectBuilder<LightBuilder> {
-        self.add_light(LightVariant::Directional)
+        self.add_light(LightType::Directional)
     }
 
     pub fn add_point_light(&mut self) -> ObjectBuilder<LightBuilder> {
-        self.add_light(LightVariant::Point)
-    }
-
-    /// Lists all lights in the Scene
-    pub fn lights<'a>(&'a self) -> impl Iterator<Item = (LightId, &'a Light)> {
-        // In this case, we should iterate over all Entities
-        // containing a Light Component (maybe emissive component)
-        self.lights
-            .iter()
-            .enumerate()
-            .map(|(i, light)| (LightId(i as u32), light))
+        self.add_light(LightType::Point)
     }
 
     pub fn bake(&self) -> BakedScene {

@@ -1638,7 +1638,7 @@ checksum = "26072860ba924cbfa98ea39c8c19b4dd6a4a25423dbdf219c1eca91aa0cf6964"
 
 [[package]]
 name = "plrender"
-version = "0.4.5"
+version = "0.4.6"
 dependencies = [
  "bitflags 2.4.0",
  "bytemuck",
@@ -1654,6 +1654,7 @@ dependencies = [
  "lyon",
  "mint",
  "phf",
+ "pollster",
  "raw-window-handle",
  "serde",
  "wgpu",

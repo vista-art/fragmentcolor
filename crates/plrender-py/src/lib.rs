@@ -1,6 +1,7 @@
-pub use plr::target::window::{Window, WindowOptions};
+pub use plr::app::window::{Window, WindowOptions};
+use plr::App;
 use pyo3::prelude::*;
-// use pyo3::types::*;
+use std::cell::RefCell;
 
 // @FIXME code generation works partially.
 // It's still unrealiable for production.
@@ -14,11 +15,33 @@ use pyo3::prelude::*;
 
 #[pymodule]
 fn plrender(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
+    m.add_class::<PyApp>()?;
     m.add_class::<PyWindow>()?;
     Ok(())
 }
 
-// Context
+#[pyclass(name = "App")]
+pub struct PyApp {
+    inner: RefCell<App>,
+}
+
+#[pymethods]
+impl PyApp {
+    #[new] // @TODO config options
+    pub fn new() -> PyResult<Self> {
+        Ok(Self {
+            inner: RefCell::new(App::default()),
+        })
+    }
+
+    pub fn run(&self) {
+        let mut inner = self.inner.borrow_mut();
+        // .try_lock()
+        // .expect("Could not get AppState mutex lock");
+        pollster::block_on(inner.run());
+    }
+}
+
 #[pyclass(name = "Window")]
 pub struct PyWindow {
     _inner: Window,
@@ -68,19 +91,22 @@ pub enum WindowSize {
 #[pymethods]
 impl PyWindow {
     #[new]
-    #[pyo3(signature = (size=WindowSize::SizeTuple(800, 600), title="PLRender"))]
-    pub fn new(size: WindowSize, title: &str) -> PyResult<Self> {
+    #[pyo3(signature = (app, size=WindowSize::SizeTuple(800, 600), title="PLRender"))]
+    pub fn new(app: &PyApp, size: WindowSize, title: &str) -> PyResult<Self> {
         let (width, height) = match size {
             WindowSize::SizeTuple(w, h) => (w, h),
             WindowSize::SizeDict { w, h } => (w, h),
             WindowSize::SizeFullDict { width, height } => (width, height),
         };
 
-        let window = Window::new(WindowOptions {
-            title: Some(title.to_string()),
-            size: Some((width, height)),
-            ..Default::default()
-        });
+        let window = Window::new(
+            &app.inner.borrow(),
+            WindowOptions {
+                size: Some((width, height)),
+                title: Some(title.to_string()),
+                ..Default::default()
+            },
+        );
 
         if window.is_err() {
             Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, &str>(
@@ -91,11 +117,6 @@ impl PyWindow {
                 _inner: window.unwrap(),
             })
         }
-    }
-
-    pub fn run(&self) {
-        //self.inner.run();
-        todo!()
     }
 
     // pub fn on(&mut self, event: &str, callback: PyObject) {

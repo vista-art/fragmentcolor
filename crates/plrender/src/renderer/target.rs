@@ -171,10 +171,10 @@ impl RenderTarget for Target {
     fn submit(&self, renderer: &Renderer, commands: Commands, frame: Frame) -> SubmissionIndex {
         match self {
             // Texture does things BEFORE submit (adds copy command to CommandBuffer)
-            Self::Texture(target) => target.submit(renderer, commands),
+            Target::Texture(target) => target.submit(renderer, commands),
             // Window does things AFTER submit (present to the screen)
             //
-            Self::Window(window) => window.present(renderer, commands, frame),
+            Target::Window(window) => window.present(renderer, commands, frame),
         }
     }
 }

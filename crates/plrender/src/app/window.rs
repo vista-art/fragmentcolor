@@ -1,8 +1,14 @@
-use crate::{events::Event, target::HasSize};
+use crate::{
+    app::{App, Event},
+    renderer::target::HasSize,
+};
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use winit::window::WindowId;
+
+const READ_LOCK_ERROR: &str = "Failed to acquire Read lock";
+const WRITE_LOCK_ERROR: &str = "Failed to acquire Write lock";
 
 // Waiting for https://github.com/gfx-rs/wgpu/pull/4202
 // use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
@@ -11,16 +17,11 @@ use raw_window_handle::{
 };
 use serde::{Deserialize, Serialize};
 
-const READ_LOCK_ERROR: &str = "Failed to acquire Read lock";
-const WRITE_LOCK_ERROR: &str = "Failed to acquire Write lock";
-
 // @TODO remove deprecated "raw"s, waiting for https://github.com/gfx-rs/wgpu/pull/4202
 pub trait IsWindow:
     HasRawDisplayHandle + HasRawWindowHandle /* + HasDisplayHandle + HasWindowHandle*/ + HasSize
 {
     fn id(&self) -> winit::window::WindowId;
-    // workaround for casting it to the 
-    // only concrete type we currently have.
     fn instance(&mut self) -> Arc<RwLock<winit::window::Window>>;
     fn request_redraw(&self);
 }
@@ -175,14 +176,24 @@ impl Default for WindowOptions {
 }
 
 impl Default for Window {
+    /// Create a new Window with default options and an internal event loop.
+    ///
+    /// # Panics!
+    /// Because Winit must have only one event loop running in the main thread,
+    /// this method will panic if you try to create a second window.
+    ///
+    /// Use it if you are sure your application will use only one window.
+    /// Otherwise, use App::new() to inject an external App instance which
+    /// holds the global event loop.
     fn default() -> Self {
-        Self::new(WindowOptions::default()).unwrap()
+        Self::singleton(WindowOptions {
+            ..Default::default()
+        })
     }
 }
 
 impl Window {
-    pub fn new(options: WindowOptions) -> Result<Self, winit::error::OsError> {
-        let event_loop = winit::event_loop::EventLoop::new();
+    pub fn new(app: &App, options: WindowOptions) -> Result<Self, winit::error::OsError> {
         let window = winit::window::WindowBuilder::new()
             .with_title(options.title.as_ref().unwrap_or(&"PLRender".to_string()))
             .with_inner_size(winit::dpi::Size::Logical(
@@ -196,7 +207,7 @@ impl Window {
             )
             .with_decorations(options.decorations.unwrap_or(true))
             .with_resizable(options.resizable.unwrap_or(true))
-            .build(&event_loop)?;
+            .build(app.event_loop().window_target())?;
 
         window.set_min_inner_size(
             options
@@ -209,9 +220,20 @@ impl Window {
                 .map(|size| winit::dpi::Size::Logical(size.into())),
         );
 
-        Ok(Window {
+        let mut window = Window {
             instance: Arc::new(RwLock::new(window)),
-        })
+        };
+
+        pollster::block_on(app.add_window(&mut window));
+
+        Ok(window)
+    }
+
+    pub fn singleton(options: WindowOptions) -> Self {
+        let mut app = App::default();
+        let window = Self::new(&app, options).unwrap();
+        pollster::block_on(app.run());
+        window
     }
 
     pub fn set_title(&mut self, title: &str) -> &mut Self {

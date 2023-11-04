@@ -18,13 +18,13 @@ pub struct SpriteBuilder {
 
 impl ObjectBuilder<'_, SpriteBuilder> {
     pub fn uv(&mut self, uv: UvRange) -> &mut Self {
-        self.kind.uv = Some(uv);
+        self.object.uv = Some(uv);
         self
     }
 
     /// Register additional data for this sprite.
     pub fn component<T: hecs::Component>(&mut self, component: T) -> &mut Self {
-        self.kind.raw.add(component);
+        self.object.raw.add(component);
         self
     }
 
@@ -35,8 +35,8 @@ impl ObjectBuilder<'_, SpriteBuilder> {
             } else {
                 self.scene.set_node_id(&mut self.node)
             },
-            image: self.kind.image,
-            uv: self.kind.uv.take(),
+            image: self.object.image,
+            uv: self.object.uv.take(),
         };
 
         // DESIGN note:
@@ -52,7 +52,7 @@ impl ObjectBuilder<'_, SpriteBuilder> {
         // In this context, "kind" is the type of object (Sprite in this case),
         // and "raw" is the hecs::EntityBuilder that is used to build the object.
         // The method "add" is used to add Components to the Entity.
-        let built = self.kind.raw.add(sprite).build();
+        let built = self.object.raw.add(sprite).build();
 
         self.scene.world.spawn(built)
     }

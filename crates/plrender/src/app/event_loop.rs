@@ -1,8 +1,12 @@
-use crate::{events::Event, target::window::WindowContainer};
-use crate::{renderer::Renderer, RenderContext};
-use crate::{RenderTarget, Target, TargetId};
+use crate::{
+    app::{AppState, Event, Window, WindowContainer},
+    renderer::{
+        target::{Target, TargetId},
+        RenderContext,
+    },
+};
 use instant::{Duration, Instant};
-use std::{sync::Arc, sync::Mutex};
+use std::sync::{Arc, Mutex};
 #[cfg(wasm)]
 use winit::platform::web::EventLoopExtWebSys;
 use winit::{
@@ -16,10 +20,11 @@ use winit::{
 // @TODO make this configurable
 //       - we could have a target-specific frame rate
 const TARGET_FRAME_TIME: f64 = 1.0 / 60.0;
+const RUNNING: &str = "EventLoop not available: already running";
 
 pub type EventLoopRunner = Box<dyn Runner>;
-pub trait Runner: 'static + FnOnce(WinitEventLoop<Event>, Arc<Mutex<Renderer>>) + Send {}
-impl<F> Runner for F where F: 'static + FnOnce(WinitEventLoop<Event>, Arc<Mutex<Renderer>>) + Send {}
+pub trait Runner: 'static + FnOnce(WinitEventLoop<Event>, Arc<Mutex<AppState>>) + Send {}
+impl<F> Runner for F where F: 'static + FnOnce(WinitEventLoop<Event>, Arc<Mutex<AppState>>) + Send {}
 impl std::fmt::Debug for dyn Runner {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "EventLoopRunner")
@@ -28,25 +33,30 @@ impl std::fmt::Debug for dyn Runner {
 
 #[derive(Debug)]
 pub struct EventLoop<T: 'static> {
-    event_loop: WinitEventLoop<T>,
-    event_loop_runner: EventLoopRunner,
+    inner: Option<WinitEventLoop<T>>,
 }
+
+unsafe impl Send for EventLoop<Event> {}
 
 impl EventLoop<Event> {
     pub fn new() -> Self {
         Self {
-            event_loop: EventLoopBuilder::<Event>::with_user_event().build(),
-            event_loop_runner: Box::new(run_event_loop),
+            inner: Some(EventLoopBuilder::<Event>::with_user_event().build()),
         }
     }
 
+    pub fn window_target(&self) -> &EventLoopWindowTarget<Event> {
+        self.inner.as_ref().expect(RUNNING)
+    }
+
     pub fn create_dispatcher(&self) -> EventLoopProxy<Event> {
-        let dispatcher = self.event_loop.create_proxy();
+        let dispatcher = self.inner.as_ref().expect(RUNNING).create_proxy();
         dispatcher
     }
 
-    pub async fn run(self, renderer: Arc<Mutex<Renderer>>) {
-        (self.event_loop_runner)(self.event_loop, renderer.clone())
+    pub async fn run(&mut self, runner: EventLoopRunner, app: Arc<Mutex<AppState>>) {
+        let event_loop = self.inner.take().expect(RUNNING);
+        runner(event_loop, app.clone())
     }
 }
 
@@ -55,19 +65,18 @@ type E<'a> = Winit<'a, Event>;
 type W<'b> = &'b EventLoopWindowTarget<Event>;
 type C<'c> = &'c mut ControlFlow;
 
-fn run_event_loop(event_loop: WinitEventLoop<Event>, renderer: Arc<Mutex<Renderer>>) {
+pub fn run_event_loop(event_loop: WinitEventLoop<Event>, app: Arc<Mutex<AppState>>) {
     let event_handler = Box::new(move |event: E, _elwt: W, control_flow: C| {
-        let renderer = renderer
-            .try_lock()
-            .expect("Couldn't get renderer mutex lock");
-
-        let mut targets = renderer.targets();
-        let windows = renderer.windows();
+        let app = app.try_lock().expect("Couldn't get AppState mutex lock");
+        let renderer_option = app.renderer();
+        let renderer = renderer_option.as_ref().expect("Renderer not initialized");
+        let targets = renderer.targets();
+        let windows = app.windows::<Window>();
 
         let mut last_update = Instant::now();
 
         match event {
-            // Reserved for our custom events
+            // Reserved for our custom dispatched events
             Winit::UserEvent(command) => match command {
                 _ => {}
             },
@@ -79,21 +88,21 @@ fn run_event_loop(event_loop: WinitEventLoop<Event>, renderer: Arc<Mutex<Rendere
                 ref event,
                 window_id,
             } => {
-                let target_id = TargetId::Window(window_id);
+                let _target_id = TargetId::Window(window_id);
                 match event {
                     // The size of the window has changed.
                     // Contains the client area's new dimensions.
                     WindowEvent::Resized(physical_size) => {
-                        let size = wgpu::Extent3d {
+                        let _size = wgpu::Extent3d {
                             width: physical_size.width,
                             height: physical_size.height,
                             depth_or_array_layers: 1,
                         };
 
-                        let target = targets.get_mut(&target_id);
-                        target
-                            .is_some()
-                            .then(|| target.unwrap().resize(&renderer, size));
+                        // let target = targets.get_mut(&target_id);
+                        // target
+                        //     .is_some()
+                        //     .then(|| target.unwrap().resize(&renderer, size));
                     }
 
                     // The window's scale factor has changed.
@@ -113,16 +122,16 @@ fn run_event_loop(event_loop: WinitEventLoop<Event>, renderer: Arc<Mutex<Rendere
                         scale_factor: _,
                         new_inner_size,
                     } => {
-                        let size = wgpu::Extent3d {
+                        let _size = wgpu::Extent3d {
                             width: new_inner_size.width,
                             height: new_inner_size.height,
                             depth_or_array_layers: 1,
                         };
 
-                        let target = targets.get_mut(&target_id);
-                        target
-                            .is_some()
-                            .then(|| target.unwrap().resize(&renderer, size));
+                        // let target = targets.get_mut(&target_id);
+                        // target
+                        //     .is_some()
+                        //     .then(|| target.unwrap().resize(&renderer, size));
                     }
 
                     // The position of the window has changed.
@@ -134,7 +143,7 @@ fn run_event_loop(event_loop: WinitEventLoop<Event>, renderer: Arc<Mutex<Rendere
                     WindowEvent::CloseRequested => {
                         println!("Window {window_id:?} has received the signal to close");
 
-                        targets.remove(&target_id);
+                        // targets.remove(&target_id);
                     }
 
                     // The window has been destroyed.
@@ -308,6 +317,20 @@ fn run_event_loop(event_loop: WinitEventLoop<Event>, renderer: Arc<Mutex<Rendere
                 }
             }
 
+            // Emitted after [MainEventsCleared] when a window should be redrawn.
+            //
+            // This gets triggered in two scenarios:
+            //   - The OS has performed an operation that's invalidated
+            //     the window's contents (such as resizing the window).
+            //   - The application has explicitly requested a redraw
+            //     via Window::request_redraw.
+            //
+            // During each iteration of the event loop, Winit will aggregate
+            // duplicate redraw requests into a single event, to help avoid
+            // duplicating rendering work.
+            //
+            // Mainly of interest to applications with mostly-static graphics
+            // that avoid redrawing unless something changes, like most non-game GUIs.
             Winit::RedrawRequested(_window_id) => {
                 // @TODO this should be handled by the user of this library
                 //       the responsibility of this variant is just to
@@ -334,9 +357,20 @@ fn run_event_loop(event_loop: WinitEventLoop<Event>, renderer: Arc<Mutex<Rendere
                 // }
             }
 
+            // Emitted when all of the event loop's input events have been processed
+            // and redraw processing is about to begin.
+            //
+            // This event is useful as a place to put your code that should be run
+            // after all state-changing events have been handled and you want to do stuff
+            // (updating state, performing calculations, etc) that happens as the "main body"
+            // of your event_last_updateour program only draws graphics when something changes,
+            // it's usually better to do it in response to Event::RedrawRequested, which gets
+            // emitted immediately after this event. Programs that draw graphics continuously,
+            // like most games, can render here unconditionally for simplicity.
             Winit::MainEventsCleared => {
-                // @TODO each target could have a different target frame rate
+                // @TODO each target could have a different frame rate
 
+                // After getting window & target from the App
                 for target in targets.all() {
                     let window_id = match target {
                         Target::Window(window) => window.id,
@@ -360,7 +394,16 @@ fn run_event_loop(event_loop: WinitEventLoop<Event>, renderer: Arc<Mutex<Rendere
                 }
             }
 
-            _ => (),
+            // @TODO document the variants below
+            Winit::NewEvents(_) => {}
+            Winit::DeviceEvent {
+                device_id: _,
+                event: _,
+            } => {}
+            Winit::Suspended => {}
+            Winit::Resumed => {}
+            Winit::RedrawEventsCleared => {}
+            Winit::LoopDestroyed => {}
         }
     });
 
