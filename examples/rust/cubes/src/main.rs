@@ -16,7 +16,7 @@ struct Level {
 fn fill_scene(
     levels: &[Level],
     scene: &mut plrender::Scene,
-    prototype: &plrender::Prototype,
+    prototype: &plrender::Bundle,
 ) -> Vec<Cube> {
     let root_node = scene.add_node().scale(SCALE_ROOT).build();
 
@@ -117,11 +117,22 @@ const LEVELS: &[Level] = &[
 fn main() {
     use plrender::{
         geometry::{Geometry, Streams},
-        window::{Event, Window},
+        renderer::RenderOptions,
+        target::events::Event,
+        target::window::Window,
+        Renderer,
     };
 
-    let window = Window::new().title("Cubeception").build();
-    let mut renderer = pollster::block_on(plrender::Renderer::init().build(&window));
+    let window = Window::default().set_title("Cubes").set_size((800, 600));
+
+    let mut renderer = pollster::block_on(
+        Renderer::new(RenderOptions {
+            targets: Some(vec![window]),
+            ..Default::default()
+        })
+        .unwrap(),
+    );
+
     let mut scene = plrender::Scene::new();
 
     let camera = plrender::Camera {
@@ -148,8 +159,8 @@ fn main() {
     let cubes = fill_scene(&LEVELS[..], &mut scene, &prototype);
     println!("Initialized {} cubes", cubes.len());
 
-    let mut pass = plrender::renderpass::Solid::new(
-        &plrender::renderpass::SolidConfig {
+    let mut pass = plrender::renderer::renderpass::Solid::new(
+        &plrender::renderer::renderpass::SolidConfig {
             cull_back_faces: true,
         },
         &renderer,
