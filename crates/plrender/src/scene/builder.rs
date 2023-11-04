@@ -6,6 +6,7 @@ use crate::scene::{
 // What's the difference between ObjectBuilder and EntityBuilder?
 //
 // EntityBuilder wraps a hecs::EntityBuilder and a MeshId.
+// Entities in Baryon ALWAYS have a mesh (unlike hecs which is an id)
 //
 // ObjectBuilder can have many types, including EntityBuilder.
 // This is because the original engine had many types of objects,
@@ -16,7 +17,7 @@ use crate::scene::{
 pub struct ObjectBuilder<'a, T> {
     pub(super) scene: &'a mut Scene,
     pub(super) node: Node,
-    pub(super) kind: T,
+    pub(super) object: T,
 }
 
 impl ObjectBuilder<'_, ()> {
@@ -29,7 +30,15 @@ impl ObjectBuilder<'_, ()> {
 
 // This Builder is actually responsible
 // for POSITIONING the object in a Scene
-impl<T> ObjectBuilder<'_, T> {
+impl<'s, T> ObjectBuilder<'s, T> {
+    pub fn new(scene: &'s mut Scene, object: T) -> Self {
+        ObjectBuilder {
+            scene,
+            node: Node::default(),
+            object,
+        }
+    }
+
     pub fn parent(&mut self, parent: NodeId) -> &mut Self {
         self.node.parent = parent;
         self

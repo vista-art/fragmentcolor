@@ -1,16 +1,16 @@
-use crate::scene::{camera::Camera, Scene};
-use crate::target::{IsWindow, Target, TargetId, Targets, WindowContainer, WindowTarget};
 use crate::{
+    app::window::IsWindow,
     renderer::{
-        options::POWER_PREFERENCE,
+        options::{DEVICE_LIMITS, POWER_PREFERENCE},
         resources::{
             mesh::{Mesh, MeshId},
             Resources,
         },
+        target::{Target, TargetId, Targets, WindowTarget},
         texture::{Texture, TextureId},
         RenderOptions, RenderPass,
     },
-    target::Windows,
+    scene::{camera::Camera, Scene},
 };
 use std::{
     fs::File,
@@ -28,7 +28,6 @@ type WindowSurfaces = Vec<WindowSurface>;
 pub trait RenderContext {
     fn resources(&self) -> MutexGuard<'_, Resources>;
     fn targets(&self) -> MutexGuard<'_, Targets>;
-    fn windows(&self) -> MutexGuard<'_, Windows>;
     fn device(&self) -> &wgpu::Device;
     fn queue(&self) -> &wgpu::Queue;
 }
@@ -39,7 +38,6 @@ pub struct Renderer {
     pub(crate) adapter: wgpu::Adapter,
     pub(crate) device: wgpu::Device,
     pub(crate) queue: wgpu::Queue,
-    pub(crate) windows: Arc<Mutex<Windows>>,
     pub(crate) targets: Arc<Mutex<Targets>>,
     pub(crate) resources: Arc<Mutex<Resources>>,
 }
@@ -55,11 +53,6 @@ impl RenderContext for Renderer {
             .try_lock()
             .expect("Could not get targets mutex lock")
     }
-    fn windows(&self) -> MutexGuard<'_, Windows> {
-        self.windows
-            .try_lock()
-            .expect("Could not get windows mutex lock")
-    }
     fn device(&self) -> &wgpu::Device {
         &self.device
     }
@@ -68,12 +61,25 @@ impl RenderContext for Renderer {
     }
 }
 
+// impl<'r, R: RenderContext> RenderContext for MutexGuard<'r, Option<R>> {
+//     fn resources(&self) -> MutexGuard<'r, Resources> {
+//         self.resources()
+//     }
+//     fn targets(&self) -> MutexGuard<'r, Targets> {
+//         self.targets()
+//     }
+//     fn device(&self) -> &wgpu::Device {
+//         &self.device()
+//     }
+//     fn queue(&self) -> &wgpu::Queue {
+//         &self.queue()
+//     }
+// }
+
 impl Renderer {
     pub async fn new<'w, W: IsWindow>(options: RenderOptions<'w, W>) -> Result<Renderer, Error> {
-        let (instance, adapter, device, queue, windows, targets) =
-            Internal::gpu_objects(options).await?;
+        let (instance, adapter, device, queue, targets) = Internal::gpu_objects(options).await?;
         let targets = Arc::new(Mutex::new(targets));
-        let windows = Arc::new(Mutex::new(windows));
         let resources = Arc::new(Mutex::new(Resources::new()));
 
         Ok(Renderer {
@@ -81,7 +87,6 @@ impl Renderer {
             adapter,
             device,
             queue,
-            windows,
             targets,
             resources,
         })
@@ -279,7 +284,6 @@ impl Internal {
             wgpu::Adapter,
             wgpu::Device,
             wgpu::Queue,
-            Windows,
             Targets,
         ),
         Error,
@@ -288,7 +292,6 @@ impl Internal {
         let (power_preference, force_fallback_adapter, window_list, limits) =
             Internal::parse_options(options);
         let surfaces = Internal::surfaces(&instance, &window_list);
-        let windows = Internal::windows(window_list);
 
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
@@ -312,26 +315,20 @@ impl Internal {
 
         let targets = Internal::targets(&device, &adapter, surfaces);
 
-        Ok((instance, adapter, device, queue, windows, targets))
+        Ok((instance, adapter, device, queue, targets))
     }
 
     fn parse_options<'w, W: IsWindow>(
         options: RenderOptions<'w, W>,
     ) -> (wgpu::PowerPreference, bool, Vec<&'w mut W>, wgpu::Limits) {
         let preference = options.power_preference.unwrap_or("high-performance");
+        let limits = options.device_limits.unwrap_or("default");
         let power_preference = POWER_PREFERENCE.get(preference).unwrap().to_owned();
+        let device_limits = DEVICE_LIMITS.get(limits).unwrap().to_owned();
         let force_fallback_adapter = options.force_software_rendering.unwrap_or(false);
         let window_targets = match options.targets {
             Some(targets) => targets,
             None => Vec::new(),
-        };
-
-        // @TODO this should come from the RenderOptions
-        //       and the JS wrapper would set it to "webgl2"
-        let device_limits = if cfg!(wasm) {
-            wgpu::Limits::downlevel_webgl2_defaults()
-        } else {
-            wgpu::Limits::default()
         };
 
         (
@@ -419,14 +416,5 @@ impl Internal {
             surface,
             config,
         })
-    }
-
-    fn windows<'w, W: IsWindow>(window_list: Vec<&'w mut W>) -> Windows {
-        let mut windows = Windows::new();
-        for window in window_list {
-            windows.insert(window.id(), window.instance());
-        }
-
-        windows
     }
 }

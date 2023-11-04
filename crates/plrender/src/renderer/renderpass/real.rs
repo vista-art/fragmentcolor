@@ -380,13 +380,15 @@ impl crate::RenderPass for Real {
             }
 
             let lights = scene
-                .lights()
+                .world
+                .query::<&crate::Light>()
+                .iter()
                 .map(|(_, light)| {
                     let space = &nodes[light.node];
                     let mut pos = space.pos_scale;
                     pos[3] = match light.variant {
-                        crate::LightVariant::Directional => 0.0,
-                        crate::LightVariant::Point => 1.0,
+                        crate::LightType::Directional => 0.0,
+                        crate::LightType::Point => 1.0,
                     };
                     let mut color_intensity = light.color.into_vec4();
                     color_intensity[3] = light.intensity;
@@ -397,6 +399,7 @@ impl crate::RenderPass for Real {
                     }
                 })
                 .collect::<Vec<_>>();
+
             let light_count = lights.len().min(self.light_capacity);
             queue.write_buffer(
                 &self.light_buf,

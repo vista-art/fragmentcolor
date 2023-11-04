@@ -1,16 +1,17 @@
 pub mod animation;
 pub mod app;
+pub mod asset;
 pub mod color;
-pub mod events;
 pub mod geometry;
-pub mod loader;
 pub mod renderer;
 pub mod scene;
-pub mod target;
 
 pub use animation::Animator;
 
-pub use app::App;
+pub use app::{
+    window::{IsWindow, Window},
+    App, Event, EventLoop,
+};
 
 pub use color::Color;
 
@@ -20,6 +21,7 @@ pub use renderer::{
     mesh::{Bundle, IndexStream, Mesh, MeshBuilder, MeshId, VertexStream},
     renderer::{RenderContext, Renderer},
     renderpass::{Flat2D, Phong, Real, Shader, Solid},
+    target::{HasSize, RenderTarget, Target, TargetId},
     texture::{Texture, TextureId},
     RenderPass,
 };
@@ -28,7 +30,7 @@ pub use scene::{
     builder::ObjectBuilder,
     components::{
         camera::{Camera, Projection},
-        light::{Light, LightBuilder, LightId, LightVariant},
+        light::{Light, LightBuilder, LightType},
         sprite::{Sprite, SpriteBuilder, UvRange},
     },
     entity::{Entity, EntityBuilder, EntityId},
@@ -36,5 +38,3 @@ pub use scene::{
     space::{RawSpace, Space},
     BakedScene, Scene,
 };
-
-pub use target::{HasSize, IsWindow, RenderTarget, Target, TargetId, Window};

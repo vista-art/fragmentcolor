@@ -1,27 +1,25 @@
 use crate::color::Color;
 use crate::scene::{node::NodeId, space::Space, ObjectBuilder};
+use crate::EntityId;
 
 #[derive(Clone, Copy, Debug)]
-pub enum LightVariant {
+pub enum LightType {
     Directional,
     Point,
 }
-
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct LightId(pub u32);
 
 #[derive(Debug)]
 pub struct Light {
     pub node: NodeId,
     pub color: Color,
     pub intensity: f32,
-    pub variant: LightVariant,
+    pub variant: LightType,
 }
 
 pub struct LightBuilder {
     pub(crate) color: Color,
     pub(crate) intensity: f32,
-    pub(crate) variant: LightVariant,
+    pub(crate) variant: LightType,
 }
 
 // Note that UNLIKE the Entity Builder, this "subclass"
@@ -30,28 +28,28 @@ pub struct LightBuilder {
 // a regular entity containing an Emissive component
 impl ObjectBuilder<'_, LightBuilder> {
     pub fn intensity(&mut self, intensity: f32) -> &mut Self {
-        self.kind.intensity = intensity;
+        self.object.intensity = intensity;
         self
     }
 
     pub fn color(&mut self, color: Color) -> &mut Self {
-        self.kind.color = color;
+        self.object.color = color;
         self
     }
 
-    pub fn build(&mut self) -> LightId {
+    pub fn build(&mut self) -> EntityId {
         let light = Light {
             node: if self.node.local == Space::default() {
                 self.node.parent
             } else {
                 self.scene.set_node_id(&mut self.node)
             },
-            color: self.kind.color,
-            intensity: self.kind.intensity,
-            variant: self.kind.variant,
+            color: self.object.color,
+            intensity: self.object.intensity,
+            variant: self.object.variant,
         };
-        let index = self.scene.lights.len();
-        self.scene.lights.push(light);
-        LightId(index as u32)
+        let mut builder = hecs::EntityBuilder::new();
+        let light_entity = builder.add(light).build();
+        self.scene.add(light_entity)
     }
 }

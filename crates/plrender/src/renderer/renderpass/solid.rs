@@ -311,6 +311,8 @@ impl RenderPass for Solid {
             }
 
             let commands = vec![encoder.finish()];
+
+            // @TODO Targets should NOT submit. See comment on top of this loop
             target.submit(renderer, commands, frame);
         }
     }

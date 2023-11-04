@@ -24,7 +24,7 @@ impl EntityBuilder {
 // Provavelmente essa é a parte que vou MANTER
 impl ObjectBuilder<'_, EntityBuilder> {
     pub fn component<T: hecs::Component>(&mut self, component: T) -> &mut Self {
-        self.kind.builder.add(component);
+        self.object.builder.add(component);
         self
     }
 
@@ -35,9 +35,11 @@ impl ObjectBuilder<'_, EntityBuilder> {
             } else {
                 self.scene.set_node_id(&mut self.node)
             },
-            mesh: self.kind.mesh,
+            mesh: self.object.mesh,
         };
-        let built = self.kind.builder.add(entity).build();
+        // This is the BuiltEntity object from hecs
+        // suitable as an input to World::spawn
+        let built = self.object.builder.add(entity).build();
         self.scene.world.spawn(built)
     }
 }

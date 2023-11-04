@@ -17,6 +17,9 @@ pub struct PLRenderWasm {
 impl PLRenderWasm {
     #[wasm_bindgen(constructor)]
     pub fn new(options: JsValue) -> Self {
+        // @TODO Don't forget to inject "webgl2" as the power_preference
+        //       in the App's RenderOptions struct.
+
         Self {
             plrender: Scene::new(options.into_serde().unwrap()),
         }

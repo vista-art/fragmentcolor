@@ -1,7 +1,7 @@
 use crate::scene::Scene;
 use instant::{Duration, Instant};
 pub struct Animator {
-    pub map: crate::loader::SpriteMap,
+    pub map: crate::asset::SpriteMap,
     pub cell_counts: mint::Vector2<usize>,
     pub duration: Duration,
     pub sprite: crate::EntityId,

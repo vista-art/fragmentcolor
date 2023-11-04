@@ -201,7 +201,7 @@ Entities like videos, images, and shapes can be added to a scene. Once added, th
 
 ```javascript
 const videoDisplay = new Display({ source: video });
-scene.addEntity(videoDisplay);
+scene.add(videoDisplay);
 ```
 
 </div>
@@ -210,7 +210,7 @@ scene.addEntity(videoDisplay);
 
 ```python
 video_display = Display(source=video)
-scene.add_entity(video_display)
+scene.add(video_display)
 ```
 
 </div>
@@ -219,7 +219,7 @@ scene.add_entity(video_display)
 
 ```rust
 let video_display = Display::new(source: video);
-scene.add_entity(video_display);
+scene.add(video_display);
 ```
 
 </div>

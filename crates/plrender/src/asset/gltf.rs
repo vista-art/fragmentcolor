@@ -294,11 +294,11 @@ pub fn load_gltf(
         }
 
         if let Some(gltf_light) = gltf_node.light() {
-            use gltf::khr_lights_punctual::Kind as LightVariant;
+            use gltf::khr_lights_punctual::Kind as LightType;
             let kind = match gltf_light.kind() {
-                LightVariant::Directional => plr::LightVariant::Directional,
-                LightVariant::Point => plr::LightVariant::Point,
-                LightVariant::Spot { .. } => {
+                LightType::Directional => plr::LightType::Directional,
+                LightType::Point => plr::LightType::Point,
+                LightType::Spot { .. } => {
                     log::warn!("Spot lights are not supported: {:?}", gltf_light.name());
                     continue;
                 }
