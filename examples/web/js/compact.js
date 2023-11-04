@@ -1,20 +1,15 @@
 import { positionForTime, undistortParams } from "./mocks.js";
-import load_wasm, { PLRender } from "../pkg/plrender.js";
+import load_wasm, { PLRender, Scene } from "../pkg/plrender.js";
 await load_wasm();
 
-const plr = new PLRender();
+const scene = new Scene();
+scene.renderTo("#outputCanvas");
 
-const scene = plr.Scene();
-const target = plr.Target({
-  source: scene,
-  target: "#output_canvas",
-});
+const background = plr.Sprite({ source: "#video" });
+scene.add(background);
 
-const backgroundVideo = plr.Background({ source: "#video" });
-scene.add(backgroundVideo);
-
-const { camera_matrix, distortion_coefficients } = undistortParams();
-backgroundVideo.undistort({ camera_matrix, distortion_coefficients });
+const { cameraMatrix, distortionCoefficients } = undistortParams();
+background.undistort({ cameraMatrix, distortionCoefficients });
 
 const gaze = plr.Circle({
   color: "#ff000088",
@@ -24,18 +19,18 @@ const gaze = plr.Circle({
 scene.add(gaze);
 
 gaze.undistortPosition({
-  camera_matrix,
-  distortion_coefficients,
+  cameraMatrix,
+  distortionCoefficients,
 });
 
-plr.run();
+scene.run();
 
 function updateLoop() {
   const currentTime = video.currentTime;
   const { x, y } = positionForTime(currentTime);
 
   gaze.setPosition(x, y);
-  backgroundVideo.update(video);
+  background.update(video);
   scene.update();
 
   video.requestVideoFrameCallback(updateLoop);
