@@ -61,21 +61,6 @@ impl RenderContext for Renderer {
     }
 }
 
-// impl<'r, R: RenderContext> RenderContext for MutexGuard<'r, Option<R>> {
-//     fn resources(&self) -> MutexGuard<'r, Resources> {
-//         self.resources()
-//     }
-//     fn targets(&self) -> MutexGuard<'r, Targets> {
-//         self.targets()
-//     }
-//     fn device(&self) -> &wgpu::Device {
-//         &self.device()
-//     }
-//     fn queue(&self) -> &wgpu::Queue {
-//         &self.queue()
-//     }
-// }
-
 impl Renderer {
     pub async fn new<'w, W: IsWindow>(options: RenderOptions<'w, W>) -> Result<Renderer, Error> {
         let (instance, adapter, device, queue, targets) = Internal::gpu_objects(options).await?;

@@ -1,9 +1,7 @@
-use crate::color::Color;
 use crate::renderer::{resources::mesh::Bundle, texture::TextureId};
 use crate::scene::{
     builder::ObjectBuilder,
     entity::EntityBuilder,
-    light::{LightBuilder, LightType},
     node::{Node, NodeId},
     space::RawSpace,
     sprite::SpriteBuilder,
@@ -121,38 +119,17 @@ impl Scene {
 
     // Try to implement this method using the generic add() method above.
     pub fn add_sprite(&mut self, image: TextureId) -> ObjectBuilder<SpriteBuilder> {
-        let raw = hecs::EntityBuilder::new();
+        let builder = hecs::EntityBuilder::new();
 
         ObjectBuilder {
             scene: self,
             node: Node::default(),
             object: SpriteBuilder {
-                raw,
+                builder,
                 image,
                 uv: None,
             },
         }
-    }
-
-    // Try to implement this method using the generic add() method above.
-    pub fn add_light(&mut self, variant: LightType) -> ObjectBuilder<LightBuilder> {
-        ObjectBuilder {
-            scene: self,
-            node: Node::default(),
-            object: LightBuilder {
-                color: Color(0xFFFFFFFF),
-                intensity: 1.0,
-                variant,
-            },
-        }
-    }
-
-    pub fn add_directional_light(&mut self) -> ObjectBuilder<LightBuilder> {
-        self.add_light(LightType::Directional)
-    }
-
-    pub fn add_point_light(&mut self) -> ObjectBuilder<LightBuilder> {
-        self.add_light(LightType::Point)
     }
 
     pub fn bake(&self) -> BakedScene {

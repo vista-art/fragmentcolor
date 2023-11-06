@@ -329,10 +329,11 @@ impl crate::RenderPass for Flat2D {
                         resolve_target: None,
                         ops: wgpu::Operations {
                             load: wgpu::LoadOp::Clear(camera.background.into()),
-                            store: true,
+                            store: wgpu::StoreOp::Store,
                         },
                     })],
                     depth_stencil_attachment: None,
+                    ..Default::default()
                 });
                 pass.set_pipeline(&self.pipelines.transparent);
                 pass.set_bind_group(0, &self.global_bind_group, &[]);

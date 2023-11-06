@@ -39,6 +39,7 @@ pub(crate) const DOWNLEVEL_DEFAULTS: wgpu::Limits = wgpu::Limits {
     max_compute_workgroup_size_z: 64,
     max_compute_workgroups_per_dimension: 65535,
     max_buffer_size: 1 << 28,
+    max_non_sampler_bindings: 1_000_000,
 };
 
 /// Limits::downlevel_webgl2_defaults() This is a set of limits that is lower
@@ -74,6 +75,7 @@ pub(crate) const DOWNLEVEL_WEBGL2: wgpu::Limits = wgpu::Limits {
     max_compute_workgroup_size_z: 0,
     max_compute_workgroups_per_dimension: 0,
     max_buffer_size: 1 << 28,
+    max_non_sampler_bindings: 1_000_000,
 };
 
 /// Limits::default(). This is the set of limits that is guaranteed to work on
@@ -110,4 +112,5 @@ pub(crate) const DEFAULT_LIMITS: wgpu::Limits = wgpu::Limits {
     max_compute_workgroup_size_z: 64,
     max_compute_workgroups_per_dimension: 65535,
     max_push_constant_size: 0,
+    max_non_sampler_bindings: 1_000_000,
 };

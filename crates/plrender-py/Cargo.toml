@@ -14,6 +14,7 @@ numpy = "0.20"
 ndarray = "0.15"
 mint = "0.5"
 plr = { package="plrender", path = "../plrender" }
+winit = "0.28"
 #plrender-macros = { path = "../plrender-macros" }
 
 [build-dependencies]

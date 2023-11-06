@@ -262,17 +262,18 @@ impl RenderPass for Solid {
                             // @TODO this should be a property of the target,
                             //       instead of the camera.
                             load: wgpu::LoadOp::Clear(camera.background.into()),
-                            store: true,
+                            store: wgpu::StoreOp::Store,
                         },
                     })],
                     depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                         view: &self.depth_texture.as_ref().unwrap().0,
                         depth_ops: Some(wgpu::Operations {
                             load: wgpu::LoadOp::Clear(1.0),
-                            store: true,
+                            store: wgpu::StoreOp::Store,
                         }),
                         stencil_ops: None,
                     }),
+                    ..Default::default()
                 });
                 pass.set_pipeline(&self.pipeline);
                 pass.set_bind_group(0, &self.global_bind_group, &[]);
