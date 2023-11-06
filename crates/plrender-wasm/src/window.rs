@@ -1,4 +1,5 @@
 use gloo_utils::document;
+use plrender::app::window::WindowOptions;
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 use winit::{

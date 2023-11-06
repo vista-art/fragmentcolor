@@ -1,11 +1,12 @@
+use crate::{scene::components::Light, MeshBuilder};
 use std::{collections::VecDeque, ops, path::Path};
 
 #[derive(Default)]
 struct MeshScratch {
     indices: Vec<u16>,
-    positions: Vec<crate::Position>,
-    tex_coords: Vec<crate::TextureCoordinates>,
-    normals: Vec<crate::Normal>,
+    positions: Vec<crate::geometry::vertex::Position>,
+    tex_coords: Vec<crate::geometry::vertex::TextureCoordinates>,
+    normals: Vec<crate::geometry::vertex::Normal>,
 }
 
 struct Texture {
@@ -13,10 +14,10 @@ struct Texture {
 }
 
 struct Primitive {
-    prototype: crate::Bundle,
+    mesh: crate::Bundle,
     color: crate::Color,
-    shader: crate::pass::Shader,
-    material: crate::pass::Material,
+    shader: crate::renderer::renderpass::Shader,
+    material: crate::renderer::renderpass::Material,
 }
 
 fn load_texture(mut data: gltf::image::Data, renderer: &mut crate::Renderer) -> Texture {
@@ -78,7 +79,8 @@ fn load_primitive<'a>(
     scratch: &mut MeshScratch,
 ) -> Primitive {
     let reader = primitive.reader(|buffer| Some(&buffers[buffer.index()].0));
-    let mut mesh_builder = renderer.add_mesh();
+
+    let mesh_builder = MeshBuilder::new(renderer);
 
     if let Some(indices) = reader.read_indices() {
         scratch.indices.clear();
@@ -121,7 +123,7 @@ fn load_primitive<'a>(
     };
 
     Primitive {
-        prototype: mesh_builder.build(),
+        mesh: mesh_builder.build(),
         color: crate::Color::from_rgba(base_color),
         shader: crate::pass::Shader::Gouraud { flat: true },
         material,
@@ -167,7 +169,6 @@ impl<T> NamedVec<T> {
 pub struct Module {
     pub entities: NamedVec<plr::EntityId>,
     pub cameras: NamedVec<plr::Camera>,
-    pub lights: NamedVec<plr::LightId>,
 }
 
 /// Load mesh from glTF 2.0 format.
@@ -245,7 +246,7 @@ pub fn load_gltf(
             log::debug!("Mesh {:?}", gltf_mesh.name());
             for primitive in prototypes[gltf_mesh.index()].iter() {
                 let entity = scene
-                    .add_entity(&primitive.prototype)
+                    .add_entity(&primitive.mesh)
                     .component(primitive.color)
                     .component(primitive.shader)
                     .component(primitive.material)
@@ -295,7 +296,7 @@ pub fn load_gltf(
 
         if let Some(gltf_light) = gltf_node.light() {
             use gltf::khr_lights_punctual::Kind as LightType;
-            let kind = match gltf_light.kind() {
+            let light_type = match gltf_light.kind() {
                 LightType::Directional => plr::LightType::Directional,
                 LightType::Point => plr::LightType::Point,
                 LightType::Spot { .. } => {
@@ -303,13 +304,18 @@ pub fn load_gltf(
                     continue;
                 }
             };
-            let light = scene
-                .add_light(kind)
-                .intensity(gltf_light.intensity())
-                .color(crate::Color::from_rgb_alpha(gltf_light.color(), 0.0))
-                .parent(node)
-                .build();
-            module.lights.0.push(Named {
+
+            let light = Light {
+                node,
+                color: crate::Color::from_rgb_alpha(gltf_light.color(), 0.0),
+                intensity: gltf_light.intensity(),
+                variant: light_type,
+            };
+            let mut builder = hecs::EntityBuilder::new();
+            let light_entity = builder.add(light).build();
+            self.scene.add(light_entity);
+
+            module.entities.0.push(Named {
                 data: light,
                 name: gltf_light.name().map(str::to_string),
             });

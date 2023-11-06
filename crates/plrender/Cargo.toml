@@ -15,10 +15,11 @@ crate-type = ["cdylib", "rlib"]
 default = ["window"]
 window = ["raw-window-handle", "winit"]
 shape = ["lyon"]
+assets = ["obj", "gltf"]
 
 [dependencies]
 # public
-wgpu = "0.17"
+wgpu = "0.18"
 bytemuck = { version = "1.14", features = ["derive"] }
 hecs = { version = "0.10", features=["macros"] }
 phf = { version = "0.11", features = ["macros"] }
@@ -28,10 +29,14 @@ bitflags = "2.4"
 fxhash = "0.2"
 mint = "0.5"
 
-# We can update both of them when wgpu implements
+# We can update both of them when wgpu releases this
 # https://github.com/gfx-rs/wgpu/pull/4202
 raw-window-handle = { version = "0.5", optional = true }
 winit = { version = "0.28.7", optional = true }
+
+# 3D Object loading libraries
+gltf = { version = "1", features = ["names", "utils", "KHR_lights_punctual"], optional = true }
+obj = { version = "0.10", optional = true }
 
 # private
 ddsfile = "0.5"

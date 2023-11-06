@@ -1,11 +1,11 @@
-#[cfg(feature = "gltf")]
+#[cfg(feature = "assets")]
 mod gltf;
-#[cfg(feature = "obj")]
+#[cfg(feature = "assets")]
 mod obj;
 
-#[cfg(feature = "gltf")]
+#[cfg(feature = "assets")]
 pub use self::gltf::load_gltf;
-#[cfg(feature = "obj")]
+#[cfg(feature = "assets")]
 pub use self::obj::load_obj;
 
 /// A common ancestor of "sprite sheet", "tile map".

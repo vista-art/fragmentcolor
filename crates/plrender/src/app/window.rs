@@ -7,8 +7,8 @@ use std::fmt::Debug;
 use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use winit::window::WindowId;
 
-const READ_LOCK_ERROR: &str = "Failed to acquire Read lock";
-const WRITE_LOCK_ERROR: &str = "Failed to acquire Write lock";
+const READ_LOCK_ERROR: &str = "Failed to acquire Read mutex lock";
+const WRITE_LOCK_ERROR: &str = "Failed to acquire Write mutex lock";
 
 // Waiting for https://github.com/gfx-rs/wgpu/pull/4202
 // use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
@@ -17,18 +17,67 @@ use raw_window_handle::{
 };
 use serde::{Deserialize, Serialize};
 
+// pub trait Callback<E>: Fn(E) + Send + Sync + 'static {}
+// impl<E, F> Callback<E> for F where F: Fn(E) + Send + Sync + 'static {}
+
+type Callback<E> = Arc<RwLock<dyn Fn(E) + Send + Sync + 'static>>;
+
 // @TODO remove deprecated "raw"s, waiting for https://github.com/gfx-rs/wgpu/pull/4202
 pub trait IsWindow:
     HasRawDisplayHandle + HasRawWindowHandle /* + HasDisplayHandle + HasWindowHandle*/ + HasSize
 {
     fn id(&self) -> winit::window::WindowId;
-    fn instance(&mut self) -> Arc<RwLock<winit::window::Window>>;
+    fn state(&mut self) -> Arc<RwLock<WindowState>>;
     fn request_redraw(&self);
+}
+
+pub trait EventListener {
+    fn on(&mut self, name: &str, callback: Callback<Event>);
+    fn call(&self, name: &str, event: Event);
+}
+
+pub struct WindowState {
+    pub instance: winit::window::Window,
+    pub callbacks: HashMap<String, Vec<Callback<Event>>>,
+}
+
+impl EventListener for WindowState {
+    fn on(&mut self, name: &str, callback: Callback<Event>) {
+        self.callbacks
+            .entry(name.to_string())
+            .or_insert_with(Vec::new)
+            .push(callback);
+    }
+
+    fn call(&self, name: &str, event: Event) {
+        if let Some(callbacks) = self.callbacks.get(name) {
+            callbacks.iter().for_each(|callback| {
+                let callback = callback.read().expect(READ_LOCK_ERROR);
+                callback(event.clone());
+            });
+        }
+    }
+}
+
+impl Debug for WindowState {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(
+            f,
+            "Instance: {:?}, Total Arc<RwLock<impl Fn(Event)>>s: {:?}",
+            self.instance,
+            self.callbacks.len()
+        )
+    }
 }
 
 #[derive(Debug)]
 pub struct Window {
-    instance: Arc<RwLock<winit::window::Window>>,
+    state: Arc<RwLock<WindowState>>,
+    // @TODO this should be private.
+    //       It is temporarily public to make
+    //       the renderer accessible in the Rust examples.
+    //       Ideally, we should have a method to access the renderer
+    pub app: Option<App>,
 }
 
 impl Debug for dyn IsWindow {
@@ -43,38 +92,43 @@ pub trait WindowContainer<W> {
     fn get_mut(&mut self, id: WindowId) -> Option<RwLockWriteGuard<'_, W>>;
     fn insert(&mut self, id: WindowId, window: Arc<RwLock<W>>);
     fn remove(&mut self, id: WindowId) -> Option<Arc<RwLock<W>>>;
+    fn len(&self) -> usize;
 }
 
 #[derive(Debug)]
 pub struct Windows {
-    container: HashMap<winit::window::WindowId, Arc<RwLock<winit::window::Window>>>,
+    container: HashMap<WindowId, Arc<RwLock<WindowState>>>,
 }
 
-impl WindowContainer<winit::window::Window> for Windows {
+impl WindowContainer<WindowState> for Windows {
     fn new() -> Self {
         Self {
             container: HashMap::new(),
         }
     }
 
-    fn get(&self, id: WindowId) -> Option<RwLockReadGuard<'_, winit::window::Window>> {
+    fn get(&self, id: WindowId) -> Option<RwLockReadGuard<'_, WindowState>> {
         let window = self.container.get(&id)?;
         let window = window.read().expect(READ_LOCK_ERROR);
         Some(window)
     }
 
-    fn get_mut(&mut self, id: WindowId) -> Option<RwLockWriteGuard<'_, winit::window::Window>> {
+    fn get_mut(&mut self, id: WindowId) -> Option<RwLockWriteGuard<'_, WindowState>> {
         let window = self.container.get_mut(&id)?;
         let window = window.write().expect(WRITE_LOCK_ERROR);
         Some(window)
     }
 
-    fn insert(&mut self, id: WindowId, window: Arc<RwLock<winit::window::Window>>) {
+    fn insert(&mut self, id: WindowId, window: Arc<RwLock<WindowState>>) {
         self.container.insert(id, window);
     }
 
-    fn remove(&mut self, id: WindowId) -> Option<Arc<RwLock<winit::window::Window>>> {
+    fn remove(&mut self, id: WindowId) -> Option<Arc<RwLock<WindowState>>> {
         self.container.remove(&id)
+    }
+
+    fn len(&self) -> usize {
+        self.container.len()
     }
 }
 
@@ -94,40 +148,48 @@ impl WindowContainer<winit::window::Window> for Windows {
 
 unsafe impl HasRawWindowHandle for Window {
     fn raw_window_handle(&self) -> RawWindowHandle {
-        self.instance
+        self.state
             .read()
             .expect(READ_LOCK_ERROR)
+            .instance
             .raw_window_handle()
     }
 }
 
 unsafe impl HasRawDisplayHandle for Window {
     fn raw_display_handle(&self) -> RawDisplayHandle {
-        self.instance
+        self.state
             .read()
             .expect(READ_LOCK_ERROR)
+            .instance
             .raw_display_handle()
     }
 }
 
 impl IsWindow for Window {
     fn id(&self) -> winit::window::WindowId {
-        self.instance.read().expect(READ_LOCK_ERROR).id()
+        self.state.read().expect(READ_LOCK_ERROR).instance.id()
     }
-    fn instance(&mut self) -> Arc<RwLock<winit::window::Window>> {
-        self.instance.clone()
+    fn state(&mut self) -> Arc<RwLock<WindowState>> {
+        self.state.clone()
     }
     fn request_redraw(&self) {
-        self.instance
+        self.state
             .read()
             .expect(READ_LOCK_ERROR)
+            .instance
             .request_redraw()
     }
 }
 
 impl HasSize for Window {
     fn size(&self) -> wgpu::Extent3d {
-        let size = self.instance.read().expect(READ_LOCK_ERROR).inner_size();
+        let size = self
+            .state
+            .read()
+            .expect(READ_LOCK_ERROR)
+            .instance
+            .inner_size();
 
         wgpu::Extent3d {
             width: size.width,
@@ -176,19 +238,29 @@ impl Default for WindowOptions {
 }
 
 impl Default for Window {
-    /// Create a new Window with default options and an internal event loop.
+    /// Create a singleton Window with default options and an internal event loop.
     ///
     /// # Panics!
     /// Because Winit must have only one event loop running in the main thread,
     /// this method will panic if you try to create a second window.
     ///
     /// Use it if you are sure your application will use only one window.
-    /// Otherwise, use App::new() to inject an external App instance which
-    /// holds the global event loop.
+    /// Otherwise, use Window::new(&app, options) to inject an external
+    /// App instance which holds the global event loop.
+    ///
+    /// This method is useful for quickly creating Rust example applications with
+    /// less boilerplate. It is not supposed to be used in the public Js+Py API.
     fn default() -> Self {
-        Self::singleton(WindowOptions {
-            ..Default::default()
-        })
+        let app = App::default();
+        let mut window = Self::new(
+            &app,
+            WindowOptions {
+                ..Default::default()
+            },
+        )
+        .expect("Failed to create default window");
+        window.app = Some(app);
+        window
     }
 }
 
@@ -221,7 +293,11 @@ impl Window {
         );
 
         let mut window = Window {
-            instance: Arc::new(RwLock::new(window)),
+            state: Arc::new(RwLock::new(WindowState {
+                instance: window,
+                callbacks: HashMap::new(),
+            })),
+            app: None,
         };
 
         pollster::block_on(app.add_window(&mut window));
@@ -229,70 +305,85 @@ impl Window {
         Ok(window)
     }
 
-    pub fn singleton(options: WindowOptions) -> Self {
-        let mut app = App::default();
-        let window = Self::new(&app, options).unwrap();
-        pollster::block_on(app.run());
-        window
-    }
-
     pub fn set_title(&mut self, title: &str) -> &mut Self {
-        self.instance
+        self.state
             .write()
             .expect(WRITE_LOCK_ERROR)
+            .instance
             .set_title(title);
         self
     }
 
     pub fn set_size(&mut self, size: (u32, u32)) -> &mut Self {
-        self.instance
+        self.state
             .write()
             .expect(WRITE_LOCK_ERROR)
+            .instance
             .set_inner_size(winit::dpi::Size::Logical(size.into()));
         self
     }
 
     pub fn set_min_size(&mut self, size: Option<(u32, u32)>) -> &mut Self {
-        self.instance
+        self.state
             .write()
             .expect(WRITE_LOCK_ERROR)
+            .instance
             .set_min_inner_size(size.map(|size| winit::dpi::Size::Logical(size.into())));
         self
     }
 
     pub fn set_max_size(&mut self, size: Option<(u32, u32)>) -> &mut Self {
-        self.instance
+        self.state
             .write()
             .expect(WRITE_LOCK_ERROR)
+            .instance
             .set_max_inner_size(size.map(|size| winit::dpi::Size::Logical(size.into())));
         self
     }
     pub fn set_fullscreen(&mut self, fullscreen: bool) -> &mut Self {
-        self.instance
+        self.state
             .write()
             .expect(WRITE_LOCK_ERROR)
+            .instance
             .set_fullscreen(fullscreen.then(|| winit::window::Fullscreen::Borderless(None)));
         self
     }
 
     pub fn set_decorations(&mut self, decorations: bool) -> &mut Self {
-        self.instance
+        self.state
             .write()
             .expect(WRITE_LOCK_ERROR)
+            .instance
             .set_decorations(decorations);
         self
     }
 
     pub fn set_resizable(&mut self, resizable: bool) -> &mut Self {
-        self.instance
+        self.state
             .write()
             .expect(WRITE_LOCK_ERROR)
+            .instance
             .set_resizable(resizable);
         self
     }
 
-    // @TODO implement this interface
-    pub fn on(_event_name: &str, _callback: impl FnMut(Event)) {
-        todo!()
+    pub async fn run(&mut self) {
+        if self.app.is_some() {
+            self.app.as_mut().unwrap().run().await
+        }
+    }
+
+    pub fn on(&mut self, event_name: &str, callback: Callback<Event>) {
+        self.state
+            .write()
+            .expect(WRITE_LOCK_ERROR)
+            .on(event_name, callback)
+    }
+
+    pub fn call(&self, event_name: &str, event: Event) {
+        self.state
+            .read()
+            .expect(READ_LOCK_ERROR)
+            .call(event_name, event)
     }
 }

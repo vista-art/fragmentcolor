@@ -1,7 +1,8 @@
-pub use plr::app::window::{Window, WindowOptions};
-use plr::App;
+use plr::app::{
+    window::{Window, WindowOptions},
+    App,
+};
 use pyo3::prelude::*;
-use std::cell::RefCell;
 
 // @FIXME code generation works partially.
 // It's still unrealiable for production.
@@ -22,7 +23,7 @@ fn plrender(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
 
 #[pyclass(name = "App")]
 pub struct PyApp {
-    inner: RefCell<App>,
+    inner: App,
 }
 
 #[pymethods]
@@ -30,21 +31,18 @@ impl PyApp {
     #[new] // @TODO config options
     pub fn new() -> PyResult<Self> {
         Ok(Self {
-            inner: RefCell::new(App::default()),
+            inner: App::default(),
         })
     }
 
-    pub fn run(&self) {
-        let mut inner = self.inner.borrow_mut();
-        // .try_lock()
-        // .expect("Could not get AppState mutex lock");
-        pollster::block_on(inner.run());
+    pub fn run(&mut self) {
+        pollster::block_on(self.inner.run());
     }
 }
 
 #[pyclass(name = "Window")]
 pub struct PyWindow {
-    _inner: Window,
+    inner: Window,
 }
 
 unsafe impl Send for PyWindow {}
@@ -91,22 +89,25 @@ pub enum WindowSize {
 #[pymethods]
 impl PyWindow {
     #[new]
-    #[pyo3(signature = (app, size=WindowSize::SizeTuple(800, 600), title="PLRender"))]
-    pub fn new(app: &PyApp, size: WindowSize, title: &str) -> PyResult<Self> {
+    #[pyo3(signature = (app=None, size=WindowSize::SizeTuple(800, 600), title="PLRender"))]
+    pub fn new(app: Option<&PyApp>, size: WindowSize, title: &str) -> PyResult<Self> {
         let (width, height) = match size {
             WindowSize::SizeTuple(w, h) => (w, h),
             WindowSize::SizeDict { w, h } => (w, h),
             WindowSize::SizeFullDict { width, height } => (width, height),
         };
 
-        let window = Window::new(
-            &app.inner.borrow(),
-            WindowOptions {
-                size: Some((width, height)),
-                title: Some(title.to_string()),
-                ..Default::default()
-            },
-        );
+        let window = match app {
+            Some(app) => Window::new(
+                &app.inner,
+                WindowOptions {
+                    size: Some((width, height)),
+                    title: Some(title.to_string()),
+                    ..Default::default()
+                },
+            ),
+            None => Ok(Window::default()),
+        };
 
         if window.is_err() {
             Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, &str>(
@@ -114,19 +115,38 @@ impl PyWindow {
             ))
         } else {
             Ok(PyWindow {
-                _inner: window.unwrap(),
+                inner: window.unwrap(),
             })
         }
     }
 
+    pub fn run(&mut self) {
+        pollster::block_on(self.inner.run());
+    }
+
+    // @TODO
+    //
     // pub fn on(&mut self, event: &str, callback: PyObject) {
-    //     let caller = || -> PyResult<()> {
+    //     let caller = |event: Event| -> PyResult<()> {
     //         let gil = Python::acquire_gil();
     //         let py = gil.python();
-    //         let _ = callback.call0(py);
+    //         match event {
+    //             Event::Resize { width, height } => callback.call(
+    //                 py,
+    //                 (),
+    //                 [("width", width), ("height", height)].into_py_dict(py),
+    //             ),
+    //             Event::Keyboard { key, pressed } => todo!(),
+    //             Event::Pointer { position } => todo!(),
+    //             Event::Scroll { delta } => todo!(),
+    //             Event::Click { button, pressed } => todo!(),
+    //             Event::Command(_) => todo!(),
+    //             Event::Draw => todo!(),
+    //             Event::Exit => todo!(),
+    //         };
     //         Ok(())
     //     };
-    //     self.inner.on(event, callback);
+    //     self.inner.on(event, caller);
     // }
 }
 

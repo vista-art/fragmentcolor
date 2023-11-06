@@ -1,7 +1,7 @@
 use crate::{
-    app::{AppState, Event, Window, WindowContainer},
+    app::{AppState, Event, EventListener, Window, WindowContainer},
     renderer::{
-        target::{Target, TargetId},
+        target::{RenderTarget, Target, TargetId},
         RenderContext,
     },
 };
@@ -68,16 +68,16 @@ type C<'c> = &'c mut ControlFlow;
 pub fn run_event_loop(event_loop: WinitEventLoop<Event>, app: Arc<Mutex<AppState>>) {
     let event_handler = Box::new(move |event: E, _elwt: W, control_flow: C| {
         let app = app.try_lock().expect("Couldn't get AppState mutex lock");
-        let renderer_option = app.renderer();
-        let renderer = renderer_option.as_ref().expect("Renderer not initialized");
-        let targets = renderer.targets();
-        let windows = app.windows::<Window>();
+        let renderer = app.renderer();
+        let renderer = renderer.as_ref().expect("Renderer not initialized");
+        let mut targets = renderer.targets();
+        let mut windows = app.windows::<Window>();
 
         let mut last_update = Instant::now();
 
         match event {
             // Reserved for our custom dispatched events
-            Winit::UserEvent(command) => match command {
+            Winit::UserEvent(event) => match event {
                 _ => {}
             },
 
@@ -88,21 +88,32 @@ pub fn run_event_loop(event_loop: WinitEventLoop<Event>, app: Arc<Mutex<AppState
                 ref event,
                 window_id,
             } => {
-                let _target_id = TargetId::Window(window_id);
+                let target_id = TargetId::Window(window_id);
                 match event {
                     // The size of the window has changed.
                     // Contains the client area's new dimensions.
                     WindowEvent::Resized(physical_size) => {
-                        let _size = wgpu::Extent3d {
+                        let size = wgpu::Extent3d {
                             width: physical_size.width,
                             height: physical_size.height,
                             depth_or_array_layers: 1,
                         };
 
-                        // let target = targets.get_mut(&target_id);
-                        // target
-                        //     .is_some()
-                        //     .then(|| target.unwrap().resize(&renderer, size));
+                        let target = targets.get_mut(&target_id);
+                        target
+                            .is_some()
+                            .then(|| target.unwrap().resize(&renderer, size));
+
+                        let window = windows.get(window_id);
+                        window.is_some().then(|| {
+                            window.unwrap().call(
+                                "resize",
+                                Event::Resize {
+                                    width: physical_size.width,
+                                    height: physical_size.height,
+                                },
+                            )
+                        });
                     }
 
                     // The window's scale factor has changed.
@@ -143,7 +154,12 @@ pub fn run_event_loop(event_loop: WinitEventLoop<Event>, app: Arc<Mutex<AppState
                     WindowEvent::CloseRequested => {
                         println!("Window {window_id:?} has received the signal to close");
 
-                        // targets.remove(&target_id);
+                        targets.remove(&target_id);
+                        windows.remove(window_id);
+
+                        if windows.len() == 0 {
+                            *control_flow = ControlFlow::Exit;
+                        }
                     }
 
                     // The window has been destroyed.
@@ -386,7 +402,7 @@ pub fn run_event_loop(event_loop: WinitEventLoop<Event>, app: Arc<Mutex<AppState
                     *control_flow = match target_frametime.checked_sub(last_update.elapsed()) {
                         Some(wait_time) => ControlFlow::WaitUntil(now + wait_time),
                         None => {
-                            window.request_redraw();
+                            window.instance.request_redraw();
                             last_update = now;
                             ControlFlow::Poll
                         }

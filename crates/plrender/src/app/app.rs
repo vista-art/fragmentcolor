@@ -23,7 +23,7 @@ pub struct App {
 pub struct AppState {
     pub renderer: Arc<Mutex<Option<Renderer>>>,
     pub windows: Arc<Mutex<Windows>>,
-    options: AppOptions,
+    pub options: AppOptions,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -64,7 +64,7 @@ impl App {
         let event_dispatcher = event_loop.create_dispatcher();
 
         Self {
-            event_loop: Arc::new(Mutex::new(EventLoop::new())),
+            event_loop: Arc::new(Mutex::new(event_loop)),
             event_dispatcher,
             state: Arc::new(Mutex::new(AppState {
                 renderer: Arc::new(Mutex::new(None)),
@@ -75,7 +75,8 @@ impl App {
     }
 
     /// Runs the main event loop.
-    /// Side effects: Initializes the Renderer if it doesn't exist.
+    /// ## Side effects:
+    /// Initializes the Renderer if it doesn't exist.
     pub async fn run(&mut self) {
         if self.state().renderer().is_none() {
             let _ = self.state().init_renderer::<Window>(vec![]).await;
@@ -100,15 +101,17 @@ impl App {
     }
 
     /// Creates a window, adds it to the Windows collection, and returns it.
-    /// Side effects: Lazy-initializes the Renderer when we create the first Window
-    pub async fn create_window(&self) -> Result<Window, Error> {
+    /// ## Side effects:
+    /// Lazy-initializes the Renderer when we create the first Window
+    pub async fn new_window(&self) -> Result<Window, Error> {
         let mut window = Window::new(self, WindowOptions::default())?;
         self.add_window(&mut window).await;
         Ok(window)
     }
 
     /// Adds a window to the Windows collection.
-    /// Side effects: Lazy-initializes the Renderer when we add the first Window
+    /// ## Side effects:
+    /// Lazy-initializes the Renderer when we add the first Window
     pub async fn add_window<W: IsWindow>(&self, window: &mut W) {
         self.state().add_window(window).await;
     }
@@ -119,7 +122,7 @@ impl App {
     }
 
     /// Returns a mutex reference to the AppState.
-    fn state(&self) -> MutexGuard<'_, AppState> {
+    pub fn state(&self) -> MutexGuard<'_, AppState> {
         self.state
             .try_lock()
             .expect("Could not get AppState mutex lock")
@@ -144,14 +147,15 @@ impl AppState {
     }
 
     /// Adds a window to the Windows collection.
-    /// Side effects: Lazy-initializes the Renderer when we add the first Window
+    /// ## Side effects:
+    /// Lazy-initializes the Renderer when we add the first Window
     pub async fn add_window<'w, W: IsWindow>(&mut self, window: &'w mut W) {
         if self.renderer().is_none() {
             let _ = self.init_renderer(vec![window]).await;
         }
 
         let mut windows = self.windows::<W>();
-        windows.insert(window.id(), window.instance());
+        windows.insert(window.id(), window.state());
     }
 
     /// Removes a window from the Windows collection.

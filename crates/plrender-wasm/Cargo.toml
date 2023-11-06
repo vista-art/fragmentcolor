@@ -13,7 +13,6 @@ default = ["console_error_panic_hook"]
 [dependencies]
 plr = { package="plrender", path = "../plrender" }
 plrender-macros = { path = "../plrender-macros" }
-wgpu = { version = "0.17", features = ["webgl"]}
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
 console_log = "1.0"
