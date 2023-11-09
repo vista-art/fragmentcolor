@@ -1,5 +1,9 @@
 use crate::renderer::texture::TextureId;
-use crate::scene::{entity::EntityId, node::NodeId, space::Space, ObjectBuilder};
+use crate::scene::{
+    components::{RenderableId, Transform},
+    node::NodeId,
+    ObjectBuilder,
+};
 use std::ops::Range;
 
 pub type UvRange = Range<mint::Point2<i16>>;
@@ -28,9 +32,9 @@ impl ObjectBuilder<'_, SpriteBuilder> {
         self
     }
 
-    pub fn build(&mut self) -> EntityId {
+    pub fn build(&mut self) -> RenderableId {
         let sprite = Sprite {
-            node: if self.node.local == Space::default() {
+            node: if self.node.local == Transform::default() {
                 self.node.parent
             } else {
                 self.scene.set_node_id(&mut self.node)
@@ -41,7 +45,7 @@ impl ObjectBuilder<'_, SpriteBuilder> {
 
         // In this context, "object" is the type of object (Sprite in this case),
         // and "builder" is the hecs::EntityBuilder that is used to build the object.
-        // The method "add" is used to add Components to the Entity.
+        // The method "add" is used to add Components to the Renderable.
         let built = self.object.builder.add(sprite).build();
 
         self.scene.world.spawn(built)

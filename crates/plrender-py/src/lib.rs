@@ -1,8 +1,10 @@
 use plr::app::{
+    events::Event,
     window::{Window, WindowOptions},
     App,
 };
 use pyo3::prelude::*;
+use pyo3::types::IntoPyDict;
 
 // @FIXME code generation works partially.
 // It's still unrealiable for production.
@@ -109,14 +111,12 @@ impl PyWindow {
             None => Ok(Window::default()),
         };
 
-        if window.is_err() {
+        if let Ok(window) = window {
+            Ok(PyWindow { inner: window })
+        } else {
             Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, &str>(
                 "Failed to create window",
             ))
-        } else {
-            Ok(PyWindow {
-                inner: window.unwrap(),
-            })
         }
     }
 
@@ -124,101 +124,96 @@ impl PyWindow {
         pollster::block_on(self.inner.run());
     }
 
-    // @TODO
-    //
-    // pub fn on(&mut self, event: &str, callback: PyObject) {
-    //     let caller = |event: Event| -> PyResult<()> {
-    //         let gil = Python::acquire_gil();
-    //         let py = gil.python();
-    //         match event {
-    //             Event::Resize { width, height } => callback.call(
-    //                 py,
-    //                 (),
-    //                 [("width", width), ("height", height)].into_py_dict(py),
-    //             ),
-    //             Event::Keyboard { key, pressed } => todo!(),
-    //             Event::Pointer { position } => todo!(),
-    //             Event::Scroll { delta } => todo!(),
-    //             Event::Click { button, pressed } => todo!(),
-    //             Event::Command(_) => todo!(),
-    //             Event::Draw => todo!(),
-    //             Event::Exit => todo!(),
-    //         };
-    //         Ok(())
-    //     };
-    //     self.inner.on(event, caller);
-    // }
+    pub fn on(&mut self, event: &str, callback: PyObject) -> PyResult<()> {
+        let caller = move |event: Event| {
+            let _ = Python::with_gil(|py| -> PyResult<()> {
+                match event {
+                    Event::Resize { width, height } => {
+                        let _ = callback.call(
+                            py,
+                            (),
+                            Some([("width", width), ("height", height)].into_py_dict(py)),
+                        );
+                        Ok(())
+                    }
+
+                    Event::Keyboard { key, pressed } => {
+                        let key = match key {
+                            plr::app::events::Key::Digit(d) => format!("{}", d),
+                            plr::app::events::Key::Letter(l) => format!("{}", l),
+                            plr::app::events::Key::Function(f) => format!("F{}", f),
+                            plr::app::events::Key::Up => "Up".to_string(),
+                            plr::app::events::Key::Down => "Down".to_string(),
+                            plr::app::events::Key::Left => "Left".to_string(),
+                            plr::app::events::Key::Right => "Right".to_string(),
+                            plr::app::events::Key::Space => "Space".to_string(),
+                            plr::app::events::Key::Escape => "Escape".to_string(),
+                            plr::app::events::Key::Other => "Other".to_string(),
+                        };
+
+                        let _ = callback.call(
+                            py,
+                            (),
+                            Some(
+                                [
+                                    ("key", key.to_object(py)),
+                                    ("pressed", pressed.to_object(py)),
+                                ]
+                                .into_py_dict(py),
+                            ),
+                        );
+                        Ok(())
+                    }
+
+                    Event::Pointer { x, y } => {
+                        let _ = callback.call(py, (), Some([("x", x), ("y", y)].into_py_dict(py)));
+                        Ok(())
+                    }
+
+                    Event::Scroll { delta_x, delta_y } => {
+                        let _ = callback.call(
+                            py,
+                            (),
+                            Some([("delta_x", delta_x), ("delta_y", delta_y)].into_py_dict(py)),
+                        );
+                        Ok(())
+                    }
+
+                    Event::Click { button, pressed } => {
+                        let button = match button {
+                            plr::app::events::Button::Left => "Left".to_string(),
+                            plr::app::events::Button::Middle => "Middle".to_string(),
+                            plr::app::events::Button::Right => "Right".to_string(),
+                            plr::app::events::Button::Other(o) => format!("{}", o),
+                        };
+
+                        let _ = callback.call(
+                            py,
+                            (),
+                            Some(
+                                [
+                                    ("button", button.to_object(py)),
+                                    ("pressed", pressed.to_object(py)),
+                                ]
+                                .into_py_dict(py),
+                            ),
+                        );
+                        Ok(())
+                    }
+
+                    Event::Draw => {
+                        let _ = callback.call(py, (), None);
+                        Ok(())
+                    }
+
+                    Event::Exit => {
+                        let _ = callback.call(py, (), None);
+                        Ok(())
+                    }
+                }
+            });
+        };
+        self.inner.on(event, Box::new(caller));
+        Ok(())
+    }
 }
-
-// PYO3 EXAMPLES
-
-// Conversion from Python union types
-// #[derive(FromPyObject)]
-// enum RustyEnum<'a> {
-//     Int(usize),                    // input is a positive int
-//     String(String),                // input is a string
-//     IntTuple(usize, usize),        // input is a 2-tuple with positive ints
-//     StringIntTuple(String, usize), // input is a 2-tuple with String and int
-//     Coordinates3d {
-//         // needs to be in front of 2d
-//         x: usize,
-//         y: usize,
-//         z: usize,
-//     },
-//     Coordinates2d {
-//         // only gets checked if the input did not have `z`
-//         #[pyo3(attribute("x"))]
-//         a: usize,
-//         #[pyo3(attribute("y"))]
-//         b: usize,
-//     },
-//     #[pyo3(transparent)]
-//     CatchAll(&'a PyAny), // This extraction never fails
-// }
-
-// use pyo3::types::{PyDict, PyTuple};
-// #[pymethods]
-// impl MyClass {
-//     #[new]
-//     #[pyo3(signature = (num=-1))]
-//     fn new(num: i32) -> Self {
-//         MyClass { num }
-//     }
-
-//     #[pyo3(signature = (num=10, *py_args, name="Hello", **py_kwargs))]
-//     fn method(
-//         &mut self,
-//         num: i32,
-//         py_args: &PyTuple,
-//         name: &str,
-//         py_kwargs: Option<&PyDict>,
-//     ) -> String {
-//         let num_before = self.num;
-//         self.num = num;
-//         format!(
-//             "num={} (was previously={}), py_args={:?}, name={}, py_kwargs={:?} ",
-//             num, num_before, py_args, name, py_kwargs,
-//         )
-//     }
-
-//     fn make_change(&mut self, num: i32) -> PyResult<String> {
-//         self.num = num;
-//         Ok(format!("num={}", self.num))
-//     }
-// }
-
-//  * Just like in Python, the following constructs can be part of the signature:
-
-//     /:  positional-only arguments separator, each parameter defined before /
-//         is a positional-only parameter.
-
-//     *:  var arguments separator, each parameter defined after *
-//         is a keyword-only parameter.
-
-//     *args: "args" is var args. Type of the args parameter has to be &PyTuple.
-
-//     **kwargs:   "kwargs" receives keyword arguments. The type of the kwargs
-//                 parameter has to be Option<&PyDict>.
-
-//     arg=Value:  arguments with default value. If the arg argument is defined
-//                 after var arguments, it is treated as a keyword-only argument. Note that Value has to be valid rust code, PyO3 just inserts it into the generated code unmodified.

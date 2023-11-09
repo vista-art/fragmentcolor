@@ -8,7 +8,7 @@ use hecs::*;
 /// Component of entities that are positioned relative to a parent entity
 struct Parent {
     /// Parent entity
-    entity: Entity,
+    entity: Renderable,
     /// Converts child-relative coordinates to parent-relative coordinates
     from_child: Transform,
 }

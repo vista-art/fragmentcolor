@@ -1,14 +1,12 @@
 use crate::{
-    app::{App, Event},
+    app::{error::READ_LOCK_ERROR, error::WRITE_LOCK_ERROR, App, Container, Event},
     renderer::target::HasSize,
 };
+use log::warn;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use winit::window::WindowId;
-
-const READ_LOCK_ERROR: &str = "Failed to acquire Read mutex lock";
-const WRITE_LOCK_ERROR: &str = "Failed to acquire Write mutex lock";
 
 // Waiting for https://github.com/gfx-rs/wgpu/pull/4202
 // use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
@@ -17,10 +15,11 @@ use raw_window_handle::{
 };
 use serde::{Deserialize, Serialize};
 
-// pub trait Callback<E>: Fn(E) + Send + Sync + 'static {}
-// impl<E, F> Callback<E> for F where F: Fn(E) + Send + Sync + 'static {}
+pub trait CallbackFn<E>: Fn(E) + Send + Sync {}
+impl<E, F> CallbackFn<E> for F where F: Fn(E) + Send + Sync {}
 
-type Callback<E> = Arc<RwLock<dyn Fn(E) + Send + Sync + 'static>>;
+// type CallbackFn<E> = dyn Fn(E) + Send + Sync;
+type Callback<E> = Arc<RwLock<dyn CallbackFn<E>>>;
 
 // @TODO remove deprecated "raw"s, waiting for https://github.com/gfx-rs/wgpu/pull/4202
 pub trait IsWindow:
@@ -39,6 +38,7 @@ pub trait EventListener {
 pub struct WindowState {
     pub instance: winit::window::Window,
     pub callbacks: HashMap<String, Vec<Callback<Event>>>,
+    pub auto_resize: bool,
 }
 
 impl EventListener for WindowState {
@@ -71,13 +71,15 @@ impl Debug for WindowState {
 }
 
 #[derive(Debug)]
+pub enum InnerApp {
+    Internal(App),
+    External,
+}
+
+#[derive(Debug)]
 pub struct Window {
     state: Arc<RwLock<WindowState>>,
-    // @TODO this should be private.
-    //       It is temporarily public to make
-    //       the renderer accessible in the Rust examples.
-    //       Ideally, we should have a method to access the renderer
-    pub app: Option<App>,
+    app: Option<InnerApp>,
 }
 
 impl Debug for dyn IsWindow {
@@ -86,21 +88,12 @@ impl Debug for dyn IsWindow {
     }
 }
 
-pub trait WindowContainer<W> {
-    fn new() -> Self;
-    fn get(&self, id: WindowId) -> Option<RwLockReadGuard<'_, W>>;
-    fn get_mut(&mut self, id: WindowId) -> Option<RwLockWriteGuard<'_, W>>;
-    fn insert(&mut self, id: WindowId, window: Arc<RwLock<W>>);
-    fn remove(&mut self, id: WindowId) -> Option<Arc<RwLock<W>>>;
-    fn len(&self) -> usize;
-}
-
 #[derive(Debug)]
 pub struct Windows {
     container: HashMap<WindowId, Arc<RwLock<WindowState>>>,
 }
 
-impl WindowContainer<WindowState> for Windows {
+impl Container<WindowId, WindowState> for Windows {
     fn new() -> Self {
         Self {
             container: HashMap::new(),
@@ -221,6 +214,7 @@ pub struct WindowOptions {
     pub size: Option<(u32, u32)>,
     pub min_size: Option<(u32, u32)>,
     pub max_size: Option<(u32, u32)>,
+    pub auto_resize: Option<bool>,
 }
 
 impl Default for WindowOptions {
@@ -233,6 +227,7 @@ impl Default for WindowOptions {
             size: Some((800, 600)),
             min_size: None,
             max_size: None,
+            auto_resize: Some(true),
         }
     }
 }
@@ -259,7 +254,7 @@ impl Default for Window {
             },
         )
         .expect("Failed to create default window");
-        window.app = Some(app);
+        window.app = Some(InnerApp::Internal(app));
         window
     }
 }
@@ -296,11 +291,13 @@ impl Window {
             state: Arc::new(RwLock::new(WindowState {
                 instance: window,
                 callbacks: HashMap::new(),
+                auto_resize: options.auto_resize.unwrap_or(true),
             })),
             app: None,
         };
 
         pollster::block_on(app.add_window(&mut window));
+        window.app = Some(InnerApp::External);
 
         Ok(window)
     }
@@ -340,6 +337,12 @@ impl Window {
             .set_max_inner_size(size.map(|size| winit::dpi::Size::Logical(size.into())));
         self
     }
+
+    pub fn set_auto_resize(&mut self, auto_resize: bool) -> &mut Self {
+        self.state.write().expect(WRITE_LOCK_ERROR).auto_resize = auto_resize;
+        self
+    }
+
     pub fn set_fullscreen(&mut self, fullscreen: bool) -> &mut Self {
         self.state
             .write()
@@ -367,13 +370,21 @@ impl Window {
         self
     }
 
+    pub fn app(&mut self) -> &mut InnerApp {
+        self.app.as_mut().expect("App is Not Initialized")
+    }
+
     pub async fn run(&mut self) {
         if self.app.is_some() {
-            self.app.as_mut().unwrap().run().await
+            match self.app() {
+                InnerApp::Internal(app) => app.run().await,
+                InnerApp::External => warn!("Can't run external event loop"),
+            };
         }
     }
 
-    pub fn on(&mut self, event_name: &str, callback: Callback<Event>) {
+    pub fn on(&mut self, event_name: &str, callback: impl CallbackFn<Event> + 'static) {
+        let callback = Arc::new(RwLock::new(callback));
         self.state
             .write()
             .expect(WRITE_LOCK_ERROR)

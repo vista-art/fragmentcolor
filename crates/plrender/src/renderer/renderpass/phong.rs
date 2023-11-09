@@ -1,5 +1,12 @@
-use crate::geometry::vertex;
-use crate::{Camera, Color, HasSize, RenderContext, RenderTarget, Renderer, Scene};
+use crate::{
+    geometry::vertex,
+    renderer::{
+        target::HasSize, Commands, RenderContext, RenderPass, RenderTarget, RenderTargetCollection,
+        Renderer,
+    },
+    scene::Scene,
+    Color,
+};
 use fxhash::FxHashMap;
 use std::mem;
 
@@ -23,16 +30,17 @@ struct Globals {
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 struct Light {
-    pos: [f32; 4],
-    rot: [f32; 4],
+    position: [f32; 4],
+    rotation: [f32; 4],
     color_intensity: [f32; 4],
 }
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 struct Locals {
-    pos_scale: [f32; 4],
-    rot: [f32; 4],
+    position: [f32; 4],
+    scale: [f32; 4],
+    rotation: [f32; 4],
     color: [f32; 4],
     lights: [u32; LIGHT_COUNT],
     glossiness: f32,
@@ -82,7 +90,8 @@ impl Default for PhongConfig {
     }
 }
 
-pub struct Phong {
+pub struct Phong<'r> {
+    renderer: &'r Renderer,
     depth_texture: Option<(wgpu::TextureView, wgpu::Extent3d)>,
     global_uniform_buf: wgpu::Buffer,
     light_buf: wgpu::Buffer,
@@ -96,8 +105,8 @@ pub struct Phong {
     temp_lights: Vec<(f32, u32)>,
 }
 
-impl Phong {
-    pub fn new(config: &PhongConfig, renderer: &Renderer) -> Self {
+impl<'r> Phong<'r> {
+    pub fn new(config: &PhongConfig, renderer: &'r Renderer) -> Self {
         let d = renderer.device();
 
         let shader_module = d.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -295,6 +304,7 @@ impl Phong {
         };
 
         Self {
+            renderer,
             depth_texture: None,
             global_uniform_buf,
             light_capacity: config.max_lights,
@@ -310,22 +320,18 @@ impl Phong {
     }
 }
 
-impl crate::RenderPass for Phong {
-    fn draw(&mut self, scene: &Scene, camera: &Camera, renderer: &Renderer) {
-        let targets = renderer.targets();
+impl<'r> RenderPass for Phong<'r> {
+    fn draw(&mut self, scene: &Scene) -> Result<Commands, wgpu::SurfaceError> {
+        let renderer = self.renderer;
+        let mut targets = renderer.targets();
         let device = renderer.device();
 
-        // @TODO @FIXME
-        // For now, I will simply wrap the entire render pass in a loop for every target,
-        // but this has to be refactored soon. Check the comment in the Target module
-        // in the submit() method: window.present() happens once per target,
-        // but queue.submit() should happen once per frame.
-        //
-        // Ideally queue.submit() should be a method from the Targets collection,
-        // and we should create a method for each target for pre and post rendering.
-        //
-        // Targets should NOT submit.
-        for target in targets.all() {
+        // @TODO!
+        let camera = scene.camera();
+
+        let mut commands = Vec::new();
+
+        for target in targets.all_mut() {
             let reset_depth = match self.depth_texture {
                 Some((_, size)) => size != target.size(),
                 None => true,
@@ -345,7 +351,7 @@ impl crate::RenderPass for Phong {
                 self.depth_texture = Some((view, target.size()));
             }
 
-            let nodes = scene.bake();
+            let nodes = scene.get_global_transforms();
             self.uniform_pool.reset();
             let queue = renderer.queue();
 
@@ -371,17 +377,17 @@ impl crate::RenderPass for Phong {
                 .query::<&crate::Light>()
                 .iter()
                 .map(|(_, light)| {
-                    let space = &nodes[light.node];
-                    let mut pos = space.pos_scale;
-                    pos[3] = match light.variant {
+                    let transform = &nodes[light.node];
+                    let mut position = transform.position;
+                    position[3] = match light.variant {
                         crate::LightType::Directional => 0.0,
                         crate::LightType::Point => 1.0,
                     };
                     let mut color_intensity = light.color.into_vec4();
                     color_intensity[3] = light.intensity;
                     Light {
-                        pos,
-                        rot: space.rot,
+                        position,
+                        rotation: transform.rotation,
                         color_intensity,
                     }
                 })
@@ -398,7 +404,7 @@ impl crate::RenderPass for Phong {
             let local_bgl = &self.local_bind_group_layout;
             let entity_count = scene
                 .world
-                .query::<(&crate::Entity, &crate::Color, &Shader)>()
+                .query::<(&crate::Renderable, &crate::Color, &Shader)>()
                 .with::<&crate::Vertex<vertex::Position>>()
                 .with::<&crate::Vertex<vertex::Normal>>()
                 .iter()
@@ -425,8 +431,8 @@ impl crate::RenderPass for Phong {
             let mut encoder =
                 device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
 
-            // @TODO propagate or inject frame!!!!
-            let frame = target.next_frame().unwrap();
+            let frame = target.next_frame()?;
+
             let resources = renderer.resources();
 
             {
@@ -455,22 +461,23 @@ impl crate::RenderPass for Phong {
 
                 for (_, (entity, &color, &shader)) in scene
                     .world
-                    .query::<(&crate::Entity, &crate::Color, &Shader)>()
+                    .query::<(&crate::Renderable, &crate::Color, &Shader)>()
                     .with::<&crate::Vertex<vertex::Position>>()
                     .with::<&crate::Vertex<vertex::Normal>>()
                     .iter()
                 {
-                    let space = &nodes[entity.node];
-                    let mesh = resources.get_mesh(entity.mesh);
-                    let entity_radius = mesh.bound_radius * space.pos_scale[3];
+                    let local = &nodes[entity.node_id];
+                    let mesh = resources.get_mesh(entity.mesh_id);
+                    let entity_radius =
+                        mesh.bound_radius * local.scale.into_iter().reduce(f32::max).unwrap();
 
                     // collect the `LIGHT_COUNT` lights most affecting the entity
                     self.temp_lights.clear();
-                    let entity_pos = glam::Vec3::from_slice(&space.pos_scale[..3]);
+                    let entity_pos = glam::Vec3::from_slice(&local.position[..3]);
                     let mut lights = scene.world.query::<&crate::Light>();
 
                     for (index, (_, light)) in lights.iter().enumerate() {
-                        let light_pos = glam::Vec3::from_slice(&nodes[light.node].pos_scale[..3]);
+                        let light_pos = glam::Vec3::from_slice(&nodes[light.node].position[..3]);
                         let intensity = match light.variant {
                             crate::LightType::Point => {
                                 let distance = (entity_pos - light_pos).length();
@@ -502,8 +509,9 @@ impl crate::RenderPass for Phong {
                     });
 
                     let locals = Locals {
-                        pos_scale: space.pos_scale,
-                        rot: space.rot,
+                        position: local.position,
+                        scale: local.scale,
+                        rotation: local.rotation,
                         color: color.into_vec4_gamma(),
                         lights: light_indices,
                         glossiness: match shader {
@@ -532,10 +540,10 @@ impl crate::RenderPass for Phong {
                 }
             }
 
-            let commands = vec![encoder.finish()];
-
-            // Again: Targets should NOT submit. See the comment at the top of this loop.
-            target.submit(renderer, commands, frame);
+            commands.append(&mut vec![encoder.finish()]);
+            target.prepare_render(renderer, frame, &mut commands);
         }
+
+        Ok(commands)
     }
 }

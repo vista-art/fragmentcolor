@@ -1,4 +1,4 @@
-use crate::scene::space::Space;
+use crate::scene::transform::Transform;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct NodeId(pub u32);
@@ -8,7 +8,7 @@ pub struct NodeId(pub u32);
 #[derive(Default, Debug, PartialEq)]
 pub struct Node {
     pub(super) parent: NodeId,
-    pub(super) local: Space,
+    pub(super) local: Transform,
 }
 
 impl Node {
@@ -26,9 +26,9 @@ impl Node {
         self.post_move(offset)
     }
     pub fn pre_move(&mut self, offset: mint::Vector3<f32>) {
-        let other = Space {
+        let other = Transform {
             position: offset.into(),
-            scale: 1.0,
+            scale: glam::Vec3::ONE,
             orientation: glam::Quat::IDENTITY,
         };
         self.local = other.combine(&self.local);
@@ -54,18 +54,18 @@ impl Node {
             * glam::Quat::from_axis_angle(axis.into(), angle_deg.to_radians());
     }
     pub fn post_rotate(&mut self, axis: mint::Vector3<f32>, angle_deg: f32) {
-        let other = Space {
+        let other = Transform {
             position: glam::Vec3::ZERO,
-            scale: 1.0,
+            scale: glam::Vec3::ONE,
             orientation: glam::Quat::from_axis_angle(axis.into(), angle_deg.to_radians()),
         };
         self.local = other.combine(&self.local);
     }
 
-    pub fn get_scale(&self) -> f32 {
+    pub fn get_scale(&self) -> glam::Vec3 {
         self.local.scale
     }
-    pub fn set_scale(&mut self, scale: f32) {
-        self.local.scale = scale;
+    pub fn set_scale(&mut self, scale: mint::Vector3<f32>) {
+        self.local.scale = scale.into();
     }
 }

@@ -25,7 +25,7 @@ pub struct Geometry {
 }
 
 impl Geometry {
-    pub fn bake(&self, renderer: &mut Renderer) -> mesh::Bundle {
+    pub fn bake(&self, renderer: &mut Renderer) -> mesh::MeshPrototype {
         // Provisory until we refactor the Mesh API to remove the builder
         // and implement a regular new() constructor method.
         let mut mb = MeshBuilder::new(renderer);

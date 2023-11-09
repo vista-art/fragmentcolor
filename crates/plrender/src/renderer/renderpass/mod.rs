@@ -10,11 +10,10 @@ pub use solid::{Solid, SolidConfig};
 
 use std::mem;
 
-use crate::renderer::Renderer;
-use crate::scene::{camera::Camera, Scene};
-
+use crate::renderer::Commands;
+use crate::scene::Scene;
 pub trait RenderPass {
-    fn draw(&mut self, scene: &Scene, camera: &Camera, context: &Renderer);
+    fn draw(&mut self, scene: &Scene) -> Result<Commands, wgpu::SurfaceError>;
 }
 
 fn align_up(offset: u32, align: u32) -> u32 {

@@ -1,10 +1,12 @@
 use crate::{
     app::{
+        container::Container,
         event_loop::run_event_loop,
-        window::{IsWindow, Window, WindowContainer, WindowOptions, Windows},
+        window::{IsWindow, Window, WindowOptions, Windows},
         Event, EventLoop,
     },
     renderer::{RenderOptions, Renderer},
+    scene::Scenes,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -23,6 +25,7 @@ pub struct App {
 pub struct AppState {
     pub renderer: Arc<Mutex<Option<Renderer>>>,
     pub windows: Arc<Mutex<Windows>>,
+    pub scenes: Arc<Mutex<Scenes>>,
     pub options: AppOptions,
 }
 
@@ -69,6 +72,7 @@ impl App {
             state: Arc::new(Mutex::new(AppState {
                 renderer: Arc::new(Mutex::new(None)),
                 windows: Arc::new(Mutex::new(Windows::new())),
+                scenes: Arc::new(Mutex::new(Scenes::new())),
                 options,
             })),
         }

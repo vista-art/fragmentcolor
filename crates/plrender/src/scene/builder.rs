@@ -3,12 +3,12 @@ use crate::scene::{
     Scene,
 };
 
-// What's the difference between ObjectBuilder and EntityBuilder?
+// What's the difference between ObjectBuilder and RenderableBuilder?
 //
-// EntityBuilder wraps a hecs::EntityBuilder and a MeshId.
+// RenderableBuilder wraps a hecs::EntityBuilder and a MeshId.
 // Entities in Baryon ALWAYS have a mesh (unlike hecs which is an id)
 //
-// ObjectBuilder can have many types, including EntityBuilder.
+// ObjectBuilder can have many types, including RenderableBuilder.
 // This is because the original engine had many types of objects,
 // and they all shared the same builder interface.
 //
@@ -17,7 +17,7 @@ use crate::scene::{
 pub struct ObjectBuilder<'a, T> {
     pub(super) scene: &'a mut Scene,
     pub(super) node: Node,
-    pub(super) object: T,
+    pub(crate) object: T,
 }
 
 impl ObjectBuilder<'_, ()> {
@@ -50,9 +50,8 @@ impl<'s, T> ObjectBuilder<'s, T> {
         self
     }
 
-    // @TODO scale should be 3D
-    pub fn scale(&mut self, scale: f32) -> &mut Self {
-        self.node.local.scale = scale;
+    pub fn scale(&mut self, scale: mint::Vector3<f32>) -> &mut Self {
+        self.node.local.scale = scale.into();
         self
     }
 

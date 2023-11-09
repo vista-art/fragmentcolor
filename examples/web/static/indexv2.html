@@ -82,8 +82,8 @@
         position: [0.5, 0.5],
       });
 
-      scene.addEntity(videoDisplay);
-      scene.addEntity(gaze); // The circle renders on top of the video because it is added later
+      scene.addRenderable(videoDisplay);
+      scene.addRenderable(gaze); // The circle renders on top of the video because it is added later
 
       // Scene objects can be reordered or hidden
       // gaze.moveToBack();

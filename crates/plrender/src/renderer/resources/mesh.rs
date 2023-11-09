@@ -4,13 +4,29 @@ use std::{any::TypeId, mem};
 use wgpu::util::DeviceExt;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct MeshId(pub u32);
+pub struct MeshId(pub(super) u32);
 
+// @TODO this should be removed.
+//       there should be a more direct usage of hecs and ECS,
+//       and a more clear relationship between scene entities
+//       and renderer Resources. Perhaps this thing that holds
+//       the MeshId is what you cal "Renderables" component.
+//       Any entity with a Renderable component will have a
+//       mesh registered in the Renderer, and will hold its MeshId.
+
+/// A freshly created Mesh that comes with metadata,
+/// which is necessary to instantiate it.
+#[derive(hecs::Bundle, hecs::DynamicBundleClone)]
+pub struct MeshPrototype {
+    pub id: MeshId,
+    pub(crate) type_ids: Box<[TypeId]>,
+    pub(crate) type_infos: Box<[hecs::TypeInfo]>,
+}
 /// Mesh is a GPU resource, not a Scene resource.
 #[derive(Debug)]
 pub struct Mesh {
     pub buffer: wgpu::Buffer,
-    // This is an slice because a Vertex might hold
+    // This is a slice because a Vertex might hold
     // multiple types of data (position, normal, etc)
     vertex_streams: Box<[VertexStream]>,
     pub index_stream: Option<IndexStream>,
@@ -32,52 +48,6 @@ pub struct VertexStream {
     pub stride: wgpu::BufferAddress,
 }
 
-/// The original engine defines this struct as a
-/// renamed hecs::Bundle implementor which holds
-/// a reference to a Mesh.
-///
-/// This is the original description:
-///   A freshly created Mesh that comes with metadata,
-///   which is necessary to instantiate it.
-///
-///
-#[derive(hecs::Bundle, hecs::DynamicBundleClone)]
-pub struct Bundle {
-    pub reference: MeshId,
-    type_ids: Box<[TypeId]>,
-    type_infos: Box<[hecs::TypeInfo]>,
-}
-
-// Apparently, this hack is there to enable this Bundle to be
-// added to Scenes as references - so we can have the builder
-// pattern of the original engine.
-//
-// When a user injects it in the scene as a reference, the Scene
-// adds it to the hecs::World as a reference too, so it can return
-// a builder which holds the same reference.
-//
-// The unusual bit of this pattern is that the "add" method of
-// the scene, instead of returning an ID, will return a builder.
-// Additionally, the "build" method of the builder, instead of
-// returning a new instance of the type, implicitly injects the
-// type into the Scene and returns this Bundle reference back.
-unsafe impl<'a> hecs::DynamicBundle for &'a Bundle {
-    fn with_ids<T>(&self, f: impl FnOnce(&[TypeId]) -> T) -> T {
-        f(&self.type_ids)
-    }
-    fn type_info(&self) -> Vec<hecs::TypeInfo> {
-        self.type_infos.to_vec()
-    }
-    unsafe fn put(self, mut f: impl FnMut(*mut u8, hecs::TypeInfo)) {
-        const DUMMY_SIZE: usize = 1;
-        let mut v = [0u8; DUMMY_SIZE];
-        assert!(mem::size_of::<Vertex<()>>() <= DUMMY_SIZE);
-        for ts in self.type_infos.iter() {
-            f(v.as_mut_ptr(), ts.clone());
-        }
-    }
-}
-
 impl Mesh {
     pub fn vertex_stream<T: 'static>(&self) -> Option<&VertexStream> {
         self.vertex_streams
@@ -91,8 +61,8 @@ impl Mesh {
     }
 }
 
-pub struct MeshBuilder<'a> {
-    renderer: &'a mut renderer::Renderer,
+pub struct MeshBuilder<'r> {
+    renderer: &'r mut renderer::Renderer,
     name: String,
     data: Vec<u8>, // could be moved up to the context
     index_stream: Option<IndexStream>,
@@ -102,8 +72,8 @@ pub struct MeshBuilder<'a> {
     bound_radius: f32,
 }
 
-impl<'a> MeshBuilder<'a> {
-    pub fn new(renderer: &'a mut renderer::Renderer) -> Self {
+impl<'r> MeshBuilder<'r> {
+    pub fn new(renderer: &'r mut renderer::Renderer) -> Self {
         Self {
             renderer,
             name: String::new(),
@@ -116,7 +86,7 @@ impl<'a> MeshBuilder<'a> {
         }
     }
 
-    pub fn name<'s>(&'a mut self, name: &str) -> &'s mut Self {
+    pub fn name<'s>(&'r mut self, name: &str) -> &'s mut Self {
         self.name = name.to_string();
         self
     }
@@ -159,7 +129,7 @@ impl<'a> MeshBuilder<'a> {
         self
     }
 
-    pub fn build(&mut self) -> Bundle {
+    pub fn build(&mut self) -> MeshPrototype {
         let mut usage = wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::VERTEX;
         usage.set(wgpu::BufferUsages::INDEX, self.index_stream.is_some());
         let buffer = self
@@ -190,8 +160,8 @@ impl<'a> MeshBuilder<'a> {
             bound_radius: self.bound_radius,
         });
 
-        Bundle {
-            reference: index,
+        MeshPrototype {
+            id: index,
             type_ids,
             type_infos: mem::take(&mut self.type_infos).into_boxed_slice(),
         }

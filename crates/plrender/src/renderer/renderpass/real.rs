@@ -1,5 +1,10 @@
-use crate::geometry::{Normal, Position, TextureCoordinates, Vertex};
-use crate::{Camera, HasSize, RenderContext, RenderTarget, Renderer, Scene};
+use crate::{
+    geometry::{Normal, Position, TextureCoordinates, Vertex},
+    renderer::{
+        target::HasSize, Commands, RenderContext, RenderTarget, RenderTargetCollection, Renderer,
+    },
+    scene::Scene,
+};
 use fxhash::FxHashMap;
 use std::mem;
 use wgpu::util::DeviceExt as _;
@@ -39,16 +44,17 @@ struct Globals {
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 struct Light {
-    pos: [f32; 4],
-    rot: [f32; 4],
+    position: [f32; 4],
+    rotation: [f32; 4],
     color_intensity: [f32; 4],
 }
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 struct Locals {
-    pos_scale: [f32; 4],
-    rot: [f32; 4],
+    position: [f32; 4],
+    scale: [f32; 4],
+    rotation: [f32; 4],
     base_color_factor: [f32; 4],
     emissive_factor: [f32; 4],
     metallic_roughness_values: [f32; 2],
@@ -82,14 +88,15 @@ struct Pipelines {
 }
 
 struct Instance {
-    mesh: crate::MeshId,
+    mesh_id: crate::MeshId,
     locals_bl: super::BufferLocation,
     base_color_map: Option<crate::TextureId>,
 }
 
 /// Realistic renderer.
 /// Follows Disney PBR.
-pub struct Real {
+pub struct Real<'r> {
+    renderer: &'r Renderer,
     depth_texture: Option<(wgpu::TextureView, wgpu::Extent3d)>,
     global_uniform_buf: wgpu::Buffer,
     light_buf: wgpu::Buffer,
@@ -103,8 +110,8 @@ pub struct Real {
     instances: Vec<Instance>,
 }
 
-impl Real {
-    pub fn new(config: &RealConfig, renderer: &Renderer) -> Self {
+impl<'r> Real<'r> {
+    pub fn new(config: &RealConfig, renderer: &'r Renderer) -> Self {
         let d = renderer.device();
         let shader_module = d.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("real"),
@@ -311,6 +318,7 @@ impl Real {
         };
 
         Self {
+            renderer,
             depth_texture: None,
             global_uniform_buf,
             light_capacity: config.max_lights,
@@ -326,23 +334,18 @@ impl Real {
     }
 }
 
-impl crate::RenderPass for Real {
-    fn draw(&mut self, scene: &Scene, camera: &Camera, renderer: &Renderer) {
-        let targets = renderer.targets();
+impl<'r> crate::RenderPass for Real<'r> {
+    fn draw(&mut self, scene: &Scene) -> Result<Commands, wgpu::SurfaceError> {
+        let renderer = self.renderer;
+        let mut targets = renderer.targets();
         let resources = renderer.resources();
         let device = renderer.device();
 
-        // @TODO @FIXME
-        // For now, I will simply wrap the entire render pass in a loop for every target,
-        // but this has to be refactored soon. Check the comment in the Target module
-        // in the submit() method: window.present() happens once per target,
-        // but queue.submit() should happen once per frame.
-        //
-        // Ideally queue.submit() should be a method from the Targets collection,
-        // and we should create a method for each target for pre and post rendering.
-        //
-        // Targets should NOT submit.
-        for target in targets.all() {
+        // @TODO!
+        let camera = scene.camera();
+
+        let mut commands = Vec::new();
+        for target in targets.all_mut() {
             let reset_depth = match self.depth_texture {
                 Some((_, size)) => size != target.size(),
                 None => true,
@@ -363,7 +366,7 @@ impl crate::RenderPass for Real {
                 self.depth_texture = Some((view, target.size()));
             }
 
-            let nodes = scene.bake();
+            let nodes = scene.get_global_transforms();
             self.uniform_pool.reset();
             let queue = renderer.queue();
 
@@ -374,7 +377,7 @@ impl crate::RenderPass for Real {
                 let m_final = glam::Mat4::from(m_proj) * glam::Mat4::from(m_view_inv);
                 let globals = Globals {
                     view_proj: m_final.to_cols_array_2d(),
-                    camera_pos: node.pos_scale,
+                    camera_pos: node.position,
                 };
                 queue.write_buffer(&self.global_uniform_buf, 0, bytemuck::bytes_of(&globals));
             }
@@ -385,16 +388,16 @@ impl crate::RenderPass for Real {
                 .iter()
                 .map(|(_, light)| {
                     let space = &nodes[light.node];
-                    let mut pos = space.pos_scale;
-                    pos[3] = match light.variant {
+                    let mut position = space.position;
+                    position[3] = match light.variant {
                         crate::LightType::Directional => 0.0,
                         crate::LightType::Point => 1.0,
                     };
                     let mut color_intensity = light.color.into_vec4();
                     color_intensity[3] = light.intensity;
                     Light {
-                        pos,
-                        rot: space.rot,
+                        position,
+                        rotation: space.rotation,
                         color_intensity,
                     }
                 })
@@ -412,17 +415,18 @@ impl crate::RenderPass for Real {
 
             for (_, (entity, &color, mat)) in scene
                 .world
-                .query::<(&crate::Entity, &crate::Color, &Material)>()
+                .query::<(&crate::Renderable, &crate::Color, &Material)>()
                 .with::<&Vertex<Position>>()
                 .with::<&Vertex<TextureCoordinates>>()
                 .with::<&Vertex<Normal>>()
                 .iter()
             {
-                let space = &nodes[entity.node];
+                let space = &nodes[entity.node_id];
 
                 let locals = Locals {
-                    pos_scale: space.pos_scale,
-                    rot: space.rot,
+                    position: space.position,
+                    scale: space.scale,
+                    rotation: space.rotation,
                     base_color_factor: color.into_vec4(),
                     emissive_factor: mat.emissive_color.into_vec4(),
                     metallic_roughness_values: [mat.metallic_factor, mat.roughness_factor],
@@ -462,14 +466,13 @@ impl crate::RenderPass for Real {
                 });
 
                 self.instances.push(Instance {
-                    mesh: entity.mesh,
+                    mesh_id: entity.mesh_id,
                     locals_bl,
                     base_color_map: mat.base_color_map,
                 });
             }
 
-            // @TODO propagate error or inject frame into the pass
-            let frame = target.next_frame().unwrap();
+            let frame = target.next_frame()?;
 
             let mut encoder =
                 device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
@@ -498,15 +501,15 @@ impl crate::RenderPass for Real {
                 pass.set_pipeline(&self.pipelines.main);
                 pass.set_bind_group(0, &self.global_bind_group, &[]);
 
-                for inst in self.instances.drain(..) {
-                    let mesh = resources.get_mesh(inst.mesh);
+                for instance in self.instances.drain(..) {
+                    let mesh = resources.get_mesh(instance.mesh_id);
 
                     let key = LocalKey {
-                        uniform_buf_index: inst.locals_bl.index,
-                        base_color_map: inst.base_color_map,
+                        uniform_buf_index: instance.locals_bl.index,
+                        base_color_map: instance.base_color_map,
                     };
                     let local_bg = &self.local_bind_groups[&key];
-                    pass.set_bind_group(1, local_bg, &[inst.locals_bl.offset]);
+                    pass.set_bind_group(1, local_bg, &[instance.locals_bl.offset]);
 
                     pass.set_vertex_buffer(0, mesh.vertex_slice::<Position>());
                     pass.set_vertex_buffer(1, mesh.vertex_slice::<TextureCoordinates>());
@@ -521,10 +524,10 @@ impl crate::RenderPass for Real {
                 }
             }
 
-            let commands = vec![encoder.finish()];
-
-            // @TODO See comment above this loop
-            target.submit(renderer, commands, frame);
+            commands.append(&mut vec![encoder.finish()]);
+            target.prepare_render(renderer, frame, &mut commands);
         }
+
+        Ok(commands)
     }
 }

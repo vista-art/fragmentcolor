@@ -9,8 +9,9 @@ var<uniform> globals: Globals;
 var sam: sampler;
 
 struct Locals {
-    pos_scale: vec4<f32>,
-    rot: vec4<f32>,
+    position: vec4<f32>,
+    scale: vec4<f32>,
+    rotation: vec4<f32>,
     bounds: vec4<f32>,
     tex_coords: vec4<f32>,
 };
@@ -39,7 +40,7 @@ fn main_vs(@builtin(vertex_index) index: u32) -> Varyings {
         mix(locals.bounds.xw, locals.bounds.zy, tc),
         0.0
     );
-    let world = locals.pos_scale.w * qrot(locals.rot, pos) + locals.pos_scale.xyz;
+    let world = locals.scale.xyz * qrot(locals.rotation, pos) + locals.position.xyz;
     let clip_pos = globals.view_proj * vec4<f32>(world, 1.0);
 
     let tc_sub = mix(locals.tex_coords.xy, locals.tex_coords.zw, tc);

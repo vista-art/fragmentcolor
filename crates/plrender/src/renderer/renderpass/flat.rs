@@ -1,4 +1,10 @@
-use crate::{Camera, HasSize, RenderContext as _, RenderTarget, Renderer, Scene};
+use crate::{
+    renderer::{
+        target::HasSize, Commands, RenderContext, RenderPass, RenderTarget, RenderTargetCollection,
+        Renderer,
+    },
+    scene::{components, Scene},
+};
 use std::mem;
 
 #[repr(C)]
@@ -10,8 +16,9 @@ struct Globals {
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 struct Locals {
-    pos_scale: [f32; 4],
-    rot: [f32; 4],
+    position: [f32; 4],
+    scale: [f32; 4],
+    rotation: [f32; 4],
     // x0,y0, x1,y1
     bounds: [f32; 4],
     // u0,v0, u1,v1
@@ -34,7 +41,8 @@ struct Instance {
     image: crate::TextureId,
 }
 
-pub struct Flat2D {
+pub struct Flat2D<'r> {
+    renderer: &'r Renderer,
     global_uniform_buf: wgpu::Buffer,
     global_bind_group: wgpu::BindGroup,
     local_bind_group_layout: wgpu::BindGroupLayout,
@@ -44,16 +52,17 @@ pub struct Flat2D {
     temp: Vec<Instance>,
 }
 
-impl Flat2D {
-    pub fn new(renderer: &mut Renderer) -> Self {
-        let d = renderer.device();
-        let shader_module = d.create_shader_module(wgpu::ShaderModuleDescriptor {
+impl<'r> Flat2D<'r> {
+    pub fn new(renderer: &'r Renderer) -> Self {
+        let device = renderer.device();
+
+        let shader_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("2D Renderpass: Shader Module"),
             source: wgpu::ShaderSource::Wgsl(include_str!("flat.wgsl").into()),
         });
 
         let globals_size = mem::size_of::<Globals>() as wgpu::BufferAddress;
-        let global_bgl = d.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        let global_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("2D Renderpass: Global Bind Group Layout"),
             entries: &[
                 wgpu::BindGroupLayoutEntry {
@@ -74,19 +83,19 @@ impl Flat2D {
                 },
             ],
         });
-        let global_uniform_buf = d.create_buffer(&wgpu::BufferDescriptor {
+        let global_uniform_buf = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("2D Renderpass: Global Uniform Buffer"),
             size: globals_size,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        let sampler = d.create_sampler(&wgpu::SamplerDescriptor {
+        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("2D Renderpass: Texture Sampler"),
             min_filter: wgpu::FilterMode::Linear,
             mag_filter: wgpu::FilterMode::Linear,
             ..Default::default()
         });
-        let global_bind_group = d.create_bind_group(&wgpu::BindGroupDescriptor {
+        let global_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("2D Renderpass: Global Bind Group"),
             layout: &global_bgl,
             entries: &[
@@ -102,7 +111,7 @@ impl Flat2D {
         });
 
         let locals_size = mem::size_of::<Locals>() as wgpu::BufferAddress;
-        let local_bgl = d.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        let local_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("2D Renderpass: Local Bind Group Layout"),
             entries: &[
                 wgpu::BindGroupLayoutEntry {
@@ -128,7 +137,7 @@ impl Flat2D {
             ],
         });
 
-        let pipeline_layout = d.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("2D Renderpass: Pipeline Layout"),
             bind_group_layouts: &[&global_bgl, &local_bgl],
             push_constant_ranges: &[],
@@ -166,8 +175,8 @@ impl Flat2D {
                 })
                 .collect::<Vec<Option<wgpu::ColorTargetState>>>();
 
-            let transparent = d.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                label: Some("Flat2D Transparent Render Pipeline"),
+            let transparent = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some("2D Transparent Render Pipeline"),
                 layout: Some(&pipeline_layout),
                 vertex: wgpu::VertexState {
                     buffers: &[],
@@ -195,40 +204,36 @@ impl Flat2D {
         };
 
         Self {
+            renderer,
             global_uniform_buf,
             global_bind_group,
             local_bind_group_layout: local_bgl,
             local_bind_groups: Default::default(),
-            uniform_pool: super::BufferPool::uniform("flat locals", &d),
+            uniform_pool: super::BufferPool::uniform("2D Locals", &device),
             pipelines,
             temp: Vec::new(),
         }
     }
 }
 
-impl crate::RenderPass for Flat2D {
-    fn draw(&mut self, scene: &Scene, camera: &Camera, renderer: &Renderer) {
-        // @TODO handle multiple targets
-        let targets = renderer.targets();
+impl<'r> RenderPass for Flat2D<'r> {
+    fn draw(&mut self, scene: &Scene) -> Result<Commands, wgpu::SurfaceError> {
+        let renderer = self.renderer;
+        let mut targets = renderer.targets();
         let device = renderer.device();
 
-        let nodes = scene.bake();
+        // @TODO!
+        let camera = scene.camera();
+
+        let nodes = scene.get_global_transforms();
         let cam_node = &nodes[camera.node];
         self.uniform_pool.reset();
         let queue = renderer.queue();
 
-        // @TODO @FIXME
-        // For now, I will simply wrap the entire render pass in a loop for every target,
-        // but this has to be refactored soon. Check the comment in the Target module
-        // in the submit() method: window.present() happens once per target,
-        // but queue.submit() should happen once per frame.
-        //
-        // Ideally queue.submit() should be a method from the Targets collection,
-        // and we should create a method for each target for pre and post rendering.
-        //
-        // Targets should NOT submit.
-        for target in targets.all() {
-            // a camera must be defined per target because the aspect ratio
+        let mut commands = Vec::new();
+
+        for target in targets.all_mut() {
+            // a camera must be bound to a target because of the aspect ratio
             {
                 let m_proj = camera.projection_matrix(target.aspect());
                 let m_view_inv = cam_node.inverse_matrix();
@@ -239,22 +244,23 @@ impl crate::RenderPass for Flat2D {
                 queue.write_buffer(&self.global_uniform_buf, 0, bytemuck::bytes_of(&globals));
             }
 
-            // gather all sprites
             self.temp.clear();
             self.uniform_pool.reset();
-            let cam_dir = glam::Quat::from_slice(&cam_node.rot) * -glam::Vec3::Z;
+            let cam_dir = glam::Quat::from_slice(&cam_node.rotation) * -glam::Vec3::Z;
 
-            for (_, (sprite,)) in scene.world.query::<(&crate::Sprite,)>().iter() {
-                let space = &nodes[sprite.node];
-                let cam_vector = glam::Vec3::from_slice(&space.pos_scale)
-                    - glam::Vec3::from_slice(&cam_node.pos_scale);
+            // gather all sprites
+            for (_, sprite) in scene.world.query::<&components::Sprite>().iter() {
+                let local = &nodes[sprite.node];
+                let cam_vector = glam::Vec3::from_slice(&local.position)
+                    - glam::Vec3::from_slice(&cam_node.position);
                 let camera_distance = cam_vector.dot(cam_dir);
 
                 let resources = renderer.resources();
                 let image = resources.get_texture(sprite.image);
                 let locals = Locals {
-                    pos_scale: space.pos_scale,
-                    rot: space.rot,
+                    position: local.position,
+                    scale: local.scale,
+                    rotation: local.rotation,
                     bounds: {
                         let (w, h) = match sprite.uv {
                             Some(ref uv) => (uv.end.x - uv.start.x, uv.end.y - uv.start.y),
@@ -288,7 +294,7 @@ impl crate::RenderPass for Flat2D {
                 let binding = self.uniform_pool.binding::<Locals>(locals_bl.index);
                 self.local_bind_groups.entry(key).or_insert_with(|| {
                     device.create_bind_group(&wgpu::BindGroupDescriptor {
-                        label: Some("flat locals"),
+                        label: Some("2D Locals"),
                         layout: local_bgl,
                         entries: &[
                             wgpu::BindGroupEntry {
@@ -314,9 +320,7 @@ impl crate::RenderPass for Flat2D {
             self.temp
                 .sort_by_key(|s| (s.camera_distance * -1000.0) as i64);
 
-            // @TODO propagate this error (change function signature) or
-            // acquire the frame outside the function and inject it here
-            let frame = target.next_frame().expect("Could not get frame");
+            let frame = target.next_frame()?;
 
             let mut encoder =
                 device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
@@ -349,10 +353,10 @@ impl crate::RenderPass for Flat2D {
                 }
             }
 
-            let commands = vec![encoder.finish()];
-
-            // Again: Targets should NOT submit. See the comment at the top of this loop.
-            target.submit(renderer, commands, frame);
+            commands.append(&mut vec![encoder.finish()]);
+            target.prepare_render(renderer, frame, &mut commands);
         }
+
+        Ok(commands)
     }
 }

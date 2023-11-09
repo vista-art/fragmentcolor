@@ -1,3 +1,4 @@
+use crate::{geometry::vertex, renderer, MeshBuilder};
 use std::{iter, path::Path};
 
 /// Load entities from Wavefront Obj format.
@@ -5,8 +6,8 @@ pub fn load_obj(
     path: impl AsRef<Path>,
     scene: &mut crate::Scene,
     node: crate::NodeId,
-    context: &mut crate::Renderer,
-) -> fxhash::FxHashMap<String, (crate::EntityId, crate::Bundle)> {
+    renderer: &mut crate::Renderer,
+) -> fxhash::FxHashMap<String, crate::RenderableId> {
     let mut obj = obj::Obj::load(path).unwrap();
     obj.load_mtls().unwrap();
 
@@ -32,21 +33,21 @@ pub fn load_obj(
                 for triangle in iter::once(tr0).chain(tr1) {
                     for &elem_index in triangle.iter() {
                         let obj::IndexTuple(pos_id, _tex_id, nor_id) = poly.0[elem_index];
-                        positions.push(crate::Position(obj.data.position[pos_id]));
+                        positions.push(vertex::Position(obj.data.position[pos_id]));
                         if let Some(index) = nor_id {
-                            normals.push(crate::Normal(obj.data.normal[index]));
+                            normals.push(vertex::Normal(obj.data.normal[index]));
                         }
                     }
                 }
             }
 
-            let mut mesh_builder = context.add_mesh();
+            let mut mesh_builder = MeshBuilder::new(renderer);
             mesh_builder.vertex(&positions);
             if !normals.is_empty() {
                 mesh_builder.vertex(&normals);
             }
-            let prototype = mesh_builder.build();
-            let mut entity_builder = scene.add_entity(&prototype);
+            let bundle = mesh_builder.build();
+            let mut entity_builder = scene.add_entity(bundle);
             entity_builder.parent(node);
 
             log::info!(
@@ -64,16 +65,17 @@ pub fn load_obj(
                 }
                 if !normals.is_empty() {
                     if let Some(glossiness) = mat.ns {
-                        entity_builder.component(crate::pass::Shader::Phong {
+                        entity_builder.component(renderer::renderpass::Shader::Phong {
                             glossiness: glossiness as u8,
                         })
                     } else {
-                        entity_builder.component(crate::pass::Shader::Gouraud { flat: false })
+                        entity_builder
+                            .component(renderer::renderpass::Shader::Gouraud { flat: false })
                     };
                 }
             }
 
-            entities.insert(group.name, (entity_builder.build(), prototype));
+            entities.insert(group.name, entity_builder.build());
         }
     }
 
