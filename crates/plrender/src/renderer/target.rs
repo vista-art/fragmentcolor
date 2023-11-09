@@ -4,13 +4,19 @@ use crate::renderer::{
         region::TextureRegion,
         texture::Texture,
     },
-    Renderer,
+    Commands, Renderer,
 };
-use std::{collections::HashMap, fmt::Debug, sync::Arc};
+use std::{
+    collections::{
+        hash_map::{Values, ValuesMut},
+        HashMap,
+    },
+    fmt::Debug,
+    sync::Arc,
+};
 use winit::window::WindowId;
 
 type Error = Box<dyn std::error::Error>;
-type Commands = Vec<wgpu::CommandBuffer>;
 type SubmissionIndex = wgpu::SubmissionIndex;
 
 pub trait HasSize {
@@ -18,24 +24,42 @@ pub trait HasSize {
     fn aspect(&self) -> f32;
 }
 
+#[derive(Debug)]
 pub struct Frame {
     surface_texture: Option<wgpu::SurfaceTexture>,
     pub view: wgpu::TextureView,
 }
 
 impl Frame {
-    fn present(self) {
-        if self.surface_texture.is_some() {
+    pub fn should_present(&self) -> bool {
+        self.surface_texture.is_some()
+    }
+
+    pub fn present(self) {
+        if self.should_present() {
             self.surface_texture.unwrap().present();
         }
     }
 }
+
 pub trait RenderTarget: Debug + 'static + HasSize {
     fn format(&self) -> wgpu::TextureFormat;
     fn sample_count(&self) -> u32;
     fn resize(&mut self, renderer: &Renderer, size: wgpu::Extent3d) -> Result<(), Error>;
     fn next_frame(&self) -> Result<Frame, wgpu::SurfaceError>;
-    fn submit(&self, renderer: &Renderer, commands: Commands, frame: Frame) -> SubmissionIndex;
+    fn prepare_render(&mut self, renderer: &Renderer, frame: Frame, commands: &mut Commands);
+    fn present(&mut self);
+}
+
+pub trait RenderTargetCollection: Debug + 'static {
+    fn add(&mut self, target: Target) -> TargetId;
+    fn get(&self, id: &TargetId) -> Option<&Target>;
+    fn get_mut(&mut self, id: &TargetId) -> Option<&mut Target>;
+    fn remove(&mut self, id: &TargetId) -> Option<Target>;
+    fn all(&mut self) -> Values<TargetId, Target>;
+    fn all_mut(&mut self) -> ValuesMut<TargetId, Target>;
+    fn render(&self, renderer: &Renderer, commands: Commands) -> SubmissionIndex;
+    fn present(&mut self);
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -63,8 +87,10 @@ impl Targets {
             targets: HashMap::new(),
         }
     }
+}
 
-    pub fn add(&mut self, target: Target) -> TargetId {
+impl RenderTargetCollection for Targets {
+    fn add(&mut self, target: Target) -> TargetId {
         let id = match target {
             Target::Texture(_) => {
                 self.texture_count += 1;
@@ -78,20 +104,34 @@ impl Targets {
         id
     }
 
-    pub fn get(&self, id: &TargetId) -> Option<&Target> {
+    fn get(&self, id: &TargetId) -> Option<&Target> {
         self.targets.get(id)
     }
 
-    pub fn get_mut(&mut self, id: &TargetId) -> Option<&mut Target> {
+    fn get_mut(&mut self, id: &TargetId) -> Option<&mut Target> {
         self.targets.get_mut(id)
     }
 
-    pub fn remove(&mut self, id: &TargetId) -> Option<Target> {
+    fn remove(&mut self, id: &TargetId) -> Option<Target> {
         self.targets.remove(id)
     }
 
-    pub fn all(&self) -> impl Iterator<Item = &Target> {
+    fn all(&mut self) -> Values<TargetId, Target> {
         self.targets.values()
+    }
+
+    fn all_mut(&mut self) -> ValuesMut<TargetId, Target> {
+        self.targets.values_mut()
+    }
+
+    fn render(&self, renderer: &Renderer, commands: Commands) -> SubmissionIndex {
+        renderer.queue.submit(commands)
+    }
+
+    fn present(&mut self) {
+        for target in self.all_mut() {
+            target.present();
+        }
     }
 }
 
@@ -106,6 +146,7 @@ pub struct WindowTarget {
     pub id: WindowId,
     pub surface: wgpu::Surface,
     pub config: wgpu::SurfaceConfiguration,
+    pub(crate) frame: Option<wgpu::SurfaceTexture>,
 }
 
 impl HasSize for Target {
@@ -165,16 +206,20 @@ impl RenderTarget for Target {
         }
     }
 
-    // Maybe this is not the right abstraction if we want multiple targets of different types.
-    // Queue.submit() happens once per frame, but this method will be called for every target.
-    // They should add things to the queue, but not submit it.
-    fn submit(&self, renderer: &Renderer, commands: Commands, frame: Frame) -> SubmissionIndex {
+    fn prepare_render(&mut self, renderer: &Renderer, frame: Frame, commands: &mut Commands) {
         match self {
-            // Texture does things BEFORE submit (adds copy command to CommandBuffer)
-            Target::Texture(target) => target.submit(renderer, commands),
-            // Window does things AFTER submit (present to the screen)
-            //
-            Target::Window(window) => window.present(renderer, commands, frame),
+            Target::Texture(target) => target.copy_texture_to_buffer(renderer, commands),
+            Target::Window(window) => window.frame = frame.surface_texture,
+        }
+    }
+
+    fn present(&mut self) {
+        match self {
+            Target::Window(window) => match window.frame.take() {
+                Some(frame) => frame.present(),
+                None => {}
+            },
+            _ => {}
         }
     }
 }
@@ -188,18 +233,11 @@ impl WindowTarget {
         }
     }
 
+    /// Rebuilds the swap chain with the new Window size
     fn resize(&mut self, renderer: &Renderer, size: wgpu::Extent3d) {
         self.config.width = size.width;
         self.config.height = size.height;
         self.surface.configure(&renderer.device, &self.config)
-    }
-
-    // NOTE: window.present() happens once per target,
-    //       but queue.submit() should happen once per frame.
-    fn present(&self, renderer: &Renderer, commands: Commands, frame: Frame) -> SubmissionIndex {
-        let index = renderer.queue.submit(commands);
-        frame.present();
-        index
     }
 }
 
@@ -256,7 +294,7 @@ impl TextureTarget {
         Ok(())
     }
 
-    fn submit(&self, renderer: &Renderer, commands: Commands) -> SubmissionIndex {
+    fn copy_texture_to_buffer(&self, renderer: &Renderer, commands: &mut Commands) {
         if let Some(TextureBuffer { buffer, clip_area }) = &self.buffer {
             let mut encoder =
                 renderer
@@ -295,10 +333,7 @@ impl TextureTarget {
                 },
             );
 
-            let commands = commands.into_iter().chain(Some(encoder.finish()));
-            renderer.queue.submit(commands)
-        } else {
-            renderer.queue.submit(commands)
+            commands.append(&mut vec![encoder.finish()])
         }
     }
 }

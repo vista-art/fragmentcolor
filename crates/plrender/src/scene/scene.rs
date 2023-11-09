@@ -1,13 +1,25 @@
-use crate::renderer::{resources::mesh::Bundle, texture::TextureId};
+use crate::app::{error::READ_LOCK_ERROR, error::WRITE_LOCK_ERROR, Container};
+use crate::renderer::{
+    resources::mesh::MeshPrototype,
+    target::{HasSize, Target},
+    texture::TextureId,
+};
 use crate::scene::{
     builder::ObjectBuilder,
-    entity::EntityBuilder,
+    components,
+    components::{RenderableBuilder, RenderableId},
     node::{Node, NodeId},
-    space::RawSpace,
     sprite::SpriteBuilder,
+    transform::LocalTransform,
 };
-use crate::EntityId;
-use std::{fmt::Debug, mem, ops};
+use crate::GlobalTransforms;
+use std::sync::{RwLockReadGuard, RwLockWriteGuard};
+use std::{
+    collections::HashMap,
+    fmt::Debug,
+    mem, ops,
+    sync::{Arc, RwLock},
+};
 
 impl ops::Index<NodeId> for Vec<Node> {
     type Output = Node;
@@ -21,14 +33,48 @@ impl ops::IndexMut<NodeId> for Vec<Node> {
     }
 }
 
-pub struct BakedScene {
-    spaces: Box<[RawSpace]>,
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct SceneId(pub u32);
+
+#[derive(Debug)]
+pub struct Scenes {
+    container: HashMap<SceneId, Arc<RwLock<SceneState>>>,
 }
 
-impl ops::Index<NodeId> for BakedScene {
-    type Output = RawSpace;
-    fn index(&self, node: NodeId) -> &RawSpace {
-        &self.spaces[node.0 as usize]
+#[derive(Debug)]
+pub struct SceneState {
+    pub instance: Scene,
+}
+
+impl Container<SceneId, SceneState> for Scenes {
+    fn new() -> Self {
+        Self {
+            container: HashMap::new(),
+        }
+    }
+
+    fn get(&self, id: SceneId) -> Option<RwLockReadGuard<'_, SceneState>> {
+        let window = self.container.get(&id)?;
+        let window = window.read().expect(READ_LOCK_ERROR);
+        Some(window)
+    }
+
+    fn get_mut(&mut self, id: SceneId) -> Option<RwLockWriteGuard<'_, SceneState>> {
+        let window = self.container.get_mut(&id)?;
+        let window = window.write().expect(WRITE_LOCK_ERROR);
+        Some(window)
+    }
+
+    fn insert(&mut self, id: SceneId, window: Arc<RwLock<SceneState>>) {
+        self.container.insert(id, window);
+    }
+
+    fn remove(&mut self, id: SceneId) -> Option<Arc<RwLock<SceneState>>> {
+        self.container.remove(&id)
+    }
+
+    fn len(&self) -> usize {
+        self.container.len()
     }
 }
 
@@ -76,15 +122,41 @@ impl Scene {
         }
     }
 
+    // @TODO maybe map a scene camera to each rendering target?
+    pub fn add_target(&self, target: Target) {
+        let size = target.size();
+        let extent_y = size.height as f32 / 2.0;
+
+        let _camera = components::camera::Camera {
+            projection: components::camera::Projection::Orthographic {
+                // the sprite configuration is not centered
+                center: [0.0, -10.0].into(),
+                extent_y,
+            },
+            ..Default::default()
+        };
+    }
+
     /// Returns the currently active camera.
-    pub fn camera() {
+    pub fn camera(&self) -> components::camera::Camera {
         // queries all entities with a Camera component
 
-        todo!()
+        components::camera::Camera {
+            projection: components::camera::Projection::Orthographic {
+                // the sprite configuration is not centered
+                center: [0.0, -10.0].into(),
+                extent_y: 40.0,
+            },
+            ..Default::default()
+        }
+    }
+
+    pub fn set_active_camera() {
+        // @TODO
     }
 
     // @TODO this method is intended to replace all the other "add" methods below.
-    pub fn add(&mut self, components: impl hecs::DynamicBundle) -> EntityId {
+    pub fn add(&mut self, components: impl hecs::DynamicBundle) -> RenderableId {
         self.world.spawn(components)
     }
 
@@ -106,18 +178,18 @@ impl Scene {
         }
     }
 
-    pub fn add_entity(&mut self, bundle: &Bundle) -> ObjectBuilder<EntityBuilder> {
-        let mesh = bundle.reference;
+    pub fn add_entity(&mut self, prototype: MeshPrototype) -> ObjectBuilder<RenderableBuilder> {
+        let mesh_id = prototype.id;
         let mut builder = hecs::EntityBuilder::new();
-        builder.add_bundle(bundle);
+        builder.add_bundle(prototype);
         ObjectBuilder {
             scene: self,
             node: Node::default(),
-            object: EntityBuilder { builder, mesh },
+            object: RenderableBuilder { builder, mesh_id },
         }
     }
 
-    // Try to implement this method using the generic add() method above.
+    // @TODO implement this method using the generic add() method above.
     pub fn add_sprite(&mut self, image: TextureId) -> ObjectBuilder<SpriteBuilder> {
         let builder = hecs::EntityBuilder::new();
 
@@ -132,19 +204,19 @@ impl Scene {
         }
     }
 
-    pub fn bake(&self) -> BakedScene {
-        let mut spaces: Vec<RawSpace> = Vec::with_capacity(self.nodes.len());
+    pub fn get_global_transforms(&self) -> GlobalTransforms {
+        let mut transforms: Vec<LocalTransform> = Vec::with_capacity(self.nodes.len());
         for n in self.nodes.iter() {
-            let space = if n.parent == NodeId::default() {
+            let transform = if n.parent == NodeId::default() {
                 n.local.clone()
             } else {
-                let parent_space = spaces[n.parent.0 as usize].to_space();
-                parent_space.combine(&n.local)
+                let parent_transform = transforms[n.parent.0 as usize].to_transform();
+                parent_transform.combine(&n.local)
             };
-            spaces.push(space.into());
+            transforms.push(transform.into());
         }
-        BakedScene {
-            spaces: spaces.into_boxed_slice(),
+        GlobalTransforms {
+            transforms: transforms.into_boxed_slice(),
         }
     }
 }

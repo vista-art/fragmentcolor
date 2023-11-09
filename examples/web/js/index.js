@@ -20,7 +20,7 @@ const canvas = document.getElementById("output_canvas");
 // The Target defines how a platform-specific surface is rendered.
 // You don't need to create it explicitly: the renderer will create
 // one for you with a fullscreen region and a transparent background.
-scene.addTarget({
+let target = scene.addTarget({
   // optional: a platform-specific drawing surface.
   //           if no target is set, you can read the
   //           rendered image from the afterRender callback
@@ -50,7 +50,7 @@ scene.addTarget({
 
   // optional: defaults to screen's refresh rate, normally 60 hz
   // In the web, this is the same frequency as requestAnimationFrame()
-  framerate: 60,
+  target_fps: 60,
 
   // optional: defaults to empty function
   beforeRender: () => {
@@ -80,6 +80,9 @@ const renderer = new Renderer({
 
   force_software_rendering: false,
 });
+
+// or:
+// renderer.addTarget(target);
 
 // Create a video entity
 const video = document.getElementById("video");
@@ -141,7 +144,8 @@ function updateLoop() {
   gaze.setPosition(x, y);
   background.update(video);
   playback.setText(timeString);
-  renderer.render(scene, target);
+
+  scene.render(scene, target);
 
   video.requestVideoFrameCallback(updateLoop);
 }

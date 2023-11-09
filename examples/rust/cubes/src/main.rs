@@ -1,26 +1,62 @@
 use instant::Instant;
+use plrender::Color;
 
 struct Cube {
     node: plrender::NodeId,
     level: u8,
 }
 
-const SCALE_ROOT: f32 = 2.0;
+const SCALE_ROOT: mint::Vector3<f32> = mint::Vector3 {
+    x: 2.0,
+    y: 2.0,
+    z: 2.0,
+};
 const SCALE_LEVEL: f32 = 0.4;
 
 struct Level {
-    color: plrender::Color,
+    color: Color,
     speed: f32,
 }
+
+const LEVELS: &[Level] = &[
+    Level {
+        color: Color(0xFFFFFF80),
+        speed: 20.0,
+    },
+    Level {
+        color: Color(0xFF8080FF),
+        speed: -30.0,
+    },
+    Level {
+        color: Color(0xFF80FF80),
+        speed: 40.0,
+    },
+    Level {
+        color: Color(0xFFFF8080),
+        speed: -60.0,
+    },
+    Level {
+        color: Color(0x8880FF55),
+        speed: 80.0,
+    },
+];
 
 fn fill_scene(
     levels: &[Level],
     scene: &mut plrender::Scene,
-    prototype: &plrender::Bundle,
+    mesh: plrender::MeshPrototype,
 ) -> Vec<Cube> {
     let root_node = scene.add_node().scale(SCALE_ROOT).build();
 
-    let mut cube = scene.add_entity(prototype);
+    let mesh = mesh.id;
+    let mut builder = hecs::EntityBuilder::new();
+    builder.add_bundle(mesh);
+    let mut cube = ObjectBuilder {
+        scene,
+        node: Node::default(),
+        object: RenderableBuilder { builder, mesh },
+    };
+
     let _cube = cube.parent(root_node).component(levels[0].color).build();
 
     let mut list = vec![Cube {
@@ -71,7 +107,7 @@ fn fill_scene(
             scene[node].post_rotate(child, 90.0);
 
             scene
-                .add_entity(prototype)
+                .add_entity(bundle)
                 .parent(node)
                 .component(level.color)
                 .build();
@@ -91,50 +127,27 @@ fn fill_scene(
     list
 }
 
-const LEVELS: &[Level] = &[
-    Level {
-        color: plrender::Color(0xFFFFFF80),
-        speed: 20.0,
-    },
-    Level {
-        color: plrender::Color(0xFF8080FF),
-        speed: -30.0,
-    },
-    Level {
-        color: plrender::Color(0xFF80FF80),
-        speed: 40.0,
-    },
-    Level {
-        color: plrender::Color(0xFFFF8080),
-        speed: -60.0,
-    },
-    Level {
-        color: plrender::Color(0x8880FF55),
-        speed: 80.0,
-    },
-];
-
 fn main() {
     use plrender::{
+        app::events::Event,
+        app::window::Window,
         geometry::{Geometry, Streams},
         renderer::RenderOptions,
-        target::events::Event,
-        target::window::Window,
         Renderer,
     };
 
     let window = Window::default().set_title("Cubes").set_size((800, 600));
 
-    let mut renderer = pollster::block_on(
-        Renderer::new(RenderOptions {
-            targets: Some(vec![window]),
-            ..Default::default()
-        })
-        .unwrap(),
-    );
+    // @TODO renderer will be part of the scene now
+    let mut renderer = pollster::block_on(Renderer::new(RenderOptions {
+        targets: Some(vec![window]),
+        ..Default::default()
+    }))
+    .unwrap();
 
     let mut scene = plrender::Scene::new();
 
+    // @TODO Camera should be an entity with a Camera and a Transform components
     let camera = plrender::Camera {
         projection: plrender::Projection::Perspective { fov_y: 45.0 },
         depth: 1.0..10.0,
@@ -143,10 +156,10 @@ fn main() {
             .position([1.8f32, -8.0, 3.0].into())
             .look_at([0f32; 3].into(), [0f32, 0.0, 1.0].into())
             .build(),
-        background: plrender::Color(0xFF203040),
+        background: Color(0xFF203040),
     };
 
-    let prototype = Geometry::cuboid(
+    let mesh = Geometry::cuboid(
         Streams::empty(),
         mint::Vector3 {
             x: 1.0,
@@ -156,7 +169,7 @@ fn main() {
     )
     .bake(&mut renderer);
 
-    let cubes = fill_scene(&LEVELS[..], &mut scene, &prototype);
+    let cubes = fill_scene(&LEVELS[..], &mut scene, mesh);
     println!("Initialized {} cubes", cubes.len());
 
     let mut pass = plrender::renderer::renderpass::Solid::new(
@@ -168,10 +181,7 @@ fn main() {
 
     let mut moment = Instant::now();
 
-    window.run(move |event| match event {
-        Event::Resize { width, height } => {
-            renderer.resize(width, height);
-        }
+    window.on("draw", move |event| match event {
         Event::Draw => {
             let delta = moment.elapsed().as_secs_f32();
             moment = Instant::now();
@@ -190,7 +200,7 @@ fn main() {
                 );
             }
 
-            renderer.render(&mut pass, &scene, &camera);
+            renderer.render(&scene);
         }
         _ => {}
     })

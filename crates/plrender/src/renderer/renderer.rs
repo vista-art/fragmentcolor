@@ -6,11 +6,11 @@ use crate::{
             mesh::{Mesh, MeshId},
             Resources,
         },
-        target::{Target, TargetId, Targets, WindowTarget},
+        target::{RenderTargetCollection, Target, TargetId, Targets, WindowTarget},
         texture::{Texture, TextureId},
         RenderOptions, RenderPass,
     },
-    scene::{camera::Camera, Scene},
+    scene::Scene,
 };
 use std::{
     fs::File,
@@ -20,6 +20,8 @@ use std::{
 };
 use wgpu::util::DeviceExt;
 use winit::window::WindowId;
+
+pub type Commands = Vec<wgpu::CommandBuffer>;
 
 type Error = Box<dyn std::error::Error>;
 type WindowSurface = (WindowId, wgpu::Extent3d, wgpu::Surface);
@@ -95,39 +97,14 @@ impl Renderer {
         Ok(self.targets().add(target))
     }
 
-    // @TODO consider removing the arguments for this method.
-    // The renderer will hold them internally, the user can
-    // set them, and just call renderer.render() without arguments
-    pub fn render<P: RenderPass>(
-        &mut self,
-        pass: &mut P, // how to abstract this from my user?
-        scene: &Scene,
-        camera: &Camera,
-    ) -> Result<(), Error> {
-        // removed a lot of things before that line
-        // which assumed that we would always render to a window.
+    // @TODO chainable render passes
+    pub fn render(&mut self, scene: &Scene) -> Result<(), wgpu::SurfaceError> {
+        let mut pass = crate::renderer::renderpass::Flat2D::new(self);
+        let mut targets = self.targets();
+        let commands = pass.draw(scene)?;
 
-        // let frame = target.next_frame()?;
-
-        // Will you delegate the targets callbacks to the RenderPass?
-        // it makes sense, since it creates and holds the command encoder and command buffer
-        //
-        // doing it outside the pass would make reading difficult (splitting context)
-
-        //let resources = self.resources()?;
-
-        // @TODO consider acquiring the frame here
-
-        pass.draw(scene, camera, self);
-
-        // @TODO2 ... and submitting it here
-        // (so this frame management won't be responsibility of the RenderPass.
-        //                                      the renderpass would only draw)
-
-        // @TODO multiple passes?
-        // for target in self.targets {
-        // ...
-        //}
+        targets.render(self, commands);
+        targets.present();
 
         Ok(())
     }
@@ -400,6 +377,7 @@ impl Internal {
             id,
             surface,
             config,
+            frame: None,
         })
     }
 }

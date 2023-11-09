@@ -1,4 +1,6 @@
-#[derive(Clone, Copy, Debug, PartialEq)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Key {
     Digit(u8),
     Letter(char),
@@ -12,7 +14,7 @@ pub enum Key {
     Other,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Button {
     Left,
     Middle,
@@ -20,20 +22,13 @@ pub enum Button {
     Other(u16),
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Event {
     Resize { width: u32, height: u32 },
     Keyboard { key: Key, pressed: bool },
-    Pointer { position: mint::Vector2<f32> },
-    Scroll { delta: mint::Vector2<f32> },
+    Pointer { x: f32, y: f32 },
+    Scroll { delta_x: f32, delta_y: f32 },
     Click { button: Button, pressed: bool },
-    Command(Command),
     Draw,
-    Exit,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum Command {
-    NewWindow,
     Exit,
 }

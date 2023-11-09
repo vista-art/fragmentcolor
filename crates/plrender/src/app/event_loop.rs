@@ -1,8 +1,8 @@
 use crate::{
-    app::{AppState, Event, EventListener, Window, WindowContainer},
+    app::{AppState, Container, Event, EventListener, Window},
     renderer::{
         target::{RenderTarget, Target, TargetId},
-        RenderContext,
+        RenderContext, RenderTargetCollection,
     },
 };
 use instant::{Duration, Instant};
@@ -99,13 +99,14 @@ pub fn run_event_loop(event_loop: WinitEventLoop<Event>, app: Arc<Mutex<AppState
                             depth_or_array_layers: 1,
                         };
 
-                        let target = targets.get_mut(&target_id);
-                        target
-                            .is_some()
-                            .then(|| target.unwrap().resize(&renderer, size));
-
                         let window = windows.get(window_id);
                         window.is_some().then(|| {
+                            if window.as_ref().unwrap().auto_resize {
+                                let target = targets.get_mut(&target_id);
+                                target
+                                    .is_some()
+                                    .then(|| target.unwrap().resize(&renderer, size));
+                            }
                             window.unwrap().call(
                                 "resize",
                                 Event::Resize {
@@ -154,8 +155,10 @@ pub fn run_event_loop(event_loop: WinitEventLoop<Event>, app: Arc<Mutex<AppState
                     WindowEvent::CloseRequested => {
                         println!("Window {window_id:?} has received the signal to close");
 
+                        let window = windows.remove(window_id);
+
+                        window.map(|w| w.write().unwrap().instance.set_visible(false));
                         targets.remove(&target_id);
-                        windows.remove(window_id);
 
                         if windows.len() == 0 {
                             *control_flow = ControlFlow::Exit;

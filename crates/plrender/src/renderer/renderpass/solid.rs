@@ -1,5 +1,12 @@
-use crate::geometry::{Position, Vertex};
-use crate::{Camera, HasSize, RenderContext, RenderPass, RenderTarget, Renderer, Scene};
+use crate::{
+    geometry::{Position, Vertex},
+    renderer::{
+        target::{HasSize, RenderTarget, RenderTargetCollection},
+        Commands, RenderContext, RenderPass, Renderer,
+    },
+    scene::{components, Scene},
+    Color,
+};
 use bytemuck::{Pod, Zeroable};
 use fxhash::FxHashMap;
 use std::mem;
@@ -15,8 +22,9 @@ struct Globals {
 #[repr(C)]
 #[derive(Debug, PartialEq, Clone, Copy, Pod, Zeroable)]
 struct Locals {
-    pos_scale: [f32; 4],
-    rot: [f32; 4],
+    position: [f32; 4],
+    scale: [f32; 4],
+    rotation: [f32; 4],
     color: [f32; 4],
 }
 
@@ -38,7 +46,8 @@ impl Default for SolidConfig {
     }
 }
 
-pub struct Solid {
+pub struct Solid<'r> {
+    renderer: &'r Renderer,
     depth_texture: Option<(wgpu::TextureView, wgpu::Extent3d)>,
     global_uniform_buf: wgpu::Buffer,
     global_bind_group: wgpu::BindGroup,
@@ -48,8 +57,8 @@ pub struct Solid {
     pipeline: wgpu::RenderPipeline,
 }
 
-impl Solid {
-    pub fn new(config: &SolidConfig, renderer: &Renderer) -> Self {
+impl<'r> Solid<'r> {
+    pub fn new(config: &SolidConfig, renderer: &'r Renderer) -> Self {
         let d = renderer.device();
         let shader_module = d.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("solid"),
@@ -151,6 +160,7 @@ impl Solid {
         });
 
         Self {
+            renderer,
             depth_texture: None,
             global_uniform_buf,
             global_bind_group,
@@ -162,23 +172,18 @@ impl Solid {
     }
 }
 
-impl RenderPass for Solid {
-    fn draw(&mut self, scene: &Scene, camera: &Camera, renderer: &Renderer) {
+impl<'r> RenderPass for Solid<'r> {
+    fn draw(&mut self, scene: &Scene) -> Result<Commands, wgpu::SurfaceError> {
+        let renderer = self.renderer;
         let device = renderer.device();
         let resources = renderer.resources();
-        let targets = renderer.targets();
+        let mut targets = renderer.targets();
 
-        // @TODO @FIXME
-        // For now, I will simply wrap the entire render pass in a loop for every target,
-        // but this has to be refactored soon. Check the comment in the Target module
-        // in the submit() method: window.present() happens once per target,
-        // but queue.submit() should happen once per frame.
-        //
-        // Ideally queue.submit() should be a method from the Targets collection,
-        // and we should create a method for each target for pre and post rendering.
-        //
-        // Targets should NOT submit.
-        for target in targets.all() {
+        // @TODO!
+        let camera = scene.camera();
+
+        let mut commands = Vec::new();
+        for target in targets.all_mut() {
             let reset_depth = match self.depth_texture {
                 Some((_, size)) => size != target.size(),
                 None => true,
@@ -200,7 +205,7 @@ impl RenderPass for Solid {
                 self.depth_texture = Some((view, target.size()));
             }
 
-            let nodes = scene.bake();
+            let nodes = scene.get_global_transforms();
             self.uniform_pool.reset();
             let queue = renderer.queue();
 
@@ -219,7 +224,7 @@ impl RenderPass for Solid {
 
             let entity_count = scene
                 .world
-                .query::<(&crate::Entity, &crate::Color)>()
+                .query::<(&components::Renderable, &Color)>()
                 .with::<&Vertex<Position>>()
                 .iter()
                 .count();
@@ -243,8 +248,7 @@ impl RenderPass for Solid {
                 });
             }
 
-            // @TODO propagate error or inject the frame in the function
-            let frame = target.next_frame().unwrap();
+            let frame = target.next_frame()?;
 
             let mut encoder =
                 device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
@@ -280,14 +284,15 @@ impl RenderPass for Solid {
 
                 for (_, (entity, color)) in scene
                     .world
-                    .query::<(&crate::Entity, &crate::Color)>()
+                    .query::<(&crate::Renderable, &crate::Color)>()
                     .with::<&Vertex<Position>>()
                     .iter()
                 {
-                    let space = &nodes[entity.node];
+                    let local = &nodes[entity.node_id];
                     let locals = Locals {
-                        pos_scale: space.pos_scale,
-                        rot: space.rot,
+                        position: local.position,
+                        scale: local.scale,
+                        rotation: local.rotation,
                         color: color.into_vec4_gamma(),
                     };
                     let bl = self.uniform_pool.alloc(&locals, queue);
@@ -298,7 +303,7 @@ impl RenderPass for Solid {
                     let local_bg = &self.local_bind_groups[&key];
                     pass.set_bind_group(1, local_bg, &[bl.offset]);
 
-                    let mesh = resources.get_mesh(entity.mesh);
+                    let mesh = resources.get_mesh(entity.mesh_id);
                     let pos_vs = mesh.vertex_stream::<Position>().unwrap();
                     pass.set_vertex_buffer(0, mesh.buffer.slice(pos_vs.offset..));
 
@@ -311,10 +316,10 @@ impl RenderPass for Solid {
                 }
             }
 
-            let commands = vec![encoder.finish()];
-
-            // @TODO Targets should NOT submit. See comment on top of this loop
-            target.submit(renderer, commands, frame);
+            commands.append(&mut vec![encoder.finish()]);
+            target.prepare_render(renderer, frame, &mut commands);
         }
+
+        Ok(commands)
     }
 }

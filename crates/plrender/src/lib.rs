@@ -18,7 +18,7 @@ pub use color::Color;
 pub use geometry::{Geometry, Vertex};
 
 pub use renderer::{
-    mesh::{Bundle, IndexStream, Mesh, MeshBuilder, MeshId, VertexStream},
+    mesh::{IndexStream, Mesh, MeshBuilder, MeshId, MeshPrototype, VertexStream},
     renderer::{RenderContext, Renderer},
     renderpass::{Flat2D, Phong, Real, Shader, Solid},
     target::{HasSize, RenderTarget, Target, TargetId},
@@ -31,10 +31,10 @@ pub use scene::{
     components::{
         camera::{Camera, Projection},
         light::{Light, LightBuilder, LightType},
+        renderable::{Renderable, RenderableBuilder, RenderableId},
         sprite::{Sprite, SpriteBuilder, UvRange},
     },
-    entity::{Entity, EntityBuilder, EntityId},
     node::{Node, NodeId},
-    space::{RawSpace, Space},
-    BakedScene, Scene,
+    transform::{GlobalTransforms, LocalTransform, Transform},
+    Scene,
 };

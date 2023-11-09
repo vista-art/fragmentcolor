@@ -1,17 +1,17 @@
-import { positionForTime, undistortParams } from "./mocks.js";
-import load_wasm, { PLRender, Scene } from "../pkg/plrender.js";
+import { positionForTime /*undistortParams*/ } from "./mocks.js";
+import load_wasm, { Scene, Circle, Sprite } from "../pkg/plrender.js";
 await load_wasm();
 
 const scene = new Scene();
 scene.renderTo("#outputCanvas");
 
-const background = plr.Sprite({ source: "#video" });
+const background = Sprite({ source: "#video" });
 scene.add(background);
 
 const { cameraMatrix, distortionCoefficients } = undistortParams();
 background.undistort({ cameraMatrix, distortionCoefficients });
 
-const gaze = plr.Circle({
+const gaze = Circle({
   color: "#ff000088",
   radius: 0.05,
   border: 0.01,

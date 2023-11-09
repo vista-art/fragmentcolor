@@ -4,7 +4,7 @@ pub struct Animator {
     pub map: crate::asset::SpriteMap,
     pub cell_counts: mint::Vector2<usize>,
     pub duration: Duration,
-    pub sprite: crate::EntityId,
+    pub sprite: crate::RenderableId,
     pub current: mint::Point2<usize>,
     pub moment: Instant,
 }

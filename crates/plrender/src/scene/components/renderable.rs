@@ -1,19 +1,19 @@
 use crate::renderer::resources::mesh::MeshId;
-use crate::scene::{builder::ObjectBuilder, node::NodeId, space::Space};
+use crate::scene::{builder::ObjectBuilder, components::transform::Transform, node::NodeId};
 
-pub type EntityId = hecs::Entity;
+pub type RenderableId = hecs::Entity;
 
-pub struct EntityBuilder {
-    pub(super) builder: hecs::EntityBuilder,
-    pub(super) mesh: MeshId,
+pub struct RenderableBuilder {
+    pub(crate) builder: hecs::EntityBuilder,
+    pub(crate) mesh_id: MeshId,
 }
 
-pub struct Entity {
-    pub node: NodeId,
-    pub mesh: MeshId,
+pub struct Renderable {
+    pub node_id: NodeId,
+    pub mesh_id: MeshId,
 }
 
-impl EntityBuilder {
+impl RenderableBuilder {
     pub fn component<T: hecs::Component>(&mut self, component: T) -> &mut Self {
         self.builder.add(component);
         self
@@ -22,23 +22,22 @@ impl EntityBuilder {
 
 // ACHEI O QUE EU QUERIA!
 // Provavelmente essa é a parte que vou MANTER
-impl ObjectBuilder<'_, EntityBuilder> {
+impl ObjectBuilder<'_, RenderableBuilder> {
     pub fn component<T: hecs::Component>(&mut self, component: T) -> &mut Self {
         self.object.builder.add(component);
         self
     }
 
-    pub fn build(&mut self) -> EntityId {
-        let entity = Entity {
-            node: if self.node.local == Space::default() {
+    pub fn build(&mut self) -> RenderableId {
+        let entity = Renderable {
+            node_id: if self.node.local == Transform::default() {
                 self.node.parent
             } else {
                 self.scene.set_node_id(&mut self.node)
             },
-            mesh: self.object.mesh,
+            mesh_id: self.object.mesh_id,
         };
-        // This is the BuiltEntity object from hecs
-        // suitable as an input to World::spawn
+        // BuiltRenderable object from hecs suitable as an input to World::spawn
         let built = self.object.builder.add(entity).build();
         self.scene.world.spawn(built)
     }

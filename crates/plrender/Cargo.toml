@@ -12,7 +12,7 @@ name = "plrender"
 crate-type = ["cdylib", "rlib"]
 
 [features]
-default = ["window"]
+default = ["window", "assets"]
 window = ["raw-window-handle", "winit"]
 shape = ["lyon"]
 assets = ["obj", "gltf"]
