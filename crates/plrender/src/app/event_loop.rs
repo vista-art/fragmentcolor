@@ -68,10 +68,9 @@ type C<'c> = &'c mut ControlFlow;
 pub fn run_event_loop(event_loop: WinitEventLoop<Event>, app: Arc<Mutex<AppState>>) {
     let event_handler = Box::new(move |event: E, _elwt: W, control_flow: C| {
         let app = app.try_lock().expect("Couldn't get AppState mutex lock");
-        let renderer = app.renderer();
-        let renderer = renderer.as_ref().expect("Renderer not initialized");
-        let mut targets = renderer.targets();
         let mut windows = app.windows::<Window>();
+        let renderer = app.renderer::<Window>();
+        let mut targets = renderer.targets();
 
         let mut last_update = Instant::now();
 
