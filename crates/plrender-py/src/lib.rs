@@ -1,7 +1,7 @@
 use plr::app::{
     events::Event,
     window::{Window, WindowOptions},
-    App,
+    App, PLRender,
 };
 use pyo3::prelude::*;
 use pyo3::types::IntoPyDict;
@@ -20,7 +20,13 @@ use pyo3::types::IntoPyDict;
 fn plrender(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
     m.add_class::<PyApp>()?;
     m.add_class::<PyWindow>()?;
+    m.add_function(wrap_pyfunction!(run, m)?)?;
     Ok(())
+}
+
+#[pyfunction]
+fn run() {
+    pollster::block_on(PLRender::run());
 }
 
 #[pyclass(name = "App")]
@@ -91,25 +97,19 @@ pub enum WindowSize {
 #[pymethods]
 impl PyWindow {
     #[new]
-    #[pyo3(signature = (app=None, size=WindowSize::SizeTuple(800, 600), title="PLRender"))]
-    pub fn new(app: Option<&PyApp>, size: WindowSize, title: &str) -> PyResult<Self> {
+    #[pyo3(signature = (size=WindowSize::SizeTuple(800, 600), title="PLRender"))]
+    pub fn new(size: WindowSize, title: &str) -> PyResult<Self> {
         let (width, height) = match size {
             WindowSize::SizeTuple(w, h) => (w, h),
             WindowSize::SizeDict { w, h } => (w, h),
             WindowSize::SizeFullDict { width, height } => (width, height),
         };
 
-        let window = match app {
-            Some(app) => Window::new(
-                &app.inner,
-                WindowOptions {
-                    size: Some((width, height)),
-                    title: Some(title.to_string()),
-                    ..Default::default()
-                },
-            ),
-            None => Ok(Window::default()),
-        };
+        let window = Window::new(WindowOptions {
+            size: Some((width, height)),
+            title: Some(title.to_string()),
+            ..Default::default()
+        });
 
         if let Ok(window) = window {
             Ok(PyWindow { inner: window })
@@ -124,7 +124,7 @@ impl PyWindow {
         pollster::block_on(self.inner.run());
     }
 
-    pub fn on(&mut self, event: &str, callback: PyObject) -> PyResult<()> {
+    pub fn on(&mut self, event_name: &str, callback: PyObject) -> PyResult<()> {
         let caller = move |event: Event| {
             let _ = Python::with_gil(|py| -> PyResult<()> {
                 match event {
@@ -213,7 +213,7 @@ impl PyWindow {
                 }
             });
         };
-        self.inner.on(event, Box::new(caller));
+        self.inner.on(event_name, Box::new(caller));
         Ok(())
     }
 }

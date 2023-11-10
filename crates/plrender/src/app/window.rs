@@ -1,8 +1,7 @@
 use crate::{
-    app::{error::READ_LOCK_ERROR, error::WRITE_LOCK_ERROR, App, Container, Event},
+    app::{error::READ_LOCK_ERROR, error::WRITE_LOCK_ERROR, Container, Event, PLRender},
     renderer::target::HasSize,
 };
-use log::warn;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
@@ -15,10 +14,9 @@ use raw_window_handle::{
 };
 use serde::{Deserialize, Serialize};
 
-pub trait CallbackFn<E>: Fn(E) + Send + Sync {}
-impl<E, F> CallbackFn<E> for F where F: Fn(E) + Send + Sync {}
+pub trait CallbackFn<E>: FnMut(E) + Send + Sync {}
+impl<E, F> CallbackFn<E> for F where F: FnMut(E) + Send + Sync {}
 
-// type CallbackFn<E> = dyn Fn(E) + Send + Sync;
 type Callback<E> = Arc<RwLock<dyn CallbackFn<E>>>;
 
 // @TODO remove deprecated "raw"s, waiting for https://github.com/gfx-rs/wgpu/pull/4202
@@ -52,7 +50,7 @@ impl EventListener for WindowState {
     fn call(&self, name: &str, event: Event) {
         if let Some(callbacks) = self.callbacks.get(name) {
             callbacks.iter().for_each(|callback| {
-                let callback = callback.read().expect(READ_LOCK_ERROR);
+                let mut callback = callback.write().expect(WRITE_LOCK_ERROR);
                 callback(event.clone());
             });
         }
@@ -71,15 +69,8 @@ impl Debug for WindowState {
 }
 
 #[derive(Debug)]
-pub enum InnerApp {
-    Internal(App),
-    External,
-}
-
-#[derive(Debug)]
 pub struct Window {
     state: Arc<RwLock<WindowState>>,
-    app: Option<InnerApp>,
 }
 
 impl Debug for dyn IsWindow {
@@ -233,34 +224,23 @@ impl Default for WindowOptions {
 }
 
 impl Default for Window {
-    /// Create a singleton Window with default options and an internal event loop.
+    /// Creates a Window with default options.
     ///
-    /// # Panics!
-    /// Because Winit must have only one event loop running in the main thread,
-    /// this method will panic if you try to create a second window.
-    ///
-    /// Use it if you are sure your application will use only one window.
-    /// Otherwise, use Window::new(&app, options) to inject an external
-    /// App instance which holds the global event loop.
-    ///
-    /// This method is useful for quickly creating Rust example applications with
-    /// less boilerplate. It is not supposed to be used in the public Js+Py API.
+    /// ## Panics!
+    /// This method panics if the OS cannot create the window.
+    /// If you would like to handle the error, use Window::new()
+    /// instead and provide the options manually.
     fn default() -> Self {
-        let app = App::default();
-        let mut window = Self::new(
-            &app,
-            WindowOptions {
-                ..Default::default()
-            },
-        )
-        .expect("Failed to create default window");
-        window.app = Some(InnerApp::Internal(app));
-        window
+        Self::new(WindowOptions {
+            ..Default::default()
+        })
+        .expect("Failed to create default window")
     }
 }
 
 impl Window {
-    pub fn new(app: &App, options: WindowOptions) -> Result<Self, winit::error::OsError> {
+    pub fn new(options: WindowOptions) -> Result<Self, winit::error::OsError> {
+        let app = PLRender::app();
         let window = winit::window::WindowBuilder::new()
             .with_title(options.title.as_ref().unwrap_or(&"PLRender".to_string()))
             .with_inner_size(winit::dpi::Size::Logical(
@@ -293,11 +273,9 @@ impl Window {
                 callbacks: HashMap::new(),
                 auto_resize: options.auto_resize.unwrap_or(true),
             })),
-            app: None,
         };
 
         pollster::block_on(app.add_window(&mut window));
-        window.app = Some(InnerApp::External);
 
         Ok(window)
     }
@@ -370,20 +348,11 @@ impl Window {
         self
     }
 
-    pub fn app(&mut self) -> &mut InnerApp {
-        self.app.as_mut().expect("App is Not Initialized")
-    }
-
     pub async fn run(&mut self) {
-        if self.app.is_some() {
-            match self.app() {
-                InnerApp::Internal(app) => app.run().await,
-                InnerApp::External => warn!("Can't run external event loop"),
-            };
-        }
+        PLRender::run().await;
     }
 
-    pub fn on(&mut self, event_name: &str, callback: impl CallbackFn<Event> + 'static) {
+    pub fn on(&self, event_name: &str, callback: impl CallbackFn<Event> + 'static) {
         let callback = Arc::new(RwLock::new(callback));
         self.state
             .write()
