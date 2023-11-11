@@ -1,10 +1,11 @@
 use crate::{
+    components,
     geometry::{Position, Vertex},
     renderer::{
         target::{HasSize, RenderTarget, RenderTargetCollection},
         Commands, RenderContext, RenderPass, Renderer,
     },
-    scene::{components, Scene},
+    scene::Scene,
     Color,
 };
 use bytemuck::{Pod, Zeroable};
@@ -223,7 +224,6 @@ impl<'r> RenderPass for Solid<'r> {
             let local_bgl = &self.local_bind_group_layout;
 
             let entity_count = scene
-                .world
                 .query::<(&components::Renderable, &Color)>()
                 .with::<&Vertex<Position>>()
                 .iter()
@@ -283,7 +283,6 @@ impl<'r> RenderPass for Solid<'r> {
                 pass.set_bind_group(0, &self.global_bind_group, &[]);
 
                 for (_, (entity, color)) in scene
-                    .world
                     .query::<(&crate::Renderable, &crate::Color)>()
                     .with::<&Vertex<Position>>()
                     .iter()
@@ -307,7 +306,7 @@ impl<'r> RenderPass for Solid<'r> {
                     let pos_vs = mesh.vertex_stream::<Position>().unwrap();
                     pass.set_vertex_buffer(0, mesh.buffer.slice(pos_vs.offset..));
 
-                    if let Some(ref is) = mesh.index_stream {
+                    if let Some(ref is) = mesh.vertex_ids {
                         pass.set_index_buffer(mesh.buffer.slice(is.offset..), is.format);
                         pass.draw_indexed(0..is.count, 0, 0..1);
                     } else {

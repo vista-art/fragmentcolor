@@ -1,5 +1,7 @@
 use crate::{
+    components,
     geometry::vertex,
+    geometry::vertex::{Normal, Position, Vertex},
     renderer::{
         target::HasSize, Commands, RenderContext, RenderPass, RenderTarget, RenderTargetCollection,
         Renderer,
@@ -373,15 +375,14 @@ impl<'r> RenderPass for Phong<'r> {
             }
 
             let lights = scene
-                .world
-                .query::<&crate::Light>()
+                .query::<&components::Light>()
                 .iter()
                 .map(|(_, light)| {
                     let transform = &nodes[light.node];
                     let mut position = transform.position;
                     position[3] = match light.variant {
-                        crate::LightType::Directional => 0.0,
-                        crate::LightType::Point => 1.0,
+                        components::light::LightType::Directional => 0.0,
+                        components::light::LightType::Point => 1.0,
                     };
                     let mut color_intensity = light.color.into_vec4();
                     color_intensity[3] = light.intensity;
@@ -403,10 +404,9 @@ impl<'r> RenderPass for Phong<'r> {
             // pre-create the bind groups so that we don't need to do it on the fly
             let local_bgl = &self.local_bind_group_layout;
             let entity_count = scene
-                .world
-                .query::<(&crate::Renderable, &crate::Color, &Shader)>()
-                .with::<&crate::Vertex<vertex::Position>>()
-                .with::<&crate::Vertex<vertex::Normal>>()
+                .query::<(&components::Renderable, &components::Color, &Shader)>()
+                .with::<&Vertex<Position>>()
+                .with::<&Vertex<Normal>>()
                 .iter()
                 .count();
             let uniform_pool_size = self
@@ -460,10 +460,9 @@ impl<'r> RenderPass for Phong<'r> {
                 pass.set_bind_group(0, &self.global_bind_group, &[]);
 
                 for (_, (entity, &color, &shader)) in scene
-                    .world
-                    .query::<(&crate::Renderable, &crate::Color, &Shader)>()
-                    .with::<&crate::Vertex<vertex::Position>>()
-                    .with::<&crate::Vertex<vertex::Normal>>()
+                    .query::<(&components::Renderable, &components::Color, &Shader)>()
+                    .with::<&Vertex<Position>>()
+                    .with::<&Vertex<Normal>>()
                     .iter()
                 {
                     let local = &nodes[entity.node_id];
@@ -474,12 +473,12 @@ impl<'r> RenderPass for Phong<'r> {
                     // collect the `LIGHT_COUNT` lights most affecting the entity
                     self.temp_lights.clear();
                     let entity_pos = glam::Vec3::from_slice(&local.position[..3]);
-                    let mut lights = scene.world.query::<&crate::Light>();
+                    let mut lights = scene.query::<&components::Light>();
 
                     for (index, (_, light)) in lights.iter().enumerate() {
                         let light_pos = glam::Vec3::from_slice(&nodes[light.node].position[..3]);
                         let intensity = match light.variant {
-                            crate::LightType::Point => {
+                            components::LightType::Point => {
                                 let distance = (entity_pos - light_pos).length();
                                 if distance <= entity_radius {
                                     light.intensity
@@ -488,7 +487,7 @@ impl<'r> RenderPass for Phong<'r> {
                                     light.intensity / bound_distance * bound_distance
                                 }
                             }
-                            crate::LightType::Directional => light.intensity,
+                            components::LightType::Directional => light.intensity,
                         };
                         if intensity > INTENSITY_THRESHOLD {
                             self.temp_lights.push((intensity, index as u32));
@@ -531,7 +530,7 @@ impl<'r> RenderPass for Phong<'r> {
                     pass.set_vertex_buffer(0, mesh.vertex_slice::<vertex::Position>());
                     pass.set_vertex_buffer(1, mesh.vertex_slice::<vertex::Normal>());
 
-                    if let Some(ref is) = mesh.index_stream {
+                    if let Some(ref is) = mesh.vertex_ids {
                         pass.set_index_buffer(mesh.buffer.slice(is.offset..), is.format);
                         pass.draw_indexed(0..is.count, 0, 0..1);
                     } else {

@@ -35,7 +35,7 @@ impl Default for Camera {
                 extent_y: 1.0,
             },
             depth: 0.0..1.0,
-            node: NodeId::default(),
+            node: NodeId::root(),
             background: crate::Color::default(),
         }
     }

@@ -383,7 +383,6 @@ impl<'r> crate::RenderPass for Real<'r> {
             }
 
             let lights = scene
-                .world
                 .query::<&crate::Light>()
                 .iter()
                 .map(|(_, light)| {
@@ -414,7 +413,6 @@ impl<'r> crate::RenderPass for Real<'r> {
             self.instances.clear();
 
             for (_, (entity, &color, mat)) in scene
-                .world
                 .query::<(&crate::Renderable, &crate::Color, &Material)>()
                 .with::<&Vertex<Position>>()
                 .with::<&Vertex<TextureCoordinates>>()
@@ -515,7 +513,7 @@ impl<'r> crate::RenderPass for Real<'r> {
                     pass.set_vertex_buffer(1, mesh.vertex_slice::<TextureCoordinates>());
                     pass.set_vertex_buffer(2, mesh.vertex_slice::<Normal>());
 
-                    if let Some(ref is) = mesh.index_stream {
+                    if let Some(ref is) = mesh.vertex_ids {
                         pass.set_index_buffer(mesh.buffer.slice(is.offset..), is.format);
                         pass.draw_indexed(0..is.count, 0, 0..1);
                     } else {

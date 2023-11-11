@@ -1,8 +1,6 @@
-pub mod builder;
-pub mod components;
 pub mod node;
+pub mod object;
 pub mod scene;
 
-pub use builder::*;
-pub use components::*;
+pub use object::*;
 pub use scene::*;

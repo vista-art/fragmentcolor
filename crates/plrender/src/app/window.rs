@@ -231,10 +231,12 @@ impl Default for Window {
     /// If you would like to handle the error, use Window::new()
     /// instead and provide the options manually.
     fn default() -> Self {
-        Self::new(WindowOptions {
+        let window = Self::new(WindowOptions {
             ..Default::default()
         })
-        .expect("Failed to create default window")
+        .expect("Failed to create default window");
+
+        window
     }
 }
 

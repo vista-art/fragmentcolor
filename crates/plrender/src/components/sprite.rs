@@ -1,8 +1,7 @@
-use crate::renderer::texture::TextureId;
-use crate::scene::{
-    components::{RenderableId, Transform},
-    node::NodeId,
-    ObjectBuilder,
+use crate::{
+    components::Transform,
+    renderer::texture::TextureId,
+    scene::{node::NodeId, EntityId, SceneObject},
 };
 use std::ops::Range;
 
@@ -20,7 +19,7 @@ pub struct SpriteBuilder {
     pub(crate) uv: Option<UvRange>,
 }
 
-impl ObjectBuilder<'_, SpriteBuilder> {
+impl SceneObject<'_, SpriteBuilder> {
     pub fn uv(&mut self, uv: UvRange) -> &mut Self {
         self.object.uv = Some(uv);
         self
@@ -32,12 +31,12 @@ impl ObjectBuilder<'_, SpriteBuilder> {
         self
     }
 
-    pub fn build(&mut self) -> RenderableId {
+    pub fn build(&mut self) -> EntityId {
         let sprite = Sprite {
-            node: if self.node.local == Transform::default() {
-                self.node.parent
+            node: if self.node.local() == Transform::default() {
+                self.node.parent()
             } else {
-                self.scene.set_node_id(&mut self.node)
+                self.scene.insert_scene_tree_node(&mut self.node)
             },
             image: self.object.image,
             uv: self.object.uv.take(),
@@ -48,6 +47,6 @@ impl ObjectBuilder<'_, SpriteBuilder> {
         // The method "add" is used to add Components to the Renderable.
         let built = self.object.builder.add(sprite).build();
 
-        self.scene.world.spawn(built)
+        self.scene.add(built)
     }
 }
