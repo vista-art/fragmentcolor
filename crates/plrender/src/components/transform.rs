@@ -4,16 +4,16 @@ use std::ops;
 #[derive(Clone, Debug, PartialEq)]
 pub struct Transform {
     pub position: glam::Vec3,
+    pub rotation: glam::Quat,
     pub scale: glam::Vec3,
-    pub orientation: glam::Quat,
 }
 
 impl Default for Transform {
     fn default() -> Self {
         Self {
             position: glam::Vec3::ZERO,
+            rotation: glam::Quat::IDENTITY,
             scale: glam::Vec3::ONE,
-            orientation: glam::Quat::IDENTITY,
         }
     }
 }
@@ -21,51 +21,51 @@ impl Default for Transform {
 impl Transform {
     pub(crate) fn combine(&self, other: &Self) -> Self {
         Self {
+            position: self.scale * (self.rotation * other.position) + self.position,
+            rotation: self.rotation * other.rotation,
             scale: self.scale * other.scale,
-            orientation: self.orientation * other.orientation,
-            position: self.scale * (self.orientation * other.position) + self.position,
         }
     }
 
     fn inverse(&self) -> Self {
         let scale = 1.0 / self.scale;
-        let orientation = self.orientation.inverse();
-        let position = -scale * (orientation * self.position);
+        let rotation = self.rotation.inverse();
+        let position = -scale * (rotation * self.position);
         Self {
             position,
             scale,
-            orientation,
+            rotation,
         }
     }
 
     fn to_matrix(&self) -> glam::Mat4 {
-        glam::Mat4::from_scale_rotation_translation(self.scale, self.orientation, self.position)
+        glam::Mat4::from_scale_rotation_translation(self.scale, self.rotation, self.position)
     }
 }
 
 #[derive(Debug)]
-pub struct LocalTransform {
+pub struct LocalsUniform {
     pub position: [f32; 4],
-    pub scale: [f32; 4],
     pub rotation: [f32; 4],
+    pub scale: [f32; 4],
 }
 
-impl From<Transform> for LocalTransform {
+impl From<Transform> for LocalsUniform {
     fn from(space: Transform) -> Self {
         Self {
             position: [space.position.x, space.position.y, space.position.z, 1.0],
             scale: [space.scale.x, space.scale.y, space.scale.z, 1.0],
-            rotation: space.orientation.into(),
+            rotation: space.rotation.into(),
         }
     }
 }
 
-impl LocalTransform {
+impl LocalsUniform {
     pub fn to_transform(&self) -> Transform {
         Transform {
             position: glam::Vec3::new(self.position[0], self.position[1], self.position[2]),
             scale: glam::Vec3::new(self.scale[0], self.scale[1], self.scale[2]),
-            orientation: glam::Quat::from_array(self.rotation),
+            rotation: glam::Quat::from_array(self.rotation),
         }
     }
 
@@ -75,12 +75,12 @@ impl LocalTransform {
 }
 
 pub struct GlobalTransforms {
-    pub transforms: Box<[LocalTransform]>,
+    pub transforms: Box<[LocalsUniform]>,
 }
 
 impl ops::Index<NodeId> for GlobalTransforms {
-    type Output = LocalTransform;
-    fn index(&self, node: NodeId) -> &LocalTransform {
+    type Output = LocalsUniform;
+    fn index(&self, node: NodeId) -> &LocalsUniform {
         &self.transforms[node.0 as usize]
     }
 }

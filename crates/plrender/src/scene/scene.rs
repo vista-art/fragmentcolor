@@ -1,18 +1,18 @@
-use crate::app::{error::READ_LOCK_ERROR, error::WRITE_LOCK_ERROR, Container};
-use crate::renderer::{
-    resources::mesh::MeshPrototype,
-    target::{HasSize, Target},
-    texture::TextureId,
-};
-use crate::scene::{
-    builder::ObjectBuilder,
-    components,
-    components::{RenderableBuilder, RenderableId},
-    node::{Node, NodeId},
-    sprite::SpriteBuilder,
-    transform::LocalTransform,
-};
 use crate::GlobalTransforms;
+use crate::{
+    app::{error::READ_LOCK_ERROR, error::WRITE_LOCK_ERROR, Container},
+    components,
+    components::{sprite::SpriteBuilder, transform::LocalsUniform, RenderableBuilder},
+    renderer::{
+        resources::mesh::MeshPrototype,
+        target::{HasSize, Target},
+        texture::TextureId,
+    },
+    scene::{
+        node::{Node, NodeId},
+        object::SceneObject,
+    },
+};
 use std::sync::{RwLockReadGuard, RwLockWriteGuard};
 use std::{
     collections::HashMap,
@@ -32,6 +32,8 @@ impl ops::IndexMut<NodeId> for Vec<Node> {
         &mut self[node.0 as usize]
     }
 }
+
+pub type EntityId = hecs::Entity;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct SceneId(pub u32);
@@ -79,8 +81,8 @@ impl Container<SceneId, SceneState> for Scenes {
 }
 
 pub struct Scene {
-    pub world: hecs::World,
-    pub nodes: Vec<Node>,
+    world: hecs::World,
+    nodes: Vec<Node>,
 }
 
 impl Debug for Scene {
@@ -138,6 +140,11 @@ impl Scene {
     }
 
     /// Returns the currently active camera.
+    ///
+    /// Perhaps this could be a property of a target.
+    /// Targets would create or query a camera component
+    /// attached to it. The concept of "active" camera
+    /// does not make sense if we can have multiple targets.
     pub fn camera(&self) -> components::camera::Camera {
         // queries all entities with a Camera component
 
@@ -156,33 +163,53 @@ impl Scene {
     }
 
     // @TODO this method is intended to replace all the other "add" methods below.
-    pub fn add(&mut self, components: impl hecs::DynamicBundle) -> RenderableId {
+    //
+    // Maybe instead of receiving a bundle, we should have a custom trait here.
+    pub fn add(&mut self, components: impl hecs::DynamicBundle) -> EntityId {
         self.world.spawn(components)
     }
 
-    // this is supposed to be called by the builder
-    pub(super) fn set_node_id(&mut self, node: &mut Node) -> NodeId {
+    pub fn query<Q: hecs::Query>(&self) -> hecs::QueryBorrow<'_, Q> {
+        self.world.query::<Q>()
+    }
+
+    pub fn get<'a, T: hecs::ComponentRef<'a>>(
+        &'a self,
+        entity: EntityId,
+    ) -> Result<T::Ref, hecs::ComponentError> {
+        self.world.get::<T>(entity)
+    }
+
+    /// Increases the scene tree level and returns the new node level.
+    pub(crate) fn insert_scene_tree_node(&mut self, node: &mut Node) -> NodeId {
         let index = self.nodes.len();
         self.nodes.push(mem::take(node));
         NodeId(index as u32)
     }
 
     // I got the pattern now. Every "add" function in Baryon
-    // returns a BUILDER. The set_node_id is what actually
+    // returns a BUILDER. The insert_scene_tree_node is what actually
     // ADDS the node in the scene.
-    pub fn add_node(&mut self) -> ObjectBuilder<()> {
-        ObjectBuilder {
+    pub fn new_node(&mut self) -> SceneObject<()> {
+        SceneObject {
             scene: self,
             node: Node::default(),
             object: (),
         }
     }
 
-    pub fn add_entity(&mut self, prototype: MeshPrototype) -> ObjectBuilder<RenderableBuilder> {
+    // Entity, in the context of the legacy Baryon code, represents
+    // a bundle that contains a Mesh.
+    //
+    // This method should be removed after we get rid of the builders.
+    // The architecture of this library will be based in pure ECS pattern
+    // where an Entity is just an ID representing a collection of arbitrary
+    // components that may or may not include a Mesh
+    pub fn new_renderable(&mut self, prototype: MeshPrototype) -> SceneObject<RenderableBuilder> {
         let mesh_id = prototype.id;
         let mut builder = hecs::EntityBuilder::new();
         builder.add_bundle(prototype);
-        ObjectBuilder {
+        SceneObject {
             scene: self,
             node: Node::default(),
             object: RenderableBuilder { builder, mesh_id },
@@ -190,10 +217,10 @@ impl Scene {
     }
 
     // @TODO implement this method using the generic add() method above.
-    pub fn add_sprite(&mut self, image: TextureId) -> ObjectBuilder<SpriteBuilder> {
+    pub fn new_sprite(&mut self, image: TextureId) -> SceneObject<SpriteBuilder> {
         let builder = hecs::EntityBuilder::new();
 
-        ObjectBuilder {
+        SceneObject {
             scene: self,
             node: Node::default(),
             object: SpriteBuilder {
@@ -205,16 +232,18 @@ impl Scene {
     }
 
     pub fn get_global_transforms(&self) -> GlobalTransforms {
-        let mut transforms: Vec<LocalTransform> = Vec::with_capacity(self.nodes.len());
-        for n in self.nodes.iter() {
-            let transform = if n.parent == NodeId::default() {
-                n.local.clone()
+        let mut transforms: Vec<LocalsUniform> = Vec::with_capacity(self.nodes.len());
+        for node in self.nodes.iter() {
+            let transform = if node.parent() == NodeId::root() {
+                node.local()
             } else {
-                let parent_transform = transforms[n.parent.0 as usize].to_transform();
-                parent_transform.combine(&n.local)
+                let parent_transform = transforms[node.parent().as_usize()].to_transform();
+                parent_transform.combine(&node.local())
             };
+
             transforms.push(transform.into());
         }
+
         GlobalTransforms {
             transforms: transforms.into_boxed_slice(),
         }

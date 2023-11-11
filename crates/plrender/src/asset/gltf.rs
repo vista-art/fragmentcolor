@@ -1,6 +1,6 @@
 use crate::{
-    geometry::vertex, renderer, renderer::resources::mesh::MeshBuilder, scene::components, Color,
-    MeshPrototype,
+    components, components::Color, geometry::vertex, renderer,
+    renderer::resources::mesh::MeshBuilder, Node, RenderableBuilder, SceneObject,
 };
 use std::{collections::VecDeque, ops, path::Path};
 
@@ -171,7 +171,7 @@ impl<T> NamedVec<T> {
 
 #[derive(Default)]
 pub struct Module {
-    pub entities: NamedVec<crate::RenderableId>,
+    pub entities: NamedVec<crate::EntityId>,
     pub cameras: NamedVec<crate::Camera>,
 }
 
@@ -222,12 +222,12 @@ pub fn load_gltf(
         let (translation, rotation, scale) = gltf_node.transform().decomposed();
 
         let node = scene
-            .add_node()
+            .new_node()
             .parent(parent)
             .position(translation.into())
-            .orientation(rotation.into())
+            .rotation(rotation.into())
             .scale(mint::Vector3::from(scale))
-            .build();
+            .add_to_scene();
 
         for gltf_child in gltf_node.children() {
             deque.push_back(PreNode {
@@ -239,20 +239,28 @@ pub fn load_gltf(
         if let Some(gltf_mesh) = gltf_node.mesh() {
             log::debug!("Mesh {:?}", gltf_mesh.name());
             for primitive in prototypes[gltf_mesh.index()].iter_mut() {
-                let entity = scene
-                    .add_entity(MeshPrototype {
-                        id: primitive.mesh.id,
-                        type_ids: primitive.mesh.type_ids.clone(),
-                        type_infos: primitive.mesh.type_infos.clone(),
-                    })
+                // @TODO this block is a copy of the old Scene method:
+                //       let mut renderable_builder = scene.new_renderable(bundle);
+                //       it is now repeated in a few places and needs
+                //       to be refactored into a single method somewhere.
+                let mesh_id = primitive.mesh.id;
+                let mut builder = hecs::EntityBuilder::new();
+                builder.add_bundle(&primitive.mesh);
+                let mut renderable_builder = SceneObject {
+                    scene,
+                    node: Node::default(),
+                    object: RenderableBuilder { builder, mesh_id },
+                };
+
+                let renderable = renderable_builder
                     .component(primitive.color)
                     .component(primitive.shader)
                     .component(primitive.material)
                     .parent(node)
-                    .build();
+                    .add_to_scene();
 
                 module.entities.0.push(Named {
-                    data: entity,
+                    data: renderable,
                     name: gltf_mesh.name().map(str::to_string),
                 });
             }

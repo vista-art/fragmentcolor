@@ -1,6 +1,6 @@
-use crate::color::Color;
-use crate::scene::{components::transform::Transform, node::NodeId, ObjectBuilder};
-use crate::RenderableId;
+use crate::components::{Color, Transform};
+use crate::scene::{node::NodeId, SceneObject};
+use crate::EntityId;
 
 #[derive(Clone, Copy, Debug)]
 pub enum LightType {
@@ -26,7 +26,7 @@ pub struct LightBuilder {
 // contains only light-related information. If we are
 // going to go all-in into ECS, Light should be just
 // a regular entity containing an Emissive component
-impl ObjectBuilder<'_, LightBuilder> {
+impl SceneObject<'_, LightBuilder> {
     pub fn intensity(&mut self, intensity: f32) -> &mut Self {
         self.object.intensity = intensity;
         self
@@ -37,12 +37,12 @@ impl ObjectBuilder<'_, LightBuilder> {
         self
     }
 
-    pub fn build(&mut self) -> RenderableId {
+    pub fn build(&mut self) -> EntityId {
         let light = Light {
-            node: if self.node.local == Transform::default() {
-                self.node.parent
+            node: if self.node.local() == Transform::default() {
+                self.node.parent()
             } else {
-                self.scene.set_node_id(&mut self.node)
+                self.scene.insert_scene_tree_node(&mut self.node)
             },
             color: self.object.color,
             intensity: self.object.intensity,

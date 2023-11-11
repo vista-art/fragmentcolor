@@ -1,24 +1,29 @@
-pub mod animation;
 pub mod app;
 pub mod asset;
-pub mod color;
+pub mod components;
 pub mod geometry;
 pub mod renderer;
 pub mod scene;
 
-pub use animation::Animator;
-
 pub use app::{
     window::{IsWindow, Window},
-    App, Event, EventLoop,
+    App, Event, EventLoop, PLRender,
 };
-
-pub use color::Color;
 
 pub use geometry::{Geometry, Vertex};
 
+pub use components::{
+    animation::Animator,
+    camera::{Camera, Projection},
+    color::Color,
+    light::{Light, LightBuilder, LightType},
+    renderable::{Renderable, RenderableBuilder},
+    sprite::{Sprite, SpriteBuilder, UvRange},
+    transform::{GlobalTransforms, LocalsUniform, Transform},
+};
+
 pub use renderer::{
-    mesh::{IndexStream, Mesh, MeshBuilder, MeshId, MeshPrototype, VertexStream},
+    mesh::{Mesh, MeshBuilder, MeshId, MeshPrototype, VertexIds, VertexStream},
     renderer::{RenderContext, Renderer},
     renderpass::{Flat2D, Phong, Real, Shader, Solid},
     target::{HasSize, RenderTarget, Target, TargetId},
@@ -27,14 +32,7 @@ pub use renderer::{
 };
 
 pub use scene::{
-    builder::ObjectBuilder,
-    components::{
-        camera::{Camera, Projection},
-        light::{Light, LightBuilder, LightType},
-        renderable::{Renderable, RenderableBuilder, RenderableId},
-        sprite::{Sprite, SpriteBuilder, UvRange},
-    },
     node::{Node, NodeId},
-    transform::{GlobalTransforms, LocalTransform, Transform},
-    Scene,
+    object::SceneObject,
+    EntityId, Scene,
 };

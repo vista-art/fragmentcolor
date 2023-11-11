@@ -1,9 +1,10 @@
 use crate::{
+    components,
     renderer::{
         target::HasSize, Commands, RenderContext, RenderPass, RenderTarget, RenderTargetCollection,
         Renderer,
     },
-    scene::{components, Scene},
+    scene::Scene,
 };
 use std::mem;
 
@@ -249,7 +250,7 @@ impl<'r> RenderPass for Flat2D<'r> {
             let cam_dir = glam::Quat::from_slice(&cam_node.rotation) * -glam::Vec3::Z;
 
             // gather all sprites
-            for (_, sprite) in scene.world.query::<&components::Sprite>().iter() {
+            for (_, sprite) in scene.query::<&components::Sprite>().iter() {
                 let local = &nodes[sprite.node];
                 let cam_vector = glam::Vec3::from_slice(&local.position)
                     - glam::Vec3::from_slice(&cam_node.position);

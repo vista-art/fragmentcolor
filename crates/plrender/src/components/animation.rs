@@ -1,22 +1,18 @@
-use crate::scene::Scene;
+use crate::{components::Sprite, scene::Scene};
 use instant::{Duration, Instant};
 pub struct Animator {
-    pub map: crate::asset::SpriteMap,
+    pub sprite_map: crate::asset::SpriteMap,
     pub cell_counts: mint::Vector2<usize>,
-    pub duration: Duration,
-    pub sprite: crate::RenderableId,
     pub current: mint::Point2<usize>,
+    pub sprite: crate::EntityId,
+    pub duration: Duration,
     pub moment: Instant,
 }
 
 impl Animator {
     pub fn update_uv(&mut self, scene: &mut Scene) {
-        let uv_range = self.map.at(self.current);
-        scene
-            .world
-            .get::<&mut crate::Sprite>(self.sprite)
-            .unwrap()
-            .uv = Some(uv_range);
+        let uv_range = self.sprite_map.at(self.current);
+        scene.get::<&mut Sprite>(self.sprite).unwrap().uv = Some(uv_range);
     }
 
     pub fn switch<S: Into<usize>>(&mut self, state: usize, scene: &mut Scene) {
