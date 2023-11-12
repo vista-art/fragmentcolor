@@ -75,7 +75,3 @@ rustup target list
 ```
 
 Platform support is divided in Tiers, check the [Rust Platform Support](https://doc.rust-lang.org/nightly/rustc/platform-support.html) page for more information.
-
-### Target: Python Library
-
-Python support is planned for the near future. Please check the [First RFC](./rfc/0001-pl-video-processor-proposal.md) for more information.
