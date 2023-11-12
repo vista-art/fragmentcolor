@@ -1,39 +1,24 @@
-image: busybox
+image: rust
+
+stages:
+  - deploy
 
 pages:
   stage: deploy
+  image: rust
+  variables:
+    CARGO_HOME: $CI_PROJECT_DIR/cargo
+  before_script:
+    - export PATH="$PATH:$CARGO_HOME/bin"
+    - mdbook --version || cargo install mdbook
+  script:
+    - mdbook build -d public book
+    - echo "The book will be deployed to $CI_PAGES_URL"
+  rules:
+    - if: $CI_COMMIT_REF_NAME == $CI_DEFAULT_BRANCH
   artifacts:
     paths:
       - public
-  rules:
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-  script:
-    - echo "The site will be deployed to $CI_PAGES_URL"
-#
-# We have the old demo in the public folder for now.
-#
-# Uncomment this when the book is ready to be deployed
-# It will replace the static site with the old demo.
-#
-# stages:
-#   - deploy
-#
-# pages:
-#   stage: deploy
-#   image: rust
-#   variables:
-#     CARGO_HOME: $CI_PROJECT_DIR/cargo
-#   before_script:
-#     - export PATH="$PATH:$CARGO_HOME/bin"
-#     - mdbook --version || cargo install mdbook
-#   script:
-#     - mdbook build -d public book
-#     - echo "The book will be deployed to $CI_PAGES_URL"
-#   rules:
-#     - if: $CI_COMMIT_REF_NAME == $CI_DEFAULT_BRANCH
-#   artifacts:
-#     paths:
-#       - public
-#   cache:
-#     paths:
-#       - $CARGO_HOME/bin
+  cache:
+    paths:
+      - $CARGO_HOME/bin

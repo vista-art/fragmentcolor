@@ -1,6 +1,7 @@
 ROADMAP.md
 
 /target
+/public
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
