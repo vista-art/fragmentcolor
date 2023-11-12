@@ -2,6 +2,7 @@ use crate::{
     app::{error::READ_LOCK_ERROR, error::WRITE_LOCK_ERROR, Container, Event, PLRender},
     renderer::target::HasSize,
 };
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
@@ -12,7 +13,6 @@ use winit::window::WindowId;
 use raw_window_handle::{
     HasRawDisplayHandle, HasRawWindowHandle, RawDisplayHandle, RawWindowHandle,
 };
-use serde::{Deserialize, Serialize};
 
 pub trait CallbackFn<E>: FnMut(E) + Send + Sync {}
 impl<E, F> CallbackFn<E> for F where F: FnMut(E) + Send + Sync {}
@@ -26,6 +26,12 @@ pub trait IsWindow:
     fn id(&self) -> winit::window::WindowId;
     fn state(&mut self) -> Arc<RwLock<WindowState>>;
     fn request_redraw(&self);
+}
+
+impl Debug for dyn IsWindow {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "Window ID: {:?}", self.id())
+    }
 }
 
 pub trait EventListener {
@@ -69,17 +75,6 @@ impl Debug for WindowState {
 }
 
 #[derive(Debug)]
-pub struct Window {
-    state: Arc<RwLock<WindowState>>,
-}
-
-impl Debug for dyn IsWindow {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "Window ID: {:?}", self.id())
-    }
-}
-
-#[derive(Debug)]
 pub struct Windows {
     container: HashMap<WindowId, Arc<RwLock<WindowState>>>,
 }
@@ -114,6 +109,11 @@ impl Container<WindowId, WindowState> for Windows {
     fn len(&self) -> usize {
         self.container.len()
     }
+}
+
+#[derive(Debug)]
+pub struct Window {
+    state: Arc<RwLock<WindowState>>,
 }
 
 // Waiting for https://github.com/gfx-rs/wgpu/pull/4202
@@ -188,6 +188,14 @@ impl HasSize for Window {
     }
 }
 
+impl Clone for Window {
+    fn clone(&self) -> Self {
+        Self {
+            state: self.state.clone(),
+        }
+    }
+}
+
 /// All properties are optional, so this can be serialized
 /// to JSON. The user can inject a configuration object in
 /// in Javascript. In Python, we convert the input to named
@@ -226,10 +234,12 @@ impl Default for WindowOptions {
 impl Default for Window {
     /// Creates a Window with default options.
     ///
-    /// ## Panics!
+    /// # Panics!
     /// This method panics if the OS cannot create the window.
-    /// If you would like to handle the error, use Window::new()
-    /// instead and provide the options manually.
+    ///
+    /// If you would like to handle the error,
+    /// use `Window::new(WindowOptions::default())`
+    /// instead, which returns a `Result<Window, OsError>`.
     fn default() -> Self {
         let window = Self::new(WindowOptions {
             ..Default::default()
@@ -241,6 +251,7 @@ impl Default for Window {
 }
 
 impl Window {
+    /// Creates a Window with the given options.
     pub fn new(options: WindowOptions) -> Result<Self, winit::error::OsError> {
         let app = PLRender::app();
         let window = winit::window::WindowBuilder::new()
