@@ -1,8 +1,9 @@
-use crate::GlobalTransforms;
 use crate::{
     app::{error::READ_LOCK_ERROR, error::WRITE_LOCK_ERROR, Container},
     components,
-    components::{sprite::SpriteBuilder, transform::LocalsUniform, RenderableBuilder},
+    components::{
+        sprite::SpriteBuilder, transform::LocalsUniform, GlobalTransforms, RenderableBuilder,
+    },
     renderer::{
         resources::mesh::MeshPrototype,
         target::{HasSize, Target},
@@ -205,7 +206,7 @@ impl Scene {
     // The architecture of this library will be based in pure ECS pattern
     // where an Entity is just an ID representing a collection of arbitrary
     // components that may or may not include a Mesh
-    pub fn new_renderable(&mut self, prototype: MeshPrototype) -> SceneObject<RenderableBuilder> {
+    pub fn new_renderable(&mut self, prototype: &MeshPrototype) -> SceneObject<RenderableBuilder> {
         let mesh_id = prototype.id;
         let mut builder = hecs::EntityBuilder::new();
         builder.add_bundle(prototype);

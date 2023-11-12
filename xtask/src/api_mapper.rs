@@ -1,15 +1,17 @@
+use crate::meta;
 use quote::ToTokens;
 use std::{
     collections::{hash_map::Entry, HashMap, HashSet},
     convert::AsRef,
     fs,
     hash::Hash,
+    io::Write,
     path::{Path, PathBuf},
 };
 use syn::{parse_file, Ident, ImplItem, Item, ItemFn, ItemImpl, ReturnType, Visibility};
 
-// This will work, but it is an indication that
-// this file should be moved to a separate crate
+pub const API_MAP_KEYWORD: &str = "API_MAP";
+pub const API_MAP_FILE: &str = "generated/api_map.rs";
 pub const FUNCTION_SIGNATURE_STRUCT_NAME: &str = "FunctionSignature";
 pub const FUNCTION_SIGNATURE_STRUCT_DEFINITION: &str = "
 #[derive(Clone, Debug, PartialEq)]
@@ -60,9 +62,29 @@ enum NameFilter {
     Rename(String, String),
 }
 
-pub fn extract_public_functions(crate_path: &Path) -> ApiMap {
+pub fn map_public_api(crate_name: &str) {
+    println!();
+    println!("🗺️ Generating API map...");
+
+    generate_api_map(crate_name);
+
+    println!("✅ API map successfully generated!");
+    println!();
+}
+
+fn generate_api_map(crate_name: &str) {
+    let crate_root = meta::crate_root(crate_name);
+    let api_map_file = meta::workspace_root().join(API_MAP_FILE);
+    let api_map = extract_public_functions(crate_root.as_ref());
+
+    export_api_map(api_map, api_map_file.as_ref())
+}
+
+/// Traverses a Rust library `/src` directory and returns
+/// a HashMap of its public functions and their signatures
+fn extract_public_functions(crate_path: &Path) -> ApiMap {
     let mut signatures = ApiMap::new();
-    let (entry_path, parsed_file) = parse_entry_point(crate_path.as_ref());
+    let (entry_path, parsed_file) = parse_lib_entry_point(crate_path.as_ref());
 
     traverse_and_extract(
         entry_path.as_ref(),
@@ -74,7 +96,8 @@ pub fn extract_public_functions(crate_path: &Path) -> ApiMap {
     signatures
 }
 
-fn parse_entry_point(file_path: &Path) -> (PathBuf, syn::File) {
+/// Builds an AST from the lib's entry point file
+fn parse_lib_entry_point(file_path: &Path) -> (PathBuf, syn::File) {
     let entry_point = file_path.join("src/lib.rs");
     let content = fs::read_to_string(&entry_point).expect("Couldn't find src/lib.rs file");
     let parsed_file = parse_file(&content).expect("Failed to parse lib.rs file");
@@ -82,6 +105,7 @@ fn parse_entry_point(file_path: &Path) -> (PathBuf, syn::File) {
     (entry_point, parsed_file)
 }
 
+/// Traverses the AST and extracts all public functions
 fn traverse_and_extract(
     current_path: &Path,
     items: Vec<Item>,
@@ -142,6 +166,7 @@ fn traverse_and_extract(
     // Third pass: Process the items
     for item in items {
         match item {
+            // If the item is a module, we will recurse into it
             Item::Mod(item_mod) => {
                 if let Visibility::Public(_) = item_mod.vis {
                     let (mod_path, mod_items) = parse_module(current_path, &item_mod);
@@ -159,9 +184,11 @@ fn traverse_and_extract(
                     });
                 }
             }
+            // If the item is a struct, we will extract its public methods
             Item::Impl(item_impl) => {
                 extract_impl(item_impl, signatures, name_filter.clone());
             }
+            // If the item is a function, we will extract its signature
             Item::Fn(item_fn) => {
                 extract_fn(current_path, item_fn, signatures, name_filter.clone());
             }
@@ -280,6 +307,7 @@ fn extract_impl(item_impl: ItemImpl, signatures: &mut ApiMap, filter: NameFilter
     }
 }
 
+/// Maps a public function name to its signature
 fn extract_fn(path: &Path, item_fn: ItemFn, signatures: &mut ApiMap, filter: NameFilter) {
     if let Visibility::Public(_) = item_fn.vis {
         let mut signature = extract_signature(&item_fn.sig);
@@ -349,4 +377,35 @@ fn extract_signature(method: &syn::Signature) -> FunctionSignature {
         parameters,
         return_type,
     }
+}
+
+/// Exports the generated API map to a static Rust file
+fn export_api_map(api_map: ApiMap, target_file: &Path) {
+    let mut static_map_builder = phf_codegen::Map::new();
+    let mut target_file = fs::File::create(&target_file).unwrap();
+    let mut writer = std::io::BufWriter::new(&mut target_file);
+
+    for (struct_name, functions) in api_map {
+        static_map_builder.entry(
+            struct_name.clone(),
+            &format!(
+                "&[{}]",
+                functions
+                    .iter()
+                    .map(|function| {
+                        format!("{:?}, ", function).replace("parameters: [", "parameters: &[")
+                    })
+                    .collect::<String>()
+            ),
+        );
+    }
+
+    write!(
+        &mut writer,
+        "{}\n\nstatic {}: phf::Map<&'static str, &[FunctionSignature]> = {};\n",
+        FUNCTION_SIGNATURE_STRUCT_DEFINITION,
+        API_MAP_KEYWORD,
+        static_map_builder.build()
+    )
+    .unwrap();
 }

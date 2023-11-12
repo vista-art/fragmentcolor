@@ -105,7 +105,7 @@ impl Node {
     /// applying any other transformation.
     ///
     /// ## Learn more:
-    /// https://stackoverflow.com/questions/3855578
+    /// <https://stackoverflow.com/questions/3855578>
     pub fn pre_translate(&mut self, offset: mint::Vector3<f32>) {
         let other = Transform {
             position: offset.into(),
@@ -278,7 +278,7 @@ impl Node {
     /// before applying any other transformation.
     ///
     /// ## Learn more:
-    /// https://stackoverflow.com/questions/3855578
+    /// <https://stackoverflow.com/questions/3855578>
     pub fn pre_rotate(&mut self, axis: mint::Vector3<f32>, degrees: f32) {
         let other = Transform {
             position: glam::Vec3::ZERO,
@@ -299,7 +299,7 @@ impl Node {
     /// before applying any other transformation.
     ///
     /// ## Learn more:
-    /// https://stackoverflow.com/questions/3855578
+    /// <https://stackoverflow.com/questions/3855578>
     pub fn pre_rotate_degrees(&mut self, axis: mint::Vector3<f32>, degrees: f32) {
         let other = Transform {
             position: glam::Vec3::ZERO,
@@ -320,7 +320,7 @@ impl Node {
     /// before applying any other transformation.
     ///
     /// ## Learn more:
-    /// https://stackoverflow.com/questions/3855578
+    /// <https://stackoverflow.com/questions/3855578>
     pub fn pre_rotate_radians(&mut self, axis: mint::Vector3<f32>, radians: f32) {
         let other = Transform {
             position: glam::Vec3::ZERO,

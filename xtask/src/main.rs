@@ -1,114 +1,72 @@
-use std::{
-    fs::File,
-    io::{BufWriter, Write},
-    path::{Path, PathBuf},
-    process::Command,
-};
-use xtask::api_mapper;
+use std::env;
+use xtask::build;
 
-pub const API_MAP_KEYWORD: &str = "API_MAP";
-pub const API_MAP_FILE: &str = "generated/api_map.rs";
+type Error = Box<dyn std::error::Error>;
 
 fn main() {
-    println!("🚀 Running xtask...");
-
-    compile_crate("plrender", "⭕ Building PLRender...", true);
-
-    // @TODO bump version in documentation from project's Cargo.toml manifest
-
-    let crates = [crate_root("plrender")];
-    let api_map_file = workspace_root().join(API_MAP_FILE);
-    generate_api_map(&crates, &api_map_file, "🗺️ Generating API map...");
-
-    compile_crate("plrender-macros", "🧙‍♂️ Building API wrapper...", true);
-
-    compile_crate("plrender-py", "🐍 Building Python module...", false);
-
-    compile_crate("plrender-wasm", "🌎 Building JS/Wasm module...", false);
-
-    // @TODO update /pkg for running the JS examples
-
-    println!("🎉 All done! 🎉");
-
-    // @TODO inform the user about next steps and link to docs
+    if let Err(error) = run() {
+        eprintln!("{}", error);
+        std::process::exit(-1);
+    }
 }
 
-fn compile_crate(crate_name: &str, message: &str, required: bool) {
-    println!("\n{}", message);
+fn run() -> Result<(), Error> {
+    let task = env::args().nth(1);
+    let arg = env::args().nth(2);
 
-    let status = Command::new("cargo")
-        .args(&["build", "--package", crate_name])
-        .status()
-        .expect(&format!("Failed to run build command for {}", crate_name));
-
-    if !status.success() {
-        match required {
-            true => panic!("🛑 Compilation of required crate {} failed!\n", crate_name),
-            false => println!("⚠️ Compilation of optional crate {} failed!\n", crate_name),
-        };
-    } else {
-        println!("✅ compilation successful!\n");
-    };
-}
-
-fn generate_api_map(crate_roots: &[PathBuf], target_file: &Path, message: &str) {
-    println!();
-    println!("{}", message);
-
-    let mut api_map: api_mapper::ApiMap = api_mapper::ApiMap::new();
-    for crate_root in crate_roots {
-        let crate_api_map = api_mapper::extract_public_functions(crate_root);
-        api_map.extend(crate_api_map);
+    match task.as_deref() {
+        Some("help") => print_help(&arg.unwrap_or("".to_string())),
+        Some("build") => build::build(&arg.expect("Please provide the crate name")),
+        _ => build::build_all(),
     }
 
-    export_api_map(api_map, target_file);
-
-    println!("✅ API map successfully generated!");
-    println!();
+    Ok(())
 }
 
-fn export_api_map(api_map: api_mapper::ApiMap, target_file: &Path) {
-    let mut static_map_builder = phf_codegen::Map::new();
-    let mut target_file = File::create(&target_file).unwrap();
-    let mut writer = BufWriter::new(&mut target_file);
-
-    for (struct_name, functions) in api_map {
-        static_map_builder.entry(
-            struct_name.clone(),
-            &format!(
-                "&[{}]",
-                functions
-                    .iter()
-                    .map(|function| {
-                        format!("{:?}, ", function).replace("parameters: [", "parameters: &[")
-                    })
-                    .collect::<String>()
-            ),
-        );
+pub fn print_help(command: &str) {
+    match command {
+        "build" => print_build_help(),
+        "map" => print_api_map_help(),
+        _ => print_general_help(),
     }
-
-    write!(
-        &mut writer,
-        "{}\n\nstatic {}: phf::Map<&'static str, &[FunctionSignature]> = {};\n",
-        api_mapper::FUNCTION_SIGNATURE_STRUCT_DEFINITION,
-        API_MAP_KEYWORD,
-        static_map_builder.build()
-    )
-    .unwrap();
 }
 
-fn workspace_root() -> PathBuf {
-    let output = Command::new(env!("CARGO"))
-        .arg("locate-project")
-        .arg("--workspace")
-        .arg("--message-format=plain")
-        .output()
-        .unwrap()
-        .stdout;
-    let cargo_path = Path::new(std::str::from_utf8(&output).unwrap().trim());
-    cargo_path.parent().unwrap().to_path_buf()
+// @TODO it would be nicer to use `clap` here
+fn print_general_help() {
+    println!("Usage: cargo xtask [COMMAND] [CRATE]");
+    println!();
+    println!("Commands:");
+    println!("  build all           Builds all crates");
+    println!("  build [CRATE]       Builds the specified crate");
+    println!("  map   [CRATE]       Generates the API map of a crate");
+    println!("  help  [COMMAND]     Prints help about a command");
+    println!("  help                Prints this message");
 }
 
-fn crate_root(crate_name: &str) -> PathBuf {
-    workspace_root().join(format!("crates/{}", crate_name))
+fn print_build_help() {
+    println!("Usage: cargo xtask build [CRATE]");
+    println!();
+    println!("Subcommands:");
+    println!("  all                 Builds all crates");
+    println!("  plrender            Builds the plrender crate");
+    println!("  plrender-codegen    Builds the plrender-codegen crate");
+    println!("  plrender-py         Builds the plrender-py crate");
+    println!("  plrender-wasm       Builds the plrender-wasm crate");
+    println!();
+    println!("Example:");
+    println!("    cargo xtask build plrender");
+}
+
+fn print_api_map_help() {
+    println!("Usage: cargo xtask map [CRATE]");
+    println!();
+    println!("Crates:");
+    println!("  all                 Maps all crates");
+    println!("  plrender            Maps the plrender crate");
+    println!("  plrender-codegen    Maps the plrender-codegen crate");
+    println!("  plrender-py         Maps the plrender-py crate");
+    println!("  plrender-wasm       Maps the plrender-wasm crate");
+    println!();
+    println!("Example:");
+    println!("    cargo xtask map plrender");
 }
