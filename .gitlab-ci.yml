@@ -12,7 +12,8 @@ pages:
     - export PATH="$PATH:$CARGO_HOME/bin"
     - mdbook --version || cargo install mdbook
   script:
-    - mdbook build -d public book
+    - echo "Building book..."
+    - mdbook build -d ../public docs
     - echo "The book will be deployed to $CI_PAGES_URL"
   rules:
     - if: $CI_COMMIT_REF_NAME == $CI_DEFAULT_BRANCH
