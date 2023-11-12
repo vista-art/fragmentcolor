@@ -1,18 +1,90 @@
 image: rust
 
 stages:
+  - build
+  - test
   - deploy
+
+build:
+  stage: build
+  variables:
+    CARGO_HOME: $CI_PROJECT_DIR/cargo
+  script:
+    - cargo xtask
+  artifacts:
+    paths:
+      - target/debug
+  cache:
+    paths:
+      - $CARGO_HOME/bin
+
+# Enable this when you fix the Rust examples
+#
+# test:
+#   stage: test
+#   variables:
+#     CARGO_HOME: $CI_PROJECT_DIR/cargo
+#   before_script:
+#     - export PATH="$PATH:$CARGO_HOME/bin"
+#     - cargo --version || curl https://sh.rustup.rs -sSf | sh -s -- -y
+#   script:
+#     - cargo test
+#   artifacts:
+#     paths:
+#       - target/debug
+#   cache:
+#     paths:
+#       - $CARGO_HOME/bin
+
+docs:
+  stage: deploy
+  variables:
+    CARGO_HOME: $CI_PROJECT_DIR/cargo
+  script:
+    - echo "Building API reference..."
+    # becomes `cargo doc --no-deps -p <crate1> -p <crate2> ...`
+    - cargo tree --depth 1 -e normal --prefix none |
+      cut -d' ' -f1 | xargs printf -- '-p %s\n' |
+      xargs cargo doc --no-deps
+    - mv target/doc docs/src/api
+  artifacts:
+    paths:
+      - docs/src/api
+  cache:
+    paths:
+      - $CARGO_HOME/bin
+
+# TODO:
+#
+# examples:
+#   stage: deploy
+#   variables:
+#     CARGO_HOME: $CI_PROJECT_DIR/cargo
+#   script:
+#     - echo "Publishing JS / WASM Examples..."
+#     - cd and wasm-bindgen
+#     - ...
+#     - echo "Profit!"
+#   rules:
+#     - if: $CI_COMMIT_REF_NAME == $CI_DEFAULT_BRANCH
+#   artifacts:
+#     paths:
+#       - public
+#   cache:
+#     paths:
+#       - $CARGO_HOME/bin
 
 pages:
   stage: deploy
-  image: rust
+  dependencies:
+    - docs
   variables:
     CARGO_HOME: $CI_PROJECT_DIR/cargo
   before_script:
     - export PATH="$PATH:$CARGO_HOME/bin"
     - mdbook --version || cargo install mdbook
   script:
-    - echo "Building book..."
+    - echo "Building User Manual..."
     - mdbook build -d ../public docs
     - echo "The book will be deployed to $CI_PAGES_URL"
   rules:
