@@ -6,8 +6,8 @@
   - [Scene](./core_concepts/scenes.md)
   - [Target](./core_concepts/scenes.md)
   - [Scene Object](./core_concepts/scene_object.md)
-    - [Renderable](./architecture/scene_object/renderable.md)
-    - [Sprite](./architecture/scene_object/renderable.md)
+    - [Renderable](./core_concepts/scene_object/renderable.md)
+    - [Sprite](./core_concepts/scene_object/renderable.md)
     - [Shape](./core_concepts/scene_object/shape.md)
     - [Text](./core_concepts/scene_object/text.md)
     - [Overlays](./core_concepts/scene_object/overlays.md)
@@ -31,9 +31,9 @@
 - [Usage Examples](./usage_examples.md)
   - [Basic Video with Gaze Overlay](./usage_examples/basic_video.md)
     <!-- TODO: -->
-    <!-- - [Video and Reference Image](./usage_examples/dual_scenes.md)
-  - [Multiple Videos: World and Eye](./usage_examples/multiple_video_sources.md)
-  - [Watermark Image and SVG](./usage_examples/blipping_image_svg.md)
-  - [Custom Renderable Entities](./usage_examples/custom_entities.md)
-  - [Animating 2D Shapes](./usage_examples/animating_shapes.md) -->
+    <!-- - [Video and Reference Image](./usage_examples/dual_scenes.md) -->
+    <!-- - [Multiple Videos: World and Eye](./usage_examples/multiple_video_sources.md) -->
+    <!-- - [Watermark Image and SVG](./usage_examples/blipping_image_svg.md) -->
+    <!-- - [Custom Renderable Entities](./usage_examples/custom_entities.md) -->
+    <!-- - [Animating 2D Shapes](./usage_examples/animating_shapes.md) -->
 - [API Reference](./api_reference.md)
