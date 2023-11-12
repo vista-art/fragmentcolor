@@ -1,3 +1,5 @@
+//! Multiplatform GPU Rendering API for Javascript, Python and Beyond
+
 pub mod app;
 pub mod asset;
 pub mod components;

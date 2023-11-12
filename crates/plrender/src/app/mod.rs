@@ -3,6 +3,7 @@ pub mod container;
 pub mod error;
 pub mod event_loop;
 pub mod events;
+pub mod meta;
 pub mod window;
 
 pub use app::*;
