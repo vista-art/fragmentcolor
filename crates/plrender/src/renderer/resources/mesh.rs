@@ -4,35 +4,25 @@ use std::any::TypeId;
 use std::mem;
 use wgpu::util::DeviceExt;
 
+/// A unique identifier for a Mesh that
+/// is already loaded into the Renderer.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct MeshId(pub(super) u32);
 
-// @TODO this should be removed.
-//       there should be a more direct usage of hecs and ECS,
-//       and a more clear relationship between scene entities
-//       and renderer Resources. Perhaps this thing that holds
-//       the MeshId is what you cal "Renderables" component.
-//       Any entity with a Renderable component will have a
-//       mesh registered in the Renderer, and will hold its MeshId.
-
-/// A freshly created Mesh that includes
-/// metadata necessary to instantiate it.
+/// Metadata about a loaded Mesh resource.
 ///
-/// ## NOTE:
+/// This object is the link between the Scene
+/// and the Renderer. It is used as the input
+/// to create a Renderable component.
+///
 /// A MeshPrototype is created after inserting a Mesh
-/// resource into the Renderer, which returns the MeshId.
+/// resource into the Renderer, which returns a MeshId.
+/// The Prototype holds the MeshId and a list of TypeIds
+/// and TypeInfos about the actual Mesh vertex layout.
 ///
-/// This means it is already loaded into the Renderer,
-/// so the Prototype is just a reference to it.
-///
-/// This object seems to be the link between the Scene
-/// and the Renderer.
-///
-/// It is used as the input in the (soon to be removed)
-/// scene.new_renderable() method.
-///
-/// This objects might still be useful, though, I just
-/// need to come up with a better way to represent it.
+/// The existence of a MeshPrototype means that
+/// a Mesh is already loaded into the Renderer,
+/// and the Prototype is a reference to it.
 #[derive(hecs::Bundle, hecs::DynamicBundleClone)]
 pub struct MeshPrototype {
     pub id: MeshId,
@@ -65,7 +55,7 @@ unsafe impl<'a> hecs::DynamicBundle for &'a MeshPrototype {
 pub struct Mesh {
     // A Vertex might hold multiple types of
     // data (position, normal, color, etc)
-    vertices: Box<[VertexStream]>,
+    vertices: Box<[VertexData]>,
     pub buffer: wgpu::Buffer,
     pub vertex_ids: Option<VertexIds>,
     pub vertex_count: u32,
@@ -80,22 +70,22 @@ pub struct VertexIds {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub struct VertexStream {
+pub struct VertexData {
     type_id: std::any::TypeId,
     pub offset: wgpu::BufferAddress,
     pub stride: wgpu::BufferAddress,
 }
 
 impl Mesh {
-    pub fn vertex_stream<VertexType: 'static>(&self) -> Option<&VertexStream> {
+    pub fn vertex_data<VertexType: 'static>(&self) -> Option<&VertexData> {
         self.vertices
             .iter()
             .find(|vertex| vertex.type_id == std::any::TypeId::of::<VertexType>())
     }
 
     pub fn vertex_slice<T: 'static>(&self) -> wgpu::BufferSlice {
-        let stream = self.vertex_stream::<T>().unwrap();
-        self.buffer.slice(stream.offset..)
+        let data = self.vertex_data::<T>().unwrap();
+        self.buffer.slice(data.offset..)
     }
 }
 
@@ -104,7 +94,7 @@ pub struct MeshBuilder<'r> {
     name: String,
     data: Vec<u8>,
     vertex_ids: Option<VertexIds>,
-    vertices: Vec<VertexStream>,
+    vertices: Vec<VertexData>,
     type_infos: Vec<hecs::TypeInfo>,
     vertex_count: usize,
     bound_radius: f32,
@@ -153,7 +143,7 @@ impl<'r> MeshBuilder<'r> {
         } else {
             assert_eq!(self.vertex_count, data.len());
         }
-        self.vertices.push(VertexStream {
+        self.vertices.push(VertexData {
             type_id: std::any::TypeId::of::<T>(),
             offset,
             stride: mem::size_of::<T>() as _,

@@ -1,6 +1,8 @@
-use crate::components::{Color, Transform};
-use crate::scene::{node::NodeId, SceneObject};
-use crate::EntityId;
+use crate::{
+    components::Color,
+    scene::macros::has_node_id,
+    scene::{node::NodeId, SceneObject},
+};
 
 #[derive(Clone, Copy, Debug)]
 pub enum LightType {
@@ -8,48 +10,52 @@ pub enum LightType {
     Point,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Light {
-    pub node: NodeId,
+    pub node_id: NodeId,
     pub color: Color,
     pub intensity: f32,
     pub variant: LightType,
 }
 
-pub struct LightBuilder {
-    pub(crate) color: Color,
-    pub(crate) intensity: f32,
-    pub(crate) variant: LightType,
-}
+has_node_id!(Light);
 
-// Note that UNLIKE the Renderable Builder, this "subclass"
-// contains only light-related information. If we are
-// going to go all-in into ECS, Light should be just
-// a regular entity containing an Emissive component
-impl SceneObject<'_, LightBuilder> {
-    pub fn intensity(&mut self, intensity: f32) -> &mut Self {
+impl SceneObject<Light> {
+    pub fn set_intensity(&mut self, intensity: f32) -> &mut Self {
         self.object.intensity = intensity;
         self
     }
 
-    pub fn color(&mut self, color: Color) -> &mut Self {
+    pub fn set_color(&mut self, color: Color) -> &mut Self {
         self.object.color = color;
         self
     }
+}
 
-    pub fn build(&mut self) -> EntityId {
-        let light = Light {
-            node: if self.node.local() == Transform::default() {
-                self.node.parent()
-            } else {
-                self.scene.insert_scene_tree_node(&mut self.node)
-            },
-            color: self.object.color,
-            intensity: self.object.intensity,
-            variant: self.object.variant,
-        };
-        let mut builder = hecs::EntityBuilder::new();
-        let light_entity = builder.add(light).build();
-        self.scene.add(light_entity)
+#[derive(Debug, Clone, Copy)]
+pub struct LightOptions {
+    color: Color,
+    intensity: f32,
+    variant: LightType,
+}
+
+impl Light {
+    pub fn new(options: LightOptions) -> Self {
+        Light {
+            node_id: NodeId::root(),
+            color: options.color,
+            intensity: options.intensity,
+            variant: options.variant,
+        }
+    }
+
+    pub fn set_intensity(&mut self, intensity: f32) -> &mut Self {
+        self.intensity = intensity;
+        self
+    }
+
+    pub fn set_color(&mut self, color: Color) -> &mut Self {
+        self.color = color;
+        self
     }
 }

@@ -11,8 +11,8 @@ pub mod vertex;
 pub use vertex::*;
 
 bitflags::bitflags!(
-    /// Types of optional vertex streams.
-    pub struct Streams: u32 {
+    /// Optional vertex types.
+    pub struct VertexTypes: u32 {
         const NORMAL = 1 << 1;
     }
 );
@@ -25,19 +25,17 @@ pub struct Geometry {
 }
 
 impl Geometry {
-    pub fn bake(&self, renderer: &mut Renderer) -> mesh::MeshPrototype {
-        // Provisory until we refactor the Mesh API to remove the builder
-        // and implement a regular new() constructor method.
-        let mut mb = MeshBuilder::new(renderer);
+    pub fn build_mesh(&self, renderer: &mut Renderer) -> mesh::MeshPrototype {
+        let mut mesh_builder = MeshBuilder::new(renderer);
 
-        mb.radius(self.radius);
-        mb.vertex(&self.positions);
+        mesh_builder.radius(self.radius);
+        mesh_builder.vertex(&self.positions);
         if let Some(ref normals) = self.normals {
-            mb.vertex(normals);
+            mesh_builder.vertex(normals);
         }
         if let Some(ref indices) = self.indices {
-            mb.index(indices);
+            mesh_builder.index(indices);
         }
-        mb.build()
+        mesh_builder.build()
     }
 }

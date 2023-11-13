@@ -21,6 +21,7 @@ use std::{
 use wgpu::util::DeviceExt;
 use winit::window::WindowId;
 
+const DEFAULT_RENDER_PASS: &str = "flat";
 pub type Commands = Vec<wgpu::CommandBuffer>;
 
 type Error = Box<dyn std::error::Error>;
@@ -40,6 +41,7 @@ pub struct Renderer {
     pub(crate) adapter: wgpu::Adapter,
     pub(crate) device: wgpu::Device,
     pub(crate) queue: wgpu::Queue,
+    pub(crate) pass: &'static str,
     pub(crate) targets: Arc<Mutex<Targets>>,
     pub(crate) resources: Arc<Mutex<Resources>>,
 }
@@ -65,6 +67,7 @@ impl RenderContext for Renderer {
 
 impl Renderer {
     pub async fn new<'w, W: IsWindow>(options: RenderOptions<'w, W>) -> Result<Renderer, Error> {
+        let pass = options.render_pass.unwrap_or(DEFAULT_RENDER_PASS);
         let (instance, adapter, device, queue, targets) = Internal::gpu_objects(options).await?;
         let targets = Arc::new(Mutex::new(targets));
         let resources = Arc::new(Mutex::new(Resources::new()));
@@ -74,6 +77,7 @@ impl Renderer {
             adapter,
             device,
             queue,
+            pass,
             targets,
             resources,
         })
@@ -99,12 +103,40 @@ impl Renderer {
 
     // @TODO chainable render passes
     pub fn render(&mut self, scene: &Scene) -> Result<(), wgpu::SurfaceError> {
-        let mut pass = crate::renderer::renderpass::Flat2D::new(self);
+        if self.pass == "solid" {
+            return self.render_pass_solid(scene);
+        }
+        self.render_pass_flat(scene)
+    }
+
+    // Renders the Flat 2D render pass for sprites and shapes
+    pub fn render_pass_flat(&mut self, scene: &Scene) -> Result<(), wgpu::SurfaceError> {
+        let pass = crate::renderer::renderpass::Flat2D::new(self);
+
+        self.pass(scene, pass)
+    }
+
+    // Renders the Solid 3D render pass
+    pub fn render_pass_solid(&mut self, scene: &Scene) -> Result<(), wgpu::SurfaceError> {
+        let pass = crate::renderer::renderpass::Solid::new(
+            &crate::renderer::renderpass::SolidConfig {
+                cull_back_faces: true,
+            },
+            self,
+        );
+
+        self.pass(scene, pass)
+    }
+
+    /// Where the magic happens!
+    ///
+    /// Renders a Scene into a Frame with the given RenderPass
+    fn pass<P: RenderPass>(&self, scene: &Scene, mut pass: P) -> Result<(), wgpu::SurfaceError> {
         let mut targets = self.targets();
         let commands = pass.draw(scene)?;
 
-        targets.render(self, commands);
-        targets.present();
+        targets.render(self, commands); // renders the frame
+        targets.present(); // shows the rendered frame on the screen
 
         Ok(())
     }

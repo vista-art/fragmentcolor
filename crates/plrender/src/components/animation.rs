@@ -4,7 +4,7 @@ pub struct Animator {
     pub sprite_map: crate::asset::SpriteMap,
     pub cell_counts: mint::Vector2<usize>,
     pub current: mint::Point2<usize>,
-    pub sprite: crate::EntityId,
+    pub sprite: crate::ObjectId,
     pub duration: Duration,
     pub moment: Instant,
 }
@@ -12,7 +12,7 @@ pub struct Animator {
 impl Animator {
     pub fn update_uv(&mut self, scene: &mut Scene) {
         let uv_range = self.sprite_map.at(self.current);
-        scene.get::<&mut Sprite>(self.sprite).unwrap().uv = Some(uv_range);
+        scene.state().get::<&mut Sprite>(self.sprite).unwrap().uv = Some(uv_range);
     }
 
     pub fn switch<S: Into<usize>>(&mut self, state: usize, scene: &mut Scene) {

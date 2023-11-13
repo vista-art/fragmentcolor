@@ -1,11 +1,16 @@
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use instant::{Duration, Instant};
-use plrender::{animation::Animator, app::Key, Event, Target};
+use plrender::{
+    app::{window::Window, Key, PLRender},
+    components::animation::Animator,
+    scene::Scene,
+    Event,
+};
 
 #[repr(usize)]
 #[derive(Clone, Copy, Debug, PartialEq)]
-enum State {
+enum AnimationState {
     Idle = 0,
     MoveRight = 9,
     MoveLeft = 8,
@@ -13,116 +18,112 @@ enum State {
     Jump = 10,
     Lie = 12,
 }
-impl Default for State {
+
+impl Default for AnimationState {
     fn default() -> Self {
         Self::Idle
     }
 }
+
+static SCENE: OnceLock<Arc<Mutex<Scene>>> = OnceLock::new();
+
+static ANIMATOR: OnceLock<Arc<Mutex<Animator>>> = OnceLock::new();
 
 fn main() {
     pollster::block_on(run());
 }
 
 async fn run() {
-    use plrender::app::window::Window;
+    let mut window = Window::default()
+        .set_title("Sprite")
+        .set_size((800, 600))
+        .clone();
 
-    // You can use the App to create multiple Windows...
-    //   let app = plrender::App::default();
-    //   let window1 = plrender::Window::new(&app, WindowOptions::default());
-    //   let window2 = plrender::Window::new(&app, WindowOptions::default());
-    //
-    // ...or, if you are sure you'll use only one Window, you can create
-    // a default singleton Window that contains an App instance inside it:
-    //
-    // Renderer is now implicitly created by Window::default() or App::add_window()
-    // let mut renderer = Renderer::new(RenderOptions {
-    //     targets: Some(vec![window]),
-    //     ..Default::default()
-    // })
-    // .await
-    // .unwrap();
+    // @TODO Scene::new() should register itself in the App
+    //       like the Window does.
+    let mut scene = SCENE
+        .get_or_init(|| Arc::new(Mutex::new(Scene::new())))
+        .lock()
+        .unwrap();
 
-    let window = Window::default().set_title("Sprite").set_size((800, 600));
-    let mut scene = plrender::Scene::new();
+    // @TODO Renderer has to be accessed internally
+    //       by the scene without user input.
+    let app = PLRender::app();
+    let state = app.state();
+    let mut renderer = state.renderer::<Window>();
 
-    // @TODO scene will automatically create the camera below
-    //       the aspect and stride will be inferred from the window resolution
-    scene.add_target(Target::Window(window));
-
-    // this has to be part of the scene and created
-    // by default without user input.
-    let renderer = window.app().unwrap().state().renderer();
-
-    // It's currently like this:
+    // @TODO Resources loading could come from the Sprite itself
     let image = renderer
-        .unwrap()
         .load_image(format!(
             "{}/assets/images/pickachu.png",
             env!("CARGO_MANIFEST_DIR")
         ))
         .unwrap();
 
-    let sprite = scene.add_sprite(image).build();
+    let mut sprite = scene.new_sprite(image);
+    scene.add(&mut sprite);
 
-    // @TODO But should be like this:
-    // let sprite = plrender::Sprite::new(
-    //     &mut app,
-    //     format!(
-    //         "{}{}",
-    //         env!("CARGO_MANIFEST_DIR"),
-    //         "/assets/images/pickachu.png"
-    //     ),
-    // );
-    //
-    // scene.add(sprite);
-
-    let mut anim = Arc::new(Mutex::new(Animator {
-        map: plrender::asset::SpriteMap {
-            origin: mint::Point2 { x: 0, y: 0 },
-            cell_size: mint::Vector2 { x: 96, y: 96 },
-        },
-        cell_counts: mint::Vector2 { x: 5, y: 13 },
-        duration: Duration::from_secs_f64(0.1),
-        current: mint::Point2 { x: 0, y: 0 },
-        moment: Instant::now(),
-        sprite,
-    }));
-
-    anim.try_lock()
-        .unwrap()
-        .switch::<usize>(State::Idle as usize, &mut scene);
-
-    window.on(
-        "keydown",
-        Box::new(|event| match event {
-            Event::Keyboard { key, pressed } => {
-                if pressed {
-                    let new_state = match key {
-                        Key::Up => Some(State::Jump),
-                        Key::Down => Some(State::Lie),
-                        Key::Space => Some(State::Kick),
-                        Key::Left => Some(State::MoveLeft),
-                        Key::Right => Some(State::MoveRight),
-                        _ => None,
-                    };
-                    if let Some(state) = new_state {
-                        let anim = anim.try_lock().unwrap();
-                        if anim.current.y != state as usize || state == State::Kick {
-                            anim.switch::<usize>(state as usize, &mut scene);
-                        }
-                    }
-                };
-            }
-            _ => {}
-        }),
-    );
-
-    window.on("draw", |event| {
-        let renderer = window.app().unwrap().state().renderer().unwrap();
-        let mut anim = anim.try_lock().unwrap();
-        anim.tick(&mut scene);
-        renderer.render(&scene); //@todo remove camera, pick it with &scene.camera());
+    let anim = ANIMATOR.get_or_init(|| {
+        Arc::new(Mutex::new(Animator {
+            sprite_map: plrender::asset::SpriteMap {
+                origin: mint::Point2 { x: 0, y: 0 },
+                cell_size: mint::Vector2 { x: 96, y: 96 },
+            },
+            cell_counts: mint::Vector2 { x: 5, y: 13 },
+            duration: Duration::from_secs_f64(0.1),
+            current: mint::Point2 { x: 0, y: 0 },
+            moment: Instant::now(),
+            sprite: plrender::ObjectId::DANGLING,
+        }))
     });
 
-    window.run();
+    let mut anim = anim.lock().unwrap();
+    anim.sprite = sprite.id().unwrap();
+    anim.switch::<usize>(AnimationState::Idle as usize, &mut scene);
+
+    window.on("keydown", on_keydown);
+
+    window.on("draw", update);
+
+    window.run().await;
+}
+
+fn on_keydown(event: Event) {
+    match event {
+        Event::Keyboard { key, pressed } => {
+            if pressed {
+                let new_state = match key {
+                    Key::Up => Some(AnimationState::Jump),
+                    Key::Down => Some(AnimationState::Lie),
+                    Key::Space => Some(AnimationState::Kick),
+                    Key::Left => Some(AnimationState::MoveLeft),
+                    Key::Right => Some(AnimationState::MoveRight),
+                    _ => None,
+                };
+
+                if let Some(_state) = new_state {
+                    // let mut scene = SCENE.get_mut().unwrap();
+                    // let anim = ANIMATOR.get_mut().unwrap();
+                    // let mut anim = anim.lock().unwrap();
+
+                    // if anim.current.y != state as usize || state == AnimationState::Kick {
+                    //     //anim.switch::<usize>(state as usize, &mut scene);
+                    // }
+                }
+            };
+        }
+        _ => {}
+    }
+}
+
+fn update(_: Event) {
+    // let app = PLRender::app();
+    // let state = app.state();
+    // let mut _renderer = state.renderer::<Window>();
+    // let mut _scene = SCENE.get_mut().unwrap();
+    // let mut _anim = ANIMATOR.get_mut().unwrap().lock().unwrap();
+
+    // @TODO get it back
+    // anim.tick(&mut scene);
+    // renderer.render(&scene);
 }

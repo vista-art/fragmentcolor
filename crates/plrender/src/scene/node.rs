@@ -1,5 +1,29 @@
 use crate::components::transform::Transform;
+/// All components that have spatial data are associated with a Node.
+/// This trait provides a common interface for accessing the NodeId.
+pub trait HasNodeId {
+    /// Returns the NodeId associated with this component.
+    fn node_id(&self) -> NodeId;
 
+    /// Sets the NodeId associated with this component.
+    fn set_node_id(&mut self, node_id: NodeId);
+}
+
+/// The () type represents the root of the Scene tree.
+impl HasNodeId for () {
+    fn node_id(&self) -> NodeId {
+        NodeId::root()
+    }
+
+    fn set_node_id(&mut self, _: NodeId) {
+        // Do nothing
+    }
+}
+
+/// A NodeId is a reference for a Node in the Scene tree.
+///
+/// Objects that share the same spatial position in the
+/// scene might share the same NodeId.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct NodeId(pub u32);
 
@@ -27,8 +51,9 @@ impl NodeId {
 /// matrix will be relative to the Scene's origin.
 #[derive(Default, Debug, PartialEq)]
 pub struct Node {
-    parent: NodeId,
-    local: Transform,
+    pub(super) id: Option<NodeId>,
+    pub(super) parent: NodeId,
+    pub(super) local: Transform,
 }
 
 /// Because the Node is managed by the Scene, it does not have
@@ -39,8 +64,16 @@ pub struct Node {
 /// they can be chained.
 impl Node {
     // ------------------------------------------------------------------------
-    // Getter and Setter for Parent ID
+    // Getters for ID and Parent ID; Setter for Parent ID
     // ------------------------------------------------------------------------
+
+    /// Returns this Node's NodeId in the Scene tree.
+    pub fn id(&self) -> NodeId {
+        match self.id {
+            Some(id) => id,
+            None => NodeId::root(),
+        }
+    }
 
     /// Returns this Node's parent NodeId in the Scene tree.
     pub fn parent(&self) -> NodeId {
@@ -54,12 +87,17 @@ impl Node {
     }
 
     // ------------------------------------------------------------------------
-    // Getter for Local Transform
+    // Getters for Local Transform
     // ------------------------------------------------------------------------
 
-    /// Returns this Node's local Transform matrix.
-    pub fn local(&self) -> Transform {
+    /// Returns this Node's local Transform Matrix.
+    pub fn local_transform(&self) -> Transform {
         self.local.clone()
+    }
+
+    /// Whether this Node has moved relative to its parent.
+    pub fn has_moved(&self) -> bool {
+        self.local != Transform::default()
     }
 
     // ------------------------------------------------------------------------
@@ -81,14 +119,15 @@ impl Node {
 
     /// Moves this Node by the given offset.
     ///
-    /// The transformation (T) is applied as a simple addition to
-    /// the `position` property of the current Transform matrix (M):
-    /// **M' = M + T(vec3)**
+    /// The Transformation is implemented as a simple Vec3 (offset) addition
+    /// to the current Transform Matrix (M) position component:
+    ///
+    /// **M' = M.position + offset**
     ///
     /// This works for most use cases where users do not care about the
     /// order of transformations. If you need to apply the translation
-    /// before any other transformation, but they have already been
-    /// applied, then you can use `Node.pre_translate()` instead.
+    /// before any other transformation that has already been applied,
+    /// you can use `Node.pre_translate()` instead.
     pub fn translate(&mut self, offset: mint::Vector3<f32>) -> &mut Self {
         self.local.position += glam::Vec3::from(offset);
         self
@@ -96,10 +135,10 @@ impl Node {
 
     /// Moves this Node by the given offset.
     ///
-    /// This method creates a new Transform matrix containing the offset
-    /// position and multiplies it with the current Transform matrix. The
-    /// Offset Transform Matrix (T) comes before the current Transform (M)
-    /// in the order of operands: **M' = Offset(vec3) * M**
+    /// This method creates a new Offset Transform Matrix (T) containing the
+    /// offset vector and multiplies it with the current Transform Matrix (M):
+    ///
+    /// **M' = T(vec3) * M**
     ///
     /// This is the equivalent of calling Node.translate() before
     /// applying any other transformation.

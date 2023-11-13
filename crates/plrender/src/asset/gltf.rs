@@ -1,6 +1,6 @@
 use crate::{
     components, components::Color, geometry::vertex, renderer,
-    renderer::resources::mesh::MeshBuilder, Node, RenderableBuilder, SceneObject,
+    renderer::resources::mesh::MeshBuilder,
 };
 use std::{collections::VecDeque, ops, path::Path};
 
@@ -171,7 +171,7 @@ impl<T> NamedVec<T> {
 
 #[derive(Default)]
 pub struct Module {
-    pub entities: NamedVec<crate::EntityId>,
+    pub entities: NamedVec<crate::ObjectId>,
     pub cameras: NamedVec<crate::Camera>,
 }
 
@@ -221,46 +221,37 @@ pub fn load_gltf(
 
         let (translation, rotation, scale) = gltf_node.transform().decomposed();
 
-        let node = scene
-            .new_node()
-            .parent(parent)
-            .position(translation.into())
-            .rotation(rotation.into())
-            .scale(mint::Vector3::from(scale))
-            .add_to_scene();
+        let mut empty = scene.new_empty();
+        empty
+            .set_parent(parent)
+            .set_position(translation.into())
+            .set_rotation_quaternion(rotation.into())
+            .set_scale(scale.into());
+
+        scene.add(&mut empty);
 
         for gltf_child in gltf_node.children() {
             deque.push_back(PreNode {
                 gltf_node: gltf_child,
-                parent: node,
+                parent: empty.node.id(),
             });
         }
 
         if let Some(gltf_mesh) = gltf_node.mesh() {
             log::debug!("Mesh {:?}", gltf_mesh.name());
             for primitive in prototypes[gltf_mesh.index()].iter_mut() {
-                // @TODO this block is a copy of the old Scene method:
-                //       let mut renderable_builder = scene.new_renderable(bundle);
-                //       it is now repeated in a few places and needs
-                //       to be refactored into a single method somewhere.
-                let mesh_id = primitive.mesh.id;
-                let mut builder = hecs::EntityBuilder::new();
-                builder.add_bundle(&primitive.mesh);
-                let mut renderable_builder = SceneObject {
-                    scene,
-                    node: Node::default(),
-                    object: RenderableBuilder { builder, mesh_id },
-                };
+                let mut renderable_builder = scene.new_renderable(&primitive.mesh);
 
                 let renderable = renderable_builder
-                    .component(primitive.color)
-                    .component(primitive.shader)
-                    .component(primitive.material)
-                    .parent(node)
-                    .add_to_scene();
+                    .add_component(primitive.color)
+                    .add_component(primitive.shader)
+                    .add_component(primitive.material)
+                    .set_parent(empty.node.id());
+
+                let renderable_entity = scene.add(renderable);
 
                 module.entities.0.push(Named {
-                    data: renderable,
+                    data: renderable_entity,
                     name: gltf_mesh.name().map(str::to_string),
                 });
             }
@@ -288,13 +279,13 @@ pub fn load_gltf(
                 gltf_camera.name(),
                 depth,
                 projection,
-                scene[node]
+                scene.state_mut()[empty.node.id()]
             );
             module.cameras.0.push(Named {
                 data: components::camera::Camera {
                     projection,
                     depth,
-                    node,
+                    node_id: empty.node.id(),
                     background: Color::default(),
                 },
                 name: gltf_camera.name().map(str::to_string),
@@ -313,14 +304,16 @@ pub fn load_gltf(
             };
 
             let light_component = components::Light {
-                node,
+                node_id: empty.node.id(),
                 color: Color::from_rgb_alpha(gltf_light.color(), 0.0),
                 intensity: gltf_light.intensity(),
                 variant: light_type,
             };
-            let mut builder = hecs::EntityBuilder::new();
-            let light_entity = builder.add(light_component).build();
-            let light = scene.add(light_entity);
+
+            let mut light_object = scene.new_object(light_component.clone());
+            light_object.add_component(light_component);
+
+            let light = scene.add(&mut light_object);
 
             module.entities.0.push(Named {
                 data: light,

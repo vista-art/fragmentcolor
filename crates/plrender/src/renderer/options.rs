@@ -66,6 +66,7 @@ pub struct RenderOptions<'w, W: IsWindow> {
     pub force_software_rendering: Option<bool>,
     pub power_preference: Option<&'static str>,
     pub device_limits: Option<&'static str>,
+    pub render_pass: Option<&'static str>, // supports only 1 for now ("flat" or "solid"), not chainable yet
     pub targets: Option<Vec<&'w mut W>>,
 }
 
@@ -74,7 +75,8 @@ impl<'w, W: IsWindow> Default for RenderOptions<'w, W> {
         Self {
             force_software_rendering: Some(false),
             power_preference: Some("default"),
-            device_limits: None,
+            device_limits: Some("default"),
+            render_pass: Some("flat"),
             targets: None,
         }
     }

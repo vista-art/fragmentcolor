@@ -23,7 +23,7 @@ pub struct Camera {
     /// Specify the depth range as seen by the camera.
     /// `depth.start` maps to 0.0, and `depth.end` maps to 1.0.
     pub depth: ops::Range<f32>,
-    pub node: NodeId,
+    pub node_id: NodeId,
     pub background: crate::Color,
 }
 
@@ -35,7 +35,7 @@ impl Default for Camera {
                 extent_y: 1.0,
             },
             depth: 0.0..1.0,
-            node: NodeId::root(),
+            node_id: NodeId::root(),
             background: crate::Color::default(),
         }
     }

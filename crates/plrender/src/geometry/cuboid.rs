@@ -2,7 +2,7 @@ use crate::geometry::vertex;
 use std::iter;
 
 impl super::Geometry {
-    pub fn cuboid(streams: super::Streams, half_extent: mint::Vector3<f32>) -> Self {
+    pub fn cuboid(vertex_types: super::VertexTypes, half_extent: mint::Vector3<f32>) -> Self {
         let pos = |x, y, z| {
             vertex::Position([
                 (x as f32) * half_extent.x,
@@ -17,7 +17,7 @@ impl super::Geometry {
             + half_extent.z * half_extent.z)
             .sqrt();
 
-        if streams.contains(super::Streams::NORMAL) {
+        if vertex_types.contains(super::VertexTypes::NORMAL) {
             let positions = vec![
                 // top (0, 0, 1)
                 pos(-1, -1, 1),

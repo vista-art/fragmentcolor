@@ -44,13 +44,13 @@ impl Transform {
 }
 
 #[derive(Debug)]
-pub struct LocalsUniform {
+pub struct LocalTransform {
     pub position: [f32; 4],
     pub rotation: [f32; 4],
     pub scale: [f32; 4],
 }
 
-impl From<Transform> for LocalsUniform {
+impl From<Transform> for LocalTransform {
     fn from(space: Transform) -> Self {
         Self {
             position: [space.position.x, space.position.y, space.position.z, 1.0],
@@ -60,7 +60,7 @@ impl From<Transform> for LocalsUniform {
     }
 }
 
-impl LocalsUniform {
+impl LocalTransform {
     pub fn to_transform(&self) -> Transform {
         Transform {
             position: glam::Vec3::new(self.position[0], self.position[1], self.position[2]),
@@ -75,12 +75,12 @@ impl LocalsUniform {
 }
 
 pub struct GlobalTransforms {
-    pub transforms: Box<[LocalsUniform]>,
+    pub transforms: Box<[LocalTransform]>,
 }
 
 impl ops::Index<NodeId> for GlobalTransforms {
-    type Output = LocalsUniform;
-    fn index(&self, node: NodeId) -> &LocalsUniform {
+    type Output = LocalTransform;
+    fn index(&self, node: NodeId) -> &LocalTransform {
         &self.transforms[node.0 as usize]
     }
 }

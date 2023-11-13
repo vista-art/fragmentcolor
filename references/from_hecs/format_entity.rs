@@ -1,7 +1,7 @@
-type FormattingFunction = &'static dyn Fn(hecs::EntityId<'_>) -> Option<String>;
+type FormattingFunction = &'static dyn Fn(hecs::ObjectId<'_>) -> Option<String>;
 
-fn format_entity(entity: hecs::EntityId<'_>) -> String {
-    fn fmt<T: hecs::Component + std::fmt::Display>(entity: hecs::EntityId<'_>) -> Option<String> {
+fn format_entity(entity: hecs::ObjectId<'_>) -> String {
+    fn fmt<T: hecs::Component + std::fmt::Display>(entity: hecs::ObjectId<'_>) -> Option<String> {
         Some(entity.get::<&T>()?.to_string())
     }
 

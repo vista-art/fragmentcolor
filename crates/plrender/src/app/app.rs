@@ -179,24 +179,6 @@ impl App {
 }
 
 impl AppState {
-    /// Returns a mutex reference to the main Renderer.
-    ///
-    /// ## Side effects
-    /// Lazy-initializes the Renderer with default options if it doesn't exist.
-    /// Calling this function before creating a Window will create an offscreen
-    /// global Renderer that will not check for compatibility with any Window.
-    ///
-    /// ## Panics
-    /// - Panics if it fails to create the global Renderer.
-    /// - Panics if the current thread is dead while acquiring the mutex lock.
-    pub fn renderer<W: IsWindow>(&self) -> MutexGuard<'_, Renderer> {
-        let renderer = self.get_or_init_renderer::<W>(vec![]);
-
-        renderer
-            .try_lock()
-            .expect("Could not get Renderer mutex lock")
-    }
-
     /// Returns a mutex reference to the Windows collection.
     ///
     /// ## Panics
@@ -222,6 +204,49 @@ impl AppState {
     pub fn remove_window<W: IsWindow>(&self, window: W) {
         let mut windows = self.windows::<W>();
         windows.remove(window.id());
+    }
+
+    /// Returns a mutex reference to the Windows collection.
+    ///
+    /// ## Panics
+    /// - Panics if the current thread is dead while acquiring the mutex lock.
+    pub fn scenes<W: IsWindow>(&self) -> MutexGuard<'_, Windows> {
+        self.windows
+            .try_lock()
+            .expect("Could not get Windows Collection mutex lock")
+    }
+
+    // @TODO Add scene to the global collection
+    //       and bind it to the window.
+    //
+    /// Adds a scene to the Scenes collection.
+    // pub async fn add_scene<'s>(&mut self, scene: &'s mut Scene) {
+    //     let mut scenes = self.scenes::<Scene>();
+    //     scenes.insert(scene.id(), window.state());
+    // }
+
+    /// Removes a window from the Windows collection.
+    pub fn remove_scene<W: IsWindow>(&self, window: W) {
+        let mut scenes = self.scenes::<W>();
+        scenes.remove(window.id());
+    }
+
+    /// Returns a mutex reference to the main Renderer.
+    ///
+    /// ## Side effects
+    /// Lazy-initializes the Renderer with default options if it doesn't exist.
+    /// Calling this function before creating a Window will create an offscreen
+    /// global Renderer that will not check for compatibility with any Window.
+    ///
+    /// ## Panics
+    /// - Panics if it fails to create the global Renderer.
+    /// - Panics if the current thread is dead while acquiring the mutex lock.
+    pub fn renderer<W: IsWindow>(&self) -> MutexGuard<'_, Renderer> {
+        let renderer = self.get_or_init_renderer::<W>(vec![]);
+
+        renderer
+            .try_lock()
+            .expect("Could not get Renderer mutex lock")
     }
 
     /// Gets or initializes the global Renderer.
@@ -255,6 +280,7 @@ impl AppState {
             force_software_rendering: self.options.force_software_rendering,
             power_preference: self.options.power_preference,
             device_limits: self.options.device_limits,
+            render_pass: None, // @TODO
             targets,
         })
         .await?)
