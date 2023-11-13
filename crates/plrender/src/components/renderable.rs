@@ -1,14 +1,7 @@
 use crate::{
-    components::transform::Transform,
     renderer::resources::mesh::MeshId,
-    scene::{node::NodeId, object::SceneObject},
-    EntityId,
+    scene::{macros::has_node_id, node::NodeId, SceneObject},
 };
-
-pub struct RenderableBuilder {
-    pub builder: hecs::EntityBuilder,
-    pub mesh_id: MeshId,
-}
 
 /// The Renderable component
 #[derive(Debug)]
@@ -17,36 +10,20 @@ pub struct Renderable {
     pub mesh_id: MeshId,
 }
 
+has_node_id!(Renderable);
+
+impl SceneObject<Renderable> {
+    pub fn set_mesh(&mut self, mesh_id: MeshId) -> &mut Self {
+        self.object.mesh_id = mesh_id;
+        self
+    }
+}
+
 impl Renderable {
-    pub fn new(node_id: NodeId, mesh_id: MeshId) -> Self {
-        Self { node_id, mesh_id }
-    }
-}
-
-impl RenderableBuilder {
-    pub fn component<T: hecs::Component>(&mut self, component: T) -> &mut Self {
-        self.builder.add(component);
-        self
-    }
-}
-
-impl SceneObject<'_, RenderableBuilder> {
-    pub fn component<T: hecs::Component>(&mut self, component: T) -> &mut Self {
-        self.object.builder.add(component);
-        self
-    }
-
-    pub fn add_to_scene(&mut self) -> EntityId {
-        let renderable = Renderable {
-            node_id: if self.node.local() == Transform::default() {
-                self.node.parent()
-            } else {
-                self.scene.insert_scene_tree_node(&mut self.node)
-            },
-            mesh_id: self.object.mesh_id,
-        };
-
-        let entity = self.object.builder.add(renderable).build();
-        self.scene.add(entity)
+    pub fn new(mesh_id: MeshId) -> Self {
+        Renderable {
+            node_id: NodeId::root(),
+            mesh_id,
+        }
     }
 }

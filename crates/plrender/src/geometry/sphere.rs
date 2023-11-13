@@ -45,7 +45,7 @@ const BASE_FACES: [[u16; 3]; 20] = [
 ];
 
 impl super::Geometry {
-    pub fn sphere(streams: super::Streams, radius: f32, detail: usize) -> Self {
+    pub fn sphere(vertex_types: super::VertexTypes, radius: f32, detail: usize) -> Self {
         assert!(detail < 30); // just a sanity check
         let mut lookup = fxhash::FxHashMap::default();
         let mut prev_faces = Vec::new();
@@ -90,7 +90,7 @@ impl super::Geometry {
 
         let indices = faces.into_iter().flat_map(|face| face).collect::<Vec<_>>();
         let mut positions = Vec::with_capacity(vertices.len());
-        let mut normals = if streams.contains(super::Streams::NORMAL) {
+        let mut normals = if vertex_types.contains(super::VertexTypes::NORMAL) {
             Some(Vec::with_capacity(vertices.len()))
         } else {
             None

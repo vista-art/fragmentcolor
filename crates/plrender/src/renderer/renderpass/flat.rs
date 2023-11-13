@@ -227,7 +227,7 @@ impl<'r> RenderPass for Flat2D<'r> {
         let camera = scene.camera();
 
         let nodes = scene.get_global_transforms();
-        let cam_node = &nodes[camera.node];
+        let cam_node = &nodes[camera.node_id];
         self.uniform_pool.reset();
         let queue = renderer.queue();
 
@@ -250,8 +250,8 @@ impl<'r> RenderPass for Flat2D<'r> {
             let cam_dir = glam::Quat::from_slice(&cam_node.rotation) * -glam::Vec3::Z;
 
             // gather all sprites
-            for (_, sprite) in scene.query::<&components::Sprite>().iter() {
-                let local = &nodes[sprite.node];
+            for (_, sprite) in scene.state().query::<&components::Sprite>().iter() {
+                let local = &nodes[sprite.node_id];
                 let cam_vector = glam::Vec3::from_slice(&local.position)
                     - glam::Vec3::from_slice(&cam_node.position);
                 let camera_distance = cam_vector.dot(cam_dir);

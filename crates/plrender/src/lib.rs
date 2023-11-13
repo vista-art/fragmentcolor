@@ -18,14 +18,14 @@ pub use components::{
     animation::Animator,
     camera::{Camera, Projection},
     color::Color,
-    light::{Light, LightBuilder, LightType},
-    renderable::{Renderable, RenderableBuilder},
-    sprite::{Sprite, SpriteBuilder, UvRange},
-    transform::{GlobalTransforms, LocalsUniform, Transform},
+    light::{Light, LightType},
+    renderable::Renderable,
+    sprite::{Sprite, UvRange},
+    transform::{GlobalTransforms, LocalTransform, Transform},
 };
 
 pub use renderer::{
-    mesh::{Mesh, MeshBuilder, MeshId, MeshPrototype, VertexIds, VertexStream},
+    mesh::{Mesh, MeshBuilder, MeshId, MeshPrototype, VertexData, VertexIds},
     renderer::{RenderContext, Renderer},
     renderpass::{Flat2D, Phong, Real, Shader, Solid},
     target::{HasSize, RenderTarget, Target, TargetId},
@@ -36,5 +36,5 @@ pub use renderer::{
 pub use scene::{
     node::{Node, NodeId},
     object::SceneObject,
-    EntityId, Scene,
+    ObjectId, Scene,
 };

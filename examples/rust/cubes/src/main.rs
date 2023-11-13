@@ -1,17 +1,13 @@
 use instant::Instant;
 use plrender::Color;
 
+const ROOT_SCALE: f32 = 2.0;
+const SCALE_LEVEL: f32 = 0.4;
+
 struct Cube {
-    node: plrender::NodeId,
+    node_id: plrender::NodeId,
     level: u8,
 }
-
-const SCALE_ROOT: mint::Vector3<f32> = mint::Vector3 {
-    x: 2.0,
-    y: 2.0,
-    z: 2.0,
-};
-const SCALE_LEVEL: f32 = 0.4;
 
 struct Level {
     color: Color,
@@ -20,23 +16,23 @@ struct Level {
 
 const LEVELS: &[Level] = &[
     Level {
-        color: Color(0xFFFFFF80),
+        color: Color(0xFFFF80FF),
         speed: 20.0,
     },
     Level {
-        color: Color(0xFF8080FF),
+        color: Color(0x8080FFFF),
         speed: -30.0,
     },
     Level {
-        color: Color(0xFF80FF80),
+        color: Color(0x80FF80FF),
         speed: 40.0,
     },
     Level {
-        color: Color(0xFFFF8080),
+        color: Color(0xFF8080FF),
         speed: -60.0,
     },
     Level {
-        color: Color(0x8880FF55),
+        color: Color(0x80FF5588),
         speed: 80.0,
     },
 ];
@@ -46,21 +42,21 @@ fn fill_scene(
     scene: &mut plrender::Scene,
     mesh: plrender::MeshPrototype,
 ) -> Vec<Cube> {
-    let root_node = scene.add_node().scale(SCALE_ROOT).build();
+    let root_scale = mint::Vector3::from([ROOT_SCALE; 3]);
+    let mut root = scene.new_empty();
+    root.set_scale(root_scale);
 
-    let mesh = mesh.id;
-    let mut builder = hecs::EntityBuilder::new();
-    builder.add_bundle(mesh);
-    let mut cube = ObjectBuilder {
-        scene,
-        node: Node::default(),
-        object: RenderableBuilder { builder, mesh },
-    };
+    scene.add(&mut root);
 
-    let _cube = cube.parent(root_node).component(levels[0].color).build();
+    let mut renderable = scene.new_renderable(&mesh);
+    let cube = renderable
+        .set_parent(root.node.id())
+        .add_component(levels[0].color);
+
+    scene.add(cube);
 
     let mut list = vec![Cube {
-        node: root_node,
+        node_id: root.node.id(),
         level: 0,
     }];
 
@@ -69,11 +65,11 @@ fn fill_scene(
         level: u8,
     }
     let mut stack = vec![Stack {
-        parent: root_node,
+        parent: root.node.id(),
         level: 1,
     }];
 
-    let children = [
+    let children_positions = [
         mint::Vector3::from([0.0, 0.0, 1.0]),
         mint::Vector3::from([1.0, 0.0, 0.0]),
         mint::Vector3::from([-1.0, 0.0, 0.0]),
@@ -89,36 +85,38 @@ fn fill_scene(
             Some(level) => level,
             None => continue,
         };
-        for &child in children.iter() {
-            let node = scene
-                .add_node()
-                .position(mint::Vector3 {
+        for &position in children_positions.iter() {
+            let mut child = scene.new_empty();
+            child
+                .set_position(mint::Vector3 {
                     x: 0.0,
                     y: 0.0,
                     z: 1.0 + SCALE_LEVEL,
                 })
-                .scale(SCALE_LEVEL)
-                .parent(next.parent)
-                .build();
+                .set_scale(mint::Vector3::from([SCALE_LEVEL; 3]))
+                .set_parent(next.parent);
 
-            // OPEN QUESTION:
-            // Why does it use POST rotate here
-            // and pre_rotate in the other transform?
-            scene[node].post_rotate(child, 90.0);
+            scene.add(&mut child);
 
-            scene
-                .add_entity(bundle)
-                .parent(node)
-                .component(level.color)
-                .build();
+            // Maybe use rotate() if the results differ from the original.
+            let mut state = scene.state_mut();
+            state[child.node.id()].pre_rotate(position, 90.0);
+
+            let mut renderable = scene.new_renderable(&mesh);
+
+            renderable
+                .set_parent(child.node.id())
+                .add_component(level.color);
+
+            state.add(&mut renderable);
 
             list.push(Cube {
-                node,
+                node_id: child.node.id(),
                 level: next.level,
             });
 
             stack.push(Stack {
-                parent: node,
+                parent: child.node.id(),
                 level: next.level + 1,
             });
         }
@@ -131,53 +129,45 @@ fn main() {
     use plrender::{
         app::events::Event,
         app::window::Window,
-        geometry::{Geometry, Streams},
+        geometry::{Geometry, VertexTypes},
         renderer::RenderOptions,
         Renderer,
     };
+    let mut window = Window::default();
+    window.set_title("Cubes").set_size((800, 600));
 
-    let window = Window::default().set_title("Cubes").set_size((800, 600));
-
-    // @TODO renderer will be part of the scene now
+    // We can configure the renderer manually if we want
     let mut renderer = pollster::block_on(Renderer::new(RenderOptions {
-        targets: Some(vec![window]),
+        targets: Some(vec![&mut window]),
+        render_pass: Some("solid"),
         ..Default::default()
     }))
     .unwrap();
 
     let mut scene = plrender::Scene::new();
 
-    // @TODO Camera should be an entity with a Camera and a Transform components
-    let camera = plrender::Camera {
-        projection: plrender::Projection::Perspective { fov_y: 45.0 },
-        depth: 1.0..10.0,
-        node: scene
-            .add_node()
-            .position([1.8f32, -8.0, 3.0].into())
-            .look_at([0f32; 3].into(), [0f32, 0.0, 1.0].into())
-            .build(),
-        background: Color(0xFF203040),
-    };
+    let mut camera_node = scene.new_empty();
+    camera_node
+        .set_position([1.8f32, -8.0, 3.0].into())
+        .look_at([0f32; 3].into(), [0f32, 0.0, 1.0].into());
 
+    scene.add(&mut camera_node);
+
+    // The Geometry Object uses the Renderer to create an
+    // internal Mesh inside the renderer, which returns a
+    // MeshPrototype containing the MeshId.
     let mesh = Geometry::cuboid(
-        Streams::empty(),
+        VertexTypes::empty(),
         mint::Vector3 {
             x: 1.0,
             y: 1.0,
             z: 1.0,
         },
     )
-    .bake(&mut renderer);
+    .build_mesh(&mut renderer);
 
     let cubes = fill_scene(&LEVELS[..], &mut scene, mesh);
     println!("Initialized {} cubes", cubes.len());
-
-    let mut pass = plrender::renderer::renderpass::Solid::new(
-        &plrender::renderer::renderpass::SolidConfig {
-            cull_back_faces: true,
-        },
-        &renderer,
-    );
 
     let mut moment = Instant::now();
 
@@ -187,10 +177,10 @@ fn main() {
             moment = Instant::now();
             for cube in cubes.iter() {
                 let level = &LEVELS[cube.level as usize];
-                // OPEN QUESTION:
-                // Why does it use PRE rotate here
-                // and post_rotate in the first transform?
-                scene[cube.node].pre_rotate(
+                // NOTE use pre_rotate if the results
+                //      differ from the original.
+                let mut state = scene.state_mut();
+                state[cube.node_id].rotate(
                     mint::Vector3 {
                         x: 0.0,
                         y: 0.0,
@@ -200,7 +190,7 @@ fn main() {
                 );
             }
 
-            renderer.render(&scene);
+            let _ = renderer.render(&scene);
         }
         _ => {}
     })

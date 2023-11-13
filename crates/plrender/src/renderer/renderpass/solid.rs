@@ -212,7 +212,7 @@ impl<'r> RenderPass for Solid<'r> {
 
             {
                 let m_proj = camera.projection_matrix(target.aspect());
-                let m_view_inv = nodes[camera.node].inverse_matrix();
+                let m_view_inv = nodes[camera.node_id].inverse_matrix();
                 let m_final = glam::Mat4::from(m_proj) * glam::Mat4::from(m_view_inv);
                 let globals = Globals {
                     view_proj: m_final.to_cols_array_2d(),
@@ -224,6 +224,7 @@ impl<'r> RenderPass for Solid<'r> {
             let local_bgl = &self.local_bind_group_layout;
 
             let entity_count = scene
+                .state()
                 .query::<(&components::Renderable, &Color)>()
                 .with::<&Vertex<Position>>()
                 .iter()
@@ -283,6 +284,7 @@ impl<'r> RenderPass for Solid<'r> {
                 pass.set_bind_group(0, &self.global_bind_group, &[]);
 
                 for (_, (entity, color)) in scene
+                    .state()
                     .query::<(&crate::Renderable, &crate::Color)>()
                     .with::<&Vertex<Position>>()
                     .iter()
@@ -303,8 +305,8 @@ impl<'r> RenderPass for Solid<'r> {
                     pass.set_bind_group(1, local_bg, &[bl.offset]);
 
                     let mesh = resources.get_mesh(entity.mesh_id);
-                    let pos_vs = mesh.vertex_stream::<Position>().unwrap();
-                    pass.set_vertex_buffer(0, mesh.buffer.slice(pos_vs.offset..));
+                    let position_vertices = mesh.vertex_data::<Position>().unwrap();
+                    pass.set_vertex_buffer(0, mesh.buffer.slice(position_vertices.offset..));
 
                     if let Some(ref is) = mesh.vertex_ids {
                         pass.set_index_buffer(mesh.buffer.slice(is.offset..), is.format);

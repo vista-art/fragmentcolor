@@ -372,7 +372,7 @@ impl<'r> crate::RenderPass for Real<'r> {
 
             {
                 let m_proj = camera.projection_matrix(target.aspect());
-                let node = &nodes[camera.node];
+                let node = &nodes[camera.node_id];
                 let m_view_inv = node.inverse_matrix();
                 let m_final = glam::Mat4::from(m_proj) * glam::Mat4::from(m_view_inv);
                 let globals = Globals {
@@ -383,10 +383,11 @@ impl<'r> crate::RenderPass for Real<'r> {
             }
 
             let lights = scene
+                .state()
                 .query::<&crate::Light>()
                 .iter()
                 .map(|(_, light)| {
-                    let space = &nodes[light.node];
+                    let space = &nodes[light.node_id];
                     let mut position = space.position;
                     position[3] = match light.variant {
                         crate::LightType::Directional => 0.0,
@@ -413,6 +414,7 @@ impl<'r> crate::RenderPass for Real<'r> {
             self.instances.clear();
 
             for (_, (entity, &color, mat)) in scene
+                .state()
                 .query::<(&crate::Renderable, &crate::Color, &Material)>()
                 .with::<&Vertex<Position>>()
                 .with::<&Vertex<TextureCoordinates>>()

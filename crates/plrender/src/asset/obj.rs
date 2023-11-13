@@ -1,4 +1,4 @@
-use crate::{geometry::vertex, renderer, MeshBuilder, Node, RenderableBuilder, SceneObject};
+use crate::{geometry::vertex, renderer, MeshBuilder};
 use std::{iter, path::Path};
 
 /// Load entities from Wavefront Obj format.
@@ -7,7 +7,7 @@ pub fn load_obj(
     scene: &mut crate::Scene,
     node: crate::NodeId,
     renderer: &mut crate::Renderer,
-) -> fxhash::FxHashMap<String, crate::EntityId> {
+) -> fxhash::FxHashMap<String, crate::ObjectId> {
     let mut obj = obj::Obj::load(path).unwrap();
     obj.load_mtls().unwrap();
 
@@ -47,21 +47,9 @@ pub fn load_obj(
                 mesh_builder.vertex(&normals);
             }
             let bundle = mesh_builder.build();
-            //let mut renderable_builder = scene.new_renderable(bundle);
 
-            // @TODO this block is a copy of the old Scene method.
-            //       it is now repeated in a few places and needs
-            //       to be refactored into a single method somewhere.
-            let mesh_id = bundle.id;
-            let mut builder = hecs::EntityBuilder::new();
-            builder.add_bundle(bundle);
-            let mut renderable_builder = SceneObject {
-                scene,
-                node: Node::default(),
-                object: RenderableBuilder { builder, mesh_id },
-            };
-
-            renderable_builder.parent(node);
+            let mut renderable = scene.new_renderable(&bundle);
+            renderable.set_parent(node);
 
             log::info!(
                 "\tmaterial {} with {} positions and {} normals",
@@ -74,23 +62,23 @@ pub fn load_obj(
                     let color = cf.iter().fold(0xFF, |u, c| {
                         (u << 8) + (c * 255.0).max(0.0).min(255.0) as u32
                     });
-                    renderable_builder.component(crate::Color(color));
+                    renderable.add_component(crate::Color(color));
                 }
                 if !normals.is_empty() {
                     if let Some(glossiness) = mat.ns {
-                        renderable_builder.component(renderer::renderpass::Shader::Phong {
+                        renderable.add_component(renderer::renderpass::Shader::Phong {
                             glossiness: glossiness as u8,
                         })
                     } else {
-                        renderable_builder
-                            .component(renderer::renderpass::Shader::Gouraud { flat: false })
+                        renderable
+                            .add_component(renderer::renderpass::Shader::Gouraud { flat: false })
                     };
                 }
             }
 
-            let renderable = renderable_builder.add_to_scene();
+            let renderable_entity = scene.add(&mut renderable);
 
-            entities.insert(group.name, renderable);
+            entities.insert(group.name, renderable_entity);
         }
     }
 

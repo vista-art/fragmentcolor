@@ -359,7 +359,7 @@ impl<'r> RenderPass for Phong<'r> {
 
             {
                 let m_proj = camera.projection_matrix(target.aspect());
-                let m_view_inv = nodes[camera.node].inverse_matrix();
+                let m_view_inv = nodes[camera.node_id].inverse_matrix();
                 let m_final = glam::Mat4::from(m_proj) * glam::Mat4::from(m_view_inv);
                 let ambient = self.ambient.color.into_vec4();
                 let globals = Globals {
@@ -375,10 +375,11 @@ impl<'r> RenderPass for Phong<'r> {
             }
 
             let lights = scene
+                .state()
                 .query::<&components::Light>()
                 .iter()
                 .map(|(_, light)| {
-                    let transform = &nodes[light.node];
+                    let transform = &nodes[light.node_id];
                     let mut position = transform.position;
                     position[3] = match light.variant {
                         components::light::LightType::Directional => 0.0,
@@ -404,6 +405,7 @@ impl<'r> RenderPass for Phong<'r> {
             // pre-create the bind groups so that we don't need to do it on the fly
             let local_bgl = &self.local_bind_group_layout;
             let entity_count = scene
+                .state()
                 .query::<(&components::Renderable, &components::Color, &Shader)>()
                 .with::<&Vertex<Position>>()
                 .with::<&Vertex<Normal>>()
@@ -459,7 +461,8 @@ impl<'r> RenderPass for Phong<'r> {
 
                 pass.set_bind_group(0, &self.global_bind_group, &[]);
 
-                for (_, (entity, &color, &shader)) in scene
+                let state = scene.state();
+                for (_, (entity, &color, &shader)) in state
                     .query::<(&components::Renderable, &components::Color, &Shader)>()
                     .with::<&Vertex<Position>>()
                     .with::<&Vertex<Normal>>()
@@ -473,10 +476,10 @@ impl<'r> RenderPass for Phong<'r> {
                     // collect the `LIGHT_COUNT` lights most affecting the entity
                     self.temp_lights.clear();
                     let entity_pos = glam::Vec3::from_slice(&local.position[..3]);
-                    let mut lights = scene.query::<&components::Light>();
+                    let mut lights = state.query::<&components::Light>();
 
                     for (index, (_, light)) in lights.iter().enumerate() {
-                        let light_pos = glam::Vec3::from_slice(&nodes[light.node].position[..3]);
+                        let light_pos = glam::Vec3::from_slice(&nodes[light.node_id].position[..3]);
                         let intensity = match light.variant {
                             components::LightType::Point => {
                                 let distance = (entity_pos - light_pos).length();

@@ -4,7 +4,7 @@ description = "Multiplatform GPU Rendering API for Javascript, Python and Beyond
 repository = "https://gitlab.com/pupil-labs/pupil-cloud/pl-render"
 authors = ["Pupil Labs GmbH"]
 license-file = "LICENCE.md"
-version = "0.5.0"
+version = "0.6.0"
 rust-version = "1.70"
 edition = "2021"
 

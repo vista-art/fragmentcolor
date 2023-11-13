@@ -1,18 +1,17 @@
 use crate::{
     app::{error::READ_LOCK_ERROR, error::WRITE_LOCK_ERROR, Container},
     components,
-    components::{
-        sprite::SpriteBuilder, transform::LocalsUniform, GlobalTransforms, RenderableBuilder,
-    },
+    components::{sprite::Sprite, transform::LocalTransform, GlobalTransforms, Renderable},
     renderer::{
         resources::mesh::MeshPrototype,
         target::{HasSize, Target},
         texture::TextureId,
     },
     scene::{
-        node::{Node, NodeId},
-        object::SceneObject,
+        node::{HasNodeId, Node, NodeId},
+        object::{ObjectId, SceneObject, SceneObjectEntry},
     },
+    Camera, Color, Projection,
 };
 use std::sync::{RwLockReadGuard, RwLockWriteGuard};
 use std::{
@@ -34,8 +33,6 @@ impl ops::IndexMut<NodeId> for Vec<Node> {
     }
 }
 
-pub type EntityId = hecs::Entity;
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct SceneId(pub u32);
 
@@ -44,9 +41,105 @@ pub struct Scenes {
     container: HashMap<SceneId, Arc<RwLock<SceneState>>>,
 }
 
-#[derive(Debug)]
-pub struct SceneState {
-    pub instance: Scene,
+pub struct Scene {
+    pub state: Arc<RwLock<SceneState>>,
+}
+
+impl Scene {
+    pub fn new() -> Self {
+        // @TODO implement Scenes collection in the App
+        // let id = PLRender::app().new_scene();
+
+        // @TODO Scene should pick a default camera
+        //       without the user having to manually
+        //       set it up.
+        //
+        // let camera = plrender::Camera {
+        //     projection: plrender::Projection::Orthographic {
+        //         // the sprite configuration is not centered
+        //         center: [0.0, -10.0].into(),
+        //         extent_y: 40.0,
+        //     },
+        //     ..Default::default()
+        // };
+
+        Self {
+            state: Arc::new(RwLock::new(SceneState {
+                world: Default::default(),
+                nodes: vec![Node::default()],
+            })),
+        }
+    }
+
+    // @TODO We're almost there to achieve the desired API.
+    //       The methods below should be moved to their own
+    //       Object constructors after we implement a global
+    //       Scene collection in the App.
+
+    /// Returns a new SceneObject with the given Type.
+    pub fn new_object<T: HasNodeId>(&mut self, object: T) -> SceneObject<T> {
+        SceneObject::new(self.state.clone(), object)
+    }
+
+    /// Returns an empty SceneObject without any components.
+    pub fn new_empty(&self) -> SceneObject<()> {
+        SceneObject::new(self.state.clone(), ())
+    }
+
+    /// Returns a new Sprite SceneObject.
+    pub fn new_sprite(&self, image: TextureId) -> SceneObject<Sprite> {
+        SceneObject {
+            id: None,
+            builder: hecs::EntityBuilder::new(),
+            scene: self.state.clone(),
+            node: Node::default(),
+            object: Sprite {
+                node_id: NodeId::root(),
+                image,
+                uv: None,
+            },
+        }
+    }
+
+    /// Returns a new Renderable SceneObject.
+    pub fn new_renderable(&self, prototype: &MeshPrototype) -> SceneObject<Renderable> {
+        let mesh_id = prototype.id;
+        let mut builder = hecs::EntityBuilder::new();
+        builder.add_bundle(prototype);
+
+        SceneObject {
+            id: None,
+            builder,
+            scene: self.state.clone(),
+            node: Node::default(),
+            object: Renderable::new(mesh_id),
+        }
+    }
+
+    pub fn add_target(&self, target: Target) {
+        self.state.write().unwrap().add_target(target);
+    }
+
+    pub fn camera(&self) -> components::camera::Camera {
+        self.state().camera()
+    }
+
+    pub fn add(&mut self, object: &mut impl SceneObjectEntry) -> ObjectId {
+        let mut state = self.state_mut();
+        state.add(object)
+    }
+
+    pub fn get_global_transforms(&self) -> GlobalTransforms {
+        todo!()
+    }
+
+    pub fn state(&self) -> RwLockReadGuard<'_, SceneState> {
+        self.state.read().expect(READ_LOCK_ERROR)
+    }
+
+    pub fn state_mut(&self) -> RwLockWriteGuard<'_, SceneState> {
+        self.state.write().expect(WRITE_LOCK_ERROR)
+    }
 }
 
 impl Container<SceneId, SceneState> for Scenes {
@@ -81,50 +174,30 @@ impl Container<SceneId, SceneState> for Scenes {
     }
 }
 
-pub struct Scene {
-    world: hecs::World,
+pub struct SceneState {
+    pub world: hecs::World,
     nodes: Vec<Node>,
 }
 
-impl Debug for Scene {
+impl Debug for SceneState {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Scene").field("nodes", &self.nodes).finish()
     }
 }
 
-impl ops::Index<NodeId> for Scene {
+impl ops::Index<NodeId> for SceneState {
     type Output = Node;
     fn index(&self, node: NodeId) -> &Node {
         &self.nodes[node.0 as usize]
     }
 }
-impl ops::IndexMut<NodeId> for Scene {
+impl ops::IndexMut<NodeId> for SceneState {
     fn index_mut(&mut self, node: NodeId) -> &mut Node {
         &mut self.nodes[node.0 as usize]
     }
 }
 
-impl Scene {
-    pub fn new() -> Self {
-        // @TODO Scene should pick a default camera
-        //       without the user having to manually
-        //       set it up.
-        //
-        // let camera = plrender::Camera {
-        //     projection: plrender::Projection::Orthographic {
-        //         // the sprite configuration is not centered
-        //         center: [0.0, -10.0].into(),
-        //         extent_y: 40.0,
-        //     },
-        //     ..Default::default()
-        // };
-
-        Self {
-            world: Default::default(),
-            nodes: vec![Node::default()],
-        }
-    }
-
+impl SceneState {
     // @TODO maybe map a scene camera to each rendering target?
     pub fn add_target(&self, target: Target) {
         let size = target.size();
@@ -142,13 +215,17 @@ impl Scene {
 
     /// Returns the currently active camera.
     ///
-    /// Perhaps this could be a property of a target.
-    /// Targets would create or query a camera component
-    /// attached to it. The concept of "active" camera
-    /// does not make sense if we can have multiple targets.
+    // Perhaps this could be a property of a target.
+    // Targets would create or query a camera component
+    // attached to it.
+    //
+    // The concept of "active" camera does not make sense
+    // if we can have multiple targets.
     pub fn camera(&self) -> components::camera::Camera {
-        // queries all entities with a Camera component
+        // @TODO Query all entities with a Camera component
 
+        // Hardcoded from the Pikachu Sprite example. This is
+        // the camera we need for the Gaze Circle implementation.
         components::camera::Camera {
             projection: components::camera::Projection::Orthographic {
                 // the sprite configuration is not centered
@@ -159,87 +236,110 @@ impl Scene {
         }
     }
 
-    pub fn set_active_camera() {
-        // @TODO
+    pub fn perspective(&self, camera_node: NodeId) -> Camera {
+        // Hardcoded from the Cubes example. A basic 3D camer
+        Camera {
+            projection: Projection::Perspective { fov_y: 45.0 },
+            depth: 1.0..10.0,
+            node_id: camera_node, //camera_node.node.id(),
+            background: Color(0xFF203040),
+        }
     }
 
-    // @TODO this method is intended to replace all the other "add" methods below.
-    //
-    // Maybe instead of receiving a bundle, we should have a custom trait here.
-    pub fn add(&mut self, components: impl hecs::DynamicBundle) -> EntityId {
-        self.world.spawn(components)
+    /// Where all the magic happens! 🧙
+    ///
+    /// Adds a SceneObject to the Scene and returns its ObjectID.
+    ///
+    /// The Scene maintains two records:
+    ///
+    /// - The Scene Tree, which is a list of Nodes representing
+    ///   positions in the Scene Space. Objects might share the
+    ///   same Node if they occupy the same position in Space.
+    ///
+    /// - The ECS World, which is a list of Entities with their
+    ///   Components. Entities are simple IDs, while Components
+    ///   can be any type that implements Send + Sync + 'static.
+    ///   Components contain the actual data of the SceneObject.
+    ///   
+    /// The Object must implement the SceneObjectEntry interface.
+    /// It is expected that the Objects provide a list of their
+    /// Components and a Node object containing Spatial data.
+    ///
+    /// The Scene will add the Node to the Scene Tree if it has
+    /// moved relative to its parent, and return an optional
+    /// NodeId to the Object, which will save it internally
+    /// or use the same NodeId as its parent.
+    ///
+    /// The Scene will also create an Entity in the ECS World
+    /// containing all the Object's Components, and return an
+    /// ObjectId to the Object, which will save it internally.
+    ///
+    /// # Returns
+    /// The Scene returns the ObjectID to the caller, but users
+    /// rarely need to use it, as the SceneObject keep track of
+    /// its own ObjectId internally.
+    pub fn add(&mut self, object: &mut impl SceneObjectEntry) -> ObjectId {
+        let node_id = self.add_to_scene_tree(object);
+        object.added_to_scene_tree(node_id);
+
+        let object_id = self.add_to_scene(object);
+        object.added_to_scene(object_id);
+
+        object_id
     }
 
+    /// Adds the object to the Scene Tree if it has moved relative to its parent.
+    /// Otherwise, the object will share the same Node as its parent.
+    fn add_to_scene_tree(&mut self, object: &mut impl SceneObjectEntry) -> Option<NodeId> {
+        if object.has_moved() {
+            let node = object.node();
+            let index = self.nodes.len();
+            self.nodes.push(mem::take(node));
+            let id = NodeId(index as u32);
+
+            Some(id)
+        } else {
+            None
+        }
+    }
+
+    /// Adds the Object's components to the internal ECS World
+    /// and returns the Entity ID (typed as ObjectId in our API).
+    fn add_to_scene(&mut self, object: &mut impl SceneObjectEntry) -> ObjectId {
+        self.world.spawn(object.builder().build())
+    }
+
+    /// Iterate over all entities that have certain components,
+    /// using dynamic borrow checking.
     pub fn query<Q: hecs::Query>(&self) -> hecs::QueryBorrow<'_, Q> {
         self.world.query::<Q>()
     }
 
-    pub fn get<'a, T: hecs::ComponentRef<'a>>(
+    /// Reurns a reference to a component of an entity.
+    pub fn get<'a, C: hecs::ComponentRef<'a>>(
         &'a self,
-        entity: EntityId,
-    ) -> Result<T::Ref, hecs::ComponentError> {
-        self.world.get::<T>(entity)
+        entity: ObjectId,
+    ) -> Result<C::Ref, hecs::ComponentError> {
+        self.world.get::<C>(entity)
     }
 
-    /// Increases the scene tree level and returns the new node level.
-    pub(crate) fn insert_scene_tree_node(&mut self, node: &mut Node) -> NodeId {
-        let index = self.nodes.len();
-        self.nodes.push(mem::take(node));
-        NodeId(index as u32)
+    pub fn insert<C: hecs::DynamicBundle>(
+        &mut self,
+        entity: ObjectId,
+        component: C,
+    ) -> Result<(), hecs::NoSuchEntity> {
+        self.world.insert(entity, component)
     }
 
-    // I got the pattern now. Every "add" function in Baryon
-    // returns a BUILDER. The insert_scene_tree_node is what actually
-    // ADDS the node in the scene.
-    pub fn new_node(&mut self) -> SceneObject<()> {
-        SceneObject {
-            scene: self,
-            node: Node::default(),
-            object: (),
-        }
-    }
-
-    // Entity, in the context of the legacy Baryon code, represents
-    // a bundle that contains a Mesh.
-    //
-    // This method should be removed after we get rid of the builders.
-    // The architecture of this library will be based in pure ECS pattern
-    // where an Entity is just an ID representing a collection of arbitrary
-    // components that may or may not include a Mesh
-    pub fn new_renderable(&mut self, prototype: &MeshPrototype) -> SceneObject<RenderableBuilder> {
-        let mesh_id = prototype.id;
-        let mut builder = hecs::EntityBuilder::new();
-        builder.add_bundle(prototype);
-        SceneObject {
-            scene: self,
-            node: Node::default(),
-            object: RenderableBuilder { builder, mesh_id },
-        }
-    }
-
-    // @TODO implement this method using the generic add() method above.
-    pub fn new_sprite(&mut self, image: TextureId) -> SceneObject<SpriteBuilder> {
-        let builder = hecs::EntityBuilder::new();
-
-        SceneObject {
-            scene: self,
-            node: Node::default(),
-            object: SpriteBuilder {
-                builder,
-                image,
-                uv: None,
-            },
-        }
-    }
-
+    /// Calculates the GlobalTransforms for all nodes in the Scene.
     pub fn get_global_transforms(&self) -> GlobalTransforms {
-        let mut transforms: Vec<LocalsUniform> = Vec::with_capacity(self.nodes.len());
+        let mut transforms: Vec<LocalTransform> = Vec::with_capacity(self.nodes.len());
         for node in self.nodes.iter() {
             let transform = if node.parent() == NodeId::root() {
-                node.local()
+                node.local_transform()
             } else {
                 let parent_transform = transforms[node.parent().as_usize()].to_transform();
-                parent_transform.combine(&node.local())
+                parent_transform.combine(&node.local_transform())
             };
 
             transforms.push(transform.into());
