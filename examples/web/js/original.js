@@ -1,11 +1,9 @@
 import load_wasm, { PLRender } from "./pkg/plrender.js";
-import { Display, Circle } from "./pkg/plrender/entities.js";
+import { Scene, Sprite, Circle } from "./pkg/plrender/entities.js";
 
-const scene = plrender.Scene();
-scene.addTarget({ selector: "#output_canvas" });
+const scene = new Scene();
 
-const video = document.getElementById("video");
-const worldVideo = new Sprite({ source: video });
+const worldVideo = new Sprite({ source: "#input_video" });
 const gaze = new Circle({
   color: "#ff000088",
   radius: 0.05,
@@ -15,5 +13,7 @@ const gaze = new Circle({
 
 scene.add(worldVideo);
 scene.add(gaze);
+
+scene.renderTo({ selector: "#output_canvas" });
 
 plrender.run();

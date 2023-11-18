@@ -1,7 +1,7 @@
-/// Handy macro that implements the HasNodeId trait for the given type
-macro_rules! has_node_id {
+/// Handy macro that implements the SpatialObject trait for the given type
+macro_rules! spatial_object {
     ($type:ty) => {
-        impl crate::scene::node::HasNodeId for $type {
+        impl crate::scene::SpatialObject for $type {
             fn node_id(&self) -> crate::scene::node::NodeId {
                 self.node_id
             }
@@ -12,4 +12,4 @@ macro_rules! has_node_id {
     };
 }
 
-pub(crate) use has_node_id;
+pub(crate) use spatial_object;

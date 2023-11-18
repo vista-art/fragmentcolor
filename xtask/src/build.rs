@@ -18,7 +18,6 @@ pub fn build_all() {
 
     // @TODO Get version info
 
-    build("plrender-codegen");
     build_optional("plrender-py");
     build_optional("plrender-wasm");
 

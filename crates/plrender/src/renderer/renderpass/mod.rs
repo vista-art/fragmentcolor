@@ -8,18 +8,23 @@ pub use phong::{Ambient, Phong, PhongConfig, Shader};
 pub use real::{Material, Real, RealConfig};
 pub use solid::{Solid, SolidConfig};
 
-use std::mem;
+use crate::{
+    renderer::{Commands, RenderedFrames},
+    scene::SceneState,
+};
+use std::{mem, sync::RwLockReadGuard};
 
-use crate::renderer::Commands;
-use crate::scene::Scene;
+pub type RenderPassResult = Result<(Commands, RenderedFrames), wgpu::SurfaceError>;
+
 pub trait RenderPass {
-    fn draw(&mut self, scene: &Scene) -> Result<Commands, wgpu::SurfaceError>;
+    fn draw(&mut self, scene: RwLockReadGuard<'_, SceneState>) -> RenderPassResult;
 }
 
 fn align_up(offset: u32, align: u32) -> u32 {
     (offset + align - 1) & !(align - 1)
 }
 
+// @TODO this should maybe be in Resources
 struct BufferPool {
     label: &'static str,
     usage: wgpu::BufferUsages,
@@ -86,6 +91,7 @@ impl BufferPool {
 
     fn alloc<T: bytemuck::Pod>(&mut self, object: &T, queue: &wgpu::Queue) -> BufferLocation {
         let size = mem::size_of::<T>() as u32;
+        // @FIXME ALL asserts and panics must go away and return a Result
         assert!(size <= self.chunk_size);
         if self.last_offset + size > self.chunk_size {
             self.last_index += 1;

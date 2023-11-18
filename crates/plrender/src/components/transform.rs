@@ -1,7 +1,7 @@
 use crate::scene::node::NodeId;
 use std::ops;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub struct Transform {
     pub position: glam::Vec3,
     pub rotation: glam::Quat,

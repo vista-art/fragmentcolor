@@ -1,30 +1,11 @@
 use crate::components::transform::Transform;
-/// All components that have spatial data are associated with a Node.
-/// This trait provides a common interface for accessing the NodeId.
-pub trait HasNodeId {
-    /// Returns the NodeId associated with this component.
-    fn node_id(&self) -> NodeId;
-
-    /// Sets the NodeId associated with this component.
-    fn set_node_id(&mut self, node_id: NodeId);
-}
-
-/// The () type represents the root of the Scene tree.
-impl HasNodeId for () {
-    fn node_id(&self) -> NodeId {
-        NodeId::root()
-    }
-
-    fn set_node_id(&mut self, _: NodeId) {
-        // Do nothing
-    }
-}
+use serde::{Deserialize, Serialize};
 
 /// A NodeId is a reference for a Node in the Scene tree.
 ///
 /// Objects that share the same spatial position in the
 /// scene might share the same NodeId.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct NodeId(pub u32);
 
 impl NodeId {
@@ -49,9 +30,9 @@ impl NodeId {
 /// Nodes are set to the root of the Scene tree by default. This
 /// means their parent NodeId is set to zero, and their Transform
 /// matrix will be relative to the Scene's origin.
-#[derive(Default, Debug, PartialEq)]
+#[derive(Default, Debug, PartialEq, Clone, Copy)]
 pub struct Node {
-    pub(super) id: Option<NodeId>,
+    pub(super) id: NodeId,
     pub(super) parent: NodeId,
     pub(super) local: Transform,
 }
@@ -67,12 +48,18 @@ impl Node {
     // Getters for ID and Parent ID; Setter for Parent ID
     // ------------------------------------------------------------------------
 
+    /// Creates a new Root Node at origin.
+    pub fn root() -> Self {
+        Self::default()
+    }
+
     /// Returns this Node's NodeId in the Scene tree.
     pub fn id(&self) -> NodeId {
-        match self.id {
-            Some(id) => id,
-            None => NodeId::root(),
-        }
+        self.id
+        // match self.id {
+        //     Some(id) => id,
+        //     None => NodeId::root(),
+        // }
     }
 
     /// Returns this Node's parent NodeId in the Scene tree.
@@ -264,7 +251,7 @@ impl Node {
     /// - Use `Node.rotate_radians()` to work with Radians instead.
     /// - Use `Node.set_rotation()` to overwrite the rotation using an axis and angle.
     /// - Use `Node.set_rotation_quaternion()` to overwrite the rotation using a Quaternion.
-    pub fn rotate(&mut self, axis: mint::Vector3<f32>, degrees: f32) {
+    pub fn rotate(&mut self, axis: mint::Vector3<f32>, degrees: f32) -> &mut Self {
         self.rotate_degrees(axis, degrees)
     }
 
@@ -281,9 +268,11 @@ impl Node {
     /// - Use `Node.rotate_radians()` to work with Radians instead.
     /// - Use `Node.set_rotation()` to overwrite the rotation using an axis and angle.
     /// - Use `Node.set_rotation_quaternion()` to overwrite the rotation using a Quaternion.
-    pub fn rotate_degrees(&mut self, axis: mint::Vector3<f32>, degrees: f32) {
+    pub fn rotate_degrees(&mut self, axis: mint::Vector3<f32>, degrees: f32) -> &mut Self {
         self.local.rotation =
             self.local.rotation * glam::Quat::from_axis_angle(axis.into(), degrees.to_radians());
+
+        self
     }
 
     /// Rotates the Node by the given angle (in radians) relative to its current rotation.
@@ -299,9 +288,11 @@ impl Node {
     /// - Use `Node.rotate()` or `Node.rotate_degrees()` to work with Degrees instead.
     /// - Use `Node.set_rotation()` to overwrite the rotation using an axis and angle.
     /// - Use `Node.set_rotation_quaternion()` to overwrite the rotation using a Quaternion.
-    pub fn rotate_radians(&mut self, axis: mint::Vector3<f32>, radians: f32) {
+    pub fn rotate_radians(&mut self, axis: mint::Vector3<f32>, radians: f32) -> &mut Self {
         self.local.rotation =
             self.local.rotation * glam::Quat::from_axis_angle(axis.into(), radians);
+
+        self
     }
 
     /// This method is an alias to `Node.pre_rotate_degrees()`.
@@ -318,13 +309,15 @@ impl Node {
     ///
     /// ## Learn more:
     /// <https://stackoverflow.com/questions/3855578>
-    pub fn pre_rotate(&mut self, axis: mint::Vector3<f32>, degrees: f32) {
+    pub fn pre_rotate(&mut self, axis: mint::Vector3<f32>, degrees: f32) -> &mut Self {
         let other = Transform {
             position: glam::Vec3::ZERO,
             scale: glam::Vec3::ONE,
             rotation: glam::Quat::from_axis_angle(axis.into(), degrees.to_radians()),
         };
         self.local = other.combine(&self.local);
+
+        self
     }
 
     /// Rotates the Node by the given angle (in degrees) relative to its current rotation.
@@ -339,13 +332,15 @@ impl Node {
     ///
     /// ## Learn more:
     /// <https://stackoverflow.com/questions/3855578>
-    pub fn pre_rotate_degrees(&mut self, axis: mint::Vector3<f32>, degrees: f32) {
+    pub fn pre_rotate_degrees(&mut self, axis: mint::Vector3<f32>, degrees: f32) -> &mut Self {
         let other = Transform {
             position: glam::Vec3::ZERO,
             scale: glam::Vec3::ONE,
             rotation: glam::Quat::from_axis_angle(axis.into(), degrees.to_radians()),
         };
         self.local = other.combine(&self.local);
+
+        self
     }
 
     /// Rotates the Node by the given angle (in radians) relative to its current rotation.
@@ -360,13 +355,15 @@ impl Node {
     ///
     /// ## Learn more:
     /// <https://stackoverflow.com/questions/3855578>
-    pub fn pre_rotate_radians(&mut self, axis: mint::Vector3<f32>, radians: f32) {
+    pub fn pre_rotate_radians(&mut self, axis: mint::Vector3<f32>, radians: f32) -> &mut Self {
         let other = Transform {
             position: glam::Vec3::ZERO,
             scale: glam::Vec3::ONE,
             rotation: glam::Quat::from_axis_angle(axis.into(), radians),
         };
         self.local = other.combine(&self.local);
+
+        self
     }
 
     /// Sets the Node's rotation so that it faces the given target.

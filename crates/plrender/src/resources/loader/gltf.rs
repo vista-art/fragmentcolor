@@ -1,0 +1,323 @@
+use crate::{
+    app::PLRender, components, components::Color, components::Mesh, math::geometry::vertex,
+    renderer, resources::mesh::MeshBuilder,
+};
+use std::{collections::VecDeque, ops, path::Path};
+
+#[derive(Default)]
+struct MeshScratch {
+    indices: Vec<u16>,
+    positions: Vec<vertex::Position>,
+    tex_coords: Vec<vertex::TextureCoordinates>,
+    normals: Vec<vertex::Normal>,
+}
+
+struct Texture {
+    image: crate::TextureId,
+}
+
+struct Primitive {
+    mesh: crate::resources::mesh::BuiltMesh,
+    color: crate::components::Color,
+    shader: crate::renderer::renderpass::Shader,
+    material: crate::renderer::renderpass::Material,
+}
+
+fn load_texture(mut data: gltf::image::Data) -> Texture {
+    let renderer = PLRender::renderer();
+    let mut renderer = renderer.write().expect("Failed to lock renderer");
+
+    let format = match data.format {
+        gltf::image::Format::R8 => wgpu::TextureFormat::R8Unorm,
+        gltf::image::Format::R8G8 => wgpu::TextureFormat::Rg8Unorm,
+        gltf::image::Format::R8G8B8 => {
+            log::warn!(
+                "Converting {}x{} texture from RGB to RGBA...",
+                data.width,
+                data.height
+            );
+            let original = data.pixels;
+            data.pixels = Vec::with_capacity(original.len() * 4 / 3);
+            for chunk in original.chunks(3) {
+                data.pixels.push(chunk[0]);
+                data.pixels.push(chunk[1]);
+                data.pixels.push(chunk[2]);
+                data.pixels.push(0xFF);
+            }
+            if data.format == gltf::image::Format::R8G8B8 {
+                wgpu::TextureFormat::Rgba8UnormSrgb
+            } else {
+                wgpu::TextureFormat::Bgra8UnormSrgb
+            }
+        }
+        gltf::image::Format::R16G16B16 => panic!("RGB16 is outdated"),
+        gltf::image::Format::R8G8B8A8 => wgpu::TextureFormat::Rgba8UnormSrgb,
+        gltf::image::Format::R16 => wgpu::TextureFormat::R16Float,
+        gltf::image::Format::R16G16 => wgpu::TextureFormat::Rg16Float,
+        gltf::image::Format::R16G16B16A16 => wgpu::TextureFormat::Rgba16Float,
+        gltf::image::Format::R32G32B32FLOAT => wgpu::TextureFormat::Rgba32Float,
+        gltf::image::Format::R32G32B32A32FLOAT => wgpu::TextureFormat::Rgba32Float,
+    };
+
+    let desc = wgpu::TextureDescriptor {
+        label: None,
+        size: wgpu::Extent3d {
+            width: data.width,
+            height: data.height,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING,
+        view_formats: &[format],
+    };
+
+    let image = renderer.add_texture_from_bytes(&desc, &data.pixels);
+    Texture { image }
+}
+
+fn load_primitive<'a>(
+    primitive: gltf::Primitive<'a>,
+    buffers: &[gltf::buffer::Data],
+    textures: &[Texture],
+    scratch: &mut MeshScratch,
+) -> Primitive {
+    let reader = primitive.reader(|buffer| Some(&buffers[buffer.index()].0));
+
+    let mut mesh_builder = MeshBuilder::new();
+
+    if let Some(indices) = reader.read_indices() {
+        scratch.indices.clear();
+        scratch.indices.extend(indices.into_u32().map(|i| i as u16));
+        mesh_builder.index(&scratch.indices);
+    }
+
+    if let Some(positions) = reader.read_positions() {
+        scratch.positions.clear();
+        scratch.positions.extend(positions.map(vertex::Position));
+        mesh_builder.vertex(&scratch.positions);
+    }
+
+    if let Some(tex_coords) = reader.read_tex_coords(0) {
+        scratch.tex_coords.clear();
+        scratch
+            .tex_coords
+            .extend(tex_coords.into_u16().map(vertex::TextureCoordinates));
+        mesh_builder.vertex(&scratch.tex_coords);
+    }
+
+    if let Some(normals) = reader.read_normals() {
+        scratch.normals.clear();
+        scratch.normals.extend(normals.map(vertex::Normal));
+        mesh_builder.vertex(&scratch.normals);
+    }
+
+    let mat = primitive.material();
+    let pbr = mat.pbr_metallic_roughness();
+    let base_color = pbr.base_color_factor();
+    let material = renderer::renderpass::Material {
+        base_color_map: pbr
+            .base_color_texture()
+            .map(|t| textures[t.texture().index()].image),
+        emissive_color: Color::from_rgb_alpha(mat.emissive_factor(), 0.0),
+        metallic_factor: pbr.metallic_factor(),
+        roughness_factor: pbr.roughness_factor(),
+        normal_scale: 1.0,
+        occlusion_strength: 1.0,
+    };
+
+    Primitive {
+        mesh: mesh_builder.build(),
+        color: Color::from_rgba(base_color),
+        shader: renderer::renderpass::Shader::Gouraud { flat: true },
+        material,
+    }
+}
+
+#[derive(Debug)]
+struct Named<T> {
+    data: T,
+    name: Option<String>,
+}
+
+#[derive(Debug)]
+pub struct NamedVec<T>(Vec<Named<T>>);
+
+impl<T> Default for NamedVec<T> {
+    fn default() -> Self {
+        Self(Vec::new())
+    }
+}
+
+impl<T> ops::Index<usize> for NamedVec<T> {
+    type Output = T;
+    fn index(&self, index: usize) -> &T {
+        &self.0[index].data
+    }
+}
+
+impl<T> NamedVec<T> {
+    pub fn iter(&self) -> impl Iterator<Item = &T> {
+        self.0.iter().map(|elem| &elem.data)
+    }
+
+    pub fn find(&self, name: &str) -> Option<&T> {
+        self.0
+            .iter()
+            .find(|elem| elem.name.as_deref() == Some(name))
+            .map(|elem| &elem.data)
+    }
+}
+
+#[derive(Default)]
+pub struct Module {
+    pub entities: NamedVec<crate::ObjectId>,
+    pub cameras: NamedVec<crate::Camera>,
+}
+
+/// Load mesh from glTF 2.0 format.
+pub fn load_gltf(
+    path: impl AsRef<Path>,
+    scene: &mut crate::Scene,
+    global_parent: crate::NodeId,
+) -> Module {
+    let mut module = Module::default();
+    let (gltf, buffers, images) = gltf::import(path).expect("invalid glTF 2.0");
+
+    let mut textures = Vec::with_capacity(images.len());
+    for (_texture, data) in gltf.textures().zip(images.into_iter()) {
+        let texture = load_texture(data);
+        textures.push(texture);
+    }
+
+    let mut prototypes = Vec::with_capacity(gltf.meshes().len());
+    let mut scratch = MeshScratch::default();
+    for gltf_mesh in gltf.meshes() {
+        let mut primitives = Vec::new();
+        for gltf_primitive in gltf_mesh.primitives() {
+            let primitive = load_primitive(gltf_primitive, &buffers, &textures, &mut scratch);
+            primitives.push(primitive);
+        }
+        prototypes.push(primitives);
+    }
+
+    struct PreNode<'a> {
+        gltf_node: gltf::Node<'a>,
+        parent: crate::NodeId,
+    }
+
+    let mut deque = VecDeque::new();
+    for gltf_scene in gltf.scenes() {
+        deque.extend(gltf_scene.nodes().map(|gltf_node| PreNode {
+            gltf_node,
+            parent: global_parent,
+        }));
+    }
+
+    while let Some(PreNode { gltf_node, parent }) = deque.pop_front() {
+        log::debug!("Node {:?}", gltf_node.name());
+
+        let (translation, rotation, scale) = gltf_node.transform().decomposed();
+
+        let mut empty = components::Empty::new();
+        empty
+            .set_parent_node(parent)
+            .set_position(translation.into())
+            .set_rotation_quaternion(rotation.into())
+            .set_scale(scale.into());
+
+        scene.add(&mut empty);
+
+        for gltf_child in gltf_node.children() {
+            deque.push_back(PreNode {
+                gltf_node: gltf_child,
+                parent: empty.node.id(),
+            });
+        }
+
+        if let Some(gltf_mesh) = gltf_node.mesh() {
+            log::debug!("Mesh {:?}", gltf_mesh.name());
+            for primitive in prototypes[gltf_mesh.index()].iter_mut() {
+                let mut mesh = Mesh::new(&primitive.mesh);
+                mesh.add_component(primitive.color)
+                    .add_component(primitive.shader)
+                    .add_component(primitive.material)
+                    .set_parent_node(empty.node.id());
+
+                let object_id = scene.add(&mut mesh);
+
+                module.entities.0.push(Named {
+                    data: object_id,
+                    name: gltf_mesh.name().map(str::to_string),
+                });
+            }
+        }
+
+        if let Some(gltf_camera) = gltf_node.camera() {
+            let (depth, projection) = match gltf_camera.projection() {
+                gltf::camera::Projection::Orthographic(p) => (
+                    p.znear()..p.zfar(),
+                    components::camera::Projection::Orthographic {
+                        center: [0.0; 2].into(),
+                        //Note: p.xmag() is ignored
+                        extent_y: p.ymag(),
+                    },
+                ),
+                gltf::camera::Projection::Perspective(p) => (
+                    p.znear()..p.zfar().unwrap_or(f32::INFINITY),
+                    components::camera::Projection::Perspective {
+                        fov_y: p.yfov().to_degrees(),
+                    },
+                ),
+            };
+            log::debug!(
+                "Camera {:?} depth {:?} proj {:?} at {:?}",
+                gltf_camera.name(),
+                depth,
+                projection,
+                scene.read_state()[empty.node.id()]
+            );
+            module.cameras.0.push(Named {
+                data: components::camera::Camera {
+                    projection,
+                    z_near: depth.start,
+                    z_far: depth.end,
+                    node_id: empty.node.id(),
+                },
+                name: gltf_camera.name().map(str::to_string),
+            });
+        }
+
+        if let Some(gltf_light) = gltf_node.light() {
+            use gltf::khr_lights_punctual::Kind as LightType;
+            let light_type = match gltf_light.kind() {
+                LightType::Directional => components::light::LightType::Directional,
+                LightType::Point => components::light::LightType::Point,
+                LightType::Spot { .. } => {
+                    log::warn!("Spot lights are not supported: {:?}", gltf_light.name());
+                    continue;
+                }
+            };
+
+            let mut light = components::Light::new(components::light::LightOptions {
+                color: Color::from_rgb_alpha(gltf_light.color(), 0.0),
+                intensity: gltf_light.intensity(),
+                variant: light_type,
+            });
+
+            // @TODO future me problem: won't the scene overwrite it?
+            light.set_node_id(empty.node.id());
+
+            let light_id = scene.add(&mut light);
+
+            module.entities.0.push(Named {
+                data: light_id,
+                name: gltf_light.name().map(str::to_string),
+            });
+        }
+    }
+
+    module
+}

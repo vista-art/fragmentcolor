@@ -4,7 +4,7 @@ description = "Multiplatform GPU Rendering API for Javascript, Python and Beyond
 repository = "https://gitlab.com/pupil-labs/pupil-cloud/pl-render"
 authors = ["Pupil Labs GmbH"]
 license-file = "LICENCE.md"
-version = "0.6.0"
+version = "0.7.0-rc1"
 rust-version = "1.70"
 edition = "2021"
 
@@ -13,14 +13,14 @@ name = "plrender"
 crate-type = ["cdylib", "rlib"]
 
 [features]
-default = ["window", "assets"]
+default = ["window", "assets", "shape"]
 window = ["raw-window-handle", "winit"]
 shape = ["lyon"]
 assets = ["obj", "gltf"]
 
 [dependencies]
 # Rendering
-wgpu = "0.18"
+wgpu = { version="0.18", features=["expose-ids", "glsl", "wgsl", "naga"] }
 
 # Scene graph (Entity Component System)
 hecs = { version = "0.10", features=["macros"] }
@@ -29,10 +29,16 @@ hecs = { version = "0.10", features=["macros"] }
 # We can update both of them when wgpu releases this (probably v0.19)
 # https://github.com/gfx-rs/wgpu/pull/4202
 raw-window-handle = { version = "0.5", optional = true }
-winit = { version = "0.28.7", optional = true }
+winit = { version = "0.28.7", optional = true, features=["serde"] }
+
+# Shader composition
+naga = { version = "0.14" }
+# Waiting for upstream release: https://github.com/bevyengine/naga_oil/pull/63
+# naga_oil = { version = "0.10.0" }
+naga_oil ={ git = "https://github.com/robtfm/naga_oil", branch = "naga-0.14" }
 
 # Math
-mint = "0.5"
+mint = { version = "0.5", features = ["serde"] }
 glam = { version = "0.24", features = ["mint"] }
 
 # Serialization

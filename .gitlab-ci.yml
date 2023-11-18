@@ -46,15 +46,15 @@ docs:
     - cargo tree --depth 0 -e normal --prefix none |
       cut -d' ' -f1 | xargs printf -- '-p %s\n' |
       xargs cargo doc --no-deps
-    - mv target/doc docs/src/api
+    - mv target/doc public/api
   artifacts:
     paths:
-      - docs/src/api
+      - public/api
   cache:
     paths:
       - $CARGO_HOME/bin
 
-# TODO:
+# TODO: Auto Publish WASM examples
 #
 # examples:
 #   stage: deploy

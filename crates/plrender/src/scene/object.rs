@@ -1,37 +1,78 @@
-use log::warn;
-use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
-
 use crate::{
+    app::{
+        error::{READ_LOCK_ERROR, WRITE_LOCK_ERROR},
+        Container,
+    },
     components::Transform,
     scene::{
-        node::{HasNodeId, Node, NodeId},
-        SceneState,
+        node::{Node, NodeId},
+        SceneId, Scenes,
     },
+    PLRender,
 };
+use std::sync::{Arc, RwLock};
+
+/// Defines an interface for Spatial SceneObjects.
+///
+/// Spatial objects constructors must return a SceneObject<Self>.
+///
+/// All Spatial Objects are associated with a Node and must have a
+/// Node Id. This trait provides methods for accessing its Node Id.
+pub trait SpatialObject: Default + hecs::Component + Copy {
+    /// Builds a SceneObject from this component.
+    fn new() -> SceneObject<Self> {
+        SceneObject::new(Self::default())
+    }
+
+    /// Returns the NodeId associated with this component.
+    fn node_id(&self) -> NodeId;
+
+    /// Sets the NodeId associated with this component.
+    fn set_node_id(&mut self, node_id: NodeId);
+}
 
 pub type ObjectId = hecs::Entity;
 
-pub struct SceneObject<T: HasNodeId> {
+/// The SceneObject is the interface for manipulating Scene objects.
+///
+/// A SceneObject is a wrapper around public API objects containing
+/// spatial information (position, rotation, orientation).
+///
+/// It is the main intermediator between user commands and the Scene,
+/// and provides the object Transform API.
+///
+/// While PLRender is built around an Entity-Component-System (ECS)
+/// architecture, it does not expose the inner ECS interface to the
+/// user. The SceneObject converts it to a more intuitive, familiar
+/// Object-Oriented approach.
+pub struct SceneObject<T: SpatialObject> {
     pub(super) id: Option<ObjectId>,
+    pub(super) scene_id: Option<SceneId>,
+    pub(super) scenes: Arc<RwLock<Scenes>>,
     pub(crate) builder: hecs::EntityBuilder,
-    pub scene: Arc<RwLock<SceneState>>,
     pub node: Node,
-    pub object: T,
+    batch: bool,
+    object: T,
 }
 
 /// This is the interface between the Scene and the SceneObject.
 pub trait SceneObjectEntry {
-    fn node(&mut self) -> &mut Node;
-    fn has_moved(&mut self) -> bool;
+    fn node(&mut self) -> Node;
+    fn node_id(&self) -> NodeId;
     fn builder(&mut self) -> &mut hecs::EntityBuilder;
-    fn added_to_scene(&mut self, id: ObjectId);
+    fn has_moved(&mut self) -> bool;
+    fn added_to_scene(&mut self, scene: SceneId, object_id: ObjectId);
     fn removed_from_scene(&mut self, id: ObjectId);
-    fn added_to_scene_tree(&mut self, node_id: Option<NodeId>);
+    fn added_to_scene_tree(&mut self, node_id: NodeId);
 }
 
-impl<T: HasNodeId> SceneObjectEntry for SceneObject<T> {
-    fn node(&mut self) -> &mut Node {
-        &mut self.node
+impl<T: SpatialObject> SceneObjectEntry for SceneObject<T> {
+    fn node(&mut self) -> Node {
+        self.node.clone()
+    }
+
+    fn node_id(&self) -> NodeId {
+        self.object.node_id()
     }
 
     fn has_moved(&mut self) -> bool {
@@ -42,43 +83,206 @@ impl<T: HasNodeId> SceneObjectEntry for SceneObject<T> {
         &mut self.builder
     }
 
-    fn added_to_scene(&mut self, id: ObjectId) {
-        self.id = Some(id);
+    fn added_to_scene_tree(&mut self, node_id: NodeId) {
+        self.object.set_node_id(node_id)
     }
 
-    fn removed_from_scene(&mut self, _: ObjectId) {
-        if let Some(_self_id) = self.id {
+    fn added_to_scene(&mut self, scene_id: SceneId, object_id: ObjectId) {
+        self.id = Some(object_id);
+        self.scene_id = Some(scene_id);
+    }
+
+    fn removed_from_scene(&mut self, object_id: ObjectId) {
+        if self.id == Some(object_id) {
             self.id = None;
+            self.node = Node::root();
+            self.scene_id = None;
+            self.object.set_node_id(NodeId::root());
+        } else {
+            log::error!(
+                "Trying to remove ObjectId {} from SceneObject id {}",
+                object_id.id(),
+                self.id.unwrap().id()
+            );
         }
-    }
-
-    fn added_to_scene_tree(&mut self, node_id: Option<NodeId>) {
-        let node_id = match node_id {
-            None => self.node.parent,
-            Some(id) => id,
-        };
-
-        self.object.set_node_id(node_id);
     }
 }
 
-// @TODO I can remove the generics if I pass a SceneId instead.
-//       Then, I would query the global App to get the Scene.
-//
-//       For the T component's node_ids, it would maybe be better to
-//       add the Node as a component, then make the renderer query
-//       the Nodes (or the Transforms) directly.
-impl<T: HasNodeId> SceneObject<T> {
-    // NOTE: this assumes the child object is constructed
-    //       should we have a trait for child objects?
-    pub fn new(scene: Arc<RwLock<SceneState>>, object: T) -> Self {
-        SceneObject {
+impl<T: SpatialObject> SceneObject<T> {
+    pub fn new(object: T) -> Self {
+        let app = PLRender::app().read().expect(READ_LOCK_ERROR);
+
+        let mut scene_object = SceneObject {
             id: None,
-            node: Node::default(),
+            node: Node::root(),
+            scene_id: None,
+            scenes: app.scenes(),
             builder: hecs::EntityBuilder::new(),
-            scene,
+            batch: false,
             object,
+        };
+
+        scene_object.add_component(object);
+
+        scene_object
+    }
+
+    /// Returns the ObjectId of this Object if it has been added to a Scene.
+    ///
+    /// Otherwise, returns None.
+    pub fn id(&self) -> Option<ObjectId> {
+        self.id
+    }
+
+    /// Updates the spatial data of the Scene's Node associated with this Object..
+    fn update_node_in_scene(&mut self) {
+        if let Some(scene_id) = self.scene_id {
+            let scenes = self.scenes.clone();
+            let mut scenes = scenes.write().expect(WRITE_LOCK_ERROR);
+
+            let scene = scenes.get_mut(&scene_id);
+            let mut scene = if let Some(scene) = scene {
+                scene
+            } else {
+                log::error!(
+                    "Scene not found! Cannot update the SceneObject<{:?}'s position, rotation or scale.",
+                    std::any::type_name::<T>(),
+                );
+                return;
+            };
+
+            scene.update_node(self.object.node_id(), self.node.clone())
         }
+    }
+
+    /// Sets the SceneObject to batch update mode.
+    ///
+    /// In batch mode, the SceneObject will not update the Scene's Node
+    /// immediately on each change. It will cache the changes and apply
+    /// them all at once when `.apply()` is called.
+    pub fn batch(&mut self) {
+        self.batch = true;
+    }
+
+    /// Immediately updates the Scene's Node associated with this Object
+    /// if the object is not in batch mode.
+    fn update_node(&mut self) -> &mut Self {
+        if !self.batch {
+            self.update_node_in_scene();
+        }
+
+        self
+    }
+
+    /// Turns off batch mode and applies all changes to the Scene.
+    pub fn apply(&mut self) {
+        self.batch = false;
+        self.update_node_in_scene();
+    }
+
+    /// Sets the NodeId of this Object
+    pub(crate) fn set_node_id(&mut self, node_id: NodeId) {
+        self.object.set_node_id(node_id);
+        self.add_component(self.object);
+    }
+
+    /// Returns the SceneId and ObjectId associated with this Object
+    pub(crate) fn scene_object_tuple(&self) -> Option<(SceneId, ObjectId)> {
+        if let Some(scene_id) = self.scene_id {
+            if let Some(object_id) = self.id {
+                Some((scene_id, object_id))
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
+
+    /// Returns a copy of the underlying object, either as a
+    /// registered Scene Component or in the temporary builder.
+    ///
+    /// Users who would like to update the object should
+    /// produce a new inner T for the SceneObject<T> and add
+    /// it as a component using `SceneObject::add_component()`.
+    ///
+    /// The SceneObject<T> will then replace the object in the
+    /// Scene or in the temporary builder.
+    ///
+    /// Examples:
+    /// ```
+    /// use plrender::scene::{SceneObject, node::NodeId};
+    ///
+    /// #[derive(Default, Clone, Copy)]
+    /// struct MyComponent {
+    ///    pub node_id: NodeId,
+    ///    pub my_data: u32,
+    /// }
+    ///
+    /// impl SceneObject<MyComponent> {
+    ///     pub fn set_my_data(&mut self, new_data: u32) -> &mut Self {
+    ///         let old_data = self.object();
+    ///
+    ///         self.add_component(Sprite {
+    ///             my_data: new_data,
+    ///             ..old_data
+    ///         });
+    ///
+    ///         self
+    ///     }
+    /// }
+    /// ````
+    pub(crate) fn object(&mut self) -> T {
+        // Can't use && expression with `let Some(var)`
+        // https://github.com/rust-lang/rust/issues/53667
+        self.object = if let Some(object_id) = self.id {
+            let mut scenes = self.scenes.write().expect(WRITE_LOCK_ERROR);
+            let scene = if let Some(scene_id) = self.scene_id {
+                scenes.get_mut(&scene_id)
+            } else {
+                None
+            };
+
+            let mut scene = if let Some(scene) = scene {
+                scene
+            } else {
+                log::error!(
+                    "SceneObject<{:?}>: scene and object_id out of sync!
+                    Returning a default value.",
+                    std::any::type_name::<T>()
+                );
+                return T::default();
+            };
+
+            let object = if let Ok(object) = scene.world.query_one_mut::<&T>(object_id) {
+                object.clone()
+            } else {
+                log::error!(
+                    "The SceneObject<{:?}> {} does not own a component of type {:?}
+                    or does not exist in the Scene. Returning a default value.",
+                    std::any::type_name::<T>(),
+                    object_id.id(),
+                    std::any::type_name::<T>(),
+                );
+                T::default()
+            };
+
+            object
+        } else {
+            if let Some(object) = self.builder.get::<&T>() {
+                object.clone()
+            } else {
+                log::error!(
+                    "The SceneObject<{:?}> does not own a component of type {:?}
+                    or did not initialize its Builder. Returning a default value.",
+                    std::any::type_name::<T>(),
+                    std::any::type_name::<T>(),
+                );
+                T::default()
+            }
+        };
+
+        self.object
     }
 
     pub fn add_component<C: hecs::Component>(&mut self, component: C) -> &mut Self {
@@ -86,14 +290,30 @@ impl<T: HasNodeId> SceneObject<T> {
     }
 
     pub fn add_components<B: hecs::DynamicBundle>(&mut self, bundle: B) -> &mut Self {
-        if let Some(entity) = self.id {
-            let mut scene = self.state_mut();
-            let result = scene.insert(entity, bundle);
+        if let Some((scene_id, object_id)) = self.scene_object_tuple() {
+            let scenes = self.scenes.clone();
+            let mut scenes = scenes.write().expect(WRITE_LOCK_ERROR);
+
+            let scene = scenes.get_mut(&scene_id);
+            let mut scene = if let Some(scene) = scene {
+                scene
+            } else {
+                log::error!(
+                    "Scene not found! The component {:?} has not been added to SceneObject<{:?}>.",
+                    std::any::type_name::<B>(),
+                    std::any::type_name::<T>(),
+                );
+                return self;
+            };
+
+            let result = scene.insert(object_id, bundle);
             match result {
                 Ok(_) => {}
-                Err(error) => warn!(
-                    "The Object {} has not been found in the Scene: {:?}",
-                    entity.id(),
+                Err(error) => log::error!(
+                    "The SceneObject<{:?}> (id {}) has not been found in the Scene {:?}: {}",
+                    std::any::type_name::<T>(),
+                    object_id.id(),
+                    scene.id(),
                     error
                 ),
             }
@@ -103,38 +323,28 @@ impl<T: HasNodeId> SceneObject<T> {
         self
     }
 
-    // pub fn add_to_scene(&mut self) -> ObjectId {
-    //     let mut scene = self.state_mut();
-    //     scene.add(self)
-    // }
-
-    pub fn scene(&self) -> RwLockReadGuard<'_, SceneState> {
-        let scene = &self.scene;
-        scene.read().expect("Could not get SceneState read lock")
-    }
-
-    pub fn state_mut(&self) -> RwLockWriteGuard<'_, SceneState> {
-        let scene = &self.scene;
-        scene.write().expect("Could not get SceneState write lock")
-    }
-
     // ------------------------------------------------------------------------
-    // Getter and Setter for Parent ID
+    // Getter and Setters for Parent ID
     // ------------------------------------------------------------------------
 
-    pub fn id(&self) -> Option<ObjectId> {
-        self.id
-    }
-
+    // @TODO return ObjectId instead in the public API
+    //       needs a reverse lookup in the Scene
+    //
     /// Returns this Node's parent NodeId in the Scene tree.
     pub fn parent(&self) -> NodeId {
         self.node.parent
     }
 
-    /// Sets this Node's parent NodeId.
-    pub fn set_parent(&mut self, parent: NodeId) -> &mut Self {
+    /// Sets this Object's parent
+    pub fn set_parent(&mut self, parent: &impl SceneObjectEntry) -> &mut Self {
+        self.node.parent = parent.node_id();
+        self.update_node()
+    }
+
+    /// Internal method to set this Object's parent NodeId
+    pub fn set_parent_node(&mut self, parent: NodeId) -> &mut Self {
         self.node.parent = parent;
-        self
+        self.update_node()
     }
 
     // ------------------------------------------------------------------------
@@ -147,7 +357,7 @@ impl<T: HasNodeId> SceneObject<T> {
     }
 
     /// Whether this Node has moved relative to its parent.
-    pub fn has_moved(&mut self) -> bool {
+    pub fn has_moved(&self) -> bool {
         self.node.has_moved()
     }
 
@@ -165,7 +375,7 @@ impl<T: HasNodeId> SceneObject<T> {
     /// This method simply overwrites the current position data.
     pub fn set_position(&mut self, position: mint::Vector3<f32>) -> &mut Self {
         self.node.local.position = position.into();
-        self
+        self.update_node()
     }
 
     /// Moves this Node by the given offset.
@@ -181,7 +391,7 @@ impl<T: HasNodeId> SceneObject<T> {
     /// you can use `Node.pre_translate()` instead.
     pub fn translate(&mut self, offset: mint::Vector3<f32>) -> &mut Self {
         self.node.local.position += glam::Vec3::from(offset);
-        self
+        self.update_node()
     }
 
     /// Moves this Node by the given offset.
@@ -196,13 +406,14 @@ impl<T: HasNodeId> SceneObject<T> {
     ///
     /// ## Learn more:
     /// <https://stackoverflow.com/questions/3855578>
-    pub fn pre_translate(&mut self, offset: mint::Vector3<f32>) {
+    pub fn pre_translate(&mut self, offset: mint::Vector3<f32>) -> &mut Self {
         let other = Transform {
             position: offset.into(),
             scale: glam::Vec3::ONE,
             rotation: glam::Quat::IDENTITY,
         };
         self.node.local = other.combine(&self.node.local);
+        self.update_node()
     }
 
     // ------------------------------------------------------------------------
@@ -275,7 +486,7 @@ impl<T: HasNodeId> SceneObject<T> {
     /// - Use `Node.rotate()` to rotate the Node by an angle relative to its current rotation.
     pub fn set_rotation_degrees(&mut self, axis: mint::Vector3<f32>, degrees: f32) -> &mut Self {
         self.node.local.rotation = glam::Quat::from_axis_angle(axis.into(), degrees.to_radians());
-        self
+        self.update_node()
     }
 
     /// Sets the Node's rotation (in radians), overwriting the current rotation.
@@ -286,7 +497,7 @@ impl<T: HasNodeId> SceneObject<T> {
     /// - Use `Node.rotate_radians()` to rotate the Node by an angle relative to its current rotation.
     pub fn set_rotation_radians(&mut self, axis: mint::Vector3<f32>, radians: f32) -> &mut Self {
         self.node.local.rotation = glam::Quat::from_axis_angle(axis.into(), radians);
-        self
+        self.update_node()
     }
 
     /// Sets the Node's rotation using a Quaternion, overwriting the current rotation.
@@ -297,7 +508,7 @@ impl<T: HasNodeId> SceneObject<T> {
     /// - Use `Node.rotate()` to rotate the Node by an angle relative to its current rotation.
     pub fn set_rotation_quaternion(&mut self, quat: mint::Quaternion<f32>) -> &mut Self {
         self.node.local.rotation = quat.into();
-        self
+        self.update_node()
     }
 
     /// This method is an alias to `Node.rotate_degrees()`.
@@ -315,7 +526,7 @@ impl<T: HasNodeId> SceneObject<T> {
     /// - Use `Node.rotate_radians()` to work with Radians instead.
     /// - Use `Node.set_rotation()` to overwrite the rotation using an axis and angle.
     /// - Use `Node.set_rotation_quaternion()` to overwrite the rotation using a Quaternion.
-    pub fn rotate(&mut self, axis: mint::Vector3<f32>, degrees: f32) {
+    pub fn rotate(&mut self, axis: mint::Vector3<f32>, degrees: f32) -> &mut Self {
         self.rotate_degrees(axis, degrees)
     }
 
@@ -332,9 +543,11 @@ impl<T: HasNodeId> SceneObject<T> {
     /// - Use `Node.rotate_radians()` to work with Radians instead.
     /// - Use `Node.set_rotation()` to overwrite the rotation using an axis and angle.
     /// - Use `Node.set_rotation_quaternion()` to overwrite the rotation using a Quaternion.
-    pub fn rotate_degrees(&mut self, axis: mint::Vector3<f32>, degrees: f32) {
+    pub fn rotate_degrees(&mut self, axis: mint::Vector3<f32>, degrees: f32) -> &mut Self {
         self.node.local.rotation = self.node.local.rotation
             * glam::Quat::from_axis_angle(axis.into(), degrees.to_radians());
+
+        self.update_node()
     }
 
     /// Rotates the Node by the given angle (in radians) relative to its current rotation.
@@ -350,9 +563,11 @@ impl<T: HasNodeId> SceneObject<T> {
     /// - Use `Node.rotate()` or `Node.rotate_degrees()` to work with Degrees instead.
     /// - Use `Node.set_rotation()` to overwrite the rotation using an axis and angle.
     /// - Use `Node.set_rotation_quaternion()` to overwrite the rotation using a Quaternion.
-    pub fn rotate_radians(&mut self, axis: mint::Vector3<f32>, radians: f32) {
+    pub fn rotate_radians(&mut self, axis: mint::Vector3<f32>, radians: f32) -> &mut Self {
         self.node.local.rotation =
             self.node.local.rotation * glam::Quat::from_axis_angle(axis.into(), radians);
+
+        self.update_node()
     }
 
     /// This method is an alias to `Node.pre_rotate_degrees()`.
@@ -369,13 +584,15 @@ impl<T: HasNodeId> SceneObject<T> {
     ///
     /// ## Learn more:
     /// <https://stackoverflow.com/questions/3855578>
-    pub fn pre_rotate(&mut self, axis: mint::Vector3<f32>, degrees: f32) {
+    pub fn pre_rotate(&mut self, axis: mint::Vector3<f32>, degrees: f32) -> &mut Self {
         let other = Transform {
             position: glam::Vec3::ZERO,
             scale: glam::Vec3::ONE,
             rotation: glam::Quat::from_axis_angle(axis.into(), degrees.to_radians()),
         };
         self.node.local = other.combine(&self.node.local);
+
+        self.update_node()
     }
 
     /// Rotates the Node by the given angle (in degrees) relative to its current rotation.
@@ -390,13 +607,15 @@ impl<T: HasNodeId> SceneObject<T> {
     ///
     /// ## Learn more:
     /// <https://stackoverflow.com/questions/3855578>
-    pub fn pre_rotate_degrees(&mut self, axis: mint::Vector3<f32>, degrees: f32) {
+    pub fn pre_rotate_degrees(&mut self, axis: mint::Vector3<f32>, degrees: f32) -> &mut Self {
         let other = Transform {
             position: glam::Vec3::ZERO,
             scale: glam::Vec3::ONE,
             rotation: glam::Quat::from_axis_angle(axis.into(), degrees.to_radians()),
         };
         self.node.local = other.combine(&self.node.local);
+
+        self.update_node()
     }
 
     /// Rotates the Node by the given angle (in radians) relative to its current rotation.
@@ -411,13 +630,15 @@ impl<T: HasNodeId> SceneObject<T> {
     ///
     /// ## Learn more:
     /// <https://stackoverflow.com/questions/3855578>
-    pub fn pre_rotate_radians(&mut self, axis: mint::Vector3<f32>, radians: f32) {
+    pub fn pre_rotate_radians(&mut self, axis: mint::Vector3<f32>, radians: f32) -> &mut Self {
         let other = Transform {
             position: glam::Vec3::ZERO,
             scale: glam::Vec3::ONE,
             rotation: glam::Quat::from_axis_angle(axis.into(), radians),
         };
         self.node.local = other.combine(&self.node.local);
+
+        self.update_node()
     }
 
     /// Sets the Node's rotation so that it faces the given target.
@@ -426,7 +647,17 @@ impl<T: HasNodeId> SceneObject<T> {
         let (_, rotation, _) = affine.inverse().to_scale_rotation_translation();
         self.node.local.rotation = rotation;
 
-        self
+        self.update_node()
+    }
+
+    /// Sets the Node's rotation to look at (0, 0, 0)
+    pub fn look_at_origin(&mut self, up: mint::Vector3<f32>) -> &mut Self {
+        let origin = mint::Vector3 {
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+        };
+        self.look_at(origin, up)
     }
 
     // ------------------------------------------------------------------------
@@ -441,6 +672,7 @@ impl<T: HasNodeId> SceneObject<T> {
     /// Sets the Node's local scale
     pub fn set_scale(&mut self, scale: mint::Vector3<f32>) -> &mut Self {
         self.node.local.scale = scale.into();
-        self
+
+        self.update_node()
     }
 }

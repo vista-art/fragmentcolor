@@ -1,12 +1,13 @@
 use crate::{
-    app::{AppState, Container, Event, EventListener, Window},
+    app::{events::Event, AppState, Container, EventListener, Window},
     renderer::{
-        target::{RenderTarget, Target, TargetId},
+        target::{RenderTarget, TargetId},
         RenderContext, RenderTargetCollection,
     },
+    Quad,
 };
 use instant::{Duration, Instant};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, RwLock};
 #[cfg(wasm)]
 use winit::platform::web::EventLoopExtWebSys;
 use winit::{
@@ -23,8 +24,8 @@ const TARGET_FRAME_TIME: f64 = 1.0 / 60.0;
 const RUNNING: &str = "EventLoop not available: already running";
 
 pub type EventLoopRunner = Box<dyn Runner>;
-pub trait Runner: 'static + FnOnce(WinitEventLoop<Event>, Arc<Mutex<AppState>>) + Send {}
-impl<F> Runner for F where F: 'static + FnOnce(WinitEventLoop<Event>, Arc<Mutex<AppState>>) + Send {}
+pub trait Runner: 'static + FnOnce(WinitEventLoop<Event>, Arc<RwLock<AppState>>) + Send {}
+impl<F> Runner for F where F: 'static + FnOnce(WinitEventLoop<Event>, Arc<RwLock<AppState>>) + Send {}
 impl std::fmt::Debug for dyn Runner {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "EventLoopRunner")
@@ -54,7 +55,7 @@ impl EventLoop<Event> {
         dispatcher
     }
 
-    pub async fn run(&mut self, runner: EventLoopRunner, app: Arc<Mutex<AppState>>) {
+    pub async fn run(&mut self, runner: EventLoopRunner, app: Arc<RwLock<AppState>>) {
         let event_loop = self.inner.take().expect(RUNNING);
         runner(event_loop, app.clone())
     }
@@ -65,55 +66,56 @@ type E<'a> = Winit<'a, Event>;
 type W<'b> = &'b EventLoopWindowTarget<Event>;
 type C<'c> = &'c mut ControlFlow;
 
-pub fn run_event_loop(event_loop: WinitEventLoop<Event>, app: Arc<Mutex<AppState>>) {
-    let event_handler = Box::new(move |event: E, _elwt: W, control_flow: C| {
-        let app = app.try_lock().expect("Couldn't get AppState mutex lock");
-        let mut windows = app.windows::<Window>();
-        let renderer = app.renderer::<Window>();
-        let mut targets = renderer.targets();
+pub fn run_event_loop(event_loop: WinitEventLoop<Event>, app: Arc<RwLock<AppState>>) {
+    let mut last_update = Instant::now();
 
-        let mut last_update = Instant::now();
+    let event_handler = Box::new(move |event: E, _elwt: W, control_flow: C| {
+        let app = app.read().expect("Couldn't get AppState Read mutex lock");
+        let renderer = app.renderer();
 
         match event {
-            // Reserved for our custom dispatched events
+            // Reserved for future use.
+            //
+            // Custom dispatched events as strings.
             Winit::UserEvent(event) => match event {
                 _ => {}
             },
 
             // This variant represents anything that happens in a Window.
-            // @TODO we will expose callbacks for all of Window events
-            //       so the user can handle them
             Winit::WindowEvent {
                 ref event,
                 window_id,
             } => {
                 let target_id = TargetId::Window(window_id);
+                let windows = app.read_windows_collection::<Window>();
+                let window = if let Some(window) = windows.get(&window_id) {
+                    window
+                } else {
+                    return;
+                };
+
                 match event {
                     // The size of the window has changed.
                     // Contains the client area's new dimensions.
                     WindowEvent::Resized(physical_size) => {
-                        let size = wgpu::Extent3d {
-                            width: physical_size.width,
-                            height: physical_size.height,
-                            depth_or_array_layers: 1,
-                        };
+                        let size = Quad::from_window_size(physical_size).to_wgpu_size();
 
-                        let window = windows.get(window_id);
-                        window.is_some().then(|| {
-                            if window.as_ref().unwrap().auto_resize {
-                                let target = targets.get_mut(&target_id);
-                                target
-                                    .is_some()
-                                    .then(|| target.unwrap().resize(&renderer, size));
-                            }
-                            window.unwrap().call(
-                                "resize",
-                                Event::Resize {
-                                    width: physical_size.width,
-                                    height: physical_size.height,
-                                },
-                            )
-                        });
+                        if window.auto_resize {
+                            let renderer = app.renderer();
+                            let mut targets = renderer.write_targets();
+                            let target = targets.get_mut(&target_id);
+                            target
+                                .is_some()
+                                .then(|| target.unwrap().resize(&renderer, size));
+                        }
+
+                        window.call(
+                            "resize",
+                            Event::Resized {
+                                width: physical_size.width,
+                                height: physical_size.height,
+                            },
+                        )
                     }
 
                     // The window's scale factor has changed.
@@ -133,31 +135,54 @@ pub fn run_event_loop(event_loop: WinitEventLoop<Event>, app: Arc<Mutex<AppState
                         scale_factor: _,
                         new_inner_size,
                     } => {
-                        let _size = wgpu::Extent3d {
-                            width: new_inner_size.width,
-                            height: new_inner_size.height,
-                            depth_or_array_layers: 1,
-                        };
+                        let size = Quad::from_window_size(new_inner_size).to_wgpu_size();
 
-                        // let target = targets.get_mut(&target_id);
-                        // target
-                        //     .is_some()
-                        //     .then(|| target.unwrap().resize(&renderer, size));
+                        if window.auto_resize {
+                            let renderer = app.renderer();
+                            let mut targets = renderer.write_targets();
+                            let target = targets.get_mut(&target_id);
+                            target
+                                .is_some()
+                                .then(|| target.unwrap().resize(&renderer, size));
+                        }
+
+                        window.call(
+                            "rescale",
+                            Event::Rescaled {
+                                width: new_inner_size.width,
+                                height: new_inner_size.height,
+                            },
+                        )
                     }
 
                     // The position of the window has changed.
                     // Contains the window's new position.
+                    //
                     // Desktop only.
-                    WindowEvent::Moved(_new_position) => {}
+                    WindowEvent::Moved(new_position) => window.call(
+                        "move",
+                        Event::Moved {
+                            x: new_position.x,
+                            y: new_position.y,
+                        },
+                    ),
 
                     // The window has been requested to close.
                     WindowEvent::CloseRequested => {
-                        println!("Window {window_id:?} has received the signal to close");
-
-                        let window = windows.remove(window_id);
-
-                        window.map(|w| w.write().unwrap().instance.set_visible(false));
+                        let mut targets = renderer.write_targets();
                         targets.remove(&target_id);
+                        drop(targets);
+
+                        let removed = app.remove_window::<Window>(&window_id);
+                        removed.map(|window| {
+                            let window = window.write().unwrap();
+                            window.instance.set_visible(false);
+                            window.call("closed", Event::Closed);
+                            if windows.len() == 0 {
+                                window.call("exit", Event::Exit);
+                            }
+                            drop(window)
+                        });
 
                         if windows.len() == 0 {
                             *control_flow = ControlFlow::Exit;
@@ -165,32 +190,55 @@ pub fn run_event_loop(event_loop: WinitEventLoop<Event>, app: Arc<Mutex<AppState
                     }
 
                     // The window has been destroyed.
-                    WindowEvent::Destroyed => {}
+                    WindowEvent::Destroyed => window.call("destroy", Event::Destroyed),
 
                     // A file has been dropped into the window.
                     //
                     // When the user drops multiple files at once,
                     // this event will be emitted for each file separately.
-                    WindowEvent::DroppedFile(_path) => {}
+                    WindowEvent::DroppedFile(path) => {
+                        if let Some(handle) = window.get_dropped_file_handle(path) {
+                            window.call("file dropped", Event::FileDropped { handle })
+                        }
+                    }
 
                     // A file is being hovered over the window.
                     //
                     // When the user hovers multiple files at once, this event will be emitted for each file
                     // separately.
-                    WindowEvent::HoveredFile(_path) => {}
+                    WindowEvent::HoveredFile(path) => {
+                        let mut windows = app.write_to_windows_collection::<Window>();
+                        let mut window = if let Some(window) = windows.get_mut(&window_id) {
+                            window
+                        } else {
+                            return;
+                        };
+
+                        let handle = window.add_hovered_file(path);
+                        window.call("file hovered", Event::FileHovered { handle })
+                    }
 
                     // A file was hovered, but has exited the window.
                     //
                     // There will be a single `HoveredFileCancelled` event triggered even if multiple files were
                     // hovered.
-                    WindowEvent::HoveredFileCancelled => {}
+                    WindowEvent::HoveredFileCancelled => {
+                        window.call("hover cancelled", Event::FileHoverCancelled)
+                    }
 
                     // The window received a unicode character.
-                    WindowEvent::ReceivedCharacter(_character) => {}
+                    WindowEvent::ReceivedCharacter(character) => window.call(
+                        "character received",
+                        Event::Character {
+                            character: *character,
+                        },
+                    ),
 
                     // The window gained or lost focus.
                     // The parameter is true if the window has gained focus, and false if it has lost focus.
-                    WindowEvent::Focused(_bool) => {}
+                    WindowEvent::Focused(focused) => {
+                        window.call("focus", Event::Focus { focused: *focused })
+                    }
 
                     // An event from the keyboard has been received.
                     WindowEvent::KeyboardInput {
@@ -199,12 +247,57 @@ pub fn run_event_loop(event_loop: WinitEventLoop<Event>, app: Arc<Mutex<AppState
                         is_synthetic: _,
                     } => match input {
                         KeyboardInput {
-                            state: ElementState::Pressed,
-                            virtual_keycode: Some(VirtualKeyCode::Escape),
-                            scancode: _,
+                            state,
+                            virtual_keycode,
+                            scancode,
                             ..
-                        } => *control_flow = ControlFlow::Exit,
-                        _ => {}
+                        } => {
+                            let escape = match virtual_keycode {
+                                Some(VirtualKeyCode::Escape) => true,
+                                _ => false,
+                            };
+                            let released = match state {
+                                ElementState::Pressed => false,
+                                ElementState::Released => true,
+                            };
+
+                            if escape && released && window.close_on_esc {
+                                let mut targets = renderer.write_targets();
+                                targets.remove(&target_id);
+
+                                let removed = app.remove_window::<Window>(&window_id);
+                                removed.map(|window| {
+                                    let window = window.write().unwrap();
+                                    window.instance.set_visible(false);
+                                    window.call("closed", Event::Closed);
+                                    if windows.len() == 0 {
+                                        window.call("exit", Event::Exit);
+                                    }
+                                    drop(window)
+                                });
+
+                                if windows.len() == 0 {
+                                    *control_flow = ControlFlow::Exit;
+                                }
+                            }
+
+                            match released {
+                                true => window.call(
+                                    "keyup",
+                                    Event::KeyUp {
+                                        key: *virtual_keycode,
+                                        scancode: *scancode,
+                                    },
+                                ),
+                                false => window.call(
+                                    "keydown",
+                                    Event::KeyDown {
+                                        key: *virtual_keycode,
+                                        scancode: *scancode,
+                                    },
+                                ),
+                            }
+                        }
                     },
 
                     // The keyboard modifiers have changed.
@@ -223,10 +316,14 @@ pub fn run_event_loop(event_loop: WinitEventLoop<Event>, app: Arc<Mutex<AppState
                     } => {}
 
                     // The cursor has entered the window.
-                    WindowEvent::CursorEntered { device_id: _ } => {}
+                    WindowEvent::CursorEntered { device_id: _ } => {
+                        window.call("mouse enter", Event::CursorEntered)
+                    }
 
                     // The cursor has left the window.
-                    WindowEvent::CursorLeft { device_id: _ } => {}
+                    WindowEvent::CursorLeft { device_id: _ } => {
+                        window.call("mouse leave", Event::CursorLeft)
+                    }
 
                     // A mouse wheel movement or touchpad scroll occurred.
                     WindowEvent::MouseWheel {
@@ -349,30 +446,28 @@ pub fn run_event_loop(event_loop: WinitEventLoop<Event>, app: Arc<Mutex<AppState
             //
             // Mainly of interest to applications with mostly-static graphics
             // that avoid redrawing unless something changes, like most non-game GUIs.
-            Winit::RedrawRequested(_window_id) => {
-                // @TODO this should be handled by the user of this library
-                //       the responsibility of this variant is just to
-                //       fire the appropriate user event and call the right callback
+            Winit::RedrawRequested(window_id) => {
+                let windows = app.read_windows_collection::<Window>();
+                let window = if let Some(window) = windows.get(&window_id) {
+                    window
+                } else {
+                    return;
+                };
 
+                // @TODO This should be a property of the target
+                let target_frametime = Duration::from_secs_f64(TARGET_FRAME_TIME);
                 // let target_id = TargetId::Window(window_id);
 
-                // match renderer.render() {
-                //     Ok(_) => {}
-
-                //     // Legacy options, but we still need to handle them
-                //     // when we acquire the next frame
-
-                //     //// Reconfigure the surface if lost
-                //     // Err(wgpu::SurfaceError::Lost) => {
-                //     //     let target = targets.get(&target_id).expect("Couldn't get target");
-                //     //     renderer.resize()
-                //     // }
-
-                //     //// The system is out of memory, we should probably quit
-                //     //Err(wgpu::SurfaceError::OutOfMemory) => *control_flow = ControlFlow::Exit,
-                //     // All other errors (Outdated, Timeout) should be resolved by the next frame
-                //     Err(e) => eprintln!("{:?}", e),
-                // }
+                let now = Instant::now();
+                // This allows us to precisely control the frame rate
+                *control_flow = match target_frametime.checked_sub(last_update.elapsed()) {
+                    Some(wait_time) => ControlFlow::WaitUntil(now + wait_time),
+                    None => {
+                        window.call("draw", Event::Draw);
+                        last_update = now;
+                        ControlFlow::Poll
+                    }
+                };
             }
 
             // Emitted when all of the event loop's input events have been processed
@@ -385,34 +480,8 @@ pub fn run_event_loop(event_loop: WinitEventLoop<Event>, app: Arc<Mutex<AppState
             // it's usually better to do it in response to Event::RedrawRequested, which gets
             // emitted immediately after this event. Programs that draw graphics continuously,
             // like most games, can render here unconditionally for simplicity.
-            Winit::MainEventsCleared => {
-                // @TODO each target could have a different frame rate
+            Winit::MainEventsCleared => {}
 
-                // After getting window & target from the App
-                for target in targets.all() {
-                    let window_id = match target {
-                        Target::Window(window) => window.id,
-                        _ => continue,
-                    };
-                    let window = windows.get(window_id).expect("Couldn't get window");
-
-                    // This should be a property of the target
-                    let target_frametime = Duration::from_secs_f64(TARGET_FRAME_TIME);
-                    let now = Instant::now();
-
-                    // This allows us to precisely control the frame rate
-                    *control_flow = match target_frametime.checked_sub(last_update.elapsed()) {
-                        Some(wait_time) => ControlFlow::WaitUntil(now + wait_time),
-                        None => {
-                            window.instance.request_redraw();
-                            last_update = now;
-                            ControlFlow::Poll
-                        }
-                    }
-                }
-            }
-
-            // @TODO document the variants below
             Winit::NewEvents(_) => {}
             Winit::DeviceEvent {
                 device_id: _,
@@ -420,7 +489,9 @@ pub fn run_event_loop(event_loop: WinitEventLoop<Event>, app: Arc<Mutex<AppState
             } => {}
             Winit::Suspended => {}
             Winit::Resumed => {}
+
             Winit::RedrawEventsCleared => {}
+
             Winit::LoopDestroyed => {}
         }
     });

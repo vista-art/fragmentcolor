@@ -55,38 +55,6 @@ pub struct PyWindow {
 
 unsafe impl Send for PyWindow {}
 
-// window = plr.Window(width=400, heigth=300,
-//          title="Spritesheet Example", clear_color="#FFccffff")
-
-// #[derive(FromPyObject)]
-// pub enum ClearColor<'a> {
-//     CssString(&'a str),
-//     RgbaTuple(f32, f32, f32, f32),
-//     RgbTuple(f32, f32, f32),
-//     RgbaDict {
-//         r: f32,
-//         g: f32,
-//         b: f32,
-//         a: f32,
-//     },
-//     RgbDict {
-//         r: f32,
-//         g: f32,
-//         b: f32,
-//     },
-//     RgbaFullDict {
-//         red: f32,
-//         green: f32,
-//         blue: f32,
-//         alpha: f32,
-//     },
-//     RgbFullDict {
-//         red: f32,
-//         green: f32,
-//         blue: f32,
-//     },
-// }
-
 #[derive(FromPyObject)]
 pub enum WindowSize {
     SizeTuple(u32, u32),
@@ -106,8 +74,8 @@ impl PyWindow {
         };
 
         let window = Window::new(WindowOptions {
-            size: Some((width, height)),
-            title: Some(title.to_string()),
+            size: (width, height),
+            title: title.to_string(),
             ..Default::default()
         });
 
@@ -128,7 +96,7 @@ impl PyWindow {
         let caller = move |event: Event| {
             let _ = Python::with_gil(|py| -> PyResult<()> {
                 match event {
-                    Event::Resize { width, height } => {
+                    Event::Resized { width, height } => {
                         let _ = callback.call(
                             py,
                             (),
@@ -137,18 +105,25 @@ impl PyWindow {
                         Ok(())
                     }
 
-                    Event::Keyboard { key, pressed } => {
-                        let key = match key {
-                            plr::app::events::Key::Digit(d) => format!("{}", d),
-                            plr::app::events::Key::Letter(l) => format!("{}", l),
-                            plr::app::events::Key::Function(f) => format!("F{}", f),
-                            plr::app::events::Key::Up => "Up".to_string(),
-                            plr::app::events::Key::Down => "Down".to_string(),
-                            plr::app::events::Key::Left => "Left".to_string(),
-                            plr::app::events::Key::Right => "Right".to_string(),
-                            plr::app::events::Key::Space => "Space".to_string(),
-                            plr::app::events::Key::Escape => "Escape".to_string(),
-                            plr::app::events::Key::Other => "Other".to_string(),
+                    Event::Rescaled { width, height } => {
+                        let _ = callback.call(
+                            py,
+                            (),
+                            Some([("width", width), ("height", height)].into_py_dict(py)),
+                        );
+                        Ok(())
+                    }
+
+                    Event::Moved { x, y } => {
+                        let _ = callback.call(py, (), Some([("x", x), ("y", y)].into_py_dict(py)));
+                        Ok(())
+                    }
+
+                    Event::KeyUp { key, scancode } => {
+                        let key = if let Some(keycode) = key {
+                            format!("{:?}", keycode)
+                        } else {
+                            "None".to_string()
                         };
 
                         let _ = callback.call(
@@ -157,11 +132,51 @@ impl PyWindow {
                             Some(
                                 [
                                     ("key", key.to_object(py)),
-                                    ("pressed", pressed.to_object(py)),
+                                    ("scancode", scancode.to_object(py)),
                                 ]
                                 .into_py_dict(py),
                             ),
                         );
+                        Ok(())
+                    }
+
+                    Event::KeyDown { key, scancode } => {
+                        let key = if let Some(keycode) = key {
+                            format!("{:?}", keycode)
+                        } else {
+                            "None".to_string()
+                        };
+
+                        let _ = callback.call(
+                            py,
+                            (),
+                            Some(
+                                [
+                                    ("key", key.to_object(py)),
+                                    ("scancode", scancode.to_object(py)),
+                                ]
+                                .into_py_dict(py),
+                            ),
+                        );
+                        Ok(())
+                    }
+
+                    Event::Character { character } => {
+                        let _ = callback.call(
+                            py,
+                            (),
+                            Some([("character", character.to_object(py))].into_py_dict(py)),
+                        );
+                        Ok(())
+                    }
+
+                    Event::CursorEntered => {
+                        let _ = callback.call(py, (), None);
+                        Ok(())
+                    }
+
+                    Event::CursorLeft => {
+                        let _ = callback.call(py, (), None);
                         Ok(())
                     }
 
@@ -180,12 +195,7 @@ impl PyWindow {
                     }
 
                     Event::Click { button, pressed } => {
-                        let button = match button {
-                            plr::app::events::Button::Left => "Left".to_string(),
-                            plr::app::events::Button::Middle => "Middle".to_string(),
-                            plr::app::events::Button::Right => "Right".to_string(),
-                            plr::app::events::Button::Other(o) => format!("{}", o),
-                        };
+                        let button = format!("{:?}", button);
 
                         let _ = callback.call(
                             py,
@@ -198,6 +208,48 @@ impl PyWindow {
                                 .into_py_dict(py),
                             ),
                         );
+                        Ok(())
+                    }
+
+                    Event::FileHovered { handle } => {
+                        let _ = callback.call(
+                            py,
+                            (),
+                            Some([("handle", handle.to_object(py))].into_py_dict(py)),
+                        );
+                        Ok(())
+                    }
+
+                    Event::FileDropped { handle } => {
+                        let _ = callback.call(
+                            py,
+                            (),
+                            Some([("handle", handle.to_object(py))].into_py_dict(py)),
+                        );
+                        Ok(())
+                    }
+
+                    Event::FileHoverCancelled => {
+                        let _ = callback.call(py, (), None);
+                        Ok(())
+                    }
+
+                    Event::Focus { focused } => {
+                        let _ = callback.call(
+                            py,
+                            (),
+                            Some([("focused", focused.to_object(py))].into_py_dict(py)),
+                        );
+                        Ok(())
+                    }
+
+                    Event::Closed => {
+                        let _ = callback.call(py, (), None);
+                        Ok(())
+                    }
+
+                    Event::Destroyed => {
+                        let _ = callback.call(py, (), None);
                         Ok(())
                     }
 
