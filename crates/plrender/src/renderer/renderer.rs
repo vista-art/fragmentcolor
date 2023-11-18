@@ -2,26 +2,26 @@ use crate::{
     app::window::IsWindow,
     renderer::{
         options::{DEVICE_LIMITS, POWER_PREFERENCE},
-        resources::{
-            mesh::{Mesh, MeshId},
-            Resources,
-        },
         target::{RenderTargetCollection, Target, TargetId, Targets, WindowTarget},
-        texture::{Texture, TextureId},
         RenderOptions, RenderPass,
     },
+    resources::{
+        mesh::{MeshData, MeshId},
+        texture::{Texture, TextureId},
+        Resources,
+    },
     scene::Scene,
+    Window,
 };
 use std::{
     fs::File,
     io,
     path::Path,
-    sync::{Arc, Mutex, MutexGuard},
+    sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
 use wgpu::util::DeviceExt;
 use winit::window::WindowId;
 
-const DEFAULT_RENDER_PASS: &str = "flat";
 pub type Commands = Vec<wgpu::CommandBuffer>;
 
 type Error = Box<dyn std::error::Error>;
@@ -29,32 +29,58 @@ type WindowSurface = (WindowId, wgpu::Extent3d, wgpu::Surface);
 type WindowSurfaces = Vec<WindowSurface>;
 
 pub trait RenderContext {
-    fn resources(&self) -> MutexGuard<'_, Resources>;
-    fn targets(&self) -> MutexGuard<'_, Targets>;
+    fn resources(&self) -> Arc<RwLock<Resources>>;
+    fn read_resources(&self) -> RwLockReadGuard<Resources>;
+    fn write_resources(&self) -> RwLockWriteGuard<Resources>;
+    fn targets(&self) -> Arc<RwLock<Targets>>;
+    fn read_targets(&self) -> RwLockReadGuard<Targets>;
+    fn write_targets(&self) -> RwLockWriteGuard<Targets>;
     fn device(&self) -> &wgpu::Device;
     fn queue(&self) -> &wgpu::Queue;
 }
 
+// @TODO describe the renderer
+/// 🎨 Draws things on the screen or on a texture
+///
+/// The Renderer is the link between the CPU world and the GPU world.
+///
+/// Full Description TBD
 #[derive(Debug)]
 pub struct Renderer {
     pub(crate) instance: wgpu::Instance,
     pub(crate) adapter: wgpu::Adapter,
     pub(crate) device: wgpu::Device,
     pub(crate) queue: wgpu::Queue,
-    pub(crate) pass: &'static str,
-    pub(crate) targets: Arc<Mutex<Targets>>,
-    pub(crate) resources: Arc<Mutex<Resources>>,
+    pub(crate) pass: String, // @TODO support multiple render passes
+    pub(crate) targets: Arc<RwLock<Targets>>,
+    pub(crate) resources: Arc<RwLock<Resources>>,
 }
 
 impl RenderContext for Renderer {
-    fn resources(&self) -> MutexGuard<'_, Resources> {
+    fn resources(&self) -> Arc<RwLock<Resources>> {
+        self.resources.clone()
+    }
+    fn read_resources(&self) -> RwLockReadGuard<Resources> {
         self.resources
-            .try_lock()
+            .try_read()
             .expect("Could not get resources mutex lock")
     }
-    fn targets(&self) -> MutexGuard<'_, Targets> {
+    fn write_resources(&self) -> RwLockWriteGuard<Resources> {
+        self.resources
+            .try_write()
+            .expect("Could not get resources mutex lock")
+    }
+    fn targets(&self) -> Arc<RwLock<Targets>> {
+        self.targets.clone()
+    }
+    fn read_targets(&self) -> RwLockReadGuard<Targets> {
         self.targets
-            .try_lock()
+            .try_read()
+            .expect("Could not get targets mutex lock")
+    }
+    fn write_targets(&self) -> RwLockWriteGuard<Targets> {
+        self.targets
+            .try_write()
             .expect("Could not get targets mutex lock")
     }
     fn device(&self) -> &wgpu::Device {
@@ -66,11 +92,23 @@ impl RenderContext for Renderer {
 }
 
 impl Renderer {
-    pub async fn new<'w, W: IsWindow>(options: RenderOptions<'w, W>) -> Result<Renderer, Error> {
-        let pass = options.render_pass.unwrap_or(DEFAULT_RENDER_PASS);
-        let (instance, adapter, device, queue, targets) = Internal::gpu_objects(options).await?;
-        let targets = Arc::new(Mutex::new(targets));
-        let resources = Arc::new(Mutex::new(Resources::new()));
+    pub async fn new_offscreen(options: RenderOptions) -> Result<Renderer, Error> {
+        Renderer::new::<Window>(options, vec![]).await
+    }
+
+    pub async fn new<'w, W: IsWindow>(
+        options: RenderOptions,
+        windows: Vec<&'w mut W>,
+    ) -> Result<Renderer, Error> {
+        if crate::app::RENDERER.get().is_some() {
+            return Err("Renderer already initialized".into());
+        }
+
+        let pass = options.render_pass.clone();
+        let (instance, adapter, device, queue, targets) =
+            Internal::gpu_objects(options, windows).await?;
+        let targets = Arc::new(RwLock::new(targets));
+        let resources = Arc::new(RwLock::new(Resources::new()));
 
         Ok(Renderer {
             instance,
@@ -83,41 +121,48 @@ impl Renderer {
         })
     }
 
-    pub fn add_mesh(&mut self, mesh: Mesh) -> MeshId {
-        self.resources().add_mesh(mesh)
+    pub fn add_mesh(&self, mesh: MeshData) -> MeshId {
+        self.write_resources().add_mesh(mesh)
     }
 
-    pub fn add_texture(&mut self, texture: wgpu::Texture) -> TextureId {
+    pub fn add_texture(&self, texture: wgpu::Texture) -> TextureId {
         let texture = Texture::from_wgpu_texture(&self, texture);
-        self.resources().add_texture(texture)
+        self.write_resources().add_texture(texture)
     }
 
     /// Registers an OS Window or a Web Canvas element as a rendering target.
     /// This method expects the Window to implement the `IsWindow` trait,
     /// which allows the renderer to assign a unique Target ID to it.
-    pub async fn add_target<W: IsWindow>(&mut self, window: W) -> Result<TargetId, Error> {
+    pub async fn add_target<W: IsWindow>(&self, window: W) -> Result<TargetId, Error> {
         let surface = Internal::surface(&self.instance, &window)?;
         let target = Internal::target(&self.device, &self.adapter, surface);
-        Ok(self.targets().add(target))
+        Ok(self.write_targets().add(target))
     }
 
-    // @TODO chainable render passes
-    pub fn render(&mut self, scene: &Scene) -> Result<(), wgpu::SurfaceError> {
+    /// Removes a rendering target from the renderer.
+    pub fn remove_target(&self, id: &TargetId) -> Option<Target> {
+        self.write_targets().remove(id)
+    }
+
+    /// Where the magic starts! 🪄
+    ///
+    /// Selects a RenderPass to render a frame from the given Scene
+    pub fn render(&self, scene: &Scene) -> Result<(), wgpu::SurfaceError> {
         if self.pass == "solid" {
             return self.render_pass_solid(scene);
         }
         self.render_pass_flat(scene)
     }
 
-    // Renders the Flat 2D render pass for sprites and shapes
-    pub fn render_pass_flat(&mut self, scene: &Scene) -> Result<(), wgpu::SurfaceError> {
+    // Renders the Flat 2D render pass (for sprites and shapes)
+    fn render_pass_flat(&self, scene: &Scene) -> Result<(), wgpu::SurfaceError> {
         let pass = crate::renderer::renderpass::Flat2D::new(self);
 
         self.pass(scene, pass)
     }
 
     // Renders the Solid 3D render pass
-    pub fn render_pass_solid(&mut self, scene: &Scene) -> Result<(), wgpu::SurfaceError> {
+    fn render_pass_solid(&self, scene: &Scene) -> Result<(), wgpu::SurfaceError> {
         let pass = crate::renderer::renderpass::Solid::new(
             &crate::renderer::renderpass::SolidConfig {
                 cull_back_faces: true,
@@ -128,22 +173,27 @@ impl Renderer {
         self.pass(scene, pass)
     }
 
-    /// Where the magic happens!
-    ///
-    /// Renders a Scene into a Frame with the given RenderPass
+    // Where the magic happens! 🎨
+    //
+    // Renders a frame from the given Scene with the given RenderPass
     fn pass<P: RenderPass>(&self, scene: &Scene, mut pass: P) -> Result<(), wgpu::SurfaceError> {
-        let mut targets = self.targets();
-        let commands = pass.draw(scene)?;
+        // Records the render commands in the GPU command buffer
+        let (commands, frames) = pass.draw(scene.read_state())?;
 
-        targets.render(self, commands); // renders the frame
-        targets.present(); // shows the rendered frame on the screen
+        let targets = self.read_targets();
+        targets.render(self, commands); // Runs the commands (submit to GPU queue)
+        drop(targets);
+
+        let mut targets = self.write_targets();
+        targets.present(frames); // Shows the rendered frames on the screen
+        drop(targets);
 
         Ok(())
     }
 
     // @TODO this logic exists in the Texture module;
     //       we should delegate all this part to it.
-    pub fn load_image(&mut self, path_ref: impl AsRef<Path>) -> Result<TextureId, Error> {
+    pub fn load_image(&self, path_ref: impl AsRef<Path>) -> Result<TextureId, Error> {
         let path = path_ref.as_ref();
         let extension = path.extension().ok_or("No file extension detected")?;
 
@@ -170,6 +220,7 @@ impl Renderer {
                     ddsfile::D3D10ResourceDimension::Texture3D => {
                         (wgpu::TextureDimension::D3, dds.get_depth())
                     }
+                    // @FIXME ALL asserts and panics must go away and return a Result
                     other => panic!("Unsupported resource dimension {:?}", other),
                 },
                 None => match dds.header.depth {
@@ -187,9 +238,11 @@ impl Renderer {
                     ddsfile::FourCC::BC4_SNORM => wgpu::TextureFormat::Bc4RSnorm,
                     ddsfile::FourCC::BC5_UNORM => wgpu::TextureFormat::Bc5RgUnorm,
                     ddsfile::FourCC::BC5_SNORM => wgpu::TextureFormat::Bc5RgSnorm,
+                    // @FIXME ALL asserts and panics must go away and return a Result
                     ref other => panic!("Unsupported DDS FourCC {:?}", other),
                 }
             } else {
+                // @FIXME ALL asserts and panics must go away and return a Result
                 assert_eq!(dds.header.spf.rgb_bit_count, Some(32));
                 wgpu::TextureFormat::Rgba8UnormSrgb
             };
@@ -214,6 +267,7 @@ impl Renderer {
 
             texture
         } else {
+            // @FIXME ALL asserts and panics must go away and return a Result
             let img = image::load(buf_reader, image_format)
                 .unwrap_or_else(|e| panic!("Unable to decode {}: {:?}", path.display(), e))
                 .to_rgba8();
@@ -227,7 +281,7 @@ impl Renderer {
             let desc = wgpu::TextureDescriptor {
                 label: Some(&label),
                 size,
-                mip_level_count: 1, //TODO: generate `size.max_mips()` mipmaps
+                mip_level_count: 1,
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
                 format: wgpu::TextureFormat::Rgba8UnormSrgb,
@@ -271,7 +325,8 @@ impl Renderer {
 struct Internal;
 impl Internal {
     async fn gpu_objects<'w, W: IsWindow>(
-        options: RenderOptions<'w, W>,
+        options: RenderOptions,
+        windows: Vec<&'w mut W>,
     ) -> Result<
         (
             wgpu::Instance,
@@ -283,9 +338,8 @@ impl Internal {
         Error,
     > {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::default());
-        let (power_preference, force_fallback_adapter, window_list, limits) =
-            Internal::parse_options(options);
-        let surfaces = Internal::surfaces(&instance, &window_list);
+        let (power_preference, force_fallback_adapter, limits) = Internal::parse_options(options);
+        let surfaces = Internal::surfaces(&instance, &windows);
 
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
@@ -312,25 +366,14 @@ impl Internal {
         Ok((instance, adapter, device, queue, targets))
     }
 
-    fn parse_options<'w, W: IsWindow>(
-        options: RenderOptions<'w, W>,
-    ) -> (wgpu::PowerPreference, bool, Vec<&'w mut W>, wgpu::Limits) {
-        let preference = options.power_preference.unwrap_or("high-performance");
-        let limits = options.device_limits.unwrap_or("default");
-        let power_preference = POWER_PREFERENCE.get(preference).unwrap().to_owned();
-        let device_limits = DEVICE_LIMITS.get(limits).unwrap().to_owned();
-        let force_fallback_adapter = options.force_software_rendering.unwrap_or(false);
-        let window_targets = match options.targets {
-            Some(targets) => targets,
-            None => Vec::new(),
-        };
+    fn parse_options(options: RenderOptions) -> (wgpu::PowerPreference, bool, wgpu::Limits) {
+        let preference = options.power_preference;
+        let limits = options.device_limits;
+        let power_preference = POWER_PREFERENCE.get(&preference).unwrap().to_owned();
+        let device_limits = DEVICE_LIMITS.get(&limits).unwrap().to_owned();
+        let force_fallback_adapter = options.force_software_rendering;
 
-        (
-            power_preference,
-            force_fallback_adapter,
-            window_targets,
-            device_limits,
-        )
+        (power_preference, force_fallback_adapter, device_limits)
     }
 
     fn surfaces<'w, W: IsWindow>(
@@ -351,7 +394,7 @@ impl Internal {
         window: &'w W,
     ) -> Result<WindowSurface, Error> {
         let surface = unsafe { instance.create_surface(window) }?;
-        let size = window.size();
+        let size = window.size().to_wgpu_size();
         let id = window.id();
         Ok((id, size, surface))
     }
@@ -409,7 +452,6 @@ impl Internal {
             id,
             surface,
             config,
-            frame: None,
         })
     }
 }

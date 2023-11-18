@@ -1,6 +1,9 @@
 use crate::renderer::limits::{DEFAULT_LIMITS, DOWNLEVEL_DEFAULTS, DOWNLEVEL_WEBGL2};
-use crate::IsWindow;
 use phf::phf_map;
+use serde::{Deserialize, Serialize};
+
+/// The default render pass (2D).
+const DEFAULT_RENDER_PASS: &str = "flat";
 
 /// Convenience Lookup Table for converting a static string
 /// from the external API into a the wgpu::PowerPreference enum.
@@ -8,25 +11,15 @@ pub static POWER_PREFERENCE: phf::Map<&str, wgpu::PowerPreference> = phf_map! {
     // This requests an adapter with high performance, often a discrete GPU.
     // It will result in the best performance, but will consume more power.
     "high-performance" => wgpu::PowerPreference::HighPerformance,
-    "high_performance" => wgpu::PowerPreference::HighPerformance,
-    "high performance" => wgpu::PowerPreference::HighPerformance,
-    "performance" => wgpu::PowerPreference::HighPerformance,
     "default" => wgpu::PowerPreference::HighPerformance,
-    "high" => wgpu::PowerPreference::HighPerformance,
-    "hi" => wgpu::PowerPreference::HighPerformance,
 
     // This requests an adapter with low power usage, often an integrated GPU.
     // It will generally result in lower performance, but will consume less power.
     "low-power" => wgpu::PowerPreference::LowPower,
-    "low_power" => wgpu::PowerPreference::LowPower,
-    "low power" => wgpu::PowerPreference::LowPower,
     "low" => wgpu::PowerPreference::LowPower,
-    "lo" => wgpu::PowerPreference::LowPower,
 
     // This requests the first available GPU adapter, regardless of power usage.
     "no-preference" => wgpu::PowerPreference::None,
-    "no_preference" => wgpu::PowerPreference::None,
-    "no preference" => wgpu::PowerPreference::None,
     "none" => wgpu::PowerPreference::None,
     "" =>wgpu::PowerPreference::None,
 };
@@ -40,7 +33,6 @@ pub static DEVICE_LIMITS: phf::Map<&str, wgpu::Limits> = phf_map! {
     // using these limits, assuming they are high enough for your application,
     // and you do not intent to support WebGL.
     "downlevel_defaults" => DOWNLEVEL_DEFAULTS,
-    "downlevel" => DOWNLEVEL_DEFAULTS,
     "opengl" => DOWNLEVEL_DEFAULTS,
     "d3d11" => DOWNLEVEL_DEFAULTS,
 
@@ -57,27 +49,24 @@ pub static DEVICE_LIMITS: phf::Map<&str, wgpu::Limits> = phf_map! {
     // needing more modern features can use this as a reasonable set of limits if
     // they are targeting only desktop and modern mobile devices.
     "default" => DEFAULT_LIMITS,
-    "modern" => DEFAULT_LIMITS,
 };
 
 /// Options for configuring the Renderer.
-#[derive(Debug)]
-pub struct RenderOptions<'w, W: IsWindow> {
-    pub force_software_rendering: Option<bool>,
-    pub power_preference: Option<&'static str>,
-    pub device_limits: Option<&'static str>,
-    pub render_pass: Option<&'static str>, // supports only 1 for now ("flat" or "solid"), not chainable yet
-    pub targets: Option<Vec<&'w mut W>>,
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RenderOptions {
+    pub force_software_rendering: bool,
+    pub power_preference: String,
+    pub device_limits: String,
+    pub render_pass: String, // supports only ("flat" or "solid") for now, not chainable yet
 }
 
-impl<'w, W: IsWindow> Default for RenderOptions<'w, W> {
+impl Default for RenderOptions {
     fn default() -> Self {
         Self {
-            force_software_rendering: Some(false),
-            power_preference: Some("default"),
-            device_limits: Some("default"),
-            render_pass: Some("flat"),
-            targets: None,
+            force_software_rendering: false,
+            power_preference: "default".to_string(),
+            device_limits: "default".to_string(),
+            render_pass: DEFAULT_RENDER_PASS.to_string(),
         }
     }
 }

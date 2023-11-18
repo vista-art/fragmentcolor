@@ -1,38 +1,80 @@
+use std::path::Path;
+
 use crate::{
-    renderer::texture::TextureId,
-    scene::{macros::has_node_id, node::NodeId, SceneObject},
+    app::error::READ_LOCK_ERROR,
+    math::geometry::Quad,
+    resources::texture::TextureId,
+    scene::{macros::spatial_object, node::NodeId, SceneObject},
+    PLRender,
 };
-use std::ops::Range;
 
-pub type UvRange = Range<mint::Point2<i16>>;
+type Error = Box<dyn std::error::Error>;
 
+#[derive(Debug, Default, Clone, Copy)]
 pub struct Sprite {
     pub node_id: NodeId,
-    pub image: TextureId,
-    pub uv: Option<UvRange>,
+    pub image: Option<TextureId>,
+    pub clip_region: Option<Quad>,
 }
 
-has_node_id!(Sprite);
+spatial_object!(Sprite);
 
-// @TODO maybe not needed...
 impl SceneObject<Sprite> {
-    pub fn uv(&mut self, uv: UvRange) -> &mut Self {
-        self.object.uv(uv);
+    pub fn set_uv(&mut self, clip_region: Quad) -> &mut Self {
+        let sprite = self.object();
+
+        self.add_component(Sprite {
+            clip_region: Some(clip_region),
+            ..sprite
+        });
+
+        self
+    }
+
+    pub fn set_image(&mut self, image: TextureId) -> &mut Self {
+        let sprite = self.object();
+
+        self.add_component(Sprite {
+            image: Some(image),
+            ..sprite
+        });
+
+        self
+    }
+
+    pub fn clear_image(&mut self) -> &mut Self {
+        let sprite = self.object();
+
+        self.add_component(Sprite {
+            image: None,
+            ..sprite
+        });
+
         self
     }
 }
 
 impl Sprite {
-    pub fn new(image: TextureId, uv: UvRange) -> Self {
-        Sprite {
+    pub fn new(image: TextureId) -> SceneObject<Sprite> {
+        SceneObject::new(Sprite {
             node_id: NodeId::root(),
-            image: image,
-            uv: Some(uv), // NOTE: used to be uv.take() in the old builder
-        }
+            image: Some(image),
+            clip_region: None,
+        })
     }
 
-    pub fn uv(&mut self, uv: UvRange) -> &mut Self {
-        self.uv = Some(uv);
-        self
+    pub fn from_image(image_path: impl AsRef<Path>) -> Result<SceneObject<Sprite>, Error> {
+        let renderer = PLRender::renderer().read().expect(READ_LOCK_ERROR);
+        let image = renderer.load_image(image_path)?;
+
+        Ok(Self::new(image))
+    }
+
+    pub fn with_clip_region(image: TextureId, clip_region: Quad) -> SceneObject<Sprite> {
+        SceneObject::new(Sprite {
+            node_id: NodeId::root(),
+            image: Some(image),
+            clip_region: Some(clip_region),
+        })
     }
 }

@@ -1,12 +1,13 @@
 use crate::{
-    geometry::{Normal, Position, TextureCoordinates, Vertex},
+    math::geometry::{Normal, Position, TextureCoordinates, Vertex},
     renderer::{
-        target::HasSize, Commands, RenderContext, RenderTarget, RenderTargetCollection, Renderer,
+        target::Dimensions, RenderContext, RenderPassResult, RenderTarget, RenderTargetCollection,
+        Renderer,
     },
-    scene::Scene,
+    scene::SceneState,
 };
 use fxhash::FxHashMap;
-use std::mem;
+use std::{mem, sync::RwLockReadGuard};
 use wgpu::util::DeviceExt as _;
 
 #[derive(Clone, Copy, Debug)]
@@ -233,7 +234,7 @@ impl<'r> Real<'r> {
 
             let mut sample_count = 1;
             let targets = &renderer
-                .targets()
+                .read_targets()
                 .all()
                 .enumerate()
                 .map(|(index, target)| {
@@ -335,199 +336,240 @@ impl<'r> Real<'r> {
 }
 
 impl<'r> crate::RenderPass for Real<'r> {
-    fn draw(&mut self, scene: &Scene) -> Result<Commands, wgpu::SurfaceError> {
+    fn draw(&mut self, scene: RwLockReadGuard<'_, SceneState>) -> RenderPassResult {
         let renderer = self.renderer;
-        let mut targets = renderer.targets();
-        let resources = renderer.resources();
+        let targets = renderer.read_targets();
+        let resources = renderer.read_resources();
         let device = renderer.device();
-
-        // @TODO!
-        let camera = scene.camera();
-
         let mut commands = Vec::new();
-        for target in targets.all_mut() {
-            let reset_depth = match self.depth_texture {
-                Some((_, size)) => size != target.size(),
-                None => true,
-            };
 
-            if reset_depth {
-                let texture = device.create_texture(&wgpu::TextureDescriptor {
-                    label: Some("depth"),
-                    dimension: wgpu::TextureDimension::D2,
-                    format: DEPTH_FORMAT,
-                    size: target.size(),
-                    sample_count: 1,
-                    mip_level_count: 1,
-                    usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-                    view_formats: &[DEPTH_FORMAT],
-                });
-                let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-                self.depth_texture = Some((view, target.size()));
-            }
+        let mut rendered_frames = Vec::new();
+        for (object_id, camera) in scene.cameras().iter() {
+            let camera_targets = scene.get_camera_targets(object_id);
 
-            let nodes = scene.get_global_transforms();
-            self.uniform_pool.reset();
-            let queue = renderer.queue();
+            // NOTE: Don't mind the nested loop.
+            // Most of the times, there will be only one target and one camera.
+            for camera_target in camera_targets {
+                let target = targets.get(&camera_target.target_id);
 
-            {
-                let m_proj = camera.projection_matrix(target.aspect());
-                let node = &nodes[camera.node_id];
-                let m_view_inv = node.inverse_matrix();
-                let m_final = glam::Mat4::from(m_proj) * glam::Mat4::from(m_view_inv);
-                let globals = Globals {
-                    view_proj: m_final.to_cols_array_2d(),
-                    camera_pos: node.position,
+                if target.is_none() {
+                    log::error!(
+                        "Camera {:?} is targeting a non-existent target {:?}",
+                        object_id,
+                        camera_target.target_id
+                    );
+                    continue;
                 };
-                queue.write_buffer(&self.global_uniform_buf, 0, bytemuck::bytes_of(&globals));
-            }
 
-            let lights = scene
-                .state()
-                .query::<&crate::Light>()
-                .iter()
-                .map(|(_, light)| {
-                    let space = &nodes[light.node_id];
-                    let mut position = space.position;
-                    position[3] = match light.variant {
-                        crate::LightType::Directional => 0.0,
-                        crate::LightType::Point => 1.0,
+                let target = target.unwrap();
+
+                // @TODO those things should be cached; not calculated every frame
+                //       invalidate on screen resize
+                if !camera_target.clip_region.equals(target.size()) {
+                    //if camera_target.clip_region.is_smaller_than(target.size().to_wgpu_size()) {
+
+                    // I don't expect to enter here.
+                    //
+                    // This is not a priority, but the current logic won't work
+                    // for multiple viewports in the same window.
+                    //
+                    // @TODO is this target targeted by multiple cameras?
+                    //
+                    //       - if this is the only camera rendering to it fullscreen,
+                    //         we'll proceed as usual. (this is the expected use case for now).
+                    //
+                    //       - if this is not the only camera, we need to cache the results
+                    //         and start a new pass with LoadOp::Load instead of "Clear"
+                    log::warn!(
+                        "Camera {:?} is targeting a target {:?} with a different size.",
+                        object_id,
+                        camera_target.target_id
+                    );
+                }
+
+                let reset_depth = match self.depth_texture {
+                    Some((_, size)) => size != target.size().to_wgpu_size(),
+                    None => true,
+                };
+
+                if reset_depth {
+                    let texture = device.create_texture(&wgpu::TextureDescriptor {
+                        label: Some("depth"),
+                        dimension: wgpu::TextureDimension::D2,
+                        format: DEPTH_FORMAT,
+                        size: target.size().to_wgpu_size(),
+                        sample_count: 1,
+                        mip_level_count: 1,
+                        usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                        view_formats: &[DEPTH_FORMAT],
+                    });
+                    let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+                    self.depth_texture = Some((view, target.size().to_wgpu_size()));
+                }
+
+                let nodes = scene.get_global_transforms();
+                self.uniform_pool.reset();
+                let queue = renderer.queue();
+
+                {
+                    let m_proj = camera.projection_matrix(target.aspect());
+                    let node = &nodes[camera.node_id];
+                    let m_view_inv = node.inverse_matrix();
+                    let m_final = glam::Mat4::from(m_proj) * glam::Mat4::from(m_view_inv);
+                    let globals = Globals {
+                        view_proj: m_final.to_cols_array_2d(),
+                        camera_pos: node.position,
                     };
-                    let mut color_intensity = light.color.into_vec4();
-                    color_intensity[3] = light.intensity;
-                    Light {
-                        position,
-                        rotation: space.rotation,
-                        color_intensity,
-                    }
-                })
-                .collect::<Vec<_>>();
+                    queue.write_buffer(&self.global_uniform_buf, 0, bytemuck::bytes_of(&globals));
+                }
 
-            let light_count = lights.len().min(self.light_capacity);
-            queue.write_buffer(
-                &self.light_buf,
-                0,
-                bytemuck::cast_slice(&lights[..light_count]),
-            );
-
-            //TODO: we can do everything in a single pass if we use some arena-based hashmap.
-            self.instances.clear();
-
-            for (_, (entity, &color, mat)) in scene
-                .state()
-                .query::<(&crate::Renderable, &crate::Color, &Material)>()
-                .with::<&Vertex<Position>>()
-                .with::<&Vertex<TextureCoordinates>>()
-                .with::<&Vertex<Normal>>()
-                .iter()
-            {
-                let space = &nodes[entity.node_id];
-
-                let locals = Locals {
-                    position: space.position,
-                    scale: space.scale,
-                    rotation: space.rotation,
-                    base_color_factor: color.into_vec4(),
-                    emissive_factor: mat.emissive_color.into_vec4(),
-                    metallic_roughness_values: [mat.metallic_factor, mat.roughness_factor],
-                    normal_scale: mat.normal_scale,
-                    occlusion_strength: mat.occlusion_strength,
-                };
-                let locals_bl = self.uniform_pool.alloc(&locals, queue);
-
-                // pre-create local bind group, if needed
-                let key = LocalKey {
-                    uniform_buf_index: locals_bl.index,
-                    base_color_map: mat.base_color_map,
-                };
-                let binding = self.uniform_pool.binding::<Locals>(locals_bl.index);
-                let local_bgl = &self.local_bind_group_layout;
-                let blank_color_view = &self.blank_color_view;
-
-                self.local_bind_groups.entry(key).or_insert_with(|| {
-                    let base_color_view = match mat.base_color_map {
-                        Some(texture) => &resources.get_texture(texture).view,
-                        None => blank_color_view,
-                    };
-                    device.create_bind_group(&wgpu::BindGroupDescriptor {
-                        label: Some("real locals"),
-                        layout: local_bgl,
-                        entries: &[
-                            wgpu::BindGroupEntry {
-                                binding: 0,
-                                resource: wgpu::BindingResource::Buffer(binding),
-                            },
-                            wgpu::BindGroupEntry {
-                                binding: 1,
-                                resource: wgpu::BindingResource::TextureView(&base_color_view),
-                            },
-                        ],
+                let lights = scene
+                    .query::<&crate::Light>()
+                    .iter()
+                    .map(|(_, light)| {
+                        let space = &nodes[light.node_id];
+                        let mut position = space.position;
+                        position[3] = match light.variant {
+                            crate::LightType::Directional => 0.0,
+                            crate::LightType::Point => 1.0,
+                        };
+                        let mut color_intensity = light.color.into_vec4();
+                        color_intensity[3] = light.intensity;
+                        Light {
+                            position,
+                            rotation: space.rotation,
+                            color_intensity,
+                        }
                     })
-                });
+                    .collect::<Vec<_>>();
 
-                self.instances.push(Instance {
-                    mesh_id: entity.mesh_id,
-                    locals_bl,
-                    base_color_map: mat.base_color_map,
-                });
-            }
+                let light_count = lights.len().min(self.light_capacity);
+                queue.write_buffer(
+                    &self.light_buf,
+                    0,
+                    bytemuck::cast_slice(&lights[..light_count]),
+                );
 
-            let frame = target.next_frame()?;
+                //TODO: we can do everything in a single pass if we use some arena-based hashmap.
+                self.instances.clear();
 
-            let mut encoder =
-                device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-            {
-                let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                    label: Some("real"),
-                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                        view: &frame.view,
-                        resolve_target: None,
-                        ops: wgpu::Operations {
-                            load: wgpu::LoadOp::Clear(camera.background.into()),
-                            store: wgpu::StoreOp::Store,
-                        },
-                    })],
-                    depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                        view: &self.depth_texture.as_ref().unwrap().0,
-                        depth_ops: Some(wgpu::Operations {
-                            load: wgpu::LoadOp::Clear(1.0),
-                            store: wgpu::StoreOp::Store,
-                        }),
-                        stencil_ops: None,
-                    }),
-                    ..Default::default()
-                });
+                for (_, (entity, &color, mat)) in scene
+                    .query::<(&crate::Mesh, &crate::Color, &Material)>()
+                    .with::<&Vertex<Position>>()
+                    .with::<&Vertex<TextureCoordinates>>()
+                    .with::<&Vertex<Normal>>()
+                    .iter()
+                {
+                    let space = &nodes[entity.node_id];
 
-                pass.set_pipeline(&self.pipelines.main);
-                pass.set_bind_group(0, &self.global_bind_group, &[]);
-
-                for instance in self.instances.drain(..) {
-                    let mesh = resources.get_mesh(instance.mesh_id);
-
-                    let key = LocalKey {
-                        uniform_buf_index: instance.locals_bl.index,
-                        base_color_map: instance.base_color_map,
+                    let locals = Locals {
+                        position: space.position,
+                        scale: space.scale,
+                        rotation: space.rotation,
+                        base_color_factor: color.into_vec4(),
+                        emissive_factor: mat.emissive_color.into_vec4(),
+                        metallic_roughness_values: [mat.metallic_factor, mat.roughness_factor],
+                        normal_scale: mat.normal_scale,
+                        occlusion_strength: mat.occlusion_strength,
                     };
-                    let local_bg = &self.local_bind_groups[&key];
-                    pass.set_bind_group(1, local_bg, &[instance.locals_bl.offset]);
+                    let locals_bl = self.uniform_pool.alloc(&locals, queue);
 
-                    pass.set_vertex_buffer(0, mesh.vertex_slice::<Position>());
-                    pass.set_vertex_buffer(1, mesh.vertex_slice::<TextureCoordinates>());
-                    pass.set_vertex_buffer(2, mesh.vertex_slice::<Normal>());
+                    // pre-create local bind group, if needed
+                    let key = LocalKey {
+                        uniform_buf_index: locals_bl.index,
+                        base_color_map: mat.base_color_map,
+                    };
+                    let binding = self.uniform_pool.binding::<Locals>(locals_bl.index);
+                    let local_bgl = &self.local_bind_group_layout;
+                    let blank_color_view = &self.blank_color_view;
 
-                    if let Some(ref is) = mesh.vertex_ids {
-                        pass.set_index_buffer(mesh.buffer.slice(is.offset..), is.format);
-                        pass.draw_indexed(0..is.count, 0, 0..1);
-                    } else {
-                        pass.draw(0..mesh.vertex_count, 0..1);
+                    self.local_bind_groups.entry(key).or_insert_with(|| {
+                        let base_color_view = match mat.base_color_map {
+                            Some(texture) => &resources.get_texture(texture).view,
+                            None => blank_color_view,
+                        };
+                        device.create_bind_group(&wgpu::BindGroupDescriptor {
+                            label: Some("real locals"),
+                            layout: local_bgl,
+                            entries: &[
+                                wgpu::BindGroupEntry {
+                                    binding: 0,
+                                    resource: wgpu::BindingResource::Buffer(binding),
+                                },
+                                wgpu::BindGroupEntry {
+                                    binding: 1,
+                                    resource: wgpu::BindingResource::TextureView(&base_color_view),
+                                },
+                            ],
+                        })
+                    });
+
+                    self.instances.push(Instance {
+                        mesh_id: entity.mesh_id,
+                        locals_bl,
+                        base_color_map: mat.base_color_map,
+                    });
+                }
+
+                let frame = target.next_frame()?;
+
+                let mut encoder =
+                    device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+                {
+                    let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                        label: Some("real"),
+                        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                            view: &frame.view,
+                            resolve_target: None,
+                            ops: wgpu::Operations {
+                                load: wgpu::LoadOp::Clear(camera_target.clear_color.into()),
+                                store: wgpu::StoreOp::Store,
+                            },
+                        })],
+                        depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                            view: &self.depth_texture.as_ref().unwrap().0,
+                            depth_ops: Some(wgpu::Operations {
+                                load: wgpu::LoadOp::Clear(1.0),
+                                store: wgpu::StoreOp::Store,
+                            }),
+                            stencil_ops: None,
+                        }),
+                        ..Default::default()
+                    });
+
+                    pass.set_pipeline(&self.pipelines.main);
+                    pass.set_bind_group(0, &self.global_bind_group, &[]);
+
+                    for instance in self.instances.drain(..) {
+                        let mesh = resources.get_mesh(instance.mesh_id);
+
+                        let key = LocalKey {
+                            uniform_buf_index: instance.locals_bl.index,
+                            base_color_map: instance.base_color_map,
+                        };
+                        let local_bg = &self.local_bind_groups[&key];
+                        pass.set_bind_group(1, local_bg, &[instance.locals_bl.offset]);
+
+                        pass.set_vertex_buffer(0, mesh.vertex_slice::<Position>());
+                        pass.set_vertex_buffer(1, mesh.vertex_slice::<TextureCoordinates>());
+                        pass.set_vertex_buffer(2, mesh.vertex_slice::<Normal>());
+
+                        if let Some(ref is) = mesh.vertex_ids {
+                            pass.set_index_buffer(mesh.buffer.slice(is.offset..), is.format);
+                            pass.draw_indexed(0..is.count, 0, 0..1);
+                        } else {
+                            pass.draw(0..mesh.vertex_count, 0..1);
+                        }
                     }
                 }
-            }
 
-            commands.append(&mut vec![encoder.finish()]);
-            target.prepare_render(renderer, frame, &mut commands);
+                commands.append(&mut vec![encoder.finish()]);
+                target.prepare_render(renderer, &mut commands);
+
+                rendered_frames.push((target.id(), frame));
+            }
         }
 
-        Ok(commands)
+        Ok((commands, rendered_frames))
     }
 }

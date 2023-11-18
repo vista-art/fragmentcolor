@@ -31,7 +31,7 @@ pub fn print_help(command: &str) {
     }
 }
 
-// @TODO it would be nicer to use `clap` here
+// it would be nicer to use `clap` here
 fn print_general_help() {
     println!("Usage: cargo xtask [COMMAND] [CRATE]");
     println!();

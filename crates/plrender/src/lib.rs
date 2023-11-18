@@ -1,10 +1,10 @@
 //! Multiplatform GPU Rendering API for Javascript, Python and Beyond
 
 pub mod app;
-pub mod asset;
 pub mod components;
-pub mod geometry;
+pub mod math;
 pub mod renderer;
+pub mod resources;
 pub mod scene;
 
 pub use app::{
@@ -12,24 +12,25 @@ pub use app::{
     App, Event, EventLoop, PLRender,
 };
 
-pub use geometry::{Geometry, Vertex};
+pub use resources::{
+    mesh::{BuiltMesh, MeshBuilder, MeshData, MeshId, VertexData, VertexIds},
+    texture::{Texture, TextureId},
+};
 
 pub use components::{
     animation::Animator,
     camera::{Camera, Projection},
     color::Color,
     light::{Light, LightType},
-    renderable::Renderable,
-    sprite::{Sprite, UvRange},
+    mesh::Mesh,
+    sprite::Sprite,
     transform::{GlobalTransforms, LocalTransform, Transform},
 };
 
 pub use renderer::{
-    mesh::{Mesh, MeshBuilder, MeshId, MeshPrototype, VertexData, VertexIds},
     renderer::{RenderContext, Renderer},
     renderpass::{Flat2D, Phong, Real, Shader, Solid},
-    target::{HasSize, RenderTarget, Target, TargetId},
-    texture::{Texture, TextureId},
+    target::{Dimensions, RenderTarget, Target, TargetId},
     RenderPass,
 };
 
@@ -38,3 +39,5 @@ pub use scene::{
     object::SceneObject,
     ObjectId, Scene,
 };
+
+pub use math::geometry::{Primitive, Quad, Vertex};
