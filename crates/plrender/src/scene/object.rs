@@ -10,7 +10,10 @@ use crate::{
     },
     PLRender,
 };
-use std::sync::{Arc, RwLock};
+use std::{
+    fmt::{Debug, Formatter},
+    sync::{Arc, RwLock},
+};
 
 /// Defines an interface for Spatial SceneObjects.
 ///
@@ -33,6 +36,25 @@ pub trait SpatialObject: Default + hecs::Component + Copy {
 
 pub type ObjectId = hecs::Entity;
 
+#[derive(Default)]
+pub(crate) struct ObjectBuilder {
+    pub(crate) instance: hecs::EntityBuilder,
+}
+
+impl Clone for ObjectBuilder {
+    fn clone(&self) -> Self {
+        Self {
+            instance: hecs::EntityBuilder::new(),
+        }
+    }
+}
+
+impl Debug for ObjectBuilder {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("< PLRender ObjectBuilder >").finish()
+    }
+}
+
 /// The SceneObject is the interface for manipulating Scene objects.
 ///
 /// A SceneObject is a wrapper around public API objects containing
@@ -45,11 +67,12 @@ pub type ObjectId = hecs::Entity;
 /// architecture, it does not expose the inner ECS interface to the
 /// user. The SceneObject converts it to a more intuitive, familiar
 /// Object-Oriented approach.
+#[derive(Debug, Clone)]
 pub struct SceneObject<T: SpatialObject> {
     pub(super) id: Option<ObjectId>,
     pub(super) scene_id: Option<SceneId>,
     pub(super) scenes: Arc<RwLock<Scenes>>,
-    pub(crate) builder: hecs::EntityBuilder,
+    pub(crate) builder: ObjectBuilder,
     pub node: Node,
     batch: bool,
     object: T,
@@ -80,7 +103,7 @@ impl<T: SpatialObject> SceneObjectEntry for SceneObject<T> {
     }
 
     fn builder(&mut self) -> &mut hecs::EntityBuilder {
-        &mut self.builder
+        &mut self.builder.instance
     }
 
     fn added_to_scene_tree(&mut self, node_id: NodeId) {
@@ -117,7 +140,7 @@ impl<T: SpatialObject> SceneObject<T> {
             node: Node::root(),
             scene_id: None,
             scenes: app.scenes(),
-            builder: hecs::EntityBuilder::new(),
+            builder: ObjectBuilder::default(),
             batch: false,
             object,
         };
@@ -269,7 +292,7 @@ impl<T: SpatialObject> SceneObject<T> {
 
             object
         } else {
-            if let Some(object) = self.builder.get::<&T>() {
+            if let Some(object) = self.builder.instance.get::<&T>() {
                 object.clone()
             } else {
                 log::error!(
@@ -318,7 +341,7 @@ impl<T: SpatialObject> SceneObject<T> {
                 ),
             }
         } else {
-            self.builder.add_bundle(bundle);
+            self.builder.instance.add_bundle(bundle);
         }
         self
     }

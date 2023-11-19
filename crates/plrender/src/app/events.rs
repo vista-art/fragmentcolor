@@ -29,30 +29,62 @@ impl<E> Debug for dyn CallbackFn<E> {
 pub type Callback<E> = Arc<RwLock<dyn CallbackFn<E>>>;
 
 /// Alias for Winit's VirtualKeyCode.
-type Key = Option<VirtualKeyCode>;
+pub type VirtualKey = VirtualKeyCode;
 
 /// PLRender Events.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Event {
-    Resized { width: u32, height: u32 },
-    Rescaled { width: u32, height: u32 },
-    Moved { x: i32, y: i32 },
+    Resized {
+        width: u32,
+        height: u32,
+    },
+    Rescaled {
+        width: u32,
+        height: u32,
+    },
+    Moved {
+        x: i32,
+        y: i32,
+    },
 
-    KeyUp { key: Key, scancode: u32 },
-    KeyDown { key: Key, scancode: u32 },
-    Character { character: char },
+    KeyUp {
+        key: Option<VirtualKey>,
+        keycode: u32,
+    },
+    KeyDown {
+        key: Option<VirtualKey>,
+        keycode: u32,
+    },
+    Character {
+        character: char,
+    },
 
     CursorEntered,
     CursorLeft,
-    Pointer { x: f32, y: f32 },
-    Scroll { delta_x: f32, delta_y: f32 },
-    Click { button: MouseButton, pressed: bool },
+    Pointer {
+        x: f32,
+        y: f32,
+    },
+    Scroll {
+        delta_x: f32,
+        delta_y: f32,
+    },
+    Click {
+        button: MouseButton,
+        pressed: bool,
+    },
 
-    FileHovered { handle: u128 },
-    FileDropped { handle: u128 },
+    FileHovered {
+        handle: u128,
+    },
+    FileDropped {
+        handle: u128,
+    },
     FileHoverCancelled,
 
-    Focus { focused: bool },
+    Focus {
+        focused: bool,
+    },
 
     Closed,
     Destroyed,

@@ -1,7 +1,7 @@
 /// Handy macro that implements the app::Container trait for the given type.
 ///
-/// The type must contain a `container` field and implement the Default
-/// trait for this macro to work.
+/// The type must contain a `container` and a `keys` fields and implement
+/// the Default  trait for this macro to work.
 macro_rules! implements_container {
     ($type:ty, <$key:ty, $value:ty>) => {
         impl crate::app::container::Container<$key, $value> for $type {
@@ -28,13 +28,19 @@ macro_rules! implements_container {
             }
 
             fn insert(&mut self, id: $key, value: std::sync::Arc<std::sync::RwLock<$value>>) {
-                self.container.insert(*id, value);
+                if let Some(_) = self.container.insert(*id, value) {
+                    return; // key already existed
+                }
+                self.keys.push(*id);
             }
 
             fn remove(
                 &mut self,
                 id: $key,
             ) -> std::option::Option<std::sync::Arc<std::sync::RwLock<$value>>> {
+                if let Some(pos) = self.keys.iter().position(|x| x == id) {
+                    self.keys.swap_remove(pos);
+                }
                 self.container.remove(&id)
             }
 

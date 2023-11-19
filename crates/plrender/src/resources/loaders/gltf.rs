@@ -1,6 +1,6 @@
 use crate::{
-    app::PLRender, components, components::Color, components::Mesh, math::geometry::vertex,
-    renderer, resources::mesh::MeshBuilder,
+    components, components::Color, components::Mesh, math::geometry::vertex, renderer,
+    resources::mesh::MeshBuilder,
 };
 use std::{collections::VecDeque, ops, path::Path};
 
@@ -23,59 +23,9 @@ struct Primitive {
     material: crate::renderer::renderpass::Material,
 }
 
-fn load_texture(mut data: gltf::image::Data) -> Texture {
-    let renderer = PLRender::renderer();
-    let mut renderer = renderer.write().expect("Failed to lock renderer");
-
-    let format = match data.format {
-        gltf::image::Format::R8 => wgpu::TextureFormat::R8Unorm,
-        gltf::image::Format::R8G8 => wgpu::TextureFormat::Rg8Unorm,
-        gltf::image::Format::R8G8B8 => {
-            log::warn!(
-                "Converting {}x{} texture from RGB to RGBA...",
-                data.width,
-                data.height
-            );
-            let original = data.pixels;
-            data.pixels = Vec::with_capacity(original.len() * 4 / 3);
-            for chunk in original.chunks(3) {
-                data.pixels.push(chunk[0]);
-                data.pixels.push(chunk[1]);
-                data.pixels.push(chunk[2]);
-                data.pixels.push(0xFF);
-            }
-            if data.format == gltf::image::Format::R8G8B8 {
-                wgpu::TextureFormat::Rgba8UnormSrgb
-            } else {
-                wgpu::TextureFormat::Bgra8UnormSrgb
-            }
-        }
-        gltf::image::Format::R16G16B16 => panic!("RGB16 is outdated"),
-        gltf::image::Format::R8G8B8A8 => wgpu::TextureFormat::Rgba8UnormSrgb,
-        gltf::image::Format::R16 => wgpu::TextureFormat::R16Float,
-        gltf::image::Format::R16G16 => wgpu::TextureFormat::Rg16Float,
-        gltf::image::Format::R16G16B16A16 => wgpu::TextureFormat::Rgba16Float,
-        gltf::image::Format::R32G32B32FLOAT => wgpu::TextureFormat::Rgba32Float,
-        gltf::image::Format::R32G32B32A32FLOAT => wgpu::TextureFormat::Rgba32Float,
-    };
-
-    let desc = wgpu::TextureDescriptor {
-        label: None,
-        size: wgpu::Extent3d {
-            width: data.width,
-            height: data.height,
-            depth_or_array_layers: 1,
-        },
-        mip_level_count: 1,
-        sample_count: 1,
-        dimension: wgpu::TextureDimension::D2,
-        format,
-        usage: wgpu::TextureUsages::TEXTURE_BINDING,
-        view_formats: &[format],
-    };
-
-    let image = renderer.add_texture_from_bytes(&desc, &data.pixels);
-    Texture { image }
+fn load_texture(data: gltf::image::Data) -> Texture {
+    let texture_id = crate::Texture::from_bytes(&data.pixels).unwrap();
+    Texture { image: texture_id }
 }
 
 fn load_primitive<'a>(

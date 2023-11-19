@@ -7,10 +7,11 @@ use crate::{
     math::geometry::Quad,
     renderer::target::Dimensions,
 };
+use instant::Instant;
 use instant::SystemTime;
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
     fmt::Debug,
     path::PathBuf,
     sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
@@ -40,33 +41,125 @@ impl Debug for dyn IsWindow {
 
 pub trait EventListener {
     fn on(&mut self, name: &str, callback: Callback<Event>);
-    fn call(&self, name: &str, event: Event);
 }
 
+pub(crate) trait EventProcessor: EventListener {
+    fn call(&self, name: &str, event: Event);
+    fn call_later(&self, at: Instant, name: &str, event: Event);
+    fn process_calls(&self);
+}
+
+type CallStack = Vec<(Callback<Event>, Event)>;
+
 pub struct WindowState {
-    pub instance: winit::window::Window,
-    pub callbacks: HashMap<String, Vec<Callback<Event>>>,
     pub auto_resize: bool,
     pub close_on_esc: bool,
     pub hovered_files: HashMap<u128, PathBuf>,
+    pub target_frametime: Option<f64>,
+    pub(crate) instance: winit::window::Window,
     reverse_lookup: HashMap<PathBuf, u128>,
+    callbacks: HashMap<String, Vec<Callback<Event>>>,
+    callstack: RwLock<CallStack>,
+    scheduled: RwLock<BTreeMap<Instant, (String, Event)>>,
 }
 
 impl EventListener for WindowState {
+    /// Registers a callback function for this window.
+    ///
+    /// The first argument is the name of the event that will trigger the function,
+    /// for example "draw" or "keyup".
+    ///
+    /// The second argument is the callback function itself. It can take a closure
+    /// or a function that implements the `FnMut(Event) + Send + Sync` trait.
     fn on(&mut self, name: &str, callback: Callback<Event>) {
         self.callbacks
             .entry(name.to_string())
             .or_insert_with(Vec::new)
             .push(callback);
     }
+}
 
+impl EventProcessor for WindowState {
+    /// Adds an immediate callback to the callstack.
+    ///
+    /// The event will be processed at the current iteration of the Event Loop.
+    ///
+    /// # Errors
+    /// - If the CallStack for this Window is already locked by other process,
+    ///   the event will be dropped silently and the Window will log an Error.
     fn call(&self, name: &str, event: Event) {
         if let Some(callbacks) = self.callbacks.get(name) {
-            callbacks.iter().for_each(|callback| {
-                let mut callback = callback.write().expect(WRITE_LOCK_ERROR);
-                callback(event.clone());
-            });
+            if let Ok(mut callstack) = self.callstack.try_write() {
+                callbacks.iter().for_each(|callback| {
+                    callstack.push((callback.clone(), event));
+                })
+            } else {
+                log::error!(
+                    "Failed to acquire the CallStack Mutex for for WindowState.call({}, {:?})!",
+                    name,
+                    event
+                );
+            };
         }
+    }
+
+    /// Adds a callback to the callstack to be processed at a later time.
+    ///
+    /// The event will be processed at the given time.
+    ///
+    /// # Errors
+    /// - If the Scheduled Events map is already locked by other process,
+    ///   the event will be dropped silently and the Window will log an Error.
+    fn call_later(&self, time: Instant, name: &str, event: Event) {
+        if let Ok(mut scheduled) = self.scheduled.try_write() {
+            scheduled.insert(time, (name.to_string(), event));
+        } else {
+            log::error!(
+                "Failed to acquire the Scheduled Events Mutex for for WindowState.call_later({:?}, {}, {:?})!",
+                time,
+                name,
+                event
+            );
+        };
+    }
+
+    //@TODO implement retrying
+    /// Processes all the callstacks at the end of the Event Loop.
+    ///
+    /// # Errors
+    /// - If this CallStack for this Window is already locked by other process,
+    ///   no event will be processed and the Window will log an Error.
+    /// - If the Window fails to acquite the Write mutex for the callback,
+    ///   it won't be called and the Window will log an Error.
+    fn process_calls(&self) {
+        if let Ok(mut scheduled) = self.scheduled.try_write() {
+            let mut future_events = scheduled.split_off(&Instant::now());
+
+            while let Some((_, (name, event))) = scheduled.pop_first() {
+                self.call(&name, event);
+            }
+
+            scheduled.append(&mut future_events);
+        } else {
+            log::error!("Failed to acquire Write Lock for Scheduled Events!");
+        };
+
+        if let Ok(mut callstack) = self.callstack.try_write() {
+            while let Some((callback, event)) = callstack.pop() {
+                if let Ok(mut callback) = callback.try_write() {
+                    callback(event.clone());
+                } else {
+                    log::error!(
+                        "Failed to acquire Write Lock for Callback '{:?}'!
+                        The Event '{:?}' will be dropped.",
+                        callback,
+                        event
+                    );
+                }
+            }
+        } else {
+            log::error!("Failed to acquire CallStack Write Lock for WindowState.process_calls()!");
+        };
     }
 }
 
@@ -136,9 +229,9 @@ impl WindowState {
 
 #[derive(Debug, Default)]
 pub struct Windows {
+    pub keys: Vec<WindowId>,
     container: HashMap<WindowId, Arc<RwLock<WindowState>>>,
 }
-
 crate::app::macros::implements_container!(Windows, <&WindowId, WindowState>);
 
 #[derive(Debug)]
@@ -216,6 +309,8 @@ pub struct WindowOptions {
     pub min_size: Option<(u32, u32)>,
     pub max_size: Option<(u32, u32)>,
     pub auto_resize: bool,
+    pub close_on_esc: bool,
+    pub framerate: Option<u32>,
 }
 
 impl Default for WindowOptions {
@@ -229,6 +324,8 @@ impl Default for WindowOptions {
             min_size: None,
             max_size: None,
             auto_resize: true,
+            close_on_esc: true,
+            framerate: None,
         }
     }
 }
@@ -286,11 +383,14 @@ impl Window {
         let mut window = Window {
             state: Arc::new(RwLock::new(WindowState {
                 instance: window,
-                callbacks: HashMap::new(),
                 auto_resize: options.auto_resize,
-                close_on_esc: true,
+                close_on_esc: options.close_on_esc,
+                target_frametime: framerate_to_frametime(options.framerate),
                 hovered_files: HashMap::new(),
                 reverse_lookup: HashMap::new(),
+                callbacks: HashMap::new(),
+                callstack: RwLock::new(Vec::new()),
+                scheduled: RwLock::new(BTreeMap::new()),
             })),
         };
 
@@ -330,6 +430,11 @@ impl Window {
         self
     }
 
+    pub fn set_close_on_esc(&mut self, close_on_esc: bool) -> &mut Self {
+        self.write_state().close_on_esc = close_on_esc;
+        self
+    }
+
     pub fn set_fullscreen(&mut self, fullscreen: bool) -> &mut Self {
         self.write_state()
             .instance
@@ -344,6 +449,16 @@ impl Window {
 
     pub fn set_resizable(&mut self, resizable: bool) -> &mut Self {
         self.write_state().instance.set_resizable(resizable);
+        self
+    }
+
+    pub fn set_framerate(&mut self, framerate: Option<u32>) -> &mut Self {
+        self.write_state().target_frametime = framerate_to_frametime(framerate);
+        self
+    }
+
+    pub fn set_visible(&mut self, visible: bool) -> &mut Self {
+        self.write_state().instance.set_visible(visible);
         self
     }
 
@@ -381,5 +496,13 @@ impl Window {
 
     fn write_state(&mut self) -> RwLockWriteGuard<'_, WindowState> {
         self.state.write().expect(WRITE_LOCK_ERROR)
+    }
+}
+
+fn framerate_to_frametime(framerate: Option<u32>) -> Option<f64> {
+    if let Some(framerate) = framerate {
+        Some(1.0 / framerate as f64)
+    } else {
+        None
     }
 }

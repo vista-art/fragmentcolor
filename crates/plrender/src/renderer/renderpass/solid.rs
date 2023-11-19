@@ -345,7 +345,11 @@ impl<'r> RenderPass for Solid<'r> {
                         let local_bg = &self.local_bind_groups[&key];
                         pass.set_bind_group(1, local_bg, &[bl.offset]);
 
-                        let mesh = resources.get_mesh(entity.mesh_id);
+                        let mesh = if let Some(mesh) = resources.get_mesh(&entity.mesh_id) {
+                            mesh
+                        } else {
+                            continue;
+                        };
                         let position_vertices = mesh.vertex_data::<Position>().unwrap();
                         pass.set_vertex_buffer(0, mesh.buffer.slice(position_vertices.offset..));
 

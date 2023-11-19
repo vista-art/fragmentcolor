@@ -506,7 +506,11 @@ impl<'r> RenderPass for Phong<'r> {
                         .iter()
                     {
                         let local = &nodes[entity.node_id];
-                        let mesh = resources.get_mesh(entity.mesh_id);
+                        let mesh = if let Some(mesh) = resources.get_mesh(&entity.mesh_id) {
+                            mesh
+                        } else {
+                            continue;
+                        };
                         let entity_radius =
                             mesh.bound_radius * local.scale.into_iter().reduce(f32::max).unwrap();
 

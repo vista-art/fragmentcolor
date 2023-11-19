@@ -1,5 +1,5 @@
 pub mod buffer;
-pub mod loader;
+pub mod loaders;
 pub mod mesh;
 pub mod resources;
 pub mod sampler;

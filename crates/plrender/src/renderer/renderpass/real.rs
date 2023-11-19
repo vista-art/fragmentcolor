@@ -485,7 +485,13 @@ impl<'r> crate::RenderPass for Real<'r> {
 
                     self.local_bind_groups.entry(key).or_insert_with(|| {
                         let base_color_view = match mat.base_color_map {
-                            Some(texture) => &resources.get_texture(texture).view,
+                            Some(texture) => {
+                                if let Some(texture) = resources.get_texture(&texture) {
+                                    &texture.view
+                                } else {
+                                    blank_color_view
+                                }
+                            }
                             None => blank_color_view,
                         };
                         device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -541,7 +547,11 @@ impl<'r> crate::RenderPass for Real<'r> {
                     pass.set_bind_group(0, &self.global_bind_group, &[]);
 
                     for instance in self.instances.drain(..) {
-                        let mesh = resources.get_mesh(instance.mesh_id);
+                        let mesh = if let Some(mesh) = resources.get_mesh(&instance.mesh_id) {
+                            mesh
+                        } else {
+                            continue;
+                        };
 
                         let key = LocalKey {
                             uniform_buf_index: instance.locals_bl.index,

@@ -296,7 +296,17 @@ impl<'r> RenderPass for Flat2D<'r> {
                         let camera_distance = cam_vector.dot(cam_dir);
 
                         let resources = renderer.read_resources();
-                        let image = resources.get_texture(sprite_image);
+                        let image = if let Some(image) = resources.get_texture(&sprite_image) {
+                            image
+                        } else {
+                            log::error!(
+                                "Sprite {:?} is using a non-existent texture {:?}",
+                                sprite.node_id,
+                                sprite_image
+                            );
+                            // @TODO use or generate a default texture
+                            continue;
+                        };
                         let locals = Locals {
                             position: local.position,
                             scale: local.scale,

@@ -19,6 +19,8 @@ use winit::{
     window::WindowId,
 };
 
+pub const ROOT: &'static str = env!("CARGO_MANIFEST_DIR");
+
 type Error = Box<dyn std::error::Error>;
 type RemovedWindow = Option<Arc<RwLock<WindowState>>>;
 type RemovedScene = Option<Arc<RwLock<SceneState>>>;
@@ -259,7 +261,7 @@ impl App {
     pub fn dispatch_event(&self, event: Event) -> Result<(), EventLoopClosed<Event>> {
         Ok(self
             .event_dispatcher
-            .lock()
+            .try_lock()
             .expect("Could not get Event Dispatcher mutex lock")
             .send_event(event)?)
     }

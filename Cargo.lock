@@ -1868,7 +1868,7 @@ checksum = "26072860ba924cbfa98ea39c8c19b4dd6a4a25423dbdf219c1eca91aa0cf6964"
 
 [[package]]
 name = "plrender"
-version = "0.7.0-rc1"
+version = "0.7.1-rc"
 dependencies = [
  "bitflags 2.4.0",
  "built",

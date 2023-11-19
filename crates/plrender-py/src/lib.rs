@@ -119,7 +119,7 @@ impl PyWindow {
                         Ok(())
                     }
 
-                    Event::KeyUp { key, scancode } => {
+                    Event::KeyUp { key, keycode } => {
                         let key = if let Some(keycode) = key {
                             format!("{:?}", keycode)
                         } else {
@@ -132,7 +132,7 @@ impl PyWindow {
                             Some(
                                 [
                                     ("key", key.to_object(py)),
-                                    ("scancode", scancode.to_object(py)),
+                                    ("scancode", keycode.to_object(py)),
                                 ]
                                 .into_py_dict(py),
                             ),
@@ -140,7 +140,7 @@ impl PyWindow {
                         Ok(())
                     }
 
-                    Event::KeyDown { key, scancode } => {
+                    Event::KeyDown { key, keycode } => {
                         let key = if let Some(keycode) = key {
                             format!("{:?}", keycode)
                         } else {
@@ -153,7 +153,7 @@ impl PyWindow {
                             Some(
                                 [
                                     ("key", key.to_object(py)),
-                                    ("scancode", scancode.to_object(py)),
+                                    ("scancode", keycode.to_object(py)),
                                 ]
                                 .into_py_dict(py),
                             ),

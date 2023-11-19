@@ -1,8 +1,11 @@
 use crate::{
+    app::error::READ_LOCK_ERROR,
     renderer::{target::Dimensions, Renderer},
     resources::sampler::{create_default_sampler, create_sampler, SamplerOptions},
+    PLRender,
 };
-use image::{GenericImageView, RgbaImage};
+use image::{DynamicImage, GenericImageView};
+use std::path::Path;
 
 type Error = Box<dyn std::error::Error>;
 
@@ -31,24 +34,36 @@ impl Dimensions for Texture {
 }
 
 impl Texture {
-    pub fn from_bytes(renderer: &crate::renderer::Renderer, bytes: &[u8]) -> Result<Self, Error> {
-        let image = image::load_from_memory(bytes)?;
-        Self::from_image(renderer, &image)
+    /// Creates a texture from a file
+    pub fn from_file(path: impl AsRef<Path>) -> Result<TextureId, Error> {
+        let image = image::open(path)?;
+        Ok(Self::from_image(&image))
     }
 
-    pub fn from_image(
-        renderer: &crate::renderer::Renderer,
-        image: &image::DynamicImage,
-    ) -> Result<Self, Error> {
+    /// Creates a new texture resource from raw bytes array
+    ///
+    /// Makes an educated guess about the image format
+    /// and automatically detects Width and Height.
+    pub fn from_bytes(bytes: &[u8]) -> Result<TextureId, Error> {
+        let image = image::load_from_memory(bytes)?;
+        Ok(Self::from_image(&image))
+    }
+
+    /// Creates a Texture from a DynamicImage instance.
+    ///
+    /// The image is already loaded in memory at this point.
+    pub fn from_image(image: &DynamicImage) -> TextureId {
+        let label = "Source texture";
         let (width, height) = image.dimensions();
         let size = wgpu::Extent3d {
             width,
             height,
             depth_or_array_layers: 1,
         };
-        let label = "Source texture from image";
         let format = wgpu::TextureFormat::Rgba8UnormSrgb;
-        let descriptor = Self::source_descriptor(label, size, format);
+        let descriptor = Self::source_texture_descriptor(label, size, format);
+
+        let renderer = PLRender::renderer().read().expect(READ_LOCK_ERROR);
         let texture = renderer.device.create_texture(&descriptor);
 
         let source = image.to_rgba8();
@@ -57,19 +72,29 @@ impl Texture {
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
         let sampler = create_default_sampler(&renderer.device);
 
-        Ok(Self {
+        let texture = Self {
             id: TextureId(texture.global_id()),
             data: texture,
             size,
             view,
             format,
             sampler,
-        })
+        };
+
+        renderer.add_texture(texture)
     }
 
-    pub fn from_wgpu_texture(renderer: &crate::renderer::Renderer, texture: wgpu::Texture) -> Self {
-        let size = texture.size();
-        let format = texture.format();
+    /// Creates a texture marked as a destination for rendering
+    ///
+    /// Unlike the other methods, it doesn't load itself to the Renderer resources
+    /// because it is a RenderTarget.
+    pub fn create_target_texture(size: wgpu::Extent3d) -> Self {
+        let renderer = PLRender::renderer().read().expect(READ_LOCK_ERROR);
+
+        let label = "Render Target Texture";
+        let format = wgpu::TextureFormat::Rgba8UnormSrgb;
+        let descriptor = Self::target_texture_descriptor(label, size, format);
+        let texture = renderer.device.create_texture(&descriptor);
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
         let sampler = create_default_sampler(&renderer.device);
 
@@ -81,11 +106,83 @@ impl Texture {
             format,
             sampler,
         }
+
+        // @TODO it's probably a good idea to create Renderer.add_texture_target()
+        //       which will create a TextureTarget and add it to the Renderer targets
     }
 
-    pub fn write_data_to_texture(
-        renderer: &crate::renderer::Renderer,
-        origin_image: RgbaImage,
+    // We need the DEPTH_FORMAT for when we create the depth stage of
+    // the render_pipeline and for creating the depth texture itself.
+    pub const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
+    pub fn create_depth_texture(size: wgpu::Extent3d) -> TextureId {
+        let renderer = PLRender::renderer().read().expect(READ_LOCK_ERROR);
+
+        let label = "Depth Texture";
+        let format = Self::DEPTH_FORMAT;
+        let descriptor = Self::source_texture_descriptor(label, size, format);
+        let texture = renderer.device.create_texture(&descriptor);
+        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let sampler = create_sampler(
+            &renderer.device,
+            SamplerOptions {
+                repeat_x: false,
+                repeat_y: false,
+                smooth: true,
+                compare: Some(wgpu::CompareFunction::LessEqual),
+            },
+        );
+
+        let texture = Self {
+            id: TextureId(texture.global_id()),
+            data: texture,
+            size,
+            view,
+            format,
+            sampler,
+        };
+        renderer.add_texture(texture)
+    }
+
+    fn source_texture_descriptor<'a>(
+        label: &'a str,
+        size: wgpu::Extent3d,
+        format: wgpu::TextureFormat,
+    ) -> wgpu::TextureDescriptor<'a> {
+        wgpu::TextureDescriptor {
+            label: Some(label),
+            size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        }
+    }
+
+    fn target_texture_descriptor<'a>(
+        label: &'a str,
+        size: wgpu::Extent3d,
+        format: wgpu::TextureFormat,
+    ) -> wgpu::TextureDescriptor<'a> {
+        wgpu::TextureDescriptor {
+            label: Some(label),
+            size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format,
+            view_formats: &[],
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                | wgpu::TextureUsages::COPY_SRC
+                | wgpu::TextureUsages::TEXTURE_BINDING,
+        }
+    }
+
+    /// Writes pixel data to a texture
+    fn write_data_to_texture(
+        renderer: &Renderer,
+        origin_image: image::RgbaImage,
         target_texture: &wgpu::Texture,
         size: wgpu::Extent3d,
     ) {
@@ -107,91 +204,5 @@ impl Texture {
             },
             size,
         )
-    }
-
-    pub fn create_target_texture(renderer: &Renderer, size: wgpu::Extent3d) -> Self {
-        let label = "Render target texture";
-        let format = wgpu::TextureFormat::Rgba8UnormSrgb;
-        let descriptor = Self::target_descriptor(label, size, format);
-        let texture = renderer.device.create_texture(&descriptor);
-        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-        let sampler = create_default_sampler(&renderer.device);
-
-        Self {
-            id: TextureId(texture.global_id()),
-            data: texture,
-            size,
-            view,
-            format,
-            sampler,
-        }
-    }
-
-    // We need the DEPTH_FORMAT for when we create the depth stage of
-    // the render_pipeline and for creating the depth texture itself.
-    pub const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
-    pub fn create_depth_texture(
-        renderer: &crate::renderer::Renderer,
-        size: wgpu::Extent3d,
-    ) -> Self {
-        let label = "Depth texture";
-        let format = Self::DEPTH_FORMAT;
-        let descriptor = Self::source_descriptor(label, size, format);
-        let texture = renderer.device.create_texture(&descriptor);
-        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-        let sampler = create_sampler(
-            &renderer.device,
-            SamplerOptions {
-                repeat_x: false,
-                repeat_y: false,
-                smooth: true,
-                compare: Some(wgpu::CompareFunction::LessEqual),
-            },
-        );
-
-        Self {
-            id: TextureId(texture.global_id()),
-            data: texture,
-            size,
-            view,
-            format,
-            sampler,
-        }
-    }
-
-    fn source_descriptor<'a>(
-        label: &'a str,
-        size: wgpu::Extent3d,
-        format: wgpu::TextureFormat,
-    ) -> wgpu::TextureDescriptor<'a> {
-        wgpu::TextureDescriptor {
-            label: Some(label),
-            size,
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-            view_formats: &[],
-        }
-    }
-
-    fn target_descriptor<'a>(
-        label: &'a str,
-        size: wgpu::Extent3d,
-        format: wgpu::TextureFormat,
-    ) -> wgpu::TextureDescriptor<'a> {
-        wgpu::TextureDescriptor {
-            label: Some(label),
-            size,
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format,
-            view_formats: &[],
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
-                | wgpu::TextureUsages::COPY_SRC
-                | wgpu::TextureUsages::TEXTURE_BINDING,
-        }
     }
 }

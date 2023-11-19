@@ -6,6 +6,14 @@ File Targets (for video and image sequence) have been deprecated in favor of a `
 
 Additionally, the **Target** object has an ad-hoc `request_frame()` function that returns the next rendered frame. This can be useful for usecases where the user needs a custom framerate.
 
+### Update (v0.7.0-rc)
+
+The actual implementation differed from this design document.
+
+The Renderer is now implicit, and is globally available as an internal object.
+
+The settings listed here in the "New API" for the Renderer are all inputs to the scene.addTarget() method.
+
 ## Context
 
 The original design of the Target object included a `file` field, which would be a path to a **video file** or **image sequence**.
