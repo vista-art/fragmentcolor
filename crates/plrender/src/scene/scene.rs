@@ -33,6 +33,7 @@ pub struct SceneId(pub u32);
 
 #[derive(Debug, Default)]
 pub struct Scenes {
+    keys: Vec<SceneId>,
     container: HashMap<SceneId, Arc<RwLock<SceneState>>>,
 }
 crate::app::macros::implements_container!(Scenes, <&SceneId, SceneState>);

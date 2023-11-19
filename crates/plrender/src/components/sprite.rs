@@ -1,14 +1,14 @@
 use std::path::Path;
 
 use crate::{
-    app::error::READ_LOCK_ERROR,
+    app,
     math::geometry::Quad,
     resources::texture::TextureId,
     scene::{macros::spatial_object, node::NodeId, SceneObject},
-    PLRender,
+    Texture,
 };
 
-type Error = Box<dyn std::error::Error>;
+const DEFAULT_IMAGE: &str = "resources/images/default.jpg";
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct Sprite {
@@ -55,26 +55,41 @@ impl SceneObject<Sprite> {
 }
 
 impl Sprite {
-    pub fn new(image: TextureId) -> SceneObject<Sprite> {
+    pub fn new(image_path: impl AsRef<Path>) -> SceneObject<Sprite> {
+        let texture_id = Self::load_image(image_path);
+        Self::from_texture_id(texture_id)
+    }
+
+    pub fn from_texture_id(texture_id: TextureId) -> SceneObject<Sprite> {
         SceneObject::new(Sprite {
             node_id: NodeId::root(),
-            image: Some(image),
+            image: Some(texture_id),
             clip_region: None,
         })
     }
 
-    pub fn from_image(image_path: impl AsRef<Path>) -> Result<SceneObject<Sprite>, Error> {
-        let renderer = PLRender::renderer().read().expect(READ_LOCK_ERROR);
-        let image = renderer.load_image(image_path)?;
-
-        Ok(Self::new(image))
-    }
-
-    pub fn with_clip_region(image: TextureId, clip_region: Quad) -> SceneObject<Sprite> {
+    pub fn with_clip_region(
+        image_path: impl AsRef<Path>,
+        clip_region: Quad,
+    ) -> SceneObject<Sprite> {
+        let texture_id = Self::load_image(image_path);
         SceneObject::new(Sprite {
             node_id: NodeId::root(),
-            image: Some(image),
+            image: Some(texture_id),
             clip_region: Some(clip_region),
         })
+    }
+
+    fn load_image(path: impl AsRef<Path>) -> TextureId {
+        let default = format!("{}/{}", app::ROOT, DEFAULT_IMAGE);
+        let full_path = format!("{}{}", app::ROOT, path.as_ref().display());
+
+        if let Ok(texture_id) = Texture::from_file(path) {
+            texture_id
+        } else if let Ok(texture_id) = Texture::from_file(full_path) {
+            texture_id
+        } else {
+            Texture::from_file(default).expect("Default image not found!")
+        }
     }
 }

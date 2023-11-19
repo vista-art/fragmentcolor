@@ -17,12 +17,10 @@ use std::{
         HashMap,
     },
     fmt::Debug,
-    sync::Arc,
 };
 use winit::window::WindowId;
 
 type Error = Box<dyn std::error::Error>;
-type SubmissionIndex = wgpu::SubmissionIndex;
 pub type RenderedFrames = Vec<(TargetId, Frame)>;
 pub trait Dimensions {
     fn size(&self) -> Quad;
@@ -65,7 +63,6 @@ pub trait RenderTargetCollection: Debug + 'static {
     fn remove(&mut self, id: &TargetId) -> Option<Target>;
     fn all(&self) -> Values<TargetId, Target>;
     fn all_mut(&mut self) -> ValuesMut<TargetId, Target>;
-    fn render(&self, renderer: &Renderer, commands: Commands) -> SubmissionIndex;
     fn present(&mut self, frames: RenderedFrames);
 }
 
@@ -256,10 +253,6 @@ impl RenderTargetCollection for Targets {
         self.targets.len()
     }
 
-    fn render(&self, renderer: &Renderer, commands: Commands) -> SubmissionIndex {
-        renderer.queue.submit(commands)
-    }
-
     fn present(&mut self, frames: RenderedFrames) {
         for (target_id, frame) in frames {
             let target = self.targets.get_mut(&target_id).unwrap();
@@ -270,7 +263,7 @@ impl RenderTargetCollection for Targets {
 
 #[derive(Debug)]
 pub struct TextureTarget {
-    pub texture: Arc<Texture>,
+    pub texture: Texture,
     pub buffer: Option<TextureBuffer>,
 }
 
@@ -376,12 +369,7 @@ impl WindowTarget {
 
 impl TextureTarget {
     pub fn new(renderer: &Renderer, size: wgpu::Extent3d) -> Result<Self, Error> {
-        let texture = Texture::create_target_texture(renderer, size);
-        Self::from_texture(renderer, texture)
-    }
-
-    pub fn from_wgpu_texture(renderer: &Renderer, texture: wgpu::Texture) -> Result<Self, Error> {
-        let texture = Texture::from_wgpu_texture(renderer, texture);
+        let texture = Texture::create_target_texture(size);
         Self::from_texture(renderer, texture)
     }
 
@@ -397,8 +385,8 @@ impl TextureTarget {
             mapped_at_creation: false,
         });
 
-        Ok(Self {
-            texture: Arc::new(texture),
+        let target = Self {
+            texture,
             buffer: Some(TextureBuffer {
                 buffer: Buffer {
                     size: buffer_size,
@@ -406,7 +394,9 @@ impl TextureTarget {
                 },
                 clip_region: Quad::from_dimensions(size.width, size.height),
             }),
-        })
+        };
+
+        Ok(target)
     }
 
     fn validate(renderer: &Renderer, size: wgpu::Extent3d) -> Result<(), Error> {

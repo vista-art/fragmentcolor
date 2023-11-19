@@ -1,5 +1,5 @@
 use crate::{
-    app::{events::Event, AppState, Container, EventListener, Window},
+    app::{events::Event, AppState, Container, EventProcessor, Window},
     renderer::{
         target::{RenderTarget, TargetId},
         RenderContext, RenderTargetCollection,
@@ -18,9 +18,6 @@ use winit::{
     },
 };
 
-// @TODO make this configurable
-//       - we could have a target-specific frame rate
-const TARGET_FRAME_TIME: f64 = 1.0 / 60.0;
 const RUNNING: &str = "EventLoop not available: already running";
 
 pub type EventLoopRunner = Box<dyn Runner>;
@@ -56,8 +53,9 @@ impl EventLoop<Event> {
     }
 
     pub async fn run(&mut self, runner: EventLoopRunner, app: Arc<RwLock<AppState>>) {
-        let event_loop = self.inner.take().expect(RUNNING);
-        runner(event_loop, app.clone())
+        if let Some(event_loop) = self.inner.take() {
+            runner(event_loop, app.clone());
+        }
     }
 }
 
@@ -66,7 +64,8 @@ type E<'a> = Winit<'a, Event>;
 type W<'b> = &'b EventLoopWindowTarget<Event>;
 type C<'c> = &'c mut ControlFlow;
 
-pub fn run_event_loop(event_loop: WinitEventLoop<Event>, app: Arc<RwLock<AppState>>) {
+/// The main Event Loop
+pub(crate) fn run_event_loop(event_loop: WinitEventLoop<Event>, app: Arc<RwLock<AppState>>) {
     let mut last_update = Instant::now();
 
     let event_handler = Box::new(move |event: E, _elwt: W, control_flow: C| {
@@ -168,12 +167,17 @@ pub fn run_event_loop(event_loop: WinitEventLoop<Event>, app: Arc<RwLock<AppStat
                     ),
 
                     // The window has been requested to close.
+                    // @TODO deduplicate Window cleanup code (also on ESC KeyUp)
                     WindowEvent::CloseRequested => {
                         let mut targets = renderer.write_targets();
                         targets.remove(&target_id);
                         drop(targets);
 
+                        drop(window);
+                        drop(windows);
                         let removed = app.remove_window::<Window>(&window_id);
+                        let windows = app.read_windows_collection::<Window>();
+
                         removed.map(|window| {
                             let window = window.write().unwrap();
                             window.instance.set_visible(false);
@@ -181,12 +185,7 @@ pub fn run_event_loop(event_loop: WinitEventLoop<Event>, app: Arc<RwLock<AppStat
                             if windows.len() == 0 {
                                 window.call("exit", Event::Exit);
                             }
-                            drop(window)
                         });
-
-                        if windows.len() == 0 {
-                            *control_flow = ControlFlow::Exit;
-                        }
                     }
 
                     // The window has been destroyed.
@@ -207,6 +206,8 @@ pub fn run_event_loop(event_loop: WinitEventLoop<Event>, app: Arc<RwLock<AppStat
                     // When the user hovers multiple files at once, this event will be emitted for each file
                     // separately.
                     WindowEvent::HoveredFile(path) => {
+                        drop(window);
+                        drop(windows);
                         let mut windows = app.write_to_windows_collection::<Window>();
                         let mut window = if let Some(window) = windows.get_mut(&window_id) {
                             window
@@ -261,9 +262,11 @@ pub fn run_event_loop(event_loop: WinitEventLoop<Event>, app: Arc<RwLock<AppStat
                                 ElementState::Released => true,
                             };
 
+                            // @TODO deduplicate Window cleanup code
                             if escape && released && window.close_on_esc {
                                 let mut targets = renderer.write_targets();
                                 targets.remove(&target_id);
+                                drop(targets);
 
                                 let removed = app.remove_window::<Window>(&window_id);
                                 removed.map(|window| {
@@ -273,7 +276,6 @@ pub fn run_event_loop(event_loop: WinitEventLoop<Event>, app: Arc<RwLock<AppStat
                                     if windows.len() == 0 {
                                         window.call("exit", Event::Exit);
                                     }
-                                    drop(window)
                                 });
 
                                 if windows.len() == 0 {
@@ -286,14 +288,14 @@ pub fn run_event_loop(event_loop: WinitEventLoop<Event>, app: Arc<RwLock<AppStat
                                     "keyup",
                                     Event::KeyUp {
                                         key: *virtual_keycode,
-                                        scancode: *scancode,
+                                        keycode: *scancode,
                                     },
                                 ),
                                 false => window.call(
                                     "keydown",
                                     Event::KeyDown {
                                         key: *virtual_keycode,
-                                        scancode: *scancode,
+                                        keycode: *scancode,
                                     },
                                 ),
                             }
@@ -454,19 +456,21 @@ pub fn run_event_loop(event_loop: WinitEventLoop<Event>, app: Arc<RwLock<AppStat
                     return;
                 };
 
-                // @TODO This should be a property of the target
-                let target_frametime = Duration::from_secs_f64(TARGET_FRAME_TIME);
-                // let target_id = TargetId::Window(window_id);
+                // Does this window have a framerate setting?
+                if let Some(frametime) = window.target_frametime {
+                    let now = Instant::now();
 
-                let now = Instant::now();
-                // This allows us to precisely control the frame rate
-                *control_flow = match target_frametime.checked_sub(last_update.elapsed()) {
-                    Some(wait_time) => ControlFlow::WaitUntil(now + wait_time),
-                    None => {
-                        window.call("draw", Event::Draw);
-                        last_update = now;
-                        ControlFlow::Poll
-                    }
+                    let window_frametime = Duration::from_secs_f64(frametime);
+                    match window_frametime.checked_sub(last_update.elapsed()) {
+                        Some(wait_time) => {
+                            window.call_later(now + wait_time, "draw", Event::Draw);
+                        }
+                        None => {
+                            window.call("draw", Event::Draw);
+                        }
+                    };
+                } else {
+                    window.call("draw", Event::Draw);
                 };
             }
 
@@ -482,6 +486,31 @@ pub fn run_event_loop(event_loop: WinitEventLoop<Event>, app: Arc<RwLock<AppStat
             // like most games, can render here unconditionally for simplicity.
             Winit::MainEventsCleared => {}
 
+            // Emitted after all [RedrawRequested] events have been processed and control flow
+            // is about to be taken away from the program. If there are no RedrawRequested events,
+            // it is emitted immediately after MainEventsCleared.
+            //
+            // This event is useful for doing any cleanup or bookkeeping work after all the rendering
+            // tasks have been completed.
+            Winit::RedrawEventsCleared => {
+                let windows = app.read_windows_collection::<Window>();
+                for window_id in windows.keys.iter() {
+                    if let Some(window) = windows.get(&window_id) {
+                        window.process_calls();
+                    };
+                }
+
+                if windows.len() == 0 {
+                    *control_flow = ControlFlow::Exit;
+                }
+
+                last_update = Instant::now();
+            }
+
+            Winit::LoopDestroyed => {
+                log::info!("Exiting PLRender...");
+            }
+
             Winit::NewEvents(_) => {}
             Winit::DeviceEvent {
                 device_id: _,
@@ -489,10 +518,6 @@ pub fn run_event_loop(event_loop: WinitEventLoop<Event>, app: Arc<RwLock<AppStat
             } => {}
             Winit::Suspended => {}
             Winit::Resumed => {}
-
-            Winit::RedrawEventsCleared => {}
-
-            Winit::LoopDestroyed => {}
         }
     });
 
