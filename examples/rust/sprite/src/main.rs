@@ -2,15 +2,17 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 use instant::{Duration, Instant};
 use plrender::{
-    app::{window::Window, Key, PLRender},
-    components::animation::Animator,
-    scene::Scene,
-    Event,
+    app::events::VirtualKey as Key,
+    app::window::Window,
+    components::{Animator, SpriteMap},
+    math::linear_algebra::{Point2, Vec2},
+    scene::{ObjectId, Scene},
+    Event, Sprite,
 };
 
 #[repr(usize)]
 #[derive(Clone, Copy, Debug, PartialEq)]
-enum AnimationState {
+enum Pikachu {
     Idle = 0,
     MoveRight = 9,
     MoveLeft = 8,
@@ -19,14 +21,13 @@ enum AnimationState {
     Lie = 12,
 }
 
-impl Default for AnimationState {
+impl Default for Pikachu {
     fn default() -> Self {
         Self::Idle
     }
 }
 
-static SCENE: OnceLock<Arc<Mutex<Scene>>> = OnceLock::new();
-
+static SCENE: OnceLock<Scene> = OnceLock::new();
 static ANIMATOR: OnceLock<Arc<Mutex<Animator>>> = OnceLock::new();
 
 fn main() {
@@ -39,91 +40,72 @@ async fn run() {
         .set_size((800, 600))
         .clone();
 
-    // @TODO Scene::new() should register itself in the App
-    //       like the Window does.
-    let mut scene = SCENE
-        .get_or_init(|| Arc::new(Mutex::new(Scene::new())))
-        .lock()
-        .unwrap();
+    let mut scene = Scene::new();
 
-    // @TODO Renderer has to be accessed internally
-    //       by the scene without user input.
-    let app = PLRender::app();
-    let state = app.state();
-    let mut renderer = state.renderer::<Window>();
-
-    // @TODO Resources loading could come from the Sprite itself
-    let image = renderer
-        .load_image(format!(
-            "{}/assets/images/pickachu.png",
-            env!("CARGO_MANIFEST_DIR")
-        ))
-        .unwrap();
-
-    let mut sprite = scene.new_sprite(image);
+    let mut sprite = Sprite::new("assets/images/pikachu.png");
+    sprite.set_position([0.0, 0.0, 0.0].into());
+    sprite.set_scale([0.5, 0.5, 0.5].into());
     scene.add(&mut sprite);
 
     let anim = ANIMATOR.get_or_init(|| {
         Arc::new(Mutex::new(Animator {
-            sprite_map: plrender::asset::SpriteMap {
-                origin: mint::Point2 { x: 0, y: 0 },
-                cell_size: mint::Vector2 { x: 96, y: 96 },
+            scene: scene.state(),
+            sprite_map: SpriteMap {
+                origin: Point2 { x: 0, y: 0 },
+                cell_size: Vec2 { x: 96, y: 96 },
             },
-            cell_counts: mint::Vector2 { x: 5, y: 13 },
+            cell_counts: Vec2 { x: 5, y: 13 },
             duration: Duration::from_secs_f64(0.1),
-            current: mint::Point2 { x: 0, y: 0 },
+            current: Point2 { x: 0, y: 0 },
             moment: Instant::now(),
-            sprite: plrender::ObjectId::DANGLING,
+            sprite: ObjectId::DANGLING,
         }))
     });
 
     let mut anim = anim.lock().unwrap();
     anim.sprite = sprite.id().unwrap();
-    anim.switch::<usize>(AnimationState::Idle as usize, &mut scene);
+    anim.switch::<usize>(Pikachu::Idle as usize);
 
     window.on("keydown", on_keydown);
-
-    window.on("draw", update);
+    window.on("draw", on_draw);
 
     window.run().await;
 }
 
 fn on_keydown(event: Event) {
+    let anim = ANIMATOR.get().unwrap();
+    let mut anim = anim.lock().unwrap();
+
     match event {
-        Event::Keyboard { key, pressed } => {
-            if pressed {
+        Event::KeyDown {
+            key: is_pressed, ..
+        } => {
+            if let Some(key) = is_pressed {
                 let new_state = match key {
-                    Key::Up => Some(AnimationState::Jump),
-                    Key::Down => Some(AnimationState::Lie),
-                    Key::Space => Some(AnimationState::Kick),
-                    Key::Left => Some(AnimationState::MoveLeft),
-                    Key::Right => Some(AnimationState::MoveRight),
+                    Key::Up => Some(Pikachu::Jump),
+                    Key::Down => Some(Pikachu::Lie),
+                    Key::Space => Some(Pikachu::Kick),
+                    Key::Left => Some(Pikachu::MoveLeft),
+                    Key::Right => Some(Pikachu::MoveRight),
                     _ => None,
                 };
 
-                if let Some(_state) = new_state {
-                    // let mut scene = SCENE.get_mut().unwrap();
-                    // let anim = ANIMATOR.get_mut().unwrap();
-                    // let mut anim = anim.lock().unwrap();
-
-                    // if anim.current.y != state as usize || state == AnimationState::Kick {
-                    //     //anim.switch::<usize>(state as usize, &mut scene);
-                    // }
+                if let Some(state) = new_state {
+                    if anim.current.y != state as usize || state == Pikachu::Kick {
+                        anim.switch::<usize>(state as usize);
+                    }
                 }
-            };
+            }
         }
         _ => {}
     }
 }
 
-fn update(_: Event) {
-    // let app = PLRender::app();
-    // let state = app.state();
-    // let mut _renderer = state.renderer::<Window>();
-    // let mut _scene = SCENE.get_mut().unwrap();
-    // let mut _anim = ANIMATOR.get_mut().unwrap().lock().unwrap();
+fn on_draw(_: Event) {
+    let anim = ANIMATOR.get().unwrap();
+    let mut anim = anim.lock().unwrap();
+    anim.tick();
 
-    // @TODO get it back
-    // anim.tick(&mut scene);
-    // renderer.render(&scene);
+    let scene = SCENE.get().unwrap();
+    _ = scene.render();
 }
