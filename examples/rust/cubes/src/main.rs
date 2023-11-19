@@ -60,8 +60,10 @@ fn main() {
         },
     });
 
-    // Creates a new Scene and Window.
+    // Creates a new Scene.
     let mut scene = plrender::Scene::new();
+
+    // Creates two Windows.
     let window = Window::new(WindowOptions {
         title: "Cubes 1".to_string(),
         size: (400, 300),
@@ -69,7 +71,6 @@ fn main() {
         ..Default::default()
     })
     .unwrap();
-
     let window2 = Window::new(WindowOptions {
         title: "Cubes 2".to_string(),
         size: (400, 300),
@@ -95,6 +96,11 @@ fn main() {
         RenderTargetDescription::from_window(&window)
             .set_camera(&camera)
             .set_clear_color(Color(0xe0a0f0FF)),
+    );
+    scene.add_target(
+        RenderTargetDescription::from_window(&window2)
+            .set_camera(&camera)
+            .set_clear_color(Color(0x50a0f0FF)),
     );
 
     // Creates a cube mesh.

@@ -155,11 +155,21 @@ impl RenderTargetDescription {
         Self::new(TargetId::Window(window.id()), window.size())
     }
 
+    pub fn from_window_camera_pair<W: IsWindow>(window: &W, camera: &SceneObject<Camera>) -> Self {
+        Self::from_window(window).set_camera(camera)
+    }
+
     pub fn from_texture(texture: &Texture) -> Self {
+        // @TODO attach a TextureTarget to the camera;
+        //       and make sure it is registered in the Renderer like the Window is.
         Self::new(TargetId::Texture(texture.id), texture.size())
     }
 
-    pub fn attach_cammera(self, camera: &SceneObject<Camera>) -> Result<Self, Error> {
+    pub fn from_texture_camera_pair(texture: &Texture, camera: &SceneObject<Camera>) -> Self {
+        Self::from_texture(texture).set_camera(camera)
+    }
+
+    pub fn try_set_camera(self, camera: &SceneObject<Camera>) -> Result<Self, Error> {
         let camera_id = if let Some(camera_id) = camera.id() {
             camera_id
         } else {
@@ -169,7 +179,7 @@ impl RenderTargetDescription {
     }
 
     pub fn set_camera(self, camera: &SceneObject<Camera>) -> Self {
-        self.attach_cammera(camera)
+        self.try_set_camera(camera)
             .expect("Camera is not in a Scene")
     }
 
