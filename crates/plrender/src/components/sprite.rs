@@ -11,9 +11,9 @@ const DEFAULT_IMAGE: &str = "resources/images/default.jpg";
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct Sprite {
-    pub node_id: NodeId,
     pub image: Option<TextureId>,
     pub clip_region: Option<Quad>,
+    pub(crate) node_id: NodeId,
 }
 
 spatial_object!(Sprite);

@@ -7,8 +7,8 @@ use crate::{
 /// The Mesh component
 #[derive(Debug, Default, Clone, Copy)]
 pub struct Mesh {
-    pub node_id: NodeId,
     pub mesh_id: MeshId,
+    pub(crate) node_id: NodeId,
 }
 
 spatial_object!(Mesh);

@@ -18,10 +18,10 @@ impl Default for LightType {
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct Light {
-    pub node_id: NodeId,
     pub color: Color,
     pub intensity: f32,
     pub variant: LightType,
+    pub(crate) node_id: NodeId,
 }
 
 spatial_object!(Light);
