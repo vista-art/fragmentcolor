@@ -1,0 +1,102 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Objective-C interface and runtime bindings"><title>objc2 - Rust</title><link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/SourceSerif4-Regular-46f98efaafac5295.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/FiraSans-Regular-018c141bf0843ffd.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/FiraSans-Medium-8f9a781e4970d388.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/SourceCodePro-Regular-562dcc5011b6de7d.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/SourceSerif4-Bold-a2c9cd1067f8b328.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/SourceCodePro-Semibold-d899c5a5c4aeb14a.ttf.woff2"><link rel="stylesheet" href="../static.files/normalize-76eba96aa4d2e634.css"><link rel="stylesheet" href="../static.files/rustdoc-cb6f1f67f1bcd037.css" id="mainThemeStyle"><meta name="rustdoc-vars" data-root-path="../" data-static-root-path="../static.files/" data-current-crate="objc2" data-themes="" data-resource-suffix="" data-rustdoc-version="1.73.0 (cc66ad468 2023-10-03)" data-channel="1.73.0" data-search-js="search-6dfdfced5eff6596.js" data-settings-js="settings-de11bff964e9d4e5.js" data-settings-css="settings-8c76f75bfb6bd192.css" data-theme-light-css="light-1596385f77d47ef2.css" data-theme-dark-css="dark-0a43001d3fc2282c.css" data-theme-ayu-css="ayu-fd19013d6ce078bf.css" ><script src="../static.files/storage-db41da1a38ea3cb8.js"></script><script defer src="../crates.js"></script><script defer src="../static.files/main-0795b7d26be81095.js"></script><noscript><link rel="stylesheet" media="(prefers-color-scheme:light)" href="../static.files/light-1596385f77d47ef2.css"><link rel="stylesheet" media="(prefers-color-scheme:dark)" href="../static.files/dark-0a43001d3fc2282c.css"><link rel="stylesheet" href="../static.files/noscript-cffde32267a19fd6.css"></noscript><link rel="alternate icon" type="image/png" href="../static.files/favicon-16x16-8b506e7a72182f1c.png"><link rel="alternate icon" type="image/png" href="../static.files/favicon-32x32-422f7d1d52889060.png"><link rel="icon" type="image/svg+xml" href="../static.files/favicon-2c020d218678b618.svg"></head><body class="rustdoc mod crate"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="mobile-topbar"><button class="sidebar-menu-toggle">&#9776;</button><a class="logo-container" href="../objc2/index.html"><img class="rust-logo" src="../static.files/rust-logo-151179464ae7ed46.svg" alt="logo"></a><h2></h2></nav><nav class="sidebar"><a class="logo-container" href="../objc2/index.html"><img class="rust-logo" src="../static.files/rust-logo-151179464ae7ed46.svg" alt="logo"></a><h2 class="location"><a href="#">Crate objc2</a></h2><div class="sidebar-elems"><ul class="block"><li class="version">Version 0.3.0-beta.3.patch-leaks.3</li><li><a id="all-types" href="all.html">All Items</a></li></ul><section><ul class="block"><li><a href="#reexports">Re-exports</a></li><li><a href="#modules">Modules</a></li><li><a href="#macros">Macros</a></li><li><a href="#traits">Traits</a></li></ul></section></div></nav><main><div class="width-limiter"><nav class="sub"><form class="search-form"><span></span><input class="search-input" name="search" aria-label="Run search in the documentation" autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"><div id="help-button" title="help" tabindex="-1"><a href="../help.html">?</a></div><div id="settings-menu" tabindex="-1"><a href="../settings.html" title="settings"><img width="22" height="22" alt="Change settings" src="../static.files/wheel-7b819b6101059cd0.svg"></a></div></form></nav><section id="main-content" class="content"><div class="main-heading"><h1>Crate <a class="mod" href="#">objc2</a><button id="copy-path" title="Copy item path to clipboard"><img src="../static.files/clipboard-7571035ce49a181d.svg" width="19" height="18" alt="Copy item path"></button></h1><span class="out-of-band"><a class="src" href="../src/objc2/lib.rs.html#1-260">source</a> · <button id="toggle-all-docs" title="collapse all docs">[<span>&#x2212;</span>]</button></span></div><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><h2 id="objective-c-interface-and-runtime-bindings"><a href="#objective-c-interface-and-runtime-bindings">Objective-C interface and runtime bindings</a></h2>
+<p>Objective-C is<sup id="fnref1"><a href="#fn1">1</a></sup> the standard programming language on Apple platforms
+like macOS, iOS, iPadOS, tvOS and watchOS. It is an object-oriented
+language centered around “sending messages” to its instances - this can
+for the most part be viewed as a simple method call.</p>
+<p>Most of the core libraries and frameworks that are in use on Apple systems
+are written in Objective-C, and hence we would like the ability to
+interract with these using Rust; this crate enables you to do that, in
+as safe a manner as possible.</p>
+<h3 id="basic-usage"><a href="#basic-usage">Basic usage</a></h3>
+<p>This example illustrates major parts of the functionality in this crate:</p>
+<p>First, we get a reference to the <code>NSObject</code>’s <a href="runtime/struct.Class.html" title="struct objc2::runtime::Class"><code>runtime::Class</code></a> using the
+<a href="macro.class.html" title="macro objc2::class"><code>class!</code></a> macro.
+Next, we creates a new <a href="runtime/struct.Object.html" title="struct objc2::runtime::Object"><code>runtime::Object</code></a> pointer, and ensure it is
+deallocated after we’ve used it by putting it into an <a href="rc/struct.Owned.html" title="struct objc2::rc::Owned"><code>rc::Owned</code></a>
+<a href="rc/struct.Id.html" title="struct objc2::rc::Id"><code>rc::Id</code></a>.
+Now we’re free to send messages to the object to our hearts desire using
+the <a href="macro.msg_send.html" title="macro objc2::msg_send"><code>msg_send!</code></a> or <a href="macro.msg_send_id.html" title="macro objc2::msg_send_id"><code>msg_send_id!</code></a> macros (depending on the return type
+of the method).
+Finally, the <code>Id&lt;Object, _&gt;</code> goes out of scope, and the object is released
+and deallocated.</p>
+
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>objc2::{class, msg_send, msg_send_id};
+<span class="kw">use </span>objc2::ffi::NSUInteger;
+<span class="kw">use </span>objc2::rc::{Id, Owned, Shared};
+<span class="kw">use </span>objc2::runtime::Object;
+
+<span class="kw">let </span>cls = <span class="macro">class!</span>(NSObject);
+
+<span class="comment">// Creation
+
+</span><span class="kw">let </span>obj1: Id&lt;Object, Owned&gt; = <span class="kw">unsafe </span>{ <span class="macro">msg_send_id!</span>[cls, new] };
+<span class="kw">let </span>obj2: Id&lt;Object, Owned&gt; = <span class="kw">unsafe </span>{
+    <span class="comment">// Equivalent to using `new`
+    </span><span class="macro">msg_send_id!</span>[<span class="macro">msg_send_id!</span>[cls, alloc], init]
+};
+
+<span class="comment">// Usage
+
+</span><span class="kw">let </span>hash1: NSUInteger = <span class="kw">unsafe </span>{ <span class="macro">msg_send!</span>[<span class="kw-2">&amp;</span>obj1, hash] };
+<span class="kw">let </span>hash2: NSUInteger = <span class="kw">unsafe </span>{ <span class="macro">msg_send!</span>[<span class="kw-2">&amp;</span>obj2, hash] };
+<span class="macro">assert_ne!</span>(hash1, hash2);
+
+<span class="kw">let </span>is_kind: bool = <span class="kw">unsafe </span>{ <span class="macro">msg_send!</span>[<span class="kw-2">&amp;</span>obj1, isKindOfClass: cls] };
+<span class="macro">assert!</span>(is_kind);
+
+<span class="comment">// We&#39;re going to create a new reference to the first object, so
+// relinquish mutable ownership.
+</span><span class="kw">let </span>obj1: Id&lt;Object, Shared&gt; = obj1.into();
+<span class="kw">let </span>obj1_self: Id&lt;Object, Shared&gt; = <span class="kw">unsafe </span>{ <span class="macro">msg_send_id!</span>[<span class="kw-2">&amp;</span>obj1, <span class="self">self</span>] };
+<span class="kw">let </span>is_equal: bool = <span class="kw">unsafe </span>{ <span class="macro">msg_send!</span>[<span class="kw-2">&amp;</span>obj1, isEqual: <span class="kw-2">&amp;*</span>obj1_self] };
+<span class="macro">assert!</span>(is_equal);
+
+<span class="comment">// Deallocation on drop</span></code></pre></div>
+<p>Note that this very simple example contains <strong>a lot</strong> of <code>unsafe</code> (which
+should all ideally be justified with a <code>// SAFETY</code> comment). This is
+required because our compiler can verify very little about the Objective-C
+invocation, including all argument and return types used in <a href="macro.msg_send.html" title="macro objc2::msg_send"><code>msg_send!</code></a>;
+we could have just as easily accidentally made <code>hash</code> an <code>f32</code>, or any
+other type, and this would trigger undefined behaviour!</p>
+<p>Making the ergonomics better is something that is currently being worked
+on, the <a href="foundation/index.html" title="mod objc2::foundation"><code>foundation</code></a> module contains more ergonomic usage of at
+least parts of the <code>Foundation</code> framework.</p>
+<p>Anyhow, all of this <code>unsafe</code> nicely leads us to another feature that this
+crate has:</p>
+<h3 id="encodings-and-message-type-verification"><a href="#encodings-and-message-type-verification">Encodings and message type verification</a></h3>
+<p>The Objective-C runtime includes encodings for each method that describe
+the argument and return types. See the <a href="../objc2_encode/index.html" title="mod objc2_encode"><code>objc2-encode</code></a> crate for the
+full overview of what this is (its types are re-exported in this crate).</p>
+<p>The important part is: To make message sending safer, all arguments and
+return values for messages must implement <a href="../objc2_encode/encode/trait.Encode.html" title="trait objc2_encode::encode::Encode"><code>Encode</code></a>. This allows the Rust
+compiler to prevent you from passing e.g. a <a href="https://doc.rust-lang.org/1.73.0/alloc/boxed/struct.Box.html" title="struct alloc::boxed::Box"><code>Box</code></a> into Objective-C,
+which would both be UB and leak the box.</p>
+<p>Furthermore, we can take advantage of the encodings provided by the
+runtime to verify that the types used in Rust actually match the types
+encoded for the method. This is not a perfect solution for ensuring safety
+(some Rust types have the same Objective-C encoding, but are not
+equivalent), but it gets us much closer to it!</p>
+<p>To use this functionality, enable the <code>&quot;verify_message&quot;</code> cargo feature
+while debugging. With this feature enabled, encodings are checked every
+time you send a message, and the message send will panic if they are not
+equivalent.</p>
+<p>To take the example above, if we changed the <code>hash</code> method’s return type
+as in the following example, it panics when the feature is enabled:</p>
+
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="comment">// Wrong return type - this is UB!
+</span><span class="kw">let </span>hash1: f32 = <span class="kw">unsafe </span>{ <span class="macro">msg_send!</span>[<span class="kw-2">&amp;</span>obj1, hash] };</code></pre></div>
+<h3 id="crate-features"><a href="#crate-features">Crate features</a></h3>
+<p>This crate exports several optional cargo features, see <a href="https://github.com/madsmtm/objc2/blob/master/objc2/Cargo.toml"><code>Cargo.toml</code></a> for
+an overview and description of these.</p>
+<h3 id="support-for-other-operating-systems"><a href="#support-for-other-operating-systems">Support for other Operating Systems</a></h3>
+<p>The bindings can be used on Linux or *BSD utilizing the
+<a href="https://www.github.com/gnustep/libobjc2">GNUstep Objective-C runtime</a>,
+see the <a href="../objc_sys/index.html" title="mod objc_sys"><code>objc-sys</code></a> crate for how to configure this.</p>
+<h3 id="other-functionality"><a href="#other-functionality">Other functionality</a></h3>
+<p>That was a quick introduction, this library also has <a href="exception/index.html" title="mod objc2::exception">support for handling
+exceptions</a>, <a href="declare/index.html" title="mod objc2::declare">the ability to dynamically declare Objective-C
+classes</a>, <a href="rc/index.html" title="mod objc2::rc">advanced reference-counting utilities</a>, and more -
+peruse the documentation at will!</p>
+<div class="footnotes"><hr><ol><li id="fn1"><p>Yes, I know, “was”, Swift now exists. All the existing frameworks
+are written in Objective-C though, so the point still holds.&nbsp;<a href="#fnref1">↩</a></p></li></ol></div></div></details><h2 id="reexports" class="small-section-header"><a href="#reexports">Re-exports</a></h2><ul class="item-table"><li><div class="item-name" id="reexport.Encode"><code>pub use objc2_encode::<a class="trait" href="../objc2_encode/encode/trait.Encode.html" title="trait objc2_encode::encode::Encode">Encode</a>;</code></div></li><li><div class="item-name" id="reexport.EncodeArguments"><code>pub use objc2_encode::<a class="trait" href="../objc2_encode/encode/trait.EncodeArguments.html" title="trait objc2_encode::encode::EncodeArguments">EncodeArguments</a>;</code></div></li><li><div class="item-name" id="reexport.Encoding"><code>pub use objc2_encode::<a class="enum" href="../objc2_encode/encoding/enum.Encoding.html" title="enum objc2_encode::encoding::Encoding">Encoding</a>;</code></div></li><li><div class="item-name" id="reexport.RefEncode"><code>pub use objc2_encode::<a class="trait" href="../objc2_encode/encode/trait.RefEncode.html" title="trait objc2_encode::encode::RefEncode">RefEncode</a>;</code></div></li><li><div class="item-name" id="reexport.encode"><code>pub use <a class="mod" href="../objc2_encode/index.html" title="mod objc2_encode">objc2_encode</a> as encode;</code></div></li><li><div class="item-name" id="reexport.ffi"><code>pub use <a class="mod" href="../objc_sys/index.html" title="mod objc_sys">objc_sys</a> as ffi;</code></div></li></ul><h2 id="modules" class="small-section-header"><a href="#modules">Modules</a></h2><ul class="item-table"><li><div class="item-name"><a class="mod" href="declare/index.html" title="mod objc2::declare">declare</a></div><div class="desc docblock-short">Functionality for dynamically declaring Objective-C classes.</div></li><li><div class="item-name"><a class="mod" href="exception/index.html" title="mod objc2::exception">exception</a></div><div class="desc docblock-short">Objective-C’s @throw and @try/@catch.</div></li><li><div class="item-name"><a class="mod" href="foundation/index.html" title="mod objc2::foundation">foundation</a></div><div class="desc docblock-short">Bindings to the <code>Foundation</code> framework.</div></li><li><div class="item-name"><a class="mod" href="rc/index.html" title="mod objc2::rc">rc</a></div><div class="desc docblock-short">Utilities for reference counting Objective-C objects.</div></li><li><div class="item-name"><a class="mod" href="runtime/index.html" title="mod objc2::runtime">runtime</a></div><div class="desc docblock-short">A Rust interface for the functionality of the Objective-C runtime.</div></li></ul><h2 id="macros" class="small-section-header"><a href="#macros">Macros</a></h2><ul class="item-table"><li><div class="item-name"><a class="macro" href="macro.class.html" title="macro objc2::class">class</a></div><div class="desc docblock-short">Gets a reference to a <a href="runtime/struct.Class.html" title="struct objc2::runtime::Class"><code>Class</code></a> from the given name.</div></li><li><div class="item-name"><a class="macro" href="macro.declare_class.html" title="macro objc2::declare_class">declare_class</a></div><div class="desc docblock-short">Declare a new Objective-C class.</div></li><li><div class="item-name"><a class="macro" href="macro.extern_class.html" title="macro objc2::extern_class">extern_class</a></div><div class="desc docblock-short">Create a new type to represent an Objective-C class.</div></li><li><div class="item-name"><a class="macro" href="macro.extern_methods.html" title="macro objc2::extern_methods">extern_methods</a></div><div class="desc docblock-short">Define methods on an external class.</div></li><li><div class="item-name"><a class="macro" href="macro.msg_send.html" title="macro objc2::msg_send">msg_send</a></div><div class="desc docblock-short">Send a message to an object or class.</div></li><li><div class="item-name"><a class="macro" href="macro.msg_send_bool.html" title="macro objc2::msg_send_bool">msg_send_bool</a><span class="stab deprecated" title="">Deprecated</span></div><div class="desc docblock-short">Deprecated. Use <a href="macro.msg_send.html" title="macro objc2::msg_send"><code>msg_send!</code></a> instead.</div></li><li><div class="item-name"><a class="macro" href="macro.msg_send_id.html" title="macro objc2::msg_send_id">msg_send_id</a></div><div class="desc docblock-short"><a href="macro.msg_send.html" title="macro objc2::msg_send"><code>msg_send!</code></a> for methods returning <code>id</code>, <code>NSObject*</code>, or similar object
+pointers.</div></li><li><div class="item-name"><a class="macro" href="macro.ns_string.html" title="macro objc2::ns_string">ns_string</a></div><div class="desc docblock-short">Creates an <a href="foundation/struct.NSString.html" title="struct objc2::foundation::NSString"><code>NSString</code></a> from a static string.</div></li><li><div class="item-name"><a class="macro" href="macro.sel.html" title="macro objc2::sel">sel</a></div><div class="desc docblock-short">Register a selector with the Objective-C runtime.</div></li></ul><h2 id="traits" class="small-section-header"><a href="#traits">Traits</a></h2><ul class="item-table"><li><div class="item-name"><a class="trait" href="trait.ClassType.html" title="trait objc2::ClassType">ClassType</a></div><div class="desc docblock-short">Marks types that represent specific classes.</div></li><li><div class="item-name"><a class="trait" href="trait.Message.html" title="trait objc2::Message">Message</a></div><div class="desc docblock-short">Types that can be sent Objective-C messages.</div></li><li><div class="item-name"><a class="trait" href="trait.MessageArguments.html" title="trait objc2::MessageArguments">MessageArguments</a></div><div class="desc docblock-short">Types that may be used as the arguments of an Objective-C message.</div></li><li><div class="item-name"><a class="trait" href="trait.MessageReceiver.html" title="trait objc2::MessageReceiver">MessageReceiver</a></div><div class="desc docblock-short">Types that can directly be used as the receiver of Objective-C messages.</div></li></ul></section></div></main></body></html>

@@ -1,7 +1,7 @@
 use crate::{
     app::error::{READ_LOCK_ERROR, WRITE_LOCK_ERROR},
     components,
-    components::{transform::LocalTransform, GlobalTransforms},
+    components::{GlobalTransforms, LocalTransform},
     renderer::target::RenderTargetDescription,
     scene::{
         node::{Node, NodeId},
@@ -38,6 +38,7 @@ pub struct Scenes {
 }
 crate::app::macros::implements_container!(Scenes, <&SceneId, SceneState>);
 
+#[derive(Debug, Clone)]
 pub struct Scene {
     pub(crate) state: Arc<RwLock<SceneState>>,
 }

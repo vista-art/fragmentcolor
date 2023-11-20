@@ -52,7 +52,7 @@ pub static DEVICE_LIMITS: phf::Map<&str, wgpu::Limits> = phf_map! {
 };
 
 /// Options for configuring the Renderer.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RenderOptions {
     pub force_software_rendering: bool,
     pub power_preference: String,

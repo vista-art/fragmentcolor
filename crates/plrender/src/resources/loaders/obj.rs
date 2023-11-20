@@ -1,13 +1,14 @@
 use crate::{
     components::Mesh, math::geometry::vertex, renderer::renderpass, resources::mesh::MeshBuilder,
+    scene,
 };
 use std::{iter, path::Path};
 
 /// Load entities from Wavefront Obj format.
 pub fn load_obj(
     path: impl AsRef<Path>,
-    scene: &mut crate::Scene,
-    node: crate::NodeId,
+    scene: &mut scene::Scene,
+    node: scene::node::NodeId,
 ) -> fxhash::FxHashMap<String, crate::ObjectId> {
     let mut obj = obj::Obj::load(path).unwrap();
     obj.load_mtls().unwrap();

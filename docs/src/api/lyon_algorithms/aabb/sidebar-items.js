@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["bounding_box","fast_bounding_box"]};

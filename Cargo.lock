@@ -1868,7 +1868,7 @@ checksum = "26072860ba924cbfa98ea39c8c19b4dd6a4a25423dbdf219c1eca91aa0cf6964"
 
 [[package]]
 name = "plrender"
-version = "0.7.1-rc"
+version = "0.7.3-rc"
 dependencies = [
  "bitflags 2.4.0",
  "built",
@@ -1895,6 +1895,16 @@ dependencies = [
  "serde",
  "wgpu",
  "winit",
+]
+
+[[package]]
+name = "plrender-codegen"
+version = "0.1.0"
+dependencies = [
+ "phf",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.38",
 ]
 
 [[package]]
@@ -1926,14 +1936,13 @@ dependencies = [
 name = "plrender-py"
 version = "0.1.0"
 dependencies = [
- "mint",
+ "log",
  "ndarray",
  "numpy",
  "plrender",
- "pollster",
+ "plrender-codegen",
  "pyo3",
  "pyo3-build-config",
- "winit",
 ]
 
 [[package]]

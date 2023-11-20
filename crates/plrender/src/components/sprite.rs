@@ -3,9 +3,8 @@ use std::path::Path;
 use crate::{
     app,
     math::geometry::Quad,
-    resources::texture::TextureId,
+    resources::texture::{Texture, TextureId},
     scene::{macros::spatial_object, node::NodeId, SceneObject},
-    Texture,
 };
 
 const DEFAULT_IMAGE: &str = "resources/images/default.jpg";
@@ -81,7 +80,8 @@ impl Sprite {
     }
 
     fn load_image(path: impl AsRef<Path>) -> TextureId {
-        let default = format!("{}/{}", app::ROOT, DEFAULT_IMAGE);
+        // @TODO set root path in the build.rs file
+        let default = format!("{}/src/{}", app::ROOT, DEFAULT_IMAGE);
         let full_path = format!("{}{}", app::ROOT, path.as_ref().display());
 
         if let Ok(texture_id) = Texture::from_file(path) {

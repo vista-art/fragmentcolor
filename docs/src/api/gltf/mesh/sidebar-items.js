@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["Mode","Semantic"],"mod":["iter","util"],"struct":["Bounds","Mesh","MorphTarget","Primitive","Reader"],"type":["Attribute","BoundingBox"]};

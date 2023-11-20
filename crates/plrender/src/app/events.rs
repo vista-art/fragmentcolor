@@ -1,3 +1,4 @@
+use crate::app::commands::Command;
 use serde::{Deserialize, Serialize};
 use std::fmt::{self, Debug, Formatter};
 use std::sync::{Arc, RwLock};
@@ -32,13 +33,16 @@ pub type Callback<E> = Arc<RwLock<dyn CallbackFn<E>>>;
 pub type VirtualKey = VirtualKeyCode;
 
 /// PLRender Events.
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Event {
+    Command(Command),
+
     Resized {
         width: u32,
         height: u32,
     },
     Rescaled {
+        scale: f64,
         width: u32,
         height: u32,
     },

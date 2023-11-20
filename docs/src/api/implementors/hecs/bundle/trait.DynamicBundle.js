@@ -1,0 +1,4 @@
+(function() {var implementors = {
+"hecs":[],
+"plrender":[["impl <a class=\"trait\" href=\"hecs/bundle/trait.DynamicBundle.html\" title=\"trait hecs::bundle::DynamicBundle\">DynamicBundle</a> for <a class=\"struct\" href=\"plrender/resources/mesh/struct.BuiltMesh.html\" title=\"struct plrender::resources::mesh::BuiltMesh\">BuiltMesh</a>"],["impl&lt;'a&gt; <a class=\"trait\" href=\"hecs/bundle/trait.DynamicBundle.html\" title=\"trait hecs::bundle::DynamicBundle\">DynamicBundle</a> for &amp;'a <a class=\"struct\" href=\"plrender/resources/mesh/struct.BuiltMesh.html\" title=\"struct plrender::resources::mesh::BuiltMesh\">BuiltMesh</a>"]]
+};if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

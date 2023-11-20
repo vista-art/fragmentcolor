@@ -8,12 +8,14 @@ use std::{
     io::Write,
     path::{Path, PathBuf},
 };
-use syn::{parse_file, Ident, ImplItem, Item, ItemFn, ItemImpl, ReturnType, Visibility};
+use syn::{
+    parse_file, Ident, ImplItem, Item, ItemFn, ItemImpl, ItemStruct, ReturnType, Visibility,
+};
 
 pub const API_MAP_KEYWORD: &str = "API_MAP";
 pub const API_MAP_FILE: &str = "generated/api_map.rs";
-pub const FUNCTION_SIGNATURE_STRUCT_NAME: &str = "FunctionSignature";
-pub const FUNCTION_SIGNATURE_STRUCT_DEFINITION: &str = "
+pub const OBJECT_PROPERTY_STRUCT_NAME: &str = "ObjectProperty";
+pub const OBJECT_PROPERTY_STRUCT_DEFINITION: &str = "
 #[derive(Clone, Debug, PartialEq)]
 struct FunctionParameter {
     pub name: &'static str,
@@ -26,6 +28,13 @@ struct FunctionSignature {
     pub parameters: &'static [FunctionParameter],
     pub return_type: Option<&'static str>,
 }
+
+#[derive(Clone, Debug, PartialEq)]
+struct ObjectProperty {
+    pub name: &'static str,
+    pub type_name: &'static str,
+    pub function: Option<FunctionSignature>,
+}
 ";
 
 #[derive(Clone, Debug, PartialEq)]
@@ -33,27 +42,34 @@ pub struct FunctionParameter {
     pub name: String,
     pub type_name: String,
 }
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct FunctionSignature {
     pub name: String,
     pub parameters: Vec<FunctionParameter>,
     pub return_type: Option<String>,
 }
 
-impl Eq for FunctionSignature {}
-impl PartialEq for FunctionSignature {
+#[derive(Clone, Debug)]
+pub struct ObjectProperty {
+    pub name: String,
+    pub type_name: String,
+    pub function: Option<FunctionSignature>,
+}
+
+impl Eq for ObjectProperty {}
+impl PartialEq for ObjectProperty {
     fn eq(&self, other: &Self) -> bool {
-        self.name == other.name
+        self.name == other.name && self.type_name == other.type_name
     }
 }
 
-impl Hash for FunctionSignature {
+impl Hash for ObjectProperty {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.name.hash(state);
     }
 }
 
-pub type ApiMap = HashMap<String, HashSet<FunctionSignature>>;
+pub type ApiMap = HashMap<String, HashSet<ObjectProperty>>;
 
 #[derive(Clone, Debug, PartialEq)]
 enum NameFilter {
@@ -184,7 +200,11 @@ fn traverse_and_extract(
                     });
                 }
             }
-            // If the item is a struct, we will extract its public methods
+            // If the item is a struct, we will extract its public fields
+            Item::Struct(item_struct) => {
+                extract_struct(item_struct, signatures, name_filter.clone());
+            }
+            // If the item is an impl block, we will extract its public methods and properties
             Item::Impl(item_impl) => {
                 extract_impl(item_impl, signatures, name_filter.clone());
             }
@@ -274,6 +294,32 @@ fn parse_external_module(current_path: &Path, module_name: String) -> (PathBuf, 
     )
 }
 
+/// Maps a struct name to its public fields
+fn extract_struct(item_struct: ItemStruct, signatures: &mut ApiMap, filter: NameFilter) {
+    let struct_name = match filter {
+        NameFilter::Global => item_struct.ident.to_string(),
+        NameFilter::Specific(name) if item_struct.ident.to_string() == name => name,
+        NameFilter::Rename(name, rename) if item_struct.ident.to_string() == name => rename,
+        _ => return,
+    };
+
+    let mut fields = Vec::new();
+    for field in &item_struct.fields {
+        if let Visibility::Public(_) = field.vis {
+            fields.push(extract_field(field));
+        }
+    }
+
+    match signatures.entry(struct_name) {
+        Entry::Vacant(entry) => {
+            entry.insert(HashSet::from_iter(fields));
+        }
+        Entry::Occupied(mut entry) => {
+            entry.get_mut().extend(fields);
+        }
+    }
+}
+
 /// Maps a struct name to its public method signatures
 fn extract_impl(item_impl: ItemImpl, signatures: &mut ApiMap, filter: NameFilter) {
     let struct_name = match *item_impl.self_ty {
@@ -349,7 +395,7 @@ fn extract_fn(path: &Path, item_fn: ItemFn, signatures: &mut ApiMap, filter: Nam
 }
 
 /// Extracts the name, parameters and return type of a function
-fn extract_signature(method: &syn::Signature) -> FunctionSignature {
+fn extract_signature(method: &syn::Signature) -> ObjectProperty {
     let name = method.ident.to_string();
 
     let parameters: Vec<FunctionParameter> = method
@@ -372,10 +418,30 @@ fn extract_signature(method: &syn::Signature) -> FunctionSignature {
         ReturnType::Type(_, ty) => Some(ty.to_token_stream().to_string()),
     };
 
-    FunctionSignature {
+    ObjectProperty {
+        name: name.clone(),
+        type_name: "FunctionSignature".to_string(),
+        function: Some(FunctionSignature {
+            name,
+            parameters,
+            return_type,
+        }),
+    }
+}
+
+/// Extracts the name and type of a struct field
+fn extract_field(field: &syn::Field) -> ObjectProperty {
+    let type_name = field.ty.to_token_stream().to_string();
+    let name = if let Some(name) = &field.ident {
+        name.to_string()
+    } else {
+        "".to_string()
+    };
+
+    ObjectProperty {
         name,
-        parameters,
-        return_type,
+        type_name,
+        function: None,
     }
 }
 
@@ -402,8 +468,8 @@ fn export_api_map(api_map: ApiMap, target_file: &Path) {
 
     write!(
         &mut writer,
-        "{}\n\nstatic {}: phf::Map<&'static str, &[FunctionSignature]> = {};\n",
-        FUNCTION_SIGNATURE_STRUCT_DEFINITION,
+        "{}\n\nstatic {}: phf::Map<&'static str, &[ObjectProperty]> = {};\n",
+        OBJECT_PROPERTY_STRUCT_DEFINITION,
         API_MAP_KEYWORD,
         static_map_builder.build()
     )

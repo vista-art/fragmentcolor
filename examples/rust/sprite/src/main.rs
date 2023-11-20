@@ -1,13 +1,11 @@
-use std::sync::{Arc, Mutex, OnceLock};
-
 use instant::{Duration, Instant};
 use plrender::{
     app::events::VirtualKey as Key,
     app::window::Window,
     components::{Animator, SpriteMap},
-    math::linear_algebra::{Point2, Vec2},
-    scene::{ObjectId, Scene},
-    Event, Sprite,
+    math::cg::Pixel,
+    scene::Scene,
+    Event, IsWindow, Sprite,
 };
 
 #[repr(usize)]
@@ -27,9 +25,6 @@ impl Default for Pikachu {
     }
 }
 
-static SCENE: OnceLock<Scene> = OnceLock::new();
-static ANIMATOR: OnceLock<Arc<Mutex<Animator>>> = OnceLock::new();
-
 fn main() {
     pollster::block_on(run());
 }
@@ -43,42 +38,29 @@ async fn run() {
     let mut scene = Scene::new();
 
     let mut sprite = Sprite::new("assets/images/pikachu.png");
-    sprite.set_position([0.0, 0.0, 0.0].into());
-    sprite.set_scale([0.5, 0.5, 0.5].into());
+    sprite.set_position([0.0, 0.0, 0.0]);
+    sprite.set_scale([0.5, 0.5, 0.5]);
     scene.add(&mut sprite);
 
-    let anim = ANIMATOR.get_or_init(|| {
-        Arc::new(Mutex::new(Animator {
-            scene: scene.state(),
-            sprite_map: SpriteMap {
-                origin: Point2 { x: 0, y: 0 },
-                cell_size: Vec2 { x: 96, y: 96 },
-            },
-            cell_counts: Vec2 { x: 5, y: 13 },
-            duration: Duration::from_secs_f64(0.1),
-            current: Point2 { x: 0, y: 0 },
-            moment: Instant::now(),
-            sprite: ObjectId::DANGLING,
-        }))
-    });
+    let mut anim = Animator {
+        scene: scene.state(),
+        sprite_map: SpriteMap {
+            origin: Pixel { x: 0, y: 0 },
+            cell_size: Pixel { x: 96, y: 96 },
+        },
+        cell_counts: Pixel { x: 5, y: 13 },
+        duration: Duration::from_secs_f64(0.1),
+        current: Pixel { x: 0, y: 0 },
+        moment: Instant::now(),
+        sprite: sprite.id().unwrap(),
+    };
+    anim.switch(Pikachu::Idle as u16);
 
-    let mut anim = anim.lock().unwrap();
-    anim.sprite = sprite.id().unwrap();
-    anim.switch::<usize>(Pikachu::Idle as usize);
-
-    window.on("keydown", on_keydown);
-    window.on("draw", on_draw);
-
-    window.run().await;
-}
-
-fn on_keydown(event: Event) {
-    let anim = ANIMATOR.get().unwrap();
-    let mut anim = anim.lock().unwrap();
-
-    match event {
+    let state = window.state();
+    window.on("any", move |event| match event {
         Event::KeyDown {
-            key: is_pressed, ..
+            key: is_pressed,
+            keycode: _,
         } => {
             if let Some(key) = is_pressed {
                 let new_state = match key {
@@ -91,21 +73,21 @@ fn on_keydown(event: Event) {
                 };
 
                 if let Some(state) = new_state {
-                    if anim.current.y != state as usize || state == Pikachu::Kick {
-                        anim.switch::<usize>(state as usize);
+                    if anim.current.y != state as u16 || state == Pikachu::Kick {
+                        anim.switch(state as u16);
                     }
                 }
-            }
+            };
+        }
+
+        Event::Draw => {
+            let window = state.read().unwrap();
+            anim.tick();
+            _ = scene.render();
+            window.redraw();
         }
         _ => {}
-    }
-}
+    });
 
-fn on_draw(_: Event) {
-    let anim = ANIMATOR.get().unwrap();
-    let mut anim = anim.lock().unwrap();
-    anim.tick();
-
-    let scene = SCENE.get().unwrap();
-    _ = scene.render();
+    window.run();
 }

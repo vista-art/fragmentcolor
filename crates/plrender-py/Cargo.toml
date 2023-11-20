@@ -8,13 +8,12 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
+plr = { package="plrender", path = "../plrender" }
+codegen = { package="plrender-codegen", path = "../plrender-codegen" }
 pyo3 = { version = "0.20", features = ["extension-module"] }
-pollster = "0.3"
 numpy = "0.20"
 ndarray = "0.15"
-mint = "0.5"
-plr = { package="plrender", path = "../plrender" }
-winit = "0.28"
+log = "0.4"
 
 [build-dependencies]
 pyo3-build-config = { version = "0.20", features = ["extension-module"] }

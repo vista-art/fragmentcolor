@@ -1,15 +1,15 @@
 use instant::Instant;
 use plrender::{
     app::events::Event,
+    app::window::{IsWindow, Window, WindowOptions},
     app::AppOptions,
-    app::{window::Window, WindowOptions},
     components::{self},
-    components::{Camera, CameraOptions, Color, Empty, Mesh},
+    components::{Camera, CameraOptions, Color, Empty, Mesh, Projection},
+    math::cg::{Vec3, ORIGIN, UP_VECTOR},
     math::geometry::Primitive,
-    math::linear_algebra::{Vec3, ORIGIN, UP_VECTOR},
     renderer::{RenderOptions, RenderTargetDescription},
-    scene::SceneObjectEntry,
-    IsWindow, NodeId, PLRender, Projection, SceneObject,
+    scene::{node::NodeId, SceneObject, SceneObjectEntry},
+    PLRender,
 };
 
 const ROOT_SCALE: f32 = 2.0;
@@ -214,7 +214,7 @@ fn main() {
     });
 
     // Runs the application.
-    pollster::block_on(PLRender::run());
+    PLRender::run();
 }
 
 struct Stack {
@@ -225,7 +225,7 @@ struct Stack {
 fn fill_scene(
     levels: &[Level],
     scene: &mut plrender::Scene,
-    mesh: plrender::BuiltMesh,
+    mesh: plrender::resources::mesh::BuiltMesh,
 ) -> Vec<CubePosition> {
     let root_scale = Vec3::from([ROOT_SCALE; 3]);
     let mut root = components::Empty::new();

@@ -16,7 +16,7 @@ use std::{
     path::PathBuf,
     sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
-use winit::window::WindowId;
+pub use winit::window::WindowId;
 
 // Waiting for https://github.com/gfx-rs/wgpu/pull/4202
 // use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
@@ -88,19 +88,25 @@ impl EventProcessor for WindowState {
     /// - If the CallStack for this Window is already locked by other process,
     ///   the event will be dropped silently and the Window will log an Error.
     fn call(&self, name: &str, event: Event) {
-        if let Some(callbacks) = self.callbacks.get(name) {
-            if let Ok(mut callstack) = self.callstack.try_write() {
-                callbacks.iter().for_each(|callback| {
-                    callstack.push((callback.clone(), event));
-                })
-            } else {
-                log::error!(
-                    "Failed to acquire the CallStack Mutex for for WindowState.call({}, {:?})!",
-                    name,
-                    event
-                );
-            };
-        }
+        let callbacks = if let Some(callbacks) = self.callbacks.get(name) {
+            callbacks
+        } else if let Some(callbacks) = self.callbacks.get("any") {
+            callbacks
+        } else {
+            return;
+        };
+
+        if let Ok(mut callstack) = self.callstack.try_write() {
+            callbacks.iter().for_each(|callback| {
+                callstack.push((callback.clone(), event.clone()));
+            })
+        } else {
+            log::error!(
+                "Failed to acquire the CallStack Mutex for for WindowState.call({}, {:?})!",
+                name,
+                event
+            );
+        };
     }
 
     /// Adds a callback to the callstack to be processed at a later time.
@@ -191,7 +197,7 @@ impl WindowState {
         self.instance.request_redraw();
     }
 
-    pub fn get_hovered_file(&mut self, index: u128) -> Option<String> {
+    pub fn get_hovered_file(&self, index: u128) -> Option<String> {
         if let Some(path) = self.hovered_files.get(&index) {
             Some(path.to_string_lossy().to_string())
         } else {
@@ -462,8 +468,8 @@ impl Window {
         self
     }
 
-    pub async fn run(&mut self) {
-        PLRender::run().await;
+    pub fn run(&mut self) {
+        PLRender::run();
     }
 
     pub fn redraw(&self) {

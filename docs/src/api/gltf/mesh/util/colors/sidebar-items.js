@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"struct":["CastingIter","RgbF32","RgbU16","RgbU8","RgbaF32","RgbaU16","RgbaU8"],"trait":["Cast"]};

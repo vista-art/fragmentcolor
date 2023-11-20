@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["MorphTargetWeights","ReadOutputs","Rotations"],"mod":["morph_target_weights","rotations"],"struct":["Reader"],"type":["ReadInputs","Scales","Translations"]};

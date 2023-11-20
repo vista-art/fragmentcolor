@@ -6,19 +6,23 @@ use std::sync::{Arc, RwLock};
 use crate::{
     app::error::WRITE_LOCK_ERROR,
     components::{Sprite, SpriteMap},
+    math::cg::Pixel,
     scene::SceneState,
 };
 use instant::{Duration, Instant};
 
+#[derive(Debug, Clone)]
 pub struct Animator {
     pub scene: Arc<RwLock<SceneState>>,
-    pub cell_counts: mint::Vector2<usize>,
-    pub current: mint::Point2<usize>,
+    pub cell_counts: Pixel,
+    pub current: Pixel,
     pub sprite: crate::ObjectId,
     pub sprite_map: SpriteMap,
     pub duration: Duration,
     pub moment: Instant,
 }
+
+unsafe impl Send for Animator {}
 
 impl Animator {
     pub fn update_clip_region(&mut self) {
@@ -27,10 +31,10 @@ impl Animator {
         scene.get::<&mut Sprite>(self.sprite).unwrap().clip_region = Some(clip_region);
     }
 
-    pub fn switch<S: Into<usize>>(&mut self, state: usize) {
+    pub fn switch(&mut self, state: u16) {
         self.moment = Instant::now();
         self.current.x = 0;
-        self.current.y = state;
+        self.current.y = state as u16;
         self.update_clip_region();
     }
 

@@ -1,0 +1,63 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Objective-C type-encoding"><title>objc2_encode - Rust</title><link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/SourceSerif4-Regular-46f98efaafac5295.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/FiraSans-Regular-018c141bf0843ffd.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/FiraSans-Medium-8f9a781e4970d388.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/SourceCodePro-Regular-562dcc5011b6de7d.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/SourceSerif4-Bold-a2c9cd1067f8b328.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/SourceCodePro-Semibold-d899c5a5c4aeb14a.ttf.woff2"><link rel="stylesheet" href="../static.files/normalize-76eba96aa4d2e634.css"><link rel="stylesheet" href="../static.files/rustdoc-cb6f1f67f1bcd037.css" id="mainThemeStyle"><meta name="rustdoc-vars" data-root-path="../" data-static-root-path="../static.files/" data-current-crate="objc2_encode" data-themes="" data-resource-suffix="" data-rustdoc-version="1.73.0 (cc66ad468 2023-10-03)" data-channel="1.73.0" data-search-js="search-6dfdfced5eff6596.js" data-settings-js="settings-de11bff964e9d4e5.js" data-settings-css="settings-8c76f75bfb6bd192.css" data-theme-light-css="light-1596385f77d47ef2.css" data-theme-dark-css="dark-0a43001d3fc2282c.css" data-theme-ayu-css="ayu-fd19013d6ce078bf.css" ><script src="../static.files/storage-db41da1a38ea3cb8.js"></script><script defer src="../crates.js"></script><script defer src="../static.files/main-0795b7d26be81095.js"></script><noscript><link rel="stylesheet" media="(prefers-color-scheme:light)" href="../static.files/light-1596385f77d47ef2.css"><link rel="stylesheet" media="(prefers-color-scheme:dark)" href="../static.files/dark-0a43001d3fc2282c.css"><link rel="stylesheet" href="../static.files/noscript-cffde32267a19fd6.css"></noscript><link rel="alternate icon" type="image/png" href="../static.files/favicon-16x16-8b506e7a72182f1c.png"><link rel="alternate icon" type="image/png" href="../static.files/favicon-32x32-422f7d1d52889060.png"><link rel="icon" type="image/svg+xml" href="../static.files/favicon-2c020d218678b618.svg"></head><body class="rustdoc mod crate"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="mobile-topbar"><button class="sidebar-menu-toggle">&#9776;</button><a class="logo-container" href="../objc2_encode/index.html"><img class="rust-logo" src="../static.files/rust-logo-151179464ae7ed46.svg" alt="logo"></a><h2></h2></nav><nav class="sidebar"><a class="logo-container" href="../objc2_encode/index.html"><img class="rust-logo" src="../static.files/rust-logo-151179464ae7ed46.svg" alt="logo"></a><h2 class="location"><a href="#">Crate objc2_encode</a></h2><div class="sidebar-elems"><ul class="block"><li class="version">Version 2.0.0-pre.2</li><li><a id="all-types" href="all.html">All Items</a></li></ul><section><ul class="block"><li><a href="#enums">Enums</a></li><li><a href="#traits">Traits</a></li></ul></section></div></nav><main><div class="width-limiter"><nav class="sub"><form class="search-form"><span></span><input class="search-input" name="search" aria-label="Run search in the documentation" autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"><div id="help-button" title="help" tabindex="-1"><a href="../help.html">?</a></div><div id="settings-menu" tabindex="-1"><a href="../settings.html" title="settings"><img width="22" height="22" alt="Change settings" src="../static.files/wheel-7b819b6101059cd0.svg"></a></div></form></nav><section id="main-content" class="content"><div class="main-heading"><h1>Crate <a class="mod" href="#">objc2_encode</a><button id="copy-path" title="Copy item path to clipboard"><img src="../static.files/clipboard-7571035ce49a181d.svg" width="19" height="18" alt="Copy item path"></button></h1><span class="out-of-band"><a class="src" href="../src/objc2_encode/lib.rs.html#1-117">source</a> · <button id="toggle-all-docs" title="collapse all docs">[<span>&#x2212;</span>]</button></span></div><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><h2 id="objective-c-type-encoding"><a href="#objective-c-type-encoding">Objective-C type-encoding</a></h2>
+<p>This is re-exported into the top level of <code>objc2</code>.</p>
+<p>The Objective-C directive <code>@encode</code> encodes types as strings, and this is
+used in various places in the runtime.</p>
+<p>This crate provides the <a href="enum.Encoding.html" title="enum objc2_encode::Encoding"><code>Encoding</code></a> type to efficiently describe and
+compare these type-encodings.</p>
+<p>Additionally it provides traits for annotating types that has an
+Objective-C encoding: Specifically <a href="trait.Encode.html" title="trait objc2_encode::Encode"><code>Encode</code></a> for structs, <a href="trait.RefEncode.html" title="trait objc2_encode::RefEncode"><code>RefEncode</code></a>
+for references and <a href="trait.EncodeArguments.html" title="trait objc2_encode::EncodeArguments"><code>EncodeArguments</code></a> for function arguments.</p>
+<p>This crate is exported under the <a href="https://crates.io/crates/objc2"><code>objc2</code></a> crate as <code>objc2::encode</code>, so
+usually you would just use it from there.</p>
+<h3 id="example"><a href="#example">Example</a></h3>
+<p>Implementing <a href="trait.Encode.html" title="trait objc2_encode::Encode"><code>Encode</code></a> and <a href="trait.RefEncode.html" title="trait objc2_encode::RefEncode"><code>RefEncode</code></a> for a custom type:</p>
+
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>objc2_encode::{Encode, Encoding, RefEncode};
+<span class="comment">// or from objc2:
+// use objc2::{Encode, Encoding, RefEncode};
+
+</span><span class="attr">#[repr(C)]
+</span><span class="kw">struct </span>MyStruct {
+    a: f32, <span class="comment">// float
+    </span>b: i16, <span class="comment">// int16_t
+</span>}
+
+<span class="kw">unsafe impl </span>Encode <span class="kw">for </span>MyStruct {
+    <span class="kw">const </span>ENCODING: Encoding = Encoding::Struct(
+        <span class="string">&quot;MyStruct&quot;</span>, <span class="comment">// Must use the same name as defined in C header files
+        </span><span class="kw-2">&amp;</span>[
+            f32::ENCODING, <span class="comment">// Same as Encoding::Float
+            </span>i16::ENCODING, <span class="comment">// Same as Encoding::Short
+        </span>],
+    );
+}
+
+<span class="comment">// @encode(MyStruct) -&gt; &quot;{MyStruct=fs}&quot;
+</span><span class="macro">assert!</span>(MyStruct::ENCODING.equivalent_to_str(<span class="string">&quot;{MyStruct=fs}&quot;</span>));
+
+<span class="kw">unsafe impl </span>RefEncode <span class="kw">for </span>MyStruct {
+    <span class="comment">// Note that if `MyStruct` is an Objective-C instance, this should
+    // be `Encoding::Object`.
+    </span><span class="kw">const </span>ENCODING_REF: Encoding = Encoding::Pointer(<span class="kw-2">&amp;</span><span class="self">Self</span>::ENCODING);
+}
+
+<span class="comment">// @encode(MyStruct*) -&gt; &quot;^{MyStruct=fs}&quot;
+</span><span class="macro">assert!</span>(MyStruct::ENCODING_REF.equivalent_to_str(<span class="string">&quot;^{MyStruct=fs}&quot;</span>));</code></pre></div>
+<p>See the <a href="https://github.com/madsmtm/objc2/tree/master/objc2-encode/examples"><code>examples</code></a> folder for more complex usage.</p>
+<h3 id="caveats"><a href="#caveats">Caveats</a></h3>
+<p>We’ve taken the pragmatic approach with <a href="trait.Encode.html" title="trait objc2_encode::Encode"><code>Encode</code></a> and <a href="trait.RefEncode.html" title="trait objc2_encode::RefEncode"><code>RefEncode</code></a>, and
+have implemented it for as many types as possible (instead of defining a
+bunch of subtraits for very specific purposes). However, that might
+sometimes be slightly surprising.</p>
+<p>The primary example is <a href="https://doc.rust-lang.org/1.73.0/std/primitive.unit.html" title="primitive unit"><code>()</code></a>, which doesn’t make sense as a
+method argument, but is a very common return type, and hence implements
+<a href="trait.Encode.html" title="trait objc2_encode::Encode"><code>Encode</code></a>.</p>
+<h3 id="further-resources"><a href="#further-resources">Further resources</a></h3>
+<ul>
+<li><a href="https://dmaclach.medium.com/objective-c-encoding-and-you-866624cc02de">Objective-C, Encoding and You</a>.</li>
+<li><a href="https://developer.apple.com/library/archive/documentation/Cocoa/Conceptual/ObjCRuntimeGuide/Articles/ocrtTypeEncodings.html">Apple’s documentation on Type Encodings</a>.</li>
+<li><a href="https://stackoverflow.com/a/11527925">How are the digits in ObjC method type encoding calculated?</a></li>
+<li><a href="https://github.com/llvm/llvm-project/blob/fae0dfa6421ea6c02f86ba7292fa782e1e2b69d1/clang/lib/AST/ASTContext.cpp#L7500-L7850"><code>clang</code>’s source code for generating <code>@encode</code></a>.</li>
+</ul>
+</div></details><h2 id="enums" class="small-section-header"><a href="#enums">Enums</a></h2><ul class="item-table"><li><div class="item-name"><a class="enum" href="enum.Encoding.html" title="enum objc2_encode::Encoding">Encoding</a></div><div class="desc docblock-short">An Objective-C type-encoding.</div></li></ul><h2 id="traits" class="small-section-header"><a href="#traits">Traits</a></h2><ul class="item-table"><li><div class="item-name"><a class="trait" href="trait.Encode.html" title="trait objc2_encode::Encode">Encode</a></div><div class="desc docblock-short">Types that have an Objective-C type-encoding.</div></li><li><div class="item-name"><a class="trait" href="trait.EncodeArguments.html" title="trait objc2_encode::EncodeArguments">EncodeArguments</a></div><div class="desc docblock-short">Types that represent an ordered group of function arguments, where each
+argument has an Objective-C type-encoding, or can be converted from one.</div></li><li><div class="item-name"><a class="trait" href="trait.EncodeConvert.html" title="trait objc2_encode::EncodeConvert">EncodeConvert</a></div><div class="desc docblock-short">Represents types that can easily be converted to/from an <a href="trait.Encode.html" title="trait objc2_encode::Encode"><code>Encode</code></a> type.</div></li><li><div class="item-name"><a class="trait" href="trait.RefEncode.html" title="trait objc2_encode::RefEncode">RefEncode</a></div><div class="desc docblock-short">Types whoose references has an Objective-C type-encoding.</div></li></ul></section></div></main></body></html>

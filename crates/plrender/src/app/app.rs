@@ -14,16 +14,19 @@ use std::{
     str::FromStr,
     sync::{Arc, Mutex, MutexGuard, OnceLock, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
-use winit::{
-    event_loop::{EventLoopClosed, EventLoopProxy},
-    window::WindowId,
-};
+use winit::{event_loop::EventLoopProxy, window::WindowId};
 
 pub const ROOT: &'static str = env!("CARGO_MANIFEST_DIR");
 
 type Error = Box<dyn std::error::Error>;
+
 type RemovedWindow = Option<Arc<RwLock<WindowState>>>;
+type WindowsReadGuard<'w> = RwLockReadGuard<'w, Windows>;
+type WindowsWriteGuard<'w> = RwLockWriteGuard<'w, Windows>;
+
 type RemovedScene = Option<Arc<RwLock<SceneState>>>;
+type ScenesReadGuard<'s> = RwLockReadGuard<'s, Scenes>;
+type ScenesWriteGuard<'s> = RwLockWriteGuard<'s, Scenes>;
 
 /// The main App instance responsible for managing
 /// the resources created by the user of this library.
@@ -42,23 +45,8 @@ pub static RENDERER: OnceLock<MainRenderer> = OnceLock::new();
 /// Typically, the only function you need to call from this
 /// struct is `PLRender::run()`.
 ///
-/// If you need to configure the main
-///
-/// PLRender::config(options);
-/// PLRender::run();
+/// If you need to configure App, use `PLRender::config()`.
 pub struct PLRender;
-
-/// Alias for [`PLRender::run()`].
-///
-/// # Example
-/// ```
-/// use plrender::PLRender;
-///
-/// PLRender::run();
-/// ```
-pub async fn run() {
-    PLRender::run().await;
-}
 
 impl PLRender {
     /// Configure the main App instance with startup options.
@@ -68,20 +56,23 @@ impl PLRender {
     /// has already been initialized by another part of your program,
     /// this function will do nothing.
     ///
-    /// # Example
+    /// # Examples
     /// ```
-    /// use plrender::PLRender;
+    /// use plrender::{PLRender, AppMetadata};
     ///
     /// let options = plrender::AppOptions {
-    ///     log_level: Some("info"),
-    ///     renderer: Some(plrender::RenderOptions {
-    ///         force_software_rendering: Some(true),
-    ///         render_pass: Some("solid"),
+    ///     log_level: "info".to_string(),
+    ///     renderer: plrender::RenderOptions {
+    ///         force_software_rendering: true,
     ///        ..Default::default()
     ///     }
-    /// });
+    /// };
     ///
     /// PLRender::config(options);
+    ///
+    /// let app = PLRender::app().read().unwrap();
+    ///
+    /// assert_eq!(app.name(), "plrender");
     /// ```
     pub fn config(options: AppOptions) {
         APP.get_or_init(|| Arc::new(RwLock::new(App::new(options))));
@@ -131,16 +122,16 @@ impl PLRender {
     /// the browser's event loop instead. It will hook the library's
     /// main loop into the `window.requestAnimationFrame()` callbacks.
     ///
-    /// # Example
+    /// # Examples
     /// ```
     /// use plrender::PLRender;
     ///
     /// PLRender::run();
     /// ```
-    pub async fn run() {
+    pub fn run() {
         let mut app = Self::app().write().expect("Could not get App Write lock");
 
-        app.run().await;
+        pollster::block_on(app.run());
     }
 }
 
@@ -162,7 +153,7 @@ pub struct AppState {
 }
 
 /// App's startup options.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppOptions {
     pub log_level: String,
     pub renderer: RenderOptions,
@@ -228,7 +219,7 @@ impl App {
     /// # Panics
     /// - Panics if the current thread is dead
     ///   while acquiring the Event Loop mutex lock.
-    pub async fn run(&mut self) {
+    pub(crate) async fn run(&mut self) {
         let _ = self.state().init_renderer::<Window>(vec![]).await;
 
         let runner = Box::new(run_event_loop);
@@ -241,9 +232,7 @@ impl App {
 
     /// Locks the internal state and Returns the mutex guard to it.
     pub(crate) fn state(&self) -> RwLockReadGuard<'_, AppState> {
-        self.state
-            .read()
-            .expect("Could not get AppState Read mutex lock")
+        self.state.read().expect("Could not get AppState Read lock")
     }
 
     /// Locks the main Event Loop and Returns the mutex guard to it.
@@ -255,20 +244,17 @@ impl App {
 
     /// Dispatches an event to the main event loop.
     ///
-    /// # Panics
-    /// - Panics if the current thread is dead
-    ///   while acquiring the Event Dispatcher mutex lock.
-    pub fn dispatch_event(&self, event: Event) -> Result<(), EventLoopClosed<Event>> {
-        Ok(self
-            .event_dispatcher
-            .try_lock()
-            .expect("Could not get Event Dispatcher mutex lock")
-            .send_event(event)?)
+    /// # Errors
+    /// - Returns an Error if the EventLoop is closed.
+    /// - Returns an Error if it fails to acquire the
+    ///   Event Dispatcher mutex lock.
+    pub fn dispatch_event(&'static self, event: Event) -> Result<(), Error> {
+        let dispatcher = self.event_dispatcher.try_lock()?;
+        Ok(dispatcher.send_event(event)?)
     }
 
-    /// Returns a new Arc Mutex reference to the Windows collection.
-    #[allow(dead_code)]
-    pub(crate) fn windows(&self) -> Arc<RwLock<Windows>> {
+    /// Returns a new Arc RwLock reference to the Windows collection.
+    pub fn windows(&self) -> Arc<RwLock<Windows>> {
         self.state().windows()
     }
 
@@ -280,24 +266,17 @@ impl App {
         self.state().add_window(window).await;
     }
 
-    /// Removes a window from the Windows collection.
-    pub(crate) fn remove_window<W: IsWindow>(&self, window: &WindowId) -> RemovedWindow {
-        self.state().remove_window::<W>(window)
-    }
-
     /// Returns a new Arc Mutex reference to the Scenes collection.
-    pub(crate) fn scenes(&self) -> Arc<RwLock<Scenes>> {
+    pub fn scenes(&self) -> Arc<RwLock<Scenes>> {
         self.state().scenes()
     }
 
     /// Adds a scene to the Scenes collection.
+    ///
+    /// New Scene instances register themselves to the App,
+    /// so users cannot call this function directly.
     pub(crate) fn add_scene(&self, scene: &mut Scene) {
         self.state().add_scene(scene);
-    }
-
-    /// Removes a scene from the Scenes collection.
-    pub(crate) fn remove_scene(&self, scene: Scene) -> RemovedScene {
-        self.state().remove_scene(scene)
     }
 }
 
@@ -312,20 +291,20 @@ impl AppState {
     ///
     /// # Panics
     /// - Panics if the current thread is dead while acquiring the mutex lock.
-    pub(crate) fn read_windows_collection<W: IsWindow>(&self) -> RwLockReadGuard<'_, Windows> {
+    pub(crate) fn read_windows_collection<W: IsWindow>(&self) -> WindowsReadGuard<'_> {
         self.windows
             .read()
-            .expect("Could not get Windows Collection mutex lock")
+            .expect("Could not get Windows Collection Read lock")
     }
 
     /// Returns a Write mutex reference to the Windows collection.
     ///
     /// # Panics
     /// - Panics if the current thread is dead while acquiring the mutex lock.
-    pub(crate) fn write_to_windows_collection<W: IsWindow>(&self) -> RwLockWriteGuard<'_, Windows> {
+    pub(crate) fn write_to_windows_collection<W: IsWindow>(&self) -> WindowsWriteGuard<'_> {
         self.windows
             .write()
-            .expect("Could not get Windows Collection mutex lock")
+            .expect("Could not get Windows Collection Write lock")
     }
 
     /// Adds a window to the Windows collection.
@@ -354,20 +333,20 @@ impl AppState {
     ///
     /// # Panics
     /// - Panics if the current thread is dead while acquiring the mutex lock.
-    pub(crate) fn read_scenes_collection(&self) -> RwLockReadGuard<'_, Scenes> {
+    pub(crate) fn read_scenes_collection(&self) -> ScenesReadGuard<'_> {
         self.scenes
             .read()
-            .expect("Could not get Scenes Collection mutex lock")
+            .expect("Could not get Scenes Collection Read lock")
     }
 
     /// Returns a Write mutex reference to the Scenes collection.
     ///
     /// # Panics
     /// - Panics if the current thread is dead while acquiring the mutex lock.
-    pub(crate) fn write_to_scenes_collection(&self) -> RwLockWriteGuard<'_, Scenes> {
+    pub(crate) fn write_to_scenes_collection(&self) -> ScenesWriteGuard<'_> {
         self.scenes
             .write()
-            .expect("Could not get Scenes Collection mutex lock")
+            .expect("Could not get Scenes Collection Write lock")
     }
 
     /// Adds a scene to the Scenes collection.

@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["BYTE","FLOAT","SHORT","UNSIGNED_BYTE","UNSIGNED_INT","UNSIGNED_SHORT","VALID_ACCESSOR_TYPES","VALID_COMPONENT_TYPES","VALID_INDEX_TYPES"],"enum":["ComponentType","Type"],"mod":["sparse"],"struct":["Accessor","GenericComponentType","IndexComponentType"]};

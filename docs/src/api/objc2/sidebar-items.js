@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"macro":["class","declare_class","extern_class","extern_methods","msg_send","msg_send_bool","msg_send_id","ns_string","sel"],"mod":["declare","exception","foundation","rc","runtime"],"trait":["ClassType","Message","MessageArguments","MessageReceiver"]};
