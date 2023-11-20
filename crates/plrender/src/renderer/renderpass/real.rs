@@ -4,6 +4,7 @@ use crate::{
         target::Dimensions, RenderContext, RenderPassResult, RenderTarget, RenderTargetCollection,
         Renderer,
     },
+    resources::{mesh::MeshId, texture::TextureId},
     scene::SceneState,
 };
 use fxhash::FxHashMap;
@@ -89,9 +90,9 @@ struct Pipelines {
 }
 
 struct Instance {
-    mesh_id: crate::MeshId,
+    mesh_id: MeshId,
     locals_bl: super::BufferLocation,
-    base_color_map: Option<crate::TextureId>,
+    base_color_map: Option<TextureId>,
 }
 
 /// Realistic renderer.

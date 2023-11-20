@@ -77,6 +77,9 @@ pub(crate) fn run_event_loop(event_loop: WinitEventLoop<Event>, app: Arc<RwLock<
             //
             // Custom dispatched events as strings.
             Winit::UserEvent(event) => match event {
+                Event::Draw => {
+                    
+                }
                 _ => {}
             },
 
@@ -114,7 +117,7 @@ pub(crate) fn run_event_loop(event_loop: WinitEventLoop<Event>, app: Arc<RwLock<
                                 width: physical_size.width,
                                 height: physical_size.height,
                             },
-                        )
+                        );
                     }
 
                     // The window's scale factor has changed.
@@ -131,7 +134,7 @@ pub(crate) fn run_event_loop(event_loop: WinitEventLoop<Event>, app: Arc<RwLock<
                     //
                     // For more information about DPI in general, see the [`dpi`](crate::dpi) module.
                     WindowEvent::ScaleFactorChanged {
-                        scale_factor: _,
+                        scale_factor,
                         new_inner_size,
                     } => {
                         let size = Quad::from_window_size(new_inner_size).to_wgpu_size();
@@ -148,6 +151,7 @@ pub(crate) fn run_event_loop(event_loop: WinitEventLoop<Event>, app: Arc<RwLock<
                         window.call(
                             "rescale",
                             Event::Rescaled {
+                                scale: *scale_factor,
                                 width: new_inner_size.width,
                                 height: new_inner_size.height,
                             },

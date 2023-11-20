@@ -1,4 +1,4 @@
-use crate::components::transform::Transform;
+use crate::components::Transform;
 use serde::{Deserialize, Serialize};
 
 /// A NodeId is a reference for a Node in the Scene tree.

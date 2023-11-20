@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["LINES","LINE_LOOP","LINE_STRIP","POINTS","TRIANGLES","TRIANGLE_FAN","TRIANGLE_STRIP","VALID_MODES","VALID_MORPH_TARGETS"],"enum":["Mode","Semantic"],"struct":["Mesh","MorphTarget","Primitive"]};

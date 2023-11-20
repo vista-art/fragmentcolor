@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["VALID_CAMERA_TYPES"],"enum":["Type"],"struct":["Camera","Orthographic","Perspective"]};

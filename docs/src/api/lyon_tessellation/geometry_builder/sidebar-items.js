@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["GeometryBuilderError"],"fn":["simple_builder"],"struct":["BuffersBuilder","InvertWinding","NoOutput","Positions","VertexBuffers"],"trait":["FillGeometryBuilder","FillVertexConstructor","GeometryBuilder","MaxIndex","StrokeGeometryBuilder","StrokeVertexConstructor"],"type":["SimpleBuffersBuilder"]};

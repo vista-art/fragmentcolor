@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"struct":["BuiltMesh","MeshBuilder","MeshData","MeshId","VertexData","VertexIds"]};

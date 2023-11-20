@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["VALID_INTERPOLATIONS","VALID_PROPERTIES"],"enum":["Interpolation","Property"],"struct":["Animation","Channel","Sampler","Target"]};

@@ -1,6 +1,15 @@
 use crate::{
-    components, components::Color, components::Mesh, math::geometry::vertex, renderer,
-    resources::mesh::MeshBuilder,
+    components,
+    components::Color,
+    components::Mesh,
+    math::geometry::vertex,
+    renderer::renderpass,
+    resources,
+    resources::{
+        mesh::{BuiltMesh, MeshBuilder},
+        texture::TextureId,
+    },
+    scene,
 };
 use std::{collections::VecDeque, ops, path::Path};
 
@@ -13,18 +22,18 @@ struct MeshScratch {
 }
 
 struct Texture {
-    image: crate::TextureId,
+    image: TextureId,
 }
 
 struct Primitive {
-    mesh: crate::resources::mesh::BuiltMesh,
-    color: crate::components::Color,
-    shader: crate::renderer::renderpass::Shader,
-    material: crate::renderer::renderpass::Material,
+    mesh: BuiltMesh,
+    color: Color,
+    shader: renderpass::Shader,
+    material: renderpass::Material,
 }
 
 fn load_texture(data: gltf::image::Data) -> Texture {
-    let texture_id = crate::Texture::from_bytes(&data.pixels).unwrap();
+    let texture_id = resources::Texture::from_bytes(&data.pixels).unwrap();
     Texture { image: texture_id }
 }
 
@@ -67,7 +76,7 @@ fn load_primitive<'a>(
     let mat = primitive.material();
     let pbr = mat.pbr_metallic_roughness();
     let base_color = pbr.base_color_factor();
-    let material = renderer::renderpass::Material {
+    let material = renderpass::Material {
         base_color_map: pbr
             .base_color_texture()
             .map(|t| textures[t.texture().index()].image),
@@ -81,7 +90,7 @@ fn load_primitive<'a>(
     Primitive {
         mesh: mesh_builder.build(),
         color: Color::from_rgba(base_color),
-        shader: renderer::renderpass::Shader::Gouraud { flat: true },
+        shader: renderpass::Shader::Gouraud { flat: true },
         material,
     }
 }
@@ -130,8 +139,8 @@ pub struct Module {
 /// Load mesh from glTF 2.0 format.
 pub fn load_gltf(
     path: impl AsRef<Path>,
-    scene: &mut crate::Scene,
-    global_parent: crate::NodeId,
+    scene: &mut scene::Scene,
+    global_parent: scene::node::NodeId,
 ) -> Module {
     let mut module = Module::default();
     let (gltf, buffers, images) = gltf::import(path).expect("invalid glTF 2.0");
@@ -155,7 +164,7 @@ pub fn load_gltf(
 
     struct PreNode<'a> {
         gltf_node: gltf::Node<'a>,
-        parent: crate::NodeId,
+        parent: scene::node::NodeId,
     }
 
     let mut deque = VecDeque::new();
@@ -169,14 +178,14 @@ pub fn load_gltf(
     while let Some(PreNode { gltf_node, parent }) = deque.pop_front() {
         log::debug!("Node {:?}", gltf_node.name());
 
-        let (translation, rotation, scale) = gltf_node.transform().decomposed();
+        let (position, rotation, scale) = gltf_node.transform().decomposed();
 
         let mut empty = components::Empty::new();
         empty
             .set_parent_node(parent)
-            .set_position(translation.into())
-            .set_rotation_quaternion(rotation.into())
-            .set_scale(scale.into());
+            .set_position(position)
+            .set_rotation_quaternion(rotation)
+            .set_scale(scale);
 
         scene.add(&mut empty);
 
@@ -209,7 +218,7 @@ pub fn load_gltf(
             let (depth, projection) = match gltf_camera.projection() {
                 gltf::camera::Projection::Orthographic(p) => (
                     p.znear()..p.zfar(),
-                    components::camera::Projection::Orthographic {
+                    components::Projection::Orthographic {
                         center: [0.0; 2].into(),
                         //Note: p.xmag() is ignored
                         extent_y: p.ymag(),
@@ -217,7 +226,7 @@ pub fn load_gltf(
                 ),
                 gltf::camera::Projection::Perspective(p) => (
                     p.znear()..p.zfar().unwrap_or(f32::INFINITY),
-                    components::camera::Projection::Perspective {
+                    components::Projection::Perspective {
                         fov_y: p.yfov().to_degrees(),
                     },
                 ),
@@ -230,7 +239,7 @@ pub fn load_gltf(
                 scene.read_state()[empty.node.id()]
             );
             module.cameras.0.push(Named {
-                data: components::camera::Camera {
+                data: components::Camera {
                     projection,
                     z_near: depth.start,
                     z_far: depth.end,
@@ -243,15 +252,15 @@ pub fn load_gltf(
         if let Some(gltf_light) = gltf_node.light() {
             use gltf::khr_lights_punctual::Kind as LightType;
             let light_type = match gltf_light.kind() {
-                LightType::Directional => components::light::LightType::Directional,
-                LightType::Point => components::light::LightType::Point,
+                LightType::Directional => components::LightType::Directional,
+                LightType::Point => components::LightType::Point,
                 LightType::Spot { .. } => {
                     log::warn!("Spot lights are not supported: {:?}", gltf_light.name());
                     continue;
                 }
             };
 
-            let mut light = components::Light::new(components::light::LightOptions {
+            let mut light = components::Light::new(components::LightOptions {
                 color: Color::from_rgb_alpha(gltf_light.color(), 0.0),
                 intensity: gltf_light.intensity(),
                 variant: light_type,

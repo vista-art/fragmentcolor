@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["ARRAY_BUFFER","ELEMENT_ARRAY_BUFFER","MAX_BYTE_STRIDE","MIN_BYTE_STRIDE","VALID_TARGETS"],"enum":["Target"],"struct":["Buffer","View"]};

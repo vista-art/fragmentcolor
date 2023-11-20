@@ -23,29 +23,29 @@
 /// The original was copied from the examples folder of the legacy
 /// engine I forked. It was not supposed to be a component in the
 /// original engine, but an implementation detail.
-pub mod animation;
+mod animation;
 
 /// Camera component.
-pub mod camera;
+mod camera;
 
 /// Color component.
 ///
 /// Allows a SceneObject to have a color.
-pub mod color;
+mod color;
 
 /// Controller component.
 ///
 /// Allows a SceneObject to respond to Keyboard and Mouse events.
-pub mod controller;
+mod controller;
 
 /// Empty component.
-pub mod empty;
+mod empty;
 
 /// Light component.
-pub mod light;
+mod light;
 
 /// Mesh component.
-pub mod mesh;
+mod mesh;
 
 /// # Sprite component.
 ///
@@ -56,20 +56,20 @@ pub mod mesh;
 /// A Sprite can also be animated using the Animator component, which
 /// will change the UV coordinates of the Sprite to display a different
 /// part of the image in timed intervals.
-pub mod sprite;
+mod sprite;
 
 /// # SpriteMap component.
 ///
 /// Configures the CellSize and CellCount of a Sprite, and allows
 /// the Animator component to access the UV coordinates of each cell.
-pub mod sprite_map;
+mod sprite_map;
 
 /// Transform is a reserved component, mandatory for every SceneObject.
 ///
 /// SceneObjects contain a Node, which is a struct containing a Transform
 /// component and a parent NodeId. This allows the Scene to calculate the
 /// global positions and orientations of every object in the screen.
-pub mod transform;
+mod transform;
 
 pub use animation::*;
 pub use camera::*;

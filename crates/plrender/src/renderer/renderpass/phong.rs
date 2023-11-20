@@ -421,8 +421,8 @@ impl<'r> RenderPass for Phong<'r> {
                         let transform = &nodes[light.node_id];
                         let mut position = transform.position;
                         position[3] = match light.variant {
-                            components::light::LightType::Directional => 0.0,
-                            components::light::LightType::Point => 1.0,
+                            components::LightType::Directional => 0.0,
+                            components::LightType::Point => 1.0,
                         };
                         let mut color_intensity = light.color.into_vec4();
                         color_intensity[3] = light.intensity;

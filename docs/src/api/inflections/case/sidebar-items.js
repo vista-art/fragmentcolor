@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["is_camel_case","is_constant_case","is_kebab_case","is_lower_case","is_pascal_case","is_sentence_case","is_snake_case","is_title_case","is_train_case","is_upper_case","to_camel_case","to_constant_case","to_kebab_case","to_lower_case","to_pascal_case","to_sentence_case","to_snake_case","to_title_case","to_train_case","to_upper_case"]};

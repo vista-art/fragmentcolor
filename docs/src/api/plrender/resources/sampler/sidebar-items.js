@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["create_default_sampler","create_sampler"],"struct":["SamplerOptions"]};

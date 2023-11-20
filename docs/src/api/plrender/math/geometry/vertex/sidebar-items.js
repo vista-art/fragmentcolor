@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"struct":["Normal","Position","TextureCoordinates","Vertex","VertexTypes"]};

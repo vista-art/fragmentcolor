@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"struct":["Scene","SceneId","SceneState","Scenes"]};

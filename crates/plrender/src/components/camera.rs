@@ -32,7 +32,7 @@ pub enum Projection {
         /// The width is derived from the height
         /// based on the current target aspect ratio.
         ///
-        /// ````
+        /// ```text
         /// _____________________________
         /// | extent_y -> |             |
         /// |             |             |
@@ -41,7 +41,7 @@ pub enum Projection {
         /// |                           |
         /// |                           |
         /// |___________________________|
-        /// ````
+        /// ```
         extent_y: f32,
     },
     Perspective {

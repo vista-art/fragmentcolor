@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["NO","YES"],"struct":["Bool","Class","Ivar","Method","Object","Protocol","Sel"],"type":["BOOL","Imp"]};

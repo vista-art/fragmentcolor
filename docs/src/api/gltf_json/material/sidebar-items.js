@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["VALID_ALPHA_MODES"],"enum":["AlphaMode"],"struct":["AlphaCutoff","EmissiveFactor","Material","NormalTexture","OcclusionTexture","PbrBaseColorFactor","PbrMetallicRoughness","StrengthFactor"]};

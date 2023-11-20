@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["Encoding"],"trait":["Encode","EncodeArguments","EncodeConvert","RefEncode"]};
