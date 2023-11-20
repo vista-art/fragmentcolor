@@ -1,13 +1,3 @@
-//! # PLRender Application Module
-//!
-//! This module contains the main App struct and its related types.
-//!
-//! The main App instance is a singleton responsible for managing the global
-//! resources of this Library, namely the main Event Loop and the Renderer.
-//!
-//! It also contains internal utility functions, build metadata, errors, and
-//! the Window/Canvas object to create and manage windows.
-
 /// The **App** module contains the global **PLRender** accessor, which will
 /// lazily initialize the App and the Renderer.
 ///

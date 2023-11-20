@@ -237,9 +237,9 @@ impl<T: SpatialObject> SceneObject<T> {
     /// The SceneObject<T> will then replace the object in the
     /// Scene or in the temporary builder.
     ///
-    /// Examples:
+    /// # Examples:
     /// ```
-    /// use plrender::scene::{SceneObject, node::NodeId};
+    /// use plrender::scene::{Empty, Sprite};
     ///
     /// #[derive(Default, Clone, Copy)]
     /// struct MyComponent {
@@ -248,7 +248,7 @@ impl<T: SpatialObject> SceneObject<T> {
     /// }
     ///
     /// impl SceneObject<MyComponent> {
-    ///     pub fn set_my_data(&mut self, new_data: u32) -> &mut Self {
+    ///     pub fn set_my_custom_data(&mut self, new_data: u32) -> &mut Self {
     ///         let old_data = self.object();
     ///
     ///         self.add_component(Sprite {
@@ -259,10 +259,8 @@ impl<T: SpatialObject> SceneObject<T> {
     ///         self
     ///     }
     /// }
-    /// ````
+    /// ```
     pub(crate) fn object(&mut self) -> T {
-        // Can't use && expression with `let Some(var)`
-        // https://github.com/rust-lang/rust/issues/53667
         self.object = if let Some(object_id) = self.id {
             let mut scenes = self.scenes.write().expect(WRITE_LOCK_ERROR);
             let scene = if let Some(scene_id) = self.scene_id {

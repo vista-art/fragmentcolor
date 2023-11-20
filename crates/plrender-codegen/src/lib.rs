@@ -42,7 +42,6 @@ pub fn py_module(_: TokenStream) -> TokenStream {
             let tokens = quote! {
                 m.add_function(wrap_pyfunction!(#name, m)?)?;
             };
-
             functions.push(tokens);
         } else {
             let wrapper_name = format!("Py{}", struct_name);
@@ -60,6 +59,12 @@ pub fn py_module(_: TokenStream) -> TokenStream {
             #(#functions)*
             #(#objects)*
             Ok(())
+        }
+
+        #[derive(Clone)]
+        #[pyclass(name = "Scene")]
+        struct PyScene {
+            inner: Scene,
         }
     };
     TokenStream::from(expanded)

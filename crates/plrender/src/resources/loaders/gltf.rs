@@ -9,7 +9,7 @@ use crate::{
         mesh::{BuiltMesh, MeshBuilder},
         texture::TextureId,
     },
-    scene,
+    scene, SceneObjectEntry,
 };
 use std::{collections::VecDeque, ops, path::Path};
 
@@ -192,7 +192,7 @@ pub fn load_gltf(
         for gltf_child in gltf_node.children() {
             deque.push_back(PreNode {
                 gltf_node: gltf_child,
-                parent: empty.node.id(),
+                parent: empty.node_id(),
             });
         }
 
@@ -203,7 +203,7 @@ pub fn load_gltf(
                 mesh.add_component(primitive.color)
                     .add_component(primitive.shader)
                     .add_component(primitive.material)
-                    .set_parent_node(empty.node.id());
+                    .set_parent_node(empty.node_id());
 
                 let object_id = scene.add(&mut mesh);
 
@@ -236,14 +236,14 @@ pub fn load_gltf(
                 gltf_camera.name(),
                 depth,
                 projection,
-                scene.read_state()[empty.node.id()]
+                scene.read_state()[empty.node_id()]
             );
             module.cameras.0.push(Named {
                 data: components::Camera {
                     projection,
                     z_near: depth.start,
                     z_far: depth.end,
-                    node_id: empty.node.id(),
+                    node_id: empty.node_id(),
                 },
                 name: gltf_camera.name().map(str::to_string),
             });
@@ -267,7 +267,7 @@ pub fn load_gltf(
             });
 
             // @TODO future me problem: won't the scene overwrite it?
-            light.set_node_id(empty.node.id());
+            light.set_node_id(empty.node_id());
 
             let light_id = scene.add(&mut light);
 

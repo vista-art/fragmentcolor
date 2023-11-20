@@ -12,14 +12,6 @@ impl NodeId {
     pub fn root() -> Self {
         Self::default()
     }
-
-    pub fn as_u32(&self) -> u32 {
-        self.0
-    }
-
-    pub fn as_usize(&self) -> usize {
-        self.0 as usize
-    }
 }
 
 /// A Node represents a spatial position in the Scene tree.
@@ -56,10 +48,6 @@ impl Node {
     /// Returns this Node's NodeId in the Scene tree.
     pub fn id(&self) -> NodeId {
         self.id
-        // match self.id {
-        //     Some(id) => id,
-        //     None => NodeId::root(),
-        // }
     }
 
     /// Returns this Node's parent NodeId in the Scene tree.

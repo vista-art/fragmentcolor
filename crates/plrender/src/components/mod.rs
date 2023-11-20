@@ -1,17 +1,3 @@
-//! Components library for the Entity Component System.
-//!
-//! Typically, users do not need to use the components directly,
-//! but rather use the `SceneObject` struct, which is a wrapper
-//! around spatial components which can be added to a Scene.
-//!
-//! Types of Components:
-//! - SceneObject (spatial components)
-//!     - Sprite
-//!     - Shape
-//!     - Mesh
-//!
-//! - Marker components
-
 /// Animation component.
 ///
 /// This component is used to animate a sprite atlas.

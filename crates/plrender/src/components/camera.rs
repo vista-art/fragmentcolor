@@ -135,7 +135,7 @@ pub struct Camera {
     /// containing its position and orientation in the
     /// Scene space. Set to NodeId::root() by default,
     /// which means the camera is at the origin.
-    pub node_id: NodeId,
+    pub(crate) node_id: NodeId,
 }
 
 spatial_object!(Camera);
