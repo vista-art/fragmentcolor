@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"enum":["Transform"],"mod":["iter"],"struct":["Node","Scene"]};

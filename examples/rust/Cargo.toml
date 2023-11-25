@@ -1,0 +1,23 @@
+[package]
+name = "plrender-example-sprite"
+description = "Example desktop application using PLRender"
+repository = "https://gitlab.com/pupil-labs/pupil-cloud/pl-render/examples/rust"
+authors = ["Pupil Labs GmbH"]
+license-file = "LICENCE.md"
+version = "0.1.0"
+edition = "2021"
+
+[[example]]
+name = "sprite"
+
+[dependencies]
+plrender = { path = "../../crates/plrender" }
+env_logger = "0.10"
+wgpu_text = "0.8"
+pollster = "0.3"
+instant = "0.1"
+winit = "0.28"
+rand = "0.8.5"
+wgpu = "0.18"
+mint = "0.5"
+log = "0.4"

@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"mod":["animation","camera","color","controller","empty","light","mesh","sprite","sprite_map","transform"]};

@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"externcrate":["lyon_algorithms","lyon_tessellation"],"mod":["math"]};

@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"constant":["VALID_TYPES"],"enum":["Type"],"struct":["KhrLightsPunctual","Light","Spot"]};

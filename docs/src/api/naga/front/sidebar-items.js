@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"mod":["glsl","wgsl"],"struct":["SymbolTable","Typifier"]};

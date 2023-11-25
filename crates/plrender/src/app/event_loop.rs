@@ -1,7 +1,7 @@
 use crate::{
     app::{events::Event, AppState, Container, EventProcessor, Window},
     renderer::{
-        target::{RenderTarget, TargetId},
+        target::{IsRenderTarget, TargetId},
         RenderContext, RenderTargetCollection,
     },
     Quad,
@@ -20,8 +20,11 @@ use winit::{
 
 const RUNNING: &str = "EventLoop not available: already running";
 
-pub type EventLoopRunner = Box<dyn Runner>;
-pub trait Runner: 'static + FnOnce(WinitEventLoop<Event>, Arc<RwLock<AppState>>) + Send {}
+pub(crate) type EventLoopRunner = Box<dyn Runner>;
+pub(crate) trait Runner:
+    'static + FnOnce(WinitEventLoop<Event>, Arc<RwLock<AppState>>) + Send
+{
+}
 impl<F> Runner for F where F: 'static + FnOnce(WinitEventLoop<Event>, Arc<RwLock<AppState>>) + Send {}
 impl std::fmt::Debug for dyn Runner {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -30,7 +33,7 @@ impl std::fmt::Debug for dyn Runner {
 }
 
 #[derive(Debug)]
-pub struct EventLoop<T: 'static> {
+pub(crate) struct EventLoop<T: 'static> {
     inner: Option<WinitEventLoop<T>>,
 }
 
@@ -69,30 +72,51 @@ pub(crate) fn run_event_loop(event_loop: WinitEventLoop<Event>, app: Arc<RwLock<
     let mut last_update = Instant::now();
 
     let event_handler = Box::new(move |event: E, _elwt: W, control_flow: C| {
-        let app = app.read().expect("Couldn't get AppState Read mutex lock");
-        let renderer = app.renderer();
+        let app = app.try_read();
 
         match event {
             // Reserved for future use.
             //
             // Custom dispatched events as strings.
-            Winit::UserEvent(event) => match event {
-                Event::Draw => {
-                    
+            Winit::UserEvent(event) => {
+                if let Ok(app) = app {
+                    let windows = app.read_windows_collection::<Window>();
+                    for window_id in windows.keys.iter() {
+                        if let Some(window) = windows.get(&window_id) {
+                            window.call("event", event.clone());
+                        };
+                    }
+                } else {
+                    log::error!("App is locked! The Event {:?} has not been emitted.", event);
                 }
-                _ => {}
-            },
+            }
 
             // This variant represents anything that happens in a Window.
             Winit::WindowEvent {
                 ref event,
                 window_id,
             } => {
+                let app = if let Ok(app) = app {
+                    app
+                } else {
+                    log::error!(
+                        "App is locked! the Event {:?} for Window {:?} has not been processed.",
+                        event,
+                        window_id
+                    );
+                    return;
+                };
+
                 let target_id = TargetId::Window(window_id);
                 let windows = app.read_windows_collection::<Window>();
                 let window = if let Some(window) = windows.get(&window_id) {
                     window
                 } else {
+                    log::error!(
+                        "Window {:?} has not been found! The Event {:?} has not been processed.",
+                        window_id,
+                        event
+                    );
                     return;
                 };
 
@@ -104,11 +128,26 @@ pub(crate) fn run_event_loop(event_loop: WinitEventLoop<Event>, app: Arc<RwLock<
 
                         if window.auto_resize {
                             let renderer = app.renderer();
-                            let mut targets = renderer.write_targets();
-                            let target = targets.get_mut(&target_id);
-                            target
-                                .is_some()
-                                .then(|| target.unwrap().resize(&renderer, size));
+                            let targets = if let Ok(targets) = renderer.write_targets() {
+                                Some(targets)
+                            } else {
+                                log::error!("Renderer is locked. Cannot auto-resize Render Target for Window {:?}!", window_id);
+                                None
+                            };
+
+                            if let Some(mut targets) = targets {
+                                if let Some(target) = targets.get_mut(&target_id) {
+                                    if let Err(result) = target.resize(&renderer, size) {
+                                        log::error!(
+                                            "Failed to auto-resize Render Target for Window {:?}! {:?}",
+                                            window_id,
+                                            result
+                                        );
+                                    }
+                                } else {
+                                    log::error!("Target not found! Cannot auto-resize Render Target for Window {:?}!", window_id);
+                                };
+                            }
                         }
 
                         window.call(
@@ -141,12 +180,12 @@ pub(crate) fn run_event_loop(event_loop: WinitEventLoop<Event>, app: Arc<RwLock<
 
                         if window.auto_resize {
                             let renderer = app.renderer();
-                            let mut targets = renderer.write_targets();
-                            let target = targets.get_mut(&target_id);
-                            target
-                                .is_some()
-                                .then(|| target.unwrap().resize(&renderer, size));
-                        }
+                            if let Ok(mut targets) = renderer.write_targets() {
+                                if let Some(target) = targets.get_mut(&target_id) {
+                                    _ = target.resize(&renderer, size);
+                                };
+                            };
+                        };
 
                         window.call(
                             "rescale",
@@ -173,9 +212,10 @@ pub(crate) fn run_event_loop(event_loop: WinitEventLoop<Event>, app: Arc<RwLock<
                     // The window has been requested to close.
                     // @TODO deduplicate Window cleanup code (also on ESC KeyUp)
                     WindowEvent::CloseRequested => {
-                        let mut targets = renderer.write_targets();
-                        targets.remove(&target_id);
-                        drop(targets);
+                        let renderer = app.renderer();
+                        if let Ok(mut targets) = renderer.write_targets() {
+                            targets.remove(&target_id);
+                        }
 
                         drop(window);
                         drop(windows);
@@ -268,9 +308,10 @@ pub(crate) fn run_event_loop(event_loop: WinitEventLoop<Event>, app: Arc<RwLock<
 
                             // @TODO deduplicate Window cleanup code
                             if escape && released && window.close_on_esc {
-                                let mut targets = renderer.write_targets();
-                                targets.remove(&target_id);
-                                drop(targets);
+                                let renderer = app.renderer();
+                                if let Ok(mut targets) = renderer.write_targets() {
+                                    targets.remove(&target_id);
+                                }
 
                                 let removed = app.remove_window::<Window>(&window_id);
                                 removed.map(|window| {
@@ -453,6 +494,13 @@ pub(crate) fn run_event_loop(event_loop: WinitEventLoop<Event>, app: Arc<RwLock<
             // Mainly of interest to applications with mostly-static graphics
             // that avoid redrawing unless something changes, like most non-game GUIs.
             Winit::RedrawRequested(window_id) => {
+                let app = if let Ok(app) = app {
+                    app
+                } else {
+                    log::error!("App is locked! Cannot redraw Window {:?}!", window_id);
+                    return;
+                };
+
                 let windows = app.read_windows_collection::<Window>();
                 let window = if let Some(window) = windows.get(&window_id) {
                     window
@@ -497,6 +545,13 @@ pub(crate) fn run_event_loop(event_loop: WinitEventLoop<Event>, app: Arc<RwLock<
             // This event is useful for doing any cleanup or bookkeeping work after all the rendering
             // tasks have been completed.
             Winit::RedrawEventsCleared => {
+                let app = if let Ok(app) = app {
+                    app
+                } else {
+                    log::error!("App is locked. Cannot Redraw!");
+                    return;
+                };
+
                 let windows = app.read_windows_collection::<Window>();
                 for window_id in windows.keys.iter() {
                     if let Some(window) = windows.get(&window_id) {

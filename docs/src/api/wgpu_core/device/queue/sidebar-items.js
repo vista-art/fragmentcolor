@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"enum":["QueueSubmitError","QueueWriteError","TempResource"],"struct":["InvalidQueue","SubmittedWorkDoneClosure","SubmittedWorkDoneClosureC","WrappedSubmissionIndex"]};

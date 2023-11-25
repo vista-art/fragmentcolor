@@ -1,10 +1,13 @@
-use crate::math::geometry::{vertex, Primitive};
+use crate::{
+    math::cg::Vec3,
+    math::geometry::{vertex, Primitive},
+};
 use std::iter;
 
 pub(super) fn cube(size: f32) -> Primitive {
     cuboid(
         vertex::VertexTypes::empty(),
-        mint::Vector3 {
+        Vec3 {
             x: size,
             y: size,
             z: size,
@@ -12,10 +15,9 @@ pub(super) fn cube(size: f32) -> Primitive {
     )
 }
 
-pub(super) fn cuboid(
-    vertex_types: vertex::VertexTypes,
-    dimensions: mint::Vector3<f32>,
-) -> Primitive {
+pub(super) fn cuboid<V: Into<Vec3>>(vertex_types: vertex::VertexTypes, dimensions: V) -> Primitive {
+    let dimensions: Vec3 = dimensions.into();
+
     let pos = |x, y, z| {
         vertex::Position([
             (x as f32) * dimensions.x,

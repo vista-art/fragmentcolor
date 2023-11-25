@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::{
     components,
     components::Color,
@@ -9,7 +11,7 @@ use crate::{
         mesh::{BuiltMesh, MeshBuilder},
         texture::TextureId,
     },
-    scene, SceneObjectEntry,
+    scene, ObjectEntry, Vec2,
 };
 use std::{collections::VecDeque, ops, path::Path};
 
@@ -26,14 +28,14 @@ struct Texture {
 }
 
 struct Primitive {
-    mesh: BuiltMesh,
+    mesh: Option<BuiltMesh>,
     color: Color,
     shader: renderpass::Shader,
     material: renderpass::Material,
 }
 
 fn load_texture(data: gltf::image::Data) -> Texture {
-    let texture_id = resources::Texture::from_bytes(&data.pixels).unwrap();
+    let (texture_id, _) = resources::Texture::from_bytes(&data.pixels).unwrap();
     Texture { image: texture_id }
 }
 
@@ -88,7 +90,7 @@ fn load_primitive<'a>(
     };
 
     Primitive {
-        mesh: mesh_builder.build(),
+        mesh: mesh_builder.build().ok(),
         color: Color::from_rgba(base_color),
         shader: renderpass::Shader::Gouraud { flat: true },
         material,
@@ -140,7 +142,7 @@ pub struct Module {
 pub fn load_gltf(
     path: impl AsRef<Path>,
     scene: &mut scene::Scene,
-    global_parent: scene::node::NodeId,
+    global_parent: scene::transform::TransformId,
 ) -> Module {
     let mut module = Module::default();
     let (gltf, buffers, images) = gltf::import(path).expect("invalid glTF 2.0");
@@ -162,27 +164,27 @@ pub fn load_gltf(
         prototypes.push(primitives);
     }
 
-    struct PreNode<'a> {
+    struct PreTransform<'a> {
         gltf_node: gltf::Node<'a>,
-        parent: scene::node::NodeId,
+        parent: scene::transform::TransformId,
     }
 
     let mut deque = VecDeque::new();
     for gltf_scene in gltf.scenes() {
-        deque.extend(gltf_scene.nodes().map(|gltf_node| PreNode {
+        deque.extend(gltf_scene.nodes().map(|gltf_node| PreTransform {
             gltf_node,
             parent: global_parent,
         }));
     }
 
-    while let Some(PreNode { gltf_node, parent }) = deque.pop_front() {
-        log::debug!("Node {:?}", gltf_node.name());
+    while let Some(PreTransform { gltf_node, parent }) = deque.pop_front() {
+        log::debug!("Transform {:?}", gltf_node.name());
 
         let (position, rotation, scale) = gltf_node.transform().decomposed();
 
         let mut empty = components::Empty::new();
         empty
-            .set_parent_node(parent)
+            .set_parent_transform(parent)
             .set_position(position)
             .set_rotation_quaternion(rotation)
             .set_scale(scale);
@@ -190,20 +192,20 @@ pub fn load_gltf(
         scene.add(&mut empty);
 
         for gltf_child in gltf_node.children() {
-            deque.push_back(PreNode {
+            deque.push_back(PreTransform {
                 gltf_node: gltf_child,
-                parent: empty.node_id(),
+                parent: empty.transform_id(),
             });
         }
 
         if let Some(gltf_mesh) = gltf_node.mesh() {
             log::debug!("Mesh {:?}", gltf_mesh.name());
             for primitive in prototypes[gltf_mesh.index()].iter_mut() {
-                let mut mesh = Mesh::new(&primitive.mesh);
+                let mut mesh = Mesh::new(primitive.mesh.clone());
                 mesh.add_component(primitive.color)
                     .add_component(primitive.shader)
                     .add_component(primitive.material)
-                    .set_parent_node(empty.node_id());
+                    .set_parent_transform(empty.transform_id());
 
                 let object_id = scene.add(&mut mesh);
 
@@ -221,7 +223,10 @@ pub fn load_gltf(
                     components::Projection::Orthographic {
                         center: [0.0; 2].into(),
                         //Note: p.xmag() is ignored
-                        extent_y: p.ymag(),
+                        size: Vec2 {
+                            x: p.xmag() * 2.0,
+                            y: p.ymag() * 2.0,
+                        },
                     },
                 ),
                 gltf::camera::Projection::Perspective(p) => (
@@ -236,14 +241,14 @@ pub fn load_gltf(
                 gltf_camera.name(),
                 depth,
                 projection,
-                scene.read_state()[empty.node_id()]
+                scene.read_state()[empty.transform_id()]
             );
             module.cameras.0.push(Named {
                 data: components::Camera {
                     projection,
                     z_near: depth.start,
                     z_far: depth.end,
-                    node_id: empty.node_id(),
+                    transform_id: empty.transform_id(),
                 },
                 name: gltf_camera.name().map(str::to_string),
             });
@@ -266,8 +271,7 @@ pub fn load_gltf(
                 variant: light_type,
             });
 
-            // @TODO future me problem: won't the scene overwrite it?
-            light.set_node_id(empty.node_id());
+            light.set_parent(&empty);
 
             let light_id = scene.add(&mut light);
 

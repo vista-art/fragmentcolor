@@ -9,7 +9,6 @@ crate-type = ["cdylib"]
 
 [dependencies]
 plr = { package="plrender", path = "../plrender" }
-codegen = { package="plrender-codegen", path = "../plrender-codegen" }
 pyo3 = { version = "0.20", features = ["extension-module"] }
 numpy = "0.20"
 ndarray = "0.15"

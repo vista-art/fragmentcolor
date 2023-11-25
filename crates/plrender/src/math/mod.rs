@@ -66,7 +66,7 @@ pub mod cg;
 /// types of vertices and indices it contains.
 ///
 /// The BuiltMesh object can be used to create a Mesh
-/// SceneObject. Users normally do not need to use it
+/// Object. Users normally do not need to use it
 /// directly, as there are wrapper ScenObjects that
 /// abstract away the creation of a Mesh, like the
 /// `Cube` and `Sphere` objects.

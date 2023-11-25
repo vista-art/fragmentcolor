@@ -1,9 +1,11 @@
 use crate::{
+    components::IsHidden,
     renderer::{
-        target::Dimensions, RenderContext, RenderPass, RenderPassResult, RenderTarget,
-        RenderTargetCollection, Renderer,
+        renderpass::buffer, target::Dimensions, IsRenderTarget, RenderContext, RenderPass,
+        RenderPassResult, RenderTargetCollection, Renderer,
     },
     scene::SceneState,
+    Sprite,
 };
 use std::{mem, sync::RwLockReadGuard};
 
@@ -11,6 +13,9 @@ use std::{mem, sync::RwLockReadGuard};
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 struct Globals {
     view_proj: [[f32; 4]; 4],
+    resolution: [f32; 2],
+    antialiaser: f32,
+    time: f32,
 }
 
 #[repr(C)]
@@ -22,7 +27,8 @@ struct Locals {
     // x0,y0, x1,y1
     bounds: [f32; 4],
     // u0,v0, u1,v1
-    tex_coords: [f32; 4],
+    texture_coords: [f32; 4],
+    //color: [f32; 4],
 }
 
 #[derive(Eq, Hash, PartialEq)]
@@ -37,23 +43,23 @@ struct Pipelines {
 
 struct Instance {
     camera_distance: f32,
-    locals_bl: super::BufferLocation,
+    locals_bl: buffer::BufferLocation,
     image: crate::TextureId,
 }
 
-pub struct Flat2D<'r> {
+pub(crate) struct Flat2D<'r> {
     renderer: &'r Renderer,
     global_uniform_buf: wgpu::Buffer,
     global_bind_group: wgpu::BindGroup,
     local_bind_group_layout: wgpu::BindGroupLayout,
     local_bind_groups: fxhash::FxHashMap<LocalKey, wgpu::BindGroup>,
-    uniform_pool: super::BufferPool,
+    uniform_pool: buffer::BufferPool,
     pipelines: Pipelines,
     temp: Vec<Instance>,
 }
 
 impl<'r> Flat2D<'r> {
-    pub fn new(renderer: &'r Renderer) -> Self {
+    pub(crate) fn new(renderer: &'r Renderer) -> Self {
         let device = renderer.device();
 
         let shader_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -61,22 +67,37 @@ impl<'r> Flat2D<'r> {
             source: wgpu::ShaderSource::Wgsl(include_str!("flat.wgsl").into()),
         });
 
-        let globals_size = mem::size_of::<Globals>() as wgpu::BufferAddress;
+        // @TODO When we implement shader composition, this should be
+        //       shared between all RenderPasses so we don't need to
+        //       crate a custom one for each RenderPass. They can still
+        //       have their own custom bindings, maybe in Group(1).
+        let globals_uniform_size = mem::size_of::<Globals>() as wgpu::BufferAddress;
+        // let screen_uniform_size = mem::size_of::<Screen>() as wgpu::BufferAddress;
         let global_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("2D Renderpass: Global Bind Group Layout"),
             entries: &[
                 wgpu::BindGroupLayoutEntry {
                     binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX,
+                    visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Uniform,
                         has_dynamic_offset: false,
-                        min_binding_size: wgpu::BufferSize::new(globals_size),
+                        min_binding_size: wgpu::BufferSize::new(globals_uniform_size),
                     },
                     count: None,
                 },
+                // wgpu::BindGroupLayoutEntry {
+                //     binding: 1,
+                //     visibility: wgpu::ShaderStages::FRAGMENT,
+                //     ty: wgpu::BindingType::Buffer {
+                //         ty: wgpu::BufferBindingType::Uniform,
+                //         has_dynamic_offset: false,
+                //         min_binding_size: wgpu::BufferSize::new(screen_uniform_size),
+                //     },
+                //     count: None,
+                // },
                 wgpu::BindGroupLayoutEntry {
-                    binding: 1,
+                    binding: 1, // 2
                     visibility: wgpu::ShaderStages::FRAGMENT,
                     ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                     count: None,
@@ -84,11 +105,17 @@ impl<'r> Flat2D<'r> {
             ],
         });
         let global_uniform_buf = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("2D Renderpass: Global Uniform Buffer"),
-            size: globals_size,
+            label: Some("2D Renderpass: Globals Uniform Buffer"),
+            size: globals_uniform_size,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
+        // let screen_uniform_buf = device.create_buffer(&wgpu::BufferDescriptor {
+        //     label: Some("2D Renderpass: Screen Uniform Buffer"),
+        //     size: screen_uniform_size,
+        //     usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        //     mapped_at_creation: false,
+        // });
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("2D Renderpass: Texture Sampler"),
             min_filter: wgpu::FilterMode::Linear,
@@ -96,15 +123,19 @@ impl<'r> Flat2D<'r> {
             ..Default::default()
         });
         let global_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("2D Renderpass: Global Bind Group"),
+            label: Some("2D Renderpass: Global Bind Group (camera, screen and sampler)"),
             layout: &global_bgl,
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
                     resource: global_uniform_buf.as_entire_binding(),
                 },
+                // wgpu::BindGroupEntry {
+                //     binding: 1,
+                //     resource: screen_uniform_buf.as_entire_binding(),
+                // },
                 wgpu::BindGroupEntry {
-                    binding: 1,
+                    binding: 1, // 2
                     resource: wgpu::BindingResource::Sampler(&sampler),
                 },
             ],
@@ -145,8 +176,9 @@ impl<'r> Flat2D<'r> {
 
         let pipelines = {
             let mut sample_count = 1;
-            let targets = &renderer
-                .read_targets()
+            let targets = renderer.read_targets().expect("No targets"); // @TODO propagate or handle error
+
+            let targets = targets
                 .all()
                 .enumerate()
                 .map(|(index, target)| {
@@ -156,10 +188,8 @@ impl<'r> Flat2D<'r> {
                     if sample_count != target.sample_count() {
                         log::warn!(
                             "
-                            All targets must have the same sample count.
-                            The render target {:?} uses {} samples,
-                            but the render pass uses {} as
-                            defined by the first target.
+                            All targets must have the same sample count. The render target {:?}
+                            uses {} samples, but the renderpass uses {} as defined by the first target.
                             ",
                             target,
                             target.sample_count(),
@@ -193,7 +223,7 @@ impl<'r> Flat2D<'r> {
                     ..Default::default()
                 },
                 fragment: Some(wgpu::FragmentState {
-                    targets,
+                    targets: &targets,
                     module: &shader_module,
                     entry_point: "main_fs",
                 }),
@@ -209,7 +239,7 @@ impl<'r> Flat2D<'r> {
             global_bind_group,
             local_bind_group_layout: local_bgl,
             local_bind_groups: Default::default(),
-            uniform_pool: super::BufferPool::uniform("2D Locals", &device),
+            uniform_pool: buffer::BufferPool::uniform("2D Locals", &device),
             pipelines,
             temp: Vec::new(),
         }
@@ -219,10 +249,15 @@ impl<'r> Flat2D<'r> {
 impl<'r> RenderPass for Flat2D<'r> {
     fn draw(&mut self, scene: RwLockReadGuard<'_, SceneState>) -> RenderPassResult {
         let renderer = self.renderer;
-        let targets = renderer.read_targets();
+        let targets = if let Ok(targets) = renderer.read_targets() {
+            targets
+        } else {
+            return Err(wgpu::SurfaceError::Lost.into());
+        };
+
         let device = renderer.device();
 
-        let nodes = scene.get_global_transforms();
+        let transforms = scene.calculate_global_transforms();
 
         self.uniform_pool.reset();
         let queue = renderer.queue();
@@ -247,70 +282,71 @@ impl<'r> RenderPass for Flat2D<'r> {
 
                 let target = target.unwrap();
 
-                // @TODO those things should be cached; not calculated every frame
-                //       invalidate on screen resize
-                if !camera_target.clip_region.equals(target.size()) {
-                    //if camera_target.clip_region.is_smaller_than(target.size()) {
-
-                    // I don't expect to enter here.
-                    //
-                    // This is not a priority, but the current logic won't work
-                    // for multiple viewports in the same window.
-                    //
-                    // @TODO is this target targeted by multiple cameras?
-                    //
-                    //       - if this is the only camera rendering to it fullscreen,
-                    //         we'll proceed as usual. (this is the expected use case for now).
-                    //
-                    //       - if this is not the only camera, we need to cache the results
-                    //         and start a new pass with LoadOp::Load instead of "Clear"
-                    log::warn!(
-                        "Clip Region not implemented: Camera {:?} is targeting a target {:?} with a different size.",
-                        object_id,
-                        camera_target.target_id
-                    );
-                }
-
-                let cam_node = &nodes[camera.node_id];
-
+                let resolution = target.size();
+                let antialiaser = resolution.antialias_factor();
+                let cam_transform = &transforms[camera.transform_id];
                 {
                     let projection_m = camera.projection_matrix(target.aspect());
-                    let inverse_m = cam_node.inverse_matrix();
+                    let inverse_m = cam_transform.inverse_matrix();
                     let final_m = glam::Mat4::from(projection_m) * glam::Mat4::from(inverse_m);
                     let globals = Globals {
                         view_proj: final_m.to_cols_array_2d(),
+                        resolution: [resolution.width() as f32, resolution.height() as f32],
+                        antialiaser,
+                        time: 0.0,
                     };
+                    // @FIXME for some reason, adding it as a new binding breaks the coordinates
+                    //        I have to figure out why. For now, use the Globals struct.
+                    // let screen = Screen {
+                    //     resolution: [resolution.width() as f32, resolution.height() as f32],
+                    //     antialiaser,
+                    //     time: 0.0, // @TODO (playback time is unimplemented; variable is needed for alignment)
+                    // };
                     queue.write_buffer(&self.global_uniform_buf, 0, bytemuck::bytes_of(&globals));
+                    //queue.write_buffer(&self.global_uniform_buf, 0, bytemuck::bytes_of(&screen));
                 }
 
                 self.temp.clear();
                 self.uniform_pool.reset();
-                let cam_dir = glam::Quat::from_slice(&cam_node.rotation) * -glam::Vec3::Z;
+                let cam_dir = glam::Quat::from_slice(&cam_transform.rotation) * -glam::Vec3::Z;
 
-                // gather all sprites
-                for (_, sprite) in scene.sprites().iter() {
-                    if let Some(sprite_image) = sprite.image {
-                        let local = &nodes[sprite.node_id];
-                        let cam_vector = glam::Vec3::from_slice(&local.position)
-                            - glam::Vec3::from_slice(&cam_node.position);
-                        let camera_distance = cam_vector.dot(cam_dir);
+                // Gather all 2D Shapes...
+                for (object_id, (_color, _bounds, _border, _shape_flag)) in
+                    scene.get_2d_objects().without::<&IsHidden>().iter()
+                {
+                    if let Ok(sprite) = scene.world.get::<&Sprite>(object_id) {
+                        let local = &transforms[sprite.transform_id];
 
-                        let resources = renderer.read_resources();
-                        let image = if let Some(image) = resources.get_texture(&sprite_image) {
+                        let camera_vector = glam::Vec3::from_slice(&local.position)
+                            - glam::Vec3::from_slice(&cam_transform.position);
+                        let camera_distance = camera_vector.dot(cam_dir);
+
+                        let resources = if let Ok(resources) = renderer.read_resources() {
+                            resources
+                        } else {
+                            log::error!(
+                                "Cannot read Renderer Resource Database. Sprite {:?} not rendered!",
+                                sprite
+                            );
+                            continue;
+                        };
+
+                        let image = if let Some(image) = resources.get_texture(&sprite.image) {
                             image
                         } else {
                             log::error!(
-                                "Sprite {:?} is using a non-existent texture {:?}",
-                                sprite.node_id,
-                                sprite_image
+                                "Sprite {:?} is using a non-existent texture: {:?}",
+                                sprite,
+                                sprite.image
                             );
-                            // @TODO use or generate a default texture
                             continue;
                         };
+                        //drop(resources);
+
                         let locals = Locals {
                             position: local.position,
-                            scale: local.scale,
                             rotation: local.rotation,
+                            scale: local.scale,
                             bounds: {
                                 let (width, heigth) = match sprite.clip_region {
                                     Some(ref clip) => (clip.width(), clip.height()),
@@ -323,12 +359,13 @@ impl<'r> RenderPass for Flat2D<'r> {
                                     0.5 * heigth as f32,
                                 ]
                             },
-                            tex_coords: match sprite.clip_region {
+                            //color: color.into(),
+                            texture_coords: match sprite.clip_region {
                                 Some(ref clip) => [
-                                    clip.x_min as f32 / image.size.width as f32,
-                                    clip.y_min as f32 / image.size.height as f32,
-                                    clip.x_max as f32 / image.size.width as f32,
-                                    clip.y_max as f32 / image.size.height as f32,
+                                    clip.min_x as f32 / image.size.width as f32,
+                                    clip.min_y as f32 / image.size.height as f32,
+                                    clip.max_x as f32 / image.size.width as f32,
+                                    clip.max_y as f32 / image.size.height as f32,
                                 ],
                                 None => [0.0, 0.0, 1.0, 1.0],
                             },
@@ -339,7 +376,7 @@ impl<'r> RenderPass for Flat2D<'r> {
                         let local_bgl = &self.local_bind_group_layout;
                         let key = LocalKey {
                             uniform_buf_index: locals_bl.index,
-                            image: sprite_image,
+                            image: image.id,
                         };
                         let binding = self.uniform_pool.binding::<Locals>(locals_bl.index);
                         self.local_bind_groups.entry(key).or_insert_with(|| {
@@ -362,7 +399,7 @@ impl<'r> RenderPass for Flat2D<'r> {
                         self.temp.push(Instance {
                             camera_distance,
                             locals_bl,
-                            image: sprite_image,
+                            image: image.id,
                         });
                     }
                 }
@@ -379,6 +416,9 @@ impl<'r> RenderPass for Flat2D<'r> {
                 let mut encoder =
                     device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
 
+                // @TODO this is the core of what the RenderPass does, and it needs a Frame
+                //       from a specific target. The RenderPass trait abstraction for multiple targets
+                //       is wrong, I should go back to the older method or craate a second trait for a single target.
                 {
                     let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                         label: Some("2D Render Pass"),
@@ -403,7 +443,7 @@ impl<'r> RenderPass for Flat2D<'r> {
                         };
                         let local_bg = &self.local_bind_groups[&key];
                         pass.set_bind_group(1, local_bg, &[inst.locals_bl.offset]);
-                        pass.draw(0..4, 0..1);
+                        pass.draw(0..3, 0..1);
                     }
                 }
 

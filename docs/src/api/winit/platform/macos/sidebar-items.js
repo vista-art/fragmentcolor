@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"enum":["ActivationPolicy","OptionAsAlt"],"trait":["EventLoopBuilderExtMacOS","EventLoopWindowTargetExtMacOS","MonitorHandleExtMacOS","WindowBuilderExtMacOS","WindowExtMacOS"]};

@@ -1,8 +1,8 @@
 use crate::{app::PLRender, math::geometry::vertex::Vertex};
-use std::any::TypeId;
 use std::mem;
 use wgpu::util::DeviceExt;
 
+type Error = Box<dyn std::error::Error>;
 /// A unique identifier for a Mesh that
 /// is already loaded into the Renderer.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
@@ -22,7 +22,7 @@ pub struct MeshId(pub(super) u32);
 /// The existence of a BuiltMesh means that
 /// a Mesh is already loaded into the Renderer,
 /// and the Prototype is a reference to it.
-#[derive(hecs::Bundle, hecs::DynamicBundleClone)]
+#[derive(hecs::Bundle, hecs::DynamicBundleClone, Clone)]
 pub struct BuiltMesh {
     pub id: MeshId,
     pub(crate) type_ids: Box<[std::any::TypeId]>,
@@ -32,23 +32,23 @@ pub struct BuiltMesh {
 /// Makes it possible to use a Reference to a BuiltMesh
 /// as a hecs::Bundle. Without this, we can only use concrete
 /// types and it breaks the implementation of our asset loaders.
-unsafe impl<'a> hecs::DynamicBundle for &'a BuiltMesh {
-    fn with_ids<T>(&self, f: impl FnOnce(&[TypeId]) -> T) -> T {
-        f(&self.type_ids)
-    }
-    fn type_info(&self) -> Vec<hecs::TypeInfo> {
-        self.type_infos.to_vec()
-    }
-    unsafe fn put(self, mut f: impl FnMut(*mut u8, hecs::TypeInfo)) {
-        const DUMMY_SIZE: usize = 1;
-        let mut v = [0u8; DUMMY_SIZE];
-        // @FIXME ALL asserts and panics must go away and return a Result
-        assert!(mem::size_of::<Vertex<()>>() <= DUMMY_SIZE);
-        for ts in self.type_infos.iter() {
-            f(v.as_mut_ptr(), ts.clone());
-        }
-    }
-}
+// unsafe impl<'a> hecs::DynamicBundle for &'a BuiltMesh {
+//     fn with_ids<T>(&self, f: impl FnOnce(&[TypeId]) -> T) -> T {
+//         f(&self.type_ids)
+//     }
+//     fn type_info(&self) -> Vec<hecs::TypeInfo> {
+//         self.type_infos.to_vec()
+//     }
+//     unsafe fn put(self, mut f: impl FnMut(*mut u8, hecs::TypeInfo)) {
+//         const DUMMY_SIZE: usize = 1;
+//         let mut v = [0u8; DUMMY_SIZE];
+//         // @FIXME ALL asserts and panics must go away and return a Result
+//         assert!(mem::size_of::<Vertex<()>>() <= DUMMY_SIZE);
+//         for ts in self.type_infos.iter() {
+//             f(v.as_mut_ptr(), ts.clone());
+//         }
+//     }
+// }
 
 /// Mesh is a GPU resource, not a Scene resource.
 #[derive(Debug)]
@@ -157,9 +157,8 @@ impl MeshBuilder {
         self
     }
 
-    pub fn build(&mut self) -> BuiltMesh {
-        let renderer = PLRender::renderer();
-        let renderer = renderer.read().expect("Failed to lock renderer");
+    pub fn build(&mut self) -> Result<BuiltMesh, Error> {
+        let renderer = PLRender::renderer().try_read()?;
 
         let mut usage = wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::VERTEX;
         usage.set(wgpu::BufferUsages::INDEX, self.vertex_ids.is_some());
@@ -188,12 +187,12 @@ impl MeshBuilder {
             vertices: mem::take(&mut self.vertices).into_boxed_slice(),
             vertex_count: self.vertex_count as u32,
             bound_radius: self.bound_radius,
-        });
+        })?;
 
-        BuiltMesh {
+        Ok(BuiltMesh {
             id: mesh_id,
             type_ids,
             type_infos: mem::take(&mut self.type_infos).into_boxed_slice(),
-        }
+        })
     }
 }

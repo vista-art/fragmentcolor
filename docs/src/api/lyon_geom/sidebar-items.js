@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"fn":["point","size","vector"],"mod":["arc","cubic_bezier","quadratic_bezier","traits","utils"],"struct":["Angle","Arc","ArcFlags","CubicBezierSegment","Line","LineEquation","LineSegment","QuadraticBezierSegment","SvgArc","Triangle"],"trait":["Scalar","Segment"],"type":["Box2D","Point","Rotation","Scale","Size","Transform","Translation","Vector"]};

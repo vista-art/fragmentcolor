@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"enum":["Error"],"fn":["column_index","line_starts"],"struct":["Location","SimpleFile","SimpleFiles"],"trait":["Files"]};

@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"constant":["LEVELS","ROOT_SCALE","SCALE_LEVEL"],"fn":["fill_scene","main"],"struct":["CubePosition","Level","Stack"]};

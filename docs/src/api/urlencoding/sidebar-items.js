@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"fn":["decode","decode_binary","encode","encode_binary"],"struct":["Encoded"]};

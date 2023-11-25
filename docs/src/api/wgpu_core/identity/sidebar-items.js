@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"struct":["IdentityManager","IdentityManagerFactory"],"trait":["GlobalIdentityHandlerFactory","IdentityHandler","IdentityHandlerFactory"],"type":["Input"]};

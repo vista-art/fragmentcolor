@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"struct":["CommandsPathSlice","Events","Iter","PathCommands","PathCommandsBuilder","PathCommandsSlice","PointEvents"]};

@@ -53,18 +53,20 @@ pub static DEVICE_LIMITS: phf::Map<&str, wgpu::Limits> = phf_map! {
 
 /// Options for configuring the Renderer.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RenderOptions {
+pub struct RendererOptions {
     pub force_software_rendering: bool,
     pub power_preference: String,
+    pub panic_on_error: bool,
     pub device_limits: String,
     pub render_pass: String, // supports only ("flat" or "solid") for now, not chainable yet
 }
 
-impl Default for RenderOptions {
+impl Default for RendererOptions {
     fn default() -> Self {
         Self {
             force_software_rendering: false,
             power_preference: "default".to_string(),
+            panic_on_error: false,
             device_limits: "default".to_string(),
             render_pass: DEFAULT_RENDER_PASS.to_string(),
         }

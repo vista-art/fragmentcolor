@@ -1,6 +1,6 @@
 use crate::{
-    math::geometry::Quad,
-    scene::{macros::spatial_object, node::NodeId, SceneObject},
+    math::{cg::Vec2, geometry::Quad},
+    scene::{macros::spatial_object, transform::TransformId, Object},
 };
 use serde::{Deserialize, Serialize};
 
@@ -24,30 +24,23 @@ pub enum Projection {
         ///
         /// For a typical 2D scene, this normally means
         /// the center of the Window / Canvas in pixels.
-        center: mint::Vector2<f32>,
+        center: Vec2,
 
-        /// Vertical extent from the center point.
+        /// Width and Heigth of the projection in Scene units.
         ///
-        /// The height is double the extent.
-        /// The width is derived from the height
-        /// based on the current target aspect ratio.
+        /// The units can be anything relative to other Scene Objects.
+        /// For 2D scenes, this is normally the screen's resolution.
         ///
-        /// ```text
-        /// _____________________________
-        /// | extent_y -> |             |
-        /// |             |             |
-        /// |             |             |
-        /// |             x (center)    |
-        /// |                           |
-        /// |                           |
-        /// |___________________________|
-        /// ```
-        extent_y: f32,
+        /// In the current implementation, only the heigth is used to
+        /// build the projection. This variable is a Quad for the sake
+        /// of convenience (i.e. building from the Window resolution).
+        size: Vec2,
     },
     Perspective {
         /// Vertical field of View, in degrees.
         ///
-        /// The horizontal FOV is computed based on the Target's aspect ratio.
+        /// The horizontal field of view is calculated
+        /// from the Target's aspect ratio.
         fov_y: f32,
     },
 }
@@ -65,43 +58,43 @@ pub struct ProjectionOptions {
     /// - "3d" for perspective
     projection: String,
 
-    /// The size of the screen in pixels.
+    /// The size of the screen in Pixels or Scene units.
     target_size: Quad,
 
     /// Vertical field of View, in degrees (perspective only).
     /// This value is ignored for orthographic projections.
-    ///
-    /// The horizontal FOV is computed based on the Target's aspect ratio.
-    vertical_fov: f32,
+    fov_y: f32,
 }
 
 impl Projection {
     /// Creates a new Projection from options.
     pub fn new(options: ProjectionOptions) -> Self {
         match options.projection.to_lowercase().as_str() {
-            "orthographic" | "ortho" | "2d" => Self::ortographic_from_quad(options.target_size),
-            "perspective" | "3d" => Self::perspective(options.vertical_fov),
+            "orthographic" | "ortho" | "2d" => Self::from_target_size(options.target_size),
+            "perspective" | "3d" => Self::perspective(options.fov_y),
             _ => {
                 log::warn!("Unknown projection type: {}", options.projection.as_str());
                 log::warn!("Defaulting to orthographic projection.");
-                Self::ortographic_from_quad(options.target_size)
+                Self::from_target_size(options.target_size)
             }
         }
     }
 
-    /// Creates a new Orthographic projection from a Quad.
-    pub fn ortographic_from_quad(quad: Quad) -> Self {
-        let center = mint::Vector2 {
-            x: quad.width() as f32 / 2.0,
-            y: quad.height() as f32 / 2.0,
-        };
-        let extent_y = quad.height() as f32 / 2.0;
-        Self::Orthographic { center, extent_y }
+    /// Creates a new Perspective projection.
+    pub fn from_target_size(quad: Quad) -> Self {
+        Self::Orthographic {
+            center: quad.center_f32(), // @TODO check: maybe it should be 0,0?
+            size: quad.to_vec2(),
+        }
     }
 
     /// Creates a new Orthographic projection.
-    pub fn orthographic(center: mint::Vector2<f32>, extent_y: f32) -> Self {
-        Self::Orthographic { center, extent_y }
+    pub fn orthographic<V: Into<Vec2>>(center: V, size: Quad) -> Self {
+        let center: Vec2 = center.into();
+        Self::Orthographic {
+            center,
+            size: size.to_vec2(),
+        }
     }
 
     /// Creates a new Perspective projection.
@@ -114,28 +107,30 @@ impl Projection {
 ///
 /// It contains the inputs for building a projection matrix,
 /// the near and far clip distances in Scene units, and the
-/// reference for the Scene's Node that owns the camera.
+/// reference for the Scene's Transform that owns the camera.
 ///
-/// The Scene's Node contains the camera's position and
+/// The Scene's Transform contains the camera's position and
 /// orientation in the Scene space.
 #[derive(Clone, Debug, Copy)]
 pub struct Camera {
     /// The projection type (orthographic or perspective).
     pub projection: Projection,
 
-    /// Specify the depth range as seen by the camera.
-    /// `z_near` maps to 0.0, and .z_far` maps to 1.0.
+    /// Specify the near plane distance from eye.
+    ///
+    /// Maps to 0.0 in normalized GPU coordinates.
     pub z_near: f32,
 
-    /// Specify the depth range as seen by the camera.
-    /// `z_near` maps to 0.0, and .z_far` maps to 1.0.
+    /// Specify the far plane distance from eye.
+    ///
+    /// Maps to 1.0 in normalized GPU coordinates.
     pub z_far: f32,
 
-    /// A reference to the Node that owns this camera,
-    /// containing its position and orientation in the
-    /// Scene space. Set to NodeId::root() by default,
-    /// which means the camera is at the origin.
-    pub(crate) node_id: NodeId,
+    /// A reference to the Transform object that contains
+    /// the position and orientation for this camera.
+    ///
+    /// Set to origin by default.
+    pub(crate) transform_id: TransformId,
 }
 
 spatial_object!(Camera);
@@ -145,12 +140,13 @@ impl Default for Camera {
     fn default() -> Self {
         Self {
             projection: Projection::Orthographic {
-                center: mint::Vector2 { x: 0.0, y: 0.0 },
-                extent_y: 1.0,
+                center: Vec2 { x: 0.0, y: 0.0 },
+                // represents a 16:9 aspect ratio
+                size: Vec2 { x: 16.0, y: 9.0 },
             },
             z_near: 0.0,
             z_far: 1.0,
-            node_id: NodeId::root(),
+            transform_id: TransformId::root(),
         }
     }
 }
@@ -172,32 +168,43 @@ pub struct CameraOptions {
 
 impl Camera {
     /// Creates a new Camera from options.
-    pub fn new(options: CameraOptions) -> SceneObject<Self> {
-        SceneObject::new(Camera {
+    pub fn new(options: CameraOptions) -> Object<Self> {
+        Object::new(Camera {
             projection: options.projection,
             z_near: options.z_near,
             z_far: options.z_far,
-            node_id: NodeId::root(),
+            transform_id: TransformId::root(),
         })
     }
 
-    pub fn new_perspective(fov_y: f32) -> SceneObject<Self> {
-        SceneObject::new(Camera {
+    /// Creates a new 2D Camera from the Target's size and center point.
+    pub fn orthographic<V: Into<Vec2>>(center: V, size: Quad) -> Object<Self> {
+        Object::new(Camera {
+            projection: Projection::orthographic(center, size),
+            z_near: 0.0,
+            z_far: 1.0,
+            transform_id: TransformId::root(),
+        })
+    }
+
+    /// Creates a new 3D Camera from the Vertical Field of View.
+    pub fn perspective(fov_y: f32) -> Object<Self> {
+        Object::new(Camera {
             projection: Projection::Perspective { fov_y },
             z_near: 0.0,
             z_far: 1.0,
-            node_id: NodeId::root(),
+            transform_id: TransformId::root(),
         })
     }
 
     /// Creates a new 2D Camera from the Target's size.
-    pub fn from_target_size(quad: Quad) -> SceneObject<Self> {
-        let projection = Projection::ortographic_from_quad(quad);
-        SceneObject::new(Camera {
+    pub fn from_target_size(quad: Quad) -> Object<Self> {
+        let projection = Projection::from_target_size(quad);
+        Object::new(Camera {
             projection,
             z_near: 0.0,
             z_far: 1.0,
-            node_id: NodeId::root(),
+            transform_id: TransformId::root(),
         })
     }
 
@@ -221,10 +228,11 @@ impl Camera {
 
     /// This function is used by the RenderPass
     /// to get the camera's projection matrix.
-    pub(crate) fn projection_matrix(&self, aspect: f32) -> mint::ColumnMatrix4<f32> {
+    pub(crate) fn projection_matrix(&self, aspect: f32) -> glam::Mat4 {
         let matrix = match self.projection {
-            Projection::Orthographic { center, extent_y } => {
-                let extent_x = aspect * extent_y;
+            Projection::Orthographic { center, size } => {
+                let extent_y = size.y / 2.0;
+                let extent_x = aspect * extent_y / 2.0;
 
                 glam::Mat4::orthographic_rh(
                     center.x - extent_x,

@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"enum":["DxtVariant"],"struct":["DxtDecoder","DxtEncoder","DxtReader"]};

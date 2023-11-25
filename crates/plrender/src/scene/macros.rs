@@ -1,12 +1,12 @@
 /// Handy macro that implements the SpatialObject trait for the given type
 macro_rules! spatial_object {
     ($type:ty) => {
-        impl crate::scene::SpatialObject for $type {
-            fn node_id(&self) -> crate::scene::node::NodeId {
-                self.node_id
+        impl crate::scene::SceneObject for $type {
+            fn transform_id(&self) -> crate::scene::transform::TransformId {
+                self.transform_id
             }
-            fn set_node_id(&mut self, node_id: crate::scene::node::NodeId) {
-                self.node_id = node_id;
+            fn set_transform_id(&mut self, transform_id: crate::scene::transform::TransformId) {
+                self.transform_id = transform_id;
             }
         }
     };

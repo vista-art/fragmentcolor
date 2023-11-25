@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"struct":["Accessors","Animations","Buffers","Cameras","ExtensionsRequired","ExtensionsUsed","Images","Lights","Materials","Meshes","Nodes","Samplers","Scenes","Skins","Textures","Views"]};

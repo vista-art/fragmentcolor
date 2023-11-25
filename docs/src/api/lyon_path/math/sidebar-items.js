@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"fn":["point","size","vector"],"type":["Angle","Box2D","Point","Rotation","Scale","Size","Transform","Translation","Vector"]};

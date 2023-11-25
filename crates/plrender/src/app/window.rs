@@ -1,11 +1,11 @@
 use crate::{
     app::{
-        error::{READ_LOCK_ERROR, WRITE_LOCK_ERROR},
         events::{Callback, CallbackFn, Event},
         PLRender,
     },
     math::geometry::Quad,
     renderer::target::Dimensions,
+    DescribesTarget, RenderTargetDescription,
 };
 use instant::Instant;
 use instant::SystemTime;
@@ -17,6 +17,8 @@ use std::{
     sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
 pub use winit::window::WindowId;
+
+type Error = Box<dyn std::error::Error>;
 
 // Waiting for https://github.com/gfx-rs/wgpu/pull/4202
 // use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
@@ -173,7 +175,11 @@ impl Dimensions for WindowState {
     fn size(&self) -> Quad {
         let size = self.instance.inner_size();
 
-        Quad::from_dimensions(size.width, size.height)
+        Quad::from_size(size.width, size.height)
+    }
+
+    fn scaling(&self) -> f32 {
+        self.instance.scale_factor() as f32
     }
 
     fn aspect(&self) -> f32 {
@@ -288,8 +294,18 @@ impl Dimensions for Window {
         self.read_state().size()
     }
 
+    fn scaling(&self) -> f32 {
+        self.read_state().scaling()
+    }
+
     fn aspect(&self) -> f32 {
         self.size().aspect()
+    }
+}
+
+impl DescribesTarget for Window {
+    fn describe_target(&self) -> Result<RenderTargetDescription, Error> {
+        Ok(RenderTargetDescription::from_window(self))
     }
 }
 
@@ -400,7 +416,7 @@ impl Window {
             })),
         };
 
-        pollster::block_on(app.add_window(&mut window));
+        app.add_window(&mut window);
 
         Ok(window)
     }
@@ -479,8 +495,8 @@ impl Window {
     pub fn on(&self, event_name: &str, callback: impl CallbackFn<Event> + 'static) {
         let callback = Arc::new(RwLock::new(callback));
         self.state
-            .write()
-            .expect(WRITE_LOCK_ERROR)
+            .write() // @TODO I MEAN IT!!!
+            .expect("TECH DEBT!! Remove this message, handle the error.")
             .on(event_name, callback)
     }
 
@@ -497,11 +513,15 @@ impl Window {
     }
 
     fn read_state(&self) -> RwLockReadGuard<'_, WindowState> {
-        self.state.read().expect(READ_LOCK_ERROR)
+        self.state
+            .read()
+            .expect("TECH DEBT!! Remove this message, handle the error.")
     }
 
     fn write_state(&mut self) -> RwLockWriteGuard<'_, WindowState> {
-        self.state.write().expect(WRITE_LOCK_ERROR)
+        self.state
+            .write()
+            .expect("TECH DEBT!! Remove this message, handle the error.")
     }
 }
 

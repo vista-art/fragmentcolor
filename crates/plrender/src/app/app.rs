@@ -1,11 +1,11 @@
 use crate::{
     app::{
         container::Container,
-        event_loop::run_event_loop,
-        window::{IsWindow, Window, WindowState, Windows},
-        Event, EventLoop,
+        event_loop::{run_event_loop, EventLoop},
+        window::{IsWindow, WindowState, Windows},
+        Event,
     },
-    renderer::{RenderOptions, Renderer},
+    renderer::{Renderer, RendererOptions},
     scene::{Scene, SceneState, Scenes},
 };
 use log::LevelFilter;
@@ -16,40 +16,34 @@ use std::{
 };
 use winit::{event_loop::EventLoopProxy, window::WindowId};
 
-pub const ROOT: &'static str = env!("CARGO_MANIFEST_DIR");
+pub(crate) const ASSETS: &'static str =
+    concat!(env!("CARGO_MANIFEST_DIR"), "/src/resources/images");
 
-type Error = Box<dyn std::error::Error>;
+// Type abbbreviations
+pub(crate) type Error = Box<dyn std::error::Error>;
+pub(crate) type RemovedWindow = Option<Arc<RwLock<WindowState>>>;
+pub(crate) type WindowsReadGuard<'w> = RwLockReadGuard<'w, Windows>;
+pub(crate) type WindowsWriteGuard<'w> = RwLockWriteGuard<'w, Windows>;
+pub(crate) type RemovedScene = Option<Arc<RwLock<SceneState>>>;
+pub(crate) type ScenesReadGuard<'s> = RwLockReadGuard<'s, Scenes>;
+pub(crate) type ScenesWriteGuard<'s> = RwLockWriteGuard<'s, Scenes>;
 
-type RemovedWindow = Option<Arc<RwLock<WindowState>>>;
-type WindowsReadGuard<'w> = RwLockReadGuard<'w, Windows>;
-type WindowsWriteGuard<'w> = RwLockWriteGuard<'w, Windows>;
-
-type RemovedScene = Option<Arc<RwLock<SceneState>>>;
-type ScenesReadGuard<'s> = RwLockReadGuard<'s, Scenes>;
-type ScenesWriteGuard<'s> = RwLockWriteGuard<'s, Scenes>;
-
-/// The main App instance responsible for managing
-/// the resources created by the user of this library.
+/// The main App instance responsible for managing shared global resources.
 type MainApp = Arc<RwLock<App>>;
-pub static APP: OnceLock<MainApp> = OnceLock::new();
+pub(crate) static APP: OnceLock<MainApp> = OnceLock::new();
 
 /// The main Renderer instance owned by the App.
 type MainRenderer = Arc<RwLock<Renderer>>;
-pub static RENDERER: OnceLock<MainRenderer> = OnceLock::new();
+pub(crate) static RENDERER: OnceLock<MainRenderer> = OnceLock::new();
 
-/// The backbone of this library.
-///
-/// It is responsible for initializing the main App instance
-/// and providing a shared reference to it.
+/// The end user interface for configuring and running the App.
 ///  
-/// Typically, the only function you need to call from this
-/// struct is `PLRender::run()`.
-///
-/// If you need to configure App, use `PLRender::config()`.
+/// Typically, the only functions you need to call from this
+/// struct are `PLRender::config()` and `PLRender::run()`.
 pub struct PLRender;
 
 impl PLRender {
-    /// Configure the main App instance with startup options.
+    /// Configure the global shared App instance with startup options.
     ///
     /// Notice that **this function must be be called before any other
     /// function of this library** for it to be effective. If the App
@@ -100,9 +94,9 @@ impl PLRender {
     /// Users do not need to call this function directly. Typically, internal
     /// objects of this library (mainly the Window or the Scene) will call it
     /// when they need to access the main Event Loop or the Renderer.
-    pub fn renderer() -> &'static Arc<RwLock<Renderer>> {
+    pub(crate) fn renderer() -> &'static Arc<RwLock<Renderer>> {
         RENDERER.get_or_init(|| {
-            let app = Self::app().read().expect("Could not get App Read lock");
+            let app = Self::app().read().expect("Could not Read App");
             let renderer = pollster::block_on(app.state().init_offscreen_renderer())
                 .expect("Failed to create Renderer");
 
@@ -129,7 +123,7 @@ impl PLRender {
     /// PLRender::run();
     /// ```
     pub fn run() {
-        let mut app = Self::app().write().expect("Could not get App Write lock");
+        let app = Self::app().read().expect("Could not Run App");
 
         pollster::block_on(app.run());
     }
@@ -146,7 +140,7 @@ pub struct App {
 
 /// App's internal state shared between threads.
 #[derive(Debug)]
-pub struct AppState {
+pub(crate) struct AppState {
     pub windows: Arc<RwLock<Windows>>,
     pub scenes: Arc<RwLock<Scenes>>,
     pub options: AppOptions,
@@ -156,14 +150,14 @@ pub struct AppState {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppOptions {
     pub log_level: String,
-    pub renderer: RenderOptions,
+    pub renderer: RendererOptions,
 }
 
 impl Default for AppOptions {
     fn default() -> Self {
         Self {
             log_level: "info".to_string(),
-            renderer: RenderOptions::default(),
+            renderer: RendererOptions::default(),
         }
     }
 }
@@ -193,9 +187,8 @@ impl App {
         }
 
         let log_level = options.log_level.clone();
-        env_logger::builder()
-            .filter_level(LevelFilter::from_str(&log_level).unwrap_or(LevelFilter::Info))
-            .init();
+        let level_filter = LevelFilter::from_str(&log_level).unwrap_or(LevelFilter::Info);
+        Self::init_logger(level_filter);
 
         let event_loop = EventLoop::new();
         let event_dispatcher = event_loop.create_dispatcher();
@@ -211,6 +204,20 @@ impl App {
         }
     }
 
+    #[cfg(not(wasm))]
+    /// Initializes the logger with the given log level.
+    fn init_logger(level_filter: log::LevelFilter) {
+        env_logger::builder().filter_level(level_filter).init();
+    }
+
+    #[cfg(wasm)]
+    /// Initializes the logger with the given log level.
+    fn init_logger(level_filter: log::LevelFilter) {
+        let level = level_filter.to_level().unwrap_or(log::Level::Info);
+        console_error_panic_hook::set_once();
+        console_log::init_with_level(level).unwrap_or(println!("Failed to initialize logger"));
+    }
+
     /// Runs the main event loop.
     ///
     /// # Side effects
@@ -219,27 +226,23 @@ impl App {
     /// # Panics
     /// - Panics if the current thread is dead
     ///   while acquiring the Event Loop mutex lock.
-    pub(crate) async fn run(&mut self) {
-        let _ = self.state().init_renderer::<Window>(vec![]).await;
+    pub(crate) async fn run(&self) {
+        let _ = self.state().init_offscreen_renderer().await;
 
         let runner = Box::new(run_event_loop);
-        self.event_loop
-            .try_lock()
-            .expect("Could not get EventLoop mutex lock")
-            .run(runner, self.state.clone())
-            .await;
+        self.lock_event_loop().run(runner, self.state.clone()).await;
     }
 
     /// Locks the internal state and Returns the mutex guard to it.
-    pub(crate) fn state(&self) -> RwLockReadGuard<'_, AppState> {
-        self.state.read().expect("Could not get AppState Read lock")
+    pub(super) fn state(&self) -> RwLockReadGuard<'_, AppState> {
+        self.state.read().expect("Could not Read App State")
     }
 
     /// Locks the main Event Loop and Returns the mutex guard to it.
     pub(crate) fn lock_event_loop(&self) -> MutexGuard<'_, EventLoop<Event>> {
         self.event_loop
             .try_lock()
-            .expect("Could not get EventLoop mutex lock")
+            .expect("Could not Read EventLoop")
     }
 
     /// Dispatches an event to the main event loop.
@@ -248,12 +251,14 @@ impl App {
     /// - Returns an Error if the EventLoop is closed.
     /// - Returns an Error if it fails to acquire the
     ///   Event Dispatcher mutex lock.
+    #[allow(dead_code)]
     pub fn dispatch_event(&'static self, event: Event) -> Result<(), Error> {
         let dispatcher = self.event_dispatcher.try_lock()?;
         Ok(dispatcher.send_event(event)?)
     }
 
     /// Returns a new Arc RwLock reference to the Windows collection.
+    // #[allow(dead_code)]
     pub fn windows(&self) -> Arc<RwLock<Windows>> {
         self.state().windows()
     }
@@ -262,8 +267,8 @@ impl App {
     ///
     /// ## Side effects
     /// Lazy-initializes the Renderer when we add the first Window
-    pub(crate) async fn add_window<W: IsWindow>(&self, window: &mut W) {
-        self.state().add_window(window).await;
+    pub(crate) fn add_window<W: IsWindow>(&self, window: &mut W) {
+        self.state().add_window(window);
     }
 
     /// Returns a new Arc Mutex reference to the Scenes collection.
@@ -294,7 +299,7 @@ impl AppState {
     pub(crate) fn read_windows_collection<W: IsWindow>(&self) -> WindowsReadGuard<'_> {
         self.windows
             .read()
-            .expect("Could not get Windows Collection Read lock")
+            .expect("Could not Read Windows Collection")
     }
 
     /// Returns a Write mutex reference to the Windows collection.
@@ -304,15 +309,15 @@ impl AppState {
     pub(crate) fn write_to_windows_collection<W: IsWindow>(&self) -> WindowsWriteGuard<'_> {
         self.windows
             .write()
-            .expect("Could not get Windows Collection Write lock")
+            .expect("Could not Write to Windows Collection")
     }
 
     /// Adds a window to the Windows collection.
     ///
     /// # Side effects
     /// Lazy-initializes the internal Renderer when we add the first Window
-    pub(crate) async fn add_window<'w, W: IsWindow>(&self, window: &'w mut W) {
-        self.get_or_init_renderer::<W>(vec![window]);
+    pub(crate) fn add_window<'w, W: IsWindow>(&self, window: &'w mut W) {
+        self.get_or_init_renderer::<W>(window);
 
         let mut windows = self.write_to_windows_collection::<W>();
         windows.insert(&window.id(), window.state());
@@ -353,7 +358,7 @@ impl AppState {
     pub(crate) fn add_scene<'s>(&self, scene: &'s mut Scene) {
         let mut scenes = self.write_to_scenes_collection();
 
-        scenes.insert(&scene.id(), scene.state());
+        scenes.insert(&scene.id(), scene.state())
     }
 
     /// Removes a window from the Windows collection.
@@ -375,19 +380,17 @@ impl AppState {
     pub(crate) fn renderer(&self) -> RwLockReadGuard<'_, Renderer> {
         let renderer = self.get_or_init_offscreen_renderer();
 
-        renderer
-            .read()
-            .expect("Could not get Renderer Read mutex lock")
+        renderer.read().expect("Could not Read Renderer State")
     }
 
     /// Gets or initializes the global Renderer.
     ///
     /// # Panics
     /// - Panics if it fails to create the global Renderer.
-    fn get_or_init_renderer<'w, W: IsWindow>(&self, windows: Vec<&'w mut W>) -> &MainRenderer {
+    fn get_or_init_renderer<'w, W: IsWindow>(&self, window: &'w mut W) -> &MainRenderer {
         RENDERER.get_or_init(|| {
             Arc::new(RwLock::new(
-                pollster::block_on(self.init_renderer::<W>(windows))
+                pollster::block_on(self.init_renderer::<W>(window))
                     .expect("Failed to create Renderer"),
             ))
         })
@@ -412,18 +415,16 @@ impl AppState {
     /// This function will ensure compatibility with the provided Window(s).
     /// If no Window is provided, it will initialize an offscreen Renderer
     /// that uses any GPU adapter, without checking for compatibility.
-    async fn init_renderer<'w, W: IsWindow>(
-        &self,
-        windows: Vec<&'w mut W>,
-    ) -> Result<Renderer, Error> {
+    async fn init_renderer<'w, W: IsWindow>(&self, window: &'w mut W) -> Result<Renderer, Error> {
         Ok(Renderer::new(
-            RenderOptions {
+            RendererOptions {
                 force_software_rendering: self.options.renderer.force_software_rendering,
                 power_preference: self.options.renderer.power_preference.clone(),
+                panic_on_error: self.options.renderer.panic_on_error.clone(),
                 device_limits: self.options.renderer.device_limits.clone(),
                 render_pass: self.options.renderer.render_pass.clone(),
             },
-            windows,
+            Some(window),
         )
         .await?)
     }
@@ -432,9 +433,10 @@ impl AppState {
     ///
     /// It uses any GPU adapter, without checking for compatibility.
     async fn init_offscreen_renderer(&self) -> Result<Renderer, Error> {
-        Ok(Renderer::new_offscreen(RenderOptions {
+        Ok(Renderer::new_offscreen(RendererOptions {
             force_software_rendering: self.options.renderer.force_software_rendering,
             power_preference: self.options.renderer.power_preference.clone(),
+            panic_on_error: self.options.renderer.panic_on_error.clone(),
             device_limits: self.options.renderer.device_limits.clone(),
             render_pass: self.options.renderer.render_pass.clone(),
         })

@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"enum":["Event"],"trait":["CallbackFn"],"type":["Callback"]};

@@ -1,5 +1,5 @@
 #[derive(Debug, Clone)]
-pub struct SamplerOptions {
+pub(crate) struct SamplerOptions {
     pub repeat_x: bool,
     pub repeat_y: bool,
     pub smooth: bool,
@@ -17,11 +17,11 @@ impl Default for SamplerOptions {
     }
 }
 
-pub fn create_default_sampler(device: &wgpu::Device) -> wgpu::Sampler {
+pub(crate) fn create_default_sampler(device: &wgpu::Device) -> wgpu::Sampler {
     create_sampler(device, SamplerOptions::default())
 }
 
-pub fn create_sampler(device: &wgpu::Device, options: SamplerOptions) -> wgpu::Sampler {
+pub(crate) fn create_sampler(device: &wgpu::Device, options: SamplerOptions) -> wgpu::Sampler {
     let label = format!("{:?}", options);
     let address_mode_u = match options.repeat_x {
         true => wgpu::AddressMode::Repeat,

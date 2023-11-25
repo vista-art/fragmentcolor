@@ -3,8 +3,8 @@ use crate::{
     math::geometry::vertex,
     math::geometry::vertex::{Normal, Position, Vertex},
     renderer::{
-        target::Dimensions, RenderContext, RenderPass, RenderPassResult, RenderTarget,
-        RenderTargetCollection, Renderer,
+        renderpass::buffer, target::Dimensions, IsRenderTarget, RenderContext, RenderPass,
+        RenderPassResult, RenderTargetCollection, Renderer,
     },
     scene::SceneState,
     Color,
@@ -92,7 +92,7 @@ impl Default for PhongConfig {
     }
 }
 
-pub struct Phong<'r> {
+pub(crate) struct Phong<'r> {
     renderer: &'r Renderer,
     depth_texture: Option<(wgpu::TextureView, wgpu::Extent3d)>,
     global_uniform_buf: wgpu::Buffer,
@@ -101,14 +101,15 @@ pub struct Phong<'r> {
     global_bind_group: wgpu::BindGroup,
     local_bind_group_layout: wgpu::BindGroupLayout,
     local_bind_groups: FxHashMap<LocalKey, wgpu::BindGroup>,
-    uniform_pool: super::BufferPool,
+    uniform_pool: buffer::BufferPool,
     pipelines: Pipelines,
     ambient: Ambient,
     temp_lights: Vec<(f32, u32)>,
 }
 
 impl<'r> Phong<'r> {
-    pub fn new(config: &PhongConfig, renderer: &'r Renderer) -> Self {
+    #[allow(dead_code)]
+    pub(crate) fn new(config: &PhongConfig, renderer: &'r Renderer) -> Self {
         let d = renderer.device();
 
         let shader_module = d.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -215,6 +216,8 @@ impl<'r> Phong<'r> {
             let mut sample_count = 1;
             let targets = &renderer
                 .read_targets()
+                // @TODO I MEAN IT!!! Remove tech debt (global search "TECH DEBT")
+                .expect("TECH DEBT: Avoid panics!!!")
                 .all()
                 .enumerate()
                 .map(|(index, target)| {
@@ -314,7 +317,7 @@ impl<'r> Phong<'r> {
             global_bind_group,
             local_bind_group_layout: local_bgl,
             local_bind_groups: Default::default(),
-            uniform_pool: super::BufferPool::uniform("phong locals", d),
+            uniform_pool: buffer::BufferPool::uniform("phong locals", d),
             pipelines,
             ambient: config.ambient,
             temp_lights: Vec::new(),
@@ -325,7 +328,10 @@ impl<'r> Phong<'r> {
 impl<'r> RenderPass for Phong<'r> {
     fn draw(&mut self, scene: RwLockReadGuard<'_, SceneState>) -> RenderPassResult {
         let renderer = self.renderer;
-        let targets = renderer.read_targets();
+        let targets = renderer
+            .read_targets()
+            // @TODO I MEAN IT!!! Remove tech debt (global search "TECH DEBT")
+            .expect("TECH DEBT: Avoid panics!!!");
         let device = renderer.device();
 
         let mut commands = Vec::new();
@@ -350,30 +356,6 @@ impl<'r> RenderPass for Phong<'r> {
 
                 let target = target.unwrap();
 
-                // @TODO those things should be cached; not calculated every frame
-                //       invalidate on screen resize
-                if !camera_target.clip_region.equals(target.size()) {
-                    //if camera_target.clip_region.is_smaller_than(target.size()) {
-
-                    // I don't expect to enter here.
-                    //
-                    // This is not a priority, but the current logic won't work
-                    // for multiple viewports in the same window.
-                    //
-                    // @TODO is this target targeted by multiple cameras?
-                    //
-                    //       - if this is the only camera rendering to it fullscreen,
-                    //         we'll proceed as usual. (this is the expected use case for now).
-                    //
-                    //       - if this is not the only camera, we need to cache the results
-                    //         and start a new pass with LoadOp::Load instead of "Clear"
-                    log::warn!(
-                        "Camera {:?} is targeting a target {:?} with a different size.",
-                        object_id,
-                        camera_target.target_id
-                    );
-                }
-
                 let reset_depth = match self.depth_texture {
                     Some((_, size)) => size != target.size().to_wgpu_size(),
                     None => true,
@@ -393,15 +375,15 @@ impl<'r> RenderPass for Phong<'r> {
                     self.depth_texture = Some((view, target.size().to_wgpu_size()));
                 }
 
-                let nodes = scene.get_global_transforms();
+                let transforms = scene.calculate_global_transforms();
                 self.uniform_pool.reset();
                 let queue = renderer.queue();
 
                 {
                     let m_proj = camera.projection_matrix(target.aspect());
-                    let m_view_inv = nodes[camera.node_id].inverse_matrix();
+                    let m_view_inv = transforms[camera.transform_id].inverse_matrix();
                     let m_final = glam::Mat4::from(m_proj) * glam::Mat4::from(m_view_inv);
-                    let ambient = self.ambient.color.into_vec4();
+                    let ambient = self.ambient.color.to_array();
                     let globals = Globals {
                         view_proj: m_final.to_cols_array_2d(),
                         ambient: [
@@ -418,13 +400,13 @@ impl<'r> RenderPass for Phong<'r> {
                     .query::<&components::Light>()
                     .iter()
                     .map(|(_, light)| {
-                        let transform = &nodes[light.node_id];
+                        let transform = &transforms[light.transform_id];
                         let mut position = transform.position;
                         position[3] = match light.variant {
                             components::LightType::Directional => 0.0,
                             components::LightType::Point => 1.0,
                         };
-                        let mut color_intensity = light.color.into_vec4();
+                        let mut color_intensity = light.color.to_array();
                         color_intensity[3] = light.intensity;
                         Light {
                             position,
@@ -473,7 +455,10 @@ impl<'r> RenderPass for Phong<'r> {
 
                 let frame = target.next_frame()?;
 
-                let resources = renderer.read_resources();
+                let resources = renderer
+                    .read_resources()
+                    // @TODO I MEAN IT!!! Remove tech debt (global search "TECH DEBT")
+                    .expect("TECH DEBT: Avoid panics!!!");
 
                 {
                     let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -505,7 +490,7 @@ impl<'r> RenderPass for Phong<'r> {
                         .with::<&Vertex<Normal>>()
                         .iter()
                     {
-                        let local = &nodes[entity.node_id];
+                        let local = &transforms[entity.transform_id];
                         let mesh = if let Some(mesh) = resources.get_mesh(&entity.mesh_id) {
                             mesh
                         } else {
@@ -520,8 +505,9 @@ impl<'r> RenderPass for Phong<'r> {
                         let mut lights = scene.query::<&components::Light>();
 
                         for (index, (_, light)) in lights.iter().enumerate() {
-                            let light_pos =
-                                glam::Vec3::from_slice(&nodes[light.node_id].position[..3]);
+                            let light_pos = glam::Vec3::from_slice(
+                                &transforms[light.transform_id].position[..3],
+                            );
                             let intensity = match light.variant {
                                 components::LightType::Point => {
                                     let distance = (entity_pos - light_pos).length();

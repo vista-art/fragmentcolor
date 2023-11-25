@@ -1,8 +1,21 @@
 use csscolorparser;
+use serde::{Deserialize, Serialize};
 
 /// Can be specified as 0xRRGGBBAA
-#[derive(Clone, Copy, Debug, Hash, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, PartialOrd, Deserialize)]
 pub struct Color(pub u32);
+
+impl Serialize for Color {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&format!(
+            "#{:02x}{:02x}{:02x}{:02x}",
+            self.red() as u8,
+            self.green() as u8,
+            self.blue() as u8,
+            self.alpha() as u8
+        ))
+    }
+}
 
 const GAMMA: f32 = 2.2;
 
@@ -57,7 +70,7 @@ impl Color {
         self.export(0)
     }
 
-    pub fn into_vec4(self) -> [f32; 4] {
+    pub fn to_array(self) -> [f32; 4] {
         [self.red(), self.green(), self.blue(), self.alpha()]
     }
 
@@ -93,5 +106,17 @@ impl From<Color> for wgpu::Color {
 impl Default for Color {
     fn default() -> Self {
         Self(0x00000000)
+    }
+}
+
+impl Into<u32> for Color {
+    fn into(self) -> u32 {
+        self.0
+    }
+}
+
+impl Into<[f32; 4]> for Color {
+    fn into(self) -> [f32; 4] {
+        self.to_array()
     }
 }

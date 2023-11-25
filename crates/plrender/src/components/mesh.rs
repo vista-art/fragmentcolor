@@ -1,63 +1,99 @@
 use crate::{
+    math::cg::Vec3,
     math::geometry::Primitive,
     resources::mesh::{BuiltMesh, MeshId},
-    scene::{macros::spatial_object, node::NodeId, SceneObject},
+    scene::{macros::spatial_object, transform::TransformId, Object},
 };
 
 /// The Mesh component
 #[derive(Debug, Default, Clone, Copy)]
 pub struct Mesh {
     pub mesh_id: MeshId,
-    pub(crate) node_id: NodeId,
+    pub(crate) transform_id: TransformId,
 }
 
 spatial_object!(Mesh);
 
 impl Mesh {
-    pub fn new(built_mesh: &BuiltMesh) -> SceneObject<Self> {
-        let mut mesh = SceneObject::new(Mesh {
-            node_id: NodeId::root(),
-            mesh_id: built_mesh.id,
-        });
-        mesh.add_components(built_mesh);
-
-        mesh
+    pub fn new(built_mesh: Option<BuiltMesh>) -> Object<Self> {
+        if let Some(built_mesh) = built_mesh {
+            let mut mesh = Object::new(Mesh {
+                transform_id: TransformId::root(),
+                mesh_id: built_mesh.id,
+            });
+            mesh.add_components(built_mesh);
+            mesh
+        } else {
+            log::warn!(
+                "Mesh::new() called with None! Did the BuiltMesh failed to load?
+                Creating an Empty object."
+            );
+            Object::new(Mesh::default())
+        }
     }
 }
 
+impl Object<Mesh> {
+    pub fn mesh(&self) -> MeshId {
+        self.object().mesh_id
+    }
+
+    pub fn set_mesh(&mut self, built_mesh: Option<BuiltMesh>) -> &mut Self {
+        let mesh = self.object();
+
+        if let Some(built_mesh) = built_mesh {
+            self.add_component(Mesh {
+                mesh_id: built_mesh.id,
+                ..mesh
+            });
+
+            self.add_components(built_mesh);
+        } else {
+            log::warn!(
+                "Object<Mesh>.set_mesh() called with None! Did the Mesh failed to load?
+                Object's internal Mesh could not be updated: {:?}",
+                self
+            );
+            self.add_component(Mesh::default());
+        }
+
+        self
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy)]
 pub struct Box;
 impl Box {
-    pub fn new(dimensions: mint::Vector3<f32>) -> SceneObject<Mesh> {
-        let cube = Primitive::cuboid(dimensions).create_mesh();
-
-        Mesh::new(&cube)
+    pub fn new<V: Into<Vec3>>(dimensions: V) -> Object<Mesh> {
+        let cuboid = Primitive::cuboid(dimensions).create_mesh().ok();
+        Mesh::new(cuboid)
     }
 }
 
+#[derive(Debug, Default, Clone, Copy)]
 pub struct Cube;
 impl Cube {
-    pub fn new(size: f32) -> SceneObject<Mesh> {
-        let cube = Primitive::cube(size).create_mesh();
-
-        Mesh::new(&cube)
+    pub fn new(size: f32) -> Object<Mesh> {
+        let cube = Primitive::cube(size).create_mesh().ok();
+        Mesh::new(cube)
     }
 }
 
+#[derive(Debug, Default, Clone, Copy)]
 pub struct Plane;
 impl Plane {
-    pub fn new(size: f32) -> SceneObject<Mesh> {
-        let plane = Primitive::plane(size).create_mesh();
-
-        Mesh::new(&plane)
+    pub fn new(size: f32) -> Object<Mesh> {
+        let plane = Primitive::plane(size).create_mesh().ok();
+        Mesh::new(plane)
     }
 }
 
+#[derive(Debug, Default, Clone, Copy)]
 pub struct Sphere;
 impl Sphere {
-    pub fn new(radius: f32, detail: usize) -> SceneObject<Mesh> {
-        let sphere = Primitive::sphere(radius, detail).create_mesh();
-
-        Mesh::new(&sphere)
+    pub fn new(radius: f32, detail: usize) -> Object<Mesh> {
+        let sphere = Primitive::sphere(radius, detail).create_mesh().ok();
+        Mesh::new(sphere)
     }
 }
 

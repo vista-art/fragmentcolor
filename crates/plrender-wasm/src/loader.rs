@@ -1,46 +1,60 @@
-use wgpu;
+use wasm_bindgen::prelude::*;
+use wasm_bindgen::JsCast;
+use web_sys::{GpuDevice, HtmlImageElement, ImageBitmap};
 
-// @TODO concert JS utility code to Rust web-sys
-//       and use it in our wrapper
+// Import other necessary modules from web-sys as needed
 
-// // Defining this as a separate function because we'll be re-using it a lot.
-// function webGPUTextureFromImageBitmapOrCanvas(gpuDevice, source) {
-//   const textureDescriptor = {
-//     // Unlike in WebGL, the size of our texture must be set at texture creation time.
-//     // This means we have to wait until the image is loaded to create the texture, since we won't
-//     // know the size until then.
-//     size: { width: source.width, height: source.height },
-//     format: 'rgba8unorm',
-//     usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST
-//   };
-//   const texture = gpuDevice.createTexture(textureDescriptor);
+#[wasm_bindgen]
+pub async fn web_gpu_texture_from_image_bitmap_or_canvas(
+    gpu_device: GpuDevice,
+    source: ImageBitmap,
+) -> Result<GpuTexture, JsValue> {
+    // Create the texture descriptor
+    let texture_descriptor = GpuTextureDescriptor::new(
+        source.width(),
+        source.height(),
+        // Specify other necessary parameters like format and usage
+    );
 
-//   gpuDevice.queue.copyExternalImageToTexture({ source }, { texture }, textureDescriptor.size);
+    let texture = gpu_device.create_texture(&texture_descriptor);
 
-//   return texture;
-// }
+    // Copy the image bitmap to the texture
+    gpu_device.queue().copy_external_image_to_texture(
+        &CopyExternalImageToTextureSource::ImageBitmap(&source),
+        &texture,
+        &texture_descriptor.size(),
+    );
 
-// async function webGPUTextureFromImageUrl(gpuDevice, url) { // Note that this is an async function
-//   const response = await fetch(url);
-//   const blob = await response.blob();
-//   const imgBitmap = await createImageBitmap(blob);
+    Ok(texture)
+}
 
-//   return webGPUTextureFromImageBitmapOrCanvas(gpuDevice, imgBitmap);
-// }
+#[wasm_bindgen]
+pub async fn web_gpu_texture_from_image_url(
+    gpu_device: GpuDevice,
+    url: String,
+) -> Result<GpuTexture, JsValue> {
+    // Fetch the image and create an ImageBitmap
+    let window = web_sys::window().unwrap();
+    let response = JsFuture::from(window.fetch_with_str(&url)).await?;
+    let blob = JsFuture::from(response.blob()?).await?;
+    let img_bitmap = JsFuture::from(window.create_image_bitmap_with_blob(&blob)).await?;
 
-// async function webGPUTextureFromImageElement(gpuDevice, imgElement) {
-//   if (imgElement.complete) {
-//     const imgBitmap = await createImageBitmap(imgElement);
-//     return await webGPUTextureFromImageBitmapOrCanvas(gpuDevice, imgBitmap);
-//   } else {
-//     // If the image isn't loaded yet we'll wrap the load/error events in a promise to keep the
-//     // function interface consistent.
-//     return new Promise((resolve, reject) => {
-//       imgElement.addEventListener('load', async () => {
-//         const imgBitmap = await createImageBitmap(imgElement);
-//         return await webGPUTextureFromImageBitmapOrCanvas(gpuDevice, imgBitmap);
-//       });
-//       imgElement.addEventListener('error', reject);
-//     });
-//   };
-// }
+    web_gpu_texture_from_image_bitmap_or_canvas(gpu_device, img_bitmap.dyn_into()?)
+}
+
+#[wasm_bindgen]
+pub async fn web_gpu_texture_from_image_element(
+    gpu_device: GpuDevice,
+    img_element: HtmlImageElement,
+) -> Result<GpuTexture, JsValue> {
+    if img_element.complete() {
+        let img_bitmap = window
+            .create_image_bitmap_with_html_image_element(&img_element)
+            .await?;
+        web_gpu_texture_from_image_bitmap_or_canvas(gpu_device, img_bitmap.dyn_into()?)
+    } else {
+        // Handle the case where the image is not loaded yet
+        // This part is trickier in Rust compared to JS as we have to set up event listeners
+        // You might need to use `Closure` to create event listeners and then convert them to Promises
+    }
+}

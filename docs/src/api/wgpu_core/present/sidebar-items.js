@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"constant":["DESIRED_NUM_FRAMES"],"enum":["ConfigureSurfaceError","SurfaceError"],"struct":["SurfaceOutput"]};

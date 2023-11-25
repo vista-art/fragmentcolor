@@ -1,5 +1,5 @@
 use crate::{
-    app::events::{Callback, Event},
+    app::events::{Callback, CallbackFn},
     app::window::IsWindow,
     components,
     components::Camera,
@@ -9,26 +9,191 @@ use crate::{
         buffer::{Buffer, BufferSize, TextureBuffer},
         texture::{Texture, TextureId},
     },
-    scene::{ObjectId, SceneObject},
+    scene::{Object, ObjectId},
+    PLRender,
 };
+use image::Rgba;
 use std::{
     collections::{
         hash_map::{Values, ValuesMut},
         HashMap,
     },
     fmt::Debug,
+    sync::{Arc, RwLock},
 };
 use winit::window::WindowId;
 
 type Error = Box<dyn std::error::Error>;
-pub type RenderedFrames = Vec<(TargetId, Frame)>;
+pub(crate) type RenderedFrames = Vec<(TargetId, Frame)>;
+
 pub trait Dimensions {
     fn size(&self) -> Quad;
     fn aspect(&self) -> f32;
+    fn scaling(&self) -> f32;
+}
+
+/// Interface to add a RenderTarget to a Scene.
+///
+/// Any object that implements this trait can be iserted in the
+/// Scene with `scene.target(my_target)`.
+pub trait DescribesTarget {
+    fn describe_target(&self) -> Result<RenderTargetDescription, Error>;
+}
+
+pub(crate) trait IsRenderTarget: Debug + 'static + Dimensions {
+    fn id(&self) -> TargetId;
+    fn format(&self) -> wgpu::TextureFormat;
+    fn sample_count(&self) -> u32;
+    fn resize(&mut self, renderer: &Renderer, size: wgpu::Extent3d) -> Result<(), Error>;
+    fn next_frame(&self) -> Result<Frame, wgpu::SurfaceError>;
+    fn prepare_render(&self, renderer: &Renderer, commands: &mut Commands);
+    fn present(&mut self, frame: Frame);
+}
+
+pub(crate) trait RenderTargetCollection: Debug + 'static {
+    fn len(&self) -> usize;
+    fn add(&mut self, target: RenderTarget) -> TargetId;
+    fn get(&self, id: &TargetId) -> Option<&RenderTarget>;
+    fn get_mut(&mut self, id: &TargetId) -> Option<&mut RenderTarget>;
+    fn remove(&mut self, id: &TargetId) -> Option<RenderTarget>;
+    fn all(&self) -> Values<TargetId, RenderTarget>;
+    fn all_mut(&mut self) -> ValuesMut<TargetId, RenderTarget>;
+    fn present(&mut self, frames: RenderedFrames);
+}
+
+/// Describes how a RenderTarget should be rendered.
+///
+/// This objects maps a Scene Camera to a loaded RenderTarget. Both the
+/// Camera and the RenderTarget must exist.
+#[derive(Clone, Debug)]
+pub struct RenderTargetDescription {
+    /// The Id of the RenderTarget to render to.
+    ///
+    /// If it's a Window, the Id can be obtained with
+    /// `my_window.id()`. If it's a Texture, the Id
+    /// is be returned when the texture is created:
+    /// `let texture_id = renderer.add_texture(texture)`
+    pub target_id: TargetId,
+
+    /// The camera to use when rendering to this target.
+    ///
+    /// If None, the Scene will assign the first available
+    /// camera to this target. If there is no camera in
+    /// the Scene, the Scene will create a default 2D
+    /// camera (orthographic projection).
+    pub camera_id: Option<ObjectId>,
+
+    /// The size of the target in pixels.
+    ///
+    /// Defaults to the Target's full size.
+    pub target_size: Quad,
+
+    /// The color to use when clearing the target.
+    ///
+    /// Defaults to Transparent. If the OS does not
+    /// support transparent windows, this will be
+    /// ignored and users will see the background
+    /// color of the window.
+    ///
+    /// On Web, this draws a transparent canvas.
+    pub clear_color: components::Color,
+
+    /// Callback function to run right before rendering.
+    ///
+    /// This is useful for updating uniforms, and syncing
+    /// the Scene state with the main rendering loop.
+    pub before_render: Option<Callback<()>>,
+
+    /// Callback function to run after rendering.
+    ///
+    /// Returns a &[u8] with the contents of the target.
+    pub after_render: Option<Callback<Vec<u8>>>,
+}
+
+/// Allow a TargetDescription to describe itself so it can
+/// be used as a manual configuration for a RenderTarget
+/// if the user wants to have t
+impl DescribesTarget for RenderTargetDescription {
+    fn describe_target(&self) -> Result<RenderTargetDescription, Error> {
+        let target = self.clone();
+        Ok(target)
+    }
+}
+
+impl RenderTargetDescription {
+    pub fn new(target_id: TargetId, target_size: Quad) -> Self {
+        Self {
+            target_id,
+            target_size,
+            camera_id: None,
+            clear_color: components::Color::default(),
+            before_render: None,
+            after_render: None,
+        }
+    }
+
+    pub(crate) fn from_window<W: IsWindow>(window: &W) -> Self {
+        Self::new(TargetId::Window(window.id()), window.size())
+    }
+
+    pub fn from_window_id(window_id: WindowId, size: Quad) -> Self {
+        Self::new(TargetId::Window(window_id), size)
+    }
+
+    pub fn from_texture(texture: &Texture) -> Result<Self, Error> {
+        let usage = texture.data.usage();
+
+        if usage.contains(wgpu::TextureUsages::RENDER_ATTACHMENT) {
+            Ok(Self::new(TargetId::Texture(texture.id), texture.size()))
+        } else {
+            Err("Texture is not renderable".into())
+        }
+    }
+
+    pub fn create_texture_target(size: Quad) -> Result<Self, Error> {
+        let texture = Texture::create_destination_texture(size.to_wgpu_size())?;
+
+        let target_id = if let Ok(renderer) = PLRender::renderer().try_read() {
+            renderer.add_texture_target(texture)?
+        } else {
+            return Err("Renderer is not available".into());
+        };
+
+        Ok(Self::new(target_id, size))
+    }
+
+    pub fn try_set_camera(&mut self, camera: &Object<Camera>) -> Result<&mut Self, Error> {
+        let camera_id = if let Some(camera_id) = camera.id() {
+            camera_id
+        } else {
+            return Err("Camera must be added to a Scene before having a Render Target".into());
+        };
+        Ok(self.set_camera_id(camera_id))
+    }
+
+    pub fn set_camera_id(&mut self, camera_id: ObjectId) -> &mut Self {
+        self.camera_id = Some(camera_id);
+        self
+    }
+
+    pub fn set_clear_color(&mut self, clear_color: components::Color) -> &mut Self {
+        self.clear_color = clear_color;
+        self
+    }
+
+    pub fn before_render(&mut self, callback: impl CallbackFn<()> + 'static) -> &mut Self {
+        self.before_render = Some(Arc::new(RwLock::new(callback)));
+        self
+    }
+
+    pub fn after_render(&mut self, callback: impl CallbackFn<Vec<u8>> + 'static) -> &mut Self {
+        self.after_render = Some(Arc::new(RwLock::new(callback)));
+        self
+    }
 }
 
 #[derive(Debug)]
-pub struct Frame {
+pub(crate) struct Frame {
     surface_texture: Option<wgpu::SurfaceTexture>,
     pub view: wgpu::TextureView,
 }
@@ -45,27 +210,6 @@ impl Frame {
     }
 }
 
-pub trait RenderTarget: Debug + 'static + Dimensions {
-    fn id(&self) -> TargetId;
-    fn format(&self) -> wgpu::TextureFormat;
-    fn sample_count(&self) -> u32;
-    fn resize(&mut self, renderer: &Renderer, size: wgpu::Extent3d) -> Result<(), Error>;
-    fn next_frame(&self) -> Result<Frame, wgpu::SurfaceError>;
-    fn prepare_render(&self, renderer: &Renderer, commands: &mut Commands);
-    fn present(&mut self, frame: Frame);
-}
-
-pub trait RenderTargetCollection: Debug + 'static {
-    fn len(&self) -> usize;
-    fn add(&mut self, target: Target) -> TargetId;
-    fn get(&self, id: &TargetId) -> Option<&Target>;
-    fn get_mut(&mut self, id: &TargetId) -> Option<&mut Target>;
-    fn remove(&mut self, id: &TargetId) -> Option<Target>;
-    fn all(&self) -> Values<TargetId, Target>;
-    fn all_mut(&mut self) -> ValuesMut<TargetId, Target>;
-    fn present(&mut self, frames: RenderedFrames);
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum TargetId {
     Texture(TextureId),
@@ -73,153 +217,17 @@ pub enum TargetId {
 }
 
 #[derive(Debug)]
-pub enum Target {
+pub(crate) enum RenderTarget {
     Texture(TextureTarget),
     Window(WindowTarget),
 }
 
-/// Describes how a target should be rendered.
-#[derive(Clone, Debug)]
-pub struct RenderTargetDescription {
-    /// The Id of the target to render to.
-    ///
-    /// If it's a Window, the Id can be obtained with
-    /// `my_window.id()`. If it's a Texture, the Id
-    /// will be returned by the Renderer when the
-    /// texture is created.
-    pub target_id: TargetId,
-
-    /// The size of the target in pixels.
-    pub target_size: Quad,
-
-    /// The camera to use when rendering to this target.
-    ///
-    /// If None, the Scene will assign the first available
-    /// camera to this target. If there is no camera in
-    /// the Scene, the Scene will create a default 2D
-    /// camera (orthographic projection).
-    pub camera_id: Option<ObjectId>,
-
-    /// The color to use when clearing the target.
-    ///
-    /// Defaults to Transparent. If the OS does not
-    /// support transparent windows, this will be
-    /// ignored and users will see the background
-    /// color of the window.
-    ///
-    /// On Web, this draws a transparent canvas.
-    pub clear_color: components::Color,
-
-    /// Reserved for future use (unimplemented).
-    ///
-    /// The Renderer will draw on top of this target
-    /// without clearing its previous contents.
-    pub background_image: Option<TextureId>,
-
-    /// The region of the target to render to.
-    ///
-    /// Defaults to the full target.
-    ///
-    /// Users can use this to render to a portion of
-    /// the target. For example, to render the Eye
-    /// cameras on top of the World camera.
-    pub clip_region: Quad,
-
-    /// Callback function to run right before rendering.
-    ///
-    /// This is useful for updating uniforms, and syncing
-    /// the Scene state with the main rendering loop.
-    pub before_render: Option<Callback<Event>>,
-
-    /// Callback function to run after rendering.
-    ///
-    /// Returns a &[u8] with the contents of the target.
-    pub after_render: Option<Callback<Event>>,
-}
-
-impl RenderTargetDescription {
-    pub fn new(target_id: TargetId, target_size: Quad) -> Self {
-        Self {
-            target_id,
-            target_size,
-            camera_id: None,
-            clear_color: components::Color::default(),
-            background_image: None,
-            clip_region: target_size,
-            before_render: None,
-            after_render: None,
-        }
-    }
-
-    pub fn from_window<W: IsWindow>(window: &W) -> Self {
-        Self::new(TargetId::Window(window.id()), window.size())
-    }
-
-    pub fn from_window_camera_pair<W: IsWindow>(window: &W, camera: &SceneObject<Camera>) -> Self {
-        Self::from_window(window).set_camera(camera)
-    }
-
-    pub fn from_texture(texture: &Texture) -> Self {
-        // @TODO attach a TextureTarget to the camera;
-        //       and make sure it is registered in the Renderer like the Window is.
-        Self::new(TargetId::Texture(texture.id), texture.size())
-    }
-
-    pub fn from_texture_camera_pair(texture: &Texture, camera: &SceneObject<Camera>) -> Self {
-        Self::from_texture(texture).set_camera(camera)
-    }
-
-    pub fn try_set_camera(self, camera: &SceneObject<Camera>) -> Result<Self, Error> {
-        let camera_id = if let Some(camera_id) = camera.id() {
-            camera_id
-        } else {
-            return Err("Camera must be added to a Scene before having a Render Target".into());
-        };
-        Ok(self.set_camera_id(camera_id))
-    }
-
-    pub fn set_camera(self, camera: &SceneObject<Camera>) -> Self {
-        self.try_set_camera(camera)
-            .expect("Camera is not in a Scene")
-    }
-
-    pub fn set_camera_id(mut self, camera_id: ObjectId) -> Self {
-        self.camera_id = Some(camera_id);
-        self
-    }
-
-    pub fn set_clear_color(mut self, clear_color: components::Color) -> Self {
-        self.clear_color = clear_color;
-        self
-    }
-
-    pub fn set_background_image(mut self, background_image: TextureId) -> Self {
-        self.background_image = Some(background_image);
-        self
-    }
-
-    pub fn set_clip_region(mut self, clip_region: Quad) -> Self {
-        self.clip_region = clip_region;
-        self
-    }
-
-    pub fn before_render(mut self, callback: Callback<Event>) -> Self {
-        self.before_render = Some(callback);
-        self
-    }
-
-    pub fn after_render(mut self, callback: Callback<Event>) -> Self {
-        self.after_render = Some(callback);
-        self
-    }
-}
-
 #[derive(Debug)]
-pub struct Targets {
-    pub targets: HashMap<TargetId, Target>,
+pub(crate) struct RenderTargets {
+    pub targets: HashMap<TargetId, RenderTarget>,
 }
 
-impl Targets {
+impl RenderTargets {
     pub fn new() -> Self {
         Self {
             targets: HashMap::new(),
@@ -227,11 +235,11 @@ impl Targets {
     }
 }
 
-impl RenderTargetCollection for Targets {
-    fn add(&mut self, target: Target) -> TargetId {
+impl RenderTargetCollection for RenderTargets {
+    fn add(&mut self, target: RenderTarget) -> TargetId {
         let id = match target {
-            Target::Texture(ref target) => TargetId::Texture(target.texture.id),
-            Target::Window(ref window) => TargetId::Window(window.id),
+            RenderTarget::Texture(ref target) => TargetId::Texture(target.texture.id),
+            RenderTarget::Window(ref window) => TargetId::Window(window.id),
         };
 
         self.targets.insert(id, target);
@@ -239,23 +247,23 @@ impl RenderTargetCollection for Targets {
         id
     }
 
-    fn get(&self, id: &TargetId) -> Option<&Target> {
+    fn get(&self, id: &TargetId) -> Option<&RenderTarget> {
         self.targets.get(id)
     }
 
-    fn get_mut(&mut self, id: &TargetId) -> Option<&mut Target> {
+    fn get_mut(&mut self, id: &TargetId) -> Option<&mut RenderTarget> {
         self.targets.get_mut(id)
     }
 
-    fn remove(&mut self, id: &TargetId) -> Option<Target> {
+    fn remove(&mut self, id: &TargetId) -> Option<RenderTarget> {
         self.targets.remove(id)
     }
 
-    fn all(&self) -> Values<TargetId, Target> {
+    fn all(&self) -> Values<TargetId, RenderTarget> {
         self.targets.values()
     }
 
-    fn all_mut(&mut self) -> ValuesMut<TargetId, Target> {
+    fn all_mut(&mut self) -> ValuesMut<TargetId, RenderTarget> {
         self.targets.values_mut()
     }
 
@@ -272,19 +280,20 @@ impl RenderTargetCollection for Targets {
 }
 
 #[derive(Debug)]
-pub struct TextureTarget {
+pub(crate) struct TextureTarget {
     pub texture: Texture,
     pub buffer: Option<TextureBuffer>,
 }
 
 #[derive(Debug)]
-pub struct WindowTarget {
+pub(crate) struct WindowTarget {
     pub id: WindowId,
+    pub scaling_factor: f32,
     pub surface: wgpu::Surface,
     pub config: wgpu::SurfaceConfiguration,
 }
 
-impl Dimensions for Target {
+impl Dimensions for RenderTarget {
     fn size(&self) -> Quad {
         match self {
             Self::Texture(target) => Quad::from_wgpu_size(target.texture.size),
@@ -294,9 +303,15 @@ impl Dimensions for Target {
     fn aspect(&self) -> f32 {
         self.size().aspect()
     }
+    fn scaling(&self) -> f32 {
+        match self {
+            Self::Texture(_) => 1.0,
+            Self::Window(target) => target.scaling(),
+        }
+    }
 }
 
-impl RenderTarget for Target {
+impl IsRenderTarget for RenderTarget {
     fn id(&self) -> TargetId {
         match self {
             Self::Texture(target) => TargetId::Texture(target.texture.id),
@@ -322,7 +337,7 @@ impl RenderTarget for Target {
         match self {
             Self::Texture(_) => {
                 let new_target = TextureTarget::new(renderer, size)?;
-                *self = Target::Texture(new_target);
+                *self = RenderTarget::Texture(new_target);
             }
             Self::Window(window) => window.resize(renderer, size),
         };
@@ -331,8 +346,6 @@ impl RenderTarget for Target {
     }
 
     fn next_frame(&self) -> Result<Frame, wgpu::SurfaceError> {
-        // @TODO handle multiple cameras in the same target (cache frame, second pass).
-        //       needs a guard here to check if the frame has been presented yet
         match self {
             Self::Texture(target) => Ok(Frame {
                 surface_texture: None,
@@ -351,14 +364,14 @@ impl RenderTarget for Target {
 
     fn prepare_render(&self, renderer: &Renderer, commands: &mut Commands) {
         match self {
-            Target::Texture(target) => target.copy_texture_to_buffer(renderer, commands),
-            Target::Window(_) => {}
+            RenderTarget::Texture(target) => target.copy_texture_to_buffer(renderer, commands),
+            _ => {}
         }
     }
 
     fn present(&mut self, frame: Frame) {
         match self {
-            Target::Window(_) => frame.present(),
+            RenderTarget::Window(_) => frame.present(),
             _ => {}
         }
     }
@@ -366,7 +379,11 @@ impl RenderTarget for Target {
 
 impl WindowTarget {
     fn size(&self) -> Quad {
-        Quad::from_dimensions(self.config.width, self.config.height)
+        Quad::from_size(self.config.width, self.config.height)
+    }
+
+    fn scaling(&self) -> f32 {
+        self.scaling_factor
     }
 
     /// Rebuilds the swap chain with the new Window size
@@ -379,7 +396,7 @@ impl WindowTarget {
 
 impl TextureTarget {
     pub fn new(renderer: &Renderer, size: wgpu::Extent3d) -> Result<Self, Error> {
-        let texture = Texture::create_target_texture(size);
+        let texture = Texture::create_destination_texture(size)?;
         Self::from_texture(renderer, texture)
     }
 
@@ -398,11 +415,11 @@ impl TextureTarget {
         let target = Self {
             texture,
             buffer: Some(TextureBuffer {
-                buffer: Buffer {
+                inner: Buffer {
                     size: buffer_size,
                     buffer,
                 },
-                clip_region: Quad::from_dimensions(size.width, size.height),
+                clip_region: Quad::from_size(size.width, size.height),
             }),
         };
 
@@ -428,18 +445,14 @@ impl TextureTarget {
     }
 
     fn copy_texture_to_buffer(&self, renderer: &Renderer, commands: &mut Commands) {
-        if let Some(TextureBuffer {
-            buffer,
-            clip_region,
-        }) = &self.buffer
-        {
+        if let Some(TextureBuffer { inner, clip_region }) = &self.buffer {
             let mut encoder =
                 renderer
                     .device
                     .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                         label: Some("Render target transfer encoder"),
                     });
-            let Buffer { buffer, size } = buffer;
+            let Buffer { buffer, size } = inner;
 
             encoder.copy_texture_to_buffer(
                 // Our rendered texture
@@ -447,8 +460,8 @@ impl TextureTarget {
                     texture: &self.texture.data,
                     mip_level: 0,
                     origin: wgpu::Origin3d {
-                        x: clip_region.x_min,
-                        y: clip_region.y_min,
+                        x: clip_region.min_x,
+                        y: clip_region.min_y,
                         z: 0,
                     },
                     aspect: wgpu::TextureAspect::All,
@@ -471,6 +484,54 @@ impl TextureTarget {
             );
 
             commands.append(&mut vec![encoder.finish()])
+        }
+    }
+
+    // @TODO TECH DEBT call this at some point.
+    #[allow(dead_code)]
+    pub async fn get_rendered_frame_bytes(&self, renderer: &Renderer) -> Result<Vec<u8>, Error> {
+        if let Some(texture_buffer) = &self.buffer {
+            let output_buffer = &texture_buffer.inner.buffer;
+
+            // We need to scope the mapping variables so that we can unmap the buffer
+            let rendered_image = {
+                let buffer_slice = output_buffer.slice(..);
+
+                // NOTE: We have to create the mapping THEN device.poll()
+                // before await the future. Otherwise the application will freeze.
+                let (sender, receiver) = futures_intrusive::channel::shared::oneshot_channel();
+
+                buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
+                    sender.send(result).unwrap();
+                });
+
+                renderer.device.poll(wgpu::Maintain::Wait);
+
+                let output_buffer_data = if let Some(received) = receiver.receive().await {
+                    if let Ok(_) = received {
+                        buffer_slice.get_mapped_range()
+                    } else {
+                        return Err("Failed to map texture buffer".into());
+                    }
+                } else {
+                    return Err("Failed to read texture buffer".into());
+                };
+
+                let buffer = image::ImageBuffer::<Rgba<u8>, _>::from_raw(
+                    self.texture.size.width,
+                    self.texture.size.height,
+                    output_buffer_data,
+                )
+                .unwrap();
+
+                buffer.to_vec()
+            };
+
+            output_buffer.unmap();
+
+            Ok(rendered_image)
+        } else {
+            Err("No texture buffer available to copy from".into())
         }
     }
 }

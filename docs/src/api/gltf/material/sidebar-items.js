@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"enum":["AlphaMode"],"struct":["Material","NormalTexture","OcclusionTexture","PbrMetallicRoughness"]};
