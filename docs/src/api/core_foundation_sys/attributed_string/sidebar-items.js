@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"fn":["CFAttributedStringCreate","CFAttributedStringCreateMutable","CFAttributedStringCreateMutableCopy","CFAttributedStringGetLength","CFAttributedStringGetTypeID","CFAttributedStringReplaceString","CFAttributedStringSetAttribute"],"struct":["__CFAttributedString"],"type":["CFAttributedStringRef","CFMutableAttributedStringRef"]};

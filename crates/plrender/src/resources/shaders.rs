@@ -4,7 +4,7 @@ use naga_oil::compose::{
 use std::borrow::Cow;
 use std::collections::HashMap;
 
-// @TODO integrate the composer in a SceneObject
+// @TODO integrate the composer in an Object
 
 #[derive(Debug)]
 pub struct Shaders {
@@ -14,6 +14,7 @@ pub struct Shaders {
     pub copy_shader: Option<wgpu::ShaderModule>,
 }
 
+#[allow(dead_code)]
 impl Shaders {
     pub fn new(device: &wgpu::Device) -> Self {
         let mut composer = composer().expect("Couldn't create shader composer");

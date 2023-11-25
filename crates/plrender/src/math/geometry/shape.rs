@@ -3,6 +3,7 @@ use lyon::lyon_tessellation::*;
 
 type PositionBuilder = VertexBuffers<vertex::Position, u16>;
 
+#[derive(Debug, Clone, Default)]
 pub struct ShapeBuilder;
 
 fn fill_position(vertex: lyon::tessellation::FillVertex) -> vertex::Position {

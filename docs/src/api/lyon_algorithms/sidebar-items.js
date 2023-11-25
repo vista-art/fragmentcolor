@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"externcrate":["path"],"mod":["aabb","area","fit","hatching","hit_test","length","math","measure","raycast","rect","rounded_polygon","walk","winding"]};

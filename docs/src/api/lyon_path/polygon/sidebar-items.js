@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"struct":["IdPolygon","IdPolygonIter","PathEvents","Polygon","PolygonIdIter","PolygonIter"]};

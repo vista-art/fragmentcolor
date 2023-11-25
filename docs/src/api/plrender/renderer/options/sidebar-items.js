@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"static":["DEVICE_LIMITS","POWER_PREFERENCE"],"struct":["RenderOptions"]};

@@ -1,38 +1,37 @@
 use crate::{
-    app::{
-        error::{READ_LOCK_ERROR, WRITE_LOCK_ERROR},
-        Container,
-    },
-    components::Transform,
     math::{cg::Vec3, Quaternion},
+    scene::transform::LocalTransform,
     scene::{
-        node::{Node, NodeId},
-        SceneId, Scenes,
+        transform::{Transform, TransformId},
+        SceneId,
     },
-    PLRender,
+    IsHidden, SceneState, Vec2or3,
 };
 use std::{
     fmt::{Debug, Formatter},
     sync::{Arc, RwLock},
 };
 
-/// Defines an interface for Spatial SceneObjects.
+type Error = Box<dyn std::error::Error>;
+type SceneObjectPair = (SceneId, ObjectId);
+
+/// Defines an interface for Scene Objects.
 ///
-/// Spatial objects constructors must return a `SceneObject<Self>`.
+/// Scene objects constructors must return a `Object<Self>`.
 ///
-/// All Spatial Objects are associated with a Node and must have a
-/// Node Id. This trait provides methods for accessing its Node Id.
-pub trait SpatialObject: Default + hecs::Component + Copy {
-    /// Builds a SceneObject from this component.
-    fn new() -> SceneObject<Self> {
-        SceneObject::new(Self::default())
+/// All Scene Objects are associated with a Transform and must have a
+/// TransformId. This trait provides methods for accessing its TransformId.
+pub trait SceneObject: Default + hecs::Component + Copy + Debug {
+    /// Builds an Object from this component.
+    fn new() -> Object<Self> {
+        Object::new(Self::default())
     }
 
-    /// Returns the NodeId associated with this component.
-    fn node_id(&self) -> NodeId;
+    /// Returns the TransformId associated with this component.
+    fn transform_id(&self) -> TransformId;
 
-    /// Sets the NodeId associated with this component.
-    fn set_node_id(&mut self, node_id: NodeId);
+    /// Sets the TransformId associated with this component.
+    fn set_transform_id(&mut self, transform_id: TransformId);
 }
 
 pub type ObjectId = hecs::Entity;
@@ -56,95 +55,93 @@ impl Debug for ObjectBuilder {
     }
 }
 
-/// The SceneObject is the interface for manipulating Scene objects.
+/// The Object is the interface for manipulating Scene objects.
 ///
-/// A SceneObject is a wrapper around public API objects containing
+/// A Object is a wrapper around public API objects containing
 /// spatial information (position, rotation, orientation).
 ///
 /// It is the main intermediator between user commands and the Scene,
-/// and provides the object Transform API.
+/// and provides the object LocalTransform API.
 ///
 /// While PLRender is built around an Entity-Component-System (ECS)
 /// architecture, it does not expose the inner ECS interface to the
-/// user. The SceneObject converts it to a more intuitive, familiar
+/// user. The Object converts it to a more intuitive, familiar
 /// Object-Oriented approach.
 #[derive(Debug, Clone)]
-pub struct SceneObject<T: SpatialObject> {
-    pub(super) id: Option<ObjectId>,
-    pub(super) scene_id: Option<SceneId>,
-    pub(super) scenes: Arc<RwLock<Scenes>>,
-    pub(crate) builder: ObjectBuilder,
-    pub node: Node,
+pub struct Object<T: SceneObject> {
+    pub(super) ids: Option<SceneObjectPair>,
+    pub(super) builder: ObjectBuilder,
+    scene: Option<Arc<RwLock<SceneState>>>,
+    transform: Transform,
     batch: bool,
     object: T,
 }
 
-/// This is the interface between the Scene and the SceneObject.
+/// This is the interface between the Scene and the Object.
 ///
 /// Users are not supposed to use these methods directly,
 /// but they are free to design any object that implements
-/// this trait, so they can use custom types as SceneObjects.
-pub trait SceneObjectEntry {
-    fn node(&mut self) -> Node;
-    fn node_id(&self) -> NodeId;
-    fn builder(&mut self) -> &mut hecs::EntityBuilder;
+/// this trait, so they can use custom types as Objects.
+pub trait ObjectEntry {
     fn has_moved(&mut self) -> bool;
-    fn added_to_scene(&mut self, scene: SceneId, object_id: ObjectId);
-    fn removed_from_scene(&mut self, id: ObjectId);
-    fn added_to_scene_tree(&mut self, node_id: NodeId);
+    fn transform(&mut self) -> Transform;
+    fn transform_id(&self) -> TransformId;
+    fn builder(&mut self) -> &mut hecs::EntityBuilder;
+    fn added_to_scene(&mut self, ids: SceneObjectPair, scene: Arc<RwLock<SceneState>>);
+    fn added_to_scene_tree(&mut self, transform_id: TransformId);
+    fn removed_from_scene(&mut self, ids: SceneObjectPair);
 }
 
-impl<T: SpatialObject> SceneObjectEntry for SceneObject<T> {
-    fn node(&mut self) -> Node {
-        self.node.clone()
-    }
-
-    fn node_id(&self) -> NodeId {
-        self.object.node_id()
-    }
-
+impl<T: SceneObject> ObjectEntry for Object<T> {
     fn has_moved(&mut self) -> bool {
-        self.node.has_moved()
+        self.transform.has_moved()
+    }
+
+    fn transform(&mut self) -> Transform {
+        self.transform.clone()
+    }
+
+    fn transform_id(&self) -> TransformId {
+        self.object.transform_id()
     }
 
     fn builder(&mut self) -> &mut hecs::EntityBuilder {
         &mut self.builder.instance
     }
 
-    fn added_to_scene_tree(&mut self, node_id: NodeId) {
-        self.object.set_node_id(node_id)
+    fn added_to_scene_tree(&mut self, transform_id: TransformId) {
+        self.object.set_transform_id(transform_id)
     }
 
-    fn added_to_scene(&mut self, scene_id: SceneId, object_id: ObjectId) {
-        self.id = Some(object_id);
-        self.scene_id = Some(scene_id);
+    fn added_to_scene(&mut self, ids: SceneObjectPair, scene: Arc<RwLock<SceneState>>) {
+        self.ids = Some(ids);
+        self.scene = Some(scene);
     }
 
-    fn removed_from_scene(&mut self, object_id: ObjectId) {
-        if self.id == Some(object_id) {
-            self.id = None;
-            self.node = Node::root();
-            self.scene_id = None;
-            self.object.set_node_id(NodeId::root());
+    fn removed_from_scene(&mut self, ids: SceneObjectPair) {
+        let (scene_id, object_id) = ids;
+        if self.scene_id() == Some(scene_id) && self.id() == Some(object_id) {
+            self.ids = None;
+            self.scene = None;
+            self.transform = Transform::root();
+            self.object.set_transform_id(TransformId::root());
         } else {
             log::error!(
-                "Trying to remove ObjectId {} from SceneObject id {}",
-                object_id.id(),
-                self.id.unwrap().id()
+                "Trying to remove Ids ({:?}, {:?}) from {:?}",
+                scene_id,
+                object_id,
+                self.ids
             );
         }
     }
 }
 
-impl<T: SpatialObject> SceneObject<T> {
+impl<T: SceneObject> Object<T> {
     pub fn new(object: T) -> Self {
-        let app = PLRender::app().read().expect(READ_LOCK_ERROR);
-
-        let mut scene_object = SceneObject {
-            id: None,
-            node: Node::root(),
-            scene_id: None,
-            scenes: app.scenes(),
+        let mut scene_object = Object {
+            ids: None,
+            scene: None,
+            transform: Transform::root(),
             builder: ObjectBuilder::default(),
             batch: false,
             object,
@@ -155,86 +152,188 @@ impl<T: SpatialObject> SceneObject<T> {
         scene_object
     }
 
-    /// Returns the ObjectId of this Object if it has been added to a Scene.
+    /// Returns the ObjectId of this Object
+    /// if it has been added to a Scene.
     ///
     /// Otherwise, returns None.
     pub fn id(&self) -> Option<ObjectId> {
-        self.id
-    }
-
-    /// Updates the spatial data of the Scene's Node associated with this Object..
-    fn update_node_in_scene(&mut self) {
-        if let Some(scene_id) = self.scene_id {
-            let scenes = self.scenes.clone();
-            let mut scenes = scenes.write().expect(WRITE_LOCK_ERROR);
-
-            let scene = scenes.get_mut(&scene_id);
-            let mut scene = if let Some(scene) = scene {
-                scene
-            } else {
-                log::error!(
-                    "Scene not found! Cannot update the SceneObject<{:?}'s position, rotation or scale.",
-                    std::any::type_name::<T>(),
-                );
-                return;
-            };
-
-            scene.update_node(self.object.node_id(), self.node.clone())
+        if let Some((_, object_id)) = self.ids {
+            Some(object_id)
+        } else {
+            None
         }
     }
 
-    /// Sets the SceneObject to batch update mode.
+    /// Returns the SceneId of this Object
+    /// if it has been added to a Scene.
     ///
-    /// In batch mode, the SceneObject will not update the Scene's Node
+    /// Otherwise, returns None.
+    pub fn scene_id(&self) -> Option<SceneId> {
+        if let Some((scene_id, _)) = self.ids {
+            Some(scene_id)
+        } else {
+            None
+        }
+    }
+
+    /// Sets the Object to batch update mode.
+    ///
+    /// In batch mode, the Object will not update the Scene's Transform
     /// immediately on each change. It will cache the changes and apply
     /// them all at once when `.apply()` is called.
     pub fn batch(&mut self) {
         self.batch = true;
     }
 
-    /// Immediately updates the Scene's Node associated with this Object
-    /// if the object is not in batch mode.
-    fn update_node(&mut self) -> &mut Self {
-        if !self.batch {
-            self.update_node_in_scene();
-        }
-
-        self
-    }
-
     /// Turns off batch mode and applies all changes to the Scene.
     pub fn apply(&mut self) {
         self.batch = false;
-        self.update_node_in_scene();
+        self.update_transform_in_scene();
     }
 
-    /// Sets the NodeId of this Object
-    pub(crate) fn set_node_id(&mut self, node_id: NodeId) {
-        self.object.set_node_id(node_id);
-        self.add_component(self.object);
+    /// Adds or updates one Component in this Object.
+    ///
+    /// Alias to [`Object::upsert_component()`].
+    pub fn add_component<C: hecs::Component>(&mut self, component: C) -> &mut Self {
+        self.add_components((component,))
     }
 
-    /// Returns the SceneId and ObjectId associated with this Object
-    pub(crate) fn scene_object_tuple(&self) -> Option<(SceneId, ObjectId)> {
-        if let Some(scene_id) = self.scene_id {
-            if let Some(object_id) = self.id {
-                Some((scene_id, object_id))
+    /// Adds or updates a list of Components in this Object.
+    ///
+    /// Alias to [`Object::upsert_components()`].
+    pub fn add_components<B: hecs::DynamicBundle>(&mut self, bundle: B) -> &mut Self {
+        self.upsert_components(bundle)
+    }
+
+    /// Adds or updates one Component in this Object.
+    ///
+    /// Alias to [`Object::upsert_component()`].
+    pub fn update_component<C: hecs::Component>(&mut self, component: C) -> &mut Self {
+        self.update_components((component,))
+    }
+
+    /// Adds or updates a list of Components in this Object.
+    ///
+    /// Alias to [`Object::upsert_components()`].
+    pub fn update_components<B: hecs::DynamicBundle>(&mut self, bundle: B) -> &mut Self {
+        self.upsert_components(bundle)
+    }
+
+    /// Adds or updates one Component in this Object.
+    ///
+    /// If the Object already has a Component of the same type,
+    /// the old Component will be replaced by the new one.
+    pub fn upsert_component<C: hecs::Component>(&mut self, component: C) -> &mut Self {
+        self.upsert_components((component,))
+    }
+
+    /// Adds or Updates a Bundle of Components to this Object.
+    /// A Bundle is a struct which all properties are Components or a tuple of Components.
+    ///
+    /// Computational cost is proportional to the number of components entity has.
+    /// If an entity already has a component of a certain type, it is dropped and replaced.
+    pub fn upsert_components<B: hecs::DynamicBundle>(&mut self, bundle: B) -> &mut Self {
+        if let Ok((scene, object_id)) = self.scene_object_pair() {
+            if let Ok(mut scene) = scene.try_write() {
+                if let Err(error) = scene.insert(object_id, bundle) {
+                    log::error!(
+                        "{:?}: {:?} <{:?}> Cannot add or update component: Object not found!",
+                        error,
+                        object_id,
+                        std::any::type_name::<B>(),
+                    );
+                };
             } else {
+                log::error!(
+                    "Scene is locked! Cannot add or update component of {:?}.",
+                    object_id
+                );
+            }
+        } else {
+            self.builder.instance.add_bundle(bundle);
+        };
+        self
+    }
+
+    /// Removes one Component from this Object.
+    pub fn remove_component<C: hecs::Component>(&mut self) -> &mut Self {
+        self.remove_components::<(C,)>()
+    }
+
+    /// Removes a Bundle of Components from this Object.
+    /// A Bundle is a struct which all properties are Components or a tuple of Components.
+    ///
+    /// # Notes
+    /// - This method will only work for objects that have been already added to a Scene.
+    pub fn remove_components<B: hecs::Bundle + 'static>(&mut self) -> &mut Self {
+        if let Ok((scene, object_id)) = self.scene_object_pair() {
+            if let Ok(mut scene) = scene.try_write() {
+                if let Err(error) = scene.world.remove::<B>(object_id) {
+                    log::error!(
+                        "{:?}: {:?} <{:?}> Object not found!",
+                        error,
+                        object_id,
+                        std::any::type_name::<B>(),
+                    );
+                }
+            } else {
+                log::error!(
+                    "Scene is locked! Cannot remove Components of {:?}.",
+                    object_id
+                );
+            }
+        } else {
+            log::warn!("Cannot remove Components: Object not in Scene.")
+        };
+        self
+    }
+
+    /// Returns whether this Object has a Component.
+    pub fn has_component<C: hecs::Component>(&self) -> bool {
+        if let Ok((scene, object_id)) = self.scene_object_pair() {
+            if let Ok(scene) = scene.try_read() {
+                scene.world.get::<&C>(object_id).is_ok()
+            } else {
+                log::error!("Scene is locked! Cannot get component of {:?}.", object_id);
+                false
+            }
+        } else {
+            self.builder.instance.has::<&C>()
+        }
+    }
+
+    /// Returns an immutable reference to a Component from this Object.
+    pub fn read_component<C: hecs::Component + Copy>(&self) -> Option<C> {
+        if let Ok((scene, object_id)) = self.scene_object_pair() {
+            if let Ok(scene) = scene.try_read() {
+                if let Ok(result) = scene.world.get::<&C>(object_id) {
+                    Some(*result.clone())
+                } else {
+                    log::warn!(
+                        "Component {:?} not found in {:?}.",
+                        std::any::type_name::<C>(),
+                        self.ids,
+                    );
+                    None
+                }
+            } else {
+                log::error!("Scene is locked! Cannot get component of {:?}.", object_id);
                 None
             }
         } else {
-            None
+            let component = self.builder.instance.get::<&C>();
+            component.map(|c| c.clone())
         }
     }
 
     /// Returns a copy of the underlying object, either as a
-    /// registered Scene Component or in the temporary builder.
+    /// registered Scene Component or from the temporary builder.
     ///
-    /// Users who would like to update the object should
-    /// produce a new inner T for the SceneObject<T> and add
-    /// it as a component using `SceneObject::add_component()`.
+    /// Callers who would like to update the object should
+    /// produce a new instance T for the Object<T> and
+    /// add it as a component using `my_object.add_component()`.
     ///
-    /// The SceneObject<T> will then replace the object in the
+    /// The Object<T> will then replace the object in the
     /// Scene or in the temporary builder.
     ///
     /// # Examples:
@@ -243,11 +342,11 @@ impl<T: SpatialObject> SceneObject<T> {
     ///
     /// #[derive(Default, Clone, Copy)]
     /// struct MyComponent {
-    ///    pub node_id: NodeId,
+    ///    pub transform_id: TransformId,
     ///    pub my_data: u32,
     /// }
     ///
-    /// impl SceneObject<MyComponent> {
+    /// impl Object<MyComponent> {
     ///     pub fn set_my_custom_data(&mut self, new_data: u32) -> &mut Self {
     ///         let old_data = self.object();
     ///
@@ -260,153 +359,74 @@ impl<T: SpatialObject> SceneObject<T> {
     ///     }
     /// }
     /// ```
-    pub(crate) fn object(&mut self) -> T {
-        self.object = if let Some(object_id) = self.id {
-            let mut scenes = self.scenes.write().expect(WRITE_LOCK_ERROR);
-            let scene = if let Some(scene_id) = self.scene_id {
-                scenes.get_mut(&scene_id)
-            } else {
-                None
-            };
-
-            let mut scene = if let Some(scene) = scene {
-                scene
-            } else {
-                log::error!(
-                    "SceneObject<{:?}>: scene and object_id out of sync!
-                    Returning a default value.",
-                    std::any::type_name::<T>()
-                );
-                return T::default();
-            };
-
-            let object = if let Ok(object) = scene.world.query_one_mut::<&T>(object_id) {
-                object.clone()
-            } else {
-                log::error!(
-                    "The SceneObject<{:?}> {} does not own a component of type {:?}
-                    or does not exist in the Scene. Returning a default value.",
-                    std::any::type_name::<T>(),
-                    object_id.id(),
-                    std::any::type_name::<T>(),
-                );
-                T::default()
-            };
-
-            object
+    pub(crate) fn object(&self) -> T {
+        if let Ok((scene, object_id)) = self.scene_object_pair() {
+            self.get_object_from_scene(scene, object_id).clone()
         } else {
-            if let Some(object) = self.builder.instance.get::<&T>() {
-                object.clone()
-            } else {
-                log::error!(
-                    "The SceneObject<{:?}> does not own a component of type {:?}
-                    or did not initialize its Builder. Returning a default value.",
-                    std::any::type_name::<T>(),
-                    std::any::type_name::<T>(),
-                );
-                T::default()
-            }
-        };
-
-        self.object
-    }
-
-    pub fn add_component<C: hecs::Component>(&mut self, component: C) -> &mut Self {
-        self.add_components((component,))
-    }
-
-    pub fn add_components<B: hecs::DynamicBundle>(&mut self, bundle: B) -> &mut Self {
-        if let Some((scene_id, object_id)) = self.scene_object_tuple() {
-            let scenes = self.scenes.clone();
-            let mut scenes = scenes.write().expect(WRITE_LOCK_ERROR);
-
-            let scene = scenes.get_mut(&scene_id);
-            let mut scene = if let Some(scene) = scene {
-                scene
-            } else {
-                log::error!(
-                    "Scene not found! The component {:?} has not been added to SceneObject<{:?}>.",
-                    std::any::type_name::<B>(),
-                    std::any::type_name::<T>(),
-                );
-                return self;
-            };
-
-            let result = scene.insert(object_id, bundle);
-            match result {
-                Ok(_) => {}
-                Err(error) => log::error!(
-                    "The SceneObject<{:?}> (id {}) has not been found in the Scene {:?}: {}",
-                    std::any::type_name::<T>(),
-                    object_id.id(),
-                    scene.id(),
-                    error
-                ),
-            }
-        } else {
-            self.builder.instance.add_bundle(bundle);
+            self.get_object_from_builder().clone()
         }
-        self
     }
 
     // ------------------------------------------------------------------------
     // Getter and Setters for Parent ID
     // ------------------------------------------------------------------------
 
-    // @TODO return ObjectId instead in the public API
-    //       needs a reverse lookup in the Scene
-    //
-    /// Returns this Node's parent NodeId in the Scene tree.
-    pub fn parent(&self) -> NodeId {
-        self.node.parent
+    /// Returns this Object's parent TransformId in the Scene tree.
+    ///
+    /// # Notes:
+    /// It's currently not possible to get the parent Object directly.
+    /// This is a planned feature (requires reverse lookup in the scene).
+    pub fn parent(&self) -> TransformId {
+        self.transform.parent
     }
 
     /// Sets this Object's parent
-    pub fn set_parent(&mut self, parent: &impl SceneObjectEntry) -> &mut Self {
-        self.node.parent = parent.node_id();
-        self.update_node()
+    pub fn set_parent(&mut self, parent: &impl ObjectEntry) -> &mut Self {
+        self.transform.parent = parent.transform_id();
+        self.update_transform()
     }
 
-    /// Internal method to set this Object's parent NodeId
-    pub fn set_parent_node(&mut self, parent: NodeId) -> &mut Self {
-        self.node.parent = parent;
-        self.update_node()
+    /// Internal method to set this Object's parent TransformId
+    pub fn set_parent_transform(&mut self, parent: TransformId) -> &mut Self {
+        self.transform.parent = parent;
+        self.update_transform()
     }
 
     // ------------------------------------------------------------------------
-    // Getters for Local Transform
+    // Getters for Local LocalTransform
     // ------------------------------------------------------------------------
 
-    /// Returns this Node's local Transform Matrix.
-    pub fn local_transform(&self) -> Transform {
-        self.node.local.clone()
+    /// Returns this Object's local Transform Matrix.
+    pub fn local_transform(&self) -> LocalTransform {
+        self.transform.local.clone()
     }
 
-    /// Whether this Node has moved relative to its parent.
+    /// Whether this Object has moved relative to its parent.
     pub fn has_moved(&self) -> bool {
-        self.node.has_moved()
+        self.transform.has_moved()
     }
 
     // ------------------------------------------------------------------------
     // Getter and Setters for Position
     // ------------------------------------------------------------------------
 
-    /// Returns this Node's local position.
+    /// Returns this Object's local position.
     pub fn position(&self) -> Vec3 {
-        self.node.local.position.into()
+        self.transform.local.position.into()
     }
 
-    /// Sets this Node's local position.
+    /// Sets this Object's local position.
     ///
     /// This method simply overwrites the current position data.
-    pub fn set_position<V: Into<Vec3>>(&mut self, position: V) -> &mut Self {
-        self.node.local.position = position.into().into();
-        self.update_node()
+    pub fn set_position<V: Into<Vec2or3>>(&mut self, position: V) -> &mut Self {
+        let position: Vec3 = position.into().into();
+        self.transform.local.position = position.into();
+        self.update_transform()
     }
 
-    /// Moves this Node by the given offset.
+    /// Moves this Object by the given offset.
     ///
-    /// The Transformation is implemented as a simple Vec3 (offset) addition
+    /// The LocalTransformation is implemented as a simple Vec3 (offset) addition
     /// to the current Transform Matrix (M) position component:
     ///
     /// **M' = M.position + offset**
@@ -414,275 +434,285 @@ impl<T: SpatialObject> SceneObject<T> {
     /// This works for most use cases where users do not care about the
     /// order of transformations. If you need to apply the translation
     /// before any other transformation that has already been applied,
-    /// you can use `Node.pre_translate()` instead.
-    pub fn translate<V: Into<Vec3>>(&mut self, offset: V) -> &mut Self {
-        self.node.local.position += glam::Vec3::from(offset.into());
-        self.update_node()
+    /// you can use `Transform.pre_translate()` instead.
+    pub fn translate<V: Into<Vec2or3>>(&mut self, offset: V) -> &mut Self {
+        let offset: Vec3 = offset.into().into();
+        self.transform.local.position += glam::Vec3::from(offset);
+        self.update_transform()
     }
 
-    /// Moves this Node by the given offset.
+    /// Moves this Object by the given offset.
     ///
     /// This method creates a new Offset Transform Matrix (T) containing the
     /// offset vector and multiplies it with the current Transform Matrix (M):
     ///
     /// **M' = T(vec3) * M**
     ///
-    /// This is the equivalent of calling Node.translate() before
+    /// This is the equivalent of calling Transform.translate() before
     /// applying any other transformation.
     ///
     /// ## Learn more:
     /// <https://stackoverflow.com/questions/3855578>
-    pub fn pre_translate<V: Into<Vec3>>(&mut self, offset: V) -> &mut Self {
-        let other = Transform {
-            position: offset.into().into(),
+    pub fn pre_translate<V: Into<Vec2or3>>(&mut self, offset: V) -> &mut Self {
+        let offset: Vec3 = offset.into().into();
+        let other = LocalTransform {
+            position: offset.into(),
             scale: glam::Vec3::ONE,
             rotation: glam::Quat::IDENTITY,
         };
-        self.node.local = other.combine(&self.node.local);
-        self.update_node()
+        self.transform.local = other.combine(&self.transform.local);
+        self.update_transform()
     }
 
     // ------------------------------------------------------------------------
     // Getters and Setters for Rotation
     // ------------------------------------------------------------------------
 
-    /// This method is an alias to `Node.rotation_degrees()`.
+    /// This method is an alias to `Transform.rotation_degrees()`.
     ///
-    /// Returns a tuple of (Vec3, float32) representing the Node's
+    /// Returns a tuple of (Vec3, float32) representing the Transform's
     /// rotation axis (normalized) and angle (in degrees).
     ///
     /// ## See also:
-    /// - Use `Node.rotation_radians()` to work with Radians instead.
-    /// - Use `Node.rotation_quaternion()` to get a Quaternion
-    ///   representing the Node's rotation.
+    /// - Use `Transform.rotation_radians()` to work with Radians instead.
+    /// - Use `Transform.rotation_quaternion()` to get a Quaternion
+    ///   representing the Transform's rotation.
     pub fn rotation(&self) -> (Vec3, f32) {
         self.rotation_degrees()
     }
 
-    /// Returns a tuple of (Vec3, float32) representing the Node's
+    /// Returns a tuple of (Vec3, float32) representing the Transform's
     /// rotation axis (normalized) and angle (in degrees).
     ///
     /// ## See also:
-    /// - Use `Node.rotation_radians()` to work with Radians instead.
-    /// - Use `Node.rotation_quaternion()` to get a Quaternion
-    ///   representing the Node's rotation.
+    /// - Use `Transform.rotation_radians()` to work with Radians instead.
+    /// - Use `Transform.rotation_quaternion()` to get a Quaternion
+    ///   representing the Transform's rotation.
     pub fn rotation_degrees(&self) -> (Vec3, f32) {
-        let (axis, angle) = self.node.local.rotation.to_axis_angle();
+        let (axis, angle) = self.transform.local.rotation.to_axis_angle();
         (axis.into(), angle.to_degrees())
     }
 
-    /// Returns a tuple of (Vec3, float32) representing the Node's
+    /// Returns a tuple of (Vec3, float32) representing the Transform's
     /// rotation axis (normalized) and angle (in radians).
     ///
     /// ## See also:
-    /// - Use `Node.rotation_degrees()` to work with Degrees instead.
-    /// - Use `Node.rotation_quaternion()` to get a Quaternion
-    ///   representing the Node's rotation.
+    /// - Use `Transform.rotation_degrees()` to work with Degrees instead.
+    /// - Use `Transform.rotation_quaternion()` to get a Quaternion
+    ///   representing the Transform's rotation.
     pub fn rotation_radians(&self) -> (Vec3, f32) {
-        let (axis, angle) = self.node.local.rotation.to_axis_angle();
+        let (axis, angle) = self.transform.local.rotation.to_axis_angle();
         (axis.into(), angle)
     }
 
-    /// Returns the raw quaternion representing the Node's rotation.
+    /// Returns the raw quaternion representing the Transform's rotation.
     ///
     /// ## See also:
-    /// - Use `Node.rotation_degrees()` to work with Degrees.
-    /// - Use `Node.rotation_radians()` to work with Radians.
+    /// - Use `Transform.rotation_degrees()` to work with Degrees.
+    /// - Use `Transform.rotation_radians()` to work with Radians.
     pub fn rotation_quaternion(&self) -> Quaternion {
-        self.node.local.rotation.into()
+        self.transform.local.rotation.into()
     }
 
-    /// This method is an alias to `Node.set_rotation_degrees()`.
+    /// This method is an alias to `Transform.set_rotation_degrees()`.
     ///
-    /// Sets the Node's rotation (in degrees), overwriting the current rotation.
+    /// Sets the Transform's rotation (in degrees), overwriting the current rotation.
     ///
     /// ## See also:
-    /// - Use `Node.set_rotation_radians()` to work with Radians instead.
-    /// - Use `Node.set_rotation_quaternion()` to overwrite the rotation using a Quaternion.
-    /// - Use `Node.rotate()` to rotate the Node by an angle relative to its current rotation.
-    pub fn set_rotation<V: Into<Vec3>>(&mut self, axis: V, degrees: f32) -> &mut Self {
+    /// - Use `Transform.set_rotation_radians()` to work with Radians instead.
+    /// - Use `Transform.set_rotation_quaternion()` to overwrite the rotation using a Quaternion.
+    /// - Use `Transform.rotate()` to rotate the Transform by an angle relative to its current rotation.
+    pub fn set_rotation<V: Into<Vec2or3>>(&mut self, axis: V, degrees: f32) -> &mut Self {
         self.set_rotation_degrees(axis, degrees)
     }
 
-    /// Sets the Node's rotation (in degrees), overwriting the current rotation.
+    /// Sets the Transform's rotation (in degrees), overwriting the current rotation.
     ///
     /// ## See also:
-    /// - Use `Node.set_rotation_radians()` to work with Radians instead.
-    /// - Use `Node.set_rotation_quaternion()` to overwrite the rotation using a Quaternion.
-    /// - Use `Node.rotate()` to rotate the Node by an angle relative to its current rotation.
-    pub fn set_rotation_degrees<V: Into<Vec3>>(&mut self, axis: V, degrees: f32) -> &mut Self {
-        self.node.local.rotation =
-            glam::Quat::from_axis_angle(axis.into().into(), degrees.to_radians());
-        self.update_node()
+    /// - Use `Transform.set_rotation_radians()` to work with Radians instead.
+    /// - Use `Transform.set_rotation_quaternion()` to overwrite the rotation using a Quaternion.
+    /// - Use `Transform.rotate()` to rotate the Transform by an angle relative to its current rotation.
+    pub fn set_rotation_degrees<V: Into<Vec2or3>>(&mut self, axis: V, degrees: f32) -> &mut Self {
+        let axis: Vec3 = axis.into().into();
+        self.transform.local.rotation =
+            glam::Quat::from_axis_angle(axis.into(), degrees.to_radians());
+        self.update_transform()
     }
 
-    /// Sets the Node's rotation (in radians), overwriting the current rotation.
+    /// Sets the Transform's rotation (in radians), overwriting the current rotation.
     ///
     /// ## See also:
-    /// - Use `Node.set_rotation_degrees()` to work with Degrees instead.
-    /// - Use `Node.set_rotation_quaternion()` to overwrite the rotation using a Quaternion.
-    /// - Use `Node.rotate_radians()` to rotate the Node by an angle relative to its current rotation.
-    pub fn set_rotation_radians<V: Into<Vec3>>(&mut self, axis: V, radians: f32) -> &mut Self {
-        self.node.local.rotation = glam::Quat::from_axis_angle(axis.into().into(), radians);
-        self.update_node()
+    /// - Use `Transform.set_rotation_degrees()` to work with Degrees instead.
+    /// - Use `Transform.set_rotation_quaternion()` to overwrite the rotation using a Quaternion.
+    /// - Use `Transform.rotate_radians()` to rotate the Transform by an angle relative to its current rotation.
+    pub fn set_rotation_radians<V: Into<Vec2or3>>(&mut self, axis: V, radians: f32) -> &mut Self {
+        let axis: Vec3 = axis.into().into();
+        self.transform.local.rotation = glam::Quat::from_axis_angle(axis.into(), radians);
+        self.update_transform()
     }
 
-    /// Sets the Node's rotation using a Quaternion, overwriting the current rotation.
+    /// Sets the Transform's rotation using a Quaternion, overwriting the current rotation.
     ///
     /// ## See also:
-    /// - Use `Node.set_rotation_degrees()` to work with Degrees.
-    /// - Use `Node.set_rotation_radians()` to work with Radians.
-    /// - Use `Node.rotate()` to rotate the Node by an angle relative to its current rotation.
+    /// - Use `Transform.set_rotation_degrees()` to work with Degrees.
+    /// - Use `Transform.set_rotation_radians()` to work with Radians.
+    /// - Use `Transform.rotate()` to rotate the Transform by an angle relative to its current rotation.
     pub fn set_rotation_quaternion<Q: Into<Quaternion>>(&mut self, quat: Q) -> &mut Self {
-        self.node.local.rotation = quat.into().into();
-        self.update_node()
+        self.transform.local.rotation = quat.into().into();
+        self.update_transform()
     }
 
-    /// This method is an alias to `Node.rotate_degrees()`.
+    /// This method is an alias to `Transform.rotate_degrees()`.
     ///
-    /// Rotates the Node by the given angle (in degrees) relative to its current rotation.
+    /// Rotates the Transform by the given angle (in degrees) relative to its current rotation.
     ///
     /// The transformation (R) is applied as a multiplication of the given rotation
-    /// by the `rotation` property of the current Transform matrix (M):
+    /// by the `rotation` property of the current LocalTransform matrix (M):
     /// **M' = M * R(degrees)**
     ///
     /// If you need to apply the rotation before any other transformation, you
-    /// can use `Node.pre_rotate()` to set the rotation as the first operand.
+    /// can use `Transform.pre_rotate()` to set the rotation as the first operand.
     ///
     /// ## See also:
-    /// - Use `Node.rotate_radians()` to work with Radians instead.
-    /// - Use `Node.set_rotation()` to overwrite the rotation using an axis and angle.
-    /// - Use `Node.set_rotation_quaternion()` to overwrite the rotation using a Quaternion.
-    pub fn rotate<V: Into<Vec3>>(&mut self, axis: V, degrees: f32) -> &mut Self {
+    /// - Use `Transform.rotate_radians()` to work with Radians instead.
+    /// - Use `Transform.set_rotation()` to overwrite the rotation using an axis and angle.
+    /// - Use `Transform.set_rotation_quaternion()` to overwrite the rotation using a Quaternion.
+    pub fn rotate<V: Into<Vec2or3>>(&mut self, axis: V, degrees: f32) -> &mut Self {
+        let axis: Vec3 = axis.into().into();
         self.rotate_degrees(axis, degrees)
     }
 
-    /// Rotates the Node by the given angle (in degrees) relative to its current rotation.
+    /// Rotates the Transform by the given angle (in degrees) relative to its current rotation.
     ///
     /// The transformation (R) is applied as a multiplication of the given rotation
-    /// by the `rotation` property of the current Transform matrix (M):
+    /// by the `rotation` property of the current LocalTransform matrix (M):
     /// **M' = M * R(degrees)**
     ///
     /// If you need to apply the rotation before any other transformation, you can
-    /// use `Node.pre_rotate_degrees()` to set the rotation as the first operand.
+    /// use `Transform.pre_rotate_degrees()` to set the rotation as the first operand.
     ///
     /// ## See also:
-    /// - Use `Node.rotate_radians()` to work with Radians instead.
-    /// - Use `Node.set_rotation()` to overwrite the rotation using an axis and angle.
-    /// - Use `Node.set_rotation_quaternion()` to overwrite the rotation using a Quaternion.
-    pub fn rotate_degrees<V: Into<Vec3>>(&mut self, axis: V, degrees: f32) -> &mut Self {
-        self.node.local.rotation = self.node.local.rotation
-            * glam::Quat::from_axis_angle(axis.into().into(), degrees.to_radians());
+    /// - Use `Transform.rotate_radians()` to work with Radians instead.
+    /// - Use `Transform.set_rotation()` to overwrite the rotation using an axis and angle.
+    /// - Use `Transform.set_rotation_quaternion()` to overwrite the rotation using a Quaternion.
+    pub fn rotate_degrees<V: Into<Vec2or3>>(&mut self, axis: V, degrees: f32) -> &mut Self {
+        let axis: Vec3 = axis.into().into();
+        self.transform.local.rotation = self.transform.local.rotation
+            * glam::Quat::from_axis_angle(axis.into(), degrees.to_radians());
 
-        self.update_node()
+        self.update_transform()
     }
 
-    /// Rotates the Node by the given angle (in radians) relative to its current rotation.
+    /// Rotates the Transform by the given angle (in radians) relative to its current rotation.
     ///
     /// The transformation (R) is applied as a multiplication of the given rotation
-    /// by the `rotation` property of the current Transform matrix (M):
+    /// by the `rotation` property of the current LocalTransform matrix (M):
     /// **M' = M * R(degrees)**
     ///
     /// If you need to apply the rotation before any other transformation, you can
-    /// use `Node.pre_rotate_radians()` to set the rotation as the first operand.
+    /// use `Transform.pre_rotate_radians()` to set the rotation as the first operand.
     ///
     /// ## See also:
-    /// - Use `Node.rotate()` or `Node.rotate_degrees()` to work with Degrees instead.
-    /// - Use `Node.set_rotation()` to overwrite the rotation using an axis and angle.
-    /// - Use `Node.set_rotation_quaternion()` to overwrite the rotation using a Quaternion.
-    pub fn rotate_radians<V: Into<Vec3>>(&mut self, axis: V, radians: f32) -> &mut Self {
-        self.node.local.rotation =
-            self.node.local.rotation * glam::Quat::from_axis_angle(axis.into().into(), radians);
+    /// - Use `Transform.rotate()` or `Transform.rotate_degrees()` to work with Degrees instead.
+    /// - Use `Transform.set_rotation()` to overwrite the rotation using an axis and angle.
+    /// - Use `Transform.set_rotation_quaternion()` to overwrite the rotation using a Quaternion.
+    pub fn rotate_radians<V: Into<Vec2or3>>(&mut self, axis: V, radians: f32) -> &mut Self {
+        let axis: Vec3 = axis.into().into();
+        self.transform.local.rotation =
+            self.transform.local.rotation * glam::Quat::from_axis_angle(axis.into(), radians);
 
-        self.update_node()
+        self.update_transform()
     }
 
-    /// This method is an alias to `Node.pre_rotate_degrees()`.
+    /// This method is an alias to `Transform.pre_rotate_degrees()`.
     ///
-    /// Rotates the Node by the given angle (in degrees) relative to its current rotation.
+    /// Rotates the Transform by the given angle (in degrees) relative to its current rotation.
     ///
-    /// This method creates a new Transform matrix containing the desired rotation and
-    /// multiplies it with the current Transform matrix. The Rotation Transform (R)
-    /// comes before the current Transform (M) in the order of operands:
+    /// This method creates a new LocalTransform matrix containing the desired rotation and
+    /// multiplies it with the current LocalTransform matrix. The Rotation LocalTransform (R)
+    /// comes before the current LocalTransform (M) in the order of operands:
     /// **M' = R(degrees) * M**
     ///
-    /// This is the equivalent of calling Node.rotate()
+    /// This is the equivalent of calling Transform.rotate()
     /// before applying any other transformation.
     ///
     /// ## Learn more:
     /// <https://stackoverflow.com/questions/3855578>
-    pub fn pre_rotate<V: Into<Vec3>>(&mut self, axis: V, degrees: f32) -> &mut Self {
-        let other = Transform {
+    pub fn pre_rotate<V: Into<Vec2or3>>(&mut self, axis: V, degrees: f32) -> &mut Self {
+        let axis: Vec3 = axis.into().into();
+        let other = LocalTransform {
             position: glam::Vec3::ZERO,
             scale: glam::Vec3::ONE,
-            rotation: glam::Quat::from_axis_angle(axis.into().into(), degrees.to_radians()),
+            rotation: glam::Quat::from_axis_angle(axis.into(), degrees.to_radians()),
         };
-        self.node.local = other.combine(&self.node.local);
+        self.transform.local = other.combine(&self.transform.local);
 
-        self.update_node()
+        self.update_transform()
     }
 
-    /// Rotates the Node by the given angle (in degrees) relative to its current rotation.
+    /// Rotates the Transform by the given angle (in degrees) relative to its current rotation.
     ///
-    /// This method creates a new Transform matrix containing the desired rotation and
-    /// multiplies it with the current Transform matrix. The Rotation Transform (R)
-    /// comes before the current Transform (M) in the order of operands:
+    /// This method creates a new LocalTransform matrix containing the desired rotation and
+    /// multiplies it with the current LocalTransform matrix. The Rotation LocalTransform (R)
+    /// comes before the current LocalTransform (M) in the order of operands:
     /// **M' = R(degrees) * M**
     ///
-    /// This is the equivalent of calling Node.rotate()
+    /// This is the equivalent of calling Transform.rotate()
     /// before applying any other transformation.
     ///
     /// ## Learn more:
     /// <https://stackoverflow.com/questions/3855578>
-    pub fn pre_rotate_degrees<V: Into<Vec3>>(&mut self, axis: V, degrees: f32) -> &mut Self {
-        let other = Transform {
+    pub fn pre_rotate_degrees<V: Into<Vec2or3>>(&mut self, axis: V, degrees: f32) -> &mut Self {
+        let axis: Vec3 = axis.into().into();
+        let other = LocalTransform {
             position: glam::Vec3::ZERO,
             scale: glam::Vec3::ONE,
-            rotation: glam::Quat::from_axis_angle(axis.into().into(), degrees.to_radians()),
+            rotation: glam::Quat::from_axis_angle(axis.into(), degrees.to_radians()),
         };
-        self.node.local = other.combine(&self.node.local);
+        self.transform.local = other.combine(&self.transform.local);
 
-        self.update_node()
+        self.update_transform()
     }
 
-    /// Rotates the Node by the given angle (in radians) relative to its current rotation.
+    /// Rotates the Transform by the given angle (in radians) relative to its current rotation.
     ///
-    /// This method creates a new Transform matrix containing the desired rotation and
-    /// multiplies it with the current Transform matrix. The Rotation Transform (R)
-    /// comes before the current Transform (M) in the order of operands:
+    /// This method creates a new LocalTransform matrix containing the desired rotation and
+    /// multiplies it with the current LocalTransform matrix. The Rotation LocalTransform (R)
+    /// comes before the current LocalTransform (M) in the order of operands:
     /// **M' = R(degrees) * M**
     ///
-    /// This is the equivalent of calling Node.rotate()
+    /// This is the equivalent of calling Transform.rotate()
     /// before applying any other transformation.
     ///
     /// ## Learn more:
     /// <https://stackoverflow.com/questions/3855578>
-    pub fn pre_rotate_radians<V: Into<Vec3>>(&mut self, axis: V, radians: f32) -> &mut Self {
-        let other = Transform {
+    pub fn pre_rotate_radians<V: Into<Vec2or3>>(&mut self, axis: V, radians: f32) -> &mut Self {
+        let axis: Vec3 = axis.into().into();
+        let other = LocalTransform {
             position: glam::Vec3::ZERO,
             scale: glam::Vec3::ONE,
-            rotation: glam::Quat::from_axis_angle(axis.into().into(), radians),
+            rotation: glam::Quat::from_axis_angle(axis.into(), radians),
         };
-        self.node.local = other.combine(&self.node.local);
+        self.transform.local = other.combine(&self.transform.local);
 
-        self.update_node()
+        self.update_transform()
     }
 
-    /// Sets the Node's rotation so that it faces the given target.
-    pub fn look_at<V: Into<Vec3>>(&mut self, target: V, up: V) -> &mut Self {
-        let affine = glam::Affine3A::look_at_rh(
-            self.node.local.position,
-            target.into().into(),
-            up.into().into(),
-        );
+    /// Sets the Transform's rotation so that it faces the given target.
+    pub fn look_at<V: Into<Vec2or3>>(&mut self, target: V, up: V) -> &mut Self {
+        let up: Vec3 = up.into().into();
+        let target: Vec3 = target.into().into();
+        let affine =
+            glam::Affine3A::look_at_rh(self.transform.local.position, target.into(), up.into());
         let (_, rotation, _) = affine.inverse().to_scale_rotation_translation();
-        self.node.local.rotation = rotation;
+        self.transform.local.rotation = rotation;
 
-        self.update_node()
+        self.update_transform()
     }
 
-    /// Sets the Node's rotation to look at (0, 0, 0)
-    pub fn look_at_origin<V: Into<Vec3>>(&mut self, up: V) -> &mut Self {
+    /// Sets the Transform's rotation to look at (0, 0, 0)
+    pub fn look_at_origin<V: Into<Vec2or3>>(&mut self, up: V) -> &mut Self {
+        let up: Vec3 = up.into().into();
         let origin = Vec3 {
             x: 0.0,
             y: 0.0,
@@ -695,15 +725,123 @@ impl<T: SpatialObject> SceneObject<T> {
     // Getters and Setters for Scale
     // ------------------------------------------------------------------------
 
-    /// Returns the Node's local scale
+    /// Returns the Transform's local scale
     pub fn scale(&self) -> Vec3 {
-        self.node.local.scale.into()
+        self.transform.local.scale.into()
     }
 
-    /// Sets the Node's local scale
-    pub fn set_scale<S: Into<Vec3>>(&mut self, scale: S) -> &mut Self {
-        self.node.local.scale = scale.into().into();
+    /// Sets the Transform's local scale
+    pub fn set_scale<S: Into<Vec2or3>>(&mut self, scale: S) -> &mut Self {
+        let scale: Vec3 = scale.into().into();
+        self.transform.local.scale = scale.into();
 
-        self.update_node()
+        self.update_transform()
+    }
+
+    /// Hides this Object from the Scene.
+    pub fn hide(&mut self) {
+        self.add_component(IsHidden);
+    }
+
+    /// Shows this Object in the Scene.
+    pub fn show(&mut self) {
+        self.remove_component::<IsHidden>();
+    }
+
+    //
+    //
+    // ------------------------------------------------------------------------
+    // Internal methods
+    // ------------------------------------------------------------------------
+
+    /// Immediately updates the Scene's Transform associated with this Object
+    /// if the object is not in batch mode.
+    fn update_transform(&mut self) -> &mut Self {
+        if !self.batch {
+            self.update_transform_in_scene();
+        }
+
+        self
+    }
+
+    /// Updates the Scene's Transform associated with this Object.
+    fn update_transform_in_scene(&self) {
+        if let Ok((scene, _)) = self.scene_object_pair() {
+            if let Ok(mut scene) = scene.try_write() {
+                scene.update_transform(self.object.transform_id(), self.transform.clone())
+            } else {
+                log::error!("{:?}: Could not write to Scene State.", self.ids);
+            }
+        };
+    }
+
+    /// Convenience method to return a pair of Scene and Object Ids.
+    ///
+    /// This is needed while Rust does not support `&&` conditions in
+    /// `if let Some(..)` pattern:
+    /// https://github.com/rust-lang/rust/issues/53667
+    fn scene_object_pair(&self) -> Result<(Arc<RwLock<SceneState>>, ObjectId), Error> {
+        if let Some(scene) = self.scene.clone() {
+            if let Some(object_id) = self.id() {
+                Ok((scene, object_id))
+            } else {
+                log::error!("{:?}: Object does not have an Id.", self.ids);
+                Err("Object does not have an Id".into())
+            }
+        } else {
+            Err("Object is not added to a Scene".into())
+        }
+    }
+
+    /// Used by the `object()` method.
+    /// Returns a copy of the underlying object from the Scene or creates a defult one.
+    fn get_object_from_scene(&self, scene: Arc<RwLock<SceneState>>, object_id: ObjectId) -> T {
+        if let Ok(scene) = scene.try_read() {
+            if let Ok(mut query) = scene.world.query_one::<&T>(object_id) {
+                if let Some(object) = query.get() {
+                    object.clone()
+                } else {
+                    log::error!(
+                        "{:?} <{:?}> Object not in Scene! Returning a default object.",
+                        self.ids,
+                        std::any::type_name::<T>(),
+                    );
+                    T::default()
+                }
+            } else {
+                log::error!(
+                    "{:?} <{:?}> Object does not own a component of type {:?}
+                    or does not exist in the Scene. Returning a default object.",
+                    self.ids,
+                    std::any::type_name::<T>(),
+                    std::any::type_name::<T>(),
+                );
+                T::default()
+            }
+        } else {
+            log::error!(
+                "{:?} <{:?}> Could not read Scene State. Returning a default object.",
+                self.ids,
+                std::any::type_name::<T>(),
+            );
+            T::default()
+        }
+    }
+
+    /// Used by the `object()` method.
+    /// Returns a copy of the underlying object from the temporary builder or creates a defult one.
+    fn get_object_from_builder(&self) -> T {
+        if let Some(object) = self.builder.instance.get::<&T>() {
+            object.clone()
+        } else {
+            log::error!(
+                "{:?} <{:?}> Object does not own a component of type {:?}
+                or did not initialize its Builder. Returning a default object.",
+                self.ids,
+                std::any::type_name::<T>(),
+                std::any::type_name::<T>(),
+            );
+            T::default()
+        }
     }
 }

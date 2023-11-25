@@ -1,7 +1,7 @@
 use crate::{
     components::Color,
     scene::macros::spatial_object,
-    scene::{node::NodeId, SceneObject},
+    scene::{transform::TransformId, Object},
 };
 
 #[derive(Clone, Copy, Debug)]
@@ -21,7 +21,7 @@ pub struct Light {
     pub color: Color,
     pub intensity: f32,
     pub variant: LightType,
-    pub(crate) node_id: NodeId,
+    pub(crate) transform_id: TransformId,
 }
 
 spatial_object!(Light);
@@ -33,7 +33,7 @@ pub struct LightOptions {
     pub variant: LightType,
 }
 
-impl SceneObject<Light> {
+impl Object<Light> {
     pub fn set_intensity(&mut self, intensity: f32) -> &mut Self {
         let light = self.object();
         self.add_component(Light { intensity, ..light });
@@ -50,9 +50,9 @@ impl SceneObject<Light> {
 }
 
 impl Light {
-    pub fn new(options: LightOptions) -> SceneObject<Self> {
-        SceneObject::new(Light {
-            node_id: NodeId::root(),
+    pub fn new(options: LightOptions) -> Object<Self> {
+        Object::new(Light {
+            transform_id: TransformId::root(),
             color: options.color,
             intensity: options.intensity,
             variant: options.variant,

@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"struct":["CastingIter","F32","U16","U8"],"trait":["Cast"]};

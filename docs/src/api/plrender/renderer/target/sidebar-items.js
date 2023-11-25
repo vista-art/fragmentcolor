@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"enum":["Target","TargetId"],"struct":["Frame","RenderTargetDescription","Targets","TextureTarget","WindowTarget"],"trait":["Dimensions","RenderTarget","RenderTargetCollection"],"type":["RenderedFrames"]};

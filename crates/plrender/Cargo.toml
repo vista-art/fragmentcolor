@@ -4,7 +4,7 @@ description = "Multiplatform GPU Rendering API for Javascript, Python and Beyond
 repository = "https://gitlab.com/pupil-labs/pupil-cloud/pl-render"
 authors = ["Pupil Labs GmbH"]
 license-file = "LICENCE.md"
-version = "0.7.3-rc"
+version = "0.8.0"
 rust-version = "1.70"
 edition = "2021"
 
@@ -20,7 +20,7 @@ assets = ["obj", "gltf"]
 
 [dependencies]
 # Rendering
-wgpu = { version="0.18", features=["expose-ids", "glsl", "wgsl", "naga"] }
+wgpu = { version="0.18", features=["expose-ids", "glsl", "wgsl", "naga", "webgl"] }
 
 # Scene graph (Entity Component System)
 hecs = { version = "0.10", features=["macros"] }
@@ -55,6 +55,9 @@ pollster = "0.3"
 # Tesselation
 lyon = { version = "1", optional = true }
 
+# Text rendering
+wgpu_text = "0.8"
+
 # Time
 instant = "0.1"
 
@@ -67,6 +70,17 @@ image = { version = "0.24", default-features = false, features = ["jpeg", "png",
 gltf = { version = "1", features = ["names", "utils", "KHR_lights_punctual"], optional = true }
 obj = { version = "0.10", optional = true }
 ddsfile = "0.5"
+
+# Sync
+futures-intrusive = "0.5"
+
+# Utils
+derive_setters = "0.1"
+
+# WASM-Specific
+[target.'cfg(target_family = "wasm")'.dependencies]
+console_log = "1.0"
+console_error_panic_hook = { version = "0.1.7" }
 
 [build-dependencies]
 cfg_aliases = "0.1"

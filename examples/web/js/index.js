@@ -68,18 +68,18 @@ let target = scene.addTarget({
 });
 
 // A Renderer draws a scene to one or multiple targets
-const renderer = new Renderer({
-  // optional: defaults to empty array []
-  // supports: plrender.Target, QuerySelector, CanvasElement, OffscreenCanvas
-  // if a plrender.Target is not explicitly passed, the renderer will create one
-  targets: [target],
+// const renderer = new Renderer({
+//   // optional: defaults to empty array []
+//   // supports: plrender.Target, QuerySelector, CanvasElement, OffscreenCanvas
+//   // if a plrender.Target is not explicitly passed, the renderer will create one
+//   targets: [target],
 
-  log_level: "info", // or 'trace', 'debug', 'warn', 'error'
+//   log_level: "info", // or 'trace', 'debug', 'warn', 'error'
 
-  power_preference: "high-performance", // or 'low-power', 'no-preference'
+//   power_preference: "high-performance", // or 'low-power', 'no-preference'
 
-  force_software_rendering: false,
-});
+//   force_software_rendering: false,
+// });
 
 // or:
 // renderer.addTarget(target);

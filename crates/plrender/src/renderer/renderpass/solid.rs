@@ -2,7 +2,8 @@ use crate::{
     components,
     math::geometry::{Position, Vertex},
     renderer::{
-        target::{Dimensions, RenderTarget, RenderTargetCollection},
+        renderpass::buffer,
+        target::{Dimensions, IsRenderTarget, RenderTargetCollection},
         RenderContext, RenderPass, RenderPassResult, Renderer,
     },
     scene::SceneState,
@@ -47,19 +48,19 @@ impl Default for SolidConfig {
     }
 }
 
-pub struct Solid<'r> {
+pub(crate) struct Solid<'r> {
     renderer: &'r Renderer,
     depth_texture: Option<(wgpu::TextureView, wgpu::Extent3d)>,
     global_uniform_buf: wgpu::Buffer,
     global_bind_group: wgpu::BindGroup,
     local_bind_group_layout: wgpu::BindGroupLayout,
     local_bind_groups: FxHashMap<LocalKey, wgpu::BindGroup>,
-    uniform_pool: super::BufferPool,
+    uniform_pool: buffer::BufferPool,
     pipeline: wgpu::RenderPipeline,
 }
 
 impl<'r> Solid<'r> {
-    pub fn new(config: &SolidConfig, renderer: &'r Renderer) -> Self {
+    pub(crate) fn new(config: &SolidConfig, renderer: &'r Renderer) -> Self {
         let d = renderer.device();
         let shader_module = d.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("solid"),
@@ -118,6 +119,8 @@ impl<'r> Solid<'r> {
 
         let targets = &renderer
             .read_targets()
+            // @TODO I MEAN IT!!! Remove tech debt (global search "TECH DEBT")
+            .expect("TECH DEBT: Avoid panics!!!")
             .all()
             .map(|target| {
                 Some(wgpu::ColorTargetState {
@@ -167,7 +170,7 @@ impl<'r> Solid<'r> {
             global_bind_group,
             local_bind_group_layout: local_bgl,
             local_bind_groups: Default::default(),
-            uniform_pool: super::BufferPool::uniform("solid locals", d),
+            uniform_pool: buffer::BufferPool::uniform("solid locals", d),
             pipeline,
         }
     }
@@ -177,8 +180,14 @@ impl<'r> RenderPass for Solid<'r> {
     fn draw(&mut self, scene: RwLockReadGuard<'_, SceneState>) -> RenderPassResult {
         let renderer = self.renderer;
         let device = renderer.device();
-        let resources = renderer.read_resources();
-        let targets = renderer.read_targets();
+        let resources = renderer
+            .read_resources()
+            // @TODO I MEAN IT!!! Remove tech debt (global search "TECH DEBT")
+            .expect("TECH DEBT: Drop frame; Avoid panics!!!");
+        let targets = renderer
+            .read_targets()
+            // @TODO I MEAN IT!!! Remove tech debt (global search "TECH DEBT")
+            .expect("TECH DEBT: Drop frame; Avoid panics!!!");
 
         // @TODO!
 
@@ -204,30 +213,6 @@ impl<'r> RenderPass for Solid<'r> {
 
                 let target = target.unwrap();
 
-                // @TODO those things should be cached; not calculated every frame
-                //       invalidate on screen resize
-                if !camera_target.clip_region.equals(target.size()) {
-                    //if camera_target.clip_region.is_smaller_than(target.size().to_wgpu_size()) {
-
-                    // I don't expect to enter here.
-                    //
-                    // This is not a priority, but the current logic won't work
-                    // for multiple viewports in the same window.
-                    //
-                    // @TODO is this target targeted by multiple cameras?
-                    //
-                    //       - if this is the only camera rendering to it fullscreen,
-                    //         we'll proceed as usual. (this is the expected use case for now).
-                    //
-                    //       - if this is not the only camera, we need to cache the results
-                    //         and start a new pass with LoadOp::Load instead of "Clear"
-                    log::warn!(
-                        "Camera {:?} is targeting a target {:?} with a different size.",
-                        object_id,
-                        camera_target.target_id
-                    );
-                }
-
                 let reset_depth = match self.depth_texture {
                     Some((_, size)) => size != target.size().to_wgpu_size(),
                     None => true,
@@ -249,13 +234,13 @@ impl<'r> RenderPass for Solid<'r> {
                     self.depth_texture = Some((view, target.size().to_wgpu_size()));
                 }
 
-                let nodes = scene.get_global_transforms();
+                let transforms = scene.calculate_global_transforms();
                 self.uniform_pool.reset();
                 let queue = renderer.queue();
 
                 {
                     let m_proj = camera.projection_matrix(target.aspect());
-                    let m_view_inv = nodes[camera.node_id].inverse_matrix();
+                    let m_view_inv = transforms[camera.transform_id].inverse_matrix();
                     let m_final = glam::Mat4::from(m_proj) * glam::Mat4::from(m_view_inv);
                     let globals = Globals {
                         view_proj: m_final.to_cols_array_2d(),
@@ -330,7 +315,7 @@ impl<'r> RenderPass for Solid<'r> {
                         .with::<&Vertex<Position>>()
                         .iter()
                     {
-                        let local = &nodes[entity.node_id];
+                        let local = &transforms[entity.transform_id];
                         let locals = Locals {
                             position: local.position,
                             scale: local.scale,

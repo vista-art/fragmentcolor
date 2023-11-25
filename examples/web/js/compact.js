@@ -3,7 +3,7 @@ import load_wasm, { Scene, Circle, Sprite } from "../pkg/plrender.js";
 await load_wasm();
 
 const scene = new Scene();
-scene.renderTo("#outputCanvas");
+scene.addTarget("#outputCanvas");
 
 const background = Sprite({ source: "#video" });
 scene.add(background);

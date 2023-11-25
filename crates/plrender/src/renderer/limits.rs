@@ -1,8 +1,5 @@
 //! This file contains static copies of wgpu's Limits struct,
 //! because we can't call its methods from our options' static map.
-//!
-//! NOTE: While this is unlikely to change, it's a good idea to check the
-//! upstream implementation from time to time to make sure this is up to date.
 
 /// Limits::downlevel_defaults(). This is a set of limits that is guaranteed
 /// to work on almost all backends, including "downlevel" backends such as

@@ -1,25 +1,54 @@
 use std::path::Path;
 
 use crate::{
-    app,
     math::geometry::Quad,
-    resources::texture::{Texture, TextureId},
-    scene::{macros::spatial_object, node::NodeId, SceneObject},
+    resources::texture::{Texture, TextureId, DEFAULT_IMAGE_SIZE},
+    scene::{macros::spatial_object, transform::TransformId, Object},
+    Border, Bounds, Color, Renderable2D, ShapeFlag,
 };
-
-const DEFAULT_IMAGE: &str = "resources/images/default.jpg";
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct Sprite {
-    pub image: Option<TextureId>,
+    pub image: TextureId, // this is the only thing a Sprite should care about.
+    pub image_size: Quad,
     pub clip_region: Option<Quad>,
-    pub(crate) node_id: NodeId,
+    pub(crate) transform_id: TransformId,
 }
 
 spatial_object!(Sprite);
 
-impl SceneObject<Sprite> {
-    pub fn set_uv(&mut self, clip_region: Quad) -> &mut Self {
+impl Object<Sprite> {
+    pub fn load_image(&mut self, image_path: impl AsRef<Path>) -> &mut Self {
+        let (image, size) = Sprite::load_image(image_path);
+        self.set_texture(image, size)
+    }
+
+    pub fn set_image(&mut self, bytes: &[u8]) -> &mut Self {
+        if let Ok((image, size)) = Texture::from_bytes(bytes) {
+            self.set_texture(image, size)
+        } else {
+            log::warn!("Sprite::set_image() failed to parse Image bytes! Image will not update.");
+            return self;
+        }
+    }
+
+    fn set_texture(&mut self, image: TextureId, texture_size: Quad) -> &mut Self {
+        let sprite = self.object();
+        let bounds = sprite.clip_region.unwrap_or(texture_size);
+
+        self.add_components((
+            Sprite {
+                image,
+                image_size: texture_size,
+                ..sprite
+            },
+            Bounds(bounds),
+        ));
+
+        self
+    }
+
+    pub fn set_clip_region(&mut self, clip_region: Quad) -> &mut Self {
         let sprite = self.object();
 
         self.add_component(Sprite {
@@ -30,66 +59,52 @@ impl SceneObject<Sprite> {
         self
     }
 
-    pub fn set_image(&mut self, image: TextureId) -> &mut Self {
-        let sprite = self.object();
-
-        self.add_component(Sprite {
-            image: Some(image),
-            ..sprite
-        });
-
-        self
+    pub fn image(&self) -> TextureId {
+        self.object().image
     }
 
-    pub fn clear_image(&mut self) -> &mut Self {
-        let sprite = self.object();
-
-        self.add_component(Sprite {
-            image: None,
-            ..sprite
-        });
-
-        self
+    pub fn clip_region(&self) -> Option<Quad> {
+        self.object().clip_region
     }
 }
 
 impl Sprite {
-    pub fn new(image_path: impl AsRef<Path>) -> SceneObject<Sprite> {
-        let texture_id = Self::load_image(image_path);
-        Self::from_texture_id(texture_id)
-    }
+    pub fn new(image_path: impl AsRef<Path>) -> Object<Sprite> {
+        let (texture_id, texture_size) = Self::load_image(image_path);
 
-    pub fn from_texture_id(texture_id: TextureId) -> SceneObject<Sprite> {
-        SceneObject::new(Sprite {
-            node_id: NodeId::root(),
-            image: Some(texture_id),
+        let mut sprite = Object::new(Self {
+            image: texture_id,
+            image_size: texture_size,
             clip_region: None,
-        })
-    }
+            transform_id: TransformId::default(),
+        });
 
-    pub fn with_clip_region(
-        image_path: impl AsRef<Path>,
-        clip_region: Quad,
-    ) -> SceneObject<Sprite> {
-        let texture_id = Self::load_image(image_path);
-        SceneObject::new(Sprite {
-            node_id: NodeId::root(),
+        // Sprite bounds is clip region or image size
+        let bounds = sprite.clip_region().unwrap_or(texture_size);
+
+        sprite.add_components(Renderable2D {
+            bounds: Bounds(bounds),
             image: Some(texture_id),
-            clip_region: Some(clip_region),
-        })
+            color: Color(0x00000000),
+            border: Border(0.0),
+            sdf_flags: ShapeFlag(0.0),
+        });
+
+        sprite
     }
 
-    fn load_image(path: impl AsRef<Path>) -> TextureId {
-        // @TODO set root path in the build.rs file
-        let default = format!("{}/src/{}", app::ROOT, DEFAULT_IMAGE);
-        let full_path = format!("{}{}", app::ROOT, path.as_ref().display());
+    pub fn load_image(path: impl AsRef<Path>) -> (TextureId, Quad) {
+        let path = path.as_ref();
 
-        if let Ok(texture_id) = Texture::from_file(path) {
-            texture_id
-        } else if let Ok(texture_id) = Texture::from_file(full_path) {
-            texture_id
+        if let Ok((texture_id, size)) = Texture::from_file(path) {
+            (texture_id, size)
         } else {
-            Texture::from_file(default).expect("Default image not found!")
+            log::warn!("Image {:?} not found! Using default image.", path);
+            Self::load_default_image()
         }
+    }
+
+    fn load_default_image() -> (TextureId, Quad) {
+        (TextureId::default(), Quad::from_tuple(DEFAULT_IMAGE_SIZE))
     }
 }

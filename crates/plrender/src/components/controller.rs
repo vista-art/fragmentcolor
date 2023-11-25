@@ -1,4 +1,4 @@
-use crate::scene::node::Node;
+use crate::scene::transform::Transform;
 use winit::event::{ElementState, KeyboardInput, VirtualKeyCode, WindowEvent};
 
 #[derive(Debug)]
@@ -53,41 +53,41 @@ impl Controller {
         }
     }
 
-    pub fn update_position(&self, _node: &mut Node) {
+    pub fn update_transform(&self, _transform: &mut Transform) {
         todo!();
 
         // @TODO uncomment and implement.
-        //       This came from the old code that uses CGMatch.
+        //       This came from the old code that uses CGMath.
         //       I have to convert it to glam and make it generic
         //       (i.e.) not specific to a camera
 
-        // let forward = node.target - node.eye;
+        // let forward = transform.target - transform.eye;
         // let forward_norm = forward.normalize();
         // let forward_mag = forward.magnitude();
 
-        // // Prevents glitching when node gets too close to the
+        // // Prevents glitching when transform gets too close to the
         // // center of the scene.
         // if self.is_forward_pressed && forward_mag > self.speed {
-        //     node.eye += forward_norm * self.speed;
+        //     transform.eye += forward_norm * self.speed;
         // }
         // if self.is_backward_pressed {
-        //     node.eye -= forward_norm * self.speed;
+        //     transform.eye -= forward_norm * self.speed;
         // }
 
-        // let right = forward_norm.cross(node.up);
+        // let right = forward_norm.cross(transform.up);
 
         // // Redo radius calc in case the fowrard/backward is pressed.
-        // let forward = node.target - node.eye;
+        // let forward = transform.target - transform.eye;
         // let forward_mag = forward.magnitude();
 
         // if self.is_right_pressed {
         //     // Rescale the distance between the target and eye so
         //     // that it doesn't change. The eye therefore still
         //     // lies on the circle made by the target and eye.
-        //     node.eye = node.target - (forward + right * self.speed).normalize() * forward_mag;
+        //     transform.eye = transform.target - (forward + right * self.speed).normalize() * forward_mag;
         // }
         // if self.is_left_pressed {
-        //     node.eye = node.target - (forward - right * self.speed).normalize() * forward_mag;
+        //     transform.eye = transform.target - (forward - right * self.speed).normalize() * forward_mag;
         // }
     }
 }

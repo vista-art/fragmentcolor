@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"fn":["CFMachPortCreateRunLoopSource","CFMachPortGetTypeID"],"struct":["__CFMachPort"],"type":["CFMachPortRef"]};

@@ -1,4 +1,6 @@
-//! Multiplatform GPU Rendering API for Javascript, Python and Beyond
+//! # PLRender
+//!
+//! ## Multiplatform GPU Rendering API for Javascript, Python and Beyond
 
 /// # PLRender Application Module
 ///
@@ -12,17 +14,17 @@
 pub mod app;
 
 /// # The Components Collection.
-/// 
+///
 /// This is the module that users will play with more frequently.
 ///
-/// 
-/// 
+///
+///
 /// Typically, users do not need to use the components directly,
-/// but rather use the `SceneObject` struct, which is a wrapper
+/// but rather use the `Object` struct, which is a wrapper
 /// around spatial components which can be added to a Scene.
 ///
 /// Types of Components:
-/// - SceneObject (spatial components)
+/// - Object (spatial components)
 ///     - Sprite
 ///     - Shape
 ///     - Mesh
@@ -30,10 +32,24 @@ pub mod app;
 /// - Marker components
 pub mod components;
 
-
+/// # Math Module
+///
+/// This module contains the math types and functions used by the library.
 pub mod math;
+
+/// # Renderer module.
+///
+/// This module contains the renderer and its related types.
+/// Users do not need to use it directly.
+///
+/// A Global Renderer is lazily instanced by the App module
+/// when the user creates the first Window or Web Canvas.
 pub mod renderer;
+
+/// # Resources Module
 pub mod resources;
+
+/// # Scene Graph Module
 pub mod scene;
 
 pub use app::*;

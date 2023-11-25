@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"enum":["Interpolation","Property"],"mod":["iter","util"],"struct":["Animation","Channel","Reader","Sampler","Target"]};

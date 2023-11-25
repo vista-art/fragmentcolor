@@ -47,3 +47,54 @@ pub const UP_VECTOR: Vec3 = Vec3 {
     y: 0.0,
     z: 1.0,
 };
+
+pub enum Vec2or3 {
+    Vec2(Vec2),
+    Vec3(Vec3),
+}
+
+impl From<Vec2> for Vec2or3 {
+    fn from(v: Vec2) -> Self {
+        Self::Vec2(v)
+    }
+}
+
+impl From<Vec3> for Vec2or3 {
+    fn from(v: Vec3) -> Self {
+        Self::Vec3(v)
+    }
+}
+
+impl Into<Vec2> for Vec2or3 {
+    fn into(self) -> Vec2 {
+        match self {
+            Self::Vec2(v) => v,
+            Self::Vec3(v) => Vec2 { x: v.x, y: v.y },
+        }
+    }
+}
+
+impl Into<Vec3> for Vec2or3 {
+    fn into(self) -> Vec3 {
+        match self {
+            Self::Vec2(v) => Vec3 {
+                x: v.x,
+                y: v.y,
+                z: 0.0,
+            },
+            Self::Vec3(v) => v,
+        }
+    }
+}
+
+impl Into<Vec2or3> for [f32; 2] {
+    fn into(self) -> Vec2or3 {
+        Vec2or3::Vec2(self.into())
+    }
+}
+
+impl Into<Vec2or3> for [f32; 3] {
+    fn into(self) -> Vec2or3 {
+        Vec2or3::Vec3(self.into())
+    }
+}

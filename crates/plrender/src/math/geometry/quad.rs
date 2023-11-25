@@ -1,22 +1,44 @@
+use crate::Vec4;
+use crate::{components::Color, Vec2};
 use serde::{Deserialize, Serialize};
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub struct Quad {
-    pub x_min: u32,
-    pub y_min: u32,
-    pub x_max: u32,
-    pub y_max: u32,
+    pub min_x: u32,
+    pub min_y: u32,
+    pub max_x: u32,
+    pub max_y: u32,
 }
 
 impl Default for Quad {
     fn default() -> Self {
         Self {
-            x_min: 0,
-            y_min: 0,
-            x_max: 1,
-            y_max: 1,
+            min_x: 0,
+            min_y: 0,
+            max_x: 1,
+            max_y: 1,
         }
     }
+}
+
+impl Ord for Quad {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.area().cmp(&other.area())
+    }
+}
+
+#[derive(Debug)]
+pub struct QuadVertex<'x, X = QuadVertexExtra> {
+    pub tex_coords: Quad,
+    pub pixel_coords: Quad,
+    pub bounds: Quad,
+    pub extra: &'x X,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct QuadVertexExtra {
+    pub color: Color,
+    pub z: f32,
 }
 
 // Adapted from Ruffle's PixelRegion
@@ -27,10 +49,10 @@ impl Quad {
         let (min, max) = ((a.0.min(b.0), a.1.min(b.1)), (a.0.max(b.0), a.1.max(b.1)));
 
         Self {
-            x_min: min.0.max(0) as u32,
-            y_min: min.1.max(0) as u32,
-            x_max: max.0.max(0) as u32,
-            y_max: max.1.max(0) as u32,
+            min_x: min.0.max(0) as u32,
+            min_y: min.1.max(0) as u32,
+            max_x: max.0.max(0) as u32,
+            max_y: max.1.max(0) as u32,
         }
     }
 
@@ -40,21 +62,25 @@ impl Quad {
         let (min, max) = ((a.0.min(b.0), a.1.min(b.1)), (a.0.max(b.0), a.1.max(b.1)));
 
         Self {
-            x_min: min.0,
-            y_min: min.1,
-            x_max: max.0,
-            y_max: max.1,
+            min_x: min.0,
+            min_y: min.1,
+            max_x: max.0,
+            max_y: max.1,
         }
     }
 
-    pub fn encompassing_pixels_i32(a: (i32, i32), b: (i32, i32)) -> Self {
-        Self::encompassing_pixels(
+    pub fn from_tuples_i32(a: (i32, i32), b: (i32, i32)) -> Self {
+        Self::from_tuples(
             (a.0.max(0) as u32, a.1.max(0) as u32),
             (b.0.max(0) as u32, b.1.max(0) as u32),
         )
     }
 
-    pub fn encompassing_pixels(a: (u32, u32), b: (u32, u32)) -> Self {
+    pub fn from_tuple(size: (u32, u32)) -> Self {
+        Self::from_tuples((0, 0), size)
+    }
+
+    pub fn from_tuples(a: (u32, u32), b: (u32, u32)) -> Self {
         // Figure out what our two ranges are
         let (min, max) = ((a.0.min(b.0), a.1.min(b.1)), (a.0.max(b.0), a.1.max(b.1)));
 
@@ -62,33 +88,46 @@ impl Quad {
         let max = (max.0.saturating_add(1), max.1.saturating_add(1));
 
         Self {
-            x_min: min.0,
-            y_min: min.1,
-            x_max: max.0,
-            y_max: max.1,
+            min_x: min.0,
+            min_y: min.1,
+            max_x: max.0,
+            max_y: max.1,
         }
+    }
+
+    pub fn from_arrays_i32(a: [i32; 2], b: [i32; 2]) -> Self {
+        Self::from_tuples_i32((a[0], a[1]), (b[0], b[1]))
     }
 
     pub fn to_range(&self) -> std::ops::Range<mint::Point2<i32>> {
         let begin = mint::Point2 {
-            x: self.x_min as i32,
-            y: self.y_min as i32,
+            x: self.min_x as i32,
+            y: self.min_y as i32,
         };
 
         let end = mint::Point2 {
-            x: self.x_max as i32,
-            y: self.y_max as i32,
+            x: self.max_x as i32,
+            y: self.max_y as i32,
         };
 
         begin..end
     }
 
+    pub fn to_array(&self) -> [f32; 4] {
+        [
+            self.min_x as f32,
+            self.min_y as f32,
+            self.max_x as f32,
+            self.max_y as f32,
+        ]
+    }
+
     pub fn from_wgpu_size(size: wgpu::Extent3d) -> Self {
         Self {
-            x_min: 0,
-            y_min: 0,
-            x_max: size.width,
-            y_max: size.height,
+            min_x: 0,
+            min_y: 0,
+            max_x: size.width,
+            max_y: size.height,
         }
     }
 
@@ -102,70 +141,91 @@ impl Quad {
 
     pub fn from_window_size(size: &winit::dpi::PhysicalSize<u32>) -> Self {
         Self {
-            x_min: 0,
-            y_min: 0,
-            x_max: size.width,
-            y_max: size.height,
+            min_x: 0,
+            min_y: 0,
+            max_x: size.width,
+            max_y: size.height,
         }
     }
 
     pub fn from_window_logical_size(size: &winit::dpi::LogicalSize<u32>) -> Self {
         Self {
-            x_min: 0,
-            y_min: 0,
-            x_max: size.width,
-            y_max: size.height,
+            min_x: 0,
+            min_y: 0,
+            max_x: size.width,
+            max_y: size.height,
         }
     }
 
-    pub fn from_dimensions(width: u32, height: u32) -> Self {
+    pub fn from_size(width: u32, height: u32) -> Self {
         Self {
-            x_min: 0,
-            y_min: 0,
-            x_max: width,
-            y_max: height,
+            min_x: 0,
+            min_y: 0,
+            max_x: width,
+            max_y: height,
+        }
+    }
+
+    pub fn from_size_f32(width: f32, height: f32) -> Self {
+        Self {
+            min_x: 0,
+            min_y: 0,
+            max_x: width as u32,
+            max_y: height as u32,
         }
     }
 
     pub fn from_pixel(x: u32, y: u32) -> Self {
         Self {
-            x_min: x,
-            y_min: y,
-            x_max: x + 1,
-            y_max: y + 1,
+            min_x: x,
+            min_y: y,
+            max_x: x + 1,
+            max_y: y + 1,
         }
     }
 
     pub fn clamp(&mut self, width: u32, height: u32) {
-        self.x_min = self.x_min.min(width);
-        self.y_min = self.y_min.min(height);
-        self.x_max = self.x_max.min(width);
-        self.y_max = self.y_max.min(height);
+        self.min_x = self.min_x.min(width);
+        self.min_y = self.min_y.min(height);
+        self.max_x = self.max_x.min(width);
+        self.max_y = self.max_y.min(height);
     }
 
     pub fn union(&mut self, other: Quad) {
-        self.x_min = self.x_min.min(other.x_min);
-        self.y_min = self.y_min.min(other.y_min);
-        self.x_max = self.x_max.max(other.x_max);
-        self.y_max = self.y_max.max(other.y_max);
+        self.min_x = self.min_x.min(other.min_x);
+        self.min_y = self.min_y.min(other.min_y);
+        self.max_x = self.max_x.max(other.max_x);
+        self.max_y = self.max_y.max(other.max_y);
     }
 
     pub fn encompass(&mut self, x: u32, y: u32) {
-        self.x_min = self.x_min.min(x);
-        self.y_min = self.y_min.min(y);
-        self.x_max = self.x_max.max(x + 1);
-        self.y_max = self.y_max.max(y + 1);
+        self.min_x = self.min_x.min(x);
+        self.min_y = self.min_y.min(y);
+        self.max_x = self.max_x.max(x + 1);
+        self.max_y = self.max_y.max(y + 1);
     }
 
     pub fn intersects(&self, other: Quad) -> bool {
-        self.x_min <= other.x_max
-            && self.x_max >= other.x_min
-            && self.y_min <= other.y_max
-            && self.y_max >= other.y_min
+        self.min_x <= other.max_x
+            && self.max_x >= other.min_x
+            && self.min_y <= other.max_y
+            && self.max_y >= other.min_y
     }
 
     pub fn area(&self) -> u32 {
         self.width() * self.height()
+    }
+
+    pub fn antialias_factor(&self) -> f32 {
+        2.0 / self.smaller_side() as f32
+    }
+
+    pub fn smaller_side(&self) -> u32 {
+        self.width().min(self.height())
+    }
+
+    pub fn larger_side(&self) -> u32 {
+        self.width().max(self.height())
     }
 
     pub fn is_larger_than(&self, other: Quad) -> bool {
@@ -177,18 +237,26 @@ impl Quad {
     }
 
     pub fn equals(&self, other: Quad) -> bool {
-        self.x_min == other.x_min
-            && self.y_min == other.y_min
-            && self.x_max == other.x_max
-            && self.y_max == other.y_max
+        self.min_x == other.min_x
+            && self.min_y == other.min_y
+            && self.max_x == other.max_x
+            && self.max_y == other.max_y
     }
 
     pub fn width(&self) -> u32 {
-        u32::abs_diff(self.x_max, self.x_min)
+        u32::abs_diff(self.max_x, self.min_x)
     }
 
     pub fn height(&self) -> u32 {
-        u32::abs_diff(self.y_max, self.y_min)
+        u32::abs_diff(self.max_y, self.min_y)
+    }
+
+    pub fn width_f32(&self) -> f32 {
+        self.width() as f32
+    }
+
+    pub fn height_f32(&self) -> f32 {
+        self.height() as f32
     }
 
     pub fn half_width(&self) -> u32 {
@@ -207,6 +275,25 @@ impl Quad {
         self.height() as f32 / 2.0
     }
 
+    pub fn outbound_radius(&self) -> f32 {
+        let width = self.half_width_f32() as f32;
+        let height = self.half_height_f32() as f32;
+        (width * width + height * height).sqrt()
+    }
+
+    pub fn inbound_radius(&self) -> f32 {
+        self.half_width_f32().min(self.half_height_f32())
+    }
+
+    pub fn from_inbound_radius(radius: f32) -> Self {
+        Self {
+            min_x: 0,
+            min_y: 0,
+            max_x: (radius * 2.0) as u32,
+            max_y: (radius * 2.0) as u32,
+        }
+    }
+
     pub fn aspect(&self) -> f32 {
         if self.height() == 0 {
             return 0.0;
@@ -216,15 +303,31 @@ impl Quad {
 
     pub fn pixel_center(&self) -> (u32, u32) {
         (
-            self.x_min + self.half_width(),
-            self.y_min + self.half_height(),
+            self.min_x + self.half_width(),
+            self.min_y + self.half_height(),
         )
     }
 
-    pub fn center_f32(&self) -> mint::Vector2<f32> {
-        mint::Vector2 {
-            x: self.x_min as f32 + self.width() as f32 / 2.0,
-            y: self.y_min as f32 + self.height() as f32 / 2.0,
+    pub fn to_vec2(&self) -> Vec2 {
+        Vec2 {
+            x: self.width() as f32,
+            y: self.height() as f32,
+        }
+    }
+
+    pub fn to_vec4(&self) -> Vec4 {
+        Vec4 {
+            x: self.min_x as f32,
+            y: self.min_y as f32,
+            z: self.max_x as f32,
+            w: self.max_y as f32,
+        }
+    }
+
+    pub fn center_f32(&self) -> Vec2 {
+        Vec2 {
+            x: self.min_x as f32 + self.width() as f32 / 2.0,
+            y: self.min_y as f32 + self.height() as f32 / 2.0,
         }
     }
 
@@ -252,16 +355,16 @@ impl Quad {
         // Translate both regions to same coordinate system.
 
         let r1 = (
-            self.x_min as i32,
-            self.y_min as i32,
-            self.x_max as i32,
-            self.y_max as i32,
+            self.min_x as i32,
+            self.min_y as i32,
+            self.max_x as i32,
+            self.max_y as i32,
         );
         let r2 = (
-            other.x_min as i32,
-            other.y_min as i32,
-            other.x_max as i32,
-            other.y_max as i32,
+            other.min_x as i32,
+            other.min_y as i32,
+            other.max_x as i32,
+            other.max_y as i32,
         );
 
         let r1_trans = translate_region(r1, (-self_point.0, -self_point.1));
@@ -288,52 +391,52 @@ impl Quad {
 
         // Mutate.
 
-        self.x_min = r1_result.0 as u32;
-        self.y_min = r1_result.1 as u32;
-        self.x_max = r1_result.2 as u32;
-        self.y_max = r1_result.3 as u32;
+        self.min_x = r1_result.0 as u32;
+        self.min_y = r1_result.1 as u32;
+        self.max_x = r1_result.2 as u32;
+        self.max_y = r1_result.3 as u32;
 
-        other.x_min = r2_result.0 as u32;
-        other.y_min = r2_result.1 as u32;
-        other.x_max = r2_result.2 as u32;
-        other.y_max = r2_result.3 as u32;
+        other.min_x = r2_result.0 as u32;
+        other.min_y = r2_result.1 as u32;
+        other.max_x = r2_result.2 as u32;
+        other.max_y = r2_result.3 as u32;
     }
 }
 
 #[inline]
 fn intersection_same_coordinate_system(
-    (r1_x_min, r1_y_min, r1_x_max, r1_y_max): (i32, i32, i32, i32),
-    (r2_x_min, r2_y_min, r2_x_max, r2_y_max): (i32, i32, i32, i32),
+    (r1_min_x, r1_min_y, r1_max_x, r1_max_y): (i32, i32, i32, i32),
+    (r2_min_x, r2_min_y, r2_max_x, r2_max_y): (i32, i32, i32, i32),
 ) -> (i32, i32, i32, i32) {
     // To guard against 'min' being larger than 'max'.
-    let r1_x_min = r1_x_min.min(r1_x_max);
-    let r1_y_min = r1_y_min.min(r1_y_max);
-    let r2_x_min = r2_x_min.min(r2_x_max);
-    let r2_y_min = r2_y_min.min(r2_y_max);
+    let r1_min_x = r1_min_x.min(r1_max_x);
+    let r1_min_y = r1_min_y.min(r1_max_y);
+    let r2_min_x = r2_min_x.min(r2_max_x);
+    let r2_min_y = r2_min_y.min(r2_max_y);
 
     // First part of intersection.
-    let r3_x_min = r1_x_min.max(r2_x_min);
-    let r3_y_min = r1_y_min.max(r2_y_min);
-    let r3_x_max = r1_x_max.min(r2_x_max);
-    let r3_y_max = r1_y_max.min(r2_y_max);
+    let r3_min_x = r1_min_x.max(r2_min_x);
+    let r3_min_y = r1_min_y.max(r2_min_y);
+    let r3_max_x = r1_max_x.min(r2_max_x);
+    let r3_max_y = r1_max_y.min(r2_max_y);
 
     // In case of no overlap.
-    let r3_x_min = r3_x_min.min(r3_x_max);
-    let r3_y_min = r3_y_min.min(r3_y_max);
+    let r3_min_x = r3_min_x.min(r3_max_x);
+    let r3_min_y = r3_min_y.min(r3_max_y);
 
-    (r3_x_min, r3_y_min, r3_x_max, r3_y_max)
+    (r3_min_x, r3_min_y, r3_max_x, r3_max_y)
 }
 
 #[inline]
 fn translate_region(
-    (r_x_min, r_y_min, r_x_max, r_y_max): (i32, i32, i32, i32),
+    (r_min_x, r_min_y, r_max_x, r_max_y): (i32, i32, i32, i32),
     (trans_x, trans_y): (i32, i32),
 ) -> (i32, i32, i32, i32) {
     (
-        r_x_min + trans_x,
-        r_y_min + trans_y,
-        r_x_max + trans_x,
-        r_y_max + trans_y,
+        r_min_x + trans_x,
+        r_min_y + trans_y,
+        r_max_x + trans_x,
+        r_max_y + trans_y,
     )
 }
 
@@ -359,8 +462,8 @@ mod tests {
         }
 
         test(
-            Quad::from_dimensions(10, 10),
-            Quad::from_dimensions(10, 10),
+            Quad::from_size(10, 10),
+            Quad::from_size(10, 10),
             (0, 0),
             (0, 0),
             (5, 5),
@@ -369,8 +472,8 @@ mod tests {
         );
 
         test(
-            Quad::from_dimensions(10, 10),
-            Quad::from_dimensions(150, 150),
+            Quad::from_size(10, 10),
+            Quad::from_size(150, 150),
             (-1, -1),
             (100, 100),
             (5, 5),
@@ -379,8 +482,8 @@ mod tests {
         );
 
         test(
-            Quad::from_dimensions(10, 10),
-            Quad::from_dimensions(150, 150),
+            Quad::from_size(10, 10),
+            Quad::from_size(150, 150),
             (-1, -1),
             (100, 100),
             (15, 15),
@@ -390,7 +493,7 @@ mod tests {
 
         test(
             Quad::from_region(10, 10, 20, 20),
-            Quad::from_dimensions(150, 150),
+            Quad::from_size(150, 150),
             (15, 5),
             (0, 0),
             (15, 15),
@@ -399,8 +502,8 @@ mod tests {
         );
 
         test(
-            Quad::from_dimensions(800, 600),
-            Quad::from_dimensions(200, 40),
+            Quad::from_size(800, 600),
+            Quad::from_size(200, 40),
             (400, 440),
             (40, 0),
             (40, 40),
@@ -409,8 +512,8 @@ mod tests {
         );
 
         test(
-            Quad::from_dimensions(240, 180),
-            Quad::from_dimensions(238, 164),
+            Quad::from_size(240, 180),
+            Quad::from_size(238, 164),
             (-1, 0),
             (0, 0),
             (240, 180),
@@ -419,8 +522,8 @@ mod tests {
         );
 
         test(
-            Quad::from_dimensions(10, 10),
-            Quad::from_dimensions(10, 10),
+            Quad::from_size(10, 10),
+            Quad::from_size(10, 10),
             (15, 0),
             (0, 15),
             (100, 100),

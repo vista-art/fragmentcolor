@@ -4,14 +4,17 @@ use crate::{
 };
 use std::{iter, path::Path};
 
+type Error = Box<dyn std::error::Error>;
+
 /// Load entities from Wavefront Obj format.
+#[allow(dead_code)]
 pub fn load_obj(
     path: impl AsRef<Path>,
     scene: &mut scene::Scene,
-    node: scene::node::NodeId,
-) -> fxhash::FxHashMap<String, crate::ObjectId> {
-    let mut obj = obj::Obj::load(path).unwrap();
-    obj.load_mtls().unwrap();
+    transform: scene::transform::TransformId,
+) -> Result<fxhash::FxHashMap<String, crate::ObjectId>, Error> {
+    let mut obj = obj::Obj::load(path)?;
+    obj.load_mtls()?;
 
     let mut entities = fxhash::FxHashMap::default();
     let mut positions = Vec::new();
@@ -48,10 +51,10 @@ pub fn load_obj(
             if !normals.is_empty() {
                 mesh_builder.vertex(&normals);
             }
-            let built_mesh = mesh_builder.build();
+            let built_mesh = mesh_builder.build().ok();
 
-            let mut mesh = Mesh::new(&built_mesh);
-            mesh.set_parent_node(node);
+            let mut mesh = Mesh::new(built_mesh);
+            mesh.set_parent_transform(transform);
 
             log::info!(
                 "\tmaterial {} with {} positions and {} normals",
@@ -83,5 +86,5 @@ pub fn load_obj(
         }
     }
 
-    entities
+    Ok(entities)
 }

@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"enum":["MtlError","MtlMissingType","ObjError","ObjMaterial"],"struct":["Group","IndexTuple","LoadConfig","Material","Mtl","MtlLibsLoadError","Obj","ObjData","Object","SimplePolygon"]};

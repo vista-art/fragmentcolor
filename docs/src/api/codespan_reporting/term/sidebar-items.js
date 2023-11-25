@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"enum":["DisplayStyle"],"fn":["emit"],"struct":["Chars","ColorArg","Config","Styles"]};

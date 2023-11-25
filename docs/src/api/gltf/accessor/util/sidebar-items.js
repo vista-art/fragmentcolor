@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"enum":["Iter","SparseIndicesIter"],"struct":["ItemIter","SparseIter"],"trait":["Item"]};

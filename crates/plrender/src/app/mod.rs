@@ -34,13 +34,10 @@ pub mod commands;
 /// user calls `get` or `get_mut` respectively.
 ///
 /// This is an internal module, API users do not need to use it directly.
-pub(crate) mod container;
+pub mod container;
 
 /// Handy internal macro to implement the `Container` trait for a type.
-pub(crate) mod macros;
-
-/// Defines internal Error strings.
-pub(crate) mod error;
+pub(super) mod macros;
 
 /// Event Loop module.
 ///
@@ -77,7 +74,6 @@ pub mod window;
 pub use app::*;
 pub use commands::*;
 pub use container::*;
-pub use event_loop::*;
 pub use events::*;
 pub use meta::*;
 pub use window::*;

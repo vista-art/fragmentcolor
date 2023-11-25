@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"enum":["QueueAttribute","QueuePriority"],"mod":["ffi"],"struct":["Group","GroupGuard","Once","Queue","Semaphore","SemaphoreGuard","SuspendGuard","WaitTimeout"]};

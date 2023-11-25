@@ -39,6 +39,6 @@ pub struct Buffer {
 
 #[derive(Debug)]
 pub struct TextureBuffer {
-    pub buffer: Buffer,
+    pub inner: Buffer,
     pub clip_region: Quad,
 }

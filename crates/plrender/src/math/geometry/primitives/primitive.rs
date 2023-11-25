@@ -1,7 +1,10 @@
 pub use crate::{
+    math::cg::Vec3,
     math::geometry::{primitives, vertex},
     resources::mesh,
 };
+
+type Error = Box<dyn std::error::Error>;
 
 pub(super) use primitives::{cuboid::*, plane::*, sphere::*};
 pub struct Primitive {
@@ -12,7 +15,7 @@ pub struct Primitive {
 }
 
 impl Primitive {
-    pub fn create_mesh(&self) -> mesh::BuiltMesh {
+    pub fn create_mesh(&self) -> Result<mesh::BuiltMesh, Error> {
         let mut mesh_builder = mesh::MeshBuilder::new();
 
         mesh_builder.radius(self.radius);
@@ -23,6 +26,7 @@ impl Primitive {
         if let Some(ref indices) = self.indices {
             mesh_builder.index(indices);
         }
+
         mesh_builder.build()
     }
 
@@ -30,7 +34,7 @@ impl Primitive {
         primitives::cube(size)
     }
 
-    pub fn cuboid(dimensions: mint::Vector3<f32>) -> Self {
+    pub fn cuboid<V: Into<Vec3>>(dimensions: V) -> Self {
         primitives::cuboid(vertex::VertexTypes::empty(), dimensions)
     }
 
