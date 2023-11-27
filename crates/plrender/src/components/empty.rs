@@ -1,11 +1,9 @@
-use crate::scene::{macros::spatial_object, transform::TransformId, Object};
+use crate::scene::{macros::api_object, Object};
 
 #[derive(Debug, Default, Clone, Copy)]
-pub struct Empty {
-    transform_id: TransformId,
-}
+pub struct Empty;
 
-spatial_object!(Empty);
+api_object!(Empty);
 
 impl Empty {
     pub fn new() -> Object<Self> {

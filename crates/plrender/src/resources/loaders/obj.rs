@@ -71,11 +71,11 @@ pub fn load_obj(
                 }
                 if !normals.is_empty() {
                     if let Some(glossiness) = mat.ns {
-                        mesh.add_component(renderpass::Shader::Phong {
+                        mesh.add_component(renderpass::ShaderType::Phong {
                             glossiness: glossiness as u8,
                         })
                     } else {
-                        mesh.add_component(renderpass::Shader::Gouraud { flat: false })
+                        mesh.add_component(renderpass::ShaderType::Gouraud { flat: false })
                     };
                 }
             }

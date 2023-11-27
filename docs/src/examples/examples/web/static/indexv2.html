@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en-US">
+  <head>
+    <meta charset="utf-8" />
+    <title>PLRender example</title>
+    <style>
+      #container {
+        position: relative;
+        width: 100%;
+        max-width: 800px;
+        height: auto;
+      }
+
+      video {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: auto;
+      }
+
+      canvas {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: auto;
+        z-index: 1;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="container">
+      <canvas id="output_canvas" width="800" height="600"></canvas>
+      <video
+        id="video"
+        src="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"
+        autoplay
+        muted
+      ></video>
+    </div>
+    <script type="module">
+      import load_wasm, { PLRender } from "./pkg/plrender.js";
+      await load_wasm();
+      const plrender = new PLRender();
+
+      const scene = plrender.Scene();
+
+      const target = plrender.Target({
+        source: scene,
+        target: document.getElementById("output_canvas"),
+      });
+
+      // Supports: QuerySelector, CanvasElement, OffscreenCanvas
+      // example with query selector: scene.createTarget({ source: scene, target: "#output_canvas" });
+      // options:
+      // clear_color: [0.0, 0.0, 0.0, 0.0], // default: transparent
+      // size: [canvas.width, canvas.height], // default: canvas size
+
+      // or scene.addTarget({ type: "canvas", selector: "#output_canvas" });
+      // examples:
+      // scene.addFileTarget({ filename: "rendered.mp4", height: 1000, width: 800 });
+      // scene.addWindowTarget({ height: 1000, width: 800, name: "Window Title" });
+      // scene.addCallbackTarget({
+      //   height: 1000,
+      //   width: 800,
+      //   callback: (image_rgb) => {
+      //     console.log(image_rgb);
+      //   },
+      // });
+
+      const video = document.getElementById("video");
+      const videoDisplay = new Display({ source: video });
+      // Supports: URL, QuerySelector, ImageBitmap, ImageData, HTMLVideoElement, VideoFrame, HTMLCanvasElement, OffscreenCanvas
+      // example with URL: const videoDisplay = scene.createDisplay({ source: "https://example.com/video.mp4" });
+      // Options: position, size, rotation, flip, opacity, undistorted, hidden, group
+
+      const gaze = new Circle({
+        color: "#ff000088",
+        radius: 0.05,
+        border: 0.01,
+        position: [0.5, 0.5],
+      });
+
+      scene.addRenderable(videoDisplay);
+      scene.addRenderable(gaze); // The circle renders on top of the video because it is added later
+
+      // Scene objects can be reordered or hidden
+      // gaze.moveToBack();
+      // gaze.moveToFront();
+      // gaze.moveForward();
+      // gaze.moveBackward();
+      // gaze.hide();
+      // gaze.show();
+      //
+      // Order can be set manually too:
+      // scene.setOrder([gaze, videoDisplay]);
+
+      // applies lens correction; the user does not need to update it every frame
+      const { camera_matrix, distortion_coefficients } = undistortParams();
+      videoDisplay.undistort({ camera_matrix, distortion_coefficients });
+      // videoDisplay.undistorted = true; // enables undistortion, original image is preserved
+      // videoDisplay.undistorted = false; // disables undistortion, displays original distorted image
+
+      // undistorts position only, does not warp the circle
+      gaze.undistortPosition({
+        camera_matrix,
+        distortion_coefficients,
+      });
+
+      // Starts the event loop
+      plrender.run();
+
+      // Updates gaze position every video frame.
+      function updateLoop() {
+        const currentTime = video.currentTime;
+        const { x, y } = positionForTime(currentTime);
+        gaze.setPosition(x, y);
+
+        videoDisplay.update(video);
+
+        video.requestVideoFrameCallback(updateLoop);
+      }
+      // Actual video frame rate, Chrome/Webkit only.
+      // Alternatively, use requestAnimationFrame(updateLoop) for 60fps.
+      video.requestVideoFrameCallback(updateLoop);
+
+      // Example function to get the (x, y) position based on the video's current time
+      function positionForTime(time) {
+        return {
+          x: Math.sin(time) * 0.5 + 0.5,
+          y: Math.cos(time) * 0.5 + 0.5,
+        };
+      }
+
+      // Params from Anna's gallery video
+      function undistortParams() {
+        return {
+          camera_matrix: [
+            [765.469082753157, 0.0, 567.0954541838603],
+            [0.0, 765.2673080778297, 545.3177094076727],
+            [0.0, 0.0, 1.0],
+          ],
+          distortion_coefficients: [
+            [
+              -0.12591202244566754, 0.101181790269097, 0.0006819575150849819,
+              -0.0004815612057156913, 0.018952897627046664, 0.20535990250436098,
+              0.007459782333401985, 0.06701927729864841,
+            ],
+          ],
+        };
+      }
+    </script>
+  </body>
+</html>

@@ -1,6 +1,6 @@
-pub mod window;
+pub mod app;
+
 use pyo3::types::PyDict;
-pub use window::*;
 
 use plr::*;
 use pyo3::prelude::*;
@@ -16,8 +16,6 @@ struct PyAppOptions {
 struct PyShapeBuilder {
     _inner: ShapeBuilder,
 }
-
-// generates #[pymodule] and all inner functions
 
 #[derive(Clone)]
 #[pyclass(name = "PLRender")]
@@ -44,10 +42,6 @@ impl PyPLRender {
         PLRender::run();
     }
 }
-
-#[derive(Clone)]
-#[pyclass(name = "PLRender")]
-struct PyTarget;
 
 // Implements #[pymethod] and all inner functions
 // Generates implementations for PyTypeInfo, PyTypeObject, and PyClass

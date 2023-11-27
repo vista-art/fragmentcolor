@@ -1,3 +1,5 @@
+use wgpu::util::DeviceExt;
+
 use crate::{
     app::window::{IsWindow, Window},
     renderer::{
@@ -13,6 +15,7 @@ use crate::{
         texture::{Texture, TextureId},
         Resources,
     },
+    sampler::{create_sampler, SamplerOptions},
     scene::Scene,
 };
 use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
@@ -41,8 +44,11 @@ pub(crate) struct Renderer {
     pub(crate) queue: wgpu::Queue,
     resources: Arc<RwLock<Resources>>,
     targets: Arc<RwLock<RenderTargets>>,
+    pixel: TextureId,
     pass: String, // @TODO support multiple render passes
 }
+
+unsafe impl Sync for Renderer {}
 
 impl RenderContext for Renderer {
     /// Returns a read lock to the Resources Database.
@@ -127,6 +133,7 @@ impl Renderer {
         options: RendererOptions,
         window: Option<&'w W>,
     ) -> Result<Renderer, Error> {
+        #[cfg(not(wasm))]
         if crate::app::RENDERER.get().is_some() {
             return Err("Renderer already initialized".into());
         }
@@ -135,7 +142,10 @@ impl Renderer {
         let (instance, adapter, device, queue, targets) =
             Internal::gpu_objects(options, window).await?;
         let targets = Arc::new(RwLock::new(targets));
-        let resources = Arc::new(RwLock::new(Resources::new()));
+
+        let mut resources = Resources::new();
+        let pixel = resources.add_texture(Internal::create_default_blank_pixel(&device, &queue)?);
+        let resources = Arc::new(RwLock::new(resources));
 
         Ok(Renderer {
             instance,
@@ -143,9 +153,15 @@ impl Renderer {
             device,
             queue,
             pass,
+            pixel,
             targets,
             resources,
         })
+    }
+
+    /// Returns a reference to the default blank pixel.
+    pub fn default_pixel_id(&self) -> TextureId {
+        self.pixel
     }
 
     /// Registers a loaded mesh to the Resources Manager.
@@ -233,17 +249,7 @@ impl Renderer {
         if self.pass == "solid" {
             return self.solid_renderpass(scene);
         }
-        if self.pass == "toy" {
-            return self.toy_renderpass(scene);
-        }
-        self.flat_renderpass(scene)
-    }
-
-    // Renders the Flat 2D render pass (for sprites and shapes)
-    fn flat_renderpass(&self, scene: &Scene) -> Result<(), wgpu::SurfaceError> {
-        let renderpass = crate::renderer::renderpass::Flat2D::new(self);
-
-        self.draw(scene, renderpass)
+        return self.toy_renderpass(scene);
     }
 
     // Renders the Solid 3D render pass (for simple 3D primitives)
@@ -444,6 +450,51 @@ impl Internal {
             scaling_factor: window.scaling(),
             surface,
             config,
+        })
+    }
+
+    /// Creates the shared default blank pixel texture.
+    fn create_default_blank_pixel(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+    ) -> Result<Texture, Error> {
+        let size = wgpu::Extent3d {
+            width: 1,
+            height: 1,
+            depth_or_array_layers: 1,
+        };
+        let format = wgpu::TextureFormat::Rgba8UnormSrgb;
+
+        let descriptor = wgpu::TextureDescriptor {
+            label: Some("Default Blank Pixel"),
+            size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        };
+
+        let texture = device.create_texture_with_data(queue, &descriptor, &[0xFF; 4]);
+        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let sampler = create_sampler(
+            &device,
+            SamplerOptions {
+                repeat_x: true,
+                repeat_y: true,
+                smooth: false,
+                compare: None,
+            },
+        );
+
+        Ok(Texture {
+            id: Texture::id_from(&texture),
+            data: texture,
+            size,
+            view,
+            format,
+            sampler,
         })
     }
 }

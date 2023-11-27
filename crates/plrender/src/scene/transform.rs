@@ -440,7 +440,7 @@ impl From<LocalTransform> for GPULocalTransform {
 }
 
 impl GPULocalTransform {
-    pub fn to_transform(&self) -> LocalTransform {
+    pub fn to_local_transform(&self) -> LocalTransform {
         LocalTransform {
             position: glam::Vec3::new(self.position[0], self.position[1], self.position[2]),
             rotation: glam::Quat::from_array(self.rotation),
@@ -449,7 +449,7 @@ impl GPULocalTransform {
     }
 
     pub fn inverse_matrix(&self) -> Mat4 {
-        self.to_transform().inverse().to_matrix().into()
+        self.to_local_transform().inverse().to_matrix().into()
     }
 }
 

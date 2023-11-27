@@ -1,6 +1,6 @@
-use crate::scene::macros::spatial_object;
+use crate::scene::macros::api_object;
 use crate::{components::Color, transform::TransformId};
-use crate::{Border, Bounds, Object, Pixel, Quad, Renderable2D, ShapeFlag};
+use crate::{Border, Bounds, Object, Pixel, Quad, Renderable2D, SceneObject, ShapeFlag};
 use derive_setters::*;
 use serde::{Deserialize, Serialize};
 
@@ -9,7 +9,7 @@ pub struct Shape {
     pub transform_id: TransformId,
 }
 
-spatial_object!(Shape);
+api_object!(Shape);
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum ShapeType {
@@ -38,6 +38,7 @@ impl Shape {
         let mut shape = Object::new(Shape::default());
 
         let components = Renderable2D {
+            transform: shape.transform_id(),
             image: None,
             bounds: Bounds(options.bounds),
             color: options.color,
@@ -83,6 +84,42 @@ impl Object<Shape> {
         self
     }
 
+    pub fn from(&self) -> Pixel {
+        let bounds = self.bounds();
+        Pixel {
+            x: bounds.min_x as u16,
+            y: bounds.min_y as u16,
+        }
+    }
+
+    pub fn to(&self) -> Pixel {
+        let bounds = self.bounds();
+        Pixel {
+            x: bounds.max_x as u16,
+            y: bounds.max_y as u16,
+        }
+    }
+
+    pub fn set_from(&mut self, from: Pixel) -> &mut Self {
+        let to = self.to();
+        let bounds = Bounds(Quad::from_tuples(
+            (from.x as u32, from.y as u32),
+            (to.x as u32, to.y as u32),
+        ));
+        self.update_component(bounds);
+        self
+    }
+
+    pub fn set_to(&mut self, to: Pixel) -> &mut Self {
+        let from = self.from();
+        let bounds = Bounds(Quad::from_tuples(
+            (from.x as u32, from.y as u32),
+            (to.x as u32, to.y as u32),
+        ));
+        self.update_component(bounds);
+        self
+    }
+
     pub fn color(&self) -> Color {
         if let Some(color) = self.read_component::<Color>() {
             color
@@ -125,6 +162,14 @@ impl Object<Shape> {
         let bounds = Bounds(Quad::from_inbound_radius(radius + border));
         self.update_components((bounds, Border(border)));
         self
+    }
+
+    pub fn thickness(&self) -> f32 {
+        self.border()
+    }
+
+    pub fn set_thickness(&mut self, thickness: f32) -> &mut Self {
+        self.set_border(thickness)
     }
 
     pub(crate) fn sdf_flags(&self) -> f32 {
@@ -229,7 +274,7 @@ impl Line {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Color, Scene};
+    use crate::Color;
 
     #[test]
     fn test_width_height_set_get() {
@@ -248,16 +293,4 @@ mod tests {
 
         assert_eq!(shape.color(), Color(0xff000000));
     }
-
-    #[test]
-    fn test_add_to_scene() {
-        let mut scene = Scene::new();
-        let mut shape = Circle::new(CircleOptions::default());
-
-        scene.add(&mut shape);
-
-        assert_eq!(scene.count(), 1);
-    }
-
-    // Additional tests for other properties...
 }

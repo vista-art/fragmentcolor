@@ -1,6 +1,6 @@
 use crate::{
     math::{cg::Vec2, geometry::Quad},
-    scene::{macros::spatial_object, transform::TransformId, Object},
+    scene::{macros::api_object, transform::TransformId, Object},
 };
 use serde::{Deserialize, Serialize};
 
@@ -86,6 +86,14 @@ impl Projection {
             center: quad.center_f32(), // @TODO check: maybe it should be 0,0?
             size: quad.to_vec2(),
         }
+        // let ortho = Self::Orthographic {
+        //     center: Vec2 { x: 0.0, y: 0.0 }, // @TODO check: maybe it should be 0,0?
+        //     size: quad.to_vec2(),
+        // };
+
+        // println!("ortho: {:?}", ortho);
+
+        // ortho
     }
 
     /// Creates a new Orthographic projection.
@@ -133,7 +141,7 @@ pub struct Camera {
     pub(crate) transform_id: TransformId,
 }
 
-spatial_object!(Camera);
+api_object!(Camera);
 
 impl Default for Camera {
     /// Creates a 2D Camera with default options.

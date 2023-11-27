@@ -15,25 +15,6 @@ use std::{
 type Error = Box<dyn std::error::Error>;
 type SceneObjectPair = (SceneId, ObjectId);
 
-/// Defines an interface for Scene Objects.
-///
-/// Scene objects constructors must return a `Object<Self>`.
-///
-/// All Scene Objects are associated with a Transform and must have a
-/// TransformId. This trait provides methods for accessing its TransformId.
-pub trait SceneObject: Default + hecs::Component + Copy + Debug {
-    /// Builds an Object from this component.
-    fn new() -> Object<Self> {
-        Object::new(Self::default())
-    }
-
-    /// Returns the TransformId associated with this component.
-    fn transform_id(&self) -> TransformId;
-
-    /// Sets the TransformId associated with this component.
-    fn set_transform_id(&mut self, transform_id: TransformId);
-}
-
 pub type ObjectId = hecs::Entity;
 
 #[derive(Default)]
@@ -55,6 +36,22 @@ impl Debug for ObjectBuilder {
     }
 }
 
+// Defines an interface for Spatial Components.
+///
+/// Spatial components constructors must return a `Object<Self>`.
+///
+/// All Spatial Components are associated with a Transform and must have a
+/// TransformId. This trait provides methods for accessing its TransformId.
+pub trait APIObject: Default + hecs::Component + Clone + Debug {
+    /// Builds a Scene Object from this component.
+    fn new() -> Object<Self> {
+        Object::new(Self::default())
+    }
+
+    // @TODO - it would be useful to have "name" here and associate it with
+    //         the Object's typeId. So we can list a scene with nice names.
+}
+
 /// The Object is the interface for manipulating Scene objects.
 ///
 /// A Object is a wrapper around public API objects containing
@@ -68,13 +65,14 @@ impl Debug for ObjectBuilder {
 /// user. The Object converts it to a more intuitive, familiar
 /// Object-Oriented approach.
 #[derive(Debug, Clone)]
-pub struct Object<T: SceneObject> {
+pub struct Object<T: APIObject> {
     pub(super) ids: Option<SceneObjectPair>,
     pub(super) builder: ObjectBuilder,
     scene: Option<Arc<RwLock<SceneState>>>,
+    transform_id: TransformId,
     transform: Transform,
     batch: bool,
-    object: T,
+    _type: std::marker::PhantomData<T>,
 }
 
 /// This is the interface between the Scene and the Object.
@@ -82,9 +80,11 @@ pub struct Object<T: SceneObject> {
 /// Users are not supposed to use these methods directly,
 /// but they are free to design any object that implements
 /// this trait, so they can use custom types as Objects.
-pub trait ObjectEntry {
-    fn has_moved(&mut self) -> bool;
-    fn transform(&mut self) -> Transform;
+pub trait SceneObject {
+    fn id(&self) -> Option<ObjectId>;
+    fn scene_id(&self) -> Option<SceneId>;
+    fn has_moved(&self) -> bool;
+    fn transform(&self) -> Transform;
     fn transform_id(&self) -> TransformId;
     fn builder(&mut self) -> &mut hecs::EntityBuilder;
     fn added_to_scene(&mut self, ids: SceneObjectPair, scene: Arc<RwLock<SceneState>>);
@@ -92,17 +92,45 @@ pub trait ObjectEntry {
     fn removed_from_scene(&mut self, ids: SceneObjectPair);
 }
 
-impl<T: SceneObject> ObjectEntry for Object<T> {
-    fn has_moved(&mut self) -> bool {
+impl<T: APIObject> SceneObject for Object<T> {
+    /// Returns the ObjectId of this Object
+    /// if it has been added to a Scene.
+    ///
+    /// Otherwise, returns None.
+    fn id(&self) -> Option<ObjectId> {
+        if let Some((_, object_id)) = self.ids {
+            Some(object_id)
+        } else {
+            None
+        }
+    }
+
+    /// Returns the SceneId of this Object
+    /// if it has been added to a Scene.
+    ///
+    /// Otherwise, returns None.
+    fn scene_id(&self) -> Option<SceneId> {
+        if let Some((scene_id, _)) = self.ids {
+            Some(scene_id)
+        } else {
+            None
+        }
+    }
+
+    fn has_moved(&self) -> bool {
         self.transform.has_moved()
     }
 
-    fn transform(&mut self) -> Transform {
-        self.transform.clone()
+    fn transform(&self) -> Transform {
+        if let Some(transform) = self.read_transform_from_scene() {
+            transform
+        } else {
+            self.transform
+        }
     }
 
     fn transform_id(&self) -> TransformId {
-        self.object.transform_id()
+        self.transform_id
     }
 
     fn builder(&mut self) -> &mut hecs::EntityBuilder {
@@ -110,7 +138,7 @@ impl<T: SceneObject> ObjectEntry for Object<T> {
     }
 
     fn added_to_scene_tree(&mut self, transform_id: TransformId) {
-        self.object.set_transform_id(transform_id)
+        self.transform_id = transform_id;
     }
 
     fn added_to_scene(&mut self, ids: SceneObjectPair, scene: Arc<RwLock<SceneState>>) {
@@ -124,7 +152,6 @@ impl<T: SceneObject> ObjectEntry for Object<T> {
             self.ids = None;
             self.scene = None;
             self.transform = Transform::root();
-            self.object.set_transform_id(TransformId::root());
         } else {
             log::error!(
                 "Trying to remove Ids ({:?}, {:?}) from {:?}",
@@ -136,44 +163,21 @@ impl<T: SceneObject> ObjectEntry for Object<T> {
     }
 }
 
-impl<T: SceneObject> Object<T> {
+impl<T: APIObject> Object<T> {
     pub fn new(object: T) -> Self {
         let mut scene_object = Object {
             ids: None,
             scene: None,
             transform: Transform::root(),
+            transform_id: TransformId::root(),
             builder: ObjectBuilder::default(),
             batch: false,
-            object,
+            _type: std::marker::PhantomData,
         };
 
         scene_object.add_component(object);
 
         scene_object
-    }
-
-    /// Returns the ObjectId of this Object
-    /// if it has been added to a Scene.
-    ///
-    /// Otherwise, returns None.
-    pub fn id(&self) -> Option<ObjectId> {
-        if let Some((_, object_id)) = self.ids {
-            Some(object_id)
-        } else {
-            None
-        }
-    }
-
-    /// Returns the SceneId of this Object
-    /// if it has been added to a Scene.
-    ///
-    /// Otherwise, returns None.
-    pub fn scene_id(&self) -> Option<SceneId> {
-        if let Some((scene_id, _)) = self.ids {
-            Some(scene_id)
-        } else {
-            None
-        }
     }
 
     /// Sets the Object to batch update mode.
@@ -335,30 +339,6 @@ impl<T: SceneObject> Object<T> {
     ///
     /// The Object<T> will then replace the object in the
     /// Scene or in the temporary builder.
-    ///
-    /// # Examples:
-    /// ```
-    /// use plrender::scene::{Empty, Sprite};
-    ///
-    /// #[derive(Default, Clone, Copy)]
-    /// struct MyComponent {
-    ///    pub transform_id: TransformId,
-    ///    pub my_data: u32,
-    /// }
-    ///
-    /// impl Object<MyComponent> {
-    ///     pub fn set_my_custom_data(&mut self, new_data: u32) -> &mut Self {
-    ///         let old_data = self.object();
-    ///
-    ///         self.add_component(Sprite {
-    ///             my_data: new_data,
-    ///             ..old_data
-    ///         });
-    ///
-    ///         self
-    ///     }
-    /// }
-    /// ```
     pub(crate) fn object(&self) -> T {
         if let Ok((scene, object_id)) = self.scene_object_pair() {
             self.get_object_from_scene(scene, object_id).clone()
@@ -381,7 +361,7 @@ impl<T: SceneObject> Object<T> {
     }
 
     /// Sets this Object's parent
-    pub fn set_parent(&mut self, parent: &impl ObjectEntry) -> &mut Self {
+    pub fn set_parent(&mut self, parent: &impl SceneObject) -> &mut Self {
         self.transform.parent = parent.transform_id();
         self.update_transform()
     }
@@ -766,13 +746,39 @@ impl<T: SceneObject> Object<T> {
 
     /// Updates the Scene's Transform associated with this Object.
     fn update_transform_in_scene(&self) {
-        if let Ok((scene, _)) = self.scene_object_pair() {
+        if let Some(scene) = self.scene() {
             if let Ok(mut scene) = scene.try_write() {
-                scene.update_transform(self.object.transform_id(), self.transform.clone())
+                scene.update_transform(self.transform_id, self.transform.clone())
             } else {
                 log::error!("{:?}: Could not write to Scene State.", self.ids);
             }
         };
+    }
+
+    /// Reads the Scene's Transform associated with this Object.
+    fn read_transform_from_scene(&self) -> Option<Transform> {
+        if let Some(scene) = self.scene() {
+            if let Ok(scene) = scene.try_read() {
+                scene.read_transform(self.transform_id)
+            } else {
+                log::error!("{:?}: Could not read Scene State.", self.ids);
+                None
+            }
+        } else {
+            log::info!("{:?}: Object not in Scene.", self.ids);
+            None
+        }
+    }
+
+    /// Returns the Scene's RwLock if the object is in a Scene.
+    ///
+    /// Otherwise, returns None.
+    fn scene(&self) -> Option<Arc<RwLock<SceneState>>> {
+        if let Some(scene) = self.scene.clone() {
+            Some(scene)
+        } else {
+            None
+        }
     }
 
     /// Convenience method to return a pair of Scene and Object Ids.
@@ -781,7 +787,7 @@ impl<T: SceneObject> Object<T> {
     /// `if let Some(..)` pattern:
     /// https://github.com/rust-lang/rust/issues/53667
     fn scene_object_pair(&self) -> Result<(Arc<RwLock<SceneState>>, ObjectId), Error> {
-        if let Some(scene) = self.scene.clone() {
+        if let Some(scene) = self.scene() {
             if let Some(object_id) = self.id() {
                 Ok((scene, object_id))
             } else {

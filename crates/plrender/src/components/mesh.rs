@@ -2,7 +2,7 @@ use crate::{
     math::cg::Vec3,
     math::geometry::Primitive,
     resources::mesh::{BuiltMesh, MeshId},
-    scene::{macros::spatial_object, transform::TransformId, Object},
+    scene::{macros::api_object, transform::TransformId, Object},
 };
 
 /// The Mesh component
@@ -12,7 +12,7 @@ pub struct Mesh {
     pub(crate) transform_id: TransformId,
 }
 
-spatial_object!(Mesh);
+api_object!(Mesh);
 
 impl Mesh {
     pub fn new(built_mesh: Option<BuiltMesh>) -> Object<Self> {

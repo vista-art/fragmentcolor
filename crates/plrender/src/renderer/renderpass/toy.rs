@@ -1,16 +1,17 @@
 use crate::{
+    components::{IsHidden, Shape, Sprite},
     renderer::{
         renderpass::buffer, target::Dimensions, IsRenderTarget, RenderContext, RenderPass,
         RenderPassResult, RenderTargetCollection, Renderer,
     },
     scene::SceneState,
-    IsHidden, Sprite,
+    Shader,
 };
 use std::{mem, sync::RwLockReadGuard};
 
 /// @Group(0) @Binding(0)
 #[repr(C)]
-#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 struct WindowUniforms {
     resolution: [f32; 2],
     antialiaser: f32,
@@ -26,14 +27,14 @@ struct WindowUniforms {
 
 /// @Group(0) @Binding(1)
 #[repr(C)]
-#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 struct Globals {
     view_proj: [[f32; 4]; 4],
 }
 
 /// @Group(0) @Binding(2)
 #[repr(C)]
-#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 struct Locals {
     position: [f32; 4],
     rotation: [f32; 4],
@@ -217,7 +218,7 @@ impl<'r> Toy<'r> {
 
                     Some(wgpu::ColorTargetState {
                         format: target.format(),
-                        blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
+                        blend: Some(wgpu::BlendState::ALPHA_BLENDING),
                         write_mask: wgpu::ColorWrites::all(),
                     })
                 })
@@ -280,8 +281,9 @@ impl<'r> RenderPass for Toy<'r> {
 
         let mut commands = Vec::new();
         let mut rendered_frames = Vec::new();
-        for (object_id, camera) in scene.cameras().iter() {
-            let camera_targets = scene.get_camera_targets(object_id);
+
+        for (camera_id, camera) in scene.cameras().iter() {
+            let camera_targets = scene.get_camera_targets(camera_id);
 
             for camera_target in camera_targets {
                 let target = targets.get(&camera_target.target_id);
@@ -289,7 +291,7 @@ impl<'r> RenderPass for Toy<'r> {
                 if target.is_none() {
                     log::error!(
                         "Camera {:?} is targeting a non-existent target {:?}",
-                        object_id,
+                        camera_id,
                         camera_target.target_id
                     );
                     continue;
@@ -311,13 +313,18 @@ impl<'r> RenderPass for Toy<'r> {
                         antialiaser,
                         fps: 0.0,                // @TODO (fps is unimplemented;
                         time: 0.0,               // @TODO (playback time is unimplemented;
-                        frame_delta: 0.0,        // @TODO (playback time is unimplemented;
+                        frame_delta: 0.0,        // @TODO (frame delta is unimplemented;
                         mouse: [0.0, 0.0],       // @TODO (mouse is unimplemented;
                         drag_start: [0.0, 0.0],  // @TODO (mouse is unimplemented;
                         drag_end: [0.0, 0.0],    // @TODO (mouse is unimplemented;
                         mouse_left_pressed: 0.0, // @TODO (mouse is unimplemented;
                         mouse_left_clicked: 0.0, // @TODO (mouse is unimplemented;
                     };
+
+                    log::info!("______________________________________");
+                    log::info!("Window Uniform: {:?}", window_uniforms);
+                    log::info!("");
+
                     queue.write_buffer(
                         &self.window_uniform_buffer,
                         0,
@@ -327,6 +334,12 @@ impl<'r> RenderPass for Toy<'r> {
                     let globals = Globals {
                         view_proj: final_m.to_cols_array_2d(),
                     };
+                    log::info!("______________________________________");
+                    log::info!("Global Uniform (View Projection Matrix):");
+                    for row in globals.view_proj {
+                        log::info!("{:?}", row);
+                    }
+                    log::info!("");
                     queue.write_buffer(
                         &self.globals_uniform_buffer,
                         0,
@@ -339,87 +352,123 @@ impl<'r> RenderPass for Toy<'r> {
                 let cam_dir = glam::Quat::from_slice(&cam_transform.rotation) * -glam::Vec3::Z;
 
                 // Gather all 2D Shapes...
-                for (object_id, (color, bounds, border, shape_flag)) in
+                for (object_id, (transform_id, color, bounds, border, shape_flag)) in
                     scene.get_2d_objects().without::<&IsHidden>().iter()
                 {
-                    // Sprites must be rendered first
-                    if let Ok(sprite) = scene.world.get::<&Sprite>(object_id) {
-                        let local_transform = &transforms[sprite.transform_id];
+                    // @TODO All properties, including Option<TextureId> and TransformId, should be components.
+                    //       This will not scale if we add more types of 2D objects.
+                    //       Done:
+                    //       - TransformId
+                    let (texture_id, clip_region) =
+                        //
+                        // Sprites
+                        if let Ok(sprite) = scene.world.get::<&Sprite>(object_id) {
+                            let image = sprite.image;
+                            let clip_region = sprite.clip_region.unwrap_or(bounds.0).to_array();
 
-                        let camera_vector = glam::Vec3::from_slice(&local_transform.position)
-                            - glam::Vec3::from_slice(&cam_transform.position);
-                        let camera_distance = camera_vector.dot(cam_dir);
+                            (image, clip_region)
+                        //
+                        // Calculated Shapes
+                        } else if let Ok(_) = scene.world.get::<&Shape>(object_id) {
+                            let image = renderer.default_pixel_id();
+                            let clip_region = bounds.0.to_array();
 
-                        let resources = if let Ok(resources) = renderer.read_resources() {
-                            resources
+                            (image, clip_region)
+                        //
+                        // Shader Source Code // @TODO Implement composition
+                        } else if let Ok(_) = scene.world.get::<&Shader>(object_id) {
+                            let image = renderer.default_pixel_id();
+                            let clip_region = bounds.0.to_array();
+
+                            (image, clip_region)
+                        //
+                        // Invalid
                         } else {
                             log::error!(
-                                "Failed to read resources for Sprite {:?}. Skipping Sprite...",
-                                sprite
+                                "The Object {:?} is not a valid 2D Shape. Skipping Object...",
+                                object_id
                             );
                             continue;
                         };
 
-                        let image = if let Some(image) = resources.get_texture(&sprite.image) {
-                            image
-                        } else {
-                            log::error!(
-                                "Sprite {:?} is using a non-existent texture {:?}",
-                                sprite,
-                                sprite.image
-                            );
-                            continue;
-                        };
+                    let resources = if let Ok(resources) = renderer.read_resources() {
+                        resources
+                    } else {
+                        log::error!(
+                            "Failed to read resources for Object {:?}. Skipping Object...",
+                            object_id
+                        );
+                        continue;
+                    };
 
-                        let locals = Locals {
-                            position: local_transform.position,
-                            rotation: local_transform.rotation,
-                            scale: local_transform.scale,
-                            color: color.to_array(),
-                            bounds: bounds.0.to_array(),
-                            texture_uv: sprite.clip_region.unwrap_or(bounds.0).to_array(),
-                            radius: bounds.0.inbound_radius() - border.0,
-                            border: border.0,
-                            padding: 0.0, // unused; needed for alignment
-                            sdf_flags: shape_flag.0,
-                        };
-                        let locals_bl = self.uniform_pool.alloc(&locals, queue);
-                        let local_bgl = &self.locals_bind_group_layout;
+                    let image = if let Some(image) = resources.get_texture(&texture_id) {
+                        image
+                    } else {
+                        log::error!(
+                            "Object {:?} is using a non-existent Texture (Id: {:?})",
+                            object_id,
+                            texture_id
+                        );
+                        continue;
+                    };
 
-                        // pre-create local bind group, if needed
-                        let key = LocalKey {
-                            uniform_buf_index: locals_bl.index,
-                            image: sprite.image,
-                        };
+                    let local_transform = &transforms[*transform_id];
+                    let camera_vector = glam::Vec3::from_slice(&local_transform.position)
+                        - glam::Vec3::from_slice(&cam_transform.position);
+                    let camera_distance = camera_vector.dot(cam_dir);
 
-                        let binding = self.uniform_pool.binding::<Locals>(locals_bl.index);
-                        self.locals_bind_groups.entry(key).or_insert_with(|| {
-                            device.create_bind_group(&wgpu::BindGroupDescriptor {
-                                label: Some("Toy VertexInput Bind Group Descriptor"),
-                                layout: local_bgl,
-                                entries: &[
-                                    wgpu::BindGroupEntry {
-                                        binding: 0,
-                                        resource: wgpu::BindingResource::Buffer(binding),
-                                    },
-                                    wgpu::BindGroupEntry {
-                                        binding: 1,
-                                        resource: wgpu::BindingResource::TextureView(&image.view),
-                                    },
-                                    wgpu::BindGroupEntry {
-                                        binding: 2,
-                                        resource: wgpu::BindingResource::Sampler(&image.sampler),
-                                    },
-                                ],
-                            })
-                        });
+                    let locals = Locals {
+                        position: local_transform.position,
+                        rotation: local_transform.rotation,
+                        scale: local_transform.scale,
+                        color: color.to_array(),
+                        bounds: bounds.0.to_array(),
+                        radius: bounds.0.inbound_radius() - border.0,
+                        border: border.0,
+                        padding: 0.0, // unused; needed for alignment
+                        sdf_flags: shape_flag.0,
+                        texture_uv: clip_region,
+                    };
+                    log::info!("______________________________________");
+                    log::info!("Locals Uniform: {:?}", locals);
+                    log::info!("");
 
-                        self.temp.push(Instance {
-                            camera_distance,
-                            locals_bl,
-                            image: sprite.image,
-                        });
-                    }
+                    let locals_bl = self.uniform_pool.alloc(&locals, queue);
+                    let local_bgl = &self.locals_bind_group_layout;
+
+                    // pre-create local bind group, if needed
+                    let key = LocalKey {
+                        uniform_buf_index: locals_bl.index,
+                        image: image.id,
+                    };
+
+                    let binding = self.uniform_pool.binding::<Locals>(locals_bl.index);
+                    self.locals_bind_groups.entry(key).or_insert_with(|| {
+                        device.create_bind_group(&wgpu::BindGroupDescriptor {
+                            label: Some("Toy VertexInput Bind Group Descriptor"),
+                            layout: local_bgl,
+                            entries: &[
+                                wgpu::BindGroupEntry {
+                                    binding: 0,
+                                    resource: wgpu::BindingResource::Buffer(binding),
+                                },
+                                wgpu::BindGroupEntry {
+                                    binding: 1,
+                                    resource: wgpu::BindingResource::TextureView(&image.view),
+                                },
+                                wgpu::BindGroupEntry {
+                                    binding: 2,
+                                    resource: wgpu::BindingResource::Sampler(&image.sampler),
+                                },
+                            ],
+                        })
+                    });
+
+                    self.temp.push(Instance {
+                        camera_distance,
+                        locals_bl,
+                        image: image.id,
+                    });
                 }
 
                 // sort from back to front
@@ -461,7 +510,9 @@ impl<'r> RenderPass for Toy<'r> {
                         };
                         let local_bg = &self.locals_bind_groups[&key];
                         pass.set_bind_group(1, local_bg, &[inst.locals_bl.offset]);
-                        pass.draw(0..3, 0..1); // @TODO this should be indexed, shapes are not sprites
+
+                        // @TODO Implement automatic instanced rendering like our first renderer
+                        pass.draw(0..4, 0..1); // @TODO this should be indexed
                     }
                 }
 

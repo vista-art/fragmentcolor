@@ -2,9 +2,10 @@ use std::path::Path;
 
 use crate::{
     math::geometry::Quad,
+    panics::To,
     resources::texture::{Texture, TextureId, DEFAULT_IMAGE_SIZE},
-    scene::{macros::spatial_object, transform::TransformId, Object},
-    Border, Bounds, Color, Renderable2D, ShapeFlag,
+    scene::{macros::api_object, Object},
+    Border, Bounds, Color, Renderable2D, SceneObject, ShapeFlag,
 };
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -12,10 +13,9 @@ pub struct Sprite {
     pub image: TextureId, // this is the only thing a Sprite should care about.
     pub image_size: Quad,
     pub clip_region: Option<Quad>,
-    pub(crate) transform_id: TransformId,
 }
 
-spatial_object!(Sprite);
+api_object!(Sprite);
 
 impl Object<Sprite> {
     pub fn load_image(&mut self, image_path: impl AsRef<Path>) -> &mut Self {
@@ -76,19 +76,21 @@ impl Sprite {
             image: texture_id,
             image_size: texture_size,
             clip_region: None,
-            transform_id: TransformId::default(),
         });
 
         // Sprite bounds is clip region or image size
         let bounds = sprite.clip_region().unwrap_or(texture_size);
 
-        sprite.add_components(Renderable2D {
+        let components = Renderable2D {
+            transform: sprite.transform_id(),
             bounds: Bounds(bounds),
             image: Some(texture_id),
             color: Color(0x00000000),
             border: Border(0.0),
             sdf_flags: ShapeFlag(0.0),
-        });
+        };
+
+        sprite.add_components(components);
 
         sprite
     }
@@ -105,6 +107,7 @@ impl Sprite {
     }
 
     fn load_default_image() -> (TextureId, Quad) {
-        (TextureId::default(), Quad::from_tuple(DEFAULT_IMAGE_SIZE))
+        let (image, _) = Texture::image_not_found().expect(To::find_default_image());
+        (image, Quad::from_tuple(DEFAULT_IMAGE_SIZE))
     }
 }

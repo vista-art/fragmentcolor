@@ -2,7 +2,7 @@ use crate::{
     components,
     renderer::target::{DescribesTarget, RenderTargetDescription},
     scene::{
-        object::{ObjectEntry, ObjectId},
+        object::{ObjectId, SceneObject},
         transform::{GPUGlobalTransforms, GPULocalTransform, Transform, TransformId},
     },
     Camera, Object, PLRender,
@@ -51,6 +51,13 @@ pub struct Scene {
 static SCENE_ID: AtomicU32 = AtomicU32::new(1);
 impl Scene {
     /// Creates a new Scene.
+    ///
+    /// The Scene is registered in the main App as a resource,
+    /// so it can interact with other parts of the system.
+    ///
+    /// If you need an ad-hoc Scene that acts as a simple
+    /// collection, use [Scene::new_unregistered()] instead
+    /// (useful for testing).
     pub fn new() -> Self {
         let mut scene = Self {
             state: Arc::new(RwLock::new(SceneState {
@@ -65,6 +72,25 @@ impl Scene {
         app.add_scene(&mut scene);
 
         scene
+    }
+
+    /// Creates a new unregistered Scene.
+    ///
+    /// The Scene is not registered in the main App as a resource,
+    /// so it's not accessible by other parts of the system like
+    /// the Renderer.
+    ///
+    /// Use it as a simple container that can report its state.
+    /// Useful for testing.
+    pub fn new_unregistered() -> Self {
+        Self {
+            state: Arc::new(RwLock::new(SceneState {
+                id: SceneId(SCENE_ID.fetch_add(1, Ordering::Relaxed)),
+                world: Default::default(),
+                targets: Default::default(),
+                transforms: vec![Transform::root()],
+            })),
+        }
     }
 
     /// Where all the Scene magic happens! 🧙
@@ -99,7 +125,12 @@ impl Scene {
     /// The Scene returns the ObjectID to the caller, but users
     /// rarely need to use it, as the Object keep track of
     /// its own ObjectId internally.
-    pub fn add(&mut self, object: &mut impl ObjectEntry) -> ObjectId {
+    pub fn add(&mut self, object: &mut impl SceneObject) -> ObjectId {
+        if let Some(object_id) = object.id() {
+            log::warn!("Object {:?} is already part of a Scene!", object.id());
+            return object_id;
+        }
+
         let mut state = self.write_state();
         let object_id = state.add(object);
         drop(state);
@@ -150,8 +181,9 @@ impl Scene {
     }
 
     /// Renders the Scene.
-    pub fn render(&self) -> Result<(), wgpu::SurfaceError> {
-        if let Ok(renderer) = PLRender::renderer().try_read() {
+    pub fn render(&self) {
+        // -> Result<(), wgpu::SurfaceError> {
+        _ = if let Ok(renderer) = PLRender::renderer().try_read() {
             renderer.render(self)
         } else {
             log::warn!("Dropped Frame: Scene failed to Acquire Renderer Lock!");
@@ -306,11 +338,22 @@ impl SceneState {
 
     /// Updates a Transform in the Scene Tree.
     pub(crate) fn update_transform(&mut self, transform_id: TransformId, transform: Transform) {
+        if transform_id.0 as usize >= self.transforms.len() {
+            return;
+        }
         self[transform_id] = transform;
     }
 
+    /// Reads a Transform in the Scene Tree.
+    pub(crate) fn read_transform(&self, transform_id: TransformId) -> Option<Transform> {
+        if transform_id.0 as usize >= self.transforms.len() {
+            return None;
+        }
+        Some(self[transform_id])
+    }
+
     /// Intenal implementation of the Scene.add() public method.
-    pub(crate) fn add(&mut self, object: &mut impl ObjectEntry) -> ObjectId {
+    pub(crate) fn add(&mut self, object: &mut impl SceneObject) -> ObjectId {
         let transform_id = self.add_to_scene_tree(object);
         object.added_to_scene_tree(transform_id);
 
@@ -321,7 +364,7 @@ impl SceneState {
     ///
     /// Adds the object to the Scene Tree if it has moved relative to its parent.
     /// Otherwise, the object will share the same Transform as its parent.
-    fn add_to_scene_tree(&mut self, object: &mut impl ObjectEntry) -> TransformId {
+    fn add_to_scene_tree(&mut self, object: &mut impl SceneObject) -> TransformId {
         if object.has_moved() {
             let index = self.transforms.len();
             self.transforms.push(object.transform());
@@ -336,7 +379,7 @@ impl SceneState {
     ///
     /// Adds the Object's components to the internal ECS World
     /// and returns the Entity ID (typed as ObjectId in our API).
-    fn add_to_scene(&mut self, object: &mut impl ObjectEntry) -> ObjectId {
+    fn add_to_scene(&mut self, object: &mut impl SceneObject) -> ObjectId {
         self.world.spawn(object.builder().build())
     }
 
@@ -376,6 +419,7 @@ impl SceneState {
     ) -> hecs::QueryBorrow<
         '_,
         (
+            &TransformId,
             &components::Color,
             &components::Bounds,
             &components::Border,
@@ -383,6 +427,7 @@ impl SceneState {
         ),
     > {
         self.query::<(
+            &TransformId,
             &components::Color,
             &components::Bounds,
             &components::Border,
@@ -411,7 +456,7 @@ impl SceneState {
             let transform = if transform.parent == TransformId::root() {
                 transform.local_transform()
             } else {
-                let parent_transform = transforms[transform.parent.0 as usize].to_transform();
+                let parent_transform = transforms[transform.parent.0 as usize].to_local_transform();
                 parent_transform.combine(&transform.local_transform())
             };
 
@@ -422,4 +467,22 @@ impl SceneState {
             transforms: transforms.into_boxed_slice(),
         }
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::components::{Circle, CircleOptions};
+
+    #[test]
+    fn test_add_to_scene() {
+        let mut scene = Scene::new_unregistered();
+        let mut shape = Circle::new(CircleOptions::default());
+
+        scene.add(&mut shape);
+
+        assert_eq!(scene.count(), 1);
+    }
+
+    // Additional tests for other properties...
 }

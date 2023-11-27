@@ -2,6 +2,7 @@ use crate::{
     app::{
         container::Container,
         event_loop::{run_event_loop, EventLoop},
+        panics::Panic,
         window::{IsWindow, WindowState, Windows},
         Event,
     },
@@ -14,6 +15,8 @@ use std::{
     str::FromStr,
     sync::{Arc, Mutex, MutexGuard, OnceLock, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
+#[cfg(wasm)]
+use wasm_bindgen::prelude::*;
 use winit::{event_loop::EventLoopProxy, window::WindowId};
 
 pub(crate) const ASSETS: &'static str =
@@ -30,18 +33,29 @@ pub(crate) type ScenesWriteGuard<'s> = RwLockWriteGuard<'s, Scenes>;
 
 /// The main App instance responsible for managing shared global resources.
 type MainApp = Arc<RwLock<App>>;
-pub(crate) static APP: OnceLock<MainApp> = OnceLock::new();
-
 /// The main Renderer instance owned by the App.
 type MainRenderer = Arc<RwLock<Renderer>>;
+
+#[cfg(not(wasm))]
+pub(crate) static APP: OnceLock<MainApp> = OnceLock::new();
+
+#[cfg(not(wasm))]
 pub(crate) static RENDERER: OnceLock<MainRenderer> = OnceLock::new();
 
+#[cfg(wasm)]
+thread_local! {
+    pub(crate) static APP: OnceLock<MainApp> = OnceLock::new();
+    pub(crate) static RENDERER: OnceLock<MainRenderer> = OnceLock::new();
+}
+
+#[cfg_attr(wasm, wasm_bindgen)]
 /// The end user interface for configuring and running the App.
 ///  
 /// Typically, the only functions you need to call from this
 /// struct are `PLRender::config()` and `PLRender::run()`.
 pub struct PLRender;
 
+#[cfg_attr(wasm, wasm_bindgen)]
 impl PLRender {
     /// Configure the global shared App instance with startup options.
     ///
@@ -52,11 +66,11 @@ impl PLRender {
     ///
     /// # Examples
     /// ```
-    /// use plrender::{PLRender, AppMetadata};
+    /// use plrender::{PLRender, RendererOptions, AppMetadata};
     ///
     /// let options = plrender::AppOptions {
     ///     log_level: "info".to_string(),
-    ///     renderer: plrender::RenderOptions {
+    ///     renderer: plrender::RendererOptions {
     ///         force_software_rendering: true,
     ///        ..Default::default()
     ///     }
@@ -69,7 +83,10 @@ impl PLRender {
     /// assert_eq!(app.name(), "plrender");
     /// ```
     pub fn config(options: AppOptions) {
+        #[cfg(not(wasm))]
         APP.get_or_init(|| Arc::new(RwLock::new(App::new(options))));
+        #[cfg(wasm)]
+        APP.with(|app| app.get_or_init(|| Arc::new(RwLock::new(App::new(options)))));
     }
 
     /// Returns a mutex reference to the main App.
@@ -81,8 +98,14 @@ impl PLRender {
     /// Users do not need to call this function directly. Typically, internal
     /// objects of this library (mainly the Window or the Scene) will call it
     /// when they need to access the main Event Loop or the Renderer.
-    pub fn app() -> &'static Arc<RwLock<App>> {
-        APP.get_or_init(|| Arc::new(RwLock::new(App::new(AppOptions::default()))))
+    pub(crate) fn app() -> &'static Arc<RwLock<App>> {
+        #[cfg(not(wasm))]
+        let app = APP.get_or_init(|| Arc::new(RwLock::new(App::new(AppOptions::default()))));
+        #[cfg(wasm)]
+        let app = APP
+            .with(|app| app.get_or_init(|| Arc::new(RwLock::new(App::new(AppOptions::default())))));
+
+        app
     }
 
     /// Returns a mutex reference to the main Renderer.
@@ -95,13 +118,26 @@ impl PLRender {
     /// objects of this library (mainly the Window or the Scene) will call it
     /// when they need to access the main Event Loop or the Renderer.
     pub(crate) fn renderer() -> &'static Arc<RwLock<Renderer>> {
-        RENDERER.get_or_init(|| {
+        #[cfg(not(wasm))]
+        let renderer = RENDERER.get_or_init(|| {
             let app = Self::app().read().expect("Could not Read App");
             let renderer = pollster::block_on(app.state().init_offscreen_renderer())
                 .expect("Failed to create Renderer");
 
             Arc::new(RwLock::new(renderer))
-        })
+        });
+        #[cfg(wasm)]
+        let renderer = RENDERER.with(|renderer| {
+            renderer.get_or_init(|| {
+                let app = Self::app().read().expect("Could not Read App");
+                let renderer = pollster::block_on(app.state().init_offscreen_renderer())
+                    .expect("Failed to create Renderer");
+
+                Arc::new(RwLock::new(renderer))
+            })
+        });
+
+        renderer
     }
 
     /// Runs the main event loop. This function blocks the thread
@@ -146,8 +182,9 @@ pub(crate) struct AppState {
     pub options: AppOptions,
 }
 
+#[cfg_attr(wasm, wasm_bindgen(getter_with_clone))]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 /// App's startup options.
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppOptions {
     pub log_level: String,
     pub renderer: RendererOptions,
@@ -178,12 +215,13 @@ impl App {
     /// # Panics
     /// - Panics if the App has already been initialized.
     fn new(options: AppOptions) -> Self {
+        #[cfg(not(wasm))]
         if APP.get().is_some() {
-            panic!(
-                "App already initialized.
-
-                Please use PLRender::app() to get the main App instance."
-            )
+            Panic::trying_to_create_app_directly()
+        }
+        #[cfg(wasm)]
+        if APP.with(|app| app.get()).is_some() {
+            Panic::trying_to_create_app_directly()
         }
 
         let log_level = options.log_level.clone();
@@ -214,7 +252,7 @@ impl App {
     /// Initializes the logger with the given log level.
     fn init_logger(level_filter: log::LevelFilter) {
         let level = level_filter.to_level().unwrap_or(log::Level::Info);
-        console_error_panic_hook::set_once();
+        //console_error_panic_hook::set_once();
         console_log::init_with_level(level).unwrap_or(println!("Failed to initialize logger"));
     }
 
@@ -383,6 +421,7 @@ impl AppState {
         renderer.read().expect("Could not Read Renderer State")
     }
 
+    #[cfg(not(wasm))]
     /// Gets or initializes the global Renderer.
     ///
     /// # Panics
@@ -396,17 +435,59 @@ impl AppState {
         })
     }
 
+    #[cfg(wasm)]
+    /// Gets or initializes the global Renderer.
+    ///
+    /// # Panics
+    /// - Panics if it fails to create the global Renderer.
+    fn get_or_init_renderer<'w, W: IsWindow>(&self, window: &'w mut W) -> &MainRenderer {
+        RENDERER.with(|renderer| {
+            renderer.get_or_init(|| {
+                Arc::new(RwLock::new(
+                    pollster::block_on(self.init_renderer::<W>(window))
+                        .expect("Failed to create Renderer"),
+                ))
+            })
+        })
+
+        // if let Some(renderer) = self.renderer().clone() {
+        //     &renderer
+        // } else {
+        //     self.renderer = Some({
+        //         Arc::new(RwLock::new(
+        //             pollster::block_on(self.init_renderer::<W>(window))
+        //                 .expect("Failed to create Renderer"),
+        //         ))
+        //     });
+        //     &self.renderer.as_ref().unwrap().clone()
+        // }
+    }
+
+    #[cfg(not(wasm))]
     /// Gets or initializes the global Renderer without testing for
     /// compatibility with a Window.
     ///
     /// # Panics
     /// - Panics if it fails to create the global Renderer.
     fn get_or_init_offscreen_renderer(&self) -> &MainRenderer {
+        #[cfg(not(wasm))]
         RENDERER.get_or_init(|| {
             Arc::new(RwLock::new(
                 pollster::block_on(self.init_offscreen_renderer())
                     .expect("Failed to create Renderer"),
             ))
+        })
+    }
+
+    #[cfg(wasm)]
+    fn get_or_init_offscreen_renderer(&self) -> &MainRenderer {
+        RENDERER.with(|renderer| {
+            renderer.get_or_init(|| {
+                Arc::new(RwLock::new(
+                    pollster::block_on(self.init_offscreen_renderer())
+                        .expect("Failed to create Renderer"),
+                ))
+            })
         })
     }
 
