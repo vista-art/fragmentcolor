@@ -303,6 +303,7 @@ impl<'r> Real<'r> {
             }
         };
 
+        // @TODO use the method from the renderer
         let blank_color_view = {
             let desc = wgpu::TextureDescriptor {
                 label: Some("dummy"),

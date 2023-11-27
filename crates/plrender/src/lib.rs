@@ -1,6 +1,6 @@
 //! # PLRender
 //!
-//! ## Multiplatform GPU Rendering API for Javascript, Python and Beyond
+//! Multiplatform GPU Rendering API for Javascript, Python and Beyond
 
 /// # PLRender Application Module
 ///

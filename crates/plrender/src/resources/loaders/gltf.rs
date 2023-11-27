@@ -11,7 +11,7 @@ use crate::{
         mesh::{BuiltMesh, MeshBuilder},
         texture::TextureId,
     },
-    scene, ObjectEntry, Vec2,
+    scene, SceneObject, Vec2,
 };
 use std::{collections::VecDeque, ops, path::Path};
 
@@ -30,7 +30,7 @@ struct Texture {
 struct Primitive {
     mesh: Option<BuiltMesh>,
     color: Color,
-    shader: renderpass::Shader,
+    shader: renderpass::ShaderType,
     material: renderpass::Material,
 }
 
@@ -92,7 +92,7 @@ fn load_primitive<'a>(
     Primitive {
         mesh: mesh_builder.build().ok(),
         color: Color::from_rgba(base_color),
-        shader: renderpass::Shader::Gouraud { flat: true },
+        shader: renderpass::ShaderType::Gouraud { flat: true },
         material,
     }
 }

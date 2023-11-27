@@ -13,7 +13,7 @@ use fxhash::FxHashMap;
 use std::{mem, sync::RwLockReadGuard};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub enum Shader {
+pub(crate) enum ShaderType {
     Gouraud { flat: bool },
     Phong { glossiness: u8 },
 }
@@ -426,7 +426,7 @@ impl<'r> RenderPass for Phong<'r> {
                 // pre-create the bind groups so that we don't need to do it on the fly
                 let local_bgl = &self.local_bind_group_layout;
                 let entity_count = scene
-                    .query::<(&components::Mesh, &components::Color, &Shader)>()
+                    .query::<(&components::Mesh, &components::Color, &ShaderType)>()
                     .with::<&Vertex<Position>>()
                     .with::<&Vertex<Normal>>()
                     .iter()
@@ -485,7 +485,7 @@ impl<'r> RenderPass for Phong<'r> {
                     pass.set_bind_group(0, &self.global_bind_group, &[]);
 
                     for (_, (entity, &color, &shader)) in scene
-                        .query::<(&components::Mesh, &components::Color, &Shader)>()
+                        .query::<(&components::Mesh, &components::Color, &ShaderType)>()
                         .with::<&Vertex<Position>>()
                         .with::<&Vertex<Normal>>()
                         .iter()
@@ -533,9 +533,9 @@ impl<'r> RenderPass for Phong<'r> {
 
                         //TODO: check for texture coordinates
                         pass.set_pipeline(match shader {
-                            Shader::Gouraud { flat: true } => &self.pipelines.flat,
-                            Shader::Gouraud { flat: false } => &self.pipelines.gouraud,
-                            Shader::Phong { .. } => &self.pipelines.phong,
+                            ShaderType::Gouraud { flat: true } => &self.pipelines.flat,
+                            ShaderType::Gouraud { flat: false } => &self.pipelines.gouraud,
+                            ShaderType::Phong { .. } => &self.pipelines.phong,
                         });
 
                         let locals = Locals {
@@ -545,7 +545,7 @@ impl<'r> RenderPass for Phong<'r> {
                             color: color.into_vec4_gamma(),
                             lights: light_indices,
                             glossiness: match shader {
-                                Shader::Phong { glossiness } => glossiness as f32,
+                                ShaderType::Phong { glossiness } => glossiness as f32,
                                 _ => 0.0,
                             },
                             _pad: [0.0; 3],

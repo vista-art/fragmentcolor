@@ -1,3 +1,4 @@
+use crate::transform::TransformId;
 use crate::{Color, Quad, TextureId};
 
 /// The bounds of a 2D object in screen space.
@@ -19,6 +20,7 @@ pub struct ShapeFlag(pub f32);
 /// The collection of components required to render a 2D object.
 #[derive(hecs::Bundle, Clone, Copy, Debug, PartialEq)]
 pub struct Renderable2D {
+    pub transform: TransformId,
     pub color: Color,
     pub bounds: Bounds,
     pub border: Border,

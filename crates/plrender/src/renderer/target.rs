@@ -10,7 +10,7 @@ use crate::{
         texture::{Texture, TextureId},
     },
     scene::{Object, ObjectId},
-    PLRender,
+    PLRender, SceneObject,
 };
 use image::Rgba;
 use std::{

@@ -43,6 +43,14 @@ mod light;
 /// Allows an Object to display a 3D Mesh
 mod mesh;
 
+/// Shader component.
+///
+/// In the current implementation, it creates a ShaderToy-like
+/// fullscreen fragment shader.
+///
+/// It is planned feature to make it change the appearance of one object.
+mod shader;
+
 /// 2D Shapes collection.
 ///
 /// Allows an Object to display a 2D Shape.
@@ -73,5 +81,6 @@ pub use is_hidden::*;
 pub use light::*;
 pub use mesh::*;
 pub use renderable::*;
+pub use shader::*;
 pub use shape::*;
 pub use sprite::*;

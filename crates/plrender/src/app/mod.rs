@@ -34,10 +34,7 @@ pub mod commands;
 /// user calls `get` or `get_mut` respectively.
 ///
 /// This is an internal module, API users do not need to use it directly.
-pub mod container;
-
-/// Handy internal macro to implement the `Container` trait for a type.
-pub(super) mod macros;
+pub(crate) mod container;
 
 /// Event Loop module.
 ///
@@ -50,7 +47,7 @@ pub(super) mod macros;
 /// `PLRender::run()`. This function never returns, it will
 /// live as long as the App is running and only exits when
 /// all windows are closed.
-pub mod event_loop;
+pub(crate) mod event_loop;
 
 /// Events module.
 ///
@@ -58,8 +55,14 @@ pub mod event_loop;
 /// mainly Window events and the Draw event.
 pub mod events;
 
+/// Handy internal macro to implement the `Container` trait for a type.
+pub(super) mod macros;
+
 /// Meta module with static Build data.
 pub mod meta;
+
+/// Centralizes all the possible ways sh*t can hit the fan.
+pub(crate) mod panics;
 
 /// The Window module.
 ///
@@ -77,3 +80,7 @@ pub use container::*;
 pub use events::*;
 pub use meta::*;
 pub use window::*;
+
+pub mod api;
+
+pub use api::*;

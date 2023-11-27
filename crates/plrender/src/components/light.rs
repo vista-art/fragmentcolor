@@ -1,6 +1,6 @@
 use crate::{
     components::Color,
-    scene::macros::spatial_object,
+    scene::macros::api_object,
     scene::{transform::TransformId, Object},
 };
 
@@ -24,7 +24,7 @@ pub struct Light {
     pub(crate) transform_id: TransformId,
 }
 
-spatial_object!(Light);
+api_object!(Light);
 
 #[derive(Debug, Clone, Copy)]
 pub struct LightOptions {

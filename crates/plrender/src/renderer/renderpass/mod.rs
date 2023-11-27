@@ -1,11 +1,9 @@
 mod buffer;
-mod flat;
 mod phong;
 mod real;
 mod solid;
 mod toy;
 
-pub(crate) use flat::*;
 pub(crate) use phong::*;
 pub(crate) use real::*;
 pub(crate) use solid::*;

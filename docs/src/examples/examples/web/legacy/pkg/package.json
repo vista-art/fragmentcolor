@@ -1,0 +1,23 @@
+{
+  "name": "plrender",
+  "collaborators": [
+    "Pupil Labs GmbH"
+  ],
+  "description": "An unified API to render Pupil Labs' video enrichments across multiple platforms",
+  "version": "0.1.0",
+  "license": "SEE LICENSE IN LICENCE.md",
+  "repository": {
+    "type": "git",
+    "url": "https://gitlab.com/pupil-labs/pupil-cloud/pl-render"
+  },
+  "files": [
+    "plrender_bg.wasm",
+    "plrender.js",
+    "plrender.d.ts"
+  ],
+  "module": "plrender.js",
+  "types": "plrender.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

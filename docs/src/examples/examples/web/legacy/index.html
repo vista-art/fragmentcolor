@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en-US">
+  <head>
+    <meta charset="utf-8" />
+    <title>hello-wasm example</title>
+    <style>
+      #container {
+        position: relative;
+        width: 100%;
+        max-width: 800px;
+        height: auto;
+      }
+
+      video {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: auto;
+      }
+
+      canvas {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: auto;
+        z-index: 1;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="container">
+      <video id="test_video" type="video/mp4" autoplay muted>
+        <source
+          type="video/mp4"
+          src="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"
+        />
+      </video>
+      <canvas id="test_canvas"></canvas>
+    </div>
+
+    <script type="module" async>
+      import load_wasm, { PLRender } from "./pkg/plrender.js";
+      await load_wasm();
+
+      const plrender = new PLRender();
+      plrender.config({
+        window: {
+          canvas_selector: "#test_canvas",
+        },
+        controllers: {
+          gaze: {
+            name: "gaze",
+            radius: 0.2,
+            border: 0.05,
+            color: "#ff0000ff",
+            alpha: 1.0,
+          },
+        },
+      });
+
+      const canvas = document.getElementById("test_canvas");
+
+      console.log("Attaching event listeners...");
+      canvas.addEventListener("mousemove", (event) => {
+        const x = (4 * event.offsetX) / canvas.width - 1;
+        const y = (4 * event.offsetY) / canvas.height - 1;
+
+        console.log("mouse move: ", x, y);
+        plrender.trigger("gaze", "set_position", [x, y]);
+      });
+
+      plrender.run();
+    </script>
+  </body>
+</html>

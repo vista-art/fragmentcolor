@@ -1,6 +1,8 @@
 use crate::renderer::limits::{DEFAULT_LIMITS, DOWNLEVEL_DEFAULTS, DOWNLEVEL_WEBGL2};
 use phf::phf_map;
 use serde::{Deserialize, Serialize};
+#[cfg(wasm)]
+use wasm_bindgen::prelude::wasm_bindgen;
 
 /// The default render pass (2D).
 const DEFAULT_RENDER_PASS: &str = "flat";
@@ -51,6 +53,7 @@ pub static DEVICE_LIMITS: phf::Map<&str, wgpu::Limits> = phf_map! {
     "default" => DEFAULT_LIMITS,
 };
 
+#[cfg_attr(wasm, wasm_bindgen(getter_with_clone))]
 /// Options for configuring the Renderer.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RendererOptions {
