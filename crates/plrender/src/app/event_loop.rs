@@ -1,10 +1,10 @@
 use crate::{
-    app::{events::Event, AppState, Container, EventProcessor, Window},
+    app::{events::Event, AppState, Container, EventProcessor},
     renderer::{
         target::{IsRenderTarget, TargetId},
         RenderContext, RenderTargetCollection,
     },
-    Quad,
+    PLRender, Quad,
 };
 use instant::{Duration, Instant};
 use std::sync::{Arc, RwLock};
@@ -55,7 +55,7 @@ impl EventLoop<Event> {
         dispatcher
     }
 
-    pub async fn run(&mut self, runner: EventLoopRunner, app: Arc<RwLock<AppState>>) {
+    pub fn run(&mut self, runner: EventLoopRunner, app: Arc<RwLock<AppState>>) {
         if let Some(event_loop) = self.inner.take() {
             runner(event_loop, app.clone());
         }
@@ -80,9 +80,9 @@ pub(crate) fn run_event_loop(event_loop: WinitEventLoop<Event>, app: Arc<RwLock<
             // Custom dispatched events as strings.
             Winit::UserEvent(event) => {
                 if let Ok(app) = app {
-                    let windows = app.read_windows_collection::<Window>();
+                    let windows = app.read_windows_collection();
                     for window_id in windows.keys.iter() {
-                        if let Some(window) = windows.get(&window_id) {
+                        if let Some(window) = windows.get(window_id) {
                             window.call("event", event.clone());
                         };
                     }
@@ -108,7 +108,7 @@ pub(crate) fn run_event_loop(event_loop: WinitEventLoop<Event>, app: Arc<RwLock<
                 };
 
                 let target_id = TargetId::Window(window_id);
-                let windows = app.read_windows_collection::<Window>();
+                let windows = app.read_windows_collection();
                 let window = if let Some(window) = windows.get(&window_id) {
                     window
                 } else {
@@ -127,15 +127,15 @@ pub(crate) fn run_event_loop(event_loop: WinitEventLoop<Event>, app: Arc<RwLock<
                         let size = Quad::from_window_size(physical_size).to_wgpu_size();
 
                         if window.auto_resize {
-                            let renderer = app.renderer();
-                            let targets = if let Ok(targets) = renderer.write_targets() {
-                                Some(targets)
+                            let renderer = PLRender::renderer();
+                            let renderer = if let Ok(renderer) = renderer.try_read() {
+                                renderer
                             } else {
                                 log::error!("Renderer is locked. Cannot auto-resize Render Target for Window {:?}!", window_id);
-                                None
+                                return;
                             };
 
-                            if let Some(mut targets) = targets {
+                            if let Ok(mut targets) = renderer.write_targets() {
                                 if let Some(target) = targets.get_mut(&target_id) {
                                     if let Err(result) = target.resize(&renderer, size) {
                                         log::error!(
@@ -145,7 +145,20 @@ pub(crate) fn run_event_loop(event_loop: WinitEventLoop<Event>, app: Arc<RwLock<
                                         );
                                     }
                                 } else {
-                                    log::error!("Target not found! Cannot auto-resize Render Target for Window {:?}!", window_id);
+                                    log::warn!("Target not found! Cannot auto-resize Render Target for Window {:?}!", window_id);
+                                };
+                            } else {
+                                log::error!("Renderer Targets are locked. Cannot auto-resize Render Target for Window {:?}!", window_id);
+                                return;
+                            };
+
+                            let mut scenes = app.write_to_scenes_collection();
+                            let keys = scenes.keys.clone();
+                            for scene_id in keys.iter() {
+                                if let Some(mut scene) = scenes.get_mut(scene_id) {
+                                    scene.resize_target(target_id, Quad::from_wgpu_size(size))
+                                } else {
+                                    continue;
                                 };
                             }
                         }
@@ -179,12 +192,29 @@ pub(crate) fn run_event_loop(event_loop: WinitEventLoop<Event>, app: Arc<RwLock<
                         let size = Quad::from_window_size(new_inner_size).to_wgpu_size();
 
                         if window.auto_resize {
-                            let renderer = app.renderer();
+                            let renderer = PLRender::renderer();
+                            let renderer = if let Ok(renderer) = renderer.try_read() {
+                                renderer
+                            } else {
+                                log::error!("Renderer is locked. Cannot auto-rescale Render Target for Window {:?}!", window_id);
+                                return;
+                            };
+
                             if let Ok(mut targets) = renderer.write_targets() {
                                 if let Some(target) = targets.get_mut(&target_id) {
                                     _ = target.resize(&renderer, size);
                                 };
                             };
+
+                            let mut scenes = app.write_to_scenes_collection();
+                            let keys = scenes.keys.clone();
+                            for scene_id in keys.iter() {
+                                if let Some(mut scene) = scenes.get_mut(scene_id) {
+                                    scene.resize_target(target_id, Quad::from_wgpu_size(size))
+                                } else {
+                                    continue;
+                                };
+                            }
                         };
 
                         window.call(
@@ -212,24 +242,38 @@ pub(crate) fn run_event_loop(event_loop: WinitEventLoop<Event>, app: Arc<RwLock<
                     // The window has been requested to close.
                     // @TODO deduplicate Window cleanup code (also on ESC KeyUp)
                     WindowEvent::CloseRequested => {
-                        let renderer = app.renderer();
-                        if let Ok(mut targets) = renderer.write_targets() {
-                            targets.remove(&target_id);
-                        }
-
+                        let renderer = PLRender::renderer();
+                        let renderer = if let Ok(renderer) = renderer.try_read() {
+                            renderer
+                        } else {
+                            log::error!("Renderer is locked. Cannot remove Render Target for closing Window {:?}!", window_id);
+                            return;
+                        };
                         drop(window);
                         drop(windows);
-                        let removed = app.remove_window::<Window>(&window_id);
-                        let windows = app.read_windows_collection::<Window>();
 
-                        removed.map(|window| {
+                        if let Ok(mut targets) = renderer.write_targets() {
+                            targets.remove(&target_id);
+                            let mut scenes = app.write_to_scenes_collection();
+                            let keys = scenes.keys.clone();
+                            for scene_id in keys.iter() {
+                                if let Some(mut scene) = scenes.get_mut(scene_id) {
+                                    scene.remove_target(target_id)
+                                };
+                            }
+                        }
+
+                        let removed = app.remove_window(&window_id);
+                        let windows = app.read_windows_collection();
+
+                        if let Some(window) = removed {
                             let window = window.write().unwrap();
-                            window.instance.set_visible(false);
                             window.call("closed", Event::Closed);
                             if windows.len() == 0 {
                                 window.call("exit", Event::Exit);
                             }
-                        });
+                            window.instance.set_visible(false);
+                        }
                     }
 
                     // The window has been destroyed.
@@ -252,7 +296,7 @@ pub(crate) fn run_event_loop(event_loop: WinitEventLoop<Event>, app: Arc<RwLock<
                     WindowEvent::HoveredFile(path) => {
                         drop(window);
                         drop(windows);
-                        let mut windows = app.write_to_windows_collection::<Window>();
+                        let mut windows = app.write_to_windows_collection();
                         let mut window = if let Some(window) = windows.get_mut(&window_id) {
                             window
                         } else {
@@ -290,62 +334,70 @@ pub(crate) fn run_event_loop(event_loop: WinitEventLoop<Event>, app: Arc<RwLock<
                         device_id: _,
                         input,
                         is_synthetic: _,
-                    } => match input {
-                        KeyboardInput {
+                    } => {
+                        let KeyboardInput {
                             state,
                             virtual_keycode,
                             scancode,
                             ..
-                        } => {
-                            let escape = match virtual_keycode {
-                                Some(VirtualKeyCode::Escape) => true,
-                                _ => false,
+                        } = input;
+
+                        let escape = matches!(virtual_keycode, Some(VirtualKeyCode::Escape));
+                        let released = matches!(state, ElementState::Released);
+
+                        // @TODO deduplicate Window cleanup code
+                        if escape && released && window.close_on_esc {
+                            let renderer = PLRender::renderer();
+                            let renderer = if let Ok(renderer) = renderer.try_read() {
+                                renderer
+                            } else {
+                                log::error!("Renderer is locked. Cannot remove Render Target for closing Window {:?}!", window_id);
+                                return;
                             };
-                            let released = match state {
-                                ElementState::Pressed => false,
-                                ElementState::Released => true,
-                            };
 
-                            // @TODO deduplicate Window cleanup code
-                            if escape && released && window.close_on_esc {
-                                let renderer = app.renderer();
-                                if let Ok(mut targets) = renderer.write_targets() {
-                                    targets.remove(&target_id);
-                                }
-
-                                let removed = app.remove_window::<Window>(&window_id);
-                                removed.map(|window| {
-                                    let window = window.write().unwrap();
-                                    window.instance.set_visible(false);
-                                    window.call("closed", Event::Closed);
-                                    if windows.len() == 0 {
-                                        window.call("exit", Event::Exit);
-                                    }
-                                });
-
-                                if windows.len() == 0 {
-                                    *control_flow = ControlFlow::Exit;
+                            if let Ok(mut targets) = renderer.write_targets() {
+                                targets.remove(&target_id);
+                                let mut scenes = app.write_to_scenes_collection();
+                                let keys = scenes.keys.clone();
+                                for scene_id in keys.iter() {
+                                    if let Some(mut scene) = scenes.get_mut(scene_id) {
+                                        scene.remove_target(target_id)
+                                    };
                                 }
                             }
 
-                            match released {
-                                true => window.call(
-                                    "keyup",
-                                    Event::KeyUp {
-                                        key: *virtual_keycode,
-                                        keycode: *scancode,
-                                    },
-                                ),
-                                false => window.call(
-                                    "keydown",
-                                    Event::KeyDown {
-                                        key: *virtual_keycode,
-                                        keycode: *scancode,
-                                    },
-                                ),
+                            let removed = app.remove_window(&window_id);
+                            if let Some(window) = removed {
+                                let window = window.write().unwrap();
+                                window.call("closed", Event::Closed);
+                                if windows.len() == 0 {
+                                    window.call("exit", Event::Exit);
+                                }
+                                window.instance.set_visible(false);
+                            }
+
+                            if windows.len() == 0 {
+                                *control_flow = ControlFlow::Exit;
                             }
                         }
-                    },
+
+                        match released {
+                            true => window.call(
+                                "keyup",
+                                Event::KeyUp {
+                                    key: *virtual_keycode,
+                                    keycode: *scancode,
+                                },
+                            ),
+                            false => window.call(
+                                "keydown",
+                                Event::KeyDown {
+                                    key: *virtual_keycode,
+                                    keycode: *scancode,
+                                },
+                            ),
+                        }
+                    }
 
                     // The keyboard modifiers have changed.
                     // Currently uninimplemented for Web.
@@ -501,7 +553,7 @@ pub(crate) fn run_event_loop(event_loop: WinitEventLoop<Event>, app: Arc<RwLock<
                     return;
                 };
 
-                let windows = app.read_windows_collection::<Window>();
+                let windows = app.read_windows_collection();
                 let window = if let Some(window) = windows.get(&window_id) {
                     window
                 } else {
@@ -552,9 +604,9 @@ pub(crate) fn run_event_loop(event_loop: WinitEventLoop<Event>, app: Arc<RwLock<
                     return;
                 };
 
-                let windows = app.read_windows_collection::<Window>();
+                let windows = app.read_windows_collection();
                 for window_id in windows.keys.iter() {
-                    if let Some(window) = windows.get(&window_id) {
+                    if let Some(window) = windows.get(window_id) {
                         window.process_calls();
                     };
                 }

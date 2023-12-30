@@ -2,6 +2,8 @@
 //!
 //! Multiplatform GPU Rendering API for Javascript, Python and Beyond
 
+#![allow(clippy::module_inception)]
+
 /// # PLRender Application Module
 ///
 /// This module contains the main App struct and its related types.

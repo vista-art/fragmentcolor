@@ -363,16 +363,14 @@ impl IsRenderTarget for RenderTarget {
     }
 
     fn prepare_render(&self, renderer: &Renderer, commands: &mut Commands) {
-        match self {
-            RenderTarget::Texture(target) => target.copy_texture_to_buffer(renderer, commands),
-            _ => {}
+        if let RenderTarget::Texture(target) = self {
+            target.copy_texture_to_buffer(renderer, commands)
         }
     }
 
     fn present(&mut self, frame: Frame) {
-        match self {
-            RenderTarget::Window(_) => frame.present(),
-            _ => {}
+        if let RenderTarget::Window(_) = self {
+            frame.present()
         }
     }
 }
@@ -508,7 +506,7 @@ impl TextureTarget {
                 renderer.device.poll(wgpu::Maintain::Wait);
 
                 let output_buffer_data = if let Some(received) = receiver.receive().await {
-                    if let Ok(_) = received {
+                    if received.is_ok() {
                         buffer_slice.get_mapped_range()
                     } else {
                         return Err("Failed to map texture buffer".into());

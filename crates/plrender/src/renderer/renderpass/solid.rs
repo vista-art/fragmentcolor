@@ -241,7 +241,7 @@ impl<'r> RenderPass for Solid<'r> {
                 {
                     let m_proj = camera.projection_matrix(target.aspect());
                     let m_view_inv = transforms[camera.transform_id].inverse_matrix();
-                    let m_final = glam::Mat4::from(m_proj) * glam::Mat4::from(m_view_inv);
+                    let m_final = m_proj * glam::Mat4::from(m_view_inv);
                     let globals = Globals {
                         view_proj: m_final.to_cols_array_2d(),
                     };

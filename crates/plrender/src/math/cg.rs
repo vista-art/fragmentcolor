@@ -65,36 +65,57 @@ impl From<Vec3> for Vec2or3 {
     }
 }
 
-impl Into<Vec2> for Vec2or3 {
-    fn into(self) -> Vec2 {
-        match self {
-            Self::Vec2(v) => v,
-            Self::Vec3(v) => Vec2 { x: v.x, y: v.y },
+impl From<Vec2or3> for Vec2 {
+    fn from(v: Vec2or3) -> Self {
+        match v {
+            Vec2or3::Vec2(v) => v,
+            Vec2or3::Vec3(v) => Vec2 { x: v.x, y: v.y },
         }
     }
 }
 
-impl Into<Vec3> for Vec2or3 {
-    fn into(self) -> Vec3 {
-        match self {
-            Self::Vec2(v) => Vec3 {
+impl From<Vec2or3> for Vec3 {
+    fn from(v: Vec2or3) -> Self {
+        match v {
+            Vec2or3::Vec2(v) => Vec3 {
                 x: v.x,
                 y: v.y,
                 z: 0.0,
             },
-            Self::Vec3(v) => v,
+            Vec2or3::Vec3(v) => v,
         }
     }
 }
 
-impl Into<Vec2or3> for [f32; 2] {
-    fn into(self) -> Vec2or3 {
-        Vec2or3::Vec2(self.into())
+impl From<Vec2or3> for Point2 {
+    fn from(v: Vec2or3) -> Self {
+        match v {
+            Vec2or3::Vec2(v) => Point2 { x: v.x, y: v.y },
+            Vec2or3::Vec3(v) => Point2 { x: v.x, y: v.y },
+        }
     }
 }
 
-impl Into<Vec2or3> for [f32; 3] {
-    fn into(self) -> Vec2or3 {
-        Vec2or3::Vec3(self.into())
+impl From<[f32; 3]> for Vec2or3 {
+    fn from(v: [f32; 3]) -> Self {
+        Vec2or3::Vec3(v.into())
+    }
+}
+
+impl From<[f32; 2]> for Vec2or3 {
+    fn from(v: [f32; 2]) -> Self {
+        Vec2or3::Vec2(v.into())
+    }
+}
+
+impl From<(f32, f32)> for Vec2or3 {
+    fn from(v: (f32, f32)) -> Self {
+        Vec2or3::Vec2([v.0, v.1].into())
+    }
+}
+
+impl From<(f32, f32, f32)> for Vec2or3 {
+    fn from(v: (f32, f32, f32)) -> Self {
+        Vec2or3::Vec3([v.0, v.1, v.2].into())
     }
 }

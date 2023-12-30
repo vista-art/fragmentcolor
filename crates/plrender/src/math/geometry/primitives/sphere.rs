@@ -91,7 +91,7 @@ pub(super) fn sphere(vertex_types: vertex::VertexTypes, radius: f32, detail: usi
         }
     }
 
-    let indices = faces.into_iter().flat_map(|face| face).collect::<Vec<_>>();
+    let indices = faces.into_iter().flatten().collect::<Vec<_>>();
     let mut positions = Vec::with_capacity(vertices.len());
     let mut normals = if vertex_types.contains(vertex::VertexTypes::NORMAL) {
         Some(Vec::with_capacity(vertices.len()))

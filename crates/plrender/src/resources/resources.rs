@@ -8,7 +8,7 @@ use std::{
 };
 
 static MESH_ID: AtomicU32 = AtomicU32::new(1);
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Resources {
     textures: HashMap<TextureId, Texture>,
     meshes: HashMap<MeshId, MeshData>,

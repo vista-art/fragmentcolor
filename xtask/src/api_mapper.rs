@@ -298,8 +298,8 @@ fn parse_external_module(current_path: &Path, module_name: String) -> (PathBuf, 
 fn extract_struct(item_struct: ItemStruct, signatures: &mut ApiMap, filter: NameFilter) {
     let struct_name = match filter {
         NameFilter::Global => item_struct.ident.to_string(),
-        NameFilter::Specific(name) if item_struct.ident.to_string() == name => name,
-        NameFilter::Rename(name, rename) if item_struct.ident.to_string() == name => rename,
+        NameFilter::Specific(name) if item_struct.ident == name => name,
+        NameFilter::Rename(name, rename) if item_struct.ident == name => rename,
         _ => return,
     };
 
@@ -367,13 +367,7 @@ fn extract_fn(path: &Path, item_fn: ItemFn, signatures: &mut ApiMap, filter: Nam
 
         let ancestor = path
             .ancestors()
-            .find_map(|ancestor| {
-                if ancestor.ends_with("src") {
-                    Some(ancestor)
-                } else {
-                    None
-                }
-            })
+            .find(|ancestor| ancestor.ends_with("src"))
             .expect("Couldn't find parent /src directory");
 
         let key = path
@@ -381,7 +375,7 @@ fn extract_fn(path: &Path, item_fn: ItemFn, signatures: &mut ApiMap, filter: Nam
             .unwrap()
             .to_str()
             .unwrap()
-            .replace("/", "_");
+            .replace('/', "_");
 
         match signatures.entry(key) {
             Entry::Vacant(entry) => {
@@ -448,7 +442,7 @@ fn extract_field(field: &syn::Field) -> ObjectProperty {
 /// Exports the generated API map to a static Rust file
 fn export_api_map(api_map: ApiMap, target_file: &Path) {
     let mut static_map_builder = phf_codegen::Map::new();
-    let mut target_file = fs::File::create(&target_file).unwrap();
+    let mut target_file = fs::File::create(target_file).unwrap();
     let mut writer = std::io::BufWriter::new(&mut target_file);
 
     for (struct_name, functions) in api_map {

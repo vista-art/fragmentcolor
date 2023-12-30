@@ -22,34 +22,32 @@ impl Controller {
     }
 
     pub fn handle_event(&mut self, event: &WindowEvent) {
-        match event {
-            WindowEvent::KeyboardInput {
-                input:
-                    KeyboardInput {
-                        state,
-                        virtual_keycode: Some(keycode),
-                        ..
-                    },
-                ..
-            } => {
-                let is_pressed = *state == ElementState::Pressed;
-                match keycode {
-                    VirtualKeyCode::W | VirtualKeyCode::Up => {
-                        self.is_forward_pressed = is_pressed;
-                    }
-                    VirtualKeyCode::A | VirtualKeyCode::Left => {
-                        self.is_left_pressed = is_pressed;
-                    }
-                    VirtualKeyCode::S | VirtualKeyCode::Down => {
-                        self.is_backward_pressed = is_pressed;
-                    }
-                    VirtualKeyCode::D | VirtualKeyCode::Right => {
-                        self.is_right_pressed = is_pressed;
-                    }
-                    _ => {}
+        if let WindowEvent::KeyboardInput {
+            input:
+                KeyboardInput {
+                    state,
+                    virtual_keycode: Some(keycode),
+                    ..
+                },
+            ..
+        } = event
+        {
+            let is_pressed = *state == ElementState::Pressed;
+            match keycode {
+                VirtualKeyCode::W | VirtualKeyCode::Up => {
+                    self.is_forward_pressed = is_pressed;
                 }
+                VirtualKeyCode::A | VirtualKeyCode::Left => {
+                    self.is_left_pressed = is_pressed;
+                }
+                VirtualKeyCode::S | VirtualKeyCode::Down => {
+                    self.is_backward_pressed = is_pressed;
+                }
+                VirtualKeyCode::D | VirtualKeyCode::Right => {
+                    self.is_right_pressed = is_pressed;
+                }
+                _ => {}
             }
-            _ => {}
         }
     }
 

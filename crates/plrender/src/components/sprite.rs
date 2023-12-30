@@ -2,7 +2,7 @@ use std::path::Path;
 
 use crate::{
     math::geometry::Quad,
-    panics::To,
+    panics,
     resources::texture::{Texture, TextureId, DEFAULT_IMAGE_SIZE},
     scene::{macros::api_object, Object},
     Border, Bounds, Color, Renderable2D, SceneObject, ShapeFlag,
@@ -28,7 +28,7 @@ impl Object<Sprite> {
             self.set_texture(image, size)
         } else {
             log::warn!("Sprite::set_image() failed to parse Image bytes! Image will not update.");
-            return self;
+            self
         }
     }
 
@@ -107,7 +107,7 @@ impl Sprite {
     }
 
     fn load_default_image() -> (TextureId, Quad) {
-        let (image, _) = Texture::image_not_found().expect(To::find_default_image());
+        let (image, _) = Texture::image_not_found().expect(panics::DEFAULT_IMAGE_NOT_FOUND);
         (image, Quad::from_tuple(DEFAULT_IMAGE_SIZE))
     }
 }

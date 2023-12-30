@@ -50,6 +50,7 @@ pub trait APIObject: Default + hecs::Component + Clone + Debug {
 
     // @TODO - it would be useful to have "name" here and associate it with
     //         the Object's typeId. So we can list a scene with nice names.
+    //         (context: Rust does not know the object name at runtime)
 }
 
 /// The Object is the interface for manipulating Scene objects.
@@ -326,7 +327,7 @@ impl<T: APIObject> Object<T> {
             }
         } else {
             let component = self.builder.instance.get::<&C>();
-            component.map(|c| c.clone())
+            component.copied()
         }
     }
 
@@ -378,7 +379,7 @@ impl<T: APIObject> Object<T> {
 
     /// Returns this Object's local Transform Matrix.
     pub fn local_transform(&self) -> LocalTransform {
-        self.transform.local.clone()
+        self.transform.local
     }
 
     /// Whether this Object has moved relative to its parent.
@@ -577,8 +578,8 @@ impl<T: APIObject> Object<T> {
     /// - Use `Transform.set_rotation_quaternion()` to overwrite the rotation using a Quaternion.
     pub fn rotate_degrees<V: Into<Vec2or3>>(&mut self, axis: V, degrees: f32) -> &mut Self {
         let axis: Vec3 = axis.into().into();
-        self.transform.local.rotation = self.transform.local.rotation
-            * glam::Quat::from_axis_angle(axis.into(), degrees.to_radians());
+        self.transform.local.rotation *=
+            glam::Quat::from_axis_angle(axis.into(), degrees.to_radians());
 
         self.update_transform()
     }
@@ -598,8 +599,7 @@ impl<T: APIObject> Object<T> {
     /// - Use `Transform.set_rotation_quaternion()` to overwrite the rotation using a Quaternion.
     pub fn rotate_radians<V: Into<Vec2or3>>(&mut self, axis: V, radians: f32) -> &mut Self {
         let axis: Vec3 = axis.into().into();
-        self.transform.local.rotation =
-            self.transform.local.rotation * glam::Quat::from_axis_angle(axis.into(), radians);
+        self.transform.local.rotation *= glam::Quat::from_axis_angle(axis.into(), radians);
 
         self.update_transform()
     }
@@ -698,7 +698,7 @@ impl<T: APIObject> Object<T> {
             y: 0.0,
             z: 0.0,
         };
-        self.look_at(origin, up.into())
+        self.look_at(origin, up)
     }
 
     // ------------------------------------------------------------------------
@@ -746,9 +746,9 @@ impl<T: APIObject> Object<T> {
 
     /// Updates the Scene's Transform associated with this Object.
     fn update_transform_in_scene(&self) {
-        if let Some(scene) = self.scene() {
+        if let Some(scene) = self.scene.clone() {
             if let Ok(mut scene) = scene.try_write() {
-                scene.update_transform(self.transform_id, self.transform.clone())
+                scene.update_transform(self.transform_id, self.transform)
             } else {
                 log::error!("{:?}: Could not write to Scene State.", self.ids);
             }
@@ -757,7 +757,7 @@ impl<T: APIObject> Object<T> {
 
     /// Reads the Scene's Transform associated with this Object.
     fn read_transform_from_scene(&self) -> Option<Transform> {
-        if let Some(scene) = self.scene() {
+        if let Some(scene) = self.scene.clone() {
             if let Ok(scene) = scene.try_read() {
                 scene.read_transform(self.transform_id)
             } else {
@@ -770,24 +770,13 @@ impl<T: APIObject> Object<T> {
         }
     }
 
-    /// Returns the Scene's RwLock if the object is in a Scene.
-    ///
-    /// Otherwise, returns None.
-    fn scene(&self) -> Option<Arc<RwLock<SceneState>>> {
-        if let Some(scene) = self.scene.clone() {
-            Some(scene)
-        } else {
-            None
-        }
-    }
-
     /// Convenience method to return a pair of Scene and Object Ids.
     ///
     /// This is needed while Rust does not support `&&` conditions in
     /// `if let Some(..)` pattern:
     /// https://github.com/rust-lang/rust/issues/53667
     fn scene_object_pair(&self) -> Result<(Arc<RwLock<SceneState>>, ObjectId), Error> {
-        if let Some(scene) = self.scene() {
+        if let Some(scene) = self.scene.clone() {
             if let Some(object_id) = self.id() {
                 Ok((scene, object_id))
             } else {
