@@ -6,9 +6,9 @@ use winit::event::{MouseButton, VirtualKeyCode};
 
 /// Trait for PLRender Callback Functions.
 ///
-/// Because we interact with Javascript and Python, all callback
-/// functions must be safely shared between threads, so they must
-/// implement `Send` and `Sync`.
+/// Because our frontend is a dynamic programming like Javascript
+/// or Python, all callback functions must be safely shared between
+/// threads, so they must implement `Send` and `Sync`.
 ///
 /// This trait is automatically implemented for all functions
 /// that are `FnMut(E) + Send + Sync`.
@@ -21,7 +21,7 @@ impl<E, F> CallbackFn<E> for F where F: FnMut(E) + Send + Sync {}
 /// we return a generic string when it is printed to the console.
 impl<E> Debug for dyn CallbackFn<E> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "< PLRender Callback Function >")
+        write!(f, "< FragmentColor Callback Function >")
     }
 }
 

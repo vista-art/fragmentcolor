@@ -237,7 +237,7 @@ impl Camera {
     /// This function is used by the RenderPass
     /// to get the camera's projection matrix.
     pub(crate) fn projection_matrix(&self, aspect: f32) -> glam::Mat4 {
-        let matrix = match self.projection {
+        match self.projection {
             Projection::Orthographic { center, size } => {
                 let extent_y = size.y / 2.0;
                 let extent_x = aspect * extent_y / 2.0;
@@ -261,7 +261,7 @@ impl Camera {
                         "Returning a default orthographic projection matrix."
                     );
                     glam::Mat4::orthographic_rh(-1.0, 1.0, -1.0, 1.0, self.z_near, self.z_far)
-                } else if self.z_near == f32::INFINITY {
+                } else if self.z_far == f32::INFINITY {
                     glam::Mat4::perspective_infinite_rh(fov, aspect, self.z_near)
                 } else if self.z_near == f32::INFINITY {
                     glam::Mat4::perspective_infinite_reverse_rh(fov, aspect, self.z_far)
@@ -269,7 +269,6 @@ impl Camera {
                     glam::Mat4::perspective_rh(fov, aspect, self.z_near, self.z_far)
                 }
             }
-        };
-        matrix.into()
+        }
     }
 }

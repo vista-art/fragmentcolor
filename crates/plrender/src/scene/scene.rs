@@ -5,7 +5,7 @@ use crate::{
         object::{ObjectId, SceneObject},
         transform::{GPUGlobalTransforms, GPULocalTransform, Transform, TransformId},
     },
-    Camera, Object, PLRender,
+    Camera, Object, PLRender, Quad, TargetId,
 };
 use std::{
     collections::HashMap,
@@ -34,7 +34,7 @@ pub struct SceneId(pub u32);
 
 #[derive(Debug, Default)]
 pub struct Scenes {
-    keys: Vec<SceneId>,
+    pub keys: Vec<SceneId>,
     container: HashMap<SceneId, Arc<RwLock<SceneState>>>,
 }
 crate::app::macros::implements_container!(Scenes, <&SceneId, SceneState>);
@@ -48,6 +48,13 @@ pub struct Scene {
     pub(crate) state: Arc<RwLock<SceneState>>,
 }
 
+/// Can't derive Default because of the SceneId
+impl Default for Scene {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 static SCENE_ID: AtomicU32 = AtomicU32::new(1);
 impl Scene {
     /// Creates a new Scene.
@@ -59,17 +66,14 @@ impl Scene {
     /// collection, use [Scene::new_unregistered()] instead
     /// (useful for testing).
     pub fn new() -> Self {
-        let mut scene = Self {
-            state: Arc::new(RwLock::new(SceneState {
-                id: SceneId(SCENE_ID.fetch_add(1, Ordering::Relaxed)),
-                world: Default::default(),
-                targets: Default::default(),
-                transforms: vec![Transform::root()],
-            })),
-        };
+        let mut scene = Self::new_unregistered();
 
-        let app = PLRender::app().read().expect("Could not get App Read lock");
-        app.add_scene(&mut scene);
+        let app = PLRender::app();
+        if let Ok(app) = app.try_read() {
+            app.add_scene(&mut scene);
+        } else {
+            log::error!("App Locked! Could not register Scene {:?}!", scene.id());
+        }
 
         scene
     }
@@ -89,6 +93,7 @@ impl Scene {
                 world: Default::default(),
                 targets: Default::default(),
                 transforms: vec![Transform::root()],
+                target_indices: HashMap::new(),
             })),
         }
     }
@@ -223,29 +228,23 @@ impl Scene {
     fn add_target(&mut self, target_description: RenderTargetDescription) {
         let camera_id = if let Some(camera_id) = target_description.camera_id {
             camera_id
-        } else {
-            if let Some(camera_id) = self.first_camera() {
-                log::warn!(
-                    "Scene {:?} has cameras, but no camera was specified for the target {:?}.
+        } else if let Some(camera_id) = self.first_camera() {
+            log::warn!(
+                "Scene {:?} has cameras, but no camera was specified for the target {:?}.
                     The target will be assigned to the first camera in the Scene.",
-                    self.id(),
-                    target_description.target_id
-                );
+                self.id(),
+                target_description.target_id
+            );
 
-                camera_id
-            } else {
-                log::info!(
-                    "Scene {:?} has no cameras. Creating a default 2D Camera.",
-                    self.id()
-                );
-                let camera_id = {
-                    let mut camera =
-                        components::Camera::from_target_size(target_description.target_size);
-                    self.add(&mut camera)
-                };
+            camera_id
+        } else {
+            log::info!(
+                "Scene {:?} has no cameras. Creating a default 2D Camera.",
+                self.id()
+            );
 
-                camera_id
-            }
+            let mut camera = components::Camera::from_target_size(target_description.target_size);
+            self.add(&mut camera)
         };
 
         let target_description = RenderTargetDescription {
@@ -253,15 +252,28 @@ impl Scene {
             ..target_description
         };
 
+        let (index, target_id) = {
+            let mut state = self.write_state();
+            let targets = state.targets.entry(camera_id).or_default();
+            let index = targets.len();
+            let target_id = target_description.target_id;
+            targets.push(target_description);
+
+            (index, target_id)
+        };
+
         let mut state = self.write_state();
-        let targets = state.targets.entry(camera_id).or_insert_with(Vec::new);
-        targets.push(target_description);
+        state
+            .target_indices
+            .entry(target_id)
+            .or_default()
+            .push((camera_id, index));
     }
 
     /// Returns the ObjectId of the first camera if the Scene has at least one camera.
     fn first_camera(&self) -> Option<ObjectId> {
         if let Some((camera_id, _camera)) = self.read_state().cameras().iter().next() {
-            return Some(camera_id);
+            Some(camera_id)
         } else {
             None
         }
@@ -296,6 +308,7 @@ impl Scene {
 ///
 /// Allows the Renderer to efficiently get all the targets for a given camera.
 type CameraTargets = HashMap<ObjectId, Vec<RenderTargetDescription>>;
+type TargetIndices = HashMap<TargetId, Vec<(ObjectId, usize)>>;
 
 /// Scene's internal state.
 pub struct SceneState {
@@ -303,6 +316,7 @@ pub struct SceneState {
     pub world: hecs::World,
     transforms: Vec<Transform>,
     targets: CameraTargets,
+    target_indices: TargetIndices,
 }
 
 impl Debug for SceneState {
@@ -399,6 +413,40 @@ impl SceneState {
         }
     }
 
+    /// Resizes a Target Description by TargetId
+    pub(crate) fn resize_target(&mut self, target_id: TargetId, size: Quad) {
+        let instances = if let Some(instances) = self.target_indices.get(&target_id) {
+            instances
+        } else {
+            return;
+        };
+
+        for (camera_id, index) in instances {
+            if let Some(targets) = self.targets.get_mut(camera_id) {
+                if *index < targets.len() {
+                    targets[*index].target_size = size;
+                }
+            }
+        }
+    }
+
+    /// Removes a target from the Scene.
+    pub(crate) fn remove_target(&mut self, target_id: TargetId) {
+        let instances = if let Some(instances) = self.target_indices.remove(&target_id) {
+            instances
+        } else {
+            return;
+        };
+
+        for (camera_id, index) in instances {
+            if let Some(targets) = self.targets.get_mut(&camera_id) {
+                if index < targets.len() {
+                    targets.remove(index);
+                }
+            }
+        }
+    }
+
     /// Iterate over all entities that have certain components
     /// using dynamic borrow checking.
     pub(crate) fn query<Q: hecs::Query>(&self) -> hecs::QueryBorrow<'_, Q> {
@@ -473,16 +521,151 @@ impl SceneState {
 mod tests {
     use super::*;
     use crate::components::{Circle, CircleOptions};
+    use std::ops::Index;
+
+    #[test]
+    fn test_new_scene_has_default_state() {
+        let scene = Scene::new_unregistered();
+        let state = scene.read_state();
+        assert!(state.world.is_empty());
+        assert_eq!(state.transforms.len(), 1);
+        assert!(state.targets.is_empty());
+        assert!(state.target_indices.is_empty());
+    }
 
     #[test]
     fn test_add_to_scene() {
         let mut scene = Scene::new_unregistered();
-        let mut shape = Circle::new(CircleOptions::default());
+        let mut shape1 = Circle::new(CircleOptions::default());
+        let mut shape2 = Circle::new(CircleOptions::default());
 
-        scene.add(&mut shape);
+        let object1_id = scene.add(&mut shape1);
+        let object2_id = scene.add(&mut shape2);
 
-        assert_eq!(scene.count(), 1);
+        assert_eq!(object1_id, shape1.id().unwrap());
+        assert_eq!(object2_id, shape2.id().unwrap());
+        assert_eq!(scene.count(), 2);
     }
 
-    // Additional tests for other properties...
+    #[test]
+    fn test_target_addition() {
+        let mut scene = Scene::new_unregistered();
+        let descriptor =
+            RenderTargetDescription::create_texture_target(Quad::from_size(1, 1)).unwrap();
+        scene.target(&descriptor);
+        let state = scene.read_state();
+        assert!(!state.targets.is_empty());
+    }
+
+    #[test]
+    fn test_target_with_camera_addition() {
+        let mut scene = Scene::new_unregistered();
+        let descriptor =
+            RenderTargetDescription::create_texture_target(Quad::from_size(1, 1)).unwrap();
+        let mut camera = Object::new(Camera::default());
+        scene.add(&mut camera);
+
+        scene.target_with_camera(&descriptor, &camera);
+
+        let state = scene.read_state();
+        assert!(!state.targets.is_empty());
+    }
+
+    #[test]
+    fn test_scene_id_increments_properly() {
+        let scene1 = Scene::new_unregistered();
+        let scene2 = Scene::new_unregistered();
+
+        assert_ne!(scene1.id(), scene2.id());
+    }
+
+    #[test]
+    fn test_indexing_transforms() {
+        let scene = Scene::new_unregistered();
+        let state = scene.read_state();
+        let first_transform = state.transforms.first().expect("No transforms found");
+        assert_eq!(*state.index(TransformId(0)), *first_transform);
+    }
+
+    #[test]
+    fn test_scene_state_update_transform() {
+        let scene = Scene::new_unregistered();
+        let mut state = scene.write_state();
+        let transform_id = TransformId(0);
+        let new_transform = Transform::default();
+
+        state.update_transform(transform_id, new_transform.clone());
+
+        assert_eq!(state.read_transform(transform_id).unwrap(), new_transform);
+    }
+
+    #[test]
+    fn test_scene_state_add_to_scene_tree() {
+        let scene = Scene::new_unregistered();
+        let mut state = scene.write_state();
+        let mut shape1 = Circle::new(CircleOptions::default());
+        let mut shape2 = Circle::new(CircleOptions::default());
+        let mut shape3 = Circle::new(CircleOptions::default());
+
+        shape3.translate([1.0, 0.0, 0.0]);
+
+        // not moved
+        let shape1_transform = state.add_to_scene_tree(&mut shape1);
+        let shape2_transform = state.add_to_scene_tree(&mut shape2);
+        // moved
+        let shape3_transform = state.add_to_scene_tree(&mut shape3);
+
+        // objects that have not moved are in Scene's root (TransformId(0))
+        assert_eq!(shape1.has_moved(), false);
+        assert_eq!(shape1_transform, TransformId(0));
+        assert_eq!(shape2.has_moved(), false);
+        assert_eq!(shape2_transform, TransformId(0));
+        assert_eq!(shape3.has_moved(), true);
+        assert_eq!(shape3_transform, TransformId(1));
+    }
+
+    #[test]
+    fn test_scene_state_resize_target() {
+        let mut scene = Scene::new_unregistered();
+        let descriptor =
+            RenderTargetDescription::create_texture_target(Quad::from_size(1, 1)).unwrap();
+        scene.target(&descriptor);
+
+        let mut state = scene.write_state();
+        let camera_id = state.cameras().iter().next().map(|(id, _)| id).unwrap();
+        let new_size = Quad {
+            min_x: 0,
+            min_y: 0,
+            max_x: 100,
+            max_y: 100,
+        };
+
+        state.resize_target(descriptor.target_id, new_size);
+
+        let updated_target_description = state
+            .targets
+            .get(&camera_id)
+            .unwrap()
+            .iter()
+            .next()
+            .unwrap();
+
+        assert_eq!(updated_target_description.target_size, new_size);
+    }
+
+    #[test]
+    fn test_scene_state_remove_target() {
+        let mut scene = Scene::new_unregistered();
+        let descriptor =
+            RenderTargetDescription::create_texture_target(Quad::from_size(100, 100)).unwrap();
+        scene.target(&descriptor);
+
+        let mut state = scene.write_state();
+        let camera_id = state.cameras().iter().next().map(|(id, _)| id).unwrap();
+        let target_id = descriptor.target_id;
+
+        state.remove_target(target_id);
+
+        assert!(state.targets.get(&camera_id).unwrap().is_empty());
+    }
 }

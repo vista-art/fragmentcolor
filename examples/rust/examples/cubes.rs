@@ -7,8 +7,8 @@ use plrender::{
     components::{Camera, CameraOptions, Color, Empty, Mesh, Projection},
     math::cg::{Vec3, ORIGIN, UP_VECTOR},
     math::geometry::Primitive,
-    renderer::{RenderTargetDescription, RendererOptions},
-    scene::{transform::TransformId, Object, SceneObject},
+    renderer::RendererOptions,
+    scene::{transform::TransformId, Object},
     PLRender,
 };
 
@@ -67,7 +67,7 @@ fn main() {
     let window = Window::new(WindowOptions {
         title: "Cubes 1".to_string(),
         size: (400, 300),
-        framerate: Some(1),
+        framerate: Some(15),
         ..Default::default()
     })
     .unwrap();
@@ -85,7 +85,7 @@ fn main() {
     scene.add(&mut camera);
 
     // Attaches this Camera to the Window.
-    scene.target_with_camera(window, camera);
+    scene.target_with_camera(&window, &camera);
 
     // Creates a cube mesh.
     let cube = Primitive::cube(1.0).create_mesh();
@@ -153,7 +153,7 @@ fn fill_scene(
     root.set_scale(root_scale);
     scene.add(&mut root);
 
-    let mut cube = Mesh::new(Some(&mesh));
+    let mut cube = Mesh::new(Some(mesh.clone()));
     cube.add_component(levels[0].color);
     cube.set_scale(root_scale);
     scene.add(&mut cube);
@@ -198,7 +198,7 @@ fn fill_scene(
 
             child.pre_rotate(child_position, 90.0);
 
-            let mut child_cube = Mesh::new(Some(&mesh));
+            let mut child_cube = Mesh::new(Some(mesh.clone()));
             child_cube.set_parent(&child).add_component(level.color);
 
             scene.add(&mut child_cube);

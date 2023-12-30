@@ -27,7 +27,7 @@ pub fn workspace_crates() -> Vec<String> {
             let is_directory = path.is_dir();
 
             match is_directory {
-                true => Some(format!("{}", file_name)),
+                true => Some(file_name.to_string()),
                 false => None,
             }
         })

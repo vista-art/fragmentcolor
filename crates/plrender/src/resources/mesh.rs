@@ -89,6 +89,7 @@ impl MeshData {
     }
 }
 
+#[derive(Default)]
 pub struct MeshBuilder {
     name: String,
     data: Vec<u8>,
@@ -158,7 +159,13 @@ impl MeshBuilder {
     }
 
     pub fn build(&mut self) -> Result<BuiltMesh, Error> {
-        let renderer = PLRender::renderer().try_read()?;
+        let renderer = PLRender::renderer();
+        let renderer = if let Ok(renderer) = renderer.try_read() {
+            renderer
+        } else {
+            log::error!("Renderer is locked. Cannot build Mesh!!",);
+            return Err("Renderer is locked. Cannot build Mesh!!".into());
+        };
 
         let mut usage = wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::VERTEX;
         usage.set(wgpu::BufferUsages::INDEX, self.vertex_ids.is_some());

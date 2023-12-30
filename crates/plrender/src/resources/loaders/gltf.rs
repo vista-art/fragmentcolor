@@ -39,8 +39,8 @@ fn load_texture(data: gltf::image::Data) -> Texture {
     Texture { image: texture_id }
 }
 
-fn load_primitive<'a>(
-    primitive: gltf::Primitive<'a>,
+fn load_primitive(
+    primitive: gltf::Primitive,
     buffers: &[gltf::buffer::Data],
     textures: &[Texture],
     scratch: &mut MeshScratch,

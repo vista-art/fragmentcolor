@@ -242,7 +242,7 @@ impl<'r> Toy<'r> {
                     ..Default::default()
                 },
                 fragment: Some(wgpu::FragmentState {
-                    targets,
+                    targets: targets.as_slice(), // must match with the definition in the RenderPass
                     module: &shader_module,
                     entry_point: "main_fs",
                 }),
@@ -259,7 +259,7 @@ impl<'r> Toy<'r> {
             globals_bind_group,
             locals_bind_groups: Default::default(),
             locals_bind_group_layout: local_bgl,
-            uniform_pool: buffer::BufferPool::uniform("Toy VertexInput Buffer Pool", &device),
+            uniform_pool: buffer::BufferPool::uniform("Toy VertexInput Buffer Pool", device),
             pipelines,
             temp: Vec::new(),
         }
@@ -280,6 +280,7 @@ impl<'r> RenderPass for Toy<'r> {
         let transforms = scene.calculate_global_transforms();
 
         let mut commands = Vec::new();
+        let mut frames_to_render = Vec::new();
         let mut rendered_frames = Vec::new();
 
         for (camera_id, camera) in scene.cameras().iter() {
@@ -289,11 +290,14 @@ impl<'r> RenderPass for Toy<'r> {
                 let target = targets.get(&camera_target.target_id);
 
                 if target.is_none() {
-                    log::error!(
-                        "Camera {:?} is targeting a non-existent target {:?}",
+                    log::info!(
+                        "Camera {:?} is targeting a non-existent target {:?}. Removing Target Description...",
                         camera_id,
                         camera_target.target_id
                     );
+
+                    //#TODO this can't be done here because scene is read-only
+                    //scene.remove_target(camera_id, camera_target.target_id);
                     continue;
                 };
 
@@ -305,7 +309,7 @@ impl<'r> RenderPass for Toy<'r> {
                 {
                     let projection_m = camera.projection_matrix(target.aspect());
                     let inverse_m = cam_transform.inverse_matrix();
-                    let final_m = glam::Mat4::from(projection_m) * glam::Mat4::from(inverse_m);
+                    let final_m = projection_m * glam::Mat4::from(inverse_m);
 
                     // @TODO fill this with real values
                     let window_uniforms = WindowUniforms {
@@ -368,15 +372,8 @@ impl<'r> RenderPass for Toy<'r> {
 
                             (image, clip_region)
                         //
-                        // Calculated Shapes
-                        } else if let Ok(_) = scene.world.get::<&Shape>(object_id) {
-                            let image = renderer.default_pixel_id();
-                            let clip_region = bounds.0.to_array();
-
-                            (image, clip_region)
-                        //
-                        // Shader Source Code // @TODO Implement composition
-                        } else if let Ok(_) = scene.world.get::<&Shader>(object_id) {
+                        // Shader Source Code or SDF Shapes
+                        } else if scene.world.get::<&Shape>(object_id).is_ok() || scene.world.get::<&Shader>(object_id).is_ok() {
                             let image = renderer.default_pixel_id();
                             let clip_region = bounds.0.to_array();
 
@@ -475,50 +472,57 @@ impl<'r> RenderPass for Toy<'r> {
                 self.temp
                     .sort_by_key(|s| (s.camera_distance * -1000.0) as i64);
 
-                // @TODO if this target is targeted by multiple cameras,
-                //       we have to save the results and start a new renderpass
-                //       with Ops: Store
                 let frame = target.next_frame()?;
+                frames_to_render.push((target, frame, camera_target));
+            }
 
-                let mut encoder =
-                    device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+            let color_attachments = frames_to_render
+                .iter()
+                .map(|(_, frame, camera_target)| {
+                    Some(wgpu::RenderPassColorAttachment {
+                        view: &frame.view,
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(camera_target.clear_color.into()),
+                            store: wgpu::StoreOp::Store,
+                        },
+                    })
+                })
+                .collect::<Vec<_>>();
 
-                // @TODO this is the core of what the RenderPass does, and it only needs a Frame
-                //       from a specific target. The RenderPass trait abstraction for multiple targets
-                //       is wrong, I should go back to the older method or craate a second trait for a single target.
-                {
-                    let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                        label: Some("Toy Render Pass"),
-                        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                            view: &frame.view,
-                            resolve_target: None,
-                            ops: wgpu::Operations {
-                                load: wgpu::LoadOp::Clear(camera_target.clear_color.into()),
-                                store: wgpu::StoreOp::Store,
-                            },
-                        })],
-                        depth_stencil_attachment: None,
-                        ..Default::default()
-                    });
-                    pass.set_pipeline(&self.pipelines.transparent);
-                    pass.set_bind_group(0, &self.globals_bind_group, &[]);
+            let mut encoder =
+                device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
 
-                    for inst in self.temp.drain(..) {
-                        let key = LocalKey {
-                            uniform_buf_index: inst.locals_bl.index,
-                            image: inst.image,
-                        };
-                        let local_bg = &self.locals_bind_groups[&key];
-                        pass.set_bind_group(1, local_bg, &[inst.locals_bl.offset]);
+            // @TODO this is the core of what the RenderPass does, and it only needs a Frame
+            //       from a specific target. The RenderPass trait abstraction for multiple targets
+            //       is wrong, I should go back to the older method or craate a second trait for a single target.
+            {
+                let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("Toy Render Pass"),
+                    color_attachments: color_attachments.as_slice(),
+                    depth_stencil_attachment: None,
+                    ..Default::default()
+                });
+                pass.set_pipeline(&self.pipelines.transparent);
+                pass.set_bind_group(0, &self.globals_bind_group, &[]);
 
-                        // @TODO Implement automatic instanced rendering like our first renderer
-                        pass.draw(0..4, 0..1); // @TODO this should be indexed
-                    }
+                for inst in self.temp.drain(..) {
+                    let key = LocalKey {
+                        uniform_buf_index: inst.locals_bl.index,
+                        image: inst.image,
+                    };
+                    let local_bg = &self.locals_bind_groups[&key];
+                    pass.set_bind_group(1, local_bg, &[inst.locals_bl.offset]);
+
+                    // @TODO Implement automatic instanced rendering like our first renderer
+                    pass.draw(0..4, 0..1); // @TODO this should be indexed
                 }
+            }
 
-                commands.append(&mut vec![encoder.finish()]);
+            commands.append(&mut vec![encoder.finish()]);
+
+            for (target, frame, _) in frames_to_render.drain(..) {
                 target.prepare_render(renderer, &mut commands);
-
                 rendered_frames.push((target.id(), frame));
             }
         }

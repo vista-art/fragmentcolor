@@ -7,6 +7,6 @@ api_object!(Empty);
 
 impl Empty {
     pub fn new() -> Object<Self> {
-        Object::new(Self::default())
+        Object::new(Self)
     }
 }

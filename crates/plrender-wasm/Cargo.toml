@@ -15,6 +15,7 @@ plr = { package="plrender", path = "../plrender" }
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
 console_log = "1.0"
+serde = { version = "1.0", features = ["derive"] }
 console_error_panic_hook = { version = "0.1.7", optional = true }
 reqwest = { version = "0.11" }
 gloo-utils = { version = "0.2", features = ["serde"] }

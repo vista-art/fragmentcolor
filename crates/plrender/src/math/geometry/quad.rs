@@ -21,12 +21,6 @@ impl Default for Quad {
     }
 }
 
-impl Ord for Quad {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.area().cmp(&other.area())
-    }
-}
-
 #[derive(Debug)]
 pub struct QuadVertex<'x, X = QuadVertexExtra> {
     pub tex_coords: Quad,
@@ -276,8 +270,8 @@ impl Quad {
     }
 
     pub fn outbound_radius(&self) -> f32 {
-        let width = self.half_width_f32() as f32;
-        let height = self.half_height_f32() as f32;
+        let width = self.half_width_f32();
+        let height = self.half_height_f32();
         (width * width + height * height).sqrt()
     }
 

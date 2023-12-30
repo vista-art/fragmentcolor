@@ -209,9 +209,11 @@ fn parse(key: Option<VirtualKey>) -> String {
 // Helper method to get the hovered filename by handle.
 // Ugly, but avoids panics & deadlocks, and covers all edge cases.
 fn get_hovered_filename(window_id: &WindowId, handle: u128) -> String {
-    if let Ok(app) = PLRender::app().try_read() {
+    let app = PLRender::app();
+    let filename = if let Ok(app) = app.try_read() {
+        // @TODO how about lifting up Window and Scene to PLRender? (and kill the App class)
         if let Ok(windows) = app.windows().try_read() {
-            if let Some(window) = windows.get(&window_id) {
+            if let Some(window) = windows.get(window_id) {
                 if let Some(filename) = window.get_hovered_file(handle) {
                     filename
                 } else {
@@ -229,16 +231,19 @@ fn get_hovered_filename(window_id: &WindowId, handle: u128) -> String {
     } else {
         log::error!("plrender-py: Cannot read App: ignoring hovered file!");
         "None".to_string()
-    }
+    };
+
+    filename
 }
 
 // Same as above, but for dropped files.
 // The difference is that it needs to take a mutable reference to the window,
 // because the file is removed from the internal list after it's read.
 fn get_dropped_filename(window_id: &WindowId, handle: u128) -> String {
-    if let Ok(app) = PLRender::app().try_read() {
+    let app = PLRender::app();
+    let filename = if let Ok(app) = app.try_read() {
         if let Ok(mut windows) = app.windows().try_write() {
-            if let Some(mut window) = windows.get_mut(&window_id) {
+            if let Some(mut window) = windows.get_mut(window_id) {
                 if let Some(filename) = window.get_dropped_file(handle) {
                     filename.to_string_lossy().to_string()
                 } else {
@@ -256,5 +261,7 @@ fn get_dropped_filename(window_id: &WindowId, handle: u128) -> String {
     } else {
         log::error!("plrender-py: Cannot read App: ignoring dropped file!");
         "None".to_string()
-    }
+    };
+
+    filename
 }

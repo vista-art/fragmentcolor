@@ -1,3 +1,5 @@
+#![allow(clippy::new_ret_no_self)]
+
 /// Camera and Projection Components.
 ///
 /// A Camera is the link between the Scene and the Renderer.

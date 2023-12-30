@@ -402,7 +402,7 @@ impl<'r> crate::RenderPass for Real<'r> {
                     let m_proj = camera.projection_matrix(target.aspect());
                     let transform = &transforms[camera.transform_id];
                     let m_view_inv = transform.inverse_matrix();
-                    let m_final = glam::Mat4::from(m_proj) * glam::Mat4::from(m_view_inv);
+                    let m_final = m_proj * glam::Mat4::from(m_view_inv);
                     let globals = Globals {
                         view_proj: m_final.to_cols_array_2d(),
                         camera_pos: transform.position,
@@ -491,7 +491,7 @@ impl<'r> crate::RenderPass for Real<'r> {
                                 },
                                 wgpu::BindGroupEntry {
                                     binding: 1,
-                                    resource: wgpu::BindingResource::TextureView(&base_color_view),
+                                    resource: wgpu::BindingResource::TextureView(base_color_view),
                                 },
                             ],
                         })

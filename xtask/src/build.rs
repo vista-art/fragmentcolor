@@ -59,15 +59,15 @@ fn compile_crate(crate_name: &str, builder: &str) -> std::process::ExitStatus {
 
 fn build_cargo(crate_name: &str) -> std::process::ExitStatus {
     Command::new("cargo")
-        .args(&["build", "--package", crate_name])
+        .args(["build", "--package", crate_name])
         .status()
-        .expect(&format!("Failed to run build command for {}", crate_name))
+        .unwrap_or_else(|_| panic!("Failed to run build command for {}", crate_name))
 }
 
 fn build_wasm(crate_name: &str) -> std::process::ExitStatus {
     let crate_root = meta::crate_root(crate_name);
     Command::new("wasm-pack")
-        .args(&["build"])
+        .args(["build"])
         .current_dir(crate_root)
         .status()
         .expect("Failed to run wasm-pack build command")
@@ -77,7 +77,7 @@ fn build_py(crate_name: &str) -> std::process::ExitStatus {
     let crate_root = meta::crate_root(crate_name);
 
     Command::new("maturin")
-        .args(&["build", "--release"])
+        .args(["build", "--release"])
         .current_dir(crate_root)
         .status()
         .expect("Failed to run maturin build command")

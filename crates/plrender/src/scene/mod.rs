@@ -22,7 +22,7 @@ pub mod transform;
 pub mod object;
 
 /// A Scene is a collection of Transforms and Objects.
-pub mod scene;
+mod scene;
 
 /// Internal code-generation macro that implements
 /// the SpatialObject trait for the given type

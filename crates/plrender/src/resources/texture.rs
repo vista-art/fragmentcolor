@@ -90,7 +90,13 @@ impl Texture {
     ///
     /// This method is used internally by the `Target::create_texture()` method.
     pub(crate) fn create_destination_texture(size: wgpu::Extent3d) -> Result<Self, Error> {
-        let renderer: std::sync::RwLockReadGuard<'_, Renderer> = PLRender::renderer().try_read()?;
+        let renderer = PLRender::renderer();
+        let renderer = if let Ok(renderer) = renderer.try_read() {
+            renderer
+        } else {
+            log::error!("Renderer is locked. Cannot build texture!",);
+            return Err("Renderer is locked. Cannot build texture!".into());
+        };
 
         let label = "Render Target Texture";
         let format = wgpu::TextureFormat::Rgba8UnormSrgb;
@@ -115,7 +121,13 @@ impl Texture {
 
     /// Creates a depth texture
     pub fn create_depth_texture(size: wgpu::Extent3d) -> Result<(TextureId, Quad), Error> {
-        let renderer = PLRender::renderer().try_read()?;
+        let renderer = PLRender::renderer();
+        let renderer = if let Ok(renderer) = renderer.try_read() {
+            renderer
+        } else {
+            log::error!("Renderer is locked. Cannot build Depth Texture!!",);
+            return Err("Renderer is locked. Cannot build Depth Texture!!".into());
+        };
 
         let label = "Depth Texture";
         let format = Self::DEPTH_FORMAT;
@@ -149,7 +161,14 @@ impl Texture {
 
     /// Creates a transparent pixel
     pub fn create_blank_pixel() -> Result<(TextureId, Quad), Error> {
-        let renderer = PLRender::renderer().try_read()?;
+        let renderer = PLRender::renderer();
+        let renderer = if let Ok(renderer) = renderer.try_read() {
+            renderer
+        } else {
+            log::error!("Renderer is locked. Cannot build Blank Pixel Texture!!",);
+            return Err("Renderer is locked. Cannot build Blank Pixel Texture!!".into());
+        };
+
         let size = wgpu::Extent3d {
             width: 1,
             height: 1,
@@ -197,7 +216,8 @@ impl Texture {
         let format = wgpu::TextureFormat::Rgba8UnormSrgb;
         let descriptor = Self::source_texture_descriptor(label, size, format);
 
-        let renderer = if let Ok(renderer) = PLRender::renderer().try_read() {
+        let renderer = PLRender::renderer();
+        let renderer = if let Ok(renderer) = renderer.try_read() {
             renderer
         } else {
             return Err("Cannot read Renderer Texture Database. Texture not loaded!".into());
@@ -220,15 +240,15 @@ impl Texture {
             sampler,
         };
 
-        Ok(renderer.add_texture(texture)?)
+        renderer.add_texture(texture)
     }
 
     /// Creates a texture descriptor for a Source Texture
-    fn source_texture_descriptor<'a>(
-        label: &'a str,
+    fn source_texture_descriptor(
+        label: &str,
         size: wgpu::Extent3d,
         format: wgpu::TextureFormat,
-    ) -> wgpu::TextureDescriptor<'a> {
+    ) -> wgpu::TextureDescriptor {
         wgpu::TextureDescriptor {
             label: Some(label),
             size,
@@ -242,11 +262,11 @@ impl Texture {
     }
 
     /// Creates a texture descriptor for a Render Target
-    fn target_texture_descriptor<'a>(
-        label: &'a str,
+    fn target_texture_descriptor(
+        label: &str,
         size: wgpu::Extent3d,
         format: wgpu::TextureFormat,
-    ) -> wgpu::TextureDescriptor<'a> {
+    ) -> wgpu::TextureDescriptor {
         wgpu::TextureDescriptor {
             label: Some(label),
             size,

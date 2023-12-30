@@ -2,7 +2,7 @@ use csscolorparser;
 use serde::{Deserialize, Serialize};
 
 /// Can be specified as 0xRRGGBBAA
-#[derive(Clone, Copy, Debug, Hash, PartialEq, PartialOrd, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, Hash, PartialEq, PartialOrd, Deserialize)]
 pub struct Color(pub u32);
 
 impl Serialize for Color {
@@ -103,20 +103,14 @@ impl From<Color> for wgpu::Color {
     }
 }
 
-impl Default for Color {
-    fn default() -> Self {
-        Self(0x00000000)
+impl From<Color> for u32 {
+    fn from(c: Color) -> Self {
+        c.0
     }
 }
 
-impl Into<u32> for Color {
-    fn into(self) -> u32 {
-        self.0
-    }
-}
-
-impl Into<[f32; 4]> for Color {
-    fn into(self) -> [f32; 4] {
-        self.to_array()
+impl From<Color> for [f32; 4] {
+    fn from(c: Color) -> Self {
+        c.to_array()
     }
 }

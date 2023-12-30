@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, HashMap},
     fmt::Debug,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
 pub use winit::window::WindowId;
@@ -65,6 +65,9 @@ pub struct WindowState {
     scheduled: RwLock<BTreeMap<Instant, (String, Event)>>,
 }
 
+unsafe impl Send for WindowState {}
+unsafe impl Sync for WindowState {}
+
 impl EventListener for WindowState {
     /// Registers a callback function for this window.
     ///
@@ -76,7 +79,7 @@ impl EventListener for WindowState {
     fn on(&mut self, name: &str, callback: Callback<Event>) {
         self.callbacks
             .entry(name.to_string())
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(callback);
     }
 }
@@ -204,11 +207,9 @@ impl WindowState {
     }
 
     pub fn get_hovered_file(&self, index: u128) -> Option<String> {
-        if let Some(path) = self.hovered_files.get(&index) {
-            Some(path.to_string_lossy().to_string())
-        } else {
-            None
-        }
+        self.hovered_files
+            .get(&index)
+            .map(|path| path.to_string_lossy().to_string())
     }
 
     pub fn get_dropped_file(&mut self, index: u128) -> Option<PathBuf> {
@@ -220,14 +221,14 @@ impl WindowState {
         }
     }
 
-    pub(crate) fn add_hovered_file(&mut self, file: &PathBuf) -> u128 {
+    pub(crate) fn add_hovered_file(&mut self, file: &Path) -> u128 {
         let index = self.hovered_timestamp();
-        self.hovered_files.insert(index, file.clone());
-        self.reverse_lookup.insert(file.clone(), index);
+        self.hovered_files.insert(index, file.to_path_buf());
+        self.reverse_lookup.insert(file.to_path_buf(), index);
         index
     }
 
-    pub(crate) fn get_dropped_file_handle(&self, file: &PathBuf) -> Option<u128> {
+    pub(crate) fn get_dropped_file_handle(&self, file: &Path) -> Option<u128> {
         self.reverse_lookup.get(file).copied()
     }
 
@@ -362,21 +363,25 @@ impl Default for Window {
     /// use `Window::new(WindowOptions::default())`
     /// instead, which returns a `Result<Window, OsError>`.
     fn default() -> Self {
-        let window = Self::create().expect("Failed to create default window");
-
-        window
+        Self::create().expect("Failed to create default window")
     }
 }
 
 impl Window {
     /// Creates a Window with default options.
-    pub fn create() -> Result<Self, winit::error::OsError> {
+    pub fn create() -> Result<Self, Error> {
         Self::new(WindowOptions::default())
     }
 
     /// Creates a Window with the given options.
-    pub fn new(options: WindowOptions) -> Result<Self, winit::error::OsError> {
-        let app = PLRender::app().read().expect("Could not get App Read lock");
+    pub fn new(options: WindowOptions) -> Result<Self, Error> {
+        let app = PLRender::app();
+        let app = if let Ok(app) = app.try_read() {
+            app
+        } else {
+            log::error!("Failed to acquire Read Lock for App!");
+            return Err("Failed to acquire Read Lock for App!".into());
+        };
 
         let fullscreen = options
             .fullscreen
@@ -526,9 +531,5 @@ impl Window {
 }
 
 fn framerate_to_frametime(framerate: Option<u32>) -> Option<f64> {
-    if let Some(framerate) = framerate {
-        Some(1.0 / framerate as f64)
-    } else {
-        None
-    }
+    framerate.map(|framerate| 1.0 / framerate as f64)
 }

@@ -7,7 +7,10 @@ const ROOT: &str = env!("CARGO_MANIFEST_DIR");
 
 fn main() {
     PLRender::config(options());
-    let window = Window::default();
+    let mut window = Window::default();
+    window.set_title("Window 1");
+    //let window2 = Window::default();
+
     let mut scene = Scene::new(); // API:
                                   // scene.add();     adds object to scene
                                   // scene.target();  sets window or sprite as render target
@@ -56,6 +59,7 @@ fn main() {
 
     scene.add(&mut square);
 
+    //scene.target(&window2);
     scene.target(&window); //
                            // equivalent to:
                            //
