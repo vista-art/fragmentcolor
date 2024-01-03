@@ -23,7 +23,7 @@ near-native performance and small footprint:
 [^4]: OpenGL is deprecated in iOS. It runs up to version 4.1 only: no support for Compute shaders.
 
 > [!WARNING]  
-> This library is currently under heavy development, so the API is not yet stable, meaning
+> This library is currently under heavy development, and the API is not yet stable, meaning
 > that while it is not tagged `1.0.0`, I might introduce breaking changes in minor versions.
 > You can use it and test it, and I would greatly appreciate any feedback you can provide.
 > If you use it in production, make sure you know what you are doing and lock the minor version.
