@@ -4,13 +4,6 @@ FragmentColor is a **Creative Coding** library written in Rust that provides
 a simple shader programming API for Javascript and Python, with more language
 bindings in the horizon.
 
-> [!WARNING]  
-> This library is currently under initial development, so the API is not yet stable, meaning
-> that while it is not tagged `1.0.0`, I might introduce breaking changes in minor versions.
-> 
-> You can use it and test it, and I would greatly appreciate any feedback you can provide.
-> If you use it in production, make sure you know what you are doing and lock the minor version.
-
 This library uses [wgpu](https://github.com/gfx-rs/wgpu) as the hardware abstraction
 layer, which enables us to target a wide range of platforms and environments with 
 near-native performance and small footprint:
@@ -29,6 +22,11 @@ near-native performance and small footprint:
 [^3]: OpenGL is deprecated in MacOS. It runs up to version 4.1 only: no support for Compute shaders.
 [^4]: OpenGL is deprecated in iOS. It runs up to version 4.1 only: no support for Compute shaders.
 
+> [!WARNING]  
+> This library is currently under initial development, so the API is not yet stable, meaning
+> that while it is not tagged `1.0.0`, I might introduce breaking changes in minor versions.
+> You can use it and test it, and I would greatly appreciate any feedback you can provide.
+> If you use it in production, make sure you know what you are doing and lock the minor version.
 
 ## Building this project
 
