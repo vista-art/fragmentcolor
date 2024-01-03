@@ -8,7 +8,7 @@
   "license": "SEE LICENSE IN LICENCE.md",
   "repository": {
     "type": "git",
-    "url": "https://gitlab.com/pupil-labs/pupil-cloud/pl-render"
+    "url": "https://github.com/vista-art/fragmentcolor"
   },
   "files": [
     "fragmentcolor_bg.wasm",
