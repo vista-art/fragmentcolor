@@ -1,0 +1,101 @@
+[package]
+name = "fragmentcolor"
+description = "Multiplatform GPU Rendering API for Javascript, Python and Beyond"
+repository = "https://gitlab.com/pupil-labs/pupil-cloud/pl-render"
+authors = ["Pupil Labs GmbH"]
+license-file = "LICENCE.md"
+version = "0.8.1"
+rust-version = "1.70"
+edition = "2021"
+
+[lib]
+name = "fragmentcolor"
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["window", "assets", "shape"]
+window = ["raw-window-handle", "winit"]
+shape = ["lyon"]
+assets = ["obj", "gltf"]
+
+[dependencies]
+# Rendering
+wgpu = { version="0.18", features=["expose-ids", "glsl", "wgsl", "naga", "webgl"] }
+
+# Scene graph (Entity Component System)
+hecs = { version = "0.10", features=["macros"] }
+
+# Windowing and input
+# We can update both of them when wgpu releases this (probably v0.19)
+# https://github.com/gfx-rs/wgpu/pull/4202
+raw-window-handle = { version = "0.5", optional = true }
+winit = { version = "0.28.7", optional = true, features=["serde"] }
+
+# Shader composition
+naga = { version = "0.14" }
+# Waiting for upstream release: https://github.com/bevyengine/naga_oil/pull/63
+# naga_oil = { version = "0.10.0" }
+naga_oil ={ git = "https://github.com/robtfm/naga_oil", branch = "naga-0.14" }
+
+# Math
+mint = { version = "0.5", features = ["serde"] }
+glam = { version = "0.24", features = ["mint"] }
+
+# Serialization
+phf = { version = "0.11", features = ["macros"] }
+serde = { version = "1", features = ["derive"] }
+bytemuck = { version = "1.14", features = ["derive"] }
+csscolorparser = "0.6"
+bitflags = "2.4"
+fxhash = "0.2"
+
+# Async
+pollster = "0.3"
+
+# Tesselation
+lyon = { version = "1", optional = true }
+
+# Text rendering
+wgpu_text = "0.8"
+
+# Time
+instant = "0.1"
+
+# Logging
+log = "0.4"
+env_logger = "0.10"
+
+# Asset loading
+image = { version = "0.24", default-features = false, features = ["jpeg", "png", "bmp", "hdr", "dds"] }
+gltf = { version = "1", features = ["names", "utils", "KHR_lights_punctual"], optional = true }
+obj = { version = "0.10", optional = true }
+ddsfile = "0.5"
+
+# Sync
+futures-intrusive = "0.5"
+
+# Utils
+derive_setters = "0.1"
+
+# WASM-Specific
+[target.'cfg(target_family = "wasm")'.dependencies]
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+serde-wasm-bindgen = "0.6"
+console_log = "1.0"
+console_error_panic_hook = { version = "0.1" }
+reqwest = { version = "0.11" }
+gloo-utils = { version = "0.2", features = ["serde"] }
+js-sys = "0.3"
+web-sys = { version = "0.3", features = [
+    'Document',
+    'Element',
+    'HtmlCanvasElement',
+    'Window',
+    'EventTarget',
+    'Location',
+]}
+
+[build-dependencies]
+cfg_aliases = "0.1"
+built = { version = "0.7", features = ["chrono"] }

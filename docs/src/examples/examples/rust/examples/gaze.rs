@@ -1,12 +1,14 @@
+use fragmentcolor::{
+    components::Circle, AppOptions, FragmentColor, RendererOptions, Scene, Sprite, Window,
+};
+use fragmentcolor::{CircleOptions, Color, Dimensions, Event, IsWindow, Shader};
 use instant::Instant;
-use plrender::{components::Circle, AppOptions, PLRender, RendererOptions, Scene, Sprite, Window};
-use plrender::{CircleOptions, Color, Dimensions, Event, IsWindow, Shader};
 use std::path::Path;
 
 const ROOT: &str = env!("CARGO_MANIFEST_DIR");
 
 fn main() {
-    PLRender::config(options());
+    FragmentColor::config(options());
     let window = Window::default();
     let mut scene = Scene::new();
 
@@ -77,7 +79,7 @@ fn main() {
         _ => {}
     });
 
-    PLRender::run();
+    FragmentColor::run();
 }
 
 pub fn options() -> AppOptions {

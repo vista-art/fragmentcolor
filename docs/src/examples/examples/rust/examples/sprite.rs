@@ -1,5 +1,5 @@
-use plrender::{
-    app::window::Window, scene::Scene, AppOptions, Event, IsWindow, PLRender, RendererOptions,
+use fragmentcolor::{
+    app::window::Window, scene::Scene, AppOptions, Event, FragmentColor, IsWindow, RendererOptions,
     Sprite,
 };
 use std::path::Path;
@@ -7,7 +7,7 @@ use std::path::Path;
 pub const ROOT: &'static str = env!("CARGO_MANIFEST_DIR");
 
 fn main() {
-    PLRender::config(options());
+    FragmentColor::config(options());
 
     let window = Window::default();
 
@@ -32,7 +32,7 @@ fn main() {
         _ => {}
     });
 
-    PLRender::run();
+    FragmentColor::run();
 }
 
 fn options() -> AppOptions {

@@ -686,10 +686,10 @@ export class Options {
 }
 /**
  */
-export class PLRender {
+export class FragmentColor {
   static __wrap(ptr) {
     ptr = ptr >>> 0;
-    const obj = Object.create(PLRender.prototype);
+    const obj = Object.create(FragmentColor.prototype);
     obj.__wbg_ptr = ptr;
 
     return obj;
@@ -704,24 +704,24 @@ export class PLRender {
 
   free() {
     const ptr = this.__destroy_into_raw();
-    wasm.__wbg_plrender_free(ptr);
+    wasm.__wbg_fragmentcolor_free(ptr);
   }
   /**
    */
   constructor() {
-    const ret = wasm.plrender_new();
-    return PLRender.__wrap(ret);
+    const ret = wasm.fragmentcolor_new();
+    return FragmentColor.__wrap(ret);
   }
   /**
    * @param {any} options
    */
   config(options) {
-    wasm.plrender_config(this.__wbg_ptr, addHeapObject(options));
+    wasm.fragmentcolor_config(this.__wbg_ptr, addHeapObject(options));
   }
   /**
    */
   run() {
-    wasm.plrender_run(this.__wbg_ptr);
+    wasm.fragmentcolor_run(this.__wbg_ptr);
   }
   /**
    * @param {string} controller
@@ -743,13 +743,21 @@ export class PLRender {
     const len1 = WASM_VECTOR_LEN;
     const ptr2 = passArrayJsValueToWasm0(params, wasm.__wbindgen_malloc);
     const len2 = WASM_VECTOR_LEN;
-    wasm.plrender_trigger(this.__wbg_ptr, ptr0, len0, ptr1, len1, ptr2, len2);
+    wasm.fragmentcolor_trigger(
+      this.__wbg_ptr,
+      ptr0,
+      len0,
+      ptr1,
+      len1,
+      ptr2,
+      len2
+    );
   }
   /**
    * @returns {Resolution}
    */
   resolution() {
-    const ret = wasm.plrender_resolution(this.__wbg_ptr);
+    const ret = wasm.fragmentcolor_resolution(this.__wbg_ptr);
     return Resolution.__wrap(ret);
   }
 }
@@ -3679,7 +3687,7 @@ async function __wbg_init(input) {
   if (wasm !== undefined) return wasm;
 
   if (typeof input === "undefined") {
-    input = new URL("plrender_bg.wasm", import.meta.url);
+    input = new URL("fragmentcolor_bg.wasm", import.meta.url);
   }
   const imports = __wbg_get_imports();
 

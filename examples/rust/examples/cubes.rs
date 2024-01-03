@@ -1,5 +1,4 @@
-use instant::Instant;
-use plrender::{
+use fragmentcolor::{
     app::events::Event,
     app::window::{IsWindow, Window, WindowOptions},
     app::AppOptions,
@@ -9,8 +8,9 @@ use plrender::{
     math::geometry::Primitive,
     renderer::RendererOptions,
     scene::{transform::TransformId, Object},
-    PLRender,
+    FragmentColor,
 };
+use instant::Instant;
 
 const ROOT_SCALE: f32 = 2.0;
 const SCALE_LEVEL: f32 = 0.4;
@@ -52,7 +52,7 @@ const LEVELS: &[Level] = &[
 
 fn main() {
     // Configures the Renderer to Solid 3D RenderPass.
-    PLRender::config(AppOptions {
+    FragmentColor::config(AppOptions {
         log_level: "info".to_string(),
         renderer: RendererOptions {
             render_pass: "solid".to_string(),
@@ -61,7 +61,7 @@ fn main() {
     });
 
     // Creates a new Scene.
-    let mut scene = plrender::Scene::new();
+    let mut scene = fragmentcolor::Scene::new();
 
     // Creates two Windows.
     let window = Window::new(WindowOptions {
@@ -135,7 +135,7 @@ fn main() {
     });
 
     // Runs the application.
-    PLRender::run();
+    FragmentColor::run();
 }
 
 struct Stack {
@@ -145,8 +145,8 @@ struct Stack {
 
 fn fill_scene(
     levels: &[Level],
-    scene: &mut plrender::Scene,
-    mesh: plrender::resources::mesh::BuiltMesh,
+    scene: &mut fragmentcolor::Scene,
+    mesh: fragmentcolor::resources::mesh::BuiltMesh,
 ) -> Vec<CubePosition> {
     let root_scale = Vec3::from([ROOT_SCALE; 3]);
     let mut root = components::Empty::new();

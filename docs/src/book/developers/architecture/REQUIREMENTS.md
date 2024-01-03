@@ -2,7 +2,7 @@
 
 This document lists the **Requirements** for this project and the **Use Cases** for each of them. It serves as **general guideline** for the [Design Decisions](./decisions/README.md) of the library.
 
-**PLRender** aims to support the following Requirements:
+**FragmentColor** aims to support the following Requirements:
 
 - [Multiple Scenes and Rendering Targets](#multiple-scenes-and-rendering-targets)
 - [User-defined Scene Graphs](#user-defined-scene-graphs)

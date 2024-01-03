@@ -1,5 +1,5 @@
 import { positionForTime /*undistortParams*/ } from "./mocks.js";
-import load_wasm, { Scene, Circle, Sprite } from "../pkg/plrender.js";
+import load_wasm, { Scene, Circle, Sprite } from "../pkg/fragmentcolor.js";
 await load_wasm();
 
 const scene = new Scene();

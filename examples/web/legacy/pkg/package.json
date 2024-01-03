@@ -1,5 +1,5 @@
 {
-  "name": "plrender",
+  "name": "fragmentcolor",
   "collaborators": [
     "Pupil Labs GmbH"
   ],
@@ -11,12 +11,12 @@
     "url": "https://gitlab.com/pupil-labs/pupil-cloud/pl-render"
   },
   "files": [
-    "plrender_bg.wasm",
-    "plrender.js",
-    "plrender.d.ts"
+    "fragmentcolor_bg.wasm",
+    "fragmentcolor.js",
+    "fragmentcolor.d.ts"
   ],
-  "module": "plrender.js",
-  "types": "plrender.d.ts",
+  "module": "fragmentcolor.js",
+  "types": "fragmentcolor.d.ts",
   "sideEffects": [
     "./snippets/*"
   ]

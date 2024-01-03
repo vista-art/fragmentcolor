@@ -1,6 +1,6 @@
 # Introduction
 
-The `plrender` library aims to provide a unified API
+The `fragmentcolor` library aims to provide a unified API
 to render **video enrichments** in the GPU (with a CPU fallback) across
 multiple platforms and environments with native performance and minimal footprint.
 

@@ -6,7 +6,7 @@ use proc_macro::TokenStream;
 use quote::quote;
 use syn::{parse::Parse, Ident};
 
-// API map of the most recent `plrender` build
+// API map of the most recent `fragmentcolor` build
 // Static map of object names to their method signatures
 include!("../../../generated/api_map.rs");
 
@@ -55,8 +55,8 @@ pub fn py_module(_: TokenStream) -> TokenStream {
             objects.push(tokens);
 
             // @TODO finish this (deal with generics)
-            // Can't wrap PLRender because its 'static lifetime
-            // if struct_name.to_string() != "PLRender" {
+            // Can't wrap FragmentColor because its 'static lifetime
+            // if struct_name.to_string() != "FragmentColor" {
             //     let tokens = quote! {
             //         #[derive(Clone)]
             //         #[pyclass(name = #struct_name)]
@@ -71,7 +71,7 @@ pub fn py_module(_: TokenStream) -> TokenStream {
 
     let expanded = quote! {
         #[pymodule]
-        fn plrender(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
+        fn fragmentcolor(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
             #(#functions)*
             #(#objects)*
             Ok(())

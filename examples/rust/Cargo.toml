@@ -1,6 +1,6 @@
 [package]
-name = "plrender-example-sprite"
-description = "Example desktop application using PLRender"
+name = "fragmentcolor-example-sprite"
+description = "Example desktop application using FragmentColor"
 repository = "https://gitlab.com/pupil-labs/pupil-cloud/pl-render/examples/rust"
 authors = ["Pupil Labs GmbH"]
 license-file = "LICENCE.md"
@@ -11,7 +11,7 @@ edition = "2021"
 name = "sprite"
 
 [dependencies]
-plrender = { path = "../../crates/plrender" }
+fragmentcolor = { path = "../../crates/fragmentcolor" }
 env_logger = "0.10"
 wgpu_text = "0.8"
 pollster = "0.3"

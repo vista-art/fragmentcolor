@@ -1,4 +1,4 @@
-# Welcome to PLRender Documentation
+# Welcome to FragmentColor Documentation
 
 ## User Guide book
 
@@ -6,4 +6,4 @@
 
 ## API Reference
 
-[API Reference](./plrender/index.html)
+[API Reference](./fragmentcolor/index.html)

@@ -1,10 +1,10 @@
 from fractions import Fraction
 
 import numpy as np
-import plrender
+import fragmentcolor
 import pupil_labs.video as av
 
-context = plrender.Context()
+context = fragmentcolor.Context()
 
 
 world_times = np.fromfile("world.time", dtype=np.int64)

@@ -5,7 +5,7 @@ import load_wasm, {
   Renderer,
   Sprite,
   Circle,
-} from "../pkg/plrender.js";
+} from "../pkg/fragmentcolor.js";
 await load_wasm();
 
 // The Scene is a container of renderable entities.
@@ -70,8 +70,8 @@ let target = scene.addTarget({
 // A Renderer draws a scene to one or multiple targets
 // const renderer = new Renderer({
 //   // optional: defaults to empty array []
-//   // supports: plrender.Target, QuerySelector, CanvasElement, OffscreenCanvas
-//   // if a plrender.Target is not explicitly passed, the renderer will create one
+//   // supports: fragmentcolor.Target, QuerySelector, CanvasElement, OffscreenCanvas
+//   // if a fragmentcolor.Target is not explicitly passed, the renderer will create one
 //   targets: [target],
 
 //   log_level: "info", // or 'trace', 'debug', 'warn', 'error'

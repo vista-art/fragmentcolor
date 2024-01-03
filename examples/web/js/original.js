@@ -1,5 +1,5 @@
-import load_wasm, { PLRender } from "./pkg/plrender.js";
-import { Scene, Sprite, Circle } from "./pkg/plrender/entities.js";
+import load_wasm, { FragmentColor } from "./pkg/fragmentcolor.js";
+import { Scene, Sprite, Circle } from "./pkg/fragmentcolor/entities.js";
 
 const scene = new Scene();
 
@@ -15,4 +15,4 @@ scene.add(gaze);
 
 scene.addTarget({ selector: "#output_canvas" });
 
-plrender.run();
+fragmentcolor.run();
