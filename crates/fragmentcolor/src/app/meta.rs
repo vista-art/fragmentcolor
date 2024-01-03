@@ -15,7 +15,7 @@ pub trait AppMetadata {
             "
             ⭕  FragmentColor Version {}
                 {}
-                Pupil Labs GmbH - All rights reserved
+                Vista Tech & Art GmbH - All rights reserved
 
                 {}
 
