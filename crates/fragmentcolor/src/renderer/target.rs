@@ -120,7 +120,7 @@ impl DescribesTarget for RenderTargetDescription {
     }
 }
 
-impl RenderTargetDescription {
+imFragmentColorTargetDescription {
     pub fn new(target_id: TargetId, target_size: Quad) -> Self {
         Self {
             target_id,
@@ -227,7 +227,7 @@ pub(crate) struct RenderTargets {
     pub targets: HashMap<TargetId, RenderTarget>,
 }
 
-impl RenderTargets {
+imFragmentColorTargets {
     pub fn new() -> Self {
         Self {
             targets: HashMap::new(),
@@ -235,7 +235,7 @@ impl RenderTargets {
     }
 }
 
-impl RenderTargetCollection for RenderTargets {
+imFragmentColorTargetCollection for RenderTargets {
     fn add(&mut self, target: RenderTarget) -> TargetId {
         let id = match target {
             RenderTarget::Texture(ref target) => TargetId::Texture(target.texture.id),
