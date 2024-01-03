@@ -1,12 +1,12 @@
-# FragmentColor Library
+# FragmentColor
 
-The `fragmentcolor` library aims to provide a unified API
-to render **video enrichments** in the GPU (with a CPU fallback) across
-multiple platforms and environments with native performance and minimal footprint.
+FragmentColor is a **Creative Coding** library written in Rust that provides
+a simple shader programming API for Javascript and Python, with more language
+bindings in the horizon.
 
-The library is implemented in Rust,
-leveraging the [wgpu](https://github.com/gfx-rs/wgpu) library for rendering,
-which enables it to target a wide range of platforms:
+This library uses [wgpu](https://github.com/gfx-rs/wgpu) as the hardware abstraction
+layer, which enables us to target a wide range of platforms and environments with 
+near-native performance and small footprint:
 
 | Backend   |  WASM   |  Linux  |  MacOS  | Windows | Android |   iOS   | CI / CD |
 | :-------- | :-----: | :-----: | :-----: | :-----: | :-----: | :-----: | :-----: |
@@ -22,6 +22,9 @@ which enables it to target a wide range of platforms:
 [^3]: OpenGL is deprecated in MacOS. It runs up to version 4.1 only: no support for Compute shaders.
 [^4]: OpenGL is deprecated in iOS. It runs up to version 4.1 only: no support for Compute shaders.
 
+> [!WARNING]  
+> This library is currently in heavy development, so the API is not yet stable, i.e. I might change on a whim.
+
 ## Building this project
 
 ### Target: web browser / wasm
@@ -29,6 +32,7 @@ which enables it to target a wide range of platforms:
 Make sure you have [wasm-pack](https://rustwasm.github.io/wasm-pack/installer) installed.
 
 ```bash
+cd crates/fragmentcolor-wasm
 wasm-pack build --release --target web
 ```
 
