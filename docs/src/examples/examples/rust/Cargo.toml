@@ -2,7 +2,7 @@
 name = "fragmentcolor-example-sprite"
 description = "Example desktop application using FragmentColor"
 repository = "https://github.com/vista-art/fragmentcolor/examples/rust"
-authors = ["Pupil Labs GmbH"]
+authors = ["Vista Tech & Art GmbH"]
 license-file = "LICENCE.md"
 version = "0.1.0"
 edition = "2021"

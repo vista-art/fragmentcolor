@@ -1,5 +1,5 @@
 # PL Video Processor (vip) Licence
 
-Copyright (c) Pupil Labs GmbH
+Copyright (c) Vista Tech & Art GmbH
 
 All rights reserved.

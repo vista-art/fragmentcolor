@@ -2,7 +2,7 @@
 name = "fragmentcolor"
 description = "Multiplatform GPU Rendering API for Javascript, Python and Beyond"
 repository = "https://github.com/vista-art/fragmentcolor"
-authors = ["Pupil Labs GmbH"]
+authors = ["Vista Tech & Art GmbH"]
 license = "MIT"
 version = "0.9.0"
 rust-version = "1.70"
