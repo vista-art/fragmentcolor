@@ -50,7 +50,7 @@ pub(crate) struct Renderer {
 
 unsafe impl Sync for Renderer {}
 
-impl RenderContext for Renderer {
+imFragmentColorContext for Renderer {
     /// Returns a read lock to the Resources Database.
     ///
     /// # Errors
@@ -118,7 +118,7 @@ impl RenderContext for Renderer {
     }
 }
 
-impl Renderer {
+imFragmentColorer {
     /// Creates a new Renderer instance.
     pub(crate) async fn new<W: IsWindow>(
         options: RendererOptions,

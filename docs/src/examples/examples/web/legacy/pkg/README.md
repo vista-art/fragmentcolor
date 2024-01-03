@@ -1,4 +1,4 @@
-# PL Render Library
+# FragmentColor Library
 
 The `pl-render` library (or `render` for short) aims to provide a unified API
 to render **Pupil Labs' video enrichments** in the GPU (with a CPU fallback) across
