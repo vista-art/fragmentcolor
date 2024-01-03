@@ -1,0 +1,18 @@
+[package]
+name = "fragmentcolor-py"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+plr = { package="fragmentcolor", path = "../fragmentcolor" }
+pyo3 = { version = "0.20", features = ["extension-module"] }
+numpy = "0.20"
+ndarray = "0.15"
+log = "0.4"
+
+[build-dependencies]
+pyo3-build-config = { version = "0.20", features = ["extension-module"] }

@@ -2,7 +2,7 @@
 <html lang="en-US">
   <head>
     <meta charset="utf-8" />
-    <title>PLRender example</title>
+    <title>FragmentColor example</title>
     <style>
       #container {
         position: relative;
@@ -40,13 +40,13 @@
       ></video>
     </div>
     <script type="module">
-      import load_wasm, { PLRender } from "./pkg/plrender.js";
+      import load_wasm, { FragmentColor } from "./pkg/fragmentcolor.js";
       await load_wasm();
-      const plrender = new PLRender();
+      const fragmentcolor = new FragmentColor();
 
-      const scene = plrender.Scene();
+      const scene = fragmentcolor.Scene();
 
-      const target = plrender.Target({
+      const target = fragmentcolor.Target({
         source: scene,
         target: document.getElementById("output_canvas"),
       });
@@ -109,7 +109,7 @@
       });
 
       // Starts the event loop
-      plrender.run();
+      fragmentcolor.run();
 
       // Updates gaze position every video frame.
       function updateLoop() {

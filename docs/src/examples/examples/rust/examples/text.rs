@@ -11,7 +11,7 @@ use winit::{
     window::WindowBuilder,
 };
 
-// @TODO PLRender:
+// @TODO FragmentColor:
 //       This example was copied from the wgpu_text crate.
 //       Our library reexports it, so we should use it through our API instead.
 //       (there is no "Text" SceneObject yet. Once we implement it, we can use it here.)

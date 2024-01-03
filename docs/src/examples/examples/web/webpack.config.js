@@ -24,7 +24,7 @@ module.exports = {
     new CopyPlugin([path.resolve(__dirname, "static")]),
 
     new WasmPackPlugin({
-      crateDirectory: path.resolve(__dirname, "../../plrender-wasm"),
+      crateDirectory: path.resolve(__dirname, "../../fragmentcolor-wasm"),
       outDir: path.resolve(__dirname, "pkg"),
     }),
   ],

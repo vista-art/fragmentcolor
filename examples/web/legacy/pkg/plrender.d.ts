@@ -4,95 +4,95 @@
 */
 export class ControllerOptions {
   free(): void;
-/**
-*/
+  /**
+  */
   _fixation?: FixationOptions;
-/**
-*/
+  /**
+  */
   gaze?: GazeOptions;
 }
 /**
 */
 export class FixationOptions {
   free(): void;
-/**
-*/
+  /**
+  */
   alpha: number;
-/**
-*/
+  /**
+  */
   border: number;
-/**
-*/
+  /**
+  */
   color: string;
-/**
-*/
+  /**
+  */
   radius: number;
 }
 /**
 */
 export class GazeOptions {
   free(): void;
-/**
-*/
+  /**
+  */
   alpha?: number;
-/**
-*/
+  /**
+  */
   border?: number;
-/**
-*/
+  /**
+  */
   color?: string;
-/**
-*/
+  /**
+  */
   name?: string;
-/**
-*/
+  /**
+  */
   radius?: number;
 }
 /**
 */
 export class Options {
   free(): void;
-/**
-*/
+  /**
+  */
   controllers?: ControllerOptions;
-/**
-*/
+  /**
+  */
   window?: WindowOptions;
 }
 /**
 */
-export class PLRender {
+export class FragmentColor {
   free(): void;
-/**
-*/
+  /**
+  */
   constructor();
-/**
-* @param {any} options
-*/
+  /**
+  * @param {any} options
+  */
   config(options: any): void;
-/**
-*/
+  /**
+  */
   run(): void;
-/**
-* @param {string} controller
-* @param {string} event
-* @param {any[]} params
-*/
+  /**
+  * @param {string} controller
+  * @param {string} event
+  * @param {any[]} params
+  */
   trigger(controller: string, event: string, params: any[]): void;
-/**
-* @returns {Resolution}
-*/
+  /**
+  * @returns {Resolution}
+  */
   resolution(): Resolution;
 }
 /**
 */
 export class Resolution {
   free(): void;
-/**
-*/
+  /**
+  */
   height: number;
-/**
-*/
+  /**
+  */
   width: number;
 }
 /**
@@ -111,17 +111,17 @@ export interface InitOutput {
   readonly __wbg_set_options_window: (a: number, b: number) => void;
   readonly __wbg_get_options_controllers: (a: number) => number;
   readonly __wbg_set_options_controllers: (a: number, b: number) => void;
-  readonly __wbg_plrender_free: (a: number) => void;
+  readonly __wbg_fragmentcolor_free: (a: number) => void;
   readonly __wbg_resolution_free: (a: number) => void;
   readonly __wbg_get_resolution_width: (a: number) => number;
   readonly __wbg_set_resolution_width: (a: number, b: number) => void;
   readonly __wbg_get_resolution_height: (a: number) => number;
   readonly __wbg_set_resolution_height: (a: number, b: number) => void;
-  readonly plrender_new: () => number;
-  readonly plrender_config: (a: number, b: number) => void;
-  readonly plrender_run: (a: number) => void;
-  readonly plrender_trigger: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
-  readonly plrender_resolution: (a: number) => number;
+  readonly fragmentcolor_new: () => number;
+  readonly fragmentcolor_config: (a: number, b: number) => void;
+  readonly fragmentcolor_run: (a: number) => void;
+  readonly fragmentcolor_trigger: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
+  readonly fragmentcolor_resolution: (a: number) => number;
   readonly __wbg_controlleroptions_free: (a: number) => void;
   readonly __wbg_get_controlleroptions_gaze: (a: number) => number;
   readonly __wbg_set_controlleroptions_gaze: (a: number, b: number) => void;
@@ -225,4 +225,4 @@ export function initSync(module: SyncInitInput): InitOutput;
 *
 * @returns {Promise<InitOutput>}
 */
-export default function __wbg_init (module_or_path?: InitInput | Promise<InitInput>): Promise<InitOutput>;
+export default function __wbg_init(module_or_path?: InitInput | Promise<InitInput>): Promise<InitOutput>;

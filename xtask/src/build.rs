@@ -3,28 +3,28 @@ use phf::phf_map;
 use std::process::Command;
 
 pub static ICON: phf::Map<&str, &str> = phf_map! {
-    "plrender" => "⭕",
-    "plrender-codegen" => "🧙‍♂️",
-    "plrender-wasm" => "🌎",
-    "plrender-py" => "🐍",
+    "fragmentcolor" => "⭕",
+    "fragmentcolor-codegen" => "🧙‍♂️",
+    "fragmentcolor-wasm" => "🌎",
+    "fragmentcolor-py" => "🐍",
 };
 
 pub static BUILDER: phf::Map<&str, &str> = phf_map! {
-    "plrender" => "cargo",
-    "plrender-codegen" => "cargo",
-    "plrender-wasm" => "wasm",
-    "plrender-py" => "py",
+    "fragmentcolor" => "cargo",
+    "fragmentcolor-codegen" => "cargo",
+    "fragmentcolor-wasm" => "wasm",
+    "fragmentcolor-py" => "py",
 };
 
 pub fn build_all() {
     println!();
     println!("🚀 Building all workspace crates...");
 
-    build("plrender");
-    api_mapper::map_public_api("plrender");
-    //build("plrender-codegen");
-    build_cargo("plrender-wasm");
-    build_cargo("plrender-py");
+    build("fragmentcolor");
+    api_mapper::map_public_api("fragmentcolor");
+    //build("fragmentcolor-codegen");
+    build_cargo("fragmentcolor-wasm");
+    build_cargo("fragmentcolor-py");
 
     println!("🎉 All done! 🎉");
     println!();

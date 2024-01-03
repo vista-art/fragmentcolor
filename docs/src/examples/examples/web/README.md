@@ -1,4 +1,4 @@
-# PLRender Javascript Examples
+# FragmentColor Javascript Examples
 
 ## How to install
 

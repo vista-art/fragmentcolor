@@ -1,4 +1,4 @@
-//! This library contains all Rust PLRender examples.
+//! This library contains all Rust FragmentColor examples.
 //!
 //! Run them from the root Workspace directory with:
 //! `cargo run --example <example_name>`

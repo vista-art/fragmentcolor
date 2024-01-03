@@ -44,8 +44,8 @@ The **AOI Extraction** example uses a compute shader to extract AOIs from bitmas
 
 It contains a **Dockerfile** targeted at CI pipelines which forces the library to use the CPU software rendering fallback adapter.
 
-## PLRender API Draft
+## FragmentColor API Draft
 
 This file is **not a working example**. It was the result of a brainstorming session where we were exploring how the library API would look like.
 
-While this example won't run, it was the **first usage** of the **"plrender"** keyword and is where the name of the library came from.
+While this example won't run, it was the **first usage** of the **"fragmentcolor"** keyword and is where the name of the library came from.

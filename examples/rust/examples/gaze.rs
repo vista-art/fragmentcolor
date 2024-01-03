@@ -1,12 +1,14 @@
+use fragmentcolor::{
+    components::Circle, AppOptions, FragmentColor, RendererOptions, Scene, Sprite, Window,
+};
+use fragmentcolor::{CircleOptions, Color, Dimensions, Event, IsWindow, Quad, Shader, Square};
 use instant::{Duration, Instant};
-use plrender::{components::Circle, AppOptions, PLRender, RendererOptions, Scene, Sprite, Window};
-use plrender::{CircleOptions, Color, Dimensions, Event, IsWindow, Quad, Shader, Square};
 use std::path::Path;
 
 const ROOT: &str = env!("CARGO_MANIFEST_DIR");
 
 fn main() {
-    PLRender::config(options());
+    FragmentColor::config(options());
     let mut window = Window::default();
     window.set_title("Window 1");
     //let window2 = Window::default();
@@ -91,7 +93,7 @@ fn main() {
         _ => {}
     });
 
-    PLRender::run();
+    FragmentColor::run();
 }
 
 fn position_for_time(elapsed: Duration, quad: Quad) -> (f32, f32) {

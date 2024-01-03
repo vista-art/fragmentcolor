@@ -41,11 +41,11 @@
     </div>
 
     <script type="module" async>
-      import load_wasm, { PLRender } from "./pkg/plrender.js";
+      import load_wasm, { FragmentColor } from "./pkg/fragmentcolor.js";
       await load_wasm();
 
-      const plrender = new PLRender();
-      plrender.config({
+      const fragmentcolor = new FragmentColor();
+      fragmentcolor.config({
         window: {
           canvas_selector: "#test_canvas",
         },
@@ -68,10 +68,10 @@
         const y = (4 * event.offsetY) / canvas.height - 1;
 
         console.log("mouse move: ", x, y);
-        plrender.trigger("gaze", "set_position", [x, y]);
+        fragmentcolor.trigger("gaze", "set_position", [x, y]);
       });
 
-      plrender.run();
+      fragmentcolor.run();
     </script>
   </body>
 </html>

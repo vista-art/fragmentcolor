@@ -48,13 +48,13 @@ fn print_build_help() {
     println!();
     println!("Subcommands:");
     println!("  all                 Builds all crates");
-    println!("  plrender            Builds the plrender crate");
-    println!("  plrender-codegen    Builds the plrender-codegen crate");
-    println!("  plrender-py         Builds the plrender-py crate");
-    println!("  plrender-wasm       Builds the plrender-wasm crate");
+    println!("  fragmentcolor            Builds the fragmentcolor crate");
+    println!("  fragmentcolor-codegen    Builds the fragmentcolor-codegen crate");
+    println!("  fragmentcolor-py         Builds the fragmentcolor-py crate");
+    println!("  fragmentcolor-wasm       Builds the fragmentcolor-wasm crate");
     println!();
     println!("Example:");
-    println!("    cargo xtask build plrender");
+    println!("    cargo xtask build fragmentcolor");
 }
 
 fn print_api_map_help() {
@@ -62,11 +62,11 @@ fn print_api_map_help() {
     println!();
     println!("Crates:");
     println!("  all                 Maps all crates");
-    println!("  plrender            Maps the plrender crate");
-    println!("  plrender-codegen    Maps the plrender-codegen crate");
-    println!("  plrender-py         Maps the plrender-py crate");
-    println!("  plrender-wasm       Maps the plrender-wasm crate");
+    println!("  fragmentcolor            Maps the fragmentcolor crate");
+    println!("  fragmentcolor-codegen    Maps the fragmentcolor-codegen crate");
+    println!("  fragmentcolor-py         Maps the fragmentcolor-py crate");
+    println!("  fragmentcolor-wasm       Maps the fragmentcolor-wasm crate");
     println!();
     println!("Example:");
-    println!("    cargo xtask map plrender");
+    println!("    cargo xtask map fragmentcolor");
 }

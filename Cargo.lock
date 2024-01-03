@@ -741,6 +741,96 @@ dependencies = [
 ]
 
 [[package]]
+name = "fragmentcolor"
+version = "0.8.1"
+dependencies = [
+ "bitflags 2.4.0",
+ "built",
+ "bytemuck",
+ "cfg_aliases",
+ "console_error_panic_hook",
+ "console_log",
+ "csscolorparser",
+ "ddsfile",
+ "derive_setters",
+ "env_logger",
+ "futures-intrusive",
+ "fxhash",
+ "glam",
+ "gloo-utils",
+ "gltf",
+ "hecs",
+ "image",
+ "instant",
+ "js-sys",
+ "log",
+ "lyon",
+ "mint",
+ "naga",
+ "naga_oil",
+ "obj",
+ "phf",
+ "pollster",
+ "raw-window-handle",
+ "reqwest",
+ "serde",
+ "serde-wasm-bindgen",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+ "wgpu",
+ "wgpu_text",
+ "winit",
+]
+
+[[package]]
+name = "fragmentcolor-example-sprite"
+version = "0.1.0"
+dependencies = [
+ "env_logger",
+ "fragmentcolor",
+ "image",
+ "instant",
+ "log",
+ "mint",
+ "pollster",
+ "rand",
+ "wgpu",
+ "wgpu_text",
+ "winit",
+]
+
+[[package]]
+name = "fragmentcolor-py"
+version = "0.1.0"
+dependencies = [
+ "fragmentcolor",
+ "log",
+ "ndarray",
+ "numpy",
+ "pyo3",
+ "pyo3-build-config",
+]
+
+[[package]]
+name = "fragmentcolor-wasm"
+version = "0.1.0"
+dependencies = [
+ "cfg_aliases",
+ "console_error_panic_hook",
+ "console_log",
+ "fragmentcolor",
+ "gloo-utils",
+ "js-sys",
+ "reqwest",
+ "serde",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "wasm-bindgen-test",
+ "web-sys",
+]
+
+[[package]]
 name = "futures-channel"
 version = "0.3.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2100,96 +2190,6 @@ name = "pkg-config"
 version = "0.3.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "26072860ba924cbfa98ea39c8c19b4dd6a4a25423dbdf219c1eca91aa0cf6964"
-
-[[package]]
-name = "plrender"
-version = "0.8.1"
-dependencies = [
- "bitflags 2.4.0",
- "built",
- "bytemuck",
- "cfg_aliases",
- "console_error_panic_hook",
- "console_log",
- "csscolorparser",
- "ddsfile",
- "derive_setters",
- "env_logger",
- "futures-intrusive",
- "fxhash",
- "glam",
- "gloo-utils",
- "gltf",
- "hecs",
- "image",
- "instant",
- "js-sys",
- "log",
- "lyon",
- "mint",
- "naga",
- "naga_oil",
- "obj",
- "phf",
- "pollster",
- "raw-window-handle",
- "reqwest",
- "serde",
- "serde-wasm-bindgen",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "web-sys",
- "wgpu",
- "wgpu_text",
- "winit",
-]
-
-[[package]]
-name = "plrender-example-sprite"
-version = "0.1.0"
-dependencies = [
- "env_logger",
- "image",
- "instant",
- "log",
- "mint",
- "plrender",
- "pollster",
- "rand",
- "wgpu",
- "wgpu_text",
- "winit",
-]
-
-[[package]]
-name = "plrender-py"
-version = "0.1.0"
-dependencies = [
- "log",
- "ndarray",
- "numpy",
- "plrender",
- "pyo3",
- "pyo3-build-config",
-]
-
-[[package]]
-name = "plrender-wasm"
-version = "0.1.0"
-dependencies = [
- "cfg_aliases",
- "console_error_panic_hook",
- "console_log",
- "gloo-utils",
- "js-sys",
- "plrender",
- "reqwest",
- "serde",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "wasm-bindgen-test",
- "web-sys",
-]
 
 [[package]]
 name = "png"

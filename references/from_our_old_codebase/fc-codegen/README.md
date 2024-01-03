@@ -1,10 +1,10 @@
-# PLRender Macros
+# FragmentColor Macros
 
-This crate provides **Procedural Macros** for PLRender and its platform-specific bindings.
+This crate provides **Procedural Macros** for FragmentColor and its platform-specific bindings.
 
-Right now, it provides the `wrap_py()` and `wrap_wasm()` macros for the `plrender-py` and `plrender-wasm` crates.
+Right now, it provides the `wrap_py()` and `wrap_wasm()` macros for the `fragmentcolor-py` and `fragmentcolor-wasm` crates.
 
-After every successful `plrender` build, an API map is saved in the `../generated` directory. Then, the build system triggers a build in this crate to automatically update the macros.
+After every successful `fragmentcolor` build, an API map is saved in the `../generated` directory. Then, the build system triggers a build in this crate to automatically update the macros.
 
 ## What are Procedural Macros
 

@@ -1,12 +1,12 @@
 # Scenes and Targets
 
-The `Scene` object is a central component of the `plrender` library. It represents a rendering context where various entities, such as videos, images, and shapes, are drawn.
+The `Scene` object is a central component of the `fragmentcolor` library. It represents a rendering context where various entities, such as videos, images, and shapes, are drawn.
 
 A scene can render its content to one or more `Target` objects. A Target can be a web canvas, window, a video file, an image sequence, or a callback function that receives a rendered frame.
 
 ## Creating a Scene
 
-In most cases, a scene is automatically created when you initialize the `plrender` library. However, you can also create additional scenes if needed.
+In most cases, a scene is automatically created when you initialize the `fragmentcolor` library. However, you can also create additional scenes if needed.
 
 <div class="tab-container">
     <div class="tab active" data-target="js">JavaScript</div>
@@ -17,7 +17,7 @@ In most cases, a scene is automatically created when you initialize the `plrende
 <div class="code-block active js">
 
 ```javascript
-const scene = new PLRender.Scene();
+const scene = new FragmentColor.Scene();
 ```
 
 </div>
@@ -25,7 +25,7 @@ const scene = new PLRender.Scene();
 <div class="code-block python">
 
 ```python
-scene = PLRender.Scene()
+scene = FragmentColor.Scene()
 ```
 
 </div>
@@ -33,7 +33,7 @@ scene = PLRender.Scene()
 <div class="code-block rust">
 
 ```rust
-let scene = PLRender::Scene::new();
+let scene = FragmentColor::Scene::new();
 ```
 
 </div>
@@ -283,7 +283,7 @@ To start the rendering process, you need to run the scene.
 <div class="code-block active js">
 
 ```javascript
-plrender.run();
+fragmentcolor.run();
 ```
 
 </div>
@@ -291,7 +291,7 @@ plrender.run();
 <div class="code-block python">
 
 ```python
-plrender.run()
+fragmentcolor.run()
 ```
 
 </div>
@@ -299,7 +299,7 @@ plrender.run()
 <div class="code-block rust">
 
 ```rust
-plrender.run();
+fragmentcolor.run();
 ```
 
 </div>
