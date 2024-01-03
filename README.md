@@ -48,12 +48,13 @@ Check the usage example in `index.html`.
 Running without building:
 
 ```bash
-cargo run
+cargo xtask
 ```
 
 Building:
 
 ```bash
+cd crates/fragmentcolor
 cargo build --release
 ```
 
