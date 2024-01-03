@@ -1,7 +1,7 @@
 [package]
 name = "fragmentcolor-example-sprite"
 description = "Example desktop application using FragmentColor"
-repository = "https://gitlab.com/pupil-labs/pupil-cloud/pl-render/examples/rust"
+repository = "https://github.com/vista-art/fragmentcolor/examples/rust"
 authors = ["Pupil Labs GmbH"]
 license-file = "LICENCE.md"
 version = "0.1.0"

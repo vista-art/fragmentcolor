@@ -1,7 +1,7 @@
 [package]
 name = "fragmentcolor"
 description = "Multiplatform GPU Rendering API for Javascript, Python and Beyond"
-repository = "https://gitlab.com/pupil-labs/pupil-cloud/pl-render"
+repository = "https://github.com/vista-art/fragmentcolor"
 authors = ["Pupil Labs GmbH"]
 license-file = "LICENCE.md"
 version = "0.8.1"
