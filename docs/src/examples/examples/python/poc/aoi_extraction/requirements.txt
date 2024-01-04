@@ -1,6 +1,0 @@
-wgpu
-numpy
-pathlib
-pillow
-requests
-pytest

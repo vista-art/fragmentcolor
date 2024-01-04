@@ -2,7 +2,7 @@
 
 members = [
     "crates/*",
-    "examples/rust",
+    "examples",
     "xtask"
 ]
 

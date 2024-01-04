@@ -6,7 +6,7 @@ use crate::{
         Event,
     },
     renderer::{Renderer, RendererOptions},
-    scene::{Scene, SceneState, Scenes},
+    scene::{Scene, /*SceneState,*/ Scenes},
     Window,
 };
 use log::LevelFilter;
@@ -27,8 +27,8 @@ type Error = Box<dyn std::error::Error>;
 type RemovedWindow = Option<Arc<RwLock<WindowState>>>;
 type WindowsReadGuard<'w> = RwLockReadGuard<'w, Windows>;
 type WindowsWriteGuard<'w> = RwLockWriteGuard<'w, Windows>;
-type RemovedScene = Option<Arc<RwLock<SceneState>>>;
-type ScenesReadGuard<'s> = RwLockReadGuard<'s, Scenes>;
+// type RemovedScene = Option<Arc<RwLock<SceneState>>>;
+// type ScenesReadGuard<'s> = RwLockReadGuard<'s, Scenes>;
 type ScenesWriteGuard<'s> = RwLockWriteGuard<'s, Scenes>;
 
 /// The main App instance responsible for managing shared global resources.
@@ -323,15 +323,16 @@ impl AppState {
         self.scenes.clone()
     }
 
-    /// Returns a Read mutex reference to the Scenes collection.
-    ///
-    /// # Panics
-    /// - Panics if the current thread is dead while acquiring the mutex lock.
-    pub(crate) fn read_scenes_collection(&self) -> ScenesReadGuard<'_> {
-        self.scenes
-            .read()
-            .expect("Could not get Scenes Collection Read lock")
-    }
+    // @TODO use it
+    // /// Returns a Read mutex reference to the Scenes collection.
+    // ///
+    // /// # Panics
+    // /// - Panics if the current thread is dead while acquiring the mutex lock.
+    // pub(crate) fn read_scenes_collection(&self) -> ScenesReadGuard<'_> {
+    //     self.scenes
+    //         .read()
+    //         .expect("Could not get Scenes Collection Read lock")
+    // }
 
     /// Returns a Write mutex reference to the Scenes collection.
     ///
@@ -350,11 +351,12 @@ impl AppState {
         scenes.insert(&scene.id(), scene.state())
     }
 
-    /// Removes a window from the Windows collection.
-    pub(crate) fn remove_scene(&self, scene: Scene) -> RemovedScene {
-        let mut scenes = self.write_to_scenes_collection();
-        scenes.remove(&scene.id())
-    }
+    // @TODO use it
+    // /// Removes a window from the Windows collection.
+    // pub(crate) fn remove_scene(&self, scene: Scene) -> RemovedScene {
+    //     let mut scenes = self.write_to_scenes_collection();
+    //     scenes.remove(&scene.id())
+    // }
 
     fn renderer_options(&self) -> RendererOptions {
         RendererOptions {
