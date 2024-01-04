@@ -3,7 +3,7 @@
 members = [
     "crates/*",
     "examples",
-    "xtask"
+    "tasks"
 ]
 
 resolver = "2"
