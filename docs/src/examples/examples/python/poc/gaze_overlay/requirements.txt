@@ -1,4 +1,0 @@
-av
-pyglet
-numpy
-pillow
