@@ -22,8 +22,6 @@ fn main() {
     let fake_video = Path::new(ROOT).join("assets/images/test.jpg");
     let mut video = Sprite::new(fake_video);
 
-    // new Sprite()   // plr.Sprite("")
-
     scene.add(&mut video);
 
     let mut shader = Shader::new(
