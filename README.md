@@ -1,6 +1,6 @@
 # FragmentColor
 
-FragmentColor is a **Creative Coding** library written in Rust that provides
+FragmentColor is a Creative Coding library written in Rust that provides
 a simple shader programming API for Javascript and Python, with more language
 bindings in the horizon.
 
