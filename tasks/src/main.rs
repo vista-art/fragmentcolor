@@ -33,7 +33,7 @@ pub fn print_help(command: &str) {
 
 // it would be nicer to use `clap` here
 fn print_general_help() {
-    println!("Usage: cargo xtask [COMMAND] [CRATE]");
+    println!("Usage: cargo task [COMMAND] [CRATE]");
     println!();
     println!("Commands:");
     println!("  build all           Builds all crates");
@@ -44,7 +44,7 @@ fn print_general_help() {
 }
 
 fn print_build_help() {
-    println!("Usage: cargo xtask build [CRATE]");
+    println!("Usage: cargo task build [CRATE]");
     println!();
     println!("Subcommands:");
     println!("  all                 Builds all crates");
@@ -54,11 +54,11 @@ fn print_build_help() {
     println!("  fragmentcolor-wasm       Builds the fragmentcolor-wasm crate");
     println!();
     println!("Example:");
-    println!("    cargo xtask build fragmentcolor");
+    println!("    cargo task build fragmentcolor");
 }
 
 fn print_api_map_help() {
-    println!("Usage: cargo xtask map [CRATE]");
+    println!("Usage: cargo task map [CRATE]");
     println!();
     println!("Crates:");
     println!("  all                 Maps all crates");

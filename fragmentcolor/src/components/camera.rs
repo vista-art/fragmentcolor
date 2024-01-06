@@ -83,17 +83,9 @@ impl Projection {
     /// Creates a new Perspective projection.
     pub fn from_target_size(quad: Quad) -> Self {
         Self::Orthographic {
-            center: quad.center_f32(), // @TODO check: maybe it should be 0,0?
+            center: quad.center_f32(),
             size: quad.to_vec2(),
         }
-        // let ortho = Self::Orthographic {
-        //     center: Vec2 { x: 0.0, y: 0.0 }, // @TODO check: maybe it should be 0,0?
-        //     size: quad.to_vec2(),
-        // };
-
-        // println!("ortho: {:?}", ortho);
-
-        // ortho
     }
 
     /// Creates a new Orthographic projection.

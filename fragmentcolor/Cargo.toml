@@ -39,7 +39,7 @@ naga_oil ={ git = "https://github.com/robtfm/naga_oil", branch = "naga-0.14" }
 
 # Math
 mint = { version = "0.5", features = ["serde"] }
-glam = { version = "0.24", features = ["mint"] }
+glam = { version = "0.25", features = ["mint"] }
 
 # Serialization
 phf = { version = "0.11", features = ["macros"] }

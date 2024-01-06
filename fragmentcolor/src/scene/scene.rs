@@ -98,8 +98,6 @@ impl Scene {
         }
     }
 
-    /// Where all the Scene magic happens! 🧙
-    ///
     /// Adds an Object to the Scene and returns its ObjectID.
     ///
     /// The Scene maintains two records:
