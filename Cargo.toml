@@ -1,8 +1,9 @@
 [workspace]
 
 members = [
-    "crates/*",
-    "examples",
+    "fragmentcolor",
+    "examples/rust",
+    "platforms/*",
     "tasks"
 ]
 

@@ -5,7 +5,7 @@ a simple shader programming API for Javascript and Python, with more language
 bindings in the horizon.
 
 This library uses [wgpu](https://github.com/gfx-rs/wgpu) as the hardware abstraction
-layer, which enables us to target a wide range of platforms and environments with 
+layer, which enables us to target a wide range of platforms and environments with
 near-native performance and small footprint:
 
 | Backend   |  WASM   |  Linux  |  MacOS  | Windows | Android |   iOS   | CI / CD |
@@ -48,7 +48,7 @@ Check the usage example in `index.html`.
 Running without building:
 
 ```bash
-cargo xtask
+cargo task
 ```
 
 Building:
