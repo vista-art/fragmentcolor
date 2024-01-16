@@ -1,4 +1,5 @@
 use crate::{
+    app::panics,
     components,
     renderer::target::{DescribesTarget, RenderTargetDescription},
     scene::{
@@ -59,8 +60,19 @@ static SCENE_ID: AtomicU32 = AtomicU32::new(1);
 impl Scene {
     /// Creates a new Scene.
     ///
+    /// The Scene maintains two records:
+    ///
+    /// - The Scene Tree, which is a list of Transforms representing
+    ///   positions in the Scene Space. Objects might share the
+    ///   same Transform if they occupy the same position in Space.
+    ///
+    /// - The ECS World, which is a list of Entities with their
+    ///   Components. Entities are simple IDs, while Components
+    ///   can be any type that implements Send + Sync + 'static.
+    ///   Components contain the actual data of the Object.
+    ///
     /// The Scene is registered in the main App as a resource,
-    /// so it can interact with other parts of the system.
+    /// so users can create multiple scenes.
     ///
     /// If you need an ad-hoc Scene that acts as a simple
     /// collection, use [Scene::new_unregistered()] instead
@@ -99,17 +111,6 @@ impl Scene {
     }
 
     /// Adds an Object to the Scene and returns its ObjectID.
-    ///
-    /// The Scene maintains two records:
-    ///
-    /// - The Scene Tree, which is a list of Transforms representing
-    ///   positions in the Scene Space. Objects might share the
-    ///   same Transform if they occupy the same position in Space.
-    ///
-    /// - The ECS World, which is a list of Entities with their
-    ///   Components. Entities are simple IDs, while Components
-    ///   can be any type that implements Send + Sync + 'static.
-    ///   Components contain the actual data of the Object.
     ///   
     /// The Object must implement the ObjectEntry interface.
     /// It is expected that the Objects provide a list of their
@@ -290,15 +291,15 @@ impl Scene {
     /// Returns a reference to the Scene's internal state.
     pub fn read_state(&self) -> RwLockReadGuard<'_, SceneState> {
         self.state
-            .read() // @FIXME I MEAN IT!!
-            .expect("TECH DEBT! We should remove this error, use try_lock and handle the Result.")
+            .read()
+            .expect(panics::SCENE_FAILED_TO_ACQUIRE_READ_LOCK)
     }
 
     /// Returns a mutable reference to the Scene's internal state.
     pub fn write_state(&self) -> RwLockWriteGuard<'_, SceneState> {
         self.state
-            .write() // @FIXME I MEAN IT!! //@TODO after you see it on screen
-            .expect("TECH DEBT! We should remove this error, use try_lock and handle the Result.")
+            .write()
+            .expect(panics::SCENE_FAILED_TO_ACQUIRE_WRITE_LOCK)
     }
 }
 
