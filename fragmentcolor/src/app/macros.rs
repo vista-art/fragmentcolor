@@ -1,7 +1,7 @@
 /// Handy macro that implements the app::Container trait for the given type.
 ///
 /// The type must contain a `container` and a `keys` fields and implement
-/// the Default  trait for this macro to work.
+/// the Default trait for this macro to work.
 macro_rules! implements_container {
     ($type:ty, <$key:ty, $value:ty>) => {
         impl crate::app::container::Container<$key, $value> for $type {

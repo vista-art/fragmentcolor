@@ -201,35 +201,33 @@ fn parse(key: Option<VirtualKey>) -> String {
 // FragmentColor can't send filenames directly to callbacks because
 // Events must be safe to copy with `memcpy` and share between
 // threads. This means their data must be know at compile time,
-// so the Window produces a u128 nanosecond timestamp instead.
+// so the Window produces a u128 nanosecond timestamp instead
+// of a filename, and uses this timestamp as a key to a map
+// of filenames.
 //
 // Here we can safely convert the timestamp back to a filename
 // and send to Python back as strings.
 
-// Helper method to get the hovered filename by handle.
-// Ugly, but avoids panics & deadlocks, and covers all edge cases.
+/// Helper method to get the hovered filename by handle.
+/// Ugly, but avoids panics & deadlocks, and covers all edge cases.
 fn get_hovered_filename(window_id: &WindowId, handle: u128) -> String {
-    let app = FragmentColor::app();
-    let filename = if let Ok(app) = app.try_read() {
-        // @TODO how about lifting up Window and Scene to FragmentColor? (and kill the App class)
-        if let Ok(windows) = app.windows().try_read() {
-            if let Some(window) = windows.get(window_id) {
-                if let Some(filename) = window.get_hovered_file(handle) {
-                    filename
-                } else {
-                    app.error("fragmentcolor-py: Cannot read filename: ignoring dropped file!");
-                    "None".to_string()
-                }
-            } else {
-                app.error("fragmentcolor-py: Cannot read Window: ignoring hovered file!");
-                "None".to_string()
-            }
+    let app = FragmentColor::app()
+        .read()
+        .expect("Failed to acquire App Read Lock");
+    let windows = app
+        .windows()
+        .read()
+        .expect("Failed to acquire Windows collection Read Lock");
+
+    let filename = if let Some(window) = windows.get(window_id) {
+        if let Some(filename) = window.get_hovered_file(handle) {
+            filename
         } else {
-            app.error("fragmentcolor-py: Cannot read Windows list: ignoring hovered file!");
+            app.error("fragmentcolor-py: Cannot read filename: ignoring dropped file!");
             "None".to_string()
         }
     } else {
-        log::error!("fragmentcolor-py: Cannot read App: ignoring hovered file!");
+        app.error("fragmentcolor-py: Cannot read Window: ignoring hovered file!");
         "None".to_string()
     };
 
@@ -240,26 +238,25 @@ fn get_hovered_filename(window_id: &WindowId, handle: u128) -> String {
 // The difference is that it needs to take a mutable reference to the window,
 // because the file is removed from the internal list after it's read.
 fn get_dropped_filename(window_id: &WindowId, handle: u128) -> String {
-    let app = FragmentColor::app();
-    let filename = if let Ok(app) = app.try_read() {
-        if let Ok(mut windows) = app.windows().try_write() {
-            if let Some(mut window) = windows.get_mut(window_id) {
-                if let Some(filename) = window.get_dropped_file(handle) {
-                    filename.to_string_lossy().to_string()
-                } else {
-                    app.error("fragmentcolor-py: Cannot read filename: ignoring dropped file!");
-                    "None".to_string()
-                }
-            } else {
-                app.error("fragmentcolor-py: Cannot read Window: ignoring dropped file!");
-                "None".to_string()
-            }
+    // @TODO Windows and Scenes should be globally accessible by name.
+    // Example: FragmentColor::get_window(name)
+    let app = FragmentColor::app()
+        .read()
+        .expect("Failed to acquire App Read Lock");
+    let windows = app
+        .windows()
+        .write()
+        .expect("Failed to acquire Windows collection Write Lock");
+
+    let filename = if let Some(mut window) = windows.get_mut(window_id) {
+        if let Some(filename) = window.get_dropped_file(handle) {
+            filename.to_string_lossy().to_string()
         } else {
-            app.error("fragmentcolor-py: Cannot read Windows list: ignoring dropped file!");
+            app.error("fragmentcolor-py: Cannot read filename: ignoring dropped file!");
             "None".to_string()
         }
     } else {
-        log::error!("fragmentcolor-py: Cannot read App: ignoring dropped file!");
+        app.error("fragmentcolor-py: Cannot read Window: ignoring dropped file!");
         "None".to_string()
     };
 

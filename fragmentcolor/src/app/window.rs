@@ -1,7 +1,7 @@
 use crate::{
     app::{
         events::{Callback, CallbackFn, Event},
-        FragmentColor,
+        panics, FragmentColor,
     },
     math::geometry::Quad,
     renderer::target::Dimensions,
@@ -499,10 +499,7 @@ impl Window {
 
     pub fn on(&self, event_name: &str, callback: impl CallbackFn<Event> + 'static) {
         let callback = Arc::new(RwLock::new(callback));
-        self.state
-            .write() // @TODO I MEAN IT!!!
-            .expect("TECH DEBT!! Remove this message, handle the error.")
-            .on(event_name, callback)
+        self.write_state().on(event_name, callback)
     }
 
     pub fn call(&self, event_name: &str, event: Event) {
@@ -520,13 +517,13 @@ impl Window {
     fn read_state(&self) -> RwLockReadGuard<'_, WindowState> {
         self.state
             .read()
-            .expect("TECH DEBT!! Remove this message, handle the error.")
+            .expect(panics::WINDOW_FAILED_TO_ACQUIRE_READ_LOCK)
     }
 
     fn write_state(&mut self) -> RwLockWriteGuard<'_, WindowState> {
         self.state
             .write()
-            .expect("TECH DEBT!! Remove this message, handle the error.")
+            .expect(panics::WINDOW_FAILED_TO_ACQUIRE_WRITE_LOCK)
     }
 }
 

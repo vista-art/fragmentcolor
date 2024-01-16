@@ -24,7 +24,7 @@ near-native performance and small footprint:
 
 > [!WARNING]  
 > This library is currently under heavy development, and the API is not yet stable, meaning
-> that **while it is not tagged `1.0.0`**, I might introduce breaking changes in minor versions.
+> that while it is not tagged `1.0.0`, I might introduce breaking changes in minor versions.
 > You can use it and test it, and I would greatly appreciate any feedback you can provide.
 > If you use it in production, make sure you know what you are doing and lock the minor version.
 
@@ -45,10 +45,10 @@ Check the usage example in `index.html`.
 
 ### Target: desktop window
 
-Running without building:
+Building all:
 
 ```bash
-cargo task
+cargo task build all
 ```
 
 Building:

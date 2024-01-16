@@ -188,14 +188,7 @@ impl<'r> Toy<'r> {
             let mut sample_count = 1;
             let targets = &renderer
                 .read_targets()
-                // @TODO I MEAN IT!!! Remove tech debt (global search "TECH DEBT")
-                .expect(
-                    "TECH DEBT: Avoid panics 
-
-                (after you see smtg in the screen, NOT NOW)!!!
-                
-                ",
-                )
+                .expect("Toy Renderpass: Could not read render targets")
                 .all()
                 .enumerate()
                 .map(|(index, target)| {
@@ -272,8 +265,7 @@ impl<'r> RenderPass for Toy<'r> {
         let renderer = self.renderer;
         let targets = renderer
             .read_targets()
-            // @TODO I MEAN IT!!! Remove tech debt (global search "TECH DEBT")
-            .expect("TECH DEBT: Avoid panics!!!");
+            .expect("Toy Renderpass: Could not read render targets");
         let device = renderer.device();
         let queue = renderer.queue();
 
