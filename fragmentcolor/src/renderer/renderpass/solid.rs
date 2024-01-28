@@ -119,8 +119,7 @@ impl<'r> Solid<'r> {
 
         let targets = &renderer
             .read_targets()
-            // @TODO I MEAN IT!!! Remove tech debt (global search "TECH DEBT")
-            .expect("TECH DEBT: Avoid panics!!!")
+            .expect("read lock poisoned")
             .all()
             .map(|target| {
                 Some(wgpu::ColorTargetState {
@@ -180,16 +179,8 @@ impl<'r> RenderPass for Solid<'r> {
     fn draw(&mut self, scene: RwLockReadGuard<'_, SceneState>) -> RenderPassResult {
         let renderer = self.renderer;
         let device = renderer.device();
-        let resources = renderer
-            .read_resources()
-            // @TODO I MEAN IT!!! Remove tech debt (global search "TECH DEBT")
-            .expect("TECH DEBT: Drop frame; Avoid panics!!!");
-        let targets = renderer
-            .read_targets()
-            // @TODO I MEAN IT!!! Remove tech debt (global search "TECH DEBT")
-            .expect("TECH DEBT: Drop frame; Avoid panics!!!");
-
-        // @TODO!
+        let resources = renderer.read_resources().expect("read lock poisoned");
+        let targets = renderer.read_targets().expect("read lock poisoned");
 
         let mut commands = Vec::new();
 

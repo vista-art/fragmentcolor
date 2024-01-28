@@ -497,7 +497,7 @@ impl Window {
         self.read_state().redraw();
     }
 
-    pub fn on(&self, event_name: &str, callback: impl CallbackFn<Event> + 'static) {
+    pub fn on(&mut self, event_name: &str, callback: impl CallbackFn<Event> + 'static) {
         let callback = Arc::new(RwLock::new(callback));
         self.write_state().on(event_name, callback)
     }

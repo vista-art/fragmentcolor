@@ -485,7 +485,7 @@ impl TextureTarget {
         }
     }
 
-    // @TODO TECH DEBT call this at some point.
+    // @TODO call this at some point.
     #[allow(dead_code)]
     pub async fn get_rendered_frame_bytes(&self, renderer: &Renderer) -> Result<Vec<u8>, Error> {
         if let Some(texture_buffer) = &self.buffer {

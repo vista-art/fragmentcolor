@@ -237,8 +237,7 @@ impl<'r> Real<'r> {
             let mut sample_count = 1;
             let targets = &renderer
                 .read_targets()
-                // @TODO I MEAN IT!!! Remove tech debt (global search "TECH DEBT")
-                .expect("TECH DEBT: Avoid panics!!!")
+                .expect("read lock poisoned")
                 .all()
                 .enumerate()
                 .map(|(index, target)| {
@@ -343,14 +342,8 @@ impl<'r> Real<'r> {
 impl<'r> crate::RenderPass for Real<'r> {
     fn draw(&mut self, scene: RwLockReadGuard<'_, SceneState>) -> RenderPassResult {
         let renderer = self.renderer;
-        let targets = renderer
-            .read_targets()
-            // @TODO I MEAN IT!!! Remove tech debt (global search "TECH DEBT")
-            .expect("TECH DEBT: Avoid panics!!!");
-        let resources = renderer
-            .read_resources()
-            // @TODO I MEAN IT!!! Remove tech debt (global search "TECH DEBT")
-            .expect("TECH DEBT: Avoid panics!!!");
+        let targets = renderer.read_targets().expect("read lock poisoned");
+        let resources = renderer.read_resources().expect("read lock poisoned");
         let device = renderer.device();
         let mut commands = Vec::new();
 

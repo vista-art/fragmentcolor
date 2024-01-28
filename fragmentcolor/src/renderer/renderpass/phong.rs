@@ -216,8 +216,7 @@ impl<'r> Phong<'r> {
             let mut sample_count = 1;
             let targets = &renderer
                 .read_targets()
-                // @TODO I MEAN IT!!! Remove tech debt (global search "TECH DEBT")
-                .expect("TECH DEBT: Avoid panics!!!")
+                .expect("lock poisoned")
                 .all()
                 .enumerate()
                 .map(|(index, target)| {
@@ -328,10 +327,7 @@ impl<'r> Phong<'r> {
 impl<'r> RenderPass for Phong<'r> {
     fn draw(&mut self, scene: RwLockReadGuard<'_, SceneState>) -> RenderPassResult {
         let renderer = self.renderer;
-        let targets = renderer
-            .read_targets()
-            // @TODO I MEAN IT!!! Remove tech debt (global search "TECH DEBT")
-            .expect("TECH DEBT: Avoid panics!!!");
+        let targets = renderer.read_targets().expect("lock poisoned");
         let device = renderer.device();
 
         let mut commands = Vec::new();
@@ -455,10 +451,7 @@ impl<'r> RenderPass for Phong<'r> {
 
                 let frame = target.next_frame()?;
 
-                let resources = renderer
-                    .read_resources()
-                    // @TODO I MEAN IT!!! Remove tech debt (global search "TECH DEBT")
-                    .expect("TECH DEBT: Avoid panics!!!");
+                let resources = renderer.read_resources().expect("lock poisoned");
 
                 {
                     let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {

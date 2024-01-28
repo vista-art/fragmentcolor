@@ -211,11 +211,10 @@ fn parse(key: Option<VirtualKey>) -> String {
 /// Helper method to get the hovered filename by handle.
 /// Ugly, but avoids panics & deadlocks, and covers all edge cases.
 fn get_hovered_filename(window_id: &WindowId, handle: u128) -> String {
-    let app = FragmentColor::app()
-        .read()
-        .expect("Failed to acquire App Read Lock");
-    let windows = app
-        .windows()
+    let app = FragmentColor::app();
+    app.read().expect("Failed to acquire App Read Lock");
+    let windows = app.windows();
+    windows
         .read()
         .expect("Failed to acquire Windows collection Read Lock");
 
