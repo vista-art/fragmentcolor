@@ -226,20 +226,19 @@ impl App {
 
     /// Locks the main Event Loop and Returns the mutex guard to it.
     pub(crate) fn lock_event_loop(&self) -> MutexGuard<'_, EventLoop<Event>> {
-        self.event_loop
-            .try_lock()
-            .expect("Could not Read EventLoop")
+        self.event_loop.lock().expect("Could not Read EventLoop")
     }
 
     /// Dispatches an event to the main event loop.
     ///
     /// # Errors
     /// - Returns an Error if the EventLoop is closed.
-    /// - Returns an Error if it fails to acquire the
-    ///   Event Dispatcher mutex lock.
+    ///
+    /// # Panics
+    /// - Panics if the Event Dispatcher mutex lock is poisoned.
     #[allow(dead_code)]
     pub fn dispatch_event(&'static self, event: Event) -> Result<(), Error> {
-        let dispatcher = self.event_dispatcher.try_lock()?;
+        let dispatcher = self.event_dispatcher.lock();
         Ok(dispatcher.send_event(event)?)
     }
 
@@ -304,7 +303,7 @@ impl AppState {
     pub(crate) fn add_window<W: IsWindow>(&self, window: &W) {
         let renderer = get_or_init_renderer::<W>(self.renderer_options(), Some(window));
         _ = renderer
-            .read() // @TODO TECH DEBT remove this read lock
+            .read()
             .expect("Could not Lock Renderer")
             .add_winodw_target(window);
 
