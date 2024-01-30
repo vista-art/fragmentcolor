@@ -8,7 +8,7 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-plr = { package="fragmentcolor", path = "../../fragmentcolor" }
+fc = { package="fragmentcolor", path = "../../fragmentcolor" }
 pyo3 = { version = "0.20", features = ["extension-module"] }
 numpy = "0.20"
 ndarray = "0.15"

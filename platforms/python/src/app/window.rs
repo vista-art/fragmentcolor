@@ -1,4 +1,4 @@
-use plr::*;
+use fc::*;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 
@@ -165,14 +165,14 @@ impl PyWindow {
                     Event::Exit => callback.call(py, (), None),
 
                     Event::Command(command) => match command {
-                        plr::Command::Log { level, message } => {
+                        fc::Command::Log { level, message } => {
                             let kwargs = PyDict::new(py);
                             kwargs.set_item("level", level)?;
                             kwargs.set_item("message", message)?;
 
                             callback.call(py, (), Some(kwargs))
                         }
-                        plr::Command::Print { message } => {
+                        fc::Command::Print { message } => {
                             let kwargs = PyDict::new(py);
                             kwargs.set_item("message", message)?;
 
@@ -212,9 +212,10 @@ fn parse(key: Option<VirtualKey>) -> String {
 /// Ugly, but avoids panics & deadlocks, and covers all edge cases.
 fn get_hovered_filename(window_id: &WindowId, handle: u128) -> String {
     let app = FragmentColor::app();
-    app.read().expect("Failed to acquire App Read Lock");
+    let app = app.read().expect("Failed to acquire App Read Lock");
+
     let windows = app.windows();
-    windows
+    let windows = windows
         .read()
         .expect("Failed to acquire Windows collection Read Lock");
 
@@ -222,11 +223,9 @@ fn get_hovered_filename(window_id: &WindowId, handle: u128) -> String {
         if let Some(filename) = window.get_hovered_file(handle) {
             filename
         } else {
-            app.error("fragmentcolor-py: Cannot read filename: ignoring dropped file!");
             "None".to_string()
         }
     } else {
-        app.error("fragmentcolor-py: Cannot read Window: ignoring hovered file!");
         "None".to_string()
     };
 
@@ -239,11 +238,11 @@ fn get_hovered_filename(window_id: &WindowId, handle: u128) -> String {
 fn get_dropped_filename(window_id: &WindowId, handle: u128) -> String {
     // @TODO Windows and Scenes should be globally accessible by name.
     // Example: FragmentColor::get_window(name)
-    let app = FragmentColor::app()
-        .read()
-        .expect("Failed to acquire App Read Lock");
-    let windows = app
-        .windows()
+    let app = FragmentColor::app();
+    let app = app.read().expect("Failed to acquire App Read Lock");
+
+    let windows = app.windows();
+    let mut windows = windows
         .write()
         .expect("Failed to acquire Windows collection Write Lock");
 
@@ -251,11 +250,9 @@ fn get_dropped_filename(window_id: &WindowId, handle: u128) -> String {
         if let Some(filename) = window.get_dropped_file(handle) {
             filename.to_string_lossy().to_string()
         } else {
-            app.error("fragmentcolor-py: Cannot read filename: ignoring dropped file!");
             "None".to_string()
         }
     } else {
-        app.error("fragmentcolor-py: Cannot read Window: ignoring dropped file!");
         "None".to_string()
     };
 
