@@ -9,7 +9,7 @@ pub const ROOT: &'static str = env!("CARGO_MANIFEST_DIR");
 fn main() {
     FragmentColor::config(options());
 
-    let window = Window::default();
+    let mut window = Window::default();
 
     let mut scene = Scene::new();
 
