@@ -64,7 +64,7 @@ fn main() {
     let mut scene = fragmentcolor::Scene::new();
 
     // Creates two Windows.
-    let window = Window::new(WindowOptions {
+    let mut window = Window::new(WindowOptions {
         title: "Cubes 1".to_string(),
         size: (400, 300),
         framerate: Some(15),

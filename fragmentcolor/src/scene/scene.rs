@@ -290,16 +290,12 @@ impl Scene {
 
     /// Returns a reference to the Scene's internal state.
     pub fn read_state(&self) -> RwLockReadGuard<'_, SceneState> {
-        self.state
-            .read()
-            .expect(panics::SCENE_FAILED_TO_ACQUIRE_READ_LOCK)
+        self.state.read().expect(panics::POISONED_LOCK)
     }
 
     /// Returns a mutable reference to the Scene's internal state.
     pub fn write_state(&self) -> RwLockWriteGuard<'_, SceneState> {
-        self.state
-            .write()
-            .expect(panics::SCENE_FAILED_TO_ACQUIRE_WRITE_LOCK)
+        self.state.write().expect(panics::POISONED_LOCK)
     }
 }
 

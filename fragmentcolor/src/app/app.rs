@@ -238,7 +238,7 @@ impl App {
     /// - Panics if the Event Dispatcher mutex lock is poisoned.
     #[allow(dead_code)]
     pub fn dispatch_event(&'static self, event: Event) -> Result<(), Error> {
-        let dispatcher = self.event_dispatcher.lock();
+        let dispatcher = self.event_dispatcher.lock().expect("poisoned");
         Ok(dispatcher.send_event(event)?)
     }
 

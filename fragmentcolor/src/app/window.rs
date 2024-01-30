@@ -515,15 +515,11 @@ impl Window {
     }
 
     fn read_state(&self) -> RwLockReadGuard<'_, WindowState> {
-        self.state
-            .read()
-            .expect(panics::WINDOW_FAILED_TO_ACQUIRE_READ_LOCK)
+        self.state.read().expect(panics::POISONED_LOCK)
     }
 
     fn write_state(&mut self) -> RwLockWriteGuard<'_, WindowState> {
-        self.state
-            .write()
-            .expect(panics::WINDOW_FAILED_TO_ACQUIRE_WRITE_LOCK)
+        self.state.write().expect(panics::POISONED_LOCK)
     }
 }
 
