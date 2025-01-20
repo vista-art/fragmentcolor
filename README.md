@@ -1,8 +1,12 @@
 # FragmentColor
 
 FragmentColor is a Creative Coding library written in Rust that provides
-a simple shader programming API for Javascript and Python, with more language
-bindings in the horizon.
+a simple shader programming API for:
+
+- Javascript
+- Python
+- Swift
+- Kotlin
 
 This library uses [wgpu](https://github.com/gfx-rs/wgpu) as the hardware abstraction
 layer, which enables us to target a wide range of platforms and environments with
@@ -21,6 +25,27 @@ near-native performance and small footprint:
 [^2]: Available through [MoltenVK](https://github.com/KhronosGroup/MoltenVK), a translation layer to Metal.
 [^3]: OpenGL is deprecated in MacOS. It runs up to version 4.1 only: no support for Compute shaders.
 [^4]: OpenGL is deprecated in iOS. It runs up to version 4.1 only: no support for Compute shaders.
+
+## Example
+
+You could save the shader source in a database and share between your frontend
+and backend apps 
+
+
+
+```javascript
+import fragmentcolor as fc;
+
+let circle = fc.shader("https://example.com/circle_shader.glsl");
+
+circle.set("radius", 10.0);
+circle.get("radius")
+
+
+```
+
+
+
 
 > [!WARNING]  
 > This library is currently under heavy development, and the API is not yet stable, meaning

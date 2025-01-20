@@ -1,13 +1,130 @@
-[workspace]
-
-members = [
-    "fragmentcolor",
-    "examples/rust",
-    "platforms/*",
-    "tasks"
+[package]
+name = "fragmentcolor"
+version = "0.0.9"
+homepage = "https://fragmentcolor.org"
+repository = "https://github.com/vista-art/fragmentcolor"
+description = "Easy GPU Rendering for Javascript, Python, Swift and Kotlin."
+authors = ["Vista Tech & Art GmbH"]
+readme = "README.md"
+license = "MIT OR Apache-2.0"
+keywords = [
+    "graphics",
+    "gpu",
+    "rendering",
+    "webgl",
+    "wgpu",
+    "vulkan",
+    "metal",
+    "opengl",
+    "directx",
+    "python",
+    "javascript",
+    "swift",
+    "kotlin",
+    "ios",
+    "android",
+    "macos",
+    "windows",
+    "linux",
+    "web",
 ]
+categories = ["graphics", "rendering", "gpu", "wgpu", "python", "javascript"]
+edition = "2021"
 
-resolver = "2"
+[lib]
+name = "fragmentcolor"
+crate-type = ["cdylib", "rlib"]
 
-[profile.release]
-opt-level = "s" # Optimize for small binary size
+[features]
+default = ["assets", "shape"]
+shape = ["lyon"]
+assets = ["obj", "gltf"]
+
+[dependencies]
+# Rendering
+wgpu = { version = "22", features = ["glsl", "wgsl", "naga-ir", "webgl"] }
+
+# Scene graph (Entity Component System)
+hecs = { version = "0.10", features = ["macros"] }
+
+# Windowing and input
+raw-window-handle = { version = "0.6" }
+winit = { version = "0.30", features = ["serde"] }
+
+# Shader composition
+# naga = { version = "0.20" }
+naga_oil = { version = "0.14" }
+
+# Math
+mint = { version = "0.5", features = ["serde"] }
+glam = { version = "0.28", features = ["mint"] }
+
+# Serialization
+phf = { version = "0.11", features = ["macros"] }
+serde = { version = "1", features = ["derive"] }
+bytemuck = { version = "1.14", features = ["derive"] }
+csscolorparser = "0.6"
+bitflags = "2.4"
+fxhash = "0.2"
+
+# Async
+pollster = "0.3"
+
+# Tesselation
+lyon = { version = "1", optional = true }
+
+# Text rendering
+wgpu_text = "0.8"
+
+# Time
+instant = "0.1"
+
+# Logging
+log = "0.4"
+env_logger = "0.11"
+
+# Asset loading
+image = { version = "0.25", default-features = false, features = [
+    "jpeg",
+    "png",
+    "bmp",
+    "hdr",
+    "dds",
+] }
+gltf = { version = "1", features = [
+    "names",
+    "utils",
+    "KHR_lights_punctual",
+], optional = true }
+obj = { version = "0.10", optional = true }
+ddsfile = "0.5"
+
+# Sync
+futures-intrusive = "0.5"
+
+# Utils
+derive_setters = "0.1"
+serde_with = "3.11.0"
+
+# WASM-Specific
+[target.'cfg(target_family = "wasm")'.dependencies]
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+serde-wasm-bindgen = "0.6"
+console_log = "1.0"
+console_error_panic_hook = { version = "0.1" }
+reqwest = { version = "0.12" }
+gloo-utils = { version = "0.2", features = ["serde"] }
+js-sys = "0.3"
+web-sys = { version = "0.3", features = [
+    'Document',
+    'Element',
+    'HtmlCanvasElement',
+    'Window',
+    'EventTarget',
+    'Location',
+] }
+
+[build-dependencies]
+cfg_aliases = "0.2"
+built = { version = "0.7", features = ["chrono"] }
