@@ -1,8 +1,7 @@
-use crate::Vec4;
-use crate::{components::Color, Vec2};
-use serde::{Deserialize, Serialize};
+use glam::Vec2;
+use glam::Vec4;
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd)]
 pub struct Quad {
     pub min_x: u32,
     pub min_y: u32,
@@ -19,20 +18,6 @@ impl Default for Quad {
             max_y: 1,
         }
     }
-}
-
-#[derive(Debug)]
-pub struct QuadVertex<'x, X = QuadVertexExtra> {
-    pub tex_coords: Quad,
-    pub pixel_coords: Quad,
-    pub bounds: Quad,
-    pub extra: &'x X,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct QuadVertexExtra {
-    pub color: Color,
-    pub z: f32,
 }
 
 // Adapted from Ruffle's PixelRegion
@@ -91,20 +76,6 @@ impl Quad {
 
     pub fn from_arrays_i32(a: [i32; 2], b: [i32; 2]) -> Self {
         Self::from_tuples_i32((a[0], a[1]), (b[0], b[1]))
-    }
-
-    pub fn to_range(&self) -> std::ops::Range<mint::Point2<i32>> {
-        let begin = mint::Point2 {
-            x: self.min_x as i32,
-            y: self.min_y as i32,
-        };
-
-        let end = mint::Point2 {
-            x: self.max_x as i32,
-            y: self.max_y as i32,
-        };
-
-        begin..end
     }
 
     pub fn to_array(&self) -> [f32; 4] {
@@ -310,12 +281,12 @@ impl Quad {
     }
 
     pub fn to_vec4(&self) -> Vec4 {
-        Vec4 {
-            x: self.min_x as f32,
-            y: self.min_y as f32,
-            z: self.max_x as f32,
-            w: self.max_y as f32,
-        }
+        Vec4::new(
+            self.min_x as f32,
+            self.min_y as f32,
+            self.max_x as f32,
+            self.max_y as f32,
+        )
     }
 
     pub fn center_f32(&self) -> Vec2 {

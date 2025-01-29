@@ -42,45 +42,45 @@ assets = ["obj", "gltf"]
 
 [dependencies]
 # Rendering
-wgpu = { version = "22", features = ["glsl", "wgsl", "naga-ir", "webgl"] }
 
-# Scene graph (Entity Component System)
-hecs = { version = "0.10", features = ["macros"] }
+wgpu = { version = "24", features = ["glsl", "wgsl", "naga-ir", "webgl"] }
+uuid = { version = "1.4", features = ["v4", "serde", "fast-rng"] }
+thiserror = { version = "2" }
+glam = { version = "0.29" }
+# encase = { workspace = true }
+bytemuck = { version = "1" }
+flume = { version = "0.11" }
+indoc = { version = "2" }
+log = { version = "0.4" }
+# constcat = { version = "0.6" }
+sha2 = { version = "0.10" }
+serde = { version = "1.0", features = ["derive"] }
 
 # Windowing and input
 raw-window-handle = { version = "0.6" }
 winit = { version = "0.30", features = ["serde"] }
 
 # Shader composition
-# naga = { version = "0.20" }
-naga_oil = { version = "0.14" }
-
-# Math
-mint = { version = "0.5", features = ["serde"] }
-glam = { version = "0.28", features = ["mint"] }
+naga = { version = "24" }
+naga_oil = { version = "0.17" }
 
 # Serialization
-phf = { version = "0.11", features = ["macros"] }
-serde = { version = "1", features = ["derive"] }
-bytemuck = { version = "1.14", features = ["derive"] }
-csscolorparser = "0.6"
-bitflags = "2.4"
+csscolorparser = "0.7"
 fxhash = "0.2"
 
 # Async
-pollster = "0.3"
+pollster = "0.4"
 
 # Tesselation
 lyon = { version = "1", optional = true }
 
 # Text rendering
-wgpu_text = "0.8"
+wgpu_text = "0.9"
 
 # Time
 instant = "0.1"
 
 # Logging
-log = "0.4"
 env_logger = "0.11"
 
 # Asset loading
@@ -102,9 +102,15 @@ ddsfile = "0.5"
 # Sync
 futures-intrusive = "0.5"
 
-# Utils
-derive_setters = "0.1"
-serde_with = "3.11.0"
+
+# Android & iOS FFI
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+uniffi = { version = "0.28" }
+
+# iOS Specific
+[target.'cfg(target_os = "ios")'.dependencies]
+objc = "0.2"
+core-graphics = "0.24"
 
 # WASM-Specific
 [target.'cfg(target_family = "wasm")'.dependencies]

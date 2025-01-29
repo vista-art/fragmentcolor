@@ -1,62 +1,57 @@
-use fragmentcolor;
+use fragmentcolor::{Renderer, Shader};
 
-// use winit::event_loop::EventLoop;
+use winit::application::ApplicationHandler;
+use winit::event::WindowEvent;
+use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
+use winit::window::{Window, WindowId};
 
-struct Shader {
-    vertex: String,
-    fragment: String,
-    compute: Option<String>,
+#[derive(Default)]
+struct App {
+    shader: Shader,
+    renderer: Option<Renderer>,
+    window: Option<Window>,
 }
 
-impl Default for Shader {
-    fn default() -> Self {
-        Self {
-            vertex: r#"
-                #version 450
-                layout(location = 0) in vec2 position;
-                void main() {
-                    gl_Position = vec4(position, 0.0, 1.0);
-                }
-            "#
-            .to_string(),
-            fragment: r#"
-                #version 450
-                layout(location = 0) out vec4 outColor;
-                void main() {
-                    outColor = vec4(1.0, 0.0, 0.0, 1.0);
-                }
-            "#
-            .to_string(),
-            compute: None,
+impl ApplicationHandler for App {
+    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+        self.window = Some(
+            event_loop
+                .create_window(Window::default_attributes())
+                .unwrap(),
+        );
+
+        self.renderer = Some(pollster::block_on(Renderer::new(self.window.as_ref())).unwrap());
+    }
+
+    fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
+        match event {
+            WindowEvent::CloseRequested => {
+                println!("The close button was pressed; stopping");
+                event_loop.exit();
+            }
+            WindowEvent::RedrawRequested => {
+                let renderer = self.renderer.as_ref().unwrap();
+
+                renderer.render(&self.shader).unwrap();
+
+                self.window.as_ref().unwrap().request_redraw();
+            }
+            _ => (),
         }
     }
 }
 
 fn main() {
-    // let event_loop = EventLoop::new().unwrap();
+    let event_loop = EventLoop::new().unwrap();
+    event_loop.set_control_flow(ControlFlow::Poll);
 
-    let color = fragmentcolor::Color::from_hex("#ff0000").unwrap();
+    let shader_source = include_str!("hello_triangle.wgsl");
+    let shader = Shader::new(shader_source);
 
-    // Hello triangle shader source
-    let shader = Shader {
-        vertex: r#"
-            #version 450
-            layout(location = 0) in vec2 position;
-            void main() {
-                gl_Position = vec4(position, 0.0, 1.0);
-            }
-        "#
-        .to_string(),
-        fragment: r#"
-            #version 450
-            layout(location = 0) out vec4 outColor;
-            void main() {
-                outColor = vec4(1.0, 0.0, 0.0, 1.0);
-            }
-        "#
-        .to_string(),
-        compute: None,
+    let mut app = App {
+        shader,
+        ..Default::default()
     };
 
-    println!("Color: {:?}", color);
+    let _ = event_loop.run_app(&mut app);
 }
