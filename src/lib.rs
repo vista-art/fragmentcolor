@@ -4,24 +4,8 @@
 
 #![allow(clippy::module_inception)]
 
-/// # The Components Collection.
-///
-/// This is the module that users will play with more frequently.
-///
-///
-///
-/// Typically, users do not need to use the components directly,
-/// but rather use the `Object` struct, which is a wrapper
-/// around spatial components which can be added to a Scene.
-///
-/// Types of Components:
-/// - Object (spatial components)
-///     - Sprite
-///     - Shape
-///     - Mesh
-///
-/// - Marker components
-pub mod components;
+#[cfg(not(wasm))]
+uniffi::setup_scaffolding!();
 
 /// # Math Module
 ///
@@ -37,14 +21,24 @@ pub mod math;
 /// when the user creates the first Window or Web Canvas.
 pub mod renderer;
 
-/// # Resources Module
-pub mod resources;
+/// # Shader Module
+pub mod shader;
 
-/// # Scene Graph Module
-pub mod scene;
+pub mod uniform;
 
-pub use components::*;
+/// # Shader Errors
+pub mod error;
+
+// DRAFT
+pub mod color;
+pub mod frame;
+pub mod pass;
+
+pub use color::*;
+pub use error::*;
+pub use frame::*;
 pub use math::*;
+pub use pass::*;
 pub use renderer::*;
-pub use resources::*;
-pub use scene::*;
+pub use shader::*;
+pub use uniform::*;

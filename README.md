@@ -1,6 +1,6 @@
 # FragmentColor
 
-FragmentColor is a Creative Coding library written in Rust that provides
+FragmentColor is a cross-platform GPU programming library written in Rust that provides
 a simple shader programming API for:
 
 - Javascript
@@ -8,44 +8,26 @@ a simple shader programming API for:
 - Swift
 - Kotlin
 
-This library uses [wgpu](https://github.com/gfx-rs/wgpu) as the hardware abstraction
-layer, which enables us to target a wide range of platforms and environments with
-near-native performance and small footprint:
-
-| Backend   |  WASM   |  Linux  |  MacOS  | Windows | Android |   iOS   | CI / CD |
-| :-------- | :-----: | :-----: | :-----: | :-----: | :-----: | :-----: | :-----: |
-| Metal     |   no    |   no    | **Yes** |   no    |   no    | **Yes** |   no    |
-| Vulkan    |   no    | **Yes** | Yes[^2] | **Yes** | **Yes** | **Yes** | **Yes** |
-| OpenGL    |   no    | **Yes** | Yes[^3] | **Yes** | **Yes** | Yes[^4] |   no    |
-| WebGL     | Yes[^1] |   no    |   no    |   no    |   no    |   no    |   no    |
-| WebGPU    | **Yes** |   no    |   no    |   no    |   no    |   no    |   no    |
-| Dx11/Dx12 |   no    |   no    |   no    | **Yes** |   no    |   no    |   no    |
-
-[^1]: Vertex and Fragment shaders only. No support for Compute shaders.
-[^2]: Available through [MoltenVK](https://github.com/KhronosGroup/MoltenVK), a translation layer to Metal.
-[^3]: OpenGL is deprecated in MacOS. It runs up to version 4.1 only: no support for Compute shaders.
-[^4]: OpenGL is deprecated in iOS. It runs up to version 4.1 only: no support for Compute shaders.
-
 ## Example
 
 You could save the shader source in a database and share between your frontend
-and backend apps 
+and backend apps
 
+```python
+import fragmentcolor as fc
 
+# Creates the shader with default values
+shader = fc.Shader("my_shader.wgsl")
 
-```javascript
-import fragmentcolor as fc;
+# It parses and binds automatically
+shader.set("my-uniform", (1.0, 1.0, 1.0))
 
-let circle = fc.shader("https://example.com/circle_shader.glsl");
+# Create renderer
+renderer = fc.Renderer()
 
-circle.set("radius", 10.0);
-circle.get("radius")
-
-
+#
+np_array = renderer.render(shader)
 ```
-
-
-
 
 > [!WARNING]  
 > This library is currently under heavy development, and the API is not yet stable, meaning
@@ -108,3 +90,23 @@ rustup target list
 ```
 
 Platform support is divided in Tiers, check the [Rust Platform Support](https://doc.rust-lang.org/nightly/rustc/platform-support.html) page for more information.
+
+## Supported Platforms
+
+This library uses [wgpu](https://github.com/gfx-rs/wgpu) as the hardware abstraction
+layer, which enables us to target a wide range of platforms and environments with
+near-native performance and small footprint:
+
+| Backend   |  WASM   |  Linux  |  MacOS  | Windows | Android |   iOS   | CI / CD |
+| :-------- | :-----: | :-----: | :-----: | :-----: | :-----: | :-----: | :-----: |
+| Metal     |   no    |   no    | **Yes** |   no    |   no    | **Yes** |   no    |
+| Vulkan    |   no    | **Yes** | Yes[^2] | **Yes** | **Yes** | **Yes** | **Yes** |
+| OpenGL    |   no    | **Yes** | Yes[^3] | **Yes** | **Yes** | Yes[^4] |   no    |
+| WebGL     | Yes[^1] |   no    |   no    |   no    |   no    |   no    |   no    |
+| WebGPU    | **Yes** |   no    |   no    |   no    |   no    |   no    |   no    |
+| Dx11/Dx12 |   no    |   no    |   no    | **Yes** |   no    |   no    |   no    |
+
+[^1]: Vertex and Fragment shaders only. No support for Compute shaders.
+[^2]: Available through [MoltenVK](https://github.com/KhronosGroup/MoltenVK), a translation layer to Metal.
+[^3]: OpenGL is deprecated in MacOS. It runs up to version 4.1 only: no support for Compute shaders.
+[^4]: OpenGL is deprecated in iOS. It runs up to version 4.1 only: no support for Compute shaders.
