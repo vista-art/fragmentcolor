@@ -8,6 +8,14 @@ a simple shader programming API for:
 - Swift
 - Kotlin
 
+## Motivation
+
+
+
+
+
+
+
 ## Example
 
 You could save the shader source in a database and share between your frontend
@@ -25,7 +33,7 @@ shader.set("my-uniform", (1.0, 1.0, 1.0))
 # Create renderer
 renderer = fc.Renderer()
 
-#
+# 
 np_array = renderer.render(shader)
 ```
 

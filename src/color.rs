@@ -70,7 +70,23 @@ impl Color {
         self.export(0)
     }
 
-    pub fn to_array(self) -> [f32; 4] {
+    pub fn r(self) -> f32 {
+        self.red()
+    }
+
+    pub fn g(self) -> f32 {
+        self.green()
+    }
+
+    pub fn b(self) -> f32 {
+        self.blue()
+    }
+
+    pub fn a(self) -> f32 {
+        self.alpha()
+    }
+
+    pub fn to_f32_array(self) -> [f32; 4] {
         [self.red(), self.green(), self.blue(), self.alpha()]
     }
 
@@ -111,6 +127,6 @@ impl From<Color> for u32 {
 
 impl From<Color> for [f32; 4] {
     fn from(c: Color) -> Self {
-        c.to_array()
+        c.to_f32_array()
     }
 }

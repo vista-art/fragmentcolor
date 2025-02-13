@@ -24,8 +24,13 @@ pub struct BufferLocation {
 }
 
 impl BufferPool {
-    /// Creates a new Uniform Buffer Pool.
-    pub fn new_uniform(label: &str, device: &wgpu::Device) -> Self {
+    /// Creates a new Uniform Buffer Pool
+    /// that can be used as a destination buffer for:
+    /// - CommandEncoder::copy_buffer_to_buffer, 
+    /// - CommandEncoder::copy_texture_to_buffer, 
+    /// - CommandEncoder::clear_buffer or 
+    /// - Queue::write_buffer 
+    pub fn new_uniform_pool(label: &str, device: &wgpu::Device) -> Self {
         Self::new(
             label,
             wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
@@ -59,17 +64,6 @@ impl BufferPool {
             current_offset: 0,
             alignment,
         }
-    }
-
-    /// Calculates required storage for a given type
-    fn calculate_storage_size<T: ShaderType>(&self, count: usize) -> usize {
-        let size = T::min_size();
-        let aligned_size = if self.alignment > 0 {
-            ((size.get() + self.alignment - 1) & !(self.alignment - 1)) as usize
-        } else {
-            size.get() as usize
-        };
-        aligned_size * count
     }
 
     /// Ensures the pool has enough capacity for the total required size
@@ -162,5 +156,18 @@ impl BufferPool {
     pub fn reset(&mut self) {
         self.current_chunk = 0;
         self.current_offset = 0;
+    }
+}
+
+impl BufferPool {
+    /// Calculates required storage for a given type
+    fn calculate_storage_size<T: ShaderType>(&self, count: usize) -> usize {
+        let size = T::min_size();
+        let aligned_size = if self.alignment > 0 {
+            ((size.get() + self.alignment - 1) & !(self.alignment - 1)) as usize
+        } else {
+            size.get() as usize
+        };
+        aligned_size * count
     }
 }

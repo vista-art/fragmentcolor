@@ -1,15 +1,17 @@
 use glam::Vec2;
 use glam::Vec4;
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd)]
-pub struct Quad {
+use serde::{Deserialize, Serialize};
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Serialize, Deserialize)]
+pub struct Region {
     pub min_x: u32,
     pub min_y: u32,
     pub max_x: u32,
     pub max_y: u32,
 }
 
-impl Default for Quad {
+impl Default for Region {
     fn default() -> Self {
         Self {
             min_x: 0,
@@ -21,7 +23,7 @@ impl Default for Quad {
 }
 
 // Adapted from Ruffle's PixelRegion
-impl Quad {
+impl Region {
     pub fn from_region_i32(x: i32, y: i32, width: i32, height: i32) -> Self {
         let a = (x, y);
         let b = (x.saturating_add(width), y.saturating_add(height));
@@ -156,7 +158,7 @@ impl Quad {
         self.max_y = self.max_y.min(height);
     }
 
-    pub fn union(&mut self, other: Quad) {
+    pub fn union(&mut self, other: Region) {
         self.min_x = self.min_x.min(other.min_x);
         self.min_y = self.min_y.min(other.min_y);
         self.max_x = self.max_x.max(other.max_x);
@@ -170,7 +172,7 @@ impl Quad {
         self.max_y = self.max_y.max(y + 1);
     }
 
-    pub fn intersects(&self, other: Quad) -> bool {
+    pub fn intersects(&self, other: Region) -> bool {
         self.min_x <= other.max_x
             && self.max_x >= other.min_x
             && self.min_y <= other.max_y
@@ -193,15 +195,15 @@ impl Quad {
         self.width().max(self.height())
     }
 
-    pub fn is_larger_than(&self, other: Quad) -> bool {
+    pub fn is_larger_than(&self, other: Region) -> bool {
         self.area() > other.area()
     }
 
-    pub fn is_smaller_than(&self, other: Quad) -> bool {
+    pub fn is_smaller_than(&self, other: Region) -> bool {
         self.area() < other.area()
     }
 
-    pub fn equals(&self, other: Quad) -> bool {
+    pub fn equals(&self, other: Region) -> bool {
         self.min_x == other.min_x
             && self.min_y == other.min_y
             && self.max_x == other.max_x
@@ -296,11 +298,11 @@ impl Quad {
         }
     }
 
-    /// Clamps this Quad to a theoretical overlap of another Quad,
+    /// Clamps this Region to a theoretical overlap of another Region,
     /// referring to "overlapping pixels" (such as a copy destination vs copy source),
-    /// in such a way that only pixels that are valid for both Quads are valid.
+    /// in such a way that only pixels that are valid for both Regions are valid.
     ///
-    /// The other Quad is also clamped to reflect the same overlap.
+    /// The other Region is also clamped to reflect the same overlap.
     ///
     /// The overlap of two regions starts at `self_point` on `self`, and `other_point` on `other`,
     /// and is at most `size` big.
@@ -315,7 +317,7 @@ impl Quad {
         self_point: (i32, i32),
         other_point: (i32, i32),
         size: (i32, i32),
-        other: &mut Quad,
+        other: &mut Region,
     ) {
         // Translate both regions to same coordinate system.
 
@@ -407,18 +409,18 @@ fn translate_region(
 
 #[cfg(test)]
 mod tests {
-    use super::Quad;
+    use super::Region;
 
     #[test]
     fn clamp_with_intersection() {
         fn test(
-            mut a: Quad,
-            mut b: Quad,
+            mut a: Region,
+            mut b: Region,
             a_point: (i32, i32),
             b_point: (i32, i32),
             size: (i32, i32),
-            expected_a: Quad,
-            expected_b: Quad,
+            expected_a: Region,
+            expected_b: Region,
         ) {
             a.clamp_with_intersection(a_point, b_point, size, &mut b);
 
@@ -427,73 +429,73 @@ mod tests {
         }
 
         test(
-            Quad::from_size(10, 10),
-            Quad::from_size(10, 10),
+            Region::from_size(10, 10),
+            Region::from_size(10, 10),
             (0, 0),
             (0, 0),
             (5, 5),
-            Quad::from_region_i32(0, 0, 5, 5),
-            Quad::from_region_i32(0, 0, 5, 5),
+            Region::from_region_i32(0, 0, 5, 5),
+            Region::from_region_i32(0, 0, 5, 5),
         );
 
         test(
-            Quad::from_size(10, 10),
-            Quad::from_size(150, 150),
+            Region::from_size(10, 10),
+            Region::from_size(150, 150),
             (-1, -1),
             (100, 100),
             (5, 5),
-            Quad::from_region_i32(0, 0, 4, 4),
-            Quad::from_region_i32(101, 101, 4, 4),
+            Region::from_region_i32(0, 0, 4, 4),
+            Region::from_region_i32(101, 101, 4, 4),
         );
 
         test(
-            Quad::from_size(10, 10),
-            Quad::from_size(150, 150),
+            Region::from_size(10, 10),
+            Region::from_size(150, 150),
             (-1, -1),
             (100, 100),
             (15, 15),
-            Quad::from_region_i32(0, 0, 10, 10),
-            Quad::from_region_i32(101, 101, 10, 10),
+            Region::from_region_i32(0, 0, 10, 10),
+            Region::from_region_i32(101, 101, 10, 10),
         );
 
         test(
-            Quad::from_region(10, 10, 20, 20),
-            Quad::from_size(150, 150),
+            Region::from_region(10, 10, 20, 20),
+            Region::from_size(150, 150),
             (15, 5),
             (0, 0),
             (15, 15),
-            Quad::from_region_i32(15, 10, 15, 10),
-            Quad::from_region_i32(0, 5, 15, 10),
+            Region::from_region_i32(15, 10, 15, 10),
+            Region::from_region_i32(0, 5, 15, 10),
         );
 
         test(
-            Quad::from_size(800, 600),
-            Quad::from_size(200, 40),
+            Region::from_size(800, 600),
+            Region::from_size(200, 40),
             (400, 440),
             (40, 0),
             (40, 40),
-            Quad::from_region_i32(400, 440, 40, 40),
-            Quad::from_region_i32(40, 0, 40, 40),
+            Region::from_region_i32(400, 440, 40, 40),
+            Region::from_region_i32(40, 0, 40, 40),
         );
 
         test(
-            Quad::from_size(240, 180),
-            Quad::from_size(238, 164),
+            Region::from_size(240, 180),
+            Region::from_size(238, 164),
             (-1, 0),
             (0, 0),
             (240, 180),
-            Quad::from_region_i32(0, 0, 237, 164),
-            Quad::from_region_i32(1, 0, 237, 164),
+            Region::from_region_i32(0, 0, 237, 164),
+            Region::from_region_i32(1, 0, 237, 164),
         );
 
         test(
-            Quad::from_size(10, 10),
-            Quad::from_size(10, 10),
+            Region::from_size(10, 10),
+            Region::from_size(10, 10),
             (15, 0),
             (0, 15),
             (100, 100),
-            Quad::from_region_i32(0, 0, 0, 0),
-            Quad::from_region_i32(0, 0, 0, 0),
+            Region::from_region_i32(0, 0, 0, 0),
+            Region::from_region_i32(0, 0, 0, 0),
         );
     }
 }

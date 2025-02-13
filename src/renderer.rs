@@ -1,94 +1,176 @@
+use crate::buffer_pool::BufferPool;
+use crate::Target;
+use crate::{shader::Uniform, ComputePass, Pass, RenderPass, Shader, ShaderError};
+use std::borrow::Cow;
+use std::cell::RefCell;
 use std::collections::HashMap;
-
-use crate::{Shader, Uniform};
-
 pub type Commands = Vec<wgpu::CommandBuffer>;
 
-type Error = Box<dyn std::error::Error>;
+use crate::error::RendererError;
 
-use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
+use winit::window::Window;
 
-/// 🎨 Draws things on the screen or on a texture.
+pub trait Renderable {
+    fn passes(&self) -> impl IntoIterator<Item = &Pass>;
+    fn targets(&self) -> impl IntoIterator<Item = &Target>;
+}
+
+/// Draws things on the screen or on a texture.
 ///
-/// The Renderer is the link between the CPU world and the GPU world.
+/// Owns and manages all GPU resources.
 pub struct Renderer {
     pub(crate) device: wgpu::Device,
     pub(crate) queue: wgpu::Queue,
 
-    pipelines: HashMap<String, wgpu::RenderPipeline>,
+    render_pipelines: RefCell<HashMap<[u8; 64], wgpu::RenderPipeline>>,
+    compute_pipelines: HashMap<String, wgpu::ComputePipeline>,
+
+    shaders: HashMap<String, wgpu::ShaderModule>,
+    bind_group_layouts: HashMap<String, wgpu::BindGroupLayout>,
     bind_groups: HashMap<String, wgpu::BindGroup>,
-    buffers: HashMap<String, wgpu::Buffer>,
+    buffer_pool: HashMap<String, BufferPool>,
+
+    textures: HashMap<String, wgpu::Texture>,
+    samplers: HashMap<String, wgpu::Sampler>,
 }
 
 unsafe impl Sync for Renderer {}
 
+pub async fn init_offfscreen() -> Result<Renderer, RendererError> {
+    init_renderer(None).await
+}
+
+// TODO: Implement platform-specific initializers
+pub async fn init_renderer(window: Option<&Window>) -> Result<Renderer, RendererError> {
+    let instance = wgpu::Instance::default();
+
+    let surface = if let Some(window) = window {
+        instance.create_surface(window).ok()
+    } else {
+        None
+    };
+
+    let adapter = instance
+        .request_adapter(&wgpu::RequestAdapterOptions {
+            power_preference: wgpu::PowerPreference::HighPerformance,
+            force_fallback_adapter: false,
+            compatible_surface: surface.as_ref(),
+        })
+        .await
+        .ok_or(RendererError::AdapterError)?;
+
+    let (device, queue) = adapter
+        .request_device(
+            &wgpu::DeviceDescriptor {
+                label: None,
+                required_features: wgpu::Features::empty(),
+                required_limits: wgpu::Limits::default(),
+                memory_hints: wgpu::MemoryHints::Performance,
+            },
+            None, // Trace path
+        )
+        .await?;
+
+    device.on_uncaptured_error(Box::new(|error| {
+        log::error!("\n\n==== GPU error: ====\n\n{:#?}\n", error);
+    }));
+
+    Ok(Renderer::new(device, queue))
+}
+
 impl Renderer {
     /// Creates a new Renderer instance.
-    pub async fn new<W: HasDisplayHandle + HasWindowHandle + Sync>(
-        window: Option<&W>,
-    ) -> Result<Renderer, Error> {
-        let instance = wgpu::Instance::default();
-
-        let surface = if let Some(window) = window {
-            instance.create_surface(window).ok()
-        } else {
-            None
-        };
-
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::HighPerformance,
-                force_fallback_adapter: false,
-                compatible_surface: surface.as_ref(),
-            })
-            .await
-            .ok_or("Failed to find an appropriate GPU adapter")?;
-
-        let (device, queue) = adapter
-            .request_device(
-                &wgpu::DeviceDescriptor {
-                    label: None,
-                    required_features: wgpu::Features::empty(),
-                    required_limits: wgpu::Limits::default(),
-                    memory_hints: wgpu::MemoryHints::Performance,
-                },
-                None, // Trace path
-            )
-            .await?;
-
-        device.on_uncaptured_error(Box::new(|error| {
-            log::error!("\n\n==== GPU error: ====\n\n{:#?}\n", error);
-        }));
-
-        Ok(Renderer {
+    pub fn new(device: wgpu::Device, queue: wgpu::Queue) -> Renderer {
+        Renderer {
             device,
             queue,
-            pipelines: HashMap::new(),
+
+            render_pipelines: RefCell::new(HashMap::new()),
+            compute_pipelines: HashMap::new(),
+
+            shaders: HashMap::new(),
+            bind_group_layouts: HashMap::new(),
+
             bind_groups: HashMap::new(),
-            buffers: HashMap::new(),
-        })
+            textures: HashMap::new(),
+            buffer_pool: HashMap::new(),
+            samplers: HashMap::new(),
+        }
     }
 
-    /// Renders a frame from the given Scene with the given RenderPass
-    pub fn render(&self, _frame: &Shader) -> Result<(), wgpu::SurfaceError> {
-        // FIXME
+    /// Renders a frame
+    pub fn render(&self, renderable: &impl Renderable) -> Result<(), ShaderError> {
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
 
-        // Records the render commands in the GPU command buffer
-        // let (commands, frames) =
-        //     renderpass.draw(self, scene, scene.first_camera().unwrap(), self.targets)?;
+        let mut presentations = Vec::new();
+        for target in renderable.targets() {
+            let presentation = target.get_current_texture()?;
+            presentations.push(presentation);
+        }
 
-        // // Runs the commands (submit to GPU queue)
-        // self.queue.submit(commands);
+        for pass in renderable.passes() {
+            match &*pass {
+                Pass::Render(render_pass) => self.process_render_pass(&mut encoder, render_pass)?,
+                Pass::Compute(compute_pass) => {
+                    self.process_compute_pass(&mut encoder, compute_pass)?
+                }
+            }
+        }
 
-        // // Shows the rendered frames on the screen
-        // if let Ok(mut targets) = self.write_targets() {
-        //     targets.present(frames);
-        // } else {
-        //     log::warn!("Dropped Frame: Cannot present! Failed to acquire Render Targets Database Write lock.");
-        //     return Err(wgpu::SurfaceError::Lost);
-        // };
+        self.queue.submit(Some(encoder.finish()));
+
+        for presentation in presentations {
+            presentation.present();
+        }
 
         Ok(())
+    }
+
+    fn process_render_pass(
+        &self,
+        _encoder: &mut wgpu::CommandEncoder,
+        pass: &RenderPass,
+    ) -> Result<(), ShaderError> {
+        for shader in &pass.shaders {
+            self.ensure_render_pipeline(shader)?;
+        }
+
+        println!("Processing render pass: {:#?}", pass);
+
+        // @TODO
+
+        Ok(())
+    }
+
+    fn process_compute_pass(
+        &self,
+        _encoder: &mut wgpu::CommandEncoder,
+        _pass: &ComputePass,
+    ) -> Result<(), ShaderError> {
+        Ok(()) // @TODO
+    }
+
+    fn ensure_render_pipeline(&self, shader: &Shader) -> Result<(), ShaderError> {
+        let mut pipelines = self.render_pipelines.borrow_mut();
+        if pipelines.contains_key(&shader.hash()) {
+            return Ok(());
+        }
+
+        let bgl = create_bind_group_layouts(&self.device, &shader.uniforms);
+
+        let module = Cow::Owned(shader.module.clone()); // @TODO can we avoid the clone?
+        let pipeline = create_render_pipeline(&self.device, &bgl, module);
+
+        pipelines.insert(shader.hash.clone(), pipeline);
+        Ok(())
+    }
+
+    // @TODO [u8; 64] should be a wrapped type
+    /// Provides a way to invalidate the cache; i.e. when a Shader source changes
+    pub(crate) fn remove_render_pipeline(&mut self, key: [u8; 64]) {
+        self.render_pipelines.borrow_mut().remove(&key);
     }
 }
 
@@ -120,11 +202,11 @@ fn create_bind_group_layouts(
 fn create_render_pipeline(
     device: &wgpu::Device,
     bind_group_layouts: &HashMap<u32, wgpu::BindGroupLayout>,
-    source: &str,
+    module: Cow<'static, naga::Module>,
 ) -> wgpu::RenderPipeline {
     let shader_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some("Shader"),
-        source: wgpu::ShaderSource::Wgsl(source.into()),
+        source: wgpu::ShaderSource::Naga(module),
     });
 
     let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -138,13 +220,13 @@ fn create_render_pipeline(
         layout: Some(&layout),
         vertex: wgpu::VertexState {
             module: &shader_module,
-            entry_point: Some("vs_main"),
+            entry_point: Some("vs_main"), // @TODO this must be dynamic
             buffers: &[],
             compilation_options: wgpu::PipelineCompilationOptions::default(),
         },
         fragment: Some(wgpu::FragmentState {
             module: &shader_module,
-            entry_point: Some("fs_main"),
+            entry_point: Some("fs_main"), // @TODO this must be dynamic
             targets: &[Some(wgpu::ColorTargetState {
                 format: wgpu::TextureFormat::Bgra8Unorm,
                 blend: Some(wgpu::BlendState::REPLACE),

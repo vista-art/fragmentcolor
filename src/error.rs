@@ -11,7 +11,23 @@ pub enum ShaderError {
     #[error("Field not found in struct: {0}")]
     FieldNotFound(String),
     #[error("WGSL error: {0}")]
-    WgslError(#[from] naga::front::wgsl::ParseError),
+    WgslError(#[from] naga::back::wgsl::Error),
+    #[error("WGSL Parse error: {0}")]
+    WgslParseError(#[from] naga::front::wgsl::ParseError),
+    #[error("GLSL Validation error: {0}")]
+    GlslValidationError(#[from] naga::WithSpan<naga::valid::ValidationError>),
+    #[error("GLSL Parse errors: {0}")]
+    GlslParseErrors(#[from] naga::front::glsl::ParseErrors),
     #[error("WGPU error: {0}")]
     WgpuError(#[from] wgpu::Error),
+    #[error("WGPU Surface Error: {0}")]
+    WgpuSurfaceError(#[from] wgpu::SurfaceError),
+}
+
+#[derive(Error, Debug)]
+pub enum RendererError {
+    #[error("Failed to find a compatible GPU adapter")]
+    AdapterError,
+    #[error("Failed to create device")]
+    DeviceError(#[from] wgpu::RequestDeviceError),
 }

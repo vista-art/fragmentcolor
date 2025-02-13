@@ -113,7 +113,7 @@
       outputs: [ base, depth_stencil_buffer ],
       shader: skybox    
   },      
-        
+
   {
       name: fxaa_filter,
       type: screen_space,
