@@ -1,8 +1,3 @@
-//
-// Copyright (C) Artizans - All Rights Reserved
-// Unauthorized copying of this file, via any medium is strictly prohibited.
-//
-
 use std::sync::Arc;
 
 use photogeometry::Rect;

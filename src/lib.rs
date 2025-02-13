@@ -7,11 +7,6 @@
 #[cfg(not(wasm))]
 uniffi::setup_scaffolding!();
 
-/// # Math Module
-///
-/// This module contains the math types and functions used by the library.
-pub mod math;
-
 /// # Renderer module.
 ///
 /// This module contains the renderer and its related types.
@@ -24,21 +19,27 @@ pub mod renderer;
 /// # Shader Module
 pub mod shader;
 
-pub mod uniform;
-
-/// # Shader Errors
 pub mod error;
 
 // DRAFT
+mod buffer_pool; // unused for now
 pub mod color;
 pub mod frame;
 pub mod pass;
+pub mod region;
+pub mod resources;
+pub mod sampler;
+pub mod target;
+pub mod texture;
 
 pub use color::*;
 pub use error::*;
 pub use frame::*;
-pub use math::*;
 pub use pass::*;
+pub use region::*;
 pub use renderer::*;
+pub use resources::*;
+pub use sampler::*;
 pub use shader::*;
-pub use uniform::*;
+pub use target::*;
+pub use texture::*;

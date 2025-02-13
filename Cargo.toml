@@ -1,6 +1,6 @@
 [package]
 name = "fragmentcolor"
-version = "0.0.9"
+version = "0.1.0"
 homepage = "https://fragmentcolor.org"
 repository = "https://github.com/vista-art/fragmentcolor"
 description = "Easy GPU Rendering for Javascript, Python, Swift and Kotlin."
@@ -35,30 +35,26 @@ edition = "2021"
 name = "fragmentcolor"
 crate-type = ["cdylib", "rlib"]
 
-[features]
-default = ["assets", "shape"]
-shape = ["lyon"]
-assets = ["obj", "gltf"]
-
 [dependencies]
 # Rendering
 
-wgpu = { version = "24", features = ["glsl", "wgsl", "naga-ir", "webgl"] }
-uuid = { version = "1.4", features = ["v4", "serde", "fast-rng"] }
+wgpu = { version = "24", features = ["glsl", "wgsl", "webgl", "naga-ir"] }
+uuid = { version = "1.13", features = ["v4", "serde", "fast-rng"] }
 thiserror = { version = "2" }
 glam = { version = "0.29" }
-# encase = { workspace = true }
+encase = { version = "0.10" }
 bytemuck = { version = "1" }
 flume = { version = "0.11" }
 indoc = { version = "2" }
 log = { version = "0.4" }
-# constcat = { version = "0.6" }
 sha2 = { version = "0.10" }
 serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0" }
+parking_lot = { version = "0.12" }
 
 # Windowing and input
 raw-window-handle = { version = "0.6" }
-winit = { version = "0.30", features = ["serde"] }
+winit = { version = "0.30.9", features = ["serde"] }
 
 # Shader composition
 naga = { version = "24" }
@@ -70,9 +66,6 @@ fxhash = "0.2"
 
 # Async
 pollster = "0.4"
-
-# Tesselation
-lyon = { version = "1", optional = true }
 
 # Text rendering
 wgpu_text = "0.9"
@@ -102,10 +95,9 @@ ddsfile = "0.5"
 # Sync
 futures-intrusive = "0.5"
 
-
 # Android & iOS FFI
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-uniffi = { version = "0.28" }
+uniffi = { version = "0.29" }
 
 # iOS Specific
 [target.'cfg(target_os = "ios")'.dependencies]
@@ -133,4 +125,3 @@ web-sys = { version = "0.3", features = [
 
 [build-dependencies]
 cfg_aliases = "0.2"
-built = { version = "0.7", features = ["chrono"] }

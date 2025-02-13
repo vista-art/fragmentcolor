@@ -1,0 +1,20 @@
+[toolchain]
+channel = "stable"
+components = ["clippy", "rustfmt"]
+targets = [
+    # iOS
+    "aarch64-apple-ios",
+    "aarch64-apple-ios-sim",
+
+    # Android
+    "aarch64-linux-android",
+    "armv7-linux-androideabi",
+    "x86_64-linux-android",
+    "i686-linux-android",
+
+    # WASM
+    "wasm32-unknown-unknown",
+
+    # Desktop
+    "aarch64-apple-darwin",
+]

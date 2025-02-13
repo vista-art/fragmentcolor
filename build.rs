@@ -15,5 +15,4 @@ fn main() {
     println!("cargo::rustc-check-cfg=cfg(mobile)");
     println!("cargo::rustc-check-cfg=cfg(desktop)");
     println!("cargo::rustc-check-cfg=cfg(dev)");
-    built::write_built_file().expect("Failed to acquire build-time data");
 }

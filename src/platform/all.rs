@@ -1,8 +1,3 @@
-//
-// Copyright (C) Artizans - All Rights Reserved
-// Unauthorized copying of this file, via any medium is strictly prohibited.
-//
-
 fn limits() -> wgpu::Limits {
     wgpu::Limits::downlevel_webgl2_defaults()
 }
