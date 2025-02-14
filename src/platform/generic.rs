@@ -2,10 +2,10 @@
 // Since we do not have any specific ties with the windowing system, we cannot implement
 // stages that actually draw on screen, so we just provide headless context and stage.
 
-use crate::{ffi, Context, Stage};
+use crate::{ffi, Renderer, Stage};
 
-impl Context {
-    pub async fn headless() -> Context {
+impl Renderer {
+    pub async fn headless() -> Renderer {
         let instance = wgpu::Instance::default();
 
         let adapter = instance
@@ -15,13 +15,13 @@ impl Context {
 
         let (device, queue) = ffi::platform::all::request_device(&adapter).await;
 
-        Context::new(device, queue)
+        Renderer::new(device, queue)
     }
 }
 
 impl Stage {
     pub async fn headless() -> Stage {
-        let context = Context::headless().await;
+        let context = Renderer::headless().await;
         Stage::new(context)
     }
 }

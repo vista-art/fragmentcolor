@@ -27,9 +27,16 @@ pub struct RenderPassConfig {
 #[derive(Debug)]
 pub struct RenderPass {
     pub(crate) shaders: Vec<Arc<Shader>>,
-    input: PassInput,
-    targets: Vec<Arc<Target>>,
-    region: Option<Region>,
+    pub(crate) input: PassInput,
+    pub(crate) targets: Vec<Arc<Target>>,
+    pub(crate) region: Option<Region>,
+}
+
+pub struct DrawCall {
+    pipeline: wgpu::RenderPipeline,
+    bind_groups: Vec<(u32, wgpu::BindGroup)>,
+    vertex_count: u32,
+    instance_count: u32,
 }
 
 impl RenderPass {
@@ -58,18 +65,14 @@ impl RenderPass {
         self.region = Some(region);
     }
 
-    // pub fn from_shader(shader: Arc<Shader>) -> Self {
-    //     Self {
-    //         shaders: vec![shader],
-    //         targets: Vec::new(),
-    //         region: None,
-    //         input: PassInput::Clear(Color::default()),
-    //     }
-    // }
+    fn collect_draw_calls(&self) -> Vec<DrawCall> {
+        // @TODO Build draw calls from shaders
+        Vec::new()
+    }
 
-    // pub fn reads(&mut self, input: PassInput) {
-    //     self.input = input;
-    // }
+    pub fn execute(&self, _encoder: &mut wgpu::CommandEncoder) {
+        // @TODO Execute draw calls
+    }
 }
 
 #[derive(Debug)]

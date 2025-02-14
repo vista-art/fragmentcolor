@@ -5,6 +5,7 @@ use std::collections::HashMap;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct Uniform {
+    pub(crate) name: String,
     pub(crate) group: u32,
     pub(crate) binding: u32,
     pub(crate) layout: UniformLayout,

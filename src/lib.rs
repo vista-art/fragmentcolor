@@ -22,7 +22,7 @@ pub mod shader;
 pub mod error;
 
 // DRAFT
-mod buffer_pool; // unused for now
+mod buffer_pool;
 pub mod color;
 pub mod frame;
 pub mod pass;
