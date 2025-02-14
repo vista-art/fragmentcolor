@@ -21,7 +21,7 @@ pub struct SurfaceTarget {
 #[derive(Debug)]
 pub(crate) struct PresentationSurface {
     surface_texture: Option<wgpu::SurfaceTexture>,
-    pub _view: wgpu::TextureView,
+    pub view: wgpu::TextureView,
 }
 
 impl PresentationSurface {
@@ -42,9 +42,24 @@ impl Target {
     // @TODO platform-specific initialization, i.e. from canvas or native window pointer
     pub fn from_surface(
         surface: wgpu::Surface<'static>,
-        config: wgpu::SurfaceConfiguration,
+        width: u32,
+        height: u32,
+        format: wgpu::TextureFormat,
     ) -> Self {
-        Self::Surface(SurfaceTarget { surface, config })
+        Self::Surface(SurfaceTarget {
+            surface,
+            config: wgpu::SurfaceConfiguration {
+                width,
+                height,
+                format,
+                // --------------------------------------------
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                view_formats: vec![format.add_srgb_suffix()],
+                alpha_mode: wgpu::CompositeAlphaMode::Auto,
+                desired_maximum_frame_latency: 2,
+                present_mode: wgpu::PresentMode::AutoVsync,
+            },
+        })
     }
 
     pub fn resize(&mut self, renderer: &Renderer, size: wgpu::Extent3d) {
@@ -55,8 +70,9 @@ impl Target {
             }
             Self::Surface(target) => {
                 let surface = &target.surface;
-                let config = &target.config;
-                surface.configure(&renderer.device, config);
+                target.config.width = size.width;
+                target.config.height = size.height;
+                surface.configure(&renderer.device, &target.config);
             }
         }
     }
@@ -65,14 +81,14 @@ impl Target {
         match self {
             Self::Texture(target) => Ok(PresentationSurface {
                 surface_texture: None,
-                _view: target.texture.inner.create_view(&Default::default()),
+                view: target.texture.inner.create_view(&Default::default()),
             }),
             Self::Surface(target) => {
                 let surface_texture = target.surface.get_current_texture()?;
-                let _view = surface_texture.texture.create_view(&Default::default());
+                let view = surface_texture.texture.create_view(&Default::default());
                 Ok(PresentationSurface {
                     surface_texture: Some(surface_texture),
-                    _view,
+                    view,
                 })
             }
         }

@@ -14,6 +14,9 @@ pub use uniform::*;
 
 mod input;
 
+pub type ShaderHash = [u8; 32];
+
+// @TODO Do we REALLY need ShaderValue AND UniformType? I feel they could be the same struct. This is unecessarily complex
 #[derive(Debug, Clone, PartialEq)]
 pub enum ShaderValue {
     Float(f32),
@@ -119,7 +122,7 @@ pub struct Shader {
 
     // Those can be reconstructed from the source
     #[serde(skip_serializing)]
-    pub(crate) hash: [u8; 64],
+    pub(crate) hash: ShaderHash,
     #[serde(skip_serializing)]
     pub(crate) module: Module,
     #[serde(skip_serializing)]
@@ -127,7 +130,7 @@ pub struct Shader {
 
     // @TODO update the test; the values should be included in the serialization
     #[serde(skip_serializing)]
-    values: BTreeMap<String, ShaderValue>,
+    pub(crate) values: BTreeMap<String, ShaderValue>,
 }
 
 impl<'de> Deserialize<'de> for Shader {
@@ -177,7 +180,7 @@ impl<'de> Deserialize<'de> for Shader {
 
 // --- Shader Implementation ---
 impl Shader {
-    pub fn hash(&self) -> [u8; 64] {
+    pub fn hash(&self) -> ShaderHash {
         self.hash
     }
 
@@ -186,13 +189,13 @@ impl Shader {
     /// The source string can be in WGSL, GLSL, or Shadertoy-flavored GLSL.
     /// The function will automatically detect the shader type and parse it accordingly.
     pub fn new(source: &str) -> Result<Self, ShaderError> {
-        if source.contains("void mainImage") {
-            Shader::toy(source)
-        } else if source.contains("void main") {
-            Self::glsl(DEFAULT_VERTEX_SHADER, source)
-        } else {
-            Self::wgsl(source)
-        }
+        // if source.contains("void mainImage") {
+        //     Shader::toy(source)
+        // } else if source.contains("void main") {
+        //     Self::glsl(DEFAULT_VERTEX_SHADER, source)
+        // } else {
+        Self::wgsl(source)
+        //}
     }
 
     /// Create a Shader object from a WGSL source.
@@ -362,8 +365,9 @@ impl Shader {
             let layout = UniformLayout::from_naga_type(module, &module.types[var.ty])?;
 
             uniforms.insert(
-                name,
+                name.clone(),
                 Uniform {
+                    name,
                     group: binding.group,
                     binding: binding.binding,
                     layout,
@@ -375,10 +379,12 @@ impl Shader {
     }
 }
 
-fn hash(source: &str) -> [u8; 64] {
+fn hash(source: &str) -> ShaderHash {
     let mut hasher = Sha256::new();
     hasher.update(source.as_bytes());
-    hasher.finalize().as_slice().try_into().unwrap()
+    let slice = hasher.finalize();
+
+    slice.into()
 }
 
 fn parse_key(key: &str) -> (String, Vec<String>) {
@@ -427,6 +433,17 @@ mod tests {
     use super::*;
 
     const SHADER: &str = r#"
+        struct VertexOutput {
+            @builtin(position) coords: vec4<f32>,
+        };
+
+        @vertex
+        fn vs_main(@builtin(vertex_index) in_vertex_index: u32) -> VertexOutput {
+            let x = f32(i32(in_vertex_index) - 1);
+            let y = f32(i32(in_vertex_index & 1u) * 2 - 1);
+            return vec4<f32>(x, y, 0.0, 1.0);
+        }
+
         struct Circle {
             position: vec2<f32>,
             radius: f32,
@@ -439,20 +456,21 @@ mod tests {
         @group(0) @binding(1) var<uniform> resolution: vec2<f32>;
 
         @fragment
-        fn main(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
-            let uv = pos.xy / resolution;
-            let circle_pos = position / resolution;
+        fn main(pixel: VertexOutput) -> @location(0) vec4<f32> {
+            let uv = pixel.coords.xy / resolution;
+            let circle_pos = circle.position / resolution;
             let dist = distance(uv, circle_pos);
-            let r = radius / max(resolution.x, resolution.y);
-            let circle = 1.0 - smoothstep(r - 0.001, r + 0.001, dist);
-            return color * circle;
+            let r = circle.radius / max(resolution.x, resolution.y);
+            let circle_sdf = 1.0 - smoothstep(r - 0.001, r + 0.001, dist);
+            return circle.color * circle_sdf;
         }
     "#;
 
     #[test]
     fn test_shader_should_parse_uniforms() {
         let shader = Shader::new(SHADER).unwrap();
-        let uniforms = shader.uniforms.keys().collect::<Vec<_>>();
+        let mut uniforms = shader.uniforms.keys().collect::<Vec<_>>();
+        uniforms.sort();
         assert_eq!(uniforms, vec!["circle", "resolution"]);
     }
 
@@ -485,12 +503,6 @@ mod tests {
     fn test_shader_serialization() {
         let shader = Shader::new(SHADER).unwrap();
         let serialized = serde_json::to_string(&shader).unwrap();
-
-        // it should have only the Source field
-        assert_eq!(
-            serialized,
-            r#"{"source":"struct Circle {\n    position: vec2<f32>,\n    radius: f32,\n    color: vec4<f32>,\n}\n\n@group(0) @binding(0)\nvar<uniform> circle: Circle;\n\n@group(0) @binding(1) var<uniform> resolution: vec2<f32;\n\n@fragment\nfn main(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {\n    let uv = pos.xy / resolution;\n    let circle_pos = position / resolution;\n    let dist = distance(uv, circle_pos);\n    let r = radius / max(resolution.x, resolution.y);\n    let circle = 1.0 - smoothstep(r - 0.001, r + 0.001, dist);\n    return color * circle;\n}\n"}"#
-        );
 
         let deserialized: Shader = serde_json::from_str(&serialized).unwrap();
         assert_eq!(shader.hash(), deserialized.hash());

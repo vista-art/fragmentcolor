@@ -1,7 +1,7 @@
 // Reference https://blog.mecheye.net/2023/09/how-to-write-a-renderer-for-modern-apis
 
 use crate::pass::Pass;
-use crate::{Renderable, Target};
+use crate::{Renderable, Renderer, Target};
 
 /// A Frame is a collection of passes that are executed in sequence.
 pub struct Frame {
@@ -24,6 +24,12 @@ impl Frame {
     pub fn add_target(&mut self, target: Target) {
         self.targets.push(target);
     }
+
+    pub fn resize_targets(&mut self, renderer: &Renderer, size: wgpu::Extent3d) {
+        for target in self.targets.iter_mut() {
+            target.resize(renderer, size);
+        }
+    }
 }
 
 impl Renderable for Frame {
@@ -32,6 +38,6 @@ impl Renderable for Frame {
     }
 
     fn targets(&self) -> impl IntoIterator<Item = &Target> {
-        &self.targets
+        self.targets.iter()
     }
 }

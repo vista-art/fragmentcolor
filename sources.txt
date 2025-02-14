@@ -5,6 +5,7 @@ use glam::Vec4;
 
 use serde::{Deserialize, Serialize};
 
+/// A region in 2D space designed to handle viewport and texture regions
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub struct Region {
     pub min_x: u32,
@@ -24,7 +25,6 @@ impl Default for Region {
     }
 }
 
-// Adapted from Ruffle's PixelRegion
 impl Region {
     pub fn from_region_i32(x: i32, y: i32, width: i32, height: i32) -> Self {
         let a = (x, y);
@@ -502,16 +502,19 @@ mod tests {
     }
 }
 src/renderer.rs
-use crate::{shader::Uniform, ComputePass, Pass, RenderPass, Shader, ShaderError};
+use crate::{
+    shader::Uniform, ComputePass, Pass, RenderPass, Shader, ShaderError, ShaderHash, Target,
+};
+use std::borrow::Cow;
+use std::cell::RefCell;
 use std::collections::HashMap;
 pub type Commands = Vec<wgpu::CommandBuffer>;
 
-use crate::error::RendererError;
-
-use winit::window::Window;
+use wgpu::util::DeviceExt;
 
 pub trait Renderable {
     fn passes(&self) -> impl IntoIterator<Item = &Pass>;
+    fn targets(&self) -> impl IntoIterator<Item = &Target>;
 }
 
 /// Draws things on the screen or on a texture.
@@ -521,60 +524,25 @@ pub struct Renderer {
     pub(crate) device: wgpu::Device,
     pub(crate) queue: wgpu::Queue,
 
-    render_pipelines: HashMap<String, wgpu::RenderPipeline>,
-    compute_pipelines: HashMap<String, wgpu::ComputePipeline>,
+    render_pipelines: RefCell<HashMap<ShaderHash, wgpu::RenderPipeline>>,
+    compute_pipelines: RefCell<HashMap<String, wgpu::ComputePipeline>>,
 
-    shaders: HashMap<String, wgpu::ShaderModule>,
-    bind_group_layouts: HashMap<String, wgpu::BindGroupLayout>,
-    bind_groups: HashMap<String, wgpu::BindGroup>,
-    buffer_pool: HashMap<String, wgpu::Buffer>,
+    shaders: RefCell<HashMap<String, wgpu::ShaderModule>>,
+    bind_group_layouts: RefCell<HashMap<(Vec<u8>, u32), wgpu::BindGroupLayout>>,
+    bind_groups: RefCell<HashMap<String, wgpu::BindGroup>>,
 
-    textures: HashMap<String, wgpu::Texture>,
-    samplers: HashMap<String, wgpu::Sampler>,
+    textures: RefCell<HashMap<String, wgpu::Texture>>,
+    samplers: RefCell<HashMap<String, wgpu::Sampler>>,
 }
 
-unsafe impl Sync for Renderer {}
+impl Renderer {
+    pub fn device(&self) -> &wgpu::Device {
+        &self.device
+    }
 
-pub async fn init_offfscreen() -> Result<Renderer, RendererError> {
-    init_renderer(None).await
-}
-
-// TODO: Implement platform-specific initializers
-pub async fn init_renderer(window: Option<&Window>) -> Result<Renderer, RendererError> {
-    let instance = wgpu::Instance::default();
-
-    let surface = if let Some(window) = window {
-        instance.create_surface(window).ok()
-    } else {
-        None
-    };
-
-    let adapter = instance
-        .request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            force_fallback_adapter: false,
-            compatible_surface: surface.as_ref(),
-        })
-        .await
-        .ok_or(RendererError::AdapterError)?;
-
-    let (device, queue) = adapter
-        .request_device(
-            &wgpu::DeviceDescriptor {
-                label: None,
-                required_features: wgpu::Features::empty(),
-                required_limits: wgpu::Limits::default(),
-                memory_hints: wgpu::MemoryHints::Performance,
-            },
-            None, // Trace path
-        )
-        .await?;
-
-    device.on_uncaptured_error(Box::new(|error| {
-        log::error!("\n\n==== GPU error: ====\n\n{:#?}\n", error);
-    }));
-
-    Ok(Renderer::new(device, queue))
+    pub fn queue(&self) -> &wgpu::Queue {
+        &self.queue
+    }
 }
 
 impl Renderer {
@@ -584,148 +552,168 @@ impl Renderer {
             device,
             queue,
 
-            render_pipelines: HashMap::new(),
-            compute_pipelines: HashMap::new(),
+            render_pipelines: RefCell::new(HashMap::new()),
+            compute_pipelines: RefCell::new(HashMap::new()),
 
-            shaders: HashMap::new(),
-            bind_group_layouts: HashMap::new(),
+            shaders: RefCell::new(HashMap::new()),
+            bind_group_layouts: RefCell::new(HashMap::new()),
+            bind_groups: RefCell::new(HashMap::new()),
 
-            bind_groups: HashMap::new(),
-            buffer: HashMap::new(),
-            textures: HashMap::new(),
+            textures: RefCell::new(HashMap::new()),
+            samplers: RefCell::new(HashMap::new()),
         }
     }
 
     /// Renders a frame
-    pub fn render(&self, renderable: &impl Renderable) -> Result<(), wgpu::SurfaceError> {
+    pub fn render(&self, renderable: &impl Renderable) -> Result<(), ShaderError> {
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
 
+        let mut presentations = Vec::new();
+        for target in renderable.targets() {
+            let presentation = target.get_current_texture()?;
+            presentations.push(presentation);
+        }
+
         for pass in renderable.passes() {
-            match pass {
-                Pass::Render(render_pass) => self.process_render_pass(&mut encoder, render_pass),
+            match &*pass {
+                Pass::Render(render_pass) => self.process_render_pass(&mut encoder, render_pass)?,
                 Pass::Compute(compute_pass) => {
-                    self.process_compute_pass(&mut encoder, compute_pass)
+                    self.process_compute_pass(&mut encoder, compute_pass)?
                 }
             }
         }
 
         self.queue.submit(Some(encoder.finish()));
+
+        for presentation in presentations {
+            presentation.present();
+        }
+
         Ok(())
     }
 
     fn process_render_pass(
-        &mut self,
+        &self,
         encoder: &mut wgpu::CommandEncoder,
         pass: &RenderPass,
     ) -> Result<(), ShaderError> {
-        self.resources.ensure_render_pipeline(pass.shader)?;
-        self.resources.update_buffers(pass.shader);
+        let mut target_textures = Vec::new();
+        let color_attachments = {
+            let mut attachments = Vec::new();
 
-        let pipeline = self
-            .resources
-            .render_pipelines
-            .get(&pass.shader.hash)
-            .unwrap();
+            for target in pass.targets.iter() {
+                target_textures.push(target.get_current_texture()?);
+            }
 
-        let view = match pass.target {
-            Target::Surface => {
-                let frame = self.surface.get_current_texture()?;
-                frame
-                    .texture
-                    .create_view(&wgpu::TextureViewDescriptor::default())
+            for (index, _) in pass.targets.iter().enumerate() {
+                attachments.push(Some(wgpu::RenderPassColorAttachment {
+                    view: &target_textures[index].view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                        store: wgpu::StoreOp::Store,
+                    },
+                }));
             }
-            Target::Texture(texture) => {
-                texture.create_view(&wgpu::TextureViewDescriptor::default())
-            }
+            attachments
         };
 
-        let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: &view,
-                resolve_target: None,
-                ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(pass.clear_color),
-                    store: wgpu::StoreOp::Store,
-                },
-            })],
-            ..Default::default()
-        });
+        let render_pass_desc = wgpu::RenderPassDescriptor {
+            label: Some("render_pass"),
+            color_attachments: &color_attachments,
+            depth_stencil_attachment: None,
+            timestamp_writes: None,
+            occlusion_query_set: None,
+        };
 
-        render_pass.set_pipeline(pipeline);
-        render_pass.set_vertex_buffer(0, self.resources.fullscreen_quad.slice(..));
+        let mut render_pass = encoder.begin_render_pass(&render_pass_desc);
 
-        if let Some(bind_group) = self.resources.bind_groups.get(&pass.shader.hash) {
-            render_pass.set_bind_group(0, bind_group, &[]);
+        for shader in &pass.shaders {
+            self.ensure_render_pipeline(shader)?;
+            let pipelines = self.render_pipelines.borrow();
+            let pipeline = pipelines.get(&shader.hash()).unwrap();
+
+            let mut bind_groups = Vec::new();
+            for (name, uniform) in &shader.uniforms {
+                let key = (shader.hash().to_vec(), uniform.group);
+                let bgls = self.bind_group_layouts.borrow();
+                let layout = bgls.get(&key).unwrap();
+
+                let mut entries = Vec::new();
+
+                let bytes = shader.get(&name)?;
+
+                let buffer = self
+                    .device
+                    .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                        label: Some(&format!("Buffer for {}", name)),
+                        contents: bytes,
+                        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                    });
+
+                let buffer_binding = wgpu::BufferBinding {
+                    buffer: &buffer,
+                    offset: 0,
+                    size: None,
+                };
+
+                entries.push(wgpu::BindGroupEntry {
+                    binding: uniform.binding,
+                    resource: wgpu::BindingResource::Buffer(buffer_binding),
+                });
+
+                let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    layout,
+                    entries: &entries,
+                    label: Some("bind_group"),
+                });
+                bind_groups.push(bind_group);
+            }
+
+            render_pass.set_pipeline(pipeline);
+            for (i, bind_group) in bind_groups.iter().enumerate() {
+                render_pass.set_bind_group(i as u32, bind_group, &[]);
+            }
+            render_pass.draw(0..3, 0..1); // Fullscreen triangle
         }
-
-        render_pass.draw(0..3, 0..1);
         Ok(())
     }
 
     fn process_compute_pass(
-        &mut self,
+        &self,
         _encoder: &mut wgpu::CommandEncoder,
         _pass: &ComputePass,
     ) -> Result<(), ShaderError> {
-        unimplemented!("Compute passes are not yet implemented")
+        Ok(()) // @TODO later
     }
 
-    fn ensure_render_pipeline(&mut self, blueprint: &Shader) -> Result<(), ShaderError> {
-        if self.render_pipelines.contains_key(&blueprint.id()) {
+    fn ensure_render_pipeline(&self, shader: &Shader) -> Result<(), ShaderError> {
+        let mut pipelines = self.render_pipelines.borrow_mut();
+        if pipelines.contains_key(&shader.hash()) {
             return Ok(());
         }
 
-        let pipeline_layout = self.create_pipeline_layout(blueprint)?;
-        let pipeline = self.create_render_pipeline(blueprint, &pipeline_layout)?;
+        let bgl = create_bind_group_layouts(&self.device, &shader.uniforms);
+        for (group, layout) in bgl.iter() {
+            let key = (shader.hash().to_vec(), *group);
+            self.bind_group_layouts
+                .borrow_mut()
+                .insert(key, layout.clone());
+        }
 
-        self.render_pipelines
-            .insert(blueprint.hash.clone(), pipeline);
+        let module = Cow::Owned(shader.module.clone());
+        let pipeline = create_render_pipeline(&self.device, &bgl, module);
+
+        pipelines.insert(shader.hash.clone(), pipeline);
         Ok(())
     }
 
-    fn create_render_pipeline(
-        device: &wgpu::Device,
-        bind_group_layouts: &HashMap<u32, wgpu::BindGroupLayout>,
-        source: &str,
-    ) -> wgpu::RenderPipeline {
-        let shader_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("Shader"),
-            source: wgpu::ShaderSource::Wgsl(source.into()),
-        });
-
-        let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("Pipeline Layout"),
-            bind_group_layouts: &bind_group_layouts.values().collect::<Vec<_>>(),
-            push_constant_ranges: &[],
-        });
-
-        device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("Render Pipeline"),
-            layout: Some(&layout),
-            vertex: wgpu::VertexState {
-                module: &shader_module,
-                entry_point: Some("vs_main"),
-                buffers: &[],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader_module,
-                entry_point: Some("fs_main"),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: wgpu::TextureFormat::Bgra8Unorm,
-                    blend: Some(wgpu::BlendState::REPLACE),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            }),
-            primitive: wgpu::PrimitiveState::default(),
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState::default(),
-            multiview: None,
-            cache: None,
-        })
+    // @TODO ShaderHash should be a wrapped type
+    /// Provides a way to invalidate the cache; i.e. when a Shader source changes
+    pub(crate) fn remove_render_pipeline(&mut self, key: ShaderHash) {
+        self.render_pipelines.borrow_mut().remove(&key);
     }
 }
 
@@ -735,6 +723,11 @@ fn create_bind_group_layouts(
 ) -> HashMap<u32, wgpu::BindGroupLayout> {
     let mut layouts = HashMap::new();
     for uniform in uniforms.values() {
+        let label = format!(
+            "Bind Group Layout for {}: group: {} binding: {}",
+            uniform.name, uniform.group, uniform.binding
+        );
+
         let entry = wgpu::BindGroupLayoutEntry {
             binding: uniform.binding,
             visibility: wgpu::ShaderStages::FRAGMENT,
@@ -745,16 +738,86 @@ fn create_bind_group_layouts(
             },
             count: None,
         };
+
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("BindGroupLayout"),
+            label: Some(&label),
             entries: &[entry],
         });
         layouts.insert(uniform.group, layout);
     }
     layouts
 }
+
+fn create_render_pipeline(
+    device: &wgpu::Device,
+    bind_group_layouts: &HashMap<u32, wgpu::BindGroupLayout>,
+    module: Cow<'static, naga::Module>,
+) -> wgpu::RenderPipeline {
+    let mut vs_entry = None;
+    let mut fs_entry = None;
+    for entry_point in module.entry_points.iter() {
+        if entry_point.stage == naga::ShaderStage::Vertex {
+            vs_entry = entry_point.function.name.clone();
+        }
+        if entry_point.stage == naga::ShaderStage::Fragment {
+            fs_entry = entry_point.function.name.clone();
+        }
+    }
+
+    let shader_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        label: Some("Shader"),
+        source: wgpu::ShaderSource::Naga(module),
+    });
+
+    let mut sorted_groups: Vec<_> = bind_group_layouts.keys().collect();
+    sorted_groups.sort();
+    let bind_group_layouts_sorted: Vec<_> = sorted_groups
+        .into_iter()
+        .map(|g| bind_group_layouts.get(g).unwrap())
+        .collect();
+
+    let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some("Pipeline Layout"),
+        bind_group_layouts: &bind_group_layouts_sorted,
+        push_constant_ranges: &[],
+    });
+
+    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        label: Some("Render Pipeline"),
+        layout: Some(&layout),
+        vertex: wgpu::VertexState {
+            module: &shader_module,
+            entry_point: Some(vs_entry.as_deref().unwrap_or("vs_main")),
+            buffers: &[],
+            compilation_options: wgpu::PipelineCompilationOptions::default(),
+        },
+        fragment: Some(wgpu::FragmentState {
+            module: &shader_module,
+            entry_point: Some(fs_entry.as_deref().unwrap_or("fs_main")),
+            targets: &[Some(wgpu::ColorTargetState {
+                format: wgpu::TextureFormat::Bgra8Unorm,
+                blend: Some(wgpu::BlendState::REPLACE),
+                write_mask: wgpu::ColorWrites::ALL,
+            })],
+            compilation_options: wgpu::PipelineCompilationOptions::default(),
+        }),
+        primitive: wgpu::PrimitiveState::default(),
+        depth_stencil: None,
+        multisample: wgpu::MultisampleState::default(),
+        multiview: None,
+        cache: None,
+    })
+}
 src/error.rs
 use thiserror::Error;
+
+#[derive(Error, Debug)]
+pub enum InitializationError {
+    #[error("Failed to find a compatible GPU adapter")]
+    AdapterError,
+    #[error("Failed to create device")]
+    DeviceError(#[from] wgpu::RequestDeviceError),
+}
 
 #[derive(Error, Debug)]
 pub enum ShaderError {
@@ -776,14 +839,8 @@ pub enum ShaderError {
     GlslParseErrors(#[from] naga::front::glsl::ParseErrors),
     #[error("WGPU error: {0}")]
     WgpuError(#[from] wgpu::Error),
-}
-
-#[derive(Error, Debug)]
-pub enum RendererError {
-    #[error("Failed to find a compatible GPU adapter")]
-    AdapterError,
-    #[error("Failed to create device")]
-    DeviceError(#[from] wgpu::RequestDeviceError),
+    #[error("WGPU Surface Error: {0}")]
+    WgpuSurfaceError(#[from] wgpu::SurfaceError),
 }
 src/pass.rs
 use std::sync::Arc;
@@ -801,7 +858,7 @@ pub enum Pass {
 #[derive(Debug)]
 enum PassInput {
     Clear(Color),
-    Pass(Arc<Pass>),
+    Pass,
     Texture(Arc<Texture>),
 }
 
@@ -814,10 +871,17 @@ pub struct RenderPassConfig {
 
 #[derive(Debug)]
 pub struct RenderPass {
-    shaders: Vec<Arc<Shader>>,
-    input: PassInput,
-    targets: Vec<Target>,
-    region: Option<Region>,
+    pub(crate) shaders: Vec<Arc<Shader>>,
+    pub(crate) input: PassInput,
+    pub(crate) targets: Vec<Arc<Target>>,
+    pub(crate) region: Option<Region>,
+}
+
+pub struct DrawCall {
+    pipeline: wgpu::RenderPipeline,
+    bind_groups: Vec<(u32, wgpu::BindGroup)>,
+    vertex_count: u32,
+    instance_count: u32,
 }
 
 impl RenderPass {
@@ -830,20 +894,15 @@ impl RenderPass {
         }
     }
 
-    pub fn from_shader(shader: Arc<Shader>) -> Self {
-        Self {
-            shaders: vec![shader],
-            targets: Vec::new(),
-            region: None,
-            input: PassInput::Clear(Color::default()),
-        }
+    pub fn set_clear_color(&mut self, color: Color) {
+        self.input = PassInput::Clear(color);
     }
 
     pub fn add_shader(&mut self, shader: Arc<Shader>) {
         self.shaders.push(shader);
     }
 
-    pub fn add_target(&mut self, target: Target) {
+    pub fn add_target(&mut self, target: Arc<Target>) {
         self.targets.push(target);
     }
 
@@ -851,14 +910,19 @@ impl RenderPass {
         self.region = Some(region);
     }
 
-    pub fn reads(&mut self, input: PassInput) {
-        self.input = input;
+    fn collect_draw_calls(&self) -> Vec<DrawCall> {
+        // @TODO Build draw calls from shaders
+        Vec::new()
+    }
+
+    pub fn execute(&self, _encoder: &mut wgpu::CommandEncoder) {
+        // @TODO Execute draw calls
     }
 }
 
 #[derive(Debug)]
 pub struct ComputePass {
-    computes: Vec<Arc<Compute>>,
+    _computes: Vec<Arc<Compute>>,
     // input: ResourceId,
     // output: Target, // @TODO
 }
@@ -1041,7 +1105,7 @@ pub mod shader;
 pub mod error;
 
 // DRAFT
-mod buffer_pool; // unused for now
+mod buffer_pool;
 pub mod color;
 pub mod frame;
 pub mod pass;
@@ -1095,10 +1159,10 @@ src/platform/generic.rs
 // Since we do not have any specific ties with the windowing system, we cannot implement
 // stages that actually draw on screen, so we just provide headless context and stage.
 
-use crate::{ffi, Context, Stage};
+use crate::{ffi, Renderer, Stage};
 
-impl Context {
-    pub async fn headless() -> Context {
+impl Renderer {
+    pub async fn headless() -> Renderer {
         let instance = wgpu::Instance::default();
 
         let adapter = instance
@@ -1108,13 +1172,13 @@ impl Context {
 
         let (device, queue) = ffi::platform::all::request_device(&adapter).await;
 
-        Context::new(device, queue)
+        Renderer::new(device, queue)
     }
 }
 
 impl Stage {
     pub async fn headless() -> Stage {
-        let context = Context::headless().await;
+        let context = Renderer::headless().await;
         Stage::new(context)
     }
 }
@@ -1142,13 +1206,13 @@ use photogeometry::Rect;
 
 const BACKENDS: wgpu::Backends = wgpu::Backends::GL;
 
-#[wasm_bindgen(js_name = PGContext)]
-pub struct Context {
-    wrapped: crate::Context,
+#[wasm_bindgen(js_name = PGRenderer)]
+pub struct Renderer {
+    wrapped: crate::Renderer,
 }
 
-#[wasm_bindgen(js_class = PGContext)]
-impl Context {
+#[wasm_bindgen(js_class = PGRenderer)]
+impl Renderer {
     #[wasm_bindgen(js_name = headless)]
     pub async fn headless() -> Self {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
@@ -1188,8 +1252,8 @@ impl Context {
             web_sys::console::error_1(&format!("Error: {:?}", error).into());
         }));
 
-        Context {
-            wrapped: crate::Context::new(device, queue),
+        Renderer {
+            wrapped: crate::Renderer::new(device, queue),
         }
     }
 
@@ -1258,7 +1322,7 @@ impl Stage {
             view_formats: vec![],
         };
 
-        let stage = crate::Stage::new(crate::Context::new(device, queue));
+        let stage = crate::Stage::new(crate::Renderer::new(device, queue));
         surface.configure(stage.device(), &surface_configuration);
 
         Self {
@@ -1269,7 +1333,7 @@ impl Stage {
 
     #[wasm_bindgen(js_name = headless)]
     pub async fn headless() -> Self {
-        let context = Context::headless().await;
+        let context = Renderer::headless().await;
 
         Self {
             surface: None,
@@ -1325,11 +1389,11 @@ use objc::*;
 const BACKENDS: wgpu::Backends = wgpu::Backends::METAL;
 
 #[cfg_attr(mobile, derive(uniffi::Object))]
-pub struct Context {
-    wrapped: Arc<crate::Context>,
+pub struct Renderer {
+    wrapped: Arc<crate::Renderer>,
 }
 
-async fn headless() -> crate::Context {
+async fn headless() -> crate::Renderer {
     let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
         backends: BACKENDS,
         ..Default::default()
@@ -1342,14 +1406,14 @@ async fn headless() -> crate::Context {
 
     let (device, queue) = ffi::platform::all::request_device(&adapter).await;
 
-    crate::Context::new(device, queue)
+    crate::Renderer::new(device, queue)
 }
 
 #[cfg_attr(mobile, uniffi::export)]
-impl Context {
+impl Renderer {
     #[cfg_attr(mobile, uniffi::constructor)]
     pub async fn headless() -> Self {
-        Context {
+        Renderer {
             wrapped: headless().await.into(),
         }
     }
@@ -1436,7 +1500,7 @@ impl Stage {
             view_formats: vec![],
         };
 
-        let stage = crate::Stage::new(crate::Context::new(device, queue));
+        let stage = crate::Stage::new(crate::Renderer::new(device, queue));
         surface.configure(stage.device(), &surface_configuration);
 
         Self {
@@ -1575,11 +1639,11 @@ impl HasDisplayHandle for AndroidNativeWindow {
 /////
 
 #[cfg_attr(mobile, derive(uniffi::Object))]
-pub struct Context {
-    wrapped: Arc<crate::Context>,
+pub struct Renderer {
+    wrapped: Arc<crate::Renderer>,
 }
 
-async fn headless() -> crate::Context {
+async fn headless() -> crate::Renderer {
     let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
         backends: BACKENDS,
         ..Default::default()
@@ -1592,14 +1656,14 @@ async fn headless() -> crate::Context {
 
     let (device, queue) = ffi::platform::all::request_device(&adapter).await;
 
-    crate::Context::new(device, queue)
+    crate::Renderer::new(device, queue)
 }
 
 #[cfg_attr(mobile, uniffi::export)]
-impl Context {
+impl Renderer {
     #[cfg_attr(mobile, uniffi::constructor)]
     pub async fn headless() -> Self {
-        Context {
+        Renderer {
             wrapped: headless().await.into(),
         }
     }
@@ -1672,7 +1736,7 @@ impl Stage {
             view_formats: vec![],
         };
 
-        let stage = crate::Stage::new(crate::Context::new(device, queue));
+        let stage = crate::Stage::new(crate::Renderer::new(device, queue));
         surface.configure(stage.device(), &surface_configuration);
 
         Self {
@@ -1763,10 +1827,10 @@ pub struct BufferLocation {
 impl BufferPool {
     /// Creates a new Uniform Buffer Pool
     /// that can be used as a destination buffer for:
-    /// - CommandEncoder::copy_buffer_to_buffer, 
-    /// - CommandEncoder::copy_texture_to_buffer, 
-    /// - CommandEncoder::clear_buffer or 
-    /// - Queue::write_buffer 
+    /// - CommandEncoder::copy_buffer_to_buffer,
+    /// - CommandEncoder::copy_texture_to_buffer,
+    /// - CommandEncoder::clear_buffer or
+    /// - Queue::write_buffer
     pub fn new_uniform_pool(label: &str, device: &wgpu::Device) -> Self {
         Self::new(
             label,
@@ -1776,6 +1840,8 @@ impl BufferPool {
             device,
         )
     }
+
+    // TODO add more buffer pool types
 
     /// Creates a new buffer pool with custom parameters
     pub fn new(
@@ -1803,7 +1869,9 @@ impl BufferPool {
         }
     }
 
-    /// Ensures the pool has enough capacity for the total required size
+    /// Ensures the pool has enough capacity for the total required size.
+    ///
+    /// Must be called before upload, normally at the beginning of a frame.
     pub fn ensure_capacity<T: ShaderType>(
         &mut self,
         required_size: usize,
@@ -1829,7 +1897,7 @@ impl BufferPool {
         needed_chunks
     }
 
-    /// Allocates space for and uploads data using encase for serialization
+    /// Allocates space for and uploads data using encase for serialization.
     pub fn upload<T>(&mut self, value: &T, queue: &wgpu::Queue) -> BufferLocation
     where
         T: ?Sized + ShaderType + WriteInto,
@@ -1889,7 +1957,9 @@ impl BufferPool {
         }
     }
 
-    /// Resets the pool for reuse in the next frame
+    /// Resets the pool for reuse in the next frame.
+    ///
+    /// Must be called at the end of a frame.
     pub fn reset(&mut self) {
         self.current_chunk = 0;
         self.current_offset = 0;
@@ -1908,7 +1978,6 @@ impl BufferPool {
         aligned_size * count
     }
 }
-src/math
 src/sampler.rs
 #[derive(Debug, Clone)]
 pub struct SamplerOptions {
@@ -1965,10 +2034,7 @@ pub fn create_sampler(device: &wgpu::Device, options: SamplerOptions) -> wgpu::S
 }
 src/shader
 src/shader/mod.rs
-use crate::{
-    error::ShaderError,
-    shader::{Uniform, UniformLayout, UniformType},
-};
+use crate::error::ShaderError;
 use naga::{AddressSpace, Module};
 use serde::de::{self, MapAccess, Visitor};
 use serde::{Deserialize, Deserializer, Serialize};
@@ -1984,9 +2050,12 @@ pub use uniform::*;
 
 mod input;
 
+pub type ShaderHash = [u8; 32];
+
+// @TODO Do we REALLY need ShaderValue AND UniformType? I feel they could be the same struct. This is unecessarily complex
 #[derive(Debug, Clone, PartialEq)]
 pub enum ShaderValue {
-    Scalar(f32),
+    Float(f32),
     Vec2([f32; 2]),
     Vec3([f32; 3]),
     Vec4([f32; 4]),
@@ -2007,7 +2076,7 @@ pub enum ShaderValue {
 impl ShaderValue {
     fn data_type(&self) -> UniformType {
         match self {
-            Self::Scalar(_) => UniformType::Scalar,
+            Self::Float(_) => UniformType::Float,
             Self::Vec2(_) => UniformType::Vec2,
             Self::Vec3(_) => UniformType::Vec3,
             Self::Vec4(_) => UniformType::Vec4,
@@ -2026,24 +2095,24 @@ impl ShaderValue {
         }
     }
 
-    fn to_bytes(&self) -> Vec<u8> {
+    fn to_bytes(&self) -> &[u8] {
         match self {
-            Self::Scalar(v) => bytemuck::bytes_of(v).to_vec(),
-            Self::Vec2(v) => bytemuck::bytes_of(v).to_vec(),
-            Self::Vec3(v) => bytemuck::bytes_of(v).to_vec(),
-            Self::Vec4(v) => bytemuck::bytes_of(v).to_vec(),
-            Self::Int(v) => bytemuck::bytes_of(v).to_vec(),
-            Self::IVec2(v) => bytemuck::bytes_of(v).to_vec(),
-            Self::IVec3(v) => bytemuck::bytes_of(v).to_vec(),
-            Self::IVec4(v) => bytemuck::bytes_of(v).to_vec(),
-            Self::UInt(v) => bytemuck::bytes_of(v).to_vec(),
-            Self::UVec2(v) => bytemuck::bytes_of(v).to_vec(),
-            Self::UVec3(v) => bytemuck::bytes_of(v).to_vec(),
-            Self::UVec4(v) => bytemuck::bytes_of(v).to_vec(),
-            Self::Mat2(v) => bytemuck::cast_slice(v.as_slice()).to_vec(),
-            Self::Mat3(v) => bytemuck::cast_slice(v.as_slice()).to_vec(),
-            Self::Mat4(v) => bytemuck::cast_slice(v.as_slice()).to_vec(),
-            Self::Texture(h) => bytemuck::bytes_of(h).to_vec(),
+            Self::Float(v) => bytemuck::bytes_of(v),
+            Self::Int(v) => bytemuck::bytes_of(v),
+            Self::UInt(v) => bytemuck::bytes_of(v),
+            Self::Vec2(v) => bytemuck::cast_slice(v),
+            Self::Vec3(v) => bytemuck::cast_slice(v),
+            Self::Vec4(v) => bytemuck::cast_slice(v),
+            Self::IVec2(v) => bytemuck::cast_slice(v),
+            Self::IVec3(v) => bytemuck::cast_slice(v),
+            Self::IVec4(v) => bytemuck::cast_slice(v),
+            Self::UVec2(v) => bytemuck::cast_slice(v),
+            Self::UVec3(v) => bytemuck::cast_slice(v),
+            Self::UVec4(v) => bytemuck::cast_slice(v),
+            Self::Mat2(v) => bytemuck::cast_slice(v.as_slice()),
+            Self::Mat3(v) => bytemuck::cast_slice(v.as_slice()),
+            Self::Mat4(v) => bytemuck::cast_slice(v.as_slice()),
+            Self::Texture(h) => bytemuck::bytes_of(h),
         }
     }
 }
@@ -2089,15 +2158,15 @@ pub struct Shader {
 
     // Those can be reconstructed from the source
     #[serde(skip_serializing)]
-    hash: String,
+    pub(crate) hash: ShaderHash,
     #[serde(skip_serializing)]
-    module: Module,
+    pub(crate) module: Module,
     #[serde(skip_serializing)]
-    uniforms: HashMap<String, Uniform>,
+    pub(crate) uniforms: HashMap<String, Uniform>,
 
     // @TODO update the test; the values should be included in the serialization
     #[serde(skip_serializing)]
-    values: BTreeMap<String, ShaderValue>,
+    pub(crate) values: BTreeMap<String, ShaderValue>,
 }
 
 impl<'de> Deserialize<'de> for Shader {
@@ -2147,8 +2216,8 @@ impl<'de> Deserialize<'de> for Shader {
 
 // --- Shader Implementation ---
 impl Shader {
-    pub fn id(&self) -> String {
-        self.hash.clone()
+    pub fn hash(&self) -> ShaderHash {
+        self.hash
     }
 
     /// Create a Shader object from a source string.
@@ -2156,13 +2225,13 @@ impl Shader {
     /// The source string can be in WGSL, GLSL, or Shadertoy-flavored GLSL.
     /// The function will automatically detect the shader type and parse it accordingly.
     pub fn new(source: &str) -> Result<Self, ShaderError> {
-        if source.contains("void mainImage") {
-            Shader::toy(source)
-        } else if source.contains("void main") {
-            Self::glsl(DEFAULT_VERTEX_SHADER, source)
-        } else {
-            Self::wgsl(source)
-        }
+        // if source.contains("void mainImage") {
+        //     Shader::toy(source)
+        // } else if source.contains("void main") {
+        //     Self::glsl(DEFAULT_VERTEX_SHADER, source)
+        // } else {
+        Self::wgsl(source)
+        //}
     }
 
     /// Create a Shader object from a WGSL source.
@@ -2266,19 +2335,13 @@ impl Shader {
             .get(&uniform_name)
             .ok_or(ShaderError::UniformNotFound(uniform_name.clone()))?;
 
-        let (offset, size) = get_field_offset(&meta.layout.ty, &field_path)?;
-        let buffer = self
-            .values
-            .entry(uniform_name.clone())
-            .or_insert_with(|| BTreeMap::new());
+        let ty = get_field_type(&meta.layout.ty, &field_path)?;
 
-        let bytes = value.to_bytes();
-
-        if bytes.len() != size as usize {
+        if value.data_type() != ty {
             return Err(ShaderError::TypeMismatch(key.into()));
         }
 
-        buffer.insert(key.into(), value);
+        self.values.insert(key.into(), value);
 
         Ok(())
     }
@@ -2290,19 +2353,17 @@ impl Shader {
             .get(&uniform_name)
             .ok_or(ShaderError::UniformNotFound(uniform_name.clone()))?;
 
-        let (offset, size) = get_field_offset(&meta.layout.ty, &field_path)?;
-        let buffer = self
+        let ty = get_field_type(&meta.layout.ty, &field_path)?;
+        let value = self
             .values
             .get(&uniform_name)
             .ok_or(ShaderError::UniformNotFound(uniform_name.clone()))?;
 
-        if buffer.len() < (offset + size) as usize {
+        if value.data_type() != ty {
             return Err(ShaderError::TypeMismatch(key.into()));
         }
 
-        let bytes = &buffer[offset as usize..(offset + size) as usize];
-
-        Ok(bytes)
+        Ok(value.to_bytes())
     }
 
     pub unsafe fn get_as<T>(&self, key: &str) -> Result<T, ShaderError>
@@ -2340,8 +2401,9 @@ impl Shader {
             let layout = UniformLayout::from_naga_type(module, &module.types[var.ty])?;
 
             uniforms.insert(
-                name,
+                name.clone(),
                 Uniform {
+                    name,
                     group: binding.group,
                     binding: binding.binding,
                     layout,
@@ -2353,10 +2415,12 @@ impl Shader {
     }
 }
 
-fn hash(source: &str) -> String {
+fn hash(source: &str) -> ShaderHash {
     let mut hasher = Sha256::new();
     hasher.update(source.as_bytes());
-    format!("{:x}", hasher.finalize())
+    let slice = hasher.finalize();
+
+    slice.into()
 }
 
 fn parse_key(key: &str) -> (String, Vec<String>) {
@@ -2366,7 +2430,7 @@ fn parse_key(key: &str) -> (String, Vec<String>) {
     (uniform, fields)
 }
 
-fn get_field_offset(ty: &UniformType, path: &[String]) -> Result<(u32, u32), ShaderError> {
+fn get_field_type(ty: &UniformType, path: &[String]) -> Result<UniformType, ShaderError> {
     let mut current = ty;
     let mut offset = 0;
     for part in path {
@@ -2382,35 +2446,21 @@ fn get_field_offset(ty: &UniformType, path: &[String]) -> Result<(u32, u32), Sha
         }
     }
 
-    let size = match current {
-        UniformType::Bool => 1,
-        UniformType::Int => 4,
-        UniformType::Float => 4,
-        UniformType::Vec2 => 8,
-        UniformType::Vec3 => 12,
-        UniformType::Vec4 => 16,
-        UniformType::Mat2 => 16,
-        UniformType::Mat3 => 36,
-        UniformType::Mat4 => 64,
-        _ => return Err(ShaderError::TypeMismatch("Unsupported type".into())),
-    };
-    Ok((offset, size))
+    Ok(current.clone())
 }
 
-// @TODO
+// @TODO - can't self-insert into an Arc and return it;
+//         maybe we need to extract the shader state as metadata
+//         into another struct and inject it into the render pass
+//         or find another way to make it happen.
+//         The goal is to let the user inject either a Shader or a Frame
+//         into the Renderer.
 // impl Renderable for Shader {
-//     fn passes(&self) -> impl IntoIterator<Item = &Pass> {
-//         let render_pass = RenderPass::new();
+//     fn passes(&self) -> impl IntoIterator<Item = Pass> {
+//         let mut render_pass = RenderPass::new();
 //         render_pass.add_shader(Arc::new(self));
 
-//         let pass = Pass::Render(RenderPass::new());
-
-//         Some(&Pass::Render(RenderPass {
-//             shaders:
-//             input: todo!(),
-//             targets: todo!(),
-//             region: todo!(),
-//         }))
+//         Some(Pass::Render(render_pass))
 //     }
 // }
 
@@ -2419,6 +2469,17 @@ mod tests {
     use super::*;
 
     const SHADER: &str = r#"
+        struct VertexOutput {
+            @builtin(position) coords: vec4<f32>,
+        };
+
+        @vertex
+        fn vs_main(@builtin(vertex_index) in_vertex_index: u32) -> VertexOutput {
+            let x = f32(i32(in_vertex_index) - 1);
+            let y = f32(i32(in_vertex_index & 1u) * 2 - 1);
+            return vec4<f32>(x, y, 0.0, 1.0);
+        }
+
         struct Circle {
             position: vec2<f32>,
             radius: f32,
@@ -2431,20 +2492,21 @@ mod tests {
         @group(0) @binding(1) var<uniform> resolution: vec2<f32>;
 
         @fragment
-        fn main(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
-            let uv = pos.xy / resolution;
-            let circle_pos = position / resolution;
+        fn main(pixel: VertexOutput) -> @location(0) vec4<f32> {
+            let uv = pixel.coords.xy / resolution;
+            let circle_pos = circle.position / resolution;
             let dist = distance(uv, circle_pos);
-            let r = radius / max(resolution.x, resolution.y);
-            let circle = 1.0 - smoothstep(r - 0.001, r + 0.001, dist);
-            return color * circle;
+            let r = circle.radius / max(resolution.x, resolution.y);
+            let circle_sdf = 1.0 - smoothstep(r - 0.001, r + 0.001, dist);
+            return circle.color * circle_sdf;
         }
     "#;
 
     #[test]
     fn test_shader_should_parse_uniforms() {
         let shader = Shader::new(SHADER).unwrap();
-        let uniforms = shader.uniforms.keys().collect::<Vec<_>>();
+        let mut uniforms = shader.uniforms.keys().collect::<Vec<_>>();
+        uniforms.sort();
         assert_eq!(uniforms, vec!["circle", "resolution"]);
     }
 
@@ -2478,14 +2540,8 @@ mod tests {
         let shader = Shader::new(SHADER).unwrap();
         let serialized = serde_json::to_string(&shader).unwrap();
 
-        // it should have only the Source field
-        assert_eq!(
-            serialized,
-            r#"{"source":"struct Circle {\n    position: vec2<f32>,\n    radius: f32,\n    color: vec4<f32>,\n}\n\n@group(0) @binding(0)\nvar<uniform> circle: Circle;\n\n@group(0) @binding(1) var<uniform> resolution: vec2<f32;\n\n@fragment\nfn main(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {\n    let uv = pos.xy / resolution;\n    let circle_pos = position / resolution;\n    let dist = distance(uv, circle_pos);\n    let r = radius / max(resolution.x, resolution.y);\n    let circle = 1.0 - smoothstep(r - 0.001, r + 0.001, dist);\n    return color * circle;\n}\n"}"#
-        );
-
         let deserialized: Shader = serde_json::from_str(&serialized).unwrap();
-        assert_eq!(shader.id(), deserialized.id());
+        assert_eq!(shader.hash(), deserialized.hash());
     }
 }
 src/shader/compute.rs
@@ -2516,6 +2572,7 @@ use std::collections::HashMap;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct Uniform {
+    pub(crate) name: String,
     pub(crate) group: u32,
     pub(crate) binding: u32,
     pub(crate) layout: UniformLayout,
@@ -2527,25 +2584,59 @@ pub struct UniformLayout {
     pub ty: UniformType,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum UniformType {
-    Scalar,
+    // Scalars
+    Bool,
+    Float,
+    Int,
+    UInt,
+    // Vectors
     Vec2,
     Vec3,
     Vec4,
-    Int,
     IVec2,
     IVec3,
     IVec4,
-    UInt,
     UVec2,
     UVec3,
     UVec4,
+    // Matrices
     Mat2,
     Mat3,
     Mat4,
+    // Texture Handle
     Texture,
+    // Array (type, size, stride)
+    Array(Box<UniformType>, u32, u32),
+    // Struct (offset, type)
     Struct(HashMap<String, (u32, UniformType)>),
+}
+
+impl UniformType {
+    pub fn size(&self) -> u32 {
+        match self {
+            UniformType::Bool => 1,
+            UniformType::Int => 4,
+            UniformType::UInt => 4,
+            UniformType::Float => 4,
+            UniformType::IVec2 => 8,
+            UniformType::IVec3 => 12,
+            UniformType::IVec4 => 16,
+            UniformType::UVec2 => 8,
+            UniformType::UVec3 => 12,
+            UniformType::UVec4 => 16,
+            UniformType::Vec2 => 8,
+            UniformType::Vec3 => 12,
+            UniformType::Vec4 => 16,
+            UniformType::Mat2 => 16,
+            UniformType::Mat3 => 36,
+            UniformType::Mat4 => 64,
+            UniformType::Texture => 8,
+            UniformType::Array(ty, length, _) => ty.size() * length,
+            UniformType::Struct(fields) => fields.values().map(|(_, ty)| ty.size()).sum(),
+        }
+    }
 }
 
 impl UniformLayout {
@@ -2562,7 +2653,13 @@ impl UniformLayout {
 /// Converts from a Naga type to our internal Uniform representation
 fn convert_type(module: &Module, ty: &Type) -> Result<UniformType, ShaderError> {
     match &ty.inner {
-        TypeInner::Scalar(scalar) if scalar.kind == ScalarKind::Float => Ok(UniformType::Float),
+        TypeInner::Scalar(scalar) => Ok(match scalar.kind {
+            ScalarKind::Bool => UniformType::Bool,
+            ScalarKind::Sint => UniformType::Int,
+            ScalarKind::Uint => UniformType::UInt,
+            ScalarKind::Float => UniformType::Float,
+            _ => return Err(ShaderError::TypeMismatch("Unsupported scalar type".into())),
+        }),
         TypeInner::Vector { size, scalar, .. } if scalar.kind == ScalarKind::Float => {
             Ok(match size {
                 VectorSize::Bi => UniformType::Vec2,
@@ -2587,37 +2684,38 @@ fn convert_type(module: &Module, ty: &Type) -> Result<UniformType, ShaderError> 
                 let member_ty = convert_type(module, &module.types[member.ty])?;
                 fields.insert(name, (member.offset, member_ty));
             }
+
             Ok(UniformType::Struct(fields))
+        }
+        TypeInner::Array { base, size, stride } => {
+            let size = match size {
+                naga::ArraySize::Constant(size) => size.get(),
+                _ => {
+                    return Err(ShaderError::TypeMismatch(
+                        "Dynamic array size not supported".into(),
+                    ))
+                }
+            };
+            let base_ty = convert_type(module, &module.types[*base])?;
+
+            Ok(UniformType::Array(Box::new(base_ty), size, *stride))
         }
         _ => Err(ShaderError::TypeMismatch("Unsupported type".into())),
     }
 }
 src/shader/input.rs
-/// All the ways you can input data into a GPU.
-///
-/// In the first iteration, we will only use Uniforms.
-// enum ShaderInputTypes {
-//     VertexBuffer,
-//     IndexBuffer,
-//     StorageBuffer,
-//     Uniform,
-//     Texture,
-//     StorageTexture,
-//     Sampler,
-//     Constant,
-// }
 use super::ShaderValue;
 
 // @TODO write macro for them
 impl From<f32> for ShaderValue {
     fn from(value: f32) -> Self {
-        Self::Scalar(value)
+        Self::Float(value)
     }
 }
 
 impl From<[f32; 1]> for ShaderValue {
     fn from(value: [f32; 1]) -> Self {
-        Self::Scalar(value[0])
+        Self::Float(value[0])
     }
 }
 
@@ -2941,22 +3039,20 @@ impl Texture {
 src/frame.rs
 // Reference https://blog.mecheye.net/2023/09/how-to-write-a-renderer-for-modern-apis
 
-use std::collections::HashMap;
-
 use crate::pass::Pass;
-use crate::{Renderable, Target};
+use crate::{Renderable, Renderer, Target};
 
 /// A Frame is a collection of passes that are executed in sequence.
 pub struct Frame {
     pub(crate) passes: Vec<Pass>,
-    pub(crate) targets: HashMap<String, Target>,
+    pub(crate) targets: Vec<Target>,
 }
 
 impl Frame {
     pub fn new() -> Self {
         Self {
             passes: Vec::new(),
-            targets: HashMap::new(),
+            targets: Vec::new(),
         }
     }
 
@@ -2964,14 +3060,24 @@ impl Frame {
         self.passes.push(pass);
     }
 
-    pub fn add_target(&mut self, name: &str, target: Target) {
-        self.targets.insert(name.into(), target);
+    pub fn add_target(&mut self, target: Target) {
+        self.targets.push(target);
+    }
+
+    pub fn resize_targets(&mut self, renderer: &Renderer, size: wgpu::Extent3d) {
+        for target in self.targets.iter_mut() {
+            target.resize(renderer, size);
+        }
     }
 }
 
 impl Renderable for Frame {
     fn passes(&self) -> impl IntoIterator<Item = &Pass> {
         &self.passes
+    }
+
+    fn targets(&self) -> impl IntoIterator<Item = &Target> {
+        self.targets.iter()
     }
 }
 src/resources.rs
@@ -3033,16 +3139,48 @@ pub struct SurfaceTarget {
     pub config: wgpu::SurfaceConfiguration,
 }
 
+#[derive(Debug)]
+pub(crate) struct PresentationSurface {
+    surface_texture: Option<wgpu::SurfaceTexture>,
+    pub view: wgpu::TextureView,
+}
+
+impl PresentationSurface {
+    pub fn present(self) {
+        if let Some(surface_texture) = self.surface_texture {
+            surface_texture.present();
+        }
+    }
+}
+
 impl Target {
-    pub fn texture(texture: Texture) -> Self {
+    pub fn from_texture(texture: Texture) -> Self {
         Self::Texture(TextureTarget {
             texture: Arc::new(texture),
         })
     }
 
     // @TODO platform-specific initialization, i.e. from canvas or native window pointer
-    pub fn surface(surface: wgpu::Surface<'static>, config: wgpu::SurfaceConfiguration) -> Self {
-        Self::Surface(SurfaceTarget { surface, config })
+    pub fn from_surface(
+        surface: wgpu::Surface<'static>,
+        width: u32,
+        height: u32,
+        format: wgpu::TextureFormat,
+    ) -> Self {
+        Self::Surface(SurfaceTarget {
+            surface,
+            config: wgpu::SurfaceConfiguration {
+                width,
+                height,
+                format,
+                // --------------------------------------------
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                view_formats: vec![format.add_srgb_suffix()],
+                alpha_mode: wgpu::CompositeAlphaMode::Auto,
+                desired_maximum_frame_latency: 2,
+                present_mode: wgpu::PresentMode::AutoVsync,
+            },
+        })
     }
 
     pub fn resize(&mut self, renderer: &Renderer, size: wgpu::Extent3d) {
@@ -3053,18 +3191,26 @@ impl Target {
             }
             Self::Surface(target) => {
                 let surface = &target.surface;
-                let config = &target.config;
-                surface.configure(&renderer.device, config);
+                target.config.width = size.width;
+                target.config.height = size.height;
+                surface.configure(&renderer.device, &target.config);
             }
         }
     }
 
-    pub fn current_texture_view(&self) -> Result<wgpu::TextureView, wgpu::SurfaceError> {
+    pub(crate) fn get_current_texture(&self) -> Result<PresentationSurface, wgpu::SurfaceError> {
         match self {
-            Self::Texture(target) => Ok(target.texture.inner.create_view(&Default::default())),
+            Self::Texture(target) => Ok(PresentationSurface {
+                surface_texture: None,
+                view: target.texture.inner.create_view(&Default::default()),
+            }),
             Self::Surface(target) => {
-                let frame = target.surface.get_current_texture()?;
-                Ok(frame.texture.create_view(&Default::default()))
+                let surface_texture = target.surface.get_current_texture()?;
+                let view = surface_texture.texture.create_view(&Default::default());
+                Ok(PresentationSurface {
+                    surface_texture: Some(surface_texture),
+                    view,
+                })
             }
         }
     }

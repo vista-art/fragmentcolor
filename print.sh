@@ -1,3 +1,3 @@
 #!/usr/bin/env bash
 
-find -name "src/*.rs" -print -exec cat {} \;
+find "src" -print -exec cat {} \; >sources.txt

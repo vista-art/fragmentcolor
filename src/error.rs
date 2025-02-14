@@ -1,6 +1,14 @@
 use thiserror::Error;
 
 #[derive(Error, Debug)]
+pub enum InitializationError {
+    #[error("Failed to find a compatible GPU adapter")]
+    AdapterError,
+    #[error("Failed to create device")]
+    DeviceError(#[from] wgpu::RequestDeviceError),
+}
+
+#[derive(Error, Debug)]
 pub enum ShaderError {
     #[error("Failed to parse shader: {0}")]
     ParseError(String),
@@ -22,12 +30,4 @@ pub enum ShaderError {
     WgpuError(#[from] wgpu::Error),
     #[error("WGPU Surface Error: {0}")]
     WgpuSurfaceError(#[from] wgpu::SurfaceError),
-}
-
-#[derive(Error, Debug)]
-pub enum RendererError {
-    #[error("Failed to find a compatible GPU adapter")]
-    AdapterError,
-    #[error("Failed to create device")]
-    DeviceError(#[from] wgpu::RequestDeviceError),
 }

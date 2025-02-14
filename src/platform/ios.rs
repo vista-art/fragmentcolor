@@ -9,11 +9,11 @@ use objc::*;
 const BACKENDS: wgpu::Backends = wgpu::Backends::METAL;
 
 #[cfg_attr(mobile, derive(uniffi::Object))]
-pub struct Context {
-    wrapped: Arc<crate::Context>,
+pub struct Renderer {
+    wrapped: Arc<crate::Renderer>,
 }
 
-async fn headless() -> crate::Context {
+async fn headless() -> crate::Renderer {
     let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
         backends: BACKENDS,
         ..Default::default()
@@ -26,14 +26,14 @@ async fn headless() -> crate::Context {
 
     let (device, queue) = ffi::platform::all::request_device(&adapter).await;
 
-    crate::Context::new(device, queue)
+    crate::Renderer::new(device, queue)
 }
 
 #[cfg_attr(mobile, uniffi::export)]
-impl Context {
+impl Renderer {
     #[cfg_attr(mobile, uniffi::constructor)]
     pub async fn headless() -> Self {
-        Context {
+        Renderer {
             wrapped: headless().await.into(),
         }
     }
@@ -120,7 +120,7 @@ impl Stage {
             view_formats: vec![],
         };
 
-        let stage = crate::Stage::new(crate::Context::new(device, queue));
+        let stage = crate::Stage::new(crate::Renderer::new(device, queue));
         surface.configure(stage.device(), &surface_configuration);
 
         Self {

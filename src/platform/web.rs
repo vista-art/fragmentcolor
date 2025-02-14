@@ -21,13 +21,13 @@ use photogeometry::Rect;
 
 const BACKENDS: wgpu::Backends = wgpu::Backends::GL;
 
-#[wasm_bindgen(js_name = PGContext)]
-pub struct Context {
-    wrapped: crate::Context,
+#[wasm_bindgen(js_name = PGRenderer)]
+pub struct Renderer {
+    wrapped: crate::Renderer,
 }
 
-#[wasm_bindgen(js_class = PGContext)]
-impl Context {
+#[wasm_bindgen(js_class = PGRenderer)]
+impl Renderer {
     #[wasm_bindgen(js_name = headless)]
     pub async fn headless() -> Self {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
@@ -67,8 +67,8 @@ impl Context {
             web_sys::console::error_1(&format!("Error: {:?}", error).into());
         }));
 
-        Context {
-            wrapped: crate::Context::new(device, queue),
+        Renderer {
+            wrapped: crate::Renderer::new(device, queue),
         }
     }
 
@@ -137,7 +137,7 @@ impl Stage {
             view_formats: vec![],
         };
 
-        let stage = crate::Stage::new(crate::Context::new(device, queue));
+        let stage = crate::Stage::new(crate::Renderer::new(device, queue));
         surface.configure(stage.device(), &surface_configuration);
 
         Self {
@@ -148,7 +148,7 @@ impl Stage {
 
     #[wasm_bindgen(js_name = headless)]
     pub async fn headless() -> Self {
-        let context = Context::headless().await;
+        let context = Renderer::headless().await;
 
         Self {
             surface: None,

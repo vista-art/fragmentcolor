@@ -26,10 +26,10 @@ pub struct BufferLocation {
 impl BufferPool {
     /// Creates a new Uniform Buffer Pool
     /// that can be used as a destination buffer for:
-    /// - CommandEncoder::copy_buffer_to_buffer, 
-    /// - CommandEncoder::copy_texture_to_buffer, 
-    /// - CommandEncoder::clear_buffer or 
-    /// - Queue::write_buffer 
+    /// - CommandEncoder::copy_buffer_to_buffer,
+    /// - CommandEncoder::copy_texture_to_buffer,
+    /// - CommandEncoder::clear_buffer or
+    /// - Queue::write_buffer
     pub fn new_uniform_pool(label: &str, device: &wgpu::Device) -> Self {
         Self::new(
             label,
@@ -39,6 +39,8 @@ impl BufferPool {
             device,
         )
     }
+
+    // TODO add more buffer pool types
 
     /// Creates a new buffer pool with custom parameters
     pub fn new(
@@ -66,7 +68,9 @@ impl BufferPool {
         }
     }
 
-    /// Ensures the pool has enough capacity for the total required size
+    /// Ensures the pool has enough capacity for the total required size.
+    ///
+    /// Must be called before upload, normally at the beginning of a frame.
     pub fn ensure_capacity<T: ShaderType>(
         &mut self,
         required_size: usize,
@@ -92,7 +96,7 @@ impl BufferPool {
         needed_chunks
     }
 
-    /// Allocates space for and uploads data using encase for serialization
+    /// Allocates space for and uploads data using encase for serialization.
     pub fn upload<T>(&mut self, value: &T, queue: &wgpu::Queue) -> BufferLocation
     where
         T: ?Sized + ShaderType + WriteInto,
@@ -152,7 +156,9 @@ impl BufferPool {
         }
     }
 
-    /// Resets the pool for reuse in the next frame
+    /// Resets the pool for reuse in the next frame.
+    ///
+    /// Must be called at the end of a frame.
     pub fn reset(&mut self) {
         self.current_chunk = 0;
         self.current_offset = 0;

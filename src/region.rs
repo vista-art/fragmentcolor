@@ -3,6 +3,7 @@ use glam::Vec4;
 
 use serde::{Deserialize, Serialize};
 
+/// A region in 2D space designed to handle viewport and texture regions
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub struct Region {
     pub min_x: u32,
@@ -22,8 +23,26 @@ impl Default for Region {
     }
 }
 
-// Adapted from Ruffle's PixelRegion
+impl From<wgpu::Extent3d> for Region {
+    fn from(e: wgpu::Extent3d) -> Self {
+        Self::from_size(e.width, e.height)
+    }
+}
+
+impl From<&winit::dpi::PhysicalSize<u32>> for Region {
+    fn from(s: &winit::dpi::PhysicalSize<u32>) -> Self {
+        Self::from_size(s.width, s.height)
+    }
+}
+
 impl Region {
+    // Replace multiple from_* methods with unified constructor
+    pub fn new(origin: impl Into<(u32, u32)>, size: impl Into<(u32, u32)>) -> Self {
+        let (x, y) = origin.into();
+        let (w, h) = size.into();
+        Self::from_region(x, y, w, h)
+    }
+
     pub fn from_region_i32(x: i32, y: i32, width: i32, height: i32) -> Self {
         let a = (x, y);
         let b = (x.saturating_add(width), y.saturating_add(height));

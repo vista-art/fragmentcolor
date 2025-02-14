@@ -1,16 +1,3 @@
-/// All the ways you can input data into a GPU.
-///
-/// In the first iteration, we will only use Uniforms.
-// enum ShaderInputTypes {
-//     VertexBuffer,
-//     IndexBuffer,
-//     StorageBuffer,
-//     Uniform,
-//     Texture,
-//     StorageTexture,
-//     Sampler,
-//     Constant,
-// }
 use super::ShaderValue;
 
 // @TODO write macro for them
