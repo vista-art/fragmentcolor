@@ -63,6 +63,17 @@ impl Shader {
         Self::wgsl(source)
     }
 
+    pub fn replace(&mut self, source: &str) -> Result<(), ShaderError> {
+        let shader = Shader::new(source)?;
+        self.source = shader.source;
+        self.hash = shader.hash;
+        self.module = shader.module;
+        self.uniforms = shader.uniforms;
+        self.storage = shader.storage;
+
+        Ok(())
+    }
+
     /// Create a Shader object from a WGSL source.
     pub fn wgsl(source: &str) -> Result<Self, ShaderError> {
         let module = naga::front::wgsl::parse_str(source)?;
@@ -171,31 +182,29 @@ fn get_struct_field(ty: &UniformData, path: &[String]) -> Result<UniformData, Sh
 fn parse_uniforms(module: &Module) -> Result<HashMap<String, Uniform>, ShaderError> {
     let mut uniforms = HashMap::new();
 
-    for (_, var) in module.global_variables.iter() {
-        if var.space != AddressSpace::Uniform {
+    for (_, variable) in module.global_variables.iter() {
+        if variable.space != AddressSpace::Uniform {
             continue;
         }
 
-        let name = var
+        let uniform_name = variable
             .name
             .clone()
             .ok_or(ShaderError::ParseError("Unnamed uniform".into()))?;
 
-        let binding = var
+        let binding = variable
             .binding
             .as_ref()
             .ok_or(ShaderError::ParseError("Missing binding".into()))?;
 
-        let ty = &module.types[var.ty];
-        let size = ty.inner.size(module.to_ctx());
+        let ty = &module.types[variable.ty];
 
         uniforms.insert(
-            name.clone(),
+            uniform_name.clone(),
             Uniform {
-                name,
+                name: uniform_name,
                 group: binding.group,
                 binding: binding.binding,
-                size,
                 data: convert_type(module, ty)?,
             },
         );

@@ -20,20 +20,8 @@ impl UniformStorage {
         storage
     }
 
-    /// Rebuild the block from a HashMap of key->UniformData.
-    pub(crate) fn rebuild(&mut self, uniforms: &HashMap<String, Uniform>) {
-        self.reset();
-        self.extend(uniforms);
-    }
-
-    /// Clear the block and reset the offsets
-    fn reset(&mut self) {
-        self.uniform_bytes.clear();
-        self.offsets.clear();
-    }
-
     /// Extend the block with a HashMap of key->UniformData
-    pub fn extend(&mut self, uniforms: &HashMap<String, Uniform>) {
+    fn extend(&mut self, uniforms: &HashMap<String, Uniform>) {
         for uniform in uniforms.values() {
             self.add_uniform(uniform);
         }
