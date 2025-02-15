@@ -67,11 +67,6 @@ impl RenderPass {
         self.region = Some(region);
     }
 
-    fn collect_draw_calls(&self) -> Vec<DrawCall> {
-        // @TODO Build draw calls from shaders
-        Vec::new()
-    }
-
     pub fn execute(&self, _encoder: &mut wgpu::CommandEncoder) {
         // @TODO Execute draw calls
     }

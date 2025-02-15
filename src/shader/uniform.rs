@@ -11,8 +11,6 @@ pub(crate) struct Uniform {
     pub(crate) group: u32,
     /// The binding number in the shader source
     pub(crate) binding: u32,
-    /// The size of the uniform in bytes
-    pub(crate) size: u32,
     /// The uniform data
     pub(crate) data: UniformData,
 }

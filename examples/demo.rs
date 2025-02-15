@@ -31,7 +31,7 @@ impl State {
 
         ////////////// public API // @TODO transform the boilerplate into a initializer
 
-        let shader_source = include_str!("circle.wgsl");
+        let shader_source = include_str!("hello_triangle.wgsl");
         let shader = Arc::new(Shader::new(shader_source).unwrap());
         let mut frame = Frame::new();
         let mut pass = RenderPass::new("Single Pass");
