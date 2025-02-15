@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::{Color, Compute, Region, Shader, Target, Texture};
+use crate::{Color, Compute, PresentationSurface, Region, Shader, Target, Texture};
 
 #[derive(Debug)]
 /// A Pass can be a Render Pass or a Compute Pass.
@@ -26,6 +26,7 @@ pub struct RenderPassConfig {
 
 #[derive(Debug)]
 pub struct RenderPass {
+    pub name: String,
     pub(crate) shaders: Vec<Arc<Shader>>,
     pub(crate) input: PassInput,
     pub(crate) targets: Vec<Arc<Target>>,
@@ -40,8 +41,9 @@ pub struct DrawCall {
 }
 
 impl RenderPass {
-    pub fn new() -> Self {
+    pub fn new(name: &str) -> Self {
         Self {
+            name: name.to_string(),
             shaders: Vec::new(),
             targets: Vec::new(),
             region: None,

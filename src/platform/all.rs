@@ -24,3 +24,17 @@ pub(crate) async fn request_device(adapter: &wgpu::Adapter) -> (wgpu::Device, wg
         .await
         .expect("Failed to create device")
 }
+
+pub trait SurfaceCreator {
+    fn create_surface(&self, instance: &wgpu::Instance) -> Result<wgpu::Surface>;
+}
+
+// @TODO: Implement this for all platforms
+/*
+// Example:
+impl SurfaceCreator for WebCanvas {
+    fn create_surface(&self, instance: &wgpu::Instance) -> Result<wgpu::Surface> {
+        instance.create_surface(wgpu::SurfaceTarget::Canvas(...))
+    }
+}
+*/

@@ -1,4 +1,3 @@
-use encase::{internal::WriteInto, ShaderType};
 use std::num::NonZeroU64;
 
 /// Default chunk size for buffer allocation (64KB)
@@ -33,10 +32,9 @@ impl BufferPool {
     pub fn new_uniform_pool(label: &str, device: &wgpu::Device) -> Self {
         Self::new(
             label,
-            wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            device.limits().min_uniform_buffer_offset_alignment as u64,
-            DEFAULT_CHUNK_SIZE,
             device,
+            wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            DEFAULT_CHUNK_SIZE,
         )
     }
 
@@ -45,10 +43,9 @@ impl BufferPool {
     /// Creates a new buffer pool with custom parameters
     pub fn new(
         label: &str,
-        usage: wgpu::BufferUsages,
-        alignment: u64,
-        chunk_size: u64,
         device: &wgpu::Device,
+        usage: wgpu::BufferUsages,
+        chunk_size: u64,
     ) -> Self {
         let initial_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some(label),
@@ -64,26 +61,23 @@ impl BufferPool {
             chunk_size,
             current_chunk: 0,
             current_offset: 0,
-            alignment,
+            alignment: device.limits().min_uniform_buffer_offset_alignment as u64,
         }
     }
 
     /// Ensures the pool has enough capacity for the total required size.
     ///
     /// Must be called before upload, normally at the beginning of a frame.
-    pub fn ensure_capacity<T: ShaderType>(
-        &mut self,
-        required_size: usize,
-        device: &wgpu::Device,
-    ) -> usize {
-        if required_size == 0 {
-            return 0;
+    pub fn ensure_capacity(&mut self, required_bytes: u64, device: &wgpu::Device) {
+        let available = (self.chunk_size - self.current_offset)
+            + (self.buffers.len() as u64 - self.current_chunk as u64) * self.chunk_size;
+
+        if available >= required_bytes {
+            return;
         }
 
-        let total_size = self.calculate_storage_size::<T>(required_size);
-        let needed_chunks = 1 + ((total_size - 1) / self.chunk_size as usize);
-
-        while self.buffers.len() < needed_chunks {
+        let needed_chunks = ((required_bytes - available) + self.chunk_size - 1) / self.chunk_size;
+        for _ in 0..needed_chunks {
             self.buffers
                 .push(device.create_buffer(&wgpu::BufferDescriptor {
                     label: Some(&self.label),
@@ -92,40 +86,30 @@ impl BufferPool {
                     mapped_at_creation: false,
                 }));
         }
-
-        needed_chunks
     }
 
-    /// Allocates space for and uploads data using encase for serialization.
-    pub fn upload<T>(&mut self, value: &T, queue: &wgpu::Queue) -> BufferLocation
-    where
-        T: ?Sized + ShaderType + WriteInto,
-    {
-        let mut buffer = encase::UniformBuffer::new(Vec::new());
-        buffer.write(value).unwrap();
-        let data = buffer.into_inner();
+    /// Upload raw bytes to the pool, returns buffer location
+    pub fn upload(&mut self, data: &[u8], queue: &wgpu::Queue) -> BufferLocation {
         let size = data.len() as u64;
-
-        let aligned_size = if self.alignment > 0 {
-            (size + self.alignment - 1) & !(self.alignment - 1)
-        } else {
-            size
-        };
+        let aligned_size = wgpu::util::align_to(size, self.alignment);
 
         assert!(
             aligned_size <= self.chunk_size,
-            "Object too large for chunk size"
+            "Data chunk too large for buffer pool"
         );
 
+        // Advance to next chunk if needed
         if self.current_offset + aligned_size > self.chunk_size {
             self.current_chunk += 1;
             self.current_offset = 0;
-
             assert!(
                 self.current_chunk < self.buffers.len(),
-                "Buffer pool ran out of chunks - call ensure_capacity first"
+                "Buffer pool overflow - call ensure_capacity first"
             );
         }
+
+        // Write to current chunk
+        queue.write_buffer(&self.buffers[self.current_chunk], self.current_offset, data);
 
         let location = BufferLocation {
             chunk_index: self.current_chunk,
@@ -133,19 +117,12 @@ impl BufferPool {
             size,
         };
 
-        queue.write_buffer(
-            &self.buffers[self.current_chunk],
-            self.current_offset,
-            &data,
-        );
-
         self.current_offset += aligned_size;
-
         location
     }
 
     /// Gets a buffer binding suitable for use in a bind group
-    pub fn get_binding<T: ShaderType>(&self, location: BufferLocation) -> wgpu::BufferBinding {
+    pub fn get_binding(&self, location: BufferLocation) -> wgpu::BufferBinding {
         wgpu::BufferBinding {
             buffer: &self.buffers[location.chunk_index],
             offset: location.offset,
@@ -158,22 +135,9 @@ impl BufferPool {
 
     /// Resets the pool for reuse in the next frame.
     ///
-    /// Must be called at the end of a frame.
+    /// Must be called at the start or the end of every frame.
     pub fn reset(&mut self) {
         self.current_chunk = 0;
         self.current_offset = 0;
-    }
-}
-
-impl BufferPool {
-    /// Calculates required storage for a given type
-    fn calculate_storage_size<T: ShaderType>(&self, count: usize) -> usize {
-        let size = T::min_size();
-        let aligned_size = if self.alignment > 0 {
-            ((size.get() + self.alignment - 1) & !(self.alignment - 1)) as usize
-        } else {
-            size.get() as usize
-        };
-        aligned_size * count
     }
 }
