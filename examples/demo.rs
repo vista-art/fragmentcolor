@@ -34,7 +34,7 @@ impl State {
         let shader_source = include_str!("circle.wgsl");
         let shader = Arc::new(Shader::new(shader_source).unwrap());
         let mut frame = Frame::new();
-        let mut pass = RenderPass::new();
+        let mut pass = RenderPass::new("Single Pass");
         let target = Target::from_surface(surface, size.width, size.height, surface_format);
         pass.add_shader(shader);
         frame.add_pass(Pass::Render(pass));

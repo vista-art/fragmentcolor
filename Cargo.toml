@@ -35,9 +35,12 @@ edition = "2021"
 name = "fragmentcolor"
 crate-type = ["cdylib", "rlib"]
 
+[features]
+glsl = []
+shadertoy = ["glsl"]
+
 [dependencies]
 # Rendering
-
 wgpu = { version = "24", features = ["glsl", "wgsl", "webgl", "naga-ir"] }
 uuid = { version = "1.13", features = ["v4", "serde", "fast-rng"] }
 thiserror = { version = "2" }

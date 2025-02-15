@@ -17,6 +17,8 @@ uniffi::setup_scaffolding!();
 pub mod renderer;
 
 /// # Shader Module
+///
+///
 pub mod shader;
 
 pub mod error;

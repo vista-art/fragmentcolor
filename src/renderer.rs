@@ -1,3 +1,5 @@
+use crate::buffer_pool::BufferPool;
+use crate::target;
 use crate::{
     shader::Uniform, ComputePass, Pass, RenderPass, Shader, ShaderError, ShaderHash, Target,
 };
@@ -13,22 +15,29 @@ pub trait Renderable {
     fn targets(&self) -> impl IntoIterator<Item = &Target>;
 }
 
-/// Draws things on the screen or on a texture.
+struct RenderPipeline {
+    pipeline: wgpu::RenderPipeline,
+    bind_group_layouts: Vec<wgpu::BindGroupLayout>,
+}
+
+/// Draws things on the screen or a texture.
 ///
-/// Owns and manages all GPU resources.
+/// It owns and manages all GPU resources, serving as the
+/// main graphics context provider for the application.
 pub struct Renderer {
     pub(crate) device: wgpu::Device,
     pub(crate) queue: wgpu::Queue,
 
-    render_pipelines: RefCell<HashMap<ShaderHash, wgpu::RenderPipeline>>,
+    render_pipelines: RefCell<HashMap<ShaderHash, RenderPipeline>>,
     compute_pipelines: RefCell<HashMap<String, wgpu::ComputePipeline>>,
 
     shaders: RefCell<HashMap<String, wgpu::ShaderModule>>,
-    bind_group_layouts: RefCell<HashMap<(Vec<u8>, u32), wgpu::BindGroupLayout>>,
     bind_groups: RefCell<HashMap<String, wgpu::BindGroup>>,
 
     textures: RefCell<HashMap<String, wgpu::Texture>>,
     samplers: RefCell<HashMap<String, wgpu::Sampler>>,
+
+    buffer_pool: RefCell<BufferPool>,
 }
 
 impl Renderer {
@@ -44,6 +53,8 @@ impl Renderer {
 impl Renderer {
     /// Creates a new Renderer instance.
     pub fn new(device: wgpu::Device, queue: wgpu::Queue) -> Renderer {
+        let buffer_pool = BufferPool::new_uniform_pool("Uniform Buffer Pool", &device);
+
         Renderer {
             device,
             queue,
@@ -52,11 +63,12 @@ impl Renderer {
             compute_pipelines: RefCell::new(HashMap::new()),
 
             shaders: RefCell::new(HashMap::new()),
-            bind_group_layouts: RefCell::new(HashMap::new()),
             bind_groups: RefCell::new(HashMap::new()),
 
             textures: RefCell::new(HashMap::new()),
             samplers: RefCell::new(HashMap::new()),
+
+            buffer_pool: RefCell::new(buffer_pool),
         }
     }
 
@@ -95,17 +107,18 @@ impl Renderer {
         encoder: &mut wgpu::CommandEncoder,
         pass: &RenderPass,
     ) -> Result<(), ShaderError> {
+        self.buffer_pool.borrow_mut().reset();
+
         let mut target_textures = Vec::new();
         let color_attachments = {
             let mut attachments = Vec::new();
-
             for target in pass.targets.iter() {
                 target_textures.push(target.get_current_texture()?);
             }
 
-            for (index, _) in pass.targets.iter().enumerate() {
+            for texture in target_textures.iter() {
                 attachments.push(Some(wgpu::RenderPassColorAttachment {
-                    view: &target_textures[index].view,
+                    view: &texture.view,
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
@@ -113,48 +126,39 @@ impl Renderer {
                     },
                 }));
             }
+
             attachments
         };
 
-        let render_pass_desc = wgpu::RenderPassDescriptor {
-            label: Some("render_pass"),
+        let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some(&format!("Render Pass: {}", pass.name.clone())),
             color_attachments: &color_attachments,
             depth_stencil_attachment: None,
             timestamp_writes: None,
             occlusion_query_set: None,
-        };
-
-        let mut render_pass = encoder.begin_render_pass(&render_pass_desc);
+        });
 
         for shader in &pass.shaders {
             self.ensure_render_pipeline(shader)?;
             let pipelines = self.render_pipelines.borrow();
-            let pipeline = pipelines.get(&shader.hash()).unwrap();
+            let cached = pipelines.get(&shader.hash).unwrap();
+
+            let storage_size = shader.storage.uniform_bytes.len() * std::mem::size_of::<u8>();
+            self.buffer_pool
+                .borrow_mut()
+                .ensure_capacity(storage_size as u64, &self.device);
 
             let mut bind_groups = Vec::new();
             for (name, uniform) in &shader.uniforms {
-                let key = (shader.hash().to_vec(), uniform.group);
-                let bgls = self.bind_group_layouts.borrow();
-                let layout = bgls.get(&key).unwrap();
+                let layout = &cached.bind_group_layouts[uniform.group as usize];
 
                 let mut entries = Vec::new();
 
-                let bytes = shader.get(&name)?;
+                let bytes = shader.get_bytes(&name)?;
 
-                let buffer = self
-                    .device
-                    .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                        label: Some(&format!("Buffer for {}", name)),
-                        contents: bytes,
-                        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-                    });
-
-                let buffer_binding = wgpu::BufferBinding {
-                    buffer: &buffer,
-                    offset: 0,
-                    size: None,
-                };
-
+                let buffer_location = self.buffer_pool.borrow_mut().upload(&bytes, &self.queue);
+                let buffer_pool = self.buffer_pool.borrow();
+                let buffer_binding = buffer_pool.get_binding(buffer_location);
                 entries.push(wgpu::BindGroupEntry {
                     binding: uniform.binding,
                     resource: wgpu::BindingResource::Buffer(buffer_binding),
@@ -168,7 +172,7 @@ impl Renderer {
                 bind_groups.push(bind_group);
             }
 
-            render_pass.set_pipeline(pipeline);
+            render_pass.set_pipeline(&cached.pipeline);
             for (i, bind_group) in bind_groups.iter().enumerate() {
                 render_pass.set_bind_group(i as u32, bind_group, &[]);
             }
@@ -187,22 +191,21 @@ impl Renderer {
 
     fn ensure_render_pipeline(&self, shader: &Shader) -> Result<(), ShaderError> {
         let mut pipelines = self.render_pipelines.borrow_mut();
-        if pipelines.contains_key(&shader.hash()) {
-            return Ok(());
+
+        if !pipelines.contains_key(&shader.hash) {
+            let module = Cow::Owned(shader.module.clone());
+            let layouts = create_bind_group_layouts(&self.device, &shader.uniforms);
+            let pipeline = create_render_pipeline(&self.device, &layouts, module);
+
+            pipelines.insert(
+                shader.hash,
+                RenderPipeline {
+                    pipeline,
+                    bind_group_layouts: layouts.values().cloned().collect(),
+                },
+            );
         }
 
-        let bgl = create_bind_group_layouts(&self.device, &shader.uniforms);
-        for (group, layout) in bgl.iter() {
-            let key = (shader.hash().to_vec(), *group);
-            self.bind_group_layouts
-                .borrow_mut()
-                .insert(key, layout.clone());
-        }
-
-        let module = Cow::Owned(shader.module.clone());
-        let pipeline = create_render_pipeline(&self.device, &bgl, module);
-
-        pipelines.insert(shader.hash.clone(), pipeline);
         Ok(())
     }
 

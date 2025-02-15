@@ -1,117 +1,27 @@
 use crate::error::ShaderError;
 use naga::{AddressSpace, Module};
-use serde::de::{self, MapAccess, Visitor};
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::Serialize;
 use sha2::{Digest, Sha256};
-use std::collections::{BTreeMap, HashMap};
-use std::fmt;
+use std::collections::HashMap;
+
+pub mod constants;
+pub use constants::*;
 
 pub mod compute;
 pub use compute::*;
 
-pub mod uniform;
-pub use uniform::*;
+pub(crate) mod uniform;
+pub(crate) use uniform::*;
 
-mod input;
+mod storage;
+use storage::*;
 
+mod deserialize;
+
+/// The hash of a shader source.
 pub type ShaderHash = [u8; 32];
 
-// @TODO Do we REALLY need ShaderValue AND UniformType? I feel they could be the same struct. This is unecessarily complex
-#[derive(Debug, Clone, PartialEq)]
-pub enum ShaderValue {
-    Float(f32),
-    Vec2([f32; 2]),
-    Vec3([f32; 3]),
-    Vec4([f32; 4]),
-    Int(i32),
-    IVec2([i32; 2]),
-    IVec3([i32; 3]),
-    IVec4([i32; 4]),
-    UInt(u32),
-    UVec2([u32; 2]),
-    UVec3([u32; 3]),
-    UVec4([u32; 4]),
-    Mat2([[f32; 2]; 2]),
-    Mat3([[f32; 3]; 3]),
-    Mat4([[f32; 4]; 4]),
-    Texture(u64),
-}
-
-impl ShaderValue {
-    fn data_type(&self) -> UniformType {
-        match self {
-            Self::Float(_) => UniformType::Float,
-            Self::Vec2(_) => UniformType::Vec2,
-            Self::Vec3(_) => UniformType::Vec3,
-            Self::Vec4(_) => UniformType::Vec4,
-            Self::Int(_) => UniformType::Int,
-            Self::IVec2(_) => UniformType::IVec2,
-            Self::IVec3(_) => UniformType::IVec3,
-            Self::IVec4(_) => UniformType::IVec4,
-            Self::UInt(_) => UniformType::UInt,
-            Self::UVec2(_) => UniformType::UVec2,
-            Self::UVec3(_) => UniformType::UVec3,
-            Self::UVec4(_) => UniformType::UVec4,
-            Self::Mat2(_) => UniformType::Mat2,
-            Self::Mat3(_) => UniformType::Mat3,
-            Self::Mat4(_) => UniformType::Mat4,
-            Self::Texture(_) => UniformType::Texture,
-        }
-    }
-
-    fn to_bytes(&self) -> &[u8] {
-        match self {
-            Self::Float(v) => bytemuck::bytes_of(v),
-            Self::Int(v) => bytemuck::bytes_of(v),
-            Self::UInt(v) => bytemuck::bytes_of(v),
-            Self::Vec2(v) => bytemuck::cast_slice(v),
-            Self::Vec3(v) => bytemuck::cast_slice(v),
-            Self::Vec4(v) => bytemuck::cast_slice(v),
-            Self::IVec2(v) => bytemuck::cast_slice(v),
-            Self::IVec3(v) => bytemuck::cast_slice(v),
-            Self::IVec4(v) => bytemuck::cast_slice(v),
-            Self::UVec2(v) => bytemuck::cast_slice(v),
-            Self::UVec3(v) => bytemuck::cast_slice(v),
-            Self::UVec4(v) => bytemuck::cast_slice(v),
-            Self::Mat2(v) => bytemuck::cast_slice(v.as_slice()),
-            Self::Mat3(v) => bytemuck::cast_slice(v.as_slice()),
-            Self::Mat4(v) => bytemuck::cast_slice(v.as_slice()),
-            Self::Texture(h) => bytemuck::bytes_of(h),
-        }
-    }
-}
-
-const DEFAULT_VERTEX_SHADER: &str = r#"
-    #version 450
-
-    layout(location = 0) in vec2 position;
-
-    void main() {
-        gl_Position = vec4(position, 0.0, 1.0);
-    }
-"#;
-
-const SHADERTOY_WRAPPER: &str = r#"
-    uniform vec3      iResolution;           // viewport resolution (in pixels)
-    uniform float     iTime;                 // shader playback time (in seconds)
-    uniform float     iTimeDelta;            // render time (in seconds)
-    uniform float     iFrameRate;            // shader frame rate
-    uniform int       iFrame;                // shader playback frame
-    uniform float     iChannelTime[4];       // channel playback time (in seconds)
-    uniform vec3      iChannelResolution[4]; // channel resolution (in pixels)
-    uniform vec4      iMouse;                // mouse pixel coords. xy: current (if MLB down)
-
-    void main() {
-        vec4 fragColor;
-        mainImage(fragColor, gl_FragCoord.xy);
-        gl_FragColor = fragColor;
-    }
-
-    {{shader}}
-"#;
-
-/// The Shader object in FragmentColor is the blueprint of a shader program
-/// and the public interface represents a Render Pipeline.
+/// The Shader in FragmentColor is the blueprint of a Render Pipeline.
 ///
 /// It automatically parses a WGSL shader and extracts its uniforms, buffers, and textures.
 ///
@@ -120,93 +30,44 @@ const SHADERTOY_WRAPPER: &str = r#"
 pub struct Shader {
     source: String,
 
-    // Those can be reconstructed from the source
+    // Can be reconstructed from the source
     #[serde(skip_serializing)]
     pub(crate) hash: ShaderHash,
     #[serde(skip_serializing)]
     pub(crate) module: Module,
     #[serde(skip_serializing)]
     pub(crate) uniforms: HashMap<String, Uniform>,
-
-    // @TODO update the test; the values should be included in the serialization
     #[serde(skip_serializing)]
-    pub(crate) values: BTreeMap<String, ShaderValue>,
+    pub(crate) storage: UniformStorage,
 }
 
-impl<'de> Deserialize<'de> for Shader {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        #[derive(Deserialize)]
-        #[serde(field_identifier, rename_all = "lowercase")]
-        enum Field {
-            Source, // we only need the source to rebuild the Struct
-        }
-
-        struct ShaderVisitor;
-
-        impl<'de> Visitor<'de> for ShaderVisitor {
-            type Value = Shader;
-
-            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("struct Shader")
-            }
-
-            fn visit_map<V>(self, mut map: V) -> Result<Self::Value, V::Error>
-            where
-                V: MapAccess<'de>,
-            {
-                let mut source: Option<String> = None;
-                while let Some(key) = map.next_key()? {
-                    match key {
-                        Field::Source => {
-                            if source.is_some() {
-                                return Err(de::Error::duplicate_field("source"));
-                            }
-                            source = Some(map.next_value()?);
-                        }
-                    }
-                }
-                let source = source.ok_or_else(|| de::Error::missing_field("source"))?;
-                Shader::new(&source).map_err(de::Error::custom)
-            }
-        }
-
-        const FIELDS: &[&str] = &["source"];
-        deserializer.deserialize_struct("Shader", FIELDS, ShaderVisitor)
-    }
-}
-
-// --- Shader Implementation ---
 impl Shader {
-    pub fn hash(&self) -> ShaderHash {
-        self.hash
-    }
-
-    /// Create a Shader object from a source string.
+    /// Create a Shader object from a WGSL source string.
     ///
-    /// The source string can be in WGSL, GLSL, or Shadertoy-flavored GLSL.
-    /// The function will automatically detect the shader type and parse it accordingly.
+    /// GLSL is also supported if you enable the `glsl` feature.
+    /// Shadertoy-flavored GLSL is supported if the `shadertoy` feature is enabled.
+    ///
+    /// If the optional features are enabled,
+    /// the constructor try to automatically detect the shader type and parse it accordingly.
     pub fn new(source: &str) -> Result<Self, ShaderError> {
-        // if source.contains("void mainImage") {
-        //     Shader::toy(source)
-        // } else if source.contains("void main") {
-        //     Self::glsl(DEFAULT_VERTEX_SHADER, source)
-        // } else {
+        #[cfg(feature = "shadertoy")]
+        if source.contains("void mainImage") {
+            return Shader::toy(source);
+        }
+
+        #[cfg(feature = "glsl")]
+        if source.contains("void main") {
+            return Self::glsl(DEFAULT_VERTEX_SHADER, source);
+        }
+
         Self::wgsl(source)
-        //}
     }
 
     /// Create a Shader object from a WGSL source.
     pub fn wgsl(source: &str) -> Result<Self, ShaderError> {
         let module = naga::front::wgsl::parse_str(source)?;
-
-        let uniforms = if let Ok(uniforms) = Self::parse_uniforms(&module) {
-            uniforms
-        } else {
-            HashMap::new()
-        };
+        let uniforms = parse_uniforms(&module)?;
+        let storage = UniformStorage::new(&uniforms);
 
         let hash = hash(source);
 
@@ -215,18 +76,136 @@ impl Shader {
             hash,
             module,
             uniforms,
-            values: BTreeMap::new(),
+            storage,
         })
     }
 
-    /// Create a Shader object from a Shadertoy-flavored GLSL source.
-    pub fn toy(source: &str) -> Result<Self, ShaderError> {
-        Self::glsl(
-            DEFAULT_VERTEX_SHADER,
-            &SHADERTOY_WRAPPER.replace("{{shader}}", source),
-        )
+    pub fn set(&mut self, key: &str, value: impl Into<UniformData>) -> Result<(), ShaderError> {
+        let (uniform_name, field_path) = parse_key(key);
+        let uniform = self.get_uniform(&uniform_name)?;
+        let value = value.into();
+
+        let struct_field = get_struct_field(&uniform.data, &field_path)?;
+
+        if std::mem::discriminant(&value) != std::mem::discriminant(&struct_field) {
+            return Err(ShaderError::TypeMismatch(key.into()));
+        }
+
+        self.storage.update(key, &value);
+
+        Ok(())
     }
 
+    pub(crate) fn get_uniform(&self, uniform_name: &str) -> Result<&Uniform, ShaderError> {
+        let uniform = self
+            .uniforms
+            .get(uniform_name)
+            .ok_or(ShaderError::UniformNotFound(uniform_name.to_string()))?;
+
+        Ok(uniform)
+    }
+
+    pub(crate) fn get_bytes(&self, key: &str) -> Result<&[u8], ShaderError> {
+        let (uniform_name, field_path) = parse_key(key);
+        let uniform = self.get_uniform(&uniform_name)?;
+        let struct_field = get_struct_field(&uniform.data, &field_path)?;
+
+        if std::mem::discriminant(&uniform.data) != std::mem::discriminant(&struct_field) {
+            return Err(ShaderError::TypeMismatch(key.into()));
+        }
+
+        self.storage
+            .get_bytes(key)
+            .ok_or(ShaderError::UniformNotFound(key.into()))
+    }
+
+    pub unsafe fn get_as<T>(&self, key: &str) -> Result<T, ShaderError>
+    where
+        T: Copy,
+    {
+        let bytes = self.get_bytes(key)?;
+        if bytes.len() != std::mem::size_of::<T>() {
+            return Err(ShaderError::TypeMismatch(key.into()));
+        }
+
+        let value = unsafe { *(bytes.as_ptr() as *const T) };
+
+        Ok(value)
+    }
+}
+
+fn hash(source: &str) -> ShaderHash {
+    let mut hasher = Sha256::new();
+    hasher.update(source.as_bytes());
+    let slice = hasher.finalize();
+
+    slice.into()
+}
+
+fn parse_key(key: &str) -> (String, Vec<String>) {
+    let mut parts = key.split('.');
+    let uniform = parts.next().unwrap().to_string();
+    let fields = parts.map(|s| s.to_string()).collect();
+    (uniform, fields)
+}
+
+fn get_struct_field(ty: &UniformData, path: &[String]) -> Result<UniformData, ShaderError> {
+    let mut current = ty;
+    let mut offset = 0;
+    for part in path {
+        match current {
+            UniformData::Struct(fields) => {
+                let (field_offset, struct_field) = fields
+                    .get(part)
+                    .ok_or(ShaderError::FieldNotFound(part.clone()))?;
+                offset += field_offset;
+                current = struct_field;
+            }
+            _ => return Err(ShaderError::FieldNotFound(part.clone())),
+        }
+    }
+
+    Ok(current.clone())
+}
+
+fn parse_uniforms(module: &Module) -> Result<HashMap<String, Uniform>, ShaderError> {
+    let mut uniforms = HashMap::new();
+
+    for (_, var) in module.global_variables.iter() {
+        if var.space != AddressSpace::Uniform {
+            continue;
+        }
+
+        let name = var
+            .name
+            .clone()
+            .ok_or(ShaderError::ParseError("Unnamed uniform".into()))?;
+
+        let binding = var
+            .binding
+            .as_ref()
+            .ok_or(ShaderError::ParseError("Missing binding".into()))?;
+
+        let ty = &module.types[var.ty];
+        let size = ty.inner.size(module.to_ctx());
+
+        uniforms.insert(
+            name.clone(),
+            Uniform {
+                name,
+                group: binding.group,
+                binding: binding.binding,
+                size,
+                data: convert_type(module, ty)?,
+            },
+        );
+    }
+
+    Ok(uniforms)
+}
+
+#[cfg(feature = "glsl")]
+impl Shader {
     /// Create a Shader object from a GLSL source pair (vertex and fragment shaders).
     pub fn glsl(vertex_source: &str, fragment_source: &str) -> Result<Self, ShaderError> {
         use naga::back::wgsl;
@@ -277,140 +256,14 @@ impl Shader {
         Self::wgsl(&format!("{}\n{}", wgsl_vertex_source, wgsl_fragment_source))
     }
 
-    pub fn replace(&mut self, source: &str) -> Result<(), ShaderError> {
-        let module = naga::front::wgsl::parse_str(source)?;
-        let uniforms = Self::parse_uniforms(&module)?;
-        let hash = hash(source);
-
-        self.source = source.to_string();
-        self.hash = hash;
-        self.uniforms = uniforms;
-        self.values.clear();
-
-        Ok(())
+    #[cfg(feature = "shadertoy")]
+    /// Create a Shader object from a Shadertoy-flavored GLSL source.
+    pub fn toy(source: &str) -> Result<Self, ShaderError> {
+        Self::glsl(
+            DEFAULT_VERTEX_SHADER,
+            &SHADERTOY_WRAPPER.replace("{{shader}}", source),
+        )
     }
-
-    pub fn set(&mut self, key: &str, value: impl Into<ShaderValue>) -> Result<(), ShaderError> {
-        let value = value.into();
-
-        let (uniform_name, field_path) = parse_key(key);
-        let meta = self
-            .uniforms
-            .get(&uniform_name)
-            .ok_or(ShaderError::UniformNotFound(uniform_name.clone()))?;
-
-        let ty = get_field_type(&meta.layout.ty, &field_path)?;
-
-        if value.data_type() != ty {
-            return Err(ShaderError::TypeMismatch(key.into()));
-        }
-
-        self.values.insert(key.into(), value);
-
-        Ok(())
-    }
-
-    pub fn get(&self, key: &str) -> Result<&[u8], ShaderError> {
-        let (uniform_name, field_path) = parse_key(key);
-        let meta = self
-            .uniforms
-            .get(&uniform_name)
-            .ok_or(ShaderError::UniformNotFound(uniform_name.clone()))?;
-
-        let ty = get_field_type(&meta.layout.ty, &field_path)?;
-        let value = self
-            .values
-            .get(&uniform_name)
-            .ok_or(ShaderError::UniformNotFound(uniform_name.clone()))?;
-
-        if value.data_type() != ty {
-            return Err(ShaderError::TypeMismatch(key.into()));
-        }
-
-        Ok(value.to_bytes())
-    }
-
-    pub unsafe fn get_as<T>(&self, key: &str) -> Result<T, ShaderError>
-    where
-        T: Copy,
-    {
-        let bytes = self.get(key)?;
-        if bytes.len() != std::mem::size_of::<T>() {
-            return Err(ShaderError::TypeMismatch(key.into()));
-        }
-
-        let value = unsafe { *(bytes.as_ptr() as *const T) };
-
-        Ok(value)
-    }
-
-    fn parse_uniforms(module: &Module) -> Result<HashMap<String, Uniform>, ShaderError> {
-        let mut uniforms = HashMap::new();
-
-        for (_, var) in module.global_variables.iter() {
-            if var.space != AddressSpace::Uniform {
-                continue;
-            }
-
-            let name = var
-                .name
-                .clone()
-                .ok_or(ShaderError::ParseError("Unnamed uniform".into()))?;
-
-            let binding = var
-                .binding
-                .as_ref()
-                .ok_or(ShaderError::ParseError("Missing binding".into()))?;
-
-            let layout = UniformLayout::from_naga_type(module, &module.types[var.ty])?;
-
-            uniforms.insert(
-                name.clone(),
-                Uniform {
-                    name,
-                    group: binding.group,
-                    binding: binding.binding,
-                    layout,
-                },
-            );
-        }
-
-        Ok(uniforms)
-    }
-}
-
-fn hash(source: &str) -> ShaderHash {
-    let mut hasher = Sha256::new();
-    hasher.update(source.as_bytes());
-    let slice = hasher.finalize();
-
-    slice.into()
-}
-
-fn parse_key(key: &str) -> (String, Vec<String>) {
-    let mut parts = key.split('.');
-    let uniform = parts.next().unwrap().to_string();
-    let fields = parts.map(|s| s.to_string()).collect();
-    (uniform, fields)
-}
-
-fn get_field_type(ty: &UniformType, path: &[String]) -> Result<UniformType, ShaderError> {
-    let mut current = ty;
-    let mut offset = 0;
-    for part in path {
-        match current {
-            UniformType::Struct(fields) => {
-                let (field_offset, field_type) = fields
-                    .get(part)
-                    .ok_or(ShaderError::FieldNotFound(part.clone()))?;
-                offset += field_offset;
-                current = field_type;
-            }
-            _ => return Err(ShaderError::FieldNotFound(part.clone())),
-        }
-    }
-
-    Ok(current.clone())
 }
 
 // @TODO - can't self-insert into an Arc and return it;
@@ -505,6 +358,6 @@ mod tests {
         let serialized = serde_json::to_string(&shader).unwrap();
 
         let deserialized: Shader = serde_json::from_str(&serialized).unwrap();
-        assert_eq!(shader.hash(), deserialized.hash());
+        assert_eq!(shader.hash, deserialized.hash);
     }
 }
