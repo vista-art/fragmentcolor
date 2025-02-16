@@ -20,7 +20,7 @@ enum PassInput {
 #[derive(Debug)]
 pub struct RenderPassConfig {
     pub shaders: Vec<Arc<Shader>>,
-    pub targets: Vec<Target>,
+    pub targets: Vec<Arc<Target>>,
     pub region: Option<Region>,
 }
 

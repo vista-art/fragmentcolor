@@ -1,8 +1,12 @@
 use crate::error::ShaderError;
+use crate::{Pass, Renderable};
 use naga::{AddressSpace, Module};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
+
+pub mod pipeline;
+pub use pipeline::*;
 
 pub mod constants;
 pub use constants::*;
@@ -39,6 +43,16 @@ pub struct Shader {
     pub(crate) uniforms: HashMap<String, Uniform>,
     #[serde(skip_serializing)]
     pub(crate) storage: UniformStorage,
+
+    // Allows it to be used as a Renderable
+    #[serde(skip)]
+    pub(crate) pass: Option<Pass>,
+}
+
+impl Drop for Shader {
+    fn drop(&mut self) {
+        println!("Dropping shader {:?}", self.hash);
+    }
 }
 
 impl Shader {
@@ -63,17 +77,6 @@ impl Shader {
         Self::wgsl(source)
     }
 
-    pub fn replace(&mut self, source: &str) -> Result<(), ShaderError> {
-        let shader = Shader::new(source)?;
-        self.source = shader.source;
-        self.hash = shader.hash;
-        self.module = shader.module;
-        self.uniforms = shader.uniforms;
-        self.storage = shader.storage;
-
-        Ok(())
-    }
-
     /// Create a Shader object from a WGSL source.
     pub fn wgsl(source: &str) -> Result<Self, ShaderError> {
         let module = naga::front::wgsl::parse_str(source)?;
@@ -88,6 +91,7 @@ impl Shader {
             module,
             uniforms,
             storage,
+            pass: None,
         })
     }
 
@@ -275,20 +279,15 @@ impl Shader {
     }
 }
 
-// @TODO - can't self-insert into an Arc and return it;
-//         maybe we need to extract the shader state as metadata
-//         into another struct and inject it into the render pass
-//         or find another way to make it happen.
-//         The goal is to let the user inject either a Shader or a Frame
-//         into the Renderer.
-// impl Renderable for Shader {
-//     fn passes(&self) -> impl IntoIterator<Item = Pass> {
-//         let mut render_pass = RenderPass::new();
-//         render_pass.add_shader(Arc::new(self));
+impl Renderable for Shader {
+    fn passes(&self) -> impl IntoIterator<Item = &Pass> {
+        &self.pass
+    }
 
-//         Some(Pass::Render(render_pass))
-//     }
-// }
+    fn targets(&self) -> impl IntoIterator<Item = &crate::Target> {
+        Vec::new()
+    }
+}
 
 #[cfg(test)]
 mod tests {
