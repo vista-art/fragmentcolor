@@ -1,5 +1,4 @@
 use crate::buffer_pool::BufferPool;
-use crate::target;
 use crate::{
     shader::Uniform, ComputePass, Pass, RenderPass, Shader, ShaderError, ShaderHash, Target,
 };
@@ -7,8 +6,6 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
 pub type Commands = Vec<wgpu::CommandBuffer>;
-
-use wgpu::util::DeviceExt;
 
 pub trait Renderable {
     fn passes(&self) -> impl IntoIterator<Item = &Pass>;

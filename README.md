@@ -1,117 +1,121 @@
 # FragmentColor
 
-FragmentColor is a cross-platform GPU programming library that provides
-a simple shader composition API for:
+FragmentColor is a **Cross-Platform GPU Programming Library**, based on Rust and [wgpu](https://github.com/gfx-rs/wgpu).
 
-- Javascript
-- Python
-- Swift
-- Kotlin
+It provides a simple shader composition API for **Javascript**, **Python**, **Swift**, **Kotlin**,
+so you can use **WGSL** or **GLSL** shaders as the source of truth for visual consistency across platforms.
+
+Our library removes all the boilerplate needed to make a modern rendering pipeline work. Your shader will target the platform's native graphics API: Vulkan, Metal, DirectX, OpenGL, WebGL, or WebGPU.
+
+See [Platform Support](#platform-support) for details.
+
+**TL;DR** From a given **shader source**, our library will:
+
+- parse the shader
+- compile/reload it at runtime
+- create the Uniform bindings in your platform's native graphics API
+- expose them with the dot notation.
+
+## Example
+
+Consider this simple WGSL shader source:
+
+```rust
+// @vertex ommited for brevity
+
+struct MyStruct {
+    field: vec3<f32>,
+}
+
+@group(0) @binding(0)
+var<uniform> my_struct: MyStruct;
+
+@fragment
+fn fs_main() -> @location(0) vec4<f32> {
+    return vec4<f32>(my_struct.rgb, 1.0);
+}
+```
+
+### Example usage (Python)
 
 ```python
 import fragmentcolor as fc
 
-# Creates the shader with default values
+# Parse the source and binds uniforms automatically
 shader = fc.Shader("my_shader.wgsl")
+shader.set("my_uniform.field", [1.0, 1.0, 1.0])
 
-# It parses and binds automatically
-shader.set("my-uniform", (1.0, 1.0, 1.0))
-
-# Create renderer
+# Render to image
 renderer = fc.Renderer()
-
-#
-np_array = renderer.render(shader)
+img = renderer.render_image(shader)
 ```
 
-And thanks to [wgpu](https://github.com/gfx-rs/wgpu) as the hardware abstraction
-layer, you can deploy it in a wide range of platforms:
+### Example usage (Javascript)
 
-| Backend   |  WASM   |  Linux  |  MacOS  | Windows | Android |   iOS   | CI / CD |
-| :-------- | :-----: | :-----: | :-----: | :-----: | :-----: | :-----: | :-----: |
-| Metal     |   no    |   no    | **Yes** |   no    |   no    | **Yes** |   no    |
-| Vulkan    |   no    | **Yes** | Yes[^2] | **Yes** | **Yes** | **Yes** | **Yes** |
-| OpenGL    |   no    | **Yes** | Yes[^3] | **Yes** | **Yes** | Yes[^4] |   no    |
-| WebGL     | Yes[^1] |   no    |   no    |   no    |   no    |   no    |   no    |
-| WebGPU    | **Yes** |   no    |   no    |   no    |   no    |   no    |   no    |
-| Dx11/Dx12 |   no    |   no    |   no    | **Yes** |   no    |   no    |   no    |
+```javascript
+import { Shader, Renderer, Target } from "fragmentcolor";
 
-[^1]: Vertex and Fragment shaders only. No support for Compute shaders.
+let canvas = document.getElementById("my-canvas");
+const resolution = [canvas.width, canvas.heigth];
+
+const shader = new Shader("circle.wgsl");
+shader.set("resolution", resolution);
+shader.set("circle.radius", 0.05);
+shader.set("circle.color", [1.0, 0.0, 0.0, 0.8]);
+
+const renderer = new Renderer();
+
+function animate() {
+  shader.set("circle.position", [mouseX, mouseY]);
+  renderer.render(shader, canvas);
+
+  requestAnimationFrame(animate);
+}
+animate();
+```
+
+## Platform support
+
+Thanks to [naga](https://github.com/gfx-rs/wgpu/tree/trunk/naga), you can deploy it in a wide range of platforms:
+
+|               | WASM    | Linux   | MacOS   | Windows | Android | iOS     | CI / CD     |
+| ------------- | ------- | ------- | ------- | ------- | ------- | ------- | ----------- |
+| **Metal**     | no      | no      | **Yes** | no      | no      | **Yes** | no          |
+| **Vulkan**    | no      | **Yes** | Yes[^2] | **Yes** | **Yes** | Yes[^2] | **Yes**[^4] |
+| **OpenGL**    | no      | **Yes** | Yes[^3] | **Yes** | **Yes** | Yes[^3] | no          |
+| **WebGL**     | Yes[^1] | no      | no      | no      | no      | no      | no          |
+| **WebGPU**    | **Yes** | no      | no      | no      | no      | no      | no          |
+| **Dx11/Dx12** | no      | no      | no      | **Yes** | no      | no      | no          |
+
+[^1]: WebGL supports Vertex and Fragment shaders only. No support for Compute shaders.
 [^2]: Available through [MoltenVK](https://github.com/KhronosGroup/MoltenVK), a translation layer to Metal.
-[^3]: OpenGL is deprecated in MacOS. It runs up to version 4.1 only: no support for Compute shaders.
-[^4]: OpenGL is deprecated in iOS. It runs up to version 4.1 only: no support for Compute shaders.
-
-## Motivation
-
-- Reduce cognitive load on learning computer graphics techniques
-- Mimic the underlying platform as close as possible without getting in the way; try to strike the right balance
-- Be straightforward for the simple usecase (shadertoy-like applications)
-- Do not stay in the way, allow advanced techniques and reexport some internals
-- Point the user in the right direction to build inruition faster
-- We're OK on sacrificing some performance for the sake of ergonomics and beginner-friendliness
-
-## Example
-
-> [!WARNING]  
-> This library is currently under heavy development, and the API is not yet stable, meaning
-> that while it is not tagged `1.0.0`, I might introduce breaking changes in minor versions.
-> You can use it and test it, and I would greatly appreciate any feedback you can provide.
-> If you use it in production, make sure you know what you are doing and lock the minor version.
+[^3]: OpenGL is deprecated in iOS/MacOS. It runs up to version 4.1 only: no support for Compute shaders.
+[^4]: In a CI/CD environment, Vulkan is available through hardware emulation (software rendering).
 
 ## Building this project
 
-### Target: web browser / wasm
-
-Make sure you have [wasm-pack](https://rustwasm.github.io/wasm-pack/installer) installed.
+### Running examples
 
 ```bash
-cd crates/fragmentcolor-wasm
-wasm-pack build --release --target web
+cargo run --example demo
 ```
 
-The library will be available in `pkg/`.
+### Target: Desktop or Server/CI (Rust library)
 
-Check the usage example in `index.html`.
+- TBD
 
-### Target: desktop window
+### Target: Desktop or Server/CI (Python module)
 
-Building all:
+- TBD
 
-```bash
-cargo task build all
-```
+### Target: Web browser (WASM module)
 
-Building:
+- TBD
 
-```bash
-cd crates/fragmentcolor
-cargo build --release
-```
+### Target: iOS (Swift library)
 
-The dynamic library will be available in `target/release/`.
+- TBD
 
-By default, the library will be built for the current platform. To build for a specific platform, use the `--target` flag:
+### Target: Android (Kotlin library)
 
-```bash
-# MacOS (Intel)
-cargo build --release --target x86_64-apple-darwin
-
-# MacOS (Apple Silicon)
-cargo build --release --target aarch64-apple-darwin
-
-# Linux
-cargo build --release --target x86_64-unknown-linux-gnu
-
-# Windows
-cargo build --release --target x86_64-pc-windows-msvc
-```
-
-You can check the list of all available targets with:
-
-```bash
-rustup target list
-```
-
-Platform support is divided in Tiers, check the [Rust Platform Support](https://doc.rust-lang.org/nightly/rustc/platform-support.html) page for more information.
-
-## Supported Platforms
+- TBD
