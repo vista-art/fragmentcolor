@@ -23,6 +23,9 @@ pub mod shader;
 
 pub mod error;
 
+pub mod platform;
+pub use platform::*;
+
 // DRAFT
 mod buffer_pool;
 pub mod color;

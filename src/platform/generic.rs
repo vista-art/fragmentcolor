@@ -2,7 +2,7 @@
 // Since we do not have any specific ties with the windowing system, we cannot implement
 // stages that actually draw on screen, so we just provide headless context and stage.
 
-use crate::{ffi, Renderer, Stage};
+use crate::{platform, Renderer};
 
 impl Renderer {
     pub async fn headless() -> Renderer {
@@ -13,15 +13,10 @@ impl Renderer {
             .await
             .expect("Failed to find an appropriate adapter");
 
-        let (device, queue) = ffi::platform::all::request_device(&adapter).await;
+        let (device, queue) = platform::all::request_device(&adapter)
+            .await
+            .expect("Failed to request device");
 
         Renderer::new(device, queue)
-    }
-}
-
-impl Stage {
-    pub async fn headless() -> Stage {
-        let context = Renderer::headless().await;
-        Stage::new(context)
     }
 }

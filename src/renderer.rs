@@ -82,7 +82,7 @@ impl Renderer {
         }
 
         for pass in renderable.passes() {
-            match &*pass {
+            match pass {
                 Pass::Render(render_pass) => self.process_render_pass(&mut encoder, render_pass)?,
                 Pass::Compute(compute_pass) => {
                     self.process_compute_pass(&mut encoder, compute_pass)?
@@ -151,9 +151,9 @@ impl Renderer {
 
                 let mut entries = Vec::new();
 
-                let bytes = shader.get_bytes(&name)?;
+                let bytes = shader.get_bytes(name)?;
 
-                let buffer_location = self.buffer_pool.borrow_mut().upload(&bytes, &self.queue);
+                let buffer_location = self.buffer_pool.borrow_mut().upload(bytes, &self.queue);
                 let buffer_pool = self.buffer_pool.borrow();
                 let buffer_binding = buffer_pool.get_binding(buffer_location);
                 entries.push(wgpu::BindGroupEntry {
@@ -189,19 +189,15 @@ impl Renderer {
     fn ensure_render_pipeline(&self, shader: &Shader) -> Result<(), ShaderError> {
         let mut pipelines = self.render_pipelines.borrow_mut();
 
-        if !pipelines.contains_key(&shader.hash) {
-            let module = Cow::Owned(shader.module.clone());
+        pipelines.entry(shader.hash).or_insert_with(|| {
             let layouts = create_bind_group_layouts(&self.device, &shader.uniforms);
-            let pipeline = create_render_pipeline(&self.device, &layouts, module);
+            let pipeline = create_render_pipeline(&self.device, &layouts, &shader.module);
 
-            pipelines.insert(
-                shader.hash,
-                RenderPipeline {
-                    pipeline,
-                    bind_group_layouts: layouts.values().cloned().collect(),
-                },
-            );
-        }
+            RenderPipeline {
+                pipeline,
+                bind_group_layouts: layouts.values().cloned().collect(),
+            }
+        });
 
         Ok(())
     }
@@ -247,7 +243,7 @@ fn create_bind_group_layouts(
 fn create_render_pipeline(
     device: &wgpu::Device,
     bind_group_layouts: &HashMap<u32, wgpu::BindGroupLayout>,
-    module: Cow<'static, naga::Module>,
+    module: &naga::Module,
 ) -> wgpu::RenderPipeline {
     let mut vs_entry = None;
     let mut fs_entry = None;
@@ -260,6 +256,7 @@ fn create_render_pipeline(
         }
     }
 
+    let module = Cow::Owned(module.clone());
     let shader_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some("Shader"),
         source: wgpu::ShaderSource::Naga(module),

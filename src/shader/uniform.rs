@@ -3,7 +3,7 @@ use naga::{Module, ScalarKind, Type, TypeInner, VectorSize};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
-///
+/// Represents a Uniform in the shader
 pub(crate) struct Uniform {
     /// The name of the uniform
     pub(crate) name: String,
@@ -70,7 +70,7 @@ impl UniformData {
             }
             Self::Struct(s) => {
                 let mut bytes = Vec::new();
-                for (_, (_, data)) in s {
+                for (_, data) in s.values() {
                     bytes.extend(data.to_bytes());
                 }
                 bytes
@@ -157,9 +157,22 @@ pub(crate) fn convert_type(module: &Module, ty: &Type) -> Result<UniformData, Sh
     }
 }
 
+// @TODO implement a macro for that
+
+// 1 element or scalar
+
 impl From<f32> for UniformData {
     fn from(value: f32) -> Self {
         Self::Float(value)
+    }
+}
+
+impl From<UniformData> for f32 {
+    fn from(data: UniformData) -> Self {
+        match data {
+            UniformData::Float(v) => v,
+            _ => 0.0,
+        }
     }
 }
 
@@ -169,9 +182,27 @@ impl From<[f32; 1]> for UniformData {
     }
 }
 
+impl From<UniformData> for [f32; 1] {
+    fn from(data: UniformData) -> Self {
+        match data {
+            UniformData::Float(v) => [v],
+            _ => [0.0],
+        }
+    }
+}
+
 impl From<i32> for UniformData {
     fn from(value: i32) -> Self {
         Self::Int(value)
+    }
+}
+
+impl From<UniformData> for i32 {
+    fn from(data: UniformData) -> Self {
+        match data {
+            UniformData::Int(v) => v,
+            _ => 0,
+        }
     }
 }
 
@@ -181,9 +212,27 @@ impl From<[i32; 1]> for UniformData {
     }
 }
 
+impl From<UniformData> for [i32; 1] {
+    fn from(data: UniformData) -> Self {
+        match data {
+            UniformData::Int(v) => [v],
+            _ => [0],
+        }
+    }
+}
+
 impl From<u32> for UniformData {
     fn from(value: u32) -> Self {
         Self::UInt(value)
+    }
+}
+
+impl From<UniformData> for u32 {
+    fn from(data: UniformData) -> Self {
+        match data {
+            UniformData::UInt(v) => v,
+            _ => 0,
+        }
     }
 }
 
@@ -193,9 +242,29 @@ impl From<[u32; 1]> for UniformData {
     }
 }
 
+impl From<UniformData> for [u32; 1] {
+    fn from(data: UniformData) -> Self {
+        match data {
+            UniformData::UInt(v) => [v],
+            _ => [0],
+        }
+    }
+}
+
+// 2 elements
+
 impl From<[f32; 2]> for UniformData {
     fn from(value: [f32; 2]) -> Self {
         Self::Vec2(value)
+    }
+}
+
+impl From<UniformData> for [f32; 2] {
+    fn from(data: UniformData) -> Self {
+        match data {
+            UniformData::Vec2(v) => v,
+            _ => [0.0; 2],
+        }
     }
 }
 
@@ -205,15 +274,44 @@ impl From<(f32, f32)> for UniformData {
     }
 }
 
+impl From<UniformData> for (f32, f32) {
+    fn from(data: UniformData) -> Self {
+        match data {
+            UniformData::Vec2(v) => (v[0], v[1]),
+            _ => (0.0, 0.0),
+        }
+    }
+}
+
 impl From<glam::Vec2> for UniformData {
     fn from(v: glam::Vec2) -> Self {
         Self::Vec2(v.to_array())
     }
 }
 
+impl From<UniformData> for glam::Vec2 {
+    fn from(data: UniformData) -> Self {
+        match data {
+            UniformData::Vec2(v) => glam::Vec2::from(v),
+            _ => glam::Vec2::ZERO,
+        }
+    }
+}
+
+// 3 elements
+
 impl From<[f32; 3]> for UniformData {
     fn from(value: [f32; 3]) -> Self {
         Self::Vec3(value)
+    }
+}
+
+impl From<UniformData> for [f32; 3] {
+    fn from(data: UniformData) -> Self {
+        match data {
+            UniformData::Vec3(v) => v,
+            _ => [0.0; 3],
+        }
     }
 }
 
@@ -223,15 +321,44 @@ impl From<(f32, f32, f32)> for UniformData {
     }
 }
 
+impl From<UniformData> for (f32, f32, f32) {
+    fn from(data: UniformData) -> Self {
+        match data {
+            UniformData::Vec3(v) => (v[0], v[1], v[2]),
+            _ => (0.0, 0.0, 0.0),
+        }
+    }
+}
+
 impl From<glam::Vec3> for UniformData {
     fn from(v: glam::Vec3) -> Self {
         Self::Vec3(v.to_array())
     }
 }
 
+impl From<UniformData> for glam::Vec3 {
+    fn from(data: UniformData) -> Self {
+        match data {
+            UniformData::Vec3(v) => glam::Vec3::from(v),
+            _ => glam::Vec3::ZERO,
+        }
+    }
+}
+
+// 4 elements
+
 impl From<[f32; 4]> for UniformData {
     fn from(value: [f32; 4]) -> Self {
         Self::Vec4(value)
+    }
+}
+
+impl From<UniformData> for [f32; 4] {
+    fn from(data: UniformData) -> Self {
+        match data {
+            UniformData::Vec4(v) => v,
+            _ => [0.0; 4],
+        }
     }
 }
 
@@ -241,8 +368,26 @@ impl From<(f32, f32, f32, f32)> for UniformData {
     }
 }
 
+impl From<UniformData> for (f32, f32, f32, f32) {
+    fn from(data: UniformData) -> Self {
+        match data {
+            UniformData::Vec4(v) => (v[0], v[1], v[2], v[3]),
+            _ => (0.0, 0.0, 0.0, 0.0),
+        }
+    }
+}
+
 impl From<glam::Vec4> for UniformData {
     fn from(v: glam::Vec4) -> Self {
         Self::Vec4(v.to_array())
+    }
+}
+
+impl From<UniformData> for glam::Vec4 {
+    fn from(data: UniformData) -> Self {
+        match data {
+            UniformData::Vec4(v) => glam::Vec4::from(v),
+            _ => glam::Vec4::ZERO,
+        }
     }
 }

@@ -1,6 +1,6 @@
 # FragmentColor
 
-FragmentColor is a **Cross-Platform GPU Programming Library**, based on Rust and [wgpu](https://github.com/gfx-rs/wgpu).
+FragmentColor is a **Cross-Platform GPU Programming Library** based on Rust and [wgpu](https://github.com/gfx-rs/wgpu).
 
 It provides a simple shader composition API for **Javascript**, **Python**, **Swift**, **Kotlin**,
 so you can use **WGSL** or **GLSL** shaders as the source of truth for visual consistency across platforms.

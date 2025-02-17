@@ -3,6 +3,7 @@
 use crate::pass::Pass;
 use crate::{Renderable, Renderer, Target};
 
+#[derive(Debug, Default)]
 /// A Frame is a collection of passes that are executed in sequence.
 pub struct Frame {
     pub(crate) passes: Vec<Pass>,

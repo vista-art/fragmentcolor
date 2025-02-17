@@ -6,7 +6,6 @@ use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 
 pub mod pipeline;
-pub use pipeline::*;
 
 pub mod constants;
 pub use constants::*;
@@ -32,7 +31,7 @@ pub type ShaderHash = [u8; 32];
 /// The user can set values for the uniforms and buffers, and then render the shader.
 #[derive(Debug, Serialize)]
 pub struct Shader {
-    source: String,
+    pub(crate) source: String,
 
     // Can be reconstructed from the source
     #[serde(skip_serializing)]
@@ -111,6 +110,14 @@ impl Shader {
         Ok(())
     }
 
+    pub fn get<T: From<UniformData>>(&self, key: &str) -> Result<T, ShaderError> {
+        let uniform = self.get_uniform(key)?;
+
+        let data = uniform.data.clone();
+
+        Ok(data.into())
+    }
+
     pub(crate) fn get_uniform(&self, uniform_name: &str) -> Result<&Uniform, ShaderError> {
         let uniform = self
             .uniforms
@@ -132,20 +139,6 @@ impl Shader {
         self.storage
             .get_bytes(key)
             .ok_or(ShaderError::UniformNotFound(key.into()))
-    }
-
-    pub unsafe fn get_as<T>(&self, key: &str) -> Result<T, ShaderError>
-    where
-        T: Copy,
-    {
-        let bytes = self.get_bytes(key)?;
-        if bytes.len() != std::mem::size_of::<T>() {
-            return Err(ShaderError::TypeMismatch(key.into()));
-        }
-
-        let value = unsafe { *(bytes.as_ptr() as *const T) };
-
-        Ok(value)
     }
 }
 
@@ -343,10 +336,10 @@ mod tests {
         shader.set("circle.color", [1.0, 0.0, 0.0, 1.0]).unwrap();
         shader.set("resolution", [800.0, 600.0]).unwrap();
 
-        let position: [f32; 2] = unsafe { shader.get_as::<[f32; 2]>("circle.position").unwrap() };
-        let radius: f32 = unsafe { shader.get_as::<f32>("circle.radius").unwrap() };
-        let color: [f32; 4] = unsafe { shader.get_as::<[f32; 4]>("circle.color").unwrap() };
-        let resolution: [f32; 2] = unsafe { shader.get_as::<[f32; 2]>("resolution").unwrap() };
+        let position: [f32; 2] = shader.get("circle.position").unwrap();
+        let radius: f32 = shader.get("circle.radius").unwrap();
+        let color: [f32; 4] = shader.get("circle.color").unwrap();
+        let resolution: [f32; 2] = shader.get("resolution").unwrap();
 
         assert_eq!(position, [0.5, 0.5]);
         assert_eq!(radius, 0.25);

@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
 use fragmentcolor::{
-    Frame, InitializationError, Pass, RenderPass, Renderer, Shader, ShaderError, Target,
+    Color, Frame, InitializationError, Pass, PassInput, RenderPass, Renderer, Shader, ShaderError,
+    Target,
 };
 
 use winit::application::ApplicationHandler;
@@ -22,7 +23,9 @@ impl State {
             .request_adapter(&wgpu::RequestAdapterOptions::default())
             .await
             .unwrap();
-        let (device, queue) = request_device(&adapter).await.unwrap();
+        let (device, queue) = fragmentcolor::platform::all::request_device(&adapter)
+            .await
+            .expect("Failed to request device");
 
         let size = window.inner_size();
         let surface = instance.create_surface(window.clone()).unwrap();
@@ -31,10 +34,10 @@ impl State {
 
         ////////////// public API // @TODO transform the boilerplate into a initializer
 
-        let shader_source = include_str!("hello_triangle.wgsl");
-        let shader = Arc::new(Shader::new(shader_source).unwrap());
+        let shader_source = include_str!("circle.wgsl");
+        let shader = Arc::new(Shader::new(shader_source).expect("Failed to create shader"));
         let mut frame = Frame::new();
-        let mut pass = RenderPass::new("Single Pass");
+        let mut pass = RenderPass::new("Single Pass", PassInput::Clear(Color::default()));
         let target = Target::from_surface(surface, size.width, size.height, surface_format);
         pass.add_shader(shader);
         frame.add_pass(Pass::Render(pass));
@@ -139,7 +142,7 @@ async fn request_device(
         .await?;
 
     device.on_uncaptured_error(Box::new(|error| {
-        log::error!("\n\n==== GPU error: ====\n\n{:#?}\n", error);
+        println!("\n\n==== GPU error: ====\n\n{:#?}\n", error);
     }));
 
     Ok((device, queue))

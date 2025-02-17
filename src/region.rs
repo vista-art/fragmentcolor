@@ -36,7 +36,6 @@ impl From<&winit::dpi::PhysicalSize<u32>> for Region {
 }
 
 impl Region {
-    // Replace multiple from_* methods with unified constructor
     pub fn new(origin: impl Into<(u32, u32)>, size: impl Into<(u32, u32)>) -> Self {
         let (x, y) = origin.into();
         let (w, h) = size.into();

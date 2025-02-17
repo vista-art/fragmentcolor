@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ResourceId(String);
 
+#[derive(Debug, Default)]
 pub struct ResourceRegistry {
     textures: HashMap<ResourceId, Texture>,
     buffers: HashMap<ResourceId, wgpu::Buffer>,
