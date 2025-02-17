@@ -93,4 +93,11 @@ impl Target {
             }
         }
     }
+
+    pub(crate) fn format(&self) -> wgpu::TextureFormat {
+        match self {
+            Self::Texture(target) => target.texture.format,
+            Self::Surface(target) => target.config.format,
+        }
+    }
 }

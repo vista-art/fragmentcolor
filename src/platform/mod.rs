@@ -1,4 +1,4 @@
-pub(crate) mod all;
+pub mod all;
 
 #[cfg(wasm)]
 pub mod web;

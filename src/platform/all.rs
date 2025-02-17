@@ -1,3 +1,5 @@
+use crate::InitializationError;
+
 fn limits() -> wgpu::Limits {
     wgpu::Limits::downlevel_webgl2_defaults()
 }
@@ -10,24 +12,31 @@ fn memory_hints() -> wgpu::MemoryHints {
     wgpu::MemoryHints::Performance
 }
 
-pub(crate) async fn request_device(adapter: &wgpu::Adapter) -> (wgpu::Device, wgpu::Queue) {
-    adapter
+pub async fn request_device(
+    adapter: &wgpu::Adapter,
+) -> Result<(wgpu::Device, wgpu::Queue), InitializationError> {
+    let (device, queue) = adapter
         .request_device(
             &wgpu::DeviceDescriptor {
-                label: None,
+                label: Some("WGPU Device"),
                 memory_hints: memory_hints(),
                 required_features: features(),
                 required_limits: limits().using_resolution(adapter.limits()),
             },
             None,
         )
-        .await
-        .expect("Failed to create device")
+        .await?;
+
+    device.on_uncaptured_error(Box::new(|error| {
+        println!("\n\n==== GPU error: ====\n\n{:#?}\n", error);
+    }));
+
+    Ok((device, queue))
 }
 
-pub trait SurfaceCreator {
-    fn create_surface(&self, instance: &wgpu::Instance) -> Result<wgpu::Surface>;
-}
+// pub trait SurfaceCreator {
+//     fn create_surface(&self, instance: &wgpu::Instance) -> Result<wgpu::Surface>;
+// }
 
 // @TODO: Implement this for all platforms
 /*

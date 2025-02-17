@@ -76,7 +76,7 @@ impl BufferPool {
             return;
         }
 
-        let needed_chunks = ((required_bytes - available) + self.chunk_size - 1) / self.chunk_size;
+        let needed_chunks = (required_bytes - available).div_ceil(self.chunk_size);
         for _ in 0..needed_chunks {
             self.buffers
                 .push(device.create_buffer(&wgpu::BufferDescriptor {

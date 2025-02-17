@@ -90,7 +90,7 @@ impl Texture {
         let descriptor = Self::source_texture_descriptor(label, size, format);
         let texture = renderer.device.create_texture(&descriptor);
         let source = image.to_rgba8();
-        Self::write_data_to_texture(&renderer, source, &texture, size);
+        Self::write_data_to_texture(renderer, source, &texture, size);
 
         let sampler = create_default_sampler(&renderer.device);
 

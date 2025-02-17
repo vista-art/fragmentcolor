@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::{Color, Compute, PresentationSurface, Region, Shader, Target, Texture};
+use crate::{Color, Compute, Region, Shader, Target, Texture};
 
 #[derive(Debug)]
 /// A Pass can be a Render Pass or a Compute Pass.
@@ -11,7 +11,7 @@ pub enum Pass {
 
 // Resource Definitions
 #[derive(Debug)]
-enum PassInput {
+pub enum PassInput {
     Clear(Color),
     Pass,
     Texture(Arc<Texture>),
@@ -33,26 +33,23 @@ pub struct RenderPass {
     pub(crate) region: Option<Region>,
 }
 
-pub struct DrawCall {
-    pipeline: wgpu::RenderPipeline,
-    bind_groups: Vec<(u32, wgpu::BindGroup)>,
-    vertex_count: u32,
-    instance_count: u32,
-}
-
 impl RenderPass {
-    pub fn new(name: &str) -> Self {
+    pub fn new(name: &str, input: impl Into<PassInput>) -> Self {
         Self {
             name: name.to_string(),
             shaders: Vec::new(),
             targets: Vec::new(),
             region: None,
-            input: PassInput::Clear(Color::default()),
+            input: input.into(),
         }
     }
 
     pub fn set_clear_color(&mut self, color: Color) {
         self.input = PassInput::Clear(color);
+    }
+
+    pub fn get_input(&self) -> &PassInput {
+        &self.input
     }
 
     pub fn add_shader(&mut self, shader: Arc<Shader>) {
@@ -72,7 +69,7 @@ impl RenderPass {
     }
 }
 
-#[derive(Debug)]
+#[derive(Default, Debug)]
 pub struct ComputePass {
     _computes: Vec<Arc<Compute>>,
     // input: ResourceId,
