@@ -1,6 +1,5 @@
 use crate::error::ShaderError;
 use naga::{Module, ScalarKind, Type, TypeInner, VectorSize};
-use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
 /// Represents a Uniform in the shader
@@ -37,8 +36,8 @@ pub enum UniformData {
     Texture(u64),
     // Array: (type, count, stride)
     Array(Box<UniformData>, u32, u32),
-    // Struct: name -> (offset, data)
-    Struct(HashMap<String, (u32, UniformData)>),
+    // Struct: name -> ((offset, name, field), struct_size)
+    Struct((Vec<(u32, String, UniformData)>, u32)),
 }
 
 impl UniformData {
@@ -68,10 +67,18 @@ impl UniformData {
                 }
                 bytes
             }
-            Self::Struct(s) => {
+            Self::Struct((fields, _)) => {
                 let mut bytes = Vec::new();
-                for (_, data) in s.values() {
-                    bytes.extend(data.to_bytes());
+                let mut previous_size = 0;
+                for (offset, _, field) in fields.iter() {
+                    if offset == &previous_size {
+                        bytes.extend(field.to_bytes());
+                    } else {
+                        let padding = vec![0; (*offset - previous_size) as usize];
+                        bytes.extend(padding);
+                        bytes.extend(field.to_bytes());
+                    }
+                    previous_size = field.size();
                 }
                 bytes
             }
@@ -98,7 +105,7 @@ impl UniformData {
             Self::Mat4(_) => 64,
             Self::Texture(_) => 8,
             Self::Array(v, count, _) => v.size() * count,
-            Self::Struct(s) => s.values().map(|(_, data)| data.size()).sum(),
+            Self::Struct((_, size)) => *size,
         }
     }
 }
@@ -130,15 +137,15 @@ pub(crate) fn convert_type(module: &Module, ty: &Type) -> Result<UniformData, Sh
                 ))
             }
         }),
-        TypeInner::Struct { members, .. } => {
-            let mut fields = HashMap::new();
+        TypeInner::Struct { members, span } => {
+            let mut fields = Vec::new();
             for member in members {
                 let name = member.name.clone().unwrap_or_default();
-                let member_ty = convert_type(module, &module.types[member.ty])?;
-                fields.insert(name, (member.offset, member_ty));
+                let field = convert_type(module, &module.types[member.ty])?;
+                fields.push((member.offset, name, field));
             }
 
-            Ok(UniformData::Struct(fields))
+            Ok(UniformData::Struct((fields, *span)))
         }
         TypeInner::Array { base, size, stride } => {
             let size = match size {

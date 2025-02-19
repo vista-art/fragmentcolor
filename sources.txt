@@ -38,7 +38,6 @@ impl From<&winit::dpi::PhysicalSize<u32>> for Region {
 }
 
 impl Region {
-    // Replace multiple from_* methods with unified constructor
     pub fn new(origin: impl Into<(u32, u32)>, size: impl Into<(u32, u32)>) -> Self {
         let (x, y) = origin.into();
         let (w, h) = size.into();
@@ -713,9 +712,8 @@ impl Renderer {
         let mut pipelines = self.render_pipelines.borrow_mut();
 
         pipelines.entry(shader.hash).or_insert_with(|| {
-            let module = Cow::Owned(shader.module.clone());
             let layouts = create_bind_group_layouts(&self.device, &shader.uniforms);
-            let pipeline = create_render_pipeline(&self.device, &layouts, module);
+            let pipeline = create_render_pipeline(&self.device, &layouts, &shader.module);
 
             RenderPipeline {
                 pipeline,
@@ -767,7 +765,7 @@ fn create_bind_group_layouts(
 fn create_render_pipeline(
     device: &wgpu::Device,
     bind_group_layouts: &HashMap<u32, wgpu::BindGroupLayout>,
-    module: Cow<'static, naga::Module>,
+    module: &naga::Module,
 ) -> wgpu::RenderPipeline {
     let mut vs_entry = None;
     let mut fs_entry = None;
@@ -780,6 +778,7 @@ fn create_render_pipeline(
         }
     }
 
+    let module = Cow::Owned(module.clone());
     let shader_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some("Shader"),
         source: wgpu::ShaderSource::Naga(module),
@@ -1116,6 +1115,9 @@ pub mod shader;
 
 pub mod error;
 
+pub mod platform;
+pub use platform::*;
+
 // DRAFT
 mod buffer_pool;
 pub mod color;
@@ -1140,6 +1142,8 @@ pub use target::*;
 pub use texture::*;
 src/platform
 src/platform/all.rs
+use crate::InitializationError;
+
 fn limits() -> wgpu::Limits {
     wgpu::Limits::downlevel_webgl2_defaults()
 }
@@ -1152,24 +1156,31 @@ fn memory_hints() -> wgpu::MemoryHints {
     wgpu::MemoryHints::Performance
 }
 
-pub(crate) async fn request_device(adapter: &wgpu::Adapter) -> (wgpu::Device, wgpu::Queue) {
-    adapter
+pub async fn request_device(
+    adapter: &wgpu::Adapter,
+) -> Result<(wgpu::Device, wgpu::Queue), InitializationError> {
+    let (device, queue) = adapter
         .request_device(
             &wgpu::DeviceDescriptor {
-                label: None,
+                label: Some("WGPU Device"),
                 memory_hints: memory_hints(),
                 required_features: features(),
                 required_limits: limits().using_resolution(adapter.limits()),
             },
             None,
         )
-        .await
-        .expect("Failed to create device")
+        .await?;
+
+    device.on_uncaptured_error(Box::new(|error| {
+        println!("\n\n==== GPU error: ====\n\n{:#?}\n", error);
+    }));
+
+    Ok((device, queue))
 }
 
-pub trait SurfaceCreator {
-    fn create_surface(&self, instance: &wgpu::Instance) -> Result<wgpu::Surface>;
-}
+// pub trait SurfaceCreator {
+//     fn create_surface(&self, instance: &wgpu::Instance) -> Result<wgpu::Surface>;
+// }
 
 // @TODO: Implement this for all platforms
 /*
@@ -1185,7 +1196,7 @@ src/platform/generic.rs
 // Since we do not have any specific ties with the windowing system, we cannot implement
 // stages that actually draw on screen, so we just provide headless context and stage.
 
-use crate::{ffi, Renderer, Stage};
+use crate::{platform, Renderer};
 
 impl Renderer {
     pub async fn headless() -> Renderer {
@@ -1196,16 +1207,11 @@ impl Renderer {
             .await
             .expect("Failed to find an appropriate adapter");
 
-        let (device, queue) = ffi::platform::all::request_device(&adapter).await;
+        let (device, queue) = platform::all::request_device(&adapter)
+            .await
+            .expect("Failed to request device");
 
         Renderer::new(device, queue)
-    }
-}
-
-impl Stage {
-    pub async fn headless() -> Stage {
-        let context = Renderer::headless().await;
-        Stage::new(context)
     }
 }
 src/platform/web.rs
@@ -1568,7 +1574,7 @@ impl Stage {
     }
 }
 src/platform/mod.rs
-pub(crate) mod all;
+pub mod all;
 
 #[cfg(wasm)]
 pub mod web;
@@ -2055,12 +2061,13 @@ pub const SHADERTOY_WRAPPER: &str = r#"
 src/shader/mod.rs
 use crate::error::ShaderError;
 use crate::{Pass, Renderable};
-use naga::{AddressSpace, Module};
+use naga::{
+    valid::{Capabilities, ModuleInfo, ValidationFlags, Validator},
+    AddressSpace, Module,
+};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
-
-pub mod pipeline;
 
 pub mod constants;
 pub use constants::*;
@@ -2086,13 +2093,15 @@ pub type ShaderHash = [u8; 32];
 /// The user can set values for the uniforms and buffers, and then render the shader.
 #[derive(Debug, Serialize)]
 pub struct Shader {
-    source: String,
+    pub(crate) source: String,
 
     // Can be reconstructed from the source
     #[serde(skip_serializing)]
     pub(crate) hash: ShaderHash,
     #[serde(skip_serializing)]
     pub(crate) module: Module,
+    #[serde(skip_serializing)]
+    pub(crate) module_info: ModuleInfo,
     #[serde(skip_serializing)]
     pub(crate) uniforms: HashMap<String, Uniform>,
     #[serde(skip_serializing)]
@@ -2133,16 +2142,21 @@ impl Shader {
 
     /// Create a Shader object from a WGSL source.
     pub fn wgsl(source: &str) -> Result<Self, ShaderError> {
+        let mut validator = Validator::new(ValidationFlags::all(), Capabilities::all());
+
         let module = naga::front::wgsl::parse_str(source)?;
+        let module_info = validator.validate(&module)?;
         let uniforms = parse_uniforms(&module)?;
         let storage = UniformStorage::new(&uniforms);
-
         let hash = hash(source);
+
+        println!("Storage: {:#?}", storage);
 
         Ok(Self {
             source: source.to_string(),
             hash,
             module,
+            module_info,
             uniforms,
             storage,
             pass: None,
@@ -2166,11 +2180,19 @@ impl Shader {
     }
 
     pub fn get<T: From<UniformData>>(&self, key: &str) -> Result<T, ShaderError> {
-        let uniform = self.get_uniform(key)?;
+        Ok(self.get_uniform_data(key)?.into())
+    }
 
-        let data = uniform.data.clone();
+    pub(crate) fn get_uniform_data(&self, key: &str) -> Result<UniformData, ShaderError> {
+        let (uniform_name, field_path) = parse_key(key);
+        let uniform = self.get_uniform(&uniform_name)?;
+        let data = get_struct_field(&uniform.data, &field_path)?;
 
-        Ok(data.into())
+        if std::mem::discriminant(&uniform.data) != std::mem::discriminant(&data) {
+            return Err(ShaderError::TypeMismatch(key.into()));
+        }
+
+        Ok(data)
     }
 
     pub(crate) fn get_uniform(&self, uniform_name: &str) -> Result<&Uniform, ShaderError> {
@@ -2183,14 +2205,6 @@ impl Shader {
     }
 
     pub(crate) fn get_bytes(&self, key: &str) -> Result<&[u8], ShaderError> {
-        let (uniform_name, field_path) = parse_key(key);
-        let uniform = self.get_uniform(&uniform_name)?;
-        let struct_field = get_struct_field(&uniform.data, &field_path)?;
-
-        if std::mem::discriminant(&uniform.data) != std::mem::discriminant(&struct_field) {
-            return Err(ShaderError::TypeMismatch(key.into()));
-        }
-
         self.storage
             .get_bytes(key)
             .ok_or(ShaderError::UniformNotFound(key.into()))
@@ -2344,18 +2358,19 @@ mod tests {
     const SHADER: &str = r#"
         struct VertexOutput {
             @builtin(position) coords: vec4<f32>,
-        };
+        }
 
         @vertex
         fn vs_main(@builtin(vertex_index) in_vertex_index: u32) -> VertexOutput {
             let x = f32(i32(in_vertex_index) - 1);
             let y = f32(i32(in_vertex_index & 1u) * 2 - 1);
-            return vec4<f32>(x, y, 0.0, 1.0);
+            return VertexOutput(vec4<f32>(x, y, 0.0, 1.0));
         }
 
         struct Circle {
             position: vec2<f32>,
             radius: f32,
+            _padding: f32,
             color: vec4<f32>,
         }
 
@@ -2569,7 +2584,7 @@ pub(crate) fn convert_type(module: &Module, ty: &Type) -> Result<UniformData, Sh
                 ))
             }
         }),
-        TypeInner::Struct { members, .. } => {
+        TypeInner::Struct { members, span } => {
             let mut fields = HashMap::new();
             for member in members {
                 let name = member.name.clone().unwrap_or_default();
@@ -2920,17 +2935,17 @@ impl UniformStorage {
     /// For example, for a struct uniform named `light` with fields `position` and `color`,
     /// we will index the uniform as `light` and the fields as `light.position` and `light.color`.
     pub(crate) fn add_uniform(&mut self, uniform: &Uniform) {
-        let offset = self.uniform_bytes.len() as u32;
+        let uniform_offset = self.uniform_bytes.len() as u32;
         self.uniform_bytes.extend(uniform.data.to_bytes());
         self.offsets
-            .insert(uniform.name.clone(), (offset, uniform.data.size()));
+            .insert(uniform.name.clone(), (uniform_offset, uniform.data.size()));
 
         // If the Uniform is a struct, we also index its fields to allow granular access
         if let UniformData::Struct(fields) = &uniform.data {
-            for (field_name, (offset, field)) in fields.iter() {
+            for (field_name, (field_offset, field)) in fields.iter() {
                 self.offsets.insert(
                     format!("{}.{}", uniform.name, field_name),
-                    (offset + offset, field.size()),
+                    (uniform_offset + *field_offset, field.size()),
                 );
             }
         }
@@ -2957,7 +2972,6 @@ impl UniformStorage {
         }
     }
 }
-src/shader/pipeline.rs
 src/texture.rs
 use std::path::Path;
 
@@ -3376,6 +3390,13 @@ impl Target {
                     view,
                 })
             }
+        }
+    }
+
+    pub(crate) fn format(&self) -> wgpu::TextureFormat {
+        match self {
+            Self::Texture(target) => target.texture.format,
+            Self::Surface(target) => target.config.format,
         }
     }
 }
