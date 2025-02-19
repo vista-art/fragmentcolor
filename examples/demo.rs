@@ -1,8 +1,7 @@
 use std::sync::Arc;
 
 use fragmentcolor::{
-    Color, Frame, InitializationError, Pass, PassInput, RenderPass, Renderer, Shader, ShaderError,
-    Target,
+    Color, Frame, Pass, PassInput, RenderPass, Renderer, Shader, ShaderError, Target,
 };
 
 use winit::application::ApplicationHandler;
@@ -115,7 +114,6 @@ impl ApplicationHandler for App {
                     log::error!("Failed to render: {:?}", err);
                 }
 
-                // Emits a new redraw requested event.
                 state.get_window().request_redraw();
             }
             WindowEvent::Resized(size) => {
@@ -124,28 +122,6 @@ impl ApplicationHandler for App {
             _ => {}
         }
     }
-}
-
-async fn request_device(
-    adapter: &wgpu::Adapter,
-) -> Result<(wgpu::Device, wgpu::Queue), InitializationError> {
-    let (device, queue) = adapter
-        .request_device(
-            &wgpu::DeviceDescriptor {
-                label: None,
-                required_features: wgpu::Features::empty(),
-                required_limits: wgpu::Limits::default(),
-                memory_hints: wgpu::MemoryHints::Performance,
-            },
-            None, // Trace path
-        )
-        .await?;
-
-    device.on_uncaptured_error(Box::new(|error| {
-        println!("\n\n==== GPU error: ====\n\n{:#?}\n", error);
-    }));
-
-    Ok((device, queue))
 }
 
 fn main() {

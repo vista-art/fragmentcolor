@@ -12,6 +12,7 @@ fn vs_main(@builtin(vertex_index) in_vertex_index: u32) -> VertexOutput {
 struct Circle {
     position: vec2<f32>,
     radius: f32,
+    _padding: f32,
     color: vec4<f32>,
 }
 

@@ -76,21 +76,20 @@ animate();
 
 ## Platform support
 
-Thanks to [naga](https://github.com/gfx-rs/wgpu/tree/trunk/naga), you can deploy it in a wide range of platforms:
+Platform support is the same as upstream [wgpu](https://github.com/gfx-rs/wgpu):
 
-|               | WASM    | Linux   | MacOS   | Windows | Android | iOS     | CI / CD     |
-| ------------- | ------- | ------- | ------- | ------- | ------- | ------- | ----------- |
-| **Metal**     | no      | no      | **Yes** | no      | no      | **Yes** | no          |
-| **Vulkan**    | no      | **Yes** | Yes[^2] | **Yes** | **Yes** | Yes[^2] | **Yes**[^4] |
-| **OpenGL**    | no      | **Yes** | Yes[^3] | **Yes** | **Yes** | Yes[^3] | no          |
-| **WebGL**     | Yes[^1] | no      | no      | no      | no      | no      | no          |
-| **WebGPU**    | **Yes** | no      | no      | no      | no      | no      | no          |
-| **Dx11/Dx12** | no      | no      | no      | **Yes** | no      | no      | no          |
+| API    | Windows      | Linux/Android   | macOS/iOS | Web (wasm)  |
+| ------ | ------------ | --------------- | --------- | ----------- |
+| Vulkan | ✅           | ✅              | 🌋        |             |
+| Metal  |              |                 | ✅        |             |
+| DX12   | ✅           |                 |           |             |
+| OpenGL | 🆗 (GL 3.3+) | 🆗 (GL ES 3.0+) | 📐        | 🆗 (WebGL2) |
+| WebGPU |              |                 |           | ✅          |
 
-[^1]: WebGL supports Vertex and Fragment shaders only. No support for Compute shaders.
-[^2]: Available through [MoltenVK](https://github.com/KhronosGroup/MoltenVK), a translation layer to Metal.
-[^3]: OpenGL is deprecated in iOS/MacOS. It runs up to version 4.1 only: no support for Compute shaders.
-[^4]: In a CI/CD environment, Vulkan is available through hardware emulation (software rendering).
+✅ = First Class Support  
+🆗 = Downlevel/Best Effort Support
+📐 = Requires the [ANGLE](#angle) translation layer (GL ES 3.0 only)  
+🌋 = Requires the [MoltenVK](https://vulkan.lunarg.com/sdk/home#mac) translation layer
 
 ## Building this project
 

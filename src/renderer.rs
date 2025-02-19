@@ -146,7 +146,7 @@ impl Renderer {
                 .ensure_capacity(storage_size as u64, &self.device);
 
             let mut bind_groups = Vec::new();
-            for (name, uniform) in &shader.uniforms {
+            for (name, (_, _, uniform)) in &shader.storage.uniforms {
                 let layout = &cached.bind_group_layouts[uniform.group as usize];
 
                 let mut entries = Vec::new();
@@ -190,7 +190,7 @@ impl Renderer {
         let mut pipelines = self.render_pipelines.borrow_mut();
 
         pipelines.entry(shader.hash).or_insert_with(|| {
-            let layouts = create_bind_group_layouts(&self.device, &shader.uniforms);
+            let layouts = create_bind_group_layouts(&self.device, &shader.storage.uniforms);
             let pipeline = create_render_pipeline(&self.device, &layouts, &shader.module);
 
             RenderPipeline {
@@ -211,10 +211,10 @@ impl Renderer {
 
 fn create_bind_group_layouts(
     device: &wgpu::Device,
-    uniforms: &HashMap<String, Uniform>,
+    uniforms: &HashMap<String, (u32, u32, Uniform)>,
 ) -> HashMap<u32, wgpu::BindGroupLayout> {
     let mut layouts = HashMap::new();
-    for uniform in uniforms.values() {
+    for (_, _, uniform) in uniforms.values() {
         let label = format!(
             "Bind Group Layout for {}: group: {} binding: {}",
             uniform.name, uniform.group, uniform.binding
