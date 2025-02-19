@@ -26,13 +26,13 @@ pub struct Renderer {
     pub(crate) queue: wgpu::Queue,
 
     render_pipelines: RefCell<HashMap<ShaderHash, RenderPipeline>>,
-    compute_pipelines: RefCell<HashMap<String, wgpu::ComputePipeline>>,
+    _compute_pipelines: RefCell<HashMap<String, wgpu::ComputePipeline>>,
 
-    shaders: RefCell<HashMap<String, wgpu::ShaderModule>>,
-    bind_groups: RefCell<HashMap<String, wgpu::BindGroup>>,
+    _shaders: RefCell<HashMap<String, wgpu::ShaderModule>>,
+    _bind_groups: RefCell<HashMap<String, wgpu::BindGroup>>,
 
-    textures: RefCell<HashMap<String, wgpu::Texture>>,
-    samplers: RefCell<HashMap<String, wgpu::Sampler>>,
+    _textures: RefCell<HashMap<String, wgpu::Texture>>,
+    _samplers: RefCell<HashMap<String, wgpu::Sampler>>,
 
     buffer_pool: RefCell<BufferPool>,
 }
@@ -57,13 +57,13 @@ impl Renderer {
             queue,
 
             render_pipelines: RefCell::new(HashMap::new()),
-            compute_pipelines: RefCell::new(HashMap::new()),
+            _compute_pipelines: RefCell::new(HashMap::new()),
 
-            shaders: RefCell::new(HashMap::new()),
-            bind_groups: RefCell::new(HashMap::new()),
+            _shaders: RefCell::new(HashMap::new()),
+            _bind_groups: RefCell::new(HashMap::new()),
 
-            textures: RefCell::new(HashMap::new()),
-            samplers: RefCell::new(HashMap::new()),
+            _textures: RefCell::new(HashMap::new()),
+            _samplers: RefCell::new(HashMap::new()),
 
             buffer_pool: RefCell::new(buffer_pool),
         }
@@ -200,12 +200,6 @@ impl Renderer {
         });
 
         Ok(())
-    }
-
-    // @TODO ShaderHash should be a wrapped type
-    /// Provides a way to invalidate the cache; i.e. when a Shader source changes
-    pub(crate) fn remove_render_pipeline(&mut self, key: ShaderHash) {
-        self.render_pipelines.borrow_mut().remove(&key);
     }
 }
 
