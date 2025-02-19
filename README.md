@@ -88,7 +88,7 @@ Platform support is the same as upstream [wgpu](https://github.com/gfx-rs/wgpu):
 
 ✅ = First Class Support  
 🆗 = Downlevel/Best Effort Support
-📐 = Requires the [ANGLE](#angle) translation layer (GL ES 3.0 only)  
+📐 = Requires the [ANGLE](http://angleproject.org/) translation layer (GL ES 3.0 only)  
 🌋 = Requires the [MoltenVK](https://vulkan.lunarg.com/sdk/home#mac) translation layer
 
 ## Building this project

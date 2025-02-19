@@ -124,13 +124,6 @@ fn hash(source: &str) -> ShaderHash {
     slice.into()
 }
 
-fn parse_key(key: &str) -> (String, Vec<String>) {
-    let mut parts = key.split('.');
-    let uniform = parts.next().unwrap().to_string();
-    let fields = parts.map(|s| s.to_string()).collect();
-    (uniform, fields)
-}
-
 fn parse_uniforms(module: &Module) -> Result<HashMap<String, Uniform>, ShaderError> {
     let mut uniforms = HashMap::new();
 
