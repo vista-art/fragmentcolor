@@ -33,17 +33,3 @@ pub async fn request_device(
 
     Ok((device, queue))
 }
-
-// pub trait SurfaceCreator {
-//     fn create_surface(&self, instance: &wgpu::Instance) -> Result<wgpu::Surface>;
-// }
-
-// @TODO: Implement this for all platforms
-/*
-// Example:
-impl SurfaceCreator for WebCanvas {
-    fn create_surface(&self, instance: &wgpu::Instance) -> Result<wgpu::Surface> {
-        instance.create_surface(wgpu::SurfaceTarget::Canvas(...))
-    }
-}
-*/

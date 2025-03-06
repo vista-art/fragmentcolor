@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use fragmentcolor::{
-    Color, Frame, Pass, PassInput, RenderPass, Renderer, Shader, ShaderError, Target,
+    Color, Frame, Pass, PassInput, RenderPass, Renderer, Shader, ShaderError, Target, WindowTarget,
 };
 
 use winit::application::ApplicationHandler;
@@ -11,6 +11,7 @@ use winit::window::{Window, WindowId};
 
 struct State {
     window: Arc<Window>,
+    target: Arc<WindowTarget>,
     renderer: Renderer,
     frame: Frame,
 }
@@ -28,39 +29,45 @@ impl State {
 
         let size = window.inner_size();
         let surface = instance.create_surface(window.clone()).unwrap();
-        let cap = surface.get_capabilities(&adapter);
-        let surface_format = cap.formats[0];
+        let capabilities = surface.get_capabilities(&adapter);
+        let surface_configuration = wgpu::SurfaceConfiguration {
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            format: capabilities.formats[0].remove_srgb_suffix(),
+            width: u32::max(size.width, 1),
+            height: u32::max(size.height, 1),
+            present_mode: wgpu::PresentMode::AutoVsync,
+            alpha_mode: capabilities.alpha_modes[0],
+            desired_maximum_frame_latency: 2,
+            view_formats: vec![],
+        };
+        surface.configure(&device, &surface_configuration);
 
         ////////////// public API // @TODO transform the boilerplate into a initializer
 
-        let shader_source = include_str!("circle.wgsl");
+        let shader_source = include_str!("hello_triangle.wgsl");
         let shader = Arc::new(Shader::new(shader_source).expect("Failed to create shader"));
         let mut frame = Frame::new();
-        let mut pass = RenderPass::new("Single Pass", PassInput::Clear(Color::default()));
-        let target = Target::from_surface(surface, size.width, size.height, surface_format);
+        let mut pass = RenderPass::new(
+            "Single Pass",
+            PassInput::Clear(Color::from_rgba([0.5, 0.4, 0.2, 1.0])),
+        );
+        let target = Arc::new(WindowTarget {
+            surface,
+            config: surface_configuration,
+        });
         pass.add_shader(shader);
+        pass.add_target(target.clone());
+
         frame.add_pass(Pass::Render(pass));
-        frame.add_target(target);
 
         /////////////
 
-        let mut state = State {
+        State {
             window,
+            target,
             renderer: Renderer::new(device, queue),
             frame,
-        };
-
-        // Configure surface for the first time
-        state.frame.resize_targets(
-            &state.renderer,
-            wgpu::Extent3d {
-                width: size.width,
-                height: size.height,
-                depth_or_array_layers: 1,
-            },
-        );
-
-        state
+        }
     }
 
     fn get_window(&self) -> &Window {
@@ -74,12 +81,14 @@ impl State {
             depth_or_array_layers: 1,
         };
 
-        // reconfigure the surface
-        self.frame.resize_targets(&self.renderer, size);
+        // @FIXME this fails silently
+        if let Some(target) = Arc::get_mut(&mut self.target) {
+            target.resize(&self.renderer, size);
+        }
     }
 
     fn render(&mut self) -> Result<(), ShaderError> {
-        Ok(self.renderer.render(&self.frame)?)
+        Ok(self.renderer.render(&self.frame, self.target.as_ref())?)
     }
 }
 

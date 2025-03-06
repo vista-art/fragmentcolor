@@ -21,12 +21,10 @@ use photogeometry::Rect;
 
 const BACKENDS: wgpu::Backends = wgpu::Backends::GL;
 
-#[wasm_bindgen(js_name = PGRenderer)]
 pub struct Renderer {
     wrapped: crate::Renderer,
 }
 
-#[wasm_bindgen(js_class = PGRenderer)]
 impl Renderer {
     #[wasm_bindgen(js_name = headless)]
     pub async fn headless() -> Self {
@@ -89,13 +87,11 @@ impl Renderer {
     }
 }
 
-#[wasm_bindgen(js_name = PGStage)]
 pub struct Stage {
     surface: Option<wgpu::Surface<'static>>,
     wrapped: crate::Stage,
 }
 
-#[wasm_bindgen(js_class = PGStage)]
 impl Stage {
     #[wasm_bindgen(js_name = inCanvas)]
     pub async fn in_canvas(canvas: web_sys::HtmlCanvasElement) -> Self {

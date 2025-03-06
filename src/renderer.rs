@@ -1,4 +1,5 @@
 use crate::buffer_pool::BufferPool;
+use crate::TargetFrame;
 use crate::{
     shader::Uniform, ComputePass, Pass, RenderPass, Shader, ShaderError, ShaderHash, Target,
 };
@@ -9,7 +10,6 @@ pub type Commands = Vec<wgpu::CommandBuffer>;
 
 pub trait Renderable {
     fn passes(&self) -> impl IntoIterator<Item = &Pass>;
-    fn targets(&self) -> impl IntoIterator<Item = &Target>;
 }
 
 struct RenderPipeline {
@@ -69,21 +69,25 @@ impl Renderer {
         }
     }
 
-    /// Renders a frame
-    pub fn render(&self, renderable: &impl Renderable) -> Result<(), ShaderError> {
+    /// Renders a Frame or Shader to a Target.
+    pub fn render(
+        &self,
+        renderable: &impl Renderable,
+        target: &impl Target,
+    ) -> Result<(), ShaderError> {
         let mut encoder = self
             .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("Command Encoder"),
+            });
 
-        let mut presentations = Vec::new();
-        for target in renderable.targets() {
-            let presentation = target.get_current_texture()?;
-            presentations.push(presentation);
-        }
+        let frame = target.get_current_frame()?;
 
         for pass in renderable.passes() {
             match pass {
-                Pass::Render(render_pass) => self.process_render_pass(&mut encoder, render_pass)?,
+                Pass::Render(render_pass) => {
+                    self.process_render_pass(&mut encoder, render_pass, frame.as_ref())?
+                }
                 Pass::Compute(compute_pass) => {
                     self.process_compute_pass(&mut encoder, compute_pass)?
                 }
@@ -92,44 +96,33 @@ impl Renderer {
 
         self.queue.submit(Some(encoder.finish()));
 
-        for presentation in presentations {
-            presentation.present();
-        }
+        frame.present();
 
         Ok(())
     }
+}
 
+impl Renderer {
     fn process_render_pass(
         &self,
         encoder: &mut wgpu::CommandEncoder,
         pass: &RenderPass,
+        frame: &dyn TargetFrame,
     ) -> Result<(), ShaderError> {
         self.buffer_pool.borrow_mut().reset();
 
-        let mut target_textures = Vec::new();
-        let color_attachments = {
-            let mut attachments = Vec::new();
-            for target in pass.targets.iter() {
-                target_textures.push(target.get_current_texture()?);
-            }
-
-            for texture in target_textures.iter() {
-                attachments.push(Some(wgpu::RenderPassColorAttachment {
-                    view: &texture.view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
-                        store: wgpu::StoreOp::Store,
-                    },
-                }));
-            }
-
-            attachments
-        };
+        let attachments = &[Some(wgpu::RenderPassColorAttachment {
+            view: frame.view(),
+            resolve_target: None,
+            ops: wgpu::Operations {
+                load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                store: wgpu::StoreOp::Store,
+            },
+        })];
 
         let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some(&format!("Render Pass: {}", pass.name.clone())),
-            color_attachments: &color_attachments,
+            color_attachments: attachments,
             depth_stencil_attachment: None,
             timestamp_writes: None,
             occlusion_query_set: None,
@@ -145,26 +138,50 @@ impl Renderer {
                 .borrow_mut()
                 .ensure_capacity(storage_size as u64, &self.device);
 
-            let mut bind_groups = Vec::new();
+            let mut bind_group_entries: HashMap<u32, Vec<wgpu::BindGroupEntry>> = HashMap::new();
+
+            let mut buffer_locations = Vec::new();
+            // @TODO there should be a method get_bind_groups() in the Shader
             for (name, (_, _, uniform)) in &shader.storage.uniforms {
-                let layout = &cached.bind_group_layouts[uniform.group as usize];
+                if name.contains('.') {
+                    continue;
+                }
 
-                let mut entries = Vec::new();
-
+                // @FIXME TECH DEBT: this is wrong. We are looping through an internal data structure
+                // that should be hidden, and then using a public method to access the same structure.
+                // I need to figure out a better way to handle this. The Shader should keep track of
+                // the groups and binsings in a Vector, so we won't loop through a HashMap every frame.
+                // Besides, storage should be hidden. The Renderer should not care about it at all.
                 let bytes = shader.get_bytes(name)?;
 
-                let buffer_location = self.buffer_pool.borrow_mut().upload(bytes, &self.queue);
-                let buffer_pool = self.buffer_pool.borrow();
-                let buffer_binding = buffer_pool.get_binding(buffer_location);
-                entries.push(wgpu::BindGroupEntry {
-                    binding: uniform.binding,
-                    resource: wgpu::BindingResource::Buffer(buffer_binding),
-                });
+                let buffer_location = {
+                    let mut buffer_pool = self.buffer_pool.borrow_mut();
+                    buffer_pool.upload(bytes, &self.queue)
+                };
 
+                buffer_locations.push((uniform, buffer_location));
+            }
+
+            let buffer_pool = self.buffer_pool.borrow();
+            for (uniform, location) in buffer_locations {
+                let binding = buffer_pool.get_binding(location);
+
+                bind_group_entries
+                    .entry(uniform.group)
+                    .or_default()
+                    .push(wgpu::BindGroupEntry {
+                        binding: uniform.binding,
+                        resource: wgpu::BindingResource::Buffer(binding),
+                    });
+            }
+
+            let mut bind_groups = Vec::new();
+            for (group, entries) in bind_group_entries {
+                let layout = &cached.bind_group_layouts[group as usize];
                 let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
                     layout,
                     entries: &entries,
-                    label: Some("bind_group"),
+                    label: Some(&format!("Bind Group for group: {}", group)),
                 });
                 bind_groups.push(bind_group);
             }
@@ -203,16 +220,16 @@ impl Renderer {
     }
 }
 
+// @TODO avoid tight coupling with storage internals
 fn create_bind_group_layouts(
     device: &wgpu::Device,
     uniforms: &HashMap<String, (u32, u32, Uniform)>,
 ) -> HashMap<u32, wgpu::BindGroupLayout> {
-    let mut layouts = HashMap::new();
+    let mut group_entries = HashMap::new();
     for (_, _, uniform) in uniforms.values() {
-        let label = format!(
-            "Bind Group Layout for {}: group: {} binding: {}",
-            uniform.name, uniform.group, uniform.binding
-        );
+        if uniform.name.contains('.') {
+            continue;
+        }
 
         let entry = wgpu::BindGroupLayoutEntry {
             binding: uniform.binding,
@@ -225,12 +242,21 @@ fn create_bind_group_layouts(
             count: None,
         };
 
-        let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some(&label),
-            entries: &[entry],
-        });
-        layouts.insert(uniform.group, layout);
+        group_entries
+            .entry(uniform.group)
+            .or_insert(Vec::new())
+            .push(entry);
     }
+
+    let mut layouts = HashMap::new();
+    for (group, entries) in group_entries {
+        let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some(&format!("Bind Group Layout for group: {}", group)),
+            entries: entries.as_slice(),
+        });
+        layouts.insert(group, layout);
+    }
+
     layouts
 }
 
@@ -282,7 +308,7 @@ fn create_render_pipeline(
             module: &shader_module,
             entry_point: Some(fs_entry.as_deref().unwrap_or("fs_main")),
             targets: &[Some(wgpu::ColorTargetState {
-                format: wgpu::TextureFormat::Bgra8Unorm,
+                format: wgpu::TextureFormat::Bgra8Unorm, // @TODO dynamic format
                 blend: Some(wgpu::BlendState::REPLACE),
                 write_mask: wgpu::ColorWrites::ALL,
             })],
