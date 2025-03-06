@@ -18,18 +18,11 @@ pub enum PassInput {
 }
 
 #[derive(Debug)]
-pub struct RenderPassConfig {
-    pub shaders: Vec<Arc<Shader>>,
-    pub targets: Vec<Arc<Target>>,
-    pub region: Option<Region>,
-}
-
-#[derive(Debug)]
 pub struct RenderPass {
     pub name: String,
     pub(crate) shaders: Vec<Arc<Shader>>,
     pub(crate) input: PassInput,
-    pub(crate) targets: Vec<Arc<Target>>,
+    pub(crate) targets: Vec<Arc<dyn Target>>,
     pub(crate) region: Option<Region>,
 }
 
@@ -56,7 +49,7 @@ impl RenderPass {
         self.shaders.push(shader);
     }
 
-    pub fn add_target(&mut self, target: Arc<Target>) {
+    pub fn add_target(&mut self, target: Arc<dyn Target>) {
         self.targets.push(target);
     }
 

@@ -8,6 +8,8 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 
+pub mod features;
+
 pub mod constants;
 pub use constants::*;
 
@@ -17,8 +19,8 @@ pub use compute::*;
 pub(crate) mod uniform;
 pub(crate) use uniform::*;
 
-mod storage;
-use storage::*;
+pub(crate) mod storage;
+pub(crate) use storage::*;
 
 mod deserialize;
 
@@ -94,14 +96,17 @@ impl Shader {
         })
     }
 
+    /// Set a uniform value.
     pub fn set(&mut self, key: &str, value: impl Into<UniformData>) -> Result<(), ShaderError> {
         self.storage.update(key, &value.into())
     }
 
+    /// Get a uniform value.
     pub fn get<T: From<UniformData>>(&self, key: &str) -> Result<T, ShaderError> {
         Ok(self.get_uniform_data(key)?.into())
     }
 
+    /// Get a uniform value as UniformData enum.
     pub(crate) fn get_uniform_data(&self, key: &str) -> Result<UniformData, ShaderError> {
         self.storage
             .get(key)
@@ -109,6 +114,7 @@ impl Shader {
             .cloned()
     }
 
+    /// Get a uniform value as raw bytes.
     pub(crate) fn get_bytes(&self, key: &str) -> Result<&[u8], ShaderError> {
         self.storage
             .get_bytes(key)
@@ -158,75 +164,9 @@ fn parse_uniforms(module: &Module) -> Result<HashMap<String, Uniform>, ShaderErr
     Ok(uniforms)
 }
 
-#[cfg(feature = "glsl")]
-impl Shader {
-    /// Create a Shader object from a GLSL source pair (vertex and fragment shaders).
-    pub fn glsl(vertex_source: &str, fragment_source: &str) -> Result<Self, ShaderError> {
-        use naga::back::wgsl;
-        use naga::front::glsl;
-        use naga::valid::{
-            Capabilities, ShaderStages, SubgroupOperationSet, ValidationFlags, Validator,
-        };
-
-        let mut parser = glsl::Frontend::default();
-        let mut validator = Validator::new(ValidationFlags::all(), Capabilities::all());
-
-        let wgsl_vertex_source = {
-            let vertex_module = parser.parse(
-                &glsl::Options::from(naga::ShaderStage::Vertex),
-                vertex_source,
-            )?;
-            let vertex_module_info = validator
-                .subgroup_stages(ShaderStages::VERTEX)
-                .subgroup_operations(SubgroupOperationSet::all())
-                .validate(&vertex_module)?;
-
-            wgsl::write_string(
-                &vertex_module,
-                &vertex_module_info,
-                wgsl::WriterFlags::empty(),
-            )?
-            .replace("fn main", "fn vs_main")
-        };
-
-        let wgsl_fragment_source = {
-            let fragment_module = parser.parse(
-                &glsl::Options::from(naga::ShaderStage::Fragment),
-                fragment_source,
-            )?;
-            let fragment_module_info = validator
-                .subgroup_stages(ShaderStages::FRAGMENT)
-                .subgroup_operations(SubgroupOperationSet::all())
-                .validate(&fragment_module)?;
-
-            wgsl::write_string(
-                &fragment_module,
-                &fragment_module_info,
-                wgsl::WriterFlags::empty(),
-            )?
-            .replace("fn main", "fn fs_main")
-        };
-
-        Self::wgsl(&format!("{}\n{}", wgsl_vertex_source, wgsl_fragment_source))
-    }
-
-    #[cfg(feature = "shadertoy")]
-    /// Create a Shader object from a Shadertoy-flavored GLSL source.
-    pub fn toy(source: &str) -> Result<Self, ShaderError> {
-        Self::glsl(
-            DEFAULT_VERTEX_SHADER,
-            &SHADERTOY_WRAPPER.replace("{{shader}}", source),
-        )
-    }
-}
-
 impl Renderable for Shader {
     fn passes(&self) -> impl IntoIterator<Item = &Pass> {
         &self.pass
-    }
-
-    fn targets(&self) -> impl IntoIterator<Item = &crate::Target> {
-        Vec::new()
     }
 }
 

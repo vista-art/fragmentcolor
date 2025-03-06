@@ -14,14 +14,17 @@ shader.set("resolution", res)
 # Create renderer
 renderer = fc.Renderer()
 
+
 @canvas.resize
 def resize(w, h):
-  shader.set("resolution", (w, h))
+    shader.set("resolution", (w, h))
+
 
 @canvas.request_draw
 def animate():
-  shader.set("circle.position", (x, y))
-  renderer.render(shader, canvas)
+    shader.set("circle.position", (0.0, 0.0))
+    renderer.render(shader, canvas)
+
 
 # Enter main rendering loop
 loop.run()
