@@ -1,12 +1,12 @@
 [package]
 name = "fragmentcolor"
-version = "0.1.0"
+version = "0.10.0"
 homepage = "https://fragmentcolor.org"
 repository = "https://github.com/vista-art/fragmentcolor"
-description = "Easy GPU Rendering for Javascript, Python, Swift and Kotlin."
+description = "Easy GPU Rendering for Javascript, Python, Swift and Kotlin"
 authors = ["Vista Tech & Art GmbH"]
 readme = "README.md"
-license = "MIT OR Apache-2.0"
+license = "MIT"
 keywords = [
     "graphics",
     "gpu",
@@ -42,9 +42,8 @@ shadertoy = ["glsl"]
 [dependencies]
 # Rendering
 wgpu = { version = "24", features = ["glsl", "wgsl", "webgl", "naga-ir"] }
-uuid = { version = "1.13", features = ["v4", "serde", "fast-rng"] }
 thiserror = { version = "2" }
-glam = { version = "0.29" }
+glam = { version = "0.30" }
 encase = { version = "0.10" }
 bytemuck = { version = "1" }
 flume = { version = "0.11" }

@@ -75,24 +75,29 @@ impl UniformStorage {
 
             uniform.data = value.clone();
 
-            // update raw bytes cache
-            let offset = *offset as usize;
-            let size = *size as usize;
-            let raw = value.to_bytes();
-            if raw.len() == size {
-                self.uniform_bytes[offset..offset + size].copy_from_slice(&raw);
+            // update raw uniform bytes
+            let value_bytes = value.to_bytes();
+            if value_bytes.len() == *size as usize {
+                let start = *offset as usize;
+                let end = start + value_bytes.len();
+                self.uniform_bytes[start..end].copy_from_slice(&value_bytes);
             }
+
+            Ok(())
         } else {
             return Err(ShaderError::UniformNotFound(key.into()));
         }
+    }
 
-        Ok(())
+    /// List all uniforms
+    pub fn list(&self) -> Vec<String> {
+        self.uniforms.keys().cloned().collect()
     }
 
     /// Get a uniform by key
-    pub fn get(&self, key: &str) -> Option<&UniformData> {
+    pub fn get(&self, key: &str) -> Option<&Uniform> {
         if let Some((_, _, uniform)) = self.uniforms.get(key) {
-            Some(&uniform.data)
+            Some(&uniform)
         } else {
             None
         }
@@ -100,10 +105,10 @@ impl UniformStorage {
 
     /// Get a uniform as bytes by key
     pub fn get_bytes(&self, key: &str) -> Option<&[u8]> {
-        if let Some((offset, size, _)) = self.uniforms.get(key) {
-            Some(&self.uniform_bytes[*offset as usize..*offset as usize + *size as usize])
-        } else {
-            None
-        }
+        self.uniforms.get(key).map(|(offset, size, _)| {
+            let start = *offset as usize;
+            let end = start + *size as usize;
+            &self.uniform_bytes[start..end]
+        })
     }
 }

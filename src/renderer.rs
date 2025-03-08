@@ -133,7 +133,7 @@ impl Renderer {
             let pipelines = self.render_pipelines.borrow();
             let cached = pipelines.get(&shader.hash).unwrap();
 
-            let storage_size = shader.storage.uniform_bytes.len() * std::mem::size_of::<u8>();
+            let storage_size = shader.storage().uniform_bytes.len() * std::mem::size_of::<u8>();
             self.buffer_pool
                 .borrow_mut()
                 .ensure_capacity(storage_size as u64, &self.device);
@@ -142,17 +142,20 @@ impl Renderer {
 
             let mut buffer_locations = Vec::new();
             // @TODO there should be a method get_bind_groups() in the Shader
-            for (name, (_, _, uniform)) in &shader.storage.uniforms {
+            for name in &shader.list_uniforms() {
                 if name.contains('.') {
                     continue;
                 }
 
+                let uniform = shader.get_uniform(name).unwrap();
+
                 // @FIXME TECH DEBT: this is wrong. We are looping through an internal data structure
                 // that should be hidden, and then using a public method to access the same structure.
-                // I need to figure out a better way to handle this. The Shader should keep track of
-                // the groups and binsings in a Vector, so we won't loop through a HashMap every frame.
-                // Besides, storage should be hidden. The Renderer should not care about it at all.
-                let bytes = shader.get_bytes(name)?;
+                // I need to figure out a better way to handle this.
+                let storage = shader.storage();
+                let bytes = storage
+                    .get_bytes(name)
+                    .ok_or(ShaderError::UniformNotFound(name.clone()))?;
 
                 let buffer_location = {
                     let mut buffer_pool = self.buffer_pool.borrow_mut();
@@ -207,7 +210,7 @@ impl Renderer {
         let mut pipelines = self.render_pipelines.borrow_mut();
 
         pipelines.entry(shader.hash).or_insert_with(|| {
-            let layouts = create_bind_group_layouts(&self.device, &shader.storage.uniforms);
+            let layouts = create_bind_group_layouts(&self.device, &shader.storage().uniforms);
             let pipeline = create_render_pipeline(&self.device, &layouts, &shader.module);
 
             RenderPipeline {
