@@ -27,6 +27,10 @@ impl State {
             .await
             .expect("Failed to request device");
 
+        device.on_uncaptured_error(Box::new(|error| {
+            println!("\n\n==== GPU error: ====\n\n{:#?}\n", error);
+        }));
+
         let size = window.inner_size();
         let surface = instance.create_surface(window.clone()).unwrap();
         let capabilities = surface.get_capabilities(&adapter);
@@ -45,7 +49,9 @@ impl State {
         ////////////// public API // @TODO transform the boilerplate into a initializer
 
         let shader_source = include_str!("hello_triangle.wgsl");
-        let shader = Arc::new(Shader::new(shader_source).expect("Failed to create shader"));
+        let shader = Shader::new(shader_source).unwrap();
+        shader.set("color", [1.0, 0.2, 0.8, 1.0]).unwrap();
+
         let mut frame = Frame::new();
         let mut pass = RenderPass::new(
             "Single Pass",
@@ -55,7 +61,7 @@ impl State {
             surface,
             config: surface_configuration,
         });
-        pass.add_shader(shader);
+        pass.add_shader(Arc::new(shader));
         pass.add_target(target.clone());
 
         frame.add_pass(Pass::Render(pass));
@@ -70,7 +76,7 @@ impl State {
         }
     }
 
-    fn get_window(&self) -> &Window {
+    fn window(&self) -> &Window {
         &self.window
     }
 
@@ -123,7 +129,7 @@ impl ApplicationHandler for App {
                     log::error!("Failed to render: {:?}", err);
                 }
 
-                state.get_window().request_redraw();
+                state.window().request_redraw();
             }
             WindowEvent::Resized(size) => {
                 state.resize(size);

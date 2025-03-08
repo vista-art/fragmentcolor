@@ -26,7 +26,7 @@ pub struct Renderer {
 }
 
 impl Renderer {
-    #[wasm_bindgen(js_name = headless)]
+    #[wasm_bindgen]
     pub async fn headless() -> Self {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             backends: BACKENDS,
@@ -142,7 +142,7 @@ impl Stage {
         }
     }
 
-    #[wasm_bindgen(js_name = headless)]
+    #[wasm_bindgen]
     pub async fn headless() -> Self {
         let context = Renderer::headless().await;
 
@@ -152,7 +152,7 @@ impl Stage {
         }
     }
 
-    #[wasm_bindgen(js_name = draw)]
+    #[wasm_bindgen]
     pub fn draw(&self, composition: &ffi::Composition) {
         let Some(surface) = self.surface.as_ref() else {
             panic!("Cannot draw on a headless stage, use `render_bitmap` instead");

@@ -6,6 +6,7 @@ use naga::{
 };
 use serde::Serialize;
 use sha2::{Digest, Sha256};
+use std::cell::{Ref, RefCell};
 use std::collections::HashMap;
 
 pub mod features;
@@ -19,8 +20,8 @@ pub use compute::*;
 pub(crate) mod uniform;
 pub(crate) use uniform::*;
 
-pub(crate) mod storage;
-pub(crate) use storage::*;
+mod storage;
+use storage::*;
 
 mod deserialize;
 
@@ -42,7 +43,7 @@ pub struct Shader {
     #[serde(skip_serializing)]
     pub(crate) module: Module,
     #[serde(skip_serializing)]
-    pub(crate) storage: UniformStorage,
+    pub(crate) storage: RefCell<UniformStorage>,
 
     // Allows it to be used as a Renderable
     #[serde(skip)]
@@ -84,7 +85,7 @@ impl Shader {
         validator.validate(&module)?;
 
         let uniforms = parse_uniforms(&module)?;
-        let storage = UniformStorage::new(&uniforms);
+        let storage = RefCell::new(UniformStorage::new(&uniforms));
         let hash = hash(source);
 
         Ok(Self {
@@ -97,8 +98,18 @@ impl Shader {
     }
 
     /// Set a uniform value.
-    pub fn set(&mut self, key: &str, value: impl Into<UniformData>) -> Result<(), ShaderError> {
-        self.storage.update(key, &value.into())
+    pub fn set(&self, key: &str, value: impl Into<UniformData>) -> Result<(), ShaderError> {
+        let mut storage = self.storage.borrow_mut();
+        storage.update(key, &value.into())
+    }
+}
+
+// getters
+impl Shader {
+    /// List all the uniforms in the shader.
+    pub fn list_uniforms(&self) -> Vec<String> {
+        let storage = self.storage.borrow();
+        storage.list()
     }
 
     /// Get a uniform value.
@@ -108,17 +119,27 @@ impl Shader {
 
     /// Get a uniform value as UniformData enum.
     pub(crate) fn get_uniform_data(&self, key: &str) -> Result<UniformData, ShaderError> {
-        self.storage
+        let storage = self.storage.borrow();
+        let uniform = storage
             .get(key)
-            .ok_or(ShaderError::UniformNotFound(key.into()))
-            .cloned()
+            .ok_or(ShaderError::UniformNotFound(key.into()))?;
+
+        Ok(uniform.data.clone())
     }
 
-    /// Get a uniform value as raw bytes.
-    pub(crate) fn get_bytes(&self, key: &str) -> Result<&[u8], ShaderError> {
-        self.storage
-            .get_bytes(key)
-            .ok_or(ShaderError::UniformNotFound(key.into()))
+    pub(crate) fn get_uniform(&self, key: &str) -> Result<Uniform, ShaderError> {
+        let storage = self.storage.borrow();
+        let uniform = storage
+            .get(key)
+            .ok_or(ShaderError::UniformNotFound(key.into()))?;
+
+        Ok(uniform.clone())
+    }
+
+    /// Get a uniform byte storage
+    // @TODO find a way to return a byte slice while keeping interior mutability in the Shader struct
+    pub(crate) fn storage(&self) -> Ref<'_, UniformStorage> {
+        self.storage.borrow()
     }
 }
 
@@ -211,7 +232,7 @@ mod tests {
     #[test]
     fn test_shader_should_parse_uniforms() {
         let shader = Shader::new(SHADER).unwrap();
-        let mut uniforms = shader.storage.uniforms.keys().collect::<Vec<_>>();
+        let mut uniforms = shader.list_uniforms();
         uniforms.sort();
         assert_eq!(
             uniforms,
@@ -227,7 +248,7 @@ mod tests {
 
     #[test]
     fn test_shader_should_set_and_get_uniform() {
-        let mut shader = Shader::new(SHADER).unwrap();
+        let shader = Shader::new(SHADER).unwrap();
         shader.set("circle.position", [0.5, 0.5]).unwrap();
         shader.set("circle.radius", 0.25).unwrap();
         shader.set("circle.color", [1.0, 0.0, 0.0, 1.0]).unwrap();
@@ -246,16 +267,17 @@ mod tests {
 
     #[test]
     fn test_shader_should_get_uniform_raw_bytes() {
-        let mut shader = Shader::new(SHADER).unwrap();
+        let shader = Shader::new(SHADER).unwrap();
         shader.set("circle.position", [0.5, 0.5]).unwrap();
         shader.set("circle.radius", 0.25).unwrap();
         shader.set("circle.color", [1.0, 0.0, 0.0, 1.0]).unwrap();
         shader.set("resolution", [800.0, 600.0]).unwrap();
 
-        let position_bytes = shader.get_bytes("circle.position").unwrap();
-        let radius_bytes = shader.get_bytes("circle.radius").unwrap();
-        let color_bytes = shader.get_bytes("circle.color").unwrap();
-        let resolution_bytes = shader.get_bytes("resolution").unwrap();
+        let storage = shader.storage();
+        let position_bytes = storage.get_bytes("circle.position").unwrap();
+        let radius_bytes = storage.get_bytes("circle.radius").unwrap();
+        let color_bytes = storage.get_bytes("circle.color").unwrap();
+        let resolution_bytes = storage.get_bytes("resolution").unwrap();
 
         assert_eq!(
             position_bytes,

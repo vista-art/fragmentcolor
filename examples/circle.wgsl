@@ -4,15 +4,18 @@ struct VertexOutput {
 
 @vertex
 fn vs_main(@builtin(vertex_index) in_vertex_index: u32) -> VertexOutput {
-    let x = f32(i32(in_vertex_index) - 1);
-    let y = f32(i32(in_vertex_index & 1u) * 2 - 1);
-    return VertexOutput(vec4<f32>(x, y, 0.0, 1.0));
+    const vertices = array(
+        vec2( -1., -1.),
+        vec2(  3., -1.),
+        vec2( -1.,  3.)
+    );
+    return VertexOutput(vec4<f32>(vertices[in_vertex_index], 0.0, 1.0));
 }
 
 struct Circle {
     position: vec2<f32>,
     radius: f32,
-    _padding: f32,
+    border: f32,
     color: vec4<f32>,
 }
 
@@ -23,10 +26,14 @@ var<uniform> circle: Circle;
 
 @fragment
 fn main(pixel: VertexOutput) -> @location(0) vec4<f32> {
-    let uv = pixel.coords.xy / resolution;
+    let normalized_coords = pixel.coords.xy / resolution;
+    var uv = -1.0 + 2.0 * normalized_coords;
+    uv.x *= resolution.x / resolution.y;
     let circle_pos = circle.position / resolution;
     let dist = distance(uv, circle_pos);
     let r = circle.radius / max(resolution.x, resolution.y);
-    let circle_sdf = 1.0 - smoothstep(r - 0.001, r + 0.001, dist);
+    let aa = 2. / min(resolution.x, resolution.y);
+    let border = circle.border / max(resolution.x, resolution.y);
+    let circle_sdf = 1.0 - smoothstep(border - aa, border + aa, abs(dist - r));
     return circle.color * circle_sdf;
 }
