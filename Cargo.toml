@@ -7,28 +7,8 @@ description = "Easy GPU Rendering for Javascript, Python, Swift and Kotlin"
 authors = ["Vista Tech & Art GmbH"]
 readme = "README.md"
 license = "MIT"
-keywords = [
-    "graphics",
-    "gpu",
-    "rendering",
-    "webgl",
-    "wgpu",
-    "vulkan",
-    "metal",
-    "opengl",
-    "directx",
-    "python",
-    "javascript",
-    "swift",
-    "kotlin",
-    "ios",
-    "android",
-    "macos",
-    "windows",
-    "linux",
-    "web",
-]
-categories = ["graphics", "rendering", "gpu", "wgpu", "python", "javascript"]
+keywords = ["graphics", "rendering", "wgpu", "cross-platform", "art"]
+categories = ["rendering", "rendering::engine", "parsing"]
 edition = "2021"
 
 [lib]
