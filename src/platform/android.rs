@@ -96,7 +96,7 @@ async fn headless() -> crate::Renderer {
         .await
         .expect("Failed to find an appropriate adapter");
 
-    let (device, queue) = ffi::platform::all::request_device(&adapter).await;
+    let (device, queue) = crate::platform::all::request_device(&adapter).await;
 
     crate::Renderer::new(device, queue)
 }
@@ -164,7 +164,7 @@ impl Stage {
             .await
             .expect("Failed to find an appropriate adapter");
 
-        let (device, queue) = ffi::platform::all::request_device(&adapter).await;
+        let (device, queue) = crate::platform::all::request_device(&adapter).await;
 
         let capabilitiess = surface.get_capabilities(&adapter);
         let surface_configuration = wgpu::SurfaceConfiguration {
@@ -216,21 +216,6 @@ impl Stage {
             .expect("Failed rendering");
 
         surface_texture.present();
-    }
-
-    pub async fn render_bitmap(
-        &self,
-        composition: &ffi::Composition,
-        pixel_format: PixelFormat,
-    ) -> Option<Arc<Bitmap>> {
-        let composition = composition.wrapped.read().unwrap().clone();
-
-        self.wrapped
-            .render_bitmap(&composition, pixel_format)
-            .await
-            .ok()
-            .map(|it| it.removing_padding())
-            .map(|it| it.into())
     }
 }
 

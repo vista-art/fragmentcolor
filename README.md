@@ -96,7 +96,8 @@ Platform support is the same as upstream [wgpu](https://github.com/gfx-rs/wgpu):
 ### Running examples
 
 ```bash
-cargo run --example demo
+cargo run --example circle
+cargo run --example triangle
 ```
 
 ### Target: Desktop or Server/CI (Rust library)

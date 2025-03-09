@@ -14,9 +14,6 @@ pub mod features;
 pub mod constants;
 pub use constants::*;
 
-pub mod compute;
-pub use compute::*;
-
 pub(crate) mod uniform;
 pub(crate) use uniform::*;
 
@@ -44,10 +41,6 @@ pub struct Shader {
     pub(crate) module: Module,
     #[serde(skip_serializing)]
     pub(crate) storage: RefCell<UniformStorage>,
-
-    // Allows it to be used as a Renderable
-    #[serde(skip)]
-    pub(crate) pass: Option<Pass>,
 }
 
 impl Drop for Shader {
@@ -93,7 +86,6 @@ impl Shader {
             hash,
             module,
             storage,
-            pass: None,
         })
     }
 
@@ -127,6 +119,7 @@ impl Shader {
         Ok(uniform.data.clone())
     }
 
+    /// Get a uniform value as Uniform struct.
     pub(crate) fn get_uniform(&self, key: &str) -> Result<Uniform, ShaderError> {
         let storage = self.storage.borrow();
         let uniform = storage
@@ -140,6 +133,14 @@ impl Shader {
     // @TODO find a way to return a byte slice while keeping interior mutability in the Shader struct
     pub(crate) fn storage(&self) -> Ref<'_, UniformStorage> {
         self.storage.borrow()
+    }
+
+    /// Tells weather the shader is a compute shader.
+    pub(crate) fn is_compute(&self) -> bool {
+        self.module
+            .entry_points
+            .iter()
+            .any(|entry_point| entry_point.stage == naga::ShaderStage::Compute)
     }
 }
 
@@ -187,7 +188,7 @@ fn parse_uniforms(module: &Module) -> Result<HashMap<String, Uniform>, ShaderErr
 
 impl Renderable for Shader {
     fn passes(&self) -> impl IntoIterator<Item = &Pass> {
-        &self.pass
+        vec![].into_iter()
     }
 }
 

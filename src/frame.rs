@@ -4,14 +4,18 @@ use crate::pass::Pass;
 use crate::Renderable;
 
 #[derive(Debug, Default)]
-/// A Frame is a collection of passes that are executed in sequence.
+/// A Frame represents a graph of Passes that are executed in sequence.
 pub struct Frame {
-    pub(crate) passes: Vec<Pass>,
+    passes: Vec<Pass>,
+    _dependencies: Vec<(usize, usize)>, // @TODO implement directed acyclic graph
 }
 
 impl Frame {
     pub fn new() -> Self {
-        Self { passes: Vec::new() }
+        Self {
+            passes: Vec::new(),
+            _dependencies: Vec::new(),
+        }
     }
 
     pub fn add_pass(&mut self, pass: Pass) {

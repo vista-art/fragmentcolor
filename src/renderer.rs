@@ -1,8 +1,6 @@
 use crate::buffer_pool::BufferPool;
 use crate::TargetFrame;
-use crate::{
-    shader::Uniform, ComputePass, Pass, RenderPass, Shader, ShaderError, ShaderHash, Target,
-};
+use crate::{shader::Uniform, Pass, Shader, ShaderError, ShaderHash, Target};
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -35,16 +33,6 @@ pub struct Renderer {
     _samplers: RefCell<HashMap<String, wgpu::Sampler>>,
 
     buffer_pool: RefCell<BufferPool>,
-}
-
-impl Renderer {
-    pub fn device(&self) -> &wgpu::Device {
-        &self.device
-    }
-
-    pub fn queue(&self) -> &wgpu::Queue {
-        &self.queue
-    }
 }
 
 impl Renderer {
@@ -84,13 +72,10 @@ impl Renderer {
         let frame = target.get_current_frame()?;
 
         for pass in renderable.passes() {
-            match pass {
-                Pass::Render(render_pass) => {
-                    self.process_render_pass(&mut encoder, render_pass, frame.as_ref())?
-                }
-                Pass::Compute(compute_pass) => {
-                    self.process_compute_pass(&mut encoder, compute_pass)?
-                }
+            if pass.is_compute() {
+                self.process_compute_pass(&mut encoder, pass)?
+            } else {
+                self.process_render_pass(&mut encoder, pass, frame.as_ref())?
             }
         }
 
@@ -106,7 +91,7 @@ impl Renderer {
     fn process_render_pass(
         &self,
         encoder: &mut wgpu::CommandEncoder,
-        pass: &RenderPass,
+        pass: &Pass,
         frame: &dyn TargetFrame,
     ) -> Result<(), ShaderError> {
         self.buffer_pool.borrow_mut().reset();
@@ -141,7 +126,6 @@ impl Renderer {
             let mut bind_group_entries: HashMap<u32, Vec<wgpu::BindGroupEntry>> = HashMap::new();
 
             let mut buffer_locations = Vec::new();
-            // @TODO there should be a method get_bind_groups() in the Shader
             for name in &shader.list_uniforms() {
                 if name.contains('.') {
                     continue;
@@ -149,9 +133,6 @@ impl Renderer {
 
                 let uniform = shader.get_uniform(name).unwrap();
 
-                // @FIXME TECH DEBT: this is wrong. We are looping through an internal data structure
-                // that should be hidden, and then using a public method to access the same structure.
-                // I need to figure out a better way to handle this.
                 let storage = shader.storage();
                 let bytes = storage
                     .get_bytes(name)
@@ -201,7 +182,7 @@ impl Renderer {
     fn process_compute_pass(
         &self,
         _encoder: &mut wgpu::CommandEncoder,
-        _pass: &ComputePass,
+        _pass: &Pass,
     ) -> Result<(), ShaderError> {
         Ok(()) // @TODO later
     }

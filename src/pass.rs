@@ -1,39 +1,38 @@
+use crate::{Color, Region, Shader, Texture};
 use std::sync::Arc;
-
-use crate::{Color, Compute, Region, Shader, Target, Texture};
-
-#[derive(Debug)]
-/// A Pass can be a Render Pass or a Compute Pass.
-pub enum Pass {
-    Render(RenderPass),
-    Compute(ComputePass),
-}
 
 // Resource Definitions
 #[derive(Debug)]
 pub enum PassInput {
+    None,
     Clear(Color),
-    Pass,
     Texture(Arc<Texture>),
+    Pass(Arc<Pass>),
 }
 
 #[derive(Debug)]
-pub struct RenderPass {
-    pub name: String,
-    pub(crate) shaders: Vec<Arc<Shader>>,
-    pub(crate) input: PassInput,
-    pub(crate) targets: Vec<Arc<dyn Target>>,
-    pub(crate) region: Option<Region>,
+pub enum PassType {
+    Compute,
+    Render,
 }
 
-impl RenderPass {
-    pub fn new(name: &str, input: impl Into<PassInput>) -> Self {
+#[derive(Debug)]
+pub struct Pass {
+    pub(crate) name: Arc<str>,
+    pub(crate) input: PassInput,
+    pub(crate) shaders: Vec<Arc<Shader>>,
+    pub(crate) region: Option<Region>,
+    pub pass_type: PassType,
+}
+
+impl Pass {
+    pub fn new(name: &str) -> Self {
         Self {
-            name: name.to_string(),
+            name: Arc::from(name),
             shaders: Vec::new(),
-            targets: Vec::new(),
             region: None,
-            input: input.into(),
+            input: PassInput::None,
+            pass_type: PassType::Render,
         }
     }
 
@@ -46,11 +45,12 @@ impl RenderPass {
     }
 
     pub fn add_shader(&mut self, shader: Arc<Shader>) {
-        self.shaders.push(shader);
-    }
-
-    pub fn add_target(&mut self, target: Arc<dyn Target>) {
-        self.targets.push(target);
+        if shader.is_compute() && self.shaders.len() == 0 {
+            self.pass_type = PassType::Compute;
+            self.shaders.push(shader);
+        } else {
+            self.shaders.push(shader);
+        }
     }
 
     pub fn set_region(&mut self, region: Region) {
@@ -60,32 +60,8 @@ impl RenderPass {
     pub fn execute(&self, _encoder: &mut wgpu::CommandEncoder) {
         // @TODO Execute draw calls
     }
-}
 
-#[derive(Default, Debug)]
-pub struct ComputePass {
-    _computes: Vec<Arc<Compute>>,
-    // input: ResourceId,
-    // output: Target, // @TODO
-}
-
-impl ComputePass {
-    pub fn new() -> Self {
-        unimplemented!("Compute Pass is not implemented yet")
-        // Self {
-        //     computes: Vec::new(),
-        //     // dependencies: Vec::new(),
-        //     // input: ResourceId::default(),
-        //     // output: Target::default(),
-        // }
+    pub fn is_compute(&self) -> bool {
+        matches!(self.pass_type, PassType::Compute)
     }
-
-    pub fn add_compute(&mut self, _compute: Compute) {
-        unimplemented!("Compute Pass is not implemented yet")
-        // self.computes.push(compute);
-    }
-
-    // pub fn add_dependency(&mut self, id: ResourceId) {
-    //     self.dependencies.push(id);
-    // }
 }
