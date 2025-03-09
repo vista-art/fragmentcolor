@@ -1,7 +1,7 @@
-use crate::{Shader, ShaderError};
+use crate::{ShaderError, ShaderObject};
 
 #[cfg(feature = "glsl")]
-impl Shader {
+impl ShaderObject {
     /// Create a Shader object from a GLSL source pair (vertex and fragment shaders).
     pub fn glsl(vertex_source: &str, fragment_source: &str) -> Result<Self, ShaderError> {
         use naga::back::wgsl;

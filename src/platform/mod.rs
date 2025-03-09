@@ -10,4 +10,12 @@ pub mod android;
 pub mod ios;
 
 #[cfg(not(any(wasm, android, ios)))]
-pub mod generic;
+pub mod desktop;
+
+// @TODO
+// pub enum PlatformSurface {
+//     AndroidNativeWindow(crate::platform::android::AndroidNativeWindow),
+//     HtmlCanvas(web_sys::HtmlCanvasElement),
+//     WinitWindow(winit::window::Window),
+//     MetalLayer(metal_rs::CoreAnimationLayer),
+// }

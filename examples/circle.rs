@@ -12,7 +12,7 @@ struct State {
     target: Arc<WindowTarget>,
     renderer: Renderer,
     frame: Frame,
-    shader: Arc<Shader>,
+    shader: Shader,
 }
 
 impl State {
@@ -61,11 +61,10 @@ impl State {
         shader.set("circle.color", [1.0, 0.2, 0.8, 1.0]).unwrap();
         shader.set("circle.border", 20.0).unwrap();
 
-        let shader = Arc::new(shader);
         let target = Arc::new(target);
 
         let mut pass = Pass::new("Single Pass");
-        pass.add_shader(shader.clone());
+        pass.add_shader(&shader);
 
         let mut frame = Frame::new();
         frame.add_pass(pass);
@@ -135,12 +134,12 @@ impl ApplicationHandler for App {
                 state.get_window().request_redraw();
             }
 
-            // blah
+            // resize
             WindowEvent::Resized(size) => {
                 state.resize(size);
             }
 
-            // blah
+            // quit
             WindowEvent::CloseRequested => {
                 println!("The close button was pressed; stopping.");
                 event_loop.exit();

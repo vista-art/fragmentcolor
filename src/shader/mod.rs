@@ -8,6 +8,7 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::cell::{Ref, RefCell};
 use std::collections::HashMap;
+use std::sync::Arc;
 
 pub mod features;
 
@@ -30,23 +31,9 @@ pub type ShaderHash = [u8; 32];
 /// It automatically parses a WGSL shader and extracts its uniforms, buffers, and textures.
 ///
 /// The user can set values for the uniforms and buffers, and then render the shader.
-#[derive(Debug, Serialize)]
+#[derive(Debug)]
 pub struct Shader {
-    pub(crate) source: String,
-
-    // Can be reconstructed from the source
-    #[serde(skip_serializing)]
-    pub(crate) hash: ShaderHash,
-    #[serde(skip_serializing)]
-    pub(crate) module: Module,
-    #[serde(skip_serializing)]
-    pub(crate) storage: RefCell<UniformStorage>,
-}
-
-impl Drop for Shader {
-    fn drop(&mut self) {
-        println!("Dropping shader {:?}", self.hash);
-    }
+    pub(crate) object: Arc<ShaderObject>,
 }
 
 impl Shader {
@@ -58,9 +45,62 @@ impl Shader {
     /// If the optional features are enabled,
     /// the constructor try to automatically detect the shader type and parse it accordingly.
     pub fn new(source: &str) -> Result<Self, ShaderError> {
+        Ok(Self {
+            object: Arc::new(ShaderObject::new(source)?),
+        })
+    }
+
+    /// Set a uniform value.
+    pub fn set(&self, key: &str, value: impl Into<UniformData>) -> Result<(), ShaderError> {
+        self.object.set(key, value)
+    }
+
+    /// Get a uniform value.
+    pub fn get<T: From<UniformData>>(&self, key: &str) -> Result<T, ShaderError> {
+        Ok(self.object.get_uniform_data(key)?.into())
+    }
+
+    /// List all the uniforms in the shader.
+    pub fn list_uniforms(&self) -> Vec<String> {
+        self.object.list_uniforms()
+    }
+}
+
+/// FragmentColor's Shader internal implementation.
+///
+/// The ShaderObject is wrapped in an Arc and managed by the Shader struct.
+/// This allows it to be shared between multiple passes and render pipelines.
+#[derive(Debug, Serialize)]
+pub(crate) struct ShaderObject {
+    pub(crate) source: String,
+
+    // Can be reconstructed from the source
+    #[serde(skip_serializing)]
+    pub(crate) hash: ShaderHash,
+    #[serde(skip_serializing)]
+    pub(crate) module: Module,
+    #[serde(skip_serializing)]
+    pub(crate) storage: RefCell<UniformStorage>,
+}
+
+impl Drop for ShaderObject {
+    fn drop(&mut self) {
+        println!("Dropping shader {:?}", self.hash);
+    }
+}
+
+impl ShaderObject {
+    /// Create a Shader object from a WGSL source string.
+    ///
+    /// GLSL is also supported if you enable the `glsl` feature.
+    /// Shadertoy-flavored GLSL is supported if the `shadertoy` feature is enabled.
+    ///
+    /// If the optional features are enabled,
+    /// the constructor try to automatically detect the shader type and parse it accordingly.
+    pub fn new(source: &str) -> Result<Self, ShaderError> {
         #[cfg(feature = "shadertoy")]
         if source.contains("void mainImage") {
-            return Shader::toy(source);
+            return ShaderObject::toy(source);
         }
 
         #[cfg(feature = "glsl")]
@@ -97,16 +137,11 @@ impl Shader {
 }
 
 // getters
-impl Shader {
+impl ShaderObject {
     /// List all the uniforms in the shader.
     pub fn list_uniforms(&self) -> Vec<String> {
         let storage = self.storage.borrow();
         storage.list()
-    }
-
-    /// Get a uniform value.
-    pub fn get<T: From<UniformData>>(&self, key: &str) -> Result<T, ShaderError> {
-        Ok(self.get_uniform_data(key)?.into())
     }
 
     /// Get a uniform value as UniformData enum.
@@ -186,7 +221,7 @@ fn parse_uniforms(module: &Module) -> Result<HashMap<String, Uniform>, ShaderErr
     Ok(uniforms)
 }
 
-impl Renderable for Shader {
+impl Renderable for ShaderObject {
     fn passes(&self) -> impl IntoIterator<Item = &Pass> {
         vec![].into_iter()
     }
@@ -274,7 +309,7 @@ mod tests {
         shader.set("circle.color", [1.0, 0.0, 0.0, 1.0]).unwrap();
         shader.set("resolution", [800.0, 600.0]).unwrap();
 
-        let storage = shader.storage();
+        let storage = shader.object.storage();
         let position_bytes = storage.get_bytes("circle.position").unwrap();
         let radius_bytes = storage.get_bytes("circle.radius").unwrap();
         let color_bytes = storage.get_bytes("circle.color").unwrap();
@@ -319,10 +354,10 @@ mod tests {
 
     #[test]
     fn test_shader_serialization() {
-        let shader = Shader::new(SHADER).unwrap();
+        let shader = ShaderObject::new(SHADER).unwrap();
         let serialized = serde_json::to_string(&shader).unwrap();
 
-        let deserialized: Shader = serde_json::from_str(&serialized).unwrap();
+        let deserialized: ShaderObject = serde_json::from_str(&serialized).unwrap();
         assert_eq!(shader.hash, deserialized.hash);
     }
 }

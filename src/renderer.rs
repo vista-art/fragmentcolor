@@ -1,6 +1,6 @@
 use crate::buffer_pool::BufferPool;
 use crate::TargetFrame;
-use crate::{shader::Uniform, Pass, Shader, ShaderError, ShaderHash, Target};
+use crate::{shader::Uniform, Pass, ShaderError, ShaderHash, ShaderObject, Target};
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -36,6 +36,29 @@ pub struct Renderer {
 }
 
 impl Renderer {
+    // @TODO
+    // pub async fn create_with_target<T: Target>(
+    //     target: T,
+    // ) -> Result<(Renderer, T), InitializationError> {
+    //     Ok(Self::new(device, queue))
+    // }
+
+    // pub async fn create_headless() -> Result<Renderer, InitializationError> {
+    //     pub async fn headless() -> Renderer {
+    //         let instance = wgpu::Instance::default();
+
+    //         let adapter = instance
+    //             .request_adapter(&wgpu::RequestAdapterOptions::default())
+    //             .await?;
+
+    //         let (device, queue) = platform::all::request_device(&adapter).await?;
+
+    //         Renderer::new(device, queue)
+    //     }
+
+    //     Ok(Self::new(device, queue))
+    // }
+
     /// Creates a new Renderer instance.
     pub fn new(device: wgpu::Device, queue: wgpu::Queue) -> Renderer {
         let buffer_pool = BufferPool::new_uniform_pool("Uniform Buffer Pool", &device);
@@ -187,7 +210,7 @@ impl Renderer {
         Ok(()) // @TODO later
     }
 
-    fn ensure_render_pipeline(&self, shader: &Shader) -> Result<(), ShaderError> {
+    fn ensure_render_pipeline(&self, shader: &ShaderObject) -> Result<(), ShaderError> {
         let mut pipelines = self.render_pipelines.borrow_mut();
 
         pipelines.entry(shader.hash).or_insert_with(|| {
