@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use fragmentcolor::{Renderer, Shader, ShaderError, Target, WindowTarget};
+use fragmentcolor::{Frame, Pass, Renderer, Shader, ShaderError, Target, WindowTarget};
 
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
@@ -11,29 +11,27 @@ struct State {
     window: Arc<Window>,
     target: WindowTarget,
     renderer: Renderer,
-    shader: Shader,
+    frame: Frame,
+    circle: Shader,
 }
 
 impl State {
     async fn new(window: Arc<Window>) -> State {
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-
-        let surface = instance.create_surface(window.clone()).unwrap();
-
         let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::HighPerformance,
-                compatible_surface: Some(&surface),
-                force_fallback_adapter: false,
-            })
+            .request_adapter(&wgpu::RequestAdapterOptions::default())
             .await
-            .expect("Failed to find an appropriate adapter");
+            .unwrap();
         let (device, queue) = fragmentcolor::platform::all::request_device(&adapter)
             .await
             .expect("Failed to request device");
 
-        let size = window.inner_size();
+        device.on_uncaptured_error(Box::new(|error| {
+            println!("\n\n==== GPU error: ====\n\n{:#?}\n", error);
+        }));
 
+        let size = window.inner_size();
+        let surface = instance.create_surface(window.clone()).unwrap();
         let capabilities = surface.get_capabilities(&adapter);
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
@@ -50,25 +48,37 @@ impl State {
         let target = WindowTarget { surface, config };
         let renderer = Renderer::new(device, queue);
 
-        let shader_source = include_str!("circle.wgsl");
-        let shader = Shader::new(shader_source).unwrap();
-        shader
+        let triangle_source = include_str!("hello_triangle.wgsl");
+        let triangle = Shader::new(triangle_source).unwrap();
+        triangle.set("color", [1.0, 0.2, 0.8, 1.0]).unwrap();
+
+        let circle_source = include_str!("circle.wgsl");
+        let circle = Shader::new(circle_source).unwrap();
+        circle
             .set("resolution", [size.width as f32, size.height as f32])
             .unwrap();
-        shader.set("circle.position", [0.0, 0.0]).unwrap();
-        shader.set("circle.radius", 200.0).unwrap();
-        shader.set("circle.color", [1.0, 0.2, 0.8, 1.0]).unwrap();
-        shader.set("circle.border", 20.0).unwrap();
+        circle.set("circle.position", [0.0, 0.0]).unwrap();
+        circle.set("circle.radius", 200.0).unwrap();
+        circle.set("circle.color", [0.2, 0.8, 0.3, 1.0]).unwrap();
+        circle.set("circle.border", 20.0).unwrap();
+
+        let mut pass = Pass::new("Multi Object Pass");
+        pass.add_shader(&triangle);
+        pass.add_shader(&circle);
+
+        let mut frame = Frame::new();
+        frame.add_pass(pass);
 
         State {
             window,
             target,
             renderer,
-            shader,
+            frame,
+            circle,
         }
     }
 
-    fn get_window(&self) -> &Window {
+    fn window(&self) -> &Window {
         &self.window
     }
 
@@ -79,14 +89,14 @@ impl State {
             depth_or_array_layers: 1,
         };
 
-        self.target.resize(&self.renderer, size);
-        self.shader
+        self.circle
             .set("resolution", [size.width as f32, size.height as f32])
             .unwrap();
+        self.target.resize(&self.renderer, size);
     }
 
     fn render(&mut self) -> Result<(), ShaderError> {
-        Ok(self.renderer.render(&self.shader, &self.target)?)
+        Ok(self.renderer.render(&self.frame, &self.target)?)
     }
 }
 
@@ -102,7 +112,6 @@ impl ApplicationHandler for App {
                 .create_window(Window::default_attributes())
                 .unwrap(),
         );
-        //self.windows.insert(window.id(), window.clone());
 
         let state = pollster::block_on(State::new(window.clone()));
         self.state = Some(state);
@@ -113,13 +122,13 @@ impl ApplicationHandler for App {
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
         let state = self.state.as_mut().unwrap();
         match event {
-            // Render loop
+            // render loop
             WindowEvent::RedrawRequested => {
                 if let Err(err) = state.render() {
                     log::error!("Failed to render: {:?}", err);
                 }
 
-                state.get_window().request_redraw();
+                state.window().request_redraw();
             }
 
             // resize
@@ -129,7 +138,7 @@ impl ApplicationHandler for App {
 
             // quit
             WindowEvent::CloseRequested => {
-                println!("The close button was pressed; stopping.");
+                println!("The close button was pressed; stopping");
                 event_loop.exit();
             }
             _ => {}

@@ -33,6 +33,7 @@ pub type ShaderHash = [u8; 32];
 /// The user can set values for the uniforms and buffers, and then render the shader.
 #[derive(Debug)]
 pub struct Shader {
+    pass: Pass,
     pub(crate) object: Arc<ShaderObject>,
 }
 
@@ -45,9 +46,10 @@ impl Shader {
     /// If the optional features are enabled,
     /// the constructor try to automatically detect the shader type and parse it accordingly.
     pub fn new(source: &str) -> Result<Self, ShaderError> {
-        Ok(Self {
-            object: Arc::new(ShaderObject::new(source)?),
-        })
+        let object = Arc::new(ShaderObject::new(source)?);
+        let pass = Pass::from_shader_object("Shader Default Pass", object.clone());
+
+        Ok(Self { pass, object })
     }
 
     /// Set a uniform value.
@@ -221,9 +223,9 @@ fn parse_uniforms(module: &Module) -> Result<HashMap<String, Uniform>, ShaderErr
     Ok(uniforms)
 }
 
-impl Renderable for ShaderObject {
+impl Renderable for Shader {
     fn passes(&self) -> impl IntoIterator<Item = &Pass> {
-        vec![].into_iter()
+        vec![&self.pass]
     }
 }
 

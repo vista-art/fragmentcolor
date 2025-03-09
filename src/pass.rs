@@ -36,6 +36,22 @@ impl Pass {
         }
     }
 
+    pub(crate) fn from_shader_object(name: &str, shader: Arc<ShaderObject>) -> Self {
+        let pass_type = if shader.is_compute() {
+            PassType::Compute
+        } else {
+            PassType::Render
+        };
+
+        Self {
+            name: Arc::from(name),
+            shaders: vec![shader],
+            region: None,
+            input: PassInput::None,
+            pass_type,
+        }
+    }
+
     pub fn set_clear_color(&mut self, color: Color) {
         self.input = PassInput::Clear(color);
     }
