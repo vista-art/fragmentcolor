@@ -3,9 +3,9 @@ use std::fmt;
 use serde::de::{self, MapAccess, Visitor};
 use serde::{Deserialize, Deserializer};
 
-use super::Shader;
+use super::ShaderObject;
 
-impl<'de> Deserialize<'de> for Shader {
+impl<'de> Deserialize<'de> for ShaderObject {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
@@ -19,7 +19,7 @@ impl<'de> Deserialize<'de> for Shader {
         struct ShaderVisitor;
 
         impl<'de> Visitor<'de> for ShaderVisitor {
-            type Value = Shader;
+            type Value = ShaderObject;
 
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
                 formatter.write_str("struct Shader")
@@ -41,7 +41,7 @@ impl<'de> Deserialize<'de> for Shader {
                     }
                 }
                 let source = source.ok_or_else(|| de::Error::missing_field("source"))?;
-                Shader::new(&source).map_err(de::Error::custom)
+                ShaderObject::new(&source).map_err(de::Error::custom)
             }
         }
 

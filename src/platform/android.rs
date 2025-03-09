@@ -8,9 +8,9 @@ use raw_window_handle::{
 use jni::{objects::JClass, sys::jobject, JNIEnv};
 use jni_fn::jni_fn;
 
-use crate::Quad;
+use crate::Region;
 
-use crate::{ffi, Bitmap, Destination, Image, PixelFormat};
+use crate::{Bitmap, Destination, Image, PixelFormat};
 
 const BACKENDS: wgpu::Backends = wgpu::Backends::VULKAN;
 

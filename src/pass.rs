@@ -1,4 +1,4 @@
-use crate::{Color, Region, Shader, Texture};
+use crate::{Color, Region, Shader, ShaderObject, Texture};
 use std::sync::Arc;
 
 // Resource Definitions
@@ -20,7 +20,7 @@ pub enum PassType {
 pub struct Pass {
     pub(crate) name: Arc<str>,
     pub(crate) input: PassInput,
-    pub(crate) shaders: Vec<Arc<Shader>>,
+    pub(crate) shaders: Vec<Arc<ShaderObject>>,
     pub(crate) region: Option<Region>,
     pub pass_type: PassType,
 }
@@ -44,12 +44,12 @@ impl Pass {
         &self.input
     }
 
-    pub fn add_shader(&mut self, shader: Arc<Shader>) {
-        if shader.is_compute() && self.shaders.len() == 0 {
+    pub fn add_shader(&mut self, shader: &Shader) {
+        if shader.object.is_compute() && self.shaders.len() == 0 {
             self.pass_type = PassType::Compute;
-            self.shaders.push(shader);
+            self.shaders.push(shader.object.clone());
         } else {
-            self.shaders.push(shader);
+            self.shaders.push(shader.object.clone());
         }
     }
 

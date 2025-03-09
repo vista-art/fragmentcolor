@@ -51,11 +51,10 @@ impl State {
         let shader = Shader::new(shader_source).unwrap();
         shader.set("color", [1.0, 0.2, 0.8, 1.0]).unwrap();
 
-        let shader = Arc::new(shader);
         let target = Arc::new(target);
 
         let mut pass = Pass::new("Single Pass");
-        pass.add_shader(shader);
+        pass.add_shader(&shader);
 
         let mut frame = Frame::new();
         frame.add_pass(pass);
@@ -111,10 +110,7 @@ impl ApplicationHandler for App {
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
         let state = self.state.as_mut().unwrap();
         match event {
-            WindowEvent::CloseRequested => {
-                println!("The close button was pressed; stopping");
-                event_loop.exit();
-            }
+            // render loop
             WindowEvent::RedrawRequested => {
                 if let Err(err) = state.render() {
                     log::error!("Failed to render: {:?}", err);
@@ -122,8 +118,16 @@ impl ApplicationHandler for App {
 
                 state.window().request_redraw();
             }
+
+            // resize
             WindowEvent::Resized(size) => {
                 state.resize(size);
+            }
+
+            // quit
+            WindowEvent::CloseRequested => {
+                println!("The close button was pressed; stopping");
+                event_loop.exit();
             }
             _ => {}
         }
