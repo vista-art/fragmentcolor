@@ -59,7 +59,7 @@ impl Renderer {
             .await
             .expect("Failed to find an appropriate adapter");
 
-        let (device, queue) = ffi::platform::all::request_device(&adapter).await;
+        let (device, queue) = crate::platform::all::request_device(&adapter).await;
 
         device.on_uncaptured_error(Box::new(|error| {
             web_sys::console::error_1(&format!("Error: {:?}", error).into());
@@ -115,7 +115,7 @@ impl Stage {
             .await
             .expect("Failed to find an appropriate adapter");
 
-        let (device, queue) = ffi::platform::all::request_device(&adapter).await;
+        let (device, queue) = crate::platform::all::request_device(&adapter).await;
 
         device.on_uncaptured_error(Box::new(|error| {
             web_sys::console::error_1(&format!("Error: {:?}", error).into());
@@ -169,22 +169,5 @@ impl Stage {
             .expect("Failed rendering");
 
         surface_texture.present();
-    }
-
-    #[wasm_bindgen(js_name = renderBitmap)]
-    pub async fn render_bitmap(
-        &self,
-        composition: &ffi::Composition,
-        pixel_format: PixelFormat,
-    ) -> Option<Bitmap> {
-        let composition = composition.wrapped.read().unwrap();
-
-        // ImageData has no notion of padding or bpr, so we might as well remove
-        // it here systematically.
-        self.wrapped
-            .render_bitmap(&composition, pixel_format)
-            .await
-            .ok()
-            .map(|it| it.removing_padding())
     }
 }

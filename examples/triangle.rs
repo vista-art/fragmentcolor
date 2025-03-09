@@ -1,8 +1,6 @@
 use std::sync::Arc;
 
-use fragmentcolor::{
-    Color, Frame, Pass, PassInput, RenderPass, Renderer, Shader, ShaderError, Target, WindowTarget,
-};
+use fragmentcolor::{Frame, Pass, Renderer, Shader, ShaderError, Target, WindowTarget};
 
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
@@ -34,7 +32,7 @@ impl State {
         let size = window.inner_size();
         let surface = instance.create_surface(window.clone()).unwrap();
         let capabilities = surface.get_capabilities(&adapter);
-        let surface_configuration = wgpu::SurfaceConfiguration {
+        let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format: capabilities.formats[0].remove_srgb_suffix(),
             width: u32::max(size.width, 1),
@@ -44,34 +42,28 @@ impl State {
             desired_maximum_frame_latency: 2,
             view_formats: vec![],
         };
-        surface.configure(&device, &surface_configuration);
+        surface.configure(&device, &config);
 
-        ////////////// public API // @TODO transform the boilerplate into a initializer
+        let target = WindowTarget { surface, config };
+        let renderer = Renderer::new(device, queue);
 
         let shader_source = include_str!("hello_triangle.wgsl");
         let shader = Shader::new(shader_source).unwrap();
         shader.set("color", [1.0, 0.2, 0.8, 1.0]).unwrap();
 
+        let shader = Arc::new(shader);
+        let target = Arc::new(target);
+
+        let mut pass = Pass::new("Single Pass");
+        pass.add_shader(shader);
+
         let mut frame = Frame::new();
-        let mut pass = RenderPass::new(
-            "Single Pass",
-            PassInput::Clear(Color::from_rgba([0.5, 0.4, 0.2, 1.0])),
-        );
-        let target = Arc::new(WindowTarget {
-            surface,
-            config: surface_configuration,
-        });
-        pass.add_shader(Arc::new(shader));
-        pass.add_target(target.clone());
-
-        frame.add_pass(Pass::Render(pass));
-
-        /////////////
+        frame.add_pass(pass);
 
         State {
             window,
             target,
-            renderer: Renderer::new(device, queue),
+            renderer,
             frame,
         }
     }
@@ -87,7 +79,6 @@ impl State {
             depth_or_array_layers: 1,
         };
 
-        // @FIXME this fails silently
         if let Some(target) = Arc::get_mut(&mut self.target) {
             target.resize(&self.renderer, size);
         }

@@ -13,28 +13,26 @@ pub struct Renderer {
     wrapped: Arc<crate::Renderer>,
 }
 
-async fn headless() -> crate::Renderer {
-    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
-        backends: BACKENDS,
-        ..Default::default()
-    });
-
-    let adapter = instance
-        .request_adapter(&wgpu::RequestAdapterOptions::default())
-        .await
-        .expect("Failed to find an appropriate adapter");
-
-    let (device, queue) = ffi::platform::all::request_device(&adapter).await;
-
-    crate::Renderer::new(device, queue)
-}
-
 #[cfg_attr(mobile, uniffi::export)]
 impl Renderer {
     #[cfg_attr(mobile, uniffi::constructor)]
     pub async fn headless() -> Self {
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+            backends: BACKENDS,
+            ..Default::default()
+        });
+
+        let adapter = instance
+            .request_adapter(&wgpu::RequestAdapterOptions::default())
+            .await
+            .expect("Failed to find an appropriate adapter");
+
+        let (device, queue) = crate::platform::all::request_device(&adapter).await;
+
+        let renderer = crate::Renderer::new(device, queue).await;
+
         Renderer {
-            wrapped: headless().await.into(),
+            wrapped: renderer.into(),
         }
     }
 
@@ -106,7 +104,7 @@ impl Stage {
             .await
             .expect("Failed to find an appropriate adapter");
 
-        let (device, queue) = ffi::platform::all::request_device(&adapter).await;
+        let (device, queue) = crate::platform::all::request_device(&adapter).await;
 
         let capabilitiess = surface.get_capabilities(&adapter);
         let surface_configuration = wgpu::SurfaceConfiguration {
@@ -145,19 +143,5 @@ impl Stage {
             .expect("Failed rendering");
 
         surface_texture.present();
-    }
-
-    pub async fn render_bitmap(
-        &self,
-        composition: &ffi::Composition,
-        pixel_format: PixelFormat,
-    ) -> Option<Arc<Bitmap>> {
-        let composition = composition.wrapped.read().unwrap().clone();
-
-        self.wrapped
-            .render_bitmap(&composition, pixel_format)
-            .await
-            .ok()
-            .map(|it| it.into())
     }
 }

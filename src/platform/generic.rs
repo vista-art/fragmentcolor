@@ -1,7 +1,3 @@
-// This file contains a generic implementation for platforms that are not the web or mobile.
-// Since we do not have any specific ties with the windowing system, we cannot implement
-// stages that actually draw on screen, so we just provide headless context and stage.
-
 use crate::{platform, Renderer};
 
 impl Renderer {

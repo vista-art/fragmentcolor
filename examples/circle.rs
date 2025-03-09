@@ -1,8 +1,6 @@
 use std::sync::Arc;
 
-use fragmentcolor::{
-    Color, Frame, Pass, PassInput, RenderPass, Renderer, Shader, ShaderError, Target, WindowTarget,
-};
+use fragmentcolor::{Frame, Pass, Renderer, Shader, ShaderError, Target, WindowTarget};
 
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
@@ -14,27 +12,31 @@ struct State {
     target: Arc<WindowTarget>,
     renderer: Renderer,
     frame: Frame,
+    shader: Arc<Shader>,
 }
 
 impl State {
     async fn new(window: Arc<Window>) -> State {
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
+
+        let surface = instance.create_surface(window.clone()).unwrap();
+
         let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions::default())
+            .request_adapter(&wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::HighPerformance,
+                compatible_surface: Some(&surface),
+                force_fallback_adapter: false,
+            })
             .await
-            .unwrap();
+            .expect("Failed to find an appropriate adapter");
         let (device, queue) = fragmentcolor::platform::all::request_device(&adapter)
             .await
             .expect("Failed to request device");
 
-        device.on_uncaptured_error(Box::new(|error| {
-            println!("\n\n==== GPU error: ====\n\n{:#?}\n", error);
-        }));
-
         let size = window.inner_size();
-        let surface = instance.create_surface(window.clone()).unwrap();
+
         let capabilities = surface.get_capabilities(&adapter);
-        let surface_configuration = wgpu::SurfaceConfiguration {
+        let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format: capabilities.formats[0].remove_srgb_suffix(),
             width: u32::max(size.width, 1),
@@ -44,9 +46,10 @@ impl State {
             desired_maximum_frame_latency: 2,
             view_formats: vec![],
         };
-        surface.configure(&device, &surface_configuration);
+        surface.configure(&device, &config);
 
-        ////////////// public API // @TODO transform the boilerplate into a initializer
+        let target = WindowTarget { surface, config };
+        let renderer = Renderer::new(device, queue);
 
         let shader_source = include_str!("circle.wgsl");
         let shader = Shader::new(shader_source).unwrap();
@@ -59,28 +62,20 @@ impl State {
         shader.set("circle.border", 20.0).unwrap();
 
         let shader = Arc::new(shader);
+        let target = Arc::new(target);
+
+        let mut pass = Pass::new("Single Pass");
+        pass.add_shader(shader.clone());
 
         let mut frame = Frame::new();
-        let mut pass = RenderPass::new(
-            "Single Pass",
-            PassInput::Clear(Color::from_rgba([0.5, 0.4, 0.2, 1.0])),
-        );
-        let target = Arc::new(WindowTarget {
-            surface,
-            config: surface_configuration,
-        });
-        pass.add_shader(shader.clone());
-        pass.add_target(target.clone());
-
-        frame.add_pass(Pass::Render(pass));
-
-        /////////////
+        frame.add_pass(pass);
 
         State {
             window,
             target,
-            renderer: Renderer::new(device, queue),
+            renderer,
             frame,
+            shader,
         }
     }
 
@@ -95,8 +90,10 @@ impl State {
             depth_or_array_layers: 1,
         };
 
-        // @FIXME this fails silently
         if let Some(target) = Arc::get_mut(&mut self.target) {
+            self.shader
+                .set("resolution", [size.width as f32, size.height as f32])
+                .unwrap();
             target.resize(&self.renderer, size);
         }
     }
@@ -129,10 +126,7 @@ impl ApplicationHandler for App {
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
         let state = self.state.as_mut().unwrap();
         match event {
-            WindowEvent::CloseRequested => {
-                println!("The close button was pressed; stopping");
-                event_loop.exit();
-            }
+            // Render loop
             WindowEvent::RedrawRequested => {
                 if let Err(err) = state.render() {
                     log::error!("Failed to render: {:?}", err);
@@ -140,8 +134,16 @@ impl ApplicationHandler for App {
 
                 state.get_window().request_redraw();
             }
+
+            // blah
             WindowEvent::Resized(size) => {
                 state.resize(size);
+            }
+
+            // blah
+            WindowEvent::CloseRequested => {
+                println!("The close button was pressed; stopping.");
+                event_loop.exit();
             }
             _ => {}
         }

@@ -28,12 +28,16 @@ var<uniform> circle: Circle;
 fn main(pixel: VertexOutput) -> @location(0) vec4<f32> {
     let normalized_coords = pixel.coords.xy / resolution;
     var uv = -1.0 + 2.0 * normalized_coords;
-    uv.x *= resolution.x / resolution.y;
+    if (resolution.x > resolution.y) {
+        uv.x *= resolution.x / resolution.y;
+    } else {
+        uv.y *= resolution.y / resolution.x;
+    }
     let circle_pos = circle.position / resolution;
     let dist = distance(uv, circle_pos);
-    let r = circle.radius / max(resolution.x, resolution.y);
+    let r = circle.radius / min(resolution.x, resolution.y);
     let aa = 2. / min(resolution.x, resolution.y);
-    let border = circle.border / max(resolution.x, resolution.y);
+    let border = circle.border / min(resolution.x, resolution.y);
     let circle_sdf = 1.0 - smoothstep(border - aa, border + aa, abs(dist - r));
     return circle.color * circle_sdf;
 }
