@@ -119,6 +119,11 @@ impl Renderer {
     ) -> Result<(), ShaderError> {
         self.buffer_pool.borrow_mut().reset();
 
+        // let load_op = match pass.get_input() {
+        //     PassInput::Clear(color) => wgpu::LoadOp::Clear(color.into()),
+        //     PassInput::None => wgpu::LoadOp::Load,
+        // };
+
         let attachments = &[Some(wgpu::RenderPassColorAttachment {
             view: frame.view(),
             resolve_target: None,
@@ -316,7 +321,7 @@ fn create_render_pipeline(
             entry_point: Some(fs_entry.as_deref().unwrap_or("fs_main")),
             targets: &[Some(wgpu::ColorTargetState {
                 format: wgpu::TextureFormat::Bgra8Unorm, // @TODO dynamic format
-                blend: Some(wgpu::BlendState::REPLACE),
+                blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING), // @TODO dynamic blend
                 write_mask: wgpu::ColorWrites::ALL,
             })],
             compilation_options: wgpu::PipelineCompilationOptions::default(),

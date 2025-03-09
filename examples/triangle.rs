@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use fragmentcolor::{Frame, Pass, Renderer, Shader, ShaderError, Target, WindowTarget};
+use fragmentcolor::{Renderer, Shader, ShaderError, Target, WindowTarget};
 
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
@@ -9,9 +9,9 @@ use winit::window::{Window, WindowId};
 
 struct State {
     window: Arc<Window>,
-    target: Arc<WindowTarget>,
+    target: WindowTarget,
     renderer: Renderer,
-    frame: Frame,
+    shader: Shader,
 }
 
 impl State {
@@ -51,19 +51,11 @@ impl State {
         let shader = Shader::new(shader_source).unwrap();
         shader.set("color", [1.0, 0.2, 0.8, 1.0]).unwrap();
 
-        let target = Arc::new(target);
-
-        let mut pass = Pass::new("Single Pass");
-        pass.add_shader(&shader);
-
-        let mut frame = Frame::new();
-        frame.add_pass(pass);
-
         State {
             window,
             target,
             renderer,
-            frame,
+            shader,
         }
     }
 
@@ -78,13 +70,11 @@ impl State {
             depth_or_array_layers: 1,
         };
 
-        if let Some(target) = Arc::get_mut(&mut self.target) {
-            target.resize(&self.renderer, size);
-        }
+        self.target.resize(&self.renderer, size);
     }
 
     fn render(&mut self) -> Result<(), ShaderError> {
-        Ok(self.renderer.render(&self.frame, self.target.as_ref())?)
+        Ok(self.renderer.render(&self.shader, &self.target)?)
     }
 }
 
