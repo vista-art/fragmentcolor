@@ -1,6 +1,6 @@
 [package]
 name = "fragmentcolor"
-version = "0.10.0"
+version = "0.10.1"
 homepage = "https://fragmentcolor.org"
 repository = "https://github.com/vista-art/fragmentcolor"
 description = "Easy GPU Rendering for Javascript, Python, Swift and Kotlin"
@@ -33,6 +33,7 @@ sha2 = { version = "0.10" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0" }
 parking_lot = { version = "0.12" }
+rand = { version = "0.9" }
 
 # Windowing and input
 raw-window-handle = { version = "0.6" }

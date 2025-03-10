@@ -119,14 +119,32 @@ impl From<Color> for wgpu::Color {
     }
 }
 
+impl From<wgpu::Color> for Color {
+    fn from(c: wgpu::Color) -> Self {
+        Self::new(c.r as f32, c.g as f32, c.b as f32, c.a as f32)
+    }
+}
+
 impl From<Color> for u32 {
     fn from(c: Color) -> Self {
         c.0
     }
 }
 
+impl From<u32> for Color {
+    fn from(c: u32) -> Self {
+        Self(c)
+    }
+}
+
 impl From<Color> for [f32; 4] {
     fn from(c: Color) -> Self {
         c.to_f32_array()
+    }
+}
+
+impl From<[f32; 4]> for Color {
+    fn from(c: [f32; 4]) -> Self {
+        Self::from_rgba(c)
     }
 }

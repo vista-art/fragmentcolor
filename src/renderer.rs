@@ -1,13 +1,13 @@
 use crate::buffer_pool::BufferPool;
-use crate::TargetFrame;
-use crate::{shader::Uniform, Pass, ShaderError, ShaderHash, ShaderObject, Target};
+use crate::{shader::Uniform, PassObject, ShaderError, ShaderHash, Target};
+use crate::{PassInput, TargetFrame};
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
 pub type Commands = Vec<wgpu::CommandBuffer>;
 
 pub trait Renderable {
-    fn passes(&self) -> impl IntoIterator<Item = &Pass>;
+    fn passes(&self) -> impl IntoIterator<Item = &PassObject>;
 }
 
 struct RenderPipeline {
@@ -23,44 +23,17 @@ pub struct Renderer {
     pub(crate) device: wgpu::Device,
     pub(crate) queue: wgpu::Queue,
 
-    render_pipelines: RefCell<HashMap<ShaderHash, RenderPipeline>>,
-    _compute_pipelines: RefCell<HashMap<String, wgpu::ComputePipeline>>,
-
-    _shaders: RefCell<HashMap<String, wgpu::ShaderModule>>,
-    _bind_groups: RefCell<HashMap<String, wgpu::BindGroup>>,
-
-    _textures: RefCell<HashMap<String, wgpu::Texture>>,
-    _samplers: RefCell<HashMap<String, wgpu::Sampler>>,
-
+    render_pipelines: RefCell<HashMap<(ShaderHash, wgpu::TextureFormat), RenderPipeline>>,
     buffer_pool: RefCell<BufferPool>,
+    //
+    // @TODO
+    // _compute_pipelines: RefCell<HashMap<String, wgpu::ComputePipeline>>,
+    // _textures: RefCell<HashMap<String, wgpu::Texture>>,
+    // _samplers: RefCell<HashMap<String, wgpu::Sampler>>,
 }
 
 impl Renderer {
-    // @TODO
-    // pub async fn create_with_target<T: Target>(
-    //     target: T,
-    // ) -> Result<(Renderer, T), InitializationError> {
-    //     Ok(Self::new(device, queue))
-    // }
-
-    // pub async fn create_headless() -> Result<Renderer, InitializationError> {
-    //     pub async fn headless() -> Renderer {
-    //         let instance = wgpu::Instance::default();
-
-    //         let adapter = instance
-    //             .request_adapter(&wgpu::RequestAdapterOptions::default())
-    //             .await?;
-
-    //         let (device, queue) = platform::all::request_device(&adapter).await?;
-
-    //         Renderer::new(device, queue)
-    //     }
-
-    //     Ok(Self::new(device, queue))
-    // }
-
-    /// Creates a new Renderer instance.
-    pub fn new(device: wgpu::Device, queue: wgpu::Queue) -> Renderer {
+    pub(crate) fn new(device: wgpu::Device, queue: wgpu::Queue) -> Self {
         let buffer_pool = BufferPool::new_uniform_pool("Uniform Buffer Pool", &device);
 
         Renderer {
@@ -68,14 +41,6 @@ impl Renderer {
             queue,
 
             render_pipelines: RefCell::new(HashMap::new()),
-            _compute_pipelines: RefCell::new(HashMap::new()),
-
-            _shaders: RefCell::new(HashMap::new()),
-            _bind_groups: RefCell::new(HashMap::new()),
-
-            _textures: RefCell::new(HashMap::new()),
-            _samplers: RefCell::new(HashMap::new()),
-
             buffer_pool: RefCell::new(buffer_pool),
         }
     }
@@ -114,21 +79,21 @@ impl Renderer {
     fn process_render_pass(
         &self,
         encoder: &mut wgpu::CommandEncoder,
-        pass: &Pass,
+        pass: &PassObject,
         frame: &dyn TargetFrame,
     ) -> Result<(), ShaderError> {
         self.buffer_pool.borrow_mut().reset();
 
-        // let load_op = match pass.get_input() {
-        //     PassInput::Clear(color) => wgpu::LoadOp::Clear(color.into()),
-        //     PassInput::None => wgpu::LoadOp::Load,
-        // };
+        let load_op = match pass.get_input() {
+            PassInput::Clear(color) => wgpu::LoadOp::Clear(color.into()),
+            PassInput::Load => wgpu::LoadOp::Load,
+        };
 
         let attachments = &[Some(wgpu::RenderPassColorAttachment {
             view: frame.view(),
             resolve_target: None,
             ops: wgpu::Operations {
-                load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                load: load_op,
                 store: wgpu::StoreOp::Store,
             },
         })];
@@ -141,25 +106,32 @@ impl Renderer {
             occlusion_query_set: None,
         });
 
-        for shader in &pass.shaders {
-            self.ensure_render_pipeline(shader)?;
-            let pipelines = self.render_pipelines.borrow();
-            let cached = pipelines.get(&shader.hash).unwrap();
+        // render_pass.set_blend_constant(wgpu::Color::WHITE);
 
-            let storage_size = shader.storage().uniform_bytes.len() * std::mem::size_of::<u8>();
-            self.buffer_pool
-                .borrow_mut()
-                .ensure_capacity(storage_size as u64, &self.device);
+        let required_size = pass.required_buffer_size.borrow().clone();
+        self.buffer_pool
+            .borrow_mut()
+            .ensure_capacity(required_size, &self.device);
+
+        for shader in pass.shaders.borrow().iter() {
+            let format = frame.format();
+            let mut pipelines = self.render_pipelines.borrow_mut();
+            let cached = pipelines.entry((shader.hash, format)).or_insert_with(|| {
+                let layouts = create_bind_group_layouts(&self.device, &shader.storage().uniforms);
+                let pipeline =
+                    create_render_pipeline(&self.device, &layouts, &shader.module, format);
+
+                RenderPipeline {
+                    pipeline,
+                    bind_group_layouts: layouts.values().cloned().collect(),
+                }
+            });
 
             let mut bind_group_entries: HashMap<u32, Vec<wgpu::BindGroupEntry>> = HashMap::new();
-
             let mut buffer_locations = Vec::new();
-            for name in &shader.list_uniforms() {
-                if name.contains('.') {
-                    continue;
-                }
 
-                let uniform = shader.get_uniform(name).unwrap();
+            for name in &shader.list_uniforms() {
+                let uniform = shader.get_uniform(name)?;
 
                 let storage = shader.storage();
                 let bytes = storage
@@ -202,6 +174,7 @@ impl Renderer {
             for (i, bind_group) in bind_groups.iter().enumerate() {
                 render_pass.set_bind_group(i as u32, bind_group, &[]);
             }
+            // render_pass.set_blend_constant(color);
             render_pass.draw(0..3, 0..1); // Fullscreen triangle
         }
         Ok(())
@@ -210,25 +183,9 @@ impl Renderer {
     fn process_compute_pass(
         &self,
         _encoder: &mut wgpu::CommandEncoder,
-        _pass: &Pass,
+        _pass: &PassObject,
     ) -> Result<(), ShaderError> {
         Ok(()) // @TODO later
-    }
-
-    fn ensure_render_pipeline(&self, shader: &ShaderObject) -> Result<(), ShaderError> {
-        let mut pipelines = self.render_pipelines.borrow_mut();
-
-        pipelines.entry(shader.hash).or_insert_with(|| {
-            let layouts = create_bind_group_layouts(&self.device, &shader.storage().uniforms);
-            let pipeline = create_render_pipeline(&self.device, &layouts, &shader.module);
-
-            RenderPipeline {
-                pipeline,
-                bind_group_layouts: layouts.values().cloned().collect(),
-            }
-        });
-
-        Ok(())
     }
 }
 
@@ -276,6 +233,7 @@ fn create_render_pipeline(
     device: &wgpu::Device,
     bind_group_layouts: &HashMap<u32, wgpu::BindGroupLayout>,
     module: &naga::Module,
+    format: wgpu::TextureFormat,
 ) -> wgpu::RenderPipeline {
     let mut vs_entry = None;
     let mut fs_entry = None;
@@ -320,8 +278,8 @@ fn create_render_pipeline(
             module: &shader_module,
             entry_point: Some(fs_entry.as_deref().unwrap_or("fs_main")),
             targets: &[Some(wgpu::ColorTargetState {
-                format: wgpu::TextureFormat::Bgra8Unorm, // @TODO dynamic format
-                blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING), // @TODO dynamic blend
+                format,
+                blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
                 write_mask: wgpu::ColorWrites::ALL,
             })],
             compilation_options: wgpu::PipelineCompilationOptions::default(),

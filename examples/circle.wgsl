@@ -38,6 +38,11 @@ fn main(pixel: VertexOutput) -> @location(0) vec4<f32> {
     let r = circle.radius / min(resolution.x, resolution.y);
     let aa = 2. / min(resolution.x, resolution.y);
     let border = circle.border / min(resolution.x, resolution.y);
-    let circle_sdf = 1.0 - smoothstep(border - aa, border + aa, abs(dist - r));
-    return circle.color * circle_sdf;
+
+    if (dist > r + (border + aa)) {
+        discard;
+    }
+
+    let alpha = 1.0 - smoothstep(border - aa, border + aa, abs(dist - r));
+    return circle.color * alpha;
 }

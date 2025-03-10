@@ -7,26 +7,24 @@
 #[cfg(not(wasm))]
 uniffi::setup_scaffolding!();
 
+pub struct FragmentColor;
+
 /// # Renderer module.
 ///
-/// This module contains the renderer and its related types.
-/// Users do not need to use it directly.
-///
-/// A Global Renderer is lazily instanced by the App module
-/// when the user creates the first Window or Web Canvas.
 pub mod renderer;
 
 /// # Shader Module
 ///
-///
 pub mod shader;
 
+/// # Error module
 pub mod error;
 
+/// # Platform-specific implementations
 pub mod platform;
 pub use platform::*;
 
-// DRAFT
+// DRAFT; may change in a whim
 mod buffer_pool;
 pub mod color;
 pub mod frame;
@@ -34,7 +32,6 @@ pub mod pass;
 pub mod region;
 pub mod resources;
 pub mod sampler;
-pub mod target;
 pub mod texture;
 
 pub use color::*;
@@ -46,5 +43,4 @@ pub use renderer::*;
 pub use resources::*;
 pub use sampler::*;
 pub use shader::*;
-pub use target::*;
 pub use texture::*;

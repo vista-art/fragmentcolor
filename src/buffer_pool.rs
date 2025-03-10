@@ -4,14 +4,14 @@ use std::num::NonZeroU64;
 const DEFAULT_CHUNK_SIZE: u64 = 0x10000;
 
 /// A pool of GPU buffers that manages allocations in fixed-size chunks
-pub struct BufferPool {
+pub(crate) struct BufferPool {
     label: String,
     usage: wgpu::BufferUsages,
     buffers: Vec<wgpu::Buffer>,
     chunk_size: u64,
     current_chunk: usize,
     current_offset: u64,
-    alignment: u64,
+    pub alignment: u64,
 }
 
 /// Represents a location within a BufferPool
@@ -69,14 +69,17 @@ impl BufferPool {
     ///
     /// Must be called before upload, normally at the beginning of a frame.
     pub fn ensure_capacity(&mut self, required_bytes: u64, device: &wgpu::Device) {
-        let available = (self.chunk_size - self.current_offset)
-            + (self.buffers.len() as u64 - self.current_chunk as u64) * self.chunk_size;
+        let remaining_in_current = self.chunk_size - self.current_offset;
+        let chunks_after_current =
+            (self.buffers.len() as u64).saturating_sub(self.current_chunk as u64 + 1);
+        let available = remaining_in_current + (chunks_after_current * self.chunk_size);
 
         if available >= required_bytes {
             return;
         }
 
-        let needed_chunks = (required_bytes - available).div_ceil(self.chunk_size);
+        let needed_chunks =
+            (required_bytes - available).saturating_add(self.chunk_size - 1) / self.chunk_size;
         for _ in 0..needed_chunks {
             self.buffers
                 .push(device.create_buffer(&wgpu::BufferDescriptor {

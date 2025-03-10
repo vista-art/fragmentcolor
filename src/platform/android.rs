@@ -140,8 +140,8 @@ pub struct Stage {
 /// use a proper JNI function, which is not possible to do with uniffi.
 ///
 /// So in the end we do not expose this function and wrap it into a ugly raw ffi
-impl Stage {
-    pub async fn in_surface(env: *mut JNIEnv<'_>, surface: jobject) -> Self {
+impl super::FragmentColor {
+    pub async fn init(env: *mut JNIEnv<'_>, surface: jobject) -> Self {
         let window = AndroidNativeWindow::new(env, surface);
         let window_width = window.width();
         let window_height = window.height();
@@ -221,7 +221,7 @@ impl Stage {
 
 #[no_mangle]
 #[jni_fn("com.photoroom.engine.StageExtensions")]
-pub fn pg_stage_create_in_surface(env: *mut JNIEnv, _: JClass, surface: jobject) -> *const Stage {
-    let stage = pollster::block_on(Stage::in_surface(env, surface));
+pub fn fragmentcolor_init(env: *mut JNIEnv, _: JClass, surface: jobject) -> *const Stage {
+    let stage = pollster::block_on(FragmentColor::init(env, surface));
     Arc::into_raw(Arc::new(stage))
 }

@@ -1,80 +1,88 @@
+use rand::prelude::*;
 use std::sync::Arc;
 
-use fragmentcolor::{Frame, Pass, Renderer, Shader, ShaderError, Target, WindowTarget};
+use fragmentcolor::{
+    FragmentColor, Frame, Pass, Renderer, Shader, ShaderError, Target, WindowTarget,
+};
 
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::{Window, WindowId};
 
+const CIRCLE_SOURCE: &str = include_str!("circle.wgsl");
+const TRIANGLE_SOURCE: &str = include_str!("hello_triangle.wgsl");
+
 struct State {
     window: Arc<Window>,
     target: WindowTarget,
     renderer: Renderer,
     frame: Frame,
-    circle: Shader,
+    circles: Vec<Shader>,
+}
+
+fn random_circle(rng: &mut impl Rng, size: &wgpu::Extent3d, alpha: f32) -> Shader {
+    let circle = Shader::new(CIRCLE_SOURCE).unwrap();
+    circle
+        .set("resolution", [size.width as f32, size.height as f32])
+        .unwrap();
+
+    let x = rng.random_range(-(size.width as f32)..size.width as f32);
+    let y = rng.random_range(-(size.height as f32)..size.height as f32);
+    circle.set("circle.position", [x, y]).unwrap();
+
+    let r = rng.random_range(0.0..1.0);
+    let g = rng.random_range(0.0..1.0);
+    let b = rng.random_range(0.0..1.0);
+    circle.set("circle.color", [r, g, b, alpha]).unwrap();
+
+    let radius = rng.random_range(50.0..300.0);
+    circle.set("circle.radius", radius).unwrap();
+
+    let border = rng.random_range(10.0..100.0);
+    circle.set("circle.border", border).unwrap();
+
+    circle
 }
 
 impl State {
     async fn new(window: Arc<Window>) -> State {
-        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions::default())
-            .await
-            .unwrap();
-        let (device, queue) = fragmentcolor::platform::all::request_device(&adapter)
-            .await
-            .expect("Failed to request device");
+        let (renderer, target) = FragmentColor::init(window.clone()).await.unwrap();
+        let size = target.size();
 
-        device.on_uncaptured_error(Box::new(|error| {
-            println!("\n\n==== GPU error: ====\n\n{:#?}\n", error);
-        }));
-
-        let size = window.inner_size();
-        let surface = instance.create_surface(window.clone()).unwrap();
-        let capabilities = surface.get_capabilities(&adapter);
-        let config = wgpu::SurfaceConfiguration {
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-            format: capabilities.formats[0].remove_srgb_suffix(),
-            width: u32::max(size.width, 1),
-            height: u32::max(size.height, 1),
-            present_mode: wgpu::PresentMode::AutoVsync,
-            alpha_mode: capabilities.alpha_modes[0],
-            desired_maximum_frame_latency: 2,
-            view_formats: vec![],
-        };
-        surface.configure(&device, &config);
-
-        let target = WindowTarget { surface, config };
-        let renderer = Renderer::new(device, queue);
-
-        let triangle_source = include_str!("hello_triangle.wgsl");
-        let triangle = Shader::new(triangle_source).unwrap();
+        let triangle = Shader::new(TRIANGLE_SOURCE).unwrap();
         triangle.set("color", [1.0, 0.2, 0.8, 1.0]).unwrap();
 
-        let circle_source = include_str!("circle.wgsl");
-        let circle = Shader::new(circle_source).unwrap();
-        circle
-            .set("resolution", [size.width as f32, size.height as f32])
-            .unwrap();
-        circle.set("circle.position", [0.0, 0.0]).unwrap();
-        circle.set("circle.radius", 200.0).unwrap();
-        circle.set("circle.color", [0.2, 0.8, 0.3, 1.0]).unwrap();
-        circle.set("circle.border", 20.0).unwrap();
+        let opaque_pass = Pass::new("Opaque Pass");
+        let transparent_pass = Pass::new("Transparent Pass");
+        opaque_pass.add_shader(&triangle);
+        opaque_pass.set_clear_color([0.0, 0.0, 0.0, 1.0]);
 
-        let mut pass = Pass::new("Multi Object Pass");
-        pass.add_shader(&triangle);
-        pass.add_shader(&circle);
+        let mut rng = rand::rng();
+
+        let mut circles = Vec::new();
+        for i in 0..10 {
+            let circle = random_circle(&mut rng, &size, 1.0);
+            circles.push(circle);
+            opaque_pass.add_shader(&circles[i]);
+        }
+
+        for i in 0..20 {
+            let circle = random_circle(&mut rng, &size, 0.2);
+            circles.push(circle);
+            transparent_pass.add_shader(&circles[i]);
+        }
 
         let mut frame = Frame::new();
-        frame.add_pass(pass);
+        frame.add_pass(&opaque_pass);
+        frame.add_pass(&transparent_pass);
 
         State {
             window,
             target,
             renderer,
             frame,
-            circle,
+            circles,
         }
     }
 
@@ -89,9 +97,12 @@ impl State {
             depth_or_array_layers: 1,
         };
 
-        self.circle
-            .set("resolution", [size.width as f32, size.height as f32])
-            .unwrap();
+        for circle in &self.circles {
+            circle
+                .set("resolution", [size.width as f32, size.height as f32])
+                .unwrap();
+        }
+
         self.target.resize(&self.renderer, size);
     }
 

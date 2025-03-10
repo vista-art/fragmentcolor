@@ -150,8 +150,8 @@ impl Texture {
         }
     }
 
-    pub fn size(&self) -> crate::Region {
-        crate::Region::from_size(self.size.width, self.size.height)
+    pub fn size(&self) -> wgpu::Extent3d {
+        self.size
     }
 
     pub fn aspect(&self) -> f32 {

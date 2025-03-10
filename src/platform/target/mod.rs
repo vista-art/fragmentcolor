@@ -2,18 +2,20 @@ use crate::Renderer;
 use std::fmt::{Debug, Formatter};
 
 pub mod texture;
-pub mod winit;
-
 pub use texture::*;
-pub use winit::*;
+
+pub mod window;
+pub use window::*;
 
 pub trait Target {
+    fn size(&self) -> wgpu::Extent3d;
     fn resize(&mut self, renderer: &Renderer, size: wgpu::Extent3d);
     fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, wgpu::SurfaceError>;
 }
 
 pub trait TargetFrame {
     fn view(&self) -> &wgpu::TextureView;
+    fn format(&self) -> wgpu::TextureFormat;
     fn present(self: Box<Self>);
 }
 

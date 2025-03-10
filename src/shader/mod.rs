@@ -1,5 +1,5 @@
 use crate::error::ShaderError;
-use crate::{Pass, Renderable};
+use crate::{PassObject, Renderable};
 use naga::{
     valid::{Capabilities, ValidationFlags, Validator},
     AddressSpace, Module,
@@ -33,7 +33,7 @@ pub type ShaderHash = [u8; 32];
 /// The user can set values for the uniforms and buffers, and then render the shader.
 #[derive(Debug)]
 pub struct Shader {
-    pass: Pass,
+    pass: PassObject,
     pub(crate) object: Arc<ShaderObject>,
 }
 
@@ -47,7 +47,7 @@ impl Shader {
     /// the constructor try to automatically detect the shader type and parse it accordingly.
     pub fn new(source: &str) -> Result<Self, ShaderError> {
         let object = Arc::new(ShaderObject::new(source)?);
-        let pass = Pass::from_shader_object("Shader Default Pass", object.clone());
+        let pass = PassObject::from_shader_object("Shader Default Pass", object.clone());
 
         Ok(Self { pass, object })
     }
@@ -62,9 +62,15 @@ impl Shader {
         Ok(self.object.get_uniform_data(key)?.into())
     }
 
-    /// List all the uniforms in the shader.
+    /// List all the top-level uniforms in the shader.
     pub fn list_uniforms(&self) -> Vec<String> {
         self.object.list_uniforms()
+    }
+
+    /// List all available keys in the shader.
+    /// This includes all the uniforms and their fields.
+    pub fn list_keys(&self) -> Vec<String> {
+        self.object.list_keys()
     }
 }
 
@@ -83,6 +89,8 @@ pub(crate) struct ShaderObject {
     pub(crate) module: Module,
     #[serde(skip_serializing)]
     pub(crate) storage: RefCell<UniformStorage>,
+    #[serde(skip_serializing)]
+    pub(crate) total_bytes: u64,
 }
 
 impl Drop for ShaderObject {
@@ -123,11 +131,19 @@ impl ShaderObject {
         let storage = RefCell::new(UniformStorage::new(&uniforms));
         let hash = hash(source);
 
+        let mut total_bytes = 0;
+        for (_, uniform) in &uniforms {
+            let size = uniform.data.size() as u64;
+            let aligned = wgpu::util::align_to(size, 256);
+            total_bytes += aligned;
+        }
+
         Ok(Self {
             source: source.to_string(),
             hash,
             module,
             storage,
+            total_bytes,
         })
     }
 
@@ -144,6 +160,12 @@ impl ShaderObject {
     pub fn list_uniforms(&self) -> Vec<String> {
         let storage = self.storage.borrow();
         storage.list()
+    }
+
+    /// List all available keys in the shader.
+    pub fn list_keys(&self) -> Vec<String> {
+        let storage = self.storage.borrow();
+        storage.keys()
     }
 
     /// Get a uniform value as UniformData enum.
@@ -224,7 +246,7 @@ fn parse_uniforms(module: &Module) -> Result<HashMap<String, Uniform>, ShaderErr
 }
 
 impl Renderable for Shader {
-    fn passes(&self) -> impl IntoIterator<Item = &Pass> {
+    fn passes(&self) -> impl IntoIterator<Item = &PassObject> {
         vec![&self.pass]
     }
 }
@@ -268,9 +290,17 @@ mod tests {
     "#;
 
     #[test]
-    fn test_shader_should_parse_uniforms() {
+    fn test_shader_should_parse_and_list_uniforms() {
         let shader = Shader::new(SHADER).unwrap();
         let mut uniforms = shader.list_uniforms();
+        uniforms.sort();
+        assert_eq!(uniforms, vec!["circle", "resolution"]);
+    }
+
+    #[test]
+    fn test_shader_should_parse_uniforms_and_list_keys() {
+        let shader = Shader::new(SHADER).unwrap();
+        let mut uniforms = shader.list_keys();
         uniforms.sort();
         assert_eq!(
             uniforms,

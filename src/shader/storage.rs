@@ -89,8 +89,17 @@ impl UniformStorage {
         }
     }
 
-    /// List all uniforms
+    /// List all top-level uniforms
     pub fn list(&self) -> Vec<String> {
+        self.uniforms
+            .keys()
+            .filter(|k| !k.contains('.'))
+            .cloned()
+            .collect()
+    }
+
+    /// List all uniform keys
+    pub fn keys(&self) -> Vec<String> {
         self.uniforms.keys().cloned().collect()
     }
 
