@@ -53,10 +53,12 @@ img = renderer.render_image(shader)
 ### Example usage (Javascript)
 
 ```javascript
-import { Shader, Renderer, Target } from "fragmentcolor";
+import { Shader, Renderer, Target, FragmentColor } from "fragmentcolor";
 
 let canvas = document.getElementById("my-canvas");
 const resolution = [canvas.width, canvas.heigth];
+
+[renderer, target] = FragmentColor.init(canvas);
 
 const shader = new Shader("circle.wgsl");
 shader.set("resolution", resolution);
@@ -67,7 +69,7 @@ const renderer = new Renderer();
 
 function animate() {
   shader.set("circle.position", [mouseX, mouseY]);
-  renderer.render(shader, canvas);
+  renderer.render(shader, target);
 
   requestAnimationFrame(animate);
 }
