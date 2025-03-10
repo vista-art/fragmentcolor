@@ -1,7 +1,13 @@
 use crate::InitializationError;
 
 fn limits() -> wgpu::Limits {
-    wgpu::Limits::downlevel_webgl2_defaults()
+    #[cfg(wasm)]
+    let limits = wgpu::Limits::downlevel_webgl2_defaults();
+
+    #[cfg(not(wasm))]
+    let limits = wgpu::Limits::default();
+
+    limits
 }
 
 fn features() -> wgpu::Features {

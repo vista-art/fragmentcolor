@@ -1,11 +1,13 @@
 use std::sync::Arc;
 
-use fragmentcolor::{Renderer, Shader, ShaderError, Target, WindowTarget};
+use fragmentcolor::{FragmentColor, Renderer, Shader, ShaderError, Target, WindowTarget};
 
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::{Window, WindowId};
+
+const TRIANGLE_SOURCE: &str = include_str!("hello_triangle.wgsl");
 
 struct State {
     window: Arc<Window>,
@@ -16,39 +18,9 @@ struct State {
 
 impl State {
     async fn new(window: Arc<Window>) -> State {
-        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions::default())
-            .await
-            .unwrap();
-        let (device, queue) = fragmentcolor::platform::all::request_device(&adapter)
-            .await
-            .expect("Failed to request device");
+        let (renderer, target) = FragmentColor::init(window.clone()).await.unwrap();
 
-        device.on_uncaptured_error(Box::new(|error| {
-            println!("\n\n==== GPU error: ====\n\n{:#?}\n", error);
-        }));
-
-        let size = window.inner_size();
-        let surface = instance.create_surface(window.clone()).unwrap();
-        let capabilities = surface.get_capabilities(&adapter);
-        let config = wgpu::SurfaceConfiguration {
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-            format: capabilities.formats[0].remove_srgb_suffix(),
-            width: u32::max(size.width, 1),
-            height: u32::max(size.height, 1),
-            present_mode: wgpu::PresentMode::AutoVsync,
-            alpha_mode: capabilities.alpha_modes[0],
-            desired_maximum_frame_latency: 2,
-            view_formats: vec![],
-        };
-        surface.configure(&device, &config);
-
-        let target = WindowTarget { surface, config };
-        let renderer = Renderer::new(device, queue);
-
-        let shader_source = include_str!("hello_triangle.wgsl");
-        let shader = Shader::new(shader_source).unwrap();
+        let shader = Shader::new(TRIANGLE_SOURCE).unwrap();
         shader.set("color", [1.0, 0.2, 0.8, 1.0]).unwrap();
 
         State {

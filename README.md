@@ -98,6 +98,8 @@ Platform support is the same as upstream [wgpu](https://github.com/gfx-rs/wgpu):
 ```bash
 cargo run --example circle
 cargo run --example triangle
+cargo run --example multiobject
+cargo run --example multipass
 ```
 
 ### Target: Desktop or Server/CI (Rust library)
