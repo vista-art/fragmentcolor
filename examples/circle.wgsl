@@ -39,10 +39,11 @@ fn main(pixel: VertexOutput) -> @location(0) vec4<f32> {
     let aa = 2. / min(resolution.x, resolution.y);
     let border = circle.border / min(resolution.x, resolution.y);
 
+    // necessary for multipass rendering
     if (dist > r + (border + aa)) {
         discard;
     }
 
-    let alpha = 1.0 - smoothstep(border - aa, border + aa, abs(dist - r));
-    return circle.color * alpha;
+    let circle_sdf = 1.0 - smoothstep(border - aa, border + aa, abs(dist - r));
+    return vec4<f32>(circle.color.rgb * circle.color.a, circle.color.a) * circle_sdf;
 }

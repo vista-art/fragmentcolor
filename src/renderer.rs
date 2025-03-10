@@ -118,8 +118,7 @@ impl Renderer {
             let mut pipelines = self.render_pipelines.borrow_mut();
             let cached = pipelines.entry((shader.hash, format)).or_insert_with(|| {
                 let layouts = create_bind_group_layouts(&self.device, &shader.storage().uniforms);
-                let pipeline =
-                    create_render_pipeline(&self.device, &layouts, &shader.module, format);
+                let pipeline = create_render_pipeline(&self.device, &layouts, &shader, format);
 
                 RenderPipeline {
                     pipeline,
@@ -232,12 +231,12 @@ fn create_bind_group_layouts(
 fn create_render_pipeline(
     device: &wgpu::Device,
     bind_group_layouts: &HashMap<u32, wgpu::BindGroupLayout>,
-    module: &naga::Module,
+    shader: &crate::ShaderObject,
     format: wgpu::TextureFormat,
 ) -> wgpu::RenderPipeline {
     let mut vs_entry = None;
     let mut fs_entry = None;
-    for entry_point in module.entry_points.iter() {
+    for entry_point in shader.module.entry_points.iter() {
         if entry_point.stage == naga::ShaderStage::Vertex {
             vs_entry = entry_point.function.name.clone();
         }
@@ -246,7 +245,7 @@ fn create_render_pipeline(
         }
     }
 
-    let module = Cow::Owned(module.clone());
+    let module = Cow::Owned(shader.module.clone());
     let shader_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some("Shader"),
         source: wgpu::ShaderSource::Naga(module),
@@ -280,6 +279,19 @@ fn create_render_pipeline(
             targets: &[Some(wgpu::ColorTargetState {
                 format,
                 blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
+                // @TODO implement more granular control over blending
+                // blend: Some(wgpu::BlendState {
+                //     color: wgpu::BlendComponent {
+                //         src_factor: wgpu::BlendFactor::One,
+                //         dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+                //         operation: wgpu::BlendOperation::Add,
+                //     },
+                //     alpha: wgpu::BlendComponent {
+                //         src_factor: wgpu::BlendFactor::One,
+                //         dst_factor: wgpu::BlendFactor::Zero,
+                //         operation: wgpu::BlendOperation::Add,
+                //     },
+                // }),
                 write_mask: wgpu::ColorWrites::ALL,
             })],
             compilation_options: wgpu::PipelineCompilationOptions::default(),
