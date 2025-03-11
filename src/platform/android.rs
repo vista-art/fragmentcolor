@@ -141,7 +141,7 @@ pub struct Stage {
 ///
 /// So in the end we do not expose this function and wrap it into a ugly raw ffi
 impl super::FragmentColor {
-    pub async fn init(env: *mut JNIEnv<'_>, surface: jobject) -> Self {
+    pub async fn init(env: *mut JNIEnv<'_>, surface: jobject) -> (Renderer, Target) {
         let window = AndroidNativeWindow::new(env, surface);
         let window_width = window.width();
         let window_height = window.height();
@@ -178,13 +178,12 @@ impl super::FragmentColor {
             view_formats: vec![],
         };
 
-        let stage = crate::Stage::new(crate::Renderer::new(device, queue));
+        
         surface.configure(stage.device(), &surface_configuration);
 
-        Self {
-            surface: Some(surface),
-            wrapped: stage.into(),
-        }
+        let renderer = crate::Renderer::new(device, queue);
+
+        (renderer, surface)
     }
 }
 
