@@ -76,4 +76,7 @@ docs/_build/
 .python-version
 
 # Extra
+sources.sh
 sources.txt
+
+fragmentcolor.code-workspace
