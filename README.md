@@ -76,23 +76,6 @@ function animate() {
 animate();
 ```
 
-## Platform support
-
-Platform support is the same as upstream [wgpu](https://github.com/gfx-rs/wgpu):
-
-| API    | Windows      | Linux/Android   | macOS/iOS | Web (wasm)  |
-| ------ | ------------ | --------------- | --------- | ----------- |
-| Vulkan | ✅           | ✅              | 🌋        |             |
-| Metal  |              |                 | ✅        |             |
-| DX12   | ✅           |                 |           |             |
-| OpenGL | 🆗 (GL 3.3+) | 🆗 (GL ES 3.0+) | 📐        | 🆗 (WebGL2) |
-| WebGPU |              |                 |           | ✅          |
-
-✅ = First Class Support  
-🆗 = Downlevel/Best Effort Support
-📐 = Requires the [ANGLE](http://angleproject.org/) translation layer (GL ES 3.0 only)  
-🌋 = Requires the [MoltenVK](https://vulkan.lunarg.com/sdk/home#mac) translation layer
-
 ## Building this project
 
 ### Running examples
@@ -123,3 +106,20 @@ cargo run --example multipass
 ### Target: Android (Kotlin library)
 
 - TBD
+
+## Platform support
+
+Platform support is the same as upstream [wgpu](https://github.com/gfx-rs/wgpu):
+
+| API    | Windows      | Linux/Android   | macOS/iOS | Web (wasm)  |
+| ------ | ------------ | --------------- | --------- | ----------- |
+| Vulkan | ✅           | ✅              | 🌋        |             |
+| Metal  |              |                 | ✅        |             |
+| DX12   | ✅           |                 |           |             |
+| OpenGL | 🆗 (GL 3.3+) | 🆗 (GL ES 3.0+) | 📐        | 🆗 (WebGL2) |
+| WebGPU |              |                 |           | ✅          |
+
+✅ = First Class Support  
+🆗 = Downlevel/Best Effort Support
+📐 = Requires the [ANGLE](http://angleproject.org/) translation layer (GL ES 3.0 only)  
+🌋 = Requires the [MoltenVK](https://vulkan.lunarg.com/sdk/home#mac) translation layer
