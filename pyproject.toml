@@ -1,3 +1,39 @@
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
+
 [tool.maturin]
-python-source = "bindings/python"
-module-name = "my_project._lib_name"
+module-name = "fragmentcolor"
+features = ["pyo3/extension-module"]
+
+[project]
+name = "fragmentcolor"
+version = "0.10.1"
+description = "Easy cross-platform GPU Rendering for Javascript, Python, Swift and Kotlin"
+readme = "README.md"
+requires-python = ">=3.8"
+license = "MIT"
+keywords = ["graphics", "rendering", "wgpu", "cross-platform", "art"]
+authors = [{ name = "Rafael Beckel" }]
+maintainers = [{ name = "Rafael Beckel" }]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Programming Language :: Rust",
+    "Environment :: GPU",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Topic :: Multimedia :: Graphics",
+    "Topic :: Multimedia :: Graphics :: 3D Rendering",
+]
+
+dependencies = []
+
+[project.optional-dependencies]
+test = ["pytest < 5.0.0", "pytest-cov[all]"]
+
+[project.urls]
+homepage = "https://fragmentcolor.org"
+documentation = "https://fragmentcolor.org/welcome"
+repository = "https://github.com/vista-art/fragmentcolor"
+changelog = "https://github.com/vista-art/fragmentcolor/releases"
