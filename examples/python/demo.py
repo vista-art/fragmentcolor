@@ -1,29 +1,26 @@
-import fragmentcolor as fc
+from fragmentcolor import FragmentColor, Shader
 from rendercanvas.auto import RenderCanvas, loop
 
 # Creates a window
 canvas = RenderCanvas()
-res = canvas.get_physical_size()
+renderer, target = FragmentColor.init(canvas)
 
-# Creates the shader with default values
-shader = fc.Shader("gaze.json")
-
-# It parses and binds automatically
-shader.set("resolution", res)
-
-# Create renderer
-renderer = fc.Renderer()
+# Parses the uniforms automatically and exposes their names as keys
+circle = Shader("circle.wgsl")
+circle.set("circle.radius", 200.0)
+circle.set("circle.color", (1.0, 0.0, 0.0, 0.8))
+circle.set("circle.border", 20.0)
 
 
 @canvas.resize
 def resize(w, h):
-    shader.set("resolution", (w, h))
+    circle.set("resolution", (w, h))
 
 
 @canvas.request_draw
 def animate():
-    shader.set("circle.position", (0.0, 0.0))
-    renderer.render(shader, canvas)
+    circle.set("position", (0.0, 0.0))
+    renderer.render(circle, target)
 
 
 # Enter main rendering loop
