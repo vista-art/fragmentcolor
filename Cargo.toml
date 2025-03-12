@@ -13,7 +13,7 @@ edition = "2021"
 
 [lib]
 name = "fragmentcolor"
-crate-type = ["cdylib", "rlib"]
+crate-type = ["staticlib", "cdylib", "rlib"]
 
 [features]
 glsl = []
@@ -77,6 +77,9 @@ ddsfile = "0.5"
 
 # Sync
 futures-intrusive = "0.5"
+
+# Python FFI
+pyo3 = { version = "0.24", features = ["abi3-py38"] }
 
 # Android & iOS FFI
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
