@@ -94,12 +94,6 @@ pub(crate) struct ShaderObject {
     pub(crate) total_bytes: u64,
 }
 
-impl Drop for ShaderObject {
-    fn drop(&mut self) {
-        println!("Dropping shader {:?}", self.hash);
-    }
-}
-
 impl ShaderObject {
     /// Create a Shader object from a WGSL source string.
     ///
