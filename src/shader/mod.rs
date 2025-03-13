@@ -4,9 +4,9 @@ use naga::{
     valid::{Capabilities, ValidationFlags, Validator},
     AddressSpace, Module,
 };
+use parking_lot::RwLock;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
-use std::cell::{Ref, RefCell};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -26,12 +26,13 @@ mod deserialize;
 /// The hash of a shader source.
 pub type ShaderHash = [u8; 32];
 
+#[pyo3::pyclass]
+#[derive(Debug)]
 /// The Shader in FragmentColor is the blueprint of a Render Pipeline.
 ///
 /// It automatically parses a WGSL shader and extracts its uniforms, buffers, and textures.
 ///
 /// The user can set values for the uniforms and buffers, and then render the shader.
-#[derive(Debug)]
 pub struct Shader {
     pass: PassObject,
     pub(crate) object: Arc<ShaderObject>,
@@ -88,7 +89,7 @@ pub(crate) struct ShaderObject {
     #[serde(skip_serializing)]
     pub(crate) module: Module,
     #[serde(skip_serializing)]
-    pub(crate) storage: RefCell<UniformStorage>,
+    pub(crate) storage: RwLock<UniformStorage>,
     #[serde(skip_serializing)]
     pub(crate) total_bytes: u64,
 }
@@ -128,7 +129,7 @@ impl ShaderObject {
         validator.validate(&module)?;
 
         let uniforms = parse_uniforms(&module)?;
-        let storage = RefCell::new(UniformStorage::new(&uniforms));
+        let storage = RwLock::new(UniformStorage::new(&uniforms));
         let hash = hash(source);
 
         let mut total_bytes = 0;
@@ -149,7 +150,7 @@ impl ShaderObject {
 
     /// Set a uniform value.
     pub fn set(&self, key: &str, value: impl Into<UniformData>) -> Result<(), ShaderError> {
-        let mut storage = self.storage.borrow_mut();
+        let mut storage = self.storage.write();
         storage.update(key, &value.into())
     }
 }
@@ -158,19 +159,19 @@ impl ShaderObject {
 impl ShaderObject {
     /// List all the uniforms in the shader.
     pub fn list_uniforms(&self) -> Vec<String> {
-        let storage = self.storage.borrow();
+        let storage = self.storage.read();
         storage.list()
     }
 
     /// List all available keys in the shader.
     pub fn list_keys(&self) -> Vec<String> {
-        let storage = self.storage.borrow();
+        let storage = self.storage.read();
         storage.keys()
     }
 
     /// Get a uniform value as UniformData enum.
     pub(crate) fn get_uniform_data(&self, key: &str) -> Result<UniformData, ShaderError> {
-        let storage = self.storage.borrow();
+        let storage = self.storage.read();
         let uniform = storage
             .get(key)
             .ok_or(ShaderError::UniformNotFound(key.into()))?;
@@ -180,18 +181,12 @@ impl ShaderObject {
 
     /// Get a uniform value as Uniform struct.
     pub(crate) fn get_uniform(&self, key: &str) -> Result<Uniform, ShaderError> {
-        let storage = self.storage.borrow();
+        let storage = self.storage.read();
         let uniform = storage
             .get(key)
             .ok_or(ShaderError::UniformNotFound(key.into()))?;
 
         Ok(uniform.clone())
-    }
-
-    /// Get a uniform byte storage
-    // @TODO find a way to return a byte slice while keeping interior mutability in the Shader struct
-    pub(crate) fn storage(&self) -> Ref<'_, UniformStorage> {
-        self.storage.borrow()
     }
 
     /// Tells weather the shader is a compute shader.
@@ -341,7 +336,7 @@ mod tests {
         shader.set("circle.color", [1.0, 0.0, 0.0, 1.0]).unwrap();
         shader.set("resolution", [800.0, 600.0]).unwrap();
 
-        let storage = shader.object.storage();
+        let storage = shader.object.storage.read();
         let position_bytes = storage.get_bytes("circle.position").unwrap();
         let radius_bytes = storage.get_bytes("circle.radius").unwrap();
         let color_bytes = storage.get_bytes("circle.color").unwrap();

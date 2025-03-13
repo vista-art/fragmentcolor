@@ -1,8 +1,8 @@
 use crate::buffer_pool::BufferPool;
 use crate::{shader::Uniform, PassObject, ShaderError, ShaderHash, Target};
 use crate::{PassInput, TargetFrame};
+use parking_lot::RwLock;
 use std::borrow::Cow;
-use std::cell::RefCell;
 use std::collections::HashMap;
 pub type Commands = Vec<wgpu::CommandBuffer>;
 
@@ -15,6 +15,7 @@ struct RenderPipeline {
     bind_group_layouts: Vec<wgpu::BindGroupLayout>,
 }
 
+#[pyo3::pyclass]
 /// Draws things on the screen or a texture.
 ///
 /// It owns and manages all GPU resources, serving as the
@@ -23,13 +24,13 @@ pub struct Renderer {
     pub(crate) device: wgpu::Device,
     pub(crate) queue: wgpu::Queue,
 
-    render_pipelines: RefCell<HashMap<(ShaderHash, wgpu::TextureFormat), RenderPipeline>>,
-    buffer_pool: RefCell<BufferPool>,
+    render_pipelines: RwLock<HashMap<(ShaderHash, wgpu::TextureFormat), RenderPipeline>>,
+    buffer_pool: RwLock<BufferPool>,
     //
     // @TODO
-    // _compute_pipelines: RefCell<HashMap<String, wgpu::ComputePipeline>>,
-    // _textures: RefCell<HashMap<String, wgpu::Texture>>,
-    // _samplers: RefCell<HashMap<String, wgpu::Sampler>>,
+    // _compute_pipelines: RwLock<HashMap<String, wgpu::ComputePipeline>>,
+    // _textures: RwLock<HashMap<String, wgpu::Texture>>,
+    // _samplers: RwLock<HashMap<String, wgpu::Sampler>>,
 }
 
 impl Renderer {
@@ -40,8 +41,8 @@ impl Renderer {
             device,
             queue,
 
-            render_pipelines: RefCell::new(HashMap::new()),
-            buffer_pool: RefCell::new(buffer_pool),
+            render_pipelines: RwLock::new(HashMap::new()),
+            buffer_pool: RwLock::new(buffer_pool),
         }
     }
 
@@ -82,7 +83,7 @@ impl Renderer {
         pass: &PassObject,
         frame: &dyn TargetFrame,
     ) -> Result<(), ShaderError> {
-        self.buffer_pool.borrow_mut().reset();
+        self.buffer_pool.write().reset();
 
         let load_op = match pass.get_input() {
             PassInput::Clear(color) => wgpu::LoadOp::Clear(color.into()),
@@ -108,16 +109,17 @@ impl Renderer {
 
         // render_pass.set_blend_constant(wgpu::Color::WHITE);
 
-        let required_size = pass.required_buffer_size.borrow().clone();
+        let required_size = pass.required_buffer_size.read().clone();
         self.buffer_pool
-            .borrow_mut()
+            .write()
             .ensure_capacity(required_size, &self.device);
 
-        for shader in pass.shaders.borrow().iter() {
+        for shader in pass.shaders.read().iter() {
             let format = frame.format();
-            let mut pipelines = self.render_pipelines.borrow_mut();
+            let mut pipelines = self.render_pipelines.write();
             let cached = pipelines.entry((shader.hash, format)).or_insert_with(|| {
-                let layouts = create_bind_group_layouts(&self.device, &shader.storage().uniforms);
+                let layouts =
+                    create_bind_group_layouts(&self.device, &shader.storage.read().uniforms);
                 let pipeline = create_render_pipeline(&self.device, &layouts, &shader, format);
 
                 RenderPipeline {
@@ -132,20 +134,20 @@ impl Renderer {
             for name in &shader.list_uniforms() {
                 let uniform = shader.get_uniform(name)?;
 
-                let storage = shader.storage();
+                let storage = shader.storage.read();
                 let bytes = storage
                     .get_bytes(name)
                     .ok_or(ShaderError::UniformNotFound(name.clone()))?;
 
                 let buffer_location = {
-                    let mut buffer_pool = self.buffer_pool.borrow_mut();
+                    let mut buffer_pool = self.buffer_pool.write();
                     buffer_pool.upload(bytes, &self.queue)
                 };
 
                 buffer_locations.push((uniform, buffer_location));
             }
 
-            let buffer_pool = self.buffer_pool.borrow();
+            let buffer_pool = self.buffer_pool.read();
             for (uniform, location) in buffer_locations {
                 let binding = buffer_pool.get_binding(location);
 

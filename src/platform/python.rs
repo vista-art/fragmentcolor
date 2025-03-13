@@ -1,47 +1,17 @@
+use crate::{FragmentColor, Frame, Pass, Renderer, Shader, WindowTarget};
 use pyo3::prelude::*;
-use rand::Rng;
-use std::cmp::Ordering;
-use std::io;
-
-#[pyfunction]
-fn guess_the_number() {
-    println!("Guess the number!");
-
-    let secret_number = rand::rng().random_range(1..101);
-
-    loop {
-        println!("Please input your guess.");
-
-        let mut guess = String::new();
-
-        io::stdin()
-            .read_line(&mut guess)
-            .expect("Failed to read line");
-
-        let guess: u32 = match guess.trim().parse() {
-            Ok(num) => num,
-            Err(_) => continue,
-        };
-
-        println!("You guessed: {}", guess);
-
-        match guess.cmp(&secret_number) {
-            Ordering::Less => println!("Too small!"),
-            Ordering::Greater => println!("Too big!"),
-            Ordering::Equal => {
-                println!("You win!");
-                break;
-            }
-        }
-    }
-}
 
 /// A Python module implemented in Rust. The name of this function must match
 /// the `lib.name` setting in the `Cargo.toml`, else Python will not be able to
 /// import the module.
 #[pymodule]
 pub fn fragmentcolor(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    m.add_function(wrap_pyfunction!(guess_the_number, m)?)?;
+    m.add_class::<FragmentColor>()?;
+    m.add_class::<WindowTarget>()?;
+    m.add_class::<Renderer>()?;
+    m.add_class::<Shader>()?;
+    m.add_class::<Pass>()?;
+    m.add_class::<Frame>()?;
 
     Ok(())
 }

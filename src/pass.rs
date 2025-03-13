@@ -1,5 +1,5 @@
 use crate::{Color, Region, Renderable, Shader, ShaderObject};
-use std::cell::RefCell;
+use parking_lot::RwLock;
 use std::sync::Arc;
 
 // Resource Definitions
@@ -15,6 +15,7 @@ pub enum PassType {
     Render,
 }
 
+#[pyo3::pyclass]
 #[derive(Debug)]
 pub struct Pass {
     pub(crate) object: Arc<PassObject>,
@@ -44,7 +45,7 @@ impl Pass {
     }
 
     pub fn load_previous(&self) {
-        *self.object.input.borrow_mut() = PassInput::Load;
+        *self.object.input.write() = PassInput::Load;
     }
 
     pub fn get_input(&self) -> PassInput {
@@ -69,10 +70,10 @@ impl Renderable for Pass {
 #[derive(Debug)]
 pub struct PassObject {
     pub(crate) name: Arc<str>,
-    pub(crate) input: RefCell<PassInput>,
-    pub(crate) shaders: RefCell<Vec<Arc<ShaderObject>>>,
-    pub(crate) region: RefCell<Option<Region>>,
-    pub(crate) required_buffer_size: RefCell<u64>,
+    pub(crate) input: RwLock<PassInput>,
+    pub(crate) shaders: RwLock<Vec<Arc<ShaderObject>>>,
+    pub(crate) region: RwLock<Option<Region>>,
+    pub(crate) required_buffer_size: RwLock<u64>,
     pub pass_type: PassType,
 }
 
@@ -80,10 +81,10 @@ impl PassObject {
     pub fn new(name: &str, pass_type: PassType) -> Self {
         Self {
             name: Arc::from(name),
-            shaders: RefCell::new(Vec::new()),
-            region: RefCell::new(None),
-            input: RefCell::new(PassInput::Load),
-            required_buffer_size: RefCell::new(0),
+            shaders: RwLock::new(Vec::new()),
+            region: RwLock::new(None),
+            input: RwLock::new(PassInput::Load),
+            required_buffer_size: RwLock::new(0),
             pass_type,
         }
     }
@@ -99,33 +100,33 @@ impl PassObject {
 
         Self {
             name: Arc::from(name),
-            shaders: RefCell::new(vec![shader]),
-            region: RefCell::new(None),
-            input: RefCell::new(PassInput::Load),
-            required_buffer_size: RefCell::new(total_bytes),
+            shaders: RwLock::new(vec![shader]),
+            region: RwLock::new(None),
+            input: RwLock::new(PassInput::Load),
+            required_buffer_size: RwLock::new(total_bytes),
             pass_type,
         }
     }
 
     pub fn set_clear_color(&self, color: impl Into<Color>) {
-        *self.input.borrow_mut() = PassInput::Clear(color.into());
+        *self.input.write() = PassInput::Clear(color.into());
     }
 
     pub fn get_input(&self) -> PassInput {
-        self.input.borrow().clone()
+        self.input.read().clone()
     }
 
     pub fn add_shader(&self, shader: &Shader) {
         if shader.object.is_compute() == self.is_compute() {
-            *self.required_buffer_size.borrow_mut() += shader.object.total_bytes;
-            self.shaders.borrow_mut().push(shader.object.clone());
+            *self.required_buffer_size.write() += shader.object.total_bytes;
+            self.shaders.write().push(shader.object.clone());
         } else {
             log::warn!("Cannot add a compute shader to a render pass or vice versa");
         }
     }
 
     pub fn set_region(&self, region: Region) {
-        *self.region.borrow_mut() = Some(region);
+        *self.region.write() = Some(region);
     }
 
     pub fn is_compute(&self) -> bool {

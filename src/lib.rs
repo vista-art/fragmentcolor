@@ -7,6 +7,7 @@
 #[cfg(not(wasm))]
 uniffi::setup_scaffolding!();
 
+#[pyo3::pyclass]
 pub struct FragmentColor;
 
 /// # Renderer module.
