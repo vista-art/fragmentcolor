@@ -4,7 +4,8 @@ build-backend = "maturin"
 
 [tool.maturin]
 module-name = "fragmentcolor"
-features = ["pyo3/extension-module"]
+python-source = "fragmentcolor_python"
+features = ["python", "pyo3/extension-module"]
 
 [project]
 name = "fragmentcolor"
