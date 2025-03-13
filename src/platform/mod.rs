@@ -4,7 +4,6 @@ pub mod all;
 /// Trait for a target that can be rendered to.
 /// Must be implemented for each platform.
 pub mod target;
-mod texture;
 pub use target::*;
 
 /// Target implementation for Textures.
