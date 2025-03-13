@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 // Reference https://blog.mecheye.net/2023/09/how-to-write-a-renderer-for-modern-apis
 
+#[pyo3::pyclass]
 #[derive(Debug, Default)]
 /// A Frame represents a graph of Passes that are executed in sequence.
 pub struct Frame {
