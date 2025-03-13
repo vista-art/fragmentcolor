@@ -1,5 +1,4 @@
 use crate::{FragmentColor, InitializationError, Renderer};
-use raw_window_handle::HasWindowHandle;
 use std::sync::Arc;
 use winit::window::Window;
 
