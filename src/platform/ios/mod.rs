@@ -51,23 +51,23 @@ impl Renderer {
 }
 
 #[cfg_attr(mobile, derive(uniffi::Object))]
-pub struct Stage {
+pub struct FragmentColor {
     surface: Option<wgpu::Surface<'static>>,
-    wrapped: Arc<crate::Stage>,
+    wrapped: Arc<crate::FragmentColor>,
 }
 
 #[cfg_attr(mobile, uniffi::export)]
-impl Stage {
+impl FragmentColor {
     #[cfg_attr(mobile, uniffi::constructor)]
     pub async fn headless() -> Self {
         let context = headless().await;
         Self {
             surface: None,
-            wrapped: crate::Stage::new(context).into(),
+            wrapped: crate::FragmentColor::new(context).into(),
         }
     }
 
-    /// NOTE: Stage needs a raw pointer to connect with the CAMetalLayer.
+    /// NOTE: FragmentColor needs a raw pointer to connect with the CAMetalLayer.
     /// Unfortunately uniffi currently does not support interfacing with raw
     /// pointers.
     ///
@@ -118,7 +118,7 @@ impl Stage {
             view_formats: vec![],
         };
 
-        let stage = crate::Stage::new(crate::Renderer::new(device, queue));
+        let stage = crate::FragmentColor::new(crate::Renderer::new(device, queue));
         surface.configure(stage.device(), &surface_configuration);
 
         Self {

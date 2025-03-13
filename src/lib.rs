@@ -10,6 +10,10 @@ uniffi::setup_scaffolding!();
 #[pyo3::pyclass]
 pub struct FragmentColor;
 
+/// # Platform-specific implementations
+pub mod platform;
+pub use platform::*;
+
 /// # Renderer module.
 ///
 pub mod renderer;
@@ -20,10 +24,6 @@ pub mod shader;
 
 /// # Error module
 pub mod error;
-
-/// # Platform-specific implementations
-pub mod platform;
-pub use platform::*;
 
 // DRAFT; may change in a whim
 mod buffer_pool;

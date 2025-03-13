@@ -1,6 +1,10 @@
-use crate::{FragmentColor, InitializationError, Renderer, WindowTarget};
+use crate::{FragmentColor, InitializationError, Renderer};
+use raw_window_handle::HasWindowHandle;
 use std::sync::Arc;
 use winit::window::Window;
+
+pub mod target;
+pub use target::*;
 
 impl FragmentColor {
     pub async fn init(
@@ -22,7 +26,7 @@ impl FragmentColor {
             .await
             .expect("Failed to request device");
 
-        let size = window.inner_size();
+        let size = window.as_ref().inner_size();
 
         let capabilities = surface.get_capabilities(&adapter);
         let config = wgpu::SurfaceConfiguration {
@@ -38,27 +42,8 @@ impl FragmentColor {
         surface.configure(&device, &config);
 
         let target = WindowTarget::new(surface, config);
-        let renderer = Renderer::new(device, queue);
+        let renderer = Renderer::init(device, queue);
 
         Ok((renderer, target))
-    }
-
-    pub async fn headless() -> Result<Renderer, InitializationError> {
-        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::HighPerformance,
-                compatible_surface: None,
-                force_fallback_adapter: false,
-            })
-            .await
-            .expect("Failed to find an appropriate adapter");
-
-        let (device, queue) = crate::platform::all::request_device(&adapter)
-            .await
-            .expect("Failed to request device");
-
-        Ok(Renderer::new(device, queue))
     }
 }

@@ -1,6 +1,5 @@
 use crate::{Renderer, Target, TargetFrame};
 
-#[pyo3::pyclass]
 pub struct WindowTarget {
     surface: wgpu::Surface<'static>,
     config: wgpu::SurfaceConfiguration,
