@@ -1,12 +1,6 @@
 use crate::Renderer;
 use std::fmt::{Debug, Formatter};
 
-pub mod texture;
-pub use texture::*;
-
-pub mod window;
-pub use window::*;
-
 pub trait Target {
     fn size(&self) -> wgpu::Extent3d;
     fn resize(&mut self, renderer: &Renderer, size: wgpu::Extent3d);

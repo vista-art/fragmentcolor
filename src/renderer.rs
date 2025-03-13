@@ -1,6 +1,6 @@
 use crate::buffer_pool::BufferPool;
 use crate::{shader::Uniform, PassObject, ShaderError, ShaderHash, Target};
-use crate::{PassInput, TargetFrame};
+use crate::{InitializationError, PassInput, TargetFrame};
 use parking_lot::RwLock;
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -34,7 +34,33 @@ pub struct Renderer {
 }
 
 impl Renderer {
-    pub(crate) fn new(device: wgpu::Device, queue: wgpu::Queue) -> Self {
+    /// Creates a headless renderer by default
+    pub async fn new() -> Result<Renderer, InitializationError> {
+        Self::headless().await
+    }
+
+    /// Creates a headless renderer
+    pub async fn headless() -> Result<Renderer, InitializationError> {
+        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
+
+        let adapter = instance
+            .request_adapter(&wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::HighPerformance,
+                compatible_surface: None,
+                force_fallback_adapter: false,
+            })
+            .await
+            .expect("Failed to find an appropriate adapter");
+
+        let (device, queue) = crate::platform::all::request_device(&adapter)
+            .await
+            .expect("Failed to request device");
+
+        Ok(Renderer::init(device, queue))
+    }
+
+    /// Creates a new renderer with the given device and queue.
+    pub(crate) fn init(device: wgpu::Device, queue: wgpu::Queue) -> Self {
         let buffer_pool = BufferPool::new_uniform_pool("Uniform Buffer Pool", &device);
 
         Renderer {

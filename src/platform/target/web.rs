@@ -4,22 +4,12 @@ use wasm_bindgen::JsCast;
 use crate::{ffi, Bitmap, Destination, Image, PixelFormat};
 use photogeometry::Rect;
 
-// Ideally, we should use the default instance or ::all()
-// and have WebGPU detected at runtime.
-//
-// This can be done when this upstream issue is fixed:
-// https://github.com/gfx-rs/wgpu/issues/5332
-//
-// For now, listing anything other than "GL" will panic
-// in WebGL context, even if the other backend is not used.
-//
-// For example, this will panic in Firefox
-// let backends = { wgpu::Backends::GL | wgpu::Backends::BROWSER_WEBGPU };
-//
-// One workaround is to compile two WASM binaries, one for
-// WebGPU and another for WebGL, and choose them from JS.
+const BACKENDS: wgpu::Backends = { wgpu::Backends::GL | wgpu::Backends::BROWSER_WEBGPU };
 
-const BACKENDS: wgpu::Backends = wgpu::Backends::GL;
+pub enum Canvas {
+    Html(web_sys::HtmlCanvasElement),
+    Offscreen(web_sys::OffscreenCanvas),
+}
 
 pub struct Renderer {
     wrapped: crate::Renderer,
@@ -28,7 +18,7 @@ pub struct Renderer {
 impl Renderer {
     #[wasm_bindgen]
     pub async fn headless() -> Self {
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+        let instance = wgpu::utils::new_instance_with_webgpu_detection(&wgpu::InstanceDescriptor {
             backends: BACKENDS,
             ..Default::default()
         });
@@ -66,39 +56,23 @@ impl Renderer {
         }));
 
         Renderer {
-            wrapped: crate::Renderer::new(device, queue),
+            wrapped: crate::Renderer::init(device, queue),
         }
     }
-
-    #[wasm_bindgen(js_name = renderBitmap)]
-    pub async fn render_bitmap(
-        &self,
-        image: &Image,
-        bounds: Option<Rect>,
-        pixel_format: PixelFormat,
-    ) -> Option<Bitmap> {
-        // ImageData has no notion of padding or bpr, so we might as well remove
-        // it here systematically.
-        self.wrapped
-            .render_bitmap(image, bounds, pixel_format)
-            .await
-            .ok()
-            .map(|it| it.removing_padding())
-    }
 }
 
-pub struct Stage {
+pub struct FragmentColor {
     surface: Option<wgpu::Surface<'static>>,
-    wrapped: crate::Stage,
+    wrapped: crate::FragmentColor,
 }
 
-impl Stage {
+impl FragmentColor {
     #[wasm_bindgen(js_name = inCanvas)]
-    pub async fn in_canvas(canvas: web_sys::HtmlCanvasElement) -> Self {
+    pub async fn init(canvas: Canvas) -> Self {
         let width = canvas.width();
         let height = canvas.height();
 
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
             backends: BACKENDS,
             ..Default::default()
         });
@@ -133,41 +107,12 @@ impl Stage {
             view_formats: vec![],
         };
 
-        let stage = crate::Stage::new(crate::Renderer::new(device, queue));
+        let stage = crate::FragmentColor::new(crate::Renderer::new(device, queue));
         surface.configure(stage.device(), &surface_configuration);
 
         Self {
             surface: Some(surface),
             wrapped: stage,
         }
-    }
-
-    #[wasm_bindgen]
-    pub async fn headless() -> Self {
-        let context = Renderer::headless().await;
-
-        Self {
-            surface: None,
-            wrapped: crate::Stage::new(context.wrapped),
-        }
-    }
-
-    #[wasm_bindgen]
-    pub fn draw(&self, composition: &ffi::Composition) {
-        let Some(surface) = self.surface.as_ref() else {
-            panic!("Cannot draw on a headless stage, use `render_bitmap` instead");
-        };
-
-        let composition = composition.wrapped.read().unwrap();
-
-        let surface_texture = surface
-            .get_current_texture()
-            .expect("Failed to get texture");
-
-        self.wrapped
-            .render(&composition, Destination::Texture(&surface_texture.texture))
-            .expect("Failed rendering");
-
-        surface_texture.present();
     }
 }

@@ -1,9 +1,14 @@
-use std::sync::Arc;
-
 use crate::{Renderer, Target, TargetFrame, Texture};
+use std::sync::Arc;
 
 pub struct TextureTarget {
     texture: Arc<Texture>,
+}
+
+impl TextureTarget {
+    pub fn new(texture: Arc<Texture>) -> Self {
+        Self { texture }
+    }
 }
 
 impl Target for TextureTarget {
