@@ -18,9 +18,13 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 [features]
 glsl = []
 shadertoy = ["glsl"]
+#python = ["pyo3"] // @TODO fix feature flag; it's enabled globally for now
 python = []
 
 [dependencies]
+# Python FFI // @TODO fix feature flag; it's enabled globally for now
+pyo3 = { version = "0.24", features = ["abi3-py39", "experimental-async"] }
+
 # Rendering
 wgpu = { version = "24", features = ["glsl", "wgsl", "webgl", "naga-ir"] }
 thiserror = { version = "2" }
@@ -35,6 +39,8 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0" }
 parking_lot = { version = "0.12" }
 rand = { version = "0.9" }
+ureq = { version = "3" }
+cfg-if = { version = "1" }
 
 # Windowing and input
 raw-window-handle = { version = "0.6" }
@@ -79,8 +85,11 @@ ddsfile = "0.5"
 # Sync
 futures-intrusive = "0.5"
 
-# Python FFI
-pyo3 = { version = "0.24", features = ["abi3-py38", "experimental-async"] }
+# MacOS
+[target.'cfg(target_os = "macos")'.dependencies]
+cocoa = "0.26"
+objc2 = "0.6"
+objc2-app-kit = "0.3"
 
 # Android & iOS FFI
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
@@ -89,6 +98,7 @@ uniffi = { version = "0.29" }
 # iOS Specific
 [target.'cfg(target_os = "ios")'.dependencies]
 objc = "0.2"
+objc2-app-kit = "0.3"
 core-graphics = "0.24"
 
 # WASM-Specific
@@ -98,7 +108,6 @@ wasm-bindgen-futures = "0.4"
 serde-wasm-bindgen = "0.6"
 console_log = "1.0"
 console_error_panic_hook = { version = "0.1" }
-reqwest = { version = "0.12" }
 gloo-utils = { version = "0.2", features = ["serde"] }
 js-sys = "0.3"
 web-sys = { version = "0.3", features = [
