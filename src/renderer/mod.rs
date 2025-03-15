@@ -6,16 +6,26 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 pub type Commands = Vec<wgpu::CommandBuffer>;
 
+pub mod adapter;
+
+#[cfg(feature = "python")]
+pub use adapter::python::*;
+
+#[cfg(feature = "python")]
+use pyo3::prelude::*;
+
 pub trait Renderable {
     fn passes(&self) -> impl IntoIterator<Item = &PassObject>;
 }
 
+#[derive(Debug)]
 struct RenderPipeline {
     pipeline: wgpu::RenderPipeline,
     bind_group_layouts: Vec<wgpu::BindGroupLayout>,
 }
 
-#[pyo3::pyclass]
+#[derive(Debug)]
+#[cfg_attr(feature = "python", pyclass)]
 /// Draws things on the screen or a texture.
 ///
 /// It owns and manages all GPU resources, serving as the
@@ -36,25 +46,14 @@ pub struct Renderer {
 impl Renderer {
     /// Creates a headless renderer by default
     pub async fn new() -> Result<Renderer, InitializationError> {
-        Self::headless().await
+        pollster::block_on(Self::headless())
     }
 
     /// Creates a headless renderer
     pub async fn headless() -> Result<Renderer, InitializationError> {
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::HighPerformance,
-                compatible_surface: None,
-                force_fallback_adapter: false,
-            })
-            .await
-            .expect("Failed to find an appropriate adapter");
-
-        let (device, queue) = crate::platform::all::request_device(&adapter)
-            .await
-            .expect("Failed to request device");
+        let adapter = crate::platform::all::request_headless_adapter(&instance).await?;
+        let (device, queue) = crate::platform::all::request_device(&adapter).await?;
 
         Ok(Renderer::init(device, queue))
     }
