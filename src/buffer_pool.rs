@@ -3,6 +3,7 @@ use std::num::NonZeroU64;
 /// Default chunk size for buffer allocation (64KB)
 const DEFAULT_CHUNK_SIZE: u64 = 0x10000;
 
+#[derive(Debug)]
 /// A pool of GPU buffers that manages allocations in fixed-size chunks
 pub(crate) struct BufferPool {
     label: String,
