@@ -10,23 +10,26 @@ use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-pub mod features;
+#[cfg(python)]
+use pyo3::prelude::*;
+
+#[cfg(python)]
+use crate::error::FragmentColorError;
 
 pub mod constants;
+pub mod features;
 pub use constants::*;
-
 pub(crate) mod uniform;
 pub(crate) use uniform::*;
-
+mod deserialize;
+mod input;
 mod storage;
 use storage::*;
-
-mod deserialize;
 
 /// The hash of a shader source.
 pub type ShaderHash = [u8; 32];
 
-#[pyo3::pyclass]
+#[cfg_attr(feature = "python", pyclass)]
 #[derive(Debug)]
 /// The Shader in FragmentColor is the blueprint of a Render Pipeline.
 ///
@@ -34,11 +37,13 @@ pub type ShaderHash = [u8; 32];
 ///
 /// The user can set values for the uniforms and buffers, and then render the shader.
 pub struct Shader {
-    pass: PassObject,
+    pub(crate) pass: Arc<PassObject>,
     pub(crate) object: Arc<ShaderObject>,
 }
 
+#[cfg_attr(feature = "python", pymethods)]
 impl Shader {
+    #[new]
     /// Create a Shader object from a WGSL source string.
     ///
     /// GLSL is also supported if you enable the `glsl` feature.
@@ -47,20 +52,13 @@ impl Shader {
     /// If the optional features are enabled,
     /// the constructor try to automatically detect the shader type and parse it accordingly.
     pub fn new(source: &str) -> Result<Self, ShaderError> {
-        let object = Arc::new(ShaderObject::new(source)?);
-        let pass = PassObject::from_shader_object("Shader Default Pass", object.clone());
+        let object = Arc::new(input::load_shader(source)?);
+        let pass = Arc::new(PassObject::from_shader_object(
+            "Shader Default Pass",
+            object.clone(),
+        ));
 
         Ok(Self { pass, object })
-    }
-
-    /// Set a uniform value.
-    pub fn set(&self, key: &str, value: impl Into<UniformData>) -> Result<(), ShaderError> {
-        self.object.set(key, value)
-    }
-
-    /// Get a uniform value.
-    pub fn get<T: From<UniformData>>(&self, key: &str) -> Result<T, ShaderError> {
-        Ok(self.object.get_uniform_data(key)?.into())
     }
 
     /// List all the top-level uniforms in the shader.
@@ -72,6 +70,42 @@ impl Shader {
     /// This includes all the uniforms and their fields.
     pub fn list_keys(&self) -> Vec<String> {
         self.object.list_keys()
+    }
+
+    pub fn passes(&self) -> crate::PyPassIterator {
+        crate::PyPassIterator(vec![self.pass.clone()])
+    }
+
+    #[pyo3(name = "set")]
+    #[cfg(feature = "python")]
+    pub fn set_py(&self, key: &str, value: UniformData) -> Result<(), PyErr> {
+        self.object.set(key, value).map_err(|e| e.into())
+    }
+
+    #[pyo3(name = "get")]
+    #[cfg(feature = "python")]
+    pub fn get_py(&self, key: &str) -> Result<PyObject, PyErr> {
+        Python::with_gil(|py| -> Result<PyObject, PyErr> {
+            let data = self.object.get_uniform_data(key)?;
+
+            let object = data
+                .into_pyobject(py)
+                .map_err(|e| FragmentColorError::new_err(e))?;
+
+            Ok(object.unbind())
+        })
+    }
+}
+
+impl Shader {
+    /// Set a uniform value.
+    pub fn set(&self, key: &str, value: impl Into<UniformData>) -> Result<(), ShaderError> {
+        self.object.set(key, value)
+    }
+
+    /// Get a uniform value.
+    pub fn get<T: From<UniformData>>(&self, key: &str) -> Result<T, ShaderError> {
+        Ok(self.object.get_uniform_data(key)?.into())
     }
 }
 
@@ -236,7 +270,7 @@ fn parse_uniforms(module: &Module) -> Result<HashMap<String, Uniform>, ShaderErr
 
 impl Renderable for Shader {
     fn passes(&self) -> impl IntoIterator<Item = &PassObject> {
-        vec![&self.pass]
+        vec![self.pass.as_ref()]
     }
 }
 

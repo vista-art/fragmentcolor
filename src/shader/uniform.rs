@@ -1,6 +1,9 @@
 use crate::error::ShaderError;
 use naga::{Module, ScalarKind, Type, TypeInner, VectorSize};
 
+#[cfg(feature = "python")]
+use pyo3::prelude::*;
+
 #[derive(Debug, Clone)]
 /// Represents a Uniform in the shader
 pub(crate) struct Uniform {
@@ -14,28 +17,28 @@ pub(crate) struct Uniform {
     pub(crate) data: UniformData,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(FromPyObject, IntoPyObject, Debug, Clone, PartialEq)]
 /// Converts from User Input
 pub enum UniformData {
     Bool(bool),
-    Int(i32),
     UInt(u32),
+    Int(i32),
     Float(f32),
     Vec2([f32; 2]),
     Vec3([f32; 3]),
     Vec4([f32; 4]),
-    IVec2([i32; 2]),
-    IVec3([i32; 3]),
-    IVec4([i32; 4]),
     UVec2([u32; 2]),
     UVec3([u32; 3]),
     UVec4([u32; 4]),
+    IVec2([i32; 2]),
+    IVec3([i32; 3]),
+    IVec4([i32; 4]),
     Mat2([[f32; 2]; 2]),
     Mat3([[f32; 3]; 3]),
     Mat4([[f32; 4]; 4]),
     Texture(u64),
     // Array: (type, count, stride)
-    Array(Box<UniformData>, u32, u32),
+    Array(Vec<(UniformData, u32, u32)>),
     // Struct: name -> ((offset, name, field), struct_size)
     Struct((Vec<(u32, String, UniformData)>, u32)),
 }
@@ -60,11 +63,14 @@ impl UniformData {
             Self::Mat3(v) => bytemuck::cast_slice(v.as_slice()).to_vec(),
             Self::Mat4(v) => bytemuck::cast_slice(v.as_slice()).to_vec(),
             Self::Texture(h) => bytemuck::bytes_of(h).to_vec(),
-            Self::Array(data, count, _) => {
+            Self::Array(data) => {
                 let mut bytes = Vec::new();
-                for _ in 0..*count {
-                    bytes.extend(data.to_bytes());
+                if let Some((data, count, _)) = data.first() {
+                    for _ in 0..*count {
+                        bytes.extend(data.to_bytes());
+                    }
                 }
+
                 bytes
             }
             Self::Struct((fields, _)) => {
@@ -104,7 +110,13 @@ impl UniformData {
             Self::Mat3(_) => 36,
             Self::Mat4(_) => 64,
             Self::Texture(_) => 8,
-            Self::Array(v, count, _) => v.size() * count,
+            Self::Array(data) => {
+                if let Some((data, count, _)) = data.first() {
+                    data.size() * count
+                } else {
+                    0
+                }
+            }
             Self::Struct((_, size)) => *size,
         }
     }
@@ -158,7 +170,8 @@ pub(crate) fn convert_type(module: &Module, ty: &Type) -> Result<UniformData, Sh
             };
             let base_ty = convert_type(module, &module.types[*base])?;
 
-            Ok(UniformData::Array(Box::new(base_ty), size, *stride))
+            let item = (base_ty, size, *stride);
+            Ok(UniformData::Array(vec![item]))
         }
         _ => Err(ShaderError::TypeMismatch("Unsupported type".into())),
     }
