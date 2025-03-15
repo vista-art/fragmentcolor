@@ -1,7 +1,12 @@
 use crate::{ShaderError, ShaderObject};
 
-#[cfg(feature = "glsl")]
 impl ShaderObject {
+    #[cfg(not(feature = "glsl"))]
+    pub fn glsl(_vertex_source: &str, _fragment_source: &str) -> Result<Self, ShaderError> {
+        Err(ShaderError::ParseError("GLSL is not enabled".into()))
+    }
+
+    #[cfg(feature = "glsl")]
     /// Create a Shader object from a GLSL source pair (vertex and fragment shaders).
     pub fn glsl(vertex_source: &str, fragment_source: &str) -> Result<Self, ShaderError> {
         use naga::back::wgsl;
