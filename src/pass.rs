@@ -59,6 +59,10 @@ impl Pass {
     pub fn set_region(&self, region: Region) {
         self.object.set_region(region);
     }
+
+    pub fn passes(&self) -> crate::PyPassIterator {
+        crate::PyPassIterator(vec![self.object.clone()])
+    }
 }
 
 impl Renderable for Pass {
