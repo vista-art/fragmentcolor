@@ -1,24 +1,29 @@
 # FragmentColor
 
-FragmentColor is a **Cross-Platform GPU Programming Library** based on Rust and [wgpu](https://github.com/gfx-rs/wgpu).
+[FragmentColor](https://fragmentcolor.org) is a cross-platform GPU programming library implemented in Rust and [wgpu](https://wgpu.rs).
 
-It provides a simple shader composition API for **Javascript**, **Python**, **Swift**, **Kotlin**,
-so you can use **WGSL** or **GLSL** shaders as the source of truth for visual consistency across platforms.
-
-Our library removes all the boilerplate needed to make a modern rendering pipeline work. Your shader will target the platform's native graphics API: Vulkan, Metal, DirectX, OpenGL, WebGL, or WebGPU.
-
+It is implemented in **Rust**, with bindings for **Javascript**, **Python**, **Swift**, and **Kotlin**,
+and targets each platform's native graphics API: **Vulkan**, **Metal**, **DirectX**, **OpenGL**, **WebGL**, or **WebGPU**.\
 See [Platform Support](#platform-support) for details.
 
-**TL;DR** From a given **shader source**, our library will:
+The API encourages a simple shader composition workflow. You can use **WGSL** or **GLSL** shaders
+for visual consistency across platforms, while avoiding the verbosity of modern GPU APIs.
+
+**We strive to remove the complexity without sacrificing control**. Because of the composition priomitives, you can
+build a highly customized render graph with multiple render passes.
+
+Check the [Documentation](/welcome) and the [API Reference](/api) for more information.
+
+## Example
+
+From a given shader source, our library will:
 
 - parse the shader
 - compile/reload it at runtime
 - create the Uniform bindings in your platform's native graphics API
 - expose them with the dot notation.
 
-## Example
-
-Consider this simple WGSL shader source:
+Consider this simple WGSL example:
 
 ```rust
 // @vertex ommited for brevity
@@ -60,7 +65,7 @@ const resolution = [canvas.width, canvas.heigth];
 
 [renderer, target] = FragmentColor.init(canvas);
 
-const shader = new Shader("circle.wgsl");
+const shader = new Shader("https://example.com/circle.wgsl");
 shader.set("resolution", resolution);
 shader.set("circle.radius", 0.05);
 shader.set("circle.color", [1.0, 0.0, 0.0, 0.8]);
@@ -76,9 +81,11 @@ function animate() {
 animate();
 ```
 
-## Building this project
+## Running this project
 
-### Running examples
+### Target: Desktop (Rust library)
+
+For Rust, check the examples folder and run them with:
 
 ```bash
 cargo run --example circle
@@ -87,13 +94,23 @@ cargo run --example multiobject
 cargo run --example multipass
 ```
 
-### Target: Desktop or Server/CI (Rust library)
+### Target: Desktop (Python module)
 
-- TBD
+There are no published distributions at this moment.
 
-### Target: Desktop or Server/CI (Python module)
+You can build it locally with [maturin](https://www.maturin.rs/installation.html):
 
-- TBD
+```bash
+pipx install maturin
+maturin develop
+```
+
+The built library is located in `platforms/python/fragmentcolor`
+
+```bash
+cd platforms/python/fragmentcolor
+python3 main.py
+```
 
 ### Target: Web browser (WASM module)
 

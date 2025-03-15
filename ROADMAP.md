@@ -1,6 +1,6 @@
 # Roadmap
 
-## Doing Right Now
+## Work in Progress
 
 - [ ] V 0.10.2 Python support
   - [x] Python Implementation
@@ -12,19 +12,17 @@
 - [ ] Javascript Implementation
 - [ ] Publish to NPM
 
-- [ ] Compile to JS
+- [ ] Build System
 
-- [ ] Compile to Python
+  - [ ] Script to Test, Compile & Publish JS
+  - [ ] Script to Test, Compile & Publish Python
+  - [ ] Script to Test, Compile & Publish Android
+  - [ ] Script to Test, Compile & Publish iOS
+  - [ ] Script to Test, Compile & Publish Rust + Winit
 
-- [ ] Compile to Android
-
-- [ ] Compile to iOS
-
-- [ ] Compile to Rust + Winit
-
-- [ ] User Interface (eGUI) for runtime debug messages
-
-- [ ] Build Scripts
+- [ ] Improve debugging experience
+  - [ ] User Interface (eGUI) for runtime debug messages
+  - [ ] Utils (gizmo, camera)
 
 ## Backlog
 
