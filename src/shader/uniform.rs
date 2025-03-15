@@ -17,7 +17,8 @@ pub(crate) struct Uniform {
     pub(crate) data: UniformData,
 }
 
-#[derive(FromPyObject, IntoPyObject, Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "python", derive(FromPyObject, IntoPyObject))]
+#[derive(Debug, Clone, PartialEq)]
 /// Converts from User Input
 pub enum UniformData {
     Bool(bool),

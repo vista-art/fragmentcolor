@@ -60,7 +60,8 @@ impl ShaderObject {
     #[cfg(feature = "shadertoy")]
     /// Create a Shader object from a Shadertoy-flavored GLSL source.
     pub fn toy(source: &str) -> Result<Self, ShaderError> {
-        use constants::SHADERTOY_WRAPPER;
+        use crate::DEFAULT_VERTEX_SHADER;
+        use crate::SHADERTOY_WRAPPER;
 
         Self::glsl(
             DEFAULT_VERTEX_SHADER,

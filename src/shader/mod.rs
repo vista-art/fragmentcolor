@@ -13,11 +13,8 @@ use std::sync::Arc;
 #[cfg(python)]
 use pyo3::prelude::*;
 
-#[cfg(python)]
-use crate::error::FragmentColorError;
-
 pub mod constants;
-pub mod features;
+mod features;
 pub use constants::*;
 pub(crate) mod uniform;
 pub(crate) use uniform::*;
@@ -41,9 +38,7 @@ pub struct Shader {
     pub(crate) object: Arc<ShaderObject>,
 }
 
-#[cfg_attr(feature = "python", pymethods)]
 impl Shader {
-    #[new]
     /// Create a Shader object from a WGSL source string.
     ///
     /// GLSL is also supported if you enable the `glsl` feature.
@@ -61,6 +56,16 @@ impl Shader {
         Ok(Self { pass, object })
     }
 
+    /// Set a uniform value.
+    pub fn set(&self, key: &str, value: impl Into<UniformData>) -> Result<(), ShaderError> {
+        self.object.set(key, value)
+    }
+
+    /// Get a uniform value.
+    pub fn get<T: From<UniformData>>(&self, key: &str) -> Result<T, ShaderError> {
+        Ok(self.object.get_uniform_data(key)?.into())
+    }
+
     /// List all the top-level uniforms in the shader.
     pub fn list_uniforms(&self) -> Vec<String> {
         self.object.list_uniforms()
@@ -74,38 +79,6 @@ impl Shader {
 
     pub fn passes(&self) -> crate::PyPassIterator {
         crate::PyPassIterator(vec![self.pass.clone()])
-    }
-
-    #[pyo3(name = "set")]
-    #[cfg(feature = "python")]
-    pub fn set_py(&self, key: &str, value: UniformData) -> Result<(), PyErr> {
-        self.object.set(key, value).map_err(|e| e.into())
-    }
-
-    #[pyo3(name = "get")]
-    #[cfg(feature = "python")]
-    pub fn get_py(&self, key: &str) -> Result<PyObject, PyErr> {
-        Python::with_gil(|py| -> Result<PyObject, PyErr> {
-            let data = self.object.get_uniform_data(key)?;
-
-            let object = data
-                .into_pyobject(py)
-                .map_err(|e| FragmentColorError::new_err(e))?;
-
-            Ok(object.unbind())
-        })
-    }
-}
-
-impl Shader {
-    /// Set a uniform value.
-    pub fn set(&self, key: &str, value: impl Into<UniformData>) -> Result<(), ShaderError> {
-        self.object.set(key, value)
-    }
-
-    /// Get a uniform value.
-    pub fn get<T: From<UniformData>>(&self, key: &str) -> Result<T, ShaderError> {
-        Ok(self.object.get_uniform_data(key)?.into())
     }
 }
 
