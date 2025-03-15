@@ -10,23 +10,12 @@ impl FragmentColor {
         window: Arc<Window>,
     ) -> Result<(Renderer, WindowTarget), InitializationError> {
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-
         let surface = instance.create_surface(window.clone()).unwrap();
+        let adapter = crate::platform::all::request_adapter(&instance, Some(&surface)).await?;
 
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::HighPerformance,
-                compatible_surface: Some(&surface),
-                force_fallback_adapter: false,
-            })
-            .await
-            .expect("Failed to find an appropriate adapter");
-        let (device, queue) = crate::platform::all::request_device(&adapter)
-            .await
-            .expect("Failed to request device");
+        let (device, queue) = crate::platform::all::request_device(&adapter).await?;
 
         let size = window.as_ref().inner_size();
-
         let capabilities = surface.get_capabilities(&adapter);
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,

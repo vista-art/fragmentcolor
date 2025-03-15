@@ -23,6 +23,13 @@ impl Renderer {
             ..Default::default()
         });
 
+        // @TODO do backends contain BROWSER_WEBGPU?
+        // if !instance.supports_any_backend(BACKENDS) {
+        //      / create foe GL here with the canvas and surface
+        // } else {
+        //      / no need to create a canvas and surface
+        // }}
+
         // Create a DOM canvas element
         let canvas = web_sys::window()
             .unwrap()

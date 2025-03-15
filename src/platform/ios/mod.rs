@@ -105,24 +105,11 @@ impl FragmentColor {
             .expect("Failed to find an appropriate adapter");
 
         let (device, queue) = crate::platform::all::request_device(&adapter).await;
-
-        let capabilitiess = surface.get_capabilities(&adapter);
-        let surface_configuration = wgpu::SurfaceConfiguration {
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-            format: capabilitiess.formats[0].remove_srgb_suffix(),
-            width: u32::max(drawable_width, 1),
-            height: u32::max(drawable_height, 1),
-            present_mode: wgpu::PresentMode::AutoVsync,
-            alpha_mode: capabilitiess.alpha_modes[0],
-            desired_maximum_frame_latency: 2,
-            view_formats: vec![],
-        };
-
-        let stage = crate::FragmentColor::new(crate::Renderer::new(device, queue));
-        surface.configure(stage.device(), &surface_configuration);
+        let config = crate::platform::all::configure_surface(&device, &adapter, &surface, &size);
+        let renderer = crate::FragmentColor::new(crate::Renderer::new(device, queue));
 
         Self {
-            surface: Some(surface),
+            renderer: Some(surface),
             wrapped: stage.into(),
         }
     }

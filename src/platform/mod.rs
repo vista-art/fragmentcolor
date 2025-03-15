@@ -30,13 +30,13 @@ pub mod ios;
 pub use ios::*;
 
 /// winit (Rust)
-#[cfg(desktop_rust)]
+#[cfg(desktop)]
 pub mod winit;
-#[cfg(desktop_rust)]
+#[cfg(desktop)]
 pub use winit::*;
 
 /// pyo3 (Python)
-#[cfg(desktop_python)]
+#[cfg(python)]
 pub mod python;
-#[cfg(desktop_python)]
+#[cfg(python)]
 pub use python::*;
