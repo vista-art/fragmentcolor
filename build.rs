@@ -6,10 +6,10 @@ fn main() {
         ios: { target_os = "ios" },
         android: { target_os = "android" },
         mobile: { any(android, ios) },
-        desktop: { not(any(wasm, mobile)) },
-        desktop_rust: { all(desktop, not(feature="python")) },
-        desktop_python: { all(desktop, feature="python") },
-        dev: { all(desktop, feature="uniffi/cli") },
+        generic: { not(any(wasm, mobile)) },
+        desktop: { all(generic, not(feature="python")) },
+        python: { all(generic, feature="python") },
+        dev: { all(generic, feature="uniffi/cli") },
     }
     println!("cargo::rustc-check-cfg=cfg(wasm)");
     println!("cargo::rustc-check-cfg=cfg(ios)");
