@@ -6,10 +6,10 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 pub type Commands = Vec<wgpu::CommandBuffer>;
 
-pub mod adapter;
+mod features;
 
 #[cfg(feature = "python")]
-pub use adapter::python::*;
+pub use features::python::*;
 
 #[cfg(feature = "python")]
 use pyo3::prelude::*;
