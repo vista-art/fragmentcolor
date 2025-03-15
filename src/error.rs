@@ -1,14 +1,9 @@
+use pyo3::create_exception;
+use pyo3::exceptions::PyException;
 use pyo3::{prelude::*, PyErrArguments};
 use thiserror::Error;
 
-#[pyclass]
-#[derive(Error, Debug)]
-pub enum FragmentColorError {
-    #[error("Internal Initialization error: {0}")]
-    InitializationError(String),
-    #[error("Internal Shader error: {0}")]
-    ShaderError(String),
-}
+create_exception!(fragment_color, FragmentColorError, PyException);
 
 #[derive(Error, Debug)]
 pub enum InitializationError {
@@ -16,6 +11,8 @@ pub enum InitializationError {
     AdapterError(),
     #[error("Failed to create device")]
     DeviceError(#[from] wgpu::RequestDeviceError),
+    #[error("Failed to create surface")]
+    SurfaceError(#[from] wgpu::CreateSurfaceError),
 }
 
 #[derive(Error, Debug)]
@@ -28,6 +25,10 @@ pub enum ShaderError {
     TypeMismatch(String),
     #[error("Field not found in struct: {0}")]
     FieldNotFound(String),
+    #[error("File not found: {0}")]
+    FileNotFound(#[from] std::io::Error),
+    #[error("URL Request Error: {0}")]
+    RequestError(#[from] ureq::Error),
     #[error("WGSL error: {0}")]
     WgslError(#[from] naga::back::wgsl::Error),
     #[error("WGSL Parse error: {0}")]
@@ -42,30 +43,6 @@ pub enum ShaderError {
     WgpuSurfaceError(#[from] wgpu::SurfaceError),
 }
 
-impl From<InitializationError> for FragmentColorError {
-    fn from(e: InitializationError) -> Self {
-        FragmentColorError::InitializationError(e.to_string())
-    }
-}
-
-impl From<ShaderError> for FragmentColorError {
-    fn from(e: ShaderError) -> Self {
-        FragmentColorError::ShaderError(e.to_string())
-    }
-}
-
-impl From<PyErr> for FragmentColorError {
-    fn from(e: PyErr) -> Self {
-        FragmentColorError::InitializationError(e.to_string())
-    }
-}
-
-impl From<FragmentColorError> for PyErr {
-    fn from(e: FragmentColorError) -> Self {
-        PyErr::new::<FragmentColorError, _>(e)
-    }
-}
-
 impl From<PyErr> for ShaderError {
     fn from(e: PyErr) -> Self {
         ShaderError::ParseError(e.to_string())
@@ -74,26 +51,26 @@ impl From<PyErr> for ShaderError {
 
 impl From<ShaderError> for PyErr {
     fn from(e: ShaderError) -> Self {
-        PyErr::new::<FragmentColorError, _>(e)
+        FragmentColorError::new_err(e)
     }
 }
 
 impl From<InitializationError> for PyErr {
     fn from(e: InitializationError) -> Self {
-        PyErr::new::<FragmentColorError, _>(e)
+        FragmentColorError::new_err(e)
     }
 }
 
 impl PyErrArguments for InitializationError {
     fn arguments(self, py: Python<'_>) -> PyObject {
-        let pyerr: PyErr = FragmentColorError::InitializationError(self.to_string()).into();
+        let pyerr = FragmentColorError::new_err(self.to_string());
         pyerr.into_pyobject(py).unwrap().into()
     }
 }
 
 impl PyErrArguments for ShaderError {
     fn arguments(self, py: Python<'_>) -> PyObject {
-        let pyerr: PyErr = FragmentColorError::ShaderError(self.to_string()).into();
+        let pyerr = FragmentColorError::new_err(self.to_string());
         pyerr.into_pyobject(py).unwrap().into()
     }
 }
