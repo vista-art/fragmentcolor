@@ -2,7 +2,9 @@
 
 ## Unreleased
 
-### V 0.10.2 Python support
+Check [Roadmap](/ROADMAP.md) for unreleased/planned features
+
+## V 0.10.2 Python support
 
 - [x] Initial Python Draft Implementation
 - [x] Publish to Pip
@@ -33,7 +35,6 @@
 - [x] Frame
 - [x] Renderer
 - [x] Target
-
 - [x] Design main public interface
 - [x] Experimental GLSL Support
 
