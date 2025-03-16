@@ -51,7 +51,7 @@ renderer, target = fc.init(canvas)
 
 # You can pass the shader as a source string, file path, or URL:
 circle = Shader("./path/to/circle.wgsl")
-triangle = Shader("https://fragmentcolor.org/shaders/circle.wgsl")
+triangle = Shader("https://fragmentcolor.org/shaders/triangle.wgsl")
 my_shader = Shader("""
   // @vertex ommited for brevity
 
