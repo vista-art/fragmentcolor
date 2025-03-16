@@ -1,6 +1,6 @@
 #![cfg(feature = "python")]
 
-use crate::{Pass, PassObject, PassType, Shader};
+use crate::{Pass, PassInput, PassObject, PassType, Shader};
 use pyo3::prelude::*;
 use std::sync::Arc;
 
@@ -34,7 +34,27 @@ impl Pass {
         crate::PyPassIterator(vec![self.object.clone()])
     }
 
+    #[pyo3(name = "load_previous")]
+    pub fn load_previous_py(&self) {
+        *self.object.input.write() = PassInput::Load();
+    }
+
+    #[pyo3(name = "get_input")]
+    pub fn get_input_py(&self) -> PassInput {
+        self.object.get_input()
+    }
+
+    #[pyo3(name = "add_shader")]
+    pub fn add_shader_py(&self, shader: &Shader) {
+        self.object.add_shader(shader);
+    }
+
+    #[pyo3(name = "set_clear_color")]
+    pub fn set_clear_color_py(&self, color: [f32; 4]) {
+        self.object.set_clear_color(color);
+    }
+
     pub fn renderable_type(&self) -> &'static str {
-        "Frame"
+        "Pass"
     }
 }
