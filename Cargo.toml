@@ -39,7 +39,6 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0" }
 parking_lot = { version = "0.12" }
 rand = { version = "0.9" }
-ureq = { version = "3" }
 cfg-if = { version = "1" }
 
 # Windowing and input
@@ -94,6 +93,7 @@ objc2-app-kit = "0.3"
 # Android & iOS FFI
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 uniffi = { version = "0.29" }
+ureq = { version = "3" }
 
 # iOS Specific
 [target.'cfg(target_os = "ios")'.dependencies]
