@@ -26,6 +26,16 @@ impl Shader {
         })
     }
 
+    #[pyo3(name = "list_uniforms")]
+    pub fn list_uniforms_py(&self) -> Vec<String> {
+        self.list_uniforms()
+    }
+
+    #[pyo3(name = "list_keys")]
+    pub fn list_keys_py(&self) -> Vec<String> {
+        self.list_keys()
+    }
+
     pub fn renderable_type(&self) -> &'static str {
         "Shader"
     }
