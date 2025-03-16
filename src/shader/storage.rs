@@ -85,7 +85,7 @@ impl UniformStorage {
 
             Ok(())
         } else {
-            return Err(ShaderError::UniformNotFound(key.into()));
+            Err(ShaderError::UniformNotFound(key.into()))
         }
     }
 
@@ -106,7 +106,7 @@ impl UniformStorage {
     /// Get a uniform by key
     pub fn get(&self, key: &str) -> Option<&Uniform> {
         if let Some((_, _, uniform)) = self.uniforms.get(key) {
-            Some(&uniform)
+            Some(uniform)
         } else {
             None
         }

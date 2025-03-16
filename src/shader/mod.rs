@@ -130,7 +130,7 @@ impl ShaderObject {
         let hash = hash(source);
 
         let mut total_bytes = 0;
-        for (_, uniform) in &uniforms {
+        for uniform in uniforms.values() {
             let size = uniform.data.size() as u64;
             let aligned = wgpu::util::align_to(size, 256);
             total_bytes += aligned;

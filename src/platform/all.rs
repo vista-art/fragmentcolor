@@ -48,7 +48,7 @@ pub fn configure_surface(
     surface: &wgpu::Surface,
     size: &wgpu::Extent3d,
 ) -> wgpu::SurfaceConfiguration {
-    let capabilities = surface.get_capabilities(&adapter);
+    let capabilities = surface.get_capabilities(adapter);
     let config = wgpu::SurfaceConfiguration {
         usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
         format: capabilities.formats[0].remove_srgb_suffix(),
@@ -59,7 +59,7 @@ pub fn configure_surface(
         desired_maximum_frame_latency: 2,
         view_formats: vec![],
     };
-    surface.configure(&device, &config);
+    surface.configure(device, &config);
 
     config
 }

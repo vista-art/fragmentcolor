@@ -13,7 +13,7 @@ impl TextureTarget {
 
 impl Target for TextureTarget {
     fn size(&self) -> wgpu::Extent3d {
-        self.texture.size().into()
+        self.texture.size()
     }
 
     fn resize(&mut self, renderer: &Renderer, size: wgpu::Extent3d) {
