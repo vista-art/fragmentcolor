@@ -437,8 +437,8 @@ impl From<UniformData> for wgpu::Extent3d {
                 depth_or_array_layers: d as u32,
             },
             UniformData::UVec2([w, h]) => wgpu::Extent3d {
-                width: w as u32,
-                height: h as u32,
+                width: w,
+                height: h,
                 depth_or_array_layers: 1,
             },
             UniformData::UVec3([w, h, d]) => wgpu::Extent3d {
@@ -447,9 +447,9 @@ impl From<UniformData> for wgpu::Extent3d {
                 depth_or_array_layers: d,
             },
             UniformData::UVec4([w, h, d, _]) => wgpu::Extent3d {
-                width: w as u32,
-                height: h as u32,
-                depth_or_array_layers: d as u32,
+                width: w,
+                height: h,
+                depth_or_array_layers: d,
             },
             UniformData::IVec2([w, h]) => wgpu::Extent3d {
                 width: w as u32,
