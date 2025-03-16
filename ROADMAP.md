@@ -2,30 +2,38 @@
 
 ## Work in Progress
 
-- [ ] V 0.10.2 Python support
-  - [x] Python Implementation
-  - [ ] Publish to Pip
+- [ ] V 0.10.3 Javascript support
+  - [ ] Javascript Implementation
+  - [ ] Publish to NPM
 
 ## Up Next
 
-- [ ] V 0.10.2 Javascript support
-- [ ] Javascript Implementation
-- [ ] Publish to NPM
-
 - [ ] Build System
 
+  - [ ] Unit test all packages before building
+  - [ ] Git hook: test builds for all platforms before push
   - [ ] Script to Test, Compile & Publish JS
   - [ ] Script to Test, Compile & Publish Python
   - [ ] Script to Test, Compile & Publish Android
   - [ ] Script to Test, Compile & Publish iOS
   - [ ] Script to Test, Compile & Publish Rust + Winit
+  - [ ] GHA wheel: Test build all packages for all OSses
 
-- [ ] Improve debugging experience
-  - [ ] User Interface (eGUI) for runtime debug messages
-  - [ ] Utils (gizmo, camera)
+- [ ] Release Management System
+
+  - [ ] Git Hook: enforce conventional commits (fix: feat: )
+  - [ ] Create a distribution via GH release
+  - [ ] Automatically update docs from Rust Doc Comments
+  - [ ] Update cargo doc
+  - [ ] Script to copy contents and publish to Website
 
 ## Backlog
 
+- [ ] Support other types of Window integrations in Python (decouple from RenderCanvas)
+  - [ ] Qt
+  - [ ] WxWidgets
+  - [ ] GLTF
+  - [ ] Jupyter
 - [ ] Compute Pass support
 - [ ] Frame setup Save & Load from JSON
 - [ ] Ensure we expose all the ways to upload data to a GPU
@@ -39,9 +47,15 @@
   - [ ] Sampler
   - [ ] PushConstant
 
+- [ ] Custom blending
+
 - [ ] Multisampling (resolve_target in RenderPassColorAttachments)
 
-- [ ] Components library
+- [ ] Components library (prefabs)
+
+- [ ] Improve shader debugging experience
+  - [ ] User Interface (eGUI) for runtime debug messages
+  - [ ] Utils (gizmo, camera)
 
 ### Tutorials and Examples
 
@@ -67,43 +81,7 @@
 
 - [ ] Model loading
 - [ ] Scene tree
-- [ ] Experiment with ECS
+- [ ] ECS
 - [ ] Future: a Logo-like programming language
 
 ## Done
-
-### V 0.10.1 Cleanup and Fix Bugs
-
-- [x] Simplify Shader Internal representation
-- [x] BufferPool implementation
-- [x] Graceful runtime error handling (no panics)
-- [x] Fix uniform getter and setter
-- [x] Renderer render() method now has two arguments: Renderable and Target
-- [x] Make the Renderer support Shader, Pass and Frame as input
-  - [x] Shader
-  - [x] Pass
-  - [x] Frame
-- [x] Improve public interface for Target - make the default easy (one target)
-- [x] Set up cross-platform initializers (helper functions)
-- [x] remove boilerplate from Rust demos
-
-### V 0.10.0 Set up basic API and basic data structures
-
-- [x] Renderer
-- [x] Shader
-  - [x] decide how to handle generic set() function
-        [x] Pass
-  - [x] RenderPass
-  - [x] ComputePass
-- [x] Frame
-- [x] Renderer
-- [x] Target
-
-- [x] Design main public interface
-- [x] Experimental GLSL Support
-
-### Before V 0.9.0 (2023)
-
-The initial versions of this library (up tp v0.9.0) were completely discarded.
-
-About one year after not touching the code, in January 2025 I force-pushed and rewrote the **v0.10.0** branch from scratch.
