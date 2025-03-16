@@ -15,6 +15,7 @@ build a highly customized render graph with multiple render passes.
 Check the [Documentation](/welcome) and the [API Reference](/api) for more information.
 
 > [!WARNING] This library is its early days of development
+>
 > The API is subject to frequent changes in minor versions. Documentation is not always in sync.
 >
 > Check the [Roadmap](/ROADMAP.md) and [Changelog](/CHANGELOG.md) on [GitHub](https://github.com/vista-art/fragmentcolor) to stay tuned on the latest updates.
@@ -31,6 +32,7 @@ From a given shader source, our library will:
 ### Example usage (Python)
 
 > [!WARNING] NOTE
+>
 > Pip Package is currently only available for MacOS (Apple Silicon).\
 > You can also [build it locally](#target-desktop-python-module) for your platform.
 
