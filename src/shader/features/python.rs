@@ -1,4 +1,6 @@
-use crate::{FragmentColorError, Shader, ShaderError, UniformData};
+#![cfg(feature = "python")]
+
+use crate::{Shader, ShaderError, UniformData};
 use pyo3::prelude::*;
 
 #[pymethods]
@@ -18,11 +20,18 @@ impl Shader {
         Python::with_gil(|py| -> Result<PyObject, PyErr> {
             let data = self.object.get_uniform_data(key)?;
 
-            let object = data
-                .into_pyobject(py)
-                .map_err(|e| FragmentColorError::new_err(e))?;
+            let object = data.into_pyobject(py)?;
 
             Ok(object.unbind())
         })
+    }
+
+    pub fn renderable_type(&self) -> &'static str {
+        "Shader"
+    }
+
+    #[pyo3(name = "passes")]
+    pub fn passes_py(&self) -> crate::PyPassIterator {
+        crate::PyPassIterator(vec![self.pass.clone()])
     }
 }

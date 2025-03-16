@@ -1,4 +1,4 @@
-/// Shared initialization code for all platforms.
+/// Shared initialization logic for all platforms.
 pub mod all;
 
 /// Trait for a target that can be rendered to.

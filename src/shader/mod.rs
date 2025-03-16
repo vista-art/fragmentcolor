@@ -76,10 +76,6 @@ impl Shader {
     pub fn list_keys(&self) -> Vec<String> {
         self.object.list_keys()
     }
-
-    pub fn passes(&self) -> crate::PyPassIterator {
-        crate::PyPassIterator(vec![self.pass.clone()])
-    }
 }
 
 /// FragmentColor's Shader internal implementation.

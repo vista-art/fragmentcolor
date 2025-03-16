@@ -11,6 +11,9 @@ pub trait TargetFrame {
     fn view(&self) -> &wgpu::TextureView;
     fn format(&self) -> wgpu::TextureFormat;
     fn present(self: Box<Self>);
+    fn auto_present(&self) -> bool {
+        true
+    }
 }
 
 impl Debug for dyn Target {

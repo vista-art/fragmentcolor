@@ -1,35 +1,71 @@
+use std::sync::Arc;
+
 use crate::{
-    Frame, InitializationError, Pass, PassObject, PyPassIterator, PyWindowTarget, Renderable,
-    Renderer, Shader, ShaderError,
+    Frame, InitializationError, Pass, PassObject, RenderCanvasTarget, Renderable, Renderer, Shader,
 };
+use pyo3::exceptions::PyTypeError;
 use pyo3::prelude::*;
+
+#[pyclass]
+#[derive(Debug, Clone)]
+pub struct PyPassIterator(pub Vec<Arc<PassObject>>);
+
+impl PyPassIterator {
+    pub fn passes(&self) -> impl IntoIterator<Item = &PassObject> {
+        self.0.iter().map(|pass| pass.as_ref())
+    }
+}
+
+impl IntoIterator for PyPassIterator {
+    type Item = Arc<PassObject>;
+    type IntoIter = std::vec::IntoIter<Arc<PassObject>>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
 
 #[pyclass]
 pub struct PyRenderable {
     iterator: PyPassIterator,
 }
 
-impl From<Frame> for PyRenderable {
-    fn from(frame: Frame) -> Self {
-        Self {
-            iterator: frame.passes(),
-        }
+impl<'py> From<&'py Bound<'py, Frame>> for PyRenderable {
+    fn from(frame: &Bound<'py, Frame>) -> Self {
+        let iterator = Python::with_gil(|_| -> PyResult<Self> {
+            let iterator = frame.call_method0("passes")?.extract::<PyPassIterator>()?;
+
+            Ok(Self { iterator })
+        })
+        .unwrap();
+
+        iterator
     }
 }
 
-impl From<Shader> for PyRenderable {
-    fn from(shader: Shader) -> Self {
-        Self {
-            iterator: shader.passes(),
-        }
+impl<'py> From<&'py Bound<'py, Shader>> for PyRenderable {
+    fn from(shader: &Bound<'py, Shader>) -> Self {
+        let iterator = Python::with_gil(|_| -> PyResult<Self> {
+            let iterator = shader.call_method0("passes")?.extract::<PyPassIterator>()?;
+
+            Ok(Self { iterator })
+        })
+        .unwrap();
+
+        iterator
     }
 }
 
-impl From<Pass> for PyRenderable {
-    fn from(pass: Pass) -> Self {
-        Self {
-            iterator: pass.passes(),
-        }
+impl<'py> From<&'py Bound<'py, Pass>> for PyRenderable {
+    fn from(pass: &Bound<'py, Pass>) -> Self {
+        let iterator = Python::with_gil(|_| -> PyResult<Self> {
+            let iterator = pass.call_method0("passes")?.extract::<PyPassIterator>()?;
+
+            Ok(Self { iterator })
+        })
+        .unwrap();
+
+        iterator
     }
 }
 
@@ -62,9 +98,45 @@ impl Renderer {
     /// Renders a Frame or Shader to a Target.
     pub fn render_py(
         &self,
-        renderable: &PyRenderable,
-        target: &PyWindowTarget,
-    ) -> Result<(), ShaderError> {
-        self.render(renderable, target)
+        renderable: PyObject,
+        target: &RenderCanvasTarget,
+    ) -> Result<(), PyErr> {
+        Python::with_gil(|py| -> Result<(), PyErr> {
+            let renderable_type = renderable
+                .call_method0(py, "renderable_type")?
+                .extract::<String>(py)?;
+
+            match renderable_type.as_str() {
+                "Frame" => {
+                    let frame = renderable.bind(py).downcast::<Frame>()?;
+                    let renderable = PyRenderable::from(frame);
+
+                    self.render(&renderable, target)?;
+
+                    Ok(())
+                }
+                "Pass" => {
+                    let pass = renderable.bind(py).downcast::<Pass>()?;
+                    let renderable = PyRenderable::from(pass);
+
+                    self.render(&renderable, target)?;
+
+                    Ok(())
+                }
+                "Shader" => {
+                    let shader = renderable.bind(py).downcast::<Shader>()?;
+                    let renderable = PyRenderable::from(shader);
+
+                    self.render(&renderable, target)?;
+
+                    Ok(())
+                }
+                _ => Err(PyErr::new::<PyTypeError, _>(
+                    "Expected a Frame, Pass or Shader object",
+                )),
+            }
+        })?;
+
+        Ok(())
     }
 }

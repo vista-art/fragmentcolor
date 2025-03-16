@@ -17,6 +17,7 @@ pub(crate) struct Uniform {
     pub(crate) data: UniformData,
 }
 
+// @TODO consider renaming this to a more generic IO conversion type
 #[cfg_attr(feature = "python", derive(FromPyObject, IntoPyObject))]
 #[derive(Debug, Clone, PartialEq)]
 /// Converts from User Input
@@ -177,8 +178,6 @@ pub(crate) fn convert_type(module: &Module, ty: &Type) -> Result<UniformData, Sh
         _ => Err(ShaderError::TypeMismatch("Unsupported type".into())),
     }
 }
-
-// @TODO implement a macro for that
 
 // 1 element or scalar
 
@@ -409,6 +408,69 @@ impl From<UniformData> for glam::Vec4 {
         match data {
             UniformData::Vec4(v) => glam::Vec4::from(v),
             _ => glam::Vec4::ZERO,
+        }
+    }
+}
+
+impl From<wgpu::Extent3d> for UniformData {
+    fn from(value: wgpu::Extent3d) -> Self {
+        Self::UVec3([value.width, value.height, value.depth_or_array_layers])
+    }
+}
+
+impl From<UniformData> for wgpu::Extent3d {
+    fn from(data: UniformData) -> Self {
+        match data {
+            UniformData::Vec2([w, h]) => wgpu::Extent3d {
+                width: w as u32,
+                height: h as u32,
+                depth_or_array_layers: 1,
+            },
+            UniformData::Vec3([w, h, d]) => wgpu::Extent3d {
+                width: w as u32,
+                height: h as u32,
+                depth_or_array_layers: d as u32,
+            },
+            UniformData::Vec4([w, h, d, _]) => wgpu::Extent3d {
+                width: w as u32,
+                height: h as u32,
+                depth_or_array_layers: d as u32,
+            },
+            UniformData::UVec2([w, h]) => wgpu::Extent3d {
+                width: w as u32,
+                height: h as u32,
+                depth_or_array_layers: 1,
+            },
+            UniformData::UVec3([w, h, d]) => wgpu::Extent3d {
+                width: w,
+                height: h,
+                depth_or_array_layers: d,
+            },
+            UniformData::UVec4([w, h, d, _]) => wgpu::Extent3d {
+                width: w as u32,
+                height: h as u32,
+                depth_or_array_layers: d as u32,
+            },
+            UniformData::IVec2([w, h]) => wgpu::Extent3d {
+                width: w as u32,
+                height: h as u32,
+                depth_or_array_layers: 1,
+            },
+            UniformData::IVec3([w, h, d]) => wgpu::Extent3d {
+                width: w as u32,
+                height: h as u32,
+                depth_or_array_layers: d as u32,
+            },
+            UniformData::IVec4([w, h, d, _]) => wgpu::Extent3d {
+                width: w as u32,
+                height: h as u32,
+                depth_or_array_layers: d as u32,
+            },
+            _ => wgpu::Extent3d {
+                width: 0,
+                height: 0,
+                depth_or_array_layers: 0,
+            },
         }
     }
 }
