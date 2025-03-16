@@ -4,6 +4,12 @@
 
 Check [Roadmap](/ROADMAP.md) for unreleased/planned features
 
+## V 0.10.4 Fixes Python Import Error
+
+- [x] Fixes Python import in Pypi distribution
+- [x] Fixes Pass and Frame objects
+- [x] Adds missing methods from public API
+
 ## V 0.10.3 Rust 2024 Edition
 
 - [x] Upgrades to Rust 2024 edition

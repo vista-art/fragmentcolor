@@ -2,7 +2,7 @@
 
 ## Work in Progress
 
-- [ ] V 0.10.4 Javascript support
+- [ ] V 0.10.5 Javascript support
   - [ ] Javascript Implementation
   - [ ] Publish to NPM
 

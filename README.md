@@ -14,7 +14,7 @@ build a highly customized render graph with multiple render passes.
 
 Check the [Documentation](/welcome) and the [API Reference](/api) for more information.
 
-> [!WARNING] This library is its early days of development
+> ⚠️ **This library is its early days of development**
 >
 > The API is subject to frequent changes in minor versions. Documentation is not always in sync.
 >
@@ -31,7 +31,7 @@ From a given shader source, our library will:
 
 ### Example usage (Python)
 
-> [!WARNING] NOTE
+> ⚠️ **Note**
 >
 > Pip Package is currently only available for MacOS (Apple Silicon).\
 > You can also [build it locally](#target-desktop-python-module) for your platform.
@@ -41,11 +41,13 @@ pip install fragmentcolor glfw rendercanvas
 ```
 
 ```python
-from fragmentcolor import FragmentColor as fc, Shader
+from fragmentcolor import FragmentColor as fc, Shader, Pass, Frame
 from rendercanvas.auto import RenderCanvas, loop
 
+# Initializes a renderer and a target compatible with the given canvas
 canvas = RenderCanvas(size=(800, 600))
 renderer, target = fc.init(canvas)
+
 
 # You can pass the shader as a source string, file path, or URL:
 circle = Shader("./path/to/circle.wgsl")
@@ -69,13 +71,31 @@ my_shader = Shader("""
   }
 """)
 
-# The library binds and updates the uniforms automatically:
+
+# The library binds and updates the uniforms automatically
 my_shader.set("my_uniform.field", [1.0, 1.0, 1.0])
 my_shader.set("my_vec2", [1.0, 1.0])
+renderer.render(shader, target)
 
+
+# You can combine multiple shaders in a render Pass
+rpass = Pass("single pass")
+rpass.add_shader(circle)
+rpass.add_shader(triangle)
+rpass.add_shader(my_shader)
+renderer.render(rpass, target)
+
+
+# Finally, you can combine multiple passes in a Frame
+frame.add_pass(rpass)
+renderer.render(frame, target)
+
+
+# To animate, simply update the uniforms in a loop
 @canvas.request_draw
 def animate():
-    renderer.render(shader, target)
+    circle.set("position", [0.0, 0.0])
+    renderer.render(frame, target)
 
 loop.run()
 ```
@@ -109,6 +129,8 @@ animate();
 ## Limitations
 
 - The current version of this library **always use a fullscreen triangle for every shader**. Support for custom geometries and instanced rendering is planned.
+
+- In Python, we depend on [rendercanvas](https://github.com/pygfx/rendercanvas) adapter to support multiple window libraries. Direct support for other libraries is planned.
 
 - Textures and Samplers are currently not supported, but are also planned.
 
