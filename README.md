@@ -37,7 +37,7 @@ From a given shader source, our library will:
 > You can also [build it locally](#target-desktop-python-module) for your platform.
 
 ```bash
-pip install fragmentcolor glfw rendercanvas
+pip install fragmentcolor
 ```
 
 ```python
