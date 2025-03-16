@@ -3,7 +3,7 @@
 [FragmentColor](https://fragmentcolor.org) is a cross-platform GPU programming library implemented in Rust and [wgpu](https://wgpu.rs).
 
 It has bindings for **Javascript**, **Python**, **Swift**, and **Kotlin**
-while targeting each platform's native graphics API: **Vulkan**, **Metal**, **DirectX**, **OpenGL**, **WebGL**, or **WebGPU**.\
+and targets each platform's native graphics API: **Vulkan**, **Metal**, **DirectX**, **OpenGL**, **WebGL**, or **WebGPU**.\
 See [Platform Support](#platform-support) for details.
 
 The API encourages a simple shader composition workflow. You can use **WGSL** or **GLSL** shaders
