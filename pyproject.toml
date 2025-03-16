@@ -1,5 +1,5 @@
 [build-system]
-requires = ["maturin>=1.0,<2.0"]
+requires = ["maturin>=1.8,<2.0"]
 build-backend = "maturin"
 
 [tool.maturin]
@@ -9,7 +9,7 @@ features = ["python", "pyo3/extension-module"]
 
 [project]
 name = "fragmentcolor"
-version = "0.10.3"
+version = "0.10.4"
 description = "Easy cross-platform GPU Rendering for Javascript, Python, Swift and Kotlin"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -28,7 +28,7 @@ classifiers = [
     "Topic :: Multimedia :: Graphics :: 3D Rendering",
 ]
 
-dependencies = []
+dependencies = ["rendercanvas", "gltf"]
 
 [project.optional-dependencies]
 test = ["pytest < 5.0.0", "pytest-cov[all]"]
