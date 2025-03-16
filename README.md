@@ -60,7 +60,8 @@ my_shader = Shader("""
   @group(0) @binding(0)
   var<uniform> my_struct: MyStruct;
 
-  @group(0) @binding(1) var<uniform> my_vec2: vec2<f32>;
+  @group(0) @binding(1)
+  var<uniform> my_vec2: vec2<f32>;
 
   @fragment
   fn fs_main() -> @location(0) vec4<f32> {

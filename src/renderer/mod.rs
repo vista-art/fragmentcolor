@@ -136,7 +136,7 @@ impl Renderer {
 
         // render_pass.set_blend_constant(wgpu::Color::WHITE);
 
-        let required_size = pass.required_buffer_size.read().clone();
+        let required_size = *pass.required_buffer_size.read();
         self.buffer_pool
             .write()
             .ensure_capacity(required_size, &self.device);
@@ -147,7 +147,7 @@ impl Renderer {
             let cached = pipelines.entry((shader.hash, format)).or_insert_with(|| {
                 let layouts =
                     create_bind_group_layouts(&self.device, &shader.storage.read().uniforms);
-                let pipeline = create_render_pipeline(&self.device, &layouts, &shader, format);
+                let pipeline = create_render_pipeline(&self.device, &layouts, shader, format);
 
                 RenderPipeline {
                     pipeline,

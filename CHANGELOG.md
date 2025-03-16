@@ -4,6 +4,11 @@
 
 Check [Roadmap](/ROADMAP.md) for unreleased/planned features
 
+## V 0.10.3 Rust 2024 Edition
+
+- [x] Upgrades to Rust 2024 edition
+- [x] Minor fixes in documentation
+
 ## V 0.10.2 Python support
 
 - [x] Initial Python Draft Implementation
