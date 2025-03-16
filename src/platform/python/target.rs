@@ -1,4 +1,4 @@
-use crate::{FragmentColorError, Renderer, Target, TargetFrame};
+use crate::{FragmentColorError, Renderer, Target, TargetFrame, UniformData};
 use pyo3::prelude::*;
 use raw_window_handle::{
     AppKitDisplayHandle, AppKitWindowHandle, DisplayHandle, HandleError, HasDisplayHandle,
@@ -8,20 +8,32 @@ use raw_window_handle::{
 
 #[pyclass]
 #[derive(Debug)]
-pub struct PyWindowTarget {
+pub struct RenderCanvasTarget {
     pub(crate) surface: wgpu::Surface<'static>,
     pub(crate) config: wgpu::SurfaceConfiguration,
 }
 
 #[pyclass]
 #[derive(Debug)]
-pub struct PyWindowFrame {
+pub struct RenderCanvasFrame {
     pub(crate) surface_texture: wgpu::SurfaceTexture,
     pub(crate) format: wgpu::TextureFormat,
     pub(crate) view: wgpu::TextureView,
 }
 
-impl Target for PyWindowTarget {
+#[pymethods]
+impl RenderCanvasTarget {
+    fn size(&self) -> [u32; 2] {
+        let size = <Self as Target>::size(self);
+        [size.width, size.height]
+    }
+
+    fn resize(&mut self, renderer: &Renderer, size: UniformData) {
+        <Self as Target>::resize(self, renderer, size.into());
+    }
+}
+
+impl Target for RenderCanvasTarget {
     fn size(&self) -> wgpu::Extent3d {
         wgpu::Extent3d {
             width: self.config.width,
@@ -41,7 +53,7 @@ impl Target for PyWindowTarget {
         let view = surface_texture
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
-        Ok(Box::new(PyWindowFrame {
+        Ok(Box::new(RenderCanvasFrame {
             surface_texture,
             format: self.config.format,
             view,
@@ -49,7 +61,7 @@ impl Target for PyWindowTarget {
     }
 }
 
-impl TargetFrame for PyWindowFrame {
+impl TargetFrame for RenderCanvasFrame {
     fn view(&self) -> &wgpu::TextureView {
         &self.view
     }
@@ -60,6 +72,12 @@ impl TargetFrame for PyWindowFrame {
 
     fn present(self: Box<Self>) {
         self.surface_texture.present();
+    }
+
+    /// Prevents the Renderer to call present() automatically
+    /// to allow RenderCanvas to control the presentation
+    fn auto_present(&self) -> bool {
+        false
     }
 }
 

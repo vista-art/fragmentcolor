@@ -95,7 +95,9 @@ impl Renderer {
 
         self.queue.submit(Some(encoder.finish()));
 
-        frame.present();
+        if frame.auto_present() {
+            frame.present();
+        }
 
         Ok(())
     }
@@ -112,7 +114,7 @@ impl Renderer {
 
         let load_op = match pass.get_input() {
             PassInput::Clear(color) => wgpu::LoadOp::Clear(color.into()),
-            PassInput::Load => wgpu::LoadOp::Load,
+            PassInput::Load() => wgpu::LoadOp::Load,
         };
 
         let attachments = &[Some(wgpu::RenderPassColorAttachment {

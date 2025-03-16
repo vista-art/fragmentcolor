@@ -3,6 +3,7 @@ use glam::Vec4;
 
 use serde::{Deserialize, Serialize};
 
+#[pyo3::pyclass]
 /// A region in 2D space designed to handle viewport and texture regions
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub struct Region {

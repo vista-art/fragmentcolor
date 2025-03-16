@@ -1,6 +1,6 @@
 use pyo3::create_exception;
 use pyo3::exceptions::PyException;
-use pyo3::{prelude::*, PyErrArguments};
+use pyo3::prelude::*;
 use thiserror::Error;
 
 create_exception!(fragment_color, FragmentColorError, PyException);
@@ -51,26 +51,12 @@ impl From<PyErr> for ShaderError {
 
 impl From<ShaderError> for PyErr {
     fn from(e: ShaderError) -> Self {
-        FragmentColorError::new_err(e)
+        FragmentColorError::new_err(e.to_string())
     }
 }
 
 impl From<InitializationError> for PyErr {
     fn from(e: InitializationError) -> Self {
-        FragmentColorError::new_err(e)
-    }
-}
-
-impl PyErrArguments for InitializationError {
-    fn arguments(self, py: Python<'_>) -> PyObject {
-        let pyerr = FragmentColorError::new_err(self.to_string());
-        pyerr.into_pyobject(py).unwrap().into()
-    }
-}
-
-impl PyErrArguments for ShaderError {
-    fn arguments(self, py: Python<'_>) -> PyObject {
-        let pyerr = FragmentColorError::new_err(self.to_string());
-        pyerr.into_pyobject(py).unwrap().into()
+        FragmentColorError::new_err(e.to_string())
     }
 }

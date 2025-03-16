@@ -2,10 +2,16 @@ use crate::{Color, Region, Renderable, Shader, ShaderObject};
 use parking_lot::RwLock;
 use std::sync::Arc;
 
+#[cfg(feature = "python")]
+use pyo3::prelude::*;
+
+mod features;
+
+#[cfg_attr(feature = "python", pyclass)]
 // Resource Definitions
 #[derive(Debug, Clone)]
 pub enum PassInput {
-    Load,
+    Load(),
     Clear(Color),
 }
 
@@ -15,7 +21,7 @@ pub enum PassType {
     Render,
 }
 
-#[pyo3::pyclass]
+#[cfg_attr(feature = "python", pyclass)]
 #[derive(Debug)]
 pub struct Pass {
     pub(crate) object: Arc<PassObject>,
@@ -40,12 +46,8 @@ impl Pass {
         }
     }
 
-    pub fn set_clear_color(&self, color: impl Into<Color>) {
-        self.object.set_clear_color(color.into());
-    }
-
     pub fn load_previous(&self) {
-        *self.object.input.write() = PassInput::Load;
+        *self.object.input.write() = PassInput::Load();
     }
 
     pub fn get_input(&self) -> PassInput {
@@ -60,8 +62,8 @@ impl Pass {
         self.object.set_region(region);
     }
 
-    pub fn passes(&self) -> crate::PyPassIterator {
-        crate::PyPassIterator(vec![self.object.clone()])
+    pub fn set_clear_color(&self, color: [f32; 4]) {
+        self.object.set_clear_color(color);
     }
 }
 
@@ -87,7 +89,7 @@ impl PassObject {
             name: Arc::from(name),
             shaders: RwLock::new(Vec::new()),
             region: RwLock::new(None),
-            input: RwLock::new(PassInput::Load),
+            input: RwLock::new(PassInput::Load()),
             required_buffer_size: RwLock::new(0),
             pass_type,
         }
@@ -106,7 +108,7 @@ impl PassObject {
             name: Arc::from(name),
             shaders: RwLock::new(vec![shader]),
             region: RwLock::new(None),
-            input: RwLock::new(PassInput::Load),
+            input: RwLock::new(PassInput::Load()),
             required_buffer_size: RwLock::new(total_bytes),
             pass_type,
         }

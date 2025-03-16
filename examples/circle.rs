@@ -23,9 +23,9 @@ impl State {
             .set("resolution", [size.width as f32, size.height as f32])
             .unwrap();
         shader.set("circle.position", [0.0, 0.0]).unwrap();
-        shader.set("circle.radius", 200.0).unwrap();
-        shader.set("circle.color", [1.0, 0.2, 0.8, 1.0]).unwrap();
-        shader.set("circle.border", 20.0).unwrap();
+        shader.set("circle.radius", 300.0).unwrap();
+        shader.set("circle.color", [0.2, 0.2, 0.8, 1.0]).unwrap();
+        shader.set("circle.border", 100.0).unwrap();
 
         State {
             window,
