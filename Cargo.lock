@@ -2256,6 +2256,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e9b6c2b34cf71427ea37c7001aefbaeb85886a074795e35f161f5aecc7620a7a"
 dependencies = [
  "once_cell",
+ "python3-dll-a",
  "target-lexicon",
 ]
 
@@ -2292,6 +2293,15 @@ dependencies = [
  "pyo3-build-config",
  "quote",
  "syn 2.0.96",
+]
+
+[[package]]
+name = "python3-dll-a"
+version = "0.2.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "49fe4227a288cf9493942ad0220ea3f185f4d1f2a14f197f7344d6d02f4ed4ed"
+dependencies = [
+ "cc",
 ]
 
 [[package]]

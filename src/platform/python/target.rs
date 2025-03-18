@@ -109,7 +109,7 @@ pub(crate) fn create_raw_handles<'window>(
             use raw_window_handle::{
                 RawDisplayHandle, RawWindowHandle, XlibDisplayHandle, XlibWindowHandle,
             };
-            use std::ffi::c_void;
+            use std::ffi::{c_ulong, c_void};
             use std::ptr::NonNull;
 
             let display_ptr = {
@@ -121,7 +121,7 @@ pub(crate) fn create_raw_handles<'window>(
                 ))?
             };
 
-            let window: u32 = window.try_into().map_err(|_| {
+            let window: c_ulong = window.try_into().map_err(|_| {
                 FragmentColorError::new_err(
                     "Window Id out of range: Could not convert u64 to u32 for Xlib",
                 )
@@ -137,7 +137,7 @@ pub(crate) fn create_raw_handles<'window>(
             Ok((window_handle, display_handle))
         }
 
-        #[cfg(target_os = "linux")]
+        //#[cfg(target_os = "linux")]
         "wayland" => {
             use raw_window_handle::{
                 RawDisplayHandle, RawWindowHandle, WaylandDisplayHandle, WaylandWindowHandle,
