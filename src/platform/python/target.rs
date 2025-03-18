@@ -137,7 +137,7 @@ pub(crate) fn create_raw_handles<'window>(
             Ok((window_handle, display_handle))
         }
 
-        //#[cfg(target_os = "linux")]
+        #[cfg(target_os = "linux")]
         "wayland" => {
             use raw_window_handle::{
                 RawDisplayHandle, RawWindowHandle, WaylandDisplayHandle, WaylandWindowHandle,

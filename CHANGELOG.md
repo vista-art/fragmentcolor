@@ -4,6 +4,12 @@
 
 Check [Roadmap](/ROADMAP.md) for unreleased/planned features
 
+## V 0.10.5 Fixes Python support for Windows and Linux
+
+- [x] Fixes Python support for Windows and Linux
+- [x] Automatically generate artifacts
+- [x] Automatically publish to Pypi
+
 ## V 0.10.4 Fixes Python Import Error
 
 - [x] Fixes Python import in Pypi distribution

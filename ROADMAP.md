@@ -2,7 +2,7 @@
 
 ## Work in Progress
 
-- [ ] V 0.10.5 Javascript support
+- [ ] V 0.10.6 Javascript support
   - [ ] Javascript Implementation
   - [ ] Publish to NPM
 
@@ -13,7 +13,7 @@
   - [ ] Unit test all packages before building
   - [ ] Git hook: test builds for all platforms before push
   - [ ] Script to Test, Compile & Publish JS
-  - [ ] Script to Test, Compile & Publish Python
+  - [x] Script to Test, Compile & Publish Python
   - [ ] Script to Test, Compile & Publish Android
   - [ ] Script to Test, Compile & Publish iOS
   - [ ] Script to Test, Compile & Publish Rust + Winit
@@ -21,7 +21,7 @@
 
 - [ ] Release Management System
 
-  - [ ] Git Hook: enforce conventional commits (fix: feat: )
+  - [ ] Git Hook: enforce conventional commits (fix:, feat: etc)
   - [ ] Create a distribution via GH release
   - [ ] Automatically update docs from Rust Doc Comments
   - [ ] Update cargo doc
