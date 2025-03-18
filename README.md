@@ -37,7 +37,7 @@ From a given shader source, our library will:
 > You can also [build it locally](#target-desktop-python-module) for your platform.
 
 ```bash
-pip install fragmentcolor
+pip install fragmentcolor glfw rendercanvas
 ```
 
 ```python
@@ -48,48 +48,58 @@ from rendercanvas.auto import RenderCanvas, loop
 canvas = RenderCanvas(size=(800, 600))
 renderer, target = fc.init(canvas)
 
-
 # You can pass the shader as a source string, file path, or URL:
 circle = Shader("./path/to/circle.wgsl")
 triangle = Shader("https://fragmentcolor.org/shaders/triangle.wgsl")
 my_shader = Shader("""
-  // @vertex ommited for brevity
+struct VertexOutput {
+    @builtin(position) coords: vec4<f32>,
+}
 
-  struct MyStruct {
-      field: vec3<f32>,
-  }
+struct MyStruct {
+    my_field: vec3<f32>,
+}
 
-  @group(0) @binding(0)
-  var<uniform> my_struct: MyStruct;
+@group(0) @binding(0)
+var<uniform> my_struct: MyStruct;
 
-  @group(0) @binding(1)
-  var<uniform> my_vec2: vec2<f32>;
+@group(0) @binding(1)
+var<uniform> my_vec2: vec2<f32>;
 
-  @fragment
-  fn fs_main() -> @location(0) vec4<f32> {
-      return vec4<f32>(my_struct.rgb, 1.0);
-  }
+@vertex
+fn vs_main(@builtin(vertex_index) in_vertex_index: u32) -> VertexOutput {
+    const vertices = array(
+        vec2( -1., -1.),
+        vec2(  3., -1.),
+        vec2( -1.,  3.)
+    );
+    return VertexOutput(vec4<f32>(vertices[in_vertex_index], 0.0, 1.0));
+}
+
+@fragment
+fn fs_main() -> @location(0) vec4<f32> {
+    return vec4<f32>(my_struct.my_field, 1.0);
+}
 """)
 
-
 # The library binds and updates the uniforms automatically
-my_shader.set("my_uniform.field", [1.0, 1.0, 1.0])
+my_shader.set("my_struct.my_field", [0.1, 0.8, 0.9])
 my_shader.set("my_vec2", [1.0, 1.0])
+
+# One shader is all you need to render
 renderer.render(shader, target)
 
-
-# You can combine multiple shaders in a render Pass
+# But you can also combine multiple shaders in a render Pass
 rpass = Pass("single pass")
 rpass.add_shader(circle)
 rpass.add_shader(triangle)
 rpass.add_shader(my_shader)
 renderer.render(rpass, target)
 
-
 # Finally, you can combine multiple passes in a Frame
 frame.add_pass(rpass)
+frame.add_pass(Pass("GUI pass"))
 renderer.render(frame, target)
-
 
 # To animate, simply update the uniforms in a loop
 @canvas.request_draw
