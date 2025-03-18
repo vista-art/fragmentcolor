@@ -25,6 +25,7 @@ python = ["pyo3"]
 pyo3 = { version = "0.24", features = [
     "abi3-py39",
     "experimental-async",
+    "generate-import-lib",
 ], optional = true }
 
 # Rendering
