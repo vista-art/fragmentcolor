@@ -1,11 +1,8 @@
 use crate::{FragmentColorError, Renderer, Target, TargetFrame, UniformData};
 use pyo3::prelude::*;
 use raw_window_handle::{
-    AppKitDisplayHandle, AppKitWindowHandle, DisplayHandle, HandleError, HasDisplayHandle,
-    HasWindowHandle, RawDisplayHandle, RawWindowHandle, WaylandDisplayHandle, WaylandWindowHandle,
-    Win32WindowHandle, WindowHandle, WindowsDisplayHandle, XlibDisplayHandle, XlibWindowHandle,
+    DisplayHandle, HandleError, HasDisplayHandle, HasWindowHandle, WindowHandle,
 };
-
 #[pyclass]
 #[derive(Debug)]
 pub struct RenderCanvasTarget {
@@ -106,12 +103,15 @@ pub(crate) fn create_raw_handles<'window>(
     window: u64,
     display: Option<u64>,
 ) -> Result<(WindowHandle<'window>, DisplayHandle<'window>), PyErr> {
-    use std::ffi::c_void;
-    use std::num::NonZeroIsize;
-    use std::ptr::NonNull;
-
     match platform.as_str() {
+        #[cfg(target_os = "linux")]
         "x11" => {
+            use raw_window_handle::{
+                RawDisplayHandle, RawWindowHandle, XlibDisplayHandle, XlibWindowHandle,
+            };
+            use std::ffi::c_void;
+            use std::ptr::NonNull;
+
             let display_ptr = {
                 let ptr = display.ok_or(FragmentColorError::new_err(
                     "Display handle is missing for Xlib",
@@ -120,6 +120,12 @@ pub(crate) fn create_raw_handles<'window>(
                     "Could not convert u64 to c_void for Xlib display",
                 ))?
             };
+
+            let window: u32 = window.try_into().map_err(|_| {
+                FragmentColorError::new_err(
+                    "Window Id out of range: Could not convert u64 to u32 for Xlib",
+                )
+            })?;
 
             let xlib_window_handle = RawWindowHandle::Xlib(XlibWindowHandle::new(window));
             let xlib_display_handle =
@@ -130,7 +136,15 @@ pub(crate) fn create_raw_handles<'window>(
 
             Ok((window_handle, display_handle))
         }
+
+        #[cfg(target_os = "linux")]
         "wayland" => {
+            use raw_window_handle::{
+                RawDisplayHandle, RawWindowHandle, WaylandDisplayHandle, WaylandWindowHandle,
+            };
+            use std::ffi::c_void;
+            use std::ptr::NonNull;
+
             let window_ptr = {
                 let ptr = window as *mut c_void;
                 NonNull::new(ptr).ok_or(FragmentColorError::new_err(
@@ -157,7 +171,14 @@ pub(crate) fn create_raw_handles<'window>(
 
             Ok((window_handle, display_handle))
         }
+
+        #[cfg(target_os = "windows")]
         "windows" => {
+            use raw_window_handle::{
+                RawDisplayHandle, RawWindowHandle, Win32WindowHandle, WindowsDisplayHandle,
+            };
+            use std::num::NonZeroIsize;
+
             let window_ptr = {
                 NonZeroIsize::new(window as isize).ok_or(FragmentColorError::new_err(
                     "Could not convert u64 to isize for Win32 window",
@@ -172,10 +193,16 @@ pub(crate) fn create_raw_handles<'window>(
 
             Ok((window_handle, display_handle))
         }
+
+        #[cfg(target_os = "macos")]
         "cocoa" => {
             use objc2::msg_send;
             use objc2_app_kit::{NSView, NSWindow};
+            use raw_window_handle::{
+                AppKitDisplayHandle, AppKitWindowHandle, RawDisplayHandle, RawWindowHandle,
+            };
             use std::ffi::c_void;
+            use std::ptr::NonNull;
 
             let ns_window = window as *mut NSWindow;
             let ns_view_ptr: *mut NSView = unsafe { msg_send![ns_window, contentView] };
@@ -192,6 +219,9 @@ pub(crate) fn create_raw_handles<'window>(
             Ok((window_handle, display_handle))
         }
 
-        _ => Err(FragmentColorError::new_err("Unsupported platform")),
+        _ => Err(FragmentColorError::new_err(format!(
+            "Unsupported platform: {:?} (window id: {:?}; display: {:?})",
+            platform, window, display,
+        ))),
     }
 }
