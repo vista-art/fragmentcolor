@@ -31,11 +31,6 @@ From a given shader source, our library will:
 
 ### Example usage (Python)
 
-> ⚠️ **Note**
->
-> Pip Package is currently only available for MacOS (Apple Silicon).\
-> You can also [build it locally](#target-desktop-python-module) for your platform.
-
 ```bash
 pip install fragmentcolor glfw rendercanvas
 ```
@@ -143,6 +138,8 @@ animate();
 - In Python, we depend on [rendercanvas](https://github.com/pygfx/rendercanvas) adapter to support multiple window libraries. Direct support for other libraries is planned.
 
 - Textures and Samplers are currently not supported, but are also planned.
+
+- Javascript, Swift, and Kotlin are currently WIP.
 
 ## Running this project
 
