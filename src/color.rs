@@ -2,7 +2,7 @@ use csscolorparser;
 use serde::{Deserialize, Serialize};
 
 /// Can be specified as 0xRRGGBBAA
-#[pyo3::pyclass]
+#[cfg_attr(feature = "python", pyo3::pyclass)]
 #[derive(Clone, Copy, Debug, Default, Hash, PartialEq, PartialOrd, Deserialize)]
 pub struct Color(pub u32);
 

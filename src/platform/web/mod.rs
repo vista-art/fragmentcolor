@@ -11,10 +11,6 @@ pub enum Canvas {
     Offscreen(web_sys::OffscreenCanvas),
 }
 
-pub struct Renderer {
-    wrapped: crate::Renderer,
-}
-
 impl Renderer {
     #[wasm_bindgen]
     pub async fn headless() -> Self {
@@ -74,7 +70,7 @@ pub struct FragmentColor {
 }
 
 impl FragmentColor {
-    #[wasm_bindgen(js_name = inCanvas)]
+    #[wasm_bindgen]
     pub async fn init(canvas: Canvas) -> Self {
         let width = canvas.width();
         let height = canvas.height();

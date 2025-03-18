@@ -7,7 +7,7 @@
 #[cfg(not(wasm))]
 uniffi::setup_scaffolding!();
 
-#[pyo3::pyclass]
+#[cfg_attr(feature = "python", pyo3::pyclass)]
 pub struct FragmentColor;
 
 /// # Platform-specific implementations
