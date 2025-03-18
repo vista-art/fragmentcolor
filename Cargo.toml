@@ -1,6 +1,6 @@
 [package]
 name = "fragmentcolor"
-version = "0.10.5"
+version = "0.10.6"
 homepage = "https://fragmentcolor.org"
 repository = "https://github.com/vista-art/fragmentcolor"
 description = "Easy GPU Rendering for Javascript, Python, Swift and Kotlin"
@@ -45,7 +45,7 @@ cfg-if = { version = "1" }
 
 # Windowing and input
 raw-window-handle = { version = "0.6" }
-winit = { version = "0.30.9", features = ["serde"] }
+winit = { version = "0.30", features = ["serde"] }
 
 # Shader composition
 naga = { version = "24" }
