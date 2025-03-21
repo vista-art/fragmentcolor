@@ -5,6 +5,7 @@
 - [ ] V 0.10.6 Javascript support
   - [ ] Javascript Implementation
   - [ ] Publish to NPM
+  - [x] Chore: Script to automatically bump version
 
 ## Up Next
 
@@ -23,6 +24,8 @@
 
   - [ ] Git Hook: enforce conventional commits (fix:, feat: etc)
   - [ ] Create a distribution via GH release
+    - [x] Python
+    - [ ] Javascript
   - [ ] Automatically update docs from Rust Doc Comments
   - [ ] Update cargo doc
   - [ ] Script to copy contents and publish to Website
@@ -54,8 +57,11 @@
 - [ ] Components library (prefabs)
 
 - [ ] Improve shader debugging experience
+
   - [ ] User Interface (eGUI) for runtime debug messages
   - [ ] Utils (gizmo, camera)
+
+- [ ] Consider provideing llms.txt and [MCP](https://modelcontextprotocol.io/introduction)
 
 ### Tutorials and Examples
 
