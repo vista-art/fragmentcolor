@@ -116,9 +116,14 @@ web-sys = { version = "0.3", features = [
     'Document',
     'Element',
     'HtmlCanvasElement',
+    'OffscreenCanvas',
     'Window',
     'EventTarget',
     'Location',
+    'Request',
+    'RequestInit',
+    'RequestMode',
+    'Response',
 ] }
 
 [build-dependencies]
