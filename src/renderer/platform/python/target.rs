@@ -1,19 +1,95 @@
-use crate::{FragmentColorError, RenderContext, Target, TargetFrame, UniformData, WindowTarget};
+use crate::{RenderContext, Target, TargetFrame, UniformData, WindowTarget};
 use pyo3::prelude::*;
-use raw_window_handle::{
-    DisplayHandle, HandleError, HasDisplayHandle, HasWindowHandle, WindowHandle,
-};
+use pyo3::types::PyDict;
 use std::sync::Arc;
-#[pyclass]
-pub struct RenderCanvasTarget(WindowTarget);
+
+#[pyfunction]
+/// The context hook that will be called from Python by RenderCanvas
+/// When the user calls `RenderCanvas.get_context("fragmentcolor")`
+pub fn rendercanvas_context_hook(
+    canvas: PyObject,
+    present_methods: PyObject,
+) -> RenderCanvasTarget {
+    RenderCanvasTarget::new(canvas, present_methods)
+}
+
+#[pyclass(dict)]
+pub struct RenderCanvasTarget {
+    canvas: PyObject,
+    _present_methods: PyObject, // @TODO figure how RenderCanvas expects me to use this
+    target: Option<WindowTarget>,
+}
 
 impl RenderCanvasTarget {
-    pub fn new(
+    pub(crate) fn init(
+        &mut self,
         context: Arc<RenderContext>,
         surface: wgpu::Surface<'static>,
         config: wgpu::SurfaceConfiguration,
-    ) -> Self {
-        Self(WindowTarget::new(context, surface, config))
+    ) {
+        self.target = Some(WindowTarget::new(context, surface, config))
+    }
+}
+
+#[pymethods]
+impl RenderCanvasTarget {
+    #[new]
+    pub fn new(canvas: PyObject, _present_methods: PyObject) -> Self {
+        Self {
+            canvas,
+            _present_methods,
+            target: None,
+        }
+    }
+
+    pub fn is_ready(&self) -> bool {
+        self.target.is_some()
+    }
+
+    pub fn size(&self) -> [u32; 2] {
+        let size = <Self as Target>::size(self);
+        [size.width, size.height]
+    }
+
+    pub fn resize(&mut self, size: UniformData) {
+        <Self as Target>::resize(self, size.into());
+    }
+
+    // duck-typed interface that a context must implement, to be usable with RenderCanvas.
+    // Upstream documentation: https://rendercanvas.readthedocs.io/stable/contextapi.html
+    //
+    // fn canvas(&self) -> PyObject;
+    // fn present(&self) -> Result<Py<PyDict>, PyErr>;
+    //
+    // We can't export a impl Trait block with Pyo3.
+
+    #[getter]
+    pub fn canvas(&self) -> PyObject {
+        Python::with_gil(|py| self.canvas.clone_ref(py))
+    }
+
+    pub fn present(&self) -> Result<Py<PyDict>, PyErr> {
+        Python::with_gil(|py| -> PyResult<Py<PyDict>> {
+            let dict = PyDict::new(py);
+
+            if let Some(target) = &self.target {
+                match target.get_current_frame() {
+                    Ok(frame) => {
+                        frame.present();
+                        dict.set_item("method", "screen")?;
+                    }
+                    Err(e) => {
+                        dict.set_item("method", "fail")?;
+                        dict.set_item("message", e.to_string())?;
+                    }
+                }
+            } else {
+                dict.set_item("method", "fail")?;
+                dict.set_item("message", "Target not initialized")?;
+            };
+
+            Ok(dict.unbind())
+        })
     }
 }
 
@@ -24,35 +100,35 @@ pub struct RenderCanvasFrame {
     view: wgpu::TextureView,
 }
 
-#[pymethods]
-impl RenderCanvasTarget {
-    fn size(&self) -> [u32; 2] {
-        let size = <Self as Target>::size(self);
-        [size.width, size.height]
-    }
-
-    fn resize(&mut self, size: UniformData) {
-        <Self as Target>::resize(self, size.into());
-    }
-}
-
 impl Target for RenderCanvasTarget {
     fn size(&self) -> wgpu::Extent3d {
-        self.0.size()
+        if let Some(target) = &self.target {
+            target.size()
+        } else {
+            wgpu::Extent3d::default()
+        }
     }
 
     fn resize(&mut self, size: wgpu::Extent3d) {
-        self.0.resize(size);
+        if let Some(target) = &mut self.target {
+            target.resize(size);
+        }
     }
 
     fn get_current_frame(&self) -> Result<Box<dyn crate::TargetFrame>, wgpu::SurfaceError> {
-        let surface_texture = self.0.surface.get_current_texture()?;
+        let target = if let Some(target) = &self.target {
+            target
+        } else {
+            return Err(wgpu::SurfaceError::Lost);
+        };
+
+        let surface_texture = target.surface.get_current_texture()?;
         let view = surface_texture
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
         Ok(Box::new(RenderCanvasFrame {
             surface_texture,
-            format: self.0.config.format,
+            format: target.config.format,
             view,
         }))
     }
@@ -75,153 +151,5 @@ impl TargetFrame for RenderCanvasFrame {
     /// to allow RenderCanvas to control the presentation
     fn auto_present(&self) -> bool {
         false
-    }
-}
-
-pub(crate) struct PyWindowHandle<'window> {
-    pub(crate) window_handle: WindowHandle<'window>,
-    pub(crate) display_handle: DisplayHandle<'window>,
-}
-
-unsafe impl<'window> Send for PyWindowHandle<'window> {}
-unsafe impl<'window> Sync for PyWindowHandle<'window> {}
-
-impl<'window> HasWindowHandle for PyWindowHandle<'window> {
-    fn window_handle(&self) -> Result<WindowHandle<'window>, HandleError> {
-        Ok(self.window_handle)
-    }
-}
-
-impl<'window> HasDisplayHandle for PyWindowHandle<'window> {
-    fn display_handle(&self) -> Result<DisplayHandle<'window>, HandleError> {
-        Ok(self.display_handle)
-    }
-}
-
-pub(crate) fn create_raw_handles<'window>(
-    platform: String,
-    window: u64,
-    display: Option<u64>,
-) -> Result<(WindowHandle<'window>, DisplayHandle<'window>), PyErr> {
-    match platform.as_str() {
-        #[cfg(target_os = "linux")]
-        "x11" => {
-            use raw_window_handle::{
-                RawDisplayHandle, RawWindowHandle, XlibDisplayHandle, XlibWindowHandle,
-            };
-            use std::ffi::{c_ulong, c_void};
-            use std::ptr::NonNull;
-
-            let display_ptr = {
-                let ptr = display.ok_or(FragmentColorError::new_err(
-                    "Display handle is missing for Xlib",
-                ))? as *mut c_void;
-                NonNull::new(ptr).ok_or(FragmentColorError::new_err(
-                    "Could not convert u64 to c_void for Xlib display",
-                ))?
-            };
-
-            let window: c_ulong = window.try_into().map_err(|_| {
-                FragmentColorError::new_err(
-                    "Window Id out of range: Could not convert u64 to u32 for Xlib",
-                )
-            })?;
-
-            let xlib_window_handle = RawWindowHandle::Xlib(XlibWindowHandle::new(window));
-            let xlib_display_handle =
-                RawDisplayHandle::Xlib(XlibDisplayHandle::new(Some(display_ptr), 0));
-
-            let window_handle = unsafe { WindowHandle::borrow_raw(xlib_window_handle) };
-            let display_handle = unsafe { DisplayHandle::borrow_raw(xlib_display_handle) };
-
-            Ok((window_handle, display_handle))
-        }
-
-        #[cfg(target_os = "linux")]
-        "wayland" => {
-            use raw_window_handle::{
-                RawDisplayHandle, RawWindowHandle, WaylandDisplayHandle, WaylandWindowHandle,
-            };
-            use std::ffi::c_void;
-            use std::ptr::NonNull;
-
-            let window_ptr = {
-                let ptr = window as *mut c_void;
-                NonNull::new(ptr).ok_or(FragmentColorError::new_err(
-                    "Could not convert u64 to c_void for Wayland window",
-                ))?
-            };
-
-            let display_ptr = {
-                let ptr = display.ok_or(FragmentColorError::new_err(
-                    "Display handle is missing for Wayland",
-                ))? as *mut c_void;
-                NonNull::new(ptr).ok_or(FragmentColorError::new_err(
-                    "Could not convert u64 to c_void for Wayland display",
-                ))?
-            };
-
-            let wayland_window_handle =
-                RawWindowHandle::Wayland(WaylandWindowHandle::new(window_ptr));
-            let wayland_display_handle =
-                RawDisplayHandle::Wayland(WaylandDisplayHandle::new(display_ptr));
-
-            let window_handle = unsafe { WindowHandle::borrow_raw(wayland_window_handle) };
-            let display_handle = unsafe { DisplayHandle::borrow_raw(wayland_display_handle) };
-
-            Ok((window_handle, display_handle))
-        }
-
-        #[cfg(target_os = "windows")]
-        "windows" => {
-            use raw_window_handle::{
-                RawDisplayHandle, RawWindowHandle, Win32WindowHandle, WindowsDisplayHandle,
-            };
-            use std::num::NonZeroIsize;
-
-            let window_ptr = {
-                NonZeroIsize::new(window as isize).ok_or(FragmentColorError::new_err(
-                    "Could not convert u64 to isize for Win32 window",
-                ))?
-            };
-
-            let win32_window_handle = RawWindowHandle::Win32(Win32WindowHandle::new(window_ptr));
-            let win32_display_handle = RawDisplayHandle::Windows(WindowsDisplayHandle::new());
-
-            let window_handle = unsafe { WindowHandle::borrow_raw(win32_window_handle) };
-            let display_handle = unsafe { DisplayHandle::borrow_raw(win32_display_handle) };
-
-            Ok((window_handle, display_handle))
-        }
-
-        #[cfg(target_os = "macos")]
-        "cocoa" => {
-            use objc2::msg_send;
-            use objc2_app_kit::{NSView, NSWindow};
-            use raw_window_handle::{
-                AppKitDisplayHandle, AppKitWindowHandle, RawDisplayHandle, RawWindowHandle,
-            };
-            use std::ffi::c_void;
-            use std::ptr::NonNull;
-
-            let ns_window = window as *mut NSWindow;
-            let ns_view_ptr: *mut NSView = unsafe { msg_send![ns_window, contentView] };
-            let ns_view = NonNull::new(ns_view_ptr as *mut c_void).ok_or(
-                FragmentColorError::new_err("Could not convert *mut NSView to c_void"),
-            )?;
-
-            let appkit_window_handle = RawWindowHandle::AppKit(AppKitWindowHandle::new(ns_view));
-            let appkit_display_handle = RawDisplayHandle::AppKit(AppKitDisplayHandle::new());
-
-            let window_handle = unsafe { WindowHandle::borrow_raw(appkit_window_handle) };
-            let display_handle = unsafe { DisplayHandle::borrow_raw(appkit_display_handle) };
-
-            Ok((window_handle, display_handle))
-        }
-
-        _ => Err(FragmentColorError::new_err(format!(
-            "Unsupported platform: {:?} (window id: {:?}; display: {:?})",
-            platform, window, display,
-        ))),
     }
 }
