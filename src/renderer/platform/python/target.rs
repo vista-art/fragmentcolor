@@ -1,21 +1,27 @@
-use crate::{FragmentColorError, Renderer, Target, TargetFrame, UniformData};
+use crate::{FragmentColorError, RenderContext, Target, TargetFrame, UniformData, WindowTarget};
 use pyo3::prelude::*;
 use raw_window_handle::{
     DisplayHandle, HandleError, HasDisplayHandle, HasWindowHandle, WindowHandle,
 };
+use std::sync::Arc;
 #[pyclass]
-#[derive(Debug)]
-pub struct RenderCanvasTarget {
-    pub(crate) surface: wgpu::Surface<'static>,
-    pub(crate) config: wgpu::SurfaceConfiguration,
+pub struct RenderCanvasTarget(WindowTarget);
+
+impl RenderCanvasTarget {
+    pub fn new(
+        context: Arc<RenderContext>,
+        surface: wgpu::Surface<'static>,
+        config: wgpu::SurfaceConfiguration,
+    ) -> Self {
+        Self(WindowTarget::new(context, surface, config))
+    }
 }
 
 #[pyclass]
-#[derive(Debug)]
 pub struct RenderCanvasFrame {
-    pub(crate) surface_texture: wgpu::SurfaceTexture,
-    pub(crate) format: wgpu::TextureFormat,
-    pub(crate) view: wgpu::TextureView,
+    surface_texture: wgpu::SurfaceTexture,
+    format: wgpu::TextureFormat,
+    view: wgpu::TextureView,
 }
 
 #[pymethods]
@@ -25,34 +31,28 @@ impl RenderCanvasTarget {
         [size.width, size.height]
     }
 
-    fn resize(&mut self, renderer: &Renderer, size: UniformData) {
-        <Self as Target>::resize(self, renderer, size.into());
+    fn resize(&mut self, size: UniformData) {
+        <Self as Target>::resize(self, size.into());
     }
 }
 
 impl Target for RenderCanvasTarget {
     fn size(&self) -> wgpu::Extent3d {
-        wgpu::Extent3d {
-            width: self.config.width,
-            height: self.config.height,
-            depth_or_array_layers: 1,
-        }
+        self.0.size()
     }
 
-    fn resize(&mut self, renderer: &Renderer, size: wgpu::Extent3d) {
-        self.config.width = size.width;
-        self.config.height = size.height;
-        self.surface.configure(&renderer.device, &self.config);
+    fn resize(&mut self, size: wgpu::Extent3d) {
+        self.0.resize(size);
     }
 
     fn get_current_frame(&self) -> Result<Box<dyn crate::TargetFrame>, wgpu::SurfaceError> {
-        let surface_texture = self.surface.get_current_texture()?;
+        let surface_texture = self.0.surface.get_current_texture()?;
         let view = surface_texture
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
         Ok(Box::new(RenderCanvasFrame {
             surface_texture,
-            format: self.config.format,
+            format: self.0.config.format,
             view,
         }))
     }

@@ -36,10 +36,17 @@ pub enum ShaderError {
     WgpuError(#[from] wgpu::Error),
     #[error("WGPU Surface Error: {0}")]
     WgpuSurfaceError(#[from] wgpu::SurfaceError),
+    #[error("JSON Deserialization Error: {0}")]
+    JsonError(#[from] serde_json::Error),
+    #[error("Context Not Initialized")]
+    ContextNotInitialized(),
 
     #[cfg(not(wasm))]
     #[error("URL Request Error: {0}")]
     RequestError(#[from] ureq::Error),
+    #[cfg(wasm)]
+    #[error("WASM Error: {0}")]
+    WasmError(String),
 }
 
 // Python-specific conversions
@@ -74,5 +81,24 @@ impl From<PyErr> for InitializationError {
 impl From<InitializationError> for PyErr {
     fn from(e: InitializationError) -> Self {
         FragmentColorError::new_err(e.to_string())
+    }
+}
+
+// Javascript-specific conversions
+
+#[cfg(wasm)]
+use wasm_bindgen::JsError;
+
+#[cfg(wasm)]
+impl From<JsError> for ShaderError {
+    fn from(_: JsError) -> Self {
+        ShaderError::WasmError("JsError".to_string())
+    }
+}
+
+#[cfg(wasm)]
+impl From<JsError> for InitializationError {
+    fn from(_: JsError) -> Self {
+        InitializationError::Error("JsError".to_string())
     }
 }

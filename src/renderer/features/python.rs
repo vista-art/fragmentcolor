@@ -78,9 +78,14 @@ impl Renderable for PyRenderable {
 #[pymethods]
 impl Renderer {
     #[new]
-    /// Creates a headless renderer by default
-    pub fn new_py() -> Result<Renderer, InitializationError> {
-        pollster::block_on(Self::headless())
+    /// Creates an uninitialized Renderer.
+    ///
+    /// At this point we don't know if it should be compatible
+    /// with a headless or a windowed environment.
+    ///
+    /// The render context is initialized when we crate the first target.
+    pub fn new_py() -> Renderer {
+        Self::new()
     }
 
     #[pyo3(name = "headless")]
@@ -91,7 +96,10 @@ impl Renderer {
         let adapter = crate::platform::all::request_headless_adapter(&instance).await?;
         let (device, queue) = crate::platform::all::request_device(&adapter).await?;
 
-        Ok(Renderer::init(device, queue))
+        let mut renderer = Renderer::new();
+        renderer.init(device, queue);
+
+        Ok(renderer)
     }
 
     #[pyo3(name = "render")]
@@ -138,5 +146,90 @@ impl Renderer {
         })?;
 
         Ok(())
+    }
+}
+
+#[pymethods]
+impl Renderer {
+    pub fn create_target(&self, rendercanvas: PyObject) -> Result<Py<RenderCanvasTarget>, PyErr> {
+        Python::with_gil(|py| -> Result<Py<RenderCanvasTarget>, PyErr> {
+            // If the context is already initialized, return the renderer and target
+            let args = PyTuple::new(py, &["fragmentcolor"])?;
+            let py_context = rendercanvas.call_method1(py, "get_context", args)?; // calls hook
+            let bound_context = py_context.downcast_bound::<RenderCanvasContext>(py)?;
+            let mut context = bound_context.borrow_mut();
+            if context.is_ready() {
+                let target = context.target()?;
+                return Ok(target);
+            }
+
+            // Returns a list of the possible present methods ("screen", "bitmap")
+            let present_methods = rendercanvas.call_method0(py, "_rc_get_present_methods")?;
+
+            // Gets the screen info dictionary (window, platform, display)
+            let dict = present_methods
+                .downcast_bound::<PyDict>(py)?
+                .get_item("screen")?
+                .ok_or(FragmentColorError::new_err("Object can't render to screen"))?;
+            let screen_info = dict.downcast::<PyDict>()?;
+
+            // Mandatory WindowHandle for all platforms
+            let window: u64 = screen_info
+                .get_item("window")?
+                .ok_or(FragmentColorError::new_err("Missing window handle"))?
+                .extract()?;
+            // Optional platform and display (only present on Linux)
+            let platform: String = screen_info
+                .get_item("platform")?
+                .unwrap_or("".into_pyobject(py)?.into_any())
+                .extract()?;
+            let display: u64 = screen_info
+                .get_item("display")?
+                .unwrap_or(0u64.into_pyobject(py)?.into_any())
+                .extract()?;
+
+            // Gets the window size to configure the surface
+            let size: (u32, u32) = rendercanvas
+                .call_method(py, "get_physical_size", (), None)?
+                .downcast_bound(py)?
+                .extract()?;
+
+            let size = wgpu::Extent3d {
+                width: size.0,
+                height: size.1,
+                depth_or_array_layers: 1,
+            };
+
+            let (window_handle, display_handle) =
+                create_raw_handles(platform, window, Some(display))?;
+
+            let handle = PyWindowHandle {
+                window_handle,
+                display_handle,
+            };
+
+            let target = self.init_target(size, handle)?;
+
+            let target = Py::new(py, target)?;
+
+            context.init_context(renderer.clone_ref(py), target.clone_ref(py));
+
+            Ok(target)
+        })
+    }
+}
+
+impl Renderer {
+    fn init_target(
+        &self,
+        size: wgpu::Extent3d,
+        handle: PyWindowHandle<'static>,
+    ) -> Result<RenderCanvasTarget, PyErr> {
+        let context = self.get_context(handle);
+
+        let target = RenderCanvasTarget::new(surface, config);
+        let renderer = Renderer::init(device, queue);
+
+        Ok(target)
     }
 }
