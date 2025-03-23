@@ -27,7 +27,7 @@ struct RenderPipeline {
     bind_group_layouts: Vec<wgpu::BindGroupLayout>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 #[cfg_attr(feature = "python", pyclass)]
 pub struct Renderer {
     instance: wgpu::Instance,
@@ -95,7 +95,7 @@ impl Renderer {
         Ok((context, surface, config))
     }
 
-    /// Creates a headless Context
+    // /// Creates a headless Context
     // pub async fn render_image(&self) -> Result<Vec<u8>, InitializationError> {
     //     let _context = if let Some(context) = self.context.read().as_ref() {
     //         context.clone()
