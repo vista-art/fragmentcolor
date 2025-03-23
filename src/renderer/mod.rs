@@ -8,16 +8,11 @@ use std::collections::HashMap;
 use std::sync::Arc;
 pub type Commands = Vec<wgpu::CommandBuffer>;
 
-mod features;
-
 pub mod platform;
 pub use platform::*;
 
 mod buffer_pool;
 use buffer_pool::BufferPool;
-
-#[cfg(feature = "python")]
-pub use features::python::*;
 
 #[cfg(feature = "python")]
 use pyo3::prelude::*;
