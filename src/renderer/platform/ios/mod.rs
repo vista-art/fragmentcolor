@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use photogeometry::Rect;
 
-use crate::{ffi, Bitmap, Destination, Image, PixelFormat};
+use crate::{Bitmap, Destination, Image, PixelFormat, ffi};
 use core_graphics::geometry::CGSize;
 use objc::*;
 

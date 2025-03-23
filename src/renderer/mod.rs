@@ -1,12 +1,20 @@
-use crate::buffer_pool::BufferPool;
-use crate::{shader::Uniform, PassObject, ShaderError, ShaderHash, Target};
-use crate::{InitializationError, PassInput, TargetFrame};
+use crate::{
+    InitializationError, PassInput, PassObject, ShaderError, ShaderHash, Target, TargetFrame,
+    shader::Uniform,
+};
 use parking_lot::RwLock;
 use std::borrow::Cow;
 use std::collections::HashMap;
+use std::sync::Arc;
 pub type Commands = Vec<wgpu::CommandBuffer>;
 
 mod features;
+
+pub mod platform;
+pub use platform::*;
+
+mod buffer_pool;
+use buffer_pool::BufferPool;
 
 #[cfg(feature = "python")]
 pub use features::python::*;
@@ -26,11 +34,109 @@ struct RenderPipeline {
 
 #[derive(Debug)]
 #[cfg_attr(feature = "python", pyclass)]
+pub struct Renderer {
+    instance: wgpu::Instance,
+    adapter: RwLock<Option<wgpu::Adapter>>,
+
+    /// The graphics context is lazily initialized when
+    /// create_target() or render_image() is called.
+    context: RwLock<Option<Arc<RenderContext>>>,
+}
+
+impl Renderer {
+    pub fn new() -> Self {
+        Renderer {
+            instance: wgpu::Instance::new(&wgpu::InstanceDescriptor::default()),
+            adapter: RwLock::new(None),
+            context: RwLock::new(None),
+        }
+    }
+
+    pub fn from_instance(instance: wgpu::Instance) -> Self {
+        Renderer {
+            instance,
+            adapter: RwLock::new(None),
+            context: RwLock::new(None),
+        }
+    }
+
+    pub(crate) async fn create_surface<'window>(
+        &self,
+        handle: impl Into<wgpu::SurfaceTarget<'window>>,
+        size: wgpu::Extent3d,
+    ) -> Result<
+        (
+            Arc<RenderContext>,
+            wgpu::Surface<'window>,
+            wgpu::SurfaceConfiguration,
+        ),
+        InitializationError,
+    > {
+        let surface = self.instance.create_surface(handle)?;
+
+        let context = if let Some(context) = self.context.read().as_ref() {
+            context.clone()
+        } else {
+            let adapter =
+                crate::platform::all::request_adapter(&self.instance, Some(&surface)).await?;
+            let (device, queue) = crate::platform::all::request_device(&adapter).await?;
+            let context = Arc::new(RenderContext::new(device, queue));
+
+            self.adapter.write().replace(adapter);
+            self.context.write().replace(context.clone());
+
+            context
+        };
+
+        let adapter = self.adapter.read();
+        let config = crate::platform::all::configure_surface(
+            &context.device,
+            adapter.as_ref().unwrap(),
+            &surface,
+            &size,
+        );
+
+        // @TODO consider returning a RenderTarget or WindowTarget
+        Ok((context, surface, config))
+    }
+
+    /// Creates a headless Context
+    // pub async fn render_image(&self) -> Result<Vec<u8>, InitializationError> {
+    //     let _context = if let Some(context) = self.context.read().as_ref() {
+    //         context.clone()
+    //     } else {
+    //         let adapter = crate::platform::all::request_headless_adapter(&self.instance).await?;
+    //         let (device, queue) = crate::platform::all::request_device(&adapter).await?;
+    //         let context = Arc::new(RenderContext::init(device, queue));
+
+    //         self.adapter.write().replace(adapter);
+    //         self.context.write().replace(context.clone());
+
+    //         context
+    //     };
+
+    //     // @TODO
+    // }
+
+    pub fn render(
+        &self,
+        renderable: &impl Renderable,
+        target: &impl Target,
+    ) -> Result<(), ShaderError> {
+        if let Some(context) = self.context.read().as_ref() {
+            context.render(renderable, target)
+        } else {
+            Err(ShaderError::ContextNotInitialized())
+        }
+    }
+}
+
+#[derive(Debug)]
 /// Draws things on the screen or a texture.
 ///
 /// It owns and manages all GPU resources, serving as the
 /// main graphics context provider for the application.
-pub struct Renderer {
+pub struct RenderContext {
     pub(crate) device: wgpu::Device,
     pub(crate) queue: wgpu::Queue,
 
@@ -43,26 +149,12 @@ pub struct Renderer {
     // _samplers: RwLock<HashMap<String, wgpu::Sampler>>,
 }
 
-impl Renderer {
-    /// Creates a headless renderer by default
-    pub async fn new() -> Result<Renderer, InitializationError> {
-        pollster::block_on(Self::headless())
-    }
-
-    /// Creates a headless renderer
-    pub async fn headless() -> Result<Renderer, InitializationError> {
-        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-        let adapter = crate::platform::all::request_headless_adapter(&instance).await?;
-        let (device, queue) = crate::platform::all::request_device(&adapter).await?;
-
-        Ok(Renderer::init(device, queue))
-    }
-
-    /// Creates a new renderer with the given device and queue.
-    pub(crate) fn init(device: wgpu::Device, queue: wgpu::Queue) -> Self {
+impl RenderContext {
+    /// Creates a new Context with the given device and queue.
+    fn new(device: wgpu::Device, queue: wgpu::Queue) -> Self {
         let buffer_pool = BufferPool::new_uniform_pool("Uniform Buffer Pool", &device);
 
-        Renderer {
+        RenderContext {
             device,
             queue,
 
@@ -72,7 +164,7 @@ impl Renderer {
     }
 
     /// Renders a Frame or Shader to a Target.
-    pub fn render(
+    fn render(
         &self,
         renderable: &impl Renderable,
         target: &impl Target,
@@ -103,7 +195,7 @@ impl Renderer {
     }
 }
 
-impl Renderer {
+impl RenderContext {
     fn process_render_pass(
         &self,
         encoder: &mut wgpu::CommandEncoder,
@@ -217,7 +309,6 @@ impl Renderer {
     }
 }
 
-// @TODO avoid tight coupling with storage internals
 fn create_bind_group_layouts(
     device: &wgpu::Device,
     uniforms: &HashMap<String, (u32, u32, Uniform)>,

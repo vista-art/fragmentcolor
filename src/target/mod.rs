@@ -1,9 +1,8 @@
-use crate::Renderer;
 use std::fmt::{Debug, Formatter};
 
 pub trait Target {
     fn size(&self) -> wgpu::Extent3d;
-    fn resize(&mut self, renderer: &Renderer, size: wgpu::Extent3d);
+    fn resize(&mut self, size: wgpu::Extent3d);
     fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, wgpu::SurfaceError>;
 }
 
@@ -21,3 +20,9 @@ impl Debug for dyn Target {
         write!(f, "Target")
     }
 }
+
+pub mod texture;
+pub use texture::*;
+
+pub mod window;
+pub use window::*;

@@ -148,7 +148,7 @@ pub(crate) fn convert_type(module: &Module, ty: &Type) -> Result<UniformData, Sh
             _ => {
                 return Err(ShaderError::TypeMismatch(
                     "Unsupported matrix dimensions".into(),
-                ))
+                ));
             }
         }),
         TypeInner::Struct { members, span } => {
@@ -167,7 +167,7 @@ pub(crate) fn convert_type(module: &Module, ty: &Type) -> Result<UniformData, Sh
                 _ => {
                     return Err(ShaderError::TypeMismatch(
                         "Dynamic array size not supported".into(),
-                    ))
+                    ));
                 }
             };
             let base_ty = convert_type(module, &module.types[*base])?;

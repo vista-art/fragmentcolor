@@ -5,7 +5,7 @@ use raw_window_handle::{
     HasWindowHandle, RawDisplayHandle, RawWindowHandle, WindowHandle,
 };
 
-use jni::{objects::JClass, sys::jobject, JNIEnv};
+use jni::{JNIEnv, objects::JClass, sys::jobject};
 use jni_fn::jni_fn;
 
 use crate::Region;

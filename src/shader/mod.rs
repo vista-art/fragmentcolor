@@ -1,8 +1,8 @@
 use crate::error::ShaderError;
 use crate::{PassObject, Renderable};
 use naga::{
-    valid::{Capabilities, ValidationFlags, Validator},
     AddressSpace, Module,
+    valid::{Capabilities, ValidationFlags, Validator},
 };
 use parking_lot::RwLock;
 use serde::Serialize;

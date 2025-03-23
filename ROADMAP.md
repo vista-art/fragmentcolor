@@ -2,8 +2,26 @@
 
 ## Work in Progress
 
-- [ ] V 0.10.6 Javascript support
+- [ ] V 0.10.6 Javascript support & new initialization logic
+
   - [ ] Javascript Implementation
+  - [x] **API CHANGE:** FragmentColor initializer is no longer needed; the Renderer now initializes lazily and creates the Target. This change was needed to keep consistency between languages, because Javascript doesn't support multiple returns or tuples, and we also plan to support C bindings in the future.
+
+    - **Old API:**
+      ```python
+      renderer, target = Fragmentcolor::init(window)
+      ```
+    - **New API:**
+      ```python
+      renderer = new Renderer()
+      target = renderer.create_target(window)
+      ```
+
+  - [x] **API CHANGE:** `Target.resize()` no longer needs a renderer instance, as it keeps a reference internally.
+
+    - **Old API:** `Target.resize(renderer, size)`
+    - **New API:** `Target.resize(size)`
+
   - [ ] Publish to NPM
   - [x] Chore: Script to automatically bump version
 
