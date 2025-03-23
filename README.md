@@ -36,12 +36,13 @@ pip install fragmentcolor glfw rendercanvas
 ```
 
 ```python
-from fragmentcolor import FragmentColor as fc, Shader, Pass, Frame
+from fragmentcolor import FragmentColor as fc, Renderer, Shader, Pass, Frame
 from rendercanvas.auto import RenderCanvas, loop
 
 # Initializes a renderer and a target compatible with the given canvas
 canvas = RenderCanvas(size=(800, 600))
-renderer, target = fc.init(canvas)
+renderer = Renderer()
+target = renderer.create_target(canvas)
 
 # You can pass the shader as a source string, file path, or URL:
 circle = Shader("./path/to/circle.wgsl")
