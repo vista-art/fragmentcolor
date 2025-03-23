@@ -110,15 +110,14 @@ loop.run()
 ### Example usage (Javascript)
 
 ```javascript
-import { Shader, Renderer, Target, FragmentColor } from "fragmentcolor";
+import { Shader, Renderer } from "fragmentcolor";
 
-let canvas = document.getElementById("my-canvas");
-const resolution = [canvas.width, canvas.heigth];
-
-[renderer, target] = FragmentColor.init(canvas);
+const canvas = document.getElementById("my-canvas");
+const renderer = new Renderer();
+const target = renderer.init(canvas);
 
 const shader = new Shader("https://fragmentcolor.org/shaders/circle.wgsl");
-shader.set("resolution", resolution);
+shader.set("resolution", [canvas.width, canvas.heigth]);
 shader.set("circle.radius", 0.05);
 shader.set("circle.color", [1.0, 0.0, 0.0, 0.8]);
 
