@@ -1,6 +1,5 @@
 use crate::{
-    InitializationError, PassInput, PassObject, ShaderError, ShaderHash, Target, TargetFrame,
-    shader::Uniform,
+    InitializationError, PassObject, ShaderError, ShaderHash, Target, TargetFrame, shader::Uniform,
 };
 use parking_lot::RwLock;
 use std::borrow::Cow;
@@ -14,8 +13,10 @@ pub use platform::*;
 mod buffer_pool;
 use buffer_pool::BufferPool;
 
-#[cfg(feature = "python")]
+#[cfg(python)]
 use pyo3::prelude::*;
+#[cfg(wasm)]
+use wasm_bindgen::prelude::*;
 
 pub trait Renderable {
     fn passes(&self) -> impl IntoIterator<Item = &PassObject>;
@@ -28,9 +29,10 @@ struct RenderPipeline {
 }
 
 #[derive(Debug, Default)]
-#[cfg_attr(feature = "python", pyclass)]
+#[cfg_attr(wasm, wasm_bindgen)]
+#[cfg_attr(python, pyclass)]
 pub struct Renderer {
-    instance: wgpu::Instance,
+    instance: RwLock<Option<wgpu::Instance>>,
     adapter: RwLock<Option<wgpu::Adapter>>,
 
     /// The graphics context is lazily initialized when
@@ -39,17 +41,30 @@ pub struct Renderer {
 }
 
 impl Renderer {
+    /// Creates a new Renderer.
+    ///
+    /// At this point, we don't know if it will be used offscreen
+    /// or attached to a platform-specific window.
+    ///
+    /// The Renderer internals are lazily initialized when the user creates a Target
+    /// or renders a Bitmap. \
+    /// This ensures the adapter and device are compatible
+    /// with the target environment.
+    ///
+    /// The API ensures the Renderer is usable when `render()` is called, because
+    /// the `render()` method expects a Target as input. So, the user must call
+    /// `Renderer.create_target()` first (which initializes the Renderer) or
+    /// `Renderer.render_image()` which initializes an offscreen adapter.
+    ///
+    /// ## Example
+    /// ```rust
+    /// use fragmentcolor::Renderer;
+    ///
+    /// let renderer = Renderer::new();
+    /// ```
     pub fn new() -> Self {
         Renderer {
-            instance: wgpu::Instance::new(&wgpu::InstanceDescriptor::default()),
-            adapter: RwLock::new(None),
-            context: RwLock::new(None),
-        }
-    }
-
-    pub fn from_instance(instance: wgpu::Instance) -> Self {
-        Renderer {
-            instance,
+            instance: RwLock::new(None),
             adapter: RwLock::new(None),
             context: RwLock::new(None),
         }
@@ -67,14 +82,45 @@ impl Renderer {
         ),
         InitializationError,
     > {
-        let surface = self.instance.create_surface(handle)?;
+        self.ensure_instance().await;
+        let instance = self.instance.read();
+        let surface = instance.as_ref().unwrap().create_surface(handle)?;
+        let context = self.context(Some(&surface)).await?;
 
+        let adapter = self.adapter.read();
+        let config = configure_surface(&context.device, adapter.as_ref().unwrap(), &surface, &size);
+
+        Ok((context, surface, config))
+    }
+
+    async fn ensure_instance(&self) {
+        if self.instance.read().is_none() {
+            #[cfg(not(wasm))]
+            let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
+
+            #[cfg(wasm)]
+            let instance =
+                wgpu::util::new_instance_with_webgpu_detection(&wgpu::InstanceDescriptor {
+                    backends: wgpu::Backends::GL | wgpu::Backends::BROWSER_WEBGPU,
+                    ..Default::default()
+                })
+                .await;
+
+            self.instance.write().replace(instance);
+        }
+    }
+
+    async fn context<'window>(
+        &self,
+        surface: Option<&wgpu::Surface<'window>>,
+    ) -> Result<Arc<RenderContext>, InitializationError> {
         let context = if let Some(context) = self.context.read().as_ref() {
             context.clone()
         } else {
-            let adapter =
-                crate::platform::all::request_adapter(&self.instance, Some(&surface)).await?;
-            let (device, queue) = crate::platform::all::request_device(&adapter).await?;
+            self.ensure_instance().await;
+            let instance = self.instance.read();
+            let adapter = request_adapter(instance.as_ref().unwrap(), surface).await?;
+            let (device, queue) = request_device(&adapter).await?;
             let context = Arc::new(RenderContext::new(device, queue));
 
             self.adapter.write().replace(adapter);
@@ -83,16 +129,7 @@ impl Renderer {
             context
         };
 
-        let adapter = self.adapter.read();
-        let config = crate::platform::all::configure_surface(
-            &context.device,
-            adapter.as_ref().unwrap(),
-            &surface,
-            &size,
-        );
-
-        // @TODO consider returning a RenderTarget or WindowTarget
-        Ok((context, surface, config))
+        Ok(context)
     }
 
     // /// Creates a headless Context
@@ -100,8 +137,8 @@ impl Renderer {
     //     let _context = if let Some(context) = self.context.read().as_ref() {
     //         context.clone()
     //     } else {
-    //         let adapter = crate::platform::all::request_headless_adapter(&self.instance).await?;
-    //         let (device, queue) = crate::platform::all::request_device(&adapter).await?;
+    //         let adapter = request_headless_adapter(&self.instance).await?;
+    //         let (device, queue) = request_device(&adapter).await?;
     //         let context = Arc::new(RenderContext::init(device, queue));
 
     //         self.adapter.write().replace(adapter);
@@ -199,9 +236,9 @@ impl RenderContext {
     ) -> Result<(), ShaderError> {
         self.buffer_pool.write().reset();
 
-        let load_op = match pass.get_input() {
-            PassInput::Clear(color) => wgpu::LoadOp::Clear(color.into()),
-            PassInput::Load() => wgpu::LoadOp::Load,
+        let load_op = match pass.get_input().load {
+            true => wgpu::LoadOp::Load,
+            false => wgpu::LoadOp::Clear(pass.get_input().color.into()),
         };
 
         let attachments = &[Some(wgpu::RenderPassColorAttachment {

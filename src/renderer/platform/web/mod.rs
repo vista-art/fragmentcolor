@@ -1,7 +1,9 @@
-use crate::{CanvasTarget, FragmentColor, InitializationError, Shader, ShaderError};
-use std::sync::Arc;
+use crate::Renderer;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
+
+pub mod target;
+pub use target::*;
 
 pub enum Canvas {
     Html(web_sys::HtmlCanvasElement),
@@ -45,131 +47,76 @@ impl From<web_sys::OffscreenCanvas> for Canvas {
 }
 
 #[wasm_bindgen]
-pub struct RendererTargetWrapper {
-    renderer: Arc<Renderer>,
-    target: Arc<CanvasTarget>,
-}
+impl Renderer {
+    #[wasm_bindgen(constructor)]
+    /// Creates a new Renderer
+    pub fn new_js() -> Self {
+        Self::new()
+    }
 
-#[wasm_bindgen]
-pub struct Renderer {
-    inner: crate::renderer::Renderer,
-}
-
-#[wasm_bindgen]
-impl FragmentColor {
-    pub async fn init(canvas: JsValue) -> Result<Renderer, JsError> {
+    pub async fn create_target(&self, canvas: JsValue) -> Result<CanvasTarget, JsError> {
         let canvas = if canvas.has_type::<web_sys::HtmlCanvasElement>() {
             let canvas = canvas.dyn_into::<web_sys::HtmlCanvasElement>().unwrap();
             Canvas::Html(canvas)
         } else if let Ok(canvas) = canvas.dyn_into::<web_sys::OffscreenCanvas>() {
             Canvas::Offscreen(canvas)
         } else {
-            return Err(JsError::new("Failed to convert input to OffscreenCanvas"));
+            return Err(JsError::new("Failed to convert input to Canvas"));
         };
 
-        Ok(FragmentColor::init_renderer_and_target(canvas).await?)
-    }
-
-    async fn init_renderer_and_target(canvas: Canvas) -> Result<Renderer, InitializationError> {
-        let instance = wgpu::util::new_instance_with_webgpu_detection(&wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::GL | wgpu::Backends::BROWSER_WEBGPU,
-            ..Default::default()
-        })
-        .await;
-
         let size = canvas.size();
-        let surface = match canvas {
-            Canvas::Html(canvas) => instance.create_surface(wgpu::SurfaceTarget::Canvas(canvas))?,
+        let (context, surface, config) = match canvas {
+            Canvas::Html(canvas) => {
+                let target = wgpu::SurfaceTarget::Canvas(canvas);
+                self.create_surface(target, size).await?
+            }
             Canvas::Offscreen(canvas) => {
-                instance.create_surface(wgpu::SurfaceTarget::OffscreenCanvas(canvas))?
+                let target = wgpu::SurfaceTarget::OffscreenCanvas(canvas);
+                self.create_surface(target, size).await?
             }
         };
 
-        let adapter = crate::platform::all::request_adapter(&instance, Some(&surface)).await?;
-        let (device, queue) = crate::platform::all::request_device(&adapter).await?;
-        let config = crate::platform::all::configure_surface(&device, &adapter, &surface, &size);
-
-        let target = CanvasTarget::new(surface, config);
-        let renderer = Renderer::init(device, queue);
-
-        Ok(RendererTargetWrapper { renderer, target })
-    }
-}
-
-#[wasm_bindgen]
-impl Renderer {
-    /// Creates a headless renderer by default
-    pub async fn new() -> Result<Renderer, JsError> {
-        Renderer::headless().await
+        Ok(CanvasTarget::new(context, surface, config))
     }
 
-    /// Creates a headless Renderer
-    pub async fn headless() -> Result<Renderer, JsError> {
-        let instance = wgpu::util::new_instance_with_webgpu_detection(&wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::GL | wgpu::Backends::BROWSER_WEBGPU,
-            ..Default::default()
-        })
-        .await;
+    // @TODO
+    // /// Creates a headless Renderer
+    // pub async fn headless() -> Result<Renderer, JsError> {
+    //     let instance = wgpu::util::new_instance_with_webgpu_detection(&wgpu::InstanceDescriptor {
+    //         backends: wgpu::Backends::GL | wgpu::Backends::BROWSER_WEBGPU,
+    //         ..Default::default()
+    //     })
+    //     .await;
 
-        let backends = wgpu::Instance::enabled_backend_features();
+    //     let backends = wgpu::Instance::enabled_backend_features();
 
-        let adapter = if !backends.contains(wgpu::Backends::BROWSER_WEBGPU) {
-            // Create a DOM canvas element.
-            // This is needed to make adapter creation work in WebGL.
-            //
-            // We must create the surface from the same Instance we create the adapter,
-            // and the surface must remain alive during the call to request_adapter(),
-            // even though it can be immediately dropped afterwards.
-            //
-            // Relevant discussion: https://github.com/gfx-rs/wgpu/issues/5190
-            let canvas = web_sys::window()
-                .unwrap()
-                .document()
-                .unwrap()
-                .create_element("canvas")
-                .unwrap()
-                .dyn_into::<web_sys::HtmlCanvasElement>()
-                .unwrap();
+    //     let adapter = if !backends.contains(wgpu::Backends::BROWSER_WEBGPU) {
+    //         // Create a DOM canvas element.
+    //         // This is needed to make adapter creation work in WebGL.
+    //         //
+    //         // We must create the surface from the same Instance we create the adapter,
+    //         // and the surface must remain alive during the call to request_adapter(),
+    //         // even though it can be immediately dropped afterwards.
+    //         //
+    //         // Relevant discussion: https://github.com/gfx-rs/wgpu/issues/5190
+    //         let canvas = web_sys::window()
+    //             .unwrap()
+    //             .document()
+    //             .unwrap()
+    //             .create_element("canvas")
+    //             .unwrap()
+    //             .dyn_into::<web_sys::HtmlCanvasElement>()
+    //             .unwrap();
 
-            let surface = instance.create_surface(wgpu::SurfaceTarget::Canvas(canvas))?;
+    //         let surface = instance.create_surface(wgpu::SurfaceTarget::Canvas(canvas))?;
 
-            crate::platform::all::request_adapter(&instance, Some(&surface)).await?
-        } else {
-            crate::platform::all::request_headless_adapter(&instance).await?
-        };
+    //         crate::platform::all::request_adapter(&instance, Some(&surface)).await?
+    //     } else {
+    //         crate::platform::all::request_headless_adapter(&instance).await?
+    //     };
 
-        let (device, queue) = crate::platform::all::request_device(&adapter).await?;
+    //     let (device, queue) = crate::platform::all::request_device(&adapter).await?;
 
-        Ok(Renderer::init(device, queue))
-    }
-}
-
-impl Shader {
-    pub async fn fetch(url: &str) -> Result<Self, ShaderError> {
-        use wasm_bindgen::JsCast;
-        use wasm_bindgen_futures::{JsFuture, future_to_promise};
-        use web_sys::Request;
-        use web_sys::RequestInit;
-        use web_sys::RequestMode;
-        use web_sys::Response;
-
-        let opts = RequestInit::new();
-        opts.set_method("GET");
-        opts.set_mode(RequestMode::Cors);
-
-        let request = Request::new_with_str_and_init(url, &opts).expect("failed to create request");
-        let window = web_sys::window().expect("no global `window` exists");
-        let resp_promise = window.fetch_with_request(&request);
-        let resp_value = future_to_promise(JsFuture::from(resp_promise));
-
-        let resp: Response = resp_value.dyn_into().expect("not a Response");
-
-        let jsvalue = JsFuture::from(resp.text().expect("failed to read response"))
-            .await
-            .expect("failed to read response");
-
-        let body = jsvalue.as_string().expect("response not a string");
-
-        Self::new(&body)
-    }
+    //     Ok(Renderer::init(device, queue))
+    // }
 }

@@ -3,12 +3,15 @@ use std::sync::Arc;
 
 #[cfg(python)]
 use pyo3::prelude::*;
+#[cfg(wasm)]
+use wasm_bindgen::prelude::*;
 
 mod features;
 
-// Reference https://blog.mecheye.net/2023/09/how-to-write-a-renderer-for-modern-apis
-#[cfg_attr(feature = "python", pyclass)]
+#[cfg_attr(wasm, wasm_bindgen)]
+#[cfg_attr(python, pyclass)]
 #[derive(Debug, Default)]
+// Reference https://blog.mecheye.net/2023/09/how-to-write-a-renderer-for-modern-apis
 /// A Frame represents a graph of Passes that are executed in sequence.
 pub struct Frame {
     pub(crate) passes: Vec<Arc<PassObject>>,

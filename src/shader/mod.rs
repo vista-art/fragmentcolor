@@ -12,21 +12,26 @@ use std::sync::Arc;
 
 #[cfg(python)]
 use pyo3::prelude::*;
+#[cfg(wasm)]
+use wasm_bindgen::prelude::*;
 
 pub mod constants;
-mod features;
 pub use constants::*;
 pub(crate) mod uniform;
 pub(crate) use uniform::*;
+
 mod deserialize;
+mod features;
 mod input;
+mod platform;
 mod storage;
 use storage::*;
 
 /// The hash of a shader source.
 pub type ShaderHash = [u8; 32];
 
-#[cfg_attr(feature = "python", pyclass)]
+#[cfg_attr(wasm, wasm_bindgen)]
+#[cfg_attr(python, pyclass)]
 #[derive(Debug)]
 /// The Shader in FragmentColor is the blueprint of a Render Pipeline.
 ///
