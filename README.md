@@ -140,7 +140,7 @@ animate();
 
 - Textures and Samplers are currently not supported, but are also planned.
 
-- Javascript, Swift, and Kotlin are currently WIP.
+- Swift and Kotlin are currently WIP.
 
 ## Running this project
 
