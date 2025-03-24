@@ -32,7 +32,7 @@ struct RenderPipeline {
 #[cfg_attr(wasm, wasm_bindgen)]
 #[cfg_attr(python, pyclass)]
 pub struct Renderer {
-    instance: RwLock<Option<wgpu::Instance>>,
+    instance: RwLock<Option<Arc<wgpu::Instance>>>,
     adapter: RwLock<Option<wgpu::Adapter>>,
 
     /// The graphics context is lazily initialized when
@@ -82,9 +82,8 @@ impl Renderer {
         ),
         InitializationError,
     > {
-        self.ensure_instance().await;
-        let instance = self.instance.read();
-        let surface = instance.as_ref().unwrap().create_surface(handle)?;
+        let instance = self.instance().await;
+        let surface = instance.create_surface(handle)?;
         let context = self.context(Some(&surface)).await?;
 
         let adapter = self.adapter.read();
@@ -93,8 +92,10 @@ impl Renderer {
         Ok((context, surface, config))
     }
 
-    async fn ensure_instance(&self) {
-        if self.instance.read().is_none() {
+    async fn instance(&self) -> Arc<wgpu::Instance> {
+        if let Some(instance) = self.instance.read().as_ref() {
+            instance.clone()
+        } else {
             #[cfg(not(wasm))]
             let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
 
@@ -106,20 +107,22 @@ impl Renderer {
                 })
                 .await;
 
-            self.instance.write().replace(instance);
+            let instance = Arc::new(instance);
+            self.instance.write().replace(instance.clone());
+
+            instance
         }
     }
 
-    async fn context<'window>(
+    async fn context(
         &self,
-        surface: Option<&wgpu::Surface<'window>>,
+        surface: Option<&wgpu::Surface<'_>>,
     ) -> Result<Arc<RenderContext>, InitializationError> {
         let context = if let Some(context) = self.context.read().as_ref() {
             context.clone()
         } else {
-            self.ensure_instance().await;
-            let instance = self.instance.read();
-            let adapter = request_adapter(instance.as_ref().unwrap(), surface).await?;
+            let instance = self.instance().await;
+            let adapter = request_adapter(instance.as_ref(), surface).await?;
             let (device, queue) = request_device(&adapter).await?;
             let context = Arc::new(RenderContext::new(device, queue));
 

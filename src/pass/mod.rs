@@ -27,10 +27,7 @@ impl PassInput {
     }
 
     pub fn clear(color: Color) -> Self {
-        Self {
-            load: false,
-            color: color,
-        }
+        Self { load: false, color }
     }
 }
 
