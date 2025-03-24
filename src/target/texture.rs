@@ -1,13 +1,18 @@
-use crate::{Renderer, Target, TargetFrame, Texture};
+use crate::{RenderContext, Target, TargetFrame, Texture};
 use std::sync::Arc;
 
 pub struct TextureTarget {
+    context: Arc<RenderContext>,
     texture: Arc<Texture>,
 }
 
 impl TextureTarget {
-    pub fn new(texture: Arc<Texture>) -> Self {
-        Self { texture }
+    pub fn new(context: Arc<RenderContext>, size: wgpu::Extent3d) -> Self {
+        let texture = Arc::new(Texture::create_destination_texture(context.as_ref(), size));
+        Self {
+            context: context.clone(),
+            texture,
+        }
     }
 }
 
@@ -16,8 +21,8 @@ impl Target for TextureTarget {
         self.texture.size()
     }
 
-    fn resize(&mut self, renderer: &Renderer, size: wgpu::Extent3d) {
-        let new_texture = Texture::create_destination_texture(renderer, size);
+    fn resize(&mut self, size: wgpu::Extent3d) {
+        let new_texture = Texture::create_destination_texture(self.context.as_ref(), size);
         self.texture = Arc::new(new_texture);
     }
 

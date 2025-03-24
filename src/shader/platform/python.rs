@@ -1,4 +1,4 @@
-#![cfg(feature = "python")]
+#![cfg(python)]
 
 use crate::{Shader, ShaderError, UniformData};
 use pyo3::prelude::*;

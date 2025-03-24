@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use fragmentcolor::{FragmentColor, Renderer, Shader, ShaderError, Target, WindowTarget};
+use fragmentcolor::{Renderer, Shader, ShaderError, Target, WindowTarget};
 
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
@@ -18,7 +18,8 @@ struct State {
 
 impl State {
     async fn new(window: Arc<Window>) -> State {
-        let (renderer, target) = FragmentColor::init(window.clone()).await.unwrap();
+        let renderer = Renderer::new();
+        let target = renderer.create_target(window.clone()).await.unwrap();
 
         let shader = Shader::new(TRIANGLE_SOURCE).unwrap();
         shader.set("color", [1.0, 0.2, 0.8, 1.0]).unwrap();
@@ -42,7 +43,7 @@ impl State {
             depth_or_array_layers: 1,
         };
 
-        self.target.resize(&self.renderer, size);
+        self.target.resize(size);
     }
 
     fn render(&mut self) -> Result<(), ShaderError> {

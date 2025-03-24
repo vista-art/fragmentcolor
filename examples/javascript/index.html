@@ -1,19 +1,15 @@
-<html>
+<!DOCTYPE html>
+<html lang="en">
   <head>
-    <title>Web Example</title>
-    <script src="https://cdn.jsdelivr.net/npm/vue"></script>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vite App</title>
   </head>
   <body>
     <div id="app">
-      <h1>{{ message }}</h1>
+      <canvas id="my-canvas" width="800" height="600"></canvas>
     </div>
-    <script>
-      new Vue({
-        el: "#app",
-        data: {
-          message: "Hello Vue.js!",
-        },
-      });
-    </script>
+    <script type="module" src="/src/main.js"></script>
   </body>
 </html>

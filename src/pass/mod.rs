@@ -2,17 +2,33 @@ use crate::{Color, Region, Renderable, Shader, ShaderObject};
 use parking_lot::RwLock;
 use std::sync::Arc;
 
-#[cfg(feature = "python")]
+#[cfg(python)]
 use pyo3::prelude::*;
+#[cfg(wasm)]
+use wasm_bindgen::prelude::*;
 
 mod features;
 
-#[cfg_attr(feature = "python", pyclass)]
+#[cfg_attr(wasm, wasm_bindgen)]
+#[cfg_attr(python, pyclass)]
 // Resource Definitions
 #[derive(Debug, Clone)]
-pub enum PassInput {
-    Load(),
-    Clear(Color),
+pub struct PassInput {
+    pub(crate) load: bool,
+    pub(crate) color: Color,
+}
+
+impl PassInput {
+    pub fn load() -> Self {
+        Self {
+            load: true,
+            color: Color::transparent(),
+        }
+    }
+
+    pub fn clear(color: Color) -> Self {
+        Self { load: false, color }
+    }
 }
 
 #[derive(Debug)]
@@ -21,7 +37,7 @@ pub enum PassType {
     Render,
 }
 
-#[cfg_attr(feature = "python", pyclass)]
+#[cfg_attr(python, pyclass)]
 #[derive(Debug)]
 pub struct Pass {
     pub(crate) object: Arc<PassObject>,
@@ -47,7 +63,10 @@ impl Pass {
     }
 
     pub fn load_previous(&self) {
-        *self.object.input.write() = PassInput::Load();
+        *self.object.input.write() = PassInput {
+            load: true,
+            color: Color::transparent(),
+        }
     }
 
     pub fn get_input(&self) -> PassInput {
@@ -89,7 +108,7 @@ impl PassObject {
             name: Arc::from(name),
             shaders: RwLock::new(Vec::new()),
             region: RwLock::new(None),
-            input: RwLock::new(PassInput::Load()),
+            input: RwLock::new(PassInput::load()),
             required_buffer_size: RwLock::new(0),
             pass_type,
         }
@@ -108,14 +127,14 @@ impl PassObject {
             name: Arc::from(name),
             shaders: RwLock::new(vec![shader]),
             region: RwLock::new(None),
-            input: RwLock::new(PassInput::Load()),
+            input: RwLock::new(PassInput::load()),
             required_buffer_size: RwLock::new(total_bytes),
             pass_type,
         }
     }
 
     pub fn set_clear_color(&self, color: impl Into<Color>) {
-        *self.input.write() = PassInput::Clear(color.into());
+        *self.input.write() = PassInput::clear(color.into());
     }
 
     pub fn get_input(&self) -> PassInput {

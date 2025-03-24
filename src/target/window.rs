@@ -1,13 +1,23 @@
-use crate::{Renderer, Target, TargetFrame};
+use crate::{RenderContext, Target, TargetFrame};
+use std::sync::Arc;
 
 pub struct WindowTarget {
-    surface: wgpu::Surface<'static>,
-    config: wgpu::SurfaceConfiguration,
+    pub(crate) context: Arc<RenderContext>,
+    pub(crate) surface: wgpu::Surface<'static>,
+    pub(crate) config: wgpu::SurfaceConfiguration,
 }
 
 impl WindowTarget {
-    pub fn new(surface: wgpu::Surface<'static>, config: wgpu::SurfaceConfiguration) -> Self {
-        Self { surface, config }
+    pub fn new(
+        context: Arc<RenderContext>,
+        surface: wgpu::Surface<'static>,
+        config: wgpu::SurfaceConfiguration,
+    ) -> Self {
+        Self {
+            context,
+            surface,
+            config,
+        }
     }
 }
 
@@ -20,10 +30,10 @@ impl Target for WindowTarget {
         }
     }
 
-    fn resize(&mut self, renderer: &Renderer, size: wgpu::Extent3d) {
+    fn resize(&mut self, size: wgpu::Extent3d) {
         self.config.width = size.width;
         self.config.height = size.height;
-        self.surface.configure(&renderer.device, &self.config);
+        self.surface.configure(&self.context.device, &self.config);
     }
 
     fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, wgpu::SurfaceError> {

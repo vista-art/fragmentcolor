@@ -2,34 +2,29 @@
 //!
 //! Easy GPU Rendering for Javascript, Python, Kotlin, and Swift.
 
-#![allow(clippy::module_inception)]
-
 #[cfg(not(wasm))]
 uniffi::setup_scaffolding!();
 
-#[cfg_attr(feature = "python", pyo3::pyclass)]
-pub struct FragmentColor;
-
-/// # Platform-specific implementations
-pub mod platform;
-pub use platform::*;
-
 /// # Renderer module.
-///
 pub mod renderer;
 
 /// # Shader Module
-///
 pub mod shader;
+
+/// # Pass module
+pub mod pass;
+
+/// # Frame module
+pub mod frame;
+
+/// # Target module
+pub mod target;
 
 /// # Error module
 pub mod error;
 
 // DRAFT; may change in a whim
-mod buffer_pool;
 pub mod color;
-pub mod frame;
-pub mod pass;
 pub mod region;
 pub mod resources;
 pub mod sampler;
@@ -44,4 +39,5 @@ pub use renderer::*;
 pub use resources::*;
 pub use sampler::*;
 pub use shader::*;
+pub use target::*;
 pub use texture::*;

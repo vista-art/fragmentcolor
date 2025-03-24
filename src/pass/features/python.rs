@@ -1,4 +1,4 @@
-#![cfg(feature = "python")]
+#![cfg(python)]
 
 use crate::{Pass, PassInput, PassObject, PassType, Shader};
 use pyo3::prelude::*;

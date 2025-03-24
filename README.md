@@ -36,12 +36,13 @@ pip install fragmentcolor glfw rendercanvas
 ```
 
 ```python
-from fragmentcolor import FragmentColor as fc, Shader, Pass, Frame
+from fragmentcolor import FragmentColor as fc, Renderer, Shader, Pass, Frame
 from rendercanvas.auto import RenderCanvas, loop
 
 # Initializes a renderer and a target compatible with the given canvas
 canvas = RenderCanvas(size=(800, 600))
-renderer, target = fc.init(canvas)
+renderer = Renderer()
+target = renderer.create_target(canvas)
 
 # You can pass the shader as a source string, file path, or URL:
 circle = Shader("./path/to/circle.wgsl")
@@ -92,6 +93,7 @@ rpass.add_shader(my_shader)
 renderer.render(rpass, target)
 
 # Finally, you can combine multiple passes in a Frame
+frame = Frame()
 frame.add_pass(rpass)
 frame.add_pass(Pass("GUI pass"))
 renderer.render(frame, target)
@@ -108,15 +110,14 @@ loop.run()
 ### Example usage (Javascript)
 
 ```javascript
-import { Shader, Renderer, Target, FragmentColor } from "fragmentcolor";
+import { Shader, Renderer } from "fragmentcolor";
 
-let canvas = document.getElementById("my-canvas");
-const resolution = [canvas.width, canvas.heigth];
-
-[renderer, target] = FragmentColor.init(canvas);
+const canvas = document.getElementById("my-canvas");
+const renderer = new Renderer();
+const target = renderer.init(canvas);
 
 const shader = new Shader("https://fragmentcolor.org/shaders/circle.wgsl");
-shader.set("resolution", resolution);
+shader.set("resolution", [canvas.width, canvas.heigth]);
 shader.set("circle.radius", 0.05);
 shader.set("circle.color", [1.0, 0.0, 0.0, 0.8]);
 
@@ -139,7 +140,7 @@ animate();
 
 - Textures and Samplers are currently not supported, but are also planned.
 
-- Javascript, Swift, and Kotlin are currently WIP.
+- Swift and Kotlin are currently WIP.
 
 ## Running this project
 
