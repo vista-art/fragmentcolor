@@ -55,14 +55,8 @@ naga_oil = { version = "0.17" }
 csscolorparser = "0.7"
 fxhash = "0.2"
 
-# Async
-pollster = "0.4"
-
 # Text rendering
 wgpu_text = "0.9"
-
-# Time
-instant = "0.1"
 
 # Logging
 env_logger = "0.11"
@@ -92,10 +86,11 @@ cocoa = "0.26"
 objc2 = "0.6"
 objc2-app-kit = "0.3"
 
-# Android & iOS FFI
+# Non-Web dependencies; Android & iOS FFI
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 uniffi = { version = "0.29" }
 ureq = { version = "3", default-features = false }
+pollster = "0.4"
 
 # iOS Specific
 [target.'cfg(target_os = "ios")'.dependencies]
@@ -129,5 +124,5 @@ web-sys = { version = "0.3", features = [
 [build-dependencies]
 cfg_aliases = "0.2"
 
-[dev-dependencies]
+[target.'cfg(not(target_family = "wasm"))'.dev-dependencies]
 rand = { version = "0.9" }
