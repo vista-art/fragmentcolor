@@ -1,11 +1,5 @@
 use crate::InitializationError;
 
-pub async fn request_headless_adapter(
-    instance: &wgpu::Instance,
-) -> Result<wgpu::Adapter, InitializationError> {
-    request_adapter(instance, None).await
-}
-
 pub async fn request_adapter(
     instance: &wgpu::Instance,
     surface: Option<&wgpu::Surface<'_>>,
@@ -62,25 +56,6 @@ pub fn configure_surface(
     surface.configure(device, &config);
 
     config
-}
-
-pub fn request_headless_adapter_sync(
-    instance: &wgpu::Instance,
-) -> Result<wgpu::Adapter, InitializationError> {
-    request_adapter_sync(instance, None)
-}
-
-pub fn request_adapter_sync(
-    instance: &wgpu::Instance,
-    surface: Option<&wgpu::Surface<'_>>,
-) -> Result<wgpu::Adapter, InitializationError> {
-    pollster::block_on(request_adapter(instance, surface))
-}
-
-pub fn request_device_sync(
-    adapter: &wgpu::Adapter,
-) -> Result<(wgpu::Device, wgpu::Queue), InitializationError> {
-    pollster::block_on(request_device(adapter))
 }
 
 fn limits() -> wgpu::Limits {
