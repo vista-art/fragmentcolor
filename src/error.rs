@@ -3,7 +3,7 @@ use thiserror::Error;
 #[derive(Error, Debug)]
 pub enum InitializationError {
     #[error("Failed to find a compatible GPU adapter")]
-    AdapterError(),
+    AdapterError(#[from] wgpu::RequestAdapterError),
     #[error("Failed to create device")]
     DeviceError(#[from] wgpu::RequestDeviceError),
     #[error("Failed to create surface")]
@@ -14,6 +14,8 @@ pub enum InitializationError {
 
 #[derive(Error, Debug)]
 pub enum ShaderError {
+    #[error("Context not initialized")]
+    NoContext(),
     #[error("Failed to parse shader: {0}")]
     ParseError(String),
     #[error("Uniform not found: {0}")]
@@ -38,8 +40,6 @@ pub enum ShaderError {
     WgpuSurfaceError(#[from] wgpu::SurfaceError),
     #[error("JSON Deserialization Error: {0}")]
     JsonError(#[from] serde_json::Error),
-    #[error("Context Not Initialized")]
-    ContextNotInitialized(),
 
     #[cfg(not(wasm))]
     #[error("URL Request Error: {0}")]
@@ -51,33 +51,33 @@ pub enum ShaderError {
 
 // Python-specific conversions
 
-#[cfg(python)]
+#[cfg(feature = "python")]
 use pyo3::{create_exception, exceptions::PyException, prelude::*};
-#[cfg(python)]
+#[cfg(feature = "python")]
 create_exception!(fragment_color, FragmentColorError, PyException);
 
-#[cfg(python)]
+#[cfg(feature = "python")]
 impl From<PyErr> for ShaderError {
     fn from(e: PyErr) -> Self {
         ShaderError::ParseError(e.to_string())
     }
 }
 
-#[cfg(python)]
+#[cfg(feature = "python")]
 impl From<ShaderError> for PyErr {
     fn from(e: ShaderError) -> Self {
         FragmentColorError::new_err(e.to_string())
     }
 }
 
-#[cfg(python)]
+#[cfg(feature = "python")]
 impl From<PyErr> for InitializationError {
     fn from(e: PyErr) -> Self {
         InitializationError::Error(e.to_string())
     }
 }
 
-#[cfg(python)]
+#[cfg(feature = "python")]
 impl From<InitializationError> for PyErr {
     fn from(e: InitializationError) -> Self {
         FragmentColorError::new_err(e.to_string())
@@ -90,15 +90,29 @@ impl From<InitializationError> for PyErr {
 use wasm_bindgen::JsError;
 
 #[cfg(wasm)]
+impl From<ShaderError> for JsError {
+    fn from(e: ShaderError) -> Self {
+        JsError::new(&e.to_string())
+    }
+}
+
+#[cfg(wasm)]
 impl From<JsError> for ShaderError {
-    fn from(_: JsError) -> Self {
-        ShaderError::WasmError("JsError".to_string())
+    fn from(e: JsError) -> Self {
+        ShaderError::WasmError(e.to_string())
+    }
+}
+
+#[cfg(wasm)]
+impl From<InitializationError> for JsError {
+    fn from(e: InitializationError) -> Self {
+        JsError::new(&e.to_string())
     }
 }
 
 #[cfg(wasm)]
 impl From<JsError> for InitializationError {
-    fn from(_: JsError) -> Self {
-        InitializationError::Error("JsError".to_string())
+    fn from(e: JsError) -> Self {
+        InitializationError::Error(e.to_string())
     }
 }

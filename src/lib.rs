@@ -5,26 +5,27 @@
 #[cfg(not(wasm))]
 uniffi::setup_scaffolding!();
 
+#[cfg_attr(feature = "python", pyo3::pyclass)]
+pub struct FragmentColor;
+
 /// # Renderer module.
+///
 pub mod renderer;
 
 /// # Shader Module
+///
 pub mod shader;
-
-/// # Pass module
-pub mod pass;
-
-/// # Frame module
-pub mod frame;
-
-/// # Target module
-pub mod target;
 
 /// # Error module
 pub mod error;
 
+/// # Target module
+pub mod target;
+
 // DRAFT; may change in a whim
 pub mod color;
+pub mod frame;
+pub mod pass;
 pub mod region;
 pub mod resources;
 pub mod sampler;

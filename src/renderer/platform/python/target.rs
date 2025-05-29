@@ -55,13 +55,12 @@ impl RenderCanvasTarget {
         <Self as Target>::resize(self, size.into());
     }
 
+    // We can't export a impl Trait block with Pyo3, so this is a
     // duck-typed interface that a context must implement, to be usable with RenderCanvas.
     // Upstream documentation: https://rendercanvas.readthedocs.io/stable/contextapi.html
     //
     // fn canvas(&self) -> PyObject;
     // fn present(&self) -> Result<Py<PyDict>, PyErr>;
-    //
-    // We can't export a impl Trait block with Pyo3.
 
     #[getter]
     pub fn canvas(&self) -> PyObject {

@@ -1,31 +1,38 @@
 use crate::InitializationError;
 
+pub async fn request_headless_adapter(
+    instance: &wgpu::Instance,
+) -> Result<wgpu::Adapter, InitializationError> {
+    request_adapter(instance, None).await
+}
+
 pub async fn request_adapter(
     instance: &wgpu::Instance,
     surface: Option<&wgpu::Surface<'_>>,
 ) -> Result<wgpu::Adapter, InitializationError> {
-    let adapter = instance
+    instance
         .request_adapter(&wgpu::RequestAdapterOptions {
             power_preference: wgpu::PowerPreference::HighPerformance,
             compatible_surface: surface,
             force_fallback_adapter: false,
         })
-        .await?;
-
-    Ok(adapter)
+        .await
+        .ok_or(InitializationError::AdapterError())
 }
 
 pub async fn request_device(
     adapter: &wgpu::Adapter,
 ) -> Result<(wgpu::Device, wgpu::Queue), InitializationError> {
     let (device, queue) = adapter
-        .request_device(&wgpu::DeviceDescriptor {
-            label: Some("WGPU Device"),
-            memory_hints: memory_hints(),
-            required_features: features(),
-            required_limits: limits().using_resolution(adapter.limits()),
-            trace: wgpu::Trace::Off,
-        })
+        .request_device(
+            &wgpu::DeviceDescriptor {
+                label: Some("WGPU Device"),
+                memory_hints: memory_hints(),
+                required_features: features(),
+                required_limits: limits().using_resolution(adapter.limits()),
+            },
+            None,
+        )
         .await?;
 
     device.on_uncaptured_error(Box::new(|error| {
@@ -55,6 +62,25 @@ pub fn configure_surface(
     surface.configure(device, &config);
 
     config
+}
+
+pub fn request_headless_adapter_sync(
+    instance: &wgpu::Instance,
+) -> Result<wgpu::Adapter, InitializationError> {
+    request_adapter_sync(instance, None)
+}
+
+pub fn request_adapter_sync(
+    instance: &wgpu::Instance,
+    surface: Option<&wgpu::Surface<'_>>,
+) -> Result<wgpu::Adapter, InitializationError> {
+    pollster::block_on(request_adapter(instance, surface))
+}
+
+pub fn request_device_sync(
+    adapter: &wgpu::Adapter,
+) -> Result<(wgpu::Device, wgpu::Queue), InitializationError> {
+    pollster::block_on(request_device(adapter))
 }
 
 fn limits() -> wgpu::Limits {
