@@ -22,17 +22,17 @@ python = ["pyo3"]
 
 [dependencies]
 # Python FFI
-pyo3 = { version = "0.24", features = [
+pyo3 = { version = "0.25", features = [
     "abi3-py39",
     "experimental-async",
     "generate-import-lib",
 ], optional = true }
 
 # Rendering
-wgpu = { version = "24", features = ["glsl", "wgsl", "webgl", "naga-ir"] }
+wgpu = { version = "25", features = ["glsl", "wgsl", "webgl", "naga-ir"] }
 thiserror = { version = "2" }
 glam = { version = "0.30" }
-encase = { version = "0.10" }
+encase = { version = "0.11" }
 bytemuck = { version = "1" }
 flume = { version = "0.11" }
 indoc = { version = "2" }
@@ -48,15 +48,21 @@ raw-window-handle = { version = "0.6" }
 winit = { version = "0.30", features = ["serde"] }
 
 # Shader composition
-naga = { version = "24" }
+naga = { version = "25" }
 naga_oil = { version = "0.17" }
 
 # Serialization
 csscolorparser = "0.7"
 fxhash = "0.2"
 
+# Async
+pollster = "0.4"
+
 # Text rendering
 wgpu_text = "0.9"
+
+# Time
+instant = "0.1"
 
 # Logging
 env_logger = "0.11"
@@ -79,6 +85,7 @@ ddsfile = "0.5"
 
 # Sync
 futures-intrusive = "0.5"
+dashmap = "6.1.0"
 
 # MacOS
 [target.'cfg(target_os = "macos")'.dependencies]
@@ -86,17 +93,16 @@ cocoa = "0.26"
 objc2 = "0.6"
 objc2-app-kit = "0.3"
 
-# Non-Web dependencies; Android & iOS FFI
+# Android & iOS FFI
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 uniffi = { version = "0.29" }
 ureq = { version = "3", default-features = false }
-pollster = "0.4"
 
 # iOS Specific
 [target.'cfg(target_os = "ios")'.dependencies]
 objc = "0.2"
 objc2-app-kit = "0.3"
-core-graphics = "0.24"
+core-graphics = "0.25"
 
 # WASM-Specific
 [target.'cfg(target_family = "wasm")'.dependencies]
@@ -124,5 +130,5 @@ web-sys = { version = "0.3", features = [
 [build-dependencies]
 cfg_aliases = "0.2"
 
-[target.'cfg(not(target_family = "wasm"))'.dev-dependencies]
+[dev-dependencies]
 rand = { version = "0.9" }

@@ -1,6 +1,7 @@
+use std::path::Path;
+
 use crate::RenderContext;
 use image::{DynamicImage, GenericImageView};
-use std::path::Path;
 
 use crate::sampler::{SamplerOptions, create_default_sampler, create_sampler};
 
@@ -89,7 +90,7 @@ impl Texture {
         let descriptor = Self::source_texture_descriptor(label, size, format);
         let texture = context.device.create_texture(&descriptor);
         let source = image.to_rgba8();
-        Self::write_data_to_texture(&context.queue, source, &texture, size);
+        Self::write_data_to_texture(context, source, &texture, size);
 
         let sampler = create_default_sampler(&context.device);
 
@@ -211,12 +212,12 @@ impl Texture {
 
     /// Writes pixel data to a texture
     fn write_data_to_texture(
-        queue: &wgpu::Queue,
+        context: &RenderContext,
         origin_image: image::RgbaImage,
         target_texture: &wgpu::Texture,
         size: wgpu::Extent3d,
     ) {
-        queue.write_texture(
+        context.queue.write_texture(
             // Tells wgpu where to copy the pixel data from
             wgpu::TexelCopyTextureInfo {
                 aspect: wgpu::TextureAspect::All,

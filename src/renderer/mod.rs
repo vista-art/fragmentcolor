@@ -1,6 +1,7 @@
 use crate::{
     InitializationError, PassObject, ShaderError, ShaderHash, Target, TargetFrame, shader::Uniform,
 };
+use dashmap::DashMap;
 use parking_lot::RwLock;
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -161,7 +162,7 @@ impl Renderer {
         if let Some(context) = self.context.read().as_ref() {
             context.render(renderable, target)
         } else {
-            Err(ShaderError::ContextNotInitialized())
+            Err(ShaderError::NoContext())
         }
     }
 }
@@ -175,13 +176,13 @@ pub struct RenderContext {
     pub(crate) device: wgpu::Device,
     pub(crate) queue: wgpu::Queue,
 
-    render_pipelines: RwLock<HashMap<(ShaderHash, wgpu::TextureFormat), RenderPipeline>>,
+    render_pipelines: DashMap<(ShaderHash, wgpu::TextureFormat), RenderPipeline>,
     buffer_pool: RwLock<BufferPool>,
     //
     // @TODO
-    // _compute_pipelines: RwLock<HashMap<String, wgpu::ComputePipeline>>,
-    // _textures: RwLock<HashMap<String, wgpu::Texture>>,
-    // _samplers: RwLock<HashMap<String, wgpu::Sampler>>,
+    // _compute_pipelines: DashMap<String, wgpu::ComputePipeline>,
+    // _textures: DashMap<String, wgpu::Texture>,
+    // _samplers: DashMap<String, wgpu::Sampler>,
 }
 
 impl RenderContext {
@@ -193,7 +194,7 @@ impl RenderContext {
             device,
             queue,
 
-            render_pipelines: RwLock::new(HashMap::new()),
+            render_pipelines: DashMap::new(),
             buffer_pool: RwLock::new(buffer_pool),
         }
     }
@@ -270,17 +271,19 @@ impl RenderContext {
 
         for shader in pass.shaders.read().iter() {
             let format = frame.format();
-            let mut pipelines = self.render_pipelines.write();
-            let cached = pipelines.entry((shader.hash, format)).or_insert_with(|| {
-                let layouts =
-                    create_bind_group_layouts(&self.device, &shader.storage.read().uniforms);
-                let pipeline = create_render_pipeline(&self.device, &layouts, shader, format);
+            let cached = self
+                .render_pipelines
+                .entry((shader.hash, format))
+                .or_insert_with(|| {
+                    let layouts =
+                        create_bind_group_layouts(&self.device, &shader.storage.read().uniforms);
+                    let pipeline = create_render_pipeline(&self.device, &layouts, shader, format);
 
-                RenderPipeline {
-                    pipeline,
-                    bind_group_layouts: layouts.values().cloned().collect(),
-                }
-            });
+                    RenderPipeline {
+                        pipeline,
+                        bind_group_layouts: layouts.values().cloned().collect(),
+                    }
+                });
 
             let mut bind_group_entries: HashMap<u32, Vec<wgpu::BindGroupEntry>> = HashMap::new();
             let mut buffer_locations = Vec::new();
@@ -435,6 +438,65 @@ fn create_render_pipeline(
                 format,
                 blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
                 // @TODO implement more granular control over blending
+                //
+                // Linear Interpolation Formula: Fa*Fc + (1-Fa)*Bc
+                //
+                // In wgpu:
+                // FACTOR * Src (OPERATION) FACTOR * Dst
+                //
+                // Where:
+                // Src is the Foreground (image on top)
+                // Dst is the Background (image on bottom)
+                //
+                // FACTOR can be:
+                //   /// 0.0
+                //   Zero = 0,
+                //   /// 1.0
+                //   One = 1,
+                //   /// S.color
+                //   Src = 2,
+                //   /// 1.0 - S.color
+                //   OneMinusSrc = 3,
+                //   /// S.alpha
+                //   SrcAlpha = 4,
+                //   /// 1.0 - S.alpha
+                //   OneMinusSrcAlpha = 5,
+                //   /// D.color
+                //   Dst = 6,
+                //   /// 1.0 - D.color
+                //   OneMinusDst = 7,
+                //   /// D.alpha
+                //   DstAlpha = 8,
+                //   /// 1.0 - D.alpha
+                //   OneMinusDstAlpha = 9,
+                //   /// min(S.alpha, 1.0 - D.alpha)
+                //   SrcAlphaSaturated = 10,
+                //   /// Constant
+                //   Constant = 11,
+                //   /// 1.0 - Constant
+                //   OneMinusConstant = 12,
+                //   /// S1.color
+                //   Src1 = 13,
+                //   /// 1.0 - S1.color
+                //   OneMinusSrc1 = 14,
+                //   /// S1.alpha
+                //   Src1Alpha = 15,
+                //   /// 1.0 - S1.alpha
+                //   OneMinusSrc1Alpha = 16,
+                //
+                // OPERATION Can be:
+                //   /// Src + Dst
+                //   #[default]
+                //   Add = 0,
+                //   /// Src - Dst
+                //   Subtract = 1,
+                //   /// Dst - Src
+                //   ReverseSubtract = 2,
+                //   /// min(Src, Dst)
+                //   Min = 3,
+                //   /// max(Src, Dst)
+                //   Max = 4,
+                //
                 // blend: Some(wgpu::BlendState {
                 //     color: wgpu::BlendComponent {
                 //         src_factor: wgpu::BlendFactor::One,
