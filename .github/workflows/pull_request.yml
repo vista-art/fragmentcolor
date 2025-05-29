@@ -98,6 +98,9 @@ jobs:
 
       - name: Lint
         run: cargo clippy
+        env:
+          SCCACHE_LOG: debug
+          SCCACHE_NO_DAEMON: 1
 
       - name: Format
         run: cargo fmt --check --message-format human
