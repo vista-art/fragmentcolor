@@ -31,7 +31,7 @@ pub enum ShaderError {
     #[error("WGSL Parse error: {0}")]
     WgslParseError(#[from] naga::front::wgsl::ParseError),
     #[error("GLSL Validation error: {0}")]
-    GlslValidationError(#[from] naga::WithSpan<naga::valid::ValidationError>),
+    GlslValidationError(#[from] Box<naga::WithSpan<naga::valid::ValidationError>>),
     #[error("GLSL Parse errors: {0}")]
     GlslParseErrors(#[from] naga::front::glsl::ParseErrors),
     #[error("WGPU error: {0}")]

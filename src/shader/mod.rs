@@ -128,7 +128,7 @@ impl ShaderObject {
     pub fn wgsl(source: &str) -> Result<Self, ShaderError> {
         let mut validator = Validator::new(ValidationFlags::all(), Capabilities::all());
         let module = naga::front::wgsl::parse_str(source)?;
-        validator.validate(&module)?;
+        validator.validate(&module).map_err(Box::new)?;
 
         let uniforms = parse_uniforms(&module)?;
         let storage = RwLock::new(UniformStorage::new(&uniforms));
