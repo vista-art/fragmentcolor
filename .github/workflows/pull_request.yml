@@ -11,8 +11,8 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  SCCACHE_GHA_ENABLED: "true"
-  RUSTC_WRAPPER: "sccache"
+  # SCCACHE_GHA_ENABLED: "true"
+  # RUSTC_WRAPPER: "sccache"
   CARGO_TERM_COLOR: "always"
 
 jobs:
@@ -90,17 +90,14 @@ jobs:
           cache-directories: ${{ github.workspace }}/target
           cache-all-crates: true
 
-      - name: Run sccache-cache
-        uses: mozilla-actions/sccache-action@v0.0.8
+      # - name: Run sccache-cache
+      #   uses: mozilla-actions/sccache-action@v0.0.8
 
       - name: Install nextest
         uses: taiki-e/install-action@nextest
 
       - name: Lint
         run: cargo clippy
-        env:
-          SCCACHE_LOG: debug
-          SCCACHE_NO_DAEMON: 1
 
       - name: Format
         run: cargo fmt --check --message-format human
@@ -291,8 +288,8 @@ jobs:
           cache-directories: ${{ github.workspace }}/build
           cache-all-crates: true
 
-      - name: Run sccache-cache
-        uses: mozilla-actions/sccache-action@v0.0.4
+      # - name: Run sccache-cache
+      #   uses: mozilla-actions/sccache-action@v0.0.8
 
       - name: Setup Node
         uses: actions/setup-node@v4
