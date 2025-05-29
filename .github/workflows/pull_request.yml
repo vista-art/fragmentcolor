@@ -294,11 +294,14 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          cache: "npm"
-          cache-dependency-path: "bindings/ts/web/package-lock.json"
+          cache: "pnpm"
+          cache-dependency-path: "examples/javascript/pnpm-lock.yaml"
+
+      - name: Install pnpm
+        run: npm install -g pnpm
 
       - name: Install dependencies
-        run: npm install --prefix bindings/ts/web/
+        run: pnpm install --dir examples/javascript
 
       - name: Build Web
         run: ./build_web.sh
@@ -306,4 +309,5 @@ jobs:
       - name: Build demo App
         working-directory: examples/web/
         run: |
-          npm i && npm run build
+          pnpm install
+          pnpm run build
