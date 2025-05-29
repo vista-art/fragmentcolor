@@ -91,7 +91,7 @@ jobs:
           cache-all-crates: true
 
       - name: Run sccache-cache
-        uses: mozilla-actions/sccache-action@v0.0.4
+        uses: mozilla-actions/sccache-action@v0.0.8
 
       - name: Install nextest
         uses: taiki-e/install-action@nextest
