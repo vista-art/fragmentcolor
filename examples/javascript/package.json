@@ -9,7 +9,7 @@
     "preview": "vite preview"
   },
   "devDependencies": {
-    "vite": "^6.2.2"
+    "vite": "^7.0"
   },
   "packageManager": "pnpm@10.6.5",
   "dependencies": {
