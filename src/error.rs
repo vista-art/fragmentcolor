@@ -83,36 +83,3 @@ impl From<InitializationError> for PyErr {
         FragmentColorError::new_err(e.to_string())
     }
 }
-
-// Javascript-specific conversions
-
-#[cfg(wasm)]
-use wasm_bindgen::JsError;
-
-#[cfg(wasm)]
-impl From<ShaderError> for JsError {
-    fn from(e: ShaderError) -> Self {
-        JsError::new(&e.to_string())
-    }
-}
-
-#[cfg(wasm)]
-impl From<JsError> for ShaderError {
-    fn from(e: JsError) -> Self {
-        ShaderError::WasmError(e.to_string())
-    }
-}
-
-#[cfg(wasm)]
-impl From<InitializationError> for JsError {
-    fn from(e: InitializationError) -> Self {
-        JsError::new(&e.to_string())
-    }
-}
-
-#[cfg(wasm)]
-impl From<JsError> for InitializationError {
-    fn from(e: JsError) -> Self {
-        InitializationError::Error(e.to_string())
-    }
-}

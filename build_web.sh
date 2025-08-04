@@ -13,8 +13,4 @@ fi
 SOURCE_DIR=$(dirname $(readlink -f "$0"))
 
 # Build & generate bindings with wasm-pack
-wasm-pack build --target web $WASM_PACK_CONFIGURATION
-
-# Build npm package
-rm -rf $SOURCE_DIR/platforms/web/dist
-npm run --prefix $SOURCE_DIR/platforms/web $NPM_PACKAGE_TARGET -- --outDir $SOURCE_DIR/platforms/web/dist
+wasm-pack build --target web $WASM_PACK_CONFIGURATION --out-dir $SOURCE_DIR/platforms/web/pkg
