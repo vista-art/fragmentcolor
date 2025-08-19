@@ -45,7 +45,7 @@ impl Renderer {
     /// Creates a new Renderer.
     ///
     /// At this point, we don't know if it will be used offscreen
-    /// or attached to a platform-specific window.
+    /// or attached to a platform-specific window or canvas.
     ///
     /// The Renderer internals are lazily initialized when the user creates a Target
     /// or renders a Bitmap. \

@@ -2,9 +2,10 @@
 
 ## Work in Progress
 
-- [ ] V 0.10.6 Javascript support
-  - [ ] Javascript Implementation
-  - [ ] Publish to NPM
+- [x] V 0.10.6 Javascript support
+  - [x] Javascript Implementation
+  - [x] Publish to NPM
+    - [ ] We need to bump the version to 0.10.7 because Shader went without .set()
   - [x] Chore: Script to automatically bump version
 
 ## Up Next
@@ -22,7 +23,6 @@
 
 - [ ] Release Management System
 
-  - [ ] Git Hook: enforce conventional commits (fix:, feat: etc)
   - [ ] Create a distribution via GH release
     - [x] Python
     - [ ] Javascript
