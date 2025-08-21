@@ -308,7 +308,7 @@ jobs:
         run: ./build_web.sh
 
       - name: Build demo App
-        working-directory: examples/web/
+        working-directory: examples/javascript/
         run: |
           pnpm install
           pnpm run build
