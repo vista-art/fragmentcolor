@@ -1,4 +1,4 @@
-#![cfg(feature = "python")]
+#![cfg(python)]
 
 use crate::{Frame, Pass, PyPassIterator};
 use pyo3::prelude::*;

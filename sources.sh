@@ -1,3 +1,2 @@
 #!/usr/bin/env bash
-
-find "src" -print -exec cat {} \; >sources.txt
+find "README.md" "Cargo.toml" "src" -path "*.svg" -prune -o -type f -print -exec sh -c 'echo "\n--- Start of file: $1 ---"; cat "$1"; echo "\n--- End of file: $1 ---\n"' _ {} \; >sources.txt

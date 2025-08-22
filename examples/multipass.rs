@@ -1,9 +1,7 @@
 use rand::prelude::*;
 use std::sync::Arc;
 
-use fragmentcolor::{
-    FragmentColor, Frame, Pass, Renderer, Shader, ShaderError, Target, WindowTarget,
-};
+use fragmentcolor::{Frame, Pass, Renderer, Shader, ShaderError, Target, WindowTarget};
 
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
@@ -47,7 +45,8 @@ fn random_circle(rng: &mut impl Rng, size: &wgpu::Extent3d, alpha: f32) -> Shade
 
 impl State {
     async fn new(window: Arc<Window>) -> State {
-        let (renderer, target) = FragmentColor::init(window.clone()).await.unwrap();
+        let renderer = Renderer::new();
+        let target = renderer.create_target(window.clone()).await.unwrap();
         let size = target.size();
 
         let triangle = Shader::new(TRIANGLE_SOURCE).unwrap();
@@ -103,7 +102,7 @@ impl State {
                 .unwrap();
         }
 
-        self.target.resize(&self.renderer, size);
+        self.target.resize(size);
     }
 
     fn render(&mut self) -> Result<(), ShaderError> {

@@ -1,16 +1,6 @@
 /// Shared initialization logic for all platforms.
 pub mod all;
 
-/// Trait for a target that can be rendered to.
-/// Must be implemented for each platform.
-pub mod target;
-pub use target::*;
-
-/// Target implementation for Textures.
-/// (shared by all platforms)
-pub mod texture;
-pub use texture::*;
-
 /// wasm-bindgen (Web)
 #[cfg(wasm)]
 pub mod web;
@@ -32,8 +22,6 @@ pub use ios::*;
 /// winit (Rust)
 #[cfg(desktop)]
 pub mod winit;
-#[cfg(desktop)]
-pub use winit::*;
 
 /// pyo3 (Python)
 #[cfg(python)]

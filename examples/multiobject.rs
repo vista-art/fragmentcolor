@@ -1,7 +1,7 @@
 use rand::prelude::*;
 use std::sync::Arc;
 
-use fragmentcolor::{FragmentColor, Pass, Renderer, Shader, ShaderError, Target, WindowTarget};
+use fragmentcolor::{Pass, Renderer, Shader, ShaderError, Target, WindowTarget};
 
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
@@ -18,7 +18,8 @@ struct State {
 
 impl State {
     async fn new(window: Arc<Window>) -> State {
-        let (renderer, target) = FragmentColor::init(window.clone()).await.unwrap();
+        let renderer = Renderer::new();
+        let target = renderer.create_target(window.clone()).await.unwrap();
         let size = target.size();
 
         let triangle_source = include_str!("hello_triangle.wgsl");
@@ -86,7 +87,7 @@ impl State {
                 .unwrap();
         }
 
-        self.target.resize(&self.renderer, size);
+        self.target.resize(size);
     }
 
     fn render(&mut self) -> Result<(), ShaderError> {

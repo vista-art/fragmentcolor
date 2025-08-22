@@ -6,16 +6,22 @@ use raw_window_handle::{
 #[pyclass]
 #[derive(Debug)]
 pub struct RenderCanvasTarget {
-    pub(crate) surface: wgpu::Surface<'static>,
-    pub(crate) config: wgpu::SurfaceConfiguration,
+    surface: wgpu::Surface<'static>,
+    config: wgpu::SurfaceConfiguration,
+}
+
+impl RenderCanvasTarget {
+    pub fn new(surface: wgpu::Surface<'static>, config: wgpu::SurfaceConfiguration) -> Self {
+        Self { surface, config }
+    }
 }
 
 #[pyclass]
 #[derive(Debug)]
 pub struct RenderCanvasFrame {
-    pub(crate) surface_texture: wgpu::SurfaceTexture,
-    pub(crate) format: wgpu::TextureFormat,
-    pub(crate) view: wgpu::TextureView,
+    surface_texture: wgpu::SurfaceTexture,
+    format: wgpu::TextureFormat,
+    view: wgpu::TextureView,
 }
 
 #[pymethods]

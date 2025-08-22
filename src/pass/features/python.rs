@@ -1,4 +1,4 @@
-#![cfg(feature = "python")]
+#![cfg(python)]
 
 use crate::{Pass, PassInput, PassObject, PassType, Shader};
 use pyo3::prelude::*;
@@ -36,7 +36,7 @@ impl Pass {
 
     #[pyo3(name = "load_previous")]
     pub fn load_previous_py(&self) {
-        *self.object.input.write() = PassInput::Load();
+        *self.object.input.write() = PassInput::load();
     }
 
     #[pyo3(name = "get_input")]

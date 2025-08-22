@@ -92,6 +92,7 @@ rpass.add_shader(my_shader)
 renderer.render(rpass, target)
 
 # Finally, you can combine multiple passes in a Frame
+frame = Frame()
 frame.add_pass(rpass)
 frame.add_pass(Pass("GUI pass"))
 renderer.render(frame, target)

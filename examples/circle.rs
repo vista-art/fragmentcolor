@@ -1,4 +1,4 @@
-use fragmentcolor::{FragmentColor, Renderer, Shader, ShaderError, Target, WindowTarget};
+use fragmentcolor::{Renderer, Shader, ShaderError, Target, WindowTarget};
 use std::sync::Arc;
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
@@ -14,7 +14,8 @@ struct State {
 
 impl State {
     async fn new(window: Arc<Window>) -> State {
-        let (renderer, target) = FragmentColor::init(window.clone()).await.unwrap();
+        let renderer = Renderer::new();
+        let target = renderer.create_target(window.clone()).await.unwrap();
         let size = target.size();
 
         let shader_source = include_str!("circle.wgsl");
@@ -46,7 +47,7 @@ impl State {
             depth_or_array_layers: 1,
         };
 
-        self.target.resize(&self.renderer, size);
+        self.target.resize(size);
         self.shader
             .set("resolution", [size.width as f32, size.height as f32])
             .unwrap();

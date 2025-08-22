@@ -3,7 +3,7 @@ use thiserror::Error;
 #[derive(Error, Debug)]
 pub enum InitializationError {
     #[error("Failed to find a compatible GPU adapter")]
-    AdapterError(),
+    AdapterError(#[from] wgpu::RequestAdapterError),
     #[error("Failed to create device")]
     DeviceError(#[from] wgpu::RequestDeviceError),
     #[error("Failed to create surface")]
@@ -14,6 +14,8 @@ pub enum InitializationError {
 
 #[derive(Error, Debug)]
 pub enum ShaderError {
+    #[error("Context not initialized")]
+    NoContext(),
     #[error("Failed to parse shader: {0}")]
     ParseError(String),
     #[error("Uniform not found: {0}")]
@@ -29,17 +31,22 @@ pub enum ShaderError {
     #[error("WGSL Parse error: {0}")]
     WgslParseError(#[from] naga::front::wgsl::ParseError),
     #[error("GLSL Validation error: {0}")]
-    GlslValidationError(#[from] naga::WithSpan<naga::valid::ValidationError>),
+    GlslValidationError(#[from] Box<naga::WithSpan<naga::valid::ValidationError>>),
     #[error("GLSL Parse errors: {0}")]
     GlslParseErrors(#[from] naga::front::glsl::ParseErrors),
     #[error("WGPU error: {0}")]
     WgpuError(#[from] wgpu::Error),
     #[error("WGPU Surface Error: {0}")]
     WgpuSurfaceError(#[from] wgpu::SurfaceError),
+    #[error("JSON Deserialization Error: {0}")]
+    JsonError(#[from] serde_json::Error),
 
     #[cfg(not(wasm))]
     #[error("URL Request Error: {0}")]
     RequestError(#[from] ureq::Error),
+    #[cfg(wasm)]
+    #[error("WASM Error: {0}")]
+    WasmError(String),
 }
 
 // Python-specific conversions

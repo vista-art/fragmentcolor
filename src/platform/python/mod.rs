@@ -94,7 +94,7 @@ impl FragmentColor {
         let (device, queue) = crate::platform::all::request_device_sync(&adapter)?;
         let config = crate::platform::all::configure_surface(&device, &adapter, &surface, &size);
 
-        let target = RenderCanvasTarget { surface, config };
+        let target = RenderCanvasTarget::new(surface, config);
         let renderer = Renderer::init(device, queue);
 
         Ok((renderer, target))
@@ -151,7 +151,7 @@ impl RenderCanvasContext {
         }
     }
 
-    // duck-typed interface that a context must implement, to be usable with a `RenderCanvas`.
+    // duck-typed interface that a context must implement, to be usable with RenderCanvas.
     // Upstream documentation: https://rendercanvas.readthedocs.io/stable/contextapi.html
     //
     // fn canvas(&self) -> PyObject;
@@ -166,38 +166,26 @@ impl RenderCanvasContext {
 
     pub fn present(&self) -> Result<Py<PyDict>, PyErr> {
         Python::with_gil(|py| -> PyResult<Py<PyDict>> {
+            let dict = PyDict::new(py);
+
             if let Some(py_target) = &self.target {
                 let target = py_target.borrow(py);
                 match target.get_current_frame() {
                     Ok(frame) => {
                         frame.present();
-
-                        // must return confirmation: {"method": "screen"}
-                        Python::with_gil(|py| -> PyResult<Py<PyDict>> {
-                            let dict = PyDict::new(py);
-                            dict.set_item("method", "screen")?;
-                            Ok(dict.unbind())
-                        })
+                        dict.set_item("method", "screen")?;
                     }
                     Err(e) => {
-                        // must return error: {"method": "fail", "message": "error message"}
-                        Python::with_gil(|py| -> PyResult<Py<PyDict>> {
-                            let dict = PyDict::new(py);
-                            dict.set_item("method", "fail")?;
-                            dict.set_item("message", e.to_string())?;
-                            Ok(dict.unbind())
-                        })
+                        dict.set_item("method", "fail")?;
+                        dict.set_item("message", e.to_string())?;
                     }
                 }
             } else {
-                // must return error: {"method": "fail", "message": "error message"}
-                Python::with_gil(|py| -> PyResult<Py<PyDict>> {
-                    let dict = PyDict::new(py);
-                    dict.set_item("method", "fail")?;
-                    dict.set_item("message", "Target not initialized")?;
-                    Ok(dict.unbind())
-                })
-            }
+                dict.set_item("method", "fail")?;
+                dict.set_item("message", "Target not initialized")?;
+            };
+
+            Ok(dict.unbind())
         })
     }
 }

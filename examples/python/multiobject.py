@@ -1,9 +1,10 @@
-from fragmentcolor import FragmentColor as fc, Shader, Pass
+from fragmentcolor import Renderer, Shader, Pass
 from rendercanvas.auto import RenderCanvas, loop
 import random
 
 canvas = RenderCanvas(size=(800, 600))
-renderer, target = fc.init(canvas)
+renderer = Renderer()
+target = renderer.create_target(canvas)
 
 renderpass = Pass("Multi Object Pass")
 
@@ -42,7 +43,7 @@ def handler(event):
         h = event['height'] * ratio
         for circle in circles:
             circle.set("resolution", [w, h])
-        target.resize(renderer, [w, h])
+        target.resize([w, h])
 
 
 @canvas.request_draw

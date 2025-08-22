@@ -7,6 +7,9 @@ __pycache__/
 .pytest_cache/
 *.py[cod]
 
+# Web
+.vite/
+
 # C extensions
 *.so
 
@@ -74,7 +77,6 @@ docs/_build/
 .python-version
 
 # Extra
-sources.sh
 sources.txt
 
 fragmentcolor.code-workspace

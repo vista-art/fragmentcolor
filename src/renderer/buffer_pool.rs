@@ -126,7 +126,7 @@ impl BufferPool {
     }
 
     /// Gets a buffer binding suitable for use in a bind group
-    pub fn get_binding(&self, location: BufferLocation) -> wgpu::BufferBinding {
+    pub fn get_binding(&self, location: BufferLocation) -> wgpu::BufferBinding<'_> {
         wgpu::BufferBinding {
             buffer: &self.buffers[location.chunk_index],
             offset: location.offset,
