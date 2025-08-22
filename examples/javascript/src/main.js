@@ -8,7 +8,7 @@ const resolution = [canvas.width, canvas.height];
 let renderer = new Renderer();
 let target = await renderer.create_target(canvas);
 
-const shader = new Shader.new(`
+const shader = new Shader(`
 struct VertexOutput {
     @builtin(position) coords: vec4<f32>,
 }
