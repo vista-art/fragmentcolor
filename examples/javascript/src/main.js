@@ -4,7 +4,7 @@ import init, { Renderer, Shader } from "fragmentcolor";
 await init();
 
 let canvas = document.getElementById("my-canvas");
-const resolution = [canvas.width, canvas.heigth];
+const resolution = [canvas.width, canvas.height];
 let renderer = new Renderer();
 let target = await renderer.create_target(canvas);
 
