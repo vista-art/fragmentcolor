@@ -1,9 +1,9 @@
 use std::path::Path;
 
-use crate::Renderer;
+use crate::RenderContext;
 use image::{DynamicImage, GenericImageView};
 
-use crate::sampler::{create_default_sampler, create_sampler, SamplerOptions};
+use crate::sampler::{SamplerOptions, create_default_sampler, create_sampler};
 
 type Error = Box<dyn std::error::Error>; // @TODO tech debt: create proper error types
 
@@ -17,7 +17,7 @@ pub struct Texture {
 
 impl Texture {
     pub fn new(
-        renderer: &Renderer,
+        context: &RenderContext,
         size: wgpu::Extent3d,
         format: wgpu::TextureFormat,
         options: SamplerOptions,
@@ -34,9 +34,9 @@ impl Texture {
                 | wgpu::TextureUsages::STORAGE_BINDING
                 | wgpu::TextureUsages::RENDER_ATTACHMENT,
         );
-        let inner = renderer.device.create_texture(&descriptor);
+        let inner = context.device.create_texture(&descriptor);
         let size = inner.size();
-        let sampler = create_sampler(&renderer.device, options);
+        let sampler = create_sampler(&context.device, options);
 
         Self {
             inner,
@@ -48,24 +48,24 @@ impl Texture {
 
     // @TODO this should be behind a feature flag
     /// Creates a texture from a file
-    pub fn from_file(renderer: &Renderer, path: impl AsRef<Path>) -> Result<Self, Error> {
+    pub fn from_file(context: &RenderContext, path: impl AsRef<Path>) -> Result<Self, Error> {
         let image = image::open(path)?;
-        Ok(Self::from_loaded_image(renderer, &image))
+        Ok(Self::from_loaded_image(context, &image))
     }
 
     /// Creates a new texture resource from raw bytes array
     ///
     /// Makes an educated guess about the image format
     /// and automatically detects Width and Height.
-    pub fn from_bytes(renderer: &Renderer, bytes: &[u8]) -> Result<Self, Error> {
+    pub fn from_bytes(context: &RenderContext, bytes: &[u8]) -> Result<Self, Error> {
         let image = image::load_from_memory(bytes)?;
-        Ok(Self::from_loaded_image(renderer, &image))
+        Ok(Self::from_loaded_image(context, &image))
     }
 
     /// Internal method to create a TextureId from a DynamicImage instance.
     ///
     /// The image is already loaded in memory at this point.
-    fn from_loaded_image(renderer: &Renderer, image: &DynamicImage) -> Self {
+    fn from_loaded_image(context: &RenderContext, image: &DynamicImage) -> Self {
         let label = "Source Texture from Loaded Image";
         let (width, height) = image.dimensions();
         let size = wgpu::Extent3d {
@@ -88,11 +88,11 @@ impl Texture {
             _ => wgpu::TextureFormat::Rgba8UnormSrgb,
         };
         let descriptor = Self::source_texture_descriptor(label, size, format);
-        let texture = renderer.device.create_texture(&descriptor);
+        let texture = context.device.create_texture(&descriptor);
         let source = image.to_rgba8();
-        Self::write_data_to_texture(renderer, source, &texture, size);
+        Self::write_data_to_texture(context, source, &texture, size);
 
-        let sampler = create_default_sampler(&renderer.device);
+        let sampler = create_default_sampler(&context.device);
 
         Self {
             inner: texture,
@@ -108,12 +108,12 @@ impl Texture {
     /// return a TextureId, this will return Self so it can be owned by a Target.
     ///
     /// This method is used internally by the `Target::create_texture()` method.
-    pub fn create_destination_texture(renderer: &Renderer, size: wgpu::Extent3d) -> Self {
+    pub fn create_destination_texture(context: &RenderContext, size: wgpu::Extent3d) -> Self {
         let label = "Render Target Texture";
         let format = wgpu::TextureFormat::Rgba8UnormSrgb;
         let descriptor = Self::target_texture_descriptor(label, size, format);
-        let texture = renderer.device.create_texture(&descriptor);
-        let sampler = create_default_sampler(&renderer.device);
+        let texture = context.device.create_texture(&descriptor);
+        let sampler = create_default_sampler(&context.device);
 
         Self {
             inner: texture,
@@ -128,12 +128,12 @@ impl Texture {
     pub const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 
     /// Creates a depth texture
-    pub fn create_depth_texture(renderer: &Renderer, size: wgpu::Extent3d) -> Self {
+    pub fn create_depth_texture(context: &RenderContext, size: wgpu::Extent3d) -> Self {
         let format = Self::DEPTH_FORMAT;
         let descriptor = Self::target_texture_descriptor("Depth Texture", size, format);
-        let texture = renderer.device.create_texture(&descriptor);
+        let texture = context.device.create_texture(&descriptor);
         let sampler = create_sampler(
-            &renderer.device,
+            &context.device,
             SamplerOptions {
                 repeat_x: false,
                 repeat_y: false,
@@ -212,12 +212,12 @@ impl Texture {
 
     /// Writes pixel data to a texture
     fn write_data_to_texture(
-        renderer: &Renderer,
+        context: &RenderContext,
         origin_image: image::RgbaImage,
         target_texture: &wgpu::Texture,
         size: wgpu::Extent3d,
     ) {
-        renderer.queue.write_texture(
+        context.queue.write_texture(
             // Tells wgpu where to copy the pixel data from
             wgpu::TexelCopyTextureInfo {
                 aspect: wgpu::TextureAspect::All,

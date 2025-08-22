@@ -1,8 +1,9 @@
-from fragmentcolor import FragmentColor as fc, Shader
+from fragmentcolor import Renderer, Shader
 from rendercanvas.auto import RenderCanvas, loop
 
 canvas = RenderCanvas(size=(800, 600))
-renderer, target = fc.init(canvas)
+renderer = Renderer()
+target = renderer.create_target(canvas)
 
 circle = Shader("circle.wgsl")
 circle.set("resolution", [800, 600])
@@ -23,14 +24,13 @@ def handler(event):
         w = event['width'] * ratio
         h = event['height'] * ratio
         circle.set("resolution", [w, h])
-        target.resize(renderer, [w, h])
+        target.resize([w, h])
 
 
 @canvas.request_draw
 def animate():
     circle.set("circle.position", [0.0, 0.0])
     renderer.render(circle, target)
-    pass
 
 
 # Enter main rendering loop

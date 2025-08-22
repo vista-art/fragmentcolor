@@ -1,7 +1,7 @@
 use crate::error::ShaderError;
 use naga::{Module, ScalarKind, Type, TypeInner, VectorSize};
 
-#[cfg(feature = "python")]
+#[cfg(python)]
 use pyo3::prelude::*;
 
 #[derive(Debug, Clone)]
@@ -18,7 +18,7 @@ pub(crate) struct Uniform {
 }
 
 // @TODO consider renaming this to a more generic IO conversion type
-#[cfg_attr(feature = "python", derive(FromPyObject, IntoPyObject))]
+#[cfg_attr(python, derive(FromPyObject, IntoPyObject))]
 #[derive(Debug, Clone, PartialEq)]
 /// Converts from User Input
 pub enum UniformData {
@@ -148,7 +148,7 @@ pub(crate) fn convert_type(module: &Module, ty: &Type) -> Result<UniformData, Sh
             _ => {
                 return Err(ShaderError::TypeMismatch(
                     "Unsupported matrix dimensions".into(),
-                ))
+                ));
             }
         }),
         TypeInner::Struct { members, span } => {
@@ -167,7 +167,7 @@ pub(crate) fn convert_type(module: &Module, ty: &Type) -> Result<UniformData, Sh
                 _ => {
                     return Err(ShaderError::TypeMismatch(
                         "Dynamic array size not supported".into(),
-                    ))
+                    ));
                 }
             };
             let base_ty = convert_type(module, &module.types[*base])?;

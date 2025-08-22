@@ -1,18 +1,23 @@
-use crate::buffer_pool::BufferPool;
-use crate::{shader::Uniform, PassObject, ShaderError, ShaderHash, Target};
-use crate::{InitializationError, PassInput, TargetFrame};
+use crate::{
+    InitializationError, PassObject, ShaderError, ShaderHash, Target, TargetFrame, shader::Uniform,
+};
+use dashmap::DashMap;
 use parking_lot::RwLock;
 use std::borrow::Cow;
 use std::collections::HashMap;
+use std::sync::Arc;
 pub type Commands = Vec<wgpu::CommandBuffer>;
 
-mod features;
+pub mod platform;
+pub use platform::*;
 
-#[cfg(feature = "python")]
-pub use features::python::*;
+mod buffer_pool;
+use buffer_pool::BufferPool;
 
-#[cfg(feature = "python")]
+#[cfg(python)]
 use pyo3::prelude::*;
+#[cfg(wasm)]
+use wasm_bindgen::prelude::*;
 
 pub trait Renderable {
     fn passes(&self) -> impl IntoIterator<Item = &PassObject>;
@@ -24,55 +29,178 @@ struct RenderPipeline {
     bind_group_layouts: Vec<wgpu::BindGroupLayout>,
 }
 
+#[derive(Debug, Default)]
+#[cfg_attr(wasm, wasm_bindgen)]
+#[cfg_attr(python, pyclass)]
+pub struct Renderer {
+    instance: RwLock<Option<Arc<wgpu::Instance>>>,
+    adapter: RwLock<Option<wgpu::Adapter>>,
+
+    /// The graphics context is lazily initialized when
+    /// create_target() or render_image() is called.
+    context: RwLock<Option<Arc<RenderContext>>>,
+}
+
+impl Renderer {
+    /// Creates a new Renderer.
+    ///
+    /// At this point, we don't know if it will be used offscreen
+    /// or attached to a platform-specific window or canvas.
+    ///
+    /// The Renderer internals are lazily initialized when the user creates a Target
+    /// or renders a Bitmap. \
+    /// This ensures the adapter and device are compatible
+    /// with the target environment.
+    ///
+    /// The API ensures the Renderer is usable when `render()` is called, because
+    /// the `render()` method expects a Target as input. So, the user must call
+    /// `Renderer.create_target()` first (which initializes the Renderer) or
+    /// `Renderer.render_image()` which initializes an offscreen adapter.
+    ///
+    /// ## Example
+    /// ```rust
+    /// use fragmentcolor::Renderer;
+    ///
+    /// let renderer = Renderer::new();
+    /// ```
+    pub fn new() -> Self {
+        Renderer {
+            instance: RwLock::new(None),
+            adapter: RwLock::new(None),
+            context: RwLock::new(None),
+        }
+    }
+
+    pub(crate) async fn create_surface<'window>(
+        &self,
+        handle: impl Into<wgpu::SurfaceTarget<'window>>,
+        size: wgpu::Extent3d,
+    ) -> Result<
+        (
+            Arc<RenderContext>,
+            wgpu::Surface<'window>,
+            wgpu::SurfaceConfiguration,
+        ),
+        InitializationError,
+    > {
+        let instance = self.instance().await;
+        let surface = instance.create_surface(handle)?;
+        let context = self.context(Some(&surface)).await?;
+
+        let adapter = self.adapter.read();
+        let config = configure_surface(&context.device, adapter.as_ref().unwrap(), &surface, &size);
+
+        Ok((context, surface, config))
+    }
+
+    async fn instance(&self) -> Arc<wgpu::Instance> {
+        if let Some(instance) = self.instance.read().as_ref() {
+            instance.clone()
+        } else {
+            #[cfg(not(wasm))]
+            let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
+
+            #[cfg(wasm)]
+            let instance =
+                wgpu::util::new_instance_with_webgpu_detection(&wgpu::InstanceDescriptor {
+                    backends: wgpu::Backends::GL | wgpu::Backends::BROWSER_WEBGPU,
+                    ..Default::default()
+                })
+                .await;
+
+            let instance = Arc::new(instance);
+            self.instance.write().replace(instance.clone());
+
+            instance
+        }
+    }
+
+    async fn context(
+        &self,
+        surface: Option<&wgpu::Surface<'_>>,
+    ) -> Result<Arc<RenderContext>, InitializationError> {
+        let context = if let Some(context) = self.context.read().as_ref() {
+            context.clone()
+        } else {
+            let instance = self.instance().await;
+            let adapter = request_adapter(instance.as_ref(), surface).await?;
+            let (device, queue) = request_device(&adapter).await?;
+            let context = Arc::new(RenderContext::new(device, queue));
+
+            self.adapter.write().replace(adapter);
+            self.context.write().replace(context.clone());
+
+            context
+        };
+
+        Ok(context)
+    }
+
+    // /// Creates a headless Context
+    // pub async fn render_image(&self) -> Result<Vec<u8>, InitializationError> {
+    //     let _context = if let Some(context) = self.context.read().as_ref() {
+    //         context.clone()
+    //     } else {
+    //         let adapter = request_headless_adapter(&self.instance).await?;
+    //         let (device, queue) = request_device(&adapter).await?;
+    //         let context = Arc::new(RenderContext::init(device, queue));
+
+    //         self.adapter.write().replace(adapter);
+    //         self.context.write().replace(context.clone());
+
+    //         context
+    //     };
+
+    //     // @TODO
+    // }
+
+    pub fn render(
+        &self,
+        renderable: &impl Renderable,
+        target: &impl Target,
+    ) -> Result<(), ShaderError> {
+        if let Some(context) = self.context.read().as_ref() {
+            context.render(renderable, target)
+        } else {
+            Err(ShaderError::NoContext())
+        }
+    }
+}
+
 #[derive(Debug)]
-#[cfg_attr(feature = "python", pyclass)]
 /// Draws things on the screen or a texture.
 ///
 /// It owns and manages all GPU resources, serving as the
 /// main graphics context provider for the application.
-pub struct Renderer {
+pub struct RenderContext {
     pub(crate) device: wgpu::Device,
     pub(crate) queue: wgpu::Queue,
 
-    render_pipelines: RwLock<HashMap<(ShaderHash, wgpu::TextureFormat), RenderPipeline>>,
+    render_pipelines: DashMap<(ShaderHash, wgpu::TextureFormat), RenderPipeline>,
     buffer_pool: RwLock<BufferPool>,
     //
     // @TODO
-    // _compute_pipelines: RwLock<HashMap<String, wgpu::ComputePipeline>>,
-    // _textures: RwLock<HashMap<String, wgpu::Texture>>,
-    // _samplers: RwLock<HashMap<String, wgpu::Sampler>>,
+    // _compute_pipelines: DashMap<String, wgpu::ComputePipeline>,
+    // _textures: DashMap<String, wgpu::Texture>,
+    // _samplers: DashMap<String, wgpu::Sampler>,
 }
 
-impl Renderer {
-    /// Creates a headless renderer by default
-    pub async fn new() -> Result<Renderer, InitializationError> {
-        pollster::block_on(Self::headless())
-    }
-
-    /// Creates a headless renderer
-    pub async fn headless() -> Result<Renderer, InitializationError> {
-        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-        let adapter = crate::platform::all::request_headless_adapter(&instance).await?;
-        let (device, queue) = crate::platform::all::request_device(&adapter).await?;
-
-        Ok(Renderer::init(device, queue))
-    }
-
-    /// Creates a new renderer with the given device and queue.
-    pub(crate) fn init(device: wgpu::Device, queue: wgpu::Queue) -> Self {
+impl RenderContext {
+    /// Creates a new Context with the given device and queue.
+    fn new(device: wgpu::Device, queue: wgpu::Queue) -> Self {
         let buffer_pool = BufferPool::new_uniform_pool("Uniform Buffer Pool", &device);
 
-        Renderer {
+        RenderContext {
             device,
             queue,
 
-            render_pipelines: RwLock::new(HashMap::new()),
+            render_pipelines: DashMap::new(),
             buffer_pool: RwLock::new(buffer_pool),
         }
     }
 
     /// Renders a Frame or Shader to a Target.
-    pub fn render(
+    fn render(
         &self,
         renderable: &impl Renderable,
         target: &impl Target,
@@ -103,7 +231,7 @@ impl Renderer {
     }
 }
 
-impl Renderer {
+impl RenderContext {
     fn process_render_pass(
         &self,
         encoder: &mut wgpu::CommandEncoder,
@@ -112,9 +240,9 @@ impl Renderer {
     ) -> Result<(), ShaderError> {
         self.buffer_pool.write().reset();
 
-        let load_op = match pass.get_input() {
-            PassInput::Clear(color) => wgpu::LoadOp::Clear(color.into()),
-            PassInput::Load() => wgpu::LoadOp::Load,
+        let load_op = match pass.get_input().load {
+            true => wgpu::LoadOp::Load,
+            false => wgpu::LoadOp::Clear(pass.get_input().color.into()),
         };
 
         let attachments = &[Some(wgpu::RenderPassColorAttachment {
@@ -124,6 +252,7 @@ impl Renderer {
                 load: load_op,
                 store: wgpu::StoreOp::Store,
             },
+            depth_slice: None,
         })];
 
         let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -143,17 +272,19 @@ impl Renderer {
 
         for shader in pass.shaders.read().iter() {
             let format = frame.format();
-            let mut pipelines = self.render_pipelines.write();
-            let cached = pipelines.entry((shader.hash, format)).or_insert_with(|| {
-                let layouts =
-                    create_bind_group_layouts(&self.device, &shader.storage.read().uniforms);
-                let pipeline = create_render_pipeline(&self.device, &layouts, shader, format);
+            let cached = self
+                .render_pipelines
+                .entry((shader.hash, format))
+                .or_insert_with(|| {
+                    let layouts =
+                        create_bind_group_layouts(&self.device, &shader.storage.read().uniforms);
+                    let pipeline = create_render_pipeline(&self.device, &layouts, shader, format);
 
-                RenderPipeline {
-                    pipeline,
-                    bind_group_layouts: layouts.values().cloned().collect(),
-                }
-            });
+                    RenderPipeline {
+                        pipeline,
+                        bind_group_layouts: layouts.values().cloned().collect(),
+                    }
+                });
 
             let mut bind_group_entries: HashMap<u32, Vec<wgpu::BindGroupEntry>> = HashMap::new();
             let mut buffer_locations = Vec::new();
@@ -217,7 +348,6 @@ impl Renderer {
     }
 }
 
-// @TODO avoid tight coupling with storage internals
 fn create_bind_group_layouts(
     device: &wgpu::Device,
     uniforms: &HashMap<String, (u32, u32, Uniform)>,
@@ -309,6 +439,65 @@ fn create_render_pipeline(
                 format,
                 blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
                 // @TODO implement more granular control over blending
+                //
+                // Linear Interpolation Formula: Fa*Fc + (1-Fa)*Bc
+                //
+                // In wgpu:
+                // FACTOR * Src (OPERATION) FACTOR * Dst
+                //
+                // Where:
+                // Src is the Foreground (image on top)
+                // Dst is the Background (image on bottom)
+                //
+                // FACTOR can be:
+                //   /// 0.0
+                //   Zero = 0,
+                //   /// 1.0
+                //   One = 1,
+                //   /// S.color
+                //   Src = 2,
+                //   /// 1.0 - S.color
+                //   OneMinusSrc = 3,
+                //   /// S.alpha
+                //   SrcAlpha = 4,
+                //   /// 1.0 - S.alpha
+                //   OneMinusSrcAlpha = 5,
+                //   /// D.color
+                //   Dst = 6,
+                //   /// 1.0 - D.color
+                //   OneMinusDst = 7,
+                //   /// D.alpha
+                //   DstAlpha = 8,
+                //   /// 1.0 - D.alpha
+                //   OneMinusDstAlpha = 9,
+                //   /// min(S.alpha, 1.0 - D.alpha)
+                //   SrcAlphaSaturated = 10,
+                //   /// Constant
+                //   Constant = 11,
+                //   /// 1.0 - Constant
+                //   OneMinusConstant = 12,
+                //   /// S1.color
+                //   Src1 = 13,
+                //   /// 1.0 - S1.color
+                //   OneMinusSrc1 = 14,
+                //   /// S1.alpha
+                //   Src1Alpha = 15,
+                //   /// 1.0 - S1.alpha
+                //   OneMinusSrc1Alpha = 16,
+                //
+                // OPERATION Can be:
+                //   /// Src + Dst
+                //   #[default]
+                //   Add = 0,
+                //   /// Src - Dst
+                //   Subtract = 1,
+                //   /// Dst - Src
+                //   ReverseSubtract = 2,
+                //   /// min(Src, Dst)
+                //   Min = 3,
+                //   /// max(Src, Dst)
+                //   Max = 4,
+                //
                 // blend: Some(wgpu::BlendState {
                 //     color: wgpu::BlendComponent {
                 //         src_factor: wgpu::BlendFactor::One,

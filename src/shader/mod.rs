@@ -1,8 +1,8 @@
 use crate::error::ShaderError;
 use crate::{PassObject, Renderable};
 use naga::{
-    valid::{Capabilities, ValidationFlags, Validator},
     AddressSpace, Module,
+    valid::{Capabilities, ValidationFlags, Validator},
 };
 use parking_lot::RwLock;
 use serde::Serialize;
@@ -12,27 +12,32 @@ use std::sync::Arc;
 
 #[cfg(python)]
 use pyo3::prelude::*;
+#[cfg(wasm)]
+use wasm_bindgen::prelude::*;
 
 pub mod constants;
-mod features;
 pub use constants::*;
 pub(crate) mod uniform;
 pub(crate) use uniform::*;
+
 mod deserialize;
+mod features;
 mod input;
+mod platform;
 mod storage;
 use storage::*;
 
 /// The hash of a shader source.
 pub type ShaderHash = [u8; 32];
 
-#[cfg_attr(feature = "python", pyclass)]
-#[derive(Debug)]
 /// The Shader in FragmentColor is the blueprint of a Render Pipeline.
 ///
-/// It automatically parses a WGSL shader and extracts its uniforms, buffers, and textures.
+/// It automatically parses a WGSL shader source and extracts its uniforms, buffers, and textures.
 ///
 /// The user can set values for the uniforms and buffers, and then render the shader.
+#[cfg_attr(wasm, wasm_bindgen)]
+#[cfg_attr(python, pyclass)]
+#[derive(Debug)]
 pub struct Shader {
     pub(crate) pass: Arc<PassObject>,
     pub(crate) object: Arc<ShaderObject>,
@@ -123,7 +128,7 @@ impl ShaderObject {
     pub fn wgsl(source: &str) -> Result<Self, ShaderError> {
         let mut validator = Validator::new(ValidationFlags::all(), Capabilities::all());
         let module = naga::front::wgsl::parse_str(source)?;
-        validator.validate(&module)?;
+        validator.validate(&module).map_err(Box::new)?;
 
         let uniforms = parse_uniforms(&module)?;
         let storage = RwLock::new(UniformStorage::new(&uniforms));

@@ -1,8 +1,12 @@
 use csscolorparser;
 use serde::{Deserialize, Serialize};
 
+#[cfg(wasm)]
+use wasm_bindgen::prelude::*;
+
 /// Can be specified as 0xRRGGBBAA
-#[cfg_attr(feature = "python", pyo3::pyclass)]
+#[cfg_attr(wasm, wasm_bindgen)]
+#[cfg_attr(python, pyo3::pyclass)]
 #[derive(Clone, Copy, Debug, Default, Hash, PartialEq, PartialOrd, Deserialize)]
 pub struct Color(pub u32);
 
@@ -28,6 +32,18 @@ impl Color {
                 | (Self::import(blue) << 8)
                 | Self::import(alpha),
         )
+    }
+
+    pub fn transparent() -> Self {
+        Self::new(0.0, 0.0, 0.0, 0.0)
+    }
+
+    pub fn white() -> Self {
+        Self::new(1.0, 1.0, 1.0, 1.0)
+    }
+
+    pub fn black() -> Self {
+        Self::new(0.0, 0.0, 0.0, 1.0)
     }
 
     pub fn from_rgba(d: [f32; 4]) -> Self {
