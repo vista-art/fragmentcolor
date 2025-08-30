@@ -1,0 +1,70 @@
+name: Publish to npm
+
+on:
+  push:
+    tags:
+      - '*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish-npm:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install wasm-pack
+        uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-pack
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Build web package (wasm)
+        run: |
+          chmod +x ./build_web.sh
+          ./build_web.sh
+
+      - name: Read package version
+        id: get_version
+        run: |
+          VERSION=$(node -e "console.log(JSON.parse(require('fs').readFileSync('platforms/web/pkg/package.json','utf8')).version)")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Check if version already published
+        id: check_published
+        env:
+          VERSION: ${{ steps.get_version.outputs.version }}
+        run: |
+          if npm view fragmentcolor@"$VERSION" version > /dev/null 2>&1; then
+            echo "published=true" >> $GITHUB_OUTPUT
+          else
+            echo "published=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Upload built package as artifact (for inspection)
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-pkg
+          path: platforms/web/pkg
+
+      - name: Publish to npm
+        if: ${{ startsWith(github.ref, 'refs/tags/') && steps.check_published.outputs.published == 'false' }}
+        working-directory: platforms/web/pkg
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          npm publish --access public --provenance
