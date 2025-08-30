@@ -1,8 +1,10 @@
-import { Shader, FragmentColor as FC } from "fragmentcolor";
+import init, { Shader, Renderer } from "fragmentcolor";
 
 let canvas = document.getElementById("my-canvas");
-let [renderer, target] = FC.init(canvas);
-const resolution = [canvas.width, canvas.heigth];
+
+const renderer = new Renderer();
+const target = await renderer.create_target(canvas);
+const resolution = [canvas.width, canvas.height];
 
 // vertex shader is optional; the library provides a default fullscreen triangle
 // and auto-detects entry points marked a @fragment, @vertex, or called main, fs_main, or vs_main

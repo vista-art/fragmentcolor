@@ -1,6 +1,6 @@
 [package]
 name = "fragmentcolor"
-version = "0.10.6"
+version = "0.10.7"
 homepage = "https://fragmentcolor.org"
 repository = "https://github.com/vista-art/fragmentcolor"
 description = "Easy GPU Rendering for Javascript, Python, Swift and Kotlin"
@@ -22,7 +22,7 @@ python = ["pyo3"]
 
 [dependencies]
 # Python FFI
-pyo3 = { version = "0.25", features = [
+pyo3 = { version = "0.26", features = [
     "abi3-py39",
     "experimental-async",
     "generate-import-lib",
@@ -107,10 +107,10 @@ core-graphics = "0.25"
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
 serde-wasm-bindgen = "0.6"
+js-sys = "0.3"
 console_log = "1.0"
 console_error_panic_hook = { version = "0.1" }
 gloo-utils = { version = "0.2", features = ["serde"] }
-js-sys = "0.3"
 web-sys = { version = "0.3", features = [
     'Document',
     'Element',

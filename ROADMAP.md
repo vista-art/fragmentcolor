@@ -2,11 +2,12 @@
 
 ## Work in Progress
 
-- [x] V 0.10.6 Javascript support
-  - [x] Javascript Implementation
-  - [x] Publish to NPM
-    - [ ] We need to bump the version to 0.10.7 because Shader went without .set()
-  - [x] Chore: Script to automatically bump version
+### V 0.10.7
+
+- [x] fix: Shader went without .set() to NPM (WASM)
+- [ ] Update documentation and examples
+- [ ] Update website
+- [ ] Refine build and publish processes
 
 ## Up Next
 
