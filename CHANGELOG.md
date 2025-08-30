@@ -4,6 +4,15 @@
 
 Check [Roadmap](/ROADMAP.md) for unreleased/planned features
 
+## V 0.10.6 Implements Javascript Support
+
+- [x] Adds JavaScript support
+- [x] Publishes to NPM
+- [x] Refactor to remove constructors returning tuples
+- [x] Lazy-loaded Renderer with easier API
+- [x] Chore: Script to automatically bump version
+- [x] Updates WGPU version and other dependencies
+
 ## V 0.10.5 Fixes Python support for Windows and Linux
 
 - [x] Fixes Python support for Windows and Linux
