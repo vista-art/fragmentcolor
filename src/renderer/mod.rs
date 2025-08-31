@@ -1,6 +1,6 @@
 use crate::{
-    InitializationError, Pass, PassObject, ShaderError, ShaderHash, Target, TargetFrame,
-    TextureTarget, shader::Uniform,
+    InitializationError, PassObject, ShaderError, ShaderHash, Target, TargetFrame, TextureTarget,
+    shader::Uniform,
 };
 use dashmap::DashMap;
 use lsp_doc::lsp_doc;
@@ -13,6 +13,9 @@ pub type Commands = Vec<wgpu::CommandBuffer>;
 pub mod platform;
 pub use platform::*;
 
+pub mod renderable;
+pub use renderable::*;
+
 mod buffer_pool;
 use buffer_pool::BufferPool;
 
@@ -20,58 +23,6 @@ use buffer_pool::BufferPool;
 use pyo3::prelude::*;
 #[cfg(wasm)]
 use wasm_bindgen::prelude::*;
-
-pub trait Renderable {
-    fn passes(&self) -> impl IntoIterator<Item = &PassObject>;
-}
-
-impl Renderable for &[Pass] {
-    fn passes(&self) -> impl IntoIterator<Item = &PassObject> {
-        self.iter().map(|p| p.object.as_ref())
-    }
-}
-
-impl Renderable for Vec<Pass> {
-    fn passes(&self) -> impl IntoIterator<Item = &PassObject> {
-        self.iter().map(|p| p.object.as_ref())
-    }
-}
-
-impl Renderable for &[&Pass] {
-    fn passes(&self) -> impl IntoIterator<Item = &PassObject> {
-        self.iter().map(|p| p.object.as_ref())
-    }
-}
-
-impl Renderable for Vec<&Pass> {
-    fn passes(&self) -> impl IntoIterator<Item = &PassObject> {
-        self.iter().map(|p| p.object.as_ref())
-    }
-}
-
-impl Renderable for &[PassObject] {
-    fn passes(&self) -> impl IntoIterator<Item = &PassObject> {
-        self.iter()
-    }
-}
-
-impl Renderable for Vec<PassObject> {
-    fn passes(&self) -> impl IntoIterator<Item = &PassObject> {
-        self.iter()
-    }
-}
-
-impl Renderable for &[&PassObject] {
-    fn passes(&self) -> impl IntoIterator<Item = &PassObject> {
-        self.iter().copied()
-    }
-}
-
-impl Renderable for Vec<&PassObject> {
-    fn passes(&self) -> impl IntoIterator<Item = &PassObject> {
-        self.iter().copied()
-    }
-}
 
 #[derive(Debug)]
 struct RenderPipeline {
@@ -301,6 +252,7 @@ impl RenderContext {
             occlusion_query_set: None,
         });
 
+        // Defaults to Color::TRANSPARENT
         // render_pass.set_blend_constant(wgpu::Color::WHITE);
 
         let required_size = *pass.required_buffer_size.read();

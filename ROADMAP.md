@@ -6,9 +6,12 @@
 
 - [x] fix: Shader went without .set() to NPM (WASM)
 - [x] Automate Doc-string replication to all bindings
+- [x] Create a distribution via GH release
+    - [x] Python
+    - [x] Javascript
 - [x] Update documentation and examples
-  - [ ] Renderer
-    - [ ] constructor
+  - [x] Renderer
+    - [x] constructor
     - [ ] create_target
     - [ ] render
     - [ ] render_image
@@ -26,10 +29,9 @@
     - [ ] constructor
     - [ ] add_pass
 - [ ] Examples must use the published version
-- [ ] Update website
+- [ ] Update website automatically from docs
 - [ ] Refine build and publish processes
 - [ ] EndToEnd tests to validate the public API
-- [ ] Consider creating a PublicAPI trait
 - [ ] Implement Texture API
   - [ ] Renderer.create_texture(&image) -> Texture
   - [ ] Renderer.create_target(Texture) -> Target
@@ -66,8 +68,10 @@
 
 ## Up Next
 
-- [ ] Build System
+- Revemp RenderPass API
+  - It must give access to all wgpu::RenderPass customizations with sensible defaults, so we keep our API simple while still allowing for advanced use cases.
 
+- [ ] Build System
   - [ ] Unit test all packages before building
   - [ ] Git hook: test builds for all platforms before push
   - [ ] Script to Test, Compile & Publish JS
@@ -78,15 +82,14 @@
   - [ ] GHA wheel: Test build all packages for all OSses
 
 - [ ] Release Management System
-
-  - [ ] Create a distribution via GH release
-    - [x] Python
-    - [ ] Javascript
   - [ ] Automatically update docs from Rust Doc Comments
   - [ ] Update cargo doc
   - [ ] Script to copy contents and publish to Website
 
 ## Backlog
+
+- [ ] Support 3D Textures
+  - [ ] (check RenderPassColorAttachment.depth_slice) 
 
 - [ ] Support other types of Window integrations in Python (decouple from RenderCanvas)
   - [ ] Qt
