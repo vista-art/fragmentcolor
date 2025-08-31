@@ -512,8 +512,6 @@ impl From<UniformData> for glam::Vec4 {
         }
     }
 }
-
-
 // Matrices
 
 impl From<[[f32; 2]; 2]> for UniformData {
