@@ -511,7 +511,6 @@ impl From<UniformData> for glam::Vec4 {
     }
 }
 // Matrices
-
 impl From<[[f32; 2]; 2]> for UniformData {
     fn from(value: [[f32; 2]; 2]) -> Self {
         Self::Mat2(value)
