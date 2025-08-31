@@ -459,7 +459,6 @@ impl From<[i32; 4]> for UniformData {
     }
 }
 
-
 impl From<UniformData> for [i32; 4] {
     fn from(data: UniformData) -> Self {
         match data {
