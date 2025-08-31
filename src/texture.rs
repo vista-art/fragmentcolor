@@ -46,7 +46,6 @@ impl Texture {
         }
     }
 
-    // @TODO this should be behind a feature flag
     /// Creates a texture from a file
     pub fn from_file(context: &RenderContext, path: impl AsRef<Path>) -> Result<Self, Error> {
         let image = image::open(path)?;
@@ -123,8 +122,8 @@ impl Texture {
         }
     }
 
-    // We need the DEPTH_FORMAT for when we create the depth stage of
-    // the render_pipeline and for creating the depth texture itself.
+    /// We need the DEPTH_FORMAT for when we create the depth stage of
+    /// the render_pipeline and for creating the depth texture itself.
     pub const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 
     /// Creates a depth texture

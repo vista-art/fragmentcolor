@@ -1,7 +1,9 @@
 use crate::{
-    InitializationError, PassObject, ShaderError, ShaderHash, Target, TargetFrame, shader::Uniform,
+    InitializationError, Pass, PassObject, ShaderError, ShaderHash, Target, TargetFrame,
+    TextureTarget, shader::Uniform,
 };
 use dashmap::DashMap;
+use lsp_doc::lsp_doc;
 use parking_lot::RwLock;
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -23,6 +25,54 @@ pub trait Renderable {
     fn passes(&self) -> impl IntoIterator<Item = &PassObject>;
 }
 
+impl Renderable for &[Pass] {
+    fn passes(&self) -> impl IntoIterator<Item = &PassObject> {
+        self.iter().map(|p| p.object.as_ref())
+    }
+}
+
+impl Renderable for Vec<Pass> {
+    fn passes(&self) -> impl IntoIterator<Item = &PassObject> {
+        self.iter().map(|p| p.object.as_ref())
+    }
+}
+
+impl Renderable for &[&Pass] {
+    fn passes(&self) -> impl IntoIterator<Item = &PassObject> {
+        self.iter().map(|p| p.object.as_ref())
+    }
+}
+
+impl Renderable for Vec<&Pass> {
+    fn passes(&self) -> impl IntoIterator<Item = &PassObject> {
+        self.iter().map(|p| p.object.as_ref())
+    }
+}
+
+impl Renderable for &[PassObject] {
+    fn passes(&self) -> impl IntoIterator<Item = &PassObject> {
+        self.iter()
+    }
+}
+
+impl Renderable for Vec<PassObject> {
+    fn passes(&self) -> impl IntoIterator<Item = &PassObject> {
+        self.iter()
+    }
+}
+
+impl Renderable for &[&PassObject] {
+    fn passes(&self) -> impl IntoIterator<Item = &PassObject> {
+        self.iter().copied()
+    }
+}
+
+impl Renderable for Vec<&PassObject> {
+    fn passes(&self) -> impl IntoIterator<Item = &PassObject> {
+        self.iter().copied()
+    }
+}
+
 #[derive(Debug)]
 struct RenderPipeline {
     pipeline: wgpu::RenderPipeline,
@@ -32,6 +82,7 @@ struct RenderPipeline {
 #[derive(Debug, Default)]
 #[cfg_attr(wasm, wasm_bindgen)]
 #[cfg_attr(python, pyclass)]
+#[lsp_doc("docs/api/renderer/renderer.md")]
 pub struct Renderer {
     instance: RwLock<Option<Arc<wgpu::Instance>>>,
     adapter: RwLock<Option<wgpu::Adapter>>,
@@ -42,33 +93,30 @@ pub struct Renderer {
 }
 
 impl Renderer {
-    /// Creates a new Renderer.
-    ///
-    /// At this point, we don't know if it will be used offscreen
-    /// or attached to a platform-specific window or canvas.
-    ///
-    /// The Renderer internals are lazily initialized when the user creates a Target
-    /// or renders a Bitmap. \
-    /// This ensures the adapter and device are compatible
-    /// with the target environment.
-    ///
-    /// The API ensures the Renderer is usable when `render()` is called, because
-    /// the `render()` method expects a Target as input. So, the user must call
-    /// `Renderer.create_target()` first (which initializes the Renderer) or
-    /// `Renderer.render_image()` which initializes an offscreen adapter.
-    ///
-    /// ## Example
-    /// ```rust
-    /// use fragmentcolor::Renderer;
-    ///
-    /// let renderer = Renderer::new();
-    /// ```
+    #[lsp_doc("docs/api/renderer/constructor.md")]
     pub fn new() -> Self {
         Renderer {
             instance: RwLock::new(None),
             adapter: RwLock::new(None),
             context: RwLock::new(None),
         }
+    }
+
+    pub async fn create_texture_target(
+        &self,
+        size: &[u32; 2], // @TODO create a ShaderInput-like conversion object that can take 2D or 3D sizes
+    ) -> Result<TextureTarget, InitializationError> {
+        let context = self.context(None).await?;
+        let texture = TextureTarget::new(
+            context,
+            wgpu::Extent3d {
+                width: size[0],
+                height: size[1],
+                depth_or_array_layers: 1,
+            },
+        );
+
+        Ok(texture)
     }
 
     pub(crate) async fn create_surface<'window>(
@@ -136,23 +184,13 @@ impl Renderer {
         Ok(context)
     }
 
-    // /// Creates a headless Context
-    // pub async fn render_image(&self) -> Result<Vec<u8>, InitializationError> {
-    //     let _context = if let Some(context) = self.context.read().as_ref() {
-    //         context.clone()
-    //     } else {
-    //         let adapter = request_headless_adapter(&self.instance).await?;
-    //         let (device, queue) = request_device(&adapter).await?;
-    //         let context = Arc::new(RenderContext::init(device, queue));
+    /// Creates a headless Context
+    pub async fn render_image(&self) -> Result<Vec<u8>, InitializationError> {
+        let _context = self.context(None).await?;
 
-    //         self.adapter.write().replace(adapter);
-    //         self.context.write().replace(context.clone());
-
-    //         context
-    //     };
-
-    //     // @TODO
-    // }
+        // @TODO
+        Ok(vec![])
+    }
 
     pub fn render(
         &self,

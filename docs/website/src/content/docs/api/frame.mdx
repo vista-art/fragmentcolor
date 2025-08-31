@@ -1,0 +1,48 @@
+---
+title: Frame
+description: Frame is a collection of Pass objects that are rendered to a Target.
+---
+
+## Description
+
+The **Frame** object is a collection of [Pass](/api/pass) objects that are rendered to a [Target](/api/target).
+
+It is used to render multiple passes to a single target, such as an opaque pass followed by a transparent pass.
+
+You need to inject the Frame object into the Renderer to render it.
+
+## Example
+
+```js
+import { Shader, Pass, Frame, Renderer } from "fragmentcolor";
+
+let renderer = new Renderer();
+
+const opaque1 = new Shader("opaque.wgsl");
+const opaque2 = new Shader("opaque.wgsl");
+const transparent1 = new Shader("transparent.wgsl");
+const transparent2 = new Shader("transparent.wgsl");
+
+const opaquePass = new Pass("Opaque Render Pass");
+const transparentPass = new Pass("Transparent Render Pass");
+pass.add_shader(opaque1);
+pass.add_shader(opaque2);
+pass.add_shader(transparent1);
+pass.add_shader(transparent2);
+
+const frame = new Frame();
+frame.add_pass(opaquePass);
+frame.add_pass(transparentPass);
+
+let image = renderer.render(frame);
+```
+
+## Methods
+
+- #### constructor()
+
+  Creates a new Frame object.
+
+- #### add_pass(pass: Pass)
+
+  Adds a Pass object to the Frame.

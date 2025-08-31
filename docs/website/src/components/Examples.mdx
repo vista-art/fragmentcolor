@@ -1,0 +1,237 @@
+import { Code, Tabs, TabItem } from "@astrojs/starlight/components";
+
+<Tabs>
+
+<TabItem label="Python">
+
+<Code code="pip install fragmentcolor rendercanvas glfw" lang="bash" />
+
+<Code
+code={`
+    from fragmentcolor import Renderer, Shader, Pass, Frame
+    from rendercanvas.auto import RenderCanvas, loop
+
+    # Initializes a renderer and a target compatible with the given canvas
+    canvas = RenderCanvas(size=(800, 600))
+    renderer = Renderer()
+    target = renderer.create_target(canvas)
+
+    # You can pass the shader as a source string, file path, or URL:
+    circle = Shader("./path/to/circle.wgsl")
+    triangle = Shader("https://fragmentcolor.org/shaders/triangle.wgsl")
+    my_shader = Shader("""
+    struct VertexOutput {
+        @builtin(position) coords: vec4<f32>,
+    }
+
+    struct MyStruct {
+        my_field: vec3<f32>,
+    }
+
+    @group(0) @binding(0)
+    var<uniform> my_struct: MyStruct;
+
+    @group(0) @binding(1)
+    var<uniform> my_vec2: vec2<f32>;
+
+    @vertex
+    fn vs_main(@builtin(vertex_index) in_vertex_index: u32) -> VertexOutput {
+        const vertices = array(
+            vec2( -1., -1.),
+            vec2(  3., -1.),
+            vec2( -1.,  3.)
+        );
+        return VertexOutput(vec4<f32>(vertices[in_vertex_index], 0.0, 1.0));
+    }
+
+    @fragment
+    fn fs_main() -> @location(0) vec4<f32> {
+        return vec4<f32>(my_struct.my_field, 1.0);
+    }
+    """)
+
+    # The library binds and updates the uniforms automatically
+    my_shader.set("my_struct.my_field", [0.1, 0.8, 0.9])
+    my_shader.set("my_vec2", [1.0, 1.0])
+
+    # One shader is all you need to render
+    renderer.render(shader, target)
+
+    # But you can also combine multiple shaders in a render Pass
+    rpass = Pass("single pass")
+    rpass.add_shader(circle)
+    rpass.add_shader(triangle)
+    rpass.add_shader(my_shader)
+    renderer.render(rpass, target)
+
+    # Finally, you can combine multiple passes in a Frame
+    frame = Frame()
+    frame.add_pass(rpass)
+    frame.add_pass(Pass("GUI pass"))
+    renderer.render(frame, target)
+
+    # To animate, simply update the uniforms in a loop
+    @canvas.request_draw
+    def animate():
+        circle.set("position", [0.0, 0.0])
+        renderer.render(frame, target)
+
+    loop.run()
+
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Javascript">
+
+<Code code="npm install fragmentcolor" lang="bash" />
+
+<Code
+code={`
+    import init, { Shader, Renderer, Target, FragmentColor } from "fragmentcolor";
+
+    async function start() {
+        await init(); // inits WASM module
+
+        let canvas = document.getElementById("my-canvas");
+        const renderer = new Renderer();
+        const target = await renderer.createTarget(canvas);
+    }
+    start();
+
+    const shader = new Shader("https://fragmentcolor.org/shaders/circle.wgsl");
+    shader.set("resolution", [canvas.width, canvas.height]);
+    shader.set("circle.radius", 0.05);
+    shader.set("circle.color", [1.0, 0.0, 0.0, 0.8]);
+
+    const renderer = new Renderer();
+
+    function animate() {
+        shader.set("circle.position", [mouseX, mouseY]);
+        renderer.render(shader, target);
+
+        requestAnimationFrame(animate);
+    }
+    animate();
+`}
+
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+
+## Work in Progress
+
+Swift bindings are still a work in progress.
+
+<Code code={`
+import FragmentColor
+import SwiftUI
+
+struct ShaderView: View {
+
+    @State private var mousePos = CGPoint(x: 0, y: 0)
+    let renderer: FragmentColor.Renderer
+    let target: FragmentColor.Target
+    let circle: Shader
+
+    init() {
+        let canvas = MetalCanvasView() // Your Metal-backed view
+
+        renderer = FragmentColor.Renderer()
+        target = renderer.createTarget(canvas)
+
+        circle = Shader("circle.wgsl")!
+        circle.setUniform("circle.radius", 200.0)
+        circle.setUniform("circle.color", SIMD4<Float>(1.0, 0.0, 0.0, 0.8))
+        circle.setUniform("circle.border", 20.0)
+    }
+
+    var body: some View {
+        CanvasRepresentation()
+            .gesture(DragGesture(minimumDistance: 0)
+                .onChanged { value in
+                    mousePos = value.location
+                }
+            )
+            .onAppear(perform: animate)
+    }
+
+    func animate() {
+        circle.setUniform("circle.position", SIMD2<Float>(
+            Float(mousePos.x),
+            Float(mousePos.y)
+        ))
+        renderer.render(circle, to: target)
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1/60) {
+            animate()
+        }
+    }
+
+}
+
+struct CanvasRepresentation: NSViewRepresentable {
+
+    func makeNSView(context: Context) -> some NSView {
+        let view = MetalCanvasView()
+        view.wantsLayer = true
+        return view
+    }
+
+    func updateNSView(_ nsView: NSViewType, context: Context) {}
+
+}
+`} lang="swift" />
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code code={`
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
+import fragmentcolor.FragmentColor
+import fragmentcolor.Shader
+
+@Composable
+fun ShaderCanvas() {
+    var mousePos by remember { mutableStateOf(Offset.Zero) }
+    val renderer = remember { FragmentColor.Renderer() }
+    val target = remember { renderer.createTarget(canvas) }
+    val circle = remember { Shader("circle.wgsl") }.apply {
+        setUniform("circle.radius", 200.0f)
+        setUniform("circle.color", floatArrayOf(1.0f, 0.0f, 0.0f, 0.8f))
+        setUniform("circle.border", 20.0f)
+    }
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            withFrameNanos {
+                circle.setUniform("circle.position", floatArrayOf(
+                    mousePos.x.toFloat(),
+                    mousePos.y.toFloat()
+                ))
+                renderer.render(circle, target)
+            }
+        }
+    }
+
+    Canvas(
+        modifier = Modifier.detectDragGestures { change, _ ->
+            mousePos = change.position
+        }
+    ) {
+        FragmentColor.init(this, renderer, target)
+    }
+
+}
+`} lang="kotlin" />
+
+</TabItem>
+</Tabs>

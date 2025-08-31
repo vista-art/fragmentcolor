@@ -931,6 +931,7 @@ dependencies = [
  "instant",
  "js-sys",
  "log",
+ "lsp_doc",
  "naga",
  "naga_oil",
  "obj",
@@ -1493,6 +1494,16 @@ name = "log"
 version = "0.4.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "13dc2df351e3202783a1fe0d44375f7295ffb4049267b0f3018346dc122a1d94"
+
+[[package]]
+name = "lsp_doc"
+version = "0.2.0"
+source = "git+https://github.com/rafaelbeckel/lsp_doc#ca7c1dac588f37d62fb1d1baccd27532a93a8b59"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.96",
+]
 
 [[package]]
 name = "malloc_buf"

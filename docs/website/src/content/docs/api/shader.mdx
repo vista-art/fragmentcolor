@@ -1,0 +1,56 @@
+---
+title: Shader
+description: Shader is the main building block in FragmentColor.
+  It takes a shader source as input, parses it, and exposes the uniforms as keys.
+---
+
+## Description
+
+The **Shader** object is the main building block in FragmentColor.
+
+It takes a WGSL or GLSL shader source as input, parses it, validates it, and exposes the uniforms as keys.
+
+To draw your shader, you must use your Shader instance as input to a Renderer.
+
+You can compose Shader instances into a Pass object to create more complex rendering pipelines.
+
+You can also create renderings with multiple Render Passes by using multiple Pass instances to a Frame object.
+
+## Example
+
+```js
+import { Shader } from "fragmentcolor";
+
+const circle = new Shader("circle.wgsl");
+circle.set("circle.radius", 200.0);
+circle.set("circle.color", [1.0, 0.0, 0.0, 0.8]);
+circle.set("circle.border", 20.0);
+```
+
+## Methods
+
+- #### constructor(source: string)
+
+  Creates a new Shader instance from the given source string, file path, or URL.
+
+  If an exception occurs during parsing, the error message will indicate the location of the error.
+
+  If the initial source validation passes, the shader is guaranteed to work on the GPU. All uniforms are initialized to their default zero values.
+
+- #### set(key: string, value: any)
+
+  Sets the value of the uniform identified by the given key.
+
+  If the key does not exist or the value format is incorrect, the `set` method throws an exception. The shader remains valid, and if the exception is caught, the shader can still be used with the renderer.
+
+- #### get(key: string) -> any
+
+  Returns the current value of the uniform identified by the given key.
+
+- #### list_uniforms() -> [string]
+
+  Returns a list of all uniform names in the Shader (excluding struct fields).
+
+- #### list_keys() -> [string]
+
+  Returns a list of all keys in the Shader, including uniform names and struct fields using the dot notation.
