@@ -12,5 +12,4 @@ fi
 
 SOURCE_DIR=$(dirname $(readlink -f "$0"))
 
-# Build & generate bindings with wasm-pack
 wasm-pack build --target web $WASM_PACK_CONFIGURATION --out-dir $SOURCE_DIR/platforms/web/pkg

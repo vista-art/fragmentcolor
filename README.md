@@ -112,14 +112,17 @@ loop.run()
 ```javascript
 import init, { Shader, Renderer, Target, FragmentColor } from "fragmentcolor";
 
-await init(); // inits WASM module
+async function start() {
+  await init(); // inits WASM module
 
-let canvas = document.getElementById("my-canvas");
-const renederer = new Renderer();
-const target = renderer.create_target(canvas);
+  let canvas = document.getElementById("my-canvas");
+  const renderer = new Renderer();
+  const target = await renderer.createTarget(canvas);
+}
+start();
 
 const shader = new Shader("https://fragmentcolor.org/shaders/circle.wgsl");
-shader.set("resolution", [canvas.width, canvas.heigth]);
+shader.set("resolution", [canvas.width, canvas.height]);
 shader.set("circle.radius", 0.05);
 shader.set("circle.color", [1.0, 0.0, 0.0, 0.8]);
 

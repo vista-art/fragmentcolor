@@ -1,0 +1,113 @@
+---
+title: Renderer
+description: The Renderer draws a Shader or a group of shaders to a given Target.
+---
+
+import { Tabs, TabItem } from "@astrojs/starlight/components";
+
+## Description
+
+The **Renderer** draws one or multiple [Shader](/api/shader)s to a given [Target](/api/target) (canvas or window).
+
+It can render Shader objects, Pass objects, and [Frame](/api/frame) objects.
+
+You can create a Renderer instance by calling the `init` function in [FragmentColor](/api/fragmentcolor).
+
+Alternatively, you can create a headless Renderer instance by calling the `headless` function.
+
+## Example
+
+### Rendering to a Canvas
+
+<Tabs>
+
+<TabItem label="Javascript">
+
+```js
+import { FragmentColor as fc } from "fragmentcolor";
+
+const canvas = document.getElementById("canvas");
+[renderer, target] = fc.init(canvas);
+
+const shader = new Shader("example.wgsl");
+
+renderer.render(shader, target);
+```
+
+</TabItem>
+
+<TabItem label="Python">
+
+```python
+from fragmentcolor import FragmentColor as fc
+from rendercanvas.auto import RenderCanvas
+
+canvas = RenderCanvas()
+renderer, target = fc.init(canvas)
+
+shader = Shader("example.wgsl")
+
+renderer.render(shader, target)
+```
+
+</TabItem>
+
+</Tabs>
+
+### Rendering to an image (byte array)
+
+<Tabs>
+
+<TabItem label="Javascript">
+
+```js
+import { Renderer } from "fragmentcolor";
+
+const renderer = Renderer.headless();
+let shader = new Shader("example.wgsl");
+let image = renderer.render_image(shader);
+```
+
+</TabItem>
+
+<TabItem label="Python">
+
+```python
+from fragmentcolor import Renderer
+
+renderer = Renderer.headless()
+shader = Shader("example.wgsl")
+nd_array = renderer.render_image(shader)
+```
+
+</TabItem>
+
+</Tabs>
+
+## Methods
+
+- ##### constructor(device, queue)
+
+  The Renderer constructor is private.
+
+  You must use the `FragmentColor.init()` function to create a Renderer instance compatible with the given HTML Canvas.
+
+  Behind the scenes, the constructor takes a WebGPU device and queue as input, which is injected internally by the initializer.
+
+- ##### headless()
+
+  Creates a headless canvas.
+
+- ##### render(renderable: Shader | Pass | Frame, target: Target)
+
+  Renders the given renderable object to the given target.
+
+  The renderable object can be a Shader, Pass, or Frame instance.
+
+  The target object must be a Target instance.
+
+- ##### render_image(renderable: Shader | Pass | Frame) -> Uint8Array
+
+  Renders the given renderable object to an image (byte array).
+
+  The renderable object can be a Shader, Pass, or Frame instance.

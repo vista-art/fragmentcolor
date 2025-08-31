@@ -1,0 +1,187 @@
+---
+const { initialCode } = Astro.props;
+---
+
+<repl-component>
+  <div id="initialCode">{initialCode}</div>
+</repl-component>
+
+<script>
+import type { EditorView } from "codemirror";
+
+// Define once per page
+if (!customElements.get('repl-component')) {
+  class ReplComponent extends HTMLElement {
+    #shadow: ShadowRoot;
+    #editorView?: EditorView;
+    #resizeObserver?: ResizeObserver;
+    #timeoutId?: NodeJS.Timeout;
+
+    constructor() {
+      super();
+      this.#shadow = this.attachShadow({ mode: 'open' });
+      this.#shadow.innerHTML = `
+        <style>
+          :host {
+            display: block;
+            margin: 2rem 0;
+            border: 1px solid #374151;
+            border-radius: 8px;
+            contain: content;
+          }
+          
+          .container {
+            display: flex;
+            height: 420px;
+          }
+
+          .editor-panel, .preview-panel {
+            flex: 1;
+            min-width: 0;
+            position: relative;
+          }
+
+          #editor {
+            height: 100%;
+          }
+
+          #error-message {
+            color: #ef4444;
+            padding: 8px;
+            font-family: monospace;
+            white-space: pre-wrap;
+            display: none;
+          }
+
+          #preview-canvas {
+            width: 100%;
+            height: 100%;
+            background-color: #1f2937;
+          }
+
+          /* CodeMirror overrides */
+          .cm-editor { 
+            height: 100%;
+            font-size: 14px;
+            background: #282a36;
+            color: #f8f8f2;
+          }
+          
+          .cm-line { padding: 0; margin: 0; }
+          .cm-gutters { background: #282a36 !important; }
+        </style>
+        
+        <div class="container">
+          <div class="editor-panel">
+            <div id="editor"></div>
+            <div id="error-message"></div>
+          </div>
+          <div class="preview-panel">
+            <canvas id="preview-canvas"></canvas>
+          </div>
+        </div>
+      `;
+    }
+
+    async connectedCallback() {
+      await this.#initCodeMirror();
+      this.#initCanvas();
+      this.#initResizeObserver();
+    }
+
+    disconnectedCallback() {
+      this.#resizeObserver?.disconnect();
+      clearTimeout(this.#timeoutId);
+      window.removeEventListener('resize', this.#handleResize);
+    }
+
+    async #initCodeMirror() {
+      const { EditorState } = await import("@codemirror/state");
+      const { EditorView, basicSetup } = await import("codemirror");
+      const { javascript } = await import("@codemirror/lang-javascript");
+      const { dracula } = await import("thememirror");
+
+      const initialCode = this.querySelector('#initialCode')?.textContent || '';
+      
+      this.#editorView = new EditorView({
+        state: EditorState.create({
+          doc: initialCode,
+          extensions: [
+            basicSetup,
+            javascript(),
+            dracula,
+            EditorView.lineWrapping,
+            EditorView.updateListener.of(update => {
+              if (update.docChanged) this.#delayedRun();
+            }),
+            EditorView.theme({
+              "&": { height: "100%" },
+              ".cm-scroller": { margin: 0 },
+              ".cm-line": { margin: 0 },
+              ".cm-gutters": { marginTop: 0 },
+              ".cm-foldGutter": { marginTop: 0 },
+              ".cm-gutterElement": { margin: 0 },
+              ".cm-layer": { margin: 0 },
+              ".cm-content": { margin: 0 },
+              ".cm-cursor": { margin: 0 },
+              ".cm-selectionBackground": { margin: 0, background: "#55ddff80 !important" },
+              ".cm-activeLine": { background: "#44556650 !important" },
+            })
+          ]
+        }),
+        parent: this.#shadow.querySelector('#editor') as HTMLElement
+      });
+    }
+
+    #initCanvas() {
+      const canvas = this.#shadow.querySelector('#preview-canvas') as HTMLCanvasElement;
+      
+      const updateSize = () => {
+        canvas.width = canvas.clientWidth;
+        canvas.height = canvas.clientHeight;
+        this.#runCode();
+      };
+      
+      updateSize();
+      window.addEventListener('resize', updateSize);
+    }
+
+    #initResizeObserver() {
+      this.#resizeObserver = new ResizeObserver(() => this.#runCode());
+      this.#resizeObserver.observe(this.#shadow.querySelector('.container') as HTMLElement);
+    }
+
+    #handleResize = () => this.#runCode();
+
+    #delayedRun() {
+      clearTimeout(this.#timeoutId);
+      this.#timeoutId = setTimeout(() => this.#runCode(), 600);
+    }
+
+    #runCode() {
+      const canvas = this.#shadow.querySelector('#preview-canvas') as HTMLCanvasElement;
+      const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
+      const errorDiv = this.#shadow.querySelector('#error-message') as HTMLDivElement;
+
+      try {
+        errorDiv.style.display = 'none';
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        new Function('ctx', 'canvas', `
+          try {
+            ${this.#editorView!.state.doc.toString()}
+            if (typeof render === 'function') render(ctx, canvas);
+          } catch(e) {
+            throw e;
+          }
+        `)(ctx, canvas);
+      } catch(e: any) {
+        errorDiv.textContent = e.message;
+        errorDiv.style.display = 'block';
+      }
+    }
+  }
+
+  customElements.define('repl-component', ReplComponent);
+}
+</script>

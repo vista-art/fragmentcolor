@@ -47,6 +47,7 @@ impl From<web_sys::OffscreenCanvas> for Canvas {
 }
 
 #[wasm_bindgen]
+#[doc = include_str!("../../docs/renderer.md")]
 impl Renderer {
     #[wasm_bindgen(constructor)]
     /// Creates a new Renderer
@@ -54,6 +55,7 @@ impl Renderer {
         Self::new()
     }
 
+    #[wasm_bindgen(js_name = "createTarget")]
     pub async fn create_target(&self, canvas: JsValue) -> Result<CanvasTarget, JsError> {
         let canvas = if canvas.has_type::<web_sys::HtmlCanvasElement>() {
             let canvas = canvas.dyn_into::<web_sys::HtmlCanvasElement>().unwrap();
@@ -78,45 +80,4 @@ impl Renderer {
 
         Ok(CanvasTarget::new(context, surface, config))
     }
-
-    // @TODO
-    // /// Creates a headless Renderer
-    // pub async fn headless() -> Result<Renderer, JsError> {
-    //     let instance = wgpu::util::new_instance_with_webgpu_detection(&wgpu::InstanceDescriptor {
-    //         backends: wgpu::Backends::GL | wgpu::Backends::BROWSER_WEBGPU,
-    //         ..Default::default()
-    //     })
-    //     .await;
-
-    //     let backends = wgpu::Instance::enabled_backend_features();
-
-    //     let adapter = if !backends.contains(wgpu::Backends::BROWSER_WEBGPU) {
-    //         // Create a DOM canvas element.
-    //         // This is needed to make adapter creation work in WebGL.
-    //         //
-    //         // We must create the surface from the same Instance we create the adapter,
-    //         // and the surface must remain alive during the call to request_adapter(),
-    //         // even though it can be immediately dropped afterwards.
-    //         //
-    //         // Relevant discussion: https://github.com/gfx-rs/wgpu/issues/5190
-    //         let canvas = web_sys::window()
-    //             .unwrap()
-    //             .document()
-    //             .unwrap()
-    //             .create_element("canvas")
-    //             .unwrap()
-    //             .dyn_into::<web_sys::HtmlCanvasElement>()
-    //             .unwrap();
-
-    //         let surface = instance.create_surface(wgpu::SurfaceTarget::Canvas(canvas))?;
-
-    //         crate::platform::all::request_adapter(&instance, Some(&surface)).await?
-    //     } else {
-    //         crate::platform::all::request_headless_adapter(&instance).await?
-    //     };
-
-    //     let (device, queue) = crate::platform::all::request_device(&adapter).await?;
-
-    //     Ok(Renderer::init(device, queue))
-    // }
 }

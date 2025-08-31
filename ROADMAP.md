@@ -2,12 +2,67 @@
 
 ## Work in Progress
 
-### V 0.10.7
+### V 0.10.7 Wasm Fix and Documentation
 
 - [x] fix: Shader went without .set() to NPM (WASM)
-- [ ] Update documentation and examples
+- [x] Automate Doc-string replication to all bindings
+- [x] Update documentation and examples
+  - [ ] Renderer
+    - [ ] constructor
+    - [ ] create_target
+    - [ ] render
+    - [ ] render_image
+  - [ ] Target
+  - [ ] Shader
+    - [ ] constructor
+    - [ ] set
+    - [ ] get
+    - [ ] list_uniforms
+    - [ ] list_keys
+  - [ ] Pass
+    - [ ] constructor
+    - [ ] add_shader
+  - [ ] Frame
+    - [ ] constructor
+    - [ ] add_pass
+- [ ] Examples must use the published version
 - [ ] Update website
 - [ ] Refine build and publish processes
+- [ ] EndToEnd tests to validate the public API
+- [ ] Consider creating a PublicAPI trait
+- [ ] Implement Texture API
+  - [ ] Renderer.create_texture(&image) -> Texture
+  - [ ] Renderer.create_target(Texture) -> Target
+  - [ ] Pass.input(Texture, Op::LOAD|Op::STORE)
+  - [ ] Pass.output(Texture)
+  - [ ] Texture
+  - [ ] StorageTexture
+  - [ ] Sampler
+
+### V 0.10.8 Automation and Build System to keep bindings in sync
+
+- [ ] Incorporate the Website in the repository
+- [ ] Adopt xtask
+- [ ] Automate documentation with xtask
+  - [ ] Move Doc Comments to separate MD files
+  - [ ] Doc-comments MD files will be replicated on:
+     - [ ] Doc-comments
+     - [ ] Python Wrappers
+     - [ ] JS Wrappers
+     - [ ] Website
+  - [ ] Copy all doc comments to Website
+  - [ ] Reconfigure Vercel to use this repository instead
+- [ ] Add more examples
+- [ ] Update website content
+- [ ] Refine build and publish processes
+
+### V 0.10.9
+
+- [ ] Swift Wrappers (future)
+
+### V 0.10.10
+
+- [ ] Kotlin Wrappers
 
 ## Up Next
 

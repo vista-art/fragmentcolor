@@ -43,6 +43,12 @@ pub struct Shader {
     pub(crate) object: Arc<ShaderObject>,
 }
 
+impl Default for Shader {
+    fn default() -> Self {
+        Self::new(DEFAULT_SHADER).expect("failed to create default shader")
+    }
+}
+
 impl Shader {
     /// Create a Shader object from a WGSL source string.
     ///
@@ -100,6 +106,12 @@ pub(crate) struct ShaderObject {
     pub(crate) storage: RwLock<UniformStorage>,
     #[serde(skip_serializing)]
     pub(crate) total_bytes: u64,
+}
+
+impl Default for ShaderObject {
+    fn default() -> Self {
+        Self::new(DEFAULT_SHADER).expect("failed to create default shader object")
+    }
 }
 
 impl ShaderObject {

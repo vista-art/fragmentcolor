@@ -1,4 +1,5 @@
 use crate::{Color, Region, Renderable, Shader, ShaderObject};
+use lsp_doc::lsp_doc;
 use parking_lot::RwLock;
 use std::sync::Arc;
 
@@ -37,8 +38,9 @@ pub enum PassType {
     Render,
 }
 
-#[cfg_attr(python, pyclass)]
 #[derive(Debug)]
+#[cfg_attr(python, pyclass)]
+#[lsp_doc("docs/api/pass/pass.md")]
 pub struct Pass {
     pub(crate) object: Arc<PassObject>,
 }
@@ -156,5 +158,33 @@ impl PassObject {
 
     pub fn is_compute(&self) -> bool {
         matches!(self.pass_type, PassType::Compute)
+    }
+}
+
+impl AsRef<PassObject> for Pass {
+    fn as_ref(&self) -> &PassObject {
+        &self.object
+    }
+}
+
+impl AsRef<PassObject> for PassObject {
+    fn as_ref(&self) -> &PassObject {
+        self
+    }
+}
+
+pub trait AsPassObjectRef {
+    fn as_ref(&self) -> &PassObject;
+}
+
+impl AsPassObjectRef for Pass {
+    fn as_ref(&self) -> &PassObject {
+        &self.object
+    }
+}
+
+impl AsPassObjectRef for PassObject {
+    fn as_ref(&self) -> &PassObject {
+        self
     }
 }

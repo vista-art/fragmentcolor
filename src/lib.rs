@@ -12,33 +12,34 @@ pub struct FragmentColor;
 ///
 pub mod renderer;
 
+/// # Target module
+///
+pub mod target;
+
 /// # Shader Module
 ///
 pub mod shader;
 
+/// # Pass Module
+///
+pub mod pass;
+
+/// # Frame module
+///
+pub mod frame;
+
 /// # Error module
+///
 pub mod error;
 
-/// # Target module
-pub mod target;
-
-// DRAFT; may change in a whim
+// DRAFT; API may change in a whim
 pub mod color;
-pub mod frame;
-pub mod pass;
 pub mod region;
 pub mod resources;
 pub mod sampler;
 pub mod texture;
 
-pub use color::*;
-pub use error::*;
-pub use frame::*;
-pub use pass::*;
-pub use region::*;
-pub use renderer::*;
-pub use resources::*;
-pub use sampler::*;
-pub use shader::*;
-pub use target::*;
-pub use texture::*;
+pub use {
+    color::*, error::*, frame::*, pass::*, region::*, renderer::*, resources::*, sampler::*,
+    shader::*, target::*, texture::*,
+};
