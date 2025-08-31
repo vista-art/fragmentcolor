@@ -1,5 +1,7 @@
 # Renderer
 
+## Draws Shaders to a Target
+
 The [Renderer](https://fragmentcolor.org/api/renderer/) is the main entry point for
 [FragmentColor](https://fragmentcolor.org) and normally the first object you create.
 
@@ -51,13 +53,41 @@ from fragmentcolor import Renderer
 def main():
     renderer = Renderer.new()
 - `pub async fn create_target()`
+```
 
 #### Javascript
 
+```javascript
+import { Renderer } from "fragmentcolor";
+
+const canvas = document.createElement("canvas");
+
+async function main() {
+    const renderer = Renderer.new();
+    await renderer.create_target(canvas);
+}
+```
+
 #### Swift (TBD)
+
+```swift
+import FragmentColor
+
+func main() {
+    let renderer = Renderer.new()
+}
+```
 
 - `pub async fn create_target()`
 
 #### Kotlin (TBD)
 
 - `pub async fn create_target()`
+
+```kotlin
+import fragmentcolor.Renderer
+
+fun main() {
+    val renderer = Renderer.new()
+}
+```
