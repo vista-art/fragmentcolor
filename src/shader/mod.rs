@@ -6,7 +6,6 @@ use naga::{
     valid::{Capabilities, ValidationFlags, Validator},
 };
 use parking_lot::RwLock;
-use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -21,7 +20,6 @@ pub use constants::*;
 pub(crate) mod uniform;
 pub(crate) use uniform::*;
 
-mod deserialize;
 mod features;
 mod input;
 mod platform;
@@ -87,18 +85,11 @@ impl Shader {
 ///
 /// The ShaderObject is wrapped in an Arc and managed by the Shader struct.
 /// This allows it to be shared between multiple passes and render pipelines.
-#[derive(Debug, Serialize)]
+#[derive(Debug)]
 pub(crate) struct ShaderObject {
-    pub(crate) source: String,
-
-    // Can be reconstructed from the source
-    #[serde(skip_serializing)]
     pub(crate) hash: ShaderHash,
-    #[serde(skip_serializing)]
     pub(crate) module: Module,
-    #[serde(skip_serializing)]
     pub(crate) storage: RwLock<UniformStorage>,
-    #[serde(skip_serializing)]
     pub(crate) total_bytes: u64,
 }
 
@@ -148,7 +139,6 @@ impl ShaderObject {
         }
 
         Ok(Self {
-            source: source.to_string(),
             hash,
             module,
             storage,
@@ -385,14 +375,5 @@ mod tests {
     fn test_invalid_shader_should_return_error() {
         let result = Shader::new("invalid shader");
         assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_shader_serialization() {
-        let shader = ShaderObject::new(SHADER).unwrap();
-        let serialized = serde_json::to_string(&shader).unwrap();
-
-        let deserialized: ShaderObject = serde_json::from_str(&serialized).unwrap();
-        assert_eq!(shader.hash, deserialized.hash);
     }
 }

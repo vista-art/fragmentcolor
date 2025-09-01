@@ -8,7 +8,6 @@ pub(super) fn load_shader(source: &str) -> Result<ShaderObject, ShaderError> {
 
     let ext = &source[source.len() - 5..];
     let is_glsl = ext == ".glsl" || ext == ".frag" || ext == ".vert";
-    let is_json = ext == ".json";
 
     let body = if source.starts_with("https:") {
         #[cfg(wasm)]
@@ -18,20 +17,11 @@ pub(super) fn load_shader(source: &str) -> Result<ShaderObject, ShaderError> {
 
         #[cfg(not(wasm))]
         ureq::get(source).call()?.body_mut().read_to_string()?
-    } else if ext == ".wgsl" || is_glsl || is_json {
+    } else if ext == ".wgsl" || is_glsl {
         std::fs::read_to_string(source)?
     } else {
         source.to_string()
     };
-
-    // @TODO define JSON schema to extract and set default Uniform values
-    if is_json {
-        let json: serde_json::Value = serde_json::from_str(&body)?;
-        let source = json["source"]
-            .as_str()
-            .ok_or_else(|| ShaderError::ParseError("JSON shader source not found".into()))?;
-        return load_shader(source);
-    }
 
     let shader_object = if ext == ".wgsl" {
         ShaderObject::wgsl(&body)?

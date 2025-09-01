@@ -1,4 +1,4 @@
-use crate::{RenderContext, Target, TargetFrame, Texture};
+use crate::{RenderContext, Size, Target, TargetFrame, Texture};
 use std::sync::Arc;
 
 pub struct TextureTarget {
@@ -7,8 +7,11 @@ pub struct TextureTarget {
 }
 
 impl TextureTarget {
-    pub fn new(context: Arc<RenderContext>, size: wgpu::Extent3d) -> Self {
-        let texture = Arc::new(Texture::create_destination_texture(context.as_ref(), size));
+    pub fn new(context: Arc<RenderContext>, size: Size) -> Self {
+        let texture = Arc::new(Texture::create_destination_texture(
+            context.as_ref(),
+            size.into(),
+        ));
         Self {
             context: context.clone(),
             texture,
@@ -17,12 +20,13 @@ impl TextureTarget {
 }
 
 impl Target for TextureTarget {
-    fn size(&self) -> wgpu::Extent3d {
+    fn size(&self) -> Size {
         self.texture.size()
     }
 
-    fn resize(&mut self, size: wgpu::Extent3d) {
-        let new_texture = Texture::create_destination_texture(self.context.as_ref(), size);
+    fn resize(&mut self, size: impl Into<Size>) {
+        let new_texture =
+            Texture::create_destination_texture(self.context.as_ref(), size.into().into());
         self.texture = Arc::new(new_texture);
     }
 

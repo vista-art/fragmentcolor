@@ -1,5 +1,4 @@
 use csscolorparser;
-use serde::{Deserialize, Serialize};
 
 #[cfg(wasm)]
 use wasm_bindgen::prelude::*;
@@ -7,20 +6,8 @@ use wasm_bindgen::prelude::*;
 /// Can be specified as 0xRRGGBBAA
 #[cfg_attr(wasm, wasm_bindgen)]
 #[cfg_attr(python, pyo3::pyclass)]
-#[derive(Clone, Copy, Debug, Default, Hash, PartialEq, PartialOrd, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, Hash, PartialEq, PartialOrd)]
 pub struct Color(pub u32);
-
-impl Serialize for Color {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.serialize_str(&format!(
-            "#{:02x}{:02x}{:02x}{:02x}",
-            self.red() as u8,
-            self.green() as u8,
-            self.blue() as u8,
-            self.alpha() as u8
-        ))
-    }
-}
 
 const GAMMA: f32 = 2.2;
 

@@ -3,7 +3,7 @@ use fragmentcolor::{Frame, Pass, Renderer, Shader};
 #[test]
 fn test_api() -> Result<(), Box<dyn std::error::Error>> {
     let renderer = Renderer::new();
-    let target = pollster::block_on(renderer.create_texture_target(&[10, 10]))?;
+    let target = pollster::block_on(renderer.create_texture_target([10, 10]))?;
     let object1 = Shader::default();
     let object2 = Shader::default();
 

@@ -116,16 +116,16 @@ jobs:
       #     path: photograph/src/filters/tests/error/
 
       - name: Build example triangle
-        run: cargo build --example triangle
+        run: cargo build -p fce --example triangle
 
       - name: Build example circle
-        run: cargo build --example circle
+        run: cargo build -p fce --example circle
 
       - name: Build example multiobject
-        run: cargo build --example multiobject
+        run: cargo build -p fce --example multiobject
 
       - name: Build example multipass
-        run: cargo build --example multipass
+        run: cargo build -p fce --example multipass
 
   # @TODO Implement Swift bindings
   # test_swift_bindings:

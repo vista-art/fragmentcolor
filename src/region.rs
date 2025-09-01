@@ -1,11 +1,13 @@
 use glam::Vec2;
 use glam::Vec4;
 
-use serde::{Deserialize, Serialize};
+#[cfg(wasm)]
+use wasm_bindgen::prelude::*;
 
-#[cfg_attr(feature = "python", pyo3::pyclass)]
+#[cfg_attr(wasm, wasm_bindgen)]
+#[cfg_attr(python, pyo3::pyclass)]
 /// A region in 2D space designed to handle viewport and texture regions
-#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd)]
 pub struct Region {
     pub min_x: u32,
     pub min_y: u32,

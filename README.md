@@ -154,10 +154,10 @@ animate();
 For Rust, check the examples folder and run them with:
 
 ```bash
-cargo run --example circle
-cargo run --example triangle
-cargo run --example multiobject
-cargo run --example multipass
+cargo run -p fce --example circle
+cargo run -p fce --example triangle
+cargo run -p fce --example multiobject
+cargo run -p fce --example multipass
 ```
 
 ### Target: Desktop (Python module)

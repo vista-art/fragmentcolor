@@ -37,12 +37,7 @@ impl State {
     }
 
     fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
-        let size = wgpu::Extent3d {
-            width: new_size.width,
-            height: new_size.height,
-            depth_or_array_layers: 1,
-        };
-
+        let size = [new_size.width, new_size.height];
         self.target.resize(size);
     }
 

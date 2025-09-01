@@ -15,10 +15,14 @@ edition = "2024"
 name = "fragmentcolor"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[workspace]
+resolver = "3"
+members = ["examples/rust"]
+
 [features]
 glsl = []
 shadertoy = ["glsl"]
-use_winit = ["winit"]
+winit = ["dep:winit"]
 python = ["pyo3", "pollster", "raw-window-handle", "objc2", "objc2-app-kit"]
 
 [dependencies]
@@ -36,8 +40,6 @@ glam = { version = "0.30" }
 bytemuck = { version = "1" }
 log = { version = "0.4" }
 sha2 = { version = "0.10" }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = { version = "1.0" }
 parking_lot = { version = "0.12" }
 lsp_doc = { git = "https://github.com/rafaelbeckel/lsp_doc", version = "0.2" }
 
