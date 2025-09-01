@@ -1,4 +1,4 @@
-use crate::{RenderContext, Target, TargetFrame, WindowTarget};
+use crate::{RenderContext, Size, Target, TargetFrame, WindowTarget};
 use std::sync::Arc;
 use wasm_bindgen::prelude::*;
 
@@ -16,11 +16,11 @@ impl CanvasTarget {
 }
 
 impl Target for CanvasTarget {
-    fn size(&self) -> wgpu::Extent3d {
+    fn size(&self) -> Size {
         self.0.size()
     }
 
-    fn resize(&mut self, size: wgpu::Extent3d) {
+    fn resize(&mut self, size: impl Into<Size>) {
         self.0.resize(size);
     }
 
