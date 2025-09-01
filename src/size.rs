@@ -1,8 +1,11 @@
 #[cfg(wasm)]
 use wasm_bindgen::prelude::*;
 
+#[cfg(python)]
+use pyo3::prelude::*;
+
 #[cfg_attr(wasm, wasm_bindgen)]
-#[cfg_attr(python, pyo3::pyclass)]
+#[cfg_attr(python, pyclass)]
 #[derive(Clone, Copy, Debug, Default, Hash, PartialEq, PartialOrd)]
 pub struct Size {
     pub width: u32,
@@ -10,10 +13,7 @@ pub struct Size {
     pub depth: Option<u32>,
 }
 
-#[cfg_attr(wasm, wasm_bindgen)]
 impl Size {
-    #[cfg_attr(wasm, wasm_bindgen(constructor))]
-    #[cfg_attr(python, pyo3::new)]
     pub fn new(width: u32, height: u32, depth: Option<u32>) -> Self {
         Self {
             width,

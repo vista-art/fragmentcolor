@@ -1,4 +1,4 @@
-use crate::{RenderContext, Target, TargetFrame, UniformData, WindowTarget};
+use crate::{RenderContext, Size, Target, TargetFrame, WindowTarget};
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 use std::sync::Arc;
@@ -51,8 +51,8 @@ impl RenderCanvasTarget {
         [size.width, size.height]
     }
 
-    pub fn resize(&mut self, size: UniformData) {
-        <Self as Target>::resize(self, size.into());
+    pub fn resize(&mut self, size: Size) {
+        <Self as Target>::resize(self, size);
     }
 
     // We can't export a impl Trait block with Pyo3, so this is a
@@ -100,17 +100,17 @@ pub struct RenderCanvasFrame {
 }
 
 impl Target for RenderCanvasTarget {
-    fn size(&self) -> wgpu::Extent3d {
+    fn size(&self) -> Size {
         if let Some(target) = &self.target {
             target.size()
         } else {
-            wgpu::Extent3d::default()
+            Size::default()
         }
     }
 
-    fn resize(&mut self, size: wgpu::Extent3d) {
+    fn resize(&mut self, size: impl Into<Size>) {
         if let Some(target) = &mut self.target {
-            target.resize(size);
+            target.resize(size.into());
         }
     }
 
