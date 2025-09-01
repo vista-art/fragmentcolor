@@ -8,7 +8,7 @@ use pyo3::prelude::*;
 #[cfg(wasm)]
 use wasm_bindgen::prelude::*;
 
-mod features;
+mod platform;
 
 #[cfg_attr(wasm, wasm_bindgen)]
 #[cfg_attr(python, pyclass)]
@@ -40,12 +40,14 @@ pub enum PassType {
 
 #[derive(Debug)]
 #[cfg_attr(python, pyclass)]
+#[cfg_attr(wasm, wasm_bindgen)]
 #[lsp_doc("docs/api/pass/pass.md")]
 pub struct Pass {
     pub(crate) object: Arc<PassObject>,
 }
 
 impl Pass {
+    #[lsp_doc("docs/api/pass/constructor.md")]
     pub fn new(name: &str) -> Self {
         Self {
             object: Arc::new(PassObject::new(name, PassType::Render)),
@@ -79,8 +81,8 @@ impl Pass {
         self.object.add_shader(shader);
     }
 
-    pub fn set_region(&self, region: Region) {
-        self.object.set_region(region);
+    pub fn set_viewport(&self, viewport: Region) {
+        self.object.set_viewport(viewport);
     }
 
     pub fn set_clear_color(&self, color: [f32; 4]) {
@@ -99,7 +101,7 @@ pub struct PassObject {
     pub(crate) name: Arc<str>,
     pub(crate) input: RwLock<PassInput>,
     pub(crate) shaders: RwLock<Vec<Arc<ShaderObject>>>,
-    pub(crate) region: RwLock<Option<Region>>,
+    pub(crate) viewport: RwLock<Option<Region>>,
     pub(crate) required_buffer_size: RwLock<u64>,
     pub pass_type: PassType,
 }
@@ -109,7 +111,7 @@ impl PassObject {
         Self {
             name: Arc::from(name),
             shaders: RwLock::new(Vec::new()),
-            region: RwLock::new(None),
+            viewport: RwLock::new(None),
             input: RwLock::new(PassInput::load()),
             required_buffer_size: RwLock::new(0),
             pass_type,
@@ -128,7 +130,7 @@ impl PassObject {
         Self {
             name: Arc::from(name),
             shaders: RwLock::new(vec![shader]),
-            region: RwLock::new(None),
+            viewport: RwLock::new(None),
             input: RwLock::new(PassInput::load()),
             required_buffer_size: RwLock::new(total_bytes),
             pass_type,
@@ -152,8 +154,8 @@ impl PassObject {
         }
     }
 
-    pub fn set_region(&self, region: Region) {
-        *self.region.write() = Some(region);
+    pub fn set_viewport(&self, viewport: Region) {
+        *self.viewport.write() = Some(viewport);
     }
 
     pub fn is_compute(&self) -> bool {
@@ -168,22 +170,6 @@ impl AsRef<PassObject> for Pass {
 }
 
 impl AsRef<PassObject> for PassObject {
-    fn as_ref(&self) -> &PassObject {
-        self
-    }
-}
-
-pub trait AsPassObjectRef {
-    fn as_ref(&self) -> &PassObject;
-}
-
-impl AsPassObjectRef for Pass {
-    fn as_ref(&self) -> &PassObject {
-        &self.object
-    }
-}
-
-impl AsPassObjectRef for PassObject {
     fn as_ref(&self) -> &PassObject {
         self
     }

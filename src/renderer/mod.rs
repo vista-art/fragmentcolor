@@ -53,6 +53,9 @@ impl Renderer {
         }
     }
 
+    // PLATFORM SPECIFIC:
+    // pub fn create_target() {}
+
     pub async fn create_texture_target(
         &self,
         size: &[u32; 2], // @TODO create a ShaderInput-like conversion object that can take 2D or 3D sizes
@@ -68,6 +71,19 @@ impl Renderer {
         );
 
         Ok(texture)
+    }
+
+    #[lsp_doc("docs/api/renderer/render.md")]
+    pub fn render(
+        &self,
+        renderable: &impl Renderable,
+        target: &impl Target,
+    ) -> Result<(), ShaderError> {
+        if let Some(context) = self.context.read().as_ref() {
+            context.render(renderable, target)
+        } else {
+            Err(ShaderError::NoContext())
+        }
     }
 
     pub(crate) async fn create_surface<'window>(
@@ -133,26 +149,6 @@ impl Renderer {
         };
 
         Ok(context)
-    }
-
-    /// Creates a headless Context
-    pub async fn render_image(&self) -> Result<Vec<u8>, InitializationError> {
-        let _context = self.context(None).await?;
-
-        // @TODO
-        Ok(vec![])
-    }
-
-    pub fn render(
-        &self,
-        renderable: &impl Renderable,
-        target: &impl Target,
-    ) -> Result<(), ShaderError> {
-        if let Some(context) = self.context.read().as_ref() {
-            context.render(renderable, target)
-        } else {
-            Err(ShaderError::NoContext())
-        }
     }
 }
 

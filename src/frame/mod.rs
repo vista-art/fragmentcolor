@@ -26,7 +26,6 @@ impl Frame {
         }
     }
 
-    // @TODO interior mutability without breaking the Renderable trait
     pub fn add_pass(&mut self, pass: &Pass) {
         self.passes.push(pass.object.clone());
     }
@@ -34,6 +33,6 @@ impl Frame {
 
 impl Renderable for Frame {
     fn passes(&self) -> impl IntoIterator<Item = &PassObject> {
-        self.passes.iter().map(|pass| pass.as_ref())
+        self.passes.iter().map(|p| p.as_ref())
     }
 }

@@ -1,5 +1,6 @@
 use crate::error::ShaderError;
 use crate::{PassObject, Renderable};
+use lsp_doc::lsp_doc;
 use naga::{
     AddressSpace, Module,
     valid::{Capabilities, ValidationFlags, Validator},
@@ -37,7 +38,7 @@ pub type ShaderHash = [u8; 32];
 /// The user can set values for the uniforms and buffers, and then render the shader.
 #[cfg_attr(wasm, wasm_bindgen)]
 #[cfg_attr(python, pyclass)]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Shader {
     pub(crate) pass: Arc<PassObject>,
     pub(crate) object: Arc<ShaderObject>,
@@ -50,13 +51,7 @@ impl Default for Shader {
 }
 
 impl Shader {
-    /// Create a Shader object from a WGSL source string.
-    ///
-    /// GLSL is also supported if you enable the `glsl` feature.
-    /// Shadertoy-flavored GLSL is supported if the `shadertoy` feature is enabled.
-    ///
-    /// If the optional features are enabled,
-    /// the constructor try to automatically detect the shader type and parse it accordingly.
+    #[lsp_doc("docs/api/shader/constructor.md")]
     pub fn new(source: &str) -> Result<Self, ShaderError> {
         let object = Arc::new(input::load_shader(source)?);
         let pass = Arc::new(PassObject::from_shader_object(
@@ -67,23 +62,22 @@ impl Shader {
         Ok(Self { pass, object })
     }
 
-    /// Set a uniform value.
+    #[lsp_doc("docs/api/shader/set.md")]
     pub fn set(&self, key: &str, value: impl Into<UniformData>) -> Result<(), ShaderError> {
         self.object.set(key, value)
     }
 
-    /// Get a uniform value.
+    #[lsp_doc("docs/api/shader/get.md")]
     pub fn get<T: From<UniformData>>(&self, key: &str) -> Result<T, ShaderError> {
         Ok(self.object.get_uniform_data(key)?.into())
     }
 
-    /// List all the top-level uniforms in the shader.
+    #[lsp_doc("docs/api/shader/list_uniforms.md")]
     pub fn list_uniforms(&self) -> Vec<String> {
         self.object.list_uniforms()
     }
 
-    /// List all available keys in the shader.
-    /// This includes all the uniforms and their fields.
+    #[lsp_doc("docs/api/shader/list_keys.md")]
     pub fn list_keys(&self) -> Vec<String> {
         self.object.list_keys()
     }

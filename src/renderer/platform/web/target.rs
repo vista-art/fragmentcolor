@@ -6,7 +6,7 @@ use wasm_bindgen::prelude::*;
 pub struct CanvasTarget(WindowTarget);
 
 impl CanvasTarget {
-    pub fn new(
+    pub(crate) fn new(
         context: Arc<RenderContext>,
         surface: wgpu::Surface<'static>,
         config: wgpu::SurfaceConfiguration,
