@@ -1,4 +1,4 @@
-use crate::{RenderContext, Target, TargetFrame};
+use crate::{RenderContext, Size, Target, TargetFrame};
 use std::sync::Arc;
 
 pub struct WindowTarget {
@@ -22,15 +22,12 @@ impl WindowTarget {
 }
 
 impl Target for WindowTarget {
-    fn size(&self) -> wgpu::Extent3d {
-        wgpu::Extent3d {
-            width: self.config.width,
-            height: self.config.height,
-            depth_or_array_layers: 1,
-        }
+    fn size(&self) -> Size {
+        [self.config.width, self.config.height].into()
     }
 
-    fn resize(&mut self, size: wgpu::Extent3d) {
+    fn resize(&mut self, size: impl Into<Size>) {
+        let size = size.into();
         self.config.width = size.width;
         self.config.height = size.height;
         self.surface.configure(&self.context.device, &self.config);

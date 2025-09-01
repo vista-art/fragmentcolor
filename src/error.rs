@@ -38,8 +38,6 @@ pub enum ShaderError {
     WgpuError(#[from] wgpu::Error),
     #[error("WGPU Surface Error: {0}")]
     WgpuSurfaceError(#[from] wgpu::SurfaceError),
-    #[error("JSON Deserialization Error: {0}")]
-    JsonError(#[from] serde_json::Error),
 
     #[cfg(not(wasm))]
     #[error("URL Request Error: {0}")]

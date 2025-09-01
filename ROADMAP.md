@@ -123,6 +123,25 @@
 
 - [ ] Consider provideing llms.txt and [MCP](https://modelcontextprotocol.io/introduction)
 
+- [ ] This was removed from Shader and maybe added again in the future:
+  - [ ] Support Load and Save Shader states as JSON
+  - [ ] Define JSON schema to extract and set default Uniform values
+  - [ ] This should be under a feature flag
+    ```rust
+    // removed from shader/input.rs
+    if is_json {
+        let json: serde_json::Value = serde_json::from_str(&body)?;
+        let source = json["source"]
+            .as_str()
+            .ok_or_else(|| ShaderError::ParseError("JSON shader source not found".into()))?;
+        return load_shader(source);
+    }
+
+    // removed from errors.rs
+    #[error("JSON Deserialization Error: {0}")]
+    JsonError(#[from] serde_json::Error),
+    ```
+
 ### Tutorials and Examples
 
 #### Single-pass rendering

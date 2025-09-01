@@ -1,3 +1,4 @@
+use crate::Size;
 use crate::{
     InitializationError, PassObject, ShaderError, ShaderHash, Target, TargetFrame, TextureTarget,
     shader::Uniform,
@@ -15,6 +16,9 @@ pub use platform::*;
 
 pub mod renderable;
 pub use renderable::*;
+
+pub mod texture;
+pub use texture::*;
 
 mod buffer_pool;
 use buffer_pool::BufferPool;
@@ -58,17 +62,10 @@ impl Renderer {
 
     pub async fn create_texture_target(
         &self,
-        size: &[u32; 2], // @TODO create a ShaderInput-like conversion object that can take 2D or 3D sizes
+        size: impl Into<Size>,
     ) -> Result<TextureTarget, InitializationError> {
         let context = self.context(None).await?;
-        let texture = TextureTarget::new(
-            context,
-            wgpu::Extent3d {
-                width: size[0],
-                height: size[1],
-                depth_or_array_layers: 1,
-            },
-        );
+        let texture = TextureTarget::new(context, size.into());
 
         Ok(texture)
     }

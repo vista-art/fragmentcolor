@@ -1,7 +1,7 @@
 use rand::prelude::*;
 use std::sync::Arc;
 
-use fragmentcolor::{Frame, Pass, Renderer, Shader, ShaderError, Target, WindowTarget};
+use fragmentcolor::{Frame, Pass, Renderer, Shader, ShaderError, Size, Target, WindowTarget};
 
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
@@ -19,7 +19,7 @@ struct State {
     circles: Vec<Shader>,
 }
 
-fn random_circle(rng: &mut impl Rng, size: &wgpu::Extent3d, alpha: f32) -> Shader {
+fn random_circle(rng: &mut impl Rng, size: Size, alpha: f32) -> Shader {
     let circle = Shader::new(CIRCLE_SOURCE).unwrap();
     circle
         .set("resolution", [size.width as f32, size.height as f32])
@@ -61,13 +61,13 @@ impl State {
 
         let mut circles = Vec::new();
         for i in 0..10 {
-            let circle = random_circle(&mut rng, &size, 1.0);
+            let circle = random_circle(&mut rng, size, 1.0);
             circles.push(circle);
             opaque_pass.add_shader(&circles[i]);
         }
 
         for i in 0..20 {
-            let circle = random_circle(&mut rng, &size, 0.2);
+            let circle = random_circle(&mut rng, size, 0.2);
             circles.push(circle);
             transparent_pass.add_shader(&circles[i]);
         }
@@ -90,15 +90,11 @@ impl State {
     }
 
     fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
-        let size = wgpu::Extent3d {
-            width: new_size.width,
-            height: new_size.height,
-            depth_or_array_layers: 1,
-        };
+        let size = [new_size.width, new_size.height];
 
         for circle in &self.circles {
             circle
-                .set("resolution", [size.width as f32, size.height as f32])
+                .set("resolution", [size[0] as f32, size[1] as f32])
                 .unwrap();
         }
 

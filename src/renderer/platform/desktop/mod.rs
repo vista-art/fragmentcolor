@@ -23,7 +23,7 @@ impl Renderer {
 impl Renderer {
     pub async fn create_target(
         &'_ self,
-        window: Arc<winit::Window>,
+        window: std::sync::Arc<winit::window::Window>,
     ) -> Result<WindowTarget, InitializationError> {
         let size = wgpu::Extent3d {
             width: window.inner_size().width,

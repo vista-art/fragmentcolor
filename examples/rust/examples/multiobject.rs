@@ -19,9 +19,7 @@ struct State {
 impl State {
     async fn new(window: Arc<Window>) -> State {
         let renderer = Renderer::new();
-        let w = window.inner_size().width;
-        let h = window.inner_size().height;
-        let target = renderer.create_target(window.clone(), w, h).await.unwrap();
+        let target = renderer.create_target(window.clone()).await.unwrap();
         let size = target.size();
 
         let triangle_source = include_str!("hello_triangle.wgsl");
@@ -77,15 +75,11 @@ impl State {
     }
 
     fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
-        let size = wgpu::Extent3d {
-            width: new_size.width,
-            height: new_size.height,
-            depth_or_array_layers: 1,
-        };
+        let size = [new_size.width, new_size.height];
 
         for circle in &self.circles {
             circle
-                .set("resolution", [size.width as f32, size.height as f32])
+                .set("resolution", [size[0] as f32, size[1] as f32])
                 .unwrap();
         }
 

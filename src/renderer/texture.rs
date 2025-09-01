@@ -1,18 +1,19 @@
 use std::path::Path;
 
-use crate::RenderContext;
+use crate::{
+    RenderContext, Size,
+    sampler::{SamplerOptions, create_default_sampler, create_sampler},
+};
 use image::{DynamicImage, GenericImageView};
-
-use crate::sampler::{SamplerOptions, create_default_sampler, create_sampler};
 
 type Error = Box<dyn std::error::Error>; // @TODO tech debt: create proper error types
 
 #[derive(Debug)]
 pub struct Texture {
-    pub inner: wgpu::Texture,
-    pub size: wgpu::Extent3d,
-    pub sampler: wgpu::Sampler,
-    pub format: wgpu::TextureFormat,
+    pub(crate) inner: wgpu::Texture,
+    pub(crate) size: wgpu::Extent3d,
+    pub(crate) sampler: wgpu::Sampler,
+    pub(crate) format: wgpu::TextureFormat,
 }
 
 impl Texture {
@@ -102,11 +103,6 @@ impl Texture {
     }
 
     /// Internal method to create a Texture marked as a destination for rendering
-    ///
-    /// Unlike the other methods that create a Texture resource in the GPU and
-    /// return a TextureId, this will return Self so it can be owned by a Target.
-    ///
-    /// This method is used internally by the `Target::create_texture()` method.
     pub fn create_destination_texture(context: &RenderContext, size: wgpu::Extent3d) -> Self {
         let label = "Render Target Texture";
         let format = wgpu::TextureFormat::Rgba8UnormSrgb;
@@ -149,12 +145,20 @@ impl Texture {
         }
     }
 
-    pub fn size(&self) -> wgpu::Extent3d {
-        self.size
+    pub fn sampler(&self) -> &wgpu::Sampler {
+        &self.sampler
+    }
+
+    pub fn size(&self) -> Size {
+        self.size.into()
     }
 
     pub fn aspect(&self) -> f32 {
         self.size.width as f32 / self.size.height as f32
+    }
+
+    pub fn format(&self) -> wgpu::TextureFormat {
+        self.format
     }
 
     /// Creates a texture descriptor for a Source Texture
