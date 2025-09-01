@@ -510,6 +510,7 @@ impl From<UniformData> for glam::Vec4 {
         }
     }
 }
+
 // Matrices
 impl From<[[f32; 2]; 2]> for UniformData {
     fn from(value: [[f32; 2]; 2]) -> Self {
@@ -602,16 +603,16 @@ impl TryFrom<wasm_bindgen::JsValue> for UniformData {
         use js_sys::{Array, Float32Array, Int32Array, Uint32Array};
         use wasm_bindgen::JsCast;
 
-        if let Ok(arr) = value.dyn_into::<Float32Array>() {
+        if let Some(arr) = value.dyn_ref::<Float32Array>() {
             return arr.try_into();
         }
-        if let Ok(arr) = value.dyn_into::<Int32Array>() {
+        if let Some(arr) = value.dyn_ref::<Int32Array>() {
             return arr.try_into();
         }
-        if let Ok(arr) = value.dyn_into::<Uint32Array>() {
+        if let Some(arr) = value.dyn_ref::<Uint32Array>() {
             return arr.try_into();
         }
-        if let Ok(arr) = value.dyn_into::<Array>() {
+        if let Some(arr) = value.dyn_ref::<Array>() {
             return arr.try_into();
         }
         if let Some(n) = value.as_f64() {
@@ -632,10 +633,10 @@ impl TryFrom<wasm_bindgen::JsValue> for UniformData {
 }
 
 #[cfg(wasm)]
-impl TryFrom<js_sys::Float32Array> for UniformData {
+impl TryFrom<&js_sys::Float32Array> for UniformData {
     type Error = crate::error::ShaderError;
 
-    fn try_from(arr: js_sys::Float32Array) -> Result<Self, Self::Error> {
+    fn try_from(arr: &js_sys::Float32Array) -> Result<Self, Self::Error> {
         let len = arr.length() as usize;
         if len > 16 {
             return Err(crate::error::ShaderError::TypeMismatch(format!(
@@ -676,10 +677,10 @@ impl TryFrom<js_sys::Float32Array> for UniformData {
 }
 
 #[cfg(wasm)]
-impl TryFrom<js_sys::Int32Array> for UniformData {
+impl TryFrom<&js_sys::Int32Array> for UniformData {
     type Error = crate::error::ShaderError;
 
-    fn try_from(arr: js_sys::Int32Array) -> Result<Self, Self::Error> {
+    fn try_from(arr: &js_sys::Int32Array) -> Result<Self, Self::Error> {
         let len = arr.length() as usize;
         if len > 4 {
             return Err(crate::error::ShaderError::TypeMismatch(format!(
@@ -706,10 +707,10 @@ impl TryFrom<js_sys::Int32Array> for UniformData {
 }
 
 #[cfg(wasm)]
-impl TryFrom<js_sys::Uint32Array> for UniformData {
+impl TryFrom<&js_sys::Uint32Array> for UniformData {
     type Error = crate::error::ShaderError;
 
-    fn try_from(arr: js_sys::Uint32Array) -> Result<Self, Self::Error> {
+    fn try_from(arr: &js_sys::Uint32Array) -> Result<Self, Self::Error> {
         let len = arr.length() as usize;
         if len > 4 {
             return Err(crate::error::ShaderError::TypeMismatch(format!(
@@ -736,10 +737,10 @@ impl TryFrom<js_sys::Uint32Array> for UniformData {
 }
 
 #[cfg(wasm)]
-impl TryFrom<js_sys::Array> for UniformData {
+impl TryFrom<&js_sys::Array> for UniformData {
     type Error = crate::error::ShaderError;
 
-    fn try_from(array: js_sys::Array) -> Result<Self, Self::Error> {
+    fn try_from(array: &js_sys::Array) -> Result<Self, Self::Error> {
         let length = array.length();
         if length == 0 {
             return Err(crate::error::ShaderError::TypeMismatch(

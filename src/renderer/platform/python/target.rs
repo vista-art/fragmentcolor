@@ -7,16 +7,16 @@ use std::sync::Arc;
 /// The context hook that will be called from Python by RenderCanvas
 /// When the user calls `RenderCanvas.get_context("fragmentcolor")`
 pub fn rendercanvas_context_hook(
-    canvas: PyObject,
-    present_methods: PyObject,
+    canvas: Py<PyAny>,
+    present_methods: Py<PyAny>,
 ) -> RenderCanvasTarget {
     RenderCanvasTarget::new(canvas, present_methods)
 }
 
 #[pyclass(dict)]
 pub struct RenderCanvasTarget {
-    canvas: PyObject,
-    _present_methods: PyObject, // @TODO figure how RenderCanvas expects me to use this
+    canvas: Py<PyAny>,
+    _present_methods: Py<PyAny>, // @TODO figure how RenderCanvas expects me to use this
     target: Option<WindowTarget>,
 }
 
@@ -34,7 +34,7 @@ impl RenderCanvasTarget {
 #[pymethods]
 impl RenderCanvasTarget {
     #[new]
-    pub fn new(canvas: PyObject, _present_methods: PyObject) -> Self {
+    pub fn new(canvas: Py<PyAny>, _present_methods: Py<PyAny>) -> Self {
         Self {
             canvas,
             _present_methods,
@@ -59,16 +59,16 @@ impl RenderCanvasTarget {
     // duck-typed interface that a context must implement, to be usable with RenderCanvas.
     // Upstream documentation: https://rendercanvas.readthedocs.io/stable/contextapi.html
     //
-    // fn canvas(&self) -> PyObject;
+    // fn canvas(&self) -> Py<PyAny>;
     // fn present(&self) -> Result<Py<PyDict>, PyErr>;
 
     #[getter]
-    pub fn canvas(&self) -> PyObject {
-        Python::with_gil(|py| self.canvas.clone_ref(py))
+    pub fn canvas(&self) -> Py<PyAny> {
+        Python::attach(|py| self.canvas.clone_ref(py))
     }
 
     pub fn present(&self) -> Result<Py<PyDict>, PyErr> {
-        Python::with_gil(|py| -> PyResult<Py<PyDict>> {
+        Python::attach(|py| -> PyResult<Py<PyDict>> {
             let dict = PyDict::new(py);
 
             if let Some(target) = &self.target {

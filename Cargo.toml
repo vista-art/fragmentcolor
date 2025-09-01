@@ -18,7 +18,8 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 [features]
 glsl = []
 shadertoy = ["glsl"]
-python = ["pyo3"]
+use_winit = ["winit"]
+python = ["pyo3", "pollster", "raw-window-handle", "objc2", "objc2-app-kit"]
 
 [dependencies]
 # Python FFI
@@ -32,36 +33,20 @@ pyo3 = { version = "0.26", features = [
 wgpu = { version = "26", features = ["glsl", "wgsl", "webgl", "naga-ir"] }
 thiserror = { version = "2" }
 glam = { version = "0.30" }
-encase = { version = "0.11" }
 bytemuck = { version = "1" }
-flume = { version = "0.11" }
-indoc = { version = "2" }
 log = { version = "0.4" }
 sha2 = { version = "0.10" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0" }
 parking_lot = { version = "0.12" }
-cfg-if = { version = "1" }
+lsp_doc = { git = "https://github.com/rafaelbeckel/lsp_doc", version = "0.2" }
 
 # Shader composition
 naga = { version = "26" }
-naga_oil = { version = "0.19" }
+# naga_oil = { version = "0.19" }
 
 # Serialization
 csscolorparser = "0.7"
-fxhash = "0.2"
-
-# Async
-pollster = "0.4"
-
-# Text rendering
-wgpu_text = "26"
-
-# Time
-instant = "0.1"
-
-# Logging
-env_logger = "0.11"
 
 # Asset loading
 image = { version = "0.25", default-features = false, features = [
@@ -69,39 +54,29 @@ image = { version = "0.25", default-features = false, features = [
     "png",
     "bmp",
     "hdr",
-    "dds",
 ] }
-gltf = { version = "1", features = [
-    "names",
-    "utils",
-    "KHR_lights_punctual",
-], optional = true }
-obj = { version = "0.10", optional = true }
-ddsfile = "0.5"
 
 # Sync
-futures-intrusive = "0.5"
 dashmap = "6.1.0"
-lsp_doc = { git = "https://github.com/rafaelbeckel/lsp_doc", version = "0.2" }
 
 # MacOS
 [target.'cfg(target_os = "macos")'.dependencies]
-cocoa = "0.26"
-objc2 = "0.6"
-objc2-app-kit = "0.3"
+objc2 = { version = "0.6", optional = true }
+objc2-app-kit = { version = "0.3", optional = true }
 
 # Android & iOS FFI
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 uniffi = { version = "0.29" }
 ureq = { version = "3", default-features = false }
-raw-window-handle = { version = "0.6" }
-winit = { version = "0.30", features = ["serde"] }
+raw-window-handle = { version = "0.6", optional = true }
+pollster = { version = "0.4", optional = true }
+winit = { version = "0.30", features = ["serde"], optional = true }
 
-# iOS Specific
-[target.'cfg(target_os = "ios")'.dependencies]
-objc = "0.2"
-objc2-app-kit = "0.3"
-core-graphics = "0.25"
+# iOS Specific (Not implemented yet)
+# [target.'cfg(target_os = "ios")'.dependencies]
+# objc = "0.2"
+# objc2-app-kit = "0.3"
+# core-graphics = "0.25"
 
 # WASM-Specific
 [target.'cfg(target_family = "wasm")'.dependencies]
@@ -132,3 +107,4 @@ cfg_aliases = "0.2"
 
 [dev-dependencies]
 rand = { version = "0.9" }
+pollster = { version = "0.4" }

@@ -30,13 +30,6 @@ impl From<wgpu::Extent3d> for Region {
     }
 }
 
-#[cfg(not(wasm))]
-impl From<&winit::dpi::PhysicalSize<u32>> for Region {
-    fn from(s: &winit::dpi::PhysicalSize<u32>) -> Self {
-        Self::from_size(s.width, s.height)
-    }
-}
-
 impl Region {
     pub fn new(origin: impl Into<(u32, u32)>, size: impl Into<(u32, u32)>) -> Self {
         let (x, y) = origin.into();
@@ -123,26 +116,6 @@ impl Region {
             width: self.width(),
             height: self.height(),
             depth_or_array_layers: 1,
-        }
-    }
-
-    #[cfg(not(wasm))]
-    pub fn from_window_size(size: &winit::dpi::PhysicalSize<u32>) -> Self {
-        Self {
-            min_x: 0,
-            min_y: 0,
-            max_x: size.width,
-            max_y: size.height,
-        }
-    }
-
-    #[cfg(not(wasm))]
-    pub fn from_window_logical_size(size: &winit::dpi::LogicalSize<u32>) -> Self {
-        Self {
-            min_x: 0,
-            min_y: 0,
-            max_x: size.width,
-            max_y: size.height,
         }
     }
 

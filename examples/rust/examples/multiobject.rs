@@ -19,7 +19,9 @@ struct State {
 impl State {
     async fn new(window: Arc<Window>) -> State {
         let renderer = Renderer::new();
-        let target = renderer.create_target(window.clone()).await.unwrap();
+        let w = window.inner_size().width;
+        let h = window.inner_size().height;
+        let target = renderer.create_target(window.clone(), w, h).await.unwrap();
         let size = target.size();
 
         let triangle_source = include_str!("hello_triangle.wgsl");

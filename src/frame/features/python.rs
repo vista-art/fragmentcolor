@@ -21,8 +21,4 @@ impl Frame {
     pub fn add_pass_py(&mut self, pass: &Pass) {
         self.passes.push(pass.object.clone());
     }
-
-    pub fn renderable_type(&self) -> &'static str {
-        "Frame"
-    }
 }

@@ -1,5 +1,7 @@
-use crate::Renderer;
+use crate::{Frame, Pass, Renderer, Shader, ShaderError};
+use lsp_doc::lsp_doc;
 use wasm_bindgen::JsCast;
+use wasm_bindgen::convert::TryFromJsValue;
 use wasm_bindgen::prelude::*;
 
 pub mod target;
@@ -47,15 +49,16 @@ impl From<web_sys::OffscreenCanvas> for Canvas {
 }
 
 #[wasm_bindgen]
-#[doc = include_str!("../../docs/renderer.md")]
 impl Renderer {
     #[wasm_bindgen(constructor)]
+    #[lsp_doc("docs/api/renderer/constructor.md")]
     /// Creates a new Renderer
     pub fn new_js() -> Self {
         Self::new()
     }
 
     #[wasm_bindgen(js_name = "createTarget")]
+    #[lsp_doc("docs/api/renderer/create_target.md")]
     pub async fn create_target(&self, canvas: JsValue) -> Result<CanvasTarget, JsError> {
         let canvas = if canvas.has_type::<web_sys::HtmlCanvasElement>() {
             let canvas = canvas.dyn_into::<web_sys::HtmlCanvasElement>().unwrap();
@@ -79,5 +82,21 @@ impl Renderer {
         };
 
         Ok(CanvasTarget::new(context, surface, config))
+    }
+
+    #[wasm_bindgen(js_name = "render")]
+    #[lsp_doc("docs/api/renderer/render.md")]
+    pub fn render_js(&self, renderable: JsValue, target: CanvasTarget) -> Result<(), ShaderError> {
+        if let Ok(shader) = Shader::try_from_js_value(renderable.clone()) {
+            return self.render(&shader, &target);
+        } else if let Ok(pass) = Pass::try_from_js_value(renderable.clone()) {
+            return self.render(&pass, &target);
+        } else if let Ok(frame) = Frame::try_from_js_value(renderable) {
+            return self.render(&frame, &target);
+        } else {
+            return Err(ShaderError::WasmError(
+                "Invalid object type in render".to_string(),
+            ));
+        }
     }
 }

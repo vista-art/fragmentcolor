@@ -7,8 +7,16 @@
 - [x] fix: Shader went without .set() to NPM (WASM)
 - [x] Automate Doc-string replication to all bindings
 - [x] Create a distribution via GH release
-    - [x] Python
-    - [x] Javascript
+  - [x] Python
+  - [x] Javascript
+- [ ] Automate documentation with xtask
+  - [x] Move Doc Comments to separate MD files
+  - [ ] Doc-comments MD files will be replicated on:
+    - [ ] Rust Doc-comments
+    - [ ] Python Wrappers
+    - [ ] JS Wrappers
+    - [ ] Website
+  - [ ] Reconfigure Vercel to use this repository instead
 - [x] Update documentation and examples
   - [x] Renderer
     - [x] constructor
@@ -28,9 +36,7 @@
   - [ ] Frame
     - [ ] constructor
     - [ ] add_pass
-- [ ] Examples must use the published version
-- [ ] Update website automatically from docs
-- [ ] Refine build and publish processes
+- [ ] Examples must use the actual published version
 - [ ] EndToEnd tests to validate the public API
 - [ ] Implement Texture API
   - [ ] Renderer.create_texture(&image) -> Texture
@@ -40,20 +46,15 @@
   - [ ] Texture
   - [ ] StorageTexture
   - [ ] Sampler
+- [ ] Implement Geometry Object
+  - [ ] Vertex
+  - [ ] Instances
+  - [ ] Shader method to accept it as input
 
 ### V 0.10.8 Automation and Build System to keep bindings in sync
 
 - [ ] Incorporate the Website in the repository
 - [ ] Adopt xtask
-- [ ] Automate documentation with xtask
-  - [ ] Move Doc Comments to separate MD files
-  - [ ] Doc-comments MD files will be replicated on:
-     - [ ] Doc-comments
-     - [ ] Python Wrappers
-     - [ ] JS Wrappers
-     - [ ] Website
-  - [ ] Copy all doc comments to Website
-  - [ ] Reconfigure Vercel to use this repository instead
 - [ ] Add more examples
 - [ ] Update website content
 - [ ] Refine build and publish processes
@@ -89,7 +90,7 @@
 ## Backlog
 
 - [ ] Support 3D Textures
-  - [ ] (check RenderPassColorAttachment.depth_slice) 
+  - [ ] (check RenderPassColorAttachment.depth_slice)
 
 - [ ] Support other types of Window integrations in Python (decouple from RenderCanvas)
   - [ ] Qt

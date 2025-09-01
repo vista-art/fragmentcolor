@@ -6,21 +6,22 @@ description: Target is the rendering destination for a Renderer.
 
 ## Description
 
-The **Target** object is the rendering destination for a Renderer.
+The [Target](https://fragmentcolor.org/api/target) object is a rendering destination.
 
 It contains the GPU surface texture attached to a HTML Canvas or a platform-specific Window.
 
-The constructor for a **Target** is private. You must create it with the `init` function in [FragmentColor](/api/fragmentcolor).
+The constructor for a **Target** is private. You must create it with the `create_target` method from the [Renderer](https://fragmentcolor.org/api/renderer).
 
 ## Example
 
 ```js
 import { FragmentColor } from "fragmentcolor";
 
-let canvas = document.getElementById("canvas");
-[renderer, target] = FragmentColor.init(canvas);
+const canvas = document.getElementById("canvas");
+const renderer = new Renderer()
+const target = renderer.createTarget(canvas);
 
-renderer.createTarget(canvas)
+renderer.render(canvas, target);
 ```
 
 ## Methods

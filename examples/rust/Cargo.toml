@@ -1,0 +1,14 @@
+[package]
+name = "fragmentcolor_examples"
+description = "FragmentColor Examples"
+repository = "https://github.com/vista-art/fragmentcolor"
+license = "MIT"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+fragmentcolor = { path = "../..", features = ["use_winit"] }
+
+[build-dependencies]
+rand = { version = "0.9" }
+pollster = { version = "0.4" }
