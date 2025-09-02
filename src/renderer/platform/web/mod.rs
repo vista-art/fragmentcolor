@@ -1,4 +1,4 @@
-use crate::{Frame, Pass, Renderer, Shader, ShaderError};
+use crate::{Frame, Pass, Renderer, Shader, ShaderError, Size};
 use lsp_doc::lsp_doc;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::convert::TryFromJsValue;
@@ -84,18 +84,47 @@ impl Renderer {
         Ok(CanvasTarget::new(context, surface, config))
     }
 
+    #[wasm_bindgen(js_name = "createTextureTarget")]
+    #[lsp_doc("docs/api/renderer/create_texture_target.md")]
+    pub async fn create_texture_target_js(&self, size: Size) -> Result<TextureTarget, JsError> {
+        let target = self
+            .create_texture_target(size)
+            .await
+            .map_err(|e| JsError::new(&format!("{e}")))?;
+
+        Ok(TextureTarget::from(target))
+    }
+
     #[wasm_bindgen(js_name = "render")]
     #[lsp_doc("docs/api/renderer/render.md")]
-    pub fn render_js(&self, renderable: JsValue, target: CanvasTarget) -> Result<(), ShaderError> {
-        if let Ok(shader) = Shader::try_from_js_value(renderable.clone()) {
-            return self.render(&shader, &target);
-        } else if let Ok(pass) = Pass::try_from_js_value(renderable.clone()) {
-            return self.render(&pass, &target);
-        } else if let Ok(frame) = Frame::try_from_js_value(renderable) {
-            return self.render(&frame, &target);
+    pub fn render_js(&self, renderable: JsValue, target: JsValue) -> Result<(), ShaderError> {
+        if let Ok(canvas_target) = CanvasTarget::try_from_js_value(target.clone()) {
+            if let Ok(shader) = Shader::try_from_js_value(renderable.clone()) {
+                return self.render(&shader, &canvas_target);
+            } else if let Ok(pass) = Pass::try_from_js_value(renderable.clone()) {
+                return self.render(&pass, &canvas_target);
+            } else if let Ok(frame) = Frame::try_from_js_value(renderable) {
+                return self.render(&frame, &canvas_target);
+            } else {
+                return Err(ShaderError::WasmError(
+                    "Invalid object type in render".to_string(),
+                ));
+            };
+        } else if let Ok(texture_target) = TextureTarget::try_from_js_value(target) {
+            if let Ok(shader) = Shader::try_from_js_value(renderable.clone()) {
+                return self.render(&shader, &texture_target);
+            } else if let Ok(pass) = Pass::try_from_js_value(renderable.clone()) {
+                return self.render(&pass, &texture_target);
+            } else if let Ok(frame) = Frame::try_from_js_value(renderable) {
+                return self.render(&frame, &texture_target);
+            } else {
+                return Err(ShaderError::WasmError(
+                    "Invalid object type in render".to_string(),
+                ));
+            };
         } else {
             return Err(ShaderError::WasmError(
-                "Invalid object type in render".to_string(),
+                "Invalid target type in render".to_string(),
             ));
         }
     }

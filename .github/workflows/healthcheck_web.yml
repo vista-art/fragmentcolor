@@ -1,0 +1,52 @@
+name: Healthcheck Web (pkg)
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  healthcheck-web:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install wasm-pack
+        uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-pack
+
+      - name: Build web package
+        run: |
+          chmod +x ./build_web.sh
+          ./build_web.sh
+
+      - name: Start static server (platforms/web)
+        run: |
+          python3 -m http.server 8765 -d platforms/web &
+          sleep 2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Playwright
+        working-directory: platforms/web/healthcheck
+        run: |
+          npm init -y >/dev/null 2>&1 || true
+          npm i playwright@^1 --no-audit --no-fund --no-progress
+          npx playwright install --with-deps chromium
+
+      - name: Run browser healthcheck
+        run: |
+          node platforms/web/healthcheck/playwright.mjs http://localhost:8765/healthcheck/
+

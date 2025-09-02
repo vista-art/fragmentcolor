@@ -152,3 +152,42 @@ impl TargetFrame for RenderCanvasFrame {
         false
     }
 }
+
+// Headless texture target for Python
+#[pyclass(name = "TextureTarget")]
+pub struct PyTextureTarget {
+    inner: crate::TextureTarget,
+}
+
+#[pymethods]
+impl PyTextureTarget {
+    #[getter]
+    pub fn size(&self) -> [u32; 2] {
+        let size = <Self as Target>::size(self);
+        [size.width, size.height]
+    }
+
+    pub fn resize(&mut self, size: Size) {
+        <Self as Target>::resize(self, size);
+    }
+}
+
+impl From<crate::TextureTarget> for PyTextureTarget {
+    fn from(value: crate::TextureTarget) -> Self {
+        Self { inner: value }
+    }
+}
+
+impl Target for PyTextureTarget {
+    fn size(&self) -> Size {
+        self.inner.size()
+    }
+
+    fn resize(&mut self, size: impl Into<Size>) {
+        <crate::TextureTarget as Target>::resize(&mut self.inner, size);
+    }
+
+    fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, wgpu::SurfaceError> {
+        self.inner.get_current_frame()
+    }
+}
