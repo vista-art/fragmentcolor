@@ -1,9 +1,35 @@
+import ctypes
+
+# Workaround for macOS code signature issue
+try:
+    ctypes.CDLL(
+        '/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/python/fragmentcolor/fragmentcolor.abi3.so')
+except OSError as e:
+    if 'code signature in' in str(e) and 'not valid for use in process' in str(e):
+        print("\n\nMacOS Code Signature Issue Detected!\n")
+        print("To resolve this, please run the following command in your terminal:")
+        print("xattr -c /Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/python/fragmentcolor/fragmentcolor.abi3.so\n")
+        print("After running the command, try executing the script again.\n\n")
+        exit(1)
+    else:
+        raise
+
 from fragmentcolor import Renderer, Shader, Pass, Frame
 
 
 def run():
     renderer = Renderer()
     target = renderer.create_texture_target((64, 64))
+
+    # Verify initial size and exercise resize conversions (list, tuple, dict)
+    assert target.size == [64, 64], f"Unexpected initial size: {target.size}"
+    target.resize([128, 64])
+    assert target.size == [128, 64], f"Resize via list failed: {target.size}"
+    target.resize((256, 128))
+    assert target.size == [256, 128], f"Resize via tuple failed: {target.size}"
+    target.resize({"width": 32, "height": 16})
+    assert target.size == [32, 16], f"Resize via dict failed: {target.size}"
+    print("TextureTarget.resize conversions OK")
 
     shader = Shader("""
 struct VertexOutput {

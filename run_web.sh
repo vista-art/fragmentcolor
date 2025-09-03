@@ -3,8 +3,9 @@ set -euo pipefail
 
 # Run the JavaScript examples dev server from the repo root and open a page.
 # Usage:
-#   bash scripts/dev_js.sh           # opens index (single-shader circle)
-#   bash scripts/dev_js.sh multipass # opens multipass example
+#   bash ren_web.sh           # opens index (single-shader circle)
+#   bash ren_web.sh multipass # opens multipass example
+#   bash ren_web.sh headless  # opens headless example
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 EX_DIR="$ROOT_DIR/examples/javascript"
