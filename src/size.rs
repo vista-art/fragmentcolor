@@ -1,5 +1,7 @@
 #[cfg(wasm)]
 use wasm_bindgen::prelude::*;
+#[cfg(wasm)]
+use wasm_bindgen::JsCast;
 
 #[cfg(python)]
 use pyo3::FromPyObject;
@@ -172,6 +174,102 @@ impl From<&[u32; 3]> for Size {
 impl From<&Size> for [u32; 3] {
     fn from(size: &Size) -> Self {
         [size.width, size.height, size.depth.unwrap_or(1)]
+    }
+}
+
+#[cfg(wasm)]
+impl TryFrom<wasm_bindgen::JsValue> for Size {
+    type Error = crate::error::ShaderError;
+
+    fn try_from(value: wasm_bindgen::JsValue) -> Result<Self, Self::Error> {
+        use js_sys::{Array, Float32Array, Int32Array, Reflect, Uint32Array};
+
+        if let Some(arr) = value.dyn_ref::<Uint32Array>() {
+            let len = arr.length();
+            if len == 2 {
+                let mut buf = [0u32; 2];
+                arr.copy_to(&mut buf);
+                return Ok(Size::new(buf[0], buf[1], None));
+            }
+            if len == 3 {
+                let mut buf = [0u32; 3];
+                arr.copy_to(&mut buf);
+                return Ok(Size::new(buf[0], buf[1], Some(buf[2])));
+            }
+        }
+        if let Some(arr) = value.dyn_ref::<Int32Array>() {
+            let len = arr.length();
+            if len == 2 {
+                let mut buf = [0i32; 2];
+                arr.copy_to(&mut buf);
+                return Ok(Size::new(buf[0].max(0) as u32, buf[1].max(0) as u32, None));
+            }
+            if len == 3 {
+                let mut buf = [0i32; 3];
+                arr.copy_to(&mut buf);
+                return Ok(Size::new(
+                    buf[0].max(0) as u32,
+                    buf[1].max(0) as u32,
+                    Some(buf[2].max(0) as u32),
+                ));
+            }
+        }
+        if let Some(arr) = value.dyn_ref::<Float32Array>() {
+            let len = arr.length();
+            if len == 2 {
+                let mut buf = [0.0f32; 2];
+                arr.copy_to(&mut buf);
+                return Ok(Size::new(buf[0].max(0.0) as u32, buf[1].max(0.0) as u32, None));
+            }
+            if len == 3 {
+                let mut buf = [0.0f32; 3];
+                arr.copy_to(&mut buf);
+                return Ok(Size::new(
+                    buf[0].max(0.0) as u32,
+                    buf[1].max(0.0) as u32,
+                    Some(buf[2].max(0.0) as u32),
+                ));
+            }
+        }
+
+        if let Some(arr) = value.dyn_ref::<Array>() {
+            let len = arr.length();
+            let num_at = |i: u32| arr.get(i).as_f64().unwrap_or(0.0);
+            if len == 2 {
+                let w = num_at(0).max(0.0) as u32;
+                let h = num_at(1).max(0.0) as u32;
+                return Ok(Size::new(w, h, None));
+            }
+            if len == 3 {
+                let w = num_at(0).max(0.0) as u32;
+                let h = num_at(1).max(0.0) as u32;
+                let d = num_at(2).max(0.0) as u32;
+                return Ok(Size::new(w, h, Some(d)));
+            }
+        }
+
+        if value.is_object() {
+            let width = Reflect::get(&value, &JsValue::from_str("width"))
+                .ok()
+                .and_then(|v| v.as_f64())
+                .unwrap_or(0.0) as u32;
+            let height = Reflect::get(&value, &JsValue::from_str("height"))
+                .ok()
+                .and_then(|v| v.as_f64())
+                .unwrap_or(0.0) as u32;
+            let depth = Reflect::get(&value, &JsValue::from_str("depth"))
+                .ok()
+                .and_then(|v| v.as_f64())
+                .map(|v| v as u32);
+
+            if width != 0 && height != 0 {
+                return Ok(Size::new(width, height, depth));
+            }
+        }
+
+        Err(crate::error::ShaderError::TypeMismatch(
+            "Cannot convert JavaScript value to Size (expected [w,h] or [w,h,d])".into(),
+        ))
     }
 }
 

@@ -8,15 +8,27 @@ const ARTIFACT_DIR = process.env.ARTIFACT_DIR || path.join(process.cwd(), 'platf
 (async () => {
   await fs.mkdir(ARTIFACT_DIR, { recursive: true }).catch(() => {});
 
+  const isMac = process.platform === 'darwin';
+  const args = isMac
+    ? [
+        '--no-sandbox',
+        '--enable-webgl',
+        '--ignore-gpu-blocklist',
+        '--use-gl=angle',
+        '--use-angle=metal',
+        '--enable-unsafe-webgpu',
+      ]
+    : [
+        '--no-sandbox',
+        '--use-angle=swiftshader',
+        '--use-gl=swiftshader-webgl',
+        '--disable-gpu-sandbox',
+        '--disable-software-rasterizer=false',
+      ];
+
   const browser = await chromium.launch({
     headless: true,
-    args: [
-      '--no-sandbox',
-      '--use-angle=swiftshader',
-      '--use-gl=swiftshader-webgl',
-      '--disable-gpu-sandbox',
-      '--disable-software-rasterizer=false',
-    ],
+    args,
   });
   const page = await browser.newPage();
 
