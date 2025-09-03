@@ -51,7 +51,8 @@ impl RenderCanvasTarget {
         [size.width, size.height]
     }
 
-    pub fn resize(&mut self, size: Size) {
+    pub fn resize(&mut self, size: crate::PySize) {
+        let size: Size = size.into();
         <Self as Target>::resize(self, size);
     }
 
@@ -167,7 +168,8 @@ impl PyTextureTarget {
         [size.width, size.height]
     }
 
-    pub fn resize(&mut self, size: Size) {
+    pub fn resize(&mut self, size: crate::PySize) {
+        let size: Size = size.into();
         <Self as Target>::resize(self, size);
     }
 }

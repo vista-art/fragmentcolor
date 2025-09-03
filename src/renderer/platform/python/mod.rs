@@ -1,4 +1,4 @@
-use crate::{FragmentColorError, Frame, Pass, Renderer, Shader};
+use crate::{FragmentColorError, Frame, Pass, PySize, Renderer, Shader, Size};
 use lsp_doc::lsp_doc;
 use pyo3::exceptions::PyTypeError;
 use pyo3::prelude::*;
@@ -90,7 +90,7 @@ impl Renderer {
 
     #[lsp_doc("docs/api/renderer/create_texture_target.md")]
     #[pyo3(name = "create_texture_target")]
-    pub fn create_texture_target_py(&self, size: (u32, u32)) -> Result<Py<PyTextureTarget>, PyErr> {
+    pub fn create_texture_target_py(&self, size: PySize) -> Result<Py<PyTextureTarget>, PyErr> {
         Python::attach(|py| -> Result<Py<PyTextureTarget>, PyErr> {
             let target = pollster::block_on(self.create_texture_target(size))?;
             let py_target: PyTextureTarget = target.into();

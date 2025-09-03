@@ -36,7 +36,8 @@ jobs:
 
       - name: Build wheel
         run: |
-          maturin build --release --out dist
+          chmod +x ./build_py.sh
+          ./build_py.sh
 
       - name: Create venv and install wheel
         run: |
@@ -50,5 +51,5 @@ jobs:
           PYTHONUNBUFFERED: "1"
         run: |
           source .venv/bin/activate
-          python platforms/python/healthcheck.py
+          python -m platforms.python.healthcheck
 
