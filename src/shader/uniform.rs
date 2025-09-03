@@ -616,11 +616,7 @@ impl TryFrom<wasm_bindgen::JsValue> for UniformData {
             return arr.try_into();
         }
         if let Some(n) = value.as_f64() {
-            if n.fract() == 0.0 && n >= i32::MIN as f64 && n <= i32::MAX as f64 {
-                return Ok((n as i32).into());
-            } else {
-                return Ok((n as f32).into());
-            }
+            return Ok((n as f32).into());
         }
         if let Some(b) = value.as_bool() {
             return Ok(b.into());
@@ -756,15 +752,11 @@ impl TryFrom<&js_sys::Array> for UniformData {
 
         let mut buffer = [0.0f64; 16];
         let values = &mut buffer[..length as usize];
-        let mut all_ints = true;
 
         for (i, val) in values.iter_mut().enumerate() {
             match array.get(i as u32).as_f64() {
                 Some(n) => {
                     *val = n;
-                    if n.fract() != 0.0 {
-                        all_ints = false;
-                    }
                 }
                 None => {
                     return Err(crate::error::ShaderError::TypeMismatch(
@@ -774,75 +766,36 @@ impl TryFrom<&js_sys::Array> for UniformData {
             }
         }
 
-        if all_ints && values.iter().all(|&v| v >= 0.0 && v <= u32::MAX as f64) {
-            match values.len() {
-                1 => Ok((values[0] as u32).into()),
-                2 => Ok([values[0] as u32, values[1] as u32].into()),
-                3 => Ok([values[0] as u32, values[1] as u32, values[2] as u32].into()),
-                4 => Ok([
-                    values[0] as u32,
-                    values[1] as u32,
-                    values[2] as u32,
-                    values[3] as u32,
-                ]
-                .into()),
-                _ => Err(crate::error::ShaderError::TypeMismatch(format!(
-                    "Unsupported array length for unsigned integers: {}",
-                    values.len()
-                ))),
-            }
-        } else if all_ints
-            && values
-                .iter()
-                .all(|&v| v >= i32::MIN as f64 && v <= i32::MAX as f64)
-        {
-            match values.len() {
-                1 => Ok((values[0] as i32).into()),
-                2 => Ok([values[0] as i32, values[1] as i32].into()),
-                3 => Ok([values[0] as i32, values[1] as i32, values[2] as i32].into()),
-                4 => Ok([
-                    values[0] as i32,
-                    values[1] as i32,
-                    values[2] as i32,
-                    values[3] as i32,
-                ]
-                .into()),
-                _ => Err(crate::error::ShaderError::TypeMismatch(format!(
-                    "Unsupported array length for integers: {}",
-                    values.len()
-                ))),
-            }
-        } else {
-            let mut float_buffer = [0.0f32; 16];
-            let floats = &mut float_buffer[..values.len()];
-            for (i, v) in values.iter().enumerate() {
-                floats[i] = *v as f32;
-            }
+        // Always treat plain JS arrays as float-based uniforms by default
+        let mut float_buffer = [0.0f32; 16];
+        let floats = &mut float_buffer[..values.len()];
+        for (i, v) in values.iter().enumerate() {
+            floats[i] = *v as f32;
+        }
 
-            match floats.len() {
-                1 => Ok(floats[0].into()),
-                2 => Ok(<[f32; 2]>::try_from(floats).unwrap().into()),
-                3 => Ok(<[f32; 3]>::try_from(floats).unwrap().into()),
-                4 => Ok(<[f32; 4]>::try_from(floats).unwrap().into()),
-                9 => {
-                    let mut mat = [[0.0; 3]; 3];
-                    for (i, chunk) in floats.chunks_exact(3).enumerate() {
-                        mat[i].copy_from_slice(chunk);
-                    }
-                    Ok(mat.into())
+        match floats.len() {
+            1 => Ok(floats[0].into()),
+            2 => Ok(<[f32; 2]>::try_from(floats).unwrap().into()),
+            3 => Ok(<[f32; 3]>::try_from(floats).unwrap().into()),
+            4 => Ok(<[f32; 4]>::try_from(floats).unwrap().into()),
+            9 => {
+                let mut mat = [[0.0; 3]; 3];
+                for (i, chunk) in floats.chunks_exact(3).enumerate() {
+                    mat[i].copy_from_slice(chunk);
                 }
-                16 => {
-                    let mut mat = [[0.0; 4]; 4];
-                    for (i, chunk) in floats.chunks_exact(4).enumerate() {
-                        mat[i].copy_from_slice(chunk);
-                    }
-                    Ok(mat.into())
-                }
-                _ => Err(crate::error::ShaderError::TypeMismatch(format!(
-                    "Unsupported array length: {}",
-                    floats.len()
-                ))),
+                Ok(mat.into())
             }
+            16 => {
+                let mut mat = [[0.0; 4]; 4];
+                for (i, chunk) in floats.chunks_exact(4).enumerate() {
+                    mat[i].copy_from_slice(chunk);
+                }
+                Ok(mat.into())
+            }
+            _ => Err(crate::error::ShaderError::TypeMismatch(format!(
+                "Unsupported array length: {}",
+                floats.len()
+            ))),
         }
     }
 }
