@@ -26,7 +26,8 @@ impl ShaderObject {
             let vertex_module_info = validator
                 .subgroup_stages(ShaderStages::VERTEX)
                 .subgroup_operations(SubgroupOperationSet::all())
-                .validate(&vertex_module)?;
+                .validate(&vertex_module)
+                .map_err(Box::new)?;
 
             wgsl::write_string(
                 &vertex_module,
@@ -44,7 +45,8 @@ impl ShaderObject {
             let fragment_module_info = validator
                 .subgroup_stages(ShaderStages::FRAGMENT)
                 .subgroup_operations(SubgroupOperationSet::all())
-                .validate(&fragment_module)?;
+                .validate(&fragment_module)
+                .map_err(Box::new)?;
 
             wgsl::write_string(
                 &fragment_module,

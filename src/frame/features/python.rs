@@ -12,7 +12,7 @@ impl Frame {
 
     #[pyo3(name = "passes")]
     pub fn passes_py(&self) -> PyPassIterator {
-        let iter = self.passes.iter().map(|pass| pass.clone());
+        let iter = self.passes.iter().cloned();
 
         PyPassIterator(iter.into_iter().collect())
     }
