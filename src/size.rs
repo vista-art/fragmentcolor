@@ -6,8 +6,6 @@ use wasm_bindgen::prelude::*;
 #[cfg(python)]
 use pyo3::FromPyObject;
 #[cfg(python)]
-use pyo3::Py;
-#[cfg(python)]
 use pyo3::prelude::*;
 
 #[cfg_attr(wasm, wasm_bindgen)]
@@ -280,58 +278,58 @@ impl TryFrom<wasm_bindgen::JsValue> for Size {
 #[cfg(python)]
 #[derive(FromPyObject, IntoPyObject)]
 pub enum PySize {
-    List_f64(Vec<f64>),
-    List_u32(Vec<u32>),
-    List_i32(Vec<i32>),
-    Tuple_f64((f64, f64)),
-    Tuple_u32((u32, u32)),
-    Tuple_i32((i32, i32)),
-    Tuple3_f64((f64, f64, f64)),
-    Tuple3_u32((u32, u32, u32)),
-    Tuple3_i32((i32, i32, i32)),
-    Dict_f64(std::collections::HashMap<String, f64>),
-    Dict_u32(std::collections::HashMap<String, u32>),
-    Dict_i32(std::collections::HashMap<String, i32>),
+    ListF64(Vec<f64>),
+    ListU32(Vec<u32>),
+    ListI32(Vec<i32>),
+    TupleF64((f64, f64)),
+    TupleU32((u32, u32)),
+    TupleI32((i32, i32)),
+    Tuple3F64((f64, f64, f64)),
+    Tuple3U32((u32, u32, u32)),
+    Tuple3I32((i32, i32, i32)),
+    DictF64(std::collections::HashMap<String, f64>),
+    DictU32(std::collections::HashMap<String, u32>),
+    DictI32(std::collections::HashMap<String, i32>),
 }
 
 #[cfg(python)]
 impl From<PySize> for Size {
     fn from(value: PySize) -> Self {
         match value {
-            PySize::Tuple_f64((w, h)) => Size::new(w as u32, h as u32, None),
-            PySize::Tuple_u32((w, h)) => Size::new(w, h, None),
-            PySize::Tuple_i32((w, h)) => Size::new(w as u32, h as u32, None),
-            PySize::Tuple3_f64((w, h, d)) => Size::new(w as u32, h as u32, Some(d as u32)),
-            PySize::Tuple3_u32((w, h, d)) => Size::new(w, h, Some(d)),
-            PySize::Tuple3_i32((w, h, d)) => Size::new(w as u32, h as u32, Some(d as u32)),
-            PySize::List_f64(vals) => match vals.as_slice() {
+            PySize::TupleF64((w, h)) => Size::new(w as u32, h as u32, None),
+            PySize::TupleU32((w, h)) => Size::new(w, h, None),
+            PySize::TupleI32((w, h)) => Size::new(w as u32, h as u32, None),
+            PySize::Tuple3F64((w, h, d)) => Size::new(w as u32, h as u32, Some(d as u32)),
+            PySize::Tuple3U32((w, h, d)) => Size::new(w, h, Some(d)),
+            PySize::Tuple3I32((w, h, d)) => Size::new(w as u32, h as u32, Some(d as u32)),
+            PySize::ListF64(vals) => match vals.as_slice() {
                 [w, h] => Size::new(*w as u32, *h as u32, None),
                 [w, h, d] => Size::new(*w as u32, *h as u32, Some(*d as u32)),
                 _ => Size::default(),
             },
-            PySize::List_u32(vals) => match vals.as_slice() {
+            PySize::ListU32(vals) => match vals.as_slice() {
                 [w, h] => Size::new(*w, *h, None),
                 [w, h, d] => Size::new(*w, *h, Some(*d)),
                 _ => Size::default(),
             },
-            PySize::List_i32(vals) => match vals.as_slice() {
+            PySize::ListI32(vals) => match vals.as_slice() {
                 [w, h] => Size::new(*w as u32, *h as u32, None),
                 [w, h, d] => Size::new(*w as u32, *h as u32, Some(*d as u32)),
                 _ => Size::default(),
             },
-            PySize::Dict_f64(map) => {
+            PySize::DictF64(map) => {
                 let w = map.get("width").copied().unwrap_or(0.0) as u32;
                 let h = map.get("height").copied().unwrap_or(0.0) as u32;
                 let d = map.get("depth").copied().map(|v| v as u32);
                 Size::new(w, h, d)
             }
-            PySize::Dict_u32(map) => {
+            PySize::DictU32(map) => {
                 let w = map.get("width").copied().unwrap_or(0);
                 let h = map.get("height").copied().unwrap_or(0);
                 let d = map.get("depth").copied();
                 Size::new(w, h, d)
             }
-            PySize::Dict_i32(map) => {
+            PySize::DictI32(map) => {
                 let w = map.get("width").copied().unwrap_or(0) as u32;
                 let h = map.get("height").copied().unwrap_or(0) as u32;
                 let d = map.get("depth").copied().map(|v| v as u32);

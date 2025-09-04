@@ -1,4 +1,4 @@
-use crate::{FragmentColorError, Frame, Pass, PySize, Renderer, Shader, Size};
+use crate::{FragmentColorError, Frame, Pass, PySize, Renderer, Shader};
 use lsp_doc::lsp_doc;
 use pyo3::exceptions::PyTypeError;
 use pyo3::prelude::*;
@@ -28,7 +28,7 @@ impl Renderer {
     pub fn create_target(&self, rendercanvas: Py<PyAny>) -> Result<Py<RenderCanvasTarget>, PyErr> {
         Python::attach(|py| -> Result<Py<RenderCanvasTarget>, PyErr> {
             // If the target is already initialized, return it
-            let libname = PyTuple::new(py, &["fragmentcolor"])?;
+            let libname = PyTuple::new(py, ["fragmentcolor"])?;
             let py_target = rendercanvas.call_method1(py, "get_context", libname)?; // calls hook
             let bound_target = py_target.downcast_bound::<RenderCanvasTarget>(py)?;
             let mut target = bound_target.borrow_mut();
