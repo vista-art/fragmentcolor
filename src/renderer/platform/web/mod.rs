@@ -1,8 +1,8 @@
 use crate::{Frame, Pass, Renderer, Shader, ShaderError, Size};
 use lsp_doc::lsp_doc;
+use std::convert::TryInto;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::convert::TryFromJsValue;
-use std::convert::TryInto;
 use wasm_bindgen::prelude::*;
 
 pub mod target;
@@ -85,22 +85,22 @@ impl Renderer {
         Ok(CanvasTarget::new(context, surface, config))
     }
 
-#[wasm_bindgen(js_name = "createTextureTarget")]
-#[lsp_doc("docs/api/renderer/create_texture_target.md")]
-pub async fn create_texture_target_js(&self, size: JsValue) -> Result<TextureTarget, JsError> {
-    // Accept either a JS array (e.g., [w, h] or [w, h, d]), a typed array, a plain object
-    // with width/height[/depth], or an exported Size instance
-    let size: Size = size
-        .try_into()
-        .map_err(|e: crate::error::ShaderError| JsError::new(&format!("{e}")))?;
+    #[wasm_bindgen(js_name = "createTextureTarget")]
+    #[lsp_doc("docs/api/renderer/create_texture_target.md")]
+    pub async fn create_texture_target_js(&self, size: JsValue) -> Result<TextureTarget, JsError> {
+        // Accept either a JS array (e.g., [w, h] or [w, h, d]), a typed array, a plain object
+        // with width/height[/depth], or an exported Size instance
+        let size: Size = size
+            .try_into()
+            .map_err(|e: crate::error::ShaderError| JsError::new(&format!("{e}")))?;
 
-    let target = self
-        .create_texture_target(size)
-        .await
-        .map_err(|e| JsError::new(&format!("{e}")))?;
+        let target = self
+            .create_texture_target(size)
+            .await
+            .map_err(|e| JsError::new(&format!("{e}")))?;
 
-    Ok(TextureTarget::from(target))
-}
+        Ok(TextureTarget::from(target))
+    }
 
     #[wasm_bindgen(js_name = "render")]
     #[lsp_doc("docs/api/renderer/render.md")]
