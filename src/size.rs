@@ -1,7 +1,7 @@
 #[cfg(wasm)]
-use wasm_bindgen::prelude::*;
-#[cfg(wasm)]
 use wasm_bindgen::JsCast;
+#[cfg(wasm)]
+use wasm_bindgen::prelude::*;
 
 #[cfg(python)]
 use pyo3::FromPyObject;
@@ -219,7 +219,11 @@ impl TryFrom<wasm_bindgen::JsValue> for Size {
             if len == 2 {
                 let mut buf = [0.0f32; 2];
                 arr.copy_to(&mut buf);
-                return Ok(Size::new(buf[0].max(0.0) as u32, buf[1].max(0.0) as u32, None));
+                return Ok(Size::new(
+                    buf[0].max(0.0) as u32,
+                    buf[1].max(0.0) as u32,
+                    None,
+                ));
             }
             if len == 3 {
                 let mut buf = [0.0f32; 3];
