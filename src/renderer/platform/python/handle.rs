@@ -47,11 +47,7 @@ pub(crate) fn create_raw_handles<'window>(
                 ))?
             };
 
-            let window: c_ulong = window.map_err(|_| {
-                FragmentColorError::new_err(
-                    "Window Id out of range: Could not convert u64 to u32 for Xlib",
-                )
-            })?;
+            let window = window as c_ulong;
 
             let xlib_window_handle = RawWindowHandle::Xlib(XlibWindowHandle::new(window));
             let xlib_display_handle =
