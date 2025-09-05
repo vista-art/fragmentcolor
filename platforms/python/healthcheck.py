@@ -1,20 +1,16 @@
-import ctypes
-
-# Workaround for macOS code signature issue
-try:
-    ctypes.CDLL(
-        '/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/python/fragmentcolor/fragmentcolor.abi3.so')
-except OSError as e:
-    if 'code signature in' in str(e) and 'not valid for use in process' in str(e):
-        print("\n\nMacOS Code Signature Issue Detected!\n")
-        print("To resolve this, please run the following command in your terminal:")
-        print("xattr -c /Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/python/fragmentcolor/fragmentcolor.abi3.so\n")
-        print("After running the command, try executing the script again.\n\n")
-        exit(1)
-    else:
-        raise
-
+import os
+import platform
+import importlib
 from fragmentcolor import Renderer, Shader, Pass, Frame
+
+# Optional debug diagnostics for CI
+if os.environ.get("FC_HEALTHCHECK_VERBOSE") == "1":
+    fc = importlib.import_module("fragmentcolor")
+    try:
+        print(f"fragmentcolor module path: {fc.__file__}")
+    except Exception:
+        pass
+    print(f"platform: {platform.platform()}")
 
 
 def run():
