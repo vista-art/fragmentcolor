@@ -46,10 +46,18 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install dist/*.whl
 
+      - name: Show Python import path
+        run: |
+          source .venv/bin/activate
+          python - <<'PY'
+          import sys, pprint
+          pprint.pp(sys.path)
+          PY
+
       - name: Run healthcheck
         env:
           PYTHONUNBUFFERED: "1"
+          FC_HEALTHCHECK_VERBOSE: "1"
         run: |
           source .venv/bin/activate
           python -m platforms.python.healthcheck
-
