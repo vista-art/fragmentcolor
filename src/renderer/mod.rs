@@ -367,10 +367,7 @@ fn create_bind_group_layouts(
             count: None,
         };
 
-        group_entries
-            .entry(uniform.group)
-            .or_default()
-            .push(entry);
+        group_entries.entry(uniform.group).or_default().push(entry);
     }
 
     let mut layouts = HashMap::new();
