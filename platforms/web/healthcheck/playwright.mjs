@@ -9,21 +9,30 @@ const ARTIFACT_DIR = process.env.ARTIFACT_DIR || path.join(process.cwd(), 'platf
   await fs.mkdir(ARTIFACT_DIR, { recursive: true }).catch(() => {});
 
   const isMac = process.platform === 'darwin';
+  const isLinux = process.platform === 'linux';
+
+  const common = ['--no-sandbox'];
+
   const args = isMac
     ? [
-        '--no-sandbox',
+        ...common,
         '--enable-webgl',
         '--ignore-gpu-blocklist',
         '--use-gl=angle',
         '--use-angle=metal',
         '--enable-unsafe-webgpu',
       ]
+    : isLinux
+    ? [
+        ...common,
+        '--ignore-gpu-blocklist',
+        '--enable-unsafe-webgpu',
+        '--ozone-platform=x11',
+        '--enable-features=Vulkan,VulkanFromANGLE,DefaultANGLEVulkan',
+      ]
     : [
-        '--no-sandbox',
-        '--use-angle=swiftshader',
-        '--use-gl=swiftshader-webgl',
-        '--disable-gpu-sandbox',
-        '--disable-software-rasterizer=false',
+        ...common,
+        '--enable-unsafe-webgpu',
       ];
 
   const browser = await chromium.launch({
