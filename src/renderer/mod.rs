@@ -31,7 +31,8 @@ use wasm_bindgen::prelude::*;
 #[derive(Debug)]
 struct RenderPipeline {
     pipeline: wgpu::RenderPipeline,
-    bind_group_layouts: Vec<wgpu::BindGroupLayout>,
+    // Map of bind group index -> layout (keeps group indices stable)
+    bind_group_layouts: std::collections::HashMap<u32, wgpu::BindGroupLayout>,
 }
 
 #[derive(Debug, Default)]
@@ -265,7 +266,7 @@ impl RenderContext {
 
                     RenderPipeline {
                         pipeline,
-                        bind_group_layouts: layouts.values().cloned().collect(),
+                        bind_group_layouts: layouts,
                     }
                 });
 
@@ -301,19 +302,26 @@ impl RenderContext {
                     });
             }
 
-            let mut bind_groups = Vec::new();
+            // Build bind groups per layout (by group index)
+            let mut bind_groups: Vec<(u32, wgpu::BindGroup)> = Vec::new();
             for (group, entries) in bind_group_entries {
-                let layout = &cached.bind_group_layouts[group as usize];
+                let layout = cached
+                    .bind_group_layouts
+                    .get(&group)
+                    .expect("Missing bind group layout for group");
                 let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
                     layout,
                     entries: &entries,
                     label: Some(&format!("Bind Group for group: {}", group)),
                 });
-                bind_groups.push(bind_group);
+                bind_groups.push((group, bind_group));
             }
 
+            // Sort by group index to match pipeline layout order
+            bind_groups.sort_by_key(|(g, _)| *g);
+
             render_pass.set_pipeline(&cached.pipeline);
-            for (i, bind_group) in bind_groups.iter().enumerate() {
+            for (i, (_, bind_group)) in bind_groups.iter().enumerate() {
                 render_pass.set_bind_group(i as u32, bind_group, &[]);
             }
             // render_pass.set_blend_constant(color);
@@ -335,11 +343,18 @@ fn create_bind_group_layouts(
     device: &wgpu::Device,
     uniforms: &HashMap<String, (u32, u32, Uniform)>,
 ) -> HashMap<u32, wgpu::BindGroupLayout> {
-    let mut group_entries = HashMap::new();
-    for (_, _, uniform) in uniforms.values() {
+    let mut group_entries: HashMap<u32, Vec<wgpu::BindGroupLayoutEntry>> = HashMap::new();
+    for (_, size, uniform) in uniforms.values() {
         if uniform.name.contains('.') {
             continue;
         }
+
+        // WebGPU/Dawn is stricter about uniform binding sizes; ensure a safe minimum.
+        let min_size = {
+            let sz = *size as u64;
+            let padded = wgpu::util::align_to(sz, 16);
+            std::num::NonZeroU64::new(padded).unwrap()
+        };
 
         let entry = wgpu::BindGroupLayoutEntry {
             binding: uniform.binding,
@@ -347,14 +362,14 @@ fn create_bind_group_layouts(
             ty: wgpu::BindingType::Buffer {
                 ty: wgpu::BufferBindingType::Uniform,
                 has_dynamic_offset: false,
-                min_binding_size: None,
+                min_binding_size: Some(min_size),
             },
             count: None,
         };
 
         group_entries
             .entry(uniform.group)
-            .or_insert(Vec::new())
+            .or_default()
             .push(entry);
     }
 
