@@ -8,8 +8,6 @@ pub struct PyRenderable {
 
 impl<'py> From<&'py Bound<'py, Frame>> for PyRenderable {
     fn from(frame: &Bound<'py, Frame>) -> Self {
-        
-
         Python::attach(|_| -> PyResult<Self> {
             let iterator = frame.call_method0("passes")?.extract::<PyPassIterator>()?;
 
@@ -21,8 +19,6 @@ impl<'py> From<&'py Bound<'py, Frame>> for PyRenderable {
 
 impl<'py> From<&'py Bound<'py, Shader>> for PyRenderable {
     fn from(shader: &Bound<'py, Shader>) -> Self {
-        
-
         Python::attach(|_| -> PyResult<Self> {
             let iterator = shader.call_method0("passes")?.extract::<PyPassIterator>()?;
 
@@ -34,8 +30,6 @@ impl<'py> From<&'py Bound<'py, Shader>> for PyRenderable {
 
 impl<'py> From<&'py Bound<'py, Pass>> for PyRenderable {
     fn from(pass: &Bound<'py, Pass>) -> Self {
-        
-
         Python::attach(|_| -> PyResult<Self> {
             let iterator = pass.call_method0("passes")?.extract::<PyPassIterator>()?;
 
