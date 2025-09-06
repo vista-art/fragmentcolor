@@ -1,8 +1,35 @@
 # Roadmap
 
-## Work in Progress
+This roadmap summarizes current focus and planned features.
 
-### V 0.10.7 Wasm Fix and Documentation
+## 0.10.8 Automation & features
+
+- Website & docs
+  - Expand examples coverage across all public API methods
+  - Internationalization groundwork for docs
+- Rendering features
+  - Begin Texture & Sampler support
+  - Optional geometry/instancing groundwork
+- Build system
+  - Improve validation & CI coverage for healthchecks
+
+## 0.10.9 Swift & Kotlin bindings (draft)
+
+- Stabilize initial wrappers
+- Build & packaging automation
+
+## Done (highlights)
+
+### 0.10.7 Documentation automation and release flow
+
+- Built docs automation:
+  - Centralized docs in `docs/api`, wired via `#[lsp_doc]`.
+  - Validation & website generation in `build.rs`.
+  - Healthcheck-driven JavaScript & Python examples.
+- Moved the public website into this repository under `docs/website`.
+- Added post-publish workflow to update examples and website dependencies after npm & PyPI publish.
+
+### 0.10.6 JavaScript support
 
 - [x] fix: Shader went without .set() to NPM (WASM)
 - [x] Automate Doc-string replication to all bindings
