@@ -54,18 +54,21 @@ impl Pass {
         }
     }
 
+    #[lsp_doc("docs/api/pass/compute.md")]
     pub fn compute(name: &str) -> Self {
         Self {
             object: Arc::new(PassObject::new(name, PassType::Compute)),
         }
     }
 
+    #[lsp_doc("docs/api/pass/from_shader.md")]
     pub fn from_shader(name: &str, shader: &Shader) -> Self {
         Self {
             object: Arc::new(PassObject::from_shader_object(name, shader.object.clone())),
         }
     }
 
+    #[lsp_doc("docs/api/pass/load_previous.md")]
     pub fn load_previous(&self) {
         *self.object.input.write() = PassInput {
             load: true,
@@ -73,18 +76,22 @@ impl Pass {
         }
     }
 
+    #[lsp_doc("docs/api/pass/get_input.md")]
     pub fn get_input(&self) -> PassInput {
         self.object.get_input()
     }
 
+    #[lsp_doc("docs/api/pass/add_shader.md")]
     pub fn add_shader(&self, shader: &Shader) {
         self.object.add_shader(shader);
     }
 
+    #[lsp_doc("docs/api/pass/set_viewport.md")]
     pub fn set_viewport(&self, viewport: Region) {
         self.object.set_viewport(viewport);
     }
 
+    #[lsp_doc("docs/api/pass/set_clear_color.md")]
     pub fn set_clear_color(&self, color: [f32; 4]) {
         self.object.set_clear_color(color);
     }

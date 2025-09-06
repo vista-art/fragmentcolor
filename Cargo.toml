@@ -26,13 +26,6 @@ winit = ["dep:winit"]
 python = ["pyo3", "pollster", "raw-window-handle", "objc2", "objc2-app-kit"]
 
 [dependencies]
-# Python FFI
-pyo3 = { version = "0.26", features = [
-    "abi3-py39",
-    "experimental-async",
-    "generate-import-lib",
-], optional = true }
-
 # Rendering
 wgpu = { version = "26", features = ["glsl", "wgsl", "webgl", "naga-ir"] }
 thiserror = { version = "2" }
@@ -42,6 +35,9 @@ log = { version = "0.4" }
 sha2 = { version = "0.10" }
 parking_lot = { version = "0.12" }
 lsp_doc = { git = "https://github.com/rafaelbeckel/lsp_doc", version = "0.2" }
+
+# Reflection
+phf = { version = "0.13", features = ["macros"] }
 
 # Shader composition
 naga = { version = "26" }
@@ -60,6 +56,13 @@ image = { version = "0.25", default-features = false, features = [
 
 # Sync
 dashmap = "6.1.0"
+
+# Python FFI (optional)
+pyo3 = { version = "0.26", features = [
+    "abi3-py39",
+    "experimental-async",
+    "generate-import-lib",
+], optional = true }
 
 # MacOS
 [target.'cfg(target_os = "macos")'.dependencies]
@@ -106,6 +109,10 @@ web-sys = { version = "0.3", features = [
 
 [build-dependencies]
 cfg_aliases = "0.2"
+phf = { version = "0.13", features = ["macros"] }
+phf_codegen = "0.13"
+syn = { version = "2.0", features = ["full"] }
+quote = "1.0"
 
 [dev-dependencies]
 rand = { version = "0.9" }
