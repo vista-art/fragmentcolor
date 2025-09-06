@@ -116,7 +116,7 @@ fn generate_api_map() {
     let mut api_map = extract_public_functions(crate_root.as_ref());
 
     // Filter to top-level public API only and preserve method order
-    let allowed = vec![
+    let allowed = [
         "Shader".to_string(),
         "Renderer".to_string(),
         "Pass".to_string(),
@@ -136,7 +136,7 @@ fn generate_api_map() {
 /// a HashMap of its public functions and their signatures
 fn extract_public_functions(crate_path: &Path) -> ApiMap {
     let mut signatures = ApiMap::new();
-    let (entry_path, parsed_file) = parse_lib_entry_point(crate_path.as_ref());
+let (entry_path, parsed_file) = parse_lib_entry_point(crate_path);
 
     traverse_and_extract(
         entry_path.as_ref(),
@@ -191,27 +191,24 @@ fn traverse_and_extract(
     // Second pass: Loop through all public use statements
     // and check for reexported items in private modules
     for item_use in pub_uses {
-        match &item_use.tree {
-            syn::UseTree::Path(use_path) => {
-                let full_path = extract_full_path_from_use_tree(&item_use.tree);
-                let last_segment = full_path.last().unwrap();
-                let mod_name = last_segment.to_string();
+        if let syn::UseTree::Path(use_path) = &item_use.tree {
+            let full_path = extract_full_path_from_use_tree(&item_use.tree);
+            let last_segment = full_path.last().unwrap();
+            let mod_name = last_segment.to_string();
 
-                if private_modules.get(&mod_name).is_some() {
-                    let mut mod_structs = extract_names_from_use_tree(&use_path.tree);
+            if private_modules.contains(&mod_name) {
+                let mut mod_structs = extract_names_from_use_tree(&use_path.tree);
 
-                    match reexported_modules.entry(mod_name) {
-                        Entry::Vacant(entry) if !mod_structs.is_empty() => {
-                            entry.insert(mod_structs);
-                        }
-                        Entry::Occupied(mut entry) => {
-                            entry.get_mut().append(&mut mod_structs);
-                        }
-                        _ => {}
+                match reexported_modules.entry(mod_name) {
+                    Entry::Vacant(entry) if !mod_structs.is_empty() => {
+                        entry.insert(mod_structs);
                     }
+                    Entry::Occupied(mut entry) => {
+                        entry.get_mut().append(&mut mod_structs);
+                    }
+                    _ => {}
                 }
             }
-            _ => {}
         }
     }
 
@@ -377,10 +374,8 @@ fn extract_impl(item_impl: ItemImpl, signatures: &mut ApiMap, filter: NameFilter
 
     let mut methods = Vec::new();
     for impl_item in &item_impl.items {
-        if let ImplItem::Fn(method) = impl_item {
-            if let Visibility::Public(_) = method.vis {
-                methods.push(extract_signature(&method.sig));
-            }
+        if let ImplItem::Fn(method) = impl_item && matches!(method.vis, Visibility::Public(_)) {
+            methods.push(extract_signature(&method.sig));
         }
     }
 
@@ -533,7 +528,9 @@ mod validation {
         let mut out = String::new();
         for (i, ch) in object.chars().enumerate() {
             if ch.is_uppercase() {
-                if i != 0 { out.push('_'); }
+                if i != 0 {
+                    out.push('_');
+                }
                 out.push(ch.to_ascii_lowercase());
             } else {
                 out.push(ch);
@@ -564,7 +561,12 @@ mod validation {
 
     fn ensure_method_md_ok(object: &str, method: &str, path: &Path, problems: &mut Vec<String>) {
         if !path.exists() {
-            problems.push(format!("Missing method file for {}.{}: {}", object, method, path.display()));
+            problems.push(format!(
+                "Missing method file for {}.{}: {}",
+                object,
+                method,
+                path.display()
+            ));
             return;
         }
         let content = fs::read_to_string(path).unwrap_or_default();
@@ -583,12 +585,25 @@ mod validation {
     }
 
     fn healthcheck_has_block(lang: &str, key: &str, content: &str) -> bool {
-        let begin = format!("{} DOC: {} (begin)", match lang { "py" => "#", _ => "//" }, key);
-        let end = format!("{} DOC: (end)", match lang { "py" => "#", _ => "//" });
+        let begin = format!(
+            "{} DOC: {} (begin)",
+            match lang {
+                "py" => "#",
+                _ => "//",
+            },
+            key
+        );
+        let end = format!(
+            "{} DOC: (end)",
+            match lang {
+                "py" => "#",
+                _ => "//",
+            }
+        );
         content.contains(&begin) && content.contains(&end)
     }
 
-    fn validate_healthchecks(api_map: &ApiMap, problems: &mut Vec<String>) {
+fn validate_healthchecks(_api_map: &ApiMap, problems: &mut Vec<String>) {
         let py_path = meta::workspace_root().join("platforms/python/healthcheck.py");
         let js_path = meta::workspace_root().join("platforms/web/healthcheck/main.js");
         let py = fs::read_to_string(&py_path).unwrap_or_default();
@@ -612,10 +627,18 @@ mod validation {
 
         for key in required_keys {
             if !healthcheck_has_block("py", key, &py) {
-                problems.push(format!("Missing Python DOC block: {} in {}", key, py_path.display()));
+                problems.push(format!(
+                    "Missing Python DOC block: {} in {}",
+                    key,
+                    py_path.display()
+                ));
             }
             if !healthcheck_has_block("js", key, &js) {
-                problems.push(format!("Missing JS DOC block: {} in {}", key, js_path.display()));
+                problems.push(format!(
+                    "Missing JS DOC block: {} in {}",
+                    key,
+                    js_path.display()
+                ));
             }
         }
     }
@@ -635,10 +658,20 @@ mod validation {
                 if let Some(fun) = &m.function {
                     let name = &fun.name;
                     // Skip platform-specific wrapper variants and internal helpers
-                    let skip = name.ends_with("_js") || name.ends_with("_py") || name == "headless" || name == "render_bitmap" || (object == "TextureTarget" && name == "new");
-                    if skip { continue; }
+                    let skip = name.ends_with("_js")
+                        || name.ends_with("_py")
+                        || name == "headless"
+                        || name == "render_bitmap"
+                        || (object == "TextureTarget" && name == "new");
+                    if skip {
+                        continue;
+                    }
 
-                    let file = if name == "new" { "constructor".to_string() } else { to_snake_case(name) };
+                    let file = if name == "new" {
+                        "constructor".to_string()
+                    } else {
+                        to_snake_case(name)
+                    };
                     let path = docs_root.join(&dir).join(format!("{}.md", file));
                     ensure_method_md_ok(object, name, &path, &mut problems);
                 }
@@ -672,13 +705,23 @@ mod validation {
         fn first_paragraph(md: &str) -> String {
             let mut lines = md.lines();
             // Skip H1
-            while let Some(line) = lines.next() {
-                if line.trim().starts_with('#') { break; }
+            for line in lines.by_ref() {
+                if line.trim().starts_with('#') {
+                    break;
+                }
             }
             let mut out = String::new();
             for line in lines {
-                if line.trim().is_empty() { if !out.is_empty() { break; } else { continue; } }
-                if line.trim().starts_with("##") { break; }
+                if line.trim().is_empty() {
+                    if !out.is_empty() {
+                        break;
+                    } else {
+                        continue;
+                    }
+                }
+                if line.trim().starts_with("##") {
+                    break;
+                }
                 out.push_str(line);
                 out.push('\n');
             }
@@ -688,17 +731,25 @@ mod validation {
         fn downshift_headings(md: &str) -> String {
             md.lines()
                 .map(|l| {
-                    if l.starts_with("###") { format!("{}", l) }
-                    else if l.starts_with("##") { format!("###{}", &l[2..]) }
-                    else if l.starts_with('#') { format!("##{}", &l[1..]) }
-                    else { l.to_string() }
+                    if l.starts_with("###") {
+                        l.to_string()
+                    } else if let Some(stripped) = l.strip_prefix("##") {
+                        format!("###{}", stripped)
+                    } else if let Some(stripped) = l.strip_prefix('#') {
+                        format!("##{}", stripped)
+                    } else {
+                        l.to_string()
+                    }
                 })
                 .collect::<Vec<_>>()
                 .join("\n")
         }
 
         fn collect_health_example(lang: &str, key: &str, content: &str) -> Option<String> {
-            let (start_token, end_token) = match lang { "py" => ("#", "#"), _ => ("//", "//") };
+            let (start_token, end_token) = match lang {
+                "py" => ("#", "#"),
+                _ => ("//", "//"),
+            };
             let begin = format!("{} DOC: {} (begin)", start_token, key);
             let end = format!("{} DOC: (end)", end_token);
             if let Some(b) = content.find(&begin) {
@@ -716,19 +767,23 @@ mod validation {
             let root = meta::workspace_root();
             let docs_root = root.join("docs/api");
             let site_root = root.join("docs/website/src/content/docs/api");
-            let py = std::fs::read_to_string(root.join("platforms/python/healthcheck.py")).unwrap_or_default();
-            let js = std::fs::read_to_string(root.join("platforms/web/healthcheck/main.js")).unwrap_or_default();
+            let py = std::fs::read_to_string(root.join("platforms/python/healthcheck.py"))
+                .unwrap_or_default();
+            let js = std::fs::read_to_string(root.join("platforms/web/healthcheck/main.js"))
+                .unwrap_or_default();
 
             for (object, methods) in api_map.iter() {
                 let dir = super::validation::object_dir_name(object);
                 let obj_dir = docs_root.join(&dir);
-                let obj_md = std::fs::read_to_string(obj_dir.join(format!("{}.md", dir))).unwrap_or_default();
+                let obj_md = std::fs::read_to_string(obj_dir.join(format!("{}.md", dir)))
+                    .unwrap_or_default();
                 let description = first_paragraph(&obj_md);
 
                 let mut out = String::new();
-                out.push_str(&format!("---\n"));
+                out.push_str("---\n");
                 out.push_str(&format!("title: {}\n", object));
-                out.push_str(&format!("description: {}\n", description));
+let desc = description.replace('\n', " ").replace('"', "\\\"");
+out.push_str(&format!("description: \"{}\"\n", desc));
                 out.push_str("---\n\n");
 
                 out.push_str("## Description\n\n");
@@ -739,13 +794,22 @@ mod validation {
                 for m in methods {
                     if let Some(fun) = &m.function {
                         let name = &fun.name;
-                        let file = if name == "new" { "constructor".to_string() } else { name.clone() };
-                        let md = std::fs::read_to_string(obj_dir.join(format!("{}.md", file))).unwrap_or_default();
+                        let file = if name == "new" {
+                            "constructor".to_string()
+                        } else {
+                            name.clone()
+                        };
+                        let md = std::fs::read_to_string(obj_dir.join(format!("{}.md", file)))
+                            .unwrap_or_default();
                         out.push_str(&downshift_headings(&md));
                         out.push('\n');
 
                         // Examples: add Python and JS blocks if present
-                        let key = if name == "new" { format!("{}.constructor", object) } else { format!("{}.{}", object, name) };
+                        let key = if name == "new" {
+                            format!("{}.constructor", object)
+                        } else {
+                            format!("{}.{}", object, name)
+                        };
                         if let Some(py_ex) = collect_health_example("py", &key, &py) {
                             out.push_str("\n### Python\n\n```python\n");
                             out.push_str(&py_ex);
