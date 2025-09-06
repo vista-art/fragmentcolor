@@ -1,0 +1,69 @@
+name: Post-publish update consumers
+
+on:
+  push:
+    tags:
+      - '*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update-consumers:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Determine version from tag
+        id: vars
+        run: |
+          # GITHUB_REF looks like refs/tags/v0.10.7 or refs/tags/0.10.7
+          RAW_REF="${GITHUB_REF##*/}"
+          VERSION="${RAW_REF#v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for npm & PyPI availability
+        env:
+          VERSION: ${{ steps.vars.outputs.version }}
+        run: |
+          echo "Waiting for npm fragmentcolor@$VERSION and PyPI fragmentcolor==$VERSION to become available..."
+          for i in $(seq 1 30); do
+            NPM_OK=0
+            PYPI_OK=0
+            if npm view fragmentcolor@"$VERSION" version >/dev/null 2>&1; then NPM_OK=1; fi
+            if curl -sSf "https://pypi.org/pypi/fragmentcolor/$VERSION/json" >/dev/null 2>&1; then PYPI_OK=1; fi
+            if [ "$NPM_OK" = "1" ] && [ "$PYPI_OK" = "1" ]; then
+              echo "Both registries show version $VERSION"; break; fi
+            echo "Not available yet, retrying in 10s... ($i/30)"; sleep 10;
+          done
+
+      - name: Update examples and website dependency to released version
+        env:
+          VERSION: ${{ steps.vars.outputs.version }}
+        run: |
+          # docs/website
+          if [ -f docs/website/package.json ]; then
+            tmp=$(mktemp)
+            jq --arg v "$VERSION" '.dependencies.fragmentcolor = $v' docs/website/package.json > "$tmp" && mv "$tmp" docs/website/package.json
+          fi
+          # examples/javascript
+          if [ -f examples/javascript/package.json ]; then
+            tmp=$(mktemp)
+            jq --arg v "$VERSION" '.dependencies.fragmentcolor = $v' examples/javascript/package.json > "$tmp" && mv "$tmp" examples/javascript/package.json
+          fi
+
+      - name: Commit and push to main
+        env:
+          VERSION: ${{ steps.vars.outputs.version }}
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add docs/website/package.json examples/javascript/package.json || true
+          if git diff --cached --quiet; then
+            echo "No changes to commit"; exit 0; fi
+          git commit -m "chore(examples,docs): update fragmentcolor dependency to $VERSION after release"
+          git push origin main

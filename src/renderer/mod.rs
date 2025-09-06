@@ -1,7 +1,10 @@
+use crate::Size;
 use crate::{
-    InitializationError, PassObject, ShaderError, ShaderHash, Target, TargetFrame, shader::Uniform,
+    InitializationError, PassObject, ShaderError, ShaderHash, Target, TargetFrame, TextureTarget,
+    shader::Uniform,
 };
 use dashmap::DashMap;
+use lsp_doc::lsp_doc;
 use parking_lot::RwLock;
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -11,6 +14,12 @@ pub type Commands = Vec<wgpu::CommandBuffer>;
 pub mod platform;
 pub use platform::*;
 
+pub mod renderable;
+pub use renderable::*;
+
+pub mod texture;
+pub use texture::*;
+
 mod buffer_pool;
 use buffer_pool::BufferPool;
 
@@ -19,19 +28,17 @@ use pyo3::prelude::*;
 #[cfg(wasm)]
 use wasm_bindgen::prelude::*;
 
-pub trait Renderable {
-    fn passes(&self) -> impl IntoIterator<Item = &PassObject>;
-}
-
 #[derive(Debug)]
 struct RenderPipeline {
     pipeline: wgpu::RenderPipeline,
-    bind_group_layouts: Vec<wgpu::BindGroupLayout>,
+    // Map of bind group index -> layout (keeps group indices stable)
+    bind_group_layouts: std::collections::HashMap<u32, wgpu::BindGroupLayout>,
 }
 
 #[derive(Debug, Default)]
 #[cfg_attr(wasm, wasm_bindgen)]
 #[cfg_attr(python, pyclass)]
+#[lsp_doc("docs/api/renderer/renderer.md")]
 pub struct Renderer {
     instance: RwLock<Option<Arc<wgpu::Instance>>>,
     adapter: RwLock<Option<wgpu::Adapter>>,
@@ -42,32 +49,39 @@ pub struct Renderer {
 }
 
 impl Renderer {
-    /// Creates a new Renderer.
-    ///
-    /// At this point, we don't know if it will be used offscreen
-    /// or attached to a platform-specific window or canvas.
-    ///
-    /// The Renderer internals are lazily initialized when the user creates a Target
-    /// or renders a Bitmap. \
-    /// This ensures the adapter and device are compatible
-    /// with the target environment.
-    ///
-    /// The API ensures the Renderer is usable when `render()` is called, because
-    /// the `render()` method expects a Target as input. So, the user must call
-    /// `Renderer.create_target()` first (which initializes the Renderer) or
-    /// `Renderer.render_image()` which initializes an offscreen adapter.
-    ///
-    /// ## Example
-    /// ```rust
-    /// use fragmentcolor::Renderer;
-    ///
-    /// let renderer = Renderer::new();
-    /// ```
+    #[lsp_doc("docs/api/renderer/constructor.md")]
     pub fn new() -> Self {
         Renderer {
             instance: RwLock::new(None),
             adapter: RwLock::new(None),
             context: RwLock::new(None),
+        }
+    }
+
+    // PLATFORM SPECIFIC:
+    // pub fn create_target() {}
+
+    #[lsp_doc("docs/api/renderer/create_texture_target.md")]
+    pub async fn create_texture_target(
+        &self,
+        size: impl Into<Size>,
+    ) -> Result<TextureTarget, InitializationError> {
+        let context = self.context(None).await?;
+        let texture = TextureTarget::new(context, size.into());
+
+        Ok(texture)
+    }
+
+    #[lsp_doc("docs/api/renderer/render.md")]
+    pub fn render(
+        &self,
+        renderable: &impl Renderable,
+        target: &impl Target,
+    ) -> Result<(), ShaderError> {
+        if let Some(context) = self.context.read().as_ref() {
+            context.render(renderable, target)
+        } else {
+            Err(ShaderError::NoContext())
         }
     }
 
@@ -134,36 +148,6 @@ impl Renderer {
         };
 
         Ok(context)
-    }
-
-    // /// Creates a headless Context
-    // pub async fn render_image(&self) -> Result<Vec<u8>, InitializationError> {
-    //     let _context = if let Some(context) = self.context.read().as_ref() {
-    //         context.clone()
-    //     } else {
-    //         let adapter = request_headless_adapter(&self.instance).await?;
-    //         let (device, queue) = request_device(&adapter).await?;
-    //         let context = Arc::new(RenderContext::init(device, queue));
-
-    //         self.adapter.write().replace(adapter);
-    //         self.context.write().replace(context.clone());
-
-    //         context
-    //     };
-
-    //     // @TODO
-    // }
-
-    pub fn render(
-        &self,
-        renderable: &impl Renderable,
-        target: &impl Target,
-    ) -> Result<(), ShaderError> {
-        if let Some(context) = self.context.read().as_ref() {
-            context.render(renderable, target)
-        } else {
-            Err(ShaderError::NoContext())
-        }
     }
 }
 
@@ -263,6 +247,7 @@ impl RenderContext {
             occlusion_query_set: None,
         });
 
+        // Defaults to Color::TRANSPARENT
         // render_pass.set_blend_constant(wgpu::Color::WHITE);
 
         let required_size = *pass.required_buffer_size.read();
@@ -282,7 +267,7 @@ impl RenderContext {
 
                     RenderPipeline {
                         pipeline,
-                        bind_group_layouts: layouts.values().cloned().collect(),
+                        bind_group_layouts: layouts,
                     }
                 });
 
@@ -318,19 +303,26 @@ impl RenderContext {
                     });
             }
 
-            let mut bind_groups = Vec::new();
+            // Build bind groups per layout (by group index)
+            let mut bind_groups: Vec<(u32, wgpu::BindGroup)> = Vec::new();
             for (group, entries) in bind_group_entries {
-                let layout = &cached.bind_group_layouts[group as usize];
+                let layout = cached
+                    .bind_group_layouts
+                    .get(&group)
+                    .expect("Missing bind group layout for group");
                 let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
                     layout,
                     entries: &entries,
                     label: Some(&format!("Bind Group for group: {}", group)),
                 });
-                bind_groups.push(bind_group);
+                bind_groups.push((group, bind_group));
             }
 
+            // Sort by group index to match pipeline layout order
+            bind_groups.sort_by_key(|(g, _)| *g);
+
             render_pass.set_pipeline(&cached.pipeline);
-            for (i, bind_group) in bind_groups.iter().enumerate() {
+            for (i, (_, bind_group)) in bind_groups.iter().enumerate() {
                 render_pass.set_bind_group(i as u32, bind_group, &[]);
             }
             // render_pass.set_blend_constant(color);
@@ -352,11 +344,18 @@ fn create_bind_group_layouts(
     device: &wgpu::Device,
     uniforms: &HashMap<String, (u32, u32, Uniform)>,
 ) -> HashMap<u32, wgpu::BindGroupLayout> {
-    let mut group_entries = HashMap::new();
-    for (_, _, uniform) in uniforms.values() {
+    let mut group_entries: HashMap<u32, Vec<wgpu::BindGroupLayoutEntry>> = HashMap::new();
+    for (_, size, uniform) in uniforms.values() {
         if uniform.name.contains('.') {
             continue;
         }
+
+        // WebGPU/Dawn is stricter about uniform binding sizes; ensure a safe minimum.
+        let min_size = {
+            let sz = *size as u64;
+            let padded = wgpu::util::align_to(sz, 16);
+            std::num::NonZeroU64::new(padded).unwrap()
+        };
 
         let entry = wgpu::BindGroupLayoutEntry {
             binding: uniform.binding,
@@ -364,15 +363,12 @@ fn create_bind_group_layouts(
             ty: wgpu::BindingType::Buffer {
                 ty: wgpu::BufferBindingType::Uniform,
                 has_dynamic_offset: false,
-                min_binding_size: None,
+                min_binding_size: Some(min_size),
             },
             count: None,
         };
 
-        group_entries
-            .entry(uniform.group)
-            .or_insert(Vec::new())
-            .push(entry);
+        group_entries.entry(uniform.group).or_default().push(entry);
     }
 
     let mut layouts = HashMap::new();

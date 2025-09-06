@@ -38,8 +38,6 @@ pub enum ShaderError {
     WgpuError(#[from] wgpu::Error),
     #[error("WGPU Surface Error: {0}")]
     WgpuSurfaceError(#[from] wgpu::SurfaceError),
-    #[error("JSON Deserialization Error: {0}")]
-    JsonError(#[from] serde_json::Error),
 
     #[cfg(not(wasm))]
     #[error("URL Request Error: {0}")]
@@ -47,6 +45,27 @@ pub enum ShaderError {
     #[cfg(wasm)]
     #[error("WASM Error: {0}")]
     WasmError(String),
+}
+
+// WASM-specific conversions
+
+#[cfg(wasm)]
+impl From<wasm_bindgen::JsValue> for ShaderError {
+    fn from(value: wasm_bindgen::JsValue) -> Self {
+        let error_string = if let Some(s) = value.as_string() {
+            s
+        } else {
+            format!("{:?}", value)
+        };
+        ShaderError::WasmError(error_string)
+    }
+}
+
+#[cfg(wasm)]
+impl From<ShaderError> for wasm_bindgen::JsValue {
+    fn from(error: ShaderError) -> Self {
+        wasm_bindgen::JsValue::from_str(&error.to_string())
+    }
 }
 
 // Python-specific conversions

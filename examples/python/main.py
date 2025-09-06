@@ -1,11 +1,15 @@
 from fragmentcolor import Renderer, Shader
 from rendercanvas.auto import RenderCanvas, loop
+from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve().parent
+shader_file = str(BASE_DIR / "circle.wgsl")
 
 canvas = RenderCanvas(size=(800, 600))
 renderer = Renderer()
 target = renderer.create_target(canvas)
 
-circle = Shader("circle.wgsl")
+circle = Shader(shader_file)
 circle.set("resolution", [800, 600])
 circle.set("circle.radius", 200.0)
 circle.set("circle.color", [1.0, 0.0, 0.0, 0.8])

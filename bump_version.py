@@ -4,6 +4,9 @@ import re
 import sys
 
 
+import json
+from pathlib import Path
+
 def bump_version(file_path, bump_type):
     """Bumbs fragmentcolor version
 
@@ -70,8 +73,25 @@ def bump_version(file_path, bump_type):
 
     print(f"Bumped version in {file_path} to {new_version}")
 
+    # Also bump the website package.json top-level version (not dependencies here)
+    site_pkg = Path('docs/website/package.json')
+    if site_pkg.exists():
+        try:
+            with site_pkg.open('r', encoding='utf-8') as f:
+                pkg = json.load(f)
+            old = pkg.get('version')
+            pkg['version'] = new_version
+            with site_pkg.open('w', encoding='utf-8') as f:
+                json.dump(pkg, f, ensure_ascii=False, indent=2)
+            print(f"Bumped version in {site_pkg} from {old} to {new_version}")
+        except Exception as e:
+            print(f"Warning: failed updating {site_pkg}: {e}")
+
+    return new_version
+
 
 if __name__ == "__main__":
     bump = sys.argv[1] if len(sys.argv) > 1 else ''
-    bump_version('Cargo.toml', bump)
+    new_ver = bump_version('Cargo.toml', bump)
     bump_version('pyproject.toml', bump)
+    print(f"New version: {new_ver}")

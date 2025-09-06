@@ -1,11 +1,13 @@
 use glam::Vec2;
 use glam::Vec4;
 
-use serde::{Deserialize, Serialize};
+#[cfg(wasm)]
+use wasm_bindgen::prelude::*;
 
-#[cfg_attr(feature = "python", pyo3::pyclass)]
+#[cfg_attr(wasm, wasm_bindgen)]
+#[cfg_attr(python, pyo3::pyclass)]
 /// A region in 2D space designed to handle viewport and texture regions
-#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd)]
 pub struct Region {
     pub min_x: u32,
     pub min_y: u32,
@@ -27,13 +29,6 @@ impl Default for Region {
 impl From<wgpu::Extent3d> for Region {
     fn from(e: wgpu::Extent3d) -> Self {
         Self::from_size(e.width, e.height)
-    }
-}
-
-#[cfg(not(wasm))]
-impl From<&winit::dpi::PhysicalSize<u32>> for Region {
-    fn from(s: &winit::dpi::PhysicalSize<u32>) -> Self {
-        Self::from_size(s.width, s.height)
     }
 }
 
@@ -123,26 +118,6 @@ impl Region {
             width: self.width(),
             height: self.height(),
             depth_or_array_layers: 1,
-        }
-    }
-
-    #[cfg(not(wasm))]
-    pub fn from_window_size(size: &winit::dpi::PhysicalSize<u32>) -> Self {
-        Self {
-            min_x: 0,
-            min_y: 0,
-            max_x: size.width,
-            max_y: size.height,
-        }
-    }
-
-    #[cfg(not(wasm))]
-    pub fn from_window_logical_size(size: &winit::dpi::LogicalSize<u32>) -> Self {
-        Self {
-            min_x: 0,
-            min_y: 0,
-            max_x: size.width,
-            max_y: size.height,
         }
     }
 

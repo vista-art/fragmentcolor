@@ -1,11 +1,11 @@
 use crate::error::ShaderError;
 use crate::{PassObject, Renderable};
+use lsp_doc::lsp_doc;
 use naga::{
     AddressSpace, Module,
     valid::{Capabilities, ValidationFlags, Validator},
 };
 use parking_lot::RwLock;
-use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -20,7 +20,6 @@ pub use constants::*;
 pub(crate) mod uniform;
 pub(crate) use uniform::*;
 
-mod deserialize;
 mod features;
 mod input;
 mod platform;
@@ -30,27 +29,23 @@ use storage::*;
 /// The hash of a shader source.
 pub type ShaderHash = [u8; 32];
 
-/// The Shader in FragmentColor is the blueprint of a Render Pipeline.
-///
-/// It automatically parses a WGSL shader source and extracts its uniforms, buffers, and textures.
-///
-/// The user can set values for the uniforms and buffers, and then render the shader.
 #[cfg_attr(wasm, wasm_bindgen)]
 #[cfg_attr(python, pyclass)]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
+#[lsp_doc("docs/api/shader/shader.md")]
 pub struct Shader {
     pub(crate) pass: Arc<PassObject>,
     pub(crate) object: Arc<ShaderObject>,
 }
 
+impl Default for Shader {
+    fn default() -> Self {
+        Self::new(DEFAULT_SHADER).expect("failed to create default shader")
+    }
+}
+
 impl Shader {
-    /// Create a Shader object from a WGSL source string.
-    ///
-    /// GLSL is also supported if you enable the `glsl` feature.
-    /// Shadertoy-flavored GLSL is supported if the `shadertoy` feature is enabled.
-    ///
-    /// If the optional features are enabled,
-    /// the constructor try to automatically detect the shader type and parse it accordingly.
+    #[lsp_doc("docs/api/shader/constructor.md")]
     pub fn new(source: &str) -> Result<Self, ShaderError> {
         let object = Arc::new(input::load_shader(source)?);
         let pass = Arc::new(PassObject::from_shader_object(
@@ -61,23 +56,22 @@ impl Shader {
         Ok(Self { pass, object })
     }
 
-    /// Set a uniform value.
+    #[lsp_doc("docs/api/shader/set.md")]
     pub fn set(&self, key: &str, value: impl Into<UniformData>) -> Result<(), ShaderError> {
         self.object.set(key, value)
     }
 
-    /// Get a uniform value.
+    #[lsp_doc("docs/api/shader/get.md")]
     pub fn get<T: From<UniformData>>(&self, key: &str) -> Result<T, ShaderError> {
         Ok(self.object.get_uniform_data(key)?.into())
     }
 
-    /// List all the top-level uniforms in the shader.
+    #[lsp_doc("docs/api/shader/list_uniforms.md")]
     pub fn list_uniforms(&self) -> Vec<String> {
         self.object.list_uniforms()
     }
 
-    /// List all available keys in the shader.
-    /// This includes all the uniforms and their fields.
+    #[lsp_doc("docs/api/shader/list_keys.md")]
     pub fn list_keys(&self) -> Vec<String> {
         self.object.list_keys()
     }
@@ -87,19 +81,18 @@ impl Shader {
 ///
 /// The ShaderObject is wrapped in an Arc and managed by the Shader struct.
 /// This allows it to be shared between multiple passes and render pipelines.
-#[derive(Debug, Serialize)]
+#[derive(Debug)]
 pub(crate) struct ShaderObject {
-    pub(crate) source: String,
-
-    // Can be reconstructed from the source
-    #[serde(skip_serializing)]
     pub(crate) hash: ShaderHash,
-    #[serde(skip_serializing)]
     pub(crate) module: Module,
-    #[serde(skip_serializing)]
     pub(crate) storage: RwLock<UniformStorage>,
-    #[serde(skip_serializing)]
     pub(crate) total_bytes: u64,
+}
+
+impl Default for ShaderObject {
+    fn default() -> Self {
+        Self::new(DEFAULT_SHADER).expect("failed to create default shader object")
+    }
 }
 
 impl ShaderObject {
@@ -142,7 +135,6 @@ impl ShaderObject {
         }
 
         Ok(Self {
-            source: source.to_string(),
             hash,
             module,
             storage,
@@ -379,14 +371,5 @@ mod tests {
     fn test_invalid_shader_should_return_error() {
         let result = Shader::new("invalid shader");
         assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_shader_serialization() {
-        let shader = ShaderObject::new(SHADER).unwrap();
-        let serialized = serde_json::to_string(&shader).unwrap();
-
-        let deserialized: ShaderObject = serde_json::from_str(&serialized).unwrap();
-        assert_eq!(shader.hash, deserialized.hash);
     }
 }

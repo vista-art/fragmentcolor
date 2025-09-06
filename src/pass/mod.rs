@@ -1,4 +1,5 @@
 use crate::{Color, Region, Renderable, Shader, ShaderObject};
+use lsp_doc::lsp_doc;
 use parking_lot::RwLock;
 use std::sync::Arc;
 
@@ -7,7 +8,7 @@ use pyo3::prelude::*;
 #[cfg(wasm)]
 use wasm_bindgen::prelude::*;
 
-mod features;
+mod platform;
 
 #[cfg_attr(wasm, wasm_bindgen)]
 #[cfg_attr(python, pyclass)]
@@ -37,31 +38,37 @@ pub enum PassType {
     Render,
 }
 
-#[cfg_attr(python, pyclass)]
 #[derive(Debug)]
+#[cfg_attr(python, pyclass)]
+#[cfg_attr(wasm, wasm_bindgen)]
+#[lsp_doc("docs/api/pass/pass.md")]
 pub struct Pass {
     pub(crate) object: Arc<PassObject>,
 }
 
 impl Pass {
+    #[lsp_doc("docs/api/pass/constructor.md")]
     pub fn new(name: &str) -> Self {
         Self {
             object: Arc::new(PassObject::new(name, PassType::Render)),
         }
     }
 
+    #[lsp_doc("docs/api/pass/compute.md")]
     pub fn compute(name: &str) -> Self {
         Self {
             object: Arc::new(PassObject::new(name, PassType::Compute)),
         }
     }
 
+    #[lsp_doc("docs/api/pass/from_shader.md")]
     pub fn from_shader(name: &str, shader: &Shader) -> Self {
         Self {
             object: Arc::new(PassObject::from_shader_object(name, shader.object.clone())),
         }
     }
 
+    #[lsp_doc("docs/api/pass/load_previous.md")]
     pub fn load_previous(&self) {
         *self.object.input.write() = PassInput {
             load: true,
@@ -69,18 +76,22 @@ impl Pass {
         }
     }
 
+    #[lsp_doc("docs/api/pass/get_input.md")]
     pub fn get_input(&self) -> PassInput {
         self.object.get_input()
     }
 
+    #[lsp_doc("docs/api/pass/add_shader.md")]
     pub fn add_shader(&self, shader: &Shader) {
         self.object.add_shader(shader);
     }
 
-    pub fn set_region(&self, region: Region) {
-        self.object.set_region(region);
+    #[lsp_doc("docs/api/pass/set_viewport.md")]
+    pub fn set_viewport(&self, viewport: Region) {
+        self.object.set_viewport(viewport);
     }
 
+    #[lsp_doc("docs/api/pass/set_clear_color.md")]
     pub fn set_clear_color(&self, color: [f32; 4]) {
         self.object.set_clear_color(color);
     }
@@ -97,7 +108,7 @@ pub struct PassObject {
     pub(crate) name: Arc<str>,
     pub(crate) input: RwLock<PassInput>,
     pub(crate) shaders: RwLock<Vec<Arc<ShaderObject>>>,
-    pub(crate) region: RwLock<Option<Region>>,
+    pub(crate) viewport: RwLock<Option<Region>>,
     pub(crate) required_buffer_size: RwLock<u64>,
     pub pass_type: PassType,
 }
@@ -107,7 +118,7 @@ impl PassObject {
         Self {
             name: Arc::from(name),
             shaders: RwLock::new(Vec::new()),
-            region: RwLock::new(None),
+            viewport: RwLock::new(None),
             input: RwLock::new(PassInput::load()),
             required_buffer_size: RwLock::new(0),
             pass_type,
@@ -126,7 +137,7 @@ impl PassObject {
         Self {
             name: Arc::from(name),
             shaders: RwLock::new(vec![shader]),
-            region: RwLock::new(None),
+            viewport: RwLock::new(None),
             input: RwLock::new(PassInput::load()),
             required_buffer_size: RwLock::new(total_bytes),
             pass_type,
@@ -150,11 +161,23 @@ impl PassObject {
         }
     }
 
-    pub fn set_region(&self, region: Region) {
-        *self.region.write() = Some(region);
+    pub fn set_viewport(&self, viewport: Region) {
+        *self.viewport.write() = Some(viewport);
     }
 
     pub fn is_compute(&self) -> bool {
         matches!(self.pass_type, PassType::Compute)
+    }
+}
+
+impl AsRef<PassObject> for Pass {
+    fn as_ref(&self) -> &PassObject {
+        &self.object
+    }
+}
+
+impl AsRef<PassObject> for PassObject {
+    fn as_ref(&self) -> &PassObject {
+        self
     }
 }

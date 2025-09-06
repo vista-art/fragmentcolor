@@ -1,17 +1,105 @@
 # Roadmap
 
-## Work in Progress
+This roadmap summarizes current focus and planned features.
 
-- [x] V 0.10.6 Javascript support
-  - [x] Javascript Implementation
-  - [x] Publish to NPM
-    - [ ] We need to bump the version to 0.10.7 because Shader went without .set()
-  - [x] Chore: Script to automatically bump version
+## 0.10.8 Automation & features
+
+- Website & docs
+  - Expand examples coverage across all public API methods
+  - Internationalization groundwork for docs
+- Rendering features
+  - Begin Texture & Sampler support
+  - Optional geometry/instancing groundwork
+- Build system
+  - Improve validation & CI coverage for healthchecks
+
+## 0.10.9 Swift & Kotlin bindings (draft)
+
+- Stabilize initial wrappers
+- Build & packaging automation
+
+## Done (highlights)
+
+### 0.10.7 Documentation automation and release flow
+
+- Built docs automation:
+  - Centralized docs in `docs/api`, wired via `#[lsp_doc]`.
+  - Validation & website generation in `build.rs`.
+  - Healthcheck-driven JavaScript & Python examples.
+- Moved the public website into this repository under `docs/website`.
+- Added post-publish workflow to update examples and website dependencies after npm & PyPI publish.
+
+### 0.10.6 JavaScript support
+
+- [x] fix: Shader went without .set() to NPM (WASM)
+- [x] Automate Doc-string replication to all bindings
+- [x] Create a distribution via GH release
+  - [x] Python
+  - [x] Javascript
+- [ ] Automate documentation with xtask
+  - [x] Move Doc Comments to separate MD files
+  - [ ] Doc-comments MD files will be replicated on:
+    - [ ] Rust Doc-comments
+    - [ ] Python Wrappers
+    - [ ] JS Wrappers
+    - [ ] Website
+  - [ ] Reconfigure Vercel to use this repository instead
+- [x] Update documentation and examples
+  - [x] Renderer
+    - [x] constructor
+    - [ ] create_target
+    - [ ] render
+    - [ ] render_image
+  - [ ] Target
+  - [ ] Shader
+    - [ ] constructor
+    - [ ] set
+    - [ ] get
+    - [ ] list_uniforms
+    - [ ] list_keys
+  - [ ] Pass
+    - [ ] constructor
+    - [ ] add_shader
+  - [ ] Frame
+    - [ ] constructor
+    - [ ] add_pass
+- [ ] Examples must use the actual published version
+- [ ] EndToEnd tests to validate the public API
+- [ ] Implement Texture API
+  - [ ] Renderer.create_texture(&image) -> Texture
+  - [ ] Renderer.create_target(Texture) -> Target
+  - [ ] Pass.input(Texture, Op::LOAD|Op::STORE)
+  - [ ] Pass.output(Texture)
+  - [ ] Texture
+  - [ ] StorageTexture
+  - [ ] Sampler
+- [ ] Implement Geometry Object
+  - [ ] Vertex
+  - [ ] Instances
+  - [ ] Shader method to accept it as input
+
+### V 0.10.8 Automation and Build System to keep bindings in sync
+
+- [ ] Incorporate the Website in the repository
+- [ ] Adopt xtask
+- [ ] Add more examples
+- [ ] Update website content
+- [ ] Refine build and publish processes
+
+### V 0.10.9
+
+- [ ] Swift Wrappers (future)
+
+### V 0.10.10
+
+- [ ] Kotlin Wrappers
 
 ## Up Next
 
-- [ ] Build System
+- Revemp RenderPass API
+  - It must give access to all wgpu::RenderPass customizations with sensible defaults, so we keep our API simple while still allowing for advanced use cases.
 
+- [ ] Build System
   - [ ] Unit test all packages before building
   - [ ] Git hook: test builds for all platforms before push
   - [ ] Script to Test, Compile & Publish JS
@@ -22,15 +110,14 @@
   - [ ] GHA wheel: Test build all packages for all OSses
 
 - [ ] Release Management System
-
-  - [ ] Create a distribution via GH release
-    - [x] Python
-    - [ ] Javascript
   - [ ] Automatically update docs from Rust Doc Comments
   - [ ] Update cargo doc
   - [ ] Script to copy contents and publish to Website
 
 ## Backlog
+
+- [ ] Support 3D Textures
+  - [ ] (check RenderPassColorAttachment.depth_slice)
 
 - [ ] Support other types of Window integrations in Python (decouple from RenderCanvas)
   - [ ] Qt
@@ -62,6 +149,25 @@
   - [ ] Utils (gizmo, camera)
 
 - [ ] Consider provideing llms.txt and [MCP](https://modelcontextprotocol.io/introduction)
+
+- [ ] This was removed from Shader and maybe added again in the future:
+  - [ ] Support Load and Save Shader states as JSON
+  - [ ] Define JSON schema to extract and set default Uniform values
+  - [ ] This should be under a feature flag
+    ```rust
+    // removed from shader/input.rs
+    if is_json {
+        let json: serde_json::Value = serde_json::from_str(&body)?;
+        let source = json["source"]
+            .as_str()
+            .ok_or_else(|| ShaderError::ParseError("JSON shader source not found".into()))?;
+        return load_shader(source);
+    }
+
+    // removed from errors.rs
+    #[error("JSON Deserialization Error: {0}")]
+    JsonError(#[from] serde_json::Error),
+    ```
 
 ### Tutorials and Examples
 

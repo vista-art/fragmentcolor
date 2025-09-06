@@ -1,4 +1,5 @@
-use crate::{FragmentColorError, Frame, Pass, Renderer, Shader};
+use crate::{FragmentColorError, Frame, Pass, PySize, Renderer, Shader};
+use lsp_doc::lsp_doc;
 use pyo3::exceptions::PyTypeError;
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyTuple};
@@ -18,66 +19,16 @@ use handle::*;
 #[pymethods]
 impl Renderer {
     #[new]
-    /// Creates an uninitialized Renderer.
-    ///
-    /// At this point we don't know if it should be compatible
-    /// with a headless or a windowed environment.
-    ///
-    /// The render context is initialized when we crate the first target.
+    #[lsp_doc("docs/api/renderer/constructor.md")]
     pub fn new_py() -> Renderer {
         Self::new()
     }
 
-    #[pyo3(name = "render")]
-    /// Renders a Frame or Shader to a Target.
-    pub fn render_py(
-        &self,
-        renderable: PyObject,
-        target: &RenderCanvasTarget,
-    ) -> Result<(), PyErr> {
-        Python::with_gil(|py| -> Result<(), PyErr> {
-            let renderable_type = renderable
-                .call_method0(py, "renderable_type")?
-                .extract::<String>(py)?;
-
-            match renderable_type.as_str() {
-                "Frame" => {
-                    let frame = renderable.bind(py).downcast::<Frame>()?;
-                    let renderable = PyRenderable::from(frame);
-
-                    self.render(&renderable, target)?;
-
-                    Ok(())
-                }
-                "Pass" => {
-                    let pass = renderable.bind(py).downcast::<Pass>()?;
-                    let renderable = PyRenderable::from(pass);
-
-                    self.render(&renderable, target)?;
-
-                    Ok(())
-                }
-                "Shader" => {
-                    let shader = renderable.bind(py).downcast::<Shader>()?;
-                    let renderable = PyRenderable::from(shader);
-
-                    self.render(&renderable, target)?;
-
-                    Ok(())
-                }
-                _ => Err(PyErr::new::<PyTypeError, _>(
-                    "Expected a Frame, Pass or Shader object",
-                )),
-            }
-        })?;
-
-        Ok(())
-    }
-
-    pub fn create_target(&self, rendercanvas: PyObject) -> Result<Py<RenderCanvasTarget>, PyErr> {
-        Python::with_gil(|py| -> Result<Py<RenderCanvasTarget>, PyErr> {
+    #[lsp_doc("docs/api/renderer/create_target.md")]
+    pub fn create_target(&self, rendercanvas: Py<PyAny>) -> Result<Py<RenderCanvasTarget>, PyErr> {
+        Python::attach(|py| -> Result<Py<RenderCanvasTarget>, PyErr> {
             // If the target is already initialized, return it
-            let libname = PyTuple::new(py, &["fragmentcolor"])?;
+            let libname = PyTuple::new(py, ["fragmentcolor"])?;
             let py_target = rendercanvas.call_method1(py, "get_context", libname)?; // calls hook
             let bound_target = py_target.downcast_bound::<RenderCanvasTarget>(py)?;
             let mut target = bound_target.borrow_mut();
@@ -136,6 +87,83 @@ impl Renderer {
             Ok(target.into_pyobject(py)?.unbind())
         })
     }
+
+    #[lsp_doc("docs/api/renderer/create_texture_target.md")]
+    #[pyo3(name = "create_texture_target")]
+    pub fn create_texture_target_py(&self, size: PySize) -> Result<Py<PyTextureTarget>, PyErr> {
+        Python::attach(|py| -> Result<Py<PyTextureTarget>, PyErr> {
+            let target = pollster::block_on(self.create_texture_target(size))?;
+            let py_target: PyTextureTarget = target.into();
+            Ok(py_target.into_pyobject(py)?.unbind())
+        })
+    }
+
+    #[pyo3(name = "render")]
+    #[lsp_doc("docs/api/renderer/render.md")]
+    pub fn render_py(&self, renderable: Py<PyAny>, target: Py<PyAny>) -> Result<(), PyErr> {
+        Python::attach(|py| -> Result<(), PyErr> {
+            let renderable_type = renderable
+                .call_method0(py, "renderable_type")?
+                .extract::<String>(py)?;
+
+            // Downcast target to supported targets
+            if let Ok(bound) = target.bind(py).downcast::<RenderCanvasTarget>() {
+                match renderable_type.as_str() {
+                    "Frame" => {
+                        let frame = renderable.bind(py).downcast::<Frame>()?;
+                        let renderable = PyRenderable::from(frame);
+                        self.render(&renderable, &*bound.borrow())?;
+                        Ok(())
+                    }
+                    "Pass" => {
+                        let pass = renderable.bind(py).downcast::<Pass>()?;
+                        let renderable = PyRenderable::from(pass);
+                        self.render(&renderable, &*bound.borrow())?;
+                        Ok(())
+                    }
+                    "Shader" => {
+                        let shader = renderable.bind(py).downcast::<Shader>()?;
+                        let renderable = PyRenderable::from(shader);
+                        self.render(&renderable, &*bound.borrow())?;
+                        Ok(())
+                    }
+                    _ => Err(PyErr::new::<PyTypeError, _>(
+                        "Expected a Frame, Pass or Shader object",
+                    )),
+                }
+            } else if let Ok(bound) = target.bind(py).downcast::<PyTextureTarget>() {
+                match renderable_type.as_str() {
+                    "Frame" => {
+                        let frame = renderable.bind(py).downcast::<Frame>()?;
+                        let renderable = PyRenderable::from(frame);
+                        self.render(&renderable, &*bound.borrow())?;
+                        Ok(())
+                    }
+                    "Pass" => {
+                        let pass = renderable.bind(py).downcast::<Pass>()?;
+                        let renderable = PyRenderable::from(pass);
+                        self.render(&renderable, &*bound.borrow())?;
+                        Ok(())
+                    }
+                    "Shader" => {
+                        let shader = renderable.bind(py).downcast::<Shader>()?;
+                        let renderable = PyRenderable::from(shader);
+                        self.render(&renderable, &*bound.borrow())?;
+                        Ok(())
+                    }
+                    _ => Err(PyErr::new::<PyTypeError, _>(
+                        "Expected a Frame, Pass or Shader object",
+                    )),
+                }
+            } else {
+                Err(PyErr::new::<PyTypeError, _>(
+                    "Unsupported target type. Expected RenderCanvasTarget or TextureTarget",
+                ))
+            }
+        })?;
+
+        Ok(())
+    }
 }
 
 /// A Python module implemented in Rust. The name of this function must match
@@ -152,6 +180,9 @@ pub fn fragmentcolor(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(rendercanvas_context_hook, m)?)?;
     m.add_class::<RenderCanvasTarget>()?;
     m.add_class::<RenderCanvasFrame>()?;
+
+    // Headless TextureTarget API
+    m.add_class::<PyTextureTarget>()?;
 
     // Custom error type
     m.add(

@@ -20,7 +20,7 @@ pub use ios::*;
 
 /// winit (Rust)
 #[cfg(desktop)]
-pub mod winit;
+pub mod desktop;
 
 /// pyo3 (Python)
 #[cfg(python)]

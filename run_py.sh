@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+set -euo pipefail
+set -x
+
+# Run Python examples using a local wheel build in a virtualenv.
+# Keeps platform flow consistent with run_web.sh.
+#
+# Usage:
+#   ./run_py.sh                      # build wheel (release), create venv, run examples/python/main.py
+#   ./run_py.sh headless             # run the headless healthcheck
+#   ./run_py.sh multiobject          # run examples/python/multiobject.py
+#   ./run_py.sh --no-build main      # skip building the wheel, use existing dist/*.whl
+#
+# Optional: on macOS, you can prebuild signed wheels with:
+#   CODESIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" ./build_py.sh
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+VENV_DIR="$ROOT_DIR/.venv"
+OUT_DIR="$ROOT_DIR/dist"
+
+NO_BUILD=0
+if [[ "${1:-}" == "--no-build" || "${1:-}" == "-n" ]]; then
+  NO_BUILD=1
+  shift || true
+fi
+
+EXAMPLE="${1:-main}"
+
+# Require maturin for building unless skipping
+if [[ "$NO_BUILD" -eq 0 ]]; then
+  if ! command -v maturin >/dev/null 2>&1; then
+    echo "maturin is required. Install it (e.g., pipx install maturin) and re-run." >&2
+    exit 1
+  fi
+  chmod +x "$ROOT_DIR/build_py.sh"
+  "$ROOT_DIR/build_py.sh"
+fi
+
+# Ensure virtualenv exists
+if [[ ! -d "$VENV_DIR" ]]; then
+  python3 -m venv "$VENV_DIR"
+fi
+# shellcheck disable=SC1091
+source "$VENV_DIR/bin/activate"
+
+# Upgrade pip and wheel
+python -m pip install --upgrade pip wheel
+
+# Install the freshly built wheel
+if ! compgen -G "$OUT_DIR/*.whl" >/dev/null; then
+  echo "No wheel found under $OUT_DIR. Build first or remove --no-build." >&2
+  exit 1
+fi
+python -m pip install --force-reinstall "$OUT_DIR"/*.whl
+
+# Install example runtime deps (do NOT install fragmentcolor from PyPI here)
+pip install glfw rendercanvas
+
+case "$EXAMPLE" in
+  main)
+    python "$ROOT_DIR/examples/python/main.py"
+    ;;
+  multiobject)
+    python "$ROOT_DIR/examples/python/multiobject.py"
+    ;;
+  headless)
+    # Use the module path to avoid importing the local package source tree
+    python -m platforms.python.healthcheck
+    ;;
+  *)
+    echo "Unknown example: $EXAMPLE" >&2
+    echo "Supported: main | multiobject | headless" >&2
+    exit 1
+    ;;
+esac
+

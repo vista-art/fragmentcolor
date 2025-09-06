@@ -16,8 +16,8 @@ impl Shader {
     }
 
     #[pyo3(name = "get")]
-    pub fn get_py(&self, key: &str) -> Result<PyObject, PyErr> {
-        Python::with_gil(|py| -> Result<PyObject, PyErr> {
+    pub fn get_py(&self, key: &str) -> Result<Py<PyAny>, PyErr> {
+        Python::attach(|py| -> Result<Py<PyAny>, PyErr> {
             let data = self.object.get_uniform_data(key)?;
 
             let object = data.into_pyobject(py)?;

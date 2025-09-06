@@ -1,5 +1,8 @@
-use crate::Renderer;
+use crate::{Frame, Pass, Renderer, Shader, ShaderError, Size};
+use lsp_doc::lsp_doc;
+use std::convert::TryInto;
 use wasm_bindgen::JsCast;
+use wasm_bindgen::convert::TryFromJsValue;
 use wasm_bindgen::prelude::*;
 
 pub mod target;
@@ -49,11 +52,14 @@ impl From<web_sys::OffscreenCanvas> for Canvas {
 #[wasm_bindgen]
 impl Renderer {
     #[wasm_bindgen(constructor)]
+    #[lsp_doc("docs/api/renderer/constructor.md")]
     /// Creates a new Renderer
     pub fn new_js() -> Self {
         Self::new()
     }
 
+    #[wasm_bindgen(js_name = "createTarget")]
+    #[lsp_doc("docs/api/renderer/create_target.md")]
     pub async fn create_target(&self, canvas: JsValue) -> Result<CanvasTarget, JsError> {
         let canvas = if canvas.has_type::<web_sys::HtmlCanvasElement>() {
             let canvas = canvas.dyn_into::<web_sys::HtmlCanvasElement>().unwrap();
@@ -79,44 +85,54 @@ impl Renderer {
         Ok(CanvasTarget::new(context, surface, config))
     }
 
-    // @TODO
-    // /// Creates a headless Renderer
-    // pub async fn headless() -> Result<Renderer, JsError> {
-    //     let instance = wgpu::util::new_instance_with_webgpu_detection(&wgpu::InstanceDescriptor {
-    //         backends: wgpu::Backends::GL | wgpu::Backends::BROWSER_WEBGPU,
-    //         ..Default::default()
-    //     })
-    //     .await;
+    #[wasm_bindgen(js_name = "createTextureTarget")]
+    #[lsp_doc("docs/api/renderer/create_texture_target.md")]
+    pub async fn create_texture_target_js(&self, size: JsValue) -> Result<TextureTarget, JsError> {
+        // Accept either a JS array (e.g., [w, h] or [w, h, d]), a typed array, a plain object
+        // with width/height[/depth], or an exported Size instance
+        let size: Size = size
+            .try_into()
+            .map_err(|e: crate::error::ShaderError| JsError::new(&format!("{e}")))?;
 
-    //     let backends = wgpu::Instance::enabled_backend_features();
+        let target = self
+            .create_texture_target(size)
+            .await
+            .map_err(|e| JsError::new(&format!("{e}")))?;
 
-    //     let adapter = if !backends.contains(wgpu::Backends::BROWSER_WEBGPU) {
-    //         // Create a DOM canvas element.
-    //         // This is needed to make adapter creation work in WebGL.
-    //         //
-    //         // We must create the surface from the same Instance we create the adapter,
-    //         // and the surface must remain alive during the call to request_adapter(),
-    //         // even though it can be immediately dropped afterwards.
-    //         //
-    //         // Relevant discussion: https://github.com/gfx-rs/wgpu/issues/5190
-    //         let canvas = web_sys::window()
-    //             .unwrap()
-    //             .document()
-    //             .unwrap()
-    //             .create_element("canvas")
-    //             .unwrap()
-    //             .dyn_into::<web_sys::HtmlCanvasElement>()
-    //             .unwrap();
+        Ok(TextureTarget::from(target))
+    }
 
-    //         let surface = instance.create_surface(wgpu::SurfaceTarget::Canvas(canvas))?;
-
-    //         crate::platform::all::request_adapter(&instance, Some(&surface)).await?
-    //     } else {
-    //         crate::platform::all::request_headless_adapter(&instance).await?
-    //     };
-
-    //     let (device, queue) = crate::platform::all::request_device(&adapter).await?;
-
-    //     Ok(Renderer::init(device, queue))
-    // }
+    #[wasm_bindgen(js_name = "render")]
+    #[lsp_doc("docs/api/renderer/render.md")]
+    pub fn render_js(&self, renderable: JsValue, target: JsValue) -> Result<(), ShaderError> {
+        if let Ok(canvas_target) = CanvasTarget::try_from_js_value(target.clone()) {
+            if let Ok(shader) = Shader::try_from_js_value(renderable.clone()) {
+                return self.render(&shader, &canvas_target);
+            } else if let Ok(pass) = Pass::try_from_js_value(renderable.clone()) {
+                return self.render(&pass, &canvas_target);
+            } else if let Ok(frame) = Frame::try_from_js_value(renderable) {
+                return self.render(&frame, &canvas_target);
+            } else {
+                return Err(ShaderError::WasmError(
+                    "Invalid object type in render".to_string(),
+                ));
+            };
+        } else if let Ok(texture_target) = TextureTarget::try_from_js_value(target) {
+            if let Ok(shader) = Shader::try_from_js_value(renderable.clone()) {
+                return self.render(&shader, &texture_target);
+            } else if let Ok(pass) = Pass::try_from_js_value(renderable.clone()) {
+                return self.render(&pass, &texture_target);
+            } else if let Ok(frame) = Frame::try_from_js_value(renderable) {
+                return self.render(&frame, &texture_target);
+            } else {
+                return Err(ShaderError::WasmError(
+                    "Invalid object type in render".to_string(),
+                ));
+            };
+        } else {
+            return Err(ShaderError::WasmError(
+                "Invalid target type in render".to_string(),
+            ));
+        }
+    }
 }
