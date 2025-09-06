@@ -1,48 +1,139 @@
 ---
 title: Frame
-description: Frame is a collection of Pass objects that are rendered to a Target.
+description: The [Frame](https://fragmentcolor.org/docs/api/frame) object is a collection of [Pass](https://fragmentcolor.org/docs/api/pass) objects that are rendered to a [Target](https://fragmentcolor.org/docs/api/target) by the [Renderer](https://fragmentcolor.org/docs/api/renderer).
 ---
 
 ## Description
 
-The **Frame** object is a collection of [Pass](/api/pass) objects that are rendered to a [Target](/api/target).
+# Frame
+
+The [Frame](https://fragmentcolor.org/docs/api/frame) object is a collection of [Pass](https://fragmentcolor.org/docs/api/pass) objects that are rendered to a [Target](https://fragmentcolor.org/docs/api/target) by the [Renderer](https://fragmentcolor.org/docs/api/renderer).
 
 It is used to render multiple passes to a single target, such as an opaque pass followed by a transparent pass.
 
-You need to inject the Frame object into the Renderer to render it.
+You need to inject the [Frame](https://fragmentcolor.org/docs/api/frame) object into the [Renderer](https://fragmentcolor.org/docs/api/renderer) to render it.
 
 ## Example
 
-```js
-import { Shader, Pass, Frame, Renderer } from "fragmentcolor";
+```rust
+use fragmentcolor::{ Shader, Pass, Frame, Renderer };
 
-let renderer = new Renderer();
+# fn main() -> Result<(), Box<dyn std::error::Error>> {
+let renderer = Renderer::new();
+let target = pollster::block_on(renderer.create_texture_target([10, 10]))?;
+let object1 = Shader::default();
+let object2 = Shader::default();
 
-const opaque1 = new Shader("opaque.wgsl");
-const opaque2 = new Shader("opaque.wgsl");
-const transparent1 = new Shader("transparent.wgsl");
-const transparent2 = new Shader("transparent.wgsl");
+let mut pass = Pass::new("First Pass");
+pass.add_shader(&object1);
+pass.add_shader(&object2);
 
-const opaquePass = new Pass("Opaque Render Pass");
-const transparentPass = new Pass("Transparent Render Pass");
-pass.add_shader(opaque1);
-pass.add_shader(opaque2);
-pass.add_shader(transparent1);
-pass.add_shader(transparent2);
+renderer.render(&pass, &target)?;
 
-const frame = new Frame();
-frame.add_pass(opaquePass);
-frame.add_pass(transparentPass);
+let mut pass2 = Pass::new("Second Pass");
+pass2.add_shader(&object1);
+pass2.add_shader(&object2);
 
-let image = renderer.render(frame);
+let mut frame = Frame::new();
+frame.add_pass(&pass);
+frame.add_pass(&pass2);
+
+renderer.render(&frame, &target)?;
+
+Ok(())
+# }
 ```
 
 ## Methods
 
-- #### constructor()
+- ### constructor()
 
   Creates a new Frame object.
 
-- #### add_pass(pass: Pass)
+- ### add_pass(pass: Pass)
 
   Adds a Pass object to the Frame.
+
+
+## Methods
+
+## Frame::new()
+
+Creates a new [Frame](https://fragmentcolor.org/docs/api/frame) object.
+
+A Frame is an ordered collection of [Pass](https://fragmentcolor.org/docs/api/pass) objects that will be rendered by the [Renderer](https://fragmentcolor.org/docs/api/renderer) in sequence.
+
+### Example
+
+```rust
+use fragmentcolor::{Renderer, Frame, Pass, Shader};
+
+## fn main() -> Result<(), Box<dyn std::error::Error>> {
+let renderer = Renderer::new();
+let target = pollster::block_on(renderer.create_texture_target([10, 10]))?;
+
+let shader = Shader::default();
+let mut pass = Pass::new("single pass");
+pass.add_shader(&shader);
+
+let mut frame = Frame::new();
+frame.add_pass(&pass);
+
+renderer.render(&frame, &target)?;
+## Ok(())
+## }
+```
+
+### Python
+
+```python
+frame = Frame()
+```
+
+### Javascript
+
+```js
+const frame = new Frame();
+```
+## add_pass(pass: Pass)
+
+Adds a [Pass](https://fragmentcolor.org/docs/api/pass) to this [Frame](https://fragmentcolor.org/docs/api/frame).
+
+Passes are rendered in the order they are added.
+
+### Example
+
+```rust
+use fragmentcolor::{Renderer, Frame, Pass, Shader};
+
+## fn main() -> Result<(), Box<dyn std::error::Error>> {
+let renderer = Renderer::new();
+let target = pollster::block_on(renderer.create_texture_target([10, 10]))?;
+
+let shader = Shader::default();
+let mut pass1 = Pass::new("first");
+pass1.add_shader(&shader);
+
+let mut pass2 = Pass::new("second");
+pass2.add_shader(&shader);
+
+let mut frame = Frame::new();
+frame.add_pass(&pass1);
+frame.add_pass(&pass2);
+
+renderer.render(&frame, &target)?;
+## Ok(())
+## }
+```
+
+### Python
+
+```python
+frame.add_pass(rpass)
+```
+
+### Javascript
+
+```js
+frame.add_pass(rpass);
+```

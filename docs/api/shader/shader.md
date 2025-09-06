@@ -9,3 +9,11 @@ To draw your shader, you must use your [Shader](https://fragmentcolor.org/docs/a
 You can compose [Shader](https://fragmentcolor.org/docs/api/shader) instances into a [Pass](https://fragmentcolor.org/docs/api/pass) object to create more complex rendering pipelines.
 
 You can also create renderings with multiple Render Passes by using multiple [Pass](https://fragmentcolor.org/docs/api/pass) instances to a [Frame](https://fragmentcolor.org/docs/api/frame) object.
+
+## Example
+
+```rust
+use fragmentcolor::Shader;
+
+let _shader = Shader::default();
+```

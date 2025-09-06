@@ -14,8 +14,12 @@ if os.environ.get("FC_HEALTHCHECK_VERBOSE") == "1":
 
 
 def run():
+    # DOC: Renderer.constructor (begin)
     renderer = Renderer()
+    # DOC: (end)
+    # DOC: Renderer.create_texture_target (begin)
     target = renderer.create_texture_target((64, 64))
+    # DOC: (end)
 
     # Verify initial size and exercise resize conversions (list, tuple, dict)
     assert target.size == [64, 64], f"Unexpected initial size: {target.size}"
@@ -27,6 +31,7 @@ def run():
     assert target.size == [32, 16], f"Resize via dict failed: {target.size}"
     print("TextureTarget.resize conversions OK")
 
+    # DOC: Shader.constructor (begin)
     shader = Shader("""
 struct VertexOutput {
     @builtin(position) coords: vec4<f32>,
@@ -54,7 +59,7 @@ var<uniform> circle: Circle;
 
 @group(0) @binding(1) var<uniform> resolution: vec2<f32>;
 
-@fragment
+    @fragment
 fn main(pixel: VertexOutput) -> @location(0) vec4<f32> {
     let normalized_coords = pixel.coords.xy / resolution;
     var uv = -1.0 + 2.0 * normalized_coords;
@@ -76,22 +81,46 @@ fn main(pixel: VertexOutput) -> @location(0) vec4<f32> {
     return vec4<f32>(circle.color.rgb * a, a);
 }
 """)
+    # DOC: (end)
 
+    # DOC: Shader.set (begin)
     shader.set("resolution", [64.0, 64.0])
     shader.set("circle.radius", 10.0)
     shader.set("circle.color", [1.0, 0.0, 0.0, 0.8])
     shader.set("circle.border", 2.0)
     shader.set("circle.position", [0.0, 0.0])
+    # DOC: (end)
 
+    # DOC: Renderer.render (begin)
     renderer.render(shader, target)
+    # DOC: (end)
 
+    # DOC: Pass.constructor (begin)
     rpass = Pass("single pass")
+    # DOC: (end)
+    # DOC: Pass.add_shader (begin)
     rpass.add_shader(shader)
+    # DOC: (end)
     renderer.render(rpass, target)
 
+    # DOC: Frame.constructor (begin)
     frame = Frame()
+    # DOC: (end)
+    # DOC: Frame.add_pass (begin)
     frame.add_pass(rpass)
+    # DOC: (end)
     renderer.render(frame, target)
+
+    # Additional API coverage for docs
+    # DOC: Shader.get (begin)
+    _radius = shader.get("circle.radius")
+    # DOC: (end)
+    # DOC: Shader.list_uniforms (begin)
+    _uniforms = shader.list_uniforms()
+    # DOC: (end)
+    # DOC: Shader.list_keys (begin)
+    _keys = shader.list_keys()
+    # DOC: (end)
 
     print("Headless Python render completed successfully")
 

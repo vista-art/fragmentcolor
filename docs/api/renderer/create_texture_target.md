@@ -4,7 +4,9 @@ Render to an offscreen texture without a Window or Canvas.
 
 This is useful for tests, server-side rendering, or running examples in CI.
 
-## Rust
+## Example
+
+### Rust
 
 ```rust path=null start=null
 use fragmentcolor::{Renderer, Shader, Pass, Frame};

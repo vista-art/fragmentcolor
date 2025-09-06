@@ -91,7 +91,7 @@ impl Hash for ObjectProperty {
     }
 }
 
-pub type ApiMap = HashMap<String, HashSet<ObjectProperty>>;
+pub type ApiMap = HashMap<String, Vec<ObjectProperty>>;
 
 #[derive(Clone, Debug, PartialEq)]
 enum NameFilter {
@@ -113,7 +113,21 @@ pub fn map_public_api() {
 fn generate_api_map() {
     let crate_root = meta::workspace_root();
     let api_map_file = meta::workspace_root().join(API_MAP_FILE);
-    let api_map = extract_public_functions(crate_root.as_ref());
+    let mut api_map = extract_public_functions(crate_root.as_ref());
+
+    // Filter to top-level public API only and preserve method order
+    let allowed = vec![
+        "Shader".to_string(),
+        "Renderer".to_string(),
+        "Pass".to_string(),
+        "Frame".to_string(),
+        "Target".to_string(),
+        "TextureTarget".to_string(),
+    ];
+    api_map.retain(|k, _| allowed.contains(k));
+
+    // Run validation and website update; this will panic with errors if invalid
+    validation::validate_and_update_website(&api_map);
 
     export_api_map(api_map, api_map_file.as_ref())
 }
@@ -334,10 +348,15 @@ fn extract_struct(item_struct: ItemStruct, signatures: &mut ApiMap, filter: Name
 
     match signatures.entry(struct_name) {
         Entry::Vacant(entry) => {
-            entry.insert(HashSet::from_iter(fields));
+            entry.insert(fields);
         }
         Entry::Occupied(mut entry) => {
-            entry.get_mut().extend(fields);
+            let vec = entry.get_mut();
+            for f in fields {
+                if !vec.iter().any(|e| e == &f) {
+                    vec.push(f);
+                }
+            }
         }
     }
 }
@@ -367,10 +386,15 @@ fn extract_impl(item_impl: ItemImpl, signatures: &mut ApiMap, filter: NameFilter
 
     match signatures.entry(struct_name) {
         Entry::Vacant(entry) => {
-            entry.insert(HashSet::from_iter(methods));
+            entry.insert(methods);
         }
         Entry::Occupied(mut entry) => {
-            entry.get_mut().extend(methods);
+            let vec = entry.get_mut();
+            for m in methods {
+                if !vec.iter().any(|e| e == &m) {
+                    vec.push(m);
+                }
+            }
         }
     }
 }
@@ -401,10 +425,13 @@ fn extract_fn(path: &Path, item_fn: ItemFn, signatures: &mut ApiMap, filter: Nam
 
         match signatures.entry(key) {
             Entry::Vacant(entry) => {
-                entry.insert(HashSet::from([signature]));
+                entry.insert(vec![signature]);
             }
             Entry::Occupied(mut entry) => {
-                entry.get_mut().insert(signature);
+                let vec = entry.get_mut();
+                if !vec.iter().any(|e| e == &signature) {
+                    vec.push(signature);
+                }
             }
         }
     }
@@ -490,6 +517,253 @@ fn export_api_map(api_map: ApiMap, target_file: &Path) {
         static_map_builder.build()
     )
     .unwrap();
+}
+
+mod validation {
+    use super::*;
+    use std::fs;
+
+    fn to_snake_case(s: &str) -> String {
+        // Basic snake_case converter for method names (already snake in Rust)
+        s.to_string()
+    }
+
+    fn object_dir_name(object: &str) -> String {
+        // Convert CamelCase to snake_case for directory names
+        let mut out = String::new();
+        for (i, ch) in object.chars().enumerate() {
+            if ch.is_uppercase() {
+                if i != 0 { out.push('_'); }
+                out.push(ch.to_ascii_lowercase());
+            } else {
+                out.push(ch);
+            }
+        }
+        out
+    }
+
+    fn ensure_object_md_ok(object: &str, path: &Path, problems: &mut Vec<String>) {
+        if !path.exists() {
+            problems.push(format!("Missing object file: {}", path.display()));
+            return;
+        }
+        let content = fs::read_to_string(path).unwrap_or_default();
+        if content.trim().is_empty() {
+            problems.push(format!("Empty object file: {}", path.display()));
+        }
+        if !content.lines().any(|l| l.trim() == format!("# {}", object)) {
+            problems.push(format!("{}: H1 '# {}' not found", path.display(), object));
+        }
+        if !content.contains("## Example") {
+            problems.push(format!("{}: '## Example' section missing", path.display()));
+        }
+        if content.contains("fragmentcolor.com") {
+            problems.push(format!("{}: contains fragmentcolor.com", path.display()));
+        }
+    }
+
+    fn ensure_method_md_ok(object: &str, method: &str, path: &Path, problems: &mut Vec<String>) {
+        if !path.exists() {
+            problems.push(format!("Missing method file for {}.{}: {}", object, method, path.display()));
+            return;
+        }
+        let content = fs::read_to_string(path).unwrap_or_default();
+        if content.trim().is_empty() {
+            problems.push(format!("Empty method file: {}", path.display()));
+        }
+        if !content.lines().any(|l| l.trim().starts_with('#')) {
+            problems.push(format!("{}: H1 heading missing", path.display()));
+        }
+        if !content.contains("## Example") {
+            problems.push(format!("{}: '## Example' section missing", path.display()));
+        }
+        if content.contains("fragmentcolor.com") {
+            problems.push(format!("{}: contains fragmentcolor.com", path.display()));
+        }
+    }
+
+    fn healthcheck_has_block(lang: &str, key: &str, content: &str) -> bool {
+        let begin = format!("{} DOC: {} (begin)", match lang { "py" => "#", _ => "//" }, key);
+        let end = format!("{} DOC: (end)", match lang { "py" => "#", _ => "//" });
+        content.contains(&begin) && content.contains(&end)
+    }
+
+    fn validate_healthchecks(api_map: &ApiMap, problems: &mut Vec<String>) {
+        let py_path = meta::workspace_root().join("platforms/python/healthcheck.py");
+        let js_path = meta::workspace_root().join("platforms/web/healthcheck/main.js");
+        let py = fs::read_to_string(&py_path).unwrap_or_default();
+        let js = fs::read_to_string(&js_path).unwrap_or_default();
+
+        // Only enforce healthcheck markers for a curated subset to keep the healthchecks practical
+        let required_keys = vec![
+            "Renderer.constructor",
+            "Renderer.create_texture_target",
+            "Renderer.render",
+            "Pass.constructor",
+            "Pass.add_shader",
+            "Frame.constructor",
+            "Frame.add_pass",
+            "Shader.constructor",
+            "Shader.set",
+            "Shader.get",
+            "Shader.list_uniforms",
+            "Shader.list_keys",
+        ];
+
+        for key in required_keys {
+            if !healthcheck_has_block("py", key, &py) {
+                problems.push(format!("Missing Python DOC block: {} in {}", key, py_path.display()));
+            }
+            if !healthcheck_has_block("js", key, &js) {
+                problems.push(format!("Missing JS DOC block: {} in {}", key, js_path.display()));
+            }
+        }
+    }
+
+    pub fn validate_and_update_website(api_map: &ApiMap) {
+        let mut problems = Vec::new();
+        let root = meta::workspace_root();
+        let docs_root = root.join("docs/api");
+
+        // Validate objects and their methods
+        for (object, methods) in api_map.iter() {
+            let dir = object_dir_name(object);
+            let object_md = docs_root.join(&dir).join(format!("{}.md", dir));
+            ensure_object_md_ok(object, &object_md, &mut problems);
+
+            for m in methods {
+                if let Some(fun) = &m.function {
+                    let name = &fun.name;
+                    // Skip platform-specific wrapper variants and internal helpers
+                    let skip = name.ends_with("_js") || name.ends_with("_py") || name == "headless" || name == "render_bitmap" || (object == "TextureTarget" && name == "new");
+                    if skip { continue; }
+
+                    let file = if name == "new" { "constructor".to_string() } else { to_snake_case(name) };
+                    let path = docs_root.join(&dir).join(format!("{}.md", file));
+                    ensure_method_md_ok(object, name, &path, &mut problems);
+                }
+            }
+        }
+
+        // Also validate Target & TextureTarget even if not discovered by reflection
+        for extra in ["Target", "TextureTarget"].iter() {
+            let dir = object_dir_name(extra);
+            let object_md = docs_root.join(&dir).join(format!("{}.md", dir));
+            ensure_object_md_ok(extra, &object_md, &mut problems);
+        }
+
+        validate_healthchecks(api_map, &mut problems);
+
+        if !problems.is_empty() {
+            eprintln!("\nDocumentation validation failed with the following issues:\n");
+            for p in &problems {
+                eprintln!("- {}", p);
+            }
+            panic!("documentation incomplete");
+        }
+
+        // Update website if everything is valid
+        website::update(api_map);
+    }
+
+    mod website {
+        use super::*;
+
+        fn first_paragraph(md: &str) -> String {
+            let mut lines = md.lines();
+            // Skip H1
+            while let Some(line) = lines.next() {
+                if line.trim().starts_with('#') { break; }
+            }
+            let mut out = String::new();
+            for line in lines {
+                if line.trim().is_empty() { if !out.is_empty() { break; } else { continue; } }
+                if line.trim().starts_with("##") { break; }
+                out.push_str(line);
+                out.push('\n');
+            }
+            out.trim().to_string()
+        }
+
+        fn downshift_headings(md: &str) -> String {
+            md.lines()
+                .map(|l| {
+                    if l.starts_with("###") { format!("{}", l) }
+                    else if l.starts_with("##") { format!("###{}", &l[2..]) }
+                    else if l.starts_with('#') { format!("##{}", &l[1..]) }
+                    else { l.to_string() }
+                })
+                .collect::<Vec<_>>()
+                .join("\n")
+        }
+
+        fn collect_health_example(lang: &str, key: &str, content: &str) -> Option<String> {
+            let (start_token, end_token) = match lang { "py" => ("#", "#"), _ => ("//", "//") };
+            let begin = format!("{} DOC: {} (begin)", start_token, key);
+            let end = format!("{} DOC: (end)", end_token);
+            if let Some(b) = content.find(&begin) {
+                let from = b + begin.len();
+                if let Some(e_rel) = content[from..].find(&end) {
+                    let e = from + e_rel;
+                    let snippet = &content[from..e];
+                    return Some(snippet.trim().to_string());
+                }
+            }
+            None
+        }
+
+        pub fn update(api_map: &ApiMap) {
+            let root = meta::workspace_root();
+            let docs_root = root.join("docs/api");
+            let site_root = root.join("docs/website/src/content/docs/api");
+            let py = std::fs::read_to_string(root.join("platforms/python/healthcheck.py")).unwrap_or_default();
+            let js = std::fs::read_to_string(root.join("platforms/web/healthcheck/main.js")).unwrap_or_default();
+
+            for (object, methods) in api_map.iter() {
+                let dir = super::validation::object_dir_name(object);
+                let obj_dir = docs_root.join(&dir);
+                let obj_md = std::fs::read_to_string(obj_dir.join(format!("{}.md", dir))).unwrap_or_default();
+                let description = first_paragraph(&obj_md);
+
+                let mut out = String::new();
+                out.push_str(&format!("---\n"));
+                out.push_str(&format!("title: {}\n", object));
+                out.push_str(&format!("description: {}\n", description));
+                out.push_str("---\n\n");
+
+                out.push_str("## Description\n\n");
+                out.push_str(&obj_md);
+                out.push('\n');
+
+                out.push_str("\n## Methods\n\n");
+                for m in methods {
+                    if let Some(fun) = &m.function {
+                        let name = &fun.name;
+                        let file = if name == "new" { "constructor".to_string() } else { name.clone() };
+                        let md = std::fs::read_to_string(obj_dir.join(format!("{}.md", file))).unwrap_or_default();
+                        out.push_str(&downshift_headings(&md));
+                        out.push('\n');
+
+                        // Examples: add Python and JS blocks if present
+                        let key = if name == "new" { format!("{}.constructor", object) } else { format!("{}.{}", object, name) };
+                        if let Some(py_ex) = collect_health_example("py", &key, &py) {
+                            out.push_str("\n### Python\n\n```python\n");
+                            out.push_str(&py_ex);
+                            out.push_str("\n```\n");
+                        }
+                        if let Some(js_ex) = collect_health_example("js", &key, &js) {
+                            out.push_str("\n### Javascript\n\n```js\n");
+                            out.push_str(&js_ex);
+                            out.push_str("\n```\n");
+                        }
+                    }
+                }
+
+                let site_file = site_root.join(format!("{}.mdx", object.to_lowercase()));
+                std::fs::write(site_file, out).unwrap();
+            }
+        }
+    }
 }
 
 mod meta {
