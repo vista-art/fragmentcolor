@@ -1,6 +1,6 @@
 use crate::{Pass, PassObject, Renderable};
-use std::sync::Arc;
 use lsp_doc::lsp_doc;
+use std::sync::Arc;
 
 #[cfg(python)]
 use pyo3::prelude::*;
