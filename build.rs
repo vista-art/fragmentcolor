@@ -731,14 +731,21 @@ mod validation {
         }
 
         fn downshift_headings(md: &str) -> String {
+            // Shift headings down by two levels so that method H1 becomes H3 under the "## Methods" section.
             md.lines()
                 .map(|l| {
-                    if l.starts_with("###") {
-                        l.to_string()
+                    if l.starts_with("######") {
+                        "######".to_string()
+                    } else if l.starts_with("#####") {
+                        "######".to_string()
+                    } else if l.starts_with("####") {
+                        "######".to_string()
+                    } else if let Some(stripped) = l.strip_prefix("###") {
+                        format!("#####{}", stripped)
                     } else if let Some(stripped) = l.strip_prefix("##") {
-                        format!("###{}", stripped)
+                        format!("####{}", stripped)
                     } else if let Some(stripped) = l.strip_prefix('#') {
-                        format!("##{}", stripped)
+                        format!("###{}", stripped)
                     } else {
                         l.to_string()
                     }
@@ -765,6 +772,22 @@ mod validation {
             None
         }
 
+        fn strip_leading_h1(md: &str) -> String {
+            let mut lines = md.lines();
+            let mut out = String::new();
+            let mut first = true;
+            while let Some(line) = lines.next() {
+                if first && line.trim_start().starts_with('#') {
+                    first = false;
+                    continue; // skip the H1 line entirely
+                }
+                first = false;
+                out.push_str(line);
+                out.push('\n');
+            }
+            out.trim_start().to_string()
+        }
+
         pub fn update(api_map: &ApiMap) {
             let root = meta::workspace_root();
             let docs_root = root.join("docs/api");
@@ -780,6 +803,7 @@ mod validation {
                 let obj_md = std::fs::read_to_string(obj_dir.join(format!("{}.md", dir)))
                     .unwrap_or_default();
                 let description = first_paragraph(&obj_md);
+                let body = strip_leading_h1(&obj_md);
 
                 let mut out = String::new();
                 out.push_str("---\n");
@@ -789,7 +813,7 @@ mod validation {
                 out.push_str("---\n\n");
 
                 out.push_str("## Description\n\n");
-                out.push_str(&obj_md);
+                out.push_str(&body);
                 out.push('\n');
 
                 out.push_str("\n## Methods\n\n");
