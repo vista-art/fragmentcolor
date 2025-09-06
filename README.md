@@ -10,8 +10,9 @@ The API encourages a simple shader composition workflow. You can use **WGSL** or
 for visual consistency across platforms, while avoiding the verbosity of modern GPU APIs.
 
 Check the website for the Getting Started guide and full reference:
-- Documentation: https://fragmentcolor.org/welcome
-- API Reference: https://fragmentcolor.org/docs/api
+
+- **Documentation:** <https://fragmentcolor.org/welcome>
+- **API Reference:** <https://fragmentcolor.org/docs/api>
 
 > ⚠️ Status
 >

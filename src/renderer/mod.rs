@@ -115,12 +115,10 @@ impl Renderer {
             let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
 
             #[cfg(wasm)]
-            let instance =
-                wgpu::util::new_instance_with_webgpu_detection(&wgpu::InstanceDescriptor {
-                    backends: wgpu::Backends::GL | wgpu::Backends::BROWSER_WEBGPU,
-                    ..Default::default()
-                })
-                .await;
+            let instance = wgpu::util::new_instance_with_webgpu_detection(
+                &wgpu::InstanceDescriptor::default(),
+            )
+            .await;
 
             let instance = Arc::new(instance);
             self.instance.write().replace(instance.clone());
