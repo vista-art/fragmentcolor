@@ -136,7 +136,7 @@ fn generate_api_map() {
 /// a HashMap of its public functions and their signatures
 fn extract_public_functions(crate_path: &Path) -> ApiMap {
     let mut signatures = ApiMap::new();
-let (entry_path, parsed_file) = parse_lib_entry_point(crate_path);
+    let (entry_path, parsed_file) = parse_lib_entry_point(crate_path);
 
     traverse_and_extract(
         entry_path.as_ref(),
@@ -374,7 +374,9 @@ fn extract_impl(item_impl: ItemImpl, signatures: &mut ApiMap, filter: NameFilter
 
     let mut methods = Vec::new();
     for impl_item in &item_impl.items {
-        if let ImplItem::Fn(method) = impl_item && matches!(method.vis, Visibility::Public(_)) {
+        if let ImplItem::Fn(method) = impl_item
+            && matches!(method.vis, Visibility::Public(_))
+        {
             methods.push(extract_signature(&method.sig));
         }
     }
@@ -603,7 +605,7 @@ mod validation {
         content.contains(&begin) && content.contains(&end)
     }
 
-fn validate_healthchecks(_api_map: &ApiMap, problems: &mut Vec<String>) {
+    fn validate_healthchecks(_api_map: &ApiMap, problems: &mut Vec<String>) {
         let py_path = meta::workspace_root().join("platforms/python/healthcheck.py");
         let js_path = meta::workspace_root().join("platforms/web/healthcheck/main.js");
         let py = fs::read_to_string(&py_path).unwrap_or_default();
@@ -782,8 +784,8 @@ fn validate_healthchecks(_api_map: &ApiMap, problems: &mut Vec<String>) {
                 let mut out = String::new();
                 out.push_str("---\n");
                 out.push_str(&format!("title: {}\n", object));
-let desc = description.replace('\n', " ").replace('"', "\\\"");
-out.push_str(&format!("description: \"{}\"\n", desc));
+                let desc = description.replace('\n', " ").replace('"', "\\\"");
+                out.push_str(&format!("description: \"{}\"\n", desc));
                 out.push_str("---\n\n");
 
                 out.push_str("## Description\n\n");
