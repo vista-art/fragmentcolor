@@ -1,113 +1,300 @@
 ---
 title: Renderer
-description: The Renderer draws a Shader or a group of shaders to a given Target.
+description: 
 ---
-
-import { Tabs, TabItem } from "@astrojs/starlight/components";
 
 ## Description
 
-The **Renderer** draws one or multiple [Shader](/api/shader)s to a given [Target](/api/target) (canvas or window).
+# Renderer
 
-It can render Shader objects, Pass objects, and [Frame](/api/frame) objects.
+## Draws Shaders to a Target
 
-You can create a Renderer instance by calling the `init` function in [FragmentColor](/api/fragmentcolor).
+The [Renderer](https://fragmentcolor.org/docs/api/renderer) is the main entry point for
+[FragmentColor](https://fragmentcolor.org) and normally the first object you create.
 
-Alternatively, you can create a headless Renderer instance by calling the `headless` function.
+It is used to render
+[Shader](https://fragmentcolor.org/docs/api/shader)s,
+[Pass](https://fragmentcolor.org/docs/api/pass)es, and
+[Frame](https://fragmentcolor.org/docs/api/frame)s
+to a [Target](https://fragmentcolor.org/docs/api/target) (canvas or window) or to a Bitmap.
+
+The [Renderer](https://fragmentcolor.org/docs/api/renderer) internals are lazily initialized
+when the user creates a [Target](https://fragmentcolor.org/docs/api/target) or renders a Bitmap.
+This ensures the adapter and device are compatible with the target environment.
+
+At the point of creation, we don't know if it will be used offscreen
+or attached to a platform-specific Window or Canvas.
+
+The API ensures the [Renderer](https://fragmentcolor.org/docs/api/renderer) is usable when `render()` is called,
+because
+the `render()` method expects a Target as input. So, the user must call
+`Renderer.create_target()` first, which initializes a window adapter, or
+`Renderer.render_image()` which initializes an offscreen adapter.
 
 ## Example
 
-### Rendering to a Canvas
-
-<Tabs>
-
-<TabItem label="Javascript">
-
-```js
-import { FragmentColor as fc } from "fragmentcolor";
-
-const canvas = document.getElementById("canvas");
-[renderer, target] = fc.init(canvas);
-
-const shader = new Shader("example.wgsl");
-
-renderer.render(shader, target);
+```rust
+use fragmentcolor::Renderer;
+let renderer = Renderer::new();
 ```
 
-</TabItem>
+## Methods
 
-<TabItem label="Python">
+### async create_target(target: PLATFORM_SPECIFIC)
 
-```python
-from fragmentcolor import FragmentColor as fc
-from rendercanvas.auto import RenderCanvas
+#### Rust
 
-canvas = RenderCanvas()
-renderer, target = fc.init(canvas)
+```rust
+use fragmentcolor::Renderer;
 
-shader = Shader("example.wgsl")
-
-renderer.render(shader, target)
+# fn main() {
+let renderer = Renderer::new();
+# }
 ```
 
-</TabItem>
-
-</Tabs>
-
-### Rendering to an image (byte array)
-
-<Tabs>
-
-<TabItem label="Javascript">
-
-```js
-import { Renderer } from "fragmentcolor";
-
-const renderer = Renderer.headless();
-let shader = new Shader("example.wgsl");
-let image = renderer.render_image(shader);
-```
-
-</TabItem>
-
-<TabItem label="Python">
+#### Python
 
 ```python
 from fragmentcolor import Renderer
 
-renderer = Renderer.headless()
-shader = Shader("example.wgsl")
-nd_array = renderer.render_image(shader)
+def main():
+    renderer = Renderer.new()
+# pub async fn create_target()
 ```
 
-</TabItem>
+#### Javascript
 
-</Tabs>
+```javascript
+import { Renderer } from "fragmentcolor";
+
+const canvas = document.createElement("canvas");
+
+async function main() {
+    const renderer = Renderer.new();
+    await renderer.create_target(canvas);
+}
+```
+
+#### Swift (TBD)
+
+```swift
+import FragmentColor
+
+func main() {
+    let renderer = Renderer.new()
+}
+```
+
+# pub async fn create_target()
+
+#### Kotlin (TBD)
+
+# pub async fn create_target()
+
+```kotlin
+import fragmentcolor.Renderer
+
+fun main() {
+    val renderer = Renderer.new()
+}
+```
+
 
 ## Methods
 
-- ##### constructor(device, queue)
 
-  The Renderer constructor is private.
+## create_target(target: Canvas | Window)
 
-  You must use the `FragmentColor.init()` function to create a Renderer instance compatible with the given HTML Canvas.
+Creates a [Target](https://fragmentcolor.org/docs/api/target) attached to a platform-specific canvas or window.
 
-  Behind the scenes, the constructor takes a WebGPU device and queue as input, which is injected internally by the initializer.
+### Example
 
-- ##### headless()
+### Javascript (Web)
 
-  Creates a headless canvas.
+```js
+import init, { Renderer } from "fragmentcolor";
+await init();
+const renderer = new Renderer();
+const canvas = document.createElement("canvas");
+const target = await renderer.createTarget(canvas);
+```
 
-- ##### render(renderable: Shader | Pass | Frame, target: Target)
+### Python
 
-  Renders the given renderable object to the given target.
+```python
+from fragmentcolor import Renderer
+from rendercanvas.auto import RenderCanvas
 
-  The renderable object can be a Shader, Pass, or Frame instance.
+renderer = Renderer()
+canvas = RenderCanvas()
+target = renderer.create_target(canvas)
+```
 
-  The target object must be a Target instance.
 
-- ##### render_image(renderable: Shader | Pass | Frame) -> Uint8Array
+## Renderer::new()
 
-  Renders the given renderable object to an image (byte array).
+### Creates a new Renderer
 
-  The renderable object can be a Shader, Pass, or Frame instance.
+The [Renderer](https://fragmentcolor.org/docs/api/renderer) internals are lazily initialized
+when the user creates a [Target](https://fragmentcolor.org/docs/api/target) or renders a Bitmap.
+This ensures the adapter and device are compatible with the target environment.
+
+At the point of creation, we don't know if it will be used offscreen or attached to a Window.
+
+The API ensures the [Renderer](https://fragmentcolor.org/docs/api/renderer) is usable when `render()` is called,
+because the `render()` method expects a [Target](https://fragmentcolor.org/docs/api/target) as input, and
+the only way to create a [Target](https://fragmentcolor.org/docs/api/target)
+is by calling `renderer.create_target(Window)` first.
+
+- `Renderer.create_target()` internally initializes a window adapter, while
+- `Renderer.render_image()` initializes an offscreen adapter.
+
+### Example
+
+```rust
+use fragmentcolor::Renderer;
+let renderer = Renderer::new();
+```
+
+### Python
+
+```python
+renderer = Renderer()
+```
+
+### Javascript
+
+```js
+const renderer = new Renderer();
+```
+
+
+
+
+
+## Headless rendering: create_texture_target
+
+Render to an offscreen texture without a Window or Canvas.
+
+This is useful for tests, server-side rendering, or running examples in CI.
+
+### Example
+
+### Rust
+
+```rust path=null start=null
+use fragmentcolor::{Renderer, Shader, Pass, Frame};
+
+## fn main() -> Result<(), Box<dyn std::error::Error>> {
+let renderer = Renderer::new();
+let target = pollster::block_on(renderer.create_texture_target([64, 64]))?;
+
+let shader = Shader::default();
+renderer.render(&shader, &target)?;
+
+let pass = Pass::new("single pass");
+pass.add_shader(&shader);
+renderer.render(&pass, &target)?;
+
+let mut frame = Frame::new();
+frame.add_pass(&pass);
+renderer.render(&frame, &target)?;
+## Ok(())
+## }
+```
+
+### Python
+
+```python path=null start=null
+from fragmentcolor import Renderer, Shader, Pass, Frame
+
+renderer = Renderer()
+## size can be a tuple or list
+target = renderer.create_texture_target((64, 64))
+
+shader = Shader("circle.wgsl")
+shader.set("resolution", [64.0, 64.0])
+shader.set("circle.radius", 10.0)
+shader.set("circle.color", [1.0, 0.0, 0.0, 0.8])
+shader.set("circle.border", 2.0)
+shader.set("circle.position", [0.0, 0.0])
+
+renderer.render(shader, target)
+
+rpass = Pass("single pass")
+rpass.add_shader(shader)
+renderer.render(rpass, target)
+
+frame = Frame()
+frame.add_pass(rpass)
+renderer.render(frame, target)
+```
+
+### Javascript (Web)
+
+```js path=null start=null
+import init, { Renderer, Shader, Pass, Frame } from "fragmentcolor";
+
+await init();
+
+const renderer = new Renderer();
+const target = await renderer.createTextureTarget([64, 64]);
+
+const shader = new Shader("circle.wgsl");
+shader.set("resolution", [64.0, 64.0]);
+shader.set("circle.radius", 10.0);
+shader.set("circle.color", [1.0, 0.0, 0.0, 0.8]);
+shader.set("circle.border", 2.0);
+shader.set("circle.position", [0.0, 0.0]);
+
+renderer.render(shader, target);
+
+const rpass = new Pass("single pass");
+rpass.add_shader(shader);
+renderer.render(rpass, target);
+
+const frame = new Frame();
+frame.add_pass(rpass);
+renderer.render(frame, target);
+```
+
+### Python
+
+```python
+target = renderer.create_texture_target((64, 64))
+```
+
+### Javascript
+
+```js
+const target = await renderer.createTextureTarget([64, 64]);
+```
+## render(renderable: Shader | Pass | Frame, target: Target)
+
+Renders the given object to the given [Target](https://fragmentcolor.org/docs/api/target).
+
+### Example
+
+```rust
+use fragmentcolor::{Renderer, Shader};
+
+## fn main() -> Result<(), Box<dyn std::error::Error>> {
+let renderer = Renderer::new();
+let target = pollster::block_on(renderer.create_texture_target([10, 10]))?;
+let shader = Shader::default();
+renderer.render(&shader, &target)?;
+## Ok(())
+## }
+```
+
+### Python
+
+```python
+renderer.render(shader, target)
+```
+
+### Javascript
+
+```js
+renderer.render(shader, target);
+```

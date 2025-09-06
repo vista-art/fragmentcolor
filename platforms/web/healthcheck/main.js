@@ -2,9 +2,14 @@ import init, { Renderer, Shader, Pass, Frame } from "../pkg/fragmentcolor.js";
 
 await init();
 
+// DOC: Renderer.constructor (begin)
 const renderer = new Renderer();
+// DOC: (end)
+// DOC: Renderer.create_texture_target (begin)
 const target = await renderer.createTextureTarget([64, 64]);
+// DOC: (end)
 
+// DOC: Shader.constructor (begin)
 const shader = new Shader(`
 struct VertexOutput {
     @builtin(position) coords: vec4<f32>,
@@ -54,21 +59,45 @@ fn main(pixel: VertexOutput) -> @location(0) vec4<f32> {
     return vec4<f32>(circle.color.rgb * a, a);
 }
 `);
+// DOC: (end)
 
+// DOC: Shader.set (begin)
 shader.set("resolution", [64.0, 64.0]);
 shader.set("circle.radius", 10.0);
 shader.set("circle.color", [1.0, 0.0, 0.0, 0.8]);
 shader.set("circle.border", 2.0);
 shader.set("circle.position", [0.0, 0.0]);
+// DOC: (end)
 
+// DOC: Renderer.render (begin)
 renderer.render(shader, target);
+// DOC: (end)
 
+// DOC: Pass.constructor (begin)
 const rpass = new Pass("single pass");
+// DOC: (end)
+// DOC: Pass.add_shader (begin)
 rpass.add_shader(shader);
+// DOC: (end)
 renderer.render(rpass, target);
 
+// DOC: Frame.constructor (begin)
 const frame = new Frame();
+// DOC: (end)
+// DOC: Frame.add_pass (begin)
 frame.add_pass(rpass);
+// DOC: (end)
 renderer.render(frame, target);
+
+// Additional API coverage for docs
+// DOC: Shader.get (begin)
+const _radius = shader.get("circle.radius");
+// DOC: (end)
+// DOC: Shader.list_uniforms (begin)
+const _uniforms = shader.listUniforms();
+// DOC: (end)
+// DOC: Shader.list_keys (begin)
+const _keys = shader.listKeys();
+// DOC: (end)
 
 console.log("Headless JS render completed successfully");

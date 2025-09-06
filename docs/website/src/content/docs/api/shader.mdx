@@ -1,56 +1,270 @@
 ---
 title: Shader
-description: Shader is the main building block in FragmentColor.
-  It takes a shader source as input, parses it, and exposes the uniforms as keys.
+description: The [Shader](https://fragmentcolor.org/docs/api/shader) object is the main building block in FragmentColor.
 ---
 
 ## Description
 
-The **Shader** object is the main building block in FragmentColor.
+# Shader
+
+The [Shader](https://fragmentcolor.org/docs/api/shader) object is the main building block in FragmentColor.
 
 It takes a WGSL or GLSL shader source as input, parses it, validates it, and exposes the uniforms as keys.
 
-To draw your shader, you must use your Shader instance as input to a Renderer.
+To draw your shader, you must use your [Shader](https://fragmentcolor.org/docs/api/shader) instance as input to a [Renderer](https://fragmentcolor.org/docs/api/renderer).
 
-You can compose Shader instances into a Pass object to create more complex rendering pipelines.
+You can compose [Shader](https://fragmentcolor.org/docs/api/shader) instances into a [Pass](https://fragmentcolor.org/docs/api/pass) object to create more complex rendering pipelines.
 
-You can also create renderings with multiple Render Passes by using multiple Pass instances to a Frame object.
+You can also create renderings with multiple Render Passes by using multiple [Pass](https://fragmentcolor.org/docs/api/pass) instances to a [Frame](https://fragmentcolor.org/docs/api/frame) object.
 
 ## Example
 
-```js
-import { Shader } from "fragmentcolor";
+```rust
+use fragmentcolor::Shader;
 
-const circle = new Shader("circle.wgsl");
-circle.set("circle.radius", 200.0);
-circle.set("circle.color", [1.0, 0.0, 0.0, 0.8]);
-circle.set("circle.border", 20.0);
+let _shader = Shader::default();
 ```
+
 
 ## Methods
 
-- #### constructor(source: string)
+## new(source: string)
 
-  Creates a new Shader instance from the given source string, file path, or URL.
+Creates a new [Shader](https://fragmentcolor.org/docs/api/shader) instance from the given WGSL source string, file path, or URL.
 
-  If an exception occurs during parsing, the error message will indicate the location of the error.
+GLSL is also supported if you enable the `glsl` feature.
+Shadertoy-flavored GLSL is supported if the `shadertoy` feature is enabled.
 
-  If the initial source validation passes, the shader is guaranteed to work on the GPU. All uniforms are initialized to their default zero values.
+If the optional features are enabled, the constructor will try to automatically
+detect the shader type and parse it accordingly.
 
-- #### set(key: string, value: any)
+If an exception occurs during parsing, the error message will indicate the location of the error.
 
-  Sets the value of the uniform identified by the given key.
+If the initial source validation passes, the shader is guaranteed to work on the GPU. All uniforms are initialized to their default zero values.
 
-  If the key does not exist or the value format is incorrect, the `set` method throws an exception. The shader remains valid, and if the exception is caught, the shader can still be used with the renderer.
+### Example
 
-- #### get(key: string) -> any
+```rust
+use fragmentcolor::Shader;
 
-  Returns the current value of the uniform identified by the given key.
+let _shader = Shader::default();
+```
 
-- #### list_uniforms() -> [string]
+### Platform-specific: Web
 
-  Returns a list of all uniform names in the Shader (excluding struct fields).
+In WASM, the constructor cannot fetch a URL directly. Use [Shader::fetch()](https://fragmentcolor.org/docs/api/shader/fetch) instead.
 
-- #### list_keys() -> [string]
+### Python
 
-  Returns a list of all keys in the Shader, including uniform names and struct fields using the dot notation.
+```python
+shader = Shader("""
+struct VertexOutput {
+    @builtin(position) coords: vec4<f32>,
+}
+
+@vertex
+fn vs_main(@builtin(vertex_index) in_vertex_index: u32) -> VertexOutput {
+    const vertices = array(
+        vec2( -1., -1.),
+        vec2(  3., -1.),
+        vec2( -1.,  3.)
+    );
+    return VertexOutput(vec4<f32>(vertices[in_vertex_index], 0.0, 1.0));
+}
+
+struct Circle {
+    position: vec2<f32>,
+    radius: f32,
+    border: f32,
+    color: vec4<f32>,
+}
+
+@group(0) @binding(0)
+var<uniform> circle: Circle;
+
+@group(0) @binding(1) var<uniform> resolution: vec2<f32>;
+
+    @fragment
+fn main(pixel: VertexOutput) -> @location(0) vec4<f32> {
+    let normalized_coords = pixel.coords.xy / resolution;
+    var uv = -1.0 + 2.0 * normalized_coords;
+    if (resolution.x > resolution.y) {
+        uv.x *= resolution.x / resolution.y;
+    } else {
+        uv.y *= resolution.y / resolution.x;
+    }
+    let circle_pos = circle.position / resolution;
+    let dist = distance(uv, circle_pos);
+    let r = circle.radius / min(resolution.x, resolution.y);
+    let aa = 2. / min(resolution.x, resolution.y);
+    let border = circle.border / min(resolution.x, resolution.y);
+
+    if (dist > r + (border + aa)) { discard; }
+
+    let circle_sdf = 1.0 - smoothstep(border - aa, border + aa, abs(dist - r));
+    let a = circle.color.a * circle_sdf;
+    return vec4<f32>(circle.color.rgb * a, a);
+}
+""")
+```
+
+### Javascript
+
+```js
+const shader = new Shader(`
+struct VertexOutput {
+    @builtin(position) coords: vec4<f32>,
+}
+
+@vertex
+fn vs_main(@builtin(vertex_index) in_vertex_index: u32) -> VertexOutput {
+    const vertices = array(
+        vec2( -1., -1.),
+        vec2(  3., -1.),
+        vec2( -1.,  3.)
+    );
+    return VertexOutput(vec4<f32>(vertices[in_vertex_index], 0.0, 1.0));
+}
+
+struct Circle {
+    position: vec2<f32>,
+    radius: f32,
+    border: f32,
+    color: vec4<f32>,
+}
+
+@group(0) @binding(0)
+var<uniform> circle: Circle;
+
+@group(0) @binding(1) var<uniform> resolution: vec2<f32>;
+
+@fragment
+fn main(pixel: VertexOutput) -> @location(0) vec4<f32> {
+    let normalized_coords = pixel.coords.xy / resolution;
+    var uv = -1.0 + 2.0 * normalized_coords;
+    if (resolution.x > resolution.y) {
+        uv.x *= resolution.x / resolution.y;
+    } else {
+        uv.y *= resolution.y / resolution.x;
+    }
+    let circle_pos = circle.position / resolution;
+    let dist = distance(uv, circle_pos);
+    let r = circle.radius / min(resolution.x, resolution.y);
+    let aa = 2. / min(resolution.x, resolution.y);
+    let border = circle.border / min(resolution.x, resolution.y);
+
+    if (dist > r + (border + aa)) { discard; }
+
+    let circle_sdf = 1.0 - smoothstep(border - aa, border + aa, abs(dist - r));
+    let a = circle.color.a * circle_sdf;
+    return vec4<f32>(circle.color.rgb * a, a);
+}
+`);
+```
+## set(key: string, value: any)
+
+Sets the value of the uniform identified by the given key.
+
+If the key does not exist or the value format is incorrect, the `set` method throws an exception. The shader remains valid, and if the exception is caught, the shader can still be used with the renderer.
+
+### Example
+
+```rust
+use fragmentcolor::Shader;
+
+let shader = Shader::default();
+let _ = shader.set("resolution", [800.0, 600.0]);
+```
+
+### Python
+
+```python
+shader.set("resolution", [64.0, 64.0])
+    shader.set("circle.radius", 10.0)
+    shader.set("circle.color", [1.0, 0.0, 0.0, 0.8])
+    shader.set("circle.border", 2.0)
+    shader.set("circle.position", [0.0, 0.0])
+```
+
+### Javascript
+
+```js
+shader.set("resolution", [64.0, 64.0]);
+shader.set("circle.radius", 10.0);
+shader.set("circle.color", [1.0, 0.0, 0.0, 0.8]);
+shader.set("circle.border", 2.0);
+shader.set("circle.position", [0.0, 0.0]);
+```
+## get(key: string) -> any
+
+Returns the current value of the uniform identified by the given key.
+
+### Example
+
+```rust
+use fragmentcolor::Shader;
+
+let shader = Shader::default();
+let _ = shader.set("resolution", [800.0, 600.0]);
+let _res: Result<[f32; 2], _> = shader.get("resolution");
+```
+
+### Python
+
+```python
+_radius = shader.get("circle.radius")
+```
+
+### Javascript
+
+```js
+const _radius = shader.get("circle.radius");
+```
+## list_uniforms() -> [string]
+
+Returns a list of all uniform names in the Shader (excluding struct fields).
+
+### Example
+
+```rust
+use fragmentcolor::Shader;
+
+let shader = Shader::default();
+let _list = shader.list_uniforms();
+```
+
+### Python
+
+```python
+_uniforms = shader.list_uniforms()
+```
+
+### Javascript
+
+```js
+const _uniforms = shader.listUniforms();
+```
+## list_keys() -> [string]
+
+Returns a list of all keys in the Shader, including uniform names and struct fields using the dot notation.
+
+### Example
+
+```rust
+use fragmentcolor::Shader;
+
+let shader = Shader::default();
+let _keys = shader.list_keys();
+```
+
+### Python
+
+```python
+_keys = shader.list_keys()
+```
+
+### Javascript
+
+```js
+const _keys = shader.listKeys();
+```
