@@ -5,8 +5,6 @@ description: "The [Pass](https://fragmentcolor.org/docs/api/pass) object is a co
 
 ## Description
 
-# Pass
-
 The [Pass](https://fragmentcolor.org/docs/api/pass) object is a collection of [Shader](https://fragmentcolor.org/docs/api/shader) objects that are rendered to a [Target](https://fragmentcolor.org/docs/api/target) by the [Renderer](https://fragmentcolor.org/docs/api/renderer).
 
 While the [Shader](https://fragmentcolor.org/docs/api/shader) represents a single **Render Pipeline** or a **Compute Pipeline**,
@@ -50,13 +48,13 @@ Ok(())
 
 ## Methods
 
-## Pass::new(name: &str) -> Self
+### Pass::new(name: &str) -> Self
 
-### Creates a new Pass
+#### Creates a new Pass
 
 The name property is optional and is used for debugging purposes.
 
-### Example
+#### Example
 
 ```rust
 use fragmentcolor::Pass;
@@ -75,13 +73,13 @@ rpass = Pass("single pass")
 ```js
 const rpass = new Pass("single pass");
 ```
-## compute(name: &str) -> Pass
+### compute(name: &str) -> Pass
 
 Creates a new [Pass](https://fragmentcolor.org/docs/api/pass) configured for compute workloads.
 
 Only [Shader](https://fragmentcolor.org/docs/api/shader) objects that compile to compute pipelines can be added.
 
-### Example
+#### Example
 
 ```rust
 use fragmentcolor::Pass;
@@ -89,13 +87,13 @@ use fragmentcolor::Pass;
 let pass = Pass::compute("compute pass");
 // Add compute shaders once available
 ```
-## from_shader(name: &str, shader: Shader) -> Pass
+### from_shader(name: &str, shader: Shader) -> Pass
 
 Creates a new [Pass](https://fragmentcolor.org/docs/api/pass) from a single [Shader](https://fragmentcolor.org/docs/api/shader).
 
 The created Pass inherits the render/compute type from the provided Shader.
 
-### Example
+#### Example
 
 ```rust
 use fragmentcolor::{Pass, Shader};
@@ -103,18 +101,18 @@ use fragmentcolor::{Pass, Shader};
 let shader = Shader::default();
 let pass = Pass::from_shader("single", &shader);
 ```
-## load_previous()
+### load_previous()
 
 Configures this [Pass](https://fragmentcolor.org/docs/api/pass) to load the previous contents of the [Target](https://fragmentcolor.org/docs/api/target) instead of clearing it.
 
 This is useful when layering multiple passes where the next pass should blend with the prior results.
 
-### Example
+#### Example
 
 ```rust
 use fragmentcolor::{Renderer, Pass, Shader};
 
-## fn main() -> Result<(), Box<dyn std::error::Error>> {
+### fn main() -> Result<(), Box<dyn std::error::Error>> {
 let renderer = Renderer::new();
 let target = pollster::block_on(renderer.create_texture_target([64, 64]))?;
 
@@ -124,16 +122,16 @@ pass.add_shader(&shader);
 pass.load_previous();
 
 renderer.render(&pass, &target)?;
-## Ok(())
-## }
+### Ok(())
+### }
 ```
-## get_input() -> PassInput
+### get_input() -> PassInput
 
 Returns a copy of the current input configuration for this [Pass](https://fragmentcolor.org/docs/api/pass).
 
 It includes the clear/load behavior and clear color.
 
-### Example
+#### Example
 
 ```rust
 use fragmentcolor::Pass;
@@ -142,11 +140,11 @@ let pass = Pass::new("example");
 let _input = pass.get_input();
 // Inspect fields via dedicated APIs; internal fields are not public
 ```
-## add_shader(shader: Shader)
+### add_shader(shader: Shader)
 
 Adds a Shader object to the Pass.
 
-### Example
+#### Example
 
 ```rust
 use fragmentcolor::{Pass, Shader};
@@ -167,18 +165,18 @@ rpass.add_shader(shader)
 ```js
 rpass.add_shader(shader);
 ```
-## set_viewport(viewport: Region)
+### set_viewport(viewport: Region)
 
 Sets the viewport region for this [Pass](https://fragmentcolor.org/docs/api/pass).
 
 The viewport restricts drawing to a rectangular area of the [Target](https://fragmentcolor.org/docs/api/target).
 
-### Example
+#### Example
 
 ```rust
 use fragmentcolor::{Renderer, Pass, Shader, Region};
 
-## fn main() -> Result<(), Box<dyn std::error::Error>> {
+### fn main() -> Result<(), Box<dyn std::error::Error>> {
 let renderer = Renderer::new();
 let target = pollster::block_on(renderer.create_texture_target([64, 64]))?;
 
@@ -189,21 +187,21 @@ pass.add_shader(&shader);
 pass.set_viewport(Region::from_region(0, 0, 32, 32));
 
 renderer.render(&pass, &target)?;
-## Ok(())
-## }
+### Ok(())
+### }
 ```
-## set_clear_color(color: [f32; 4])
+### set_clear_color(color: [f32; 4])
 
 Sets the clear color for this [Pass](https://fragmentcolor.org/docs/api/pass).
 
 When the pass is configured to clear, the render target is cleared to the given RGBA color before drawing.
 
-### Example
+#### Example
 
 ```rust
 use fragmentcolor::{Renderer, Pass, Shader};
 
-## fn main() -> Result<(), Box<dyn std::error::Error>> {
+### fn main() -> Result<(), Box<dyn std::error::Error>> {
 let renderer = Renderer::new();
 let target = pollster::block_on(renderer.create_texture_target([64, 64]))?;
 
@@ -214,6 +212,6 @@ pass.add_shader(&shader);
 pass.set_clear_color([0.1, 0.2, 0.3, 1.0]);
 
 renderer.render(&pass, &target)?;
-## Ok(())
-## }
+### Ok(())
+### }
 ```

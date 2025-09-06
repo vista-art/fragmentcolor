@@ -734,12 +734,12 @@ mod validation {
             // Shift headings down by two levels so that method H1 becomes H3 under the "## Methods" section.
             md.lines()
                 .map(|l| {
-                    if l.starts_with("######") {
-                        "######".to_string()
-                    } else if l.starts_with("#####") {
-                        "######".to_string()
-                    } else if l.starts_with("####") {
-                        "######".to_string()
+                    if let Some(stripped) = l.strip_prefix("######") {
+                        format!("######{}", stripped)
+                    } else if let Some(stripped) = l.strip_prefix("#####") {
+                        format!("######{}", stripped)
+                    } else if let Some(stripped) = l.strip_prefix("####") {
+                        format!("######{}", stripped)
                     } else if let Some(stripped) = l.strip_prefix("###") {
                         format!("#####{}", stripped)
                     } else if let Some(stripped) = l.strip_prefix("##") {
@@ -773,10 +773,9 @@ mod validation {
         }
 
         fn strip_leading_h1(md: &str) -> String {
-            let mut lines = md.lines();
             let mut out = String::new();
             let mut first = true;
-            while let Some(line) = lines.next() {
+            for line in md.lines() {
                 if first && line.trim_start().starts_with('#') {
                     first = false;
                     continue; // skip the H1 line entirely
