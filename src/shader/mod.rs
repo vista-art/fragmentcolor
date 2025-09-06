@@ -29,14 +29,10 @@ use storage::*;
 /// The hash of a shader source.
 pub type ShaderHash = [u8; 32];
 
-/// The Shader in FragmentColor is the blueprint of a Render Pipeline.
-///
-/// It automatically parses a WGSL shader source and extracts its uniforms, buffers, and textures.
-///
-/// The user can set values for the uniforms and buffers, and then render the shader.
 #[cfg_attr(wasm, wasm_bindgen)]
 #[cfg_attr(python, pyclass)]
 #[derive(Debug, Clone)]
+#[lsp_doc("docs/api/shader/shader.md")]
 pub struct Shader {
     pub(crate) pass: Arc<PassObject>,
     pub(crate) object: Arc<ShaderObject>,

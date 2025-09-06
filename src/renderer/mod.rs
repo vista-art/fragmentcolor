@@ -61,6 +61,7 @@ impl Renderer {
     // PLATFORM SPECIFIC:
     // pub fn create_target() {}
 
+    #[lsp_doc("docs/api/renderer/create_texture_target.md")]
     pub async fn create_texture_target(
         &self,
         size: impl Into<Size>,

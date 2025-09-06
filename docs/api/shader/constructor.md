@@ -1,6 +1,6 @@
 # new(source: string)
 
-Creates a new [Shader](https://fragmentcolor.com/docs/api/shader) instance from the given WGSL source string, file path, or URL.
+Creates a new [Shader](https://fragmentcolor.org/docs/api/shader) instance from the given WGSL source string, file path, or URL.
 
 GLSL is also supported if you enable the `glsl` feature.
 Shadertoy-flavored GLSL is supported if the `shadertoy` feature is enabled.
@@ -14,4 +14,4 @@ If the initial source validation passes, the shader is guaranteed to work on the
 
 ## Platform-specific: Web
 
-In WASM, the constructor cannot fetch a URL directly. Use [Shader::fetch()](https://fragmentcolor.com/docs/api/shader/fetch) instead.
+In WASM, the constructor cannot fetch a URL directly. Use [Shader::fetch()](https://fragmentcolor.org/docs/api/shader/fetch) instead.
