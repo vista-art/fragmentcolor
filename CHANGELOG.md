@@ -2,9 +2,25 @@
 
 ## Unreleased
 
-Check [Roadmap](/ROADMAP.md) for unreleased/planned features
+See the [Roadmap](https://github.com/vista-art/fragmentcolor/blob/main/ROADMAP.md) for planned features.
 
-## V 0.10.6 Implements Javascript Support
+## 0.10.7 Documentation automation, website integration, and release flow
+
+Added
+- Automated documentation pipeline:
+  - Doc strings centralized in `docs/api` and consumed in Rust via `#[lsp_doc]`.
+  - Build-time validation: ensures object/method docs exist and include a `## Example` section.
+  - Website generator: converts `docs/api` into MDX pages under `docs/website`, downshifting method headings and stripping object H1.
+  - JS/Python examples are sliced from annotated healthcheck scripts.
+- Website moved into this repository under `docs/website`.
+- Post-publish workflow: after tags publish to npm & PyPI, update consumers (website & JS example) to the released version and push to main.
+- Healthcheck example markers added for Renderer/Pass/Frame/Shader.
+
+Changed
+- Normalized API links to https://fragmentcolor.org.
+- Wired all public items to `#[lsp_doc]` sources (Renderer, Shader, Pass, Frame, etc.).
+
+## 0.10.6 JavaScript support
 
 - [x] Adds JavaScript support
 - [x] Publishes to NPM

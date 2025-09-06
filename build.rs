@@ -706,24 +706,34 @@ mod validation {
 
         fn first_paragraph(md: &str) -> String {
             let mut lines = md.lines();
-            // Skip H1
+            // Skip the first H1 line entirely
             for line in lines.by_ref() {
-                if line.trim().starts_with('#') {
+                if line.trim_start().starts_with('#') {
                     break;
                 }
             }
+
             let mut out = String::new();
+            let mut started = false;
             for line in lines {
-                if line.trim().is_empty() {
-                    if !out.is_empty() {
+                let t = line.trim();
+                // Skip any heading lines
+                if t.starts_with('#') {
+                    if started && !out.is_empty() {
                         break;
                     } else {
                         continue;
                     }
                 }
-                if line.trim().starts_with("##") {
-                    break;
+                // Stop on blank line once we've started
+                if t.is_empty() {
+                    if started && !out.is_empty() {
+                        break;
+                    } else {
+                        continue;
+                    }
                 }
+                started = true;
                 out.push_str(line);
                 out.push('\n');
             }
@@ -732,26 +742,40 @@ mod validation {
 
         fn downshift_headings(md: &str) -> String {
             // Shift headings down by two levels so that method H1 becomes H3 under the "## Methods" section.
-            md.lines()
-                .map(|l| {
-                    if let Some(stripped) = l.strip_prefix("######") {
-                        format!("######{}", stripped)
-                    } else if let Some(stripped) = l.strip_prefix("#####") {
-                        format!("######{}", stripped)
-                    } else if let Some(stripped) = l.strip_prefix("####") {
-                        format!("######{}", stripped)
-                    } else if let Some(stripped) = l.strip_prefix("###") {
-                        format!("#####{}", stripped)
-                    } else if let Some(stripped) = l.strip_prefix("##") {
-                        format!("####{}", stripped)
-                    } else if let Some(stripped) = l.strip_prefix('#') {
-                        format!("###{}", stripped)
-                    } else {
-                        l.to_string()
-                    }
-                })
-                .collect::<Vec<_>>()
-                .join("\n")
+            let mut out = String::new();
+            let mut in_code = false;
+            for l in md.lines() {
+                let line = l;
+                if line.trim_start().starts_with("```") {
+                    in_code = !in_code;
+                    out.push_str(line);
+                    out.push('\n');
+                    continue;
+                }
+                if in_code {
+                    out.push_str(line);
+                    out.push('\n');
+                    continue;
+                }
+                let shifted = if let Some(stripped) = line.strip_prefix("######") {
+                    format!("######{}", stripped)
+                } else if let Some(stripped) = line.strip_prefix("#####") {
+                    format!("######{}", stripped)
+                } else if let Some(stripped) = line.strip_prefix("####") {
+                    format!("######{}", stripped)
+                } else if let Some(stripped) = line.strip_prefix("###") {
+                    format!("#####{}", stripped)
+                } else if let Some(stripped) = line.strip_prefix("##") {
+                    format!("####{}", stripped)
+                } else if let Some(stripped) = line.strip_prefix('#') {
+                    format!("###{}", stripped)
+                } else {
+                    line.to_string()
+                };
+                out.push_str(&shifted);
+                out.push('\n');
+            }
+            out.trim_end().to_string()
         }
 
         fn collect_health_example(lang: &str, key: &str, content: &str) -> Option<String> {
@@ -787,6 +811,18 @@ mod validation {
             out.trim_start().to_string()
         }
 
+        fn strip_after_methods(md: &str) -> String {
+            let mut out = String::new();
+            for line in md.lines() {
+                if line.trim_start().starts_with("## Methods") {
+                    break;
+                }
+                out.push_str(line);
+                out.push('\n');
+            }
+            out.trim_end().to_string()
+        }
+
         pub fn update(api_map: &ApiMap) {
             let root = meta::workspace_root();
             let docs_root = root.join("docs/api");
@@ -802,7 +838,7 @@ mod validation {
                 let obj_md = std::fs::read_to_string(obj_dir.join(format!("{}.md", dir)))
                     .unwrap_or_default();
                 let description = first_paragraph(&obj_md);
-                let body = strip_leading_h1(&obj_md);
+                let body = strip_after_methods(&strip_leading_h1(&obj_md));
 
                 let mut out = String::new();
                 out.push_str("---\n");

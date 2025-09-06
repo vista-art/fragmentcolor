@@ -1,7 +1,5 @@
 # Renderer
 
-## Draws Shaders to a Target
-
 The [Renderer](https://fragmentcolor.org/docs/api/renderer) is the main entry point for
 [FragmentColor](https://fragmentcolor.org) and normally the first object you create.
 

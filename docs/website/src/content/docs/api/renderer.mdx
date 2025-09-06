@@ -1,6 +1,6 @@
 ---
 title: Renderer
-description: ""
+description: "The [Renderer](https://fragmentcolor.org/docs/api/renderer) is the main entry point for [FragmentColor](https://fragmentcolor.org) and normally the first object you create."
 ---
 
 ## Description
@@ -35,68 +35,6 @@ the `render()` method expects a Target as input. So, the user must call
 use fragmentcolor::Renderer;
 let renderer = Renderer::new();
 ```
-
-## Methods
-
-### async create_target(target: PLATFORM_SPECIFIC)
-
-#### Rust
-
-```rust
-use fragmentcolor::Renderer;
-
-# fn main() {
-let renderer = Renderer::new();
-# }
-```
-
-#### Python
-
-```python
-from fragmentcolor import Renderer
-
-def main():
-    renderer = Renderer.new()
-# pub async fn create_target()
-```
-
-#### Javascript
-
-```javascript
-import { Renderer } from "fragmentcolor";
-
-const canvas = document.createElement("canvas");
-
-async function main() {
-    const renderer = Renderer.new();
-    await renderer.create_target(canvas);
-}
-```
-
-#### Swift (TBD)
-
-```swift
-import FragmentColor
-
-func main() {
-    let renderer = Renderer.new()
-}
-```
-
-# pub async fn create_target()
-
-#### Kotlin (TBD)
-
-# pub async fn create_target()
-
-```kotlin
-import fragmentcolor.Renderer
-
-fun main() {
-    val renderer = Renderer.new()
-}
-```
-
 
 ## Methods
 
@@ -183,7 +121,7 @@ This is useful for tests, server-side rendering, or running examples in CI.
 ```rust path=null start=null
 use fragmentcolor::{Renderer, Shader, Pass, Frame};
 
-### fn main() -> Result<(), Box<dyn std::error::Error>> {
+# fn main() -> Result<(), Box<dyn std::error::Error>> {
 let renderer = Renderer::new();
 let target = pollster::block_on(renderer.create_texture_target([64, 64]))?;
 
@@ -197,8 +135,8 @@ renderer.render(&pass, &target)?;
 let mut frame = Frame::new();
 frame.add_pass(&pass);
 renderer.render(&frame, &target)?;
-### Ok(())
-### }
+# Ok(())
+# }
 ```
 
 #### Python
@@ -207,7 +145,7 @@ renderer.render(&frame, &target)?;
 from fragmentcolor import Renderer, Shader, Pass, Frame
 
 renderer = Renderer()
-### size can be a tuple or list
+# size can be a tuple or list
 target = renderer.create_texture_target((64, 64))
 
 shader = Shader("circle.wgsl")
@@ -276,13 +214,13 @@ Renders the given object to the given [Target](https://fragmentcolor.org/docs/ap
 ```rust
 use fragmentcolor::{Renderer, Shader};
 
-### fn main() -> Result<(), Box<dyn std::error::Error>> {
+# fn main() -> Result<(), Box<dyn std::error::Error>> {
 let renderer = Renderer::new();
 let target = pollster::block_on(renderer.create_texture_target([10, 10]))?;
 let shader = Shader::default();
 renderer.render(&shader, &target)?;
-### Ok(())
-### }
+# Ok(())
+# }
 ```
 
 ### Python

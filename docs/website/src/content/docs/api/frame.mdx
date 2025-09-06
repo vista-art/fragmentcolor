@@ -44,17 +44,6 @@ Ok(())
 
 ## Methods
 
-- ### constructor()
-
-  Creates a new Frame object.
-
-- ### add_pass(pass: Pass)
-
-  Adds a Pass object to the Frame.
-
-
-## Methods
-
 ### Frame::new()
 
 Creates a new [Frame](https://fragmentcolor.org/docs/api/frame) object.
@@ -66,7 +55,7 @@ A Frame is an ordered collection of [Pass](https://fragmentcolor.org/docs/api/pa
 ```rust
 use fragmentcolor::{Renderer, Frame, Pass, Shader};
 
-### fn main() -> Result<(), Box<dyn std::error::Error>> {
+# fn main() -> Result<(), Box<dyn std::error::Error>> {
 let renderer = Renderer::new();
 let target = pollster::block_on(renderer.create_texture_target([10, 10]))?;
 
@@ -78,8 +67,8 @@ let mut frame = Frame::new();
 frame.add_pass(&pass);
 
 renderer.render(&frame, &target)?;
-### Ok(())
-### }
+# Ok(())
+# }
 ```
 
 ### Python
@@ -104,7 +93,7 @@ Passes are rendered in the order they are added.
 ```rust
 use fragmentcolor::{Renderer, Frame, Pass, Shader};
 
-### fn main() -> Result<(), Box<dyn std::error::Error>> {
+# fn main() -> Result<(), Box<dyn std::error::Error>> {
 let renderer = Renderer::new();
 let target = pollster::block_on(renderer.create_texture_target([10, 10]))?;
 
@@ -120,8 +109,8 @@ frame.add_pass(&pass1);
 frame.add_pass(&pass2);
 
 renderer.render(&frame, &target)?;
-### Ok(())
-### }
+# Ok(())
+# }
 ```
 
 ### Python
