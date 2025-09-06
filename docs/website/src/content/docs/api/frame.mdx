@@ -5,8 +5,6 @@ description: "The [Frame](https://fragmentcolor.org/docs/api/frame) object is a 
 
 ## Description
 
-# Frame
-
 The [Frame](https://fragmentcolor.org/docs/api/frame) object is a collection of [Pass](https://fragmentcolor.org/docs/api/pass) objects that are rendered to a [Target](https://fragmentcolor.org/docs/api/target) by the [Renderer](https://fragmentcolor.org/docs/api/renderer).
 
 It is used to render multiple passes to a single target, such as an opaque pass followed by a transparent pass.
@@ -57,18 +55,18 @@ Ok(())
 
 ## Methods
 
-## Frame::new()
+### Frame::new()
 
 Creates a new [Frame](https://fragmentcolor.org/docs/api/frame) object.
 
 A Frame is an ordered collection of [Pass](https://fragmentcolor.org/docs/api/pass) objects that will be rendered by the [Renderer](https://fragmentcolor.org/docs/api/renderer) in sequence.
 
-### Example
+#### Example
 
 ```rust
 use fragmentcolor::{Renderer, Frame, Pass, Shader};
 
-## fn main() -> Result<(), Box<dyn std::error::Error>> {
+### fn main() -> Result<(), Box<dyn std::error::Error>> {
 let renderer = Renderer::new();
 let target = pollster::block_on(renderer.create_texture_target([10, 10]))?;
 
@@ -80,8 +78,8 @@ let mut frame = Frame::new();
 frame.add_pass(&pass);
 
 renderer.render(&frame, &target)?;
-## Ok(())
-## }
+### Ok(())
+### }
 ```
 
 ### Python
@@ -95,18 +93,18 @@ frame = Frame()
 ```js
 const frame = new Frame();
 ```
-## add_pass(pass: Pass)
+### add_pass(pass: Pass)
 
 Adds a [Pass](https://fragmentcolor.org/docs/api/pass) to this [Frame](https://fragmentcolor.org/docs/api/frame).
 
 Passes are rendered in the order they are added.
 
-### Example
+#### Example
 
 ```rust
 use fragmentcolor::{Renderer, Frame, Pass, Shader};
 
-## fn main() -> Result<(), Box<dyn std::error::Error>> {
+### fn main() -> Result<(), Box<dyn std::error::Error>> {
 let renderer = Renderer::new();
 let target = pollster::block_on(renderer.create_texture_target([10, 10]))?;
 
@@ -122,8 +120,8 @@ frame.add_pass(&pass1);
 frame.add_pass(&pass2);
 
 renderer.render(&frame, &target)?;
-## Ok(())
-## }
+### Ok(())
+### }
 ```
 
 ### Python

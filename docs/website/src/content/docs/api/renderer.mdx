@@ -5,8 +5,6 @@ description: ""
 
 ## Description
 
-# Renderer
-
 ## Draws Shaders to a Target
 
 The [Renderer](https://fragmentcolor.org/docs/api/renderer) is the main entry point for
@@ -103,13 +101,13 @@ fun main() {
 ## Methods
 
 
-## create_target(target: Canvas | Window)
+### create_target(target: Canvas | Window)
 
 Creates a [Target](https://fragmentcolor.org/docs/api/target) attached to a platform-specific canvas or window.
 
-### Example
+#### Example
 
-### Javascript (Web)
+##### Javascript (Web)
 
 ```js
 import init, { Renderer } from "fragmentcolor";
@@ -119,7 +117,7 @@ const canvas = document.createElement("canvas");
 const target = await renderer.createTarget(canvas);
 ```
 
-### Python
+##### Python
 
 ```python
 from fragmentcolor import Renderer
@@ -131,9 +129,9 @@ target = renderer.create_target(canvas)
 ```
 
 
-## Renderer::new()
+### Renderer::new()
 
-### Creates a new Renderer
+#### Creates a new Renderer
 
 The [Renderer](https://fragmentcolor.org/docs/api/renderer) internals are lazily initialized
 when the user creates a [Target](https://fragmentcolor.org/docs/api/target) or renders a Bitmap.
@@ -149,7 +147,7 @@ is by calling `renderer.create_target(Window)` first.
 - `Renderer.create_target()` internally initializes a window adapter, while
 - `Renderer.render_image()` initializes an offscreen adapter.
 
-### Example
+#### Example
 
 ```rust
 use fragmentcolor::Renderer;
@@ -172,20 +170,20 @@ const renderer = new Renderer();
 
 
 
-## Headless rendering: create_texture_target
+### Headless rendering: create_texture_target
 
 Render to an offscreen texture without a Window or Canvas.
 
 This is useful for tests, server-side rendering, or running examples in CI.
 
-### Example
+#### Example
 
-### Rust
+##### Rust
 
 ```rust path=null start=null
 use fragmentcolor::{Renderer, Shader, Pass, Frame};
 
-## fn main() -> Result<(), Box<dyn std::error::Error>> {
+### fn main() -> Result<(), Box<dyn std::error::Error>> {
 let renderer = Renderer::new();
 let target = pollster::block_on(renderer.create_texture_target([64, 64]))?;
 
@@ -199,17 +197,17 @@ renderer.render(&pass, &target)?;
 let mut frame = Frame::new();
 frame.add_pass(&pass);
 renderer.render(&frame, &target)?;
-## Ok(())
-## }
+### Ok(())
+### }
 ```
 
-### Python
+#### Python
 
 ```python path=null start=null
 from fragmentcolor import Renderer, Shader, Pass, Frame
 
 renderer = Renderer()
-## size can be a tuple or list
+### size can be a tuple or list
 target = renderer.create_texture_target((64, 64))
 
 shader = Shader("circle.wgsl")
@@ -230,7 +228,7 @@ frame.add_pass(rpass)
 renderer.render(frame, target)
 ```
 
-### Javascript (Web)
+#### Javascript (Web)
 
 ```js path=null start=null
 import init, { Renderer, Shader, Pass, Frame } from "fragmentcolor";
@@ -269,22 +267,22 @@ target = renderer.create_texture_target((64, 64))
 ```js
 const target = await renderer.createTextureTarget([64, 64]);
 ```
-## render(renderable: Shader | Pass | Frame, target: Target)
+### render(renderable: Shader | Pass | Frame, target: Target)
 
 Renders the given object to the given [Target](https://fragmentcolor.org/docs/api/target).
 
-### Example
+#### Example
 
 ```rust
 use fragmentcolor::{Renderer, Shader};
 
-## fn main() -> Result<(), Box<dyn std::error::Error>> {
+### fn main() -> Result<(), Box<dyn std::error::Error>> {
 let renderer = Renderer::new();
 let target = pollster::block_on(renderer.create_texture_target([10, 10]))?;
 let shader = Shader::default();
 renderer.render(&shader, &target)?;
-## Ok(())
-## }
+### Ok(())
+### }
 ```
 
 ### Python

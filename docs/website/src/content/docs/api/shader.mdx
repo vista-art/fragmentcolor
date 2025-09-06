@@ -5,8 +5,6 @@ description: "The [Shader](https://fragmentcolor.org/docs/api/shader) object is 
 
 ## Description
 
-# Shader
-
 The [Shader](https://fragmentcolor.org/docs/api/shader) object is the main building block in FragmentColor.
 
 It takes a WGSL or GLSL shader source as input, parses it, validates it, and exposes the uniforms as keys.
@@ -28,7 +26,7 @@ let _shader = Shader::default();
 
 ## Methods
 
-## new(source: string)
+### new(source: string)
 
 Creates a new [Shader](https://fragmentcolor.org/docs/api/shader) instance from the given WGSL source string, file path, or URL.
 
@@ -42,7 +40,7 @@ If an exception occurs during parsing, the error message will indicate the locat
 
 If the initial source validation passes, the shader is guaranteed to work on the GPU. All uniforms are initialized to their default zero values.
 
-### Example
+#### Example
 
 ```rust
 use fragmentcolor::Shader;
@@ -50,7 +48,7 @@ use fragmentcolor::Shader;
 let _shader = Shader::default();
 ```
 
-### Platform-specific: Web
+#### Platform-specific: Web
 
 In WASM, the constructor cannot fetch a URL directly. Use [Shader::fetch()](https://fragmentcolor.org/docs/api/shader/fetch) instead.
 
@@ -161,13 +159,13 @@ fn main(pixel: VertexOutput) -> @location(0) vec4<f32> {
 }
 `);
 ```
-## set(key: string, value: any)
+### set(key: string, value: any)
 
 Sets the value of the uniform identified by the given key.
 
 If the key does not exist or the value format is incorrect, the `set` method throws an exception. The shader remains valid, and if the exception is caught, the shader can still be used with the renderer.
 
-### Example
+#### Example
 
 ```rust
 use fragmentcolor::Shader;
@@ -195,11 +193,11 @@ shader.set("circle.color", [1.0, 0.0, 0.0, 0.8]);
 shader.set("circle.border", 2.0);
 shader.set("circle.position", [0.0, 0.0]);
 ```
-## get(key: string) -> any
+### get(key: string) -> any
 
 Returns the current value of the uniform identified by the given key.
 
-### Example
+#### Example
 
 ```rust
 use fragmentcolor::Shader;
@@ -220,11 +218,11 @@ _radius = shader.get("circle.radius")
 ```js
 const _radius = shader.get("circle.radius");
 ```
-## list_uniforms() -> [string]
+### list_uniforms() -> [string]
 
 Returns a list of all uniform names in the Shader (excluding struct fields).
 
-### Example
+#### Example
 
 ```rust
 use fragmentcolor::Shader;
@@ -244,11 +242,11 @@ _uniforms = shader.list_uniforms()
 ```js
 const _uniforms = shader.listUniforms();
 ```
-## list_keys() -> [string]
+### list_keys() -> [string]
 
 Returns a list of all keys in the Shader, including uniform names and struct fields using the dot notation.
 
-### Example
+#### Example
 
 ```rust
 use fragmentcolor::Shader;
