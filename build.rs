@@ -913,14 +913,14 @@ mod validation {
         format!("https://fragmentcolor.org/api/{}", object_dir_name(name))
     }
 
-    fn enforce_links_in_file(path: &Path, objects: &Vec<String>, problems: &mut Vec<String>) {
+    fn enforce_links_in_file(path: &Path, objects: &[String], problems: &mut Vec<String>) {
         let content = fs::read_to_string(path).unwrap_or_default();
         if content.is_empty() {
             return;
         }
 
         // Pre-sort names by length desc to avoid partial hits like Target in TextureTarget
-        let mut names = objects.clone();
+        let mut names = objects.to_owned();
         names.sort_by_key(|s| std::cmp::Reverse(s.len()));
 
         let mut in_code_block = false;
@@ -993,7 +993,7 @@ mod validation {
         }
     }
 
-    pub fn enforce_lsp_doc_coverage(objects: &Vec<String>, problems: &mut Vec<String>) {
+    pub fn enforce_lsp_doc_coverage(objects: &[String], problems: &mut Vec<String>) {
         use syn::{ImplItem, Item, Visibility};
         let entry = super::parse_lib_entry_point(&meta::workspace_root());
         use quote::ToTokens;
@@ -1140,6 +1140,30 @@ mod validation {
             out.trim().to_string()
         }
 
+        fn escape_angle_in_heading_text(s: &str) -> String {
+            // Escape raw angle brackets in headings so MDX doesn't parse them as JSX tags.
+            // We keep inline code spans (`...`) intact, but escape < and > elsewhere.
+            let mut out = String::new();
+            let mut in_tick = false;
+            for ch in s.chars() {
+                if ch == '`' {
+                    in_tick = !in_tick;
+                    out.push(ch);
+                    continue;
+                }
+                if in_tick {
+                    out.push(ch);
+                } else {
+                    match ch {
+                        '<' => out.push_str("&lt;"),
+                        '>' => out.push_str("&gt;"),
+                        _ => out.push(ch),
+                    }
+                }
+            }
+            out
+        }
+
         fn downshift_headings(md: &str) -> String {
             // Shift headings down by two levels so that method H1 becomes H3 under the "## Methods" section.
             let mut out = String::new();
@@ -1157,7 +1181,7 @@ mod validation {
                     out.push('\n');
                     continue;
                 }
-                let shifted = if let Some(stripped) = line.strip_prefix("######") {
+                let mut shifted = if let Some(stripped) = line.strip_prefix("######") {
                     format!("######{}", stripped)
                 } else if let Some(stripped) = line.strip_prefix("#####") {
                     format!("######{}", stripped)
@@ -1172,6 +1196,10 @@ mod validation {
                 } else {
                     line.to_string()
                 };
+                // Escape < and > in headings only (outside code blocks) to avoid MDX parsing errors.
+                if shifted.trim_start().starts_with('#') {
+                    shifted = escape_angle_in_heading_text(&shifted);
+                }
                 out.push_str(&shifted);
                 out.push('\n');
             }
