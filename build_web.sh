@@ -10,6 +10,16 @@ else
     NPM_PACKAGE_TARGET="package"
 fi
 
-SOURCE_DIR=$(dirname $(readlink -f "$0"))
+# Portable way to get repo root (works on macOS and Linux)
+SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 
-wasm-pack build --target web $WASM_PACK_CONFIGURATION --out-dir $SOURCE_DIR/platforms/web/pkg
+# Build WASM package
+wasm-pack build --target web $WASM_PACK_CONFIGURATION --out-dir "$SOURCE_DIR/platforms/web/pkg"
+
+# Distribute the pkg to web subprojects so local dev servers can import from ./pkg
+for SUB in "repl" "healthcheck"; do
+  DEST="$SOURCE_DIR/platforms/web/$SUB/pkg"
+  mkdir -p "$DEST"
+  # Copy the entire pkg directory contents (JS, WASM, .d.ts, and any helpers)
+  rsync -a --delete "$SOURCE_DIR/platforms/web/pkg/" "$DEST/" 2>/dev/null || cp -a "$SOURCE_DIR/platforms/web/pkg/." "$DEST/"
+done
