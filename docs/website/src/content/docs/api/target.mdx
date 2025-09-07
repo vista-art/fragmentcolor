@@ -1,37 +1,125 @@
 ---
 title: Target
-description: Target is the rendering destination for a Renderer.
-  It contains the GPU surface texture for a Canvas or platform-specific window.
+description: "The [Target](https://fragmentcolor.org/api/target) interface (trait in Rust) is a rendering destination for the [Renderer](https://fragmentcolor.org/api/renderer) implemented by both [WindowTarget](https://fragmentcolor.org/api/window_target) and [TextureTarget](https://fragmentcolor.org/api/texture_target)."
 ---
 
 ## Description
 
-The **Target** object is the rendering destination for a Renderer.
+The [Target](https://fragmentcolor.org/api/target) interface (trait in Rust) is a rendering destination for the [Renderer](https://fragmentcolor.org/api/renderer) implemented by both [WindowTarget](https://fragmentcolor.org/api/window_target) and [TextureTarget](https://fragmentcolor.org/api/texture_target).
 
-It contains the GPU surface texture attached to a HTML Canvas or a platform-specific Window.
+It contains a GPU surface texture attached to a platform-specific window or an offscreen texture for headless rendering (see [TextureTarget](https://fragmentcolor.org/api/texture_target)).
 
-The constructor for a **Target** is private. You must create it with the `init` function in [FragmentColor](/api/fragmentcolor).
+[Target](https://fragmentcolor.org/api/target) constructors are private and can only be created via the [Renderer](https://fragmentcolor.org/api/renderer) using either `Renderer.create_target(window)` for on-screen rendering, or `Renderer.create_texture_target()` for offscreen rendering.
 
-## Example
+## Examples
 
-```js
-import { FragmentColor } from "fragmentcolor";
+### WindowTarget (on-screen)
 
-let canvas = document.getElementById("canvas");
-[renderer, target] = FragmentColor.init(canvas);
+```rust
+use fragmentcolor::{Renderer, Shader, HasDisplaySize};
+use wgpu::rwh::RawWindowHandle;
+
+# struct FakeWindow;
+# impl RawWindowHandle for FakeWindow { fn as_raw_window_handle(&self) -> wgpu::rwh::RawWindowHandle { wgpu::rwh::RawWindowHandle::from_handle(self) } }
+# impl HasDisplaySize for FakeWindow { fn size(&self) -> [u32; 2] { [800, 600] } }
+# fn main() -> Result<(), Box<dyn std::error::Error>> {
+let renderer = Renderer::new();
+let window = FakeWindow;
+let target = pollster::block_on(renderer.create_target(&window))?;
+let shader = Shader::default();
+renderer.render(&shader, &target)?;
+# Ok(())
+# }
+```
+
+### TextureTarget (offscreen)
+
+```rust
+use fragmentcolor::{Renderer, Shader};
+# fn main() -> Result<(), Box<dyn std::error::Error>> {
+let renderer = Renderer::new();
+let target = pollster::block_on(renderer.create_texture_target([64, 64]))?;
+let shader = Shader::default();
+renderer.render(&shader, &target)?;
+let image = target.get_image();
+# Ok(())
+# }
 ```
 
 ## Methods
 
-- #### constructor( [platform-specific surface reference] )
+### get_current_frame() -> TargetFrame
 
-  The constructor for **Target** is private. You must create it with the `init` function in [FragmentColor](/api/fragmentcolor).
+Returns a frame wrapper containing the texture view to render and the target format.
 
-- #### size() -> [width, height]
+Most users do not need to call this directly; the [Renderer](https://fragmentcolor.org/api/renderer) uses it internally.
 
-  Returns the size of the target in pixels.
+#### Example
 
-- #### resize(width: number, height: number)
+```rust
+use fragmentcolor::Renderer;
 
-  Resizes the target to the given width and height in pixels.
-  This method is useful for resizing the Target when the canvas is resized.
+# fn main() -> Result<(), Box<dyn std::error::Error>> {
+let renderer = Renderer::new();
+let target = pollster::block_on(renderer.create_texture_target([16, 16]))?;
+let frame = target.get_current_frame()?; // Acquire a frame
+let _format = frame.format();
+# Ok(())
+# }
+```
+
+### get_image() -> Vec<u8>
+
+Returns the current contents of the target as a byte array in RGBA8 format.
+
+#### Example
+
+```rust
+use fragmentcolor::Renderer;
+
+# fn main() -> Result<(), Box<dyn std::error::Error>> {
+let renderer = Renderer::new();
+let target = pollster::block_on(renderer.create_texture_target([16, 16]))?;
+renderer.render(&fragmentcolor::Shader::default(), &target)?;
+
+let image = target.get_image();
+# Ok(())
+# }
+
+### resize(size: [u32; 2] | (u32, u32))
+
+Resizes the [Target](https://fragmentcolor.org/api/target) to the given width and height.
+
+#### Example
+
+```rust
+use fragmentcolor::Renderer;
+
+# fn main() -> Result<(), Box<dyn std::error::Error>> {
+let renderer = Renderer::new();
+let mut target = pollster::block_on(renderer.create_texture_target([64, 32]))?;
+
+assert_eq!(target.size(), [64, 32]);
+
+target.resize([128, 64]);
+assert_eq!(target.size(), [128, 64]);
+# Ok(())
+# }
+```
+
+### size() -> [u32; 2]
+
+Returns the size of the [Target](https://fragmentcolor.org/api/target) in pixels.
+
+#### Example
+
+```rust
+use fragmentcolor::{Renderer, Shader};
+
+# fn main() -> Result<(), Box<dyn std::error::Error>> {
+let renderer = Renderer::new();
+let target = pollster::block_on(renderer.create_texture_target([64, 32]))?;
+assert_eq!(target.size(), [64, 32]);
+# Ok(())
+# }
+```

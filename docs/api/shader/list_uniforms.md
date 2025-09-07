@@ -1,6 +1,6 @@
 # list_uniforms() -> [string]
 
-Returns a list of all uniform names in the Shader (excluding struct fields).
+Returns a list of all uniform names in the [Shader](https://fragmentcolor.org/api/shader) (excluding struct fields).
 
 ## Example
 

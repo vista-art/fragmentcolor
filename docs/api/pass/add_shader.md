@@ -1,6 +1,6 @@
 # add_shader(shader: Shader)
 
-Adds a Shader object to the Pass.
+Adds a [Shader](https://fragmentcolor.org/api/shader) object to the [Pass](https://fragmentcolor.org/api/pass).
 
 ## Example
 

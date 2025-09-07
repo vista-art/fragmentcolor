@@ -1,6 +1,6 @@
 # add_pass(pass: Pass)
 
-Adds a [Pass](https://fragmentcolor.org/docs/api/pass) to this [Frame](https://fragmentcolor.org/docs/api/frame).
+Adds a [Pass](https://fragmentcolor.org/api/pass) to this [Frame](https://fragmentcolor.org/api/frame).
 
 Passes are rendered in the order they are added.
 

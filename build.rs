@@ -113,20 +113,17 @@ pub fn map_public_api() {
 fn generate_api_map() {
     let crate_root = meta::workspace_root();
     let api_map_file = meta::workspace_root().join(API_MAP_FILE);
+
+    // Extract functions from source
     let mut api_map = extract_public_functions(crate_root.as_ref());
 
-    // Filter to top-level public API only and preserve method order
-    let allowed = [
-        "Shader".to_string(),
-        "Renderer".to_string(),
-        "Pass".to_string(),
-        "Frame".to_string(),
-        "Target".to_string(),
-        "TextureTarget".to_string(),
-    ];
-    api_map.retain(|k, _| allowed.contains(k));
+    // Derive canonical public objects from AST: all top-level pub structs excluding #[doc(hidden)]
+    let objects = validation::public_structs_excluding_hidden();
 
-    // Run validation and website update; this will panic with errors if invalid
+    // Keep only objects discovered in code (exclude file-key entries and hidden/internal types)
+    api_map.retain(|k, _| objects.contains(k));
+
+    // Validate docs, enforce lsp_doc coverage, and update website
     validation::validate_and_update_website(&api_map);
 
     export_api_map(api_map, api_map_file.as_ref())
@@ -655,18 +652,26 @@ mod validation {
         let root = meta::workspace_root();
         let docs_root = root.join("docs/api");
 
+        // Enforce documentation for ALL public objects (including wrappers)
+        let objects = public_structs_excluding_hidden();
+        let all_objects = objects.clone();
+
         // Validate objects and their methods
-        for (object, methods) in api_map.iter() {
+        for object in objects.iter() {
+            let methods_vec = api_map.get(object).cloned().unwrap_or_default();
             let dir = object_dir_name(object);
             let object_md = docs_root.join(&dir).join(format!("{}.md", dir));
             ensure_object_md_ok(object, &object_md, &mut problems);
+            enforce_links_in_file(&object_md, &all_objects, &mut problems);
 
-            for m in methods {
+            for m in &methods_vec {
                 if let Some(fun) = &m.function {
                     let name = &fun.name;
                     // Skip platform-specific wrapper variants and internal helpers
                     let skip = name.ends_with("_js")
                         || name.ends_with("_py")
+                        || name.ends_with("_ios")
+                        || name.ends_with("_android")
                         || name == "headless"
                         || name == "render_bitmap"
                         || (object == "TextureTarget" && name == "new");
@@ -681,15 +686,26 @@ mod validation {
                     };
                     let path = docs_root.join(&dir).join(format!("{}.md", file));
                     ensure_method_md_ok(object, name, &path, &mut problems);
+                    enforce_links_in_file(&path, &all_objects, &mut problems);
                 }
             }
         }
 
-        // Also validate Target & TextureTarget even if not discovered by reflection
-        for extra in ["Target", "TextureTarget"].iter() {
-            let dir = object_dir_name(extra);
-            let object_md = docs_root.join(&dir).join(format!("{}.md", dir));
-            ensure_object_md_ok(extra, &object_md, &mut problems);
+        // Also validate any docs-only objects under docs/api not present in allowed
+        let docs_root = root.join("docs/api");
+        if let Ok(read_dir) = std::fs::read_dir(&docs_root) {
+            for entry in read_dir.flatten() {
+                if entry.path().is_dir() {
+                    let dir_name = entry.file_name().to_string_lossy().to_string();
+                    let object = dir_to_object_name(&dir_name);
+                    if objects.iter().any(|o| o == &object) {
+                        continue;
+                    }
+                    let object_md = docs_root.join(&dir_name).join(format!("{}.md", dir_name));
+                    ensure_object_md_ok(&object, &object_md, &mut problems);
+                    enforce_links_in_file(&object_md, &all_objects, &mut problems);
+                }
+            }
         }
 
         validate_healthchecks(api_map, &mut problems);
@@ -702,8 +718,387 @@ mod validation {
             panic!("documentation incomplete");
         }
 
+        // Enforce that all public structs and their public methods have #[lsp_doc]
+        enforce_lsp_doc_coverage(&objects, &mut problems);
+
         // Update website if everything is valid
         website::update(api_map);
+    }
+
+    pub fn dir_to_object_name(dir: &str) -> String {
+        let mut out = String::new();
+        let mut capitalize = true;
+        for ch in dir.chars() {
+            if ch == '_' {
+                capitalize = true;
+                continue;
+            }
+            if capitalize {
+                out.push(ch.to_ascii_uppercase());
+            } else {
+                out.push(ch);
+            }
+            capitalize = false;
+        }
+        out
+    }
+
+    pub fn public_structs_excluding_hidden() -> Vec<String> {
+        use syn::{Item, Visibility};
+        let entry = super::parse_lib_entry_point(&meta::workspace_root());
+        fn is_doc_hidden(attrs: &[syn::Attribute]) -> bool {
+            use quote::ToTokens;
+            attrs.iter().any(|a| {
+                a.to_token_stream().to_string().contains("doc")
+                    && a.to_token_stream().to_string().contains("hidden")
+            })
+        }
+        fn walk(path: &std::path::Path, items: Vec<Item>, out: &mut Vec<String>) {
+            for item in items {
+                match item {
+                    Item::Mod(m) => {
+                        if let Visibility::Public(_) = m.vis {
+                            let (mod_path, mod_items) = super::parse_module(path, &m);
+                            walk(&mod_path, mod_items, out);
+                        }
+                    }
+                    Item::Struct(s) => {
+                        if let Visibility::Public(_) = s.vis {
+                            if !is_doc_hidden(&s.attrs) && has_lsp_doc(&s.attrs) {
+                                let name = s.ident.to_string();
+                                if !out.contains(&name) {
+                                    out.push(name);
+                                }
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        let mut out = Vec::new();
+        walk(entry.0.as_path(), entry.1.items, &mut out);
+        out.sort();
+        out
+    }
+
+    fn collect_public_structs_info() -> Vec<(String, Vec<syn::Attribute>, Vec<String>)> {
+        use syn::{Item, Visibility};
+        let entry = super::parse_lib_entry_point(&meta::workspace_root());
+        fn is_doc_hidden(attrs: &[syn::Attribute]) -> bool {
+            use quote::ToTokens;
+            attrs.iter().any(|a| {
+                a.to_token_stream().to_string().contains("doc")
+                    && a.to_token_stream().to_string().contains("hidden")
+            })
+        }
+        fn collect_type_idents(ty: &syn::Type, out: &mut Vec<String>) {
+            use syn::{GenericArgument, PathArguments, Type};
+            match ty {
+                Type::Path(tp) => {
+                    if let Some(seg) = tp.path.segments.last() {
+                        out.push(seg.ident.to_string());
+                    }
+                    for seg in &tp.path.segments {
+                        if let PathArguments::AngleBracketed(ab) = &seg.arguments {
+                            for arg in &ab.args {
+                                if let GenericArgument::Type(inner) = arg {
+                                    collect_type_idents(inner, out);
+                                }
+                            }
+                        }
+                    }
+                }
+                Type::Reference(r) => collect_type_idents(&r.elem, out),
+                Type::Paren(p) => collect_type_idents(&p.elem, out),
+                Type::Group(g) => collect_type_idents(&g.elem, out),
+                Type::Tuple(t) => {
+                    for elem in &t.elems {
+                        collect_type_idents(elem, out);
+                    }
+                }
+                Type::Array(a) => collect_type_idents(&a.elem, out),
+                _ => {}
+            }
+        }
+        fn walk(
+            path: &std::path::Path,
+            items: Vec<Item>,
+            out: &mut Vec<(String, Vec<syn::Attribute>, Vec<String>)>,
+        ) {
+            for item in items {
+                match item {
+                    Item::Mod(m) => {
+                        if let Visibility::Public(_) = m.vis {
+                            let (mod_path, mod_items) = super::parse_module(path, &m);
+                            walk(&mod_path, mod_items, out);
+                        }
+                    }
+                    Item::Struct(s) => {
+                        if let Visibility::Public(_) = s.vis {
+                            if !is_doc_hidden(&s.attrs) {
+                                let name = s.ident.to_string();
+                                let mut inner_types = Vec::new();
+                                match &s.fields {
+                                    syn::Fields::Unnamed(unnamed) => {
+                                        if unnamed.unnamed.len() == 1 {
+                                            collect_type_idents(
+                                                &unnamed.unnamed[0].ty,
+                                                &mut inner_types,
+                                            );
+                                        }
+                                    }
+                                    syn::Fields::Named(named) => {
+                                        for f in named.named.iter() {
+                                            collect_type_idents(&f.ty, &mut inner_types);
+                                        }
+                                    }
+                                    syn::Fields::Unit => {}
+                                }
+                                // Dedup to reduce noise like [Option, WindowTarget, WindowTarget]
+                                inner_types.sort();
+                                inner_types.dedup();
+                                out.push((name, s.attrs.clone(), inner_types));
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        let mut out = Vec::new();
+        walk(entry.0.as_path(), entry.1.items, &mut out);
+        out
+    }
+
+    pub fn base_public_objects() -> Vec<String> {
+        let info = collect_public_structs_info();
+        // Consider only documented types as canonical API objects.
+        let documented: std::collections::HashSet<String> = info
+            .iter()
+            .filter(|(_, attrs, _)| has_lsp_doc(attrs))
+            .map(|(n, _, _)| n.clone())
+            .collect();
+
+        // A struct is a wrapper if:
+        // - It is a tuple newtype around a documented type, OR
+        // - It contains a field that references a documented type (possibly nested in generics like Option<T>, Arc<T>, etc.)
+        // We detect by checking whether any collected inner type idents match a documented name.
+        let wrapper_names: std::collections::HashSet<String> = info
+            .iter()
+            .filter(|(n, _attrs, inner)| {
+                // Prevent self-matching in degenerate cases
+                inner.iter().any(|t| documented.contains(t) && t != n)
+            })
+            .map(|(n, _, _)| n.clone())
+            .collect();
+
+        // Base objects are documented types that are not wrappers
+        let base: Vec<String> = info
+            .iter()
+            .filter(|(n, attrs, _)| {
+                documented.contains(n) && !wrapper_names.contains(n) && has_lsp_doc(attrs)
+            })
+            .map(|(n, _, _)| n.clone())
+            .collect();
+        base
+    }
+
+    fn has_lsp_doc(attrs: &[syn::Attribute]) -> bool {
+        attrs.iter().any(|a| a.path().is_ident("lsp_doc"))
+    }
+
+    fn object_url(name: &str) -> String {
+        format!("https://fragmentcolor.org/api/{}", object_dir_name(name))
+    }
+
+    fn enforce_links_in_file(path: &Path, objects: &Vec<String>, problems: &mut Vec<String>) {
+        let content = fs::read_to_string(path).unwrap_or_default();
+        if content.is_empty() {
+            return;
+        }
+
+        // Pre-sort names by length desc to avoid partial hits like Target in TextureTarget
+        let mut names = objects.clone();
+        names.sort_by_key(|s| std::cmp::Reverse(s.len()));
+
+        let mut in_code_block = false;
+        for line in content.lines() {
+            let trimmed = line.trim_start();
+            if trimmed.starts_with("```") {
+                in_code_block = !in_code_block;
+                continue;
+            }
+            if in_code_block {
+                continue;
+            }
+            if trimmed.starts_with('#') {
+                continue;
+            } // skip headings
+
+            // Strip inline code spans delimited by backticks
+            let mut cleaned = String::new();
+            let mut in_tick = false;
+            for ch in line.chars() {
+                if ch == '`' {
+                    in_tick = !in_tick;
+                    continue;
+                }
+                if !in_tick {
+                    cleaned.push(ch);
+                }
+            }
+
+            for obj in &names {
+                let url = object_url(obj);
+                let good = format!("[{}]({})", obj, url);
+
+                // If there is any [Obj](...) but not fully qualified, flag it explicitly.
+                if cleaned.contains(&format!("[{}](", obj)) && !cleaned.contains(&good) {
+                    problems.push(format!(
+                        "{}: Incorrect link for {} (must be [{}]({}))",
+                        path.display(),
+                        obj,
+                        obj,
+                        url
+                    ));
+                    continue;
+                }
+
+                // Remove all correct links to avoid false positives
+                let cleaned = cleaned.replace(&good, "");
+
+                // Search for unlinked mentions as whole tokens
+                let mut start = 0usize;
+                while let Some(idx_rel) = cleaned[start..].find(obj) {
+                    let idx = start + idx_rel;
+                    let before = cleaned[..idx].chars().rev().next();
+                    let after = cleaned[idx + obj.len()..].chars().next();
+                    let before_ok = before.map_or(true, |c| !c.is_alphanumeric() && c != '_');
+                    let after_ok = after.map_or(true, |c| !c.is_alphanumeric() && c != '_');
+                    if before_ok && after_ok {
+                        problems.push(format!(
+                            "{}: Unlinked mention of {} (must be [{}]({}))",
+                            path.display(),
+                            obj,
+                            obj,
+                            url
+                        ));
+                        break;
+                    }
+                    start = idx + obj.len();
+                }
+            }
+        }
+    }
+
+    pub fn enforce_lsp_doc_coverage(objects: &Vec<String>, problems: &mut Vec<String>) {
+        use syn::{ImplItem, Item, Visibility};
+        let entry = super::parse_lib_entry_point(&meta::workspace_root());
+        use quote::ToTokens;
+        fn is_doc_hidden(attrs: &[syn::Attribute]) -> bool {
+            attrs.iter().any(|a| {
+                a.to_token_stream().to_string().contains("doc")
+                    && a.to_token_stream().to_string().contains("hidden")
+            })
+        }
+        // Collect documented structs and methods
+        use std::collections::HashSet;
+        let mut doc_structs: HashSet<String> = HashSet::new();
+        let mut doc_methods: HashSet<(String, String)> = HashSet::new();
+        fn walk(
+            path: &std::path::Path,
+            items: Vec<Item>,
+            doc_structs: &mut HashSet<String>,
+            doc_methods: &mut HashSet<(String, String)>,
+        ) {
+            for item in items {
+                match item {
+                    Item::Mod(m) => {
+                        if let Visibility::Public(_) = m.vis {
+                            let (mod_path, mod_items) = super::parse_module(path, &m);
+                            walk(&mod_path, mod_items, doc_structs, doc_methods);
+                        }
+                    }
+                    Item::Struct(s) => {
+                        if let Visibility::Public(_) = s.vis {
+                            if !is_doc_hidden(&s.attrs) && super::validation::has_lsp_doc(&s.attrs)
+                            {
+                                doc_structs.insert(s.ident.to_string());
+                            }
+                        }
+                    }
+                    Item::Impl(item_impl) => {
+                        // Only track inherent impls for types
+                        if let syn::Type::Path(type_path) = *item_impl.self_ty {
+                            let type_name =
+                                type_path.path.segments.last().unwrap().ident.to_string();
+                            for impl_item in item_impl.items {
+                                if let ImplItem::Fn(method) = impl_item {
+                                    if matches!(method.vis, Visibility::Public(_))
+                                        && !is_doc_hidden(&method.attrs)
+                                        && super::validation::has_lsp_doc(&method.attrs)
+                                    {
+                                        let name = method.sig.ident.to_string();
+                                        doc_methods.insert((type_name.clone(), name));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        walk(
+            entry.0.as_path(),
+            entry.1.items,
+            &mut doc_structs,
+            &mut doc_methods,
+        );
+        // Enforce coverage
+        for o in objects {
+            if !doc_structs.contains(o) {
+                problems.push(format!(
+                    "Missing #[lsp_doc] attribute on public struct {}",
+                    o
+                ));
+            }
+        }
+        // We need the full API map to know method names; but we can read the exported one back
+        let api_map_file = meta::workspace_root().join(super::API_MAP_FILE);
+        let api_map_src = std::fs::read_to_string(&api_map_file).unwrap_or_default();
+        // A simple heuristic: look for tuples ("Type", [ObjectProperty { name: "method" ... }])
+        for o in objects {
+            let marker = format!("(\"{}\", &[", o);
+            if let Some(idx) = api_map_src.find(&marker) {
+                let rest = &api_map_src[idx + marker.len()..];
+                let until = rest.find("]),").unwrap_or(0);
+                let slice = &rest[..until];
+                for line in slice.lines() {
+                    if let Some(pos) = line.find("function: Some(FunctionSignature { name: \"") {
+                        let name_start = pos + "function: Some(FunctionSignature { name: \"".len();
+                        if let Some(end) = line[name_start..].find("\"") {
+                            let name = &line[name_start..name_start + end];
+                            // Skip platform wrapper variants
+                            if name.ends_with("_js")
+                                || name.ends_with("_py")
+                                || name.ends_with("_ios")
+                                || name.ends_with("_android")
+                                || name == "headless"
+                                || name == "render_bitmap"
+                            {
+                                continue;
+                            }
+                            if !doc_methods.contains(&(o.clone(), name.to_string())) {
+                                problems
+                                    .push(format!("Missing #[lsp_doc] on method {}::{}", o, name));
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     mod website {
@@ -829,6 +1224,7 @@ mod validation {
         }
 
         pub fn update(api_map: &ApiMap) {
+            use std::collections::HashSet;
             let root = meta::workspace_root();
             let docs_root = root.join("docs/api");
             let site_root = root.join("docs/website/src/content/docs/api");
@@ -837,7 +1233,11 @@ mod validation {
             let js = std::fs::read_to_string(root.join("platforms/web/healthcheck/main.js"))
                 .unwrap_or_default();
 
-            for (object, methods) in api_map.iter() {
+            // Track which objects were written via reflection
+            let mut written: HashSet<String> = HashSet::new();
+
+            // Helper to write a page given an object name and an ordered list of method files (without extension)
+            let write_page = |object: &str, method_files: Vec<String>| {
                 let dir = super::validation::object_dir_name(object);
                 let obj_dir = docs_root.join(&dir);
                 let obj_md = std::fs::read_to_string(obj_dir.join(format!("{}.md", dir)))
@@ -857,41 +1257,169 @@ mod validation {
                 out.push('\n');
 
                 out.push_str("\n## Methods\n\n");
-                for m in methods {
-                    if let Some(fun) = &m.function {
-                        let name = &fun.name;
-                        let file = if name == "new" {
-                            "constructor".to_string()
-                        } else {
-                            name.clone()
-                        };
-                        let md = std::fs::read_to_string(obj_dir.join(format!("{}.md", file)))
-                            .unwrap_or_default();
-                        out.push_str(&downshift_headings(&md));
-                        out.push('\n');
+                for file in method_files {
+                    let md = std::fs::read_to_string(obj_dir.join(format!("{}.md", file)))
+                        .unwrap_or_default();
+                    out.push_str(&downshift_headings(&md));
+                    out.push('\n');
 
-                        // Examples: add Python and JS blocks if present
-                        let key = if name == "new" {
-                            format!("{}.constructor", object)
-                        } else {
-                            format!("{}.{}", object, name)
-                        };
-                        if let Some(py_ex) = collect_health_example("py", &key, &py) {
-                            out.push_str("\n### Python\n\n```python\n");
-                            out.push_str(&py_ex);
-                            out.push_str("\n```\n");
-                        }
-                        if let Some(js_ex) = collect_health_example("js", &key, &js) {
-                            out.push_str("\n### Javascript\n\n```js\n");
-                            out.push_str(&js_ex);
-                            out.push_str("\n```\n");
+                    // Examples: add Python and JS blocks if present
+                    let key = if file == "constructor" {
+                        format!("{}.constructor", object)
+                    } else {
+                        format!("{}.{}", object, file)
+                    };
+                    if let Some(py_ex) = collect_health_example("py", &key, &py) {
+                        out.push_str("\n### Python\n\n```python\n");
+                        out.push_str(&py_ex);
+                        out.push_str("\n```\n");
+                    }
+                    if let Some(js_ex) = collect_health_example("js", &key, &js) {
+                        out.push_str("\n### Javascript\n\n```js\n");
+                        out.push_str(&js_ex);
+                        out.push_str("\n```\n");
+                    }
+
+                    // Ensure a blank line after each method section for spacing
+                    out.push('\n');
+                }
+
+                // Ensure exactly one trailing newline at EOF
+                let mut out = out.trim_end().to_string();
+                out.push('\n');
+                let site_file = site_root.join(format!("{}.mdx", object.to_lowercase()));
+                std::fs::write(site_file, out).unwrap();
+            };
+
+            // Iterate objects discovered from AST (base objects only)
+            let objects = super::validation::base_public_objects();
+            for object in objects.iter() {
+                let dir = super::validation::object_dir_name(object);
+                let obj_dir = docs_root.join(&dir);
+
+                // Determine method files from reflection, skipping platform variants
+                let mut method_files = Vec::new();
+                if let Some(methods) = api_map.get(object) {
+                    for m in methods {
+                        if let Some(fun) = &m.function {
+                            let name = &fun.name;
+                            let skip = name.ends_with("_js")
+                                || name.ends_with("_py")
+                                || name.ends_with("_ios")
+                                || name.ends_with("_android")
+                                || name == "headless"
+                                || name == "render_bitmap";
+                            if skip {
+                                continue;
+                            }
+                            let file = if name == "new" {
+                                "constructor".to_string()
+                            } else {
+                                name.clone()
+                            };
+                            if obj_dir.join(format!("{}.md", file)).exists() {
+                                method_files.push(file);
+                            }
                         }
                     }
                 }
 
-                let site_file = site_root.join(format!("{}.mdx", object.to_lowercase()));
-                std::fs::write(site_file, out).unwrap();
+                // If no methods were discovered, fall back to docs files in the folder
+                if method_files.is_empty() {
+                    if let Ok(read_dir) = std::fs::read_dir(&obj_dir) {
+                        let mut files: Vec<String> = read_dir
+                            .filter_map(|e| e.ok())
+                            .filter_map(|e| {
+                                let p = e.path();
+                                if p.extension()?.to_str()? == "md" {
+                                    let stem = p.file_stem()?.to_str()?.to_string();
+                                    if stem != dir { Some(stem) } else { None }
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect();
+                        files.sort();
+                        // If reflection found no public methods, avoid showing private constructors
+                        if let Some(pos) = files.iter().position(|s| s == "constructor") {
+                            files.remove(pos);
+                        }
+                        method_files = files;
+                    }
+                }
+
+                write_page(object, method_files);
+                written.insert(object.to_string());
             }
+
+            // Extras: any docs-only objects in docs/api not in allowed
+            if let Ok(read_dir) = std::fs::read_dir(&docs_root) {
+                for entry in read_dir.flatten() {
+                    if entry.path().is_dir() {
+                        let dir_name = entry.file_name().to_string_lossy().to_string();
+                        let object = super::validation::dir_to_object_name(&dir_name);
+                        if written.contains(&object) {
+                            continue;
+                        }
+                        let obj_dir = docs_root.join(&dir_name);
+                        let mut method_files: Vec<String> = Vec::new();
+                        if let Ok(files) = std::fs::read_dir(&obj_dir) {
+                            method_files = files
+                                .filter_map(|e| e.ok())
+                                .filter_map(|e| {
+                                    let p = e.path();
+                                    if p.extension()?.to_str()? == "md" {
+                                        let stem = p.file_stem()?.to_str()?.to_string();
+                                        if stem != dir_name { Some(stem) } else { None }
+                                    } else {
+                                        None
+                                    }
+                                })
+                                .collect();
+                            method_files.sort();
+                            // If reflection found no public methods, avoid showing private constructors
+                            if let Some(pos) = method_files.iter().position(|s| s == "constructor")
+                            {
+                                method_files.remove(pos);
+                            }
+                        }
+                        write_page(&object, method_files);
+                        written.insert(object);
+                    }
+                }
+            }
+
+            // Generate an index.mdx listing all API objects (objects first, then extras)
+            let mut all_objects: Vec<String> = Vec::new();
+            let objects = super::validation::public_structs_excluding_hidden();
+            for o in objects.iter() {
+                all_objects.push(o.clone());
+            }
+            if let Ok(read_dir) = std::fs::read_dir(&docs_root) {
+                for entry in read_dir.flatten() {
+                    if entry.path().is_dir() {
+                        let dir_name = entry.file_name().to_string_lossy().to_string();
+                        let object = super::validation::dir_to_object_name(&dir_name);
+                        if !all_objects.iter().any(|o| o == &object) {
+                            all_objects.push(object);
+                        }
+                    }
+                }
+            }
+
+            let mut idx = String::new();
+            idx.push_str("---\n");
+            idx.push_str("title: API\n");
+            idx.push_str("description: \"Auto-generated API index\"\n");
+            idx.push_str("---\n\n");
+            idx.push_str("# API\n\n");
+            for o in &all_objects {
+                let path = format!("/docs/api/{}.mdx", o.to_lowercase());
+                idx.push_str(&format!("- [{}]({})\n", o, path));
+            }
+            let mut idx = idx.trim_end().to_string();
+            idx.push('\n');
+            std::fs::write(site_root.join("index.mdx"), idx).unwrap();
         }
     }
 }

@@ -1,10 +1,10 @@
 # Frame
 
-The [Frame](https://fragmentcolor.org/docs/api/frame) object is a collection of [Pass](https://fragmentcolor.org/docs/api/pass) objects that are rendered to a [Target](https://fragmentcolor.org/docs/api/target) by the [Renderer](https://fragmentcolor.org/docs/api/renderer).
+The [Frame](https://fragmentcolor.org/api/frame) object is a collection of [Pass](https://fragmentcolor.org/api/pass) objects that are rendered to a [Target](https://fragmentcolor.org/api/target) by the [Renderer](https://fragmentcolor.org/api/renderer).
 
 It is used to render multiple passes to a single target, such as an opaque pass followed by a transparent pass.
 
-You need to inject the [Frame](https://fragmentcolor.org/docs/api/frame) object into the [Renderer](https://fragmentcolor.org/docs/api/renderer) to render it.
+You need to inject the [Frame](https://fragmentcolor.org/api/frame) object into the [Renderer](https://fragmentcolor.org/api/renderer) to render it.
 
 ## Example
 
@@ -41,8 +41,8 @@ Ok(())
 
 - ### constructor()
 
-  Creates a new Frame object.
+  Creates a new [Frame](https://fragmentcolor.org/api/frame) object.
 
-- ### add_pass(pass: Pass)
+- ### add_pass(pass: [Pass](https://fragmentcolor.org/api/pass))
 
-  Adds a Pass object to the Frame.
+  Adds a [Pass](https://fragmentcolor.org/api/pass) object to the [Frame](https://fragmentcolor.org/api/frame).
