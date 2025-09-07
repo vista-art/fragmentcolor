@@ -194,7 +194,7 @@ shader.set("circle.border", 2.0);
 shader.set("circle.position", [0.0, 0.0]);
 ```
 
-### get(key: string) -> any
+### get(key: string) -&gt; any
 
 Returns the current value of the uniform identified by the given key.
 
@@ -220,7 +220,7 @@ _radius = shader.get("circle.radius")
 const _radius = shader.get("circle.radius");
 ```
 
-### list_uniforms() -> [string]
+### list_uniforms() -&gt; [string]
 
 Returns a list of all uniform names in the [Shader](https://fragmentcolor.org/api/shader) (excluding struct fields).
 
@@ -245,7 +245,7 @@ _uniforms = shader.list_uniforms()
 const _uniforms = shader.listUniforms();
 ```
 
-### list_keys() -> [string]
+### list_keys() -&gt; [string]
 
 Returns a list of all keys in the [Shader](https://fragmentcolor.org/api/shader), including uniform names and struct fields using the dot notation.
 

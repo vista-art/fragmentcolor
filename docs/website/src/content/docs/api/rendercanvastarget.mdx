@@ -47,7 +47,7 @@ canvas = RenderCanvas()
 target = renderer.create_target(canvas)
 ```
 
-### is_ready() -> bool
+### is_ready() -&gt; bool
 
 Returns True if the underlying WindowTarget has been initialized.
 
@@ -65,7 +65,7 @@ ctx = renderer.create_target(canvas)
 assert isinstance(ctx.is_ready(), bool)
 ```
 
-### size() -> [u32, u32]
+### size() -&gt; [u32, u32]
 
 Returns the current size in pixels of the backing WindowTarget.
 
@@ -98,7 +98,7 @@ ctx = renderer.create_target(canvas)
 ctx.resize([640, 480])
 ```
 
-### canvas() -> RenderCanvas
+### canvas() -&gt; RenderCanvas
 
 Returns the underlying RenderCanvas object used to integrate with the windowing system.
 
@@ -115,7 +115,7 @@ rc = ctx.canvas
 # rc is a RenderCanvas instance
 ```
 
-### present() -> dict
+### present() -&gt; dict
 
 Presents the current frame to the screen via the underlying WindowTarget.
 
