@@ -46,6 +46,9 @@ impl crate::renderer::Renderable for Scene {
 // Users can register global event callbacks and draw callbacks.
 // The event is passed by reference to avoid unnecessary cloning.
 type EventCb = Box<dyn FnMut(&App, WindowId, &WindowEvent) + Send + 'static>;
+// Device-level (non-window) event callback
+type DevEventCb =
+    Box<dyn FnMut(&App, winit::event::DeviceId, &winit::event::DeviceEvent) + Send + 'static>;
 
 type SceneRef = Arc<Scene>;
 
@@ -79,6 +82,17 @@ pub enum WinEvtKind {
     Occluded,
     RedrawRequested,
     CloseRequested,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum DevEvtKind {
+    Added,
+    Removed,
+    MouseMotion,
+    MouseWheel,
+    Motion,
+    Button,
+    Key,
 }
 
 fn kind_of(event: &WindowEvent) -> WinEvtKind {
@@ -138,6 +152,10 @@ pub struct App {
     primary_by_kind: RwLock<HashMap<WinEvtKind, Vec<EventCb>>>,
     per_window_by_kind: RwLock<HashMap<WindowId, HashMap<WinEvtKind, Vec<EventCb>>>>,
 
+    // Device event registries (no window association)
+    on_device_event: RwLock<Vec<DevEventCb>>, // called for every DeviceEvent
+    device_by_kind: RwLock<HashMap<DevEvtKind, Vec<DevEventCb>>>,
+
     primary_window: Option<WindowId>,
 }
 
@@ -158,9 +176,10 @@ impl App {
             default_scene: None,
             on_event: RwLock::new(Vec::new()),
             on_draw: RwLock::new(Vec::new()),
-
             primary_by_kind: RwLock::new(HashMap::new()),
             per_window_by_kind: RwLock::new(HashMap::new()),
+            on_device_event: RwLock::new(Vec::new()),
+            device_by_kind: RwLock::new(HashMap::new()),
             primary_window: None,
         }
     }
@@ -202,7 +221,7 @@ impl App {
 
     // Event-specific registration -----------------------------------------------------------
 
-    // Generic registration for future coverage
+    // Generic registration for future coverage (window events)
     pub fn on_event_kind<F>(&mut self, kind: WinEvtKind, f: F) -> &mut Self
     where
         F: FnMut(&App, WindowId, &WindowEvent) + Send + 'static,
@@ -223,6 +242,27 @@ impl App {
             .write()
             .entry(id)
             .or_default()
+            .entry(kind)
+            .or_default()
+            .push(Box::new(f));
+        self
+    }
+
+    // Device event registration ---------------------------------------------------------------
+    pub fn on_device_event<F>(&mut self, f: F) -> &mut Self
+    where
+        F: FnMut(&App, winit::event::DeviceId, &winit::event::DeviceEvent) + Send + 'static,
+    {
+        self.on_device_event.write().push(Box::new(f));
+        self
+    }
+
+    pub fn on_device_event_kind<F>(&mut self, kind: DevEvtKind, f: F) -> &mut Self
+    where
+        F: FnMut(&App, winit::event::DeviceId, &winit::event::DeviceEvent) + Send + 'static,
+    {
+        self.device_by_kind
+            .write()
             .entry(kind)
             .or_default()
             .push(Box::new(f));
@@ -377,7 +417,6 @@ define_typed_event_handlers! {
         primary(f64, &winit::event::InnerSizeWriter), call_primary(*scale_factor, inner_size_writer),
         perwin(WindowId, f64, &winit::event::InnerSizeWriter), call_perwin(*scale_factor, inner_size_writer)
     ),
-    // Additional events per full WindowEvent definition
     (on_activation_token_done, on_window_activation_token_done, ActivationTokenDone,
         match WindowEvent::ActivationTokenDone { serial, token },
 primary(&winit::event_loop::AsyncRequestSerial, &winit::window::ActivationToken), call_primary(serial, token),
@@ -407,6 +446,63 @@ perwin(WindowId, &winit::event_loop::AsyncRequestSerial, &winit::window::Activat
         match WindowEvent::TouchpadPressure { device_id, pressure, stage },
         primary(winit::event::DeviceId, f32, i64), call_primary(*device_id, *pressure, *stage),
         perwin(WindowId, winit::event::DeviceId, f32, i64), call_perwin(*device_id, *pressure, *stage)
+    )
+}
+
+// Typed device-event convenience registrations -----------------------------------------------
+macro_rules! define_typed_device_handlers {
+    (
+      $(
+        ($name:ident, $kind:ident,
+         match $pat:pat,
+         args($($p_ty:ty),*), call($($p_arg:expr),*)
+        )
+      ),* $(,)?
+    ) => {
+        impl App {
+            $(
+                pub fn $name<F>(&mut self, mut f: F) -> &mut Self
+                where F: FnMut(&App, winit::event::DeviceId $(, $p_ty)*) + Send + 'static
+                {
+                    self.on_device_event_kind(DevEvtKind::$kind, move |app, device_id, ev| {
+                        if let $pat = ev {
+                            f(app, device_id $(, $p_arg)*)
+                        }
+                    })
+                }
+            )*
+        }
+    }
+}
+
+define_typed_device_handlers! {
+    (on_device_added, Added,
+        match winit::event::DeviceEvent::Added,
+        args(), call()
+    ),
+    (on_device_removed, Removed,
+        match winit::event::DeviceEvent::Removed,
+        args(), call()
+    ),
+    (on_device_mouse_motion, MouseMotion,
+        match winit::event::DeviceEvent::MouseMotion { delta },
+        args((f64, f64)), call(*delta)
+    ),
+    (on_device_mouse_wheel, MouseWheel,
+        match winit::event::DeviceEvent::MouseWheel { delta },
+        args(&winit::event::MouseScrollDelta), call(delta)
+    ),
+    (on_device_motion, Motion,
+        match winit::event::DeviceEvent::Motion { axis, value },
+        args(winit::event::AxisId, f64), call(*axis, *value)
+    ),
+    (on_device_button, Button,
+        match winit::event::DeviceEvent::Button { button, state },
+        args(winit::event::ButtonId, winit::event::ElementState), call(*button, *state)
+    ),
+    (on_device_key, Key,
+        match winit::event::DeviceEvent::Key(ev),
+        args(&winit::event::RawKeyEvent), call(ev)
     )
 }
 
@@ -586,6 +682,37 @@ impl ApplicationHandler for App {
             }
             _ => {
                 // No built-in behavior for other events
+            }
+        }
+    }
+
+    fn device_event(
+        &mut self,
+        _event_loop: &ActiveEventLoop,
+        device_id: winit::event::DeviceId,
+        event: winit::event::DeviceEvent,
+    ) {
+        // 1) Forward to generic device callbacks
+        {
+            let mut cbs = self.on_device_event.write();
+            for cb in cbs.iter_mut() {
+                cb(&*self, device_id, &event);
+            }
+        }
+        // 2) Dispatch by kind to typed handlers
+        let kind = match &event {
+            winit::event::DeviceEvent::Added => DevEvtKind::Added,
+            winit::event::DeviceEvent::Removed => DevEvtKind::Removed,
+            winit::event::DeviceEvent::MouseMotion { .. } => DevEvtKind::MouseMotion,
+            winit::event::DeviceEvent::MouseWheel { .. } => DevEvtKind::MouseWheel,
+            winit::event::DeviceEvent::Motion { .. } => DevEvtKind::Motion,
+            winit::event::DeviceEvent::Button { .. } => DevEvtKind::Button,
+            winit::event::DeviceEvent::Key(_) => DevEvtKind::Key,
+        };
+        let mut map = self.device_by_kind.write();
+        if let Some(list) = map.get_mut(&kind) {
+            for cb in list.iter_mut() {
+                cb(&*self, device_id, &event);
             }
         }
     }
