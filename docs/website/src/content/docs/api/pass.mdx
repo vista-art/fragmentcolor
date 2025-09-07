@@ -47,7 +47,7 @@ Ok(())
 
 ## Methods
 
-### Pass::new(name: &str) -> Self
+### Pass::new(name: &str) -&gt; Self
 
 #### Creates a new Pass
 
@@ -73,7 +73,7 @@ rpass = Pass("single pass")
 const rpass = new Pass("single pass");
 ```
 
-### compute(name: &str) -> Pass
+### compute(name: &str) -&gt; Pass
 
 Creates a new [Pass](https://fragmentcolor.org/api/pass) configured for compute workloads.
 
@@ -88,7 +88,7 @@ let pass = Pass::compute("compute pass");
 // Add compute shaders once available
 ```
 
-### from_shader(name: &str, shader: Shader) -> Pass
+### from_shader(name: &str, shader: Shader) -&gt; Pass
 
 Creates a new [Pass](https://fragmentcolor.org/api/pass) from a single [Shader](https://fragmentcolor.org/api/shader).
 
@@ -128,7 +128,7 @@ renderer.render(&pass, &target)?;
 # }
 ```
 
-### get_input() -> PassInput
+### get_input() -&gt; PassInput
 
 Returns a copy of the current input configuration for this [Pass](https://fragmentcolor.org/api/pass).
 
