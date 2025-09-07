@@ -22,7 +22,7 @@ members = ["examples/rust"]
 [features]
 glsl = []
 shadertoy = ["glsl"]
-winit = ["dep:winit"]
+winit = ["dep:winit", "pollster"]
 python = ["pyo3", "pollster", "raw-window-handle", "objc2", "objc2-app-kit"]
 
 [dependencies]
