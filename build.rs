@@ -763,14 +763,13 @@ mod validation {
                         }
                     }
                     Item::Struct(s) => {
-                        if let Visibility::Public(_) = s.vis {
-                            if !is_doc_hidden(&s.attrs) && has_lsp_doc(&s.attrs) {
+                        if let Visibility::Public(_) = s.vis
+                            && !is_doc_hidden(&s.attrs) && has_lsp_doc(&s.attrs) {
                                 let name = s.ident.to_string();
                                 if !out.contains(&name) {
                                     out.push(name);
                                 }
                             }
-                        }
                     }
                     _ => {}
                 }
@@ -835,8 +834,8 @@ mod validation {
                         }
                     }
                     Item::Struct(s) => {
-                        if let Visibility::Public(_) = s.vis {
-                            if !is_doc_hidden(&s.attrs) {
+                        if let Visibility::Public(_) = s.vis
+                            && !is_doc_hidden(&s.attrs) {
                                 let name = s.ident.to_string();
                                 let mut inner_types = Vec::new();
                                 match &s.fields {
@@ -860,7 +859,6 @@ mod validation {
                                 inner_types.dedup();
                                 out.push((name, s.attrs.clone(), inner_types));
                             }
-                        }
                     }
                     _ => {}
                 }
@@ -972,10 +970,10 @@ mod validation {
                 let mut start = 0usize;
                 while let Some(idx_rel) = cleaned[start..].find(obj) {
                     let idx = start + idx_rel;
-                    let before = cleaned[..idx].chars().rev().next();
+                    let before = cleaned[..idx].chars().next_back();
                     let after = cleaned[idx + obj.len()..].chars().next();
-                    let before_ok = before.map_or(true, |c| !c.is_alphanumeric() && c != '_');
-                    let after_ok = after.map_or(true, |c| !c.is_alphanumeric() && c != '_');
+                    let before_ok = before.is_none_or(|c| !c.is_alphanumeric() && c != '_');
+                    let after_ok = after.is_none_or(|c| !c.is_alphanumeric() && c != '_');
                     if before_ok && after_ok {
                         problems.push(format!(
                             "{}: Unlinked mention of {} (must be [{}]({}))",
@@ -1021,12 +1019,11 @@ mod validation {
                         }
                     }
                     Item::Struct(s) => {
-                        if let Visibility::Public(_) = s.vis {
-                            if !is_doc_hidden(&s.attrs) && super::validation::has_lsp_doc(&s.attrs)
+                        if let Visibility::Public(_) = s.vis
+                            && !is_doc_hidden(&s.attrs) && super::validation::has_lsp_doc(&s.attrs)
                             {
                                 doc_structs.insert(s.ident.to_string());
                             }
-                        }
                     }
                     Item::Impl(item_impl) => {
                         // Only track inherent impls for types
@@ -1034,15 +1031,14 @@ mod validation {
                             let type_name =
                                 type_path.path.segments.last().unwrap().ident.to_string();
                             for impl_item in item_impl.items {
-                                if let ImplItem::Fn(method) = impl_item {
-                                    if matches!(method.vis, Visibility::Public(_))
+                                if let ImplItem::Fn(method) = impl_item
+                                    && matches!(method.vis, Visibility::Public(_))
                                         && !is_doc_hidden(&method.attrs)
                                         && super::validation::has_lsp_doc(&method.attrs)
                                     {
                                         let name = method.sig.ident.to_string();
                                         doc_methods.insert((type_name.clone(), name));
                                     }
-                                }
                             }
                         }
                     }
@@ -1325,8 +1321,8 @@ mod validation {
                 }
 
                 // If no methods were discovered, fall back to docs files in the folder
-                if method_files.is_empty() {
-                    if let Ok(read_dir) = std::fs::read_dir(&obj_dir) {
+                if method_files.is_empty()
+                    && let Ok(read_dir) = std::fs::read_dir(&obj_dir) {
                         let mut files: Vec<String> = read_dir
                             .filter_map(|e| e.ok())
                             .filter_map(|e| {
@@ -1346,7 +1342,6 @@ mod validation {
                         }
                         method_files = files;
                     }
-                }
 
                 write_page(object, method_files);
                 written.insert(object.to_string());
