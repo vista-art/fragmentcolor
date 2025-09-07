@@ -122,6 +122,9 @@ jobs:
       - name: Build example multipass
         run: cargo build -p fce --example multipass
 
+      - name: Build example app_healthcheck
+        run: cargo build -p fce --example app_healthcheck
+
   # @TODO Implement Swift bindings
   # test_swift_bindings:
   #   timeout-minutes: 20
