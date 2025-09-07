@@ -1,111 +1,37 @@
-use fragmentcolor::{Renderer, Shader, ShaderError, Target, WindowTarget};
-use std::sync::Arc;
-use winit::application::ApplicationHandler;
-use winit::event::WindowEvent;
-use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
-use winit::window::{Window, WindowId};
+use fragmentcolor::{App, Shader, run};
+use winit::dpi::PhysicalSize;
 
-struct State {
-    window: Arc<Window>,
-    target: WindowTarget,
-    renderer: Renderer,
-    shader: Shader,
+const CIRCLE_SOURCE: &str = include_str!("circle.wgsl");
+
+pub fn on_resize(app: &App, new_size: &PhysicalSize<u32>) {
+    app.resize([new_size.width, new_size.height]);
+    let id = app.window_id();
+    let res = [new_size.width as f32, new_size.height as f32];
+    let _ = app.set_uniform(id, "resolution", res);
 }
 
-impl State {
-    async fn new(window: Arc<Window>) -> State {
-        let renderer = Renderer::new();
-        let target = renderer.create_target(window.clone()).await.unwrap();
-        let size = target.size();
-
-        let shader_source = include_str!("circle.wgsl");
-        let shader = Shader::new(shader_source).unwrap();
-        shader
-            .set("resolution", [size.width as f32, size.height as f32])
-            .unwrap();
-        shader.set("circle.position", [0.0, 0.0]).unwrap();
-        shader.set("circle.radius", 300.0).unwrap();
-        shader.set("circle.color", [0.2, 0.2, 0.8, 1.0]).unwrap();
-        shader.set("circle.border", 100.0).unwrap();
-
-        State {
-            window,
-            target,
-            renderer,
-            shader,
-        }
-    }
-
-    fn get_window(&self) -> &Window {
-        &self.window
-    }
-
-    fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
-        let size = [new_size.width, new_size.height];
-
-        self.target.resize(size);
-        self.shader
-            .set("resolution", [size[0] as f32, size[1] as f32])
-            .unwrap();
-    }
-
-    fn render(&mut self) -> Result<(), ShaderError> {
-        Ok(self.renderer.render(&self.shader, &self.target)?)
-    }
-}
-
-#[derive(Default)]
-struct App {
-    state: Option<State>,
-}
-
-impl ApplicationHandler for App {
-    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        let window = Arc::new(
-            event_loop
-                .create_window(Window::default_attributes())
-                .unwrap(),
-        );
-        //self.windows.insert(window.id(), window.clone());
-
-        let state = pollster::block_on(State::new(window.clone()));
-        self.state = Some(state);
-
-        window.request_redraw();
-    }
-
-    fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
-        let state = self.state.as_mut().unwrap();
-        match event {
-            // Render loop
-            WindowEvent::RedrawRequested => {
-                if let Err(err) = state.render() {
-                    log::error!("Failed to render: {:?}", err);
-                }
-
-                state.get_window().request_redraw();
-            }
-
-            // resize
-            WindowEvent::Resized(size) => {
-                state.resize(size);
-            }
-
-            // quit
-            WindowEvent::CloseRequested => {
-                println!("The close button was pressed; stopping.");
-                event_loop.exit();
-            }
-            _ => {}
-        }
+pub fn on_draw(app: &App) {
+    let id = app.window_id();
+    if let Some(size) = app.size(id) {
+        let res = [size.width as f32, size.height as f32];
+        let _ = app.set_uniform(id, "resolution", res);
+        let _ = app.set_uniform(id, "circle.position", [0.0f32, 0.0f32]);
     }
 }
 
 fn main() {
-    let event_loop = EventLoop::new().unwrap();
-    event_loop.set_control_flow(ControlFlow::Poll);
+    let shader = {
+        let s = Shader::new(CIRCLE_SOURCE).unwrap();
+        s.set("circle.radius", 300.0).unwrap();
+        s.set("circle.color", [0.2, 0.2, 0.8, 1.0]).unwrap();
+        s.set("circle.border", 100.0).unwrap();
+        s
+    };
 
-    let mut app = App::default();
+    let mut app = App::new();
+    app.scene(shader)
+        .on_resize(on_resize)
+        .on_redraw_requested(on_draw);
 
-    let _ = event_loop.run_app(&mut app);
+    run(&mut app);
 }
