@@ -318,7 +318,12 @@ fn parse_external_module(current_path: &Path, module_name: String) -> (PathBuf, 
         current_dir.join(module_name).join("mod.rs")
     };
 
-    let content = fs::read_to_string(&module_path).expect("Failed to read module file");
+    let content = fs::read_to_string(&module_path).unwrap_or_else(|_| {
+        panic!(
+            "Couldn't find module file: {}",
+            module_path.to_str().unwrap()
+        )
+    });
     (
         module_path,
         parse_file(&content)
