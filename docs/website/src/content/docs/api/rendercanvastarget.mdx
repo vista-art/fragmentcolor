@@ -1,0 +1,139 @@
+---
+title: RenderCanvasTarget
+description: "[RenderCanvasTarget](https://fragmentcolor.org/api/render_canvas_target) is a Python-specific wrapper around [WindowTarget](https://fragmentcolor.org/api/window_target)."
+---
+
+## Description
+
+[RenderCanvasTarget](https://fragmentcolor.org/api/render_canvas_target) is a Python-specific wrapper around [WindowTarget](https://fragmentcolor.org/api/window_target).
+
+It adapts [FragmentColor](https://fragmentcolor.org) to work with the RenderCanvas Python project, forwarding all rendering to an internal [WindowTarget](https://fragmentcolor.org/api/window_target). See [WindowTarget](https://fragmentcolor.org/api/window_target) for the full [Target](https://fragmentcolor.org/api/target) behavior and semantics.
+
+- Canonical object: [WindowTarget](https://fragmentcolor.org/api/window_target)
+- Target trait docs: [Target](https://fragmentcolor.org/api/target)
+
+## Example
+
+```python
+from fragmentcolor import Renderer
+from rendercanvas.auto import RenderCanvas
+
+renderer = Renderer()
+canvas = RenderCanvas()
+# RenderCanvas calls the fragmentcolor hook to create a RenderCanvasTarget under the hood
+# via renderer.create_target(canvas)
+
+target = renderer.create_target(canvas)  # returns RenderCanvasTarget
+# You can now render Frames, Passes or Shaders to this target
+```
+
+## Methods
+
+### RenderCanvasTarget.new()
+
+Creates a new [RenderCanvasTarget](https://fragmentcolor.org/api/render_canvas_target) wrapper, typically invoked by RenderCanvas when requesting a "fragmentcolor" context.
+
+The object wraps a platform [WindowTarget](https://fragmentcolor.org/api/window_target) internally and exposes the [Target](https://fragmentcolor.org/api/target) interface in Python.
+
+#### Example
+
+```python
+from fragmentcolor import Renderer
+from rendercanvas.auto import RenderCanvas
+
+renderer = Renderer()
+canvas = RenderCanvas()
+# Under the hood this calls the hook and constructs RenderCanvasTarget
+target = renderer.create_target(canvas)
+```
+
+### is_ready() -> bool
+
+Returns True if the underlying WindowTarget has been initialized.
+
+This becomes True after the renderer creates and binds a platform surface to the wrapper.
+
+#### Example
+
+```python
+from fragmentcolor import Renderer
+from rendercanvas.auto import RenderCanvas
+
+renderer = Renderer()
+canvas = RenderCanvas()
+ctx = renderer.create_target(canvas)
+assert isinstance(ctx.is_ready(), bool)
+```
+
+### size() -> [u32, u32]
+
+Returns the current size in pixels of the backing WindowTarget.
+
+#### Example
+
+```python
+from fragmentcolor import Renderer
+from rendercanvas.auto import RenderCanvas
+
+renderer = Renderer()
+canvas = RenderCanvas()
+ctx = renderer.create_target(canvas)
+wh = ctx.size
+assert isinstance(wh, list) and len(wh) == 2
+```
+
+### resize(size: [u32, u32] | (u32, u32) | { width, height })
+
+Resizes the underlying WindowTarget to the given dimensions.
+
+#### Example
+
+```python
+from fragmentcolor import Renderer
+from rendercanvas.auto import RenderCanvas
+
+renderer = Renderer()
+canvas = RenderCanvas()
+ctx = renderer.create_target(canvas)
+ctx.resize([640, 480])
+```
+
+### canvas() -> RenderCanvas
+
+Returns the underlying RenderCanvas object used to integrate with the windowing system.
+
+#### Example
+
+```python
+from fragmentcolor import Renderer
+from rendercanvas.auto import RenderCanvas
+
+renderer = Renderer()
+canvas = RenderCanvas()
+ctx = renderer.create_target(canvas)
+rc = ctx.canvas
+# rc is a RenderCanvas instance
+```
+
+### present() -> dict
+
+Presents the current frame to the screen via the underlying WindowTarget.
+
+Returns a dict containing a presentation method (e.g., "screen") and optional error information on failure.
+
+#### Example
+
+```python
+from fragmentcolor import Renderer, Shader
+from rendercanvas.auto import RenderCanvas
+
+renderer = Renderer()
+canvas = RenderCanvas()
+ctx = renderer.create_target(canvas)
+
+shader = Shader("// wgsl ...")
+renderer.render(shader, ctx)
+
+result = ctx.present()
+assert isinstance(result, dict)
+```

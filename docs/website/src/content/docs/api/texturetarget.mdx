@@ -1,11 +1,11 @@
 ---
 title: TextureTarget
-description: "The [TextureTarget](https://fragmentcolor.org/docs/api/texture_target) is an offscreen [Target](https://fragmentcolor.org/docs/api/target) backed by a GPU texture."
+description: "The [TextureTarget](https://fragmentcolor.org/api/texture_target) is an offscreen [Target](https://fragmentcolor.org/api/target) backed by a GPU texture."
 ---
 
 ## Description
 
-The [TextureTarget](https://fragmentcolor.org/docs/api/texture_target) is an offscreen [Target](https://fragmentcolor.org/docs/api/target) backed by a GPU texture.
+The [TextureTarget](https://fragmentcolor.org/api/texture_target) is an offscreen [Target](https://fragmentcolor.org/api/target) backed by a GPU texture.
 
 Use it for headless rendering, tests, server-side image generation, or CI.
 
@@ -26,7 +26,79 @@ renderer.render(&shader, &target)?;
 
 ## Methods
 
+### get_current_frame() -> TargetFrame
 
+Returns a frame wrapper for the offscreen texture.
 
+Most users do not need to call this directly; the [Renderer](https://fragmentcolor.org/api/renderer) uses it internally.
 
+#### Example
 
+```rust
+use fragmentcolor::Renderer;
+
+# fn main() -> Result<(), Box<dyn std::error::Error>> {
+let renderer = Renderer::new();
+let target = pollster::block_on(renderer.create_texture_target([16, 16]))?;
+let frame = target.get_current_frame()?;
+let _format = frame.format();
+# Ok(())
+# }
+```
+
+### get_image()
+
+Returns the current contents of the target as a byte array in RGBA8 format.
+
+#### Example
+
+```rust
+use fragmentcolor::Renderer;
+
+# fn main() -> Result<(), Box<dyn std::error::Error>> {
+let renderer = Renderer::new();
+let target = pollster::block_on(renderer.create_texture_target([16, 16]))?;
+renderer.render(&fragmentcolor::Shader::default(), &target)?;
+
+let image = target.get_image();
+# Ok(())
+# }
+```
+
+### resize(size: [u32; 2] | (u32, u32))
+
+Resizes the [TextureTarget](https://fragmentcolor.org/api/texture_target) to the given width and height.
+
+#### Example
+
+```rust
+use fragmentcolor::Renderer;
+
+# fn main() -> Result<(), Box<dyn std::error::Error>> {
+let renderer = Renderer::new();
+let mut target = pollster::block_on(renderer.create_texture_target([64, 64]))?;
+
+assert_eq!(target.size(), [64, 64]);
+
+target.resize([128, 32]);
+assert_eq!(target.size(), [128, 32]);
+# Ok(())
+# }
+```
+
+### size() -> [u32; 2]
+
+Returns the size of the [TextureTarget](https://fragmentcolor.org/api/texture_target) in pixels.
+
+#### Example
+
+```rust
+use fragmentcolor::Renderer;
+
+# fn main() -> Result<(), Box<dyn std::error::Error>> {
+let renderer = Renderer::new();
+let target = pollster::block_on(renderer.create_texture_target([64, 64]))?;
+assert_eq!(target.size(), [64, 64]);
+# Ok(())
+# }
+```

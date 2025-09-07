@@ -1,0 +1,160 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Run or preview the documentation website (Astro/Starlight) from the repo root.
+# Usage:
+#   ./run_docs.sh [dev|preview] [--port <port>|-p <port>] [--no-open] [--clean] [--help]
+# Examples:
+#   ./run_docs.sh
+#   ./run_docs.sh --port 4000
+#   ./run_docs.sh preview --no-open
+#   DOCS_PORT=4000 ./run_docs.sh dev
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SITE_DIR="$ROOT_DIR/docs/website"
+
+show_help() {
+  cat <<'EOF'
+Usage: ./run_docs.sh [dev|preview] [options]
+
+Run or preview the documentation site (Astro/Starlight) located at docs/website.
+
+Commands:
+  dev         Run the dev server (default)
+  preview     Build the site and serve the built output
+
+Options:
+  -p, --port <port>   Port to use (default: 4321 or $DOCS_PORT if set)
+  --no-open           Do not open the browser automatically
+  --clean             Remove node_modules before installing
+  -h, --help          Show this help
+
+Examples:
+  ./run_docs.sh
+  ./run_docs.sh --port 4000
+  ./run_docs.sh preview --no-open
+  DOCS_PORT=4000 ./run_docs.sh dev
+EOF
+}
+
+ensure_pnpm() {
+  if ! command -v pnpm >/dev/null 2>&1; then
+    if command -v corepack >/dev/null 2>&1; then
+      corepack enable pnpm >/dev/null 2>&1 || true
+    fi
+  fi
+  if ! command -v pnpm >/dev/null 2>&1; then
+    echo "pnpm is required. Install it (e.g., brew install pnpm) and re-run." >&2
+    exit 1
+  fi
+}
+
+open_browser() {
+  local url="$1"
+  if [ "${NO_OPEN:-0}" -eq 1 ]; then return 0; fi
+  if command -v open >/dev/null 2>&1; then
+    open "$url"
+  elif command -v xdg-open >/dev/null 2>&1; then
+    xdg-open "$url" >/dev/null 2>&1 || true
+  else
+    echo "Open this URL in your browser: $url"
+  fi
+}
+
+wait_for_port() {
+  local port="$1"
+  local attempts=0
+  until curl -sSf "http://localhost:$port" >/dev/null 2>&1; do
+    attempts=$((attempts+1))
+    if [ "$attempts" -gt 120 ]; then
+      echo "Server did not start in time on port $port" >&2
+      return 1
+    fi
+    sleep 0.5
+  done
+}
+
+# Defaults
+CMD="dev"
+PORT="${DOCS_PORT:-4321}"
+NO_OPEN=0
+CLEAN=0
+
+# Ensure site directory exists
+if [ ! -d "$SITE_DIR" ]; then
+  echo "Docs site directory not found: $SITE_DIR" >&2
+  exit 1
+fi
+
+# Parse subcommand
+if [ "${1:-}" != "" ] && [[ ! "$1" =~ ^- ]]; then
+  case "$1" in
+    dev|preview)
+      CMD="$1";
+      shift
+      ;;
+    -h|--help)
+      show_help; exit 0 ;;
+    *)
+      echo "Unknown command: $1" >&2
+      echo >&2
+      show_help
+      exit 1
+      ;;
+  esac
+fi
+
+# Parse flags
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -p|--port)
+      if [ $# -lt 2 ]; then echo "Missing value for $1" >&2; exit 1; fi
+      PORT="$2"; shift 2 ;;
+    --no-open)
+      NO_OPEN=1; shift ;;
+    --clean)
+      CLEAN=1; shift ;;
+    -h|--help)
+      show_help; exit 0 ;;
+    *)
+      echo "Unknown option: $1" >&2
+      echo >&2
+      show_help
+      exit 1 ;;
+  esac
+done
+
+ensure_pnpm
+
+# Optionally clean and install deps
+if [ "$CLEAN" -eq 1 ]; then
+  rm -rf "$SITE_DIR/node_modules"
+fi
+pnpm install --dir "$SITE_DIR"
+
+# Start server based on command
+URL="http://localhost:$PORT/"
+
+cleanup() {
+  if [ -n "${SERVER_PID:-}" ] && ps -p "$SERVER_PID" >/dev/null 2>&1; then
+    kill "$SERVER_PID" || true
+  fi
+}
+trap cleanup EXIT
+
+if [ "$CMD" = "preview" ]; then
+  pnpm --dir "$SITE_DIR" build
+  pnpm --dir "$SITE_DIR" preview -- --port "$PORT" &
+  SERVER_PID=$!
+else
+  pnpm --dir "$SITE_DIR" dev -- --port "$PORT" &
+  SERVER_PID=$!
+fi
+
+# Wait until server is ready, open browser, then keep foreground
+if ! wait_for_port "$PORT"; then
+  exit 1
+fi
+open_browser "$URL"
+wait "$SERVER_PID"
+

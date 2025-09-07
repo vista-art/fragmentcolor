@@ -1,6 +1,6 @@
 # get_input() -> PassInput
 
-Returns a copy of the current input configuration for this [Pass](https://fragmentcolor.org/docs/api/pass).
+Returns a copy of the current input configuration for this [Pass](https://fragmentcolor.org/api/pass).
 
 It includes the clear/load behavior and clear color.
 

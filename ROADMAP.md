@@ -2,101 +2,25 @@
 
 This roadmap summarizes current focus and planned features.
 
-## 0.10.8 Automation & features
-
-- Website & docs
-  - Expand examples coverage across all public API methods
-  - Internationalization groundwork for docs
-- Rendering features
-  - Begin Texture & Sampler support
-  - Optional geometry/instancing groundwork
-- Build system
-  - Improve validation & CI coverage for healthchecks
-
-## 0.10.9 Swift & Kotlin bindings (draft)
-
-- Stabilize initial wrappers
-- Build & packaging automation
-
-## Done (highlights)
-
-### 0.10.7 Documentation automation and release flow
-
-- Built docs automation:
-  - Centralized docs in `docs/api`, wired via `#[lsp_doc]`.
-  - Validation & website generation in `build.rs`.
-  - Healthcheck-driven JavaScript & Python examples.
-- Moved the public website into this repository under `docs/website`.
-- Added post-publish workflow to update examples and website dependencies after npm & PyPI publish.
-
-### 0.10.6 JavaScript support
-
-- [x] fix: Shader went without .set() to NPM (WASM)
-- [x] Automate Doc-string replication to all bindings
-- [x] Create a distribution via GH release
-  - [x] Python
-  - [x] Javascript
-- [ ] Automate documentation with xtask
-  - [x] Move Doc Comments to separate MD files
-  - [ ] Doc-comments MD files will be replicated on:
-    - [ ] Rust Doc-comments
-    - [ ] Python Wrappers
-    - [ ] JS Wrappers
-    - [ ] Website
-  - [ ] Reconfigure Vercel to use this repository instead
-- [x] Update documentation and examples
-  - [x] Renderer
-    - [x] constructor
-    - [ ] create_target
-    - [ ] render
-    - [ ] render_image
-  - [ ] Target
-  - [ ] Shader
-    - [ ] constructor
-    - [ ] set
-    - [ ] get
-    - [ ] list_uniforms
-    - [ ] list_keys
-  - [ ] Pass
-    - [ ] constructor
-    - [ ] add_shader
-  - [ ] Frame
-    - [ ] constructor
-    - [ ] add_pass
-- [ ] Examples must use the actual published version
-- [ ] EndToEnd tests to validate the public API
-- [ ] Implement Texture API
-  - [ ] Renderer.create_texture(&image) -> Texture
-  - [ ] Renderer.create_target(Texture) -> Target
-  - [ ] Pass.input(Texture, Op::LOAD|Op::STORE)
-  - [ ] Pass.output(Texture)
-  - [ ] Texture
-  - [ ] StorageTexture
-  - [ ] Sampler
-- [ ] Implement Geometry Object
-  - [ ] Vertex
-  - [ ] Instances
-  - [ ] Shader method to accept it as input
-
-### V 0.10.8 Automation and Build System to keep bindings in sync
-
-- [ ] Incorporate the Website in the repository
-- [ ] Adopt xtask
-- [ ] Add more examples
-- [ ] Update website content
-- [ ] Refine build and publish processes
-
-### V 0.10.9
+## 0.10.8 Swift & Kotlin with Uniffi
 
 - [ ] Swift Wrappers (future)
-
-### V 0.10.10
-
 - [ ] Kotlin Wrappers
+- [ ] Rendering features
+  - [ ] Begin Texture & Sampler support
+  - [ ] Geometry/instancing groundwork
+- [ ] Build system
+  - [ ] Improve validation & CI coverage for healthchecks
+  - [ ] Public API mapping with reflection or explicit annotations (instead of hardcoding in build.rs).
+- [ ] Mobile platform wiring
+  - [ ] iOS: create a safe helper to wrap an existing CAMetalLayer into a wgpu::Surface, then delegate to a core helper that returns WindowTarget
+  - [ ] Android: finalize uniffi method scaffolding and ensure JNI handle passing is safe; wire AndroidTarget and AndroidTextureTarget
+  - [ ] Core: add a helper like create_target_from_surface(surface, size) to remove duplication across platforms (Web/Python/iOS/Android)
+  - [ ] Add E2E tests for iOS/Android wrappers once bindings are generated
 
 ## Up Next
 
-- Revemp RenderPass API
+- [ ] Revemp RenderPass API
   - It must give access to all wgpu::RenderPass customizations with sensible defaults, so we keep our API simple while still allowing for advanced use cases.
 
 - [ ] Build System
@@ -169,6 +93,9 @@ This roadmap summarizes current focus and planned features.
     JsonError(#[from] serde_json::Error),
     ```
 
+- [ ] Website & docs
+  - [ ] Internationalization groundwork for docs
+
 ### Tutorials and Examples
 
 #### Single-pass rendering
@@ -195,5 +122,3 @@ This roadmap summarizes current focus and planned features.
 - [ ] Scene tree
 - [ ] ECS
 - [ ] Future: a Logo-like programming language
-
-## Done

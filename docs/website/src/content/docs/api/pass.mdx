@@ -1,21 +1,21 @@
 ---
 title: Pass
-description: "The [Pass](https://fragmentcolor.org/docs/api/pass) object is a collection of [Shader](https://fragmentcolor.org/docs/api/shader) objects that are rendered to a [Target](https://fragmentcolor.org/docs/api/target) by the [Renderer](https://fragmentcolor.org/docs/api/renderer)."
+description: "The [Pass](https://fragmentcolor.org/api/pass) object is a collection of [Shader](https://fragmentcolor.org/api/shader) objects that are rendered to a [Target](https://fragmentcolor.org/api/target) by the [Renderer](https://fragmentcolor.org/api/renderer)."
 ---
 
 ## Description
 
-The [Pass](https://fragmentcolor.org/docs/api/pass) object is a collection of [Shader](https://fragmentcolor.org/docs/api/shader) objects that are rendered to a [Target](https://fragmentcolor.org/docs/api/target) by the [Renderer](https://fragmentcolor.org/docs/api/renderer).
+The [Pass](https://fragmentcolor.org/api/pass) object is a collection of [Shader](https://fragmentcolor.org/api/shader) objects that are rendered to a [Target](https://fragmentcolor.org/api/target) by the [Renderer](https://fragmentcolor.org/api/renderer).
 
-While the [Shader](https://fragmentcolor.org/docs/api/shader) represents a single **Render Pipeline** or a **Compute Pipeline**,
-the [Pass](https://fragmentcolor.org/docs/api/pass) can be used to draw multiple Shaders in sequence,
+While the [Shader](https://fragmentcolor.org/api/shader) represents a single **Render Pipeline** or a **Compute Pipeline**,
+the [Pass](https://fragmentcolor.org/api/pass) can be used to draw multiple Shaders in sequence,
 for example when you have multiple objects in a scene with different materials.
 
-The [Pass](https://fragmentcolor.org/docs/api/pass) represents a single RenderPass or a ComputePass in the WebGPU API.
+The [Pass](https://fragmentcolor.org/api/pass) represents a single RenderPass or a ComputePass in the WebGPU API.
 
-The constructor creates a RenderPass by default. To create a ComputePass, you must call `Pass.compute()`.
+The constructor creates a RenderPass by default. To create a ComputePass, call [Pass](https://fragmentcolor.org/api/pass)::compute().
 
-After creation, it will only accept a compatible [Shader](https://fragmentcolor.org/docs/api/shader) object. If you try to add a Compute Shader to a Render Pass or vice-versa,
+After creation, it will only accept a compatible [Shader](https://fragmentcolor.org/api/shader) object. If you try to add a Compute [Shader](https://fragmentcolor.org/api/shader) to a Render [Pass](https://fragmentcolor.org/api/pass) or vice-versa,
 it won't add the shader to its internal list and log a warning message in the console.
 
 ## Example
@@ -72,11 +72,12 @@ rpass = Pass("single pass")
 ```js
 const rpass = new Pass("single pass");
 ```
+
 ### compute(name: &str) -> Pass
 
-Creates a new [Pass](https://fragmentcolor.org/docs/api/pass) configured for compute workloads.
+Creates a new [Pass](https://fragmentcolor.org/api/pass) configured for compute workloads.
 
-Only [Shader](https://fragmentcolor.org/docs/api/shader) objects that compile to compute pipelines can be added.
+Only [Shader](https://fragmentcolor.org/api/shader) objects that compile to compute pipelines can be added.
 
 #### Example
 
@@ -86,11 +87,12 @@ use fragmentcolor::Pass;
 let pass = Pass::compute("compute pass");
 // Add compute shaders once available
 ```
+
 ### from_shader(name: &str, shader: Shader) -> Pass
 
-Creates a new [Pass](https://fragmentcolor.org/docs/api/pass) from a single [Shader](https://fragmentcolor.org/docs/api/shader).
+Creates a new [Pass](https://fragmentcolor.org/api/pass) from a single [Shader](https://fragmentcolor.org/api/shader).
 
-The created Pass inherits the render/compute type from the provided Shader.
+The created [Pass](https://fragmentcolor.org/api/pass) inherits the render/compute type from the provided [Shader](https://fragmentcolor.org/api/shader).
 
 #### Example
 
@@ -100,9 +102,10 @@ use fragmentcolor::{Pass, Shader};
 let shader = Shader::default();
 let pass = Pass::from_shader("single", &shader);
 ```
+
 ### load_previous()
 
-Configures this [Pass](https://fragmentcolor.org/docs/api/pass) to load the previous contents of the [Target](https://fragmentcolor.org/docs/api/target) instead of clearing it.
+Configures this [Pass](https://fragmentcolor.org/api/pass) to load the previous contents of the [Target](https://fragmentcolor.org/api/target) instead of clearing it.
 
 This is useful when layering multiple passes where the next pass should blend with the prior results.
 
@@ -124,9 +127,10 @@ renderer.render(&pass, &target)?;
 # Ok(())
 # }
 ```
+
 ### get_input() -> PassInput
 
-Returns a copy of the current input configuration for this [Pass](https://fragmentcolor.org/docs/api/pass).
+Returns a copy of the current input configuration for this [Pass](https://fragmentcolor.org/api/pass).
 
 It includes the clear/load behavior and clear color.
 
@@ -139,9 +143,10 @@ let pass = Pass::new("example");
 let _input = pass.get_input();
 // Inspect fields via dedicated APIs; internal fields are not public
 ```
+
 ### add_shader(shader: Shader)
 
-Adds a Shader object to the Pass.
+Adds a [Shader](https://fragmentcolor.org/api/shader) object to the [Pass](https://fragmentcolor.org/api/pass).
 
 #### Example
 
@@ -164,11 +169,12 @@ rpass.add_shader(shader)
 ```js
 rpass.add_shader(shader);
 ```
+
 ### set_viewport(viewport: Region)
 
-Sets the viewport region for this [Pass](https://fragmentcolor.org/docs/api/pass).
+Sets the viewport region for this [Pass](https://fragmentcolor.org/api/pass).
 
-The viewport restricts drawing to a rectangular area of the [Target](https://fragmentcolor.org/docs/api/target).
+The viewport restricts drawing to a rectangular area of the [Target](https://fragmentcolor.org/api/target).
 
 #### Example
 
@@ -189,9 +195,10 @@ renderer.render(&pass, &target)?;
 # Ok(())
 # }
 ```
+
 ### set_clear_color(color: [f32; 4])
 
-Sets the clear color for this [Pass](https://fragmentcolor.org/docs/api/pass).
+Sets the clear color for this [Pass](https://fragmentcolor.org/api/pass).
 
 When the pass is configured to clear, the render target is cleared to the given RGBA color before drawing.
 

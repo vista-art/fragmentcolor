@@ -6,19 +6,30 @@ See the [Roadmap](https://github.com/vista-art/fragmentcolor/blob/main/ROADMAP.m
 
 ## 0.10.7 Documentation automation, website integration, and release flow
 
-Added
-- Automated documentation pipeline:
-  - Doc strings centralized in `docs/api` and consumed in Rust via `#[lsp_doc]`.
-  - Build-time validation: ensures object/method docs exist and include a `## Example` section.
-  - Website generator: converts `docs/api` into MDX pages under `docs/website`, downshifting method headings and stripping object H1.
-  - JS/Python examples are sliced from annotated healthcheck scripts.
-- Website moved into this repository under `docs/website`.
-- Post-publish workflow: after tags publish to npm & PyPI, update consumers (website & JS example) to the released version and push to main.
-- Healthcheck example markers added for Renderer/Pass/Frame/Shader.
+### Added
 
-Changed
-- Normalized API links to https://fragmentcolor.org.
-- Wired all public items to `#[lsp_doc]` sources (Renderer, Shader, Pass, Frame, etc.).
+- [x] Automated documentation pipeline:
+  - [x] Doc strings centralized in `docs/api` and consumed in Rust via `#[lsp_doc]`.
+  - [x] Build-time validation: ensures object/method docs exist and include a `## Example` section.
+  - [x] Website generator: converts `docs/api` into MDX pages under `docs/website`, downshifting method headings and stripping object H1.
+  - [x] JS/Python examples are sliced from annotated healthcheck scripts.
+- [x] Website moved into this repository under `docs/website`.
+- [x] Post-publish workflow: after tags publish to npm & PyPI, update consumers (website & JS example) to the released version and push to main.
+- [x] Healthcheck example markers added for Renderer/Pass/Frame/Shader.
+- [x] iOS/Android scaffolding: platform wrappers and targets aligned with Python/JS method order (bindings not generated yet)
+  - [x] Renderer: `new_ios`, `create_target_ios`, `create_texture_target_ios`, `render_ios`
+  - [x] Renderer: `new_android`, `create_target_android`, `create_texture_target_android`, `render_android`
+  - [x] Types: `IosTarget`, `IosTextureTarget`, `AndroidTarget`, `AndroidTextureTarget`
+- [x] Moved the public website into this repository under `docs/website`.
+- [x] Added post-publish workflow to update examples and website dependencies after npm & PyPI publish.
+
+### Changed
+
+- [x] Normalized API links to <https://fragmentcolor.org>.
+- [x] Wired all public items to `#[lsp_doc]` sources (Renderer, Shader, Pass, Frame, etc.).
+- [x] Removed stale mobile code paths: `headless()`, `render_bitmap()`, and platform `FragmentColor` wrappers.
+- [x] Moved platform-specific cfgs out of `renderer/mod.rs`; added `renderer::platform::all::create_instance()` and moved the winit `HasDisplaySize` impl to `renderer/platform/winit.rs`.
+- [x] build.rs validation: ignore mobile wrapper variants (`*_ios`, `*_android`) just like `*_js` and `*_py` when mapping docs.
 
 ## 0.10.6 JavaScript support
 

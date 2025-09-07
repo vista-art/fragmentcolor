@@ -1,6 +1,6 @@
 # size() -> [u32; 2]
 
-Returns the size of the [TextureTarget](https://fragmentcolor.org/docs/api/texture_target) in pixels.
+Returns the size of the [TextureTarget](https://fragmentcolor.org/api/texture_target) in pixels.
 
 ## Example
 
