@@ -34,9 +34,7 @@ yarn add fragmentcolor
 - Python: published to PyPI as `fragmentcolor`
 
 ```bash
-pip install fragmentcolor
-# many examples also use
-pip install rendercanvas glfw
+pip install fragmentcolor rendercanvas glfw
 ```
 
 - Rust: add the crate to your Cargo.toml
@@ -48,7 +46,7 @@ fragmentcolor = "0.10.7"
 
 ## Quick start
 
-### JavaScript (Web)
+### JavaScript
 
 ```js
 import init, { Renderer, Shader } from "fragmentcolor";
@@ -75,7 +73,7 @@ async function start() {
 start();
 ```
 
-### Python (Desktop)
+### Python
 
 ```python
 from fragmentcolor import Renderer, Shader, Pass, Frame

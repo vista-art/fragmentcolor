@@ -23,9 +23,10 @@ it won't add the shader to its internal list and log a warning message in the co
 ```rust
 use fragmentcolor::{ Shader, Pass, Renderer };
 
-# fn main() -> Result<(), Box<dyn std::error::Error>> {
+# async fn run() -> Result<(), Box<dyn std::error::Error>> {
+
 let renderer = Renderer::new();
-let target = pollster::block_on(renderer.create_texture_target([10, 10]))?;
+let target = renderer.create_texture_target([10, 10]).await?;
 let object1 = Shader::default();
 let object2 = Shader::default();
 
@@ -41,8 +42,9 @@ pass2.add_shader(&object2);
 
 renderer.render(&vec![pass, pass2], &target)?;
 
-Ok(())
+# Ok(())
 # }
+# fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 ```
 
 ## Methods
@@ -114,9 +116,10 @@ This is useful when layering multiple passes where the next pass should blend wi
 ```rust
 use fragmentcolor::{Renderer, Pass, Shader};
 
-# fn main() -> Result<(), Box<dyn std::error::Error>> {
+# async fn run() -> Result<(), Box<dyn std::error::Error>> {
+
 let renderer = Renderer::new();
-let target = pollster::block_on(renderer.create_texture_target([64, 64]))?;
+let target = renderer.create_texture_target([64, 64]).await?;
 
 let shader = Shader::default();
 let mut pass = Pass::new("blend with previous");
@@ -124,8 +127,10 @@ pass.add_shader(&shader);
 pass.load_previous();
 
 renderer.render(&pass, &target)?;
+
 # Ok(())
 # }
+# fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 ```
 
 ### get_input() -&gt; PassInput
@@ -181,9 +186,10 @@ The viewport restricts drawing to a rectangular area of the [Target](https://fra
 ```rust
 use fragmentcolor::{Renderer, Pass, Shader, Region};
 
-# fn main() -> Result<(), Box<dyn std::error::Error>> {
+# async fn run() -> Result<(), Box<dyn std::error::Error>> {
+
 let renderer = Renderer::new();
-let target = pollster::block_on(renderer.create_texture_target([64, 64]))?;
+let target = renderer.create_texture_target([64, 64]).await?;
 
 let shader = Shader::default();
 let mut pass = Pass::new("clipped");
@@ -192,8 +198,10 @@ pass.add_shader(&shader);
 pass.set_viewport(Region::from_region(0, 0, 32, 32));
 
 renderer.render(&pass, &target)?;
+
 # Ok(())
 # }
+# fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 ```
 
 ### set_clear_color(color: [f32; 4])
@@ -207,9 +215,10 @@ When the pass is configured to clear, the render target is cleared to the given 
 ```rust
 use fragmentcolor::{Renderer, Pass, Shader};
 
-# fn main() -> Result<(), Box<dyn std::error::Error>> {
+# async fn run() -> Result<(), Box<dyn std::error::Error>> {
+
 let renderer = Renderer::new();
-let target = pollster::block_on(renderer.create_texture_target([64, 64]))?;
+let target = renderer.create_texture_target([64, 64]).await?;
 
 let shader = Shader::default();
 let mut pass = Pass::new("solid background");
@@ -218,6 +227,8 @@ pass.add_shader(&shader);
 pass.set_clear_color([0.1, 0.2, 0.3, 1.0]);
 
 renderer.render(&pass, &target)?;
+
 # Ok(())
 # }
+# fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 ```

@@ -11,9 +11,10 @@ You need to inject the [Frame](https://fragmentcolor.org/api/frame) object into 
 ```rust
 use fragmentcolor::{ Shader, Pass, Frame, Renderer };
 
-# fn main() -> Result<(), Box<dyn std::error::Error>> {
+# async fn run() -> Result<(), Box<dyn std::error::Error>> {
+
 let renderer = Renderer::new();
-let target = pollster::block_on(renderer.create_texture_target([10, 10]))?;
+let target = renderer.create_texture_target([10, 10]).await?;
 let object1 = Shader::default();
 let object2 = Shader::default();
 
@@ -33,8 +34,9 @@ frame.add_pass(&pass2);
 
 renderer.render(&frame, &target)?;
 
-Ok(())
+# Ok(())
 # }
+# fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 ```
 
 ## Methods

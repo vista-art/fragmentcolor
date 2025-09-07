@@ -1,42 +1,21 @@
 use crate::FragmentColorError;
+use crate::renderer::WindowHandles;
 use pyo3::prelude::*;
-use raw_window_handle::{
-    DisplayHandle, HandleError, HasDisplayHandle, HasWindowHandle, WindowHandle,
-};
-
-pub(crate) struct PyWindowHandle<'window> {
-    pub(crate) window_handle: WindowHandle<'window>,
-    pub(crate) display_handle: DisplayHandle<'window>,
-}
-
-unsafe impl<'window> Send for PyWindowHandle<'window> {}
-unsafe impl<'window> Sync for PyWindowHandle<'window> {}
-
-impl<'window> HasWindowHandle for PyWindowHandle<'window> {
-    fn window_handle(&self) -> Result<WindowHandle<'window>, HandleError> {
-        Ok(self.window_handle)
-    }
-}
-
-impl<'window> HasDisplayHandle for PyWindowHandle<'window> {
-    fn display_handle(&self) -> Result<DisplayHandle<'window>, HandleError> {
-        Ok(self.display_handle)
-    }
-}
+use wgpu::rwh::{DisplayHandle, WindowHandle};
 
 pub(crate) fn create_raw_handles<'window>(
     platform: String,
     window: u64,
     display: Option<u64>,
-) -> Result<(WindowHandle<'window>, DisplayHandle<'window>), PyErr> {
+) -> Result<WindowHandles<'window>, PyErr> {
     match platform.as_str() {
         #[cfg(target_os = "linux")]
         "x11" => {
-            use raw_window_handle::{
-                RawDisplayHandle, RawWindowHandle, XlibDisplayHandle, XlibWindowHandle,
-            };
             use std::ffi::{c_ulong, c_void};
             use std::ptr::NonNull;
+            use wgpu::rwh::{
+                RawDisplayHandle, RawWindowHandle, XlibDisplayHandle, XlibWindowHandle,
+            };
 
             let display_ptr = {
                 let ptr = display.ok_or(FragmentColorError::new_err(
@@ -56,16 +35,19 @@ pub(crate) fn create_raw_handles<'window>(
             let window_handle = unsafe { WindowHandle::borrow_raw(xlib_window_handle) };
             let display_handle = unsafe { DisplayHandle::borrow_raw(xlib_display_handle) };
 
-            Ok((window_handle, display_handle))
+            Ok(WindowHandles {
+                window_handle,
+                display_handle,
+            })
         }
 
         #[cfg(target_os = "linux")]
         "wayland" => {
-            use raw_window_handle::{
-                RawDisplayHandle, RawWindowHandle, WaylandDisplayHandle, WaylandWindowHandle,
-            };
             use std::ffi::c_void;
             use std::ptr::NonNull;
+            use wgpu::rwh::{
+                RawDisplayHandle, RawWindowHandle, WaylandDisplayHandle, WaylandWindowHandle,
+            };
 
             let window_ptr = {
                 let ptr = window as *mut c_void;
@@ -91,15 +73,18 @@ pub(crate) fn create_raw_handles<'window>(
             let window_handle = unsafe { WindowHandle::borrow_raw(wayland_window_handle) };
             let display_handle = unsafe { DisplayHandle::borrow_raw(wayland_display_handle) };
 
-            Ok((window_handle, display_handle))
+            Ok(WindowHandles {
+                window_handle,
+                display_handle,
+            })
         }
 
         #[cfg(target_os = "windows")]
         "windows" => {
-            use raw_window_handle::{
+            use std::num::NonZeroIsize;
+            use wgpu::rwh::{
                 RawDisplayHandle, RawWindowHandle, Win32WindowHandle, WindowsDisplayHandle,
             };
-            use std::num::NonZeroIsize;
 
             let window_ptr = {
                 NonZeroIsize::new(window as isize).ok_or(FragmentColorError::new_err(
@@ -113,18 +98,21 @@ pub(crate) fn create_raw_handles<'window>(
             let window_handle = unsafe { WindowHandle::borrow_raw(win32_window_handle) };
             let display_handle = unsafe { DisplayHandle::borrow_raw(win32_display_handle) };
 
-            Ok((window_handle, display_handle))
+            Ok(WindowHandles {
+                window_handle,
+                display_handle,
+            })
         }
 
         #[cfg(target_os = "macos")]
         "cocoa" => {
             use objc2::msg_send;
             use objc2_app_kit::{NSView, NSWindow};
-            use raw_window_handle::{
-                AppKitDisplayHandle, AppKitWindowHandle, RawDisplayHandle, RawWindowHandle,
-            };
             use std::ffi::c_void;
             use std::ptr::NonNull;
+            use wgpu::rwh::{
+                AppKitDisplayHandle, AppKitWindowHandle, RawDisplayHandle, RawWindowHandle,
+            };
 
             let ns_window = window as *mut NSWindow;
             let ns_view_ptr: *mut NSView = unsafe { msg_send![ns_window, contentView] };
@@ -138,7 +126,10 @@ pub(crate) fn create_raw_handles<'window>(
             let window_handle = unsafe { WindowHandle::borrow_raw(appkit_window_handle) };
             let display_handle = unsafe { DisplayHandle::borrow_raw(appkit_display_handle) };
 
-            Ok((window_handle, display_handle))
+            Ok(WindowHandles {
+                window_handle,
+                display_handle,
+            })
         }
 
         _ => Err(FragmentColorError::new_err(format!(

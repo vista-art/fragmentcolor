@@ -14,7 +14,8 @@ pub mod renderable;
 pub use renderable::*;
 
 pub mod handle;
-use handle::*;
+use crate::renderer::WindowHandles;
+use handle::create_raw_handles;
 
 #[pymethods]
 impl Renderer {
@@ -77,15 +78,10 @@ impl Renderer {
                 depth_or_array_layers: 1,
             };
 
-            let (window_handle, display_handle) =
-                create_raw_handles(platform, window, Some(display))?;
+            let handles: WindowHandles = create_raw_handles(platform, window, Some(display))?;
 
-            let handle = PyWindowHandle {
-                window_handle,
-                display_handle,
-            };
-
-            let (context, surface, config) = pollster::block_on(self.create_surface(handle, size))?;
+            let (context, surface, config) =
+                pollster::block_on(self.create_surface(handles, size))?;
             target.init(context, surface, config);
 
             Ok(target.into_pyobject(py)?.unbind())

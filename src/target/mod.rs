@@ -4,9 +4,13 @@ pub use texture::*;
 mod window;
 pub use window::*;
 
+mod test_window;
+pub use test_window::*;
+
 use crate::size::Size;
 use lsp_doc::lsp_doc;
 
+#[lsp_doc("docs/api/target/target.md")]
 pub trait Target {
     fn size(&self) -> Size;
 
@@ -14,7 +18,6 @@ pub trait Target {
 
     fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, wgpu::SurfaceError>;
 
-    #[lsp_doc("docs/api/target/get_image.md")]
     fn get_image(&self) -> Vec<u8> {
         vec![]
     }

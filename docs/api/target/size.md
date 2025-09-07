@@ -5,12 +5,16 @@ Returns the size of the [Target](https://fragmentcolor.org/api/target) in pixels
 ## Example
 
 ```rust
-use fragmentcolor::{Renderer, Shader};
+use fragmentcolor::{Renderer, Target};
 
-# fn main() -> Result<(), Box<dyn std::error::Error>> {
+# async fn run() -> Result<(), Box<dyn std::error::Error>> {
+
 let renderer = Renderer::new();
-let target = pollster::block_on(renderer.create_texture_target([64, 32]))?;
-assert_eq!(target.size(), [64, 32]);
+let target = renderer.create_texture_target([64, 32]).await?;
+let size: [u32; 2] = target.size().into();
+assert_eq!(size, [64, 32]);
+
 # Ok(())
 # }
+# fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 ```

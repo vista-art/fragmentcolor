@@ -11,6 +11,12 @@ use std::collections::HashMap;
 use std::sync::Arc;
 pub type Commands = Vec<wgpu::CommandBuffer>;
 
+#[cfg(wasm)]
+use wasm_bindgen::prelude::*;
+
+#[cfg(python)]
+use pyo3::prelude::*;
+
 pub mod platform;
 pub use platform::*;
 
@@ -20,10 +26,14 @@ pub use renderable::*;
 pub mod texture;
 pub use texture::*;
 
+pub mod handle;
+pub use handle::*;
+
 mod buffer_pool;
 use buffer_pool::BufferPool;
 
-/// The Renderer accepts a generic window handle as input,
+/// The Renderer accepts a generic window handle as input
+/// that must report its display size.
 pub trait HasDisplaySize {
     fn size(&self) -> Size;
 }

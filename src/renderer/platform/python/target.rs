@@ -1,4 +1,5 @@
 use crate::{RenderContext, Size, Target, TargetFrame, WindowTarget};
+use lsp_doc::lsp_doc;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 use std::sync::Arc;
@@ -13,8 +14,8 @@ pub fn rendercanvas_context_hook(
     RenderCanvasTarget::new(canvas, present_methods)
 }
 
-#[lsp_doc("docs/api/render_canvas_target/render_canvas_target.md")]
 #[pyclass(dict)]
+#[lsp_doc("docs/api/render_canvas_target/render_canvas_target.md")]
 pub struct RenderCanvasTarget {
     canvas: Py<PyAny>,
     _present_methods: Py<PyAny>, // @TODO figure how RenderCanvas expects me to use this

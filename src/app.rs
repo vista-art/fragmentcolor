@@ -46,6 +46,7 @@ impl crate::renderer::Renderable for Scene {
 // Users can register global event callbacks and draw callbacks.
 // The event is passed by reference to avoid unnecessary cloning.
 type EventCb = Box<dyn FnMut(&App, WindowId, &WindowEvent) + Send + 'static>;
+
 // Device-level (non-window) event callback
 type DevEventCb =
     Box<dyn FnMut(&App, winit::event::DeviceId, &winit::event::DeviceEvent) + Send + 'static>;
@@ -53,7 +54,7 @@ type DevEventCb =
 type SceneRef = Arc<Scene>;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum WinEvtKind {
+pub enum EventKind {
     ActivationTokenDone,
     Moved,
     Destroyed,
@@ -95,36 +96,36 @@ pub enum DevEvtKind {
     Key,
 }
 
-fn kind_of(event: &WindowEvent) -> WinEvtKind {
+fn kind_of(event: &WindowEvent) -> EventKind {
     match event {
-        WindowEvent::ActivationTokenDone { .. } => WinEvtKind::ActivationTokenDone,
-        WindowEvent::Moved(_) => WinEvtKind::Moved,
-        WindowEvent::Destroyed => WinEvtKind::Destroyed,
-        WindowEvent::DroppedFile(_) => WinEvtKind::DroppedFile,
-        WindowEvent::HoveredFile(_) => WinEvtKind::HoveredFile,
-        WindowEvent::HoveredFileCancelled => WinEvtKind::HoveredFileCancelled,
-        WindowEvent::Focused(_) => WinEvtKind::Focused,
-        WindowEvent::KeyboardInput { .. } => WinEvtKind::KeyboardInput,
-        WindowEvent::ModifiersChanged(_) => WinEvtKind::ModifiersChanged,
-        WindowEvent::Ime(_) => WinEvtKind::Ime,
-        WindowEvent::CursorMoved { .. } => WinEvtKind::CursorMoved,
-        WindowEvent::CursorEntered { .. } => WinEvtKind::CursorEntered,
-        WindowEvent::CursorLeft { .. } => WinEvtKind::CursorLeft,
-        WindowEvent::MouseWheel { .. } => WinEvtKind::MouseWheel,
-        WindowEvent::MouseInput { .. } => WinEvtKind::MouseInput,
-        WindowEvent::PinchGesture { .. } => WinEvtKind::PinchGesture,
-        WindowEvent::PanGesture { .. } => WinEvtKind::PanGesture,
-        WindowEvent::DoubleTapGesture { .. } => WinEvtKind::DoubleTapGesture,
-        WindowEvent::RotationGesture { .. } => WinEvtKind::RotationGesture,
-        WindowEvent::TouchpadPressure { .. } => WinEvtKind::TouchpadPressure,
-        WindowEvent::AxisMotion { .. } => WinEvtKind::AxisMotion,
-        WindowEvent::Touch(_) => WinEvtKind::Touch,
-        WindowEvent::Resized(_) => WinEvtKind::Resized,
-        WindowEvent::ScaleFactorChanged { .. } => WinEvtKind::ScaleFactorChanged,
-        WindowEvent::ThemeChanged(_) => WinEvtKind::ThemeChanged,
-        WindowEvent::Occluded(_) => WinEvtKind::Occluded,
-        WindowEvent::RedrawRequested => WinEvtKind::RedrawRequested,
-        WindowEvent::CloseRequested => WinEvtKind::CloseRequested,
+        WindowEvent::ActivationTokenDone { .. } => EventKind::ActivationTokenDone,
+        WindowEvent::Moved(_) => EventKind::Moved,
+        WindowEvent::Destroyed => EventKind::Destroyed,
+        WindowEvent::DroppedFile(_) => EventKind::DroppedFile,
+        WindowEvent::HoveredFile(_) => EventKind::HoveredFile,
+        WindowEvent::HoveredFileCancelled => EventKind::HoveredFileCancelled,
+        WindowEvent::Focused(_) => EventKind::Focused,
+        WindowEvent::KeyboardInput { .. } => EventKind::KeyboardInput,
+        WindowEvent::ModifiersChanged(_) => EventKind::ModifiersChanged,
+        WindowEvent::Ime(_) => EventKind::Ime,
+        WindowEvent::CursorMoved { .. } => EventKind::CursorMoved,
+        WindowEvent::CursorEntered { .. } => EventKind::CursorEntered,
+        WindowEvent::CursorLeft { .. } => EventKind::CursorLeft,
+        WindowEvent::MouseWheel { .. } => EventKind::MouseWheel,
+        WindowEvent::MouseInput { .. } => EventKind::MouseInput,
+        WindowEvent::PinchGesture { .. } => EventKind::PinchGesture,
+        WindowEvent::PanGesture { .. } => EventKind::PanGesture,
+        WindowEvent::DoubleTapGesture { .. } => EventKind::DoubleTapGesture,
+        WindowEvent::RotationGesture { .. } => EventKind::RotationGesture,
+        WindowEvent::TouchpadPressure { .. } => EventKind::TouchpadPressure,
+        WindowEvent::AxisMotion { .. } => EventKind::AxisMotion,
+        WindowEvent::Touch(_) => EventKind::Touch,
+        WindowEvent::Resized(_) => EventKind::Resized,
+        WindowEvent::ScaleFactorChanged { .. } => EventKind::ScaleFactorChanged,
+        WindowEvent::ThemeChanged(_) => EventKind::ThemeChanged,
+        WindowEvent::Occluded(_) => EventKind::Occluded,
+        WindowEvent::RedrawRequested => EventKind::RedrawRequested,
+        WindowEvent::CloseRequested => EventKind::CloseRequested,
     }
 }
 
@@ -149,8 +150,8 @@ pub struct App {
     on_draw: RwLock<Vec<EventCb>>,  // called when WindowEvent::RedrawRequested
 
     // Event-specific callback registries
-    primary_by_kind: RwLock<HashMap<WinEvtKind, Vec<EventCb>>>,
-    per_window_by_kind: RwLock<HashMap<WindowId, HashMap<WinEvtKind, Vec<EventCb>>>>,
+    primary_by_kind: RwLock<HashMap<EventKind, Vec<EventCb>>>,
+    per_window_by_kind: RwLock<HashMap<WindowId, HashMap<EventKind, Vec<EventCb>>>>,
 
     // Device event registries (no window association)
     on_device_event: RwLock<Vec<DevEventCb>>, // called for every DeviceEvent
@@ -222,7 +223,7 @@ impl App {
     // Event-specific registration -----------------------------------------------------------
 
     // Generic registration for future coverage (window events)
-    pub fn on_event_kind<F>(&mut self, kind: WinEvtKind, f: F) -> &mut Self
+    pub fn on_event_kind<F>(&mut self, kind: EventKind, f: F) -> &mut Self
     where
         F: FnMut(&App, WindowId, &WindowEvent) + Send + 'static,
     {
@@ -234,7 +235,7 @@ impl App {
         self
     }
 
-    pub fn on_window_event_kind<F>(&mut self, id: WindowId, kind: WinEvtKind, f: F) -> &mut Self
+    pub fn on_window_event_kind<F>(&mut self, id: WindowId, kind: EventKind, f: F) -> &mut Self
     where
         F: FnMut(&App, WindowId, &WindowEvent) + Send + 'static,
     {
@@ -273,20 +274,20 @@ impl App {
 // Typed per-event convenience registrations -------------------------------------------------
 macro_rules! define_typed_event_handlers {
     (
-      $(
+    $(
         ($name:ident, $perwin:ident, $kind:ident,
-         match $pat:pat,
-         primary($($p_ty:ty),*), call_primary($($p_arg:expr),*),
-         perwin($($w_ty:ty),*), call_perwin($($w_arg:expr),*)
+            match $pat:pat,
+            primary($($p_ty:ty),*), call_primary($($p_arg:expr),*),
+            perwin($($w_ty:ty),*), call_perwin($($w_arg:expr),*)
         )
-      ),* $(,)?
+    ),* $(,)?
     ) => {
         impl App {
             $(
                 pub fn $name<F>(&mut self, mut f: F) -> &mut Self
                 where F: FnMut(&App $(, $p_ty)*) + Send + 'static
                 {
-                    self.on_event_kind(WinEvtKind::$kind, move |app, _id, ev| {
+                    self.on_event_kind(EventKind::$kind, move |app, _id, ev| {
                         if let $pat = ev {
                             f(app $(, $p_arg)*)
                         }
@@ -295,7 +296,7 @@ macro_rules! define_typed_event_handlers {
                 pub fn $perwin<F>(&mut self, id: WindowId, mut f: F) -> &mut Self
                 where F: FnMut(&App $(, $w_ty)*) + Send + 'static
                 {
-                    self.on_window_event_kind(id, WinEvtKind::$kind, move |app, id, ev| {
+                    self.on_window_event_kind(id, EventKind::$kind, move |app, id, ev| {
                         if let $pat = ev {
                             f(app, id $(, $w_arg)*)
                         }

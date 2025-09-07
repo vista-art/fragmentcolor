@@ -46,21 +46,19 @@ pub mod size;
 ///
 /// Simple convenience wrapper around winit to simplify our Rust examples.
 /// Implements winit's ApplicationHandler and contains all FragmentColor objects.
-#[cfg(all(desktop, feature = "winit"))]
+#[cfg(feature = "winit")]
 pub mod app;
-
+#[cfg(feature = "winit")]
+pub use app::*;
 /// DRAFT; API may change in a whim
 pub mod color;
 pub mod region;
 pub mod sampler;
-
-// Re-exports
-#[cfg(all(desktop, feature = "winit"))]
-pub use app::*;
+pub mod utils;
 
 pub use {
     color::*, error::*, frame::*, pass::*, region::*, renderer::*, sampler::*, shader::*, size::*,
-    target::*,
+    target::*, utils::*,
 };
 
 /// Install a panic hook and console logger when running in WASM so browser console shows

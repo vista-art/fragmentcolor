@@ -11,17 +11,20 @@ This is useful for tests, server-side rendering, or running examples in CI.
 ```rust path=null start=null
 use fragmentcolor::{Renderer, Shader, Pass, Frame};
 
-# fn main() -> Result<(), Box<dyn std::error::Error>> {
+# async fn run() -> Result<(), Box<dyn std::error::Error>> {
+
 let renderer = Renderer::new();
 
-let target = pollster::block_on(renderer.create_texture_target([64, 64]))?;
+let target = renderer.create_texture_target([64, 64]).await?;
 
 let shader = Shader::default();
 renderer.render(&shader, &target)?;
 
 let image = target.get_image();
+
 # Ok(())
 # }
+# fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 ```
 
 ## Python

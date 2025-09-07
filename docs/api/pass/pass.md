@@ -18,9 +18,10 @@ it won't add the shader to its internal list and log a warning message in the co
 ```rust
 use fragmentcolor::{ Shader, Pass, Renderer };
 
-# fn main() -> Result<(), Box<dyn std::error::Error>> {
+# async fn run() -> Result<(), Box<dyn std::error::Error>> {
+
 let renderer = Renderer::new();
-let target = pollster::block_on(renderer.create_texture_target([10, 10]))?;
+let target = renderer.create_texture_target([10, 10]).await?;
 let object1 = Shader::default();
 let object2 = Shader::default();
 
@@ -36,6 +37,7 @@ pass2.add_shader(&object2);
 
 renderer.render(&vec![pass, pass2], &target)?;
 
-Ok(())
+# Ok(())
 # }
+# fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 ```
