@@ -23,3 +23,7 @@ pub use ios::*;
 pub mod python;
 #[cfg(python)]
 pub use python::*;
+
+/// Desktop window integration (winit)
+#[cfg(all(desktop, feature = "winit"))]
+pub mod winit;

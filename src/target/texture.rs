@@ -1,13 +1,15 @@
 use crate::{RenderContext, Size, Target, TargetFrame, Texture};
+use lsp_doc::lsp_doc;
 use std::sync::Arc;
 
+#[lsp_doc("docs/api/texture_target/texture_target.md")]
 pub struct TextureTarget {
     context: Arc<RenderContext>,
     texture: Arc<Texture>,
 }
 
 impl TextureTarget {
-    pub fn new(context: Arc<RenderContext>, size: Size) -> Self {
+    pub(crate) fn new(context: Arc<RenderContext>, size: Size) -> Self {
         let texture = Arc::new(Texture::create_destination_texture(
             context.as_ref(),
             size.into(),
@@ -20,16 +22,19 @@ impl TextureTarget {
 }
 
 impl Target for TextureTarget {
+    #[lsp_doc("docs/api/target/size.md")]
     fn size(&self) -> Size {
         self.texture.size()
     }
 
+    #[lsp_doc("docs/api/target/resize.md")]
     fn resize(&mut self, size: impl Into<Size>) {
         let new_texture =
             Texture::create_destination_texture(self.context.as_ref(), size.into().into());
         self.texture = Arc::new(new_texture);
     }
 
+    #[lsp_doc("docs/api/target/get_current_frame.md")]
     fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, wgpu::SurfaceError> {
         let view = self
             .texture
@@ -39,6 +44,7 @@ impl Target for TextureTarget {
         Ok(Box::new(TextureFrame { view, format }))
     }
 
+    #[lsp_doc("docs/api/target/get_image.md")]
     fn get_image(&self) -> Vec<u8> {
         // Read back pixels from the offscreen texture as a tightly-packed RGBA8 buffer
         let device = &self.context.device;

@@ -25,7 +25,11 @@ impl Renderer {
     }
 
     #[lsp_doc("docs/api/renderer/create_target.md")]
-    pub fn create_target(&self, rendercanvas: Py<PyAny>) -> Result<Py<RenderCanvasTarget>, PyErr> {
+    #[pyo3(name = "create_target")]
+    pub fn create_target_py(
+        &self,
+        rendercanvas: Py<PyAny>,
+    ) -> Result<Py<RenderCanvasTarget>, PyErr> {
         Python::attach(|py| -> Result<Py<RenderCanvasTarget>, PyErr> {
             // If the target is already initialized, return it
             let libname = PyTuple::new(py, ["fragmentcolor"])?;

@@ -1,5 +1,17 @@
 use crate::InitializationError;
 
+pub async fn create_instance() -> wgpu::Instance {
+    #[cfg(wasm)]
+    use wgpu::util::new_instance_with_webgpu_detection;
+    #[cfg(wasm)]
+    let instance = new_instance_with_webgpu_detection(&wgpu::InstanceDescriptor::default()).await;
+
+    #[cfg(not(wasm))]
+    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
+
+    instance
+}
+
 pub async fn request_adapter(
     instance: &wgpu::Instance,
     surface: Option<&wgpu::Surface<'_>>,

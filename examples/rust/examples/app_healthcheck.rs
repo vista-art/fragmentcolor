@@ -33,7 +33,7 @@ fn main() {
         .on_pan_gesture(|_, _, _, _| {})
         .on_double_tap_gesture(|_, _| {})
         .on_rotation_gesture(|_, _, _, _| {})
-.on_touchpad_pressure(|_, _, _, _| {});
+        .on_touchpad_pressure(|_, _, _, _| {});
 
     // Device-level handlers (no window association)
     app.on_device_added(|_, _| {})
