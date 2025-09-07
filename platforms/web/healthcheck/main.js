@@ -1,6 +1,7 @@
 import init, { Renderer, Shader, Pass, Frame } from "../pkg/fragmentcolor.js";
 
-await init();
+const wasmUrl = new URL("../pkg/fragmentcolor_bg.wasm", import.meta.url);
+await init(wasmUrl.href);
 
 // DOC: Renderer.constructor (begin)
 const renderer = new Renderer();
