@@ -60,11 +60,11 @@ impl HasDisplayHandle for AndroidNativeWindow {
     }
 }
 
-#[lsp_doc("docs/api/window_target.md")]
+#[lsp_doc("docs/api/android_target/android_target.md")]
 #[cfg_attr(mobile, derive(uniffi::Object))]
 pub struct AndroidTarget(WindowTarget);
 
-#[lsp_doc("docs/api/texture_target.md")]
+#[lsp_doc("docs/api/android_texture_target/android_texture_target.md")]
 #[cfg_attr(mobile, derive(uniffi::Object))]
 pub struct AndroidTextureTarget(crate::TextureTarget);
 
