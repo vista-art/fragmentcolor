@@ -1,23 +1,8 @@
+use fragmentcolor::{App, Frame, Pass, Shader, Size, run};
 use rand::prelude::*;
-use std::sync::Arc;
-
-use fragmentcolor::{Frame, Pass, Renderer, Shader, ShaderError, Size, Target, WindowTarget};
-
-use winit::application::ApplicationHandler;
-use winit::event::WindowEvent;
-use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
-use winit::window::{Window, WindowId};
 
 const CIRCLE_SOURCE: &str = include_str!("circle.wgsl");
 const TRIANGLE_SOURCE: &str = include_str!("hello_triangle.wgsl");
-
-struct State {
-    window: Arc<Window>,
-    target: WindowTarget,
-    renderer: Renderer,
-    frame: Frame,
-    circles: Vec<Shader>,
-}
 
 fn random_circle(rng: &mut impl Rng, size: Size, alpha: f32) -> Shader {
     let circle = Shader::new(CIRCLE_SOURCE).unwrap();
@@ -43,120 +28,54 @@ fn random_circle(rng: &mut impl Rng, size: Size, alpha: f32) -> Shader {
     circle
 }
 
-impl State {
-    async fn new(window: Arc<Window>) -> State {
-        let renderer = Renderer::new();
-        let target = renderer.create_target(window.clone()).await.unwrap();
-        let size = target.size();
-
-        let triangle = Shader::new(TRIANGLE_SOURCE).unwrap();
-        triangle.set("color", [1.0, 0.2, 0.8, 1.0]).unwrap();
-
-        let opaque_pass = Pass::new("Opaque Pass");
-        let transparent_pass = Pass::new("Transparent Pass");
-        opaque_pass.add_shader(&triangle);
-        opaque_pass.set_clear_color([0.0, 0.0, 0.0, 1.0]);
-
-        let mut rng = rand::rng();
-
-        let mut circles = Vec::new();
-        for i in 0..10 {
-            let circle = random_circle(&mut rng, size, 1.0);
-            circles.push(circle);
-            opaque_pass.add_shader(&circles[i]);
-        }
-
-        for i in 0..20 {
-            let circle = random_circle(&mut rng, size, 0.2);
-            circles.push(circle);
-            transparent_pass.add_shader(&circles[i]);
-        }
-
-        let mut frame = Frame::new();
-        frame.add_pass(&opaque_pass);
-        frame.add_pass(&transparent_pass);
-
-        State {
-            window,
-            target,
-            renderer,
-            frame,
-            circles,
-        }
-    }
-
-    fn window(&self) -> &Window {
-        &self.window
-    }
-
-    fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
-        let size = [new_size.width, new_size.height];
-
-        for circle in &self.circles {
-            circle
-                .set("resolution", [size[0] as f32, size[1] as f32])
-                .unwrap();
-        }
-
-        self.target.resize(size);
-    }
-
-    fn render(&mut self) -> Result<(), ShaderError> {
-        Ok(self.renderer.render(&self.frame, &self.target)?)
-    }
+pub fn on_resize(app: &App, new_size: &winit::dpi::PhysicalSize<u32>) {
+    app.resize([new_size.width, new_size.height]);
+    let id = app.window_id();
+    let res = [new_size.width as f32, new_size.height as f32];
+    let _ = app.set_uniform(id, "resolution", res);
 }
 
-#[derive(Default)]
-struct App {
-    state: Option<State>,
-}
-
-impl ApplicationHandler for App {
-    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        let window = Arc::new(
-            event_loop
-                .create_window(Window::default_attributes())
-                .unwrap(),
-        );
-
-        let state = pollster::block_on(State::new(window.clone()));
-        self.state = Some(state);
-
-        window.request_redraw();
-    }
-
-    fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
-        let state = self.state.as_mut().unwrap();
-        match event {
-            // render loop
-            WindowEvent::RedrawRequested => {
-                if let Err(err) = state.render() {
-                    log::error!("Failed to render: {:?}", err);
-                }
-
-                state.window().request_redraw();
-            }
-
-            // resize
-            WindowEvent::Resized(size) => {
-                state.resize(size);
-            }
-
-            // quit
-            WindowEvent::CloseRequested => {
-                println!("The close button was pressed; stopping");
-                event_loop.exit();
-            }
-            _ => {}
-        }
-    }
-}
+pub fn on_draw(_app: &App) {}
 
 fn main() {
-    let event_loop = EventLoop::new().unwrap();
-    event_loop.set_control_flow(ControlFlow::Poll);
+    // Build passes
+    let triangle = {
+        let s = Shader::new(TRIANGLE_SOURCE).unwrap();
+        s.set("color", [1.0, 0.2, 0.8, 1.0]).unwrap();
+        s
+    };
+    let opaque_pass = {
+        let p = Pass::new("Opaque Pass");
+        p.add_shader(&triangle);
+        p.set_clear_color([0.0, 0.0, 0.0, 1.0]);
+        p
+    };
+    let transparent_pass = Pass::new("Transparent Pass");
 
-    let mut app = App::default();
+    // Seed circles using a nominal size; example updates on resize
+    let mut rng = rand::rng();
+    let size = Size {
+        width: 800,
+        height: 600,
+        depth: None,
+    };
+    for _ in 0..10 {
+        let circle = random_circle(&mut rng, size, 1.0);
+        opaque_pass.add_shader(&circle);
+    }
+    for _ in 0..20 {
+        let circle = random_circle(&mut rng, size, 0.2);
+        transparent_pass.add_shader(&circle);
+    }
 
-    let _ = event_loop.run_app(&mut app);
+    let mut frame = Frame::new();
+    frame.add_pass(&opaque_pass);
+    frame.add_pass(&transparent_pass);
+
+    let mut app = App::new();
+    app.scene(frame)
+        .on_resize(on_resize)
+        .on_redraw_requested(on_draw);
+
+    run(&mut app);
 }
