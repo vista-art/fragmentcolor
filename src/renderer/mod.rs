@@ -23,26 +23,9 @@ pub use texture::*;
 mod buffer_pool;
 use buffer_pool::BufferPool;
 
-#[cfg(python)]
-use pyo3::prelude::*;
-#[cfg(wasm)]
-use wasm_bindgen::prelude::*;
-
 /// The Renderer accepts a generic window handle as input,
 pub trait HasDisplaySize {
     fn size(&self) -> Size;
-}
-
-#[cfg(all(desktop, feature = "winit"))]
-impl HasDisplaySize for std::sync::Arc<winit::window::Window> {
-    fn size(&self) -> Size {
-        let size = self.inner_size();
-        Size {
-            width: size.width,
-            height: size.height,
-            depth: None,
-        }
-    }
 }
 
 #[derive(Debug)]
@@ -141,18 +124,9 @@ impl Renderer {
         if let Some(instance) = self.instance.read().as_ref() {
             instance.clone()
         } else {
-            #[cfg(not(wasm))]
-            let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-
-            #[cfg(wasm)]
-            let instance = wgpu::util::new_instance_with_webgpu_detection(
-                &wgpu::InstanceDescriptor::default(),
-            )
-            .await;
-
+            let instance = platform::all::create_instance().await;
             let instance = Arc::new(instance);
             self.instance.write().replace(instance.clone());
-
             instance
         }
     }
@@ -179,6 +153,7 @@ impl Renderer {
     }
 }
 
+#[doc(hidden)]
 #[derive(Debug)]
 /// Draws things on the screen or a texture.
 ///
