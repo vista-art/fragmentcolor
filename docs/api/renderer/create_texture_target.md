@@ -13,18 +13,13 @@ use fragmentcolor::{Renderer, Shader, Pass, Frame};
 
 # fn main() -> Result<(), Box<dyn std::error::Error>> {
 let renderer = Renderer::new();
+
 let target = pollster::block_on(renderer.create_texture_target([64, 64]))?;
 
 let shader = Shader::default();
 renderer.render(&shader, &target)?;
 
-let pass = Pass::new("single pass");
-pass.add_shader(&shader);
-renderer.render(&pass, &target)?;
-
-let mut frame = Frame::new();
-frame.add_pass(&pass);
-renderer.render(&frame, &target)?;
+let image = target.get_image();
 # Ok(())
 # }
 ```
@@ -47,13 +42,7 @@ shader.set("circle.position", [0.0, 0.0])
 
 renderer.render(shader, target)
 
-rpass = Pass("single pass")
-rpass.add_shader(shader)
-renderer.render(rpass, target)
-
-frame = Frame()
-frame.add_pass(rpass)
-renderer.render(frame, target)
+img = target.get_image()
 ```
 
 ## Javascript (Web)
@@ -68,18 +57,8 @@ const target = await renderer.createTextureTarget([64, 64]);
 
 const shader = new Shader("circle.wgsl");
 shader.set("resolution", [64.0, 64.0]);
-shader.set("circle.radius", 10.0);
-shader.set("circle.color", [1.0, 0.0, 0.0, 0.8]);
-shader.set("circle.border", 2.0);
-shader.set("circle.position", [0.0, 0.0]);
 
 renderer.render(shader, target);
 
-const rpass = new Pass("single pass");
-rpass.add_shader(shader);
-renderer.render(rpass, target);
-
-const frame = new Frame();
-frame.add_pass(rpass);
-renderer.render(frame, target);
+const img = target.getImage();
 ```
