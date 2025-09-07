@@ -132,6 +132,11 @@ impl Target for RenderCanvasTarget {
             view,
         }))
     }
+
+    fn get_image(&self) -> Vec<u8> {
+        // Window-backed targets are not readback-friendly; prefer TextureTarget for screenshots.
+        Vec::new()
+    }
 }
 
 impl TargetFrame for RenderCanvasFrame {
@@ -191,5 +196,9 @@ impl Target for PyTextureTarget {
 
     fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, wgpu::SurfaceError> {
         self.inner.get_current_frame()
+    }
+
+    fn get_image(&self) -> Vec<u8> {
+        <crate::TextureTarget as Target>::get_image(&self.inner)
     }
 }

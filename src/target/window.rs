@@ -44,6 +44,13 @@ impl Target for WindowTarget {
             view,
         }))
     }
+
+    fn get_image(&self) -> Vec<u8> {
+        // Reading back from a presentable surface is not portable across backends,
+        // especially on WebGPU/WebGL. Prefer rendering to a TextureTarget when
+        // readback is required (e.g., for CI image comparison).
+        Vec::new()
+    }
 }
 
 struct WindowFrame {

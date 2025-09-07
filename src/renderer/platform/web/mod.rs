@@ -60,7 +60,7 @@ impl Renderer {
 
     #[wasm_bindgen(js_name = "createTarget")]
     #[lsp_doc("docs/api/renderer/create_target.md")]
-    pub async fn create_target(&self, canvas: JsValue) -> Result<CanvasTarget, JsError> {
+    pub async fn create_target_js(&self, canvas: JsValue) -> Result<CanvasTarget, JsError> {
         let canvas = if canvas.has_type::<web_sys::HtmlCanvasElement>() {
             let canvas = canvas.dyn_into::<web_sys::HtmlCanvasElement>().unwrap();
             Canvas::Html(canvas)
@@ -93,6 +93,21 @@ impl Renderer {
         let size: Size = size
             .try_into()
             .map_err(|e: crate::error::ShaderError| JsError::new(&format!("{e}")))?;
+
+        // Ensure a compatible surface exists before requesting an adapter on engines
+        // that require it (notably WebGL fallback). We do this by creating a small
+        // OffscreenCanvas-backed surface once, which initializes the context and device.
+        {
+            let w = u32::max(size.width, 1);
+            let h = u32::max(size.height, 1);
+            let canvas = web_sys::OffscreenCanvas::new(w.into(), h.into())
+                .map_err(|_| JsError::new("Failed to create OffscreenCanvas"))?;
+            // Ignore the returned CanvasTarget; we only need to initialize the context
+            // inside the renderer. Drop the artifacts immediately after.
+            let _ = self
+                .create_surface(wgpu::SurfaceTarget::OffscreenCanvas(canvas), size.into())
+                .await;
+        }
 
         let target = self
             .create_texture_target(size)

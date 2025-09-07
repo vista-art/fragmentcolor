@@ -1,6 +1,6 @@
 /// Shared initialization logic for all platforms.
-pub(crate) mod all;
-pub(crate) use all::*;
+pub mod all;
+pub use all::*;
 
 /// wasm-bindgen (Web)
 #[cfg(wasm)]
@@ -17,10 +17,6 @@ pub use android::*;
 pub mod ios;
 #[cfg(ios)]
 pub use ios::*;
-
-/// winit (Rust)
-#[cfg(desktop)]
-pub mod desktop;
 
 /// pyo3 (Python)
 #[cfg(python)]

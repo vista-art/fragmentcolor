@@ -74,18 +74,18 @@ impl UniformData {
 
                 bytes
             }
-            Self::Struct((fields, _)) => {
-                let mut bytes = Vec::new();
-                let mut previous_size = 0;
-                for (offset, _, field) in fields.iter() {
-                    if offset == &previous_size {
-                        bytes.extend(field.to_bytes());
-                    } else {
-                        let padding = vec![0; (*offset - previous_size) as usize];
-                        bytes.extend(padding);
-                        bytes.extend(field.to_bytes());
+            Self::Struct((fields, span)) => {
+                // Allocate the full struct span and lay out fields at their declared offsets.
+                // This avoids any mismatch with naga's reported span and ensures zero-padding
+                // for gaps, which is important for strict backends (e.g., Dawn/WebGPU).
+                let mut bytes = vec![0u8; *span as usize];
+                for (offset, _name, field) in fields.iter() {
+                    let data = field.to_bytes();
+                    let start = *offset as usize;
+                    let end = start + data.len();
+                    if end <= bytes.len() {
+                        bytes[start..end].copy_from_slice(&data);
                     }
-                    previous_size = field.size();
                 }
                 bytes
             }
