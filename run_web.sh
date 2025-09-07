@@ -1,25 +1,32 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Run the JavaScript examples dev server from the repo root and open a page.
+# Run dev servers from the repo root and open a page.
 # Usage:
-#   bash ren_web.sh           # opens index (single-shader circle)
-#   bash ren_web.sh multipass # opens multipass example
-#   bash ren_web.sh headless  # opens headless example
+#   bash run_web.sh                  # opens JS example index (single-shader circle)
+#   bash run_web.sh multipass        # opens JS example multipass page
+#   bash run_web.sh headless         # opens JS example headless page
+#   bash run_web.sh repl             # opens local REPL (platforms/web/repl) using local WASM pkg
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-EX_DIR="$ROOT_DIR/examples/javascript"
-PAGE="${1:-index}"
+PAGE="${1:-repl}"
 
 if ! command -v pnpm >/dev/null 2>&1; then
   echo "pnpm is required. Install it (e.g., brew install pnpm) and re-run." >&2
   exit 1
 fi
 
-# Install dependencies if needed
-if [ ! -d "$EX_DIR/node_modules" ]; then
-  pnpm install --dir "$EX_DIR"
+if [ "$PAGE" = "repl" ]; then
+  EX_DIR="$ROOT_DIR/platforms/web/repl"
+  # Ensure local WASM pkg is built for the REPL to import
+  "$ROOT_DIR/build_web.sh" --debug
+else
+  EX_DIR="$ROOT_DIR/examples/javascript"
 fi
+
+# Install dependencies if needed
+rm -rf "$EX_DIR/node_modules"
+pnpm install --dir "$EX_DIR"
 
 # Start dev server
 pnpm --dir "$EX_DIR" dev &
