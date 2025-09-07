@@ -1447,6 +1447,27 @@ mod validation {
             let mut idx = idx.trim_end().to_string();
             idx.push('\n');
             std::fs::write(site_root.join("index.mdx"), idx).unwrap();
+
+            // Cleanup: remove stale top-level MDX files that were not generated in this run.
+            // Keep index.mdx and any subdirectories (e.g., versioned folders like v1.2.3).
+            let mut expected: HashSet<String> = HashSet::new();
+            for o in &written {
+                expected.insert(format!("{}.mdx", o.to_lowercase()));
+            }
+            expected.insert("index.mdx".to_string());
+            if let Ok(read_dir) = std::fs::read_dir(&site_root) {
+                for entry in read_dir.flatten() {
+                    let path = entry.path();
+                    if path.is_dir() {
+                        continue;
+                    }
+                    if let (Some(ext), Some(name)) = (path.extension().and_then(|s| s.to_str()), path.file_name().and_then(|s| s.to_str())) {
+                        if ext == "mdx" && !expected.contains(name) {
+                            let _ = std::fs::remove_file(&path);
+                        }
+                    }
+                }
+            }
         }
     }
 }
