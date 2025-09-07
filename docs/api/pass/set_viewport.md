@@ -9,9 +9,10 @@ The viewport restricts drawing to a rectangular area of the [Target](https://fra
 ```rust
 use fragmentcolor::{Renderer, Pass, Shader, Region};
 
-# fn main() -> Result<(), Box<dyn std::error::Error>> {
+# async fn run() -> Result<(), Box<dyn std::error::Error>> {
+
 let renderer = Renderer::new();
-let target = pollster::block_on(renderer.create_texture_target([64, 64]))?;
+let target = renderer.create_texture_target([64, 64]).await?;
 
 let shader = Shader::default();
 let mut pass = Pass::new("clipped");
@@ -20,6 +21,8 @@ pass.add_shader(&shader);
 pass.set_viewport(Region::from_region(0, 0, 32, 32));
 
 renderer.render(&pass, &target)?;
+
 # Ok(())
 # }
+# fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 ```

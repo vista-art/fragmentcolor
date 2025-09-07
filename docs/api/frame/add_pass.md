@@ -9,9 +9,10 @@ Passes are rendered in the order they are added.
 ```rust
 use fragmentcolor::{Renderer, Frame, Pass, Shader};
 
-# fn main() -> Result<(), Box<dyn std::error::Error>> {
+# async fn run() -> Result<(), Box<dyn std::error::Error>> {
+
 let renderer = Renderer::new();
-let target = pollster::block_on(renderer.create_texture_target([10, 10]))?;
+let target = renderer.create_texture_target([10, 10]).await?;
 
 let shader = Shader::default();
 let mut pass1 = Pass::new("first");
@@ -25,6 +26,8 @@ frame.add_pass(&pass1);
 frame.add_pass(&pass2);
 
 renderer.render(&frame, &target)?;
+
 # Ok(())
 # }
+# fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 ```

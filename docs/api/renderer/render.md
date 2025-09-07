@@ -7,11 +7,14 @@ Renders the given object to the given [Target](https://fragmentcolor.org/api/tar
 ```rust
 use fragmentcolor::{Renderer, Shader};
 
-# fn main() -> Result<(), Box<dyn std::error::Error>> {
+# async fn run() -> Result<(), Box<dyn std::error::Error>> {
+
 let renderer = Renderer::new();
-let target = pollster::block_on(renderer.create_texture_target([10, 10]))?;
+let target = renderer.create_texture_target([10, 10]).await?;
 let shader = Shader::default();
 renderer.render(&shader, &target)?;
+
 # Ok(())
 # }
+# fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 ```

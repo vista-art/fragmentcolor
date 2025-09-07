@@ -7,13 +7,16 @@ Most users do not need to call this directly; the [Renderer](https://fragmentcol
 ## Example
 
 ```rust
-use fragmentcolor::Renderer;
+use fragmentcolor::{Renderer, Target};
 
-# fn main() -> Result<(), Box<dyn std::error::Error>> {
+# async fn run() -> Result<(), Box<dyn std::error::Error>> {
+
 let renderer = Renderer::new();
-let target = pollster::block_on(renderer.create_texture_target([16, 16]))?;
+let target = renderer.create_texture_target([16, 16]).await?;
 let frame = target.get_current_frame()?; // Acquire a frame
 let _format = frame.format();
+
 # Ok(())
 # }
+# fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 ```

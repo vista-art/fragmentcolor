@@ -7,14 +7,17 @@ Resizes the [Target](https://fragmentcolor.org/docs/api/target) to the given wid
 ```rust
 use fragmentcolor::Renderer;
 
-# fn main() -> Result<(), Box<dyn std::error::Error>> {
+# async fn run() -> Result<(), Box<dyn std::error::Error>> {
+
 let renderer = Renderer::new();
-let mut target = pollster::block_on(renderer.create_texture_target([64, 32]))?;
+let mut target = renderer.create_texture_target([64, 32]).await?;
 
 assert_eq!(target.size(), [64, 32]);
 
 target.resize([128, 64]);
 assert_eq!(target.size(), [128, 64]);
+
 # Ok(())
 # }
+# fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 ```

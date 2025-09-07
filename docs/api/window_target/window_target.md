@@ -8,19 +8,17 @@ It contains a GPU surface texture attached to a platform-specific window or an o
 
 ## Example
 
-```rust
-use fragmentcolor::{Renderer, Shader, HasDisplaySize};
-use wgpu::rwh::RawWindowHandle;
+```rust,no_run
+use fragmentcolor::{Renderer, Shader};
+# async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
-# struct FakeWindow;
-# impl RawWindowHandle for FakeWindow { fn as_raw_window_handle(&self) -> wgpu::rwh::RawWindowHandle { wgpu::rwh::RawWindowHandle::from_handle(self) } }
-# impl HasDisplaySize for FakeWindow { fn size(&self) -> [u32; 2] { [800, 600] } }
-# fn main() -> Result<(), Box<dyn std::error::Error>> {
 let renderer = Renderer::new();
-let window = FakeWindow;
-let target = pollster::block_on(renderer.create_target(&window))?;
+let window = fragmentcolor::mock_window([800, 600]);
+let target = renderer.create_target(window).await?;
 let shader = Shader::default();
 renderer.render(&shader, &target)?;
+
 # Ok(())
 # }
+# fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 ```
