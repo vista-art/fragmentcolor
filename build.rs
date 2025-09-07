@@ -764,12 +764,14 @@ mod validation {
                     }
                     Item::Struct(s) => {
                         if let Visibility::Public(_) = s.vis
-                            && !is_doc_hidden(&s.attrs) && has_lsp_doc(&s.attrs) {
-                                let name = s.ident.to_string();
-                                if !out.contains(&name) {
-                                    out.push(name);
-                                }
+                            && !is_doc_hidden(&s.attrs)
+                            && has_lsp_doc(&s.attrs)
+                        {
+                            let name = s.ident.to_string();
+                            if !out.contains(&name) {
+                                out.push(name);
                             }
+                        }
                     }
                     _ => {}
                 }
@@ -835,30 +837,31 @@ mod validation {
                     }
                     Item::Struct(s) => {
                         if let Visibility::Public(_) = s.vis
-                            && !is_doc_hidden(&s.attrs) {
-                                let name = s.ident.to_string();
-                                let mut inner_types = Vec::new();
-                                match &s.fields {
-                                    syn::Fields::Unnamed(unnamed) => {
-                                        if unnamed.unnamed.len() == 1 {
-                                            collect_type_idents(
-                                                &unnamed.unnamed[0].ty,
-                                                &mut inner_types,
-                                            );
-                                        }
+                            && !is_doc_hidden(&s.attrs)
+                        {
+                            let name = s.ident.to_string();
+                            let mut inner_types = Vec::new();
+                            match &s.fields {
+                                syn::Fields::Unnamed(unnamed) => {
+                                    if unnamed.unnamed.len() == 1 {
+                                        collect_type_idents(
+                                            &unnamed.unnamed[0].ty,
+                                            &mut inner_types,
+                                        );
                                     }
-                                    syn::Fields::Named(named) => {
-                                        for f in named.named.iter() {
-                                            collect_type_idents(&f.ty, &mut inner_types);
-                                        }
-                                    }
-                                    syn::Fields::Unit => {}
                                 }
-                                // Dedup to reduce noise like [Option, WindowTarget, WindowTarget]
-                                inner_types.sort();
-                                inner_types.dedup();
-                                out.push((name, s.attrs.clone(), inner_types));
+                                syn::Fields::Named(named) => {
+                                    for f in named.named.iter() {
+                                        collect_type_idents(&f.ty, &mut inner_types);
+                                    }
+                                }
+                                syn::Fields::Unit => {}
                             }
+                            // Dedup to reduce noise like [Option, WindowTarget, WindowTarget]
+                            inner_types.sort();
+                            inner_types.dedup();
+                            out.push((name, s.attrs.clone(), inner_types));
+                        }
                     }
                     _ => {}
                 }
@@ -1020,10 +1023,11 @@ mod validation {
                     }
                     Item::Struct(s) => {
                         if let Visibility::Public(_) = s.vis
-                            && !is_doc_hidden(&s.attrs) && super::validation::has_lsp_doc(&s.attrs)
-                            {
-                                doc_structs.insert(s.ident.to_string());
-                            }
+                            && !is_doc_hidden(&s.attrs)
+                            && super::validation::has_lsp_doc(&s.attrs)
+                        {
+                            doc_structs.insert(s.ident.to_string());
+                        }
                     }
                     Item::Impl(item_impl) => {
                         // Only track inherent impls for types
@@ -1033,12 +1037,12 @@ mod validation {
                             for impl_item in item_impl.items {
                                 if let ImplItem::Fn(method) = impl_item
                                     && matches!(method.vis, Visibility::Public(_))
-                                        && !is_doc_hidden(&method.attrs)
-                                        && super::validation::has_lsp_doc(&method.attrs)
-                                    {
-                                        let name = method.sig.ident.to_string();
-                                        doc_methods.insert((type_name.clone(), name));
-                                    }
+                                    && !is_doc_hidden(&method.attrs)
+                                    && super::validation::has_lsp_doc(&method.attrs)
+                                {
+                                    let name = method.sig.ident.to_string();
+                                    doc_methods.insert((type_name.clone(), name));
+                                }
                             }
                         }
                     }
@@ -1322,26 +1326,27 @@ mod validation {
 
                 // If no methods were discovered, fall back to docs files in the folder
                 if method_files.is_empty()
-                    && let Ok(read_dir) = std::fs::read_dir(&obj_dir) {
-                        let mut files: Vec<String> = read_dir
-                            .filter_map(|e| e.ok())
-                            .filter_map(|e| {
-                                let p = e.path();
-                                if p.extension()?.to_str()? == "md" {
-                                    let stem = p.file_stem()?.to_str()?.to_string();
-                                    if stem != dir { Some(stem) } else { None }
-                                } else {
-                                    None
-                                }
-                            })
-                            .collect();
-                        files.sort();
-                        // If reflection found no public methods, avoid showing private constructors
-                        if let Some(pos) = files.iter().position(|s| s == "constructor") {
-                            files.remove(pos);
-                        }
-                        method_files = files;
+                    && let Ok(read_dir) = std::fs::read_dir(&obj_dir)
+                {
+                    let mut files: Vec<String> = read_dir
+                        .filter_map(|e| e.ok())
+                        .filter_map(|e| {
+                            let p = e.path();
+                            if p.extension()?.to_str()? == "md" {
+                                let stem = p.file_stem()?.to_str()?.to_string();
+                                if stem != dir { Some(stem) } else { None }
+                            } else {
+                                None
+                            }
+                        })
+                        .collect();
+                    files.sort();
+                    // If reflection found no public methods, avoid showing private constructors
+                    if let Some(pos) = files.iter().position(|s| s == "constructor") {
+                        files.remove(pos);
                     }
+                    method_files = files;
+                }
 
                 write_page(object, method_files);
                 written.insert(object.to_string());
