@@ -5,11 +5,19 @@ mod window;
 pub use window::*;
 
 use crate::size::Size;
+use lsp_doc::lsp_doc;
 
 pub trait Target {
     fn size(&self) -> Size;
+
     fn resize(&mut self, size: impl Into<Size>);
+
     fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, wgpu::SurfaceError>;
+
+    #[lsp_doc("docs/api/target/get_image.md")]
+    fn get_image(&self) -> Vec<u8> {
+        vec![]
+    }
 }
 
 pub trait TargetFrame {

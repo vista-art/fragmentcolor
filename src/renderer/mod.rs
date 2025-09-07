@@ -1,8 +1,8 @@
-use crate::Size;
 use crate::{
     InitializationError, PassObject, ShaderError, ShaderHash, Target, TargetFrame, TextureTarget,
     shader::Uniform,
 };
+use crate::{Size, WindowTarget};
 use dashmap::DashMap;
 use lsp_doc::lsp_doc;
 use parking_lot::RwLock;
@@ -27,6 +27,23 @@ use buffer_pool::BufferPool;
 use pyo3::prelude::*;
 #[cfg(wasm)]
 use wasm_bindgen::prelude::*;
+
+/// The Renderer accepts a generic window handle as input,
+pub trait HasDisplaySize {
+    fn size(&self) -> Size;
+}
+
+#[cfg(all(desktop, feature = "winit"))]
+impl HasDisplaySize for std::sync::Arc<winit::window::Window> {
+    fn size(&self) -> Size {
+        let size = self.inner_size();
+        Size {
+            width: size.width,
+            height: size.height,
+            depth: None,
+        }
+    }
+}
 
 #[derive(Debug)]
 struct RenderPipeline {
@@ -58,8 +75,21 @@ impl Renderer {
         }
     }
 
-    // PLATFORM SPECIFIC:
-    // pub fn create_target() {}
+    #[lsp_doc("docs/api/renderer/create_target.md")]
+    pub async fn create_target(
+        &self,
+        window: impl Into<wgpu::SurfaceTarget<'static>> + Clone + HasDisplaySize,
+    ) -> Result<WindowTarget, InitializationError> {
+        let size = window.size();
+        let size = wgpu::Extent3d {
+            width: size.width,
+            height: size.height,
+            depth_or_array_layers: 1,
+        };
+        let (context, surface, config) = self.create_surface(window.clone(), size).await?;
+
+        Ok(WindowTarget::new(context, surface, config))
+    }
 
     #[lsp_doc("docs/api/renderer/create_texture_target.md")]
     pub async fn create_texture_target(
