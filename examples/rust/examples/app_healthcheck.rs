@@ -33,7 +33,16 @@ fn main() {
         .on_pan_gesture(|_, _, _, _| {})
         .on_double_tap_gesture(|_, _| {})
         .on_rotation_gesture(|_, _, _, _| {})
-        .on_touchpad_pressure(|_, _, _, _| {});
+.on_touchpad_pressure(|_, _, _, _| {});
+
+    // Device-level handlers (no window association)
+    app.on_device_added(|_, _| {})
+        .on_device_removed(|_, _| {})
+        .on_device_mouse_motion(|_, _, _| {})
+        .on_device_mouse_wheel(|_, _, _| {})
+        .on_device_motion(|_, _, _, _| {})
+        .on_device_button(|_, _, _, _| {})
+        .on_device_key(|_, _, _| {});
 
     // Per-window event listener wrappers, for multi-window applications.
     let id: WindowId = 1u64.into();
