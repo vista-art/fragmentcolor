@@ -52,14 +52,14 @@ impl From<web_sys::OffscreenCanvas> for Canvas {
 #[wasm_bindgen]
 impl Renderer {
     #[wasm_bindgen(constructor)]
-    #[lsp_doc("docs/api/renderer/constructor.md")]
+    #[lsp_doc("docs/api/core/renderer/constructor.md")]
     /// Creates a new Renderer
     pub fn new_js() -> Self {
         Self::new()
     }
 
     #[wasm_bindgen(js_name = "createTarget")]
-    #[lsp_doc("docs/api/renderer/create_target.md")]
+    #[lsp_doc("docs/api/core/renderer/create_target.md")]
     pub async fn create_target_js(&self, canvas: JsValue) -> Result<CanvasTarget, JsError> {
         let canvas = if canvas.has_type::<web_sys::HtmlCanvasElement>() {
             let canvas = canvas.dyn_into::<web_sys::HtmlCanvasElement>().unwrap();
@@ -86,7 +86,7 @@ impl Renderer {
     }
 
     #[wasm_bindgen(js_name = "createTextureTarget")]
-    #[lsp_doc("docs/api/renderer/create_texture_target.md")]
+    #[lsp_doc("docs/api/core/renderer/create_texture_target.md")]
     pub async fn create_texture_target_js(&self, size: JsValue) -> Result<TextureTarget, JsError> {
         // Accept either a JS array (e.g., [w, h] or [w, h, d]), a typed array, a plain object
         // with width/height[/depth], or an exported Size instance
@@ -118,7 +118,7 @@ impl Renderer {
     }
 
     #[wasm_bindgen(js_name = "render")]
-    #[lsp_doc("docs/api/renderer/render.md")]
+    #[lsp_doc("docs/api/core/renderer/render.md")]
     pub fn render_js(&self, renderable: JsValue, target: JsValue) -> Result<(), ShaderError> {
         if let Ok(canvas_target) = CanvasTarget::try_from_js_value(target.clone()) {
             if let Ok(shader) = Shader::try_from_js_value(renderable.clone()) {

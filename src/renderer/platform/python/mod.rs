@@ -20,12 +20,12 @@ use handle::create_raw_handles;
 #[pymethods]
 impl Renderer {
     #[new]
-    #[lsp_doc("docs/api/renderer/constructor.md")]
+    #[lsp_doc("docs/api/core/renderer/constructor.md")]
     pub fn new_py() -> Renderer {
         Self::new()
     }
 
-    #[lsp_doc("docs/api/renderer/create_target.md")]
+    #[lsp_doc("docs/api/core/renderer/create_target.md")]
     #[pyo3(name = "create_target")]
     pub fn create_target_py(
         &self,
@@ -88,7 +88,7 @@ impl Renderer {
         })
     }
 
-    #[lsp_doc("docs/api/renderer/create_texture_target.md")]
+    #[lsp_doc("docs/api/core/renderer/create_texture_target.md")]
     #[pyo3(name = "create_texture_target")]
     pub fn create_texture_target_py(&self, size: PySize) -> Result<Py<PyTextureTarget>, PyErr> {
         Python::attach(|py| -> Result<Py<PyTextureTarget>, PyErr> {
@@ -99,7 +99,7 @@ impl Renderer {
     }
 
     #[pyo3(name = "render")]
-    #[lsp_doc("docs/api/renderer/render.md")]
+    #[lsp_doc("docs/api/core/renderer/render.md")]
     pub fn render_py(&self, renderable: Py<PyAny>, target: Py<PyAny>) -> Result<(), PyErr> {
         Python::attach(|py| -> Result<(), PyErr> {
             let renderable_type = renderable

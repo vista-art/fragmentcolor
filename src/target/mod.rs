@@ -4,9 +4,6 @@ pub use texture::*;
 mod window;
 pub use window::*;
 
-mod test_window;
-pub use test_window::*;
-
 use crate::size::Size;
 use lsp_doc::lsp_doc;
 
