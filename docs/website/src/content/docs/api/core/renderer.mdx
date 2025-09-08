@@ -5,6 +5,8 @@ category: core
 categoryLabel: Core
 ---
 
+import { Code, Tabs, TabItem, Aside } from "@astrojs/starlight/components";
+
 ## Description
 
 The [Renderer](/api/core/renderer) is the main entry point for
@@ -33,7 +35,7 @@ the `render()` method expects a [Target](/api/core/target) as input. So, the use
 
 ```rust
 use fragmentcolor::Renderer;
-let renderer = Renderer::new();
+let _renderer = Renderer::new();
 ```
 
 ## Methods
@@ -58,22 +60,64 @@ is by calling `renderer.create_target(Window)` first.
 
 #### Example
 
-```rust
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
 use fragmentcolor::Renderer;
 let renderer = Renderer::new();
-```
+`}
+lang="rust"
+/>
 
-### Python
+</TabItem>
 
-```python
-renderer = Renderer()
-```
-
-### Javascript
-
-```js
+<TabItem label="JavaScript">
+<Code
+code={`
 const renderer = new Renderer();
-```
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+renderer = Renderer()
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
 
 ### create_target(target: Canvas | Window)
 
@@ -81,26 +125,74 @@ Creates a [Target](/api/core/target) attached to a platform-specific canvas or w
 
 #### Example
 
-##### Javascript (Web)
+<Tabs>
 
-```js
-import init, { Renderer } from "fragmentcolor";
-await init();
-const renderer = new Renderer();
-const canvas = document.createElement("canvas");
-const target = await renderer.createTarget(canvas);
-```
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::Renderer;
 
-##### Python
+// Platform-specific window binding (winit shown as an example)
+// use winit::event_loop::EventLoop;
+// use winit::window::WindowBuilder;
+// fn main() -> Result<(), Box<dyn std::error::Error>> {
+let renderer = Renderer::new();
+// let event_loop = EventLoop::new()?;
+// let window = WindowBuilder::new().build(&event_loop)?;
+// let target = renderer.create_target(&window)?;
+// Ok(())
+// }
+`}
+lang="rust" meta="collapse={3-6, 8-12}"
+/>
 
-```python
-from fragmentcolor import Renderer
-from rendercanvas.auto import RenderCanvas
+</TabItem>
 
-renderer = Renderer()
-canvas = RenderCanvas()
-target = renderer.create_target(canvas)
-```
+<TabItem label="JavaScript">
+<Code
+code={`
+
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
 
 ### Headless rendering: create_texture_target
 
@@ -110,82 +202,73 @@ This is useful for tests, server-side rendering, or running examples in CI.
 
 #### Example
 
-##### Rust
+<Tabs>
 
-```rust path=null start=null collapse={3-3, 14-16}
-use fragmentcolor::{Renderer, Shader, Pass, Frame};
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::{Renderer, Shader};
 
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
-
 let renderer = Renderer::new();
-
 let target = renderer.create_texture_target([64, 64]).await?;
-
 let shader = Shader::default();
 renderer.render(&shader, &target)?;
-
-let image = target.get_image();
-
+let _image = target.get_image();
 Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
-```
+`}
+lang="rust" meta="collapse={3-3, 9-11}"
+/>
 
-#### Python
+</TabItem>
 
-```python path=null start=null
-from fragmentcolor import Renderer, Shader, Pass, Frame
-
-renderer = Renderer()
-# size can be a tuple or list
-target = renderer.create_texture_target((64, 64))
-
-shader = Shader("circle.wgsl")
-shader.set("resolution", [64.0, 64.0])
-shader.set("circle.radius", 10.0)
-shader.set("circle.color", [1.0, 0.0, 0.0, 0.8])
-shader.set("circle.border", 2.0)
-shader.set("circle.position", [0.0, 0.0])
-
-renderer.render(shader, target)
-
-img = target.get_image()
-```
-
-#### Javascript (Web)
-
-```js path=null start=null
-import init, { Renderer, Shader, Pass, Frame } from "fragmentcolor";
-
-await init();
-
-const renderer = new Renderer();
-// size is an array [width, height]
+<TabItem label="JavaScript">
+<Code
+code={`
 const target = await renderer.createTextureTarget([64, 64]);
+`}
+lang="js"
+/>
 
-const shader = new Shader("circle.wgsl");
-shader.set("resolution", [64.0, 64.0]);
-shader.set("circle.radius", 10.0);
-shader.set("circle.color", [1.0, 0.0, 0.0, 0.8]);
-shader.set("circle.border", 2.0);
-shader.set("circle.position", [0.0, 0.0]);
+</TabItem>
 
-renderer.render(shader, target);
-
-const img = target.getImage();
-```
-
-### Python
-
-```python
+<TabItem label="Python">
+<Code
+code={`
 target = renderer.create_texture_target((64, 64))
-```
+`}
+lang="python"
+/>
 
-### Javascript
+</TabItem>
 
-```js
-const target = await renderer.createTextureTarget([64, 64]);
-```
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
 
 ### render(renderable: Shader | Pass | Frame, target: Target)
 
@@ -193,7 +276,11 @@ Renders the given object to the given [Target](/api/core/target).
 
 #### Example
 
-```rust collapse={3-3, 10-12}
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
 use fragmentcolor::{Renderer, Shader};
 
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
@@ -206,16 +293,54 @@ renderer.render(&shader, &target)?;
 Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
-```
+`}
+lang="rust" meta="collapse={3-3, 10-12}"
+/>
 
-### Python
+</TabItem>
 
-```python
-renderer.render(shader, target)
-```
-
-### Javascript
-
-```js
+<TabItem label="JavaScript">
+<Code
+code={`
 renderer.render(shader, target);
-```
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+renderer.render(shader, target)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>

@@ -102,3 +102,6 @@ const _keys = shader.listKeys();
 // DOC: (end)
 
 console.log("Headless JS render completed successfully");
+
+// Auto-generated: run all extracted examples
+import './generated_examples.mjs';

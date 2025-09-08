@@ -1,0 +1,1 @@
+const _radius = shader.get("circle.radius");

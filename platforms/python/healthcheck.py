@@ -113,17 +113,28 @@ fn main(pixel: VertexOutput) -> @location(0) vec4<f32> {
 
     # Additional API coverage for docs
     # DOC: Shader.get (begin)
-    _radius = shader.get("circle.radius")
+    radius = shader.get("circle.radius")
     # DOC: (end)
     # DOC: Shader.list_uniforms (begin)
-    _uniforms = shader.list_uniforms()
+    uniforms = shader.list_uniforms()
     # DOC: (end)
     # DOC: Shader.list_keys (begin)
-    _keys = shader.list_keys()
+    keys = shader.list_keys()
     # DOC: (end)
+
+    print(f"Shader.get('circle.radius'): {radius}")
+    print(f"Shader.list_uniforms: {uniforms}")
+    print(f"Shader.list_keys: {keys}")
 
     print("Headless Python render completed successfully")
 
 
 if __name__ == "__main__":
     run()
+
+    # Auto-generated: run all extracted examples
+    try:
+        from platforms.python.examples.main import run_all as __run_all
+        __run_all()
+    except Exception as _e:
+        print(f'Warning: failed to run generated examples: {_e}')

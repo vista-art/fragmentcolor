@@ -5,6 +5,8 @@ category: core
 categoryLabel: Core
 ---
 
+import { Code, Tabs, TabItem, Aside } from "@astrojs/starlight/components";
+
 ## Description
 
 The [Target](/api/core/target) interface (trait in Rust) is a rendering destination for the [Renderer](/api/core/renderer) implemented by both [WindowTarget](/api/targets/windowtarget) and [TextureTarget](/api/targets/texturetarget).
@@ -59,7 +61,11 @@ Most users do not need to call this directly; the [Renderer](/api/core/renderer)
 
 #### Example
 
-```rust collapse={3-3, 10-12}
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
 use fragmentcolor::{Renderer, Target};
 
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
@@ -72,7 +78,57 @@ let _format = frame.format();
 Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
-```
+`}
+lang="rust" meta="collapse={3-3, 10-12}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
 
 ### get_image() -&gt; Vec&lt;u8&gt;
 
@@ -80,7 +136,11 @@ Returns the current contents of the target as a byte array in RGBA8 format.
 
 #### Example
 
-```rust collapse={3-3, 10-11}
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
 use fragmentcolor::{Renderer, Target};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -92,7 +152,57 @@ renderer.render(&fragmentcolor::Shader::default(), &target)?;
 let image = target.get_image();
 Ok(())
 }
-```
+`}
+lang="rust" meta="collapse={3-3, 10-11}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
 
 ### resize(size: [u32; 2] | (u32, u32))
 
@@ -100,7 +210,11 @@ Resizes the [Target](/api/core/target) to the given width and height.
 
 #### Example
 
-```rust collapse={3-3, 15-17}
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
 use fragmentcolor::{Renderer, Target};
 
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
@@ -118,7 +232,57 @@ assert_eq!(size, [128, 64]);
 Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
-```
+`}
+lang="rust" meta="collapse={3-3, 15-17}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
 
 ### size() -&gt; [u32; 2]
 
@@ -126,7 +290,11 @@ Returns the size of the [Target](/api/core/target) in pixels.
 
 #### Example
 
-```rust collapse={3-3, 10-12}
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
 use fragmentcolor::{Renderer, Target};
 
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
@@ -139,4 +307,54 @@ assert_eq!(size, [64, 32]);
 Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
-```
+`}
+lang="rust" meta="collapse={3-3, 10-12}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>

@@ -5,6 +5,8 @@ category: core
 categoryLabel: Core
 ---
 
+import { Code, Tabs, TabItem, Aside } from "@astrojs/starlight/components";
+
 ## Description
 
 The [Frame](/api/core/frame) object is a collection of [Pass](/api/core/pass) objects that are rendered to a [Target](/api/core/target) by the [Renderer](/api/core/renderer).
@@ -36,23 +38,65 @@ A [Frame](/api/core/frame) is an ordered collection of [Pass](/api/core/pass) ob
 
 #### Example
 
-```rust
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
 use fragmentcolor::{Frame};
 
 let mut frame = Frame::new();
-```
+`}
+lang="rust"
+/>
 
-### Python
+</TabItem>
 
-```python
-frame = Frame()
-```
-
-### Javascript
-
-```js
+<TabItem label="JavaScript">
+<Code
+code={`
 const frame = new Frame();
-```
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+frame = Frame()
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
 
 ### add_pass(pass: Pass)
 
@@ -62,7 +106,11 @@ Passes are rendered in the order they are added.
 
 #### Example
 
-```rust
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
 use fragmentcolor::{Frame, Pass};
 
 let mut pass1 = Pass::new("first");
@@ -71,16 +119,54 @@ let mut pass2 = Pass::new("second");
 let mut frame = Frame::new();
 frame.add_pass(&pass1);
 frame.add_pass(&pass2);
-```
+`}
+lang="rust"
+/>
 
-### Python
+</TabItem>
 
-```python
-frame.add_pass(rpass)
-```
-
-### Javascript
-
-```js
+<TabItem label="JavaScript">
+<Code
+code={`
 frame.add_pass(rpass);
-```
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+frame.add_pass(rpass)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>

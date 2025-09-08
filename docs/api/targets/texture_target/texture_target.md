@@ -7,9 +7,9 @@ Use it for headless rendering, tests, server-side image generation, or CI.
 ## Example
 
 ```rust
-use fragmentcolor::{Renderer, Shader};
-
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+
+use fragmentcolor::{Renderer, Shader};
 
 let renderer = Renderer::new();
 let target = renderer.create_texture_target([64, 64]).await?;
@@ -17,6 +17,10 @@ let target = renderer.create_texture_target([64, 64]).await?;
 let shader = Shader::default();
 renderer.render(&shader, &target)?;
 
+let image = target.get_image();
+
+# assert_eq!(image.len(), 64 * 64 * 4); // RGBA8
+#
 # Ok(())
 # }
 # fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }

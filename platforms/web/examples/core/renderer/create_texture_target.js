@@ -1,0 +1,1 @@
+const target = await renderer.createTextureTarget([64, 64]);
