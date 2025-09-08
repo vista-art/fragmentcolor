@@ -15,7 +15,7 @@ pub fn rendercanvas_context_hook(
 }
 
 #[pyclass(dict)]
-#[lsp_doc("docs/api/render_canvas_target/render_canvas_target.md")]
+#[lsp_doc("docs/api/hidden/platforms/python/render_canvas_target/render_canvas_target.md")]
 pub struct RenderCanvasTarget {
     canvas: Py<PyAny>,
     _present_methods: Py<PyAny>, // @TODO figure how RenderCanvas expects me to use this
@@ -162,7 +162,7 @@ impl TargetFrame for RenderCanvasFrame {
 }
 
 // Headless texture target for Python
-#[lsp_doc("docs/api/py_texture_target/py_texture_target.md")]
+#[lsp_doc("docs/api/hidden/platforms/python/py_texture_target/py_texture_target.md")]
 #[pyclass(name = "TextureTarget")]
 pub struct PyTextureTarget {
     inner: crate::TextureTarget,

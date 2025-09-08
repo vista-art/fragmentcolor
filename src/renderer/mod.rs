@@ -48,7 +48,7 @@ struct RenderPipeline {
 #[derive(Debug, Default)]
 #[cfg_attr(wasm, wasm_bindgen)]
 #[cfg_attr(python, pyclass)]
-#[lsp_doc("docs/api/renderer/renderer.md")]
+#[lsp_doc("docs/api/core/renderer/renderer.md")]
 pub struct Renderer {
     instance: RwLock<Option<Arc<wgpu::Instance>>>,
     adapter: RwLock<Option<wgpu::Adapter>>,
@@ -59,7 +59,7 @@ pub struct Renderer {
 }
 
 impl Renderer {
-    #[lsp_doc("docs/api/renderer/constructor.md")]
+#[lsp_doc("docs/api/core/renderer/constructor.md")]
     pub fn new() -> Self {
         Renderer {
             instance: RwLock::new(None),
@@ -68,7 +68,7 @@ impl Renderer {
         }
     }
 
-    #[lsp_doc("docs/api/renderer/create_target.md")]
+#[lsp_doc("docs/api/core/renderer/create_target.md")]
     pub async fn create_target(
         &self,
         window: impl Into<wgpu::SurfaceTarget<'static>> + Clone + HasDisplaySize,
@@ -84,7 +84,7 @@ impl Renderer {
         Ok(WindowTarget::new(context, surface, config))
     }
 
-    #[lsp_doc("docs/api/renderer/create_texture_target.md")]
+#[lsp_doc("docs/api/core/renderer/create_texture_target.md")]
     pub async fn create_texture_target(
         &self,
         size: impl Into<Size>,
@@ -95,7 +95,7 @@ impl Renderer {
         Ok(texture)
     }
 
-    #[lsp_doc("docs/api/renderer/render.md")]
+#[lsp_doc("docs/api/core/renderer/render.md")]
     pub fn render(
         &self,
         renderable: &impl Renderable,

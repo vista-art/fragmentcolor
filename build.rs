@@ -651,6 +651,50 @@ mod validation {
         let root = meta::workspace_root();
         let docs_root = root.join("docs/api");
 
+        // Helper: find the directory for an object recursively (must contain <dir>/<dir>.md)
+        fn find_object_dir(docs_root: &std::path::Path, dir_name: &str) -> Option<std::path::PathBuf> {
+            fn walk(root: &std::path::Path, target: &str) -> Option<std::path::PathBuf> {
+                if !root.is_dir() { return None; }
+                for entry in std::fs::read_dir(root).ok()?.flatten() {
+                    let p = entry.path();
+                    if p.is_dir() {
+                        if p.file_name().and_then(|s| s.to_str()) == Some(target) {
+                            let md = p.join(format!("{}.md", target));
+                            if md.exists() { return Some(p); }
+                        }
+                        if let Some(found) = walk(&p, target) { return Some(found); }
+                    }
+                }
+                None
+            }
+            walk(docs_root, dir_name)
+        }
+
+        // Helper: recursively enumerate all object dirs found under docs_root
+        fn scan_docs_objects(docs_root: &std::path::Path) -> Vec<(String, std::path::PathBuf)> {
+            fn walk(dir: &std::path::Path, root: &std::path::Path, out: &mut Vec<(String, std::path::PathBuf)>) {
+                if !dir.is_dir() { return; }
+                for entry in std::fs::read_dir(dir).ok().into_iter().flatten().flatten() {
+                    let p = entry.path();
+                    if p.is_dir() {
+                        if let Some(name) = p.file_name().and_then(|s| s.to_str()) {
+                            let md = p.join(format!("{}.md", name));
+                            if md.exists() {
+                                let object = dir_to_object_name(name);
+                                out.push((object, p.clone()));
+                                // Do not descend into this object dir further
+                                continue;
+                            }
+                        }
+                        walk(&p, root, out);
+                    }
+                }
+            }
+            let mut out = Vec::new();
+            walk(docs_root, docs_root, &mut out);
+            out
+        }
+
         // Enforce documentation for ALL public objects (including wrappers)
         let objects = public_structs_excluding_hidden();
         let all_objects = objects.clone();
@@ -659,7 +703,8 @@ mod validation {
         for object in objects.iter() {
             let methods_vec = api_map.get(object).cloned().unwrap_or_default();
             let dir = object_dir_name(object);
-            let object_md = docs_root.join(&dir).join(format!("{}.md", dir));
+            let obj_dir = find_object_dir(&docs_root, &dir).unwrap_or(docs_root.join(&dir));
+            let object_md = obj_dir.join(format!("{}.md", dir));
             ensure_object_md_ok(object, &object_md, &mut problems);
             enforce_links_in_file(&object_md, &all_objects, &mut problems);
 
@@ -678,33 +723,23 @@ mod validation {
                         continue;
                     }
 
-                    let file = if name == "new" {
-                        "constructor".to_string()
-                    } else {
-                        to_snake_case(name)
-                    };
-                    let path = docs_root.join(&dir).join(format!("{}.md", file));
+                    let file = if name == "new" { "constructor".to_string() } else { to_snake_case(name) };
+                    let path = obj_dir.join(format!("{}.md", file));
                     ensure_method_md_ok(object, name, &path, &mut problems);
                     enforce_links_in_file(&path, &all_objects, &mut problems);
                 }
             }
         }
 
-        // Also validate any docs-only objects under docs/api not present in allowed
-        let docs_root = root.join("docs/api");
-        if let Ok(read_dir) = std::fs::read_dir(&docs_root) {
-            for entry in read_dir.flatten() {
-                if entry.path().is_dir() {
-                    let dir_name = entry.file_name().to_string_lossy().to_string();
-                    let object = dir_to_object_name(&dir_name);
-                    if objects.iter().any(|o| o == &object) {
-                        continue;
-                    }
-                    let object_md = docs_root.join(&dir_name).join(format!("{}.md", dir_name));
-                    ensure_object_md_ok(&object, &object_md, &mut problems);
-                    enforce_links_in_file(&object_md, &all_objects, &mut problems);
-                }
+        // Also validate any docs-only objects under docs/api not present in allowed (recursively)
+        for (object, obj_dir) in scan_docs_objects(&docs_root) {
+            if objects.iter().any(|o| o == &object) {
+                continue;
             }
+            let dir_name = obj_dir.file_name().and_then(|s| s.to_str()).unwrap_or("");
+            let object_md = obj_dir.join(format!("{}.md", dir_name));
+            ensure_object_md_ok(&object, &object_md, &mut problems);
+            enforce_links_in_file(&object_md, &all_objects, &mut problems);
         }
 
         validate_healthchecks(api_map, &mut problems);

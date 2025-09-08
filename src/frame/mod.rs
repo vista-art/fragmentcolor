@@ -12,14 +12,14 @@ mod features;
 #[cfg_attr(wasm, wasm_bindgen)]
 #[cfg_attr(python, pyclass)]
 #[derive(Debug, Default)]
-#[lsp_doc("docs/api/frame/frame.md")]
+#[lsp_doc("docs/api/core/frame/frame.md")]
 pub struct Frame {
     pub(crate) passes: Vec<Arc<PassObject>>,
     _dependencies: Vec<(usize, usize)>, // @TODO implement directed acyclic graph
 }
 
 impl Frame {
-    #[lsp_doc("docs/api/frame/constructor.md")]
+#[lsp_doc("docs/api/core/frame/constructor.md")]
     pub fn new() -> Self {
         Self {
             passes: Vec::new(),
@@ -27,7 +27,7 @@ impl Frame {
         }
     }
 
-    #[lsp_doc("docs/api/frame/add_pass.md")]
+#[lsp_doc("docs/api/core/frame/add_pass.md")]
     pub fn add_pass(&mut self, pass: &Pass) {
         self.passes.push(pass.object.clone());
     }
