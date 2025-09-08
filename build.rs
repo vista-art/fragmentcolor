@@ -1461,7 +1461,10 @@ mod validation {
                     if path.is_dir() {
                         continue;
                     }
-                    if let (Some(ext), Some(name)) = (path.extension().and_then(|s| s.to_str()), path.file_name().and_then(|s| s.to_str())) {
+                    if let (Some(ext), Some(name)) = (
+                        path.extension().and_then(|s| s.to_str()),
+                        path.file_name().and_then(|s| s.to_str()),
+                    ) {
                         if ext == "mdx" && !expected.contains(name) {
                             let _ = std::fs::remove_file(&path);
                         }
