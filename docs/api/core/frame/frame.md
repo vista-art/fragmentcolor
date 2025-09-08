@@ -19,7 +19,6 @@ frame.add_pass(&pass1);
 frame.add_pass(&pass2);
 ```
 
-
 ## Methods
 
 - ### constructor()
