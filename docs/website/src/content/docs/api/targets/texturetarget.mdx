@@ -13,11 +13,11 @@ Use it for headless rendering, tests, server-side image generation, or CI.
 
 ## Example
 
-```rust collapse={1-1, 3-3, 10-12}
+```rust collapse={3-3, 11-13}
+use fragmentcolor::{Renderer, Shader};
 
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
-use fragmentcolor::{Renderer, Shader};
 let renderer = Renderer::new();
 let target = renderer.create_texture_target([64, 64]).await?;
 
@@ -39,11 +39,11 @@ Most users do not need to call this directly; the [Renderer](/api/core/renderer)
 
 #### Example
 
-```rust collapse={1-1, 3-3, 9-11}
+```rust collapse={3-3, 10-12}
+use fragmentcolor::Renderer;
 
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
-use fragmentcolor::Renderer;
 let renderer = Renderer::new();
 let target = renderer.create_texture_target([16, 16]).await?;
 let frame = target.get_current_frame()?;
@@ -60,11 +60,11 @@ Returns the current contents of the target as a byte array in RGBA8 format.
 
 #### Example
 
-```rust collapse={1-1, 3-3, 10-12}
+```rust collapse={3-3, 11-13}
+use fragmentcolor::Renderer;
 
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
-use fragmentcolor::Renderer;
 let renderer = Renderer::new();
 let target = renderer.create_texture_target([16, 16]).await?;
 renderer.render(&fragmentcolor::Shader::default(), &target)?;
@@ -82,11 +82,11 @@ Resizes the [TextureTarget](/api/targets/texturetarget) to the given width and h
 
 #### Example
 
-```rust collapse={1-1, 3-3, 12-14}
+```rust collapse={3-3, 13-15}
+use fragmentcolor::Renderer;
 
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
-use fragmentcolor::Renderer;
 let renderer = Renderer::new();
 let mut target = renderer.create_texture_target([64, 64]).await?;
 
@@ -106,11 +106,11 @@ Returns the size of the [TextureTarget](/api/targets/texturetarget) in pixels.
 
 #### Example
 
-```rust collapse={1-1, 3-3, 8-10}
+```rust collapse={3-3, 9-11}
+use fragmentcolor::Renderer;
 
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
-use fragmentcolor::Renderer;
 let renderer = Renderer::new();
 let target = renderer.create_texture_target([64, 64]).await?;
 assert_eq!(target.size(), [64, 64]);
