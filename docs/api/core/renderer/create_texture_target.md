@@ -6,67 +6,16 @@ This is useful for tests, server-side rendering, or running examples in CI.
 
 ## Example
 
-### Rust
-
-```rust path=null start=null
-use fragmentcolor::{Renderer, Shader, Pass, Frame};
+```rust
+use fragmentcolor::{Renderer, Shader};
 
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-
 let renderer = Renderer::new();
-
 let target = renderer.create_texture_target([64, 64]).await?;
-
 let shader = Shader::default();
 renderer.render(&shader, &target)?;
-
-let image = target.get_image();
-
+let _image = target.get_image();
 # Ok(())
 # }
 # fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
-```
-
-## Python
-
-```python path=null start=null
-from fragmentcolor import Renderer, Shader, Pass, Frame
-
-renderer = Renderer()
-# size can be a tuple or list
-target = renderer.create_texture_target((64, 64))
-
-shader = Shader("circle.wgsl")
-shader.set("resolution", [64.0, 64.0])
-shader.set("circle.radius", 10.0)
-shader.set("circle.color", [1.0, 0.0, 0.0, 0.8])
-shader.set("circle.border", 2.0)
-shader.set("circle.position", [0.0, 0.0])
-
-renderer.render(shader, target)
-
-img = target.get_image()
-```
-
-## Javascript (Web)
-
-```js path=null start=null
-import init, { Renderer, Shader, Pass, Frame } from "fragmentcolor";
-
-await init();
-
-const renderer = new Renderer();
-// size is an array [width, height]
-const target = await renderer.createTextureTarget([64, 64]);
-
-const shader = new Shader("circle.wgsl");
-shader.set("resolution", [64.0, 64.0]);
-shader.set("circle.radius", 10.0);
-shader.set("circle.color", [1.0, 0.0, 0.0, 0.8]);
-shader.set("circle.border", 2.0);
-shader.set("circle.position", [0.0, 0.0]);
-
-renderer.render(shader, target);
-
-const img = target.getImage();
 ```

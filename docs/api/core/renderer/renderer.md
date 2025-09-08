@@ -26,63 +26,19 @@ the `render()` method expects a [Target](https://fragmentcolor.org/api/core/targ
 
 ```rust
 use fragmentcolor::Renderer;
-let renderer = Renderer::new();
+let _renderer = Renderer::new();
 ```
 
 ## Methods
 
 ### - create_target(target: PLATFORM_SPECIFIC)
 
-#### Rust
-
 ```rust
 use fragmentcolor::Renderer;
 
 # fn main() -> Result<(), Box<dyn std::error::Error>> {
 let renderer = Renderer::new();
+# // See platform-specific docs for creating a window/canvas target
 # Ok(())
 # }
-```
-
-#### Python
-
-```python
-from fragmentcolor import Renderer
-
-def main():
-    renderer = Renderer.new()
-# pub async fn create_target()
-```
-
-#### Javascript
-
-```javascript
-import { Renderer } from "fragmentcolor";
-
-const canvas = document.createElement("canvas");
-
-async function main() {
-    const renderer = Renderer.new();
-    await renderer.create_target(canvas);
-}
-```
-
-#### Swift (TBD)
-
-```swift
-import FragmentColor
-
-func main() {
-    let renderer = Renderer.new()
-}
-```
-
-#### Kotlin (TBD)
-
-```kotlin
-import fragmentcolor.Renderer
-
-fun main() {
-    val renderer = Renderer.new()
-}
 ```

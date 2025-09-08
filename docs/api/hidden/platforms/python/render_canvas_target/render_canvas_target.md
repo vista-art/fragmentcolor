@@ -9,16 +9,8 @@ It adapts [FragmentColor](https://fragmentcolor.org) to work with the RenderCanv
 
 ## Example
 
-```python
-from fragmentcolor import Renderer
-from rendercanvas.auto import RenderCanvas
-
-renderer = Renderer()
-canvas = RenderCanvas()
-# RenderCanvas calls the fragmentcolor hook to create a RenderCanvasTarget under the hood
-# via renderer.create_target(canvas)
-
-target = renderer.create_target(canvas)  # returns RenderCanvasTarget
-# You can now render Frames, Passes or Shaders to this target
+```rust
+// Python-only wrapper around WindowTarget.
+// No direct Rust example is applicable here.
 ```
 

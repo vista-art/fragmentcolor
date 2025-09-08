@@ -6,16 +6,7 @@ Use this when you need an offscreen render target to read back pixels or render 
 
 ## Example
 
-```python
-from fragmentcolor import Renderer
-
-renderer = Renderer()
-target = renderer.create_texture_target([64, 64])
-
-w, h = target.size()
-assert (w, h) == (64, 64)
-
-# Resize
-target.resize([128, 128])
-assert target.size() == [128, 128]
+```rust
+// Python-only wrapper around TextureTarget.
+// No direct Rust example is applicable here.
 ```

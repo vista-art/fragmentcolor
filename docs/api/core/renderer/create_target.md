@@ -4,23 +4,17 @@ Creates a [Target](https://fragmentcolor.org/api/core/target) attached to a plat
 
 ## Example
 
-### Javascript (Web)
+```rust
+use fragmentcolor::Renderer;
 
-```js
-import init, { Renderer } from "fragmentcolor";
-await init();
-const renderer = new Renderer();
-const canvas = document.createElement("canvas");
-const target = await renderer.createTarget(canvas);
-```
-
-### Python
-
-```python
-from fragmentcolor import Renderer
-from rendercanvas.auto import RenderCanvas
-
-renderer = Renderer()
-canvas = RenderCanvas()
-target = renderer.create_target(canvas)
+# // Platform-specific window binding (winit shown as an example)
+# // use winit::event_loop::EventLoop;
+# // use winit::window::WindowBuilder;
+# // fn main() -> Result<(), Box<dyn std::error::Error>> {
+let renderer = Renderer::new();
+# // let event_loop = EventLoop::new()?;
+# // let window = WindowBuilder::new().build(&event_loop)?;
+# // let target = renderer.create_target(&window)?;
+# // Ok(())
+# // }
 ```

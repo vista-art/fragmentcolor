@@ -4,12 +4,7 @@ Resizes the underlying [WindowTarget](https://fragmentcolor.org/api/targets/wind
 
 ## Example
 
-```python
-from fragmentcolor import Renderer
-from rendercanvas.auto import RenderCanvas
-
-renderer = Renderer()
-canvas = RenderCanvas()
-ctx = renderer.create_target(canvas)
-ctx.resize([640, 480])
+```rust
+// Python-only wrapper API.
+// No direct Rust example is applicable here.
 ```
