@@ -2,8 +2,7 @@ import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
 import starlightBlog from "starlight-blog";
 
-// @TODO Uncomment when you release it
-//import starlightPluginShowLatestVersion from "starlight-plugin-show-latest-version";
+import starlightPluginShowLatestVersion from "starlight-plugin-show-latest-version";
 
 // https://astro.build/config
 export default defineConfig({
@@ -60,15 +59,14 @@ export default defineConfig({
             },
           },
         }),
-        // @TODO Uncomment when you release it
-        // starlightPluginShowLatestVersion({
-        //   size: "small",
-        //   source: {
-        //     type: "github",
-        //     slug: "vista-art/fragmentcolor",
-        //   },
-        //   showInSiteTitle: "true",
-        // }),
+        starlightPluginShowLatestVersion({
+          size: "small",
+          source: {
+            type: "github",
+            slug: "vista-art/fragmentcolor",
+          },
+          showInSiteTitle: "true",
+        }),
       ],
       head: [
         // Add ICO favicon fallback for Safari.
