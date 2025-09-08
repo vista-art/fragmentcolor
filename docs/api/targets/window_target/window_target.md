@@ -10,7 +10,7 @@ It contains a GPU surface texture attached to a platform-specific window or an o
 
 ```no-run
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-    
+
 use fragmentcolor::{Renderer, Shader};
 
 // Platform-specific window, e.g. winit, glfw, sdl2, etc.

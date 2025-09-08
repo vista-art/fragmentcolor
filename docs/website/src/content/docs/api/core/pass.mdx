@@ -5,6 +5,8 @@ category: core
 categoryLabel: Core
 ---
 
+import { Code, Tabs, TabItem, Aside } from "@astrojs/starlight/components";
+
 ## Description
 
 The [Pass](/api/core/pass) object is a collection of [Shader](/api/core/shader) objects that are rendered to a [Target](/api/core/target) by the [Renderer](/api/core/renderer).
@@ -64,23 +66,65 @@ The name property is optional and is used for debugging purposes.
 
 #### Example
 
-```rust
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
 use fragmentcolor::Pass;
 
 let _pass = Pass::new("first pass");
-```
+`}
+lang="rust"
+/>
 
-### Python
+</TabItem>
 
-```python
-rpass = Pass("single pass")
-```
-
-### Javascript
-
-```js
+<TabItem label="JavaScript">
+<Code
+code={`
 const rpass = new Pass("single pass");
-```
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+rpass = Pass("single pass")
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
 
 ### compute(name: &str) -&gt; Pass
 
@@ -90,12 +134,66 @@ Only [Shader](/api/core/shader) objects that compile to compute pipelines can be
 
 #### Example
 
-```rust
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
 use fragmentcolor::Pass;
 
 let pass = Pass::compute("compute pass");
 // Add compute shaders once available
-```
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
 
 ### from_shader(name: &str, shader: Shader) -&gt; Pass
 
@@ -105,12 +203,66 @@ The created [Pass](/api/core/pass) inherits the render/compute type from the pro
 
 #### Example
 
-```rust
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
 use fragmentcolor::{Pass, Shader};
 
 let shader = Shader::default();
 let pass = Pass::from_shader("single", &shader);
-```
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
 
 ### load_previous()
 
@@ -120,7 +272,11 @@ This is useful when layering multiple passes where the next pass should blend wi
 
 #### Example
 
-```rust collapse={1-1, 15-17}
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
 use fragmentcolor::{Renderer, Pass, Shader};
@@ -138,7 +294,57 @@ renderer.render(&pass, &target)?;
 Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
-```
+`}
+lang="rust" meta="collapse={1-1, 15-17}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
 
 ### get_input() -&gt; PassInput
 
@@ -148,13 +354,67 @@ It includes the clear/load behavior and clear color.
 
 #### Example
 
-```rust
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
 use fragmentcolor::Pass;
 
 let pass = Pass::new("example");
 let _input = pass.get_input();
 // Inspect fields via dedicated APIs; internal fields are not public
-```
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
 
 ### add_shader(shader: Shader)
 
@@ -162,25 +422,67 @@ Adds a [Shader](/api/core/shader) object to the [Pass](/api/core/pass).
 
 #### Example
 
-```rust
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
 use fragmentcolor::{Pass, Shader};
 
 let shader = Shader::default();
 let pass = Pass::new("p");
 pass.add_shader(&shader);
-```
+`}
+lang="rust"
+/>
 
-### Python
+</TabItem>
 
-```python
-rpass.add_shader(shader)
-```
-
-### Javascript
-
-```js
+<TabItem label="JavaScript">
+<Code
+code={`
 rpass.add_shader(shader);
-```
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+rpass.add_shader(shader)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
 
 ### set_viewport(viewport: Region)
 
@@ -190,7 +492,11 @@ The viewport restricts drawing to a rectangular area of the [Target](/api/core/t
 
 #### Example
 
-```rust collapse={3-3, 16-18}
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
 use fragmentcolor::{Renderer, Pass, Shader, Region};
 
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
@@ -209,7 +515,57 @@ renderer.render(&pass, &target)?;
 Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
-```
+`}
+lang="rust" meta="collapse={3-3, 16-18}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
 
 ### set_clear_color(color: [f32; 4])
 
@@ -219,7 +575,11 @@ When the pass is configured to clear, the render target is cleared to the given 
 
 #### Example
 
-```rust collapse={3-3, 16-18}
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
 use fragmentcolor::{Renderer, Pass, Shader};
 
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
@@ -238,4 +598,54 @@ renderer.render(&pass, &target)?;
 Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
-```
+`}
+lang="rust" meta="collapse={3-3, 16-18}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>

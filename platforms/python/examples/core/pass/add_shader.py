@@ -1,0 +1,1 @@
+rpass.add_shader(shader)

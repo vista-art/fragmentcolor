@@ -1,0 +1,1 @@
+const renderer = new Renderer();

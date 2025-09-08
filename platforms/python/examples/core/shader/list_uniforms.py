@@ -1,0 +1,1 @@
+uniforms = shader.list_uniforms()

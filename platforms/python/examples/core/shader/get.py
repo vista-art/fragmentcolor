@@ -1,0 +1,1 @@
+radius = shader.get("circle.radius")

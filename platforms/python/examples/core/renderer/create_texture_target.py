@@ -1,0 +1,1 @@
+target = renderer.create_texture_target((64, 64))

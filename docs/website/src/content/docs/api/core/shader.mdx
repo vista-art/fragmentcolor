@@ -5,6 +5,8 @@ category: core
 categoryLabel: Core
 ---
 
+import { Code, Tabs, TabItem, Aside } from "@astrojs/starlight/components";
+
 ## Description
 
 The [Shader](/api/core/shader) object is the main building block in [FragmentColor](https://fragmentcolor.org).
@@ -43,73 +45,26 @@ If the initial source validation passes, the shader is guaranteed to work on the
 
 #### Example
 
-```rust
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Shader;
 
 let _shader = Shader::default();
-```
-
-#### Platform-specific: Web
-
-In WASM, the constructor cannot fetch a URL directly. Use [Shader](/api/core/shader)::[fetch](/api/shader/fetch) instead.
-
-### Python
-
-```python
-shader = Shader("""
-struct VertexOutput {
-    @builtin(position) coords: vec4<f32>,
+Ok(())
 }
+`}
+lang="rust" meta="collapse={1-1, 5-6}"
+/>
 
-@vertex
-fn vs_main(@builtin(vertex_index) in_vertex_index: u32) -> VertexOutput {
-    const vertices = array(
-        vec2( -1., -1.),
-        vec2(  3., -1.),
-        vec2( -1.,  3.)
-    );
-    return VertexOutput(vec4<f32>(vertices[in_vertex_index], 0.0, 1.0));
-}
+</TabItem>
 
-struct Circle {
-    position: vec2<f32>,
-    radius: f32,
-    border: f32,
-    color: vec4<f32>,
-}
-
-@group(0) @binding(0)
-var<uniform> circle: Circle;
-
-@group(0) @binding(1) var<uniform> resolution: vec2<f32>;
-
-    @fragment
-fn main(pixel: VertexOutput) -> @location(0) vec4<f32> {
-    let normalized_coords = pixel.coords.xy / resolution;
-    var uv = -1.0 + 2.0 * normalized_coords;
-    if (resolution.x > resolution.y) {
-        uv.x *= resolution.x / resolution.y;
-    } else {
-        uv.y *= resolution.y / resolution.x;
-    }
-    let circle_pos = circle.position / resolution;
-    let dist = distance(uv, circle_pos);
-    let r = circle.radius / min(resolution.x, resolution.y);
-    let aa = 2. / min(resolution.x, resolution.y);
-    let border = circle.border / min(resolution.x, resolution.y);
-
-    if (dist > r + (border + aa)) { discard; }
-
-    let circle_sdf = 1.0 - smoothstep(border - aa, border + aa, abs(dist - r));
-    let a = circle.color.a * circle_sdf;
-    return vec4<f32>(circle.color.rgb * a, a);
-}
-""")
-```
-
-### Javascript
-
-```js
+<TabItem label="JavaScript">
+<Code
+code={`
 const shader = new Shader(`
 struct VertexOutput {
     @builtin(position) coords: vec4<f32>,
@@ -159,7 +114,95 @@ fn main(pixel: VertexOutput) -> @location(0) vec4<f32> {
     return vec4<f32>(circle.color.rgb * a, a);
 }
 `);
-```
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+shader = Shader("""
+struct VertexOutput {
+    @builtin(position) coords: vec4<f32>,
+}
+
+@vertex
+fn vs_main(@builtin(vertex_index) in_vertex_index: u32) -> VertexOutput {
+    const vertices = array(
+        vec2( -1., -1.),
+        vec2(  3., -1.),
+        vec2( -1.,  3.)
+    );
+    return VertexOutput(vec4<f32>(vertices[in_vertex_index], 0.0, 1.0));
+}
+
+struct Circle {
+    position: vec2<f32>,
+    radius: f32,
+    border: f32,
+    color: vec4<f32>,
+}
+
+@group(0) @binding(0)
+var<uniform> circle: Circle;
+
+@group(0) @binding(1) var<uniform> resolution: vec2<f32>;
+
+    @fragment
+fn main(pixel: VertexOutput) -> @location(0) vec4<f32> {
+    let normalized_coords = pixel.coords.xy / resolution;
+    var uv = -1.0 + 2.0 * normalized_coords;
+    if (resolution.x > resolution.y) {
+        uv.x *= resolution.x / resolution.y;
+    } else {
+        uv.y *= resolution.y / resolution.x;
+    }
+    let circle_pos = circle.position / resolution;
+    let dist = distance(uv, circle_pos);
+    let r = circle.radius / min(resolution.x, resolution.y);
+    let aa = 2. / min(resolution.x, resolution.y);
+    let border = circle.border / min(resolution.x, resolution.y);
+
+    if (dist > r + (border + aa)) { discard; }
+
+    let circle_sdf = 1.0 - smoothstep(border - aa, border + aa, abs(dist - r));
+    let a = circle.color.a * circle_sdf;
+    return vec4<f32>(circle.color.rgb * a, a);
+}
+""")
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
 
 ### set(key: string, value: any)
 
@@ -169,32 +212,74 @@ If the key does not exist or the value format is incorrect, the `set` method thr
 
 #### Example
 
-```rust
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
 use fragmentcolor::Shader;
 
 let shader = Shader::default();
 let _ = shader.set("resolution", [800.0, 600.0]);
-```
+`}
+lang="rust"
+/>
 
-### Python
+</TabItem>
 
-```python
-shader.set("resolution", [64.0, 64.0])
-    shader.set("circle.radius", 10.0)
-    shader.set("circle.color", [1.0, 0.0, 0.0, 0.8])
-    shader.set("circle.border", 2.0)
-    shader.set("circle.position", [0.0, 0.0])
-```
-
-### Javascript
-
-```js
+<TabItem label="JavaScript">
+<Code
+code={`
 shader.set("resolution", [64.0, 64.0]);
 shader.set("circle.radius", 10.0);
 shader.set("circle.color", [1.0, 0.0, 0.0, 0.8]);
 shader.set("circle.border", 2.0);
 shader.set("circle.position", [0.0, 0.0]);
-```
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+shader.set("resolution", [64.0, 64.0])
+    shader.set("circle.radius", 10.0)
+    shader.set("circle.color", [1.0, 0.0, 0.0, 0.8])
+    shader.set("circle.border", 2.0)
+    shader.set("circle.position", [0.0, 0.0])
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
 
 ### get(key: string) -&gt; any
 
@@ -202,25 +287,67 @@ Returns the current value of the uniform identified by the given key.
 
 #### Example
 
-```rust
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
 use fragmentcolor::Shader;
 
 let shader = Shader::default();
 let _ = shader.set("resolution", [800.0, 600.0]);
 let _res: Result<[f32; 2], _> = shader.get("resolution");
-```
+`}
+lang="rust"
+/>
 
-### Python
+</TabItem>
 
-```python
-_radius = shader.get("circle.radius")
-```
-
-### Javascript
-
-```js
+<TabItem label="JavaScript">
+<Code
+code={`
 const _radius = shader.get("circle.radius");
-```
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+radius = shader.get("circle.radius")
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
 
 ### list_uniforms() -&gt; [string]
 
@@ -228,24 +355,66 @@ Returns a list of all uniform names in the [Shader](/api/core/shader) (excluding
 
 #### Example
 
-```rust
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
 use fragmentcolor::Shader;
 
 let shader = Shader::default();
 let _list = shader.list_uniforms();
-```
+`}
+lang="rust"
+/>
 
-### Python
+</TabItem>
 
-```python
-_uniforms = shader.list_uniforms()
-```
-
-### Javascript
-
-```js
+<TabItem label="JavaScript">
+<Code
+code={`
 const _uniforms = shader.listUniforms();
-```
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+uniforms = shader.list_uniforms()
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
 
 ### list_keys() -&gt; [string]
 
@@ -253,21 +422,63 @@ Returns a list of all keys in the [Shader](/api/core/shader), including uniform 
 
 #### Example
 
-```rust
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
 use fragmentcolor::Shader;
 
 let shader = Shader::default();
 let _keys = shader.list_keys();
-```
+`}
+lang="rust"
+/>
 
-### Python
+</TabItem>
 
-```python
-_keys = shader.list_keys()
-```
-
-### Javascript
-
-```js
+<TabItem label="JavaScript">
+<Code
+code={`
 const _keys = shader.listKeys();
-```
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+keys = shader.list_keys()
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>

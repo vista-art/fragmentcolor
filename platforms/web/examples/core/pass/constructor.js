@@ -1,0 +1,1 @@
+const rpass = new Pass("single pass");

@@ -1,0 +1,1 @@
+const frame = new Frame();

@@ -1,0 +1,1 @@
+const _uniforms = shader.listUniforms();
