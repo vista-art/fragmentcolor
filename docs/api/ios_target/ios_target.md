@@ -1,0 +1,20 @@
+# IosTarget
+
+[iOS wrapper around WindowTarget](https://fragmentcolor.org/api/window_target). Implements the [Target](https://fragmentcolor.org/api/target) interface via an internal WindowTarget created from a CAMetalLayer.
+
+- Canonical object: [WindowTarget](https://fragmentcolor.org/api/window_target)
+- Target trait docs: [Target](https://fragmentcolor.org/api/target)
+
+## Example
+
+```swift
+// Swift/UniFFI (illustrative)
+import FragmentColor
+
+func makeTarget(layerPtr: UInt64) async throws {
+    let renderer = Renderer.newIos()
+    let target = try await renderer.createTargetIos(layerPtr)
+    // Render as usual
+}
+```
+

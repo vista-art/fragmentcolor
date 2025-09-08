@@ -20,11 +20,11 @@ it won't add the shader to its internal list and log a warning message in the co
 
 ## Example
 
-```rust
+```rust collapse={2-2, 4-4, 22-24}
+
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+
 use fragmentcolor::{ Shader, Pass, Renderer };
-
-# async fn run() -> Result<(), Box<dyn std::error::Error>> {
-
 let renderer = Renderer::new();
 let target = renderer.create_texture_target([10, 10]).await?;
 let object1 = Shader::default();
@@ -42,9 +42,9 @@ pass2.add_shader(&object2);
 
 renderer.render(&vec![pass, pass2], &target)?;
 
-# Ok(())
-# }
-# fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 ```
 
 ## Methods
@@ -113,11 +113,11 @@ This is useful when layering multiple passes where the next pass should blend wi
 
 #### Example
 
-```rust
+```rust collapse={2-2, 4-4, 15-17}
+
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+
 use fragmentcolor::{Renderer, Pass, Shader};
-
-# async fn run() -> Result<(), Box<dyn std::error::Error>> {
-
 let renderer = Renderer::new();
 let target = renderer.create_texture_target([64, 64]).await?;
 
@@ -128,9 +128,9 @@ pass.load_previous();
 
 renderer.render(&pass, &target)?;
 
-# Ok(())
-# }
-# fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 ```
 
 ### get_input() -&gt; PassInput
@@ -183,11 +183,11 @@ The viewport restricts drawing to a rectangular area of the [Target](https://fra
 
 #### Example
 
-```rust
+```rust collapse={2-2, 4-4, 16-18}
+
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+
 use fragmentcolor::{Renderer, Pass, Shader, Region};
-
-# async fn run() -> Result<(), Box<dyn std::error::Error>> {
-
 let renderer = Renderer::new();
 let target = renderer.create_texture_target([64, 64]).await?;
 
@@ -199,9 +199,9 @@ pass.set_viewport(Region::from_region(0, 0, 32, 32));
 
 renderer.render(&pass, &target)?;
 
-# Ok(())
-# }
-# fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 ```
 
 ### set_clear_color(color: [f32; 4])
@@ -212,11 +212,11 @@ When the pass is configured to clear, the render target is cleared to the given 
 
 #### Example
 
-```rust
+```rust collapse={2-2, 4-4, 16-18}
+
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+
 use fragmentcolor::{Renderer, Pass, Shader};
-
-# async fn run() -> Result<(), Box<dyn std::error::Error>> {
-
 let renderer = Renderer::new();
 let target = renderer.create_texture_target([64, 64]).await?;
 
@@ -228,7 +228,7 @@ pass.set_clear_color([0.1, 0.2, 0.3, 1.0]);
 
 renderer.render(&pass, &target)?;
 
-# Ok(())
-# }
-# fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 ```

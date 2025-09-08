@@ -110,11 +110,11 @@ This is useful for tests, server-side rendering, or running examples in CI.
 
 ##### Rust
 
-```rust path=null start=null
+```rust path=null start=null collapse={2-2, 4-4, 14-16}
+
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+
 use fragmentcolor::{Renderer, Shader, Pass, Frame};
-
-# async fn run() -> Result<(), Box<dyn std::error::Error>> {
-
 let renderer = Renderer::new();
 
 let target = renderer.create_texture_target([64, 64]).await?;
@@ -124,9 +124,9 @@ renderer.render(&shader, &target)?;
 
 let image = target.get_image();
 
-# Ok(())
-# }
-# fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 ```
 
 #### Python
@@ -186,19 +186,19 @@ Renders the given object to the given [Target](https://fragmentcolor.org/api/tar
 
 #### Example
 
-```rust
+```rust collapse={2-2, 4-4, 10-12}
+
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+
 use fragmentcolor::{Renderer, Shader};
-
-# async fn run() -> Result<(), Box<dyn std::error::Error>> {
-
 let renderer = Renderer::new();
 let target = renderer.create_texture_target([10, 10]).await?;
 let shader = Shader::default();
 renderer.render(&shader, &target)?;
 
-# Ok(())
-# }
-# fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 ```
 
 ### Python

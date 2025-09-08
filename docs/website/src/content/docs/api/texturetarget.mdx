@@ -11,20 +11,20 @@ Use it for headless rendering, tests, server-side image generation, or CI.
 
 ## Example
 
-```rust
+```rust collapse={2-2, 4-4, 11-13}
+
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+
 use fragmentcolor::{Renderer, Shader};
-
-# async fn run() -> Result<(), Box<dyn std::error::Error>> {
-
 let renderer = Renderer::new();
 let target = renderer.create_texture_target([64, 64]).await?;
 
 let shader = Shader::default();
 renderer.render(&shader, &target)?;
 
-# Ok(())
-# }
-# fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 ```
 
 ## Methods
@@ -37,19 +37,19 @@ Most users do not need to call this directly; the [Renderer](https://fragmentcol
 
 #### Example
 
-```rust
+```rust collapse={2-2, 4-4, 10-12}
+
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+
 use fragmentcolor::Renderer;
-
-# async fn run() -> Result<(), Box<dyn std::error::Error>> {
-
 let renderer = Renderer::new();
 let target = renderer.create_texture_target([16, 16]).await?;
 let frame = target.get_current_frame()?;
 let _format = frame.format();
 
-# Ok(())
-# }
-# fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 ```
 
 ### get_image()
@@ -58,20 +58,20 @@ Returns the current contents of the target as a byte array in RGBA8 format.
 
 #### Example
 
-```rust
+```rust collapse={2-2, 4-4, 11-13}
+
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+
 use fragmentcolor::Renderer;
-
-# async fn run() -> Result<(), Box<dyn std::error::Error>> {
-
 let renderer = Renderer::new();
 let target = renderer.create_texture_target([16, 16]).await?;
 renderer.render(&fragmentcolor::Shader::default(), &target)?;
 
 let image = target.get_image();
 
-# Ok(())
-# }
-# fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 ```
 
 ### resize(size: [u32; 2] | (u32, u32))
@@ -80,11 +80,11 @@ Resizes the [TextureTarget](https://fragmentcolor.org/api/texture_target) to the
 
 #### Example
 
-```rust
+```rust collapse={2-2, 4-4, 13-15}
+
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+
 use fragmentcolor::Renderer;
-
-# async fn run() -> Result<(), Box<dyn std::error::Error>> {
-
 let renderer = Renderer::new();
 let mut target = renderer.create_texture_target([64, 64]).await?;
 
@@ -93,9 +93,9 @@ assert_eq!(target.size(), [64, 64]);
 target.resize([128, 32]);
 assert_eq!(target.size(), [128, 32]);
 
-# Ok(())
-# }
-# fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 ```
 
 ### size() -&gt; [u32; 2]
@@ -104,16 +104,16 @@ Returns the size of the [TextureTarget](https://fragmentcolor.org/api/texture_ta
 
 #### Example
 
-```rust
+```rust collapse={2-2, 4-4, 9-11}
+
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+
 use fragmentcolor::Renderer;
-
-# async fn run() -> Result<(), Box<dyn std::error::Error>> {
-
 let renderer = Renderer::new();
 let target = renderer.create_texture_target([64, 64]).await?;
 assert_eq!(target.size(), [64, 64]);
 
-# Ok(())
-# }
-# fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 ```
