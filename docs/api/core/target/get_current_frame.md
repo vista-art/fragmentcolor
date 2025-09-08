@@ -2,7 +2,7 @@
 
 Returns a frame wrapper containing the texture view to render and the target format.
 
-Most users do not need to call this directly; the [Renderer](https://fragmentcolor.org/api/renderer) uses it internally.
+Most users do not need to call this directly; the Renderer uses it internally.
 
 ## Example
 
