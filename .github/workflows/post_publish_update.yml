@@ -21,10 +21,22 @@ jobs:
       - name: Determine version from tag
         id: vars
         run: |
-          # GITHUB_REF looks like refs/tags/v0.10.7 or refs/tags/0.10.7
+          # GITHUB_REF looks like refs/tags/v0.10.7
           RAW_REF="${GITHUB_REF##*/}"
           VERSION="${RAW_REF#v}"
+          echo "raw_ref=$RAW_REF" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Validate semver tag (vMAJOR.MINOR.PATCH)
+        env:
+          RAW_REF: ${{ steps.vars.outputs.raw_ref }}
+          VERSION: ${{ steps.vars.outputs.version }}
+        run: |
+          echo "Validating tag: $RAW_REF"
+          if ! echo "$RAW_REF" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "Invalid tag format: $RAW_REF. Expected vMAJOR.MINOR.PATCH (e.g., v0.10.7)." >&2
+            exit 1
+          fi
 
       - name: Wait for npm & PyPI availability
         env:
@@ -56,14 +68,32 @@ jobs:
             jq --arg v "$VERSION" '.dependencies.fragmentcolor = $v' examples/javascript/package.json > "$tmp" && mv "$tmp" examples/javascript/package.json
           fi
 
+      - name: Snapshot API docs for version
+        env:
+          VERSION: ${{ steps.vars.outputs.version }}
+        run: |
+          set -euo pipefail
+          LATEST_DIR="docs/website/src/content/docs/api"
+          DEST_DIR="$LATEST_DIR/v${VERSION}"
+          echo "Snapshotting API docs from $LATEST_DIR to $DEST_DIR"
+          if [ ! -d "$LATEST_DIR" ]; then
+            echo "Latest API dir not found: $LATEST_DIR" >&2; exit 1; fi
+          mkdir -p "$DEST_DIR"
+          # Copy top-level *.mdx except index.mdx
+          find "$LATEST_DIR" -maxdepth 1 -type f -name '*.mdx' ! -name 'index.mdx' -exec cp -f {} "$DEST_DIR"/ \;
+          # Copy and rewrite index links to versioned paths
+          cp -f "$LATEST_DIR/index.mdx" "$DEST_DIR/index.mdx"
+          sed -i 's#(/docs/api/#(/docs/api/v'"$VERSION"'/#g' "$DEST_DIR/index.mdx"
+
       - name: Commit and push to main
         env:
           VERSION: ${{ steps.vars.outputs.version }}
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@users.noreply.github.com"
+          git add docs/website/src/content/docs/api/v"$VERSION" || true
           git add docs/website/package.json examples/javascript/package.json || true
           if git diff --cached --quiet; then
             echo "No changes to commit"; exit 0; fi
-          git commit -m "chore(examples,docs): update fragmentcolor dependency to $VERSION after release"
+          git commit -m "docs(api): snapshot latest to v$VERSION and update dependencies after release"
           git push origin main

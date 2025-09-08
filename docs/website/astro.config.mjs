@@ -4,9 +4,12 @@ import starlightBlog from "starlight-blog";
 
 import starlightPluginShowLatestVersion from "starlight-plugin-show-latest-version";
 
+import vercel from "@astrojs/vercel";
+
 // https://astro.build/config
 export default defineConfig({
   site: "https://fragmentcolor.org",
+
   integrations: [
     starlight({
       title: "Fragment Color",
@@ -98,4 +101,6 @@ export default defineConfig({
       ],
     }),
   ],
+
+  adapter: vercel(),
 });

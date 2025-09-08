@@ -1,4 +1,4 @@
-import { Code, Tabs, TabItem } from "@astrojs/starlight/components";
+import { Code, Tabs, TabItem, Aside } from "@astrojs/starlight/components";
 
 <Tabs>
 
@@ -80,11 +80,12 @@ code={`
 
 `}
 lang="python"
+meta="collapse={13-41}"
 />
 
 </TabItem>
 
-<TabItem label="Javascript">
+<TabItem label="JavaScript">
 
 <Code code="npm install fragmentcolor" lang="bash" />
 
@@ -124,9 +125,9 @@ lang="js"
 
 <TabItem label="Swift">
 
-## Work in Progress
-
-Swift bindings are still a work in progress.
+<Aside type="caution" title="Work in progress">
+Swift bindings are not yet available; implementation is in the works.
+</Aside>
 
 <Code code={`
 import FragmentColor
@@ -191,6 +192,11 @@ struct CanvasRepresentation: NSViewRepresentable {
 </TabItem>
 
 <TabItem label="Kotlin">
+
+<Aside type="caution" title="Work in progress">
+Kotlin/Android bindings are not yet available; implementation is in the works.
+</Aside>
+
 <Code code={`
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectDragGestures

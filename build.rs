@@ -1139,9 +1139,9 @@ mod validation {
             out.trim().to_string()
         }
 
-        fn escape_angle_in_heading_text(s: &str) -> String {
-            // Escape raw angle brackets in headings so MDX doesn't parse them as JSX tags.
-            // We keep inline code spans (`...`) intact, but escape < and > elsewhere.
+        fn escape_mdx_specials_in_heading_text(s: &str) -> String {
+            // Escape MDX-reserved characters in headings so MDX doesn't parse them as JSX/expressions.
+            // Respect inline code spans (`...`), leaving their contents untouched.
             let mut out = String::new();
             let mut in_tick = false;
             for ch in s.chars() {
@@ -1156,6 +1156,8 @@ mod validation {
                     match ch {
                         '<' => out.push_str("&lt;"),
                         '>' => out.push_str("&gt;"),
+                        '{' => out.push_str("&#123;"),
+                        '}' => out.push_str("&#125;"),
                         _ => out.push(ch),
                     }
                 }
@@ -1195,9 +1197,9 @@ mod validation {
                 } else {
                     line.to_string()
                 };
-                // Escape < and > in headings only (outside code blocks) to avoid MDX parsing errors.
+                // Escape MDX-reserved characters in headings (outside code blocks) to avoid parsing errors.
                 if shifted.trim_start().starts_with('#') {
-                    shifted = escape_angle_in_heading_text(&shifted);
+                    shifted = escape_mdx_specials_in_heading_text(&shifted);
                 }
                 out.push_str(&shifted);
                 out.push('\n');
@@ -1221,6 +1223,64 @@ mod validation {
                 }
             }
             None
+        }
+
+        fn find_object_dir(docs_root: &std::path::Path, dir_name: &str) -> Option<std::path::PathBuf> {
+            fn walk(root: &std::path::Path, target: &str) -> Option<std::path::PathBuf> {
+                if !root.is_dir() { return None; }
+                for entry in std::fs::read_dir(root).ok()?.flatten() {
+                    let p = entry.path();
+                    if p.is_dir() {
+                        if p.file_name().and_then(|s| s.to_str()) == Some(target) {
+                            let md = p.join(format!("{}.md", target));
+                            if md.exists() { return Some(p); }
+                        }
+                        if let Some(found) = walk(&p, target) { return Some(found); }
+                    }
+                }
+                None
+            }
+            walk(docs_root, dir_name)
+        }
+
+        fn category_rel_from(docs_root: &std::path::Path, obj_dir: &std::path::Path) -> String {
+            let parent = obj_dir.parent().unwrap_or(docs_root);
+            if let Ok(rel) = parent.strip_prefix(docs_root) {
+                let s = rel.to_string_lossy().replace('\\', "/");
+                s
+            } else {
+                String::new()
+            }
+        }
+
+        fn scan_docs_objects(docs_root: &std::path::Path) -> Vec<(String, std::path::PathBuf, String)> {
+            fn walk(dir: &std::path::Path, root: &std::path::Path, out: &mut Vec<(String, std::path::PathBuf, String)>) {
+                if !dir.is_dir() { return; }
+                for entry in std::fs::read_dir(dir).ok().into_iter().flatten().flatten() {
+                    let p = entry.path();
+                    if p.is_dir() {
+                        if let Some(name) = p.file_name().and_then(|s| s.to_str()) {
+                            let md = p.join(format!("{}.md", name));
+                            if md.exists() {
+                                let object = super::validation::dir_to_object_name(name);
+                                let cat = category_rel_from(root, &p);
+                                out.push((object, p.clone(), cat));
+                                // Do not descend into this object dir further
+                                continue;
+                            }
+                        }
+                        walk(&p, root, out);
+                    }
+                }
+            }
+            let mut out = Vec::new();
+            walk(docs_root, docs_root, &mut out);
+            out
+        }
+
+        fn is_hidden_category(cat_rel: &str) -> bool {
+            cat_rel.split('/')
+                .any(|seg| seg == "hidden")
         }
 
         fn strip_leading_h1(md: &str) -> String {
@@ -1250,8 +1310,212 @@ mod validation {
             out.trim_end().to_string()
         }
 
+        /// Post-process MDX content to transform Rust code fences:
+        /// - Strip leading `#` from hidden lines (doc-test convention)
+        /// - Move top-level `use ...` lines inside the first hidden wrapper block
+        /// - Compute collapse ranges for all contiguous hidden runs and annotate the fence
+        ///
+        /// Only affects ```rust* code fences. All other languages are left unchanged.
+        fn transform_rust_code_fences(mdx: &str) -> String {
+            #[derive(Clone)]
+            struct LineItem {
+                text: String,
+                hidden: bool,
+            }
+
+            fn process_rust_block(header: &str, body: &[String]) -> (String, Vec<String>) {
+                // Build items with hidden flags by stripping leading '#'
+                let mut items: Vec<LineItem> = Vec::with_capacity(body.len());
+                for l in body {
+                    let trimmed = l.trim_start();
+                    let indent_len = l.len() - trimmed.len();
+                    if trimmed.starts_with("# ") {
+                        let new_text = format!("{}{}", &l[..indent_len], &trimmed[2..]);
+                        items.push(LineItem { text: new_text, hidden: true });
+                    } else if trimmed.starts_with('#') {
+                        // Handles lines like "# Ok(())" (no space)
+                        let new_text = format!("{}{}", &l[..indent_len], &trimmed[1..]);
+                        items.push(LineItem { text: new_text, hidden: true });
+                    } else {
+                        items.push(LineItem { text: l.clone(), hidden: false });
+                    }
+                }
+
+                // Move visible `use ...` lines into the first hidden wrapper block and mark them hidden
+                let mut use_idxs: Vec<usize> = items
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, it)| !it.hidden && it.text.trim_start().starts_with("use "))
+                    .map(|(i, _)| i)
+                    .collect();
+
+                // Find the first hidden wrapper open if possible; else the first hidden line
+                let first_hidden_open = items
+                    .iter()
+                    .enumerate()
+                    .find(|(_, it)| it.hidden && it.text.trim_end().ends_with('{') && it.text.contains("fn "))
+                    .map(|(i, _)| i)
+                    .or_else(|| items.iter().position(|it| it.hidden));
+
+                if let Some(open_idx) = first_hidden_open {
+                    // Remove use lines from bottom-most first to keep indices valid
+                    let mut moved: Vec<String> = Vec::new();
+                    use_idxs.sort_unstable();
+                    for idx in use_idxs.into_iter().rev() {
+                        moved.push(items.remove(idx).text);
+                    }
+                    moved.reverse();
+                    // Insert right after the wrapper open, marked as hidden
+                    let mut insert_at = open_idx + 1;
+                    for txt in moved {
+                        items.insert(insert_at, LineItem { text: txt, hidden: true });
+                        insert_at += 1;
+                    }
+                }
+
+                // Compute collapse ranges over final items
+                let mut ranges: Vec<(usize, usize)> = Vec::new();
+                let mut i = 0usize;
+                let mut line_no = 1usize;
+                while i < items.len() {
+                    if items[i].hidden {
+                        let start = line_no;
+                        while i < items.len() && items[i].hidden {
+                            i += 1;
+                            line_no += 1;
+                        }
+                        let end = line_no - 1;
+                        if end >= start {
+                            ranges.push((start, end));
+                        }
+                        continue;
+                    }
+                    i += 1;
+                    line_no += 1;
+                }
+
+                // Prepare new header with collapse={...}
+                let mut new_header = header.to_string();
+                if !ranges.is_empty() {
+                    let mut collapse = String::new();
+                    collapse.push_str("collapse={");
+                    for (idx, (s, e)) in ranges.iter().enumerate() {
+                        if idx > 0 {
+                            collapse.push_str(", ");
+                        }
+                        collapse.push_str(&format!("{}-{}", s, e));
+                    }
+                    collapse.push('}');
+
+                    // Remove any existing collapse={...} chunk in header (best-effort without regex)
+                    if let Some(pos) = new_header.find("collapse={") {
+                        if let Some(end_rel) = new_header[pos..].find('}') {
+                            let end = pos + end_rel + 1;
+                            new_header.replace_range(pos..end, "");
+                        }
+                    }
+                    if !new_header.ends_with(' ') {
+                        new_header.push(' ');
+                    }
+                    new_header.push_str(&collapse);
+                }
+
+                let new_body: Vec<String> = items.into_iter().map(|it| it.text).collect();
+                (new_header, new_body)
+            }
+
+            let mut out = String::new();
+            let mut in_code = false;
+            let mut header = String::new();
+            let mut is_rust = false;
+            let mut block: Vec<String> = Vec::new();
+
+            for line in mdx.lines() {
+                if !in_code {
+                    if line.starts_with("```") {
+                        header = line.to_string();
+                        is_rust = header.starts_with("```rust");
+                        in_code = true;
+                        block.clear();
+                    } else {
+                        out.push_str(line);
+                        out.push('\n');
+                    }
+                } else {
+                    if line.starts_with("```") {
+                        // End of block
+                        if is_rust {
+                            let (new_header, new_body) = process_rust_block(&header, &block);
+                            out.push_str(&new_header);
+                            out.push('\n');
+                            for l in new_body {
+                                out.push_str(&l);
+                                out.push('\n');
+                            }
+                            out.push_str("```");
+                            out.push('\n');
+                        } else {
+                            out.push_str(&header);
+                            out.push('\n');
+                            for l in &block {
+                                out.push_str(l);
+                                out.push('\n');
+                            }
+                            out.push_str("```");
+                            out.push('\n');
+                        }
+                        in_code = false;
+                        header.clear();
+                        is_rust = false;
+                        block.clear();
+                    } else {
+                        block.push(line.to_string());
+                    }
+                }
+            }
+
+            // If the MDX ended while inside a code block, flush it verbatim for safety
+            if in_code {
+                out.push_str(&header);
+                out.push('\n');
+                for l in &block {
+                    out.push_str(l);
+                    out.push('\n');
+                }
+            }
+
+            out
+        }
+
+        fn inject_platform_banner_if_needed(object: &str, mdx: &str) -> String {
+            fn needs_banner(obj: &str) -> bool {
+                obj.starts_with("Android") || obj.starts_with("Ios")
+            }
+            if !needs_banner(object) {
+                return mdx.to_string();
+            }
+            // Insert after front matter end (---\n\n). If not found, prepend at top.
+            let banner_import = "import { Aside } from \"@astrojs/starlight/components\";\n\n";
+            let banner = "<Aside type=\"caution\" title=\"Work in progress\">\nThese platform bindings are not yet available; implementation is in the works. APIs may change.\n</Aside>\n\n";
+            if let Some(idx) = mdx.find("---\n\n") {
+                let (head, tail) = mdx.split_at(idx + 4);
+                let mut out = String::with_capacity(mdx.len() + banner.len() + banner_import.len());
+                out.push_str(head);
+                out.push_str(banner_import);
+                out.push_str(banner);
+                out.push_str(tail);
+                out
+            } else {
+                let mut out = String::new();
+                out.push_str(banner_import);
+                out.push_str(banner);
+                out.push_str(mdx);
+                out
+            }
+        }
+
         pub fn update(api_map: &ApiMap) {
-            use std::collections::HashSet;
+            use std::collections::{HashSet, BTreeMap};
             let root = meta::workspace_root();
             let docs_root = root.join("docs/api");
             let site_root = root.join("docs/website/src/content/docs/api");
@@ -1260,14 +1524,20 @@ mod validation {
             let js = std::fs::read_to_string(root.join("platforms/web/healthcheck/main.js"))
                 .unwrap_or_default();
 
-            // Track which objects were written via reflection
-            let mut written: HashSet<String> = HashSet::new();
+            // Track expected output files for cleanup; store paths relative to site_root (forward slashes)
+            let mut expected: HashSet<String> = HashSet::new();
+            // Group objects by category (relative path under docs/api)
+            let mut groups: BTreeMap<String, Vec<String>> = BTreeMap::new();
+            // Track which objects were processed (to avoid duplicates when scanning extras)
+            let mut processed: HashSet<String> = HashSet::new();
 
-            // Helper to write a page given an object name and an ordered list of method files (without extension)
-            let write_page = |object: &str, method_files: Vec<String>| {
-                let dir = super::validation::object_dir_name(object);
-                let obj_dir = docs_root.join(&dir);
-                let obj_md = std::fs::read_to_string(obj_dir.join(format!("{}.md", dir)))
+            // Helper to write a page given an object, its docs dir, category relative path, and ordered method files
+            let mut write_page = |object: &str, obj_dir: &std::path::Path, cat_rel: &str, method_files: Vec<String>| -> String {
+                let obj_dirname = obj_dir
+                    .file_name()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("");
+                let obj_md = std::fs::read_to_string(obj_dir.join(format!("{}.md", obj_dirname)))
                     .unwrap_or_default();
                 let description = first_paragraph(&obj_md);
                 let body = strip_after_methods(&strip_leading_h1(&obj_md));
@@ -1277,6 +1547,9 @@ mod validation {
                 out.push_str(&format!("title: {}\n", object));
                 let desc = description.replace('\n', " ").replace('"', "\\\"");
                 out.push_str(&format!("description: \"{}\"\n", desc));
+                if !cat_rel.is_empty() {
+                    out.push_str(&format!("category: {}\n", cat_rel));
+                }
                 out.push_str("---\n\n");
 
                 out.push_str("## Description\n\n");
@@ -1314,15 +1587,36 @@ mod validation {
                 // Ensure exactly one trailing newline at EOF
                 let mut out = out.trim_end().to_string();
                 out.push('\n');
-                let site_file = site_root.join(format!("{}.mdx", object.to_lowercase()));
-                std::fs::write(site_file, out).unwrap();
+
+                // Add platform WIP banner for Android/iOS pages
+                out = inject_platform_banner_if_needed(object, &out);
+
+                // Transform Rust code fences: strip hidden '#', move use-lines, add collapse ranges
+                out = transform_rust_code_fences(&out);
+
+                let site_file = if cat_rel.is_empty() {
+                    site_root.join(format!("{}.mdx", object.to_lowercase()))
+                } else {
+                    site_root.join(cat_rel).join(format!("{}.mdx", object.to_lowercase()))
+                };
+                if let Some(parent) = site_file.parent() { std::fs::create_dir_all(parent).unwrap(); }
+                std::fs::write(&site_file, out).unwrap();
+
+                // Return relative path for cleanup
+                let rel = if cat_rel.is_empty() {
+                    format!("{}.mdx", object.to_lowercase())
+                } else {
+                    format!("{}/{}.mdx", cat_rel, object.to_lowercase())
+                };
+                rel
             };
 
             // Iterate objects discovered from AST (base objects only)
             let objects = super::validation::base_public_objects();
             for object in objects.iter() {
-                let dir = super::validation::object_dir_name(object);
-                let obj_dir = docs_root.join(&dir);
+                let dir_name = super::validation::object_dir_name(object);
+                let obj_dir = find_object_dir(&docs_root, &dir_name).unwrap_or(docs_root.join(&dir_name));
+                let cat_rel = if obj_dir.exists() { category_rel_from(&docs_root, &obj_dir) } else { String::new() };
 
                 // Determine method files from reflection, skipping platform variants
                 let mut method_files = Vec::new();
@@ -1339,11 +1633,7 @@ mod validation {
                             if skip {
                                 continue;
                             }
-                            let file = if name == "new" {
-                                "constructor".to_string()
-                            } else {
-                                name.clone()
-                            };
+                            let file = if name == "new" { "constructor".to_string() } else { name.clone() };
                             if obj_dir.join(format!("{}.md", file)).exists() {
                                 method_files.push(file);
                             }
@@ -1352,87 +1642,89 @@ mod validation {
                 }
 
                 // If no methods were discovered, fall back to docs files in the folder
-                if method_files.is_empty()
-                    && let Ok(read_dir) = std::fs::read_dir(&obj_dir)
-                {
-                    let mut files: Vec<String> = read_dir
+                if method_files.is_empty() && obj_dir.exists() && obj_dir.is_dir() {
+                    if let Ok(read_dir) = std::fs::read_dir(&obj_dir) {
+                        let mut files: Vec<String> = read_dir
+                            .filter_map(|e| e.ok())
+                            .filter_map(|e| {
+                                let p = e.path();
+                                if p.extension()?.to_str()? == "md" {
+                                    let stem = p.file_stem()?.to_str()?.to_string();
+                                    if stem != dir_name { Some(stem) } else { None }
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect();
+                        files.sort();
+                        // If reflection found no public methods, avoid showing private constructors
+                        if let Some(pos) = files.iter().position(|s| s == "constructor") {
+                            files.remove(pos);
+                        }
+                        method_files = files;
+                    }
+                }
+
+                if is_hidden_category(&cat_rel) {
+                    processed.insert(object.clone());
+                    continue;
+                }
+                let rel = write_page(object, &obj_dir, &cat_rel, method_files);
+                expected.insert(rel);
+                groups.entry(cat_rel).or_default().push(object.clone());
+                processed.insert(object.clone());
+            }
+
+            // Extras: any docs-only objects in docs/api (recursively) not already processed
+            for (object, obj_dir, cat_rel) in scan_docs_objects(&docs_root) {
+                if processed.contains(&object) {
+                    continue;
+                }
+                let dir_name = obj_dir
+                    .file_name()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("")
+                    .to_string();
+                let mut method_files: Vec<String> = Vec::new();
+                if let Ok(files) = std::fs::read_dir(&obj_dir) {
+                    method_files = files
                         .filter_map(|e| e.ok())
                         .filter_map(|e| {
                             let p = e.path();
                             if p.extension()?.to_str()? == "md" {
                                 let stem = p.file_stem()?.to_str()?.to_string();
-                                if stem != dir { Some(stem) } else { None }
+                                if stem != dir_name { Some(stem) } else { None }
                             } else {
                                 None
                             }
                         })
                         .collect();
-                    files.sort();
-                    // If reflection found no public methods, avoid showing private constructors
-                    if let Some(pos) = files.iter().position(|s| s == "constructor") {
-                        files.remove(pos);
-                    }
-                    method_files = files;
-                }
-
-                write_page(object, method_files);
-                written.insert(object.to_string());
-            }
-
-            // Extras: any docs-only objects in docs/api not in allowed
-            if let Ok(read_dir) = std::fs::read_dir(&docs_root) {
-                for entry in read_dir.flatten() {
-                    if entry.path().is_dir() {
-                        let dir_name = entry.file_name().to_string_lossy().to_string();
-                        let object = super::validation::dir_to_object_name(&dir_name);
-                        if written.contains(&object) {
-                            continue;
-                        }
-                        let obj_dir = docs_root.join(&dir_name);
-                        let mut method_files: Vec<String> = Vec::new();
-                        if let Ok(files) = std::fs::read_dir(&obj_dir) {
-                            method_files = files
-                                .filter_map(|e| e.ok())
-                                .filter_map(|e| {
-                                    let p = e.path();
-                                    if p.extension()?.to_str()? == "md" {
-                                        let stem = p.file_stem()?.to_str()?.to_string();
-                                        if stem != dir_name { Some(stem) } else { None }
-                                    } else {
-                                        None
-                                    }
-                                })
-                                .collect();
-                            method_files.sort();
-                            // If reflection found no public methods, avoid showing private constructors
-                            if let Some(pos) = method_files.iter().position(|s| s == "constructor")
-                            {
-                                method_files.remove(pos);
-                            }
-                        }
-                        write_page(&object, method_files);
-                        written.insert(object);
+                    method_files.sort();
+                    if let Some(pos) = method_files.iter().position(|s| s == "constructor") {
+                        method_files.remove(pos);
                     }
                 }
+                if is_hidden_category(&cat_rel) {
+                    processed.insert(object);
+                    continue;
+                }
+                let rel = write_page(&object, &obj_dir, &cat_rel, method_files);
+                expected.insert(rel);
+                groups.entry(cat_rel).or_default().push(object.clone());
+                processed.insert(object);
             }
 
-            // Generate an index.mdx listing all API objects (objects first, then extras)
-            let mut all_objects: Vec<String> = Vec::new();
-            let objects = super::validation::public_structs_excluding_hidden();
-            for o in objects.iter() {
-                all_objects.push(o.clone());
+            // Generate an index.mdx grouped by category relative path (as in source)
+            // groups: cat_rel -> [objects]
+            for list in groups.values_mut() {
+                list.sort();
             }
-            if let Ok(read_dir) = std::fs::read_dir(&docs_root) {
-                for entry in read_dir.flatten() {
-                    if entry.path().is_dir() {
-                        let dir_name = entry.file_name().to_string_lossy().to_string();
-                        let object = super::validation::dir_to_object_name(&dir_name);
-                        if !all_objects.iter().any(|o| o == &object) {
-                            all_objects.push(object);
-                        }
-                    }
-                }
-            }
+
+            let mut top = groups.remove("").unwrap_or_default();
+            top.sort();
+
+            let mut cats: Vec<String> = groups.keys().cloned().collect();
+            cats.sort();
 
             let mut idx = String::new();
             idx.push_str("---\n");
@@ -1440,37 +1732,56 @@ mod validation {
             idx.push_str("description: \"Auto-generated API index\"\n");
             idx.push_str("---\n\n");
             idx.push_str("# API\n\n");
-            for o in &all_objects {
+
+            // Top-level (no category) first
+            for o in &top {
                 let path = format!("/docs/api/{}.mdx", o.to_lowercase());
                 idx.push_str(&format!("- [{}]({})\n", o, path));
             }
+            if !top.is_empty() {
+                idx.push('\n');
+            }
+
+            // Then each category alphabetically
+            for cat in cats {
+                if let Some(list) = groups.get(&cat) {
+                    idx.push_str(&format!("## {}\n\n", cat));
+                    for o in list {
+                        let path = format!("/docs/api/{}/{}.mdx", cat, o.to_lowercase());
+                        idx.push_str(&format!("- [{}]({})\n", o, path));
+                    }
+                    idx.push('\n');
+                }
+            }
+
             let mut idx = idx.trim_end().to_string();
             idx.push('\n');
             std::fs::write(site_root.join("index.mdx"), idx).unwrap();
 
-            // Cleanup: remove stale top-level MDX files that were not generated in this run.
-            // Keep index.mdx and any subdirectories (e.g., versioned folders like v1.2.3).
-            let mut expected: HashSet<String> = HashSet::new();
-            for o in &written {
-                expected.insert(format!("{}.mdx", o.to_lowercase()));
-            }
+            // Cleanup: remove any stale MDX files not written in this run
             expected.insert("index.mdx".to_string());
-            if let Ok(read_dir) = std::fs::read_dir(&site_root) {
-                for entry in read_dir.flatten() {
-                    let path = entry.path();
-                    if path.is_dir() {
-                        continue;
-                    }
-                    if let (Some(ext), Some(name)) = (
-                        path.extension().and_then(|s| s.to_str()),
-                        path.file_name().and_then(|s| s.to_str()),
-                    ) {
-                        if ext == "mdx" && !expected.contains(name) {
-                            let _ = std::fs::remove_file(&path);
+            fn walk_and_cleanup(root: &std::path::Path, base: &std::path::Path, expected: &std::collections::HashSet<String>) {
+                if let Ok(read_dir) = std::fs::read_dir(root) {
+                    for entry in read_dir.flatten() {
+                        let path = entry.path();
+                        if path.is_dir() {
+                            walk_and_cleanup(&path, base, expected);
+                            continue;
+                        }
+                        if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
+                            if ext == "mdx" {
+                                if let Ok(rel) = path.strip_prefix(base) {
+                                    let key = rel.to_string_lossy().replace('\\', "/");
+                                    if !expected.contains(&key) {
+                                        let _ = std::fs::remove_file(&path);
+                                    }
+                                }
+                            }
                         }
                     }
                 }
             }
+            walk_and_cleanup(&site_root, &site_root, &expected);
         }
     }
 }
