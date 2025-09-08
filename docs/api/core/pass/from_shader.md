@@ -1,8 +1,8 @@
 # from_shader(name: &str, shader: Shader) -> Pass
 
-Creates a new [Pass](https://fragmentcolor.org/api/pass) from a single [Shader](https://fragmentcolor.org/api/shader).
+Creates a new [Pass](https://fragmentcolor.org/api/core/pass) from a single [Shader](https://fragmentcolor.org/api/core/shader).
 
-The created [Pass](https://fragmentcolor.org/api/pass) inherits the render/compute type from the provided [Shader](https://fragmentcolor.org/api/shader).
+The created [Pass](https://fragmentcolor.org/api/core/pass) inherits the render/compute type from the provided [Shader](https://fragmentcolor.org/api/core/shader).
 
 ## Example
 

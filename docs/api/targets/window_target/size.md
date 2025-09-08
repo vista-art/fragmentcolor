@@ -1,6 +1,6 @@
 # size() -> [u32; 2]
 
-Returns the size of the [Target](https://fragmentcolor.org/api/target) in pixels.
+Returns the size of the [Target](https://fragmentcolor.org/api/core/target) in pixels.
 
 ## Example
 

@@ -1,6 +1,6 @@
 # render(renderable: Shader | Pass | Frame, target: Target)
 
-Renders the given object to the given [Target](https://fragmentcolor.org/api/target).
+Renders the given object to the given [Target](https://fragmentcolor.org/api/core/target).
 
 ## Example
 

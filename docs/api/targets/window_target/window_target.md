@@ -1,10 +1,10 @@
 # WindowTarget
 
-[WindowTarget](https://fragmentcolor.org/api/window_target) is an implementation of [Target](https://fragmentcolor.org/api/target) that represents a rendering destination attached to a platform-specific window.
+[WindowTarget](https://fragmentcolor.org/api/targets/windowtarget) is an implementation of [Target](https://fragmentcolor.org/api/core/target) that represents a rendering destination attached to a platform-specific window.
 
-The [Target](https://fragmentcolor.org/api/target) object is a rendering destination for the [Renderer](https://fragmentcolor.org/api/renderer).
+The [Target](https://fragmentcolor.org/api/core/target) object is a rendering destination for the [Renderer](https://fragmentcolor.org/api/core/renderer).
 
-It contains a GPU surface texture attached to a platform-specific window or an offscreen texture for headless rendering (see [TextureTarget](https://fragmentcolor.org/api/texture_target)).
+It contains a GPU surface texture attached to a platform-specific window or an offscreen texture for headless rendering (see [TextureTarget](https://fragmentcolor.org/api/targets/texturetarget)).
 
 ## Example
 

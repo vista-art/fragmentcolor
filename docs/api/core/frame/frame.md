@@ -1,32 +1,23 @@
 # Frame
 
-The [Frame](https://fragmentcolor.org/api/frame) object is a collection of [Pass](https://fragmentcolor.org/api/pass) objects that are rendered to a [Target](https://fragmentcolor.org/api/target) by the [Renderer](https://fragmentcolor.org/api/renderer).
+The [Frame](https://fragmentcolor.org/api/core/frame) object is a collection of [Pass](https://fragmentcolor.org/api/core/pass) objects that are rendered to a [Target](https://fragmentcolor.org/api/core/target) by the [Renderer](https://fragmentcolor.org/api/core/renderer).
 
 It is used to render multiple passes to a single target, such as an opaque pass followed by a transparent pass.
 
-You need to inject the [Frame](https://fragmentcolor.org/api/frame) object into the [Renderer](https://fragmentcolor.org/api/renderer) to render it.
+You need to inject the [Frame](https://fragmentcolor.org/api/core/frame) object into the [Renderer](https://fragmentcolor.org/api/core/renderer) to render it.
 
 ## Example
 
-```rust
-use fragmentcolor::{ Shader, Pass, Frame, Renderer };
-
+```rust talves-nao-araceca
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+
+use fragmentcolor::{ Shader, Pass, Frame, Renderer };
 
 let renderer = Renderer::new();
 let target = renderer.create_texture_target([10, 10]).await?;
-let object1 = Shader::default();
-let object2 = Shader::default();
 
 let mut pass = Pass::new("First Pass");
-pass.add_shader(&object1);
-pass.add_shader(&object2);
-
-renderer.render(&pass, &target)?;
-
 let mut pass2 = Pass::new("Second Pass");
-pass2.add_shader(&object1);
-pass2.add_shader(&object2);
 
 let mut frame = Frame::new();
 frame.add_pass(&pass);
@@ -43,8 +34,8 @@ renderer.render(&frame, &target)?;
 
 - ### constructor()
 
-  Creates a new [Frame](https://fragmentcolor.org/api/frame) object.
+  Creates a new [Frame](https://fragmentcolor.org/api/core/frame) object.
 
-- ### add_pass(pass: [Pass](https://fragmentcolor.org/api/pass))
+- ### add_pass(pass: [Pass](https://fragmentcolor.org/api/core/pass))
 
-  Adds a [Pass](https://fragmentcolor.org/api/pass) object to the [Frame](https://fragmentcolor.org/api/frame).
+  Adds a [Pass](https://fragmentcolor.org/api/core/pass) object to the [Frame](https://fragmentcolor.org/api/core/frame).

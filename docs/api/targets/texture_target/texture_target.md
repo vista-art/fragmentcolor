@@ -1,6 +1,6 @@
 # TextureTarget
 
-The [TextureTarget](https://fragmentcolor.org/api/texture_target) is an offscreen [Target](https://fragmentcolor.org/api/target) backed by a GPU texture.
+The [TextureTarget](https://fragmentcolor.org/api/targets/texturetarget) is an offscreen [Target](https://fragmentcolor.org/api/core/target) backed by a GPU texture.
 
 Use it for headless rendering, tests, server-side image generation, or CI.
 

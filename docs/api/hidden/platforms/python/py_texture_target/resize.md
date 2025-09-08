@@ -1,6 +1,6 @@
 # resize(size: [int, int])
 
-Resizes the [PyTextureTarget](https://fragmentcolor.org/api/py_texture_target) to the given `[width, height]` dimensions.
+Resizes the [PyTextureTarget](https://fragmentcolor.org/api/hidden/platforms/python/pytexturetarget) to the given `[width, height]` dimensions.
 
 ## Example
 

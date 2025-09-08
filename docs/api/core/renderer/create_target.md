@@ -1,6 +1,6 @@
 # create_target(target: Canvas | Window)
 
-Creates a [Target](https://fragmentcolor.org/api/target) attached to a platform-specific canvas or window.
+Creates a [Target](https://fragmentcolor.org/api/core/target) attached to a platform-specific canvas or window.
 
 ## Example
 

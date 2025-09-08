@@ -98,13 +98,13 @@ impl Target for AndroidTextureTarget {
 #[cfg_attr(mobile, uniffi::export)]
 impl crate::Renderer {
     /// Creates a new Renderer (Android wrapper variant)
-#[lsp_doc("docs/api/core/renderer/constructor.md")]
+    #[lsp_doc("docs/api/core/renderer/constructor.md")]
     pub fn new_android() -> Self {
         Self::new()
     }
 
     /// Create a target from Android Surface (JNI env + surface jobject)
-#[lsp_doc("docs/api/core/renderer/create_target.md")]
+    #[lsp_doc("docs/api/core/renderer/create_target.md")]
     pub async fn create_target_android(
         &self,
         env: *mut JNIEnv,
@@ -126,7 +126,7 @@ impl crate::Renderer {
     }
 
     /// Headless texture target (Android wrapper variant)
-#[lsp_doc("docs/api/core/renderer/create_texture_target.md")]
+    #[lsp_doc("docs/api/core/renderer/create_texture_target.md")]
     pub async fn create_texture_target_android(
         &self,
         size: impl Into<crate::Size>,
@@ -136,7 +136,7 @@ impl crate::Renderer {
     }
 
     /// Render wrapper (Android variant)
-#[lsp_doc("docs/api/core/renderer/render.md")]
+    #[lsp_doc("docs/api/core/renderer/render.md")]
     pub fn render_android(
         &self,
         renderable: &impl crate::renderer::Renderable,

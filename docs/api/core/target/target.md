@@ -1,10 +1,10 @@
 # Target
 
-The [Target](https://fragmentcolor.org/api/target) interface (trait in Rust) is a rendering destination for the [Renderer](https://fragmentcolor.org/api/renderer) implemented by both [WindowTarget](https://fragmentcolor.org/api/window_target) and [TextureTarget](https://fragmentcolor.org/api/texture_target).
+The [Target](https://fragmentcolor.org/api/core/target) interface (trait in Rust) is a rendering destination for the [Renderer](https://fragmentcolor.org/api/core/renderer) implemented by both [WindowTarget](https://fragmentcolor.org/api/targets/windowtarget) and [TextureTarget](https://fragmentcolor.org/api/targets/texturetarget).
 
-It contains a GPU surface texture attached to a platform-specific window or an offscreen texture for headless rendering (see [TextureTarget](https://fragmentcolor.org/api/texture_target)).
+It contains a GPU surface texture attached to a platform-specific window or an offscreen texture for headless rendering (see [TextureTarget](https://fragmentcolor.org/api/targets/texturetarget)).
 
-[Target](https://fragmentcolor.org/api/target) constructors are private and can only be created via the [Renderer](https://fragmentcolor.org/api/renderer) using either `Renderer.create_target(window)` for on-screen rendering, or `Renderer.create_texture_target()` for offscreen rendering.
+[Target](https://fragmentcolor.org/api/core/target) constructors are private and can only be created via the [Renderer](https://fragmentcolor.org/api/core/renderer) using either `Renderer.create_target(window)` for on-screen rendering, or `Renderer.create_texture_target()` for offscreen rendering.
 
 ## Examples
 

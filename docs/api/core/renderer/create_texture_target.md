@@ -56,10 +56,15 @@ import init, { Renderer, Shader, Pass, Frame } from "fragmentcolor";
 await init();
 
 const renderer = new Renderer();
+// size is an array [width, height]
 const target = await renderer.createTextureTarget([64, 64]);
 
 const shader = new Shader("circle.wgsl");
 shader.set("resolution", [64.0, 64.0]);
+shader.set("circle.radius", 10.0);
+shader.set("circle.color", [1.0, 0.0, 0.0, 0.8]);
+shader.set("circle.border", 2.0);
+shader.set("circle.position", [0.0, 0.0]);
 
 renderer.render(shader, target);
 

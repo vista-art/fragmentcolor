@@ -1,8 +1,8 @@
 # set_viewport(viewport: Region)
 
-Sets the viewport region for this [Pass](https://fragmentcolor.org/api/pass).
+Sets the viewport region for this [Pass](https://fragmentcolor.org/api/core/pass).
 
-The viewport restricts drawing to a rectangular area of the [Target](https://fragmentcolor.org/api/target).
+The viewport restricts drawing to a rectangular area of the [Target](https://fragmentcolor.org/api/core/target).
 
 ## Example
 

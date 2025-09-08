@@ -1,6 +1,6 @@
 # size() -> [int, int]
 
-Returns the current size of the [PyTextureTarget](https://fragmentcolor.org/api/py_texture_target) as a `[width, height]` pair.
+Returns the current size of the [PyTextureTarget](https://fragmentcolor.org/api/hidden/platforms/python/pytexturetarget) as a `[width, height]` pair.
 
 ## Example
 

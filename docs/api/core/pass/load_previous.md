@@ -1,6 +1,6 @@
 # load_previous()
 
-Configures this [Pass](https://fragmentcolor.org/api/pass) to load the previous contents of the [Target](https://fragmentcolor.org/api/target) instead of clearing it.
+Configures this [Pass](https://fragmentcolor.org/api/core/pass) to load the previous contents of the [Target](https://fragmentcolor.org/api/core/target) instead of clearing it.
 
 This is useful when layering multiple passes where the next pass should blend with the prior results.
 

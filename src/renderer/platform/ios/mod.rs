@@ -41,14 +41,14 @@ impl Target for IosTextureTarget {
 #[cfg_attr(mobile, uniffi::export)]
 impl crate::Renderer {
     /// Creates a new Renderer (iOS wrapper variant)
-#[lsp_doc("docs/api/core/renderer/constructor.md")]
+    #[lsp_doc("docs/api/core/renderer/constructor.md")]
     pub fn new_ios() -> Self {
         Self::new()
     }
 
     /// Create a target from a CAMetalLayer pointer (as u64) on iOS.
     /// The pointer must remain valid for the lifetime of the target.
-#[lsp_doc("docs/api/core/renderer/create_target.md")]
+    #[lsp_doc("docs/api/core/renderer/create_target.md")]
     pub async fn create_target_ios(
         &self,
         metal_layer_ptr: u64,
@@ -82,7 +82,7 @@ impl crate::Renderer {
     }
 
     /// Headless texture target (iOS wrapper variant)
-#[lsp_doc("docs/api/core/renderer/create_texture_target.md")]
+    #[lsp_doc("docs/api/core/renderer/create_texture_target.md")]
     pub async fn create_texture_target_ios(
         &self,
         size: impl Into<crate::Size>,
@@ -92,7 +92,7 @@ impl crate::Renderer {
     }
 
     /// Render wrapper (iOS variant)
-#[lsp_doc("docs/api/core/renderer/render.md")]
+    #[lsp_doc("docs/api/core/renderer/render.md")]
     pub fn render_ios(
         &self,
         renderable: &impl crate::renderer::Renderable,

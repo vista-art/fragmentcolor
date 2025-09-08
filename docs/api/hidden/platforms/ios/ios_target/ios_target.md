@@ -1,9 +1,9 @@
 # IosTarget
 
-[iOS wrapper around WindowTarget](https://fragmentcolor.org/api/window_target). Implements the [Target](https://fragmentcolor.org/api/target) interface via an internal WindowTarget created from a CAMetalLayer.
+[iOS wrapper around WindowTarget](https://fragmentcolor.org/api/targets/windowtarget). Implements the [Target](https://fragmentcolor.org/api/core/target) interface via an internal [WindowTarget](https://fragmentcolor.org/api/targets/windowtarget) created from a CAMetalLayer.
 
-- Canonical object: [WindowTarget](https://fragmentcolor.org/api/window_target)
-- Target trait docs: [Target](https://fragmentcolor.org/api/target)
+- Canonical object: [WindowTarget](https://fragmentcolor.org/api/targets/windowtarget)
+- [Target](https://fragmentcolor.org/api/core/target) trait docs: [Target](https://fragmentcolor.org/api/core/target)
 
 ## Example
 
