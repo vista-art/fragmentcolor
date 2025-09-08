@@ -2201,9 +2201,13 @@ mod validation {
             idx.push_str("---\n\n");
             idx.push_str("# API\n\n");
 
+            // Build site base for index links
+            let base = std::env::var("DOCS_SITE_BASE").unwrap_or_else(|_| "/api".to_string());
+            let base = base.trim_end_matches('/');
+
             // Top-level (no category) first
             for o in &top {
-                let path = format!("/docs/api/{}.mdx", o.to_lowercase());
+                let path = format!("{}/{}", base, o.to_lowercase());
                 idx.push_str(&format!("- [{}]({})\n", o, path));
             }
             if !top.is_empty() {
@@ -2216,7 +2220,7 @@ mod validation {
                     let label = category_title(&cat);
                     idx.push_str(&format!("## {}\n\n", label));
                     for o in list {
-                        let path = format!("/docs/api/{}/{}.mdx", cat, o.to_lowercase());
+                        let path = format!("{}/{}/{}", base, cat, o.to_lowercase());
                         idx.push_str(&format!("- [{}]({})\n", o, path));
                     }
                     idx.push('\n');
