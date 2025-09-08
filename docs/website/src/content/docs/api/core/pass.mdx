@@ -22,26 +22,31 @@ it won't add the shader to its internal list and log a warning message in the co
 
 ## Example
 
-```rust collapse={3-3, 22-24}
-use fragmentcolor::{ Shader, Pass, Renderer };
-
+```rust collapse={1-1, 27-29}
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
+
+use fragmentcolor::{ Shader, Pass, Renderer, Frame };
 
 let renderer = Renderer::new();
 let target = renderer.create_texture_target([10, 10]).await?;
-let object1 = Shader::default();
-let object2 = Shader::default();
+let shader = Shader::default();
 
 let mut pass = Pass::new("First Pass");
-pass.add_shader(&object1);
-pass.add_shader(&object2);
-
-renderer.render(&pass, &target)?;
+pass.add_shader(&shader);
 
 let mut pass2 = Pass::new("Second Pass");
-pass2.add_shader(&object1);
-pass2.add_shader(&object2);
+pass2.add_shader(&shader);
 
+// standalone
+renderer.render(&pass, &target)?;
+
+// using a Frame
+let mut frame = Frame::new();
+frame.add_pass(&pass);
+frame.add_pass(&pass2);
+renderer.render(&frame, &target)?;
+
+// vector of passes (consume them)
 renderer.render(&vec![pass, pass2], &target)?;
 
 Ok(())
@@ -115,10 +120,10 @@ This is useful when layering multiple passes where the next pass should blend wi
 
 #### Example
 
-```rust collapse={3-3, 15-17}
-use fragmentcolor::{Renderer, Pass, Shader};
-
+```rust collapse={1-1, 15-17}
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
+
+use fragmentcolor::{Renderer, Pass, Shader};
 
 let renderer = Renderer::new();
 let target = renderer.create_texture_target([64, 64]).await?;
