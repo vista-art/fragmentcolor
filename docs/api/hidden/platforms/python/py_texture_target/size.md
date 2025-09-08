@@ -4,10 +4,7 @@ Returns the current size of the [PyTextureTarget](https://fragmentcolor.org/api/
 
 ## Example
 
-```python
-from fragmentcolor import Renderer
-
-renderer = Renderer()
-target = renderer.create_texture_target([64, 64])
-assert target.size() == [64, 64]
+```rust
+// Python-only wrapper API.
+// No direct Rust example is applicable here.
 ```

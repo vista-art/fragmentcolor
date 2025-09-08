@@ -6,12 +6,7 @@ The object wraps a platform [WindowTarget](https://fragmentcolor.org/api/targets
 
 ## Example
 
-```python
-from fragmentcolor import Renderer
-from rendercanvas.auto import RenderCanvas
-
-renderer = Renderer()
-canvas = RenderCanvas()
-# Under the hood this calls the hook and constructs RenderCanvasTarget
-target = renderer.create_target(canvas)
+```rust
+// Python-only wrapper around WindowTarget.
+// No direct Rust example is applicable here.
 ```

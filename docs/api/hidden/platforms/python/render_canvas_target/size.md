@@ -4,13 +4,7 @@ Returns the current size in pixels of the backing [WindowTarget](https://fragmen
 
 ## Example
 
-```python
-from fragmentcolor import Renderer
-from rendercanvas.auto import RenderCanvas
-
-renderer = Renderer()
-canvas = RenderCanvas()
-ctx = renderer.create_target(canvas)
-wh = ctx.size
-assert isinstance(wh, list) and len(wh) == 2
+```rust
+// Python-only wrapper API.
+// No direct Rust example is applicable here.
 ```

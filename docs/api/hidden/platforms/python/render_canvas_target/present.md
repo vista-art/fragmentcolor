@@ -6,17 +6,7 @@ Returns a dict containing a presentation method (e.g., "screen") and optional er
 
 ## Example
 
-```python
-from fragmentcolor import Renderer, Shader
-from rendercanvas.auto import RenderCanvas
-
-renderer = Renderer()
-canvas = RenderCanvas()
-ctx = renderer.create_target(canvas)
-
-shader = Shader("// wgsl ...")
-renderer.render(shader, ctx)
-
-result = ctx.present()
-assert isinstance(result, dict)
+```rust
+// Python-only wrapper API.
+// No direct Rust example is applicable here.
 ```

@@ -1871,10 +1871,10 @@ mod validation {
             let root = meta::workspace_root();
             let docs_root = root.join("docs/api");
             let site_root = root.join("docs/website/src/content/docs/api");
-            let py = std::fs::read_to_string(root.join("platforms/python/healthcheck.py"))
-                .unwrap_or_default();
-            let js = std::fs::read_to_string(root.join("platforms/web/healthcheck/main.js"))
-                .unwrap_or_default();
+            let py_hc_path = root.join("platforms/python/healthcheck.py");
+            let js_hc_path = root.join("platforms/web/healthcheck/main.js");
+            let py = std::fs::read_to_string(&py_hc_path).unwrap_or_default();
+            let js = std::fs::read_to_string(&js_hc_path).unwrap_or_default();
 
             // Track expected output files for cleanup; store paths relative to site_root (forward slashes)
             let mut expected: HashSet<String> = HashSet::new();
@@ -1893,8 +1893,68 @@ mod validation {
                 }
             }
 
+            // Accumulators for generated example lists
+            let mut js_example_rel_paths: Vec<String> = Vec::new();
+            let mut py_example_rel_paths: Vec<String> = Vec::new();
+
+            // Utilities to write examples to platform folders and capture aggregator paths
+            fn write_text(path: &std::path::Path, content: &str) {
+                if let Some(parent) = path.parent() { let _ = std::fs::create_dir_all(parent); }
+                let _ = std::fs::write(path, content);
+            }
+            fn ensure_py_pkg_dirs(dir: &std::path::Path) {
+                // Create __init__.py up the examples tree for import friendliness
+                let mut cur = dir.to_path_buf();
+                let root_marker = "platforms/python";
+                while let Some(p) = cur.parent() {
+                    if let Some(s) = p.to_str() { if !s.contains(root_marker) { break; } }
+                    let init = cur.join("__init__.py");
+                    if !init.exists() { let _ = std::fs::write(&init, ""); }
+                    cur = p.to_path_buf();
+                }
+            }
+            fn sanitize_for_template(s: &str) -> String {
+                let mut out = String::with_capacity(s.len());
+                for ch in s.chars() {
+                    match ch {
+                        '`' => out.push_str("\\`"),
+                        _ => out.push(ch),
+                    }
+                }
+                out
+            }
+            fn process_rust_example_body(body: &str) -> (String /*processed*/, String /*meta or empty*/) {
+                #[derive(Clone)]
+                struct Item { text: String, hidden: bool }
+                let mut items: Vec<Item> = Vec::new();
+                for line in body.lines() {
+                    let trimmed = line.trim_start();
+                    let indent_len = line.len() - trimmed.len();
+                    if trimmed.starts_with('#') {
+                        // assume '# ' prefix; strip two chars safely when present
+                        let stripped = if trimmed.len() >= 2 { &trimmed[2..] } else { "" };
+                        let new_text = format!("{}{}", &line[..indent_len], stripped);
+                        items.push(Item { text: new_text, hidden: true });
+                    } else {
+                        items.push(Item { text: line.to_string(), hidden: false });
+                    }
+                }
+                // compute collapse ranges (1-based line numbers)
+                let mut ranges: Vec<(usize, usize)> = Vec::new();
+                let mut i = 0usize; let mut ln = 1usize;
+                while i < items.len() {
+                    if items[i].hidden { let start = ln; while i < items.len() && items[i].hidden { i+=1; ln+=1; } let end = ln-1; if end>=start { ranges.push((start,end)); } } else { i+=1; ln+=1; }
+                }
+                let meta = if ranges.is_empty() { String::new() } else {
+                    let parts: Vec<String> = ranges.into_iter().map(|(s,e)| format!("{}-{}", s,e)).collect();
+                    format!("collapse={{ {} }}", parts.join(", "))
+                };
+                let processed = items.into_iter().map(|it| it.text).collect::<Vec<_>>().join("\n");
+                (processed, meta)
+            }
+
             // Helper to write a page given an object, its docs dir, category relative path, and ordered method files
-            let write_page = |object: &str,
+            let mut write_page = |object: &str,
                               obj_dir: &std::path::Path,
                               cat_rel: &str,
                               method_files: Vec<String>|
@@ -1916,6 +1976,9 @@ mod validation {
                 }
                 out.push_str("---\n\n");
 
+                // Imports for Code/Tabs component usage
+                out.push_str("import { Code, Tabs, TabItem, Aside } from \"@astrojs/starlight/components\";\n\n");
+
                 out.push_str("## Description\n\n");
                 out.push_str(&body);
                 out.push('\n');
@@ -1924,28 +1987,114 @@ mod validation {
                 for file in method_files {
                     let md = std::fs::read_to_string(obj_dir.join(format!("{}.md", file)))
                         .unwrap_or_default();
-                    out.push_str(&downshift_headings(&md));
-                    out.push('\n');
 
-                    // Examples: add Python and JS blocks if present
-                    let key = if file == "constructor" {
-                        format!("{}.constructor", object)
-                    } else {
-                        format!("{}.{}", object, file)
-                    };
+                    // Split method md before/after Example
+                    let mut pre = String::new();
+                    let mut rust_body = String::new();
+                    let mut in_code = false; let mut after_example = false; let mut taking_body = false;
+                    for line in md.lines() {
+                        let t = line.trim_start();
+                        if !after_example && t.starts_with("## Example") { after_example = true; continue; }
+                        if after_example {
+                            if !in_code && t.starts_with("```") { in_code = true; taking_body = true; continue; }
+                            else if in_code && t.starts_with("```") { in_code = false; taking_body = false; continue; }
+                            if taking_body { rust_body.push_str(line); rust_body.push('\n'); }
+                        } else {
+                            pre.push_str(line); pre.push('\n');
+                        }
+                    }
+                    let pre = downshift_headings(pre.trim_end());
+
+                    // Compute collapse metadata and processed rust code
+                    let (processed_rust, meta) = process_rust_example_body(&rust_body);
+                    let meta_attr = if meta.is_empty() { String::new() } else { format!(" meta=\"{}\"", meta) };
+                    let rust_code_prop = sanitize_for_template(&processed_rust);
+
+                    // Derive key and example file paths
+                    let key = if file == "constructor" { format!("{}.constructor", object) } else { format!("{}.{}", object, file) };
+
+                    let dir_slug = obj_dir.file_name().and_then(|s| s.to_str()).unwrap_or("");
+
+                    // Write platform example files based on healthcheck markers
                     if let Some(py_ex) = collect_health_example("py", &key, &py) {
-                        out.push_str("\n### Python\n\n```python\n");
-                        out.push_str(&py_ex);
-                        out.push_str("\n```\n");
+                        let py_rel = if cat_rel.is_empty() {
+                            format!("{}/{}.py", dir_slug, file)
+                        } else {
+                            format!("{}/{}/{}.py", cat_rel, dir_slug, file)
+                        };
+                        let py_abs = root.join("platforms/python/examples").join(&py_rel);
+                        ensure_py_pkg_dirs(&py_abs.parent().unwrap_or(&root));
+                        write_text(&py_abs, &py_ex);
+                        py_example_rel_paths.push(py_rel.replace('\\', "/"));
                     }
                     if let Some(js_ex) = collect_health_example("js", &key, &js) {
-                        out.push_str("\n### Javascript\n\n```js\n");
-                        out.push_str(&js_ex);
-                        out.push_str("\n```\n");
+                        let js_rel = if cat_rel.is_empty() {
+                            format!("{}/{}.js", dir_slug, file)
+                        } else {
+                            format!("{}/{}/{}.js", cat_rel, dir_slug, file)
+                        };
+                        let js_abs = root.join("platforms/web/examples").join(&js_rel);
+                        write_text(&js_abs, &js_ex);
+                        js_example_rel_paths.push(js_rel.replace('\\', "/"));
                     }
+                    // Always create Swift/Kotlin placeholders to mirror structure
+                    let sk_rel = if cat_rel.is_empty() { format!("{}/{}.txt", dir_slug, file) } else { format!("{}/{}/{}.txt", cat_rel, dir_slug, file) };
+                    let swift_abs = root.join("platforms/swift/examples").join(&sk_rel);
+                    let kotlin_abs = root.join("platforms/kotlin/examples").join(&sk_rel);
+                    if !swift_abs.exists() { write_text(&swift_abs, "// Swift placeholder — bindings WIP\n"); }
+                    if !kotlin_abs.exists() { write_text(&kotlin_abs, "// Kotlin placeholder — bindings WIP\n"); }
 
-                    // Ensure a blank line after each method section for spacing
+                    // Read back platform example files (if any) for website tabs
+                    let js_code_prop = {
+                        let rel = if cat_rel.is_empty() { format!("{}/{}.js", dir_slug, file) } else { format!("{}/{}/{}.js", cat_rel, dir_slug, file) };
+                        let path = root.join("platforms/web/examples").join(&rel);
+                        std::fs::read_to_string(&path).unwrap_or_default()
+                    };
+                    let py_code_prop = {
+                        let rel = if cat_rel.is_empty() { format!("{}/{}.py", dir_slug, file) } else { format!("{}/{}/{}.py", cat_rel, dir_slug, file) };
+                        let path = root.join("platforms/python/examples").join(&rel);
+                        std::fs::read_to_string(&path).unwrap_or_default()
+                    };
+                    let swift_code_prop = {
+                        let rel = if cat_rel.is_empty() { format!("{}/{}.txt", dir_slug, file) } else { format!("{}/{}/{}.txt", cat_rel, dir_slug, file) };
+                        let path = root.join("platforms/swift/examples").join(&rel);
+                        std::fs::read_to_string(&path).unwrap_or_else(|_| "// Swift placeholder — bindings WIP\n".to_string())
+                    };
+                    let kotlin_code_prop = {
+                        let rel = if cat_rel.is_empty() { format!("{}/{}.txt", dir_slug, file) } else { format!("{}/{}/{}.txt", cat_rel, dir_slug, file) };
+                        let path = root.join("platforms/kotlin/examples").join(&rel);
+                        std::fs::read_to_string(&path).unwrap_or_else(|_| "// Kotlin placeholder — bindings WIP\n".to_string())
+                    };
+
+                    // Assemble tabs
+                    out.push_str(&pre);
                     out.push('\n');
+                    out.push_str("\n#### Example\n\n");
+                    out.push_str("<Tabs>\n");
+
+                    out.push_str("<TabItem label=\"Rust\">\n");
+                    out.push_str(&format!("<Code code=\"`{}`\" lang=\"rust\"{} />\n", sanitize_for_template(&rust_code_prop), if meta_attr.is_empty() { String::new() } else { format!(" meta=\"{}\"", meta) }));
+                    out.push_str("\n</TabItem>\n\n");
+
+                    out.push_str("<TabItem label=\"JavaScript\">\n");
+                    out.push_str(&format!("<Code code=\"`{}`\" lang=\"js\" />\n", sanitize_for_template(&js_code_prop)));
+                    out.push_str("\n</TabItem>\n\n");
+
+                    out.push_str("<TabItem label=\"Python\">\n");
+                    out.push_str(&format!("<Code code=\"`{}`\" lang=\"python\" />\n", sanitize_for_template(&py_code_prop)));
+                    out.push_str("\n</TabItem>\n\n");
+
+                    out.push_str("<TabItem label=\"Swift\">\n");
+                    out.push_str("<Aside type=\"caution\" title=\"Work in progress\">Swift bindings are not yet available; implementation is in the works.</Aside>\n");
+                    out.push_str(&format!("<Code code=\"`{}`\" lang=\"text\" />\n", sanitize_for_template(&swift_code_prop)));
+                    out.push_str("\n</TabItem>\n\n");
+
+                    out.push_str("<TabItem label=\"Kotlin\">\n");
+                    out.push_str("<Aside type=\"caution\" title=\"Work in progress\">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>\n");
+                    out.push_str(&format!("<Code code=\"`{}`\" lang=\"text\" />\n", sanitize_for_template(&kotlin_code_prop)));
+                    out.push_str("\n</TabItem>\n\n");
+
+                    out.push_str("</Tabs>\n\n");
                 }
 
                 // Ensure exactly one trailing newline at EOF
@@ -1994,165 +2143,80 @@ mod validation {
                         if let Some(m) = matched {
                             out.push_str("](");
                             i += m.len();
-                            out.push_str(&base);
-                            out.push('/');
-                            while i < bytes.len() && bytes[i] != b')' {
-                                out.push(bytes[i] as char);
-                                i += 1;
-                            }
-                        } else if i + 2 <= bytes.len() && bytes[i] == b']' && bytes[i + 1] == b'(' {
-                            out.push(']');
-                            out.push('(');
-                            i += 2;
+                            // Capture until ')'
                             let start = i;
                             while i < bytes.len() && bytes[i] != b')' {
                                 i += 1;
                             }
-                            let href = &mdx[start..i];
-                            let href_trim = href.trim();
-                            let lower = href_trim.to_ascii_lowercase();
-                            let is_abs = lower.starts_with("http://")
-                                || lower.starts_with("https://")
-                                || href_trim.starts_with('/')
-                                || href_trim.starts_with('#')
-                                || lower.starts_with("mailto:")
-                                || lower.starts_with("tel:")
-                                || lower.starts_with("data:");
-                            if is_abs {
-                                out.push_str(href_trim);
-                            } else {
-                                let top = href_trim.split('/').next().unwrap_or("");
-                                if top_categories.contains(top) {
-                                    out.push_str(&base);
-                                    if !href_trim.starts_with('/') {
-                                        out.push('/');
-                                    }
-                                    out.push_str(href_trim);
+                            let tail = &mdx[start..i];
+                            // Normalize using only the object segment
+                            let mut parts: Vec<&str> = tail.split('/').filter(|s| !s.is_empty()).collect();
+                            if let Some(last) = parts.pop() {
+                                let key = last.to_string();
+                                let best = top_categories.get(&key).cloned();
+                                if let Some(_cat) = best {
+                                    out.push_str(&format!("{}/{}", base, key));
                                 } else {
-                                    out.push_str(href_trim);
+                                    out.push_str(&format!("{}/{}", base, tail));
                                 }
+                            } else {
+                                out.push_str(&format!("{}/{}", base, tail));
                             }
                         } else {
                             out.push(bytes[i] as char);
                             i += 1;
                         }
                     }
-                    out
+
+                    if out.is_empty() { mdx.to_string() } else { out }
                 }
 
-                out = rewrite_links_to_site_root(&out, &top_categories);
-
-                // Add platform WIP banner for Android/iOS pages
-                out = inject_platform_banner_if_needed(object, &out);
-
-                // Transform Rust code fences: strip hidden '#', move use-lines, add collapse ranges
-                out = transform_rust_code_fences(&out);
-
-                let site_file = if cat_rel.is_empty() {
-                    site_root.join(format!("{}.mdx", object.to_lowercase()))
-                } else {
-                    site_root
-                        .join(cat_rel)
-                        .join(format!("{}.mdx", object.to_lowercase()))
-                };
-                if let Some(parent) = site_file.parent() {
-                    std::fs::create_dir_all(parent).unwrap();
-                }
-                std::fs::write(&site_file, out).unwrap();
-
-                // Return relative path for cleanup
-                if cat_rel.is_empty() {
+                let out = rewrite_links_to_site_root(&out, &top_categories);
+                let rel_path = if cat_rel.is_empty() {
                     format!("{}.mdx", object.to_lowercase())
                 } else {
                     format!("{}/{}.mdx", cat_rel, object.to_lowercase())
-                }
+                };
+                let abs = site_root.join(&rel_path);
+                if let Some(parent) = abs.parent() { let _ = std::fs::create_dir_all(parent); }
+                std::fs::write(&abs, out).unwrap();
+                rel_path
             };
 
-            // Iterate objects discovered from AST (base objects only)
-            let objects = super::validation::base_public_objects();
-            for object in objects.iter() {
-                let dir_name = super::validation::object_dir_name(object);
-                let obj_dir =
-                    find_object_dir(&docs_root, &dir_name).unwrap_or(docs_root.join(&dir_name));
-                let cat_rel = if obj_dir.exists() {
-                    category_rel_from(&docs_root, &obj_dir)
-                } else {
-                    String::new()
-                };
+            // Discover and write pages for all code-derived objects (excluding hidden)
+            for object in base_public_objects() {
+                let dir = object_dir_name(&object);
+                let obj_dir = find_object_dir(&docs_root, &dir).unwrap_or(docs_root.join(&dir));
+                let cat_rel = category_rel_from(&docs_root, &obj_dir);
 
-                // Determine method files from reflection, skipping platform variants
-                let mut method_files = Vec::new();
-                if let Some(methods) = api_map.get(object) {
-                    for m in methods {
-                        if let Some(fun) = &m.function {
-                            let name = &fun.name;
-                            let skip = name.ends_with("_js")
-                                || name.ends_with("_py")
-                                || name.ends_with("_ios")
-                                || name.ends_with("_android")
-                                || name == "headless"
-                                || name == "render_bitmap";
-                            if skip {
-                                continue;
-                            }
-                            let file = if name == "new" {
-                                "constructor".to_string()
-                            } else {
-                                name.clone()
-                            };
-                            if obj_dir.join(format!("{}.md", file)).exists() {
-                                method_files.push(file);
-                            }
-                        }
-                    }
-                }
+                // List method files in alpha order, constructor first
+                let mut method_files: Vec<String> = std::fs::read_dir(&obj_dir)
+                    .ok()
+                    .into_iter()
+                    .flatten()
+                    .flatten()
+                    .filter_map(|e| {
+                        let p = e.path();
+                        if p.extension()?.to_str()? == "md" {
+                            let stem = p.file_stem()?.to_str()?.to_string();
+                            if stem != dir { Some(stem) } else { None }
+                        } else { None }
+                    })
+                    .collect();
+                method_files.sort();
+                if let Some(pos) = method_files.iter().position(|s| s == "constructor") { method_files.remove(pos); method_files.insert(0, "constructor".to_string()); }
 
-                // If no methods were discovered, fall back to docs files in the folder
-                if method_files.is_empty()
-                    && obj_dir.exists()
-                    && obj_dir.is_dir()
-                    && let Ok(read_dir) = std::fs::read_dir(&obj_dir)
-                {
-                    let mut files: Vec<String> = read_dir
-                        .filter_map(|e| e.ok())
-                        .filter_map(|e| {
-                            let p = e.path();
-                            if p.extension()?.to_str()? == "md" {
-                                let stem = p.file_stem()?.to_str()?.to_string();
-                                if stem != dir_name { Some(stem) } else { None }
-                            } else {
-                                None
-                            }
-                        })
-                        .collect();
-                    files.sort();
-                    // If reflection found no public methods, avoid showing private constructors
-                    if let Some(pos) = files.iter().position(|s| s == "constructor") {
-                        files.remove(pos);
-                    }
-                    method_files = files;
-                }
-
-                if is_hidden_category(&cat_rel) {
-                    processed.insert(object.clone());
-                    continue;
-                }
-                let rel = write_page(object, &obj_dir, &cat_rel, method_files);
+                if is_hidden_category(&cat_rel) { continue; }
+                let rel = write_page(&object, &obj_dir, &cat_rel, method_files);
                 expected.insert(rel);
                 groups.entry(cat_rel).or_default().push(object.clone());
                 processed.insert(object.clone());
             }
 
             // Extras: any docs-only objects in docs/api (recursively) not already processed
-            for (object, obj_dir, cat_rel) in scan_docs_objects(&docs_root) {
-                if processed.contains(&object) {
-                    continue;
-                }
-                let dir_name = obj_dir
-                    .file_name()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("")
-                    .to_string();
+            for (object, obj_dir) in scan_docs_objects(&docs_root) {
+                if processed.contains(&object) { continue; }
+                let dir_name = obj_dir.file_name().and_then(|s| s.to_str()).unwrap_or("").to_string();
                 let mut method_files: Vec<String> = Vec::new();
                 if let Ok(files) = std::fs::read_dir(&obj_dir) {
                     method_files = files
@@ -2162,20 +2226,14 @@ mod validation {
                             if p.extension()?.to_str()? == "md" {
                                 let stem = p.file_stem()?.to_str()?.to_string();
                                 if stem != dir_name { Some(stem) } else { None }
-                            } else {
-                                None
-                            }
+                            } else { None }
                         })
                         .collect();
                     method_files.sort();
-                    if let Some(pos) = method_files.iter().position(|s| s == "constructor") {
-                        method_files.remove(pos);
-                    }
+                    if let Some(pos) = method_files.iter().position(|s| s == "constructor") { method_files.remove(pos); method_files.insert(0, "constructor".to_string()); }
                 }
-                if is_hidden_category(&cat_rel) {
-                    processed.insert(object);
-                    continue;
-                }
+                let cat_rel = category_rel_from(&docs_root, &obj_dir);
+                if is_hidden_category(&cat_rel) { continue; }
                 let rel = write_page(&object, &obj_dir, &cat_rel, method_files);
                 expected.insert(rel);
                 groups.entry(cat_rel).or_default().push(object.clone());
@@ -2183,16 +2241,9 @@ mod validation {
             }
 
             // Generate an index.mdx grouped by category relative path (as in source)
-            // groups: cat_rel -> [objects]
-            for list in groups.values_mut() {
-                list.sort();
-            }
-
-            let mut top = groups.remove("").unwrap_or_default();
-            top.sort();
-
-            let mut cats: Vec<String> = groups.keys().cloned().collect();
-            cats.sort();
+            for list in groups.values_mut() { list.sort(); }
+            let mut top = groups.remove("").unwrap_or_default(); top.sort();
+            let mut cats: Vec<String> = groups.keys().cloned().collect(); cats.sort();
 
             let mut idx = String::new();
             idx.push_str("---\n");
@@ -2200,15 +2251,89 @@ mod validation {
             idx.push_str("description: \"Auto-generated API index\"\n");
             idx.push_str("---\n\n");
             idx.push_str("# API\n\n");
-
-            // Build site base for index links
             let base = std::env::var("DOCS_SITE_BASE").unwrap_or_else(|_| "/api".to_string());
             let base = base.trim_end_matches('/');
+            for o in &top { let path = format!("{}/{}", base, o.to_lowercase()); idx.push_str(&format!("- [{}]({})\n", o, path)); }
+            if !top.is_empty() { idx.push('\n'); }
+            for cat in cats {
+                if let Some(list) = groups.get(&cat) {
+                    let label = category_title(&cat);
+                    idx.push_str(&format!("## {}\n\n", label));
+                    for o in list { let path = format!("{}/{}/{}", base, cat, o.to_lowercase()); idx.push_str(&format!("- [{}]({})\n", o, path)); }
+                    idx.push('\n');
+                }
+            }
+            let mut idx = idx.trim_end().to_string(); idx.push('\n');
+            std::fs::write(site_root.join("index.mdx"), idx).unwrap();
+            expected.insert("index.mdx".to_string());
 
-            // Top-level (no category) first
-            for o in &top {
-                let path = format!("{}/{}", base, o.to_lowercase());
-                idx.push_str(&format!("- [{}]({})\n", o, path));
+            // Cleanup: remove any stale MDX files not written in this run
+            fn walk_and_cleanup(root: &std::path::Path, base: &std::path::Path, expected: &std::collections::HashSet<String>) {
+                if let Ok(read_dir) = std::fs::read_dir(root) {
+                    for entry in read_dir.flatten() {
+                        let path = entry.path();
+                        if path.is_dir() { walk_and_cleanup(&path, base, expected); continue; }
+                        if let Some(ext) = path.extension().and_then(|s| s.to_str()) && ext == "mdx" && let Ok(rel) = path.strip_prefix(base) {
+                            let key = rel.to_string_lossy().replace('\\', "/");
+                            if !expected.contains(&key) { let _ = std::fs::remove_file(&path); }
+                        }
+                    }
+                }
+            }
+            walk_and_cleanup(&site_root, &site_root, &expected);
+
+            // Emit aggregators for healthchecks
+            // JS: static import list file
+            if !js_example_rel_paths.is_empty() {
+                let mut js_runner = String::new();
+                js_runner.push_str("// Auto-generated: imports all JS examples.\n");
+                for rel in &js_example_rel_paths {
+                    js_runner.push_str(&format!("import '../examples/{}';\n", rel));
+                }
+                let js_runner_path = root.join("platforms/web/healthcheck/generated_examples.mjs");
+                if let Some(p) = js_runner_path.parent() { let _ = std::fs::create_dir_all(p); }
+                let _ = std::fs::write(js_runner_path, js_runner);
+            }
+            // Inject import into existing healthcheck main.js if not present
+            let hc_main_path = root.join("platforms/web/healthcheck/main.js");
+            if let Ok(mut cur) = std::fs::read_to_string(&hc_main_path) {
+                if !cur.contains("generated_examples.mjs") {
+                    cur.push_str("\n// Auto-generated: run all extracted examples\nimport './generated_examples.mjs';\n");
+                    let _ = std::fs::write(&hc_main_path, cur);
+                }
+            }
+
+            // Python: create a runner that executes each example file via runpy
+            if !py_example_rel_paths.is_empty() {
+                let mut py_runner = String::new();
+                py_runner.push_str("# Auto-generated: executes all Python examples.\n");
+                py_runner.push_str("import runpy, pathlib\n\n");
+                py_runner.push_str("def run_all():\n");
+                py_runner.push_str("    base = pathlib.Path(__file__).parent\n");
+                py_runner.push_str("    files = [\n");
+                for rel in &py_example_rel_paths {
+                    py_runner.push_str(&format!("        '{}',\n", rel));
+                }
+                py_runner.push_str("    ]\n");
+                py_runner.push_str("    for rel in files:\n");
+                py_runner.push_str("        runpy.run_path(str(base / rel), run_name='__main__')\n");
+                let py_runner_path = root.join("platforms/python/examples/main.py");
+                if let Some(p) = py_runner_path.parent() { let _ = std::fs::create_dir_all(p); }
+                // Ensure package files for examples tree
+                ensure_py_pkg_dirs(py_runner_path.parent().unwrap_or(&py_runner_path));
+                let _ = std::fs::write(&py_runner_path, py_runner);
+
+                // Inject a call to run_all() at the end of healthcheck.py if not present
+                if let Ok(mut cur) = std::fs::read_to_string(&py_hc_path) {
+                    if !cur.contains("examples.main import run_all") {
+                        cur.push_str("\n    # Auto-generated: run all extracted examples\n    try:\n        from platforms.python.examples.main import run_all as __run_all_examples\n        __run_all_examples()\n    except Exception as _e:\n        print(f'Warning: failed to run generated examples: {_e}')\n");
+                        let _ = std::fs::write(&py_hc_path, cur);
+                    }
+                }
+            }
+        }
+    }
+    
             }
             if !top.is_empty() {
                 idx.push('\n');
