@@ -1,6 +1,6 @@
 # set_clear_color(color: [f32; 4])
 
-Sets the clear color for this [Pass](https://fragmentcolor.org/api/pass).
+Sets the clear color for this [Pass](https://fragmentcolor.org/api/core/pass).
 
 When the pass is configured to clear, the render target is cleared to the given RGBA color before drawing.
 

@@ -1,0 +1,121 @@
+---
+title: TextureTarget
+description: "The [TextureTarget](/api/targets/texturetarget) is an offscreen [Target](/api/core/target) backed by a GPU texture."
+category: targets
+categoryLabel: Targets
+---
+
+## Description
+
+The [TextureTarget](/api/targets/texturetarget) is an offscreen [Target](/api/core/target) backed by a GPU texture.
+
+Use it for headless rendering, tests, server-side image generation, or CI.
+
+## Example
+
+```rust collapse={1-1, 3-3, 10-12}
+
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+
+use fragmentcolor::{Renderer, Shader};
+let renderer = Renderer::new();
+let target = renderer.create_texture_target([64, 64]).await?;
+
+let shader = Shader::default();
+renderer.render(&shader, &target)?;
+
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+```
+
+## Methods
+
+### get_current_frame() -&gt; TargetFrame
+
+Returns a frame wrapper for the offscreen texture.
+
+Most users do not need to call this directly; the [Renderer](/api/core/renderer) uses it internally.
+
+#### Example
+
+```rust collapse={1-1, 3-3, 9-11}
+
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+
+use fragmentcolor::Renderer;
+let renderer = Renderer::new();
+let target = renderer.create_texture_target([16, 16]).await?;
+let frame = target.get_current_frame()?;
+let _format = frame.format();
+
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+```
+
+### get_image()
+
+Returns the current contents of the target as a byte array in RGBA8 format.
+
+#### Example
+
+```rust collapse={1-1, 3-3, 10-12}
+
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+
+use fragmentcolor::Renderer;
+let renderer = Renderer::new();
+let target = renderer.create_texture_target([16, 16]).await?;
+renderer.render(&fragmentcolor::Shader::default(), &target)?;
+
+let image = target.get_image();
+
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+```
+
+### resize(size: [u32; 2] | (u32, u32))
+
+Resizes the [TextureTarget](/api/targets/texturetarget) to the given width and height.
+
+#### Example
+
+```rust collapse={1-1, 3-3, 12-14}
+
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+
+use fragmentcolor::Renderer;
+let renderer = Renderer::new();
+let mut target = renderer.create_texture_target([64, 64]).await?;
+
+assert_eq!(target.size(), [64, 64]);
+
+target.resize([128, 32]);
+assert_eq!(target.size(), [128, 32]);
+
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+```
+
+### size() -&gt; [u32; 2]
+
+Returns the size of the [TextureTarget](/api/targets/texturetarget) in pixels.
+
+#### Example
+
+```rust collapse={1-1, 3-3, 8-10}
+
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+
+use fragmentcolor::Renderer;
+let renderer = Renderer::new();
+let target = renderer.create_texture_target([64, 64]).await?;
+assert_eq!(target.size(), [64, 64]);
+
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+```

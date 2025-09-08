@@ -1,6 +1,6 @@
 # size() -> [u32, u32]
 
-Returns the current size in pixels of the backing WindowTarget.
+Returns the current size in pixels of the backing [WindowTarget](https://fragmentcolor.org/api/targets/windowtarget).
 
 ## Example
 

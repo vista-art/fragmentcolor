@@ -45,7 +45,7 @@ impl Default for Shader {
 }
 
 impl Shader {
-#[lsp_doc("docs/api/core/shader/constructor.md")]
+    #[lsp_doc("docs/api/core/shader/constructor.md")]
     pub fn new(source: &str) -> Result<Self, ShaderError> {
         let object = Arc::new(input::load_shader(source)?);
         let pass = Arc::new(PassObject::from_shader_object(
@@ -56,22 +56,22 @@ impl Shader {
         Ok(Self { pass, object })
     }
 
-#[lsp_doc("docs/api/core/shader/set.md")]
+    #[lsp_doc("docs/api/core/shader/set.md")]
     pub fn set(&self, key: &str, value: impl Into<UniformData>) -> Result<(), ShaderError> {
         self.object.set(key, value)
     }
 
-#[lsp_doc("docs/api/core/shader/get.md")]
+    #[lsp_doc("docs/api/core/shader/get.md")]
     pub fn get<T: From<UniformData>>(&self, key: &str) -> Result<T, ShaderError> {
         Ok(self.object.get_uniform_data(key)?.into())
     }
 
-#[lsp_doc("docs/api/core/shader/list_uniforms.md")]
+    #[lsp_doc("docs/api/core/shader/list_uniforms.md")]
     pub fn list_uniforms(&self) -> Vec<String> {
         self.object.list_uniforms()
     }
 
-#[lsp_doc("docs/api/core/shader/list_keys.md")]
+    #[lsp_doc("docs/api/core/shader/list_keys.md")]
     pub fn list_keys(&self) -> Vec<String> {
         self.object.list_keys()
     }

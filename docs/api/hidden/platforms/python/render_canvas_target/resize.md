@@ -1,6 +1,6 @@
 # resize(size: [u32, u32] | (u32, u32) | { width, height })
 
-Resizes the underlying WindowTarget to the given dimensions.
+Resizes the underlying [WindowTarget](https://fragmentcolor.org/api/targets/windowtarget) to the given dimensions.
 
 ## Example
 

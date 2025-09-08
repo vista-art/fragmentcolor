@@ -1,20 +1,19 @@
 # get_current_frame() -> TargetFrame
 
-Returns a frame wrapper for the offscreen texture.
+Returns a frame wrapper containing the texture view to render and the target format.
 
 Most users do not need to call this directly; the [Renderer](https://fragmentcolor.org/api/core/renderer) uses it internally.
 
 ## Example
 
 ```rust
-use fragmentcolor::Renderer;
-
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+
+use fragmentcolor::{Renderer, Target};
 
 let renderer = Renderer::new();
 let target = renderer.create_texture_target([16, 16]).await?;
-let frame = target.get_current_frame()?;
-let _format = frame.format();
+let frame = target.get_current_frame()?; // Acquire a frame, internal usage
 
 # Ok(())
 # }

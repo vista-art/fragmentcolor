@@ -21,7 +21,7 @@ impl Shader {
         }
     }
 
-#[lsp_doc("docs/api/core/shader/fetch.md")]
+    #[lsp_doc("docs/api/core/shader/fetch.md")]
     pub async fn fetch(url: &str) -> Self {
         let opts = RequestInit::new();
         opts.set_method("GET");
@@ -44,27 +44,27 @@ impl Shader {
     }
 
     #[wasm_bindgen(js_name = "set")]
-#[lsp_doc("docs/api/core/shader/set.md")]
+    #[lsp_doc("docs/api/core/shader/set.md")]
     pub fn set_js(&self, key: &str, value: JsValue) -> Result<(), ShaderError> {
         let uniform_data: UniformData = value.try_into()?;
         self.object.set(key, uniform_data)
     }
 
     #[wasm_bindgen(js_name = "get")]
-#[lsp_doc("docs/api/core/shader/get.md")]
+    #[lsp_doc("docs/api/core/shader/get.md")]
     pub fn get_js(&self, key: &str) -> Result<JsValue, ShaderError> {
         let uniform_data = self.object.get_uniform_data(key)?;
         Ok(uniform_data.into())
     }
 
     #[wasm_bindgen(js_name = "listUniforms")]
-#[lsp_doc("docs/api/core/shader/list_uniforms.md")]
+    #[lsp_doc("docs/api/core/shader/list_uniforms.md")]
     pub fn list_uniforms_js(&self) -> Vec<String> {
         self.list_uniforms()
     }
 
     #[wasm_bindgen(js_name = "listKeys")]
-#[lsp_doc("docs/api/core/shader/list_keys.md")]
+    #[lsp_doc("docs/api/core/shader/list_keys.md")]
     pub fn list_keys_js(&self) -> Vec<String> {
         self.list_keys()
     }

@@ -1,6 +1,6 @@
 # resize(size: [u32; 2] | (u32, u32))
 
-Resizes the [TextureTarget](https://fragmentcolor.org/api/texture_target) to the given width and height.
+Resizes the [TextureTarget](https://fragmentcolor.org/api/targets/texturetarget) to the given width and height.
 
 ## Example
 

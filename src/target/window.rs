@@ -24,12 +24,12 @@ impl WindowTarget {
 }
 
 impl Target for WindowTarget {
-#[lsp_doc("docs/api/core/target/size.md")]
+    #[lsp_doc("docs/api/core/target/size.md")]
     fn size(&self) -> Size {
         [self.config.width, self.config.height].into()
     }
 
-#[lsp_doc("docs/api/core/target/resize.md")]
+    #[lsp_doc("docs/api/core/target/resize.md")]
     fn resize(&mut self, size: impl Into<Size>) {
         let size = size.into();
         self.config.width = size.width;
@@ -37,7 +37,7 @@ impl Target for WindowTarget {
         self.surface.configure(&self.context.device, &self.config);
     }
 
-#[lsp_doc("docs/api/core/target/get_current_frame.md")]
+    #[lsp_doc("docs/api/core/target/get_current_frame.md")]
     fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, wgpu::SurfaceError> {
         let surface_texture = self.surface.get_current_texture()?;
         let view = surface_texture
@@ -50,7 +50,7 @@ impl Target for WindowTarget {
         }))
     }
 
-#[lsp_doc("docs/api/core/target/get_image.md")]
+    #[lsp_doc("docs/api/core/target/get_image.md")]
     fn get_image(&self) -> Vec<u8> {
         // Reading back from a presentable surface is not portable across backends,
         // especially on WebGPU/WebGL. Prefer rendering to a TextureTarget when

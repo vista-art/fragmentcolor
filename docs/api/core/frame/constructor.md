@@ -1,8 +1,8 @@
 # Frame::new()
 
-Creates a new [Frame](https://fragmentcolor.org/api/frame) object.
+Creates a new [Frame](https://fragmentcolor.org/api/core/frame) object.
 
-A [Frame](https://fragmentcolor.org/api/frame) is an ordered collection of [Pass](https://fragmentcolor.org/api/pass) objects that will be rendered by the [Renderer](https://fragmentcolor.org/api/renderer) in sequence.
+A [Frame](https://fragmentcolor.org/api/core/frame) is an ordered collection of [Pass](https://fragmentcolor.org/api/core/pass) objects that will be rendered by the [Renderer](https://fragmentcolor.org/api/core/renderer) in sequence.
 
 ## Example
 

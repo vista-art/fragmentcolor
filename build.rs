@@ -17,6 +17,9 @@ fn main() {
     println!("cargo::rustc-check-cfg=cfg(desktop)");
     println!("cargo::rustc-check-cfg=cfg(dev)");
 
+    // Ensure changes under docs/api retrigger build.rs
+    println!("cargo:rerun-if-changed=docs/api");
+
     map_public_api();
 }
 
@@ -652,17 +655,26 @@ mod validation {
         let docs_root = root.join("docs/api");
 
         // Helper: find the directory for an object recursively (must contain <dir>/<dir>.md)
-        fn find_object_dir(docs_root: &std::path::Path, dir_name: &str) -> Option<std::path::PathBuf> {
+        fn find_object_dir(
+            docs_root: &std::path::Path,
+            dir_name: &str,
+        ) -> Option<std::path::PathBuf> {
             fn walk(root: &std::path::Path, target: &str) -> Option<std::path::PathBuf> {
-                if !root.is_dir() { return None; }
+                if !root.is_dir() {
+                    return None;
+                }
                 for entry in std::fs::read_dir(root).ok()?.flatten() {
                     let p = entry.path();
                     if p.is_dir() {
                         if p.file_name().and_then(|s| s.to_str()) == Some(target) {
                             let md = p.join(format!("{}.md", target));
-                            if md.exists() { return Some(p); }
+                            if md.exists() {
+                                return Some(p);
+                            }
                         }
-                        if let Some(found) = walk(&p, target) { return Some(found); }
+                        if let Some(found) = walk(&p, target) {
+                            return Some(found);
+                        }
                     }
                 }
                 None
@@ -672,8 +684,14 @@ mod validation {
 
         // Helper: recursively enumerate all object dirs found under docs_root
         fn scan_docs_objects(docs_root: &std::path::Path) -> Vec<(String, std::path::PathBuf)> {
-            fn walk(dir: &std::path::Path, root: &std::path::Path, out: &mut Vec<(String, std::path::PathBuf)>) {
-                if !dir.is_dir() { return; }
+            fn walk(
+                dir: &std::path::Path,
+                root: &std::path::Path,
+                out: &mut Vec<(String, std::path::PathBuf)>,
+            ) {
+                if !dir.is_dir() {
+                    return;
+                }
                 for entry in std::fs::read_dir(dir).ok().into_iter().flatten().flatten() {
                     let p = entry.path();
                     if p.is_dir() {
@@ -695,9 +713,289 @@ mod validation {
             out
         }
 
+        // Discover all objects and their categories under docs/api (recursively)
+        fn scan_docs_objects_with_cat(
+            docs_root: &std::path::Path,
+        ) -> Vec<(
+            String,             /*object name*/
+            std::path::PathBuf, /*dir*/
+            String,             /*cat_rel*/
+            String,             /*dir_slug*/
+        )> {
+            fn walk(
+                dir: &std::path::Path,
+                root: &std::path::Path,
+                out: &mut Vec<(String, std::path::PathBuf, String, String)>,
+            ) {
+                if !dir.is_dir() {
+                    return;
+                }
+                if let Ok(rd) = std::fs::read_dir(dir) {
+                    for entry in rd.flatten() {
+                        let p = entry.path();
+                        if p.is_dir() {
+                            if let Some(dir_name) = p.file_name().and_then(|s| s.to_str()) {
+                                let md = p.join(format!("{}.md", dir_name));
+                                if md.exists() {
+                                    let object = dir_to_object_name(dir_name);
+                                    let parent = p.parent().unwrap_or(root);
+                                    let cat_rel = if let Ok(rel) = parent.strip_prefix(root) {
+                                        rel.to_string_lossy().replace('\\', "/")
+                                    } else {
+                                        String::new()
+                                    };
+                                    out.push((object, p.clone(), cat_rel, dir_name.to_string()));
+                                    // Do not descend further into an object dir
+                                    continue;
+                                }
+                            }
+                            walk(&p, root, out);
+                        }
+                    }
+                }
+            }
+            let mut out = Vec::new();
+            walk(docs_root, docs_root, &mut out);
+            out
+        }
+
+        fn canonical_url(cat_rel: &str, object_lower: &str) -> String {
+            let mut url = String::from("https://fragmentcolor.org/api/");
+            if !cat_rel.is_empty() {
+                url.push_str(cat_rel);
+                url.push('/');
+            }
+            url.push_str(object_lower);
+            url
+        }
+
+        // Fix incorrect absolute links and auto-link unlinked object names in source docs
+        fn rewrite_source_links_and_autolink(docs_root: &std::path::Path) {
+            use std::collections::HashMap;
+
+            let objects = scan_docs_objects_with_cat(docs_root);
+
+            // Build maps: by object name (raw), by lowercased object slug, by folder dir slug
+            let mut by_name: HashMap<String, (String /*cat*/, String /*obj_lower*/)> =
+                HashMap::new();
+            let mut by_obj_slug: HashMap<String, (String, String)> = HashMap::new();
+            let mut by_dir_slug: HashMap<String, (String, String)> = HashMap::new();
+            for (name, _dir, cat, dir_slug) in &objects {
+                let obj_lower = name.to_lowercase();
+                by_name.insert(name.clone(), (cat.clone(), obj_lower.clone()));
+                by_obj_slug.insert(obj_lower.clone(), (cat.clone(), obj_lower.clone()));
+                by_dir_slug.insert(dir_slug.clone(), (cat.clone(), obj_lower.clone()));
+            }
+
+            fn is_word_boundary(ch: Option<char>) -> bool {
+                match ch {
+                    None => true,
+                    Some(c) => !c.is_alphanumeric() && c != '_',
+                }
+            }
+
+            fn process_file(
+                path: &std::path::Path,
+                by_name: &std::collections::HashMap<String, (String, String)>,
+                by_obj_slug: &std::collections::HashMap<String, (String, String)>,
+                by_dir_slug: &std::collections::HashMap<String, (String, String)>,
+            ) {
+                let Ok(src) = std::fs::read_to_string(path) else {
+                    return;
+                };
+                let mut changed = false;
+
+                // Pass 1: fix absolute links
+                let mut out = String::new();
+                let bytes = src.as_bytes();
+                let mut i = 0usize;
+
+                let needle_https = "](https://fragmentcolor.org/api/".as_bytes();
+                let needle_http = "](http://fragmentcolor.org/api/".as_bytes();
+                let needle_www_https = "](https://www.fragmentcolor.org/api/".as_bytes();
+                let needle_www_http = "](http://www.fragmentcolor.org/api/".as_bytes();
+
+                while i < bytes.len() {
+                    let mut matched = None::<&[u8]>;
+                    if i + needle_https.len() <= bytes.len()
+                        && &bytes[i..i + needle_https.len()] == needle_https
+                    {
+                        matched = Some(needle_https);
+                    } else if i + needle_http.len() <= bytes.len()
+                        && &bytes[i..i + needle_http.len()] == needle_http
+                    {
+                        matched = Some(needle_http);
+                    } else if i + needle_www_https.len() <= bytes.len()
+                        && &bytes[i..i + needle_www_https.len()] == needle_www_https
+                    {
+                        matched = Some(needle_www_https);
+                    } else if i + needle_www_http.len() <= bytes.len()
+                        && &bytes[i..i + needle_www_http.len()] == needle_www_http
+                    {
+                        matched = Some(needle_www_http);
+                    }
+
+                    if let Some(m) = matched {
+                        out.push_str("](");
+                        i += m.len();
+                        // Capture until ')'
+                        let start = i;
+                        while i < bytes.len() && bytes[i] != b')' {
+                            i += 1;
+                        }
+                        let tail = &src[start..i];
+                        let mut parts: Vec<&str> =
+                            tail.split('/').filter(|s| !s.is_empty()).collect();
+                        if let Some(last) = parts.pop() {
+                            let key = last.to_string();
+                            let best = by_obj_slug
+                                .get(&key)
+                                .or_else(|| by_dir_slug.get(&key))
+                                .cloned();
+                            if let Some((cat, obj_lower)) = best {
+                                let canon = canonical_url(&cat, &obj_lower);
+                                out.push_str(&canon);
+                                changed = true;
+                            } else {
+                                out.push_str("https://fragmentcolor.org/api/");
+                                out.push_str(tail);
+                            }
+                        } else {
+                            out.push_str("https://fragmentcolor.org/api/");
+                            out.push_str(tail);
+                        }
+                    } else {
+                        out.push(bytes[i] as char);
+                        i += 1;
+                    }
+                }
+
+                let content = if out.is_empty() { src.clone() } else { out };
+                if content != src {
+                    changed = true;
+                }
+
+                // Pass 2: auto-link unlinked names (skip code fences, inline code, and headings)
+                let mut names: Vec<&String> = by_name.keys().collect();
+                names.sort_by_key(|s| std::cmp::Reverse(s.len()));
+
+                let mut result = String::new();
+                let mut in_code_block = false;
+                for line in content.lines() {
+                    let trimmed = line.trim_start();
+                    if trimmed.starts_with("```") {
+                        in_code_block = !in_code_block;
+                        result.push_str(line);
+                        result.push('\n');
+                        continue;
+                    }
+                    if trimmed.starts_with('#') || in_code_block {
+                        result.push_str(line);
+                        result.push('\n');
+                        continue;
+                    }
+
+                    let mut i = 0usize;
+                    let chars: Vec<char> = line.chars().collect();
+                    let mut in_inline = false;
+                    while i < chars.len() {
+                        let c = chars[i];
+                        if c == '`' {
+                            in_inline = !in_inline;
+                            result.push(c);
+                            i += 1;
+                            continue;
+                        }
+                        if !in_inline && c == '[' {
+                            // Copy existing link intact
+                            let mut j = i + 1;
+                            while j < chars.len() && chars[j] != ']' {
+                                j += 1;
+                            }
+                            if j < chars.len() && j + 1 < chars.len() && chars[j + 1] == '(' {
+                                let mut k = j + 2;
+                                while k < chars.len() && chars[k] != ')' {
+                                    k += 1;
+                                }
+                                for idx in i..=k.min(chars.len() - 1) {
+                                    result.push(chars[idx]);
+                                }
+                                i = k.min(chars.len());
+                                if i < chars.len() && chars[i] == ')' {
+                                    i += 1;
+                                }
+                                continue;
+                            }
+                        }
+
+                        if in_inline {
+                            result.push(c);
+                            i += 1;
+                            continue;
+                        }
+
+                        let mut matched_any = false;
+                        for name in &names {
+                            let name_chars: Vec<char> = name.chars().collect();
+                            let end = i + name_chars.len();
+                            if end <= chars.len()
+                                && chars[i..end].iter().copied().eq(name_chars.iter().copied())
+                                && is_word_boundary(
+                                    i.checked_sub(1).and_then(|p| chars.get(p)).copied(),
+                                )
+                                && is_word_boundary(chars.get(end).copied())
+                            {
+                                let (cat, obj_lower) = by_name.get(*name).cloned().unwrap();
+                                let url = canonical_url(&cat, &obj_lower);
+                                result.push('[');
+                                result.push_str(name);
+                                result.push_str("](");
+                                result.push_str(&url);
+                                result.push(')');
+                                i = end;
+                                matched_any = true;
+                                changed = true;
+                                break;
+                            }
+                        }
+                        if !matched_any {
+                            result.push(c);
+                            i += 1;
+                        }
+                    }
+                    if !line.ends_with('\n') {
+                        result.push('\n');
+                    }
+                }
+
+                if changed {
+                    let _ = std::fs::write(path, result);
+                }
+            }
+
+            fn walk_files(dir: &std::path::Path, cb: &dyn Fn(&std::path::Path)) {
+                if let Ok(rd) = std::fs::read_dir(dir) {
+                    for e in rd.flatten() {
+                        let p = e.path();
+                        if p.is_dir() {
+                            walk_files(&p, cb);
+                        } else if p.extension().and_then(|s| s.to_str()) == Some("md") {
+                            cb(&p);
+                        }
+                    }
+                }
+            }
+
+            walk_files(docs_root, &|p| {
+                process_file(p, &by_name, &by_obj_slug, &by_dir_slug)
+            });
+        }
+
+        rewrite_source_links_and_autolink(&docs_root);
+
         // Enforce documentation for ALL public objects (including wrappers)
         let objects = public_structs_excluding_hidden();
-        let all_objects = objects.clone();
+        let _all_objects = objects.clone();
 
         // Validate objects and their methods
         for object in objects.iter() {
@@ -706,7 +1004,7 @@ mod validation {
             let obj_dir = find_object_dir(&docs_root, &dir).unwrap_or(docs_root.join(&dir));
             let object_md = obj_dir.join(format!("{}.md", dir));
             ensure_object_md_ok(object, &object_md, &mut problems);
-            enforce_links_in_file(&object_md, &all_objects, &mut problems);
+            // Link enforcement disabled; links are auto-rewritten during export
 
             for m in &methods_vec {
                 if let Some(fun) = &m.function {
@@ -723,10 +1021,14 @@ mod validation {
                         continue;
                     }
 
-                    let file = if name == "new" { "constructor".to_string() } else { to_snake_case(name) };
+                    let file = if name == "new" {
+                        "constructor".to_string()
+                    } else {
+                        to_snake_case(name)
+                    };
                     let path = obj_dir.join(format!("{}.md", file));
                     ensure_method_md_ok(object, name, &path, &mut problems);
-                    enforce_links_in_file(&path, &all_objects, &mut problems);
+                    // Link enforcement disabled; links are auto-rewritten during export
                 }
             }
         }
@@ -739,7 +1041,7 @@ mod validation {
             let dir_name = obj_dir.file_name().and_then(|s| s.to_str()).unwrap_or("");
             let object_md = obj_dir.join(format!("{}.md", dir_name));
             ensure_object_md_ok(&object, &object_md, &mut problems);
-            enforce_links_in_file(&object_md, &all_objects, &mut problems);
+            // Link enforcement disabled; links are auto-rewritten during export
         }
 
         validate_healthchecks(api_map, &mut problems);
@@ -943,10 +1245,12 @@ mod validation {
         attrs.iter().any(|a| a.path().is_ident("lsp_doc"))
     }
 
+    #[allow(dead_code)]
     fn object_url(name: &str) -> String {
         format!("https://fragmentcolor.org/api/{}", object_dir_name(name))
     }
 
+    #[allow(dead_code)]
     fn enforce_links_in_file(path: &Path, objects: &[String], problems: &mut Vec<String>) {
         let content = fs::read_to_string(path).unwrap_or_default();
         if content.is_empty() {
@@ -1260,17 +1564,26 @@ mod validation {
             None
         }
 
-        fn find_object_dir(docs_root: &std::path::Path, dir_name: &str) -> Option<std::path::PathBuf> {
+        fn find_object_dir(
+            docs_root: &std::path::Path,
+            dir_name: &str,
+        ) -> Option<std::path::PathBuf> {
             fn walk(root: &std::path::Path, target: &str) -> Option<std::path::PathBuf> {
-                if !root.is_dir() { return None; }
+                if !root.is_dir() {
+                    return None;
+                }
                 for entry in std::fs::read_dir(root).ok()?.flatten() {
                     let p = entry.path();
                     if p.is_dir() {
                         if p.file_name().and_then(|s| s.to_str()) == Some(target) {
                             let md = p.join(format!("{}.md", target));
-                            if md.exists() { return Some(p); }
+                            if md.exists() {
+                                return Some(p);
+                            }
                         }
-                        if let Some(found) = walk(&p, target) { return Some(found); }
+                        if let Some(found) = walk(&p, target) {
+                            return Some(found);
+                        }
                     }
                 }
                 None
@@ -1288,9 +1601,17 @@ mod validation {
             }
         }
 
-        fn scan_docs_objects(docs_root: &std::path::Path) -> Vec<(String, std::path::PathBuf, String)> {
-            fn walk(dir: &std::path::Path, root: &std::path::Path, out: &mut Vec<(String, std::path::PathBuf, String)>) {
-                if !dir.is_dir() { return; }
+        fn scan_docs_objects(
+            docs_root: &std::path::Path,
+        ) -> Vec<(String, std::path::PathBuf, String)> {
+            fn walk(
+                dir: &std::path::Path,
+                root: &std::path::Path,
+                out: &mut Vec<(String, std::path::PathBuf, String)>,
+            ) {
+                if !dir.is_dir() {
+                    return;
+                }
                 for entry in std::fs::read_dir(dir).ok().into_iter().flatten().flatten() {
                     let p = entry.path();
                     if p.is_dir() {
@@ -1314,10 +1635,28 @@ mod validation {
         }
 
         fn is_hidden_category(cat_rel: &str) -> bool {
-            cat_rel.split('/')
-                .any(|seg| seg == "hidden")
+            cat_rel.split('/').any(|seg| seg == "hidden")
         }
 
+        fn category_title(cat_rel: &str) -> String {
+            if cat_rel.is_empty() {
+                return String::new();
+            }
+            cat_rel
+                .split('/')
+                .map(|seg| {
+                    let mut chars = seg.chars();
+                    match chars.next() {
+                        Some(first) => {
+                            first.to_uppercase().collect::<String>()
+                                + &chars.as_str().to_ascii_lowercase()
+                        }
+                        None => String::new(),
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(" / ")
+        }
         fn strip_leading_h1(md: &str) -> String {
             let mut out = String::new();
             let mut first = true;
@@ -1366,13 +1705,22 @@ mod validation {
                     let indent_len = l.len() - trimmed.len();
                     if trimmed.starts_with("# ") {
                         let new_text = format!("{}{}", &l[..indent_len], &trimmed[2..]);
-                        items.push(LineItem { text: new_text, hidden: true });
+                        items.push(LineItem {
+                            text: new_text,
+                            hidden: true,
+                        });
                     } else if trimmed.starts_with('#') {
                         // Handles lines like "# Ok(())" (no space)
                         let new_text = format!("{}{}", &l[..indent_len], &trimmed[1..]);
-                        items.push(LineItem { text: new_text, hidden: true });
+                        items.push(LineItem {
+                            text: new_text,
+                            hidden: true,
+                        });
                     } else {
-                        items.push(LineItem { text: l.clone(), hidden: false });
+                        items.push(LineItem {
+                            text: l.clone(),
+                            hidden: false,
+                        });
                     }
                 }
 
@@ -1388,7 +1736,9 @@ mod validation {
                 let first_hidden_open = items
                     .iter()
                     .enumerate()
-                    .find(|(_, it)| it.hidden && it.text.trim_end().ends_with('{') && it.text.contains("fn "))
+                    .find(|(_, it)| {
+                        it.hidden && it.text.trim_end().ends_with('{') && it.text.contains("fn ")
+                    })
                     .map(|(i, _)| i)
                     .or_else(|| items.iter().position(|it| it.hidden));
 
@@ -1403,7 +1753,13 @@ mod validation {
                     // Insert right after the wrapper open, marked as hidden
                     let mut insert_at = open_idx + 1;
                     for txt in moved {
-                        items.insert(insert_at, LineItem { text: txt, hidden: true });
+                        items.insert(
+                            insert_at,
+                            LineItem {
+                                text: txt,
+                                hidden: true,
+                            },
+                        );
                         insert_at += 1;
                     }
                 }
@@ -1438,7 +1794,11 @@ mod validation {
                         if idx > 0 {
                             collapse.push_str(", ");
                         }
-                        collapse.push_str(&format!("{}-{}", s, e));
+                        // Expressive Code collapsible sections treat positions as 0-based.
+                        // Convert our 1-based computed ranges to 0-based to avoid off-by-one.
+                        let s0 = s.saturating_sub(1);
+                        let e0 = e.saturating_sub(1);
+                        collapse.push_str(&format!("{}-{}", s0, e0));
                     }
                     collapse.push('}');
 
@@ -1469,7 +1829,14 @@ mod validation {
                 if !in_code {
                     if line.starts_with("```") {
                         header = line.to_string();
-                        is_rust = header.starts_with("```rust");
+                        let trimmed = header.trim();
+                        if trimmed == "```" {
+                            // Default unlabeled fences to rust for our docs pages
+                            header = "```rust".to_string();
+                            is_rust = true;
+                        } else {
+                            is_rust = header.starts_with("```rust");
+                        }
                         in_code = true;
                         block.clear();
                     } else {
@@ -1509,7 +1876,7 @@ mod validation {
                 }
             }
 
-            // If the MDX ended while inside a code block, flush it verbatim for safety
+            // If the MDX ended while inside a code block, flush and ensure it is closed
             if in_code {
                 out.push_str(&header);
                 out.push('\n');
@@ -1517,6 +1884,8 @@ mod validation {
                     out.push_str(l);
                     out.push('\n');
                 }
+                out.push_str("```");
+                out.push('\n');
             }
 
             out
@@ -1550,7 +1919,7 @@ mod validation {
         }
 
         pub fn update(api_map: &ApiMap) {
-            use std::collections::{HashSet, BTreeMap};
+            use std::collections::{BTreeMap, HashSet};
             let root = meta::workspace_root();
             let docs_root = root.join("docs/api");
             let site_root = root.join("docs/website/src/content/docs/api");
@@ -1566,12 +1935,23 @@ mod validation {
             // Track which objects were processed (to avoid duplicates when scanning extras)
             let mut processed: HashSet<String> = HashSet::new();
 
+            // Build set of known top-level categories for link normalization
+            let mut top_categories: HashSet<String> = HashSet::new();
+            for (_object, _dir, cat_rel) in scan_docs_objects(&docs_root) {
+                if !cat_rel.is_empty() {
+                    if let Some(first) = cat_rel.split('/').next() {
+                        top_categories.insert(first.to_string());
+                    }
+                }
+            }
+
             // Helper to write a page given an object, its docs dir, category relative path, and ordered method files
-            let mut write_page = |object: &str, obj_dir: &std::path::Path, cat_rel: &str, method_files: Vec<String>| -> String {
-                let obj_dirname = obj_dir
-                    .file_name()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("");
+            let write_page = |object: &str,
+                              obj_dir: &std::path::Path,
+                              cat_rel: &str,
+                              method_files: Vec<String>|
+             -> String {
+                let obj_dirname = obj_dir.file_name().and_then(|s| s.to_str()).unwrap_or("");
                 let obj_md = std::fs::read_to_string(obj_dir.join(format!("{}.md", obj_dirname)))
                     .unwrap_or_default();
                 let description = first_paragraph(&obj_md);
@@ -1584,6 +1964,7 @@ mod validation {
                 out.push_str(&format!("description: \"{}\"\n", desc));
                 if !cat_rel.is_empty() {
                     out.push_str(&format!("category: {}\n", cat_rel));
+                    out.push_str(&format!("categoryLabel: {}\n", category_title(cat_rel)));
                 }
                 out.push_str("---\n\n");
 
@@ -1623,6 +2004,100 @@ mod validation {
                 let mut out = out.trim_end().to_string();
                 out.push('\n');
 
+                // Normalize links in MDX to site root
+                fn site_base() -> String {
+                    std::env::var("DOCS_SITE_BASE").unwrap_or_else(|_| "/api".to_string())
+                }
+
+                fn rewrite_links_to_site_root(
+                    mdx: &str,
+                    top_categories: &std::collections::HashSet<String>,
+                ) -> String {
+                    let base = site_base();
+                    let mut out = String::new();
+                    let bytes = mdx.as_bytes();
+                    let mut i = 0usize;
+
+                    let n_https = "](https://fragmentcolor.org/api/".as_bytes();
+                    let n_http = "](http://fragmentcolor.org/api/".as_bytes();
+                    let n_www_https = "](https://www.fragmentcolor.org/api/".as_bytes();
+                    let n_www_http = "](http://www.fragmentcolor.org/api/".as_bytes();
+
+                    while i < bytes.len() {
+                        let mut matched = None::<&[u8]>;
+                        if i + n_https.len() <= bytes.len()
+                            && &bytes[i..i + n_https.len()] == n_https
+                        {
+                            matched = Some(n_https);
+                        } else if i + n_http.len() <= bytes.len()
+                            && &bytes[i..i + n_http.len()] == n_http
+                        {
+                            matched = Some(n_http);
+                        } else if i + n_www_https.len() <= bytes.len()
+                            && &bytes[i..i + n_www_https.len()] == n_www_https
+                        {
+                            matched = Some(n_www_https);
+                        } else if i + n_www_http.len() <= bytes.len()
+                            && &bytes[i..i + n_www_http.len()] == n_www_http
+                        {
+                            matched = Some(n_www_http);
+                        }
+
+                        if let Some(m) = matched {
+                            out.push_str("](");
+                            i += m.len();
+                            out.push_str(&base);
+                            out.push('/');
+                            while i < bytes.len() && bytes[i] != b')' {
+                                out.push(bytes[i] as char);
+                                i += 1;
+                            }
+                        } else if i + 2 <= bytes.len() && bytes[i] == b']' && bytes[i + 1] == b'(' {
+                            out.push(']');
+                            out.push('(');
+                            i += 2;
+                            let start = i;
+                            while i < bytes.len() && bytes[i] != b')' {
+                                i += 1;
+                            }
+                            let href = &mdx[start..i];
+                            let href_trim = href.trim();
+                            let lower = href_trim.to_ascii_lowercase();
+                            let is_abs = lower.starts_with("http://")
+                                || lower.starts_with("https://")
+                                || href_trim.starts_with('/')
+                                || href_trim.starts_with('#')
+                                || lower.starts_with("mailto:")
+                                || lower.starts_with("tel:")
+                                || lower.starts_with("data:");
+                            if is_abs {
+                                out.push_str(href_trim);
+                            } else {
+                                let top = href_trim.split('/').next().unwrap_or("");
+                                if top_categories.contains(top) {
+                                    if !base.ends_with('/') {
+                                        out.push_str(&base);
+                                    } else {
+                                        out.push_str(&base);
+                                    }
+                                    if !href_trim.starts_with('/') {
+                                        out.push('/');
+                                    }
+                                    out.push_str(href_trim);
+                                } else {
+                                    out.push_str(href_trim);
+                                }
+                            }
+                        } else {
+                            out.push(bytes[i] as char);
+                            i += 1;
+                        }
+                    }
+                    out
+                }
+
+                out = rewrite_links_to_site_root(&out, &top_categories);
+
                 // Add platform WIP banner for Android/iOS pages
                 out = inject_platform_banner_if_needed(object, &out);
 
@@ -1632,9 +2107,13 @@ mod validation {
                 let site_file = if cat_rel.is_empty() {
                     site_root.join(format!("{}.mdx", object.to_lowercase()))
                 } else {
-                    site_root.join(cat_rel).join(format!("{}.mdx", object.to_lowercase()))
+                    site_root
+                        .join(cat_rel)
+                        .join(format!("{}.mdx", object.to_lowercase()))
                 };
-                if let Some(parent) = site_file.parent() { std::fs::create_dir_all(parent).unwrap(); }
+                if let Some(parent) = site_file.parent() {
+                    std::fs::create_dir_all(parent).unwrap();
+                }
                 std::fs::write(&site_file, out).unwrap();
 
                 // Return relative path for cleanup
@@ -1650,8 +2129,13 @@ mod validation {
             let objects = super::validation::base_public_objects();
             for object in objects.iter() {
                 let dir_name = super::validation::object_dir_name(object);
-                let obj_dir = find_object_dir(&docs_root, &dir_name).unwrap_or(docs_root.join(&dir_name));
-                let cat_rel = if obj_dir.exists() { category_rel_from(&docs_root, &obj_dir) } else { String::new() };
+                let obj_dir =
+                    find_object_dir(&docs_root, &dir_name).unwrap_or(docs_root.join(&dir_name));
+                let cat_rel = if obj_dir.exists() {
+                    category_rel_from(&docs_root, &obj_dir)
+                } else {
+                    String::new()
+                };
 
                 // Determine method files from reflection, skipping platform variants
                 let mut method_files = Vec::new();
@@ -1668,7 +2152,11 @@ mod validation {
                             if skip {
                                 continue;
                             }
-                            let file = if name == "new" { "constructor".to_string() } else { name.clone() };
+                            let file = if name == "new" {
+                                "constructor".to_string()
+                            } else {
+                                name.clone()
+                            };
                             if obj_dir.join(format!("{}.md", file)).exists() {
                                 method_files.push(file);
                             }
@@ -1780,7 +2268,8 @@ mod validation {
             // Then each category alphabetically
             for cat in cats {
                 if let Some(list) = groups.get(&cat) {
-                    idx.push_str(&format!("## {}\n\n", cat));
+                    let label = category_title(&cat);
+                    idx.push_str(&format!("## {}\n\n", label));
                     for o in list {
                         let path = format!("/docs/api/{}/{}.mdx", cat, o.to_lowercase());
                         idx.push_str(&format!("- [{}]({})\n", o, path));
@@ -1795,7 +2284,11 @@ mod validation {
 
             // Cleanup: remove any stale MDX files not written in this run
             expected.insert("index.mdx".to_string());
-            fn walk_and_cleanup(root: &std::path::Path, base: &std::path::Path, expected: &std::collections::HashSet<String>) {
+            fn walk_and_cleanup(
+                root: &std::path::Path,
+                base: &std::path::Path,
+                expected: &std::collections::HashSet<String>,
+            ) {
                 if let Ok(read_dir) = std::fs::read_dir(root) {
                     for entry in read_dir.flatten() {
                         let path = entry.path();

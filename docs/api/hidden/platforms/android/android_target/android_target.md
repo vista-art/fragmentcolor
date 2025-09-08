@@ -1,11 +1,11 @@
 # AndroidTarget
 
-[AndroidTarget](https://fragmentcolor.org/api/android_target) is an Android-specific wrapper around [WindowTarget](https://fragmentcolor.org/api/window_target).
+[AndroidTarget](https://fragmentcolor.org/api/hidden/platforms/android/androidtarget) is an Android-specific wrapper around [WindowTarget](https://fragmentcolor.org/api/targets/windowtarget).
 
-It forwards all rendering to an internal [WindowTarget](https://fragmentcolor.org/api/window_target) created from an Android Surface. See [WindowTarget](https://fragmentcolor.org/api/window_target) for the full [Target](https://fragmentcolor.org/api/target) behavior and semantics.
+It forwards all rendering to an internal [WindowTarget](https://fragmentcolor.org/api/targets/windowtarget) created from an Android Surface. See [WindowTarget](https://fragmentcolor.org/api/targets/windowtarget) for the full [Target](https://fragmentcolor.org/api/core/target) behavior and semantics.
 
-- Canonical object: [WindowTarget](https://fragmentcolor.org/api/window_target)
-- Target trait docs: [Target](https://fragmentcolor.org/api/target)
+- Canonical object: [WindowTarget](https://fragmentcolor.org/api/targets/windowtarget)
+- [Target](https://fragmentcolor.org/api/core/target) trait docs: [Target](https://fragmentcolor.org/api/core/target)
 
 ## Example
 

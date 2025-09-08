@@ -6,7 +6,7 @@ This function is an alternative constructor for Javascript to fetch a shader fro
 
 In most platforms, the constructor accepts a URL directly. In WASM, however, it's not possible to perform network requests in a constructor because constructors cannot be async or create blocking async closures internally.
 
-This function creates a new Shader instance from the given URL.
+This function creates a new [Shader](https://fragmentcolor.org/api/core/shader) instance from the given URL.
 
 If an exception occurs during parsing, the error message will indicate the location of the error.
 
