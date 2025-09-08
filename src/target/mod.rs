@@ -10,7 +10,7 @@ pub use test_window::*;
 use crate::size::Size;
 use lsp_doc::lsp_doc;
 
-#[lsp_doc("docs/api/target/target.md")]
+#[lsp_doc("docs/api/core/target/target.md")]
 pub trait Target {
     fn size(&self) -> Size;
 
