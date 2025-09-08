@@ -686,7 +686,7 @@ mod validation {
         fn scan_docs_objects(docs_root: &std::path::Path) -> Vec<(String, std::path::PathBuf)> {
             fn walk(
                 dir: &std::path::Path,
-                root: &std::path::Path,
+                _root: &std::path::Path,
                 out: &mut Vec<(String, std::path::PathBuf)>,
             ) {
                 if !dir.is_dir() {
@@ -704,7 +704,7 @@ mod validation {
                                 continue;
                             }
                         }
-                        walk(&p, root, out);
+                        walk(&p, _root, out);
                     }
                 }
             }
@@ -917,8 +917,9 @@ mod validation {
                                 while k < chars.len() && chars[k] != ')' {
                                     k += 1;
                                 }
-                                for idx in i..=k.min(chars.len() - 1) {
-                                    result.push(chars[idx]);
+                                let upper = k.min(chars.len().saturating_sub(1));
+                                for ch in chars.iter().take(upper + 1).skip(i) {
+                                    result.push(*ch);
                                 }
                                 i = k.min(chars.len());
                                 if i < chars.len() && chars[i] == ')' {
@@ -1594,8 +1595,7 @@ mod validation {
         fn category_rel_from(docs_root: &std::path::Path, obj_dir: &std::path::Path) -> String {
             let parent = obj_dir.parent().unwrap_or(docs_root);
             if let Ok(rel) = parent.strip_prefix(docs_root) {
-                let s = rel.to_string_lossy().replace('\\', "/");
-                s
+                rel.to_string_lossy().replace('\\', "/")
             } else {
                 String::new()
             }
@@ -1703,15 +1703,8 @@ mod validation {
                 for l in body {
                     let trimmed = l.trim_start();
                     let indent_len = l.len() - trimmed.len();
-                    if trimmed.starts_with("# ") {
+                    if trimmed.starts_with("#") {
                         let new_text = format!("{}{}", &l[..indent_len], &trimmed[2..]);
-                        items.push(LineItem {
-                            text: new_text,
-                            hidden: true,
-                        });
-                    } else if trimmed.starts_with('#') {
-                        // Handles lines like "# Ok(())" (no space)
-                        let new_text = format!("{}{}", &l[..indent_len], &trimmed[1..]);
                         items.push(LineItem {
                             text: new_text,
                             hidden: true,
@@ -1721,46 +1714,6 @@ mod validation {
                             text: l.clone(),
                             hidden: false,
                         });
-                    }
-                }
-
-                // Move visible `use ...` lines into the first hidden wrapper block and mark them hidden
-                let mut use_idxs: Vec<usize> = items
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, it)| !it.hidden && it.text.trim_start().starts_with("use "))
-                    .map(|(i, _)| i)
-                    .collect();
-
-                // Find the first hidden wrapper open if possible; else the first hidden line
-                let first_hidden_open = items
-                    .iter()
-                    .enumerate()
-                    .find(|(_, it)| {
-                        it.hidden && it.text.trim_end().ends_with('{') && it.text.contains("fn ")
-                    })
-                    .map(|(i, _)| i)
-                    .or_else(|| items.iter().position(|it| it.hidden));
-
-                if let Some(open_idx) = first_hidden_open {
-                    // Remove use lines from bottom-most first to keep indices valid
-                    let mut moved: Vec<String> = Vec::new();
-                    use_idxs.sort_unstable();
-                    for idx in use_idxs.into_iter().rev() {
-                        moved.push(items.remove(idx).text);
-                    }
-                    moved.reverse();
-                    // Insert right after the wrapper open, marked as hidden
-                    let mut insert_at = open_idx + 1;
-                    for txt in moved {
-                        items.insert(
-                            insert_at,
-                            LineItem {
-                                text: txt,
-                                hidden: true,
-                            },
-                        );
-                        insert_at += 1;
                     }
                 }
 
@@ -1775,7 +1728,7 @@ mod validation {
                             i += 1;
                             line_no += 1;
                         }
-                        let end = line_no - 1;
+                        let end = line_no.saturating_sub(1);
                         if end >= start {
                             ranges.push((start, end));
                         }
@@ -1794,20 +1747,17 @@ mod validation {
                         if idx > 0 {
                             collapse.push_str(", ");
                         }
-                        // Expressive Code collapsible sections treat positions as 0-based.
-                        // Convert our 1-based computed ranges to 0-based to avoid off-by-one.
-                        let s0 = s.saturating_sub(1);
-                        let e0 = e.saturating_sub(1);
-                        collapse.push_str(&format!("{}-{}", s0, e0));
+                        // Ranges are already computed as 0-based above.
+                        collapse.push_str(&format!("{}-{}", s, e));
                     }
                     collapse.push('}');
 
                     // Remove any existing collapse={...} chunk in header (best-effort without regex)
-                    if let Some(pos) = new_header.find("collapse={") {
-                        if let Some(end_rel) = new_header[pos..].find('}') {
-                            let end = pos + end_rel + 1;
-                            new_header.replace_range(pos..end, "");
-                        }
+                    if let Some(pos) = new_header.find("collapse={")
+                        && let Some(end_rel) = new_header[pos..].find('}')
+                    {
+                        let end = pos + end_rel + 1;
+                        new_header.replace_range(pos..end, "");
                     }
                     if !new_header.ends_with(' ') {
                         new_header.push(' ');
@@ -1843,36 +1793,34 @@ mod validation {
                         out.push_str(line);
                         out.push('\n');
                     }
-                } else {
-                    if line.starts_with("```") {
-                        // End of block
-                        if is_rust {
-                            let (new_header, new_body) = process_rust_block(&header, &block);
-                            out.push_str(&new_header);
-                            out.push('\n');
-                            for l in new_body {
-                                out.push_str(&l);
-                                out.push('\n');
-                            }
-                            out.push_str("```");
-                            out.push('\n');
-                        } else {
-                            out.push_str(&header);
-                            out.push('\n');
-                            for l in &block {
-                                out.push_str(l);
-                                out.push('\n');
-                            }
-                            out.push_str("```");
+                } else if line.starts_with("```") {
+                    // End of block
+                    if is_rust {
+                        let (new_header, new_body) = process_rust_block(&header, &block);
+                        out.push_str(&new_header);
+                        out.push('\n');
+                        for l in new_body {
+                            out.push_str(&l);
                             out.push('\n');
                         }
-                        in_code = false;
-                        header.clear();
-                        is_rust = false;
-                        block.clear();
+                        out.push_str("```");
+                        out.push('\n');
                     } else {
-                        block.push(line.to_string());
+                        out.push_str(&header);
+                        out.push('\n');
+                        for l in &block {
+                            out.push_str(l);
+                            out.push('\n');
+                        }
+                        out.push_str("```");
+                        out.push('\n');
                     }
+                    in_code = false;
+                    header.clear();
+                    is_rust = false;
+                    block.clear();
+                } else {
+                    block.push(line.to_string());
                 }
             }
 
@@ -1938,10 +1886,10 @@ mod validation {
             // Build set of known top-level categories for link normalization
             let mut top_categories: HashSet<String> = HashSet::new();
             for (_object, _dir, cat_rel) in scan_docs_objects(&docs_root) {
-                if !cat_rel.is_empty() {
-                    if let Some(first) = cat_rel.split('/').next() {
-                        top_categories.insert(first.to_string());
-                    }
+                if !cat_rel.is_empty()
+                    && let Some(first) = cat_rel.split('/').next()
+                {
+                    top_categories.insert(first.to_string());
                 }
             }
 
@@ -2075,11 +2023,7 @@ mod validation {
                             } else {
                                 let top = href_trim.split('/').next().unwrap_or("");
                                 if top_categories.contains(top) {
-                                    if !base.ends_with('/') {
-                                        out.push_str(&base);
-                                    } else {
-                                        out.push_str(&base);
-                                    }
+                                    out.push_str(&base);
                                     if !href_trim.starts_with('/') {
                                         out.push('/');
                                     }
@@ -2117,12 +2061,11 @@ mod validation {
                 std::fs::write(&site_file, out).unwrap();
 
                 // Return relative path for cleanup
-                let rel = if cat_rel.is_empty() {
+                if cat_rel.is_empty() {
                     format!("{}.mdx", object.to_lowercase())
                 } else {
                     format!("{}/{}.mdx", cat_rel, object.to_lowercase())
-                };
-                rel
+                }
             };
 
             // Iterate objects discovered from AST (base objects only)
@@ -2165,27 +2108,29 @@ mod validation {
                 }
 
                 // If no methods were discovered, fall back to docs files in the folder
-                if method_files.is_empty() && obj_dir.exists() && obj_dir.is_dir() {
-                    if let Ok(read_dir) = std::fs::read_dir(&obj_dir) {
-                        let mut files: Vec<String> = read_dir
-                            .filter_map(|e| e.ok())
-                            .filter_map(|e| {
-                                let p = e.path();
-                                if p.extension()?.to_str()? == "md" {
-                                    let stem = p.file_stem()?.to_str()?.to_string();
-                                    if stem != dir_name { Some(stem) } else { None }
-                                } else {
-                                    None
-                                }
-                            })
-                            .collect();
-                        files.sort();
-                        // If reflection found no public methods, avoid showing private constructors
-                        if let Some(pos) = files.iter().position(|s| s == "constructor") {
-                            files.remove(pos);
-                        }
-                        method_files = files;
+                if method_files.is_empty()
+                    && obj_dir.exists()
+                    && obj_dir.is_dir()
+                    && let Ok(read_dir) = std::fs::read_dir(&obj_dir)
+                {
+                    let mut files: Vec<String> = read_dir
+                        .filter_map(|e| e.ok())
+                        .filter_map(|e| {
+                            let p = e.path();
+                            if p.extension()?.to_str()? == "md" {
+                                let stem = p.file_stem()?.to_str()?.to_string();
+                                if stem != dir_name { Some(stem) } else { None }
+                            } else {
+                                None
+                            }
+                        })
+                        .collect();
+                    files.sort();
+                    // If reflection found no public methods, avoid showing private constructors
+                    if let Some(pos) = files.iter().position(|s| s == "constructor") {
+                        files.remove(pos);
                     }
+                    method_files = files;
                 }
 
                 if is_hidden_category(&cat_rel) {
@@ -2296,14 +2241,13 @@ mod validation {
                             walk_and_cleanup(&path, base, expected);
                             continue;
                         }
-                        if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
-                            if ext == "mdx" {
-                                if let Ok(rel) = path.strip_prefix(base) {
-                                    let key = rel.to_string_lossy().replace('\\', "/");
-                                    if !expected.contains(&key) {
-                                        let _ = std::fs::remove_file(&path);
-                                    }
-                                }
+                        if let Some(ext) = path.extension().and_then(|s| s.to_str())
+                            && ext == "mdx"
+                            && let Ok(rel) = path.strip_prefix(base)
+                        {
+                            let key = rel.to_string_lossy().replace('\\', "/");
+                            if !expected.contains(&key) {
+                                let _ = std::fs::remove_file(&path);
                             }
                         }
                     }

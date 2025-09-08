@@ -52,13 +52,14 @@ pub mod app;
 pub use app::*;
 /// DRAFT; API may change in a whim
 pub mod color;
+pub mod doc_link;
 pub mod region;
 pub mod sampler;
 pub mod utils;
 
 pub use {
-    color::*, error::*, frame::*, pass::*, region::*, renderer::*, sampler::*, shader::*, size::*,
-    target::*, utils::*,
+    color::*, doc_link::*, error::*, frame::*, pass::*, region::*, renderer::*, sampler::*,
+    shader::*, size::*, target::*, utils::*,
 };
 
 /// Install a panic hook and console logger when running in WASM so browser console shows

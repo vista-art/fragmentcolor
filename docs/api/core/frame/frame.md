@@ -8,27 +8,17 @@ You need to inject the [Frame](https://fragmentcolor.org/api/core/frame) object 
 
 ## Example
 
-```rust talves-nao-araceca
-# async fn run() -> Result<(), Box<dyn std::error::Error>> {
+```rust
+use fragmentcolor::{Frame, Pass};
 
-use fragmentcolor::{ Shader, Pass, Frame, Renderer };
-
-let renderer = Renderer::new();
-let target = renderer.create_texture_target([10, 10]).await?;
-
-let mut pass = Pass::new("First Pass");
-let mut pass2 = Pass::new("Second Pass");
+let mut pass1 = Pass::new("first");
+let mut pass2 = Pass::new("second");
 
 let mut frame = Frame::new();
-frame.add_pass(&pass);
+frame.add_pass(&pass1);
 frame.add_pass(&pass2);
-
-renderer.render(&frame, &target)?;
-
-# Ok(())
-# }
-# fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 ```
+
 
 ## Methods
 

@@ -112,11 +112,11 @@ This is useful for tests, server-side rendering, or running examples in CI.
 
 ##### Rust
 
-```rust path=null start=null collapse={1-1, 3-3, 13-15}
+```rust path=null start=null collapse={3-3, 14-16}
+use fragmentcolor::{Renderer, Shader, Pass, Frame};
 
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
-use fragmentcolor::{Renderer, Shader, Pass, Frame};
 let renderer = Renderer::new();
 
 let target = renderer.create_texture_target([64, 64]).await?;
@@ -193,11 +193,11 @@ Renders the given object to the given [Target](/api/core/target).
 
 #### Example
 
-```rust collapse={1-1, 3-3, 9-11}
+```rust collapse={3-3, 10-12}
+use fragmentcolor::{Renderer, Shader};
 
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
-use fragmentcolor::{Renderer, Shader};
 let renderer = Renderer::new();
 let target = renderer.create_texture_target([10, 10]).await?;
 let shader = Shader::default();

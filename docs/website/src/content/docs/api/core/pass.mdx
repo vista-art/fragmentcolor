@@ -22,11 +22,11 @@ it won't add the shader to its internal list and log a warning message in the co
 
 ## Example
 
-```rust collapse={1-1, 3-3, 21-23}
+```rust collapse={3-3, 22-24}
+use fragmentcolor::{ Shader, Pass, Renderer };
 
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
-use fragmentcolor::{ Shader, Pass, Renderer };
 let renderer = Renderer::new();
 let target = renderer.create_texture_target([10, 10]).await?;
 let object1 = Shader::default();
@@ -115,11 +115,11 @@ This is useful when layering multiple passes where the next pass should blend wi
 
 #### Example
 
-```rust collapse={1-1, 3-3, 14-16}
+```rust collapse={3-3, 15-17}
+use fragmentcolor::{Renderer, Pass, Shader};
 
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
-use fragmentcolor::{Renderer, Pass, Shader};
 let renderer = Renderer::new();
 let target = renderer.create_texture_target([64, 64]).await?;
 
@@ -185,11 +185,11 @@ The viewport restricts drawing to a rectangular area of the [Target](/api/core/t
 
 #### Example
 
-```rust collapse={1-1, 3-3, 15-17}
+```rust collapse={3-3, 16-18}
+use fragmentcolor::{Renderer, Pass, Shader, Region};
 
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
-use fragmentcolor::{Renderer, Pass, Shader, Region};
 let renderer = Renderer::new();
 let target = renderer.create_texture_target([64, 64]).await?;
 
@@ -214,11 +214,11 @@ When the pass is configured to clear, the render target is cleared to the given 
 
 #### Example
 
-```rust collapse={1-1, 3-3, 15-17}
+```rust collapse={3-3, 16-18}
+use fragmentcolor::{Renderer, Pass, Shader};
 
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
-use fragmentcolor::{Renderer, Pass, Shader};
 let renderer = Renderer::new();
 let target = renderer.create_texture_target([64, 64]).await?;
 
