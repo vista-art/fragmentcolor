@@ -15,9 +15,12 @@ If the initial source validation passes, the shader is guaranteed to work on the
 ## Example
 
 ```rust
+# fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Shader;
 
 let _shader = Shader::default();
+# Ok(())
+# }
 ```
 
 ## Platform-specific: Web
