@@ -8,15 +8,20 @@ It contains a GPU surface texture attached to a platform-specific window or an o
 
 ## Example
 
-```rust,no_run
-use fragmentcolor::{Renderer, Shader};
+```no-run
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+    
+use fragmentcolor::{Renderer, Shader};
+
+// Platform-specific window, e.g. winit, glfw, sdl2, etc.
+// We have official support for winit but other libraries can be used
+// if you implement the required traits. See the source code for details.
+let window = fragmentcolor::mock_window([800, 600]);
 
 let renderer = Renderer::new();
-let window = fragmentcolor::mock_window([800, 600]);
 let target = renderer.create_target(window).await?;
-let shader = Shader::default();
-renderer.render(&shader, &target)?;
+
+renderer.render(&Shader::default(), &target)?;
 
 # Ok(())
 # }

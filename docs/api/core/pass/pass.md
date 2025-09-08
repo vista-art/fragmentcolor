@@ -18,7 +18,7 @@ it won't add the shader to its internal list and log a warning message in the co
 ```rust
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
-use fragmentcolor::{ Shader, Pass, Renderer };
+use fragmentcolor::{ Shader, Pass, Renderer, Frame };
 
 let renderer = Renderer::new();
 let target = renderer.create_texture_target([10, 10]).await?;
@@ -28,20 +28,19 @@ let mut pass = Pass::new("First Pass");
 pass.add_shader(&shader);
 
 let mut pass2 = Pass::new("Second Pass");
-pass2.add_shader(&shader;
+pass2.add_shader(&shader);
 
 // standalone
 renderer.render(&pass, &target)?;
 
-// vector of passes
-renderer.render(&vec![pass, pass2], &target)?;
-
 // using a Frame
-use fragmentcolor::Frame;
 let mut frame = Frame::new();
 frame.add_pass(&pass);
 frame.add_pass(&pass2);
 renderer.render(&frame, &target)?;
+
+// vector of passes (consume them)
+renderer.render(&vec![pass, pass2], &target)?;
 
 # Ok(())
 # }

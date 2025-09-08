@@ -7,9 +7,9 @@ This is useful when layering multiple passes where the next pass should blend wi
 ## Example
 
 ```rust
-use fragmentcolor::{Renderer, Pass, Shader};
-
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+
+use fragmentcolor::{Renderer, Pass, Shader};
 
 let renderer = Renderer::new();
 let target = renderer.create_texture_target([64, 64]).await?;
