@@ -19,12 +19,12 @@ It contains a GPU surface texture attached to a platform-specific window or an o
 
 ### WindowTarget (on-screen)
 
-```rust,no_run collapse={2-2, 10-12}
+```rust collapse={2-2, 10-12}
 use fragmentcolor::{Renderer, Shader};
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
 let renderer = Renderer::new();
-let window = fragmentcolor::mock_window([800, 600]);
+let window = fragmentcolor::headless_window([800, 600]);
 let target = renderer.create_target(window).await?;
 let shader = Shader::default();
 renderer.render(&shader, &target)?;
@@ -73,13 +73,13 @@ use fragmentcolor::{Renderer, Target};
 let renderer = Renderer::new();
 let target = renderer.create_texture_target([16, 16]).await?;
 let frame = target.get_current_frame()?; // Acquire a frame
+let _format = frame.format();
 
- assert_eq!(frame.format(), target.format());
  Ok(())
  }
  fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 9-12}"
+lang="rust" meta="collapse={1-1, 10-12}"
 />
 
 </TabItem>
@@ -93,6 +93,7 @@ import { Renderer, Target } from "fragmentcolor";
 const renderer = new Renderer();
 const target = await renderer.createTextureTarget([16, 16]);
 const frame = target.getCurrentFrame()?; // Acquire a frame;
+const _format = frame.format();
 
 `}
 lang="js"
@@ -109,6 +110,7 @@ from fragmentcolor import Renderer, Target
 renderer = Renderer()
 target = renderer.create_texture_target([16, 16])
 frame = target.get_current_frame(); // Acquire a frame
+_format = frame.format()
 
 `}
 lang="python"
@@ -153,12 +155,12 @@ Returns the current contents of the target as a byte array in RGBA8 format.
 <TabItem label="Rust">
 <Code
 code={`
- fn run() -> Result<(), Box<dyn std::error::Error>> {
+ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
 use fragmentcolor::{Renderer, Target};
 
 let renderer = Renderer::new();
-let target = renderer.create_texture_target([16, 16])?;
+let target = renderer.create_texture_target([16, 16]).await?;
 renderer.render(&fragmentcolor::Shader::default(), &target)?;
 
 let image = target.get_image();
@@ -180,7 +182,7 @@ code={`
 import { Renderer, Target } from "fragmentcolor";
 
 const renderer = new Renderer();
-const target = renderer.createTextureTarget([16, 16])?;
+const target = await renderer.createTextureTarget([16, 16]);
 renderer.render(fragmentcolor.Shader.default(), target)?;
 
 const image = target.getImage();

@@ -7,7 +7,7 @@ Most users do not need to call this directly; the [Renderer](https://fragmentcol
 ## Example
 
 ```rust
-use fragmentcolor::Renderer;
+use fragmentcolor::{Renderer, Target};
 
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
