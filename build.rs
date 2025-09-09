@@ -619,8 +619,8 @@ mod convert {
 
     fn strip_trailing_semicolon(s: &str) -> String {
         let t = s.trim_end();
-        if t.ends_with(';') {
-            t[..t.len() - 1].to_string()
+        if let Some(stripped) = t.strip_suffix(';') {
+            stripped.to_string()
         } else {
             s.to_string()
         }
@@ -746,8 +746,8 @@ mod convert {
         }
         // strip leading `let` and optional `mut`
         let rest = t.trim_start_matches("let ").trim_start();
-        let rest = if rest.starts_with("mut ") {
-            &rest[4..]
+        let rest = if let Some(stripped) = rest.strip_prefix("mut ") {
+            stripped
         } else {
             rest
         };
@@ -2182,12 +2182,18 @@ mod validation {
                     let indent_len = l.len() - trimmed.len();
                     if trimmed.starts_with('#') {
                         // Strip one leading '#' and one optional following space
-                        let after = &trimmed[1..];
-                        let after = if after.starts_with(' ') {
-                            &after[1..]
+                        let after = if let Some(stripped) = trimmed.strip_prefix('#') {
+                            stripped
+                        } else {
+                            trimmed
+                        };
+
+                        let after = if let Some(stripped) = after.strip_prefix(' ') {
+                            stripped
                         } else {
                             after
                         };
+
                         let new_text = format!("{}{}", &l[..indent_len], after);
                         items.push(LineItem {
                             text: new_text,
