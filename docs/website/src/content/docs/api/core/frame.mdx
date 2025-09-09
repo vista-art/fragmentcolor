@@ -55,6 +55,8 @@ lang="rust"
 <TabItem label="JavaScript">
 <Code
 code={`
+import { Frame } from "fragmentcolor";
+
 const frame = new Frame();
 `}
 lang="js"
@@ -65,6 +67,8 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
+from fragmentcolor import Frame
+
 frame = Frame()
 `}
 lang="python"
@@ -128,7 +132,14 @@ lang="rust"
 <TabItem label="JavaScript">
 <Code
 code={`
-frame.add_pass(rpass);
+import { Frame, Pass } from "fragmentcolor";
+
+const pass1 = new Pass("first");
+const pass2 = new Pass("second");
+
+const frame = new Frame();
+frame.add_pass(pass1);
+frame.add_pass(pass2);
 `}
 lang="js"
 />
@@ -138,7 +149,14 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-frame.add_pass(rpass)
+from fragmentcolor import Frame, Pass
+
+pass1 = Pass("first")
+pass2 = Pass("second")
+
+frame = Frame()
+frame.add_pass(pass1)
+frame.add_pass(pass2)
 `}
 lang="python"
 />

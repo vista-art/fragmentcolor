@@ -73,7 +73,18 @@ lang="rust" meta="collapse={3-3, 10-12}"
 <TabItem label="JavaScript">
 <Code
 code={`
+import { Renderer } from "fragmentcolor";
 
+async fn run() -> Result<(), Box<dyn std::error::Error>> {;
+
+const renderer = new Renderer();
+let target = renderer.create_texture_target([16, 16]).await?;
+let frame = target.get_current_frame()?; // Acquire a frame;
+let _format = frame.format();
+
+Ok(());
+};
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) };
 `}
 lang="js"
 />
@@ -83,7 +94,18 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
+from fragmentcolor import Renderer
 
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+
+renderer = Renderer()
+let target = renderer.create_texture_target([16, 16]).await?
+let frame = target.get_current_frame()? // Acquire a frame
+let _format = frame.format()
+
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
 lang="python"
 />
@@ -149,7 +171,17 @@ lang="rust" meta="collapse={3-3, 10-11}"
 <TabItem label="JavaScript">
 <Code
 code={`
+import { Renderer } from "fragmentcolor";
 
+fn main() -> Result<(), Box<dyn std::error::Error>> {;
+
+const renderer = new Renderer();
+let target = pollster::block_on(renderer.create_texture_target([16, 16]))?;
+renderer.render(fragmentcolor::Shader::default(), target)?;
+let image = target.get_image();
+
+Ok(());
+};
 `}
 lang="js"
 />
@@ -159,7 +191,17 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
+from fragmentcolor import Renderer
 
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+
+renderer = Renderer()
+let target = pollster::block_on(renderer.create_texture_target([16, 16]))?
+renderer.render(fragmentcolor::Shader::default(), target)?
+let image = target.get_image()
+
+Ok(())
+}
 `}
 lang="python"
 />
@@ -227,7 +269,21 @@ lang="rust" meta="collapse={3-3, 13-15}"
 <TabItem label="JavaScript">
 <Code
 code={`
+import { Renderer } from "fragmentcolor";
 
+async fn run() -> Result<(), Box<dyn std::error::Error>> {;
+
+const renderer = new Renderer();
+let mut target = renderer.create_texture_target([64, 32]).await?;
+
+assert_eq!(target.size(), [64, 32]);
+
+target.resize([128, 64]);
+assert_eq!(target.size(), [128, 64]);
+
+Ok(());
+};
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) };
 `}
 lang="js"
 />
@@ -237,7 +293,21 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
+from fragmentcolor import Renderer
 
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+
+renderer = Renderer()
+let mut target = renderer.create_texture_target([64, 32]).await?
+
+assert_eq!(target.size(), [64, 32])
+
+target.resize([128, 64])
+assert_eq!(target.size(), [128, 64])
+
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
 lang="python"
 />
@@ -301,7 +371,17 @@ lang="rust" meta="collapse={3-3, 9-11}"
 <TabItem label="JavaScript">
 <Code
 code={`
+import { Renderer, Shader } from "fragmentcolor";
 
+async fn run() -> Result<(), Box<dyn std::error::Error>> {;
+
+const renderer = new Renderer();
+let target = renderer.create_texture_target([64, 32]).await?;
+assert_eq!(target.size(), [64, 32]);
+
+Ok(());
+};
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) };
 `}
 lang="js"
 />
@@ -311,7 +391,17 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
+from fragmentcolor import Renderer, Shader
 
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+
+renderer = Renderer()
+let target = renderer.create_texture_target([64, 32]).await?
+assert_eq!(target.size(), [64, 32])
+
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
 lang="python"
 />

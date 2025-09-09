@@ -83,7 +83,9 @@ lang="rust"
 <TabItem label="JavaScript">
 <Code
 code={`
-const rpass = new Pass("single pass");
+import { Pass } from "fragmentcolor";
+
+const _pass = new Pass("first pass");
 `}
 lang="js"
 />
@@ -93,7 +95,9 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-rpass = Pass("single pass")
+from fragmentcolor import Pass
+
+_pass = Pass("first pass")
 `}
 lang="python"
 />
@@ -152,7 +156,10 @@ lang="rust"
 <TabItem label="JavaScript">
 <Code
 code={`
+import { Pass } from "fragmentcolor";
 
+let pass = Pass::compute("compute pass");
+// Add compute shaders once available
 `}
 lang="js"
 />
@@ -162,7 +169,10 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
+from fragmentcolor import Pass
 
+let pass = Pass::compute("compute pass")
+# Add compute shaders once available
 `}
 lang="python"
 />
@@ -221,7 +231,10 @@ lang="rust"
 <TabItem label="JavaScript">
 <Code
 code={`
+import { Pass, Shader } from "fragmentcolor";
 
+const shader = exampleShader();
+let pass = Pass::from_shader("single", &shader);
 `}
 lang="js"
 />
@@ -231,7 +244,10 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
+from fragmentcolor import Pass, Shader
 
+shader = example_shader()
+let pass = Pass::from_shader("single", &shader)
 `}
 lang="python"
 />
@@ -303,7 +319,23 @@ lang="rust" meta="collapse={1-1, 15-17}"
 <TabItem label="JavaScript">
 <Code
 code={`
+async fn run() -> Result<(), Box<dyn std::error::Error>> {;
 
+import { Renderer, Pass, Shader } from "fragmentcolor";
+
+const renderer = new Renderer();
+let target = renderer.create_texture_target([64, 64]).await?;
+
+const shader = exampleShader();
+const pass = new Pass("blend with previous");
+pass.add_shader(&shader);
+pass.load_previous();
+
+renderer.render(pass, target)?;
+
+Ok(());
+};
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) };
 `}
 lang="js"
 />
@@ -313,7 +345,23 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
+from fragmentcolor import Renderer, Pass, Shader
+
+renderer = Renderer()
+let target = renderer.create_texture_target([64, 64]).await?
+
+shader = example_shader()
+pass = Pass("blend with previous")
+pass.add_shader(&shader)
+pass.load_previous()
+
+renderer.render(pass, target)?
+
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
 lang="python"
 />
@@ -373,7 +421,11 @@ lang="rust"
 <TabItem label="JavaScript">
 <Code
 code={`
+import { Pass } from "fragmentcolor";
 
+const pass = new Pass("example");
+let _input = pass.get_input();
+// Inspect fields via dedicated APIs; internal fields are not public
 `}
 lang="js"
 />
@@ -383,7 +435,11 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
+from fragmentcolor import Pass
 
+pass = Pass("example")
+let _input = pass.get_input()
+# Inspect fields via dedicated APIs; internal fields are not public
 `}
 lang="python"
 />
@@ -441,7 +497,11 @@ lang="rust"
 <TabItem label="JavaScript">
 <Code
 code={`
-rpass.add_shader(shader);
+import { Pass, Shader } from "fragmentcolor";
+
+const shader = exampleShader();
+const pass = new Pass("p");
+pass.add_shader(&shader);
 `}
 lang="js"
 />
@@ -451,7 +511,11 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-rpass.add_shader(shader)
+from fragmentcolor import Pass, Shader
+
+shader = example_shader()
+pass = Pass("p")
+pass.add_shader(&shader)
 `}
 lang="python"
 />
@@ -524,7 +588,24 @@ lang="rust" meta="collapse={3-3, 16-18}"
 <TabItem label="JavaScript">
 <Code
 code={`
+import { Renderer, Pass, Shader, Region } from "fragmentcolor";
 
+async fn run() -> Result<(), Box<dyn std::error::Error>> {;
+
+const renderer = new Renderer();
+let target = renderer.create_texture_target([64, 64]).await?;
+
+const shader = exampleShader();
+const pass = new Pass("clipped");
+pass.add_shader(&shader);
+
+pass.set_viewport(Region::from_region(0, 0, 32, 32));
+
+renderer.render(pass, target)?;
+
+Ok(());
+};
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) };
 `}
 lang="js"
 />
@@ -534,7 +615,24 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
+from fragmentcolor import Renderer, Pass, Shader, Region
 
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+
+renderer = Renderer()
+let target = renderer.create_texture_target([64, 64]).await?
+
+shader = example_shader()
+pass = Pass("clipped")
+pass.add_shader(&shader)
+
+pass.set_viewport(Region::from_region(0, 0, 32, 32))
+
+renderer.render(pass, target)?
+
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
 lang="python"
 />
@@ -607,7 +705,24 @@ lang="rust" meta="collapse={3-3, 16-18}"
 <TabItem label="JavaScript">
 <Code
 code={`
+import { Renderer, Pass, Shader } from "fragmentcolor";
 
+async fn run() -> Result<(), Box<dyn std::error::Error>> {;
+
+const renderer = new Renderer();
+let target = renderer.create_texture_target([64, 64]).await?;
+
+const shader = exampleShader();
+const pass = new Pass("solid background");
+pass.add_shader(&shader);
+
+pass.set_clear_color([0.1, 0.2, 0.3, 1.0]);
+
+renderer.render(pass, target)?;
+
+Ok(());
+};
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) };
 `}
 lang="js"
 />
@@ -617,7 +732,24 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
+from fragmentcolor import Renderer, Pass, Shader
 
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+
+renderer = Renderer()
+let target = renderer.create_texture_target([64, 64]).await?
+
+shader = example_shader()
+pass = Pass("solid background")
+pass.add_shader(&shader)
+
+pass.set_clear_color([0.1, 0.2, 0.3, 1.0])
+
+renderer.render(pass, target)?
+
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
 lang="python"
 />

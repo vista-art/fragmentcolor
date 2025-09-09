@@ -4,11 +4,12 @@ import starlightBlog from "starlight-blog";
 
 import starlightPluginShowLatestVersion from "starlight-plugin-show-latest-version";
 
-import vercel from "@astrojs/vercel";
+import vercel from "@astrojs/vercel/serverless";
 
 // https://astro.build/config
 export default defineConfig({
   site: "https://fragmentcolor.org",
+  output: "server",
 
   integrations: [
     starlight({
