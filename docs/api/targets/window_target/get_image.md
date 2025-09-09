@@ -7,7 +7,7 @@ Use a [TextureTarget](https://fragmentcolor.org/api/targets/texturetarget) inste
 ## Example
 
 ```rust
-# fn run() -> Result<(), Box<dyn std::error::Error>> {
+# async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
 use fragmentcolor::{Renderer, Target};
 

@@ -38,6 +38,22 @@ pub trait HasDisplaySize {
     fn size(&self) -> Size;
 }
 
+/// A generalized source of a surface target. Concrete window types (e.g. winit::window::Window)
+/// will provide a real surface target via Into<wgpu::SurfaceTarget>, while headless windows can
+/// opt out by returning None so the Renderer can fall back to a Texture-backed target.
+pub trait SurfaceSource: HasDisplaySize + Clone {
+    fn surface_handle(&self) -> Option<wgpu::SurfaceTarget<'static>>;
+}
+
+impl<T> SurfaceSource for T
+where
+    T: HasDisplaySize + Clone + Into<wgpu::SurfaceTarget<'static>>,
+{
+    fn surface_handle(&self) -> Option<wgpu::SurfaceTarget<'static>> {
+        Some(self.clone().into())
+    }
+}
+
 #[derive(Debug)]
 struct RenderPipeline {
     pipeline: wgpu::RenderPipeline,
@@ -71,19 +87,26 @@ impl Renderer {
     #[lsp_doc("docs/api/core/renderer/create_target.md")]
     pub async fn create_target(
         &self,
-        window: impl Into<wgpu::SurfaceTarget<'static>> + Clone + HasDisplaySize,
-    ) -> Result<WindowTarget, InitializationError> {
-        let size = window.size();
+        window: impl SurfaceSource,
+    ) -> Result<crate::RenderTarget, InitializationError> {
+        let sz = window.size();
         let size = wgpu::Extent3d {
-            width: size.width,
-            height: size.height,
+            width: sz.width,
+            height: sz.height,
             depth_or_array_layers: 1,
         };
-        let (context, surface, config) = self.create_surface(window.clone(), size).await?;
 
-        Ok(WindowTarget::new(context, surface, config))
+        if let Some(handle) = window.surface_handle() {
+            let (context, surface, config) = self.create_surface(handle, size).await?;
+            Ok(crate::RenderTarget::from(WindowTarget::new(
+                context, surface, config,
+            )))
+        } else {
+            // Headless path: return a TextureTarget variant
+            let target = self.create_texture_target(sz).await?;
+            Ok(crate::RenderTarget::from(target))
+        }
     }
-
     #[lsp_doc("docs/api/core/renderer/create_texture_target.md")]
     pub async fn create_texture_target(
         &self,

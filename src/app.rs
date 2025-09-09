@@ -1,6 +1,4 @@
-use crate::{
-    Renderer, Shader, Size, Target, WindowTarget, error::ShaderError, frame::Frame, pass::Pass,
-};
+use crate::{Renderer, Shader, Size, Target, error::ShaderError, frame::Frame, pass::Pass};
 use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -134,7 +132,7 @@ pub struct App {
 
     // Active windows and targets
     windows: HashMap<WindowId, Arc<Window>>, // created at runtime
-    targets: RwLock<HashMap<WindowId, WindowTarget>>, // interior mutability for callbacks
+    targets: RwLock<HashMap<WindowId, crate::RenderTarget>>, // interior mutability for callbacks
 
     // Per-window scene to render
     scenes: RwLock<HashMap<WindowId, SceneRef>>,

@@ -10,12 +10,12 @@ It contains a GPU surface texture attached to a platform-specific window or an o
 
 ### WindowTarget (on-screen)
 
-```rust,no_run
+```rust
 use fragmentcolor::{Renderer, Shader};
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
 let renderer = Renderer::new();
-let window = fragmentcolor::mock_window([800, 600]);
+let window = fragmentcolor::headless_window([800, 600]);
 let target = renderer.create_target(window).await?;
 let shader = Shader::default();
 renderer.render(&shader, &target)?;

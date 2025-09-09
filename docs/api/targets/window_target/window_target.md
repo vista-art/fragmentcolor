@@ -8,21 +8,22 @@ It contains a GPU surface texture attached to a platform-specific window or an o
 
 ## Example
 
-```no-run
+```rust
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
-use fragmentcolor::{Renderer, Shader};
+use fragmentcolor::{Renderer, Shader, Target};
 
-// Platform-specific window, e.g. winit, glfw, sdl2, etc.
-// We have official support for winit but other libraries can be used
-// if you implement the required traits. See the source code for details.
-let window = fragmentcolor::mock_window([800, 600]);
+// Use your platform's windowing system to create a window.
+// We officially support Winit. Check the examples folder for details.
+let window = fragmentcolor::headless_window([800, 600]);
 
 let renderer = Renderer::new();
 let target = renderer.create_target(window).await?;
 
 renderer.render(&Shader::default(), &target)?;
 
+# let s = target.size();
+# assert_eq!([s.width, s.height], [800, 600]);
 # Ok(())
 # }
 # fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
