@@ -76,7 +76,7 @@ import { Renderer } from "fragmentcolor";
 
 const renderer = new Renderer();
 const target = await renderer.createTextureTarget([16, 16]);
-const frame = target.getCurrentFrame()?;
+const frame = target.getCurrentFrame();
 const _format = frame.format();
 
 `}
@@ -161,12 +161,12 @@ lang="rust" meta="collapse={3-3, 11-13}"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Renderer, Target } from "fragmentcolor";
+import { Renderer, Target, Shader } from "fragmentcolor";
 
 
 const renderer = new Renderer();
 const target = await renderer.createTextureTarget([16, 16]);
-renderer.render(fragmentcolor.Shader.default(), target)?;
+renderer.render(Shader.default(), target);
 
 const image = target.getImage();
 
@@ -179,12 +179,12 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Renderer, Target
+from fragmentcolor import Renderer, Target, Shader
 
 
 renderer = Renderer()
 target = renderer.create_texture_target([16, 16])
-renderer.render(fragmentcolor.Shader.default(), target)
+renderer.render(Shader.default(), target)
 
 image = target.get_image()
 

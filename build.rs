@@ -639,52 +639,54 @@ mod convert {
     }
 
     fn transform_await(line: &str, lang: Lang) -> String {
-        // Handle `.await?` -> `await` (JS) or remove (Py)
-        if !line.contains(".await?") {
-            // Also handle stray '?' after calls (error-prop) for both langs
-            return match lang {
-                Lang::Js => line.to_string(),
-                Lang::Py => line.replace("?", ""),
-            };
-        }
-        match lang {
-            Lang::Js => {
-                // Insert 'await ' before the awaited expression
-                // Find the segment before .await?
-                if let Some(pos) = line.find(".await?") {
-                    // Try to preserve left side of assignment if present
-                    if let Some(eq) = line[..pos].rfind('=') {
-                        let (lhs, expr) = line.split_at(eq + 1);
-                        let expr = expr.trim();
-                        let before_await = &expr[..expr.rfind(".await?").unwrap_or(expr.len())];
-                        let mut out = String::new();
-                        out.push_str(lhs);
-                        out.push(' ');
-                        out.push_str("await ");
-                        out.push_str(before_await.trim());
-                        // Preserve any remaining tail after .await? (e.g., ');')
-                        let tail = &line[pos + ".await?".len()..];
-                        out.push_str(tail);
-                        return out;
-                    } else {
-                        // No assignment; just `await <expr>`
-                        let before_await = &line[..pos];
-                        let mut out = String::new();
-                        out.push_str("await ");
-                        out.push_str(before_await.trim());
-                        let tail = &line[pos + ".await?".len()..];
-                        out.push_str(tail);
-                        return out;
+        // Handle `.await?` -> `await` (JS) or remove (Py). Also drop Rust error `?` in JS/Py.
+        let mut out = line.to_string();
+        if out.contains(".await?") {
+            match lang {
+                Lang::Js => {
+                    if let Some(pos) = out.find(".await?") {
+                        // Preserve left side if present
+                        if let Some(eq) = out[..pos].rfind('=') {
+                            let (lhs, expr) = out.split_at(eq + 1);
+                            let expr = expr.trim();
+                            let before_await = &expr[..expr.rfind(".await?").unwrap_or(expr.len())];
+                            let mut s = String::new();
+                            s.push_str(lhs);
+                            s.push(' ');
+                            s.push_str("await ");
+                            s.push_str(before_await.trim());
+                            let tail = &out[pos + ".await?".len()..];
+                            s.push_str(tail);
+                            out = s;
+                        } else {
+                            let before_await = &out[..pos];
+                            let mut s = String::new();
+                            s.push_str("await ");
+                            s.push_str(before_await.trim());
+                            let tail = &out[pos + ".await?".len()..];
+                            s.push_str(tail);
+                            out = s;
+                        }
                     }
                 }
-                line.to_string()
+                Lang::Py => {
+                    out = out.replace(".await?", "");
+                }
             }
-            Lang::Py => {
-                // Remove '.await?' and trailing '?'
-                let mut s = line.replace(".await?", "");
-                s = s.replace('?', "");
+        }
+        // Remove stray Rust error-propagation '?' for both langs (JS/Py)
+        match lang {
+            Lang::Js => {
+                // Replace common patterns
+                let mut s = out.replace(")?;", ");");
+                s = s.replace(")?\n", ")\n");
+                s = s.replace(")? ", ") ");
+                if s.trim_end().ends_with('?') {
+                    s = s.trim_end_matches('?').to_string();
+                }
                 s
             }
+            Lang::Py => out.replace('?', ""),
         }
     }
 
@@ -809,9 +811,14 @@ mod convert {
         if let Lang::Js = lang {
             rhs = camelize_method_calls_js(&rhs);
         }
-        // Python: size() -> size property
+        // Python: size() -> size property and '//' comment to '#'
         if let Lang::Py = lang {
             rhs = rhs.replace(".size()", ".size");
+            if let Some(idx) = rhs.find("//") {
+                let (mut head, tail) = rhs.split_at(idx);
+                head = head.trim_end_matches(';').trim_end();
+                rhs = format!("{} #{}", head, &tail[2..]);
+            }
         }
 
         // Var rename for Python reserved keyword "pass"
@@ -825,6 +832,13 @@ mod convert {
         } else {
             var
         };
+
+        // If RHS references the original var (e.g., Pass::from_shader expansion), adjust to var_out for Python
+        if let Lang::Py = lang {
+            let needle = format!("{}.", var);
+            let replacement = format!("{}.", var_out);
+            rhs = rhs.replace(&needle, &replacement);
+        }
 
         let line_out = match lang {
             Lang::Js => ensure_js_semicolon(&format!("const {} = {}", var_out, rhs)),
@@ -856,6 +870,14 @@ mod convert {
                 src.push(t.clone());
             }
         }
+        // Pre-scan usage to adjust imports (Shader usage in examples)
+        let uses_shader = src.iter().any(|l| {
+            let t = l.trim();
+            t.contains("Shader::")
+                || t.contains("fragmentcolor::Shader")
+                || t.contains("fragmentcolor.Shader")
+                || t.contains("Shader.default(")
+        });
         // Enforce no visible into()
         for line in &src {
             if line.contains(".into(") || line.contains(".into()") || line.contains(" into(") {
@@ -895,7 +917,11 @@ mod convert {
             }
 
             // Imports from fragmentcolor
-            if let Some(list) = parse_use_fragmentcolor(t) {
+            if let Some(mut list) = parse_use_fragmentcolor(t) {
+                // Ensure Shader is imported if used in snippet
+                if uses_shader && !list.iter().any(|s| s == "Shader") {
+                    list.push("Shader".to_string());
+                }
                 match lang {
                     Lang::Js => out.push(format!(
                         "import {{ {} }} from \"fragmentcolor\";",
@@ -934,11 +960,22 @@ mod convert {
             line = replace_static_call_to_dot(&line);
             // Strip refs
             line = strip_refs(&line);
-            // Await
+            // Drop explicit module prefix for JS/Py when present: fragmentcolor.Shader -> Shader
+            if matches!(lang, Lang::Js | Lang::Py) {
+                line = line.replace("fragmentcolor.Shader", "Shader");
+            }
+            // Await / remove error '?' artifacts
             line = transform_await(&line, lang);
             // Python size property
             if let Lang::Py = lang {
                 line = line.replace(".size()", ".size");
+                // Convert JS-style '//' comments to Python '#'
+                if let Some(idx) = line.find("//") {
+                    let (mut head, tail) = line.split_at(idx);
+                    // Strip any trailing semicolon immediately before comment
+                    head = head.trim_end_matches(';').trim_end();
+                    line = format!("{} #{}", head, &tail[2..]);
+                }
             }
             // JS camelize methods
             if let Lang::Js = lang {
