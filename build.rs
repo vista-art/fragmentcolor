@@ -2582,10 +2582,6 @@ mod validation {
                     let kotlin_code = std::fs::read_to_string(&kotlin_abs)
                         .unwrap_or_else(|_| "// Kotlin placeholder — bindings WIP\n".to_string());
 
-                    // Use converted code directly for display (lines already aligned with Rust)
-                    let js_code = js_code;
-                    let py_code = py_code;
-
                     // Render <Tabs> with five language tabs
                     out.push_str("\n#### Example\n\n<Tabs>\n\n");
 
