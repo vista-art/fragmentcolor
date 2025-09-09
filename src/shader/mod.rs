@@ -45,7 +45,7 @@ impl Default for Shader {
 }
 
 impl Shader {
-    #[lsp_doc("docs/api/core/shader/constructor.md")]
+    #[lsp_doc("docs/api/core/shader/new.md")]
     pub fn new(source: &str) -> Result<Self, ShaderError> {
         let object = Arc::new(input::load_shader(source)?);
         let pass = Arc::new(PassObject::from_shader_object(

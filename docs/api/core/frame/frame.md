@@ -11,20 +11,10 @@ You need to inject the [Frame](https://fragmentcolor.org/api/core/frame) object 
 ```rust
 use fragmentcolor::{Frame, Pass};
 
-let mut pass1 = Pass::new("first");
-let mut pass2 = Pass::new("second");
+let pass1 = Pass::new("first");
+let pass2 = Pass::new("second");
 
 let mut frame = Frame::new();
 frame.add_pass(&pass1);
 frame.add_pass(&pass2);
 ```
-
-## Methods
-
-- ### constructor()
-
-  Creates a new [Frame](https://fragmentcolor.org/api/core/frame) object.
-
-- ### add_pass(pass: [Pass](https://fragmentcolor.org/api/core/pass))
-
-  Adds a [Pass](https://fragmentcolor.org/api/core/pass) object to the [Frame](https://fragmentcolor.org/api/core/frame).

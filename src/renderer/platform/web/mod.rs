@@ -52,7 +52,7 @@ impl From<web_sys::OffscreenCanvas> for Canvas {
 #[wasm_bindgen]
 impl Renderer {
     #[wasm_bindgen(constructor)]
-    #[lsp_doc("docs/api/core/renderer/constructor.md")]
+    #[lsp_doc("docs/api/core/renderer/new.md")]
     /// Creates a new Renderer
     pub fn new_js() -> Self {
         Self::new()

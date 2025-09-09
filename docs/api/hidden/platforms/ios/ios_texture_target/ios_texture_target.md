@@ -7,17 +7,20 @@ Use this when you need an offscreen texture render target on iOS (outside of a v
 ## Example
 
 ```rust
+# fn run() -> Result<(), Box<dyn std::error::Error>> {
+
 use fragmentcolor::Renderer;
 
-# fn main() -> Result<(), Box<dyn std::error::Error>> {
 let renderer = Renderer::new();
-let target = pollster::block_on(renderer.create_texture_target_ios([64, 64]))?;
+let target = renderer.create_texture_target([64, 64])?;
 
 let size = target.size();
 let _w = size.width;
 let _h = size.height;
 let _d = size.depth;
 
+# assert_eq!(image.len(), 16 * 16 * 4); // RGBA8
 # Ok(())
 # }
+# fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 ```

@@ -7,9 +7,9 @@ The viewport restricts drawing to a rectangular area of the [Target](https://fra
 ## Example
 
 ```rust
-use fragmentcolor::{Renderer, Pass, Shader, Region};
-
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+
+use fragmentcolor::{Renderer, Pass, Shader, Region};
 
 let renderer = Renderer::new();
 let target = renderer.create_texture_target([64, 64]).await?;

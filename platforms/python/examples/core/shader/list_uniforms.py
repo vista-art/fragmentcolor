@@ -1,4 +1,4 @@
 from fragmentcolor import Shader
 
-shader = example_shader()
-let _list = shader.list_uniforms()
+shader = Shader.default()
+_list = shader.list_uniforms()

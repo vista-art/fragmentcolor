@@ -44,4 +44,10 @@ impl Shader {
     pub fn passes_py(&self) -> crate::PyPassIterator {
         crate::PyPassIterator(vec![self.pass.clone()])
     }
+
+    #[staticmethod]
+    #[pyo3(name = "default")]
+    pub fn default_py() -> Self {
+        Shader::default()
+    }
 }

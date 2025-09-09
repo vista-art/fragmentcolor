@@ -98,7 +98,7 @@ impl Target for AndroidTextureTarget {
 #[cfg_attr(mobile, uniffi::export)]
 impl crate::Renderer {
     /// Creates a new Renderer (Android wrapper variant)
-    #[lsp_doc("docs/api/core/renderer/constructor.md")]
+    #[lsp_doc("docs/api/core/renderer/new.md")]
     pub fn new_android() -> Self {
         Self::new()
     }

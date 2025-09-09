@@ -1,4 +1,4 @@
 from fragmentcolor import Pass, Shader
 
-shader = example_shader()
-let pass = Pass::from_shader("single", &shader)
+shader = Shader.default()
+rpass = Pass("single"); pass.add_shader(shader)

@@ -7,7 +7,7 @@ A [Frame](https://fragmentcolor.org/api/core/frame) is an ordered collection of 
 ## Example
 
 ```rust
-use fragmentcolor::{Frame};
+use fragmentcolor::Frame;
 
-let mut frame = Frame::new();
+let frame = Frame::new();
 ```

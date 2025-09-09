@@ -47,14 +47,14 @@ pub struct Pass {
 }
 
 impl Pass {
-    #[lsp_doc("docs/api/core/pass/constructor.md")]
+    #[lsp_doc("docs/api/core/pass/new.md")]
     pub fn new(name: &str) -> Self {
         Self {
             object: Arc::new(PassObject::new(name, PassType::Render)),
         }
     }
 
-    #[lsp_doc("docs/api/core/pass/compute.md")]
+    #[lsp_doc("docs/api/core/pass/hidden/compute.md")]
     pub fn compute(name: &str) -> Self {
         Self {
             object: Arc::new(PassObject::new(name, PassType::Compute)),
@@ -68,7 +68,7 @@ impl Pass {
         }
     }
 
-    #[lsp_doc("docs/api/core/pass/load_previous.md")]
+    #[lsp_doc("docs/api/core/pass/hidden/load_previous.md")]
     pub fn load_previous(&self) {
         *self.object.input.write() = PassInput {
             load: true,
@@ -76,7 +76,7 @@ impl Pass {
         }
     }
 
-    #[lsp_doc("docs/api/core/pass/get_input.md")]
+    #[lsp_doc("docs/api/core/pass/hidden/get_input.md")]
     pub fn get_input(&self) -> PassInput {
         self.object.get_input()
     }
@@ -86,7 +86,7 @@ impl Pass {
         self.object.add_shader(shader);
     }
 
-    #[lsp_doc("docs/api/core/pass/set_viewport.md")]
+    #[lsp_doc("docs/api/core/pass/hidden/set_viewport.md")]
     pub fn set_viewport(&self, viewport: Region) {
         self.object.set_viewport(viewport);
     }

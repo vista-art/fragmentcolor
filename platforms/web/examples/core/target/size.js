@@ -1,12 +1,9 @@
+
 import { Renderer, Target } from "fragmentcolor";
 
-async fn run() -> Result<(), Box<dyn std::error::Error>> {;
-
 const renderer = new Renderer();
-let target = renderer.create_texture_target([64, 32]).await?;
-let size: [u32; 2] = target.size().into();
-assert_eq!(size, [64, 32]);
-
-Ok(());
-};
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) };
+const target = await renderer.createTextureTarget([64, 32]);
+const size = target.size();
+const width = size.width;
+const height = size.height;
+const depth = size.depth; // 1;

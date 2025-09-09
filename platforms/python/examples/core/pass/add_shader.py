@@ -1,5 +1,5 @@
 from fragmentcolor import Pass, Shader
 
-shader = example_shader()
-pass = Pass("p")
-pass.add_shader(&shader)
+shader = Shader.default()
+rpass = Pass("p")
+pass.add_shader(shader)

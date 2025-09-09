@@ -20,8 +20,8 @@ You need to inject the [Frame](/api/core/frame) object into the [Renderer](/api/
 ```rust
 use fragmentcolor::{Frame, Pass};
 
-let mut pass1 = Pass::new("first");
-let mut pass2 = Pass::new("second");
+let pass1 = Pass::new("first");
+let pass2 = Pass::new("second");
 
 let mut frame = Frame::new();
 frame.add_pass(&pass1);
@@ -43,9 +43,9 @@ A [Frame](/api/core/frame) is an ordered collection of [Pass](/api/core/pass) ob
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::{Frame};
+use fragmentcolor::Frame;
 
-let mut frame = Frame::new();
+let frame = Frame::new();
 `}
 lang="rust"
 />
@@ -138,8 +138,8 @@ const pass1 = new Pass("first");
 const pass2 = new Pass("second");
 
 const frame = new Frame();
-frame.add_pass(pass1);
-frame.add_pass(pass2);
+frame.addPass(pass1);
+frame.addPass(pass2);
 `}
 lang="js"
 />

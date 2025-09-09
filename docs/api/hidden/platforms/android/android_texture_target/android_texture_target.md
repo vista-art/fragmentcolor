@@ -7,16 +7,17 @@ Use this when you need an offscreen texture render target on Android (outside of
 ## Example
 
 ```rust
+# fn run() -> Result<(), Box<dyn std::error::Error>> {
+
 use fragmentcolor::Renderer;
 
-# fn main() -> Result<(), Box<dyn std::error::Error>> {
-
 let renderer = Renderer::new();
-let target = pollster::block_on(renderer.create_texture_target_android([64, 64]))?;
+let target = renderer.create_texture_target([64, 64])?;
 
 let size = target.size();
-assert_eq!(size.width, 64);
 
+# assert_eq!(size.width, 64);
 # Ok(())
 # }
+# fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 ```

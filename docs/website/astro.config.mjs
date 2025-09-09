@@ -2,14 +2,12 @@ import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
 import starlightBlog from "starlight-blog";
 
-import starlightPluginShowLatestVersion from "starlight-plugin-show-latest-version";
 
-import vercel from "@astrojs/vercel/serverless";
+import vercel from "@astrojs/vercel";
 
 // https://astro.build/config
 export default defineConfig({
   site: "https://fragmentcolor.org",
-  output: "server",
 
   integrations: [
     starlight({
@@ -23,6 +21,7 @@ export default defineConfig({
       components: {
         Repl: "./src/components/Repl.astro",
         Examples: "./src/components/Examples.mdx",
+        SiteTitle: "./src/components/SiteTitle.astro",
       },
       customCss: ["./src/assets/styles/override.css"],
       // @TODO set up a system for automatic translation
@@ -62,14 +61,6 @@ export default defineConfig({
               url: "https://github.com/rafaelbeckel",
             },
           },
-        }),
-        starlightPluginShowLatestVersion({
-          size: "small",
-          source: {
-            type: "github",
-            slug: "vista-art/fragmentcolor",
-          },
-          showInSiteTitle: "true",
         }),
       ],
       head: [

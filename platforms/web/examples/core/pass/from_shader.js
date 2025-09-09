@@ -1,4 +1,4 @@
 import { Pass, Shader } from "fragmentcolor";
 
-const shader = exampleShader();
-let pass = Pass::from_shader("single", &shader);
+const shader = Shader.default();
+const pass = new Pass("single"); pass.addShader(shader);
