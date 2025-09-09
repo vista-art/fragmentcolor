@@ -9,7 +9,7 @@ Use a [TextureTarget](https://fragmentcolor.org/api/targets/texturetarget) inste
 ```rust
 # fn run() -> Result<(), Box<dyn std::error::Error>> {
 
-use fragmentcolor::Renderer;
+use fragmentcolor::{Renderer, Target};
 
 let renderer = Renderer::new();
 let target = renderer.create_texture_target([16, 16]).await?;

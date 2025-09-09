@@ -145,7 +145,7 @@ Use a [TextureTarget](/api/targets/texturetarget) instead.
 code={`
  fn run() -> Result<(), Box<dyn std::error::Error>> {
 
-use fragmentcolor::Renderer;
+use fragmentcolor::{Renderer, Target};
 
 let renderer = Renderer::new();
 let target = renderer.create_texture_target([16, 16]).await?;
@@ -167,7 +167,7 @@ lang="rust" meta="collapse={1-1, 11-14}"
 <Code
 code={`
 
-import { Renderer } from "fragmentcolor";
+import { Renderer, Target } from "fragmentcolor";
 
 const renderer = new Renderer();
 const target = await renderer.createTextureTarget([16, 16]);
@@ -185,7 +185,7 @@ lang="js"
 <Code
 code={`
 
-from fragmentcolor import Renderer
+from fragmentcolor import Renderer, Target
 
 renderer = Renderer()
 target = renderer.create_texture_target([16, 16])

@@ -1,5 +1,5 @@
 
-from fragmentcolor import Renderer
+from fragmentcolor import Renderer, Target
 
 renderer = Renderer()
 target = renderer.create_texture_target([16, 16])

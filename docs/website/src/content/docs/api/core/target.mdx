@@ -74,11 +74,12 @@ let renderer = Renderer::new();
 let target = renderer.create_texture_target([16, 16]).await?;
 let frame = target.get_current_frame()?; // Acquire a frame
 
+ assert_eq!(frame.format(), target.format());
  Ok(())
  }
  fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 9-11}"
+lang="rust" meta="collapse={1-1, 9-12}"
 />
 
 </TabItem>
@@ -349,7 +350,7 @@ let depth = size.depth; // 1
 
  assert_eq!(size.width, 64);
  assert_eq!(size.height, 32);
- assert_eq!(size.depth, 1);
+ assert_eq!(size.depth, Some(1));
  let size: [u32; 2] = target.size().into();
  assert_eq!(size, [64, 32]);
  let size: [u32; 3] = target.size().into();

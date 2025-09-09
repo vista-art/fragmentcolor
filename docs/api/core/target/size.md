@@ -18,7 +18,7 @@ let depth = size.depth; // 1
 
 # assert_eq!(size.width, 64);
 # assert_eq!(size.height, 32);
-# assert_eq!(size.depth, 1);
+# assert_eq!(size.depth, Some(1));
 # let size: [u32; 2] = target.size().into();
 # assert_eq!(size, [64, 32]);
 # let size: [u32; 3] = target.size().into();

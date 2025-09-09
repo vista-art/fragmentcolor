@@ -1,5 +1,5 @@
 
-import { Renderer, Shader } from "fragmentcolor";
+import { Renderer, Shader, Target } from "fragmentcolor";
 const renderer = new Renderer();
 
 // Create an offscreen texture target with a size of 64x64 pixels.;

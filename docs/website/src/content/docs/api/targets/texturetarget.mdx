@@ -18,7 +18,7 @@ Use it for headless rendering, tests, server-side image generation, or CI.
 ```rust collapse={1-1, 13-17}
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
-use fragmentcolor::{Renderer, Shader};
+use fragmentcolor::{Renderer, Shader, Target};
 
 let renderer = Renderer::new();
 let target = renderer.create_texture_target([64, 64]).await?;
@@ -50,9 +50,9 @@ Most users do not need to call this directly; the [Renderer](/api/core/renderer)
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::Renderer;
-
  async fn run() -> Result<(), Box<dyn std::error::Error>> {
+
+use fragmentcolor::Renderer;
 
 let renderer = Renderer::new();
 let target = renderer.create_texture_target([16, 16]).await?;
@@ -63,7 +63,7 @@ let _format = frame.format();
  }
  fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={3-3, 10-12}"
+lang="rust" meta="collapse={1-1, 10-12}"
 />
 
 </TabItem>
@@ -71,8 +71,8 @@ lang="rust" meta="collapse={3-3, 10-12}"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Renderer } from "fragmentcolor";
 
+import { Renderer } from "fragmentcolor";
 
 const renderer = new Renderer();
 const target = await renderer.createTextureTarget([16, 16]);
@@ -88,8 +88,8 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Renderer
 
+from fragmentcolor import Renderer
 
 renderer = Renderer()
 target = renderer.create_texture_target([16, 16])
@@ -139,7 +139,7 @@ Returns the current contents of the target as a byte array in RGBA8 format.
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::Renderer;
+use fragmentcolor::{Renderer, Target};
 
  async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
@@ -161,7 +161,7 @@ lang="rust" meta="collapse={3-3, 11-13}"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Renderer } from "fragmentcolor";
+import { Renderer, Target } from "fragmentcolor";
 
 
 const renderer = new Renderer();
@@ -179,7 +179,7 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Renderer
+from fragmentcolor import Renderer, Target
 
 
 renderer = Renderer()
@@ -311,6 +311,7 @@ lang="text"
 </Tabs>
 
 ### size() -&gt; Size &#123; width: u32, height: u32, depth: u32 &#125;
+
 Returns the size of the [TextureTarget](/api/targets/texturetarget) in pixels.
 
 #### Example

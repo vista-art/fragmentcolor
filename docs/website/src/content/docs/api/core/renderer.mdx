@@ -215,7 +215,7 @@ This is useful for tests, server-side rendering, or running examples in CI.
 code={`
  async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
-use fragmentcolor::{Renderer, Shader};
+use fragmentcolor::{Renderer, Shader, Target};
 let renderer = Renderer::new();
 
 // Create an offscreen texture target with a size of 64x64 pixels.
@@ -238,7 +238,7 @@ lang="rust" meta="collapse={1-1, 12-15}"
 <Code
 code={`
 
-import { Renderer, Shader } from "fragmentcolor";
+import { Renderer, Shader, Target } from "fragmentcolor";
 const renderer = new Renderer();
 
 // Create an offscreen texture target with a size of 64x64 pixels.;
@@ -257,7 +257,7 @@ lang="js"
 <Code
 code={`
 
-from fragmentcolor import Renderer, Shader
+from fragmentcolor import Renderer, Shader, Target
 renderer = Renderer()
 
 // Create an offscreen texture target with a size of 64x64 pixels.
