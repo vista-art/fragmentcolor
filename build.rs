@@ -851,12 +851,33 @@ mod convert {
         if renames.is_empty() {
             return s.to_string();
         }
+        fn replace_word(src: &str, from: &str, to: &str) -> String {
+            let bytes: Vec<char> = src.chars().collect();
+            let from_chars: Vec<char> = from.chars().collect();
+            let mut out = String::with_capacity(src.len());
+            let mut i = 0usize;
+            while i < bytes.len() {
+                // Try to match `from` at position i with word boundaries
+                let end = i + from_chars.len();
+                if end <= bytes.len()
+                    && bytes[i..end] == from_chars[..]
+                {
+                    let left_ok = i == 0 || !super::convert::is_ident_char(bytes[i - 1]);
+                    let right_ok = end == bytes.len() || !super::convert::is_ident_char(bytes[end]);
+                    if left_ok && right_ok {
+                        out.push_str(to);
+                        i = end;
+                        continue;
+                    }
+                }
+                out.push(bytes[i]);
+                i += 1;
+            }
+            out
+        }
         let mut out = s.to_string();
         for (from, to) in renames {
-            // crude whole-word replacement
-            out = out.replace(&format!(" {} ", from), &format!(" {} ", to));
-            out = out.replace(&format!("({})", from), &format!("({})", to));
-            out = out.replace(&format!(" {}.", from), &format!(" {}.", to));
+            out = replace_word(&out, from, to);
         }
         out
     }

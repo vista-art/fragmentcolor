@@ -18,7 +18,7 @@
     "@codemirror/view": "^6.38.2",
     "@expressive-code/plugin-collapsible-sections": "^0.41.3",
     "@observablehq/inspector": "^5.0.1",
-    "astro": "^5.13.5",
+    "astro": "^5.13.7",
     "codemirror": "^6.0.2",
     "fragmentcolor": "0.10.6",
     "sharp": "^0.34.3",
