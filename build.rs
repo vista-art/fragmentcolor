@@ -1106,7 +1106,10 @@ mod validation {
     /// Locate a method doc within any nested `hidden/` subdirectory under the given object directory.
     /// Returns Some(path) if a file named `<file_stem>.md` exists below a path that contains a
     /// directory segment named `hidden`; otherwise None.
-    fn find_hidden_method_doc(obj_dir: &std::path::Path, file_stem: &str) -> Option<std::path::PathBuf> {
+    fn find_hidden_method_doc(
+        obj_dir: &std::path::Path,
+        file_stem: &str,
+    ) -> Option<std::path::PathBuf> {
         fn contains_hidden(mut p: &std::path::Path) -> bool {
             while let Some(parent) = p.parent() {
                 if parent.file_name().and_then(|s| s.to_str()) == Some("hidden") {
@@ -1117,13 +1120,17 @@ mod validation {
             false
         }
         fn walk(dir: &std::path::Path, file_stem: &str, out: &mut Option<std::path::PathBuf>) {
-            if out.is_some() { return; }
+            if out.is_some() {
+                return;
+            }
             if let Ok(rd) = std::fs::read_dir(dir) {
                 for entry in rd.flatten() {
                     let p = entry.path();
                     if p.is_dir() {
                         walk(&p, file_stem, out);
-                        if out.is_some() { return; }
+                        if out.is_some() {
+                            return;
+                        }
                     } else if p.extension().and_then(|s| s.to_str()) == Some("md")
                         && p.file_stem().and_then(|s| s.to_str()) == Some(file_stem)
                         && contains_hidden(&p)
