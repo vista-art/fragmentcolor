@@ -2,14 +2,14 @@
 
 Returns a frame wrapper for the offscreen texture.
 
-Most users do not need to call this directly; the [Renderer](https://fragmentcolor.org/api/core/renderer) uses it internally.
+Most users do not need to call this directly; the [Renderer](https://fragmentcolor.org/api/renderer) uses it internally.
 
 ## Example
 
 ```rust
-use fragmentcolor::Renderer;
-
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+
+use fragmentcolor::Renderer;
 
 let renderer = Renderer::new();
 let target = renderer.create_texture_target([16, 16]).await?;

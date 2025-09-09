@@ -2492,9 +2492,14 @@ mod validation {
                         let trimmed = l.trim_start();
                         let indent_len = l.len() - trimmed.len();
                         if trimmed.starts_with('#') {
-                            let after = &trimmed[1..];
-                            let after = if after.starts_with(' ') {
-                                &after[1..]
+                            let after = if let Some(stripped) = trimmed.strip_prefix('#') {
+                                stripped
+                            } else {
+                                trimmed
+                            };
+
+                            let after = if let Some(stripped) = trimmed.strip_prefix(' ') {
+                                stripped
                             } else {
                                 after
                             };

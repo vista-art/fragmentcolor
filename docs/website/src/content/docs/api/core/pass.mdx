@@ -75,7 +75,7 @@ use fragmentcolor::Pass;
 
 let pass = Pass::new("first pass");
 
-let _ = pass;
+ let _ = pass;
 `}
 lang="rust" meta="collapse={5-5}"
 />
@@ -298,7 +298,7 @@ When the pass is configured to clear, the render target is cleared to the given 
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
+ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
 use fragmentcolor::{Renderer, Pass, Shader};
 
@@ -313,9 +313,9 @@ pass.set_clear_color([0.1, 0.2, 0.3, 1.0]);
 
 renderer.render(&pass, &target)?;
 
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+ Ok(())
+ }
+ fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
 lang="rust" meta="collapse={1-1, 16-18}"
 />
