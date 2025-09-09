@@ -16,7 +16,7 @@ impl Shader {
         if let Ok(shader) = Shader::new(source) {
             shader
         } else {
-            console::error_1(&"failed to create shader, returning default.".into());
+            console::error_1(&"failed to create shader, returning default".into());
             Shader::default()
         }
     }

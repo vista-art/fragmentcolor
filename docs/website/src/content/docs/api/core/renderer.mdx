@@ -134,16 +134,16 @@ Creates a [Target](/api/core/target) attached to a platform-specific canvas or w
 code={`
 use fragmentcolor::Renderer;
 
-// Platform-specific window binding (winit shown as an example)
-// use winit::event_loop::EventLoop;
-// use winit::window::WindowBuilder;
-// fn main() -> Result<(), Box<dyn std::error::Error>> {
+ // Platform-specific window binding (winit shown as an example)
+ // use winit::event_loop::EventLoop;
+ // use winit::window::WindowBuilder;
+ // fn main() -> Result<(), Box<dyn std::error::Error>> {
 let renderer = Renderer::new();
-// let event_loop = EventLoop::new()?;
-// let window = WindowBuilder::new().build(&event_loop)?;
-// let target = renderer.create_target(&window)?;
-// Ok(())
-// }
+ // let event_loop = EventLoop::new()?;
+ // let window = WindowBuilder::new().build(&event_loop)?;
+ // let target = renderer.create_target(&window)?;
+ // Ok(())
+ // }
 `}
 lang="rust" meta="collapse={3-6, 8-12}"
 />
@@ -213,7 +213,7 @@ This is useful for tests, server-side rendering, or running examples in CI.
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
+ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
 use fragmentcolor::{Renderer, Shader};
 let renderer = Renderer::new();
@@ -224,10 +224,10 @@ let target = renderer.create_texture_target([64, 64]).await?;
 renderer.render(&Shader::default(), &target)?;
 let image = target.get_image(); // get the rendered image
 
-assert_eq!(image.len(), 64 * 64 * 4); // RGBA8
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+ assert_eq!(image.len(), 64 * 64 * 4); // RGBA8
+ Ok(())
+ }
+ fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
 lang="rust" meta="collapse={1-1, 12-15}"
 />
@@ -309,7 +309,7 @@ Renders the given object to the given [Target](/api/core/target).
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
+ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
 use fragmentcolor::{Renderer, Shader};
 
@@ -319,9 +319,9 @@ let shader = Shader::default();
 
 renderer.render(&shader, &target)?;
 
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+ Ok(())
+ }
+ fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
 lang="rust" meta="collapse={1-1, 11-13}"
 />
