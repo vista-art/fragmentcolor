@@ -1547,24 +1547,6 @@ mod validation {
             out.trim_end().to_string()
         }
 
-        fn collect_health_example(lang: &str, key: &str, content: &str) -> Option<String> {
-            let (start_token, end_token) = match lang {
-                "py" => ("#", "#"),
-                _ => ("//", "//"),
-            };
-            let begin = format!("{} DOC: {} (begin)", start_token, key);
-            let end = format!("{} DOC: (end)", end_token);
-            if let Some(b) = content.find(&begin) {
-                let from = b + begin.len();
-                if let Some(e_rel) = content[from..].find(&end) {
-                    let e = from + e_rel;
-                    let snippet = &content[from..e];
-                    return Some(snippet.trim().to_string());
-                }
-            }
-            None
-        }
-
         fn find_object_dir(
             docs_root: &std::path::Path,
             dir_name: &str,
@@ -1706,7 +1688,11 @@ mod validation {
                     if trimmed.starts_with('#') {
                         // Strip one leading '#' and one optional following space
                         let after = &trimmed[1..];
-                        let after = if after.starts_with(' ') { &after[1..] } else { after };
+                        let after = if after.starts_with(' ') {
+                            &after[1..]
+                        } else {
+                            after
+                        };
                         let new_text = format!("{}{}", &l[..indent_len], after);
                         items.push(LineItem {
                             text: new_text,
@@ -1874,10 +1860,6 @@ mod validation {
             let root = meta::workspace_root();
             let docs_root = root.join("docs/api");
             let site_root = root.join("docs/website/src/content/docs/api");
-            let py = std::fs::read_to_string(root.join("platforms/python/healthcheck.py"))
-                .unwrap_or_default();
-            let js = std::fs::read_to_string(root.join("platforms/web/healthcheck/main.js"))
-                .unwrap_or_default();
 
             // Track expected output files for cleanup; store paths relative to site_root (forward slashes)
             let mut expected: HashSet<String> = HashSet::new();
@@ -1894,6 +1876,18 @@ mod validation {
                 {
                     top_categories.insert(first.to_string());
                 }
+            }
+
+            // Escape backticks for MDX template literal usage in <Code code={`...`} />
+            fn sanitize_for_template(s: &str) -> String {
+                let mut out = String::with_capacity(s.len());
+                for ch in s.chars() {
+                    match ch {
+                        '`' => out.push_str("\\`"),
+                        _ => out.push(ch),
+                    }
+                }
+                out
             }
 
             // Helper to write a page given an object, its docs dir, category relative path, and ordered method files
@@ -1968,38 +1962,47 @@ mod validation {
                     out.push('\n');
 
                     // Prepare Rust example: compute collapse ranges from hidden '#'
-                    let mut items: Vec<(String,bool)> = Vec::new();
+                    let mut items: Vec<(String, bool)> = Vec::new();
                     for l in rust_body.lines() {
                         let trimmed = l.trim_start();
                         let indent_len = l.len() - trimmed.len();
                         if trimmed.starts_with('#') {
                             let after = &trimmed[1..];
-                            let after = if after.starts_with(' ') { &after[1..] } else { after };
+                            let after = if after.starts_with(' ') {
+                                &after[1..]
+                            } else {
+                                after
+                            };
                             let new_text = format!("{}{}", &l[..indent_len], after);
                             items.push((new_text, true));
                         } else {
                             items.push((l.to_string(), false));
                         }
                     }
-                    let mut ranges: Vec<(usize,usize)> = Vec::new();
+                    let mut ranges: Vec<(usize, usize)> = Vec::new();
                     let mut i_ln = 0usize;
                     while i_ln < items.len() {
                         if items[i_ln].1 {
                             let start = i_ln + 1;
-                            while i_ln < items.len() && items[i_ln].1 { i_ln += 1; }
+                            while i_ln < items.len() && items[i_ln].1 {
+                                i_ln += 1;
+                            }
                             let end = i_ln; // inclusive
                             ranges.push((start, end));
                         } else {
                             i_ln += 1;
                         }
                     }
-                    let rust_processed = items.into_iter().map(|(t,_)| t).collect::<Vec<_>>().join("\n");
+                    let rust_lines: Vec<String> = items.into_iter().map(|(t, _)| t).collect();
+                    let rust_processed = rust_lines.join("\n");
                     let meta_attr = if ranges.is_empty() {
                         String::new()
                     } else {
                         let mut s = String::from(" meta=\"collapse={");
-                        for (idx,(s1,e1)) in ranges.iter().enumerate() {
-                            if idx>0 { s.push_str(", "); }
+                        for (idx, (s1, e1)) in ranges.iter().enumerate() {
+                            if idx > 0 {
+                                s.push_str(", ");
+                            }
                             s.push_str(&format!("{}-{}", s1, e1));
                         }
                         s.push_str("}\"");
@@ -2007,52 +2010,245 @@ mod validation {
                     };
 
                     // Derive key and example file paths
-                    let key = if file == "constructor" { format!("{}.constructor", object) } else { format!("{}.{}", object, file) };
+                    // let key = if file == "constructor" {
+                    //     format!("{}.constructor", object)
+                    // } else {
+                    //     format!("{}.{}", object, file)
+                    // };
                     let dir_slug = obj_dir.file_name().and_then(|s| s.to_str()).unwrap_or("");
 
-                    // Write platform examples from healthchecks (source of truth)
-                    if let Some(py_ex) = collect_health_example("py", &key, &py) {
-                        let py_rel = if cat_rel.is_empty() { format!("{}/{}.py", dir_slug, file) } else { format!("{}/{}/{}.py", cat_rel, dir_slug, file) };
-                        let py_abs = root.join("platforms/python/examples").join(&py_rel);
-                        if let Some(parent) = py_abs.parent() { let _ = std::fs::create_dir_all(parent); }
-                        // best effort to create __init__.py up the tree
-                        let mut cur = py_abs.parent().map(|p| p.to_path_buf());
-                        while let Some(p) = cur {
-                            if !p.to_string_lossy().contains("platforms/python") { break; }
-                            let init = p.join("__init__.py");
-                            if !init.exists() { let _ = std::fs::write(&init, ""); }
-                            cur = p.parent().map(|pp| pp.to_path_buf());
+                    // Convert Rust lines to JS/Python idioms, preserving line positions and blanks
+                    fn map_args_to_js(s: &str) -> String {
+                        s.to_string()
+                    }
+                    fn map_args_to_py(s: &str) -> String {
+                        s.replace("[", "(").replace("]", ")")
+                    }
+                    fn to_js_assign(var: &str, ty: &str, args: &str) -> String {
+                        format!(
+                            "const {} = new {}({});",
+                            var,
+                            ty,
+                            map_args_to_js(args).trim()
+                        )
+                    }
+                    fn to_py_assign(var: &str, ty: &str, args: &str) -> String {
+                        format!("{} = {}({})", var, ty, map_args_to_py(args).trim())
+                    }
+                    fn strip_ref(s: &str) -> String {
+                        s.replace("&", "")
+                    }
+
+                    let mut js_lines: Vec<String> = Vec::new();
+                    let mut py_lines: Vec<String> = Vec::new();
+
+                    // Build import lines per 'use fragmentcolor::' in the same positions
+                    for l in &rust_lines {
+                        let t = l.trim();
+                        if t.starts_with("use fragmentcolor::") {
+                            // Extract names inside braces or single
+                            let after = &t["use fragmentcolor::".len()..];
+                            if after.starts_with('{') {
+                                if let Some(end) = after.find('}') {
+                                    let inside = &after[1..end];
+                                    let list: Vec<String> = inside
+                                        .split(',')
+                                        .map(|p| {
+                                            p.trim().rsplit("::").next().unwrap_or("").to_string()
+                                        })
+                                        .filter(|s| !s.is_empty())
+                                        .collect();
+                                    js_lines.push(format!(
+                                        "import {{ {} }} from \"fragmentcolor\";",
+                                        list.join(", ")
+                                    ));
+                                    py_lines.push(format!(
+                                        "from fragmentcolor import {}",
+                                        list.join(", ")
+                                    ));
+                                    continue;
+                                }
+                            } else {
+                                let name = after.split(';').next().unwrap_or(after).trim();
+                                let short = name.rsplit("::").next().unwrap_or(name);
+                                js_lines.push(format!(
+                                    "import {{ {} }} from \"fragmentcolor\";",
+                                    short
+                                ));
+                                py_lines.push(format!("from fragmentcolor import {}", short));
+                                continue;
+                            }
                         }
-                        let _ = std::fs::write(&py_abs, py_ex);
+                        // blank line mirrors
+                        if t.is_empty() {
+                            js_lines.push(String::new());
+                            py_lines.push(String::new());
+                            continue;
+                        }
+
+                        // let assignments
+                        if t.starts_with("let ") {
+                            // strip 'let' and optional 'mut'
+                            let rest = t.trim_start_matches("let ").trim_start();
+                            let rest = if rest.starts_with("mut ") {
+                                &rest[4..]
+                            } else {
+                                rest
+                            };
+                            if let Some(eq) = rest.find('=') {
+                                let (var, rhs) = rest.split_at(eq);
+                                let var = var.trim();
+                                let rhs = rhs.trim_start_matches('=').trim();
+                                // Type::new(args);
+                                if let Some(pos) = rhs.find("::new(") {
+                                    let ty = &rhs[..pos];
+                                    let args_with = &rhs[pos + "::new(".len()..];
+                                    if let Some(endp) = args_with.rfind(")") {
+                                        let args = &args_with[..endp];
+                                        js_lines.push(to_js_assign(var, ty, args));
+                                        py_lines.push(to_py_assign(var, ty, args));
+                                        continue;
+                                    }
+                                }
+                                // Shader::default(); mapped to example helper names
+                                if rhs.starts_with("Shader::default()") {
+                                    js_lines.push(format!("const {} = exampleShader();", var));
+                                    py_lines.push(format!("{} = example_shader()", var));
+                                    continue;
+                                }
+                            }
+                        }
+
+                        // method calls
+                        if t.contains(".add_pass(") {
+                            let base = strip_ref(t);
+                            let line = base.trim_end_matches(';');
+                            js_lines.push(format!("{};", line));
+                            py_lines.push(line.replace(";", ""));
+                            continue;
+                        }
+                        if t.contains(".render(") {
+                            let base = strip_ref(t);
+                            let line = base.trim_end_matches(';');
+                            js_lines.push(format!("{};", line));
+                            py_lines.push(line.replace(";", ""));
+                            continue;
+                        }
+                        if t.contains(".set(") {
+                            let line = t.to_string();
+                            let body = if line.ends_with(';') {
+                                &line[..line.len() - 1]
+                            } else {
+                                &line
+                            };
+                            js_lines.push(format!("{};", body));
+                            py_lines.push(body.to_string());
+                            continue;
+                        }
+                        if t.contains(".list_uniforms(")
+                            || t.contains(".list_keys(")
+                            || t.contains(".get(")
+                        {
+                            // simple mirror, camelCase where needed
+                            let mut js = t.to_string();
+                            js = js
+                                .replace("list_uniforms", "listUniforms")
+                                .replace("list_keys", "listKeys");
+                            if !js.ends_with(';') {
+                                js.push(';');
+                            }
+                            let py = t
+                                .replace("listUniforms", "list_uniforms")
+                                .replace("listKeys", "list_keys")
+                                .replace(";", "");
+                            js_lines.push(js);
+                            py_lines.push(py);
+                            continue;
+                        }
+                        // comments
+                        if t.starts_with("//") {
+                            js_lines.push(t.to_string());
+                            py_lines.push(format!("#{}", &t[2..]));
+                            continue;
+                        }
+
+                        // default: mirror as-is, adjust semicolon for JS/Py
+                        let mut js = t.to_string();
+                        if !js.ends_with(';') && !js.is_empty() {
+                            js.push(';')
+                        }
+                        let py = t.replace(";", "");
+                        js_lines.push(js);
+                        py_lines.push(py);
                     }
-                    if let Some(js_ex) = collect_health_example("js", &key, &js) {
-                        let js_rel = if cat_rel.is_empty() { format!("{}/{}.js", dir_slug, file) } else { format!("{}/{}/{}.js", cat_rel, dir_slug, file) };
-                        let js_abs = root.join("platforms/web/examples").join(&js_rel);
-                        if let Some(parent) = js_abs.parent() { let _ = std::fs::create_dir_all(parent); }
-                        let _ = std::fs::write(&js_abs, js_ex);
+
+                    let js_code = js_lines.join("\n");
+                    let py_code = py_lines.join("\n");
+
+                    // Ensure helpers exist for shader construction
+                    let helpers_js = root.join("platforms/web/healthcheck/helpers.mjs");
+                    if !helpers_js.exists() {
+                        let helper_src = "export function exampleShader() {\n  return new Shader(`\nstruct VertexOutput {\n  @builtin(position) coords: vec4<f32>,\n}\n@vertex\nfn vs_main(@builtin(vertex_index) in_vertex_index: u32) -> VertexOutput {\n  const vertices = array(vec2(-1.,-1.), vec2(3.,-1.), vec2(-1.,3.));\n  return VertexOutput(vec4<f32>(vertices[in_vertex_index], 0.0, 1.0));\n}\n@fragment\nfn main() -> @location(0) vec4<f32> {\n  return vec4<f32>(1.0, 0.0, 0.0, 1.0);\n}\n`);\n}\n";
+                        let _ = std::fs::create_dir_all(helpers_js.parent().unwrap());
+                        let _ = std::fs::write(&helpers_js, helper_src);
                     }
-                    // Always ensure Swift/Kotlin placeholders
-                    let sk_rel = if cat_rel.is_empty() { format!("{}/{}.txt", dir_slug, file) } else { format!("{}/{}/{}.txt", cat_rel, dir_slug, file) };
+                    let helpers_py = root.join("platforms/python/healthcheck_helpers.py");
+                    if !helpers_py.exists() {
+                        let helper_src = "def example_shader():\n    from fragmentcolor import Shader\n    return Shader(\"\nstruct VertexOutput {\\n    @builtin(position) coords: vec4<f32>,\\n}\\n@vertex\\nfn vs_main(@builtin(vertex_index) in_vertex_index: u32) -> VertexOutput {\\n    const vertices = array( vec2(-1.,-1.), vec2(3.,-1.), vec2(-1.,3.) );\\n    return VertexOutput(vec4<f32>(vertices[in_vertex_index], 0.0, 1.0));\\n}\\n@fragment\\nfn main() -> @location(0) vec4<f32> {\\n    return vec4<f32>(1.0, 0.0, 0.0, 1.0);\\n}\\n\" )\n";
+                        let _ = std::fs::write(&helpers_py, helper_src);
+                    }
+
+                    // Ensure generated examples are written for CI to run
+                    let js_rel = if cat_rel.is_empty() {
+                        format!("{}/{}.js", dir_slug, file)
+                    } else {
+                        format!("{}/{}/{}.js", cat_rel, dir_slug, file)
+                    };
+                    let py_rel = if cat_rel.is_empty() {
+                        format!("{}/{}.py", dir_slug, file)
+                    } else {
+                        format!("{}/{}/{}.py", cat_rel, dir_slug, file)
+                    };
+                    let js_abs = root.join("platforms/web/examples").join(&js_rel);
+                    let py_abs = root.join("platforms/python/examples").join(&py_rel);
+                    if let Some(p) = js_abs.parent() {
+                        let _ = std::fs::create_dir_all(p);
+                    }
+                    if let Some(p) = py_abs.parent() {
+                        let _ = std::fs::create_dir_all(p);
+                    }
+                    let _ = std::fs::write(&js_abs, &js_code);
+                    let _ = std::fs::write(&py_abs, &py_code);
+                    let sk_rel = if cat_rel.is_empty() {
+                        format!("{}/{}.txt", dir_slug, file)
+                    } else {
+                        format!("{}/{}/{}.txt", cat_rel, dir_slug, file)
+                    };
                     let swift_abs = root.join("platforms/swift/examples").join(&sk_rel);
                     let kotlin_abs = root.join("platforms/kotlin/examples").join(&sk_rel);
-                    if let Some(parent) = swift_abs.parent() { let _ = std::fs::create_dir_all(parent); }
-                    if let Some(parent) = kotlin_abs.parent() { let _ = std::fs::create_dir_all(parent); }
-                    if !swift_abs.exists() { let _ = std::fs::write(&swift_abs, "// Swift placeholder — bindings WIP\n"); }
-                    if !kotlin_abs.exists() { let _ = std::fs::write(&kotlin_abs, "// Kotlin placeholder — bindings WIP\n"); }
+                    if let Some(parent) = swift_abs.parent() {
+                        let _ = std::fs::create_dir_all(parent);
+                    }
+                    if let Some(parent) = kotlin_abs.parent() {
+                        let _ = std::fs::create_dir_all(parent);
+                    }
+                    if !swift_abs.exists() {
+                        let _ = std::fs::write(&swift_abs, "// Swift placeholder — bindings WIP\n");
+                    }
+                    if !kotlin_abs.exists() {
+                        let _ =
+                            std::fs::write(&kotlin_abs, "// Kotlin placeholder — bindings WIP\n");
+                    }
 
-                    // Read platform example files to embed into tabs
-                    let js_code = {
-                        let rel = if cat_rel.is_empty() { format!("{}/{}.js", dir_slug, file) } else { format!("{}/{}/{}.js", cat_rel, dir_slug, file) };
-                        let path = root.join("platforms/web/examples").join(&rel);
-                        std::fs::read_to_string(&path).unwrap_or_default()
-                    };
-                    let py_code = {
-                        let rel = if cat_rel.is_empty() { format!("{}/{}.py", dir_slug, file) } else { format!("{}/{}/{}.py", cat_rel, dir_slug, file) };
-                        let path = root.join("platforms/python/examples").join(&rel);
-                        std::fs::read_to_string(&path).unwrap_or_default()
-                    };
-                    let swift_code = std::fs::read_to_string(&swift_abs).unwrap_or_else(|_| "// Swift placeholder — bindings WIP\n".to_string());
-                    let kotlin_code = std::fs::read_to_string(&kotlin_abs).unwrap_or_else(|_| "// Kotlin placeholder — bindings WIP\n".to_string());
+                    // Read platform example files to embed into tabs (already converted) and swift/kotlin placeholders
+                    let swift_code = std::fs::read_to_string(&swift_abs)
+                        .unwrap_or_else(|_| "// Swift placeholder — bindings WIP\n".to_string());
+                    let kotlin_code = std::fs::read_to_string(&kotlin_abs)
+                        .unwrap_or_else(|_| "// Kotlin placeholder — bindings WIP\n".to_string());
+
+                    // Use converted code directly for display (lines already aligned with Rust)
+                    let js_code = js_code;
+                    let py_code = py_code;
 
                     // Render <Tabs> with five language tabs
                     out.push_str("\n#### Example\n\n<Tabs>\n\n");
@@ -2069,13 +2265,13 @@ mod validation {
                     out.push_str("<TabItem label=\"JavaScript\">\n");
                     out.push_str("<Code\n");
                     out.push_str("code={`\n");
-                    out.push_str(&js_code);
+                    out.push_str(&sanitize_for_template(&js_code));
                     out.push_str("\n`}\nlang=\"js\"\n/>\n\n</TabItem>\n\n");
 
                     out.push_str("<TabItem label=\"Python\">\n");
                     out.push_str("<Code\n");
                     out.push_str("code={`\n");
-                    out.push_str(&py_code);
+                    out.push_str(&sanitize_for_template(&py_code));
                     out.push_str("\n`}\nlang=\"python\"\n/>\n\n</TabItem>\n\n");
 
                     out.push_str("<TabItem label=\"Swift\">\n");

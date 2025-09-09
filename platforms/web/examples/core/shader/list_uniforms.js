@@ -1,1 +1,4 @@
-const _uniforms = shader.listUniforms();
+import { Shader } from "fragmentcolor";
+
+const shader = exampleShader();
+let _list = shader.listUniforms();

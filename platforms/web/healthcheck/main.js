@@ -103,5 +103,9 @@ const _keys = shader.listKeys();
 
 console.log("Headless JS render completed successfully");
 
-// Auto-generated: run all extracted examples
-import './generated_examples.mjs';
+// Auto-generated: helpers in global scope
+import { exampleShader } from './helpers.mjs';
+Object.assign(globalThis, { exampleShader });
+
+// Auto-generated: run all extracted examples (after init)
+await import('./generated_examples.mjs');

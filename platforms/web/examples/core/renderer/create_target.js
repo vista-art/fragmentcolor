@@ -1,0 +1,12 @@
+import { Renderer } from "fragmentcolor";
+
+// Platform-specific window binding (winit shown as an example)
+// use winit::event_loop::EventLoop;
+// use winit::window::WindowBuilder;
+// fn main() -> Result<(), Box<dyn std::error::Error>> {
+const renderer = new Renderer();
+// let event_loop = EventLoop::new()?;
+// let window = WindowBuilder::new().build(&event_loop)?;
+// let target = renderer.create_target(&window)?;
+// Ok(())
+// }

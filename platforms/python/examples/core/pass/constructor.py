@@ -1,1 +1,3 @@
-rpass = Pass("single pass")
+from fragmentcolor import Pass
+
+_pass = Pass("first pass")

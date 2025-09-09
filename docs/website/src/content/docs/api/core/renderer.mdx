@@ -76,6 +76,7 @@ lang="rust"
 <TabItem label="JavaScript">
 <Code
 code={`
+import { Renderer } from "fragmentcolor";
 const renderer = new Renderer();
 `}
 lang="js"
@@ -86,6 +87,7 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
+from fragmentcolor import Renderer
 renderer = Renderer()
 `}
 lang="python"
@@ -151,7 +153,18 @@ lang="rust" meta="collapse={3-6, 8-12}"
 <TabItem label="JavaScript">
 <Code
 code={`
+import { Renderer } from "fragmentcolor";
 
+// Platform-specific window binding (winit shown as an example)
+// use winit::event_loop::EventLoop;
+// use winit::window::WindowBuilder;
+// fn main() -> Result<(), Box<dyn std::error::Error>> {
+const renderer = new Renderer();
+// let event_loop = EventLoop::new()?;
+// let window = WindowBuilder::new().build(&event_loop)?;
+// let target = renderer.create_target(&window)?;
+// Ok(())
+// }
 `}
 lang="js"
 />
@@ -161,7 +174,18 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
+from fragmentcolor import Renderer
 
+# Platform-specific window binding (winit shown as an example)
+# use winit::event_loop::EventLoop;
+# use winit::window::WindowBuilder;
+# fn main() -> Result<(), Box<dyn std::error::Error>> {
+renderer = Renderer()
+# let event_loop = EventLoop::new()?;
+# let window = WindowBuilder::new().build(&event_loop)?;
+# let target = renderer.create_target(&window)?;
+# Ok(())
+# }
 `}
 lang="python"
 />
@@ -227,7 +251,17 @@ lang="rust" meta="collapse={3-3, 9-11}"
 <TabItem label="JavaScript">
 <Code
 code={`
-const target = await renderer.createTextureTarget([64, 64]);
+import { Renderer, Shader } from "fragmentcolor";
+
+async fn run() -> Result<(), Box<dyn std::error::Error>> {;
+const renderer = new Renderer();
+let target = renderer.create_texture_target([64, 64]).await?;
+const shader = exampleShader();
+renderer.render(shader, target)?;
+let _image = target.get_image();
+Ok(());
+};
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) };
 `}
 lang="js"
 />
@@ -237,7 +271,17 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-target = renderer.create_texture_target((64, 64))
+from fragmentcolor import Renderer, Shader
+
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+renderer = Renderer()
+let target = renderer.create_texture_target([64, 64]).await?
+shader = example_shader()
+renderer.render(shader, target)?
+let _image = target.get_image()
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
 lang="python"
 />
@@ -302,7 +346,18 @@ lang="rust" meta="collapse={3-3, 10-12}"
 <TabItem label="JavaScript">
 <Code
 code={`
-renderer.render(shader, target);
+import { Renderer, Shader } from "fragmentcolor";
+
+async fn run() -> Result<(), Box<dyn std::error::Error>> {;
+
+const renderer = new Renderer();
+let target = renderer.create_texture_target([10, 10]).await?;
+const shader = exampleShader();
+renderer.render(shader, target)?;
+
+Ok(());
+};
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) };
 `}
 lang="js"
 />
@@ -312,7 +367,18 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-renderer.render(shader, target)
+from fragmentcolor import Renderer, Shader
+
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+
+renderer = Renderer()
+let target = renderer.create_texture_target([10, 10]).await?
+shader = example_shader()
+renderer.render(shader, target)?
+
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
 lang="python"
 />
