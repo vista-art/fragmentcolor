@@ -1,13 +1,8 @@
 import { Renderer } from "fragmentcolor";
 
-async fn run() -> Result<(), Box<dyn std::error::Error>> {;
 
 const renderer = new Renderer();
-let target = renderer.create_texture_target([16, 16]).await?;
-renderer.render(fragmentcolor::Shader::default(), target)?;
+const target = await renderer.createTextureTarget([16, 16]);
+renderer.render(fragmentcolor.Shader.default(), target)?;
 
-let image = target.get_image();
-
-Ok(());
-};
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) };
+const image = target.getImage();

@@ -66,20 +66,19 @@ Most users do not need to call this directly; the [Renderer](/api/core/renderer)
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::{Renderer, Target};
-
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
+
+use fragmentcolor::{Renderer, Target};
 
 let renderer = Renderer::new();
 let target = renderer.create_texture_target([16, 16]).await?;
 let frame = target.get_current_frame()?; // Acquire a frame
-let _format = frame.format();
 
 Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={3-3, 10-12}"
+lang="rust" meta="collapse={1-1, 9-11}"
 />
 
 </TabItem>
@@ -87,18 +86,13 @@ lang="rust" meta="collapse={3-3, 10-12}"
 <TabItem label="JavaScript">
 <Code
 code={`
+
 import { Renderer, Target } from "fragmentcolor";
 
-async fn run() -> Result<(), Box<dyn std::error::Error>> {;
-
 const renderer = new Renderer();
-let target = renderer.create_texture_target([16, 16]).await?;
-let frame = target.get_current_frame()?; // Acquire a frame;
-let _format = frame.format();
+const target = await renderer.createTextureTarget([16, 16]);
+const frame = target.getCurrentFrame()?; // Acquire a frame;
 
-Ok(());
-};
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) };
 `}
 lang="js"
 />
@@ -108,18 +102,13 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
+
 from fragmentcolor import Renderer, Target
 
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-
 renderer = Renderer()
-let target = renderer.create_texture_target([16, 16]).await?
-let frame = target.get_current_frame()? // Acquire a frame
-let _format = frame.format()
+target = renderer.create_texture_target([16, 16])
+frame = target.get_current_frame(); // Acquire a frame
 
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
 lang="python"
 />
@@ -163,19 +152,22 @@ Returns the current contents of the target as a byte array in RGBA8 format.
 <TabItem label="Rust">
 <Code
 code={`
+fn run() -> Result<(), Box<dyn std::error::Error>> {
+
 use fragmentcolor::{Renderer, Target};
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-
 let renderer = Renderer::new();
-let target = pollster::block_on(renderer.create_texture_target([16, 16]))?;
+let target = renderer.create_texture_target([16, 16])?;
 renderer.render(&fragmentcolor::Shader::default(), &target)?;
 
 let image = target.get_image();
+
+assert_eq!(image.len(), 16 * 16 * 4); // RGBA8
 Ok(())
 }
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={3-3, 10-11}"
+lang="rust" meta="collapse={1-1, 11-14}"
 />
 
 </TabItem>
@@ -183,17 +175,15 @@ lang="rust" meta="collapse={3-3, 10-11}"
 <TabItem label="JavaScript">
 <Code
 code={`
+
 import { Renderer, Target } from "fragmentcolor";
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {;
-
 const renderer = new Renderer();
-let target = pollster::block_on(renderer.create_texture_target([16, 16]))?;
-renderer.render(fragmentcolor::Shader::default(), target)?;
+const target = renderer.createTextureTarget([16, 16])?;
+renderer.render(fragmentcolor.Shader.default(), target)?;
 
-let image = target.get_image();
-Ok(());
-};
+const image = target.getImage();
+
 `}
 lang="js"
 />
@@ -203,17 +193,15 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
+
 from fragmentcolor import Renderer, Target
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-
 renderer = Renderer()
-let target = pollster::block_on(renderer.create_texture_target([16, 16]))?
-renderer.render(fragmentcolor::Shader::default(), target)?
+target = renderer.create_texture_target([16, 16])
+renderer.render(fragmentcolor.Shader.default(), target)
 
-let image = target.get_image()
-Ok(())
-}
+image = target.get_image()
+
 `}
 lang="python"
 />
@@ -246,7 +234,7 @@ lang="text"
 
 </Tabs>
 
-### resize(size: [u32; 2] | (u32, u32))
+### resize(size: Size &#123; width, heigth &#125; | (u32, u32) | [u32; 2])
 
 Resizes the [Target](/api/core/target) to the given width and height.
 
@@ -257,25 +245,22 @@ Resizes the [Target](/api/core/target) to the given width and height.
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::{Renderer, Target};
-
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
+
+use fragmentcolor::{Renderer, Target};
 
 let renderer = Renderer::new();
 let mut target = renderer.create_texture_target([64, 32]).await?;
 
-let size: [u32; 2] = target.size().into();
-assert_eq!(size, [64, 32]);
-
 target.resize([128, 64]);
+
 let size: [u32; 2] = target.size().into();
 assert_eq!(size, [128, 64]);
-
 Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={3-3, 15-17}"
+lang="rust" meta="collapse={1-1, 10-14}"
 />
 
 </TabItem>
@@ -283,23 +268,14 @@ lang="rust" meta="collapse={3-3, 15-17}"
 <TabItem label="JavaScript">
 <Code
 code={`
+
 import { Renderer, Target } from "fragmentcolor";
 
-async fn run() -> Result<(), Box<dyn std::error::Error>> {;
-
 const renderer = new Renderer();
-let mut target = renderer.create_texture_target([64, 32]).await?;
-
-let size: [u32; 2] = target.size().into();
-assert_eq!(size, [64, 32]);
+const target = await renderer.createTextureTarget([64, 32]);
 
 target.resize([128, 64]);
-let size: [u32; 2] = target.size().into();
-assert_eq!(size, [128, 64]);
 
-Ok(());
-};
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) };
 `}
 lang="js"
 />
@@ -309,23 +285,14 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
+
 from fragmentcolor import Renderer, Target
 
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-
 renderer = Renderer()
-let mut target = renderer.create_texture_target([64, 32]).await?
-
-let size: [u32 2] = target.size().into()
-assert_eq!(size, [64, 32])
+target = renderer.create_texture_target([64, 32])
 
 target.resize([128, 64])
-let size: [u32 2] = target.size().into()
-assert_eq!(size, [128, 64])
 
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
 lang="python"
 />
@@ -358,7 +325,7 @@ lang="text"
 
 </Tabs>
 
-### size() -&gt; [u32; 2]
+### size() -&gt; Size &#123; width, height &#125;
 
 Returns the size of the [Target](/api/core/target) in pixels.
 
@@ -369,20 +336,29 @@ Returns the size of the [Target](/api/core/target) in pixels.
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::{Renderer, Target};
-
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
+
+use fragmentcolor::{Renderer, Target};
 
 let renderer = Renderer::new();
 let target = renderer.create_texture_target([64, 32]).await?;
+let size = target.size();
+let width = size.width;
+let height = size.height;
+let depth = size.depth; // 1
+
+assert_eq!(size.width, 64);
+assert_eq!(size.height, 32);
+assert_eq!(size.depth, 1);
 let size: [u32; 2] = target.size().into();
 assert_eq!(size, [64, 32]);
-
+let size: [u32; 3] = target.size().into();
+assert_eq!(size, [64, 32, 1]);
 Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={3-3, 10-12}"
+lang="rust" meta="collapse={1-1, 12-21}"
 />
 
 </TabItem>
@@ -390,18 +366,16 @@ lang="rust" meta="collapse={3-3, 10-12}"
 <TabItem label="JavaScript">
 <Code
 code={`
+
 import { Renderer, Target } from "fragmentcolor";
 
-async fn run() -> Result<(), Box<dyn std::error::Error>> {;
-
 const renderer = new Renderer();
-let target = renderer.create_texture_target([64, 32]).await?;
-let size: [u32; 2] = target.size().into();
-assert_eq!(size, [64, 32]);
+const target = await renderer.createTextureTarget([64, 32]);
+const size = target.size();
+const width = size.width;
+const height = size.height;
+const depth = size.depth; // 1;
 
-Ok(());
-};
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) };
 `}
 lang="js"
 />
@@ -411,18 +385,16 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
+
 from fragmentcolor import Renderer, Target
 
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-
 renderer = Renderer()
-let target = renderer.create_texture_target([64, 32]).await?
-let size: [u32 2] = target.size().into()
-assert_eq!(size, [64, 32])
+target = renderer.create_texture_target([64, 32])
+size = target.size
+width = size.width
+height = size.height
+depth = size.depth; // 1
 
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
 lang="python"
 />

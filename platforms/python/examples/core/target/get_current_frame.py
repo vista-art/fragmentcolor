@@ -1,12 +1,6 @@
+
 from fragmentcolor import Renderer, Target
 
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-
 renderer = Renderer()
-let target = renderer.create_texture_target([16, 16]).await?
-let frame = target.get_current_frame()? // Acquire a frame
-let _format = frame.format()
-
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+target = renderer.create_texture_target([16, 16])
+frame = target.get_current_frame(); // Acquire a frame

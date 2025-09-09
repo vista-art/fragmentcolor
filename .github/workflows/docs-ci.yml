@@ -57,7 +57,5 @@ jobs:
         run: pnpm --dir docs/website install
 
       - name: Build docs (astro)
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: pnpm --dir docs/website build
 

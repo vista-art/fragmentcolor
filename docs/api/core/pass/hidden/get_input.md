@@ -10,6 +10,7 @@ It includes the clear/load behavior and clear color.
 use fragmentcolor::Pass;
 
 let pass = Pass::new("example");
-let _input = pass.get_input();
-// Inspect fields via dedicated APIs; internal fields are not public
+let input = pass.get_input();
+
+# _ = input; // Silence unused variable warning
 ```

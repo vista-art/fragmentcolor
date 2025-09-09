@@ -5,15 +5,18 @@ Returns the current contents of the target as a byte array in RGBA8 format.
 ## Example
 
 ```rust
+# fn run() -> Result<(), Box<dyn std::error::Error>> {
+
 use fragmentcolor::{Renderer, Target};
 
-# fn main() -> Result<(), Box<dyn std::error::Error>> {
-
 let renderer = Renderer::new();
-let target = pollster::block_on(renderer.create_texture_target([16, 16]))?;
+let target = renderer.create_texture_target([16, 16])?;
 renderer.render(&fragmentcolor::Shader::default(), &target)?;
 
 let image = target.get_image();
+
+# assert_eq!(image.len(), 16 * 16 * 4); // RGBA8
 # Ok(())
 # }
+# fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 ```

@@ -59,7 +59,7 @@ pub struct Renderer {
 }
 
 impl Renderer {
-    #[lsp_doc("docs/api/core/renderer/constructor.md")]
+    #[lsp_doc("docs/api/core/renderer/new.md")]
     pub fn new() -> Self {
         Renderer {
             instance: RwLock::new(None),

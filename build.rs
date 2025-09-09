@@ -20,7 +20,19 @@ fn main() {
     // Ensure changes under docs/api retrigger build.rs
     println!("cargo:rerun-if-changed=docs/api");
 
-    map_public_api();
+    // Explicit build steps
+    println!("\n🗺️ Generating API map...");
+    let api_map = scan_api_map();
+    codegen::export_api_map(&api_map);
+    println!("✅ API map successfully generated!\n");
+
+    println!("🔎 Validating documentation...");
+    validation::validate_docs(&api_map);
+    println!("✅ Docs validated!\n");
+
+    println!("🧱 Exporting website (examples + pages)...");
+    validation::export_website(&api_map);
+    println!("✅ Website export done!\n");
 }
 
 use quote::ToTokens;
@@ -38,7 +50,6 @@ use syn::{
 
 pub const API_MAP_KEYWORD: &str = "API_MAP";
 pub const API_MAP_FILE: &str = "generated/api_map.rs";
-pub const OBJECT_PROPERTY_STRUCT_NAME: &str = "ObjectProperty";
 pub const OBJECT_PROPERTY_STRUCT_DEFINITION: &str = "
 #[derive(Clone, Debug, PartialEq)]
 struct FunctionParameter {
@@ -102,19 +113,8 @@ enum NameFilter {
     Rename(String, String),
 }
 
-pub fn map_public_api() {
-    println!();
-    println!("🗺️ Generating API map...");
-
-    generate_api_map();
-
-    println!("✅ API map successfully generated!");
-    println!();
-}
-
-fn generate_api_map() {
+pub fn scan_api_map() -> ApiMap {
     let crate_root = meta::workspace_root();
-    let api_map_file = meta::workspace_root().join(API_MAP_FILE);
 
     // Extract functions from source
     let mut api_map = extract_public_functions(crate_root.as_ref());
@@ -125,10 +125,7 @@ fn generate_api_map() {
     // Keep only objects discovered in code (exclude file-key entries and hidden/internal types)
     api_map.retain(|k, _| objects.contains(k));
 
-    // Validate docs, enforce lsp_doc coverage, and update website
-    validation::validate_and_update_website(&api_map);
-
-    export_api_map(api_map, api_map_file.as_ref())
+    api_map
 }
 
 /// Traverses a Rust library `/src` directory and returns
@@ -520,6 +517,463 @@ fn export_api_map(api_map: ApiMap, target_file: &Path) {
     .unwrap();
 }
 
+/// Conversion utilities: transforms Rust example lines into idiomatic, runnable JS/Python
+/// while preserving per-line alignment of visible content (hidden Rust lines starting
+/// with '#' are never exported to JS/Python).
+///
+/// Rules implemented here (from user requirements):
+/// - Skip hidden lines ('#') entirely for JS/Python exports.
+/// - UFCS and associated functions: Type::method(&obj, ...) -> obj.method(...);
+///   Static calls use dot form in JS/Python; special-case new()/from_shader()/default().
+/// - Await/Result artifacts: `.await?` -> `await` in JS; removed in Python. Trailing '?' removed.
+/// - JS naming: convert snake_case method names to camelCase everywhere (after '.' or 'Type.').
+/// - Strip Rust refs `&` and `&mut`.
+/// - Python Target.size is a property: `target.size()` -> `target.size`.
+/// - Visible `.into()` is forbidden (panic). Keep examples minimal.
+/// - Assert mapping: assert_eq!(a, b) -> JS one-liner throw; Python `assert a == b`.
+/// - Shader::default(): map to example helpers for now to keep CI runnable:
+///   JS -> globalThis.exampleShader(), Python -> example_shader() with an import injected.
+mod convert {
+    #[derive(Copy, Clone, Debug)]
+    enum Lang {
+        Js,
+        Py,
+    }
+
+    pub fn to_js(items: &[(String, bool)]) -> String {
+        convert(items, Lang::Js)
+    }
+
+    pub fn to_py(items: &[(String, bool)]) -> String {
+        convert(items, Lang::Py)
+    }
+
+    fn is_ident_char(c: char) -> bool {
+        c.is_ascii_alphanumeric() || c == '_'
+    }
+
+    fn snake_to_camel(s: &str) -> String {
+        let mut out = String::with_capacity(s.len());
+        let mut upper = false;
+        for ch in s.chars() {
+            if ch == '_' {
+                upper = true;
+            } else if upper {
+                out.push(ch.to_ascii_uppercase());
+                upper = false;
+            } else {
+                out.push(ch);
+            }
+        }
+        out
+    }
+
+    fn camelize_method_calls_js(line: &str) -> String {
+        let mut out = String::with_capacity(line.len());
+        let chars: Vec<char> = line.chars().collect();
+        let mut i = 0usize;
+        while i < chars.len() {
+            let c = chars[i];
+            out.push(c);
+            if c == '.' {
+                // capture identifier after '.'
+                let start = i + 1;
+                let mut j = start;
+                while j < chars.len() && is_ident_char(chars[j]) {
+                    j += 1;
+                }
+                if j > start {
+                    let ident: String = chars[start..j].iter().collect();
+                    let camel = snake_to_camel(&ident);
+                    out.push_str(&camel);
+                    i = j; // skip consumed ident; next loop pushes current char again, so avoid double push
+                    continue;
+                }
+            }
+            i += 1;
+        }
+        out
+    }
+
+    fn replace_static_call_to_dot(line: &str) -> String {
+        // Replace patterns like Type::method( -> Type.method(
+        let mut out = String::new();
+        let mut i = 0usize;
+        let bytes = line.as_bytes();
+        while i < bytes.len() {
+            if i + 2 < bytes.len() && bytes[i] == b':' && bytes[i + 1] == b':' {
+                // Replace '::' with '.'
+                out.push('.');
+                i += 2;
+                continue;
+            }
+            out.push(bytes[i] as char);
+            i += 1;
+        }
+        out
+    }
+
+    fn strip_refs(s: &str) -> String {
+        s.replace('&', "")
+    }
+
+    fn strip_trailing_semicolon(s: &str) -> String {
+        let t = s.trim_end();
+        if t.ends_with(';') {
+            t[..t.len() - 1].to_string()
+        } else {
+            s.to_string()
+        }
+    }
+
+    fn ensure_js_semicolon(s: &str) -> String {
+        let t = s.trim_end();
+        if t.is_empty() {
+            return String::new();
+        }
+        if t.ends_with(';') {
+            s.to_string()
+        } else {
+            format!("{};", s)
+        }
+    }
+
+    fn transform_await(line: &str, lang: Lang) -> String {
+        // Handle `.await?` -> `await` (JS) or remove (Py)
+        if !line.contains(".await?") {
+            // Also handle stray '?' after calls (error-prop) for both langs
+            return match lang {
+                Lang::Js => line.to_string(),
+                Lang::Py => line.replace("?", ""),
+            };
+        }
+        match lang {
+            Lang::Js => {
+                // Insert 'await ' before the awaited expression
+                // Find the segment before .await?
+                if let Some(pos) = line.find(".await?") {
+                    // Try to preserve left side of assignment if present
+                    if let Some(eq) = line[..pos].rfind('=') {
+                        let (lhs, expr) = line.split_at(eq + 1);
+                        let expr = expr.trim();
+                        let before_await = &expr[..expr.rfind(".await?").unwrap_or(expr.len())];
+                        let mut out = String::new();
+                        out.push_str(lhs);
+                        out.push(' ');
+                        out.push_str("await ");
+                        out.push_str(before_await.trim());
+                        // Preserve any remaining tail after .await? (e.g., ');')
+                        let tail = &line[pos + ".await?".len()..];
+                        out.push_str(tail);
+                        return out;
+                    } else {
+                        // No assignment; just `await <expr>`
+                        let before_await = &line[..pos];
+                        let mut out = String::new();
+                        out.push_str("await ");
+                        out.push_str(before_await.trim());
+                        let tail = &line[pos + ".await?".len()..];
+                        out.push_str(tail);
+                        return out;
+                    }
+                }
+                line.to_string()
+            }
+            Lang::Py => {
+                // Remove '.await?' and trailing '?'
+                let mut s = line.replace(".await?", "");
+                s = s.replace('?', "");
+                s
+            }
+        }
+    }
+
+    fn map_assert(line: &str, lang: Lang) -> Option<String> {
+        // assert_eq!(a, b);
+        let t = line.trim_start();
+        if !t.starts_with("assert_eq!(") {
+            return None;
+        }
+        let mut inner = &t["assert_eq!(".len()..];
+        if let Some(end) = inner.find(')') {
+            inner = &inner[..end];
+        }
+        let mut parts = inner.splitn(2, ',');
+        let a = parts.next().unwrap_or("").trim();
+        let b = parts.next().unwrap_or("").trim();
+        match lang {
+            Lang::Js => Some(format!(
+                "if (JSON.stringify({}) !== JSON.stringify({})) {{ throw new Error(\"assert_eq failed\"); }}",
+                a, b
+            )),
+            Lang::Py => Some(format!("assert {} == {}", a, b)),
+        }
+    }
+
+    fn parse_use_fragmentcolor(line: &str) -> Option<Vec<String>> {
+        // Returns a flat list of imported names from `use fragmentcolor::...` syntax
+        let t = line.trim();
+        if !t.starts_with("use fragmentcolor::") {
+            return None;
+        }
+        let after = &t["use fragmentcolor::".len()..];
+        if after.starts_with('{') {
+            if let Some(end) = after.find('}') {
+                let inside = &after[1..end];
+                let list: Vec<String> = inside
+                    .split(',')
+                    .map(|p| p.trim().rsplit("::").next().unwrap_or("").to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect();
+                return Some(list);
+            }
+            return None;
+        } else {
+            let name = after.split(';').next().unwrap_or(after).trim();
+            let short = name.rsplit("::").next().unwrap_or(name).to_string();
+            return Some(vec![short]);
+        }
+    }
+
+    fn handle_let_assignment(
+        line: &str,
+        lang: Lang,
+        py_renames: &mut std::collections::HashMap<String, String>,
+    ) -> Option<String> {
+        let t = line.trim_start();
+        if !t.starts_with("let ") {
+            return None;
+        }
+        // strip leading `let` and optional `mut`
+        let rest = t.trim_start_matches("let ").trim_start();
+        let rest = if rest.starts_with("mut ") {
+            &rest[4..]
+        } else {
+            rest
+        };
+        let eq = rest.find('=')?;
+        let (lhs, rhs0) = rest.split_at(eq);
+        let mut var = lhs.trim();
+        // Strip type annotation in `var: Type`
+        if let Some(colon) = var.find(':') {
+            var = var[..colon].trim();
+        }
+        let mut rhs = rhs0.trim_start_matches('=').trim().to_string();
+        // Remove trailing ';'
+        rhs = strip_trailing_semicolon(&rhs);
+
+        // Type::new(args)
+        if let Some(pos) = rhs.find("::new(") {
+            let ty = rhs[..pos].trim().rsplit("::").next().unwrap_or("");
+            let args_with = &rhs[pos + "::new(".len()..];
+            if let Some(endp) = args_with.rfind(')') {
+                let args = &args_with[..endp];
+                rhs = match lang {
+                    Lang::Js => format!("new {}({})", ty, args.trim()),
+                    Lang::Py => format!("{}({})", ty, args.trim()),
+                };
+            }
+        }
+        // Pass::from_shader(name, shader) -> one-line construct+add
+        if rhs.starts_with("Pass::from_shader(")
+            || rhs.starts_with("fragmentcolor::Pass::from_shader(")
+        {
+            // Extract args inside (...)
+            if let Some(lp) = rhs.find('(') {
+                if let Some(rp) = rhs.rfind(')') {
+                    let inside = &rhs[lp + 1..rp];
+                    let mut parts = inside.splitn(2, ',');
+                    let a1 = parts.next().unwrap_or("").trim();
+                    let mut a2 = parts.next().unwrap_or("").trim().to_string();
+                    a2 = strip_refs(&a2);
+                    match lang {
+                        Lang::Js => {
+                            rhs = format!("new Pass({}); {}.addShader({})", a1, var, a2);
+                        }
+                        Lang::Py => {
+                            rhs = format!("Pass({}); {}.add_shader({})", a1, var, a2);
+                        }
+                    }
+                }
+            }
+        }
+
+        // UFCS associated calls remaining: Type::method( -> Type.method(
+        rhs = replace_static_call_to_dot(&rhs);
+        // Strip refs '&'
+        rhs = strip_refs(&rhs);
+        // Await transform and remove '?' for lang
+        rhs = transform_await(&rhs, lang);
+
+        // JS: camelize method names after '.'
+        if let Lang::Js = lang {
+            rhs = camelize_method_calls_js(&rhs);
+        }
+        // Python: size() -> size property
+        if let Lang::Py = lang {
+            rhs = rhs.replace(".size()", ".size");
+        }
+
+        // Var rename for Python reserved keyword "pass"
+        let var_out: &str = if let Lang::Py = lang {
+            if var == "pass" {
+                py_renames.insert("pass".into(), "rpass".into());
+                "rpass"
+            } else {
+                var
+            }
+        } else {
+            var
+        };
+
+        let line_out = match lang {
+            Lang::Js => ensure_js_semicolon(&format!("const {} = {}", var_out, rhs)),
+            Lang::Py => format!("{} = {}", var_out, rhs),
+        };
+        Some(line_out)
+    }
+
+    fn apply_renames_py(s: &str, renames: &std::collections::HashMap<String, String>) -> String {
+        if renames.is_empty() {
+            return s.to_string();
+        }
+        let mut out = s.to_string();
+        for (from, to) in renames {
+            // crude whole-word replacement
+            out = out.replace(&format!(" {} ", from), &format!(" {} ", to));
+            out = out.replace(&format!("({})", from), &format!("({})", to));
+            out = out.replace(&format!(" {}.", from), &format!(" {}.", to));
+        }
+        out
+    }
+
+    fn convert(items: &[(String, bool)], lang: Lang) -> String {
+        use std::collections::HashMap;
+        // Collect visible lines only
+        let mut src: Vec<String> = Vec::new();
+        for (t, hidden) in items {
+            if !*hidden {
+                src.push(t.clone());
+            }
+        }
+        // Enforce no visible into()
+        for line in &src {
+            if line.contains(".into(") || line.contains(".into()") || line.contains(" into(") {
+                panic!(
+                    "Visible .into() found in an example. Hide it with '#' or remove it: \n {}",
+                    line
+                );
+            }
+        }
+        // Enforce no visible pollster
+        for line in &src {
+            if line.contains("pollster") {
+                panic!(
+                    "Visible pollster found in an example. Hide it with '#' or remove it: \n {}",
+                    line
+                );
+            }
+        }
+        // Enforce no visible pollster
+        for line in &src {
+            if line.contains("assert_eq") {
+                panic!(
+                    "Visible assert_eq found in an example. Hide it with '#' or remove it: \n {}",
+                    line
+                );
+            }
+        }
+
+        let mut out: Vec<String> = Vec::new();
+        let mut py_renames: HashMap<String, String> = HashMap::new();
+
+        for s in &src {
+            let t = s.trim();
+            if t.is_empty() {
+                out.push(String::new());
+                continue;
+            }
+
+            // Imports from fragmentcolor
+            if let Some(list) = parse_use_fragmentcolor(t) {
+                match lang {
+                    Lang::Js => out.push(format!(
+                        "import {{ {} }} from \"fragmentcolor\";",
+                        list.join(", ")
+                    )),
+                    Lang::Py => out.push(format!("from fragmentcolor import {}", list.join(", "))),
+                }
+                continue;
+            }
+
+            // Map assert_eq!
+            if let Some(mapped) = map_assert(t, lang) {
+                out.push(match lang {
+                    Lang::Js => ensure_js_semicolon(&mapped),
+                    Lang::Py => mapped,
+                });
+                continue;
+            }
+
+            // let assignments
+            if let Some(mapped) = handle_let_assignment(t, lang, &mut py_renames) {
+                out.push(mapped);
+                continue;
+            }
+
+            // General expression/method calls
+            let mut line = s.to_string();
+            // Handle Shader::default
+            if line.contains("Shader::default()") {
+                match lang {
+                    Lang::Js => line = line.replace("Shader::default()", "Shader.default()"),
+                    Lang::Py => line = line.replace("Shader::default()", "Shader.default()"),
+                }
+            }
+            // UFCS static call -> dot
+            line = replace_static_call_to_dot(&line);
+            // Strip refs
+            line = strip_refs(&line);
+            // Await
+            line = transform_await(&line, lang);
+            // Python size property
+            if let Lang::Py = lang {
+                line = line.replace(".size()", ".size");
+            }
+            // JS camelize methods
+            if let Lang::Js = lang {
+                line = camelize_method_calls_js(&line);
+            }
+            // Python: trailing ';' and '?' gone
+            match lang {
+                Lang::Js => {
+                    line = ensure_js_semicolon(&line);
+                }
+                Lang::Py => {
+                    line = strip_trailing_semicolon(&line).replace('?', "");
+                }
+            }
+            // Apply var renames in Python lines after we possibly introduced references
+            if let Lang::Py = lang {
+                line = apply_renames_py(&line, &py_renames);
+            }
+
+            out.push(line);
+        }
+
+        // Normalize ending newline joining in caller
+        out.join("\n")
+    }
+}
+
+mod codegen {
+    /// Writes the API map to the generated/api_map.rs file.
+    pub fn export_api_map(api_map: &super::ApiMap) {
+        let api_map_file = super::meta::workspace_root().join(super::API_MAP_FILE);
+        super::export_api_map(api_map.clone(), api_map_file.as_path());
+    }
+}
+
 mod validation {
     use super::*;
     use std::fs;
@@ -649,8 +1103,45 @@ mod validation {
         }
     }
 
-    pub fn validate_and_update_website(api_map: &ApiMap) {
+    /// Locate a method doc within any nested `hidden/` subdirectory under the given object directory.
+    /// Returns Some(path) if a file named `<file_stem>.md` exists below a path that contains a
+    /// directory segment named `hidden`; otherwise None.
+    fn find_hidden_method_doc(obj_dir: &std::path::Path, file_stem: &str) -> Option<std::path::PathBuf> {
+        fn contains_hidden(mut p: &std::path::Path) -> bool {
+            while let Some(parent) = p.parent() {
+                if parent.file_name().and_then(|s| s.to_str()) == Some("hidden") {
+                    return true;
+                }
+                p = parent;
+            }
+            false
+        }
+        fn walk(dir: &std::path::Path, file_stem: &str, out: &mut Option<std::path::PathBuf>) {
+            if out.is_some() { return; }
+            if let Ok(rd) = std::fs::read_dir(dir) {
+                for entry in rd.flatten() {
+                    let p = entry.path();
+                    if p.is_dir() {
+                        walk(&p, file_stem, out);
+                        if out.is_some() { return; }
+                    } else if p.extension().and_then(|s| s.to_str()) == Some("md")
+                        && p.file_stem().and_then(|s| s.to_str()) == Some(file_stem)
+                        && contains_hidden(&p)
+                    {
+                        *out = Some(p);
+                        return;
+                    }
+                }
+            }
+        }
+        let mut found = None;
+        walk(obj_dir, file_stem, &mut found);
+        found
+    }
+
+    pub fn validate_docs(api_map: &ApiMap) {
         let mut problems = Vec::new();
+        let mut warnings = Vec::new();
         let root = meta::workspace_root();
         let docs_root = root.join("docs/api");
 
@@ -1010,25 +1501,21 @@ mod validation {
             for m in &methods_vec {
                 if let Some(fun) = &m.function {
                     let name = &fun.name;
-                    // Skip platform-specific wrapper variants and internal helpers
-                    let skip = name.ends_with("_js")
-                        || name.ends_with("_py")
-                        || name.ends_with("_ios")
-                        || name.ends_with("_android")
-                        || name == "headless"
-                        || name == "render_bitmap"
-                        || (object == "TextureTarget" && name == "new");
-                    if skip {
-                        continue;
-                    }
 
-                    let file = if name == "new" {
-                        "constructor".to_string()
-                    } else {
-                        to_snake_case(name)
-                    };
+                    let file = to_snake_case(name);
                     let path = obj_dir.join(format!("{}.md", file));
-                    ensure_method_md_ok(object, name, &path, &mut problems);
+                    if path.exists() {
+                        ensure_method_md_ok(object, name, &path, &mut problems);
+                    } else if let Some(hidden_path) = find_hidden_method_doc(&obj_dir, &file) {
+                        warnings.push(format!(
+                            "Hidden method: {}.{} ({})",
+                            object,
+                            name,
+                            hidden_path.display()
+                        ));
+                    } else {
+                        ensure_method_md_ok(object, name, &path, &mut problems);
+                    }
                     // Link enforcement disabled; links are auto-rewritten during export
                 }
             }
@@ -1047,6 +1534,13 @@ mod validation {
 
         validate_healthchecks(api_map, &mut problems);
 
+        if !warnings.is_empty() {
+            eprintln!("\nDocumentation warnings:\n");
+            for w in &warnings {
+                eprintln!("- {}", w);
+            }
+        }
+
         if !problems.is_empty() {
             eprintln!("\nDocumentation validation failed with the following issues:\n");
             for p in &problems {
@@ -1058,7 +1552,11 @@ mod validation {
         // Enforce that all public structs and their public methods have #[lsp_doc]
         enforce_lsp_doc_coverage(&objects, &mut problems);
 
-        // Update website if everything is valid
+        // If we reach here, validation passed.
+    }
+
+    /// Explicit function to export the website (examples + pages)
+    pub fn export_website(api_map: &ApiMap) {
         website::update(api_map);
     }
 
@@ -1419,16 +1917,6 @@ mod validation {
                         let name_start = pos + "function: Some(FunctionSignature { name: \"".len();
                         if let Some(end) = line[name_start..].find("\"") {
                             let name = &line[name_start..name_start + end];
-                            // Skip platform wrapper variants
-                            if name.ends_with("_js")
-                                || name.ends_with("_py")
-                                || name.ends_with("_ios")
-                                || name.ends_with("_android")
-                                || name == "headless"
-                                || name == "render_bitmap"
-                            {
-                                continue;
-                            }
                             if !doc_methods.contains(&(o.clone(), name.to_string())) {
                                 problems
                                     .push(format!("Missing #[lsp_doc] on method {}::{}", o, name));
@@ -1861,6 +2349,30 @@ mod validation {
             let docs_root = root.join("docs/api");
             let site_root = root.join("docs/website/src/content/docs/api");
 
+            // Sync docs/website VersionBadge.astro version with the crate version
+            {
+                let version =
+                    std::env::var("CARGO_PKG_VERSION").unwrap_or_else(|_| "0.0.0".to_string());
+                let comp_path = root.join("docs/website/src/components/VersionBadge.astro");
+                if let Ok(src) = std::fs::read_to_string(&comp_path) {
+                    let mut out = String::new();
+                    let mut changed = false;
+                    for line in src.lines() {
+                        let lt = line.trim_start();
+                        if lt.starts_with("const VERSION = '") {
+                            out.push_str(&format!("const VERSION = '{}';\n", version));
+                            changed = true;
+                        } else {
+                            out.push_str(line);
+                            out.push('\n');
+                        }
+                    }
+                    if changed {
+                        let _ = std::fs::write(&comp_path, out);
+                    }
+                }
+            }
+
             // Track expected output files for cleanup; store paths relative to site_root (forward slashes)
             let mut expected: HashSet<String> = HashSet::new();
             // Group objects by category (relative path under docs/api)
@@ -1993,7 +2505,7 @@ mod validation {
                             i_ln += 1;
                         }
                     }
-                    let rust_lines: Vec<String> = items.into_iter().map(|(t, _)| t).collect();
+                    let rust_lines: Vec<String> = items.iter().map(|(t, _)| t.clone()).collect();
                     let rust_processed = rust_lines.join("\n");
                     let meta_attr = if ranges.is_empty() {
                         String::new()
@@ -2009,194 +2521,11 @@ mod validation {
                         s
                     };
 
-                    // Derive key and example file paths
-                    // let key = if file == "constructor" {
-                    //     format!("{}.constructor", object)
-                    // } else {
-                    //     format!("{}.{}", object, file)
-                    // };
                     let dir_slug = obj_dir.file_name().and_then(|s| s.to_str()).unwrap_or("");
 
-                    // Convert Rust lines to JS/Python idioms, preserving line positions and blanks
-                    fn map_args_to_js(s: &str) -> String {
-                        s.to_string()
-                    }
-                    fn map_args_to_py(s: &str) -> String {
-                        s.replace("[", "(").replace("]", ")")
-                    }
-                    fn to_js_assign(var: &str, ty: &str, args: &str) -> String {
-                        format!(
-                            "const {} = new {}({});",
-                            var,
-                            ty,
-                            map_args_to_js(args).trim()
-                        )
-                    }
-                    fn to_py_assign(var: &str, ty: &str, args: &str) -> String {
-                        format!("{} = {}({})", var, ty, map_args_to_py(args).trim())
-                    }
-                    fn strip_ref(s: &str) -> String {
-                        s.replace("&", "")
-                    }
-
-                    let mut js_lines: Vec<String> = Vec::new();
-                    let mut py_lines: Vec<String> = Vec::new();
-
-                    // Build import lines per 'use fragmentcolor::' in the same positions
-                    for l in &rust_lines {
-                        let t = l.trim();
-                        if t.starts_with("use fragmentcolor::") {
-                            // Extract names inside braces or single
-                            let after = &t["use fragmentcolor::".len()..];
-                            if after.starts_with('{') {
-                                if let Some(end) = after.find('}') {
-                                    let inside = &after[1..end];
-                                    let list: Vec<String> = inside
-                                        .split(',')
-                                        .map(|p| {
-                                            p.trim().rsplit("::").next().unwrap_or("").to_string()
-                                        })
-                                        .filter(|s| !s.is_empty())
-                                        .collect();
-                                    js_lines.push(format!(
-                                        "import {{ {} }} from \"fragmentcolor\";",
-                                        list.join(", ")
-                                    ));
-                                    py_lines.push(format!(
-                                        "from fragmentcolor import {}",
-                                        list.join(", ")
-                                    ));
-                                    continue;
-                                }
-                            } else {
-                                let name = after.split(';').next().unwrap_or(after).trim();
-                                let short = name.rsplit("::").next().unwrap_or(name);
-                                js_lines.push(format!(
-                                    "import {{ {} }} from \"fragmentcolor\";",
-                                    short
-                                ));
-                                py_lines.push(format!("from fragmentcolor import {}", short));
-                                continue;
-                            }
-                        }
-                        // blank line mirrors
-                        if t.is_empty() {
-                            js_lines.push(String::new());
-                            py_lines.push(String::new());
-                            continue;
-                        }
-
-                        // let assignments
-                        if t.starts_with("let ") {
-                            // strip 'let' and optional 'mut'
-                            let rest = t.trim_start_matches("let ").trim_start();
-                            let rest = if rest.starts_with("mut ") {
-                                &rest[4..]
-                            } else {
-                                rest
-                            };
-                            if let Some(eq) = rest.find('=') {
-                                let (var, rhs) = rest.split_at(eq);
-                                let var = var.trim();
-                                let rhs = rhs.trim_start_matches('=').trim();
-                                // Type::new(args);
-                                if let Some(pos) = rhs.find("::new(") {
-                                    let ty = &rhs[..pos];
-                                    let args_with = &rhs[pos + "::new(".len()..];
-                                    if let Some(endp) = args_with.rfind(")") {
-                                        let args = &args_with[..endp];
-                                        js_lines.push(to_js_assign(var, ty, args));
-                                        py_lines.push(to_py_assign(var, ty, args));
-                                        continue;
-                                    }
-                                }
-                                // Shader::default(); mapped to example helper names
-                                if rhs.starts_with("Shader::default()") {
-                                    js_lines.push(format!("const {} = exampleShader();", var));
-                                    py_lines.push(format!("{} = example_shader()", var));
-                                    continue;
-                                }
-                            }
-                        }
-
-                        // method calls
-                        if t.contains(".add_pass(") {
-                            let base = strip_ref(t);
-                            let line = base.trim_end_matches(';');
-                            js_lines.push(format!("{};", line));
-                            py_lines.push(line.replace(";", ""));
-                            continue;
-                        }
-                        if t.contains(".render(") {
-                            let base = strip_ref(t);
-                            let line = base.trim_end_matches(';');
-                            js_lines.push(format!("{};", line));
-                            py_lines.push(line.replace(";", ""));
-                            continue;
-                        }
-                        if t.contains(".set(") {
-                            let line = t.to_string();
-                            let body = if line.ends_with(';') {
-                                &line[..line.len() - 1]
-                            } else {
-                                &line
-                            };
-                            js_lines.push(format!("{};", body));
-                            py_lines.push(body.to_string());
-                            continue;
-                        }
-                        if t.contains(".list_uniforms(")
-                            || t.contains(".list_keys(")
-                            || t.contains(".get(")
-                        {
-                            // simple mirror, camelCase where needed
-                            let mut js = t.to_string();
-                            js = js
-                                .replace("list_uniforms", "listUniforms")
-                                .replace("list_keys", "listKeys");
-                            if !js.ends_with(';') {
-                                js.push(';');
-                            }
-                            let py = t
-                                .replace("listUniforms", "list_uniforms")
-                                .replace("listKeys", "list_keys")
-                                .replace(";", "");
-                            js_lines.push(js);
-                            py_lines.push(py);
-                            continue;
-                        }
-                        // comments
-                        if t.starts_with("//") {
-                            js_lines.push(t.to_string());
-                            py_lines.push(format!("#{}", &t[2..]));
-                            continue;
-                        }
-
-                        // default: mirror as-is, adjust semicolon for JS/Py
-                        let mut js = t.to_string();
-                        if !js.ends_with(';') && !js.is_empty() {
-                            js.push(';')
-                        }
-                        let py = t.replace(";", "");
-                        js_lines.push(js);
-                        py_lines.push(py);
-                    }
-
-                    let js_code = js_lines.join("\n");
-                    let py_code = py_lines.join("\n");
-
-                    // Ensure helpers exist for shader construction
-                    let helpers_js = root.join("platforms/web/healthcheck/helpers.mjs");
-                    if !helpers_js.exists() {
-                        let helper_src = "export function exampleShader() {\n  return new Shader(`\nstruct VertexOutput {\n  @builtin(position) coords: vec4<f32>,\n}\n@vertex\nfn vs_main(@builtin(vertex_index) in_vertex_index: u32) -> VertexOutput {\n  const vertices = array(vec2(-1.,-1.), vec2(3.,-1.), vec2(-1.,3.));\n  return VertexOutput(vec4<f32>(vertices[in_vertex_index], 0.0, 1.0));\n}\n@fragment\nfn main() -> @location(0) vec4<f32> {\n  return vec4<f32>(1.0, 0.0, 0.0, 1.0);\n}\n`);\n}\n";
-                        let _ = std::fs::create_dir_all(helpers_js.parent().unwrap());
-                        let _ = std::fs::write(&helpers_js, helper_src);
-                    }
-                    let helpers_py = root.join("platforms/python/healthcheck_helpers.py");
-                    if !helpers_py.exists() {
-                        let helper_src = "def example_shader():\n    from fragmentcolor import Shader\n    return Shader(\"\nstruct VertexOutput {\\n    @builtin(position) coords: vec4<f32>,\\n}\\n@vertex\\nfn vs_main(@builtin(vertex_index) in_vertex_index: u32) -> VertexOutput {\\n    const vertices = array( vec2(-1.,-1.), vec2(3.,-1.), vec2(-1.,3.) );\\n    return VertexOutput(vec4<f32>(vertices[in_vertex_index], 0.0, 1.0));\\n}\\n@fragment\\nfn main() -> @location(0) vec4<f32> {\\n    return vec4<f32>(1.0, 0.0, 0.0, 1.0);\\n}\\n\" )\n";
-                        let _ = std::fs::write(&helpers_py, helper_src);
-                    }
+                    // Convert Rust lines to JS/Python using centralized converter
+                    let js_code = crate::convert::to_js(&items);
+                    let py_code = crate::convert::to_py(&items);
 
                     // Ensure generated examples are written for CI to run
                     let js_rel = if cat_rel.is_empty() {
@@ -2423,26 +2752,13 @@ mod validation {
                     String::new()
                 };
 
-                // Determine method files from reflection, skipping platform variants
+                // Determine method files from reflection
                 let mut method_files = Vec::new();
                 if let Some(methods) = api_map.get(object) {
                     for m in methods {
                         if let Some(fun) = &m.function {
                             let name = &fun.name;
-                            let skip = name.ends_with("_js")
-                                || name.ends_with("_py")
-                                || name.ends_with("_ios")
-                                || name.ends_with("_android")
-                                || name == "headless"
-                                || name == "render_bitmap";
-                            if skip {
-                                continue;
-                            }
-                            let file = if name == "new" {
-                                "constructor".to_string()
-                            } else {
-                                name.clone()
-                            };
+                            let file = name.clone();
                             if obj_dir.join(format!("{}.md", file)).exists() {
                                 method_files.push(file);
                             }
@@ -2469,10 +2785,6 @@ mod validation {
                         })
                         .collect();
                     files.sort();
-                    // If reflection found no public methods, avoid showing private constructors
-                    if let Some(pos) = files.iter().position(|s| s == "constructor") {
-                        files.remove(pos);
-                    }
                     method_files = files;
                 }
 
@@ -2511,9 +2823,6 @@ mod validation {
                         })
                         .collect();
                     method_files.sort();
-                    if let Some(pos) = method_files.iter().position(|s| s == "constructor") {
-                        method_files.remove(pos);
-                    }
                 }
                 if is_hidden_category(&cat_rel) {
                     processed.insert(object);

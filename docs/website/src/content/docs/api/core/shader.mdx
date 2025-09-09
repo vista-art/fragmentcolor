@@ -65,12 +65,9 @@ lang="rust" meta="collapse={1-1, 5-6}"
 <TabItem label="JavaScript">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {;
 import { Shader } from "fragmentcolor";
 
-const _shader = exampleShader();
-Ok(());
-};
+const _shader = Shader.default();
 `}
 lang="js"
 />
@@ -80,12 +77,9 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
 from fragmentcolor import Shader
 
-_shader = example_shader()
-Ok(())
-}
+_shader = Shader.default()
 `}
 lang="python"
 />
@@ -146,8 +140,8 @@ lang="rust"
 code={`
 import { Shader } from "fragmentcolor";
 
-const shader = exampleShader();
-let _ = shader.set("resolution", [800.0, 600.0]);
+const shader = Shader.default();
+const _ = shader.set("resolution", [800.0, 600.0]);
 `}
 lang="js"
 />
@@ -159,8 +153,8 @@ lang="js"
 code={`
 from fragmentcolor import Shader
 
-shader = example_shader()
-let _ = shader.set("resolution", [800.0, 600.0])
+shader = Shader.default()
+_ = shader.set("resolution", [800.0, 600.0])
 `}
 lang="python"
 />
@@ -220,9 +214,9 @@ lang="rust"
 code={`
 import { Shader } from "fragmentcolor";
 
-const shader = exampleShader();
-let _ = shader.set("resolution", [800.0, 600.0]);
-let _res: Result<[f32; 2], _> = shader.get("resolution");
+const shader = Shader.default();
+const _ = shader.set("resolution", [800.0, 600.0]);
+const _res = shader.get("resolution");
 `}
 lang="js"
 />
@@ -234,9 +228,9 @@ lang="js"
 code={`
 from fragmentcolor import Shader
 
-shader = example_shader()
-let _ = shader.set("resolution", [800.0, 600.0])
-let _res: Result<[f32 2], _> = shader.get("resolution")
+shader = Shader.default()
+_ = shader.set("resolution", [800.0, 600.0])
+_res = shader.get("resolution")
 `}
 lang="python"
 />
@@ -295,8 +289,8 @@ lang="rust"
 code={`
 import { Shader } from "fragmentcolor";
 
-const shader = exampleShader();
-let _list = shader.listUniforms();
+const shader = Shader.default();
+const _list = shader.listUniforms();
 `}
 lang="js"
 />
@@ -308,8 +302,8 @@ lang="js"
 code={`
 from fragmentcolor import Shader
 
-shader = example_shader()
-let _list = shader.list_uniforms()
+shader = Shader.default()
+_list = shader.list_uniforms()
 `}
 lang="python"
 />
@@ -368,8 +362,8 @@ lang="rust"
 code={`
 import { Shader } from "fragmentcolor";
 
-const shader = exampleShader();
-let _keys = shader.listKeys();
+const shader = Shader.default();
+const _keys = shader.listKeys();
 `}
 lang="js"
 />
@@ -381,8 +375,8 @@ lang="js"
 code={`
 from fragmentcolor import Shader
 
-shader = example_shader()
-let _keys = shader.list_keys()
+shader = Shader.default()
+_keys = shader.list_keys()
 `}
 lang="python"
 />

@@ -5,13 +5,14 @@ Renders the given object to the given [Target](https://fragmentcolor.org/api/cor
 ## Example
 
 ```rust
-use fragmentcolor::{Renderer, Shader};
-
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+
+use fragmentcolor::{Renderer, Shader};
 
 let renderer = Renderer::new();
 let target = renderer.create_texture_target([10, 10]).await?;
 let shader = Shader::default();
+
 renderer.render(&shader, &target)?;
 
 # Ok(())

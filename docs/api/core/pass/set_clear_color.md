@@ -7,9 +7,9 @@ When the pass is configured to clear, the render target is cleared to the given 
 ## Example
 
 ```rust
-use fragmentcolor::{Renderer, Pass, Shader};
-
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+
+use fragmentcolor::{Renderer, Pass, Shader};
 
 let renderer = Renderer::new();
 let target = renderer.create_texture_target([64, 64]).await?;

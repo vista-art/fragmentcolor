@@ -16,8 +16,8 @@ impl Shader {
         if let Ok(shader) = Shader::new(source) {
             shader
         } else {
-            console::error_1(&"failed to create shader".into());
-            Shader::new(crate::constants::DEFAULT_SHADER).expect("failed to create default shader")
+            console::error_1(&"failed to create shader, returning default.".into());
+            Shader::default()
         }
     }
 
@@ -67,6 +67,11 @@ impl Shader {
     #[lsp_doc("docs/api/core/shader/list_keys.md")]
     pub fn list_keys_js(&self) -> Vec<String> {
         self.list_keys()
+    }
+
+    #[wasm_bindgen(js_name = "default")]
+    pub fn default_js() -> Self {
+        Shader::default()
     }
 }
 

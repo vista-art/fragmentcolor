@@ -1,0 +1,39 @@
+---
+// This value is updated by build.rs during the Rust build.
+// Keep this exact line format so the build script can replace it reliably.
+const VERSION = '0.10.7';
+const RELEASES = 'https://github.com/vista-art/fragmentcolor/releases';
+---
+
+<a class="version-badge" href={RELEASES} aria-label={`Latest release v${VERSION}`}>
+  <span class="version-badge__dot" aria-hidden="true"></span>
+  v{VERSION}
+</a>
+
+<style>
+  .version-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.7rem;
+    padding: 0.0rem 1.0rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    line-height: 1;
+    font-weight: 800;
+    text-decoration: none;
+    border: 1px solid var(--sl-color-gray-5);
+    color: var(--sl-color-text);
+    background: color-mix(in oklch, var(--sl-color-blue-high) 20%, transparent);
+  }
+  .version-badge:hover {
+    background: color-mix(in oklch, var(--sl-color-blue-high) 30%, transparent);
+    border-color: var(--sl-color-white-4);
+  }
+  .version-badge__dot {
+    width: 0.4rem;
+    height: 0.4rem;
+    border-radius: 9999px;
+    background: var(--sl-color-blue);
+    box-shadow: 0 0 0 2px color-mix(in oklch, var(--sl-color-blue) 30%, transparent);
+  }
+</style>

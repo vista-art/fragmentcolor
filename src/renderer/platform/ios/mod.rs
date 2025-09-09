@@ -41,7 +41,7 @@ impl Target for IosTextureTarget {
 #[cfg_attr(mobile, uniffi::export)]
 impl crate::Renderer {
     /// Creates a new Renderer (iOS wrapper variant)
-    #[lsp_doc("docs/api/core/renderer/constructor.md")]
+    #[lsp_doc("docs/api/core/renderer/new.md")]
     pub fn new_ios() -> Self {
         Self::new()
     }

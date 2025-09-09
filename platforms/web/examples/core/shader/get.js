@@ -1,5 +1,5 @@
 import { Shader } from "fragmentcolor";
 
-const shader = exampleShader();
-let _ = shader.set("resolution", [800.0, 600.0]);
-let _res: Result<[f32; 2], _> = shader.get("resolution");
+const shader = Shader.default();
+const _ = shader.set("resolution", [800.0, 600.0]);
+const _res = shader.get("resolution");

@@ -20,7 +20,7 @@ use handle::create_raw_handles;
 #[pymethods]
 impl Renderer {
     #[new]
-    #[lsp_doc("docs/api/core/renderer/constructor.md")]
+    #[lsp_doc("docs/api/core/renderer/new.md")]
     pub fn new_py() -> Renderer {
         Self::new()
     }

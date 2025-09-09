@@ -155,16 +155,7 @@ lang="rust" meta="collapse={3-6, 8-12}"
 code={`
 import { Renderer } from "fragmentcolor";
 
-// Platform-specific window binding (winit shown as an example)
-// use winit::event_loop::EventLoop;
-// use winit::window::WindowBuilder;
-// fn main() -> Result<(), Box<dyn std::error::Error>> {
 const renderer = new Renderer();
-// let event_loop = EventLoop::new()?;
-// let window = WindowBuilder::new().build(&event_loop)?;
-// let target = renderer.create_target(&window)?;
-// Ok(())
-// }
 `}
 lang="js"
 />
@@ -176,16 +167,7 @@ lang="js"
 code={`
 from fragmentcolor import Renderer
 
-# Platform-specific window binding (winit shown as an example)
-# use winit::event_loop::EventLoop;
-# use winit::window::WindowBuilder;
-# fn main() -> Result<(), Box<dyn std::error::Error>> {
 renderer = Renderer()
-# let event_loop = EventLoop::new()?;
-# let window = WindowBuilder::new().build(&event_loop)?;
-# let target = renderer.create_target(&window)?;
-# Ok(())
-# }
 `}
 lang="python"
 />
@@ -231,19 +213,23 @@ This is useful for tests, server-side rendering, or running examples in CI.
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::{Renderer, Shader};
-
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
+
+use fragmentcolor::{Renderer, Shader};
 let renderer = Renderer::new();
+
+// Create an offscreen texture target with a size of 64x64 pixels.
 let target = renderer.create_texture_target([64, 64]).await?;
-let shader = Shader::default();
-renderer.render(&shader, &target)?;
-let _image = target.get_image();
+
+renderer.render(&Shader::default(), &target)?;
+let image = target.get_image(); // get the rendered image
+
+assert_eq!(image.len(), 64 * 64 * 4); // RGBA8
 Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={3-3, 9-11}"
+lang="rust" meta="collapse={1-1, 12-15}"
 />
 
 </TabItem>
@@ -251,17 +237,16 @@ lang="rust" meta="collapse={3-3, 9-11}"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Renderer, Shader } from "fragmentcolor";
 
-async fn run() -> Result<(), Box<dyn std::error::Error>> {;
+import { Renderer, Shader } from "fragmentcolor";
 const renderer = new Renderer();
-let target = renderer.create_texture_target([64, 64]).await?;
-const shader = exampleShader();
-renderer.render(shader, target)?;
-let _image = target.get_image();
-Ok(());
-};
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) };
+
+// Create an offscreen texture target with a size of 64x64 pixels.;
+const target = await renderer.createTextureTarget([64, 64]);
+
+renderer.render(Shader.default(), target)?;
+const image = target.getImage(); // get the rendered image;
+
 `}
 lang="js"
 />
@@ -271,17 +256,16 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Renderer, Shader
 
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
+from fragmentcolor import Renderer, Shader
 renderer = Renderer()
-let target = renderer.create_texture_target([64, 64]).await?
-shader = example_shader()
-renderer.render(shader, target)?
-let _image = target.get_image()
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+
+// Create an offscreen texture target with a size of 64x64 pixels.
+target = renderer.create_texture_target([64, 64])
+
+renderer.render(Shader.default(), target)
+image = target.get_image(); // get the rendered image
+
 `}
 lang="python"
 />
@@ -325,20 +309,21 @@ Renders the given object to the given [Target](/api/core/target).
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::{Renderer, Shader};
-
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
+
+use fragmentcolor::{Renderer, Shader};
 
 let renderer = Renderer::new();
 let target = renderer.create_texture_target([10, 10]).await?;
 let shader = Shader::default();
+
 renderer.render(&shader, &target)?;
 
 Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={3-3, 10-12}"
+lang="rust" meta="collapse={1-1, 11-13}"
 />
 
 </TabItem>
@@ -346,18 +331,15 @@ lang="rust" meta="collapse={3-3, 10-12}"
 <TabItem label="JavaScript">
 <Code
 code={`
+
 import { Renderer, Shader } from "fragmentcolor";
 
-async fn run() -> Result<(), Box<dyn std::error::Error>> {;
-
 const renderer = new Renderer();
-let target = renderer.create_texture_target([10, 10]).await?;
-const shader = exampleShader();
+const target = await renderer.createTextureTarget([10, 10]);
+const shader = Shader.default();
+
 renderer.render(shader, target)?;
 
-Ok(());
-};
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) };
 `}
 lang="js"
 />
@@ -367,18 +349,15 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
+
 from fragmentcolor import Renderer, Shader
 
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-
 renderer = Renderer()
-let target = renderer.create_texture_target([10, 10]).await?
-shader = example_shader()
-renderer.render(shader, target)?
+target = renderer.create_texture_target([10, 10])
+shader = Shader.default()
 
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+renderer.render(shader, target)
+
 `}
 lang="python"
 />

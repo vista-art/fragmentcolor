@@ -9,5 +9,7 @@ The name property is optional and is used for debugging purposes.
 ```rust
 use fragmentcolor::Pass;
 
-let _pass = Pass::new("first pass");
+let pass = Pass::new("first pass");
+
+# let _ = pass;
 ```

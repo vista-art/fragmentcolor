@@ -1,11 +1,9 @@
-from fragmentcolor import Renderer, Shader
 
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
+from fragmentcolor import Renderer, Shader
 renderer = Renderer()
-let target = renderer.create_texture_target([64, 64]).await?
-shader = example_shader()
-renderer.render(shader, target)?
-let _image = target.get_image()
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+
+// Create an offscreen texture target with a size of 64x64 pixels.
+target = renderer.create_texture_target([64, 64])
+
+renderer.render(Shader.default(), target)
+image = target.get_image(); // get the rendered image

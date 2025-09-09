@@ -1,5 +1,5 @@
 import { Pass, Shader } from "fragmentcolor";
 
-const shader = exampleShader();
+const shader = Shader.default();
 const pass = new Pass("p");
-pass.add_shader(&shader);
+pass.addShader(shader);

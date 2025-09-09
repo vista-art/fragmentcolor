@@ -19,7 +19,7 @@ pub struct Frame {
 }
 
 impl Frame {
-    #[lsp_doc("docs/api/core/frame/constructor.md")]
+    #[lsp_doc("docs/api/core/frame/new.md")]
     pub fn new() -> Self {
         Self {
             passes: Vec::new(),
