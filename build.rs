@@ -859,9 +859,7 @@ mod convert {
             while i < bytes.len() {
                 // Try to match `from` at position i with word boundaries
                 let end = i + from_chars.len();
-                if end <= bytes.len()
-                    && bytes[i..end] == from_chars[..]
-                {
+                if end <= bytes.len() && bytes[i..end] == from_chars[..] {
                     let left_ok = i == 0 || !super::convert::is_ident_char(bytes[i - 1]);
                     let right_ok = end == bytes.len() || !super::convert::is_ident_char(bytes[end]);
                     if left_ok && right_ok {
