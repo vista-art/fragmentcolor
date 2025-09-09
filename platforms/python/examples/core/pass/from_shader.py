@@ -1,4 +1,4 @@
 from fragmentcolor import Pass, Shader
 
 shader = Shader.default()
-rpass = Pass("single"); pass.add_shader(shader)
+rpass = Pass("single"); rpass.add_shader(shader)

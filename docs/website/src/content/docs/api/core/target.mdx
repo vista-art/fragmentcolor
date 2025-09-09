@@ -92,7 +92,7 @@ import { Renderer, Target } from "fragmentcolor";
 
 const renderer = new Renderer();
 const target = await renderer.createTextureTarget([16, 16]);
-const frame = target.getCurrentFrame()?; // Acquire a frame;
+const frame = target.getCurrentFrame(); // Acquire a frame;
 const _format = frame.format();
 
 `}
@@ -109,7 +109,7 @@ from fragmentcolor import Renderer, Target
 
 renderer = Renderer()
 target = renderer.create_texture_target([16, 16])
-frame = target.get_current_frame(); // Acquire a frame
+frame = target.get_current_frame(); # Acquire a frame
 _format = frame.format()
 
 `}
@@ -179,11 +179,11 @@ lang="rust" meta="collapse={1-1, 11-14}"
 <Code
 code={`
 
-import { Renderer, Target } from "fragmentcolor";
+import { Renderer, Target, Shader } from "fragmentcolor";
 
 const renderer = new Renderer();
 const target = await renderer.createTextureTarget([16, 16]);
-renderer.render(fragmentcolor.Shader.default(), target)?;
+renderer.render(Shader.default(), target);
 
 const image = target.getImage();
 
@@ -197,11 +197,11 @@ lang="js"
 <Code
 code={`
 
-from fragmentcolor import Renderer, Target
+from fragmentcolor import Renderer, Target, Shader
 
 renderer = Renderer()
 target = renderer.create_texture_target([16, 16])
-renderer.render(fragmentcolor.Shader.default(), target)
+renderer.render(Shader.default(), target)
 
 image = target.get_image()
 
@@ -396,7 +396,7 @@ target = renderer.create_texture_target([64, 32])
 size = target.size
 width = size.width
 height = size.height
-depth = size.depth; // 1
+depth = size.depth; # 1
 
 `}
 lang="python"

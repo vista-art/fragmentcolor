@@ -10,4 +10,4 @@ pass.addShader(shader);
 
 pass.setClearColor([0.1, 0.2, 0.3, 1.0]);
 
-renderer.render(pass, target)?;
+renderer.render(pass, target);
