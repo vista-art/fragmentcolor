@@ -727,11 +727,11 @@ mod convert {
                     .collect();
                 return Some(list);
             }
-            return None;
+            None
         } else {
             let name = after.split(';').next().unwrap_or(after).trim();
             let short = name.rsplit("::").next().unwrap_or(name).to_string();
-            return Some(vec![short]);
+            Some(vec![short])
         }
     }
 
@@ -779,8 +779,8 @@ mod convert {
             || rhs.starts_with("fragmentcolor::Pass::from_shader(")
         {
             // Extract args inside (...)
-            if let Some(lp) = rhs.find('(') {
-                if let Some(rp) = rhs.rfind(')') {
+            if let Some(lp) = rhs.find('(')
+                && let Some(rp) = rhs.rfind(')') {
                     let inside = &rhs[lp + 1..rp];
                     let mut parts = inside.splitn(2, ',');
                     let a1 = parts.next().unwrap_or("").trim();
@@ -795,7 +795,6 @@ mod convert {
                         }
                     }
                 }
-            }
         }
 
         // UFCS associated calls remaining: Type::method( -> Type.method(
