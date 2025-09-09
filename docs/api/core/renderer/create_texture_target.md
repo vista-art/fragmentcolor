@@ -9,7 +9,7 @@ This is useful for tests, server-side rendering, or running examples in CI.
 ```rust
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
-use fragmentcolor::{Renderer, Shader};
+use fragmentcolor::{Renderer, Shader, Target};
 let renderer = Renderer::new();
 
 // Create an offscreen texture target with a size of 64x64 pixels.

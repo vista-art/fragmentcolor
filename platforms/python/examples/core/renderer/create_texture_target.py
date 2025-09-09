@@ -1,5 +1,5 @@
 
-from fragmentcolor import Renderer, Shader
+from fragmentcolor import Renderer, Shader, Target
 renderer = Renderer()
 
 // Create an offscreen texture target with a size of 64x64 pixels.

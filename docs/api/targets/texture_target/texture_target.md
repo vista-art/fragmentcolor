@@ -9,7 +9,7 @@ Use it for headless rendering, tests, server-side image generation, or CI.
 ```rust
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
-use fragmentcolor::{Renderer, Shader};
+use fragmentcolor::{Renderer, Shader, Target};
 
 let renderer = Renderer::new();
 let target = renderer.create_texture_target([64, 64]).await?;

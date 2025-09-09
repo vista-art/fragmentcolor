@@ -5,7 +5,7 @@ Returns the current contents of the target as a byte array in RGBA8 format.
 ## Example
 
 ```rust
-use fragmentcolor::Renderer;
+use fragmentcolor::{Renderer, Target};
 
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
 

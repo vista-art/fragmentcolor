@@ -2,7 +2,7 @@
 
 Returns a frame wrapper for the offscreen texture.
 
-Most users do not need to call this directly; the [Renderer](https://fragmentcolor.org/api/renderer) uses it internally.
+Most users do not need to call this directly; the [Renderer](https://fragmentcolor.org/api/core/renderer) uses it internally.
 
 ## Example
 
