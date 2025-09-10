@@ -77,9 +77,7 @@ impl PyRenderable {
             for i in 0..len {
                 let item = seq.get_item(i)?;
                 // Each item must expose passes()
-                let iter = item
-                    .call_method0("passes")?
-                    .extract::<PyPassIterator>()?;
+                let iter = item.call_method0("passes")?.extract::<PyPassIterator>()?;
                 for p in iter.0.into_iter() {
                     all.push(p);
                 }
