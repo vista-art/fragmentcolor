@@ -1,4 +1,4 @@
-# set(key: string, value: any)
+# Shader::set(key: string, value: any)
 
 Sets the value of the uniform identified by the given key.
 

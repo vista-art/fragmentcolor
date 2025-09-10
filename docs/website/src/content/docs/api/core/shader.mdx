@@ -94,7 +94,10 @@ lang="text"
 
 ## Methods
 
-### new(source: string)
+
+---
+
+### Shader::new(source: string)
 
 Creates a new [Shader](/api/core/shader) instance from the given WGSL source string, file path, or URL.
 
@@ -178,7 +181,10 @@ lang="text"
 
 </Tabs>
 
-### set(key: string, value: any)
+
+---
+
+### Shader::set(key: string, value: any)
 
 Sets the value of the uniform identified by the given key.
 
@@ -256,7 +262,10 @@ lang="text"
 
 </Tabs>
 
-### get(key: string) -&gt; any
+
+---
+
+### Shader::get(key: string) -&gt; any
 
 Returns the current value of the uniform identified by the given key.
 
@@ -336,7 +345,10 @@ lang="text"
 
 </Tabs>
 
-### list_uniforms() -&gt; [string]
+
+---
+
+### Shader::list_uniforms() -&gt; [string]
 
 Returns a list of all uniform names in the [Shader](/api/core/shader) (excluding struct fields).
 
@@ -413,7 +425,10 @@ lang="text"
 
 </Tabs>
 
-### list_keys() -&gt; [string]
+
+---
+
+### Shader::list_keys() -&gt; [string]
 
 Returns a list of all keys in the [Shader](/api/core/shader), including uniform names and struct fields using the dot notation.
 

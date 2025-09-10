@@ -1,4 +1,4 @@
-# Headless rendering: create_texture_target
+# Renderer::create_texture_target(size: [u32; 2])
 
 Render to an offscreen texture without a Window or Canvas.
 

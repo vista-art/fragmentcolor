@@ -1,4 +1,4 @@
-# create_target(target: Canvas | Window)
+# Renderer::create_target(target: Canvas | Window)
 
 Creates a [Target](https://fragmentcolor.org/api/core/target) attached to a platform-specific canvas or window.
 

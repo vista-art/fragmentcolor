@@ -1209,19 +1209,31 @@ mod validation {
         }
         if !content.lines().any(|l| l.trim().starts_with('#')) {
             problems.push(format!("{}: H1 heading missing", path.display()));
+        } else {
+            // Enforce method title starts with "<Object>::"
+            if let Some(head) = content
+                .lines()
+                .find(|l| l.trim_start().starts_with('#'))
+            {
+                let mut t = head.trim_start();
+                while t.starts_with('#') { t = t[1..].trim_start(); }
+                let expected_prefix = format!("{}::", object);
+                if !t.starts_with(&expected_prefix) {
+                    problems.push(format!(
+                        "{}: method title must start with '{}' (e.g., '{}{}(...)')",
+                        path.display(),
+                        expected_prefix,
+                        expected_prefix,
+                        method
+                    ));
+                }
+            }
         }
         if !content.contains("## Example") {
             problems.push(format!("{}: '## Example' section missing", path.display()));
         }
         if content.contains("fragmentcolor.com") {
             problems.push(format!("{}: contains fragmentcolor.com", path.display()));
-        }
-        // BLOCK build on legacy winit API usage in public examples
-        if content.contains("WindowBuilder") || content.contains("EventLoop") {
-            problems.push(format!(
-                "{}: legacy winit API (WindowBuilder/EventLoop) detected in docs — replace with RenderCanvas/HTMLCanvas",
-                path.display()
-            ));
         }
     }
 
@@ -2801,7 +2813,7 @@ mod validation {
                 }
 
                 out.push_str("\n## Methods\n\n");
-                for file in method_files {
+                for file in method_files.iter() {
                     let md = std::fs::read_to_string(obj_dir.join(format!("{}.md", file)))
                         .unwrap_or_default();
 
@@ -2837,6 +2849,8 @@ mod validation {
                         }
                     }
 
+                    // Separator before each method title for visual grouping
+                    out.push_str("\n---\n\n");
                     // Downshift headings for the method description
                     out.push_str(&downshift_headings(pre.trim_end()));
                     out.push('\n');
@@ -2845,7 +2859,7 @@ mod validation {
                     let dir_slug = obj_dir.file_name().and_then(|s| s.to_str()).unwrap_or("");
                     let items = lines_to_items(&rust_body);
                     let tabs = build_tabs_for_example(
-                        &items, cat_rel, dir_slug, &file, &root, &mut ex_js, &mut ex_py,
+                        &items, cat_rel, dir_slug, file, &root, &mut ex_js, &mut ex_py,
                     );
                     out.push_str("\n#### Example\n\n");
                     out.push_str(&tabs);

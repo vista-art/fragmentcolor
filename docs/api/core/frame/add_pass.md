@@ -1,4 +1,4 @@
-# add_pass(pass: Pass)
+# Frame::add_pass(pass: Pass)
 
 Adds a [Pass](https://fragmentcolor.org/api/core/pass) to this [Frame](https://fragmentcolor.org/api/core/frame).
 
