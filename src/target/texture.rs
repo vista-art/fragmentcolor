@@ -88,15 +88,34 @@ impl Target for TextureTarget {
         );
 
         queue.submit(Some(encoder.finish()));
+
         // Block until the GPU work is done and the buffer is mapped
-        device.poll(wgpu::PollType::Wait).unwrap();
+        if let Err(e) = device.poll(wgpu::PollType::Wait) {
+            log::warn!("Failed to poll device for texture readback: {}", e);
+            #[cfg(wasm)]
+            {
+                log::warn!("Ensure the page is cross-origin isolated to enable readbacks.");
+            }
+            log::warn!("Returning empty image buffer");
+            return Vec::new();
+        }
 
         let slice = buffer.slice(..);
         let (tx, rx) = std::sync::mpsc::channel();
         slice.map_async(wgpu::MapMode::Read, move |r| {
             let _ = tx.send(r);
         });
-        device.poll(wgpu::PollType::Wait).unwrap();
+
+        if let Err(e) = device.poll(wgpu::PollType::Wait) {
+            log::warn!("Failed to poll device for texture readback: {}", e);
+            #[cfg(wasm)]
+            {
+                log::warn!("Ensure the page is cross-origin isolated to enable readbacks.");
+            }
+            log::warn!("Returning empty image buffer");
+            return Vec::new();
+        }
+
         let _ = rx.recv();
 
         let view = slice.get_mapped_range();
