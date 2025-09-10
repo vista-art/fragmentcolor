@@ -6,4 +6,6 @@ const renderer = new Renderer();
 const target = await renderer.createTextureTarget([64, 64]);
 
 renderer.render(Shader.default(), target);
-const image = target.getImage(); // get the rendered image;
+
+// get the rendered image;
+const image = target.getImage();

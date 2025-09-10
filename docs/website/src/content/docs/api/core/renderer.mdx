@@ -31,12 +31,71 @@ the `render()` method expects a [Target](/api/core/target) as input. So, the use
 `Renderer.create_target()` first, which initializes a window adapter, or
 `Renderer.render_image()` which initializes an offscreen adapter.
 
+
+
 ## Example
 
-```rust
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
 use fragmentcolor::Renderer;
 let _renderer = Renderer::new();
-```
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Renderer } from "fragmentcolor";
+const _renderer = new Renderer();
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Renderer
+_renderer = Renderer()
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
+
 
 ## Methods
 
@@ -132,20 +191,25 @@ Creates a [Target](/api/core/target) attached to a platform-specific canvas or w
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::Renderer;
+ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
- // Platform-specific window binding (winit shown as an example)
- // use winit::event_loop::EventLoop;
- // use winit::window::WindowBuilder;
- // fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Renderer, Target};
+
 let renderer = Renderer::new();
- // let event_loop = EventLoop::new()?;
- // let window = WindowBuilder::new().build(&event_loop)?;
- // let target = renderer.create_target(&window)?;
- // Ok(())
- // }
+
+// Use your platform's windowing system to create a window.
+// We officially support Winit. Check the examples folder for details.
+let window = fragmentcolor::headless_window([800, 600]);
+
+let target = renderer.create_target(&window)?;
+
+ let s = target.size();
+ assert_eq!([s.width, s.height], [800, 600]);
+ Ok(())
+ }
+ fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={3-6, 8-12}"
+lang="rust" meta="collapse={1-1, 13-17}"
 />
 
 </TabItem>
@@ -153,9 +217,17 @@ lang="rust" meta="collapse={3-6, 8-12}"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Renderer } from "fragmentcolor";
+
+import { Renderer, Target } from "fragmentcolor";
 
 const renderer = new Renderer();
+
+// Use your platform's windowing system to create a window.;
+// We officially support Winit. Check the examples folder for details.;
+const canvas = (()=>{const c=document.createElement('canvas');c.width=800;c.height=600;return c;})();
+
+const target = renderer.createTarget(canvas);
+
 `}
 lang="js"
 />
@@ -165,9 +237,18 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
+from rendercanvas.auto import RenderCanvas, loop
+
 from fragmentcolor import Renderer
 
 renderer = Renderer()
+
+ # Use your platform's windowing system to create a window.
+ # We officially support Winit. Check the examples folder for details.
+canvas = RenderCanvas(size=(800, 600))
+
+target = renderer.create_target(canvas)
+
 `}
 lang="python"
 />
@@ -222,14 +303,17 @@ let renderer = Renderer::new();
 let target = renderer.create_texture_target([64, 64]).await?;
 
 renderer.render(&Shader::default(), &target)?;
-let image = target.get_image(); // get the rendered image
 
- assert_eq!(image.len(), 64 * 64 * 4); // RGBA8
+// get the rendered image
+let image = target.get_image();
+
+ // RGBA8
+ assert_eq!(image.len(), 64 * 64 * 4);
  Ok(())
  }
  fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 12-15}"
+lang="rust" meta="collapse={1-1, 14-18}"
 />
 
 </TabItem>
@@ -245,7 +329,9 @@ const renderer = new Renderer();
 const target = await renderer.createTextureTarget([64, 64]);
 
 renderer.render(Shader.default(), target);
-const image = target.getImage(); // get the rendered image;
+
+// get the rendered image;
+const image = target.getImage();
 
 `}
 lang="js"
@@ -257,14 +343,16 @@ lang="js"
 <Code
 code={`
 
-from fragmentcolor import Renderer, Shader, Target
+from fragmentcolor import Renderer, Shader
 renderer = Renderer()
 
  # Create an offscreen texture target with a size of 64x64 pixels.
 target = renderer.create_texture_target([64, 64])
 
 renderer.render(Shader.default(), target)
-image = target.get_image(); # get the rendered image
+
+ # get the rendered image
+image = target.get_image()
 
 `}
 lang="python"

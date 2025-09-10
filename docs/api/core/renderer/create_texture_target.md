@@ -16,9 +16,12 @@ let renderer = Renderer::new();
 let target = renderer.create_texture_target([64, 64]).await?;
 
 renderer.render(&Shader::default(), &target)?;
-let image = target.get_image(); // get the rendered image
 
-# assert_eq!(image.len(), 64 * 64 * 4); // RGBA8
+// get the rendered image
+let image = target.get_image();
+
+# // RGBA8
+# assert_eq!(image.len(), 64 * 64 * 4);
 # Ok(())
 # }
 # fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }

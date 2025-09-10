@@ -15,41 +15,118 @@ It contains a GPU surface texture attached to a platform-specific window or an o
 
 [Target](/api/core/target) constructors are private and can only be created via the [Renderer](/api/core/renderer) using either `Renderer.create_target(window)` for on-screen rendering, or `Renderer.create_texture_target()` for offscreen rendering.
 
-## Examples
 
-### WindowTarget (on-screen)
 
-```rust collapse={2-2, 10-12}
+## Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
 use fragmentcolor::{Renderer, Shader};
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
+ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
 let renderer = Renderer::new();
+
+// Use your platform's windowing system to create a window.
+// We officially support Winit. Check the examples folder for details.
 let window = fragmentcolor::headless_window([800, 600]);
+
+// You can create multiple targets from the same Renderer.
 let target = renderer.create_target(window).await?;
-let shader = Shader::default();
-renderer.render(&shader, &target)?;
+let target2 = renderer.create_target(window).await?;
 
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
-```
+// To animate, render again in your event loop...
+renderer.render(&Shader::default(), &target)?;
+renderer.render(&Shader::default(), &target2)?;
 
-### TextureTarget (offscreen)
+ Ok(())
+ }
+ fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+`}
+lang="rust" meta="collapse={2-2, 18-20}"
+/>
 
-```rust collapse={2-2, 10-12}
-use fragmentcolor::{Renderer, Shader, Target};
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
+</TabItem>
 
-let renderer = Renderer::new();
-let target = renderer.create_texture_target([64, 64]).await?;
-let shader = Shader::default();
-renderer.render(&shader, &target)?;
-let image = target.get_image();
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Renderer, Shader } from "fragmentcolor";
 
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
-```
+const renderer = new Renderer();
+
+// Use your platform's windowing system to create a window.;
+// We officially support Winit. Check the examples folder for details.;
+const canvas = (()=>{const c=document.createElement('canvas');c.width=800;c.height=600;return c;})();
+
+// You can create multiple targets from the same Renderer.;
+const target = await renderer.createTarget(canvas);
+const target2 = await renderer.createTarget(canvas);
+
+// To animate, render again in your event loop...;
+renderer.render(Shader.default(), target);
+renderer.render(Shader.default(), target2);
+
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from rendercanvas.auto import RenderCanvas, loop
+from fragmentcolor import Renderer, Shader
+
+renderer = Renderer()
+
+ # Use your platform's windowing system to create a window.
+ # We officially support Winit. Check the examples folder for details.
+canvas = RenderCanvas(size=(800, 600))
+
+ # You can create multiple targets from the same Renderer.
+target = renderer.create_target(canvas)
+target2 = renderer.create_target(canvas)
+
+ # To animate, render again in your event loop...
+renderer.render(Shader.default(), target)
+renderer.render(Shader.default(), target2)
+
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
+
 
 ## Methods
 
@@ -105,11 +182,11 @@ lang="js"
 <Code
 code={`
 
-from fragmentcolor import Renderer, Target
+from fragmentcolor import Renderer
 
 renderer = Renderer()
 target = renderer.create_texture_target([16, 16])
-frame = target.get_current_frame(); # Acquire a frame
+frame = target.get_current_frame();# Acquire a frame
 _format = frame.format()
 
 `}
@@ -197,7 +274,7 @@ lang="js"
 <Code
 code={`
 
-from fragmentcolor import Renderer, Target, Shader
+from fragmentcolor import Renderer, Shader
 
 renderer = Renderer()
 target = renderer.create_texture_target([16, 16])
@@ -289,7 +366,7 @@ lang="js"
 <Code
 code={`
 
-from fragmentcolor import Renderer, Target
+from fragmentcolor import Renderer
 
 renderer = Renderer()
 target = renderer.create_texture_target([64, 32])
@@ -389,14 +466,14 @@ lang="js"
 <Code
 code={`
 
-from fragmentcolor import Renderer, Target
+from fragmentcolor import Renderer
 
 renderer = Renderer()
 target = renderer.create_texture_target([64, 32])
 size = target.size
 width = size.width
 height = size.height
-depth = size.depth; # 1
+depth = size.depth;# 1
 
 `}
 lang="python"

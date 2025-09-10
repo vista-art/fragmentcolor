@@ -19,13 +19,78 @@ You can compose [Shader](/api/core/shader) instances into a [Pass](/api/core/pas
 
 You can also create renderings with multiple Render Passes by using multiple [Pass](/api/core/pass) instances to a [Frame](/api/core/frame) object.
 
+
+
 ## Example
 
-```rust
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+ fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Shader;
 
-let _shader = Shader::default();
-```
+let shader = Shader::default();
+ assert!(shader.list_uniforms().len() >= 1);
+ Ok(())
+ }
+`}
+lang="rust" meta="collapse={1-1, 5-7}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Shader } from "fragmentcolor";
+
+const shader = Shader.default();
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Shader
+
+shader = Shader.default()
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
+
 
 ## Methods
 
@@ -53,11 +118,12 @@ code={`
  fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Shader;
 
-let _shader = Shader::default();
+let shader = Shader::default();
+ assert!(shader.list_keys().len() >= 1);
  Ok(())
  }
 `}
-lang="rust" meta="collapse={1-1, 5-6}"
+lang="rust" meta="collapse={1-1, 5-7}"
 />
 
 </TabItem>
@@ -67,7 +133,7 @@ lang="rust" meta="collapse={1-1, 5-6}"
 code={`
 import { Shader } from "fragmentcolor";
 
-const _shader = Shader.default();
+const shader = Shader.default();
 `}
 lang="js"
 />
@@ -79,7 +145,7 @@ lang="js"
 code={`
 from fragmentcolor import Shader
 
-_shader = Shader.default()
+shader = Shader.default()
 `}
 lang="python"
 />
@@ -125,12 +191,15 @@ If the key does not exist or the value format is incorrect, the `set` method thr
 <TabItem label="Rust">
 <Code
 code={`
+ fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Shader;
 
 let shader = Shader::default();
-let _ = shader.set("resolution", [800.0, 600.0]);
+shader.set("resolution", [800.0, 600.0])?;
+ Ok(())
+ }
 `}
-lang="rust"
+lang="rust" meta="collapse={1-1, 6-7}"
 />
 
 </TabItem>
@@ -141,7 +210,7 @@ code={`
 import { Shader } from "fragmentcolor";
 
 const shader = Shader.default();
-const _ = shader.set("resolution", [800.0, 600.0]);
+shader.set("resolution", [800.0, 600.0]);
 `}
 lang="js"
 />
@@ -154,7 +223,7 @@ code={`
 from fragmentcolor import Shader
 
 shader = Shader.default()
-_ = shader.set("resolution", [800.0, 600.0])
+shader.set("resolution", [800.0, 600.0])
 `}
 lang="python"
 />
@@ -198,13 +267,17 @@ Returns the current value of the uniform identified by the given key.
 <TabItem label="Rust">
 <Code
 code={`
+ fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Shader;
 
 let shader = Shader::default();
-let _ = shader.set("resolution", [800.0, 600.0]);
-let _res: Result<[f32; 2], _> = shader.get("resolution");
+shader.set("resolution", [800.0, 600.0])?;
+let res: [f32; 2] = shader.get("resolution")?;
+ assert_eq!(res, [800.0, 600.0]);
+ Ok(())
+ }
 `}
-lang="rust"
+lang="rust" meta="collapse={1-1, 7-9}"
 />
 
 </TabItem>
@@ -215,8 +288,8 @@ code={`
 import { Shader } from "fragmentcolor";
 
 const shader = Shader.default();
-const _ = shader.set("resolution", [800.0, 600.0]);
-const _res = shader.get("resolution");
+shader.set("resolution", [800.0, 600.0]);
+const res = shader.get("resolution");
 `}
 lang="js"
 />
@@ -229,8 +302,8 @@ code={`
 from fragmentcolor import Shader
 
 shader = Shader.default()
-_ = shader.set("resolution", [800.0, 600.0])
-_res = shader.get("resolution")
+shader.set("resolution", [800.0, 600.0])
+res = shader.get("resolution")
 `}
 lang="python"
 />
@@ -274,12 +347,16 @@ Returns a list of all uniform names in the [Shader](/api/core/shader) (excluding
 <TabItem label="Rust">
 <Code
 code={`
+ fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Shader;
 
 let shader = Shader::default();
-let _list = shader.list_uniforms();
+let list = shader.list_uniforms();
+ assert!(list.contains(&"resolution".to_string()));
+ Ok(())
+ }
 `}
-lang="rust"
+lang="rust" meta="collapse={1-1, 6-8}"
 />
 
 </TabItem>
@@ -290,7 +367,7 @@ code={`
 import { Shader } from "fragmentcolor";
 
 const shader = Shader.default();
-const _list = shader.listUniforms();
+const list = shader.listUniforms();
 `}
 lang="js"
 />
@@ -303,7 +380,7 @@ code={`
 from fragmentcolor import Shader
 
 shader = Shader.default()
-_list = shader.list_uniforms()
+list = shader.list_uniforms()
 `}
 lang="python"
 />
@@ -347,12 +424,16 @@ Returns a list of all keys in the [Shader](/api/core/shader), including uniform 
 <TabItem label="Rust">
 <Code
 code={`
+ fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Shader;
 
 let shader = Shader::default();
-let _keys = shader.list_keys();
+let keys = shader.list_keys();
+ assert!(keys.contains(&"resolution".to_string()));
+ Ok(())
+ }
 `}
-lang="rust"
+lang="rust" meta="collapse={1-1, 6-8}"
 />
 
 </TabItem>
@@ -363,7 +444,7 @@ code={`
 import { Shader } from "fragmentcolor";
 
 const shader = Shader.default();
-const _keys = shader.listKeys();
+const keys = shader.listKeys();
 `}
 lang="js"
 />
@@ -376,7 +457,7 @@ code={`
 from fragmentcolor import Shader
 
 shader = Shader.default()
-_keys = shader.list_keys()
+keys = shader.list_keys()
 `}
 lang="python"
 />

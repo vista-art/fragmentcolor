@@ -12,21 +12,19 @@ pub fn on_resize(app: &App, new_size: &PhysicalSize<u32>) {
 
 pub fn on_draw(app: &App) {
     let id = app.window_id();
+
     if let Some(size) = app.size(id) {
-        let res = [size.width as f32, size.height as f32];
-        let _ = app.set_uniform(id, "resolution", res);
+        let resolution = [size.width as f32, size.height as f32];
+        let _ = app.set_uniform(id, "resolution", resolution);
         let _ = app.set_uniform(id, "circle.position", [0.0f32, 0.0f32]);
     }
 }
 
 fn main() {
-    let shader = {
-        let s = Shader::new(CIRCLE_SOURCE).unwrap();
-        s.set("circle.radius", 300.0).unwrap();
-        s.set("circle.color", [0.2, 0.2, 0.8, 1.0]).unwrap();
-        s.set("circle.border", 100.0).unwrap();
-        s
-    };
+    let shader = Shader::new(CIRCLE_SOURCE).unwrap();
+    shader.set("circle.radius", 300.0).unwrap();
+    shader.set("circle.color", [0.2, 0.2, 0.8, 1.0]).unwrap();
+    shader.set("circle.border", 100.0).unwrap();
 
     let mut app = App::new();
     app.scene(shader)

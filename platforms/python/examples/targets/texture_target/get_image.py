@@ -1,4 +1,4 @@
-from fragmentcolor import Renderer, Target, Shader
+from fragmentcolor import Renderer, Shader
 
 
 renderer = Renderer()

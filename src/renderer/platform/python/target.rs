@@ -33,6 +33,16 @@ impl RenderCanvasTarget {
     }
 }
 
+#[pyclass(name = "Size")]
+pub struct PySize3 {
+    #[pyo3(get)]
+    pub width: u32,
+    #[pyo3(get)]
+    pub height: u32,
+    #[pyo3(get)]
+    pub depth: u32,
+}
+
 #[pymethods]
 impl RenderCanvasTarget {
     #[new]
@@ -48,9 +58,13 @@ impl RenderCanvasTarget {
         self.target.is_some()
     }
 
-    pub fn size(&self) -> [u32; 2] {
+    pub fn size(&self) -> PySize3 {
         let size = <Self as Target>::size(self);
-        [size.width, size.height]
+        PySize3 {
+            width: size.width,
+            height: size.height,
+            depth: 1,
+        }
     }
 
     pub fn resize(&mut self, size: crate::PySize) {
@@ -171,20 +185,55 @@ pub struct PyTextureTarget {
 #[pymethods]
 impl PyTextureTarget {
     #[getter]
-    pub fn size(&self) -> [u32; 2] {
+    pub fn size(&self) -> PySize3 {
         let size = <Self as Target>::size(self);
-        [size.width, size.height]
+        PySize3 {
+            width: size.width,
+            height: size.height,
+            depth: 1,
+        }
     }
 
     pub fn resize(&mut self, size: crate::PySize) {
         let size: Size = size.into();
         <Self as Target>::resize(self, size);
     }
+
+    /// Acquire a frame (Python-facing wrapper). This minimal wrapper exposes `format()` only.
+    pub fn get_current_frame(&self) -> PyTargetFrame {
+        // TextureTarget::get_current_frame format mirrors inner texture format; fall back to a sane default
+        let format = match <crate::TextureTarget as Target>::get_current_frame(&self.inner) {
+            Ok(frame) => frame.format(),
+            Err(_) => wgpu::TextureFormat::Rgba8Unorm,
+        };
+        PyTargetFrame { format }
+    }
+
+    /// Read back the RGBA image as a Python list of ints (byte values).
+    pub fn get_image(&self) -> Vec<u8> {
+        <crate::TextureTarget as Target>::get_image(&self.inner)
+    }
 }
 
 impl From<crate::TextureTarget> for PyTextureTarget {
     fn from(value: crate::TextureTarget) -> Self {
         Self { inner: value }
+    }
+}
+
+#[pyclass(name = "TargetFrame")]
+pub struct PyTargetFrame {
+    format: wgpu::TextureFormat,
+}
+
+#[pymethods]
+impl PyTargetFrame {
+    pub fn format(&self) -> String {
+        format!("{:?}", self.format)
+    }
+
+    pub fn present(&self) {
+        // No-op for offscreen textures in Python bindings
     }
 }
 

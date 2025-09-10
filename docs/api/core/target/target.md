@@ -15,10 +15,18 @@ use fragmentcolor::{Renderer, Shader};
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
 let renderer = Renderer::new();
+
+// Use your platform's windowing system to create a window.
+// We officially support Winit. Check the examples folder for details.
 let window = fragmentcolor::headless_window([800, 600]);
+
+// You can create multiple targets from the same Renderer.
 let target = renderer.create_target(window).await?;
-let shader = Shader::default();
-renderer.render(&shader, &target)?;
+let target2 = renderer.create_target(window).await?;
+
+// To animate, render again in your event loop...
+renderer.render(&Shader::default(), &target)?;
+renderer.render(&Shader::default(), &target2)?;
 
 # Ok(())
 # }
@@ -32,11 +40,17 @@ use fragmentcolor::{Renderer, Shader, Target};
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
 let renderer = Renderer::new();
+
+// Creates a target Texture
 let target = renderer.create_texture_target([64, 64]).await?;
+
 let shader = Shader::default();
 renderer.render(&shader, &target)?;
+
+// Read back the rendered image (byte array of RGBA8 pixels)
 let image = target.get_image();
 
+# assert_eq!(image.len(), 64 * 64 * 4);
 # Ok(())
 # }
 # fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }

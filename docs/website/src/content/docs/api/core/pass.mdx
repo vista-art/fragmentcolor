@@ -22,10 +22,16 @@ The constructor creates a RenderPass by default. To create a ComputePass, call [
 After creation, it will only accept a compatible [Shader](/api/core/shader) object. If you try to add a Compute [Shader](/api/core/shader) to a Render [Pass](/api/core/pass) or vice-versa,
 it won't add the shader to its internal list and log a warning message in the console.
 
+
+
 ## Example
 
-```rust collapse={1-1, 27-29}
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
 use fragmentcolor::{ Shader, Pass, Renderer, Frame };
 
@@ -51,10 +57,109 @@ renderer.render(&frame, &target)?;
 // vector of passes (consume them)
 renderer.render(&vec![pass, pass2], &target)?;
 
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
-```
+ Ok(())
+ }
+ fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+`}
+lang="rust" meta="collapse={1-1, 27-29}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+
+import { Shader, Pass, Renderer, Frame } from "fragmentcolor";
+
+const renderer = new Renderer();
+const target = await renderer.createTextureTarget([10, 10]);
+const shader = Shader.default();
+
+const pass = new Pass("First Pass");
+pass.addShader(shader);
+
+const pass2 = new Pass("Second Pass");
+pass2.addShader(shader);
+
+// standalone;
+renderer.render(pass, target);
+
+// using a Frame;
+const frame = new Frame();
+frame.addPass(pass);
+frame.addPass(pass2);
+renderer.render(frame, target);
+
+// vector of passes (consume them);
+renderer.render([pass, pass2], target);
+
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+
+from fragmentcolor import Shader, Pass, Renderer, Frame
+
+renderer = Renderer()
+target = renderer.create_texture_target([10, 10])
+shader = Shader.default()
+
+rpass = Pass("First Pass")
+rpass.add_shader(shader)
+
+pass2 = Pass("Second Pass")
+pass2.add_shader(shader)
+
+ # standalone
+renderer.render(rpass, target)
+
+ # using a Frame
+frame = Frame()
+frame.add_pass(rpass)
+frame.add_pass(pass2)
+renderer.render(frame, target)
+
+ # vector of passes (consume them)
+renderer.render([rpass, pass2], target)
+
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
+
 
 ## Methods
 
@@ -100,7 +205,7 @@ lang="js"
 code={`
 from fragmentcolor import Pass
 
-rpass = Pass("first pass")
+rpass = Pass("first rpass")
 
 `}
 lang="python"

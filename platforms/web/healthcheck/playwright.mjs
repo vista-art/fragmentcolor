@@ -87,8 +87,10 @@ const ARTIFACT_DIR = process.env.ARTIFACT_DIR || path.join(process.cwd(), 'platf
 
   await browser.close();
 
-  if (!ok) {
-    console.error('Healthcheck marker not found in browser console');
+  if (!ok || errors.length) {
+    if (!ok) {
+      console.error('Healthcheck marker not found in browser console');
+    }
     if (errors.length) {
       console.error('Collected errors:', JSON.stringify(errors, null, 2));
     }
