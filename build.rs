@@ -1211,12 +1211,11 @@ mod validation {
             problems.push(format!("{}: H1 heading missing", path.display()));
         } else {
             // Enforce method title starts with "<Object>::"
-            if let Some(head) = content
-                .lines()
-                .find(|l| l.trim_start().starts_with('#'))
-            {
+            if let Some(head) = content.lines().find(|l| l.trim_start().starts_with('#')) {
                 let mut t = head.trim_start();
-                while t.starts_with('#') { t = t[1..].trim_start(); }
+                while t.starts_with('#') {
+                    t = t[1..].trim_start();
+                }
                 let expected_prefix = format!("{}::", object);
                 if !t.starts_with(&expected_prefix) {
                     problems.push(format!(
