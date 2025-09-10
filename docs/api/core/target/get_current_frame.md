@@ -1,4 +1,4 @@
-# get_current_frame() -> TargetFrame
+# Target::get_current_frame() -> TargetFrame
 
 Returns a frame wrapper containing the texture view to render and the target format.
 

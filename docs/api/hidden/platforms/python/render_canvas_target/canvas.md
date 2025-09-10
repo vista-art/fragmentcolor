@@ -1,4 +1,4 @@
-# canvas() -> RenderCanvas
+# RenderCanvasTarget::canvas() -> RenderCanvas
 
 Returns the underlying RenderCanvas object used to integrate with the windowing system.
 

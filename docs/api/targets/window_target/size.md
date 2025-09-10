@@ -1,4 +1,4 @@
-# size() -> [u32; 2]
+# WindowTarget::size() -> [u32; 2]
 
 Returns the size of the [Target](https://fragmentcolor.org/api/core/target) in pixels.
 

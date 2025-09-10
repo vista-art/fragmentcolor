@@ -1,4 +1,4 @@
-# get_image() -> Vec<u8>
+# Target::get_image() -> Vec<u8>
 
 Returns the current contents of the target as a byte array in RGBA8 format.
 

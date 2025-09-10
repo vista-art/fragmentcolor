@@ -133,7 +133,7 @@ lang="text"
 
 ---
 
-### get_current_frame() -&gt; TargetFrame
+### Target::get_current_frame() -&gt; TargetFrame
 
 Returns a frame wrapper containing the texture view to render and the target format.
 
@@ -227,7 +227,7 @@ lang="text"
 
 ---
 
-### get_image() -&gt; Vec&lt;u8&gt;
+### Target::get_image() -&gt; Vec&lt;u8&gt;
 
 Returns the current contents of the target as a byte array in RGBA8 format.
 
@@ -323,7 +323,7 @@ lang="text"
 
 ---
 
-### resize(size: Size &#123; width, heigth &#125; | (u32, u32) | [u32; 2])
+### Target::resize(size: Size &#123; width, heigth &#125; | (u32, u32) | [u32; 2])
 
 Resizes the [Target](/api/core/target) to the given width and height.
 
@@ -417,7 +417,7 @@ lang="text"
 
 ---
 
-### size() -&gt; Size &#123; width, height &#125;
+### Target::size() -&gt; Size &#123; width, height &#125;
 
 Returns the size of the [Target](/api/core/target) in pixels.
 

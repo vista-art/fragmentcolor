@@ -1,4 +1,4 @@
-# get_image()
+# WindowTarget::get_image()
 
 This operation returns an empty array for [WindowTarget](https://fragmentcolor.org/api/targets/windowtarget).
 
