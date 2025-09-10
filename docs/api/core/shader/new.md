@@ -1,4 +1,4 @@
-# new(source: string)
+# Shader::new(source: string)
 
 Creates a new [Shader](https://fragmentcolor.org/api/core/shader) instance from the given WGSL source string, file path, or URL.
 

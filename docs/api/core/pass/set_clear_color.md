@@ -1,4 +1,4 @@
-# set_clear_color(color: [f32; 4])
+# Pass::set_clear_color(color: [f32; 4])
 
 Sets the clear color for this [Pass](https://fragmentcolor.org/api/core/pass).
 

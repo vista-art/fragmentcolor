@@ -1,4 +1,4 @@
-# add_shader(shader: Shader)
+# Pass::add_shader(shader: Shader)
 
 Adds a [Shader](https://fragmentcolor.org/api/core/shader) object to the [Pass](https://fragmentcolor.org/api/core/pass).
 

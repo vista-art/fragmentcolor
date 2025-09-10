@@ -99,6 +99,9 @@ lang="text"
 
 ## Methods
 
+
+---
+
 ### Renderer::new()
 
 #### Creates a new Renderer
@@ -180,7 +183,10 @@ lang="text"
 
 </Tabs>
 
-### create_target(target: Canvas | Window)
+
+---
+
+### Renderer::create_target(target: Canvas | Window)
 
 Creates a [Target](/api/core/target) attached to a platform-specific canvas or window.
 
@@ -281,7 +287,10 @@ lang="text"
 
 </Tabs>
 
-### Headless rendering: create_texture_target
+
+---
+
+### Renderer::create_texture_target(size: [u32; 2])
 
 Render to an offscreen texture without a Window or Canvas.
 
@@ -386,7 +395,10 @@ lang="text"
 
 </Tabs>
 
-### render(renderable: Shader | Pass | Frame, target: Target)
+
+---
+
+### Renderer::render(renderable: Shader | Pass | Frame, target: Target)
 
 Renders the given object to the given [Target](/api/core/target).
 

@@ -1,4 +1,4 @@
-# list_keys() -> [string]
+# Shader::list_keys() -> [string]
 
 Returns a list of all keys in the [Shader](https://fragmentcolor.org/api/core/shader), including uniform names and struct fields using the dot notation.
 

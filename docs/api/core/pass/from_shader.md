@@ -1,4 +1,4 @@
-# from_shader(name: &str, shader: Shader) -> Pass
+# Pass::from_shader(name: &str, shader: Shader) -> Pass
 
 Creates a new [Pass](https://fragmentcolor.org/api/core/pass) from a single [Shader](https://fragmentcolor.org/api/core/shader).
 
