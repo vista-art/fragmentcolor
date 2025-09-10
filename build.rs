@@ -1672,6 +1672,30 @@ mod validation {
             // Link enforcement disabled; links are auto-rewritten during export
         }
 
+        // NEW: Validate method titles across all docs recursively (non-hidden), independent of API map
+        for (object, obj_dir) in scan_docs_objects(&docs_root) {
+            let dir_name = obj_dir.file_name().and_then(|s| s.to_str()).unwrap_or("");
+            if let Ok(read_dir) = std::fs::read_dir(&obj_dir) {
+                for e in read_dir.flatten() {
+                    let p = e.path();
+                    if p.is_dir() {
+                        // Skip hidden subfolders
+                        if p.file_name().and_then(|s| s.to_str()) == Some("hidden") {
+                            continue;
+                        }
+                        continue;
+                    }
+                    if p.extension().and_then(|s| s.to_str()) == Some("md") {
+                        if let Some(stem) = p.file_stem().and_then(|s| s.to_str()) {
+                            if stem != dir_name {
+                                ensure_method_md_ok(&object, stem, &p, &mut problems);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         if !warnings.is_empty() {
             eprintln!("\nDocumentation warnings:\n");
             for w in &warnings {

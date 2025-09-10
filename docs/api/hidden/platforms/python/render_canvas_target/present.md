@@ -1,4 +1,4 @@
-# present() -> dict
+# RenderCanvasTarget::present() -> dict
 
 Presents the current frame to the screen via the underlying [WindowTarget](https://fragmentcolor.org/api/targets/windowtarget).
 

@@ -1,4 +1,4 @@
-# is_ready() -> bool
+# RenderCanvasTarget::is_ready() -> bool
 
 Returns True if the underlying [WindowTarget](https://fragmentcolor.org/api/targets/windowtarget) has been initialized.
 

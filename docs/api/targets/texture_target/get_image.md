@@ -1,4 +1,4 @@
-# get_image()
+# TextureTarget::get_image()
 
 Returns the current contents of the target as a byte array in RGBA8 format.
 

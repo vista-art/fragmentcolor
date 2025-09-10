@@ -1,4 +1,4 @@
-# RenderCanvasTarget.new()
+# RenderCanvasTarget::new()
 
 Creates a new [RenderCanvasTarget](https://fragmentcolor.org/api/hidden/platforms/python/rendercanvastarget) wrapper, typically invoked by RenderCanvas when requesting a "fragmentcolor" context.
 

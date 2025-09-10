@@ -1,4 +1,4 @@
-# resize(size: [u32; 2] | (u32, u32))
+# TextureTarget::resize(size: [u32; 2] | (u32, u32))
 
 Resizes the [TextureTarget](https://fragmentcolor.org/api/targets/texturetarget) to the given width and height.
 

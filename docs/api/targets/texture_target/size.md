@@ -1,4 +1,4 @@
-# size() -> Size { width: u32, height: u32, depth: u32 }
+# TextureTarget::size() -> Size { width: u32, height: u32, depth: u32 }
 
 Returns the size of the [TextureTarget](https://fragmentcolor.org/api/targets/texturetarget) in pixels.
 

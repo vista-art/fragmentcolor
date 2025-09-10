@@ -1,4 +1,4 @@
-# resize(size: [u32; 2] | (u32, u32))
+# WindowTarget::resize(size: [u32; 2] | (u32, u32))
 
 Resizes the [Target](https://fragmentcolor.org/docs/api/target) to the given width and height.
 
