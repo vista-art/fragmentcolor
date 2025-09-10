@@ -103,7 +103,7 @@ impl Renderer {
     pub fn render_py(&self, renderable: Py<PyAny>, target: Py<PyAny>) -> Result<(), PyErr> {
         Python::attach(|py| -> Result<(), PyErr> {
             // Convert any supported Python input (single object or sequence) into a PyRenderable
-            let r = crate::PyRenderable::from_any(&renderable.bind(py))?;
+            let r = crate::PyRenderable::from_any(renderable.bind(py))?;
 
             // Downcast target to supported targets
             if let Ok(bound) = target.bind(py).downcast::<RenderCanvasTarget>() {

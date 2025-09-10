@@ -73,7 +73,7 @@ impl PyRenderable {
         // Try a Python sequence (list/tuple) of renderables
         if let Ok(seq) = obj.downcast::<PySequence>() {
             let len = seq.len()?;
-            let mut all: Vec<Arc<PassObject>> = Vec::with_capacity(len as usize);
+            let mut all: Vec<Arc<PassObject>> = Vec::with_capacity(len);
             for i in 0..len {
                 let item = seq.get_item(i)?;
                 // Each item must expose passes()
