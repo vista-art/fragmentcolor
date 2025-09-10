@@ -93,23 +93,35 @@ impl BufferPool {
     }
 
     /// Upload raw bytes to the pool, returns buffer location
-    pub fn upload(&mut self, data: &[u8], queue: &wgpu::Queue) -> BufferLocation {
+    pub fn upload(&mut self, data: &[u8], queue: &wgpu::Queue, device: &wgpu::Device) -> BufferLocation {
         let size = data.len() as u64;
         let aligned_size = wgpu::util::align_to(size, self.alignment);
 
-        assert!(
-            aligned_size <= self.chunk_size,
-            "Data chunk too large for buffer pool"
-        );
+        // If a single upload does not fit in current chunk size, allocate a dedicated chunk
+        if aligned_size > self.chunk_size {
+            self.buffers.push(device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some(&self.label),
+                size: aligned_size,
+                usage: self.usage,
+                mapped_at_creation: false,
+            }));
+            self.current_chunk = self.buffers.len() - 1;
+            self.current_offset = 0;
+        }
 
         // Advance to next chunk if needed
         if self.current_offset + aligned_size > self.chunk_size {
             self.current_chunk += 1;
             self.current_offset = 0;
-            assert!(
-                self.current_chunk < self.buffers.len(),
-                "Buffer pool overflow - call ensure_capacity first"
-            );
+            // If capacity wasn't ensured, grow lazily
+            if self.current_chunk >= self.buffers.len() {
+                self.buffers.push(device.create_buffer(&wgpu::BufferDescriptor {
+                    label: Some(&self.label),
+                    size: self.chunk_size,
+                    usage: self.usage,
+                    mapped_at_creation: false,
+                }));
+            }
         }
 
         // Write to current chunk
@@ -142,7 +154,10 @@ impl BufferPool {
             offset: location.offset,
             size: match padded_size {
                 0 => None,
-                _ => Some(NonZeroU64::new(padded_size).unwrap()),
+                _ => {
+                    // padded_size > 0 by construction; avoid unwrap by using new_unchecked
+                    Some(unsafe { NonZeroU64::new_unchecked(padded_size) })
+                }
             },
         }
     }

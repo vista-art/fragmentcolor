@@ -647,9 +647,9 @@ impl TryFrom<&js_sys::Float32Array> for UniformData {
 
         match len {
             1 => Ok(values[0].into()),
-            2 => Ok(<[f32; 2]>::try_from(values).unwrap().into()),
-            3 => Ok(<[f32; 3]>::try_from(values).unwrap().into()),
-            4 => Ok(<[f32; 4]>::try_from(values).unwrap().into()),
+            2 => Ok([values[0], values[1]].into()),
+            3 => Ok([values[0], values[1], values[2]].into()),
+            4 => Ok([values[0], values[1], values[2], values[3]].into()),
             9 => {
                 let mut mat = [[0.0; 3]; 3];
                 for (i, chunk) in values.chunks_exact(3).enumerate() {
@@ -691,9 +691,9 @@ impl TryFrom<&js_sys::Int32Array> for UniformData {
 
         match len {
             1 => Ok(values[0].into()),
-            2 => Ok(<[i32; 2]>::try_from(values).unwrap().into()),
-            3 => Ok(<[i32; 3]>::try_from(values).unwrap().into()),
-            4 => Ok(<[i32; 4]>::try_from(values).unwrap().into()),
+            2 => Ok([values[0], values[1]].into()),
+            3 => Ok([values[0], values[1], values[2]].into()),
+            4 => Ok([values[0], values[1], values[2], values[3]].into()),
             _ => Err(crate::error::ShaderError::TypeMismatch(format!(
                 "Unsupported Int32Array length: {}",
                 len
@@ -721,9 +721,9 @@ impl TryFrom<&js_sys::Uint32Array> for UniformData {
 
         match len {
             1 => Ok(values[0].into()),
-            2 => Ok(<[u32; 2]>::try_from(values).unwrap().into()),
-            3 => Ok(<[u32; 3]>::try_from(values).unwrap().into()),
-            4 => Ok(<[u32; 4]>::try_from(values).unwrap().into()),
+            2 => Ok([values[0], values[1]].into()),
+            3 => Ok([values[0], values[1], values[2]].into()),
+            4 => Ok([values[0], values[1], values[2], values[3]].into()),
             _ => Err(crate::error::ShaderError::TypeMismatch(format!(
                 "Unsupported Uint32Array length: {}",
                 len
@@ -775,9 +775,9 @@ impl TryFrom<&js_sys::Array> for UniformData {
 
         match floats.len() {
             1 => Ok(floats[0].into()),
-            2 => Ok(<[f32; 2]>::try_from(floats).unwrap().into()),
-            3 => Ok(<[f32; 3]>::try_from(floats).unwrap().into()),
-            4 => Ok(<[f32; 4]>::try_from(floats).unwrap().into()),
+            2 => Ok([floats[0], floats[1]].into()),
+            3 => Ok([floats[0], floats[1], floats[2]].into()),
+            4 => Ok([floats[0], floats[1], floats[2], floats[3]].into()),
             9 => {
                 let mut mat = [[0.0; 3]; 3];
                 for (i, chunk) in floats.chunks_exact(3).enumerate() {
@@ -891,8 +891,7 @@ impl From<UniformData> for wasm_bindgen::JsValue {
             UniformData::Struct((fields, _)) => {
                 let obj = Object::new();
                 for (_, name, data) in fields {
-                    Reflect::set(&obj, &wasm_bindgen::JsValue::from_str(&name), &data.into())
-                        .unwrap();
+                    let _ = Reflect::set(&obj, &wasm_bindgen::JsValue::from_str(&name), &data.into());
                 }
                 obj.into()
             }

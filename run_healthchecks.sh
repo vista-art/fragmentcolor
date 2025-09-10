@@ -57,8 +57,8 @@ run_py() {
 
 start_static_server() {
   local dir="$1"; local port="$2"
-  # Use --directory for broader python3 compatibility
-  python3 -m http.server "$port" --directory "$dir" >/dev/null 2>&1 &
+  # Use Node COOP/COEP server to enable SharedArrayBuffer/WebGPU readbacks
+  PORT="$port" node "$ROOT_DIR/platforms/web/healthcheck/serve.mjs" >/dev/null 2>&1 &
   echo $!
 }
 

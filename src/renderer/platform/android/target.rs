@@ -40,9 +40,11 @@ impl Drop for AndroidNativeWindow {
 impl HasWindowHandle for AndroidNativeWindow {
     fn window_handle(&self) -> Result<WindowHandle, HandleError> {
         unsafe {
-            let handle = AndroidNdkWindowHandle::new(
-                std::ptr::NonNull::new(self.android_window as *mut _).unwrap(),
-            );
+            let nn = match std::ptr::NonNull::new(self.android_window as *mut _) {
+                Some(p) => p,
+                None => return Err(HandleError::Unavailable),
+            };
+            let handle = AndroidNdkWindowHandle::new(nn);
             Ok(WindowHandle::borrow_raw(RawWindowHandle::AndroidNdk(
                 handle,
             )))
