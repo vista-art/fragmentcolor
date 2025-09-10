@@ -36,6 +36,7 @@ const ARTIFACT_DIR = process.env.ARTIFACT_DIR || path.join(process.cwd(), 'platf
       ];
 
   const browser = await chromium.launch({
+    // Use new headless mode which has better WebGPU support
     headless: true,
     args,
   });

@@ -27,18 +27,60 @@ impl Shader {
         opts.set_method("GET");
         opts.set_mode(RequestMode::Cors);
 
-        let request = Request::new_with_str_and_init(url, &opts).expect("failed to create request");
-        let window = web_sys::window().expect("no global `window` exists");
+        let request = match Request::new_with_str_and_init(url, &opts) {
+            Ok(r) => r,
+            Err(e) => {
+                console::error_1(&e);
+                return Shader::default();
+            }
+        };
+        let window = match web_sys::window() {
+            Some(w) => w,
+            None => {
+                console::error_1(&"no global `window` exists".into());
+                return Shader::default();
+            }
+        };
         let resp_promise = window.fetch_with_request(&request);
-        let resp_value = future_to_promise(JsFuture::from(resp_promise));
+        let resp_value = JsFuture::from(resp_promise).await;
+        let resp_value = match resp_value {
+            Ok(v) => v,
+            Err(e) => {
+                console::error_1(&e);
+                return Shader::default();
+            }
+        };
 
-        let resp: Response = resp_value.dyn_into().expect("not a Response");
+        let resp: Response = match resp_value.dyn_into() {
+            Ok(r) => r,
+            Err(e) => {
+                console::error_1(&e);
+                return Shader::default();
+            }
+        };
 
-        let jsvalue = JsFuture::from(resp.text().expect("failed to read response"))
-            .await
-            .expect("failed to read response");
+        let text_promise = match resp.text() {
+            Ok(p) => p,
+            Err(e) => {
+                console::error_1(&e);
+                return Shader::default();
+            }
+        };
+        let jsvalue = match JsFuture::from(text_promise).await {
+            Ok(v) => v,
+            Err(e) => {
+                console::error_1(&e);
+                return Shader::default();
+            }
+        };
 
-        let body = jsvalue.as_string().expect("response not a string");
+        let body = match jsvalue.as_string() {
+            Some(s) => s,
+            None => {
+                console::error_1(&"response not a string".into());
+                return Shader::default();
+            }
+        };
 
         Self::new_js(&body)
     }

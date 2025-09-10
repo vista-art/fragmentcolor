@@ -34,11 +34,16 @@ jobs:
           chmod +x ./build_web.sh
           ./build_web.sh
 
-      - name: Start static server (platforms/web)
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Start static server (Node with COOP/COEP)
         env:
           PORT: 8765
         run: |
-          python3 -m http.server "$PORT" -d platforms/web &
+          node platforms/web/healthcheck/serve.mjs &
           # Wait briefly for the server to start
           sleep 2
 
@@ -52,10 +57,6 @@ jobs:
           curl -sSf "http://localhost:$PORT/pkg/fragmentcolor.js" >/dev/null
           curl -sSf "http://localhost:$PORT/pkg/fragmentcolor_bg.wasm" >/dev/null
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
 
       - name: Install Playwright
         working-directory: platforms/web/healthcheck

@@ -320,7 +320,7 @@ impl RenderContext {
 
                 let buffer_location = {
                     let mut buffer_pool = self.buffer_pool.write();
-                    buffer_pool.upload(bytes, &self.queue)
+                    buffer_pool.upload(bytes, &self.queue, &self.device)
                 };
 
                 buffer_locations.push((uniform, buffer_location));
@@ -342,10 +342,12 @@ impl RenderContext {
             // Build bind groups per layout (by group index)
             let mut bind_groups: Vec<(u32, wgpu::BindGroup)> = Vec::new();
             for (group, entries) in bind_group_entries {
-                let layout = cached
-                    .bind_group_layouts
-                    .get(&group)
-                    .expect("Missing bind group layout for group");
+                let Some(layout) = cached.bind_group_layouts.get(&group) else {
+                    return Err(ShaderError::ParseError(format!(
+                        "Missing bind group layout for group {}",
+                        group
+                    )));
+                };
                 let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
                     layout,
                     entries: &entries,
@@ -389,8 +391,9 @@ fn create_bind_group_layouts(
         // WebGPU/Dawn is stricter about uniform binding sizes; ensure a safe minimum.
         let min_size = {
             let sz = *size as u64;
-            let padded = wgpu::util::align_to(sz, 16);
-            std::num::NonZeroU64::new(padded).unwrap()
+            let padded = wgpu::util::align_to(sz, 16).max(16);
+            // padded is non-zero due to max(16)
+            unsafe { std::num::NonZeroU64::new_unchecked(padded) }
         };
 
         let entry = wgpu::BindGroupLayoutEntry {
@@ -444,10 +447,12 @@ fn create_render_pipeline(
 
     let mut sorted_groups: Vec<_> = bind_group_layouts.keys().collect();
     sorted_groups.sort();
-    let bind_group_layouts_sorted: Vec<_> = sorted_groups
-        .into_iter()
-        .map(|g| bind_group_layouts.get(g).unwrap())
-        .collect();
+    let mut bind_group_layouts_sorted: Vec<&wgpu::BindGroupLayout> = Vec::new();
+    for g in sorted_groups.into_iter() {
+        if let Some(l) = bind_group_layouts.get(g) {
+            bind_group_layouts_sorted.push(l);
+        }
+    }
 
     let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some("Default Pipeline Layout"),

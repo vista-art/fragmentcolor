@@ -62,7 +62,9 @@ impl Renderer {
     #[lsp_doc("docs/api/core/renderer/create_target.md")]
     pub async fn create_target_js(&self, canvas: JsValue) -> Result<CanvasTarget, JsError> {
         let canvas = if canvas.has_type::<web_sys::HtmlCanvasElement>() {
-            let canvas = canvas.dyn_into::<web_sys::HtmlCanvasElement>().unwrap();
+            let canvas = canvas
+                .dyn_into::<web_sys::HtmlCanvasElement>()
+                .map_err(|_| JsError::new("Failed to convert input to HtmlCanvasElement"))?;
             Canvas::Html(canvas)
         } else if let Ok(canvas) = canvas.dyn_into::<web_sys::OffscreenCanvas>() {
             Canvas::Offscreen(canvas)
