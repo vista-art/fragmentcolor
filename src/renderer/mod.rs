@@ -450,13 +450,13 @@ fn create_render_pipeline(
         .collect();
 
     let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-        label: Some("Pipeline Layout"),
+        label: Some("Default Pipeline Layout"),
         bind_group_layouts: &bind_group_layouts_sorted,
         push_constant_ranges: &[],
     });
 
     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-        label: Some("Render Pipeline"),
+        label: Some("Default Render Pipeline"),
         layout: Some(&layout),
         vertex: wgpu::VertexState {
             module: &shader_module,

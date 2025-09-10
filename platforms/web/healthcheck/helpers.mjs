@@ -1,3 +1,5 @@
+import { Shader } from 'fragmentcolor';
+
 export function exampleShader() {
   return new Shader(`
 struct VertexOutput {

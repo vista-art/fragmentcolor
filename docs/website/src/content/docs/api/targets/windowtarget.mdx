@@ -15,10 +15,16 @@ The [Target](/api/core/target) object is a rendering destination for the [Render
 
 It contains a GPU surface texture attached to a platform-specific window or an offscreen texture for headless rendering (see [TextureTarget](/api/targets/texturetarget)).
 
+
+
 ## Example
 
-```rust collapse={1-1, 14-18}
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
 use fragmentcolor::{Renderer, Shader, Target};
 
@@ -31,42 +37,13 @@ let target = renderer.create_target(window).await?;
 
 renderer.render(&Shader::default(), &target)?;
 
-let s = target.size();
-assert_eq!([s.width, s.height], [800, 600]);
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
-```
-
-## Methods
-
-### get_current_frame() -&gt; TargetFrame
-
-Returns a frame wrapper containing the texture view to render and the target format.
-
-Most users do not need to call this directly; the [Renderer](/api/core/renderer) uses it internally.
-
-#### Example
-
-<Tabs>
-
-<TabItem label="Rust">
-<Code
-code={`
-use fragmentcolor::{Renderer, Target};
-
- async fn run() -> Result<(), Box<dyn std::error::Error>> {
-
-let renderer = Renderer::new();
-let target = renderer.create_texture_target([16, 16]).await?;
-let frame = target.get_current_frame()?; // Acquire a frame
-let _format = frame.format();
-
+ let s = target.size();
+ assert_eq!([s.width, s.height], [800, 600]);
  Ok(())
  }
  fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={3-3, 10-12}"
+lang="rust" meta="collapse={1-1, 14-18}"
 />
 
 </TabItem>
@@ -74,13 +51,17 @@ lang="rust" meta="collapse={3-3, 10-12}"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Renderer, Target } from "fragmentcolor";
 
+import { Renderer, Shader, Target } from "fragmentcolor";
+
+// Use your platform's windowing system to create a window.;
+// We officially support Winit. Check the examples folder for details.;
+const canvas = (()=>{const c=document.createElement('canvas');c.width=800;c.height=600;return c;})();
 
 const renderer = new Renderer();
-const target = await renderer.createTextureTarget([16, 16]);
-const frame = target.getCurrentFrame(); // Acquire a frame;
-const _format = frame.format();
+const target = await renderer.createTarget(canvas);
+
+renderer.render(Shader.default(), target);
 
 `}
 lang="js"
@@ -91,13 +72,18 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Renderer, Target
+from rendercanvas.auto import RenderCanvas, loop
 
+from fragmentcolor import Renderer, Shader
+
+ # Use your platform's windowing system to create a window.
+ # We officially support Winit. Check the examples folder for details.
+canvas = RenderCanvas(size=(800, 600))
 
 renderer = Renderer()
-target = renderer.create_texture_target([16, 16])
-frame = target.get_current_frame(); # Acquire a frame
-_format = frame.format()
+target = renderer.create_target(canvas)
+
+renderer.render(Shader.default(), target)
 
 `}
 lang="python"
@@ -130,6 +116,9 @@ lang="text"
 </TabItem>
 
 </Tabs>
+
+
+## Methods
 
 ### get_image()
 
@@ -186,7 +175,7 @@ lang="js"
 <Code
 code={`
 
-from fragmentcolor import Renderer, Target, Shader
+from fragmentcolor import Renderer, Shader
 
 renderer = Renderer()
 target = renderer.create_texture_target([16, 16])

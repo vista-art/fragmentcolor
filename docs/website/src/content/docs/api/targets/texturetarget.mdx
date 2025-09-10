@@ -13,10 +13,16 @@ The [TextureTarget](/api/targets/texturetarget) is an offscreen [Target](/api/co
 
 Use it for headless rendering, tests, server-side image generation, or CI.
 
+
+
 ## Example
 
-```rust collapse={1-1, 13-17}
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
 use fragmentcolor::{Renderer, Shader, Target};
 
@@ -28,42 +34,13 @@ renderer.render(&shader, &target)?;
 
 let image = target.get_image();
 
-assert_eq!(image.len(), 64 * 64 * 4); // RGBA8
-
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
-```
-
-## Methods
-
-### get_current_frame() -&gt; TargetFrame
-
-Returns a frame wrapper for the offscreen texture.
-
-Most users do not need to call this directly; the [Renderer](/api/core/renderer) uses it internally.
-
-#### Example
-
-<Tabs>
-
-<TabItem label="Rust">
-<Code
-code={`
- async fn run() -> Result<(), Box<dyn std::error::Error>> {
-
-use fragmentcolor::Renderer;
-
-let renderer = Renderer::new();
-let target = renderer.create_texture_target([16, 16]).await?;
-let frame = target.get_current_frame()?;
-let _format = frame.format();
+ assert_eq!(image.len(), 64 * 64 * 4); // RGBA8
 
  Ok(())
  }
  fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 10-12}"
+lang="rust" meta="collapse={1-1, 13-17}"
 />
 
 </TabItem>
@@ -72,12 +49,15 @@ lang="rust" meta="collapse={1-1, 10-12}"
 <Code
 code={`
 
-import { Renderer } from "fragmentcolor";
+import { Renderer, Shader, Target } from "fragmentcolor";
 
 const renderer = new Renderer();
-const target = await renderer.createTextureTarget([16, 16]);
-const frame = target.getCurrentFrame();
-const _format = frame.format();
+const target = await renderer.createTextureTarget([64, 64]);
+
+const shader = Shader.default();
+renderer.render(shader, target);
+
+const image = target.getImage();
 
 `}
 lang="js"
@@ -89,12 +69,15 @@ lang="js"
 <Code
 code={`
 
-from fragmentcolor import Renderer
+from fragmentcolor import Renderer, Shader
 
 renderer = Renderer()
-target = renderer.create_texture_target([16, 16])
-frame = target.get_current_frame()
-_format = frame.format()
+target = renderer.create_texture_target([64, 64])
+
+shader = Shader.default()
+renderer.render(shader, target)
+
+image = target.get_image()
 
 `}
 lang="python"
@@ -127,6 +110,9 @@ lang="text"
 </TabItem>
 
 </Tabs>
+
+
+## Methods
 
 ### get_image()
 
@@ -179,7 +165,7 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Renderer, Target, Shader
+from fragmentcolor import Renderer, Shader
 
 
 renderer = Renderer()

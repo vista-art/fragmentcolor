@@ -18,7 +18,8 @@ If the initial source validation passes, the shader is guaranteed to work on the
 # fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Shader;
 
-let _shader = Shader::default();
+let shader = Shader::default();
+# assert!(shader.list_keys().len() >= 1);
 # Ok(())
 # }
 ```

@@ -13,7 +13,11 @@ You can also create renderings with multiple Render Passes by using multiple [Pa
 ## Example
 
 ```rust
+# fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Shader;
 
-let _shader = Shader::default();
+let shader = Shader::default();
+# assert!(shader.list_uniforms().len() >= 1);
+# Ok(())
+# }
 ```

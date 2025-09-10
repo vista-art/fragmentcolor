@@ -102,59 +102,16 @@ impl Renderer {
     #[lsp_doc("docs/api/core/renderer/render.md")]
     pub fn render_py(&self, renderable: Py<PyAny>, target: Py<PyAny>) -> Result<(), PyErr> {
         Python::attach(|py| -> Result<(), PyErr> {
-            let renderable_type = renderable
-                .call_method0(py, "renderable_type")?
-                .extract::<String>(py)?;
+            // Convert any supported Python input (single object or sequence) into a PyRenderable
+            let r = crate::PyRenderable::from_any(&renderable.bind(py))?;
 
             // Downcast target to supported targets
             if let Ok(bound) = target.bind(py).downcast::<RenderCanvasTarget>() {
-                match renderable_type.as_str() {
-                    "Frame" => {
-                        let frame = renderable.bind(py).downcast::<Frame>()?;
-                        let renderable = PyRenderable::from(frame);
-                        self.render(&renderable, &*bound.borrow())?;
-                        Ok(())
-                    }
-                    "Pass" => {
-                        let pass = renderable.bind(py).downcast::<Pass>()?;
-                        let renderable = PyRenderable::from(pass);
-                        self.render(&renderable, &*bound.borrow())?;
-                        Ok(())
-                    }
-                    "Shader" => {
-                        let shader = renderable.bind(py).downcast::<Shader>()?;
-                        let renderable = PyRenderable::from(shader);
-                        self.render(&renderable, &*bound.borrow())?;
-                        Ok(())
-                    }
-                    _ => Err(PyErr::new::<PyTypeError, _>(
-                        "Expected a Frame, Pass or Shader object",
-                    )),
-                }
+                self.render(&r, &*bound.borrow())?;
+                Ok(())
             } else if let Ok(bound) = target.bind(py).downcast::<PyTextureTarget>() {
-                match renderable_type.as_str() {
-                    "Frame" => {
-                        let frame = renderable.bind(py).downcast::<Frame>()?;
-                        let renderable = PyRenderable::from(frame);
-                        self.render(&renderable, &*bound.borrow())?;
-                        Ok(())
-                    }
-                    "Pass" => {
-                        let pass = renderable.bind(py).downcast::<Pass>()?;
-                        let renderable = PyRenderable::from(pass);
-                        self.render(&renderable, &*bound.borrow())?;
-                        Ok(())
-                    }
-                    "Shader" => {
-                        let shader = renderable.bind(py).downcast::<Shader>()?;
-                        let renderable = PyRenderable::from(shader);
-                        self.render(&renderable, &*bound.borrow())?;
-                        Ok(())
-                    }
-                    _ => Err(PyErr::new::<PyTypeError, _>(
-                        "Expected a Frame, Pass or Shader object",
-                    )),
-                }
+                self.render(&r, &*bound.borrow())?;
+                Ok(())
             } else {
                 Err(PyErr::new::<PyTypeError, _>(
                     "Unsupported target type. Expected RenderCanvasTarget or TextureTarget",

@@ -1,5 +1,5 @@
 from fragmentcolor import Shader
 
 shader = Shader.default()
-_ = shader.set("resolution", [800.0, 600.0])
-_res = shader.get("resolution")
+shader.set("resolution", [800.0, 600.0])
+res = shader.get("resolution")

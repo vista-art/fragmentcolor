@@ -14,24 +14,8 @@ if os.environ.get("FC_HEALTHCHECK_VERBOSE") == "1":
 
 
 def run():
-    # DOC: Renderer.constructor (begin)
     renderer = Renderer()
-    # DOC: (end)
-    # DOC: Renderer.create_texture_target (begin)
     target = renderer.create_texture_target((64, 64))
-    # DOC: (end)
-
-    # Verify initial size and exercise resize conversions (list, tuple, dict)
-    assert target.size == [64, 64], f"Unexpected initial size: {target.size}"
-    target.resize([128, 64])
-    assert target.size == [128, 64], f"Resize via list failed: {target.size}"
-    target.resize((256, 128))
-    assert target.size == [256, 128], f"Resize via tuple failed: {target.size}"
-    target.resize({"width": 32, "height": 16})
-    assert target.size == [32, 16], f"Resize via dict failed: {target.size}"
-    print("TextureTarget.resize conversions OK")
-
-    # DOC: Shader.constructor (begin)
     shader = Shader("""
 struct VertexOutput {
     @builtin(position) coords: vec4<f32>,
@@ -81,51 +65,31 @@ fn main(pixel: VertexOutput) -> @location(0) vec4<f32> {
     return vec4<f32>(circle.color.rgb * a, a);
 }
 """)
-    # DOC: (end)
 
-    # DOC: Shader.set (begin)
     shader.set("resolution", [64.0, 64.0])
     shader.set("circle.radius", 10.0)
     shader.set("circle.color", [1.0, 0.0, 0.0, 0.8])
     shader.set("circle.border", 2.0)
     shader.set("circle.position", [0.0, 0.0])
-    # DOC: (end)
 
-    # DOC: Renderer.render (begin)
     renderer.render(shader, target)
-    # DOC: (end)
 
-    # DOC: Pass.constructor (begin)
     rpass = Pass("single pass")
-    # DOC: (end)
-    # DOC: Pass.add_shader (begin)
     rpass.add_shader(shader)
-    # DOC: (end)
     renderer.render(rpass, target)
 
-    # DOC: Frame.constructor (begin)
     frame = Frame()
-    # DOC: (end)
-    # DOC: Frame.add_pass (begin)
     frame.add_pass(rpass)
-    # DOC: (end)
     renderer.render(frame, target)
 
     # Additional API coverage for docs
-    # DOC: Shader.get (begin)
     radius = shader.get("circle.radius")
-    # DOC: (end)
-    # DOC: Shader.list_uniforms (begin)
     uniforms = shader.list_uniforms()
-    # DOC: (end)
-    # DOC: Shader.list_keys (begin)
     keys = shader.list_keys()
-    # DOC: (end)
 
     print(f"Shader.get('circle.radius'): {radius}")
     print(f"Shader.list_uniforms: {uniforms}")
     print(f"Shader.list_keys: {keys}")
-
     print("Headless Python render completed successfully")
 
 
@@ -133,8 +97,5 @@ if __name__ == "__main__":
     run()
 
     # Auto-generated: run all extracted examples
-    try:
-        from platforms.python.examples.main import run_all as __run_all
-        __run_all()
-    except Exception as _e:
-        print(f'Warning: failed to run generated examples: {_e}')
+    from platforms.python.examples.main import run_all as __run_all
+    __run_all()

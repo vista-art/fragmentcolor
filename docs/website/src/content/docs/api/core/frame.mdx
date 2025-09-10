@@ -15,9 +15,15 @@ It is used to render multiple passes to a single target, such as an opaque pass 
 
 You need to inject the [Frame](/api/core/frame) object into the [Renderer](/api/core/renderer) to render it.
 
+
+
 ## Example
 
-```rust
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
 use fragmentcolor::{Frame, Pass};
 
 let pass1 = Pass::new("first");
@@ -26,7 +32,72 @@ let pass2 = Pass::new("second");
 let mut frame = Frame::new();
 frame.add_pass(&pass1);
 frame.add_pass(&pass2);
-```
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Frame, Pass } from "fragmentcolor";
+
+const pass1 = new Pass("first");
+const pass2 = new Pass("second");
+
+const frame = new Frame();
+frame.addPass(pass1);
+frame.addPass(pass2);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Frame, Pass
+
+pass1 = Pass("first")
+pass2 = Pass("second")
+
+frame = Frame()
+frame.add_pass(pass1)
+frame.add_pass(pass2)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
+
 
 ## Methods
 

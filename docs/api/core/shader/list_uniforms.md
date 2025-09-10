@@ -5,8 +5,12 @@ Returns a list of all uniform names in the [Shader](https://fragmentcolor.org/ap
 ## Example
 
 ```rust
+# fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Shader;
 
 let shader = Shader::default();
-let _list = shader.list_uniforms();
+let list = shader.list_uniforms();
+# assert!(list.contains(&"resolution".to_string()));
+# Ok(())
+# }
 ```
