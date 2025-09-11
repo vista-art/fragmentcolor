@@ -1026,12 +1026,11 @@ mod convert {
         }
         let mut var_out = var.to_string();
         // Python reserved keyword rename
-        if let Lang::Py = lang {
-            if var == "pass" {
+        if let Lang::Py = lang
+            && var == "pass" {
                 py_renames.insert("pass".into(), "rpass".into());
                 var_out = "rpass".to_string();
             }
-        }
         // RHS on this first line
         let rhs_line = rhs0.trim_start_matches('=').trim();
         // Must look like '<Path>::new('
