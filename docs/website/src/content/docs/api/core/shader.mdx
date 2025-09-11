@@ -29,14 +29,43 @@ You can also create renderings with multiple Render Passes by using multiple [Pa
 <Code
 code={`
  fn main() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::Shader;
 
-let shader = Shader::default();
+use fragmentcolor::{Shader, Renderer};
+
+let shader = Shader::new(r#"
+    @vertex
+    fn vs_main(@builtin(vertex_index) vertex_index: u32) -> @builtin(position) vec4<f32> {
+        var pos = array<vec2<f32>, 3>(
+            vec2<f32>(-1.0, -1.0),
+            vec2<f32>( 3.0, -1.0),
+            vec2<f32>(-1.0,  3.0)
+        );
+        return vec4<f32>(pos[vertex_index], 0.0, 1.0);
+    }
+
+    @group(0) @binding(0)
+    var<uniform> resolution: vec2<f32>;
+
+    @fragment
+    fn fs_main() -> @location(0) vec4<f32> {
+        return vec4<f32>(1.0, 0.0, 0.0, 1.0); // Red
+    }
+"#)?;
+
+// Set the "resolution" uniform
+shader.set("resolution", [800.0, 600.0])?;
+let res: [f32; 2] = shader.get("resolution")?;
+
+let renderer = Renderer::new();
+let target = renderer.create_texture_target([16, 16])?;
+renderer.render(&shader, &target)?;
+
+ assert_eq!(res, [800.0, 600.0]);
  assert!(shader.list_uniforms().len() >= 1);
  Ok(())
  }
 `}
-lang="rust" meta="collapse={1-1, 5-7}"
+lang="rust" meta="collapse={1-1, 33-36}"
 />
 
 </TabItem>
@@ -44,9 +73,38 @@ lang="rust" meta="collapse={1-1, 5-7}"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Shader } from "fragmentcolor";
 
-const shader = Shader.default();
+import { Shader, Renderer } from "fragmentcolor";
+
+const shader = new Shader(\`
+    @vertex
+    fn vs_main(@builtin(vertex_index) vertex_index: u32) -> @builtin(position) vec4<f32> {
+        var pos = array<vec2<f32>, 3>(
+            vec2<f32>(-1.0, -1.0),
+            vec2<f32>( 3.0, -1.0),
+            vec2<f32>(-1.0,  3.0)
+        );
+        return vec4<f32>(pos[vertex_index], 0.0, 1.0);
+    }
+
+    @group(0) @binding(0)
+    var<uniform> resolution: vec2<f32>;
+
+    @fragment
+    fn fs_main() -> @location(0) vec4<f32> {
+        return vec4<f32>(1.0, 0.0, 0.0, 1.0); // Red
+    }
+
+\`);
+
+// Set the "resolution" uniform;
+shader.set("resolution", [800.0, 600.0]);
+const res = shader.get("resolution");
+
+const renderer = new Renderer();
+const target = renderer.createTextureTarget([16, 16]);
+renderer.render(shader, target);
+
 `}
 lang="js"
 />
@@ -56,9 +114,38 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Shader
 
-shader = Shader.default()
+from fragmentcolor import Shader, Renderer
+
+shader = Shader("""
+    @vertex
+    fn vs_main(@builtin(vertex_index) vertex_index: u32) -> @builtin(position) vec4<f32> {
+        var pos = array<vec2<f32>, 3>(
+            vec2<f32>(-1.0, -1.0),
+            vec2<f32>( 3.0, -1.0),
+            vec2<f32>(-1.0,  3.0)
+        );
+        return vec4<f32>(pos[vertex_index], 0.0, 1.0);
+    }
+
+    @group(0) @binding(0)
+    var<uniform> resolution: vec2<f32>;
+
+    @fragment
+    fn fs_main() -> @location(0) vec4<f32> {
+        return vec4<f32>(1.0, 0.0, 0.0, 1.0); // Red
+    }
+
+""")
+
+ # Set the "resolution" uniform
+shader.set("resolution", [800.0, 600.0])
+res = shader.get("resolution")
+
+renderer = Renderer()
+target = renderer.create_texture_target([16, 16])
+renderer.render(shader, target)
+
 `}
 lang="python"
 />
@@ -122,13 +209,31 @@ code={`
 
 use fragmentcolor::Shader;
 
-let shader = Shader::new();
+let shader = Shader::new(r#"
+    @vertex
+    fn vs_main(@builtin(vertex_index) vertex_index: u32) -> @builtin(position) vec4<f32> {
+        var pos = array<vec2<f32>, 3>(
+            vec2<f32>(-1.0, -1.0),
+            vec2<f32>( 3.0, -1.0),
+            vec2<f32>(-1.0,  3.0)
+        );
+        return vec4<f32>(pos[vertex_index], 0.0, 1.0);
+    }
+
+    @group(0) @binding(0)
+    var<uniform> resolution: vec2<f32>;
+
+    @fragment
+    fn fs_main() -> @location(0) vec4<f32> {
+        return vec4<f32>(1.0, 0.0, 0.0, 1.0); // Red
+    }
+"#)?;
 
  assert!(shader.list_keys().len() >= 1);
  Ok(())
  }
 `}
-lang="rust" meta="collapse={1-1, 7-9}"
+lang="rust" meta="collapse={1-1, 25-27}"
 />
 
 </TabItem>
@@ -139,7 +244,26 @@ code={`
 
 import { Shader } from "fragmentcolor";
 
-const shader = new Shader();
+const shader = new Shader(\`
+    @vertex
+    fn vs_main(@builtin(vertex_index) vertex_index: u32) -> @builtin(position) vec4<f32> {
+        var pos = array<vec2<f32>, 3>(
+            vec2<f32>(-1.0, -1.0),
+            vec2<f32>( 3.0, -1.0),
+            vec2<f32>(-1.0,  3.0)
+        );
+        return vec4<f32>(pos[vertex_index], 0.0, 1.0);
+    }
+
+    @group(0) @binding(0)
+    var<uniform> resolution: vec2<f32>;
+
+    @fragment
+    fn fs_main() -> @location(0) vec4<f32> {
+        return vec4<f32>(1.0, 0.0, 0.0, 1.0); // Red
+    }
+
+\`);
 
 `}
 lang="js"
@@ -153,7 +277,26 @@ code={`
 
 from fragmentcolor import Shader
 
-shader = Shader()
+shader = Shader("""
+    @vertex
+    fn vs_main(@builtin(vertex_index) vertex_index: u32) -> @builtin(position) vec4<f32> {
+        var pos = array<vec2<f32>, 3>(
+            vec2<f32>(-1.0, -1.0),
+            vec2<f32>( 3.0, -1.0),
+            vec2<f32>(-1.0,  3.0)
+        );
+        return vec4<f32>(pos[vertex_index], 0.0, 1.0);
+    }
+
+    @group(0) @binding(0)
+    var<uniform> resolution: vec2<f32>;
+
+    @fragment
+    fn fs_main() -> @location(0) vec4<f32> {
+        return vec4<f32>(1.0, 0.0, 0.0, 1.0); // Red
+    }
+
+""")
 
 `}
 lang="python"
