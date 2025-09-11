@@ -262,18 +262,10 @@ jobs:
           submodules: "recursive"
 
       - name: Setup Rust
-        uses: actions-rust-lang/setup-rust-toolchain@v1
+        uses: dtolnay/rust-toolchain@stable
         with:
-          cache: false
+          targets: wasm32-unknown-unknown
 
-      - name: Install LLVM and Clang
-        uses: KyleMayes/install-llvm-action@v2
-        with:
-          version: "18.1.8"
-          env: true
-
-      - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y libtinfo6
 
       - name: Setup wasm-pack
         uses: jetli/wasm-pack-action@v0.4.0
@@ -286,11 +278,6 @@ jobs:
           cache-directories: ${{ github.workspace }}/build
           cache-all-crates: true
 
-      - uses: pnpm/action-setup@v4
-        name: Install pnpm
-        with:
-          version: 10
-          run_install: false
 
       - name: Install Node.js
         uses: actions/setup-node@v4
@@ -299,14 +286,33 @@ jobs:
           cache: "pnpm"
           cache-dependency-path: "examples/javascript/pnpm-lock.yaml"
 
-      - name: Install dependencies
-        run: pnpm install --dir examples/javascript
-
-      - name: Build Web
-        run: ./build_web.sh
-
-      - name: Build demo App
-        working-directory: examples/javascript/
+      - name: Install system dependencies for headless GPU
         run: |
-          pnpm install
-          pnpm run build
+          sudo apt-get update -y -qq
+          sudo apt-get install -y libosmesa6-dev libegl1 libgl1-mesa-dri libxcb-xfixes0-dev mesa-vulkan-drivers
+
+      - name: Build web package
+        run: |
+          chmod +x ./build_web.sh
+          ./build_web.sh
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Run Web healthcheck (Playwright)
+        env:
+          FC_HEALTHCHECK_VERBOSE: 1
+          PORT: 8765
+        run: |
+          chmod +x ./run_healthchecks.sh
+          ./run_healthchecks.sh web
+
+      - name: Upload Playwright artifacts (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-healthcheck-artifacts
+          path: platforms/web/healthcheck/playwright-artifacts
+          if-no-files-found: ignore
