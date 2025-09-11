@@ -38,16 +38,23 @@ const EXAMPLES = [
 function fq(rel){ return 'platforms.web.examples.' + rel.replace('../examples/','').replace(/\\.js$/, '').replaceAll('/', '.'); }
 (async () => {
   let failed = 0;
+  globalThis.__HC = globalThis.__HC || { currentModule: null };
   for (const rel of EXAMPLES) {
     const name = fq(rel);
     const head = `test ${name} ... `;
     try {
+      globalThis.__HC.currentModule = name;
+      console.log(`[begin] module=${name}`);
       await import(rel);
+      console.log(`[end] module=${name} status=OK`);
       console.log(head + GREEN + 'OK' + RESET);
     } catch (e) {
       failed++;
+      console.log(`[end] module=${name} status=FAILED error=${e?.message || String(e)}]`);
       console.log(head + RED + 'FAILED' + RESET);
       console.error(e);
+    } finally {
+      globalThis.__HC.currentModule = null;
     }
   }
   if (failed === 0) {

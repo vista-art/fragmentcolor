@@ -119,7 +119,7 @@ impl PassObject {
             name: Arc::from(name),
             shaders: RwLock::new(Vec::new()),
             viewport: RwLock::new(None),
-            input: RwLock::new(PassInput::load()),
+            input: RwLock::new(PassInput::clear(Color::transparent())),
             required_buffer_size: RwLock::new(0),
             pass_type,
         }
@@ -138,7 +138,7 @@ impl PassObject {
             name: Arc::from(name),
             shaders: RwLock::new(vec![shader]),
             viewport: RwLock::new(None),
-            input: RwLock::new(PassInput::load()),
+            input: RwLock::new(PassInput::clear(Color::transparent())),
             required_buffer_size: RwLock::new(total_bytes),
             pass_type,
         }

@@ -53,6 +53,10 @@ impl Target for CanvasTarget {
     fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, wgpu::SurfaceError> {
         self.0.get_current_frame()
     }
+
+    fn get_image(&self) -> Vec<u8> {
+        vec![]
+    }
 }
 
 #[wasm_bindgen]
@@ -75,6 +79,10 @@ impl Target for TextureTarget {
 
     fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, wgpu::SurfaceError> {
         self.0.get_current_frame()
+    }
+
+    fn get_image(&self) -> Vec<u8> {
+        self.0.get_image()
     }
 }
 
