@@ -45,8 +45,8 @@ jobs:
           FC_HEALTHCHECK_VERBOSE: 1
           PORT: 8765
         run: |
-          chmod +x ./run_healthchecks.sh
-          ./run_healthchecks.sh web
+          chmod +x ./healthcheck.sh
+          ./healthcheck.sh web
 
       - name: Upload Playwright artifacts (on failure)
         if: always() && steps.healthcheck.outcome != 'success'
