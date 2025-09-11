@@ -39,38 +39,14 @@ jobs:
         with:
           node-version: 20
 
-      - name: Start static server (Node with COOP/COEP)
-        env:
-          PORT: 8765
-        run: |
-          node platforms/web/healthcheck/serve.mjs &
-          # Wait briefly for the server to start
-          sleep 2
-
-      - name: Verify built assets and endpoints
-        env:
-          PORT: 8765
-        run: |
-          ls -lah platforms/web/pkg
-          curl -sSf "http://localhost:$PORT/healthcheck/index.html" >/dev/null
-          curl -sSf "http://localhost:$PORT/healthcheck/main.js" >/dev/null
-          curl -sSf "http://localhost:$PORT/pkg/fragmentcolor.js" >/dev/null
-          curl -sSf "http://localhost:$PORT/pkg/fragmentcolor_bg.wasm" >/dev/null
-
-
-      - name: Install Playwright
-        working-directory: platforms/web/healthcheck
-        run: |
-          npm init -y >/dev/null 2>&1 || true
-          npm i playwright@^1 --no-audit --no-fund --no-progress
-          npx playwright install --with-deps chromium
-
-      - name: Run browser healthcheck
+      - name: Run Web healthcheck (Playwright)
         id: healthcheck
         env:
-          ARTIFACT_DIR: platforms/web/healthcheck/playwright-artifacts
+          FC_HEALTHCHECK_VERBOSE: 1
+          PORT: 8765
         run: |
-          node platforms/web/healthcheck/playwright.mjs http://localhost:8765/healthcheck/
+          chmod +x ./run_healthchecks.sh
+          ./run_healthchecks.sh web
 
       - name: Upload Playwright artifacts (on failure)
         if: always() && steps.healthcheck.outcome != 'success'

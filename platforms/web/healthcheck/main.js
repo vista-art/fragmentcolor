@@ -71,11 +71,5 @@ const _keys = shader.listKeys();
 import { exampleShader } from './helpers.mjs';
 Object.assign(globalThis, { exampleShader });
 
-// Auto-generated: run all extracted examples (after init), unless in headless CI mode
-const params = new URLSearchParams(globalThis.location?.search || '');
-const isHeadless = params.get('mode') === 'headless' || params.has('headless');
-if (isHeadless) {
-  console.log('Headless JS render completed successfully');
-} else {
-  await import('./generated_examples.mjs');
-}
+// Auto-generated: run all extracted examples (after init)
+await import('./generated_examples.mjs');

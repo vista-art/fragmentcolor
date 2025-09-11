@@ -1,3 +1,5 @@
+#![cfg(not(wasm))]
+
 use crate::{Renderer, Shader, Size, Target, error::ShaderError, frame::Frame, pass::Pass};
 use parking_lot::RwLock;
 use std::collections::HashMap;

@@ -46,9 +46,9 @@ pub mod size;
 ///
 /// Simple convenience wrapper around winit to simplify our Rust examples.
 /// Implements winit's ApplicationHandler and contains all FragmentColor objects.
-#[cfg(feature = "winit")]
+#[cfg(all(not(wasm), feature = "winit"))]
 pub mod app;
-#[cfg(feature = "winit")]
+#[cfg(all(not(wasm), feature = "winit"))]
 pub use app::*;
 /// DRAFT; API may change in a whim
 pub mod color;
