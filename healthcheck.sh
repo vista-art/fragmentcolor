@@ -139,6 +139,12 @@ ensure_playwright() {
 
 run_web() {
   local name="platforms.web.healthcheck"
+  # Build the web WASM package first to ensure the latest sources are used.
+  if ! bash "$ROOT_DIR/build_web.sh"; then
+    echo "Failed to build web package" >&2
+    log_test_fail "$name"
+    return 1
+  fi
   # Reuse existing WASM pkg instead of rebuilding to keep healthcheck fast.
   # Expect that `build_web.sh` has been run previously when developing.
   local pkg_dir="$ROOT_DIR/platforms/web/pkg"
