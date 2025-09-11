@@ -105,6 +105,9 @@ impl Texture {
     /// Internal method to create a Texture marked as a destination for rendering
     pub fn create_destination_texture(context: &RenderContext, size: wgpu::Extent3d) -> Self {
         let label = "Render Target Texture";
+        #[cfg(wasm)]
+        let format = wgpu::TextureFormat::Rgba8Unorm; // Better portability in WebGPU headless
+        #[cfg(not(wasm))]
         let format = wgpu::TextureFormat::Rgba8UnormSrgb;
         let descriptor = Self::target_texture_descriptor(label, size, format);
         let texture = context.device.create_texture(&descriptor);

@@ -1687,9 +1687,10 @@ mod validation {
                     }
                     if p.extension().and_then(|s| s.to_str()) == Some("md")
                         && let Some(stem) = p.file_stem().and_then(|s| s.to_str())
-                            && stem != dir_name {
-                                ensure_method_md_ok(&object, stem, &p, &mut problems);
-                            }
+                        && stem != dir_name
+                    {
+                        ensure_method_md_ok(&object, stem, &p, &mut problems);
+                    }
                 }
             }
         }
