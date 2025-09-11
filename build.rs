@@ -852,7 +852,7 @@ mod convert {
                 }
                 Lang::Js => {
                     if let (Some(_), Some(_)) = (rhs.find('('), rhs.rfind(')')) {
-                        rhs = format!("document.createElement('canvas');");
+                        rhs = "document.createElement('canvas');".to_string();
                         if var == "window" {
                             js_renames.insert("window".into(), "canvas".into());
                         }
