@@ -68,7 +68,9 @@ const ARTIFACT_DIR = process.env.ARTIFACT_DIR || path.join(process.cwd(), 'platf
     }
   });
 
-  await page.goto(url, { waitUntil: 'load', timeout: 60000 });
+  // Ensure we run in headless/CI mode by appending a query param the page can read
+  const gotoUrl = url.includes('?') ? `${url}&mode=headless` : `${url}?mode=headless`;
+  await page.goto(gotoUrl, { waitUntil: 'load', timeout: 60000 });
 
   // Prefer waiting for the success message rather than fixed sleep
   try {

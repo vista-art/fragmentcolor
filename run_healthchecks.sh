@@ -55,8 +55,64 @@ run_py() {
   fi
 }
 
+kill_our_server_on_port() {
+  local port="$1"
+  # Best-effort: requires lsof
+  if ! command -v lsof >/dev/null 2>&1; then
+    return 0
+  fi
+  # Find listeners on port
+  local pids
+  pids=$(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null | tr '\n' ' ')
+  for pid in $pids; do
+    # Only kill our own server (serve.mjs)
+    local cmd
+    cmd=$(ps -p "$pid" -o command= 2>/dev/null || true)
+    if printf '%s' "$cmd" | grep -q "platforms/web/healthcheck/serve.mjs"; then
+      kill "$pid" >/dev/null 2>&1 || true
+      # Wait up to ~2s for it to exit
+      for _ in 1 2 3 4 5 6 7 8; do
+        if ! ps -p "$pid" >/dev/null 2>&1; then break; fi
+        sleep 0.25
+      done
+      if ps -p "$pid" >/dev/null 2>&1; then
+        kill -9 "$pid" >/dev/null 2>&1 || true
+      fi
+    fi
+  done
+}
+
+port_in_use_by_other() {
+  local port="$1"
+  if ! command -v lsof >/dev/null 2>&1; then
+    return 1
+  fi
+  local pids
+  pids=$(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null | tr '\n' ' ')
+  for pid in $pids; do
+    local cmd
+    cmd=$(ps -p "$pid" -o command= 2>/dev/null || true)
+    if ! printf '%s' "$cmd" | grep -q "platforms/web/healthcheck/serve.mjs"; then
+      # In use by a different process
+      printf '%s' "$cmd"
+      return 0
+    fi
+  done
+  return 1
+}
+
 start_static_server() {
   local dir="$1"; local port="$2"
+  # Kill stale instance of our Node server if present
+  kill_our_server_on_port "$port"
+  # Refuse to start if another (non-our) process is listening
+  local offender
+  offender=$(port_in_use_by_other "$port" || true)
+  if [ -n "$offender" ]; then
+    echo "Port $port is in use by another process: $offender" >&2
+    echo "Hint: set PORT to a free port (e.g., PORT=8876) or stop the process above." >&2
+    return 1
+  fi
   # Use Node COOP/COEP server to enable SharedArrayBuffer/WebGPU readbacks
   PORT="$port" node "$ROOT_DIR/platforms/web/healthcheck/serve.mjs" >/dev/null 2>&1 &
   echo $!
@@ -100,9 +156,16 @@ run_web() {
   # Start static server and run Playwright against it
   local pid
   pid=$(start_static_server "$ROOT_DIR/platforms/web" "$PORT")
-  # Always cleanup the server
+  srv_status=$?
+  # Always cleanup the server if we started one
   cleanup() { if [ -n "${pid:-}" ] && ps -p "$pid" >/dev/null 2>&1; then kill "$pid" >/dev/null 2>&1 || true; fi; }
   trap cleanup EXIT
+  if [ "$srv_status" -ne 0 ]; then
+    cleanup
+    log_test_fail "$name"
+    trap - EXIT
+    return 1
+  fi
 
   if ! wait_for_http "http://localhost:$PORT/healthcheck/index.html"; then
     cleanup
