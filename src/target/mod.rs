@@ -18,9 +18,7 @@ pub trait Target {
 
     fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, wgpu::SurfaceError>;
 
-    fn get_image(&self) -> Vec<u8> {
-        vec![]
-    }
+    fn get_image(&self) -> Vec<u8>;
 }
 
 pub trait TargetFrame {

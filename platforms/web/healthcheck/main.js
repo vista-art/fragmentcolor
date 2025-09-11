@@ -1,17 +1,34 @@
-import init, { Renderer, Shader, Pass, Frame } from "../pkg/fragmentcolor.js";
+import init, { Renderer, Shader, Pass, Frame, TextureTarget, CanvasTarget } from "fragmentcolor";
+import { installInstrumentation } from './instrument.mjs';
 
-const wasmUrl = new URL("../pkg/fragmentcolor_bg.wasm", import.meta.url);
+const wasmUrl = new URL("./pkg/fragmentcolor_bg.wasm", import.meta.url);
 await init(wasmUrl.href);
 
-// DOC: Renderer.constructor (begin)
-const renderer = new Renderer();
-// DOC: (end)
-// DOC: Renderer.create_texture_target (begin)
-const target = await renderer.createTextureTarget([64, 64]);
-// DOC: (end)
+// Install JS-level instrumentation before running any examples or docs coverage.
+installInstrumentation({ Renderer, Shader, Pass, TextureTarget, CanvasTarget });
 
-// DOC: Shader.constructor (begin)
-const shader = new Shader(`
+// Small helper to scope module name for instrumentation and proceed even on error
+async function withModule(moduleName, fn) {
+  globalThis.__HC = globalThis.__HC || { currentModule: null };
+  const prev = globalThis.__HC.currentModule;
+  globalThis.__HC.currentModule = moduleName;
+  console.log(`[begin] module=${moduleName}`);
+  try {
+    await fn();
+    console.log(`[end] module=${moduleName} status=OK`);
+  } catch (e) {
+    console.log(`[end] module=${moduleName} status=FAILED error=${e?.message || String(e)}]`);
+  } finally {
+    globalThis.__HC.currentModule = prev || null;
+  }
+}
+
+// Run a smoke render but do not abort the page if it fails; continue to run generated examples
+await withModule('platforms.web.healthcheck.smoke', async () => {
+  const renderer = new Renderer();
+  const target = await renderer.createTextureTarget([64, 64]);
+
+  const shader = new Shader(`
 struct VertexOutput {
     @builtin(position) coords: vec4<f32>,
 }
@@ -30,42 +47,24 @@ fn main(_v: VertexOutput) -> @location(0) vec4<f32> {
     return vec4<f32>(1.0, 1.0, 1.0, 1.0);
 }
 `);
-// DOC: (end)
 
-// DOC: Shader.set (begin)
-shader.set("resolution", [64.0, 64.0]);
-// DOC: (end)
+  shader.set("resolution", [64.0, 64.0]);
 
-// DOC: Renderer.render (begin)
-renderer.render(shader, target);
-// DOC: (end)
+  renderer.render(shader, target);
 
-// DOC: Pass.constructor (begin)
-const rpass = new Pass("single pass");
-// DOC: (end)
-// DOC: Pass.add_shader (begin)
-rpass.addShader(shader);
-// DOC: (end)
-renderer.render(rpass, target);
+  const rpass = new Pass("single pass");
+  rpass.addShader(shader);
+  renderer.render(rpass, target);
 
-// DOC: Frame.constructor (begin)
-const frame = new Frame();
-// DOC: (end)
-// DOC: Frame.add_pass (begin)
-frame.addPass(rpass);
-// DOC: (end)
-renderer.render(frame, target);
+  const frame = new Frame();
+  frame.addPass(rpass);
+  renderer.render(frame, target);
 
-// Additional API coverage for docs
-// DOC: Shader.get (begin)
-const _res = shader.get("resolution");
-// DOC: (end)
-// DOC: Shader.list_uniforms (begin)
-const _uniforms = shader.listUniforms();
-// DOC: (end)
-// DOC: Shader.list_keys (begin)
-const _keys = shader.listKeys();
-// DOC: (end)
+  // Additional API coverage for docs
+  const _res = shader.get("resolution");
+  const _uniforms = shader.listUniforms();
+  const _keys = shader.listKeys();
+});
 
 // Auto-generated: helpers in global scope
 import { exampleShader } from './helpers.mjs';
