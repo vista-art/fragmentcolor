@@ -1014,12 +1014,16 @@ mod convert {
         }
         // Parse 'let [mut] var[: Type] = RHS'
         let mut rest = t.trim_start_matches("let ").trim_start();
-        if let Some(r) = rest.strip_prefix("mut ") { rest = r.trim_start(); }
+        if let Some(r) = rest.strip_prefix("mut ") {
+            rest = r.trim_start();
+        }
         let eq = rest.find('=')?;
         let (lhs, rhs0) = rest.split_at(eq);
         // var name (strip any ': Type')
         let mut var = lhs.trim();
-        if let Some(colon) = var.find(':') { var = var[..colon].trim(); }
+        if let Some(colon) = var.find(':') {
+            var = var[..colon].trim();
+        }
         let mut var_out = var.to_string();
         // Python reserved keyword rename
         if let Lang::Py = lang {
@@ -1033,16 +1037,27 @@ mod convert {
         // Must look like '<Path>::new('
         let pos_new = rhs_line.find("::new(")?;
         let type_path = rhs_line[..pos_new].trim();
-        let ty = type_path.rsplit("::").next().unwrap_or(type_path).to_string();
+        let ty = type_path
+            .rsplit("::")
+            .next()
+            .unwrap_or(type_path)
+            .to_string();
         let after_new = &rhs_line[pos_new + "::new(".len()..];
 
         // Helper to parse raw opener: r####"  -> returns (hashes, pos_after_quote_in_this_slice)
-        fn parse_raw_opener(s: &str) -> Option<(usize /*n_hash*/, usize /*pos after opening quote in s*/)> {
+        fn parse_raw_opener(
+            s: &str,
+        ) -> Option<(
+            usize, /*n_hash*/
+            usize, /*pos after opening quote in s*/
+        )> {
             let s_trim = s.trim_start();
             let off = s.len() - s_trim.len();
             let mut chars = s_trim.chars();
             let first = chars.next()?;
-            if first != 'r' { return None; }
+            if first != 'r' {
+                return None;
+            }
             // Count '#'
             let mut n_hash = 0usize;
             let mut idx = 1usize; // after 'r'
@@ -1051,7 +1066,9 @@ mod convert {
                 n_hash += 1;
                 idx += 1;
             }
-            if idx >= s_bytes.len() || s_bytes[idx] != '"' { return None; }
+            if idx >= s_bytes.len() || s_bytes[idx] != '"' {
+                return None;
+            }
             // Position after opening quote within original s
             let pos_after_quote = off + idx + 1;
             Some((n_hash, pos_after_quote))
@@ -1064,7 +1081,9 @@ mod convert {
         // Collect body lines until closing '"###...#'
         let closing = {
             let mut s = String::from("\"");
-            for _ in 0..n_hash { s.push('#'); }
+            for _ in 0..n_hash {
+                s.push('#');
+            }
             s
         };
 
@@ -1079,8 +1098,18 @@ mod convert {
                 body_lines.push(content.to_string());
                 // next_idx is still current line (consumed only 1 line)
                 let mapped = match lang {
-                    Lang::Js => format!("const {} = new {}(`\n{}\n`);", var_out, ty, body_lines.join("\n")),
-                    Lang::Py => format!("{} = {}(\"\"\"\n{}\n\"\"\")", var_out, ty, body_lines.join("\n")),
+                    Lang::Js => format!(
+                        "const {} = new {}(`\n{}\n`);",
+                        var_out,
+                        ty,
+                        body_lines.join("\n")
+                    ),
+                    Lang::Py => format!(
+                        "{} = {}(\"\"\"\n{}\n\"\"\")",
+                        var_out,
+                        ty,
+                        body_lines.join("\n")
+                    ),
                 };
                 return Some((mapped, start_idx + 1));
             } else {
@@ -1097,8 +1126,18 @@ mod convert {
                 body_lines.push(content.to_string());
                 // Done; compute output and return next index after closing line
                 let mapped = match lang {
-                    Lang::Js => format!("const {} = new {}(`\n{}\n`);", var_out, ty, body_lines.join("\n")),
-                    Lang::Py => format!("{} = {}(\"\"\"\n{}\n\"\"\")", var_out, ty, body_lines.join("\n")),
+                    Lang::Js => format!(
+                        "const {} = new {}(`\n{}\n`);",
+                        var_out,
+                        ty,
+                        body_lines.join("\n")
+                    ),
+                    Lang::Py => format!(
+                        "{} = {}(\"\"\"\n{}\n\"\"\")",
+                        var_out,
+                        ty,
+                        body_lines.join("\n")
+                    ),
                 };
                 return Some((mapped, j + 1));
             } else {
@@ -1171,13 +1210,9 @@ mod convert {
             }
 
             // Special-case: let var = Type::new(r#"..."#) with multi-line raw string
-            if let Some((mapped, next_idx)) = try_handle_raw_string_new(
-                &src,
-                idx,
-                lang,
-                &mut py_renames,
-                &mut js_renames,
-            ) {
+            if let Some((mapped, next_idx)) =
+                try_handle_raw_string_new(&src, idx, lang, &mut py_renames, &mut js_renames)
+            {
                 out.push(mapped);
                 idx = next_idx;
                 continue;
