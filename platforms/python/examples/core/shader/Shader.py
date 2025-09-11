@@ -22,7 +22,7 @@ shader = Shader("""
 
 """)
 
- # Set the "resolution" uniform
+# Set the "resolution" uniform
 shader.set("resolution", [800.0, 600.0])
 res = shader.get("resolution")
 
