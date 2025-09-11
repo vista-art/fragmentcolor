@@ -995,6 +995,121 @@ mod convert {
         out
     }
 
+    // Detect and convert a multi-line Rust raw string passed to Type::new(r#"..."#)
+    // into:
+    // - JS: const var = new Type(`...`);
+    // - Py: var = Type("""...""")
+    // Returns (mapped_text, next_index) when a block is consumed, or None if not matched.
+    fn try_handle_raw_string_new(
+        src: &[String],
+        start_idx: usize,
+        lang: Lang,
+        py_renames: &mut std::collections::HashMap<String, String>,
+        _js_renames: &mut std::collections::HashMap<String, String>,
+    ) -> Option<(String, usize)> {
+        let line = src.get(start_idx)?.as_str();
+        let t = line.trim_start();
+        if !t.starts_with("let ") {
+            return None;
+        }
+        // Parse 'let [mut] var[: Type] = RHS'
+        let mut rest = t.trim_start_matches("let ").trim_start();
+        if let Some(r) = rest.strip_prefix("mut ") { rest = r.trim_start(); }
+        let eq = rest.find('=')?;
+        let (lhs, rhs0) = rest.split_at(eq);
+        // var name (strip any ': Type')
+        let mut var = lhs.trim();
+        if let Some(colon) = var.find(':') { var = var[..colon].trim(); }
+        let mut var_out = var.to_string();
+        // Python reserved keyword rename
+        if let Lang::Py = lang {
+            if var == "pass" {
+                py_renames.insert("pass".into(), "rpass".into());
+                var_out = "rpass".to_string();
+            }
+        }
+        // RHS on this first line
+        let rhs_line = rhs0.trim_start_matches('=').trim();
+        // Must look like '<Path>::new('
+        let pos_new = rhs_line.find("::new(")?;
+        let type_path = rhs_line[..pos_new].trim();
+        let ty = type_path.rsplit("::").next().unwrap_or(type_path).to_string();
+        let after_new = &rhs_line[pos_new + "::new(".len()..];
+
+        // Helper to parse raw opener: r####"  -> returns (hashes, pos_after_quote_in_this_slice)
+        fn parse_raw_opener(s: &str) -> Option<(usize /*n_hash*/, usize /*pos after opening quote in s*/)> {
+            let s_trim = s.trim_start();
+            let off = s.len() - s_trim.len();
+            let mut chars = s_trim.chars();
+            let first = chars.next()?;
+            if first != 'r' { return None; }
+            // Count '#'
+            let mut n_hash = 0usize;
+            let mut idx = 1usize; // after 'r'
+            let s_bytes: Vec<char> = s_trim.chars().collect();
+            while idx < s_bytes.len() && s_bytes[idx] == '#' {
+                n_hash += 1;
+                idx += 1;
+            }
+            if idx >= s_bytes.len() || s_bytes[idx] != '"' { return None; }
+            // Position after opening quote within original s
+            let pos_after_quote = off + idx + 1;
+            Some((n_hash, pos_after_quote))
+        }
+
+        // Try to find opener on this same line after 'new('
+        let opener = parse_raw_opener(after_new)?;
+        let (n_hash, pos_after_quote_in_after_new) = opener;
+
+        // Collect body lines until closing '"###...#'
+        let closing = {
+            let mut s = String::from("\"");
+            for _ in 0..n_hash { s.push('#'); }
+            s
+        };
+
+        let mut body_lines: Vec<String> = Vec::new();
+        let first_tail = &after_new[pos_after_quote_in_after_new..];
+        if !first_tail.is_empty() {
+            // Content on same line after the opening quote
+            // Stop early if the closing is also on this line
+            if let Some(pos) = first_tail.find(&closing) {
+                // All inside one line raw string
+                let content = &first_tail[..pos];
+                body_lines.push(content.to_string());
+                // next_idx is still current line (consumed only 1 line)
+                let mapped = match lang {
+                    Lang::Js => format!("const {} = new {}(`\n{}\n`);", var_out, ty, body_lines.join("\n")),
+                    Lang::Py => format!("{} = {}(\"\"\"\n{}\n\"\"\")", var_out, ty, body_lines.join("\n")),
+                };
+                return Some((mapped, start_idx + 1));
+            } else {
+                body_lines.push(first_tail.to_string());
+            }
+        }
+
+        // Scan subsequent lines until closing marker is found
+        let mut j = start_idx + 1;
+        while j < src.len() {
+            let l = &src[j];
+            if let Some(pos) = l.find(&closing) {
+                let content = &l[..pos];
+                body_lines.push(content.to_string());
+                // Done; compute output and return next index after closing line
+                let mapped = match lang {
+                    Lang::Js => format!("const {} = new {}(`\n{}\n`);", var_out, ty, body_lines.join("\n")),
+                    Lang::Py => format!("{} = {}(\"\"\"\n{}\n\"\"\")", var_out, ty, body_lines.join("\n")),
+                };
+                return Some((mapped, j + 1));
+            } else {
+                body_lines.push(l.clone());
+                j += 1;
+            }
+        }
+        // If we get here, we didn't find a proper terminator; don't transform.
+        None
+    }
+
     fn convert(items: &[(String, bool)], lang: Lang) -> String {
         use std::collections::HashMap;
         // Collect visible lines only
@@ -1045,10 +1160,26 @@ mod convert {
         let mut js_renames: HashMap<String, String> = HashMap::new();
         let mut need_rendercanvas_import: bool = false;
 
-        for s in &src {
+        let mut idx = 0usize;
+        while idx < src.len() {
+            let s = &src[idx];
             let t = s.trim();
             if t.is_empty() {
                 out.push(String::new());
+                idx += 1;
+                continue;
+            }
+
+            // Special-case: let var = Type::new(r#"..."#) with multi-line raw string
+            if let Some((mapped, next_idx)) = try_handle_raw_string_new(
+                &src,
+                idx,
+                lang,
+                &mut py_renames,
+                &mut js_renames,
+            ) {
+                out.push(mapped);
+                idx = next_idx;
                 continue;
             }
 
@@ -1071,6 +1202,7 @@ mod convert {
                         out.push(format!("from fragmentcolor import {}", list.join(", ")))
                     }
                 }
+                idx += 1;
                 continue;
             }
 
@@ -1080,10 +1212,11 @@ mod convert {
                     Lang::Js => ensure_js_semicolon(&mapped),
                     Lang::Py => mapped,
                 });
+                idx += 1;
                 continue;
             }
 
-            // let assignments
+            // let assignments (single-line cases)
             if let Some(mapped) = handle_let_assignment(
                 t,
                 lang,
@@ -1092,6 +1225,7 @@ mod convert {
                 &mut need_rendercanvas_import,
             ) {
                 out.push(mapped);
+                idx += 1;
                 continue;
             }
 
@@ -1121,8 +1255,8 @@ mod convert {
             if let Lang::Py = lang {
                 line = line.replace(".size()", ".size");
                 // Convert JS-style '//' comments to Python '#'
-                if let Some(idx) = line.find("//") {
-                    let (mut head, tail) = line.split_at(idx);
+                if let Some(idx_c) = line.find("//") {
+                    let (mut head, tail) = line.split_at(idx_c);
                     // Strip any trailing semicolon immediately before comment
                     head = head.trim_end_matches(';').trim_end();
                     line = format!("{} #{}", head, &tail[2..]);
@@ -1155,6 +1289,7 @@ mod convert {
             }
 
             out.push(line);
+            idx += 1;
         }
 
         // Prepend RenderCanvas import if needed for Python examples
