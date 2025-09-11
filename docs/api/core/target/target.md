@@ -11,8 +11,9 @@ It contains a GPU surface texture attached to a platform-specific window or an o
 ### WindowTarget (on-screen)
 
 ```rust
-use fragmentcolor::{Renderer, Shader};
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+
+use fragmentcolor::{Renderer, Shader};
 
 let renderer = Renderer::new();
 
@@ -36,8 +37,9 @@ renderer.render(&Shader::default(), &target2)?;
 ### TextureTarget (offscreen)
 
 ```rust
-use fragmentcolor::{Renderer, Shader, Target};
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+
+use fragmentcolor::{Renderer, Shader, Target};
 
 let renderer = Renderer::new();
 
