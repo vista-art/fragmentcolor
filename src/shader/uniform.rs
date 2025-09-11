@@ -891,7 +891,8 @@ impl From<UniformData> for wasm_bindgen::JsValue {
             UniformData::Struct((fields, _)) => {
                 let obj = Object::new();
                 for (_, name, data) in fields {
-                    let _ = Reflect::set(&obj, &wasm_bindgen::JsValue::from_str(&name), &data.into());
+                    let _ =
+                        Reflect::set(&obj, &wasm_bindgen::JsValue::from_str(&name), &data.into());
                 }
                 obj.into()
             }

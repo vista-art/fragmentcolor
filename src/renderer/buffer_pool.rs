@@ -93,18 +93,24 @@ impl BufferPool {
     }
 
     /// Upload raw bytes to the pool, returns buffer location
-    pub fn upload(&mut self, data: &[u8], queue: &wgpu::Queue, device: &wgpu::Device) -> BufferLocation {
+    pub fn upload(
+        &mut self,
+        data: &[u8],
+        queue: &wgpu::Queue,
+        device: &wgpu::Device,
+    ) -> BufferLocation {
         let size = data.len() as u64;
         let aligned_size = wgpu::util::align_to(size, self.alignment);
 
         // If a single upload does not fit in current chunk size, allocate a dedicated chunk
         if aligned_size > self.chunk_size {
-            self.buffers.push(device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some(&self.label),
-                size: aligned_size,
-                usage: self.usage,
-                mapped_at_creation: false,
-            }));
+            self.buffers
+                .push(device.create_buffer(&wgpu::BufferDescriptor {
+                    label: Some(&self.label),
+                    size: aligned_size,
+                    usage: self.usage,
+                    mapped_at_creation: false,
+                }));
             self.current_chunk = self.buffers.len() - 1;
             self.current_offset = 0;
         }
@@ -115,12 +121,13 @@ impl BufferPool {
             self.current_offset = 0;
             // If capacity wasn't ensured, grow lazily
             if self.current_chunk >= self.buffers.len() {
-                self.buffers.push(device.create_buffer(&wgpu::BufferDescriptor {
-                    label: Some(&self.label),
-                    size: self.chunk_size,
-                    usage: self.usage,
-                    mapped_at_creation: false,
-                }));
+                self.buffers
+                    .push(device.create_buffer(&wgpu::BufferDescriptor {
+                        label: Some(&self.label),
+                        size: self.chunk_size,
+                        usage: self.usage,
+                        mapped_at_creation: false,
+                    }));
             }
         }
 

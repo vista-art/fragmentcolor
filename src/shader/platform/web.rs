@@ -4,7 +4,7 @@ use lsp_doc::lsp_doc;
 use std::convert::TryInto;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
-use wasm_bindgen_futures::{JsFuture, future_to_promise};
+use wasm_bindgen_futures::JsFuture;
 use web_sys::{Request, RequestInit, RequestMode, Response, console};
 
 use crate::{Shader, ShaderError, UniformData};
