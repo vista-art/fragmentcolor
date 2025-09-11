@@ -10,6 +10,7 @@ use fragmentcolor::Shader;
 
 let shader = Shader::default();
 let list = shader.list_uniforms();
+
 # assert!(list.contains(&"resolution".to_string()));
 # Ok(())
 # }

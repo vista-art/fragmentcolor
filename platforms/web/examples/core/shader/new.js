@@ -1,3 +1,4 @@
+
 import { Shader } from "fragmentcolor";
 
-const shader = Shader.default();
+const shader = new Shader();

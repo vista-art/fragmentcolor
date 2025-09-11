@@ -119,14 +119,16 @@ If the initial source validation passes, the shader is guaranteed to work on the
 <Code
 code={`
  fn main() -> Result<(), Box<dyn std::error::Error>> {
+
 use fragmentcolor::Shader;
 
-let shader = Shader::default();
+let shader = Shader::new();
+
  assert!(shader.list_keys().len() >= 1);
  Ok(())
  }
 `}
-lang="rust" meta="collapse={1-1, 5-7}"
+lang="rust" meta="collapse={1-1, 7-9}"
 />
 
 </TabItem>
@@ -134,9 +136,11 @@ lang="rust" meta="collapse={1-1, 5-7}"
 <TabItem label="JavaScript">
 <Code
 code={`
+
 import { Shader } from "fragmentcolor";
 
-const shader = Shader.default();
+const shader = new Shader();
+
 `}
 lang="js"
 />
@@ -146,9 +150,11 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
+
 from fragmentcolor import Shader
 
-shader = Shader.default()
+shader = Shader()
+
 `}
 lang="python"
 />
@@ -282,11 +288,12 @@ use fragmentcolor::Shader;
 let shader = Shader::default();
 shader.set("resolution", [800.0, 600.0])?;
 let res: [f32; 2] = shader.get("resolution")?;
+
  assert_eq!(res, [800.0, 600.0]);
  Ok(())
  }
 `}
-lang="rust" meta="collapse={1-1, 7-9}"
+lang="rust" meta="collapse={1-1, 8-10}"
 />
 
 </TabItem>
@@ -299,6 +306,7 @@ import { Shader } from "fragmentcolor";
 const shader = Shader.default();
 shader.set("resolution", [800.0, 600.0]);
 const res = shader.get("resolution");
+
 `}
 lang="js"
 />
@@ -313,6 +321,7 @@ from fragmentcolor import Shader
 shader = Shader.default()
 shader.set("resolution", [800.0, 600.0])
 res = shader.get("resolution")
+
 `}
 lang="python"
 />
@@ -364,11 +373,12 @@ use fragmentcolor::Shader;
 
 let shader = Shader::default();
 let list = shader.list_uniforms();
+
  assert!(list.contains(&"resolution".to_string()));
  Ok(())
  }
 `}
-lang="rust" meta="collapse={1-1, 6-8}"
+lang="rust" meta="collapse={1-1, 7-9}"
 />
 
 </TabItem>
@@ -380,6 +390,7 @@ import { Shader } from "fragmentcolor";
 
 const shader = Shader.default();
 const list = shader.listUniforms();
+
 `}
 lang="js"
 />
@@ -393,6 +404,7 @@ from fragmentcolor import Shader
 
 shader = Shader.default()
 list = shader.list_uniforms()
+
 `}
 lang="python"
 />
@@ -440,15 +452,17 @@ Returns a list of all keys in the [Shader](/api/core/shader), including uniform 
 <Code
 code={`
  fn main() -> Result<(), Box<dyn std::error::Error>> {
+
 use fragmentcolor::Shader;
 
 let shader = Shader::default();
 let keys = shader.list_keys();
+
  assert!(keys.contains(&"resolution".to_string()));
  Ok(())
  }
 `}
-lang="rust" meta="collapse={1-1, 6-8}"
+lang="rust" meta="collapse={1-1, 8-10}"
 />
 
 </TabItem>
@@ -456,10 +470,12 @@ lang="rust" meta="collapse={1-1, 6-8}"
 <TabItem label="JavaScript">
 <Code
 code={`
+
 import { Shader } from "fragmentcolor";
 
 const shader = Shader.default();
 const keys = shader.listKeys();
+
 `}
 lang="js"
 />
@@ -469,10 +485,12 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
+
 from fragmentcolor import Shader
 
 shader = Shader.default()
 keys = shader.list_keys()
+
 `}
 lang="python"
 />

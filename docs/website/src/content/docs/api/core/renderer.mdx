@@ -13,23 +13,16 @@ The [Renderer](/api/core/renderer) is the main entry point for
 [FragmentColor](https://fragmentcolor.org) and normally the first object you create.
 
 It is used to render
-[Shader](/api/core/shader)s,
-[Pass](/api/core/pass)es, and
-[Frame](/api/core/frame)s
-to a [Target](/api/core/target) (canvas or window) or to a Bitmap.
+[Shaders](/api/core/shader),
+[Passes](/api/core/pass), and
+[Frames](/api/core/frame)
+to a [Target](/api/core/target) (canvas, window, or texture).
 
 The [Renderer](/api/core/renderer) internals are lazily initialized
-when the user creates a [Target](/api/core/target) or renders a Bitmap.
-This ensures the adapter and device are compatible with the target environment.
+when the user creates a [Target](/api/core/target).
 
-At the point of creation, we don't know if it will be used offscreen
-or attached to a platform-specific Window or Canvas.
-
-The API ensures the [Renderer](/api/core/renderer) is usable when `render()` is called,
-because
-the `render()` method expects a [Target](/api/core/target) as input. So, the user must call
-`Renderer.create_target()` first, which initializes a window adapter, or
-`Renderer.render_image()` which initializes an offscreen adapter.
+See the constructor [Renderer::new()](/api/core/renderer/#renderernew)
+description below for details.
 
 
 
@@ -40,10 +33,32 @@ the `render()` method expects a [Target](/api/core/target) as input. So, the use
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::Renderer;
-let _renderer = Renderer::new();
+ async fn run() -> Result<(), Box<dyn std::error::Error>> {
+
+use fragmentcolor::{Shader, Renderer};
+
+let renderer = Renderer::new();
+
+// Use your platform's windowing system to create a window
+let window = fragmentcolor::headless_window([800, 600]);
+
+// Create a Target from it
+let target = renderer.create_target(&window).await?;
+let texture_target = renderer.create_texture_target([16, 16]).await?;
+
+// RENDERING
+renderer.render(&Shader::default(), &texture_target)?;
+
+// That's it. Welcome to FragmentColor!
+
+ let s = target.size();
+ assert_eq!([s.width, s.height], [800, 600]);
+ assert_eq!(texture_target.size(), [16, 16]);
+ Ok(())
+ }
+ fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust"
+lang="rust" meta="collapse={1-1, 19-24}"
 />
 
 </TabItem>
@@ -51,8 +66,23 @@ lang="rust"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Renderer } from "fragmentcolor";
-const _renderer = new Renderer();
+
+import { Shader, Renderer } from "fragmentcolor";
+
+const renderer = new Renderer();
+
+// Use your platform's windowing system to create a window;
+const canvas = document.createElement('canvas');
+
+// Create a Target from it;
+const target = await renderer.createTarget(canvas);
+const texture_target = await renderer.createTextureTarget([16, 16]);
+
+// RENDERING;
+renderer.render(Shader.default(), texture_target);
+
+// That's it. Welcome to FragmentColor!;
+
 `}
 lang="js"
 />
@@ -62,8 +92,24 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Renderer
-_renderer = Renderer()
+from rendercanvas.auto import RenderCanvas, loop
+
+from fragmentcolor import Shader, Renderer
+
+renderer = Renderer()
+
+ # Use your platform's windowing system to create a window
+canvas = RenderCanvas(size=(800, 600))
+
+ # Create a Target from it
+target = renderer.create_target(canvas)
+texture_target = renderer.create_texture_target([16, 16])
+
+ # RENDERING
+renderer.render(Shader.default(), texture_target)
+
+ # That's it. Welcome to FragmentColor!
+
 `}
 lang="python"
 />
@@ -106,19 +152,19 @@ lang="text"
 
 #### Creates a new Renderer
 
-The [Renderer](/api/core/renderer) internals are lazily initialized
-when the user creates a [Target](/api/core/target) or renders a Bitmap.
-This ensures the adapter and device are compatible with the target environment.
+At the point of creation, we don't know the [Renderer](/api/core/renderer) will be used offscreen or attached to a Window.
 
-At the point of creation, we don't know if it will be used offscreen or attached to a Window.
+So, the rendering internals are lazily initialized
+when the user creates a [Target](/api/core/target).
+This ensures the adapter and device are compatible with the environment.
 
 The API ensures the [Renderer](/api/core/renderer) is usable when `render()` is called,
 because the `render()` method expects a [Target](/api/core/target) as input, and
 the only way to create a [Target](/api/core/target)
-is by calling `renderer.create_target(Window)` first.
+is by first calling:
 
-- `Renderer.create_target()` internally initializes a window adapter, while
-- `Renderer.render_image()` initializes an offscreen adapter.
+- `renderer.create_target(Window)` to create a window adapter, or
+- `renderer.create_texture_target()` to create a target texture
 
 #### Example
 
@@ -127,10 +173,19 @@ is by calling `renderer.create_target(Window)` first.
 <TabItem label="Rust">
 <Code
 code={`
+ async fn run() -> Result<(), Box<dyn std::error::Error>> {
+
 use fragmentcolor::Renderer;
+
 let renderer = Renderer::new();
+let texture_target = renderer.create_texture_target([16, 16]).await?;
+
+ assert_eq!(texture_target.size(), [16, 16]);
+ Ok(())
+ }
+ fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust"
+lang="rust" meta="collapse={1-1, 8-11}"
 />
 
 </TabItem>
@@ -138,8 +193,12 @@ lang="rust"
 <TabItem label="JavaScript">
 <Code
 code={`
+
 import { Renderer } from "fragmentcolor";
+
 const renderer = new Renderer();
+const texture_target = await renderer.createTextureTarget([16, 16]);
+
 `}
 lang="js"
 />
@@ -149,8 +208,12 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
+
 from fragmentcolor import Renderer
+
 renderer = Renderer()
+texture_target = renderer.create_texture_target([16, 16])
+
 `}
 lang="python"
 />
@@ -230,7 +293,7 @@ const renderer = new Renderer();
 
 // Use your platform's windowing system to create a window.;
 // We officially support Winit. Check the examples folder for details.;
-const canvas = (()=>{const c=document.createElement('canvas');c.width=800;c.height=600;return c;})();
+const canvas = document.createElement('canvas');
 
 const target = renderer.createTarget(canvas);
 

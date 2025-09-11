@@ -1,4 +1,5 @@
 from rendercanvas.auto import RenderCanvas, loop
+
 from fragmentcolor import Renderer, Shader
 
 renderer = Renderer()

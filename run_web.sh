@@ -3,14 +3,15 @@ set -euo pipefail
 
 # Run web dev servers and open a page.
 # Usage:
-#   bash run_web.sh                  # opens Vite visual page (REPL project)
-#   bash run_web.sh visual           # same as default
+#   bash run_web.sh                  # opens REPL (platforms/web/repl)
+#   bash run_web.sh repl             # same as default
+#   bash run_web.sh visual           # opens a minimal visual page
 #   bash run_web.sh healthcheck      # opens the headless healthcheck index page (Node COOP/COEP)
 #   PORT=9000 bash run_web.sh        # custom port for Node server (healthcheck)
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PORT="${PORT:-8765}"
-PAGE="${1:-visual}"
+PAGE="${1:-repl}"
 
 # Ensure local WASM pkg is built and distributed to subprojects
 "$ROOT_DIR/build_web.sh" --debug
@@ -58,7 +59,7 @@ if [ "$PAGE" = "healthcheck" ]; then
   exit 0
 fi
 
-# Visual mode: use Vite dev server from bindings folder (repl)
+# REPL / Visual via Vite from bindings folder (repl)
 if ! command -v pnpm >/dev/null 2>&1; then
   echo "pnpm is required. Install it (e.g., brew install pnpm) and re-run." >&2
   exit 1
@@ -69,7 +70,7 @@ REPL_DIR="$ROOT_DIR/platforms/web/repl"
 rm -rf "$REPL_DIR/node_modules"
 pnpm install --dir "$REPL_DIR"
 
-# Start Vite dev server and open visual page
+# Start Vite dev server and open the requested page
 pnpm --dir "$REPL_DIR" dev &
 SERVER_PID=$!
 cleanup() {
@@ -90,7 +91,12 @@ until curl -sSf "http://localhost:5173" >/dev/null 2>&1; do
   sleep 0.5
 done
 
-URL="http://localhost:5173/visual.html"
+if [ "$PAGE" = "visual" ]; then
+  URL="http://localhost:5173/visual.html"
+else
+  # Default to the REPL index
+  URL="http://localhost:5173/"
+fi
 
 if command -v open >/dev/null 2>&1; then
   open "$URL"

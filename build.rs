@@ -1,6 +1,12 @@
 use cfg_aliases::cfg_aliases;
 
 fn main() {
+    configure_aliases();
+    generate_docs();
+}
+
+/// Configures custom cfg aliases for conditional compilation
+fn configure_aliases() {
     cfg_aliases! {
         wasm: { target_arch = "wasm32" },
         ios: { target_os = "ios" },
@@ -16,8 +22,31 @@ fn main() {
     println!("cargo::rustc-check-cfg=cfg(mobile)");
     println!("cargo::rustc-check-cfg=cfg(desktop)");
     println!("cargo::rustc-check-cfg=cfg(dev)");
+}
 
-    // Ensure changes under docs/api retrigger build.rs
+/// This function validates all the API documentation and breaks
+/// the build if ANY public item from code is missing documentation.
+///
+/// The canonical documentation is located in `docs/api`.
+///
+/// It is used in lieu of doc-comments in code
+/// to appear in the hover tooltips in IDEs.
+///
+/// ## What this script does:
+///
+/// - Converts `docs/api` from Rust to Javascript and Python,
+///   and generate all the examples in the `platforms/`` folder.
+///
+/// - The CI will run a healthcheck in the generated examples and
+///   only allow a build if all examples in all languages work.
+///
+/// - Finally, the generated examples and the api/docs are used
+///   to generate the website contents in docs/website from the
+///   Rust, JS and Python code.
+///
+/// This process ensures that anything published in the website actually
+/// works in practice, and that the documentation is always up to date.
+fn generate_docs() {
     println!("cargo:rerun-if-changed=docs/api");
 
     println!("\n🗺️ Generating API map...");
@@ -33,6 +62,20 @@ fn main() {
     validation::export_website(&api_map);
     println!("✅ Website export done!\n");
 }
+
+//
+// I don't dare to comment from here on 😛
+//
+// The codegen module below was my work from
+// a proc-macro that I decided to shove here.
+//
+// The rest was all AI-generated. Here be dragons!
+//
+// Don't try to understand it.
+//
+// @TODO clean this up at some point,
+// probably extract them to xtask.
+//
 
 mod codegen {
     use quote::ToTokens;
@@ -808,19 +851,8 @@ mod convert {
                     }
                 }
                 Lang::Js => {
-                    if let (Some(lp), Some(rp)) = (rhs.find('('), rhs.rfind(')')) {
-                        let inside = rhs[lp + 1..rp].trim();
-                        let mut parts = inside
-                            .trim_start_matches('[')
-                            .trim_end_matches(']')
-                            .split(',')
-                            .map(|s| s.trim());
-                        let w = parts.next().unwrap_or("1");
-                        let h = parts.next().unwrap_or("1");
-                        rhs = format!(
-                            "(()=>{{const c=document.createElement('canvas');c.width={};c.height={};return c;}})()",
-                            w, h
-                        );
+                    if let (Some(_), Some(_)) = (rhs.find('('), rhs.rfind(')')) {
+                        rhs = format!("document.createElement('canvas');");
                         if var == "window" {
                             js_renames.insert("window".into(), "canvas".into());
                         }
@@ -2683,15 +2715,15 @@ mod validation {
                     let _ = std::fs::create_dir_all(parent);
                 }
                 if !swift_abs.exists() {
-                    let _ = std::fs::write(&swift_abs, "// Swift placeholder — bindings WIP\n");
+                    let _ = std::fs::write(&swift_abs, "// Swift placeholder: bindings WIP\n");
                 }
                 if !kotlin_abs.exists() {
-                    let _ = std::fs::write(&kotlin_abs, "// Kotlin placeholder — bindings WIP\n");
+                    let _ = std::fs::write(&kotlin_abs, "// Kotlin placeholder: bindings WIP\n");
                 }
                 let swift_code = std::fs::read_to_string(&swift_abs)
-                    .unwrap_or_else(|_| "// Swift placeholder — bindings WIP\n".to_string());
+                    .unwrap_or_else(|_| "// Swift placeholder: bindings WIP\n".to_string());
                 let kotlin_code = std::fs::read_to_string(&kotlin_abs)
-                    .unwrap_or_else(|_| "// Kotlin placeholder — bindings WIP\n".to_string());
+                    .unwrap_or_else(|_| "// Kotlin placeholder: bindings WIP\n".to_string());
 
                 // Build Tabs snippet
                 let mut tabs = String::new();

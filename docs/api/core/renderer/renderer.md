@@ -4,41 +4,44 @@ The [Renderer](https://fragmentcolor.org/api/core/renderer) is the main entry po
 [FragmentColor](https://fragmentcolor.org) and normally the first object you create.
 
 It is used to render
-[Shader](https://fragmentcolor.org/api/core/shader)s,
-[Pass](https://fragmentcolor.org/api/core/pass)es, and
-[Frame](https://fragmentcolor.org/api/core/frame)s
-to a [Target](https://fragmentcolor.org/api/core/target) (canvas or window) or to a Bitmap.
+[Shaders](https://fragmentcolor.org/api/core/shader),
+[Passes](https://fragmentcolor.org/api/core/pass), and
+[Frames](https://fragmentcolor.org/api/core/frame)
+to a [Target](https://fragmentcolor.org/api/core/target) (canvas, window, or texture).
 
 The [Renderer](https://fragmentcolor.org/api/core/renderer) internals are lazily initialized
-when the user creates a [Target](https://fragmentcolor.org/api/core/target) or renders a Bitmap.
-This ensures the adapter and device are compatible with the target environment.
+when the user creates a [Target](https://fragmentcolor.org/api/core/target).
 
-At the point of creation, we don't know if it will be used offscreen
-or attached to a platform-specific Window or Canvas.
-
-The API ensures the [Renderer](https://fragmentcolor.org/api/core/renderer) is usable when `render()` is called,
-because
-the `render()` method expects a [Target](https://fragmentcolor.org/api/core/target) as input. So, the user must call
-`Renderer.create_target()` first, which initializes a window adapter, or
-`Renderer.render_image()` which initializes an offscreen adapter.
+See the constructor [Renderer::new()](https://fragmentcolor.org/api/core/renderer/#renderernew)
+description below for details.
 
 ## Example
 
 ```rust
-use fragmentcolor::Renderer;
-let _renderer = Renderer::new();
+# async fn run() -> Result<(), Box<dyn std::error::Error>> {
+
+use fragmentcolor::{Shader, Renderer};
+
+let renderer = Renderer::new();
+
+// Use your platform's windowing system to create a window
+let window = fragmentcolor::headless_window([800, 600]);
+
+// Create a Target from it
+let target = renderer.create_target(&window).await?;
+let texture_target = renderer.create_texture_target([16, 16]).await?;
+
+// RENDERING
+renderer.render(&Shader::default(), &texture_target)?;
+
+// That's it. Welcome to FragmentColor!
+
+# let s = target.size();
+# assert_eq!([s.width, s.height], [800, 600]);
+# assert_eq!(texture_target.size(), [16, 16]);
+# Ok(())
+# }
+# fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 ```
 
 ## Methods
-
-### - create_target(target: PLATFORM_SPECIFIC)
-
-```rust
-use fragmentcolor::Renderer;
-
-# fn main() -> Result<(), Box<dyn std::error::Error>> {
-let renderer = Renderer::new();
-# // See platform-specific docs for creating a window/canvas target
-# Ok(())
-# }
-```
