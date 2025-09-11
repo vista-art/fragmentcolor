@@ -4,14 +4,14 @@ from fragmentcolor import Shader, Renderer
 
 renderer = Renderer()
 
- # Use your platform's windowing system to create a window
+# Use your platform's windowing system to create a window
 canvas = RenderCanvas(size=(800, 600))
 
- # Create a Target from it
+# Create a Target from it
 target = renderer.create_target(canvas)
 texture_target = renderer.create_texture_target([16, 16])
 
- # RENDERING
+# RENDERING
 renderer.render(Shader.default(), texture_target)
 
- # That's it. Welcome to FragmentColor!
+# That's it. Welcome to FragmentColor!

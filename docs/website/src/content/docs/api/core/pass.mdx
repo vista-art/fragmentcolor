@@ -116,16 +116,16 @@ rpass.add_shader(shader)
 pass2 = Pass("Second Pass")
 pass2.add_shader(shader)
 
- # standalone
+# standalone
 renderer.render(rpass, target)
 
- # using a Frame
+# using a Frame
 frame = Frame()
 frame.add_pass(rpass)
 frame.add_pass(pass2)
 renderer.render(frame, target)
 
- # vector of passes (consume them)
+# vector of passes (consume them)
 renderer.render([rpass, pass2], target)
 
 `}

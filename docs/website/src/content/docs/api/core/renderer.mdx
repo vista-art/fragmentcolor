@@ -98,17 +98,17 @@ from fragmentcolor import Shader, Renderer
 
 renderer = Renderer()
 
- # Use your platform's windowing system to create a window
+# Use your platform's windowing system to create a window
 canvas = RenderCanvas(size=(800, 600))
 
- # Create a Target from it
+# Create a Target from it
 target = renderer.create_target(canvas)
 texture_target = renderer.create_texture_target([16, 16])
 
- # RENDERING
+# RENDERING
 renderer.render(Shader.default(), texture_target)
 
- # That's it. Welcome to FragmentColor!
+# That's it. Welcome to FragmentColor!
 
 `}
 lang="python"
@@ -312,8 +312,8 @@ from fragmentcolor import Renderer
 
 renderer = Renderer()
 
- # Use your platform's windowing system to create a window.
- # We officially support Winit. Check the examples folder for details.
+# Use your platform's windowing system to create a window.
+# We officially support Winit. Check the examples folder for details.
 canvas = RenderCanvas(size=(800, 600))
 
 target = renderer.create_target(canvas)
@@ -418,12 +418,12 @@ code={`
 from fragmentcolor import Renderer, Shader
 renderer = Renderer()
 
- # Create an offscreen texture target with a size of 64x64 pixels.
+# Create an offscreen texture target with a size of 64x64 pixels.
 target = renderer.create_texture_target([64, 64])
 
 renderer.render(Shader.default(), target)
 
- # get the rendered image
+# get the rendered image
 image = target.get_image()
 
 `}

@@ -1255,11 +1255,16 @@ mod convert {
             if let Lang::Py = lang {
                 line = line.replace(".size()", ".size");
                 // Convert JS-style '//' comments to Python '#'
-                if let Some(idx_c) = line.find("//") {
-                    let (mut head, tail) = line.split_at(idx_c);
+                if let Some(idx) = line.find("//") {
+                    let (mut head, tail) = line.split_at(idx);
                     // Strip any trailing semicolon immediately before comment
                     head = head.trim_end_matches(';').trim_end();
-                    line = format!("{} #{}", head, &tail[2..]);
+                    if head.is_empty() {
+                        // Pure comment line: no leading space before '#'
+                        line = format!("#{}", &tail[2..]);
+                    } else {
+                        line = format!("{} #{}", head, &tail[2..]);
+                    }
                 }
             }
 
