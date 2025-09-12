@@ -152,3 +152,147 @@ impl From<[f32; 4]> for Color {
         Self::from_rgba(c)
     }
 }
+
+impl From<[f32; 3]> for Color {
+    fn from(c: [f32; 3]) -> Self {
+        Self::from_rgb_alpha(c, 1.0)
+    }
+}
+
+impl From<(f32, f32, f32)> for Color {
+    fn from(v: (f32, f32, f32)) -> Self {
+        Self::from_rgb_alpha([v.0, v.1, v.2], 1.0)
+    }
+}
+
+impl From<(f32, f32, f32, f32)> for Color {
+    fn from(v: (f32, f32, f32, f32)) -> Self {
+        Self::from_rgba([v.0, v.1, v.2, v.3])
+    }
+}
+
+#[cfg(wasm)]
+impl TryFrom<wasm_bindgen::JsValue> for Color {
+    type Error = crate::error::ShaderError;
+
+    fn try_from(value: wasm_bindgen::JsValue) -> Result<Self, Self::Error> {
+        use js_sys::{Array, Float32Array, Int32Array, Reflect, Uint32Array};
+        use wasm_bindgen::JsCast;
+
+        // Helper to normalize [r,g,b,a?] numbers; if any component > 1.0, assume 0..255 space
+        fn normalize_rgba(mut c: [f32; 4], has_alpha: bool) -> [f32; 4] {
+            let mut maxc = c[0].abs().max(c[1].abs()).max(c[2].abs());
+            if has_alpha {
+                maxc = maxc.max(c[3].abs());
+            }
+            if maxc > 1.0 {
+                for i in 0..(if has_alpha { 4 } else { 3 }) {
+                    c[i] = (c[i] / 255.0).clamp(0.0, 1.0);
+                }
+            } else {
+                for i in 0..(if has_alpha { 4 } else { 3 }) {
+                    c[i] = c[i].clamp(0.0, 1.0);
+                }
+            }
+            c
+        }
+
+        // Strings: CSS/hex
+        if let Some(s) = value.as_string() {
+            return Color::from_css(&s)
+                .map_err(|e| crate::error::ShaderError::TypeMismatch(e.to_string()));
+        }
+
+        // Typed arrays
+        if let Some(arr) = value.dyn_ref::<Float32Array>() {
+            let len = arr.length();
+            if len == 3 {
+                let mut buf = [0.0f32; 3];
+                arr.copy_to(&mut buf);
+                let c = normalize_rgba([buf[0], buf[1], buf[2], 1.0], false);
+                return Ok(Color::from(c));
+            }
+            if len == 4 {
+                let mut buf = [0.0f32; 4];
+                arr.copy_to(&mut buf);
+                let c = normalize_rgba(buf, true);
+                return Ok(Color::from(c));
+            }
+        }
+        if let Some(arr) = value.dyn_ref::<Int32Array>() {
+            let len = arr.length();
+            if len == 3 {
+                let mut buf = [0i32; 3];
+                arr.copy_to(&mut buf);
+                let c = normalize_rgba([buf[0] as f32, buf[1] as f32, buf[2] as f32, 255.0], true);
+                return Ok(Color::from([c[0], c[1], c[2], c[3]]));
+            }
+            if len == 4 {
+                let mut buf = [0i32; 4];
+                arr.copy_to(&mut buf);
+                let c = normalize_rgba(
+                    [buf[0] as f32, buf[1] as f32, buf[2] as f32, buf[3] as f32],
+                    true,
+                );
+                return Ok(Color::from([c[0], c[1], c[2], c[3]]));
+            }
+        }
+        if let Some(arr) = value.dyn_ref::<Uint32Array>() {
+            let len = arr.length();
+            if len == 3 {
+                let mut buf = [0u32; 3];
+                arr.copy_to(&mut buf);
+                let c = normalize_rgba([buf[0] as f32, buf[1] as f32, buf[2] as f32, 255.0], true);
+                return Ok(Color::from([c[0], c[1], c[2], c[3]]));
+            }
+            if len == 4 {
+                let mut buf = [0u32; 4];
+                arr.copy_to(&mut buf);
+                let c = normalize_rgba(
+                    [buf[0] as f32, buf[1] as f32, buf[2] as f32, buf[3] as f32],
+                    true,
+                );
+                return Ok(Color::from([c[0], c[1], c[2], c[3]]));
+            }
+        }
+
+        // Plain JS arrays
+        if let Some(arr) = value.dyn_ref::<Array>() {
+            let len = arr.length();
+            let num_at = |i: u32| arr.get(i).as_f64().unwrap_or(0.0) as f32;
+            if len == 3 {
+                let c = normalize_rgba([num_at(0), num_at(1), num_at(2), 1.0], false);
+                return Ok(Color::from([c[0], c[1], c[2], c[3]]));
+            }
+            if len == 4 {
+                let c = normalize_rgba([num_at(0), num_at(1), num_at(2), num_at(3)], true);
+                return Ok(Color::from([c[0], c[1], c[2], c[3]]));
+            }
+        }
+
+        // Object with { r, g, b, a? }
+        if value.is_object() {
+            let r = Reflect::get(&value, &wasm_bindgen::JsValue::from_str("r"))
+                .ok()
+                .and_then(|v| v.as_f64());
+            let g = Reflect::get(&value, &wasm_bindgen::JsValue::from_str("g"))
+                .ok()
+                .and_then(|v| v.as_f64());
+            let b = Reflect::get(&value, &wasm_bindgen::JsValue::from_str("b"))
+                .ok()
+                .and_then(|v| v.as_f64());
+            if let (Some(r), Some(g), Some(b)) = (r, g, b) {
+                let a = Reflect::get(&value, &wasm_bindgen::JsValue::from_str("a"))
+                    .ok()
+                    .and_then(|v| v.as_f64())
+                    .unwrap_or(1.0);
+                let c = normalize_rgba([r as f32, g as f32, b as f32, a as f32], true);
+                return Ok(Color::from([c[0], c[1], c[2], c[3]]));
+            }
+        }
+
+        Err(crate::error::ShaderError::TypeMismatch(
+            "Cannot convert JavaScript value to Color (expected [r,g,b] or [r,g,b,a], CSS string, or {r,g,b,a})".into(),
+        ))
+    }
+}

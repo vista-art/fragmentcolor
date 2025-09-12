@@ -2,6 +2,7 @@
 
 use crate::{Color, Pass, PassInput, Shader};
 use wasm_bindgen::prelude::*;
+use wasm_bindgen::JsValue;
 
 #[wasm_bindgen]
 impl Pass {
@@ -36,7 +37,11 @@ impl Pass {
     }
 
     #[wasm_bindgen(js_name = "setClearColor")]
-    pub fn set_clear_color_py(&self, color: Color) {
+    pub fn set_clear_color_js(&self, color: JsValue) -> Result<(), JsError> {
+        let color: Color = color
+            .try_into()
+            .map_err(|e: crate::error::ShaderError| JsError::new(&format!("{e}")))?;
         self.object.set_clear_color(color);
+        Ok(())
     }
 }

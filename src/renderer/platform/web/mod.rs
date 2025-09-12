@@ -4,6 +4,7 @@ use std::convert::TryInto;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::convert::TryFromJsValue;
 use wasm_bindgen::prelude::*;
+use js_sys::Array;
 
 pub mod target;
 pub use target::*;
@@ -122,7 +123,41 @@ impl Renderer {
     #[wasm_bindgen(js_name = "render")]
     #[lsp_doc("docs/api/core/renderer/render.md")]
     pub fn render_js(&self, renderable: JsValue, target: JsValue) -> Result<(), ShaderError> {
+        // Helper: render a JS array of (Pass | Shader) by collecting into Vec<Pass>
+        fn render_array(
+            renderer: &Renderer,
+            arr: &Array,
+            target_canvas: Option<&CanvasTarget>,
+            target_tex: Option<&TextureTarget>,
+        ) -> Result<(), ShaderError> {
+            let mut passes: Vec<Pass> = Vec::with_capacity(arr.length() as usize);
+            for v in arr.iter() {
+                if let Ok(p) = Pass::try_from_js_value(v.clone()) {
+                    passes.push(p);
+                    continue;
+                }
+                if let Ok(s) = Shader::try_from_js_value(v.clone()) {
+                    // Wrap bare shaders into single-pass renders for parity
+                    let p = Pass::from_shader("scripted", &s);
+                    passes.push(p);
+                    continue;
+                }
+                return Err(ShaderError::WasmError(
+                    "Array items must be Pass or Shader".to_string(),
+                ));
+            }
+            if let Some(ct) = target_canvas { return renderer.render(&passes, ct); }
+            if let Some(tt) = target_tex { return renderer.render(&passes, tt); }
+            Err(ShaderError::WasmError("Invalid target".to_string()))
+        }
+
         if let Ok(canvas_target) = CanvasTarget::try_from_js_value(target.clone()) {
+            // Array inputs: (Pass | Shader)[]
+            if Array::is_array(&renderable) {
+                let arr = Array::from(&renderable);
+                return render_array(self, &arr, Some(&canvas_target), None);
+            }
+            // Single inputs
             if let Ok(shader) = Shader::try_from_js_value(renderable.clone()) {
                 return self.render(&shader, &canvas_target);
             } else if let Ok(pass) = Pass::try_from_js_value(renderable.clone()) {
@@ -135,6 +170,12 @@ impl Renderer {
                 ));
             };
         } else if let Ok(texture_target) = TextureTarget::try_from_js_value(target) {
+            // Array inputs: (Pass | Shader)[]
+            if Array::is_array(&renderable) {
+                let arr = Array::from(&renderable);
+                return render_array(self, &arr, None, Some(&texture_target));
+            }
+            // Single inputs
             if let Ok(shader) = Shader::try_from_js_value(renderable.clone()) {
                 return self.render(&shader, &texture_target);
             } else if let Ok(pass) = Pass::try_from_js_value(renderable.clone()) {
