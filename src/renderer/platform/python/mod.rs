@@ -1,4 +1,3 @@
-use crate::target::{WindowHandles, create_raw_handles};
 use crate::{FragmentColorError, Frame, Pass, PySize, Renderer, Shader};
 use lsp_doc::lsp_doc;
 use pyo3::exceptions::PyTypeError;
