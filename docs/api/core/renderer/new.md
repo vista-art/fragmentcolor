@@ -21,12 +21,13 @@ is by first calling:
 ```rust
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
-use fragmentcolor::Renderer;
+use fragmentcolor::{Renderer, Target};
 
 let renderer = Renderer::new();
 let texture_target = renderer.create_texture_target([16, 16]).await?;
 
-# assert_eq!(texture_target.size(), [16, 16]);
+# let s = texture_target.size();
+# assert_eq!([s.width, s.height], [16, 16]);
 # Ok(())
 # }
 # fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }

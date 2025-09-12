@@ -1,3 +1,4 @@
+use crate::target::{WindowHandles, create_raw_handles};
 use crate::{FragmentColorError, Frame, Pass, PySize, Renderer, Shader};
 use lsp_doc::lsp_doc;
 use pyo3::exceptions::PyTypeError;
@@ -13,9 +14,8 @@ pub use iterator::*;
 pub mod renderable;
 pub use renderable::*;
 
-pub mod handle;
-use crate::renderer::WindowHandles;
-use handle::create_raw_handles;
+pub(crate) mod handle;
+pub(crate) use handle::*;
 
 #[pymethods]
 impl Renderer {
@@ -78,7 +78,7 @@ impl Renderer {
                 depth_or_array_layers: 1,
             };
 
-            let handles: WindowHandles = create_raw_handles(platform, window, Some(display))?;
+            let handles: WindowHandles = create_raw_handles(&platform, window, Some(display))?;
 
             let (context, surface, config) =
                 pollster::block_on(self.create_surface(handles, size))?;

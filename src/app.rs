@@ -535,8 +535,8 @@ impl App {
     }
 
     pub fn resize_target(&self, id: WindowId, size: impl Into<Size>) {
-        if let Some(tgt) = self.targets.write().get_mut(&id) {
-            tgt.resize(size);
+        if let Some(target) = self.targets.write().get_mut(&id) {
+            target.resize(size);
         }
     }
 

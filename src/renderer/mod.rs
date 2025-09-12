@@ -26,9 +26,6 @@ pub use renderable::*;
 pub mod texture;
 pub use texture::*;
 
-pub mod handle;
-pub use handle::*;
-
 mod buffer_pool;
 use buffer_pool::BufferPool;
 
@@ -36,22 +33,6 @@ use buffer_pool::BufferPool;
 /// that must report its display size.
 pub trait HasDisplaySize {
     fn size(&self) -> Size;
-}
-
-/// A generalized source of a surface target. Concrete window types (e.g. winit::window::Window)
-/// will provide a real surface target via Into<wgpu::SurfaceTarget>, while headless windows can
-/// opt out by returning None so the Renderer can fall back to a Texture-backed target.
-pub trait SurfaceSource: HasDisplaySize + Clone {
-    fn surface_handle(&self) -> Option<wgpu::SurfaceTarget<'static>>;
-}
-
-impl<T> SurfaceSource for T
-where
-    T: HasDisplaySize + Clone + Into<wgpu::SurfaceTarget<'static>>,
-{
-    fn surface_handle(&self) -> Option<wgpu::SurfaceTarget<'static>> {
-        Some(self.clone().into())
-    }
 }
 
 #[derive(Debug)]
@@ -87,7 +68,7 @@ impl Renderer {
     #[lsp_doc("docs/api/core/renderer/create_target.md")]
     pub async fn create_target(
         &self,
-        window: impl SurfaceSource,
+        window: impl Into<wgpu::SurfaceTarget<'static>> + HasDisplaySize,
     ) -> Result<crate::RenderTarget, InitializationError> {
         let sz = window.size();
         let size = wgpu::Extent3d {
@@ -96,17 +77,27 @@ impl Renderer {
             depth_or_array_layers: 1,
         };
 
-        if let Some(handle) = window.surface_handle() {
-            let (context, surface, config) = self.create_surface(handle, size).await?;
-            Ok(crate::RenderTarget::from(WindowTarget::new(
+        match self.create_surface(window, size).await {
+            Ok((context, surface, config)) => Ok(crate::RenderTarget::from(WindowTarget::new(
                 context, surface, config,
-            )))
-        } else {
-            // Headless path: return a TextureTarget variant
-            let target = self.create_texture_target(sz).await?;
-            Ok(crate::RenderTarget::from(target))
+            ))),
+            Err(InitializationError::SurfaceError(e)) => {
+                // Could not create a surface from the provided window handle.
+                // Fall back to a texture-backed target so CI/tests and headless
+                // environments can still render.
+                log::warn!(
+                    "create_target: surface creation failed ({}). Falling back to TextureTarget.",
+                    e
+                );
+                let tex = self
+                    .create_texture_target([size.width, size.height])
+                    .await?;
+                Ok(crate::RenderTarget::from(tex))
+            }
+            Err(e) => Err(e),
         }
     }
+
     #[lsp_doc("docs/api/core/renderer/create_texture_target.md")]
     pub async fn create_texture_target(
         &self,

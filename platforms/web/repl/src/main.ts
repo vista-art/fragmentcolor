@@ -123,7 +123,7 @@ async function start() {
       // No-op helper to keep resolution updates in one place
       // In this simple REPL we create a fresh Shader in renderOnce, so this is
       // primarily used around resizing to keep behavior consistent.
-    } catch {}
+    } catch { }
   }
 
   async function renderOnce() {
