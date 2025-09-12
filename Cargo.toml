@@ -23,7 +23,7 @@ members = ["examples/rust"]
 glsl = []
 shadertoy = ["glsl"]
 winit = ["dep:winit", "pollster"]
-python = ["pyo3", "pollster", "objc2", "objc2-app-kit"]
+python = ["pyo3", "pollster"]
 
 [dependencies]
 # Rendering
@@ -63,8 +63,8 @@ pyo3 = { version = "0.26", features = [
 
 # MacOS
 [target.'cfg(target_os = "macos")'.dependencies]
-objc2 = { version = "0.6", optional = true }
-objc2-app-kit = { version = "0.3", optional = true }
+objc2 = { version = "0.6" }
+objc2-app-kit = { version = "0.3" }
 
 # Android & iOS FFI
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]

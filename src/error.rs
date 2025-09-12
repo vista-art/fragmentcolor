@@ -10,6 +10,24 @@ pub enum InitializationError {
     SurfaceError(#[from] wgpu::CreateSurfaceError),
     #[error("Initialization error: {0}")]
     Error(String),
+    #[cfg(wasm)]
+    #[error("WASM Initialization Error: {0}")]
+    WasmError(String),
+}
+
+#[derive(Error, Debug)]
+pub enum DisplayError {
+    #[error("Failed to create a window handle: {0}")]
+    WindowHandleError(String),
+    #[error("Failed to create a display handle: {0}")]
+    DisplayHandleError(String),
+    #[error("Unsupported platform: {0}")]
+    UnsupportedPlatform(String),
+    #[error("Display Error: {0}")]
+    Error(String),
+    #[cfg(wasm)]
+    #[error("WASM Display Error: {0}")]
+    WasmError(String),
 }
 
 #[derive(Error, Debug)]
@@ -43,7 +61,7 @@ pub enum ShaderError {
     #[error("URL Request Error: {0}")]
     RequestError(#[from] ureq::Error),
     #[cfg(wasm)]
-    #[error("WASM Error: {0}")]
+    #[error("WASM Shader Error: {0}")]
     WasmError(String),
 }
 
@@ -68,6 +86,44 @@ impl From<ShaderError> for wasm_bindgen::JsValue {
     }
 }
 
+#[cfg(wasm)]
+impl From<wasm_bindgen::JsValue> for DisplayError {
+    fn from(value: wasm_bindgen::JsValue) -> Self {
+        let error_string = if let Some(s) = value.as_string() {
+            s
+        } else {
+            format!("{:?}", value)
+        };
+        DisplayError::WasmError(error_string)
+    }
+}
+
+#[cfg(wasm)]
+impl From<DisplayError> for wasm_bindgen::JsValue {
+    fn from(error: DisplayError) -> Self {
+        wasm_bindgen::JsValue::from_str(&error.to_string())
+    }
+}
+
+#[cfg(wasm)]
+impl From<wasm_bindgen::JsValue> for InitializationError {
+    fn from(value: wasm_bindgen::JsValue) -> Self {
+        let error_string = if let Some(s) = value.as_string() {
+            s
+        } else {
+            format!("{:?}", value)
+        };
+        InitializationError::WasmError(error_string)
+    }
+}
+
+#[cfg(wasm)]
+impl From<InitializationError> for wasm_bindgen::JsValue {
+    fn from(error: InitializationError) -> Self {
+        wasm_bindgen::JsValue::from_str(&error.to_string())
+    }
+}
+
 // Python-specific conversions
 
 #[cfg(feature = "python")]
@@ -85,6 +141,20 @@ impl From<PyErr> for ShaderError {
 #[cfg(feature = "python")]
 impl From<ShaderError> for PyErr {
     fn from(e: ShaderError) -> Self {
+        FragmentColorError::new_err(e.to_string())
+    }
+}
+
+#[cfg(feature = "python")]
+impl From<PyErr> for DisplayError {
+    fn from(e: PyErr) -> Self {
+        DisplayError::Error(e.to_string())
+    }
+}
+
+#[cfg(feature = "python")]
+impl From<DisplayError> for PyErr {
+    fn from(e: DisplayError) -> Self {
         FragmentColorError::new_err(e.to_string())
     }
 }

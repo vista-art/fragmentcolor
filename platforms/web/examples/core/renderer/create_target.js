@@ -7,4 +7,4 @@ const renderer = new Renderer();
 // We officially support Winit. Check the examples folder for details.;
 const canvas = document.createElement('canvas');
 
-const target = renderer.createTarget(canvas);
+const target = await renderer.createTarget(canvas);

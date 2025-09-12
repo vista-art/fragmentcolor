@@ -15,7 +15,7 @@ let renderer = Renderer::new();
 // We officially support Winit. Check the examples folder for details.
 let window = fragmentcolor::headless_window([800, 600]);
 
-let target = renderer.create_target(&window)?;
+let target = renderer.create_target(window).await?;
 
 # let s = target.size();
 # assert_eq!([s.width, s.height], [800, 600]);

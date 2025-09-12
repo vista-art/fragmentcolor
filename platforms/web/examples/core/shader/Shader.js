@@ -3,13 +3,13 @@ import { Shader, Renderer } from "fragmentcolor";
 
 const shader = new Shader(`
     @vertex
-    fn vs_main(@builtin(vertex_index) vertex_index: u32) -> @builtin(position) vec4<f32> {
+    fn vs_main(@builtin(vertex_index) index: u32) -> @builtin(position) vec4<f32> {
         var pos = array<vec2<f32>, 3>(
             vec2<f32>(-1.0, -1.0),
             vec2<f32>( 3.0, -1.0),
             vec2<f32>(-1.0,  3.0)
         );
-        return vec4<f32>(pos[vertex_index], 0.0, 1.0);
+        return vec4<f32>(pos[index], 0.0, 1.0);
     }
 
     @group(0) @binding(0)
@@ -27,5 +27,5 @@ shader.set("resolution", [800.0, 600.0]);
 const res = shader.get("resolution");
 
 const renderer = new Renderer();
-const target = renderer.createTextureTarget([16, 16]);
+const target = await renderer.createTextureTarget([16, 16]);
 renderer.render(shader, target);

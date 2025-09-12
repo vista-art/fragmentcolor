@@ -20,7 +20,7 @@ description below for details.
 ```rust
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
-use fragmentcolor::{Shader, Renderer};
+use fragmentcolor::{Shader, Renderer, Target};
 
 let renderer = Renderer::new();
 
@@ -28,7 +28,7 @@ let renderer = Renderer::new();
 let window = fragmentcolor::headless_window([800, 600]);
 
 // Create a Target from it
-let target = renderer.create_target(&window).await?;
+let target = renderer.create_target(window).await?;
 let texture_target = renderer.create_texture_target([16, 16]).await?;
 
 // RENDERING
@@ -38,7 +38,8 @@ renderer.render(&Shader::default(), &texture_target)?;
 
 # let s = target.size();
 # assert_eq!([s.width, s.height], [800, 600]);
-# assert_eq!(texture_target.size(), [16, 16]);
+# let s2 = texture_target.size();
+# assert_eq!([s2.width, s2.height], [16, 16]);
 # Ok(())
 # }
 # fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
