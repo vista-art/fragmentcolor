@@ -37,7 +37,7 @@ parking_lot = { version = "0.12" }
 lsp_doc = { git = "https://github.com/rafaelbeckel/lsp_doc", version = "0.2" }
 
 # Shader composition
-naga = { version = "26" }
+naga = { version = "26", features = ["wgsl-in", "glsl-in"] }
 # naga_oil = { version = "0.19" }
 
 # Serialization
