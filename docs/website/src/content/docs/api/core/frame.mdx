@@ -24,7 +24,12 @@ You need to inject the [Frame](/api/core/frame) object into the [Renderer](/api/
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::{Frame, Pass};
+ async fn run() -> Result<(), Box<dyn std::error::Error>> {
+
+use fragmentcolor::{ Shader, Pass, Renderer, Frame };
+
+let renderer = Renderer::new();
+let target = renderer.create_texture_target([100, 100]).await?;
 
 let pass1 = Pass::new("first");
 let pass2 = Pass::new("second");
@@ -32,8 +37,12 @@ let pass2 = Pass::new("second");
 let mut frame = Frame::new();
 frame.add_pass(&pass1);
 frame.add_pass(&pass2);
+
+ Ok(())
+ }
+ fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust"
+lang="rust" meta="collapse={1-1, 15-17}"
 />
 
 </TabItem>
@@ -41,7 +50,11 @@ lang="rust"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Frame, Pass } from "fragmentcolor";
+
+import { Shader, Pass, Renderer, Frame } from "fragmentcolor";
+
+const renderer = new Renderer();
+const target = await renderer.createTextureTarget([100, 100]);
 
 const pass1 = new Pass("first");
 const pass2 = new Pass("second");
@@ -49,6 +62,7 @@ const pass2 = new Pass("second");
 const frame = new Frame();
 frame.addPass(pass1);
 frame.addPass(pass2);
+
 `}
 lang="js"
 />
@@ -58,7 +72,11 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Frame, Pass
+
+from fragmentcolor import Shader, Pass, Renderer, Frame
+
+renderer = Renderer()
+target = renderer.create_texture_target([100, 100])
 
 pass1 = Pass("first")
 pass2 = Pass("second")
@@ -66,6 +84,7 @@ pass2 = Pass("second")
 frame = Frame()
 frame.add_pass(pass1)
 frame.add_pass(pass2)
+
 `}
 lang="python"
 />

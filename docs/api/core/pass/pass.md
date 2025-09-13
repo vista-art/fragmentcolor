@@ -21,7 +21,8 @@ it won't add the shader to its internal list and log a warning message in the co
 use fragmentcolor::{ Shader, Pass, Renderer, Frame };
 
 let renderer = Renderer::new();
-let target = renderer.create_texture_target([10, 10]).await?;
+let window = fragmentcolor::headless_window([100, 100]);
+let target = renderer.create_target(window).await?;
 let shader = Shader::default();
 
 let mut pass = Pass::new("First Pass");
