@@ -34,6 +34,9 @@ jobs:
           chmod +x ./build_web.sh
           ./build_web.sh
 
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
