@@ -1,8 +1,10 @@
+from rendercanvas.auto import RenderCanvas, loop
 
 from fragmentcolor import Shader, Pass, Renderer, Frame
 
 renderer = Renderer()
-target = renderer.create_texture_target([10, 10])
+canvas = RenderCanvas(size=(100, 100))
+target = renderer.create_target(canvas)
 shader = Shader.default()
 
 rpass = Pass("First Pass")

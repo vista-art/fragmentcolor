@@ -36,7 +36,8 @@ code={`
 use fragmentcolor::{ Shader, Pass, Renderer, Frame };
 
 let renderer = Renderer::new();
-let target = renderer.create_texture_target([10, 10]).await?;
+let window = fragmentcolor::headless_window([100, 100]);
+let target = renderer.create_target(window).await?;
 let shader = Shader::default();
 
 let mut pass = Pass::new("First Pass");
@@ -61,7 +62,7 @@ renderer.render(&vec![pass, pass2], &target)?;
  }
  fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 27-29}"
+lang="rust" meta="collapse={1-1, 28-30}"
 />
 
 </TabItem>
@@ -73,7 +74,8 @@ code={`
 import { Shader, Pass, Renderer, Frame } from "fragmentcolor";
 
 const renderer = new Renderer();
-const target = await renderer.createTextureTarget([10, 10]);
+const canvas = document.createElement('canvas');
+const target = await renderer.createTarget(canvas);
 const shader = Shader.default();
 
 const pass = new Pass("First Pass");
@@ -103,11 +105,13 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
+from rendercanvas.auto import RenderCanvas, loop
 
 from fragmentcolor import Shader, Pass, Renderer, Frame
 
 renderer = Renderer()
-target = renderer.create_texture_target([10, 10])
+canvas = RenderCanvas(size=(100, 100))
+target = renderer.create_target(canvas)
 shader = Shader.default()
 
 rpass = Pass("First Pass")
