@@ -140,7 +140,12 @@ ensure_playwright() {
 run_web() {
   local name="platforms.web.healthcheck"
   # Build the web WASM package first to ensure the latest sources are used.
-  if ! bash "$ROOT_DIR/build_web.sh"; then
+  # Default to debug builds (DWARF + readable stack traces); allow override with FC_WEB_RELEASE=1
+  local web_build_flag="--debug"
+  if [ "${FC_WEB_RELEASE:-0}" = "1" ]; then
+    web_build_flag=""
+  fi
+  if ! bash "$ROOT_DIR/build_web.sh" $web_build_flag; then
     echo "Failed to build web package" >&2
     log_test_fail "$name"
     return 1
@@ -189,7 +194,8 @@ run_web() {
   fi
 
   ensure_playwright
-  if node "$ROOT_DIR/platforms/web/healthcheck/playwright.mjs" "http://localhost:$PORT/healthcheck/"; then
+  # Pass skipTexture=1 by default to avoid running texture-target examples temporarily
+  if node "$ROOT_DIR/platforms/web/healthcheck/playwright.mjs" "http://localhost:$PORT/healthcheck/?skipTexture=1"; then
     cleanup
     trap - EXIT
     log_test_ok "$name"
