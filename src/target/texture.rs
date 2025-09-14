@@ -9,10 +9,15 @@ pub struct TextureTarget {
 }
 
 impl TextureTarget {
-    pub(crate) fn new(context: Arc<RenderContext>, size: Size) -> Self {
+    pub(crate) fn new(
+        context: Arc<RenderContext>,
+        size: Size,
+        format: wgpu::TextureFormat,
+    ) -> Self {
         let texture = Arc::new(Texture::create_destination_texture(
             context.as_ref(),
             size.into(),
+            format,
         ));
         Self {
             context: context.clone(),
@@ -29,8 +34,11 @@ impl Target for TextureTarget {
 
     #[lsp_doc("docs/api/core/target/resize.md")]
     fn resize(&mut self, size: impl Into<Size>) {
-        let new_texture =
-            Texture::create_destination_texture(self.context.as_ref(), size.into().into());
+        let new_texture = Texture::create_destination_texture(
+            self.context.as_ref(),
+            size.into().into(),
+            self.texture.format,
+        );
         self.texture = Arc::new(new_texture);
     }
 
@@ -91,12 +99,11 @@ impl Target for TextureTarget {
 
         // Block until the GPU work is done and the buffer is mapped
         if let Err(e) = device.poll(wgpu::PollType::Wait) {
-            log::warn!("Failed to poll device for texture readback: {}", e);
+            log::error!("Device poll error during readback: {:?}", e);
             #[cfg(wasm)]
             {
-                log::warn!("Ensure the page is cross-origin isolated to enable readbacks.");
+                log::error!("Ensure the page is cross-origin isolated to enable readbacks.");
             }
-            log::warn!("Returning empty image buffer");
             return Vec::new();
         }
 
@@ -107,12 +114,11 @@ impl Target for TextureTarget {
         });
 
         if let Err(e) = device.poll(wgpu::PollType::Wait) {
-            log::warn!("Failed to poll device for texture readback: {}", e);
+            log::error!("Device poll error during readback mapping: {:?}", e);
             #[cfg(wasm)]
             {
-                log::warn!("Ensure the page is cross-origin isolated to enable readbacks.");
+                log::error!("Ensure the page is cross-origin isolated to enable readbacks.");
             }
-            log::warn!("Returning empty image buffer");
             return Vec::new();
         }
 

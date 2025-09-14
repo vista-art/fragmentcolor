@@ -1,9 +1,10 @@
 import os
 import platform
 import importlib
+import numpy as np
 from fragmentcolor import Renderer, Shader, Pass, Frame
 
-# Optional debug diagnostics for CI
+# Debug diagnostics for CI
 if os.environ.get("FC_HEALTHCHECK_VERBOSE") == "1":
     fc = importlib.import_module("fragmentcolor")
     try:
@@ -14,8 +15,10 @@ if os.environ.get("FC_HEALTHCHECK_VERBOSE") == "1":
 
 
 def run():
+    """Simple smoke tests before running full examples"""
+
     renderer = Renderer()
-    target = renderer.create_texture_target((64, 64))
+    target = renderer.create_texture_target((32, 64))
     shader = Shader("""
 struct VertexOutput {
     @builtin(position) coords: vec4<f32>,
@@ -66,16 +69,36 @@ fn main(pixel: VertexOutput) -> @location(0) vec4<f32> {
 }
 """)
 
-    shader.set("resolution", [64.0, 64.0])
+    shader.set("resolution", [32.0, 64.0])
     shader.set("circle.radius", 10.0)
     shader.set("circle.color", [1.0, 0.0, 0.0, 0.8])
     shader.set("circle.border", 2.0)
     shader.set("circle.position", [0.0, 0.0])
 
+    # Multiple render calls succeed
+    renderer.render(shader, target)
+    renderer.render(shader, target)
     renderer.render(shader, target)
 
+    # Images are ndarrays of uint8 with correct shape
+    image = target.get_image()
+    print(f"Image shape: {image.shape}, dtype: {image.dtype}")
+    assert image.ndim == 3
+    assert image.shape[0] == 32
+    assert image.shape[1] == 64
+    assert image.shape[2] == 4
+    assert image.dtype == np.dtype(np.uint8)
+
+    # Update uniform and render again
+    shader.set("circle.radius", 20.0)
+    renderer.render(shader, target)
+
+    # Render with a Pass and a Frame
     rpass = Pass("single pass")
     rpass.add_shader(shader)
+    renderer.render(rpass, target)
+
+    shader.set("circle.radius", 30.0)
     renderer.render(rpass, target)
 
     frame = Frame()
@@ -96,6 +119,6 @@ fn main(pixel: VertexOutput) -> @location(0) vec4<f32> {
 if __name__ == "__main__":
     run()
 
-    # Auto-generated: run all extracted examples
-    from platforms.python.examples.main import run_all as __run_all
-    __run_all()
+    # Auto-generated: run all extracted & translated examples from docs/api
+    from platforms.python.examples.main import run_all
+    run_all()
