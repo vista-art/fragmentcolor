@@ -123,6 +123,10 @@ impl From<Color> for wgpu::Color {
     }
 }
 
+// Ref variants (forward to owned impls)
+crate::impl_from_ref!(wgpu::Color, Color);
+crate::impl_from_ref!(Color, wgpu::Color);
+
 impl From<wgpu::Color> for Color {
     fn from(c: wgpu::Color) -> Self {
         Self::new(c.r as f32, c.g as f32, c.b as f32, c.a as f32)
@@ -134,6 +138,9 @@ impl From<Color> for u32 {
         c.0
     }
 }
+
+crate::impl_from_ref!(u32, Color);
+crate::impl_from_ref!(Color, u32);
 
 impl From<u32> for Color {
     fn from(c: u32) -> Self {
@@ -147,6 +154,9 @@ impl From<Color> for [f32; 4] {
     }
 }
 
+crate::impl_from_ref!([f32; 4], Color);
+crate::impl_from_ref!(Color, [f32; 4]);
+
 impl From<[f32; 4]> for Color {
     fn from(c: [f32; 4]) -> Self {
         Self::from_rgba(c)
@@ -159,17 +169,49 @@ impl From<[f32; 3]> for Color {
     }
 }
 
+crate::impl_from_ref!(Color, [f32; 3]);
+
 impl From<(f32, f32, f32)> for Color {
     fn from(v: (f32, f32, f32)) -> Self {
         Self::from_rgb_alpha([v.0, v.1, v.2], 1.0)
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn color_from_refs() {
+        let rgba = [0.2, 0.4, 0.6, 0.8];
+        let rgb = [0.2, 0.4, 0.6];
+        let c1: Color = (&rgba).into();
+        let _c2: Color = (&rgb).into();
+        let _c3: Color = (&(0.2f32, 0.4f32, 0.6f32)).into();
+        let _c4: Color = (&(0.2f32, 0.4f32, 0.6f32, 0.8f32)).into();
+
+        let out_rgba: [f32; 4] = (&c1).into();
+        assert_eq!(out_rgba, rgba);
+
+        let wc = wgpu::Color::from(c1);
+        let back: Color = (&wc).into();
+        assert_eq!(back, Color::from(rgba));
+
+        let u: u32 = (&back).into();
+        let back2: Color = (&u).into();
+        assert_eq!(back2, back);
+    }
+}
+
+crate::impl_from_ref!(Color, (f32, f32, f32));
+
 impl From<(f32, f32, f32, f32)> for Color {
     fn from(v: (f32, f32, f32, f32)) -> Self {
         Self::from_rgba([v.0, v.1, v.2, v.3])
     }
 }
+
+crate::impl_from_ref!(Color, (f32, f32, f32, f32));
 
 #[cfg(wasm)]
 impl TryFrom<&wasm_bindgen::JsValue> for Color {
@@ -296,3 +338,6 @@ impl TryFrom<&wasm_bindgen::JsValue> for Color {
         ))
     }
 }
+
+#[cfg(wasm)]
+crate::impl_tryfrom_owned_via_ref!(Color, wasm_bindgen::JsValue, crate::error::ShaderError);

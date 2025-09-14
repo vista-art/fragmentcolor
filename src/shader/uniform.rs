@@ -593,6 +593,58 @@ impl From<UniformData> for wgpu::Extent3d {
     }
 }
 
+// Reference-based forwards for inputs to UniformData
+crate::impl_from_ref!(UniformData, bool);
+crate::impl_from_ref!(UniformData, f32);
+crate::impl_from_ref!(UniformData, [f32; 1]);
+crate::impl_from_ref!(UniformData, i32);
+crate::impl_from_ref!(UniformData, [i32; 1]);
+crate::impl_from_ref!(UniformData, u32);
+crate::impl_from_ref!(UniformData, [u32; 1]);
+crate::impl_from_ref!(UniformData, [f32; 2]);
+crate::impl_from_ref!(UniformData, [i32; 2]);
+crate::impl_from_ref!(UniformData, [u32; 2]);
+crate::impl_from_ref!(UniformData, (f32, f32));
+crate::impl_from_ref!(UniformData, glam::Vec2);
+crate::impl_from_ref!(UniformData, [f32; 3]);
+crate::impl_from_ref!(UniformData, [i32; 3]);
+crate::impl_from_ref!(UniformData, [u32; 3]);
+crate::impl_from_ref!(UniformData, (f32, f32, f32));
+crate::impl_from_ref!(UniformData, glam::Vec3);
+crate::impl_from_ref!(UniformData, [f32; 4]);
+crate::impl_from_ref!(UniformData, [i32; 4]);
+crate::impl_from_ref!(UniformData, [u32; 4]);
+crate::impl_from_ref!(UniformData, (f32, f32, f32, f32));
+crate::impl_from_ref!(UniformData, glam::Vec4);
+crate::impl_from_ref!(UniformData, [[f32; 2]; 2]);
+crate::impl_from_ref!(UniformData, [[f32; 3]; 3]);
+crate::impl_from_ref!(UniformData, [[f32; 4]; 4]);
+crate::impl_from_ref!(UniformData, wgpu::Extent3d);
+
+// Reference-based forwards for outputs from UniformData
+crate::impl_from_ref!(f32, UniformData);
+crate::impl_from_ref!([f32; 1], UniformData);
+crate::impl_from_ref!(i32, UniformData);
+crate::impl_from_ref!([i32; 1], UniformData);
+crate::impl_from_ref!(u32, UniformData);
+crate::impl_from_ref!([u32; 1], UniformData);
+crate::impl_from_ref!([f32; 2], UniformData);
+crate::impl_from_ref!([i32; 2], UniformData);
+crate::impl_from_ref!([u32; 2], UniformData);
+crate::impl_from_ref!((f32, f32), UniformData);
+crate::impl_from_ref!(glam::Vec2, UniformData);
+crate::impl_from_ref!([f32; 3], UniformData);
+crate::impl_from_ref!([i32; 3], UniformData);
+crate::impl_from_ref!([u32; 3], UniformData);
+crate::impl_from_ref!((f32, f32, f32), UniformData);
+crate::impl_from_ref!(glam::Vec3, UniformData);
+crate::impl_from_ref!([f32; 4], UniformData);
+crate::impl_from_ref!([i32; 4], UniformData);
+crate::impl_from_ref!([u32; 4], UniformData);
+crate::impl_from_ref!((f32, f32, f32, f32), UniformData);
+crate::impl_from_ref!(glam::Vec4, UniformData);
+crate::impl_from_ref!(wgpu::Extent3d, UniformData);
+
 // WASM conversions
 
 #[cfg(wasm)]
@@ -627,6 +679,9 @@ impl TryFrom<&wasm_bindgen::JsValue> for UniformData {
         ))
     }
 }
+
+#[cfg(wasm)]
+crate::impl_tryfrom_owned_via_ref!(UniformData, wasm_bindgen::JsValue, crate::error::ShaderError);
 
 #[cfg(wasm)]
 impl TryFrom<&js_sys::Float32Array> for UniformData {

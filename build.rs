@@ -374,8 +374,9 @@ struct ObjectProperty {
         (
             module_path.clone(),
             parse_file(&content)
-                .unwrap_or_else(|_| panic!("Failed to parse module file: {}",
-                    module_path.display()))
+                .unwrap_or_else(|_| {
+                    panic!("Failed to parse module file: {}", module_path.display())
+                })
                 .items,
         )
     }
