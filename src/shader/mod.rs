@@ -253,8 +253,10 @@ impl TryFrom<&wasm_bindgen::JsValue> for Shader {
             .map_err(|_| ShaderError::WasmError("Missing __wbg_ptr on Shader".into()))?;
         let id = ptr
             .as_f64()
-            .ok_or_else(|| ShaderError::WasmError("Invalid __wbg_ptr for Shader".into()))? as u32;
-        let anchor: <Shader as RefFromWasmAbi>::Anchor = unsafe { <Shader as RefFromWasmAbi>::ref_from_abi(id) };
+            .ok_or_else(|| ShaderError::WasmError("Invalid __wbg_ptr for Shader".into()))?
+            as u32;
+        let anchor: <Shader as RefFromWasmAbi>::Anchor =
+            unsafe { <Shader as RefFromWasmAbi>::ref_from_abi(id) };
         Ok(anchor.clone())
     }
 }
