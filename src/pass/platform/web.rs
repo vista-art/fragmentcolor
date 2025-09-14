@@ -40,7 +40,7 @@ impl Pass {
     pub fn set_clear_color_js(&self, color: &JsValue) -> Result<(), JsError> {
         let color: Color = color
             .try_into()
-            .map_err(|e: crate::error::ShaderError| JsError::new(&format!("{e}")))?;
+            .map_err(|e: crate::color::error::ColorError| JsError::new(&format!("{e}")))?;
         self.object.set_clear_color(color);
         Ok(())
     }

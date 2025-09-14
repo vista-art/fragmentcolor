@@ -124,12 +124,28 @@ impl From<InitializationError> for wasm_bindgen::JsValue {
     }
 }
 
+// Top-level catch-all error
+
+#[derive(Error, Debug)]
+pub enum FragmentColorError {
+    #[error(transparent)]
+    Shader(#[from] ShaderError),
+    #[error(transparent)]
+    Init(#[from] InitializationError),
+    #[error(transparent)]
+    Display(#[from] DisplayError),
+    #[error(transparent)]
+    Color(#[from] crate::color::error::ColorError),
+    #[error(transparent)]
+    Size(#[from] crate::size::error::SizeError),
+}
+
 // Python-specific conversions
 
 #[cfg(feature = "python")]
 use pyo3::{create_exception, exceptions::PyException, prelude::*};
 #[cfg(feature = "python")]
-create_exception!(fragment_color, FragmentColorError, PyException);
+create_exception!(fragment_color, PyFragmentColorError, PyException);
 
 #[cfg(feature = "python")]
 impl From<PyErr> for ShaderError {
@@ -141,7 +157,7 @@ impl From<PyErr> for ShaderError {
 #[cfg(feature = "python")]
 impl From<ShaderError> for PyErr {
     fn from(e: ShaderError) -> Self {
-        FragmentColorError::new_err(e.to_string())
+        PyFragmentColorError::new_err(e.to_string())
     }
 }
 
@@ -155,7 +171,7 @@ impl From<PyErr> for DisplayError {
 #[cfg(feature = "python")]
 impl From<DisplayError> for PyErr {
     fn from(e: DisplayError) -> Self {
-        FragmentColorError::new_err(e.to_string())
+        PyFragmentColorError::new_err(e.to_string())
     }
 }
 
@@ -169,6 +185,6 @@ impl From<PyErr> for InitializationError {
 #[cfg(feature = "python")]
 impl From<InitializationError> for PyErr {
     fn from(e: InitializationError) -> Self {
-        FragmentColorError::new_err(e.to_string())
+        PyFragmentColorError::new_err(e.to_string())
     }
 }

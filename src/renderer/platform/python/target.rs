@@ -1,4 +1,4 @@
-use crate::{FragmentColorError, RenderContext, Size, Target, TargetFrame, WindowTarget};
+use crate::{RenderContext, Size, Target, TargetFrame, WindowTarget};
 use lsp_doc::lsp_doc;
 use numpy::PyArrayMethods;
 use numpy::pyo3::Python;
@@ -219,7 +219,7 @@ impl PyTextureTarget {
         let height = self.size().height as usize;
 
         if data.len() != width * height * BPP {
-            return Err(FragmentColorError::new_err(format!(
+            return Err(crate::error::PyFragmentColorError::new_err(format!(
                 "Unexpected image data length: expected {}, got {}",
                 width * height * BPP,
                 data.len()
