@@ -36,29 +36,32 @@ pub enum InitializationError {
 
 // Python-specific conversions
 
-#[cfg(feature = "python")]
-impl From<PyErr> for crate::renderer::error::RendererError {
-    fn from(e: PyErr) -> Self {
+#[cfg(python)]
+use pyo3::exceptions::PyException as PyFragmentColorError;
+
+#[cfg(python)]
+impl From<pyo3::PyErr> for crate::renderer::error::RendererError {
+    fn from(e: pyo3::PyErr) -> Self {
         crate::renderer::error::RendererError::Error(e.to_string())
     }
 }
 
-#[cfg(feature = "python")]
-impl From<crate::renderer::error::RendererError> for PyErr {
+#[cfg(python)]
+impl From<crate::renderer::error::RendererError> for pyo3::PyErr {
     fn from(e: crate::renderer::error::RendererError) -> Self {
         PyFragmentColorError::new_err(e.to_string())
     }
 }
 
-#[cfg(feature = "python")]
-impl From<PyErr> for crate::renderer::error::InitializationError {
-    fn from(e: PyErr) -> Self {
+#[cfg(python)]
+impl From<pyo3::PyErr> for crate::renderer::error::InitializationError {
+    fn from(e: pyo3::PyErr) -> Self {
         crate::renderer::error::InitializationError::Error(e.to_string())
     }
 }
 
-#[cfg(feature = "python")]
-impl From<crate::renderer::error::InitializationError> for PyErr {
+#[cfg(python)]
+impl From<crate::renderer::error::InitializationError> for pyo3::PyErr {
     fn from(e: crate::renderer::error::InitializationError) -> Self {
         PyFragmentColorError::new_err(e.to_string())
     }

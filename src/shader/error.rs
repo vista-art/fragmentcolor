@@ -30,17 +30,17 @@ pub enum ShaderError {
 
 // Python-specific conversions
 
-#[cfg(feature = "python")]
-impl From<PyErr> for crate::shader::error::ShaderError {
-    fn from(e: PyErr) -> Self {
+#[cfg(python)]
+impl From<pyo3::PyErr> for crate::shader::error::ShaderError {
+    fn from(e: pyo3::PyErr) -> Self {
         crate::shader::error::ShaderError::ParseError(e.to_string())
     }
 }
 
-#[cfg(feature = "python")]
-impl From<crate::shader::error::ShaderError> for PyErr {
+#[cfg(python)]
+impl From<crate::shader::error::ShaderError> for pyo3::PyErr {
     fn from(e: crate::shader::error::ShaderError) -> Self {
-        PyFragmentColorError::new_err(e.to_string())
+        crate::PyFragmentColorError::new_err(e.to_string())
     }
 }
 
