@@ -23,6 +23,20 @@ See the [Roadmap](https://github.com/vista-art/fragmentcolor/blob/main/ROADMAP.m
 - [x] Moved the public website into this repository under `docs/website`.
 - [x] Added post-publish workflow to update examples and website dependencies after npm & PyPI publish.
 
+#### Build System
+
+- [x] Build System
+  - [x] Unit test all packages before building
+  - [x] Git hook: test builds for all platforms before push
+  - [x] Script to Test, Compile & Publish JS
+  - [x] Script to Test, Compile & Publish Python
+  - [x] Script to Test, Compile & Publish Rust + Winit
+  - [x] GHA wheel: Test build all packages for all OSses
+
+- [x] Release Management
+  - [x] Automatically update docs from Rust Doc Comments
+  - [x] Script to copy contents and publish to Website
+
 ### Changed
 
 - [x] Normalized API links to <https://fragmentcolor.org>.

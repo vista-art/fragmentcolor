@@ -118,3 +118,30 @@ fn choose_surface_format(capabilities: &wgpu::SurfaceCapabilities) -> wgpu::Text
         .copied()
         .unwrap_or(wgpu::TextureFormat::Rgba8Unorm)
 }
+
+/// Negotiate a supported MSAA sample count for a given format on this adapter.
+/// Halves `wanted` until `features.sample_count_supported(n)` or returns 1.
+pub fn pick_sample_count(
+    adapter: &wgpu::Adapter,
+    mut wanted: u32,
+    fmt: wgpu::TextureFormat,
+) -> u32 {
+    let flags = adapter.get_texture_format_features(fmt).flags;
+
+    if wanted == 0 {
+        wanted = 1;
+    }
+    if wanted > 16 {
+        wanted = 16;
+    }
+    // Round down to nearest power of two
+    while wanted > 1 && !wanted.is_power_of_two() {
+        wanted /= 2;
+    }
+
+    let mut n = wanted;
+    while n > 1 && !flags.sample_count_supported(n) {
+        n /= 2;
+    }
+    n.max(1)
+}

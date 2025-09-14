@@ -6,6 +6,7 @@ use parking_lot::RwLock;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, Ordering};
 pub type Commands = Vec<wgpu::CommandBuffer>;
 
 #[cfg(wasm)]
@@ -101,6 +102,17 @@ impl Renderer {
         size: impl Into<Size>,
     ) -> Result<TextureTarget, InitializationError> {
         let context = self.context(None).await?;
+        // Negotiate effective sample count for offscreen (default single-sample for now)
+        if let Some(adapter) = self.adapter.read().as_ref() {
+            let sc = crate::renderer::platform::all::pick_sample_count(
+                adapter,
+                1,
+                wgpu::TextureFormat::Rgba8Unorm,
+            );
+            context.set_sample_count(sc);
+        } else {
+            context.set_sample_count(1);
+        }
         let texture = TextureTarget::new(context, size.into(), wgpu::TextureFormat::Rgba8Unorm);
 
         Ok(texture)
@@ -137,6 +149,12 @@ impl Renderer {
 
         let adapter = self.adapter.read();
         let config = configure_surface(&context.device, adapter.as_ref().unwrap(), &surface, &size);
+
+        // Negotiate and store effective sample count (currently default wanted=1; configurable later)
+        if let Some(adapter_ref) = adapter.as_ref() {
+            let sc = platform::all::pick_sample_count(adapter_ref, 1, config.format);
+            context.set_sample_count(sc);
+        }
 
         Ok((context, surface, config))
     }
@@ -184,7 +202,11 @@ pub struct RenderContext {
     pub(crate) device: wgpu::Device,
     pub(crate) queue: wgpu::Queue,
 
-    render_pipelines: DashMap<(ShaderHash, wgpu::TextureFormat), RenderPipeline>,
+    // Effective MSAA sample count negotiated for current target/format
+    sample_count: AtomicU32,
+
+    // Cache RenderPipelines by (shader hash, target format, sample count)
+    render_pipelines: DashMap<(ShaderHash, wgpu::TextureFormat, u32), RenderPipeline>,
     buffer_pool: RwLock<BufferPool>,
     //
     // @TODO
@@ -202,6 +224,7 @@ impl RenderContext {
             device,
             queue,
 
+            sample_count: AtomicU32::new(1),
             render_pipelines: DashMap::new(),
             buffer_pool: RwLock::new(buffer_pool),
         }
@@ -242,6 +265,14 @@ impl RenderContext {
 }
 
 impl RenderContext {
+    pub fn set_sample_count(&self, n: u32) {
+        self.sample_count.store(n.max(1), Ordering::Relaxed);
+    }
+
+    pub fn sample_count(&self) -> u32 {
+        self.sample_count.load(Ordering::Relaxed).max(1)
+    }
+
     fn process_render_pass(
         &self,
         encoder: &mut wgpu::CommandEncoder,
@@ -289,13 +320,15 @@ impl RenderContext {
 
         for shader in pass.shaders.read().iter() {
             let format = frame.format();
+            let sc = self.sample_count();
             let cached = self
                 .render_pipelines
-                .entry((shader.hash, format))
+                .entry((shader.hash, format, sc))
                 .or_insert_with(|| {
                     let layouts =
                         create_bind_group_layouts(&self.device, &shader.storage.read().uniforms);
-                    let pipeline = create_render_pipeline(&self.device, &layouts, shader, format);
+                    let pipeline =
+                        create_render_pipeline(&self.device, &layouts, shader, format, sc);
 
                     RenderPipeline {
                         pipeline,
@@ -423,6 +456,7 @@ fn create_render_pipeline(
     bind_group_layouts: &HashMap<u32, wgpu::BindGroupLayout>,
     shader: &crate::ShaderObject,
     format: wgpu::TextureFormat,
+    sample_count: u32,
 ) -> wgpu::RenderPipeline {
     let mut vs_entry = None;
     let mut fs_entry = None;
@@ -549,7 +583,11 @@ fn create_render_pipeline(
         }),
         primitive: wgpu::PrimitiveState::default(),
         depth_stencil: None,
-        multisample: wgpu::MultisampleState::default(),
+        multisample: wgpu::MultisampleState {
+            count: sample_count,
+            mask: !0,
+            alpha_to_coverage_enabled: false,
+        },
         multiview: None,
         cache: None,
     })
