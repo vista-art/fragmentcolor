@@ -11,11 +11,12 @@ Tasks (click to see details):
 - [x] [03: Sample-count negotiation helper](refactor/03_sample_count.md)
 - [x] [04: Store and propagate sample_count in RenderContext](refactor/04_rendercontext_sample_count.md)
 - [x] [05: Pipeline cache keyed by (ShaderHash, format, samples)](refactor/05_pipeline_cache_key.md)
-- [ ] [06: MSAA render path with resolve](refactor/06_msaa_resolve.md)
-- [ ] [07: Centralized frame acquire retry in Renderer (optional)](refactor/07_renderer_retry.md)
-- [ ] [08: Pooling for transient targets/readback (optional)](refactor/08_pooling.md)
-- [ ] [09: Docs + clippy + fmt sweep](refactor/09_docs_lint.md)
-- [ ] [10: Tests and examples validation](refactor/10_tests_examples.md)
+- [x] [06: MSAA render path with resolve](refactor/06_msaa_resolve.md)
+- [x] [07: TextureTarget MSAA + resolve (optional)](refactor/11_texture_target_msaa.md)
+- [ ] [08: Centralized frame acquire retry in Renderer](refactor/07_renderer_retry.md)
+- [ ] [09: Pooling for transient targets/readback](refactor/08_pooling.md)
+- [ ] [10: Docs + clippy + fmt sweep](refactor/09_docs_lint.md)
+- [ ] [11: Tests and examples validation](refactor/10_tests_examples.md)
 
 Notes
 - “Done” means implemented and committed in this repo.

@@ -49,9 +49,6 @@ impl From<crate::target::error::DisplayError> for PyErr {
 // WASM-specific conversions
 
 #[cfg(wasm)]
-use wasm_bindgen::JsError;
-
-#[cfg(wasm)]
 impl From<wasm_bindgen::JsValue> for FragmentColorError {
     fn from(value: wasm_bindgen::JsValue) -> Self {
         let error_string = if let Some(s) = value.as_string() {
