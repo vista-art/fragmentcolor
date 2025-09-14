@@ -15,7 +15,7 @@ impl HasDisplaySize for HeadlessWindow {
 /// Construct a headless window that can be passed to Renderer::create_target.
 /// This will render using an offscreen Texture under the hood via the renderer's
 /// own fallback path (no surface creation is attempted from here).
-pub async fn headless_window(size: impl Into<Size>) -> HeadlessWindow {
+pub fn headless_window(size: impl Into<Size>) -> HeadlessWindow {
     HeadlessWindow { size: size.into() }
 }
 

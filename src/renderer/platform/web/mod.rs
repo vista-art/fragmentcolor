@@ -2,7 +2,6 @@ use crate::{Frame, Pass, Renderer, Shader, ShaderError, Size};
 use js_sys::Array;
 use lsp_doc::lsp_doc;
 use wasm_bindgen::JsCast;
-use wasm_bindgen::convert::TryFromJsValue;
 use wasm_bindgen::prelude::*;
 pub mod target;
 pub use target::*;
@@ -105,13 +104,13 @@ impl Renderer {
     #[lsp_doc("docs/api/core/renderer/render.md")]
     pub fn render_js(&self, renderable: &JsValue, target: &JsValue) -> Result<(), ShaderError> {
         //
-        // Canvas
-        if let Ok(canvas_target) = CanvasTarget::try_from_js_value(target.clone()) {
-            if let Ok(shader) = Shader::try_from_js_value(renderable.clone()) {
+        // Canvas target
+        if let Ok(canvas_target) = CanvasTarget::try_from(target) {
+            if let Ok(shader) = Shader::try_from(renderable) {
                 return self.render(&shader, &canvas_target);
-            } else if let Ok(pass) = Pass::try_from_js_value(renderable.clone()) {
+            } else if let Ok(pass) = Pass::try_from(renderable) {
                 return self.render(&pass, &canvas_target);
-            } else if let Ok(frame) = Frame::try_from_js_value(renderable.clone()) {
+            } else if let Ok(frame) = Frame::try_from(renderable) {
                 return self.render(&frame, &canvas_target);
             } else if Array::is_array(renderable) {
                 for item in Array::from(renderable) {
@@ -120,13 +119,13 @@ impl Renderer {
                 return Ok(());
             }
         //
-        // Texture
-        } else if let Ok(texture_target) = TextureTarget::try_from_js_value(target.clone()) {
-            if let Ok(shader) = Shader::try_from_js_value(renderable.clone()) {
+        // Texture target
+        } else if let Ok(texture_target) = TextureTarget::try_from(target) {
+            if let Ok(shader) = Shader::try_from(renderable) {
                 return self.render(&shader, &texture_target);
-            } else if let Ok(pass) = Pass::try_from_js_value(renderable.clone()) {
+            } else if let Ok(pass) = Pass::try_from(renderable) {
                 return self.render(&pass, &texture_target);
-            } else if let Ok(frame) = Frame::try_from_js_value(renderable.clone()) {
+            } else if let Ok(frame) = Frame::try_from(renderable) {
                 return self.render(&frame, &texture_target);
             } else if Array::is_array(renderable) {
                 for item in Array::from(renderable) {

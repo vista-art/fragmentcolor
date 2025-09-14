@@ -240,6 +240,25 @@ impl Renderable for Shader {
     }
 }
 
+#[cfg(wasm)]
+impl TryFrom<&wasm_bindgen::JsValue> for Shader {
+    type Error = crate::error::ShaderError;
+
+    fn try_from(value: &wasm_bindgen::JsValue) -> Result<Self, Self::Error> {
+        use js_sys::Reflect;
+        use wasm_bindgen::convert::RefFromWasmAbi;
+
+        let key = wasm_bindgen::JsValue::from_str("__wbg_ptr");
+        let ptr = Reflect::get(value, &key)
+            .map_err(|_| ShaderError::WasmError("Missing __wbg_ptr on Shader".into()))?;
+        let id = ptr
+            .as_f64()
+            .ok_or_else(|| ShaderError::WasmError("Invalid __wbg_ptr for Shader".into()))? as u32;
+        let anchor: <Shader as RefFromWasmAbi>::Anchor = unsafe { <Shader as RefFromWasmAbi>::ref_from_abi(id) };
+        Ok(anchor.clone())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

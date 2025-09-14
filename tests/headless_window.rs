@@ -5,7 +5,7 @@ use fragmentcolor::{Renderer, Target};
 #[test]
 fn create_target_from_headless_window_falls_back_to_texture() {
     let renderer = Renderer::new();
-    let window = pollster::block_on(fragmentcolor::headless_window([32, 24]));
+    let window = fragmentcolor::headless_window([32, 24]);
     let target = pollster::block_on(renderer.create_target(window))
         .expect("create_target(headless) should succeed");
 

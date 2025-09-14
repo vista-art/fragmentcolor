@@ -1,11 +1,13 @@
 use crate::{RenderContext, Size, Target, TargetFrame, WindowTarget};
+use parking_lot::Mutex;
 use std::convert::TryInto;
 use std::sync::Arc;
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
+#[derive(Clone)]
 pub struct CanvasTarget {
-    inner: WindowTarget,
+    inner: Arc<Mutex<WindowTarget>>,
 }
 
 impl CanvasTarget {
@@ -15,7 +17,7 @@ impl CanvasTarget {
         config: wgpu::SurfaceConfiguration,
     ) -> Self {
         Self {
-            inner: WindowTarget::new(context, surface, config),
+            inner: Arc::new(Mutex::new(WindowTarget::new(context, surface, config))),
         }
     }
 }
@@ -47,15 +49,15 @@ impl CanvasTarget {
 
 impl Target for CanvasTarget {
     fn size(&self) -> Size {
-        self.inner.size()
+        self.inner.lock().size()
     }
 
     fn resize(&mut self, size: impl Into<Size>) {
-        self.inner.resize(size);
+        self.inner.lock().resize(size);
     }
 
     fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, wgpu::SurfaceError> {
-        self.inner.get_current_frame()
+        self.inner.lock().get_current_frame()
     }
 
     fn get_image(&self) -> Vec<u8> {
@@ -64,29 +66,30 @@ impl Target for CanvasTarget {
 }
 
 #[wasm_bindgen]
-pub struct TextureTarget(crate::TextureTarget);
+#[derive(Clone)]
+pub struct TextureTarget(Arc<Mutex<crate::TextureTarget>>);
 
 impl From<crate::TextureTarget> for TextureTarget {
     fn from(texture_target: crate::TextureTarget) -> Self {
-        Self(texture_target)
+        Self(Arc::new(Mutex::new(texture_target)))
     }
 }
 
 impl Target for TextureTarget {
     fn size(&self) -> Size {
-        self.0.size()
+        self.0.lock().size()
     }
 
     fn resize(&mut self, size: impl Into<Size>) {
-        self.0.resize(size);
+        self.0.lock().resize(size);
     }
 
     fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, wgpu::SurfaceError> {
-        self.0.get_current_frame()
+        self.0.lock().get_current_frame()
     }
 
     fn get_image(&self) -> Vec<u8> {
-        self.0.get_image()
+        self.0.lock().get_image()
     }
 }
 
@@ -110,5 +113,39 @@ impl TextureTarget {
     pub fn get_image_js(&self) -> js_sys::Uint8Array {
         let data = Target::get_image(self);
         js_sys::Uint8Array::from(data.as_slice())
+    }
+}
+
+#[cfg(wasm)]
+impl TryFrom<&wasm_bindgen::JsValue> for CanvasTarget {
+    type Error = crate::error::ShaderError;
+
+    fn try_from(value: &wasm_bindgen::JsValue) -> Result<Self, Self::Error> {
+        use js_sys::Reflect;
+        use wasm_bindgen::convert::RefFromWasmAbi;
+        let key = wasm_bindgen::JsValue::from_str("__wbg_ptr");
+        let ptr = Reflect::get(value, &key)
+            .map_err(|_| crate::error::ShaderError::WasmError("Missing __wbg_ptr on CanvasTarget".into()))?;
+        let id = ptr.as_f64()
+            .ok_or_else(|| crate::error::ShaderError::WasmError("Invalid __wbg_ptr for CanvasTarget".into()))? as u32;
+        let anchor: <CanvasTarget as RefFromWasmAbi>::Anchor = unsafe { <CanvasTarget as RefFromWasmAbi>::ref_from_abi(id) };
+        Ok(anchor.clone())
+    }
+}
+
+#[cfg(wasm)]
+impl TryFrom<&wasm_bindgen::JsValue> for TextureTarget {
+    type Error = crate::error::ShaderError;
+
+    fn try_from(value: &wasm_bindgen::JsValue) -> Result<Self, Self::Error> {
+        use js_sys::Reflect;
+        use wasm_bindgen::convert::RefFromWasmAbi;
+        let key = wasm_bindgen::JsValue::from_str("__wbg_ptr");
+        let ptr = Reflect::get(value, &key)
+            .map_err(|_| crate::error::ShaderError::WasmError("Missing __wbg_ptr on TextureTarget".into()))?;
+        let id = ptr.as_f64()
+            .ok_or_else(|| crate::error::ShaderError::WasmError("Invalid __wbg_ptr for TextureTarget".into()))? as u32;
+        let anchor: <TextureTarget as RefFromWasmAbi>::Anchor = unsafe { <TextureTarget as RefFromWasmAbi>::ref_from_abi(id) };
+        Ok(anchor.clone())
     }
 }
