@@ -22,7 +22,7 @@ macro_rules! impl_tryfrom_owned_via_ref {
         impl TryFrom<$owned_src> for $dst {
             type Error = $err;
             fn try_from(v: $owned_src) -> Result<$dst, Self::Error> {
-                < $dst as TryFrom<&$owned_src> >::try_from(&v)
+                <$dst as TryFrom<&$owned_src>>::try_from(&v)
             }
         }
     };
