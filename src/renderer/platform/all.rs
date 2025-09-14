@@ -54,15 +54,16 @@ pub fn configure_surface(
     size: &wgpu::Extent3d,
 ) -> wgpu::SurfaceConfiguration {
     let capabilities = surface.get_capabilities(adapter);
+    let format = choose_surface_format(&capabilities);
     let config = wgpu::SurfaceConfiguration {
         usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-        format: capabilities.formats[0].remove_srgb_suffix(),
+        format,
         width: u32::max(size.width, 1),
         height: u32::max(size.height, 1),
         present_mode: wgpu::PresentMode::AutoVsync,
         alpha_mode: capabilities.alpha_modes[0],
         desired_maximum_frame_latency: 2,
-        view_formats: vec![],
+        view_formats: vec![format],
     };
     surface.configure(device, &config);
 
@@ -85,4 +86,35 @@ fn features() -> wgpu::Features {
 
 fn memory_hints() -> wgpu::MemoryHints {
     wgpu::MemoryHints::Performance
+}
+
+/// Prefer a linear (non-sRGB) 8-bit RGBA/BGRA format if available; otherwise, fall back to the
+/// first supported format. We must choose a format that is actually advertised by the surface.
+fn choose_surface_format(capabilities: &wgpu::SurfaceCapabilities) -> wgpu::TextureFormat {
+    // Try preferred linear formats first.
+    if let Some(&fmt) = capabilities.formats.iter().find(|&&f| {
+        matches!(
+            f,
+            wgpu::TextureFormat::Rgba8Unorm | wgpu::TextureFormat::Bgra8Unorm
+        )
+    }) {
+        return fmt;
+    }
+
+    // If no linear 8-bit format is available, accept sRGB variants if present.
+    if let Some(&fmt) = capabilities.formats.iter().find(|&&f| {
+        matches!(
+            f,
+            wgpu::TextureFormat::Rgba8UnormSrgb | wgpu::TextureFormat::Bgra8UnormSrgb
+        )
+    }) {
+        return fmt;
+    }
+
+    // Otherwise, fall back to the first advertised format.
+    capabilities
+        .formats
+        .first()
+        .copied()
+        .unwrap_or(wgpu::TextureFormat::Rgba8Unorm)
 }
