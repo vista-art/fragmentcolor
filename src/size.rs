@@ -37,6 +37,8 @@ impl From<wgpu::Extent3d> for Size {
     }
 }
 
+crate::impl_from_ref!(Size, wgpu::Extent3d);
+
 impl From<Size> for wgpu::Extent3d {
     fn from(size: Size) -> Self {
         Self {
@@ -46,6 +48,8 @@ impl From<Size> for wgpu::Extent3d {
         }
     }
 }
+
+crate::impl_from_ref!(wgpu::Extent3d, Size);
 
 impl From<(u32, u32)> for Size {
     fn from(value: (u32, u32)) -> Self {
@@ -175,6 +179,27 @@ impl From<&Size> for [u32; 3] {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn size_wgpu_ref_conversions() {
+        let e = wgpu::Extent3d {
+            width: 640,
+            height: 480,
+            depth_or_array_layers: 1,
+        };
+        let s: Size = (&e).into();
+        assert_eq!(s.width, 640);
+        assert_eq!(s.height, 480);
+        assert_eq!(s.depth, Some(1));
+
+        let e2: wgpu::Extent3d = (&s).into();
+        assert_eq!(e2, e);
+    }
+}
+
 #[cfg(wasm)]
 impl TryFrom<&wasm_bindgen::JsValue> for Size {
     type Error = crate::error::ShaderError;
@@ -274,6 +299,9 @@ impl TryFrom<&wasm_bindgen::JsValue> for Size {
         ))
     }
 }
+
+#[cfg(wasm)]
+crate::impl_tryfrom_owned_via_ref!(Size, wasm_bindgen::JsValue, crate::error::ShaderError);
 
 #[cfg(python)]
 #[derive(FromPyObject, IntoPyObject)]

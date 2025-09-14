@@ -261,9 +261,49 @@ impl TryFrom<&wasm_bindgen::JsValue> for Shader {
     }
 }
 
+#[cfg(wasm)]
+crate::impl_tryfrom_owned_via_ref!(Shader, wasm_bindgen::JsValue, crate::error::ShaderError);
+
+impl TryFrom<&str> for Shader {
+    type Error = ShaderError;
+    fn try_from(source: &str) -> Result<Self, Self::Error> {
+        Self::new(source)
+    }
+}
+
+impl TryFrom<String> for Shader {
+    type Error = ShaderError;
+    fn try_from(source: String) -> Result<Self, Self::Error> {
+        Self::new(&source)
+    }
+}
+
+impl TryFrom<&String> for Shader {
+    type Error = ShaderError;
+    fn try_from(source: &String) -> Result<Self, Self::Error> {
+        Self::new(source.as_str())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn shader_tryfrom_str_variants() {
+        let good = DEFAULT_SHADER;
+        let s1 = Shader::try_from(good).unwrap();
+        let s2 = Shader::try_from(good.to_string()).unwrap();
+        let s3 = Shader::try_from(&good.to_string()).unwrap();
+
+        // Touch API so they don't get optimized away
+        let _ = s1.list_uniforms();
+        let _ = s2.list_keys();
+        let _ = s3.list_uniforms();
+
+        let bad = "not wgsl";
+        assert!(Shader::try_from(bad).is_err());
+    }
 
     const SHADER: &str = r#"
         struct VertexOutput {

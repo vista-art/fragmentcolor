@@ -55,6 +55,8 @@ pub mod color;
 pub mod doc_link;
 pub mod region;
 pub mod sampler;
+// Macros for reference-forwarding conversions
+mod macros;
 
 pub use {
     color::*, doc_link::*, error::*, frame::*, pass::*, region::*, renderer::*, sampler::*,

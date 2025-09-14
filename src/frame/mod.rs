@@ -18,6 +18,9 @@ pub struct Frame {
     _dependencies: Vec<(usize, usize)>, // @TODO implement directed acyclic graph
 }
 
+#[cfg(wasm)]
+crate::impl_tryfrom_owned_via_ref!(Frame, wasm_bindgen::JsValue, crate::error::ShaderError);
+
 impl Frame {
     #[lsp_doc("docs/api/core/frame/new.md")]
     pub fn new() -> Self {

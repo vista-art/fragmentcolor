@@ -124,6 +124,9 @@ impl TryFrom<&wasm_bindgen::JsValue> for Pass {
     }
 }
 
+#[cfg(wasm)]
+crate::impl_tryfrom_owned_via_ref!(Pass, wasm_bindgen::JsValue, crate::error::ShaderError);
+
 #[derive(Debug)]
 pub struct PassObject {
     pub(crate) name: Arc<str>,
