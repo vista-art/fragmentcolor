@@ -1,7 +1,4 @@
-use crate::{
-    InitializationError, PassObject, ShaderError, ShaderHash, Target, TargetFrame, TextureTarget,
-    shader::Uniform,
-};
+use crate::{PassObject, ShaderHash, Target, TargetFrame, TextureTarget, shader::Uniform};
 use crate::{Size, WindowTarget};
 use dashmap::DashMap;
 use lsp_doc::lsp_doc;
@@ -19,6 +16,9 @@ use pyo3::prelude::*;
 
 pub mod platform;
 pub use platform::*;
+
+pub mod error;
+pub use error::*;
 
 pub mod renderable;
 pub use renderable::*;
@@ -111,11 +111,11 @@ impl Renderer {
         &self,
         renderable: &impl Renderable,
         target: &impl Target,
-    ) -> Result<(), ShaderError> {
+    ) -> Result<(), RendererError> {
         if let Some(context) = self.context.read().as_ref() {
             context.render(renderable, target)
         } else {
-            Err(ShaderError::NoContext())
+            Err(RendererError::NoContext)
         }
     }
 
@@ -212,7 +212,7 @@ impl RenderContext {
         &self,
         renderable: &impl Renderable,
         target: &impl Target,
-    ) -> Result<(), ShaderError> {
+    ) -> Result<(), RendererError> {
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -247,7 +247,7 @@ impl RenderContext {
         encoder: &mut wgpu::CommandEncoder,
         pass: &PassObject,
         frame: &dyn TargetFrame,
-    ) -> Result<(), ShaderError> {
+    ) -> Result<(), RendererError> {
         self.buffer_pool.write().reset();
 
         let load_op = match pass.get_input().load {
@@ -312,7 +312,7 @@ impl RenderContext {
                 let storage = shader.storage.read();
                 let bytes = storage
                     .get_bytes(name)
-                    .ok_or(ShaderError::UniformNotFound(name.clone()))?;
+                    .ok_or(crate::ShaderError::UniformNotFound(name.clone()))?;
 
                 let buffer_location = {
                     let mut buffer_pool = self.buffer_pool.write();
@@ -339,7 +339,7 @@ impl RenderContext {
             let mut bind_groups: Vec<(u32, wgpu::BindGroup)> = Vec::new();
             for (group, entries) in bind_group_entries {
                 let Some(layout) = cached.bind_group_layouts.get(&group) else {
-                    return Err(ShaderError::ParseError(format!(
+                    return Err(RendererError::BindGroupLayoutError(format!(
                         "Missing bind group layout for group {}",
                         group
                     )));
@@ -369,7 +369,7 @@ impl RenderContext {
         &self,
         _encoder: &mut wgpu::CommandEncoder,
         _pass: &PassObject,
-    ) -> Result<(), ShaderError> {
+    ) -> Result<(), RendererError> {
         Ok(()) // @TODO later
     }
 }

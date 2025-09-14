@@ -1,4 +1,4 @@
-use crate::error::ShaderError;
+use crate::shader::error::ShaderError;
 use naga::{Module, ScalarKind, Type, TypeInner, VectorSize};
 
 #[cfg(python)]
@@ -649,7 +649,7 @@ crate::impl_from_ref!(wgpu::Extent3d, UniformData);
 
 #[cfg(wasm)]
 impl TryFrom<&wasm_bindgen::JsValue> for UniformData {
-    type Error = crate::error::ShaderError;
+    type Error = crate::shader::error::ShaderError;
 
     fn try_from(value: &wasm_bindgen::JsValue) -> Result<Self, Self::Error> {
         use js_sys::{Array, Float32Array, Int32Array, Uint32Array};
@@ -674,7 +674,7 @@ impl TryFrom<&wasm_bindgen::JsValue> for UniformData {
             return Ok(b.into());
         }
 
-        Err(crate::error::ShaderError::TypeMismatch(
+        Err(crate::shader::error::ShaderError::TypeMismatch(
             "Cannot convert JavaScript value to UniformData".into(),
         ))
     }
@@ -684,17 +684,17 @@ impl TryFrom<&wasm_bindgen::JsValue> for UniformData {
 crate::impl_tryfrom_owned_via_ref!(
     UniformData,
     wasm_bindgen::JsValue,
-    crate::error::ShaderError
+    crate::shader::error::ShaderError
 );
 
 #[cfg(wasm)]
 impl TryFrom<&js_sys::Float32Array> for UniformData {
-    type Error = crate::error::ShaderError;
+    type Error = crate::shader::error::ShaderError;
 
     fn try_from(arr: &js_sys::Float32Array) -> Result<Self, Self::Error> {
         let len = arr.length() as usize;
         if len > 16 {
-            return Err(crate::error::ShaderError::TypeMismatch(format!(
+            return Err(crate::shader::error::ShaderError::TypeMismatch(format!(
                 "Unsupported Float32Array length: {}",
                 len
             )));
@@ -723,7 +723,7 @@ impl TryFrom<&js_sys::Float32Array> for UniformData {
                 }
                 Ok(mat.into())
             }
-            _ => Err(crate::error::ShaderError::TypeMismatch(format!(
+            _ => Err(crate::shader::error::ShaderError::TypeMismatch(format!(
                 "Unsupported Float32Array length: {}",
                 len
             ))),
@@ -733,12 +733,12 @@ impl TryFrom<&js_sys::Float32Array> for UniformData {
 
 #[cfg(wasm)]
 impl TryFrom<&js_sys::Int32Array> for UniformData {
-    type Error = crate::error::ShaderError;
+    type Error = crate::shader::error::ShaderError;
 
     fn try_from(arr: &js_sys::Int32Array) -> Result<Self, Self::Error> {
         let len = arr.length() as usize;
         if len > 4 {
-            return Err(crate::error::ShaderError::TypeMismatch(format!(
+            return Err(crate::shader::error::ShaderError::TypeMismatch(format!(
                 "Unsupported Int32Array length: {}",
                 len
             )));
@@ -753,7 +753,7 @@ impl TryFrom<&js_sys::Int32Array> for UniformData {
             2 => Ok([values[0], values[1]].into()),
             3 => Ok([values[0], values[1], values[2]].into()),
             4 => Ok([values[0], values[1], values[2], values[3]].into()),
-            _ => Err(crate::error::ShaderError::TypeMismatch(format!(
+            _ => Err(crate::shader::error::ShaderError::TypeMismatch(format!(
                 "Unsupported Int32Array length: {}",
                 len
             ))),
@@ -763,12 +763,12 @@ impl TryFrom<&js_sys::Int32Array> for UniformData {
 
 #[cfg(wasm)]
 impl TryFrom<&js_sys::Uint32Array> for UniformData {
-    type Error = crate::error::ShaderError;
+    type Error = crate::shader::error::ShaderError;
 
     fn try_from(arr: &js_sys::Uint32Array) -> Result<Self, Self::Error> {
         let len = arr.length() as usize;
         if len > 4 {
-            return Err(crate::error::ShaderError::TypeMismatch(format!(
+            return Err(crate::shader::error::ShaderError::TypeMismatch(format!(
                 "Unsupported Uint32Array length: {}",
                 len
             )));
@@ -783,7 +783,7 @@ impl TryFrom<&js_sys::Uint32Array> for UniformData {
             2 => Ok([values[0], values[1]].into()),
             3 => Ok([values[0], values[1], values[2]].into()),
             4 => Ok([values[0], values[1], values[2], values[3]].into()),
-            _ => Err(crate::error::ShaderError::TypeMismatch(format!(
+            _ => Err(crate::shader::error::ShaderError::TypeMismatch(format!(
                 "Unsupported Uint32Array length: {}",
                 len
             ))),
@@ -793,17 +793,17 @@ impl TryFrom<&js_sys::Uint32Array> for UniformData {
 
 #[cfg(wasm)]
 impl TryFrom<&js_sys::Array> for UniformData {
-    type Error = crate::error::ShaderError;
+    type Error = crate::shader::error::ShaderError;
 
     fn try_from(array: &js_sys::Array) -> Result<Self, Self::Error> {
         let length = array.length();
         if length == 0 {
-            return Err(crate::error::ShaderError::TypeMismatch(
+            return Err(crate::shader::error::ShaderError::TypeMismatch(
                 "Empty array".into(),
             ));
         }
         if length > 16 {
-            return Err(crate::error::ShaderError::TypeMismatch(format!(
+            return Err(crate::shader::error::ShaderError::TypeMismatch(format!(
                 "Unsupported array length: {}",
                 length
             )));
@@ -818,7 +818,7 @@ impl TryFrom<&js_sys::Array> for UniformData {
                     *val = n;
                 }
                 None => {
-                    return Err(crate::error::ShaderError::TypeMismatch(
+                    return Err(crate::shader::error::ShaderError::TypeMismatch(
                         "Array contains non-numeric values".into(),
                     ));
                 }
@@ -851,7 +851,7 @@ impl TryFrom<&js_sys::Array> for UniformData {
                 }
                 Ok(mat.into())
             }
-            _ => Err(crate::error::ShaderError::TypeMismatch(format!(
+            _ => Err(crate::shader::error::ShaderError::TypeMismatch(format!(
                 "Unsupported array length: {}",
                 floats.len()
             ))),

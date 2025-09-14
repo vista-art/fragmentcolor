@@ -13,7 +13,7 @@ pub struct CanvasTarget {
 crate::impl_tryfrom_owned_via_ref!(
     TextureTarget,
     wasm_bindgen::JsValue,
-    crate::error::ShaderError
+    crate::shader::error::ShaderError
 );
 
 impl CanvasTarget {
@@ -124,17 +124,19 @@ impl TextureTarget {
 
 #[cfg(wasm)]
 impl TryFrom<&wasm_bindgen::JsValue> for CanvasTarget {
-    type Error = crate::error::ShaderError;
+    type Error = crate::shader::error::ShaderError;
 
     fn try_from(value: &wasm_bindgen::JsValue) -> Result<Self, Self::Error> {
         use js_sys::Reflect;
         use wasm_bindgen::convert::RefFromWasmAbi;
         let key = wasm_bindgen::JsValue::from_str("__wbg_ptr");
         let ptr = Reflect::get(value, &key).map_err(|_| {
-            crate::error::ShaderError::WasmError("Missing __wbg_ptr on CanvasTarget".into())
+            crate::shader::error::ShaderError::WasmError("Missing __wbg_ptr on CanvasTarget".into())
         })?;
         let id = ptr.as_f64().ok_or_else(|| {
-            crate::error::ShaderError::WasmError("Invalid __wbg_ptr for CanvasTarget".into())
+            crate::shader::error::ShaderError::WasmError(
+                "Invalid __wbg_ptr for CanvasTarget".into(),
+            )
         })? as u32;
         let anchor: <CanvasTarget as RefFromWasmAbi>::Anchor =
             unsafe { <CanvasTarget as RefFromWasmAbi>::ref_from_abi(id) };
@@ -145,22 +147,26 @@ impl TryFrom<&wasm_bindgen::JsValue> for CanvasTarget {
 crate::impl_tryfrom_owned_via_ref!(
     CanvasTarget,
     wasm_bindgen::JsValue,
-    crate::error::ShaderError
+    crate::shader::error::ShaderError
 );
 
 #[cfg(wasm)]
 impl TryFrom<&wasm_bindgen::JsValue> for TextureTarget {
-    type Error = crate::error::ShaderError;
+    type Error = crate::shader::error::ShaderError;
 
     fn try_from(value: &wasm_bindgen::JsValue) -> Result<Self, Self::Error> {
         use js_sys::Reflect;
         use wasm_bindgen::convert::RefFromWasmAbi;
         let key = wasm_bindgen::JsValue::from_str("__wbg_ptr");
         let ptr = Reflect::get(value, &key).map_err(|_| {
-            crate::error::ShaderError::WasmError("Missing __wbg_ptr on TextureTarget".into())
+            crate::shader::error::ShaderError::WasmError(
+                "Missing __wbg_ptr on TextureTarget".into(),
+            )
         })?;
         let id = ptr.as_f64().ok_or_else(|| {
-            crate::error::ShaderError::WasmError("Invalid __wbg_ptr for TextureTarget".into())
+            crate::shader::error::ShaderError::WasmError(
+                "Invalid __wbg_ptr for TextureTarget".into(),
+            )
         })? as u32;
         let anchor: <TextureTarget as RefFromWasmAbi>::Anchor =
             unsafe { <TextureTarget as RefFromWasmAbi>::ref_from_abi(id) };

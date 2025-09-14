@@ -1,4 +1,4 @@
-use crate::error::DisplayError;
+use crate::target::error::DisplayError;
 use wgpu::rwh::{DisplayHandle, HandleError, HasDisplayHandle, HasWindowHandle, WindowHandle};
 
 #[derive(Clone, Copy)]

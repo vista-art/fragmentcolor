@@ -1,5 +1,6 @@
 use super::{DEFAULT_FRAGMENT_SHADER, DEFAULT_VERTEX_SHADER};
-use crate::{ShaderError, ShaderObject};
+use crate::ShaderObject;
+use crate::shader::error::ShaderError;
 
 pub(super) fn load_shader(source: &str) -> Result<ShaderObject, ShaderError> {
     if source.len() < 6 {
