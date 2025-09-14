@@ -102,14 +102,13 @@ impl Renderer {
         size: impl Into<Size>,
     ) -> Result<TextureTarget, InitializationError> {
         let context = self.context(None).await?;
-        // Negotiate effective sample count for offscreen (default single-sample for now)
         if let Some(adapter) = self.adapter.read().as_ref() {
-            let sc = crate::renderer::platform::all::pick_sample_count(
+            let sample_count = crate::renderer::platform::all::pick_sample_count(
                 adapter,
-                1,
+                4,
                 wgpu::TextureFormat::Rgba8Unorm,
             );
-            context.set_sample_count(sc);
+            context.set_sample_count(sample_count);
         } else {
             context.set_sample_count(1);
         }
@@ -250,7 +249,7 @@ impl RenderContext {
             if pass.is_compute() {
                 self.process_compute_pass(&mut encoder, pass)?
             } else {
-                self.process_render_pass(&mut encoder, pass, frame.as_ref())?
+                self.process_render_pass(&mut encoder, pass, frame.as_ref(), target.size().into())?
             }
         }
 
@@ -278,6 +277,7 @@ impl RenderContext {
         encoder: &mut wgpu::CommandEncoder,
         pass: &PassObject,
         frame: &dyn TargetFrame,
+        size: wgpu::Extent3d,
     ) -> Result<(), RendererError> {
         self.buffer_pool.write().reset();
 
@@ -286,9 +286,36 @@ impl RenderContext {
             false => wgpu::LoadOp::Clear(pass.get_input().color.into()),
         };
 
+        // Choose color attachment: direct frame view (single-sample) or MSAA view with resolve
+        let sc = self.sample_count();
+        let fmt = frame.format();
+        let mut view: &wgpu::TextureView = frame.view();
+        let mut resolve_target: Option<&wgpu::TextureView> = None;
+        // Keep MSAA resources alive for the duration of the pass
+        let mut _msaa_tex: Option<wgpu::Texture> = None;
+        let mut _msaa_view: Option<wgpu::TextureView> = None;
+
+        if sc > 1 {
+            let tex = self.device.create_texture(&wgpu::TextureDescriptor {
+                label: Some("MSAA Color"),
+                size,
+                mip_level_count: 1,
+                sample_count: sc,
+                dimension: wgpu::TextureDimension::D2,
+                format: fmt,
+                view_formats: &[],
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            });
+            let v = tex.create_view(&wgpu::TextureViewDescriptor::default());
+            _msaa_view = Some(v);
+            _msaa_tex = Some(tex);
+            view = _msaa_view.as_ref().unwrap();
+            resolve_target = Some(frame.view());
+        }
+
         let attachments = &[Some(wgpu::RenderPassColorAttachment {
-            view: frame.view(),
-            resolve_target: None,
+            view,
+            resolve_target,
             ops: wgpu::Operations {
                 load: load_op,
                 store: wgpu::StoreOp::Store,
@@ -591,4 +618,154 @@ fn create_render_pipeline(
         multiview: None,
         cache: None,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::target::TargetFrame;
+    use crate::{Pass, Shader};
+
+    struct TestFrame {
+        view: wgpu::TextureView,
+        format: wgpu::TextureFormat,
+    }
+
+    impl TargetFrame for TestFrame {
+        fn view(&self) -> &wgpu::TextureView {
+            &self.view
+        }
+        fn format(&self) -> wgpu::TextureFormat {
+            self.format
+        }
+        fn present(self: Box<Self>) {}
+        fn auto_present(&self) -> bool {
+            false
+        }
+    }
+
+    async fn create_device_and_queue() -> (wgpu::Adapter, wgpu::Device, wgpu::Queue) {
+        let instance = platform::all::create_instance().await;
+        let adapter = platform::all::request_adapter(&instance, None)
+            .await
+            .expect("adapter");
+        let (device, queue) = platform::all::request_device(&adapter)
+            .await
+            .expect("device");
+        (adapter, device, queue)
+    }
+
+    fn create_test_frame(
+        device: &wgpu::Device,
+        size: wgpu::Extent3d,
+        format: wgpu::TextureFormat,
+    ) -> TestFrame {
+        let tex = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("Test Resolve Target"),
+            size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format,
+            view_formats: &[],
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+        });
+        let view = tex.create_view(&wgpu::TextureViewDescriptor::default());
+        // Keep texture alive by capturing it in the view's lifetime (wgpu keeps texture alive internally)
+        // Explicit binding not necessary here.
+        TestFrame { view, format }
+    }
+
+    #[test]
+    fn sample_count_set_and_get() {
+        pollster::block_on(async move {
+            let (_adapter, device, queue) = create_device_and_queue().await;
+            let ctx = RenderContext::new(device, queue);
+
+            assert_eq!(ctx.sample_count(), 1);
+            ctx.set_sample_count(0);
+            assert_eq!(ctx.sample_count(), 1);
+            ctx.set_sample_count(3);
+            assert_eq!(ctx.sample_count(), 3);
+            ctx.set_sample_count(4);
+            assert_eq!(ctx.sample_count(), 4);
+        });
+    }
+
+    #[test]
+    fn pipeline_cache_keyed_by_sample_count() {
+        pollster::block_on(async move {
+            let (adapter, device, queue) = create_device_and_queue().await;
+            let ctx = RenderContext::new(device, queue);
+
+            let fmt = wgpu::TextureFormat::Rgba8Unorm;
+            let size = wgpu::Extent3d {
+                width: 8,
+                height: 8,
+                depth_or_array_layers: 1,
+            };
+            let frame = create_test_frame(&ctx.device, size, fmt);
+
+            let pass = Pass::from_shader("single", &Shader::default());
+            let pass = pass.passes().into_iter().next().expect("pass");
+            let shader_hash = pass
+                .shaders
+                .read()
+                .first()
+                .map(|shader| shader.hash)
+                .expect("shader hash");
+
+            // sc = 1
+            ctx.set_sample_count(1);
+            let mut encoder = ctx
+                .device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("Test Encoder 1"),
+                });
+            ctx.process_render_pass(&mut encoder, pass, &frame, size)
+                .expect("render pass sc=1");
+            assert!(ctx.render_pipelines.contains_key(&(shader_hash, fmt, 1)));
+
+            // pick a supported msaa (>1) if any
+            let flags = adapter.get_texture_format_features(fmt).flags;
+            let sc2 = if flags.sample_count_supported(4) {
+                4
+            } else if flags.sample_count_supported(2) {
+                2
+            } else {
+                1
+            };
+
+            if sc2 > 1 {
+                ctx.set_sample_count(sc2);
+                let mut encoder2 =
+                    ctx.device
+                        .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                            label: Some("Test Encoder 2"),
+                        });
+                ctx.process_render_pass(&mut encoder2, pass, &frame, size)
+                    .expect("render pass sc>1");
+                assert!(ctx.render_pipelines.contains_key(&(shader_hash, fmt, sc2)));
+                // Ensure entries are distinct keys
+                assert_ne!(sc2, 1);
+            }
+        });
+    }
+
+    #[test]
+    fn pick_sample_count_properties() {
+        pollster::block_on(async move {
+            let (adapter, _device, _queue) = create_device_and_queue().await;
+            let fmt = wgpu::TextureFormat::Rgba8Unorm;
+
+            // wanted = 0 -> 1
+            let s0 = platform::all::pick_sample_count(&adapter, 0, fmt);
+            assert_eq!(s0, 1);
+
+            // wanted = 5 -> power of two <= 5 and supported or halved down to supported
+            let s5 = platform::all::pick_sample_count(&adapter, 5, fmt);
+            assert!((1..=5).contains(&s5));
+            assert!(s5.is_power_of_two());
+        });
+    }
 }
