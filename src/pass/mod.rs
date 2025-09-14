@@ -38,7 +38,7 @@ pub enum PassType {
     Render,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[cfg_attr(python, pyclass)]
 #[cfg_attr(wasm, wasm_bindgen)]
 #[lsp_doc("docs/api/core/pass/pass.md")]

@@ -49,9 +49,6 @@ struct RenderPipeline {
 pub struct Renderer {
     instance: RwLock<Option<Arc<wgpu::Instance>>>,
     adapter: RwLock<Option<wgpu::Adapter>>,
-
-    /// The graphics context is lazily initialized when
-    /// create_target() or render_image() is called.
     context: RwLock<Option<Arc<RenderContext>>>,
 }
 
@@ -104,7 +101,7 @@ impl Renderer {
         size: impl Into<Size>,
     ) -> Result<TextureTarget, InitializationError> {
         let context = self.context(None).await?;
-        let texture = TextureTarget::new(context, size.into());
+        let texture = TextureTarget::new(context, size.into(), wgpu::TextureFormat::Rgba8Unorm);
 
         Ok(texture)
     }
@@ -222,7 +219,9 @@ impl RenderContext {
                 label: Some("Command Encoder"),
             });
 
+        log::info!("[render] before get_current_frame");
         let frame = target.get_current_frame()?;
+        log::info!("[render] got current frame");
 
         for pass in renderable.passes() {
             if pass.is_compute() {
@@ -266,13 +265,19 @@ impl RenderContext {
             depth_slice: None,
         })];
 
-        let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+        let descriptor = wgpu::RenderPassDescriptor {
             label: Some(&format!("Render Pass: {}", pass.name.clone())),
             color_attachments: attachments,
             depth_stencil_attachment: None,
             timestamp_writes: None,
             occlusion_query_set: None,
-        });
+        };
+        log::info!(
+            "[render] !!!!!!! calling begin_render_pass with {:?}",
+            &descriptor
+        );
+        let mut render_pass = encoder.begin_render_pass(&descriptor);
+        log::info!("[render] begin_render_pass OK");
 
         // Defaults to Color::TRANSPARENT
         // render_pass.set_blend_constant(wgpu::Color::WHITE);

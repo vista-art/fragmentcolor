@@ -1,11 +1,9 @@
 use crate::{Frame, Pass, Renderer, Shader, ShaderError, Size};
+use js_sys::Array;
 use lsp_doc::lsp_doc;
-use std::convert::TryInto;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::convert::TryFromJsValue;
 use wasm_bindgen::prelude::*;
-use js_sys::Array;
-
 pub mod target;
 pub use target::*;
 
@@ -90,27 +88,10 @@ impl Renderer {
 
     #[wasm_bindgen(js_name = "createTextureTarget")]
     #[lsp_doc("docs/api/core/renderer/create_texture_target.md")]
-    pub async fn create_texture_target_js(&self, size: JsValue) -> Result<TextureTarget, JsError> {
-        // Accept either a JS array (e.g., [w, h] or [w, h, d]), a typed array, a plain object
-        // with width/height[/depth], or an exported Size instance
+    pub async fn create_texture_target_js(&self, size: &JsValue) -> Result<TextureTarget, JsError> {
         let size: Size = size
             .try_into()
             .map_err(|e: crate::error::ShaderError| JsError::new(&format!("{e}")))?;
-
-        // Ensure a compatible surface exists before requesting an adapter on engines
-        // that require it (notably WebGL fallback). We do this by creating a small
-        // OffscreenCanvas-backed surface once, which initializes the context and device.
-        {
-            let w = u32::max(size.width, 1);
-            let h = u32::max(size.height, 1);
-            let canvas = web_sys::OffscreenCanvas::new(w.into(), h.into())
-                .map_err(|_| JsError::new("Failed to create OffscreenCanvas"))?;
-            // Ignore the returned CanvasTarget; we only need to initialize the context
-            // inside the renderer. Drop the artifacts immediately after.
-            let _ = self
-                .create_surface(wgpu::SurfaceTarget::OffscreenCanvas(canvas), size.into())
-                .await;
-        }
 
         let target = self
             .create_texture_target(size)
@@ -122,75 +103,41 @@ impl Renderer {
 
     #[wasm_bindgen(js_name = "render")]
     #[lsp_doc("docs/api/core/renderer/render.md")]
-    pub fn render_js(&self, renderable: JsValue, target: JsValue) -> Result<(), ShaderError> {
-        // Helper: render a JS array of (Pass | Shader) by collecting into Vec<Pass>
-        fn render_array(
-            renderer: &Renderer,
-            arr: &Array,
-            target_canvas: Option<&CanvasTarget>,
-            target_tex: Option<&TextureTarget>,
-        ) -> Result<(), ShaderError> {
-            let mut passes: Vec<Pass> = Vec::with_capacity(arr.length() as usize);
-            for v in arr.iter() {
-                if let Ok(p) = Pass::try_from_js_value(v.clone()) {
-                    passes.push(p);
-                    continue;
-                }
-                if let Ok(s) = Shader::try_from_js_value(v.clone()) {
-                    // Wrap bare shaders into single-pass renders for parity
-                    let p = Pass::from_shader("scripted", &s);
-                    passes.push(p);
-                    continue;
-                }
-                return Err(ShaderError::WasmError(
-                    "Array items must be Pass or Shader".to_string(),
-                ));
-            }
-            if let Some(ct) = target_canvas { return renderer.render(&passes, ct); }
-            if let Some(tt) = target_tex { return renderer.render(&passes, tt); }
-            Err(ShaderError::WasmError("Invalid target".to_string()))
-        }
-
+    pub fn render_js(&self, renderable: &JsValue, target: &JsValue) -> Result<(), ShaderError> {
+        //
+        // Canvas
         if let Ok(canvas_target) = CanvasTarget::try_from_js_value(target.clone()) {
-            // Array inputs: (Pass | Shader)[]
-            if Array::is_array(&renderable) {
-                let arr = Array::from(&renderable);
-                return render_array(self, &arr, Some(&canvas_target), None);
-            }
-            // Single inputs
             if let Ok(shader) = Shader::try_from_js_value(renderable.clone()) {
                 return self.render(&shader, &canvas_target);
             } else if let Ok(pass) = Pass::try_from_js_value(renderable.clone()) {
                 return self.render(&pass, &canvas_target);
-            } else if let Ok(frame) = Frame::try_from_js_value(renderable) {
+            } else if let Ok(frame) = Frame::try_from_js_value(renderable.clone()) {
                 return self.render(&frame, &canvas_target);
-            } else {
-                return Err(ShaderError::WasmError(
-                    "Invalid object type in render".to_string(),
-                ));
-            };
-        } else if let Ok(texture_target) = TextureTarget::try_from_js_value(target) {
-            // Array inputs: (Pass | Shader)[]
-            if Array::is_array(&renderable) {
-                let arr = Array::from(&renderable);
-                return render_array(self, &arr, None, Some(&texture_target));
+            } else if Array::is_array(renderable) {
+                for item in Array::from(renderable) {
+                    self.render_js(&item, target)?;
+                }
+                return Ok(());
             }
-            // Single inputs
+        //
+        // Texture
+        } else if let Ok(texture_target) = TextureTarget::try_from_js_value(target.clone()) {
             if let Ok(shader) = Shader::try_from_js_value(renderable.clone()) {
                 return self.render(&shader, &texture_target);
             } else if let Ok(pass) = Pass::try_from_js_value(renderable.clone()) {
                 return self.render(&pass, &texture_target);
-            } else if let Ok(frame) = Frame::try_from_js_value(renderable) {
+            } else if let Ok(frame) = Frame::try_from_js_value(renderable.clone()) {
                 return self.render(&frame, &texture_target);
-            } else {
-                return Err(ShaderError::WasmError(
-                    "Invalid object type in render".to_string(),
-                ));
-            };
-        } else {
-            return Err(ShaderError::WasmError(
-                "Invalid target type in render".to_string(),
-            ));
+            } else if Array::is_array(renderable) {
+                for item in Array::from(renderable) {
+                    self.render_js(&item, target)?;
+                }
+                return Ok(());
+            }
         }
+
+        Err(ShaderError::WasmError(
+            "Invalid target type in render".to_string(),
+        ))
     }
 }
