@@ -13,6 +13,7 @@ const ARTIFACT_DIR = process.env.ARTIFACT_DIR || path.join(process.cwd(), 'platf
 
   const common = ['--no-sandbox'];
 
+  // Chromium flags tuned for GPU/WebGPU in headless based on latest guidance
   const args = isMac
     ? [
         ...common,
@@ -27,8 +28,9 @@ const ARTIFACT_DIR = process.env.ARTIFACT_DIR || path.join(process.cwd(), 'platf
         ...common,
         '--ignore-gpu-blocklist',
         '--enable-unsafe-webgpu',
-        '--ozone-platform=x11',
-        '--enable-features=Vulkan,VulkanFromANGLE,DefaultANGLEVulkan',
+        '--use-angle=vulkan',
+        '--enable-features=Vulkan',
+        '--disable-vulkan-surface',
       ]
     : [
         ...common,
@@ -38,6 +40,8 @@ const ARTIFACT_DIR = process.env.ARTIFACT_DIR || path.join(process.cwd(), 'platf
   const browser = await chromium.launch({
     // Use new headless mode which has better WebGPU support
     headless: true,
+    // Prevent Playwright from injecting legacy GPU-disabling defaults
+    ignoreDefaultArgs: ['--disable-gpu'],
     args,
   });
   const page = await browser.newPage();
@@ -69,6 +73,20 @@ const ARTIFACT_DIR = process.env.ARTIFACT_DIR || path.join(process.cwd(), 'platf
   });
 
   await page.goto(url, { waitUntil: 'load', timeout: 60000 });
+
+  // Optional: probe WebGPU to report adapter details if available
+  try {
+    const probe = await page.evaluate(async () => {
+      if (!('gpu' in navigator)) return { supported: false };
+      const adapter = await navigator.gpu.requestAdapter();
+      if (!adapter) return { supported: true, gotAdapter: false };
+      const info = { name: adapter.name, features: Array.from(adapter.features || []) };
+      // Some implementations expose isFallbackAdapter
+      if ('isFallbackAdapter' in adapter) info.isFallbackAdapter = adapter.isFallbackAdapter;
+      return { supported: true, gotAdapter: true, info };
+    });
+    console.log('[gpu-probe]', JSON.stringify(probe));
+  } catch {}
 
   // Prefer waiting for the success message rather than fixed sleep
   try {
