@@ -1,4 +1,4 @@
-use crate::{Frame, Pass, Renderer, Shader, RendererError, Size};
+use crate::{Frame, Pass, Renderer, RendererError, Shader, Size};
 use js_sys::Array;
 use lsp_doc::lsp_doc;
 use wasm_bindgen::JsCast;
