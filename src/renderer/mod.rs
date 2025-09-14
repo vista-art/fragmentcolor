@@ -30,6 +30,9 @@ pub use texture::*;
 mod buffer_pool;
 use buffer_pool::BufferPool;
 
+mod readback_pool;
+use readback_pool::ReadbackBufferPool;
+
 /// The Renderer accepts a generic window handle as input
 /// that must report its display size.
 pub trait HasDisplaySize {
@@ -207,6 +210,7 @@ pub struct RenderContext {
     // Cache RenderPipelines by (shader hash, target format, sample count)
     render_pipelines: DashMap<(ShaderHash, wgpu::TextureFormat, u32), RenderPipeline>,
     buffer_pool: RwLock<BufferPool>,
+    pub(crate) readback_pool: RwLock<ReadbackBufferPool>,
     //
     // @TODO
     // _compute_pipelines: DashMap<String, wgpu::ComputePipeline>,
@@ -226,6 +230,7 @@ impl RenderContext {
             sample_count: AtomicU32::new(1),
             render_pipelines: DashMap::new(),
             buffer_pool: RwLock::new(buffer_pool),
+            readback_pool: RwLock::new(ReadbackBufferPool::new("Readback Buffer Pool", 8)),
         }
     }
 
@@ -242,7 +247,7 @@ impl RenderContext {
             });
 
         log::info!("[render] before get_current_frame");
-        let frame = target.get_current_frame()?;
+        let frame = self.try_get_frame_with_retry(target)?;
         log::info!("[render] got current frame");
 
         for pass in renderable.passes() {
@@ -260,6 +265,23 @@ impl RenderContext {
         }
 
         Ok(())
+    }
+
+    /// Try to get a frame once, and on Lost/Outdated, retry exactly once.
+    /// This is a centralized, generic helper; specific targets may still
+    /// perform their own recovery internally (e.g., WindowTarget).
+    fn try_get_frame_with_retry(
+        &self,
+        target: &impl Target,
+    ) -> Result<Box<dyn TargetFrame>, wgpu::SurfaceError> {
+        match target.get_current_frame() {
+            Ok(f) => Ok(f),
+            Err(wgpu::SurfaceError::Lost) | Err(wgpu::SurfaceError::Outdated) => {
+                // Retry exactly once.
+                target.get_current_frame()
+            }
+            Err(e) => Err(e),
+        }
     }
 }
 
@@ -619,6 +641,9 @@ fn create_render_pipeline(
         cache: None,
     })
 }
+
+#[cfg(test)]
+mod readback_pool_tests;
 
 #[cfg(test)]
 mod tests {
