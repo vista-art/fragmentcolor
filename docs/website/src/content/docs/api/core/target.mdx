@@ -34,19 +34,17 @@ let renderer = Renderer::new();
 // We officially support Winit. Check the examples folder for details.
 let window = fragmentcolor::headless_window([800, 600]);
 
-// You can create multiple targets from the same Renderer.
 let target = renderer.create_target(window).await?;
-let target2 = renderer.create_target(window).await?;
 
 // To animate, render again in your event loop...
 renderer.render(&Shader::default(), &target)?;
-renderer.render(&Shader::default(), &target2)?;
+renderer.render(&Shader::default(), &target)?;
 
  Ok(())
  }
  fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 19-21}"
+lang="rust" meta="collapse={1-1, 17-19}"
 />
 
 </TabItem>
@@ -63,13 +61,11 @@ const renderer = new Renderer();
 // We officially support Winit. Check the examples folder for details.;
 const canvas = document.createElement('canvas');
 
-// You can create multiple targets from the same Renderer.;
 const target = await renderer.createTarget(canvas);
-const target2 = await renderer.createTarget(canvas);
 
 // To animate, render again in your event loop...;
 renderer.render(Shader.default(), target);
-renderer.render(Shader.default(), target2);
+renderer.render(Shader.default(), target);
 
 `}
 lang="js"
@@ -90,13 +86,11 @@ renderer = Renderer()
 # We officially support Winit. Check the examples folder for details.
 canvas = RenderCanvas(size=(800, 600))
 
-# You can create multiple targets from the same Renderer.
 target = renderer.create_target(canvas)
-target2 = renderer.create_target(canvas)
 
 # To animate, render again in your event loop...
 renderer.render(Shader.default(), target)
-renderer.render(Shader.default(), target2)
+renderer.render(Shader.default(), target)
 
 `}
 lang="python"

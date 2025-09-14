@@ -41,7 +41,9 @@ naga = { version = "26", features = ["wgsl-in", "glsl-in"] }
 # naga_oil = { version = "0.19" }
 
 # Serialization
-csscolorparser = { version = "0.7", default-features = false, features = ["named-colors"] }
+csscolorparser = { version = "0.7", default-features = false, features = [
+    "named-colors",
+] }
 
 # Asset loading
 image = { version = "0.25", default-features = false, features = [
@@ -113,4 +115,5 @@ quote = "1.0"
 
 [dev-dependencies]
 fastrand = "2"
-pollster = { version = "0.4" }
+pollster = "0.4"
+wasm-bindgen-test = "0.3"

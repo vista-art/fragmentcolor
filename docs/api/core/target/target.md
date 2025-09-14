@@ -21,13 +21,11 @@ let renderer = Renderer::new();
 // We officially support Winit. Check the examples folder for details.
 let window = fragmentcolor::headless_window([800, 600]);
 
-// You can create multiple targets from the same Renderer.
 let target = renderer.create_target(window).await?;
-let target2 = renderer.create_target(window).await?;
 
 // To animate, render again in your event loop...
 renderer.render(&Shader::default(), &target)?;
-renderer.render(&Shader::default(), &target2)?;
+renderer.render(&Shader::default(), &target)?;
 
 # Ok(())
 # }

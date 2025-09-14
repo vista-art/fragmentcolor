@@ -101,7 +101,8 @@ impl Renderer {
         size: impl Into<Size>,
     ) -> Result<TextureTarget, InitializationError> {
         let context = self.context(None).await?;
-        let texture = TextureTarget::new(context, size.into(), wgpu::TextureFormat::Rgba8Unorm);
+        // On WebGPU/Dawn some drivers are stricter; prefer BGRA8 to match canvas default and maximize compatibility.
+        let texture = TextureTarget::new(context, size.into(), wgpu::TextureFormat::Bgra8Unorm);
 
         Ok(texture)
     }
