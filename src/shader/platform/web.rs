@@ -87,7 +87,7 @@ impl Shader {
 
     #[wasm_bindgen(js_name = "set")]
     #[lsp_doc("docs/api/core/shader/set.md")]
-    pub fn set_js(&self, key: &str, value: JsValue) -> Result<(), ShaderError> {
+    pub fn set_js(&self, key: &str, value: &JsValue) -> Result<(), ShaderError> {
         let uniform_data: UniformData = value.try_into()?;
         self.object.set(key, uniform_data)
     }

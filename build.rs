@@ -372,9 +372,12 @@ struct ObjectProperty {
             )
         });
         (
-            module_path,
+            module_path.clone(),
             parse_file(&content)
-                .expect("Failed to parse module file")
+                .expect(&format!(
+                    "Failed to parse module file: {}",
+                    module_path.display()
+                ))
                 .items,
         )
     }

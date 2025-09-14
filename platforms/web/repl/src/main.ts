@@ -138,25 +138,6 @@ async function start() {
       renderer.render(shader, target);
       console.log('REPL_READY');
     } catch (e: any) {
-      // Firefox sometimes reports target type mismatch in dev; recreate target and retry once
-      if (String(e?.message || e).includes('Invalid target type in render')) {
-        try {
-          target = await renderer.createTarget(canvas);
-          const shader = new Shader(currentSource());
-          shader.set('resolution', [canvas.width, canvas.height]);
-          shader.set('circle.radius', 200.0);
-          shader.set('circle.color', [1.0, 0.0, 0.0, 0.9]);
-          shader.set('circle.border', 4.0);
-          shader.set('circle.position', [0.0, 0.0]);
-          renderer.render(shader, target);
-          console.log('REPL_READY');
-          return;
-        } catch (e2: any) {
-          console.error('REPL retry failed:', e2);
-          logError(e2?.message || String(e2));
-          return;
-        }
-      }
       console.error('REPL error:', e);
       logError(e?.message || String(e));
     }

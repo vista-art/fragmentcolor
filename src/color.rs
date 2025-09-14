@@ -172,10 +172,10 @@ impl From<(f32, f32, f32, f32)> for Color {
 }
 
 #[cfg(wasm)]
-impl TryFrom<wasm_bindgen::JsValue> for Color {
+impl TryFrom<&wasm_bindgen::JsValue> for Color {
     type Error = crate::error::ShaderError;
 
-    fn try_from(value: wasm_bindgen::JsValue) -> Result<Self, Self::Error> {
+    fn try_from(value: &wasm_bindgen::JsValue) -> Result<Self, Self::Error> {
         use js_sys::{Array, Float32Array, Int32Array, Reflect, Uint32Array};
         use wasm_bindgen::JsCast;
 

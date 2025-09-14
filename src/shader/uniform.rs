@@ -596,10 +596,10 @@ impl From<UniformData> for wgpu::Extent3d {
 // WASM conversions
 
 #[cfg(wasm)]
-impl TryFrom<wasm_bindgen::JsValue> for UniformData {
+impl TryFrom<&wasm_bindgen::JsValue> for UniformData {
     type Error = crate::error::ShaderError;
 
-    fn try_from(value: wasm_bindgen::JsValue) -> Result<Self, Self::Error> {
+    fn try_from(value: &wasm_bindgen::JsValue) -> Result<Self, Self::Error> {
         use js_sys::{Array, Float32Array, Int32Array, Uint32Array};
         use wasm_bindgen::JsCast;
 
