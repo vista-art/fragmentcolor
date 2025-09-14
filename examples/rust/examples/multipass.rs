@@ -1,28 +1,28 @@
+use fastrand::Rng;
 use fragmentcolor::{App, Frame, Pass, Shader, Size, run};
-use rand::prelude::*;
 
 const CIRCLE_SOURCE: &str = include_str!("circle.wgsl");
 const TRIANGLE_SOURCE: &str = include_str!("hello_triangle.wgsl");
 
-fn random_circle(rng: &mut impl Rng, size: Size, alpha: f32) -> Shader {
+fn random_circle(rng: &mut Rng, size: Size, alpha: f32) -> Shader {
     let circle = Shader::new(CIRCLE_SOURCE).unwrap();
     circle
         .set("resolution", [size.width as f32, size.height as f32])
         .unwrap();
 
-    let x = rng.random_range(-(size.width as f32)..size.width as f32);
-    let y = rng.random_range(-(size.height as f32)..size.height as f32);
+    let x = (rng.f32() * 2.0 - 1.0) * size.width as f32;
+    let y = (rng.f32() * 2.0 - 1.0) * size.height as f32;
     circle.set("circle.position", [x, y]).unwrap();
 
-    let r = rng.random_range(0.0..1.0);
-    let g = rng.random_range(0.0..1.0);
-    let b = rng.random_range(0.0..1.0);
+    let r = rng.f32();
+    let g = rng.f32();
+    let b = rng.f32();
     circle.set("circle.color", [r, g, b, alpha]).unwrap();
 
-    let radius = rng.random_range(50.0..300.0);
+    let radius = rng.f32() * (300.0 - 50.0) + 50.0;
     circle.set("circle.radius", radius).unwrap();
 
-    let border = rng.random_range(10.0..100.0);
+    let border = rng.f32() * (100.0 - 10.0) + 10.0;
     circle.set("circle.border", border).unwrap();
 
     circle
@@ -53,7 +53,7 @@ fn main() {
     let transparent_pass = Pass::new("Transparent Pass");
 
     // Seed circles using a nominal size; example updates on resize
-    let mut rng = rand::rng();
+    let mut rng = Rng::new();
     let size = Size {
         width: 800,
         height: 600,
