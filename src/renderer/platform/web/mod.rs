@@ -90,7 +90,7 @@ impl Renderer {
     pub async fn create_texture_target_js(&self, size: &JsValue) -> Result<TextureTarget, JsError> {
         let size: Size = size
             .try_into()
-            .map_err(|e: crate::error::ShaderError| JsError::new(&format!("{e}")))?;
+            .map_err(|e: crate::size::error::SizeError| JsError::new(&format!("{e}")))?;
 
         let target = self
             .create_texture_target(size)

@@ -34,7 +34,7 @@ impl CanvasTarget {
     pub fn resize_js(&mut self, size: &JsValue) -> Result<(), JsError> {
         let sz: Size = size
             .try_into()
-            .map_err(|e: crate::error::ShaderError| JsError::new(&format!("{e}")))?;
+            .map_err(|e: crate::size::error::SizeError| JsError::new(&format!("{e}")))?;
         Target::resize(self, sz);
         Ok(())
     }
@@ -105,7 +105,7 @@ impl TextureTarget {
     pub fn resize_js(&mut self, size: &JsValue) -> Result<(), JsError> {
         let sz: Size = size
             .try_into()
-            .map_err(|e: crate::error::ShaderError| JsError::new(&format!("{e}")))?;
+            .map_err(|e: crate::size::error::SizeError| JsError::new(&format!("{e}")))?;
         Target::resize(self, sz);
         Ok(())
     }

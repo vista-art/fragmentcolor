@@ -1,4 +1,4 @@
-use crate::{FragmentColorError, Frame, Pass, PySize, Renderer, Shader};
+use crate::{Frame, Pass, PySize, Renderer, Shader};
 use lsp_doc::lsp_doc;
 use pyo3::exceptions::PyTypeError;
 use pyo3::prelude::*;
@@ -47,13 +47,17 @@ impl Renderer {
             let dict = present_methods
                 .downcast_bound::<PyDict>(py)?
                 .get_item("screen")?
-                .ok_or(FragmentColorError::new_err("Object can't render to screen"))?;
+                .ok_or(crate::error::PyFragmentColorError::new_err(
+                    "Object can't render to screen",
+                ))?;
             let screen_info = dict.downcast::<PyDict>()?;
 
             // Mandatory WindowHandle for all platforms
             let window: u64 = screen_info
                 .get_item("window")?
-                .ok_or(FragmentColorError::new_err("Missing window handle"))?
+                .ok_or(crate::error::PyFragmentColorError::new_err(
+                    "Missing window handle",
+                ))?
                 .extract()?;
             // Optional platform and display (only present on Linux)
             let platform: String = screen_info
@@ -143,7 +147,7 @@ pub fn fragmentcolor(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Custom error type
     m.add(
         "FragmentColorError",
-        m.py().get_type::<FragmentColorError>(),
+        m.py().get_type::<crate::error::PyFragmentColorError>(),
     )?;
 
     Ok(())

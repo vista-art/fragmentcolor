@@ -3,6 +3,8 @@ use csscolorparser;
 #[cfg(wasm)]
 use wasm_bindgen::prelude::*;
 
+pub mod error;
+
 /// Can be specified as 0xRRGGBBAA
 #[cfg_attr(wasm, wasm_bindgen)]
 #[cfg_attr(python, pyo3::pyclass)]
@@ -215,7 +217,7 @@ crate::impl_from_ref!(Color, (f32, f32, f32, f32));
 
 #[cfg(wasm)]
 impl TryFrom<&wasm_bindgen::JsValue> for Color {
-    type Error = crate::error::ShaderError;
+    type Error = crate::color::error::ColorError;
 
     fn try_from(value: &wasm_bindgen::JsValue) -> Result<Self, Self::Error> {
         use js_sys::{Array, Float32Array, Int32Array, Reflect, Uint32Array};
@@ -242,7 +244,7 @@ impl TryFrom<&wasm_bindgen::JsValue> for Color {
         // Strings: CSS/hex
         if let Some(s) = value.as_string() {
             return Color::from_css(&s)
-                .map_err(|e| crate::error::ShaderError::TypeMismatch(e.to_string()));
+                .map_err(|e| crate::color::error::ColorError::TypeMismatch(e.to_string()));
         }
 
         // Typed arrays
@@ -333,11 +335,15 @@ impl TryFrom<&wasm_bindgen::JsValue> for Color {
             }
         }
 
-        Err(crate::error::ShaderError::TypeMismatch(
+        Err(crate::color::error::ColorError::TypeMismatch(
             "Cannot convert JavaScript value to Color (expected [r,g,b] or [r,g,b,a], CSS string, or {r,g,b,a})".into(),
         ))
     }
 }
 
 #[cfg(wasm)]
-crate::impl_tryfrom_owned_via_ref!(Color, wasm_bindgen::JsValue, crate::error::ShaderError);
+crate::impl_tryfrom_owned_via_ref!(
+    Color,
+    wasm_bindgen::JsValue,
+    crate::color::error::ColorError
+);

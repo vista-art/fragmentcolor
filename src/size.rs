@@ -8,6 +8,8 @@ use pyo3::FromPyObject;
 #[cfg(python)]
 use pyo3::prelude::*;
 
+pub mod error;
+
 #[cfg_attr(wasm, wasm_bindgen)]
 #[cfg_attr(python, pyclass)]
 #[derive(Clone, Copy, Debug, Default, Hash, PartialEq, PartialOrd)]
@@ -202,7 +204,7 @@ mod tests {
 
 #[cfg(wasm)]
 impl TryFrom<&wasm_bindgen::JsValue> for Size {
-    type Error = crate::error::ShaderError;
+    type Error = crate::size::error::SizeError;
 
     fn try_from(value: &wasm_bindgen::JsValue) -> Result<Self, Self::Error> {
         use js_sys::{Array, Float32Array, Int32Array, Reflect, Uint32Array};
@@ -294,14 +296,14 @@ impl TryFrom<&wasm_bindgen::JsValue> for Size {
             }
         }
 
-        Err(crate::error::ShaderError::TypeMismatch(
+        Err(crate::size::error::SizeError::TypeMismatch(
             "Cannot convert JavaScript value to Size (expected [w,h] or [w,h,d])".into(),
         ))
     }
 }
 
 #[cfg(wasm)]
-crate::impl_tryfrom_owned_via_ref!(Size, wasm_bindgen::JsValue, crate::error::ShaderError);
+crate::impl_tryfrom_owned_via_ref!(Size, wasm_bindgen::JsValue, crate::size::error::SizeError);
 
 #[cfg(python)]
 #[derive(FromPyObject, IntoPyObject)]
