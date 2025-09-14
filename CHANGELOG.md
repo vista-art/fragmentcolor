@@ -37,6 +37,18 @@ See the [Roadmap](https://github.com/vista-art/fragmentcolor/blob/main/ROADMAP.m
   - [x] Automatically update docs from Rust Doc Comments
   - [x] Script to copy contents and publish to Website
 
+### Rendering
+
+- [x] Surface configuration selection and view_formats
+- [x] Surface frame acquire recovery (WindowTarget)
+- [x] Sample-count negotiation helper
+- [x] Store and propagate sample_count in RenderContext
+- [x] Pipeline cache keyed by (ShaderHash, format, samples)
+- [x] MSAA render path with resolve
+- [x] TextureTarget MSAA + resolve (optional)
+- [x] Centralized frame acquire retry in Renderer
+- [x] Pooling for transient targets/readback
+
 ### Changed
 
 - [x] Normalized API links to <https://fragmentcolor.org>.
@@ -45,7 +57,7 @@ See the [Roadmap](https://github.com/vista-art/fragmentcolor/blob/main/ROADMAP.m
 - [x] Moved platform-specific cfgs out of `renderer/mod.rs`; added `renderer::platform::all::create_instance()` and moved the winit `HasDisplaySize` impl to `renderer/platform/winit.rs`.
 - [x] build.rs validation: ignore mobile wrapper variants (`*_ios`, `*_android`) just like `*_js` and `*_py` when mapping docs.
 
-## 0.10.6 JavaScript support
+## 0.10.6 JavaScript support (skipped released due to unstable build)
 
 - [x] Adds JavaScript support
 - [x] Publishes to NPM

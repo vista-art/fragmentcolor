@@ -12,12 +12,11 @@ Tasks (click to see details):
 - [x] [04: Store and propagate sample_count in RenderContext](refactor/04_rendercontext_sample_count.md)
 - [x] [05: Pipeline cache keyed by (ShaderHash, format, samples)](refactor/05_pipeline_cache_key.md)
 - [x] [06: MSAA render path with resolve](refactor/06_msaa_resolve.md)
-- [x] [07: TextureTarget MSAA + resolve (optional)](refactor/11_texture_target_msaa.md)
-- [ ] [08: Centralized frame acquire retry in Renderer](refactor/07_renderer_retry.md)
-- [ ] [09: Pooling for transient targets/readback](refactor/08_pooling.md)
-- [ ] [10: Docs + clippy + fmt sweep](refactor/09_docs_lint.md)
-- [ ] [11: Tests and examples validation](refactor/10_tests_examples.md)
+- [x] [07: TextureTarget MSAA + resolve (optional)](refactor/07_texture_target_msaa.md)
+- [x] [08: Centralized frame acquire retry in Renderer](refactor/08_renderer_retry.md)
+- [x] [09: Pooling for transient targets/readback](refactor/09_pooling.md)
 
 Notes
+
 - “Done” means implemented and committed in this repo.
 - Focus each task on relevant files; cross-reference specific files in `ruffle_reference/wgpu` that demonstrate the approach.

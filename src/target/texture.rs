@@ -66,12 +66,10 @@ impl Target for TextureTarget {
                 as u32;
         let output_size = (padded_row_bytes as u64 * h as u64) as u64;
 
-        let buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("TextureTarget readback buffer"),
-            size: output_size,
-            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
-            mapped_at_creation: false,
-        });
+        let buffer = {
+            let mut pool = self.context.readback_pool.write();
+            pool.get(device, output_size)
+        };
 
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("TextureTarget readback encoder"),
