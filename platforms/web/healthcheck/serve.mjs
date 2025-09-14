@@ -33,7 +33,9 @@ function withHeaders(res) {
   // Enable cross-origin isolation for SharedArrayBuffer and WebGPU readbacks
   res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
   res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
-  // Static assets from same origin will satisfy COEP.
+  res.setHeader('Cache-Control', 'no-store, max-age=0, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
 }
 
 async function serveFile(req, res, filePath) {
@@ -67,6 +69,37 @@ const server = http.createServer(async (req, res) => {
     let rel = decodeURIComponent(url.pathname);
     if (rel === '/') rel = '/index.html';
 
+    // Special route: runtime examples list for gallery
+    if (rel === '/healthcheck/examples.json') {
+      try {
+        const base = path.join(WEB_ROOT, 'examples');
+        async function walk(dir) {
+          const items = await fs.readdir(dir, { withFileTypes: true });
+          let out = [];
+          for (const ent of items) {
+            const full = path.join(dir, ent.name);
+            if (ent.isDirectory()) {
+              const sub = await walk(full);
+              out = out.concat(sub);
+            } else if (ent.isFile() && full.toLowerCase().endsWith('.js')) {
+              const relFromBase = path.relative(base, full).split(path.sep).join('/');
+              out.push('../examples/' + relFromBase);
+            }
+          }
+          return out;
+        }
+        const list = fssync.existsSync(base) ? await walk(base) : [];
+        withHeaders(res);
+        res.setHeader('Content-Type', 'application/json; charset=utf-8');
+        res.statusCode = 200;
+        res.end(JSON.stringify(list));
+      } catch (err) {
+        res.statusCode = 500;
+        res.end('[]');
+      }
+      return;
+    }
+
     // Security: prevent path traversal
     const safePath = path.normalize(rel).replace(/^\/+/, '/');
     const abs = path.join(WEB_ROOT, safePath);
@@ -87,8 +120,11 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`[server] serving ${WEB_ROOT} at http://localhost:${PORT}/`);
-  console.log(`[server] try http://localhost:${PORT}/healthcheck/visual.html`);
+  const addr = server.address();
+  const port = (addr && typeof addr === 'object') ? addr.port : PORT;
+  console.log(`[server] serving ${WEB_ROOT} at http://localhost:${port}/`);
+  console.log(`[server] try http://localhost:${port}/healthcheck/visual.html`);
+  console.log(`[server] gallery http://localhost:${port}/healthcheck/gallery.html`);
 });
 
 function shutdown() {

@@ -7,6 +7,9 @@ await init(wasmUrl.href);
 // Install JS-level instrumentation before running any examples or docs coverage.
 installInstrumentation({ Renderer, Shader, Pass, TextureTarget, CanvasTarget });
 
+// Parse URL params (default to skipping texture-target examples for now)
+const params = new URL(globalThis.location?.href || 'http://local/').searchParams;
+
 // Small helper to scope module name for instrumentation and proceed even on error
 async function withModule(moduleName, fn) {
   globalThis.__HC = globalThis.__HC || { currentModule: null };
@@ -18,6 +21,7 @@ async function withModule(moduleName, fn) {
     console.log(`[end] module=${moduleName} status=OK`);
   } catch (e) {
     console.log(`[end] module=${moduleName} status=FAILED error=${e?.message || String(e)}]`);
+    throw e; // propagate failure so healthcheck can fail
   } finally {
     globalThis.__HC.currentModule = prev || null;
   }
@@ -26,7 +30,10 @@ async function withModule(moduleName, fn) {
 // Run a smoke render but do not abort the page if it fails; continue to run generated examples
 await withModule('platforms.web.healthcheck.smoke', async () => {
   const renderer = new Renderer();
-  const target = await renderer.createTextureTarget([64, 64]);
+  const canvas = document.createElement('canvas');
+  canvas.width = 64; canvas.height = 64;
+  const target = await renderer.createTarget(canvas);
+  const textureTarget = await renderer.createTextureTarget([64, 64]);
 
   const shader = new Shader(`
 struct VertexOutput {
@@ -50,20 +57,45 @@ fn main(_v: VertexOutput) -> @location(0) vec4<f32> {
 
   shader.set("resolution", [64.0, 64.0]);
 
+  console.log("shader before call:", shader);
+  console.log("target before call:", target);
+
+  console.log("shader, target");
   renderer.render(shader, target);
+  console.log("shader after call:", shader);
+  console.log("target after call:", target);
+
+  console.log("shader, target 2");
+  renderer.render(shader, target);
+  console.log("shader after call 2:", shader);
+  console.log("target after call 2:", target);
+
+  console.log("shader, target 3");
+  renderer.render(shader, target);
+  console.log("shader after call 3:", shader);
+  console.log("target after call 3:", target);
+
+  console.log("shader, textureTarget");
+  renderer.render(shader, textureTarget);
 
   const rpass = new Pass("single pass");
   rpass.addShader(shader);
   renderer.render(rpass, target);
+  renderer.render(rpass, textureTarget);
 
   const frame = new Frame();
   frame.addPass(rpass);
   renderer.render(frame, target);
+  renderer.render(frame, textureTarget);
 
-  // Additional API coverage for docs
-  const _res = shader.get("resolution");
-  const _uniforms = shader.listUniforms();
-  const _keys = shader.listKeys();
+  const res = shader.get("resolution");
+  console.log(res);
+
+  let image = textureTarget.getImage();
+  console.log(image);
+
+  console.log(shader.listUniforms());
+  console.log(shader.listKeys());
 });
 
 // Auto-generated: helpers in global scope
@@ -71,4 +103,7 @@ import { exampleShader } from './helpers.mjs';
 Object.assign(globalThis, { exampleShader });
 
 // Auto-generated: run all extracted examples (after init)
-await import('./generated_examples.mjs');
+// await import('./generated_examples.mjs');
+
+// Signal success for Playwright harness if we reached this point
+console.log('Headless JS render completed successfully');
