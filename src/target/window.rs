@@ -39,15 +39,8 @@ impl Target for WindowTarget {
 
     #[lsp_doc("docs/api/core/target/get_current_frame.md")]
     fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, wgpu::SurfaceError> {
-        let surface_texture = self.surface.get_current_texture()?;
-        let view = surface_texture
-            .texture
-            .create_view(&wgpu::TextureViewDescriptor::default());
-        Ok(Box::new(WindowFrame {
-            surface_texture,
-            format: self.config.format,
-            view,
-        }))
+        let frame = self.acquire_frame()?;
+        Ok(Box::new(frame))
     }
 
     #[lsp_doc("docs/api/core/target/get_image.md")]
@@ -56,6 +49,43 @@ impl Target for WindowTarget {
         // especially on WebGPU/WebGL. Prefer rendering to a TextureTarget when
         // readback is required (e.g., for CI image comparison).
         Vec::new()
+    }
+}
+
+impl WindowTarget {
+    /// Try to acquire a frame; on Lost/Outdated, reconfigure and retry once.
+    fn acquire_frame(&self) -> Result<WindowFrame, wgpu::SurfaceError> {
+        match self.surface.get_current_texture() {
+            Ok(surface_texture) => {
+                let view = surface_texture
+                    .texture
+                    .create_view(&wgpu::TextureViewDescriptor::default());
+                Ok(WindowFrame {
+                    surface_texture,
+                    format: self.config.format,
+                    view,
+                })
+            }
+            Err(err) => {
+                use wgpu::SurfaceError::*;
+                match err {
+                    Lost | Outdated => {
+                        // Reconfigure with the last known good config and retry once.
+                        self.surface.configure(&self.context.device, &self.config);
+                        let surface_texture = self.surface.get_current_texture()?;
+                        let view = surface_texture
+                            .texture
+                            .create_view(&wgpu::TextureViewDescriptor::default());
+                        Ok(WindowFrame {
+                            surface_texture,
+                            format: self.config.format,
+                            view,
+                        })
+                    }
+                    Timeout | OutOfMemory | Other => Err(err),
+                }
+            }
+        }
     }
 }
 
