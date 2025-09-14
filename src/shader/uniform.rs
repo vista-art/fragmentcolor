@@ -681,7 +681,11 @@ impl TryFrom<&wasm_bindgen::JsValue> for UniformData {
 }
 
 #[cfg(wasm)]
-crate::impl_tryfrom_owned_via_ref!(UniformData, wasm_bindgen::JsValue, crate::error::ShaderError);
+crate::impl_tryfrom_owned_via_ref!(
+    UniformData,
+    wasm_bindgen::JsValue,
+    crate::error::ShaderError
+);
 
 #[cfg(wasm)]
 impl TryFrom<&js_sys::Float32Array> for UniformData {
