@@ -1,5 +1,7 @@
-use crate::{RenderContext, Size, Target, TargetFrame, WindowTarget};
+use crate::{FragmentColorError, RenderContext, Size, Target, TargetFrame, WindowTarget};
 use lsp_doc::lsp_doc;
+use numpy::PyArrayMethods;
+use numpy::pyo3::Python;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 use std::sync::Arc;
@@ -210,8 +212,39 @@ impl PyTextureTarget {
     }
 
     /// Read back the RGBA image as a Python list of ints (byte values).
-    pub fn get_image(&self) -> Vec<u8> {
-        <crate::TextureTarget as Target>::get_image(&self.inner)
+    pub fn get_image(&self) -> Result<Py<numpy::PyArray3<u8>>, PyErr> {
+        const BPP: usize = 4; // Bytes per pixel (RGBA8)
+        let data = <crate::TextureTarget as Target>::get_image(&self.inner);
+        let width = self.size().width as usize;
+        let height = self.size().height as usize;
+
+        if data.len() != width * height * BPP {
+            return Err(FragmentColorError::new_err(format!(
+                "Unexpected image data length: expected {}, got {}",
+                width * height * BPP,
+                data.len()
+            )));
+        }
+
+        Python::attach(|py| -> Result<Py<numpy::PyArray3<u8>>, PyErr> {
+            // SAFETY: https://docs.rs/numpy/0.26.0/numpy/array/type.PyArray2.html#safety
+            let arr = unsafe {
+                let arr = numpy::PyArray3::<u8>::new(py, (width, height, BPP), false);
+
+                for w in 0..width {
+                    for h in 0..height {
+                        for p in 0..BPP {
+                            arr.uget_raw([w, h, p])
+                                .write(data[(h * width + w) * BPP + p]);
+                        }
+                    }
+                }
+
+                arr
+            };
+
+            Ok(arr.unbind())
+        })
     }
 }
 

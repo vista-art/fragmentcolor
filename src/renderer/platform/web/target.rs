@@ -4,7 +4,9 @@ use std::sync::Arc;
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
-pub struct CanvasTarget(WindowTarget);
+pub struct CanvasTarget {
+    inner: WindowTarget,
+}
 
 impl CanvasTarget {
     pub(crate) fn new(
@@ -12,14 +14,16 @@ impl CanvasTarget {
         surface: wgpu::Surface<'static>,
         config: wgpu::SurfaceConfiguration,
     ) -> Self {
-        Self(WindowTarget::new(context, surface, config))
+        Self {
+            inner: WindowTarget::new(context, surface, config),
+        }
     }
 }
 
 #[wasm_bindgen]
 impl CanvasTarget {
     #[wasm_bindgen(js_name = "resize")]
-    pub fn resize_js(&mut self, size: JsValue) -> Result<(), JsError> {
+    pub fn resize_js(&mut self, size: &JsValue) -> Result<(), JsError> {
         let sz: Size = size
             .try_into()
             .map_err(|e: crate::error::ShaderError| JsError::new(&format!("{e}")))?;
@@ -43,15 +47,15 @@ impl CanvasTarget {
 
 impl Target for CanvasTarget {
     fn size(&self) -> Size {
-        self.0.size()
+        self.inner.size()
     }
 
     fn resize(&mut self, size: impl Into<Size>) {
-        self.0.resize(size);
+        self.inner.resize(size);
     }
 
     fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, wgpu::SurfaceError> {
-        self.0.get_current_frame()
+        self.inner.get_current_frame()
     }
 
     fn get_image(&self) -> Vec<u8> {
@@ -89,7 +93,7 @@ impl Target for TextureTarget {
 #[wasm_bindgen]
 impl TextureTarget {
     #[wasm_bindgen(js_name = "resize")]
-    pub fn resize_js(&mut self, size: JsValue) -> Result<(), JsError> {
+    pub fn resize_js(&mut self, size: &JsValue) -> Result<(), JsError> {
         let sz: Size = size
             .try_into()
             .map_err(|e: crate::error::ShaderError| JsError::new(&format!("{e}")))?;
