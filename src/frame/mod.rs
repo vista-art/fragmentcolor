@@ -9,6 +9,8 @@ use wasm_bindgen::prelude::*;
 
 mod features;
 
+pub mod error;
+
 #[cfg_attr(wasm, wasm_bindgen)]
 #[cfg_attr(python, pyclass)]
 #[derive(Debug, Default, Clone)]
@@ -19,7 +21,11 @@ pub struct Frame {
 }
 
 #[cfg(wasm)]
-crate::impl_tryfrom_owned_via_ref!(Frame, wasm_bindgen::JsValue, crate::error::ShaderError);
+crate::impl_tryfrom_owned_via_ref!(
+    Frame,
+    wasm_bindgen::JsValue,
+    crate::frame::error::FrameError
+);
 
 impl Frame {
     #[lsp_doc("docs/api/core/frame/new.md")]
@@ -44,7 +50,7 @@ impl Renderable for Frame {
 
 #[cfg(wasm)]
 impl TryFrom<&wasm_bindgen::JsValue> for Frame {
-    type Error = crate::error::ShaderError;
+    type Error = crate::frame::error::FrameError;
 
     fn try_from(value: &wasm_bindgen::JsValue) -> Result<Self, Self::Error> {
         use js_sys::Reflect;
@@ -52,10 +58,10 @@ impl TryFrom<&wasm_bindgen::JsValue> for Frame {
 
         let key = wasm_bindgen::JsValue::from_str("__wbg_ptr");
         let ptr = Reflect::get(value, &key).map_err(|_| {
-            crate::error::ShaderError::WasmError("Missing __wbg_ptr on Frame".into())
+            crate::frame::error::FrameError::WasmError("Missing __wbg_ptr on Frame".into())
         })?;
         let id = ptr.as_f64().ok_or_else(|| {
-            crate::error::ShaderError::WasmError("Invalid __wbg_ptr for Frame".into())
+            crate::frame::error::FrameError::WasmError("Invalid __wbg_ptr for Frame".into())
         })? as u32;
         let anchor: <Frame as RefFromWasmAbi>::Anchor =
             unsafe { <Frame as RefFromWasmAbi>::ref_from_abi(id) };

@@ -1,4 +1,4 @@
-use crate::InitializationError;
+use crate::renderer::error::InitializationError;
 
 pub async fn create_instance() -> wgpu::Instance {
     #[cfg(wasm)]

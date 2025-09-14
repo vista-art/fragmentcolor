@@ -1,5 +1,6 @@
-use crate::error::ShaderError;
+pub mod error;
 use crate::{PassObject, Renderable};
+pub use error::ShaderError;
 use lsp_doc::lsp_doc;
 use naga::{
     AddressSpace, Module,
@@ -242,7 +243,7 @@ impl Renderable for Shader {
 
 #[cfg(wasm)]
 impl TryFrom<&wasm_bindgen::JsValue> for Shader {
-    type Error = crate::error::ShaderError;
+    type Error = ShaderError;
 
     fn try_from(value: &wasm_bindgen::JsValue) -> Result<Self, Self::Error> {
         use js_sys::Reflect;
@@ -262,7 +263,7 @@ impl TryFrom<&wasm_bindgen::JsValue> for Shader {
 }
 
 #[cfg(wasm)]
-crate::impl_tryfrom_owned_via_ref!(Shader, wasm_bindgen::JsValue, crate::error::ShaderError);
+crate::impl_tryfrom_owned_via_ref!(Shader, wasm_bindgen::JsValue, ShaderError);
 
 impl TryFrom<&str> for Shader {
     type Error = ShaderError;

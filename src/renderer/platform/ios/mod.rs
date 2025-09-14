@@ -97,7 +97,7 @@ impl crate::Renderer {
         &self,
         renderable: &impl crate::renderer::Renderable,
         target: &impl crate::Target,
-    ) -> Result<(), crate::ShaderError> {
+    ) -> Result<(), crate::RendererError> {
         self.render(renderable, target)
     }
 }

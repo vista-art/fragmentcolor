@@ -1,4 +1,4 @@
-use crate::{Frame, Pass, Renderer, Shader, ShaderError, Size};
+use crate::{Frame, Pass, Renderer, Shader, RendererError, Size};
 use js_sys::Array;
 use lsp_doc::lsp_doc;
 use wasm_bindgen::JsCast;
@@ -102,7 +102,7 @@ impl Renderer {
 
     #[wasm_bindgen(js_name = "render")]
     #[lsp_doc("docs/api/core/renderer/render.md")]
-    pub fn render_js(&self, renderable: &JsValue, target: &JsValue) -> Result<(), ShaderError> {
+    pub fn render_js(&self, renderable: &JsValue, target: &JsValue) -> Result<(), RendererError> {
         //
         // Canvas target
         if let Ok(canvas_target) = CanvasTarget::try_from(target) {
@@ -135,7 +135,7 @@ impl Renderer {
             }
         }
 
-        Err(ShaderError::WasmError(
+        Err(RendererError::WasmError(
             "Invalid target type in render".to_string(),
         ))
     }
