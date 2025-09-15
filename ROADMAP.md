@@ -63,7 +63,32 @@ This roadmap summarizes current focus and planned features.
     JsonError(#[from] serde_json::Error),
     ```
 
-## Backlog
+### Buffer Pool
+
+1. Device-lost recovery path (centralized)
+  •  Why: Ruffle takes a robust stance on device/surface loss. We handle surface frame errors already, but not full device loss.
+  •  Plan: Add a top-level “device lost” handler that:
+  •  Re-requests the adapter/device.
+  •  Rebuilds renderer context and reconfigures surfaces/targets.
+  •  Clears or rebuilds caches/pools safely.
+  •  Acceptance:
+  •  Simulated device lost (where possible) recovers without crashing.
+  •  Clear docs on which state is preserved vs reinitialized.
+
+1. Staging-belt style uploads for uniforms
+  •  Why: Ruffle patterns and wgpu::util::StagingBelt help amortize upload buffers.
+  •  Plan: Either adopt StagingBelt or adapt BufferPool to batch/belt-like behavior (single per-frame belt flush), ensuring we still honor uniform alignment and backend constraints.
+  •  Acceptance:
+    •  No perf regression; fewer small writes.
+    •  All uniform upload tests/examples behave identically.
+
+1. Sampler and texture view caches (forward-looking)
+  •  Why: When we start sampling textures, we'll want stable, keyed caches (descriptor-based).
+  •  Plan: Add caches keyed by sampler/texture view descriptors with simple LRU caps. Ensure reuse across frames.
+  •  Acceptance:
+    •  Minimal API scaffolding with tests; no behavior change until used.
+
+## Backlog (rough ideas)
 
 - [ ] Custom blending
 
@@ -80,6 +105,20 @@ This roadmap summarizes current focus and planned features.
 
 - [ ] Website & docs
   - [ ] Internationalization groundwork for docs
+
+### Performance
+
+- [ ] Async pipeline warming
+  •  Why: Reduce first-frame stutter (precompile likely pipelines).
+  •  Plan: Add a background warm step per (ShaderHash, format, sample_count) when shaders/passes are registered. Feature-gate if needed.
+  •  Acceptance:
+    •  Optional; no functional change when disabled. Documented and tested where possible.
+
+- [ ] Frame acquire telemetry (optional)
+  •  Why: Confirm centralized retry is effective.
+  •  Plan: Add lightweight counters or log-once warnings for repeated Lost/Outdated, distinguish target-local and centralized retries.
+  •  Acceptance:
+    •  Visible, throttled logs in debug runs; no spam.
 
 ### Tutorials and Examples
 

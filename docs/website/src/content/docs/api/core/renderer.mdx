@@ -463,6 +463,161 @@ lang="text"
 
 ---
 
+### Renderer::create_texture
+
+Create a [Texture](/api/core/texture) from raw image bytes.
+
+- Rust: returns a [Texture](/api/core/texture) object wrapping a GPU texture
+- JS/Python: parity pending
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+let bytes = std::fs::read("./examples/assets/image.png").unwrap();
+let renderer = Renderer::new();
+let tex = futures::executor::block_on(renderer.create_texture(&bytes)).unwrap();
+shader.set("tex", &tex).unwrap();
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+const bytes = std.fs.read("./examples/assets/image.png").unwrap();
+const renderer = new Renderer();
+const tex = futures.executor.blockOn(renderer.createTexture(bytes)).unwrap();
+shader.set("tex", tex).unwrap();
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+bytes = std.fs.read("./examples/assets/image.png").unwrap()
+renderer = Renderer()
+tex = futures.executor.block_on(renderer.create_texture(bytes)).unwrap()
+shader.set("tex", tex).unwrap()
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Renderer::create_texture_from_file
+
+Create a [Texture](/api/core/texture) from an image file path.
+
+- Rust: returns a [Texture](/api/core/texture) object wrapping a GPU texture
+- JS/Python: parity pending
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+let renderer = Renderer::new();
+let tex = futures::executor::block_on(renderer.create_texture_from_file("./examples/assets/image.png")).unwrap();
+shader.set("tex", &tex).unwrap();
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+const renderer = new Renderer();
+const tex = futures.executor.blockOn(renderer.createTextureFromFile("./examples/assets/image.png")).unwrap();
+shader.set("tex", tex).unwrap();
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+renderer = Renderer()
+tex = futures.executor.block_on(renderer.create_texture_from_file("./examples/assets/image.png")).unwrap()
+shader.set("tex", tex).unwrap()
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
 ### Renderer::render(renderable: Shader | Pass | Frame, target: Target)
 
 Renders the given object to the given [Target](/api/core/target).
