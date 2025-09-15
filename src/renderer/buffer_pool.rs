@@ -5,6 +5,10 @@ const DEFAULT_CHUNK_SIZE: u64 = 0x10000;
 
 #[derive(Debug)]
 /// A pool of GPU buffers that manages allocations in fixed-size chunks
+///
+///  •  Purpose: Upload uniforms in-frame with alignment padding (typically 256)
+///  •  Grows by fixed-size chunks; suballocates many small ranges per frame; reset between frames
+///  •  Usage: UNIFORM | COPY_DST; not mapped for read
 pub(crate) struct BufferPool {
     label: String,
     usage: wgpu::BufferUsages,
