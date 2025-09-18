@@ -1,11 +1,11 @@
-use crate::{RenderContext, Size, Target, TargetFrame, Texture};
+use crate::{RenderContext, Size, Target, TargetFrame, TextureObject};
 use lsp_doc::lsp_doc;
 use std::sync::Arc;
 
 #[lsp_doc("docs/api/targets/texture_target/texture_target.md")]
 pub struct TextureTarget {
     context: Arc<RenderContext>,
-    texture: Arc<Texture>,
+    texture: Arc<TextureObject>,
 }
 
 impl TextureTarget {
@@ -14,7 +14,7 @@ impl TextureTarget {
         size: Size,
         format: wgpu::TextureFormat,
     ) -> Self {
-        let texture = Arc::new(Texture::create_destination_texture(
+        let texture = Arc::new(TextureObject::create_destination_texture(
             context.as_ref(),
             size.into(),
             format,
@@ -34,21 +34,18 @@ impl Target for TextureTarget {
 
     #[lsp_doc("docs/api/core/target/resize.md")]
     fn resize(&mut self, size: impl Into<Size>) {
-        let new_texture = Texture::create_destination_texture(
+        let new_texture = TextureObject::create_destination_texture(
             self.context.as_ref(),
             size.into().into(),
-            self.texture.format,
+            self.texture.format(),
         );
         self.texture = Arc::new(new_texture);
     }
 
     #[lsp_doc("docs/api/core/target/get_current_frame.md")]
     fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, wgpu::SurfaceError> {
-        let view = self
-            .texture
-            .inner
-            .create_view(&wgpu::TextureViewDescriptor::default());
-        let format = self.texture.format;
+        let view = self.texture.create_view();
+        let format = self.texture.format();
         Ok(Box::new(TextureFrame { view, format }))
     }
 
@@ -57,8 +54,9 @@ impl Target for TextureTarget {
         // Read back pixels from the offscreen texture as a tightly-packed RGBA8 buffer
         let device = &self.context.device;
         let queue = &self.context.queue;
-        let w = self.texture.size.width;
-        let h = self.texture.size.height;
+        let sz = self.texture.size();
+        let w = sz.width;
+        let h = sz.height;
         let bpp = 4u32; // RGBA8
         let row_bytes = w * bpp;
         let padded_row_bytes =

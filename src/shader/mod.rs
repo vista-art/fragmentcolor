@@ -205,8 +205,30 @@ fn parse_uniforms(module: &Module) -> Result<HashMap<String, Uniform>, ShaderErr
     let mut uniforms = HashMap::new();
 
     for (_, variable) in module.global_variables.iter() {
-        if variable.space != AddressSpace::Uniform {
-            continue;
+        // Accept classic uniform buffers and handle-class resources (textures/samplers).
+        // If a global has a binding but uses an unsupported address space, surface an error
+        // so we can add support explicitly later.
+        match variable.space {
+            AddressSpace::Uniform | AddressSpace::Handle | AddressSpace::Storage { .. } => {}
+            AddressSpace::WorkGroup => {
+                if variable.binding.is_some() {
+                    return Err(ShaderError::PlannedFeature(
+                        "WorkGroup variables (var<push_constant>) is a planned feature".into(),
+                    ));
+                } else {
+                    continue;
+                }
+            }
+            AddressSpace::PushConstant => {
+                // Push constants are bindable via a special pipeline layout mechanism in native
+                // We parse and error with a PlannedFeature so this can be wired later.
+                return Err(ShaderError::PlannedFeature(
+                    "PushConstant (var<push_constant>) is a planned feture".into(),
+                ));
+            }
+            _ => {
+                continue;
+            }
         }
 
         let uniform_name = variable
@@ -221,13 +243,24 @@ fn parse_uniforms(module: &Module) -> Result<HashMap<String, Uniform>, ShaderErr
 
         let ty = &module.types[variable.ty];
 
+        // Special handling for Storage: wrap inner shape and carry access flags
+        let data = match variable.space {
+            AddressSpace::Storage { access } => {
+                // convert_type will yield a Struct/Array/etc. shape; wrap it
+                let inner = convert_type(module, ty)?;
+                let span = inner.size();
+                UniformData::Storage(vec![(inner, span, access.into())])
+            }
+            _ => convert_type(module, ty)?,
+        };
+
         uniforms.insert(
             uniform_name.clone(),
             Uniform {
                 name: uniform_name,
                 group: binding.group,
                 binding: binding.binding,
-                data: convert_type(module, ty)?,
+                data,
             },
         );
     }
@@ -251,10 +284,10 @@ impl TryFrom<&wasm_bindgen::JsValue> for Shader {
 
         let key = wasm_bindgen::JsValue::from_str("__wbg_ptr");
         let ptr = Reflect::get(value, &key)
-            .map_err(|_| ShaderError::WasmError("Missing __wbg_ptr on Shader".into()))?;
+            .map_err(|_| ShaderError::Error("Missing __wbg_ptr on Shader".into()))?;
         let id = ptr
             .as_f64()
-            .ok_or_else(|| ShaderError::WasmError("Invalid __wbg_ptr for Shader".into()))?
+            .ok_or_else(|| ShaderError::Error("Invalid __wbg_ptr for Shader".into()))?
             as u32;
         let anchor: <Shader as RefFromWasmAbi>::Anchor =
             unsafe { <Shader as RefFromWasmAbi>::ref_from_abi(id) };
@@ -433,5 +466,237 @@ mod tests {
     fn test_invalid_shader_should_return_error() {
         let result = Shader::new("invalid shader");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn parses_texture_and_sampler_uniforms_meta() {
+        let wgsl = r#"
+@group(0) @binding(0) var tex: texture_2d<f32>;
+@group(0) @binding(1) var samp: sampler;
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.));
+  return vec4f(p[i], 0., 1.);
+}
+@fragment fn main() -> @location(0) vec4<f32> { return vec4f(1.,1.,1.,1.); }
+        "#;
+        let shader = Shader::new(wgsl).expect("shader");
+        let keys = shader.list_uniforms();
+        assert!(keys.contains(&"tex".to_string()));
+        assert!(keys.contains(&"samp".to_string()));
+
+        // Verify meta
+        let s = shader.object.storage.read();
+        let (_, _, u_tex) = s.uniforms.get("tex").expect("tex uniform");
+        match &u_tex.data {
+            UniformData::Texture(meta) => {
+                assert_eq!(meta.dim, naga::ImageDimension::D2);
+                match meta.class {
+                    naga::ImageClass::Sampled { .. } => {}
+                    _ => panic!("expected sampled image class"),
+                }
+            }
+            _ => panic!("tex is not a texture uniform"),
+        }
+        let (_, _, u_samp) = s.uniforms.get("samp").expect("samp uniform");
+        match &u_samp.data {
+            UniformData::Sampler(info) => {
+                // comparison defaults based on naga; any bool is acceptable
+                let _ = info.comparison;
+            }
+            _ => panic!("samp is not a sampler uniform"),
+        }
+    }
+
+    // Story: A simple read-only storage buffer with a single vec4 field should be parsed,
+    // listed among uniforms, and preserve its naga access flags.
+    #[test]
+    fn storage_read_only_parses_and_lists_fields() {
+        let wgsl = r#"
+struct Buf { a: vec4<f32> };
+@group(0) @binding(0) var<storage, read> ssbo: Buf;
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.));
+  return vec4f(p[i], 0., 1.);
+}
+@fragment fn main() -> @location(0) vec4<f32> { return vec4f(0.5,0.5,0.5,1.); }
+        "#;
+        let shader = Shader::new(wgsl).expect("shader");
+        let mut names = shader.list_uniforms();
+        names.sort();
+        assert!(names.contains(&"ssbo".to_string()));
+
+        // Verify meta
+        let s = shader.object.storage.read();
+        let (_, size, u) = s.uniforms.get("ssbo").expect("ssbo uniform");
+        match u.data.clone() {
+            UniformData::Storage(data) => {
+                let (inner, span, access) = data.first().expect("storage data");
+                assert_eq!(*span, *size);
+                assert!(access == &StorageAccess::Read);
+                match inner {
+                    UniformData::Struct((fields, s)) => {
+                        assert_eq!(s.clone(), 16); // vec4<f32>
+                        // Should have one field named 'a'
+                        let mut seen_a = false;
+                        for (_ofs, name, f) in fields.iter() {
+                            if name == "a" {
+                                seen_a = true;
+                                assert!(matches!(f, UniformData::Vec4(_)));
+                            }
+                        }
+                        assert!(seen_a);
+                    }
+                    _ => panic!("inner shape is not a struct"),
+                }
+            }
+            _ => panic!("ssbo is not a storage buffer uniform"),
+        }
+    }
+
+    // Story: A read-write storage buffer should carry write permission in its access flags.
+    #[test]
+    fn storage_read_write_meta_sets_writable() {
+        let wgsl = r#"
+struct Buf { a: vec4<f32> };
+@group(0) @binding(0) var<storage, read_write> sbuf: Buf;
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.));
+  return vec4f(p[i], 0., 1.);
+}
+@fragment fn main() -> @location(0) vec4<f32> { return vec4f(0.2,0.4,0.6,1.); }
+        "#;
+        let shader = Shader::new(wgsl).expect("shader");
+        let s = shader.object.storage.read();
+        let (_, _, u) = s.uniforms.get("sbuf").expect("sbuf uniform");
+        match u.data.clone() {
+            UniformData::Storage(data) => {
+                let (_, _, access) = data.first().expect("storage data");
+                assert!(access == &StorageAccess::ReadWrite);
+            }
+            _ => panic!("sbuf is not a storage buffer uniform"),
+        }
+    }
+
+    // Story: Nested arrays and structs in a storage buffer should compute the right span.
+    #[test]
+    fn storage_nested_shapes_compute_span() {
+        let wgsl = r#"
+struct Inner { c: vec4<f32> };
+struct Outer { a: vec4<f32>, arr: array<vec4<f32>, 2>, inner: Inner };
+@group(0) @binding(0) var<storage, read> sto: Outer;
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.));
+  return vec4f(p[i], 0., 1.);
+}
+@fragment fn main() -> @location(0) vec4<f32> { return vec4f(1.,0.,0.,1.); }
+        "#;
+        let shader = Shader::new(wgsl).expect("shader");
+        let s = shader.object.storage.read();
+        let (_, _, u) = s.uniforms.get("sto").expect("sto uniform");
+        match &u.data {
+            UniformData::Storage(data) => {
+                let (inner, span, _) = data.first().expect("storage data");
+                // a:16 + arr:2*16 + inner.c:16 = 64
+                assert_eq!(span.clone(), 64);
+                match inner {
+                    UniformData::Struct((_fields, s)) => assert_eq!(s.clone(), 64),
+                    _ => panic!("inner is not struct"),
+                }
+            }
+            _ => panic!("sto is not a storage buffer"),
+        }
+    }
+
+    // Story: Atomics in storage buffers are not yet supported; parsing should return an error today.
+    #[test]
+    fn storage_atomic_fields_currently_unsupported() {
+        let wgsl = r#"
+struct A { x: atomic<i32> };
+@group(0) @binding(0) var<storage, read_write> a: A;
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.));
+  return vec4f(p[i], 0., 1.);
+}
+@fragment fn main() -> @location(0) vec4<f32> { return vec4f(0.,0.,0.,1.); }
+        "#;
+        let err = Shader::new(wgsl).expect_err("expected error for atomic storage");
+        match err {
+            ShaderError::TypeMismatch(_) | ShaderError::ParseError(_) => {}
+            _ => panic!("unexpected error kind: {:?}", err),
+        }
+    }
+
+    // Story: Workgroup variables (unbound) should be ignored and not prevent parsing.
+    #[test]
+    fn workgroup_unbound_is_ignored() {
+        let wgsl = r#"
+var<workgroup> tile: array<vec4<f32>, 64>;
+@compute @workgroup_size(1)
+fn cs_main() { }
+        "#;
+        let _ = Shader::new(wgsl).expect("workgroup var ignored");
+    }
+
+    // Story: Push constants are parsed but flagged as a planned feature for now.
+    #[test]
+    fn push_constant_triggers_planned_feature() {
+        let wgsl = r#"
+struct PC { v: f32 };
+var<push_constant> pc: PC;
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.));
+  return vec4f(p[i], 0., 1.);
+}
+@fragment fn main() -> @location(0) vec4<f32> { return vec4f(1.,1.,1.,1.); }
+        "#;
+        let err = Shader::new(wgsl).expect_err("push constants planned feature error");
+        match err {
+            ShaderError::PlannedFeature(msg) => assert!(msg.contains("PushConstant")),
+            _ => panic!("unexpected error kind: {:?}", err),
+        }
+    }
+
+    // Story: Storage buffers can coexist with texture/sampler bindings.
+    #[test]
+    fn storage_and_texture_bindings_coexist() {
+        let wgsl = r#"
+struct Buf { a: vec4<f32> };
+@group(0) @binding(0) var<storage, read> data: Buf;
+@group(0) @binding(1) var tex: texture_2d<f32>;
+@group(0) @binding(2) var samp: sampler;
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.));
+  return vec4f(p[i], 0., 1.);
+}
+@fragment fn main() -> @location(0) vec4<f32> { return vec4f(1.,1.,1.,1.); }
+        "#;
+        let shader = Shader::new(wgsl).expect("shader");
+        let mut names = shader.list_uniforms();
+        names.sort();
+        assert!(names.contains(&"data".to_string()));
+        assert!(names.contains(&"tex".to_string()));
+        assert!(names.contains(&"samp".to_string()));
+    }
+
+    // Story: Setting a storage-buffer field should update the CPU blob and be visible via get_bytes.
+    #[test]
+    fn storage_set_updates_cpu_blob_bytes() {
+        let wgsl = r#"
+struct Buf { a: vec4<f32> };
+@group(0) @binding(0) var<storage, read> data: Buf;
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.));
+  return vec4f(p[i], 0., 1.);
+}
+@fragment fn main() -> @location(0) vec4<f32> { return vec4f(1.,1.,1.,1.); }
+        "#;
+        let shader = Shader::new(wgsl).expect("shader");
+        // Set a = (1,2,3,4)
+        shader.set("data.a", [1.0, 2.0, 3.0, 4.0]).expect("set");
+        let storage = shader.object.storage.read();
+        let bytes = storage.get_bytes("data").expect("blob");
+        assert_eq!(bytes.len(), 16);
+        let expected: [u8; 16] = bytemuck::cast([1.0f32, 2.0, 3.0, 4.0]);
+        assert_eq!(&bytes[0..16], &expected);
     }
 }

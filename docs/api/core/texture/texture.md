@@ -8,38 +8,42 @@ A GPU texture resource. Public API wrapper that holds a shareable reference to t
 
 ## How to use
 
-How to use now (Rust)
-â¢  Create a [Texture](https://fragmentcolor.org/api/core/texture) and set it on a [Shader](https://fragmentcolor.org/api/core/shader)
+Create a [Texture](https://fragmentcolor.org/api/core/texture) and set it on a [Shader](https://fragmentcolor.org/api/core/shader)
 
-```rust,no-run
-let renderer = Renderer::new();
-let bytes = std::fs::read("image.png")?;
-let tex = pollster::block_on(renderer.create_texture(&bytes))?;
-shader.set("t_tex", &tex)?; // WGSL expects texture_2d at binding(0), sampler at binding(1)
-```
 
-â¢  In your WGSL, declare you sampler in the same group as your texture
+## Example
+
+In your WGSL, declare a sampler in the same group as your texture
 
 ```wgsl
 // must be in the same group
-@group(0) @binding(0) var t_tex: texture_2d<f32>;
-@group(0) @binding(1) var t_smp: sampler;
+@group(0) @binding(0) var tex: texture_2d<f32>;
+@group(0) @binding(1) var smp: sampler;
 ```
-
-## Example
 
 ```rust
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
-use fragmentcolor::{Renderer, Shader};
+use fragmentcolor::{Renderer, Shader, Size};
 let renderer = Renderer::new();
-let shader = Shader::default();
+let shader = Shader::new(r#"
+@group(0) @binding(0) var t_tex: texture_2d<f32>;
+@group(0) @binding(1) var t_smp: sampler;
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.));
+  return vec4f(p[i], 0., 1.);
+}
+@fragment fn main() -> @location(0) vec4<f32> { return vec4f(1.,1.,1.,1.); }
+"#)?;
 
-let bytes = std::fs::read("./examples/assets/image.png").unwrap();
-let texture = renderer.create_texture(&bytes).await?;
+// 1x1 RGBA (white) raw pixel bytes
+let pixels: &[u8] = &[255,255,255,255];
+let texture = renderer.create_texture_with_size(pixels, Size::from((1,1))).await?;
 
-shader.set("texture", &texture).unwrap();
+shader.set("t_tex", &texture).unwrap();
+# let _ = shader;
 
+# let _ = shader;
 # Ok(())
 # }
 # fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }

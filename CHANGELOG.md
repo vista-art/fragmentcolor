@@ -6,24 +6,7 @@ See the [Roadmap](https://github.com/vista-art/fragmentcolor/blob/main/ROADMAP.m
 
 ## 0.10.7 Documentation automation, website integration, and release flow
 
-### Added
-
-- [x] Automated documentation pipeline:
-  - [x] Doc strings centralized in `docs/api` and consumed in Rust via `#[lsp_doc]`.
-  - [x] Build-time validation: ensures object/method docs exist and include a `## Example` section.
-  - [x] Website generator: converts `docs/api` into MDX pages under `docs/website`, downshifting method headings and stripping object H1.
-  - [x] JS/Python examples are sliced from annotated healthcheck scripts.
-- [x] Website moved into this repository under `docs/website`.
-- [x] Post-publish workflow: after tags publish to npm & PyPI, update consumers (website & JS example) to the released version and push to main.
-- [x] Healthcheck example markers added for Renderer/Pass/Frame/Shader.
-- [x] iOS/Android scaffolding: platform wrappers and targets aligned with Python/JS method order (bindings not generated yet)
-  - [x] Renderer: `new_ios`, `create_target_ios`, `create_texture_target_ios`, `render_ios`
-  - [x] Renderer: `new_android`, `create_target_android`, `create_texture_target_android`, `render_android`
-  - [x] Types: `IosTarget`, `IosTextureTarget`, `AndroidTarget`, `AndroidTextureTarget`
-- [x] Moved the public website into this repository under `docs/website`.
-- [x] Added post-publish workflow to update examples and website dependencies after npm & PyPI publish.
-
-#### Build System
+### Build System and Documentation
 
 - [x] Build System
   - [x] Unit test all packages before building
@@ -33,9 +16,61 @@ See the [Roadmap](https://github.com/vista-art/fragmentcolor/blob/main/ROADMAP.m
   - [x] Script to Test, Compile & Publish Rust + Winit
   - [x] GHA wheel: Test build all packages for all OSses
 
-- [x] Release Management
-  - [x] Automatically update docs from Rust Doc Comments
-  - [x] Script to copy contents and publish to Website
+- [x] Automated documentation pipeline:
+  - [x] Doc strings centralized in `docs/api` and consumed in Rust via `#[lsp_doc]`.
+  - [x] Build-time validation: ensures object/method docs exist and include a `## Example` section.
+  - [x] Website generator: converts `docs/api` into MDX pages under `docs/website`, downshifting method headings and stripping object H1.
+  - [x] JS/Python examples are sliced from annotated healthcheck scripts.
+
+- [x] Release Management & Website Automation
+- [x] Website moved into this repository under `docs/website`.
+- [x] Automatically update docs from Rust Doc Comments
+- [x] Script to copy contents and publish to Website
+- [x] Post-publish workflow: after tags publish to npm & PyPI, update consumers (website & JS example) to the released version and push to main.
+- [x] Healthcheck example markers added for Renderer/Pass/Frame/Shader.
+
+### Complete Texture and Storage API
+
+#### Core types
+
+- [x] Rename internal renderer/texture.rs::Texture -> TextureObject with sampler options (RwLock)
+- [x] Public API: Texture wrapper (Arc\<TextureObject\>, TextureId handle), add Arc\<RenderContext\>
+- [x] Handle registry in RenderContext (DashMap\<TextureId, Arc\<TextureObject\>\>) + AtomicU64 allocator
+- [x] Introduce TextureId newtype to avoid conflict with TexturePool, keep TexturePool as-is
+- [x] Introduce TextureMeta (id + naga metadata: dim, arrayed, class)
+
+#### Renderer API
+
+- [x] create_texture(input: Into\<TextureInput\>) -> Texture (Rust)
+- [x] create_texture_from_file(&Path) -> Texture (Rust)
+- [x] create_texture_with(input, options: TextureOptions) -> Texture (Rust); alias helpers: create_texture_with_size, create_texture_with_format
+- [x] Web: createTexture(input) (Uint8Array/URL/query selector)
+- [x] Python: create_texture(input) (bytes/path/ndarray)
+
+#### Shader UX
+
+- [x] UniformData::Texture carries TextureMeta; From<&Texture> sets id only (preserves shader metadata)
+- [x] UniformData::Storage((inner, span, access)) with CPU-side blob backing. set("ssbo.*") updates the blob at field offsets (from Naga) and renders on next frame.
+- [x] JS/Python conversions to allow shader.set("key", texture)
+- [x] Naga parsing: detect image/sampler bindings; store TextureMeta/SamplerInfo in UniformData
+- [x] AddressSpace handling: accept Uniform/Handle; error on bound unsupported spaces; WorkGroup and PushConstant parsed but flagged as PlannedFeature for now.
+
+#### Renderer bindings and draw
+
+- [x] Bind group layout: add Texture (sampled/depth/storage) and Sampler entries using Naga metadata
+- [x] Storage buffers: bind as BufferBindingType::Storage/ReadOnlyStorage based on access flags; upload CPU blob each frame via a dedicated pool
+- [x] Render: bind TextureView and Sampler (resolve from TextureId); fallback/default sampler if needed
+
+#### Unified input and ergonomics
+
+- [x] TextureInput enum (Bytes, Path, CloneOf); From impls for &[u8], Vec<u8], &Path, PathBuf, &Texture
+- [x] TextureOptions (size, format, sampler) with conversions from Size/TextureFormat; TextureFormat wrapper decoupled from wgpu
+- [x] create_texture prefers encoded bytes or path; use create_texture_with for raw bytes + options
+- [x] Aliases: create_2d_texture / create_3d_texture / create_storage_texture / create_depth_texture
+
+#### Cleanup
+
+- [x] TextureError (thiserror); remove Box<dyn Error> leftovers
 
 ### Rendering
 
@@ -49,10 +84,19 @@ See the [Roadmap](https://github.com/vista-art/fragmentcolor/blob/main/ROADMAP.m
 - [x] Centralized frame acquire retry in Renderer
 - [x] Pooling for transient targets/readback
 
-### Changed
+### Platforms
+
+- [x] iOS/Android scaffolding: platform wrappers and targets aligned with Python/JS method order (bindings not generated yet)
+  - [x] Renderer: `new_ios`, `create_target_ios`, `create_texture_target_ios`, `render_ios`
+  - [x] Renderer: `new_android`, `create_target_android`, `create_texture_target_android`, `render_android`
+  - [x] Types: `IosTarget`, `IosTextureTarget`, `AndroidTarget`, `AndroidTextureTarget`
+
+## Changed
 
 - [x] Normalized API links to <https://fragmentcolor.org>.
 - [x] Wired all public items to `#[lsp_doc]` sources (Renderer, Shader, Pass, Frame, etc.).
+- [x] Docs examples standardized: async wrapper + pollster, no futures dependency, no filesystem reads. Prefer create_texture in examples; use create_texture_with only on its own page or for raw-byte cases.
+- [x] Removed inline JS/Python examples on core API pages (these are generated elsewhere). Hidden platform docs left intact.
 - [x] Removed stale mobile code paths: `headless()`, `render_bitmap()`, and platform `FragmentColor` wrappers.
 - [x] Moved platform-specific cfgs out of `renderer/mod.rs`; added `renderer::platform::all::create_instance()` and moved the winit `HasDisplaySize` impl to `renderer/platform/winit.rs`.
 - [x] build.rs validation: ignore mobile wrapper variants (`*_ios`, `*_android`) just like `*_js` and `*_py` when mapping docs.

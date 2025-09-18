@@ -24,6 +24,7 @@ glsl = []
 shadertoy = ["glsl"]
 winit = ["dep:winit", "pollster"]
 python = ["pyo3", "numpy", "pollster"]
+fc_metrics = []
 
 [dependencies]
 # Rendering
@@ -71,7 +72,7 @@ objc2-app-kit = { version = "0.3" }
 
 # Android & iOS FFI
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-uniffi = { version = "0.29" }
+# uniffi = { version = "0.29" }
 ureq = { version = "3", default-features = false }
 pollster = { version = "0.4", optional = true }
 winit = { version = "0.30", features = ["serde"], optional = true }

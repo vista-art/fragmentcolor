@@ -1,9 +1,20 @@
+#[cfg(wasm)]
+use wasm_bindgen::prelude::*;
+
+#[cfg_attr(wasm, wasm_bindgen)]
+#[cfg_attr(python, pyo3::pyclass)]
 #[derive(Debug, Clone)]
 pub struct SamplerOptions {
     pub repeat_x: bool,
     pub repeat_y: bool,
     pub smooth: bool,
     pub compare: Option<wgpu::CompareFunction>,
+}
+
+#[cfg_attr(python, pyo3::pyclass)]
+#[derive(Debug, Clone, PartialEq)]
+pub struct SamplerInfo {
+    pub comparison: bool,
 }
 
 impl Default for SamplerOptions {

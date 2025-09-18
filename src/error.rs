@@ -22,7 +22,7 @@ pub enum FragmentColorError {
     Display(#[from] crate::target::error::DisplayError),
     #[cfg(wasm)]
     #[error("FragmentColor WASM Error: {0}")]
-    WasmError(String),
+    Error(String),
 }
 
 // Python-specific conversions
@@ -56,7 +56,7 @@ impl From<wasm_bindgen::JsValue> for FragmentColorError {
         } else {
             format!("{:?}", value)
         };
-        FragmentColorError::WasmError(error_string)
+        FragmentColorError::Error(error_string)
     }
 }
 

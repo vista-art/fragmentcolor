@@ -1,4 +1,4 @@
-const bytes = std.fs.read("./examples/assets/image.png").unwrap();
 const renderer = new Renderer();
-const tex = futures.executor.blockOn(renderer.createTexture(bytes)).unwrap();
-shader.set("tex", tex).unwrap();
+// 1x1 RGBA (white) raw pixel bytes;
+const pixels = [255,255,255,255];
+const tex = await renderer.createTextureWithSize(pixels, Size.from((1,1)));

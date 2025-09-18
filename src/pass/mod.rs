@@ -115,10 +115,10 @@ impl TryFrom<&wasm_bindgen::JsValue> for Pass {
 
         let key = wasm_bindgen::JsValue::from_str("__wbg_ptr");
         let ptr = Reflect::get(value, &key).map_err(|_| {
-            crate::pass::error::PassError::WasmError("Missing __wbg_ptr on Pass".into())
+            crate::pass::error::PassError::Error("Missing __wbg_ptr on Pass".into())
         })?;
         let id = ptr.as_f64().ok_or_else(|| {
-            crate::pass::error::PassError::WasmError("Invalid __wbg_ptr for Pass".into())
+            crate::pass::error::PassError::Error("Invalid __wbg_ptr for Pass".into())
         })? as u32;
         let anchor: <Pass as RefFromWasmAbi>::Anchor =
             unsafe { <Pass as RefFromWasmAbi>::ref_from_abi(id) };

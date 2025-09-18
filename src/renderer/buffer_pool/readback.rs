@@ -1,3 +1,18 @@
+//! Whole-buffer LRU pool for readbacks.
+//!
+//! Purpose vs. UniformBufferPool (kept in doc-comments per ROADMAP):
+//! - ReadbackBufferPool (this file)
+//!   • Purpose: Readback pixels (COPY_DST + MAP_READ) without re-allocating a fresh buffer each time.
+//!   • Shape: LRU of whole buffers keyed by capacity; best-fit selection; returned as Arc so async map/ownership is easy.
+//!   • Usage: wgpu::BufferUsages::COPY_DST | MAP_READ; mapped for read after GPU completes.
+//!   • Access pattern: kept alive across async map window; cannot be trivially suballocated like UNIFORM slices.
+//!
+//! - UniformBufferPool (see buffer_pool/uniform.rs)
+//!   • Purpose: Upload uniforms efficiently in-frame with alignment padding (typically 256).
+//!   • Shape: Grows by fixed-size chunks; suballocates many small ranges per frame; reset between frames.
+//!   • Usage: wgpu::BufferUsages::UNIFORM | COPY_DST; not mapped for read.
+//!   • Access pattern: short-lived writes via queue.write_buffer; no map_read.
+
 use std::collections::VecDeque;
 use std::sync::Arc;
 
@@ -20,6 +35,12 @@ pub(crate) struct ReadbackBufferPool {
     label: String,
     entry_limit: usize,
     entries: VecDeque<ReadbackEntry>, // front = LRU, back = MRU
+    // instrumentation
+    hits: u64,
+    misses: u64,
+    evictions: u64,
+    allocations: u64,
+    bytes_allocated: u64,
 }
 
 impl ReadbackBufferPool {
@@ -28,6 +49,11 @@ impl ReadbackBufferPool {
             label: label.to_string(),
             entry_limit: entry_limit.max(1),
             entries: VecDeque::new(),
+            hits: 0,
+            misses: 0,
+            evictions: 0,
+            allocations: 0,
+            bytes_allocated: 0,
         }
     }
 
@@ -49,9 +75,11 @@ impl ReadbackBufferPool {
             let entry = self.entries.remove(idx).expect("valid index");
             let buffer = entry.buffer.clone();
             self.entries.push_back(entry);
+            self.hits += 1;
             return buffer;
         }
 
+        self.misses += 1;
         // No suitable entry; create a new buffer exactly sized to `size`
         let buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some(&self.label),
@@ -64,19 +92,45 @@ impl ReadbackBufferPool {
             capacity: size,
             buffer: arc.clone(),
         });
+        self.allocations += 1;
+        self.bytes_allocated += size;
 
         // Evict LRU if over capacity
         if self.entries.len() > self.entry_limit {
             let _ = self.entries.pop_front();
+            self.evictions += 1;
         }
         arc
+    }
+
+    pub fn reset_metrics(&mut self) {
+        self.hits = 0;
+        self.misses = 0;
+        self.evictions = 0;
+        self.allocations = 0;
+        self.bytes_allocated = 0;
+    }
+}
+
+impl crate::renderer::buffer_pool::BufferPool for ReadbackBufferPool {
+    fn stats(&self) -> crate::renderer::buffer_pool::PoolStats {
+        crate::renderer::buffer_pool::PoolStats {
+            hits: self.hits,
+            misses: self.misses,
+            evictions: self.evictions,
+            allocations: self.allocations,
+            bytes_allocated: self.bytes_allocated,
+        }
+    }
+
+    fn reset_metrics(&mut self) {
+        ReadbackBufferPool::reset_metrics(self)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::readback_pool::ReadbackBufferPool;
-    use super::*;
+    use crate::ReadbackBufferPool;
     use std::sync::Arc;
 
     // Helper to get a test device

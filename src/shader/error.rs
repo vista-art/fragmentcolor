@@ -4,6 +4,8 @@ use thiserror::Error;
 pub enum ShaderError {
     #[error("Failed to parse shader: {0}")]
     ParseError(String),
+    #[error("Planned feature not yet implemented: {0}")]
+    PlannedFeature(String),
     #[error("Uniform not found: {0}")]
     UniformNotFound(String),
     #[error("Type mismatch for uniform {0}")]
@@ -25,7 +27,7 @@ pub enum ShaderError {
     FileNotFound(#[from] std::io::Error),
     #[cfg(wasm)]
     #[error("WASM Shader Error: {0}")]
-    WasmError(String),
+    Error(String),
 }
 
 // Python-specific conversions
@@ -54,7 +56,7 @@ impl From<wasm_bindgen::JsValue> for ShaderError {
         } else {
             format!("{:?}", value)
         };
-        ShaderError::WasmError(error_string)
+        ShaderError::Error(error_string)
     }
 }
 

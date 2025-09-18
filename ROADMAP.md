@@ -2,13 +2,29 @@
 
 This roadmap summarizes current focus and planned features.
 
+## 0.10.7 API stabilization and documentation automation
+
+- [ ] Rendering features
+  - [x] Begin Texture & Sampler support in Shaders
+  - [ ] Geometry/instancing groundwork
+
+- [ ] Ensure we expose all the ways to upload data to a GPU
+
+  - [ ] VertexBuffer
+  - [ ] IndexBuffer
+  - [x] StorageBuffer
+  - [ ] StorageBuffer: Arrays
+  - [x] Uniform
+  - [ ] Uniform: Arrays
+  - [x] Texture
+  - [x] StorageTexture
+  - [x] Sampler
+  - [ ] PushConstant
+
 ## 0.10.8 Swift & Kotlin with Uniffi
 
 - [ ] Swift Wrappers
 - [ ] Kotlin Wrappers
-- [ ] Rendering features
-  - [ ] Begin Texture & Sampler support in Shaders
-  - [ ] Geometry/instancing groundwork
 - [ ] Mobile platform wiring
   - [ ] Contribute to Uniffi to suport renaming structs (so I can follow the same pattern as in Python/JS)
   - [ ] iOS: create a safe helper to wrap an existing CAMetalLayer into a wgpu::Surface, then delegate to a core helper that returns WindowTarget
@@ -21,17 +37,6 @@ This roadmap summarizes current focus and planned features.
   - It must give access to all wgpu::RenderPass customizations with sensible defaults, so we keep our API simple while still allowing for advanced use cases.
 - [ ] Support 3D Textures
   - [ ] (check RenderPassColorAttachment.depth_slice)
-
-- [ ] Ensure we expose all the ways to upload data to a GPU
-
-  - [ ] VertexBuffer
-  - [ ] IndexBuffer
-  - [ ] StorageBuffer
-  - [x] Uniform
-  - [ ] Texture
-  - [ ] StorageTexture
-  - [ ] Sampler
-  - [ ] PushConstant
 
 ## Up Next
 

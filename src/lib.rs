@@ -2,8 +2,10 @@
 //!
 //! Easy GPU Rendering for Javascript, Python, Kotlin, and Swift.
 
-#[cfg(not(wasm))]
-uniffi::setup_scaffolding!();
+// To be enabled in Version 0.10.8 (for Android and iOS support)
+//
+// #[cfg(not(wasm))]
+// uniffi::setup_scaffolding!();
 
 /// # Renderer module.
 ///
@@ -14,6 +16,11 @@ pub mod renderer;
 ///
 /// Target represents a rendering destination, such as a window or an offscreen texture.
 pub mod target;
+
+/// # Texture module
+///
+/// Texture represents an image stored on the GPU that can be sampled in shaders.
+pub mod texture;
 
 /// # Shader Module
 ///
@@ -40,6 +47,11 @@ pub mod error;
 /// Simple helper to convert between different size representations.
 pub mod size;
 
+/// # Color module
+///
+/// Simple helper to represent color and convert user input (i.e. CSS strings)
+pub mod color;
+
 /// Winit App Module (desktop only)
 ///
 /// Requires the `winit` feature to be enabled.
@@ -50,17 +62,17 @@ pub mod size;
 pub mod app;
 #[cfg(all(not(wasm), feature = "winit"))]
 pub use app::*;
+
 /// DRAFT; API may change in a whim
-pub mod color;
 pub mod doc_link;
 pub mod region;
-pub mod sampler;
-// Macros for reference-forwarding conversions
+
+// Macros for blanket type conversions
 mod macros;
 
 pub use {
-    color::*, doc_link::*, error::*, frame::*, pass::*, region::*, renderer::*, sampler::*,
-    shader::*, size::*, target::*,
+    color::*, doc_link::*, error::*, frame::*, pass::*, region::*, renderer::*, shader::*, size::*,
+    target::*, texture::*,
 };
 
 /// Install a panic hook and console logger when running in WASM so browser console shows

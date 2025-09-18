@@ -11,8 +11,20 @@ impl Shader {
     }
 
     #[pyo3(name = "set")]
-    pub fn set_py(&self, key: &str, value: UniformData) -> Result<(), PyErr> {
-        self.object.set(key, value).map_err(|e| e.into())
+    pub fn set_py(&self, key: &str, value: Py<PyAny>) -> Result<(), PyErr> {
+        Python::attach(|py| -> Result<(), PyErr> {
+            // If it's a Texture object, map to UniformData::Texture with id only
+            if let Ok(tex) = value.bind(py).downcast::<crate::texture::Texture>() {
+                let meta = crate::texture::TextureMeta::with_id_only(tex.borrow().id.clone());
+                return self
+                    .object
+                    .set(key, UniformData::Texture(meta))
+                    .map_err(|e| e.into());
+            }
+            // Fallback: try to extract as UniformData via derived conversions
+            let ud: UniformData = value.bind(py).extract()?;
+            self.object.set(key, ud).map_err(|e| e.into())
+        })
     }
 
     #[pyo3(name = "get")]

@@ -85,6 +85,90 @@ impl Renderer {
         Ok(CanvasTarget::new(context, surface, config))
     }
 
+    /// JS: Create a Texture from bytes, URL, or a CSS selector/HTMLImageElement.
+    /// Usage:
+    ///   await renderer.createTexture(u8array)
+    ///   await renderer.createTexture("/path/or/url.png")
+    ///   await renderer.createTexture("#imgId")
+    #[wasm_bindgen(js_name = "createTexture")]
+    #[lsp_doc("docs/api/core/renderer/create_texture.md")]
+    pub async fn create_texture_js(
+        &self,
+        input: JsValue,
+    ) -> Result<crate::texture::Texture, JsError> {
+        use js_sys::Uint8Array;
+        use wasm_bindgen_futures::JsFuture;
+        use web_sys::{HtmlImageElement, Request, RequestInit, RequestMode, Response, window};
+
+        // Helper: fetch URL to bytes
+        async fn fetch_bytes(url: &str) -> Result<Vec<u8>, JsError> {
+            let mut opts = RequestInit::new();
+            opts.method("GET");
+            opts.mode(RequestMode::Cors);
+            let req = Request::new_with_str_and_init(url, &opts)?;
+            let win = window().ok_or_else(|| JsError::new("no window"))?;
+            let resp_value = JsFuture::from(win.fetch_with_request(&req)).await?;
+            let resp: Response = resp_value
+                .dyn_into()
+                .map_err(|_| JsError::new("bad response"))?;
+            let buf = JsFuture::from(resp.array_buffer()?).await?;
+            let u8 = Uint8Array::new(&buf);
+            let mut out = vec![0u8; u8.length() as usize];
+            u8.copy_to(&mut out[..]);
+            Ok(out)
+        }
+
+        // Case 1: Uint8Array
+        if let Some(u8a) = input.dyn_ref::<Uint8Array>() {
+            let mut bytes = vec![0u8; u8a.length() as usize];
+            u8a.copy_to(&mut bytes[..]);
+            return self
+                .create_texture(crate::texture::TextureInput::Bytes(bytes))
+                .await
+                .map_err(|e| JsError::new(&format!("{e}")));
+        }
+
+        // Case 2: String: URL or selector
+        if let Some(s) = input.as_string() {
+            let url = if s.starts_with('#') || s.starts_with('.') {
+                // Treat as selector
+                if let Some(doc) = web_sys::window().and_then(|w| w.document()) {
+                    if let Ok(Some(elem)) = doc.query_selector(&s) {
+                        if let Ok(img) = elem.dyn_into::<HtmlImageElement>() {
+                            img.src()
+                        } else {
+                            s.clone()
+                        }
+                    } else {
+                        s.clone()
+                    }
+                } else {
+                    s.clone()
+                }
+            } else {
+                s.clone()
+            };
+            let bytes = fetch_bytes(&url).await?;
+            return self
+                .create_texture(crate::texture::TextureInput::Bytes(bytes))
+                .await
+                .map_err(|e| JsError::new(&format!("{e}")));
+        }
+
+        // Case 3: HTMLImageElement
+        if input.has_type::<HtmlImageElement>() {
+            let img: HtmlImageElement =
+                input.dyn_into().map_err(|_| JsError::new("Not an image"))?;
+            let bytes = fetch_bytes(&img.src()).await?;
+            return self
+                .create_texture(crate::texture::TextureInput::Bytes(bytes))
+                .await
+                .map_err(|e| JsError::new(&format!("{e}")));
+        }
+
+        Err(JsError::new("Unsupported input for createTexture"))
+    }
+
     #[wasm_bindgen(js_name = "createTextureTarget")]
     #[lsp_doc("docs/api/core/renderer/create_texture_target.md")]
     pub async fn create_texture_target_js(&self, size: &JsValue) -> Result<TextureTarget, JsError> {
@@ -135,7 +219,7 @@ impl Renderer {
             }
         }
 
-        Err(RendererError::WasmError(
+        Err(RendererError::Error(
             "Invalid target type in render".to_string(),
         ))
     }
