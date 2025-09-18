@@ -122,6 +122,7 @@ impl UniformStorage {
 
     /// Update a single uniform
     pub fn update(&mut self, key: &str, value: &UniformData) -> Result<(), ShaderError> {
+        // Fast path: exact key exists in the index
         if let Some((offset, size, uniform)) = self.uniforms.get_mut(key) {
             // Allow updating Texture with TextureMeta (id + naga metadata) and preserve shader metadata if caller passed id-only
             match (&uniform.data, value) {
@@ -197,7 +198,58 @@ impl UniformStorage {
 
             Ok(())
         } else {
-            Err(ShaderError::UniformNotFound(key.into()))
+            // Slow path: support keys with array indices like "data.arr[3].field" or "u[2]"
+            let (root, parts) = parse_key(key)?;
+            // Find the root entry (top-level uniform variable)
+            let (root_offset, _root_size, root_uniform) = self
+                .uniforms
+                .get(&root)
+                .cloned()
+                .ok_or_else(|| ShaderError::UniformNotFound(root.clone()))?;
+
+            let is_storage = matches!(root_uniform.data, UniformData::Storage(_));
+
+            let (rel_ofs, leaf_sz) = if is_storage {
+                // For storage buffers, traverse the inner shape
+                if let UniformData::Storage(data) = &root_uniform.data {
+                    if let Some((inner, _span, _)) = data.first() {
+                        compute_offset(inner, &parts, key)?
+                    } else {
+                        return Err(ShaderError::InvalidKey(key.into()));
+                    }
+                } else {
+                    return Err(ShaderError::InvalidKey(key.into()));
+                }
+            } else {
+                compute_offset(&root_uniform.data, &parts, key)?
+            };
+
+            // Size/type check: the provided value must match leaf size
+            let val_bytes = value.to_bytes();
+            if val_bytes.len() != leaf_sz as usize {
+                return Err(ShaderError::TypeMismatch(key.into()));
+            }
+
+            if is_storage {
+                if let Some(blob) = self.storage_blobs.get_mut(&root) {
+                    let start = rel_ofs as usize;
+                    let end = start.saturating_add(val_bytes.len());
+                    if end <= blob.len() {
+                        blob[start..end].copy_from_slice(&val_bytes);
+                        return Ok(());
+                    }
+                }
+                Err(ShaderError::InvalidKey(key.into()))
+            } else {
+                // Classic uniform buffer bytes: base offset + relative offset
+                let start = root_offset.saturating_add(rel_ofs) as usize;
+                let end = start.saturating_add(val_bytes.len());
+                if end <= self.uniform_bytes.len() {
+                    self.uniform_bytes[start..end].copy_from_slice(&val_bytes);
+                    return Ok(());
+                }
+                Err(ShaderError::InvalidKey(key.into()))
+            }
         }
     }
 
@@ -226,6 +278,7 @@ impl UniformStorage {
 
     /// Get a uniform as bytes by key
     pub fn get_bytes(&self, key: &str) -> Option<&[u8]> {
+        // Fast path: exact key was indexed
         if let Some((offset, size, uniform)) = self.uniforms.get(key) {
             // If this key corresponds to a storage buffer (root or nested), slice from the storage blob
             let root = if matches!(uniform.data, UniformData::Storage(_)) {
@@ -246,6 +299,169 @@ impl UniformStorage {
             return Some(&self.uniform_bytes[start..end]);
         }
 
+        // Slow path: compute offsets from array/struct shapes and return a slice
+        if let Ok((root, parts)) = parse_key(key) {
+            if let Some((root_offset, _root_size, root_uniform)) = self.uniforms.get(&root) {
+                let is_storage = matches!(root_uniform.data, UniformData::Storage(_));
+                let (rel_ofs, leaf_sz) = if is_storage {
+                    if let UniformData::Storage(data) = &root_uniform.data {
+                        if let Some((inner, _span, _)) = data.first() {
+                            compute_offset(inner, &parts, key).ok()?
+                        } else {
+                            return None;
+                        }
+                    } else {
+                        return None;
+                    }
+                } else {
+                    compute_offset(&root_uniform.data, &parts, key).ok()?
+                };
+
+                if is_storage {
+                    if let Some(blob) = self.storage_blobs.get(&root) {
+                        let start = rel_ofs as usize;
+                        let end = start + leaf_sz as usize;
+                        if end <= blob.len() {
+                            return Some(&blob[start..end]);
+                        }
+                    }
+                } else {
+                    let start = root_offset.saturating_add(rel_ofs) as usize;
+                    let end = start + leaf_sz as usize;
+                    if end <= self.uniform_bytes.len() {
+                        return Some(&self.uniform_bytes[start..end]);
+                    }
+                }
+            }
+        }
+
         None
     }
+}
+
+// -------------------------------
+// Key parsing and offset compute
+// -------------------------------
+
+#[derive(Debug, Clone, PartialEq)]
+enum Segment {
+    Field(String),
+    Index(usize),
+}
+
+fn parse_key(key: &str) -> Result<(String, Vec<Segment>), ShaderError> {
+    // Extract root name: run until '.' or '['
+    let mut chars = key.chars().peekable();
+    let mut root = String::new();
+    while let Some(&c) = chars.peek() {
+        if c == '.' || c == '[' {
+            break;
+        }
+        root.push(c);
+        chars.next();
+    }
+    if root.is_empty() {
+        return Err(ShaderError::InvalidKey(key.into()));
+    }
+
+    let mut parts = Vec::new();
+    while let Some(c) = chars.peek().cloned() {
+        match c {
+            '.' => {
+                // Consume '.' and parse field name
+                chars.next();
+                let mut name = String::new();
+                while let Some(&d) = chars.peek() {
+                    if d == '.' || d == '[' {
+                        break;
+                    }
+                    name.push(d);
+                    chars.next();
+                }
+                if name.is_empty() {
+                    return Err(ShaderError::InvalidKey(key.into()));
+                }
+                parts.push(Segment::Field(name));
+            }
+            '[' => {
+                // Parse index: '[' digits ']'
+                chars.next(); // consume '['
+                let mut num = String::new();
+                while let Some(&d) = chars.peek() {
+                    if d == ']' { break; }
+                    if !d.is_ascii_digit() { return Err(ShaderError::InvalidKey(key.into())); }
+                    num.push(d);
+                    chars.next();
+                }
+                if chars.peek() == Some(&']') { chars.next(); } else { return Err(ShaderError::InvalidKey(key.into())); }
+                if num.is_empty() { return Err(ShaderError::InvalidKey(key.into())); }
+                let idx: usize = num.parse().map_err(|_| ShaderError::InvalidKey(key.into()))?;
+                parts.push(Segment::Index(idx));
+            }
+            _ => return Err(ShaderError::InvalidKey(key.into())),
+        }
+    }
+
+    Ok((root, parts))
+}
+
+fn compute_offset(shape: &UniformData, parts: &[Segment], key: &str) -> Result<(u32, u32), ShaderError> {
+    let mut ofs: u32 = 0;
+    let mut cur = shape;
+
+    let mut i = 0usize;
+    while i < parts.len() {
+        match cur {
+            UniformData::Struct((fields, _span)) => {
+                match &parts[i] {
+                    Segment::Field(name) => {
+                        let mut found = None;
+                        for (fo, fname, f) in fields.iter() {
+                            if fname == name {
+                                found = Some((*fo, f));
+                                break;
+                            }
+                        }
+                        if let Some((fo, f)) = found {
+                            ofs = ofs.saturating_add(fo);
+                            cur = f;
+                            i += 1;
+                        } else {
+                            return Err(ShaderError::FieldNotFound(name.clone()));
+                        }
+                    }
+                    Segment::Index(_) => return Err(ShaderError::InvalidKey(key.into())),
+                }
+            }
+            UniformData::Array(items) => {
+                if let Some((elem, count, stride)) = items.first() {
+                    match &parts[i] {
+                        Segment::Index(idx) => {
+                            let n = *count as usize;
+                            if *idx >= n {
+                                return Err(ShaderError::IndexOutOfBounds { key: key.into(), index: *idx, len: n });
+                            }
+                            ofs = ofs.saturating_add((*idx as u32) * *stride);
+                            cur = elem;
+                            i += 1;
+                        }
+                        Segment::Field(_) => return Err(ShaderError::InvalidKey(key.into())),
+                    }
+                } else {
+                    return Err(ShaderError::InvalidKey(key.into()));
+                }
+            }
+            // Leaf types: cannot consume more parts
+            _ => {
+                break;
+            }
+        }
+    }
+
+    if i != parts.len() {
+        // we still have leftover navigation but hit a leaf
+        return Err(ShaderError::InvalidKey(key.into()));
+    }
+
+    Ok((ofs, cur.size()))
 }

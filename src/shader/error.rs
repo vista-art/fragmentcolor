@@ -10,6 +10,10 @@ pub enum ShaderError {
     UniformNotFound(String),
     #[error("Type mismatch for uniform {0}")]
     TypeMismatch(String),
+    #[error("Invalid key: {0}")]
+    InvalidKey(String),
+    #[error("Index out of bounds for {key}: index {index} >= len {len}")]
+    IndexOutOfBounds { key: String, index: usize, len: usize },
     #[error("Field not found in struct: {0}")]
     FieldNotFound(String),
     #[error("WGSL error: {0}")]
