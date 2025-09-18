@@ -70,6 +70,35 @@ pub fn configure_surface(
     config
 }
 
+// Extracted so it can be tested without constructing a full SurfaceCapabilities
+fn choose_surface_format_from(formats: &[wgpu::TextureFormat]) -> wgpu::TextureFormat {
+    // Try preferred linear formats first.
+    if let Some(&fmt) = formats.iter().find(|&&f| {
+        matches!(
+            f,
+            wgpu::TextureFormat::Rgba8Unorm | wgpu::TextureFormat::Bgra8Unorm
+        )
+    }) {
+        return fmt;
+    }
+
+    // If no linear 8-bit format is available, accept sRGB variants if present.
+    if let Some(&fmt) = formats.iter().find(|&&f| {
+        matches!(
+            f,
+            wgpu::TextureFormat::Rgba8UnormSrgb | wgpu::TextureFormat::Bgra8UnormSrgb
+        )
+    }) {
+        return fmt;
+    }
+
+    // Otherwise, fall back to the first advertised format.
+    formats
+        .first()
+        .copied()
+        .unwrap_or(wgpu::TextureFormat::Rgba8Unorm)
+}
+
 fn limits() -> wgpu::Limits {
     #[cfg(wasm)]
     let limits = wgpu::Limits::downlevel_webgl2_defaults();
@@ -91,33 +120,11 @@ fn memory_hints() -> wgpu::MemoryHints {
 /// Prefer a linear (non-sRGB) 8-bit RGBA/BGRA format if available; otherwise, fall back to the
 /// first supported format. We must choose a format that is actually advertised by the surface.
 fn choose_surface_format(capabilities: &wgpu::SurfaceCapabilities) -> wgpu::TextureFormat {
-    // Try preferred linear formats first.
-    if let Some(&fmt) = capabilities.formats.iter().find(|&&f| {
-        matches!(
-            f,
-            wgpu::TextureFormat::Rgba8Unorm | wgpu::TextureFormat::Bgra8Unorm
-        )
-    }) {
-        return fmt;
-    }
-
-    // If no linear 8-bit format is available, accept sRGB variants if present.
-    if let Some(&fmt) = capabilities.formats.iter().find(|&&f| {
-        matches!(
-            f,
-            wgpu::TextureFormat::Rgba8UnormSrgb | wgpu::TextureFormat::Bgra8UnormSrgb
-        )
-    }) {
-        return fmt;
-    }
-
-    // Otherwise, fall back to the first advertised format.
-    capabilities
-        .formats
-        .first()
-        .copied()
-        .unwrap_or(wgpu::TextureFormat::Rgba8Unorm)
+    choose_surface_format_from(&capabilities.formats)
 }
+
+#[cfg(test)]
+mod platform_tests;
 
 /// Negotiate a supported MSAA sample count for a given format on this adapter.
 /// Halves `wanted` until `features.sample_count_supported(n)` or returns 1.

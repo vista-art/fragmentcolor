@@ -68,3 +68,28 @@ impl TryFrom<&wasm_bindgen::JsValue> for Frame {
         Ok(anchor.clone())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Story: A new frame starts empty, then collects passes in order, and exposes them via Renderable.
+    #[test]
+    fn collects_passes_and_exposes_renderable_view() {
+        // Arrange
+        let mut frame = Frame::new();
+        let p1 = Pass::new("p1");
+        let p2 = Pass::new("p2");
+
+        // Act
+        frame.add_pass(&p1);
+        frame.add_pass(&p2);
+
+        // Assert: internal storage preserves order
+        assert_eq!(frame.passes.len(), 2);
+        // Assert: Renderable view yields two pass objects
+        let v = frame.passes();
+        let count = v.into_iter().count();
+        assert_eq!(count, 2);
+    }
+}

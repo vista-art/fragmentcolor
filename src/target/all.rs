@@ -55,3 +55,41 @@ impl Target for RenderTarget {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Story: RenderTarget delegates to underlying texture target for size/resize/frame/image.
+    #[test]
+    fn delegates_for_texture_variant() {
+        let r = crate::Renderer::new();
+        let rt = pollster::block_on(r.create_texture_target([8, 6])).expect("tex");
+        let mut any = RenderTarget::from(rt);
+
+        let s = any.size();
+        assert_eq!([s.width, s.height], [8, 6]);
+
+        any.resize([4, 4]);
+        let s2 = any.size();
+        assert_eq!([s2.width, s2.height], [4, 4]);
+
+        let fr = any.get_current_frame().expect("frame");
+        let _fmt = fr.format();
+        let img = any.get_image();
+        assert_eq!(img.len() as u32, 4 * 4 * 4);
+    }
+
+    // Story: RenderTarget created from headless window behaves like texture-backed variant.
+    #[test]
+    fn delegates_for_window_variant_headless_fallback() {
+        let r = crate::Renderer::new();
+        let headless = crate::headless_window([10, 12]);
+        let any = pollster::block_on(r.create_target(headless)).expect("target");
+
+        let s = any.size();
+        assert_eq!([s.width, s.height], [10, 12]);
+        let img = any.get_image();
+        assert_eq!(img.len() as u32, 10 * 12 * 4);
+    }
+}

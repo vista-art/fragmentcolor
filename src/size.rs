@@ -367,4 +367,39 @@ mod tests {
         let e2: wgpu::Extent3d = (&s).into();
         assert_eq!(e2, e);
     }
+
+    // Story: Conversions between tuples/arrays and Size (owned and borrowed) behave as expected.
+    #[test]
+    fn size_tuple_array_conversions() {
+        // (w,h) -> Size and back
+        let s: Size = (320u32, 240u32).into();
+        assert_eq!((320, 240), <(u32, u32)>::from(s));
+
+        // & (w,h)
+        let t = (800u32, 600u32);
+        let s2: Size = (&t).into();
+        let t2: (u32, u32) = (&s2).into();
+        assert_eq!(t2, t);
+
+        // (w,h,d) -> Size and back
+        let s3: Size = (1u32, 2u32, 3u32).into();
+        let back3: (u32, u32, u32) = s3.into();
+        assert_eq!(back3, (1, 2, 3));
+
+        // arrays [w,h] and [w,h,d]
+        let s4: Size = [10u32, 20u32].into();
+        let arr2: [u32; 2] = s4.into();
+        assert_eq!(arr2, [10, 20]);
+
+        let s5: Size = [3u32, 4u32, 5u32].into();
+        let arr3: [u32; 3] = s5.into();
+        assert_eq!(arr3, [3, 4, 5]);
+
+        // From &Size into arrays
+        let s6 = Size::new(7, 8, Some(9));
+        let arr2b: [u32; 2] = (&s6).into();
+        let arr3b: [u32; 3] = (&s6).into();
+        assert_eq!(arr2b, [7, 8]);
+        assert_eq!(arr3b, [7, 8, 9]);
+    }
 }

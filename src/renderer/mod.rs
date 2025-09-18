@@ -8,7 +8,6 @@ use lsp_doc::lsp_doc;
 use parking_lot::RwLock;
 use std::borrow::Cow;
 use std::collections::HashMap;
-use std::io::Read;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 pub type Commands = Vec<wgpu::CommandBuffer>;
@@ -196,9 +195,7 @@ impl Renderer {
             //
             // From a URL
             TextureInput::Url(url) => {
-                let mut bytes: Vec<u8> = vec![];
-                let mut response = ureq::get(url).call()?;
-                response.body_mut().as_reader().read_to_end(&mut bytes)?;
+                let bytes = crate::net::fetch_bytes(&url).await?;
 
                 let object = Arc::new(crate::TextureObject::from_bytes(context.as_ref(), &bytes)?);
                 let id = context.register_texture(object.clone());
@@ -1038,6 +1035,59 @@ fn create_render_pipeline(
         multiview: None,
         cache: None,
     })
+}
+
+#[cfg(test)]
+mod more_error_path_tests {
+    use super::*;
+
+    // Story: Creating a texture from RGBA8 raw bytes with explicit size succeeds and yields expected size.
+    #[test]
+    fn create_texture_with_raw_bytes_success() {
+        pollster::block_on(async move {
+            let renderer = Renderer::new();
+            // 2x2 RGBA (4 pixels): solid colors
+            let bytes: [u8; 16] = [
+                255, 0, 0, 255,   0, 255, 0, 255,
+                0, 0, 255, 255,   255, 255, 255, 255,
+            ];
+            let tex = renderer
+                .create_texture_with(&bytes[..], crate::Size::from((2u32, 2u32)))
+                .await
+                .expect("texture raw bytes");
+            let sz = tex.size();
+            assert_eq!([sz.width, sz.height], [2, 2]);
+        });
+    }
+
+    // Story: Creating a texture from invalid raw bytes with explicit format/size returns an error.
+    #[test]
+    fn create_texture_with_invalid_raw_bytes_errors() {
+        pollster::block_on(async move {
+            let renderer = Renderer::new();
+            let bad = [1u8, 2, 3];
+            let res = renderer
+                .create_texture_with(
+                    &bad[..],
+                    TextureOptions::from(crate::Size::from((2u32, 2u32))),
+                )
+                .await;
+            assert!(res.is_err(), "expected error for insufficient raw bytes");
+        });
+    }
+
+    // Story: Creating a texture from a non-existent file path returns an error wrapped by InitializationError.
+    #[test]
+    fn create_texture_from_nonexistent_path_errors() {
+        pollster::block_on(async move {
+            let renderer = Renderer::new();
+            let p = std::path::PathBuf::from("/path/does/not/exist.png");
+            let res = renderer
+                .create_texture_with(&p, TextureOptions::from(crate::Size::from((1u32, 1u32))))
+                .await;
+            assert!(res.is_err());
+        });
+    }
 }
 
 #[cfg(test)]

@@ -496,3 +496,38 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+mod more_region_tests {
+    use super::Region;
+
+    // Story: Construct regions using helpers and verify geometry utilities.
+    #[test]
+    fn computes_area_aspect_and_centers() {
+        // Arrange
+        let r = Region::from_region(2, 4, 8, 6); // spans x:[2,10), y:[4,10)
+
+        // Act / Assert
+        assert_eq!(r.width(), 8);
+        assert_eq!(r.height(), 6);
+        assert_eq!(r.area(), 48);
+        assert!((r.aspect() - (8.0 / 6.0)).abs() < 1e-6);
+        assert_eq!(r.pixel_center(), (2 + 4, 4 + 3));
+    }
+
+    // Story: Union grows the region while intersect check reports overlap.
+    #[test]
+    fn unions_and_intersects() {
+        // Arrange
+        let mut a = Region::from_region(0, 0, 4, 4);
+        let b = Region::from_region(2, 2, 4, 4);
+
+        // Act
+        let overlaps = a.intersects(b);
+        a.union(b);
+
+        // Assert
+        assert!(overlaps);
+        assert_eq!(a, Region::from_region(0, 0, 6, 6));
+    }
+}

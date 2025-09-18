@@ -2,25 +2,6 @@
 
 This roadmap summarizes current focus and planned features.
 
-## 0.10.7 API stabilization and documentation automation
-
-- [ ] Rendering features
-  - [x] Begin Texture & Sampler support in Shaders
-  - [ ] Geometry/instancing groundwork
-
-- [ ] Ensure we expose all the ways to upload data to a GPU
-
-  - [ ] VertexBuffer
-  - [ ] IndexBuffer
-  - [x] StorageBuffer
-  - [ ] StorageBuffer: Arrays
-  - [x] Uniform
-  - [ ] Uniform: Arrays
-  - [x] Texture
-  - [x] StorageTexture
-  - [x] Sampler
-  - [ ] PushConstant
-
 ## 0.10.8 Swift & Kotlin with Uniffi
 
 - [ ] Swift Wrappers

@@ -58,3 +58,23 @@ impl From<TextureError> for wasm_bindgen::JsValue {
         wasm_bindgen::JsValue::from_str(&error.to_string())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Story: TextureError wraps failures from creation paths and shader conversion.
+    #[test]
+    fn texture_error_variants_and_from_shader() {
+        let e1 = TextureError::NoContext;
+        assert!(e1.to_string().contains("Context not initialized"));
+
+        let e2 = TextureError::CreateTextureError("bad".into());
+        assert!(e2.to_string().contains("Failed to create texture"));
+
+        // From ShaderError
+        let se = crate::shader::error::ShaderError::UniformNotFound("u".into());
+        let e3: TextureError = se.into();
+        assert!(matches!(e3, TextureError::ShaderError(_)));
+    }
+}

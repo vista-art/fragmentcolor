@@ -207,3 +207,94 @@ impl crate::renderer::buffer_pool::BufferPool for UniformBufferPool {
         self.bytes_allocated = self.chunk_size;
     }
 }
+
+#[cfg(test)]
+#[cfg(not(wasm))]
+mod tests {
+    use super::*;
+    use crate::renderer::buffer_pool::BufferPool;
+
+    async fn device_and_queue() -> (wgpu::Device, wgpu::Queue) {
+        let instance = crate::renderer::platform::all::create_instance().await;
+        let adapter = crate::renderer::platform::all::request_adapter(&instance, None)
+            .await
+            .expect("adapter");
+        crate::renderer::platform::all::request_device(&adapter)
+            .await
+            .expect("device")
+    }
+
+    // Story: ensure_capacity grows the pool by whole chunks when required capacity exceeds current slack.
+    #[test]
+    fn grows_capacity_in_chunks() {
+        pollster::block_on(async move {
+            // Arrange
+            let (device, _queue) = device_and_queue().await;
+            let mut pool = UniformBufferPool::with_params(
+                "test pool",
+                &device,
+                wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                4096,
+            );
+            let initial = pool.stats();
+
+            // Act: require 3 chunks worth
+            pool.ensure_capacity(3 * 4096 + 1, &device);
+
+            // Assert
+            let after = pool.stats();
+            assert!(after.bytes_allocated >= initial.bytes_allocated + 2 * 4096);
+            assert!(after.allocations >= initial.allocations + 2);
+        });
+    }
+
+    // Story: upload aligns writes, bindings report sizes padded to at least 16 bytes.
+    #[test]
+    fn upload_alignment_and_binding_padding() {
+        pollster::block_on(async move {
+            // Arrange
+            let (device, queue) = device_and_queue().await;
+            let mut pool = UniformBufferPool::new("pad pool", &device);
+            let small = [1u8, 2, 3, 4, 5];
+
+            // Act
+            let loc = pool.upload(&small, &queue, &device);
+            let binding = pool.get_binding(loc);
+
+            // Assert: binding size is present and padded to multiple of 16
+            let sz = binding.size.map(|nz| nz.get()).unwrap_or(0);
+            assert!(sz >= 16 && sz % 16 == 0);
+
+            // Zero-sized case yields None
+            let zero: [u8; 0] = [];
+            let loc0 = pool.upload(&zero, &queue, &device);
+            let b0 = pool.get_binding(loc0);
+            assert!(b0.size.is_none());
+        });
+    }
+
+    // Story: reset sets the write cursor back to the beginning so the next upload starts at offset 0.
+    #[test]
+    fn reset_rewinds_cursor() {
+        pollster::block_on(async move {
+            // Arrange
+            let (device, queue) = device_and_queue().await;
+            let mut pool = UniformBufferPool::with_params(
+                "rewind pool",
+                &device,
+                wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                1024,
+            );
+
+            // Act: write some data then reset
+            let loc1 = pool.upload(&[0u8; 32], &queue, &device);
+            assert!(loc1.offset == 0);
+            let _ = pool.upload(&[0u8; 32], &queue, &device);
+            pool.reset();
+            let loc2 = pool.upload(&[0u8; 16], &queue, &device);
+
+            // Assert: after reset, offset is 0 again
+            assert_eq!(loc2.offset, 0);
+        });
+    }
+}

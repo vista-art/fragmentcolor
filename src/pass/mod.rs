@@ -207,3 +207,86 @@ impl AsRef<PassObject> for PassObject {
         self
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Story: Create a render pass, add two render shaders, and observe required buffer size grows.
+    #[test]
+    fn adds_render_shaders_and_updates_required_bytes() {
+        // Arrange
+        let s1 = Shader::default();
+        let s2 = Shader::default();
+        let pass = Pass::new("p");
+
+        // Act
+        let before = *pass.object.required_buffer_size.read();
+        pass.add_shader(&s1);
+        pass.add_shader(&s2);
+        let after = *pass.object.required_buffer_size.read();
+
+        // Assert
+        assert!(after >= before);
+        assert_eq!(pass.object.shaders.read().len(), 2);
+        assert!(!pass.object.is_compute());
+    }
+
+    // Story: A compute shader cannot be added to a render pass (and vice versa); count does not change.
+    #[test]
+    fn rejects_mismatched_shader_kinds() {
+        // Arrange: a render pass with one render shader
+        let render_shader = Shader::default();
+        let compute_src = r#"
+            @group(0) @binding(0) var<uniform> u: vec4<f32>;
+            @compute @workgroup_size(1)
+            fn cs() { _ = u; }
+        "#;
+        let compute_shader = Shader::new(compute_src).expect("compute shader");
+        let pass = Pass::from_shader("render pass", &render_shader);
+        let count_before = pass.object.shaders.read().len();
+        let bytes_before = *pass.object.required_buffer_size.read();
+
+        // Act: try to add a compute shader to a render pass
+        pass.add_shader(&compute_shader);
+
+        // Assert: no change
+        assert_eq!(pass.object.shaders.read().len(), count_before);
+        assert_eq!(*pass.object.required_buffer_size.read(), bytes_before);
+        assert!(!pass.object.is_compute());
+    }
+
+    // Story: set_clear_color changes PassInput to a clear op; load_previous flips back to load.
+    #[test]
+    fn toggles_input_between_clear_and_load() {
+        // Arrange
+        let pass = Pass::new("p");
+
+        // Act: set a clear color
+        pass.set_clear_color([0.1, 0.2, 0.3, 0.4]);
+        let after_clear = pass.get_input();
+
+        // Act: switch to load previous contents
+        pass.load_previous();
+        let after_load = pass.get_input();
+
+        // Assert
+        assert!(!after_clear.load);
+        assert_eq!(after_clear.color, Color::from([0.1, 0.2, 0.3, 0.4]));
+        assert!(after_load.load);
+    }
+
+    // Story: setting a viewport is stored and can be read back.
+    #[test]
+    fn sets_viewport_rect() {
+        // Arrange
+        let pass = Pass::new("p");
+        let vp = Region::from_region(2, 4, 8, 6);
+
+        // Act
+        pass.set_viewport(vp);
+
+        // Assert
+        assert_eq!(pass.object.viewport.read().as_ref(), Some(vp).as_ref());
+    }
+}

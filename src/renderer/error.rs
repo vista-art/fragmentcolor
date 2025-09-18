@@ -16,6 +16,7 @@ pub enum RendererError {
     TextureError(#[from] crate::texture::TextureError),
     #[error("initialization error: {0}")]
     InitializationError(#[from] InitializationError),
+    #[cfg(not(wasm))]
     #[error("Network request error: {0}")]
     NetworkRequestError(#[from] ureq::Error),
     #[error("Malformed input error: {0}")]
@@ -106,5 +107,36 @@ impl From<wasm_bindgen::JsValue> for InitializationError {
 impl From<InitializationError> for wasm_bindgen::JsValue {
     fn from(error: InitializationError) -> Self {
         wasm_bindgen::JsValue::from_str(&error.to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Story: RendererError variants format messages and From conversions work.
+    #[test]
+    fn renderer_error_variants_and_from() {
+        // NoContext
+        let e = RendererError::NoContext;
+        assert!(e.to_string().contains("Context not initialized"));
+
+        // InitializationError conversion
+        let ie = InitializationError::Error("boom".into());
+        let e2: RendererError = ie.into();
+        assert!(matches!(e2, RendererError::InitializationError(_)));
+
+        // IoError conversion
+        let io = std::io::Error::other("oops");
+        let e3: RendererError = io.into();
+        assert!(matches!(e3, RendererError::IoError(_)));
+
+        // NetworkRequestError (non-WASM)
+        #[cfg(not(wasm))]
+        {
+            let net = ureq::get("http://127.0.0.1:1").call().unwrap_err();
+            let e4: RendererError = net.into();
+            assert!(matches!(e4, RendererError::NetworkRequestError(_)));
+        }
     }
 }

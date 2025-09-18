@@ -4,7 +4,39 @@
 
 See the [Roadmap](https://github.com/vista-art/fragmentcolor/blob/main/ROADMAP.md) for planned features.
 
-## 0.10.7 Documentation automation, website integration, and release flow
+## 0.10.7 Documentation automation, website integration, API completeness, and release flow
+
+Session highlights (this conversation):
+- [x] Array element indexing for Storage and Uniforms using naga stride, including nested array/struct offsets. Added unit tests.
+- [x] Unified cross-target URL fetching helper (native via ureq, WASM via fetch) and refactored Shader.fetch and texture URL loading to use it. Removed ureq usage from WASM paths.
+- [x] Docs/examples sweep to use our favicon.png consistently (examples/javascript and web healthcheck/repl pages).
+
+This is our biggest release to date and it feels weird to just bump a patch version.
+
+Most of these changes were originally planned for future releases, but I get carried away
+and implemented them now before focusing on iOS and Android support.
+
+It feels weird to increase just a patch version with so many changes, inclusing API additions,
+but while we're still in pre-release phase, this is expected.
+
+### TO-DO Before Release
+
+- [ ] Rendering features
+  - [x] Begin Texture & Sampler support in Shaders
+  - [ ] Geometry/instancing groundwork
+
+- [ ] Ensure we expose all the ways to upload data to a GPU
+
+  - [ ] VertexBuffer
+  - [ ] IndexBuffer
+  - [x] StorageBuffer
+- [x] StorageBuffer: Arrays
+  - [x] Uniform
+- [x] Uniform: Arrays
+  - [x] Texture
+  - [x] StorageTexture
+  - [x] Sampler
+  - [ ] PushConstant
 
 ### Build System and Documentation
 

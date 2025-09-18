@@ -1057,6 +1057,49 @@ mod tests {
     use super::*;
     use naga::StorageAccess as SA;
 
+    // Story: UniformData to_bytes/size layouts for Struct, Array, and Storage obey spans/strides.
+    #[test]
+    fn uniformdata_layouts_struct_array_storage() {
+        // Struct with two fields at offsets 0 and 16, span 32
+        let s = UniformData::Struct((
+            vec![
+                (0, "a".into(), UniformData::Vec4([1.0, 2.0, 3.0, 4.0])),
+                (16, "b".into(), UniformData::Vec2([9.0, 8.0])),
+            ],
+            32,
+        ));
+        let bytes = s.to_bytes();
+        assert_eq!(bytes.len(), 32);
+        let a: [f32; 4] = bytemuck::cast_slice(&bytes[0..16]).try_into().unwrap();
+        assert_eq!(a, [1.0, 2.0, 3.0, 4.0]);
+        let b: [f32; 2] = bytemuck::cast_slice(&bytes[16..24]).try_into().unwrap();
+        assert_eq!(b, [9.0, 8.0]);
+
+        // Array of vec4 with count 2 and stride 16
+        let arr = UniformData::Array(vec![(UniformData::Vec4([0.5, 0.5, 0.5, 0.5]), 2, 16)]);
+        let bytes = arr.to_bytes();
+        assert_eq!(bytes.len(), 32);
+        // first element at 0..16
+        let e0: [f32; 4] = bytemuck::cast_slice(&bytes[0..16]).try_into().unwrap();
+        assert_eq!(e0, [0.5, 0.5, 0.5, 0.5]);
+        // second element at 16..32
+        let e1: [f32; 4] = bytemuck::cast_slice(&bytes[16..32]).try_into().unwrap();
+        assert_eq!(e1, [0.5, 0.5, 0.5, 0.5]);
+
+        // Storage wraps a shape with span and clamps/truncates to the span
+        let stor = UniformData::Storage(vec![(
+            UniformData::Vec4([1.0, 2.0, 3.0, 4.0]),
+            8,
+            StorageAccess::Read,
+        )]);
+        let bytes = stor.to_bytes();
+        assert_eq!(bytes.len(), 8);
+        // size() for Struct/Array reflects spans, Storage returns 0 for CPU uniform upload
+        assert_eq!(s.size(), 32);
+        assert_eq!(arr.size(), 32);
+        assert_eq!(stor.size(), 0);
+    }
+
     #[test]
     fn storage_access_combinations() {
         assert_eq!(StorageAccess::from(SA::LOAD), StorageAccess::Read);
