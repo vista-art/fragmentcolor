@@ -1,4 +1,4 @@
-bytes = std.fs.read("./examples/assets/image.png").unwrap()
 renderer = Renderer()
-tex = futures.executor.block_on(renderer.create_texture(bytes)).unwrap()
-shader.set("tex", tex).unwrap()
+# 1x1 RGBA (white) raw pixel bytes
+pixels = [255,255,255,255]
+tex = renderer.create_texture_with_size(pixels, Size.from((1,1)))

@@ -6,5 +6,5 @@ pub enum ColorError {
     TypeMismatch(String),
     #[cfg(wasm)]
     #[error("WASM Color Error: {0}")]
-    WasmError(String),
+    Error(String),
 }

@@ -9,6 +9,7 @@ edition = "2024"
 [dependencies]
 fragmentcolor = { path = "../..", features = ["winit"] }
 winit = { version = "0.30" }
+pollster = "0.4"
 fastrand = "2"
 
 [build-dependencies]

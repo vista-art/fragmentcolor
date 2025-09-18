@@ -1,12 +1,16 @@
-use crate::{PassObject, ShaderHash, Target, TargetFrame, TextureTarget, shader::Uniform};
+use crate::{
+    PassObject, ShaderHash, Target, TargetFrame, TextureInput, TextureOptions, TextureTarget,
+    shader::Uniform,
+};
 use crate::{Size, WindowTarget};
 use dashmap::DashMap;
 use lsp_doc::lsp_doc;
 use parking_lot::RwLock;
 use std::borrow::Cow;
 use std::collections::HashMap;
+use std::io::Read;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 pub type Commands = Vec<wgpu::CommandBuffer>;
 
 #[cfg(wasm)]
@@ -24,14 +28,11 @@ pub use error::*;
 pub mod renderable;
 pub use renderable::*;
 
-pub mod texture;
-pub use texture::*;
-
 mod buffer_pool;
-use buffer_pool::BufferPool;
+pub use buffer_pool::*;
 
-mod readback_pool;
-use readback_pool::ReadbackBufferPool;
+mod texture_pool;
+pub use texture_pool::*;
 
 /// The Renderer accepts a generic window handle as input
 /// that must report its display size.
@@ -120,6 +121,143 @@ impl Renderer {
         Ok(texture)
     }
 
+    /// Create a Texture from a unified input; returns the public Texture wrapper.
+    /// This variant infers size/format from the input when possible (encoded image bytes, file path).
+    #[lsp_doc("docs/api/core/renderer/create_texture.md")]
+    pub async fn create_texture(
+        &self,
+        input: impl Into<crate::texture::TextureInput>,
+    ) -> Result<crate::texture::Texture, RendererError> {
+        self.create_texture_with(input, crate::texture::TextureOptions::default())
+            .await
+    }
+
+    #[lsp_doc("docs/api/core/renderer/create_texture_with_size.md")]
+    pub async fn create_texture_with_size(
+        &self,
+        input: impl Into<TextureInput>,
+        size: impl Into<Size>,
+    ) -> Result<crate::texture::Texture, RendererError> {
+        let options = TextureOptions {
+            size: Some(size.into()),
+            ..Default::default()
+        };
+        self.create_texture_with(input, options).await
+    }
+
+    #[lsp_doc("docs/api/core/renderer/create_texture_with_format.md")]
+    pub async fn create_texture_with_format(
+        &self,
+        input: impl Into<TextureInput>,
+        format: impl Into<crate::texture::TextureFormat>,
+    ) -> Result<crate::texture::Texture, RendererError> {
+        let options = TextureOptions {
+            format: format.into(),
+            ..Default::default()
+        };
+        self.create_texture_with(input, options).await
+    }
+
+    #[lsp_doc("docs/api/core/renderer/create_texture_with.md")]
+    pub async fn create_texture_with(
+        &self,
+        input: impl Into<TextureInput>,
+        options: impl Into<TextureOptions>,
+    ) -> Result<crate::texture::Texture, RendererError> {
+        let options = options.into();
+        let context = self.context(None).await?;
+        match input.into() {
+            //
+            // From Bytes
+            TextureInput::Bytes(bytes) => {
+                let object = if let (Some(sz), fmt) = (options.size, options.format) {
+                    let wfmt: wgpu::TextureFormat = fmt.into();
+                    crate::TextureObject::from_raw_bytes(context.as_ref(), sz.into(), wfmt, &bytes)?
+                } else {
+                    crate::TextureObject::from_bytes(context.as_ref(), &bytes)?
+                };
+                let object = std::sync::Arc::new(object);
+                let id = context.register_texture(object.clone());
+                Ok(crate::texture::Texture::new(context, object, id))
+            }
+            //
+            // From Path
+            TextureInput::Path(path) => {
+                let object = crate::TextureObject::from_file(context.as_ref(), path)
+                    .map_err(|e| InitializationError::Error(format!("{}", e)))?;
+                let object = std::sync::Arc::new(object);
+                let id = context.register_texture(object.clone());
+
+                Ok(crate::texture::Texture::new(context, object, id))
+            }
+            //
+            // From another Texture
+            TextureInput::CloneOf(tex) => Ok(tex),
+            //
+            // From a URL
+            TextureInput::Url(url) => {
+                let mut bytes: Vec<u8> = vec![];
+                let mut response = ureq::get(url).call()?;
+                response.body_mut().as_reader().read_to_end(&mut bytes)?;
+
+                let object = Arc::new(crate::TextureObject::from_bytes(context.as_ref(), &bytes)?);
+                let id = context.register_texture(object.clone());
+
+                Ok(crate::texture::Texture::new(context, object, id))
+            }
+            //
+            // From a DynamicImage
+            TextureInput::DynamicImage(dynamic_image) => {
+                let object =
+                    crate::TextureObject::from_loaded_image(context.as_ref(), &dynamic_image);
+                let object = std::sync::Arc::new(object);
+                let id = context.register_texture(object.clone());
+
+                Ok(crate::texture::Texture::new(context, object, id))
+            }
+        }
+    }
+
+    /// Create a storage-class texture with optional explicit usage (default: STORAGE|TEXTURE|COPY_SRC|COPY_DST).
+    #[lsp_doc("docs/api/core/renderer/create_storage_texture.md")]
+    pub async fn create_storage_texture(
+        &self,
+        size: impl Into<crate::Size>,
+        format: wgpu::TextureFormat,
+        usage: Option<wgpu::TextureUsages>,
+    ) -> Result<crate::texture::Texture, InitializationError> {
+        let context = self.context(None).await?;
+        let usage = usage.unwrap_or(
+            wgpu::TextureUsages::STORAGE_BINDING
+                | wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::COPY_DST
+                | wgpu::TextureUsages::COPY_SRC,
+        );
+        let obj = crate::TextureObject::new(
+            context.as_ref(),
+            size.into().into(),
+            format,
+            usage,
+            crate::texture::SamplerOptions::default(),
+        );
+        let obj = std::sync::Arc::new(obj);
+        let id = context.register_texture(obj.clone());
+        Ok(crate::texture::Texture::new(context, obj, id))
+    }
+
+    /// Create a depth texture (Depth32Float).
+    #[lsp_doc("docs/api/core/renderer/create_depth_texture.md")]
+    pub async fn create_depth_texture(
+        &self,
+        size: impl Into<crate::Size>,
+    ) -> Result<crate::texture::Texture, InitializationError> {
+        let context = self.context(None).await?;
+        let obj = crate::TextureObject::create_depth_texture(context.as_ref(), size.into().into());
+        let obj = std::sync::Arc::new(obj);
+        let id = context.register_texture(obj.clone());
+        Ok(crate::texture::Texture::new(context, obj, id))
+    }
+
     #[lsp_doc("docs/api/core/renderer/render.md")]
     pub fn render(
         &self,
@@ -204,33 +342,46 @@ pub struct RenderContext {
     pub(crate) device: wgpu::Device,
     pub(crate) queue: wgpu::Queue,
 
-    // Effective MSAA sample count negotiated for current target/format
-    sample_count: AtomicU32,
-
     // Cache RenderPipelines by (shader hash, target format, sample count)
     render_pipelines: DashMap<(ShaderHash, wgpu::TextureFormat, u32), RenderPipeline>,
-    buffer_pool: RwLock<BufferPool>,
+    buffer_pool: RwLock<UniformBufferPool>,
+    // Storage buffer pool (STORAGE | COPY_DST), separate from uniform pool
+    storage_pool: RwLock<UniformBufferPool>,
     pub(crate) readback_pool: RwLock<ReadbackBufferPool>,
-    //
-    // @TODO
-    // _compute_pipelines: DashMap<String, wgpu::ComputePipeline>,
-    // _textures: DashMap<String, wgpu::Texture>,
-    // _samplers: DashMap<String, wgpu::Sampler>,
+    pub(crate) texture_pool: RwLock<TexturePool>,
+
+    // Texture registry: id -> TextureObject
+    textures: DashMap<crate::texture::TextureId, Arc<crate::TextureObject>>,
+    next_id: AtomicU64,
+
+    // MSAA sample count negotiated for current target/format
+    sample_count: AtomicU32,
 }
 
 impl RenderContext {
     /// Creates a new Context with the given device and queue.
     fn new(device: wgpu::Device, queue: wgpu::Queue) -> Self {
-        let buffer_pool = BufferPool::new_uniform_pool("Uniform Buffer Pool", &device);
+        let buffer_pool = UniformBufferPool::new("Uniform Buffer Pool", &device);
+        let storage_pool = UniformBufferPool::with_params(
+            "Storage Buffer Pool",
+            &device,
+            wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            0x10000,
+        );
 
         RenderContext {
             device,
             queue,
 
-            sample_count: AtomicU32::new(1),
             render_pipelines: DashMap::new(),
             buffer_pool: RwLock::new(buffer_pool),
+            storage_pool: RwLock::new(storage_pool),
             readback_pool: RwLock::new(ReadbackBufferPool::new("Readback Buffer Pool", 8)),
+            texture_pool: RwLock::new(TexturePool::new(16)),
+
+            textures: DashMap::new(),
+            next_id: AtomicU64::new(1),
+            sample_count: AtomicU32::new(1),
         }
     }
 
@@ -264,6 +415,28 @@ impl RenderContext {
             frame.present();
         }
 
+        #[cfg(feature = "fc_metrics")]
+        {
+            let u = self.buffer_pool.read().stats();
+            let r = self.readback_pool.read().stats();
+            let t = self.texture_pool.read().stats();
+            log::debug!(
+                "pool stats: uniform: alloc={} bytes={} | readback: hits={} misses={} evict={} alloc={} bytes={} | texture: hits={} misses={} evict={} alloc={} bytes={}",
+                u.allocations,
+                u.bytes_allocated,
+                r.hits,
+                r.misses,
+                r.evictions,
+                r.allocations,
+                r.bytes_allocated,
+                t.hits,
+                t.misses,
+                t.evictions,
+                t.allocations,
+                t.bytes_allocated
+            );
+        }
+
         Ok(())
     }
 
@@ -286,11 +459,22 @@ impl RenderContext {
 }
 
 impl RenderContext {
-    pub fn set_sample_count(&self, n: u32) {
+    fn register_texture(&self, tex: Arc<crate::TextureObject>) -> crate::texture::TextureId {
+        let id = self.next_id.fetch_add(1, Ordering::Relaxed);
+        let tid = crate::texture::TextureId(id);
+        self.textures.insert(tid.clone(), tex);
+        tid
+    }
+
+    fn get_texture(&self, id: &crate::texture::TextureId) -> Option<Arc<crate::TextureObject>> {
+        self.textures.get(id).map(|r| r.clone())
+    }
+
+    fn set_sample_count(&self, n: u32) {
         self.sample_count.store(n.max(1), Ordering::Relaxed);
     }
 
-    pub fn sample_count(&self) -> u32 {
+    fn sample_count(&self) -> u32 {
         self.sample_count.load(Ordering::Relaxed).max(1)
     }
 
@@ -302,6 +486,7 @@ impl RenderContext {
         size: wgpu::Extent3d,
     ) -> Result<(), RendererError> {
         self.buffer_pool.write().reset();
+        self.storage_pool.write().reset();
 
         let load_op = match pass.get_input().load {
             true => wgpu::LoadOp::Load,
@@ -314,23 +499,17 @@ impl RenderContext {
         let mut view: &wgpu::TextureView = frame.view();
         let mut resolve_target: Option<&wgpu::TextureView> = None;
         // Keep MSAA resources alive for the duration of the pass
-        let mut _msaa_tex: Option<wgpu::Texture> = None;
+        let mut msaa_texture: Option<wgpu::Texture> = None;
         let mut _msaa_view: Option<wgpu::TextureView> = None;
 
         if sc > 1 {
-            let tex = self.device.create_texture(&wgpu::TextureDescriptor {
-                label: Some("MSAA Color"),
-                size,
-                mip_level_count: 1,
-                sample_count: sc,
-                dimension: wgpu::TextureDimension::D2,
-                format: fmt,
-                view_formats: &[],
-                usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-            });
-            let v = tex.create_view(&wgpu::TextureViewDescriptor::default());
-            _msaa_view = Some(v);
-            _msaa_tex = Some(tex);
+            let key = TextureKey::new(size, fmt, sc, wgpu::TextureUsages::RENDER_ATTACHMENT);
+            let texture = {
+                let mut pool = self.texture_pool.write();
+                pool.acquire(&self.device, key)
+            };
+            _msaa_view = Some(texture.create_view(&wgpu::TextureViewDescriptor::default()));
+            msaa_texture = Some(texture);
             view = _msaa_view.as_ref().unwrap();
             resolve_target = Some(frame.view());
         }
@@ -385,47 +564,130 @@ impl RenderContext {
                     }
                 });
 
-            let mut bind_group_entries: HashMap<u32, Vec<wgpu::BindGroupEntry>> = HashMap::new();
-            let mut buffer_locations = Vec::new();
+            // Collect resources per bind group to build entries safely with owned views/samplers
+            #[derive(Default)]
+            struct GroupOwned {
+                buffers: Vec<(u32, buffer_pool::BufferLocation)>,
+                views: Vec<(u32, wgpu::TextureView)>,
+                samplers: Vec<(u32, wgpu::Sampler)>,
+                last_tex_sampler: Option<wgpu::Sampler>,
+            }
 
+            let mut groups: HashMap<u32, GroupOwned> = HashMap::new();
             for name in &shader.list_uniforms() {
                 let uniform = shader.get_uniform(name)?;
 
-                let storage = shader.storage.read();
-                let bytes = storage
-                    .get_bytes(name)
-                    .ok_or(crate::ShaderError::UniformNotFound(name.clone()))?;
+                match &uniform.data {
+                    crate::shader::uniform::UniformData::Texture(meta) => {
+                        if let Some(tex) = self.get_texture(&meta.id) {
+                            let view = tex.create_view();
+                            let sampler = tex.sampler();
+                            let group_entry = groups.entry(uniform.group).or_default();
+                            group_entry.views.push((uniform.binding, view));
+                            group_entry.last_tex_sampler = Some(sampler);
+                        } else {
+                            log::warn!(
+                                "Texture handle {:?} not found for uniform {}",
+                                meta.id,
+                                name
+                            );
+                        }
+                    }
+                    crate::shader::uniform::UniformData::Sampler(_) => {
+                        // If a texture in the same group was seen, use its sampler; otherwise, fallback
+                        let default_sampler = self
+                            .device
+                            .create_sampler(&wgpu::SamplerDescriptor::default());
+                        let sampler = groups
+                            .entry(uniform.group)
+                            .or_default()
+                            .last_tex_sampler
+                            .clone()
+                            .unwrap_or(default_sampler);
+                        groups
+                            .entry(uniform.group)
+                            .or_default()
+                            .samplers
+                            .push((uniform.binding, sampler));
+                    }
+                    crate::shader::uniform::UniformData::Storage(data) => {
+                        if let Some((_inner, span, _access)) = data.first() {
+                            // Upload the current CPU blob for this storage buffer
+                            let storage = shader.storage.read();
+                            let blob = storage
+                                .storage_blobs
+                                .get(name)
+                                .cloned()
+                                .unwrap_or_else(|| vec![0u8; *span as usize]);
+                            let buffer_location = {
+                                let mut pool = self.storage_pool.write();
+                                pool.upload(&blob, &self.queue, &self.device)
+                            };
+                            groups
+                                .entry(uniform.group)
+                                .or_default()
+                                .buffers
+                                .push((uniform.binding, buffer_location));
+                        } else {
+                            return Err(crate::ShaderError::UniformNotFound(name.clone()).into());
+                        }
+                    }
+                    _ => {
+                        let storage = shader.storage.read();
+                        let bytes = storage
+                            .get_bytes(name)
+                            .ok_or(crate::ShaderError::UniformNotFound(name.clone()))?;
 
-                let buffer_location = {
-                    let mut buffer_pool = self.buffer_pool.write();
-                    buffer_pool.upload(bytes, &self.queue, &self.device)
-                };
+                        let buffer_location = {
+                            let mut buffer_pool = self.buffer_pool.write();
+                            buffer_pool.upload(bytes, &self.queue, &self.device)
+                        };
 
-                buffer_locations.push((uniform, buffer_location));
-            }
-
-            let buffer_pool = self.buffer_pool.read();
-            for (uniform, location) in buffer_locations {
-                let binding = buffer_pool.get_binding(location);
-
-                bind_group_entries
-                    .entry(uniform.group)
-                    .or_default()
-                    .push(wgpu::BindGroupEntry {
-                        binding: uniform.binding,
-                        resource: wgpu::BindingResource::Buffer(binding),
-                    });
+                        groups
+                            .entry(uniform.group)
+                            .or_default()
+                            .buffers
+                            .push((uniform.binding, buffer_location));
+                    }
+                }
             }
 
             // Build bind groups per layout (by group index)
             let mut bind_groups: Vec<(u32, wgpu::BindGroup)> = Vec::new();
-            for (group, entries) in bind_group_entries {
+            for (group, owned) in groups.into_iter() {
                 let Some(layout) = cached.bind_group_layouts.get(&group) else {
                     return Err(RendererError::BindGroupLayoutError(format!(
                         "Missing bind group layout for group {}",
                         group
                     )));
                 };
+
+                // Assemble entries borrowing from owned resources and buffer pool
+                let buffer_pool = self.buffer_pool.read();
+                let mut entries: Vec<wgpu::BindGroupEntry> = Vec::new();
+                for (binding, loc) in owned.buffers.iter() {
+                    let binding_ref = buffer_pool.get_binding(*loc);
+                    entries.push(wgpu::BindGroupEntry {
+                        binding: *binding,
+                        resource: wgpu::BindingResource::Buffer(binding_ref),
+                    });
+                }
+                for (binding, view) in owned.views.iter() {
+                    entries.push(wgpu::BindGroupEntry {
+                        binding: *binding,
+                        resource: wgpu::BindingResource::TextureView(view),
+                    });
+                }
+                for (binding, sampler) in owned.samplers.iter() {
+                    entries.push(wgpu::BindGroupEntry {
+                        binding: *binding,
+                        resource: wgpu::BindingResource::Sampler(sampler),
+                    });
+                }
+
+                // Sort by binding index to match layout order
+                entries.sort_by_key(|e| e.binding);
+
                 let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
                     layout,
                     entries: &entries,
@@ -444,6 +706,13 @@ impl RenderContext {
             // render_pass.set_blend_constant(color);
             render_pass.draw(0..3, 0..1); // Fullscreen triangle
         }
+
+        // Return MSAA texture to pool if used
+        if let Some(texture) = msaa_texture.take() {
+            let key = TextureKey::new(size, fmt, sc, wgpu::TextureUsages::RENDER_ATTACHMENT);
+            self.texture_pool.write().release(key, texture);
+        }
+
         Ok(())
     }
 
@@ -474,15 +743,144 @@ fn create_bind_group_layouts(
             unsafe { std::num::NonZeroU64::new_unchecked(padded) }
         };
 
-        let entry = wgpu::BindGroupLayoutEntry {
-            binding: uniform.binding,
-            visibility: wgpu::ShaderStages::FRAGMENT,
-            ty: wgpu::BindingType::Buffer {
-                ty: wgpu::BufferBindingType::Uniform,
-                has_dynamic_offset: false,
-                min_binding_size: Some(min_size),
+        // Decide entry type based on UniformData shape
+        use crate::shader::uniform::UniformData;
+        let entry = match &uniform.data {
+            UniformData::Texture(meta) => {
+                // Map naga metadata to wgpu binding types
+                let view_dimension = match (meta.dim, meta.arrayed) {
+                    (naga::ImageDimension::D2, false) => wgpu::TextureViewDimension::D2,
+                    (naga::ImageDimension::D2, true) => wgpu::TextureViewDimension::D2Array,
+                    (naga::ImageDimension::D3, _) => wgpu::TextureViewDimension::D3,
+                    (naga::ImageDimension::Cube, false) => wgpu::TextureViewDimension::Cube,
+                    (naga::ImageDimension::Cube, true) => wgpu::TextureViewDimension::CubeArray,
+                    _ => wgpu::TextureViewDimension::D2,
+                };
+                match &meta.class {
+                    naga::ImageClass::Depth { .. } => wgpu::BindGroupLayoutEntry {
+                        binding: uniform.binding,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Depth,
+                            view_dimension,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    naga::ImageClass::Sampled { kind, multi } => {
+                        let sample_type = match kind {
+                            naga::ScalarKind::Sint => wgpu::TextureSampleType::Sint,
+                            naga::ScalarKind::Uint => wgpu::TextureSampleType::Uint,
+                            _ => wgpu::TextureSampleType::Float { filterable: true },
+                        };
+                        wgpu::BindGroupLayoutEntry {
+                            binding: uniform.binding,
+                            visibility: wgpu::ShaderStages::FRAGMENT,
+                            ty: wgpu::BindingType::Texture {
+                                sample_type,
+                                view_dimension,
+                                multisampled: *multi,
+                            },
+                            count: None,
+                        }
+                    }
+                    naga::ImageClass::Storage { format, access } => {
+                        let access = *access;
+                        let access = match access {
+                            naga::StorageAccess::LOAD => wgpu::StorageTextureAccess::ReadOnly,
+                            naga::StorageAccess::STORE => wgpu::StorageTextureAccess::WriteOnly,
+                            _ => wgpu::StorageTextureAccess::ReadOnly,
+                        };
+                        let format = match format {
+                            naga::StorageFormat::R8Unorm => wgpu::TextureFormat::R8Unorm,
+                            naga::StorageFormat::R8Snorm => wgpu::TextureFormat::R8Snorm,
+                            naga::StorageFormat::R8Uint => wgpu::TextureFormat::R8Uint,
+                            naga::StorageFormat::R8Sint => wgpu::TextureFormat::R8Sint,
+                            naga::StorageFormat::R16Uint => wgpu::TextureFormat::R16Uint,
+                            naga::StorageFormat::R16Sint => wgpu::TextureFormat::R16Sint,
+                            naga::StorageFormat::R16Float => wgpu::TextureFormat::R16Float,
+                            naga::StorageFormat::Rg8Unorm => wgpu::TextureFormat::Rg8Unorm,
+                            naga::StorageFormat::Rg8Snorm => wgpu::TextureFormat::Rg8Snorm,
+                            naga::StorageFormat::Rg8Uint => wgpu::TextureFormat::Rg8Uint,
+                            naga::StorageFormat::Rg8Sint => wgpu::TextureFormat::Rg8Sint,
+                            naga::StorageFormat::Rg16Uint => wgpu::TextureFormat::Rg16Uint,
+                            naga::StorageFormat::Rg16Sint => wgpu::TextureFormat::Rg16Sint,
+                            naga::StorageFormat::Rg16Float => wgpu::TextureFormat::Rg16Float,
+                            naga::StorageFormat::Rgba8Unorm => wgpu::TextureFormat::Rgba8Unorm,
+                            naga::StorageFormat::Rgba8Snorm => wgpu::TextureFormat::Rgba8Snorm,
+                            naga::StorageFormat::Rgba8Uint => wgpu::TextureFormat::Rgba8Uint,
+                            naga::StorageFormat::Rgba8Sint => wgpu::TextureFormat::Rgba8Sint,
+                            naga::StorageFormat::Bgra8Unorm => wgpu::TextureFormat::Bgra8Unorm,
+                            naga::StorageFormat::Rgb10a2Unorm => wgpu::TextureFormat::Rgb10a2Unorm,
+                            naga::StorageFormat::Rg11b10Ufloat => {
+                                wgpu::TextureFormat::Rg11b10Ufloat
+                            }
+                            naga::StorageFormat::Rgba16Uint => wgpu::TextureFormat::Rgba16Uint,
+                            naga::StorageFormat::Rgba16Sint => wgpu::TextureFormat::Rgba16Sint,
+                            naga::StorageFormat::Rgba16Float => wgpu::TextureFormat::Rgba16Float,
+                            naga::StorageFormat::Rgba32Uint => wgpu::TextureFormat::Rgba32Uint,
+                            naga::StorageFormat::Rgba32Sint => wgpu::TextureFormat::Rgba32Sint,
+                            naga::StorageFormat::Rgba32Float => wgpu::TextureFormat::Rgba32Float,
+                            _ => wgpu::TextureFormat::Rgba8Unorm,
+                        };
+                        wgpu::BindGroupLayoutEntry {
+                            binding: uniform.binding,
+                            visibility: wgpu::ShaderStages::FRAGMENT,
+                            ty: wgpu::BindingType::StorageTexture {
+                                access,
+                                format,
+                                view_dimension,
+                            },
+                            count: None,
+                        }
+                    }
+                }
+            }
+            UniformData::Sampler(_) => wgpu::BindGroupLayoutEntry {
+                binding: uniform.binding,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                count: None,
             },
-            count: None,
+            UniformData::Storage(data) => {
+                if let Some((_inner, span, access)) = data.first() {
+                    let min = if *span == 0 { 16 } else { *span as u64 };
+                    let min = unsafe { std::num::NonZeroU64::new_unchecked(min) };
+                    wgpu::BindGroupLayoutEntry {
+                        binding: uniform.binding,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage {
+                                read_only: access.is_readonly(),
+                            },
+                            has_dynamic_offset: false,
+                            min_binding_size: Some(min),
+                        },
+                        count: None,
+                    }
+                } else {
+                    wgpu::BindGroupLayoutEntry {
+                        binding: uniform.binding,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: Some(min_size),
+                        },
+                        count: None,
+                    }
+                }
+            }
+            _ => wgpu::BindGroupLayoutEntry {
+                binding: uniform.binding,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: Some(min_size),
+                },
+                count: None,
+            },
         };
 
         group_entries.entry(uniform.group).or_default().push(entry);
@@ -643,9 +1041,6 @@ fn create_render_pipeline(
 }
 
 #[cfg(test)]
-mod readback_pool_tests;
-
-#[cfg(test)]
 mod tests {
     use super::*;
     use crate::target::TargetFrame;
@@ -678,6 +1073,62 @@ mod tests {
             .await
             .expect("device");
         (adapter, device, queue)
+    }
+
+    #[test]
+    fn render_with_texture_sampler_smoke() {
+        pollster::block_on(async move {
+            // Create renderer and a small texture target
+            let (_adapter, _device, _queue) = create_device_and_queue().await;
+            let renderer = Renderer::new();
+            let target = renderer
+                .create_texture_target([8u32, 8u32])
+                .await
+                .expect("texture target");
+
+            // Simple WGSL sampling a texture
+            let wgsl = r#"
+@group(0) @binding(0) var tex: texture_2d<f32>;
+@group(0) @binding(1) var samp: sampler;
+
+struct VOut { @builtin(position) pos: vec4<f32>, @location(0) uv: vec2<f32> };
+@vertex
+fn vs_main(@builtin(vertex_index) i: u32) -> VOut {
+    var p = array<vec2<f32>, 3>(vec2<f32>(-1.,-1.), vec2<f32>(3.,-1.), vec2<f32>(-1.,3.));
+    var uv = array<vec2<f32>, 3>(vec2<f32>(0.,1.), vec2<f32>(2.,1.), vec2<f32>(0.,-1.));
+    var out: VOut;
+    out.pos = vec4<f32>(p[i], 0., 1.);
+    out.uv = uv[i];
+    return out;
+}
+@fragment
+fn main(v: VOut) -> @location(0) vec4<f32> {
+    return textureSample(tex, samp, v.uv);
+}
+            "#;
+
+            let shader = crate::Shader::new(wgsl).expect("shader");
+
+            // Create a tiny 2x2 RGBA image and upload as texture
+            #[rustfmt::skip]
+            let pixels: Vec<u8> = vec![
+                255, 0, 0,   255,    0,   255, 0,   255,
+                0,   0, 255, 255,    255, 255, 255, 255,
+            ];
+            let size = crate::Size::from((2u32, 2u32));
+            let tex = renderer
+                .create_texture_with(&pixels, size)
+                .await
+                .expect("texture");
+            shader.set("tex", &tex).expect("set tex");
+
+            // Render should succeed without panicking
+            renderer.render(&shader, &target).expect("render ok");
+
+            let image: Vec<u8> = target.get_image();
+
+            assert_eq!(image.len(), 8 * 8 * 4);
+        });
     }
 
     fn create_test_frame(

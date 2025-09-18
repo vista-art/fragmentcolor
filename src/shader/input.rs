@@ -12,7 +12,7 @@ pub(super) fn load_shader(source: &str) -> Result<ShaderObject, ShaderError> {
 
     let body = if source.starts_with("https:") {
         #[cfg(wasm)]
-        return Err(ShaderError::WasmError(
+        return Err(ShaderError::Error(
             "HTTP requests in the constructor are not supported in WASM. Use await Shader.fetch() instead.".into(),
         ));
 

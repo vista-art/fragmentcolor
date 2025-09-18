@@ -4,5 +4,5 @@ use thiserror::Error;
 pub enum FrameError {
     #[cfg(wasm)]
     #[error("WASM Frame Error: {0}")]
-    WasmError(String),
+    Error(String),
 }

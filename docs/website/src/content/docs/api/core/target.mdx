@@ -24,7 +24,7 @@ It contains a GPU surface texture attached to a platform-specific window or an o
 <TabItem label="Rust">
 <Code
 code={`
- async fn run() -> Result<(), Box<dyn std::error::Error>> {
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
 use fragmentcolor::{Renderer, Shader};
 
@@ -40,9 +40,9 @@ let target = renderer.create_target(window).await?;
 renderer.render(&Shader::default(), &target)?;
 renderer.render(&Shader::default(), &target)?;
 
- Ok(())
- }
- fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
 lang="rust" meta="collapse={1-1, 17-19}"
 />
@@ -143,7 +143,7 @@ Most users do not need to call this directly; the [Renderer](/api/core/renderer)
 <TabItem label="Rust">
 <Code
 code={`
- async fn run() -> Result<(), Box<dyn std::error::Error>> {
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
 use fragmentcolor::{Renderer, Target};
 
@@ -152,9 +152,9 @@ let target = renderer.create_texture_target([16, 16]).await?;
 let frame = target.get_current_frame()?; // Acquire a frame
 let _format = frame.format();
 
- Ok(())
- }
- fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
 lang="rust" meta="collapse={1-1, 10-12}"
 />
@@ -235,7 +235,7 @@ Returns the current contents of the target as a byte array in RGBA8 format.
 <TabItem label="Rust">
 <Code
 code={`
- async fn run() -> Result<(), Box<dyn std::error::Error>> {
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
 use fragmentcolor::{Renderer, Target};
 
@@ -245,10 +245,10 @@ renderer.render(&fragmentcolor::Shader::default(), &target)?;
 
 let image = target.get_image();
 
- assert_eq!(image.len(), 16 * 16 * 4); // RGBA8
- Ok(())
- }
- fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+assert_eq!(image.len(), 16 * 16 * 4); // RGBA8
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
 lang="rust" meta="collapse={1-1, 11-14}"
 />
@@ -331,7 +331,7 @@ Resizes the [Target](/api/core/target) to the given width and height.
 <TabItem label="Rust">
 <Code
 code={`
- async fn run() -> Result<(), Box<dyn std::error::Error>> {
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
 use fragmentcolor::{Renderer, Target};
 
@@ -340,11 +340,11 @@ let mut target = renderer.create_texture_target([64, 32]).await?;
 
 target.resize([128, 64]);
 
- let size: [u32; 2] = target.size().into();
- assert_eq!(size, [128, 64]);
- Ok(())
- }
- fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+let size: [u32; 2] = target.size().into();
+assert_eq!(size, [128, 64]);
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
 lang="rust" meta="collapse={1-1, 10-14}"
 />
@@ -425,7 +425,7 @@ Returns the size of the [Target](/api/core/target) in pixels.
 <TabItem label="Rust">
 <Code
 code={`
- async fn run() -> Result<(), Box<dyn std::error::Error>> {
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
 use fragmentcolor::{Renderer, Target};
 
@@ -436,16 +436,16 @@ let width = size.width;
 let height = size.height;
 let depth = size.depth; // 1
 
- assert_eq!(size.width, 64);
- assert_eq!(size.height, 32);
- assert_eq!(size.depth, Some(1));
- let size: [u32; 2] = target.size().into();
- assert_eq!(size, [64, 32]);
- let size: [u32; 3] = target.size().into();
- assert_eq!(size, [64, 32, 1]);
- Ok(())
- }
- fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+assert_eq!(size.width, 64);
+assert_eq!(size.height, 32);
+assert_eq!(size.depth, Some(1));
+let size: [u32; 2] = target.size().into();
+assert_eq!(size, [64, 32]);
+let size: [u32; 3] = target.size().into();
+assert_eq!(size, [64, 32, 1]);
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
 lang="rust" meta="collapse={1-1, 12-21}"
 />

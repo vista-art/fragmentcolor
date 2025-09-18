@@ -6,5 +6,5 @@ pub enum SizeError {
     TypeMismatch(String),
     #[cfg(wasm)]
     #[error("WASM Size Error: {0}")]
-    WasmError(String),
+    Error(String),
 }

@@ -37,11 +37,57 @@ pub enum UniformData {
     Mat2([[f32; 2]; 2]),
     Mat3([[f32; 3]; 3]),
     Mat4([[f32; 4]; 4]),
-    Texture(u64),
+    Texture(crate::texture::TextureMeta),
+    Sampler(crate::texture::SamplerInfo),
     // Array: (type, count, stride)
     Array(Vec<(UniformData, u32, u32)>),
     // Struct: name -> ((offset, name, field), struct_size)
     Struct((Vec<(u32, String, UniformData)>, u32)),
+    // Storage buffer: (inner shape, total size/span, access flags)
+    // Stored as a Vec to avoid infinite recursion (Box doesn't implement FromPyObject)
+    Storage(Vec<(UniformData, u32, StorageAccess)>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(python, pyclass)]
+pub enum StorageAccess {
+    Read,
+    Write,
+    Atomic,
+    ReadWrite,
+    AtomicRead,
+    AtomicWrite,
+    AtomicReadWrite,
+}
+
+impl StorageAccess {
+    pub(crate) fn is_readonly(&self) -> bool {
+        matches!(
+            self,
+            StorageAccess::Read | StorageAccess::Atomic | StorageAccess::AtomicRead
+        )
+    }
+}
+
+impl From<naga::StorageAccess> for StorageAccess {
+    fn from(value: naga::StorageAccess) -> Self {
+        use naga::StorageAccess as SA;
+
+        let load = value.contains(SA::LOAD);
+        let store = value.contains(SA::STORE);
+        let atomic = value.contains(SA::ATOMIC);
+
+        match (load, store, atomic) {
+            (true, false, false) => StorageAccess::Read,
+            (false, true, false) => StorageAccess::Write,
+            (false, false, true) => StorageAccess::Atomic,
+            (true, true, false) => StorageAccess::ReadWrite,
+            (true, false, true) => StorageAccess::AtomicRead,
+            (false, true, true) => StorageAccess::AtomicWrite,
+            (true, true, true) => StorageAccess::AtomicReadWrite,
+            (false, false, false) => StorageAccess::ReadWrite,
+        }
+    }
 }
 
 impl UniformData {
@@ -63,7 +109,8 @@ impl UniformData {
             Self::Mat2(v) => bytemuck::cast_slice(v.as_slice()).to_vec(),
             Self::Mat3(v) => bytemuck::cast_slice(v.as_slice()).to_vec(),
             Self::Mat4(v) => bytemuck::cast_slice(v.as_slice()).to_vec(),
-            Self::Texture(h) => bytemuck::bytes_of(h).to_vec(),
+            Self::Texture(_m) => Vec::new(),
+            Self::Sampler(_s) => Vec::new(),
             Self::Array(data) => {
                 let mut bytes = Vec::new();
                 if let Some((data, count, _)) = data.first() {
@@ -71,13 +118,10 @@ impl UniformData {
                         bytes.extend(data.to_bytes());
                     }
                 }
-
                 bytes
             }
             Self::Struct((fields, span)) => {
                 // Allocate the full struct span and lay out fields at their declared offsets.
-                // This avoids any mismatch with naga's reported span and ensures zero-padding
-                // for gaps, which is important for strict backends (e.g., Dawn/WebGPU).
                 let mut bytes = vec![0u8; *span as usize];
                 for (offset, _name, field) in fields.iter() {
                     let data = field.to_bytes();
@@ -88,6 +132,20 @@ impl UniformData {
                     }
                 }
                 bytes
+            }
+            Self::Storage(data) => {
+                if let Some((inner, span, _access)) = &data.iter().next() {
+                    // Flatten inner representation; ensure it matches the declared span.
+                    let mut bytes = inner.to_bytes();
+                    if bytes.len() < *span as usize {
+                        bytes.resize(*span as usize, 0);
+                    } else if bytes.len() > *span as usize {
+                        bytes.truncate(*span as usize);
+                    }
+                    bytes
+                } else {
+                    Vec::new()
+                }
             }
         }
     }
@@ -110,7 +168,8 @@ impl UniformData {
             Self::Mat2(_) => 16,
             Self::Mat3(_) => 36,
             Self::Mat4(_) => 64,
-            Self::Texture(_) => 8,
+            Self::Texture(_) => 0,
+            Self::Sampler(_) => 0,
             Self::Array(data) => {
                 if let Some((data, count, _)) = data.first() {
                     data.size() * count
@@ -119,6 +178,8 @@ impl UniformData {
                 }
             }
             Self::Struct((_, size)) => *size,
+            // Storage buffers do not contribute to the CPU-side uniform buffer; size is 0 here.
+            Self::Storage(_) => 0,
         }
     }
 }
@@ -174,6 +235,22 @@ pub(crate) fn convert_type(module: &Module, ty: &Type) -> Result<UniformData, Sh
             let item = (base_ty, size, *stride);
             Ok(UniformData::Array(vec![item]))
         }
+        TypeInner::Sampler { comparison } => {
+            Ok(UniformData::Sampler(crate::texture::SamplerInfo {
+                comparison: *comparison,
+            }))
+        }
+        TypeInner::Image {
+            dim,
+            arrayed,
+            class,
+        } => Ok(UniformData::Texture(crate::texture::TextureMeta {
+            id: crate::texture::TextureId(0),
+            dim: *dim,
+            arrayed: *arrayed,
+            class: *class,
+        })),
+
         _ => Err(ShaderError::TypeMismatch("Unsupported type".into())),
     }
 }
@@ -655,6 +732,12 @@ impl TryFrom<&wasm_bindgen::JsValue> for UniformData {
         use js_sys::{Array, Float32Array, Int32Array, Uint32Array};
         use wasm_bindgen::JsCast;
 
+        // Accept a Texture instance: convert to TextureMeta carrying id only.
+        if let Some(tex) = value.dyn_ref::<crate::texture::Texture>() {
+            let meta = crate::texture::TextureMeta::with_id_only(tex.id.clone());
+            return Ok(UniformData::Texture(meta));
+        }
+
         if let Some(arr) = value.dyn_ref::<Float32Array>() {
             return arr.try_into();
         }
@@ -937,7 +1020,7 @@ impl From<UniformData> for wasm_bindgen::JsValue {
                 arr.into()
             }
 
-            UniformData::Texture(handle) => wasm_bindgen::JsValue::from_f64(handle as f64),
+            UniformData::Texture(meta) => wasm_bindgen::JsValue::from_f64(meta.id.0 as f64),
 
             // For complex types, return as regular JS arrays/objects
             UniformData::Array(items) => {
@@ -955,6 +1038,36 @@ impl From<UniformData> for wasm_bindgen::JsValue {
                 }
                 obj.into()
             }
+            UniformData::Storage((_inner, _span, _)) => wasm_bindgen::JsValue::UNDEFINED,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use naga::StorageAccess as SA;
+
+    #[test]
+    fn storage_access_combinations() {
+        assert_eq!(StorageAccess::from(SA::LOAD), StorageAccess::Read);
+        assert_eq!(StorageAccess::from(SA::STORE), StorageAccess::Write);
+        assert_eq!(StorageAccess::from(SA::ATOMIC), StorageAccess::Atomic);
+        assert_eq!(
+            StorageAccess::from(SA::LOAD | SA::STORE),
+            StorageAccess::ReadWrite
+        );
+        assert_eq!(
+            StorageAccess::from(SA::LOAD | SA::ATOMIC),
+            StorageAccess::AtomicRead
+        );
+        assert_eq!(
+            StorageAccess::from(SA::STORE | SA::ATOMIC),
+            StorageAccess::AtomicWrite
+        );
+        assert_eq!(
+            StorageAccess::from(SA::LOAD | SA::STORE | SA::ATOMIC),
+            StorageAccess::AtomicReadWrite
+        );
     }
 }

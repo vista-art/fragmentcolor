@@ -24,7 +24,7 @@ It contains a GPU surface texture attached to a platform-specific window or an o
 <TabItem label="Rust">
 <Code
 code={`
- async fn run() -> Result<(), Box<dyn std::error::Error>> {
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
 use fragmentcolor::{Renderer, Shader, Target};
 
@@ -37,11 +37,11 @@ let target = renderer.create_target(window).await?;
 
 renderer.render(&Shader::default(), &target)?;
 
- let s = target.size();
- assert_eq!([s.width, s.height], [800, 600]);
- Ok(())
- }
- fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+let s = target.size();
+assert_eq!([s.width, s.height], [800, 600]);
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
 lang="rust" meta="collapse={1-1, 14-18}"
 />
@@ -136,7 +136,7 @@ Use a [TextureTarget](/api/targets/texturetarget) instead.
 <TabItem label="Rust">
 <Code
 code={`
- async fn run() -> Result<(), Box<dyn std::error::Error>> {
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
 use fragmentcolor::{Renderer, Target};
 
@@ -146,10 +146,10 @@ renderer.render(&fragmentcolor::Shader::default(), &target)?;
 
 let image = target.get_image();
 
- assert_eq!(image.len(), 16 * 16 * 4); // RGBA8
- Ok(())
- }
- fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+assert_eq!(image.len(), 16 * 16 * 4); // RGBA8
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
 lang="rust" meta="collapse={1-1, 11-14}"
 />
@@ -232,7 +232,7 @@ Resizes the [Target](https://fragmentcolor.org/docs/api/target) to the given wid
 <TabItem label="Rust">
 <Code
 code={`
- async fn run() -> Result<(), Box<dyn std::error::Error>> {
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
 use fragmentcolor::Renderer;
 
@@ -241,10 +241,10 @@ let mut target = renderer.create_texture_target([64, 32]).await?;
 
 target.resize([128, 64]);
 
- assert_eq!(target.size(), [128, 64]);
- Ok(())
- }
- fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+assert_eq!(target.size(), [128, 64]);
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
 lang="rust" meta="collapse={1-1, 10-13}"
 />
@@ -325,17 +325,17 @@ Returns the size of the [Target](/api/core/target) in pixels.
 <TabItem label="Rust">
 <Code
 code={`
- async fn run() -> Result<(), Box<dyn std::error::Error>> {
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
 use fragmentcolor::{Renderer, Shader};
 
 let renderer = Renderer::new();
 let target = renderer.create_texture_target([64, 32]).await?;
 
- assert_eq!(target.size(), [64, 32]);
- Ok(())
- }
- fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+assert_eq!(target.size(), [64, 32]);
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
 lang="rust" meta="collapse={1-1, 8-11}"
 />

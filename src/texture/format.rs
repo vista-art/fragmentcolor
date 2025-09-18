@@ -1,0 +1,59 @@
+#[cfg_attr(wasm, wasm_bindgen)]
+#[cfg_attr(python, pyo3::pyclass)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum TextureFormat {
+    R8Unorm,
+    Rg8Unorm,
+    Rgba8Unorm,
+    Rgba8UnormSrgb,
+    Bgra8Unorm,
+    Rgba16Unorm,
+    Rgba32Float,
+    Rgba32Uint,
+    Rgba32Sint,
+    Depth32Float,
+    #[default]
+    Rgba,
+    Bgra,
+    Lab,
+    L8,
+}
+
+impl From<TextureFormat> for wgpu::TextureFormat {
+    fn from(f: TextureFormat) -> Self {
+        match f {
+            TextureFormat::R8Unorm => wgpu::TextureFormat::R8Unorm,
+            TextureFormat::Rg8Unorm => wgpu::TextureFormat::Rg8Unorm,
+            TextureFormat::Rgba8Unorm => wgpu::TextureFormat::Rgba8Unorm,
+            TextureFormat::Rgba8UnormSrgb => wgpu::TextureFormat::Rgba8UnormSrgb,
+            TextureFormat::Bgra8Unorm => wgpu::TextureFormat::Bgra8Unorm,
+            TextureFormat::Rgba16Unorm => wgpu::TextureFormat::Rgba16Unorm,
+            TextureFormat::Rgba32Float => wgpu::TextureFormat::Rgba32Float,
+            TextureFormat::Rgba32Uint => wgpu::TextureFormat::Rgba32Uint,
+            TextureFormat::Rgba32Sint => wgpu::TextureFormat::Rgba32Sint,
+            TextureFormat::Depth32Float => wgpu::TextureFormat::Depth32Float,
+            TextureFormat::Rgba => wgpu::TextureFormat::Rgba8Unorm,
+            TextureFormat::Bgra => wgpu::TextureFormat::Bgra8Unorm,
+            TextureFormat::Lab => wgpu::TextureFormat::Rg8Unorm,
+            TextureFormat::L8 => wgpu::TextureFormat::R8Unorm,
+        }
+    }
+}
+
+impl From<wgpu::TextureFormat> for TextureFormat {
+    fn from(f: wgpu::TextureFormat) -> Self {
+        match f {
+            wgpu::TextureFormat::R8Unorm => TextureFormat::R8Unorm,
+            wgpu::TextureFormat::Rg8Unorm => TextureFormat::Rg8Unorm,
+            wgpu::TextureFormat::Rgba8Unorm => TextureFormat::Rgba8Unorm,
+            wgpu::TextureFormat::Rgba8UnormSrgb => TextureFormat::Rgba8UnormSrgb,
+            wgpu::TextureFormat::Bgra8Unorm => TextureFormat::Bgra8Unorm,
+            wgpu::TextureFormat::Rgba16Unorm => TextureFormat::Rgba16Unorm,
+            wgpu::TextureFormat::Rgba32Float => TextureFormat::Rgba32Float,
+            wgpu::TextureFormat::Rgba32Uint => TextureFormat::Rgba32Uint,
+            wgpu::TextureFormat::Rgba32Sint => TextureFormat::Rgba32Sint,
+            wgpu::TextureFormat::Depth32Float => TextureFormat::Depth32Float,
+            _ => TextureFormat::Rgba8Unorm,
+        }
+    }
+}

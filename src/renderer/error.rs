@@ -12,11 +12,16 @@ pub enum RendererError {
     ShaderError(#[from] crate::shader::error::ShaderError),
     #[error("Bind Group Layout error: {0}")]
     BindGroupLayoutError(String),
+    #[error("Texture error: {0}")]
+    TextureError(#[from] crate::texture::TextureError),
+    #[error("initialization error: {0}")]
+    InitializationError(#[from] InitializationError),
+    #[error("Network request error: {0}")]
+    NetworkRequestError(#[from] ureq::Error),
+    #[error("Malformed input error: {0}")]
+    IoError(#[from] std::io::Error),
     #[error("Renderer error: {0}")]
     Error(String),
-    #[cfg(wasm)]
-    #[error("WASM Renderer Error: {0}")]
-    WasmError(String),
 }
 
 #[derive(Error, Debug)]
@@ -29,9 +34,6 @@ pub enum InitializationError {
     SurfaceError(#[from] wgpu::CreateSurfaceError),
     #[error("Initialization error: {0}")]
     Error(String),
-    #[cfg(wasm)]
-    #[error("WASM Initialization Error: {0}")]
-    WasmError(String),
 }
 
 // Python-specific conversions
@@ -40,29 +42,29 @@ pub enum InitializationError {
 use pyo3::exceptions::PyException as PyFragmentColorError;
 
 #[cfg(python)]
-impl From<pyo3::PyErr> for crate::renderer::error::RendererError {
+impl From<pyo3::PyErr> for RendererError {
     fn from(e: pyo3::PyErr) -> Self {
-        crate::renderer::error::RendererError::Error(e.to_string())
+        RendererError::Error(e.to_string())
     }
 }
 
 #[cfg(python)]
-impl From<crate::renderer::error::RendererError> for pyo3::PyErr {
-    fn from(e: crate::renderer::error::RendererError) -> Self {
+impl From<RendererError> for pyo3::PyErr {
+    fn from(e: RendererError) -> Self {
         PyFragmentColorError::new_err(e.to_string())
     }
 }
 
 #[cfg(python)]
-impl From<pyo3::PyErr> for crate::renderer::error::InitializationError {
+impl From<pyo3::PyErr> for InitializationError {
     fn from(e: pyo3::PyErr) -> Self {
-        crate::renderer::error::InitializationError::Error(e.to_string())
+        InitializationError::Error(e.to_string())
     }
 }
 
 #[cfg(python)]
-impl From<crate::renderer::error::InitializationError> for pyo3::PyErr {
-    fn from(e: crate::renderer::error::InitializationError) -> Self {
+impl From<InitializationError> for pyo3::PyErr {
+    fn from(e: InitializationError) -> Self {
         PyFragmentColorError::new_err(e.to_string())
     }
 }
@@ -77,7 +79,7 @@ impl From<wasm_bindgen::JsValue> for RendererError {
         } else {
             format!("{:?}", value)
         };
-        RendererError::WasmError(error_string)
+        RendererError::Error(error_string)
     }
 }
 
@@ -96,7 +98,7 @@ impl From<wasm_bindgen::JsValue> for InitializationError {
         } else {
             format!("{:?}", value)
         };
-        InitializationError::WasmError(error_string)
+        InitializationError::Error(error_string)
     }
 }
 

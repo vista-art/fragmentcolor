@@ -98,6 +98,50 @@ fn main(_v: VertexOutput) -> @location(0) vec4<f32> {
   console.log(shader.listKeys());
 });
 
+// Test texture creation and shader.set parity
+await withModule('platforms.web.healthcheck.texture', async () => {
+  const renderer = new Renderer();
+  const target = await renderer.createTextureTarget([64, 64]);
+  
+  // Create 2x2 red-green-blue-white texture from raw RGBA bytes
+  const pixels = new Uint8Array([
+    255,0,0,255,    0,255,0,255,
+    0,0,255,255,    255,255,255,255,
+  ]);
+  const tex = await renderer.createTexture(pixels);
+  console.log('Created texture from Uint8Array');
+  
+  // Test setting texture on shader
+  const shader = new Shader(`
+@group(0) @binding(0) var tex: texture_2d<f32>;
+@group(0) @binding(1) var samp: sampler;
+@group(0) @binding(2) var<uniform> resolution: vec2<f32>;
+
+struct VOut { @builtin(position) pos: vec4<f32>, @location(0) uv: vec2<f32> };
+@vertex
+fn vs_main(@builtin(vertex_index) i: u32) -> VOut {
+    var p = array<vec2<f32>, 3>(vec2<f32>(-1.,-1.), vec2<f32>(3.,-1.), vec2<f32>(-1.,3.));
+    var uv = array<vec2<f32>, 3>(vec2<f32>(0.,1.), vec2<f32>(2.,1.), vec2<f32>(0.,-1.));
+    var out: VOut;
+    out.pos = vec4<f32>(p[i], 0., 1.);
+    out.uv = uv[i];
+    return out;
+}
+@fragment
+fn main(v: VOut) -> @location(0) vec4<f32> {
+    return textureSample(tex, samp, v.uv);
+}
+`);
+  
+  shader.set("tex", tex);
+  shader.set("resolution", [64.0, 64.0]);
+  console.log('Set texture on shader successfully');
+  
+  renderer.render(shader, target);
+  const img = target.getImage();
+  console.log('Rendered textured shader:', img);
+});
+
 // Auto-generated: helpers in global scope
 import { exampleShader } from './helpers.mjs';
 Object.assign(globalThis, { exampleShader });

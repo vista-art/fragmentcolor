@@ -24,7 +24,7 @@ You need to inject the [Frame](/api/core/frame) object into the [Renderer](/api/
 <TabItem label="Rust">
 <Code
 code={`
- async fn run() -> Result<(), Box<dyn std::error::Error>> {
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
 use fragmentcolor::{ Shader, Pass, Renderer, Frame };
 
@@ -38,9 +38,9 @@ let mut frame = Frame::new();
 frame.add_pass(&pass1);
 frame.add_pass(&pass2);
 
- Ok(())
- }
- fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
 lang="rust" meta="collapse={1-1, 15-17}"
 />

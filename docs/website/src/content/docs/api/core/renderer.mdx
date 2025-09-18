@@ -33,7 +33,7 @@ description below for details.
 <TabItem label="Rust">
 <Code
 code={`
- async fn run() -> Result<(), Box<dyn std::error::Error>> {
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
 use fragmentcolor::{Shader, Renderer, Target};
 
@@ -51,13 +51,13 @@ renderer.render(&Shader::default(), &texture_target)?;
 
 // That's it. Welcome to FragmentColor!
 
- let s = target.size();
- assert_eq!([s.width, s.height], [800, 600]);
- let s2 = texture_target.size();
- assert_eq!([s2.width, s2.height], [16, 16]);
- Ok(())
- }
- fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+let s = target.size();
+assert_eq!([s.width, s.height], [800, 600]);
+let s2 = texture_target.size();
+assert_eq!([s2.width, s2.height], [16, 16]);
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
 lang="rust" meta="collapse={1-1, 19-25}"
 />
@@ -174,18 +174,18 @@ is by first calling:
 <TabItem label="Rust">
 <Code
 code={`
- async fn run() -> Result<(), Box<dyn std::error::Error>> {
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
 use fragmentcolor::{Renderer, Target};
 
 let renderer = Renderer::new();
 let texture_target = renderer.create_texture_target([16, 16]).await?;
 
- let s = texture_target.size();
- assert_eq!([s.width, s.height], [16, 16]);
- Ok(())
- }
- fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+let s = texture_target.size();
+assert_eq!([s.width, s.height], [16, 16]);
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
 lang="rust" meta="collapse={1-1, 8-12}"
 />
@@ -262,7 +262,7 @@ Creates a [Target](/api/core/target) attached to a platform-specific canvas or w
 <TabItem label="Rust">
 <Code
 code={`
- async fn run() -> Result<(), Box<dyn std::error::Error>> {
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
 use fragmentcolor::{Renderer, Target};
 
@@ -274,11 +274,11 @@ let window = fragmentcolor::headless_window([800, 600]);
 
 let target = renderer.create_target(window).await?;
 
- let s = target.size();
- assert_eq!([s.width, s.height], [800, 600]);
- Ok(())
- }
- fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+let s = target.size();
+assert_eq!([s.width, s.height], [800, 600]);
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
 lang="rust" meta="collapse={1-1, 13-17}"
 />
@@ -368,7 +368,7 @@ This is useful for tests, server-side rendering, or running examples in CI.
 <TabItem label="Rust">
 <Code
 code={`
- async fn run() -> Result<(), Box<dyn std::error::Error>> {
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
 use fragmentcolor::{Renderer, Shader, Target};
 let renderer = Renderer::new();
@@ -381,11 +381,11 @@ renderer.render(&Shader::default(), &target)?;
 // get the rendered image
 let image = target.get_image();
 
- // RGBA8
- assert_eq!(image.len(), 64 * 64 * 4);
- Ok(())
- }
- fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+// RGBA8
+assert_eq!(image.len(), 64 * 64 * 4);
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
 lang="rust" meta="collapse={1-1, 14-18}"
 />
@@ -465,10 +465,11 @@ lang="text"
 
 ### Renderer::create_texture
 
-Create a [Texture](/api/core/texture) from raw image bytes.
+Create a [Texture](/api/core/texture) from various inputs.
 
-- Rust: returns a [Texture](/api/core/texture) object wrapping a GPU texture
-- JS/Python: parity pending
+- Rust: `create_texture(input)` infers from encoded bytes or file path; use `create_texture_with(input, Some(size), Some(format))` for raw pixel bytes.
+- JS: `await renderer.createTexture(input)` accepts `Uint8Array` bytes, string URL/path, or a CSS selector/HTMLImageElement
+- Python: `renderer.create_texture(input)` accepts `bytes`, `str` path, or a NumPy ndarray shaped `[H, W, C]` where C=1/3/4.
 
 #### Example
 
@@ -477,12 +478,18 @@ Create a [Texture](/api/core/texture) from raw image bytes.
 <TabItem label="Rust">
 <Code
 code={`
-let bytes = std::fs::read("./examples/assets/image.png").unwrap();
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Renderer, Size};
 let renderer = Renderer::new();
-let tex = futures::executor::block_on(renderer.create_texture(&bytes)).unwrap();
-shader.set("tex", &tex).unwrap();
+// 1x1 RGBA (white) raw pixel bytes
+let pixels: &[u8] = &[255,255,255,255];
+let tex = renderer.create_texture_with_size(pixels, Size::from((1,1))).await?;
+let _ = tex.size();
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust"
+lang="rust" meta="collapse={1-2, 7-10}"
 />
 
 </TabItem>
@@ -490,10 +497,10 @@ lang="rust"
 <TabItem label="JavaScript">
 <Code
 code={`
-const bytes = std.fs.read("./examples/assets/image.png").unwrap();
 const renderer = new Renderer();
-const tex = futures.executor.blockOn(renderer.createTexture(bytes)).unwrap();
-shader.set("tex", tex).unwrap();
+// 1x1 RGBA (white) raw pixel bytes;
+const pixels = [255,255,255,255];
+const tex = await renderer.createTextureWithSize(pixels, Size.from((1,1)));
 `}
 lang="js"
 />
@@ -503,10 +510,10 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-bytes = std.fs.read("./examples/assets/image.png").unwrap()
 renderer = Renderer()
-tex = futures.executor.block_on(renderer.create_texture(bytes)).unwrap()
-shader.set("tex", tex).unwrap()
+# 1x1 RGBA (white) raw pixel bytes
+pixels = [255,255,255,255]
+tex = renderer.create_texture_with_size(pixels, Size.from((1,1)))
 `}
 lang="python"
 />
@@ -542,12 +549,13 @@ lang="text"
 
 ---
 
-### Renderer::create_texture_from_file
+### Renderer::create_texture_with_size
 
-Create a [Texture](/api/core/texture) from an image file path.
+Create a [Texture](/api/core/texture) from various inputs.
 
-- Rust: returns a [Texture](/api/core/texture) object wrapping a GPU texture
-- JS/Python: parity pending
+- Rust: `create_texture(input)` infers from encoded bytes or file path; use `create_texture_with(input, Some(size), Some(format))` for raw pixel bytes.
+- JS: `await renderer.createTexture(input)` accepts `Uint8Array` bytes, string URL/path, or a CSS selector/HTMLImageElement
+- Python: `renderer.create_texture(input)` accepts `bytes`, `str` path, or a NumPy ndarray shaped `[H, W, C]` where C=1/3/4.
 
 #### Example
 
@@ -556,11 +564,23 @@ Create a [Texture](/api/core/texture) from an image file path.
 <TabItem label="Rust">
 <Code
 code={`
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Renderer, Size};
 let renderer = Renderer::new();
-let tex = futures::executor::block_on(renderer.create_texture_from_file("./examples/assets/image.png")).unwrap();
-shader.set("tex", &tex).unwrap();
+let size = Size::from((2, 2));
+let pixels: Vec<u8> = vec![
+    255,0,0,255,   0,255,0,255,
+    0,0,255,255,   255,255,255,255,
+];
+let tex = renderer
+    .create_texture_with(&pixels, size)
+    .await?;
+let _ = tex.size();
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust"
+lang="rust" meta="collapse={1-2, 12-15}"
 />
 
 </TabItem>
@@ -569,8 +589,14 @@ lang="rust"
 <Code
 code={`
 const renderer = new Renderer();
-const tex = futures.executor.blockOn(renderer.createTextureFromFile("./examples/assets/image.png")).unwrap();
-shader.set("tex", tex).unwrap();
+const size = Size.from((2, 2));
+const pixels = [;
+    255,0,0,255,   0,255,0,255,;
+    0,0,255,255,   255,255,255,255,;
+];
+const tex = renderer;
+    .createTextureWith(pixels, size);
+await ;
 `}
 lang="js"
 />
@@ -581,8 +607,378 @@ lang="js"
 <Code
 code={`
 renderer = Renderer()
-tex = futures.executor.block_on(renderer.create_texture_from_file("./examples/assets/image.png")).unwrap()
-shader.set("tex", tex).unwrap()
+size = Size.from((2, 2))
+pixels = [
+    255,0,0,255,   0,255,0,255,
+    0,0,255,255,   255,255,255,255,
+]
+tex = renderer
+    .create_texture_with(pixels, size)
+    
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Renderer::create_texture_with_format
+
+Create a [Texture](/api/core/texture) from various inputs.
+
+- Rust: `create_texture(input)` infers from encoded bytes or file path; use `create_texture_with(input, Some(size), Some(format))` for raw pixel bytes.
+- JS: `await renderer.createTexture(input)` accepts `Uint8Array` bytes, string URL/path, or a CSS selector/HTMLImageElement
+- Python: `renderer.create_texture(input)` accepts `bytes`, `str` path, or a NumPy ndarray shaped `[H, W, C]` where C=1/3/4.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Renderer, Size};
+let renderer = Renderer::new();
+let size = Size::from((2, 2));
+let pixels: Vec<u8> = vec![
+    255,0,0,255,   0,255,0,255,
+    0,0,255,255,   255,255,255,255,
+];
+let tex = renderer
+    .create_texture_with(&pixels, size)
+    .await?;
+let _ = tex.size();
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+`}
+lang="rust" meta="collapse={1-2, 12-15}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+const renderer = new Renderer();
+const size = Size.from((2, 2));
+const pixels = [;
+    255,0,0,255,   0,255,0,255,;
+    0,0,255,255,   255,255,255,255,;
+];
+const tex = renderer;
+    .createTextureWith(pixels, size);
+await ;
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+renderer = Renderer()
+size = Size.from((2, 2))
+pixels = [
+    255,0,0,255,   0,255,0,255,
+    0,0,255,255,   255,255,255,255,
+]
+tex = renderer
+    .create_texture_with(pixels, size)
+    
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Renderer::create_texture_with
+
+Create a [Texture](/api/core/texture) from various inputs.
+
+- Rust: `create_texture(input)` infers from encoded bytes or file path; use `create_texture_with(input, Some(size), Some(format))` for raw pixel bytes.
+- JS: `await renderer.createTexture(input)` accepts `Uint8Array` bytes, string URL/path, or a CSS selector/HTMLImageElement
+- Python: `renderer.create_texture(input)` accepts `bytes`, `str` path, or a NumPy ndarray shaped `[H, W, C]` where C=1/3/4.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Renderer, Size};
+let renderer = Renderer::new();
+let size = Size::from((2, 2));
+let pixels: Vec<u8> = vec![
+    255,0,0,255,   0,255,0,255,
+    0,0,255,255,   255,255,255,255,
+];
+let tex = renderer
+    .create_texture_with(&pixels, size)
+    .await?;
+let _ = tex.size();
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+`}
+lang="rust" meta="collapse={1-2, 12-15}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+const renderer = new Renderer();
+const size = Size.from((2, 2));
+const pixels = [;
+    255,0,0,255,   0,255,0,255,;
+    0,0,255,255,   255,255,255,255,;
+];
+const tex = renderer;
+    .createTextureWith(pixels, size);
+await ;
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+renderer = Renderer()
+size = Size.from((2, 2))
+pixels = [
+    255,0,0,255,   0,255,0,255,
+    0,0,255,255,   255,255,255,255,
+]
+tex = renderer
+    .create_texture_with(pixels, size)
+    
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Renderer::create_storage_texture
+
+Create a storage-class texture for compute or image store/load.
+
+- Default usage: STORAGE_BINDING | TEXTURE_BINDING | COPY_{SRC,DST}
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+
+use fragmentcolor::Renderer;
+let r = Renderer::new();
+let _tex = r
+    .create_storage_texture([64, 64], wgpu::TextureFormat::Rgba8Unorm, None)
+    .await?;
+
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+`}
+lang="rust" meta="collapse={1-1, 9-11}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+
+import { Renderer } from "fragmentcolor";
+const r = new Renderer();
+const _tex = r;
+    .createStorageTexture([64, 64], wgpu.TextureFormat.Rgba8Unorm, None);
+await ;
+
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+
+from fragmentcolor import Renderer
+r = Renderer()
+_tex = r
+    .create_storage_texture([64, 64], wgpu.TextureFormat.Rgba8Unorm, None)
+    
+
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Renderer::create_depth_texture
+
+Create a depth texture using `Depth32Float`.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::Renderer;
+let r = Renderer::new();
+let depth = r.create_depth_texture([800, 600]);
+`}
+lang="rust" meta="collapse={1-1}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+const r = new Renderer();
+const depth = r.createDepthTexture([800, 600]);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+r = Renderer()
+depth = r.create_depth_texture([800, 600])
 `}
 lang="python"
 />
@@ -629,7 +1025,7 @@ Renders the given object to the given [Target](/api/core/target).
 <TabItem label="Rust">
 <Code
 code={`
- async fn run() -> Result<(), Box<dyn std::error::Error>> {
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
 use fragmentcolor::{Renderer, Shader};
 
@@ -639,9 +1035,9 @@ let shader = Shader::default();
 
 renderer.render(&shader, &target)?;
 
- Ok(())
- }
- fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
 lang="rust" meta="collapse={1-1, 11-13}"
 />

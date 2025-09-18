@@ -9,7 +9,7 @@ const DEFAULT_CHUNK_SIZE: u64 = 0x10000;
 ///  •  Purpose: Upload uniforms in-frame with alignment padding (typically 256)
 ///  •  Grows by fixed-size chunks; suballocates many small ranges per frame; reset between frames
 ///  •  Usage: UNIFORM | COPY_DST; not mapped for read
-pub(crate) struct BufferPool {
+pub(crate) struct UniformBufferPool {
     label: String,
     usage: wgpu::BufferUsages,
     buffers: Vec<wgpu::Buffer>,
@@ -17,25 +17,28 @@ pub(crate) struct BufferPool {
     current_chunk: usize,
     current_offset: u64,
     pub alignment: u64,
+    // metrics
+    allocations: u64,
+    bytes_allocated: u64,
 }
 
 /// Represents a location within a BufferPool
 #[derive(Debug, Clone, Copy)]
-pub struct BufferLocation {
+pub(crate) struct BufferLocation {
     pub chunk_index: usize,
     pub offset: u64,
     pub size: u64,
 }
 
-impl BufferPool {
-    /// Creates a new Uniform Buffer Pool
-    /// that can be used as a destination buffer for:
+impl UniformBufferPool {
+    /// Creates a new Uniform Buffer Pool that can be used as a destination buffer for:
+    ///
     /// - CommandEncoder::copy_buffer_to_buffer,
     /// - CommandEncoder::copy_texture_to_buffer,
     /// - CommandEncoder::clear_buffer or
     /// - Queue::write_buffer
-    pub fn new_uniform_pool(label: &str, device: &wgpu::Device) -> Self {
-        Self::new(
+    pub fn new(label: &str, device: &wgpu::Device) -> Self {
+        Self::with_params(
             label,
             device,
             wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
@@ -43,10 +46,8 @@ impl BufferPool {
         )
     }
 
-    // TODO add more buffer pool types
-
     /// Creates a new buffer pool with custom parameters
-    pub fn new(
+    pub fn with_params(
         label: &str,
         device: &wgpu::Device,
         usage: wgpu::BufferUsages,
@@ -67,6 +68,8 @@ impl BufferPool {
             current_chunk: 0,
             current_offset: 0,
             alignment: device.limits().min_uniform_buffer_offset_alignment as u64,
+            allocations: 1,
+            bytes_allocated: chunk_size,
         }
     }
 
@@ -93,6 +96,8 @@ impl BufferPool {
                     usage: self.usage,
                     mapped_at_creation: false,
                 }));
+            self.allocations += 1;
+            self.bytes_allocated += self.chunk_size;
         }
     }
 
@@ -115,6 +120,8 @@ impl BufferPool {
                     usage: self.usage,
                     mapped_at_creation: false,
                 }));
+            self.allocations += 1;
+            self.bytes_allocated += aligned_size;
             self.current_chunk = self.buffers.len() - 1;
             self.current_offset = 0;
         }
@@ -132,6 +139,8 @@ impl BufferPool {
                         usage: self.usage,
                         mapped_at_creation: false,
                     }));
+                self.allocations += 1;
+                self.bytes_allocated += self.chunk_size;
             }
         }
 
@@ -179,5 +188,22 @@ impl BufferPool {
     pub fn reset(&mut self) {
         self.current_chunk = 0;
         self.current_offset = 0;
+    }
+}
+
+impl crate::renderer::buffer_pool::BufferPool for UniformBufferPool {
+    fn stats(&self) -> crate::renderer::buffer_pool::PoolStats {
+        crate::renderer::buffer_pool::PoolStats {
+            hits: 0,
+            misses: 0,
+            evictions: 0,
+            allocations: self.allocations,
+            bytes_allocated: self.bytes_allocated,
+        }
+    }
+
+    fn reset_metrics(&mut self) {
+        self.allocations = 1; // initial buffer accounted
+        self.bytes_allocated = self.chunk_size;
     }
 }

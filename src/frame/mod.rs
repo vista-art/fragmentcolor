@@ -58,10 +58,10 @@ impl TryFrom<&wasm_bindgen::JsValue> for Frame {
 
         let key = wasm_bindgen::JsValue::from_str("__wbg_ptr");
         let ptr = Reflect::get(value, &key).map_err(|_| {
-            crate::frame::error::FrameError::WasmError("Missing __wbg_ptr on Frame".into())
+            crate::frame::error::FrameError::Error("Missing __wbg_ptr on Frame".into())
         })?;
         let id = ptr.as_f64().ok_or_else(|| {
-            crate::frame::error::FrameError::WasmError("Invalid __wbg_ptr for Frame".into())
+            crate::frame::error::FrameError::Error("Invalid __wbg_ptr for Frame".into())
         })? as u32;
         let anchor: <Frame as RefFromWasmAbi>::Anchor =
             unsafe { <Frame as RefFromWasmAbi>::ref_from_abi(id) };

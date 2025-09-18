@@ -101,6 +101,85 @@ impl Renderer {
         })
     }
 
+    /// Python: Create a Texture from bytes, path string, or numpy ndarray (H,W[,C]).
+    #[lsp_doc("docs/api/core/renderer/hidden/create_texture_py.md")]
+    #[pyo3(name = "create_texture")]
+    pub fn create_texture_py(&self, input: Py<PyAny>) -> Result<crate::texture::Texture, PyErr> {
+        Python::attach(|py| -> Result<crate::texture::Texture, PyErr> {
+            // list of bytes
+            if let Ok(pylist) = input.bind(py).extract::<Py<pyo3::types::PyList>>() {
+                let vec: Vec<u8> = pylist.extract(py)?;
+                let tex = pollster::block_on(self.create_texture(&vec))?;
+                return Ok(tex);
+            }
+            // str path
+            if let Ok(path) = input.bind(py).extract::<String>() {
+                let tex = pollster::block_on(self.create_texture(std::path::Path::new(&path)))?;
+                return Ok(tex);
+            }
+            // numpy ndarray to RGBA8
+            {
+                if let Ok(any) = input.bind(py).downcast::<numpy::PyArrayDyn<u8>>() {
+                    use numpy::{PyArrayMethods, PyUntypedArrayMethods};
+
+                    let arr = any.readonly();
+                    let shape = arr.shape();
+                    if shape.len() == 2 || shape.len() == 3 {
+                        let h = shape[0] as u32;
+                        let w = shape[1] as u32;
+                        let c = if shape.len() == 3 { shape[2] } else { 1 };
+                        let mut rgba = vec![0u8; (w as usize) * (h as usize) * 4];
+                        let data = arr.as_slice().map_err(|_| {
+                            crate::error::PyFragmentColorError::new_err(
+                                "ndarray must be contiguous",
+                            )
+                        })?;
+                        for y in 0..(h as usize) {
+                            for x in 0..(w as usize) {
+                                let src_idx = (y * (w as usize) + x) * c;
+                                let dst_idx = (y * (w as usize) + x) * 4;
+                                match c {
+                                    1 => {
+                                        let v = data[src_idx];
+                                        rgba[dst_idx..dst_idx + 4].copy_from_slice(&[v, v, v, 255]);
+                                    }
+                                    3 => {
+                                        let r = data[src_idx];
+                                        let g = data[src_idx + 1];
+                                        let b = data[src_idx + 2];
+                                        rgba[dst_idx..dst_idx + 4].copy_from_slice(&[r, g, b, 255]);
+                                    }
+                                    4 => {
+                                        rgba[dst_idx..dst_idx + 4]
+                                            .copy_from_slice(&data[src_idx..src_idx + 4]);
+                                    }
+                                    _ => {
+                                        return Err(crate::error::PyFragmentColorError::new_err(
+                                            "ndarray last dimension must be 1, 3, or 4",
+                                        ));
+                                    }
+                                }
+                            }
+                        }
+                        let size = crate::Size::new(w, h, None);
+                        let options = crate::TextureOptions {
+                            size: Some(size),
+                            ..Default::default()
+                        };
+                        let tex = pollster::block_on(self.create_texture_with(
+                            crate::texture::TextureInput::Bytes(rgba),
+                            options,
+                        ))?;
+                        return Ok(tex);
+                    }
+                }
+            }
+            Err(crate::error::PyFragmentColorError::new_err(
+                "Unsupported input for create_texture (expected bytes, str path, or numpy ndarray)",
+            ))
+        })
+    }
+
     #[pyo3(name = "render")]
     #[lsp_doc("docs/api/core/renderer/render.md")]
     pub fn render_py(&self, renderable: Py<PyAny>, target: Py<PyAny>) -> Result<(), PyErr> {
@@ -140,6 +219,9 @@ pub fn fragmentcolor(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(rendercanvas_context_hook, m)?)?;
     m.add_class::<RenderCanvasTarget>()?;
     m.add_class::<RenderCanvasFrame>()?;
+
+    // Expose Texture handle type for shader.set(texture) to downcast properly
+    m.add_class::<crate::texture::Texture>()?;
 
     // Headless TextureTarget API
     m.add_class::<PyTextureTarget>()?;
