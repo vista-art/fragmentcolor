@@ -111,11 +111,20 @@ impl UniformData {
             Self::Mat4(v) => bytemuck::cast_slice(v.as_slice()).to_vec(),
             Self::Texture(_m) => Vec::new(),
             Self::Sampler(_s) => Vec::new(),
-            Self::Array(data) => {
+            Self::Array(items) => {
+                // Respect naga-provided stride when laying out arrays.
+                // items holds a single (elem_ty, count, stride) tuple.
                 let mut bytes = Vec::new();
-                if let Some((data, count, _)) = data.first() {
-                    for _ in 0..*count {
-                        bytes.extend(data.to_bytes());
+                if let Some((elem, count, stride)) = items.first() {
+                    let elem_bytes = elem.to_bytes();
+                    let total = (*stride as usize).saturating_mul(*count as usize);
+                    bytes.resize(total, 0);
+                    for i in 0..*count as usize {
+                        let start = i * (*stride as usize);
+                        let end = start + elem_bytes.len();
+                        if end <= bytes.len() {
+                            bytes[start..end].copy_from_slice(&elem_bytes);
+                        }
                     }
                 }
                 bytes
@@ -170,9 +179,9 @@ impl UniformData {
             Self::Mat4(_) => 64,
             Self::Texture(_) => 0,
             Self::Sampler(_) => 0,
-            Self::Array(data) => {
-                if let Some((data, count, _)) = data.first() {
-                    data.size() * count
+            Self::Array(items) => {
+                if let Some((_elem, count, stride)) = items.first() {
+                    stride * count
                 } else {
                     0
                 }

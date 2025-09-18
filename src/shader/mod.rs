@@ -699,4 +699,117 @@ struct Buf { a: vec4<f32> };
         let expected: [u8; 16] = bytemuck::cast([1.0f32, 2.0, 3.0, 4.0]);
         assert_eq!(&bytes[0..16], &expected);
     }
+
+    // Story: Arrays in storage buffers support element indexing using naga stride.
+    // - array<vec4<f32>, 4>: stride = 16 (std430); set element 2 and verify offset 2*16.
+    #[test]
+    fn storage_array_element_indexing() {
+        let wgsl = r#"
+struct Buf { arr: array<vec4<f32>, 4> };
+@group(0) @binding(0) var<storage, read> data: Buf;
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.));
+  return vec4f(p[i], 0., 1.);
+}
+@fragment fn main() -> @location(0) vec4<f32> { return vec4f(1.,1.,1.,1.); }
+        "#;
+        let shader = Shader::new(wgsl).expect("shader");
+        // Set arr[2] = (9, 8, 7, 6)
+        shader.set("data.arr[2]", [9.0, 8.0, 7.0, 6.0]).expect("set arr[2]");
+        let s = shader.object.storage.read();
+        let blob = s.get_bytes("data").expect("blob");
+        assert_eq!(blob.len(), 4 * 16);
+        // offset for index 2
+        let start = 2 * 16;
+        let expected: [u8; 16] = bytemuck::cast([9.0f32, 8.0, 7.0, 6.0]);
+        assert_eq!(&blob[start..start+16], &expected);
+    }
+
+    // Story: Arrays of structs in storage buffers can index into element then field.
+    #[test]
+    fn storage_array_of_structs_index_field() {
+        let wgsl = r#"
+struct Item { v: vec4<f32> };
+struct Buf { items: array<Item, 3> };
+@group(0) @binding(0) var<storage, read> buf: Buf;
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.));
+  return vec4f(p[i], 0., 1.);
+}
+@fragment fn main() -> @location(0) vec4<f32> { return vec4f(1.,1.,1.,1.); }
+        "#;
+        let shader = Shader::new(wgsl).expect("shader");
+        // Set items[1].v
+        shader
+            .set("buf.items[1].v", [0.1, 0.2, 0.3, 0.4])
+            .expect("set items[1].v");
+        let s = shader.object.storage.read();
+        let blob = s.get_bytes("buf").expect("blob");
+        // Expect stride >= 16; we only validate the written region matches expected bytes at index 1*stride
+        // Find stride by reading through Uniform metadata
+        let (_, _, u) = s.uniforms.get("buf").expect("buf uniform");
+        let stride = match &u.data {
+            UniformData::Storage(data) => {
+                let (inner, _span, _) = data.first().unwrap();
+                match inner {
+                    UniformData::Struct((fields, _)) => {
+                        // fields[0] should be items: Array
+                        match &fields[0].2 {
+                            UniformData::Array(items) => items.first().unwrap().2,
+                            _ => 0,
+                        }
+                    }
+                    _ => 0,
+                }
+            }
+            _ => 0,
+        } as usize;
+        assert!(stride >= 16);
+        let start = stride * 1; // index 1
+        let expected: [u8; 16] = bytemuck::cast([0.1f32, 0.2, 0.3, 0.4]);
+        assert_eq!(&blob[start..start+16], &expected);
+    }
+
+    // Story: Top-level uniform struct with array supports element indexing in set() and get_bytes().
+    #[test]
+    fn uniform_array_element_indexing() {
+        let wgsl = r#"
+struct U { arr: array<vec4<f32>, 3> };
+@group(0) @binding(0) var<uniform> u: U;
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.));
+  return vec4f(p[i], 0., 1.);
+}
+@fragment fn main() -> @location(0) vec4<f32> { return vec4f(1.,1.,1.,1.); }
+        "#;
+        let shader = Shader::new(wgsl).expect("shader");
+        shader.set("u.arr[1]", [3.0, 2.0, 1.0, 0.0]).expect("set u.arr[1]");
+        let s = shader.object.storage.read();
+        // get_bytes with element should work via slow-path computation
+        let bytes = s.get_bytes("u.arr[1]").expect("bytes");
+        assert_eq!(bytes.len(), 16);
+        let expected: [u8; 16] = bytemuck::cast([3.0f32, 2.0, 1.0, 0.0]);
+        assert_eq!(bytes, &expected);
+    }
+
+    // Story: get_bytes on storage element slice returns only that element's bytes
+    #[test]
+    fn storage_get_bytes_element_slice() {
+        let wgsl = r#"
+struct Buf { arr: array<vec4<f32>, 2> };
+@group(0) @binding(0) var<storage, read> buf: Buf;
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.));
+  return vec4f(p[i], 0., 1.);
+}
+@fragment fn main() -> @location(0) vec4<f32> { return vec4f(1.,1.,1.,1.); }
+        "#;
+        let shader = Shader::new(wgsl).expect("shader");
+        shader.set("buf.arr[0]", [5.0, 6.0, 7.0, 8.0]).expect("set arr[0]");
+        shader.set("buf.arr[1]", [1.0, 2.0, 3.0, 4.0]).expect("set arr[1]");
+        let s = shader.object.storage.read();
+        let e1 = s.get_bytes("buf.arr[1]").expect("bytes arr[1]");
+        let expected: [u8; 16] = bytemuck::cast([1.0f32, 2.0, 3.0, 4.0]);
+        assert_eq!(e1, &expected);
+    }
 }
