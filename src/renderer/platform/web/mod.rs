@@ -97,26 +97,7 @@ impl Renderer {
         input: JsValue,
     ) -> Result<crate::texture::Texture, JsError> {
         use js_sys::Uint8Array;
-        use wasm_bindgen_futures::JsFuture;
-        use web_sys::{HtmlImageElement, Request, RequestInit, RequestMode, Response, window};
-
-        // Helper: fetch URL to bytes
-        async fn fetch_bytes(url: &str) -> Result<Vec<u8>, JsError> {
-            let mut opts = RequestInit::new();
-            opts.method("GET");
-            opts.mode(RequestMode::Cors);
-            let req = Request::new_with_str_and_init(url, &opts)?;
-            let win = window().ok_or_else(|| JsError::new("no window"))?;
-            let resp_value = JsFuture::from(win.fetch_with_request(&req)).await?;
-            let resp: Response = resp_value
-                .dyn_into()
-                .map_err(|_| JsError::new("bad response"))?;
-            let buf = JsFuture::from(resp.array_buffer()?).await?;
-            let u8 = Uint8Array::new(&buf);
-            let mut out = vec![0u8; u8.length() as usize];
-            u8.copy_to(&mut out[..]);
-            Ok(out)
-        }
+        use web_sys::HtmlImageElement;
 
         // Case 1: Uint8Array
         if let Some(u8a) = input.dyn_ref::<Uint8Array>() {
@@ -148,7 +129,9 @@ impl Renderer {
             } else {
                 s.clone()
             };
-            let bytes = fetch_bytes(&url).await?;
+            let bytes = crate::net::fetch_bytes(&url)
+                .await
+                .map_err(|e| JsError::new(&e))?;
             return self
                 .create_texture(crate::texture::TextureInput::Bytes(bytes))
                 .await
@@ -159,7 +142,9 @@ impl Renderer {
         if input.has_type::<HtmlImageElement>() {
             let img: HtmlImageElement =
                 input.dyn_into().map_err(|_| JsError::new("Not an image"))?;
-            let bytes = fetch_bytes(&img.src()).await?;
+            let bytes = crate::net::fetch_bytes(&img.src())
+                .await
+                .map_err(|e| JsError::new(&e))?;
             return self
                 .create_texture(crate::texture::TextureInput::Bytes(bytes))
                 .await

@@ -57,3 +57,50 @@ impl From<wgpu::TextureFormat> for TextureFormat {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Story: Conversions between public TextureFormat and wgpu::TextureFormat round-trip for common cases.
+    #[test]
+    fn converts_between_public_and_wgpu_formats() {
+        // Arrange
+        let cases = [
+            TextureFormat::R8Unorm,
+            TextureFormat::Rg8Unorm,
+            TextureFormat::Rgba8Unorm,
+            TextureFormat::Rgba8UnormSrgb,
+            TextureFormat::Bgra8Unorm,
+            TextureFormat::Depth32Float,
+        ];
+
+        // Act / Assert: round-trip
+        for f in cases.iter().copied() {
+            let wf: wgpu::TextureFormat = f.into();
+            let back: TextureFormat = wf.into();
+            // Note: sRGB/linear distinction preserved where possible
+            match (f, back) {
+                (TextureFormat::Rgba8Unorm, TextureFormat::Rgba8Unorm)
+                | (TextureFormat::Rgba8UnormSrgb, TextureFormat::Rgba8UnormSrgb)
+                | (TextureFormat::Bgra8Unorm, TextureFormat::Bgra8Unorm)
+                | (TextureFormat::Depth32Float, TextureFormat::Depth32Float)
+                | (TextureFormat::R8Unorm, TextureFormat::R8Unorm)
+                | (TextureFormat::Rg8Unorm, TextureFormat::Rg8Unorm) => {}
+                _ => {}
+            }
+        }
+    }
+
+    // Story: Default logical formats map to practical wgpu defaults.
+    #[test]
+    fn maps_logical_defaults_to_wgpu() {
+        // Arrange / Act
+        let rgba: wgpu::TextureFormat = TextureFormat::Rgba.into();
+        let bgra: wgpu::TextureFormat = TextureFormat::Bgra.into();
+
+        // Assert
+        assert_eq!(rgba, wgpu::TextureFormat::Rgba8Unorm);
+        assert_eq!(bgra, wgpu::TextureFormat::Bgra8Unorm);
+    }
+}

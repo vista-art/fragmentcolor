@@ -13,7 +13,11 @@ pub enum ShaderError {
     #[error("Invalid key: {0}")]
     InvalidKey(String),
     #[error("Index out of bounds for {key}: index {index} >= len {len}")]
-    IndexOutOfBounds { key: String, index: usize, len: usize },
+    IndexOutOfBounds {
+        key: String,
+        index: usize,
+        len: usize,
+    },
     #[error("Field not found in struct: {0}")]
     FieldNotFound(String),
     #[error("WGSL error: {0}")]
@@ -68,5 +72,34 @@ impl From<wasm_bindgen::JsValue> for ShaderError {
 impl From<ShaderError> for wasm_bindgen::JsValue {
     fn from(error: ShaderError) -> Self {
         wasm_bindgen::JsValue::from_str(&error.to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Story: ShaderError formats carry details for various failure kinds.
+    #[test]
+    fn formats_shader_error_variants() {
+        let a = ShaderError::ParseError("p".into());
+        let b = ShaderError::PlannedFeature("pf".into());
+        let c = ShaderError::UniformNotFound("u".into());
+        let d = ShaderError::TypeMismatch("k".into());
+        let e = ShaderError::InvalidKey("k".into());
+        let f = ShaderError::IndexOutOfBounds {
+            key: "arr".into(),
+            index: 3,
+            len: 2,
+        };
+        let g = ShaderError::FieldNotFound("x".into());
+
+        assert!(a.to_string().contains("parse"));
+        assert!(b.to_string().contains("Planned feature"));
+        assert!(c.to_string().contains("Uniform not found"));
+        assert!(d.to_string().contains("Type mismatch"));
+        assert!(e.to_string().contains("Invalid key"));
+        assert!(f.to_string().contains("Index out of bounds"));
+        assert!(g.to_string().contains("Field not found"));
     }
 }

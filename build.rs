@@ -2322,6 +2322,91 @@ mod website {
         }
     }
 
+    // Site base used by link normalization
+    fn site_base() -> String {
+        std::env::var("DOCS_SITE_BASE").unwrap_or_else(|_| "/api".to_string())
+    }
+
+    // Normalize links in MDX to site root
+    fn rewrite_links_to_site_root(
+        mdx: &str,
+        top_categories: &std::collections::HashSet<String>,
+    ) -> String {
+        let base = site_base();
+        let mut out = String::new();
+        let bytes = mdx.as_bytes();
+        let mut i = 0usize;
+
+        let n_https = "](https://fragmentcolor.org/api/".as_bytes();
+        let n_http = "](http://fragmentcolor.org/api/".as_bytes();
+        let n_www_https = "](https://www.fragmentcolor.org/api/".as_bytes();
+        let n_www_http = "](http://www.fragmentcolor.org/api/".as_bytes();
+
+        while i < bytes.len() {
+            let mut matched = None::<&[u8]>;
+            if i + n_https.len() <= bytes.len() && &bytes[i..i + n_https.len()] == n_https {
+                matched = Some(n_https);
+            } else if i + n_http.len() <= bytes.len() && &bytes[i..i + n_http.len()] == n_http {
+                matched = Some(n_http);
+            } else if i + n_www_https.len() <= bytes.len()
+                && &bytes[i..i + n_www_https.len()] == n_www_https
+            {
+                matched = Some(n_www_https);
+            } else if i + n_www_http.len() <= bytes.len()
+                && &bytes[i..i + n_www_http.len()] == n_www_http
+            {
+                matched = Some(n_www_http);
+            }
+
+            if let Some(m) = matched {
+                out.push_str("](");
+                i += m.len();
+                out.push_str(&base);
+                out.push('/');
+                while i < bytes.len() && bytes[i] != b')' {
+                    out.push(bytes[i] as char);
+                    i += 1;
+                }
+            } else if i + 2 <= bytes.len() && bytes[i] == b']' && bytes[i + 1] == b'(' {
+                out.push(']');
+                out.push('(');
+                i += 2;
+                let start = i;
+                while i < bytes.len() && bytes[i] != b')' {
+                    i += 1;
+                }
+                let href = &mdx[start..i];
+                let href_trim = href.trim();
+                let lower = href_trim.to_ascii_lowercase();
+                let is_abs = lower.starts_with("http://")
+                    || lower.starts_with("https://")
+                    || href_trim.starts_with('/')
+                    || href_trim.starts_with('#')
+                    || lower.starts_with("mailto:")
+                    || lower.starts_with("tel:")
+                    || lower.starts_with("data:");
+                if is_abs {
+                    out.push_str(href_trim);
+                } else {
+                    let top = href_trim.split('/').next().unwrap_or("");
+                    if top_categories.contains(top) {
+                        out.push_str(&base);
+                        if !href_trim.starts_with('/') {
+                            out.push('/');
+                        }
+                        out.push_str(href_trim);
+                    } else {
+                        out.push_str(href_trim);
+                    }
+                }
+            } else {
+                out.push(bytes[i] as char);
+                i += 1;
+            }
+        }
+        out
+    }
+
     /// Step 2: Export examples and pages. Returns the sets needed by later steps.
     pub fn export_examples_and_pages(api_map: &ApiMap) -> ExportOutcome {
         use std::collections::{BTreeMap, HashSet};
@@ -2507,90 +2592,6 @@ mod website {
             out.push('\n');
 
             // Normalize links in MDX to site root
-            fn site_base() -> String {
-                std::env::var("DOCS_SITE_BASE").unwrap_or_else(|_| "/api".to_string())
-            }
-
-            fn rewrite_links_to_site_root(
-                mdx: &str,
-                top_categories: &std::collections::HashSet<String>,
-            ) -> String {
-                let base = site_base();
-                let mut out = String::new();
-                let bytes = mdx.as_bytes();
-                let mut i = 0usize;
-
-                let n_https = "](https://fragmentcolor.org/api/".as_bytes();
-                let n_http = "](http://fragmentcolor.org/api/".as_bytes();
-                let n_www_https = "](https://www.fragmentcolor.org/api/".as_bytes();
-                let n_www_http = "](http://www.fragmentcolor.org/api/".as_bytes();
-
-                while i < bytes.len() {
-                    let mut matched = None::<&[u8]>;
-                    if i + n_https.len() <= bytes.len() && &bytes[i..i + n_https.len()] == n_https {
-                        matched = Some(n_https);
-                    } else if i + n_http.len() <= bytes.len()
-                        && &bytes[i..i + n_http.len()] == n_http
-                    {
-                        matched = Some(n_http);
-                    } else if i + n_www_https.len() <= bytes.len()
-                        && &bytes[i..i + n_www_https.len()] == n_www_https
-                    {
-                        matched = Some(n_www_https);
-                    } else if i + n_www_http.len() <= bytes.len()
-                        && &bytes[i..i + n_www_http.len()] == n_www_http
-                    {
-                        matched = Some(n_www_http);
-                    }
-
-                    if let Some(m) = matched {
-                        out.push_str("](");
-                        i += m.len();
-                        out.push_str(&base);
-                        out.push('/');
-                        while i < bytes.len() && bytes[i] != b')' {
-                            out.push(bytes[i] as char);
-                            i += 1;
-                        }
-                    } else if i + 2 <= bytes.len() && bytes[i] == b']' && bytes[i + 1] == b'(' {
-                        out.push(']');
-                        out.push('(');
-                        i += 2;
-                        let start = i;
-                        while i < bytes.len() && bytes[i] != b')' {
-                            i += 1;
-                        }
-                        let href = &mdx[start..i];
-                        let href_trim = href.trim();
-                        let lower = href_trim.to_ascii_lowercase();
-                        let is_abs = lower.starts_with("http://")
-                            || lower.starts_with("https://")
-                            || href_trim.starts_with('/')
-                            || href_trim.starts_with('#')
-                            || lower.starts_with("mailto:")
-                            || lower.starts_with("tel:")
-                            || lower.starts_with("data:");
-                        if is_abs {
-                            out.push_str(href_trim);
-                        } else {
-                            let top = href_trim.split('/').next().unwrap_or("");
-                            if top_categories.contains(top) {
-                                out.push_str(&base);
-                                if !href_trim.starts_with('/') {
-                                    out.push('/');
-                                }
-                                out.push_str(href_trim);
-                            } else {
-                                out.push_str(href_trim);
-                            }
-                        }
-                    } else {
-                        out.push(bytes[i] as char);
-                        i += 1;
-                    }
-                }
-                out
-            }
 
             out = rewrite_links_to_site_root(&out, &top_categories);
 
@@ -3854,90 +3855,6 @@ mod website {
             out.push('\n');
 
             // Normalize links in MDX to site root
-            fn site_base() -> String {
-                std::env::var("DOCS_SITE_BASE").unwrap_or_else(|_| "/api".to_string())
-            }
-
-            fn rewrite_links_to_site_root(
-                mdx: &str,
-                top_categories: &std::collections::HashSet<String>,
-            ) -> String {
-                let base = site_base();
-                let mut out = String::new();
-                let bytes = mdx.as_bytes();
-                let mut i = 0usize;
-
-                let n_https = "](https://fragmentcolor.org/api/".as_bytes();
-                let n_http = "](http://fragmentcolor.org/api/".as_bytes();
-                let n_www_https = "](https://www.fragmentcolor.org/api/".as_bytes();
-                let n_www_http = "](http://www.fragmentcolor.org/api/".as_bytes();
-
-                while i < bytes.len() {
-                    let mut matched = None::<&[u8]>;
-                    if i + n_https.len() <= bytes.len() && &bytes[i..i + n_https.len()] == n_https {
-                        matched = Some(n_https);
-                    } else if i + n_http.len() <= bytes.len()
-                        && &bytes[i..i + n_http.len()] == n_http
-                    {
-                        matched = Some(n_http);
-                    } else if i + n_www_https.len() <= bytes.len()
-                        && &bytes[i..i + n_www_https.len()] == n_www_https
-                    {
-                        matched = Some(n_www_https);
-                    } else if i + n_www_http.len() <= bytes.len()
-                        && &bytes[i..i + n_www_http.len()] == n_www_http
-                    {
-                        matched = Some(n_www_http);
-                    }
-
-                    if let Some(m) = matched {
-                        out.push_str("](");
-                        i += m.len();
-                        out.push_str(&base);
-                        out.push('/');
-                        while i < bytes.len() && bytes[i] != b')' {
-                            out.push(bytes[i] as char);
-                            i += 1;
-                        }
-                    } else if i + 2 <= bytes.len() && bytes[i] == b']' && bytes[i + 1] == b'(' {
-                        out.push(']');
-                        out.push('(');
-                        i += 2;
-                        let start = i;
-                        while i < bytes.len() && bytes[i] != b')' {
-                            i += 1;
-                        }
-                        let href = &mdx[start..i];
-                        let href_trim = href.trim();
-                        let lower = href_trim.to_ascii_lowercase();
-                        let is_abs = lower.starts_with("http://")
-                            || lower.starts_with("https://")
-                            || href_trim.starts_with('/')
-                            || href_trim.starts_with('#')
-                            || lower.starts_with("mailto:")
-                            || lower.starts_with("tel:")
-                            || lower.starts_with("data:");
-                        if is_abs {
-                            out.push_str(href_trim);
-                        } else {
-                            let top = href_trim.split('/').next().unwrap_or("");
-                            if top_categories.contains(top) {
-                                out.push_str(&base);
-                                if !href_trim.starts_with('/') {
-                                    out.push('/');
-                                }
-                                out.push_str(href_trim);
-                            } else {
-                                out.push_str(href_trim);
-                            }
-                        }
-                    } else {
-                        out.push(bytes[i] as char);
-                        i += 1;
-                    }
-                }
-                out
-            }
 
             out = rewrite_links_to_site_root(&out, &top_categories);
 

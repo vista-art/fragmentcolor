@@ -52,6 +52,9 @@ pub mod size;
 /// Simple helper to represent color and convert user input (i.e. CSS strings)
 pub mod color;
 
+/// Cross-target networking helpers (text/bytes over HTTP)
+pub mod net;
+
 /// Winit App Module (desktop only)
 ///
 /// Requires the `winit` feature to be enabled.
@@ -64,15 +67,14 @@ pub mod app;
 pub use app::*;
 
 /// DRAFT; API may change in a whim
-pub mod doc_link;
 pub mod region;
 
 // Macros for blanket type conversions
 mod macros;
 
 pub use {
-    color::*, doc_link::*, error::*, frame::*, pass::*, region::*, renderer::*, shader::*, size::*,
-    target::*, texture::*,
+    color::*, error::*, frame::*, pass::*, region::*, renderer::*, shader::*, size::*, target::*,
+    texture::*,
 };
 
 /// Install a panic hook and console logger when running in WASM so browser console shows

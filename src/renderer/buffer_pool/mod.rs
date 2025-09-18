@@ -35,3 +35,28 @@ pub(crate) use uniform::{BufferLocation, UniformBufferPool};
 
 pub(crate) mod readback;
 pub(crate) use readback::ReadbackBufferPool;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Story: Default trait methods on BufferPool provide zeroed stats and no-op reset.
+    struct Dummy;
+    impl BufferPool for Dummy {}
+
+    #[test]
+    fn buffer_pool_default_methods() {
+        let mut d = Dummy;
+        // default reset: no-op
+        d.reset();
+        // default stats: zeros
+        let s = d.stats();
+        assert_eq!(s.hits, 0);
+        assert_eq!(s.misses, 0);
+        assert_eq!(s.evictions, 0);
+        assert_eq!(s.allocations, 0);
+        assert_eq!(s.bytes_allocated, 0);
+        // default reset_metrics: no-op
+        d.reset_metrics();
+    }
+}

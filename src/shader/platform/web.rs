@@ -23,66 +23,13 @@ impl Shader {
 
     #[lsp_doc("docs/api/core/shader/fetch.md")]
     pub async fn fetch(url: &str) -> Self {
-        let opts = RequestInit::new();
-        opts.set_method("GET");
-        opts.set_mode(RequestMode::Cors);
-
-        let request = match Request::new_with_str_and_init(url, &opts) {
-            Ok(r) => r,
+        match crate::net::fetch_text(url).await {
+            Ok(body) => Self::new_js(&body),
             Err(e) => {
-                console::error_1(&e);
-                return Shader::default();
+                console::error_1(&wasm_bindgen::JsValue::from_str(&e));
+                Shader::default()
             }
-        };
-        let window = match web_sys::window() {
-            Some(w) => w,
-            None => {
-                console::error_1(&"no global `window` exists".into());
-                return Shader::default();
-            }
-        };
-        let resp_promise = window.fetch_with_request(&request);
-        let resp_value = JsFuture::from(resp_promise).await;
-        let resp_value = match resp_value {
-            Ok(v) => v,
-            Err(e) => {
-                console::error_1(&e);
-                return Shader::default();
-            }
-        };
-
-        let resp: Response = match resp_value.dyn_into() {
-            Ok(r) => r,
-            Err(e) => {
-                console::error_1(&e);
-                return Shader::default();
-            }
-        };
-
-        let text_promise = match resp.text() {
-            Ok(p) => p,
-            Err(e) => {
-                console::error_1(&e);
-                return Shader::default();
-            }
-        };
-        let jsvalue = match JsFuture::from(text_promise).await {
-            Ok(v) => v,
-            Err(e) => {
-                console::error_1(&e);
-                return Shader::default();
-            }
-        };
-
-        let body = match jsvalue.as_string() {
-            Some(s) => s,
-            None => {
-                console::error_1(&"response not a string".into());
-                return Shader::default();
-            }
-        };
-
-        Self::new_js(&body)
+        }
     }
 
     #[wasm_bindgen(js_name = "set")]

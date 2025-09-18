@@ -732,3 +732,38 @@ pub fn run(app: &mut App) {
     event_loop.set_control_flow(ControlFlow::Poll);
     let _ = event_loop.run_app(app);
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Story: App can register windows, scenes, and callbacks without running the event loop.
+    #[test]
+    fn configures_scenes_and_callbacks() {
+        // Arrange
+        let mut app = App::new();
+        app.add_window(Window::default_attributes());
+        app.scene(Shader::default());
+
+        // Act: register callbacks of multiple kinds
+        let _ = app
+            .on_event(|_a, _id, _e| {})
+            .on_draw(|_a, _id, _e| {})
+            .on_resize(|_a, _s| {})
+            .on_window_close_requested(WindowId::from(1), |_a, _id| {})
+            .on_device_event(|_a, _id, _e| {})
+            .on_device_mouse_motion(|_a, _id, _delta| {});
+
+        // Assert: internal registries captured entries
+        assert_eq!(app.blueprints.len(), 1);
+        assert!(app.default_scene.is_some());
+        assert_eq!(app.on_event.read().len(), 1);
+        assert_eq!(app.on_draw.read().len(), 1);
+        // Typed registries are filled on-demand when events are dispatched; we check that the map exists.
+        // We avoid running the event loop in tests.
+        // We only assert that maps are present; specific counts depend on event dispatch
+        let _ = app.primary_by_kind.read().len();
+        assert_eq!(app.on_device_event.read().len(), 1);
+        let _ = app.device_by_kind.read().len();
+    }
+}
