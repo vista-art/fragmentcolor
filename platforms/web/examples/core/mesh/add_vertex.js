@@ -1,3 +1,3 @@
-import { {Mesh, Vertex, Position} } from "fragmentcolor";
+import { {Mesh, Vertex} } from "fragmentcolor";
 const m = new Mesh();
-m.addVertex(Vertex.fromPosition(Position.Pos2([0.0, 0.0])));
+m.addVertex(Vertex.from([0.0, 0.0]));

@@ -1259,9 +1259,9 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
             let mut mesh = crate::mesh::Mesh::new();
             use crate::mesh::{Position, Vertex};
             mesh.add_vertices([
-                Vertex::from_position(Position::Pos3([-0.5, -0.5, 0.0])),
-                Vertex::from_position(Position::Pos3([0.5, -0.5, 0.0])),
-                Vertex::from_position(Position::Pos3([0.0, 0.5, 0.0])),
+                Vertex::new(Position::Pos3([-0.5, -0.5, 0.0])),
+                Vertex::new(Position::Pos3([0.5, -0.5, 0.0])),
+                Vertex::new(Position::Pos3([0.0, 0.5, 0.0])),
             ]);
             pass.add_mesh(&mesh);
 

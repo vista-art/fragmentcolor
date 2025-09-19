@@ -7,10 +7,10 @@ Internally it deduplicates vertices and always draws indexed and instanced
 ## Example
 
 ```rust
-use fragmentcolor::mesh::{Mesh, Vertex, Position, VertexValue};
+use fragmentcolor::mesh::{Mesh, Vertex, VertexValue};
 
 let mut mesh = Mesh::new();
-mesh.add_vertex(Vertex::from_position(Position::Pos3([0.0, 0.5, 0.0])));
-mesh.add_vertex(Vertex::from_position(Position::Pos3([-0.5, -0.5, 0.0])));
-mesh.add_vertex(Vertex::from_position(Position::Pos3([0.5, -0.5, 0.0])));
+mesh.add_vertex(Vertex::from([0.0, 0.5, 0.0]));
+mesh.add_vertex(Vertex::from([-0.5, -0.5, 0.0]));
+mesh.add_vertex(Vertex::from([0.5, -0.5, 0.0]));
 ```

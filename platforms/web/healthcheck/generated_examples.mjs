@@ -46,7 +46,7 @@ const EXAMPLES = [
   '../examples/core/texture/size.js',
   '../examples/core/vertex/Vertex.js',
   '../examples/core/vertex/create_instance.js',
-  '../examples/core/vertex/from_position.js',
+  '../examples/core/vertex/new.js',
   '../examples/core/vertex/with_color.js',
   '../examples/core/vertex/with_property.js',
   '../examples/core/vertex/with_uv.js',

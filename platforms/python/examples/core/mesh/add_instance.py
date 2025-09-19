@@ -1,4 +1,4 @@
-from fragmentcolor import {Mesh, Vertex, Position}
+from fragmentcolor import {Mesh, Vertex}
 m = Mesh()
-v = Vertex.from_position(Position.Pos2([0.0, 0.0]))
+v = Vertex.from([0.0, 0.0])
 m.add_instance(v)
