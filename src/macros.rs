@@ -27,3 +27,85 @@ macro_rules! impl_tryfrom_owned_via_ref {
         }
     };
 }
+
+// -------------------------------------------------------------------------------------------------
+// Extended (bidirectional) variants
+// -------------------------------------------------------------------------------------------------
+// These new macros produce FOUR implementations (owned + &ref in BOTH directions) in one shot.
+// They require the caller to provide the conversion logic as closures / function paths so we do not
+// attempt to guess how to convert between the two distinct types. This avoids accidental infinite
+// recursion that would arise if we tried to delegate each direction to the other automatically.
+//
+// Design notes:
+// * Both types must implement Clone so we can derive the &T conversions from the owned ones.
+// * For From: you provide two closures (A -> B) and (B -> A).
+// * For TryFrom: you provide two closures (A -> Result<B, E>) and (B -> Result<A, E>). The same
+//   error type E is used for all four implementations.
+// * Each closure/expression is evaluated exactly once inside its corresponding impl.
+//
+// Example usage:
+//
+// impl_from_bidir_clone!(TypeA, TypeB, |a: TypeA| TypeB::new(a.x), |b: TypeB| TypeA::from(b.y));
+// impl_tryfrom_bidir_clone!(TypeA, TypeB, ConvertError,
+//     |a: TypeA| TypeB::try_new(a.x),
+//     |b: TypeB| TypeA::try_from_part(b.y)
+// );
+//
+// If you already have some of these impls, do NOT invoke these macros (Rust forbids duplicate impls).
+// You can keep using the original lightweight macros above when you only need one delegation.
+
+#[macro_export]
+macro_rules! impl_from_bidir_clone {
+    ($a:ty, $b:ty, $a_to_b:expr, $b_to_a:expr) => {
+        impl From<$a> for $b {
+            fn from(v: $a) -> $b {
+                ($a_to_b)(v)
+            }
+        }
+        impl From<&$a> for $b {
+            fn from(v: &$a) -> $b {
+                ($a_to_b)(v.clone())
+            }
+        }
+        impl From<$b> for $a {
+            fn from(v: $b) -> $a {
+                ($b_to_a)(v)
+            }
+        }
+        impl From<&$b> for $a {
+            fn from(v: &$b) -> $a {
+                ($b_to_a)(v.clone())
+            }
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! impl_tryfrom_bidir_clone {
+    ($a:ty, $b:ty, $err:ty, $a_to_b:expr, $b_to_a:expr) => {
+        impl TryFrom<$a> for $b {
+            type Error = $err;
+            fn try_from(v: $a) -> Result<$b, Self::Error> {
+                ($a_to_b)(v)
+            }
+        }
+        impl TryFrom<&$a> for $b {
+            type Error = $err;
+            fn try_from(v: &$a) -> Result<$b, Self::Error> {
+                ($a_to_b)(v.clone())
+            }
+        }
+        impl TryFrom<$b> for $a {
+            type Error = $err;
+            fn try_from(v: $b) -> Result<$a, Self::Error> {
+                ($b_to_a)(v)
+            }
+        }
+        impl TryFrom<&$b> for $a {
+            type Error = $err;
+            fn try_from(v: &$b) -> Result<$a, Self::Error> {
+                ($b_to_a)(v.clone())
+            }
+        }
+    };
+}

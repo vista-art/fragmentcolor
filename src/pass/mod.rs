@@ -88,6 +88,11 @@ impl Pass {
         self.object.add_shader(shader);
     }
 
+    #[lsp_doc("docs/api/core/pass/add_mesh.md")]
+    pub fn add_mesh(&self, mesh: &crate::mesh::Mesh) {
+        self.object.mesh.write().replace(mesh.object.clone());
+    }
+
     #[lsp_doc("docs/api/core/pass/hidden/set_viewport.md")]
     pub fn set_viewport(&self, viewport: Region) {
         self.object.set_viewport(viewport);
@@ -136,6 +141,7 @@ pub struct PassObject {
     pub(crate) shaders: RwLock<Vec<Arc<ShaderObject>>>,
     pub(crate) viewport: RwLock<Option<Region>>,
     pub(crate) required_buffer_size: RwLock<u64>,
+    pub(crate) mesh: RwLock<Option<Arc<crate::mesh::MeshObject>>>,
     pub pass_type: PassType,
 }
 
@@ -147,6 +153,7 @@ impl PassObject {
             viewport: RwLock::new(None),
             input: RwLock::new(PassInput::clear(Color::transparent())),
             required_buffer_size: RwLock::new(0),
+            mesh: RwLock::new(None),
             pass_type,
         }
     }
@@ -166,6 +173,7 @@ impl PassObject {
             viewport: RwLock::new(None),
             input: RwLock::new(PassInput::clear(Color::transparent())),
             required_buffer_size: RwLock::new(total_bytes),
+            mesh: RwLock::new(None),
             pass_type,
         }
     }

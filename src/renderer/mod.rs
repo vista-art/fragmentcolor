@@ -339,8 +339,9 @@ pub struct RenderContext {
     pub(crate) device: wgpu::Device,
     pub(crate) queue: wgpu::Queue,
 
-    // Cache RenderPipelines by (shader hash, target format, sample count)
-    render_pipelines: DashMap<(ShaderHash, wgpu::TextureFormat, u32), RenderPipeline>,
+    // Cache RenderPipelines by (shader hash, target format, sample count, layout signature)
+    // layout_sig = 0 means shader-only (no vertex/instance streams)
+    render_pipelines: DashMap<(ShaderHash, wgpu::TextureFormat, u32, u64), RenderPipeline>,
     buffer_pool: RwLock<UniformBufferPool>,
     // Storage buffer pool (STORAGE | COPY_DST), separate from uniform pool
     storage_pool: RwLock<UniformBufferPool>,
@@ -546,14 +547,36 @@ impl RenderContext {
         for shader in pass.shaders.read().iter() {
             let format = frame.format();
             let sc = self.sample_count();
+
+            // Determine mesh (if any) for this pass
+            let mesh_ref = pass.mesh.read().clone();
+            let mut cached_refs: Option<(crate::mesh::GpuOwned, crate::mesh::DrawCounts)> = None;
+            let (layout_sig, vertex_buffer_layouts) = if let Some(mo) = mesh_ref.as_ref() {
+                let sig = mo.layout_signature();
+                // Ensure GPU now to obtain layouts
+                let (refs, counts, layouts) = mo
+                    .ensure_gpu(&self.device, &self.queue)
+                    .map_err(|e| RendererError::Error(e.to_string()))?;
+                cached_refs = Some((refs, counts));
+                (sig, Some((layouts.vertex, layouts.instance)))
+            } else {
+                (0u64, None)
+            };
+
             let cached = self
                 .render_pipelines
-                .entry((shader.hash, format, sc))
+                .entry((shader.hash, format, sc, layout_sig))
                 .or_insert_with(|| {
                     let layouts =
                         create_bind_group_layouts(&self.device, &shader.storage.read().uniforms);
-                    let pipeline =
-                        create_render_pipeline(&self.device, &layouts, shader, format, sc);
+                    let pipeline = create_render_pipeline(
+                        &self.device,
+                        &layouts,
+                        shader,
+                        format,
+                        sc,
+                        vertex_buffer_layouts.as_ref().map(|(v, i)| (v, i.as_ref())),
+                    );
 
                     RenderPipeline {
                         pipeline,
@@ -700,8 +723,19 @@ impl RenderContext {
             for (i, (_, bind_group)) in bind_groups.iter().enumerate() {
                 render_pass.set_bind_group(i as u32, bind_group, &[]);
             }
-            // render_pass.set_blend_constant(color);
-            render_pass.draw(0..3, 0..1); // Fullscreen triangle
+
+            if let Some((refs, counts)) = cached_refs.as_ref() {
+                render_pass.set_vertex_buffer(0, refs.vertex_buffer.slice(..));
+                if let Some(instance_buffer) = &refs.instance_buffer {
+                    render_pass.set_vertex_buffer(1, instance_buffer.slice(..));
+                }
+                render_pass
+                    .set_index_buffer(refs.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+                render_pass.draw_indexed(0..counts.index_count, 0, 0..counts.instance_count);
+            } else {
+                // Fullscreen triangle fallback
+                render_pass.draw(0..3, 0..1);
+            }
         }
 
         // Return MSAA texture to pool if used
@@ -901,6 +935,10 @@ fn create_render_pipeline(
     shader: &crate::ShaderObject,
     format: wgpu::TextureFormat,
     sample_count: u32,
+    vertex_layouts: Option<(
+        &wgpu::VertexBufferLayout<'static>,
+        Option<&wgpu::VertexBufferLayout<'static>>,
+    )>,
 ) -> wgpu::RenderPipeline {
     let mut vs_entry = None;
     let mut fs_entry = None;
@@ -940,7 +978,17 @@ fn create_render_pipeline(
         vertex: wgpu::VertexState {
             module: &shader_module,
             entry_point: Some(vs_entry.as_deref().unwrap_or("vs_main")),
-            buffers: &[],
+            buffers: {
+                // Build a local Vec to keep the layouts alive for this call
+                let mut tmp: Vec<wgpu::VertexBufferLayout> = Vec::new();
+                if let Some((v, instance_buffer)) = vertex_layouts {
+                    tmp.push(v.clone());
+                    if let Some(i) = instance_buffer {
+                        tmp.push(i.clone());
+                    }
+                }
+                Box::leak(tmp.into_boxed_slice())
+            },
             compilation_options: wgpu::PipelineCompilationOptions::default(),
         },
         fragment: Some(wgpu::FragmentState {
@@ -1047,6 +1095,7 @@ mod more_error_path_tests {
         pollster::block_on(async move {
             let renderer = Renderer::new();
             // 2x2 RGBA (4 pixels): solid colors
+            #[rustfmt::skip]
             let bytes: [u8; 16] = [
                 255, 0, 0, 255,   0, 255, 0, 255,
                 0, 0, 255, 255,   255, 255, 255, 255,
@@ -1181,6 +1230,45 @@ fn main(v: VOut) -> @location(0) vec4<f32> {
         });
     }
 
+    // Story: Render a simple mesh with position-only vertices using a minimal shader.
+    #[test]
+    fn render_with_mesh_positions_only() {
+        pollster::block_on(async move {
+            let renderer = Renderer::new();
+            let target = renderer
+                .create_texture_target([8u32, 8u32])
+                .await
+                .expect("texture target");
+
+            let wgsl = r#"
+struct VOut { @builtin(position) pos: vec4<f32> };
+@vertex
+fn vs_main(@location(0) pos: vec3<f32>) -> VOut {
+  var out: VOut;
+  out.pos = vec4<f32>(pos, 1.0);
+  return out;
+}
+@fragment
+fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
+            "#;
+
+            let shader = crate::Shader::new(wgsl).expect("shader");
+            let pass = crate::Pass::from_shader("mesh", &shader);
+
+            // Build a triangle mesh
+            let mut mesh = crate::mesh::Mesh::new();
+            use crate::mesh::{Position, Vertex};
+            mesh.add_vertices([
+                Vertex::from_position(Position::Pos3([-0.5, -0.5, 0.0])),
+                Vertex::from_position(Position::Pos3([0.5, -0.5, 0.0])),
+                Vertex::from_position(Position::Pos3([0.0, 0.5, 0.0])),
+            ]);
+            pass.add_mesh(&mesh);
+
+            renderer.render(&pass, &target).expect("render ok");
+        });
+    }
+
     fn create_test_frame(
         device: &wgpu::Device,
         size: wgpu::Extent3d,
@@ -1250,7 +1338,7 @@ fn main(v: VOut) -> @location(0) vec4<f32> {
                 });
             ctx.process_render_pass(&mut encoder, pass, &frame, size)
                 .expect("render pass sc=1");
-            assert!(ctx.render_pipelines.contains_key(&(shader_hash, fmt, 1)));
+            assert!(ctx.render_pipelines.contains_key(&(shader_hash, fmt, 1, 0)));
 
             // pick a supported msaa (>1) if any
             let flags = adapter.get_texture_format_features(fmt).flags;
@@ -1271,7 +1359,10 @@ fn main(v: VOut) -> @location(0) vec4<f32> {
                         });
                 ctx.process_render_pass(&mut encoder2, pass, &frame, size)
                     .expect("render pass sc>1");
-                assert!(ctx.render_pipelines.contains_key(&(shader_hash, fmt, sc2)));
+                assert!(
+                    ctx.render_pipelines
+                        .contains_key(&(shader_hash, fmt, sc2, 0))
+                );
                 // Ensure entries are distinct keys
                 assert_ne!(sc2, 1);
             }
@@ -1292,6 +1383,80 @@ fn main(v: VOut) -> @location(0) vec4<f32> {
             let s5 = platform::all::pick_sample_count(&adapter, 5, fmt);
             assert!((1..=5).contains(&s5));
             assert!(s5.is_power_of_two());
+        });
+    }
+
+    // Story: try_get_frame_with_retry retries once on Lost/Outdated and returns other errors as-is.
+    #[test]
+    fn try_get_frame_with_retry_exercises_paths() {
+        use std::collections::VecDeque;
+        struct DummyFrame;
+        impl crate::TargetFrame for DummyFrame {
+            fn view(&self) -> &wgpu::TextureView {
+                panic!("not used")
+            }
+            fn format(&self) -> wgpu::TextureFormat {
+                wgpu::TextureFormat::Rgba8Unorm
+            }
+            fn present(self: Box<Self>) {}
+            fn auto_present(&self) -> bool {
+                false
+            }
+        }
+        struct DummyTarget {
+            size: crate::Size,
+            seq: parking_lot::RwLock<
+                VecDeque<Result<Box<dyn crate::TargetFrame>, wgpu::SurfaceError>>,
+            >,
+        }
+        impl DummyTarget {
+            fn new(seq: Vec<Result<Box<dyn crate::TargetFrame>, wgpu::SurfaceError>>) -> Self {
+                Self {
+                    size: crate::Size::from((1u32, 1u32)),
+                    seq: parking_lot::RwLock::new(seq.into()),
+                }
+            }
+        }
+        impl crate::Target for DummyTarget {
+            fn size(&self) -> crate::Size {
+                self.size
+            }
+            fn resize(&mut self, _s: impl Into<crate::Size>) {}
+            fn get_current_frame(&self) -> Result<Box<dyn crate::TargetFrame>, wgpu::SurfaceError> {
+                self.seq
+                    .write()
+                    .pop_front()
+                    .unwrap_or_else(|| Ok(Box::new(DummyFrame)))
+            }
+            fn get_image(&self) -> Vec<u8> {
+                Vec::new()
+            }
+        }
+
+        pollster::block_on(async move {
+            let (_adapter, device, queue) = create_device_and_queue().await;
+            let ctx = RenderContext::new(device, queue);
+
+            // Case 1: Lost then Ok -> success
+            let t1 = DummyTarget::new(vec![
+                Err(wgpu::SurfaceError::Lost),
+                Ok(Box::new(DummyFrame)),
+            ]);
+            let f1 = ctx.try_get_frame_with_retry(&t1);
+            assert!(f1.is_ok());
+
+            // Case 2: OutOfMemory -> error returned
+            let t2 = DummyTarget::new(vec![Err(wgpu::SurfaceError::OutOfMemory)]);
+            let f2 = ctx.try_get_frame_with_retry(&t2);
+            assert!(matches!(f2, Err(wgpu::SurfaceError::OutOfMemory)));
+
+            // Case 3: Outdated then Timeout -> returns second error
+            let t3 = DummyTarget::new(vec![
+                Err(wgpu::SurfaceError::Outdated),
+                Err(wgpu::SurfaceError::Timeout),
+            ]);
+            let f3 = ctx.try_get_frame_with_retry(&t3);
+            assert!(matches!(f3, Err(wgpu::SurfaceError::Timeout)));
         });
     }
 }

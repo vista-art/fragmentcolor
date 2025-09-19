@@ -530,4 +530,26 @@ mod more_region_tests {
         assert!(overlaps);
         assert_eq!(a, Region::from_region(0, 0, 6, 6));
     }
+
+    // Story: Clamp, encompass and equals work at the boundaries; radii helpers return intuitive values.
+    #[test]
+    fn clamp_encompass_equals_and_radii() {
+        let mut r = Region::from_region(1, 2, 3, 4);
+        r.clamp(2, 3);
+        assert_eq!(r, Region::from_region(1, 2, 1, 1)); // max clamped down
+
+        r.encompass(5, 6);
+        assert_eq!(r.max_x, 6);
+        assert_eq!(r.max_y, 7);
+
+        let r2 = Region::from_region(1, 2, 5, 5);
+        assert!(r.equals(r2));
+
+        let square = Region::from_region(0, 0, 4, 4);
+        assert!((square.inbound_radius() - 2.0).abs() < 1e-6);
+        assert!((square.outbound_radius() - (2.0f32.hypot(2.0))).abs() < 1e-6);
+
+        let c = square.center_f32();
+        assert!((c.x - 2.0).abs() < 1e-6 && (c.y - 2.0).abs() < 1e-6);
+    }
 }

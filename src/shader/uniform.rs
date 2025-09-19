@@ -1122,4 +1122,60 @@ mod tests {
             StorageAccess::AtomicReadWrite
         );
     }
+
+    // Story: Scalar, vector and matrix to_bytes lengths and size() are as expected.
+    #[test]
+    fn scalar_vector_matrix_sizes_and_bytes() {
+        assert_eq!(UniformData::Float(1.0).to_bytes().len(), 4);
+        assert_eq!(UniformData::Vec3([1.0, 2.0, 3.0]).to_bytes().len(), 12);
+        assert_eq!(UniformData::Mat2([[0.0; 2]; 2]).to_bytes().len(), 16);
+        assert_eq!(UniformData::Mat3([[0.0; 3]; 3]).to_bytes().len(), 36);
+        assert_eq!(UniformData::Mat4([[0.0; 4]; 4]).to_bytes().len(), 64);
+        assert_eq!(UniformData::Vec3([0.0; 3]).size(), 12);
+        assert_eq!(UniformData::Mat3([[0.0; 3]; 3]).size(), 36);
+    }
+
+    // Story: Array stride padding is honored; elements land at multiples of stride with zeros in between.
+    #[test]
+    fn array_stride_padding_is_honored() {
+        // Two vec2 (8 bytes each) with stride 16 -> 32 total
+        let u = UniformData::Array(vec![(UniformData::Vec2([2.0, 4.0]), 2, 16)]);
+        let bytes = u.to_bytes();
+        assert_eq!(bytes.len(), 32);
+        let e0: [f32; 2] = bytemuck::cast_slice(&bytes[0..8]).try_into().unwrap();
+        let e1: [f32; 2] = bytemuck::cast_slice(&bytes[16..24]).try_into().unwrap();
+        assert_eq!(e0, [2.0, 4.0]);
+        assert_eq!(e1, [2.0, 4.0]);
+        // Padding region between 8..16 should be zeros
+        assert!(bytes[8..16].iter().all(|&b| b == 0));
+    }
+
+    // Story: Extent3d conversions from various uniform shapes behave consistently.
+    #[test]
+    fn extent3d_conversions_from_uniforms() {
+        use wgpu::Extent3d;
+        let e: Extent3d = UniformData::UVec3([10, 20, 3]).into();
+        assert_eq!((e.width, e.height, e.depth_or_array_layers), (10, 20, 3));
+        let e2: Extent3d = UniformData::Vec4([9.0, 8.0, 7.0, 6.0]).into();
+        assert_eq!((e2.width, e2.height, e2.depth_or_array_layers), (9, 8, 7));
+        let e3: Extent3d = UniformData::Bool(true).into();
+        assert_eq!((e3.width, e3.height, e3.depth_or_array_layers), (0, 0, 0));
+    }
+
+    // Story: Round-trips for scalar wrappers (f32/i32/u32 and single-element arrays)
+    #[test]
+    fn scalar_round_trips() {
+        let f: f32 = UniformData::from(3.5f32).into();
+        assert_eq!(f, 3.5);
+        let i: i32 = UniformData::from(7i32).into();
+        assert_eq!(i, 7);
+        let u: u32 = UniformData::from(9u32).into();
+        assert_eq!(u, 9);
+        let a1f: [f32; 1] = UniformData::from([1.25f32]).into();
+        assert_eq!(a1f, [1.25]);
+        let a1i: [i32; 1] = UniformData::from([5i32]).into();
+        assert_eq!(a1i, [5]);
+        let a1u: [u32; 1] = UniformData::from([6u32]).into();
+        assert_eq!(a1u, [6]);
+    }
 }

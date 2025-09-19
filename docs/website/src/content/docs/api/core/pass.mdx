@@ -406,6 +406,94 @@ lang="text"
 
 ---
 
+### Pass::add_mesh
+
+Attach a Mesh to this Pass. The Renderer will draw the mesh for each attached Shader.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::{Pass, Shader};
+use fragmentcolor::mesh::{Mesh, Vertex, Position};
+
+let shader = Shader::default();
+let pass = Pass::from_shader("p", &shader);
+let mut mesh = Mesh::new();
+mesh.add_vertex(Vertex::from_position(Position::Pos2([0.0, 0.0])));
+pass.add_mesh(&mesh);
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Pass, Shader } from "fragmentcolor";
+import { {Mesh, Vertex, Position}, Shader } from "fragmentcolor";
+
+const shader = Shader.default();
+const pass = new Pass("p"); pass.addShader(shader);
+const mesh = new Mesh();
+mesh.addVertex(Vertex.fromPosition(Position.Pos2([0.0, 0.0])));
+pass.addMesh(mesh);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Pass, Shader
+from fragmentcolor import {Mesh, Vertex, Position}, Shader
+
+shader = Shader.default()
+rpass = Pass("p"); rpass.add_shader(shader)
+mesh = Mesh()
+mesh.add_vertex(Vertex.from_position(Position.Pos2([0.0, 0.0])))
+rpass.add_mesh(mesh)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
 ### Pass::set_clear_color(color: [f32; 4])
 
 Sets the clear color for this [Pass](/api/core/pass).

@@ -29,6 +29,9 @@ impl Size {
     }
 }
 
+crate::impl_from_ref!(Size, wgpu::Extent3d);
+crate::impl_from_ref!(wgpu::Extent3d, Size);
+
 impl From<wgpu::Extent3d> for Size {
     fn from(extent: wgpu::Extent3d) -> Self {
         Self {
@@ -39,8 +42,6 @@ impl From<wgpu::Extent3d> for Size {
     }
 }
 
-crate::impl_from_ref!(Size, wgpu::Extent3d);
-
 impl From<Size> for wgpu::Extent3d {
     fn from(size: Size) -> Self {
         Self {
@@ -50,8 +51,6 @@ impl From<Size> for wgpu::Extent3d {
         }
     }
 }
-
-crate::impl_from_ref!(wgpu::Extent3d, Size);
 
 impl From<(u32, u32)> for Size {
     fn from(value: (u32, u32)) -> Self {
@@ -401,5 +400,21 @@ mod tests {
         let arr3b: [u32; 3] = (&s6).into();
         assert_eq!(arr2b, [7, 8]);
         assert_eq!(arr3b, [7, 8, 9]);
+    }
+
+    // Story: Default and new() constructors, and depth fallback when converting to Extent3d.
+    #[test]
+    fn size_new_default_and_depth_fallback() {
+        let d = Size::default();
+        assert_eq!(d.width, 0);
+        assert_eq!(d.height, 0);
+        assert_eq!(d.depth, None);
+
+        let s = Size::new(4, 5, None);
+        let e: wgpu::Extent3d = s.into();
+        assert_eq!(e.width, 4);
+        assert_eq!(e.height, 5);
+        // Depth should fallback to 1 when None
+        assert_eq!(e.depth_or_array_layers, 1);
     }
 }
