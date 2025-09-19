@@ -552,13 +552,20 @@ impl RenderContext {
             let mesh_ref = pass.mesh.read().clone();
             let mut cached_refs: Option<(crate::mesh::GpuOwned, crate::mesh::DrawCounts)> = None;
             let (layout_sig, vertex_buffer_layouts) = if let Some(mo) = mesh_ref.as_ref() {
-                let sig = mo.layout_signature();
-                // Ensure GPU now to obtain layouts
-                let (refs, counts, layouts) = mo
+                // Ensure GPU buffers
+                let (refs, counts) = mo
                     .ensure_gpu(&self.device, &self.queue)
                     .map_err(|e| RendererError::Error(e.to_string()))?;
                 cached_refs = Some((refs, counts));
-                (sig, Some((layouts.vertex, layouts.instance)))
+
+                match build_ast_mapped_layouts(shader.as_ref(), mo.as_ref())? {
+                    Some((signature, v, i)) => (signature, Some((v, i))),
+                    None => {
+                        // Shader has no @location inputs; ignore mesh for this pipeline
+                        cached_refs = None;
+                        (0u64, None)
+                    }
+                }
             } else {
                 (0u64, None)
             };
@@ -1085,6 +1092,216 @@ fn create_render_pipeline(
     })
 }
 
+// ---------------------------
+// AST-driven vertex/instance mapping helpers
+// ---------------------------
+fn build_ast_mapped_layouts(
+    shader: &crate::ShaderObject,
+    mesh: &crate::mesh::MeshObject,
+) -> Result<
+    Option<(
+        u64,
+        wgpu::VertexBufferLayout<'static>,
+        Option<wgpu::VertexBufferLayout<'static>>,
+    )>,
+    RendererError,
+> {
+    // Reflect inputs; if none, return None so callers can fall back to triangle path
+    let inputs = shader
+        .reflect_vertex_inputs()
+        .map_err(RendererError::ShaderError)?;
+    if inputs.is_empty() {
+        return Ok(None);
+    }
+
+    // Read schemas
+    let sv = mesh.schema_v.read().clone();
+    let si = mesh.schema_i.read().clone();
+
+    let Some(sv) = sv else {
+        return Err(RendererError::Error(
+            "Mesh attribute mapping failed: no vertex schema".into(),
+        ));
+    };
+
+    // Precompute name -> (offset, fmt) for both streams
+    let (map_v, stride_v) = schema_offsets(&sv);
+    let (map_i, stride_i) = if let Some(ref si) = si {
+        let (m, s) = schema_offsets(si);
+        (Some(m), Some(s))
+    } else {
+        (None, None)
+    };
+
+    // Partition attributes per stream based on mapping rule
+    let mut attrs_v: Vec<wgpu::VertexAttribute> = Vec::new();
+    let mut attrs_i: Vec<wgpu::VertexAttribute> = Vec::new();
+
+    for inp in inputs.iter() {
+        // Resolve name (special-case for position aliases)
+        let mut candidates: Vec<(&str, wgpu::VertexFormat)> = Vec::new();
+        if is_position_alias(&inp.name) {
+            if matches!(inp.format, wgpu::VertexFormat::Float32x2)
+                && (map_i.as_ref().and_then(|m| m.get("position2")).is_some()
+                    || map_v.contains_key("position2"))
+            {
+                candidates.push(("position2", wgpu::VertexFormat::Float32x2));
+            }
+            if matches!(inp.format, wgpu::VertexFormat::Float32x3)
+                && (map_i.as_ref().and_then(|m| m.get("position3")).is_some()
+                    || map_v.contains_key("position3"))
+            {
+                candidates.push(("position3", wgpu::VertexFormat::Float32x3));
+            }
+        }
+        // Also consider exact name
+        candidates.push((&inp.name, inp.format));
+
+        // Try instance first when available, then vertex
+        let mut placed = false;
+        if let Some(ref mi) = map_i {
+            for (key, format_expected) in candidates.iter() {
+                if let Some((offset, format_mesh)) = mi.get(*key).cloned() {
+                    if *format_expected != format_mesh {
+                        return Err(RendererError::Error(format!(
+                            "Type mismatch for shader input '{}' @location({}): shader expects {:?}, mesh has {:?}",
+                            inp.name, inp.location, inp.format, format_mesh
+                        )));
+                    }
+                    attrs_i.push(wgpu::VertexAttribute {
+                        format: *format_expected,
+                        offset,
+                        shader_location: inp.location,
+                    });
+                    placed = true;
+                    break;
+                }
+            }
+        }
+        if !placed {
+            for (key, format_expected) in candidates.iter() {
+                if let Some((offset, format_mesh)) = map_v.get(*key).cloned() {
+                    if *format_expected != format_mesh {
+                        return Err(RendererError::Error(format!(
+                            "Type mismatch for shader input '{}' @location({}): shader expects {:?}, mesh has {:?}",
+                            inp.name, inp.location, inp.format, format_mesh
+                        )));
+                    }
+                    attrs_v.push(wgpu::VertexAttribute {
+                        format: *format_expected,
+                        offset,
+                        shader_location: inp.location,
+                    });
+                    placed = true;
+                    break;
+                }
+            }
+        }
+        if !placed {
+            return Err(RendererError::Error(format!(
+                "Mesh attribute not found for shader input '{}' @location({})",
+                inp.name, inp.location
+            )));
+        }
+    }
+
+    // Build layouts; leak attributes to 'static for the pipeline builder
+    attrs_v.sort_by_key(|a| a.shader_location);
+    let attrs_v_boxed = Box::leak(attrs_v.into_boxed_slice());
+    let vertex_layout = wgpu::VertexBufferLayout {
+        array_stride: stride_v,
+        step_mode: wgpu::VertexStepMode::Vertex,
+        attributes: attrs_v_boxed,
+    };
+
+    let instance_layout = if let (Some(attrs), Some(stride)) = (
+        if attrs_i.is_empty() {
+            None
+        } else {
+            Some(attrs_i)
+        },
+        stride_i,
+    ) {
+        let mut attrs = attrs;
+        attrs.sort_by_key(|a| a.shader_location);
+        let attrs_i_boxed = Box::leak(attrs.into_boxed_slice());
+        Some(wgpu::VertexBufferLayout {
+            array_stride: stride,
+            step_mode: wgpu::VertexStepMode::Instance,
+            attributes: attrs_i_boxed,
+        })
+    } else {
+        None
+    };
+
+    // Compute layout signature hashing (stream tag, fmt, loc, offset) and strides
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+
+    // Vertex stream
+    for a in vertex_layout.attributes.iter() {
+        hasher.update([b'v']);
+        hasher.update(a.shader_location.to_le_bytes());
+        hasher.update([vertex_fmt_code(a.format)]);
+        hasher.update(a.offset.to_le_bytes());
+    }
+    hasher.update(vertex_layout.array_stride.to_le_bytes());
+
+    // Instance stream
+    if let Some(ref il) = instance_layout {
+        for a in il.attributes.iter() {
+            hasher.update([b'i']);
+            hasher.update(a.shader_location.to_le_bytes());
+            hasher.update([vertex_fmt_code(a.format)]);
+            hasher.update(a.offset.to_le_bytes());
+        }
+        hasher.update(il.array_stride.to_le_bytes());
+    }
+
+    let h = hasher.finalize();
+    let sig = u64::from_le_bytes([h[0], h[1], h[2], h[3], h[4], h[5], h[6], h[7]]);
+
+    Ok(Some((sig, vertex_layout, instance_layout)))
+}
+
+fn schema_offsets(
+    schema: &crate::mesh::Schema,
+) -> (
+    std::collections::HashMap<String, (u64, wgpu::VertexFormat)>,
+    u64,
+) {
+    let mut map = std::collections::HashMap::new();
+    let mut ofs = 0u64;
+    for f in schema.fields.iter() {
+        map.insert(f.name.clone(), (ofs, f.fmt));
+        ofs += f.size;
+    }
+    (map, schema.stride)
+}
+
+fn is_position_alias(name: &str) -> bool {
+    matches!(name, "pos" | "position")
+}
+
+fn vertex_fmt_code(fmt: wgpu::VertexFormat) -> u8 {
+    use wgpu::VertexFormat as F;
+    match fmt {
+        F::Float32 => 1,
+        F::Float32x2 => 2,
+        F::Float32x3 => 3,
+        F::Float32x4 => 4,
+        F::Uint32 => 5,
+        F::Uint32x2 => 6,
+        F::Uint32x3 => 7,
+        F::Uint32x4 => 8,
+        F::Sint32 => 9,
+        F::Sint32x2 => 10,
+        F::Sint32x3 => 11,
+        F::Sint32x4 => 12,
+        _ => 0,
+    }
+}
+
 #[cfg(test)]
 mod more_error_path_tests {
     use super::*;
@@ -1302,11 +1519,268 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(0.,1.,0.,1.); }
                 Vertex::new([0.5, -0.5, 0.0]),
                 Vertex::new([0.0, 0.5, 0.0]),
             ]);
-            // Two instances with different offsets
-            mesh.add_instance(Vertex::new([0.0, 0.0]));
-            mesh.add_instance(Vertex::new([0.25, 0.0]));
+            // Two instances with different offsets: provide an "offset" property to match the shader
+            use crate::mesh::VertexValue;
+            mesh.add_instance(
+                Vertex::new([0.0, 0.0]).with_property("offset", VertexValue::F32x2([0.0, 0.0])),
+            );
+            mesh.add_instance(
+                Vertex::new([0.25, 0.0]).with_property("offset", VertexValue::F32x2([0.25, 0.0])),
+            );
 
             pass.add_mesh(&mesh);
+            renderer.render(&pass, &target).expect("render ok");
+        });
+    }
+
+    // Story: Vertex-only mapping with vec2 position and uv attribute on vertices.
+    #[test]
+    fn ast_mapping_vertex_pos2_and_uv_smoke() {
+        pollster::block_on(async move {
+            let renderer = Renderer::new();
+            let target = renderer
+                .create_texture_target([16u32, 16u32])
+                .await
+                .expect("texture target");
+
+            let wgsl = r#"
+struct VOut { @builtin(position) pos: vec4<f32>, @location(0) uv: vec2<f32> };
+@vertex
+fn vs_main(@location(0) pos: vec2<f32>, @location(1) uv: vec2<f32>) -> VOut {
+  var out: VOut;
+  out.pos = vec4<f32>(pos, 0.0, 1.0);
+  out.uv = uv;
+  return out;
+}
+@fragment
+fn main(v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(v.uv, 0.0, 1.0); }
+            "#;
+
+            let shader = crate::Shader::new(wgsl).expect("shader");
+            let pass = crate::Pass::from_shader("p", &shader);
+
+            let mut mesh = crate::mesh::Mesh::new();
+            use crate::mesh::Vertex;
+            mesh.add_vertices([
+                Vertex::new([-0.5, -0.5]).with_uv([0.0, 0.0]),
+                Vertex::new([0.5, -0.5]).with_uv([1.0, 0.0]),
+                Vertex::new([0.0, 0.5]).with_uv([0.5, 1.0]),
+            ]);
+            pass.add_mesh(&mesh);
+
+            renderer.render(&pass, &target).expect("render ok");
+        });
+    }
+
+    // Story: Vertex color attribute provided per-vertex; fragment returns color.
+    #[test]
+    fn ast_mapping_vertex_color_smoke() {
+        pollster::block_on(async move {
+            let renderer = Renderer::new();
+            let target = renderer
+                .create_texture_target([16u32, 16u32])
+                .await
+                .expect("texture target");
+
+            let wgsl = r#"
+struct VOut { @builtin(position) pos: vec4<f32>, @location(0) color: vec4<f32> };
+@vertex
+fn vs_main(@location(0) pos: vec3<f32>, @location(1) color: vec4<f32>) -> VOut {
+  var out: VOut;
+  out.pos = vec4<f32>(pos, 1.0);
+  out.color = color;
+  return out;
+}
+@fragment
+fn main(v: VOut) -> @location(0) vec4<f32> { return v.color; }
+            "#;
+
+            let shader = crate::Shader::new(wgsl).expect("shader");
+            let pass = crate::Pass::from_shader("p", &shader);
+
+            let mut mesh = crate::mesh::Mesh::new();
+            use crate::mesh::Vertex;
+            mesh.add_vertices([
+                Vertex::new([-0.5, -0.5, 0.0]).with_color([1.0, 0.0, 0.0, 1.0]),
+                Vertex::new([0.5, -0.5, 0.0]).with_color([0.0, 1.0, 0.0, 1.0]),
+                Vertex::new([0.0, 0.5, 0.0]).with_color([0.0, 0.0, 1.0, 1.0]),
+            ]);
+            pass.add_mesh(&mesh);
+
+            renderer.render(&pass, &target).expect("render ok");
+        });
+    }
+
+    // Story: When a property name exists in both vertex and instance streams, instance is preferred.
+    // We write per-instance "tint" and verify left/right instances draw with their tint colors.
+    #[test]
+    fn ast_mapping_instance_preferred_over_vertex() {
+        fn read_pixel(img: &[u8], w: u32, x: u32, y: u32) -> [u8; 4] {
+            let i = ((y * w + x) * 4) as usize;
+            [img[i], img[i + 1], img[i + 2], img[i + 3]]
+        }
+
+        pollster::block_on(async move {
+            let renderer = Renderer::new();
+            let size = [32u32, 32u32];
+            let target = renderer
+                .create_texture_target(size)
+                .await
+                .expect("texture target");
+
+            let wgsl = r#"
+struct VOut { @builtin(position) pos: vec4<f32>, @location(0) tint: vec4<f32> };
+@vertex
+fn vs_main(
+  @location(0) pos: vec3<f32>,
+  @location(1) offset: vec2<f32>,
+  @location(2) tint: vec4<f32>
+) -> VOut {
+  var out: VOut;
+  let p = vec3<f32>(pos.xy + offset, pos.z);
+  out.pos = vec4<f32>(p, 1.0);
+  out.tint = tint;
+  return out;
+}
+@fragment
+fn main(v: VOut) -> @location(0) vec4<f32> { return v.tint; }
+            "#;
+
+            let shader = crate::Shader::new(wgsl).expect("shader");
+            let pass = crate::Pass::from_shader("p", &shader);
+
+            let mut mesh = crate::mesh::Mesh::new();
+            use crate::mesh::{Vertex, VertexValue};
+            // Triangle geometry in clip-space
+            mesh.add_vertices([
+                Vertex::new([-0.5, -0.5, 0.0])
+                    .with_property("tint", VertexValue::F32x4([0.0, 1.0, 0.0, 1.0])), // vertex-level green (should be ignored)
+                Vertex::new([0.5, -0.5, 0.0])
+                    .with_property("tint", VertexValue::F32x4([0.0, 1.0, 0.0, 1.0])),
+                Vertex::new([0.0, 0.5, 0.0])
+                    .with_property("tint", VertexValue::F32x4([0.0, 1.0, 0.0, 1.0])),
+            ]);
+            // Two instances with different offsets and tints
+            mesh.add_instance(
+                Vertex::new([-0.25, 0.0])
+                    .with_property("offset", VertexValue::F32x2([-0.25, 0.0]))
+                    .with_property("tint", VertexValue::F32x4([1.0, 0.0, 0.0, 1.0])), // red
+            );
+            mesh.add_instance(
+                Vertex::new([0.25, 0.0])
+                    .with_property("offset", VertexValue::F32x2([0.25, 0.0]))
+                    .with_property("tint", VertexValue::F32x4([0.0, 0.0, 1.0, 1.0])), // blue
+            );
+
+            pass.add_mesh(&mesh);
+            renderer.render(&pass, &target).expect("render ok");
+
+            let img = target.get_image();
+            let w = size[0];
+            // Helper: map NDC [-1,1] to pixel coordinate [0..w-1]
+            let ndc_to_px = |x_ndc: f32, w: u32| -> u32 {
+                let fx = (x_ndc * 0.5 + 0.5).clamp(0.0, 1.0);
+                (fx * (w as f32 - 1.0)).round() as u32
+            };
+            let ndc_to_py = |y_ndc: f32, h: u32| -> u32 {
+                // NDC +Y is up; pixel Y grows downward. Map accordingly.
+                let fy = (-(y_ndc) * 0.5 + 0.5).clamp(0.0, 1.0);
+                (fy * (h as f32 - 1.0)).round() as u32
+            };
+            let left_x = ndc_to_px(-0.25, size[0]);
+            let right_x = ndc_to_px(0.25, size[0]);
+            let y_mid = ndc_to_py(0.0, size[1]);
+
+            let left = read_pixel(&img, w, left_x, y_mid);
+            let right = read_pixel(&img, w, right_x, y_mid);
+
+            // Expect roughly red on the left, blue on the right (alpha 255)
+            assert!(
+                left[0] > 128 && left[1] < 64 && left[2] < 64 && left[3] == 255,
+                "left not red-ish: {:?}",
+                left
+            );
+            assert!(
+                right[2] > 128 && right[0] < 64 && right[1] < 64 && right[3] == 255,
+                "right not blue-ish: {:?}",
+                right
+            );
+        });
+    }
+
+    // Story: Shader with non-sequential location indices maps properly (uv at @location(3)).
+    #[test]
+    fn ast_mapping_reordered_locations_smoke() {
+        pollster::block_on(async move {
+            let renderer = Renderer::new();
+            let target = renderer
+                .create_texture_target([16u32, 16u32])
+                .await
+                .expect("texture target");
+
+            let wgsl = r#"
+struct VOut { @builtin(position) pos: vec4<f32> };
+@vertex
+fn vs_main(@location(0) pos: vec3<f32>, @location(3) uv: vec2<f32>) -> VOut {
+  var out: VOut;
+  _ = uv; // not used in fragment
+  out.pos = vec4<f32>(pos, 1.0);
+  return out;
+}
+@fragment
+fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(0.2,0.3,0.4,1.0); }
+            "#;
+
+            let shader = crate::Shader::new(wgsl).expect("shader");
+            let pass = crate::Pass::from_shader("p", &shader);
+
+            let mut mesh = crate::mesh::Mesh::new();
+            use crate::mesh::Vertex;
+            mesh.add_vertices([
+                Vertex::new([-0.5, -0.5, 0.0]).with_uv([0.0, 0.0]),
+                Vertex::new([0.5, -0.5, 0.0]).with_uv([1.0, 0.0]),
+                Vertex::new([0.0, 0.5, 0.0]).with_uv([0.5, 1.0]),
+            ]);
+            pass.add_mesh(&mesh);
+
+            renderer.render(&pass, &target).expect("render ok");
+        });
+    }
+
+    // Story: "position" alias name (vec2) maps to mesh position2.
+    #[test]
+    fn ast_mapping_position_alias_position_name_smoke() {
+        pollster::block_on(async move {
+            let renderer = Renderer::new();
+            let target = renderer
+                .create_texture_target([16u32, 16u32])
+                .await
+                .expect("texture target");
+
+            let wgsl = r#"
+struct VOut { @builtin(position) pos: vec4<f32> };
+@vertex
+fn vs_main(@location(0) position: vec2<f32>) -> VOut {
+  var out: VOut;
+  out.pos = vec4<f32>(position, 0.0, 1.0);
+  return out;
+}
+@fragment
+fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(0.1,0.9,0.1,1.0); }
+            "#;
+
+            let shader = crate::Shader::new(wgsl).expect("shader");
+            let pass = crate::Pass::from_shader("p", &shader);
+
+            let mut mesh = crate::mesh::Mesh::new();
+            use crate::mesh::Vertex;
+            mesh.add_vertices([
+                Vertex::new([-0.5, -0.5]),
+                Vertex::new([0.5, -0.5]),
+                Vertex::new([0.0, 0.5]),
+            ]);
+            pass.add_mesh(&mesh);
+
             renderer.render(&pass, &target).expect("render ok");
         });
     }
@@ -1425,6 +1899,96 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(0.,1.,0.,1.); }
             let s5 = platform::all::pick_sample_count(&adapter, 5, fmt);
             assert!((1..=5).contains(&s5));
             assert!(s5.is_power_of_two());
+        });
+    }
+
+    // Story: AST-driven mapping errors when a needed attribute is missing.
+    #[test]
+    fn ast_mapping_missing_attribute_errors() {
+        pollster::block_on(async move {
+            let renderer = Renderer::new();
+            let target = renderer
+                .create_texture_target([8u32, 8u32])
+                .await
+                .expect("texture target");
+
+            let wgsl = r#"
+struct VOut { @builtin(position) pos_out: vec4<f32> };
+@vertex
+fn vs_main(@location(0) pos: vec3<f32>, @location(1) offset: vec2<f32>) -> VOut {
+  var out: VOut;
+  let p = vec3<f32>(pos.xy + offset, pos.z);
+  out.pos_out = vec4<f32>(p, 1.0);
+  return out;
+}
+@fragment
+fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(0.,0.,1.,1.); }
+            "#;
+
+            let shader = crate::Shader::new(wgsl).expect("shader");
+            let pass = crate::Pass::from_shader("mesh", &shader);
+
+            let mut mesh = crate::mesh::Mesh::new();
+            use crate::mesh::Vertex;
+            mesh.add_vertices([
+                Vertex::new([-0.5, -0.5, 0.0]),
+                Vertex::new([0.5, -0.5, 0.0]),
+                Vertex::new([0.0, 0.5, 0.0]),
+            ]);
+            // No instance property named "offset"
+            pass.add_mesh(&mesh);
+
+            let res = renderer.render(&pass, &target);
+            assert!(res.is_err());
+            let s = format!("{}", res.unwrap_err());
+            assert!(s.contains("Mesh attribute not found for shader input 'offset'"));
+        });
+    }
+
+    // Story: AST-driven mapping errors on type mismatch between shader input and mesh property format.
+    #[test]
+    fn ast_mapping_type_mismatch_errors() {
+        pollster::block_on(async move {
+            let renderer = Renderer::new();
+            let target = renderer
+                .create_texture_target([8u32, 8u32])
+                .await
+                .expect("texture target");
+
+            let wgsl = r#"
+struct VOut { @builtin(position) pos_out: vec4<f32> };
+@vertex
+fn vs_main(@location(0) pos: vec3<f32>, @location(1) offset: vec2<f32>) -> VOut {
+  var out: VOut;
+  let p = vec3<f32>(pos.xy + offset, pos.z);
+  out.pos_out = vec4<f32>(p, 1.0);
+  return out;
+}
+@fragment
+fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,1.,0.,1.); }
+            "#;
+
+            let shader = crate::Shader::new(wgsl).expect("shader");
+            let pass = crate::Pass::from_shader("mesh", &shader);
+
+            let mut mesh = crate::mesh::Mesh::new();
+            use crate::mesh::{Vertex, VertexValue};
+            mesh.add_vertices([
+                Vertex::new([-0.5, -0.5, 0.0]),
+                Vertex::new([0.5, -0.5, 0.0]),
+                Vertex::new([0.0, 0.5, 0.0]),
+            ]);
+            // Add instance with wrong-typed "offset" (vec3 instead of vec2)
+            mesh.add_instance(
+                Vertex::new([0.0, 0.0])
+                    .with_property("offset", VertexValue::F32x3([0.0, 0.0, 0.0])),
+            );
+            pass.add_mesh(&mesh);
+
+            let res = renderer.render(&pass, &target);
+            assert!(res.is_err());
+            let s = format!("{}", res.unwrap_err());
+            assert!(s.contains("Type mismatch for shader input 'offset'"));
         });
     }
 

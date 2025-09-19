@@ -114,70 +114,40 @@ impl Color {
     }
 }
 
-impl From<Color> for wgpu::Color {
-    fn from(c: Color) -> Self {
-        Self {
-            r: c.red() as f64,
-            g: c.green() as f64,
-            b: c.blue() as f64,
-            a: c.alpha() as f64,
-        }
-    }
-}
+crate::impl_from_into_with_refs!(
+    Color,
+    wgpu::Color,
+    |c: Color| wgpu::Color {
+        r: c.red() as f64,
+        g: c.green() as f64,
+        b: c.blue() as f64,
+        a: c.alpha() as f64,
+    },
+    |wc: wgpu::Color| Color::new(wc.r as f32, wc.g as f32, wc.b as f32, wc.a as f32)
+);
 
-// Ref variants (forward to owned impls)
-crate::impl_from_ref!(wgpu::Color, Color);
-crate::impl_from_ref!(Color, wgpu::Color);
+crate::impl_from_into_with_refs!(Color, u32, |c: Color| c.0, |v: u32| Color(v));
 
-impl From<wgpu::Color> for Color {
-    fn from(c: wgpu::Color) -> Self {
-        Self::new(c.r as f32, c.g as f32, c.b as f32, c.a as f32)
-    }
-}
+crate::impl_from_into_with_refs!(
+    Color,
+    [f32; 4],
+    |c: Color| c.to_f32_array(),
+    |a: [f32; 4]| Color::from_rgba(a)
+);
 
-impl From<Color> for u32 {
-    fn from(c: Color) -> Self {
-        c.0
-    }
-}
+crate::impl_from_into_with_refs!(
+    Color,
+    [f32; 3],
+    |c: Color| [c.red(), c.green(), c.blue()],
+    |rgb: [f32; 3]| Color::from_rgb_alpha(rgb, 1.0)
+);
 
-crate::impl_from_ref!(u32, Color);
-crate::impl_from_ref!(Color, u32);
-
-impl From<u32> for Color {
-    fn from(c: u32) -> Self {
-        Self(c)
-    }
-}
-
-impl From<Color> for [f32; 4] {
-    fn from(c: Color) -> Self {
-        c.to_f32_array()
-    }
-}
-
-crate::impl_from_ref!([f32; 4], Color);
-crate::impl_from_ref!(Color, [f32; 4]);
-
-impl From<[f32; 4]> for Color {
-    fn from(c: [f32; 4]) -> Self {
-        Self::from_rgba(c)
-    }
-}
-
-impl From<[f32; 3]> for Color {
-    fn from(c: [f32; 3]) -> Self {
-        Self::from_rgb_alpha(c, 1.0)
-    }
-}
-
-crate::impl_from_ref!(Color, [f32; 3]);
-
-impl From<(f32, f32, f32)> for Color {
-    fn from(v: (f32, f32, f32)) -> Self {
-        Self::from_rgb_alpha([v.0, v.1, v.2], 1.0)
-    }
-}
+crate::impl_from_into_with_refs!(
+    Color,
+    (f32, f32, f32),
+    |c: Color| (c.red(), c.green(), c.blue()),
+    |t: (f32, f32, f32)| Color::from_rgb_alpha([t.0, t.1, t.2], 1.0)
+);
 
 #[cfg(test)]
 mod tests {
@@ -205,15 +175,12 @@ mod tests {
     }
 }
 
-crate::impl_from_ref!(Color, (f32, f32, f32));
-
-impl From<(f32, f32, f32, f32)> for Color {
-    fn from(v: (f32, f32, f32, f32)) -> Self {
-        Self::from_rgba([v.0, v.1, v.2, v.3])
-    }
-}
-
-crate::impl_from_ref!(Color, (f32, f32, f32, f32));
+crate::impl_from_into_with_refs!(
+    Color,
+    (f32, f32, f32, f32),
+    |c: Color| (c.red(), c.green(), c.blue(), c.alpha()),
+    |t: (f32, f32, f32, f32)| Color::from_rgba([t.0, t.1, t.2, t.3])
+);
 
 #[cfg(wasm)]
 impl TryFrom<&wasm_bindgen::JsValue> for Color {

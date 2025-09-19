@@ -1,6 +1,5 @@
 use lsp_doc::lsp_doc;
 use parking_lot::RwLock;
-use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::sync::Arc;
@@ -104,12 +103,12 @@ enum PropBits {
 
 impl From<&Vertex> for VertexKey {
     fn from(v: &Vertex) -> Self {
-        let pos = match v.pos {
+        let pos = match v.position {
             Position::Pos2(p) => PosBits::P2([p[0].to_bits(), p[1].to_bits()]),
             Position::Pos3(p) => PosBits::P3([p[0].to_bits(), p[1].to_bits(), p[2].to_bits()]),
         };
         let mut props: Vec<(String, PropBits)> = v
-            .props
+            .properties
             .iter()
             .map(|(k, val)| (k.clone(), PropBits::B(val.to_bytes())))
             .collect();
@@ -129,8 +128,8 @@ pub(crate) struct MeshObject {
     indices: RwLock<Vec<u32>>,     // indices referencing unique verts
 
     // Schemas
-    schema_v: RwLock<Option<Schema>>, // derived from first vertex
-    schema_i: RwLock<Option<Schema>>, // derived from first instance
+    pub(crate) schema_v: RwLock<Option<Schema>>, // derived from first vertex
+    pub(crate) schema_i: RwLock<Option<Schema>>, // derived from first instance
 
     // Dirty flags
     dirty_v: RwLock<bool>,
@@ -189,27 +188,6 @@ impl MeshObject {
     fn clear_instances_internal(&self) {
         self.insts.write().clear();
         *self.dirty_i.write() = true;
-    }
-
-    pub(crate) fn layout_signature(&self) -> u64 {
-        let sv = self.schema_v.read().clone();
-        let si = self.schema_i.read().clone();
-        let mut hasher = Sha256::new();
-        if let Some(s) = sv {
-            for f in s.fields.iter() {
-                hasher.update(f.name.as_bytes());
-                hasher.update([format_code(f.fmt)]);
-            }
-        }
-        hasher.update([0u8]);
-        if let Some(s) = si {
-            for f in s.fields.iter() {
-                hasher.update(f.name.as_bytes());
-                hasher.update([format_code(f.fmt)]);
-            }
-        }
-        let h = hasher.finalize();
-        u64::from_le_bytes([h[0], h[1], h[2], h[3], h[4], h[5], h[6], h[7]])
     }
 
     fn ensure_packed(&self) -> Result<(), MeshError> {
@@ -281,12 +259,11 @@ impl MeshObject {
         &self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-    ) -> Result<(GpuOwned, DrawCounts, Layouts), MeshError> {
+    ) -> Result<(GpuOwned, DrawCounts), MeshError> {
         self.ensure_packed()?;
         let pv = self.packed_verts.read();
         let pi = self.packed_insts.read();
         let idx = self.indices.read();
-        let sv = self.schema_v.read();
         let si = self.schema_i.read();
 
         // Create or grow buffers
@@ -352,7 +329,6 @@ impl MeshObject {
         }
 
         let g = gpu.as_ref().unwrap();
-        let layouts = build_layouts(sv.as_ref().unwrap(), si.as_ref());
         let refs = GpuOwned {
             vertex_buffer: g.vertex_buffer.clone(),
             index_buffer: g.index_buffer.clone(),
@@ -362,7 +338,7 @@ impl MeshObject {
             index_count: g.instance_buffer_len,
             instance_count: g.instance_buffer.as_ref().map(|(_, c)| *c).unwrap_or(1),
         };
-        Ok((refs, counts, layouts))
+        Ok((refs, counts))
     }
 }
 
@@ -377,15 +353,10 @@ pub(crate) struct DrawCounts {
     pub instance_count: u32,
 }
 
-pub(crate) struct Layouts {
-    pub vertex: wgpu::VertexBufferLayout<'static>,
-    pub instance: Option<wgpu::VertexBufferLayout<'static>>,
-}
-
-fn derive_vertex_schema(v: &Vertex) -> Result<Schema, MeshError> {
+fn derive_vertex_schema(vertex: &Vertex) -> Result<Schema, MeshError> {
     let mut fields: Vec<Field> = Vec::new();
     // position first at location 0
-    match v.pos {
+    match vertex.position {
         Position::Pos2(_) => fields.push(Field {
             name: "position2".into(),
             fmt: wgpu::VertexFormat::Float32x2,
@@ -398,22 +369,22 @@ fn derive_vertex_schema(v: &Vertex) -> Result<Schema, MeshError> {
         }),
     }
     // uv, color, then others sorted
-    if let Some(VertexValue::F32x2(_)) = v.props.get("uv") {
+    if let Some(VertexValue::F32x2(_)) = vertex.properties.get("uv") {
         fields.push(Field {
             name: "uv".into(),
             fmt: wgpu::VertexFormat::Float32x2,
             size: 8,
         });
     }
-    if let Some(VertexValue::F32x4(_)) = v.props.get("color") {
+    if let Some(VertexValue::F32x4(_)) = vertex.properties.get("color") {
         fields.push(Field {
             name: "color".into(),
             fmt: wgpu::VertexFormat::Float32x4,
             size: 16,
         });
     }
-    let mut rest: Vec<(&String, &VertexValue)> = v
-        .props
+    let mut rest: Vec<(&String, &VertexValue)> = vertex
+        .properties
         .iter()
         .filter(|(k, _)| k.as_str() != "uv" && k.as_str() != "color")
         .collect();
@@ -481,21 +452,21 @@ fn pack_vertex(out: &mut Vec<u8>, v: &Vertex, schema: &Schema) {
     for f in schema.fields.iter() {
         match f.name.as_str() {
             "position2" => {
-                if let Position::Pos2(p) = v.pos {
+                if let Position::Pos2(p) = v.position {
                     out.extend_from_slice(bytemuck::cast_slice(&p));
                 } else {
                     out.extend_from_slice(&[0; 8]);
                 }
             }
             "position3" => {
-                if let Position::Pos3(p) = v.pos {
+                if let Position::Pos3(p) = v.position {
                     out.extend_from_slice(bytemuck::cast_slice(&p));
                 } else {
                     out.extend_from_slice(&[0; 12]);
                 }
             }
             name => {
-                if let Some(val) = v.props.get(name) {
+                if let Some(val) = v.properties.get(name) {
                     out.extend_from_slice(&val.to_bytes());
                 } else {
                     // zero-fill absent optional props
@@ -515,55 +486,4 @@ fn pack_instance(out: &mut Vec<u8>, i: &Instance, schema: &Schema) -> Result<(),
         }
     }
     Ok(())
-}
-
-pub(crate) fn build_layouts(v: &Schema, i: Option<&Schema>) -> Layouts {
-    let (attrs_v, stride_v) = to_attrs(v, 0);
-    let vertex = wgpu::VertexBufferLayout {
-        array_stride: stride_v,
-        step_mode: wgpu::VertexStepMode::Vertex,
-        attributes: Box::leak(attrs_v.into_boxed_slice()),
-    };
-    let instance = i.map(|s| {
-        let (attrs_i, stride_i) = to_attrs(s, v.fields.len() as u32);
-        wgpu::VertexBufferLayout {
-            array_stride: stride_i,
-            step_mode: wgpu::VertexStepMode::Instance,
-            attributes: Box::leak(attrs_i.into_boxed_slice()),
-        }
-    });
-    Layouts { vertex, instance }
-}
-
-fn to_attrs(schema: &Schema, base_loc: u32) -> (Vec<wgpu::VertexAttribute>, u64) {
-    let mut ofs = 0u64;
-    let mut attrs = Vec::new();
-    for (i, f) in schema.fields.iter().enumerate() {
-        attrs.push(wgpu::VertexAttribute {
-            format: f.fmt,
-            offset: ofs,
-            shader_location: base_loc + i as u32,
-        });
-        ofs += f.size;
-    }
-    (attrs, ofs)
-}
-
-fn format_code(fmt: wgpu::VertexFormat) -> u8 {
-    use wgpu::VertexFormat as F;
-    match fmt {
-        F::Float32 => 1,
-        F::Float32x2 => 2,
-        F::Float32x3 => 3,
-        F::Float32x4 => 4,
-        F::Uint32 => 5,
-        F::Uint32x2 => 6,
-        F::Uint32x3 => 7,
-        F::Uint32x4 => 8,
-        F::Sint32 => 9,
-        F::Sint32x2 => 10,
-        F::Sint32x3 => 11,
-        F::Sint32x4 => 12,
-        _ => 0,
-    }
 }

@@ -12,7 +12,7 @@ for visual consistency across platforms, while avoiding the verbosity of modern 
 Check the website for the Getting Started guide and full reference:
 
 - **Documentation:** <https://fragmentcolor.org/welcome>
-- **API Reference:** <https://fragmentcolor.org/docs/api>
+- **API Reference:** <https://fragmentcolor.org/api>
 
 > ⚠️ Status
 >
@@ -135,11 +135,66 @@ Platform support is aligned with upstream [wgpu](https://github.com/gfx-rs/wgpu)
 📐 = Requires the [ANGLE](http://angleproject.org/) translation layer (GL ES 3.0 only)  
 🌋 = Requires the [MoltenVK](https://vulkan.lunarg.com/sdk/home#mac) translation layer
 
-## Limitations (current focus)
+## Limitations (planned features)
 
-- Fullscreen triangle rendering only; geometry/instancing planned.
-- Textures and samplers are WIP.
-- Swift & Kotlin bindings are drafts.
+- Swift & Kotlin bindings are not supported yet, but planned for version v0.10.8.
+
+## Common workflows
+
+### Rust core
+
+```bash
+# Build
+cargo build
+
+# Test (all)
+cargo test
+
+# Lint (deny warnings)
+cargo clippy --all-targets --all-features -- -D warnings
+
+# Format
+cargo fmt
+```
+
+### Web (WASM)
+
+```bash
+# Build WASM package (wasm-pack target web) and sync into local JS examples
+./build_web.sh        # add --debug for a debug build
+
+# Run JS demos (Vite dev server) and open browser
+./run_web.sh repl     # or: ./run_web.sh multipass | ./run_web.sh headless
+
+# Manual alternative
+pnpm --dir examples/javascript install
+pnpm --dir examples/javascript dev
+```
+
+### Python binding (local dev)
+
+```bash
+# Quick run helper: build wheel into dist/, create venv, and run an example
+./run_py.sh main      # or: ./run_py.sh multiobject | ./run_py.sh headless
+
+# Manual alternative
+pipx install maturin
+maturin develop
+pip install glfw rendercanvas
+python examples/python/main.py
+```
+
+### Docs site (Astro/Starlight)
+
+- Docs source of truth lives in docs/api and is referenced from code via `#[lsp_doc]`.
+- Examples on method pages are sliced from the healthcheck scripts; no filesystem reads in docs.
+- Doc examples follow async + pollster patterns.
+
+```bash
+pnpm --dir docs/website install
+pnpm --dir docs/website dev      # dev server
+pnpm --dir docs/website build    # static build
+```
 
 ## Development
 
@@ -147,16 +202,44 @@ Platform support is aligned with upstream [wgpu](https://github.com/gfx-rs/wgpu)
 - Python examples: `examples/python`
 - Rust examples: `examples/rust`
 
-Useful commands:
+### Mesh quick example
 
-```bash
-# format & lint (Rust)
-cargo fmt --all && cargo clippy --all-targets --all-features -- -D warnings
+```rust
+# async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Renderer, Pass, Shader};
+use fragmentcolor::mesh::{Mesh, Vertex, VertexValue};
 
-# run tests
-cargo test
+let renderer = Renderer::new();
+let target = renderer.create_texture_target([256, 256]).await?;
 
-# build docs site
-pnpm --dir docs/website install
-pnpm --dir docs/website build
+let wgsl = r#"
+struct VertexOutput { @builtin(position) pos: vec4<f32> };
+@vertex
+fn vs_main(@location(0) pos: vec3<f32>, @location(1) offset: vec2<f32>) -> VOut {
+  var out: VertexOutput;
+  let p = vec3<f32>(pos.xy + offset, pos.z);
+  out.pos = vec4<f32>(p, 1.0);
+  return out;
+}
+@fragment
+fn main(_v: VertexOutput) -> @location(0) vec4<f32> { return vec4<f32>(0.2, 0.8, 0.2, 1.0); }
+"#;
+
+let shader = Shader::new(wgsl)?;
+let pass = Pass::from_shader("mesh", &shader);
+
+let mut mesh = Mesh::new();
+mesh.add_vertices([
+  Vertex::new([-0.5, -0.5, 0.0]),
+  Vertex::new([ 0.5, -0.5, 0.0]),
+  Vertex::new([ 0.0,  0.5, 0.0]),
+]);
+// Instance properties matched by name and type
+mesh.add_instance(Vertex::new([0.0, 0.0]).with_property("offset", [0.0, 0.0]));
+
+pass.add_mesh(&mesh);
+renderer.render(&pass, &target)?;
+# Ok(())
+# }
+# fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 ```

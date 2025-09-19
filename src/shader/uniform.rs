@@ -270,466 +270,330 @@ pub(crate) fn convert_type(module: &Module, ty: &Type) -> Result<UniformData, Sh
 
 // 1 element or scalar
 
-impl From<bool> for UniformData {
-    fn from(value: bool) -> Self {
-        Self::Bool(value)
-    }
-}
+crate::impl_from_into_with_refs!(
+    UniformData,
+    bool,
+    |d: UniformData| match d {
+        UniformData::Bool(v) => v,
+        _ => false,
+    },
+    |b: bool| UniformData::Bool(b)
+);
 
-impl From<f32> for UniformData {
-    fn from(value: f32) -> Self {
-        Self::Float(value)
-    }
-}
+crate::impl_from_into_with_refs!(
+    UniformData,
+    f32,
+    |d: UniformData| match d {
+        UniformData::Float(v) => v,
+        _ => 0.0,
+    },
+    |v: f32| UniformData::Float(v)
+);
 
-impl From<UniformData> for f32 {
-    fn from(data: UniformData) -> Self {
-        match data {
-            UniformData::Float(v) => v,
-            _ => 0.0,
-        }
-    }
-}
+crate::impl_from_into_with_refs!(
+    UniformData,
+    [f32; 1],
+    |d: UniformData| match d {
+        UniformData::Float(v) => [v],
+        _ => [0.0],
+    },
+    |a: [f32; 1]| UniformData::Float(a[0])
+);
 
-impl From<[f32; 1]> for UniformData {
-    fn from(value: [f32; 1]) -> Self {
-        Self::Float(value[0])
-    }
-}
+crate::impl_from_into_with_refs!(
+    UniformData,
+    i32,
+    |d: UniformData| match d {
+        UniformData::Int(v) => v,
+        _ => 0,
+    },
+    |v: i32| UniformData::Int(v)
+);
 
-impl From<UniformData> for [f32; 1] {
-    fn from(data: UniformData) -> Self {
-        match data {
-            UniformData::Float(v) => [v],
-            _ => [0.0],
-        }
-    }
-}
+crate::impl_from_into_with_refs!(
+    UniformData,
+    [i32; 1],
+    |d: UniformData| match d {
+        UniformData::Int(v) => [v],
+        _ => [0],
+    },
+    |a: [i32; 1]| UniformData::Int(a[0])
+);
 
-impl From<i32> for UniformData {
-    fn from(value: i32) -> Self {
-        Self::Int(value)
-    }
-}
+crate::impl_from_into_with_refs!(
+    UniformData,
+    u32,
+    |d: UniformData| match d {
+        UniformData::UInt(v) => v,
+        _ => 0,
+    },
+    |v: u32| UniformData::UInt(v)
+);
 
-impl From<UniformData> for i32 {
-    fn from(data: UniformData) -> Self {
-        match data {
-            UniformData::Int(v) => v,
-            _ => 0,
-        }
-    }
-}
-
-impl From<[i32; 1]> for UniformData {
-    fn from(value: [i32; 1]) -> Self {
-        Self::Int(value[0])
-    }
-}
-
-impl From<UniformData> for [i32; 1] {
-    fn from(data: UniformData) -> Self {
-        match data {
-            UniformData::Int(v) => [v],
-            _ => [0],
-        }
-    }
-}
-
-impl From<u32> for UniformData {
-    fn from(value: u32) -> Self {
-        Self::UInt(value)
-    }
-}
-
-impl From<UniformData> for u32 {
-    fn from(data: UniformData) -> Self {
-        match data {
-            UniformData::UInt(v) => v,
-            _ => 0,
-        }
-    }
-}
-
-impl From<[u32; 1]> for UniformData {
-    fn from(value: [u32; 1]) -> Self {
-        Self::UInt(value[0])
-    }
-}
-
-impl From<UniformData> for [u32; 1] {
-    fn from(data: UniformData) -> Self {
-        match data {
-            UniformData::UInt(v) => [v],
-            _ => [0],
-        }
-    }
-}
+crate::impl_from_into_with_refs!(
+    UniformData,
+    [u32; 1],
+    |d: UniformData| match d {
+        UniformData::UInt(v) => [v],
+        _ => [0],
+    },
+    |a: [u32; 1]| UniformData::UInt(a[0])
+);
 
 // 2 elements
 
-impl From<[f32; 2]> for UniformData {
-    fn from(value: [f32; 2]) -> Self {
-        Self::Vec2(value)
-    }
-}
+crate::impl_from_into_with_refs!(
+    UniformData,
+    [f32; 2],
+    |d: UniformData| match d {
+        UniformData::Vec2(v) => v,
+        _ => [0.0; 2],
+    },
+    |a: [f32; 2]| UniformData::Vec2(a)
+);
 
-impl From<UniformData> for [f32; 2] {
-    fn from(data: UniformData) -> Self {
-        match data {
-            UniformData::Vec2(v) => v,
-            _ => [0.0; 2],
-        }
-    }
-}
+crate::impl_from_into_with_refs!(
+    UniformData,
+    [i32; 2],
+    |d: UniformData| match d {
+        UniformData::IVec2(v) => v,
+        _ => [0; 2],
+    },
+    |a: [i32; 2]| UniformData::IVec2(a)
+);
 
-impl From<[i32; 2]> for UniformData {
-    fn from(value: [i32; 2]) -> Self {
-        Self::IVec2(value)
-    }
-}
+crate::impl_from_into_with_refs!(
+    UniformData,
+    [u32; 2],
+    |d: UniformData| match d {
+        UniformData::UVec2(v) => v,
+        _ => [0; 2],
+    },
+    |a: [u32; 2]| UniformData::UVec2(a)
+);
 
-impl From<UniformData> for [i32; 2] {
-    fn from(data: UniformData) -> Self {
-        match data {
-            UniformData::IVec2(v) => v,
-            _ => [0; 2],
-        }
-    }
-}
+crate::impl_from_into_with_refs!(
+    UniformData,
+    (f32, f32),
+    |d: UniformData| match d {
+        UniformData::Vec2(v) => (v[0], v[1]),
+        _ => (0.0, 0.0),
+    },
+    |t: (f32, f32)| UniformData::Vec2([t.0, t.1])
+);
 
-impl From<[u32; 2]> for UniformData {
-    fn from(value: [u32; 2]) -> Self {
-        Self::UVec2(value)
-    }
-}
-
-impl From<UniformData> for [u32; 2] {
-    fn from(data: UniformData) -> Self {
-        match data {
-            UniformData::UVec2(v) => v,
-            _ => [0; 2],
-        }
-    }
-}
-
-impl From<(f32, f32)> for UniformData {
-    fn from(value: (f32, f32)) -> Self {
-        Self::Vec2([value.0, value.1])
-    }
-}
-
-impl From<UniformData> for (f32, f32) {
-    fn from(data: UniformData) -> Self {
-        match data {
-            UniformData::Vec2(v) => (v[0], v[1]),
-            _ => (0.0, 0.0),
-        }
-    }
-}
-
-impl From<glam::Vec2> for UniformData {
-    fn from(v: glam::Vec2) -> Self {
-        Self::Vec2(v.to_array())
-    }
-}
-
-impl From<UniformData> for glam::Vec2 {
-    fn from(data: UniformData) -> Self {
-        match data {
-            UniformData::Vec2(v) => glam::Vec2::from(v),
-            _ => glam::Vec2::ZERO,
-        }
-    }
-}
+crate::impl_from_into_with_refs!(
+    UniformData,
+    glam::Vec2,
+    |d: UniformData| match d {
+        UniformData::Vec2(v) => glam::Vec2::from(v),
+        _ => glam::Vec2::ZERO,
+    },
+    |v: glam::Vec2| UniformData::Vec2(v.to_array())
+);
 
 // 3 elements
 
-impl From<[f32; 3]> for UniformData {
-    fn from(value: [f32; 3]) -> Self {
-        Self::Vec3(value)
-    }
-}
+crate::impl_from_into_with_refs!(
+    UniformData,
+    [f32; 3],
+    |d: UniformData| match d {
+        UniformData::Vec3(v) => v,
+        _ => [0.0; 3],
+    },
+    |a: [f32; 3]| UniformData::Vec3(a)
+);
 
-impl From<UniformData> for [f32; 3] {
-    fn from(data: UniformData) -> Self {
-        match data {
-            UniformData::Vec3(v) => v,
-            _ => [0.0; 3],
-        }
-    }
-}
+crate::impl_from_into_with_refs!(
+    UniformData,
+    [i32; 3],
+    |d: UniformData| match d {
+        UniformData::IVec3(v) => v,
+        _ => [0; 3],
+    },
+    |a: [i32; 3]| UniformData::IVec3(a)
+);
 
-impl From<[i32; 3]> for UniformData {
-    fn from(value: [i32; 3]) -> Self {
-        Self::IVec3(value)
-    }
-}
+crate::impl_from_into_with_refs!(
+    UniformData,
+    [u32; 3],
+    |d: UniformData| match d {
+        UniformData::UVec3(v) => v,
+        _ => [0; 3],
+    },
+    |a: [u32; 3]| UniformData::UVec3(a)
+);
 
-impl From<UniformData> for [i32; 3] {
-    fn from(data: UniformData) -> Self {
-        match data {
-            UniformData::IVec3(v) => v,
-            _ => [0; 3],
-        }
-    }
-}
+crate::impl_from_into_with_refs!(
+    UniformData,
+    (f32, f32, f32),
+    |d: UniformData| match d {
+        UniformData::Vec3(v) => (v[0], v[1], v[2]),
+        _ => (0.0, 0.0, 0.0),
+    },
+    |t: (f32, f32, f32)| UniformData::Vec3([t.0, t.1, t.2])
+);
 
-impl From<[u32; 3]> for UniformData {
-    fn from(value: [u32; 3]) -> Self {
-        Self::UVec3(value)
-    }
-}
-
-impl From<UniformData> for [u32; 3] {
-    fn from(data: UniformData) -> Self {
-        match data {
-            UniformData::UVec3(v) => v,
-            _ => [0; 3],
-        }
-    }
-}
-
-impl From<(f32, f32, f32)> for UniformData {
-    fn from(value: (f32, f32, f32)) -> Self {
-        Self::Vec3([value.0, value.1, value.2])
-    }
-}
-
-impl From<UniformData> for (f32, f32, f32) {
-    fn from(data: UniformData) -> Self {
-        match data {
-            UniformData::Vec3(v) => (v[0], v[1], v[2]),
-            _ => (0.0, 0.0, 0.0),
-        }
-    }
-}
-
-impl From<glam::Vec3> for UniformData {
-    fn from(v: glam::Vec3) -> Self {
-        Self::Vec3(v.to_array())
-    }
-}
-
-impl From<UniformData> for glam::Vec3 {
-    fn from(data: UniformData) -> Self {
-        match data {
-            UniformData::Vec3(v) => glam::Vec3::from(v),
-            _ => glam::Vec3::ZERO,
-        }
-    }
-}
+crate::impl_from_into_with_refs!(
+    UniformData,
+    glam::Vec3,
+    |d: UniformData| match d {
+        UniformData::Vec3(v) => glam::Vec3::from(v),
+        _ => glam::Vec3::ZERO,
+    },
+    |v: glam::Vec3| UniformData::Vec3(v.to_array())
+);
 
 // 4 elements
 
-impl From<[f32; 4]> for UniformData {
-    fn from(value: [f32; 4]) -> Self {
-        Self::Vec4(value)
-    }
-}
+crate::impl_from_into_with_refs!(
+    UniformData,
+    [f32; 4],
+    |d: UniformData| match d {
+        UniformData::Vec4(v) => v,
+        _ => [0.0; 4],
+    },
+    |a: [f32; 4]| UniformData::Vec4(a)
+);
 
-impl From<UniformData> for [f32; 4] {
-    fn from(data: UniformData) -> Self {
-        match data {
-            UniformData::Vec4(v) => v,
-            _ => [0.0; 4],
-        }
-    }
-}
+crate::impl_from_into_with_refs!(
+    UniformData,
+    [i32; 4],
+    |d: UniformData| match d {
+        UniformData::IVec4(v) => v,
+        _ => [0; 4],
+    },
+    |a: [i32; 4]| UniformData::IVec4(a)
+);
 
-impl From<[i32; 4]> for UniformData {
-    fn from(value: [i32; 4]) -> Self {
-        Self::IVec4(value)
-    }
-}
+crate::impl_from_into_with_refs!(
+    UniformData,
+    [u32; 4],
+    |d: UniformData| match d {
+        UniformData::UVec4(v) => v,
+        _ => [0; 4],
+    },
+    |a: [u32; 4]| UniformData::UVec4(a)
+);
 
-impl From<UniformData> for [i32; 4] {
-    fn from(data: UniformData) -> Self {
-        match data {
-            UniformData::IVec4(v) => v,
-            _ => [0; 4],
-        }
-    }
-}
+crate::impl_from_into_with_refs!(
+    UniformData,
+    (f32, f32, f32, f32),
+    |d: UniformData| match d {
+        UniformData::Vec4(v) => (v[0], v[1], v[2], v[3]),
+        _ => (0.0, 0.0, 0.0, 0.0),
+    },
+    |t: (f32, f32, f32, f32)| UniformData::Vec4([t.0, t.1, t.2, t.3])
+);
 
-impl From<[u32; 4]> for UniformData {
-    fn from(value: [u32; 4]) -> Self {
-        Self::UVec4(value)
-    }
-}
+crate::impl_from_into_with_refs!(
+    UniformData,
+    glam::Vec4,
+    |d: UniformData| match d {
+        UniformData::Vec4(v) => glam::Vec4::from(v),
+        _ => glam::Vec4::ZERO,
+    },
+    |v: glam::Vec4| UniformData::Vec4(v.to_array())
+);
 
-impl From<UniformData> for [u32; 4] {
-    fn from(data: UniformData) -> Self {
-        match data {
-            UniformData::UVec4(v) => v,
-            _ => [0; 4],
-        }
-    }
-}
+// 2 elements
 
-impl From<(f32, f32, f32, f32)> for UniformData {
-    fn from(value: (f32, f32, f32, f32)) -> Self {
-        Self::Vec4([value.0, value.1, value.2, value.3])
-    }
-}
+// 3 elements
 
-impl From<UniformData> for (f32, f32, f32, f32) {
-    fn from(data: UniformData) -> Self {
-        match data {
-            UniformData::Vec4(v) => (v[0], v[1], v[2], v[3]),
-            _ => (0.0, 0.0, 0.0, 0.0),
-        }
-    }
-}
-
-impl From<glam::Vec4> for UniformData {
-    fn from(v: glam::Vec4) -> Self {
-        Self::Vec4(v.to_array())
-    }
-}
-
-impl From<UniformData> for glam::Vec4 {
-    fn from(data: UniformData) -> Self {
-        match data {
-            UniformData::Vec4(v) => glam::Vec4::from(v),
-            _ => glam::Vec4::ZERO,
-        }
-    }
-}
+// 4 elements
 
 // Matrices
-impl From<[[f32; 2]; 2]> for UniformData {
-    fn from(value: [[f32; 2]; 2]) -> Self {
-        Self::Mat2(value)
-    }
-}
+crate::impl_from_into_with_refs!(
+    UniformData,
+    [[f32; 2]; 2],
+    |d: UniformData| match d {
+        UniformData::Mat2(m) => m,
+        _ => [[0.0; 2]; 2],
+    },
+    |m: [[f32; 2]; 2]| UniformData::Mat2(m)
+);
 
-impl From<[[f32; 3]; 3]> for UniformData {
-    fn from(value: [[f32; 3]; 3]) -> Self {
-        Self::Mat3(value)
-    }
-}
+crate::impl_from_into_with_refs!(
+    UniformData,
+    [[f32; 3]; 3],
+    |d: UniformData| match d {
+        UniformData::Mat3(m) => m,
+        _ => [[0.0; 3]; 3],
+    },
+    |m: [[f32; 3]; 3]| UniformData::Mat3(m)
+);
 
-impl From<[[f32; 4]; 4]> for UniformData {
-    fn from(value: [[f32; 4]; 4]) -> Self {
-        Self::Mat4(value)
-    }
-}
+crate::impl_from_into_with_refs!(
+    UniformData,
+    [[f32; 4]; 4],
+    |d: UniformData| match d {
+        UniformData::Mat4(m) => m,
+        _ => [[0.0; 4]; 4],
+    },
+    |m: [[f32; 4]; 4]| UniformData::Mat4(m)
+);
 
-impl From<wgpu::Extent3d> for UniformData {
-    fn from(value: wgpu::Extent3d) -> Self {
-        Self::UVec3([value.width, value.height, value.depth_or_array_layers])
-    }
-}
-
-impl From<UniformData> for wgpu::Extent3d {
-    fn from(data: UniformData) -> Self {
-        match data {
-            UniformData::Vec2([w, h]) => wgpu::Extent3d {
-                width: w as u32,
-                height: h as u32,
-                depth_or_array_layers: 1,
-            },
-            UniformData::Vec3([w, h, d]) => wgpu::Extent3d {
-                width: w as u32,
-                height: h as u32,
-                depth_or_array_layers: d as u32,
-            },
-            UniformData::Vec4([w, h, d, _]) => wgpu::Extent3d {
-                width: w as u32,
-                height: h as u32,
-                depth_or_array_layers: d as u32,
-            },
-            UniformData::UVec2([w, h]) => wgpu::Extent3d {
-                width: w,
-                height: h,
-                depth_or_array_layers: 1,
-            },
-            UniformData::UVec3([w, h, d]) => wgpu::Extent3d {
-                width: w,
-                height: h,
-                depth_or_array_layers: d,
-            },
-            UniformData::UVec4([w, h, d, _]) => wgpu::Extent3d {
-                width: w,
-                height: h,
-                depth_or_array_layers: d,
-            },
-            UniformData::IVec2([w, h]) => wgpu::Extent3d {
-                width: w as u32,
-                height: h as u32,
-                depth_or_array_layers: 1,
-            },
-            UniformData::IVec3([w, h, d]) => wgpu::Extent3d {
-                width: w as u32,
-                height: h as u32,
-                depth_or_array_layers: d as u32,
-            },
-            UniformData::IVec4([w, h, d, _]) => wgpu::Extent3d {
-                width: w as u32,
-                height: h as u32,
-                depth_or_array_layers: d as u32,
-            },
-            _ => wgpu::Extent3d {
-                width: 0,
-                height: 0,
-                depth_or_array_layers: 0,
-            },
-        }
-    }
-}
-
-// Reference-based forwards for inputs to UniformData
-crate::impl_from_ref!(UniformData, bool);
-crate::impl_from_ref!(UniformData, f32);
-crate::impl_from_ref!(UniformData, [f32; 1]);
-crate::impl_from_ref!(UniformData, i32);
-crate::impl_from_ref!(UniformData, [i32; 1]);
-crate::impl_from_ref!(UniformData, u32);
-crate::impl_from_ref!(UniformData, [u32; 1]);
-crate::impl_from_ref!(UniformData, [f32; 2]);
-crate::impl_from_ref!(UniformData, [i32; 2]);
-crate::impl_from_ref!(UniformData, [u32; 2]);
-crate::impl_from_ref!(UniformData, (f32, f32));
-crate::impl_from_ref!(UniformData, glam::Vec2);
-crate::impl_from_ref!(UniformData, [f32; 3]);
-crate::impl_from_ref!(UniformData, [i32; 3]);
-crate::impl_from_ref!(UniformData, [u32; 3]);
-crate::impl_from_ref!(UniformData, (f32, f32, f32));
-crate::impl_from_ref!(UniformData, glam::Vec3);
-crate::impl_from_ref!(UniformData, [f32; 4]);
-crate::impl_from_ref!(UniformData, [i32; 4]);
-crate::impl_from_ref!(UniformData, [u32; 4]);
-crate::impl_from_ref!(UniformData, (f32, f32, f32, f32));
-crate::impl_from_ref!(UniformData, glam::Vec4);
-crate::impl_from_ref!(UniformData, [[f32; 2]; 2]);
-crate::impl_from_ref!(UniformData, [[f32; 3]; 3]);
-crate::impl_from_ref!(UniformData, [[f32; 4]; 4]);
-crate::impl_from_ref!(UniformData, wgpu::Extent3d);
-
-// Reference-based forwards for outputs from UniformData
-crate::impl_from_ref!(f32, UniformData);
-crate::impl_from_ref!([f32; 1], UniformData);
-crate::impl_from_ref!(i32, UniformData);
-crate::impl_from_ref!([i32; 1], UniformData);
-crate::impl_from_ref!(u32, UniformData);
-crate::impl_from_ref!([u32; 1], UniformData);
-crate::impl_from_ref!([f32; 2], UniformData);
-crate::impl_from_ref!([i32; 2], UniformData);
-crate::impl_from_ref!([u32; 2], UniformData);
-crate::impl_from_ref!((f32, f32), UniformData);
-crate::impl_from_ref!(glam::Vec2, UniformData);
-crate::impl_from_ref!([f32; 3], UniformData);
-crate::impl_from_ref!([i32; 3], UniformData);
-crate::impl_from_ref!([u32; 3], UniformData);
-crate::impl_from_ref!((f32, f32, f32), UniformData);
-crate::impl_from_ref!(glam::Vec3, UniformData);
-crate::impl_from_ref!([f32; 4], UniformData);
-crate::impl_from_ref!([i32; 4], UniformData);
-crate::impl_from_ref!([u32; 4], UniformData);
-crate::impl_from_ref!((f32, f32, f32, f32), UniformData);
-crate::impl_from_ref!(glam::Vec4, UniformData);
-crate::impl_from_ref!(wgpu::Extent3d, UniformData);
+crate::impl_from_into_with_refs!(
+    UniformData,
+    wgpu::Extent3d,
+    |data: UniformData| match data {
+        UniformData::Vec2([w, h]) => wgpu::Extent3d {
+            width: w as u32,
+            height: h as u32,
+            depth_or_array_layers: 1,
+        },
+        UniformData::Vec3([w, h, d]) => wgpu::Extent3d {
+            width: w as u32,
+            height: h as u32,
+            depth_or_array_layers: d as u32,
+        },
+        UniformData::Vec4([w, h, d, _]) => wgpu::Extent3d {
+            width: w as u32,
+            height: h as u32,
+            depth_or_array_layers: d as u32,
+        },
+        UniformData::UVec2([w, h]) => wgpu::Extent3d {
+            width: w,
+            height: h,
+            depth_or_array_layers: 1,
+        },
+        UniformData::UVec3([w, h, d]) => wgpu::Extent3d {
+            width: w,
+            height: h,
+            depth_or_array_layers: d,
+        },
+        UniformData::UVec4([w, h, d, _]) => wgpu::Extent3d {
+            width: w,
+            height: h,
+            depth_or_array_layers: d,
+        },
+        UniformData::IVec2([w, h]) => wgpu::Extent3d {
+            width: w as u32,
+            height: h as u32,
+            depth_or_array_layers: 1,
+        },
+        UniformData::IVec3([w, h, d]) => wgpu::Extent3d {
+            width: w as u32,
+            height: h as u32,
+            depth_or_array_layers: d as u32,
+        },
+        UniformData::IVec4([w, h, d, _]) => wgpu::Extent3d {
+            width: w as u32,
+            height: h as u32,
+            depth_or_array_layers: d as u32,
+        },
+        _ => wgpu::Extent3d {
+            width: 0,
+            height: 0,
+            depth_or_array_layers: 0,
+        },
+    },
+    |value: wgpu::Extent3d| UniformData::UVec3([
+        value.width,
+        value.height,
+        value.depth_or_array_layers,
+    ])
+);
 
 // WASM conversions
 

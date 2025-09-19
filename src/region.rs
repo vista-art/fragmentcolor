@@ -26,11 +26,16 @@ impl Default for Region {
     }
 }
 
-impl From<wgpu::Extent3d> for Region {
-    fn from(e: wgpu::Extent3d) -> Self {
-        Self::from_size(e.width, e.height)
-    }
-}
+crate::impl_from_into_with_refs!(
+    Region,
+    wgpu::Extent3d,
+    |r: Region| wgpu::Extent3d {
+        width: r.width(),
+        height: r.height(),
+        depth_or_array_layers: 1
+    },
+    |e: wgpu::Extent3d| Region::from_size(e.width, e.height)
+);
 
 impl Region {
     pub fn new(origin: impl Into<(u32, u32)>, size: impl Into<(u32, u32)>) -> Self {
