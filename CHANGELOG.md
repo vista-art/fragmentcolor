@@ -7,9 +7,6 @@ See the [Roadmap](https://github.com/vista-art/fragmentcolor/blob/main/ROADMAP.m
 ## 0.10.7 Documentation automation, website integration, API completeness, and release flow
 
 Session highlights (this conversation):
-- [x] Array element indexing for Storage and Uniforms using naga stride, including nested array/struct offsets. Added unit tests.
-- [x] Unified cross-target URL fetching helper (native via ureq, WASM via fetch) and refactored Shader.fetch and texture URL loading to use it. Removed ureq usage from WASM paths.
-- [x] Docs/examples sweep to use our favicon.png consistently (examples/javascript and web healthcheck/repl pages).
 
 This is our biggest release to date and it feels weird to just bump a patch version.
 
@@ -21,14 +18,9 @@ but while we're still in pre-release phase, this is expected.
 
 ### TO-DO Before Release
 
-- [ ] Rendering features
-  - [x] Begin Texture & Sampler support in Shaders
-  - [ ] Geometry/instancing groundwork
-
 - [ ] Ensure we expose all the ways to upload data to a GPU
-
-  - [ ] VertexBuffer
-  - [ ] IndexBuffer
+  - [x] VertexBuffer
+  - [x] IndexBuffer
   - [x] StorageBuffer
 - [x] StorageBuffer: Arrays
   - [x] Uniform
@@ -37,6 +29,12 @@ but while we're still in pre-release phase, this is expected.
   - [x] StorageTexture
   - [x] Sampler
   - [ ] PushConstant
+
+- [ ] Geometry/Instancing Refinement:
+  - [ ] AST-driven validation/mapping of @location inputs from Naga entry-point reflection.
+  - [ ] Multiple meshes per Pass and per-mesh draw calls.
+  - [ ] Property key → shader attribute naming conventions or mapping.
+  - [ ] Mesh.load_* helpers and JSON inputs.
 
 ### Build System and Documentation
 
@@ -61,6 +59,15 @@ but while we're still in pre-release phase, this is expected.
 - [x] Post-publish workflow: after tags publish to npm & PyPI, update consumers (website & JS example) to the released version and push to main.
 - [x] Healthcheck example markers added for Renderer/Pass/Frame/Shader.
 
+### Mesh and Vertex API (Geometry Groundwork)
+
+- [x] Geometry/instancing groundwork
+- [ ] Geometry/Instancing Refinement:
+  - [ ] AST-driven validation/mapping of @location inputs from Naga entry-point reflection.
+  - [ ] Multiple meshes per Pass and per-mesh draw calls.
+  - [ ] Property key → shader attribute naming conventions or mapping.
+  - [ ] Mesh.load_* helpers and JSON inputs.
+
 ### Complete Texture and Storage API
 
 #### Core types
@@ -71,14 +78,6 @@ but while we're still in pre-release phase, this is expected.
 - [x] Introduce TextureId newtype to avoid conflict with TexturePool, keep TexturePool as-is
 - [x] Introduce TextureMeta (id + naga metadata: dim, arrayed, class)
 
-#### Renderer API
-
-- [x] create_texture(input: Into\<TextureInput\>) -> Texture (Rust)
-- [x] create_texture_from_file(&Path) -> Texture (Rust)
-- [x] create_texture_with(input, options: TextureOptions) -> Texture (Rust); alias helpers: create_texture_with_size, create_texture_with_format
-- [x] Web: createTexture(input) (Uint8Array/URL/query selector)
-- [x] Python: create_texture(input) (bytes/path/ndarray)
-
 #### Shader UX
 
 - [x] UniformData::Texture carries TextureMeta; From<&Texture> sets id only (preserves shader metadata)
@@ -86,6 +85,9 @@ but while we're still in pre-release phase, this is expected.
 - [x] JS/Python conversions to allow shader.set("key", texture)
 - [x] Naga parsing: detect image/sampler bindings; store TextureMeta/SamplerInfo in UniformData
 - [x] AddressSpace handling: accept Uniform/Handle; error on bound unsupported spaces; WorkGroup and PushConstant parsed but flagged as PlannedFeature for now.
+- [x] Array element indexing for Storage and Uniforms using naga stride, including nested array/struct offsets. Added unit tests.
+- [x] Unified cross-target URL fetching helper (native via ureq, WASM via fetch) and refactored Shader.fetch and texture URL loading to use it. Removed ureq usage from WASM paths.
+- [x] Texture & Sampler support
 
 #### Renderer bindings and draw
 
@@ -102,9 +104,11 @@ but while we're still in pre-release phase, this is expected.
 
 #### Cleanup
 
-- [x] TextureError (thiserror); remove Box<dyn Error> leftovers
+- [x] Remove all Box<dyn Error>, created module-scoped error types
 
 ### Rendering
+
+#### Renderer Internals
 
 - [x] Surface configuration selection and view_formats
 - [x] Surface frame acquire recovery (WindowTarget)
@@ -115,6 +119,14 @@ but while we're still in pre-release phase, this is expected.
 - [x] TextureTarget MSAA + resolve (optional)
 - [x] Centralized frame acquire retry in Renderer
 - [x] Pooling for transient targets/readback
+
+#### Renderer API
+
+- [x] create_texture(input: Into\<TextureInput\>) -> Texture (Rust)
+- [x] create_texture_from_file(&Path) -> Texture (Rust)
+- [x] create_texture_with(input, options: TextureOptions) -> Texture (Rust); alias helpers: create_texture_with_size, create_texture_with_format
+- [x] Web: createTexture(input) (Uint8Array/URL/query selector)
+- [x] Python: create_texture(input) (bytes/path/ndarray)
 
 ### Platforms
 
