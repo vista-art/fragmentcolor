@@ -14,9 +14,6 @@ pub enum TextureError {
     BindGroupLayoutError(String),
     #[error("Renderer error: {0}")]
     Error(String),
-    #[cfg(wasm)]
-    #[error("WASM Renderer Error: {0}")]
-    Error(String),
 }
 
 // Python-specific conversions

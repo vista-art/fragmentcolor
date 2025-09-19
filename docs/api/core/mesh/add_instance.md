@@ -7,6 +7,6 @@ Add a single instance (any Vertex can be converted into an instance).
 ```rust
 use fragmentcolor::mesh::{Mesh, Vertex};
 let mut m = Mesh::new();
-let v = Vertex::from([0.0, 0.0]);
+let v = Vertex::new([0.0, 0.0]);
 m.add_instance(v);
 ```

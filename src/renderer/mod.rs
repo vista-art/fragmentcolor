@@ -1257,14 +1257,56 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
 
             // Build a triangle mesh
             let mut mesh = crate::mesh::Mesh::new();
-            use crate::mesh::{Position, Vertex};
+            use crate::mesh::Vertex;
             mesh.add_vertices([
-                Vertex::new(Position::Pos3([-0.5, -0.5, 0.0])),
-                Vertex::new(Position::Pos3([0.5, -0.5, 0.0])),
-                Vertex::new(Position::Pos3([0.0, 0.5, 0.0])),
+                Vertex::new([-0.5, -0.5, 0.0]),
+                Vertex::new([0.5, -0.5, 0.0]),
+                Vertex::new([0.0, 0.5, 0.0]),
             ]);
             pass.add_mesh(&mesh);
 
+            renderer.render(&pass, &target).expect("render ok");
+        });
+    }
+
+    // Story: Render the same triangle twice using two instances with different offsets.
+    #[test]
+    fn render_with_mesh_two_instances() {
+        pollster::block_on(async move {
+            let renderer = Renderer::new();
+            let target = renderer
+                .create_texture_target([8u32, 8u32])
+                .await
+                .expect("texture target");
+
+            let wgsl = r#"
+struct VOut { @builtin(position) pos: vec4<f32> };
+@vertex
+fn vs_main(@location(0) pos: vec3<f32>, @location(1) offset: vec2<f32>) -> VOut {
+  var out: VOut;
+  let p = vec3<f32>(pos.xy + offset, pos.z);
+  out.pos = vec4<f32>(p, 1.0);
+  return out;
+}
+@fragment
+fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(0.,1.,0.,1.); }
+            "#;
+
+            let shader = crate::Shader::new(wgsl).expect("shader");
+            let pass = crate::Pass::from_shader("mesh", &shader);
+
+            let mut mesh = crate::mesh::Mesh::new();
+            use crate::mesh::Vertex;
+            mesh.add_vertices([
+                Vertex::new([-0.5, -0.5, 0.0]),
+                Vertex::new([0.5, -0.5, 0.0]),
+                Vertex::new([0.0, 0.5, 0.0]),
+            ]);
+            // Two instances with different offsets
+            mesh.add_instance(Vertex::new([0.0, 0.0]));
+            mesh.add_instance(Vertex::new([0.25, 0.0]));
+
+            pass.add_mesh(&mesh);
             renderer.render(&pass, &target).expect("render ok");
         });
     }

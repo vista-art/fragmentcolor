@@ -7,5 +7,5 @@ Add a single vertex to the mesh.
 ```rust
 use fragmentcolor::mesh::{Mesh, Vertex};
 let mut m = Mesh::new();
-m.add_vertex(Vertex::from([0.0, 0.0]));
+m.add_vertex(Vertex::new([0.0, 0.0]));
 ```
