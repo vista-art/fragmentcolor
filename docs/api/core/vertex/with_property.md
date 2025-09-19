@@ -5,7 +5,6 @@ Attach an arbitrary property to the vertex.
 ## Example
 
 ```rust
-use fragmentcolor::mesh::{Vertex, Position, VertexValue};
-let v = Vertex::from_position(Position::Pos3([0.0, 0.0, 0.0]))
-    .with_property("weight", VertexValue::F32(1.0));
+use fragmentcolor::mesh::{Vertex, VertexValue};
+let v = Vertex::from([0.0, 0.0, 0.0]).with_property("weight", VertexValue::F32(1.0));
 ```

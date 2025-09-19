@@ -6,11 +6,11 @@ Attach a Mesh to this Pass. The Renderer will draw the mesh for each attached Sh
 
 ```rust
 use fragmentcolor::{Pass, Shader};
-use fragmentcolor::mesh::{Mesh, Vertex, Position};
+use fragmentcolor::mesh::{Mesh, Vertex};
 
 let shader = Shader::default();
 let pass = Pass::from_shader("p", &shader);
 let mut mesh = Mesh::new();
-mesh.add_vertex(Vertex::from_position(Position::Pos2([0.0, 0.0])));
+mesh.add_vertex(Vertex::from([0.0, 0.0]));
 pass.add_mesh(&mesh);
 ```

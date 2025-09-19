@@ -10,8 +10,8 @@ pub struct Vertex {
 }
 
 impl Vertex {
-    #[lsp_doc("docs/api/core/vertex/from_position.md")]
-    pub fn from_position(position: impl Into<Position>) -> Self {
+    #[lsp_doc("docs/api/core/vertex/new.md")]
+    pub fn new(position: impl Into<Position>) -> Self {
         Self {
             pos: position.into(),
             props: HashMap::new(),
@@ -50,24 +50,22 @@ impl Vertex {
 
 impl From<[f32; 2]> for Vertex {
     fn from(v: [f32; 2]) -> Self {
-        Vertex::from_position(Position::Pos2(v))
+        Vertex::new(Position::Pos2(v))
     }
 }
 impl From<[f32; 3]> for Vertex {
     fn from(v: [f32; 3]) -> Self {
-        Vertex::from_position(Position::Pos3(v))
+        Vertex::new(Position::Pos3(v))
     }
 }
 impl From<([f32; 3], [f32; 2])> for Vertex {
     fn from((p, uv): ([f32; 3], [f32; 2])) -> Self {
-        Vertex::from_position(Position::Pos3(p)).with_uv(uv)
+        Vertex::new(Position::Pos3(p)).with_uv(uv)
     }
 }
 impl From<([f32; 3], [f32; 2], [f32; 4])> for Vertex {
     fn from((p, uv, c): ([f32; 3], [f32; 2], [f32; 4])) -> Self {
-        Vertex::from_position(Position::Pos3(p))
-            .with_uv(uv)
-            .with_color(c)
+        Vertex::new(Position::Pos3(p)).with_uv(uv).with_color(c)
     }
 }
 

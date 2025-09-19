@@ -22,12 +22,12 @@ Internally it deduplicates vertices and always draws indexed and instanced
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::mesh::{Mesh, Vertex, Position, VertexValue};
+use fragmentcolor::mesh::{Mesh, Vertex, VertexValue};
 
 let mut mesh = Mesh::new();
-mesh.add_vertex(Vertex::from_position(Position::Pos3([0.0, 0.5, 0.0])));
-mesh.add_vertex(Vertex::from_position(Position::Pos3([-0.5, -0.5, 0.0])));
-mesh.add_vertex(Vertex::from_position(Position::Pos3([0.5, -0.5, 0.0])));
+mesh.add_vertex(Vertex::from([0.0, 0.5, 0.0]));
+mesh.add_vertex(Vertex::from([-0.5, -0.5, 0.0]));
+mesh.add_vertex(Vertex::from([0.5, -0.5, 0.0]));
 `}
 lang="rust"
 />
@@ -37,12 +37,12 @@ lang="rust"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { {Mesh, Vertex, Position, VertexValue} } from "fragmentcolor";
+import { {Mesh, Vertex, VertexValue} } from "fragmentcolor";
 
 const mesh = new Mesh();
-mesh.addVertex(Vertex.fromPosition(Position.Pos3([0.0, 0.5, 0.0])));
-mesh.addVertex(Vertex.fromPosition(Position.Pos3([-0.5, -0.5, 0.0])));
-mesh.addVertex(Vertex.fromPosition(Position.Pos3([0.5, -0.5, 0.0])));
+mesh.addVertex(Vertex.from([0.0, 0.5, 0.0]));
+mesh.addVertex(Vertex.from([-0.5, -0.5, 0.0]));
+mesh.addVertex(Vertex.from([0.5, -0.5, 0.0]));
 `}
 lang="js"
 />
@@ -52,12 +52,12 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import {Mesh, Vertex, Position, VertexValue}
+from fragmentcolor import {Mesh, Vertex, VertexValue}
 
 mesh = Mesh()
-mesh.add_vertex(Vertex.from_position(Position.Pos3([0.0, 0.5, 0.0])))
-mesh.add_vertex(Vertex.from_position(Position.Pos3([-0.5, -0.5, 0.0])))
-mesh.add_vertex(Vertex.from_position(Position.Pos3([0.5, -0.5, 0.0])))
+mesh.add_vertex(Vertex.from([0.0, 0.5, 0.0]))
+mesh.add_vertex(Vertex.from([-0.5, -0.5, 0.0]))
+mesh.add_vertex(Vertex.from([0.5, -0.5, 0.0]))
 `}
 lang="python"
 />
@@ -177,11 +177,11 @@ Create a mesh from an iterator of Vertex values.
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::mesh::{Mesh, Vertex, Position};
+use fragmentcolor::mesh::{Mesh, Vertex};
 let m = Mesh::from_vertices([
-    Vertex::from_position(Position::Pos2([0.0, 0.0])),
-    Vertex::from_position(Position::Pos2([1.0, 0.0])),
-    Vertex::from_position(Position::Pos2([0.0, 1.0])),
+    Vertex::from([0.0, 0.0]),
+    Vertex::from([1.0, 0.0]),
+    Vertex::from([0.0, 1.0]),
 ]);
 `}
 lang="rust"
@@ -192,11 +192,11 @@ lang="rust"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { {Mesh, Vertex, Position} } from "fragmentcolor";
+import { {Mesh, Vertex} } from "fragmentcolor";
 const m = Mesh.fromVertices([;
-    Vertex.fromPosition(Position.Pos2([0.0, 0.0])),;
-    Vertex.fromPosition(Position.Pos2([1.0, 0.0])),;
-    Vertex.fromPosition(Position.Pos2([0.0, 1.0])),;
+    Vertex.from([0.0, 0.0]),;
+    Vertex.from([1.0, 0.0]),;
+    Vertex.from([0.0, 1.0]),;
 ]);
 `}
 lang="js"
@@ -207,11 +207,11 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import {Mesh, Vertex, Position}
+from fragmentcolor import {Mesh, Vertex}
 m = Mesh.from_vertices([
-    Vertex.from_position(Position.Pos2([0.0, 0.0])),
-    Vertex.from_position(Position.Pos2([1.0, 0.0])),
-    Vertex.from_position(Position.Pos2([0.0, 1.0])),
+    Vertex.from([0.0, 0.0]),
+    Vertex.from([1.0, 0.0]),
+    Vertex.from([0.0, 1.0]),
 ])
 `}
 lang="python"
@@ -259,9 +259,9 @@ Add a single vertex to the mesh.
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::mesh::{Mesh, Vertex, Position};
+use fragmentcolor::mesh::{Mesh, Vertex};
 let mut m = Mesh::new();
-m.add_vertex(Vertex::from_position(Position::Pos2([0.0, 0.0])));
+m.add_vertex(Vertex::from([0.0, 0.0]));
 `}
 lang="rust"
 />
@@ -271,9 +271,9 @@ lang="rust"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { {Mesh, Vertex, Position} } from "fragmentcolor";
+import { {Mesh, Vertex} } from "fragmentcolor";
 const m = new Mesh();
-m.addVertex(Vertex.fromPosition(Position.Pos2([0.0, 0.0])));
+m.addVertex(Vertex.from([0.0, 0.0]));
 `}
 lang="js"
 />
@@ -283,9 +283,9 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import {Mesh, Vertex, Position}
+from fragmentcolor import {Mesh, Vertex}
 m = Mesh()
-m.add_vertex(Vertex.from_position(Position.Pos2([0.0, 0.0])))
+m.add_vertex(Vertex.from([0.0, 0.0]))
 `}
 lang="python"
 />
@@ -332,11 +332,11 @@ Add many vertices to the mesh.
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::mesh::{Mesh, Vertex, Position};
+use fragmentcolor::mesh::{Mesh, Vertex};
 let mut m = Mesh::new();
 m.add_vertices([
-  Vertex::from_position(Position::Pos2([0.0, 0.0])),
-  Vertex::from_position(Position::Pos2([1.0, 0.0]))
+  Vertex::from([0.0, 0.0]),
+  Vertex::from([1.0, 0.0])
 ]);
 `}
 lang="rust"
@@ -347,11 +347,11 @@ lang="rust"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { {Mesh, Vertex, Position} } from "fragmentcolor";
+import { {Mesh, Vertex} } from "fragmentcolor";
 const m = new Mesh();
 m.addVertices([;
-  Vertex.fromPosition(Position.Pos2([0.0, 0.0])),;
-  Vertex.fromPosition(Position.Pos2([1.0, 0.0]));
+  Vertex.from([0.0, 0.0]),;
+  Vertex.from([1.0, 0.0]);
 ]);
 `}
 lang="js"
@@ -362,11 +362,11 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import {Mesh, Vertex, Position}
+from fragmentcolor import {Mesh, Vertex}
 m = Mesh()
 m.add_vertices([
-  Vertex.from_position(Position.Pos2([0.0, 0.0])),
-  Vertex.from_position(Position.Pos2([1.0, 0.0]))
+  Vertex.from([0.0, 0.0]),
+  Vertex.from([1.0, 0.0])
 ])
 `}
 lang="python"
@@ -414,9 +414,9 @@ Add a single instance (any Vertex can be converted into an instance).
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::mesh::{Mesh, Vertex, Position};
+use fragmentcolor::mesh::{Mesh, Vertex};
 let mut m = Mesh::new();
-let v = Vertex::from_position(Position::Pos2([0.0, 0.0]));
+let v = Vertex::from([0.0, 0.0]);
 m.add_instance(v);
 `}
 lang="rust"
@@ -427,9 +427,9 @@ lang="rust"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { {Mesh, Vertex, Position} } from "fragmentcolor";
+import { {Mesh, Vertex} } from "fragmentcolor";
 const m = new Mesh();
-const v = Vertex.fromPosition(Position.Pos2([0.0, 0.0]));
+const v = Vertex.from([0.0, 0.0]);
 m.addInstance(v);
 `}
 lang="js"
@@ -440,9 +440,9 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import {Mesh, Vertex, Position}
+from fragmentcolor import {Mesh, Vertex}
 m = Mesh()
-v = Vertex.from_position(Position.Pos2([0.0, 0.0]))
+v = Vertex.from([0.0, 0.0])
 m.add_instance(v)
 `}
 lang="python"
@@ -490,11 +490,11 @@ Add many instances to the mesh.
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::mesh::{Mesh, Vertex, Position};
+use fragmentcolor::mesh::{Mesh, Vertex};
 let mut m = Mesh::new();
 m.add_instances([
-  Vertex::from_position(Position::Pos2([0.0, 0.0])),
-  Vertex::from_position(Position::Pos2([1.0, 1.0])),
+  Vertex::from([0.0, 0.0]),
+  Vertex::from([1.0, 1.0]),
 ]);
 `}
 lang="rust"
@@ -505,11 +505,11 @@ lang="rust"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { {Mesh, Vertex, Position} } from "fragmentcolor";
+import { {Mesh, Vertex} } from "fragmentcolor";
 const m = new Mesh();
 m.addInstances([;
-  Vertex.fromPosition(Position.Pos2([0.0, 0.0])),;
-  Vertex.fromPosition(Position.Pos2([1.0, 1.0])),;
+  Vertex.from([0.0, 0.0]),;
+  Vertex.from([1.0, 1.0]),;
 ]);
 `}
 lang="js"
@@ -520,11 +520,11 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import {Mesh, Vertex, Position}
+from fragmentcolor import {Mesh, Vertex}
 m = Mesh()
 m.add_instances([
-  Vertex.from_position(Position.Pos2([0.0, 0.0])),
-  Vertex.from_position(Position.Pos2([1.0, 1.0])),
+  Vertex.from([0.0, 0.0]),
+  Vertex.from([1.0, 1.0]),
 ])
 `}
 lang="python"

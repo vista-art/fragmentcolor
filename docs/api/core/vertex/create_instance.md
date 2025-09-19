@@ -5,7 +5,7 @@ Create an Instance from this Vertex by cloning all of its properties; the positi
 ## Example
 
 ```rust
-use fragmentcolor::mesh::{Vertex, Position};
-let v = Vertex::from_position(Position::Pos2([0.0, 0.0]));
+use fragmentcolor::mesh::Vertex;
+let v = Vertex::from([0.0, 0.0]);
 let _inst = v.create_instance();
 ```

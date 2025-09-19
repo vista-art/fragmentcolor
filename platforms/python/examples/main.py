@@ -53,7 +53,7 @@ def run_all():
         'core/texture/size.py',
         'core/vertex/Vertex.py',
         'core/vertex/create_instance.py',
-        'core/vertex/from_position.py',
+        'core/vertex/new.py',
         'core/vertex/with_color.py',
         'core/vertex/with_property.py',
         'core/vertex/with_uv.py',

@@ -1,10 +1,10 @@
 # Vertex::new
 
-Create a Vertex at the origin (2D). This is a helper used in docs; prefer `from_position` in code.
+Construct a Vertex from a position (2D or 3D).
 
 ## Example
 
 ```rust
-use fragmentcolor::mesh::{Vertex, Position};
-let v = Vertex::from_position(Position::Pos2([0.0, 0.0]));
+use fragmentcolor::mesh::Vertex;
+let v = Vertex::new([0.0, 0.0]);
 ```

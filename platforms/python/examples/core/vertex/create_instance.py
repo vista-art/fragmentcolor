@@ -1,3 +1,3 @@
-from fragmentcolor import {Vertex, Position}
-v = Vertex.from_position(Position.Pos2([0.0, 0.0]))
+from fragmentcolor import Vertex
+v = Vertex.from([0.0, 0.0])
 _inst = v.create_instance()

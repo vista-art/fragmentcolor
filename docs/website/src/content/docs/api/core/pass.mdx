@@ -418,12 +418,12 @@ Attach a Mesh to this Pass. The Renderer will draw the mesh for each attached Sh
 <Code
 code={`
 use fragmentcolor::{Pass, Shader};
-use fragmentcolor::mesh::{Mesh, Vertex, Position};
+use fragmentcolor::mesh::{Mesh, Vertex};
 
 let shader = Shader::default();
 let pass = Pass::from_shader("p", &shader);
 let mut mesh = Mesh::new();
-mesh.add_vertex(Vertex::from_position(Position::Pos2([0.0, 0.0])));
+mesh.add_vertex(Vertex::from([0.0, 0.0]));
 pass.add_mesh(&mesh);
 `}
 lang="rust"
@@ -435,12 +435,12 @@ lang="rust"
 <Code
 code={`
 import { Pass, Shader } from "fragmentcolor";
-import { {Mesh, Vertex, Position}, Shader } from "fragmentcolor";
+import { {Mesh, Vertex}, Shader } from "fragmentcolor";
 
 const shader = Shader.default();
 const pass = new Pass("p"); pass.addShader(shader);
 const mesh = new Mesh();
-mesh.addVertex(Vertex.fromPosition(Position.Pos2([0.0, 0.0])));
+mesh.addVertex(Vertex.from([0.0, 0.0]));
 pass.addMesh(mesh);
 `}
 lang="js"
@@ -452,12 +452,12 @@ lang="js"
 <Code
 code={`
 from fragmentcolor import Pass, Shader
-from fragmentcolor import {Mesh, Vertex, Position}, Shader
+from fragmentcolor import {Mesh, Vertex}, Shader
 
 shader = Shader.default()
 rpass = Pass("p"); rpass.add_shader(shader)
 mesh = Mesh()
-mesh.add_vertex(Vertex.from_position(Position.Pos2([0.0, 0.0])))
+mesh.add_vertex(Vertex.from([0.0, 0.0]))
 rpass.add_mesh(mesh)
 `}
 lang="python"
