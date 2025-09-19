@@ -302,6 +302,12 @@ pub struct Mesh {
     pub(crate) object: Arc<MeshObject>,
 }
 
+impl Default for Mesh {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Mesh {
     #[lsp_doc("docs/api/core/mesh/new.md")]
     pub fn new() -> Self {
@@ -474,14 +480,14 @@ impl MeshObject {
         if let Some(s) = sv {
             for f in s.fields.iter() {
                 hasher.update(f.name.as_bytes());
-                hasher.update(&[format_code(f.fmt)]);
+                hasher.update([format_code(f.fmt)]);
             }
         }
-        hasher.update(&[0u8]);
+        hasher.update([0u8]);
         if let Some(s) = si {
             for f in s.fields.iter() {
                 hasher.update(f.name.as_bytes());
-                hasher.update(&[format_code(f.fmt)]);
+                hasher.update([format_code(f.fmt)]);
             }
         }
         let h = hasher.finalize();
@@ -498,11 +504,11 @@ impl MeshObject {
             let s = derive_vertex_schema(&v)?;
             self.schema_v.write().replace(s);
         }
-        if self.schema_i.read().is_none() {
-            if let Some(first) = self.insts.read().first().cloned() {
-                let s = derive_instance_schema(&first)?;
-                self.schema_i.write().replace(s);
-            }
+        if self.schema_i.read().is_none()
+            && let Some(first) = self.insts.read().first().cloned()
+        {
+            let s = derive_instance_schema(&first)?;
+            self.schema_i.write().replace(s);
         }
 
         // Pack vertices if dirty
@@ -558,12 +564,11 @@ impl MeshObject {
             return None;
         }
         // Ensure schemas exist
-        if self.schema_v.read().is_none() {
-            if let Some(first) = self.verts.read().first().cloned() {
-                if let Ok(s) = derive_vertex_schema(&first) {
-                    self.schema_v.write().replace(s);
-                }
-            }
+        if self.schema_v.read().is_none()
+            && let Some(first) = self.verts.read().first().cloned()
+            && let Ok(s) = derive_vertex_schema(&first)
+        {
+            self.schema_v.write().replace(s);
         }
         let sv = self.schema_v.read().clone()?;
         let si = self.schema_i.read().clone();
