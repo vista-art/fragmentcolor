@@ -3,16 +3,16 @@ set -euo pipefail
 set -x
 
 # Run Python examples using a local wheel build in a virtualenv.
-# Keeps platform flow consistent with run_web.sh.
+# Keeps platform flow consistent with run_web.
 #
 # Usage:
-#   ./run_py.sh                      # build wheel (release), create venv, run examples/python/main.py
-#   ./run_py.sh headless             # run the headless healthcheck
-#   ./run_py.sh multiobject          # run examples/python/multiobject.py
-#   ./run_py.sh --no-build main      # skip building the wheel, use existing dist/*.whl
+#   ./run_py                      # build wheel (release), create venv, run examples/python/main.py
+#   ./run_py headless             # run the headless healthcheck
+#   ./run_py multiobject          # run examples/python/multiobject.py
+#   ./run_py --no-build main      # skip building the wheel, use existing dist/*.whl
 #
 # Optional: on macOS, you can prebuild signed wheels with:
-#   CODESIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" ./build_py.sh
+#   CODESIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" ./build_py
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENV_DIR="$ROOT_DIR/.venv"
@@ -32,8 +32,8 @@ if [[ "$NO_BUILD" -eq 0 ]]; then
     echo "maturin is required. Install it (e.g., pipx install maturin) and re-run." >&2
     exit 1
   fi
-  chmod +x "$ROOT_DIR/build_py.sh"
-  "$ROOT_DIR/build_py.sh"
+  chmod +x "$ROOT_DIR/build_py"
+  "$ROOT_DIR/build_py"
 fi
 
 # Ensure virtualenv exists
