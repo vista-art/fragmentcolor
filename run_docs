@@ -3,19 +3,19 @@ set -euo pipefail
 
 # Run or preview the documentation website (Astro/Starlight) from the repo root.
 # Usage:
-#   ./run_docs.sh [dev|preview] [--port <port>|-p <port>] [--no-open] [--clean] [--help]
+#   ./run_docs [dev|preview] [--port <port>|-p <port>] [--no-open] [--clean] [--help]
 # Examples:
-#   ./run_docs.sh
-#   ./run_docs.sh --port 4000
-#   ./run_docs.sh preview --no-open
-#   DOCS_PORT=4000 ./run_docs.sh dev
+#   ./run_docs
+#   ./run_docs --port 4000
+#   ./run_docs preview --no-open
+#   DOCS_PORT=4000 ./run_docs dev
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SITE_DIR="$ROOT_DIR/docs/website"
 
 show_help() {
   cat <<'EOF'
-Usage: ./run_docs.sh [dev|preview] [options]
+Usage: ./run_docs [dev|preview] [options]
 
 Run or preview the documentation site (Astro/Starlight) located at docs/website.
 
@@ -30,10 +30,10 @@ Options:
   -h, --help          Show this help
 
 Examples:
-  ./run_docs.sh
-  ./run_docs.sh --port 4000
-  ./run_docs.sh preview --no-open
-  DOCS_PORT=4000 ./run_docs.sh dev
+  ./run_docs
+  ./run_docs --port 4000
+  ./run_docs preview --no-open
+  DOCS_PORT=4000 ./run_docs dev
 EOF
 }
 

@@ -46,4 +46,4 @@ let shader = Shader::new(r#"
 
 ## Platform-specific: Web
 
-In WASM, the constructor cannot fetch a URL directly. Use [Shader](https://fragmentcolor.org/api/core/shader)::[fetch](https://fragmentcolor.org/api/shader/fetch) instead.
+In WASM, the constructor cannot fetch a URL directly. Use [Shader](https://fragmentcolor.org/api/core/shader)::[fetch](https://fragmentcolor.org/api/core/shader) instead.

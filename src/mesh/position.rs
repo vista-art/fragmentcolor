@@ -4,122 +4,82 @@ pub enum Position {
     Pos3([f32; 3]),
 }
 
-impl From<(u32, u32)> for Position {
-    fn from(value: (u32, u32)) -> Self {
-        Self::Pos2([value.0 as f32, value.1 as f32])
-    }
-}
+crate::impl_from_into_with_refs!(
+    Position,
+    (u32, u32),
+    |p: Position| match p {
+        Position::Pos2(a) => (a[0] as u32, a[1] as u32),
+        Position::Pos3(a) => (a[0] as u32, a[1] as u32),
+    },
+    |t: (u32, u32)| Position::Pos2([t.0 as f32, t.1 as f32])
+);
 
-impl From<Position> for (u32, u32) {
-    fn from(position: Position) -> Self {
-        match position {
-            Position::Pos2(arr) => (arr[0] as u32, arr[1] as u32),
-            Position::Pos3(arr) => (arr[0] as u32, arr[1] as u32),
-        }
-    }
-}
+crate::impl_from_into_with_refs!(
+    Position,
+    (u32, u32, u32),
+    |p: Position| match p {
+        Position::Pos2(a) => (a[0] as u32, a[1] as u32, 1),
+        Position::Pos3(a) => (a[0] as u32, a[1] as u32, a[2] as u32),
+    },
+    |t: (u32, u32, u32)| Position::Pos3([t.0 as f32, t.1 as f32, t.2 as f32])
+);
 
-impl From<&(u32, u32)> for Position {
-    fn from(value: &(u32, u32)) -> Self {
-        Self::Pos2([value.0 as f32, value.1 as f32])
-    }
-}
+crate::impl_from_into_with_refs!(
+    Position,
+    [u32; 2],
+    |p: Position| match p {
+        Position::Pos2(a) => [a[0] as u32, a[1] as u32],
+        Position::Pos3(a) => [a[0] as u32, a[1] as u32],
+    },
+    |a: [u32; 2]| Position::Pos2([a[0] as f32, a[1] as f32])
+);
 
-impl From<&Position> for (u32, u32) {
-    fn from(position: &Position) -> Self {
-        match position {
-            Position::Pos2(arr) => (arr[0] as u32, arr[1] as u32),
-            Position::Pos3(arr) => (arr[0] as u32, arr[1] as u32),
-        }
-    }
-}
+crate::impl_from_into_with_refs!(
+    Position,
+    [u32; 3],
+    |p: Position| match p {
+        Position::Pos2(a) => [a[0] as u32, a[1] as u32, 1],
+        Position::Pos3(a) => [a[0] as u32, a[1] as u32, a[2] as u32],
+    },
+    |a: [u32; 3]| Position::Pos3([a[0] as f32, a[1] as f32, a[2] as f32])
+);
 
-impl From<(u32, u32, u32)> for Position {
-    fn from(value: (u32, u32, u32)) -> Self {
-        Self::Pos3([value.0 as f32, value.1 as f32, value.2 as f32])
-    }
-}
+crate::impl_from_into_with_refs!(
+    Position,
+    [f32; 2],
+    |p: Position| match p {
+        Position::Pos2(a) => a,
+        Position::Pos3(a) => [a[0], a[1]],
+    },
+    |a: [f32; 2]| Position::Pos2(a)
+);
 
-impl From<Position> for (u32, u32, u32) {
-    fn from(position: Position) -> Self {
-        match position {
-            Position::Pos2(arr) => (arr[0] as u32, arr[1] as u32, 1),
-            Position::Pos3(arr) => (arr[0] as u32, arr[1] as u32, arr[2] as u32),
-        }
-    }
-}
+crate::impl_from_into_with_refs!(
+    Position,
+    [f32; 3],
+    |p: Position| match p {
+        Position::Pos2(a) => [a[0], a[1], 0.0],
+        Position::Pos3(a) => a,
+    },
+    |a: [f32; 3]| Position::Pos3(a)
+);
 
-impl From<&(u32, u32, u32)> for Position {
-    fn from(value: &(u32, u32, u32)) -> Self {
-        Self::Pos3([value.0 as f32, value.1 as f32, value.2 as f32])
-    }
-}
+crate::impl_from_into_with_refs!(
+    Position,
+    (f32, f32),
+    |p: Position| match p {
+        Position::Pos2(a) => (a[0], a[1]),
+        Position::Pos3(a) => (a[0], a[1]),
+    },
+    |t: (f32, f32)| Position::Pos2([t.0, t.1])
+);
 
-impl From<&Position> for (u32, u32, u32) {
-    fn from(position: &Position) -> Self {
-        match position {
-            Position::Pos2(arr) => (arr[0] as u32, arr[1] as u32, 1),
-            Position::Pos3(arr) => (arr[0] as u32, arr[1] as u32, arr[2] as u32),
-        }
-    }
-}
-
-impl From<[u32; 2]> for Position {
-    fn from(value: [u32; 2]) -> Self {
-        Self::Pos2(value.map(|v| v as f32))
-    }
-}
-
-impl From<Position> for [u32; 2] {
-    fn from(position: Position) -> Self {
-        match position {
-            Position::Pos2(arr) => [arr[0] as u32, arr[1] as u32],
-            Position::Pos3(arr) => [arr[0] as u32, arr[1] as u32],
-        }
-    }
-}
-
-impl From<&[u32; 2]> for Position {
-    fn from(value: &[u32; 2]) -> Self {
-        Self::Pos2(value.map(|v| v as f32))
-    }
-}
-
-impl From<&Position> for [u32; 2] {
-    fn from(position: &Position) -> Self {
-        match position {
-            Position::Pos2(arr) => [arr[0] as u32, arr[1] as u32],
-            Position::Pos3(arr) => [arr[0] as u32, arr[1] as u32],
-        }
-    }
-}
-
-impl From<[u32; 3]> for Position {
-    fn from(value: [u32; 3]) -> Self {
-        Self::Pos3(value.map(|v| v as f32))
-    }
-}
-
-impl From<Position> for [u32; 3] {
-    fn from(position: Position) -> Self {
-        match position {
-            Position::Pos2(arr) => [arr[0] as u32, arr[1] as u32, 1],
-            Position::Pos3(arr) => [arr[0] as u32, arr[1] as u32, arr[2] as u32],
-        }
-    }
-}
-
-impl From<&[u32; 3]> for Position {
-    fn from(value: &[u32; 3]) -> Self {
-        Self::Pos3(value.map(|v| v as f32))
-    }
-}
-
-impl From<&Position> for [u32; 3] {
-    fn from(position: &Position) -> Self {
-        match position {
-            Position::Pos2(arr) => [arr[0] as u32, arr[1] as u32, 1],
-            Position::Pos3(arr) => [arr[0] as u32, arr[1] as u32, arr[2] as u32],
-        }
-    }
-}
+crate::impl_from_into_with_refs!(
+    Position,
+    (f32, f32, f32),
+    |p: Position| match p {
+        Position::Pos2(a) => (a[0], a[1], 0.0),
+        Position::Pos3(a) => (a[0], a[1], a[2]),
+    },
+    |t: (f32, f32, f32)| Position::Pos3([t.0, t.1, t.2])
+);

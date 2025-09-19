@@ -29,156 +29,44 @@ impl Size {
     }
 }
 
-crate::impl_from_ref!(Size, wgpu::Extent3d);
-crate::impl_from_ref!(wgpu::Extent3d, Size);
+crate::impl_from_into_with_refs!(
+    Size,
+    wgpu::Extent3d,
+    |s: Size| wgpu::Extent3d {
+        width: s.width,
+        height: s.height,
+        depth_or_array_layers: s.depth.unwrap_or(1),
+    },
+    |e: wgpu::Extent3d| Size::new(e.width, e.height, Some(e.depth_or_array_layers))
+);
 
-impl From<wgpu::Extent3d> for Size {
-    fn from(extent: wgpu::Extent3d) -> Self {
-        Self {
-            width: extent.width,
-            height: extent.height,
-            depth: Some(extent.depth_or_array_layers),
-        }
-    }
-}
+crate::impl_from_into_with_refs!(Size, (u32, u32), |s: Size| (s.width, s.height), |t: (
+    u32,
+    u32
+)| {
+    Size::new(t.0, t.1, None)
+});
 
-impl From<Size> for wgpu::Extent3d {
-    fn from(size: Size) -> Self {
-        Self {
-            width: size.width,
-            height: size.height,
-            depth_or_array_layers: size.depth.unwrap_or(1),
-        }
-    }
-}
+crate::impl_from_into_with_refs!(
+    Size,
+    (u32, u32, u32),
+    |s: Size| (s.width, s.height, s.depth.unwrap_or(1)),
+    |t: (u32, u32, u32)| Size::new(t.0, t.1, Some(t.2))
+);
 
-impl From<(u32, u32)> for Size {
-    fn from(value: (u32, u32)) -> Self {
-        Self {
-            width: value.0,
-            height: value.1,
-            depth: None,
-        }
-    }
-}
+crate::impl_from_into_with_refs!(
+    Size,
+    [u32; 2],
+    |s: Size| [s.width, s.height],
+    |a: [u32; 2]| Size::new(a[0], a[1], None)
+);
 
-impl From<Size> for (u32, u32) {
-    fn from(size: Size) -> Self {
-        (size.width, size.height)
-    }
-}
-
-impl From<&(u32, u32)> for Size {
-    fn from(value: &(u32, u32)) -> Self {
-        Self {
-            width: value.0,
-            height: value.1,
-            depth: None,
-        }
-    }
-}
-
-impl From<&Size> for (u32, u32) {
-    fn from(size: &Size) -> Self {
-        (size.width, size.height)
-    }
-}
-
-impl From<(u32, u32, u32)> for Size {
-    fn from(value: (u32, u32, u32)) -> Self {
-        Self {
-            width: value.0,
-            height: value.1,
-            depth: Some(value.2),
-        }
-    }
-}
-
-impl From<Size> for (u32, u32, u32) {
-    fn from(size: Size) -> Self {
-        (size.width, size.height, size.depth.unwrap_or(1))
-    }
-}
-
-impl From<&(u32, u32, u32)> for Size {
-    fn from(value: &(u32, u32, u32)) -> Self {
-        Self {
-            width: value.0,
-            height: value.1,
-            depth: Some(value.2),
-        }
-    }
-}
-
-impl From<&Size> for (u32, u32, u32) {
-    fn from(size: &Size) -> Self {
-        (size.width, size.height, size.depth.unwrap_or(1))
-    }
-}
-
-impl From<[u32; 2]> for Size {
-    fn from(value: [u32; 2]) -> Self {
-        Self {
-            width: value[0],
-            height: value[1],
-            depth: None,
-        }
-    }
-}
-
-impl From<Size> for [u32; 2] {
-    fn from(size: Size) -> Self {
-        [size.width, size.height]
-    }
-}
-
-impl From<&[u32; 2]> for Size {
-    fn from(value: &[u32; 2]) -> Self {
-        Self {
-            width: value[0],
-            height: value[1],
-            depth: None,
-        }
-    }
-}
-
-impl From<&Size> for [u32; 2] {
-    fn from(size: &Size) -> Self {
-        [size.width, size.height]
-    }
-}
-
-impl From<[u32; 3]> for Size {
-    fn from(value: [u32; 3]) -> Self {
-        Self {
-            width: value[0],
-            height: value[1],
-            depth: Some(value[2]),
-        }
-    }
-}
-
-impl From<Size> for [u32; 3] {
-    fn from(size: Size) -> Self {
-        [size.width, size.height, size.depth.unwrap_or(1)]
-    }
-}
-
-impl From<&[u32; 3]> for Size {
-    fn from(value: &[u32; 3]) -> Self {
-        Self {
-            width: value[0],
-            height: value[1],
-            depth: Some(value[2]),
-        }
-    }
-}
-
-impl From<&Size> for [u32; 3] {
-    fn from(size: &Size) -> Self {
-        [size.width, size.height, size.depth.unwrap_or(1)]
-    }
-}
+crate::impl_from_into_with_refs!(
+    Size,
+    [u32; 3],
+    |s: Size| [s.width, s.height, s.depth.unwrap_or(1)],
+    |a: [u32; 3]| Size::new(a[0], a[1], Some(a[2]))
+);
 
 #[cfg(wasm)]
 impl TryFrom<&wasm_bindgen::JsValue> for Size {

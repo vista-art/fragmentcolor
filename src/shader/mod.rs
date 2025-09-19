@@ -118,6 +118,43 @@ impl ShaderObject {
         Self::wgsl(source)
     }
 
+    /// Reflect the vertex entry-point inputs as (name, location, format).
+    /// Returns only parameters with @location decorations; builtins are ignored.
+    pub(crate) fn reflect_vertex_inputs(&self) -> Result<Vec<VertexInputDesc>, ShaderError> {
+        // Find the vertex entry point (assume first if multiple; consistent with create_render_pipeline).
+        let mut inputs: Vec<VertexInputDesc> = Vec::new();
+        // Iterate entry points and collect from the vertex stage only once (first hit wins)
+        for ep in self.module.entry_points.iter() {
+            if ep.stage != naga::ShaderStage::Vertex {
+                continue;
+            }
+            for arg in ep.function.arguments.iter() {
+                // Only consider @location bindings
+                let Some(binding) = arg.binding.as_ref() else {
+                    continue;
+                };
+                let naga::Binding::Location { location, .. } = binding else {
+                    continue;
+                };
+                let ty = &self.module.types[arg.ty];
+                let format = naga_ty_to_vertex_format(ty)?;
+                let name = arg
+                    .name
+                    .clone()
+                    .unwrap_or_else(|| format!("attr{}", location));
+                inputs.push(VertexInputDesc {
+                    name,
+                    location: *location,
+                    format,
+                });
+            }
+            break;
+        }
+        // Sort by location to keep a stable order
+        inputs.sort_by_key(|d| d.location);
+        Ok(inputs)
+    }
+
     /// Create a Shader object from a WGSL source.
     pub fn wgsl(source: &str) -> Result<Self, ShaderError> {
         let mut validator = Validator::new(ValidationFlags::all(), Capabilities::all());
@@ -148,10 +185,8 @@ impl ShaderObject {
         let mut storage = self.storage.write();
         storage.update(key, &value.into())
     }
-}
 
-// getters
-impl ShaderObject {
+    // getters
     /// List all the uniforms in the shader.
     pub fn list_uniforms(&self) -> Vec<String> {
         let storage = self.storage.read();
@@ -316,6 +351,46 @@ impl TryFrom<&String> for Shader {
     type Error = ShaderError;
     fn try_from(source: &String) -> Result<Self, Self::Error> {
         Self::new(source.as_str())
+    }
+}
+
+/// Descriptor for a shader vertex input parameter reflected from WGSL/Naga.
+#[derive(Debug, Clone)]
+pub(crate) struct VertexInputDesc {
+    pub name: String,
+    pub location: u32,
+    pub format: wgpu::VertexFormat,
+}
+
+fn naga_ty_to_vertex_format(ty: &naga::Type) -> Result<wgpu::VertexFormat, ShaderError> {
+    use naga::{ScalarKind, TypeInner, VectorSize};
+    match &ty.inner {
+        TypeInner::Scalar(s) => match s.kind {
+            ScalarKind::Float if s.width == 4 => Ok(wgpu::VertexFormat::Float32),
+            ScalarKind::Sint if s.width == 4 => Ok(wgpu::VertexFormat::Sint32),
+            ScalarKind::Uint if s.width == 4 => Ok(wgpu::VertexFormat::Uint32),
+            _ => Err(ShaderError::TypeMismatch(
+                "Unsupported scalar width/kind for vertex input".into(),
+            )),
+        },
+        TypeInner::Vector { size, scalar, .. } => match (size, scalar.kind, scalar.width) {
+            (VectorSize::Bi, ScalarKind::Float, 4) => Ok(wgpu::VertexFormat::Float32x2),
+            (VectorSize::Tri, ScalarKind::Float, 4) => Ok(wgpu::VertexFormat::Float32x3),
+            (VectorSize::Quad, ScalarKind::Float, 4) => Ok(wgpu::VertexFormat::Float32x4),
+            (VectorSize::Bi, ScalarKind::Sint, 4) => Ok(wgpu::VertexFormat::Sint32x2),
+            (VectorSize::Tri, ScalarKind::Sint, 4) => Ok(wgpu::VertexFormat::Sint32x3),
+            (VectorSize::Quad, ScalarKind::Sint, 4) => Ok(wgpu::VertexFormat::Sint32x4),
+            (VectorSize::Bi, ScalarKind::Uint, 4) => Ok(wgpu::VertexFormat::Uint32x2),
+            (VectorSize::Tri, ScalarKind::Uint, 4) => Ok(wgpu::VertexFormat::Uint32x3),
+            (VectorSize::Quad, ScalarKind::Uint, 4) => Ok(wgpu::VertexFormat::Uint32x4),
+            _ => Err(ShaderError::TypeMismatch(
+                "Unsupported vector type for vertex input".into(),
+            )),
+        },
+        // Matrices or other types are not supported as direct vertex attributes in this first pass
+        _ => Err(ShaderError::TypeMismatch(
+            "Unsupported vertex input type".into(),
+        )),
     }
 }
 

@@ -5,38 +5,39 @@ use std::collections::HashMap;
 #[derive(Clone, Debug)]
 #[lsp_doc("docs/api/core/vertex/vertex.md")]
 pub struct Vertex {
-    pub(crate) pos: Position,
-    pub(crate) props: HashMap<String, VertexValue>,
+    pub(crate) position: Position,
+    pub(crate) properties: HashMap<String, VertexValue>,
 }
 
 impl Vertex {
     #[lsp_doc("docs/api/core/vertex/new.md")]
     pub fn new(position: impl Into<Position>) -> Self {
         Self {
-            pos: position.into(),
-            props: HashMap::new(),
+            position: position.into(),
+            properties: HashMap::new(),
         }
     }
     #[lsp_doc("docs/api/core/vertex/with_uv.md")]
     pub fn with_uv(mut self, uv: [f32; 2]) -> Self {
-        self.props.insert("uv".into(), VertexValue::F32x2(uv));
+        self.properties.insert("uv".into(), VertexValue::F32x2(uv));
         self
     }
     #[lsp_doc("docs/api/core/vertex/with_color.md")]
     pub fn with_color(mut self, rgba: [f32; 4]) -> Self {
-        self.props.insert("color".into(), VertexValue::F32x4(rgba));
+        self.properties
+            .insert("color".into(), VertexValue::F32x4(rgba));
         self
     }
     #[lsp_doc("docs/api/core/vertex/with_property.md")]
     pub fn with_property(mut self, key: &str, v: VertexValue) -> Self {
-        self.props.insert(key.into(), v);
+        self.properties.insert(key.into(), v);
         self
     }
     #[lsp_doc("docs/api/core/vertex/create_instance.md")]
     pub fn create_instance(&self) -> Instance {
-        let mut props = self.props.clone();
+        let mut props = self.properties.clone();
         // Treat position as a regular prop for instances (if shader wants it)
-        match self.pos {
+        match self.position {
             Position::Pos2(v) => {
                 props.insert("position2".into(), VertexValue::F32x2(v));
             }
@@ -50,17 +51,17 @@ impl Vertex {
 
 impl From<[f32; 2]> for Vertex {
     fn from(v: [f32; 2]) -> Self {
-        Vertex::new(Position::Pos2(v))
+        Vertex::new(v)
     }
 }
 impl From<[f32; 3]> for Vertex {
     fn from(v: [f32; 3]) -> Self {
-        Vertex::new(Position::Pos3(v))
+        Vertex::new(v)
     }
 }
 impl From<([f32; 3], [f32; 2])> for Vertex {
     fn from((p, uv): ([f32; 3], [f32; 2])) -> Self {
-        Vertex::new(Position::Pos3(p)).with_uv(uv)
+        Vertex::new(p).with_uv(uv)
     }
 }
 impl From<([f32; 3], [f32; 2], [f32; 4])> for Vertex {
@@ -71,7 +72,7 @@ impl From<([f32; 3], [f32; 2], [f32; 4])> for Vertex {
 
 impl PartialEq for Vertex {
     fn eq(&self, other: &Self) -> bool {
-        self.pos == other.pos && self.props == other.props
+        self.position == other.position && self.properties == other.properties
     }
 }
 impl Eq for Vertex {}

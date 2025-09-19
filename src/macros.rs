@@ -45,8 +45,8 @@ macro_rules! impl_tryfrom_owned_via_ref {
 //
 // Example usage:
 //
-// impl_from_bidir_clone!(TypeA, TypeB, |a: TypeA| TypeB::new(a.x), |b: TypeB| TypeA::from(b.y));
-// impl_tryfrom_bidir_clone!(TypeA, TypeB, ConvertError,
+// impl_from_bidirectional_with_refs!(TypeA, TypeB, |a: TypeA| TypeB::new(a.x), |b: TypeB| TypeA::from(b.y));
+// impl_tryfrom_bidirectional_with_refs!(TypeA, TypeB, ConvertError,
 //     |a: TypeA| TypeB::try_new(a.x),
 //     |b: TypeB| TypeA::try_from_part(b.y)
 // );
@@ -55,7 +55,7 @@ macro_rules! impl_tryfrom_owned_via_ref {
 // You can keep using the original lightweight macros above when you only need one delegation.
 
 #[macro_export]
-macro_rules! impl_from_bidir_clone {
+macro_rules! impl_from_into_with_refs {
     ($a:ty, $b:ty, $a_to_b:expr, $b_to_a:expr) => {
         impl From<$a> for $b {
             fn from(v: $a) -> $b {
@@ -81,7 +81,7 @@ macro_rules! impl_from_bidir_clone {
 }
 
 #[macro_export]
-macro_rules! impl_tryfrom_bidir_clone {
+macro_rules! impl_tryfrom_tryinto_with_refs {
     ($a:ty, $b:ty, $err:ty, $a_to_b:expr, $b_to_a:expr) => {
         impl TryFrom<$a> for $b {
             type Error = $err;

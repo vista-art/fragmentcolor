@@ -31,7 +31,7 @@ but while we're still in pre-release phase, this is expected.
   - [ ] PushConstant
 
 - [ ] Geometry/Instancing Refinement:
-  - [ ] AST-driven validation/mapping of @location inputs from Naga entry-point reflection.
+  - [x] AST-driven validation/mapping of @location inputs from Naga entry-point reflection.
   - [ ] Multiple meshes per Pass and per-mesh draw calls.
   - [ ] Property key → shader attribute naming conventions or mapping.
   - [ ] Mesh.load_* helpers and JSON inputs.
@@ -63,7 +63,7 @@ but while we're still in pre-release phase, this is expected.
 
 - [x] Geometry/instancing groundwork
 - [ ] Geometry/Instancing Refinement:
-  - [ ] AST-driven validation/mapping of @location inputs from Naga entry-point reflection.
+  - [x] AST-driven validation/mapping of @location inputs from Naga entry-point reflection.
   - [ ] Multiple meshes per Pass and per-mesh draw calls.
   - [ ] Property key → shader attribute naming conventions or mapping.
   - [ ] Mesh.load_* helpers and JSON inputs.

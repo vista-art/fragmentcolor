@@ -19,44 +19,39 @@ pub enum TextureFormat {
     L8,
 }
 
-impl From<TextureFormat> for wgpu::TextureFormat {
-    fn from(f: TextureFormat) -> Self {
-        match f {
-            TextureFormat::R8Unorm => wgpu::TextureFormat::R8Unorm,
-            TextureFormat::Rg8Unorm => wgpu::TextureFormat::Rg8Unorm,
-            TextureFormat::Rgba8Unorm => wgpu::TextureFormat::Rgba8Unorm,
-            TextureFormat::Rgba8UnormSrgb => wgpu::TextureFormat::Rgba8UnormSrgb,
-            TextureFormat::Bgra8Unorm => wgpu::TextureFormat::Bgra8Unorm,
-            TextureFormat::Rgba16Unorm => wgpu::TextureFormat::Rgba16Unorm,
-            TextureFormat::Rgba32Float => wgpu::TextureFormat::Rgba32Float,
-            TextureFormat::Rgba32Uint => wgpu::TextureFormat::Rgba32Uint,
-            TextureFormat::Rgba32Sint => wgpu::TextureFormat::Rgba32Sint,
-            TextureFormat::Depth32Float => wgpu::TextureFormat::Depth32Float,
-            TextureFormat::Rgba => wgpu::TextureFormat::Rgba8Unorm,
-            TextureFormat::Bgra => wgpu::TextureFormat::Bgra8Unorm,
-            TextureFormat::Lab => wgpu::TextureFormat::Rg8Unorm,
-            TextureFormat::L8 => wgpu::TextureFormat::R8Unorm,
-        }
+crate::impl_from_into_with_refs!(
+    TextureFormat,
+    wgpu::TextureFormat,
+    |f: TextureFormat| match f {
+        TextureFormat::R8Unorm => wgpu::TextureFormat::R8Unorm,
+        TextureFormat::Rg8Unorm => wgpu::TextureFormat::Rg8Unorm,
+        TextureFormat::Rgba8Unorm => wgpu::TextureFormat::Rgba8Unorm,
+        TextureFormat::Rgba8UnormSrgb => wgpu::TextureFormat::Rgba8UnormSrgb,
+        TextureFormat::Bgra8Unorm => wgpu::TextureFormat::Bgra8Unorm,
+        TextureFormat::Rgba16Unorm => wgpu::TextureFormat::Rgba16Unorm,
+        TextureFormat::Rgba32Float => wgpu::TextureFormat::Rgba32Float,
+        TextureFormat::Rgba32Uint => wgpu::TextureFormat::Rgba32Uint,
+        TextureFormat::Rgba32Sint => wgpu::TextureFormat::Rgba32Sint,
+        TextureFormat::Depth32Float => wgpu::TextureFormat::Depth32Float,
+        TextureFormat::Rgba => wgpu::TextureFormat::Rgba8Unorm,
+        TextureFormat::Bgra => wgpu::TextureFormat::Bgra8Unorm,
+        TextureFormat::Lab => wgpu::TextureFormat::Rg8Unorm,
+        TextureFormat::L8 => wgpu::TextureFormat::R8Unorm,
+    },
+    |wf: wgpu::TextureFormat| match wf {
+        wgpu::TextureFormat::R8Unorm => TextureFormat::R8Unorm,
+        wgpu::TextureFormat::Rg8Unorm => TextureFormat::Rg8Unorm,
+        wgpu::TextureFormat::Rgba8Unorm => TextureFormat::Rgba8Unorm,
+        wgpu::TextureFormat::Rgba8UnormSrgb => TextureFormat::Rgba8UnormSrgb,
+        wgpu::TextureFormat::Bgra8Unorm => TextureFormat::Bgra8Unorm,
+        wgpu::TextureFormat::Rgba16Unorm => TextureFormat::Rgba16Unorm,
+        wgpu::TextureFormat::Rgba32Float => TextureFormat::Rgba32Float,
+        wgpu::TextureFormat::Rgba32Uint => TextureFormat::Rgba32Uint,
+        wgpu::TextureFormat::Rgba32Sint => TextureFormat::Rgba32Sint,
+        wgpu::TextureFormat::Depth32Float => TextureFormat::Depth32Float,
+        _ => TextureFormat::Rgba8Unorm,
     }
-}
-
-impl From<wgpu::TextureFormat> for TextureFormat {
-    fn from(f: wgpu::TextureFormat) -> Self {
-        match f {
-            wgpu::TextureFormat::R8Unorm => TextureFormat::R8Unorm,
-            wgpu::TextureFormat::Rg8Unorm => TextureFormat::Rg8Unorm,
-            wgpu::TextureFormat::Rgba8Unorm => TextureFormat::Rgba8Unorm,
-            wgpu::TextureFormat::Rgba8UnormSrgb => TextureFormat::Rgba8UnormSrgb,
-            wgpu::TextureFormat::Bgra8Unorm => TextureFormat::Bgra8Unorm,
-            wgpu::TextureFormat::Rgba16Unorm => TextureFormat::Rgba16Unorm,
-            wgpu::TextureFormat::Rgba32Float => TextureFormat::Rgba32Float,
-            wgpu::TextureFormat::Rgba32Uint => TextureFormat::Rgba32Uint,
-            wgpu::TextureFormat::Rgba32Sint => TextureFormat::Rgba32Sint,
-            wgpu::TextureFormat::Depth32Float => TextureFormat::Depth32Float,
-            _ => TextureFormat::Rgba8Unorm,
-        }
-    }
-}
+);
 
 #[cfg(test)]
 mod tests {
