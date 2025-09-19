@@ -423,7 +423,7 @@ use fragmentcolor::mesh::{Mesh, Vertex};
 let shader = Shader::default();
 let pass = Pass::from_shader("p", &shader);
 let mut mesh = Mesh::new();
-mesh.add_vertex(Vertex::from([0.0, 0.0]));
+mesh.add_vertex(Vertex::new([0.0, 0.0]));
 pass.add_mesh(&mesh);
 `}
 lang="rust"
@@ -440,7 +440,7 @@ import { {Mesh, Vertex}, Shader } from "fragmentcolor";
 const shader = Shader.default();
 const pass = new Pass("p"); pass.addShader(shader);
 const mesh = new Mesh();
-mesh.addVertex(Vertex.from([0.0, 0.0]));
+mesh.addVertex(Vertex.new([0.0, 0.0]));
 pass.addMesh(mesh);
 `}
 lang="js"
@@ -457,7 +457,7 @@ from fragmentcolor import {Mesh, Vertex}, Shader
 shader = Shader.default()
 rpass = Pass("p"); rpass.add_shader(shader)
 mesh = Mesh()
-mesh.add_vertex(Vertex.from([0.0, 0.0]))
+mesh.add_vertex(Vertex.new([0.0, 0.0]))
 rpass.add_mesh(mesh)
 `}
 lang="python"

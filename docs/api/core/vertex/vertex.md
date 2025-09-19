@@ -6,5 +6,5 @@ A single vertex with a required position (2D or 3D) and optional properties like
 
 ```rust
 use fragmentcolor::mesh::Vertex;
-let v = Vertex::from([0.0, 0.0, 0.0]).with_uv([0.5, 0.5]);
+let v = Vertex::new([0.0, 0.0, 0.0]).with_uv([0.5, 0.5]);
 ```

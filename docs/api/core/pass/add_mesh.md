@@ -11,6 +11,6 @@ use fragmentcolor::mesh::{Mesh, Vertex};
 let shader = Shader::default();
 let pass = Pass::from_shader("p", &shader);
 let mut mesh = Mesh::new();
-mesh.add_vertex(Vertex::from([0.0, 0.0]));
+mesh.add_vertex(Vertex::new([0.0, 0.0]));
 pass.add_mesh(&mesh);
 ```

@@ -25,9 +25,9 @@ code={`
 use fragmentcolor::mesh::{Mesh, Vertex, VertexValue};
 
 let mut mesh = Mesh::new();
-mesh.add_vertex(Vertex::from([0.0, 0.5, 0.0]));
-mesh.add_vertex(Vertex::from([-0.5, -0.5, 0.0]));
-mesh.add_vertex(Vertex::from([0.5, -0.5, 0.0]));
+mesh.add_vertex(Vertex::new([0.0, 0.5, 0.0]));
+mesh.add_vertex(Vertex::new([-0.5, -0.5, 0.0]));
+mesh.add_vertex(Vertex::new([0.5, -0.5, 0.0]));
 `}
 lang="rust"
 />
@@ -40,9 +40,9 @@ code={`
 import { {Mesh, Vertex, VertexValue} } from "fragmentcolor";
 
 const mesh = new Mesh();
-mesh.addVertex(Vertex.from([0.0, 0.5, 0.0]));
-mesh.addVertex(Vertex.from([-0.5, -0.5, 0.0]));
-mesh.addVertex(Vertex.from([0.5, -0.5, 0.0]));
+mesh.addVertex(Vertex.new([0.0, 0.5, 0.0]));
+mesh.addVertex(Vertex.new([-0.5, -0.5, 0.0]));
+mesh.addVertex(Vertex.new([0.5, -0.5, 0.0]));
 `}
 lang="js"
 />
@@ -55,9 +55,9 @@ code={`
 from fragmentcolor import {Mesh, Vertex, VertexValue}
 
 mesh = Mesh()
-mesh.add_vertex(Vertex.from([0.0, 0.5, 0.0]))
-mesh.add_vertex(Vertex.from([-0.5, -0.5, 0.0]))
-mesh.add_vertex(Vertex.from([0.5, -0.5, 0.0]))
+mesh.add_vertex(Vertex.new([0.0, 0.5, 0.0]))
+mesh.add_vertex(Vertex.new([-0.5, -0.5, 0.0]))
+mesh.add_vertex(Vertex.new([0.5, -0.5, 0.0]))
 `}
 lang="python"
 />
@@ -179,9 +179,9 @@ Create a mesh from an iterator of Vertex values.
 code={`
 use fragmentcolor::mesh::{Mesh, Vertex};
 let m = Mesh::from_vertices([
-    Vertex::from([0.0, 0.0]),
-    Vertex::from([1.0, 0.0]),
-    Vertex::from([0.0, 1.0]),
+    Vertex::new([0.0, 0.0]),
+    Vertex::new([1.0, 0.0]),
+    Vertex::new([0.0, 1.0]),
 ]);
 `}
 lang="rust"
@@ -194,9 +194,9 @@ lang="rust"
 code={`
 import { {Mesh, Vertex} } from "fragmentcolor";
 const m = Mesh.fromVertices([;
-    Vertex.from([0.0, 0.0]),;
-    Vertex.from([1.0, 0.0]),;
-    Vertex.from([0.0, 1.0]),;
+    Vertex.new([0.0, 0.0]),;
+    Vertex.new([1.0, 0.0]),;
+    Vertex.new([0.0, 1.0]),;
 ]);
 `}
 lang="js"
@@ -209,9 +209,9 @@ lang="js"
 code={`
 from fragmentcolor import {Mesh, Vertex}
 m = Mesh.from_vertices([
-    Vertex.from([0.0, 0.0]),
-    Vertex.from([1.0, 0.0]),
-    Vertex.from([0.0, 1.0]),
+    Vertex.new([0.0, 0.0]),
+    Vertex.new([1.0, 0.0]),
+    Vertex.new([0.0, 1.0]),
 ])
 `}
 lang="python"
@@ -261,7 +261,7 @@ Add a single vertex to the mesh.
 code={`
 use fragmentcolor::mesh::{Mesh, Vertex};
 let mut m = Mesh::new();
-m.add_vertex(Vertex::from([0.0, 0.0]));
+m.add_vertex(Vertex::new([0.0, 0.0]));
 `}
 lang="rust"
 />
@@ -273,7 +273,7 @@ lang="rust"
 code={`
 import { {Mesh, Vertex} } from "fragmentcolor";
 const m = new Mesh();
-m.addVertex(Vertex.from([0.0, 0.0]));
+m.addVertex(Vertex.new([0.0, 0.0]));
 `}
 lang="js"
 />
@@ -285,7 +285,7 @@ lang="js"
 code={`
 from fragmentcolor import {Mesh, Vertex}
 m = Mesh()
-m.add_vertex(Vertex.from([0.0, 0.0]))
+m.add_vertex(Vertex.new([0.0, 0.0]))
 `}
 lang="python"
 />
@@ -335,8 +335,8 @@ code={`
 use fragmentcolor::mesh::{Mesh, Vertex};
 let mut m = Mesh::new();
 m.add_vertices([
-  Vertex::from([0.0, 0.0]),
-  Vertex::from([1.0, 0.0])
+  Vertex::new([0.0, 0.0]),
+  Vertex::new([1.0, 0.0])
 ]);
 `}
 lang="rust"
@@ -350,8 +350,8 @@ code={`
 import { {Mesh, Vertex} } from "fragmentcolor";
 const m = new Mesh();
 m.addVertices([;
-  Vertex.from([0.0, 0.0]),;
-  Vertex.from([1.0, 0.0]);
+  Vertex.new([0.0, 0.0]),;
+  Vertex.new([1.0, 0.0]);
 ]);
 `}
 lang="js"
@@ -365,8 +365,8 @@ code={`
 from fragmentcolor import {Mesh, Vertex}
 m = Mesh()
 m.add_vertices([
-  Vertex.from([0.0, 0.0]),
-  Vertex.from([1.0, 0.0])
+  Vertex.new([0.0, 0.0]),
+  Vertex.new([1.0, 0.0])
 ])
 `}
 lang="python"
@@ -416,7 +416,7 @@ Add a single instance (any Vertex can be converted into an instance).
 code={`
 use fragmentcolor::mesh::{Mesh, Vertex};
 let mut m = Mesh::new();
-let v = Vertex::from([0.0, 0.0]);
+let v = Vertex::new([0.0, 0.0]);
 m.add_instance(v);
 `}
 lang="rust"
@@ -429,7 +429,7 @@ lang="rust"
 code={`
 import { {Mesh, Vertex} } from "fragmentcolor";
 const m = new Mesh();
-const v = Vertex.from([0.0, 0.0]);
+const v = new Vertex([0.0, 0.0]);
 m.addInstance(v);
 `}
 lang="js"
@@ -442,7 +442,7 @@ lang="js"
 code={`
 from fragmentcolor import {Mesh, Vertex}
 m = Mesh()
-v = Vertex.from([0.0, 0.0])
+v = Vertex([0.0, 0.0])
 m.add_instance(v)
 `}
 lang="python"
@@ -493,8 +493,8 @@ code={`
 use fragmentcolor::mesh::{Mesh, Vertex};
 let mut m = Mesh::new();
 m.add_instances([
-  Vertex::from([0.0, 0.0]),
-  Vertex::from([1.0, 1.0]),
+  Vertex::new([0.0, 0.0]),
+  Vertex::new([1.0, 1.0]),
 ]);
 `}
 lang="rust"
@@ -508,8 +508,8 @@ code={`
 import { {Mesh, Vertex} } from "fragmentcolor";
 const m = new Mesh();
 m.addInstances([;
-  Vertex.from([0.0, 0.0]),;
-  Vertex.from([1.0, 1.0]),;
+  Vertex.new([0.0, 0.0]),;
+  Vertex.new([1.0, 1.0]),;
 ]);
 `}
 lang="js"
@@ -523,8 +523,8 @@ code={`
 from fragmentcolor import {Mesh, Vertex}
 m = Mesh()
 m.add_instances([
-  Vertex.from([0.0, 0.0]),
-  Vertex.from([1.0, 1.0]),
+  Vertex.new([0.0, 0.0]),
+  Vertex.new([1.0, 1.0]),
 ])
 `}
 lang="python"

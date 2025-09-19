@@ -1031,11 +1031,24 @@ impl From<UniformData> for wasm_bindgen::JsValue {
 
             UniformData::Texture(meta) => wasm_bindgen::JsValue::from_f64(meta.id.0 as f64),
 
+            UniformData::Sampler(info) => {
+                let obj = Object::new();
+                let _ = Reflect::set(
+                    &obj,
+                    &wasm_bindgen::JsValue::from_str("comparison"),
+                    &wasm_bindgen::JsValue::from_bool(info.comparison),
+                );
+                obj.into()
+            }
+
             // For complex types, return as regular JS arrays/objects
             UniformData::Array(items) => {
-                let arr = Array::new();
-                for (data, _, _) in items {
-                    arr.push(&data.into());
+                let mut arr = Array::new();
+                for (item, count, _stride) in items {
+                    let item_js: wasm_bindgen::JsValue = item.into();
+                    for _ in 0..count {
+                        arr.push(&item_js);
+                    }
                 }
                 arr.into()
             }
@@ -1047,7 +1060,7 @@ impl From<UniformData> for wasm_bindgen::JsValue {
                 }
                 obj.into()
             }
-            UniformData::Storage((_inner, _span, _)) => wasm_bindgen::JsValue::UNDEFINED,
+            UniformData::Storage(_) => wasm_bindgen::JsValue::UNDEFINED,
         }
     }
 }
