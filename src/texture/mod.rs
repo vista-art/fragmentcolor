@@ -548,3 +548,52 @@ impl TextureObject {
         )
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Story: TextureInput conversions from common Rust types produce expected variants.
+    #[test]
+    fn texture_input_conversions() {
+        let bytes: Vec<u8> = vec![1, 2, 3];
+        let ti1: TextureInput = (&bytes).into();
+        match ti1 {
+            TextureInput::Bytes(b) => assert_eq!(b, bytes),
+            _ => panic!("expected Bytes"),
+        }
+
+        let p = std::path::PathBuf::from("/tmp/img.png");
+        let ti2: TextureInput = (&p).into();
+        match ti2 {
+            TextureInput::Path(pb) => assert_eq!(pb, p),
+            _ => panic!("expected Path"),
+        }
+    }
+
+    // Story: Create a texture from a dynamic image and verify aspect.
+    #[test]
+    fn dynamic_image_aspect_smoke() {
+        pollster::block_on(async move {
+            // 2x1 image in memory
+            let img = image::DynamicImage::ImageRgba8(
+                image::RgbaImage::from_vec(2, 1, vec![255, 0, 0, 255, 0, 255, 0, 255]).unwrap(),
+            );
+
+            let r = crate::Renderer::new();
+            let tex = r
+                .create_texture(TextureInput::DynamicImage(img))
+                .await
+                .expect("create texture from dynamic image");
+            assert_eq!(tex.aspect(), 2.0);
+
+            // Change sampler options should not panic
+            tex.set_sampler_options(SamplerOptions {
+                repeat_x: false,
+                repeat_y: false,
+                smooth: true,
+                compare: None,
+            });
+        });
+    }
+}

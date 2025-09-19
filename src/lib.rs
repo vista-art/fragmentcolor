@@ -32,6 +32,11 @@ pub mod shader;
 /// A Pass represents a single rendering operation that can be part of a Frame.
 pub mod pass;
 
+/// # Mesh Module
+///
+/// Mesh represents geometry (vertices, indices, instances) and can be attached to a Pass.
+pub mod mesh;
+
 /// # Frame module
 ///
 /// Frame represents a collection of Passes that can be rendered together.
@@ -73,8 +78,8 @@ pub mod region;
 mod macros;
 
 pub use {
-    color::*, error::*, frame::*, pass::*, region::*, renderer::*, shader::*, size::*, target::*,
-    texture::*,
+    color::*, error::*, frame::*, mesh::*, pass::*, region::*, renderer::*, shader::*, size::*,
+    target::*, texture::*,
 };
 
 /// Install a panic hook and console logger when running in WASM so browser console shows

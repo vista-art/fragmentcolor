@@ -766,4 +766,146 @@ mod tests {
         assert_eq!(app.on_device_event.read().len(), 1);
         let _ = app.device_by_kind.read().len();
     }
+
+    // Story: set_uniform applies across Shader, Pass, and Frame scene variants bound to a window id.
+    #[test]
+    fn set_uniform_applies_across_scene_variants() {
+        const WGSL: &str = r#"
+            struct VertexOutput {
+                @builtin(position) coords: vec4<f32>,
+            }
+            @vertex
+            fn vs_main(@builtin(vertex_index) i: u32) -> VertexOutput {
+                let x = f32(i32(i) - 1);
+                let y = f32(i32(i & 1u) * 2 - 1);
+                return VertexOutput(vec4<f32>(x, y, 0.0, 1.0));
+            }
+            @group(0) @binding(0) var<uniform> resolution: vec2<f32>;
+            @fragment
+            fn fs_main(v: VertexOutput) -> @location(0) vec4<f32> {
+                let uv = v.coords.xy / resolution;
+                return vec4<f32>(uv, 0.0, 1.0);
+            }
+        "#;
+
+        let app = App::new();
+        let id = WindowId::from(42);
+
+        // Shader scene
+        let shader = Shader::new(WGSL).expect("shader");
+        app.set_scene(id, shader.clone());
+        app.set_uniform(id, "resolution", [800.0, 600.0])
+            .expect("set");
+        let got: [f32; 2] = shader.get("resolution").expect("get");
+        assert_eq!(got, [800.0, 600.0]);
+
+        // Pass scene
+        let shader2 = Shader::new(WGSL).expect("shader2");
+        let pass = Pass::from_shader("p", &shader2);
+        app.set_scene(id, pass);
+        app.set_uniform(id, "resolution", [1024.0, 768.0])
+            .expect("set2");
+        let got2: [f32; 2] = shader2.get("resolution").expect("get2");
+        assert_eq!(got2, [1024.0, 768.0]);
+
+        // Frame scene
+        let shader3 = Shader::new(WGSL).expect("shader3");
+        let pass3 = Pass::from_shader("p3", &shader3);
+        let mut frame = Frame::new();
+        frame.add_pass(&pass3);
+        app.set_scene(id, frame);
+        app.set_uniform(id, "resolution", [1.0, 2.0]).expect("set3");
+        let got3: [f32; 2] = shader3.get("resolution").expect("get3");
+        assert_eq!(got3, [1.0, 2.0]);
+    }
+
+    // Story: resize_target updates the underlying texture-backed target and size() reflects changes.
+    #[test]
+    fn resize_target_updates_texture_target_size() {
+        pollster::block_on(async move {
+            let app = App::new();
+            let id = WindowId::from(7);
+            let rt = app
+                .renderer()
+                .create_texture_target([5u32, 6u32])
+                .await
+                .expect("tex target");
+            app.targets
+                .write()
+                .insert(id, crate::RenderTarget::from(rt));
+
+            let s1 = app.size(id).expect("size present");
+            assert_eq!([s1.width, s1.height], [5, 6]);
+
+            app.resize_target(id, [9u32, 11u32]);
+            let s2 = app.size(id).expect("size present after");
+            assert_eq!([s2.width, s2.height], [9, 11]);
+        });
+    }
+
+    // Story: window_id() panics if called before any window is created.
+    #[test]
+    fn window_id_panics_before_resumed() {
+        let app = App::new();
+        let panicked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _ = app.window_id();
+        }))
+        .is_err();
+        assert!(panicked);
+    }
+
+    // Story: size() returns None when no target exists for the id; Some when present.
+    #[test]
+    fn size_some_and_none() {
+        pollster::block_on(async move {
+            let app = App::new();
+            let missing = WindowId::from(1u64);
+            assert!(app.size(missing).is_none());
+
+            let id = WindowId::from(2u64);
+            let rt = app
+                .renderer()
+                .create_texture_target([2u32, 3u32])
+                .await
+                .expect("tex target");
+            app.targets
+                .write()
+                .insert(id, crate::RenderTarget::from(rt));
+            let s = app.size(id).expect("size present");
+            assert_eq!([s.width, s.height], [2, 3]);
+        });
+    }
+
+    // Story: Typed registration helpers populate the appropriate maps.
+    #[test]
+    fn typed_registration_maps_receive_entries() {
+        let mut app = App::new();
+        let id = WindowId::from(99u64);
+        app.on_resize(|_, _| {});
+        app.on_window_mouse_input(id, |_, _, _, _, _| {});
+
+        // Primary-by-kind should have Resized key with one cb
+        let p = app.primary_by_kind.read();
+        assert!(p.get(&EventKind::Resized).is_some());
+
+        // Per-window-by-kind should have entry for id/MouseInput
+        let w = app.per_window_by_kind.read();
+        let exists = w
+            .get(&id)
+            .and_then(|m| m.get(&EventKind::MouseInput))
+            .map(|v| !v.is_empty())
+            .unwrap_or(false);
+        assert!(exists);
+    }
+
+    // Story: Device event registration maps receive entries.
+    #[test]
+    fn device_event_registration_maps_receive_entries() {
+        let mut app = App::new();
+        app.on_device_event(|_, _, _| {});
+        app.on_device_motion(|_, _, _, _| {});
+        assert_eq!(app.on_device_event.read().len(), 1);
+        let m = app.device_by_kind.read();
+        assert!(m.get(&DevEvtKind::Motion).is_some());
+    }
 }

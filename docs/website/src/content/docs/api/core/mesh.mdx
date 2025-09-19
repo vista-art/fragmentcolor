@@ -1,0 +1,632 @@
+---
+title: Mesh
+description: "High-level geometry container. A Mesh owns a list of vertices and optional instances. Internally it deduplicates vertices and always draws indexed and instanced  (instance_count defaults to 1 when none are provided)."
+category: core
+categoryLabel: Core
+---
+
+import { Code, Tabs, TabItem, Aside } from "@astrojs/starlight/components";
+
+## Description
+
+High-level geometry container. A Mesh owns a list of vertices and optional instances.
+Internally it deduplicates vertices and always draws indexed and instanced 
+(instance_count defaults to 1 when none are provided).
+
+
+
+## Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::mesh::{Mesh, Vertex, Position, VertexValue};
+
+let mut mesh = Mesh::new();
+mesh.add_vertex(Vertex::from_position(Position::Pos3([0.0, 0.5, 0.0])));
+mesh.add_vertex(Vertex::from_position(Position::Pos3([-0.5, -0.5, 0.0])));
+mesh.add_vertex(Vertex::from_position(Position::Pos3([0.5, -0.5, 0.0])));
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { {Mesh, Vertex, Position, VertexValue} } from "fragmentcolor";
+
+const mesh = new Mesh();
+mesh.addVertex(Vertex.fromPosition(Position.Pos3([0.0, 0.5, 0.0])));
+mesh.addVertex(Vertex.fromPosition(Position.Pos3([-0.5, -0.5, 0.0])));
+mesh.addVertex(Vertex.fromPosition(Position.Pos3([0.5, -0.5, 0.0])));
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import {Mesh, Vertex, Position, VertexValue}
+
+mesh = Mesh()
+mesh.add_vertex(Vertex.from_position(Position.Pos3([0.0, 0.5, 0.0])))
+mesh.add_vertex(Vertex.from_position(Position.Pos3([-0.5, -0.5, 0.0])))
+mesh.add_vertex(Vertex.from_position(Position.Pos3([0.5, -0.5, 0.0])))
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+## Methods
+
+
+---
+
+### Mesh::new
+
+Create an empty mesh.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::mesh::Mesh;
+let _m = Mesh::new();
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Mesh } from "fragmentcolor";
+const _m = new Mesh();
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Mesh
+_m = Mesh()
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Mesh::from_vertices
+
+Create a mesh from an iterator of Vertex values.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::mesh::{Mesh, Vertex, Position};
+let m = Mesh::from_vertices([
+    Vertex::from_position(Position::Pos2([0.0, 0.0])),
+    Vertex::from_position(Position::Pos2([1.0, 0.0])),
+    Vertex::from_position(Position::Pos2([0.0, 1.0])),
+]);
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { {Mesh, Vertex, Position} } from "fragmentcolor";
+const m = Mesh.fromVertices([;
+    Vertex.fromPosition(Position.Pos2([0.0, 0.0])),;
+    Vertex.fromPosition(Position.Pos2([1.0, 0.0])),;
+    Vertex.fromPosition(Position.Pos2([0.0, 1.0])),;
+]);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import {Mesh, Vertex, Position}
+m = Mesh.from_vertices([
+    Vertex.from_position(Position.Pos2([0.0, 0.0])),
+    Vertex.from_position(Position.Pos2([1.0, 0.0])),
+    Vertex.from_position(Position.Pos2([0.0, 1.0])),
+])
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Mesh::add_vertex
+
+Add a single vertex to the mesh.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::mesh::{Mesh, Vertex, Position};
+let mut m = Mesh::new();
+m.add_vertex(Vertex::from_position(Position::Pos2([0.0, 0.0])));
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { {Mesh, Vertex, Position} } from "fragmentcolor";
+const m = new Mesh();
+m.addVertex(Vertex.fromPosition(Position.Pos2([0.0, 0.0])));
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import {Mesh, Vertex, Position}
+m = Mesh()
+m.add_vertex(Vertex.from_position(Position.Pos2([0.0, 0.0])))
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Mesh::add_vertices
+
+Add many vertices to the mesh.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::mesh::{Mesh, Vertex, Position};
+let mut m = Mesh::new();
+m.add_vertices([
+  Vertex::from_position(Position::Pos2([0.0, 0.0])),
+  Vertex::from_position(Position::Pos2([1.0, 0.0]))
+]);
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { {Mesh, Vertex, Position} } from "fragmentcolor";
+const m = new Mesh();
+m.addVertices([;
+  Vertex.fromPosition(Position.Pos2([0.0, 0.0])),;
+  Vertex.fromPosition(Position.Pos2([1.0, 0.0]));
+]);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import {Mesh, Vertex, Position}
+m = Mesh()
+m.add_vertices([
+  Vertex.from_position(Position.Pos2([0.0, 0.0])),
+  Vertex.from_position(Position.Pos2([1.0, 0.0]))
+])
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Mesh::add_instance
+
+Add a single instance (any Vertex can be converted into an instance).
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::mesh::{Mesh, Vertex, Position};
+let mut m = Mesh::new();
+let v = Vertex::from_position(Position::Pos2([0.0, 0.0]));
+m.add_instance(v);
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { {Mesh, Vertex, Position} } from "fragmentcolor";
+const m = new Mesh();
+const v = Vertex.fromPosition(Position.Pos2([0.0, 0.0]));
+m.addInstance(v);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import {Mesh, Vertex, Position}
+m = Mesh()
+v = Vertex.from_position(Position.Pos2([0.0, 0.0]))
+m.add_instance(v)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Mesh::add_instances
+
+Add many instances to the mesh.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::mesh::{Mesh, Vertex, Position};
+let mut m = Mesh::new();
+m.add_instances([
+  Vertex::from_position(Position::Pos2([0.0, 0.0])),
+  Vertex::from_position(Position::Pos2([1.0, 1.0])),
+]);
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { {Mesh, Vertex, Position} } from "fragmentcolor";
+const m = new Mesh();
+m.addInstances([;
+  Vertex.fromPosition(Position.Pos2([0.0, 0.0])),;
+  Vertex.fromPosition(Position.Pos2([1.0, 1.0])),;
+]);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import {Mesh, Vertex, Position}
+m = Mesh()
+m.add_instances([
+  Vertex.from_position(Position.Pos2([0.0, 0.0])),
+  Vertex.from_position(Position.Pos2([1.0, 1.0])),
+])
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Mesh::clear_instances
+
+Remove all instances from a mesh (render defaults to 1 instance).
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::mesh::Mesh;
+let mut m = Mesh::new();
+m.clear_instances();
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Mesh } from "fragmentcolor";
+const m = new Mesh();
+m.clearInstances();
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Mesh
+m = Mesh()
+m.clear_instances()
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>

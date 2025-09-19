@@ -38,3 +38,56 @@ pub(super) fn load_shader(source: &str) -> Result<ShaderObject, ShaderError> {
 
     Ok(shader_object)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Story: Load minimal WGSL from a file path with .wgsl extension.
+    #[test]
+    fn loads_minimal_wgsl_from_file() {
+        let wgsl = r#"
+@group(0) @binding(0) var<uniform> u: vec4<f32>;
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  let x = f32(i32(i) - 1);
+  let y = f32(i32(i & 1u) * 2 - 1);
+  return vec4<f32>(x, y, 0.0, 1.0);
+}
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0, 1.0, 1.0, 1.0); }
+        "#;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("min.wgsl");
+        std::fs::write(&path, wgsl).expect("write");
+        let res = load_shader(path.to_str().unwrap());
+        assert!(res.is_ok());
+    }
+
+    // Story: When GLSL feature is disabled, loading a .frag file yields a ParseError.
+    #[test]
+    fn glsl_file_without_feature_errors() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("m.frag");
+        std::fs::write(&path, "void main() {}").expect("write");
+        let res = load_shader(path.to_str().unwrap());
+        if cfg!(feature = "glsl") {
+            // With GLSL enabled, invalid GLSL should still error (validation error path)
+            assert!(res.is_err());
+        } else {
+            let err = res.expect_err("glsl parse error");
+            match err {
+                ShaderError::ParseError(_) => {}
+                _ => panic!("unexpected error kind: {:?}", err),
+            }
+        }
+    }
+
+    // Story: Very short source string is rejected as invalid shader source.
+    #[test]
+    fn short_source_string_rejected() {
+        let err = load_shader("x").expect_err("invalid short source");
+        match err {
+            ShaderError::ParseError(_) => {}
+            _ => panic!("unexpected error kind: {:?}", err),
+        }
+    }
+}

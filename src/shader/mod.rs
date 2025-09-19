@@ -827,7 +827,9 @@ struct Buf { arr: array<vec4<f32>, 2> };
         let wgsl = SHADER;
         let shader = Shader::new(wgsl).expect("shader");
         // circle.radius expects a float
-        let err = shader.set("circle.radius", [1.0f32, 2.0]).expect_err("type mismatch");
+        let err = shader
+            .set("circle.radius", [1.0f32, 2.0])
+            .expect_err("type mismatch");
         match err {
             ShaderError::TypeMismatch(_) => {}
             _ => panic!("unexpected error: {:?}", err),
@@ -859,7 +861,9 @@ struct U { arr: array<vec4<f32>, 2> };
         "#;
         let shader = Shader::new(wgsl).expect("shader");
         // index 2 is out of bounds for len 2 [0,1]
-        let err = shader.set("u.arr[2]", [1.0, 2.0, 3.0, 4.0]).expect_err("oob");
+        let err = shader
+            .set("u.arr[2]", [1.0, 2.0, 3.0, 4.0])
+            .expect_err("oob");
         match err {
             ShaderError::IndexOutOfBounds { .. } => {}
             _ => panic!("unexpected error: {:?}", err),

@@ -139,4 +139,13 @@ mod tests {
             assert!(matches!(e4, RendererError::NetworkRequestError(_)));
         }
     }
+
+    // Story: SurfaceError variants are wrapped with a helpful message in Display.
+    #[test]
+    fn surface_error_display_includes_inner() {
+        let e = RendererError::SurfaceError(wgpu::SurfaceError::OutOfMemory);
+        let s = e.to_string();
+        assert!(s.contains("Surface error"));
+        assert!(s.contains("failed to acquire frame"));
+    }
 }
