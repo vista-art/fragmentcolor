@@ -3,13 +3,13 @@ set -euo pipefail
 
 # Run web dev servers and open a page.
 # Usage:
-#   bash run_web.sh                       # opens REPL (platforms/web/repl)
-#   bash run_web.sh repl                  # same as default
-#   bash run_web.sh visual                # opens a minimal visual page (REPL server)
-#   bash run_web.sh healthcheck           # opens the headless healthcheck index page (Node COOP/COEP)
-#   bash run_web.sh gallery               # opens a visual gallery that runs all JS examples
-#   PORT=9000 bash run_web.sh healthcheck # custom port for Node server (healthcheck/gallery)
-#   REPL_PORT=5190 bash run_web.sh repl   # custom Vite dev server port
+#   bash run_web                       # opens REPL (platforms/web/repl)
+#   bash run_web repl                  # same as default
+#   bash run_web visual                # opens a minimal visual page (REPL server)
+#   bash run_web healthcheck           # opens the headless healthcheck index page (Node COOP/COEP)
+#   bash run_web gallery               # opens a visual gallery that runs all JS examples
+#   PORT=9000 bash run_web healthcheck # custom port for Node server (healthcheck/gallery)
+#   REPL_PORT=5190 bash run_web repl   # custom Vite dev server port
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PAGE="${1:-repl}"
@@ -43,7 +43,7 @@ pick_free_port() {
 }
 
 # Ensure local WASM pkg is built and distributed to subprojects
-"$ROOT_DIR/build_web.sh" --debug
+"$ROOT_DIR/build_web" --debug
 
 if [ "$PAGE" = "healthcheck" ] || [ "$PAGE" = "gallery" ]; then
   # Use Node COOP/COEP static server for the healthcheck harness

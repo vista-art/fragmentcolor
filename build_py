@@ -7,8 +7,8 @@ set -x
 # RECORD accurate by repacking with the 'wheel' tool.
 #
 # Usage:
-#   ./build_py.sh            # release build
-#   CODESIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" ./build_py.sh
+#   ./build_py            # release build
+#   CODESIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" ./build_py
 #
 # Requirements:
 #   - maturin installed in PATH (pipx install maturin)

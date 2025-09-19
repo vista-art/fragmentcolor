@@ -36,8 +36,8 @@ jobs:
 
       - name: Build wheel
         run: |
-          chmod +x ./build_py.sh
-          ./build_py.sh
+          chmod +x ./build_py
+          ./build_py
 
       - name: Create venv and install wheel
         run: |

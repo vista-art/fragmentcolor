@@ -46,7 +46,7 @@ run_py() {
     export RUST_BACKTRACE=${RUST_BACKTRACE:-1}
   fi
   # Build a fresh wheel to ensure latest sources are tested
-  if bash "$ROOT_DIR/run_py.sh" headless; then
+  if bash "$ROOT_DIR/run_py" headless; then
     log_test_ok "$name"
     return 0
   else
@@ -145,16 +145,16 @@ run_web() {
   if [ "${FC_WEB_RELEASE:-0}" = "1" ]; then
     web_build_flag=""
   fi
-  if ! bash "$ROOT_DIR/build_web.sh" $web_build_flag; then
+  if ! bash "$ROOT_DIR/build_web" $web_build_flag; then
     echo "Failed to build web package" >&2
     log_test_fail "$name"
     return 1
   fi
   # Reuse existing WASM pkg instead of rebuilding to keep healthcheck fast.
-  # Expect that `build_web.sh` has been run previously when developing.
+  # Expect that `build_web` has been run previously when developing.
   local pkg_dir="$ROOT_DIR/platforms/web/pkg"
   if [ ! -d "$pkg_dir" ] || ! ls "$pkg_dir"/*.wasm >/dev/null 2>&1; then
-    echo "WASM pkg not found (expected at $pkg_dir). Run build_web.sh once before healthchecks." >&2
+    echo "WASM pkg not found (expected at $pkg_dir). Run build_web once before healthchecks." >&2
     log_test_fail "$name"
     return 1
   fi

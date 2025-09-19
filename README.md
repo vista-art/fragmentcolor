@@ -161,10 +161,10 @@ cargo fmt
 
 ```bash
 # Build WASM package (wasm-pack target web) and sync into local JS examples
-./build_web.sh        # add --debug for a debug build
+./build_web        # add --debug for a debug build
 
 # Run JS demos (Vite dev server) and open browser
-./run_web.sh repl     # or: ./run_web.sh multipass | ./run_web.sh headless
+./run_web repl     # or: ./run_web multipass | ./run_web headless
 
 # Manual alternative
 pnpm --dir examples/javascript install
@@ -175,7 +175,7 @@ pnpm --dir examples/javascript dev
 
 ```bash
 # Quick run helper: build wheel into dist/, create venv, and run an example
-./run_py.sh main      # or: ./run_py.sh multiobject | ./run_py.sh headless
+./run_py main      # or: ./run_py multiobject | ./run_py headless
 
 # Manual alternative
 pipx install maturin

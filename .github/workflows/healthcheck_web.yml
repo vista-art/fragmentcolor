@@ -31,8 +31,8 @@ jobs:
 
       - name: Build web package
         run: |
-          chmod +x ./build_web.sh
-          ./build_web.sh
+          chmod +x ./build_web
+          ./build_web
 
       - uses: pnpm/action-setup@v4
         with:
@@ -48,8 +48,8 @@ jobs:
           FC_HEALTHCHECK_VERBOSE: 1
           PORT: 8765
         run: |
-          chmod +x ./healthcheck.sh
-          ./healthcheck.sh web
+          chmod +x ./healthcheck
+          ./healthcheck web
 
       - name: Upload Playwright artifacts (on failure)
         if: always() && steps.healthcheck.outcome != 'success'
