@@ -103,7 +103,7 @@ enum PropBits {
 impl From<&Vertex> for VertexKey {
     fn from(v: &Vertex) -> Self {
         let pos = match v.dimensions {
-            0 | 1 | 2 => PosBits::P2([v.position.0.x.to_bits(), v.position.0.y.to_bits()]),
+            0..=2 => PosBits::P2([v.position.0.x.to_bits(), v.position.0.y.to_bits()]),
             _ => PosBits::P3([
                 v.position.0.x.to_bits(),
                 v.position.0.y.to_bits(),
@@ -392,7 +392,7 @@ fn derive_vertex_schema(vertex: &Vertex) -> Result<Schema, MeshError> {
     let mut fields: Vec<Field> = Vec::new();
     // position first; single key with dynamic format
     match vertex.dimensions {
-        0 | 1 | 2 => fields.push(Field {
+        0..=2 => fields.push(Field {
             name: "position".into(),
             fmt: wgpu::VertexFormat::Float32x2,
             size: 8,
@@ -437,7 +437,7 @@ fn pack_vertex(out: &mut Vec<u8>, v: &Vertex, schema: &Schema) {
     for f in schema.fields.iter() {
         match f.name.as_str() {
             "position" => {
-                if matches!(v.dimensions, 0 | 1 | 2) && f.fmt == wgpu::VertexFormat::Float32x2 {
+                if matches!(v.dimensions, 0..=2) && f.fmt == wgpu::VertexFormat::Float32x2 {
                     let p = [v.position.0.x, v.position.0.y];
                     out.extend_from_slice(bytemuck::cast_slice(&p));
                 } else if v.dimensions >= 3 && f.fmt == wgpu::VertexFormat::Float32x3 {
