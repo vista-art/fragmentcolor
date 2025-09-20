@@ -1,4 +1,4 @@
-use crate::VertexPosition;
+use super::builtins::VertexPosition;
 use lsp_doc::lsp_doc;
 use std::collections::HashMap;
 
@@ -8,6 +8,8 @@ pub struct Vertex {
     pub(crate) position: VertexPosition,
     pub(crate) dimensions: u8,
     pub(crate) properties: HashMap<String, VertexValue>,
+    pub(crate) prop_locations: HashMap<String, u32>,
+    pub(crate) next_location: u32,
 }
 
 pub trait IntoVertexPositionFull {
@@ -84,12 +86,19 @@ impl Vertex {
             position: VertexPosition(v4),
             dimensions,
             properties: HashMap::new(),
+            prop_locations: HashMap::new(),
+            next_location: 1,
         }
     }
 
     #[lsp_doc("docs/api/core/vertex/with.md")]
     pub fn with<V: Into<VertexValue>>(mut self, key: &str, v: V) -> Self {
-        self.properties.insert(key.into(), v.into());
+        let k = key.to_string();
+        if !self.prop_locations.contains_key(&k) {
+            self.prop_locations.insert(k.clone(), self.next_location);
+            self.next_location = self.next_location.saturating_add(1);
+        }
+        self.properties.insert(k, v.into());
         self
     }
 
@@ -98,6 +107,7 @@ impl Vertex {
         // Instances do not implicitly copy position; only explicit per-instance properties are carried.
         Instance {
             properties: self.properties.clone(),
+            prop_locations: self.prop_locations.clone(),
         }
     }
 }
@@ -133,6 +143,7 @@ impl Eq for Vertex {}
 #[derive(Clone, Debug, Default)]
 pub struct Instance {
     pub(crate) properties: HashMap<String, VertexValue>,
+    pub(crate) prop_locations: HashMap<String, u32>,
 }
 
 impl From<Vertex> for Instance {

@@ -9,8 +9,9 @@ shader’s vertex function (annotated with @location(N)) are derived from the so
 and matched by name and type to Mesh properties across both streams (instance first,
 then vertex).
 
-For convenience, a shader input named "pos" or "position" maps to the built-in Mesh
-keys "position2" (vec2<f32>) or "position3" (vec3<f32>) when present.
+Mapping is driven by shader reflection; there are no special-case names or reserved locations.
+The renderer matches attributes by explicit location if provided (instance first, then vertex), 
+and otherwise by name.
 
 If a required input cannot be found or its type does not match, rendering returns an error
 indicating the missing attribute or mismatch.
