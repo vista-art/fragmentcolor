@@ -1153,7 +1153,11 @@ fn build_ast_mapped_layouts(
                         inp.name, inp.location, inp.format, format_mesh
                     )));
                 }
-                attrs_i.push(wgpu::VertexAttribute { format: inp.format, offset, shader_location: inp.location });
+                attrs_i.push(wgpu::VertexAttribute {
+                    format: inp.format,
+                    offset,
+                    shader_location: inp.location,
+                });
                 placed = true;
             }
         }
@@ -1168,7 +1172,11 @@ fn build_ast_mapped_layouts(
                             inp.location, inp.format, format_mesh
                         )));
                     }
-                    attrs_v.push(wgpu::VertexAttribute { format: inp.format, offset, shader_location: inp.location });
+                    attrs_v.push(wgpu::VertexAttribute {
+                        format: inp.format,
+                        offset,
+                        shader_location: inp.location,
+                    });
                     placed = true;
                 }
             }
@@ -1181,7 +1189,11 @@ fn build_ast_mapped_layouts(
                                 inp.name, inp.location, inp.format, format_mesh
                             )));
                         }
-                        attrs_v.push(wgpu::VertexAttribute { format: inp.format, offset, shader_location: inp.location });
+                        attrs_v.push(wgpu::VertexAttribute {
+                            format: inp.format,
+                            offset,
+                            shader_location: inp.location,
+                        });
                         placed = true;
                     }
                 }
@@ -1197,7 +1209,11 @@ fn build_ast_mapped_layouts(
                             inp.name, inp.location, inp.format, format_mesh
                         )));
                     }
-                    attrs_i.push(wgpu::VertexAttribute { format: inp.format, offset, shader_location: inp.location });
+                    attrs_i.push(wgpu::VertexAttribute {
+                        format: inp.format,
+                        offset,
+                        shader_location: inp.location,
+                    });
                     placed = true;
                 }
             }
@@ -1210,7 +1226,11 @@ fn build_ast_mapped_layouts(
                         inp.name, inp.location, inp.format, format_mesh
                     )));
                 }
-                attrs_v.push(wgpu::VertexAttribute { format: inp.format, offset, shader_location: inp.location });
+                attrs_v.push(wgpu::VertexAttribute {
+                    format: inp.format,
+                    offset,
+                    shader_location: inp.location,
+                });
                 placed = true;
             }
         }

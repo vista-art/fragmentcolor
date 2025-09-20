@@ -7,11 +7,11 @@ pub(crate) struct VertexPosition(pub(crate) Vec4);
 
 /// Vertex index stored as a u32
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct VertexIndex(pub(crate) u32);
+pub(crate) struct _VertexIndex(pub(crate) u32);
 
 /// Instance index stored as a u32
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct InstanceIndex(pub(crate) u32);
+pub(crate) struct _InstanceIndex(pub(crate) u32);
 
 impl From<f32> for VertexPosition {
     fn from(x: f32) -> Self {
