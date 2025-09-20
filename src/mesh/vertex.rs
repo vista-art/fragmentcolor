@@ -6,48 +6,99 @@ use std::collections::HashMap;
 #[lsp_doc("docs/api/core/vertex/vertex.md")]
 pub struct Vertex {
     pub(crate) position: VertexPosition,
+    pub(crate) dimensions: u8,
     pub(crate) properties: HashMap<String, VertexValue>,
+}
+
+pub trait IntoVertexPositionFull {
+    fn into_v4_and_dimensions(self) -> (glam::Vec4, u8);
+}
+
+impl IntoVertexPositionFull for [f32; 2] {
+    fn into_v4_and_dimensions(self) -> (glam::Vec4, u8) {
+        (glam::Vec4::new(self[0], self[1], 0.0, 1.0), 2)
+    }
+}
+impl IntoVertexPositionFull for [f32; 3] {
+    fn into_v4_and_dimensions(self) -> (glam::Vec4, u8) {
+        (glam::Vec4::new(self[0], self[1], self[2], 1.0), 3)
+    }
+}
+impl IntoVertexPositionFull for [f32; 4] {
+    fn into_v4_and_dimensions(self) -> (glam::Vec4, u8) {
+        (glam::Vec4::from(self), 4)
+    }
+}
+impl IntoVertexPositionFull for (f32, f32) {
+    fn into_v4_and_dimensions(self) -> (glam::Vec4, u8) {
+        (glam::Vec4::new(self.0, self.1, 0.0, 1.0), 2)
+    }
+}
+impl IntoVertexPositionFull for (f32, f32, f32) {
+    fn into_v4_and_dimensions(self) -> (glam::Vec4, u8) {
+        (glam::Vec4::new(self.0, self.1, self.2, 1.0), 3)
+    }
+}
+impl IntoVertexPositionFull for (f32, f32, f32, f32) {
+    fn into_v4_and_dimensions(self) -> (glam::Vec4, u8) {
+        (glam::Vec4::new(self.0, self.1, self.2, self.3), 4)
+    }
+}
+impl IntoVertexPositionFull for f32 {
+    fn into_v4_and_dimensions(self) -> (glam::Vec4, u8) {
+        (glam::Vec4::new(self, 0.0, 0.0, 1.0), 1)
+    }
+}
+impl IntoVertexPositionFull for (u32, u32) {
+    fn into_v4_and_dimensions(self) -> (glam::Vec4, u8) {
+        (glam::Vec4::new(self.0 as f32, self.1 as f32, 0.0, 1.0), 2)
+    }
+}
+impl IntoVertexPositionFull for (u32, u32, u32) {
+    fn into_v4_and_dimensions(self) -> (glam::Vec4, u8) {
+        (
+            glam::Vec4::new(self.0 as f32, self.1 as f32, self.2 as f32, 1.0),
+            3,
+        )
+    }
+}
+impl IntoVertexPositionFull for [u32; 2] {
+    fn into_v4_and_dimensions(self) -> (glam::Vec4, u8) {
+        (glam::Vec4::new(self[0] as f32, self[1] as f32, 0.0, 1.0), 2)
+    }
+}
+impl IntoVertexPositionFull for [u32; 3] {
+    fn into_v4_and_dimensions(self) -> (glam::Vec4, u8) {
+        (
+            glam::Vec4::new(self[0] as f32, self[1] as f32, self[2] as f32, 1.0),
+            3,
+        )
+    }
 }
 
 impl Vertex {
     #[lsp_doc("docs/api/core/vertex/new.md")]
-    pub fn new(position: impl Into<VertexPosition>) -> Self {
+    pub fn new<P: IntoVertexPositionFull>(position: P) -> Self {
+        let (v4, dimensions) = position.into_v4_and_dimensions();
         Self {
-            position: position.into(),
+            position: VertexPosition(v4),
+            dimensions,
             properties: HashMap::new(),
         }
     }
-    #[lsp_doc("docs/api/core/vertex/with_uv.md")]
-    pub fn with_uv(mut self, uv: [f32; 2]) -> Self {
-        self.properties.insert("uv".into(), VertexValue::F32x2(uv));
+
+    #[lsp_doc("docs/api/core/vertex/with.md")]
+    pub fn with<V: Into<VertexValue>>(mut self, key: &str, v: V) -> Self {
+        self.properties.insert(key.into(), v.into());
         self
     }
-    #[lsp_doc("docs/api/core/vertex/with_color.md")]
-    pub fn with_color(mut self, rgba: [f32; 4]) -> Self {
-        self.properties
-            .insert("color".into(), VertexValue::F32x4(rgba));
-        self
-    }
-    #[lsp_doc("docs/api/core/vertex/with_property.md")]
-    pub fn with_property(mut self, key: &str, v: VertexValue) -> Self {
-        self.properties.insert(key.into(), v);
-        self
-    }
+
     #[lsp_doc("docs/api/core/vertex/create_instance.md")]
     pub fn create_instance(&self) -> Instance {
-        let mut props = self.properties.clone();
-        // Treat position as a regular prop for instances (if shader wants it)
-        match self.position.comps {
-            0 | 1 | 2 => {
-                let v = [self.position.v.x, self.position.v.y];
-                props.insert("position2".into(), VertexValue::F32x2(v));
-            }
-            _ => {
-                let v = [self.position.v.x, self.position.v.y, self.position.v.z];
-                props.insert("position3".into(), VertexValue::F32x3(v));
-            }
+        // Instances do not implicitly copy position; only explicit per-instance properties are carried.
+        Instance {
+            properties: self.properties.clone(),
         }
-        Instance { props }
     }
 }
 
@@ -63,12 +114,12 @@ impl From<[f32; 3]> for Vertex {
 }
 impl From<([f32; 3], [f32; 2])> for Vertex {
     fn from((p, uv): ([f32; 3], [f32; 2])) -> Self {
-        Vertex::new(p).with_uv(uv)
+        Vertex::new(p).with("uv", uv)
     }
 }
 impl From<([f32; 3], [f32; 2], [f32; 4])> for Vertex {
     fn from((p, uv, c): ([f32; 3], [f32; 2], [f32; 4])) -> Self {
-        Vertex::new(p).with_uv(uv).with_color(c)
+        Vertex::new(p).with("uv", uv).with("color", c)
     }
 }
 
@@ -81,7 +132,7 @@ impl Eq for Vertex {}
 
 #[derive(Clone, Debug, Default)]
 pub struct Instance {
-    pub(crate) props: HashMap<String, VertexValue>,
+    pub(crate) properties: HashMap<String, VertexValue>,
 }
 
 impl From<Vertex> for Instance {
@@ -109,6 +160,68 @@ pub enum VertexValue {
     I32x2([i32; 2]),
     I32x3([i32; 3]),
     I32x4([i32; 4]),
+}
+
+// Convenient conversions so callers can use plain arrays/scalars
+impl From<f32> for VertexValue {
+    fn from(v: f32) -> Self {
+        VertexValue::F32(v)
+    }
+}
+impl From<[f32; 2]> for VertexValue {
+    fn from(v: [f32; 2]) -> Self {
+        VertexValue::F32x2(v)
+    }
+}
+impl From<[f32; 3]> for VertexValue {
+    fn from(v: [f32; 3]) -> Self {
+        VertexValue::F32x3(v)
+    }
+}
+impl From<[f32; 4]> for VertexValue {
+    fn from(v: [f32; 4]) -> Self {
+        VertexValue::F32x4(v)
+    }
+}
+impl From<u32> for VertexValue {
+    fn from(v: u32) -> Self {
+        VertexValue::U32(v)
+    }
+}
+impl From<[u32; 2]> for VertexValue {
+    fn from(v: [u32; 2]) -> Self {
+        VertexValue::U32x2(v)
+    }
+}
+impl From<[u32; 3]> for VertexValue {
+    fn from(v: [u32; 3]) -> Self {
+        VertexValue::U32x3(v)
+    }
+}
+impl From<[u32; 4]> for VertexValue {
+    fn from(v: [u32; 4]) -> Self {
+        VertexValue::U32x4(v)
+    }
+}
+impl From<i32> for VertexValue {
+    fn from(v: i32) -> Self {
+        VertexValue::I32(v)
+    }
+}
+impl From<[i32; 2]> for VertexValue {
+    fn from(v: [i32; 2]) -> Self {
+        VertexValue::I32x2(v)
+    }
+}
+impl From<[i32; 3]> for VertexValue {
+    fn from(v: [i32; 3]) -> Self {
+        VertexValue::I32x3(v)
+    }
+}
+impl From<[i32; 4]> for VertexValue {
+    fn from(v: [i32; 4]) -> Self {
+        VertexValue::I32x4(v)
+    }
 }
 
 impl VertexValue {
