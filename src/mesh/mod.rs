@@ -86,8 +86,8 @@ impl Mesh {
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 struct VertexKey {
-    pos: PosBits,
-    props: Vec<(String, PropBits)>, // sorted by key
+    position: PosBits,
+    properties: Vec<(String, PropBits)>, // sorted by key
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -103,15 +103,15 @@ enum PropBits {
 
 impl From<&Vertex> for VertexKey {
     fn from(v: &Vertex) -> Self {
-        let pos = match v.position.comps {
+        let pos = match v.dimensions {
             0 | 1 | 2 => PosBits::P2([
-                v.position.v.x.to_bits(),
-                v.position.v.y.to_bits(),
+                v.position.0.x.to_bits(),
+                v.position.0.y.to_bits(),
             ]),
             _ => PosBits::P3([
-                v.position.v.x.to_bits(),
-                v.position.v.y.to_bits(),
-                v.position.v.z.to_bits(),
+                v.position.0.x.to_bits(),
+                v.position.0.y.to_bits(),
+                v.position.0.z.to_bits(),
             ]),
         };
         let mut props: Vec<(String, PropBits)> = v
@@ -120,7 +120,7 @@ impl From<&Vertex> for VertexKey {
             .map(|(k, val)| (k.clone(), PropBits::B(val.to_bytes())))
             .collect();
         props.sort_by(|a, b| a.0.cmp(&b.0));
-        VertexKey { pos, props }
+        VertexKey { position: pos, properties: props }
     }
 }
 
@@ -362,39 +362,21 @@ pub(crate) struct DrawCounts {
 
 fn derive_vertex_schema(vertex: &Vertex) -> Result<Schema, MeshError> {
     let mut fields: Vec<Field> = Vec::new();
-    // position first at location 0
-match vertex.position.comps {
+    // position first; single key with dynamic format
+match vertex.dimensions {
         0 | 1 | 2 => fields.push(Field {
-            name: "position2".into(),
+            name: "position".into(),
             fmt: wgpu::VertexFormat::Float32x2,
             size: 8,
         }),
         _ => fields.push(Field {
-            name: "position3".into(),
+            name: "position".into(),
             fmt: wgpu::VertexFormat::Float32x3,
             size: 12,
         }),
     }
-    // uv, color, then others sorted
-    if let Some(VertexValue::F32x2(_)) = vertex.properties.get("uv") {
-        fields.push(Field {
-            name: "uv".into(),
-            fmt: wgpu::VertexFormat::Float32x2,
-            size: 8,
-        });
-    }
-    if let Some(VertexValue::F32x4(_)) = vertex.properties.get("color") {
-        fields.push(Field {
-            name: "color".into(),
-            fmt: wgpu::VertexFormat::Float32x4,
-            size: 16,
-        });
-    }
-    let mut rest: Vec<(&String, &VertexValue)> = vertex
-        .properties
-        .iter()
-        .filter(|(k, _)| k.as_str() != "uv" && k.as_str() != "color")
-        .collect();
+    // remaining properties in sorted order
+    let mut rest: Vec<(&String, &VertexValue)> = vertex.properties.iter().collect();
     rest.sort_by(|a, b| a.0.cmp(b.0));
     for (k, val) in rest {
         fields.push(Field {
@@ -409,40 +391,8 @@ match vertex.position.comps {
 
 fn derive_instance_schema(i: &Instance) -> Result<Schema, MeshError> {
     let mut fields: Vec<Field> = Vec::new();
-    // If position copied over, keep order uv,color,rest
-    if let Some(VertexValue::F32x2(_)) = i.props.get("position2") {
-        fields.push(Field {
-            name: "position2".into(),
-            fmt: wgpu::VertexFormat::Float32x2,
-            size: 8,
-        });
-    }
-    if let Some(VertexValue::F32x3(_)) = i.props.get("position3") {
-        fields.push(Field {
-            name: "position3".into(),
-            fmt: wgpu::VertexFormat::Float32x3,
-            size: 12,
-        });
-    }
-    if let Some(VertexValue::F32x2(_)) = i.props.get("uv") {
-        fields.push(Field {
-            name: "uv".into(),
-            fmt: wgpu::VertexFormat::Float32x2,
-            size: 8,
-        });
-    }
-    if let Some(VertexValue::F32x4(_)) = i.props.get("color") {
-        fields.push(Field {
-            name: "color".into(),
-            fmt: wgpu::VertexFormat::Float32x4,
-            size: 16,
-        });
-    }
-    let mut rest: Vec<(&String, &VertexValue)> = i
-        .props
-        .iter()
-        .filter(|(k, _)| !matches!(k.as_str(), "position2" | "position3" | "uv" | "color"))
-        .collect();
+    // Only explicit per-instance properties; sorted by key
+    let mut rest: Vec<(&String, &VertexValue)> = i.properties.iter().collect();
     rest.sort_by(|a, b| a.0.cmp(b.0));
     for (k, val) in rest {
         fields.push(Field {
@@ -458,27 +408,23 @@ fn derive_instance_schema(i: &Instance) -> Result<Schema, MeshError> {
 fn pack_vertex(out: &mut Vec<u8>, v: &Vertex, schema: &Schema) {
     for f in schema.fields.iter() {
         match f.name.as_str() {
-            "position2" => {
-                if matches!(v.position.comps, 0 | 1 | 2) {
-                    let p = [v.position.v.x, v.position.v.y];
+            "position" => {
+                if matches!(v.dimensions, 0 | 1 | 2) && f.fmt == wgpu::VertexFormat::Float32x2 {
+                    let p = [v.position.0.x, v.position.0.y];
+                    out.extend_from_slice(bytemuck::cast_slice(&p));
+                } else if v.dimensions >= 3 && f.fmt == wgpu::VertexFormat::Float32x3 {
+                    let p = [v.position.0.x, v.position.0.y, v.position.0.z];
                     out.extend_from_slice(bytemuck::cast_slice(&p));
                 } else {
-                    out.extend_from_slice(&[0; 8]);
-                }
-            }
-            "position3" => {
-                if v.position.comps >= 3 {
-                    let p = [v.position.v.x, v.position.v.y, v.position.v.z];
-                    out.extend_from_slice(bytemuck::cast_slice(&p));
-                } else {
-                    out.extend_from_slice(&[0; 12]);
+                    // format mismatch or missing comps; zero-fill
+                    out.extend(std::iter::repeat_n(0u8, f.size as usize));
                 }
             }
             name => {
                 if let Some(val) = v.properties.get(name) {
                     out.extend_from_slice(&val.to_bytes());
                 } else {
-                    // zero-fill absent optional props
+                    // zero-fill absent optional properties
                     out.extend(std::iter::repeat_n(0u8, f.size as usize));
                 }
             }
@@ -488,7 +434,7 @@ fn pack_vertex(out: &mut Vec<u8>, v: &Vertex, schema: &Schema) {
 
 fn pack_instance(out: &mut Vec<u8>, i: &Instance, schema: &Schema) -> Result<(), MeshError> {
     for f in schema.fields.iter() {
-        if let Some(val) = i.props.get(&f.name) {
+        if let Some(val) = i.properties.get(&f.name) {
             out.extend_from_slice(&val.to_bytes());
         } else {
             out.extend(std::iter::repeat_n(0u8, f.size as usize));

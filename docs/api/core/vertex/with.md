@@ -1,4 +1,4 @@
-# Vertex::with_property
+# Vertex::with
 
 Attach an arbitrary property to the vertex.
 
@@ -10,5 +10,5 @@ will bind a property key `"offset"` with type Float32x2).
 
 ```rust
 use fragmentcolor::mesh::{Vertex, VertexValue};
-let v = Vertex::new([0.0, 0.0, 0.0]).with_property("weight", VertexValue::F32(1.0));
+let v = Vertex::new([0.0, 0.0, 0.0]).with("weight", VertexValue::F32(1.0));
 ```

@@ -21,7 +21,7 @@ A single vertex with a required position (2D or 3D) and optional properties like
 <Code
 code={`
 use fragmentcolor::mesh::Vertex;
-let v = Vertex::new([0.0, 0.0, 0.0]).with_uv([0.5, 0.5]);
+let v = Vertex::new([0.0, 0.0, 0.0]).with("uv", [0.5, 0.5]);
 `}
 lang="rust"
 />
@@ -32,7 +32,7 @@ lang="rust"
 <Code
 code={`
 import { Vertex } from "fragmentcolor";
-const v = new Vertex([0.0, 0.0, 0.0]).withUv([0.5, 0.5]);
+const v = new Vertex([0.0, 0.0, 0.0]).with("uv", [0.5, 0.5]);
 `}
 lang="js"
 />
@@ -43,7 +43,7 @@ lang="js"
 <Code
 code={`
 from fragmentcolor import Vertex
-v = Vertex([0.0, 0.0, 0.0]).with_uv([0.5, 0.5])
+v = Vertex([0.0, 0.0, 0.0]).with("uv", [0.5, 0.5])
 `}
 lang="python"
 />
@@ -152,147 +152,7 @@ lang="text"
 
 ---
 
-### Vertex::with_uv
-
-Attach a UV to the vertex.
-
-#### Example
-
-<Tabs>
-
-<TabItem label="Rust">
-<Code
-code={`
-use fragmentcolor::mesh::Vertex;
-let v = Vertex::new([0.0, 0.0, 0.0]).with_uv([0.0, 1.0]);
-`}
-lang="rust"
-/>
-
-</TabItem>
-
-<TabItem label="JavaScript">
-<Code
-code={`
-import { Vertex } from "fragmentcolor";
-const v = new Vertex([0.0, 0.0, 0.0]).withUv([0.0, 1.0]);
-`}
-lang="js"
-/>
-
-</TabItem>
-
-<TabItem label="Python">
-<Code
-code={`
-from fragmentcolor import Vertex
-v = Vertex([0.0, 0.0, 0.0]).with_uv([0.0, 1.0])
-`}
-lang="python"
-/>
-
-</TabItem>
-
-<TabItem label="Swift">
-<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
-<Code
-code={`
-// Swift placeholder: bindings WIP
-
-`}
-lang="text"
-/>
-
-</TabItem>
-
-<TabItem label="Kotlin">
-<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
-<Code
-code={`
-// Kotlin placeholder: bindings WIP
-
-`}
-lang="text"
-/>
-
-</TabItem>
-
-</Tabs>
-
-
----
-
-### Vertex::with_color
-
-Attach a color to the vertex.
-
-#### Example
-
-<Tabs>
-
-<TabItem label="Rust">
-<Code
-code={`
-use fragmentcolor::mesh::Vertex;
-let v = Vertex::new([0.0, 0.0, 0.0]).with_color([1.0, 0.0, 0.0, 1.0]);
-`}
-lang="rust"
-/>
-
-</TabItem>
-
-<TabItem label="JavaScript">
-<Code
-code={`
-import { Vertex } from "fragmentcolor";
-const v = new Vertex([0.0, 0.0, 0.0]).withColor([1.0, 0.0, 0.0, 1.0]);
-`}
-lang="js"
-/>
-
-</TabItem>
-
-<TabItem label="Python">
-<Code
-code={`
-from fragmentcolor import Vertex
-v = Vertex([0.0, 0.0, 0.0]).with_color([1.0, 0.0, 0.0, 1.0])
-`}
-lang="python"
-/>
-
-</TabItem>
-
-<TabItem label="Swift">
-<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
-<Code
-code={`
-// Swift placeholder: bindings WIP
-
-`}
-lang="text"
-/>
-
-</TabItem>
-
-<TabItem label="Kotlin">
-<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
-<Code
-code={`
-// Kotlin placeholder: bindings WIP
-
-`}
-lang="text"
-/>
-
-</TabItem>
-
-</Tabs>
-
-
----
-
-### Vertex::with_property
+### Vertex::with
 
 Attach an arbitrary property to the vertex.
 
@@ -308,7 +168,7 @@ will bind a property key `"offset"` with type Float32x2).
 <Code
 code={`
 use fragmentcolor::mesh::{Vertex, VertexValue};
-let v = Vertex::new([0.0, 0.0, 0.0]).with_property("weight", VertexValue::F32(1.0));
+let v = Vertex::new([0.0, 0.0, 0.0]).with("weight", VertexValue::F32(1.0));
 `}
 lang="rust"
 />
@@ -319,7 +179,7 @@ lang="rust"
 <Code
 code={`
 import { {Vertex, VertexValue} } from "fragmentcolor";
-const v = new Vertex([0.0, 0.0, 0.0]).withProperty("weight", VertexValue.F32(1.0));
+const v = new Vertex([0.0, 0.0, 0.0]).with("weight", VertexValue.F32(1.0));
 `}
 lang="js"
 />
@@ -330,7 +190,7 @@ lang="js"
 <Code
 code={`
 from fragmentcolor import {Vertex, VertexValue}
-v = Vertex([0.0, 0.0, 0.0]).with_property("weight", VertexValue.F32(1.0))
+v = Vertex([0.0, 0.0, 0.0]).with("weight", VertexValue.F32(1.0))
 `}
 lang="python"
 />
@@ -368,7 +228,7 @@ lang="text"
 
 ### Vertex::create_instance
 
-Create an Instance from this Vertex by cloning all of its properties; the position is copied under `position2` or `position3`.
+Create an Instance from this Vertex by cloning all of its properties
 
 #### Example
 

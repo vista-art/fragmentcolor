@@ -1138,63 +1138,60 @@ fn build_ast_mapped_layouts(
     let mut attrs_i: Vec<wgpu::VertexAttribute> = Vec::new();
 
     for inp in inputs.iter() {
-        // Resolve name (special-case for position aliases)
-        let mut candidates: Vec<(&str, wgpu::VertexFormat)> = Vec::new();
-        if is_position_alias(&inp.name) {
-            if matches!(inp.format, wgpu::VertexFormat::Float32x2)
-                && (map_i.as_ref().and_then(|m| m.get("position2")).is_some()
-                    || map_v.contains_key("position2"))
-            {
-                candidates.push(("position2", wgpu::VertexFormat::Float32x2));
-            }
-            if matches!(inp.format, wgpu::VertexFormat::Float32x3)
-                && (map_i.as_ref().and_then(|m| m.get("position3")).is_some()
-                    || map_v.contains_key("position3"))
-            {
-                candidates.push(("position3", wgpu::VertexFormat::Float32x3));
+        // Special rule: location(0) maps to mesh key "position" regardless of shader parameter name.
+        if inp.location == 0 {
+            if let Some((offset, format_mesh)) = map_v.get("position").cloned() {
+                if inp.format != format_mesh {
+                    return Err(RendererError::Error(format!(
+                        "Type mismatch for position @location(0): shader expects {:?}, mesh has {:?}",
+                        inp.format, format_mesh
+                    )));
+                }
+                attrs_v.push(wgpu::VertexAttribute {
+                    format: inp.format,
+                    offset,
+                    shader_location: inp.location,
+                });
+                continue;
+            } else {
+                return Err(RendererError::Error(
+                    "Mesh attribute not found for required 'position' @location(0)".into(),
+                ));
             }
         }
-        // Also consider exact name
-        candidates.push((&inp.name, inp.format));
 
-        // Try instance first when available, then vertex
+        // Other locations: match by exact name; try instance first, then vertex
         let mut placed = false;
         if let Some(ref mi) = map_i {
-            for (key, format_expected) in candidates.iter() {
-                if let Some((offset, format_mesh)) = mi.get(*key).cloned() {
-                    if *format_expected != format_mesh {
-                        return Err(RendererError::Error(format!(
-                            "Type mismatch for shader input '{}' @location({}): shader expects {:?}, mesh has {:?}",
-                            inp.name, inp.location, inp.format, format_mesh
-                        )));
-                    }
-                    attrs_i.push(wgpu::VertexAttribute {
-                        format: *format_expected,
-                        offset,
-                        shader_location: inp.location,
-                    });
-                    placed = true;
-                    break;
+            if let Some((offset, format_mesh)) = mi.get(inp.name.as_str()).cloned() {
+                if inp.format != format_mesh {
+                    return Err(RendererError::Error(format!(
+                        "Type mismatch for shader input '{}' @location({}): shader expects {:?}, mesh has {:?}",
+                        inp.name, inp.location, inp.format, format_mesh
+                    )));
                 }
+                attrs_i.push(wgpu::VertexAttribute {
+                    format: inp.format,
+                    offset,
+                    shader_location: inp.location,
+                });
+                placed = true;
             }
         }
         if !placed {
-            for (key, format_expected) in candidates.iter() {
-                if let Some((offset, format_mesh)) = map_v.get(*key).cloned() {
-                    if *format_expected != format_mesh {
-                        return Err(RendererError::Error(format!(
-                            "Type mismatch for shader input '{}' @location({}): shader expects {:?}, mesh has {:?}",
-                            inp.name, inp.location, inp.format, format_mesh
-                        )));
-                    }
-                    attrs_v.push(wgpu::VertexAttribute {
-                        format: *format_expected,
-                        offset,
-                        shader_location: inp.location,
-                    });
-                    placed = true;
-                    break;
+            if let Some((offset, format_mesh)) = map_v.get(inp.name.as_str()).cloned() {
+                if inp.format != format_mesh {
+                    return Err(RendererError::Error(format!(
+                        "Type mismatch for shader input '{}' @location({}): shader expects {:?}, mesh has {:?}",
+                        inp.name, inp.location, inp.format, format_mesh
+                    )));
                 }
+                attrs_v.push(wgpu::VertexAttribute {
+                    format: inp.format,
+                    offset,
+                    shader_location: inp.location,
+                });
+                placed = true;
             }
         }
         if !placed {
@@ -1277,10 +1274,6 @@ fn schema_offsets(
         ofs += f.size;
     }
     (map, schema.stride)
-}
-
-fn is_position_alias(name: &str) -> bool {
-    matches!(name, "pos" | "position")
 }
 
 fn vertex_fmt_code(fmt: wgpu::VertexFormat) -> u8 {
@@ -1522,10 +1515,10 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(0.,1.,0.,1.); }
             // Two instances with different offsets: provide an "offset" property to match the shader
             use crate::mesh::VertexValue;
             mesh.add_instance(
-                Vertex::new([0.0, 0.0]).with_property("offset", VertexValue::F32x2([0.0, 0.0])),
+                Vertex::new([0.0, 0.0]).with("offset", VertexValue::F32x2([0.0, 0.0])),
             );
             mesh.add_instance(
-                Vertex::new([0.25, 0.0]).with_property("offset", VertexValue::F32x2([0.25, 0.0])),
+                Vertex::new([0.25, 0.0]).with("offset", VertexValue::F32x2([0.25, 0.0])),
             );
 
             pass.add_mesh(&mesh);
@@ -1562,9 +1555,9 @@ fn main(v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(v.uv, 0.0, 1.0); }
             let mut mesh = crate::mesh::Mesh::new();
             use crate::mesh::Vertex;
             mesh.add_vertices([
-                Vertex::new([-0.5, -0.5]).with_uv([0.0, 0.0]),
-                Vertex::new([0.5, -0.5]).with_uv([1.0, 0.0]),
-                Vertex::new([0.0, 0.5]).with_uv([0.5, 1.0]),
+                Vertex::new([-0.5, -0.5]).with("uv", [0.0, 0.0]),
+                Vertex::new([0.5, -0.5]).with("uv", [1.0, 0.0]),
+                Vertex::new([0.0, 0.5]).with("uv", [0.5, 1.0]),
             ]);
             pass.add_mesh(&mesh);
 
@@ -1601,9 +1594,9 @@ fn main(v: VOut) -> @location(0) vec4<f32> { return v.color; }
             let mut mesh = crate::mesh::Mesh::new();
             use crate::mesh::Vertex;
             mesh.add_vertices([
-                Vertex::new([-0.5, -0.5, 0.0]).with_color([1.0, 0.0, 0.0, 1.0]),
-                Vertex::new([0.5, -0.5, 0.0]).with_color([0.0, 1.0, 0.0, 1.0]),
-                Vertex::new([0.0, 0.5, 0.0]).with_color([0.0, 0.0, 1.0, 1.0]),
+                Vertex::new([-0.5, -0.5, 0.0]).with("color", [1.0, 0.0, 0.0, 1.0]),
+                Vertex::new([0.5, -0.5, 0.0]).with("color", [0.0, 1.0, 0.0, 1.0]),
+                Vertex::new([0.0, 0.5, 0.0]).with("color", [0.0, 0.0, 1.0, 1.0]),
             ]);
             pass.add_mesh(&mesh);
 
@@ -1654,22 +1647,21 @@ fn main(v: VOut) -> @location(0) vec4<f32> { return v.tint; }
             // Triangle geometry in clip-space
             mesh.add_vertices([
                 Vertex::new([-0.5, -0.5, 0.0])
-                    .with_property("tint", VertexValue::F32x4([0.0, 1.0, 0.0, 1.0])), // vertex-level green (should be ignored)
+                    .with("tint", VertexValue::F32x4([0.0, 1.0, 0.0, 1.0])), // vertex-level green (should be ignored)
                 Vertex::new([0.5, -0.5, 0.0])
-                    .with_property("tint", VertexValue::F32x4([0.0, 1.0, 0.0, 1.0])),
-                Vertex::new([0.0, 0.5, 0.0])
-                    .with_property("tint", VertexValue::F32x4([0.0, 1.0, 0.0, 1.0])),
+                    .with("tint", VertexValue::F32x4([0.0, 1.0, 0.0, 1.0])),
+                Vertex::new([0.0, 0.5, 0.0]).with("tint", VertexValue::F32x4([0.0, 1.0, 0.0, 1.0])),
             ]);
             // Two instances with different offsets and tints
             mesh.add_instance(
                 Vertex::new([-0.25, 0.0])
-                    .with_property("offset", VertexValue::F32x2([-0.25, 0.0]))
-                    .with_property("tint", VertexValue::F32x4([1.0, 0.0, 0.0, 1.0])), // red
+                    .with("offset", VertexValue::F32x2([-0.25, 0.0]))
+                    .with("tint", VertexValue::F32x4([1.0, 0.0, 0.0, 1.0])), // red
             );
             mesh.add_instance(
                 Vertex::new([0.25, 0.0])
-                    .with_property("offset", VertexValue::F32x2([0.25, 0.0]))
-                    .with_property("tint", VertexValue::F32x4([0.0, 0.0, 1.0, 1.0])), // blue
+                    .with("offset", VertexValue::F32x2([0.25, 0.0]))
+                    .with("tint", VertexValue::F32x4([0.0, 0.0, 1.0, 1.0])), // blue
             );
 
             pass.add_mesh(&mesh);
@@ -1737,9 +1729,9 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(0.2,0.3,0.4,1.0);
             let mut mesh = crate::mesh::Mesh::new();
             use crate::mesh::Vertex;
             mesh.add_vertices([
-                Vertex::new([-0.5, -0.5, 0.0]).with_uv([0.0, 0.0]),
-                Vertex::new([0.5, -0.5, 0.0]).with_uv([1.0, 0.0]),
-                Vertex::new([0.0, 0.5, 0.0]).with_uv([0.5, 1.0]),
+                Vertex::new([-0.5, -0.5, 0.0]).with("uv", [0.0, 0.0]),
+                Vertex::new([0.5, -0.5, 0.0]).with("uv", [1.0, 0.0]),
+                Vertex::new([0.0, 0.5, 0.0]).with("uv", [0.5, 1.0]),
             ]);
             pass.add_mesh(&mesh);
 
@@ -1980,8 +1972,7 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,1.,0.,1.); }
             ]);
             // Add instance with wrong-typed "offset" (vec3 instead of vec2)
             mesh.add_instance(
-                Vertex::new([0.0, 0.0])
-                    .with_property("offset", VertexValue::F32x3([0.0, 0.0, 0.0])),
+                Vertex::new([0.0, 0.0]).with("offset", VertexValue::F32x3([0.0, 0.0, 0.0])),
             );
             pass.add_mesh(&mesh);
 

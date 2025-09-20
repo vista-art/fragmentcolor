@@ -235,7 +235,7 @@ mesh.add_vertices([
   Vertex::new([ 0.0,  0.5, 0.0]),
 ]);
 // Instance properties matched by name and type
-mesh.add_instance(Vertex::new([0.0, 0.0]).with_property("offset", [0.0, 0.0]));
+mesh.add_instance(Vertex::new([0.0, 0.0]).with("offset", [0.0, 0.0]));
 
 pass.add_mesh(&mesh);
 renderer.render(&pass, &target)?;
