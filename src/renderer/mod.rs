@@ -1145,81 +1145,45 @@ fn build_ast_mapped_layouts(
         let mut placed = false;
 
         // 1) Try instance by explicit index
-        if let Some(name) = i_loc_map.get(&inp.location) {
-            if let Some((offset, format_mesh)) = map_i.as_ref().and_then(|m| m.get(name)).cloned() {
+        if let Some(name) = i_loc_map.get(&inp.location)
+            && let Some((offset, format_mesh)) = map_i.as_ref().and_then(|m| m.get(name)).cloned()
+        {
+            if inp.format != format_mesh {
+                return Err(RendererError::Error(format!(
+                    "Type mismatch for shader input '{}' @location({}): shader expects {:?}, mesh has {:?}",
+                    inp.name, inp.location, inp.format, format_mesh
+                )));
+            }
+            attrs_i.push(wgpu::VertexAttribute {
+                format: inp.format,
+                offset,
+                shader_location: inp.location,
+            });
+            placed = true;
+        }
+        // 2) Try vertex by explicit index (position or property)
+        if !placed {
+            // position index
+            if inp.location == pos_loc
+                && let Some((offset, format_mesh)) = map_v.get("position").cloned()
+            {
                 if inp.format != format_mesh {
                     return Err(RendererError::Error(format!(
-                        "Type mismatch for shader input '{}' @location({}): shader expects {:?}, mesh has {:?}",
-                        inp.name, inp.location, inp.format, format_mesh
+                        "Type mismatch for vertex 'position' @location({}): shader expects {:?}, mesh has {:?}",
+                        inp.location, inp.format, format_mesh
                     )));
                 }
-                attrs_i.push(wgpu::VertexAttribute {
+                attrs_v.push(wgpu::VertexAttribute {
                     format: inp.format,
                     offset,
                     shader_location: inp.location,
                 });
                 placed = true;
             }
-        }
-        // 2) Try vertex by explicit index (position or property)
-        if !placed {
-            // position index
-            if inp.location == pos_loc {
-                if let Some((offset, format_mesh)) = map_v.get("position").cloned() {
-                    if inp.format != format_mesh {
-                        return Err(RendererError::Error(format!(
-                            "Type mismatch for vertex 'position' @location({}): shader expects {:?}, mesh has {:?}",
-                            inp.location, inp.format, format_mesh
-                        )));
-                    }
-                    attrs_v.push(wgpu::VertexAttribute {
-                        format: inp.format,
-                        offset,
-                        shader_location: inp.location,
-                    });
-                    placed = true;
-                }
-            }
-            if !placed {
-                if let Some(name) = v_loc_map.get(&inp.location) {
-                    if let Some((offset, format_mesh)) = map_v.get(name.as_str()).cloned() {
-                        if inp.format != format_mesh {
-                            return Err(RendererError::Error(format!(
-                                "Type mismatch for shader input '{}' @location({}): shader expects {:?}, mesh has {:?}",
-                                inp.name, inp.location, inp.format, format_mesh
-                            )));
-                        }
-                        attrs_v.push(wgpu::VertexAttribute {
-                            format: inp.format,
-                            offset,
-                            shader_location: inp.location,
-                        });
-                        placed = true;
-                    }
-                }
-            }
-        }
-        // 3) Fallback: match by name (instance then vertex)
-        if !placed {
-            if let Some(ref mi) = map_i {
-                if let Some((offset, format_mesh)) = mi.get(inp.name.as_str()).cloned() {
-                    if inp.format != format_mesh {
-                        return Err(RendererError::Error(format!(
-                            "Type mismatch for shader input '{}' @location({}): shader expects {:?}, mesh has {:?}",
-                            inp.name, inp.location, inp.format, format_mesh
-                        )));
-                    }
-                    attrs_i.push(wgpu::VertexAttribute {
-                        format: inp.format,
-                        offset,
-                        shader_location: inp.location,
-                    });
-                    placed = true;
-                }
-            }
-        }
-        if !placed {
-            if let Some((offset, format_mesh)) = map_v.get(inp.name.as_str()).cloned() {
+            if !placed
+                && let Some(name) = v_loc_map.get(&inp.location)
+                && let Some((offset, format_mesh)) = map_v.get(name.as_str()).cloned()
+            {
                 if inp.format != format_mesh {
                     return Err(RendererError::Error(format!(
                         "Type mismatch for shader input '{}' @location({}): shader expects {:?}, mesh has {:?}",
@@ -1233,6 +1197,38 @@ fn build_ast_mapped_layouts(
                 });
                 placed = true;
             }
+        }
+        // 3) Fallback: match by name (instance then vertex)
+        if !placed
+            && let Some(ref mi) = map_i
+            && let Some((offset, format_mesh)) = mi.get(inp.name.as_str()).cloned()
+        {
+            if inp.format != format_mesh {
+                return Err(RendererError::Error(format!(
+                    "Type mismatch for shader input '{}' @location({}): shader expects {:?}, mesh has {:?}",
+                    inp.name, inp.location, inp.format, format_mesh
+                )));
+            }
+            attrs_i.push(wgpu::VertexAttribute {
+                format: inp.format,
+                offset,
+                shader_location: inp.location,
+            });
+            placed = true;
+        }
+        if !placed && let Some((offset, format_mesh)) = map_v.get(inp.name.as_str()).cloned() {
+            if inp.format != format_mesh {
+                return Err(RendererError::Error(format!(
+                    "Type mismatch for shader input '{}' @location({}): shader expects {:?}, mesh has {:?}",
+                    inp.name, inp.location, inp.format, format_mesh
+                )));
+            }
+            attrs_v.push(wgpu::VertexAttribute {
+                format: inp.format,
+                offset,
+                shader_location: inp.location,
+            });
+            placed = true;
         }
         if !placed {
             return Err(RendererError::Error(format!(
