@@ -1,17 +1,17 @@
-use crate::Position;
+use crate::VertexPosition;
 use lsp_doc::lsp_doc;
 use std::collections::HashMap;
 
 #[derive(Clone, Debug)]
 #[lsp_doc("docs/api/core/vertex/vertex.md")]
 pub struct Vertex {
-    pub(crate) position: Position,
+    pub(crate) position: VertexPosition,
     pub(crate) properties: HashMap<String, VertexValue>,
 }
 
 impl Vertex {
     #[lsp_doc("docs/api/core/vertex/new.md")]
-    pub fn new(position: impl Into<Position>) -> Self {
+    pub fn new(position: impl Into<VertexPosition>) -> Self {
         Self {
             position: position.into(),
             properties: HashMap::new(),
@@ -37,11 +37,13 @@ impl Vertex {
     pub fn create_instance(&self) -> Instance {
         let mut props = self.properties.clone();
         // Treat position as a regular prop for instances (if shader wants it)
-        match self.position {
-            Position::Pos2(v) => {
+        match self.position.comps {
+            0 | 1 | 2 => {
+                let v = [self.position.v.x, self.position.v.y];
                 props.insert("position2".into(), VertexValue::F32x2(v));
             }
-            Position::Pos3(v) => {
+            _ => {
+                let v = [self.position.v.x, self.position.v.y, self.position.v.z];
                 props.insert("position3".into(), VertexValue::F32x3(v));
             }
         }
@@ -66,7 +68,7 @@ impl From<([f32; 3], [f32; 2])> for Vertex {
 }
 impl From<([f32; 3], [f32; 2], [f32; 4])> for Vertex {
     fn from((p, uv, c): ([f32; 3], [f32; 2], [f32; 4])) -> Self {
-        Vertex::new(Position::Pos3(p)).with_uv(uv).with_color(c)
+        Vertex::new(p).with_uv(uv).with_color(c)
     }
 }
 
