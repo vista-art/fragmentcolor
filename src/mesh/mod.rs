@@ -103,9 +103,16 @@ enum PropBits {
 
 impl From<&Vertex> for VertexKey {
     fn from(v: &Vertex) -> Self {
-        let pos = match v.position {
-            Position::Pos2(p) => PosBits::P2([p[0].to_bits(), p[1].to_bits()]),
-            Position::Pos3(p) => PosBits::P3([p[0].to_bits(), p[1].to_bits(), p[2].to_bits()]),
+        let pos = match v.position.comps {
+            0 | 1 | 2 => PosBits::P2([
+                v.position.v.x.to_bits(),
+                v.position.v.y.to_bits(),
+            ]),
+            _ => PosBits::P3([
+                v.position.v.x.to_bits(),
+                v.position.v.y.to_bits(),
+                v.position.v.z.to_bits(),
+            ]),
         };
         let mut props: Vec<(String, PropBits)> = v
             .properties
@@ -356,13 +363,13 @@ pub(crate) struct DrawCounts {
 fn derive_vertex_schema(vertex: &Vertex) -> Result<Schema, MeshError> {
     let mut fields: Vec<Field> = Vec::new();
     // position first at location 0
-    match vertex.position {
-        Position::Pos2(_) => fields.push(Field {
+match vertex.position.comps {
+        0 | 1 | 2 => fields.push(Field {
             name: "position2".into(),
             fmt: wgpu::VertexFormat::Float32x2,
             size: 8,
         }),
-        Position::Pos3(_) => fields.push(Field {
+        _ => fields.push(Field {
             name: "position3".into(),
             fmt: wgpu::VertexFormat::Float32x3,
             size: 12,
@@ -452,14 +459,16 @@ fn pack_vertex(out: &mut Vec<u8>, v: &Vertex, schema: &Schema) {
     for f in schema.fields.iter() {
         match f.name.as_str() {
             "position2" => {
-                if let Position::Pos2(p) = v.position {
+                if matches!(v.position.comps, 0 | 1 | 2) {
+                    let p = [v.position.v.x, v.position.v.y];
                     out.extend_from_slice(bytemuck::cast_slice(&p));
                 } else {
                     out.extend_from_slice(&[0; 8]);
                 }
             }
             "position3" => {
-                if let Position::Pos3(p) = v.position {
+                if v.position.comps >= 3 {
+                    let p = [v.position.v.x, v.position.v.y, v.position.v.z];
                     out.extend_from_slice(bytemuck::cast_slice(&p));
                 } else {
                     out.extend_from_slice(&[0; 12]);
