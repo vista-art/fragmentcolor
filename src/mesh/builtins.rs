@@ -3,7 +3,15 @@ use glam::Vec4;
 /// Vertex position stored as a Vec4, mirroring GPU conventions (xyzw),
 /// with w defaulting to 1.0 when not provided.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct VertexPosition(pub Vec4);
+pub(crate) struct VertexPosition(pub(crate) Vec4);
+
+/// Vertex index stored as a u32
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct VertexIndex(pub(crate) u32);
+
+/// Instance index stored as a u32
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct InstanceIndex(pub(crate) u32);
 
 impl From<f32> for VertexPosition {
     fn from(x: f32) -> Self {

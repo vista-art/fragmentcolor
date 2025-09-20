@@ -7,11 +7,10 @@ use std::sync::Arc;
 pub mod error;
 pub use error::*;
 
-pub mod position;
-pub use position::*;
-
 pub mod vertex;
 pub use vertex::*;
+
+pub(crate) mod builtins;
 
 #[derive(Clone, Debug)]
 #[lsp_doc("docs/api/core/mesh/mesh.md")]
@@ -104,10 +103,7 @@ enum PropBits {
 impl From<&Vertex> for VertexKey {
     fn from(v: &Vertex) -> Self {
         let pos = match v.dimensions {
-            0 | 1 | 2 => PosBits::P2([
-                v.position.0.x.to_bits(),
-                v.position.0.y.to_bits(),
-            ]),
+            0 | 1 | 2 => PosBits::P2([v.position.0.x.to_bits(), v.position.0.y.to_bits()]),
             _ => PosBits::P3([
                 v.position.0.x.to_bits(),
                 v.position.0.y.to_bits(),
@@ -120,7 +116,10 @@ impl From<&Vertex> for VertexKey {
             .map(|(k, val)| (k.clone(), PropBits::B(val.to_bytes())))
             .collect();
         props.sort_by(|a, b| a.0.cmp(&b.0));
-        VertexKey { position: pos, properties: props }
+        VertexKey {
+            position: pos,
+            properties: props,
+        }
     }
 }
 
@@ -360,10 +359,39 @@ pub(crate) struct DrawCounts {
     pub instance_count: u32,
 }
 
+impl MeshObject {
+    pub(crate) fn first_vertex_location_map(&self) -> (u32, HashMap<u32, String>) {
+        let verts = self.verts.read();
+        if let Some(v) = verts.first() {
+            // position defaults to 0; properties follow insertion order via stored map
+            let pos_loc = 0u32;
+            let mut rev: HashMap<u32, String> = HashMap::new();
+            for (k, loc) in v.prop_locations.iter() {
+                rev.insert(*loc, k.clone());
+            }
+            (pos_loc, rev)
+        } else {
+            (0u32, HashMap::new())
+        }
+    }
+    pub(crate) fn first_instance_location_map(&self) -> HashMap<u32, String> {
+        let insts = self.insts.read();
+        if let Some(i) = insts.first() {
+            let mut rev: HashMap<u32, String> = HashMap::new();
+            for (k, loc) in i.prop_locations.iter() {
+                rev.insert(*loc, k.clone());
+            }
+            rev
+        } else {
+            HashMap::new()
+        }
+    }
+}
+
 fn derive_vertex_schema(vertex: &Vertex) -> Result<Schema, MeshError> {
     let mut fields: Vec<Field> = Vec::new();
     // position first; single key with dynamic format
-match vertex.dimensions {
+    match vertex.dimensions {
         0 | 1 | 2 => fields.push(Field {
             name: "position".into(),
             fmt: wgpu::VertexFormat::Float32x2,
