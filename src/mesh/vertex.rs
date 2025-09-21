@@ -2,6 +2,13 @@ use super::builtins::VertexPosition;
 use lsp_doc::lsp_doc;
 use std::collections::HashMap;
 
+#[cfg(python)]
+use pyo3::prelude::*;
+#[cfg(wasm)]
+use wasm_bindgen::prelude::*;
+
+#[cfg_attr(wasm, wasm_bindgen)]
+#[cfg_attr(python, pyclass)]
 #[derive(Clone, Debug)]
 #[lsp_doc("docs/api/core/vertex/vertex.md")]
 pub struct Vertex {
@@ -140,6 +147,8 @@ impl PartialEq for Vertex {
 }
 impl Eq for Vertex {}
 
+#[cfg_attr(wasm, wasm_bindgen)]
+#[cfg_attr(python, pyclass)]
 #[derive(Clone, Debug, Default)]
 pub struct Instance {
     pub(crate) properties: HashMap<String, VertexValue>,
@@ -157,6 +166,7 @@ impl From<&Vertex> for Instance {
     }
 }
 
+#[cfg_attr(python, derive(FromPyObject, IntoPyObject))]
 #[derive(Clone, Debug, PartialEq)]
 pub enum VertexValue {
     F32(f32),

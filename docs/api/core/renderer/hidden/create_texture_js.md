@@ -9,10 +9,15 @@ Create a [Texture](https://fragmentcolor.org/api/core/texture) from various inpu
 ## Example
 
 ```rust
-# use fragmentcolor::Renderer;
-let bytes = std::fs::read("./examples/assets/image.png").unwrap();
+# async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::Renderer;
+let bytes = std::fs::read("./examples/assets/image.png")?;
 let renderer = Renderer::new();
-let tex = futures::executor::block_on(renderer.create_texture(&bytes)).unwrap();
+let tex = renderer.create_texture(&bytes).await?;
 // use in a shader uniform
 // shader.set("tex", &tex)?;
+# _ = tex;
+# Ok(())
+# }
+# fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 ```

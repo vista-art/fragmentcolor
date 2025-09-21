@@ -31,8 +31,11 @@ but while we're still in pre-release phase, this is expected.
   - [ ] PushConstant
 
 - [ ] Geometry/Instancing Refinement:
-  - [x] Shader-source-derived map of @location inputs from Naga
+  - [x] Shader source-derived validation/mapping of @location inputs from Naga
   - [ ] Multiple meshes per Pass and per-mesh draw calls.
+  - [ ] Design a Idiomatic/simple way to create complex shapes with Mesh and Vertex.
+  - [ ] Mesh builders for common shapes (quad, cube, sphere, etc).
+  - [ ] Mesh.load_* helpers and JSON inputs.
 
 ### Build System and Documentation
 

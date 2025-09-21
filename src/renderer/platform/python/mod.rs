@@ -203,6 +203,273 @@ impl Renderer {
 
         Ok(())
     }
+
+    // Depth texture
+    #[pyo3(name = "create_depth_texture")]
+    #[lsp_doc("docs/api/core/renderer/hidden/create_depth_texture_py.md")]
+    pub fn create_depth_texture_py(&self, size: PySize) -> Result<crate::texture::Texture, PyErr> {
+        Python::attach(|_py| -> Result<crate::texture::Texture, PyErr> {
+            let tex = pollster::block_on(self.create_depth_texture(size))?;
+            Ok(tex)
+        })
+    }
+
+    // Storage texture
+    #[pyo3(name = "create_storage_texture")]
+    #[lsp_doc("docs/api/core/renderer/hidden/create_storage_texture_py.md")]
+    pub fn create_storage_texture_py(
+        &self,
+        size: PySize,
+        format: crate::texture::TextureFormat,
+        usage_bits: Option<u32>,
+    ) -> Result<crate::texture::Texture, PyErr> {
+        Python::attach(|_py| -> Result<crate::texture::Texture, PyErr> {
+            let usage = usage_bits.map(|b| wgpu::TextureUsages::from_bits_truncate(b));
+            let tex = pollster::block_on(self.create_storage_texture(size, format.into(), usage))?;
+            Ok(tex)
+        })
+    }
+
+    // Texture creation with helpers
+    #[pyo3(name = "create_texture_with_size")]
+    #[lsp_doc("docs/api/core/renderer/hidden/create_texture_with_size_py.md")]
+    pub fn create_texture_with_size_py(
+        &self,
+        input: Py<PyAny>,
+        size: PySize,
+    ) -> Result<crate::texture::Texture, PyErr> {
+        Python::attach(|py| -> Result<crate::texture::Texture, PyErr> {
+            // list of bytes
+            if let Ok(pylist) = input.bind(py).extract::<Py<pyo3::types::PyList>>() {
+                let vec: Vec<u8> = pylist.extract(py)?;
+                let tex = pollster::block_on(self.create_texture_with_size(&vec, size))?;
+                return Ok(tex);
+            }
+            // str path
+            if let Ok(path) = input.bind(py).extract::<String>() {
+                let tex = pollster::block_on(
+                    self.create_texture_with_size(std::path::Path::new(&path), size),
+                )?;
+                return Ok(tex);
+            }
+            // numpy ndarray -> RGBA8
+            if let Ok(any) = input.bind(py).downcast::<numpy::PyArrayDyn<u8>>() {
+                use numpy::{PyArrayMethods, PyUntypedArrayMethods};
+                let arr = any.readonly();
+                let shape = arr.shape();
+                if shape.len() == 2 || shape.len() == 3 {
+                    let h = shape[0] as u32;
+                    let w = shape[1] as u32;
+                    let c = if shape.len() == 3 { shape[2] } else { 1 };
+                    let mut rgba = vec![0u8; (w as usize) * (h as usize) * 4];
+                    let data = arr.as_slice().map_err(|_| {
+                        crate::error::PyFragmentColorError::new_err("ndarray must be contiguous")
+                    })?;
+                    for y in 0..(h as usize) {
+                        for x in 0..(w as usize) {
+                            let src_idx = (y * (w as usize) + x) * c;
+                            let dst_idx = (y * (w as usize) + x) * 4;
+                            match c {
+                                1 => {
+                                    let v = data[src_idx];
+                                    rgba[dst_idx..dst_idx + 4].copy_from_slice(&[v, v, v, 255]);
+                                }
+                                3 => {
+                                    let r = data[src_idx];
+                                    let g = data[src_idx + 1];
+                                    let b = data[src_idx + 2];
+                                    rgba[dst_idx..dst_idx + 4].copy_from_slice(&[r, g, b, 255]);
+                                }
+                                4 => {
+                                    rgba[dst_idx..dst_idx + 4]
+                                        .copy_from_slice(&data[src_idx..src_idx + 4]);
+                                }
+                                _ => {
+                                    return Err(crate::error::PyFragmentColorError::new_err(
+                                        "ndarray last dimension must be 1, 3, or 4",
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                    let tex = pollster::block_on(self.create_texture_with_size(&rgba, size))?;
+                    return Ok(tex);
+                }
+            }
+            Err(crate::error::PyFragmentColorError::new_err(
+                "Unsupported input for create_texture_with_size (expected bytes, str path, or numpy ndarray)",
+            ))
+        })
+    }
+
+    #[pyo3(name = "create_texture_with_format")]
+    #[lsp_doc("docs/api/core/renderer/hidden/create_texture_with_format_py.md")]
+    pub fn create_texture_with_format_py(
+        &self,
+        input: Py<PyAny>,
+        format: crate::texture::TextureFormat,
+    ) -> Result<crate::texture::Texture, PyErr> {
+        Python::attach(|py| -> Result<crate::texture::Texture, PyErr> {
+            // list of bytes requires a size; reject here
+            if input.bind(py).extract::<Py<pyo3::types::PyList>>().is_ok() {
+                return Err(crate::error::PyFragmentColorError::new_err(
+                    "create_texture_with_format requires a numpy array or path; raw bytes need size",
+                ));
+            }
+            // str path
+            if let Ok(path) = input.bind(py).extract::<String>() {
+                // path decoding ignores explicit format; load image and upload
+                let tex = pollster::block_on(self.create_texture(std::path::Path::new(&path)))?;
+                return Ok(tex);
+            }
+            // numpy ndarray -> RGBA8, infer size
+            if let Ok(any) = input.bind(py).downcast::<numpy::PyArrayDyn<u8>>() {
+                use numpy::{PyArrayMethods, PyUntypedArrayMethods};
+                let arr = any.readonly();
+                let shape = arr.shape();
+                if shape.len() == 2 || shape.len() == 3 {
+                    let h = shape[0] as u32;
+                    let w = shape[1] as u32;
+                    let c = if shape.len() == 3 { shape[2] } else { 1 };
+                    let mut rgba = vec![0u8; (w as usize) * (h as usize) * 4];
+                    let data = arr.as_slice().map_err(|_| {
+                        crate::error::PyFragmentColorError::new_err("ndarray must be contiguous")
+                    })?;
+                    for y in 0..(h as usize) {
+                        for x in 0..(w as usize) {
+                            let src_idx = (y * (w as usize) + x) * c;
+                            let dst_idx = (y * (w as usize) + x) * 4;
+                            match c {
+                                1 => {
+                                    let v = data[src_idx];
+                                    rgba[dst_idx..dst_idx + 4].copy_from_slice(&[v, v, v, 255]);
+                                }
+                                3 => {
+                                    let r = data[src_idx];
+                                    let g = data[src_idx + 1];
+                                    let b = data[src_idx + 2];
+                                    rgba[dst_idx..dst_idx + 4].copy_from_slice(&[r, g, b, 255]);
+                                }
+                                4 => {
+                                    rgba[dst_idx..dst_idx + 4]
+                                        .copy_from_slice(&data[src_idx..src_idx + 4]);
+                                }
+                                _ => {
+                                    return Err(crate::error::PyFragmentColorError::new_err(
+                                        "ndarray last dimension must be 1, 3, or 4",
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                    // Use create_texture_with to specify both size and format explicitly
+                    let options = crate::TextureOptions {
+                        size: Some(crate::Size::new(w, h, None)),
+                        format,
+                        sampler: crate::texture::SamplerOptions::default(),
+                    };
+                    let tex = pollster::block_on(self.create_texture_with(&rgba, options))?;
+                    return Ok(tex);
+                }
+            }
+            Err(crate::error::PyFragmentColorError::new_err(
+                "Unsupported input for create_texture_with_format (expected str path or numpy ndarray)",
+            ))
+        })
+    }
+
+    #[pyo3(name = "create_texture_with")]
+    #[lsp_doc("docs/api/core/renderer/hidden/create_texture_with_py.md")]
+    pub fn create_texture_with_py(
+        &self,
+        input: Py<PyAny>,
+        size: Option<PySize>,
+    ) -> Result<crate::texture::Texture, PyErr> {
+        Python::attach(|py| -> Result<crate::texture::Texture, PyErr> {
+            // list of bytes
+            if let Ok(pylist) = input.bind(py).extract::<Py<pyo3::types::PyList>>() {
+                let vec: Vec<u8> = pylist.extract(py)?;
+                if let Some(s) = size {
+                    let options = crate::TextureOptions {
+                        size: Some(s.into()),
+                        ..Default::default()
+                    };
+                    let tex = pollster::block_on(self.create_texture_with(&vec, options))?;
+                    return Ok(tex);
+                }
+                let tex = pollster::block_on(self.create_texture(&vec))?;
+                return Ok(tex);
+            }
+            // str path
+            if let Ok(path) = input.bind(py).extract::<String>() {
+                if let Some(s) = size {
+                    let tex = pollster::block_on(
+                        self.create_texture_with_size(std::path::Path::new(&path), s),
+                    )?;
+                    return Ok(tex);
+                }
+                let tex = pollster::block_on(self.create_texture(std::path::Path::new(&path)))?;
+                return Ok(tex);
+            }
+            // numpy ndarray -> RGBA8
+            if let Ok(any) = input.bind(py).downcast::<numpy::PyArrayDyn<u8>>() {
+                use numpy::{PyArrayMethods, PyUntypedArrayMethods};
+                let arr = any.readonly();
+                let shape = arr.shape();
+                if shape.len() == 2 || shape.len() == 3 {
+                    let h = shape[0] as u32;
+                    let w = shape[1] as u32;
+                    let c = if shape.len() == 3 { shape[2] } else { 1 };
+                    let mut rgba = vec![0u8; (w as usize) * (h as usize) * 4];
+                    let data = arr.as_slice().map_err(|_| {
+                        crate::error::PyFragmentColorError::new_err("ndarray must be contiguous")
+                    })?;
+                    for y in 0..(h as usize) {
+                        for x in 0..(w as usize) {
+                            let src_idx = (y * (w as usize) + x) * c;
+                            let dst_idx = (y * (w as usize) + x) * 4;
+                            match c {
+                                1 => {
+                                    let v = data[src_idx];
+                                    rgba[dst_idx..dst_idx + 4].copy_from_slice(&[v, v, v, 255]);
+                                }
+                                3 => {
+                                    let r = data[src_idx];
+                                    let g = data[src_idx + 1];
+                                    let b = data[src_idx + 2];
+                                    rgba[dst_idx..dst_idx + 4].copy_from_slice(&[r, g, b, 255]);
+                                }
+                                4 => {
+                                    rgba[dst_idx..dst_idx + 4]
+                                        .copy_from_slice(&data[src_idx..src_idx + 4]);
+                                }
+                                _ => {
+                                    return Err(crate::error::PyFragmentColorError::new_err(
+                                        "ndarray last dimension must be 1, 3, or 4",
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                    if let Some(s) = size {
+                        let options = crate::TextureOptions {
+                            size: Some(s.into()),
+                            ..Default::default()
+                        };
+                        let tex = pollster::block_on(self.create_texture_with(&rgba, options))?;
+                        return Ok(tex);
+                    }
+                    let tex = pollster::block_on(
+                        self.create_texture_with_size(&rgba, crate::Size::new(w, h, None)),
+                    )?;
+                    return Ok(tex);
+                }
+            }
+            Err(crate::error::PyFragmentColorError::new_err(
+                "Unsupported input for create_texture_with (expected bytes, str path, or numpy ndarray)",
+            ))
+        })
+    }
 }
 
 /// A Python module implemented in Rust. The name of this function must match
@@ -215,6 +482,12 @@ pub fn fragmentcolor(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Pass>()?;
     m.add_class::<Frame>()?;
 
+    // Mesh/Vertex bindings
+    m.add_class::<crate::mesh::Mesh>()?;
+    m.add_class::<crate::mesh::Vertex>()?;
+    m.add_class::<crate::mesh::Instance>()?;
+    m.add_class::<crate::mesh::PyVertexValue>()?;
+
     // RenderCanvas API
     m.add_function(wrap_pyfunction!(rendercanvas_context_hook, m)?)?;
     m.add_class::<RenderCanvasTarget>()?;
@@ -222,6 +495,7 @@ pub fn fragmentcolor(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
     // Expose Texture handle type for shader.set(texture) to downcast properly
     m.add_class::<crate::texture::Texture>()?;
+    m.add_class::<crate::texture::TextureFormat>()?;
 
     // Headless TextureTarget API
     m.add_class::<PyTextureTarget>()?;

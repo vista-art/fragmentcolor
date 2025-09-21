@@ -113,7 +113,7 @@ fn main(pixel: VertexOutput) -> @location(0) vec4<f32> {
     print(f"Shader.get('circle.radius'): {radius}")
     print(f"Shader.list_uniforms: {uniforms}")
     print(f"Shader.list_keys: {keys}")
-    
+
     # Test texture creation and shader.set parity
     tex_shader = Shader("""
 @group(0) @binding(0) var tex: texture_2d<f32>;
@@ -135,24 +135,24 @@ fn main(v: VOut) -> @location(0) vec4<f32> {
     return textureSample(tex, samp, v.uv);
 }
 """)
-    
+
     # Test numpy ndarray path
     tex_arr = np.array([
-        [[255,0,0,255],[0,255,0,255]],
-        [[0,0,255,255],[255,255,255,255]],
+        [[255, 0, 0, 255], [0, 255, 0, 255]],
+        [[0, 0, 255, 255], [255, 255, 255, 255]],
     ], dtype=np.uint8)
     tex = renderer.create_texture(tex_arr)
     print(f"Created texture from numpy array: shape={tex_arr.shape}")
-    
+
     tex_shader.set("tex", tex)
     tex_shader.set("resolution", [32.0, 32.0])
     print("Set texture on shader successfully")
-    
+
     tex_target = renderer.create_texture_target((32, 32))
     renderer.render(tex_shader, tex_target)
     tex_img = tex_target.get_image()
     print(f"Rendered textured shader: shape={tex_img.shape}")
-    
+
     print("Headless Python render completed successfully")
 
 

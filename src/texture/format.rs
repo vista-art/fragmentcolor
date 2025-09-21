@@ -1,3 +1,6 @@
+#[cfg(wasm)]
+use wasm_bindgen::prelude::*;
+
 #[cfg_attr(wasm, wasm_bindgen)]
 #[cfg_attr(python, pyo3::pyclass)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]

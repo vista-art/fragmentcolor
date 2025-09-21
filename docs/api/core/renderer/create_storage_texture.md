@@ -11,9 +11,8 @@ Create a storage-class texture for compute or image store/load.
 
 use fragmentcolor::Renderer;
 let r = Renderer::new();
-let _tex = r
-    .create_storage_texture([64, 64], wgpu::TextureFormat::Rgba8Unorm, None)
-    .await?;
+let tex = r.create_storage_texture([64, 64], wgpu::TextureFormat::Rgba8Unorm, None).await?;
+# _ = tex;
 
 # Ok(())
 # }

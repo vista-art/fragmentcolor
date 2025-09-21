@@ -1,4 +1,5 @@
+import { Renderer } from "fragmentcolor";
 const renderer = new Renderer();
-// 1x1 RGBA (white) raw pixel bytes;
-const pixels = [255,255,255,255];
-const tex = await renderer.createTextureWithSize(pixels, Size.from((1,1)));
+// Load encoded image bytes (PNG/JPEG) or use a file path;
+const bytes = std.fs.read("./examples/assets/image.png");
+const tex = await renderer.createTexture(bytes);

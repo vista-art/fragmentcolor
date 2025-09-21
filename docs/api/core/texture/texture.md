@@ -41,9 +41,9 @@ let pixels: &[u8] = &[255,255,255,255];
 let texture = renderer.create_texture_with_size(pixels, Size::from((1,1))).await?;
 
 shader.set("t_tex", &texture).unwrap();
-# let _ = shader;
+# _ = shader;
 
-# let _ = shader;
+# _ = shader;
 # Ok(())
 # }
 # fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }

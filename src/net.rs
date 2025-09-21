@@ -20,26 +20,25 @@ pub async fn fetch_bytes(url: &str) -> Result<Vec<u8>, ureq::Error> {
 
 #[cfg(wasm)]
 pub async fn fetch_text(url: &str) -> Result<String, JsValue> {
-    use wasm_bindgen::JsCast;
+    use wasm_bindgen::{JsCast, JsError};
     use wasm_bindgen_futures::JsFuture;
     use web_sys::{Request, RequestInit, RequestMode, Response, window};
 
-    let mut opts = RequestInit::new();
-    opts.method("GET");
-    opts.mode(RequestMode::Cors);
+    let opts = RequestInit::new();
+    opts.set_method("GET");
+    opts.set_mode(RequestMode::Cors);
+
     let req = Request::new_with_str_and_init(url, &opts).map_err(|e| format!("{e:?}"))?;
     let win = window().ok_or_else(|| "no window".to_string())?;
-    let resp_val = JsFuture::from(win.fetch_with_request(&req))
-        .await
-        .map_err(|e| format!("{e:?}"))?;
-    let resp: Response = resp_val
-        .dyn_into()
-        .map_err(|_| "bad response".to_string())?;
-    let text = JsFuture::from(resp.text().map_err(|e| format!("{e:?}"))?)
-        .await
-        .map_err(|e| format!("{e:?}"))?;
-    text.as_string()
-        .ok_or_else(|| "response not a string".to_string())
+    let resp_val = JsFuture::from(win.fetch_with_request(&req)).await?;
+    let resp: Response = resp_val.dyn_into()?;
+    let text = JsFuture::from(resp.text().map_err(|e| format!("{e:?}"))?).await?;
+
+    let out = text
+        .as_string()
+        .ok_or_else(|| JsError::new("response text is not a string"))?;
+
+    Ok(out)
 }
 
 #[cfg(wasm)]
@@ -49,9 +48,10 @@ pub async fn fetch_bytes(url: &str) -> Result<Vec<u8>, JsValue> {
     use wasm_bindgen_futures::JsFuture;
     use web_sys::{Request, RequestInit, RequestMode, Response, window};
 
-    let mut opts = RequestInit::new();
-    opts.method("GET");
-    opts.mode(RequestMode::Cors);
+    let opts = RequestInit::new();
+    opts.set_method("GET");
+    opts.set_mode(RequestMode::Cors);
+
     let req = Request::new_with_str_and_init(url, &opts).map_err(|e| format!("{e:?}"))?;
     let win = window().ok_or_else(|| "no window".to_string())?;
     let resp_val = JsFuture::from(win.fetch_with_request(&req))
@@ -64,8 +64,8 @@ pub async fn fetch_bytes(url: &str) -> Result<Vec<u8>, JsValue> {
         .await
         .map_err(|e| format!("{e:?}"))?;
     let u8 = Uint8Array::new(&buf);
-    let mut out = vec![0u8; u8.length() as usize];
-    u8.copy_to(&mut out[..]);
+    let out = vec![0u8; u8.length() as usize];
+
     Ok(out)
 }
 

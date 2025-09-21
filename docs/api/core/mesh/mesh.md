@@ -10,7 +10,7 @@ and matched by name and type to Mesh properties across both streams (instance fi
 then vertex).
 
 Mapping is driven by shader reflection; there are no special-case names or reserved locations.
-The renderer matches attributes by explicit location if provided (instance first, then vertex), 
+The renderer matches attributes by explicit location if provided (instance first, then vertex),
 and otherwise by name.
 
 If a required input cannot be found or its type does not match, rendering returns an error

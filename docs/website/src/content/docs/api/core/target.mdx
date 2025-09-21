@@ -149,14 +149,15 @@ use fragmentcolor::{Renderer, Target};
 
 let renderer = Renderer::new();
 let target = renderer.create_texture_target([16, 16]).await?;
-let frame = target.get_current_frame()?; // Acquire a frame
-let _format = frame.format();
+let frame = target.get_current_frame()?; // Acquire a frame, internal usage
+let format = frame.format();
+_ = format;
 
 Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 10-12}"
+lang="rust" meta="collapse={1-1, 9-9, 11-13}"
 />
 
 </TabItem>
@@ -169,8 +170,8 @@ import { Renderer, Target } from "fragmentcolor";
 
 const renderer = new Renderer();
 const target = await renderer.createTextureTarget([16, 16]);
-const frame = target.getCurrentFrame(); // Acquire a frame;
-const _format = frame.format();
+const frame = target.getCurrentFrame(); // Acquire a frame, internal usage;
+const format = frame.format();
 
 `}
 lang="js"
@@ -186,8 +187,8 @@ from fragmentcolor import Renderer
 
 renderer = Renderer()
 target = renderer.create_texture_target([16, 16])
-frame = target.get_current_frame();# Acquire a frame
-_format = frame.format()
+frame = target.get_current_frame();# Acquire a frame, internal usage
+format = frame.format()
 
 `}
 lang="python"

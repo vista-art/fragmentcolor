@@ -15,9 +15,12 @@ let renderer = Renderer::new();
 let target = renderer.create_texture_target([64, 64])?;
 
 let size = target.size();
-let _w = size.width;
-let _h = size.height;
-let _d = size.depth;
+let w = size.width;
+let h = size.height;
+let d = size.depth;
+# _ = w;
+# _ = h;
+# _ = d;
 
 # assert_eq!(image.len(), 16 * 16 * 4); // RGBA8
 # Ok(())

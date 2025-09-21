@@ -19,7 +19,7 @@ and matched by name and type to Mesh properties across both streams (instance fi
 then vertex).
 
 Mapping is driven by shader reflection; there are no special-case names or reserved locations.
-The renderer matches attributes by explicit location if provided (instance first, then vertex), 
+The renderer matches attributes by explicit location if provided (instance first, then vertex),
 and otherwise by name.
 
 If a required input cannot be found or its type does not match, rendering returns an error
@@ -120,9 +120,10 @@ Create an empty mesh.
 <Code
 code={`
 use fragmentcolor::mesh::Mesh;
-let _m = Mesh::new();
+let m = Mesh::new();
+_ = m;
 `}
-lang="rust"
+lang="rust" meta="collapse={3-3}"
 />
 
 </TabItem>
@@ -131,7 +132,7 @@ lang="rust"
 <Code
 code={`
 import { Mesh } from "fragmentcolor";
-const _m = new Mesh();
+const m = new Mesh();
 `}
 lang="js"
 />
@@ -142,7 +143,7 @@ lang="js"
 <Code
 code={`
 from fragmentcolor import Mesh
-_m = Mesh()
+m = Mesh()
 `}
 lang="python"
 />

@@ -6,5 +6,6 @@ Create an empty mesh.
 
 ```rust
 use fragmentcolor::mesh::Mesh;
-let _m = Mesh::new();
+let m = Mesh::new();
+# _ = m;
 ```

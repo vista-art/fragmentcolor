@@ -33,18 +33,6 @@ pub enum TextureInput {
     CloneOf(Texture),
     Url(String),
     DynamicImage(DynamicImage),
-    #[cfg(wasm)]
-    HtmlImageElement(web_sys::HtmlImageElement),
-    #[cfg(wasm)]
-    HtmlCanvasElement(web_sys::HtmlCanvasElement),
-    #[cfg(wasm)]
-    OffscreenCanvas(web_sys::OffscreenCanvas),
-    #[cfg(wasm)]
-    HtmlVideoElement(web_sys::HtmlVideoElement),
-    #[cfg(wasm)]
-    ImageBitmap(web_sys::ImageBitmap),
-    #[cfg(wasm)]
-    Selector(web_sys::JsValue),
 }
 
 impl From<&[u8]> for TextureInput {
@@ -83,6 +71,7 @@ impl From<&Texture> for TextureInput {
     }
 }
 
+#[cfg_attr(wasm, wasm_bindgen)]
 #[cfg_attr(python, pyclass)]
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct TextureId(pub u64);
@@ -429,7 +418,7 @@ impl TextureObject {
                 repeat_x: false,
                 repeat_y: false,
                 smooth: true,
-                compare: Some(wgpu::CompareFunction::LessEqual),
+                compare: Some(CompareFunction::LessEqual),
             },
         );
 

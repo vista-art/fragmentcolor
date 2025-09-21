@@ -1,2 +1,2 @@
 from fragmentcolor import Mesh
-_m = Mesh()
+m = Mesh()
