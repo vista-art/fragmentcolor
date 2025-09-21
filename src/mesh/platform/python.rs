@@ -133,58 +133,49 @@ fn py_to_vertex_value(obj: &Bound<'_, PyAny>) -> PyResult<VertexValue> {
     }
 }
 
-fn py_to_vec4_and_dims(obj: &Bound<'_, PyAny>) -> PyResult<(glam::Vec4, u8)> {
-    // scalar float
-    if let Ok(f) = obj.extract::<f32>() {
-        return Ok((glam::Vec4::new(f, 0.0, 0.0, 1.0), 1));
-    }
-    // handle tuples/lists
-    if let Ok(seq) = obj.downcast::<PySequence>() {
-        let len = seq.len()?;
-        if !(1..=4).contains(&len) {
-            return Err(PyErr::new::<PyTypeError, _>(format!(
-                "Position must have 1..4 components, got {}",
-                len
-            )));
-        }
-        let mut v = [0.0f32; 4];
-        for i in 0..len {
-            let item = seq.get_item(i)?;
-            if let Ok(f) = item.extract::<f32>() {
-                v[i] = f;
-            } else if let Ok(ii) = item.extract::<i64>() {
-                v[i] = ii as f32;
-            } else {
-                return Err(PyErr::new::<PyTypeError, _>(
-                    "Position elements must be numeric",
-                ));
-            }
-        }
-        return Ok((
-            glam::Vec4::new(v[0], v[1], v[2], if len == 4 { v[3] } else { 1.0 }),
-            len as u8,
-        ));
-    }
-
-    Err(PyErr::new::<PyTypeError, _>(
-        "Unsupported position (expected number or sequence)",
-    ))
-}
-
 #[pymethods]
 impl Vertex {
     #[new]
     #[lsp_doc("docs/api/core/vertex/new.md")]
     pub fn new_py(position: Py<PyAny>) -> PyResult<Self> {
         Python::attach(|py| -> PyResult<Self> {
-            let (v4, dims) = py_to_vec4_and_dims(&position.bind(py))?;
-            Ok(Vertex {
-                position: crate::mesh::builtins::VertexPosition(v4),
-                dimensions: dims,
-                properties: std::collections::HashMap::new(),
-                prop_locations: std::collections::HashMap::new(),
-                next_location: 1,
-            })
+            let any = position.bind(py);
+            if let Ok(v) = any.extract::<f32>() {
+                return Ok(Vertex::new(v));
+            }
+            if let Ok(v) = any.extract::<(f32, f32)>() {
+                return Ok(Vertex::new(v));
+            }
+            if let Ok(v) = any.extract::<(f32, f32, f32)>() {
+                return Ok(Vertex::new(v));
+            }
+            if let Ok(v) = any.extract::<(f32, f32, f32, f32)>() {
+                return Ok(Vertex::new(v));
+            }
+            if let Ok(v) = any.extract::<(u32, u32)>() {
+                return Ok(Vertex::new(v));
+            }
+            if let Ok(v) = any.extract::<(u32, u32, u32)>() {
+                return Ok(Vertex::new(v));
+            }
+            if let Ok(v) = any.extract::<[f32; 2]>() {
+                return Ok(Vertex::new(v));
+            }
+            if let Ok(v) = any.extract::<[f32; 3]>() {
+                return Ok(Vertex::new(v));
+            }
+            if let Ok(v) = any.extract::<[f32; 4]>() {
+                return Ok(Vertex::new(v));
+            }
+            if let Ok(v) = any.extract::<[u32; 2]>() {
+                return Ok(Vertex::new(v));
+            }
+            if let Ok(v) = any.extract::<[u32; 3]>() {
+                return Ok(Vertex::new(v));
+            }
+            Err(PyErr::new::<pyo3::exceptions::PyTypeError, _>(
+                "Unsupported position (expected number or sequence of 2..4 floats, or 2..3 u32)",
+            ))
         })
     }
 
@@ -192,7 +183,7 @@ impl Vertex {
     #[lsp_doc("docs/api/core/vertex/with.md")]
     pub fn with_py(&self, key: &str, value: Py<PyAny>) -> PyResult<Self> {
         Python::attach(|py| -> PyResult<Self> {
-            let vv = py_to_vertex_value(&value.bind(py))?;
+            let vv = py_to_vertex_value(value.bind(py))?;
             Ok(self.clone().with(key, vv))
         })
     }

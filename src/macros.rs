@@ -109,3 +109,28 @@ macro_rules! impl_tryfrom_tryinto_with_refs {
         }
     };
 }
+
+// One-liner for WASM: implement TryFrom<&JsValue> via __wbg_ptr anchor clone for wasm_bindgen types.
+#[macro_export]
+macro_rules! impl_tryfrom_js_ref_anchor {
+    ($t:ty, $err:ty, $name:expr) => {
+        #[cfg(wasm)]
+        impl TryFrom<&wasm_bindgen::JsValue> for $t {
+            type Error = $err;
+            fn try_from(value: &wasm_bindgen::JsValue) -> Result<Self, Self::Error> {
+                use js_sys::Reflect;
+                use wasm_bindgen::convert::RefFromWasmAbi;
+                let key = wasm_bindgen::JsValue::from_str("__wbg_ptr");
+                let ptr = Reflect::get(value, &key)
+                    .map_err(|_| <$err>::Error(format!("Missing __wbg_ptr on {}", $name)))?;
+                let id = ptr
+                    .as_f64()
+                    .ok_or_else(|| <$err>::Error(format!("Invalid __wbg_ptr for {}", $name)))?
+                    as u32;
+                let anchor: <$t as RefFromWasmAbi>::Anchor =
+                    unsafe { <$t as RefFromWasmAbi>::ref_from_abi(id) };
+                Ok(anchor.clone())
+            }
+        }
+    };
+}

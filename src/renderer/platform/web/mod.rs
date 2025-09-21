@@ -99,7 +99,7 @@ impl Renderer {
         use js_sys::Uint8Array;
         use web_sys::HtmlImageElement;
 
-        // Case 1: Uint8Array
+        // Case 1: Uint8Array (assumed encoded image data).
         if let Some(u8a) = input.dyn_ref::<Uint8Array>() {
             let mut bytes = vec![0u8; u8a.length() as usize];
             u8a.copy_to(&mut bytes[..]);
@@ -131,7 +131,7 @@ impl Renderer {
             };
             let bytes = crate::net::fetch_bytes(&url)
                 .await
-                .map_err(|_| JsError::new("fetch bytes error for URL"))?;
+                .map_err(|e| JsError::new(&format!("{:?}", e)))?;
             return self
                 .create_texture(crate::texture::TextureInput::Bytes(bytes))
                 .await
@@ -144,7 +144,7 @@ impl Renderer {
                 input.dyn_into().map_err(|_| JsError::new("Not an image"))?;
             let bytes = crate::net::fetch_bytes(&img.src())
                 .await
-                .map_err(|_| JsError::new("fetch bytes error for HtmlImageElement"))?;
+                .map_err(|e| JsError::new(&format!("{:?}", e)))?;
             return self
                 .create_texture(crate::texture::TextureInput::Bytes(bytes))
                 .await
@@ -152,6 +152,43 @@ impl Renderer {
         }
 
         Err(JsError::new("Unsupported input for createTexture"))
+    }
+
+    #[wasm_bindgen(js_name = "createTextureWithSize")]
+    #[lsp_doc("docs/api/core/renderer/hidden/create_texture_with_size_js.md")]
+    pub async fn create_texture_with_size_js(
+        &self,
+        input: JsValue,
+        size: &JsValue,
+    ) -> Result<crate::texture::Texture, JsError> {
+        use js_sys::Uint8Array;
+        let size: crate::Size = size
+            .try_into()
+            .map_err(|e: crate::size::error::SizeError| JsError::new(&format!("{e}")))?;
+
+        // Accept raw RGBA bytes (Uint8Array) or fetch from string/selector/image
+        let bytes = if let Some(u8a) = input.dyn_ref::<Uint8Array>() {
+            let mut bytes = vec![0u8; u8a.length() as usize];
+            u8a.copy_to(&mut bytes[..]);
+            bytes
+        } else if let Some(s) = input.as_string() {
+            let url = s;
+            crate::net::fetch_bytes(&url)
+                .await
+                .map_err(|e| JsError::new(&format!("{:?}", e)))?
+        } else if input.has_type::<web_sys::HtmlImageElement>() {
+            let img: web_sys::HtmlImageElement =
+                input.dyn_into().map_err(|_| JsError::new("Not an image"))?;
+            crate::net::fetch_bytes(&img.src())
+                .await
+                .map_err(|e| JsError::new(&format!("{:?}", e)))?
+        } else {
+            return Err(JsError::new("Unsupported input for createTextureWithSize"));
+        };
+
+        self.create_texture_with_size(crate::texture::TextureInput::Bytes(bytes), size)
+            .await
+            .map_err(|e| JsError::new(&format!("{e}")))
     }
 
     #[wasm_bindgen(js_name = "createTextureTarget")]

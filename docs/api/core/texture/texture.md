@@ -38,7 +38,7 @@ let shader = Shader::new(r#"
 
 // 1x1 RGBA (white) raw pixel bytes
 let pixels: &[u8] = &[255,255,255,255];
-let texture = renderer.create_texture_with_size(pixels, Size::from((1,1))).await?;
+let texture = renderer.create_texture_with_size(pixels, [1,1]).await?;
 
 shader.set("t_tex", &texture).unwrap();
 # _ = shader;

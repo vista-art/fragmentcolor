@@ -48,26 +48,7 @@ impl Renderable for Frame {
     }
 }
 
-#[cfg(wasm)]
-impl TryFrom<&wasm_bindgen::JsValue> for Frame {
-    type Error = crate::frame::error::FrameError;
-
-    fn try_from(value: &wasm_bindgen::JsValue) -> Result<Self, Self::Error> {
-        use js_sys::Reflect;
-        use wasm_bindgen::convert::RefFromWasmAbi;
-
-        let key = wasm_bindgen::JsValue::from_str("__wbg_ptr");
-        let ptr = Reflect::get(value, &key).map_err(|_| {
-            crate::frame::error::FrameError::Error("Missing __wbg_ptr on Frame".into())
-        })?;
-        let id = ptr.as_f64().ok_or_else(|| {
-            crate::frame::error::FrameError::Error("Invalid __wbg_ptr for Frame".into())
-        })? as u32;
-        let anchor: <Frame as RefFromWasmAbi>::Anchor =
-            unsafe { <Frame as RefFromWasmAbi>::ref_from_abi(id) };
-        Ok(anchor.clone())
-    }
-}
+crate::impl_tryfrom_js_ref_anchor!(Frame, crate::frame::error::FrameError, "Frame");
 
 #[cfg(test)]
 mod tests {
