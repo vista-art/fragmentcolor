@@ -10,6 +10,8 @@ pub(crate) struct UniformStorage {
     pub(crate) uniforms: HashMap<String, (u32, u32, Uniform)>, // (offset, size, original data)
     // CPU-side blobs for storage buffers: root name -> raw bytes
     pub(crate) storage_blobs: HashMap<String, Vec<u8>>,
+    // CPU-side blobs for push constants: root name -> raw bytes
+    pub(crate) push_blobs: HashMap<String, Vec<u8>>,
 }
 
 impl UniformStorage {
@@ -19,6 +21,7 @@ impl UniformStorage {
             uniform_bytes: Vec::new(),
             uniforms: HashMap::new(),
             storage_blobs: HashMap::new(),
+            push_blobs: HashMap::new(),
         };
 
         storage.extend(uniforms);
@@ -118,12 +121,112 @@ impl UniformStorage {
                 ),
             );
         }
+
+        // Push constants: maintain a per-root CPU blob similar to storage
+        if let UniformData::PushConstant(data) = &uniform.data
+            && let Some((inner, span)) = data.iter().next()
+        {
+            let span = *span;
+            self.push_blobs
+                .entry(uniform.name.clone())
+                .or_insert_with(|| vec![0u8; span as usize]);
+
+            // Index fields for direct access if it's a struct
+            if let UniformData::Struct((fields, _)) = inner {
+                for (field_offset, field_name, field) in fields {
+                    let key = format!("{}.{}", uniform.name, field_name);
+                    self.uniforms.insert(
+                        key.clone(),
+                        (
+                            *field_offset,
+                            field.size(),
+                            Uniform {
+                                name: key,
+                                group: uniform.group,
+                                binding: uniform.binding,
+                                data: field.clone(),
+                            },
+                        ),
+                    );
+                }
+            }
+            // Ensure top-level push entry exists with offset 0
+            self.uniforms.insert(
+                uniform.name.clone(),
+                (
+                    0,
+                    span,
+                    Uniform {
+                        name: uniform.name.clone(),
+                        group: 0,
+                        binding: 0,
+                        data: uniform.data.clone(),
+                    },
+                ),
+            );
+        }
+    }
+
+    /// Directly replace the CPU-side bytes of a storage buffer root.
+    /// - root must be a top-level storage buffer name (e.g., "particles").
+    /// - bytes will be copied into the blob up to the declared span; remaining region is zeroed.
+    pub fn set_storage_bytes(&mut self, root: &str, bytes: &[u8]) -> Result<(), ShaderError> {
+        if let Some(blob) = self.storage_blobs.get_mut(root) {
+            let span = blob.len();
+            let n = span.min(bytes.len());
+            blob[..n].copy_from_slice(&bytes[..n]);
+            if n < span {
+                for b in blob[n..].iter_mut() {
+                    *b = 0;
+                }
+            }
+            Ok(())
+        } else {
+            Err(ShaderError::UniformNotFound(root.into()))
+        }
+    }
+
+    /// Directly replace the CPU-side bytes of a push-constant root.
+    /// - root must be a top-level push-constant name (e.g., "pc").
+    /// - bytes will be copied into the blob up to the declared span; remaining region is zeroed.
+    pub fn set_push_bytes(&mut self, root: &str, bytes: &[u8]) -> Result<(), ShaderError> {
+        if let Some(blob) = self.push_blobs.get_mut(root) {
+            let span = blob.len();
+            let n = span.min(bytes.len());
+            blob[..n].copy_from_slice(&bytes[..n]);
+            if n < span {
+                for b in blob[n..].iter_mut() {
+                    *b = 0;
+                }
+            }
+            Ok(())
+        } else {
+            Err(ShaderError::UniformNotFound(root.into()))
+        }
     }
 
     /// Update a single uniform
     pub fn update(&mut self, key: &str, value: &UniformData) -> Result<(), ShaderError> {
         // Fast path: exact key exists in the index
         if let Some((offset, size, uniform)) = self.uniforms.get_mut(key) {
+            // Special-case: storage root receiving raw bytes
+            let root = key.split('.').next().unwrap_or(key).to_string();
+            let is_storage_root = matches!(uniform.data, UniformData::Storage(_)) && root == *key;
+            if is_storage_root {
+                if let UniformData::Bytes(b) = value {
+                    self.set_storage_bytes(&root, b)?;
+                    return Ok(());
+                }
+            }
+            // Special-case: push root receiving raw bytes
+            let is_push_root = matches!(uniform.data, UniformData::PushConstant(_)) && root == *key;
+            if is_push_root {
+                if let UniformData::Bytes(b) = value {
+                    self.set_push_bytes(&root, b)?;
+                    return Ok(());
+                }
+            }
+
             // Allow updating Texture with TextureMeta (id + naga metadata) and preserve shader metadata if caller passed id-only
             match (&uniform.data, value) {
                 (UniformData::Texture(existing), UniformData::Texture(incoming)) => {
@@ -149,10 +252,12 @@ impl UniformStorage {
 
             // Write into CPU-side blobs
             // 1) Uniform buffer bytes for classic uniforms
-            // Determine root storage name first so we can avoid writing storage fields into uniform_bytes.
+            // Determine root names first so we can avoid writing storage/push fields into uniform_bytes.
             let root = key.split('.').next().unwrap_or(key);
             let is_storage_root = self.storage_blobs.contains_key(root);
+            let is_push_root = self.push_blobs.contains_key(root);
             if !is_storage_root
+                && !is_push_root
                 && !matches!(
                     value,
                     UniformData::Texture(_) | UniformData::Sampler(_) | UniformData::Storage(_)
@@ -208,11 +313,22 @@ impl UniformStorage {
                 .ok_or_else(|| ShaderError::UniformNotFound(root.clone()))?;
 
             let is_storage = matches!(root_uniform.data, UniformData::Storage(_));
+            let is_push = matches!(root_uniform.data, UniformData::PushConstant(_));
 
             let (rel_ofs, leaf_sz) = if is_storage {
                 // For storage buffers, traverse the inner shape
                 if let UniformData::Storage(data) = &root_uniform.data {
                     if let Some((inner, _span, _)) = data.first() {
+                        compute_offset(inner, &parts, key)?
+                    } else {
+                        return Err(ShaderError::InvalidKey(key.into()));
+                    }
+                } else {
+                    return Err(ShaderError::InvalidKey(key.into()));
+                }
+            } else if is_push {
+                if let UniformData::PushConstant(data) = &root_uniform.data {
+                    if let Some((inner, _span)) = data.first() {
                         compute_offset(inner, &parts, key)?
                     } else {
                         return Err(ShaderError::InvalidKey(key.into()));
@@ -232,6 +348,16 @@ impl UniformStorage {
 
             if is_storage {
                 if let Some(blob) = self.storage_blobs.get_mut(&root) {
+                    let start = rel_ofs as usize;
+                    let end = start.saturating_add(val_bytes.len());
+                    if end <= blob.len() {
+                        blob[start..end].copy_from_slice(&val_bytes);
+                        return Ok(());
+                    }
+                }
+                Err(ShaderError::InvalidKey(key.into()))
+            } else if is_push {
+                if let Some(blob) = self.push_blobs.get_mut(&root) {
                     let start = rel_ofs as usize;
                     let end = start.saturating_add(val_bytes.len());
                     if end <= blob.len() {
@@ -283,11 +409,18 @@ impl UniformStorage {
             // If this key corresponds to a storage buffer (root or nested), slice from the storage blob
             let root = if matches!(uniform.data, UniformData::Storage(_)) {
                 key
+            } else if matches!(uniform.data, UniformData::PushConstant(_)) {
+                key
             } else {
                 key.split('.').next().unwrap_or(key)
             };
 
             if let Some(blob) = self.storage_blobs.get(root) {
+                let start = *offset as usize;
+                let end = start + *size as usize;
+                return Some(&blob[start..end]);
+            }
+            if let Some(blob) = self.push_blobs.get(root) {
                 let start = *offset as usize;
                 let end = start + *size as usize;
                 return Some(&blob[start..end]);
@@ -304,9 +437,20 @@ impl UniformStorage {
             && let Some((root_offset, _root_size, root_uniform)) = self.uniforms.get(&root)
         {
             let is_storage = matches!(root_uniform.data, UniformData::Storage(_));
+            let is_push = matches!(root_uniform.data, UniformData::PushConstant(_));
             let (rel_ofs, leaf_sz) = if is_storage {
                 if let UniformData::Storage(data) = &root_uniform.data {
                     if let Some((inner, _span, _)) = data.first() {
+                        compute_offset(inner, &parts, key).ok()?
+                    } else {
+                        return None;
+                    }
+                } else {
+                    return None;
+                }
+            } else if is_push {
+                if let UniformData::PushConstant(data) = &root_uniform.data {
+                    if let Some((inner, _span)) = data.first() {
                         compute_offset(inner, &parts, key).ok()?
                     } else {
                         return None;
@@ -320,6 +464,14 @@ impl UniformStorage {
 
             if is_storage {
                 if let Some(blob) = self.storage_blobs.get(&root) {
+                    let start = rel_ofs as usize;
+                    let end = start + leaf_sz as usize;
+                    if end <= blob.len() {
+                        return Some(&blob[start..end]);
+                    }
+                }
+            } else if is_push {
+                if let Some(blob) = self.push_blobs.get(&root) {
                     let start = rel_ofs as usize;
                     let end = start + leaf_sz as usize;
                     if end <= blob.len() {

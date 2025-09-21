@@ -188,20 +188,11 @@ fn js_to_vertex_position(value: &JsValue) -> Result<Vertex, JsError> {
 // -----------------------------
 // JS conversions for Vertex/Instance owned via __wbg_ptr anchors
 // -----------------------------
-crate::impl_tryfrom_js_ref_anchor!(Vertex, crate::mesh::error::MeshError, "Vertex");
 
-crate::impl_tryfrom_js_ref_anchor!(Instance, crate::mesh::error::MeshError, "Instance");
+crate::impl_js_bridge!(Vertex, crate::mesh::error::MeshError);
+crate::impl_js_bridge!(Instance, crate::mesh::error::MeshError);
 
-crate::impl_tryfrom_owned_via_ref!(Vertex, wasm_bindgen::JsValue, crate::mesh::error::MeshError);
-crate::impl_tryfrom_owned_via_ref!(
-    Instance,
-    wasm_bindgen::JsValue,
-    crate::mesh::error::MeshError
-);
-
-crate::impl_tryfrom_js_ref_anchor!(Mesh, crate::mesh::error::MeshError, "Mesh");
-
-crate::impl_tryfrom_owned_via_ref!(Mesh, wasm_bindgen::JsValue, crate::mesh::error::MeshError);
+crate::impl_js_bridge!(Mesh, crate::mesh::error::MeshError);
 
 // -----------------------------
 // Vertex (WASM bindings)
@@ -323,5 +314,17 @@ impl Mesh {
     #[lsp_doc("docs/api/core/mesh/clear_instances.md")]
     pub fn clear_instances_js(&mut self) {
         self.clear_instances();
+    }
+
+    #[wasm_bindgen(js_name = "setInstanceCount")]
+    #[lsp_doc("docs/api/core/mesh/set_instance_count.md")]
+    pub fn set_instance_count_js(&mut self, n: u32) {
+        self.set_instance_count(n);
+    }
+
+    #[wasm_bindgen(js_name = "clearInstanceCount")]
+    #[lsp_doc("docs/api/core/mesh/clear_instance_count.md")]
+    pub fn clear_instance_count_js(&mut self) {
+        self.clear_instance_count();
     }
 }

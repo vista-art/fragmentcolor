@@ -211,4 +211,28 @@ Object.assign(globalThis, { exampleShader });
 // await import('./generated_examples.mjs');
 
 // Signal success for Playwright harness if we reached this point
+// Push constants smoke: solid color via var<push_constant>
+await withModule('platforms.web.healthcheck.push_constant', async () => {
+  const renderer = new Renderer();
+  const target = await renderer.createTextureTarget([8, 8]);
+  const shader = new Shader(`
+struct PC { color: vec4<f32> };
+var<push_constant> pc: PC;
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.));
+  return vec4f(p[i], 0., 1.);
+}
+@fragment fn fs_main() -> @location(0) vec4<f32> { return pc.color; }
+`);
+  shader.set("pc.color", [1.0, 0.0, 0.0, 1.0]);
+  renderer.render(shader, target);
+  const img = target.getImage();
+  if (!(img && img.length >= 4)) throw new Error('push-constant image empty');
+  const px = [img[0], img[1], img[2], img[3]];
+  const expect = [255, 0, 0, 255];
+  if (px[0] !== expect[0] || px[1] !== expect[1] || px[2] !== expect[2] || px[3] !== expect[3]) {
+    throw new Error(`unexpected pixel ${px} != ${expect}`);
+  }
+});
+
 console.log('Headless JS render completed successfully');

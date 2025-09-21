@@ -18,18 +18,6 @@ but while we're still in pre-release phase, this is expected.
 
 ### TO-DO Before Release
 
-- [ ] Ensure we expose all the ways to upload data to a GPU
-  - [x] VertexBuffer
-  - [x] IndexBuffer
-  - [x] StorageBuffer
-- [x] StorageBuffer: Arrays
-  - [x] Uniform
-- [x] Uniform: Arrays
-  - [x] Texture
-  - [x] StorageTexture
-  - [x] Sampler
-  - [ ] PushConstant
-
 - [ ] Geometry/Instancing Refinement:
   - [x] Shader source-derived validation/mapping of @location inputs from Naga
   - [ ] Multiple meshes per Pass and per-mesh draw calls.
@@ -37,28 +25,21 @@ but while we're still in pre-release phase, this is expected.
   - [ ] Mesh builders for common shapes (quad, cube, sphere, etc).
   - [ ] Mesh.load_* helpers and JSON inputs.
 
-### Build System and Documentation
+- [ ] Fix all healthchecks
 
-- [x] Build System
-  - [x] Unit test all packages before building
-  - [x] Git hook: test builds for all platforms before push
-  - [x] Script to Test, Compile & Publish JS
-  - [x] Script to Test, Compile & Publish Python
-  - [x] Script to Test, Compile & Publish Rust + Winit
-  - [x] GHA wheel: Test build all packages for all OSses
+### Shader API Completeness
 
-- [x] Automated documentation pipeline:
-  - [x] Doc strings centralized in `docs/api` and consumed in Rust via `#[lsp_doc]`.
-  - [x] Build-time validation: ensures object/method docs exist and include a `## Example` section.
-  - [x] Website generator: converts `docs/api` into MDX pages under `docs/website`, downshifting method headings and stripping object H1.
-  - [x] JS/Python examples are sliced from annotated healthcheck scripts.
-
-- [x] Release Management & Website Automation
-- [x] Website moved into this repository under `docs/website`.
-- [x] Automatically update docs from Rust Doc Comments
-- [x] Script to copy contents and publish to Website
-- [x] Post-publish workflow: after tags publish to npm & PyPI, update consumers (website & JS example) to the released version and push to main.
-- [x] Healthcheck example markers added for Renderer/Pass/Frame/Shader.
+- [x] Support for all ways to upload data to a GPU:
+  - [x] VertexBuffer
+  - [x] IndexBuffer
+  - [x] StorageBuffer
+  - [x] StorageBuffer: Arrays
+  - [x] Uniform
+  - [x] Uniform: Arrays
+  - [x] Texture
+  - [x] StorageTexture
+  - [x] Sampler
+  - [x] PushConstant
 
 ### Mesh and Vertex API (Geometry Groundwork)
 
@@ -85,7 +66,7 @@ but while we're still in pre-release phase, this is expected.
 - [x] UniformData::Storage((inner, span, access)) with CPU-side blob backing. set("ssbo.*") updates the blob at field offsets (from Naga) and renders on next frame.
 - [x] JS/Python conversions to allow shader.set("key", texture)
 - [x] Naga parsing: detect image/sampler bindings; store TextureMeta/SamplerInfo in UniformData
-- [x] AddressSpace handling: accept Uniform/Handle; error on bound unsupported spaces; WorkGroup and PushConstant parsed but flagged as PlannedFeature for now.
+- [x] AddressSpace handling: accept Uniform/Handle; WorkGroup (unbound) ignored; PushConstant supported natively (single-root) with uniform-buffer fallback (Web or over limit/multi-root).
 - [x] Array element indexing for Storage and Uniforms using naga stride, including nested array/struct offsets. Added unit tests.
 - [x] Unified cross-target URL fetching helper (native via ureq, WASM via fetch) and refactored Shader.fetch and texture URL loading to use it. Removed ureq usage from WASM paths.
 - [x] Texture & Sampler support
@@ -128,6 +109,29 @@ but while we're still in pre-release phase, this is expected.
 - [x] create_texture_with(input, options: TextureOptions) -> Texture (Rust); alias helpers: create_texture_with_size, create_texture_with_format
 - [x] Web: createTexture(input) (Uint8Array/URL/query selector)
 - [x] Python: create_texture(input) (bytes/path/ndarray)
+
+### Build System and Documentation
+
+- [x] Build System
+  - [x] Unit test all packages before building
+  - [x] Git hook: test builds for all platforms before push
+  - [x] Script to Test, Compile & Publish JS
+  - [x] Script to Test, Compile & Publish Python
+  - [x] Script to Test, Compile & Publish Rust + Winit
+  - [x] GHA wheel: Test build all packages for all OSses
+
+- [x] Automated documentation pipeline:
+  - [x] Doc strings centralized in `docs/api` and consumed in Rust via `#[lsp_doc]`.
+  - [x] Build-time validation: ensures object/method docs exist and include a `## Example` section.
+  - [x] Website generator: converts `docs/api` into MDX pages under `docs/website`, downshifting method headings and stripping object H1.
+  - [x] JS/Python examples are sliced from annotated healthcheck scripts.
+
+- [x] Release Management & Website Automation
+- [x] Website moved into this repository under `docs/website`.
+- [x] Automatically update docs from Rust Doc Comments
+- [x] Script to copy contents and publish to Website
+- [x] Post-publish workflow: after tags publish to npm & PyPI, update consumers (website & JS example) to the released version and push to main.
+- [x] Healthcheck example markers add
 
 ### Platforms
 

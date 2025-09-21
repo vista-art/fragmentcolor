@@ -220,12 +220,12 @@ impl Renderer {
     pub fn create_storage_texture_py(
         &self,
         size: PySize,
-        format: crate::texture::TextureFormat,
+        format: crate::TextureFormat,
         usage_bits: Option<u32>,
     ) -> Result<crate::texture::Texture, PyErr> {
         Python::attach(|_py| -> Result<crate::texture::Texture, PyErr> {
             let usage = usage_bits.map(wgpu::TextureUsages::from_bits_truncate);
-            let tex = pollster::block_on(self.create_storage_texture(size, format.into(), usage))?;
+            let tex = pollster::block_on(self.create_storage_texture(size, format, usage))?;
             Ok(tex)
         })
     }

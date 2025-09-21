@@ -1,4 +1,4 @@
-# set_viewport(viewport: Region)
+# Pass::set_viewport(viewport: Region)
 
 Sets the viewport region for this [Pass](https://fragmentcolor.org/api/core/pass).
 

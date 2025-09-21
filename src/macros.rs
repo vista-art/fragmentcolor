@@ -134,3 +134,18 @@ macro_rules! impl_tryfrom_js_ref_anchor {
         }
     };
 }
+
+// Bridge macro: implement both TryFrom<&JsValue> (anchor) and owned-via-ref in one line.
+#[macro_export]
+macro_rules! impl_js_bridge {
+    ($t:ty, $err:ty) => {
+        $crate::impl_tryfrom_js_ref_anchor!($t, $err, stringify!($t));
+        #[cfg(wasm)]
+        $crate::impl_tryfrom_owned_via_ref!($t, wasm_bindgen::JsValue, $err);
+    };
+    ($t:ty, $err:ty, $name:expr) => {
+        $crate::impl_tryfrom_js_ref_anchor!($t, $err, $name);
+        #[cfg(wasm)]
+        $crate::impl_tryfrom_owned_via_ref!($t, wasm_bindgen::JsValue, $err);
+    };
+}

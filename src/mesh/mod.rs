@@ -90,6 +90,18 @@ impl Mesh {
     pub fn clear_instances(&mut self) {
         self.object.clear_instances_internal();
     }
+
+    /// Override how many instances to draw (when not using per-instance attributes).
+    #[lsp_doc("docs/api/core/mesh/set_instance_count.md")]
+    pub fn set_instance_count(&mut self, n: u32) {
+        *self.object.override_instances.write() = Some(n);
+    }
+
+    /// Clear the instance count override; fall back to instance buffer or 1.
+    #[lsp_doc("docs/api/core/mesh/clear_instance_count.md")]
+    pub fn clear_instance_count(&mut self) {
+        *self.object.override_instances.write() = None;
+    }
 }
 
 // -----------------------------
@@ -154,6 +166,9 @@ pub(crate) struct MeshObject {
     dirty_v: RwLock<bool>,
     dirty_i: RwLock<bool>,
 
+    // Optional override for instance count (allows drawing without instance buffer)
+    override_instances: RwLock<Option<u32>>,
+
     // GPU resources (created lazily)
     gpu: RwLock<Option<GpuStreams>>,
 }
@@ -178,6 +193,8 @@ struct GpuStreams {
     index_buffer: wgpu::Buffer,
     instance_buffer_len: u32,
     instance_buffer: Option<(wgpu::Buffer, u32)>, // (buffer, count)
+    // Capacity in bytes of the current instance buffer; 0 when None
+    instance_bytes: u64,
 }
 
 impl MeshObject {
@@ -192,6 +209,7 @@ impl MeshObject {
             schema_i: RwLock::new(None),
             dirty_v: RwLock::new(false),
             dirty_i: RwLock::new(false),
+            override_instances: RwLock::new(None),
             gpu: RwLock::new(None),
         }
     }
@@ -279,6 +297,10 @@ impl MeshObject {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
     ) -> Result<(GpuOwned, DrawCounts), MeshError> {
+        // Capture dirty flags before packing; ensure_packed() clears them
+        let was_dirty_v = *self.dirty_v.read();
+        let was_dirty_i = *self.dirty_i.read();
+
         self.ensure_packed()?;
         let pv = self.packed_verts.read();
         let pi = self.packed_insts.read();
@@ -287,11 +309,27 @@ impl MeshObject {
 
         // Create or grow buffers
         let mut gpu = self.gpu.write();
-        let need_new = match gpu.as_ref() {
+
+        // Decide whether we need to recreate GPU buffers
+        let mut need_new = match gpu.as_ref() {
             None => true,
-            Some(g) => g.instance_buffer_len as usize != idx.len(),
-        } || *self.dirty_v.read()
-            || *self.dirty_i.read();
+            Some(g) => g.instance_buffer_len as usize != idx.len() || was_dirty_v,
+        };
+
+        if let Some(g) = gpu.as_ref() {
+            // Instance buffer presence/size changes force (re)creation
+            let had_inst = g.instance_buffer.is_some();
+            let want_inst = !pi.is_empty();
+            if had_inst != want_inst {
+                need_new = true;
+            } else if want_inst {
+                let current_cap = g.instance_bytes;
+                let needed = pi.len() as u64;
+                if needed > current_cap {
+                    need_new = true;
+                }
+            }
+        }
 
         if need_new {
             let vertex_buffer = device.create_buffer(&wgpu::BufferDescriptor {
@@ -309,20 +347,24 @@ impl MeshObject {
             queue.write_buffer(&vertex_buffer, 0, &pv);
             queue.write_buffer(&index_buffer, 0, bytemuck::cast_slice(&idx));
 
-            let instance_buffer = if !pi.is_empty() {
+            let (instance_buffer, instance_bytes) = if !pi.is_empty() {
+                let needed = pi.len() as u64;
                 let buf = device.create_buffer(&wgpu::BufferDescriptor {
                     label: Some("Mesh Instance Buffer"),
-                    size: pi.len() as u64,
+                    size: needed,
                     usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
                     mapped_at_creation: false,
                 });
                 queue.write_buffer(&buf, 0, &pi);
-                Some((
-                    buf,
-                    (pi.len() as u32) / (si.as_ref().unwrap().stride as u32),
-                ))
+                (
+                    Some((
+                        buf,
+                        (pi.len() as u32) / (si.as_ref().unwrap().stride as u32),
+                    )),
+                    needed,
+                )
             } else {
-                None
+                (None, 0)
             };
 
             gpu.replace(GpuStreams {
@@ -330,16 +372,18 @@ impl MeshObject {
                 index_buffer,
                 instance_buffer_len: idx.len() as u32,
                 instance_buffer,
+                instance_bytes,
             });
         } else {
-            // Update contents if needed
+            // Update contents if needed without recreating buffers
             if let Some(g) = gpu.as_ref() {
-                if *self.dirty_v.read() {
+                if was_dirty_v {
                     queue.write_buffer(&g.vertex_buffer, 0, &pv);
                     *self.dirty_v.write() = false;
                 }
-                if *self.dirty_i.read() {
+                if was_dirty_i {
                     if let Some((ref buf, _)) = g.instance_buffer {
+                        // Safe to write since capacity check passed above
                         queue.write_buffer(buf, 0, &pi);
                     }
                     *self.dirty_i.write() = false;
@@ -353,9 +397,11 @@ impl MeshObject {
             index_buffer: g.index_buffer.clone(),
             instance_buffer: g.instance_buffer.as_ref().map(|(b, _)| b.clone()),
         };
+        let override_count = *self.override_instances.read();
         let counts = DrawCounts {
             index_count: g.instance_buffer_len,
-            instance_count: g.instance_buffer.as_ref().map(|(_, c)| *c).unwrap_or(1),
+            instance_count: override_count
+                .unwrap_or_else(|| g.instance_buffer.as_ref().map(|(_, c)| *c).unwrap_or(1)),
         };
         Ok((refs, counts))
     }

@@ -111,26 +111,40 @@ impl UniformBufferPool {
         let size = data.len() as u64;
         let aligned_size = wgpu::util::align_to(size, self.alignment);
 
-        // If a single upload does not fit in current chunk size, allocate a dedicated chunk
+        // If a single upload does not fit in current chunk size, allocate a dedicated buffer
         if aligned_size > self.chunk_size {
-            self.buffers
-                .push(device.create_buffer(&wgpu::BufferDescriptor {
-                    label: Some(&self.label),
-                    size: aligned_size,
-                    usage: self.usage,
-                    mapped_at_creation: false,
-                }));
-            self.allocations += 1;
-            self.bytes_allocated += aligned_size;
-            self.current_chunk = self.buffers.len() - 1;
-            self.current_offset = 0;
+            let idx = {
+                self.buffers
+                    .push(device.create_buffer(&wgpu::BufferDescriptor {
+                        label: Some(&self.label),
+                        size: aligned_size,
+                        usage: self.usage,
+                        mapped_at_creation: false,
+                    }));
+                self.allocations += 1;
+                self.bytes_allocated += aligned_size;
+                self.buffers.len() - 1
+            };
+
+            // Write directly to the dedicated buffer at offset 0
+            queue.write_buffer(&self.buffers[idx], 0, data);
+
+            // Update cursor to the end of this dedicated buffer so subsequent writes advance
+            self.current_chunk = idx;
+            self.current_offset = aligned_size;
+
+            return BufferLocation {
+                chunk_index: idx,
+                offset: 0,
+                size,
+            };
         }
 
-        // Advance to next chunk if needed
+        // Advance to next chunk if the current one doesn't have enough space
         if self.current_offset + aligned_size > self.chunk_size {
             self.current_chunk += 1;
             self.current_offset = 0;
-            // If capacity wasn't ensured, grow lazily
+            // Grow lazily if needed
             if self.current_chunk >= self.buffers.len() {
                 self.buffers
                     .push(device.create_buffer(&wgpu::BufferDescriptor {

@@ -10,12 +10,6 @@ pub struct CanvasTarget {
     inner: Arc<Mutex<WindowTarget>>,
 }
 
-crate::impl_tryfrom_owned_via_ref!(
-    TextureTarget,
-    wasm_bindgen::JsValue,
-    crate::shader::error::ShaderError
-);
-
 impl CanvasTarget {
     pub(crate) fn new(
         context: Arc<RenderContext>,
@@ -122,20 +116,8 @@ impl TextureTarget {
     }
 }
 
-crate::impl_tryfrom_js_ref_anchor!(
-    CanvasTarget,
-    crate::shader::error::ShaderError,
-    "CanvasTarget"
-);
+#[cfg(wasm)]
+crate::impl_js_bridge!(CanvasTarget, crate::shader::error::ShaderError);
 
-crate::impl_tryfrom_owned_via_ref!(
-    CanvasTarget,
-    wasm_bindgen::JsValue,
-    crate::shader::error::ShaderError
-);
-
-crate::impl_tryfrom_js_ref_anchor!(
-    TextureTarget,
-    crate::shader::error::ShaderError,
-    "TextureTarget"
-);
+#[cfg(wasm)]
+crate::impl_js_bridge!(TextureTarget, crate::shader::error::ShaderError);

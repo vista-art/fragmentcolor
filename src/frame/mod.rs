@@ -20,13 +20,6 @@ pub struct Frame {
     _dependencies: Vec<(usize, usize)>, // @TODO implement directed acyclic graph
 }
 
-#[cfg(wasm)]
-crate::impl_tryfrom_owned_via_ref!(
-    Frame,
-    wasm_bindgen::JsValue,
-    crate::frame::error::FrameError
-);
-
 impl Frame {
     #[lsp_doc("docs/api/core/frame/new.md")]
     pub fn new() -> Self {
@@ -48,7 +41,8 @@ impl Renderable for Frame {
     }
 }
 
-crate::impl_tryfrom_js_ref_anchor!(Frame, crate::frame::error::FrameError, "Frame");
+#[cfg(wasm)]
+crate::impl_js_bridge!(Frame, crate::frame::error::FrameError);
 
 #[cfg(test)]
 mod tests {

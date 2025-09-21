@@ -10,7 +10,6 @@ A GPU texture resource. Public API wrapper that holds a shareable reference to t
 
 Create a [Texture](https://fragmentcolor.org/api/core/texture) and set it on a [Shader](https://fragmentcolor.org/api/core/shader)
 
-
 ## Example
 
 In your WGSL, declare a sampler in the same group as your texture
