@@ -10,12 +10,12 @@ Create a [Texture](https://fragmentcolor.org/api/core/texture) from various inpu
 
 ```rust
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-# use fragmentcolor::{Renderer, Size};
+use fragmentcolor::Renderer;
 let renderer = Renderer::new();
-// 1x1 RGBA (white) raw pixel bytes
-let pixels: &[u8] = &[255,255,255,255];
-let tex = renderer.create_texture_with_size(pixels, Size::from((1,1))).await?;
-# let _ = tex.size();
+// Load encoded image bytes (PNG/JPEG) or use a file path
+let bytes = std::fs::read("./examples/assets/image.png")?;
+let tex = renderer.create_texture(&bytes).await?;
+# _ = tex.size();
 # Ok(())
 # }
 # fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }

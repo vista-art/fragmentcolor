@@ -2,10 +2,8 @@
 
 use lsp_doc::lsp_doc;
 use std::convert::TryInto;
-use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
-use wasm_bindgen_futures::JsFuture;
-use web_sys::{Request, RequestInit, RequestMode, Response, console};
+use web_sys::console;
 
 use crate::{Shader, ShaderError, UniformData};
 
@@ -26,7 +24,7 @@ impl Shader {
         match crate::net::fetch_text(url).await {
             Ok(body) => Self::new_js(&body),
             Err(e) => {
-                console::error_1(&wasm_bindgen::JsValue::from_str(&e));
+                console::error_1(&e);
                 Shader::default()
             }
         }
@@ -101,16 +99,16 @@ mod tests {
 
         // @TODO uncomment and fix
         //
-        // // Test array as vec2
-        // let array = &Array::new();
-        // array.push(&JsValue::from_f64(1.0));
-        // array.push(&JsValue::from_f64(2.0));
-        // let js_array: JsValue = array.into();
-        // let data: UniformData = js_array.try_into().unwrap();
-        // match data {
-        //     UniformData::Vec2(v) => assert_eq!(v, [1.0, 2.0]),
-        //     _ => panic!("Expected Vec2"),
-        // }
+        // Test array as vec2
+        let array = &js_sys::Array::new();
+        array.push(&JsValue::from_f64(1.0));
+        array.push(&JsValue::from_f64(2.0));
+        let js_array: JsValue = array.into();
+        let data: UniformData = js_array.try_into().unwrap();
+        match data {
+            UniformData::Vec2(v) => assert_eq!(v, [1.0, 2.0]),
+            _ => panic!("Expected Vec2"),
+        }
 
         // // Test array as vec3
         // let array = Array::new();

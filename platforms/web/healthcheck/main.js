@@ -1,4 +1,4 @@
-import init, { Renderer, Shader, Pass, Frame, TextureTarget, CanvasTarget } from "fragmentcolor";
+import init, { Renderer, Shader, Pass, Frame, TextureTarget, CanvasTarget, Mesh, Vertex } from "fragmentcolor";
 import { installInstrumentation } from './instrument.mjs';
 
 const wasmUrl = new URL("./pkg/fragmentcolor_bg.wasm", import.meta.url);
@@ -140,6 +140,66 @@ fn main(v: VOut) -> @location(0) vec4<f32> {
   renderer.render(shader, target);
   const img = target.getImage();
   console.log('Rendered textured shader:', img);
+});
+
+// Mesh smoke: positions-only triangle
+await withModule('platforms.web.healthcheck.mesh.basic', async () => {
+  const renderer = new Renderer();
+  const target = await renderer.createTextureTarget([32, 32]);
+  const shader = new Shader(`
+struct VOut { @builtin(position) pos: vec4<f32> };
+@vertex
+fn vs_main(@location(0) pos: vec3<f32>) -> VOut {
+  var out: VOut;
+  out.pos = vec4<f32>(pos, 1.0);
+  return out;
+}
+@fragment
+fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
+`);
+  const pass = new Pass('mesh-basic');
+  pass.addShader(shader);
+  const mesh = new Mesh();
+  mesh.addVertex(new Vertex([-0.5, -0.5, 0.0]));
+  mesh.addVertex(new Vertex([ 0.5, -0.5, 0.0]));
+  mesh.addVertex(new Vertex([ 0.0,  0.5, 0.0]));
+  pass.addMesh(mesh);
+  renderer.render(pass, target);
+  const img = target.getImage();
+  console.log('mesh.basic image bytes:', img?.length || 0);
+});
+
+// Mesh smoke: two instances with offsets
+await withModule('platforms.web.healthcheck.mesh.instances', async () => {
+  const renderer = new Renderer();
+  const target = await renderer.createTextureTarget([32, 32]);
+  const shader = new Shader(`
+struct VOut { @builtin(position) pos: vec4<f32> };
+@vertex
+fn vs_main(@location(0) pos: vec3<f32>, @location(1) offset: vec2<f32>) -> VOut {
+  var out: VOut;
+  let p = vec3<f32>(pos.xy + offset, pos.z);
+  out.pos = vec4<f32>(p, 1.0);
+  return out;
+}
+@fragment
+fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(0.,1.,0.,1.); }
+`);
+  const pass = new Pass('mesh-inst');
+  pass.addShader(shader);
+  const mesh = new Mesh();
+  mesh.addVertices([
+    new Vertex([-0.5, -0.5, 0.0]),
+    new Vertex([ 0.5, -0.5, 0.0]),
+    new Vertex([ 0.0,  0.5, 0.0]),
+  ]);
+  const instA = new Vertex([0.0, 0.0]).with('offset', [0.0, 0.0]).createInstance();
+  const instB = new Vertex([0.25, 0.0]).with('offset', [0.25, 0.0]).createInstance();
+  mesh.addInstances([instA, instB]);
+  pass.addMesh(mesh);
+  renderer.render(pass, target);
+  const img = target.getImage();
+  console.log('mesh.instances image bytes:', img?.length || 0);
 });
 
 // Auto-generated: helpers in global scope

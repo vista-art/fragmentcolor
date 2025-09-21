@@ -131,7 +131,7 @@ impl Renderer {
             };
             let bytes = crate::net::fetch_bytes(&url)
                 .await
-                .map_err(|e| JsError::new(&e))?;
+                .map_err(|_| JsError::new("fetch bytes error for URL"))?;
             return self
                 .create_texture(crate::texture::TextureInput::Bytes(bytes))
                 .await
@@ -144,7 +144,7 @@ impl Renderer {
                 input.dyn_into().map_err(|_| JsError::new("Not an image"))?;
             let bytes = crate::net::fetch_bytes(&img.src())
                 .await
-                .map_err(|e| JsError::new(&e))?;
+                .map_err(|_| JsError::new("fetch bytes error for HtmlImageElement"))?;
             return self
                 .create_texture(crate::texture::TextureInput::Bytes(bytes))
                 .await

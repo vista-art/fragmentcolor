@@ -14,7 +14,8 @@ use fragmentcolor::Renderer;
 let renderer = Renderer::new();
 let target = renderer.create_texture_target([16, 16]).await?;
 let frame = target.get_current_frame()?;
-let _format = frame.format();
+let format = frame.format();
+# _ = format;
 
 # Ok(())
 # }

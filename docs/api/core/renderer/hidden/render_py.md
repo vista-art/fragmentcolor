@@ -1,11 +1,10 @@
 # Renderer.render_py
 
-Draft platform-specific method for Python.
+Platform-specific method for Python.
 Hidden from public website, available for IDE hover via lsp_doc.
 
 ## Example
 
 ```rust
-// hidden draft; no public example yet
+// hidden file; no public example
 ```
-

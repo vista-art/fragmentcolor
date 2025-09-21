@@ -263,7 +263,7 @@ mod tests {
 
             // Assert: binding size is present and padded to multiple of 16
             let sz = binding.size.map(|nz| nz.get()).unwrap_or(0);
-            assert!(sz >= 16 && sz % 16 == 0);
+            assert!(sz >= 16 && sz.is_multiple_of(16));
 
             // Zero-sized case yields None
             let zero: [u8; 0] = [];

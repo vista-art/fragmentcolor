@@ -6,7 +6,7 @@ Returns the texture size (w, h[, d]).
 
 ```rust
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-# use fragmentcolor::{Renderer, Size};
+use fragmentcolor::{Renderer, Size};
 let renderer = Renderer::new();
 // 1x1 RGBA (white) raw pixel bytes
 let pixels: &[u8] = &[255,255,255,255];

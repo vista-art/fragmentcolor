@@ -4,6 +4,12 @@ use std::collections::HashMap;
 use std::hash::Hash;
 use std::sync::Arc;
 
+#[cfg(wasm)]
+use wasm_bindgen::prelude::*;
+
+#[cfg(python)]
+use pyo3::prelude::*;
+
 pub mod error;
 pub use error::*;
 
@@ -12,6 +18,13 @@ pub use vertex::*;
 
 pub(crate) mod builtins;
 
+mod platform;
+
+#[cfg(python)]
+pub use platform::python::PyVertexValue;
+
+#[cfg_attr(wasm, wasm_bindgen)]
+#[cfg_attr(python, pyclass)]
 #[derive(Clone, Debug)]
 #[lsp_doc("docs/api/core/mesh/mesh.md")]
 pub struct Mesh {

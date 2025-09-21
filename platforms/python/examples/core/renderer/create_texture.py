@@ -1,4 +1,5 @@
+from fragmentcolor import Renderer
 renderer = Renderer()
-# 1x1 RGBA (white) raw pixel bytes
-pixels = [255,255,255,255]
-tex = renderer.create_texture_with_size(pixels, Size.from((1,1)))
+# Load encoded image bytes (PNG/JPEG) or use a file path
+bytes = std.fs.read("./examples/assets/image.png")
+tex = renderer.create_texture(bytes)

@@ -10,17 +10,15 @@ Create a [Texture](https://fragmentcolor.org/api/core/texture) from various inpu
 
 ```rust
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-# use fragmentcolor::{Renderer, Size};
+use fragmentcolor::{Renderer, Size};
 let renderer = Renderer::new();
 let size = Size::from((2, 2));
 let pixels: Vec<u8> = vec![
     255,0,0,255,   0,255,0,255,
     0,0,255,255,   255,255,255,255,
 ];
-let tex = renderer
-    .create_texture_with(&pixels, size)
-    .await?;
-# let _ = tex.size();
+let tex = renderer.create_texture_with(&pixels, size).await?;
+# _ = tex.size();
 # Ok(())
 # }
 # fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }

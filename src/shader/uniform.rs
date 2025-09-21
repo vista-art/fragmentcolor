@@ -605,7 +605,6 @@ impl TryFrom<&wasm_bindgen::JsValue> for UniformData {
         use js_sys::{Array, Float32Array, Int32Array, Uint32Array};
         use wasm_bindgen::JsCast;
 
-        // Accept a Texture instance: convert to TextureMeta carrying id only.
         if let Some(tex) = value.dyn_ref::<crate::texture::Texture>() {
             let meta = crate::texture::TextureMeta::with_id_only(tex.id.clone());
             return Ok(UniformData::Texture(meta));
@@ -905,9 +904,8 @@ impl From<UniformData> for wasm_bindgen::JsValue {
                 obj.into()
             }
 
-            // For complex types, return as regular JS arrays/objects
             UniformData::Array(items) => {
-                let mut arr = Array::new();
+                let arr = Array::new();
                 for (item, count, _stride) in items {
                     let item_js: wasm_bindgen::JsValue = item.into();
                     for _ in 0..count {
@@ -916,6 +914,7 @@ impl From<UniformData> for wasm_bindgen::JsValue {
                 }
                 arr.into()
             }
+
             UniformData::Struct((fields, _)) => {
                 let obj = Object::new();
                 for (_, name, data) in fields {

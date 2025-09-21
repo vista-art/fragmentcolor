@@ -7,5 +7,6 @@ Create an Instance from this Vertex by cloning all of its properties
 ```rust
 use fragmentcolor::mesh::Vertex;
 let v = Vertex::new([0.0, 0.0]);
-let _inst = v.create_instance();
+let inst = v.create_instance();
+# _ = inst;
 ```

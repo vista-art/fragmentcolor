@@ -11,5 +11,5 @@ use fragmentcolor::Pass;
 
 let pass = Pass::new("first pass");
 
-# let _ = pass;
+# _ = pass;
 ```

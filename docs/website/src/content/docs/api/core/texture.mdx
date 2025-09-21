@@ -48,9 +48,9 @@ let pixels: &[u8] = &[255,255,255,255];
 let texture = renderer.create_texture_with_size(pixels, Size::from((1,1))).await?;
 
 shader.set("t_tex", &texture).unwrap();
-let _ = shader;
+_ = shader;
 
-let _ = shader;
+_ = shader;
 Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
@@ -173,7 +173,7 @@ Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-2, 8-11}"
+lang="rust" meta="collapse={1-1, 8-11}"
 />
 
 </TabItem>
@@ -181,6 +181,7 @@ lang="rust" meta="collapse={1-2, 8-11}"
 <TabItem label="JavaScript">
 <Code
 code={`
+import { Renderer, Size } from "fragmentcolor";
 const renderer = new Renderer();
 // 1x1 RGBA (white) raw pixel bytes;
 const pixels = [255,255,255,255];
@@ -195,6 +196,7 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
+from fragmentcolor import Renderer, Size
 renderer = Renderer()
 # 1x1 RGBA (white) raw pixel bytes
 pixels = [255,255,255,255]
@@ -356,7 +358,7 @@ Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-2, 9-11}"
+lang="rust" meta="collapse={1-1, 9-11}"
 />
 
 </TabItem>
@@ -364,6 +366,7 @@ lang="rust" meta="collapse={1-2, 9-11}"
 <TabItem label="JavaScript">
 <Code
 code={`
+import { Renderer, Size, SamplerOptions } from "fragmentcolor";
 const renderer = new Renderer();
 // 1x1 RGBA (white) raw pixel bytes;
 const pixels = [255,255,255,255];
@@ -379,6 +382,7 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
+from fragmentcolor import Renderer, Size, SamplerOptions
 renderer = Renderer()
 # 1x1 RGBA (white) raw pixel bytes
 pixels = [255,255,255,255]
