@@ -643,3 +643,169 @@ lang="text"
 </TabItem>
 
 </Tabs>
+
+
+---
+
+### Mesh::set_instance_count
+
+Override how many instances to draw without providing per-instance attributes.
+
+Use this when driving instance data from a storage buffer and indexing via @builtin(instance_index).
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::mesh::{Mesh, Vertex};
+let mut m = Mesh::new();
+m.add_vertices([
+    Vertex::new([-0.01, -0.01]),
+    Vertex::new([ 0.01, -0.01]),
+    Vertex::new([ 0.00,  0.01]),
+]);
+// draw one million instances
+m.set_instance_count(1_000_000);
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { {Mesh, Vertex} } from "fragmentcolor";
+const m = new Mesh();
+m.addVertices([;
+    Vertex.new([-0.01, -0.01]),;
+    Vertex.new([ 0.01, -0.01]),;
+    Vertex.new([ 0.00,  0.01]),;
+]);
+// draw one million instances;
+m.setInstanceCount(1_000_000);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import {Mesh, Vertex}
+m = Mesh()
+m.add_vertices([
+    Vertex.new([-0.01, -0.01]),
+    Vertex.new([ 0.01, -0.01]),
+    Vertex.new([ 0.00,  0.01]),
+])
+# draw one million instances
+m.set_instance_count(1_000_000)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Mesh::clear_instance_count
+
+Remove all instances from a mesh (render defaults to 1 instance).
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::mesh::Mesh;
+let mut m = Mesh::new();
+m.clear_instance_count();
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Mesh } from "fragmentcolor";
+const m = new Mesh();
+m.clearInstanceCount();
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Mesh
+m = Mesh()
+m.clear_instance_count()
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>

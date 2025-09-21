@@ -240,27 +240,43 @@ fn parse_uniforms(module: &Module) -> Result<HashMap<String, Uniform>, ShaderErr
     let mut uniforms = HashMap::new();
 
     for (_, variable) in module.global_variables.iter() {
-        // Accept classic uniform buffers and handle-class resources (textures/samplers).
-        // If a global has a binding but uses an unsupported address space, surface an error
-        // so we can add support explicitly later.
+        // Handle WorkGroup specially: ignore unbound; error on bound (unexpected)
         match variable.space {
-            AddressSpace::Uniform | AddressSpace::Handle | AddressSpace::Storage { .. } => {}
             AddressSpace::WorkGroup => {
                 if variable.binding.is_some() {
-                    return Err(ShaderError::PlannedFeature(
-                        "WorkGroup variables (var<push_constant>) is a planned feature".into(),
+                    return Err(ShaderError::ParseError(
+                        "Bound workgroup variables are not supported".into(),
                     ));
                 } else {
                     continue;
                 }
             }
             AddressSpace::PushConstant => {
-                // Push constants are bindable via a special pipeline layout mechanism in native
-                // We parse and error with a PlannedFeature so this can be wired later.
-                return Err(ShaderError::PlannedFeature(
-                    "PushConstant (var<push_constant>) is a planned feture".into(),
-                ));
+                // Parse push constants as a dedicated variant; no binding expected
+                let uniform_name = variable
+                    .name
+                    .clone()
+                    .ok_or(ShaderError::ParseError("Unnamed push constant".into()))?;
+                let ty = &module.types[variable.ty];
+                let inner = convert_type(module, ty)?;
+                let span = inner.size();
+                uniforms.insert(
+                    uniform_name.clone(),
+                    Uniform {
+                        name: uniform_name,
+                        group: 0,
+                        binding: 0,
+                        data: UniformData::PushConstant(vec![(inner, span)]),
+                    },
+                );
+                continue;
             }
+            _ => {}
+        }
+
+        // Accept classic uniform buffers and handle-class resources (textures/samplers/storage)
+        match variable.space {
+            AddressSpace::Uniform | AddressSpace::Handle | AddressSpace::Storage { .. } => {}
             _ => {
                 continue;
             }
@@ -309,10 +325,8 @@ impl Renderable for Shader {
     }
 }
 
-crate::impl_tryfrom_js_ref_anchor!(Shader, ShaderError, "Shader");
-
 #[cfg(wasm)]
-crate::impl_tryfrom_owned_via_ref!(Shader, wasm_bindgen::JsValue, ShaderError);
+crate::impl_js_bridge!(Shader, ShaderError);
 
 impl TryFrom<&str> for Shader {
     type Error = ShaderError;
@@ -693,9 +707,9 @@ fn cs_main() { }
         let _ = Shader::new(wgsl).expect("workgroup var ignored");
     }
 
-    // Story: Push constants are parsed but flagged as a planned feature for now.
+    // Story: Push constants are parsed, listed, and settable just like other variables.
     #[test]
-    fn push_constant_triggers_planned_feature() {
+    fn push_constant_parsing_and_set() {
         let wgsl = r#"
 struct PC { v: f32 };
 var<push_constant> pc: PC;
@@ -705,11 +719,43 @@ var<push_constant> pc: PC;
 }
 @fragment fn main() -> @location(0) vec4<f32> { return vec4f(1.,1.,1.,1.); }
         "#;
-        let err = Shader::new(wgsl).expect_err("push constants planned feature error");
-        match err {
-            ShaderError::PlannedFeature(msg) => assert!(msg.contains("PushConstant")),
-            _ => panic!("unexpected error kind: {:?}", err),
-        }
+        let shader = Shader::new(wgsl).expect("shader");
+        let mut names = shader.list_uniforms();
+        names.sort();
+        assert!(names.contains(&"pc".to_string()));
+        shader.set("pc.v", 0.5f32).expect("set pc.v");
+        let s = shader.object.storage.read();
+        let bytes = s.get_bytes("pc").expect("pc bytes");
+        assert_eq!(bytes.len(), 4);
+        let v: f32 = bytemuck::cast_slice(&bytes[0..4])[0];
+        assert!((v - 0.5).abs() < 1e-6);
+    }
+
+    // Story: Multiple push-constant roots parse and expose both roots.
+    #[test]
+    fn push_constant_multiple_roots_listed() {
+        let wgsl = r#"
+struct A { v: f32 };
+struct B { c: vec4<f32> };
+var<push_constant> a: A;
+var<push_constant> b: B;
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.));
+  return vec4f(p[i], 0., 1.);
+}
+@fragment fn main() -> @location(0) vec4<f32> { return vec4f(1.,1.,1.,1.); }
+        "#;
+        let shader = Shader::new(wgsl).expect("shader");
+        let mut names = shader.list_uniforms();
+        names.sort();
+        assert!(names.contains(&"a".to_string()));
+        assert!(names.contains(&"b".to_string()));
+        // Set nested fields and verify CPU blobs updated
+        shader.set("a.v", 1.0f32).expect("set a.v");
+        shader.set("b.c", [0.0, 1.0, 0.0, 1.0]).expect("set b.c");
+        let s = shader.object.storage.read();
+        assert_eq!(s.get_bytes("a").unwrap().len(), 4);
+        assert_eq!(s.get_bytes("b").unwrap().len(), 16);
     }
 
     // Story: Storage buffers can coexist with texture/sampler bindings.

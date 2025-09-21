@@ -839,16 +839,17 @@ Create a storage-class texture for compute or image store/load.
 code={`
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
-use fragmentcolor::Renderer;
-let r = Renderer::new();
-let tex = r.create_storage_texture([64, 64], wgpu::TextureFormat::Rgba8Unorm, None).await?;
-_ = tex;
+use fragmentcolor::{Renderer, TextureFormat};
 
+let r = Renderer::new();
+let tex = r.create_storage_texture([64, 64], TextureFormat::Rgba, None).await?;
+
+_ = tex;
 Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 6-6, 8-10}"
+lang="rust" meta="collapse={1-1, 8-11}"
 />
 
 </TabItem>
@@ -857,9 +858,10 @@ lang="rust" meta="collapse={1-1, 6-6, 8-10}"
 <Code
 code={`
 
-import { Renderer } from "fragmentcolor";
+import { Renderer, TextureFormat } from "fragmentcolor";
+
 const r = new Renderer();
-const tex = await r.createStorageTexture([64, 64], wgpu.TextureFormat.Rgba8Unorm, None);
+const tex = await r.createStorageTexture([64, 64], TextureFormat.Rgba, None);
 
 `}
 lang="js"
@@ -871,9 +873,10 @@ lang="js"
 <Code
 code={`
 
-from fragmentcolor import Renderer
+from fragmentcolor import Renderer, TextureFormat
+
 r = Renderer()
-tex = r.create_storage_texture([64, 64], wgpu.TextureFormat.Rgba8Unorm, None)
+tex = r.create_storage_texture([64, 64], TextureFormat.Rgba, None)
 
 `}
 lang="python"

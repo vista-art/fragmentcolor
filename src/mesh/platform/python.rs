@@ -295,6 +295,18 @@ impl Mesh {
     pub fn clear_instances_py(&mut self) {
         self.clear_instances();
     }
+
+    #[pyo3(name = "set_instance_count")]
+    #[lsp_doc("docs/api/core/mesh/set_instance_count.md")]
+    pub fn set_instance_count_py(&mut self, n: u32) {
+        self.set_instance_count(n);
+    }
+
+    #[pyo3(name = "clear_instance_count")]
+    #[lsp_doc("docs/api/core/mesh/clear_instance_count.md")]
+    pub fn clear_instance_count_py(&mut self) {
+        self.clear_instance_count();
+    }
 }
 
 /// Tiny factory class to construct typed VertexValue variants from Python.

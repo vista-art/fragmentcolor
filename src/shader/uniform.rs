@@ -46,6 +46,11 @@ pub enum UniformData {
     // Storage buffer: (inner shape, total size/span, access flags)
     // Stored as a Vec to avoid infinite recursion (Box doesn't implement FromPyObject)
     Storage(Vec<(UniformData, u32, StorageAccess)>),
+    // Push constant root: (inner_shape, span)
+    // Vec used for PyO3 compatibility; Same pattern as Storage.
+    PushConstant(Vec<(UniformData, u32)>),
+    // Raw bytes (opaque); intended for storage-root or push-root updates via Shader::set("root", bytes)
+    Bytes(Vec<u8>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -156,10 +161,25 @@ impl UniformData {
                     Vec::new()
                 }
             }
+            Self::PushConstant(data) => {
+                if let Some((inner, span)) = &data.iter().next() {
+                    // Flatten inner representation; ensure it matches the declared span.
+                    let mut bytes = inner.to_bytes();
+                    if bytes.len() < *span as usize {
+                        bytes.resize(*span as usize, 0);
+                    } else if bytes.len() > *span as usize {
+                        bytes.truncate(*span as usize);
+                    }
+                    bytes
+                } else {
+                    Vec::new()
+                }
+            }
+            Self::Bytes(b) => b.clone(),
         }
     }
 
-    pub(super) fn size(&self) -> u32 {
+    pub(crate) fn size(&self) -> u32 {
         match self {
             Self::Bool(_) => 1,
             Self::Float(_) => 4,
@@ -189,6 +209,9 @@ impl UniformData {
             Self::Struct((_, size)) => *size,
             // Storage buffers do not contribute to the CPU-side uniform buffer; size is 0 here.
             Self::Storage(_) => 0,
+            // Push constants do not contribute to the CPU-side uniform buffer aggregate; return 0 here.
+            Self::PushConstant(_) => 0,
+            Self::Bytes(b) => b.len() as u32,
         }
     }
 }
@@ -595,6 +618,18 @@ crate::impl_from_into_with_refs!(
     ])
 );
 
+// Simple conversions for byte slices
+impl From<&[u8]> for UniformData {
+    fn from(v: &[u8]) -> Self {
+        UniformData::Bytes(v.to_vec())
+    }
+}
+impl From<Vec<u8>> for UniformData {
+    fn from(v: Vec<u8>) -> Self {
+        UniformData::Bytes(v)
+    }
+}
+
 // WASM conversions
 
 #[cfg(wasm)]
@@ -935,6 +970,14 @@ impl From<UniformData> for wasm_bindgen::JsValue {
                 obj.into()
             }
             UniformData::Storage(_) => wasm_bindgen::JsValue::UNDEFINED,
+            UniformData::PushConstant(_) => wasm_bindgen::JsValue::UNDEFINED,
+
+            UniformData::Bytes(b) => {
+                let arr = Uint32Array::new_with_length(b.len() as u32);
+                let byte_u32: Vec<u32> = b.iter().map(|&byte| byte as u32).collect();
+                arr.copy_from(&byte_u32);
+                arr.into()
+            }
         }
     }
 }

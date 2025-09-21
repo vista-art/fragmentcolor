@@ -56,7 +56,7 @@ impl Pass {
         }
     }
 
-    #[lsp_doc("docs/api/core/pass/hidden/compute.md")]
+    #[lsp_doc("docs/api/core/pass/compute.md")]
     pub fn compute(name: &str) -> Self {
         Self {
             object: Arc::new(PassObject::new(name, PassType::Compute)),
@@ -70,7 +70,7 @@ impl Pass {
         }
     }
 
-    #[lsp_doc("docs/api/core/pass/hidden/load_previous.md")]
+    #[lsp_doc("docs/api/core/pass/load_previous.md")]
     pub fn load_previous(&self) {
         *self.object.input.write() = PassInput {
             load: true,
@@ -78,7 +78,7 @@ impl Pass {
         }
     }
 
-    #[lsp_doc("docs/api/core/pass/hidden/get_input.md")]
+    #[lsp_doc("docs/api/core/pass/get_input.md")]
     pub fn get_input(&self) -> PassInput {
         self.object.get_input()
     }
@@ -93,7 +93,7 @@ impl Pass {
         self.object.mesh.write().replace(mesh.object.clone());
     }
 
-    #[lsp_doc("docs/api/core/pass/hidden/set_viewport.md")]
+    #[lsp_doc("docs/api/core/pass/set_viewport.md")]
     pub fn set_viewport(&self, viewport: Region) {
         self.object.set_viewport(viewport);
     }
@@ -101,6 +101,11 @@ impl Pass {
     #[lsp_doc("docs/api/core/pass/set_clear_color.md")]
     pub fn set_clear_color(&self, color: [f32; 4]) {
         self.object.set_clear_color(color);
+    }
+
+    #[lsp_doc("docs/api/core/pass/set_compute_dispatch.md")]
+    pub fn set_compute_dispatch(&self, x: u32, y: u32, z: u32) {
+        self.object.set_compute_dispatch(x, y, z);
     }
 }
 
@@ -110,10 +115,8 @@ impl Renderable for Pass {
     }
 }
 
-crate::impl_tryfrom_js_ref_anchor!(Pass, crate::pass::error::PassError, "Pass");
-
 #[cfg(wasm)]
-crate::impl_tryfrom_owned_via_ref!(Pass, wasm_bindgen::JsValue, crate::pass::error::PassError);
+crate::impl_js_bridge!(Pass, crate::pass::error::PassError);
 
 #[derive(Debug)]
 pub struct PassObject {
@@ -124,6 +127,8 @@ pub struct PassObject {
     pub(crate) required_buffer_size: RwLock<u64>,
     pub(crate) mesh: RwLock<Option<Arc<crate::mesh::MeshObject>>>,
     pub pass_type: PassType,
+    // For compute passes: dispatch size (defaults to 1,1,1)
+    pub(crate) compute_dispatch: RwLock<(u32, u32, u32)>,
 }
 
 impl PassObject {
@@ -136,6 +141,7 @@ impl PassObject {
             required_buffer_size: RwLock::new(0),
             mesh: RwLock::new(None),
             pass_type,
+            compute_dispatch: RwLock::new((1, 1, 1)),
         }
     }
 
@@ -156,11 +162,21 @@ impl PassObject {
             required_buffer_size: RwLock::new(total_bytes),
             mesh: RwLock::new(None),
             pass_type,
+            compute_dispatch: RwLock::new((1, 1, 1)),
         }
     }
 
     pub fn set_clear_color(&self, color: impl Into<Color>) {
         *self.input.write() = PassInput::clear(color.into());
+    }
+
+    /// Set compute dispatch size for compute passes.
+    pub fn set_compute_dispatch(&self, x: u32, y: u32, z: u32) {
+        *self.compute_dispatch.write() = (x.max(1), y.max(1), z.max(1));
+    }
+
+    pub fn compute_dispatch(&self) -> (u32, u32, u32) {
+        *self.compute_dispatch.read()
     }
 
     pub fn get_input(&self) -> PassInput {

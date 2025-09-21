@@ -155,7 +155,7 @@ impl Renderer {
     }
 
     #[wasm_bindgen(js_name = "createTextureWithSize")]
-    #[lsp_doc("docs/api/core/renderer/hidden/create_texture_with_size_js.md")]
+    #[lsp_doc("docs/api/core/renderer/create_texture_with_size.md")]
     pub async fn create_texture_with_size_js(
         &self,
         input: JsValue,

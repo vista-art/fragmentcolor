@@ -1,4 +1,4 @@
-# get_input() -> PassInput
+# Pass::get_input() -> PassInput
 
 Returns a copy of the current input configuration for this [Pass](https://fragmentcolor.org/api/core/pass).
 

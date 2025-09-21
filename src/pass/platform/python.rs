@@ -1,6 +1,7 @@
 #![cfg(python)]
 
 use crate::{Pass, PassInput, PassObject, PassType, Shader};
+use lsp_doc::lsp_doc;
 use pyo3::prelude::*;
 use std::sync::Arc;
 
@@ -57,6 +58,12 @@ impl Pass {
     #[pyo3(name = "set_clear_color")]
     pub fn set_clear_color_py(&self, color: [f32; 4]) {
         self.object.set_clear_color(color);
+    }
+
+    #[pyo3(name = "set_compute_dispatch")]
+    #[lsp_doc("docs/api/core/pass/set_compute_dispatch.md")]
+    pub fn set_compute_dispatch_py(&self, x: u32, y: u32, z: u32) {
+        self.object.set_compute_dispatch(x, y, z);
     }
 
     pub fn renderable_type(&self) -> &'static str {
