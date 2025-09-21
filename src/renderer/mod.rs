@@ -105,17 +105,10 @@ impl Renderer {
         size: impl Into<Size>,
     ) -> Result<TextureTarget, InitializationError> {
         let context = self.context(None).await?;
-        if let Some(adapter) = self.adapter.read().as_ref() {
-            let sample_count = crate::renderer::platform::all::pick_sample_count(
-                adapter,
-                4,
-                wgpu::TextureFormat::Rgba8Unorm,
-            );
-            context.set_sample_count(sample_count);
-        } else {
-            context.set_sample_count(1);
-        }
-        let texture = TextureTarget::new(context, size.into(), wgpu::TextureFormat::Rgba8Unorm);
+        // For offscreen texture targets on Web, force sample_count = 1 to avoid MSAA resolve issues.
+        // Canvas targets may still use MSAA via the surface path.
+        context.set_sample_count(1);
+        let texture = TextureTarget::new(context, size.into(), wgpu::TextureFormat::Bgra8Unorm);
 
         Ok(texture)
     }
@@ -1460,9 +1453,8 @@ fn main(v: VOut) -> @location(0) vec4<f32> {
                 255, 0, 0,   255,    0,   255, 0,   255,
                 0,   0, 255, 255,    255, 255, 255, 255,
             ];
-            let size = crate::Size::from((2u32, 2u32));
             let tex = renderer
-                .create_texture_with(&pixels, size)
+                .create_texture_with_size(&pixels, [2u32, 2u32])
                 .await
                 .expect("texture");
             shader.set("tex", &tex).expect("set tex");
@@ -1690,18 +1682,143 @@ fn main(v: VOut) -> @location(0) vec4<f32> { return v.tint; }
             ]);
             // Two instances with different offsets and tints
             mesh.add_instance(
-                Vertex::new([-0.25, 0.0])
-                    .with("offset", VertexValue::F32x2([-0.25, 0.0]))
+                Vertex::new([-0.6, 0.0])
+                    .with("offset", VertexValue::F32x2([-0.6, 0.0]))
                     .with("tint", VertexValue::F32x4([1.0, 0.0, 0.0, 1.0])), // red
             );
             mesh.add_instance(
-                Vertex::new([0.25, 0.0])
-                    .with("offset", VertexValue::F32x2([0.25, 0.0]))
+                Vertex::new([0.6, 0.0])
+                    .with("offset", VertexValue::F32x2([0.6, 0.0]))
                     .with("tint", VertexValue::F32x4([0.0, 0.0, 1.0, 1.0])), // blue
             );
 
             pass.add_mesh(&mesh);
             renderer.render(&pass, &target).expect("render ok");
+
+            // Debug instrumentation to diagnose mapping and buffers
+            {
+                // Reflect shader inputs
+                let inputs = shader
+                    .object
+                    .reflect_vertex_inputs()
+                    .expect("reflect inputs");
+                eprintln!("[dbg] reflected inputs (name, loc, fmt):");
+                for i in inputs.iter() {
+                    eprintln!("  - {} @{} {:?}", i.name, i.location, i.format);
+                }
+
+                let mo = &mesh.object;
+                // Schemas
+                let sv = mo.schema_v.read().clone();
+                let si = mo.schema_i.read().clone();
+                if let Some(sv) = sv.as_ref() {
+                    eprintln!("[dbg] vertex schema stride={} fields:", sv.stride);
+                    for f in sv.fields.iter() {
+                        eprintln!("  - {} {:?} size={}B", f.name, f.fmt, f.size);
+                    }
+                } else {
+                    eprintln!("[dbg] vertex schema: None");
+                }
+                if let Some(si) = si.as_ref() {
+                    eprintln!("[dbg] instance schema stride={} fields:", si.stride);
+                    for f in si.fields.iter() {
+                        eprintln!("  - {} {:?} size={}B", f.name, f.fmt, f.size);
+                    }
+                } else {
+                    eprintln!("[dbg] instance schema: None");
+                }
+
+                // Location maps
+                let (pos_loc, vmap) = mo.first_vertex_location_map();
+                let imap = mo.first_instance_location_map();
+                eprintln!("[dbg] vertex pos_loc = {}", pos_loc);
+                eprintln!("[dbg] vertex loc->name: {:?}", vmap);
+                eprintln!("[dbg] instance loc->name: {:?}", imap);
+
+                // Attribute layouts after mapping
+                match super::build_ast_mapped_layouts(shader.object.as_ref(), mo.as_ref()) {
+                    Ok(Some((_sig, v, i))) => {
+                        eprintln!("[dbg] mapped vertex attrs:");
+                        for a in v.attributes.iter() {
+                            eprintln!(
+                                "  - @{} off={} fmt={:?} (step=Vertex)",
+                                a.shader_location, a.offset, a.format
+                            );
+                        }
+                        if let Some(i) = i {
+                            eprintln!("[dbg] mapped instance attrs:");
+                            for a in i.attributes.iter() {
+                                eprintln!(
+                                    "  - @{} off={} fmt={:?} (step=Instance)",
+                                    a.shader_location, a.offset, a.format
+                                );
+                            }
+                        } else {
+                            eprintln!("[dbg] no instance attrs mapped");
+                        }
+                    }
+                    Ok(None) => eprintln!("[dbg] no reflected inputs; mapping disabled"),
+                    Err(e) => eprintln!("[dbg] build_ast_mapped_layouts error: {}", e),
+                }
+
+                // Decode first few instances from packed bytes if available
+                let pi = mo.packed_insts.read();
+                if let Some(si) = si.as_ref() {
+                    let stride = si.stride as usize;
+                    if stride > 0 && !pi.is_empty() {
+                        let count = (pi.len() / stride).min(4);
+                        eprintln!(
+                            "[dbg] decode first {} instances (stride={}):",
+                            count, stride
+                        );
+                        for idx in 0..count {
+                            let base = idx * stride;
+                            // offset: 2 x f32 at bytes 0..8
+                            let ofx = f32::from_le_bytes([
+                                pi[base],
+                                pi[base + 1],
+                                pi[base + 2],
+                                pi[base + 3],
+                            ]);
+                            let ofy = f32::from_le_bytes([
+                                pi[base + 4],
+                                pi[base + 5],
+                                pi[base + 6],
+                                pi[base + 7],
+                            ]);
+                            // tint: 4 x f32 at bytes 8..24
+                            let r = f32::from_le_bytes([
+                                pi[base + 8],
+                                pi[base + 9],
+                                pi[base + 10],
+                                pi[base + 11],
+                            ]);
+                            let g = f32::from_le_bytes([
+                                pi[base + 12],
+                                pi[base + 13],
+                                pi[base + 14],
+                                pi[base + 15],
+                            ]);
+                            let b = f32::from_le_bytes([
+                                pi[base + 16],
+                                pi[base + 17],
+                                pi[base + 18],
+                                pi[base + 19],
+                            ]);
+                            let a = f32::from_le_bytes([
+                                pi[base + 20],
+                                pi[base + 21],
+                                pi[base + 22],
+                                pi[base + 23],
+                            ]);
+                            eprintln!(
+                                "  - inst{}: offset=({:.3},{:.3}) tint=({:.3},{:.3},{:.3},{:.3})",
+                                idx, ofx, ofy, r, g, b, a
+                            );
+                        }
+                    }
+                }
+            }
 
             let img = target.get_image();
             let w = size[0];
@@ -1715,22 +1832,23 @@ fn main(v: VOut) -> @location(0) vec4<f32> { return v.tint; }
                 let fy = (-(y_ndc) * 0.5 + 0.5).clamp(0.0, 1.0);
                 (fy * (h as f32 - 1.0)).round() as u32
             };
-            let left_x = ndc_to_px(-0.25, size[0]);
-            let right_x = ndc_to_px(0.25, size[0]);
+            let left_x = ndc_to_px(-0.6, size[0]);
+            let right_x = ndc_to_px(0.6, size[0]);
             let y_mid = ndc_to_py(0.0, size[1]);
 
             let left = read_pixel(&img, w, left_x, y_mid);
             let right = read_pixel(&img, w, right_x, y_mid);
 
             // Expect roughly red on the left, blue on the right (alpha 255)
+            // Note: TextureTarget uses Bgra8Unorm; bytes are in BGRA order.
             assert!(
-                left[0] > 128 && left[1] < 64 && left[2] < 64 && left[3] == 255,
-                "left not red-ish: {:?}",
+                left[2] > 128 && left[1] < 64 && left[0] < 64 && left[3] == 255,
+                "left not red-ish (BGRA): {:?}",
                 left
             );
             assert!(
-                right[2] > 128 && right[0] < 64 && right[1] < 64 && right[3] == 255,
-                "right not blue-ish: {:?}",
+                right[0] > 128 && right[1] < 64 && right[2] < 64 && right[3] == 255,
+                "right not blue-ish (BGRA): {:?}",
                 right
             );
         });

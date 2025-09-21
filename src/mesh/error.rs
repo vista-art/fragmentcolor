@@ -6,4 +6,7 @@ pub enum MeshError {
     InvalidInstance(String),
     #[error("Mismatched vertex layout: {0}")]
     LayoutMismatch(String),
+    #[cfg(wasm)]
+    #[error("WASM Mesh Error: {0}")]
+    Error(String),
 }

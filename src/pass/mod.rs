@@ -110,26 +110,7 @@ impl Renderable for Pass {
     }
 }
 
-#[cfg(wasm)]
-impl TryFrom<&wasm_bindgen::JsValue> for Pass {
-    type Error = crate::pass::error::PassError;
-
-    fn try_from(value: &wasm_bindgen::JsValue) -> Result<Self, Self::Error> {
-        use js_sys::Reflect;
-        use wasm_bindgen::convert::RefFromWasmAbi;
-
-        let key = wasm_bindgen::JsValue::from_str("__wbg_ptr");
-        let ptr = Reflect::get(value, &key).map_err(|_| {
-            crate::pass::error::PassError::Error("Missing __wbg_ptr on Pass".into())
-        })?;
-        let id = ptr.as_f64().ok_or_else(|| {
-            crate::pass::error::PassError::Error("Invalid __wbg_ptr for Pass".into())
-        })? as u32;
-        let anchor: <Pass as RefFromWasmAbi>::Anchor =
-            unsafe { <Pass as RefFromWasmAbi>::ref_from_abi(id) };
-        Ok(anchor.clone())
-    }
-}
+crate::impl_tryfrom_js_ref_anchor!(Pass, crate::pass::error::PassError, "Pass");
 
 #[cfg(wasm)]
 crate::impl_tryfrom_owned_via_ref!(Pass, wasm_bindgen::JsValue, crate::pass::error::PassError);

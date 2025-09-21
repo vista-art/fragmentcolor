@@ -1,8 +1,4 @@
-import { Renderer, Size } from "fragmentcolor";
+import { Renderer, Size, TextureFormat } from "fragmentcolor";
 const renderer = new Renderer();
-const size = Size.from((2, 2));
-const pixels = [;
-    255,0,0,255,   0,255,0,255,;
-    0,0,255,255,   255,255,255,255,;
-];
-const tex = await renderer.createTextureWithFormat(pixels, size, wgpu.TextureFormat.Rgba8Unorm);
+const bytes = std.fs.read("logo.png");
+const tex = await renderer.createTextureWithFormat(bytes, TextureFormat.Rgba);

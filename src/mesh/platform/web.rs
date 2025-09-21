@@ -2,7 +2,6 @@
 
 use lsp_doc::lsp_doc;
 use wasm_bindgen::JsCast;
-use wasm_bindgen::convert::RefFromWasmAbi;
 use wasm_bindgen::prelude::*;
 
 use crate::mesh::{Instance, Mesh, Vertex, VertexValue};
@@ -189,41 +188,9 @@ fn js_to_vertex_position(value: &JsValue) -> Result<Vertex, JsError> {
 // -----------------------------
 // JS conversions for Vertex/Instance owned via __wbg_ptr anchors
 // -----------------------------
-#[cfg(wasm)]
-impl TryFrom<&wasm_bindgen::JsValue> for Vertex {
-    type Error = crate::mesh::error::MeshError;
-    fn try_from(value: &wasm_bindgen::JsValue) -> Result<Self, Self::Error> {
-        use js_sys::Reflect;
-        let key = wasm_bindgen::JsValue::from_str("__wbg_ptr");
-        let ptr = Reflect::get(value, &key).map_err(|_| {
-            crate::mesh::error::MeshError::InvalidVertex("Missing __wbg_ptr on Vertex".into())
-        })?;
-        let id = ptr.as_f64().ok_or_else(|| {
-            crate::mesh::error::MeshError::InvalidVertex("Invalid __wbg_ptr for Vertex".into())
-        })? as u32;
-        let anchor: <Vertex as RefFromWasmAbi>::Anchor =
-            unsafe { <Vertex as RefFromWasmAbi>::ref_from_abi(id) };
-        Ok(anchor.clone())
-    }
-}
+crate::impl_tryfrom_js_ref_anchor!(Vertex, crate::mesh::error::MeshError, "Vertex");
 
-#[cfg(wasm)]
-impl TryFrom<&wasm_bindgen::JsValue> for Instance {
-    type Error = crate::mesh::error::MeshError;
-    fn try_from(value: &wasm_bindgen::JsValue) -> Result<Self, Self::Error> {
-        use js_sys::Reflect;
-        let key = wasm_bindgen::JsValue::from_str("__wbg_ptr");
-        let ptr = Reflect::get(value, &key).map_err(|_| {
-            crate::mesh::error::MeshError::InvalidInstance("Missing __wbg_ptr on Instance".into())
-        })?;
-        let id = ptr.as_f64().ok_or_else(|| {
-            crate::mesh::error::MeshError::InvalidInstance("Invalid __wbg_ptr for Instance".into())
-        })? as u32;
-        let anchor: <Instance as RefFromWasmAbi>::Anchor =
-            unsafe { <Instance as RefFromWasmAbi>::ref_from_abi(id) };
-        Ok(anchor.clone())
-    }
-}
+crate::impl_tryfrom_js_ref_anchor!(Instance, crate::mesh::error::MeshError, "Instance");
 
 crate::impl_tryfrom_owned_via_ref!(Vertex, wasm_bindgen::JsValue, crate::mesh::error::MeshError);
 crate::impl_tryfrom_owned_via_ref!(
@@ -231,6 +198,9 @@ crate::impl_tryfrom_owned_via_ref!(
     wasm_bindgen::JsValue,
     crate::mesh::error::MeshError
 );
+
+crate::impl_tryfrom_js_ref_anchor!(Mesh, crate::mesh::error::MeshError, "Mesh");
+
 crate::impl_tryfrom_owned_via_ref!(Mesh, wasm_bindgen::JsValue, crate::mesh::error::MeshError);
 
 // -----------------------------

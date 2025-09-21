@@ -7,8 +7,9 @@ await init(wasmUrl.href);
 // Install JS-level instrumentation before running any examples or docs coverage.
 installInstrumentation({ Renderer, Shader, Pass, TextureTarget, CanvasTarget });
 
-// Parse URL params (default to skipping texture-target examples for now)
+// Parse URL params (ignore skipTexture; always test everything)
 const params = new URL(globalThis.location?.href || 'http://local/').searchParams;
+const SKIP_TEX = false;
 
 // Small helper to scope module name for instrumentation and proceed even on error
 async function withModule(moduleName, fn) {
@@ -33,7 +34,7 @@ await withModule('platforms.web.healthcheck.smoke', async () => {
   const canvas = document.createElement('canvas');
   canvas.width = 64; canvas.height = 64;
   const target = await renderer.createTarget(canvas);
-  const textureTarget = await renderer.createTextureTarget([64, 64]);
+const textureTarget = await renderer.createTextureTarget([64, 64]);
 
   const shader = new Shader(`
 struct VertexOutput {
@@ -75,23 +76,23 @@ fn main(_v: VertexOutput) -> @location(0) vec4<f32> {
   console.log("shader after call 3:", shader);
   console.log("target after call 3:", target);
 
-  console.log("shader, textureTarget");
+console.log("shader, textureTarget");
   renderer.render(shader, textureTarget);
 
   const rpass = new Pass("single pass");
   rpass.addShader(shader);
-  renderer.render(rpass, target);
+renderer.render(rpass, target);
   renderer.render(rpass, textureTarget);
 
   const frame = new Frame();
   frame.addPass(rpass);
-  renderer.render(frame, target);
+renderer.render(frame, target);
   renderer.render(frame, textureTarget);
 
   const res = shader.get("resolution");
   console.log(res);
 
-  let image = textureTarget.getImage();
+let image = textureTarget.getImage();
   console.log(image);
 
   console.log(shader.listUniforms());
@@ -108,8 +109,8 @@ await withModule('platforms.web.healthcheck.texture', async () => {
     255,0,0,255,    0,255,0,255,
     0,0,255,255,    255,255,255,255,
   ]);
-  const tex = await renderer.createTexture(pixels);
-  console.log('Created texture from Uint8Array');
+  const tex = await renderer.createTextureWithSize(pixels, [2, 2]);
+  console.log('Created texture from raw RGBA bytes with explicit size');
   
   // Test setting texture on shader
   const shader = new Shader(`

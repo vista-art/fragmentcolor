@@ -19,5 +19,5 @@ Planned explicit control:
 
 ```rust
 use fragmentcolor::mesh::{Vertex, VertexValue};
-let v = Vertex::new([0.0, 0.0, 0.0]).with("weight", 1.0).color([1.0, 0.0, 0.0]);
+let v = Vertex::new([0.0, 0.0, 0.0]).with("weight", 1.0).with("color",[1.0, 0.0, 0.0]);
 ```

@@ -177,7 +177,7 @@ Planned explicit control:
 <Code
 code={`
 use fragmentcolor::mesh::{Vertex, VertexValue};
-let v = Vertex::new([0.0, 0.0, 0.0]).with("weight", 1.0).color([1.0, 0.0, 0.0]);
+let v = Vertex::new([0.0, 0.0, 0.0]).with("weight", 1.0).with("color",[1.0, 0.0, 0.0]);
 `}
 lang="rust"
 />
@@ -188,7 +188,7 @@ lang="rust"
 <Code
 code={`
 import { {Vertex, VertexValue} } from "fragmentcolor";
-const v = new Vertex([0.0, 0.0, 0.0]).with("weight", 1.0).color([1.0, 0.0, 0.0]);
+const v = new Vertex([0.0, 0.0, 0.0]).with("weight", 1.0).with("color",[1.0, 0.0, 0.0]);
 `}
 lang="js"
 />
@@ -199,7 +199,7 @@ lang="js"
 <Code
 code={`
 from fragmentcolor import {Vertex, VertexValue}
-v = Vertex([0.0, 0.0, 0.0]).with("weight", 1.0).color([1.0, 0.0, 0.0])
+v = Vertex([0.0, 0.0, 0.0]).with("weight", 1.0).with("color",[1.0, 0.0, 0.0])
 `}
 lang="python"
 />

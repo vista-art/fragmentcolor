@@ -143,7 +143,7 @@ pub(crate) struct MeshObject {
     insts: RwLock<Vec<Instance>>,
     // Derived, packed bytes
     packed_verts: RwLock<Vec<u8>>, // unique verts packed by schema
-    packed_insts: RwLock<Vec<u8>>, // instances packed by schema
+    pub(crate) packed_insts: RwLock<Vec<u8>>, // instances packed by schema
     indices: RwLock<Vec<u32>>,     // indices referencing unique verts
 
     // Schemas

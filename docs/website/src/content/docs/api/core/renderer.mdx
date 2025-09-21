@@ -482,7 +482,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Renderer;
 let renderer = Renderer::new();
 // Load encoded image bytes (PNG/JPEG) or use a file path
-let bytes = std::fs::read("./examples/assets/image.png")?;
+let bytes = std::fs::read("logo.png")?;
 let tex = renderer.create_texture(&bytes).await?;
 _ = tex.size();
 Ok(())
@@ -500,7 +500,7 @@ code={`
 import { Renderer } from "fragmentcolor";
 const renderer = new Renderer();
 // Load encoded image bytes (PNG/JPEG) or use a file path;
-const bytes = std.fs.read("./examples/assets/image.png");
+const bytes = std.fs.read("logo.png");
 const tex = await renderer.createTexture(bytes);
 `}
 lang="js"
@@ -514,7 +514,7 @@ code={`
 from fragmentcolor import Renderer
 renderer = Renderer()
 # Load encoded image bytes (PNG/JPEG) or use a file path
-bytes = std.fs.read("./examples/assets/image.png")
+bytes = std.fs.read("logo.png")
 tex = renderer.create_texture(bytes)
 `}
 lang="python"
@@ -569,18 +569,17 @@ code={`
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Renderer, Size};
 let renderer = Renderer::new();
-let size = Size::from((2, 2));
 let pixels: Vec<u8> = vec![
     255,0,0,255,   0,255,0,255,
     0,0,255,255,   255,255,255,255,
 ];
-let tex = renderer.create_texture_with_size(&pixels, size).await?;
+let tex = renderer.create_texture_with_size(&pixels, [2, 2]).await?;
 _ = tex.size();
 Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 10-13}"
+lang="rust" meta="collapse={1-1, 9-12}"
 />
 
 </TabItem>
@@ -590,12 +589,11 @@ lang="rust" meta="collapse={1-1, 10-13}"
 code={`
 import { Renderer, Size } from "fragmentcolor";
 const renderer = new Renderer();
-const size = Size.from((2, 2));
 const pixels = [;
     255,0,0,255,   0,255,0,255,;
     0,0,255,255,   255,255,255,255,;
 ];
-const tex = await renderer.createTextureWithSize(pixels, size);
+const tex = await renderer.createTextureWithSize(pixels, [2, 2]);
 `}
 lang="js"
 />
@@ -607,12 +605,11 @@ lang="js"
 code={`
 from fragmentcolor import Renderer, Size
 renderer = Renderer()
-size = Size.from((2, 2))
 pixels = [
     255,0,0,255,   0,255,0,255,
     0,0,255,255,   255,255,255,255,
 ]
-tex = renderer.create_texture_with_size(pixels, size)
+tex = renderer.create_texture_with_size(pixels, [2, 2])
 `}
 lang="python"
 />
@@ -664,20 +661,16 @@ Create a [Texture](/api/core/texture) from various inputs.
 <Code
 code={`
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Renderer, Size};
+use fragmentcolor::{Renderer, Size, TextureFormat};
 let renderer = Renderer::new();
-let size = Size::from((2, 2));
-let pixels: Vec<u8> = vec![
-    255,0,0,255,   0,255,0,255,
-    0,0,255,255,   255,255,255,255,
-];
-let tex = renderer.create_texture_with_format(&pixels, size, wgpu::TextureFormat::Rgba8Unorm).await?;
+let bytes = std::fs::read("logo.png")?;
+let tex = renderer.create_texture_with_format(&bytes, TextureFormat::Rgba).await?;
 _ = tex.size();
 Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 10-13}"
+lang="rust" meta="collapse={1-1, 6-9}"
 />
 
 </TabItem>
@@ -685,14 +678,10 @@ lang="rust" meta="collapse={1-1, 10-13}"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Renderer, Size } from "fragmentcolor";
+import { Renderer, Size, TextureFormat } from "fragmentcolor";
 const renderer = new Renderer();
-const size = Size.from((2, 2));
-const pixels = [;
-    255,0,0,255,   0,255,0,255,;
-    0,0,255,255,   255,255,255,255,;
-];
-const tex = await renderer.createTextureWithFormat(pixels, size, wgpu.TextureFormat.Rgba8Unorm);
+const bytes = std.fs.read("logo.png");
+const tex = await renderer.createTextureWithFormat(bytes, TextureFormat.Rgba);
 `}
 lang="js"
 />
@@ -702,14 +691,10 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Renderer, Size
+from fragmentcolor import Renderer, Size, TextureFormat
 renderer = Renderer()
-size = Size.from((2, 2))
-pixels = [
-    255,0,0,255,   0,255,0,255,
-    0,0,255,255,   255,255,255,255,
-]
-tex = renderer.create_texture_with_format(pixels, size, wgpu.TextureFormat.Rgba8Unorm)
+bytes = std.fs.read("logo.png")
+tex = renderer.create_texture_with_format(bytes, TextureFormat.Rgba)
 `}
 lang="python"
 />
@@ -763,18 +748,17 @@ code={`
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Renderer, Size};
 let renderer = Renderer::new();
-let size = Size::from((2, 2));
 let pixels: Vec<u8> = vec![
     255,0,0,255,   0,255,0,255,
     0,0,255,255,   255,255,255,255,
 ];
-let tex = renderer.create_texture_with(&pixels, size).await?;
+let tex = renderer.create_texture_with(&pixels, Size::from([2, 2])).await?;
 _ = tex.size();
 Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 10-13}"
+lang="rust" meta="collapse={1-1, 9-12}"
 />
 
 </TabItem>
@@ -784,12 +768,11 @@ lang="rust" meta="collapse={1-1, 10-13}"
 code={`
 import { Renderer, Size } from "fragmentcolor";
 const renderer = new Renderer();
-const size = Size.from((2, 2));
 const pixels = [;
     255,0,0,255,   0,255,0,255,;
     0,0,255,255,   255,255,255,255,;
 ];
-const tex = await renderer.createTextureWith(pixels, size);
+const tex = await renderer.createTextureWith(pixels, Size.from([2, 2]));
 `}
 lang="js"
 />
@@ -801,12 +784,11 @@ lang="js"
 code={`
 from fragmentcolor import Renderer, Size
 renderer = Renderer()
-size = Size.from((2, 2))
 pixels = [
     255,0,0,255,   0,255,0,255,
     0,0,255,255,   255,255,255,255,
 ]
-tex = renderer.create_texture_with(pixels, size)
+tex = renderer.create_texture_with(pixels, Size.from([2, 2]))
 `}
 lang="python"
 />

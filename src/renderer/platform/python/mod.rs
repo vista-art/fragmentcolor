@@ -224,7 +224,7 @@ impl Renderer {
         usage_bits: Option<u32>,
     ) -> Result<crate::texture::Texture, PyErr> {
         Python::attach(|_py| -> Result<crate::texture::Texture, PyErr> {
-            let usage = usage_bits.map(|b| wgpu::TextureUsages::from_bits_truncate(b));
+            let usage = usage_bits.map(wgpu::TextureUsages::from_bits_truncate);
             let tex = pollster::block_on(self.create_storage_texture(size, format.into(), usage))?;
             Ok(tex)
         })

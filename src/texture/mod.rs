@@ -22,6 +22,9 @@ use image::{DynamicImage, GenericImageView};
 mod error;
 pub use error::*;
 
+mod options;
+pub use options::*;
+
 // Expose Naga image metadata in our public meta struct for now.
 use naga::{ImageClass, ImageDimension};
 
@@ -155,58 +158,6 @@ impl From<&Texture> for crate::shader::uniform::UniformData {
     }
 }
 
-#[cfg_attr(wasm, wasm_bindgen)]
-#[cfg_attr(python, pyo3::pyclass)]
-#[derive(Debug, Clone, Default)]
-pub struct TextureOptions {
-    pub size: Option<Size>,
-    pub format: TextureFormat,
-    pub sampler: SamplerOptions,
-}
-
-impl From<crate::Size> for TextureOptions {
-    fn from(size: crate::Size) -> Self {
-        TextureOptions {
-            size: Some(size),
-            format: TextureFormat::default(),
-            sampler: SamplerOptions::default(),
-        }
-    }
-}
-
-impl From<&crate::Size> for TextureOptions {
-    fn from(size: &crate::Size) -> Self {
-        TextureOptions {
-            size: Some(*size),
-            format: TextureFormat::default(),
-            sampler: SamplerOptions::default(),
-        }
-    }
-}
-
-impl From<TextureFormat> for TextureOptions {
-    fn from(format: TextureFormat) -> Self {
-        TextureOptions {
-            size: None,
-            format,
-            sampler: SamplerOptions::default(),
-        }
-    }
-}
-
-impl From<&TextureFormat> for TextureOptions {
-    fn from(format: &TextureFormat) -> Self {
-        TextureOptions {
-            size: None,
-            format: *format,
-            sampler: SamplerOptions::default(),
-        }
-    }
-}
-
-// @TODO move TextureOptions to its own file and implement more conversions
-//      reuse the impl from reference macros (look at UniformData for reference)
-
 #[derive(Debug)]
 pub(crate) struct TextureObject {
     pub(crate) inner: wgpu::Texture,
@@ -228,7 +179,7 @@ impl TextureObject {
         let descriptor = Self::texture_descriptor("Generic Texture", size, format, usage);
         let inner = context.device.create_texture(&descriptor);
         let size = inner.size();
-        let sampler = create_sampler(&context.device, options.clone());
+        let sampler = create_sampler(&context.device, options);
         Self {
             inner,
             size,
@@ -436,7 +387,7 @@ impl TextureObject {
     }
 
     pub fn set_sampler_options(&self, device: &wgpu::Device, options: SamplerOptions) {
-        let sampler = create_sampler(device, options.clone());
+        let sampler = create_sampler(device, options);
         *self.options.write() = options;
         *self.sampler.write() = sampler;
     }

@@ -605,9 +605,20 @@ impl TryFrom<&wasm_bindgen::JsValue> for UniformData {
         use js_sys::{Array, Float32Array, Int32Array, Uint32Array};
         use wasm_bindgen::JsCast;
 
-        if let Some(tex) = value.dyn_ref::<crate::texture::Texture>() {
-            let meta = crate::texture::TextureMeta::with_id_only(tex.id.clone());
-            return Ok(UniformData::Texture(meta));
+        {
+            use js_sys::Reflect;
+            use wasm_bindgen::convert::RefFromWasmAbi;
+            let key = wasm_bindgen::JsValue::from_str("__wbg_ptr");
+            if let Ok(ptr) = Reflect::get(value, &key) {
+                if let Some(id) = ptr.as_f64() {
+                    let anchor: <crate::texture::Texture as RefFromWasmAbi>::Anchor = unsafe {
+                        <crate::texture::Texture as RefFromWasmAbi>::ref_from_abi(id as u32)
+                    };
+                    let tex = anchor.clone();
+                    let meta = crate::texture::TextureMeta::with_id_only(tex.id.clone());
+                    return Ok(UniformData::Texture(meta));
+                }
+            }
         }
 
         if let Some(arr) = value.dyn_ref::<Float32Array>() {

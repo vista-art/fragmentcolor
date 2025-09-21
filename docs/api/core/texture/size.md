@@ -10,7 +10,7 @@ use fragmentcolor::{Renderer, Size};
 let renderer = Renderer::new();
 // 1x1 RGBA (white) raw pixel bytes
 let pixels: &[u8] = &[255,255,255,255];
-let tex = renderer.create_texture_with_size(pixels, Size::from((1,1))).await?;
+let tex = renderer.create_texture_with_size(pixels, [1,1]).await?;
 let sz = tex.size();
 # assert_eq!([sz.width, sz.height], [1, 1]);
 # Ok(())
