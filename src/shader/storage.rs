@@ -44,18 +44,31 @@ impl UniformStorage {
     /// For example, for a struct uniform named `light` with fields `position` and `color`,
     /// we will index the uniform as `light` and the fields as `light.position` and `light.color`.
     pub(crate) fn add_uniform(&mut self, uniform: &Uniform) {
-        // For storage buffers, we keep a separate CPU blob and do not write to uniform_bytes.
+        // For storage buffers AND push constants, we keep a separate CPU blob
+        // and do not write to uniform_bytes.
         // For other value types, append to uniform_bytes and index by offset.
         let mut base_offset = self.uniform_bytes.len() as u32;
+
         let is_storage = matches!(uniform.data, UniformData::Storage(_));
-        if !is_storage {
-            self.uniform_bytes.extend(uniform.data.to_bytes());
+        let is_push = matches!(uniform.data, UniformData::PushConstant(_));
+        if is_storage || is_push {
+            base_offset = self.uniform_bytes.len() as u32;
         } else {
-            base_offset = 0;
+            self.uniform_bytes.extend(uniform.data.to_bytes());
         }
+
+        // Determine span for indexing; push constants report 0 via size(),
+        // so compute explicitly.
+        let mut index_size = uniform.data.size();
+        if let UniformData::PushConstant(data) = &uniform.data
+            && let Some((_uniform, span)) = data.first()
+        {
+            index_size = *span;
+        }
+
         self.uniforms.insert(
             uniform.name.clone(),
-            (base_offset, uniform.data.size(), uniform.clone()),
+            (base_offset, index_size, uniform.clone()),
         );
 
         // If the Uniform is a struct, we also index its fields to allow granular access
@@ -150,20 +163,6 @@ impl UniformStorage {
                     );
                 }
             }
-            // Ensure top-level push entry exists with offset 0
-            self.uniforms.insert(
-                uniform.name.clone(),
-                (
-                    0,
-                    span,
-                    Uniform {
-                        name: uniform.name.clone(),
-                        group: 0,
-                        binding: 0,
-                        data: uniform.data.clone(),
-                    },
-                ),
-            );
         }
     }
 
@@ -212,19 +211,16 @@ impl UniformStorage {
             // Special-case: storage root receiving raw bytes
             let root = key.split('.').next().unwrap_or(key).to_string();
             let is_storage_root = matches!(uniform.data, UniformData::Storage(_)) && root == *key;
-            if is_storage_root {
-                if let UniformData::Bytes(b) = value {
-                    self.set_storage_bytes(&root, b)?;
-                    return Ok(());
-                }
+            if is_storage_root && let UniformData::Bytes(b) = value {
+                self.set_storage_bytes(&root, b)?;
+                return Ok(());
             }
+
             // Special-case: push root receiving raw bytes
             let is_push_root = matches!(uniform.data, UniformData::PushConstant(_)) && root == *key;
-            if is_push_root {
-                if let UniformData::Bytes(b) = value {
-                    self.set_push_bytes(&root, b)?;
-                    return Ok(());
-                }
+            if is_push_root && let UniformData::Bytes(b) = value {
+                self.set_push_bytes(&root, b)?;
+                return Ok(());
             }
 
             // Allow updating Texture with TextureMeta (id + naga metadata) and preserve shader metadata if caller passed id-only
@@ -255,19 +251,24 @@ impl UniformStorage {
             // Determine root names first so we can avoid writing storage/push fields into uniform_bytes.
             let root = key.split('.').next().unwrap_or(key);
             let is_storage_root = self.storage_blobs.contains_key(root);
-            let is_push_root = self.push_blobs.contains_key(root);
+            let is_push_constant_root = self.push_blobs.contains_key(root);
             if !is_storage_root
-                && !is_push_root
+                && !is_push_constant_root
                 && !matches!(
                     value,
-                    UniformData::Texture(_) | UniformData::Sampler(_) | UniformData::Storage(_)
+                    UniformData::Texture(_)
+                        | UniformData::Sampler(_)
+                        | UniformData::Storage(_)
+                        | UniformData::PushConstant(_)
                 )
             {
                 let value_bytes = value.to_bytes();
                 if value_bytes.len() == *size as usize {
                     let start = *offset as usize;
                     let end = start + value_bytes.len();
-                    self.uniform_bytes[start..end].copy_from_slice(&value_bytes);
+                    if end <= self.uniform_bytes.len() {
+                        self.uniform_bytes[start..end].copy_from_slice(&value_bytes);
+                    }
                 }
             }
             // 2) Storage buffer blobs
@@ -291,6 +292,36 @@ impl UniformStorage {
                     }
                     _ => {
                         // Nested field: copy at offset
+                        let start = *offset as usize;
+                        let data = value.to_bytes();
+                        let end = start.saturating_add(data.len());
+                        if end <= blob.len() {
+                            blob[start..end].copy_from_slice(&data);
+                        }
+                    }
+                }
+            }
+
+            // 3) Push constant blobs (root or nested field)
+            if let Some(blob) = self.push_blobs.get_mut(root) {
+                match value {
+                    UniformData::PushConstant(data) if key == root => {
+                        if let Some((inner, span)) = data.iter().next() {
+                            let data = inner.to_bytes();
+                            let n = (*span as usize).min(data.len());
+                            if blob.len() < *span as usize {
+                                blob.resize(*span as usize, 0);
+                            }
+                            blob[0..n].copy_from_slice(&data[0..n]);
+                            if n < blob.len() {
+                                for b in blob[n..].iter_mut() {
+                                    *b = 0;
+                                }
+                            }
+                        }
+                    }
+                    _ => {
+                        // Nested field update
                         let start = *offset as usize;
                         let data = value.to_bytes();
                         let end = start.saturating_add(data.len());
@@ -406,10 +437,14 @@ impl UniformStorage {
     pub fn get_bytes(&self, key: &str) -> Option<&[u8]> {
         // Fast path: exact key was indexed
         if let Some((offset, size, uniform)) = self.uniforms.get(key) {
-            // If this key corresponds to a storage buffer (root or nested), slice from the storage blob
+            if matches!(uniform.data, UniformData::PushConstant(_))
+                && let Some(blob) = self.push_blobs.get(key)
+            {
+                let end = (*size as usize).min(blob.len());
+                return Some(&blob[0..end]);
+            }
+
             let root = if matches!(uniform.data, UniformData::Storage(_)) {
-                key
-            } else if matches!(uniform.data, UniformData::PushConstant(_)) {
                 key
             } else {
                 key.split('.').next().unwrap_or(key)

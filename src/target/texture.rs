@@ -130,6 +130,16 @@ impl Target for TextureTarget {
         drop(view);
         buffer.unmap();
 
+        // Convert to RGBA8 if the destination texture uses BGRA8
+        match self.texture.format() {
+            wgpu::TextureFormat::Bgra8Unorm | wgpu::TextureFormat::Bgra8UnormSrgb => {
+                for px in pixels.chunks_exact_mut(4) {
+                    px.swap(0, 2); // BGRA -> RGBA
+                }
+            }
+            _ => {}
+        }
+
         pixels
     }
 }

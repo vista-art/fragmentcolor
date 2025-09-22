@@ -30,12 +30,16 @@ pub async fn request_adapter(
 pub async fn request_device(
     adapter: &wgpu::Adapter,
 ) -> Result<(wgpu::Device, wgpu::Queue), InitializationError> {
+    let requested_features = features();
+    let mut requested_limits = limits().using_resolution(adapter.limits());
+    requested_limits.max_push_constant_size = adapter.limits().max_push_constant_size;
+
     let (device, queue) = adapter
         .request_device(&wgpu::DeviceDescriptor {
             label: Some("WGPU Device"),
             memory_hints: memory_hints(),
-            required_features: features(),
-            required_limits: limits().using_resolution(adapter.limits()),
+            required_features: requested_features,
+            required_limits: requested_limits,
             trace: wgpu::Trace::Off,
         })
         .await?;
@@ -110,7 +114,12 @@ fn limits() -> wgpu::Limits {
 }
 
 fn features() -> wgpu::Features {
-    wgpu::Features::empty()
+    #[cfg(wasm)]
+    let features = wgpu::Features::empty();
+    #[cfg(not(wasm))]
+    let features = wgpu::Features::PUSH_CONSTANTS;
+
+    features
 }
 
 fn memory_hints() -> wgpu::MemoryHints {
