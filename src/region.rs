@@ -37,6 +37,32 @@ crate::impl_from_into_with_refs!(
     |e: wgpu::Extent3d| Region::from_size(e.width, e.height)
 );
 
+#[cfg(python)]
+mod python_bindings {
+    use super::*;
+    use pyo3::prelude::*;
+
+    #[pymethods]
+    impl Region {
+        #[new]
+        pub fn new_py(x: u32, y: u32, width: u32, height: u32) -> Self {
+            Region::from_region(x, y, width, height)
+        }
+
+        #[staticmethod]
+        #[pyo3(name = "from_region")]
+        pub fn from_region_py(x: u32, y: u32, width: u32, height: u32) -> Self {
+            Region::from_region(x, y, width, height)
+        }
+
+        #[staticmethod]
+        #[pyo3(name = "from_tuple")]
+        pub fn from_tuple_py(size: (u32, u32)) -> Self {
+            Region::from_tuple(size)
+        }
+    }
+}
+
 impl Region {
     pub fn new(origin: impl Into<(u32, u32)>, size: impl Into<(u32, u32)>) -> Self {
         let (x, y) = origin.into();

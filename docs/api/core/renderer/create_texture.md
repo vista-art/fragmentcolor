@@ -13,8 +13,8 @@ Create a [Texture](https://fragmentcolor.org/api/core/texture) from various inpu
 use fragmentcolor::Renderer;
 let renderer = Renderer::new();
 // Load encoded image bytes (PNG/JPEG) or use a file path
-let bytes = std::fs::read("logo.png")?;
-let tex = renderer.create_texture(&bytes).await?;
+let image = std::fs::read("logo.png")?;
+let tex = renderer.create_texture(&image).await?;
 # _ = tex.size();
 # Ok(())
 # }

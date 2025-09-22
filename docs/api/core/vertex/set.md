@@ -1,32 +1,23 @@
-# Vertex::set(key: string, value: any)
+# Vertex::set
 
-Planned API (draft)
+Attach an arbitrary property to the vertex.
 
-Associate a property with the vertex and return a builder that can pin the property to a specific shader location using `.at(index)`.
+Locations and mapping:
 
-Behavior
-- If the key is new, the vertex assigns the next available `@location(N)` to this property automatically. Subsequent calls reuse the same location unless you override with `.at(index)`.
-- At render time, shader vertex inputs (declared with `@location(N)`) are matched to Vertex/Instance properties by:
+- When you call `set(key, value)` for the first time for a given key, the Vertex assigns the next available `@location(N)` to that property (starting after position). Subsequent calls reuse the same location.
+- At render time, shader vertex inputs (declared with `@location(N)`) are derived from the Shader and matched to Vertex/Instance properties by:
   1) explicit location (instance first, then vertex), then
   2) name (instance first, then vertex).
+- There is no special-case for location(0) in the mapping; position is just another vertex attribute exposed as `position` with a 2- or 3-component format depending on how you constructed the Vertex.
 
-Notes
-- This API complements `Vertex::with(key, value)`, which is sugar for auto‑assigning the next location without explicitly pinning it.
-- For explicit control, call `.at(index)` on the returned builder.
+Planned explicit control:
+
+- You will be able to pin a property to a specific location using a fluent API: `vertex.set(key, value).at(index)`.
+- Vertex construction may also support `Vertex::from_shader(&Shader)` to derive an initial layout directly from the shader AST.
 
 ## Example
 
 ```rust
-use fragmentcolor::mesh::Vertex;
-
-// Draft fluent API (subject to change)
-let mut v = Vertex::new([0.0, 0.0]);
-
-// Assign values and pin shader locations explicitly
-v.set("uv", [0.5, 0.5]).at(1)
- .set("color", [1.0, 0.0, 0.0, 1.0]).at(2);
-
-// Or mix with auto-indexing via `with`
-let v2 = Vertex::new([0.0, 0.0])
-    .with("weight", 1.0); // auto assigns next available location
+use fragmentcolor::mesh::{Vertex, VertexValue};
+let v = Vertex::new([0.0, 0.0, 0.0]).set("weight", 1.0).set("color",[1.0, 0.0, 0.0]);
 ```

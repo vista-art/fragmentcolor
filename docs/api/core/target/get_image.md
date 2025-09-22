@@ -7,11 +7,11 @@ Returns the current contents of the target as a byte array in RGBA8 format.
 ```rust
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
-use fragmentcolor::{Renderer, Target};
+use fragmentcolor::{Shader, Renderer, Target};
 
 let renderer = Renderer::new();
 let target = renderer.create_texture_target([16, 16]).await?;
-renderer.render(&fragmentcolor::Shader::default(), &target)?;
+renderer.render(&Shader::default(), &target)?;
 
 let image = target.get_image();
 

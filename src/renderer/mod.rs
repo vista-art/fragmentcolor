@@ -371,8 +371,19 @@ pub struct RenderContext {
     textures: DashMap<crate::texture::TextureId, Arc<crate::TextureObject>>,
     next_id: AtomicU64,
 
+    // Persistent storage buffer registry: root name -> (buffer, span)
+    storage_registry: DashMap<String, (wgpu::Buffer, u64)>,
+
     // MSAA sample count negotiated for current target/format
     sample_count: AtomicU32,
+
+    // Monotonic frame counter for instrumentation
+    frame_count: AtomicU64,
+
+    // Debug readback state (optional, controlled by env: FC_READBACK_FRAMES, FC_READBACK_ROOT)
+    debug_readbacks: RwLock<Vec<(wgpu::Buffer, u64, String)>>,
+    debug_readback_frames: AtomicU32,
+    debug_readback_root: RwLock<Option<String>>,
 }
 
 impl RenderContext {
@@ -399,7 +410,18 @@ impl RenderContext {
 
             textures: DashMap::new(),
             next_id: AtomicU64::new(1),
+            storage_registry: DashMap::new(),
             sample_count: AtomicU32::new(1),
+            frame_count: AtomicU64::new(0),
+            debug_readbacks: RwLock::new(Vec::new()),
+            debug_readback_frames: AtomicU32::new({
+                if let Ok(v) = std::env::var("FC_READBACK_FRAMES") {
+                    v.parse().unwrap_or(0)
+                } else {
+                    0
+                }
+            }),
+            debug_readback_root: RwLock::new(std::env::var("FC_READBACK_ROOT").ok()),
         }
     }
 
@@ -409,6 +431,8 @@ impl RenderContext {
         renderable: &impl Renderable,
         target: &impl Target,
     ) -> Result<(), RendererError> {
+        let _ = self.frame_count.fetch_add(1, Ordering::Relaxed);
+
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -426,6 +450,9 @@ impl RenderContext {
         }
 
         self.queue.submit(Some(encoder.finish()));
+
+        // Drain any scheduled debug readbacks (if enabled)
+        self.debug_drain_readbacks();
 
         if frame.auto_present() {
             frame.present();
@@ -475,6 +502,78 @@ impl RenderContext {
 }
 
 impl RenderContext {
+    /// If FC_READBACK_FRAMES>0 and the root name matches FC_READBACK_ROOT (or default "positions"),
+    /// schedule a small copy of the first bytes of the buffer into a MAP_READ staging buffer.
+    fn debug_maybe_schedule_readback(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        name: &str,
+        src: &wgpu::Buffer,
+        max_bytes: u64,
+    ) {
+        let remaining = self.debug_readback_frames.load(Ordering::Relaxed);
+        if remaining == 0 {
+            return;
+        }
+        let root = {
+            let r = self.debug_readback_root.read();
+            r.clone().unwrap_or_else(|| "positions".to_string())
+        };
+        if name != root {
+            return;
+        }
+        // Create staging buffer and record copy
+        let sz = std::cmp::max(16u64, wgpu::util::align_to(max_bytes, 16));
+        let staging = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Debug Readback Staging"),
+            size: sz,
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+        encoder.copy_buffer_to_buffer(src, 0, &staging, 0, sz);
+        self.debug_readbacks
+            .write()
+            .push((staging, sz, name.to_string()));
+        // Decrement remaining frames
+        let _ = self.debug_readback_frames.fetch_sub(1, Ordering::Relaxed);
+    }
+
+    /// Map and dump scheduled debug readbacks (as a few f32 values) to the log.
+    fn debug_drain_readbacks(&self) {
+        let mut list = self.debug_readbacks.write();
+        if list.is_empty() {
+            return;
+        }
+        // Ensure GPU work is done so mapping will complete (mirror TextureTarget::get_image)
+        if let Err(e) = self.device.poll(wgpu::PollType::Wait) {
+            log::error!("Device poll error during debug readback: {:?}", e);
+            list.clear();
+            return;
+        }
+        while let Some((buf, sz, name)) = list.pop() {
+            let slice = buf.slice(0..sz);
+            // Map synchronously (use poll with Wait)
+            let (sender, receiver) = std::sync::mpsc::channel();
+            slice.map_async(wgpu::MapMode::Read, move |res| {
+                let _ = sender.send(res);
+            });
+            if let Err(e) = self.device.poll(wgpu::PollType::Wait) {
+                log::error!("Device poll error during debug readback mapping: {:?}", e);
+                continue;
+            }
+            let _ = receiver.recv();
+            let data = slice.get_mapped_range();
+            let n_f32 = (data.len() / 4).min(16);
+            let mut vals = Vec::new();
+            for i in 0..n_f32 {
+                let b = &data[i * 4..i * 4 + 4];
+                vals.push(f32::from_le_bytes([b[0], b[1], b[2], b[3]]));
+            }
+            log::debug!("readback[{}]: first {} f32 = {:?}", name, n_f32, vals);
+            drop(data);
+            buf.unmap();
+        }
+    }
     fn register_texture(&self, tex: Arc<crate::TextureObject>) -> crate::texture::TextureId {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         let tid = crate::texture::TextureId(id);
@@ -503,6 +602,14 @@ impl RenderContext {
     ) -> Result<(), RendererError> {
         self.buffer_pool.write().reset();
         self.storage_pool.write().reset();
+
+        let f = self.frame_count.load(Ordering::Relaxed);
+        log::debug!(
+            "frame={} pass={} kind=render load={}",
+            f,
+            pass.name,
+            pass.get_input().load
+        );
 
         let load_op = match pass.get_input().load {
             true => wgpu::LoadOp::Load,
@@ -604,7 +711,10 @@ impl RenderContext {
             #[derive(Default)]
             struct GroupOwned {
                 ubufs: Vec<(u32, buffer_pool::BufferLocation)>,
+                // legacy storage-pool backed buffers (kept for compatibility in other paths)
                 sbufs: Vec<(u32, buffer_pool::BufferLocation)>,
+                // persistent storage buffers (buffer, span)
+                pbufs: Vec<(u32, wgpu::Buffer, u64)>,
                 views: Vec<(u32, wgpu::TextureView)>,
                 samplers: Vec<(u32, wgpu::Sampler)>,
                 last_tex_sampler: Option<wgpu::Sampler>,
@@ -649,22 +759,107 @@ impl RenderContext {
                     }
                     crate::shader::uniform::UniformData::Storage(data) => {
                         if let Some((_inner, span, _access)) = data.first() {
-                            // Upload the current CPU blob for this storage buffer
-                            let storage = shader.storage.read();
-                            let blob = storage
-                                .storage_blobs
-                                .get(name)
-                                .cloned()
-                                .unwrap_or_else(|| vec![0u8; *span as usize]);
-                            let buffer_location = {
-                                let mut pool = self.storage_pool.write();
-                                pool.upload(&blob, &self.queue, &self.device)
+                            // Acquire persistent storage buffer and upload only if necessary
+                            let span_u64 = *span as u64;
+                            // Obtain initial bytes for creation or update
+                            let init_bytes: Vec<u8> = {
+                                let s = shader.storage.read();
+                                s.get_bytes(name)
+                                    .map(|b| b.to_vec())
+                                    .unwrap_or_else(|| vec![0u8; span_u64 as usize])
                             };
-                            groups
-                                .entry(uniform.group)
-                                .or_default()
-                                .sbufs
-                                .push((uniform.binding, buffer_location));
+                            // Create or get persistent buffer
+                            let buf = {
+                                // Check existing
+                                if let Some(entry) = self.storage_registry.get(name) {
+                                    let (existing, existing_span) = entry.value();
+                                    if *existing_span != span_u64 {
+                                        log::debug!(
+                                            "storage[render]: recreate root={} new_span={} old_span={}",
+                                            name,
+                                            span_u64,
+                                            *existing_span
+                                        );
+                                        drop(entry);
+                                        // Recreate with new span
+                                        let buffer =
+                                            self.device.create_buffer(&wgpu::BufferDescriptor {
+                                                label: Some(&format!(
+                                                    "Persistent Storage Buffer: {}",
+                                                    name
+                                                )),
+                                                size: span_u64,
+                                                usage: wgpu::BufferUsages::STORAGE
+                                                    | wgpu::BufferUsages::COPY_DST
+                                                    | wgpu::BufferUsages::COPY_SRC,
+                                                mapped_at_creation: false,
+                                            });
+                                        self.queue.write_buffer(&buffer, 0, &init_bytes);
+                                        self.storage_registry
+                                            .insert(name.to_string(), (buffer.clone(), span_u64));
+                                        buffer
+                                    } else {
+                                        log::debug!(
+                                            "storage[render]: reuse root={} span={} (existing_span={})",
+                                            name,
+                                            span_u64,
+                                            *existing_span
+                                        );
+                                        existing.clone()
+                                    }
+                                } else {
+                                    // Create
+                                    let buffer =
+                                        self.device.create_buffer(&wgpu::BufferDescriptor {
+                                            label: Some(&format!(
+                                                "Persistent Storage Buffer: {}",
+                                                name
+                                            )),
+                                            size: span_u64,
+                                            usage: wgpu::BufferUsages::STORAGE
+                                                | wgpu::BufferUsages::COPY_DST
+                                                | wgpu::BufferUsages::COPY_SRC,
+                                            mapped_at_creation: false,
+                                        });
+                                    log::debug!(
+                                        "storage[render]: create root={} span={} (init_bytes={})",
+                                        name,
+                                        span_u64,
+                                        init_bytes.len()
+                                    );
+                                    self.queue.write_buffer(&buffer, 0, &init_bytes);
+                                    self.storage_registry
+                                        .insert(name.to_string(), (buffer.clone(), span_u64));
+                                    buffer
+                                }
+                            };
+                            // If CPU blob is marked dirty, upload and clear flag
+                            let need_upload = {
+                                let s = shader.storage.read();
+                                s.is_storage_dirty(name)
+                            };
+                            if need_upload {
+                                let bytes: Vec<u8> = {
+                                    let s = shader.storage.read();
+                                    s.get_bytes(name)
+                                        .map(|b| b.to_vec())
+                                        .unwrap_or_else(|| vec![0u8; span_u64 as usize])
+                                };
+                                log::debug!(
+                                    "storage[render]: upload root={} bytes={}",
+                                    name,
+                                    bytes.len()
+                                );
+                                self.queue.write_buffer(&buf, 0, &bytes);
+                                let mut s = shader.storage.write();
+                                s.clear_storage_dirty(name);
+                            }
+
+                            groups.entry(uniform.group).or_default().pbufs.push((
+                                uniform.binding,
+                                buf,
+                                span_u64,
+                            ));
                         } else {
                             return Err(crate::ShaderError::UniformNotFound(name.clone()).into());
                         }
@@ -739,6 +934,22 @@ impl RenderContext {
                     entries.push(wgpu::BindGroupEntry {
                         binding: *binding,
                         resource: wgpu::BindingResource::Buffer(binding_ref),
+                    });
+                }
+                // Persistent buffers
+                for (binding, buf, span) in owned.pbufs.iter() {
+                    let padded = {
+                        let sz = *span as u64;
+                        wgpu::util::align_to(sz, 16).max(16)
+                    };
+                    let size_nz = unsafe { std::num::NonZeroU64::new_unchecked(padded) };
+                    entries.push(wgpu::BindGroupEntry {
+                        binding: *binding,
+                        resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                            buffer: buf,
+                            offset: 0,
+                            size: Some(size_nz),
+                        }),
                     });
                 }
                 for (binding, view) in owned.views.iter() {
@@ -831,6 +1042,18 @@ impl RenderContext {
         self.buffer_pool.write().reset();
         self.storage_pool.write().reset();
 
+        // Log compute pass start
+        let (dx, dy, dz) = pass.compute_dispatch();
+        let f = self.frame_count.load(Ordering::Relaxed);
+        log::debug!(
+            "frame={} pass={} kind=compute dispatch=({},{},{})",
+            f,
+            pass.name,
+            dx,
+            dy,
+            dz
+        );
+
         // For now, support exactly one compute shader per pass
         let shader = pass
             .shaders
@@ -921,9 +1144,14 @@ impl RenderContext {
         #[derive(Default)]
         struct GroupOwned {
             buffers: Vec<(u32, buffer_pool::BufferLocation)>,
+            // persistent storage buffers (buffer, span)
+            pbufs: Vec<(u32, wgpu::Buffer, u64)>,
             views: Vec<(u32, wgpu::TextureView)>,
             samplers: Vec<(u32, wgpu::Sampler)>,
         }
+        // Track storage buffers by root name so we can optionally schedule readbacks AFTER dispatch
+        let mut debug_storage_bindings: Vec<(String, wgpu::Buffer, u64)> = Vec::new();
+
         let mut groups: HashMap<u32, GroupOwned> = HashMap::new();
         for name in &shader.list_uniforms() {
             let uniform = shader.get_uniform(name)?;
@@ -949,20 +1177,103 @@ impl RenderContext {
                         .push((uniform.binding, default_sampler));
                 }
                 crate::shader::uniform::UniformData::Storage(data) => {
-                    if let Some((_inner, _span, _access)) = data.first() {
-                        let storage = shader.storage.read();
-                        let blob = storage
-                            .get_bytes(name)
-                            .ok_or(crate::ShaderError::UniformNotFound(name.clone()))?;
-                        let loc = {
-                            let mut pool = self.storage_pool.write();
-                            pool.upload(blob, &self.queue, &self.device)
+                    if let Some((_inner, span_u32, _access)) = data.first() {
+                        let span = *span_u32 as u64;
+                        // Obtain bytes
+                        let init_bytes: Vec<u8> = {
+                            let s = shader.storage.read();
+                            s.get_bytes(name)
+                                .map(|b| b.to_vec())
+                                .unwrap_or_else(|| vec![0u8; span as usize])
                         };
-                        groups
-                            .entry(uniform.group)
-                            .or_default()
-                            .buffers
-                            .push((uniform.binding, loc));
+                        // Create or get buffer
+                        let buf = {
+                            if let Some(entry) = self.storage_registry.get(name) {
+                                let (existing, existing_span) = entry.value();
+                                if *existing_span != span {
+                                    log::debug!(
+                                        "storage[compute]: recreate root={} new_span={} old_span={}",
+                                        name,
+                                        span,
+                                        *existing_span
+                                    );
+                                    drop(entry);
+                                    let buffer =
+                                        self.device.create_buffer(&wgpu::BufferDescriptor {
+                                            label: Some(&format!(
+                                                "Persistent Storage Buffer: {}",
+                                                name
+                                            )),
+                                            size: span,
+                                            usage: wgpu::BufferUsages::STORAGE
+                                                | wgpu::BufferUsages::COPY_DST
+                                                | wgpu::BufferUsages::COPY_SRC,
+                                            mapped_at_creation: false,
+                                        });
+                                    self.queue.write_buffer(&buffer, 0, &init_bytes);
+                                    self.storage_registry
+                                        .insert(name.to_string(), (buffer.clone(), span));
+                                    buffer
+                                } else {
+                                    log::debug!(
+                                        "storage[compute]: reuse root={} span={} (existing_span={})",
+                                        name,
+                                        span,
+                                        *existing_span
+                                    );
+                                    existing.clone()
+                                }
+                            } else {
+                                let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+                                    label: Some(&format!("Persistent Storage Buffer: {}", name)),
+                                    size: span,
+                                    usage: wgpu::BufferUsages::STORAGE
+                                        | wgpu::BufferUsages::COPY_DST
+                                        | wgpu::BufferUsages::COPY_SRC,
+                                    mapped_at_creation: false,
+                                });
+                                log::debug!(
+                                    "storage[compute]: create root={} span={} (init_bytes={})",
+                                    name,
+                                    span,
+                                    init_bytes.len()
+                                );
+                                self.queue.write_buffer(&buffer, 0, &init_bytes);
+                                self.storage_registry
+                                    .insert(name.to_string(), (buffer.clone(), span));
+                                buffer
+                            }
+                        };
+                        // Upload if dirty
+                        let need_upload = {
+                            let s = shader.storage.read();
+                            s.is_storage_dirty(name)
+                        };
+                        if need_upload {
+                            let bytes: Vec<u8> = {
+                                let s = shader.storage.read();
+                                s.get_bytes(name)
+                                    .map(|b| b.to_vec())
+                                    .unwrap_or_else(|| vec![0u8; span as usize])
+                            };
+                            log::debug!(
+                                "storage[compute]: upload root={} bytes={}",
+                                name,
+                                bytes.len()
+                            );
+                            self.queue.write_buffer(&buf, 0, &bytes);
+                            let mut s = shader.storage.write();
+                            s.clear_storage_dirty(name);
+                        }
+                        // Record storage binding for optional post-dispatch readback
+                        if pass.name.as_ref() == "update" {
+                            debug_storage_bindings.push((name.clone(), buf.clone(), span));
+                        }
+                        groups.entry(uniform.group).or_default().pbufs.push((
+                            uniform.binding,
+                            buf,
+                            span,
+                        ));
                     }
                 }
                 _ => {
@@ -970,6 +1281,28 @@ impl RenderContext {
                     let bytes = storage
                         .get_bytes(name)
                         .ok_or(crate::ShaderError::UniformNotFound(name.clone()))?;
+                    // Debug: log sim uniform for the update compute pass to ensure dynamic values are bound
+                    if pass.name.as_ref() == "update" && name.as_str() == "sim" {
+                        if bytes.len() >= 16 {
+                            let f = |i: usize| -> f32 {
+                                let b = &bytes[i * 4..i * 4 + 4];
+                                f32::from_le_bytes([b[0], b[1], b[2], b[3]])
+                            };
+                            let dt = f(0);
+                            let g = f(1);
+                            let damp = f(2);
+                            let w = f(3);
+                            log::debug!(
+                                "compute[update]: sim = [dt={:.6}, g={:.6}, damp={:.6}, _={:.6}]",
+                                dt,
+                                g,
+                                damp,
+                                w
+                            );
+                        } else {
+                            log::debug!("compute[update]: sim bytes too short: {}", bytes.len());
+                        }
+                    }
                     let loc = {
                         let mut pool = self.buffer_pool.write();
                         pool.upload(bytes, &self.queue, &self.device)
@@ -998,6 +1331,22 @@ impl RenderContext {
                 entries.push(wgpu::BindGroupEntry {
                     binding: *binding,
                     resource: wgpu::BindingResource::Buffer(binding_ref),
+                });
+            }
+            // Persistent buffers
+            for (binding, buf, span) in owned.pbufs.iter() {
+                let padded = {
+                    let sz = *span as u64;
+                    wgpu::util::align_to(sz, 16).max(16)
+                };
+                let size_nz = unsafe { std::num::NonZeroU64::new_unchecked(padded) };
+                entries.push(wgpu::BindGroupEntry {
+                    binding: *binding,
+                    resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                        buffer: buf,
+                        offset: 0,
+                        size: Some(size_nz),
+                    }),
                 });
             }
             for (binding, view) in owned.views.iter() {
@@ -1034,6 +1383,13 @@ impl RenderContext {
         let (x, y, z) = pass.compute_dispatch();
         cpass.dispatch_workgroups(x, y, z);
         drop(cpass);
+
+        // After dispatch, optionally schedule debug readbacks for selected storage roots
+        if pass.name.as_ref() == "update" {
+            for (root, buf, span) in debug_storage_bindings.into_iter() {
+                self.debug_maybe_schedule_readback(encoder, &root, &buf, span.min(64));
+            }
+        }
 
         Ok(())
     }
@@ -1145,7 +1501,7 @@ fn create_bind_group_layouts(
                         };
                         wgpu::BindGroupLayoutEntry {
                             binding: uniform.binding,
-                            visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+                            visibility: wgpu::ShaderStages::COMPUTE,
                             ty: wgpu::BindingType::StorageTexture {
                                 access,
                                 format,
@@ -1166,9 +1522,16 @@ fn create_bind_group_layouts(
                 if let Some((_inner, span, access)) = data.first() {
                     let min = if *span == 0 { 16 } else { *span as u64 };
                     let min = unsafe { std::num::NonZeroU64::new_unchecked(min) };
-                    wgpu::BindGroupLayoutEntry {
+                    let entry = wgpu::BindGroupLayoutEntry {
                         binding: uniform.binding,
-                        visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+                        visibility: if access.is_readonly() {
+                            wgpu::ShaderStages::VERTEX
+                                | wgpu::ShaderStages::FRAGMENT
+                                | wgpu::ShaderStages::COMPUTE
+                        } else {
+                            // Writable storage buffers are not allowed in VERTEX stage without special features
+                            wgpu::ShaderStages::COMPUTE
+                        },
                         ty: wgpu::BindingType::Buffer {
                             ty: wgpu::BufferBindingType::Storage {
                                 read_only: access.is_readonly(),
@@ -1177,23 +1540,43 @@ fn create_bind_group_layouts(
                             min_binding_size: Some(min),
                         },
                         count: None,
-                    }
+                    };
+                    log::debug!(
+                        "layout[storage]: name={} group={} binding={} readonly={} span={}",
+                        uniform.name,
+                        uniform.group,
+                        uniform.binding,
+                        access.is_readonly(),
+                        span
+                    );
+                    entry
                 } else {
-                    wgpu::BindGroupLayoutEntry {
+                    let entry = wgpu::BindGroupLayoutEntry {
                         binding: uniform.binding,
-                        visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+                        visibility: wgpu::ShaderStages::VERTEX
+                            | wgpu::ShaderStages::FRAGMENT
+                            | wgpu::ShaderStages::COMPUTE,
                         ty: wgpu::BindingType::Buffer {
                             ty: wgpu::BufferBindingType::Uniform,
                             has_dynamic_offset: false,
                             min_binding_size: Some(min_size),
                         },
                         count: None,
-                    }
+                    };
+                    log::debug!(
+                        "layout[uniform-fallback]: name={} group={} binding={}",
+                        uniform.name,
+                        uniform.group,
+                        uniform.binding
+                    );
+                    entry
                 }
             }
             _ => wgpu::BindGroupLayoutEntry {
                 binding: uniform.binding,
-                visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+                visibility: wgpu::ShaderStages::VERTEX
+                    | wgpu::ShaderStages::FRAGMENT
+                    | wgpu::ShaderStages::COMPUTE,
                 ty: wgpu::BindingType::Buffer {
                     ty: wgpu::BufferBindingType::Uniform,
                     has_dynamic_offset: false,
@@ -1982,10 +2365,10 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(0.,1.,0.,1.); }
             // Two instances with different offsets: provide an "offset" property to match the shader
             use crate::mesh::VertexValue;
             mesh.add_instance(
-                Vertex::new([0.0, 0.0]).with("offset", VertexValue::F32x2([0.0, 0.0])),
+                Vertex::new([0.0, 0.0]).set("offset", VertexValue::F32x2([0.0, 0.0])),
             );
             mesh.add_instance(
-                Vertex::new([0.25, 0.0]).with("offset", VertexValue::F32x2([0.25, 0.0])),
+                Vertex::new([0.25, 0.0]).set("offset", VertexValue::F32x2([0.25, 0.0])),
             );
 
             pass.add_mesh(&mesh);
@@ -2022,9 +2405,9 @@ fn main(v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(v.uv, 0.0, 1.0); }
             let mut mesh = crate::mesh::Mesh::new();
             use crate::mesh::Vertex;
             mesh.add_vertices([
-                Vertex::new([-0.5, -0.5]).with("uv", [0.0, 0.0]),
-                Vertex::new([0.5, -0.5]).with("uv", [1.0, 0.0]),
-                Vertex::new([0.0, 0.5]).with("uv", [0.5, 1.0]),
+                Vertex::new([-0.5, -0.5]).set("uv", [0.0, 0.0]),
+                Vertex::new([0.5, -0.5]).set("uv", [1.0, 0.0]),
+                Vertex::new([0.0, 0.5]).set("uv", [0.5, 1.0]),
             ]);
             pass.add_mesh(&mesh);
 
@@ -2061,9 +2444,9 @@ fn main(v: VOut) -> @location(0) vec4<f32> { return v.color; }
             let mut mesh = crate::mesh::Mesh::new();
             use crate::mesh::Vertex;
             mesh.add_vertices([
-                Vertex::new([-0.5, -0.5, 0.0]).with("color", [1.0, 0.0, 0.0, 1.0]),
-                Vertex::new([0.5, -0.5, 0.0]).with("color", [0.0, 1.0, 0.0, 1.0]),
-                Vertex::new([0.0, 0.5, 0.0]).with("color", [0.0, 0.0, 1.0, 1.0]),
+                Vertex::new([-0.5, -0.5, 0.0]).set("color", [1.0, 0.0, 0.0, 1.0]),
+                Vertex::new([0.5, -0.5, 0.0]).set("color", [0.0, 1.0, 0.0, 1.0]),
+                Vertex::new([0.0, 0.5, 0.0]).set("color", [0.0, 0.0, 1.0, 1.0]),
             ]);
             pass.add_mesh(&mesh);
 
@@ -2114,21 +2497,20 @@ fn main(v: VOut) -> @location(0) vec4<f32> { return v.tint; }
             // Triangle geometry in clip-space
             mesh.add_vertices([
                 Vertex::new([-0.5, -0.5, 0.0])
-                    .with("tint", VertexValue::F32x4([0.0, 1.0, 0.0, 1.0])), // vertex-level green (should be ignored)
-                Vertex::new([0.5, -0.5, 0.0])
-                    .with("tint", VertexValue::F32x4([0.0, 1.0, 0.0, 1.0])),
-                Vertex::new([0.0, 0.5, 0.0]).with("tint", VertexValue::F32x4([0.0, 1.0, 0.0, 1.0])),
+                    .set("tint", VertexValue::F32x4([0.0, 1.0, 0.0, 1.0])), // vertex-level green (should be ignored)
+                Vertex::new([0.5, -0.5, 0.0]).set("tint", VertexValue::F32x4([0.0, 1.0, 0.0, 1.0])),
+                Vertex::new([0.0, 0.5, 0.0]).set("tint", VertexValue::F32x4([0.0, 1.0, 0.0, 1.0])),
             ]);
             // Two instances with different offsets and tints
             mesh.add_instance(
                 Vertex::new([-0.6, 0.0])
-                    .with("offset", VertexValue::F32x2([-0.6, 0.0]))
-                    .with("tint", VertexValue::F32x4([1.0, 0.0, 0.0, 1.0])), // red
+                    .set("offset", VertexValue::F32x2([-0.6, 0.0]))
+                    .set("tint", VertexValue::F32x4([1.0, 0.0, 0.0, 1.0])), // red
             );
             mesh.add_instance(
                 Vertex::new([0.6, 0.0])
-                    .with("offset", VertexValue::F32x2([0.6, 0.0]))
-                    .with("tint", VertexValue::F32x4([0.0, 0.0, 1.0, 1.0])), // blue
+                    .set("offset", VertexValue::F32x2([0.6, 0.0]))
+                    .set("tint", VertexValue::F32x4([0.0, 0.0, 1.0, 1.0])), // blue
             );
 
             pass.add_mesh(&mesh);
@@ -2322,9 +2704,9 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(0.2,0.3,0.4,1.0);
             let mut mesh = crate::mesh::Mesh::new();
             use crate::mesh::Vertex;
             mesh.add_vertices([
-                Vertex::new([-0.5, -0.5, 0.0]).with("uv", [0.0, 0.0]),
-                Vertex::new([0.5, -0.5, 0.0]).with("uv", [1.0, 0.0]),
-                Vertex::new([0.0, 0.5, 0.0]).with("uv", [0.5, 1.0]),
+                Vertex::new([-0.5, -0.5, 0.0]).set("uv", [0.0, 0.0]),
+                Vertex::new([0.5, -0.5, 0.0]).set("uv", [1.0, 0.0]),
+                Vertex::new([0.0, 0.5, 0.0]).set("uv", [0.5, 1.0]),
             ]);
             pass.add_mesh(&mesh);
 
@@ -2565,7 +2947,7 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,1.,0.,1.); }
             ]);
             // Add instance with wrong-typed "offset" (vec3 instead of vec2)
             mesh.add_instance(
-                Vertex::new([0.0, 0.0]).with("offset", VertexValue::F32x3([0.0, 0.0, 0.0])),
+                Vertex::new([0.0, 0.0]).set("offset", VertexValue::F32x3([0.0, 0.0, 0.0])),
             );
             pass.add_mesh(&mesh);
 

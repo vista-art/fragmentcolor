@@ -49,7 +49,7 @@ lang="rust"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { {Mesh, Vertex, VertexValue} } from "fragmentcolor";
+import { Mesh, Vertex, VertexValue } from "fragmentcolor";
 
 const mesh = new Mesh();
 mesh.addVertex(Vertex.new([0.0, 0.5, 0.0]));
@@ -64,12 +64,12 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import {Mesh, Vertex, VertexValue}
+from fragmentcolor import Mesh, Vertex
 
 mesh = Mesh()
-mesh.add_vertex(Vertex.new([0.0, 0.5, 0.0]))
-mesh.add_vertex(Vertex.new([-0.5, -0.5, 0.0]))
-mesh.add_vertex(Vertex.new([0.5, -0.5, 0.0]))
+mesh.add_vertex(Vertex([0.0, 0.5, 0.0]))
+mesh.add_vertex(Vertex([-0.5, -0.5, 0.0]))
+mesh.add_vertex(Vertex([0.5, -0.5, 0.0]))
 `}
 lang="python"
 />
@@ -205,7 +205,7 @@ lang="rust"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { {Mesh, Vertex} } from "fragmentcolor";
+import { Mesh, Vertex } from "fragmentcolor";
 const m = Mesh.fromVertices([;
     Vertex.new([0.0, 0.0]),;
     Vertex.new([1.0, 0.0]),;
@@ -220,11 +220,11 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import {Mesh, Vertex}
+from fragmentcolor import Mesh, Vertex
 m = Mesh.from_vertices([
-    Vertex.new([0.0, 0.0]),
-    Vertex.new([1.0, 0.0]),
-    Vertex.new([0.0, 1.0]),
+    Vertex([0.0, 0.0]),
+    Vertex([1.0, 0.0]),
+    Vertex([0.0, 1.0]),
 ])
 `}
 lang="python"
@@ -272,9 +272,9 @@ Add a single vertex to the mesh.
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::mesh::{Mesh, Vertex};
+use fragmentcolor::mesh::{Mesh};
 let mut m = Mesh::new();
-m.add_vertex(Vertex::new([0.0, 0.0]));
+m.add_vertex([0.0, 0.0]);
 `}
 lang="rust"
 />
@@ -284,9 +284,9 @@ lang="rust"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { {Mesh, Vertex} } from "fragmentcolor";
+import { Mesh } from "fragmentcolor";
 const m = new Mesh();
-m.addVertex(Vertex.new([0.0, 0.0]));
+m.addVertex([0.0, 0.0]);
 `}
 lang="js"
 />
@@ -296,9 +296,9 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import {Mesh, Vertex}
+from fragmentcolor import Mesh
 m = Mesh()
-m.add_vertex(Vertex.new([0.0, 0.0]))
+m.add_vertex([0.0, 0.0])
 `}
 lang="python"
 />
@@ -360,7 +360,7 @@ lang="rust"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { {Mesh, Vertex} } from "fragmentcolor";
+import { Mesh, Vertex } from "fragmentcolor";
 const m = new Mesh();
 m.addVertices([;
   Vertex.new([0.0, 0.0]),;
@@ -375,11 +375,11 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import {Mesh, Vertex}
+from fragmentcolor import Mesh, Vertex
 m = Mesh()
 m.add_vertices([
-  Vertex.new([0.0, 0.0]),
-  Vertex.new([1.0, 0.0])
+  Vertex([0.0, 0.0]),
+  Vertex([1.0, 0.0])
 ])
 `}
 lang="python"
@@ -440,7 +440,7 @@ lang="rust"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { {Mesh, Vertex} } from "fragmentcolor";
+import { Mesh, Vertex } from "fragmentcolor";
 const m = new Mesh();
 const v = new Vertex([0.0, 0.0]);
 m.addInstance(v);
@@ -453,7 +453,7 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import {Mesh, Vertex}
+from fragmentcolor import Mesh, Vertex
 m = Mesh()
 v = Vertex([0.0, 0.0])
 m.add_instance(v)
@@ -518,7 +518,7 @@ lang="rust"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { {Mesh, Vertex} } from "fragmentcolor";
+import { Mesh, Vertex } from "fragmentcolor";
 const m = new Mesh();
 m.addInstances([;
   Vertex.new([0.0, 0.0]),;
@@ -533,11 +533,11 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import {Mesh, Vertex}
+from fragmentcolor import Mesh, Vertex
 m = Mesh()
 m.add_instances([
-  Vertex.new([0.0, 0.0]),
-  Vertex.new([1.0, 1.0]),
+  Vertex([0.0, 0.0]),
+  Vertex([1.0, 1.0]),
 ])
 `}
 lang="python"
@@ -678,7 +678,7 @@ lang="rust"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { {Mesh, Vertex} } from "fragmentcolor";
+import { Mesh, Vertex } from "fragmentcolor";
 const m = new Mesh();
 m.addVertices([;
     Vertex.new([-0.01, -0.01]),;
@@ -696,12 +696,12 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import {Mesh, Vertex}
+from fragmentcolor import Mesh, Vertex
 m = Mesh()
 m.add_vertices([
-    Vertex.new([-0.01, -0.01]),
-    Vertex.new([ 0.01, -0.01]),
-    Vertex.new([ 0.00,  0.01]),
+    Vertex([-0.01, -0.01]),
+    Vertex([ 0.01, -0.01]),
+    Vertex([ 0.00,  0.01]),
 ])
 # draw one million instances
 m.set_instance_count(1_000_000)

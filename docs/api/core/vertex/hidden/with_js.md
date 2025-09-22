@@ -1,4 +1,4 @@
-# Vertex.with_js
+# Vertex.set_js
 
 Platform-specific method for JavaScript.
 Hidden from public website, available for IDE hover via lsp_doc.

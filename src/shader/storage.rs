@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::ShaderError;
 
@@ -10,6 +10,8 @@ pub(crate) struct UniformStorage {
     pub(crate) uniforms: HashMap<String, (u32, u32, Uniform)>, // (offset, size, original data)
     // CPU-side blobs for storage buffers: root name -> raw bytes
     pub(crate) storage_blobs: HashMap<String, Vec<u8>>,
+    // Track which storage roots have been modified on CPU since last GPU upload
+    pub(crate) storage_dirty: HashSet<String>,
     // CPU-side blobs for push constants: root name -> raw bytes
     pub(crate) push_blobs: HashMap<String, Vec<u8>>,
 }
@@ -21,6 +23,7 @@ impl UniformStorage {
             uniform_bytes: Vec::new(),
             uniforms: HashMap::new(),
             storage_blobs: HashMap::new(),
+            storage_dirty: HashSet::new(),
             push_blobs: HashMap::new(),
         };
 
@@ -179,6 +182,8 @@ impl UniformStorage {
                     *b = 0;
                 }
             }
+            // Mark root dirty for next GPU upload
+            self.storage_dirty.insert(root.to_string());
             Ok(())
         } else {
             Err(ShaderError::UniformNotFound(root.into()))
@@ -211,16 +216,19 @@ impl UniformStorage {
             // Special-case: storage root receiving raw bytes
             let root = key.split('.').next().unwrap_or(key).to_string();
             let is_storage_root = matches!(uniform.data, UniformData::Storage(_)) && root == *key;
-            if is_storage_root && let UniformData::Bytes(b) = value {
-                self.set_storage_bytes(&root, b)?;
-                return Ok(());
+            if is_storage_root {
+                if let UniformData::Bytes(b) = value {
+                    self.set_storage_bytes(&root, b)?;
+                    return Ok(());
+                }
             }
-
             // Special-case: push root receiving raw bytes
             let is_push_root = matches!(uniform.data, UniformData::PushConstant(_)) && root == *key;
-            if is_push_root && let UniformData::Bytes(b) = value {
-                self.set_push_bytes(&root, b)?;
-                return Ok(());
+            if is_push_root {
+                if let UniformData::Bytes(b) = value {
+                    self.set_push_bytes(&root, b)?;
+                    return Ok(());
+                }
             }
 
             // Allow updating Texture with TextureMeta (id + naga metadata) and preserve shader metadata if caller passed id-only
@@ -288,6 +296,8 @@ impl UniformStorage {
                                     *b = 0;
                                 }
                             }
+                            // Mark dirty
+                            self.storage_dirty.insert(root.to_string());
                         }
                     }
                     _ => {
@@ -297,6 +307,8 @@ impl UniformStorage {
                         let end = start.saturating_add(data.len());
                         if end <= blob.len() {
                             blob[start..end].copy_from_slice(&data);
+                            // Mark dirty for nested update as well
+                            self.storage_dirty.insert(root.to_string());
                         }
                     }
                 }
@@ -383,6 +395,8 @@ impl UniformStorage {
                     let end = start.saturating_add(val_bytes.len());
                     if end <= blob.len() {
                         blob[start..end].copy_from_slice(&val_bytes);
+                        // Mark dirty for nested update
+                        self.storage_dirty.insert(root.clone());
                         return Ok(());
                     }
                 }
@@ -523,6 +537,14 @@ impl UniformStorage {
         }
 
         None
+    }
+
+    // ----- Storage dirty helpers (crate-private) -----
+    pub(crate) fn is_storage_dirty(&self, root: &str) -> bool {
+        self.storage_dirty.contains(root)
+    }
+    pub(crate) fn clear_storage_dirty(&mut self, root: &str) {
+        self.storage_dirty.remove(root);
     }
 }
 

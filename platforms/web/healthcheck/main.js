@@ -194,8 +194,8 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(0.,1.,0.,1.); }
     new Vertex([ 0.5, -0.5, 0.0]),
     new Vertex([ 0.0,  0.5, 0.0]),
   ]);
-  const instA = new Vertex([0.0, 0.0]).with('offset', [0.0, 0.0]).createInstance();
-  const instB = new Vertex([0.25, 0.0]).with('offset', [0.25, 0.0]).createInstance();
+  const instA = new Vertex([0.0, 0.0]).set('offset', [0.0, 0.0]).createInstance();
+  const instB = new Vertex([0.25, 0.0]).set('offset', [0.25, 0.0]).createInstance();
   mesh.addInstances([instA, instB]);
   pass.addMesh(mesh);
   renderer.render(pass, target);

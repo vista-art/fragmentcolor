@@ -1,5 +1,5 @@
 
-import { Renderer, Target, Shader } from "fragmentcolor";
+import { Shader, Renderer, Target } from "fragmentcolor";
 
 const renderer = new Renderer();
 const target = await renderer.createTextureTarget([16, 16]);

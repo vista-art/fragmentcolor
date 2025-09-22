@@ -11,9 +11,9 @@ Create a [Texture](https://fragmentcolor.org/api/core/texture) from various inpu
 ```rust
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Renderer;
-let bytes = std::fs::read("./examples/assets/image.png")?;
+let image = std::fs::read("./examples/assets/image.png")?;
 let renderer = Renderer::new();
-let tex = renderer.create_texture(&bytes).await?;
+let tex = renderer.create_texture(&image).await?;
 // use in a shader uniform
 // shader.set("tex", &tex)?;
 # _ = tex;

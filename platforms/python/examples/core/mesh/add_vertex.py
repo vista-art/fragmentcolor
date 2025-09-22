@@ -1,3 +1,3 @@
-from fragmentcolor import {Mesh, Vertex}
+from fragmentcolor import Mesh
 m = Mesh()
-m.add_vertex(Vertex.new([0.0, 0.0]))
+m.add_vertex([0.0, 0.0])

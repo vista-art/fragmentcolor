@@ -290,7 +290,7 @@ lang="js"
 code={`
 from fragmentcolor import Pass, Shader
 
-cs = Shader("@compute @workgroup_size(8,8,1) fn cs_main() {}").unwrap()
+cs = Shader("@compute @workgroup_size(8,8,1) fn cs_main() {}")
 rpass = Pass("compute"); rpass.add_shader(cs)
 `}
 lang="python"
@@ -704,7 +704,7 @@ lang="rust"
 <Code
 code={`
 import { Pass, Shader } from "fragmentcolor";
-import { {Mesh, Vertex}, Shader } from "fragmentcolor";
+import { Mesh, Vertex } from "fragmentcolor";
 
 const shader = Shader.default();
 const pass = new Pass("p"); pass.addShader(shader);
@@ -721,12 +721,12 @@ lang="js"
 <Code
 code={`
 from fragmentcolor import Pass, Shader
-from fragmentcolor import {Mesh, Vertex}, Shader
+from fragmentcolor import Mesh, Vertex
 
 shader = Shader.default()
 rpass = Pass("p"); rpass.add_shader(shader)
 mesh = Mesh()
-mesh.add_vertex(Vertex.new([0.0, 0.0]))
+mesh.add_vertex(Vertex([0.0, 0.0]))
 rpass.add_mesh(mesh)
 `}
 lang="python"
@@ -1025,7 +1025,7 @@ lang="js"
 <Code
 code={`
 from fragmentcolor import Pass, Shader
-cs = Shader("@compute @workgroup_size(8,8,1) fn cs_main() {}").unwrap()
+cs = Shader("@compute @workgroup_size(8,8,1) fn cs_main() {}")
 rpass = Pass("compute"); rpass.add_shader(cs)
 rpass.set_compute_dispatch(64, 64, 1)
 `}

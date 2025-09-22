@@ -206,10 +206,10 @@ impl Vertex {
     }
 
     #[wasm_bindgen(js_name = "with")]
-    #[lsp_doc("docs/api/core/vertex/with.md")]
-    pub fn with_js(&self, key: &str, value: &JsValue) -> Result<Vertex, JsError> {
+    #[lsp_doc("docs/api/core/vertex/set.md")]
+    pub fn set_js(&self, key: &str, value: &JsValue) -> Result<Vertex, JsError> {
         let vv = js_to_vertex_value(value)?;
-        Ok(self.clone().with(key, vv))
+        Ok(self.clone().set(key, vv))
     }
 
     #[wasm_bindgen(js_name = "createInstance")]

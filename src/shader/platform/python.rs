@@ -6,8 +6,12 @@ use pyo3::prelude::*;
 #[pymethods]
 impl Shader {
     #[new]
-    pub fn new_py(source: &str) -> Result<Self, ShaderError> {
-        Shader::new(source)
+    pub fn new_py(source: Option<&str>) -> Result<Self, ShaderError> {
+        if let Some(source) = source {
+            Shader::new(source)
+        } else {
+            Ok(Shader::default())
+        }
     }
 
     #[pyo3(name = "set")]

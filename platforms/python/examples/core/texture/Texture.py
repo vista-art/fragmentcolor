@@ -1,5 +1,5 @@
 
-from fragmentcolor import Renderer, Shader, Size
+from fragmentcolor import Renderer, Shader
 renderer = Renderer()
 shader = Shader("""
 @group(0) @binding(0) var t_tex: texture_2d<f32>;
@@ -16,4 +16,4 @@ shader = Shader("""
 pixels = [255,255,255,255]
 texture = renderer.create_texture_with_size(pixels, [1,1])
 
-shader.set("t_tex", texture).unwrap()
+shader.set("t_tex", texture)

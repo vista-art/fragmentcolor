@@ -60,6 +60,11 @@ impl Pass {
         self.object.set_clear_color(color);
     }
 
+    #[pyo3(name = "set_viewport")]
+    pub fn set_viewport_py(&self, viewport: crate::Region) {
+        self.object.set_viewport(viewport);
+    }
+
     #[pyo3(name = "set_compute_dispatch")]
     #[lsp_doc("docs/api/core/pass/set_compute_dispatch.md")]
     pub fn set_compute_dispatch_py(&self, x: u32, y: u32, z: u32) {

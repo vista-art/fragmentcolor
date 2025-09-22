@@ -187,7 +187,7 @@ from fragmentcolor import Renderer
 
 renderer = Renderer()
 target = renderer.create_texture_target([16, 16])
-frame = target.get_current_frame();# Acquire a frame, internal usage
+frame = target.get_current_frame(); // Acquire a frame, internal usage
 format = frame.format()
 
 `}
@@ -238,11 +238,11 @@ Returns the current contents of the target as a byte array in RGBA8 format.
 code={`
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
-use fragmentcolor::{Renderer, Target};
+use fragmentcolor::{Shader, Renderer, Target};
 
 let renderer = Renderer::new();
 let target = renderer.create_texture_target([16, 16]).await?;
-renderer.render(&fragmentcolor::Shader::default(), &target)?;
+renderer.render(&Shader::default(), &target)?;
 
 let image = target.get_image();
 
@@ -260,7 +260,7 @@ lang="rust" meta="collapse={1-1, 11-14}"
 <Code
 code={`
 
-import { Renderer, Target, Shader } from "fragmentcolor";
+import { Shader, Renderer, Target } from "fragmentcolor";
 
 const renderer = new Renderer();
 const target = await renderer.createTextureTarget([16, 16]);
@@ -278,7 +278,7 @@ lang="js"
 <Code
 code={`
 
-from fragmentcolor import Renderer, Shader
+from fragmentcolor import Shader, Renderer
 
 renderer = Renderer()
 target = renderer.create_texture_target([16, 16])
@@ -480,10 +480,10 @@ from fragmentcolor import Renderer
 
 renderer = Renderer()
 target = renderer.create_texture_target([64, 32])
-size = target.size
+size = target.size()
 width = size.width
 height = size.height
-depth = size.depth;# 1
+depth = size.depth; // 1
 
 `}
 lang="python"

@@ -61,7 +61,7 @@ def run_all():
         'core/vertex/Vertex.py',
         'core/vertex/create_instance.py',
         'core/vertex/new.py',
-        'core/vertex/with.py',
+        'core/vertex/set.py',
         'targets/texture_target/TextureTarget.py',
         'targets/texture_target/get_image.py',
         'targets/texture_target/resize.py',
