@@ -130,7 +130,8 @@ impl Renderer {
         // For offscreen texture targets on Web, force sample_count = 1 to avoid MSAA resolve issues.
         // Canvas targets may still use MSAA via the surface path.
         context.set_sample_count(1);
-        let texture = TextureTarget::new(context, size.into(), wgpu::TextureFormat::Bgra8Unorm);
+        // Prefer RGBA8 format for offscreen targets so get_image() yields RGBA-ordered bytes.
+        let texture = TextureTarget::new(context, size.into(), wgpu::TextureFormat::Rgba8Unorm);
 
         Ok(texture)
     }
@@ -414,9 +415,7 @@ impl RenderContext {
                 label: Some("Command Encoder"),
             });
 
-        log::info!("[render] before get_current_frame");
         let frame = self.try_get_frame_with_retry(target)?;
-        log::info!("[render] got current frame");
 
         for pass in renderable.passes() {
             if pass.is_compute() {
@@ -548,12 +547,7 @@ impl RenderContext {
             timestamp_writes: None,
             occlusion_query_set: None,
         };
-        log::info!(
-            "[render] !!!!!!! calling begin_render_pass with {:?}",
-            &descriptor
-        );
         let mut render_pass = encoder.begin_render_pass(&descriptor);
-        log::info!("[render] begin_render_pass OK");
 
         // Defaults to Color::TRANSPARENT
         // render_pass.set_blend_constant(wgpu::Color::WHITE);
@@ -676,24 +670,24 @@ impl RenderContext {
                         }
                     }
                     crate::shader::uniform::UniformData::PushConstant(_) => {
-                        // In native mode we will set push constants just before draw; here only handle fallback
-                        if let Some(PushMode::Fallback { group, bindings }) = &cached.push_mode {
-                            if let Some(binding) = bindings.get(name) {
-                                let storage = shader.storage.read();
-                                let bytes = storage
-                                    .get_bytes(name)
-                                    .ok_or(crate::ShaderError::UniformNotFound(name.clone()))?;
-                                //drop(storage);
-                                let buffer_location = {
-                                    let mut buffer_pool = self.buffer_pool.write();
-                                    buffer_pool.upload(bytes, &self.queue, &self.device)
-                                };
-                                groups
-                                    .entry(*group)
-                                    .or_default()
-                                    .ubufs
-                                    .push((*binding, buffer_location));
-                            }
+                        // Fallback mode: each push constant root became a classic uniform buffer in rewritten module.
+                        if let Some(PushMode::Fallback { group, bindings }) = &cached.push_mode
+                            && let Some(binding) = bindings.get(name)
+                        {
+                            let storage = shader.storage.read();
+                            let bytes = storage
+                                .get_bytes(name)
+                                .ok_or(crate::ShaderError::UniformNotFound(name.clone()))?;
+                            //drop(storage);
+                            let buffer_location = {
+                                let mut buffer_pool = self.buffer_pool.write();
+                                buffer_pool.upload(bytes, &self.queue, &self.device)
+                            };
+                            groups
+                                .entry(*group)
+                                .or_default()
+                                .ubufs
+                                .push((*binding, buffer_location));
                         }
                     }
                     _ => {
@@ -718,6 +712,9 @@ impl RenderContext {
 
             // Build bind groups per layout (by group index)
             let mut bind_groups: Vec<(u32, wgpu::BindGroup)> = Vec::new();
+            use std::collections::HashSet;
+            let mut present_groups: HashSet<u32> = HashSet::new();
+
             for (group, owned) in groups.into_iter() {
                 let Some(layout) = cached.bind_group_layouts.get(&group) else {
                     return Err(RendererError::BindGroupLayoutError(format!(
@@ -765,15 +762,29 @@ impl RenderContext {
                     entries: &entries,
                     label: Some(&format!("Bind Group for group: {}", group)),
                 });
+                present_groups.insert(group);
                 bind_groups.push((group, bind_group));
+            }
+
+            // Ensure empty bind groups are set for placeholder layouts the pipeline expects
+            for (group, layout) in cached.bind_group_layouts.iter() {
+                if !present_groups.contains(group) {
+                    // Create an empty bind group (layout is expected to have zero entries for placeholders)
+                    let empty = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                        layout,
+                        entries: &[],
+                        label: Some(&format!("Empty Bind Group for group: {}", group)),
+                    });
+                    bind_groups.push((*group, empty));
+                }
             }
 
             // Sort by group index to match pipeline layout order
             bind_groups.sort_by_key(|(g, _)| *g);
 
             render_pass.set_pipeline(&cached.pipeline);
-            for (i, (_, bind_group)) in bind_groups.iter().enumerate() {
-                render_pass.set_bind_group(i as u32, bind_group, &[]);
+            for (group, bind_group) in bind_groups.iter() {
+                render_pass.set_bind_group(*group, bind_group, &[]);
             }
 
             // Set native push constants just before draw if applicable
@@ -1017,8 +1028,8 @@ impl RenderContext {
             timestamp_writes: None,
         });
         cpass.set_pipeline(&cached.pipeline);
-        for (i, (_, bg)) in bind_groups.iter().enumerate() {
-            cpass.set_bind_group(i as u32, bg, &[]);
+        for (group, bg) in bind_groups.iter() {
+            cpass.set_bind_group(*group, bg, &[]);
         }
         let (x, y, z) = pass.compute_dispatch();
         cpass.dispatch_workgroups(x, y, z);
@@ -1236,10 +1247,10 @@ fn create_render_pipeline(
         if name.contains('.') {
             continue;
         }
-        if let crate::shader::uniform::UniformData::PushConstant(data) = &u.data {
-            if let Some((_inner, span)) = data.first() {
-                push_roots.push((name.clone(), *span));
-            }
+        if let crate::shader::uniform::UniformData::PushConstant(data) = &u.data
+            && let Some((_inner, span)) = data.first()
+        {
+            push_roots.push((name.clone(), *span));
         }
     }
     drop(storage);
@@ -1265,15 +1276,8 @@ fn create_render_pipeline(
 
     // Build shader module possibly rewriting push constants to uniforms in fallback mode
     let mut push_mode: Option<PushMode> = None;
+
     let shader_module = if !push_roots.is_empty() && fallback_required {
-        log::warn!(
-            "Push constants fallback to uniform buffer: using uniforms for {}",
-            push_roots
-                .iter()
-                .map(|(n, s)| format!("{}:{}", n, s))
-                .collect::<Vec<_>>()
-                .join(", ")
-        );
         // Compute a new group id beyond current ones
         let mut max_group: u32 = 0;
         for (_, _, u) in shader.storage.read().uniforms.values() {
@@ -1282,26 +1286,33 @@ fn create_render_pipeline(
             }
         }
         let fallback_group = max_group + 1;
-        // Assign bindings ascending from 0 in insertion order of module globals with push_constant
+        // Assign bindings following the discovered push_roots order (push_roots preserves
+        // the order we collected them from storage.uniforms / naga globals). Empirically,
+        // the earlier attempt at lexicographic ordering caused a binding/value mismatch
+        // in the fallback rendering test; using the original discovery order aligns the
+        // shader's expected binding mapping with the data upload path.
         let mut module = shader.module.clone();
-        let mut bindings_map: std::collections::HashMap<String, u32> =
+        // Map root name -> binding index according to push_roots sequence
+        let mut ordered_map: std::collections::HashMap<String, u32> =
             std::collections::HashMap::new();
-        let mut next_binding: u32 = 0;
-        for (_, gv) in module.global_variables.iter_mut() {
-            if matches!(gv.space, naga::AddressSpace::PushConstant) {
-                let name = gv
-                    .name
-                    .clone()
-                    .unwrap_or_else(|| format!("pc{}", next_binding));
+        for (i, (name, _span)) in push_roots.iter().enumerate() {
+            ordered_map.insert(name.clone(), i as u32);
+        }
+        // Apply rewrite on globals matching push constant address space
+        for (_handle, gv) in module.global_variables.iter_mut() {
+            if matches!(gv.space, naga::AddressSpace::PushConstant)
+                && let Some(name) = gv.name.clone()
+                && let Some(binding) = ordered_map.get(&name)
+            {
                 gv.space = naga::AddressSpace::Uniform;
                 gv.binding = Some(naga::ResourceBinding {
                     group: fallback_group,
-                    binding: next_binding,
+                    binding: *binding,
                 });
-                bindings_map.insert(name, next_binding);
-                next_binding += 1;
             }
         }
+        let bindings_map = ordered_map;
+        // Debug: dump rewritten globals for push constants after transformation
         // Create layout for the fallback group with uniform buffers
         let mut entries: Vec<wgpu::BindGroupLayoutEntry> = Vec::new();
         for (name, binding) in bindings_map.iter() {
@@ -1355,6 +1366,19 @@ fn create_render_pipeline(
         })
     };
 
+    // Ensure placeholder empty layouts for missing lower-index groups so that the positional
+    // indices of the pipeline layout match shader @group() numbers (important for fallback).
+    if let Some(max_g) = bind_group_layouts.keys().max().copied() {
+        for g in 0..=max_g {
+            bind_group_layouts.entry(g).or_insert_with(|| {
+                device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                    label: Some("Empty Bind Group Layout (placeholder)"),
+                    entries: &[],
+                })
+            });
+        }
+    }
+
     let mut sorted_groups: Vec<_> = bind_group_layouts.keys().collect();
     sorted_groups.sort();
     let mut bind_group_layouts_sorted: Vec<&wgpu::BindGroupLayout> = Vec::new();
@@ -1366,13 +1390,13 @@ fn create_render_pipeline(
 
     // Pipeline layout with optional push-constant ranges
     let mut push_ranges: Vec<wgpu::PushConstantRange> = Vec::new();
-    if let Some(PushMode::Native { root: _, size }) = &push_mode {
-        if *size > 0 {
-            push_ranges.push(wgpu::PushConstantRange {
-                stages: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
-                range: 0..*size,
-            });
-        }
+    if let Some(PushMode::Native { root: _, size }) = &push_mode
+        && *size > 0
+    {
+        push_ranges.push(wgpu::PushConstantRange {
+            stages: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+            range: 0..*size,
+        });
     }
 
     let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -2255,15 +2279,15 @@ fn main(v: VOut) -> @location(0) vec4<f32> { return v.tint; }
             let right = read_pixel(&img, w, right_x, y_mid);
 
             // Expect roughly red on the left, blue on the right (alpha 255)
-            // Note: TextureTarget uses Bgra8Unorm; bytes are in BGRA order.
+            // get_image() returns RGBA8 bytes
             assert!(
-                left[2] > 128 && left[1] < 64 && left[0] < 64 && left[3] == 255,
-                "left not red-ish (BGRA): {:?}",
+                left[0] > 128 && left[1] < 64 && left[2] < 64 && left[3] == 255,
+                "left not red-ish (RGBA): {:?}",
                 left
             );
             assert!(
-                right[0] > 128 && right[1] < 64 && right[2] < 64 && right[3] == 255,
-                "right not blue-ish (BGRA): {:?}",
+                right[2] > 128 && right[1] < 64 && right[0] < 64 && right[3] == 255,
+                "right not blue-ish (RGBA): {:?}",
                 right
             );
         });

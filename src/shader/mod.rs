@@ -728,7 +728,7 @@ var<push_constant> pc: PC;
         let bytes = s.get_bytes("pc").expect("pc bytes");
         assert_eq!(bytes.len(), 4);
         let v: f32 = bytemuck::cast_slice(&bytes[0..4])[0];
-        assert!((v - 0.5).abs() < 1e-6);
+        assert_eq!(v, 0.5f32);
     }
 
     // Story: Multiple push-constant roots parse and expose both roots.

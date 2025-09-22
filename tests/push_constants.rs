@@ -20,7 +20,9 @@ var<push_constant> pc: PC;
 
     let shader = Shader::new(wgsl).expect("shader");
     // Solid green
-    shader.set("pc.color", [0.0f32, 1.0, 0.0, 1.0]).expect("set pc.color");
+    shader
+        .set("pc.color", [0.0f32, 1.0, 0.0, 1.0])
+        .expect("set pc.color");
 
     renderer.render(&shader, &target).expect("render");
     let img = target.get_image();
@@ -50,7 +52,9 @@ var<push_constant> b: B;
     let shader = Shader::new(wgsl).expect("shader");
     shader.set("a.v", 1.0f32).expect("set a.v");
     // Blue
-    shader.set("b.color", [0.0f32, 0.0, 1.0, 1.0]).expect("set b.color");
+    shader
+        .set("b.color", [0.0f32, 0.0, 1.0, 1.0])
+        .expect("set b.color");
 
     renderer.render(&shader, &target).expect("render");
     let img = target.get_image();
