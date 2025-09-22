@@ -163,7 +163,6 @@ code={`
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Renderer, Size};
 let renderer = Renderer::new();
-// 1x1 RGBA (white) raw pixel bytes
 let pixels: &[u8] = &[255,255,255,255];
 let tex = renderer.create_texture_with_size(pixels, [1,1]).await?;
 let sz = tex.size();
@@ -172,7 +171,7 @@ Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 8-11}"
+lang="rust" meta="collapse={1-1, 7-10}"
 />
 
 </TabItem>
@@ -182,7 +181,6 @@ lang="rust" meta="collapse={1-1, 8-11}"
 code={`
 import { Renderer, Size } from "fragmentcolor";
 const renderer = new Renderer();
-// 1x1 RGBA (white) raw pixel bytes;
 const pixels = [255,255,255,255];
 const tex = await renderer.createTextureWithSize(pixels, [1,1]);
 const sz = tex.size();
@@ -197,10 +195,9 @@ lang="js"
 code={`
 from fragmentcolor import Renderer
 renderer = Renderer()
-# 1x1 RGBA (white) raw pixel bytes
 pixels = [255,255,255,255]
 tex = renderer.create_texture_with_size(pixels, [1,1])
-sz = tex.size()
+sz = tex.size
 `}
 lang="python"
 />

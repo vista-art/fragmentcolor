@@ -216,19 +216,15 @@ impl UniformStorage {
             // Special-case: storage root receiving raw bytes
             let root = key.split('.').next().unwrap_or(key).to_string();
             let is_storage_root = matches!(uniform.data, UniformData::Storage(_)) && root == *key;
-            if is_storage_root {
-                if let UniformData::Bytes(b) = value {
-                    self.set_storage_bytes(&root, b)?;
-                    return Ok(());
-                }
+            if is_storage_root && let UniformData::Bytes(b) = value {
+                self.set_storage_bytes(&root, b)?;
+                return Ok(());
             }
             // Special-case: push root receiving raw bytes
             let is_push_root = matches!(uniform.data, UniformData::PushConstant(_)) && root == *key;
-            if is_push_root {
-                if let UniformData::Bytes(b) = value {
-                    self.set_push_bytes(&root, b)?;
-                    return Ok(());
-                }
+            if is_push_root && let UniformData::Bytes(b) = value {
+                self.set_push_bytes(&root, b)?;
+                return Ok(());
             }
 
             // Allow updating Texture with TextureMeta (id + naga metadata) and preserve shader metadata if caller passed id-only

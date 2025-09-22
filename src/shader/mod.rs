@@ -48,6 +48,10 @@ impl Default for Shader {
 impl Shader {
     #[lsp_doc("docs/api/core/shader/new.md")]
     pub fn new(source: &str) -> Result<Self, ShaderError> {
+        if source.is_empty() {
+            return Ok(Self::default());
+        }
+
         let object = Arc::new(input::load_shader(source)?);
         let pass = Arc::new(PassObject::from_shader_object(
             "Shader Default Pass",

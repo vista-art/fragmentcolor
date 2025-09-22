@@ -129,7 +129,7 @@ fn main() {
 
     // Passes
     let pass_cs = Pass::from_shader("compute", &cs);
-    let wx = ((n + 255) / 256).max(1);
+    let wx = n.div_ceil(256).max(1);
     pass_cs.set_compute_dispatch(wx, 1, 1);
 
     let pass_fs = Pass::from_shader("render", &fs);

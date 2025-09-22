@@ -9,4 +9,4 @@ canvas = RenderCanvas(size=(800, 600))
 renderer = Renderer()
 target = renderer.create_target(canvas)
 
-renderer.render(Shader.default(), target)
+renderer.render(Shader(""), target)

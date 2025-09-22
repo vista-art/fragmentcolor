@@ -183,7 +183,7 @@ impl Vertex {
     #[lsp_doc("docs/api/core/vertex/set.md")]
     pub fn set_py(&self, key: &str, value: Py<PyAny>) -> PyResult<Self> {
         Python::attach(|py| -> PyResult<Self> {
-            let vv = py_to_vertex_value(&value.bind(py))?;
+            let vv = py_to_vertex_value(value.bind(py))?;
             Ok(self.clone().set(key, vv))
         })
     }
@@ -332,9 +332,9 @@ impl Mesh {
                 self.add_vertex(Vertex::new(a));
                 return Ok(());
             }
-            return Err(PyErr::new::<PyTypeError, _>(
+            Err(PyErr::new::<PyTypeError, _>(
                 "Unsupported vertex (expected Vertex or number/sequence)",
-            ));
+            ))
         })
     }
 
