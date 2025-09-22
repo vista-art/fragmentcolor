@@ -1,4 +1,4 @@
-from fragmentcolor import Renderer, Size
+from fragmentcolor import Renderer
 renderer = Renderer()
 pixels = [
     255,0,0,255,   0,255,0,255,

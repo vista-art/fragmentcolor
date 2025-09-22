@@ -84,8 +84,8 @@ fn main() {
         });
         insts.push(
             Vertex::new([0.0, 0.0])
-                .with("offset", [px, py])
-                .with("tint", col),
+                .set("offset", [px, py])
+                .set("tint", col),
         );
     }
     mesh.add_instances(insts);
@@ -130,8 +130,8 @@ fn main() {
             for p in &parts_clone {
                 tmp.push(
                     Vertex::new([0.0, 0.0])
-                        .with("offset", p.pos)
-                        .with("tint", p.col),
+                        .set("offset", p.pos)
+                        .set("tint", p.col),
                 );
             }
             mesh_clone.clear_instances();

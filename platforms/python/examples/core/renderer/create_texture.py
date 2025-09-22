@@ -1,5 +1,5 @@
 from fragmentcolor import Renderer
 renderer = Renderer()
 # Load encoded image bytes (PNG/JPEG) or use a file path
-bytes = std.fs.read("logo.png")
-tex = renderer.create_texture(bytes)
+image = open("logo.png", "rb").read()
+tex = renderer.create_texture(image)

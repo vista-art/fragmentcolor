@@ -12,8 +12,8 @@ Create a [Texture](https://fragmentcolor.org/api/core/texture) from various inpu
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Renderer, Size, TextureFormat};
 let renderer = Renderer::new();
-let bytes = std::fs::read("logo.png")?;
-let tex = renderer.create_texture_with_format(&bytes, TextureFormat::Rgba).await?;
+let image = std::fs::read("logo.png")?;
+let tex = renderer.create_texture_with_format(&image, TextureFormat::Rgba).await?;
 # _ = tex.size();
 # Ok(())
 # }

@@ -772,25 +772,44 @@ mod convert {
 
     fn parse_use_fragmentcolor(line: &str) -> Option<Vec<String>> {
         // Returns a flat list of imported names from `use fragmentcolor::...` syntax
+        // Supports nested paths before a group: e.g., `use fragmentcolor::mesh::{Mesh, Vertex};`
+        // and single items: `use fragmentcolor::mesh::Vertex;` or `use fragmentcolor::{Renderer, Target};`
         let t = line.trim();
         if !t.starts_with("use fragmentcolor::") {
             return None;
         }
-        let after = &t["use fragmentcolor::".len()..];
-        if after.starts_with('{') {
-            if let Some(end) = after.find('}') {
-                let inside = &after[1..end];
+        // Slice after the prefix and strip a trailing ';' if present
+        let mut after = &t["use fragmentcolor::".len()..];
+        if let Some(sc) = after.rfind(';') {
+            after = &after[..sc];
+        }
+        let after = after.trim();
+
+        // If there's a brace group anywhere after the prefix, extract names inside the outermost braces
+        if let (Some(lc), Some(rc)) = (after.find('{'), after.rfind('}')) {
+            if lc < rc {
+                let inside = &after[lc + 1..rc];
                 let list: Vec<String> = inside
                     .split(',')
-                    .map(|p| p.trim().rsplit("::").next().unwrap_or("").to_string())
+                    .map(|p| p.trim())
                     .filter(|s| !s.is_empty())
+                    .map(|p| p.rsplit("::").next().unwrap_or("").to_string())
+                    .filter(|s| !s.is_empty() && s != "self")
                     .collect();
                 return Some(list);
             }
+        }
+
+        // No brace group: take the last path segment as the identifier
+        let short = after
+            .rsplit("::")
+            .next()
+            .unwrap_or(after)
+            .trim()
+            .to_string();
+        if short.is_empty() {
             None
         } else {
-            let name = after.split(';').next().unwrap_or(after).trim();
-            let short = name.rsplit("::").next().unwrap_or(name).to_string();
             Some(vec![short])
         }
     }
@@ -896,6 +915,18 @@ mod convert {
 
         // UFCS associated calls remaining: Type::method( -> Type.method(
         rhs = replace_static_call_to_dot(&rhs);
+        // Python-specific cleanups: simplify Type.new(args) -> Type(args); Size.from(x) -> x; strip unwrap()
+        if let Lang::Py = lang {
+            rhs = simplify_py_static_new(&rhs);
+            rhs = simplify_py_size_from(&rhs);
+            // Convert SamplerOptions { ... } -> { ... } Python dict
+            if rhs.contains("SamplerOptions {") {
+                rhs = pythonize_sampleroptions_literal(&rhs);
+            }
+            if rhs.contains(".unwrap()") {
+                rhs = rhs.replace(".unwrap()", "");
+            }
+        }
         // Strip refs '&'
         rhs = strip_refs(&rhs);
         // Await transform and remove '?' for lang
@@ -905,13 +936,16 @@ mod convert {
         if let Lang::Js = lang {
             rhs = camelize_method_calls_js(&rhs);
         }
-        // Python: size() -> size property and '//' comment to '#'
+        // Python fix: map std.fs.read(path) -> open(path, "rb").read() in RHS
         if let Lang::Py = lang {
-            rhs = rhs.replace(".size()", ".size");
-            if let Some(idx) = rhs.find("//") {
-                let (mut head, tail) = rhs.split_at(idx);
-                head = head.trim_end_matches(';').trim_end();
-                rhs = format!("{}#{}", head, &tail[2..]);
+            if let Some(i) = rhs.find("std.fs.read(") {
+                let before = &rhs[..i];
+                let after = &rhs[i + "std.fs.read(".len()..];
+                if let Some(rp) = after.find(')') {
+                    let args = &after[..rp];
+                    let tail = &after[rp + 1..];
+                    rhs = format!("{}open({}, \"rb\").read(){}", before, args.trim(), tail);
+                }
             }
         }
 
@@ -1155,14 +1189,6 @@ mod convert {
                 src.push(t.clone());
             }
         }
-        // Pre-scan usage to adjust imports (Shader usage in examples)
-        let uses_shader = src.iter().any(|l| {
-            let t = l.trim();
-            t.contains("Shader::")
-                || t.contains("fragmentcolor::Shader")
-                || t.contains("fragmentcolor.Shader")
-                || t.contains("Shader.default(")
-        });
         // Enforce no visible into()
         for line in &src {
             if line.contains(".into(") || line.contains(".into()") || line.contains(" into(") {
@@ -1216,26 +1242,72 @@ mod convert {
             }
 
             // Imports from fragmentcolor
-            if let Some(mut list) = parse_use_fragmentcolor(t) {
-                // Ensure Shader is imported if used in snippet
-                if uses_shader && !list.iter().any(|s| s == "Shader") {
-                    list.push("Shader".to_string());
-                }
+            if let Some(list) = parse_use_fragmentcolor(t) {
                 match lang {
                     Lang::Js => out.push(format!(
                         "import {{ {} }} from \"fragmentcolor\";",
                         list.join(", ")
                     )),
                     Lang::Py => {
-                        // Python package does not expose Target/WindowTarget/TextureTarget as importable symbols
-                        list.retain(|s| {
-                            s != "Target" && s != "WindowTarget" && s != "TextureTarget"
-                        });
-                        out.push(format!("from fragmentcolor import {}", list.join(", ")))
+                        // remove Target, WindowTarget, TextureTarget, Size, and SamplerOptions from imports
+                        let list: Vec<String> = list
+                            .into_iter()
+                            .filter(|name| {
+                                name != "Target"
+                                    && name != "WindowTarget"
+                                    && name != "TextureTarget"
+                                    && name != "Size"
+                                    && name != "SamplerOptions"
+                                    && name != "VertexValue"
+                            })
+                            .collect();
+                        if !list.is_empty() {
+                            out.push(format!("from fragmentcolor import {}", list.join(", ")))
+                        }
                     }
                 }
                 idx += 1;
                 continue;
+            }
+
+            // Sanitize any raw Python import lines
+            if let Lang::Py = lang {
+                if t.starts_with("from fragmentcolor import ") {
+                    let raw = t.trim_start_matches("from fragmentcolor import ").trim();
+                    let mut names: Vec<String> =
+                        raw.split(',').map(|s| s.trim().to_string()).collect();
+                    names.retain(|name| {
+                        name != "Target"
+                            && name != "WindowTarget"
+                            && name != "TextureTarget"
+                            && name != "Size"
+                            && name != "SamplerOptions"
+                    });
+                    if !names.is_empty() {
+                        out.push(format!("from fragmentcolor import {}", names.join(", ")));
+                    }
+                    idx += 1;
+                    continue;
+                }
+                if t.starts_with("from fragmentcolor import {") {
+                    if let (Some(lb), Some(rb)) = (t.find('{'), t.find('}')) {
+                        let inside = &t[lb + 1..rb];
+                        let mut names: Vec<String> =
+                            inside.split(',').map(|s| s.trim().to_string()).collect();
+                        names.retain(|name| {
+                            name != "Target"
+                                && name != "WindowTarget"
+                                && name != "TextureTarget"
+                                && name != "Size"
+                                && name != "SamplerOptions"
+                        });
+                        if !names.is_empty() {
+                            out.push(format!("from fragmentcolor import {}", names.join(", ")));
+                        }
+                        idx += 1;
+                        continue;
+                    }
+                }
             }
 
             // Map assert_eq!
@@ -1267,6 +1339,21 @@ mod convert {
             // 1) UFCS static call -> dot first
             line = replace_static_call_to_dot(&line);
 
+            // 1.1) Python: simplify Type.new(args) -> Type(args)
+            if let Lang::Py = lang {
+                line = simplify_py_static_new(&line);
+                // Map Size.from([w,h]) or Size.from((w,h)) -> (w,h)
+                line = simplify_py_size_from(&line);
+                // Convert SamplerOptions literal to dict
+                if line.contains("SamplerOptions {") {
+                    line = pythonize_sampleroptions_literal(&line);
+                }
+                // Drop Result-style unwrap() noise
+                if line.contains(".unwrap()") {
+                    line = line.replace(".unwrap()", "");
+                }
+            }
+
             // 1.1) Convert Vec syntax (vec![], Vec::new()) into JS/Py arrays
             line = convert_vec_syntax(&line);
 
@@ -1275,9 +1362,36 @@ mod convert {
                 line = line.replace("fragmentcolor.Shader", "Shader");
             }
 
-            // 3) No special handling for Shader::default(); keep the call intact so languages use their own default().
+            // 3) Handling for Shader::default();
+            if line.contains("Shader::default()")
+                || line.contains("fragmentcolor::Shader::default()")
+            {
+                line = match lang {
+                    Lang::Js => line
+                        .replace("Shader::default()", "new Shader()")
+                        .replace("fragmentcolor::Shader::default()", "new Shader()"),
+                    Lang::Py => {
+                        // Add import at the top later if needed
+                        need_rendercanvas_import = true;
+                        line.replace("Shader::default()", "Shader()")
+                            .replace("fragmentcolor::Shader::default()", "Shader()")
+                    }
+                };
+            }
 
             // 4) Strip refs
+            // Python fix: map std.fs.read(path) -> open(path, "rb").read()
+            if let Lang::Py = lang {
+                if let Some(i) = line.find("std.fs.read(") {
+                    let before = &line[..i];
+                    let after = &line[i + "std.fs.read(".len()..];
+                    if let Some(rp) = after.find(')') {
+                        let args = &after[..rp];
+                        let tail = &after[rp + 1..];
+                        line = format!("{}open({}, \"rb\").read(){}", before, args.trim(), tail);
+                    }
+                }
+            }
             line = strip_refs(&line);
 
             // 5) Await / remove error '?' artifacts
@@ -1339,6 +1453,118 @@ mod convert {
 
         // Normalize ending newline joining in caller
         out.join("\n")
+    }
+
+    // Replace occurrences of Type.new(args) -> Type(args) in a best-effort way (no regex).
+    fn simplify_py_static_new(line: &str) -> String {
+        let mut out = String::with_capacity(line.len());
+        let bytes: Vec<char> = line.chars().collect();
+        let mut i = 0usize;
+        while i < bytes.len() {
+            // Look for ".new(" pattern
+            if i + 5 <= bytes.len() && &bytes[i..i + 5] == ['.', 'n', 'e', 'w', '('] {
+                // Backtrack to the start of the identifier
+                let mut j = i;
+                while j > 0 && super::convert::is_ident_char(bytes[j - 1]) {
+                    j -= 1;
+                }
+                // Rewrite: keep the identifier, drop ".new"
+                // out already has content up to j; ensure we don't duplicate
+                let prefix_len = out.chars().count();
+                if prefix_len < j {
+                    out.push_str(&bytes[prefix_len..j].iter().collect::<String>());
+                }
+                // Skip ".new"
+                i += 4; // will be incremented by loop to land on '('
+                continue;
+            }
+            out.push(bytes[i]);
+            i += 1;
+        }
+        out
+    }
+
+    // Convert Size.from(arg) -> arg (strip the wrapper) for Python.
+    fn simplify_py_size_from(line: &str) -> String {
+        let needle = "Size.from(";
+        if let Some(start) = line.find(needle) {
+            // Find matching closing parenthesis
+            let mut depth = 0i32;
+            let mut end = start + needle.len();
+            let chars: Vec<char> = line.chars().collect();
+            let mut i = end;
+            while i < chars.len() {
+                let c = chars[i];
+                if c == '(' {
+                    depth += 1;
+                }
+                if c == ')' {
+                    if depth == 0 {
+                        end = i;
+                        break;
+                    }
+                    depth -= 1;
+                }
+                i += 1;
+            }
+            if end > start + needle.len() {
+                let before = &line[..start];
+                let inner = &line[start + needle.len()..end];
+                let after = &line[end + 1..]; // skip ')'
+                return format!("{}{}{}", before, inner.trim(), after);
+            }
+        }
+        line.to_string()
+    }
+
+    // Pythonize a Rust literal: SamplerOptions { repeat_x: true, ... }
+    fn pythonize_sampleroptions_literal(line: &str) -> String {
+        let needle = "SamplerOptions {";
+        if let Some(start) = line.find(needle) {
+            let chars: Vec<char> = line.chars().collect();
+            let mut depth = 0i32;
+            let mut i = start + needle.len();
+            let mut end = i;
+            while i < chars.len() {
+                let c = chars[i];
+                if c == '{' {
+                    depth += 1;
+                }
+                if c == '}' {
+                    if depth == 0 {
+                        end = i;
+                        break;
+                    }
+                    depth -= 1;
+                }
+                i += 1;
+            }
+            if end > start {
+                let before = &line[..start];
+                let inside = &line[start + needle.len()..end];
+                let after = &line[end + 1..];
+                let mut fields: Vec<String> = Vec::new();
+                for part in inside.split(',') {
+                    let p = part.trim();
+                    if p.is_empty() {
+                        continue;
+                    }
+                    if let Some(colon) = p.find(':') {
+                        let key = p[..colon].trim();
+                        let mut val = p[colon + 1..].trim().to_string();
+                        val = val.replace("true", "True").replace("false", "False");
+                        if val.starts_with("CompareFunction::") {
+                            let name = val.trim_start_matches("CompareFunction::");
+                            val = format!("\"{}\"", name);
+                        }
+                        fields.push(format!("\"{}\": {}", key, val));
+                    }
+                }
+                let dict = format!("{{{}}}", fields.join(", "));
+                return format!("{}{}{}", before, dict, after);
+            }
+        }
+        line.to_string()
     }
 }
 

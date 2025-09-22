@@ -54,7 +54,7 @@ const EXAMPLES = [
   '../examples/core/vertex/Vertex.js',
   '../examples/core/vertex/create_instance.js',
   '../examples/core/vertex/new.js',
-  '../examples/core/vertex/with.js',
+  '../examples/core/vertex/set.js',
   '../examples/targets/texture_target/TextureTarget.js',
   '../examples/targets/texture_target/get_image.js',
   '../examples/targets/texture_target/resize.js',

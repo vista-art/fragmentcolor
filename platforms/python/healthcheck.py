@@ -153,6 +153,10 @@ fn main(v: VOut) -> @location(0) vec4<f32> {
     tex_img = tex_target.get_image()
     print(f"Rendered textured shader: shape={tex_img.shape}")
 
+    # SamplerOptions via dict (conversion path)
+    tex.set_sampler_options(
+        {"repeat_x": True, "repeat_y": False, "smooth": True, "compare": None})
+
     # Push constants smoke: solid color via var<push_constant>
     pc_shader = Shader("""
 struct PC { color: vec4<f32> };
@@ -167,9 +171,10 @@ var<push_constant> pc: PC;
     pc_target = renderer.create_texture_target((8, 8))
     renderer.render(pc_shader, pc_target)
     pc_img = pc_target.get_image()
-    print(f"Push constant render: first pixel={pc_img[0,0,:]}")
+    print(f"Push constant render: first pixel={pc_img[0, 0, :]}")
     assert pc_img.shape[0] >= 1 and pc_img.shape[1] >= 1 and pc_img.shape[2] == 4
-    assert int(pc_img[0,0,0]) == 0 and int(pc_img[0,0,1]) == 0 and int(pc_img[0,0,2]) == 255 and int(pc_img[0,0,3]) == 255
+    assert int(pc_img[0, 0, 0]) == 0 and int(pc_img[0, 0, 1]) == 0 and int(
+        pc_img[0, 0, 2]) == 255 and int(pc_img[0, 0, 3]) == 255
 
     print("Headless Python render completed successfully")
 

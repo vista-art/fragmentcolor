@@ -1,4 +1,4 @@
-import { {Mesh, Vertex} } from "fragmentcolor";
+import { Mesh, Vertex } from "fragmentcolor";
 const m = new Mesh();
 m.addVertices([;
     Vertex.new([-0.01, -0.01]),;

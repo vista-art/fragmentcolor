@@ -98,8 +98,8 @@ impl Vertex {
         }
     }
 
-    #[lsp_doc("docs/api/core/vertex/with.md")]
-    pub fn with<V: Into<VertexValue>>(mut self, key: &str, v: V) -> Self {
+    #[lsp_doc("docs/api/core/vertex/set.md")]
+    pub fn set<V: Into<VertexValue>>(mut self, key: &str, v: V) -> Self {
         let k = key.to_string();
         if !self.prop_locations.contains_key(&k) {
             self.prop_locations.insert(k.clone(), self.next_location);
@@ -131,12 +131,12 @@ impl From<[f32; 3]> for Vertex {
 }
 impl From<([f32; 3], [f32; 2])> for Vertex {
     fn from((p, uv): ([f32; 3], [f32; 2])) -> Self {
-        Vertex::new(p).with("uv", uv)
+        Vertex::new(p).set("uv", uv)
     }
 }
 impl From<([f32; 3], [f32; 2], [f32; 4])> for Vertex {
     fn from((p, uv, c): ([f32; 3], [f32; 2], [f32; 4])) -> Self {
-        Vertex::new(p).with("uv", uv).with("color", c)
+        Vertex::new(p).set("uv", uv).set("color", c)
     }
 }
 

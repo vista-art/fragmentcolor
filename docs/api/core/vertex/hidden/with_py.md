@@ -1,6 +1,6 @@
-# Vertex.with_py
+# Vertex.set_py
 
-Python wrapper for Vertex::with.
+Python wrapper for Vertex::set.
 Hidden from public website; used for IDE hover with lsp_doc.
 
 ## Example

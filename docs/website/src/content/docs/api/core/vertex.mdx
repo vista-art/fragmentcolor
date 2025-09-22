@@ -21,7 +21,7 @@ A single vertex with a required position (2D or 3D) and optional properties like
 <Code
 code={`
 use fragmentcolor::mesh::Vertex;
-let v = Vertex::new([0.0, 0.0, 0.0]).with("uv", [0.5, 0.5]);
+let v = Vertex::new([0.0, 0.0, 0.0]).set("uv", [0.5, 0.5]);
 `}
 lang="rust"
 />
@@ -32,7 +32,7 @@ lang="rust"
 <Code
 code={`
 import { Vertex } from "fragmentcolor";
-const v = new Vertex([0.0, 0.0, 0.0]).with("uv", [0.5, 0.5]);
+const v = new Vertex([0.0, 0.0, 0.0]).set("uv", [0.5, 0.5]);
 `}
 lang="js"
 />
@@ -43,7 +43,7 @@ lang="js"
 <Code
 code={`
 from fragmentcolor import Vertex
-v = Vertex([0.0, 0.0, 0.0]).with("uv", [0.5, 0.5])
+v = Vertex([0.0, 0.0, 0.0]).set("uv", [0.5, 0.5])
 `}
 lang="python"
 />
@@ -152,13 +152,13 @@ lang="text"
 
 ---
 
-### Vertex::with
+### Vertex::set
 
 Attach an arbitrary property to the vertex.
 
 Locations and mapping:
 
-- When you call `with(key, value)` for the first time for a given key, the Vertex assigns the next available `@location(N)` to that property (starting after position). Subsequent calls reuse the same location.
+- When you call `set(key, value)` for the first time for a given key, the Vertex assigns the next available `@location(N)` to that property (starting after position). Subsequent calls reuse the same location.
 - At render time, shader vertex inputs (declared with `@location(N)`) are derived from the Shader and matched to Vertex/Instance properties by:
   1) explicit location (instance first, then vertex), then
   2) name (instance first, then vertex).
@@ -177,7 +177,7 @@ Planned explicit control:
 <Code
 code={`
 use fragmentcolor::mesh::{Vertex, VertexValue};
-let v = Vertex::new([0.0, 0.0, 0.0]).with("weight", 1.0).with("color",[1.0, 0.0, 0.0]);
+let v = Vertex::new([0.0, 0.0, 0.0]).set("weight", 1.0).set("color",[1.0, 0.0, 0.0]);
 `}
 lang="rust"
 />
@@ -187,8 +187,8 @@ lang="rust"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { {Vertex, VertexValue} } from "fragmentcolor";
-const v = new Vertex([0.0, 0.0, 0.0]).with("weight", 1.0).with("color",[1.0, 0.0, 0.0]);
+import { Vertex, VertexValue } from "fragmentcolor";
+const v = new Vertex([0.0, 0.0, 0.0]).set("weight", 1.0).set("color",[1.0, 0.0, 0.0]);
 `}
 lang="js"
 />
@@ -198,8 +198,8 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import {Vertex, VertexValue}
-v = Vertex([0.0, 0.0, 0.0]).with("weight", 1.0).with("color",[1.0, 0.0, 0.0])
+from fragmentcolor import Vertex
+v = Vertex([0.0, 0.0, 0.0]).set("weight", 1.0).set("color",[1.0, 0.0, 0.0])
 `}
 lang="python"
 />

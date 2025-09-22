@@ -11,6 +11,8 @@ fragmentcolor = { path = "../..", features = ["winit"] }
 winit = { version = "0.30" }
 pollster = "0.4"
 fastrand = "2"
+bytemuck = "1"
+env_logger = "0.11"
 
 [build-dependencies]
 cfg_aliases = "0.2"

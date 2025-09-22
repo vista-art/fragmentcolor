@@ -1,5 +1,5 @@
 
-from fragmentcolor import Renderer, Size
+from fragmentcolor import Renderer
 
 renderer = Renderer()
 # 1x1 RGBA (white) raw pixel bytes

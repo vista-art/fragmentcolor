@@ -1,4 +1,4 @@
-from fragmentcolor import Renderer, Size, TextureFormat
+from fragmentcolor import Renderer, TextureFormat
 renderer = Renderer()
-bytes = std.fs.read("logo.png")
-tex = renderer.create_texture_with_format(bytes, TextureFormat.Rgba)
+image = open("logo.png", "rb").read()
+tex = renderer.create_texture_with_format(image, TextureFormat.Rgba)

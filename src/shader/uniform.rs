@@ -226,13 +226,26 @@ pub(crate) fn convert_type(module: &Module, ty: &Type) -> Result<UniformData, Sh
             ScalarKind::Float => UniformData::Float(0.0),
             _ => return Err(ShaderError::TypeMismatch("Unsupported scalar type".into())),
         }),
-        TypeInner::Vector { size, scalar, .. } if scalar.kind == ScalarKind::Float => {
-            Ok(match size {
+        TypeInner::Vector { size, scalar, .. } => match scalar.kind {
+            ScalarKind::Float => Ok(match size {
                 VectorSize::Bi => UniformData::Vec2([0.0; 2]),
                 VectorSize::Tri => UniformData::Vec3([0.0; 3]),
                 VectorSize::Quad => UniformData::Vec4([0.0; 4]),
-            })
-        }
+            }),
+            ScalarKind::Uint => Ok(match size {
+                VectorSize::Bi => UniformData::UVec2([0; 2]),
+                VectorSize::Tri => UniformData::UVec3([0; 3]),
+                VectorSize::Quad => UniformData::UVec4([0; 4]),
+            }),
+            ScalarKind::Sint => Ok(match size {
+                VectorSize::Bi => UniformData::IVec2([0; 2]),
+                VectorSize::Tri => UniformData::IVec3([0; 3]),
+                VectorSize::Quad => UniformData::IVec4([0; 4]),
+            }),
+            _ => Err(ShaderError::TypeMismatch(
+                "Unsupported vector scalar type".into(),
+            )),
+        },
         TypeInner::Matrix { columns, rows, .. } => Ok(match (columns, rows) {
             (VectorSize::Bi, VectorSize::Bi) => UniformData::Mat2([[0.0; 2]; 2]),
             (VectorSize::Tri, VectorSize::Tri) => UniformData::Mat3([[0.0; 3]; 3]),

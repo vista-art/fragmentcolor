@@ -1,4 +1,4 @@
-use crate::{Frame, Pass, PySize, Renderer, Shader};
+use crate::{Frame, Pass, PySize, Region, Renderer, Shader, Size};
 use lsp_doc::lsp_doc;
 use pyo3::exceptions::PyTypeError;
 use pyo3::prelude::*;
@@ -102,11 +102,17 @@ impl Renderer {
     }
 
     /// Python: Create a Texture from bytes, path string, or numpy ndarray (H,W[,C]).
-    #[lsp_doc("docs/api/core/renderer/hidden/create_texture_py.md")]
+    #[lsp_doc("docs/api/core/renderer/create_texture.md")]
     #[pyo3(name = "create_texture")]
     pub fn create_texture_py(&self, input: Py<PyAny>) -> Result<crate::texture::Texture, PyErr> {
         Python::attach(|py| -> Result<crate::texture::Texture, PyErr> {
             // list of bytes
+            if let Ok(pylist) = input.bind(py).extract::<Py<pyo3::types::PyBytes>>() {
+                let vec: Vec<u8> = pylist.extract(py)?;
+                let tex = pollster::block_on(self.create_texture(&vec))?;
+                return Ok(tex);
+            }
+            // Python list
             if let Ok(pylist) = input.bind(py).extract::<Py<pyo3::types::PyList>>() {
                 let vec: Vec<u8> = pylist.extract(py)?;
                 let tex = pollster::block_on(self.create_texture(&vec))?;
@@ -239,6 +245,12 @@ impl Renderer {
         size: PySize,
     ) -> Result<crate::texture::Texture, PyErr> {
         Python::attach(|py| -> Result<crate::texture::Texture, PyErr> {
+            // Byte array
+            if let Ok(pylist) = input.bind(py).extract::<Py<pyo3::types::PyBytes>>() {
+                let vec: Vec<u8> = pylist.extract(py)?;
+                let tex = pollster::block_on(self.create_texture_with_size(&vec, size))?;
+                return Ok(tex);
+            }
             // list of bytes
             if let Ok(pylist) = input.bind(py).extract::<Py<pyo3::types::PyList>>() {
                 let vec: Vec<u8> = pylist.extract(py)?;
@@ -310,11 +322,18 @@ impl Renderer {
         format: crate::texture::TextureFormat,
     ) -> Result<crate::texture::Texture, PyErr> {
         Python::attach(|py| -> Result<crate::texture::Texture, PyErr> {
-            // list of bytes requires a size; reject here
+            // Byte array
+            if let Ok(pylist) = input.bind(py).extract::<Py<pyo3::types::PyBytes>>() {
+                let vec: Vec<u8> = pylist.extract(py)?;
+                let tex = pollster::block_on(self.create_texture_with_format(&vec, format))?;
+                return Ok(tex);
+            }
+            // Python list
             if input.bind(py).extract::<Py<pyo3::types::PyList>>().is_ok() {
-                return Err(crate::error::PyFragmentColorError::new_err(
-                    "create_texture_with_format requires a numpy array or path; raw bytes need size",
-                ));
+                let pylist = input.bind(py).extract::<Py<pyo3::types::PyList>>()?;
+                let vec: Vec<u8> = pylist.extract(py)?;
+                let tex = pollster::block_on(self.create_texture_with_format(&vec, format))?;
+                return Ok(tex);
             }
             // str path
             if let Ok(path) = input.bind(py).extract::<String>() {
@@ -482,16 +501,15 @@ pub fn fragmentcolor(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Pass>()?;
     m.add_class::<Frame>()?;
 
+    // Helpers
+    m.add_class::<Size>()?;
+    m.add_class::<Region>()?;
+
     // Mesh/Vertex bindings
     m.add_class::<crate::mesh::Mesh>()?;
     m.add_class::<crate::mesh::Vertex>()?;
     m.add_class::<crate::mesh::Instance>()?;
     m.add_class::<crate::mesh::PyVertexValue>()?;
-
-    // RenderCanvas API
-    m.add_function(wrap_pyfunction!(rendercanvas_context_hook, m)?)?;
-    m.add_class::<RenderCanvasTarget>()?;
-    m.add_class::<RenderCanvasFrame>()?;
 
     // Expose Texture handle type for shader.set(texture) to downcast properly
     m.add_class::<crate::texture::Texture>()?;
@@ -499,6 +517,11 @@ pub fn fragmentcolor(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
     // Headless TextureTarget API
     m.add_class::<PyTextureTarget>()?;
+
+    // RenderCanvas API
+    m.add_function(wrap_pyfunction!(rendercanvas_context_hook, m)?)?;
+    m.add_class::<RenderCanvasTarget>()?;
+    m.add_class::<RenderCanvasFrame>()?;
 
     // Custom error type
     m.add(
