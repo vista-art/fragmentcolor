@@ -12,6 +12,6 @@ target = renderer.create_target(canvas)
 texture_target = renderer.create_texture_target([16, 16])
 
 # RENDERING
-renderer.render(Shader.default(), texture_target)
+renderer.render(Shader(""), texture_target)
 
 # That's it. Welcome to FragmentColor!

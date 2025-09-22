@@ -939,7 +939,7 @@ impl RenderContext {
                 // Persistent buffers
                 for (binding, buf, span) in owned.pbufs.iter() {
                     let padded = {
-                        let sz = *span as u64;
+                        let sz = *span;
                         wgpu::util::align_to(sz, 16).max(16)
                     };
                     let size_nz = unsafe { std::num::NonZeroU64::new_unchecked(padded) };
@@ -1336,7 +1336,7 @@ impl RenderContext {
             // Persistent buffers
             for (binding, buf, span) in owned.pbufs.iter() {
                 let padded = {
-                    let sz = *span as u64;
+                    let sz = *span;
                     wgpu::util::align_to(sz, 16).max(16)
                 };
                 let size_nz = unsafe { std::num::NonZeroU64::new_unchecked(padded) };

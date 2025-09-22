@@ -10,16 +10,12 @@ use crate::{Shader, ShaderError, UniformData};
 #[wasm_bindgen]
 impl Shader {
     #[wasm_bindgen(constructor)]
-    pub fn new_js(source: Option<&str>) -> Self {
-        if let Some(source) = source {
-            if let Ok(shader) = Shader::new(source) {
-                shader
-            } else {
-                console::error_1(&"failed to create shader, returning default".into());
-                Shader::default()
-            }
+    pub fn new_js(source: &str) -> Self {
+        if let Ok(shader) = Shader::new(source) {
+            shader
         } else {
-            Self::default()
+            console::error_1(&"failed to create shader, returning default".into());
+            Shader::default()
         }
     }
 

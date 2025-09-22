@@ -186,12 +186,12 @@ fn main() {
 
     // Passes
     let pass_update = Pass::from_shader("update", &cs_update);
-    let wx = ((n + 255) / 256).max(1);
+    let wx = n.div_ceil(256).max(1);
     pass_update.set_compute_dispatch(wx, 1, 1);
 
     let pass_clear = Pass::from_shader("clear", &cs_clear);
-    let cx = (tex_size[0] + 15) / 16;
-    let cy = (tex_size[1] + 15) / 16;
+    let cx = tex_size[0].div_ceil(16);
+    let cy = tex_size[1].div_ceil(16);
     pass_clear.set_compute_dispatch(cx, cy, 1);
 
     let pass_splat = Pass::from_shader("splat", &cs_splat);

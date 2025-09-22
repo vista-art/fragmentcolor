@@ -11,5 +11,5 @@ canvas = RenderCanvas(size=(800, 600))
 target = renderer.create_target(canvas)
 
 # To animate, render again in your event loop...
-renderer.render(Shader.default(), target)
-renderer.render(Shader.default(), target)
+renderer.render(Shader(""), target)
+renderer.render(Shader(""), target)

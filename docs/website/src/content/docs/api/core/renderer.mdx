@@ -80,7 +80,7 @@ const target = await renderer.createTarget(canvas);
 const texture_target = await renderer.createTextureTarget([16, 16]);
 
 // RENDERING;
-renderer.render(Shader.default(), texture_target);
+renderer.render(new Shader(""), texture_target);
 
 // That's it. Welcome to FragmentColor!;
 
@@ -107,7 +107,7 @@ target = renderer.create_target(canvas)
 texture_target = renderer.create_texture_target([16, 16])
 
 # RENDERING
-renderer.render(Shader.default(), texture_target)
+renderer.render(Shader(""), texture_target)
 
 # That's it. Welcome to FragmentColor!
 
@@ -402,7 +402,7 @@ const renderer = new Renderer();
 // Create an offscreen texture target with a size of 64x64 pixels.;
 const target = await renderer.createTextureTarget([64, 64]);
 
-renderer.render(Shader.default(), target);
+renderer.render(new Shader(""), target);
 
 // get the rendered image;
 const image = target.getImage();
@@ -416,6 +416,7 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
+from rendercanvas.auto import RenderCanvas, loop
 
 from fragmentcolor import Renderer, Shader
 renderer = Renderer()
@@ -423,7 +424,7 @@ renderer = Renderer()
 # Create an offscreen texture target with a size of 64x64 pixels.
 target = renderer.create_texture_target([64, 64])
 
-renderer.render(Shader.default(), target)
+renderer.render(Shader(""), target)
 
 # get the rendered image
 image = target.get_image()

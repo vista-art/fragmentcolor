@@ -786,18 +786,18 @@ mod convert {
         let after = after.trim();
 
         // If there's a brace group anywhere after the prefix, extract names inside the outermost braces
-        if let (Some(lc), Some(rc)) = (after.find('{'), after.rfind('}')) {
-            if lc < rc {
-                let inside = &after[lc + 1..rc];
-                let list: Vec<String> = inside
-                    .split(',')
-                    .map(|p| p.trim())
-                    .filter(|s| !s.is_empty())
-                    .map(|p| p.rsplit("::").next().unwrap_or("").to_string())
-                    .filter(|s| !s.is_empty() && s != "self")
-                    .collect();
-                return Some(list);
-            }
+        if let (Some(lc), Some(rc)) = (after.find('{'), after.rfind('}'))
+            && lc < rc
+        {
+            let inside = &after[lc + 1..rc];
+            let list: Vec<String> = inside
+                .split(',')
+                .map(|p| p.trim())
+                .filter(|s| !s.is_empty())
+                .map(|p| p.rsplit("::").next().unwrap_or("").to_string())
+                .filter(|s| !s.is_empty() && s != "self")
+                .collect();
+            return Some(list);
         }
 
         // No brace group: take the last path segment as the identifier
@@ -937,16 +937,20 @@ mod convert {
             rhs = camelize_method_calls_js(&rhs);
         }
         // Python fix: map std.fs.read(path) -> open(path, "rb").read() in RHS
-        if let Lang::Py = lang {
-            if let Some(i) = rhs.find("std.fs.read(") {
-                let before = &rhs[..i];
-                let after = &rhs[i + "std.fs.read(".len()..];
-                if let Some(rp) = after.find(')') {
-                    let args = &after[..rp];
-                    let tail = &after[rp + 1..];
-                    rhs = format!("{}open({}, \"rb\").read(){}", before, args.trim(), tail);
-                }
+        if let Lang::Py = lang
+            && let Some(i) = rhs.find("std.fs.read(")
+        {
+            let before = &rhs[..i];
+            let after = &rhs[i + "std.fs.read(".len()..];
+            if let Some(rp) = after.find(')') {
+                let args = &after[..rp];
+                let tail = &after[rp + 1..];
+                rhs = format!("{}open({}, \"rb\").read(){}", before, args.trim(), tail);
             }
+        }
+        // Python: convert `.size()` calls on RHS into `.size` property
+        if let Lang::Py = lang {
+            rhs = replace_py_size_calls(&rhs);
         }
 
         // Var rename for Python reserved keyword "pass" and window->canvas mapping
@@ -986,10 +990,22 @@ mod convert {
             Lang::Js => apply_renames_py(&rhs, js_renames),
         };
 
-        let line_out = match lang {
+        let mut line_out = match lang {
             Lang::Js => ensure_js_semicolon(&format!("const {} = {}", var_out, rhs)),
             Lang::Py => format!("{} = {}", var_out, rhs),
         };
+        // Python: Convert JS-style '//' comments to Python '#'
+        if let Lang::Py = lang {
+            if let Some(idx) = line_out.find("//") {
+                let (mut head, tail) = line_out.split_at(idx);
+                head = head.trim_end_matches(';').trim_end();
+                if head.is_empty() {
+                    line_out = format!("#{}", &tail[2..]);
+                } else {
+                    line_out = format!("{} #{}", head, &tail[2..]);
+                }
+            }
+        }
         Some(line_out)
     }
 
@@ -1289,24 +1305,24 @@ mod convert {
                     idx += 1;
                     continue;
                 }
-                if t.starts_with("from fragmentcolor import {") {
-                    if let (Some(lb), Some(rb)) = (t.find('{'), t.find('}')) {
-                        let inside = &t[lb + 1..rb];
-                        let mut names: Vec<String> =
-                            inside.split(',').map(|s| s.trim().to_string()).collect();
-                        names.retain(|name| {
-                            name != "Target"
-                                && name != "WindowTarget"
-                                && name != "TextureTarget"
-                                && name != "Size"
-                                && name != "SamplerOptions"
-                        });
-                        if !names.is_empty() {
-                            out.push(format!("from fragmentcolor import {}", names.join(", ")));
-                        }
-                        idx += 1;
-                        continue;
+                if t.starts_with("from fragmentcolor import {")
+                    && let (Some(lb), Some(rb)) = (t.find('{'), t.find('}'))
+                {
+                    let inside = &t[lb + 1..rb];
+                    let mut names: Vec<String> =
+                        inside.split(',').map(|s| s.trim().to_string()).collect();
+                    names.retain(|name| {
+                        name != "Target"
+                            && name != "WindowTarget"
+                            && name != "TextureTarget"
+                            && name != "Size"
+                            && name != "SamplerOptions"
+                    });
+                    if !names.is_empty() {
+                        out.push(format!("from fragmentcolor import {}", names.join(", ")));
                     }
+                    idx += 1;
+                    continue;
                 }
             }
 
@@ -1364,32 +1380,38 @@ mod convert {
 
             // 3) Handling for Shader::default();
             if line.contains("Shader::default()")
+                || line.contains("Shader.default()")
                 || line.contains("fragmentcolor::Shader::default()")
+                || line.contains("fragmentcolor::Shader.default()")
             {
                 line = match lang {
                     Lang::Js => line
-                        .replace("Shader::default()", "new Shader()")
-                        .replace("fragmentcolor::Shader::default()", "new Shader()"),
+                        .replace("Shader::default()", "new Shader(\"\")")
+                        .replace("fragmentcolor::Shader::default()", "new Shader(\"\")")
+                        .replace("Shader.default()", "new Shader(\"\")")
+                        .replace("fragmentcolor::Shader.default()", "new Shader(\"\")"),
                     Lang::Py => {
                         // Add import at the top later if needed
                         need_rendercanvas_import = true;
-                        line.replace("Shader::default()", "Shader()")
-                            .replace("fragmentcolor::Shader::default()", "Shader()")
+                        line.replace("Shader::default()", "Shader(\"\")")
+                            .replace("fragmentcolor::Shader::default()", "Shader(\"\")")
+                            .replace("Shader.default()", "Shader(\"\")")
+                            .replace("fragmentcolor::Shader.default()", "Shader(\"\")")
                     }
                 };
             }
 
             // 4) Strip refs
             // Python fix: map std.fs.read(path) -> open(path, "rb").read()
-            if let Lang::Py = lang {
-                if let Some(i) = line.find("std.fs.read(") {
-                    let before = &line[..i];
-                    let after = &line[i + "std.fs.read(".len()..];
-                    if let Some(rp) = after.find(')') {
-                        let args = &after[..rp];
-                        let tail = &after[rp + 1..];
-                        line = format!("{}open({}, \"rb\").read(){}", before, args.trim(), tail);
-                    }
+            if let Lang::Py = lang
+                && let Some(i) = line.find("std.fs.read(")
+            {
+                let before = &line[..i];
+                let after = &line[i + "std.fs.read(".len()..];
+                if let Some(rp) = after.find(')') {
+                    let args = &after[..rp];
+                    let tail = &after[rp + 1..];
+                    line = format!("{}open({}, \"rb\").read(){}", before, args.trim(), tail);
                 }
             }
             line = strip_refs(&line);
@@ -1399,7 +1421,8 @@ mod convert {
 
             // 6) Python size property + comment conversion
             if let Lang::Py = lang {
-                line = line.replace(".size()", ".size");
+                // Robustly convert `.size()` (with optional whitespace) into `.size`
+                line = replace_py_size_calls(&line);
                 // Convert JS-style '//' comments to Python '#'
                 if let Some(idx) = line.find("//") {
                     let (mut head, tail) = line.split_at(idx);
@@ -1462,7 +1485,7 @@ mod convert {
         let mut i = 0usize;
         while i < bytes.len() {
             // Look for ".new(" pattern
-            if i + 5 <= bytes.len() && &bytes[i..i + 5] == ['.', 'n', 'e', 'w', '('] {
+            if i + 5 <= bytes.len() && bytes[i..i + 5] == ['.', 'n', 'e', 'w', '('] {
                 // Backtrack to the start of the identifier
                 let mut j = i;
                 while j > 0 && super::convert::is_ident_char(bytes[j - 1]) {
@@ -1515,6 +1538,48 @@ mod convert {
             }
         }
         line.to_string()
+    }
+
+    // Replace `.size()` (allowing whitespace as `.size ( )`) with `.size` in Python output
+    fn replace_py_size_calls(line: &str) -> String {
+        let chars: Vec<char> = line.chars().collect();
+        let mut out = String::with_capacity(line.len());
+        let mut i = 0usize;
+        while i < chars.len() {
+            if chars[i] == '.' {
+                // optionally skip whitespace after '.'
+                let mut j = i + 1;
+                while j < chars.len() && chars[j].is_whitespace() {
+                    j += 1;
+                }
+                // match 'size'
+                let name = ['s', 'i', 'z', 'e'];
+                if j + name.len() <= chars.len() && chars[j..j + name.len()] == name {
+                    let mut k = j + name.len();
+                    // skip whitespace before '('
+                    while k < chars.len() && chars[k].is_whitespace() {
+                        k += 1;
+                    }
+                    if k < chars.len() && chars[k] == '(' {
+                        k += 1;
+                        // skip whitespace inside parens
+                        while k < chars.len() && chars[k].is_whitespace() {
+                            k += 1;
+                        }
+                        if k < chars.len() && chars[k] == ')' {
+                            // success: write ".size" and skip to after ')'
+                            out.push('.');
+                            out.push_str("size");
+                            i = k + 1;
+                            continue;
+                        }
+                    }
+                }
+            }
+            out.push(chars[i]);
+            i += 1;
+        }
+        out
     }
 
     // Pythonize a Rust literal: SamplerOptions { repeat_x: true, ... }

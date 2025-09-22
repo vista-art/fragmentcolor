@@ -14,7 +14,7 @@ let target = renderer.create_texture_target([64, 32]).await?;
 let size = target.size();
 let width = size.width;
 let height = size.height;
-let depth = size.depth; // 1
+let depth = size.depth;
 
 # assert_eq!(size.width, 64);
 # assert_eq!(size.height, 32);

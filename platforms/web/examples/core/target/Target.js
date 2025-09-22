@@ -10,5 +10,5 @@ const canvas = document.createElement('canvas');
 const target = await renderer.createTarget(canvas);
 
 // To animate, render again in your event loop...;
-renderer.render(Shader.default(), target);
-renderer.render(Shader.default(), target);
+renderer.render(new Shader(""), target);
+renderer.render(new Shader(""), target);

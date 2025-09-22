@@ -6,4 +6,4 @@ const target = await renderer.createTextureTarget([64, 32]);
 const size = target.size();
 const width = size.width;
 const height = size.height;
-const depth = size.depth; // 1;
+const depth = size.depth;
