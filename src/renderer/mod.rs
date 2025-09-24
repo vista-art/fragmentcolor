@@ -667,6 +667,8 @@ impl RenderContext {
         for shader in pass.shaders.read().iter() {
             let format = frame.format();
             let sc = self.sample_count();
+            // Mesh grouping by shader: capture meshes upfront (clone Arcs)
+            let meshes_for_shader = shader.meshes.read().clone();
 
             // Determine mesh (if any) for this pass
             let mesh_ref = pass.mesh.read().clone();
@@ -992,6 +994,87 @@ impl RenderContext {
 
             // Sort by group index to match pipeline layout order
             bind_groups.sort_by_key(|(g, _)| *g);
+
+            // New path: if there are meshes attached to this shader, draw them all here and continue.
+            if !meshes_for_shader.is_empty() {
+                for mo in meshes_for_shader.iter() {
+                    // Ensure GPU buffers
+                    let (refs, counts) = mo
+                        .ensure_gpu(&self.device, &self.queue)
+                        .map_err(|e| RendererError::Error(e.to_string()))?;
+
+                    // Build AST-mapped layouts for this mesh
+                    match build_ast_mapped_layouts(shader.as_ref(), mo.as_ref())? {
+                        Some((sig, v, i)) => {
+                            let cached_m = self
+                                .render_pipelines
+                                .entry((shader.hash, format, sc, sig))
+                                .or_insert_with(|| {
+                                    let mut layouts = create_bind_group_layouts(
+                                        &self.device,
+                                        &shader.storage.read().uniforms,
+                                    );
+                                    create_render_pipeline(
+                                        &self.device,
+                                        &mut layouts,
+                                        shader,
+                                        format,
+                                        sc,
+                                        Some((&v, i.as_ref())),
+                                    )
+                                });
+
+                            render_pass.set_pipeline(&cached_m.pipeline);
+                            for (group, bind_group) in bind_groups.iter() {
+                                render_pass.set_bind_group(*group, bind_group, &[]);
+                            }
+                            if let Some(PushMode::Native { root, .. }) = &cached_m.push_mode {
+                                let storage = shader.storage.read();
+                                if let Some(bytes) = storage.get_bytes(root) {
+                                    render_pass.set_push_constants(
+                                        wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+                                        0,
+                                        bytes,
+                                    );
+                                }
+                            }
+                            render_pass.set_vertex_buffer(0, refs.vertex_buffer.slice(..));
+                            if let Some(instance_buffer) = &refs.instance_buffer {
+                                render_pass.set_vertex_buffer(1, instance_buffer.slice(..));
+                            }
+                            render_pass.set_index_buffer(
+                                refs.index_buffer.slice(..),
+                                wgpu::IndexFormat::Uint32,
+                            );
+                            render_pass.draw_indexed(
+                                0..counts.index_count,
+                                0,
+                                0..counts.instance_count,
+                            );
+                        }
+                        None => {
+                            // Shader has no @location inputs; draw fullscreen triangle once and move on
+                            render_pass.set_pipeline(&cached.pipeline);
+                            for (group, bind_group) in bind_groups.iter() {
+                                render_pass.set_bind_group(*group, bind_group, &[]);
+                            }
+                            if let Some(PushMode::Native { root, .. }) = &cached.push_mode {
+                                let storage = shader.storage.read();
+                                if let Some(bytes) = storage.get_bytes(root) {
+                                    render_pass.set_push_constants(
+                                        wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+                                        0,
+                                        bytes,
+                                    );
+                                }
+                            }
+                            render_pass.draw(0..3, 0..1);
+                            break; // only once per shader
+                        }
+                    }
+                }
+                continue; // advance to next shader
+            }
 
             render_pass.set_pipeline(&cached.pipeline);
             for (group, bind_group) in bind_groups.iter() {

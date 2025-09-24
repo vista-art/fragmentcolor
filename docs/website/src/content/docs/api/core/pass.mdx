@@ -677,7 +677,12 @@ lang="text"
 
 ### Pass::add_mesh
 
-Attach a Mesh to this Pass. The Renderer will draw the mesh for each attached Shader.
+Attach a Mesh to this Pass.
+
+The mesh is attached to the last shader previously added to this Pass.
+The Renderer will draw it when rendering that shader.
+
+If a Shader wasn't provided earlier, FragmentColor will create a default one.
 
 #### Example
 
@@ -728,6 +733,97 @@ rpass = Pass("p"); rpass.add_shader(shader)
 mesh = Mesh()
 mesh.add_vertex(Vertex([0.0, 0.0]))
 rpass.add_mesh(mesh)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Pass::add_mesh_to_shader
+
+Attach a Mesh to a specific Shader in this Pass. This forwards to `shader.add_mesh(mesh)`.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::{Pass, Shader, Mesh, Vertex};
+
+let shader = Shader::default();
+let pass = Pass::from_shader("p", &shader);
+
+let mut mesh = Mesh::new();
+mesh.add_vertex(Vertex::new([0.0, 0.0]));
+
+pass.add_mesh_to_shader(&mesh, &shader);
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Pass, Shader, Mesh, Vertex } from "fragmentcolor";
+
+const shader = Shader.default();
+const pass = new Pass("p"); pass.addShader(shader);
+
+const mesh = new Mesh();
+mesh.addVertex(Vertex.new([0.0, 0.0]));
+
+pass.addMeshToShader(mesh, shader);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Pass, Shader, Mesh, Vertex
+
+shader = Shader.default()
+rpass = Pass("p"); rpass.add_shader(shader)
+
+mesh = Mesh()
+mesh.add_vertex(Vertex([0.0, 0.0]))
+
+rpass.add_mesh_to_shader(mesh, shader)
 `}
 lang="python"
 />

@@ -50,6 +50,12 @@ impl Pass {
         self.add_mesh(mesh)
     }
 
+    #[wasm_bindgen(js_name = "addMeshToShader")]
+    #[lsp_doc("docs/api/core/pass/add_mesh_to_shader.md")]
+    pub fn add_mesh_to_shader_js(&self, mesh: &crate::mesh::Mesh, shader: &Shader) {
+        self.add_mesh_to_shader(mesh, shader)
+    }
+
     #[wasm_bindgen(js_name = "setClearColor")]
     #[lsp_doc("docs/api/core/pass/set_clear_color.md")]
     pub fn set_clear_color_js(&self, color: &JsValue) -> Result<(), JsError> {

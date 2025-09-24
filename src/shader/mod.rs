@@ -80,6 +80,50 @@ impl Shader {
     pub fn list_keys(&self) -> Vec<String> {
         self.object.list_keys()
     }
+
+    #[lsp_doc("docs/api/core/shader/from_vertex.md")]
+    pub fn from_vertex(v: &crate::mesh::Vertex) -> Result<Self, ShaderError> {
+        let src = build_wgsl_from_vertex(v);
+        Shader::new(&src)
+    }
+
+    #[lsp_doc("docs/api/core/shader/from_mesh.md")]
+    pub fn from_mesh(mesh: &crate::mesh::Mesh) -> Result<Self, ShaderError> {
+        let first = { mesh.object.verts.read().first().cloned() };
+        if let Some(v) = first {
+            Self::from_vertex(&v)
+        } else {
+            Err(ShaderError::ParseError("Mesh has no vertices".into()))
+        }
+    }
+
+    // ----------------------
+    // Mesh management (group meshes by shader)
+    // ----------------------
+    #[lsp_doc("docs/api/core/shader/add_mesh.md")]
+    pub fn add_mesh(&self, mesh: &crate::mesh::Mesh) {
+        self.object.add_mesh_internal(mesh.object.clone());
+    }
+
+    #[lsp_doc("docs/api/core/shader/remove_mesh.md")]
+    pub fn remove_mesh(&self, mesh: &crate::mesh::Mesh) {
+        self.object.remove_mesh_internal(&mesh.object);
+    }
+
+    #[lsp_doc("docs/api/core/shader/remove_meshes.md")]
+    pub fn remove_meshes<'list, I>(&self, list: I)
+    where
+        I: IntoIterator<Item = &'list crate::mesh::Mesh>,
+    {
+        for mesh in list {
+            self.object.remove_mesh_internal(&mesh.object);
+        }
+    }
+
+    #[lsp_doc("docs/api/core/shader/clear_meshes.md")]
+    pub fn clear_meshes(&self) {
+        self.object.clear_meshes_internal();
+    }
 }
 
 /// FragmentColor's Shader internal implementation.
@@ -92,6 +136,8 @@ pub(crate) struct ShaderObject {
     pub(crate) module: Module,
     pub(crate) storage: RwLock<UniformStorage>,
     pub(crate) total_bytes: u64,
+    // Meshes attached to this shader (grouped draw per pipeline)
+    pub(crate) meshes: RwLock<Vec<Arc<crate::mesh::MeshObject>>>,
 }
 
 impl Default for ShaderObject {
@@ -181,7 +227,22 @@ impl ShaderObject {
             module,
             storage,
             total_bytes,
+            meshes: RwLock::new(Vec::new()),
         })
+    }
+
+    // Mesh grouping internals
+    pub(crate) fn add_mesh_internal(&self, mesh: Arc<crate::mesh::MeshObject>) {
+        self.meshes.write().push(mesh);
+    }
+    pub(crate) fn remove_mesh_internal(&self, mesh: &Arc<crate::mesh::MeshObject>) {
+        let mut v = self.meshes.write();
+        if let Some(pos) = v.iter().position(|m| Arc::ptr_eq(m, mesh)) {
+            v.remove(pos);
+        }
+    }
+    pub(crate) fn clear_meshes_internal(&self) {
+        self.meshes.write().clear();
     }
 
     /// Set a uniform value.
@@ -391,6 +452,63 @@ fn naga_ty_to_vertex_format(ty: &naga::Type) -> Result<wgpu::VertexFormat, Shade
             "Unsupported vertex input type".into(),
         )),
     }
+}
+
+fn build_wgsl_from_vertex(v: &crate::mesh::Vertex) -> String {
+    // Position: location 0, vec2<f32> or vec3<f32>
+    let pos_ty = if v.dimensions <= 2 {
+        "vec2<f32>"
+    } else {
+        "vec3<f32>"
+    };
+
+    // Optional color: if present and F32x4, capture its location
+    let mut color_decl: Option<(u32, &'static str)> = None;
+    if let Some(val) = v.properties.get("color") {
+        if matches!(val, crate::mesh::VertexValue::F32x4(_)) {
+            if let Some(loc) = v.prop_locations.get("color").cloned() {
+                color_decl = Some((loc, "vec4<f32>"));
+            }
+        }
+    }
+
+    let mut vs_inputs: Vec<String> = Vec::new();
+    vs_inputs.push(format!("@location(0) pos: {}", pos_ty));
+    if let Some((loc, ty)) = color_decl {
+        vs_inputs.push(format!("@location({}) color: {}", loc, ty));
+    }
+    let vs_params = vs_inputs.join(", ");
+
+    // VOut struct and assignments
+    let mut vout_fields: Vec<String> = vec!["@builtin(position) pos: vec4<f32>".into()];
+    let mut vs_assigns: Vec<String> = Vec::new();
+    // position assignment
+    if v.dimensions <= 2 {
+        vs_assigns.push("out.pos = vec4<f32>(pos, 0.0, 1.0);".into());
+    } else {
+        vs_assigns.push("out.pos = vec4<f32>(pos, 1.0);".into());
+    }
+
+    let mut fs_return = "vec4<f32>(1.0,1.0,1.0,1.0)".to_string();
+    if color_decl.is_some() {
+        vout_fields.push("@location(0) color: vec4<f32>".into());
+        vs_assigns.push("out.color = color;".into());
+        fs_return = "v.color".into();
+    }
+
+    let vout_struct = format!("struct VOut {{ {} }};", vout_fields.join(", "));
+    let vs_src = format!(
+        "{vout}\n@vertex\nfn vs_main({params}) -> VOut {{\n  var out: VOut;\n  {assigns}\n  return out;\n}}",
+        vout = vout_struct,
+        params = vs_params,
+        assigns = vs_assigns.join("\n  ")
+    );
+    let fs_src = format!(
+        "@fragment\nfn fs_main(v: VOut) -> @location(0) vec4<f32> {{ return {ret}; }}",
+        ret = fs_return
+    );
+
+    format!("{vs}\n{fs}", vs = vs_src, fs = fs_src)
 }
 
 #[cfg(test)]

@@ -18,14 +18,19 @@ but while we're still in pre-release phase, this is expected.
 
 ### TO-DO Before Release
 
+- [ ] Per-mesh bind-group updates to allow different textures per mesh in a single pass.
+- [ ] Mesh–Shader compatibility enforcement and Shader-centric mesh attachment API (Shader.add_mesh, Pass.add_mesh_to_shader).
+
 - [ ] Geometry/Instancing Refinement:
   - [x] Shader source-derived validation/mapping of @location inputs from Naga
   - [ ] Multiple meshes per Pass and per-mesh draw calls.
   - [ ] Design a Idiomatic/simple way to create complex shapes with Mesh and Vertex.
   - [ ] Mesh builders for common shapes (quad, cube, sphere, etc).
   - [ ] Mesh.load_* helpers and JSON inputs.
+  - [ ] Meshes grouped by Shader; multiple Pipelines per Pass with multiple meshes.
 
 - [ ] Fix all healthchecks
+
 
 ### Shader API Completeness
 

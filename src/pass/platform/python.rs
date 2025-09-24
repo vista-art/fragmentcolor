@@ -52,7 +52,12 @@ impl Pass {
 
     #[pyo3(name = "add_mesh")]
     pub fn add_mesh_py(&self, mesh: &crate::mesh::Mesh) {
-        self.object.mesh.write().replace(mesh.object.clone());
+        self.add_mesh(mesh)
+    }
+
+    #[pyo3(name = "add_mesh_to_shader")]
+    pub fn add_mesh_to_shader_py(&self, mesh: &crate::mesh::Mesh, shader: &crate::Shader) {
+        self.add_mesh_to_shader(mesh, shader)
     }
 
     #[pyo3(name = "set_clear_color")]

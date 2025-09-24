@@ -1,6 +1,11 @@
 # Pass::add_mesh
 
-Attach a Mesh to this Pass. The Renderer will draw the mesh for each attached Shader.
+Attach a Mesh to this Pass.
+
+The mesh is attached to the last shader previously added to this Pass.
+The Renderer will draw it when rendering that shader.
+
+If a Shader wasn't provided earlier, FragmentColor will create a default one.
 
 ## Example
 
