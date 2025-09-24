@@ -1,3 +1,4 @@
+use fragmentcolor::Target;
 use fragmentcolor::mesh::Mesh;
 use fragmentcolor::mesh::primitives::Quad;
 use fragmentcolor::{Pass, Renderer, Shader};
