@@ -1,5 +1,6 @@
 #![cfg(python)]
 
+use crate::shader::lsp_doc;
 use crate::{Shader, ShaderError, UniformData};
 use pyo3::prelude::*;
 
