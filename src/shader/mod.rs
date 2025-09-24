@@ -101,8 +101,11 @@ impl Shader {
     // Mesh management (group meshes by shader)
     // ----------------------
     #[lsp_doc("docs/api/core/shader/add_mesh.md")]
-    pub fn add_mesh(&self, mesh: &crate::mesh::Mesh) {
+    pub fn add_mesh(&self, mesh: &crate::mesh::Mesh) -> Result<(), ShaderError> {
+        // Validate compatibility before attaching
+        self.validate_mesh(mesh)?;
         self.object.add_mesh_internal(mesh.object.clone());
+        Ok(())
     }
 
     #[lsp_doc("docs/api/core/shader/remove_mesh.md")]
@@ -143,6 +146,146 @@ pub(crate) struct ShaderObject {
 impl Default for ShaderObject {
     fn default() -> Self {
         Self::new(DEFAULT_SHADER).expect("failed to create default shader object")
+    }
+}
+
+impl Shader {
+    #[lsp_doc("docs/api/core/shader/validate_mesh.md")]
+    pub fn validate_mesh(&self, mesh: &crate::mesh::Mesh) -> Result<(), ShaderError> {
+        let inputs = self.object.reflect_vertex_inputs()?;
+        if inputs.is_empty() {
+            // No vertex inputs to validate against; accept any mesh.
+            return Ok(());
+        }
+
+        use std::collections::HashMap;
+        // Build maps from the first vertex
+        let (pos_fmt_opt, v_loc_map, v_name_map) = {
+            let verts = mesh.object.verts.read();
+            if let Some(v) = verts.first() {
+                let pos_fmt = if v.dimensions <= 2 {
+                    wgpu::VertexFormat::Float32x2
+                } else {
+                    wgpu::VertexFormat::Float32x3
+                };
+                // location -> (name, fmt) for vertex properties; position is handled specially at loc 0
+                let mut loc: HashMap<u32, (String, wgpu::VertexFormat)> = HashMap::new();
+                for (name, loc_idx) in v.prop_locations.iter() {
+                    if let Some(val) = v.properties.get(name) {
+                        loc.insert(*loc_idx, (name.clone(), val.format()));
+                    }
+                }
+                // name -> fmt, include position under name "position"
+                let mut by_name: HashMap<String, wgpu::VertexFormat> = HashMap::new();
+                by_name.insert("position".to_string(), pos_fmt);
+                for (name, val) in v.properties.iter() {
+                    by_name.insert(name.clone(), val.format());
+                }
+                (Some(pos_fmt), loc, by_name)
+            } else {
+                // No vertices present: cannot satisfy vertex inputs
+                (None, HashMap::new(), HashMap::new())
+            }
+        };
+
+        // Build maps from the first instance (if present)
+        let (i_loc_map, i_name_map) = {
+            let insts = mesh.object.insts.read();
+            if let Some(i) = insts.first() {
+                let mut loc: HashMap<u32, (String, wgpu::VertexFormat)> = HashMap::new();
+                let mut by_name: HashMap<String, wgpu::VertexFormat> = HashMap::new();
+                for (name, loc_idx) in i.prop_locations.iter() {
+                    if let Some(val) = i.properties.get(name) {
+                        loc.insert(*loc_idx, (name.clone(), val.format()));
+                        by_name.insert(name.clone(), val.format());
+                    }
+                }
+                (loc, by_name)
+            } else {
+                (HashMap::new(), HashMap::new())
+            }
+        };
+
+        // position location is assumed to be 0
+        let pos_loc: u32 = 0;
+
+        // Validate each shader input
+        for inp in inputs.iter() {
+            let mut matched = false;
+
+            // 1) Try instance by explicit location
+            if let Some((_, f)) = i_loc_map.get(&inp.location) {
+                if *f == inp.format {
+                    matched = true;
+                } else {
+                    return Err(ShaderError::TypeMismatch(format!(
+                        "Type mismatch for shader input '{}' @location({}): shader expects {:?}, mesh has {:?}",
+                        inp.name, inp.location, inp.format, *f
+                    )));
+                }
+            }
+
+            // 2) Try vertex by explicit location (position or other property)
+            if !matched {
+                if inp.location == pos_loc {
+                    if let Some(pos_fmt) = pos_fmt_opt {
+                        if pos_fmt == inp.format {
+                            matched = true;
+                        } else {
+                            return Err(ShaderError::TypeMismatch(format!(
+                                "Type mismatch for vertex 'position' @location({}): shader expects {:?}, mesh has {:?}",
+                                inp.location, inp.format, pos_fmt
+                            )));
+                        }
+                    } else {
+                        return Err(ShaderError::InvalidKey(
+                            "Mesh has no vertices to provide 'position'".into(),
+                        ));
+                    }
+                } else if let Some((_, f)) = v_loc_map.get(&inp.location) {
+                    if *f == inp.format {
+                        matched = true;
+                    } else {
+                        return Err(ShaderError::TypeMismatch(format!(
+                            "Type mismatch for shader input '{}' @location({}): shader expects {:?}, mesh has {:?}",
+                            inp.name, inp.location, inp.format, *f
+                        )));
+                    }
+                }
+            }
+
+            // 3) Fallback by name: instance first, then vertex
+            if !matched {
+                if let Some(fmt) = i_name_map.get(&inp.name) {
+                    if *fmt == inp.format {
+                        matched = true;
+                    } else {
+                        return Err(ShaderError::TypeMismatch(format!(
+                            "Type mismatch for shader input '{}' by name: shader expects {:?}, mesh has {:?}",
+                            inp.name, inp.format, fmt
+                        )));
+                    }
+                } else if let Some(fmt) = v_name_map.get(&inp.name) {
+                    if *fmt == inp.format {
+                        matched = true;
+                    } else {
+                        return Err(ShaderError::TypeMismatch(format!(
+                            "Type mismatch for shader input '{}' by name: shader expects {:?}, mesh has {:?}",
+                            inp.name, inp.format, fmt
+                        )));
+                    }
+                }
+            }
+
+            if !matched {
+                return Err(ShaderError::InvalidKey(format!(
+                    "Mesh attribute not found for shader input '{}' @location({})",
+                    inp.name, inp.location
+                )));
+            }
+        }
+
+        Ok(())
     }
 }
 
@@ -528,6 +671,65 @@ mod tests {
 
         let bad = "not wgsl";
         assert!(Shader::try_from(bad).is_err());
+    }
+
+    #[test]
+    fn validate_mesh_ok_and_errors() {
+        // Shader expects pos: vec3 at location 0 and offset: vec2 at location 1
+        let wgsl = r#"
+struct VOut { @builtin(position) pos_out: vec4<f32> };
+@vertex
+fn vs_main(@location(0) pos: vec3<f32>, @location(1) offset: vec2<f32>) -> VOut {
+  var out: VOut;
+  let p = vec3<f32>(pos.xy + offset, pos.z);
+  out.pos_out = vec4<f32>(p, 1.0);
+  return out;
+}
+@fragment fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,1.,1.,1.); }
+        "#;
+        let shader = Shader::new(wgsl).expect("shader");
+
+        // Compatible mesh: pos=vec3, instance offset=vec2
+        let mut m_ok = crate::mesh::Mesh::new();
+        use crate::mesh::Vertex;
+        m_ok.add_vertices([
+            Vertex::new([-0.5, -0.5, 0.0]),
+            Vertex::new([0.5, -0.5, 0.0]),
+            Vertex::new([0.0, 0.5, 0.0]),
+        ]);
+        m_ok.add_instance(Vertex::new([0.0, 0.0]).set("offset", [0.0f32, 0.0f32]));
+        shader.validate_mesh(&m_ok).expect("compatible");
+
+        // Missing attribute: no instance offset provided
+        let mut m_missing = crate::mesh::Mesh::new();
+        m_missing.add_vertices([
+            Vertex::new([-0.5, -0.5, 0.0]),
+            Vertex::new([0.5, -0.5, 0.0]),
+            Vertex::new([0.0, 0.5, 0.0]),
+        ]);
+        let e = shader
+            .validate_mesh(&m_missing)
+            .expect_err("missing should err");
+        match e {
+            ShaderError::InvalidKey(_) => {}
+            _ => panic!("unexpected error kind: {:?}", e),
+        }
+
+        // Type mismatch: instance offset present but wrong type (vec3 instead of vec2)
+        let mut m_mismatch = crate::mesh::Mesh::new();
+        m_mismatch.add_vertices([
+            Vertex::new([-0.5, -0.5, 0.0]),
+            Vertex::new([0.5, -0.5, 0.0]),
+            Vertex::new([0.0, 0.5, 0.0]),
+        ]);
+        m_mismatch.add_instance(Vertex::new([0.0, 0.0]).set("offset", [0.0f32, 0.0f32, 0.0f32]));
+        let e2 = shader
+            .validate_mesh(&m_mismatch)
+            .expect_err("mismatch should err");
+        match e2 {
+            ShaderError::TypeMismatch(_) => {}
+            _ => panic!("unexpected error kind: {:?}", e2),
+        }
     }
 
     const SHADER: &str = r#"

@@ -6,4 +6,4 @@ const pass = new Pass("p"); pass.addShader(shader);
 const mesh = new Mesh();
 mesh.addVertex(Vertex.new([0.0, 0.0]));
 
-pass.addMeshToShader(mesh, shader);
+pass.addMeshToShader(mesh, shader).expect("mesh is compatible");

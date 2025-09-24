@@ -39,6 +39,11 @@ fn cs_main(@builtin(global_invocation_id) gid: vec3<u32>) {
   p.x = p.x + v.x * dt;
   p.y = p.y + v.y * dt;
 
+  // Optional debug nudge: if sim.w > 0, move first particle slightly each frame
+  if (sim.w > 0.0 && i == 0u) {
+    p.x = p.x + 0.001;
+  }
+
   p.x = clamp(p.x, -2.0, 2.0);
   p.y = clamp(p.y, -2.0, 2.0);
 
@@ -153,8 +158,15 @@ fn main() {
     cs_update
         .set("velocities", bytemuck::cast_slice(&vel))
         .expect("set vel");
+    let nudge = std::env::var("NUDGE_POS")
+        .ok()
+        .and_then(|s| s.parse::<u32>().ok())
+        .unwrap_or(0);
     cs_update
-        .set("sim", [0.25, 0.35, 0.9975, 0.0])
+        .set(
+            "sim",
+            [0.25, 0.35, 0.9975, if nudge != 0 { 1.0 } else { 0.0 }],
+        )
         .expect("set sim");
     // Do not set positions on the splat shader; it shares the persistent GPU buffer via registry
     cs_splat
@@ -207,11 +219,9 @@ fn main() {
     frame.add_pass(&pass_present);
 
     // Drive
-    app.on_resize(on_resize)
-        .scene(frame)
-        .on_redraw_requested(move |_app| {
-            let _ = cs_update.set("sim", [1.0 / 60.0, 0.35, 0.9975, 0.0]);
-        });
+    app.on_resize(on_resize).scene(frame);
+
+    // No per-frame sim reset; keep initial 'sim' values set above.
 
     run(&mut app);
 }

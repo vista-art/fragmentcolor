@@ -58,7 +58,7 @@ impl Shader {
 
     #[wasm_bindgen(js_name = "addMesh")]
     #[lsp_doc("docs/api/core/shader/add_mesh.md")]
-    pub fn add_mesh_js(&self, mesh: &crate::mesh::Mesh) {
+    pub fn add_mesh_js(&self, mesh: &crate::mesh::Mesh) -> Result<(), ShaderError> {
         self.add_mesh(mesh)
     }
 

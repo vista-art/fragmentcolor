@@ -6,8 +6,8 @@ const pass = new Pass("p"); pass.addShader(shader);
 const mesh = new Mesh();
 mesh.addVertex(Vertex.new([0.0, 0.0]));
 
-// Attach mesh to this shader;
-shader.addMesh(mesh);
+// Attach mesh to this shader (errors if incompatible);
+shader.addMesh(mesh).expect("mesh is compatible");
 
 // Renderer will draw the mesh when rendering this pass.;
 // Each Shader represents a RenderPipeline or ComputePipeline;

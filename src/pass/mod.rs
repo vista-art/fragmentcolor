@@ -89,18 +89,30 @@ impl Pass {
     }
 
     #[lsp_doc("docs/api/core/pass/add_mesh.md")]
-    pub fn add_mesh(&self, mesh: &crate::mesh::Mesh) {
+    pub fn add_mesh(&self, mesh: &crate::mesh::Mesh) -> Result<(), crate::shader::ShaderError> {
         self.ensure_shader();
 
         // Attach this mesh to the last shader in the pass.
         if let Some(shader) = self.object.shaders.read().last().cloned() {
-            shader.add_mesh_internal(mesh.object.clone());
+            // Recreate a lightweight Shader wrapper to reuse validation
+            // (public API requires going through Shader::add_mesh)
+            let s = crate::Shader {
+                pass: self.object.clone(),
+                object: shader.clone(),
+            };
+            s.add_mesh(mesh)
+        } else {
+            Ok(())
         }
     }
 
     #[lsp_doc("docs/api/core/pass/add_mesh_to_shader.md")]
-    pub fn add_mesh_to_shader(&self, mesh: &crate::mesh::Mesh, shader: &crate::Shader) {
-        shader.add_mesh(mesh);
+    pub fn add_mesh_to_shader(
+        &self,
+        mesh: &crate::mesh::Mesh,
+        shader: &crate::Shader,
+    ) -> Result<(), crate::shader::ShaderError> {
+        shader.add_mesh(mesh)
     }
 
     #[lsp_doc("docs/api/core/pass/set_viewport.md")]

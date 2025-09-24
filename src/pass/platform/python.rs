@@ -51,13 +51,17 @@ impl Pass {
     }
 
     #[pyo3(name = "add_mesh")]
-    pub fn add_mesh_py(&self, mesh: &crate::mesh::Mesh) {
-        self.add_mesh(mesh)
+    pub fn add_mesh_py(&self, mesh: &crate::mesh::Mesh) -> Result<(), PyErr> {
+        self.add_mesh(mesh).map_err(|e| e.into())
     }
 
     #[pyo3(name = "add_mesh_to_shader")]
-    pub fn add_mesh_to_shader_py(&self, mesh: &crate::mesh::Mesh, shader: &crate::Shader) {
-        self.add_mesh_to_shader(mesh, shader)
+    pub fn add_mesh_to_shader_py(
+        &self,
+        mesh: &crate::mesh::Mesh,
+        shader: &crate::Shader,
+    ) -> Result<(), PyErr> {
+        self.add_mesh_to_shader(mesh, shader).map_err(|e| e.into())
     }
 
     #[pyo3(name = "set_clear_color")]

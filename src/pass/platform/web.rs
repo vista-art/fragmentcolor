@@ -46,14 +46,20 @@ impl Pass {
 
     #[wasm_bindgen(js_name = "addMesh")]
     #[lsp_doc("docs/api/core/pass/add_mesh.md")]
-    pub fn add_mesh_js(&self, mesh: &crate::mesh::Mesh) {
+    pub fn add_mesh_js(&self, mesh: &crate::mesh::Mesh) -> Result<(), JsError> {
         self.add_mesh(mesh)
+            .map_err(|e| JsError::new(&format!("{}", e)))
     }
 
     #[wasm_bindgen(js_name = "addMeshToShader")]
     #[lsp_doc("docs/api/core/pass/add_mesh_to_shader.md")]
-    pub fn add_mesh_to_shader_js(&self, mesh: &crate::mesh::Mesh, shader: &Shader) {
+    pub fn add_mesh_to_shader_js(
+        &self,
+        mesh: &crate::mesh::Mesh,
+        shader: &Shader,
+    ) -> Result<(), JsError> {
         self.add_mesh_to_shader(mesh, shader)
+            .map_err(|e| JsError::new(&format!("{}", e)))
     }
 
     #[wasm_bindgen(js_name = "setClearColor")]

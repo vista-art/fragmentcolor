@@ -2406,7 +2406,7 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
                 Vertex::new([0.5, -0.5, 0.0]),
                 Vertex::new([0.0, 0.5, 0.0]),
             ]);
-            pass.add_mesh(&mesh);
+            pass.add_mesh(&mesh).expect("mesh is compatible");
 
             renderer.render(&pass, &target).expect("render ok");
         });
@@ -2492,7 +2492,7 @@ fn main(v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(v.uv, 0.0, 1.0); }
                 Vertex::new([0.5, -0.5]).set("uv", [1.0, 0.0]),
                 Vertex::new([0.0, 0.5]).set("uv", [0.5, 1.0]),
             ]);
-            pass.add_mesh(&mesh);
+            pass.add_mesh(&mesh).expect("mesh is compatible");
 
             renderer.render(&pass, &target).expect("render ok");
         });
@@ -2791,7 +2791,7 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(0.2,0.3,0.4,1.0);
                 Vertex::new([0.5, -0.5, 0.0]).set("uv", [1.0, 0.0]),
                 Vertex::new([0.0, 0.5, 0.0]).set("uv", [0.5, 1.0]),
             ]);
-            pass.add_mesh(&mesh);
+            pass.add_mesh(&mesh).expect("mesh is compatible");
 
             renderer.render(&pass, &target).expect("render ok");
         });
@@ -2986,7 +2986,7 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(0.,0.,1.,1.); }
                 Vertex::new([0.0, 0.5, 0.0]),
             ]);
             // No instance property named "offset"
-            pass.add_mesh(&mesh);
+            pass.add_mesh(&mesh).expect("mesh is compatible");
 
             let res = renderer.render(&pass, &target);
             assert!(res.is_err());

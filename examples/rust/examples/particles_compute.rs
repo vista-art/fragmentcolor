@@ -143,7 +143,7 @@ fn main() {
         Vertex::new([0.0, s]),
     ]);
     mesh.set_instance_count(n);
-    pass_fs.add_mesh(&mesh);
+    pass_fs.add_mesh(&mesh).expect("mesh is compatible");
 
     // Frame: compute then render
     let mut frame = Frame::new();
