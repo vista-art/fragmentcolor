@@ -48,6 +48,32 @@ impl Shader {
         self.list_keys()
     }
 
+    #[pyo3(name = "add_mesh")]
+    #[lsp_doc("docs/api/core/shader/add_mesh.md")]
+    pub fn add_mesh_py(&self, mesh: &crate::mesh::Mesh) {
+        self.add_mesh(mesh)
+    }
+
+    #[pyo3(name = "remove_mesh")]
+    #[lsp_doc("docs/api/core/shader/remove_mesh.md")]
+    pub fn remove_mesh_py(&self, mesh: &crate::mesh::Mesh) {
+        self.remove_mesh(mesh)
+    }
+
+    #[pyo3(name = "remove_meshes")]
+    #[lsp_doc("docs/api/core/shader/remove_meshes.md")]
+    pub fn remove_meshes_py(&self, list: Vec<crate::mesh::Mesh>) {
+        for m in list.iter() {
+            self.remove_mesh(m);
+        }
+    }
+
+    #[pyo3(name = "clear_meshes")]
+    #[lsp_doc("docs/api/core/shader/clear_meshes.md")]
+    pub fn clear_meshes_py(&self) {
+        self.clear_meshes()
+    }
+
     pub fn renderable_type(&self) -> &'static str {
         "Shader"
     }

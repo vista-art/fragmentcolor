@@ -56,6 +56,43 @@ impl Shader {
         self.list_keys()
     }
 
+    #[wasm_bindgen(js_name = "addMesh")]
+    #[lsp_doc("docs/api/core/shader/add_mesh.md")]
+    pub fn add_mesh_js(&self, mesh: &crate::mesh::Mesh) {
+        self.add_mesh(mesh)
+    }
+
+    #[wasm_bindgen(js_name = "removeMesh")]
+    #[lsp_doc("docs/api/core/shader/remove_mesh.md")]
+    pub fn remove_mesh_js(&self, mesh: &crate::mesh::Mesh) {
+        self.remove_mesh(mesh)
+    }
+
+    #[wasm_bindgen(js_name = "removeMeshes")]
+    #[lsp_doc("docs/api/core/shader/remove_meshes.md")]
+    pub fn remove_meshes_js(&self, list: &JsValue) -> Result<(), JsError> {
+        let arr = js_sys::Array::is_array(list)
+            .then(|| js_sys::Array::from(list))
+            .ok_or_else(|| JsError::new("removeMeshes: expected an array of Mesh"))?;
+        let mut meshes: Vec<crate::mesh::Mesh> = Vec::with_capacity(arr.length() as usize);
+        for v in arr.iter() {
+            let m: crate::mesh::Mesh = (&v)
+                .try_into()
+                .map_err(|_| JsError::new("removeMeshes: item is not a Mesh"))?;
+            meshes.push(m);
+        }
+        for m in meshes.iter() {
+            self.remove_mesh(m);
+        }
+        Ok(())
+    }
+
+    #[wasm_bindgen(js_name = "clearMeshes")]
+    #[lsp_doc("docs/api/core/shader/clear_meshes.md")]
+    pub fn clear_meshes_js(&self) {
+        self.clear_meshes()
+    }
+
     #[wasm_bindgen(js_name = "default")]
     pub fn default_js() -> Self {
         Shader::default()

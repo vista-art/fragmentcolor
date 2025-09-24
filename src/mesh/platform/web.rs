@@ -189,10 +189,9 @@ fn js_to_vertex_position(value: &JsValue) -> Result<Vertex, JsError> {
 // JS conversions for Vertex/Instance owned via __wbg_ptr anchors
 // -----------------------------
 
+crate::impl_js_bridge!(Mesh, crate::mesh::error::MeshError);
 crate::impl_js_bridge!(Vertex, crate::mesh::error::MeshError);
 crate::impl_js_bridge!(Instance, crate::mesh::error::MeshError);
-
-crate::impl_js_bridge!(Mesh, crate::mesh::error::MeshError);
 
 // -----------------------------
 // Vertex (WASM bindings)

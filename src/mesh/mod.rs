@@ -16,6 +16,9 @@ pub use error::*;
 pub mod vertex;
 pub use vertex::*;
 
+pub mod primitives;
+pub use primitives::*;
+
 pub(crate) mod builtins;
 
 mod platform;
@@ -29,6 +32,7 @@ pub use platform::python::PyVertexValue;
 #[lsp_doc("docs/api/core/mesh/mesh.md")]
 pub struct Mesh {
     pub(crate) object: Arc<MeshObject>,
+    pub(crate) pass: Arc<crate::pass::PassObject>,
 }
 
 impl Default for Mesh {
@@ -42,6 +46,10 @@ impl Mesh {
     pub fn new() -> Self {
         Self {
             object: Arc::new(MeshObject::new()),
+            pass: Arc::new(crate::pass::PassObject::new(
+                "Mesh Debug Pass",
+                crate::pass::PassType::Render,
+            )),
         }
     }
 
@@ -105,6 +113,35 @@ impl Mesh {
 }
 
 // -----------------------------
+// Renderable impl ( for Mesh quick-view)
+// -----------------------------
+impl crate::renderer::Renderable for Mesh {
+    fn passes(&self) -> impl IntoIterator<Item = &crate::pass::PassObject> {
+        // If this internal pass has no shader yet, build one from the first vertex
+        if self.pass.shaders.read().is_empty() {
+            if let Some(first) = self.object.verts.read().first().cloned() {
+                if let Ok(shader) = crate::Shader::from_vertex(&first) {
+                    self.pass.add_shader(&shader);
+                    let _ = shader.add_mesh(self);
+                }
+            }
+        } else {
+            if let Some(sh) = self.pass.shaders.read().last().cloned() {
+                let attached = sh
+                    .meshes
+                    .read()
+                    .iter()
+                    .any(|m| Arc::ptr_eq(m, &self.object));
+                if !attached {
+                    sh.add_mesh_internal(self.object.clone());
+                }
+            }
+        }
+        vec![self.pass.as_ref()]
+    }
+}
+
+// -----------------------------
 // Internals
 // -----------------------------
 
@@ -151,12 +188,14 @@ impl From<&Vertex> for VertexKey {
 #[derive(Debug)]
 pub(crate) struct MeshObject {
     // CPU side storage
-    verts: RwLock<Vec<Vertex>>, // original order
-    insts: RwLock<Vec<Instance>>,
+    pub(crate) verts: RwLock<Vec<Vertex>>, // original order
+    pub(crate) insts: RwLock<Vec<Instance>>,
+
     // Derived, packed bytes
-    packed_verts: RwLock<Vec<u8>>, // unique verts packed by schema
+    pub(crate) packed_verts: RwLock<Vec<u8>>, // unique verts packed by schema
     pub(crate) packed_insts: RwLock<Vec<u8>>, // instances packed by schema
-    indices: RwLock<Vec<u32>>,     // indices referencing unique verts
+
+    pub(crate) indices: RwLock<Vec<u32>>, // indices referencing unique verts
 
     // Schemas
     pub(crate) schema_v: RwLock<Option<Schema>>, // derived from first vertex

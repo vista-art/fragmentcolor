@@ -90,7 +90,17 @@ impl Pass {
 
     #[lsp_doc("docs/api/core/pass/add_mesh.md")]
     pub fn add_mesh(&self, mesh: &crate::mesh::Mesh) {
-        self.object.mesh.write().replace(mesh.object.clone());
+        self.ensure_shader();
+
+        // Attach this mesh to the last shader in the pass.
+        if let Some(shader) = self.object.shaders.read().last().cloned() {
+            shader.add_mesh_internal(mesh.object.clone());
+        }
+    }
+
+    #[lsp_doc("docs/api/core/pass/add_mesh_to_shader.md")]
+    pub fn add_mesh_to_shader(&self, mesh: &crate::mesh::Mesh, shader: &crate::Shader) {
+        shader.add_mesh(mesh);
     }
 
     #[lsp_doc("docs/api/core/pass/set_viewport.md")]
@@ -106,6 +116,15 @@ impl Pass {
     #[lsp_doc("docs/api/core/pass/set_compute_dispatch.md")]
     pub fn set_compute_dispatch(&self, x: u32, y: u32, z: u32) {
         self.object.set_compute_dispatch(x, y, z);
+    }
+
+    /// Ensure at least one Shader exists in this Pass; if none, add a default shader.
+    fn ensure_shader(&self) {
+        let shaders = self.object.shaders.read();
+        if shaders.is_empty() {
+            // @TODO create a Shader from a specific Mesh (mimics Vertex layout)
+            self.add_shader(&Shader::default());
+        }
     }
 }
 
