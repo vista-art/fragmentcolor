@@ -2454,7 +2454,7 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(0.,1.,0.,1.); }
                 Vertex::new([0.25, 0.0]).set("offset", VertexValue::F32x2([0.25, 0.0])),
             );
 
-            pass.add_mesh(&mesh);
+            pass.add_mesh(&mesh).expect("mesh is compatible");
             renderer.render(&pass, &target).expect("render ok");
         });
     }
@@ -2531,7 +2531,7 @@ fn main(v: VOut) -> @location(0) vec4<f32> { return v.color; }
                 Vertex::new([0.5, -0.5, 0.0]).set("color", [0.0, 1.0, 0.0, 1.0]),
                 Vertex::new([0.0, 0.5, 0.0]).set("color", [0.0, 0.0, 1.0, 1.0]),
             ]);
-            pass.add_mesh(&mesh);
+            pass.add_mesh(&mesh).expect("mesh is compatible");
 
             renderer.render(&pass, &target).expect("render ok");
         });
@@ -2596,7 +2596,7 @@ fn main(v: VOut) -> @location(0) vec4<f32> { return v.tint; }
                     .set("tint", VertexValue::F32x4([0.0, 0.0, 1.0, 1.0])), // blue
             );
 
-            pass.add_mesh(&mesh);
+            pass.add_mesh(&mesh).expect("mesh is compatible");
             renderer.render(&pass, &target).expect("render ok");
 
             // Debug instrumentation to diagnose mapping and buffers
@@ -2829,7 +2829,7 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(0.1,0.9,0.1,1.0);
                 Vertex::new([0.5, -0.5]),
                 Vertex::new([0.0, 0.5]),
             ]);
-            pass.add_mesh(&mesh);
+            pass.add_mesh(&mesh).expect("mesh is compatible");
 
             renderer.render(&pass, &target).expect("render ok");
         });
@@ -3032,7 +3032,7 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,1.,0.,1.); }
             mesh.add_instance(
                 Vertex::new([0.0, 0.0]).set("offset", VertexValue::F32x3([0.0, 0.0, 0.0])),
             );
-            pass.add_mesh(&mesh);
+            pass.add_mesh(&mesh).expect("mesh is compatible");
 
             let res = renderer.render(&pass, &target);
             assert!(res.is_err());
