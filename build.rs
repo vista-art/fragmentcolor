@@ -995,15 +995,15 @@ mod convert {
             Lang::Py => format!("{} = {}", var_out, rhs),
         };
         // Python: Convert JS-style '//' comments to Python '#'
-        if let Lang::Py = lang {
-            if let Some(idx) = line_out.find("//") {
-                let (mut head, tail) = line_out.split_at(idx);
-                head = head.trim_end_matches(';').trim_end();
-                if head.is_empty() {
-                    line_out = format!("#{}", &tail[2..]);
-                } else {
-                    line_out = format!("{} #{}", head, &tail[2..]);
-                }
+        if let Lang::Py = lang
+            && let Some(idx) = line_out.find("//")
+        {
+            let (mut head, tail) = line_out.split_at(idx);
+            head = head.trim_end_matches(';').trim_end();
+            if head.is_empty() {
+                line_out = format!("#{}", &tail[2..]);
+            } else {
+                line_out = format!("{} #{}", head, &tail[2..]);
             }
         }
         Some(line_out)

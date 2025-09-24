@@ -464,12 +464,11 @@ fn build_wgsl_from_vertex(v: &crate::mesh::Vertex) -> String {
 
     // Optional color: if present and F32x4, capture its location
     let mut color_decl: Option<(u32, &'static str)> = None;
-    if let Some(val) = v.properties.get("color") {
-        if matches!(val, crate::mesh::VertexValue::F32x4(_)) {
-            if let Some(loc) = v.prop_locations.get("color").cloned() {
-                color_decl = Some((loc, "vec4<f32>"));
-            }
-        }
+    if let Some(val) = v.properties.get("color")
+        && matches!(val, crate::mesh::VertexValue::F32x4(_))
+        && let Some(loc) = v.prop_locations.get("color").cloned()
+    {
+        color_decl = Some((loc, "vec4<f32>"));
     }
 
     let mut vs_inputs: Vec<String> = Vec::new();
