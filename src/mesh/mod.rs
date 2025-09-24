@@ -119,22 +119,20 @@ impl crate::renderer::Renderable for Mesh {
     fn passes(&self) -> impl IntoIterator<Item = &crate::pass::PassObject> {
         // If this internal pass has no shader yet, build one from the first vertex
         if self.pass.shaders.read().is_empty() {
-            if let Some(first) = self.object.verts.read().first().cloned() {
-                if let Ok(shader) = crate::Shader::from_vertex(&first) {
-                    self.pass.add_shader(&shader);
-                    let _ = shader.add_mesh(self);
-                }
+            if let Some(first) = self.object.verts.read().first().cloned()
+                && let Ok(shader) = crate::Shader::from_vertex(&first)
+            {
+                self.pass.add_shader(&shader);
+                shader.add_mesh(self);
             }
-        } else {
-            if let Some(sh) = self.pass.shaders.read().last().cloned() {
-                let attached = sh
-                    .meshes
-                    .read()
-                    .iter()
-                    .any(|m| Arc::ptr_eq(m, &self.object));
-                if !attached {
-                    sh.add_mesh_internal(self.object.clone());
-                }
+        } else if let Some(sh) = self.pass.shaders.read().last().cloned() {
+            let attached = sh
+                .meshes
+                .read()
+                .iter()
+                .any(|m| Arc::ptr_eq(m, &self.object));
+            if !attached {
+                sh.add_mesh_internal(self.object.clone());
             }
         }
         vec![self.pass.as_ref()]
