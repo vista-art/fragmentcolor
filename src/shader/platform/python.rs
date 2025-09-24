@@ -51,8 +51,8 @@ impl Shader {
 
     #[pyo3(name = "add_mesh")]
     #[lsp_doc("docs/api/core/shader/add_mesh.md")]
-    pub fn add_mesh_py(&self, mesh: &crate::mesh::Mesh) {
-        self.add_mesh(mesh)
+    pub fn add_mesh_py(&self, mesh: &crate::mesh::Mesh) -> Result<(), PyErr> {
+        self.add_mesh(mesh).map_err(|e| e.into())
     }
 
     #[pyo3(name = "remove_mesh")]

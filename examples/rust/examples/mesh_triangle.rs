@@ -34,7 +34,7 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(0.,1.,0.,1.); }
             Vertex::from([0.0, 0.5, 0.0]),
         ]);
 
-        pass.add_mesh(&mesh);
+        pass.add_mesh(&mesh).expect("mesh is compatible");
         renderer.render(&pass, &target).expect("render");
 
         // Optionally, read back image bytes: target.get_image()

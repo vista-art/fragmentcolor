@@ -123,7 +123,7 @@ impl crate::renderer::Renderable for Mesh {
                 && let Ok(shader) = crate::Shader::from_vertex(&first)
             {
                 self.pass.add_shader(&shader);
-                shader.add_mesh(self);
+                _ = shader.add_mesh(self);
             }
         } else if let Some(sh) = self.pass.shaders.read().last().cloned() {
             let attached = sh

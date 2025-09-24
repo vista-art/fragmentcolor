@@ -6,8 +6,8 @@ rpass = Pass("p"); rpass.add_shader(shader)
 mesh = Mesh()
 mesh.add_vertex(Vertex([0.0, 0.0]))
 
-# Attach mesh to this shader
-shader.add_mesh(mesh)
+# Attach mesh to this shader (errors if incompatible)
+shader.add_mesh(mesh).expect("mesh is compatible")
 
 # Renderer will draw the mesh when rendering this rpass.
 # Each Shader represents a RenderPipeline or ComputePipeline

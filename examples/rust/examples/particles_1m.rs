@@ -59,7 +59,7 @@ fn main() {
     ]);
     // Draw N instances with no per-instance attributes
     mesh.set_instance_count(N as u32);
-    pass.add_mesh(&mesh);
+    pass.add_mesh(&mesh).expect("mesh is compatible");
 
     // CPU buffers: positions + velocities in SoA for updates; blob for upload
     let mut pos_x: Vec<f32> = Vec::with_capacity(N);

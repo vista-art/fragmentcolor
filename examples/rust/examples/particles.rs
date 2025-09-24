@@ -90,7 +90,7 @@ fn main() {
     }
     mesh.add_instances(insts);
 
-    pass.add_mesh(&mesh);
+    pass.add_mesh(&mesh).expect("mesh is compatible");
 
     // App wiring
     let mut app = App::new();

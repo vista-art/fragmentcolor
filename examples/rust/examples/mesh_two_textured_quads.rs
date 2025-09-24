@@ -51,8 +51,8 @@ fn fs_main(v: VOut) -> @location(0) vec4<f32> {
         let right: Mesh = Quad::new([0.1, -0.5], [0.9, 0.5]).into();
 
         // Attach meshes to the shader in this pass
-        pass.add_mesh_to_shader(&left, &shader);
-        pass.add_mesh_to_shader(&right, &shader);
+        pass.add_mesh_to_shader(&left, &shader).expect("left ok");
+        pass.add_mesh_to_shader(&right, &shader).expect("right ok");
 
         // Render
         renderer.render(&pass, &target).expect("render ok");

@@ -52,6 +52,7 @@ const EXAMPLES = [
   '../examples/core/shader/remove_mesh.js',
   '../examples/core/shader/remove_meshes.js',
   '../examples/core/shader/set.js',
+  '../examples/core/shader/validate_mesh.js',
   '../examples/core/target/Target.js',
   '../examples/core/target/get_current_frame.js',
   '../examples/core/target/get_image.js',
