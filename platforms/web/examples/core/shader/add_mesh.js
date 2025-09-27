@@ -1,10 +1,15 @@
-import { Pass, Shader, Mesh, Vertex } from "fragmentcolor";
 
-const shader = Shader.default();
-const pass = new Pass("p"); pass.addShader(shader);
+import { Shader, Mesh, Vertex } from "fragmentcolor";
+
+const shader = Shader.new(";
+  @vertex fn vs_main(@location(0) pos: vec3<f32>) -> @builtin(position) vec4<f32> {;
+    return vec4<f32>(pos, 1.0);
+  };
+  @fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); };
+").unwrap();
 
 const mesh = new Mesh();
-mesh.addVertex(Vertex.new([0.0, 0.0]));
+mesh.addVertex([0.0, 0.0, 0.0]);
 
 // Attach mesh to this shader (errors if incompatible);
 shader.addMesh(mesh).expect("mesh is compatible");

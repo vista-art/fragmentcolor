@@ -19,7 +19,7 @@ but while we're still in pre-release phase, this is expected.
 ### TO-DO Before Release
 
 - [ ] Per-mesh bind-group updates to allow different textures per mesh in a single pass.
-- [ ] Mesh–Shader compatibility enforcement and Shader-centric mesh attachment API (Shader.add_mesh, Pass.add_mesh_to_shader).
+- [ ] Mesh-Shader compatibility enforcement and Shader-centric mesh attachment API (Shader.add_mesh, Pass.add_mesh_to_shader).
 
 - [ ] Geometry/Instancing Refinement:
   - [x] Shader source-derived validation/mapping of @location inputs from Naga
@@ -30,7 +30,6 @@ but while we're still in pre-release phase, this is expected.
   - [ ] Meshes grouped by Shader; multiple Pipelines per Pass with multiple meshes.
 
 - [ ] Fix all healthchecks
-
 
 ### Shader API Completeness
 

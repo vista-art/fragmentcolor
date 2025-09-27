@@ -9,7 +9,9 @@ pub enum RendererError {
     #[error("Failed to create texture: {0}")]
     CreateTextureError(String),
     #[error("Shader error: {0}")]
-    ShaderError(#[from] crate::shader::error::ShaderError),
+    ShaderError(#[from] crate::shader::ShaderError),
+    #[error("Mesh error: {0}")]
+    MeshError(#[from] crate::mesh::MeshError),
     #[error("Bind Group Layout error: {0}")]
     BindGroupLayoutError(String),
     #[error("Texture error: {0}")]

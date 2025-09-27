@@ -75,6 +75,18 @@ impl Shader {
         self.clear_meshes()
     }
 
+    #[pyo3(name = "validate_mesh")]
+    #[lsp_doc("docs/api/core/shader/validate_mesh.md")]
+    pub fn validate_mesh_py(&self, mesh: &crate::mesh::Mesh) -> Result<(), PyErr> {
+        self.validate_mesh(mesh).map_err(|e| e.into())
+    }
+
+    #[pyo3(name = "is_compute")]
+    #[lsp_doc("docs/api/core/shader/is_compute.md")]
+    pub fn is_compute_py(&self) -> bool {
+        self.is_compute()
+    }
+
     pub fn renderable_type(&self) -> &'static str {
         "Shader"
     }

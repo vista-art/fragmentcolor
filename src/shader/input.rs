@@ -1,8 +1,13 @@
 use super::{DEFAULT_FRAGMENT_SHADER, DEFAULT_VERTEX_SHADER};
 use crate::ShaderObject;
 use crate::shader::error::ShaderError;
+use std::sync::Arc;
 
-pub(super) fn load_shader(source: &str) -> Result<ShaderObject, ShaderError> {
+pub(super) fn load_shader(source: &str) -> Result<Arc<ShaderObject>, ShaderError> {
+    if source.is_empty() {
+        return Ok(Arc::new(ShaderObject::default()));
+    }
+
     if source.len() < 6 {
         return Err(ShaderError::ParseError("Invalid shader source".into()));
     }
@@ -36,7 +41,7 @@ pub(super) fn load_shader(source: &str) -> Result<ShaderObject, ShaderError> {
         ShaderObject::new(&body)?
     };
 
-    Ok(shader_object)
+    Ok(Arc::new(shader_object))
 }
 
 #[cfg(test)]

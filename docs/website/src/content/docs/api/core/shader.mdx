@@ -833,18 +833,14 @@ This is intended as a fallback and for quick debugging. Canonical usage is the o
 <TabItem label="Rust">
 <Code
 code={`
-pub fn main() -> Result<(), Box<dyn std::error::Error>> {
-
 use fragmentcolor::{Shader, Vertex};
 
-let v = Vertex::new([0.0, 0.0, 0.0]);
-let shader = Shader::from_vertex(&v)?;
+let vertex = Vertex::new([0.0, 0.0, 0.0]);
+let shader = Shader::from_vertex(&vertex);
 
 let _ = shader;
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 8-10}"
+lang="rust" meta="collapse={6-6}"
 />
 
 </TabItem>
@@ -852,11 +848,10 @@ lang="rust" meta="collapse={1-1, 8-10}"
 <TabItem label="JavaScript">
 <Code
 code={`
-
 import { Shader, Vertex } from "fragmentcolor";
 
-const v = new Vertex([0.0, 0.0, 0.0]);
-const shader = Shader.fromVertex(v);
+const vertex = new Vertex([0.0, 0.0, 0.0]);
+const shader = Shader.fromVertex(vertex);
 
 `}
 lang="js"
@@ -867,11 +862,10 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-
 from fragmentcolor import Shader, Vertex
 
-v = Vertex([0.0, 0.0, 0.0])
-shader = Shader.from_vertex(v)
+vertex = Vertex([0.0, 0.0, 0.0])
+shader = Shader.from_vertex(vertex)
 
 `}
 lang="python"
@@ -912,10 +906,17 @@ lang="text"
 
 Build a basic WGSL shader source from the first vertex in a Mesh.
 
-This uses the first Vertex to infer position dimensionality and optional properties.
+The resulting shader automatically adds the provided Mesh to its internal list of Meshes to render,
+so the user doesn't need to call `Shader::add_mesh` manually.
+
+This function uses the **first Vertex** to infer position dimensionality and optional properties.
+
 It generates a minimal vertex shader that consumes `@location(0)` position and a fragment shader that returns a flat color by default. If a `color: vec4<f32>` property exists, it is passed through to the fragment stage and used as output.
 
-This is intended as a fallback and for quick debugging. Canonical usage is the opposite: write your own shader and then build Meshes that match it.
+#### Empty Mesh Handling
+
+If the Mesh has no vertices, a default shader is returned and a warning is logged.
+Because the default shader does not take any vertex inputs, it is compatible with any Mesh.
 
 #### Example
 
@@ -924,19 +925,15 @@ This is intended as a fallback and for quick debugging. Canonical usage is the o
 <TabItem label="Rust">
 <Code
 code={`
-pub fn main() -> Result<(), Box<dyn std::error::Error>> {
-
 use fragmentcolor::{Mesh, Shader, Vertex};
 
 let mut mesh = Mesh::new();
 mesh.add_vertex(Vertex::new([0.0, 0.0, 0.0]));
-let shader = Shader::from_mesh(&mesh)?;
+let shader = Shader::from_mesh(&mesh);
 
 let _ = shader;
-Ok(())
-}
 `}
-lang="rust" meta="collapse={1-1, 9-11}"
+lang="rust" meta="collapse={7-7}"
 />
 
 </TabItem>
@@ -944,7 +941,6 @@ lang="rust" meta="collapse={1-1, 9-11}"
 <TabItem label="JavaScript">
 <Code
 code={`
-
 import { Mesh, Shader, Vertex } from "fragmentcolor";
 
 const mesh = new Mesh();
@@ -960,7 +956,6 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-
 from fragmentcolor import Mesh, Shader, Vertex
 
 mesh = Mesh()
@@ -1006,12 +1001,14 @@ lang="text"
 
 Attach a Mesh to this Shader. The Renderer will draw all meshes attached to it (one draw call per mesh, same pipeline).
 
-This method now validates that the meshâs vertex/instance layout is compatible with the shaderâs @location inputs and returns Result<(), ShaderError>.
+This method now validates that the mesh's vertex/instance layout is compatible with the shader's @location inputs and returns Result<(), ShaderError>.
 
 - On success, the mesh is attached and will be drawn when this shader is rendered.
 - On mismatch (missing attribute or type mismatch), returns an error and does not attach.
 
-See also: Shader::validate_mesh for performing a compatibility check without attaching.
+#### See also
+
+Use Shader::validate_mesh for performing a compatibility check without attaching.
 
 #### Example
 
@@ -1020,13 +1017,19 @@ See also: Shader::validate_mesh for performing a compatibility check without att
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::{Pass, Shader, Mesh, Vertex};
+fn main() -> Result<(), Box<dyn std::error::Error>> {
 
-let shader = Shader::default();
-let pass = Pass::from_shader("p", &shader);
+use fragmentcolor::{Shader, Mesh, Vertex};
+
+let shader = Shader::new("
+  @vertex fn vs_main(@location(0) pos: vec3<f32>) -> @builtin(position) vec4<f32> {
+    return vec4<f32>(pos, 1.0);
+  }
+  @fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
+").unwrap();
 
 let mut mesh = Mesh::new();
-mesh.add_vertex(Vertex::new([0.0, 0.0]));
+mesh.add_vertex([0.0, 0.0, 0.0]);
 
 // Attach mesh to this shader (errors if incompatible)
 shader.add_mesh(&mesh).expect("mesh is compatible");
@@ -1035,8 +1038,11 @@ shader.add_mesh(&mesh).expect("mesh is compatible");
 // Each Shader represents a RenderPipeline or ComputePipeline
 // in the GPU. Adding multiple meshes to it will draw all meshes
 // and all its instances in the same Pipeline.
+
+Ok(())
+}
 `}
-lang="rust"
+lang="rust" meta="collapse={1-1, 23-24}"
 />
 
 </TabItem>
@@ -1044,13 +1050,18 @@ lang="rust"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Pass, Shader, Mesh, Vertex } from "fragmentcolor";
 
-const shader = Shader.default();
-const pass = new Pass("p"); pass.addShader(shader);
+import { Shader, Mesh, Vertex } from "fragmentcolor";
+
+const shader = Shader.new(";
+  @vertex fn vs_main(@location(0) pos: vec3<f32>) -> @builtin(position) vec4<f32> {;
+    return vec4<f32>(pos, 1.0);
+  };
+  @fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); };
+").unwrap();
 
 const mesh = new Mesh();
-mesh.addVertex(Vertex.new([0.0, 0.0]));
+mesh.addVertex([0.0, 0.0, 0.0]);
 
 // Attach mesh to this shader (errors if incompatible);
 shader.addMesh(mesh).expect("mesh is compatible");
@@ -1059,6 +1070,7 @@ shader.addMesh(mesh).expect("mesh is compatible");
 // Each Shader represents a RenderPipeline or ComputePipeline;
 // in the GPU. Adding multiple meshes to it will draw all meshes;
 // and all its instances in the same Pipeline.;
+
 `}
 lang="js"
 />
@@ -1068,21 +1080,27 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Pass, Shader, Mesh, Vertex
 
-shader = Shader.default()
-rpass = Pass("p"); rpass.add_shader(shader)
+from fragmentcolor import Shader, Mesh, Vertex
+
+shader = Shader("
+  @vertex fn vs_main(@location(0) pos: vec3<f32>) -> @builtin(position) vec4<f32> {
+    return vec4<f32>(pos, 1.0)
+  }
+  @fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
+")
 
 mesh = Mesh()
-mesh.add_vertex(Vertex([0.0, 0.0]))
+mesh.add_vertex([0.0, 0.0, 0.0])
 
 # Attach mesh to this shader (errors if incompatible)
 shader.add_mesh(mesh).expect("mesh is compatible")
 
-# Renderer will draw the mesh when rendering this rpass.
+# Renderer will draw the mesh when rendering this pass.
 # Each Shader represents a RenderPipeline or ComputePipeline
 # in the GPU. Adding multiple meshes to it will draw all meshes
 # and all its instances in the same Pipeline.
+
 `}
 lang="python"
 />
@@ -1424,7 +1442,7 @@ lang="text"
 
 ### Shader::validate_mesh
 
-Validate that a Mesh is compatible with this Shaderâs vertex inputs.
+Validate that a Mesh is compatible with this Shader's vertex inputs.
 
 - Checks presence and type for all @location(...) inputs of the vertex entry point.
 - Matches attributes in the following order:
@@ -1433,8 +1451,10 @@ Validate that a Mesh is compatible with this Shaderâs vertex inputs.
   3) Fallback by name (tries instance first, then vertex)
 - Returns Ok(()) when all inputs are matched with a compatible wgpu::VertexFormat; returns an error otherwise.
 
-Notes
-- If the Shader has no @location inputs, any Mesh is considered compatible (the mesh is ignored at draw-time).
+#### Notes
+
+- This method is called automatically when adding a Mesh to a Shader or Pass, so you usually don't need to call it manually.
+- If the Shader has no @location inputs (fullscreen/builtin-only), attaching a Mesh is rejected.
 - This method does not allocate GPU buffers; it inspects CPU-side vertex/instance data only.
 
 #### Example
@@ -1444,8 +1464,8 @@ Notes
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::{Shader, Pass};
-use fragmentcolor::mesh::{Mesh, Vertex};
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Shader, Pass, Mesh, Vertex};
 
 let wgsl = r#"
 struct VOut { @builtin(position) pos: vec4<f32> };
@@ -1456,7 +1476,7 @@ struct VOut { @builtin(position) pos: vec4<f32> };
 }
 @fragment fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
 "#;
-let shader = Shader::new(wgsl).unwrap();
+let shader = Shader::new(wgsl)?;
 let pass = Pass::from_shader("p", &shader);
 
 let mut mesh = Mesh::new();
@@ -1466,10 +1486,13 @@ mesh.add_vertices([
   Vertex::new([ 0.0,  0.5, 0.0]),
 ]);
 
-shader.validate_mesh(&mesh).unwrap(); // Ok
-pass.add_mesh(&mesh).expect("mesh is compatible");
+shader.validate_mesh(&mesh)?; // Ok
+pass.add_mesh(&mesh)?;
+
+Ok(())
+}
 `}
-lang="rust"
+lang="rust" meta="collapse={1-1, 26-27}"
 />
 
 </TabItem>
@@ -1477,8 +1500,7 @@ lang="rust"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Shader, Pass } from "fragmentcolor";
-import { Mesh, Vertex } from "fragmentcolor";
+import { Shader, Pass, Mesh, Vertex } from "fragmentcolor";
 
 const wgsl = r#";
 struct VOut { @builtin(position) pos: vec4<f32> };
@@ -1489,7 +1511,7 @@ struct VOut { @builtin(position) pos: vec4<f32> };
 };
 @fragment fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); };
 "#;
-const shader = new Shader(wgsl).unwrap();
+const shader = new Shader(wgsl);
 const pass = new Pass("p"); pass.addShader(shader);
 
 const mesh = new Mesh();
@@ -1499,8 +1521,9 @@ mesh.addVertices([;
   Vertex.new([ 0.0,  0.5, 0.0]),;
 ]);
 
-shader.validateMesh(mesh).unwrap(); // Ok;
-pass.addMesh(mesh).expect("mesh is compatible");
+shader.validateMesh(mesh); // Ok;
+pass.addMesh(mesh);
+
 `}
 lang="js"
 />
@@ -1510,8 +1533,7 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Shader, Pass
-from fragmentcolor import Mesh, Vertex
+from fragmentcolor import Shader, Pass, Mesh, Vertex
 
 wgsl = r#"
 struct VOut { @builtin(position) pos: vec4<f32> }
@@ -1533,7 +1555,111 @@ mesh.add_vertices([
 ])
 
 shader.validate_mesh(mesh); # Ok
-rpass.add_mesh(mesh).expect("mesh is compatible")
+rpass.add_mesh(mesh)
+
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Shader::is_compute
+
+Returns true if this Shader is a compute shader (has a compute entry point).
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::{Shader, Pass, Mesh, Vertex};
+
+let wgsl = r#"
+@compute @workgroup_size(1)
+fn cs_main() { }
+"#;
+let shader = Shader::new(wgsl).unwrap();
+
+if shader.is_compute() {
+    println!("This is a compute shader.");
+}
+
+let pass = Pass::from_shader("p", &shader);
+assert!(shader.is_compute());
+assert!(pass.is_compute());
+`}
+lang="rust" meta="collapse={13-15}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Shader, Pass, Mesh, Vertex } from "fragmentcolor";
+
+const wgsl = r#";
+@compute @workgroup_size(1);
+fn cs_main() { };
+"#;
+const shader = new Shader(wgsl).unwrap();
+
+if shader.isCompute() {;
+    println!("This is a compute shader.");
+};
+
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Shader, Pass, Mesh, Vertex
+
+wgsl = r#"
+@compute @workgroup_size(1)
+fn cs_main() { }
+"#
+shader = Shader(wgsl)
+
+if shader.is_compute() {
+    println!("This is a compute shader.")
+}
+
 `}
 lang="python"
 />

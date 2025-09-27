@@ -96,6 +96,7 @@ pub struct Texture {
 }
 
 impl Texture {
+    /// Creates a new Texture from a RenderContext.
     pub(crate) fn new(
         context: Arc<RenderContext>,
         object: Arc<TextureObject>,
@@ -106,6 +107,12 @@ impl Texture {
             object,
             id,
         }
+    }
+
+    /// Return the stable TextureId for this texture.
+    /// The id is valid within the Renderer that created it.
+    pub(crate) fn id(&self) -> &TextureId {
+        &self.id
     }
 
     #[lsp_doc("docs/api/core/texture/size.md")]
@@ -165,6 +172,7 @@ pub(crate) struct TextureObject {
     pub(crate) sampler: RwLock<wgpu::Sampler>,
     pub(crate) options: RwLock<SamplerOptions>,
     pub(crate) format: wgpu::TextureFormat,
+    pub(crate) usage: wgpu::TextureUsages,
 }
 
 // @TODO move to its own file for consistency with other modules
@@ -243,6 +251,7 @@ impl TextureObject {
             sampler: RwLock::new(sampler),
             options: RwLock::new(options),
             format,
+            usage,
         }
     }
 
@@ -342,6 +351,7 @@ impl TextureObject {
             sampler: RwLock::new(sampler),
             options: RwLock::new(SamplerOptions::default()),
             format,
+            usage,
         })
     }
 
@@ -383,6 +393,7 @@ impl TextureObject {
             sampler: RwLock::new(sampler),
             options: RwLock::new(SamplerOptions::default()),
             format,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
         }
     }
 
@@ -403,6 +414,9 @@ impl TextureObject {
             sampler: RwLock::new(sampler),
             options: RwLock::new(SamplerOptions::default()),
             format,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                | wgpu::TextureUsages::COPY_SRC
+                | wgpu::TextureUsages::TEXTURE_BINDING,
         }
     }
 
@@ -436,6 +450,7 @@ impl TextureObject {
             sampler: RwLock::new(sampler),
             options: RwLock::new(SamplerOptions::default()),
             format,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
         }
     }
 

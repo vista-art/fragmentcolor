@@ -13,7 +13,7 @@ impl Quad {
     #[lsp_doc("docs/api/core/mesh/primitives/quad/new.md")]
     pub fn new(min: [f32; 2], max: [f32; 2]) -> Self {
         // Build 2 triangles with position (vec2) and uv (vec2)
-        let mut mesh = Mesh::new();
+        let mesh = Mesh::new();
         let (minx, miny) = (min[0], min[1]);
         let (maxx, maxy) = (max[0], max[1]);
 

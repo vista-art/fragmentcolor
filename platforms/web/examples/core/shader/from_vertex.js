@@ -1,5 +1,4 @@
-
 import { Shader, Vertex } from "fragmentcolor";
 
-const v = new Vertex([0.0, 0.0, 0.0]);
-const shader = Shader.fromVertex(v);
+const vertex = new Vertex([0.0, 0.0, 0.0]);
+const shader = Shader.fromVertex(vertex);

@@ -52,6 +52,9 @@ pub mod error;
 /// Simple helper to convert between different size representations.
 pub mod size;
 
+/// Guides (developer docs) — included as module docs so Rust examples run as doctests.
+pub mod guides;
+
 /// # Color module
 ///
 /// Simple helper to represent color and convert user input (i.e. CSS strings)

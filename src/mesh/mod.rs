@@ -1,6 +1,7 @@
 use lsp_doc::lsp_doc;
 use parking_lot::RwLock;
 use std::collections::HashMap;
+use std::fmt::Debug;
 use std::hash::Hash;
 use std::sync::Arc;
 
@@ -26,6 +27,8 @@ mod platform;
 #[cfg(python)]
 pub use platform::python::PyVertexValue;
 
+use crate::{PassObject, Renderable, Shader};
+
 #[cfg_attr(wasm, wasm_bindgen)]
 #[cfg_attr(python, pyclass)]
 #[derive(Clone, Debug)]
@@ -47,7 +50,7 @@ impl Mesh {
         Self {
             object: Arc::new(MeshObject::new()),
             pass: Arc::new(crate::pass::PassObject::new(
-                "Mesh Debug Pass",
+                "Mesh Internal Pass",
                 crate::pass::PassType::Render,
             )),
         }
@@ -58,81 +61,83 @@ impl Mesh {
     where
         I: IntoIterator<Item = Vertex>,
     {
-        let mut m = Mesh::new();
-        m.add_vertices(verts);
-        m
+        let mesh = Mesh::new();
+        mesh.add_vertices(verts);
+        mesh
     }
 
     #[lsp_doc("docs/api/core/mesh/add_vertex.md")]
-    pub fn add_vertex<V: Into<Vertex>>(&mut self, v: V) {
-        self.object.add_vertex_internal(v.into());
+    pub fn add_vertex<V: Into<Vertex>>(&self, v: V) {
+        self.object.add_vertex(v.into());
     }
 
     #[lsp_doc("docs/api/core/mesh/add_vertices.md")]
-    pub fn add_vertices<I>(&mut self, verts: I)
+    pub fn add_vertices<I, V>(&self, vertices: I)
     where
-        I: IntoIterator<Item = Vertex>,
+        I: IntoIterator<Item = V>,
+        V: Into<Vertex>,
     {
-        for v in verts {
-            self.object.add_vertex_internal(v);
+        for vertex in vertices {
+            self.object.add_vertex(vertex.into());
         }
     }
 
     #[lsp_doc("docs/api/core/mesh/add_instance.md")]
-    pub fn add_instance<T: Into<Instance>>(&mut self, instance_buffer: T) {
-        self.object.add_instance_internal(instance_buffer.into());
+    pub fn add_instance<T: Into<Instance>>(&self, instance_buffer: T) {
+        self.object.add_instance(instance_buffer.into());
     }
 
     #[lsp_doc("docs/api/core/mesh/add_instances.md")]
-    pub fn add_instances<I, T>(&mut self, list: I)
+    pub fn add_instances<I, T>(&self, instances: I)
     where
         I: IntoIterator<Item = T>,
         T: Into<Instance>,
     {
-        for it in list {
-            self.object.add_instance_internal(it.into());
+        for instance in instances {
+            self.object.add_instance(instance.into());
         }
     }
 
     #[lsp_doc("docs/api/core/mesh/clear_instances.md")]
-    pub fn clear_instances(&mut self) {
-        self.object.clear_instances_internal();
+    pub fn clear_instances(&self) {
+        self.object.clear_instances();
     }
 
     /// Override how many instances to draw (when not using per-instance attributes).
     #[lsp_doc("docs/api/core/mesh/set_instance_count.md")]
-    pub fn set_instance_count(&mut self, n: u32) {
+    pub fn set_instance_count(&self, n: u32) {
         *self.object.override_instances.write() = Some(n);
+        self.object.invalidate_cache();
     }
 
     /// Clear the instance count override; fall back to instance buffer or 1.
     #[lsp_doc("docs/api/core/mesh/clear_instance_count.md")]
-    pub fn clear_instance_count(&mut self) {
+    pub fn clear_instance_count(&self) {
         *self.object.override_instances.write() = None;
+        self.object.invalidate_cache();
     }
 }
 
 // -----------------------------
 // Renderable impl ( for Mesh quick-view)
 // -----------------------------
-impl crate::renderer::Renderable for Mesh {
-    fn passes(&self) -> impl IntoIterator<Item = &crate::pass::PassObject> {
-        // If this internal pass has no shader yet, build one from the first vertex
+impl Renderable for Mesh {
+    fn passes(&self) -> impl IntoIterator<Item = &PassObject> {
         if self.pass.shaders.read().is_empty() {
-            if let Some(first) = self.object.verts.read().first().cloned()
-                && let Ok(shader) = crate::Shader::from_vertex(&first)
-            {
+            if let Some(first) = self.object.verts.read().first().cloned() {
+                let shader = Shader::from_vertex(&first);
                 self.pass.add_shader(&shader);
                 _ = shader.add_mesh(self);
             }
-        } else if let Some(sh) = self.pass.shaders.read().last().cloned() {
-            let attached = sh
+        } else if let Some(shader) = self.pass.shaders.read().last().cloned() {
+            let is_attached = shader
                 .meshes
                 .read()
                 .iter()
-                .any(|m| Arc::ptr_eq(m, &self.object));
-            if !attached {
-                sh.add_mesh_internal(self.object.clone());
+                .any(|mesh| Arc::ptr_eq(mesh, &self.object));
+
+            if !is_attached {
+                _ = shader.add_mesh(self.object.clone());
             }
         }
         vec![self.pass.as_ref()]
@@ -196,24 +201,27 @@ pub(crate) struct MeshObject {
     pub(crate) indices: RwLock<Vec<u32>>, // indices referencing unique verts
 
     // Schemas
-    pub(crate) schema_v: RwLock<Option<Schema>>, // derived from first vertex
-    pub(crate) schema_i: RwLock<Option<Schema>>, // derived from first instance
+    pub(crate) vertex_schema: RwLock<Option<VertexSchema>>, // derived from first vertex
+    pub(crate) instance_schema: RwLock<Option<VertexSchema>>, // derived from first instance
 
     // Dirty flags
-    dirty_v: RwLock<bool>,
-    dirty_i: RwLock<bool>,
+    dirty_vertices: RwLock<bool>,
+    dirty_instances: RwLock<bool>,
 
     // Optional override for instance count (allows drawing without instance buffer)
     override_instances: RwLock<Option<u32>>,
 
     // GPU resources (created lazily)
     gpu: RwLock<Option<GpuStreams>>,
+
+    // Cache for ensure_gpu results
+    gpu_cache: RwLock<Option<(VertexBuffers, DrawCounts)>>,
+    cache_valid: RwLock<bool>,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct Schema {
+pub(crate) struct VertexSchema {
     pub(crate) stride: u64,
-    // ordered fields
     pub(crate) fields: Vec<Field>,
 }
 
@@ -230,8 +238,7 @@ struct GpuStreams {
     index_buffer: wgpu::Buffer,
     instance_buffer_len: u32,
     instance_buffer: Option<(wgpu::Buffer, u32)>, // (buffer, count)
-    // Capacity in bytes of the current instance buffer; 0 when None
-    instance_bytes: u64,
+    instance_buffer_capacity: u64,
 }
 
 impl MeshObject {
@@ -242,49 +249,61 @@ impl MeshObject {
             packed_verts: RwLock::new(Vec::new()),
             packed_insts: RwLock::new(Vec::new()),
             indices: RwLock::new(Vec::new()),
-            schema_v: RwLock::new(None),
-            schema_i: RwLock::new(None),
-            dirty_v: RwLock::new(false),
-            dirty_i: RwLock::new(false),
+            vertex_schema: RwLock::new(None),
+            instance_schema: RwLock::new(None),
+            dirty_vertices: RwLock::new(false),
+            dirty_instances: RwLock::new(false),
             override_instances: RwLock::new(None),
             gpu: RwLock::new(None),
+            gpu_cache: RwLock::new(None),
+            cache_valid: RwLock::new(false),
         }
     }
 
-    fn add_vertex_internal(&self, v: Vertex) {
+    fn add_vertex(&self, v: Vertex) {
         self.verts.write().push(v);
-        *self.dirty_v.write() = true;
+        *self.dirty_vertices.write() = true;
+        self.invalidate_cache();
     }
-    fn add_instance_internal(&self, i: Instance) {
+
+    fn add_instance(&self, i: Instance) {
         self.insts.write().push(i);
-        *self.dirty_i.write() = true;
+        *self.dirty_instances.write() = true;
+        self.invalidate_cache();
     }
-    fn clear_instances_internal(&self) {
+
+    fn clear_instances(&self) {
         self.insts.write().clear();
-        *self.dirty_i.write() = true;
+        *self.dirty_instances.write() = true;
+        self.invalidate_cache();
+    }
+
+    fn invalidate_cache(&self) {
+        *self.cache_valid.write() = false;
+        *self.gpu_cache.write() = None;
     }
 
     fn ensure_packed(&self) -> Result<(), MeshError> {
         // Derive schema from first vertex if missing
-        if self.schema_v.read().is_none() {
+        if self.vertex_schema.read().is_none() {
             let v = match self.verts.read().first() {
                 Some(v) => v.clone(),
                 None => return Ok(()), // empty mesh; allowed
             };
             let s = derive_vertex_schema(&v)?;
-            self.schema_v.write().replace(s);
+            self.vertex_schema.write().replace(s);
         }
-        if self.schema_i.read().is_none()
+        if self.instance_schema.read().is_none()
             && let Some(first) = self.insts.read().first().cloned()
         {
             let s = derive_instance_schema(&first)?;
-            self.schema_i.write().replace(s);
+            self.instance_schema.write().replace(s);
         }
 
         // Pack vertices if dirty
-        if *self.dirty_v.read() {
+        if *self.dirty_vertices.read() {
             let verts = self.verts.read();
-            let schema = self.schema_v.read();
+            let schema = self.vertex_schema.read();
             // Dedup by full equality
             let mut map: HashMap<VertexKey, u32> = HashMap::new();
             let mut unique: Vec<&Vertex> = Vec::new();
@@ -308,41 +327,63 @@ impl MeshObject {
             }
             *self.packed_verts.write() = bytes;
             *self.indices.write() = idx;
-            *self.dirty_v.write() = false;
+            *self.dirty_vertices.write() = false;
         }
         // Pack instances if dirty
-        if *self.dirty_i.read() {
+        if *self.dirty_instances.read() {
             let insts = self.insts.read();
-            let schema = self.schema_i.read();
+            let schema = self.instance_schema.read();
             if insts.is_empty() {
                 *self.packed_insts.write() = Vec::new();
-                *self.dirty_i.write() = false;
+                *self.dirty_instances.write() = false;
             } else {
                 let mut bytes = Vec::new();
                 for ins in insts.iter() {
                     pack_instance(&mut bytes, ins, schema.as_ref().unwrap())?;
                 }
                 *self.packed_insts.write() = bytes;
-                *self.dirty_i.write() = false;
+                *self.dirty_instances.write() = false;
             }
         }
+
         Ok(())
     }
 
-    pub(crate) fn ensure_gpu(
+    /// Get Vertex Buffers and Draw counts for this mesh,
+    /// creating or updating GPU resources as needed.
+    pub(crate) fn vertex_buffers(
         &self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-    ) -> Result<(GpuOwned, DrawCounts), MeshError> {
+    ) -> Result<(VertexBuffers, DrawCounts), MeshError> {
+        if *self.cache_valid.read() {
+            if let Some(cached) = self.gpu_cache.read().as_ref() {
+                return Ok(cached.clone());
+            }
+        }
+
+        let result = self.create_gpu_vertex_buffers(device, queue)?;
+
+        *self.gpu_cache.write() = Some(result.clone());
+        *self.cache_valid.write() = true;
+
+        Ok(result)
+    }
+
+    fn create_gpu_vertex_buffers(
+        &self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+    ) -> Result<(VertexBuffers, DrawCounts), MeshError> {
         // Capture dirty flags before packing; ensure_packed() clears them
-        let was_dirty_v = *self.dirty_v.read();
-        let was_dirty_i = *self.dirty_i.read();
+        let was_dirty_v = *self.dirty_vertices.read();
+        let was_dirty_i = *self.dirty_instances.read();
 
         self.ensure_packed()?;
         let pv = self.packed_verts.read();
         let pi = self.packed_insts.read();
         let idx = self.indices.read();
-        let si = self.schema_i.read();
+        let si = self.instance_schema.read();
 
         // Create or grow buffers
         let mut gpu = self.gpu.write();
@@ -360,7 +401,7 @@ impl MeshObject {
             if had_inst != want_inst {
                 need_new = true;
             } else if want_inst {
-                let current_cap = g.instance_bytes;
+                let current_cap = g.instance_buffer_capacity;
                 let needed = pi.len() as u64;
                 if needed > current_cap {
                     need_new = true;
@@ -409,47 +450,70 @@ impl MeshObject {
                 index_buffer,
                 instance_buffer_len: idx.len() as u32,
                 instance_buffer,
-                instance_bytes,
+                instance_buffer_capacity: instance_bytes,
             });
         } else {
             // Update contents if needed without recreating buffers
             if let Some(g) = gpu.as_ref() {
                 if was_dirty_v {
                     queue.write_buffer(&g.vertex_buffer, 0, &pv);
-                    *self.dirty_v.write() = false;
+                    *self.dirty_vertices.write() = false;
                 }
                 if was_dirty_i {
                     if let Some((ref buf, _)) = g.instance_buffer {
                         // Safe to write since capacity check passed above
                         queue.write_buffer(buf, 0, &pi);
                     }
-                    *self.dirty_i.write() = false;
+                    *self.dirty_instances.write() = false;
                 }
             }
         }
 
         let g = gpu.as_ref().unwrap();
-        let refs = GpuOwned {
+        let vertex_buffers = VertexBuffers {
             vertex_buffer: g.vertex_buffer.clone(),
             index_buffer: g.index_buffer.clone(),
             instance_buffer: g.instance_buffer.as_ref().map(|(b, _)| b.clone()),
         };
+
         let override_count = *self.override_instances.read();
-        let counts = DrawCounts {
+        let draw_counts = DrawCounts {
             index_count: g.instance_buffer_len,
             instance_count: override_count
                 .unwrap_or_else(|| g.instance_buffer.as_ref().map(|(_, c)| *c).unwrap_or(1)),
         };
-        Ok((refs, counts))
+
+        Ok((vertex_buffers, draw_counts))
     }
 }
 
-pub(crate) struct GpuOwned {
+pub(crate) struct VertexBuffers {
     pub vertex_buffer: wgpu::Buffer,
     pub index_buffer: wgpu::Buffer,
     pub instance_buffer: Option<wgpu::Buffer>,
 }
 
+impl Clone for VertexBuffers {
+    fn clone(&self) -> Self {
+        Self {
+            vertex_buffer: self.vertex_buffer.clone(),
+            index_buffer: self.index_buffer.clone(),
+            instance_buffer: self.instance_buffer.clone(),
+        }
+    }
+}
+
+impl Debug for VertexBuffers {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("VertexBuffers")
+            .field("vertex_buffer", &self.vertex_buffer)
+            .field("index_buffer", &self.index_buffer)
+            .field("instance_buffer", &self.instance_buffer)
+            .finish()
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
 pub(crate) struct DrawCounts {
     pub index_count: u32,
     pub instance_count: u32,
@@ -484,7 +548,7 @@ impl MeshObject {
     }
 }
 
-fn derive_vertex_schema(vertex: &Vertex) -> Result<Schema, MeshError> {
+fn derive_vertex_schema(vertex: &Vertex) -> Result<VertexSchema, MeshError> {
     let mut fields: Vec<Field> = Vec::new();
     // position first; single key with dynamic format
     match vertex.dimensions {
@@ -510,10 +574,10 @@ fn derive_vertex_schema(vertex: &Vertex) -> Result<Schema, MeshError> {
         });
     }
     let stride = fields.iter().map(|f| f.size).sum();
-    Ok(Schema { stride, fields })
+    Ok(VertexSchema { stride, fields })
 }
 
-fn derive_instance_schema(i: &Instance) -> Result<Schema, MeshError> {
+fn derive_instance_schema(i: &Instance) -> Result<VertexSchema, MeshError> {
     let mut fields: Vec<Field> = Vec::new();
     // Only explicit per-instance properties; sorted by key
     let mut rest: Vec<(&String, &VertexValue)> = i.properties.iter().collect();
@@ -526,10 +590,10 @@ fn derive_instance_schema(i: &Instance) -> Result<Schema, MeshError> {
         });
     }
     let stride = fields.iter().map(|f| f.size).sum();
-    Ok(Schema { stride, fields })
+    Ok(VertexSchema { stride, fields })
 }
 
-fn pack_vertex(out: &mut Vec<u8>, v: &Vertex, schema: &Schema) {
+fn pack_vertex(out: &mut Vec<u8>, v: &Vertex, schema: &VertexSchema) {
     for f in schema.fields.iter() {
         match f.name.as_str() {
             "position" => {
@@ -556,7 +620,7 @@ fn pack_vertex(out: &mut Vec<u8>, v: &Vertex, schema: &Schema) {
     }
 }
 
-fn pack_instance(out: &mut Vec<u8>, i: &Instance, schema: &Schema) -> Result<(), MeshError> {
+fn pack_instance(out: &mut Vec<u8>, i: &Instance, schema: &VertexSchema) -> Result<(), MeshError> {
     for f in schema.fields.iter() {
         if let Some(val) = i.properties.get(&f.name) {
             out.extend_from_slice(&val.to_bytes());

@@ -12,12 +12,6 @@ pub enum ShaderError {
     TypeMismatch(String),
     #[error("Invalid key: {0}")]
     InvalidKey(String),
-    #[error("Index out of bounds for {key}: index {index} >= len {len}")]
-    IndexOutOfBounds {
-        key: String,
-        index: usize,
-        len: usize,
-    },
     #[error("Field not found in struct: {0}")]
     FieldNotFound(String),
     #[error("WGSL error: {0}")]
@@ -33,6 +27,12 @@ pub enum ShaderError {
     RequestError(#[from] ureq::Error),
     #[error("File not found: {0}")]
     FileNotFound(#[from] std::io::Error),
+    #[error("Index out of bounds for {key}: index {index} >= len {len}")]
+    IndexOutOfBounds {
+        key: String,
+        index: usize,
+        len: usize,
+    },
     #[cfg(wasm)]
     #[error("WASM Shader Error: {0}")]
     Error(String),
@@ -41,15 +41,15 @@ pub enum ShaderError {
 // Python-specific conversions
 
 #[cfg(python)]
-impl From<pyo3::PyErr> for crate::shader::error::ShaderError {
+impl From<pyo3::PyErr> for ShaderError {
     fn from(e: pyo3::PyErr) -> Self {
-        crate::shader::error::ShaderError::ParseError(e.to_string())
+        ShaderError::ParseError(e.to_string())
     }
 }
 
 #[cfg(python)]
-impl From<crate::shader::error::ShaderError> for pyo3::PyErr {
-    fn from(e: crate::shader::error::ShaderError) -> Self {
+impl From<ShaderError> for pyo3::PyErr {
+    fn from(e: ShaderError) -> Self {
         crate::PyFragmentColorError::new_err(e.to_string())
     }
 }

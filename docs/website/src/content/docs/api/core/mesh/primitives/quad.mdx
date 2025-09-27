@@ -23,9 +23,9 @@ Produces a Mesh with position (vec2) and uv (vec2) per-vertex.
 code={`
 use fragmentcolor::mesh::primitives::Quad;
 
-let q = Quad::new([-0.5, -0.5], [0.5, 0.5]);
+let quad = Quad::new([-0.5, -0.5], [0.5, 0.5]);
 
-_ = mesh;
+_ = quad;
 `}
 lang="rust" meta="collapse={5-5}"
 />
@@ -37,7 +37,7 @@ lang="rust" meta="collapse={5-5}"
 code={`
 import { Quad } from "fragmentcolor";
 
-const q = new Quad([-0.5, -0.5], [0.5, 0.5]);
+const quad = new Quad([-0.5, -0.5], [0.5, 0.5]);
 
 `}
 lang="js"
@@ -50,7 +50,7 @@ lang="js"
 code={`
 from fragmentcolor import Quad
 
-q = Quad([-0.5, -0.5], [0.5, 0.5])
+quad = Quad([-0.5, -0.5], [0.5, 0.5])
 
 `}
 lang="python"

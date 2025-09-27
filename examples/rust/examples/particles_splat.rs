@@ -1,5 +1,24 @@
 use fragmentcolor::{App, Frame, Pass, Shader, TextureFormat, run};
 
+fn handle_cursor_moved(
+    app: &App,
+    _dev: winit::event::DeviceId,
+    pos: &winit::dpi::PhysicalPosition<f64>,
+) {
+    // Convert from window pixels to clip coords [-1,1] with origin at center, Y up
+    let id = app.window_id();
+    if let Some(sz) = app.size(id) {
+        let w = sz.width as f64;
+        let h = sz.height as f64;
+        if w > 0.0 && h > 0.0 {
+            let cx = (pos.x / w) * 2.0 - 1.0;
+            let cy = -((pos.y / h) * 2.0 - 1.0);
+            let _ = app.set_uniform(id, "sim.cx", cx as f32);
+            let _ = app.set_uniform(id, "sim.cy", cy as f32);
+        }
+    }
+}
+
 // Compute-driven particle simulation (splat to storage texture)
 // Pipeline per-frame:
 // 1) compute: update positions/velocities in storage buffers
@@ -11,38 +30,45 @@ fn make_update_wgsl(n: u32) -> String {
     let tpl = r#"
 const N: u32 = __N__u;
 
+struct Sim {
+  step: f32,  // dt seconds
+  grav: f32,  // gravity strength
+  damp: f32,  // velocity damping
+  mode: f32,  // debug flag (unused by default)
+  cx: f32,    // gravity center x in clip coords [-1,1]
+  cy: f32,    // gravity center y in clip coords [-1,1]
+};
+
 @group(0) @binding(0) var<storage, read_write> positions: array<vec2<f32>, N>;
 @group(0) @binding(1) var<storage, read_write> velocities: array<vec2<f32>, N>;
-@group(0) @binding(2) var<uniform> sim: vec4<f32>; // dt, g, damp, _
+@group(0) @binding(2) var<storage, read> sim: Sim;
 
 @compute @workgroup_size(256)
 fn cs_main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let i = gid.x;
   if (i >= N) { return; }
-  let dt = sim.x;
-  let g  = sim.y;
-  let damp = sim.z;
+  let dt = sim.step;
+  let g  = sim.grav;
+  let damp = sim.damp;
 
   var p = positions[i];
   var v = velocities[i];
 
   let eps = 1e-4;
-  let r2 = p.x*p.x + p.y*p.y + eps;
+  let dx = p.x - sim.cx;
+  let dy = p.y - sim.cy;
+  let r2 = dx*dx + dy*dy + eps;
   let r  = sqrt(r2);
   let inv_r3 = 1.0 / (r2 * r);
-  let ax = -g * p.x * inv_r3;
-  let ay = -g * p.y * inv_r3;
+  let ax = -g * dx * inv_r3;
+  let ay = -g * dy * inv_r3;
 
+  // Update velocity then integrate position (semi-implicit Euler)
   v.x = (v.x + ax * dt) * damp;
   v.y = (v.y + ay * dt) * damp;
 
   p.x = p.x + v.x * dt;
   p.y = p.y + v.y * dt;
-
-  // Optional debug nudge: if sim.w > 0, move first particle slightly each frame
-  if (sim.w > 0.0 && i == 0u) {
-    p.x = p.x + 0.001;
-  }
 
   p.x = clamp(p.x, -2.0, 2.0);
   p.y = clamp(p.y, -2.0, 2.0);
@@ -158,16 +184,12 @@ fn main() {
     cs_update
         .set("velocities", bytemuck::cast_slice(&vel))
         .expect("set vel");
-    let nudge = std::env::var("NUDGE_POS")
-        .ok()
-        .and_then(|s| s.parse::<u32>().ok())
-        .unwrap_or(0);
-    cs_update
-        .set(
-            "sim",
-            [0.25, 0.35, 0.9975, if nudge != 0 { 1.0 } else { 0.0 }],
-        )
-        .expect("set sim");
+    cs_update.set("sim.step", 1.0 / 60.0).expect("sim.step");
+    cs_update.set("sim.grav", 0.35).expect("sim.grav");
+    cs_update.set("sim.damp", 0.9975).expect("sim.damp");
+    cs_update.set("sim.mode", 0.0).expect("sim.mode");
+    cs_update.set("sim.cx", 0.0f32).expect("sim.cx");
+    cs_update.set("sim.cy", 0.0f32).expect("sim.cy");
     // Do not set positions on the splat shader; it shares the persistent GPU buffer via registry
     cs_splat
         .set("colors", bytemuck::cast_slice(&col))
@@ -218,10 +240,11 @@ fn main() {
     frame.add_pass(&pass_splat);
     frame.add_pass(&pass_present);
 
+    // Mouse tracking and per-frame center update
+    app.on_cursor_moved(handle_cursor_moved);
+
     // Drive
     app.on_resize(on_resize).scene(frame);
-
-    // No per-frame sim reset; keep initial 'sim' values set above.
 
     run(&mut app);
 }

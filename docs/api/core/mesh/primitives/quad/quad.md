@@ -8,7 +8,7 @@ Produces a Mesh with position (vec2) and uv (vec2) per-vertex.
 ```rust
 use fragmentcolor::mesh::primitives::Quad;
 
-let q = Quad::new([-0.5, -0.5], [0.5, 0.5]);
+let quad = Quad::new([-0.5, -0.5], [0.5, 0.5]);
 
-# _ = mesh;
+# _ = quad;
 ```

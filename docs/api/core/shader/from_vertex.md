@@ -11,14 +11,10 @@ This is intended as a fallback and for quick debugging. Canonical usage is the o
 ## Example
 
 ```rust
-# pub fn main() -> Result<(), Box<dyn std::error::Error>> {
-
 use fragmentcolor::{Shader, Vertex};
 
-let v = Vertex::new([0.0, 0.0, 0.0]);
-let shader = Shader::from_vertex(&v)?;
+let vertex = Vertex::new([0.0, 0.0, 0.0]);
+let shader = Shader::from_vertex(&vertex);
 
 # let _ = shader;
-# Ok(())
-# }
 ```

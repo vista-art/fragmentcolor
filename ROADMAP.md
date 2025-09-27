@@ -2,6 +2,8 @@
 
 This roadmap summarizes current focus and planned features.
 
+use std::borrow::Borrow;
+
 ## 0.10.8 Swift & Kotlin with Uniffi
 
 - [ ] Swift Wrappers
@@ -15,13 +17,16 @@ This roadmap summarizes current focus and planned features.
   - [ ] Script to Test, Compile & Publish Android
   - [ ] Script to Test, Compile & Publish iOS
 - [ ] Revemp RenderPass API
-  - It must give access to all wgpu::RenderPass customizations with sensible defaults, so we keep our API simple while still allowing for advanced use cases.
+  - [ ] It must give access to all wgpu::RenderPass customizations with sensible defaults, so we keep our API simple while still allowing for advanced use cases.
 - [ ] Support 3D Textures
   - [ ] (check RenderPassColorAttachment.depth_slice)
+- [ ] Create specialized Alias objects:
+  - [ ] Compute: newtype for Shader, but only allows compute shaders (Shader continues to allow both)
+  - [ ] RenderPass: newtype for Pass, but only allows Render passes (Pass continues to allow both)
+  - [ ] ComputePass: newtype for Pass, but only allows Compute passes (Pass continues to allow both)
 
 ## Up Next
 
-- [ ] Compute Pass support
 - [ ] Support other types of Window integrations in Python (decouple from RenderCanvas)
   - [ ] Qt
   - [ ] WxWidgets
@@ -74,6 +79,29 @@ This roadmap summarizes current focus and planned features.
   •  Acceptance:
     •  Minimal API scaffolding with tests; no behavior change until used.
 
+  ```txt
+    Roadmap Status Report
+
+    1. Device-lost recovery path (centralized)
+    Status: NOT IMPLEMENTED (Partial surface-level handling only)
+
+    Rationale: The current implementation only handles surface frame errors (Lost/Outdated) with retry logic in src/target/window.rs:56-86 and src/renderer/mod.rs:486-501. There is no centralized device-lost recovery mechanism. The request_device function in src/renderer/platform/all.rs:47-49 only sets up error logging via device.on_uncaptured_error, but doesn't implement re-requesting the adapter/device or rebuilding the RenderContext. The surface-level retry is not the same as full device loss recovery.
+
+    2. Staging-belt style uploads for uniforms  
+    Status: NOT IMPLEMENTED
+
+    Rationale: The current UniformBufferPool in src/renderer/buffer_pool/uniform.rs:104-172 uses individual queue.write_buffer calls for each upload. No wgpu::util::StagingBelt is present in the codebase (confirmed by grep search), and there's no belt-like batching mechanism that would flush uploads in a single operation per frame. Each uniform upload triggers an immediate write.
+
+    3. Sampler and texture view caches (descriptor-keyed, forward-looking)
+    Status: NOT IMPLEMENTED
+
+    Rationale: While there is a TexturePool for transient MSAA textures (src/renderer/texture_pool.rs), there are no descriptor-keyed caches for samplers or texture views. Samplers are created on-demand in src/texture/sampler.rs:35 and texture views are created fresh each time in src/texture/mod.rs:464-467 using default descriptors. The existing texture pool serves a different purpose (temporary render attachments) and doesn't cache samplers/views for reuse across frames.
+
+    Conclusion
+
+    All three items remain unimplemented and should stay on the TODO list. The repository has good surface-level error handling and existing pooling infrastructure, but lacks the specific centralized device recovery, staging belt uploads, and descriptor-based caching that these roadmap items call for.
+  ```
+
 ## Backlog (rough ideas)
 
 - [ ] Custom blending
@@ -91,6 +119,33 @@ This roadmap summarizes current focus and planned features.
 
 - [ ] Website & docs
   - [ ] Internationalization groundwork for docs
+
+- [ ] You can remove half of the conversion traits by using Borrow:
+    ```rust
+    #[derive(Debug)]
+    struct A {
+        s: String,
+    }
+
+    struct B {
+        i: usize,
+    }
+
+    impl <BB: Borrow<B>> From<BB> for A {
+        fn from(b: BB) -> A {
+            A {
+                s: format!("a-{}", b.borrow().i),
+            }
+        }
+    }
+
+    fn main() {
+        let b = B { i: 13 };
+        let a1: A = (&b).into();
+        let a2: A = b.into();
+        println!("{a1:?}, {a2:?}");
+    }
+    ```
 
 ### Performance
 

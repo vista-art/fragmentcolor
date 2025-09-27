@@ -1,9 +1,8 @@
-import { Pass, Shader, Mesh, Vertex } from "fragmentcolor";
-
-const shader = Shader.default();
-const pass = new Pass("p"); pass.addShader(shader);
+import { Shader, Mesh, Vertex, Pass } from "fragmentcolor";
 
 const mesh = new Mesh();
-mesh.addVertex(Vertex.new([0.0, 0.0]));
+mesh.addVertex([0.0, 0.0]);
+const shader = Shader.fromMesh(mesh);
+const pass = new Pass("pass"); pass.addShader(shader);
 
-pass.addMeshToShader(mesh, shader).expect("mesh is compatible");
+pass.addMeshToShader(mesh, shader);

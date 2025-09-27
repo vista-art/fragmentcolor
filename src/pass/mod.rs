@@ -1,6 +1,7 @@
-use crate::{Color, Region, Renderable, Shader, ShaderObject};
+use crate::{Color, Mesh, Region, Renderable, Shader, ShaderObject};
 use lsp_doc::lsp_doc;
 use parking_lot::RwLock;
+use std::collections::HashMap;
 use std::sync::Arc;
 
 #[cfg(python)]
@@ -11,6 +12,7 @@ use wasm_bindgen::prelude::*;
 mod platform;
 
 pub mod error;
+pub use error::*;
 
 #[cfg_attr(wasm, wasm_bindgen)]
 #[cfg_attr(python, pyclass)]
@@ -38,6 +40,21 @@ impl PassInput {
 pub enum PassType {
     Compute,
     Render,
+}
+
+impl From<Shader> for PassType {
+    fn from(shader: Shader) -> Self {
+        shader.object.into()
+    }
+}
+
+impl From<Arc<ShaderObject>> for PassType {
+    fn from(shader: Arc<ShaderObject>) -> Self {
+        match shader.is_compute() {
+            true => PassType::Compute,
+            false => PassType::Render,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -89,30 +106,13 @@ impl Pass {
     }
 
     #[lsp_doc("docs/api/core/pass/add_mesh.md")]
-    pub fn add_mesh(&self, mesh: &crate::mesh::Mesh) -> Result<(), crate::shader::ShaderError> {
-        self.ensure_shader();
-
-        // Attach this mesh to the last shader in the pass.
-        if let Some(shader) = self.object.shaders.read().last().cloned() {
-            // Recreate a lightweight Shader wrapper to reuse validation
-            // (public API requires going through Shader::add_mesh)
-            let s = crate::Shader {
-                pass: self.object.clone(),
-                object: shader.clone(),
-            };
-            s.add_mesh(mesh)
-        } else {
-            Ok(())
-        }
+    pub fn add_mesh(&self, mesh: &Mesh) -> Result<(), PassError> {
+        self.object.add_mesh(mesh)
     }
 
     #[lsp_doc("docs/api/core/pass/add_mesh_to_shader.md")]
-    pub fn add_mesh_to_shader(
-        &self,
-        mesh: &crate::mesh::Mesh,
-        shader: &crate::Shader,
-    ) -> Result<(), crate::shader::ShaderError> {
-        shader.add_mesh(mesh)
+    pub fn add_mesh_to_shader(&self, mesh: &Mesh, shader: &Shader) -> Result<(), PassError> {
+        Ok(shader.add_mesh(mesh)?)
     }
 
     #[lsp_doc("docs/api/core/pass/set_viewport.md")]
@@ -130,13 +130,19 @@ impl Pass {
         self.object.set_compute_dispatch(x, y, z);
     }
 
-    /// Ensure at least one Shader exists in this Pass; if none, add a default shader.
-    fn ensure_shader(&self) {
-        let shaders = self.object.shaders.read();
-        if shaders.is_empty() {
-            // @TODO create a Shader from a specific Mesh (mimics Vertex layout)
-            self.add_shader(&Shader::default());
-        }
+    #[lsp_doc("docs/api/core/pass/add_target.md")]
+    pub fn add_target<T>(&self, target: T) -> Result<(), PassError>
+    where
+        T: TryInto<ColorTarget, Error = PassError>,
+    {
+        let ct = target.try_into()?;
+        self.object.set_color_target_id(ct.id);
+        Ok(())
+    }
+
+    #[lsp_doc("docs/api/core/pass/is_compute.md")]
+    pub fn is_compute(&self) -> bool {
+        self.object.is_compute()
     }
 }
 
@@ -146,23 +152,74 @@ impl Renderable for Pass {
     }
 }
 
+/// A reference to a color render target texture. Expects a stable texture created by the Renderer
+/// (same device/context) with usage including RENDER_ATTACHMENT and a color-capable format.
+#[derive(Clone, Debug)]
+pub struct ColorTarget {
+    pub(crate) id: crate::texture::TextureId,
+}
+
+impl TryFrom<&crate::texture::Texture> for ColorTarget {
+    type Error = PassError;
+    fn try_from(tex: &crate::texture::Texture) -> Result<Self, Self::Error> {
+        // Validate usage and format for color attachment
+        let usage = tex.object.usage;
+        if !usage.contains(wgpu::TextureUsages::RENDER_ATTACHMENT) {
+            return Err(PassError::InvalidColorTarget(
+                "texture was not created with RENDER_ATTACHMENT usage".into(),
+            ));
+        }
+        let fmt = tex.object.format;
+        match fmt {
+            wgpu::TextureFormat::Depth32Float
+            | wgpu::TextureFormat::Depth16Unorm
+            | wgpu::TextureFormat::Depth24Plus
+            | wgpu::TextureFormat::Depth24PlusStencil8
+            | wgpu::TextureFormat::Depth32FloatStencil8 => {
+                return Err(PassError::InvalidColorTarget(
+                    "depth/stencil formats are not valid color targets".into(),
+                ));
+            }
+            _ => {}
+        }
+        Ok(ColorTarget {
+            id: tex.id().clone(),
+        })
+    }
+}
+
+impl TryFrom<&crate::target::TextureTarget> for ColorTarget {
+    type Error = PassError;
+    fn try_from(target: &crate::target::TextureTarget) -> Result<Self, Self::Error> {
+        // Convert to a Texture handle and reuse validation
+        let texture = target.texture();
+        ColorTarget::try_from(&texture)
+    }
+}
+
 #[cfg(wasm)]
 crate::impl_js_bridge!(Pass, crate::pass::error::PassError);
 
 #[derive(Debug)]
 pub struct PassObject {
+    pub pass_type: PassType,
     pub(crate) name: Arc<str>,
     pub(crate) input: RwLock<PassInput>,
     pub(crate) shaders: RwLock<Vec<Arc<ShaderObject>>>,
     pub(crate) viewport: RwLock<Option<Region>>,
     pub(crate) required_buffer_size: RwLock<u64>,
-    pub(crate) mesh: RwLock<Option<Arc<crate::mesh::MeshObject>>>,
-    pub pass_type: PassType,
     // For compute passes: dispatch size (defaults to 1,1,1)
     pub(crate) compute_dispatch: RwLock<(u32, u32, u32)>,
+    // Milestone A: optional per-pass color target
+    pub(crate) color_target: RwLock<Option<crate::texture::TextureId>>,
+    // Milestone B (placeholders): depth attachment/state and storage alias map
+    pub(crate) _depth_target: RwLock<Option<crate::texture::TextureId>>,
+    pub(crate) _storage_alias: RwLock<HashMap<String, String>>,
+    pub(crate) present_to_target: RwLock<bool>,
 }
 
 impl PassObject {
+    /// Create a new Pass object with the given name and type.
     pub fn new(name: &str, pass_type: PassType) -> Self {
         Self {
             name: Arc::from(name),
@@ -170,33 +227,16 @@ impl PassObject {
             viewport: RwLock::new(None),
             input: RwLock::new(PassInput::clear(Color::transparent())),
             required_buffer_size: RwLock::new(0),
-            mesh: RwLock::new(None),
             pass_type,
             compute_dispatch: RwLock::new((1, 1, 1)),
+            color_target: RwLock::new(None),
+            _depth_target: RwLock::new(None),
+            _storage_alias: RwLock::new(HashMap::new()),
+            present_to_target: RwLock::new(false),
         }
     }
 
-    pub(crate) fn from_shader_object(name: &str, shader: Arc<ShaderObject>) -> Self {
-        let pass_type = if shader.is_compute() {
-            PassType::Compute
-        } else {
-            PassType::Render
-        };
-
-        let total_bytes = shader.total_bytes;
-
-        Self {
-            name: Arc::from(name),
-            shaders: RwLock::new(vec![shader]),
-            viewport: RwLock::new(None),
-            input: RwLock::new(PassInput::clear(Color::transparent())),
-            required_buffer_size: RwLock::new(total_bytes),
-            mesh: RwLock::new(None),
-            pass_type,
-            compute_dispatch: RwLock::new((1, 1, 1)),
-        }
-    }
-
+    /// Set the clear color for this pass; changes input to a clear operation.
     pub fn set_clear_color(&self, color: impl Into<Color>) {
         *self.input.write() = PassInput::clear(color.into());
     }
@@ -206,21 +246,51 @@ impl PassObject {
         *self.compute_dispatch.write() = (x.max(1), y.max(1), z.max(1));
     }
 
+    /// Get the compute dispatch size for compute passes.
     pub fn compute_dispatch(&self) -> (u32, u32, u32) {
         *self.compute_dispatch.read()
     }
 
+    /// Get the current PassInput (load or clear).
     pub fn get_input(&self) -> PassInput {
         self.input.read().clone()
     }
 
+    /// Add a shader to this pass. The shader must be compatible with the pass type.
     pub fn add_shader(&self, shader: &Shader) {
-        if shader.object.is_compute() == self.is_compute() {
-            *self.required_buffer_size.write() += shader.object.total_bytes;
-            self.shaders.write().push(shader.object.clone());
+        self.add_shader_object(shader.object.clone())
+    }
+
+    pub fn set_color_target_id(&self, id: crate::texture::TextureId) {
+        *self.color_target.write() = Some(id);
+        // Selecting a color target marks this pass as intermediate by default
+        *self.present_to_target.write() = false;
+    }
+
+    /// Internal method to add a shader object to this pass.
+    fn add_shader_object(&self, shader: Arc<ShaderObject>) {
+        if shader.is_compute() == self.is_compute() {
+            *self.required_buffer_size.write() += shader.total_bytes;
+            self.shaders.write().push(shader.clone());
         } else {
             log::warn!("Cannot add a compute shader to a render pass or vice versa");
         }
+    }
+
+    /// Add a mesh to the last compatible shader in this pass.
+    /// If no compatible shader is found, an error is returned.
+    pub fn add_mesh(&self, mesh: &Mesh) -> Result<(), PassError> {
+        let shaders = self.shaders.read();
+
+        // loop backwards and find a compatible shader
+        for shader in shaders.iter().rev() {
+            match shader.add_mesh(mesh.object.clone()) {
+                Ok(mesh_added) => return Ok(mesh_added),
+                Err(_) => continue,
+            }
+        }
+
+        Err(PassError::NoCompatibleShader)
     }
 
     pub fn set_viewport(&self, viewport: Region) {
@@ -229,6 +299,16 @@ impl PassObject {
 
     pub fn is_compute(&self) -> bool {
         matches!(self.pass_type, PassType::Compute)
+    }
+
+    pub(crate) fn from_shader_object(name: &str, shader: Arc<ShaderObject>) -> Self {
+        let pass_type = match shader.is_compute() {
+            true => PassType::Compute,
+            false => PassType::Render,
+        };
+        let object = Self::new(name, pass_type);
+        object.add_shader_object(shader);
+        object
     }
 }
 
@@ -241,6 +321,18 @@ impl AsRef<PassObject> for Pass {
 impl AsRef<PassObject> for PassObject {
     fn as_ref(&self) -> &PassObject {
         self
+    }
+}
+
+impl From<Shader> for Pass {
+    fn from(shader: Shader) -> Self {
+        Self::from_shader("Default Pass from Shader", &shader)
+    }
+}
+
+impl From<Arc<ShaderObject>> for PassObject {
+    fn from(shader: Arc<ShaderObject>) -> Self {
+        Self::from_shader_object("Default Pass from ShaderObject", shader)
     }
 }
 

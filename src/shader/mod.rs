@@ -45,20 +45,17 @@ impl Default for Shader {
     }
 }
 
+impl From<Arc<ShaderObject>> for Shader {
+    fn from(object: Arc<ShaderObject>) -> Self {
+        let pass = Arc::new(PassObject::from(object.clone()));
+        Self { pass, object }
+    }
+}
+
 impl Shader {
     #[lsp_doc("docs/api/core/shader/new.md")]
     pub fn new(source: &str) -> Result<Self, ShaderError> {
-        if source.is_empty() {
-            return Ok(Self::default());
-        }
-
-        let object = Arc::new(input::load_shader(source)?);
-        let pass = Arc::new(PassObject::from_shader_object(
-            "Shader Default Pass",
-            object.clone(),
-        ));
-
-        Ok(Self { pass, object })
+        Ok(Self::from(input::load_shader(source)?))
     }
 
     #[lsp_doc("docs/api/core/shader/set.md")]
@@ -82,35 +79,31 @@ impl Shader {
     }
 
     #[lsp_doc("docs/api/core/shader/from_vertex.md")]
-    pub fn from_vertex(v: &crate::mesh::Vertex) -> Result<Self, ShaderError> {
+    pub fn from_vertex(v: &crate::mesh::Vertex) -> Self {
         let src = build_wgsl_from_vertex(v);
-        Shader::new(&src)
-    }
 
-    #[lsp_doc("docs/api/core/shader/from_mesh.md")]
-    pub fn from_mesh(mesh: &crate::mesh::Mesh) -> Result<Self, ShaderError> {
-        let first = { mesh.object.verts.read().first().cloned() };
-        if let Some(v) = first {
-            Self::from_vertex(&v)
+        if let Ok(shader) = Shader::new(&src) {
+            shader
         } else {
-            Err(ShaderError::ParseError("Mesh has no vertices".into()))
+            log::error!("Failed to create shader from vertex, returning default shader");
+            Shader::default()
         }
     }
 
-    // ----------------------
-    // Mesh management (group meshes by shader)
-    // ----------------------
+    #[lsp_doc("docs/api/core/shader/from_mesh.md")]
+    pub fn from_mesh(mesh: &crate::mesh::Mesh) -> Self {
+        let shader_object = ShaderObject::from_mesh(mesh);
+        Self::from(Arc::new(shader_object))
+    }
+
     #[lsp_doc("docs/api/core/shader/add_mesh.md")]
     pub fn add_mesh(&self, mesh: &crate::mesh::Mesh) -> Result<(), ShaderError> {
-        // Validate compatibility before attaching
-        self.validate_mesh(mesh)?;
-        self.object.add_mesh_internal(mesh.object.clone());
-        Ok(())
+        self.object.add_mesh(mesh.object.clone())
     }
 
     #[lsp_doc("docs/api/core/shader/remove_mesh.md")]
     pub fn remove_mesh(&self, mesh: &crate::mesh::Mesh) {
-        self.object.remove_mesh_internal(&mesh.object);
+        self.object.remove_mesh(&mesh.object);
     }
 
     #[lsp_doc("docs/api/core/shader/remove_meshes.md")]
@@ -119,13 +112,23 @@ impl Shader {
         I: IntoIterator<Item = &'list crate::mesh::Mesh>,
     {
         for mesh in list {
-            self.object.remove_mesh_internal(&mesh.object);
+            self.object.remove_mesh(&mesh.object);
         }
     }
 
     #[lsp_doc("docs/api/core/shader/clear_meshes.md")]
     pub fn clear_meshes(&self) {
-        self.object.clear_meshes_internal();
+        self.object.clear_meshes();
+    }
+
+    #[lsp_doc("docs/api/core/shader/validate_mesh.md")]
+    pub fn validate_mesh(&self, mesh: &crate::mesh::Mesh) -> Result<(), ShaderError> {
+        self.object.validate_mesh(mesh.object.clone())
+    }
+
+    #[lsp_doc("docs/api/core/shader/is_compute.md")]
+    pub fn is_compute(&self) -> bool {
+        self.object.is_compute()
     }
 }
 
@@ -149,19 +152,173 @@ impl Default for ShaderObject {
     }
 }
 
-impl Shader {
-    #[lsp_doc("docs/api/core/shader/validate_mesh.md")]
-    pub fn validate_mesh(&self, mesh: &crate::mesh::Mesh) -> Result<(), ShaderError> {
-        let inputs = self.object.reflect_vertex_inputs()?;
+impl ShaderObject {
+    /// Create a Shader object from a WGSL source string.
+    ///
+    /// GLSL is also supported if you enable the `glsl` feature.
+    /// Shadertoy-flavored GLSL is supported if the `shadertoy` feature is enabled.
+    ///
+    /// If the optional features are enabled,
+    /// the constructor try to automatically detect the shader type and parse it accordingly.
+    pub fn new(source: &str) -> Result<Self, ShaderError> {
+        #[cfg(feature = "shadertoy")]
+        if source.contains("void mainImage") {
+            return Self::toy(source);
+        }
+
+        #[cfg(feature = "glsl")]
+        if source.contains("void main") {
+            return Self::glsl(DEFAULT_VERTEX_SHADER, source);
+        }
+
+        Self::wgsl(source)
+    }
+
+    /// Set a uniform value.
+    pub fn set(&self, key: &str, value: impl Into<UniformData>) -> Result<(), ShaderError> {
+        let mut storage = self.storage.write();
+        storage.update(key, &value.into())
+    }
+
+    // getters
+    /// List all the uniforms in the shader.
+    pub fn list_uniforms(&self) -> Vec<String> {
+        let storage = self.storage.read();
+        storage.list()
+    }
+
+    /// List all available keys in the shader.
+    pub fn list_keys(&self) -> Vec<String> {
+        let storage = self.storage.read();
+        storage.keys()
+    }
+
+    /// Create a basic Shader from a vertex.
+    pub fn from_vertex(v: &crate::mesh::Vertex) -> Self {
+        let src = build_wgsl_from_vertex(v);
+
+        if let Ok(shader) = Self::new(&src) {
+            shader
+        } else {
+            log::error!("Failed to create shader from vertex, returning default shader");
+            Self::default()
+        }
+    }
+
+    /// Create a shader from a mesh's first vertex.
+    pub fn from_mesh(mesh: &crate::mesh::Mesh) -> Self {
+        let first = { mesh.object.verts.read().first().cloned() };
+
+        let shader = if let Some(vertex) = first {
+            Self::from_vertex(&vertex)
+        } else {
+            log::warn!("Mesh has no vertices, returning default shader");
+            Self::default()
+        };
+
+        if shader.add_mesh(mesh.object.clone()).is_err() {
+            log::error!("Failed to add mesh to shader created from mesh, returning empty shader");
+        }
+
+        shader
+    }
+
+    /// Add a mesh to this shader.
+    pub fn add_mesh(&self, mesh: Arc<crate::mesh::MeshObject>) -> Result<(), ShaderError> {
+        self.validate_mesh(mesh.clone())?;
+        self.meshes.write().push(mesh);
+        Ok(())
+    }
+
+    /// Remove a mesh from this shader.
+    pub fn remove_mesh(&self, mesh: &Arc<crate::mesh::MeshObject>) {
+        let mut v = self.meshes.write();
+        if let Some(pos) = v.iter().position(|m| Arc::ptr_eq(m, mesh)) {
+            v.remove(pos);
+        }
+    }
+
+    /// Remove all meshes from this shader.
+    pub fn clear_meshes(&self) {
+        self.meshes.write().clear();
+    }
+
+    /// Get a uniform value as UniformData enum.
+    pub fn get_uniform_data(&self, key: &str) -> Result<UniformData, ShaderError> {
+        let storage = self.storage.read();
+        let uniform = storage
+            .get(key)
+            .ok_or(ShaderError::UniformNotFound(key.into()))?;
+
+        Ok(uniform.data.clone())
+    }
+
+    /// Tells weather the shader is a compute shader.
+    pub fn is_compute(&self) -> bool {
+        self.module
+            .entry_points
+            .iter()
+            .any(|entry_point| entry_point.stage == naga::ShaderStage::Compute)
+    }
+
+    /// Create a Shader object from a WGSL source.
+    pub fn wgsl(source: &str) -> Result<Self, ShaderError> {
+        let mut validator = Validator::new(ValidationFlags::all(), Capabilities::all());
+        let module = naga::front::wgsl::parse_str(source)?;
+        validator.validate(&module).map_err(Box::new)?;
+
+        let uniforms = parse_uniforms(&module)?;
+        let storage = RwLock::new(UniformStorage::new(&uniforms));
+        let hash = hash(source);
+
+        let mut total_bytes = 0;
+        for uniform in uniforms.values() {
+            let size = uniform.data.size() as u64;
+            let aligned = wgpu::util::align_to(size, 256);
+            total_bytes += aligned;
+        }
+
+        Ok(Self {
+            hash,
+            module,
+            storage,
+            total_bytes,
+            meshes: RwLock::new(Vec::new()),
+        })
+    }
+
+    /// Get a uniform value as Uniform struct.
+    pub(crate) fn get_uniform(&self, key: &str) -> Result<Uniform, ShaderError> {
+        let storage = self.storage.read();
+        let uniform = storage
+            .get(key)
+            .ok_or(ShaderError::UniformNotFound(key.into()))?;
+
+        Ok(uniform.clone())
+    }
+
+    /// Validate that a Mesh is compatible with this Shader's vertex inputs.
+    pub(crate) fn validate_mesh(
+        &self,
+        mesh: Arc<crate::mesh::MeshObject>,
+    ) -> Result<(), ShaderError> {
+        let inputs = self.reflect_vertex_inputs()?;
         if inputs.is_empty() {
-            // No vertex inputs to validate against; accept any mesh.
-            return Ok(());
+            return Err(ShaderError::InvalidKey(
+                "
+                Invalid Mesh: Shader has no vertex inputs and renders fullscreen.\n
+
+                To create a compatible Shader, use Shader::from_vertex() or Shader::from_mesh(),
+                or provide a vertex shader with at least a 'position' input.
+                "
+                .into(),
+            ));
         }
 
         use std::collections::HashMap;
         // Build maps from the first vertex
         let (pos_fmt_opt, v_loc_map, v_name_map) = {
-            let verts = mesh.object.verts.read();
+            let verts = mesh.verts.read();
             if let Some(v) = verts.first() {
                 let pos_fmt = if v.dimensions <= 2 {
                     wgpu::VertexFormat::Float32x2
@@ -190,7 +347,7 @@ impl Shader {
 
         // Build maps from the first instance (if present)
         let (i_loc_map, i_name_map) = {
-            let insts = mesh.object.insts.read();
+            let insts = mesh.insts.read();
             if let Some(i) = insts.first() {
                 let mut loc: HashMap<u32, (String, wgpu::VertexFormat)> = HashMap::new();
                 let mut by_name: HashMap<String, wgpu::VertexFormat> = HashMap::new();
@@ -287,51 +444,30 @@ impl Shader {
 
         Ok(())
     }
-}
-
-impl ShaderObject {
-    /// Create a Shader object from a WGSL source string.
-    ///
-    /// GLSL is also supported if you enable the `glsl` feature.
-    /// Shadertoy-flavored GLSL is supported if the `shadertoy` feature is enabled.
-    ///
-    /// If the optional features are enabled,
-    /// the constructor try to automatically detect the shader type and parse it accordingly.
-    pub fn new(source: &str) -> Result<Self, ShaderError> {
-        #[cfg(feature = "shadertoy")]
-        if source.contains("void mainImage") {
-            return ShaderObject::toy(source);
-        }
-
-        #[cfg(feature = "glsl")]
-        if source.contains("void main") {
-            return Self::glsl(DEFAULT_VERTEX_SHADER, source);
-        }
-
-        Self::wgsl(source)
-    }
 
     /// Reflect the vertex entry-point inputs as (name, location, format).
     /// Returns only parameters with @location decorations; builtins are ignored.
     pub(crate) fn reflect_vertex_inputs(&self) -> Result<Vec<VertexInputDesc>, ShaderError> {
         // Find the vertex entry point (assume first if multiple; consistent with create_render_pipeline).
         let mut inputs: Vec<VertexInputDesc> = Vec::new();
+
         // Iterate entry points and collect from the vertex stage only once (first hit wins)
-        for ep in self.module.entry_points.iter() {
-            if ep.stage != naga::ShaderStage::Vertex {
+        for entry_point in self.module.entry_points.iter() {
+            if entry_point.stage != naga::ShaderStage::Vertex {
                 continue;
             }
-            for arg in ep.function.arguments.iter() {
+
+            for argument in entry_point.function.arguments.iter() {
                 // Only consider @location bindings
-                let Some(binding) = arg.binding.as_ref() else {
+                let Some(binding) = argument.binding.as_ref() else {
                     continue;
                 };
                 let naga::Binding::Location { location, .. } = binding else {
                     continue;
                 };
-                let ty = &self.module.types[arg.ty];
+                let ty = &self.module.types[argument.ty];
                 let format = naga_ty_to_vertex_format(ty)?;
-                let name = arg
+                let name = argument
                     .name
                     .clone()
                     .unwrap_or_else(|| format!("attr{}", location));
@@ -344,95 +480,8 @@ impl ShaderObject {
             break;
         }
         // Sort by location to keep a stable order
-        inputs.sort_by_key(|d| d.location);
+        inputs.sort_by_key(|vertex_input| vertex_input.location);
         Ok(inputs)
-    }
-
-    /// Create a Shader object from a WGSL source.
-    pub fn wgsl(source: &str) -> Result<Self, ShaderError> {
-        let mut validator = Validator::new(ValidationFlags::all(), Capabilities::all());
-        let module = naga::front::wgsl::parse_str(source)?;
-        validator.validate(&module).map_err(Box::new)?;
-
-        let uniforms = parse_uniforms(&module)?;
-        let storage = RwLock::new(UniformStorage::new(&uniforms));
-        let hash = hash(source);
-
-        let mut total_bytes = 0;
-        for uniform in uniforms.values() {
-            let size = uniform.data.size() as u64;
-            let aligned = wgpu::util::align_to(size, 256);
-            total_bytes += aligned;
-        }
-
-        Ok(Self {
-            hash,
-            module,
-            storage,
-            total_bytes,
-            meshes: RwLock::new(Vec::new()),
-        })
-    }
-
-    // Mesh grouping internals
-    pub(crate) fn add_mesh_internal(&self, mesh: Arc<crate::mesh::MeshObject>) {
-        self.meshes.write().push(mesh);
-    }
-    pub(crate) fn remove_mesh_internal(&self, mesh: &Arc<crate::mesh::MeshObject>) {
-        let mut v = self.meshes.write();
-        if let Some(pos) = v.iter().position(|m| Arc::ptr_eq(m, mesh)) {
-            v.remove(pos);
-        }
-    }
-    pub(crate) fn clear_meshes_internal(&self) {
-        self.meshes.write().clear();
-    }
-
-    /// Set a uniform value.
-    pub fn set(&self, key: &str, value: impl Into<UniformData>) -> Result<(), ShaderError> {
-        let mut storage = self.storage.write();
-        storage.update(key, &value.into())
-    }
-
-    // getters
-    /// List all the uniforms in the shader.
-    pub fn list_uniforms(&self) -> Vec<String> {
-        let storage = self.storage.read();
-        storage.list()
-    }
-
-    /// List all available keys in the shader.
-    pub fn list_keys(&self) -> Vec<String> {
-        let storage = self.storage.read();
-        storage.keys()
-    }
-
-    /// Get a uniform value as UniformData enum.
-    pub(crate) fn get_uniform_data(&self, key: &str) -> Result<UniformData, ShaderError> {
-        let storage = self.storage.read();
-        let uniform = storage
-            .get(key)
-            .ok_or(ShaderError::UniformNotFound(key.into()))?;
-
-        Ok(uniform.data.clone())
-    }
-
-    /// Get a uniform value as Uniform struct.
-    pub(crate) fn get_uniform(&self, key: &str) -> Result<Uniform, ShaderError> {
-        let storage = self.storage.read();
-        let uniform = storage
-            .get(key)
-            .ok_or(ShaderError::UniformNotFound(key.into()))?;
-
-        Ok(uniform.clone())
-    }
-
-    /// Tells weather the shader is a compute shader.
-    pub(crate) fn is_compute(&self) -> bool {
-        self.module
-            .entry_points
-            .iter()
-            .any(|entry_point| entry_point.stage == naga::ShaderStage::Compute)
     }
 }
 
@@ -690,7 +739,7 @@ fn vs_main(@location(0) pos: vec3<f32>, @location(1) offset: vec2<f32>) -> VOut 
         let shader = Shader::new(wgsl).expect("shader");
 
         // Compatible mesh: pos=vec3, instance offset=vec2
-        let mut m_ok = crate::mesh::Mesh::new();
+        let m_ok = crate::mesh::Mesh::new();
         use crate::mesh::Vertex;
         m_ok.add_vertices([
             Vertex::new([-0.5, -0.5, 0.0]),
@@ -701,7 +750,7 @@ fn vs_main(@location(0) pos: vec3<f32>, @location(1) offset: vec2<f32>) -> VOut 
         shader.validate_mesh(&m_ok).expect("compatible");
 
         // Missing attribute: no instance offset provided
-        let mut m_missing = crate::mesh::Mesh::new();
+        let m_missing = crate::mesh::Mesh::new();
         m_missing.add_vertices([
             Vertex::new([-0.5, -0.5, 0.0]),
             Vertex::new([0.5, -0.5, 0.0]),
@@ -716,7 +765,7 @@ fn vs_main(@location(0) pos: vec3<f32>, @location(1) offset: vec2<f32>) -> VOut 
         }
 
         // Type mismatch: instance offset present but wrong type (vec3 instead of vec2)
-        let mut m_mismatch = crate::mesh::Mesh::new();
+        let m_mismatch = crate::mesh::Mesh::new();
         m_mismatch.add_vertices([
             Vertex::new([-0.5, -0.5, 0.0]),
             Vertex::new([0.5, -0.5, 0.0]),
@@ -1293,5 +1342,73 @@ struct U { arr: array<vec4<f32>, 2> };
             ShaderError::IndexOutOfBounds { .. } => {}
             _ => panic!("unexpected error: {:?}", err),
         }
+    }
+
+    // Story: AST-driven mapping errors when a needed attribute is missing.
+    #[test]
+    fn ast_mapping_missing_attribute_errors() {
+        let wgsl = r#"
+struct VOut { @builtin(position) pos_out: vec4<f32> };
+@vertex
+fn vs_main(@location(0) pos: vec3<f32>, @location(1) offset: vec2<f32>) -> VOut {
+  var out: VOut;
+  let p = vec3<f32>(pos.xy + offset, pos.z);
+  out.pos_out = vec4<f32>(p, 1.0);
+  return out;
+}
+@fragment
+fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(0.,0.,1.,1.); }
+            "#;
+
+        let shader = crate::Shader::new(wgsl).expect("shader");
+
+        let mesh = crate::mesh::Mesh::new();
+        use crate::mesh::Vertex;
+        mesh.add_vertices([
+            Vertex::new([-0.5, -0.5, 0.0]),
+            Vertex::new([0.5, -0.5, 0.0]),
+            Vertex::new([0.0, 0.5, 0.0]),
+        ]);
+
+        let res = shader.add_mesh(&mesh);
+        assert!(res.is_err());
+        let s = format!("{}", res.unwrap_err());
+        assert!(s.contains("Mesh attribute not found for shader input 'offset'"));
+    }
+
+    // Story: AST-driven mapping errors on type mismatch between shader input and mesh property format.
+    #[test]
+    fn ast_mapping_type_mismatch_errors() {
+        let wgsl = r#"
+struct VOut { @builtin(position) pos_out: vec4<f32> };
+@vertex
+fn vs_main(@location(0) pos: vec3<f32>, @location(1) offset: vec2<f32>) -> VOut {
+  var out: VOut;
+  let p = vec3<f32>(pos.xy + offset, pos.z);
+  out.pos_out = vec4<f32>(p, 1.0);
+  return out;
+}
+@fragment
+fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,1.,0.,1.); }
+            "#;
+
+        let shader = crate::Shader::new(wgsl).expect("shader");
+
+        let mesh = crate::mesh::Mesh::new();
+        use crate::mesh::{Vertex, VertexValue};
+        mesh.add_vertices([
+            Vertex::new([-0.5, -0.5, 0.0]),
+            Vertex::new([0.5, -0.5, 0.0]),
+            Vertex::new([0.0, 0.5, 0.0]),
+        ]);
+        // Add instance with wrong-typed "offset" (vec3 instead of vec2)
+        mesh.add_instance(
+            Vertex::new([0.0, 0.0]).set("offset", VertexValue::F32x3([0.0, 0.0, 0.0])),
+        );
+
+        let res = shader.add_mesh(&mesh);
+        assert!(res.is_err());
+        let s = format!("{}", res.unwrap_err());
+        assert!(s.contains("Type mismatch for shader input 'offset'"));
     }
 }

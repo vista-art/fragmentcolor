@@ -50,7 +50,7 @@ fn main() {
     let pass = Pass::from_shader("particles_1m", &shader);
 
     // Base mesh: tiny triangle
-    let mut mesh = Mesh::new();
+    let mesh = Mesh::new();
     let s = 0.0035f32;
     mesh.add_vertices([
         Vertex::new([-s, -s]),

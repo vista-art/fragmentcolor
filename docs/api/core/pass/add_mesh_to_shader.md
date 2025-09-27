@@ -5,13 +5,16 @@ Attach a Mesh to a specific Shader in this Pass. This forwards to `shader.add_me
 ## Example
 
 ```rust
-use fragmentcolor::{Pass, Shader, Mesh, Vertex};
-
-let shader = Shader::default();
-let pass = Pass::from_shader("p", &shader);
+# fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Shader, Mesh, Vertex, Pass};
 
 let mut mesh = Mesh::new();
-mesh.add_vertex(Vertex::new([0.0, 0.0]));
+mesh.add_vertex([0.0, 0.0]);
+let shader = Shader::from_mesh(&mesh);
+let pass = Pass::from_shader("pass", &shader);
 
-pass.add_mesh_to_shader(&mesh, &shader).expect("mesh is compatible");
+pass.add_mesh_to_shader(&mesh, &shader)?;
+
+# Ok(())
+# }
 ```

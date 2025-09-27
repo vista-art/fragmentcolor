@@ -27,7 +27,7 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(0.,1.,0.,1.); }
         let pass = Pass::from_shader("mesh", &shader);
 
         // Build a simple triangle mesh
-        let mut mesh = Mesh::new();
+        let mesh = Mesh::new();
         mesh.add_vertices([
             Vertex::from([-0.5, -0.5, 0.0]),
             Vertex::from([0.5, -0.5, 0.0]),
