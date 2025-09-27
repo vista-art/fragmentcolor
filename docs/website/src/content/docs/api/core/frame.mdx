@@ -284,3 +284,204 @@ lang="text"
 </TabItem>
 
 </Tabs>
+
+
+---
+
+### Frame::connect(parent, child)
+
+Connect a dependency edge from parent -> child inside a Frame DAG.
+
+- Errors when either pass is missing, the edge already exists, or a cycle would be detected at execution time.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Frame, Pass};
+
+let p1 = Pass::new("shadow");
+let p2 = Pass::new("main");
+
+let mut frame = Frame::new();
+f.add_pass(&p1);
+f.add_pass(&p2);
+
+frame.connect(&p1, &p2)?;
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+`}
+lang="rust" meta="collapse={1-1, 12-14}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Frame, Pass } from "fragmentcolor";
+
+const p1 = new Pass("shadow");
+const p2 = new Pass("main");
+
+const frame = new Frame();
+f.addPass(p1);
+f.addPass(p2);
+
+frame.connect(p1, p2);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Frame, Pass
+
+p1 = Pass("shadow")
+p2 = Pass("main")
+
+frame = Frame()
+f.add_pass(p1)
+f.add_pass(p2)
+
+frame.connect(p1, p2)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Frame::present(pass)
+
+Select which render pass presents to the final Target when rendering a Frame DAG.
+
+- Must be a render pass and a DAG leaf.
+- At most one present pass per Frame.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Frame, Pass};
+
+let shadow = Pass::new("shadow");
+let main = Pass::new("main");
+
+let mut frame = Frame::new();
+frame.add_pass(&shadow);
+frame.add_pass(&main);
+frame.connect(&shadow, &main)?;
+frame.present(&main)?;
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+`}
+lang="rust" meta="collapse={1-1, 12-14}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Frame, Pass } from "fragmentcolor";
+
+const shadow = new Pass("shadow");
+const main = new Pass("main");
+
+const frame = new Frame();
+frame.addPass(shadow);
+frame.addPass(main);
+frame.connect(shadow, main);
+frame.present(main);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Frame, Pass
+
+shadow = Pass("shadow")
+main = Pass("main")
+
+frame = Frame()
+frame.add_pass(shadow)
+frame.add_pass(main)
+frame.connect(shadow, main)
+frame.present(main)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>

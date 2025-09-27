@@ -173,14 +173,13 @@ impl UniformBufferPool {
 
     /// Gets a buffer binding suitable for use in a bind group
     pub fn get_binding(&self, location: BufferLocation) -> wgpu::BufferBinding<'_> {
-        // Many backends (esp. WebGPU/Dawn) expect uniform binding sizes to be padded to
-        // at least 16 bytes. Use a conservative padding to avoid validation traps.
+        // Pad binding size to the device's uniform buffer alignment (often 256 bytes) to
+        // avoid backend quirks. Ensure a minimum of 16 bytes as a safety floor.
         let padded_size = if location.size == 0 {
             0
         } else {
-            // Round up to 16 bytes; alternatively, we could round to self.alignment (often 256)
-            let sixteen = 16u64;
-            location.size.div_ceil(sixteen) * sixteen
+            let align = self.alignment.max(16);
+            wgpu::util::align_to(location.size, align)
         };
 
         wgpu::BufferBinding {
@@ -188,10 +187,7 @@ impl UniformBufferPool {
             offset: location.offset,
             size: match padded_size {
                 0 => None,
-                _ => {
-                    // padded_size > 0 by construction; avoid unwrap by using new_unchecked
-                    Some(unsafe { NonZeroU64::new_unchecked(padded_size) })
-                }
+                _ => Some(unsafe { NonZeroU64::new_unchecked(padded_size) }),
             },
         }
     }

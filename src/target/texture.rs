@@ -3,9 +3,11 @@ use lsp_doc::lsp_doc;
 use std::sync::Arc;
 
 #[lsp_doc("docs/api/targets/texture_target/texture_target.md")]
+#[derive(Clone)]
 pub struct TextureTarget {
-    context: Arc<RenderContext>,
-    texture: Arc<TextureObject>,
+    pub(crate) context: Arc<RenderContext>,
+    pub(crate) texture: Arc<TextureObject>,
+    pub(crate) id: Arc<parking_lot::RwLock<Option<crate::texture::TextureId>>>,
 }
 
 impl TextureTarget {
@@ -22,6 +24,7 @@ impl TextureTarget {
         Self {
             context: context.clone(),
             texture,
+            id: Arc::new(parking_lot::RwLock::new(None)),
         }
     }
 }
@@ -141,6 +144,18 @@ impl Target for TextureTarget {
         }
 
         pixels
+    }
+}
+
+impl TextureTarget {
+    /// Obtain a sampleable Texture handle for binding in shaders.
+    pub fn texture(&self) -> crate::texture::Texture {
+        if let Some(id) = self.id.read().clone() {
+            return crate::texture::Texture::new(self.context.clone(), self.texture.clone(), id);
+        }
+        let id = self.context.register_texture(self.texture.clone());
+        *self.id.write() = Some(id.clone());
+        crate::texture::Texture::new(self.context.clone(), self.texture.clone(), id)
     }
 }
 

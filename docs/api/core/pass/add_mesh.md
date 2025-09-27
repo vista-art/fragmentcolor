@@ -11,12 +11,13 @@ If a Shader wasn't provided earlier, FragmentColor will create a default one.
 ## Example
 
 ```rust
-use fragmentcolor::{Pass, Shader};
-use fragmentcolor::mesh::{Mesh, Vertex};
+use fragmentcolor::{Pass, Shader, Mesh, Vertex};
 
-let shader = Shader::default();
-let pass = Pass::from_shader("p", &shader);
-let mut mesh = Mesh::new();
+let mesh = Mesh::new();
 mesh.add_vertex(Vertex::new([0.0, 0.0]));
+
+let shader = Shader::from_mesh(&mesh);
+let pass = Pass::from_shader("pass", &shader);
+
 pass.add_mesh(&mesh).expect("mesh is compatible");
 ```

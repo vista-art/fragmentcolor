@@ -1,6 +1,6 @@
 # Shader::validate_mesh
 
-Validate that a Mesh is compatible with this Shader’s vertex inputs.
+Validate that a Mesh is compatible with this Shader's vertex inputs.
 
 - Checks presence and type for all @location(...) inputs of the vertex entry point.
 - Matches attributes in the following order:
@@ -9,15 +9,17 @@ Validate that a Mesh is compatible with this Shader’s vertex inputs.
   3) Fallback by name (tries instance first, then vertex)
 - Returns Ok(()) when all inputs are matched with a compatible wgpu::VertexFormat; returns an error otherwise.
 
-Notes
-- If the Shader has no @location inputs, any Mesh is considered compatible (the mesh is ignored at draw-time).
+## Notes
+
+- This method is called automatically when adding a Mesh to a Shader or Pass, so you usually don't need to call it manually.
+- If the Shader has no @location inputs (fullscreen/builtin-only), attaching a Mesh is rejected.
 - This method does not allocate GPU buffers; it inspects CPU-side vertex/instance data only.
 
 ## Example
 
 ```rust
-use fragmentcolor::{Shader, Pass};
-use fragmentcolor::mesh::{Mesh, Vertex};
+# fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Shader, Pass, Mesh, Vertex};
 
 let wgsl = r#"
 struct VOut { @builtin(position) pos: vec4<f32> };
@@ -28,7 +30,7 @@ struct VOut { @builtin(position) pos: vec4<f32> };
 }
 @fragment fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
 "#;
-let shader = Shader::new(wgsl).unwrap();
+let shader = Shader::new(wgsl)?;
 let pass = Pass::from_shader("p", &shader);
 
 let mut mesh = Mesh::new();
@@ -38,6 +40,9 @@ mesh.add_vertices([
   Vertex::new([ 0.0,  0.5, 0.0]),
 ]);
 
-shader.validate_mesh(&mesh).unwrap(); // Ok
-pass.add_mesh(&mesh).expect("mesh is compatible");
+shader.validate_mesh(&mesh)?; // Ok
+pass.add_mesh(&mesh)?;
+
+# Ok(())
+# }
 ```

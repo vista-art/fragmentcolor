@@ -57,13 +57,9 @@ fn main() {
     let pass = Pass::from_shader("particles", &shader);
 
     // Tiny triangle in NDC centered at origin (instanced across the screen)
-    let mut mesh = Mesh::new();
-    let s = 0.004f32; // triangle size edge ~0.4% of screen
-    mesh.add_vertices([
-        Vertex::new([-s, -s]),
-        Vertex::new([s, -s]),
-        Vertex::new([0.0, s]),
-    ]);
+    let mesh = Mesh::new();
+    let s = 0.004; // triangle size edge ~0.4% of screen
+    mesh.add_vertices([[-s, -s], [s, -s], [0.0, s]]);
 
     // Build initial particle set and matching instances
     let mut parts = Vec::with_capacity(n);
@@ -101,13 +97,13 @@ fn main() {
     let damp = 0.995f32; // velocity damping
 
     // We capture Mesh and particle vector by move into the redraw callback.
-    let mut mesh_clone = mesh.clone();
-    let mut parts_clone = parts;
+    let mesh_clone = mesh.clone();
+    let mut particles = parts;
 
     app.scene(pass.clone())
         .on_redraw_requested(move |_app| {
             // CPU integrate simple gravity toward origin
-            for p in &mut parts_clone {
+            for p in &mut particles {
                 let x = p.pos[0];
                 let y = p.pos[1];
                 let r2 = x * x + y * y + 1e-4;
@@ -126,8 +122,8 @@ fn main() {
 
             // Rebuild instance buffer from updated positions
             // Note: For very large N, consider a faster path (see notes below)
-            let mut tmp = Vec::with_capacity(parts_clone.len());
-            for p in &parts_clone {
+            let mut tmp = Vec::with_capacity(particles.len());
+            for p in &particles {
                 tmp.push(
                     Vertex::new([0.0, 0.0])
                         .set("offset", p.pos)

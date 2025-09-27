@@ -1,5 +1,4 @@
-from fragmentcolor import Shader, Pass
-from fragmentcolor import Mesh, Vertex
+from fragmentcolor import Shader, Pass, Mesh, Vertex
 
 wgsl = r#"
 struct VOut { @builtin(position) pos: vec4<f32> }
@@ -21,4 +20,4 @@ mesh.add_vertices([
 ])
 
 shader.validate_mesh(mesh); # Ok
-rpass.add_mesh(mesh).expect("mesh is compatible")
+rpass.add_mesh(mesh)

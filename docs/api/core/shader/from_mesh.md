@@ -2,23 +2,26 @@
 
 Build a basic WGSL shader source from the first vertex in a Mesh.
 
-This uses the first Vertex to infer position dimensionality and optional properties.
+The resulting shader automatically adds the provided Mesh to its internal list of Meshes to render,
+so the user doesn't need to call `Shader::add_mesh` manually.
+
+This function uses the **first Vertex** to infer position dimensionality and optional properties.
+
 It generates a minimal vertex shader that consumes `@location(0)` position and a fragment shader that returns a flat color by default. If a `color: vec4<f32>` property exists, it is passed through to the fragment stage and used as output.
 
-This is intended as a fallback and for quick debugging. Canonical usage is the opposite: write your own shader and then build Meshes that match it.
+## Empty Mesh Handling
+
+If the Mesh has no vertices, a default shader is returned and a warning is logged.
+Because the default shader does not take any vertex inputs, it is compatible with any Mesh.
 
 ## Example
 
 ```rust
-# pub fn main() -> Result<(), Box<dyn std::error::Error>> {
-
 use fragmentcolor::{Mesh, Shader, Vertex};
 
 let mut mesh = Mesh::new();
 mesh.add_vertex(Vertex::new([0.0, 0.0, 0.0]));
-let shader = Shader::from_mesh(&mesh)?;
+let shader = Shader::from_mesh(&mesh);
 
 # let _ = shader;
-# Ok(())
-# }
 ```

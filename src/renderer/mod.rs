@@ -1,6 +1,6 @@
 use crate::{
     PassObject, ShaderHash, Target, TargetFrame, TextureInput, TextureOptions, TextureTarget,
-    shader::Uniform,
+    Uniform, UniformData,
 };
 use crate::{Size, WindowTarget};
 use dashmap::DashMap;
@@ -305,8 +305,8 @@ impl Renderer {
 
         // Negotiate and store effective sample count (currently default wanted=1; configurable later)
         if let Some(adapter_ref) = adapter.as_ref() {
-            let sc = platform::all::pick_sample_count(adapter_ref, 1, config.format);
-            context.set_sample_count(sc);
+            let sampler_count = platform::all::pick_sample_count(adapter_ref, 1, config.format);
+            context.set_sample_count(sampler_count);
         }
 
         Ok((context, surface, config))
@@ -355,9 +355,8 @@ pub struct RenderContext {
     pub(crate) device: wgpu::Device,
     pub(crate) queue: wgpu::Queue,
 
-    // Cache RenderPipelines by (shader hash, target format, sample count, layout signature)
-    // layout_sig = 0 means shader-only (no vertex/instance streams)
-    render_pipelines: DashMap<(ShaderHash, wgpu::TextureFormat, u32, u64), RenderPipeline>,
+    // Cache RenderPipelines by (shader hash, target format, sample count)
+    render_pipelines: DashMap<(ShaderHash, wgpu::TextureFormat, u32), RenderPipeline>,
     // Cache ComputePipelines by shader hash and layout signature
     compute_pipelines: DashMap<(ShaderHash, u64), ComputePipeline>,
 
@@ -502,94 +501,28 @@ impl RenderContext {
 }
 
 impl RenderContext {
-    /// If FC_READBACK_FRAMES>0 and the root name matches FC_READBACK_ROOT (or default "positions"),
-    /// schedule a small copy of the first bytes of the buffer into a MAP_READ staging buffer.
-    fn debug_maybe_schedule_readback(
+    pub(crate) fn register_texture(
         &self,
-        encoder: &mut wgpu::CommandEncoder,
-        name: &str,
-        src: &wgpu::Buffer,
-        max_bytes: u64,
-    ) {
-        let remaining = self.debug_readback_frames.load(Ordering::Relaxed);
-        if remaining == 0 {
-            return;
-        }
-        let root = {
-            let r = self.debug_readback_root.read();
-            r.clone().unwrap_or_else(|| "positions".to_string())
-        };
-        if name != root {
-            return;
-        }
-        // Create staging buffer and record copy
-        let sz = std::cmp::max(16u64, wgpu::util::align_to(max_bytes, 16));
-        let staging = self.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Debug Readback Staging"),
-            size: sz,
-            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
-            mapped_at_creation: false,
-        });
-        encoder.copy_buffer_to_buffer(src, 0, &staging, 0, sz);
-        self.debug_readbacks
-            .write()
-            .push((staging, sz, name.to_string()));
-        // Decrement remaining frames
-        let _ = self.debug_readback_frames.fetch_sub(1, Ordering::Relaxed);
-    }
-
-    /// Map and dump scheduled debug readbacks (as a few f32 values) to the log.
-    fn debug_drain_readbacks(&self) {
-        let mut list = self.debug_readbacks.write();
-        if list.is_empty() {
-            return;
-        }
-        // Ensure GPU work is done so mapping will complete (mirror TextureTarget::get_image)
-        if let Err(e) = self.device.poll(wgpu::PollType::Wait) {
-            log::error!("Device poll error during debug readback: {:?}", e);
-            list.clear();
-            return;
-        }
-        while let Some((buf, sz, name)) = list.pop() {
-            let slice = buf.slice(0..sz);
-            // Map synchronously (use poll with Wait)
-            let (sender, receiver) = std::sync::mpsc::channel();
-            slice.map_async(wgpu::MapMode::Read, move |res| {
-                let _ = sender.send(res);
-            });
-            if let Err(e) = self.device.poll(wgpu::PollType::Wait) {
-                log::error!("Device poll error during debug readback mapping: {:?}", e);
-                continue;
-            }
-            let _ = receiver.recv();
-            let data = slice.get_mapped_range();
-            let n_f32 = (data.len() / 4).min(16);
-            let mut vals = Vec::new();
-            for i in 0..n_f32 {
-                let b = &data[i * 4..i * 4 + 4];
-                vals.push(f32::from_le_bytes([b[0], b[1], b[2], b[3]]));
-            }
-            log::debug!("readback[{}]: first {} f32 = {:?}", name, n_f32, vals);
-            drop(data);
-            buf.unmap();
-        }
-    }
-    fn register_texture(&self, tex: Arc<crate::TextureObject>) -> crate::texture::TextureId {
+        texture: Arc<crate::TextureObject>,
+    ) -> crate::texture::TextureId {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
-        let tid = crate::texture::TextureId(id);
-        self.textures.insert(tid.clone(), tex);
-        tid
+        let texture_id = crate::texture::TextureId(id);
+        self.textures.insert(texture_id.clone(), texture);
+        texture_id
     }
 
-    fn get_texture(&self, id: &crate::texture::TextureId) -> Option<Arc<crate::TextureObject>> {
-        self.textures.get(id).map(|r| r.clone())
+    pub(crate) fn get_texture(
+        &self,
+        id: &crate::texture::TextureId,
+    ) -> Option<Arc<crate::TextureObject>> {
+        self.textures.get(id).map(|texture| texture.clone())
     }
 
-    fn set_sample_count(&self, n: u32) {
-        self.sample_count.store(n.max(1), Ordering::Relaxed);
+    pub(crate) fn set_sample_count(&self, count: u32) {
+        self.sample_count.store(count.max(1), Ordering::Relaxed);
     }
 
-    fn sample_count(&self) -> u32 {
+    pub(crate) fn sample_count(&self) -> u32 {
         self.sample_count.load(Ordering::Relaxed).max(1)
     }
 
@@ -616,29 +549,54 @@ impl RenderContext {
             false => wgpu::LoadOp::Clear(pass.get_input().color.into()),
         };
 
-        // Choose color attachment: direct frame view (single-sample) or MSAA view with resolve
-        let sc = self.sample_count();
-        let fmt = frame.format();
-        let mut view: &wgpu::TextureView = frame.view();
+        // Choose color attachment: per-pass override or default frame view.
+        // Offscreen color targets are bound single-sampled; surface targets may use MSAA per context.
+        let mut sampler_count = self.sample_count();
+        let mut fmt = frame.format();
         let mut resolve_target: Option<&wgpu::TextureView> = None;
         // Keep MSAA resources alive for the duration of the pass
         let mut msaa_texture: Option<wgpu::Texture> = None;
         let mut _msaa_view: Option<wgpu::TextureView> = None;
 
-        if sc > 1 {
-            let key = TextureKey::new(size, fmt, sc, wgpu::TextureUsages::RENDER_ATTACHMENT);
+        let mut pass_texture_view = None;
+        if let Some(id) = pass.color_target.read().clone() {
+            if let Some(texture) = self.get_texture(&id) {
+                pass_texture_view = Some(texture.create_view());
+                fmt = texture.format();
+                sampler_count = 1; // bind offscreen targets single-sampled
+            } else {
+                return Err(RendererError::Error(
+                    "Pass target texture not found in Renderer".into(),
+                ));
+            }
+        }
+
+        let mut texture_view: &wgpu::TextureView =
+            if let Some(pass_view) = pass_texture_view.as_ref() {
+                pass_view
+            } else {
+                frame.view()
+            };
+
+        if pass_texture_view.is_none() && sampler_count > 1 {
+            let key = TextureKey::new(
+                size,
+                fmt,
+                sampler_count,
+                wgpu::TextureUsages::RENDER_ATTACHMENT,
+            );
             let texture = {
                 let mut pool = self.texture_pool.write();
                 pool.acquire(&self.device, key)
             };
             _msaa_view = Some(texture.create_view(&wgpu::TextureViewDescriptor::default()));
             msaa_texture = Some(texture);
-            view = _msaa_view.as_ref().unwrap();
+            texture_view = _msaa_view.as_ref().unwrap();
             resolve_target = Some(frame.view());
         }
 
         let attachments = &[Some(wgpu::RenderPassColorAttachment {
-            view,
+            view: texture_view,
             resolve_target,
             ops: wgpu::Operations {
                 load: load_op,
@@ -656,78 +614,70 @@ impl RenderContext {
         };
         let mut render_pass = encoder.begin_render_pass(&descriptor);
 
-        // Defaults to Color::TRANSPARENT
-        // render_pass.set_blend_constant(wgpu::Color::WHITE);
-
         let required_size = *pass.required_buffer_size.read();
         self.buffer_pool
             .write()
             .ensure_capacity(required_size, &self.device);
 
         for shader in pass.shaders.read().iter() {
-            let format = frame.format();
-            let sc = self.sample_count();
-            // Mesh grouping by shader: capture meshes upfront (clone Arcs)
+            // Use the per-pass resolved target format and sample count
+            // (may differ from the frame when rendering to an offscreen color target or when MSAA is active).
+            let format = fmt;
+            let sampler_count = sampler_count;
             let meshes_for_shader = shader.meshes.read().clone();
-
-            // Determine mesh (if any) for this pass
-            let mesh_ref = pass.mesh.read().clone();
-            let mut cached_refs: Option<(crate::mesh::GpuOwned, crate::mesh::DrawCounts)> = None;
-            let (layout_sig, vertex_buffer_layouts) = if let Some(mo) = mesh_ref.as_ref() {
-                // Ensure GPU buffers
-                let (refs, counts) = mo
-                    .ensure_gpu(&self.device, &self.queue)
-                    .map_err(|e| RendererError::Error(e.to_string()))?;
-                cached_refs = Some((refs, counts));
-
-                match build_ast_mapped_layouts(shader.as_ref(), mo.as_ref())? {
-                    Some((signature, v, i)) => (signature, Some((v, i))),
-                    None => {
-                        // Shader has no @location inputs; ignore mesh for this pipeline
-                        cached_refs = None;
-                        (0u64, None)
-                    }
-                }
+            // Prepare vertex/instance schemas for the first mesh so layout reflection can succeed
+            let vertex_buffer_layouts = if let Some(first_mesh) = meshes_for_shader.first() {
+                // Ensure schemas are derived (and buffers packed) before pipeline creation
+                first_mesh
+                    .vertex_buffers(&self.device, &self.queue)
+                    .map_err(|e| {
+                        RendererError::Error(format!(
+                            "Failed to prepare mesh buffers for pipeline creation: {}",
+                            e
+                        ))
+                    })?;
+                // Now derive vertex buffer layouts; propagate any mapping error
+                create_vertex_buffer_layouts(shader, first_mesh.as_ref())?
             } else {
-                (0u64, None)
+                None
             };
 
-            let cached = self
+            let cached_pipeline = self
                 .render_pipelines
-                .entry((shader.hash, format, sc, layout_sig))
+                .entry((shader.hash, format, sampler_count))
                 .or_insert_with(|| {
-                    let mut layouts =
+                    let mut bind_group_layouts =
                         create_bind_group_layouts(&self.device, &shader.storage.read().uniforms);
 
                     create_render_pipeline(
                         &self.device,
-                        &mut layouts,
+                        &mut bind_group_layouts,
                         shader,
                         format,
-                        sc,
-                        vertex_buffer_layouts.as_ref().map(|(v, i)| (v, i.as_ref())),
+                        sampler_count,
+                        vertex_buffer_layouts,
                     )
                 });
 
             // Collect resources per bind group to build entries safely with owned views/samplers
             #[derive(Default)]
-            struct GroupOwned {
-                ubufs: Vec<(u32, buffer_pool::BufferLocation)>,
+            struct BindGroupResources {
+                uniform_buffers: Vec<(u32, buffer_pool::BufferLocation)>,
                 // legacy storage-pool backed buffers (kept for compatibility in other paths)
-                sbufs: Vec<(u32, buffer_pool::BufferLocation)>,
+                storage_buffers: Vec<(u32, buffer_pool::BufferLocation)>,
                 // persistent storage buffers (buffer, span)
-                pbufs: Vec<(u32, wgpu::Buffer, u64)>,
+                persistent_storage_buffers: Vec<(u32, wgpu::Buffer, u64)>,
                 views: Vec<(u32, wgpu::TextureView)>,
                 samplers: Vec<(u32, wgpu::Sampler)>,
                 last_tex_sampler: Option<wgpu::Sampler>,
             }
 
-            let mut groups: HashMap<u32, GroupOwned> = HashMap::new();
+            let mut groups: HashMap<u32, BindGroupResources> = HashMap::new();
             for name in &shader.list_uniforms() {
                 let uniform = shader.get_uniform(name)?;
 
                 match &uniform.data {
-                    crate::shader::uniform::UniformData::Texture(meta) => {
+                    UniformData::Texture(meta) => {
                         if let Some(tex) = self.get_texture(&meta.id) {
                             let view = tex.create_view();
                             let sampler = tex.sampler();
@@ -742,7 +692,7 @@ impl RenderContext {
                             );
                         }
                     }
-                    crate::shader::uniform::UniformData::Sampler(_) => {
+                    UniformData::Sampler(_) => {
                         // If a texture in the same group was seen, use its sampler; otherwise, fallback
                         let default_sampler = self
                             .device
@@ -759,7 +709,7 @@ impl RenderContext {
                             .samplers
                             .push((uniform.binding, sampler));
                     }
-                    crate::shader::uniform::UniformData::Storage(data) => {
+                    UniformData::Storage(data) => {
                         if let Some((_inner, span, _access)) = data.first() {
                             // Acquire persistent storage buffer and upload only if necessary
                             let span_u64 = *span as u64;
@@ -801,12 +751,6 @@ impl RenderContext {
                                             .insert(name.to_string(), (buffer.clone(), span_u64));
                                         buffer
                                     } else {
-                                        log::debug!(
-                                            "storage[render]: reuse root={} span={} (existing_span={})",
-                                            name,
-                                            span_u64,
-                                            *existing_span
-                                        );
                                         existing.clone()
                                     }
                                 } else {
@@ -823,12 +767,6 @@ impl RenderContext {
                                                 | wgpu::BufferUsages::COPY_SRC,
                                             mapped_at_creation: false,
                                         });
-                                    log::debug!(
-                                        "storage[render]: create root={} span={} (init_bytes={})",
-                                        name,
-                                        span_u64,
-                                        init_bytes.len()
-                                    );
                                     self.queue.write_buffer(&buffer, 0, &init_bytes);
                                     self.storage_registry
                                         .insert(name.to_string(), (buffer.clone(), span_u64));
@@ -847,28 +785,24 @@ impl RenderContext {
                                         .map(|b| b.to_vec())
                                         .unwrap_or_else(|| vec![0u8; span_u64 as usize])
                                 };
-                                log::debug!(
-                                    "storage[render]: upload root={} bytes={}",
-                                    name,
-                                    bytes.len()
-                                );
                                 self.queue.write_buffer(&buf, 0, &bytes);
                                 let mut s = shader.storage.write();
                                 s.clear_storage_dirty(name);
                             }
 
-                            groups.entry(uniform.group).or_default().pbufs.push((
-                                uniform.binding,
-                                buf,
-                                span_u64,
-                            ));
+                            groups
+                                .entry(uniform.group)
+                                .or_default()
+                                .persistent_storage_buffers
+                                .push((uniform.binding, buf, span_u64));
                         } else {
                             return Err(crate::ShaderError::UniformNotFound(name.clone()).into());
                         }
                     }
-                    crate::shader::uniform::UniformData::PushConstant(_) => {
+                    UniformData::PushConstant(_) => {
                         // Fallback mode: each push constant root became a classic uniform buffer in rewritten module.
-                        if let Some(PushMode::Fallback { group, bindings }) = &cached.push_mode
+                        if let Some(PushMode::Fallback { group, bindings }) =
+                            &cached_pipeline.push_mode
                             && let Some(binding) = bindings.get(name)
                         {
                             let storage = shader.storage.read();
@@ -883,7 +817,7 @@ impl RenderContext {
                             groups
                                 .entry(*group)
                                 .or_default()
-                                .ubufs
+                                .uniform_buffers
                                 .push((*binding, buffer_location));
                         }
                     }
@@ -901,7 +835,7 @@ impl RenderContext {
                         groups
                             .entry(uniform.group)
                             .or_default()
-                            .ubufs
+                            .uniform_buffers
                             .push((uniform.binding, buffer_location));
                     }
                 }
@@ -912,11 +846,11 @@ impl RenderContext {
             use std::collections::HashSet;
             let mut present_groups: HashSet<u32> = HashSet::new();
 
-            for (group, owned) in groups.into_iter() {
-                let Some(layout) = cached.bind_group_layouts.get(&group) else {
+            for (group_index, resources) in groups.into_iter() {
+                let Some(layout) = cached_pipeline.bind_group_layouts.get(&group_index) else {
                     return Err(RendererError::BindGroupLayoutError(format!(
                         "Missing bind group layout for group {}",
-                        group
+                        group_index
                     )));
                 };
 
@@ -924,14 +858,14 @@ impl RenderContext {
                 let buffer_pool = self.buffer_pool.read();
                 let storage_pool = self.storage_pool.read();
                 let mut entries: Vec<wgpu::BindGroupEntry> = Vec::new();
-                for (binding, loc) in owned.ubufs.iter() {
+                for (binding, loc) in resources.uniform_buffers.iter() {
                     let binding_ref = buffer_pool.get_binding(*loc);
                     entries.push(wgpu::BindGroupEntry {
                         binding: *binding,
                         resource: wgpu::BindingResource::Buffer(binding_ref),
                     });
                 }
-                for (binding, loc) in owned.sbufs.iter() {
+                for (binding, loc) in resources.storage_buffers.iter() {
                     let binding_ref = storage_pool.get_binding(*loc);
                     entries.push(wgpu::BindGroupEntry {
                         binding: *binding,
@@ -939,12 +873,9 @@ impl RenderContext {
                     });
                 }
                 // Persistent buffers
-                for (binding, buf, span) in owned.pbufs.iter() {
-                    let padded = {
-                        let sz = *span;
-                        wgpu::util::align_to(sz, 16).max(16)
-                    };
-                    let size_nz = unsafe { std::num::NonZeroU64::new_unchecked(padded) };
+                for (binding, buf, span) in resources.persistent_storage_buffers.iter() {
+                    // Bind exactly the reflected span; do not pad, to avoid range overflow
+                    let size_nz = unsafe { std::num::NonZeroU64::new_unchecked(*span) };
                     entries.push(wgpu::BindGroupEntry {
                         binding: *binding,
                         resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
@@ -954,13 +885,13 @@ impl RenderContext {
                         }),
                     });
                 }
-                for (binding, view) in owned.views.iter() {
+                for (binding, view) in resources.views.iter() {
                     entries.push(wgpu::BindGroupEntry {
                         binding: *binding,
                         resource: wgpu::BindingResource::TextureView(view),
                     });
                 }
-                for (binding, sampler) in owned.samplers.iter() {
+                for (binding, sampler) in resources.samplers.iter() {
                     entries.push(wgpu::BindGroupEntry {
                         binding: *binding,
                         resource: wgpu::BindingResource::Sampler(sampler),
@@ -973,14 +904,14 @@ impl RenderContext {
                 let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
                     layout,
                     entries: &entries,
-                    label: Some(&format!("Bind Group for group: {}", group)),
+                    label: Some(&format!("Bind Group for group: {}", group_index)),
                 });
-                present_groups.insert(group);
-                bind_groups.push((group, bind_group));
+                present_groups.insert(group_index);
+                bind_groups.push((group_index, bind_group));
             }
 
             // Ensure empty bind groups are set for placeholder layouts the pipeline expects
-            for (group, layout) in cached.bind_group_layouts.iter() {
+            for (group, layout) in cached_pipeline.bind_group_layouts.iter() {
                 if !present_groups.contains(group) {
                     // Create an empty bind group (layout is expected to have zero entries for placeholders)
                     let empty = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -994,95 +925,13 @@ impl RenderContext {
 
             // Sort by group index to match pipeline layout order
             bind_groups.sort_by_key(|(g, _)| *g);
-
-            // New path: if there are meshes attached to this shader, draw them all here and continue.
-            if !meshes_for_shader.is_empty() {
-                for mo in meshes_for_shader.iter() {
-                    // Ensure GPU buffers
-                    let (refs, counts) = mo
-                        .ensure_gpu(&self.device, &self.queue)
-                        .map_err(|e| RendererError::Error(e.to_string()))?;
-
-                    // Build AST-mapped layouts for this mesh
-                    match build_ast_mapped_layouts(shader.as_ref(), mo.as_ref())? {
-                        Some((sig, v, i)) => {
-                            let cached_m = self
-                                .render_pipelines
-                                .entry((shader.hash, format, sc, sig))
-                                .or_insert_with(|| {
-                                    let mut layouts = create_bind_group_layouts(
-                                        &self.device,
-                                        &shader.storage.read().uniforms,
-                                    );
-                                    create_render_pipeline(
-                                        &self.device,
-                                        &mut layouts,
-                                        shader,
-                                        format,
-                                        sc,
-                                        Some((&v, i.as_ref())),
-                                    )
-                                });
-
-                            render_pass.set_pipeline(&cached_m.pipeline);
-                            for (group, bind_group) in bind_groups.iter() {
-                                render_pass.set_bind_group(*group, bind_group, &[]);
-                            }
-                            if let Some(PushMode::Native { root, .. }) = &cached_m.push_mode {
-                                let storage = shader.storage.read();
-                                if let Some(bytes) = storage.get_bytes(root) {
-                                    render_pass.set_push_constants(
-                                        wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
-                                        0,
-                                        bytes,
-                                    );
-                                }
-                            }
-                            render_pass.set_vertex_buffer(0, refs.vertex_buffer.slice(..));
-                            if let Some(instance_buffer) = &refs.instance_buffer {
-                                render_pass.set_vertex_buffer(1, instance_buffer.slice(..));
-                            }
-                            render_pass.set_index_buffer(
-                                refs.index_buffer.slice(..),
-                                wgpu::IndexFormat::Uint32,
-                            );
-                            render_pass.draw_indexed(
-                                0..counts.index_count,
-                                0,
-                                0..counts.instance_count,
-                            );
-                        }
-                        None => {
-                            // Shader has no @location inputs; draw fullscreen triangle once and move on
-                            render_pass.set_pipeline(&cached.pipeline);
-                            for (group, bind_group) in bind_groups.iter() {
-                                render_pass.set_bind_group(*group, bind_group, &[]);
-                            }
-                            if let Some(PushMode::Native { root, .. }) = &cached.push_mode {
-                                let storage = shader.storage.read();
-                                if let Some(bytes) = storage.get_bytes(root) {
-                                    render_pass.set_push_constants(
-                                        wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
-                                        0,
-                                        bytes,
-                                    );
-                                }
-                            }
-                            render_pass.draw(0..3, 0..1);
-                            break; // only once per shader
-                        }
-                    }
-                }
-                continue; // advance to next shader
-            }
-
-            render_pass.set_pipeline(&cached.pipeline);
+            render_pass.set_pipeline(&cached_pipeline.pipeline);
             for (group, bind_group) in bind_groups.iter() {
                 render_pass.set_bind_group(*group, bind_group, &[]);
             }
 
             // Set native push constants just before draw if applicable
-            if let Some(PushMode::Native { root, .. }) = &cached.push_mode {
+            if let Some(PushMode::Native { root, .. }) = &cached_pipeline.push_mode {
                 let storage = shader.storage.read();
                 if let Some(bytes) = storage.get_bytes(root) {
                     render_pass.set_push_constants(
@@ -1093,23 +942,38 @@ impl RenderContext {
                 }
             }
 
-            if let Some((refs, counts)) = cached_refs.as_ref() {
-                render_pass.set_vertex_buffer(0, refs.vertex_buffer.slice(..));
-                if let Some(instance_buffer) = &refs.instance_buffer {
-                    render_pass.set_vertex_buffer(1, instance_buffer.slice(..));
+            match meshes_for_shader.len() {
+                0 => render_pass.draw(0..3, 0..1),
+                _ => {
+                    for mesh_object in meshes_for_shader.iter() {
+                        let (refs, counts) =
+                            mesh_object.vertex_buffers(&self.device, &self.queue)?;
+                        render_pass.set_vertex_buffer(0, refs.vertex_buffer.slice(..));
+                        if let Some(instance_buffer) = &refs.instance_buffer {
+                            render_pass.set_vertex_buffer(1, instance_buffer.slice(..));
+                        }
+                        render_pass.set_index_buffer(
+                            refs.index_buffer.slice(..),
+                            wgpu::IndexFormat::Uint32,
+                        );
+                        render_pass.draw_indexed(
+                            0..counts.index_count,
+                            0,
+                            0..counts.instance_count,
+                        );
+                    }
                 }
-                render_pass
-                    .set_index_buffer(refs.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
-                render_pass.draw_indexed(0..counts.index_count, 0, 0..counts.instance_count);
-            } else {
-                // Fullscreen triangle fallback
-                render_pass.draw(0..3, 0..1);
             }
         }
 
         // Return MSAA texture to pool if used
         if let Some(texture) = msaa_texture.take() {
-            let key = TextureKey::new(size, fmt, sc, wgpu::TextureUsages::RENDER_ATTACHMENT);
+            let key = TextureKey::new(
+                size,
+                fmt,
+                sampler_count,
+                wgpu::TextureUsages::RENDER_ATTACHMENT,
+            );
             self.texture_pool.write().release(key, texture);
         }
 
@@ -1239,7 +1103,7 @@ impl RenderContext {
         for name in &shader.list_uniforms() {
             let uniform = shader.get_uniform(name)?;
             match &uniform.data {
-                crate::shader::uniform::UniformData::Texture(meta) => {
+                UniformData::Texture(meta) => {
                     if let Some(tex) = self.get_texture(&meta.id) {
                         let view = tex.create_view();
                         groups
@@ -1249,7 +1113,7 @@ impl RenderContext {
                             .push((uniform.binding, view));
                     }
                 }
-                crate::shader::uniform::UniformData::Sampler(_) => {
+                UniformData::Sampler(_) => {
                     let default_sampler = self
                         .device
                         .create_sampler(&wgpu::SamplerDescriptor::default());
@@ -1259,7 +1123,7 @@ impl RenderContext {
                         .samplers
                         .push((uniform.binding, default_sampler));
                 }
-                crate::shader::uniform::UniformData::Storage(data) => {
+                UniformData::Storage(data) => {
                     if let Some((_inner, span_u32, _access)) = data.first() {
                         let span = *span_u32 as u64;
                         // Obtain bytes
@@ -1418,11 +1282,8 @@ impl RenderContext {
             }
             // Persistent buffers
             for (binding, buf, span) in owned.pbufs.iter() {
-                let padded = {
-                    let sz = *span;
-                    wgpu::util::align_to(sz, 16).max(16)
-                };
-                let size_nz = unsafe { std::num::NonZeroU64::new_unchecked(padded) };
+                // Bind exactly the reflected span; do not pad, to avoid range overflow
+                let size_nz = unsafe { std::num::NonZeroU64::new_unchecked(*span) };
                 entries.push(wgpu::BindGroupEntry {
                     binding: *binding,
                     resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
@@ -1478,6 +1339,253 @@ impl RenderContext {
     }
 }
 
+// Debug readback support for compute storage buffers
+impl RenderContext {
+    /// If FC_READBACK_FRAMES>0 and the root name matches FC_READBACK_ROOT (or default "positions"),
+    /// schedule a small copy of the first bytes of the buffer into a MAP_READ staging buffer.
+    fn debug_maybe_schedule_readback(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        name: &str,
+        src: &wgpu::Buffer,
+        max_bytes: u64,
+    ) {
+        let remaining = self.debug_readback_frames.load(Ordering::Relaxed);
+        if remaining == 0 {
+            return;
+        }
+        let root = {
+            let r = self.debug_readback_root.read();
+            r.clone().unwrap_or_else(|| "positions".to_string())
+        };
+        if name != root {
+            return;
+        }
+        // Create staging buffer and record copy
+        let sz = std::cmp::max(16u64, wgpu::util::align_to(max_bytes, 16));
+        let staging = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Debug Readback Staging"),
+            size: sz,
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+        encoder.copy_buffer_to_buffer(src, 0, &staging, 0, sz);
+        self.debug_readbacks
+            .write()
+            .push((staging, sz, name.to_string()));
+        // Decrement remaining frames
+        let _ = self.debug_readback_frames.fetch_sub(1, Ordering::Relaxed);
+    }
+
+    /// Map and dump scheduled debug readbacks (as a few f32 values) to the log.
+    fn debug_drain_readbacks(&self) {
+        let mut list = self.debug_readbacks.write();
+        if list.is_empty() {
+            return;
+        }
+        // Ensure GPU work is done so mapping will complete (mirror TextureTarget::get_image)
+        if let Err(e) = self.device.poll(wgpu::PollType::Wait) {
+            log::error!("Device poll error during debug readback: {:?}", e);
+            list.clear();
+            return;
+        }
+        while let Some((buf, sz, name)) = list.pop() {
+            let slice = buf.slice(0..sz);
+            // Map synchronously (use poll with Wait)
+            let (sender, receiver) = std::sync::mpsc::channel();
+            slice.map_async(wgpu::MapMode::Read, move |res| {
+                let _ = sender.send(res);
+            });
+            if let Err(e) = self.device.poll(wgpu::PollType::Wait) {
+                log::error!("Device poll error during debug readback mapping: {:?}", e);
+                continue;
+            }
+            let _ = receiver.recv();
+            let data = slice.get_mapped_range();
+            let n_f32 = (data.len() / 4).min(16);
+            let mut vals = Vec::new();
+            for i in 0..n_f32 {
+                let b = &data[i * 4..i * 4 + 4];
+                vals.push(f32::from_le_bytes([b[0], b[1], b[2], b[3]]));
+            }
+            log::debug!("readback[{}]: first {} f32 = {:?}", name, n_f32, vals);
+            drop(data);
+            buf.unmap();
+        }
+    }
+}
+
+type VertexLayouts = (
+    wgpu::VertexBufferLayout<'static>,
+    Option<wgpu::VertexBufferLayout<'static>>,
+);
+
+// @TODO the Shader should provide this
+//.      - heck if the logic in the Shader is the same
+//.      - Create and persist the layouts in the ShaderObject
+fn create_vertex_buffer_layouts(
+    shader: &crate::ShaderObject,
+    mesh: &crate::mesh::MeshObject,
+) -> Result<Option<VertexLayouts>, RendererError> {
+    // Reflect inputs; if none, return None so callers can fall back to triangle path
+    let vertex_inputs = shader.reflect_vertex_inputs()?;
+    if vertex_inputs.is_empty() {
+        return Ok(None);
+    }
+
+    // Read schemas
+    let Some(vertex_schema) = mesh.vertex_schema.read().clone() else {
+        return Err(RendererError::Error(
+            "Mesh attribute mapping failed: no vertex schema".into(),
+        ));
+    };
+    let instance_schema = mesh.instance_schema.read().clone();
+
+    // Precompute name -> (offset, fmt) for both streams
+    let (vertex_map, vertex_stride) = schema_offsets(&vertex_schema);
+    let (instance_map, instance_stride) = if let Some(ref schema) = instance_schema {
+        let (map, stride) = schema_offsets(schema);
+        (Some(map), Some(stride))
+    } else {
+        (None, None)
+    };
+
+    // Partition attributes per stream based on mapping rule
+    let mut vertex_attributes: Vec<wgpu::VertexAttribute> = Vec::new();
+    let mut instance_attributes: Vec<wgpu::VertexAttribute> = Vec::new();
+
+    // Build optional index->name maps from the first vertex/instance
+    let (vertex_location, vertex_location_map) = mesh.first_vertex_location_map();
+    let instance_location_map = mesh.first_instance_location_map();
+
+    for vertex_input in vertex_inputs.iter() {
+        let mut placed = false;
+
+        // 1) Try instance by explicit index
+        if let Some(name) = instance_location_map.get(&vertex_input.location)
+            && let Some((offset, format_mesh)) =
+                instance_map.as_ref().and_then(|map| map.get(name)).cloned()
+        {
+            if vertex_input.format != format_mesh {
+                return Err(RendererError::Error(format!(
+                    "Type mismatch for shader input '{}' @location({}): shader expects {:?}, mesh has {:?}",
+                    vertex_input.name, vertex_input.location, vertex_input.format, format_mesh
+                )));
+            }
+            instance_attributes.push(wgpu::VertexAttribute {
+                format: vertex_input.format,
+                offset,
+                shader_location: vertex_input.location,
+            });
+            placed = true;
+        }
+        // 2) Try vertex by explicit index (position or property)
+        if !placed {
+            // position index
+            if vertex_input.location == vertex_location
+                && let Some((offset, format_mesh)) = vertex_map.get("position").cloned()
+            {
+                if vertex_input.format != format_mesh {
+                    return Err(RendererError::Error(format!(
+                        "Type mismatch for vertex 'position' @location({}): shader expects {:?}, mesh has {:?}",
+                        vertex_input.location, vertex_input.format, format_mesh
+                    )));
+                }
+                vertex_attributes.push(wgpu::VertexAttribute {
+                    format: vertex_input.format,
+                    offset,
+                    shader_location: vertex_input.location,
+                });
+                placed = true;
+            }
+            if !placed
+                && let Some(name) = vertex_location_map.get(&vertex_input.location)
+                && let Some((offset, format_mesh)) = vertex_map.get(name.as_str()).cloned()
+            {
+                if vertex_input.format != format_mesh {
+                    return Err(RendererError::Error(format!(
+                        "Type mismatch for shader input '{}' @location({}): shader expects {:?}, mesh has {:?}",
+                        vertex_input.name, vertex_input.location, vertex_input.format, format_mesh
+                    )));
+                }
+                vertex_attributes.push(wgpu::VertexAttribute {
+                    format: vertex_input.format,
+                    offset,
+                    shader_location: vertex_input.location,
+                });
+                placed = true;
+            }
+        }
+        // 3) Fallback: match by name (instance then vertex)
+        if !placed
+            && let Some(ref mi) = instance_map
+            && let Some((offset, format_mesh)) = mi.get(vertex_input.name.as_str()).cloned()
+        {
+            if vertex_input.format != format_mesh {
+                return Err(RendererError::Error(format!(
+                    "Type mismatch for shader input '{}' @location({}): shader expects {:?}, mesh has {:?}",
+                    vertex_input.name, vertex_input.location, vertex_input.format, format_mesh
+                )));
+            }
+            instance_attributes.push(wgpu::VertexAttribute {
+                format: vertex_input.format,
+                offset,
+                shader_location: vertex_input.location,
+            });
+            placed = true;
+        }
+        if !placed
+            && let Some((offset, format_mesh)) = vertex_map.get(vertex_input.name.as_str()).cloned()
+        {
+            if vertex_input.format != format_mesh {
+                return Err(RendererError::Error(format!(
+                    "Type mismatch for shader input '{}' @location({}): shader expects {:?}, mesh has {:?}",
+                    vertex_input.name, vertex_input.location, vertex_input.format, format_mesh
+                )));
+            }
+            vertex_attributes.push(wgpu::VertexAttribute {
+                format: vertex_input.format,
+                offset,
+                shader_location: vertex_input.location,
+            });
+            placed = true;
+        }
+        if !placed {
+            return Err(RendererError::Error(format!(
+                "Mesh attribute not found for shader input '{}' @location({})",
+                vertex_input.name, vertex_input.location
+            )));
+        }
+    }
+
+    // Build layouts; leak attributes to 'static for the pipeline builder
+    vertex_attributes.sort_by_key(|attr| attr.shader_location);
+    let vertex_layout = wgpu::VertexBufferLayout {
+        array_stride: vertex_stride,
+        step_mode: wgpu::VertexStepMode::Vertex,
+        attributes: Box::leak(vertex_attributes.into_boxed_slice()),
+    };
+
+    let instance_attributes = match instance_attributes.is_empty() {
+        true => None,
+        false => Some(instance_attributes),
+    };
+    let instance_layout =
+        if let (Some(attrs), Some(stride)) = (instance_attributes, instance_stride) {
+            let mut instance_attributes = attrs;
+            instance_attributes.sort_by_key(|a| a.shader_location);
+            Some(wgpu::VertexBufferLayout {
+                array_stride: stride,
+                step_mode: wgpu::VertexStepMode::Instance,
+                attributes: Box::leak(instance_attributes.into_boxed_slice()),
+            })
+        } else {
+            None
+        };
+
+    Ok(Some((vertex_layout, instance_layout)))
+}
+
 fn create_bind_group_layouts(
     device: &wgpu::Device,
     uniforms: &HashMap<String, (u32, u32, Uniform)>,
@@ -1488,7 +1596,7 @@ fn create_bind_group_layouts(
             continue;
         }
         // Push constants never occupy a bind group in native mode; skip here.
-        if let crate::shader::uniform::UniformData::PushConstant(_) = &uniform.data {
+        if let UniformData::PushConstant(_) = &uniform.data {
             continue;
         }
 
@@ -1690,10 +1798,7 @@ fn create_render_pipeline(
     shader: &crate::ShaderObject,
     format: wgpu::TextureFormat,
     sample_count: u32,
-    vertex_layouts: Option<(
-        &wgpu::VertexBufferLayout<'static>,
-        Option<&wgpu::VertexBufferLayout<'static>>,
-    )>,
+    vertex_layouts: Option<VertexLayouts>,
 ) -> RenderPipeline {
     let mut vs_entry = None;
     let mut fs_entry = None;
@@ -1713,7 +1818,7 @@ fn create_render_pipeline(
         if name.contains('.') {
             continue;
         }
-        if let crate::shader::uniform::UniformData::PushConstant(data) = &u.data
+        if let UniformData::PushConstant(data) = &u.data
             && let Some((_inner, span)) = data.first()
         {
             push_roots.push((name.clone(), *span));
@@ -1990,213 +2095,8 @@ fn create_render_pipeline(
     }
 }
 
-// ---------------------------
-// AST-driven vertex/instance mapping helpers
-// ---------------------------
-fn build_ast_mapped_layouts(
-    shader: &crate::ShaderObject,
-    mesh: &crate::mesh::MeshObject,
-) -> Result<
-    Option<(
-        u64,
-        wgpu::VertexBufferLayout<'static>,
-        Option<wgpu::VertexBufferLayout<'static>>,
-    )>,
-    RendererError,
-> {
-    // Reflect inputs; if none, return None so callers can fall back to triangle path
-    let inputs = shader
-        .reflect_vertex_inputs()
-        .map_err(RendererError::ShaderError)?;
-    if inputs.is_empty() {
-        return Ok(None);
-    }
-
-    // Read schemas
-    let sv = mesh.schema_v.read().clone();
-    let si = mesh.schema_i.read().clone();
-
-    let Some(sv) = sv else {
-        return Err(RendererError::Error(
-            "Mesh attribute mapping failed: no vertex schema".into(),
-        ));
-    };
-
-    // Precompute name -> (offset, fmt) for both streams
-    let (map_v, stride_v) = schema_offsets(&sv);
-    let (map_i, stride_i) = if let Some(ref si) = si {
-        let (m, s) = schema_offsets(si);
-        (Some(m), Some(s))
-    } else {
-        (None, None)
-    };
-
-    // Partition attributes per stream based on mapping rule
-    let mut attrs_v: Vec<wgpu::VertexAttribute> = Vec::new();
-    let mut attrs_i: Vec<wgpu::VertexAttribute> = Vec::new();
-
-    // Build optional index->name maps from the first vertex/instance
-    let (pos_loc, v_loc_map) = mesh.first_vertex_location_map();
-    let i_loc_map = mesh.first_instance_location_map();
-
-    for inp in inputs.iter() {
-        let mut placed = false;
-
-        // 1) Try instance by explicit index
-        if let Some(name) = i_loc_map.get(&inp.location)
-            && let Some((offset, format_mesh)) = map_i.as_ref().and_then(|m| m.get(name)).cloned()
-        {
-            if inp.format != format_mesh {
-                return Err(RendererError::Error(format!(
-                    "Type mismatch for shader input '{}' @location({}): shader expects {:?}, mesh has {:?}",
-                    inp.name, inp.location, inp.format, format_mesh
-                )));
-            }
-            attrs_i.push(wgpu::VertexAttribute {
-                format: inp.format,
-                offset,
-                shader_location: inp.location,
-            });
-            placed = true;
-        }
-        // 2) Try vertex by explicit index (position or property)
-        if !placed {
-            // position index
-            if inp.location == pos_loc
-                && let Some((offset, format_mesh)) = map_v.get("position").cloned()
-            {
-                if inp.format != format_mesh {
-                    return Err(RendererError::Error(format!(
-                        "Type mismatch for vertex 'position' @location({}): shader expects {:?}, mesh has {:?}",
-                        inp.location, inp.format, format_mesh
-                    )));
-                }
-                attrs_v.push(wgpu::VertexAttribute {
-                    format: inp.format,
-                    offset,
-                    shader_location: inp.location,
-                });
-                placed = true;
-            }
-            if !placed
-                && let Some(name) = v_loc_map.get(&inp.location)
-                && let Some((offset, format_mesh)) = map_v.get(name.as_str()).cloned()
-            {
-                if inp.format != format_mesh {
-                    return Err(RendererError::Error(format!(
-                        "Type mismatch for shader input '{}' @location({}): shader expects {:?}, mesh has {:?}",
-                        inp.name, inp.location, inp.format, format_mesh
-                    )));
-                }
-                attrs_v.push(wgpu::VertexAttribute {
-                    format: inp.format,
-                    offset,
-                    shader_location: inp.location,
-                });
-                placed = true;
-            }
-        }
-        // 3) Fallback: match by name (instance then vertex)
-        if !placed
-            && let Some(ref mi) = map_i
-            && let Some((offset, format_mesh)) = mi.get(inp.name.as_str()).cloned()
-        {
-            if inp.format != format_mesh {
-                return Err(RendererError::Error(format!(
-                    "Type mismatch for shader input '{}' @location({}): shader expects {:?}, mesh has {:?}",
-                    inp.name, inp.location, inp.format, format_mesh
-                )));
-            }
-            attrs_i.push(wgpu::VertexAttribute {
-                format: inp.format,
-                offset,
-                shader_location: inp.location,
-            });
-            placed = true;
-        }
-        if !placed && let Some((offset, format_mesh)) = map_v.get(inp.name.as_str()).cloned() {
-            if inp.format != format_mesh {
-                return Err(RendererError::Error(format!(
-                    "Type mismatch for shader input '{}' @location({}): shader expects {:?}, mesh has {:?}",
-                    inp.name, inp.location, inp.format, format_mesh
-                )));
-            }
-            attrs_v.push(wgpu::VertexAttribute {
-                format: inp.format,
-                offset,
-                shader_location: inp.location,
-            });
-            placed = true;
-        }
-        if !placed {
-            return Err(RendererError::Error(format!(
-                "Mesh attribute not found for shader input '{}' @location({})",
-                inp.name, inp.location
-            )));
-        }
-    }
-
-    // Build layouts; leak attributes to 'static for the pipeline builder
-    attrs_v.sort_by_key(|a| a.shader_location);
-    let attrs_v_boxed = Box::leak(attrs_v.into_boxed_slice());
-    let vertex_layout = wgpu::VertexBufferLayout {
-        array_stride: stride_v,
-        step_mode: wgpu::VertexStepMode::Vertex,
-        attributes: attrs_v_boxed,
-    };
-
-    let instance_layout = if let (Some(attrs), Some(stride)) = (
-        if attrs_i.is_empty() {
-            None
-        } else {
-            Some(attrs_i)
-        },
-        stride_i,
-    ) {
-        let mut attrs = attrs;
-        attrs.sort_by_key(|a| a.shader_location);
-        let attrs_i_boxed = Box::leak(attrs.into_boxed_slice());
-        Some(wgpu::VertexBufferLayout {
-            array_stride: stride,
-            step_mode: wgpu::VertexStepMode::Instance,
-            attributes: attrs_i_boxed,
-        })
-    } else {
-        None
-    };
-
-    // Compute layout signature hashing (stream tag, fmt, loc, offset) and strides
-    use sha2::{Digest, Sha256};
-    let mut hasher = Sha256::new();
-
-    // Vertex stream
-    for a in vertex_layout.attributes.iter() {
-        hasher.update([b'v']);
-        hasher.update(a.shader_location.to_le_bytes());
-        hasher.update([vertex_fmt_code(a.format)]);
-        hasher.update(a.offset.to_le_bytes());
-    }
-    hasher.update(vertex_layout.array_stride.to_le_bytes());
-
-    // Instance stream
-    if let Some(ref il) = instance_layout {
-        for a in il.attributes.iter() {
-            hasher.update([b'i']);
-            hasher.update(a.shader_location.to_le_bytes());
-            hasher.update([vertex_fmt_code(a.format)]);
-            hasher.update(a.offset.to_le_bytes());
-        }
-        hasher.update(il.array_stride.to_le_bytes());
-    }
-
-    let h = hasher.finalize();
-    let sig = u64::from_le_bytes([h[0], h[1], h[2], h[3], h[4], h[5], h[6], h[7]]);
-
-    Ok(Some((sig, vertex_layout, instance_layout)))
-}
-
 fn schema_offsets(
-    schema: &crate::mesh::Schema,
+    schema: &crate::mesh::VertexSchema,
 ) -> (
     std::collections::HashMap<String, (u64, wgpu::VertexFormat)>,
     u64,
@@ -2208,25 +2108,6 @@ fn schema_offsets(
         ofs += f.size;
     }
     (map, schema.stride)
-}
-
-fn vertex_fmt_code(fmt: wgpu::VertexFormat) -> u8 {
-    use wgpu::VertexFormat as F;
-    match fmt {
-        F::Float32 => 1,
-        F::Float32x2 => 2,
-        F::Float32x3 => 3,
-        F::Float32x4 => 4,
-        F::Uint32 => 5,
-        F::Uint32x2 => 6,
-        F::Uint32x3 => 7,
-        F::Uint32x4 => 8,
-        F::Sint32 => 9,
-        F::Sint32x2 => 10,
-        F::Sint32x3 => 11,
-        F::Sint32x4 => 12,
-        _ => 0,
-    }
 }
 
 #[cfg(test)]
@@ -2399,7 +2280,7 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
             let pass = crate::Pass::from_shader("mesh", &shader);
 
             // Build a triangle mesh
-            let mut mesh = crate::mesh::Mesh::new();
+            let mesh = crate::mesh::Mesh::new();
             use crate::mesh::Vertex;
             mesh.add_vertices([
                 Vertex::new([-0.5, -0.5, 0.0]),
@@ -2438,7 +2319,7 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(0.,1.,0.,1.); }
             let shader = crate::Shader::new(wgsl).expect("shader");
             let pass = crate::Pass::from_shader("mesh", &shader);
 
-            let mut mesh = crate::mesh::Mesh::new();
+            let mesh = crate::mesh::Mesh::new();
             use crate::mesh::Vertex;
             mesh.add_vertices([
                 Vertex::new([-0.5, -0.5, 0.0]),
@@ -2485,7 +2366,7 @@ fn main(v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(v.uv, 0.0, 1.0); }
             let shader = crate::Shader::new(wgsl).expect("shader");
             let pass = crate::Pass::from_shader("p", &shader);
 
-            let mut mesh = crate::mesh::Mesh::new();
+            let mesh = crate::mesh::Mesh::new();
             use crate::mesh::Vertex;
             mesh.add_vertices([
                 Vertex::new([-0.5, -0.5]).set("uv", [0.0, 0.0]),
@@ -2524,7 +2405,7 @@ fn main(v: VOut) -> @location(0) vec4<f32> { return v.color; }
             let shader = crate::Shader::new(wgsl).expect("shader");
             let pass = crate::Pass::from_shader("p", &shader);
 
-            let mut mesh = crate::mesh::Mesh::new();
+            let mesh = crate::mesh::Mesh::new();
             use crate::mesh::Vertex;
             mesh.add_vertices([
                 Vertex::new([-0.5, -0.5, 0.0]).set("color", [1.0, 0.0, 0.0, 1.0]),
@@ -2575,7 +2456,7 @@ fn main(v: VOut) -> @location(0) vec4<f32> { return v.tint; }
             let shader = crate::Shader::new(wgsl).expect("shader");
             let pass = crate::Pass::from_shader("p", &shader);
 
-            let mut mesh = crate::mesh::Mesh::new();
+            let mesh = crate::mesh::Mesh::new();
             use crate::mesh::{Vertex, VertexValue};
             // Triangle geometry in clip-space
             mesh.add_vertices([
@@ -2598,131 +2479,6 @@ fn main(v: VOut) -> @location(0) vec4<f32> { return v.tint; }
 
             pass.add_mesh(&mesh).expect("mesh is compatible");
             renderer.render(&pass, &target).expect("render ok");
-
-            // Debug instrumentation to diagnose mapping and buffers
-            {
-                // Reflect shader inputs
-                let inputs = shader
-                    .object
-                    .reflect_vertex_inputs()
-                    .expect("reflect inputs");
-                eprintln!("[dbg] reflected inputs (name, loc, fmt):");
-                for i in inputs.iter() {
-                    eprintln!("  - {} @{} {:?}", i.name, i.location, i.format);
-                }
-
-                let mo = &mesh.object;
-                // Schemas
-                let sv = mo.schema_v.read().clone();
-                let si = mo.schema_i.read().clone();
-                if let Some(sv) = sv.as_ref() {
-                    eprintln!("[dbg] vertex schema stride={} fields:", sv.stride);
-                    for f in sv.fields.iter() {
-                        eprintln!("  - {} {:?} size={}B", f.name, f.fmt, f.size);
-                    }
-                } else {
-                    eprintln!("[dbg] vertex schema: None");
-                }
-                if let Some(si) = si.as_ref() {
-                    eprintln!("[dbg] instance schema stride={} fields:", si.stride);
-                    for f in si.fields.iter() {
-                        eprintln!("  - {} {:?} size={}B", f.name, f.fmt, f.size);
-                    }
-                } else {
-                    eprintln!("[dbg] instance schema: None");
-                }
-
-                // Location maps
-                let (pos_loc, vmap) = mo.first_vertex_location_map();
-                let imap = mo.first_instance_location_map();
-                eprintln!("[dbg] vertex pos_loc = {}", pos_loc);
-                eprintln!("[dbg] vertex loc->name: {:?}", vmap);
-                eprintln!("[dbg] instance loc->name: {:?}", imap);
-
-                // Attribute layouts after mapping
-                match super::build_ast_mapped_layouts(shader.object.as_ref(), mo.as_ref()) {
-                    Ok(Some((_sig, v, i))) => {
-                        eprintln!("[dbg] mapped vertex attrs:");
-                        for a in v.attributes.iter() {
-                            eprintln!(
-                                "  - @{} off={} fmt={:?} (step=Vertex)",
-                                a.shader_location, a.offset, a.format
-                            );
-                        }
-                        if let Some(i) = i {
-                            eprintln!("[dbg] mapped instance attrs:");
-                            for a in i.attributes.iter() {
-                                eprintln!(
-                                    "  - @{} off={} fmt={:?} (step=Instance)",
-                                    a.shader_location, a.offset, a.format
-                                );
-                            }
-                        } else {
-                            eprintln!("[dbg] no instance attrs mapped");
-                        }
-                    }
-                    Ok(None) => eprintln!("[dbg] no reflected inputs; mapping disabled"),
-                    Err(e) => eprintln!("[dbg] build_ast_mapped_layouts error: {}", e),
-                }
-
-                // Decode first few instances from packed bytes if available
-                let pi = mo.packed_insts.read();
-                if let Some(si) = si.as_ref() {
-                    let stride = si.stride as usize;
-                    if stride > 0 && !pi.is_empty() {
-                        let count = (pi.len() / stride).min(4);
-                        eprintln!(
-                            "[dbg] decode first {} instances (stride={}):",
-                            count, stride
-                        );
-                        for idx in 0..count {
-                            let base = idx * stride;
-                            // offset: 2 x f32 at bytes 0..8
-                            let ofx = f32::from_le_bytes([
-                                pi[base],
-                                pi[base + 1],
-                                pi[base + 2],
-                                pi[base + 3],
-                            ]);
-                            let ofy = f32::from_le_bytes([
-                                pi[base + 4],
-                                pi[base + 5],
-                                pi[base + 6],
-                                pi[base + 7],
-                            ]);
-                            // tint: 4 x f32 at bytes 8..24
-                            let r = f32::from_le_bytes([
-                                pi[base + 8],
-                                pi[base + 9],
-                                pi[base + 10],
-                                pi[base + 11],
-                            ]);
-                            let g = f32::from_le_bytes([
-                                pi[base + 12],
-                                pi[base + 13],
-                                pi[base + 14],
-                                pi[base + 15],
-                            ]);
-                            let b = f32::from_le_bytes([
-                                pi[base + 16],
-                                pi[base + 17],
-                                pi[base + 18],
-                                pi[base + 19],
-                            ]);
-                            let a = f32::from_le_bytes([
-                                pi[base + 20],
-                                pi[base + 21],
-                                pi[base + 22],
-                                pi[base + 23],
-                            ]);
-                            eprintln!(
-                                "  - inst{}: offset=({:.3},{:.3}) tint=({:.3},{:.3},{:.3},{:.3})",
-                                idx, ofx, ofy, r, g, b, a
-                            );
-                        }
-                    }
-                }
-            }
 
             let img = target.get_image();
             let w = size[0];
@@ -2784,7 +2540,7 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(0.2,0.3,0.4,1.0);
             let shader = crate::Shader::new(wgsl).expect("shader");
             let pass = crate::Pass::from_shader("p", &shader);
 
-            let mut mesh = crate::mesh::Mesh::new();
+            let mesh = crate::mesh::Mesh::new();
             use crate::mesh::Vertex;
             mesh.add_vertices([
                 Vertex::new([-0.5, -0.5, 0.0]).set("uv", [0.0, 0.0]),
@@ -2822,7 +2578,7 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(0.1,0.9,0.1,1.0);
             let shader = crate::Shader::new(wgsl).expect("shader");
             let pass = crate::Pass::from_shader("p", &shader);
 
-            let mut mesh = crate::mesh::Mesh::new();
+            let mesh = crate::mesh::Mesh::new();
             use crate::mesh::Vertex;
             mesh.add_vertices([
                 Vertex::new([-0.5, -0.5]),
@@ -2895,7 +2651,7 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(0.1,0.9,0.1,1.0);
                 .map(|shader| shader.hash)
                 .expect("shader hash");
 
-            // sc = 1
+            // sampler_count = 1
             ctx.set_sample_count(1);
             let mut encoder = ctx
                 .device
@@ -2903,8 +2659,8 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(0.1,0.9,0.1,1.0);
                     label: Some("Test Encoder 1"),
                 });
             ctx.process_render_pass(&mut encoder, pass, &frame, size)
-                .expect("render pass sc=1");
-            assert!(ctx.render_pipelines.contains_key(&(shader_hash, fmt, 1, 0)));
+                .expect("render pass sampler_count=1");
+            assert!(ctx.render_pipelines.contains_key(&(shader_hash, fmt, 1)));
 
             // pick a supported msaa (>1) if any
             let flags = adapter.get_texture_format_features(fmt).flags;
@@ -2924,11 +2680,8 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(0.1,0.9,0.1,1.0);
                             label: Some("Test Encoder 2"),
                         });
                 ctx.process_render_pass(&mut encoder2, pass, &frame, size)
-                    .expect("render pass sc>1");
-                assert!(
-                    ctx.render_pipelines
-                        .contains_key(&(shader_hash, fmt, sc2, 0))
-                );
+                    .expect("render pass sampler_count>1");
+                assert!(ctx.render_pipelines.contains_key(&(shader_hash, fmt, sc2)));
                 // Ensure entries are distinct keys
                 assert_ne!(sc2, 1);
             }
@@ -2978,20 +2731,23 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(0.,0.,1.,1.); }
             let shader = crate::Shader::new(wgsl).expect("shader");
             let pass = crate::Pass::from_shader("mesh", &shader);
 
-            let mut mesh = crate::mesh::Mesh::new();
+            let mesh = crate::mesh::Mesh::new();
             use crate::mesh::Vertex;
             mesh.add_vertices([
                 Vertex::new([-0.5, -0.5, 0.0]),
                 Vertex::new([0.5, -0.5, 0.0]),
                 Vertex::new([0.0, 0.5, 0.0]),
             ]);
-            // No instance property named "offset"
-            pass.add_mesh(&mesh).expect("mesh is compatible");
 
-            let res = renderer.render(&pass, &target);
+            // Expect validation at call site: No instance property named "offset"
+            let res = pass.add_mesh(&mesh);
             assert!(res.is_err());
             let s = format!("{}", res.unwrap_err());
-            assert!(s.contains("Mesh attribute not found for shader input 'offset'"));
+            assert!(s.contains("No compatible shader exists for this mesh"));
+
+            // User tries to render a Pass without a Mesh, a default quad is created
+            let res = renderer.render(&pass, &target);
+            assert!(res.is_ok());
         });
     }
 
@@ -3021,7 +2777,7 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,1.,0.,1.); }
             let shader = crate::Shader::new(wgsl).expect("shader");
             let pass = crate::Pass::from_shader("mesh", &shader);
 
-            let mut mesh = crate::mesh::Mesh::new();
+            let mesh = crate::mesh::Mesh::new();
             use crate::mesh::{Vertex, VertexValue};
             mesh.add_vertices([
                 Vertex::new([-0.5, -0.5, 0.0]),
@@ -3032,12 +2788,16 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,1.,0.,1.); }
             mesh.add_instance(
                 Vertex::new([0.0, 0.0]).set("offset", VertexValue::F32x3([0.0, 0.0, 0.0])),
             );
-            pass.add_mesh(&mesh).expect("mesh is compatible");
 
-            let res = renderer.render(&pass, &target);
+            // Expect validation at call site: type mismatch for "offset"
+            let res = pass.add_mesh(&mesh);
             assert!(res.is_err());
             let s = format!("{}", res.unwrap_err());
-            assert!(s.contains("Type mismatch for shader input 'offset'"));
+            assert!(s.contains("No compatible shader exists for this mesh"));
+
+            // User tries to render a Pass without a compatible Mesh, a default quad is created
+            let res = renderer.render(&pass, &target);
+            assert!(res.is_ok());
         });
     }
 

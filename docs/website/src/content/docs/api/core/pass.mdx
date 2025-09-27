@@ -692,13 +692,14 @@ If a Shader wasn't provided earlier, FragmentColor will create a default one.
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::{Pass, Shader};
-use fragmentcolor::mesh::{Mesh, Vertex};
+use fragmentcolor::{Pass, Shader, Mesh, Vertex};
 
-let shader = Shader::default();
-let pass = Pass::from_shader("p", &shader);
-let mut mesh = Mesh::new();
+let mesh = Mesh::new();
 mesh.add_vertex(Vertex::new([0.0, 0.0]));
+
+let shader = Shader::from_mesh(&mesh);
+let pass = Pass::from_shader("pass", &shader);
+
 pass.add_mesh(&mesh).expect("mesh is compatible");
 `}
 lang="rust"
@@ -709,13 +710,14 @@ lang="rust"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Pass, Shader } from "fragmentcolor";
-import { Mesh, Vertex } from "fragmentcolor";
+import { Pass, Shader, Mesh, Vertex } from "fragmentcolor";
 
-const shader = Shader.default();
-const pass = new Pass("p"); pass.addShader(shader);
 const mesh = new Mesh();
 mesh.addVertex(Vertex.new([0.0, 0.0]));
+
+const shader = Shader.fromMesh(mesh);
+const pass = new Pass("pass"); pass.addShader(shader);
+
 pass.addMesh(mesh).expect("mesh is compatible");
 `}
 lang="js"
@@ -726,13 +728,14 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Pass, Shader
-from fragmentcolor import Mesh, Vertex
+from fragmentcolor import Pass, Shader, Mesh, Vertex
 
-shader = Shader.default()
-rpass = Pass("p"); rpass.add_shader(shader)
 mesh = Mesh()
 mesh.add_vertex(Vertex([0.0, 0.0]))
+
+shader = Shader.from_mesh(mesh)
+rpass = Pass("rpass"); rpass.add_shader(shader)
+
 rpass.add_mesh(mesh).expect("mesh is compatible")
 `}
 lang="python"
@@ -780,17 +783,20 @@ Attach a Mesh to a specific Shader in this Pass. This forwards to `shader.add_me
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::{Pass, Shader, Mesh, Vertex};
-
-let shader = Shader::default();
-let pass = Pass::from_shader("p", &shader);
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Shader, Mesh, Vertex, Pass};
 
 let mut mesh = Mesh::new();
-mesh.add_vertex(Vertex::new([0.0, 0.0]));
+mesh.add_vertex([0.0, 0.0]);
+let shader = Shader::from_mesh(&mesh);
+let pass = Pass::from_shader("pass", &shader);
 
-pass.add_mesh_to_shader(&mesh, &shader).expect("mesh is compatible");
+pass.add_mesh_to_shader(&mesh, &shader)?;
+
+Ok(())
+}
 `}
-lang="rust"
+lang="rust" meta="collapse={1-1, 11-12}"
 />
 
 </TabItem>
@@ -798,15 +804,15 @@ lang="rust"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Pass, Shader, Mesh, Vertex } from "fragmentcolor";
-
-const shader = Shader.default();
-const pass = new Pass("p"); pass.addShader(shader);
+import { Shader, Mesh, Vertex, Pass } from "fragmentcolor";
 
 const mesh = new Mesh();
-mesh.addVertex(Vertex.new([0.0, 0.0]));
+mesh.addVertex([0.0, 0.0]);
+const shader = Shader.fromMesh(mesh);
+const pass = new Pass("pass"); pass.addShader(shader);
 
-pass.addMeshToShader(mesh, shader).expect("mesh is compatible");
+pass.addMeshToShader(mesh, shader);
+
 `}
 lang="js"
 />
@@ -816,15 +822,15 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Pass, Shader, Mesh, Vertex
-
-shader = Shader.default()
-rpass = Pass("p"); rpass.add_shader(shader)
+from fragmentcolor import Shader, Mesh, Vertex, Pass
 
 mesh = Mesh()
-mesh.add_vertex(Vertex([0.0, 0.0]))
+mesh.add_vertex([0.0, 0.0])
+shader = Shader.from_mesh(mesh)
+rpass = Pass("rpass"); rpass.add_shader(shader)
 
-rpass.add_mesh_to_shader(mesh, shader).expect("mesh is compatible")
+rpass.add_mesh_to_shader(mesh, shader)
+
 `}
 lang="python"
 />
@@ -1125,6 +1131,205 @@ from fragmentcolor import Pass, Shader
 cs = Shader("@compute @workgroup_size(8,8,1) fn cs_main() {}")
 rpass = Pass("compute"); rpass.add_shader(cs)
 rpass.set_compute_dispatch(64, 64, 1)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Pass::add_target(target)
+
+Attach a per-pass color render target. When set, this pass renders into the provided texture instead of the final Target.
+
+Use this to render intermediate results (e.g., a shadow map) that later passes can sample.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Renderer, Pass, TextureFormat};
+
+let r = Renderer::new();
+let tex_target = r.create_texture_target([512, 512]).await?;
+
+let p = Pass::new("shadow");
+p.add_target(&tex_target);
+
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+`}
+lang="rust" meta="collapse={1-1, 10-12}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Renderer, Pass, TextureFormat } from "fragmentcolor";
+
+const r = new Renderer();
+const tex_target = await r.createTextureTarget([512, 512]);
+
+const p = new Pass("shadow");
+p.addTarget(tex_target);
+
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Renderer, Pass, TextureFormat
+
+r = Renderer()
+tex_target = r.create_texture_target([512, 512])
+
+p = Pass("shadow")
+p.add_target(tex_target)
+
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Pass::is_compute
+
+Returns true if this Pass is a compute pass (has only compute shaders).
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::{Shader, Pass, Mesh, Vertex};
+
+let wgsl = r#"
+@compute @workgroup_size(1)
+fn cs_main() { }
+"#;
+let shader = Shader::new(wgsl).unwrap();
+let pass = Pass::from_shader("p", &shader);
+
+if pass.is_compute() {
+    println!("This is a compute pass.");
+}
+
+assert!(shader.is_compute());
+assert!(pass.is_compute());
+`}
+lang="rust" meta="collapse={14-15}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Shader, Pass, Mesh, Vertex } from "fragmentcolor";
+
+const wgsl = r#";
+@compute @workgroup_size(1);
+fn cs_main() { };
+"#;
+const shader = new Shader(wgsl).unwrap();
+const pass = new Pass("p"); pass.addShader(shader);
+
+if pass.isCompute() {;
+    println!("This is a compute pass.");
+};
+
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Shader, Pass, Mesh, Vertex
+
+wgsl = r#"
+@compute @workgroup_size(1)
+fn cs_main() { }
+"#
+shader = Shader(wgsl)
+rpass = Pass("p"); rpass.add_shader(shader)
+
+if rpass.is_compute() {
+    println!("This is a compute rpass.")
+}
+
 `}
 lang="python"
 />

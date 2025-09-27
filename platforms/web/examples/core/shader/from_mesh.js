@@ -1,4 +1,3 @@
-
 import { Mesh, Shader, Vertex } from "fragmentcolor";
 
 const mesh = new Mesh();

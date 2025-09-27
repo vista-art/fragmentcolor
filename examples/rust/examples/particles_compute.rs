@@ -135,7 +135,7 @@ fn main() {
     let pass_fs = Pass::from_shader("render", &fs);
 
     // Geometry: tiny triangle at origin; instanced N times
-    let mut mesh = Mesh::new();
+    let mesh = Mesh::new();
     let s = 0.0035f32;
     mesh.add_vertices([
         Vertex::new([-s, -s]),

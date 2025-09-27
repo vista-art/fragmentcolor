@@ -1,4 +1,3 @@
-
 from fragmentcolor import Mesh, Shader, Vertex
 
 mesh = Mesh()
