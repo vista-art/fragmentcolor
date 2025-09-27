@@ -106,7 +106,8 @@ fn cs_main(@builtin(global_invocation_id) gid: vec3<u32>) {
   if (i >= N) { return; }
   let p = positions[i];
   // map clip-space [-1,1] to UV [0,1]
-  let uv = vec2<f32>(p.x * 0.5 + 0.5, p.y * 0.5 + 0.5);
+  // Flip Y so clip-space up maps to screen-space up (origin at top-left)
+  let uv = vec2<f32>(p.x * 0.5 + 0.5, 1.0 - (p.y * 0.5 + 0.5));
   let px = i32(uv.x * f32(res.x));
   let py = i32(uv.y * f32(res.y));
   if (px < 0 || py < 0 || px >= i32(res.x) || py >= i32(res.y)) { return; }
