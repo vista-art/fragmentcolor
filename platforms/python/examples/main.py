@@ -27,6 +27,7 @@ def run_all():
         'core/mesh/primitives/quad/new.py',
         'core/mesh/set_instance_count.py',
         'core/pass/Pass.py',
+        'core/pass/add_depth_target.py',
         'core/pass/add_mesh.py',
         'core/pass/add_mesh_to_shader.py',
         'core/pass/add_shader.py',
