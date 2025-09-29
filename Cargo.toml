@@ -20,26 +20,21 @@ resolver = "3"
 members = ["examples/rust"]
 
 [features]
-glsl = []
-shadertoy = ["glsl"]
-winit = ["dep:winit", "pollster"]
 python = ["pyo3", "numpy", "pollster"]
-fc_metrics = []
+winit = ["dep:winit", "pollster"]
 
 [dependencies]
-# Rendering
 wgpu = { version = "26", features = ["glsl", "wgsl", "webgl", "naga-ir"] }
-thiserror = { version = "2" }
-glam = { version = "0.30" }
-bytemuck = { version = "1" }
-log = { version = "0.4" }
-sha2 = { version = "0.10" }
-parking_lot = { version = "0.12" }
-lsp_doc = { git = "https://github.com/rafaelbeckel/lsp_doc", version = "0.2" }
-
-# Shader composition
 naga = { version = "26", features = ["wgsl-in", "glsl-in"] }
-# naga_oil = { version = "0.19" }
+parking_lot = "0.12"
+derive-new = "0.7"
+thiserror = "2.0"
+bytemuck = "1.0"
+lsp_doc = "0.2"
+dashmap = "6.1"
+glam = "0.30"
+sha2 = "0.10"
+log = "0.4"
 
 # Serialization
 csscolorparser = { version = "0.7", default-features = false, features = [
@@ -53,9 +48,6 @@ image = { version = "0.25", default-features = false, features = [
     "bmp",
     "hdr",
 ] }
-
-# Sync
-dashmap = "6.1.0"
 
 # Python FFI (optional)
 pyo3 = { version = "0.26", features = [
@@ -72,12 +64,12 @@ objc2-app-kit = { version = "0.3" }
 
 # Android & iOS FFI
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-# uniffi = { version = "0.29" }
+# uniffi = { version = "0.29" } // planned for v0.10.8
+winit = { version = "0.30", features = ["serde"], optional = true }
 ureq = { version = "3", default-features = false }
 pollster = { version = "0.4", optional = true }
-winit = { version = "0.30", features = ["serde"], optional = true }
 
-# iOS Specific (Not implemented yet)
+# iOS Specific (planned for v0.10.8)
 # [target.'cfg(target_os = "ios")'.dependencies]
 # objc = "0.2"
 # objc2-app-kit = "0.3"
@@ -85,15 +77,15 @@ winit = { version = "0.30", features = ["serde"], optional = true }
 
 # WASM-Specific
 [target.'cfg(target_family = "wasm")'.dependencies]
-wasm-bindgen = "0.2"
-wasm-bindgen-test = "0.3"
+console_error_panic_hook = "0.1"
 wasm-bindgen-futures = "0.4"
 serde-wasm-bindgen = "0.6"
+wasm-bindgen-test = "0.3"
+wasm-bindgen = "0.2"
+console_log = "1"
+lsp_doc = "0.2"
 js-sys = "0.3"
-console_log = "1.0"
-console_error_panic_hook = { version = "0.1" }
 gloo-utils = { version = "0.2", features = ["serde"] }
-lsp_doc = { version = "0.2", git = "https://github.com/rafaelbeckel/lsp_doc" }
 web-sys = { version = "0.3", features = [
     'Document',
     'Element',
@@ -109,14 +101,15 @@ web-sys = { version = "0.3", features = [
 ] }
 
 [build-dependencies]
-cfg_aliases = "0.2"
-phf_codegen = "0.13"
 phf = { version = "0.13", features = ["macros"] }
 syn = { version = "2.0", features = ["full"] }
-quote = "1.0"
+phf_codegen = "0.13"
+cfg_aliases = "0.2"
+quote = "1"
 
 [dev-dependencies]
-fastrand = "2"
-pollster = "0.4"
 wasm-bindgen-test = "0.3"
+image-compare = "0.5"
+pollster = "0.4"
+fastrand = "2"
 tempfile = "3"
