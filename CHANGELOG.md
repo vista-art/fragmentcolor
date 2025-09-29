@@ -4,6 +4,22 @@
 
 See the [Roadmap](https://github.com/vista-art/fragmentcolor/blob/main/ROADMAP.md) for planned features.
 
+### TODO (visual snapshot testing)
+
+- Expand snapshot coverage beyond hello_triangle:
+  - [ ] circle fragment shader (deterministic params)
+  - [ ] compute_texture (deterministic inputs)
+  - [ ] particles_splat (seed RNG; accept small tolerance or switch to invariant assertions)
+  - [ ] storage texture pipelines (clear + splat sequence)
+  - [ ] mesh rendering with vertex + instance attributes
+  - [ ] MSAA rendering path and resolve
+  - [ ] push-constant: native and uniform-fallback modes
+- Test harness improvements:
+  - [ ] Add helper to snapshot a Frame (multi-pass) directly
+  - [ ] Document UPDATE_EXPECT flow in CONTRIBUTING
+  - [ ] Add CI step (macOS) to run snapshots and upload tests/error artifacts on failures
+  - [ ] Optional: headless flags for examples to produce snapshots as integration tests
+
 ## 0.10.7 Documentation automation, website integration, API completeness, and release flow
 
 Session highlights (this conversation):

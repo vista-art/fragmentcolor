@@ -58,7 +58,7 @@ use std::borrow::Borrow;
 
 1. Device-lost recovery path (centralized)
   •  Why: Ruffle takes a robust stance on device/surface loss. We handle surface frame errors already, but not full device loss.
-  •  Plan: Add a top-level “device lost” handler that:
+  •  Plan: Add a top-level "device lost" handler that:
   •  Re-requests the adapter/device.
   •  Rebuilds renderer context and reconfigures surfaces/targets.
   •  Clears or rebuilds caches/pools safely.
@@ -104,6 +104,8 @@ use std::borrow::Borrow;
 
 ## Backlog (rough ideas)
 
+- [ ] load ShaderToy URLs from Shader::new() and Shader::toy()
+
 - [ ] Custom blending
 
 - [ ] Multisampling (resolve_target in RenderPassColorAttachments)
@@ -111,7 +113,6 @@ use std::borrow::Borrow;
 - [ ] Components library (prefabs)
 
 - [ ] Improve shader debugging experience
-
   - [ ] User Interface (eGUI) for runtime debug messages
   - [ ] Utils (gizmo, camera)
 
