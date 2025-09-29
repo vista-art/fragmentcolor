@@ -232,7 +232,7 @@ impl UniformStorage {
                 (UniformData::Texture(existing), UniformData::Texture(incoming)) => {
                     let merged = if incoming.id.0 != 0 {
                         crate::texture::TextureMeta {
-                            id: incoming.id.clone(),
+                            id: incoming.id,
                             dim: existing.dim,
                             arrayed: existing.arrayed,
                             class: existing.class,

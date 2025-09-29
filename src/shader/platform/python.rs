@@ -16,7 +16,7 @@ impl Shader {
         Python::attach(|py| -> Result<(), PyErr> {
             // If it's a Texture object, map to UniformData::Texture with id only
             if let Ok(tex) = value.bind(py).downcast::<crate::texture::Texture>() {
-                let meta = crate::texture::TextureMeta::with_id_only(tex.borrow().id.clone());
+                let meta = crate::texture::TextureMeta::with_id_only(tex.borrow().id);
                 return self
                     .object
                     .set(key, UniformData::Texture(meta))

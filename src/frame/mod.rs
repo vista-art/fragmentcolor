@@ -130,10 +130,10 @@ impl Frame {
         }
 
         // Only one present pass allowed per frame
-        if let Some(existing_present_index) = self.last_pass {
-            if existing_present_index != pass_index {
-                return Err(FrameError::InvalidPresentPass);
-            }
+        if let Some(existing_present_index) = self.last_pass
+            && existing_present_index != pass_index
+        {
+            return Err(FrameError::InvalidPresentPass);
         }
 
         Ok(())
@@ -141,12 +141,11 @@ impl Frame {
 
     /// Clears the present flag from the previously designated present pass.
     fn clear_previous_present_pass(&mut self) {
-        if let Some(previous_present_index) = self.last_pass.take() {
-            if previous_present_index < self.passes.len() {
-                if let Some(previous_pass) = self.passes.get(previous_present_index) {
-                    *previous_pass.present_to_target.write() = false;
-                }
-            }
+        if let Some(previous_present_index) = self.last_pass.take()
+            && previous_present_index < self.passes.len()
+            && let Some(previous_pass) = self.passes.get(previous_present_index)
+        {
+            *previous_pass.present_to_target.write() = false;
         }
     }
 
