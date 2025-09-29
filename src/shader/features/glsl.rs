@@ -1,12 +1,6 @@
 use crate::{ShaderError, ShaderObject};
 
 impl ShaderObject {
-    #[cfg(not(feature = "glsl"))]
-    pub fn glsl(_vertex_source: &str, _fragment_source: &str) -> Result<Self, ShaderError> {
-        Err(ShaderError::ParseError("GLSL is not enabled".into()))
-    }
-
-    #[cfg(feature = "glsl")]
     /// Create a Shader object from a GLSL source pair (vertex and fragment shaders).
     pub fn glsl(vertex_source: &str, fragment_source: &str) -> Result<Self, ShaderError> {
         use naga::back::wgsl;
@@ -59,9 +53,9 @@ impl ShaderObject {
         Self::wgsl(&format!("{}\n{}", wgsl_vertex_source, wgsl_fragment_source))
     }
 
-    #[cfg(feature = "shadertoy")]
+    // @TODO
     /// Create a Shader object from a Shadertoy-flavored GLSL source.
-    pub fn toy(source: &str) -> Result<Self, ShaderError> {
+    pub fn _toy(source: &str) -> Result<Self, ShaderError> {
         use crate::DEFAULT_VERTEX_SHADER;
         use crate::SHADERTOY_WRAPPER;
 

@@ -142,7 +142,6 @@ pub(crate) struct ShaderObject {
     pub(crate) module: Module,
     pub(crate) storage: RwLock<UniformStorage>,
     pub(crate) total_bytes: u64,
-    // Meshes attached to this shader (grouped draw per pipeline)
     pub(crate) meshes: RwLock<Vec<Arc<crate::mesh::MeshObject>>>,
 }
 
@@ -154,23 +153,15 @@ impl Default for ShaderObject {
 
 impl ShaderObject {
     /// Create a Shader object from a WGSL source string.
+    /// (alias to `ShaderObject::wgsl(shader_source)`).
     ///
-    /// GLSL is also supported if you enable the `glsl` feature.
-    /// Shadertoy-flavored GLSL is supported if the `shadertoy` feature is enabled.
+    /// GLSL is also supported, but you need to provide both vertex and fragment shaders:
+    /// `Shader::glsl(vertex_source, fragment_source)`.
     ///
-    /// If the optional features are enabled,
-    /// the constructor try to automatically detect the shader type and parse it accordingly.
+    /// Shadertoy-flavored GLSL is supported in the toy() constructor.
+    /// In this case, a default vertex shader is provided automatically:
+    /// `Shader::toy(shadertoy_source)`.
     pub fn new(source: &str) -> Result<Self, ShaderError> {
-        #[cfg(feature = "shadertoy")]
-        if source.contains("void mainImage") {
-            return Self::toy(source);
-        }
-
-        #[cfg(feature = "glsl")]
-        if source.contains("void main") {
-            return Self::glsl(DEFAULT_VERTEX_SHADER, source);
-        }
-
         Self::wgsl(source)
     }
 
