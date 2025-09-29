@@ -290,9 +290,34 @@ lang="text"
 
 ### Frame::connect(parent, child)
 
-Connect a dependency edge from parent -> child inside a Frame DAG.
+Creates a dependency relationship between two passes in the frame's execution graph.
 
-- Errors when either pass is missing, the edge already exists, or a cycle would be detected at execution time.
+#### Syntax
+
+```rust
+pub fn connect(
+    &mut self,
+    parent: &Pass,
+    child: &Pass,
+) -> Result<(), FrameError>
+```
+
+#### Parameters
+
+- `parent` - The pass that must execute before the child pass
+- `child` - The pass that depends on the parent pass completing first
+
+#### Return Value
+
+- `Ok(())` - The dependency was successfully established
+- `Err(FrameError::MissingPass)` - One or both passes are not present in this frame
+- `Err(FrameError::DuplicateEdge)` - This dependency relationship already exists
+
+#### Description
+
+The `connect` method establishes an execution dependency between two passes. When the frame is rendered, the parent pass will always execute before the child pass. This allows you to build complex rendering pipelines where later passes depend on the results of earlier passes.
+
+The frame maintains a directed acyclic graph (DAG) of pass dependencies. Each edge in this graph represents a "happens-before" relationship between passes.
 
 #### Example
 
@@ -304,19 +329,43 @@ code={`
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Frame, Pass};
 
-let p1 = Pass::new("shadow");
-let p2 = Pass::new("main");
+let depth_pass = Pass::new("depth_prepass");
+let lighting_pass = Pass::new("lighting");
 
 let mut frame = Frame::new();
-f.add_pass(&p1);
-f.add_pass(&p2);
+frame.add_pass(&depth_pass);
+frame.add_pass(&lighting_pass);
 
-frame.connect(&p1, &p2)?;
+// Ensure depth prepass runs before lighting
+frame.connect(&depth_pass, &lighting_pass)?;
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Frame, Pass};
+
+let geometry_pass = Pass::new("geometry");
+let shadow_pass = Pass::new("shadows");
+let lighting_pass = Pass::new("lighting");
+let post_process = Pass::new("post_processing");
+
+let mut frame = Frame::new();
+
+// Add all passes
+frame.add_pass(&geometry_pass);
+frame.add_pass(&shadow_pass);
+frame.add_pass(&lighting_pass);
+frame.add_pass(&post_process);
+
+// Build dependency chain
+frame.connect(&geometry_pass, &shadow_pass)?;
+frame.connect(&shadow_pass, &lighting_pass)?;
+frame.connect(&lighting_pass, &post_process)?;
 Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 12-14}"
+lang="rust" meta="collapse={1-1, 13-16, 36-38}"
 />
 
 </TabItem>
@@ -326,14 +375,34 @@ lang="rust" meta="collapse={1-1, 12-14}"
 code={`
 import { Frame, Pass } from "fragmentcolor";
 
-const p1 = new Pass("shadow");
-const p2 = new Pass("main");
+const depth_pass = new Pass("depth_prepass");
+const lighting_pass = new Pass("lighting");
 
 const frame = new Frame();
-f.addPass(p1);
-f.addPass(p2);
+frame.addPass(depth_pass);
+frame.addPass(lighting_pass);
 
-frame.connect(p1, p2);
+// Ensure depth prepass runs before lighting;
+frame.connect(depth_pass, lighting_pass);
+import { Frame, Pass } from "fragmentcolor";
+
+const geometry_pass = new Pass("geometry");
+const shadow_pass = new Pass("shadows");
+const lighting_pass = new Pass("lighting");
+const post_process = new Pass("post_processing");
+
+const frame = new Frame();
+
+// Add all passes;
+frame.addPass(geometry_pass);
+frame.addPass(shadow_pass);
+frame.addPass(lighting_pass);
+frame.addPass(post_process);
+
+// Build dependency chain;
+frame.connect(geometry_pass, shadow_pass);
+frame.connect(shadow_pass, lighting_pass);
+frame.connect(lighting_pass, post_process);
 `}
 lang="js"
 />
@@ -345,14 +414,34 @@ lang="js"
 code={`
 from fragmentcolor import Frame, Pass
 
-p1 = Pass("shadow")
-p2 = Pass("main")
+depth_pass = Pass("depth_prepass")
+lighting_pass = Pass("lighting")
 
 frame = Frame()
-f.add_pass(p1)
-f.add_pass(p2)
+frame.add_pass(depth_pass)
+frame.add_pass(lighting_pass)
 
-frame.connect(p1, p2)
+# Ensure depth prepass runs before lighting
+frame.connect(depth_pass, lighting_pass)
+from fragmentcolor import Frame, Pass
+
+geometry_pass = Pass("geometry")
+shadow_pass = Pass("shadows")
+lighting_pass = Pass("lighting")
+post_process = Pass("post_processing")
+
+frame = Frame()
+
+# Add all passes
+frame.add_pass(geometry_pass)
+frame.add_pass(shadow_pass)
+frame.add_pass(lighting_pass)
+frame.add_pass(post_process)
+
+# Build dependency chain
+frame.connect(geometry_pass, shadow_pass)
+frame.connect(shadow_pass, lighting_pass)
+frame.connect(lighting_pass, post_process)
 `}
 lang="python"
 />
@@ -390,10 +479,37 @@ lang="text"
 
 ### Frame::present(pass)
 
-Select which render pass presents to the final Target when rendering a Frame DAG.
+Designates which render pass should present its output to the final target.
 
-- Must be a render pass and a DAG leaf.
-- At most one present pass per Frame.
+#### Syntax
+
+```rust
+pub fn present(&mut self, pass: &Pass) -> Result<(), FrameError>
+```
+
+#### Parameters
+
+- `pass` - The render pass to designate for final presentation
+
+#### Return Value
+
+- `Ok(())` - The pass was successfully set as the present pass
+- `Err(FrameError::MissingPass)` - The pass is not present in this frame
+- `Err(FrameError::NotRenderPass)` - The pass is a compute pass (only render passes can present)
+- `Err(FrameError::NotALeaf)` - Other passes depend on this pass (must be a leaf node)
+- `Err(FrameError::InvalidPresentPass)` - A different pass is already designated for presentation
+
+#### Description
+
+The `present` method designates which render pass should output to the final render target (typically the screen or a final texture). This pass becomes the "output" of the entire frame.
+
+##### Requirements
+
+The present pass must satisfy several requirements:
+
+1. **Must be a render pass** - Only render passes can present output; compute passes cannot
+2. **Must be a leaf node** - No other passes can depend on the present pass
+3. **Only one per frame** - Each frame can have at most one present pass
 
 #### Example
 
@@ -412,12 +528,35 @@ let mut frame = Frame::new();
 frame.add_pass(&shadow);
 frame.add_pass(&main);
 frame.connect(&shadow, &main)?;
+
+// Main pass is a leaf, so it can present
 frame.present(&main)?;
 Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Frame, Pass};
+
+let geometry = Pass::new("geometry");
+let lighting = Pass::new("lighting");
+let post_fx = Pass::new("post_effects");
+
+let mut frame = Frame::new();
+frame.add_pass(&geometry);
+frame.add_pass(&lighting);
+frame.add_pass(&post_fx);
+
+// Build pipeline
+frame.connect(&geometry, &lighting)?;
+frame.connect(&lighting, &post_fx)?;
+
+// Final post-effects pass presents to screen
+frame.present(&post_fx)?;
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 12-14}"
+lang="rust" meta="collapse={1-1, 14-17, 35-37}"
 />
 
 </TabItem>
@@ -434,7 +573,26 @@ const frame = new Frame();
 frame.addPass(shadow);
 frame.addPass(main);
 frame.connect(shadow, main);
+
+// Main pass is a leaf, so it can present;
 frame.present(main);
+import { Frame, Pass } from "fragmentcolor";
+
+const geometry = new Pass("geometry");
+const lighting = new Pass("lighting");
+const post_fx = new Pass("post_effects");
+
+const frame = new Frame();
+frame.addPass(geometry);
+frame.addPass(lighting);
+frame.addPass(post_fx);
+
+// Build pipeline;
+frame.connect(geometry, lighting);
+frame.connect(lighting, post_fx);
+
+// Final post-effects pass presents to screen;
+frame.present(post_fx);
 `}
 lang="js"
 />
@@ -453,7 +611,26 @@ frame = Frame()
 frame.add_pass(shadow)
 frame.add_pass(main)
 frame.connect(shadow, main)
+
+# Main pass is a leaf, so it can present
 frame.present(main)
+from fragmentcolor import Frame, Pass
+
+geometry = Pass("geometry")
+lighting = Pass("lighting")
+post_fx = Pass("post_effects")
+
+frame = Frame()
+frame.add_pass(geometry)
+frame.add_pass(lighting)
+frame.add_pass(post_fx)
+
+# Build pipeline
+frame.connect(geometry, lighting)
+frame.connect(lighting, post_fx)
+
+# Final post-effects pass presents to screen
+frame.present(post_fx)
 `}
 lang="python"
 />

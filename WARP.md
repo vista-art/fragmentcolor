@@ -20,6 +20,7 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
 - Format: cargo fmt
 
 Run desktop examples (crate fce):
+
 - cargo run -p fce --example circle
 - cargo run -p fce --example triangle
 - cargo run -p fce --example multiobject
@@ -74,19 +75,19 @@ Run desktop examples (crate fce):
 
 - Shader: Parses WGSL (and GLSL when enabled) using naga, extracts uniforms, and manages typed uniform storage. Provides set/get/list_* APIs and determines whether a shader is compute or fragment based on entry points.
 - Pass: Groups one or more Shaders as a render or compute pass. Controls load vs clear behavior and optional viewport. Tracks total uniform/storage bytes required.
-- Frame: An ordered collection of Passes. Implements Renderable so it can be submitted to the renderer.
-- Renderer/RenderContext: Lazily initializes wgpu Instance/Adapter/Device/Queue, manages a uniform BufferPool and a TexturePool, and caches pipelines keyed by (ShaderHash, TextureFormat, SampleCount). Rendering uploads current uniform values, builds/reuses per‑group BindGroupLayouts, and draws either a fullscreen triangle or bound Meshes.
+- Frame: A DAG builder that organizes Passes via explicit edges; execution follows topological order and exactly one render leaf is selected to present.
+- Renderer/RenderContext: Lazily initializes wgpu Instance/Adapter/Device/Queue, manages a uniform BufferPool and a TexturePool, and caches pipelines using descriptive key structs (RenderPipelineKey and ComputePipelineKey). Rendering uploads current uniform values, builds/reuses per‑group BindGroupLayouts, and draws either a fullscreen triangle or bound Meshes.
 - Mesh: Holds vertex/index/instance data and schemas. Vertex buffer layouts are derived by reflecting shader inputs and mapping to mesh attributes by location and name.
 - Target/TargetFrame: Abstractions over on‑screen surfaces and offscreen textures. create_target(window) prefers a Surface (WindowTarget) but falls back to a TextureTarget when surface creation fails (useful for CI/headless). create_texture_target([w, h]) yields an offscreen TextureTarget.
 
 ### Data flow (render path)
 
 1) Shader.new(source) parses to a naga Module, validates, extracts uniforms and per‑uniform group/binding metadata; computes a ShaderHash.
-2) A Pass collects shaders and declares how to load or clear the target.
+2) A Pass collects shaders and declares how to load or clear the target. The Frame builds a DAG of passes via explicit edges; execution is topologically sorted.
 3) Renderer.render(renderable, target) builds a command encoder and, per pass:
    - Ensures buffer pool capacity for uniform/storage bytes.
    - Uploads current uniform values grouped by set (group/binding); caches/reuses per‑group BindGroupLayouts.
-   - Builds or fetches render/compute pipelines per (ShaderHash, Target format, SampleCount).
+   - Builds or fetches pipelines via struct keys (RenderPipelineKey/ComputePipelineKey).
    - Draws a fullscreen triangle when no Mesh is attached; otherwise, binds mesh vertex/index/instance streams and draws.
 4) Command buffers are submitted and the TargetFrame is presented if auto_present.
 
