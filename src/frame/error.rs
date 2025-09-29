@@ -14,6 +14,8 @@ pub enum FrameError {
     NotRenderPass,
     #[error("Cycle detected in frame graph; falling back to insertion order")]
     CycleDetected,
+    #[error("Pass '{0}' not found in frame")]
+    PassNotFound(String),
     #[cfg(wasm)]
     #[error("WASM Frame Error: {0}")]
     Error(String),

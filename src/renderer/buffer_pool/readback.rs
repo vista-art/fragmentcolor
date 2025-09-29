@@ -1,6 +1,6 @@
 //! Whole-buffer LRU pool for readbacks.
 //!
-//! Purpose vs. UniformBufferPool (kept in doc-comments per ROADMAP):
+//! Purpose vs. UniformBufferPool:
 //! - ReadbackBufferPool (this file)
 //!   • Purpose: Readback pixels (COPY_DST + MAP_READ) without re-allocating a fresh buffer each time.
 //!   • Shape: LRU of whole buffers keyed by capacity; best-fit selection; returned as Arc so async map/ownership is easy.

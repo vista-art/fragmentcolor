@@ -16,6 +16,8 @@ pub enum RendererError {
     BindGroupLayoutError(String),
     #[error("Texture error: {0}")]
     TextureError(#[from] crate::texture::TextureError),
+    #[error("Texture {0} not found")]
+    TextureNotFoundError(crate::texture::TextureId),
     #[error("initialization error: {0}")]
     InitializationError(#[from] InitializationError),
     #[cfg(not(wasm))]

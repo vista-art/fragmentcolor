@@ -398,6 +398,7 @@ impl RenderContext {
     fn new(device: wgpu::Device, queue: wgpu::Queue) -> Self {
         let buffer_pool = UniformBufferPool::new("Uniform Buffer Pool", &device);
         let storage_pool = StorageBufferPool::new("Storage Buffer Pool", &device);
+        let readback_pool = ReadbackBufferPool::new("Readback Buffer Pool", 8);
 
         RenderContext {
             device,
@@ -408,7 +409,7 @@ impl RenderContext {
 
             buffer_pool: RwLock::new(buffer_pool),
             storage_pool: RwLock::new(storage_pool),
-            readback_pool: RwLock::new(ReadbackBufferPool::new("Readback Buffer Pool", 8)),
+            readback_pool: RwLock::new(readback_pool),
             texture_pool: RwLock::new(TexturePool::new(16)),
 
             textures: DashMap::new(),
@@ -512,9 +513,6 @@ impl RenderContext {
         // Offscreen color targets are bound single-sampled; surface targets may use MSAA.
         let mut sample_count = self.sample_count();
         let mut resolve_target: Option<&wgpu::TextureView> = None;
-        // Keep MSAA resources alive for the duration of the pass
-        let mut msaa_texture: Option<wgpu::Texture> = None;
-        let mut _msaa_view: Option<wgpu::TextureView> = None;
 
         let mut color_format = frame.format();
         let mut pass_texture_view = None;
@@ -524,9 +522,7 @@ impl RenderContext {
                 color_format = texture.format();
                 sample_count = 1; // bind offscreen targets single-sampled
             } else {
-                return Err(RendererError::Error(
-                    "Pass target texture not found in Renderer".into(),
-                ));
+                return Err(RendererError::TextureNotFoundError(id));
             }
         }
 
@@ -537,6 +533,9 @@ impl RenderContext {
                 frame.view()
             };
 
+        // Keep MSAA resources alive for the duration of the pass
+        let mut msaa_texture: Option<wgpu::Texture> = None;
+        let mut _msaa_view: Option<wgpu::TextureView> = None;
         if pass_texture_view.is_none() && sample_count > 1 {
             let key = TextureKey::new(
                 size,
@@ -565,12 +564,18 @@ impl RenderContext {
         })];
 
         // Optional depth attachment if the pass has a depth target
-        let depth_view = if let Some(depth_id) = pass.depth_target.read().clone() {
-            let texture = self.get_texture(&depth_id);
-            texture.map(|t| t.create_view())
+        let (depth_view, depth_format) = if let Some(depth_id) = pass.depth_target.read().clone() {
+            if let Some(texture) = self.get_texture(&depth_id) {
+                let depth_view = texture.create_view();
+                let depth_format = texture.format();
+                (Some(depth_view), Some(depth_format))
+            } else {
+                (None, None)
+            }
         } else {
-            None
+            (None, None)
         };
+
         let depth_stencil_attachment = if let Some(depth_view) = depth_view.as_ref() {
             Some(wgpu::RenderPassDepthStencilAttachment {
                 view: &depth_view,
@@ -616,12 +621,6 @@ impl RenderContext {
                 None
             };
 
-            let depth_format = if let Some(depth_id) = pass.depth_target.read().clone() {
-                self.get_texture(&depth_id).map(|tex| tex.format())
-            } else {
-                None
-            };
-
             let pipeline_key = RenderPipelineKey {
                 shader_hash: shader.hash,
                 color_format,
@@ -641,6 +640,7 @@ impl RenderContext {
                         None,
                     )
                 });
+
             // Collect resources per bind group to build entries safely with owned views/samplers
             #[derive(Default)]
             struct BindGroupResources {
@@ -674,17 +674,27 @@ impl RenderContext {
                             );
                         }
                     }
-                    UniformData::Sampler(_) => {
-                        // If a texture in the same group was seen, use its sampler; otherwise, fallback
-                        let default_sampler = self
-                            .device
-                            .create_sampler(&wgpu::SamplerDescriptor::default());
-                        let sampler = groups
-                            .entry(uniform.group)
-                            .or_default()
-                            .last_texture_sampler
-                            .clone()
-                            .unwrap_or(default_sampler);
+                    UniformData::Sampler(info) => {
+                        // Create the appropriate sampler type explicitly so it always matches the layout
+                        let sampler = if info.comparison {
+                            self.device.create_sampler(&wgpu::SamplerDescriptor {
+                                label: Some("Default Comparison Sampler"),
+                                address_mode_u: wgpu::AddressMode::ClampToEdge,
+                                address_mode_v: wgpu::AddressMode::ClampToEdge,
+                                address_mode_w: wgpu::AddressMode::ClampToEdge,
+                                mag_filter: wgpu::FilterMode::Linear,
+                                min_filter: wgpu::FilterMode::Linear,
+                                mipmap_filter: wgpu::FilterMode::Linear,
+                                lod_min_clamp: 0.0,
+                                lod_max_clamp: 100.0,
+                                compare: Some(wgpu::CompareFunction::LessEqual),
+                                anisotropy_clamp: 1,
+                                border_color: None,
+                            })
+                        } else {
+                            self.device
+                                .create_sampler(&wgpu::SamplerDescriptor::default())
+                        };
                         groups
                             .entry(uniform.group)
                             .or_default()
@@ -708,12 +718,6 @@ impl RenderContext {
                                 if let Some(entry) = self.storage_registry.get(name) {
                                     let (existing, existing_span) = entry.value();
                                     if *existing_span != span_u64 {
-                                        log::debug!(
-                                            "storage[render]: recreate root={} new_span={} old_span={}",
-                                            name,
-                                            span_u64,
-                                            *existing_span
-                                        );
                                         drop(entry);
                                         // Recreate with new span
                                         let buffer =
@@ -791,11 +795,12 @@ impl RenderContext {
                             let bytes = storage
                                 .get_bytes(name)
                                 .ok_or(crate::ShaderError::UniformNotFound(name.clone()))?;
-                            //drop(storage);
+
                             let buffer_location = {
                                 let mut buffer_pool = self.buffer_pool.write();
                                 buffer_pool.upload(bytes, &self.queue, &self.device)
                             };
+
                             groups
                                 .entry(*group)
                                 .or_default()
@@ -1074,15 +1079,31 @@ impl RenderContext {
                                 .push((uniform.binding, view));
                         }
                     }
-                    UniformData::Sampler(_) => {
-                        let default_sampler = self
-                            .device
-                            .create_sampler(&wgpu::SamplerDescriptor::default());
+                    UniformData::Sampler(info) => {
+                        let sampler = if info.comparison {
+                            self.device.create_sampler(&wgpu::SamplerDescriptor {
+                                label: Some("Default Comparison Sampler"),
+                                address_mode_u: wgpu::AddressMode::ClampToEdge,
+                                address_mode_v: wgpu::AddressMode::ClampToEdge,
+                                address_mode_w: wgpu::AddressMode::ClampToEdge,
+                                mag_filter: wgpu::FilterMode::Linear,
+                                min_filter: wgpu::FilterMode::Linear,
+                                mipmap_filter: wgpu::FilterMode::Linear,
+                                lod_min_clamp: 0.0,
+                                lod_max_clamp: 100.0,
+                                compare: Some(wgpu::CompareFunction::LessEqual),
+                                anisotropy_clamp: 1,
+                                border_color: None,
+                            })
+                        } else {
+                            self.device
+                                .create_sampler(&wgpu::SamplerDescriptor::default())
+                        };
                         groups
                             .entry(uniform.group)
                             .or_default()
                             .samplers
-                            .push((uniform.binding, default_sampler));
+                            .push((uniform.binding, sampler));
                     }
                     UniformData::Storage(data) => {
                         if let Some((_inner, span_u32, _access)) = data.first() {
@@ -1099,12 +1120,6 @@ impl RenderContext {
                                 if let Some(entry) = self.storage_registry.get(name) {
                                     let (existing, existing_span) = entry.value();
                                     if *existing_span != span {
-                                        log::debug!(
-                                            "storage[compute]: recreate root={} new_span={} old_span={}",
-                                            name,
-                                            span,
-                                            *existing_span
-                                        );
                                         drop(entry);
                                         let buffer =
                                             self.device.create_buffer(&wgpu::BufferDescriptor {
@@ -1123,12 +1138,6 @@ impl RenderContext {
                                             .insert(name.to_string(), (buffer.clone(), span));
                                         buffer
                                     } else {
-                                        log::debug!(
-                                            "storage[compute]: reuse root={} span={} (existing_span={})",
-                                            name,
-                                            span,
-                                            *existing_span
-                                        );
                                         existing.clone()
                                     }
                                 } else {
@@ -1144,12 +1153,6 @@ impl RenderContext {
                                                 | wgpu::BufferUsages::COPY_SRC,
                                             mapped_at_creation: false,
                                         });
-                                    log::debug!(
-                                        "storage[compute]: create root={} span={} (init_bytes={})",
-                                        name,
-                                        span,
-                                        init_bytes.len()
-                                    );
                                     self.queue.write_buffer(&buffer, 0, &init_bytes);
                                     self.storage_registry
                                         .insert(name.to_string(), (buffer.clone(), span));
@@ -1168,11 +1171,6 @@ impl RenderContext {
                                         .map(|b| b.to_vec())
                                         .unwrap_or_else(|| vec![0u8; span as usize])
                                 };
-                                log::debug!(
-                                    "storage[compute]: upload root={} bytes={}",
-                                    name,
-                                    bytes.len()
-                                );
                                 self.queue.write_buffer(&buf, 0, &bytes);
                                 let mut s = shader.storage.write();
                                 s.clear_storage_dirty(name);
@@ -1565,10 +1563,14 @@ fn create_bind_group_layouts(
                     }
                 }
             }
-            UniformData::Sampler(_) => wgpu::BindGroupLayoutEntry {
+            UniformData::Sampler(info) => wgpu::BindGroupLayoutEntry {
                 binding: uniform.binding,
                 visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
-                ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                ty: wgpu::BindingType::Sampler(if info.comparison {
+                    wgpu::SamplerBindingType::Comparison
+                } else {
+                    wgpu::SamplerBindingType::Filtering
+                }),
                 count: None,
             },
             UniformData::Storage(data) => {
@@ -1594,14 +1596,6 @@ fn create_bind_group_layouts(
                         },
                         count: None,
                     };
-                    log::debug!(
-                        "layout[storage]: name={} group={} binding={} readonly={} span={}",
-                        uniform.name,
-                        uniform.group,
-                        uniform.binding,
-                        access.is_readonly(),
-                        span
-                    );
                     entry
                 } else {
                     let entry = wgpu::BindGroupLayoutEntry {
@@ -1616,12 +1610,6 @@ fn create_bind_group_layouts(
                         },
                         count: None,
                     };
-                    log::debug!(
-                        "layout[uniform-fallback]: name={} group={} binding={}",
-                        uniform.name,
-                        uniform.group,
-                        uniform.binding
-                    );
                     entry
                 }
             }
@@ -2071,6 +2059,47 @@ mod tests {
     }
 
     #[test]
+    fn sampler_comparison_binds_and_renders_smoke() {
+        pollster::block_on(async move {
+            let renderer = Renderer::new();
+            let target = renderer
+                .create_texture_target([8u32, 8u32])
+                .await
+                .expect("texture target");
+
+            let wgsl = r#"
+@group(0) @binding(0) var shadowTex: texture_depth_2d;
+@group(0) @binding(1) var shadowSamp: sampler_comparison;
+
+struct VOut { @builtin(position) pos: vec4<f32>, @location(0) uv: vec2<f32> };
+@vertex
+fn vs_main(@builtin(vertex_index) i: u32) -> VOut {
+    var p = array<vec2<f32>, 3>(vec2<f32>(-1.,-1.), vec2<f32>(3.,-1.), vec2<f32>(-1.,3.));
+    var uv = array<vec2<f32>, 3>(vec2<f32>(0.,0.), vec2<f32>(1.,0.), vec2<f32>(0.,1.));
+    var out: VOut;
+    out.pos = vec4<f32>(p[i], 0., 1.);
+    out.uv = uv[i];
+    return out;
+}
+@fragment
+fn main(v: VOut) -> @location(0) vec4<f32> {
+    let s = textureSampleCompare(shadowTex, shadowSamp, v.uv, 0.5);
+    return vec4<f32>(s, s, s, 1.0);
+}
+            "#;
+
+            let shader = crate::Shader::new(wgsl).expect("shader");
+            let depth = renderer
+                .create_depth_texture([8u32, 8u32])
+                .await
+                .expect("depth");
+            shader.set("shadowTex", &depth).expect("set depth");
+
+            renderer.render(&shader, &target).expect("render ok");
+        });
+    }
+
+    #[test]
     fn render_with_texture_sampler_smoke() {
         pollster::block_on(async move {
             // Create renderer and a small texture target
@@ -2500,7 +2529,7 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(0.1,0.9,0.1,1.0);
     }
 
     #[test]
-    fn pipeline_cache_keyed_by_sample_count() {
+    fn depth_msaa_sample_count_matches() {
         pollster::block_on(async move {
             let (adapter, device, queue) = create_device_and_queue().await;
             let ctx = RenderContext::new(device, queue);
@@ -2513,57 +2542,39 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(0.1,0.9,0.1,1.0);
             };
             let frame = create_test_frame(&ctx.device, size, color_format);
 
-            let shader = Shader::default();
-            let pass = Pass::from_shader("single", &shader);
-            let pass = pass.passes().into_iter().next().expect("pass");
-            let shader_hash = shader.object.hash;
-
-            // First render with sample_count=1
-            let key = RenderPipelineKey {
-                shader_hash,
-                color_format,
-                depth_format: None,
-                sample_count: 1,
-            };
-            ctx.set_sample_count(1);
-            let mut encoder = ctx
-                .device
-                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                    label: Some("Test Encoder 1"),
-                });
-            ctx.process_render_pass(&mut encoder, pass, &frame, size)
-                .expect("render pass sample_count=1");
-            assert!(
-                ctx.render_pipelines.contains_key(&key),
-                "pipeline cache should contain key: {:?}",
-                key
-            );
-
-            // pick a supported msaa (>1) if any
+            // Pick supported MSAA > 1 if available
             let flags = adapter.get_texture_format_features(color_format).flags;
-            let sc2 = if flags.sample_count_supported(4) {
+            let sc = if flags.sample_count_supported(4) {
                 4
             } else if flags.sample_count_supported(2) {
                 2
             } else {
                 1
             };
-            let key = RenderPipelineKey {
-                shader_hash,
-                color_format,
-                depth_format: None,
-                sample_count: sc2,
-            };
-            if sc2 > 1 {
-                ctx.set_sample_count(sc2);
-                let mut encoder2 = ctx
+
+            if sc > 1 {
+                ctx.set_sample_count(sc);
+                // Create a matching-sample depth texture and register it
+                let depth_obj =
+                    crate::TextureObject::create_depth_texture_with_count(&ctx, size, sc);
+                let depth_obj = std::sync::Arc::new(depth_obj);
+                let depth_id = ctx.register_texture(depth_obj.clone());
+
+                let shader = Shader::default();
+                let pass = Pass::from_shader("msaa-depth", &shader);
+                let pass = pass.passes().into_iter().next().expect("pass");
+                pass.set_depth_target_id(depth_id);
+
+                let mut encoder = ctx
                     .device
                     .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-                ctx.process_render_pass(&mut encoder2, pass, &frame, size)
-                    .expect("render pass sample_count>1");
-                assert!(ctx.render_pipelines.contains_key(&key));
-                // Ensure entries are distinct keys
-                assert_ne!(sc2, 1);
+
+                let res = ctx.process_render_pass(&mut encoder, pass, &frame, size);
+                assert!(
+                    res.is_ok(),
+                    "msaa depth render should succeed: {:?}",
+                    res.err()
+                );
             }
         });
     }

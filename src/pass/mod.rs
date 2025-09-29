@@ -140,6 +140,16 @@ impl Pass {
         Ok(())
     }
 
+    #[lsp_doc("docs/api/core/pass/add_depth_target.md")]
+    pub fn add_depth_target<T>(&self, target: T) -> Result<(), PassError>
+    where
+        T: TryInto<DepthTarget, Error = PassError>,
+    {
+        let dt = target.try_into()?;
+        self.object.set_depth_target_id(dt.id);
+        Ok(())
+    }
+
     #[lsp_doc("docs/api/core/pass/is_compute.md")]
     pub fn is_compute(&self) -> bool {
         self.object.is_compute()
@@ -159,10 +169,18 @@ pub struct ColorTarget {
     pub(crate) id: crate::texture::TextureId,
 }
 
+/// A reference to a depth render target texture (Depth32Float or similar).
+/// Must be a stable texture created by the Renderer (same device/context) with RENDER_ATTACHMENT usage and a depth/stencil format.
+#[derive(Clone, Debug)]
+pub struct DepthTarget {
+    pub(crate) id: crate::texture::TextureId,
+}
+
 impl TryFrom<&crate::texture::Texture> for ColorTarget {
     type Error = PassError;
+
+    /// Validate usage and format for color attachment
     fn try_from(tex: &crate::texture::Texture) -> Result<Self, Self::Error> {
-        // Validate usage and format for color attachment
         let usage = tex.object.usage;
         if !usage.contains(wgpu::TextureUsages::RENDER_ATTACHMENT) {
             return Err(PassError::InvalidColorTarget(
@@ -190,10 +208,38 @@ impl TryFrom<&crate::texture::Texture> for ColorTarget {
 
 impl TryFrom<&crate::target::TextureTarget> for ColorTarget {
     type Error = PassError;
+
+    // Convert to a Texture handle and reuse validation
     fn try_from(target: &crate::target::TextureTarget) -> Result<Self, Self::Error> {
-        // Convert to a Texture handle and reuse validation
         let texture = target.texture();
         ColorTarget::try_from(&texture)
+    }
+}
+
+impl TryFrom<&crate::texture::Texture> for DepthTarget {
+    type Error = PassError;
+
+    /// Validate usage and format for depth/stencil attachment
+    fn try_from(tex: &crate::texture::Texture) -> Result<Self, Self::Error> {
+        let usage = tex.object.usage;
+        if !usage.contains(wgpu::TextureUsages::RENDER_ATTACHMENT) {
+            return Err(PassError::InvalidColorTarget(
+                "depth texture was not created with RENDER_ATTACHMENT usage".into(),
+            ));
+        }
+        let format = tex.object.format;
+        match format {
+            wgpu::TextureFormat::Depth32Float
+            | wgpu::TextureFormat::Depth16Unorm
+            | wgpu::TextureFormat::Depth24Plus
+            | wgpu::TextureFormat::Depth24PlusStencil8
+            | wgpu::TextureFormat::Depth32FloatStencil8 => Ok(DepthTarget {
+                id: tex.id().clone(),
+            }),
+            _ => Err(PassError::InvalidColorTarget(
+                "texture format is not a depth/stencil format".into(),
+            )),
+        }
     }
 }
 
@@ -212,8 +258,9 @@ pub struct PassObject {
     pub(crate) compute_dispatch: RwLock<(u32, u32, u32)>,
     // Milestone A: optional per-pass color target
     pub(crate) color_target: RwLock<Option<crate::texture::TextureId>>,
-    // Milestone B (placeholders): depth attachment/state and storage alias map
-    pub(crate) _depth_target: RwLock<Option<crate::texture::TextureId>>,
+    // Optional per-pass depth attachment (Depth32Float for now)
+    pub(crate) depth_target: RwLock<Option<crate::texture::TextureId>>,
+    // Milestone B (placeholders): storage alias map
     pub(crate) _storage_alias: RwLock<HashMap<String, String>>,
     pub(crate) present_to_target: RwLock<bool>,
 }
@@ -230,7 +277,7 @@ impl PassObject {
             pass_type,
             compute_dispatch: RwLock::new((1, 1, 1)),
             color_target: RwLock::new(None),
-            _depth_target: RwLock::new(None),
+            depth_target: RwLock::new(None),
             _storage_alias: RwLock::new(HashMap::new()),
             present_to_target: RwLock::new(false),
         }
@@ -267,14 +314,9 @@ impl PassObject {
         *self.present_to_target.write() = false;
     }
 
-    /// Internal method to add a shader object to this pass.
-    fn add_shader_object(&self, shader: Arc<ShaderObject>) {
-        if shader.is_compute() == self.is_compute() {
-            *self.required_buffer_size.write() += shader.total_bytes;
-            self.shaders.write().push(shader.clone());
-        } else {
-            log::warn!("Cannot add a compute shader to a render pass or vice versa");
-        }
+    /// Set per-pass depth attachment by TextureId.
+    pub fn set_depth_target_id(&self, id: crate::texture::TextureId) {
+        *self.depth_target.write() = Some(id);
     }
 
     /// Add a mesh to the last compatible shader in this pass.
@@ -309,6 +351,16 @@ impl PassObject {
         let object = Self::new(name, pass_type);
         object.add_shader_object(shader);
         object
+    }
+
+    /// Internal method to add a shader object to this pass.
+    fn add_shader_object(&self, shader: Arc<ShaderObject>) {
+        if shader.is_compute() == self.is_compute() {
+            *self.required_buffer_size.write() += shader.total_bytes;
+            self.shaders.write().push(shader.clone());
+        } else {
+            log::warn!("Cannot add a compute shader to a render pass or vice versa");
+        }
     }
 }
 
