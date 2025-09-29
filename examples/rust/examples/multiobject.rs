@@ -1,10 +1,13 @@
 use fastrand::Rng;
-use fragmentcolor::{App, Frame, Pass, Renderer, Shader, Size, run};
+use fragmentcolor::{App, Frame, Pass, Renderer, SetupResult, Shader, Size, run};
+use std::sync::Arc;
+use winit::dpi::PhysicalSize;
+use winit::window::Window;
 
 const TRIANGLE_SOURCE: &str = include_str!("shaders/hello_triangle.wgsl");
 const CIRCLE_SOURCE: &str = include_str!("shaders/circle.wgsl");
 
-fn on_resize(app: &App, new_size: &winit::dpi::PhysicalSize<u32>) {
+fn on_resize(app: &App, new_size: &PhysicalSize<u32>) {
     app.resize([new_size.width, new_size.height]);
 }
 
@@ -40,50 +43,41 @@ fn random_circle(rng: &mut Rng, size: Size, alpha: f32) -> Shader {
     circle
 }
 
-fn setup(
-    app: &App,
-    windows: Vec<std::sync::Arc<winit::window::Window>>,
-) -> std::pin::Pin<
-    Box<
-        dyn std::future::Future<Output = Result<(), Box<dyn std::error::Error + Send + Sync>>> + '_,
-    >,
-> {
-    Box::pin(async move {
-        // Build the pass with many objects
-        let triangle = {
-            let s = Shader::new(TRIANGLE_SOURCE).unwrap();
-            s.set("color", [1.0, 0.2, 0.8, 1.0]).unwrap();
-            s
-        };
-        let pass = Pass::new("Multi Object Pass");
-        pass.add_shader(&triangle);
+async fn setup(app: &App, windows: Vec<Arc<Window>>) -> SetupResult {
+    // Build the pass with many objects
+    let triangle = {
+        let s = Shader::new(TRIANGLE_SOURCE).unwrap();
+        s.set("color", [1.0, 0.2, 0.8, 1.0]).unwrap();
+        s
+    };
+    let pass = Pass::new("Multi Object Pass");
+    pass.add_shader(&triangle);
 
-        // seed circles with a nominal size
-        let mut rng = Rng::new();
-        let size = Size {
-            width: 800,
-            height: 600,
-            depth: None,
-        };
-        for _ in 0..50 {
-            let circle = random_circle(&mut rng, size, 1.0);
-            pass.add_shader(&circle);
-        }
+    // seed circles with a nominal size
+    let mut rng = Rng::new();
+    let size = Size {
+        width: 800,
+        height: 600,
+        depth: None,
+    };
+    for _ in 0..50 {
+        let circle = random_circle(&mut rng, size, 1.0);
+        pass.add_shader(&circle);
+    }
 
-        // Compose into a frame (single pass)
-        let mut frame = Frame::new();
-        frame.add_pass(&pass);
+    // Compose into a frame (single pass)
+    let mut frame = Frame::new();
+    frame.add_pass(&pass);
 
-        app.add("frame.main", frame);
+    app.add("frame.main", frame);
 
-        // Create targets for all windows
-        for win in windows {
-            let target = app.get_renderer().create_target(win.clone()).await?;
-            app.add_target(win.id(), target);
-        }
+    // Create targets for all windows
+    for win in windows {
+        let target = app.get_renderer().create_target(win.clone()).await?;
+        app.add_target(win.id(), target);
+    }
 
-        Ok(())
-    })
+    Ok(())
 }
 
 fn main() {

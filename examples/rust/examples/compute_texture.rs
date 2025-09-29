@@ -1,4 +1,7 @@
-use fragmentcolor::{App, Frame, Pass, Renderer, Shader, run};
+use fragmentcolor::{App, Frame, Pass, Renderer, SetupResult, Shader, run};
+use std::sync::Arc;
+use winit::dpi::PhysicalSize;
+use winit::window::Window;
 
 // Compute + Render example:
 // - Compute pass writes a time-varying pattern into a storage texture via a compute shader
@@ -40,7 +43,7 @@ fn fs_main(v: VOut) -> @location(0) vec4<f32> {
 }
 "#;
 
-fn on_resize(app: &App, sz: &winit::dpi::PhysicalSize<u32>) {
+fn on_resize(app: &App, sz: &PhysicalSize<u32>) {
     app.resize([sz.width, sz.height]);
 }
 
@@ -62,54 +65,45 @@ fn draw(app: &App) {
     }
 }
 
-fn setup(
-    app: &App,
-    windows: Vec<std::sync::Arc<winit::window::Window>>,
-) -> std::pin::Pin<
-    Box<
-        dyn std::future::Future<Output = Result<(), Box<dyn std::error::Error + Send + Sync>>> + '_,
-    >,
-> {
-    Box::pin(async move {
-        // Create a storage texture (power-of-two helps alignment, but not required)
-        let size = [1024u32, 1024u32];
-        let tex = app
-            .get_renderer()
-            .create_storage_texture(size, fragmentcolor::TextureFormat::Rgba, None)
-            .await?;
+async fn setup(app: &App, windows: Vec<Arc<Window>>) -> SetupResult {
+    // Create a storage texture (power-of-two helps alignment, but not required)
+    let size = [1024u32, 1024u32];
+    let tex = app
+        .get_renderer()
+        .create_storage_texture(size, fragmentcolor::TextureFormat::Rgba, None)
+        .await?;
 
-        // Compute shader + pass
-        let cs = Shader::new(CS_WGSL)?;
-        cs.set("img", &tex)?;
-        cs.set("res", [size[0], size[1]])?;
-        cs.set("t", 0.0f32)?;
-        let pass_cs = Pass::from_shader("compute", &cs);
-        // Dispatch enough workgroups to cover the texture
-        let wx = size[0].div_ceil(16);
-        let wy = size[1].div_ceil(16);
-        pass_cs.set_compute_dispatch(wx, wy, 1);
+    // Compute shader + pass
+    let cs = Shader::new(CS_WGSL)?;
+    cs.set("img", &tex)?;
+    cs.set("res", [size[0], size[1]])?;
+    cs.set("t", 0.0f32)?;
+    let pass_cs = Pass::from_shader("compute", &cs);
+    // Dispatch enough workgroups to cover the texture
+    let wx = size[0].div_ceil(16);
+    let wy = size[1].div_ceil(16);
+    pass_cs.set_compute_dispatch(wx, wy, 1);
 
-        // Render shader + pass (fullscreen sample)
-        let fs = Shader::new(FS_WGSL)?;
-        fs.set("tex", &tex)?;
-        let pass_fs = Pass::from_shader("render", &fs);
+    // Render shader + pass (fullscreen sample)
+    let fs = Shader::new(FS_WGSL)?;
+    fs.set("tex", &tex)?;
+    let pass_fs = Pass::from_shader("render", &fs);
 
-        // Frame with compute then render
-        let mut frame = Frame::new();
-        frame.add_pass(&pass_cs);
-        frame.add_pass(&pass_fs);
+    // Frame with compute then render
+    let mut frame = Frame::new();
+    frame.add_pass(&pass_cs);
+    frame.add_pass(&pass_fs);
 
-        app.add("shader.compute", cs);
-        app.add("frame.main", frame);
+    app.add("shader.compute", cs);
+    app.add("frame.main", frame);
 
-        // Create targets for all windows
-        for win in windows {
-            let target = app.get_renderer().create_target(win.clone()).await?;
-            app.add_target(win.id(), target);
-        }
+    // Create targets for all windows
+    for win in windows {
+        let target = app.get_renderer().create_target(win.clone()).await?;
+        app.add_target(win.id(), target);
+    }
 
-        Ok(())
-    })
+    Ok(())
 }
 
 fn main() {

@@ -1,5 +1,8 @@
 use fragmentcolor::mesh::{Mesh, Vertex};
-use fragmentcolor::{App, Frame, Pass, Renderer, Shader, run};
+use fragmentcolor::{App, Frame, Pass, Renderer, SetupResult, Shader, run};
+use std::sync::Arc;
+use winit::dpi::PhysicalSize;
+use winit::window::Window;
 
 // Particles (winit) — CPU-simulated gravity toward the center
 // - Default: 10_000 particles (set PARTICLES=1000000 to try 1M, see notes below)
@@ -51,7 +54,7 @@ struct ParticlesState {
     damp: f32,
 }
 
-pub fn on_resize(app: &App, sz: &winit::dpi::PhysicalSize<u32>) {
+pub fn on_resize(app: &App, sz: &PhysicalSize<u32>) {
     app.resize([sz.width, sz.height]);
 }
 
@@ -99,78 +102,69 @@ fn draw(app: &App) {
     }
 }
 
-fn setup(
-    app: &App,
-    windows: Vec<std::sync::Arc<winit::window::Window>>,
-) -> std::pin::Pin<
-    Box<
-        dyn std::future::Future<Output = Result<(), Box<dyn std::error::Error + Send + Sync>>> + '_,
-    >,
-> {
+async fn setup(app: &App, windows: Vec<Arc<Window>>) -> SetupResult {
     use std::sync::{Mutex, OnceLock};
     static STATE: OnceLock<Mutex<ParticlesState>> = OnceLock::new();
 
-    Box::pin(async move {
-        let n: usize = std::env::var("PARTICLES")
-            .ok()
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(10_000);
+    let n: usize = std::env::var("PARTICLES")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(10_000);
 
-        let shader = Shader::new(SHADER_SRC)?;
-        let pass = Pass::from_shader("particles", &shader);
+    let shader = Shader::new(SHADER_SRC)?;
+    let pass = Pass::from_shader("particles", &shader);
 
-        // Tiny triangle in NDC centered at origin (instanced across the screen)
-        let mesh = Mesh::new();
-        let s = 0.004; // triangle size edge ~0.4% of screen
-        mesh.add_vertices([[-s, -s], [s, -s], [0.0, s]]);
+    // Tiny triangle in NDC centered at origin (instanced across the screen)
+    let mesh = Mesh::new();
+    let s = 0.004; // triangle size edge ~0.4% of screen
+    mesh.add_vertices([[-s, -s], [s, -s], [0.0, s]]);
 
-        // Build initial particle set and matching instances
-        let mut parts = Vec::with_capacity(n);
-        let mut insts = Vec::with_capacity(n);
-        for _ in 0..n {
-            let px = fastrand::f32() * 2.0 - 1.0; // [-1, 1]
-            let py = fastrand::f32() * 2.0 - 1.0;
-            let vx = (fastrand::f32() * 2.0 - 1.0) * 0.25; // initial speed scaled
-            let vy = (fastrand::f32() * 2.0 - 1.0) * 0.25;
-            let r = fastrand::f32();
-            let g = fastrand::f32();
-            let b = fastrand::f32();
-            let col = [r, g, b, 1.0];
-            parts.push(Particle {
-                pos: [px, py],
-                vel: [vx, vy],
-                col,
-            });
-            insts.push(
-                Vertex::new([0.0, 0.0])
-                    .set("offset", [px, py])
-                    .set("tint", col),
-            );
-        }
-        mesh.add_instances(insts);
-
-        pass.add_mesh(&mesh)?;
-
-        // Store pass and state
-        app.add("pass.particles", pass.clone());
-
-        STATE.get_or_init(|| {
-            Mutex::new(ParticlesState {
-                mesh,
-                particles: parts,
-                dt: 1.0 / 60.0,
-                g: 0.5,
-                damp: 0.995,
-            })
+    // Build initial particle set and matching instances
+    let mut parts = Vec::with_capacity(n);
+    let mut insts = Vec::with_capacity(n);
+    for _ in 0..n {
+        let px = fastrand::f32() * 2.0 - 1.0; // [-1, 1]
+        let py = fastrand::f32() * 2.0 - 1.0;
+        let vx = (fastrand::f32() * 2.0 - 1.0) * 0.25; // initial speed scaled
+        let vy = (fastrand::f32() * 2.0 - 1.0) * 0.25;
+        let r = fastrand::f32();
+        let g = fastrand::f32();
+        let b = fastrand::f32();
+        let col = [r, g, b, 1.0];
+        parts.push(Particle {
+            pos: [px, py],
+            vel: [vx, vy],
+            col,
         });
+        insts.push(
+            Vertex::new([0.0, 0.0])
+                .set("offset", [px, py])
+                .set("tint", col),
+        );
+    }
+    mesh.add_instances(insts);
 
-        for win in windows {
-            let target = app.get_renderer().create_target(win.clone()).await?;
-            app.add_target(win.id(), target);
-        }
+    pass.add_mesh(&mesh)?;
 
-        Ok(())
-    })
+    // Store pass and state
+    app.add("pass.particles", pass.clone());
+
+    STATE.get_or_init(|| {
+        Mutex::new(ParticlesState {
+            mesh,
+            particles: parts,
+            dt: 1.0 / 60.0,
+            g: 0.5,
+            damp: 0.995,
+        })
+    });
+
+    for win in windows {
+        let target = app.get_renderer().create_target(win.clone()).await?;
+        app.add_target(win.id(), target);
+    }
+
+    Ok(())
 }
 
 fn main() {
