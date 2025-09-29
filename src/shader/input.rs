@@ -67,23 +67,16 @@ mod tests {
         assert!(res.is_ok());
     }
 
-    // Story: When GLSL feature is disabled, loading a .frag file yields a ParseError.
+    // Story: Invalid GLSL produces error
     #[test]
     fn glsl_file_without_feature_errors() {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("m.frag");
         std::fs::write(&path, "void main() {}").expect("write");
         let res = load_shader(path.to_str().unwrap());
-        if cfg!(feature = "glsl") {
-            // With GLSL enabled, invalid GLSL should still error (validation error path)
-            assert!(res.is_err());
-        } else {
-            let err = res.expect_err("glsl parse error");
-            match err {
-                ShaderError::ParseError(_) => {}
-                _ => panic!("unexpected error kind: {:?}", err),
-            }
-        }
+
+        // With GLSL enabled, invalid GLSL should still error (validation error path)
+        assert!(res.is_err());
     }
 
     // Story: Very short source string is rejected as invalid shader source.
