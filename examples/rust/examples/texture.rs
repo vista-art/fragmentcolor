@@ -1,5 +1,8 @@
-use fragmentcolor::{App, Shader, run};
+use fragmentcolor::{App, Frame, Pass, Renderer, Shader, run};
+use std::future::Future;
 use std::path::PathBuf;
+use std::pin::Pin;
+use std::sync::Arc;
 
 const VS_FS: &str = r#"
 struct VOut { @builtin(position) pos: vec4<f32>, @location(0) uv: vec2<f32> };
@@ -25,24 +28,47 @@ pub fn on_resize(app: &App, new_size: &winit::dpi::PhysicalSize<u32>) {
     app.resize([new_size.width, new_size.height]);
 }
 
-fn main() {
-    // Load a small built-in asset (use favicon from docs/website/public if present)
-    let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    path.pop(); // examples/rust
-    path.push("docs/website/public/favicon.png");
+fn setup(
+    app: &App,
+    windows: Vec<Arc<winit::window::Window>>,
+) -> Pin<Box<dyn Future<Output = Result<(), Box<dyn std::error::Error + Send + Sync>>> + '_>> {
+    Box::pin(async move {
+        // Load a small built-in asset (use favicon from docs/website/public if present)
+        let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        path.pop(); // examples/rust
+        path.push("docs/website/public/favicon.png");
 
-    let shader = Shader::new(VS_FS).unwrap();
+        let shader = Shader::new(VS_FS)?;
+        if path.exists() {
+            let tex = app.get_renderer().create_texture(&path).await?;
+            shader.set("tex", &tex)?;
+        }
+        let pass = Pass::from_shader("main", &shader);
+        let mut frame = Frame::new();
+        frame.add_pass(&pass);
+        app.add("frame.main", frame);
 
-    // Create a headless renderer/target via App convenience
-    let mut app = App::new();
+        for win in windows {
+            let target = app.get_renderer().create_target(win.clone()).await?;
+            app.add_target(win.id(), target);
+        }
+        Ok(())
+    })
+}
 
-    // Create texture using the same renderer instance held by App and set it on the shader
-    if path.exists() {
-        let tex = pollster::block_on(app.renderer().create_texture(&path)).unwrap();
-        shader.set("tex", &tex).unwrap();
+fn draw(app: &App) {
+    let id = app.primary_window_id();
+    if let Some(frame) = app.get::<Frame>("frame.main") {
+        let r = app.get_renderer();
+        let _ = app.with_target(id, |t| r.render(&*frame, t));
     }
+}
 
-    app.scene(shader).on_resize(on_resize);
-
+fn main() {
+    let renderer = Renderer::new();
+    let mut app = App::new(renderer);
+    app.on_start(setup)
+        .on_resize(on_resize)
+        .on_redraw_requested(draw);
     run(&mut app);
 }

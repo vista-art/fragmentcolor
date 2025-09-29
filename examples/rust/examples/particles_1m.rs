@@ -1,5 +1,5 @@
 use fragmentcolor::mesh::{Mesh, Vertex};
-use fragmentcolor::{App, Pass, Shader, run};
+use fragmentcolor::{App, Frame, Pass, Renderer, Shader, run};
 
 // One million particles via storage buffer + instance_index
 // - Uses a storage buffer (var<storage, read>) visible to the vertex stage
@@ -44,82 +44,147 @@ pub fn on_resize(app: &App, sz: &winit::dpi::PhysicalSize<u32>) {
     app.resize([sz.width, sz.height]);
 }
 
-fn main() {
-    // Shader + pass
-    let shader = Shader::new(SHADER_SRC).expect("shader");
-    let pass = Pass::from_shader("particles_1m", &shader);
+struct State {
+    pos_x: Vec<f32>,
+    pos_y: Vec<f32>,
+    vel_x: Vec<f32>,
+    vel_y: Vec<f32>,
+    col: Vec<[f32; 4]>,
+    blob: Vec<u8>,
+}
+fn draw(app: &App) {
+    use std::sync::{Mutex, OnceLock};
 
-    // Base mesh: tiny triangle
-    let mesh = Mesh::new();
-    let s = 0.0035f32;
-    mesh.add_vertices([
-        Vertex::new([-s, -s]),
-        Vertex::new([s, -s]),
-        Vertex::new([0.0, s]),
-    ]);
-    // Draw N instances with no per-instance attributes
-    mesh.set_instance_count(N as u32);
-    pass.add_mesh(&mesh).expect("mesh is compatible");
+    static STATE: OnceLock<Mutex<State>> = OnceLock::new();
 
-    // CPU buffers: positions + velocities in SoA for updates; blob for upload
-    let mut pos_x: Vec<f32> = Vec::with_capacity(N);
-    let mut pos_y: Vec<f32> = Vec::with_capacity(N);
-    let mut vel_x: Vec<f32> = Vec::with_capacity(N);
-    let mut vel_y: Vec<f32> = Vec::with_capacity(N);
-    let mut col: Vec<[f32; 4]> = Vec::with_capacity(N);
+    if let (Some(shader), Some(pass)) = (
+        app.get::<Shader>("shader.particles"),
+        app.get::<Pass>("pass.particles"),
+    ) {
+        if let Some(lock) = STATE.get() {
+            let mut s = lock.lock().unwrap();
+            let dt = 1.0 / 60.0;
+            let g = 0.35f32;
+            let damp = 0.9975f32;
 
-    for _ in 0..N {
-        let x = fastrand::f32() * 2.0 - 1.0;
-        let y = fastrand::f32() * 2.0 - 1.0;
-        let vx = (fastrand::f32() * 2.0 - 1.0) * 0.15;
-        let vy = (fastrand::f32() * 2.0 - 1.0) * 0.15;
-        let c = [fastrand::f32(), fastrand::f32(), fastrand::f32(), 1.0];
-        pos_x.push(x);
-        pos_y.push(y);
-        vel_x.push(vx);
-        vel_y.push(vy);
-        col.push(c);
-    }
-
-    let mut blob = vec![0u8; N * STRIDE];
-    for i in 0..N {
-        let base = i * STRIDE;
-        pack_particle(&mut blob[base..base + STRIDE], pos_x[i], pos_y[i], col[i]);
-    }
-    // Upload initial data
-    shader.set("particles", &blob[..]).expect("set particles");
-
-    // App
-    let mut app = App::new();
-    app.on_resize(on_resize);
-
-    // Simple gravity toward center with damping
-    let dt = 1.0 / 60.0;
-    let g = 0.35f32;
-    let damp = 0.9975f32;
-
-    app.scene(pass.clone()).on_redraw_requested(move |_app| {
-        // Update CPU state
-        for i in 0..N {
-            let x = pos_x[i];
-            let y = pos_y[i];
-            let r2 = x * x + y * y + 1e-4;
-            let r = r2.sqrt();
-            let ax = -g * x / (r2 * r);
-            let ay = -g * y / (r2 * r);
-            vel_x[i] = (vel_x[i] + ax * dt) * damp;
-            vel_y[i] = (vel_y[i] + ay * dt) * damp;
-            pos_x[i] = (x + vel_x[i] * dt).clamp(-2.0, 2.0);
-            pos_y[i] = (y + vel_y[i] * dt).clamp(-2.0, 2.0);
+            for i in 0..N {
+                let x = s.pos_x[i];
+                let y = s.pos_y[i];
+                let r2 = x * x + y * y + 1e-4;
+                let r = r2.sqrt();
+                let ax = -g * x / (r2 * r);
+                let ay = -g * y / (r2 * r);
+                s.vel_x[i] = (s.vel_x[i] + ax * dt) * damp;
+                s.vel_y[i] = (s.vel_y[i] + ay * dt) * damp;
+                s.pos_x[i] = (x + s.vel_x[i] * dt).clamp(-2.0, 2.0);
+                s.pos_y[i] = (y + s.vel_y[i] * dt).clamp(-2.0, 2.0);
+            }
+            for i in 0..N {
+                let base = i * STRIDE;
+                let px = s.pos_x[i];
+                let py = s.pos_y[i];
+                let c = s.col[i];
+                pack_particle(&mut s.blob[base..base + STRIDE], px, py, c);
+            }
+            let _ = shader.set("particles", &s.blob[..]);
         }
-        // Repack updated positions (colors unchanged)
+
+        let mut frame = Frame::new();
+        frame.add_pass(&pass);
+        let id = app.primary_window_id();
+        let r = app.get_renderer();
+        let _ = app.with_target(id, |t| r.render(&frame, t));
+    }
+}
+
+fn setup(
+    app: &App,
+    windows: Vec<std::sync::Arc<winit::window::Window>>,
+) -> std::pin::Pin<
+    Box<
+        dyn std::future::Future<Output = Result<(), Box<dyn std::error::Error + Send + Sync>>> + '_,
+    >,
+> {
+    use std::sync::{Mutex, OnceLock};
+    static STATE: OnceLock<Mutex<State>> = OnceLock::new();
+
+    Box::pin(async move {
+        // Shader + pass
+        let shader = Shader::new(SHADER_SRC)?;
+        let pass = Pass::from_shader("particles_1m", &shader);
+
+        // Base mesh: tiny triangle
+        let mesh = Mesh::new();
+        let s = 0.0035f32;
+        mesh.add_vertices([
+            Vertex::new([-s, -s]),
+            Vertex::new([s, -s]),
+            Vertex::new([0.0, s]),
+        ]);
+        // Draw N instances with no per-instance attributes
+        mesh.set_instance_count(N as u32);
+        pass.add_mesh(&mesh)?;
+
+        // CPU buffers: positions + velocities in SoA for updates; blob for upload
+        let mut pos_x: Vec<f32> = Vec::with_capacity(N);
+        let mut pos_y: Vec<f32> = Vec::with_capacity(N);
+        let mut vel_x: Vec<f32> = Vec::with_capacity(N);
+        let mut vel_y: Vec<f32> = Vec::with_capacity(N);
+        let mut col: Vec<[f32; 4]> = Vec::with_capacity(N);
+
+        for _ in 0..N {
+            let x = fastrand::f32() * 2.0 - 1.0;
+            let y = fastrand::f32() * 2.0 - 1.0;
+            pos_x.push(x);
+            pos_y.push(y);
+            let vx = (fastrand::f32() * 2.0 - 1.0) * 0.15;
+            let vy = (fastrand::f32() * 2.0 - 1.0) * 0.15;
+            vel_x.push(vx);
+            vel_y.push(vy);
+            let r = fastrand::f32();
+            let g = fastrand::f32();
+            let b = fastrand::f32();
+            col.push([r, g, b, 1.0]);
+        }
+
+        let mut blob = vec![0u8; N * STRIDE];
         for i in 0..N {
             let base = i * STRIDE;
             pack_particle(&mut blob[base..base + STRIDE], pos_x[i], pos_y[i], col[i]);
         }
-        // Upload
-        let _ = shader.set("particles", &blob[..]);
-    });
+        // Upload initial data
+        shader.set("particles", &blob[..])?;
+
+        // Store shader and pass
+        app.add("shader.particles", shader.clone());
+        app.add("pass.particles", pass.clone());
+
+        STATE.get_or_init(|| {
+            Mutex::new(State {
+                pos_x,
+                pos_y,
+                vel_x,
+                vel_y,
+                col,
+                blob,
+            })
+        });
+
+        for win in windows {
+            let target = app.get_renderer().create_target(win.clone()).await?;
+            app.add_target(win.id(), target);
+        }
+
+        Ok(())
+    })
+}
+
+fn main() {
+    let renderer = Renderer::new();
+    let mut app = App::new(renderer);
+    app.on_resize(on_resize)
+        .on_start(setup)
+        .on_redraw_requested(draw);
 
     run(&mut app);
 }
