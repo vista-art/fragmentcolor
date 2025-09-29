@@ -14,14 +14,23 @@ use winit::window::{Window, WindowAttributes, WindowId};
 
 pub type AppError = Box<dyn std::error::Error>;
 
+// Public aliases to avoid complex types at call sites.
+pub type SetupError = Box<dyn std::error::Error + Send + Sync>;
+pub type SetupResult = Result<(), SetupError>;
+
 // Signature for top-level callbacks.
 // Users can register global event callbacks and draw callbacks.
 // The event is passed by reference to avoid unnecessary cloning.
-type EventCb = Box<dyn FnMut(&App, WindowId, &WindowEvent) + Send + 'static>;
+type WindowEventCallback = Box<dyn FnMut(&App, WindowId, &WindowEvent) + Send + 'static>;
 
 // Device-level (non-window) event callback
-type DevEventCb =
+type DeviceEventCallback =
     Box<dyn FnMut(&App, winit::event::DeviceId, &winit::event::DeviceEvent) + Send + 'static>;
+
+pub type StartResult<'a> = Pin<Box<dyn Future<Output = SetupResult> + 'a>>;
+
+type StartCallback =
+    Option<Box<dyn for<'a> FnOnce(&'a App, Vec<Arc<Window>>) -> StartResult<'a> + 'static>>;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum EventKind {
@@ -99,9 +108,6 @@ fn kind_of(event: &WindowEvent) -> EventKind {
     }
 }
 
-type StartFuture<'a> =
-    Pin<Box<dyn Future<Output = Result<(), Box<dyn std::error::Error + Send + Sync>>> + 'a>>;
-
 pub struct App {
     renderer: Renderer,
 
@@ -116,20 +122,19 @@ pub struct App {
     blueprints: Vec<WindowAttributes>,
 
     // Registered callbacks
-    on_event: RwLock<Vec<EventCb>>, // called for every WindowEvent
-    on_draw: RwLock<Vec<EventCb>>,  // called when WindowEvent::RedrawRequested
+    on_event: RwLock<Vec<WindowEventCallback>>, // called for every WindowEvent
+    on_draw: RwLock<Vec<WindowEventCallback>>,  // called when WindowEvent::RedrawRequested
 
     // Event-specific callback registries
-    primary_by_kind: RwLock<HashMap<EventKind, Vec<EventCb>>>,
-    per_window_by_kind: RwLock<HashMap<WindowId, HashMap<EventKind, Vec<EventCb>>>>,
+    primary_by_kind: RwLock<HashMap<EventKind, Vec<WindowEventCallback>>>,
+    per_window_by_kind: RwLock<HashMap<WindowId, HashMap<EventKind, Vec<WindowEventCallback>>>>,
 
     // Device event registries (no window association)
-    on_device_event: RwLock<Vec<DevEventCb>>, // called for every DeviceEvent
-    device_by_kind: RwLock<HashMap<DeviceEvent, Vec<DevEventCb>>>,
+    on_device_event: RwLock<Vec<DeviceEventCallback>>, // called for every DeviceEvent
+    device_by_kind: RwLock<HashMap<DeviceEvent, Vec<DeviceEventCallback>>>,
 
     // Startup hook (async)
-    start_cb:
-        Option<Box<dyn for<'a> FnOnce(&'a App, Vec<Arc<Window>>) -> StartFuture<'a> + 'static>>,
+    start_callback: StartCallback,
 
     primary_window: Option<WindowId>,
 }
@@ -148,7 +153,7 @@ impl App {
             per_window_by_kind: RwLock::new(HashMap::new()),
             on_device_event: RwLock::new(Vec::new()),
             device_by_kind: RwLock::new(HashMap::new()),
-            start_cb: None,
+            start_callback: None,
             primary_window: None,
         }
     }
@@ -160,11 +165,12 @@ impl App {
     }
 
     // Startup hook: called once after windows are created in resumed().
-    pub fn on_start<F>(&mut self, f: F) -> &mut Self
+    pub fn on_start<F, Fut>(&mut self, f: F) -> &mut Self
     where
-        F: 'static + for<'a> FnOnce(&'a App, Vec<Arc<Window>>) -> StartFuture<'a>,
+        F: 'static + for<'a> FnOnce(&'a App, Vec<Arc<Window>>) -> Fut,
+        Fut: 'a + Future<Output = SetupResult>,
     {
-        self.start_cb = Some(Box::new(f));
+        self.start_callback = Some(Box::new(move |app, windows| Box::pin(f(app, windows))));
         self
     }
 
@@ -257,7 +263,214 @@ impl App {
             .push(Box::new(f));
         self
     }
+
+    // Convenience getters for callbacks ------------------------------------------------------
+    pub fn get_renderer(&self) -> &Renderer {
+        &self.renderer
+    }
+
+    pub fn renderer(&self) -> &Renderer {
+        self.get_renderer()
+    }
+
+    /// Returns the id of the first (primary) window created by the App.
+    /// Panics if called before the window is created (resumed()).
+    pub fn primary_window_id(&self) -> WindowId {
+        self.primary_window
+            .expect("primary_window_id() called before App resumed")
+    }
+
+    /// Backwards-compatible alias for examples; forwards to primary_window_id().
+    pub fn window_id(&self) -> WindowId {
+        self.primary_window_id()
+    }
+
+    /// Convenience helper for single-window apps: resize the primary window target.
+    pub fn resize(&self, size: impl Into<Size>) {
+        let id = self.primary_window_id();
+        self.resize_target(id, size);
+    }
+
+    pub fn window(&self, id: WindowId) -> Option<Arc<Window>> {
+        self.windows.get(&id).cloned()
+    }
+
+    pub fn window_size(&self, id: WindowId) -> Option<Size> {
+        self.targets.read().get(&id).map(|t| t.size())
+    }
+
+    pub fn add_target(&self, id: WindowId, target: crate::RenderTarget) {
+        self.targets.write().insert(id, target);
+    }
+
+    /// Read-only access to a target; runs the closure with a borrowed target.
+    pub fn with_target<R>(
+        &self,
+        id: WindowId,
+        f: impl FnOnce(&crate::RenderTarget) -> R,
+    ) -> Option<R> {
+        let map = self.targets.read();
+        map.get(&id).map(f)
+    }
+
+    pub fn resize_target(&self, id: WindowId, size: impl Into<Size>) {
+        if let Some(target) = self.targets.write().get_mut(&id) {
+            target.resize(size);
+        }
+    }
 }
+
+impl ApplicationHandler for App {
+    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+        // Create one default window if none were specified
+        let blueprints = if self.blueprints.is_empty() {
+            vec![Window::default_attributes()]
+        } else {
+            self.blueprints.clone()
+        };
+
+        let mut created: Vec<Arc<Window>> = Vec::new();
+
+        for attrs in blueprints {
+            match event_loop.create_window(attrs) {
+                Ok(w) => {
+                    let window = Arc::new(w);
+                    let id = window.id();
+
+                    // Store window
+                    if self.primary_window.is_none() {
+                        self.primary_window = Some(id);
+                    }
+                    self.windows.insert(id, window.clone());
+                    created.push(window);
+                }
+                Err(e) => {
+                    log::error!("Failed to create window: {}", e);
+                }
+            }
+        }
+
+        // Invoke on_start once after windows exist
+        if let Some(cb) = self.start_callback.take() {
+            let result = pollster::block_on(cb(&*self, created.clone()));
+            if let Err(e) = result {
+                panic!("App startup failed: {}", e);
+            }
+        }
+
+        // Kick off continuous redraw loop for all windows
+        for win in &created {
+            win.request_redraw();
+        }
+    }
+
+    fn window_event(&mut self, event_loop: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
+        // 1) Always forward event to generic callbacks first
+        {
+            let mut cbs = self.on_event.write();
+            for cb in cbs.iter_mut() {
+                cb(&*self, id, &event);
+            }
+        }
+
+        // Dispatch event-specific registries
+        let kind = kind_of(&event);
+        if let Some(primary) = self.primary_window
+            && primary == id
+        {
+            let mut map = self.primary_by_kind.write();
+            if let Some(list) = map.get_mut(&kind) {
+                for cb in list.iter_mut() {
+                    cb(&*self, id, &event);
+                }
+            }
+        }
+
+        {
+            let mut outer = self.per_window_by_kind.write();
+            if let Some(win_map) = outer.get_mut(&id)
+                && let Some(list) = win_map.get_mut(&kind)
+            {
+                for cb in list.iter_mut() {
+                    cb(&*self, id, &event);
+                }
+            }
+        }
+
+        match &event {
+            WindowEvent::RedrawRequested => {
+                // 2) Allow user to update state each frame
+                {
+                    let mut cbs = self.on_draw.write();
+                    for cb in cbs.iter_mut() {
+                        cb(&*self, id, &event);
+                    }
+                }
+
+                // 3) Keep the loop going continuously for animations
+                if let Some(win) = self.windows.get(&id) {
+                    win.request_redraw();
+                }
+            }
+            WindowEvent::CloseRequested => {
+                // Forwarded above; now exit
+                event_loop.exit();
+            }
+            _ => {
+                // No built-in behavior for other events
+            }
+        }
+    }
+
+    fn device_event(
+        &mut self,
+        _event_loop: &ActiveEventLoop,
+        device_id: winit::event::DeviceId,
+        event: winit::event::DeviceEvent,
+    ) {
+        // 1) Forward to generic device callbacks
+        {
+            let mut cbs = self.on_device_event.write();
+            for cb in cbs.iter_mut() {
+                cb(&*self, device_id, &event);
+            }
+        }
+        // 2) Dispatch by kind to typed handlers
+        let kind = match &event {
+            winit::event::DeviceEvent::Added => DeviceEvent::Added,
+            winit::event::DeviceEvent::Removed => DeviceEvent::Removed,
+            winit::event::DeviceEvent::MouseMotion { .. } => DeviceEvent::MouseMotion,
+            winit::event::DeviceEvent::MouseWheel { .. } => DeviceEvent::MouseWheel,
+            winit::event::DeviceEvent::Motion { .. } => DeviceEvent::Motion,
+            winit::event::DeviceEvent::Button { .. } => DeviceEvent::Button,
+            winit::event::DeviceEvent::Key(_) => DeviceEvent::Key,
+        };
+        let mut map = self.device_by_kind.write();
+        if let Some(list) = map.get_mut(&kind) {
+            for cb in list.iter_mut() {
+                cb(&*self, device_id, &event);
+            }
+        }
+    }
+}
+
+/// Runs the given App using winit's event loop.
+/// Needs to be called from the main thread. Blocks forever.
+pub fn run(app: &mut App) {
+    let event_loop = match EventLoop::new() {
+        Ok(e) => e,
+        Err(e) => {
+            log::error!("Failed to create EventLoop: {}", e);
+            return;
+        }
+    };
+    event_loop.set_control_flow(ControlFlow::Poll);
+    let _ = event_loop.run_app(app);
+}
+
+//-----------------------------------------------------
+// BLANKET IMPLEMENTATIONS FOR FLATTENING WINIT EVENTS:
+//-----------------------------------------------------
 
 // Typed per-event convenience registrations -------------------------------------------------
 macro_rules! define_typed_event_handlers {
@@ -408,8 +621,8 @@ define_typed_event_handlers! {
     ),
     (on_activation_token_done, on_window_activation_token_done, ActivationTokenDone,
         match WindowEvent::ActivationTokenDone { serial, token },
-primary(&winit::event_loop::AsyncRequestSerial, &winit::window::ActivationToken), call_primary(serial, token),
-per_window(WindowId, &winit::event_loop::AsyncRequestSerial, &winit::window::ActivationToken), call_per_window(serial, token)
+        primary(&winit::event_loop::AsyncRequestSerial, &winit::window::ActivationToken), call_primary(serial, token),
+        per_window(WindowId, &winit::event_loop::AsyncRequestSerial, &winit::window::ActivationToken), call_per_window(serial, token)
     ),
     (on_pinch_gesture, on_window_pinch_gesture, PinchGesture,
         match WindowEvent::PinchGesture { device_id, delta, phase },
@@ -493,211 +706,6 @@ define_typed_device_handlers! {
         match winit::event::DeviceEvent::Key(ev),
         args(&winit::event::RawKeyEvent), call(ev)
     )
-}
-
-impl App {
-    // Convenience getters for callbacks ------------------------------------------------------
-    pub fn get_renderer(&self) -> &Renderer {
-        &self.renderer
-    }
-
-    pub fn renderer(&self) -> &Renderer {
-        self.get_renderer()
-    }
-
-    /// Returns the id of the first (primary) window created by the App.
-    /// Panics if called before the window is created (resumed()).
-    pub fn primary_window_id(&self) -> WindowId {
-        self.primary_window
-            .expect("primary_window_id() called before App resumed")
-    }
-
-    /// Backwards-compatible alias for examples; forwards to primary_window_id().
-    pub fn window_id(&self) -> WindowId {
-        self.primary_window_id()
-    }
-
-    /// Convenience helper for single-window apps: resize the primary window target.
-    pub fn resize(&self, size: impl Into<Size>) {
-        let id = self.primary_window_id();
-        self.resize_target(id, size);
-    }
-
-    pub fn window(&self, id: WindowId) -> Option<Arc<Window>> {
-        self.windows.get(&id).cloned()
-    }
-
-    pub fn window_size(&self, id: WindowId) -> Option<Size> {
-        self.targets.read().get(&id).map(|t| t.size())
-    }
-
-    pub fn add_target(&self, id: WindowId, target: crate::RenderTarget) {
-        self.targets.write().insert(id, target);
-    }
-
-    /// Read-only access to a target; runs the closure with a borrowed target.
-    pub fn with_target<R>(
-        &self,
-        id: WindowId,
-        f: impl FnOnce(&crate::RenderTarget) -> R,
-    ) -> Option<R> {
-        let map = self.targets.read();
-        map.get(&id).map(f)
-    }
-
-    pub fn resize_target(&self, id: WindowId, size: impl Into<Size>) {
-        if let Some(target) = self.targets.write().get_mut(&id) {
-            target.resize(size);
-        }
-    }
-}
-
-impl ApplicationHandler for App {
-    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        // Create one default window if none were specified
-        let blueprints = if self.blueprints.is_empty() {
-            vec![Window::default_attributes()]
-        } else {
-            self.blueprints.clone()
-        };
-
-        let mut created: Vec<Arc<Window>> = Vec::new();
-
-        for attrs in blueprints {
-            match event_loop.create_window(attrs) {
-                Ok(w) => {
-                    let window = Arc::new(w);
-                    let id = window.id();
-
-                    // Store window
-                    if self.primary_window.is_none() {
-                        self.primary_window = Some(id);
-                    }
-                    self.windows.insert(id, window.clone());
-                    created.push(window);
-                }
-                Err(e) => {
-                    log::error!("Failed to create window: {}", e);
-                }
-            }
-        }
-
-        // Invoke on_start once after windows exist
-        if let Some(cb) = self.start_cb.take() {
-            let result = pollster::block_on(cb(&*self, created.clone()));
-            if let Err(e) = result {
-                panic!("App startup failed: {}", e);
-            }
-        }
-
-        // Kick off continuous redraw loop for all windows
-        for win in &created {
-            win.request_redraw();
-        }
-    }
-
-    fn window_event(&mut self, event_loop: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
-        // 1) Always forward event to generic callbacks first
-        {
-            let mut cbs = self.on_event.write();
-            for cb in cbs.iter_mut() {
-                cb(&*self, id, &event);
-            }
-        }
-
-        // Dispatch event-specific registries
-        let kind = kind_of(&event);
-        if let Some(primary) = self.primary_window
-            && primary == id
-        {
-            let mut map = self.primary_by_kind.write();
-            if let Some(list) = map.get_mut(&kind) {
-                for cb in list.iter_mut() {
-                    cb(&*self, id, &event);
-                }
-            }
-        }
-
-        {
-            let mut outer = self.per_window_by_kind.write();
-            if let Some(win_map) = outer.get_mut(&id)
-                && let Some(list) = win_map.get_mut(&kind)
-            {
-                for cb in list.iter_mut() {
-                    cb(&*self, id, &event);
-                }
-            }
-        }
-
-        match &event {
-            WindowEvent::RedrawRequested => {
-                // 2) Allow user to update state each frame
-                {
-                    let mut cbs = self.on_draw.write();
-                    for cb in cbs.iter_mut() {
-                        cb(&*self, id, &event);
-                    }
-                }
-
-                // 3) Keep the loop going continuously for animations
-                if let Some(win) = self.windows.get(&id) {
-                    win.request_redraw();
-                }
-            }
-            WindowEvent::CloseRequested => {
-                // Forwarded above; now exit
-                event_loop.exit();
-            }
-            _ => {
-                // No built-in behavior for other events
-            }
-        }
-    }
-
-    fn device_event(
-        &mut self,
-        _event_loop: &ActiveEventLoop,
-        device_id: winit::event::DeviceId,
-        event: winit::event::DeviceEvent,
-    ) {
-        // 1) Forward to generic device callbacks
-        {
-            let mut cbs = self.on_device_event.write();
-            for cb in cbs.iter_mut() {
-                cb(&*self, device_id, &event);
-            }
-        }
-        // 2) Dispatch by kind to typed handlers
-        let kind = match &event {
-            winit::event::DeviceEvent::Added => DeviceEvent::Added,
-            winit::event::DeviceEvent::Removed => DeviceEvent::Removed,
-            winit::event::DeviceEvent::MouseMotion { .. } => DeviceEvent::MouseMotion,
-            winit::event::DeviceEvent::MouseWheel { .. } => DeviceEvent::MouseWheel,
-            winit::event::DeviceEvent::Motion { .. } => DeviceEvent::Motion,
-            winit::event::DeviceEvent::Button { .. } => DeviceEvent::Button,
-            winit::event::DeviceEvent::Key(_) => DeviceEvent::Key,
-        };
-        let mut map = self.device_by_kind.write();
-        if let Some(list) = map.get_mut(&kind) {
-            for cb in list.iter_mut() {
-                cb(&*self, device_id, &event);
-            }
-        }
-    }
-}
-
-/// Runs the given App using winit's event loop.
-/// Needs to be called from the main thread. Blocks forever.
-pub fn run(app: &mut App) {
-    let event_loop = match EventLoop::new() {
-        Ok(e) => e,
-        Err(e) => {
-            log::error!("Failed to create EventLoop: {}", e);
-            return;
-        }
-    };
-    event_loop.set_control_flow(ControlFlow::Poll);
-    let _ = event_loop.run_app(app);
 }
 
 #[cfg(test)]

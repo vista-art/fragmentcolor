@@ -1,5 +1,8 @@
 use fastrand::Rng;
-use fragmentcolor::{App, Frame, Pass, Renderer, Shader, Size, run};
+use fragmentcolor::{App, Frame, Pass, Renderer, SetupResult, Shader, Size, run};
+use std::sync::Arc;
+use winit::dpi::PhysicalSize;
+use winit::window::Window;
 
 const CIRCLE_SOURCE: &str = include_str!("shaders/circle.wgsl");
 const TRIANGLE_SOURCE: &str = include_str!("shaders/hello_triangle.wgsl");
@@ -28,7 +31,7 @@ fn random_circle(rng: &mut Rng, size: Size, alpha: f32) -> Shader {
     circle
 }
 
-fn on_resize(app: &App, new_size: &winit::dpi::PhysicalSize<u32>) {
+fn on_resize(app: &App, new_size: &PhysicalSize<u32>) {
     app.resize([new_size.width, new_size.height]);
 }
 
@@ -40,58 +43,49 @@ fn draw(app: &App) {
     }
 }
 
-fn setup(
-    app: &App,
-    windows: Vec<std::sync::Arc<winit::window::Window>>,
-) -> std::pin::Pin<
-    Box<
-        dyn std::future::Future<Output = Result<(), Box<dyn std::error::Error + Send + Sync>>> + '_,
-    >,
-> {
-    Box::pin(async move {
-        // Build passes
-        let triangle = {
-            let s = Shader::new(TRIANGLE_SOURCE).unwrap();
-            s.set("color", [1.0, 0.2, 0.8, 1.0]).unwrap();
-            s
-        };
-        let opaque_pass = {
-            let p = Pass::new("Opaque Pass");
-            p.add_shader(&triangle);
-            p.set_clear_color([0.0, 0.0, 0.0, 1.0]);
-            p
-        };
-        let transparent_pass = Pass::new("Transparent Pass");
+async fn setup(app: &App, windows: Vec<Arc<Window>>) -> SetupResult {
+    // Build passes
+    let triangle = {
+        let s = Shader::new(TRIANGLE_SOURCE).unwrap();
+        s.set("color", [1.0, 0.2, 0.8, 1.0]).unwrap();
+        s
+    };
+    let opaque_pass = {
+        let p = Pass::new("Opaque Pass");
+        p.add_shader(&triangle);
+        p.set_clear_color([0.0, 0.0, 0.0, 1.0]);
+        p
+    };
+    let transparent_pass = Pass::new("Transparent Pass");
 
-        // Seed circles using a nominal size
-        let mut rng = Rng::new();
-        let size = Size {
-            width: 800,
-            height: 600,
-            depth: None,
-        };
-        for _ in 0..10 {
-            let circle = random_circle(&mut rng, size, 1.0);
-            opaque_pass.add_shader(&circle);
-        }
-        for _ in 0..20 {
-            let circle = random_circle(&mut rng, size, 0.2);
-            transparent_pass.add_shader(&circle);
-        }
+    // Seed circles using a nominal size
+    let mut rng = Rng::new();
+    let size = Size {
+        width: 800,
+        height: 600,
+        depth: None,
+    };
+    for _ in 0..10 {
+        let circle = random_circle(&mut rng, size, 1.0);
+        opaque_pass.add_shader(&circle);
+    }
+    for _ in 0..20 {
+        let circle = random_circle(&mut rng, size, 0.2);
+        transparent_pass.add_shader(&circle);
+    }
 
-        let mut frame = Frame::new();
-        frame.add_pass(&opaque_pass);
-        frame.add_pass(&transparent_pass);
+    let mut frame = Frame::new();
+    frame.add_pass(&opaque_pass);
+    frame.add_pass(&transparent_pass);
 
-        app.add("frame.main", frame);
+    app.add("frame.main", frame);
 
-        for win in windows {
-            let target = app.get_renderer().create_target(win.clone()).await?;
-            app.add_target(win.id(), target);
-        }
+    for win in windows {
+        let target = app.get_renderer().create_target(win.clone()).await?;
+        app.add_target(win.id(), target);
+    }
 
-        Ok(())
-    })
+    Ok(())
 }
 
 fn main() {

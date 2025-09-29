@@ -1,8 +1,8 @@
-use fragmentcolor::{App, Frame, Pass, Renderer, Shader, run};
-use std::future::Future;
+use fragmentcolor::{App, Frame, Pass, Renderer, SetupResult, Shader, run};
 use std::path::PathBuf;
-use std::pin::Pin;
 use std::sync::Arc;
+use winit::dpi::PhysicalSize;
+use winit::window::Window;
 
 const VS_FS: &str = r#"
 struct VOut { @builtin(position) pos: vec4<f32>, @location(0) uv: vec2<f32> };
@@ -24,36 +24,31 @@ fn main(v: VOut) -> @location(0) vec4<f32> {
 }
 "#;
 
-pub fn on_resize(app: &App, new_size: &winit::dpi::PhysicalSize<u32>) {
+pub fn on_resize(app: &App, new_size: &PhysicalSize<u32>) {
     app.resize([new_size.width, new_size.height]);
 }
 
-fn setup(
-    app: &App,
-    windows: Vec<Arc<winit::window::Window>>,
-) -> Pin<Box<dyn Future<Output = Result<(), Box<dyn std::error::Error + Send + Sync>>> + '_>> {
-    Box::pin(async move {
-        // Load a small built-in asset (use favicon from docs/website/public if present)
-        let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        path.pop(); // examples/rust
-        path.push("docs/website/public/favicon.png");
+async fn setup(app: &App, windows: Vec<Arc<Window>>) -> SetupResult {
+    // Load a small built-in asset (use favicon from docs/website/public if present)
+    let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    path.pop(); // examples/rust
+    path.push("docs/website/public/favicon.png");
 
-        let shader = Shader::new(VS_FS)?;
-        if path.exists() {
-            let tex = app.get_renderer().create_texture(&path).await?;
-            shader.set("tex", &tex)?;
-        }
-        let pass = Pass::from_shader("main", &shader);
-        let mut frame = Frame::new();
-        frame.add_pass(&pass);
-        app.add("frame.main", frame);
+    let shader = Shader::new(VS_FS)?;
+    if path.exists() {
+        let tex = app.get_renderer().create_texture(&path).await?;
+        shader.set("tex", &tex)?;
+    }
+    let pass = Pass::from_shader("main", &shader);
+    let mut frame = Frame::new();
+    frame.add_pass(&pass);
+    app.add("frame.main", frame);
 
-        for win in windows {
-            let target = app.get_renderer().create_target(win.clone()).await?;
-            app.add_target(win.id(), target);
-        }
-        Ok(())
-    })
+    for win in windows {
+        let target = app.get_renderer().create_target(win.clone()).await?;
+        app.add_target(win.id(), target);
+    }
+    Ok(())
 }
 
 fn draw(app: &App) {

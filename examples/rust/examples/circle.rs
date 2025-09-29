@@ -1,5 +1,7 @@
-use fragmentcolor::{App, Frame, Pass, Renderer, Shader, run};
+use fragmentcolor::{App, Frame, Pass, Renderer, SetupResult, Shader, run};
+use std::sync::Arc;
 use winit::dpi::PhysicalSize;
+use winit::window::Window;
 
 const CIRCLE_SOURCE: &str = include_str!("shaders/circle.wgsl");
 
@@ -14,34 +16,25 @@ fn main() {
     run(&mut app);
 }
 
-fn setup(
-    app: &App,
-    windows: Vec<std::sync::Arc<winit::window::Window>>,
-) -> std::pin::Pin<
-    Box<
-        dyn std::future::Future<Output = Result<(), Box<dyn std::error::Error + Send + Sync>>> + '_,
-    >,
-> {
-    Box::pin(async move {
-        let shader = Shader::new(CIRCLE_SOURCE)?;
-        shader.set("circle.radius", 300.0)?;
-        shader.set("circle.color", [0.2, 0.2, 0.8, 1.0])?;
-        shader.set("circle.border", 100.0)?;
+async fn setup(app: &App, windows: Vec<Arc<Window>>) -> SetupResult {
+    let shader = Shader::new(CIRCLE_SOURCE)?;
+    shader.set("circle.radius", 300.0)?;
+    shader.set("circle.color", [0.2, 0.2, 0.8, 1.0])?;
+    shader.set("circle.border", 100.0)?;
 
-        let pass = Pass::from_shader("main", &shader);
-        let mut frame = Frame::new();
-        frame.add_pass(&pass);
+    let pass = Pass::from_shader("main", &shader);
+    let mut frame = Frame::new();
+    frame.add_pass(&pass);
 
-        app.add("shader.main", shader);
-        app.add("frame.main", frame);
+    app.add("shader.main", shader);
+    app.add("frame.main", frame);
 
-        for win in windows {
-            let target = app.get_renderer().create_target(win.clone()).await?;
-            app.add_target(win.id(), target);
-        }
+    for win in windows {
+        let target = app.get_renderer().create_target(win.clone()).await?;
+        app.add_target(win.id(), target);
+    }
 
-        Ok(())
-    })
+    Ok(())
 }
 
 fn resize(app: &App, new_size: &PhysicalSize<u32>) {
