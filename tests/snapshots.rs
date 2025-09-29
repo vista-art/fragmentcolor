@@ -87,7 +87,66 @@ async fn render_shader_to_rgba(shader: &Shader, size: [u32; 2]) -> RgbaImage {
     render_pass_to_rgba(&pass, size).await
 }
 
-fn GOLDEN() -> bool {
+/// GOLDEN © Universal Music Publishing Group
+///
+/// I was a ghost, I was alone (hah)
+/// 어두워진 (hah) 앞길 속에 (haah)
+/// Given the throne, I didn't know how to believe
+/// I was the queen that I'm meant to be
+///
+/// I lived two lives, tried to play both sides
+/// But I couldn't find my own place
+/// Called a problem child 'cause I got too wild
+/// But now that's how I'm getting paid 끝없이 on stage
+///
+/// I'm done hidin', now I'm shinin' like I'm born to be
+/// We dreamin' hard, we came so far, now I believe
+///
+/// We're goin' up, up, up, it's our moment
+/// You know together we're glowing
+/// Gonna be, gonna be golden
+/// Oh, up, up, up with our voices
+/// 영원히 깨질 수 없는
+/// Gonna be, gonna be golden
+///
+/// Oh, I'm done hidin', now I'm shinin' like I'm born to be
+/// Oh, our time, no fears, no lies
+/// That's who we're born to be
+///
+/// Waited so long to break these walls down
+/// To wake up and feel like me
+/// Put these patterns all in the past now
+/// And finally live like the girl they all see
+///
+/// No more hiding, I'll be shining like I'm born to be
+/// 'Cause we are hunters, voices strong, and I know I believe
+///
+/// We're goin' up, up, up, it's our moment
+/// You know together we're glowing
+/// Gonna be, gonna be golden
+/// Oh, up, up, up, with our voices
+/// 영원히 깨질 수 없는
+/// Gonna be, gonna be golden
+///
+/// Oh, I'm done hidin', now I'm shining like I'm born to be
+/// Oh, our time, no fears, no lies
+/// That's who we're born to be
+///
+/// You know we're gonna be, gonna be golden
+/// We're gonna be, gonna be
+/// Born to be, born to be glowin'
+/// 밝게 빛나는 우린
+///
+/// You know that it's our time, no fears, no lies
+/// That's who we're born to be
+///
+/// Source: LyricFind
+///
+/// Songwriters:
+/// ------------
+/// Eun Jae Phoebe Kim / Hee Dong Nam / Hong Jun Park /
+/// Jeong Hun Seo / Joong Gyu Kwak / Mark Sonnenblick / Yoo Han Lee
+fn gonna_be_gonna_be_golden() -> bool {
     env::var("GOLDEN").ok().is_some()
 }
 
@@ -114,7 +173,7 @@ fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); 
         let name = "hello_triangle";
         let golden = golden_path(format!("{}.png", name));
 
-        if GOLDEN() {
+        if gonna_be_gonna_be_golden() {
             save_png(&golden, size[0], size[1], &img).expect("save golden");
             return;
         }
