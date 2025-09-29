@@ -1,8 +1,9 @@
-use fragmentcolor::App;
+use fragmentcolor::{App, Renderer};
 use winit::window::WindowId;
 
 fn main() {
-    let mut app = App::new();
+    let renderer = Renderer::new();
+    let mut app = App::new(renderer);
 
     // Primary window event listener wrappers,
     // to be used in 1-window applications (most examples)

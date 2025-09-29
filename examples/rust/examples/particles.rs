@@ -1,5 +1,5 @@
 use fragmentcolor::mesh::{Mesh, Vertex};
-use fragmentcolor::{App, Pass, Shader, run};
+use fragmentcolor::{App, Frame, Pass, Renderer, Shader, run};
 
 // Particles (winit) — CPU-simulated gravity toward the center
 // - Default: 10_000 particles (set PARTICLES=1000000 to try 1M, see notes below)
@@ -10,8 +10,8 @@ use fragmentcolor::{App, Pass, Shader, run};
 
 const SHADER_SRC: &str = r#"
 struct VOut {
-  @builtin(position) pos: vec4<f32>,
-  @location(0) color: vec4<f32>,
+    @builtin(position) pos: vec4<f32>,
+    @location(0) color: vec4<f32>,
 };
 
 // Vertex attributes
@@ -20,19 +20,19 @@ struct VOut {
 // - @location(2) tint: per-instance color (vec4)
 @vertex
 fn vs_main(
-  @location(0) pos: vec2<f32>,
-  @location(1) offset: vec2<f32>,
-  @location(2) tint: vec4<f32>,
+    @location(0) pos: vec2<f32>,
+    @location(1) offset: vec2<f32>,
+    @location(2) tint: vec4<f32>,
 ) -> VOut {
-  var out: VOut;
-  out.pos = vec4<f32>(pos + offset, 0.0, 1.0);
-  out.color = tint;
-  return out;
+    var out: VOut;
+    out.pos = vec4<f32>(pos + offset, 0.0, 1.0);
+    out.color = tint;
+    return out;
 }
 
 @fragment
 fn fs_main(v: VOut) -> @location(0) vec4<f32> {
-  return v.color;
+    return v.color;
 }
 "#;
 
@@ -43,101 +43,144 @@ struct Particle {
     col: [f32; 4],
 }
 
+struct ParticlesState {
+    mesh: Mesh,
+    particles: Vec<Particle>,
+    dt: f32,
+    g: f32,
+    damp: f32,
+}
+
 pub fn on_resize(app: &App, sz: &winit::dpi::PhysicalSize<u32>) {
     app.resize([sz.width, sz.height]);
 }
 
-fn main() {
-    let n: usize = std::env::var("PARTICLES")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(10_000);
+fn draw(app: &App) {
+    use std::sync::{Mutex, OnceLock};
+    static STATE: OnceLock<Mutex<ParticlesState>> = OnceLock::new();
 
-    let shader = Shader::new(SHADER_SRC).expect("shader");
-    let pass = Pass::from_shader("particles", &shader);
-
-    // Tiny triangle in NDC centered at origin (instanced across the screen)
-    let mesh = Mesh::new();
-    let s = 0.004; // triangle size edge ~0.4% of screen
-    mesh.add_vertices([[-s, -s], [s, -s], [0.0, s]]);
-
-    // Build initial particle set and matching instances
-    let mut parts = Vec::with_capacity(n);
-    let mut insts = Vec::with_capacity(n);
-    for _ in 0..n {
-        let px = fastrand::f32() * 2.0 - 1.0; // [-1, 1]
-        let py = fastrand::f32() * 2.0 - 1.0;
-        let vx = (fastrand::f32() * 2.0 - 1.0) * 0.25; // initial speed scaled
-        let vy = (fastrand::f32() * 2.0 - 1.0) * 0.25;
-        let r = fastrand::f32();
-        let g = fastrand::f32();
-        let b = fastrand::f32();
-        let col = [r, g, b, 1.0];
-        parts.push(Particle {
-            pos: [px, py],
-            vel: [vx, vy],
-            col,
-        });
-        insts.push(
-            Vertex::new([0.0, 0.0])
-                .set("offset", [px, py])
-                .set("tint", col),
-        );
+    if let Some(state_lock) = STATE.get() {
+        let mut state = state_lock.lock().unwrap();
+        // integrate
+        let dt = state.dt;
+        let g = state.g;
+        let damp = state.damp;
+        for p in &mut state.particles {
+            let x = p.pos[0];
+            let y = p.pos[1];
+            let r2 = x * x + y * y + 1e-4;
+            let r = r2.sqrt();
+            let ax = -g * x / (r2 * r);
+            let ay = -g * y / (r2 * r);
+            p.vel[0] = (p.vel[0] + ax * dt) * damp;
+            p.vel[1] = (p.vel[1] + ay * dt) * damp;
+            p.pos[0] = (p.pos[0] + p.vel[0] * dt).clamp(-2.0, 2.0);
+            p.pos[1] = (p.pos[1] + p.vel[1] * dt).clamp(-2.0, 2.0);
+        }
+        // rebuild instances
+        let mut tmp = Vec::with_capacity(state.particles.len());
+        for p in &state.particles {
+            tmp.push(
+                Vertex::new([0.0, 0.0])
+                    .set("offset", p.pos)
+                    .set("tint", p.col),
+            );
+        }
+        state.mesh.clear_instances();
+        state.mesh.add_instances(tmp);
     }
-    mesh.add_instances(insts);
 
-    pass.add_mesh(&mesh).expect("mesh is compatible");
+    let id = app.primary_window_id();
+    if let Some(pass) = app.get::<Pass>("pass.particles") {
+        let mut frame = Frame::new();
+        frame.add_pass(&pass);
+        let r = app.get_renderer();
+        let _ = app.with_target(id, |t| r.render(&frame, t));
+    }
+}
 
-    // App wiring
-    let mut app = App::new();
+fn setup(
+    app: &App,
+    windows: Vec<std::sync::Arc<winit::window::Window>>,
+) -> std::pin::Pin<
+    Box<
+        dyn std::future::Future<Output = Result<(), Box<dyn std::error::Error + Send + Sync>>> + '_,
+    >,
+> {
+    use std::sync::{Mutex, OnceLock};
+    static STATE: OnceLock<Mutex<ParticlesState>> = OnceLock::new();
 
-    // Simulation parameters
-    let dt = 1.0 / 60.0;
-    let g = 0.5f32; // gravity strength toward origin
-    let damp = 0.995f32; // velocity damping
+    Box::pin(async move {
+        let n: usize = std::env::var("PARTICLES")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(10_000);
 
-    // We capture Mesh and particle vector by move into the redraw callback.
-    let mesh_clone = mesh.clone();
-    let mut particles = parts;
+        let shader = Shader::new(SHADER_SRC)?;
+        let pass = Pass::from_shader("particles", &shader);
 
-    app.scene(pass.clone())
-        .on_redraw_requested(move |_app| {
-            // CPU integrate simple gravity toward origin
-            for p in &mut particles {
-                let x = p.pos[0];
-                let y = p.pos[1];
-                let r2 = x * x + y * y + 1e-4;
-                let r = r2.sqrt();
-                // a = -G * pos / r^3 (attract to origin)
-                let ax = -g * x / (r2 * r);
-                let ay = -g * y / (r2 * r);
-                p.vel[0] = (p.vel[0] + ax * dt) * damp;
-                p.vel[1] = (p.vel[1] + ay * dt) * damp;
-                p.pos[0] += p.vel[0] * dt;
-                p.pos[1] += p.vel[1] * dt;
-                // Soft clamp to clip-space to avoid flying too far
-                p.pos[0] = p.pos[0].clamp(-2.0, 2.0);
-                p.pos[1] = p.pos[1].clamp(-2.0, 2.0);
-            }
+        // Tiny triangle in NDC centered at origin (instanced across the screen)
+        let mesh = Mesh::new();
+        let s = 0.004; // triangle size edge ~0.4% of screen
+        mesh.add_vertices([[-s, -s], [s, -s], [0.0, s]]);
 
-            // Rebuild instance buffer from updated positions
-            // Note: For very large N, consider a faster path (see notes below)
-            let mut tmp = Vec::with_capacity(particles.len());
-            for p in &particles {
-                tmp.push(
-                    Vertex::new([0.0, 0.0])
-                        .set("offset", p.pos)
-                        .set("tint", p.col),
-                );
-            }
-            mesh_clone.clear_instances();
-            mesh_clone.add_instances(tmp);
-        })
-        .on_resize(on_resize)
-        .on_close_requested(|app| {
-            // Allow the window to close
-            let _ = app; // unused
+        // Build initial particle set and matching instances
+        let mut parts = Vec::with_capacity(n);
+        let mut insts = Vec::with_capacity(n);
+        for _ in 0..n {
+            let px = fastrand::f32() * 2.0 - 1.0; // [-1, 1]
+            let py = fastrand::f32() * 2.0 - 1.0;
+            let vx = (fastrand::f32() * 2.0 - 1.0) * 0.25; // initial speed scaled
+            let vy = (fastrand::f32() * 2.0 - 1.0) * 0.25;
+            let r = fastrand::f32();
+            let g = fastrand::f32();
+            let b = fastrand::f32();
+            let col = [r, g, b, 1.0];
+            parts.push(Particle {
+                pos: [px, py],
+                vel: [vx, vy],
+                col,
+            });
+            insts.push(
+                Vertex::new([0.0, 0.0])
+                    .set("offset", [px, py])
+                    .set("tint", col),
+            );
+        }
+        mesh.add_instances(insts);
+
+        pass.add_mesh(&mesh)?;
+
+        // Store pass and state
+        app.add("pass.particles", pass.clone());
+
+        STATE.get_or_init(|| {
+            Mutex::new(ParticlesState {
+                mesh,
+                particles: parts,
+                dt: 1.0 / 60.0,
+                g: 0.5,
+                damp: 0.995,
+            })
         });
+
+        for win in windows {
+            let target = app.get_renderer().create_target(win.clone()).await?;
+            app.add_target(win.id(), target);
+        }
+
+        Ok(())
+    })
+}
+
+fn main() {
+    let renderer = Renderer::new();
+    let mut app = App::new(renderer);
+
+    app.on_start(setup)
+        .on_redraw_requested(draw)
+        .on_resize(on_resize)
+        .on_close_requested(|_| {});
 
     run(&mut app);
 }

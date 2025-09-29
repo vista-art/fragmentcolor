@@ -1,6 +1,6 @@
 use fragmentcolor::{Frame, Pass, Renderer, Shader, Target};
 
-const CIRCLE_SOURCE: &str = include_str!("circle.wgsl");
+const CIRCLE_SOURCE: &str = include_str!("shaders/circle.wgsl");
 
 // Two-pass cast-shadow approximation rendered offscreen:
 // 1) Shadow pass: draw a dark, offset circle; clear to transparent

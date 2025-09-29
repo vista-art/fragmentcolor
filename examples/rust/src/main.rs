@@ -1,5 +1,7 @@
-/// You can run the examples from the roo workspace by using
+/// You can run the examples from the root workspace by using
 /// cargo run -p fce --example <name>
-fn main() {
-    println!("Hello, world of FragmentColor examples!");
+mod tui_util;
+
+fn main() -> anyhow::Result<()> {
+    tui_util::run_triangle_demo()
 }

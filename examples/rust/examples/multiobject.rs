@@ -1,17 +1,20 @@
 use fastrand::Rng;
-use fragmentcolor::{App, Pass, Shader, Size, run};
+use fragmentcolor::{App, Frame, Pass, Renderer, Shader, Size, run};
 
-const TRIANGLE_SOURCE: &str = include_str!("hello_triangle.wgsl");
-const CIRCLE_SOURCE: &str = include_str!("circle.wgsl");
+const TRIANGLE_SOURCE: &str = include_str!("shaders/hello_triangle.wgsl");
+const CIRCLE_SOURCE: &str = include_str!("shaders/circle.wgsl");
 
-pub fn on_resize(app: &App, new_size: &winit::dpi::PhysicalSize<u32>) {
+fn on_resize(app: &App, new_size: &winit::dpi::PhysicalSize<u32>) {
     app.resize([new_size.width, new_size.height]);
-    let id = app.window_id();
-    let res = [new_size.width as f32, new_size.height as f32];
-    let _ = app.set_uniform(id, "resolution", res);
 }
 
-pub fn on_draw(_app: &App) {}
+fn draw(app: &App) {
+    let id = app.primary_window_id();
+    if let Some(frame) = app.get::<Frame>("frame.main") {
+        let r = app.get_renderer();
+        let _ = app.with_target(id, |t| r.render(&*frame, t));
+    }
+}
 
 fn random_circle(rng: &mut Rng, size: Size, alpha: f32) -> Shader {
     let circle = Shader::new(CIRCLE_SOURCE).unwrap();
@@ -37,32 +40,59 @@ fn random_circle(rng: &mut Rng, size: Size, alpha: f32) -> Shader {
     circle
 }
 
+fn setup(
+    app: &App,
+    windows: Vec<std::sync::Arc<winit::window::Window>>,
+) -> std::pin::Pin<
+    Box<
+        dyn std::future::Future<Output = Result<(), Box<dyn std::error::Error + Send + Sync>>> + '_,
+    >,
+> {
+    Box::pin(async move {
+        // Build the pass with many objects
+        let triangle = {
+            let s = Shader::new(TRIANGLE_SOURCE).unwrap();
+            s.set("color", [1.0, 0.2, 0.8, 1.0]).unwrap();
+            s
+        };
+        let pass = Pass::new("Multi Object Pass");
+        pass.add_shader(&triangle);
+
+        // seed circles with a nominal size
+        let mut rng = Rng::new();
+        let size = Size {
+            width: 800,
+            height: 600,
+            depth: None,
+        };
+        for _ in 0..50 {
+            let circle = random_circle(&mut rng, size, 1.0);
+            pass.add_shader(&circle);
+        }
+
+        // Compose into a frame (single pass)
+        let mut frame = Frame::new();
+        frame.add_pass(&pass);
+
+        app.add("frame.main", frame);
+
+        // Create targets for all windows
+        for win in windows {
+            let target = app.get_renderer().create_target(win.clone()).await?;
+            app.add_target(win.id(), target);
+        }
+
+        Ok(())
+    })
+}
+
 fn main() {
-    // Build the pass with many objects
-    let triangle = {
-        let s = Shader::new(TRIANGLE_SOURCE).unwrap();
-        s.set("color", [1.0, 0.2, 0.8, 1.0]).unwrap();
-        s
-    };
-    let pass = Pass::new("Multi Object Pass");
-    pass.add_shader(&triangle);
+    let renderer = Renderer::new();
+    let mut app = App::new(renderer);
 
-    // seed circles with a nominal size; example will update on resize
-    let mut rng = Rng::new();
-    let size = Size {
-        width: 800,
-        height: 600,
-        depth: None,
-    };
-    for _ in 0..50 {
-        let circle = random_circle(&mut rng, size, 1.0);
-        pass.add_shader(&circle);
-    }
-
-    let mut app = App::new();
-    app.scene(pass)
+    app.on_start(setup)
         .on_resize(on_resize)
-        .on_redraw_requested(on_draw);
+        .on_redraw_requested(draw);
 
     run(&mut app);
 }
