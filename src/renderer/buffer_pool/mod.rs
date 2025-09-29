@@ -36,6 +36,9 @@ pub(crate) use uniform::{BufferLocation, UniformBufferPool};
 pub(crate) mod readback;
 pub(crate) use readback::ReadbackBufferPool;
 
+pub(crate) mod storage;
+pub(crate) use storage::StorageBufferPool;
+
 #[cfg(test)]
 mod tests {
     use super::*;

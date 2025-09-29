@@ -76,12 +76,18 @@ impl From<&Texture> for TextureInput {
 
 #[cfg_attr(wasm, wasm_bindgen)]
 #[cfg_attr(python, pyclass)]
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct TextureId(pub u64);
 
 impl From<u64> for TextureId {
     fn from(value: u64) -> Self {
         TextureId(value)
+    }
+}
+
+impl std::fmt::Display for TextureId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
 
@@ -241,7 +247,7 @@ impl TextureObject {
         usage: wgpu::TextureUsages,
         options: SamplerOptions,
     ) -> Self {
-        let descriptor = Self::texture_descriptor("Generic Texture", size, format, usage);
+        let descriptor = Self::texture_descriptor("Generic Texture", size, format, usage, 1, 1); // @TODO mip_count, sample_count
         let inner = context.device.create_texture(&descriptor);
         let size = inner.size();
         let sampler = create_sampler(&context.device, options);
@@ -283,39 +289,9 @@ impl TextureObject {
         data: &[u8],
     ) -> Result<Self, TextureError> {
         let usage = wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST;
-        let descriptor = Self::texture_descriptor("Raw Texture", size, format, usage);
+        let descriptor = Self::texture_descriptor("Raw Texture", size, format, usage, 1, 1); // @TODO mip_count, sample_count
         let texture = context.device.create_texture(&descriptor);
-
-        let bpp: u32 = match format {
-            wgpu::TextureFormat::R8Unorm
-            | wgpu::TextureFormat::R8Uint
-            | wgpu::TextureFormat::R8Snorm
-            | wgpu::TextureFormat::R8Sint => 1,
-            wgpu::TextureFormat::Rg8Unorm
-            | wgpu::TextureFormat::Rg8Uint
-            | wgpu::TextureFormat::Rg8Snorm
-            | wgpu::TextureFormat::Rg8Sint => 2,
-            wgpu::TextureFormat::R16Float
-            | wgpu::TextureFormat::R16Unorm
-            | wgpu::TextureFormat::R16Uint
-            | wgpu::TextureFormat::R16Snorm
-            | wgpu::TextureFormat::R16Sint => 2,
-            wgpu::TextureFormat::Rgba8Unorm
-            | wgpu::TextureFormat::Rgba8UnormSrgb
-            | wgpu::TextureFormat::Rgba8Snorm
-            | wgpu::TextureFormat::Rgba8Uint
-            | wgpu::TextureFormat::Rgba8Sint
-            | wgpu::TextureFormat::Bgra8Unorm => 4,
-            wgpu::TextureFormat::Rgba16Uint
-            | wgpu::TextureFormat::Rgba16Sint
-            | wgpu::TextureFormat::Rgba16Unorm
-            | wgpu::TextureFormat::Rgba16Snorm
-            | wgpu::TextureFormat::Rgba16Float => 8,
-            wgpu::TextureFormat::Rgba32Float
-            | wgpu::TextureFormat::Rgba32Uint
-            | wgpu::TextureFormat::Rgba32Sint => 16,
-            _ => 4,
-        };
+        let bpp = bytes_per_pixel(format) as u32;
 
         // Best-effort guard for buffer size
         let expected = (size.width as usize)
@@ -424,15 +400,31 @@ impl TextureObject {
     /// the render_pipeline and for creating the depth texture itself.
     pub const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 
-    /// Creates a depth texture
+    /// Creates a depth texture (single-sampled by default)
     pub fn create_depth_texture(context: &RenderContext, size: wgpu::Extent3d) -> Self {
+        Self::create_depth_texture_with_count(context, size, 1)
+    }
+
+    /// Creates a depth texture with an explicit MSAA sample count.
+    pub fn create_depth_texture_with_count(
+        context: &RenderContext,
+        size: wgpu::Extent3d,
+        sample_count: u32,
+    ) -> Self {
         let format = Self::DEPTH_FORMAT;
-        let descriptor = Self::texture_descriptor(
-            "Depth Texture",
+        let descriptor = wgpu::TextureDescriptor {
+            label: Some("Depth Texture"),
             size,
+            mip_level_count: 1,
+            sample_count: sample_count.max(1),
+            dimension: match size.depth_or_array_layers {
+                1 => wgpu::TextureDimension::D2,
+                _ => wgpu::TextureDimension::D3,
+            },
             format,
-            wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
-        );
+            view_formats: &[],
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+        };
         let texture = context.device.create_texture(&descriptor);
         let sampler = create_sampler(
             &context.device,
@@ -487,11 +479,15 @@ impl TextureObject {
         size: wgpu::Extent3d,
         format: wgpu::TextureFormat,
     ) -> wgpu::TextureDescriptor<'static> {
+        let sample_count = 1;
+        let mip_level_count = 1;
         Self::texture_descriptor(
             label,
             size,
             format,
             wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            sample_count,
+            mip_level_count,
         )
     }
 
@@ -501,6 +497,8 @@ impl TextureObject {
         size: wgpu::Extent3d,
         format: wgpu::TextureFormat,
     ) -> wgpu::TextureDescriptor<'static> {
+        let sample_count = 1;
+        let mip_level_count = 1;
         Self::texture_descriptor(
             label,
             size,
@@ -508,6 +506,8 @@ impl TextureObject {
             wgpu::TextureUsages::RENDER_ATTACHMENT
                 | wgpu::TextureUsages::COPY_SRC
                 | wgpu::TextureUsages::TEXTURE_BINDING,
+            sample_count,
+            mip_level_count,
         )
     }
 
@@ -517,12 +517,14 @@ impl TextureObject {
         size: wgpu::Extent3d,
         format: wgpu::TextureFormat,
         usage: wgpu::TextureUsages,
+        sample_count: u32,
+        mip_level_count: u32,
     ) -> wgpu::TextureDescriptor<'static> {
         wgpu::TextureDescriptor {
             label: Some(label),
             size,
-            mip_level_count: 1,
-            sample_count: 1,
+            mip_level_count,
+            sample_count,
             dimension: match size.depth_or_array_layers {
                 1 => wgpu::TextureDimension::D2,
                 _ => wgpu::TextureDimension::D3,
@@ -540,6 +542,8 @@ impl TextureObject {
         target_texture: &wgpu::Texture,
         size: wgpu::Extent3d,
     ) {
+        let format = target_texture.format();
+        let bpp = bytes_per_pixel(format);
         context.queue.write_texture(
             // Tells wgpu where to copy the pixel data from
             wgpu::TexelCopyTextureInfo {
@@ -553,11 +557,67 @@ impl TextureObject {
             // The layout of the texture
             wgpu::TexelCopyBufferLayout {
                 offset: 0,
-                bytes_per_row: Some(4 * size.width), // @TODO: handle other formats
+                bytes_per_row: Some(bpp * size.width),
                 rows_per_image: Some(size.height),
             },
             size,
         )
+    }
+}
+
+fn bytes_per_pixel(format: wgpu::TextureFormat) -> u32 {
+    match format {
+        wgpu::TextureFormat::R8Unorm
+        | wgpu::TextureFormat::R8Uint
+        | wgpu::TextureFormat::R8Sint
+        | wgpu::TextureFormat::R8Snorm
+        | wgpu::TextureFormat::Stencil8 => 1,
+        wgpu::TextureFormat::Rg8Uint
+        | wgpu::TextureFormat::Rg8Sint
+        | wgpu::TextureFormat::R16Uint
+        | wgpu::TextureFormat::R16Sint
+        | wgpu::TextureFormat::Rg16Uint
+        | wgpu::TextureFormat::Rg16Sint
+        | wgpu::TextureFormat::R16Float
+        | wgpu::TextureFormat::Rg8Unorm
+        | wgpu::TextureFormat::Rg8Snorm
+        | wgpu::TextureFormat::R16Unorm
+        | wgpu::TextureFormat::R16Snorm
+        | wgpu::TextureFormat::Rg16Unorm
+        | wgpu::TextureFormat::Rg16Snorm
+        | wgpu::TextureFormat::Depth16Unorm => 2,
+        wgpu::TextureFormat::R32Uint
+        | wgpu::TextureFormat::R32Sint
+        | wgpu::TextureFormat::R32Float
+        | wgpu::TextureFormat::Rgba8Uint
+        | wgpu::TextureFormat::Rgba8Sint
+        | wgpu::TextureFormat::Rg16Float
+        | wgpu::TextureFormat::Rgba8Unorm
+        | wgpu::TextureFormat::Rgba8Snorm
+        | wgpu::TextureFormat::Bgra8Unorm
+        | wgpu::TextureFormat::Rgb10a2Uint
+        | wgpu::TextureFormat::Depth24Plus
+        | wgpu::TextureFormat::Rgb9e5Ufloat
+        | wgpu::TextureFormat::Depth32Float
+        | wgpu::TextureFormat::Rgb10a2Unorm
+        | wgpu::TextureFormat::Rg11b10Ufloat
+        | wgpu::TextureFormat::Bgra8UnormSrgb
+        | wgpu::TextureFormat::Rgba8UnormSrgb
+        | wgpu::TextureFormat::Depth24PlusStencil8 => 4,
+        wgpu::TextureFormat::R64Uint
+        | wgpu::TextureFormat::Rg32Uint
+        | wgpu::TextureFormat::Rg32Sint
+        | wgpu::TextureFormat::Rg32Float
+        | wgpu::TextureFormat::Rgba16Uint
+        | wgpu::TextureFormat::Rgba16Sint
+        | wgpu::TextureFormat::Rgba16Float
+        | wgpu::TextureFormat::Rgba16Unorm
+        | wgpu::TextureFormat::Rgba16Snorm
+        | wgpu::TextureFormat::Depth32FloatStencil8 => 8,
+        wgpu::TextureFormat::Rgba32Float
+        | wgpu::TextureFormat::Rgba32Uint
+        | wgpu::TextureFormat::Rgba32Sint => 16,
+        _ => 4,
     }
 }
 
