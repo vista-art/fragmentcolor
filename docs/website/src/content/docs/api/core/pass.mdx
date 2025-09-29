@@ -1260,6 +1260,148 @@ lang="text"
 
 ---
 
+### Pass::add_depth_target
+
+Select a depth attachment for this pass.
+
+The target must be a stable texture created by the same Renderer with usage including `RENDER_ATTACHMENT` and a depth/stencil format (e.g., `Depth32Float`).
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Renderer, Pass, Shader};
+
+let renderer = Renderer::new();
+let target = renderer.create_texture_target([64u32, 64u32]).await?;
+
+// Create a depth texture usable as a per-pass attachment
+let depth = renderer.create_depth_texture([64u32, 64u32]).await?;
+
+// Simple scene shader with @location(0) position
+let wgsl = r#"
+struct VOut { @builtin(position) pos: vec4<f32> };
+@vertex
+fn vs_main(@location(0) pos: vec3<f32>) -> VOut { var o: VOut; o.pos = vec4f(pos,1.0); return o; }
+@fragment
+fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4f(0.7,0.8,1.0,1.0); }
+"#;
+let shader = Shader::new(wgsl)?;
+let pass = Pass::from_shader("scene", &shader);
+
+// Attach depth texture to enable depth testing
+pass.add_depth_target(&depth)?;
+
+// Render as usual
+renderer.render(&pass, &target)?;
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+`}
+lang="rust" meta="collapse={1-1, 26-28}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Renderer, Pass, Shader } from "fragmentcolor";
+
+const renderer = new Renderer();
+const target = await renderer.createTextureTarget([64u32, 64u32]);
+
+// Create a depth texture usable as a per-pass attachment;
+const depth = await renderer.createDepthTexture([64u32, 64u32]);
+
+// Simple scene shader with @location(0) position;
+const wgsl = r#";
+struct VOut { @builtin(position) pos: vec4<f32> };
+@vertex;
+fn vs_main(@location(0) pos: vec3<f32>) -> VOut { var o: VOut; o.pos = vec4f(pos,1.0); return o; };
+@fragment;
+fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4f(0.7,0.8,1.0,1.0); };
+"#;
+const shader = new Shader(wgsl);
+const pass = new Pass("scene"); pass.addShader(shader);
+
+// Attach depth texture to enable depth testing;
+pass.addDepthTarget(depth);
+
+// Render as usual;
+renderer.render(pass, target);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Renderer, Pass, Shader
+
+renderer = Renderer()
+target = renderer.create_texture_target([64u32, 64u32])
+
+# Create a depth texture usable as a per-pass attachment
+depth = renderer.create_depth_texture([64u32, 64u32])
+
+# Simple scene shader with @location(0) position
+wgsl = r#"
+struct VOut { @builtin(position) pos: vec4<f32> }
+@vertex
+fn vs_main(@location(0) pos: vec3<f32>) -> VOut { var o: VOut; o.pos = vec4f(pos,1.0); return o; }
+@fragment
+fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4f(0.7,0.8,1.0,1.0); }
+"#
+shader = Shader(wgsl)
+rpass = Pass("scene"); rpass.add_shader(shader)
+
+# Attach depth texture to enable depth testing
+rpass.add_depth_target(depth)
+
+# Render as usual
+renderer.render(rpass, target)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
 ### Pass::is_compute
 
 Returns true if this Pass is a compute pass (has only compute shaders).
