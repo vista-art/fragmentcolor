@@ -150,11 +150,11 @@ impl Target for TextureTarget {
 impl TextureTarget {
     /// Obtain a sampleable Texture handle for binding in shaders.
     pub fn texture(&self) -> crate::texture::Texture {
-        if let Some(id) = self.id.read().clone() {
+        if let Some(id) = *self.id.read() {
             return crate::texture::Texture::new(self.context.clone(), self.texture.clone(), id);
         }
         let id = self.context.register_texture(self.texture.clone());
-        *self.id.write() = Some(id.clone());
+        *self.id.write() = Some(id);
         crate::texture::Texture::new(self.context.clone(), self.texture.clone(), id)
     }
 }

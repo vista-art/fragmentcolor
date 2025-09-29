@@ -166,7 +166,7 @@ impl TextureMeta {
 impl From<&Texture> for crate::shader::uniform::UniformData {
     fn from(texture: &Texture) -> Self {
         // Provide a placeholder meta; storage.update will merge with shader-parsed meta at set time.
-        let meta = TextureMeta::with_id_only(texture.id.clone());
+        let meta = TextureMeta::with_id_only(texture.id);
         crate::shader::uniform::UniformData::Texture(meta)
     }
 }
@@ -291,7 +291,7 @@ impl TextureObject {
         let usage = wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST;
         let descriptor = Self::texture_descriptor("Raw Texture", size, format, usage, 1, 1); // @TODO mip_count, sample_count
         let texture = context.device.create_texture(&descriptor);
-        let bpp = bytes_per_pixel(format) as u32;
+        let bpp = bytes_per_pixel(format);
 
         // Best-effort guard for buffer size
         let expected = (size.width as usize)

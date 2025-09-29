@@ -475,7 +475,7 @@ impl RenderContext {
     ) -> crate::texture::TextureId {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         let texture_id = crate::texture::TextureId(id);
-        self.textures.insert(texture_id.clone(), texture);
+        self.textures.insert(texture_id, texture);
         texture_id
     }
 
@@ -516,7 +516,7 @@ impl RenderContext {
 
         let mut color_format = frame.format();
         let mut pass_texture_view = None;
-        if let Some(id) = pass.color_target.read().clone() {
+        if let Some(id) = *pass.color_target.read() {
             if let Some(texture) = self.get_texture(&id) {
                 pass_texture_view = Some(texture.create_view());
                 color_format = texture.format();
@@ -564,7 +564,7 @@ impl RenderContext {
         })];
 
         // Optional depth attachment if the pass has a depth target
-        let (depth_view, depth_format) = if let Some(depth_id) = pass.depth_target.read().clone() {
+        let (depth_view, depth_format) = if let Some(depth_id) = *pass.depth_target.read() {
             if let Some(texture) = self.get_texture(&depth_id) {
                 let depth_view = texture.create_view();
                 let depth_format = texture.format();
@@ -576,18 +576,17 @@ impl RenderContext {
             (None, None)
         };
 
-        let depth_stencil_attachment = if let Some(depth_view) = depth_view.as_ref() {
-            Some(wgpu::RenderPassDepthStencilAttachment {
-                view: &depth_view,
-                depth_ops: Some(wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(1.0),
-                    store: wgpu::StoreOp::Store,
-                }),
-                stencil_ops: None,
-            })
-        } else {
-            None
-        };
+        let depth_stencil_attachment =
+            depth_view
+                .as_ref()
+                .map(|depth_view| wgpu::RenderPassDepthStencilAttachment {
+                    view: depth_view,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(1.0),
+                        store: wgpu::StoreOp::Store,
+                    }),
+                    stencil_ops: None,
+                });
 
         let descriptor = wgpu::RenderPassDescriptor {
             label: Some(&format!("Render Pass: {}", pass.name.clone())),
@@ -979,7 +978,7 @@ impl RenderContext {
         for (shader_index, shader) in pass.shaders.read().iter().enumerate() {
             // Build or fetch pipeline
             // Layout signature: hash the bind group layouts
-            let layouts = create_bind_group_layouts(&self.device, &shader);
+            let layouts = create_bind_group_layouts(&self.device, shader);
 
             use sha2::{Digest, Sha256};
             let mut hasher = Sha256::new();
@@ -1577,7 +1576,8 @@ fn create_bind_group_layouts(
                 if let Some((_inner, span, access)) = data.first() {
                     let min = if *span == 0 { 16 } else { *span as u64 };
                     let min = unsafe { std::num::NonZeroU64::new_unchecked(min) };
-                    let entry = wgpu::BindGroupLayoutEntry {
+
+                    wgpu::BindGroupLayoutEntry {
                         binding: uniform.binding,
                         visibility: if access.is_readonly() {
                             wgpu::ShaderStages::VERTEX
@@ -1595,10 +1595,9 @@ fn create_bind_group_layouts(
                             min_binding_size: Some(min),
                         },
                         count: None,
-                    };
-                    entry
+                    }
                 } else {
-                    let entry = wgpu::BindGroupLayoutEntry {
+                    wgpu::BindGroupLayoutEntry {
                         binding: uniform.binding,
                         visibility: wgpu::ShaderStages::VERTEX
                             | wgpu::ShaderStages::FRAGMENT
@@ -1609,8 +1608,7 @@ fn create_bind_group_layouts(
                             min_binding_size: Some(min_size),
                         },
                         count: None,
-                    };
-                    entry
+                    }
                 }
             }
             _ => wgpu::BindGroupLayoutEntry {

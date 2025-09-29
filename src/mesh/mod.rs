@@ -356,10 +356,10 @@ impl MeshObject {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
     ) -> Result<(VertexBuffers, DrawCounts), MeshError> {
-        if *self.cache_valid.read() {
-            if let Some(cached) = self.gpu_cache.read().as_ref() {
-                return Ok(cached.clone());
-            }
+        if *self.cache_valid.read()
+            && let Some(cached) = self.gpu_cache.read().as_ref()
+        {
+            return Ok(cached.clone());
         }
 
         let result = self.create_gpu_vertex_buffers(device, queue)?;

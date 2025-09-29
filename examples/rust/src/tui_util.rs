@@ -120,7 +120,7 @@ fn rgba_to_half_block_cells_true(rgba: &[u8], w: u32, h: u32) -> CellsWidget {
 }
 
 fn rgba_to_half_block_cells_256(rgba: &[u8], w: u32, h: u32) -> CellsWidget {
-    rgba_to_half_block_cells(rgba, w, h, |r, g, b| xterm256_quantize(r, g, b))
+    rgba_to_half_block_cells(rgba, w, h, xterm256_quantize)
 }
 
 fn rgba_to_half_block_cells<F>(rgba: &[u8], w: u32, h: u32, mut map: F) -> CellsWidget
@@ -148,7 +148,7 @@ where
 fn xterm256_quantize(r: u8, g: u8, b: u8) -> (u8, u8, u8) {
     // Very simple cube quantization to the 6x6x6 color cube, expand back to 0..255
     let q = |c: u8| -> u8 { (c as u16 * 5 / 255) as u8 };
-    let e = |q: u8| -> u8 { ((q as u16 * 255 / 5) as u8).min(255) };
+    let e = |q: u8| -> u8 { (q as u16 * 255 / 5) as u8 };
     (e(q(r)), e(q(g)), e(q(b)))
 }
 
