@@ -42,7 +42,7 @@ impl Renderable for Vec<&Pass> {
 // Provide convenience for direct Arc containers if needed.
 impl Renderable for &[Arc<PassObject>] {
     fn passes(&self) -> Arc<[Arc<PassObject>]> {
-        let v: Vec<Arc<PassObject>> = self.iter().cloned().collect();
+        let v: Vec<Arc<PassObject>> = self.to_vec();
         v.into()
     }
 }

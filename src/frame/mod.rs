@@ -212,7 +212,7 @@ impl Renderable for Frame {
                 .collect(),
             Err(error) => {
                 log::error!("Frame::passes topological sort error: {}", error);
-                self.passes.iter().cloned().collect()
+                self.passes.to_vec()
             }
         };
         list.into()
@@ -242,7 +242,7 @@ mod tests {
         assert_eq!(frame.passes.len(), 2);
         // Assert: Renderable view yields two pass objects
         let v = frame.passes();
-        let count = v.into_iter().count();
+        let count = v.iter().count();
         assert_eq!(count, 2);
     }
 }

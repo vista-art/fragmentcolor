@@ -211,9 +211,7 @@ impl TryFrom<&crate::texture::Texture> for ColorTarget {
             }
             _ => {}
         }
-        Ok(ColorTarget {
-            id: tex.id().clone(),
-        })
+        Ok(ColorTarget { id: *tex.id() })
     }
 }
 
@@ -244,9 +242,7 @@ impl TryFrom<&crate::texture::Texture> for DepthTarget {
             | wgpu::TextureFormat::Depth16Unorm
             | wgpu::TextureFormat::Depth24Plus
             | wgpu::TextureFormat::Depth24PlusStencil8
-            | wgpu::TextureFormat::Depth32FloatStencil8 => Ok(DepthTarget {
-                id: tex.id().clone(),
-            }),
+            | wgpu::TextureFormat::Depth32FloatStencil8 => Ok(DepthTarget { id: *tex.id() }),
             _ => Err(PassError::InvalidColorTarget(
                 "texture format is not a depth/stencil format".into(),
             )),
@@ -506,7 +502,7 @@ impl PassObject {
         }
         // Kahn with stable seed order
         let mut queue: std::collections::VecDeque<usize> = std::collections::VecDeque::new();
-        for i in 0..n {
+        for (i, _) in indeg.iter().enumerate().take(n) {
             if indeg[i] == 0 {
                 queue.push_back(i);
             }

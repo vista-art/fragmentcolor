@@ -27,7 +27,7 @@ type WindowEventCallback = Box<dyn FnMut(&App, WindowId, &WindowEvent) + Send + 
 type DeviceEventCallback =
     Box<dyn FnMut(&App, winit::event::DeviceId, &winit::event::DeviceEvent) + Send + 'static>;
 
-pub type StartResult<'a> = Pin<Box<dyn Future<Output = SetupResult> + 'a>>;
+pub type StartResult<'a> = impl Future<Output = SetupResult> + 'a;
 
 type StartCallback =
     Option<Box<dyn for<'a> FnOnce(&'a App, Vec<Arc<Window>>) -> StartResult<'a> + 'static>>;
@@ -810,7 +810,7 @@ mod tests {
         let p2 = Pass::new("p2");
         app.add("passes", vec![p1.clone(), p2.clone()]);
         let passes = app.get::<Vec<Pass>>("passes").expect("get passes");
-        assert_eq!(passes.passes().into_iter().count(), 2);
+        assert_eq!(passes.passes().iter().count(), 2);
     }
 
     // Story: Typed registration helpers populate the appropriate maps.
