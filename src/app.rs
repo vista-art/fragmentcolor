@@ -165,12 +165,12 @@ impl App {
     }
 
     // Startup hook: called once after windows are created in resumed().
-    pub fn on_start<'a, F, Fut>(&mut self, f: F) -> &mut Self
+    pub fn on_start<F>(&mut self, f: F) -> &mut Self
     where
-        F: 'static + for<'a> FnOnce(&'a App, Vec<Arc<Window>>) -> Fut,
-        Fut: 'a + Future<Output = SetupResult>,
+        F: 'static + for<'app> FnOnce(&'app App, Vec<Arc<Window>>) -> StartResult<'app>,
     {
-        self.start_callback = Some(Box::new(move |app, windows| Box::pin(f(app, windows))));
+        // Store a higher-ranked callback that forwards directly to the user-provided function.
+        self.start_callback = Some(Box::new(move |app, windows| f(app, windows)));
         self
     }
 
