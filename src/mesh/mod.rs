@@ -122,7 +122,7 @@ impl Mesh {
 // Renderable impl ( for Mesh quick-view)
 // -----------------------------
 impl Renderable for Mesh {
-    fn passes(&self) -> impl IntoIterator<Item = &PassObject> {
+    fn passes(&self) -> Arc<[Arc<PassObject>]> {
         if self.pass.shaders.read().is_empty() {
             if let Some(first) = self.object.verts.read().first().cloned() {
                 let shader = Shader::from_vertex(&first);
@@ -140,7 +140,8 @@ impl Renderable for Mesh {
                 _ = shader.add_mesh(self.object.clone());
             }
         }
-        vec![self.pass.as_ref()]
+        crate::pass::PassObject::ensure_flat_current(&self.pass);
+        vec![self.pass.clone()].into()
     }
 }
 

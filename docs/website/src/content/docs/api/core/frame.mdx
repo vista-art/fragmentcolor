@@ -288,195 +288,6 @@ lang="text"
 
 ---
 
-### Frame::connect(parent, child)
-
-Creates a dependency relationship between two passes in the frame's execution graph.
-
-#### Syntax
-
-```rust
-pub fn connect(
-    &mut self,
-    parent: &Pass,
-    child: &Pass,
-) -> Result<(), FrameError>
-```
-
-#### Parameters
-
-- `parent` - The pass that must execute before the child pass
-- `child` - The pass that depends on the parent pass completing first
-
-#### Return Value
-
-- `Ok(())` - The dependency was successfully established
-- `Err(FrameError::MissingPass)` - One or both passes are not present in this frame
-- `Err(FrameError::DuplicateEdge)` - This dependency relationship already exists
-
-#### Description
-
-The `connect` method establishes an execution dependency between two passes. When the frame is rendered, the parent pass will always execute before the child pass. This allows you to build complex rendering pipelines where later passes depend on the results of earlier passes.
-
-The frame maintains a directed acyclic graph (DAG) of pass dependencies. Each edge in this graph represents a "happens-before" relationship between passes.
-
-#### Example
-
-<Tabs>
-
-<TabItem label="Rust">
-<Code
-code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Frame, Pass};
-
-let depth_pass = Pass::new("depth_prepass");
-let lighting_pass = Pass::new("lighting");
-
-let mut frame = Frame::new();
-frame.add_pass(&depth_pass);
-frame.add_pass(&lighting_pass);
-
-// Ensure depth prepass runs before lighting
-frame.connect(&depth_pass, &lighting_pass)?;
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Frame, Pass};
-
-let geometry_pass = Pass::new("geometry");
-let shadow_pass = Pass::new("shadows");
-let lighting_pass = Pass::new("lighting");
-let post_process = Pass::new("post_processing");
-
-let mut frame = Frame::new();
-
-// Add all passes
-frame.add_pass(&geometry_pass);
-frame.add_pass(&shadow_pass);
-frame.add_pass(&lighting_pass);
-frame.add_pass(&post_process);
-
-// Build dependency chain
-frame.connect(&geometry_pass, &shadow_pass)?;
-frame.connect(&shadow_pass, &lighting_pass)?;
-frame.connect(&lighting_pass, &post_process)?;
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
-`}
-lang="rust" meta="collapse={1-1, 13-16, 36-38}"
-/>
-
-</TabItem>
-
-<TabItem label="JavaScript">
-<Code
-code={`
-import { Frame, Pass } from "fragmentcolor";
-
-const depth_pass = new Pass("depth_prepass");
-const lighting_pass = new Pass("lighting");
-
-const frame = new Frame();
-frame.addPass(depth_pass);
-frame.addPass(lighting_pass);
-
-// Ensure depth prepass runs before lighting;
-frame.connect(depth_pass, lighting_pass);
-import { Frame, Pass } from "fragmentcolor";
-
-const geometry_pass = new Pass("geometry");
-const shadow_pass = new Pass("shadows");
-const lighting_pass = new Pass("lighting");
-const post_process = new Pass("post_processing");
-
-const frame = new Frame();
-
-// Add all passes;
-frame.addPass(geometry_pass);
-frame.addPass(shadow_pass);
-frame.addPass(lighting_pass);
-frame.addPass(post_process);
-
-// Build dependency chain;
-frame.connect(geometry_pass, shadow_pass);
-frame.connect(shadow_pass, lighting_pass);
-frame.connect(lighting_pass, post_process);
-`}
-lang="js"
-/>
-
-</TabItem>
-
-<TabItem label="Python">
-<Code
-code={`
-from fragmentcolor import Frame, Pass
-
-depth_pass = Pass("depth_prepass")
-lighting_pass = Pass("lighting")
-
-frame = Frame()
-frame.add_pass(depth_pass)
-frame.add_pass(lighting_pass)
-
-# Ensure depth prepass runs before lighting
-frame.connect(depth_pass, lighting_pass)
-from fragmentcolor import Frame, Pass
-
-geometry_pass = Pass("geometry")
-shadow_pass = Pass("shadows")
-lighting_pass = Pass("lighting")
-post_process = Pass("post_processing")
-
-frame = Frame()
-
-# Add all passes
-frame.add_pass(geometry_pass)
-frame.add_pass(shadow_pass)
-frame.add_pass(lighting_pass)
-frame.add_pass(post_process)
-
-# Build dependency chain
-frame.connect(geometry_pass, shadow_pass)
-frame.connect(shadow_pass, lighting_pass)
-frame.connect(lighting_pass, post_process)
-`}
-lang="python"
-/>
-
-</TabItem>
-
-<TabItem label="Swift">
-<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
-<Code
-code={`
-// Swift placeholder: bindings WIP
-
-`}
-lang="text"
-/>
-
-</TabItem>
-
-<TabItem label="Kotlin">
-<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
-<Code
-code={`
-// Kotlin placeholder: bindings WIP
-
-`}
-lang="text"
-/>
-
-</TabItem>
-
-</Tabs>
-
-
----
-
 ### Frame::present(pass)
 
 Designates which render pass should present its output to the final target.
@@ -527,9 +338,9 @@ let main = Pass::new("main");
 let mut frame = Frame::new();
 frame.add_pass(&shadow);
 frame.add_pass(&main);
-frame.connect(&shadow, &main)?;
+main.require(&shadow)?;
 
-// Main pass is a leaf, so it can present
+// Main pass can present
 frame.present(&main)?;
 Ok(())
 }
@@ -546,9 +357,9 @@ frame.add_pass(&geometry);
 frame.add_pass(&lighting);
 frame.add_pass(&post_fx);
 
-// Build pipeline
-frame.connect(&geometry, &lighting)?;
-frame.connect(&lighting, &post_fx)?;
+// Build pipeline using Pass::require
+lighting.require(&geometry)?;
+post_fx.require(&lighting)?;
 
 // Final post-effects pass presents to screen
 frame.present(&post_fx)?;
@@ -572,9 +383,9 @@ const main = new Pass("main");
 const frame = new Frame();
 frame.addPass(shadow);
 frame.addPass(main);
-frame.connect(shadow, main);
+main.require(shadow);
 
-// Main pass is a leaf, so it can present;
+// Main pass can present;
 frame.present(main);
 import { Frame, Pass } from "fragmentcolor";
 
@@ -587,9 +398,9 @@ frame.addPass(geometry);
 frame.addPass(lighting);
 frame.addPass(post_fx);
 
-// Build pipeline;
-frame.connect(geometry, lighting);
-frame.connect(lighting, post_fx);
+// Build pipeline using Pass.require;
+lighting.require(geometry);
+post_fx.require(lighting);
 
 // Final post-effects pass presents to screen;
 frame.present(post_fx);
@@ -610,9 +421,9 @@ main = Pass("main")
 frame = Frame()
 frame.add_pass(shadow)
 frame.add_pass(main)
-frame.connect(shadow, main)
+main.require(shadow)
 
-# Main pass is a leaf, so it can present
+# Main pass can present
 frame.present(main)
 from fragmentcolor import Frame, Pass
 
@@ -625,9 +436,9 @@ frame.add_pass(geometry)
 frame.add_pass(lighting)
 frame.add_pass(post_fx)
 
-# Build pipeline
-frame.connect(geometry, lighting)
-frame.connect(lighting, post_fx)
+# Build pipeline using Pass.require
+lighting.require(geometry)
+post_fx.require(lighting)
 
 # Final post-effects pass presents to screen
 frame.present(post_fx)

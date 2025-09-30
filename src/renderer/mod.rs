@@ -433,7 +433,9 @@ impl RenderContext {
 
         let frame = self.try_get_frame_with_retry(target)?;
 
-        for pass in renderable.passes() {
+        let pass_list = renderable.passes();
+        for pass in pass_list.iter() {
+            let pass = pass.as_ref();
             if pass.is_compute() {
                 self.process_compute_pass(&mut encoder, pass)?
             } else {

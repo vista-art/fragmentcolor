@@ -10,7 +10,6 @@ def run_all():
     files = [
         'core/frame/Frame.py',
         'core/frame/add_pass.py',
-        'core/frame/connect.py',
         'core/frame/new.py',
         'core/frame/present.py',
         'core/mesh/Mesh.py',
@@ -38,6 +37,7 @@ def run_all():
         'core/pass/is_compute.py',
         'core/pass/load_previous.py',
         'core/pass/new.py',
+        'core/pass/require.py',
         'core/pass/set_clear_color.py',
         'core/pass/set_compute_dispatch.py',
         'core/pass/set_viewport.py',
