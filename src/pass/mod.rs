@@ -2,7 +2,7 @@ use crate::{Color, Mesh, Region, Renderable, Shader, ShaderObject};
 use lsp_doc::lsp_doc;
 use parking_lot::RwLock;
 use std::collections::HashMap;
-use std::sync::{Arc};
+use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 #[cfg(python)]
@@ -211,7 +211,9 @@ impl TryFrom<&crate::texture::Texture> for ColorTarget {
             }
             _ => {}
         }
-        Ok(ColorTarget { id: tex.id().clone() })
+        Ok(ColorTarget {
+            id: tex.id().clone(),
+        })
     }
 }
 
@@ -242,7 +244,9 @@ impl TryFrom<&crate::texture::Texture> for DepthTarget {
             | wgpu::TextureFormat::Depth16Unorm
             | wgpu::TextureFormat::Depth24Plus
             | wgpu::TextureFormat::Depth24PlusStencil8
-            | wgpu::TextureFormat::Depth32FloatStencil8 => Ok(DepthTarget { id: tex.id().clone() }),
+            | wgpu::TextureFormat::Depth32FloatStencil8 => Ok(DepthTarget {
+                id: tex.id().clone(),
+            }),
             _ => Err(PassError::InvalidColorTarget(
                 "texture format is not a depth/stencil format".into(),
             )),
@@ -455,9 +459,15 @@ impl PassObject {
         use std::collections::HashSet;
         let mut out: Vec<Arc<PassObject>> = Vec::new();
         let mut seen: HashSet<*const PassObject> = HashSet::new();
-        fn dfs(n_arc: &Arc<PassObject>, seen: &mut std::collections::HashSet<*const PassObject>, out: &mut Vec<Arc<PassObject>>) {
+        fn dfs(
+            n_arc: &Arc<PassObject>,
+            seen: &mut std::collections::HashSet<*const PassObject>,
+            out: &mut Vec<Arc<PassObject>>,
+        ) {
             let k = &**n_arc as *const _;
-            if !seen.insert(k) { return; }
+            if !seen.insert(k) {
+                return;
+            }
             let deps = n_arc.dependencies.read().clone();
             for d in deps.iter() {
                 dfs(d, seen, out);
@@ -473,12 +483,16 @@ impl PassObject {
     fn resort_dependencies(self_arc: &Arc<PassObject>) {
         let deps = self_arc.dependencies.read().clone();
         let n = deps.len();
-        if n <= 1 { return; }
+        if n <= 1 {
+            return;
+        }
         let mut adj: Vec<Vec<usize>> = vec![Vec::new(); n];
         let mut indeg: Vec<usize> = vec![0; n];
         for i in 0..n {
             for j in 0..n {
-                if i == j { continue; }
+                if i == j {
+                    continue;
+                }
                 let a = &deps[i];
                 let b = &deps[j];
                 if a.reaches(b.name.as_ref()) {
@@ -492,18 +506,26 @@ impl PassObject {
         }
         // Kahn with stable seed order
         let mut queue: std::collections::VecDeque<usize> = std::collections::VecDeque::new();
-        for i in 0..n { if indeg[i] == 0 { queue.push_back(i); } }
+        for i in 0..n {
+            if indeg[i] == 0 {
+                queue.push_back(i);
+            }
+        }
         let mut out_idx = Vec::with_capacity(n);
         while let Some(i) = queue.pop_front() {
             out_idx.push(i);
             for &j in &adj[i] {
                 indeg[j] -= 1;
-                if indeg[j] == 0 { queue.push_back(j); }
+                if indeg[j] == 0 {
+                    queue.push_back(j);
+                }
             }
         }
         if out_idx.len() == n {
             let mut new_deps = Vec::with_capacity(n);
-            for i in out_idx { new_deps.push(deps[i].clone()); }
+            for i in out_idx {
+                new_deps.push(deps[i].clone());
+            }
             *self_arc.dependencies.write() = new_deps;
         } else {
             // Fallback: keep insertion order if something went wrong

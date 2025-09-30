@@ -76,7 +76,6 @@ impl Frame {
         }
     }
 
-
     /// Validates that a pass can be used as a present pass.
     ///
     /// # Arguments
