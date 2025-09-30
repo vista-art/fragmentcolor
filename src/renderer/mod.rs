@@ -2562,14 +2562,18 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(0.1,0.9,0.1,1.0);
 
                 let shader = Shader::default();
                 let pass = Pass::from_shader("msaa-depth", &shader);
-                let pass = pass.passes().into_iter().next().expect("pass");
-                pass.set_depth_target_id(depth_id);
+                // Hold the passes slice to extend its lifetime, then clone the first Arc<PassObject>
+                let first_pass = {
+                    let passes = pass.passes();
+                    passes.first().cloned().expect("pass")
+                };
+                first_pass.set_depth_target_id(depth_id);
 
                 let mut encoder = ctx
                     .device
                     .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
 
-                let res = ctx.process_render_pass(&mut encoder, pass, &frame, size);
+                let res = ctx.process_render_pass(&mut encoder, &first_pass, &frame, size);
                 assert!(
                     res.is_ok(),
                     "msaa depth render should succeed: {:?}",
