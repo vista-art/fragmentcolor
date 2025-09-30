@@ -46,19 +46,6 @@ impl Frame {
             .insert(pass.object.name.clone(), self.passes.len() - 1);
     }
 
-    #[lsp_doc("docs/api/core/frame/connect.md")]
-    pub fn connect(&mut self, parent: &Pass, child: &Pass) -> Result<(), FrameError> {
-        let parent_index = self.pass_index(parent)?;
-        let child_index = self.pass_index(child)?;
-
-        if self.dependency_exists(parent_index, child_index) {
-            return Err(FrameError::DuplicateEdge);
-        }
-
-        self.dependencies.push((parent_index, child_index));
-        Ok(())
-    }
-
     #[lsp_doc("docs/api/core/frame/present.md")]
     pub fn present(&mut self, pass: &Pass) -> Result<(), FrameError> {
         let pass_index = self.pass_index(pass)?;
@@ -89,19 +76,6 @@ impl Frame {
         }
     }
 
-    /// Checks if a dependency edge already exists between two pass indices.
-    ///
-    /// # Arguments
-    /// * `parent_index` - Index of the parent pass
-    /// * `child_index` - Index of the child pass
-    ///
-    /// # Returns
-    /// `true` if the dependency already exists, `false` otherwise
-    fn dependency_exists(&self, parent_index: usize, child_index: usize) -> bool {
-        self.dependencies
-            .iter()
-            .any(|(parent_idx, child_idx)| *parent_idx == parent_index && *child_idx == child_index)
-    }
 
     /// Validates that a pass can be used as a present pass.
     ///
@@ -230,29 +204,19 @@ impl Frame {
 }
 
 impl Renderable for Frame {
-    /// Returns an iterator over the passes in this frame in topologically sorted order.
-    ///
-    /// The passes are ordered such that dependencies are satisfied - each pass will
-    /// execute after all passes it depends on have completed. If the dependency graph
-    /// contains cycles or other issues, falls back to insertion order and logs an error.
-    ///
-    /// # Returns
-    /// An iterator over `PassObject` references in execution order
-    fn passes(&self) -> impl IntoIterator<Item = &PassObject> {
-        // Attempt topological sort; fall back to insertion order on error
-        match self.topo_sorted_indices() {
+    /// Returns passes in this frame in topologically sorted order as Arc slice.
+    fn passes(&self) -> Arc<[Arc<PassObject>]> {
+        let list: Vec<Arc<PassObject>> = match self.topo_sorted_indices() {
             Ok(sorted_indices) => sorted_indices
                 .into_iter()
-                .map(|index| self.passes[index].as_ref())
-                .collect::<Vec<_>>(),
+                .map(|index| self.passes[index].clone())
+                .collect(),
             Err(error) => {
                 log::error!("Frame::passes topological sort error: {}", error);
-                self.passes
-                    .iter()
-                    .map(|pass| pass.as_ref())
-                    .collect::<Vec<_>>()
+                self.passes.iter().cloned().collect()
             }
-        }
+        };
+        list.into()
     }
 }
 

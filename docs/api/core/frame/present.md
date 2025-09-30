@@ -46,9 +46,9 @@ let main = Pass::new("main");
 let mut frame = Frame::new();
 frame.add_pass(&shadow);
 frame.add_pass(&main);
-frame.connect(&shadow, &main)?;
+main.require(&shadow)?;
 
-// Main pass is a leaf, so it can present
+// Main pass can present
 frame.present(&main)?;
 # Ok(())
 # }
@@ -70,9 +70,9 @@ frame.add_pass(&geometry);
 frame.add_pass(&lighting);
 frame.add_pass(&post_fx);
 
-// Build pipeline
-frame.connect(&geometry, &lighting)?;
-frame.connect(&lighting, &post_fx)?;
+// Build pipeline using Pass::require
+lighting.require(&geometry)?;
+post_fx.require(&lighting)?;
 
 // Final post-effects pass presents to screen
 frame.present(&post_fx)?;

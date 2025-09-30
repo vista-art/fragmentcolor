@@ -3,7 +3,6 @@ const GREEN='\u001b[1;32m'; const RED='\u001b[1;31m'; const RESET='\u001b[0m';
 const EXAMPLES = [
   '../examples/core/frame/Frame.js',
   '../examples/core/frame/add_pass.js',
-  '../examples/core/frame/connect.js',
   '../examples/core/frame/new.js',
   '../examples/core/frame/present.js',
   '../examples/core/mesh/Mesh.js',
@@ -31,6 +30,7 @@ const EXAMPLES = [
   '../examples/core/pass/is_compute.js',
   '../examples/core/pass/load_previous.js',
   '../examples/core/pass/new.js',
+  '../examples/core/pass/require.js',
   '../examples/core/pass/set_clear_color.js',
   '../examples/core/pass/set_compute_dispatch.js',
   '../examples/core/pass/set_viewport.js',

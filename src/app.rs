@@ -165,7 +165,7 @@ impl App {
     }
 
     // Startup hook: called once after windows are created in resumed().
-    pub fn on_start<F, Fut>(&mut self, f: F) -> &mut Self
+    pub fn on_start<'a, F, Fut>(&mut self, f: F) -> &mut Self
     where
         F: 'static + for<'a> FnOnce(&'a App, Vec<Arc<Window>>) -> Fut,
         Fut: 'a + Future<Output = SetupResult>,

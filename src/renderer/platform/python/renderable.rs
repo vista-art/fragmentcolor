@@ -94,7 +94,7 @@ impl PyRenderable {
 }
 
 impl Renderable for PyRenderable {
-    fn passes(&self) -> impl IntoIterator<Item = &PassObject> {
-        self.iterator.0.iter().map(|pass| pass.as_ref())
+    fn passes(&self) -> Arc<[Arc<PassObject>]> {
+        self.iterator.0.clone().into()
     }
 }

@@ -2,7 +2,8 @@ use crate::{Color, Mesh, Region, Renderable, Shader, ShaderObject};
 use lsp_doc::lsp_doc;
 use parking_lot::RwLock;
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 #[cfg(python)]
 use pyo3::prelude::*;
@@ -68,23 +69,23 @@ pub struct Pass {
 impl Pass {
     #[lsp_doc("docs/api/core/pass/new.md")]
     pub fn new(name: &str) -> Self {
-        Self {
-            object: Arc::new(PassObject::new(name, PassType::Render)),
-        }
+        let obj = Arc::new(PassObject::new(name, PassType::Render));
+        PassObject::ensure_flat_current(&obj);
+        Self { object: obj }
     }
 
     #[lsp_doc("docs/api/core/pass/compute.md")]
     pub fn compute(name: &str) -> Self {
-        Self {
-            object: Arc::new(PassObject::new(name, PassType::Compute)),
-        }
+        let obj = Arc::new(PassObject::new(name, PassType::Compute));
+        PassObject::ensure_flat_current(&obj);
+        Self { object: obj }
     }
 
     #[lsp_doc("docs/api/core/pass/from_shader.md")]
     pub fn from_shader(name: &str, shader: &Shader) -> Self {
-        Self {
-            object: Arc::new(PassObject::from_shader_object(name, shader.object.clone())),
-        }
+        let obj = Arc::new(PassObject::from_shader_object(name, shader.object.clone()));
+        PassObject::ensure_flat_current(&obj);
+        Self { object: obj }
     }
 
     #[lsp_doc("docs/api/core/pass/load_previous.md")]
@@ -154,11 +155,21 @@ impl Pass {
     pub fn is_compute(&self) -> bool {
         self.object.is_compute()
     }
+
+    #[lsp_doc("docs/api/core/pass/require.md")]
+    pub fn require<R: Renderable>(&self, deps: &R) -> Result<(), PassError> {
+        let roots = deps.roots();
+        PassObject::add_dependencies_arc(&self.object, roots.iter().cloned().collect::<Vec<_>>())
+    }
 }
 
 impl Renderable for Pass {
-    fn passes(&self) -> impl IntoIterator<Item = &PassObject> {
-        vec![self.object.as_ref()]
+    fn passes(&self) -> Arc<[Arc<PassObject>]> {
+        PassObject::ensure_flat_current(&self.object);
+        self.object.flat.read().clone()
+    }
+    fn roots(&self) -> Arc<[Arc<PassObject>]> {
+        vec![self.object.clone()].into()
     }
 }
 
@@ -200,7 +211,7 @@ impl TryFrom<&crate::texture::Texture> for ColorTarget {
             }
             _ => {}
         }
-        Ok(ColorTarget { id: *tex.id() })
+        Ok(ColorTarget { id: tex.id().clone() })
     }
 }
 
@@ -231,7 +242,7 @@ impl TryFrom<&crate::texture::Texture> for DepthTarget {
             | wgpu::TextureFormat::Depth16Unorm
             | wgpu::TextureFormat::Depth24Plus
             | wgpu::TextureFormat::Depth24PlusStencil8
-            | wgpu::TextureFormat::Depth32FloatStencil8 => Ok(DepthTarget { id: *tex.id() }),
+            | wgpu::TextureFormat::Depth32FloatStencil8 => Ok(DepthTarget { id: tex.id().clone() }),
             _ => Err(PassError::InvalidColorTarget(
                 "texture format is not a depth/stencil format".into(),
             )),
@@ -241,6 +252,8 @@ impl TryFrom<&crate::texture::Texture> for DepthTarget {
 
 #[cfg(wasm)]
 crate::impl_js_bridge!(Pass, crate::pass::error::PassError);
+
+static GRAPH_VERSION: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Debug)]
 pub struct PassObject {
@@ -259,6 +272,11 @@ pub struct PassObject {
     // Milestone B (placeholders): storage alias map
     pub(crate) _storage_alias: RwLock<HashMap<String, String>>,
     pub(crate) present_to_target: RwLock<bool>,
+    // DAG metadata and cached traversal
+    pub(crate) dependencies: RwLock<Vec<Arc<PassObject>>>,
+    pub(crate) dependency_names: RwLock<std::collections::HashSet<Arc<str>>>,
+    pub(crate) flat: RwLock<Arc<[Arc<PassObject>]>>,
+    pub(crate) built_version: AtomicU64,
 }
 
 impl PassObject {
@@ -276,6 +294,10 @@ impl PassObject {
             depth_target: RwLock::new(None),
             _storage_alias: RwLock::new(HashMap::new()),
             present_to_target: RwLock::new(false),
+            dependencies: RwLock::new(Vec::new()),
+            dependency_names: RwLock::new(std::collections::HashSet::new()),
+            flat: RwLock::new(Arc::from(Vec::<Arc<PassObject>>::new().into_boxed_slice())),
+            built_version: AtomicU64::new(0),
         }
     }
 
@@ -356,6 +378,135 @@ impl PassObject {
             self.shaders.write().push(shader.clone());
         } else {
             log::warn!("Cannot add a compute shader to a render pass or vice versa");
+        }
+    }
+
+    // Link a list of dependencies into this node, maintain sibling order, rebuild caches, and propagate.
+    pub(crate) fn add_dependencies_arc(
+        self_arc: &Arc<PassObject>,
+        deps: impl IntoIterator<Item = Arc<PassObject>>,
+    ) -> Result<(), PassError> {
+        for dep in deps {
+            Self::link_one(self_arc, dep.clone())?;
+        }
+        // Maintain sibling order among direct dependencies
+        Self::resort_dependencies(self_arc);
+        // Bump global graph version (lazy finalize will observe this)
+        GRAPH_VERSION.fetch_add(1, Ordering::Relaxed);
+        Ok(())
+    }
+
+    fn link_one(self_arc: &Arc<PassObject>, dep: Arc<PassObject>) -> Result<(), PassError> {
+        let this = &**self_arc;
+        // Self-dependency by name
+        if dep.name.as_ref() == this.name.as_ref() {
+            return Err(PassError::SelfDependency);
+        }
+        // Duplicate by name
+        {
+            let mut names = this.dependency_names.write();
+            if names.contains(&dep.name) {
+                return Err(PassError::DuplicateDependency(dep.name.to_string()));
+            }
+            // Cycle: if dep reaches self, linking would close a cycle
+            if dep.reaches(this.name.as_ref()) {
+                return Err(PassError::DependencyCycle {
+                    via: dep.name.to_string(),
+                });
+            }
+            names.insert(dep.name.clone());
+        }
+        // Link
+        this.dependencies.write().push(dep.clone());
+        Ok(())
+    }
+
+    // Does this node reach target_name through dependencies edges? (BFS)
+    fn reaches(&self, target_name: &str) -> bool {
+        use std::collections::{HashSet, VecDeque};
+        let mut seen: HashSet<*const PassObject> = HashSet::new();
+        let mut q: VecDeque<*const PassObject> = VecDeque::new();
+        q.push_back(self as *const _);
+        while let Some(ptr) = q.pop_front() {
+            if !seen.insert(ptr) {
+                continue;
+            }
+            // Safety: all pointers originate from &self or Arcs we hold; read-only
+            let node = unsafe { &*ptr };
+            if node.name.as_ref() == target_name {
+                return true;
+            }
+            // Clone arcs locally to avoid holding the lock across iteration
+            let deps: Vec<Arc<PassObject>> = { node.dependencies.read().clone() };
+            for d in deps.into_iter() {
+                q.push_back(&*d as *const _);
+            }
+        }
+        false
+    }
+
+    // Ensure cached deps-first flat slice is up-to-date with global graph version
+    pub(crate) fn ensure_flat_current(self_arc: &Arc<PassObject>) {
+        let global = GRAPH_VERSION.load(Ordering::Relaxed);
+        let built = self_arc.built_version.load(Ordering::Relaxed);
+        if built == global {
+            return;
+        }
+        use std::collections::HashSet;
+        let mut out: Vec<Arc<PassObject>> = Vec::new();
+        let mut seen: HashSet<*const PassObject> = HashSet::new();
+        fn dfs(n_arc: &Arc<PassObject>, seen: &mut std::collections::HashSet<*const PassObject>, out: &mut Vec<Arc<PassObject>>) {
+            let k = &**n_arc as *const _;
+            if !seen.insert(k) { return; }
+            let deps = n_arc.dependencies.read().clone();
+            for d in deps.iter() {
+                dfs(d, seen, out);
+            }
+            out.push(Arc::clone(n_arc));
+        }
+        dfs(self_arc, &mut seen, &mut out);
+        let slice: Arc<[Arc<PassObject>]> = out.into_boxed_slice().into();
+        *self_arc.flat.write() = slice;
+        self_arc.built_version.store(global, Ordering::Relaxed);
+    }
+    // Stable topological sort among direct dependencies using reachability.
+    fn resort_dependencies(self_arc: &Arc<PassObject>) {
+        let deps = self_arc.dependencies.read().clone();
+        let n = deps.len();
+        if n <= 1 { return; }
+        let mut adj: Vec<Vec<usize>> = vec![Vec::new(); n];
+        let mut indeg: Vec<usize> = vec![0; n];
+        for i in 0..n {
+            for j in 0..n {
+                if i == j { continue; }
+                let a = &deps[i];
+                let b = &deps[j];
+                if a.reaches(b.name.as_ref()) {
+                    adj[i].push(j);
+                    indeg[j] += 1;
+                } else if b.reaches(a.name.as_ref()) {
+                    adj[j].push(i);
+                    indeg[i] += 1;
+                }
+            }
+        }
+        // Kahn with stable seed order
+        let mut queue: std::collections::VecDeque<usize> = std::collections::VecDeque::new();
+        for i in 0..n { if indeg[i] == 0 { queue.push_back(i); } }
+        let mut out_idx = Vec::with_capacity(n);
+        while let Some(i) = queue.pop_front() {
+            out_idx.push(i);
+            for &j in &adj[i] {
+                indeg[j] -= 1;
+                if indeg[j] == 0 { queue.push_back(j); }
+            }
+        }
+        if out_idx.len() == n {
+            let mut new_deps = Vec::with_capacity(n);
+            for i in out_idx { new_deps.push(deps[i].clone()); }
+            *self_arc.dependencies.write() = new_deps;
+        } else {
+            // Fallback: keep insertion order if something went wrong
         }
     }
 }

@@ -10,6 +10,12 @@ pub enum PassError {
     NoCompatibleShader,
     #[error("Invalid color target: {0}")]
     InvalidColorTarget(String),
+    #[error("Self dependency is not allowed")]
+    SelfDependency,
+    #[error("Duplicate dependency: {0}")]
+    DuplicateDependency(String),
+    #[error("Dependency introduces a cycle via: {via}")]
+    DependencyCycle { via: String },
     #[error("Surface error: {0}")]
     SurfaceError(#[from] wgpu::SurfaceError),
     #[error("Shader error: {0}")]
@@ -70,18 +76,24 @@ mod tests {
         let b = PassError::AliasConflict;
         let c = PassError::NoCompatibleShader;
         let d = PassError::InvalidColorTarget("k".into());
-        let e = PassError::SurfaceError(wgpu::SurfaceError::Lost);
-        let f = PassError::ShaderError(crate::ShaderError::ParseError("p".into()));
+        let e = PassError::SelfDependency;
+        let f = PassError::DuplicateDependency("p".into());
+        let g = PassError::DependencyCycle { via: "x".into() };
+        let h = PassError::SurfaceError(wgpu::SurfaceError::Lost);
+        let i = PassError::ShaderError(crate::ShaderError::ParseError("p".into()));
         #[cfg(any(python, wasm))]
-        let g = PassError::Error("x".into());
+        let j = PassError::Error("x".into());
 
         assert!(a.to_string().contains("Invalid uniform root"));
         assert!(b.to_string().contains("Alias conflict"));
         assert!(c.to_string().contains("No compatible shader"));
         assert!(d.to_string().contains("Invalid color target"));
-        assert!(e.to_string().contains("Surface error"));
-        assert!(f.to_string().contains("Shader error"));
+        assert!(e.to_string().contains("Self dependency"));
+        assert!(f.to_string().contains("Duplicate dependency"));
+        assert!(g.to_string().contains("cycle"));
+        assert!(h.to_string().contains("Surface error"));
+        assert!(i.to_string().contains("Shader error"));
         #[cfg(any(python, wasm))]
-        assert!(g.to_string().contains("Error"));
+        assert!(j.to_string().contains("Error"));
     }
 }

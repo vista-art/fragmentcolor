@@ -568,8 +568,13 @@ fn parse_uniforms(module: &Module) -> Result<HashMap<String, Uniform>, ShaderErr
 }
 
 impl Renderable for Shader {
-    fn passes(&self) -> impl IntoIterator<Item = &PassObject> {
-        vec![self.pass.as_ref()]
+    fn passes(&self) -> Arc<[Arc<PassObject>]> {
+        // Ensure cached order for this pass is up-to-date
+        crate::pass::PassObject::ensure_flat_current(&self.pass);
+        vec![self.pass.clone()].into()
+    }
+    fn roots(&self) -> Arc<[Arc<PassObject>]> {
+        vec![self.pass.clone()].into()
     }
 }
 
