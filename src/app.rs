@@ -27,7 +27,7 @@ type WindowEventCallback = Box<dyn FnMut(&App, WindowId, &WindowEvent) + Send + 
 type DeviceEventCallback =
     Box<dyn FnMut(&App, winit::event::DeviceId, &winit::event::DeviceEvent) + Send + 'static>;
 
-pub type StartResult<'a> = impl Future<Output = SetupResult> + 'a;
+pub trait StartResult<'a>: Future<Output = SetupResult> + 'a {}
 
 type StartCallback =
     Option<Box<dyn for<'a> FnOnce(&'a App, Vec<Arc<Window>>) -> StartResult<'a> + 'static>>;

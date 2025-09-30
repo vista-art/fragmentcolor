@@ -522,7 +522,7 @@ impl RenderContext {
             if let Some(texture) = self.get_texture(&id) {
                 pass_texture_view = Some(texture.create_view());
                 color_format = texture.format();
-                sample_count = 1; // bind offscreen targets single-sampled
+                sample_count = texture.sample_count();
             } else {
                 return Err(RendererError::TextureNotFoundError(id));
             }
@@ -566,17 +566,28 @@ impl RenderContext {
         })];
 
         // Optional depth attachment if the pass has a depth target
-        let (depth_view, depth_format) = if let Some(depth_id) = *pass.depth_target.read() {
+        let (depth_view, depth_format, depth_sc_opt) = if let Some(depth_id) = *pass.depth_target.read() {
             if let Some(texture) = self.get_texture(&depth_id) {
                 let depth_view = texture.create_view();
                 let depth_format = texture.format();
-                (Some(depth_view), Some(depth_format))
+                let depth_sc = texture.sample_count();
+                (Some(depth_view), Some(depth_format), Some(depth_sc))
             } else {
-                (None, None)
+                (None, None, None)
             }
         } else {
-            (None, None)
+            (None, None, None)
         };
+
+        // Validate depth sample count matches the pass sample count, if present
+        if let Some(sc) = depth_sc_opt {
+            if sc != sample_count {
+                return Err(RendererError::Error(format!(
+                    "Depth sample_count ({}) does not match pass sample_count ({}). Create the depth texture after create_target(window) to inherit the surface MSAA, or ensure color and depth targets use the same sample_count.",
+                    sc, sample_count
+                )));
+            }
+        }
 
         let depth_stencil_attachment =
             depth_view
@@ -2556,7 +2567,7 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(0.1,0.9,0.1,1.0);
                 ctx.set_sample_count(sc);
                 // Create a matching-sample depth texture and register it
                 let depth_obj =
-                    crate::TextureObject::create_depth_texture_with_count(&ctx, size, sc);
+                    crate::TextureObject::create_depth_texture(&ctx, size);
                 let depth_obj = std::sync::Arc::new(depth_obj);
                 let depth_id = ctx.register_texture(depth_obj.clone());
 
