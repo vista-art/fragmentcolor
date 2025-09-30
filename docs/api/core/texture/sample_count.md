@@ -7,7 +7,7 @@ Return the texture's MSAA sample count.
 
 Depth textures created via Renderer::create_depth_texture inherit the renderer's current sample count (surface MSAA when rendering to a window; 1 for offscreen texture targets).
 
-Example
+## Example
 
 ```rust
 use fragmentcolor::Renderer;
