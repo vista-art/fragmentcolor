@@ -4,33 +4,35 @@ use crate::{Renderer, Size, Target};
 use parking_lot::RwLock;
 use std::any::Any;
 use std::collections::HashMap;
-use std::future::Future;
-use std::pin::Pin;
 use std::sync::Arc;
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::{Window, WindowAttributes, WindowId};
 
-pub type AppError = Box<dyn std::error::Error>;
+/// Generic application error type
+pub type AppError = Box<dyn std::error::Error + Send + Sync>;
 
-// Public aliases to avoid complex types at call sites.
-pub type SetupError = Box<dyn std::error::Error + Send + Sync>;
-pub type SetupResult = Result<(), SetupError>;
+/// Result type for async setup functions
+pub type SetupResult = Result<(), AppError>;
+/// Callback for async setup functions
+type SetupCallback = Option<Box<dyn FnOnce(&App, Vec<Arc<Window>>) -> SetupResult>>;
+/// Convenience macro for async setup functions
+#[macro_export]
+macro_rules! call {
+    ($func:ident) => {
+        |app, windows| pollster::block_on($func(app, windows))
+    };
+}
 
-// Signature for top-level callbacks.
-// Users can register global event callbacks and draw callbacks.
-// The event is passed by reference to avoid unnecessary cloning.
+/// Signature for top-level window callbacks.
+/// Users can register global event callbacks and draw callbacks.
+/// The event is passed by reference to avoid unnecessary cloning.
 type WindowEventCallback = Box<dyn FnMut(&App, WindowId, &WindowEvent) + Send + 'static>;
 
 // Device-level (non-window) event callback
 type DeviceEventCallback =
     Box<dyn FnMut(&App, winit::event::DeviceId, &winit::event::DeviceEvent) + Send + 'static>;
-
-pub trait StartResult<'a>: Future<Output = SetupResult> + 'a {}
-
-type StartCallback =
-    Option<Box<dyn for<'a> FnOnce(&'a App, Vec<Arc<Window>>) -> StartResult<'a> + 'static>>;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum EventKind {
@@ -134,7 +136,7 @@ pub struct App {
     device_by_kind: RwLock<HashMap<DeviceEvent, Vec<DeviceEventCallback>>>,
 
     // Startup hook (async)
-    start_callback: StartCallback,
+    start_callback: SetupCallback,
 
     primary_window: Option<WindowId>,
 }
@@ -164,13 +166,12 @@ impl App {
         self
     }
 
-    // Startup hook: called once after windows are created in resumed().
+    // Startup hook: called once after windows are created in resumed()
     pub fn on_start<F>(&mut self, f: F) -> &mut Self
     where
-        F: 'static + for<'app> FnOnce(&'app App, Vec<Arc<Window>>) -> StartResult<'app>,
+        F: FnOnce(&App, Vec<Arc<Window>>) -> SetupResult + 'static,
     {
-        // Store a higher-ranked callback that forwards directly to the user-provided function.
-        self.start_callback = Some(Box::new(move |app, windows| f(app, windows)));
+        self.start_callback = Some(Box::new(f));
         self
     }
 
@@ -351,8 +352,8 @@ impl ApplicationHandler for App {
         }
 
         // Invoke on_start once after windows exist
-        if let Some(cb) = self.start_callback.take() {
-            let result = pollster::block_on(cb(&*self, created.clone()));
+        if let Some(callback) = self.start_callback.take() {
+            let result = callback(&*self, created.clone());
             if let Err(e) = result {
                 panic!("App startup failed: {}", e);
             }

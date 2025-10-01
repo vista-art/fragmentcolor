@@ -235,7 +235,7 @@ impl Mesh {
         let arr = js_sys::Array::is_array(list)
             .then(|| js_sys::Array::from(list))
             .ok_or_else(|| JsError::new("Expected an array of Vertex"))?;
-        let mut m = Mesh::new();
+        let m = Mesh::new();
         for v in arr.iter() {
             let vert: Vertex = (&v)
                 .try_into()

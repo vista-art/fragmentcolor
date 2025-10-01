@@ -522,7 +522,7 @@ impl RenderContext {
             if let Some(texture) = self.get_texture(&id) {
                 pass_texture_view = Some(texture.create_view());
                 color_format = texture.format();
-                sample_count = texture.sample_count();
+                sample_count = texture.inner.sample_count();
             } else {
                 return Err(RendererError::TextureNotFoundError(id));
             }
@@ -566,18 +566,19 @@ impl RenderContext {
         })];
 
         // Optional depth attachment if the pass has a depth target
-        let (depth_view, depth_format, depth_sc_opt) = if let Some(depth_id) = *pass.depth_target.read() {
-            if let Some(texture) = self.get_texture(&depth_id) {
-                let depth_view = texture.create_view();
-                let depth_format = texture.format();
-                let depth_sc = texture.sample_count();
-                (Some(depth_view), Some(depth_format), Some(depth_sc))
+        let (depth_view, depth_format, depth_sc_opt) =
+            if let Some(depth_id) = *pass.depth_target.read() {
+                if let Some(texture) = self.get_texture(&depth_id) {
+                    let depth_view = texture.create_view();
+                    let depth_format = texture.format();
+                    let depth_sc = texture.inner.sample_count();
+                    (Some(depth_view), Some(depth_format), Some(depth_sc))
+                } else {
+                    (None, None, None)
+                }
             } else {
                 (None, None, None)
-            }
-        } else {
-            (None, None, None)
-        };
+            };
 
         // Validate depth sample count matches the pass sample count, if present
         if let Some(sc) = depth_sc_opt {
@@ -2566,8 +2567,7 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(0.1,0.9,0.1,1.0);
             if sc > 1 {
                 ctx.set_sample_count(sc);
                 // Create a matching-sample depth texture and register it
-                let depth_obj =
-                    crate::TextureObject::create_depth_texture(&ctx, size);
+                let depth_obj = crate::TextureObject::create_depth_texture(&ctx, size);
                 let depth_obj = std::sync::Arc::new(depth_obj);
                 let depth_id = ctx.register_texture(depth_obj.clone());
 
