@@ -70,7 +70,12 @@ mod tests {
         // Expected triangle list: v0,v1,v2, v0,v2,v3
         let p = |i: usize| -> [f32; 4] {
             let v = &verts[i];
-            [v.position.0.x, v.position.0.y, v.position.0.z, v.position.0.w]
+            [
+                v.position.0.x,
+                v.position.0.y,
+                v.position.0.z,
+                v.position.0.w,
+            ]
         };
         let uv = |i: usize| -> Option<[f32; 2]> {
             match verts[i].properties.get("uv") {

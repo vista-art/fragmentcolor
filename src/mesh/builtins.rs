@@ -76,7 +76,9 @@ impl From<[u32; 3]> for VertexPosition {
 mod tests {
     use super::*;
 
-    fn v4(x: f32, y: f32, z: f32, w: f32) -> Vec4 { Vec4::new(x, y, z, w) }
+    fn v4(x: f32, y: f32, z: f32, w: f32) -> Vec4 {
+        Vec4::new(x, y, z, w)
+    }
 
     #[test]
     fn from_scalar_and_tuples() {
