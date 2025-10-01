@@ -24,7 +24,7 @@ The graph is validated at build time and does not perform cycle checks at render
 ## Examples
 
 ```rust
-use fragmentcolor:{Pass, Renderer}
+use fragmentcolor::{Pass, Renderer};
 # let renderer = Renderer::headless();
 # let target = renderer.create_texture_target([100,100]);
 let color = Pass::new("color");
