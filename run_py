@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
-set -x
+
+# Enable shell trace only when explicitly requested
+if [[ -n "${FC_VERBOSE:-}" ]]; then
+  set -x
+fi
 
 # Run Python examples using a local wheel build in a virtualenv.
 # Keeps platform flow consistent with run_web.
@@ -43,18 +47,30 @@ fi
 # shellcheck disable=SC1091
 source "$VENV_DIR/bin/activate"
 
-# Upgrade pip and wheel
-python -m pip install --upgrade pip wheel
+# Upgrade pip and wheel (quiet by default)
+if [[ -n "${FC_VERBOSE:-}" ]]; then
+  python -m pip install --upgrade pip wheel
+else
+  python -m pip install -q --upgrade pip wheel
+fi
 
 # Install the freshly built wheel
 if ! compgen -G "$OUT_DIR/*.whl" >/dev/null; then
   echo "No wheel found under $OUT_DIR. Build first or remove --no-build." >&2
   exit 1
 fi
-python -m pip install --force-reinstall "$OUT_DIR"/*.whl
+if [[ -n "${FC_VERBOSE:-}" ]]; then
+  python -m pip install --force-reinstall "$OUT_DIR"/*.whl
+else
+  python -m pip install -q --force-reinstall "$OUT_DIR"/*.whl
+fi
 
 # Install example runtime deps (do NOT install fragmentcolor from PyPI here)
-pip install glfw rendercanvas
+if [[ -n "${FC_VERBOSE:-}" ]]; then
+  pip install glfw rendercanvas
+else
+  pip install -q glfw rendercanvas
+fi
 
 case "$EXAMPLE" in
   main)
@@ -73,4 +89,3 @@ case "$EXAMPLE" in
     exit 1
     ;;
 esac
-

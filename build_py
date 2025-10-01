@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
-set -x
+
+# Enable shell trace only when explicitly requested
+if [[ -n "${FC_VERBOSE:-}" ]]; then
+  set -x
+fi
 
 # Build Python wheels with maturin. If on macOS and CODESIGN_IDENTITY is set,
 # optionally codesign native extension(s) inside the built wheel(s) while keeping
@@ -16,15 +20,23 @@ set -x
 
 OUT_DIR="dist"
 
-# Build wheels
-maturin build --release --out "$OUT_DIR"
+# Build wheels (quiet by default)
+if [[ -n "${FC_VERBOSE:-}" ]]; then
+  maturin build --release --out "$OUT_DIR"
+else
+  maturin build -q --release --out "$OUT_DIR"
+fi
 
 # Best-effort codesign on macOS
 UNAME_OUT="$(uname -s)" || UNAME_OUT=""
 if [[ "$UNAME_OUT" == "Darwin" ]] && [[ -n "${CODESIGN_IDENTITY:-}" ]]; then
   # Ensure the 'wheel' tool is available for unpack/pack
   if ! python3 -c 'import wheel' >/dev/null 2>&1; then
-    python3 -m pip install --user wheel
+    if [[ -n "${FC_VERBOSE:-}" ]]; then
+      python3 -m pip install --user wheel
+    else
+      python3 -m pip install -q --user wheel
+    fi
   fi
 
   mkdir -p "$OUT_DIR-signed"
