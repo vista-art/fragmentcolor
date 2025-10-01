@@ -238,6 +238,9 @@ impl From<PySize> for Size {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
+    #[cfg(python)]
+    use std::collections::HashMap;
 
     #[test]
     fn size_wgpu_ref_conversions() {
@@ -304,5 +307,101 @@ mod tests {
         assert_eq!(e.height, 5);
         // Depth should fallback to 1 when None
         assert_eq!(e.depth_or_array_layers, 1);
+    }
+
+    // Property: tuple2 <-> Size <-> tuple2 roundtrips width/height
+    proptest! {
+        #[test]
+        fn prop_tuple2_roundtrip((w, h) in any::<(u32, u32)>()) {
+            let s: Size = (w, h).into();
+            let back: (u32, u32) = s.into();
+            prop_assert_eq!(back, (w, h));
+
+            let s_ref: Size = (&(w, h)).into();
+            let back_ref: (u32, u32) = (&s_ref).into();
+            prop_assert_eq!(back_ref, (w, h));
+        }
+    }
+
+    // Property: tuple3 <-> Size <-> tuple3 preserves all three components
+    proptest! {
+        #[test]
+        fn prop_tuple3_roundtrip((w, h, d) in any::<(u32, u32, u32)>()) {
+            let s: Size = (w, h, d).into();
+            let back: (u32, u32, u32) = s.into();
+            prop_assert_eq!(back, (w, h, d));
+
+            let s_ref: Size = (&(w, h, d)).into();
+            let back_ref: (u32, u32, u32) = (&s_ref).into();
+            prop_assert_eq!(back_ref, (w, h, d));
+        }
+    }
+
+    // Property: arrays [w,h] and [w,h,d] roundtrip width/height/depth
+    proptest! {
+        #[test]
+        fn prop_arrays_roundtrip(a2 in any::<[u32;2]>(), a3 in any::<[u32;3]>()) {
+            let s2: Size = a2.into();
+            let back2: [u32; 2] = s2.into();
+            prop_assert_eq!(back2, a2);
+
+            let s3: Size = a3.into();
+            let back3: [u32; 3] = s3.into();
+            prop_assert_eq!(back3, a3);
+        }
+    }
+
+    // Property: Extent3d conversions preserve width/height and treat depth None as 1
+    proptest! {
+        #[test]
+        fn prop_extent3d_roundtrip((w, h, d_opt) in any::<(u32, u32, Option<u32>)>()) {
+            let s = Size::new(w, h, d_opt);
+            let e: wgpu::Extent3d = s.into();
+            prop_assert_eq!(e.width, w);
+            prop_assert_eq!(e.height, h);
+            // Compare effective depth
+            let eff = d_opt.unwrap_or(1);
+            prop_assert_eq!(e.depth_or_array_layers, eff);
+
+            let s2: Size = (&e).into();
+            prop_assert_eq!(s2.width, w);
+            prop_assert_eq!(s2.height, h);
+            prop_assert_eq!(s2.depth.unwrap_or(1), eff);
+        }
+    }
+
+    // Python-specific conversion tests (compile when feature=python)
+    #[cfg(python)]
+    #[test]
+    fn py_size_conversions_cover_variants() {
+        // TupleF64 and TupleU32
+        let s1: Size = PySize::TupleF64((10.5, 20.5)).into();
+        assert_eq!((s1.width, s1.height, s1.depth), (10, 20, None));
+        let s2: Size = PySize::TupleU32((7, 9)).into();
+        assert_eq!((s2.width, s2.height, s2.depth), (7, 9, None));
+
+        // Tuple3I32 with negative depth coerced via cast
+        let s3: Size = PySize::Tuple3I32((3, 4, 5)).into();
+        assert_eq!((s3.width, s3.height, s3.depth), (3, 4, Some(5)));
+
+        // Lists
+        let s4: Size = PySize::ListU32(vec![1, 2]).into();
+        assert_eq!((s4.width, s4.height, s4.depth), (1, 2, None));
+        let s5: Size = PySize::ListF64(vec![2.0, 3.0, 4.0]).into();
+        assert_eq!((s5.width, s5.height, s5.depth), (2, 3, Some(4)));
+
+        // Dicts
+        let mut d_f: HashMap<String, f64> = HashMap::new();
+        d_f.insert("width".into(), 11.0);
+        d_f.insert("height".into(), 12.0);
+        d_f.insert("depth".into(), 13.0);
+        let s6: Size = PySize::DictF64(d_f).into();
+        assert_eq!((s6.width, s6.height, s6.depth), (11, 12, Some(13)));
+
+        let mut d_u: HashMap<String, u32> = HashMap::new();
+        d_u.insert("width".into(), 21);
+        d_u.insert("height".into(), 22);
+        let s7: Size = PySize::DictU32(d_u).into();
+        assert_eq!((s7.width, s7.height, s7.depth), (21, 22, None));
     }
 }
