@@ -581,13 +581,13 @@ impl RenderContext {
             };
 
         // Validate depth sample count matches the pass sample count, if present
-        if let Some(sc) = depth_sc_opt {
-            if sc != sample_count {
-                return Err(RendererError::Error(format!(
-                    "Depth sample_count ({}) does not match pass sample_count ({}). Create the depth texture after create_target(window) to inherit the surface MSAA, or ensure color and depth targets use the same sample_count.",
-                    sc, sample_count
-                )));
-            }
+        if let Some(sc) = depth_sc_opt
+            && sc != sample_count
+        {
+            return Err(RendererError::Error(format!(
+                "Depth sample_count ({}) does not match pass sample_count ({}). Create the depth texture after create_target(window) to inherit the surface MSAA, or ensure color and depth targets use the same sample_count.",
+                sc, sample_count
+            )));
         }
 
         let depth_stencil_attachment =
