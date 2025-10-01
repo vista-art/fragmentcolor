@@ -1,19 +1,7 @@
 # Pass::require(deps)
 
-Declare that this pass depends on one or more other passes. All required passes will render before this pass.
-
-## Syntax
-
-```rust
-pub fn require<I, P>(&self, deps: I) -> Result<(), PassError>
-where
-    I: IntoIterator<Item = P>,
-    P: AsRef<Pass>,
-```
-
-## Parameters
-
-- deps: One or more Pass values (e.g., `&pass`, `[&a, &b]`, `vec![&a, &b]`).
+Declare that this pass depends on one or more other renderables (Pass, Shader, Frame, Mesh).
+All dependencies will render before this Pass.
 
 ## Return value
 
@@ -24,7 +12,8 @@ where
 
 ## Description
 
-`require` establishes a dependency: the given `deps` must render before `self`.
+`require` establishes a dependency: the given `dependencies` must render before `self`.
+
 This allows you to build DAG render graphs directly from passes.
 The graph is validated at build time and does not perform cycle checks at render time.
 
