@@ -24,15 +24,20 @@ The graph is validated at build time and does not perform cycle checks at render
 ## Examples
 
 ```rust
+# async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Pass, Renderer};
-# let renderer = Renderer::headless();
-# let target = renderer.create_texture_target([100,100]);
+let renderer = Renderer::new();
+let target = renderer.create_texture_target([100,100]).await?;
 let color = Pass::new("color");
 let blurx = Pass::new("blur_x");
 blurx.require(&color)?; // color before blur_x
 let blury = Pass::new("blur_y");
 blury.require(&blurx)?; // blur_x before blur_y
 let compose = Pass::new("compose");
-compose.require([&color, &blury])?; // fan-in; color and blur_y before compose
+compose.require(&color)?;
+compose.require(&blury)?; // fan-in; color and blur_y before compose
 renderer.render(&compose, &target)?; // compose renders last
+# Ok(())
+# }
+# fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 ```
