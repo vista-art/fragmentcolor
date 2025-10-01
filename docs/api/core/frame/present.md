@@ -2,12 +2,6 @@
 
 Designates which render pass should present its output to the final target.
 
-## Syntax
-
-```rust
-pub fn present(&mut self, pass: &Pass) -> Result<(), FrameError>
-```
-
 ## Parameters
 
 - `pass` - The render pass to designate for final presentation
