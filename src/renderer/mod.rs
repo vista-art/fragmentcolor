@@ -1712,7 +1712,7 @@ fn create_render_pipeline(
     // Build shader module possibly rewriting push constants to uniforms in fallback mode
     let mut push_mode: Option<PushMode> = None;
 
-    let shader_module = if !push_roots.is_empty() || fallback_required {
+    let shader_module = if push_roots.is_empty() || !fallback_required {
         if let Some((name, sz)) = push_roots.first() {
             push_mode = Some(PushMode::Native {
                 root: name.clone(),

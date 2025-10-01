@@ -634,4 +634,85 @@ mod tests {
         // Assert
         assert_eq!(pass.object.viewport.read().as_ref(), Some(vp).as_ref());
     }
+
+    // Story: compute dispatch clamps zeros to 1 per dimension.
+    #[test]
+    fn compute_dispatch_clamps_zeros() {
+        let p = Pass::compute("c");
+        p.set_compute_dispatch(0, 2, 0);
+        assert_eq!(*p.object.compute_dispatch.read(), (1, 2, 1));
+    }
+
+    // Story: adding a mesh explicitly to a shader via pass helper succeeds when compatible.
+    #[test]
+    fn add_mesh_to_shader_happy_path() {
+        let shader = Shader::default();
+        let pass = Pass::from_shader("p", &shader);
+        let mesh = Mesh::new();
+        use crate::mesh::Vertex;
+        mesh.add_vertices([
+            Vertex::new([-0.5f32, -0.5f32, 0.0]).set("uv", [0.0f32, 0.0]),
+            Vertex::new([0.5f32, -0.5f32, 0.0]).set("uv", [1.0f32, 0.0]),
+            Vertex::new([0.0f32, 0.5f32, 0.0]).set("uv", [0.5f32, 1.0]),
+        ]);
+        let res = pass.add_mesh_to_shader(&mesh, &shader);
+        assert!(res.is_ok());
+    }
+
+    // Story: ColorTarget/DepthTarget validations pass/fail as per format and usage.
+    #[test]
+    fn color_and_depth_target_tryfrom_validate() {
+        pollster::block_on(async move {
+            let r = crate::Renderer::new();
+            // A color-capable texture target
+            let tex_target = r
+                .create_texture_target([4u32, 4u32])
+                .await
+                .expect("texture target");
+            // ColorTarget from TextureTarget should succeed
+            let ct = ColorTarget::try_from(&tex_target);
+            assert!(ct.is_ok());
+
+            // Depth texture should not be valid as a ColorTarget
+            let depth = r.create_depth_texture([4u32, 4u32]).await.expect("depth");
+            let ct_bad = ColorTarget::try_from(&depth);
+            assert!(ct_bad.is_err());
+
+            // DepthTarget from depth texture is Ok
+            let dt = DepthTarget::try_from(&depth);
+            assert!(dt.is_ok());
+
+            // Non-depth texture (storage) should not be valid as DepthTarget
+            let color_tex = r
+                .create_storage_texture([4u32, 4u32], crate::TextureFormat::default(), None)
+                .await
+                .expect("color tex");
+            let dt_bad = DepthTarget::try_from(&color_tex);
+            assert!(dt_bad.is_err());
+        });
+    }
+
+    // Story: dependency linking rejects self, duplicate and cycles.
+    #[test]
+    fn dependencies_self_duplicate_cycle_errors() {
+        let a = Pass::new("A");
+        let b = Pass::new("B");
+
+        // self-dependency
+        let e1 = a.require(&a).unwrap_err();
+        let s1 = format!("{}", e1);
+        assert!(s1.contains("Self"), "expected self-dependency error: {s1}");
+
+        // duplicate
+        a.require(&b).expect("first ok");
+        let e2 = a.require(&b).unwrap_err();
+        let s2 = format!("{}", e2);
+        assert!(s2.contains("Duplicate"), "expected duplicate error: {s2}");
+
+        // cycle: B -> A, then A -> B should error
+        b.require(&a).expect("b requires a ok");
+        let e3 = a.require(&b).unwrap_err();
+        let s3 = format!("{}", e3);
+        assert!(s3.contains("cycle"), "expected cycle error: {s3}");
+    }
 }

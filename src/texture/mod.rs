@@ -400,9 +400,10 @@ impl TextureObject {
     /// the render_pipeline and for creating the depth texture itself.
     pub const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 
-    /// Creates a depth texture (single-sampled by default)
+    /// Creates a depth texture inheriting the current renderer sample count.
     pub fn create_depth_texture(context: &RenderContext, size: wgpu::Extent3d) -> Self {
-        Self::create_depth_texture_with_count(context, size, 1)
+        let sc = context.sample_count();
+        Self::create_depth_texture_with_count(context, size, sc)
     }
 
     /// Creates a depth texture with an explicit MSAA sample count.

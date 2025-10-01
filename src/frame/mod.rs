@@ -21,7 +21,6 @@ pub struct Frame {
     pub(crate) pass_indices: HashMap<Arc<str>, usize>,
     pub(crate) passes: Vec<Arc<PassObject>>,
     dependencies: Vec<(usize, usize)>,
-    last_pass: Option<usize>,
 }
 
 impl Frame {
@@ -31,7 +30,6 @@ impl Frame {
             pass_indices: HashMap::new(),
             passes: Vec::new(),
             dependencies: Vec::new(),
-            last_pass: None,
         }
     }
 
@@ -45,93 +43,10 @@ impl Frame {
         self.pass_indices
             .insert(pass.object.name.clone(), self.passes.len() - 1);
     }
-
-    #[lsp_doc("docs/api/core/frame/present.md")]
-    pub fn present(&mut self, pass: &Pass) -> Result<(), FrameError> {
-        let pass_index = self.pass_index(pass)?;
-
-        self.validate_present_pass(pass, pass_index)?;
-        self.clear_previous_present_pass();
-        self.set_present_pass(pass, pass_index);
-
-        Ok(())
-    }
 }
 
 // Private methods
 impl Frame {
-    /// Finds the index of a pass in the frame's pass list.
-    ///
-    /// # Arguments
-    /// * `pass` - The pass to find
-    ///
-    /// # Returns
-    /// * `Ok(index)` if the pass is found
-    /// * `Err(FrameError::MissingPass)` if the pass is not in this frame
-    fn pass_index(&self, pass: &Pass) -> Result<usize, FrameError> {
-        if let Some(index) = self.pass_indices.get(&pass.object.name) {
-            Ok(*index)
-        } else {
-            Err(FrameError::PassNotFound(pass.object.name.to_string()))
-        }
-    }
-
-    /// Validates that a pass can be used as a present pass.
-    ///
-    /// # Arguments
-    /// * `pass` - The pass to validate
-    /// * `pass_index` - The index of the pass in the frame
-    ///
-    /// # Returns
-    /// * `Ok(())` if the pass is valid for presentation
-    /// * `Err(FrameError::NotRenderPass)` if the pass is a compute pass
-    /// * `Err(FrameError::NotALeaf)` if other passes depend on this pass
-    /// * `Err(FrameError::InvalidPresentPass)` if a different pass is already presenting
-    fn validate_present_pass(&self, pass: &Pass, pass_index: usize) -> Result<(), FrameError> {
-        // Must be a render pass
-        if pass.object.is_compute() {
-            return Err(FrameError::NotRenderPass);
-        }
-
-        // Must be a leaf node (no other passes depend on it)
-        if self
-            .dependencies
-            .iter()
-            .any(|(parent_idx, _child_idx)| *parent_idx == pass_index)
-        {
-            return Err(FrameError::NotALeaf);
-        }
-
-        // Only one present pass allowed per frame
-        if let Some(existing_present_index) = self.last_pass
-            && existing_present_index != pass_index
-        {
-            return Err(FrameError::InvalidPresentPass);
-        }
-
-        Ok(())
-    }
-
-    /// Clears the present flag from the previously designated present pass.
-    fn clear_previous_present_pass(&mut self) {
-        if let Some(previous_present_index) = self.last_pass.take()
-            && previous_present_index < self.passes.len()
-            && let Some(previous_pass) = self.passes.get(previous_present_index)
-        {
-            *previous_pass.present_to_target.write() = false;
-        }
-    }
-
-    /// Sets the present flag on the specified pass.
-    ///
-    /// # Arguments
-    /// * `pass` - The pass to mark as presenting
-    /// * `pass_index` - The index of the pass in the frame
-    fn set_present_pass(&mut self, pass: &Pass, pass_index: usize) {
-        *pass.object.present_to_target.write() = true;
-        self.last_pass = Some(pass_index);
-    }
-
     /// Builds an adjacency list representation of the dependency graph
     /// Returns (adjacency_list, indegree_counts)
     fn build_dependency_graph(&self) -> (Vec<Vec<usize>>, Vec<usize>) {
@@ -219,6 +134,14 @@ impl Renderable for Frame {
     }
 }
 
+#[cfg(test)]
+impl Frame {
+    /// Test-only: push a dependency edge (parent_index -> child_index)
+    pub(crate) fn test_add_dependency(&mut self, parent_index: usize, child_index: usize) {
+        self.dependencies.push((parent_index, child_index));
+    }
+}
+
 #[cfg(wasm)]
 crate::impl_js_bridge!(Frame, FrameError);
 
@@ -244,5 +167,42 @@ mod tests {
         let v = frame.passes();
         let count = v.iter().count();
         assert_eq!(count, 2);
+    }
+
+    // Story: topological sort orders passes per declared dependencies; cycles cause fallback.
+    #[test]
+    fn topological_sort_orders_or_falls_back_on_cycle() {
+        // DAG case: a -> b -> c
+        let mut frame = Frame::new();
+        let a = Pass::new("a");
+        let b = Pass::new("b");
+        let c = Pass::new("c");
+        frame.add_pass(&a);
+        frame.add_pass(&b);
+        frame.add_pass(&c);
+        frame.test_add_dependency(0, 1);
+        frame.test_add_dependency(1, 2);
+        let names: Vec<String> = frame
+            .passes()
+            .iter()
+            .map(|po| po.name.to_string())
+            .collect();
+        assert_eq!(names, vec!["a", "b", "c"]);
+
+        // Cycle case: x <-> y
+        let mut cyclic = Frame::new();
+        let x = Pass::new("x");
+        let y = Pass::new("y");
+        cyclic.add_pass(&x);
+        cyclic.add_pass(&y);
+        cyclic.test_add_dependency(0, 1);
+        cyclic.test_add_dependency(1, 0);
+        let names_cycle: Vec<String> = cyclic
+            .passes()
+            .iter()
+            .map(|po| po.name.to_string())
+            .collect();
+        // Fallback should be insertion order
+        assert_eq!(names_cycle, vec!["x", "y"]);
     }
 }
