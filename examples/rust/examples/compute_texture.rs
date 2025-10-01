@@ -1,4 +1,4 @@
-use fragmentcolor::{App, Frame, Pass, Renderer, SetupResult, Shader, run};
+use fragmentcolor::{App, Frame, Pass, Renderer, SetupResult, Shader, call, run};
 use std::sync::Arc;
 use winit::dpi::PhysicalSize;
 use winit::window::Window;
@@ -110,7 +110,7 @@ fn main() {
     let renderer = Renderer::new();
     let mut app = App::new(renderer);
 
-    app.on_start(setup)
+    app.on_start(call!(setup))
         .on_resize(on_resize)
         .on_redraw_requested(draw);
 

@@ -1,4 +1,4 @@
-use fragmentcolor::{App, Frame, Pass, Renderer, SetupResult, Shader, run};
+use fragmentcolor::{App, Frame, Pass, Renderer, SetupResult, Shader, call, run};
 use std::path::PathBuf;
 use std::sync::Arc;
 use winit::dpi::PhysicalSize;
@@ -24,7 +24,7 @@ fn main(v: VOut) -> @location(0) vec4<f32> {
 }
 "#;
 
-pub fn on_resize(app: &App, new_size: &PhysicalSize<u32>) {
+pub fn resize(app: &App, new_size: &PhysicalSize<u32>) {
     app.resize([new_size.width, new_size.height]);
 }
 
@@ -62,8 +62,8 @@ fn draw(app: &App) {
 fn main() {
     let renderer = Renderer::new();
     let mut app = App::new(renderer);
-    app.on_start(setup)
-        .on_resize(on_resize)
+    app.on_start(call!(setup))
+        .on_resize(resize)
         .on_redraw_requested(draw);
     run(&mut app);
 }
