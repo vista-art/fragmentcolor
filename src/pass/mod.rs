@@ -646,17 +646,29 @@ mod tests {
     // Story: adding a mesh explicitly to a shader via pass helper succeeds when compatible.
     #[test]
     fn add_mesh_to_shader_happy_path() {
-        let shader = Shader::default();
+        // Shader that expects @location(0) position (vec2)
+        let wgsl = r#"
+struct VOut { @builtin(position) pos: vec4<f32> };
+@vertex
+fn vs_main(@location(0) position: vec2<f32>) -> VOut {
+  var out: VOut;
+  out.pos = vec4<f32>(position, 0.0, 1.0);
+  return out;
+}
+@fragment
+fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.0, 0.0, 0.0, 1.0); }
+        "#;
+        let shader = Shader::new(wgsl).expect("shader with pos input");
         let pass = Pass::from_shader("p", &shader);
         let mesh = Mesh::new();
         use crate::mesh::Vertex;
         mesh.add_vertices([
-            Vertex::new([-0.5f32, -0.5f32, 0.0]).set("uv", [0.0f32, 0.0]),
-            Vertex::new([0.5f32, -0.5f32, 0.0]).set("uv", [1.0f32, 0.0]),
-            Vertex::new([0.0f32, 0.5f32, 0.0]).set("uv", [0.5f32, 1.0]),
+            Vertex::new([-0.5f32, -0.5f32]),
+            Vertex::new([0.5f32, -0.5f32]),
+            Vertex::new([0.0f32, 0.5f32]),
         ]);
         let res = pass.add_mesh_to_shader(&mesh, &shader);
-        assert!(res.is_ok());
+        assert!(res.is_ok(), "mesh should be compatible: {:?}", res);
     }
 
     // Story: ColorTarget/DepthTarget validations pass/fail as per format and usage.
@@ -695,23 +707,25 @@ mod tests {
     // Story: dependency linking rejects self, duplicate and cycles.
     #[test]
     fn dependencies_self_duplicate_cycle_errors() {
-        let a = Pass::new("A");
-        let b = Pass::new("B");
-
         // self-dependency
+        let a = Pass::new("A");
         let e1 = a.require(&a).unwrap_err();
         let s1 = format!("{}", e1);
         assert!(s1.contains("Self"), "expected self-dependency error: {s1}");
 
-        // duplicate
-        a.require(&b).expect("first ok");
-        let e2 = a.require(&b).unwrap_err();
+        // duplicate (fresh pair)
+        let x = Pass::new("X");
+        let y = Pass::new("Y");
+        x.require(&y).expect("first ok");
+        let e2 = x.require(&y).unwrap_err();
         let s2 = format!("{}", e2);
         assert!(s2.contains("Duplicate"), "expected duplicate error: {s2}");
 
-        // cycle: B -> A, then A -> B should error
-        b.require(&a).expect("b requires a ok");
-        let e3 = a.require(&b).unwrap_err();
+        // cycle (fresh pair): M -> N then N -> M should error
+        let m = Pass::new("M");
+        let n = Pass::new("N");
+        m.require(&n).expect("m->n ok");
+        let e3 = n.require(&m).unwrap_err();
         let s3 = format!("{}", e3);
         assert!(s3.contains("cycle"), "expected cycle error: {s3}");
     }

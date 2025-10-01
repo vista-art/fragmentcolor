@@ -65,13 +65,21 @@ mod tests {
         let o1 = TextureOptions::from(s);
         assert_eq!(o1.size, Some(Size::new(3, 4, None)));
         assert_eq!(o1.format, TextureFormat::default());
-        assert_eq!(o1.sampler, SamplerOptions::default());
+        let d = SamplerOptions::default();
+        assert_eq!(o1.sampler.repeat_x, d.repeat_x);
+        assert_eq!(o1.sampler.repeat_y, d.repeat_y);
+        assert_eq!(o1.sampler.smooth, d.smooth);
+        assert!(o1.sampler.compare.is_none());
 
         let s2: Size = [5u32, 6u32, 7u32].into();
         let o2 = TextureOptions::from(&s2);
         assert_eq!(o2.size, Some(s2));
         assert_eq!(o2.format, TextureFormat::default());
-        assert_eq!(o2.sampler, SamplerOptions::default());
+        let d = SamplerOptions::default();
+        assert_eq!(o2.sampler.repeat_x, d.repeat_x);
+        assert_eq!(o2.sampler.repeat_y, d.repeat_y);
+        assert_eq!(o2.sampler.smooth, d.smooth);
+        assert!(o2.sampler.compare.is_none());
     }
 
     #[test]
@@ -80,12 +88,20 @@ mod tests {
         let o1 = TextureOptions::from(fmt);
         assert_eq!(o1.size, None);
         assert_eq!(o1.format, fmt);
-        assert_eq!(o1.sampler, SamplerOptions::default());
+        let d = SamplerOptions::default();
+        assert_eq!(o1.sampler.repeat_x, d.repeat_x);
+        assert_eq!(o1.sampler.repeat_y, d.repeat_y);
+        assert_eq!(o1.sampler.smooth, d.smooth);
+        assert!(o1.sampler.compare.is_none());
 
         let fmt2 = TextureFormat::default();
         let o2 = TextureOptions::from(&fmt2);
         assert_eq!(o2.size, None);
         assert_eq!(o2.format, fmt2);
-        assert_eq!(o2.sampler, SamplerOptions::default());
+        let d = SamplerOptions::default();
+        assert_eq!(o2.sampler.repeat_x, d.repeat_x);
+        assert_eq!(o2.sampler.repeat_y, d.repeat_y);
+        assert_eq!(o2.sampler.smooth, d.smooth);
+        assert!(o2.sampler.compare.is_none());
     }
 }
