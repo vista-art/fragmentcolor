@@ -336,7 +336,10 @@ mod tests {
             .set("uv", [0.25f32, 0.75])
             .set("id", 7u32);
         let inst = v.create_instance();
-        assert_eq!(inst.properties.get("uv"), Some(&VertexValue::F32x2([0.25, 0.75])));
+        assert_eq!(
+            inst.properties.get("uv"),
+            Some(&VertexValue::F32x2([0.25, 0.75]))
+        );
         assert_eq!(inst.properties.get("id"), Some(&VertexValue::U32(7)));
         assert_eq!(inst.prop_locations.get("uv"), Some(&1));
         assert_eq!(inst.prop_locations.get("id"), Some(&2));
@@ -346,17 +349,45 @@ mod tests {
     fn vertex_value_size_format_and_bytes() {
         let cases = [
             (VertexValue::F32(1.5), 4usize, wgpu::VertexFormat::Float32),
-            (VertexValue::F32x2([1.0, 2.0]), 8, wgpu::VertexFormat::Float32x2),
-            (VertexValue::F32x3([1.0, 2.0, 3.0]), 12, wgpu::VertexFormat::Float32x3),
-            (VertexValue::F32x4([1.0, 2.0, 3.0, 4.0]), 16, wgpu::VertexFormat::Float32x4),
+            (
+                VertexValue::F32x2([1.0, 2.0]),
+                8,
+                wgpu::VertexFormat::Float32x2,
+            ),
+            (
+                VertexValue::F32x3([1.0, 2.0, 3.0]),
+                12,
+                wgpu::VertexFormat::Float32x3,
+            ),
+            (
+                VertexValue::F32x4([1.0, 2.0, 3.0, 4.0]),
+                16,
+                wgpu::VertexFormat::Float32x4,
+            ),
             (VertexValue::U32(9), 4, wgpu::VertexFormat::Uint32),
             (VertexValue::U32x2([9, 10]), 8, wgpu::VertexFormat::Uint32x2),
-            (VertexValue::U32x3([9, 10, 11]), 12, wgpu::VertexFormat::Uint32x3),
-            (VertexValue::U32x4([9, 10, 11, 12]), 16, wgpu::VertexFormat::Uint32x4),
+            (
+                VertexValue::U32x3([9, 10, 11]),
+                12,
+                wgpu::VertexFormat::Uint32x3,
+            ),
+            (
+                VertexValue::U32x4([9, 10, 11, 12]),
+                16,
+                wgpu::VertexFormat::Uint32x4,
+            ),
             (VertexValue::I32(-7), 4, wgpu::VertexFormat::Sint32),
             (VertexValue::I32x2([-1, 2]), 8, wgpu::VertexFormat::Sint32x2),
-            (VertexValue::I32x3([-1, 2, -3]), 12, wgpu::VertexFormat::Sint32x3),
-            (VertexValue::I32x4([-1, 2, -3, 4]), 16, wgpu::VertexFormat::Sint32x4),
+            (
+                VertexValue::I32x3([-1, 2, -3]),
+                12,
+                wgpu::VertexFormat::Sint32x3,
+            ),
+            (
+                VertexValue::I32x4([-1, 2, -3, 4]),
+                16,
+                wgpu::VertexFormat::Sint32x4,
+            ),
         ];
         for (val, expected_len, fmt) in cases {
             assert_eq!(val.size() as usize, expected_len);

@@ -631,3 +631,96 @@ fn pack_instance(out: &mut Vec<u8>, i: &Instance, schema: &VertexSchema) -> Resu
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn derives_schema_and_stride_for_vertex() {
+        let v = Vertex::new([0.1f32, 0.2f32])
+            .set("uv", [0.3f32, 0.4])
+            .set("color", [1.0f32, 1.0, 1.0, 1.0]);
+        let schema = derive_vertex_schema(&v).expect("schema");
+        // position (vec2), color (vec4), uv (vec2) sorted by key name
+        assert_eq!(schema.fields.len(), 3);
+        assert_eq!(schema.fields[0].name, "position");
+        assert_eq!(schema.fields[0].fmt, wgpu::VertexFormat::Float32x2);
+        assert_eq!(schema.fields[1].name, "color");
+        assert_eq!(schema.fields[1].fmt, wgpu::VertexFormat::Float32x4);
+        assert_eq!(schema.fields[2].name, "uv");
+        assert_eq!(schema.fields[2].fmt, wgpu::VertexFormat::Float32x2);
+        assert_eq!(schema.stride, 8 + 16 + 8);
+    }
+
+    #[test]
+    fn ensure_packed_deduplicates_and_indices_track() {
+        let mesh = Mesh::new();
+        use crate::mesh::Vertex;
+        let a = Vertex::new([0.0f32, 0.0]).set("uv", [0.0f32, 0.0]);
+        let b = Vertex::new([1.0f32, 0.0]).set("uv", [1.0f32, 0.0]);
+        let c = Vertex::new([0.0f32, 1.0]).set("uv", [0.0f32, 1.0]);
+        mesh.add_vertices([a.clone(), b.clone(), a.clone(), c.clone()]);
+
+        // Force packing and inspect internals
+        mesh.object.ensure_packed().expect("pack");
+        let stride = mesh.object.vertex_schema.read().as_ref().unwrap().stride;
+        let pv = mesh.object.packed_verts.read().clone();
+        let idx = mesh.object.indices.read().clone();
+        // Unique verts should be a, b, c => 3 * stride bytes
+        assert_eq!(pv.len() as u64, 3 * stride);
+        // Indices mirror [a,b,a,c] => [0,1,0,2]
+        assert_eq!(idx, vec![0, 1, 0, 2]);
+    }
+
+    #[test]
+    fn instance_packing_override_and_vertex_buffers() {
+        pollster::block_on(async move {
+            let mesh = Mesh::new();
+            use crate::mesh::Vertex;
+            mesh.add_vertices([
+                Vertex::new([-0.5f32, -0.5f32]),
+                Vertex::new([0.5f32, -0.5f32]),
+                Vertex::new([0.0f32, 0.5f32]),
+            ]);
+            let inst = Vertex::new([0.0f32, 0.0]).set("id", 7u32).create_instance();
+            mesh.add_instances([inst.clone(), inst]);
+
+            // Build GPU buffers
+            let instance = crate::renderer::platform::all::create_instance().await;
+            let adapter = crate::renderer::platform::all::request_adapter(&instance, None)
+                .await
+                .expect("adapter");
+            let (device, queue) = crate::renderer::platform::all::request_device(&adapter)
+                .await
+                .expect("device");
+
+            // Without override, instance_count == 2
+            let (_bufs, counts) = mesh.object.vertex_buffers(&device, &queue).expect("vb");
+            assert_eq!(counts.instance_count, 2);
+
+            // With override, instance_count == 5
+            mesh.set_instance_count(5);
+            let (_bufs2, counts2) = mesh.object.vertex_buffers(&device, &queue).expect("vb2");
+            assert_eq!(counts2.instance_count, 5);
+
+            // Clear override, back to 2
+            mesh.clear_instance_count();
+            let (_bufs3, counts3) = mesh.object.vertex_buffers(&device, &queue).expect("vb3");
+            assert_eq!(counts3.instance_count, 2);
+        });
+    }
+
+    #[test]
+    fn renderable_passes_creates_shader_from_first_vertex() {
+        let mesh = Mesh::new();
+        use crate::mesh::Vertex;
+        mesh.add_vertices([
+            Vertex::new([-0.5f32, -0.5f32]),
+            Vertex::new([0.5f32, -0.5f32]),
+            Vertex::new([0.0f32, 0.5f32]),
+        ]);
+        let passes = mesh.passes();
+        assert_eq!(passes.len(), 1);
+    }
+}

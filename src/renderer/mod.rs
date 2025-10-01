@@ -2780,4 +2780,151 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,1.,0.,1.); }
             assert!(matches!(f3, Err(wgpu::SurfaceError::Timeout)));
         });
     }
+
+    // Story: Shader uses only group(1) uniform; renderer creates placeholder empty bind group for group 0.
+    #[test]
+    fn placeholder_empty_bind_group_for_lower_group() {
+        pollster::block_on(async move {
+            let renderer = Renderer::new();
+            let target = renderer
+                .create_texture_target([8u32, 8u32])
+                .await
+                .expect("texture target");
+
+            let wgsl = r#"
+@group(1) @binding(0) var<uniform> Tint: vec4<f32>;
+struct VOut { @builtin(position) pos: vec4<f32> };
+@vertex
+fn vs_main(@builtin(vertex_index) i: u32) -> VOut {
+    var p = array<vec2<f32>, 3>(vec2<f32>(-1.,-1.), vec2<f32>(3.,-1.), vec2<f32>(-1.,3.));
+    var out: VOut;
+    out.pos = vec4<f32>(p[i], 0., 1.);
+    return out;
+}
+@fragment
+fn main() -> @location(0) vec4<f32> {
+    return Tint;
+}
+            "#;
+
+            let shader = crate::Shader::new(wgsl).expect("shader");
+            shader
+                .set("Tint", [0.2f32, 0.4, 0.6, 1.0])
+                .expect("set uniform");
+
+            let res = renderer.render(&shader, &target);
+            assert!(
+                res.is_ok(),
+                "render should succeed with placeholder group 0"
+            );
+        });
+    }
+
+    // Story: Depth sample_count mismatch vs pass sample_count returns a descriptive error.
+    #[test]
+    fn depth_msaa_sample_count_mismatch_errors() {
+        pollster::block_on(async move {
+            let (_adapter, device, queue) = create_device_and_queue().await;
+            let ctx = RenderContext::new(device, queue);
+
+            let color_format = wgpu::TextureFormat::Rgba8Unorm;
+            let size = wgpu::Extent3d {
+                width: 8,
+                height: 8,
+                depth_or_array_layers: 1,
+            };
+            let frame = create_test_frame(&ctx.device, size, color_format);
+
+            // Force pass sample_count = 4 while making depth texture sample_count = 1
+            ctx.set_sample_count(4);
+            let depth_obj = crate::TextureObject::create_depth_texture_with_count(&ctx, size, 1);
+            let depth_obj = std::sync::Arc::new(depth_obj);
+            let depth_id = ctx.register_texture(depth_obj.clone());
+
+            let shader = Shader::default();
+            let pass = Pass::from_shader("msaa-depth-mismatch", &shader);
+            let first_pass = {
+                let passes = pass.passes();
+                passes.first().cloned().expect("pass")
+            };
+            first_pass.set_depth_target_id(depth_id);
+
+            let mut encoder = ctx
+                .device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+            let res = ctx.process_render_pass(&mut encoder, &first_pass, &frame, size);
+            assert!(res.is_err());
+            let s = format!("{}", res.unwrap_err());
+            assert!(s.contains("sample_count"), "unexpected error: {s}");
+        });
+    }
+
+    // Story: Compute-only pass builds pipeline and dispatches with a simple uniform.
+    #[test]
+    fn compute_pipeline_smoke() {
+        pollster::block_on(async move {
+            let renderer = Renderer::new();
+            let target = renderer
+                .create_texture_target([4u32, 4u32])
+                .await
+                .expect("texture target");
+
+            let wgsl = r#"
+@group(0) @binding(0) var<uniform> U: vec4<f32>;
+@compute @workgroup_size(1)
+fn cs_main() { _ = U; }
+            "#;
+            let shader = crate::Shader::new(wgsl).expect("compute shader");
+            let pass = Pass::from_shader("c", &shader);
+            assert!(pass.is_compute(), "pass should be compute");
+
+            // Set the uniform to ensure a buffer is uploaded
+            shader
+                .set("U", [1.0f32, 2.0, 3.0, 4.0])
+                .expect("set uniform");
+
+            // Render should only run compute path and succeed
+            let res = renderer.render(&pass, &target);
+            assert!(res.is_ok(), "compute render ok: {:?}", res.err());
+        });
+    }
+
+    // Story: Per-pass color target override renders without error (offscreen color target).
+    #[test]
+    fn render_to_offscreen_color_target_smoke() {
+        pollster::block_on(async move {
+            let renderer = Renderer::new();
+            let present_target = renderer
+                .create_texture_target([8u32, 8u32])
+                .await
+                .expect("present target");
+            let color_target = renderer
+                .create_texture_target([8u32, 8u32])
+                .await
+                .expect("offscreen color target");
+
+            let wgsl = r#"
+struct VOut { @builtin(position) pos: vec4<f32> };
+@vertex
+fn vs_main(@builtin(vertex_index) i: u32) -> VOut {
+    var p = array<vec2<f32>, 3>(vec2<f32>(-1.,-1.), vec2<f32>(3.,-1.), vec2<f32>(-1.,3.));
+    var out: VOut;
+    out.pos = vec4<f32>(p[i], 0., 1.);
+    return out;
+}
+@fragment
+fn main() -> @location(0) vec4<f32> { return vec4<f32>(0.8, 0.2, 0.1, 1.0); }
+            "#;
+            let shader = crate::Shader::new(wgsl).expect("shader");
+            let pass = Pass::from_shader("off", &shader);
+            pass.add_target(&color_target).expect("add color target");
+
+            let res = renderer.render(&pass, &present_target);
+            assert!(
+                res.is_ok(),
+                "render with per-pass color target ok: {:?}",
+                res.err()
+            );
+        });
+    }
 }

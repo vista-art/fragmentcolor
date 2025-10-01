@@ -1121,4 +1121,137 @@ mod tests {
         let a1u: [u32; 1] = UniformData::from([6u32]).into();
         assert_eq!(a1u, [6]);
     }
+
+    // Story: Vector conversions cover arrays, tuples, and glam types for f32 vectors.
+    #[test]
+    fn vector_conversions_roundtrip_vec2_vec3_vec4() {
+        // Vec2
+        let u = UniformData::from([1.0f32, 2.0]);
+        let a: [f32; 2] = u.clone().into();
+        assert_eq!(a, [1.0, 2.0]);
+        let t: (f32, f32) = u.clone().into();
+        assert_eq!(t, (1.0, 2.0));
+        let gv: glam::Vec2 = u.clone().into();
+        assert_eq!(gv, glam::vec2(1.0, 2.0));
+
+        // Vec3
+        let u = UniformData::from([3.0f32, 4.0, 5.0]);
+        let a: [f32; 3] = u.clone().into();
+        assert_eq!(a, [3.0, 4.0, 5.0]);
+        let t: (f32, f32, f32) = u.clone().into();
+        assert_eq!(t, (3.0, 4.0, 5.0));
+        let gv: glam::Vec3 = u.clone().into();
+        assert_eq!(gv, glam::vec3(3.0, 4.0, 5.0));
+
+        // Vec4
+        let u = UniformData::from([6.0f32, 7.0, 8.0, 9.0]);
+        let a: [f32; 4] = u.clone().into();
+        assert_eq!(a, [6.0, 7.0, 8.0, 9.0]);
+        let t: (f32, f32, f32, f32) = u.clone().into();
+        assert_eq!(t, (6.0, 7.0, 8.0, 9.0));
+        let gv: glam::Vec4 = u.clone().into();
+        assert_eq!(gv, glam::vec4(6.0, 7.0, 8.0, 9.0));
+    }
+
+    // Story: Integer vector conversions for IVecN and UVecN arrays work round-trip.
+    #[test]
+    fn integer_vector_conversions_roundtrip() {
+        let iu = UniformData::from([1i32, -2]);
+        let ia: [i32; 2] = iu.clone().into();
+        assert_eq!(ia, [1, -2]);
+
+        let iu3 = UniformData::from([1i32, 2, 3]);
+        let ia3: [i32; 3] = iu3.clone().into();
+        assert_eq!(ia3, [1, 2, 3]);
+
+        let uu = UniformData::from([10u32, 20u32, 30u32, 40u32]);
+        let ua: [u32; 4] = uu.clone().into();
+        assert_eq!(ua, [10, 20, 30, 40]);
+    }
+
+    // Story: Matrix conversions round-trip across Mat2/Mat3/Mat4.
+    #[test]
+    fn matrix_roundtrips() {
+        let m2_src = [[1.0f32, 2.0], [3.0, 4.0]];
+        let um2: UniformData = m2_src.into();
+        let m2: [[f32; 2]; 2] = um2.into();
+        assert_eq!(m2, m2_src);
+
+        let m3_src = [[1.0f32, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]];
+        let um3: UniformData = m3_src.into();
+        let m3: [[f32; 3]; 3] = um3.into();
+        assert_eq!(m3, m3_src);
+
+        let m4_src = [
+            [1.0f32, 2.0, 3.0, 4.0],
+            [5.0, 6.0, 7.0, 8.0],
+            [9.0, 10.0, 11.0, 12.0],
+            [13.0, 14.0, 15.0, 16.0],
+        ];
+        let um4: UniformData = m4_src.into();
+        let m4: [[f32; 4]; 4] = um4.into();
+        assert_eq!(m4, m4_src);
+    }
+
+    // Story: Additional Extent3d conversions from Vec2/IVec2/IVec3/UVec4.
+    #[test]
+    fn extent3d_more_conversions() {
+        use wgpu::Extent3d;
+        let e: Extent3d = UniformData::Vec2([100.0, 200.0]).into();
+        assert_eq!((e.width, e.height, e.depth_or_array_layers), (100, 200, 1));
+
+        let e: Extent3d = UniformData::IVec2([3, 4]).into();
+        assert_eq!((e.width, e.height, e.depth_or_array_layers), (3, 4, 1));
+
+        let e: Extent3d = UniformData::IVec3([5, 6, 7]).into();
+        assert_eq!((e.width, e.height, e.depth_or_array_layers), (5, 6, 7));
+
+        let e: Extent3d = UniformData::UVec4([9, 8, 7, 6]).into();
+        assert_eq!((e.width, e.height, e.depth_or_array_layers), (9, 8, 7));
+    }
+
+    // Story: StorageAccess::is_readonly correctly classifies read-only variants.
+    #[test]
+    fn storage_access_readonly_flags() {
+        assert!(StorageAccess::Read.is_readonly());
+        assert!(StorageAccess::Atomic.is_readonly());
+        assert!(StorageAccess::AtomicRead.is_readonly());
+        assert!(!StorageAccess::Write.is_readonly());
+        assert!(!StorageAccess::ReadWrite.is_readonly());
+        assert!(!StorageAccess::AtomicWrite.is_readonly());
+        assert!(!StorageAccess::AtomicReadWrite.is_readonly());
+    }
+
+    // Story: Bytes conversions from &[u8] and Vec<u8] round-trip size and payload.
+    #[test]
+    fn bytes_conversions_size_and_bytes() {
+        let b = vec![1u8, 2, 3, 4, 5];
+        let u1: UniformData = (&b[..]).into();
+        assert_eq!(u1.size(), b.len() as u32);
+        assert_eq!(u1.to_bytes(), b);
+
+        let b2 = vec![9u8, 8, 7];
+        let u2: UniformData = b2.clone().into();
+        assert_eq!(u2.size(), 3);
+        assert_eq!(u2.to_bytes(), b2);
+    }
+
+    // Story: PushConstant to_bytes respects span and size() is zero.
+    #[test]
+    fn push_constant_to_bytes_and_size() {
+        let u = UniformData::PushConstant(vec![(UniformData::Vec4([10.0, 20.0, 30.0, 40.0]), 8)]);
+        let bytes = u.to_bytes();
+        assert_eq!(bytes.len(), 8);
+        let first_two: [f32; 2] = bytemuck::cast_slice(&bytes).try_into().unwrap();
+        assert_eq!(first_two, [10.0, 20.0]);
+        assert_eq!(u.size(), 0);
+    }
+
+    // Story: Sampler to_bytes is empty and size is zero.
+    #[test]
+    fn sampler_to_bytes_and_size() {
+        let u = UniformData::Sampler(crate::texture::SamplerInfo { comparison: true });
+        assert!(u.to_bytes().is_empty());
+        assert_eq!(u.size(), 0);
+    }
 }
