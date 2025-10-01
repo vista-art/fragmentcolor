@@ -542,8 +542,6 @@ impl TextureObject {
         target_texture: &wgpu::Texture,
         size: wgpu::Extent3d,
     ) {
-        let format = target_texture.format();
-        let bpp = bytes_per_pixel(format);
         context.queue.write_texture(
             // Tells wgpu where to copy the pixel data from
             wgpu::TexelCopyTextureInfo {
@@ -557,7 +555,7 @@ impl TextureObject {
             // The layout of the texture
             wgpu::TexelCopyBufferLayout {
                 offset: 0,
-                bytes_per_row: Some(bpp * size.width),
+                bytes_per_row: Some(4 * size.width),
                 rows_per_image: Some(size.height),
             },
             size,
