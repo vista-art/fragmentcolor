@@ -287,3 +287,91 @@ impl VertexValue {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn into_position_full_dimensions_match() {
+        let v2 = Vertex::new([1.0f32, 2.0]);
+        assert_eq!(v2.dimensions, 2);
+        assert_eq!(v2.position.0, glam::Vec4::new(1.0, 2.0, 0.0, 1.0));
+
+        let v3 = Vertex::new([1.0f32, 2.0, 3.0]);
+        assert_eq!(v3.dimensions, 3);
+        assert_eq!(v3.position.0, glam::Vec4::new(1.0, 2.0, 3.0, 1.0));
+
+        let v4 = Vertex::new([1.0f32, 2.0, 3.0, 4.0]);
+        assert_eq!(v4.dimensions, 4);
+        assert_eq!(v4.position.0, glam::Vec4::new(1.0, 2.0, 3.0, 4.0));
+    }
+
+    #[test]
+    fn property_locations_autoincrement_and_saturate() {
+        let v = Vertex::new([0.0f32, 0.0])
+            .set("uv", [0.0f32, 0.0])
+            .set("color", [1.0f32, 1.0, 1.0, 1.0]);
+        // position is implicit at location 0
+        assert_eq!(*v.prop_locations.get("uv").unwrap(), 1);
+        assert_eq!(*v.prop_locations.get("color").unwrap(), 2);
+        assert_eq!(v.next_location, 3);
+
+        // Re-setting existing key does not allocate new location
+        let v = v.set("uv", [0.5f32, 0.5]);
+        assert_eq!(*v.prop_locations.get("uv").unwrap(), 1);
+        assert_eq!(v.next_location, 3);
+
+        // Saturating add when next_location is at u32::MAX
+        let mut v = v;
+        v.next_location = u32::MAX;
+        let v = v.set("extra", 1u32);
+        assert_eq!(*v.prop_locations.get("extra").unwrap(), u32::MAX);
+        assert_eq!(v.next_location, u32::MAX);
+    }
+
+    #[test]
+    fn instance_clones_properties_and_locations() {
+        let v = Vertex::new([1.0f32, 2.0])
+            .set("uv", [0.25f32, 0.75])
+            .set("id", 7u32);
+        let inst = v.create_instance();
+        assert_eq!(inst.properties.get("uv"), Some(&VertexValue::F32x2([0.25, 0.75])));
+        assert_eq!(inst.properties.get("id"), Some(&VertexValue::U32(7)));
+        assert_eq!(inst.prop_locations.get("uv"), Some(&1));
+        assert_eq!(inst.prop_locations.get("id"), Some(&2));
+    }
+
+    #[test]
+    fn vertex_value_size_format_and_bytes() {
+        let cases = [
+            (VertexValue::F32(1.5), 4usize, wgpu::VertexFormat::Float32),
+            (VertexValue::F32x2([1.0, 2.0]), 8, wgpu::VertexFormat::Float32x2),
+            (VertexValue::F32x3([1.0, 2.0, 3.0]), 12, wgpu::VertexFormat::Float32x3),
+            (VertexValue::F32x4([1.0, 2.0, 3.0, 4.0]), 16, wgpu::VertexFormat::Float32x4),
+            (VertexValue::U32(9), 4, wgpu::VertexFormat::Uint32),
+            (VertexValue::U32x2([9, 10]), 8, wgpu::VertexFormat::Uint32x2),
+            (VertexValue::U32x3([9, 10, 11]), 12, wgpu::VertexFormat::Uint32x3),
+            (VertexValue::U32x4([9, 10, 11, 12]), 16, wgpu::VertexFormat::Uint32x4),
+            (VertexValue::I32(-7), 4, wgpu::VertexFormat::Sint32),
+            (VertexValue::I32x2([-1, 2]), 8, wgpu::VertexFormat::Sint32x2),
+            (VertexValue::I32x3([-1, 2, -3]), 12, wgpu::VertexFormat::Sint32x3),
+            (VertexValue::I32x4([-1, 2, -3, 4]), 16, wgpu::VertexFormat::Sint32x4),
+        ];
+        for (val, expected_len, fmt) in cases {
+            assert_eq!(val.size() as usize, expected_len);
+            assert_eq!(val.format(), fmt);
+            let bytes = val.to_bytes();
+            assert_eq!(bytes.len(), expected_len);
+        }
+
+        // Specific byte layout checks for scalar ints
+        let i = VertexValue::I32(-5);
+        let iu = (-5i32 as u32).to_ne_bytes().to_vec();
+        assert_eq!(i.to_bytes(), iu);
+
+        let u = VertexValue::U32(123);
+        let uu = 123u32.to_ne_bytes().to_vec();
+        assert_eq!(u.to_bytes(), uu);
+    }
+}

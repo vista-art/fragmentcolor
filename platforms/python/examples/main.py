@@ -11,7 +11,6 @@ def run_all():
         'core/frame/Frame.py',
         'core/frame/add_pass.py',
         'core/frame/new.py',
-        'core/frame/present.py',
         'core/mesh/Mesh.py',
         'core/mesh/add_instance.py',
         'core/mesh/add_instances.py',

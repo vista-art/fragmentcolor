@@ -52,3 +52,58 @@ impl From<Quad> for Mesh {
         q.get_mesh()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::VertexValue;
+
+    #[test]
+    fn quad_vertices_and_uv_layout() {
+        let q = Quad::new([0.0, 0.0], [1.0, 1.0]);
+        let mesh = q.get_mesh();
+
+        // Access the underlying vertices (crate-visible)
+        let verts = mesh.object.verts.read().clone();
+        assert_eq!(verts.len(), 6, "quad should emit 6 vertices (2 triangles)");
+
+        // Expected triangle list: v0,v1,v2, v0,v2,v3
+        let p = |i: usize| -> [f32; 4] {
+            let v = &verts[i];
+            [v.position.0.x, v.position.0.y, v.position.0.z, v.position.0.w]
+        };
+        let uv = |i: usize| -> Option<[f32; 2]> {
+            match verts[i].properties.get("uv") {
+                Some(VertexValue::F32x2(v)) => Some(*v),
+                _ => None,
+            }
+        };
+
+        assert_eq!(p(0), [0.0, 0.0, 0.0, 1.0]);
+        assert_eq!(p(1), [1.0, 0.0, 0.0, 1.0]);
+        assert_eq!(p(2), [1.0, 1.0, 0.0, 1.0]);
+        assert_eq!(p(3), [0.0, 0.0, 0.0, 1.0]);
+        assert_eq!(p(4), [1.0, 1.0, 0.0, 1.0]);
+        assert_eq!(p(5), [0.0, 1.0, 0.0, 1.0]);
+
+        assert_eq!(uv(0), Some([0.0, 0.0]));
+        assert_eq!(uv(1), Some([1.0, 0.0]));
+        assert_eq!(uv(2), Some([1.0, 1.0]));
+        assert_eq!(uv(3), Some([0.0, 0.0]));
+        assert_eq!(uv(4), Some([1.0, 1.0]));
+        assert_eq!(uv(5), Some([0.0, 1.0]));
+
+        // Location map: position at 0, uv at 1
+        let (pos_loc, rev) = mesh.object.first_vertex_location_map();
+        assert_eq!(pos_loc, 0);
+        assert_eq!(rev.get(&1).map(|s| s.as_str()), Some("uv"));
+    }
+
+    #[test]
+    fn get_mesh_uses_named_pass() {
+        let q = Quad::new([0.0, 0.0], [1.0, 1.0]);
+        let mesh = q.get_mesh();
+        let pass_name = mesh.pass.name.clone();
+        assert_eq!(pass_name.as_ref(), "Quad Mesh Debug Pass");
+    }
+}

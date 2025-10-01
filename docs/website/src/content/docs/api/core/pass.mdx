@@ -1509,20 +1509,8 @@ lang="text"
 
 ### Pass::require(deps)
 
-Declare that this pass depends on one or more other passes. All required passes will render before this pass.
-
-#### Syntax
-
-```rust
-pub fn require<I, P>(&self, deps: I) -> Result<(), PassError>
-where
-    I: IntoIterator<Item = P>,
-    P: AsRef<Pass>,
-```
-
-#### Parameters
-
-- deps: One or more Pass values (e.g., `&pass`, `[&a, &b]`, `vec![&a, &b]`).
+Declare that this pass depends on one or more other renderables (Pass, Shader, Frame, Mesh).
+All dependencies will render before this Pass.
 
 #### Return value
 
@@ -1533,7 +1521,8 @@ where
 
 #### Description
 
-`require` establishes a dependency: the given `deps` must render before `self`.
+`require` establishes a dependency: the given `dependencies` must render before `self`.
+
 This allows you to build DAG render graphs directly from passes.
 The graph is validated at build time and does not perform cycle checks at render time.
 
@@ -1548,19 +1537,24 @@ The graph is validated at build time and does not perform cycle checks at render
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor:{Pass, Renderer}
-let renderer = Renderer::headless();
-let target = renderer.create_texture_target([100,100]);
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Pass, Renderer};
+let renderer = Renderer::new();
+let target = renderer.create_texture_target([100,100]).await?;
 let color = Pass::new("color");
 let blurx = Pass::new("blur_x");
 blurx.require(&color)?; // color before blur_x
 let blury = Pass::new("blur_y");
 blury.require(&blurx)?; // blur_x before blur_y
 let compose = Pass::new("compose");
-compose.require([&color, &blury])?; // fan-in; color and blur_y before compose
+compose.require(&color)?;
+compose.require(&blury)?; // fan-in; color and blur_y before compose
 renderer.render(&compose, &target)?; // compose renders last
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={2-3}"
+lang="rust" meta="collapse={1-1, 14-16}"
 />
 
 </TabItem>
@@ -1568,14 +1562,17 @@ lang="rust" meta="collapse={2-3}"
 <TabItem label="JavaScript">
 <Code
 code={`
-use fragmentcolor:{Pass, Renderer};
+import { Pass, Renderer } from "fragmentcolor";
+const renderer = new Renderer();
+const target = await renderer.createTextureTarget([100,100]);
 const color = new Pass("color");
 const blurx = new Pass("blur_x");
 blurx.require(color); // color before blur_x;
 const blury = new Pass("blur_y");
 blury.require(blurx); // blur_x before blur_y;
 const compose = new Pass("compose");
-compose.require([color, blury]); // fan-in; color and blur_y before compose;
+compose.require(color);
+compose.require(blury); // fan-in; color and blur_y before compose;
 renderer.render(compose, target); // compose renders last;
 `}
 lang="js"
@@ -1586,14 +1583,17 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-use fragmentcolor:{Pass, Renderer}
+from fragmentcolor import Pass, Renderer
+renderer = Renderer()
+target = renderer.create_texture_target([100,100])
 color = Pass("color")
 blurx = Pass("blur_x")
 blurx.require(color); # color before blur_x
 blury = Pass("blur_y")
 blury.require(blurx); # blur_x before blur_y
 compose = Pass("compose")
-compose.require([color, blury]); # fan-in; color and blur_y before compose
+compose.require(color)
+compose.require(blury); # fan-in; color and blur_y before compose
 renderer.render(compose, target); # compose renders last
 `}
 lang="python"

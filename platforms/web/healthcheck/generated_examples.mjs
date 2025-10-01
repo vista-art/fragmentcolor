@@ -4,7 +4,6 @@ const EXAMPLES = [
   '../examples/core/frame/Frame.js',
   '../examples/core/frame/add_pass.js',
   '../examples/core/frame/new.js',
-  '../examples/core/frame/present.js',
   '../examples/core/mesh/Mesh.js',
   '../examples/core/mesh/add_instance.js',
   '../examples/core/mesh/add_instances.js',

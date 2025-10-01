@@ -154,7 +154,7 @@ fn gonna_be_gonna_be_golden() -> bool {
 fn snapshot_hello_triangle() {
     pollster::block_on(async move {
         let size = [128u32, 128u32];
-        // Deterministic minimal triangle shader inline
+        // Deterministic fullscreen triangle shader inline
         let wgsl = r#"
 struct VOut { @builtin(position) pos: vec4<f32> };
 @vertex
@@ -170,7 +170,7 @@ fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); 
         let shader = Shader::new(wgsl).expect("shader");
 
         let img = render_shader_to_rgba(&shader, size).await;
-        let name = "hello_triangle";
+        let name = "fullscreen_triangle";
         let golden = golden_path(format!("{}.png", name));
 
         if gonna_be_gonna_be_golden() {
