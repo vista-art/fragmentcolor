@@ -2,7 +2,7 @@
 
 [FragmentColor](https://fragmentcolor.org) is a cross-platform GPU programming library implemented in Rust and [wgpu](https://wgpu.rs).
 
-It has bindings for **JavaScript** (WASM), **Python**, and draft support for **Swift** and **Kotlin**.
+It has bindings for [**JavaScript**](./README_JS.md) (WASM), [**Python**](./README_PY.md), and draft support for **Swift** and **Kotlin**.
 It targets each platform's native graphics API: **Vulkan**, **Metal**, **DirectX**, **OpenGL**, **WebGL**, and **WebGPU**.
 See [Platform Support](#platform-support) for details.
 
@@ -21,22 +21,6 @@ Check the website for the Getting Started guide and full reference:
 
 ## Install
 
-- JavaScript (Web): published to npm as `fragmentcolor`
-
-```bash
-npm install fragmentcolor
-# or
-pnpm add fragmentcolor
-# or
-yarn add fragmentcolor
-```
-
-- Python: published to PyPI as `fragmentcolor`
-
-```bash
-pip install fragmentcolor rendercanvas glfw
-```
-
 - Rust: add the crate to your Cargo.toml
 
 ```toml
@@ -44,61 +28,89 @@ pip install fragmentcolor rendercanvas glfw
 fragmentcolor = "0.10.7"
 ```
 
+We also support JavaScript and Python:
+- JavaScript users, see: [README_JS.md](./README_JS.md)
+- Python users, see: [README_PY.md](./README_PY.md)
+
 ## Quick start
 
-### JavaScript
+### Rust
 
-```js
-import init, { Renderer, Shader } from "fragmentcolor";
+```rust
+use fragmentcolor::{Renderer, Shader, Pass, Frame};
+use pollster::block_on;
 
-async function start() {
-  await init(); // initialize the WASM module
-  const canvas = document.getElementById("my-canvas");
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    block_on(async {
+        // Initializes a renderer and a target (offscreen example here)
+        let renderer = Renderer::new();
+        let target = renderer.create_texture_target([800, 600]).await?;
 
-  const renderer = new Renderer();
-  const target = await renderer.createTarget(canvas);
-
-  const shader = new Shader("https://fragmentcolor.org/shaders/circle.wgsl");
-  shader.set("resolution", [canvas.width, canvas.height]);
-  shader.set("circle.radius", 0.05);
-  shader.set("circle.color", [1.0, 0.0, 0.0, 0.8]);
-
-  function animate() {
-    // update uniforms and render
-    renderer.render(shader, target);
-    requestAnimationFrame(animate);
-  }
-  animate();
+        // You can pass the shader as a source string, file path, or URL:
+        let circle = Shader::new("./path/to/circle.wgsl")?;
+        let triangle = Shader::new("https://fragmentcolor.org/shaders/triangle.wgsl")?;
+        let wgsl = r#"
+struct VertexOutput {
+    @builtin(position) coords: vec4<f32>,
 }
-start();
-```
 
-### Python
+struct MyStruct {
+    my_field: vec3<f32>,
+}
 
-```python
-from fragmentcolor import Renderer, Shader, Pass, Frame
-from rendercanvas.auto import RenderCanvas, loop
+@group(0) @binding(0)
+var<uniform> my_struct: MyStruct;
 
-canvas = RenderCanvas(size=(800, 600))
-renderer = Renderer()
-target = renderer.create_target(canvas)
+@group(0) @binding(1)
+var<uniform> my_vec2: vec2<f32>;
 
-circle = Shader("https://fragmentcolor.org/shaders/circle.wgsl")
-circle.set("resolution", [800, 600])
-circle.set("circle.radius", 200.0)
-circle.set("circle.color", [1.0, 0.0, 0.0, 0.8])
+@vertex
+fn vs_main(@builtin(vertex_index) in_vertex_index: u32) -> VertexOutput {
+    const vertices = array(
+        vec2( -1., -1.),
+        vec2(  3., -1.),
+        vec2( -1.,  3.)
+    );
+    return VertexOutput(vec4<f32>(vertices[in_vertex_index], 0.0, 1.0));
+}
 
-rpass = Pass("single pass")
-rpass.add_shader(circle)
+@fragment
+fn fs_main() -> @location(0) vec4<f32> {
+    return vec4<f32>(my_struct.my_field, 1.0);
+}
+"#;
+        let mut shader = Shader::new(wgsl)?;
 
-frame = Frame()
-frame.add_pass(rpass)
+        // The library binds and updates the uniforms automatically
+        shader.set("my_struct.my_field", [0.1f32, 0.8, 0.9])?;
+        shader.set("my_vec2", [1.0f32, 1.0])?;
 
-@canvas.request_draw
-def animate():
-    renderer.render(frame, target)
+        // One shader is all you need to render
+        renderer.render(&shader, &target)?;
 
-loop.run()
+        // But you can also combine multiple shaders in a render Pass
+        let mut rpass = Pass::new("single pass");
+        rpass.add_shader(&circle);
+        rpass.add_shader(&triangle);
+        rpass.add_shader(&shader);
+        renderer.render(&rpass, &target)?;
+
+        // Finally, you can combine multiple passes in a Frame
+        let mut frame = Frame::new();
+        frame.add_pass(rpass);
+        frame.add_pass(Pass::new("GUI pass"));
+        renderer.render(&frame, &target)?;
+
+        // To animate, simply update the uniforms in a loop
+        // (Pseudo-code)
+        // loop {
+        //     circle.set("position", [0.0f32, 0.0])?;
+        //     renderer.render(&frame, &target)?;
+        // }
+
+        Ok(())
+    })
+}
 ```
 
 ### Rust (Desktop)
