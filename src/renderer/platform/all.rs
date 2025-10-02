@@ -45,7 +45,20 @@ pub async fn request_device(
         .await?;
 
     device.on_uncaptured_error(Box::new(|error| {
-        println!("\n\n==== GPU error: ====\n\n{:#?}\n", error);
+        // Build metadata (compile-time)
+        let pkg = env!("CARGO_PKG_NAME");
+        let ver = env!("CARGO_PKG_VERSION");
+        let profile = std::env::var("PROFILE").unwrap_or_else(|_| "unknown".into());
+        let git = option_env!("FC_GIT_HASH").unwrap_or("unknown");
+        let built = option_env!("FC_BUILD_TIME").unwrap_or("unknown");
+        // Runtime context (set by runners like healthchecks)
+        let runner = std::env::var("FC_RUNNER").unwrap_or_else(|_| "".into());
+        let current = std::env::var("FC_CURRENT_TEST").unwrap_or_else(|_| "".into());
+
+        println!(
+            "\n\n==== GPU error ({} v{} | {} | git {} | built {}) ====\nRunner: {}\nContext: {}\n\n{:#?}\n",
+            pkg, ver, profile, git, built, runner, current, error
+        );
     }));
 
     Ok((device, queue))

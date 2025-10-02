@@ -3,6 +3,10 @@ use std::sync::Arc;
 
 use super::{Mesh, MeshObject, Vertex};
 
+#[cfg(python)]
+use pyo3::prelude::*;
+
+#[cfg_attr(python, pyclass)]
 #[derive(Clone, Debug)]
 #[lsp_doc("docs/api/core/mesh/primitives/quad/quad.md")]
 pub struct Quad {
@@ -44,6 +48,22 @@ impl Quad {
                 crate::pass::PassType::Render,
             )),
         }
+    }
+}
+
+#[cfg(python)]
+#[pymethods]
+impl Quad {
+    #[new]
+    #[lsp_doc("docs/api/core/mesh/primitives/quad/new.md")]
+    pub fn new_py(min: [f32; 2], max: [f32; 2]) -> Self {
+        Self::new(min, max)
+    }
+
+    #[pyo3(name = "get_mesh")]
+    #[lsp_doc("docs/api/core/mesh/primitives/quad/get_mesh.md")]
+    pub fn get_mesh_py(&self) -> Mesh {
+        self.get_mesh()
     }
 }
 

@@ -1,5 +1,5 @@
 # Auto-generated: executes all Python examples with cargo-like output.
-import runpy, pathlib, sys, traceback
+import runpy, pathlib, sys, traceback, os
 
 GREEN='[1;32m'
 RED='[1;31m'
@@ -91,6 +91,8 @@ def run_all():
     for rel in files:
         name = 'platforms.python.examples.' + rel.replace('/', '.').removesuffix('.py')
         head = f'test {name} ... '
+        os.environ['FC_RUNNER'] = 'python'
+        os.environ['FC_CURRENT_TEST'] = name
         try:
             runpy.run_path(str(base / rel), run_name='__main__')
             print(head + GREEN + 'OK' + RESET)

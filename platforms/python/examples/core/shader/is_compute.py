@@ -1,11 +1,10 @@
-from fragmentcolor import Shader, Pass, Mesh, Vertex
+from fragmentcolor import Shader
 
-wgsl = r#"
+shader = Shader("""
 @compute @workgroup_size(1)
 fn cs_main() { }
-"#
-shader = Shader(wgsl)
 
-if shader.is_compute() {
-    println!("This is a compute shader.")
-}
+""")
+
+# Call the method
+is_compute = shader.is_compute()

@@ -101,4 +101,18 @@ impl Shader {
     pub fn default_py() -> Self {
         Shader::default()
     }
+
+    #[staticmethod]
+    #[pyo3(name = "from_vertex")]
+    #[lsp_doc("docs/api/core/shader/from_vertex.md")]
+    pub fn from_vertex_py(v: &crate::mesh::Vertex) -> Self {
+        Shader::from_vertex(v)
+    }
+
+    #[staticmethod]
+    #[pyo3(name = "from_mesh")]
+    #[lsp_doc("docs/api/core/shader/from_mesh.md")]
+    pub fn from_mesh_py(mesh: &crate::mesh::Mesh) -> Self {
+        Shader::from_mesh(mesh)
+    }
 }

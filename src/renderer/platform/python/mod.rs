@@ -510,6 +510,9 @@ pub fn fragmentcolor(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<crate::mesh::Vertex>()?;
     m.add_class::<crate::mesh::Instance>()?;
     m.add_class::<crate::mesh::PyVertexValue>()?;
+    
+    // Mesh primitives
+    m.add_class::<crate::mesh::Quad>()?;
 
     // Expose Texture handle type for shader.set(texture) to downcast properly
     m.add_class::<crate::texture::Texture>()?;

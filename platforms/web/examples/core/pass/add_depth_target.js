@@ -1,20 +1,17 @@
-import { Renderer, Pass, Shader } from "fragmentcolor";
+import { Renderer, Pass, Shader, Mesh } from "fragmentcolor";
 
 const renderer = new Renderer();
-const target = await renderer.createTextureTarget([64u32, 64u32]);
+const target = await renderer.createTextureTarget([64, 64]);
 
 // Create a depth texture usable as a per-pass attachment;
-const depth = await renderer.createDepthTexture([64u32, 64u32]);
+const depth = await renderer.createDepthTexture([64, 64]);
 
-// Simple scene shader with @location(0) position;
-const wgsl = r#";
-struct VOut { @builtin(position) pos: vec4<f32> };
-@vertex;
-fn vs_main(@location(0) pos: vec3<f32>) -> VOut { var o: VOut; o.pos = vec4f(pos,1.0); return o; };
-@fragment;
-fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4f(0.7,0.8,1.0,1.0); };
-"#;
-const shader = new Shader(wgsl);
+const mesh = new Mesh();
+mesh.addVertex([0.0, 0.0, 0.0]);
+mesh.addVertex([1.0, 0.0, 0.0]);
+mesh.addVertex([0.0, 1.0, 0.0]);
+mesh.addVertex([1.0, 1.0, 0.0]);
+const shader = Shader.fromMesh(mesh);
 const pass = new Pass("scene"); pass.addShader(shader);
 
 // Attach depth texture to enable depth testing;

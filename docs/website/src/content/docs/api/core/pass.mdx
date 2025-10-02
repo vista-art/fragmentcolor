@@ -692,17 +692,32 @@ If a Shader wasn't provided earlier, FragmentColor will create a default one.
 <TabItem label="Rust">
 <Code
 code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Pass, Shader, Mesh, Vertex};
 
 let mesh = Mesh::new();
 mesh.add_vertex(Vertex::new([0.0, 0.0]));
 
-let shader = Shader::from_mesh(&mesh);
+let shader = Shader::new(r#"
+  struct VOut { @builtin(position) pos: vec4<f32> };
+  @vertex
+  fn vs_main(@location(0) pos: vec2<f32>) -> VOut {
+    var out: VOut;
+    out.pos = vec4<f32>(pos, 0.0, 1.0);
+    return out;
+  }
+  @fragment
+  fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
+"#)?;
+
 let pass = Pass::from_shader("pass", &shader);
 
-pass.add_mesh(&mesh).expect("mesh is compatible");
+pass.add_mesh(&mesh)?;
+
+Ok(())
+}
 `}
-lang="rust"
+lang="rust" meta="collapse={1-1, 23-24}"
 />
 
 </TabItem>
@@ -715,10 +730,23 @@ import { Pass, Shader, Mesh, Vertex } from "fragmentcolor";
 const mesh = new Mesh();
 mesh.addVertex(Vertex.new([0.0, 0.0]));
 
-const shader = Shader.fromMesh(mesh);
+const shader = new Shader(\`
+  struct VOut { @builtin(position) pos: vec4<f32> };
+  @vertex
+  fn vs_main(@location(0) pos: vec2<f32>) -> VOut {
+    var out: VOut;
+    out.pos = vec4<f32>(pos, 0.0, 1.0);
+    return out;
+  }
+  @fragment
+  fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
+
+\`);
+
 const pass = new Pass("pass"); pass.addShader(shader);
 
-pass.addMesh(mesh).expect("mesh is compatible");
+pass.addMesh(mesh);
+
 `}
 lang="js"
 />
@@ -733,10 +761,23 @@ from fragmentcolor import Pass, Shader, Mesh, Vertex
 mesh = Mesh()
 mesh.add_vertex(Vertex([0.0, 0.0]))
 
-shader = Shader.from_mesh(mesh)
+shader = Shader("""
+  struct VOut { @builtin(position) pos: vec4<f32> };
+  @vertex
+  fn vs_main(@location(0) pos: vec2<f32>) -> VOut {
+    var out: VOut;
+    out.pos = vec4<f32>(pos, 0.0, 1.0);
+    return out;
+  }
+  @fragment
+  fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
+
+""")
+
 rpass = Pass("rpass"); rpass.add_shader(shader)
 
-rpass.add_mesh(mesh).expect("mesh is compatible")
+rpass.add_mesh(mesh)
+
 `}
 lang="python"
 />
@@ -786,17 +827,27 @@ code={`
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Shader, Mesh, Vertex, Pass};
 
-let mut mesh = Mesh::new();
-mesh.add_vertex([0.0, 0.0]);
-let shader = Shader::from_mesh(&mesh);
-let pass = Pass::from_shader("pass", &shader);
+let mesh = Mesh::new();
+mesh.add_vertex(Vertex::new([0.0, 0.0]));
+let shader = Shader::new(r#"
+  struct VOut { @builtin(position) pos: vec4<f32> };
+  @vertex
+  fn vs_main(@location(0) pos: vec2<f32>) -> VOut {
+    var out: VOut;
+    out.pos = vec4<f32>(pos, 0.0, 1.0);
+    return out;
+  }
+  @fragment
+  fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
+"#)?;
 
+let pass = Pass::from_shader("pass", &shader);
 pass.add_mesh_to_shader(&mesh, &shader)?;
 
 Ok(())
 }
 `}
-lang="rust" meta="collapse={1-1, 11-12}"
+lang="rust" meta="collapse={1-1, 21-22}"
 />
 
 </TabItem>
@@ -807,10 +858,21 @@ code={`
 import { Shader, Mesh, Vertex, Pass } from "fragmentcolor";
 
 const mesh = new Mesh();
-mesh.addVertex([0.0, 0.0]);
-const shader = Shader.fromMesh(mesh);
-const pass = new Pass("pass"); pass.addShader(shader);
+mesh.addVertex(Vertex.new([0.0, 0.0]));
+const shader = new Shader(\`
+  struct VOut { @builtin(position) pos: vec4<f32> };
+  @vertex
+  fn vs_main(@location(0) pos: vec2<f32>) -> VOut {
+    var out: VOut;
+    out.pos = vec4<f32>(pos, 0.0, 1.0);
+    return out;
+  }
+  @fragment
+  fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
 
+\`);
+
+const pass = new Pass("pass"); pass.addShader(shader);
 pass.addMeshToShader(mesh, shader);
 
 `}
@@ -825,10 +887,21 @@ code={`
 from fragmentcolor import Shader, Mesh, Vertex, Pass
 
 mesh = Mesh()
-mesh.add_vertex([0.0, 0.0])
-shader = Shader.from_mesh(mesh)
-rpass = Pass("rpass"); rpass.add_shader(shader)
+mesh.add_vertex(Vertex([0.0, 0.0]))
+shader = Shader("""
+  struct VOut { @builtin(position) pos: vec4<f32> };
+  @vertex
+  fn vs_main(@location(0) pos: vec2<f32>) -> VOut {
+    var out: VOut;
+    out.pos = vec4<f32>(pos, 0.0, 1.0);
+    return out;
+  }
+  @fragment
+  fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
 
+""")
+
+rpass = Pass("rpass"); rpass.add_shader(shader)
 rpass.add_mesh_to_shader(mesh, shader)
 
 `}
@@ -1274,23 +1347,20 @@ The target must be a stable texture created by the same Renderer with usage incl
 <Code
 code={`
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Renderer, Pass, Shader};
+use fragmentcolor::{Renderer, Pass, Shader, Mesh};
 
 let renderer = Renderer::new();
-let target = renderer.create_texture_target([64u32, 64u32]).await?;
+let target = renderer.create_texture_target([64, 64]).await?;
 
 // Create a depth texture usable as a per-pass attachment
-let depth = renderer.create_depth_texture([64u32, 64u32]).await?;
+let depth = renderer.create_depth_texture([64, 64]).await?;
 
-// Simple scene shader with @location(0) position
-let wgsl = r#"
-struct VOut { @builtin(position) pos: vec4<f32> };
-@vertex
-fn vs_main(@location(0) pos: vec3<f32>) -> VOut { var o: VOut; o.pos = vec4f(pos,1.0); return o; }
-@fragment
-fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4f(0.7,0.8,1.0,1.0); }
-"#;
-let shader = Shader::new(wgsl)?;
+let mut mesh = Mesh::new();
+mesh.add_vertex([0.0, 0.0, 0.0]);
+mesh.add_vertex([1.0, 0.0, 0.0]);
+mesh.add_vertex([0.0, 1.0, 0.0]);
+mesh.add_vertex([1.0, 1.0, 0.0]);
+let shader = Shader::from_mesh(&mesh);
 let pass = Pass::from_shader("scene", &shader);
 
 // Attach depth texture to enable depth testing
@@ -1302,7 +1372,7 @@ Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 26-28}"
+lang="rust" meta="collapse={1-1, 23-25}"
 />
 
 </TabItem>
@@ -1310,23 +1380,20 @@ lang="rust" meta="collapse={1-1, 26-28}"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Renderer, Pass, Shader } from "fragmentcolor";
+import { Renderer, Pass, Shader, Mesh } from "fragmentcolor";
 
 const renderer = new Renderer();
-const target = await renderer.createTextureTarget([64u32, 64u32]);
+const target = await renderer.createTextureTarget([64, 64]);
 
 // Create a depth texture usable as a per-pass attachment;
-const depth = await renderer.createDepthTexture([64u32, 64u32]);
+const depth = await renderer.createDepthTexture([64, 64]);
 
-// Simple scene shader with @location(0) position;
-const wgsl = r#";
-struct VOut { @builtin(position) pos: vec4<f32> };
-@vertex;
-fn vs_main(@location(0) pos: vec3<f32>) -> VOut { var o: VOut; o.pos = vec4f(pos,1.0); return o; };
-@fragment;
-fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4f(0.7,0.8,1.0,1.0); };
-"#;
-const shader = new Shader(wgsl);
+const mesh = new Mesh();
+mesh.addVertex([0.0, 0.0, 0.0]);
+mesh.addVertex([1.0, 0.0, 0.0]);
+mesh.addVertex([0.0, 1.0, 0.0]);
+mesh.addVertex([1.0, 1.0, 0.0]);
+const shader = Shader.fromMesh(mesh);
 const pass = new Pass("scene"); pass.addShader(shader);
 
 // Attach depth texture to enable depth testing;
@@ -1343,23 +1410,20 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Renderer, Pass, Shader
+from fragmentcolor import Renderer, Pass, Shader, Mesh
 
 renderer = Renderer()
-target = renderer.create_texture_target([64u32, 64u32])
+target = renderer.create_texture_target([64, 64])
 
 # Create a depth texture usable as a per-pass attachment
-depth = renderer.create_depth_texture([64u32, 64u32])
+depth = renderer.create_depth_texture([64, 64])
 
-# Simple scene shader with @location(0) position
-wgsl = r#"
-struct VOut { @builtin(position) pos: vec4<f32> }
-@vertex
-fn vs_main(@location(0) pos: vec3<f32>) -> VOut { var o: VOut; o.pos = vec4f(pos,1.0); return o; }
-@fragment
-fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4f(0.7,0.8,1.0,1.0); }
-"#
-shader = Shader(wgsl)
+mesh = Mesh()
+mesh.add_vertex([0.0, 0.0, 0.0])
+mesh.add_vertex([1.0, 0.0, 0.0])
+mesh.add_vertex([0.0, 1.0, 0.0])
+mesh.add_vertex([1.0, 1.0, 0.0])
+shader = Shader.from_mesh(mesh)
 rpass = Pass("scene"); rpass.add_shader(shader)
 
 # Attach depth texture to enable depth testing
@@ -1413,23 +1477,24 @@ Returns true if this Pass is a compute pass (has only compute shaders).
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::{Shader, Pass, Mesh, Vertex};
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Shader, Pass};
 
-let wgsl = r#"
+let shader = Shader::new(r#"
 @compute @workgroup_size(1)
 fn cs_main() { }
-"#;
-let shader = Shader::new(wgsl).unwrap();
+"#)?;
 let pass = Pass::from_shader("p", &shader);
 
-if pass.is_compute() {
-    println!("This is a compute pass.");
-}
+// Call the method
+let is_compute = pass.is_compute();
 
-assert!(shader.is_compute());
+_ = is_compute;
 assert!(pass.is_compute());
+Ok(())
+}
 `}
-lang="rust" meta="collapse={14-15}"
+lang="rust" meta="collapse={1-1, 13-16}"
 />
 
 </TabItem>
@@ -1437,18 +1502,17 @@ lang="rust" meta="collapse={14-15}"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Shader, Pass, Mesh, Vertex } from "fragmentcolor";
+import { Shader, Pass } from "fragmentcolor";
 
-const wgsl = r#";
-@compute @workgroup_size(1);
-fn cs_main() { };
-"#;
-const shader = new Shader(wgsl).unwrap();
+const shader = new Shader(\`
+@compute @workgroup_size(1)
+fn cs_main() { }
+
+\`);
 const pass = new Pass("p"); pass.addShader(shader);
 
-if pass.isCompute() {;
-    println!("This is a compute pass.");
-};
+// Call the method;
+const is_compute = pass.isCompute();
 
 `}
 lang="js"
@@ -1459,18 +1523,17 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Shader, Pass, Mesh, Vertex
+from fragmentcolor import Shader, Pass
 
-wgsl = r#"
+shader = Shader("""
 @compute @workgroup_size(1)
 fn cs_main() { }
-"#
-shader = Shader(wgsl)
+
+""")
 rpass = Pass("p"); rpass.add_shader(shader)
 
-if rpass.is_compute() {
-    println!("This is a compute rpass.")
-}
+# Call the method
+is_compute = rpass.is_compute()
 
 `}
 lang="python"

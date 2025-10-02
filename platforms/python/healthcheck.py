@@ -17,6 +17,10 @@ if os.environ.get("FC_HEALTHCHECK_VERBOSE") == "1":
 def run():
     """Simple smoke tests before running full examples"""
 
+    # Tag this process for GPU error context
+    os.environ["FC_RUNNER"] = "python"
+    os.environ["FC_CURRENT_TEST"] = "platforms.python.healthcheck"
+
     renderer = Renderer()
     target = renderer.create_texture_target((32, 64))
     shader = Shader("""

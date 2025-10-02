@@ -548,7 +548,7 @@ mod website {
         }
         let mut py_out = String::new();
         py_out.push_str("# Auto-generated: executes all Python examples with cargo-like output.\n");
-        py_out.push_str("import runpy, pathlib, sys, traceback\n\n");
+        py_out.push_str("import runpy, pathlib, sys, traceback, os\n\n");
         py_out.push_str("GREEN='\x1b[1;32m'\nRED='\x1b[1;31m'\nRESET='\x1b[0m'\n\n");
         py_out.push_str("def run_all():\n");
         py_out.push_str("    base = pathlib.Path(__file__).parent\n");
@@ -562,6 +562,8 @@ mod website {
         py_out.push_str("    for rel in files:\n");
         py_out.push_str("        name = 'platforms.python.examples.' + rel.replace('/', '.').removesuffix('.py')\n");
         py_out.push_str("        head = f'test {name} ... '\n");
+        py_out.push_str("        os.environ['FC_RUNNER'] = 'python'\n");
+        py_out.push_str("        os.environ['FC_CURRENT_TEST'] = name\n");
         py_out.push_str("        try:\n");
         py_out.push_str("            runpy.run_path(str(base / rel), run_name='__main__')\n");
         py_out.push_str("            print(head + GREEN + 'OK' + RESET)\n");
