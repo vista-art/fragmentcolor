@@ -3,6 +3,7 @@
 use crate::{Pass, PassInput, PassObject, PassType, Shader};
 use lsp_doc::lsp_doc;
 use pyo3::prelude::*;
+use pyo3::types::PyAny;
 use std::sync::Arc;
 
 #[pymethods]
@@ -78,6 +79,62 @@ impl Pass {
     #[lsp_doc("docs/api/core/pass/set_compute_dispatch.md")]
     pub fn set_compute_dispatch_py(&self, x: u32, y: u32, z: u32) {
         self.object.set_compute_dispatch(x, y, z);
+    }
+
+    #[pyo3(name = "add_target")]
+    #[lsp_doc("docs/api/core/pass/add_target.md")]
+    pub fn add_target_py(&self, target: Py<PyAny>) -> Result<(), PyErr> {
+        Python::attach(|py| -> Result<(), PyErr> {
+            // Try TextureTarget wrapper first
+            if let Ok(bound) = target.bind(py).downcast::<crate::renderer::platform::python::PyTextureTarget>() {
+                let tt = bound.borrow();
+                return self.add_target(&tt.inner).map_err(|e| e.into());
+            }
+            // Try Texture handle
+            if let Ok(tex) = target.bind(py).downcast::<crate::texture::Texture>() {
+                let t = tex.borrow();
+                return self.add_target(&*t).map_err(|e| e.into());
+            }
+            Err(PyErr::new::<pyo3::exceptions::PyTypeError, _>(
+                "Unsupported target type. Expected TextureTarget or Texture",
+            ))
+        })
+    }
+
+    #[pyo3(name = "add_depth_target")]
+    #[lsp_doc("docs/api/core/pass/add_depth_target.md")]
+    pub fn add_depth_target_py(&self, target: Py<PyAny>) -> Result<(), PyErr> {
+        Python::attach(|py| -> Result<(), PyErr> {
+            // Depth textures are Texture handles
+            if let Ok(tex) = target.bind(py).downcast::<crate::texture::Texture>() {
+                let t = tex.borrow();
+                return self.add_depth_target(&*t).map_err(|e| e.into());
+            }
+            // Or a TextureTarget (if provided)
+            if let Ok(bound) = target.bind(py).downcast::<crate::renderer::platform::python::PyTextureTarget>() {
+                let tt = bound.borrow();
+                return self.add_depth_target(&tt.inner).map_err(|e| e.into());
+            }
+            Err(PyErr::new::<pyo3::exceptions::PyTypeError, _>(
+                "Unsupported depth target type. Expected Texture or TextureTarget",
+            ))
+        })
+    }
+
+    #[pyo3(name = "is_compute")]
+    #[lsp_doc("docs/api/core/pass/is_compute.md")]
+    pub fn is_compute_py(&self) -> bool {
+        self.object.is_compute()
+    }
+
+    #[pyo3(name = "require")]
+    #[lsp_doc("docs/api/core/pass/require.md")]
+    pub fn require_py(&self, deps: Py<PyAny>) -> Result<(), PyErr> {
+        Python::attach(|py| -> Result<(), PyErr> {
+            let any = deps.bind(py);
+            let r = crate::renderer::platform::python::PyRenderable::from_any(&any)?;
+            self.require(&r).map_err(|e| e.into())
+        })
     }
 
     pub fn renderable_type(&self) -> &'static str {

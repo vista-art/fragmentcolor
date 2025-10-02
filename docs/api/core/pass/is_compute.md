@@ -5,19 +5,20 @@ Returns true if this Pass is a compute pass (has only compute shaders).
 ## Example
 
 ```rust
-use fragmentcolor::{Shader, Pass, Mesh, Vertex};
+# fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Shader, Pass};
 
-let wgsl = r#"
+let shader = Shader::new(r#"
 @compute @workgroup_size(1)
 fn cs_main() { }
-"#;
-let shader = Shader::new(wgsl).unwrap();
+"#)?;
 let pass = Pass::from_shader("p", &shader);
 
-if pass.is_compute() {
-    println!("This is a compute pass.");
-}
+// Call the method
+let is_compute = pass.is_compute();
 
-# assert!(shader.is_compute());
+# _ = is_compute;
 # assert!(pass.is_compute());
+# Ok(())
+# }
 ```

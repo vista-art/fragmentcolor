@@ -5,19 +5,19 @@ Returns true if this Shader is a compute shader (has a compute entry point).
 ## Example
 
 ```rust
-use fragmentcolor::{Shader, Pass, Mesh, Vertex};
+# fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::Shader;
 
-let wgsl = r#"
+let shader = Shader::new(r#"
 @compute @workgroup_size(1)
 fn cs_main() { }
-"#;
-let shader = Shader::new(wgsl).unwrap();
+"#)?;
 
-if shader.is_compute() {
-    println!("This is a compute shader.");
-}
+// Call the method
+let is_compute = shader.is_compute();
 
-# let pass = Pass::from_shader("p", &shader);
+# let _ = is_compute;
 # assert!(shader.is_compute());
-# assert!(pass.is_compute());
+# Ok(())
+# }
 ```

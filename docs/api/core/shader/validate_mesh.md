@@ -21,7 +21,7 @@ Validate that a Mesh is compatible with this Shader's vertex inputs.
 # fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Shader, Pass, Mesh, Vertex};
 
-let wgsl = r#"
+let shader = Shader::new(r#"
 struct VOut { @builtin(position) pos: vec4<f32> };
 @vertex fn vs_main(@location(0) pos: vec3<f32>) -> VOut {
   var out: VOut;
@@ -29,11 +29,10 @@ struct VOut { @builtin(position) pos: vec4<f32> };
   return out;
 }
 @fragment fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
-"#;
-let shader = Shader::new(wgsl)?;
+"#)?;
 let pass = Pass::from_shader("p", &shader);
 
-let mut mesh = Mesh::new();
+let mesh = Mesh::new();
 mesh.add_vertices([
   Vertex::new([-0.5, -0.5, 0.0]),
   Vertex::new([ 0.5, -0.5, 0.0]),

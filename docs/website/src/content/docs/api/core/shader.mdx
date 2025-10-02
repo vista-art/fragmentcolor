@@ -1018,21 +1018,20 @@ Use Shader::validate_mesh for performing a compatibility check without attaching
 <Code
 code={`
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-
 use fragmentcolor::{Shader, Mesh, Vertex};
 
-let shader = Shader::new("
+let shader = Shader::new(r#"
   @vertex fn vs_main(@location(0) pos: vec3<f32>) -> @builtin(position) vec4<f32> {
     return vec4<f32>(pos, 1.0);
   }
   @fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
-").unwrap();
+"#)?;
 
-let mut mesh = Mesh::new();
-mesh.add_vertex([0.0, 0.0, 0.0]);
+let mesh = Mesh::new();
+mesh.add_vertex(Vertex::new([0.0, 0.0, 0.0]));
 
 // Attach mesh to this shader (errors if incompatible)
-shader.add_mesh(&mesh).expect("mesh is compatible");
+shader.add_mesh(&mesh)?;
 
 // Renderer will draw the mesh when rendering this pass.
 // Each Shader represents a RenderPipeline or ComputePipeline
@@ -1042,7 +1041,7 @@ shader.add_mesh(&mesh).expect("mesh is compatible");
 Ok(())
 }
 `}
-lang="rust" meta="collapse={1-1, 23-24}"
+lang="rust" meta="collapse={1-1, 22-23}"
 />
 
 </TabItem>
@@ -1050,21 +1049,21 @@ lang="rust" meta="collapse={1-1, 23-24}"
 <TabItem label="JavaScript">
 <Code
 code={`
-
 import { Shader, Mesh, Vertex } from "fragmentcolor";
 
-const shader = Shader.new(";
-  @vertex fn vs_main(@location(0) pos: vec3<f32>) -> @builtin(position) vec4<f32> {;
+const shader = new Shader(\`
+  @vertex fn vs_main(@location(0) pos: vec3<f32>) -> @builtin(position) vec4<f32> {
     return vec4<f32>(pos, 1.0);
-  };
-  @fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); };
-").unwrap();
+  }
+  @fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
+
+\`);
 
 const mesh = new Mesh();
-mesh.addVertex([0.0, 0.0, 0.0]);
+mesh.addVertex(Vertex.new([0.0, 0.0, 0.0]));
 
 // Attach mesh to this shader (errors if incompatible);
-shader.addMesh(mesh).expect("mesh is compatible");
+shader.addMesh(mesh);
 
 // Renderer will draw the mesh when rendering this pass.;
 // Each Shader represents a RenderPipeline or ComputePipeline;
@@ -1080,21 +1079,21 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-
 from fragmentcolor import Shader, Mesh, Vertex
 
-shader = Shader("
+shader = Shader("""
   @vertex fn vs_main(@location(0) pos: vec3<f32>) -> @builtin(position) vec4<f32> {
-    return vec4<f32>(pos, 1.0)
+    return vec4<f32>(pos, 1.0);
   }
   @fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
-")
+
+""")
 
 mesh = Mesh()
-mesh.add_vertex([0.0, 0.0, 0.0])
+mesh.add_vertex(Vertex([0.0, 0.0, 0.0]))
 
 # Attach mesh to this shader (errors if incompatible)
-shader.add_mesh(mesh).expect("mesh is compatible")
+shader.add_mesh(mesh)
 
 # Renderer will draw the mesh when rendering this pass.
 # Each Shader represents a RenderPipeline or ComputePipeline
@@ -1148,19 +1147,31 @@ If the Mesh is attached multiple times, removes the first match.
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::{Pass, Shader, Mesh, Vertex};
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Shader, Mesh, Vertex};
 
-let shader = Shader::default();
-let pass = Pass::from_shader("p", &shader);
+let shader = Shader::new(r#"
+  struct VOut { @builtin(position) pos: vec4<f32> };
+  @vertex
+  fn vs_main(@location(0) pos: vec2<f32>) -> VOut {
+    var out: VOut;
+    out.pos = vec4<f32>(pos, 0.0, 1.0);
+    return out;
+  }
+  @fragment
+  fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.0,0.0,0.0,1.0); }
+"#)?;
 
-let mut mesh = Mesh::new();
+let mesh = Mesh::new();
 mesh.add_vertex(Vertex::new([0.0, 0.0]));
-shader.add_mesh(&mesh);
+shader.add_mesh(&mesh)?;
 
 // Detach the mesh
 shader.remove_mesh(&mesh);
+Ok(())
+}
 `}
-lang="rust"
+lang="rust" meta="collapse={1-1, 22-23}"
 />
 
 </TabItem>
@@ -1168,10 +1179,20 @@ lang="rust"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Pass, Shader, Mesh, Vertex } from "fragmentcolor";
+import { Shader, Mesh, Vertex } from "fragmentcolor";
 
-const shader = Shader.default();
-const pass = new Pass("p"); pass.addShader(shader);
+const shader = new Shader(\`
+  struct VOut { @builtin(position) pos: vec4<f32> };
+  @vertex
+  fn vs_main(@location(0) pos: vec2<f32>) -> VOut {
+    var out: VOut;
+    out.pos = vec4<f32>(pos, 0.0, 1.0);
+    return out;
+  }
+  @fragment
+  fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.0,0.0,0.0,1.0); }
+
+\`);
 
 const mesh = new Mesh();
 mesh.addVertex(Vertex.new([0.0, 0.0]));
@@ -1188,10 +1209,20 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Pass, Shader, Mesh, Vertex
+from fragmentcolor import Shader, Mesh, Vertex
 
-shader = Shader.default()
-rpass = Pass("p"); rpass.add_shader(shader)
+shader = Shader("""
+  struct VOut { @builtin(position) pos: vec4<f32> };
+  @vertex
+  fn vs_main(@location(0) pos: vec2<f32>) -> VOut {
+    var out: VOut;
+    out.pos = vec4<f32>(pos, 0.0, 1.0);
+    return out;
+  }
+  @fragment
+  fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.0,0.0,0.0,1.0); }
+
+""")
 
 mesh = Mesh()
 mesh.add_vertex(Vertex([0.0, 0.0]))
@@ -1245,22 +1276,34 @@ Remove multiple meshes from this Shader.
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::{Pass, Shader, Mesh, Vertex};
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Shader, Mesh, Vertex};
 
-let shader = Shader::default();
-let pass = Pass::from_shader("p", &shader);
+let shader = Shader::new(r#"
+  struct VOut { @builtin(position) pos: vec4<f32> };
+  @vertex
+  fn vs_main(@location(0) pos: vec2<f32>) -> VOut {
+    var out: VOut;
+    out.pos = vec4<f32>(pos, 0.0, 1.0);
+    return out;
+  }
+  @fragment
+  fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.0,0.0,0.0,1.0); }
+"#)?;
 
-let mut m1 = Mesh::new();
+let m1 = Mesh::new();
 m1.add_vertex(Vertex::new([0.0, 0.0]));
-let mut m2 = Mesh::new();
+let m2 = Mesh::new();
 m2.add_vertex(Vertex::new([0.5, 0.0]));
 
-shader.add_mesh(&m1);
-shader.add_mesh(&m2);
+shader.add_mesh(&m1)?;
+shader.add_mesh(&m2)?;
 
 shader.remove_meshes([&m1, &m2]);
+Ok(())
+}
 `}
-lang="rust"
+lang="rust" meta="collapse={1-1, 25-26}"
 />
 
 </TabItem>
@@ -1268,10 +1311,20 @@ lang="rust"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Pass, Shader, Mesh, Vertex } from "fragmentcolor";
+import { Shader, Mesh, Vertex } from "fragmentcolor";
 
-const shader = Shader.default();
-const pass = new Pass("p"); pass.addShader(shader);
+const shader = new Shader(\`
+  struct VOut { @builtin(position) pos: vec4<f32> };
+  @vertex
+  fn vs_main(@location(0) pos: vec2<f32>) -> VOut {
+    var out: VOut;
+    out.pos = vec4<f32>(pos, 0.0, 1.0);
+    return out;
+  }
+  @fragment
+  fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.0,0.0,0.0,1.0); }
+
+\`);
 
 const m1 = new Mesh();
 m1.addVertex(Vertex.new([0.0, 0.0]));
@@ -1291,10 +1344,20 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Pass, Shader, Mesh, Vertex
+from fragmentcolor import Shader, Mesh, Vertex
 
-shader = Shader.default()
-rpass = Pass("p"); rpass.add_shader(shader)
+shader = Shader("""
+  struct VOut { @builtin(position) pos: vec4<f32> };
+  @vertex
+  fn vs_main(@location(0) pos: vec2<f32>) -> VOut {
+    var out: VOut;
+    out.pos = vec4<f32>(pos, 0.0, 1.0);
+    return out;
+  }
+  @fragment
+  fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.0,0.0,0.0,1.0); }
+
+""")
 
 m1 = Mesh()
 m1.add_vertex(Vertex([0.0, 0.0]))
@@ -1351,20 +1414,31 @@ Remove all meshes attached to this Shader.
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::{Pass, Shader};
-use fragmentcolor::mesh::{Mesh, Vertex};
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Shader, Mesh, Vertex};
 
-let shader = Shader::default();
-let pass = Pass::from_shader("p", &shader);
+let shader = Shader::new(r#"
+  struct VOut { @builtin(position) pos: vec4<f32> };
+  @vertex
+  fn vs_main(@location(0) pos: vec2<f32>) -> VOut {
+    var out: VOut;
+    out.pos = vec4<f32>(pos, 0.0, 1.0);
+    return out;
+  }
+  @fragment
+  fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.0,0.0,0.0,1.0); }
+"#)?;
 
-let mut mesh = Mesh::new();
+let mesh = Mesh::new();
 mesh.add_vertex(Vertex::new([0.0, 0.0]));
-shader.add_mesh(&mesh);
+shader.add_mesh(&mesh)?;
 
 // Clear all
 shader.clear_meshes();
+Ok(())
+}
 `}
-lang="rust"
+lang="rust" meta="collapse={1-1, 22-23}"
 />
 
 </TabItem>
@@ -1372,11 +1446,20 @@ lang="rust"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Pass, Shader } from "fragmentcolor";
-import { Mesh, Vertex } from "fragmentcolor";
+import { Shader, Mesh, Vertex } from "fragmentcolor";
 
-const shader = Shader.default();
-const pass = new Pass("p"); pass.addShader(shader);
+const shader = new Shader(\`
+  struct VOut { @builtin(position) pos: vec4<f32> };
+  @vertex
+  fn vs_main(@location(0) pos: vec2<f32>) -> VOut {
+    var out: VOut;
+    out.pos = vec4<f32>(pos, 0.0, 1.0);
+    return out;
+  }
+  @fragment
+  fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.0,0.0,0.0,1.0); }
+
+\`);
 
 const mesh = new Mesh();
 mesh.addVertex(Vertex.new([0.0, 0.0]));
@@ -1393,11 +1476,20 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Pass, Shader
-from fragmentcolor import Mesh, Vertex
+from fragmentcolor import Shader, Mesh, Vertex
 
-shader = Shader.default()
-rpass = Pass("p"); rpass.add_shader(shader)
+shader = Shader("""
+  struct VOut { @builtin(position) pos: vec4<f32> };
+  @vertex
+  fn vs_main(@location(0) pos: vec2<f32>) -> VOut {
+    var out: VOut;
+    out.pos = vec4<f32>(pos, 0.0, 1.0);
+    return out;
+  }
+  @fragment
+  fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.0,0.0,0.0,1.0); }
+
+""")
 
 mesh = Mesh()
 mesh.add_vertex(Vertex([0.0, 0.0]))
@@ -1467,7 +1559,7 @@ code={`
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Shader, Pass, Mesh, Vertex};
 
-let wgsl = r#"
+let shader = Shader::new(r#"
 struct VOut { @builtin(position) pos: vec4<f32> };
 @vertex fn vs_main(@location(0) pos: vec3<f32>) -> VOut {
   var out: VOut;
@@ -1475,11 +1567,10 @@ struct VOut { @builtin(position) pos: vec4<f32> };
   return out;
 }
 @fragment fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
-"#;
-let shader = Shader::new(wgsl)?;
+"#)?;
 let pass = Pass::from_shader("p", &shader);
 
-let mut mesh = Mesh::new();
+let mesh = Mesh::new();
 mesh.add_vertices([
   Vertex::new([-0.5, -0.5, 0.0]),
   Vertex::new([ 0.5, -0.5, 0.0]),
@@ -1492,7 +1583,7 @@ pass.add_mesh(&mesh)?;
 Ok(())
 }
 `}
-lang="rust" meta="collapse={1-1, 26-27}"
+lang="rust" meta="collapse={1-1, 25-26}"
 />
 
 </TabItem>
@@ -1502,16 +1593,16 @@ lang="rust" meta="collapse={1-1, 26-27}"
 code={`
 import { Shader, Pass, Mesh, Vertex } from "fragmentcolor";
 
-const wgsl = r#";
+const shader = new Shader(\`
 struct VOut { @builtin(position) pos: vec4<f32> };
-@vertex fn vs_main(@location(0) pos: vec3<f32>) -> VOut {;
+@vertex fn vs_main(@location(0) pos: vec3<f32>) -> VOut {
   var out: VOut;
   out.pos = vec4<f32>(pos, 1.0);
   return out;
-};
-@fragment fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); };
-"#;
-const shader = new Shader(wgsl);
+}
+@fragment fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
+
+\`);
 const pass = new Pass("p"); pass.addShader(shader);
 
 const mesh = new Mesh();
@@ -1535,16 +1626,16 @@ lang="js"
 code={`
 from fragmentcolor import Shader, Pass, Mesh, Vertex
 
-wgsl = r#"
-struct VOut { @builtin(position) pos: vec4<f32> }
+shader = Shader("""
+struct VOut { @builtin(position) pos: vec4<f32> };
 @vertex fn vs_main(@location(0) pos: vec3<f32>) -> VOut {
-  var out: VOut
-  out.pos = vec4<f32>(pos, 1.0)
-  return out
+  var out: VOut;
+  out.pos = vec4<f32>(pos, 1.0);
+  return out;
 }
 @fragment fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
-"#
-shader = Shader(wgsl)
+
+""")
 rpass = Pass("p"); rpass.add_shader(shader)
 
 mesh = Mesh()
@@ -1603,23 +1694,23 @@ Returns true if this Shader is a compute shader (has a compute entry point).
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::{Shader, Pass, Mesh, Vertex};
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::Shader;
 
-let wgsl = r#"
+let shader = Shader::new(r#"
 @compute @workgroup_size(1)
 fn cs_main() { }
-"#;
-let shader = Shader::new(wgsl).unwrap();
+"#)?;
 
-if shader.is_compute() {
-    println!("This is a compute shader.");
-}
+// Call the method
+let is_compute = shader.is_compute();
 
-let pass = Pass::from_shader("p", &shader);
+let _ = is_compute;
 assert!(shader.is_compute());
-assert!(pass.is_compute());
+Ok(())
+}
 `}
-lang="rust" meta="collapse={13-15}"
+lang="rust" meta="collapse={1-1, 12-15}"
 />
 
 </TabItem>
@@ -1627,17 +1718,16 @@ lang="rust" meta="collapse={13-15}"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Shader, Pass, Mesh, Vertex } from "fragmentcolor";
+import { Shader } from "fragmentcolor";
 
-const wgsl = r#";
-@compute @workgroup_size(1);
-fn cs_main() { };
-"#;
-const shader = new Shader(wgsl).unwrap();
+const shader = new Shader(\`
+@compute @workgroup_size(1)
+fn cs_main() { }
 
-if shader.isCompute() {;
-    println!("This is a compute shader.");
-};
+\`);
+
+// Call the method;
+const is_compute = shader.isCompute();
 
 `}
 lang="js"
@@ -1648,17 +1738,16 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Shader, Pass, Mesh, Vertex
+from fragmentcolor import Shader
 
-wgsl = r#"
+shader = Shader("""
 @compute @workgroup_size(1)
 fn cs_main() { }
-"#
-shader = Shader(wgsl)
 
-if shader.is_compute() {
-    println!("This is a compute shader.")
-}
+""")
+
+# Call the method
+is_compute = shader.is_compute()
 
 `}
 lang="python"

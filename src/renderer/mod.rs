@@ -650,7 +650,7 @@ impl RenderContext {
                         color_format,
                         sample_count,
                         vertex_buffer_layouts,
-                        None,
+                        depth_format,
                     )
                 });
 

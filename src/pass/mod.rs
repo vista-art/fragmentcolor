@@ -225,6 +225,16 @@ impl TryFrom<&crate::target::TextureTarget> for ColorTarget {
     }
 }
 
+impl TryFrom<&crate::target::TextureTarget> for DepthTarget {
+    type Error = PassError;
+
+    // Convert to a Texture handle and reuse validation for depth targets
+    fn try_from(target: &crate::target::TextureTarget) -> Result<Self, Self::Error> {
+        let texture = target.texture();
+        DepthTarget::try_from(&texture)
+    }
+}
+
 impl TryFrom<&crate::texture::Texture> for DepthTarget {
     type Error = PassError;
 

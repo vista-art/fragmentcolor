@@ -181,7 +181,7 @@ impl TargetFrame for RenderCanvasFrame {
 #[lsp_doc("docs/api/hidden/platforms/python/py_texture_target/py_texture_target.md")]
 #[pyclass(name = "TextureTarget")]
 pub struct PyTextureTarget {
-    inner: crate::TextureTarget,
+    pub(crate) inner: crate::TextureTarget,
 }
 
 #[pymethods]

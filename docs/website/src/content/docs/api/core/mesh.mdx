@@ -191,7 +191,7 @@ Create a mesh from an iterator of Vertex values.
 <Code
 code={`
 use fragmentcolor::mesh::{Mesh, Vertex};
-let m = Mesh::from_vertices([
+let mesh = Mesh::from_vertices([
     Vertex::new([0.0, 0.0]),
     Vertex::new([1.0, 0.0]),
     Vertex::new([0.0, 1.0]),
@@ -206,7 +206,7 @@ lang="rust"
 <Code
 code={`
 import { Mesh, Vertex } from "fragmentcolor";
-const m = Mesh.fromVertices([;
+const mesh = Mesh.fromVertices([;
     Vertex.new([0.0, 0.0]),;
     Vertex.new([1.0, 0.0]),;
     Vertex.new([0.0, 1.0]),;
@@ -221,7 +221,7 @@ lang="js"
 <Code
 code={`
 from fragmentcolor import Mesh, Vertex
-m = Mesh.from_vertices([
+mesh = Mesh.from_vertices([
     Vertex([0.0, 0.0]),
     Vertex([1.0, 0.0]),
     Vertex([0.0, 1.0]),

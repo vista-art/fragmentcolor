@@ -21,7 +21,7 @@ Produces a Mesh with position (vec2) and uv (vec2) per-vertex.
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::mesh::primitives::Quad;
+use fragmentcolor::Quad;
 
 let quad = Quad::new([-0.5, -0.5], [0.5, 0.5]);
 
@@ -104,14 +104,13 @@ Create a quad from two corners (min.xy, max.xy) in clip-space coordinates.
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::mesh::primitives::Quad;
-use fragmentcolor::mesh::Mesh;
+use fragmentcolor::Quad;
 
 let quad = Quad::new([-0.5, -0.5], [0.5, 0.5]);
 
 _ = quad;
 `}
-lang="rust" meta="collapse={6-6}"
+lang="rust" meta="collapse={5-5}"
 />
 
 </TabItem>
@@ -120,7 +119,6 @@ lang="rust" meta="collapse={6-6}"
 <Code
 code={`
 import { Quad } from "fragmentcolor";
-import { Mesh } from "fragmentcolor";
 
 const quad = new Quad([-0.5, -0.5], [0.5, 0.5]);
 
@@ -134,7 +132,6 @@ lang="js"
 <Code
 code={`
 from fragmentcolor import Quad
-from fragmentcolor import Mesh
 
 quad = Quad([-0.5, -0.5], [0.5, 0.5])
 
@@ -184,15 +181,14 @@ Gets the Mesh built by this Quad.
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::mesh::primitives::Quad;
-use fragmentcolor::mesh::Mesh;
+use fragmentcolor::{Quad, Mesh};
 
 let quad = Quad::new([-0.5, -0.5], [0.5, 0.5]);
 let mesh: Mesh = quad.get_mesh();
 
 _ = mesh;
 `}
-lang="rust" meta="collapse={7-7}"
+lang="rust" meta="collapse={6-6}"
 />
 
 </TabItem>
@@ -200,8 +196,7 @@ lang="rust" meta="collapse={7-7}"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Quad } from "fragmentcolor";
-import { Mesh } from "fragmentcolor";
+import { Quad, Mesh } from "fragmentcolor";
 
 const quad = new Quad([-0.5, -0.5], [0.5, 0.5]);
 const mesh = quad.getMesh();
@@ -215,8 +210,7 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Quad
-from fragmentcolor import Mesh
+from fragmentcolor import Quad, Mesh
 
 quad = Quad([-0.5, -0.5], [0.5, 0.5])
 mesh = quad.get_mesh()

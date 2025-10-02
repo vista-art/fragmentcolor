@@ -2,6 +2,7 @@ use cfg_aliases::cfg_aliases;
 
 fn main() {
     configure_aliases();
+    set_build_env();
     generate_docs();
     // Generate language-specific READMEs from templates + Rust examples
     println!("cargo::rerun-if-changed=README.md");
@@ -27,6 +28,29 @@ fn configure_aliases() {
     println!("cargo::rustc-check-cfg=cfg(mobile)");
     println!("cargo::rustc-check-cfg=cfg(desktop)");
     println!("cargo::rustc-check-cfg=cfg(dev)");
+}
+
+/// Capture build metadata for runtime diagnostics (e.g., GPU error hook)
+fn set_build_env() {
+    // Git commit hash (short)
+    let git_hash = std::process::Command::new("git")
+        .args(["rev-parse", "--short=12", "HEAD"])
+        .output()
+        .ok()
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .map(|s| s.trim().to_string())
+        .unwrap_or_else(|| "unknown".to_string());
+    println!("cargo::rustc-env=FC_GIT_HASH={}", git_hash);
+
+    // Build timestamp (unix epoch seconds)
+    let build_time = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs().to_string())
+        .unwrap_or_else(|_| "0".to_string());
+    println!("cargo::rustc-env=FC_BUILD_TIME={}", build_time);
+
+    // Rerun when HEAD changes
+    println!("cargo::rerun-if-changed=.git/HEAD");
 }
 
 /// This function validates all the API documentation and breaks

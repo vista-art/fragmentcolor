@@ -2,32 +2,33 @@
 
 Select a depth attachment for this pass.
 
-The target must be a stable texture created by the same Renderer with usage including `RENDER_ATTACHMENT` and a depth/stencil format (e.g., `Depth32Float`).
+The target must be a stable texture created by the same Renderer with create_depth_texture().
+
+When a depth target is attached, the renderer will create a render pipeline with a depth-stencil
+matching the texture format (e.g., `Depth32Float`) of the created texture.
 
 ## Example
 
 ```rust
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Renderer, Pass, Shader};
+use fragmentcolor::{Renderer, Pass, Shader, Mesh};
 
 let renderer = Renderer::new();
-let target = renderer.create_texture_target([64u32, 64u32]).await?;
+let target = renderer.create_texture_target([64, 64]).await?;
 
 // Create a depth texture usable as a per-pass attachment
-let depth = renderer.create_depth_texture([64u32, 64u32]).await?;
+let depth = renderer.create_depth_texture([64, 64]).await?;
 
-// Simple scene shader with @location(0) position
-let wgsl = r#"
-struct VOut { @builtin(position) pos: vec4<f32> };
-@vertex
-fn vs_main(@location(0) pos: vec3<f32>) -> VOut { var o: VOut; o.pos = vec4f(pos,1.0); return o; }
-@fragment
-fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4f(0.7,0.8,1.0,1.0); }
-"#;
-let shader = Shader::new(wgsl)?;
+let mut mesh = Mesh::new();
+mesh.add_vertex([0.0, 0.0, 0.0]);
+mesh.add_vertex([1.0, 0.0, 0.0]);
+mesh.add_vertex([0.0, 1.0, 0.0]);
+mesh.add_vertex([1.0, 1.0, 0.0]);
+let shader = Shader::from_mesh(&mesh);
 let pass = Pass::from_shader("scene", &shader);
 
-// Attach depth texture to enable depth testing
+// Attach depth texture to enable depth testing.
+// Pipeline will include a matching depth-stencil state
 pass.add_depth_target(&depth)?;
 
 // Render as usual
