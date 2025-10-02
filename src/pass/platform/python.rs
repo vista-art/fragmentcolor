@@ -138,7 +138,7 @@ impl Pass {
     pub fn require_py(&self, deps: Py<PyAny>) -> Result<(), PyErr> {
         Python::attach(|py| -> Result<(), PyErr> {
             let any = deps.bind(py);
-            let r = crate::renderer::platform::python::PyRenderable::from_any(&any)?;
+            let r = crate::renderer::platform::python::PyRenderable::from_any(any)?;
             self.require(&r).map_err(|e| e.into())
         })
     }

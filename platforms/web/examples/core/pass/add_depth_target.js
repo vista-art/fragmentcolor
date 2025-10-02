@@ -14,7 +14,8 @@ mesh.addVertex([1.0, 1.0, 0.0]);
 const shader = Shader.fromMesh(mesh);
 const pass = new Pass("scene"); pass.addShader(shader);
 
-// Attach depth texture to enable depth testing;
+// Attach depth texture to enable depth testing.;
+// Pipeline will include a matching depth-stencil state;
 pass.addDepthTarget(depth);
 
 // Render as usual;

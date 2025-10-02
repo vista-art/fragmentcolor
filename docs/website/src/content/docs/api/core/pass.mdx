@@ -1337,7 +1337,10 @@ lang="text"
 
 Select a depth attachment for this pass.
 
-The target must be a stable texture created by the same Renderer with usage including `RENDER_ATTACHMENT` and a depth/stencil format (e.g., `Depth32Float`).
+The target must be a stable texture created by the same Renderer with create_depth_texture().
+
+When a depth target is attached, the renderer will create a render pipeline with a depth-stencil
+matching the texture format (e.g., `Depth32Float`) of the created texture.
 
 #### Example
 
@@ -1363,7 +1366,8 @@ mesh.add_vertex([1.0, 1.0, 0.0]);
 let shader = Shader::from_mesh(&mesh);
 let pass = Pass::from_shader("scene", &shader);
 
-// Attach depth texture to enable depth testing
+// Attach depth texture to enable depth testing.
+// Pipeline will include a matching depth-stencil state
 pass.add_depth_target(&depth)?;
 
 // Render as usual
@@ -1372,7 +1376,7 @@ Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 23-25}"
+lang="rust" meta="collapse={1-1, 24-26}"
 />
 
 </TabItem>
@@ -1396,7 +1400,8 @@ mesh.addVertex([1.0, 1.0, 0.0]);
 const shader = Shader.fromMesh(mesh);
 const pass = new Pass("scene"); pass.addShader(shader);
 
-// Attach depth texture to enable depth testing;
+// Attach depth texture to enable depth testing.;
+// Pipeline will include a matching depth-stencil state;
 pass.addDepthTarget(depth);
 
 // Render as usual;
@@ -1426,7 +1431,8 @@ mesh.add_vertex([1.0, 1.0, 0.0])
 shader = Shader.from_mesh(mesh)
 rpass = Pass("scene"); rpass.add_shader(shader)
 
-# Attach depth texture to enable depth testing
+# Attach depth texture to enable depth testing.
+# Pipeline will include a matching depth-stencil state
 rpass.add_depth_target(depth)
 
 # Render as usual

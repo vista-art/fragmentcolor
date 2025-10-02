@@ -14,7 +14,8 @@ mesh.add_vertex([1.0, 1.0, 0.0])
 shader = Shader.from_mesh(mesh)
 rpass = Pass("scene"); rpass.add_shader(shader)
 
-# Attach depth texture to enable depth testing
+# Attach depth texture to enable depth testing.
+# Pipeline will include a matching depth-stencil state
 rpass.add_depth_target(depth)
 
 # Render as usual
