@@ -50,7 +50,7 @@ mod readme {
         let mut code_lang = String::new();
         let mut code_buf: Vec<String> = Vec::new();
 
-        let mut push_block = |title: &str, level_hint: usize, lang: &str, body: String| {
+        let mut push_block = |title: &str, lang: &str, body: String| {
             let key = title.trim().to_string();
             let entry = out.entry(key.clone()).or_insert(Section {
                 first_rust: None,
@@ -102,9 +102,8 @@ mod readme {
                 // in code
                 if trimmed.starts_with("```") {
                     // end block
-                    if let Some((lvl, title)) = &current_title {
-                        let lvl = *lvl;
-                        push_block(title, lvl, &code_lang, code_buf.join("\n"));
+                    if let Some((_lvl, title)) = &current_title {
+                        push_block(title, &code_lang, code_buf.join("\n"));
                     }
                     in_code = false;
                     code_lang.clear();
