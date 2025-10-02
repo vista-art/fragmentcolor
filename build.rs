@@ -3,6 +3,11 @@ use cfg_aliases::cfg_aliases;
 fn main() {
     configure_aliases();
     generate_docs();
+    // Generate language-specific READMEs from templates + Rust examples
+    println!("cargo::rerun-if-changed=README.md");
+    println!("cargo::rerun-if-changed=README_JS.tpl.md");
+    println!("cargo::rerun-if-changed=README_PY.tpl.md");
+    readme::generate_readmes();
 }
 
 /// Configures custom cfg aliases for conditional compilation
@@ -77,3 +82,4 @@ include!("scripts/convert.rs");
 include!("scripts/validation.rs");
 include!("scripts/website.rs");
 include!("scripts/meta.rs");
+include!("scripts/readme.rs");

@@ -19,7 +19,7 @@ code={`
     # You can pass the shader as a source string, file path, or URL:
     circle = Shader("./path/to/circle.wgsl")
     triangle = Shader("https://fragmentcolor.org/shaders/triangle.wgsl")
-    my_shader = Shader("""
+    shader = Shader("""
     struct VertexOutput {
         @builtin(position) coords: vec4<f32>,
     }
@@ -51,8 +51,8 @@ code={`
     """)
 
     # The library binds and updates the uniforms automatically
-    my_shader.set("my_struct.my_field", [0.1, 0.8, 0.9])
-    my_shader.set("my_vec2", [1.0, 1.0])
+    shader.set("my_struct.my_field", [0.1, 0.8, 0.9])
+    shader.set("my_vec2", [1.0, 1.0])
 
     # One shader is all you need to render
     renderer.render(shader, target)
@@ -61,7 +61,7 @@ code={`
     rpass = Pass("single pass")
     rpass.add_shader(circle)
     rpass.add_shader(triangle)
-    rpass.add_shader(my_shader)
+    rpass.add_shader(shader)
     renderer.render(rpass, target)
 
     # Finally, you can combine multiple passes in a Frame
@@ -91,34 +91,167 @@ meta="collapse={13-40}"
 
 <Code
 code={`
-    import init, { Shader, Renderer, Target, FragmentColor } from "fragmentcolor";
+import init, { Renderer, Shader, Pass, Frame } from "fragmentcolor";
 
-    async function start() {
-        await init(); // inits WASM module
+async function start() {
+  // Initializes the WASM module
+  await init();
 
-        let canvas = document.getElementById("my-canvas");
-        const renderer = new Renderer();
-        const target = await renderer.createTarget(canvas);
+  // Initializes a renderer and a target compatible with the given canvas
+  const canvas = document.getElementById("my-canvas");
+  const renderer = new Renderer();
+  const target = await renderer.createTarget(canvas);
+
+  // You can pass the shader as a source string, file path, or URL:
+  const circle = new Shader("./path/to/circle.wgsl");
+  const triangle = new Shader("https://fragmentcolor.org/shaders/triangle.wgsl");
+  const shader = new Shader(`
+    struct VertexOutput {
+        @builtin(position) coords: vec4<f32>,
     }
-    start();
 
-    const shader = new Shader("https://fragmentcolor.org/shaders/circle.wgsl");
-    shader.set("resolution", [canvas.width, canvas.height]);
-    shader.set("circle.radius", 0.05);
-    shader.set("circle.color", [1.0, 0.0, 0.0, 0.8]);
-
-    const renderer = new Renderer();
-
-    function animate() {
-        shader.set("circle.position", [mouseX, mouseY]);
-        renderer.render(shader, target);
-
-        requestAnimationFrame(animate);
+    struct MyStruct {
+        my_field: vec3<f32>,
     }
-    animate();
+
+    @group(0) @binding(0)
+    var<uniform> my_struct: MyStruct;
+
+    @group(0) @binding(1)
+    var<uniform> my_vec2: vec2<f32>;
+
+    @vertex
+    fn vs_main(@builtin(vertex_index) in_vertex_index: u32) -> VertexOutput {
+        const vertices = array(
+            vec2( -1., -1.),
+            vec2(  3., -1.),
+            vec2( -1.,  3.)
+        );
+        return VertexOutput(vec4<f32>(vertices[in_vertex_index], 0.0, 1.0));
+    }
+
+    @fragment
+    fn fs_main() -> @location(0) vec4<f32> {
+        return vec4<f32>(my_struct.my_field, 1.0);
+    }
+  `);
+
+  // The library binds and updates the uniforms automatically
+  shader.set("my_struct.my_field", [0.1, 0.8, 0.9]);
+  shader.set("my_vec2", [1.0, 1.0]);
+
+  // One shader is all you need to render
+  renderer.render(circle, target);
+
+  // But you can also combine multiple shaders in a render Pass
+  const rpass = new Pass("single pass");
+  rpass.addShader(circle);
+  rpass.addShader(triangle);
+  rpass.addShader(shader);
+  renderer.render(rpass, target);
+
+  // Finally, you can combine multiple passes in a Frame
+  const frame = new Frame();
+  frame.addPass(rpass);
+  frame.addPass(new Pass("GUI pass"));
+  renderer.render(frame, target);
+
+  // To animate, simply update the uniforms in a loop
+  function animate() {
+    circle.set("position", [0.0, 0.0]);
+    renderer.render(frame, target);
+    requestAnimationFrame(animate);
+  }
+  animate();
+}
+
+start();
 `}
-
 lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Rust">
+
+<Code
+code={`
+use fragmentcolor::{Renderer, Shader, Pass, Frame};
+use pollster::block_on;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    block_on(async {
+        // Initializes a renderer and a target (offscreen example here)
+        let renderer = Renderer::new();
+        let target = renderer.create_texture_target([800, 600]).await?;
+
+        // You can pass the shader as a source string, file path, or URL:
+        let circle = Shader::new("./path/to/circle.wgsl")?;
+        let triangle = Shader::new("https://fragmentcolor.org/shaders/triangle.wgsl")?;
+        let wgsl = r#"
+struct VertexOutput {
+    @builtin(position) coords: vec4<f32>,
+}
+
+struct MyStruct {
+    my_field: vec3<f32>,
+}
+
+@group(0) @binding(0)
+var<uniform> my_struct: MyStruct;
+
+@group(0) @binding(1)
+var<uniform> my_vec2: vec2<f32>;
+
+@vertex
+fn vs_main(@builtin(vertex_index) in_vertex_index: u32) -> VertexOutput {
+    const vertices = array(
+        vec2( -1., -1.),
+        vec2(  3., -1.),
+        vec2( -1.,  3.)
+    );
+    return VertexOutput(vec4<f32>(vertices[in_vertex_index], 0.0, 1.0));
+}
+
+@fragment
+fn fs_main() -> @location(0) vec4<f32> {
+    return vec4<f32>(my_struct.my_field, 1.0);
+}
+"#;
+        let mut shader = Shader::new(wgsl)?;
+
+        // The library binds and updates the uniforms automatically
+        shader.set("my_struct.my_field", [0.1f32, 0.8, 0.9])?;
+        shader.set("my_vec2", [1.0f32, 1.0])?;
+
+        // One shader is all you need to render
+        renderer.render(&shader, &target)?;
+
+        // But you can also combine multiple shaders in a render Pass
+        let mut rpass = Pass::new("single pass");
+        rpass.add_shader(&circle);
+        rpass.add_shader(&triangle);
+        rpass.add_shader(&shader);
+        renderer.render(&rpass, &target)?;
+
+        // Finally, you can combine multiple passes in a Frame
+        let mut frame = Frame::new();
+        frame.add_pass(rpass);
+        frame.add_pass(Pass::new("GUI pass"));
+        renderer.render(&frame, &target)?;
+
+        // To animate, simply update the uniforms in a loop
+        // (Pseudo-code)
+        // loop {
+        //     circle.set("position", [0.0f32, 0.0])?;
+        //     renderer.render(&frame, &target)?;
+        // }
+
+        Ok(())
+    })
+}
+`}
+lang="rust"
 />
 
 </TabItem>
