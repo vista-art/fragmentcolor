@@ -1,6 +1,7 @@
-from fragmentcolor import Mesh, Vertex
+from fragmentcolor import Mesh
+
 mesh = Mesh.from_vertices([
-    Vertex([0.0, 0.0]),
-    Vertex([1.0, 0.0]),
-    Vertex([0.0, 1.0]),
+    [0.0, 0.0],
+    [1.0, 0.0],
+    [0.0, 1.0],
 ])

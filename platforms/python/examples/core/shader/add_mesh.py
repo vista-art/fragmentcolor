@@ -1,4 +1,4 @@
-from fragmentcolor import Shader, Mesh, Vertex
+from fragmentcolor import Shader, Mesh
 
 shader = Shader("""
   @vertex fn vs_main(@location(0) pos: vec3<f32>) -> @builtin(position) vec4<f32> {
@@ -9,7 +9,7 @@ shader = Shader("""
 """)
 
 mesh = Mesh()
-mesh.add_vertex(Vertex([0.0, 0.0, 0.0]))
+mesh.add_vertex([0.0, 0.0, 0.0])
 
 # Attach mesh to this shader (errors if incompatible)
 shader.add_mesh(mesh)
