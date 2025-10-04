@@ -124,7 +124,9 @@ fn py_to_vertex_value(obj: &Bound<'_, PyAny>) -> PyResult<VertexValue> {
                     ]))
                 }
             }
-            _ => unreachable!(),
+            _ => Err(PyErr::new::<PyTypeError, _>(
+                "(unreachable): Unexpected sequence length",
+            )),
         }
     } else {
         Err(PyErr::new::<PyTypeError, _>(
@@ -133,50 +135,73 @@ fn py_to_vertex_value(obj: &Bound<'_, PyAny>) -> PyResult<VertexValue> {
     }
 }
 
+fn py_to_vertex(obj: &Bound<'_, PyAny>) -> PyResult<Vertex> {
+    // Try direct extraction first (already a Vertex)
+    if let Ok(v) = obj.extract::<Vertex>() {
+        return Ok(v);
+    }
+
+    // Try extracting various number/tuple/array types
+    if let Ok(v) = obj.extract::<f32>() {
+        return Ok(Vertex::new(v));
+    }
+    if let Ok(v) = obj.extract::<(f32, f32)>() {
+        return Ok(Vertex::new(v));
+    }
+    if let Ok(v) = obj.extract::<(f32, f32, f32)>() {
+        return Ok(Vertex::new(v));
+    }
+    if let Ok(v) = obj.extract::<(f32, f32, f32, f32)>() {
+        return Ok(Vertex::new(v));
+    }
+    if let Ok(v) = obj.extract::<(u32, u32)>() {
+        return Ok(Vertex::new(v));
+    }
+    if let Ok(v) = obj.extract::<(u32, u32, u32)>() {
+        return Ok(Vertex::new(v));
+    }
+    if let Ok(v) = obj.extract::<[f32; 2]>() {
+        return Ok(Vertex::new(v));
+    }
+    if let Ok(v) = obj.extract::<[f32; 3]>() {
+        return Ok(Vertex::new(v));
+    }
+    if let Ok(v) = obj.extract::<[f32; 4]>() {
+        return Ok(Vertex::new(v));
+    }
+    if let Ok(v) = obj.extract::<[u32; 2]>() {
+        return Ok(Vertex::new(v));
+    }
+    if let Ok(v) = obj.extract::<[u32; 3]>() {
+        return Ok(Vertex::new(v));
+    }
+
+    Err(PyErr::new::<PyTypeError, _>(
+        "Unsupported vertex type (expected Vertex or number/sequence)",
+    ))
+}
+
+fn py_to_instance_or_vertex(obj: &Bound<'_, PyAny>) -> PyResult<Instance> {
+    // Try direct extraction first (already an Instance)
+    if let Ok(i) = obj.extract::<Instance>() {
+        return Ok(i);
+    }
+
+    // Try to convert to Vertex and then to Instance
+    match py_to_vertex(obj) {
+        Ok(vertex) => Ok(vertex.create_instance()),
+        Err(_) => Err(PyErr::new::<PyTypeError, _>(
+            "Expected a Vertex, Instance, or number/sequence",
+        )),
+    }
+}
+
 #[pymethods]
 impl Vertex {
     #[new]
     #[lsp_doc("docs/api/core/vertex/new.md")]
     pub fn new_py(position: Py<PyAny>) -> PyResult<Self> {
-        Python::attach(|py| -> PyResult<Self> {
-            let any = position.bind(py);
-            if let Ok(v) = any.extract::<f32>() {
-                return Ok(Vertex::new(v));
-            }
-            if let Ok(v) = any.extract::<(f32, f32)>() {
-                return Ok(Vertex::new(v));
-            }
-            if let Ok(v) = any.extract::<(f32, f32, f32)>() {
-                return Ok(Vertex::new(v));
-            }
-            if let Ok(v) = any.extract::<(f32, f32, f32, f32)>() {
-                return Ok(Vertex::new(v));
-            }
-            if let Ok(v) = any.extract::<(u32, u32)>() {
-                return Ok(Vertex::new(v));
-            }
-            if let Ok(v) = any.extract::<(u32, u32, u32)>() {
-                return Ok(Vertex::new(v));
-            }
-            if let Ok(v) = any.extract::<[f32; 2]>() {
-                return Ok(Vertex::new(v));
-            }
-            if let Ok(v) = any.extract::<[f32; 3]>() {
-                return Ok(Vertex::new(v));
-            }
-            if let Ok(v) = any.extract::<[f32; 4]>() {
-                return Ok(Vertex::new(v));
-            }
-            if let Ok(v) = any.extract::<[u32; 2]>() {
-                return Ok(Vertex::new(v));
-            }
-            if let Ok(v) = any.extract::<[u32; 3]>() {
-                return Ok(Vertex::new(v));
-            }
-            Err(PyErr::new::<pyo3::exceptions::PyTypeError, _>(
-                "Unsupported position (expected number or sequence of 2..4 floats, or 2..3 u32)",
-            ))
-        })
+        Python::attach(|py| py_to_vertex(position.bind(py)))
     }
 
     #[pyo3(name = "set")]
@@ -221,59 +246,7 @@ impl Mesh {
             let mut list: Vec<Vertex> = Vec::with_capacity(len);
             for i in 0..len {
                 let item = seq.get_item(i)?;
-                // Try direct extraction first (already a Vertex)
-                if let Ok(v) = item.extract::<Vertex>() {
-                    list.push(v);
-                    continue;
-                }
-                // Attempt number / tuple / list conversions mirroring Vertex::new_py logic
-                if let Ok(vf) = item.extract::<f32>() {
-                    list.push(Vertex::new(vf));
-                    continue;
-                }
-                if let Ok(t) = item.extract::<(f32, f32)>() {
-                    list.push(Vertex::new(t));
-                    continue;
-                }
-                if let Ok(t) = item.extract::<(f32, f32, f32)>() {
-                    list.push(Vertex::new(t));
-                    continue;
-                }
-                if let Ok(t) = item.extract::<(f32, f32, f32, f32)>() {
-                    list.push(Vertex::new(t));
-                    continue;
-                }
-                if let Ok(t) = item.extract::<(u32, u32)>() {
-                    list.push(Vertex::new(t));
-                    continue;
-                }
-                if let Ok(t) = item.extract::<(u32, u32, u32)>() {
-                    list.push(Vertex::new(t));
-                    continue;
-                }
-                if let Ok(a) = item.extract::<[f32; 2]>() {
-                    list.push(Vertex::new(a));
-                    continue;
-                }
-                if let Ok(a) = item.extract::<[f32; 3]>() {
-                    list.push(Vertex::new(a));
-                    continue;
-                }
-                if let Ok(a) = item.extract::<[f32; 4]>() {
-                    list.push(Vertex::new(a));
-                    continue;
-                }
-                if let Ok(a) = item.extract::<[u32; 2]>() {
-                    list.push(Vertex::new(a));
-                    continue;
-                }
-                if let Ok(a) = item.extract::<[u32; 3]>() {
-                    list.push(Vertex::new(a));
-                    continue;
-                }
-                return Err(PyErr::new::<PyTypeError, _>(
-                    "Unsupported vertex item (expected Vertex or number/sequence)",
-                ));
+                list.push(py_to_vertex(&item)?);
             }
             Ok(Mesh::from_vertices(list))
         })
@@ -283,58 +256,9 @@ impl Mesh {
     #[lsp_doc("docs/api/core/mesh/add_vertex.md")]
     pub fn add_vertex_py(&mut self, vertex: Py<PyAny>) -> PyResult<()> {
         Python::attach(|py| -> PyResult<()> {
-            let any = vertex.bind(py);
-            if let Ok(v) = any.extract::<Vertex>() {
-                self.add_vertex(v);
-                return Ok(());
-            }
-            if let Ok(vf) = any.extract::<f32>() {
-                self.add_vertex(Vertex::new(vf));
-                return Ok(());
-            }
-            if let Ok(t) = any.extract::<(f32, f32)>() {
-                self.add_vertex(Vertex::new(t));
-                return Ok(());
-            }
-            if let Ok(t) = any.extract::<(f32, f32, f32)>() {
-                self.add_vertex(Vertex::new(t));
-                return Ok(());
-            }
-            if let Ok(t) = any.extract::<(f32, f32, f32, f32)>() {
-                self.add_vertex(Vertex::new(t));
-                return Ok(());
-            }
-            if let Ok(t) = any.extract::<(u32, u32)>() {
-                self.add_vertex(Vertex::new(t));
-                return Ok(());
-            }
-            if let Ok(t) = any.extract::<(u32, u32, u32)>() {
-                self.add_vertex(Vertex::new(t));
-                return Ok(());
-            }
-            if let Ok(a) = any.extract::<[f32; 2]>() {
-                self.add_vertex(Vertex::new(a));
-                return Ok(());
-            }
-            if let Ok(a) = any.extract::<[f32; 3]>() {
-                self.add_vertex(Vertex::new(a));
-                return Ok(());
-            }
-            if let Ok(a) = any.extract::<[f32; 4]>() {
-                self.add_vertex(Vertex::new(a));
-                return Ok(());
-            }
-            if let Ok(a) = any.extract::<[u32; 2]>() {
-                self.add_vertex(Vertex::new(a));
-                return Ok(());
-            }
-            if let Ok(a) = any.extract::<[u32; 3]>() {
-                self.add_vertex(Vertex::new(a));
-                return Ok(());
-            }
-            Err(PyErr::new::<PyTypeError, _>(
-                "Unsupported vertex (expected Vertex or number/sequence)",
-            ))
+            let vertex = py_to_vertex(vertex.bind(py))?;
+            self.add_vertex(vertex);
+            Ok(())
         })
     }
 
@@ -346,57 +270,8 @@ impl Mesh {
             let len = seq.len()?;
             for i in 0..len {
                 let item = seq.get_item(i)?;
-                if let Ok(v) = item.extract::<Vertex>() {
-                    self.add_vertex(v);
-                    continue;
-                }
-                if let Ok(vf) = item.extract::<f32>() {
-                    self.add_vertex(Vertex::new(vf));
-                    continue;
-                }
-                if let Ok(t) = item.extract::<(f32, f32)>() {
-                    self.add_vertex(Vertex::new(t));
-                    continue;
-                }
-                if let Ok(t) = item.extract::<(f32, f32, f32)>() {
-                    self.add_vertex(Vertex::new(t));
-                    continue;
-                }
-                if let Ok(t) = item.extract::<(f32, f32, f32, f32)>() {
-                    self.add_vertex(Vertex::new(t));
-                    continue;
-                }
-                if let Ok(t) = item.extract::<(u32, u32)>() {
-                    self.add_vertex(Vertex::new(t));
-                    continue;
-                }
-                if let Ok(t) = item.extract::<(u32, u32, u32)>() {
-                    self.add_vertex(Vertex::new(t));
-                    continue;
-                }
-                if let Ok(a) = item.extract::<[f32; 2]>() {
-                    self.add_vertex(Vertex::new(a));
-                    continue;
-                }
-                if let Ok(a) = item.extract::<[f32; 3]>() {
-                    self.add_vertex(Vertex::new(a));
-                    continue;
-                }
-                if let Ok(a) = item.extract::<[f32; 4]>() {
-                    self.add_vertex(Vertex::new(a));
-                    continue;
-                }
-                if let Ok(a) = item.extract::<[u32; 2]>() {
-                    self.add_vertex(Vertex::new(a));
-                    continue;
-                }
-                if let Ok(a) = item.extract::<[u32; 3]>() {
-                    self.add_vertex(Vertex::new(a));
-                    continue;
-                }
-                return Err(PyErr::new::<PyTypeError, _>(
-                    "Unsupported vertex in list (expected Vertex or number/sequence)",
-                ));
+                let vertex = py_to_vertex(&item)?;
+                self.add_vertex(vertex);
             }
             Ok(())
         })
@@ -406,18 +281,9 @@ impl Mesh {
     #[lsp_doc("docs/api/core/mesh/add_instance.md")]
     pub fn add_instance_py(&mut self, item: Py<PyAny>) -> PyResult<()> {
         Python::attach(|py| -> PyResult<()> {
-            let any = item.bind(py);
-            if let Ok(v) = any.extract::<Vertex>() {
-                self.add_instance(v);
-                return Ok(());
-            }
-            if let Ok(i) = any.extract::<Instance>() {
-                self.add_instance(i);
-                return Ok(());
-            }
-            Err(PyErr::new::<PyTypeError, _>(
-                "Expected a Vertex or Instance",
-            ))
+            let instance = py_to_instance_or_vertex(item.bind(py))?;
+            self.add_instance(instance);
+            Ok(())
         })
     }
 
@@ -428,16 +294,9 @@ impl Mesh {
             let seq = items.bind(py).downcast::<PySequence>()?;
             let len = seq.len()?;
             for i in 0..len {
-                let it = seq.get_item(i)?;
-                if let Ok(v) = it.extract::<Vertex>() {
-                    self.add_instance(v);
-                } else if let Ok(inst) = it.extract::<Instance>() {
-                    self.add_instance(inst);
-                } else {
-                    return Err(PyErr::new::<PyTypeError, _>(
-                        "Expected a list of Vertex or Instance",
-                    ));
-                }
+                let item = seq.get_item(i)?;
+                let instance = py_to_instance_or_vertex(&item)?;
+                self.add_instance(instance);
             }
             Ok(())
         })

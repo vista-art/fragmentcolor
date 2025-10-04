@@ -1,11 +1,11 @@
-use crate::{Frame, Pass, PySize, Region, Renderer, Shader, Size};
+use crate::{
+    PySize, Renderer,
+    target::{PyTextureTarget, RenderCanvasTarget},
+};
 use lsp_doc::lsp_doc;
 use pyo3::exceptions::PyTypeError;
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyTuple};
-
-pub mod target;
-pub use target::*;
 
 pub mod iterator;
 pub use iterator::*;
@@ -489,48 +489,4 @@ impl Renderer {
             ))
         })
     }
-}
-
-/// A Python module implemented in Rust. The name of this function must match
-/// the `lib.name` setting in the `Cargo.toml`, else Python will not be able to
-/// import the module.
-#[pymodule]
-pub fn fragmentcolor(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    m.add_class::<Renderer>()?;
-    m.add_class::<Shader>()?;
-    m.add_class::<Pass>()?;
-    m.add_class::<Frame>()?;
-
-    // Helpers
-    m.add_class::<Size>()?;
-    m.add_class::<Region>()?;
-
-    // Mesh/Vertex bindings
-    m.add_class::<crate::mesh::Mesh>()?;
-    m.add_class::<crate::mesh::Vertex>()?;
-    m.add_class::<crate::mesh::Instance>()?;
-    m.add_class::<crate::mesh::PyVertexValue>()?;
-
-    // Mesh primitives
-    m.add_class::<crate::mesh::Quad>()?;
-
-    // Expose Texture handle type for shader.set(texture) to downcast properly
-    m.add_class::<crate::texture::Texture>()?;
-    m.add_class::<crate::texture::TextureFormat>()?;
-
-    // Headless TextureTarget API
-    m.add_class::<PyTextureTarget>()?;
-
-    // RenderCanvas API
-    m.add_function(wrap_pyfunction!(rendercanvas_context_hook, m)?)?;
-    m.add_class::<RenderCanvasTarget>()?;
-    m.add_class::<RenderCanvasFrame>()?;
-
-    // Custom error type
-    m.add(
-        "FragmentColorError",
-        m.py().get_type::<crate::error::PyFragmentColorError>(),
-    )?;
-
-    Ok(())
 }

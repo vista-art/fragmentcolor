@@ -8,36 +8,33 @@ pub struct PyRenderable {
     iterator: PyPassIterator,
 }
 
-impl<'py> From<&'py Bound<'py, Frame>> for PyRenderable {
-    fn from(frame: &Bound<'py, Frame>) -> Self {
+impl<'py> TryFrom<&'py Bound<'py, Frame>> for PyRenderable {
+    type Error = PyErr;
+    fn try_from(frame: &Bound<'py, Frame>) -> PyResult<Self> {
         Python::attach(|_| -> PyResult<Self> {
             let iterator = frame.call_method0("passes")?.extract::<PyPassIterator>()?;
-
             Ok(Self { iterator })
         })
-        .unwrap()
     }
 }
 
-impl<'py> From<&'py Bound<'py, Shader>> for PyRenderable {
-    fn from(shader: &Bound<'py, Shader>) -> Self {
+impl<'py> TryFrom<&'py Bound<'py, Shader>> for PyRenderable {
+    type Error = PyErr;
+    fn try_from(shader: &Bound<'py, Shader>) -> PyResult<Self> {
         Python::attach(|_| -> PyResult<Self> {
             let iterator = shader.call_method0("passes")?.extract::<PyPassIterator>()?;
-
             Ok(Self { iterator })
         })
-        .unwrap()
     }
 }
 
-impl<'py> From<&'py Bound<'py, Pass>> for PyRenderable {
-    fn from(pass: &Bound<'py, Pass>) -> Self {
+impl<'py> TryFrom<&'py Bound<'py, Pass>> for PyRenderable {
+    type Error = PyErr;
+    fn try_from(pass: &Bound<'py, Pass>) -> PyResult<Self> {
         Python::attach(|_| -> PyResult<Self> {
             let iterator = pass.call_method0("passes")?.extract::<PyPassIterator>()?;
-
             Ok(Self { iterator })
         })
-        .unwrap()
     }
 }
 
@@ -54,15 +51,15 @@ impl PyRenderable {
             return match rtype.as_str() {
                 "Frame" => {
                     let frame = obj.downcast::<Frame>()?;
-                    Ok(PyRenderable::from(frame))
+                    Ok(PyRenderable::try_from(frame)?)
                 }
                 "Pass" => {
                     let pass = obj.downcast::<Pass>()?;
-                    Ok(PyRenderable::from(pass))
+                    Ok(PyRenderable::try_from(pass)?)
                 }
                 "Shader" => {
                     let shader = obj.downcast::<Shader>()?;
-                    Ok(PyRenderable::from(shader))
+                    Ok(PyRenderable::try_from(shader)?)
                 }
                 _ => Err(PyErr::new::<pyo3::exceptions::PyTypeError, _>(
                     "Expected Frame, Pass, or Shader",

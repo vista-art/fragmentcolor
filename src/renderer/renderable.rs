@@ -1,4 +1,4 @@
-use crate::{Pass, PassObject};
+use crate::PassObject;
 use std::sync::Arc;
 
 pub trait Renderable {
@@ -10,52 +10,20 @@ pub trait Renderable {
     }
 }
 
-// Sequential lists: do not expand dependencies; return the listed passes in order.
-impl Renderable for &[Pass] {
+impl Renderable for Vec<Box<dyn Renderable>> {
     fn passes(&self) -> Arc<[Arc<PassObject>]> {
-        let v: Vec<Arc<PassObject>> = self.iter().map(|pass| pass.object.clone()).collect();
-        v.into()
-    }
-}
-
-impl Renderable for Vec<Pass> {
-    fn passes(&self) -> Arc<[Arc<PassObject>]> {
-        let v: Vec<Arc<PassObject>> = self.iter().map(|pass| pass.object.clone()).collect();
-        v.into()
-    }
-}
-
-impl Renderable for &[&Pass] {
-    fn passes(&self) -> Arc<[Arc<PassObject>]> {
-        let v: Vec<Arc<PassObject>> = self.iter().map(|pass| pass.object.clone()).collect();
-        v.into()
-    }
-}
-
-impl Renderable for Vec<&Pass> {
-    fn passes(&self) -> Arc<[Arc<PassObject>]> {
-        let v: Vec<Arc<PassObject>> = self.iter().map(|pass| pass.object.clone()).collect();
-        v.into()
-    }
-}
-
-// Provide convenience for direct Arc containers if needed.
-impl Renderable for &[Arc<PassObject>] {
-    fn passes(&self) -> Arc<[Arc<PassObject>]> {
-        let v: Vec<Arc<PassObject>> = self.to_vec();
-        v.into()
-    }
-}
-
-impl Renderable for Vec<Arc<PassObject>> {
-    fn passes(&self) -> Arc<[Arc<PassObject>]> {
-        self.clone().into()
+        let mut all_passes: Vec<Arc<PassObject>> = Vec::new();
+        for r in self {
+            all_passes.extend_from_slice(&r.passes());
+        }
+        all_passes.into()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Pass;
 
     // Story: Different containers should expose pass Arcs consistently via Renderable.
     #[test]

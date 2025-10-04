@@ -2,11 +2,6 @@
 //!
 //! Easy GPU Rendering for Javascript, Python, Kotlin, and Swift.
 
-// To be enabled in Version 0.10.8 (for Android and iOS support)
-//
-// #[cfg(not(wasm))]
-// uniffi::setup_scaffolding!();
-
 /// # Renderer module.
 ///
 /// The Renderer is the main entry point for rendering operations.
@@ -52,16 +47,25 @@ pub mod error;
 /// Simple helper to convert between different size representations.
 pub mod size;
 
-/// Guides (developer docs) — included as module docs so Rust examples run as doctests.
-pub mod guides;
-
 /// # Color module
 ///
 /// Simple helper to represent color and convert user input (i.e. CSS strings)
 pub mod color;
 
+/// # Networking module
+///
 /// Cross-target networking helpers (text/bytes over HTTP)
 pub mod net;
+
+/// # Region module
+///
+/// Region type conversions and collision detection
+pub mod region;
+
+/// Guides (developer docs)
+///
+/// Included as module so Rust examples run as doctests.
+pub mod guides;
 
 /// Winit App Module (desktop only)
 ///
@@ -74,22 +78,13 @@ pub mod app;
 #[cfg(all(not(wasm), feature = "winit"))]
 pub use app::*;
 
-/// DRAFT; API may change in a whim
-pub mod region;
-
-// Macros for blanket type conversions
+/// Macros for blanket type conversions
 mod macros;
+
+/// Top-level platform-specific initializers
+mod platforms;
 
 pub use {
     color::*, error::*, frame::*, mesh::*, pass::*, region::*, renderer::*, shader::*, size::*,
     target::*, texture::*,
 };
-
-/// Install a panic hook and console logger when running in WASM so browser console shows
-/// readable errors instead of a generic "unreachable" trap.
-#[cfg(wasm)]
-#[wasm_bindgen::prelude::wasm_bindgen(start)]
-pub fn wasm_start() {
-    console_error_panic_hook::set_once();
-    let _ = console_log::init_with_level(log::Level::Debug);
-}

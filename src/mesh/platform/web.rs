@@ -4,7 +4,7 @@ use lsp_doc::lsp_doc;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 
-use crate::mesh::{Instance, Mesh, Vertex, VertexValue};
+use crate::mesh::{Instance, Mesh, Quad, Vertex, VertexValue};
 
 // -----------------------------
 // JS helpers
@@ -172,9 +172,15 @@ fn js_to_vertex_value(value: &JsValue) -> Result<VertexValue, JsError> {
     }
 }
 
-fn js_to_vertex_position(value: &JsValue) -> Result<Vertex, JsError> {
+fn js_to_vertex_into(value: &JsValue) -> Result<Vertex, JsError> {
+    // First try direct conversion if it's already a Vertex
+    if let Ok(vertex) = Vertex::try_from(value) {
+        return Ok(vertex);
+    }
+
+    // Then try converting from position data (arrays/typed arrays/numbers)
     let data = js_to_f32_vec(value).ok_or_else(|| {
-        JsError::new("Invalid position type; expected number or array/typed array")
+        JsError::new("Expected Vertex object, number, or array/typed array for position")
     })?;
     match data.len() {
         1 => Ok(Vertex::new(data[0])),
@@ -185,11 +191,30 @@ fn js_to_vertex_position(value: &JsValue) -> Result<Vertex, JsError> {
     }
 }
 
+fn js_to_instance_into(value: &JsValue) -> Result<Instance, JsError> {
+    // First try direct conversion if it's already an Instance
+    if let Ok(instance) = Instance::try_from(value) {
+        return Ok(instance);
+    }
+    // Then try converting from Vertex object
+    if let Ok(vertex) = Vertex::try_from(value) {
+        return Ok(vertex.create_instance());
+    }
+    // Finally, accept number/array/typed array -> Vertex -> Instance
+    if let Ok(vertex) = js_to_vertex_into(value) {
+        return Ok(vertex.create_instance());
+    }
+    Err(JsError::new(
+        "Expected Instance, Vertex, or number/array/typed array",
+    ))
+}
+
 // -----------------------------
 // JS conversions for Vertex/Instance owned via __wbg_ptr anchors
 // -----------------------------
 
 crate::impl_js_bridge!(Mesh, crate::mesh::error::MeshError);
+crate::impl_js_bridge!(Quad, crate::mesh::error::MeshError);
 crate::impl_js_bridge!(Vertex, crate::mesh::error::MeshError);
 crate::impl_js_bridge!(Instance, crate::mesh::error::MeshError);
 
@@ -201,10 +226,16 @@ impl Vertex {
     #[wasm_bindgen(constructor)]
     #[lsp_doc("docs/api/core/vertex/new.md")]
     pub fn new_js(position: &JsValue) -> Result<Vertex, JsError> {
-        js_to_vertex_position(position)
+        js_to_vertex_into(position)
     }
 
-    #[wasm_bindgen(js_name = "with")]
+    // Support Rust-style Vertex::new([...]) in JS as Vertex.new([...])
+    #[wasm_bindgen(js_name = "new")]
+    pub fn new_static(position: &JsValue) -> Result<Vertex, JsError> {
+        js_to_vertex_into(position)
+    }
+
+    #[wasm_bindgen(js_name = "set")]
     #[lsp_doc("docs/api/core/vertex/set.md")]
     pub fn set_js(&self, key: &str, value: &JsValue) -> Result<Vertex, JsError> {
         let vv = js_to_vertex_value(value)?;
@@ -234,13 +265,11 @@ impl Mesh {
     pub fn from_vertices_js(list: &JsValue) -> Result<Mesh, JsError> {
         let arr = js_sys::Array::is_array(list)
             .then(|| js_sys::Array::from(list))
-            .ok_or_else(|| JsError::new("Expected an array of Vertex"))?;
+            .ok_or_else(|| JsError::new("Expected an array"))?;
         let m = Mesh::new();
         for v in arr.iter() {
-            let vert: Vertex = (&v)
-                .try_into()
-                .map_err(|_| JsError::new("fromVertices: item is not a Vertex"))?;
-            m.add_vertex(vert);
+            let vertex = js_to_vertex_into(&v)?;
+            m.add_vertex(vertex);
         }
         Ok(m)
     }
@@ -248,10 +277,8 @@ impl Mesh {
     #[wasm_bindgen(js_name = "addVertex")]
     #[lsp_doc("docs/api/core/mesh/add_vertex.md")]
     pub fn add_vertex_js(&mut self, v: &JsValue) -> Result<(), JsError> {
-        let vert: Vertex = v
-            .try_into()
-            .map_err(|_| JsError::new("addVertex: expected a Vertex object"))?;
-        self.add_vertex(vert);
+        let vertex = js_to_vertex_into(v)?;
+        self.add_vertex(vertex);
         Ok(())
     }
 
@@ -260,13 +287,11 @@ impl Mesh {
     pub fn add_vertices_js(&mut self, list: &JsValue) -> Result<(), JsError> {
         let arr = js_sys::Array::is_array(list)
             .then(|| js_sys::Array::from(list))
-            .ok_or_else(|| JsError::new("addVertices: expected an array of Vertex"))?;
+            .ok_or_else(|| JsError::new("Expected an array"))?;
         let mut verts: Vec<Vertex> = Vec::with_capacity(arr.length() as usize);
         for v in arr.iter() {
-            let vert: Vertex = (&v)
-                .try_into()
-                .map_err(|_| JsError::new("addVertices: item is not a Vertex"))?;
-            verts.push(vert);
+            let vertex = js_to_vertex_into(&v)?;
+            verts.push(vertex);
         }
         self.add_vertices(verts);
         Ok(())
@@ -275,16 +300,9 @@ impl Mesh {
     #[wasm_bindgen(js_name = "addInstance")]
     #[lsp_doc("docs/api/core/mesh/add_instance.md")]
     pub fn add_instance_js(&mut self, item: &JsValue) -> Result<(), JsError> {
-        // Try Instance first, then Vertex (converted to Instance)
-        if let Ok(inst) = Instance::try_from(item) {
-            self.add_instance(inst);
-            return Ok(());
-        }
-        if let Ok(vtx) = Vertex::try_from(item) {
-            self.add_instance(vtx);
-            return Ok(());
-        }
-        Err(JsError::new("addInstance: expected Instance or Vertex"))
+        let inst = js_to_instance_into(item)?;
+        self.add_instance(inst);
+        Ok(())
     }
 
     #[wasm_bindgen(js_name = "addInstances")]
@@ -292,20 +310,13 @@ impl Mesh {
     pub fn add_instances_js(&mut self, list: &JsValue) -> Result<(), JsError> {
         let arr = js_sys::Array::is_array(list)
             .then(|| js_sys::Array::from(list))
-            .ok_or_else(|| JsError::new("addInstances: expected an array"))?;
-        for item in arr.iter() {
-            if let Ok(inst) = Instance::try_from(&item) {
-                self.add_instance(inst);
-                continue;
-            }
-            if let Ok(vtx) = Vertex::try_from(&item) {
-                self.add_instance(vtx);
-                continue;
-            }
-            return Err(JsError::new(
-                "addInstances: items must be Instance or Vertex",
-            ));
+            .ok_or_else(|| JsError::new("Expected an array"))?;
+        let mut instances: Vec<Instance> = Vec::with_capacity(arr.length() as usize);
+        for instance in arr.iter() {
+            let instance = js_to_instance_into(&instance)?;
+            instances.push(instance);
         }
+        self.add_instances(instances);
         Ok(())
     }
 
@@ -325,5 +336,34 @@ impl Mesh {
     #[lsp_doc("docs/api/core/mesh/clear_instance_count.md")]
     pub fn clear_instance_count_js(&mut self) {
         self.clear_instance_count();
+    }
+}
+
+// -----------------------------
+// Quad (WASM bindings)
+// -----------------------------
+fn js_to_f32x2(value: &JsValue) -> Result<[f32; 2], JsError> {
+    let v =
+        js_to_f32_vec(value).ok_or_else(|| JsError::new("Expected [x, y] array or typed array"))?;
+    if v.len() != 2 {
+        return Err(JsError::new("Expected [x, y] with exactly 2 numbers"));
+    }
+    Ok([v[0], v[1]])
+}
+
+#[wasm_bindgen]
+impl Quad {
+    #[wasm_bindgen(constructor)]
+    #[lsp_doc("docs/api/core/mesh/primitives/quad/new.md")]
+    pub fn new_js(min: &JsValue, max: &JsValue) -> Result<Quad, JsError> {
+        let min2 = js_to_f32x2(min)?;
+        let max2 = js_to_f32x2(max)?;
+        Ok(Quad::new(min2, max2))
+    }
+
+    #[wasm_bindgen(js_name = "getMesh")]
+    #[lsp_doc("docs/api/core/mesh/primitives/quad/get_mesh.md")]
+    pub fn get_mesh_js(&self) -> Mesh {
+        self.get_mesh()
     }
 }

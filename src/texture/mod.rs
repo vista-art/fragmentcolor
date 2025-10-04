@@ -1,3 +1,4 @@
+use crate::shader::uniform::UniformData;
 use std::sync::Arc;
 
 use lsp_doc::lsp_doc;
@@ -15,6 +16,8 @@ pub use sampler::*;
 
 pub mod format;
 pub use format::*;
+
+mod platform;
 
 use crate::{RenderContext, Size};
 use image::{DynamicImage, GenericImageView};
@@ -71,6 +74,121 @@ impl From<&std::path::PathBuf> for TextureInput {
 impl From<&Texture> for TextureInput {
     fn from(t: &Texture) -> Self {
         TextureInput::CloneOf(t.clone())
+    }
+}
+
+#[cfg(wasm)]
+impl TryFrom<&wasm_bindgen::JsValue> for TextureInput {
+    type Error = crate::texture::error::TextureError;
+
+    fn try_from(value: &wasm_bindgen::JsValue) -> Result<Self, Self::Error> {
+        use js_sys::{Array, ArrayBuffer, Uint8Array, Uint8ClampedArray};
+        use wasm_bindgen::JsCast;
+
+        // Case: Uint8Array (fast path)
+        if let Some(u8a) = value.dyn_ref::<Uint8Array>() {
+            let mut bytes = vec![0u8; u8a.length() as usize];
+            u8a.copy_to(&mut bytes[..]);
+            return Ok(TextureInput::Bytes(bytes));
+        }
+
+        // Case: Uint8ClampedArray (ImageData.data)
+        if let Some(u8c) = value.dyn_ref::<Uint8ClampedArray>() {
+            let mut bytes = vec![0u8; u8c.length() as usize];
+            u8c.copy_to(&mut bytes[..]);
+            return Ok(TextureInput::Bytes(bytes));
+        }
+
+        // Case: ArrayBuffer
+        if let Some(buf) = value.dyn_ref::<ArrayBuffer>() {
+            let u8a = Uint8Array::new(buf);
+            let mut bytes = vec![0u8; u8a.length() as usize];
+            u8a.copy_to(&mut bytes[..]);
+            return Ok(TextureInput::Bytes(bytes));
+        }
+
+        // Case: ImageData -> use its backing data (Uint8ClampedArray)
+        if let Some(image_data) = value.dyn_ref::<web_sys::ImageData>() {
+            let data = image_data.data();
+            let bytes = vec![0u8; data.len() as usize];
+
+            return Ok(TextureInput::Bytes(bytes));
+        }
+
+        // Case: HTMLCanvasElement -> raw pixel bytes via 2D context
+        if let Some(canvas) = value.dyn_ref::<web_sys::HtmlCanvasElement>()
+            && let Ok(Some(ctx_js)) = canvas.get_context("2d")
+            && let Ok(ctx) = ctx_js.dyn_into::<web_sys::CanvasRenderingContext2d>()
+        {
+            let width = canvas.width() as f64;
+            let height = canvas.height() as f64;
+            let img = ctx.get_image_data(0.0, 0.0, width, height)?;
+            let data = img.data();
+            let bytes = vec![0u8; data.len() as usize];
+
+            return Ok(TextureInput::Bytes(bytes));
+        }
+
+        // Case: OffscreenCanvas -> raw pixel bytes via 2D context
+        if let Some(canvas) = value.dyn_ref::<web_sys::OffscreenCanvas>()
+            && let Ok(Some(ctx_js)) = canvas.get_context("2d")
+            && let Ok(ctx) = ctx_js.dyn_into::<web_sys::OffscreenCanvasRenderingContext2d>()
+        {
+            let width = canvas.width() as f64;
+            let height = canvas.height() as f64;
+            let img = ctx.get_image_data(0.0, 0.0, width, height)?;
+            let data = img.data();
+            let bytes = vec![0u8; data.len() as usize];
+
+            return Ok(TextureInput::Bytes(bytes));
+        }
+
+        // Case: HTMLImageElement -> pass through as URL
+        if let Some(img) = value.dyn_ref::<web_sys::HtmlImageElement>() {
+            return Ok(TextureInput::Url(img.src()));
+        }
+
+        // Case: Plain JS Array of numbers
+        if Array::is_array(value) {
+            let arr = Array::from(value);
+            let len = arr.length();
+            let mut bytes = Vec::with_capacity(len as usize);
+            for i in 0..len {
+                let n = arr.get(i).as_f64().unwrap_or(0.0);
+                let n = if n.is_nan() { 0.0 } else { n };
+                let b = n.max(0.0).min(255.0) as u8;
+                bytes.push(b);
+            }
+            return Ok(TextureInput::Bytes(bytes));
+        }
+
+        // Case: String -> selector or URL
+        if let Some(s) = value.as_string() {
+            let url = if s.starts_with('#') || s.starts_with('.') {
+                if let Some(doc) = web_sys::window().and_then(|w| w.document()) {
+                    if let Ok(Some(elem)) = doc.query_selector(&s) {
+                        if let Some(img) = elem.dyn_ref::<web_sys::HtmlImageElement>() {
+                            img.src()
+                        } else if let Some(canvas) = elem.dyn_ref::<web_sys::HtmlCanvasElement>() {
+                            canvas.to_data_url().unwrap_or(s.clone())
+                        } else {
+                            s.clone()
+                        }
+                    } else {
+                        s.clone()
+                    }
+                } else {
+                    s.clone()
+                }
+            } else {
+                s.clone()
+            };
+            return Ok(TextureInput::Url(url));
+        }
+
+        Err(crate::texture::error::TextureError::Error(
+            "Unsupported input for TextureInput".into(),
+        ))
     }
 }
 
@@ -163,11 +281,11 @@ impl TextureMeta {
 }
 
 // UniformData conversion: allow shader.set("key", &Texture)
-impl From<&Texture> for crate::shader::uniform::UniformData {
+impl From<&Texture> for UniformData {
     fn from(texture: &Texture) -> Self {
         // Provide a placeholder meta; storage.update will merge with shader-parsed meta at set time.
         let meta = TextureMeta::with_id_only(texture.id);
-        crate::shader::uniform::UniformData::Texture(meta)
+        UniformData::Texture(meta)
     }
 }
 
@@ -181,62 +299,7 @@ pub(crate) struct TextureObject {
     pub(crate) usage: wgpu::TextureUsages,
 }
 
-// @TODO move to its own file for consistency with other modules
-#[cfg(python)]
-mod python_bindings {
-    use super::*;
-
-    #[pymethods]
-    impl Texture {
-        /// Python property: size -> returns a Size object
-        #[getter]
-        #[pyo3(name = "size")]
-        pub fn size_prop(&self) -> crate::Size {
-            self.size()
-        }
-
-        /// Python method: aspect() -> f32
-        #[pyo3(name = "aspect")]
-        pub fn aspect_py(&self) -> f32 {
-            self.aspect()
-        }
-
-        /// Accepts a dict with keys repeat_x, repeat_y, smooth, compare
-        #[pyo3(name = "set_sampler_options")]
-        pub fn set_sampler_options_py(
-            &self,
-            options: pyo3::Py<pyo3::types::PyAny>,
-        ) -> pyo3::PyResult<()> {
-            pyo3::Python::attach(|py| -> pyo3::PyResult<()> {
-                let any = options.bind(py);
-                let opts = if let Ok(d) = any.downcast::<pyo3::types::PyDict>() {
-                    let mut o = SamplerOptions::default();
-                    if let Some(v) = d.get_item("repeat_x")? {
-                        o.repeat_x = v.extract()?;
-                    }
-                    if let Some(v) = d.get_item("repeat_y")? {
-                        o.repeat_y = v.extract()?;
-                    }
-                    if let Some(v) = d.get_item("smooth")? {
-                        o.smooth = v.extract()?;
-                    }
-                    if let Some(v) = d.get_item("compare")? {
-                        if v.is_none() {
-                            o.compare = None;
-                        } else {
-                            o.compare = Some(v.extract()?);
-                        }
-                    }
-                    o
-                } else {
-                    any.extract::<SamplerOptions>()?
-                };
-                self.set_sampler_options(opts);
-                Ok(())
-            })
-        }
-    }
-}
+// platform-specific bindings live under texture/platform/{python,web}.rs
 
 impl TextureObject {
     /// Create a texture with an explicit usage mask (e.g., storage textures)
@@ -619,6 +682,9 @@ fn bytes_per_pixel(format: wgpu::TextureFormat) -> u32 {
         _ => 4,
     }
 }
+
+#[cfg(wasm)]
+crate::impl_js_bridge!(Texture, TextureError);
 
 #[cfg(test)]
 mod tests {

@@ -21,7 +21,7 @@ pub use constants::*;
 pub(crate) mod uniform;
 pub(crate) use uniform::*;
 
-mod features;
+mod glsl;
 mod input;
 mod platform;
 mod storage;
@@ -41,7 +41,7 @@ pub struct Shader {
 
 impl Default for Shader {
     fn default() -> Self {
-        Self::new(DEFAULT_SHADER).expect("failed to create default shader")
+        Self::new(DEFAULT_SHADER).expect("SAFETY: DEFAULT_SHADER is built-in")
     }
 }
 
@@ -147,7 +147,7 @@ pub(crate) struct ShaderObject {
 
 impl Default for ShaderObject {
     fn default() -> Self {
-        Self::new(DEFAULT_SHADER).expect("failed to create default shader object")
+        Self::new(DEFAULT_SHADER).expect("SAFETY: DEFAULT_SHADER is a known-good built-in")
     }
 }
 

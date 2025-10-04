@@ -37,7 +37,7 @@ impl Target for WindowTarget {
         self.surface.configure(&self.context.device, &self.config);
     }
 
-    #[lsp_doc("docs/api/core/target/get_current_frame.md")]
+    #[lsp_doc("docs/api/core/target/hidden/get_current_frame.md")]
     fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, wgpu::SurfaceError> {
         let frame = self.acquire_frame()?;
         Ok(Box::new(frame))

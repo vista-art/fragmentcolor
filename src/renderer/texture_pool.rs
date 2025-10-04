@@ -77,9 +77,10 @@ impl TexturePool {
 
     pub fn acquire(&mut self, device: &wgpu::Device, key: TextureKey) -> wgpu::Texture {
         // search best (any) matching entry (first fit)
-        if let Some(idx) = self.entries.iter().position(|(k, _)| *k == key) {
+        if let Some(idx) = self.entries.iter().position(|(k, _)| *k == key)
+            && let Some((_k, tex)) = self.entries.remove(idx)
+        {
             self.hits += 1;
-            let (_k, tex) = self.entries.remove(idx).expect("valid index");
             // move to MRU happens by pushing when we release; on acquire we just return it
             return tex;
         }
