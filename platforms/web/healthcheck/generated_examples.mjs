@@ -59,7 +59,6 @@ const EXAMPLES = [
   '../examples/core/shader/set.js',
   '../examples/core/shader/validate_mesh.js',
   '../examples/core/target/Target.js',
-  '../examples/core/target/get_current_frame.js',
   '../examples/core/target/get_image.js',
   '../examples/core/target/resize.js',
   '../examples/core/target/size.js',
@@ -90,13 +89,10 @@ function fq(rel){ return 'platforms.web.examples.' + rel.replace('../examples/',
     const head = `test ${name} ... `;
     try {
       globalThis.__HC.currentModule = name;
-      console.log(`[begin] module=${name}`);
       await import(rel);
-      console.log(`[end] module=${name} status=OK`);
       console.log(head + GREEN + 'OK' + RESET);
     } catch (e) {
       failed++;
-      console.log(`[end] module=${name} status=FAILED error=${e?.message || String(e)}]`);
       console.log(head + RED + 'FAILED' + RESET);
       console.error(e);
     } finally {

@@ -194,8 +194,11 @@ run_web() {
   fi
 
   ensure_playwright
-  # Pass skipTexture=1 by default to avoid running texture-target examples temporarily
-  if node "$ROOT_DIR/platforms/web/healthcheck/playwright.mjs" "http://localhost:$PORT/healthcheck/?skipTexture=1"; then
+  local hc_url="http://localhost:$PORT/healthcheck/"
+  if [ "${FC_HEALTHCHECK_VERBOSE:-0}" = "1" ]; then
+    hc_url="${hc_url}?verbose=1"
+  fi
+  if node "$ROOT_DIR/platforms/web/healthcheck/playwright.mjs" "$hc_url"; then
     cleanup
     trap - EXIT
     log_test_ok "$name"
@@ -213,9 +216,31 @@ main() {
   local passed=0; local failed=0; local total=0
   case "$mode" in
     py)
-      echo "running 1 test"
-      total=1
-      if run_py; then passed=$((passed+1)); else failed=$((failed+1)); fi
+      # Delegate per-test counting and summary to the Python runner.
+      # Capture detailed counts via environment so we can surface an accurate final line.
+      local sum_file
+      sum_file=$(mktemp -t fc_py_summary)
+      # Ensure aggregator must create the file; avoid empty-file success
+      rm -f "$sum_file" 2>/dev/null || true
+      export FC_PY_SUMMARY_PATH="$sum_file"
+      if run_py; then rc=0; else rc=$?; fi
+      if [ -s "$FC_PY_SUMMARY_PATH" ]; then
+        # shellcheck disable=SC1090
+        . "$FC_PY_SUMMARY_PATH"
+        if [ "${failed:-0}" -eq 0 ]; then
+          printf "\n✅ All tests passed!\n"
+        else
+          printf "\n❌ Some tests failed. See details above.\n"
+        fi
+      else
+        # Fallback if summary missing or empty (build failed before Python aggregator)
+        if [ "$rc" -eq 0 ]; then
+          printf "\n✅ All tests passed!\n"
+        else
+          printf "\n❌ Some tests failed. See details above.\n"
+        fi
+      fi
+      exit "$rc"
       ;;
     web)
       echo "running 1 test"
