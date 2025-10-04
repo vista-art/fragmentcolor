@@ -86,6 +86,19 @@ def run_all():
         'targets/window_target/resize.py',
         'targets/window_target/size.py',
     ]
+
+    # Announce test count and optionally prepare summary file
+    total = len(files)
+    print(f"running {total} tests")
+    summary_path = os.environ.get('FC_PY_SUMMARY_PATH')
+    if summary_path:
+        try:
+            with open(summary_path, 'w') as f:
+                f.write(f"total={total}\npassed=0\nfailed=0\n")
+        except Exception:
+            pass
+
+    passed = 0
     failed = 0
     for rel in files:
         name = 'platforms.python.examples.' + rel.replace('/', '.').removesuffix('.py')
@@ -94,13 +107,25 @@ def run_all():
         os.environ['FC_CURRENT_TEST'] = name
         try:
             runpy.run_path(str(base / rel), run_name='__main__')
+            passed += 1
             print(head + GREEN + 'OK' + RESET)
         except Exception:
             failed += 1
             print(head + RED + 'FAILED' + RESET)
             traceback.print_exc()
+
+    if summary_path:
+        try:
+            with open(summary_path, 'w') as f:
+                f.write(f"total={total}\npassed={passed}\nfailed={failed}\n")
+        except Exception:
+            pass
+
     if failed:
+        print(f"\n{RED}test result: FAILED{RESET}. {passed} passed; {failed} failed")
         raise SystemExit(1)
+    else:
+        print(f"\n{GREEN}test result: ok{RESET}. {passed} passed; {failed} failed")
 
 if __name__ == '__main__':
     run_all()
