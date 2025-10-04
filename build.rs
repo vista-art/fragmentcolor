@@ -76,6 +76,10 @@ fn set_build_env() {
 /// This process ensures that anything published in the website actually
 /// works in practice, and that the documentation is always up to date.
 fn generate_docs() {
+    if let Err(message) = enforce_no_panic_policy() {
+        panic!("{}", message);
+    }
+
     println!("\n🗺️ Generating API map...");
     let api_map = codegen::scan_api();
     codegen::export_api_map(&api_map);
@@ -101,6 +105,7 @@ fn generate_docs() {
     println!("✅ Website export done!\n");
 }
 
+include!("scripts/no_panics.rs");
 include!("scripts/codegen.rs");
 include!("scripts/convert.rs");
 include!("scripts/validation.rs");
