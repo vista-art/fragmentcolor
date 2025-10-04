@@ -17,7 +17,7 @@ let mut target = renderer.create_texture_target([64, 64]).await?;
 let shader = Shader::default();
 renderer.render(&shader, &target)?;
 
-let image = target.get_image().await;
+let image = target.get_image();
 
 # assert_eq!(image.len(), 64 * 64 * 4); // RGBA8
 # target.resize([128, 128]);

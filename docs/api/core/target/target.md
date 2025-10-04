@@ -48,7 +48,7 @@ let shader = Shader::default();
 renderer.render(&shader, &target)?;
 
 // Read back the rendered image (byte array of RGBA8 pixels)
-let image = target.get_image().await;
+let image = target.get_image();
 
 # assert_eq!(image.len(), 64 * 64 * 4);
 # Ok(())
