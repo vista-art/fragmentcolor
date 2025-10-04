@@ -66,7 +66,6 @@ def run_all():
         'core/shader/set.py',
         'core/shader/validate_mesh.py',
         'core/target/Target.py',
-        'core/target/get_current_frame.py',
         'core/target/get_image.py',
         'core/target/resize.py',
         'core/target/size.py',

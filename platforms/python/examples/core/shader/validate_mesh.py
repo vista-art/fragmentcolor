@@ -1,4 +1,4 @@
-from fragmentcolor import Shader, Pass, Mesh, Vertex
+from fragmentcolor import Shader, Pass, Mesh
 
 shader = Shader("""
 struct VOut { @builtin(position) pos: vec4<f32> };
@@ -14,9 +14,9 @@ rpass = Pass("p"); rpass.add_shader(shader)
 
 mesh = Mesh()
 mesh.add_vertices([
-  Vertex([-0.5, -0.5, 0.0]),
-  Vertex([ 0.5, -0.5, 0.0]),
-  Vertex([ 0.0,  0.5, 0.0]),
+  [-0.5, -0.5, 0.0],
+  [ 0.5, -0.5, 0.0],
+  [ 0.0,  0.5, 0.0],
 ])
 
 shader.validate_mesh(mesh); # Ok

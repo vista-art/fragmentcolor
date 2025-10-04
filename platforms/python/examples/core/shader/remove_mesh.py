@@ -1,4 +1,4 @@
-from fragmentcolor import Shader, Mesh, Vertex
+from fragmentcolor import Shader, Mesh
 
 shader = Shader("""
   struct VOut { @builtin(position) pos: vec4<f32> };
@@ -14,7 +14,7 @@ shader = Shader("""
 """)
 
 mesh = Mesh()
-mesh.add_vertex(Vertex([0.0, 0.0]))
+mesh.add_vertex([0.0, 0.0])
 shader.add_mesh(mesh)
 
 # Detach the mesh

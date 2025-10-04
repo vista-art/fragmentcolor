@@ -1,5 +1,5 @@
-from fragmentcolor import Mesh, Shader, Vertex
+from fragmentcolor import Mesh, Shader
 
 mesh = Mesh()
-mesh.add_vertex(Vertex([0.0, 0.0, 0.0]))
+mesh.add_vertex([0.0, 0.0, 0.0])
 shader = Shader.from_mesh(mesh)
