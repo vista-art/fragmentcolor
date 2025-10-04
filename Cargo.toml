@@ -24,8 +24,8 @@ python = ["pyo3", "numpy", "pollster"]
 winit = ["dep:winit", "pollster"]
 
 [dependencies]
-wgpu = { version = "26", features = ["glsl", "wgsl", "webgl", "naga-ir"] }
-naga = { version = "26", features = ["wgsl-in", "glsl-in"] }
+wgpu = { version = "27", features = ["glsl", "wgsl", "webgl", "naga-ir"] }
+naga = { version = "27", features = ["wgsl-in", "glsl-in"] }
 parking_lot = "0.12"
 derive-new = "0.7"
 thiserror = "2.0"
@@ -88,17 +88,23 @@ lsp_doc = "0.2"
 js-sys = "0.3"
 gloo-utils = { version = "0.2", features = ["serde"] }
 web-sys = { version = "0.3", features = [
-    'Document',
-    'Element',
+    'OffscreenCanvasRenderingContext2d',
+    'CanvasRenderingContext2d',
+    'WebGl2RenderingContext',
+    'WebGlRenderingContext',
     'HtmlCanvasElement',
+    'HtmlImageElement',
     'OffscreenCanvas',
-    'Window',
-    'EventTarget',
-    'Location',
-    'Request',
-    'RequestInit',
     'RequestMode',
+    'RequestInit',
+    'EventTarget',
+    'ImageData',
+    'Document',
+    'Location',
     'Response',
+    'Element',
+    'Request',
+    'Window',
 ] }
 
 [build-dependencies]
