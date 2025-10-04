@@ -29,6 +29,7 @@ fragmentcolor = "0.10.7"
 ```
 
 We also support JavaScript and Python:
+
 - JavaScript users, see: [README_JS.md](./README_JS.md)
 - Python users, see: [README_PY.md](./README_PY.md)
 
@@ -37,19 +38,21 @@ We also support JavaScript and Python:
 ### Rust
 
 ```rust
+# async fn run() -> Result<(), Box<dyn std::error::Error>> {
+
 use fragmentcolor::{Renderer, Shader, Pass, Frame};
-use pollster::block_on;
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    block_on(async {
-        // Initializes a renderer and a target (offscreen example here)
-        let renderer = Renderer::new();
-        let target = renderer.create_texture_target([800, 600]).await?;
+// Example window. We officially support winit.
+let window = fragmentcolor::headless_window(800, 600);
 
-        // You can pass the shader as a source string, file path, or URL:
-        let circle = Shader::new("./path/to/circle.wgsl")?;
-        let triangle = Shader::new("https://fragmentcolor.org/shaders/triangle.wgsl")?;
-        let wgsl = r#"
+// Initializes a renderer and a target compatible with the OS window.
+let renderer = Renderer::new();
+let target = renderer.create_target(&window).await?;
+
+// You can pass the shader as a source string, file path, or URL:
+let circle = Shader::new("./path/to/circle.wgsl")?;
+let triangle = Shader::new("https://fragmentcolor.org/shaders/triangle.wgsl")?;
+let wgsl = r#"
 struct VertexOutput {
     @builtin(position) coords: vec4<f32>,
 }
@@ -79,49 +82,73 @@ fn fs_main() -> @location(0) vec4<f32> {
     return vec4<f32>(my_struct.my_field, 1.0);
 }
 "#;
-        let mut shader = Shader::new(wgsl)?;
 
-        // The library binds and updates the uniforms automatically
-        shader.set("my_struct.my_field", [0.1f32, 0.8, 0.9])?;
-        shader.set("my_vec2", [1.0f32, 1.0])?;
+let mut shader = Shader::new(wgsl)?;
 
-        // One shader is all you need to render
-        renderer.render(&shader, &target)?;
+// The library binds and updates the uniforms automatically
+shader.set("my_struct.my_field", [0.1f32, 0.8, 0.9])?;
+shader.set("my_vec2", [1.0f32, 1.0])?;
 
-        // But you can also combine multiple shaders in a render Pass
-        let mut rpass = Pass::new("single pass");
-        rpass.add_shader(&circle);
-        rpass.add_shader(&triangle);
-        rpass.add_shader(&shader);
-        renderer.render(&rpass, &target)?;
+// One shader is all you need to render
+renderer.render(&shader, &target)?;
 
-        // Finally, you can combine multiple passes in a Frame
-        let mut frame = Frame::new();
-        frame.add_pass(rpass);
-        frame.add_pass(Pass::new("GUI pass"));
-        renderer.render(&frame, &target)?;
+// But you can also combine multiple shaders in a render Pass
+let mut rpass = Pass::new("single pass");
+rpass.add_shader(&circle);
+rpass.add_shader(&triangle);
+rpass.add_shader(&shader);
+renderer.render(&rpass, &target)?;
 
-        // To animate, simply update the uniforms in a loop
-        // (Pseudo-code)
-        // loop {
-        //     circle.set("position", [0.0f32, 0.0])?;
-        //     renderer.render(&frame, &target)?;
-        // }
+// You can build arbitrary multi-pass graphs by declaring Pass dependencies
+let mut blurx = Pass::new("blur x");
+blurx.add_shader(&Shader::new("./shaders/blur_x.wgsl")?);
+blurx.require(&rpass)?; // rpass renders before blurx
 
-        Ok(())
-    })
+// Finally, you can combine multiple passes linearly in a Frame
+let mut frame = Frame::new();
+frame.add_pass(rpass);
+frame.add_pass(Pass::new("GUI pass"));
+renderer.render(&frame, &target)?;
+
+// To animate, simply update the uniforms in a loop
+for i in 0..10 {
+    circle.set("position", [i, i])?;
+    renderer.render(&frame, &target)?;
 }
+
+# Ok(())
+# }
+# fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 ```
 
-### Rust (Desktop)
+### Running examples
 
-See the examples project under `examples/rust`:
+See the examples project under `examples/rust` for implementation details.
 
 ```bash
-cargo run -p fce --example circle
-cargo run -p fce --example triangle
-cargo run -p fce --example multiobject
-cargo run -p fce --example multipass
+> ./example
+
+Available FragmentColor examples:
+=================================
+ 1. app_healthcheck
+ 2. circle
+ 3. compute_texture
+ 4. fullscreen_triangle
+ 5. mesh_triangle
+ 6. mesh_two_textured_quads
+ 7. multiobject
+ 8. multipass
+ 9. multipass_shadows
+10. particles
+11. particles_1m
+12. particles_compute
+13. particles_splat
+14. particles_splat_3d
+15. push_constant_color
+16. texture
+17. triangle
+
+Enter example name, number, 'q'/'quit' to quit: 
 ```
 
 ## Documentation & website
@@ -242,9 +269,9 @@ let pass = Pass::from_shader("mesh", &shader);
 
 let mut mesh = Mesh::new();
 mesh.add_vertices([
-  Vertex::new([-0.5, -0.5, 0.0]),
-  Vertex::new([ 0.5, -0.5, 0.0]),
-  Vertex::new([ 0.0,  0.5, 0.0]),
+  [-0.5, -0.5, 0.0],
+  [ 0.5, -0.5, 0.0],
+  [ 0.0,  0.5, 0.0],
 ]);
 // Instance properties matched by name and type
 mesh.add_instance(Vertex::new([0.0, 0.0]).set("offset", [0.0, 0.0]));
