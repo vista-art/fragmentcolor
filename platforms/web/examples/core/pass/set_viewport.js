@@ -8,6 +8,6 @@ const shader = Shader.default();
 const pass = new Pass("clipped");
 pass.addShader(shader);
 
-pass.setViewport(Region.fromRegion(0, 0, 32, 32));
+pass.setViewport([0, 0, 32, 32]);
 
 renderer.render(pass, target);

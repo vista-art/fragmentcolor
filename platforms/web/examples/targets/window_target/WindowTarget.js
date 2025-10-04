@@ -1,8 +1,8 @@
 
-import { Renderer, Shader, Target } from "fragmentcolor";
+import { Renderer, Shader } from "fragmentcolor";
 
-// Use your platform's windowing system to create a window.;
-// We officially support Winit. Check the examples folder for details.;
+// Use your platform's windowing system to create a window.
+// We officially support Winit. Check the examples folder for details.
 const canvas = document.createElement('canvas');
 
 const renderer = new Renderer();

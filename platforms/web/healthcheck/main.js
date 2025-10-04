@@ -276,6 +276,8 @@ var<push_constant> pc: PC;
 });
 
 // Auto-generated: run all extracted examples (after init)
-await withModule(import('./generated_examples.mjs'));
+await withModule('platforms.web.healthcheck.generated_examples', async () => {
+  await import('./generated_examples.mjs');
+});
 
-console.log('Headless JS render completed successfully');
+console.log('✅ JS healthcheck finished');

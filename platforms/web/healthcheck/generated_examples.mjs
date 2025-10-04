@@ -82,7 +82,10 @@ const EXAMPLES = [
 
 function fq(rel){ return 'platforms.web.examples.' + rel.replace('../examples/','').replace(/\\.js$/, '').replaceAll('/', '.'); }
 (async () => {
+  const total = EXAMPLES.length;
+  let passed = 0;
   let failed = 0;
+  console.log(`running ${total} tests`);
   globalThis.__HC = globalThis.__HC || { currentModule: null };
   for (const rel of EXAMPLES) {
     const name = fq(rel);
@@ -90,6 +93,7 @@ function fq(rel){ return 'platforms.web.examples.' + rel.replace('../examples/',
     try {
       globalThis.__HC.currentModule = name;
       await import(rel);
+      passed++;
       console.log(head + GREEN + 'OK' + RESET);
     } catch (e) {
       failed++;
@@ -100,7 +104,7 @@ function fq(rel){ return 'platforms.web.examples.' + rel.replace('../examples/',
     }
   }
   if (failed === 0) {
-    console.log('Headless JS render completed successfully');
+    console.log(`\n✅ test result: ok. ${passed} passed; ${failed} failed`);
   } else {
     throw new Error(`${failed} JS examples failed`);
   }

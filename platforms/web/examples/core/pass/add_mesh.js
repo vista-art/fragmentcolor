@@ -1,7 +1,7 @@
-import { Pass, Shader, Mesh, Vertex } from "fragmentcolor";
+import { Pass, Shader, Mesh } from "fragmentcolor";
 
 const mesh = new Mesh();
-mesh.addVertex(Vertex.new([0.0, 0.0]));
+mesh.addVertex([0.0, 0.0]);
 
 const shader = new Shader(`
   struct VOut { @builtin(position) pos: vec4<f32> };

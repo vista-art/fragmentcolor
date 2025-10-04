@@ -1,4 +1,4 @@
-import { Shader, Mesh, Vertex } from "fragmentcolor";
+import { Shader, Mesh } from "fragmentcolor";
 
 const shader = new Shader(`
   struct VOut { @builtin(position) pos: vec4<f32> };
@@ -14,8 +14,8 @@ const shader = new Shader(`
 `);
 
 const mesh = new Mesh();
-mesh.addVertex(Vertex.new([0.0, 0.0]));
+mesh.addVertex([0.0, 0.0]);
 shader.addMesh(mesh);
 
-// Detach the mesh;
+// Detach the mesh
 shader.removeMesh(mesh);

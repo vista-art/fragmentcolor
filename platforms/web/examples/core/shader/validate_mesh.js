@@ -1,4 +1,4 @@
-import { Shader, Pass, Mesh, Vertex } from "fragmentcolor";
+import { Shader, Pass, Mesh } from "fragmentcolor";
 
 const shader = new Shader(`
 struct VOut { @builtin(position) pos: vec4<f32> };
@@ -13,10 +13,10 @@ struct VOut { @builtin(position) pos: vec4<f32> };
 const pass = new Pass("p"); pass.addShader(shader);
 
 const mesh = new Mesh();
-mesh.addVertices([;
-  Vertex.new([-0.5, -0.5, 0.0]),;
-  Vertex.new([ 0.5, -0.5, 0.0]),;
-  Vertex.new([ 0.0,  0.5, 0.0]),;
+mesh.addVertices([
+  [-0.5, -0.5, 0.0],
+  [ 0.5, -0.5, 0.0],
+  [ 0.0,  0.5, 0.0],
 ]);
 
 shader.validateMesh(mesh); // Ok;

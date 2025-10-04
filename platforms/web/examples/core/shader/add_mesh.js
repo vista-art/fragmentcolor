@@ -1,4 +1,4 @@
-import { Shader, Mesh, Vertex } from "fragmentcolor";
+import { Shader, Mesh } from "fragmentcolor";
 
 const shader = new Shader(`
   @vertex fn vs_main(@location(0) pos: vec3<f32>) -> @builtin(position) vec4<f32> {
@@ -9,12 +9,12 @@ const shader = new Shader(`
 `);
 
 const mesh = new Mesh();
-mesh.addVertex(Vertex.new([0.0, 0.0, 0.0]));
+mesh.addVertex([0.0, 0.0, 0.0]);
 
-// Attach mesh to this shader (errors if incompatible);
+// Attach mesh to this shader (errors if incompatible)
 shader.addMesh(mesh);
 
-// Renderer will draw the mesh when rendering this pass.;
-// Each Shader represents a RenderPipeline or ComputePipeline;
-// in the GPU. Adding multiple meshes to it will draw all meshes;
-// and all its instances in the same Pipeline.;
+// Renderer will draw the mesh when rendering this pass.
+// Each Shader represents a RenderPipeline or ComputePipeline
+// in the GPU. Adding multiple meshes to it will draw all meshes
+// and all its instances in the same Pipeline.
