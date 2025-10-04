@@ -26,8 +26,8 @@ In your WGSL, declare a sampler in the same group as your texture
 use fragmentcolor::{Renderer, Shader, Size};
 let renderer = Renderer::new();
 let shader = Shader::new(r#"
-@group(0) @binding(0) var t_tex: texture_2d<f32>;
-@group(0) @binding(1) var t_smp: sampler;
+@group(0) @binding(0) var my_texture: texture_2d<f32>;
+@group(0) @binding(1) var my_sampler: sampler;
 @vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
   let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.));
   return vec4f(p[i], 0., 1.);
@@ -39,8 +39,8 @@ let shader = Shader::new(r#"
 let pixels: &[u8] = &[255,255,255,255];
 let texture = renderer.create_texture_with_size(pixels, [1,1]).await?;
 
-shader.set("t_tex", &texture).unwrap();
-# _ = shader;
+// insert  the texture in the shader matching the name in the shader
+shader.set("my_texture", &texture)?;
 
 # _ = shader;
 # Ok(())
