@@ -501,7 +501,7 @@ code={`
 import { Renderer } from "fragmentcolor";
 const renderer = new Renderer();
 // Load encoded image bytes (PNG/JPEG) or use a file path
-const image = std.fs.read("logo.png");
+const image = "/healthcheck/public/favicon.png";
 const tex = await renderer.createTexture(image);
 `}
 lang="js"
@@ -681,7 +681,7 @@ lang="rust" meta="collapse={1-1, 6-9}"
 code={`
 import { Renderer, TextureFormat } from "fragmentcolor";
 const renderer = new Renderer();
-const image = std.fs.read("logo.png");
+const image = "/healthcheck/public/favicon.png";
 const tex = await renderer.createTextureWithFormat(image, TextureFormat.Rgba);
 `}
 lang="js"
@@ -773,7 +773,7 @@ const pixels = [
     255,0,0,255,   0,255,0,255,
     0,0,255,255,   255,255,255,255,
 ];
-const tex = await renderer.createTextureWith(pixels, Size.from([2, 2]));
+const tex = await renderer.createTextureWith(pixels, [2, 2]);
 `}
 lang="js"
 />
@@ -862,7 +862,7 @@ code={`
 import { Renderer, TextureFormat } from "fragmentcolor";
 
 const r = new Renderer();
-const tex = await r.createStorageTexture([64, 64], TextureFormat.Rgba, None);
+const tex = await r.createStorageTexture([64, 64], TextureFormat.Rgba, null);
 
 `}
 lang="js"
