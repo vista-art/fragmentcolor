@@ -7,12 +7,12 @@ Use this when driving instance data from a storage buffer and indexing via @buil
 ## Example
 
 ```rust
-use fragmentcolor::mesh::{Mesh, Vertex};
+use fragmentcolor::mesh::Mesh;
 let mut m = Mesh::new();
 m.add_vertices([
-    Vertex::new([-0.01, -0.01]),
-    Vertex::new([ 0.01, -0.01]),
-    Vertex::new([ 0.00,  0.01]),
+    [-0.01, -0.01],
+    [ 0.01, -0.01],
+    [ 0.00,  0.01],
 ]);
 // draw one million instances
 m.set_instance_count(1_000_000);

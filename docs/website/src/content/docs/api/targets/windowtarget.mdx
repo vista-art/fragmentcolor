@@ -52,10 +52,10 @@ lang="rust" meta="collapse={1-1, 14-18}"
 <Code
 code={`
 
-import { Renderer, Shader, Target } from "fragmentcolor";
+import { Renderer, Shader } from "fragmentcolor";
 
-// Use your platform's windowing system to create a window.;
-// We officially support Winit. Check the examples folder for details.;
+// Use your platform's windowing system to create a window.
+// We officially support Winit. Check the examples folder for details.
 const canvas = document.createElement('canvas');
 
 const renderer = new Renderer();
@@ -160,7 +160,7 @@ lang="rust" meta="collapse={1-1, 11-14}"
 <Code
 code={`
 
-import { Renderer, Target, Shader } from "fragmentcolor";
+import { Renderer, Shader } from "fragmentcolor";
 
 const renderer = new Renderer();
 const target = await renderer.createTextureTarget([16, 16]);

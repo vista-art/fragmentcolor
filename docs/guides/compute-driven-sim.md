@@ -129,9 +129,9 @@ let pass_fs = Pass::from_shader("render", &fs);
 // 6) Geometry: tiny triangle, drawn n instances via instance_index
 let mut mesh = Mesh::new();
 mesh.add_vertices([
-    Vertex::new([-0.01, -0.01]),
-    Vertex::new([ 0.01, -0.01]),
-    Vertex::new([ 0.00,  0.02]),
+    [-0.01, -0.01],
+    [ 0.01, -0.01],
+    [ 0.00,  0.02],
 ]);
 mesh.set_instance_count(n);
 pass_fs.add_mesh(&mesh)?;

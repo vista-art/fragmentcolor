@@ -6,7 +6,7 @@ Remove all meshes attached to this Shader.
 
 ```rust
 # fn main() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Shader, Mesh, Vertex};
+use fragmentcolor::{Shader, Mesh};
 
 let shader = Shader::new(r#"
   struct VOut { @builtin(position) pos: vec4<f32> };
@@ -21,7 +21,7 @@ let shader = Shader::new(r#"
 "#)?;
 
 let mesh = Mesh::new();
-mesh.add_vertex(Vertex::new([0.0, 0.0]));
+mesh.add_vertex([0.0, 0.0]);
 shader.add_mesh(&mesh)?;
 
 // Clear all

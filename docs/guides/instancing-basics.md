@@ -45,9 +45,9 @@ let pass = Pass::from_shader("instancing", &shader);
 // 3) One tiny triangle (shared by all instances)
 let mut mesh = Mesh::new();
 mesh.add_vertices([
-    Vertex::new([-0.05, -0.05, 0.0]),
-    Vertex::new([ 0.05, -0.05, 0.0]),
-    Vertex::new([ 0.00,  0.08, 0.0]),
+    [-0.05, -0.05, 0.0],
+    [ 0.05, -0.05, 0.0],
+    [ 0.00,  0.08, 0.0],
 ]);
 
 // 4) Two instances with different offsets and tints
@@ -72,17 +72,17 @@ assert_eq!(target.size().height, 64);
 # fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 ```
 
-What's happening under the hood
+## What's happening under the hood
 
 - The mesh provides one set of vertices (the triangle) plus a list of instances.
 - The shader declares which attributes it needs at each @location; FragmentColor validates and binds them.
 - At draw time, the GPU runs the vertex stage once per instance and composes pos + offset.
 
-Pitfalls / gotchas
+## Pitfalls / gotchas
 
 - Match your attribute names and types: here we used "offset" (vec2) and "tint" (vec4).
 - Locations must be unique; if you later add UVs or normals, pick different indices.
 
-Next steps
+## Next steps
 
 - Move on to uniforms-and-push-constants to parameterize your shader with simple values.

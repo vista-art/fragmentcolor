@@ -203,7 +203,7 @@ const shader = new Shader(\`
 
 \`);
 
-// Set the "resolution" uniform;
+// Set the "resolution" uniform
 shader.set("resolution", [800.0, 600.0]);
 const res = shader.get("resolution");
 
@@ -497,7 +497,7 @@ struct VOut { @builtin(position) pos: vec4<f32> };
 
 \`);
 
-// Set scalars/vectors on declared uniforms;
+// Set scalars/vectors on declared uniforms
 shader.set("resolution", [800.0, 600.0]);
 `}
 lang="js"
@@ -925,10 +925,10 @@ Because the default shader does not take any vertex inputs, it is compatible wit
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::{Mesh, Shader, Vertex};
+use fragmentcolor::{Mesh, Shader};
 
 let mut mesh = Mesh::new();
-mesh.add_vertex(Vertex::new([0.0, 0.0, 0.0]));
+mesh.add_vertex([0.0, 0.0, 0.0]);
 let shader = Shader::from_mesh(&mesh);
 
 let _ = shader;
@@ -941,10 +941,10 @@ lang="rust" meta="collapse={7-7}"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Mesh, Shader, Vertex } from "fragmentcolor";
+import { Mesh, Shader } from "fragmentcolor";
 
 const mesh = new Mesh();
-mesh.addVertex(Vertex.new([0.0, 0.0, 0.0]));
+mesh.addVertex([0.0, 0.0, 0.0]);
 const shader = Shader.fromMesh(mesh);
 
 `}
@@ -956,10 +956,10 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Mesh, Shader, Vertex
+from fragmentcolor import Mesh, Shader
 
 mesh = Mesh()
-mesh.add_vertex(Vertex([0.0, 0.0, 0.0]))
+mesh.add_vertex([0.0, 0.0, 0.0])
 shader = Shader.from_mesh(mesh)
 
 `}
@@ -1018,7 +1018,7 @@ Use Shader::validate_mesh for performing a compatibility check without attaching
 <Code
 code={`
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Shader, Mesh, Vertex};
+use fragmentcolor::{Shader, Mesh};
 
 let shader = Shader::new(r#"
   @vertex fn vs_main(@location(0) pos: vec3<f32>) -> @builtin(position) vec4<f32> {
@@ -1028,7 +1028,7 @@ let shader = Shader::new(r#"
 "#)?;
 
 let mesh = Mesh::new();
-mesh.add_vertex(Vertex::new([0.0, 0.0, 0.0]));
+mesh.add_vertex([0.0, 0.0, 0.0]);
 
 // Attach mesh to this shader (errors if incompatible)
 shader.add_mesh(&mesh)?;
@@ -1049,7 +1049,7 @@ lang="rust" meta="collapse={1-1, 22-23}"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Shader, Mesh, Vertex } from "fragmentcolor";
+import { Shader, Mesh } from "fragmentcolor";
 
 const shader = new Shader(\`
   @vertex fn vs_main(@location(0) pos: vec3<f32>) -> @builtin(position) vec4<f32> {
@@ -1060,15 +1060,15 @@ const shader = new Shader(\`
 \`);
 
 const mesh = new Mesh();
-mesh.addVertex(Vertex.new([0.0, 0.0, 0.0]));
+mesh.addVertex([0.0, 0.0, 0.0]);
 
-// Attach mesh to this shader (errors if incompatible);
+// Attach mesh to this shader (errors if incompatible)
 shader.addMesh(mesh);
 
-// Renderer will draw the mesh when rendering this pass.;
-// Each Shader represents a RenderPipeline or ComputePipeline;
-// in the GPU. Adding multiple meshes to it will draw all meshes;
-// and all its instances in the same Pipeline.;
+// Renderer will draw the mesh when rendering this pass.
+// Each Shader represents a RenderPipeline or ComputePipeline
+// in the GPU. Adding multiple meshes to it will draw all meshes
+// and all its instances in the same Pipeline.
 
 `}
 lang="js"
@@ -1079,7 +1079,7 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Shader, Mesh, Vertex
+from fragmentcolor import Shader, Mesh
 
 shader = Shader("""
   @vertex fn vs_main(@location(0) pos: vec3<f32>) -> @builtin(position) vec4<f32> {
@@ -1090,7 +1090,7 @@ shader = Shader("""
 """)
 
 mesh = Mesh()
-mesh.add_vertex(Vertex([0.0, 0.0, 0.0]))
+mesh.add_vertex([0.0, 0.0, 0.0])
 
 # Attach mesh to this shader (errors if incompatible)
 shader.add_mesh(mesh)
@@ -1148,7 +1148,7 @@ If the Mesh is attached multiple times, removes the first match.
 <Code
 code={`
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Shader, Mesh, Vertex};
+use fragmentcolor::{Shader, Mesh};
 
 let shader = Shader::new(r#"
   struct VOut { @builtin(position) pos: vec4<f32> };
@@ -1163,7 +1163,7 @@ let shader = Shader::new(r#"
 "#)?;
 
 let mesh = Mesh::new();
-mesh.add_vertex(Vertex::new([0.0, 0.0]));
+mesh.add_vertex([0.0, 0.0]);
 shader.add_mesh(&mesh)?;
 
 // Detach the mesh
@@ -1179,7 +1179,7 @@ lang="rust" meta="collapse={1-1, 22-23}"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Shader, Mesh, Vertex } from "fragmentcolor";
+import { Shader, Mesh } from "fragmentcolor";
 
 const shader = new Shader(\`
   struct VOut { @builtin(position) pos: vec4<f32> };
@@ -1195,10 +1195,10 @@ const shader = new Shader(\`
 \`);
 
 const mesh = new Mesh();
-mesh.addVertex(Vertex.new([0.0, 0.0]));
+mesh.addVertex([0.0, 0.0]);
 shader.addMesh(mesh);
 
-// Detach the mesh;
+// Detach the mesh
 shader.removeMesh(mesh);
 `}
 lang="js"
@@ -1209,7 +1209,7 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Shader, Mesh, Vertex
+from fragmentcolor import Shader, Mesh
 
 shader = Shader("""
   struct VOut { @builtin(position) pos: vec4<f32> };
@@ -1225,7 +1225,7 @@ shader = Shader("""
 """)
 
 mesh = Mesh()
-mesh.add_vertex(Vertex([0.0, 0.0]))
+mesh.add_vertex([0.0, 0.0])
 shader.add_mesh(mesh)
 
 # Detach the mesh
@@ -1277,7 +1277,7 @@ Remove multiple meshes from this Shader.
 <Code
 code={`
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Shader, Mesh, Vertex};
+use fragmentcolor::{Shader, Mesh};
 
 let shader = Shader::new(r#"
   struct VOut { @builtin(position) pos: vec4<f32> };
@@ -1292,9 +1292,9 @@ let shader = Shader::new(r#"
 "#)?;
 
 let m1 = Mesh::new();
-m1.add_vertex(Vertex::new([0.0, 0.0]));
+m1.add_vertex([0.0, 0.0]);
 let m2 = Mesh::new();
-m2.add_vertex(Vertex::new([0.5, 0.0]));
+m2.add_vertex([0.5, 0.0]);
 
 shader.add_mesh(&m1)?;
 shader.add_mesh(&m2)?;
@@ -1311,7 +1311,7 @@ lang="rust" meta="collapse={1-1, 25-26}"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Shader, Mesh, Vertex } from "fragmentcolor";
+import { Shader, Mesh } from "fragmentcolor";
 
 const shader = new Shader(\`
   struct VOut { @builtin(position) pos: vec4<f32> };
@@ -1327,9 +1327,9 @@ const shader = new Shader(\`
 \`);
 
 const m1 = new Mesh();
-m1.addVertex(Vertex.new([0.0, 0.0]));
+m1.addVertex([0.0, 0.0]);
 const m2 = new Mesh();
-m2.addVertex(Vertex.new([0.5, 0.0]));
+m2.addVertex([0.5, 0.0]);
 
 shader.addMesh(m1);
 shader.addMesh(m2);
@@ -1344,7 +1344,7 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Shader, Mesh, Vertex
+from fragmentcolor import Shader, Mesh
 
 shader = Shader("""
   struct VOut { @builtin(position) pos: vec4<f32> };
@@ -1360,9 +1360,9 @@ shader = Shader("""
 """)
 
 m1 = Mesh()
-m1.add_vertex(Vertex([0.0, 0.0]))
+m1.add_vertex([0.0, 0.0])
 m2 = Mesh()
-m2.add_vertex(Vertex([0.5, 0.0]))
+m2.add_vertex([0.5, 0.0])
 
 shader.add_mesh(m1)
 shader.add_mesh(m2)
@@ -1415,7 +1415,7 @@ Remove all meshes attached to this Shader.
 <Code
 code={`
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Shader, Mesh, Vertex};
+use fragmentcolor::{Shader, Mesh};
 
 let shader = Shader::new(r#"
   struct VOut { @builtin(position) pos: vec4<f32> };
@@ -1430,7 +1430,7 @@ let shader = Shader::new(r#"
 "#)?;
 
 let mesh = Mesh::new();
-mesh.add_vertex(Vertex::new([0.0, 0.0]));
+mesh.add_vertex([0.0, 0.0]);
 shader.add_mesh(&mesh)?;
 
 // Clear all
@@ -1446,7 +1446,7 @@ lang="rust" meta="collapse={1-1, 22-23}"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Shader, Mesh, Vertex } from "fragmentcolor";
+import { Shader, Mesh } from "fragmentcolor";
 
 const shader = new Shader(\`
   struct VOut { @builtin(position) pos: vec4<f32> };
@@ -1462,10 +1462,10 @@ const shader = new Shader(\`
 \`);
 
 const mesh = new Mesh();
-mesh.addVertex(Vertex.new([0.0, 0.0]));
+mesh.addVertex([0.0, 0.0]);
 shader.addMesh(mesh);
 
-// Clear all;
+// Clear all
 shader.clearMeshes();
 `}
 lang="js"
@@ -1476,7 +1476,7 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Shader, Mesh, Vertex
+from fragmentcolor import Shader, Mesh
 
 shader = Shader("""
   struct VOut { @builtin(position) pos: vec4<f32> };
@@ -1492,7 +1492,7 @@ shader = Shader("""
 """)
 
 mesh = Mesh()
-mesh.add_vertex(Vertex([0.0, 0.0]))
+mesh.add_vertex([0.0, 0.0])
 shader.add_mesh(mesh)
 
 # Clear all
@@ -1557,7 +1557,7 @@ Validate that a Mesh is compatible with this Shader's vertex inputs.
 <Code
 code={`
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Shader, Pass, Mesh, Vertex};
+use fragmentcolor::{Shader, Pass, Mesh};
 
 let shader = Shader::new(r#"
 struct VOut { @builtin(position) pos: vec4<f32> };
@@ -1572,9 +1572,9 @@ let pass = Pass::from_shader("p", &shader);
 
 let mesh = Mesh::new();
 mesh.add_vertices([
-  Vertex::new([-0.5, -0.5, 0.0]),
-  Vertex::new([ 0.5, -0.5, 0.0]),
-  Vertex::new([ 0.0,  0.5, 0.0]),
+  [-0.5, -0.5, 0.0],
+  [ 0.5, -0.5, 0.0],
+  [ 0.0,  0.5, 0.0],
 ]);
 
 shader.validate_mesh(&mesh)?; // Ok
@@ -1591,7 +1591,7 @@ lang="rust" meta="collapse={1-1, 25-26}"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Shader, Pass, Mesh, Vertex } from "fragmentcolor";
+import { Shader, Pass, Mesh } from "fragmentcolor";
 
 const shader = new Shader(\`
 struct VOut { @builtin(position) pos: vec4<f32> };
@@ -1606,10 +1606,10 @@ struct VOut { @builtin(position) pos: vec4<f32> };
 const pass = new Pass("p"); pass.addShader(shader);
 
 const mesh = new Mesh();
-mesh.addVertices([;
-  Vertex.new([-0.5, -0.5, 0.0]),;
-  Vertex.new([ 0.5, -0.5, 0.0]),;
-  Vertex.new([ 0.0,  0.5, 0.0]),;
+mesh.addVertices([
+  [-0.5, -0.5, 0.0],
+  [ 0.5, -0.5, 0.0],
+  [ 0.0,  0.5, 0.0],
 ]);
 
 shader.validateMesh(mesh); // Ok;
@@ -1624,7 +1624,7 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Shader, Pass, Mesh, Vertex
+from fragmentcolor import Shader, Pass, Mesh
 
 shader = Shader("""
 struct VOut { @builtin(position) pos: vec4<f32> };
@@ -1640,9 +1640,9 @@ rpass = Pass("p"); rpass.add_shader(shader)
 
 mesh = Mesh()
 mesh.add_vertices([
-  Vertex([-0.5, -0.5, 0.0]),
-  Vertex([ 0.5, -0.5, 0.0]),
-  Vertex([ 0.0,  0.5, 0.0]),
+  [-0.5, -0.5, 0.0],
+  [ 0.5, -0.5, 0.0],
+  [ 0.0,  0.5, 0.0],
 ])
 
 shader.validate_mesh(mesh); # Ok
@@ -1726,7 +1726,7 @@ fn cs_main() { }
 
 \`);
 
-// Call the method;
+// Call the method
 const is_compute = shader.isCompute();
 
 `}

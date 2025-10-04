@@ -15,7 +15,7 @@ Use Shader::validate_mesh for performing a compatibility check without attaching
 
 ```rust
 # fn main() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Shader, Mesh, Vertex};
+use fragmentcolor::{Shader, Mesh};
 
 let shader = Shader::new(r#"
   @vertex fn vs_main(@location(0) pos: vec3<f32>) -> @builtin(position) vec4<f32> {
@@ -25,7 +25,7 @@ let shader = Shader::new(r#"
 "#)?;
 
 let mesh = Mesh::new();
-mesh.add_vertex(Vertex::new([0.0, 0.0, 0.0]));
+mesh.add_vertex([0.0, 0.0, 0.0]);
 
 // Attach mesh to this shader (errors if incompatible)
 shader.add_mesh(&mesh)?;
