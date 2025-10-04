@@ -18,7 +18,7 @@ let shader = Shader::default();
 let mut pass = Pass::new("clipped");
 pass.add_shader(&shader);
 
-pass.set_viewport(Region::from_region(0, 0, 32, 32));
+pass.set_viewport(Region::new(0, 0, 32, 32));
 
 renderer.render(&pass, &target)?;
 

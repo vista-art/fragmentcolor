@@ -78,9 +78,9 @@ shader.set("particles", &blob[..])?; // upload once; draw can reuse
 // 4) Base mesh: one tiny triangle; we’ll draw it n times via instance_index
 let mut mesh = Mesh::new();
 mesh.add_vertices([
-    Vertex::new([-0.01, -0.01]),
-    Vertex::new([ 0.01, -0.01]),
-    Vertex::new([ 0.00,  0.02]),
+    [-0.01, -0.01],
+    [ 0.01, -0.01],
+    [ 0.00,  0.02],
 ]);
 mesh.set_instance_count(n);
 

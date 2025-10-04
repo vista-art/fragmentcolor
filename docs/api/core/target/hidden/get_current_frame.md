@@ -1,4 +1,4 @@
-# get_current_frame() -> TargetFrame
+# Target::get_current_frame() -> TargetFrame
 
 Returns a frame wrapper containing the texture view to render and the target format.
 
@@ -13,7 +13,9 @@ use fragmentcolor::{Renderer, Target};
 
 let renderer = Renderer::new();
 let target = renderer.create_texture_target([16, 16]).await?;
-let frame = target.get_current_frame()?; // Acquire a frame, internal usage
+let frame = target.get_current_frame()?;
+let format = frame.format();
+# _ = format;
 
 # Ok(())
 # }

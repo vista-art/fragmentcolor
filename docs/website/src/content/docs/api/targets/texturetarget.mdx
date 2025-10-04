@@ -32,7 +32,7 @@ let mut target = renderer.create_texture_target([64, 64]).await?;
 let shader = Shader::default();
 renderer.render(&shader, &target)?;
 
-let image = target.get_image();
+let image = target.get_image().await;
 
 assert_eq!(image.len(), 64 * 64 * 4); // RGBA8
 target.resize([128, 128]);
@@ -51,7 +51,7 @@ lang="rust" meta="collapse={1-1, 13-19}"
 <Code
 code={`
 
-import { Renderer, Shader, Target } from "fragmentcolor";
+import { Renderer, Shader } from "fragmentcolor";
 
 const renderer = new Renderer();
 const target = await renderer.createTextureTarget([64, 64]);
@@ -59,7 +59,7 @@ const target = await renderer.createTextureTarget([64, 64]);
 const shader = Shader.default();
 renderer.render(shader, target);
 
-const image = target.getImage();
+const image = target.getImage().await;
 
 `}
 lang="js"
@@ -79,7 +79,7 @@ target = renderer.create_texture_target([64, 64])
 shader = Shader.default()
 renderer.render(shader, target)
 
-image = target.get_image()
+image = target.get_image().await
 
 `}
 lang="python"
@@ -138,7 +138,7 @@ let renderer = Renderer::new();
 let target = renderer.create_texture_target([16, 16]).await?;
 renderer.render(&Shader::default(), &target)?;
 
-let image = target.get_image();
+let image = target.get_image().await;
 
 Ok(())
 }
@@ -152,14 +152,14 @@ lang="rust" meta="collapse={3-3, 11-13}"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Renderer, Target, Shader } from "fragmentcolor";
+import { Renderer, Shader } from "fragmentcolor";
 
 
 const renderer = new Renderer();
 const target = await renderer.createTextureTarget([16, 16]);
 renderer.render(new Shader(""), target);
 
-const image = target.getImage();
+const image = target.getImage().await;
 
 `}
 lang="js"
@@ -178,7 +178,7 @@ renderer = Renderer()
 target = renderer.create_texture_target([16, 16])
 renderer.render(Shader(""), target)
 
-image = target.get_image()
+image = target.get_image().await
 
 `}
 lang="python"

@@ -17,10 +17,10 @@ Because the default shader does not take any vertex inputs, it is compatible wit
 ## Example
 
 ```rust
-use fragmentcolor::{Mesh, Shader, Vertex};
+use fragmentcolor::{Mesh, Shader};
 
 let mut mesh = Mesh::new();
-mesh.add_vertex(Vertex::new([0.0, 0.0, 0.0]));
+mesh.add_vertex([0.0, 0.0, 0.0]);
 let shader = Shader::from_mesh(&mesh);
 
 # let _ = shader;

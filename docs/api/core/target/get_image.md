@@ -13,7 +13,7 @@ let renderer = Renderer::new();
 let target = renderer.create_texture_target([16, 16]).await?;
 renderer.render(&Shader::default(), &target)?;
 
-let image = target.get_image();
+let image = target.get_image().await;
 
 # assert_eq!(image.len(), 16 * 16 * 4); // RGBA8
 # Ok(())

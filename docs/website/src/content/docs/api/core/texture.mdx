@@ -63,7 +63,7 @@ lang="rust" meta="collapse={1-1, 20-20, 22-25}"
 <Code
 code={`
 
-import { Renderer, Shader, Size } from "fragmentcolor";
+import { Renderer, Shader } from "fragmentcolor";
 const renderer = new Renderer();
 const shader = new Shader(\`
 @group(0) @binding(0) var t_tex: texture_2d<f32>;
@@ -76,7 +76,7 @@ const shader = new Shader(\`
 
 \`);
 
-// 1x1 RGBA (white) raw pixel bytes;
+// 1x1 RGBA (white) raw pixel bytes
 const pixels = [255,255,255,255];
 const texture = await renderer.createTextureWithSize(pixels, [1,1]);
 
@@ -179,7 +179,7 @@ lang="rust" meta="collapse={1-1, 7-10}"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Renderer, Size } from "fragmentcolor";
+import { Renderer } from "fragmentcolor";
 const renderer = new Renderer();
 const pixels = [255,255,255,255];
 const tex = await renderer.createTextureWithSize(pixels, [1,1]);
@@ -268,10 +268,10 @@ lang="rust" meta="collapse={1-1, 11-14}"
 <Code
 code={`
 
-import { Renderer, Size } from "fragmentcolor";
+import { Renderer } from "fragmentcolor";
 
 const renderer = new Renderer();
-// 1x1 RGBA (white) raw pixel bytes;
+// 1x1 RGBA (white) raw pixel bytes
 const pixels = [255,255,255,255];
 const tex = await renderer.createTextureWithSize(pixels, [1, 1]);
 const a = tex.aspect();
@@ -347,14 +347,17 @@ use fragmentcolor::{Renderer, Size, SamplerOptions};
 let renderer = Renderer::new();
 // 1x1 RGBA (white) raw pixel bytes
 let pixels: &[u8] = &[255,255,255,255];
-let tex = renderer.create_texture_with_size(pixels, [1,1]).await?;
+
+let texture = renderer.create_texture_with_size(pixels, [1,1]).await?;
 let opts = SamplerOptions { repeat_x: true, repeat_y: true, smooth: true, compare: None };
-tex.set_sampler_options(opts);
+texture.set_sampler_options(opts);
+
+
 Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 9-11}"
+lang="rust" meta="collapse={1-1, 12-14}"
 />
 
 </TabItem>
@@ -362,13 +365,16 @@ lang="rust" meta="collapse={1-1, 9-11}"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Renderer, Size, SamplerOptions } from "fragmentcolor";
+import { Renderer } from "fragmentcolor";
 const renderer = new Renderer();
-// 1x1 RGBA (white) raw pixel bytes;
+// 1x1 RGBA (white) raw pixel bytes
 const pixels = [255,255,255,255];
-const tex = await renderer.createTextureWithSize(pixels, [1,1]);
+
+const texture = await renderer.createTextureWithSize(pixels, [1,1]);
 const opts = SamplerOptions { repeat_x: true, repeat_y: true, smooth: true, compare: None };
-tex.setSamplerOptions(opts);
+texture.setSamplerOptions(opts);
+
+
 `}
 lang="js"
 />
@@ -382,9 +388,12 @@ from fragmentcolor import Renderer
 renderer = Renderer()
 # 1x1 RGBA (white) raw pixel bytes
 pixels = [255,255,255,255]
-tex = renderer.create_texture_with_size(pixels, [1,1])
+
+texture = renderer.create_texture_with_size(pixels, [1,1])
 opts = {"repeat_x": True, "repeat_y": True, "smooth": True, "compare": None}
-tex.set_sampler_options(opts)
+texture.set_sampler_options(opts)
+
+
 `}
 lang="python"
 />

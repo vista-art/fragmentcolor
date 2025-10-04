@@ -12,10 +12,10 @@ If a Shader wasn't provided earlier, FragmentColor will create a default one.
 
 ```rust
 # fn main() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Pass, Shader, Mesh, Vertex};
+use fragmentcolor::{Pass, Shader, Mesh};
 
 let mesh = Mesh::new();
-mesh.add_vertex(Vertex::new([0.0, 0.0]));
+mesh.add_vertex([0.0, 0.0]);
 
 let shader = Shader::new(r#"
   struct VOut { @builtin(position) pos: vec4<f32> };

@@ -19,7 +19,7 @@ Validate that a Mesh is compatible with this Shader's vertex inputs.
 
 ```rust
 # fn main() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Shader, Pass, Mesh, Vertex};
+use fragmentcolor::{Shader, Pass, Mesh};
 
 let shader = Shader::new(r#"
 struct VOut { @builtin(position) pos: vec4<f32> };
@@ -34,9 +34,9 @@ let pass = Pass::from_shader("p", &shader);
 
 let mesh = Mesh::new();
 mesh.add_vertices([
-  Vertex::new([-0.5, -0.5, 0.0]),
-  Vertex::new([ 0.5, -0.5, 0.0]),
-  Vertex::new([ 0.0,  0.5, 0.0]),
+  [-0.5, -0.5, 0.0],
+  [ 0.5, -0.5, 0.0],
+  [ 0.0,  0.5, 0.0],
 ]);
 
 shader.validate_mesh(&mesh)?; // Ok

@@ -57,13 +57,13 @@ import { Renderer, Shader } from "fragmentcolor";
 
 const renderer = new Renderer();
 
-// Use your platform's windowing system to create a window.;
-// We officially support Winit. Check the examples folder for details.;
+// Use your platform's windowing system to create a window.
+// We officially support Winit. Check the examples folder for details.
 const canvas = document.createElement('canvas');
 
 const target = await renderer.createTarget(canvas);
 
-// To animate, render again in your event loop...;
+// To animate, render again in your event loop...
 renderer.render(new Shader(""), target);
 renderer.render(new Shader(""), target);
 
@@ -130,101 +130,6 @@ lang="text"
 
 ---
 
-### Target::get_current_frame() -&gt; TargetFrame
-
-Returns a frame wrapper containing the texture view to render and the target format.
-
-Most users do not need to call this directly; the [Renderer](/api/core/renderer) uses it internally.
-
-#### Example
-
-<Tabs>
-
-<TabItem label="Rust">
-<Code
-code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-
-use fragmentcolor::{Renderer, Target};
-
-let renderer = Renderer::new();
-let target = renderer.create_texture_target([16, 16]).await?;
-let frame = target.get_current_frame()?;
-let format = frame.format();
-_ = format;
-
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
-`}
-lang="rust" meta="collapse={1-1, 9-9, 11-13}"
-/>
-
-</TabItem>
-
-<TabItem label="JavaScript">
-<Code
-code={`
-
-import { Renderer, Target } from "fragmentcolor";
-
-const renderer = new Renderer();
-const target = await renderer.createTextureTarget([16, 16]);
-const frame = target.getCurrentFrame();
-const format = frame.format();
-
-`}
-lang="js"
-/>
-
-</TabItem>
-
-<TabItem label="Python">
-<Code
-code={`
-
-from fragmentcolor import Renderer
-
-renderer = Renderer()
-target = renderer.create_texture_target([16, 16])
-frame = target.get_current_frame()
-format = frame.format()
-
-`}
-lang="python"
-/>
-
-</TabItem>
-
-<TabItem label="Swift">
-<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
-<Code
-code={`
-// Swift placeholder â bindings WIP
-
-`}
-lang="text"
-/>
-
-</TabItem>
-
-<TabItem label="Kotlin">
-<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
-<Code
-code={`
-// Kotlin placeholder â bindings WIP
-
-`}
-lang="text"
-/>
-
-</TabItem>
-
-</Tabs>
-
-
----
-
 ### Target::get_image() -&gt; Vec&lt;u8&gt;
 
 Returns the current contents of the target as a byte array in RGBA8 format.
@@ -244,7 +149,7 @@ let renderer = Renderer::new();
 let target = renderer.create_texture_target([16, 16]).await?;
 renderer.render(&Shader::default(), &target)?;
 
-let image = target.get_image();
+let image = target.get_image().await;
 
 assert_eq!(image.len(), 16 * 16 * 4); // RGBA8
 Ok(())
@@ -260,13 +165,13 @@ lang="rust" meta="collapse={1-1, 11-14}"
 <Code
 code={`
 
-import { Shader, Renderer, Target } from "fragmentcolor";
+import { Shader, Renderer } from "fragmentcolor";
 
 const renderer = new Renderer();
 const target = await renderer.createTextureTarget([16, 16]);
 renderer.render(new Shader(""), target);
 
-const image = target.getImage();
+const image = target.getImage().await;
 
 `}
 lang="js"
@@ -285,7 +190,7 @@ renderer = Renderer()
 target = renderer.create_texture_target([16, 16])
 renderer.render(Shader(""), target)
 
-image = target.get_image()
+image = target.get_image().await
 
 `}
 lang="python"
@@ -357,7 +262,7 @@ lang="rust" meta="collapse={1-1, 10-14}"
 <Code
 code={`
 
-import { Renderer, Target } from "fragmentcolor";
+import { Renderer } from "fragmentcolor";
 
 const renderer = new Renderer();
 const target = await renderer.createTextureTarget([64, 32]);
@@ -458,7 +363,7 @@ lang="rust" meta="collapse={1-1, 12-21}"
 <Code
 code={`
 
-import { Renderer, Target } from "fragmentcolor";
+import { Renderer } from "fragmentcolor";
 
 const renderer = new Renderer();
 const target = await renderer.createTextureTarget([64, 32]);
