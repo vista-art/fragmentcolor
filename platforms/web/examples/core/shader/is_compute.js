@@ -6,5 +6,5 @@ fn cs_main() { }
 
 `);
 
-// Call the method;
+// Call the method
 const is_compute = shader.isCompute();

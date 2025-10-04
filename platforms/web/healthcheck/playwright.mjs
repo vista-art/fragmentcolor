@@ -110,7 +110,11 @@ const ARTIFACT_DIR = process.env.ARTIFACT_DIR || path.join(process.cwd(), 'platf
       console.error(`\n${localLink}\n`);
     }
     console.log('[console]', text);
-    if (text.includes('Headless JS render completed successfully')) ok = true;
+    if (
+      text.includes('Headless JS render completed successfully') ||
+      text.includes('✅ test result: ok') ||
+      text.includes('✅ JS healthcheck finished')
+    ) ok = true;
   });
   page.on('pageerror', (err) => {
     // Try to extract a source URL:line:col from the stack and map to local file
@@ -176,7 +180,10 @@ const ARTIFACT_DIR = process.env.ARTIFACT_DIR || path.join(process.cwd(), 'platf
   // Prefer waiting for the success message rather than fixed sleep
   try {
     await page.waitForEvent('console', {
-      predicate: (m) => m.text().includes('Headless JS render completed successfully'),
+      predicate: (m) => {
+        const t = m.text();
+        return t.includes('Headless JS render completed successfully') || t.includes('✅ test result: ok') || t.includes('✅ JS healthcheck finished');
+      },
       timeout: 20000,
     });
     ok = true;

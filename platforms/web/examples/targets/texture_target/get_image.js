@@ -1,4 +1,4 @@
-import { Renderer, Target, Shader } from "fragmentcolor";
+import { Renderer, Shader } from "fragmentcolor";
 
 
 const renderer = new Renderer();

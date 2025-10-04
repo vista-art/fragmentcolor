@@ -14,5 +14,5 @@ struct VOut { @builtin(position) pos: vec4<f32> };
 
 `);
 
-// Set scalars/vectors on declared uniforms;
+// Set scalars/vectors on declared uniforms
 shader.set("resolution", [800.0, 600.0]);

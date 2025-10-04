@@ -22,7 +22,7 @@ const shader = new Shader(`
 
 `);
 
-// Set the "resolution" uniform;
+// Set the "resolution" uniform
 shader.set("resolution", [800.0, 600.0]);
 const res = shader.get("resolution");
 

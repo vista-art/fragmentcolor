@@ -12,14 +12,14 @@ pass.addShader(shader);
 const pass2 = new Pass("Second Pass");
 pass2.addShader(shader);
 
-// standalone;
+// standalone
 renderer.render(pass, target);
 
-// using a Frame;
+// using a Frame
 const frame = new Frame();
 frame.addPass(pass);
 frame.addPass(pass2);
 renderer.render(frame, target);
 
-// vector of passes (consume them);
+// vector of passes (consume them)
 renderer.render([pass, pass2], target);

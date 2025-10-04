@@ -1,4 +1,4 @@
-import { Renderer, Size, TextureFormat } from "fragmentcolor";
+import { Renderer, TextureFormat } from "fragmentcolor";
 const renderer = new Renderer();
-const image = std.fs.read("logo.png");
+const image = "/healthcheck/public/favicon.png";
 const tex = await renderer.createTextureWithFormat(image, TextureFormat.Rgba);
