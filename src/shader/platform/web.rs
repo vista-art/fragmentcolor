@@ -30,6 +30,19 @@ impl Shader {
         }
     }
 
+    // Static helpers that mirror Rust API for the JS side
+    #[wasm_bindgen(js_name = "fromVertex")]
+    #[lsp_doc("docs/api/core/shader/from_vertex.md")]
+    pub fn from_vertex_js(v: &crate::mesh::Vertex) -> Self {
+        Self::from_vertex(v)
+    }
+
+    #[wasm_bindgen(js_name = "fromMesh")]
+    #[lsp_doc("docs/api/core/shader/from_mesh.md")]
+    pub fn from_mesh_js(m: &crate::mesh::Mesh) -> Self {
+        Self::from_mesh(m)
+    }
+
     #[wasm_bindgen(js_name = "set")]
     #[lsp_doc("docs/api/core/shader/set.md")]
     pub fn set_js(&self, key: &str, value: &JsValue) -> Result<(), ShaderError> {
@@ -91,6 +104,25 @@ impl Shader {
     #[lsp_doc("docs/api/core/shader/clear_meshes.md")]
     pub fn clear_meshes_js(&self) {
         self.clear_meshes()
+    }
+
+    // Instance helpers mirrored to JS
+    #[wasm_bindgen(js_name = "validateMesh")]
+    #[lsp_doc("docs/api/core/shader/validate_mesh.md")]
+    pub fn validate_mesh_js(&self, mesh: &crate::mesh::Mesh) -> Result<(), ShaderError> {
+        self.validate_mesh(mesh)
+    }
+
+    #[wasm_bindgen(js_name = "isCompute")]
+    #[lsp_doc("docs/api/core/shader/is_compute.md")]
+    pub fn is_compute_js(&self) -> bool {
+        self.is_compute()
+    }
+
+    // No-op Result::unwrap shim for transpiled examples that used Rust .unwrap()
+    #[wasm_bindgen(js_name = "unwrap")]
+    pub fn unwrap_js(&self) -> Self {
+        self.clone()
     }
 
     #[wasm_bindgen(js_name = "default")]

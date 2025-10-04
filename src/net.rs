@@ -64,7 +64,8 @@ pub async fn fetch_bytes(url: &str) -> Result<Vec<u8>, JsValue> {
         .await
         .map_err(|e| format!("{e:?}"))?;
     let u8 = Uint8Array::new(&buf);
-    let out = vec![0u8; u8.length() as usize];
+    let mut out = vec![0u8; u8.length() as usize];
+    u8.copy_to(&mut out[..]);
 
     Ok(out)
 }

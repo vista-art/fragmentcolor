@@ -69,8 +69,8 @@ struct ComputePipeline {
 }
 
 #[derive(Debug, Default)]
-#[cfg_attr(wasm, wasm_bindgen)]
 #[cfg_attr(python, pyclass)]
+#[cfg_attr(wasm, wasm_bindgen)]
 #[lsp_doc("docs/api/core/renderer/renderer.md")]
 pub struct Renderer {
     instance: RwLock<Option<Arc<wgpu::Instance>>>,
@@ -130,7 +130,6 @@ impl Renderer {
         // For offscreen texture targets on Web, force sample_count = 1 to avoid MSAA resolve issues.
         // Canvas targets may still use MSAA via the surface path.
         context.set_sample_count(1);
-        // Prefer RGBA8 format for offscreen targets so get_image() yields RGBA-ordered bytes.
         let texture = TextureTarget::new(context, size.into(), wgpu::TextureFormat::Rgba8Unorm);
 
         Ok(texture)
@@ -301,7 +300,10 @@ impl Renderer {
         let context = self.context(Some(&surface)).await?;
 
         let adapter = self.adapter.read();
-        let config = configure_surface(&context.device, adapter.as_ref().unwrap(), &surface, &size);
+        let adapter_ref = adapter
+            .as_ref()
+            .ok_or_else(|| InitializationError::Error("Adapter not set after context()".into()))?;
+        let config = configure_surface(&context.device, adapter_ref, &surface, &size);
 
         // Negotiate and store effective sample count (currently default wanted=1; configurable later)
         if let Some(adapter_ref) = adapter.as_ref() {
@@ -551,7 +553,10 @@ impl RenderContext {
             };
             _msaa_view = Some(texture.create_view(&wgpu::TextureViewDescriptor::default()));
             msaa_texture = Some(texture);
-            texture_view = _msaa_view.as_ref().unwrap();
+            texture_view = match _msaa_view.as_ref() {
+                Some(v) => v,
+                None => return Err(RendererError::Error("MSAA texture view missing".into())),
+            };
             resolve_target = Some(frame.view());
         }
 
@@ -1574,6 +1579,20 @@ fn create_bind_group_layouts(
                             count: None,
                         }
                     }
+                    // NEW UPSTREAM API !!! (good news)
+                    // @TODO figure out how this works; this is key for video textures from <video> elements
+                    naga::ImageClass::External => wgpu::BindGroupLayoutEntry {
+                        binding: uniform.binding,
+                        visibility: wgpu::ShaderStages::VERTEX
+                            | wgpu::ShaderStages::FRAGMENT
+                            | wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
                 }
             }
             UniformData::Sampler(info) => wgpu::BindGroupLayoutEntry {
@@ -2738,6 +2757,7 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,1.,0.,1.); }
                 }
             }
         }
+
         impl crate::Target for DummyTarget {
             fn size(&self) -> crate::Size {
                 self.size

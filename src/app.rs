@@ -278,7 +278,7 @@ impl App {
     /// Panics if called before the window is created (resumed()).
     pub fn primary_window_id(&self) -> WindowId {
         self.primary_window
-            .expect("primary_window_id() called before App resumed")
+            .expect("SAFETY: primary_window set during resumed(); call only after App resumes")
     }
 
     /// Backwards-compatible alias for examples; forwards to primary_window_id().
@@ -355,7 +355,8 @@ impl ApplicationHandler for App {
         if let Some(callback) = self.start_callback.take() {
             let result = callback(&*self, created.clone());
             if let Err(e) = result {
-                panic!("App startup failed: {}", e);
+                log::error!("App startup failed: {}", e);
+                event_loop.exit();
             }
         }
 

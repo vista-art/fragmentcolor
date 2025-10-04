@@ -6,8 +6,12 @@ use super::{Mesh, MeshObject, Vertex};
 #[cfg(python)]
 use pyo3::prelude::*;
 
-#[cfg_attr(python, pyclass)]
+#[cfg(wasm)]
+use wasm_bindgen::prelude::*;
+
 #[derive(Clone, Debug)]
+#[cfg_attr(python, pyclass)]
+#[cfg_attr(wasm, wasm_bindgen)]
 #[lsp_doc("docs/api/core/mesh/primitives/quad/quad.md")]
 pub struct Quad {
     object: Arc<MeshObject>,

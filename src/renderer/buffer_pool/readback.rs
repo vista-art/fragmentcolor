@@ -70,9 +70,10 @@ impl ReadbackBufferPool {
             }
         }
 
-        if let Some(idx) = best_index {
+        if let Some(idx) = best_index
             // Move to MRU position and return
-            let entry = self.entries.remove(idx).expect("valid index");
+            && let Some(entry) = self.entries.remove(idx)
+        {
             let buffer = entry.buffer.clone();
             self.entries.push_back(entry);
             self.hits += 1;

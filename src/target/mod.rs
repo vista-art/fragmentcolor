@@ -10,6 +10,10 @@ pub use headless::*;
 mod all;
 pub use all::*;
 
+mod platform;
+#[cfg(any(python, wasm))]
+pub use platform::*;
+
 use crate::size::Size;
 use lsp_doc::lsp_doc;
 

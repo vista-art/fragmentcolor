@@ -85,11 +85,11 @@ mod tests {
     fn delegates_for_window_variant_headless_fallback() {
         let r = crate::Renderer::new();
         let headless = crate::headless_window([10, 12]);
-        let any = pollster::block_on(r.create_target(headless)).expect("target");
+        let target = pollster::block_on(r.create_target(headless)).expect("target");
 
-        let s = any.size();
-        assert_eq!([s.width, s.height], [10, 12]);
-        let img = any.get_image();
-        assert_eq!(img.len() as u32, 10 * 12 * 4);
+        let size = target.size();
+        assert_eq!([size.width, size.height], [10, 12]);
+        let image = target.get_image();
+        assert_eq!(image.len() as u32, 10 * 12 * 4);
     }
 }

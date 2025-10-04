@@ -117,7 +117,7 @@ impl Pass {
     }
 
     #[lsp_doc("docs/api/core/pass/set_viewport.md")]
-    pub fn set_viewport(&self, viewport: Region) {
+    pub fn set_viewport(&self, viewport: impl Into<Region>) {
         self.object.set_viewport(viewport);
     }
 
@@ -157,8 +157,8 @@ impl Pass {
     }
 
     #[lsp_doc("docs/api/core/pass/require.md")]
-    pub fn require<R: Renderable>(&self, deps: &R) -> Result<(), PassError> {
-        let roots = deps.roots();
+    pub fn require<R: Renderable>(&self, dependencies: &R) -> Result<(), PassError> {
+        let roots = dependencies.roots();
         PassObject::add_dependencies_arc(&self.object, roots.iter().cloned().collect::<Vec<_>>())
     }
 }
@@ -170,6 +170,49 @@ impl Renderable for Pass {
     }
     fn roots(&self) -> Arc<[Arc<PassObject>]> {
         vec![self.object.clone()].into()
+    }
+}
+
+// Sequential lists: do not expand dependencies; return the listed passes in order.
+impl Renderable for &[Pass] {
+    fn passes(&self) -> Arc<[Arc<PassObject>]> {
+        let v: Vec<Arc<PassObject>> = self.iter().map(|pass| pass.object.clone()).collect();
+        v.into()
+    }
+}
+
+impl Renderable for Vec<Pass> {
+    fn passes(&self) -> Arc<[Arc<PassObject>]> {
+        let v: Vec<Arc<PassObject>> = self.iter().map(|pass| pass.object.clone()).collect();
+        v.into()
+    }
+}
+
+impl Renderable for &[&Pass] {
+    fn passes(&self) -> Arc<[Arc<PassObject>]> {
+        let v: Vec<Arc<PassObject>> = self.iter().map(|pass| pass.object.clone()).collect();
+        v.into()
+    }
+}
+
+impl Renderable for Vec<&Pass> {
+    fn passes(&self) -> Arc<[Arc<PassObject>]> {
+        let v: Vec<Arc<PassObject>> = self.iter().map(|pass| pass.object.clone()).collect();
+        v.into()
+    }
+}
+
+// Provide convenience for direct Arc containers if needed.
+impl Renderable for &[Arc<PassObject>] {
+    fn passes(&self) -> Arc<[Arc<PassObject>]> {
+        let v: Vec<Arc<PassObject>> = self.to_vec();
+        v.into()
+    }
+}
+
+impl Renderable for Vec<Arc<PassObject>> {
+    fn passes(&self) -> Arc<[Arc<PassObject>]> {
+        self.clone().into()
     }
 }
 
@@ -261,7 +304,7 @@ impl TryFrom<&crate::texture::Texture> for DepthTarget {
 }
 
 #[cfg(wasm)]
-crate::impl_js_bridge!(Pass, crate::pass::error::PassError);
+crate::impl_js_bridge!(Pass, PassError);
 
 static GRAPH_VERSION: AtomicU64 = AtomicU64::new(1);
 
@@ -363,8 +406,8 @@ impl PassObject {
         Err(PassError::NoCompatibleShader)
     }
 
-    pub fn set_viewport(&self, viewport: Region) {
-        *self.viewport.write() = Some(viewport);
+    pub fn set_viewport(&self, viewport: impl Into<Region>) {
+        *self.viewport.write() = Some(viewport.into());
     }
 
     pub fn is_compute(&self) -> bool {

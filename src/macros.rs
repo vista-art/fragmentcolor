@@ -120,6 +120,21 @@ macro_rules! impl_tryfrom_js_ref_anchor {
             fn try_from(value: &wasm_bindgen::JsValue) -> Result<Self, Self::Error> {
                 use js_sys::Reflect;
                 use wasm_bindgen::convert::RefFromWasmAbi;
+
+                // Runtime type guard using constructor.name equality to avoid requiring JsCast
+                let ctor = Reflect::get(value, &wasm_bindgen::JsValue::from_str("constructor"))
+                    .map_err(|_| <$err>::Error(format!("Missing constructor on {}", $name)))?;
+                let cname = Reflect::get(&ctor, &wasm_bindgen::JsValue::from_str("name"))
+                    .map_err(|_| <$err>::Error(format!("Missing constructor.name on {}", $name)))?
+                    .as_string()
+                    .ok_or_else(|| {
+                        <$err>::Error(format!("Invalid constructor.name for {}", $name))
+                    })?;
+                if cname != $name {
+                    return Err(<$err>::Error(format!("Type mismatch: expected {}", $name)));
+                }
+
+                // Safe to anchor now that the JS runtime class name matches
                 let key = wasm_bindgen::JsValue::from_str("__wbg_ptr");
                 let ptr = Reflect::get(value, &key)
                     .map_err(|_| <$err>::Error(format!("Missing __wbg_ptr on {}", $name)))?;

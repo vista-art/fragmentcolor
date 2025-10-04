@@ -86,10 +86,7 @@ impl Pass {
     pub fn add_target_py(&self, target: Py<PyAny>) -> Result<(), PyErr> {
         Python::attach(|py| -> Result<(), PyErr> {
             // Try TextureTarget wrapper first
-            if let Ok(bound) = target
-                .bind(py)
-                .downcast::<crate::renderer::platform::python::PyTextureTarget>()
-            {
+            if let Ok(bound) = target.bind(py).downcast::<crate::target::PyTextureTarget>() {
                 let tt = bound.borrow();
                 return self.add_target(&tt.inner).map_err(|e| e.into());
             }
@@ -114,10 +111,7 @@ impl Pass {
                 return self.add_depth_target(&*t).map_err(|e| e.into());
             }
             // Or a TextureTarget (if provided)
-            if let Ok(bound) = target
-                .bind(py)
-                .downcast::<crate::renderer::platform::python::PyTextureTarget>()
-            {
+            if let Ok(bound) = target.bind(py).downcast::<crate::target::PyTextureTarget>() {
                 let tt = bound.borrow();
                 return self.add_depth_target(&tt.inner).map_err(|e| e.into());
             }
@@ -138,7 +132,7 @@ impl Pass {
     pub fn require_py(&self, deps: Py<PyAny>) -> Result<(), PyErr> {
         Python::attach(|py| -> Result<(), PyErr> {
             let any = deps.bind(py);
-            let r = crate::renderer::platform::python::PyRenderable::from_any(any)?;
+            let r = crate::renderer::PyRenderable::from_any(any)?;
             self.require(&r).map_err(|e| e.into())
         })
     }

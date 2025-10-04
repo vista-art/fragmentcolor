@@ -29,9 +29,9 @@ pub use platform::python::PyVertexValue;
 
 use crate::{PassObject, Renderable, Shader};
 
-#[cfg_attr(wasm, wasm_bindgen)]
-#[cfg_attr(python, pyclass)]
 #[derive(Clone, Debug)]
+#[cfg_attr(python, pyclass)]
+#[cfg_attr(wasm, wasm_bindgen)]
 #[lsp_doc("docs/api/core/mesh/mesh.md")]
 pub struct Mesh {
     pub(crate) object: Arc<MeshObject>,
@@ -324,7 +324,10 @@ impl MeshObject {
             let mut bytes = Vec::new();
             let _stride = schema.as_ref().map(|s| s.stride).unwrap_or(0);
             for v in unique.iter() {
-                pack_vertex(&mut bytes, v, schema.as_ref().unwrap());
+                let Some(schema_ref) = schema.as_ref() else {
+                    return Err(MeshError::NoVertexSchema);
+                };
+                pack_vertex(&mut bytes, v, schema_ref);
             }
             *self.packed_verts.write() = bytes;
             *self.indices.write() = idx;
@@ -340,7 +343,10 @@ impl MeshObject {
             } else {
                 let mut bytes = Vec::new();
                 for ins in insts.iter() {
-                    pack_instance(&mut bytes, ins, schema.as_ref().unwrap())?;
+                    let Some(schema_ref) = schema.as_ref() else {
+                        return Err(MeshError::NoInstanceSchema);
+                    };
+                    pack_instance(&mut bytes, ins, schema_ref)?;
                 }
                 *self.packed_insts.write() = bytes;
                 *self.dirty_instances.write() = false;
@@ -436,10 +442,12 @@ impl MeshObject {
                 });
                 queue.write_buffer(&buf, 0, &pi);
                 (
-                    Some((
-                        buf,
-                        (pi.len() as u32) / (si.as_ref().unwrap().stride as u32),
-                    )),
+                    Some((buf, {
+                        let Some(schema_ref) = si.as_ref() else {
+                            return Err(MeshError::NoInstanceSchema);
+                        };
+                        (pi.len() as u32) / (schema_ref.stride as u32)
+                    })),
                     needed,
                 )
             } else {
@@ -470,7 +478,9 @@ impl MeshObject {
             }
         }
 
-        let g = gpu.as_ref().unwrap();
+        let Some(g) = gpu.as_ref() else {
+            return Err(MeshError::NoGpuStreams);
+        };
         let vertex_buffers = VertexBuffers {
             vertex_buffer: g.vertex_buffer.clone(),
             index_buffer: g.index_buffer.clone(),

@@ -4,6 +4,8 @@ use glam::Vec4;
 #[cfg(wasm)]
 use wasm_bindgen::prelude::*;
 
+pub mod error;
+
 #[cfg_attr(wasm, wasm_bindgen)]
 #[cfg_attr(python, pyo3::pyclass)]
 /// A region in 2D space designed to handle viewport and texture regions
@@ -50,7 +52,7 @@ impl From<(u32, u32)> for Region {
 impl From<&(u32, u32)> for Region {
     #[inline]
     fn from(size: &(u32, u32)) -> Self {
-        Region::from_tuple((*size).into())
+        Region::from_tuple(*size)
     }
 }
 
@@ -549,6 +551,138 @@ fn translate_region(
         r_max_y + trans_y,
     )
 }
+
+#[cfg(wasm)]
+impl TryFrom<&wasm_bindgen::JsValue> for Region {
+    type Error = crate::region::error::RegionError;
+
+    fn try_from(value: &wasm_bindgen::JsValue) -> Result<Self, Self::Error> {
+        use js_sys::{Array, Float32Array, Int32Array, Reflect, Uint32Array};
+        use wasm_bindgen::JsCast;
+
+        // Typed arrays: Uint32Array, Int32Array, Float32Array
+        if let Some(arr) = value.dyn_ref::<Uint32Array>() {
+            let len = arr.length();
+            if len == 2 {
+                let mut buf = [0u32; 2];
+                arr.copy_to(&mut buf);
+                return Ok(((buf[0], buf[1])).into());
+            }
+            if len == 4 {
+                let mut buf = [0u32; 4];
+                arr.copy_to(&mut buf);
+                return Ok(((buf[0], buf[1], buf[2], buf[3])).into());
+            }
+        }
+        if let Some(arr) = value.dyn_ref::<Int32Array>() {
+            let len = arr.length();
+            if len == 2 {
+                let mut buf = [0i32; 2];
+                arr.copy_to(&mut buf);
+                return Ok(((buf[0].max(0) as u32, buf[1].max(0) as u32)).into());
+            }
+            if len == 4 {
+                let mut buf = [0i32; 4];
+                arr.copy_to(&mut buf);
+                return Ok(((
+                    buf[0].max(0) as u32,
+                    buf[1].max(0) as u32,
+                    buf[2].max(0) as u32,
+                    buf[3].max(0) as u32,
+                ))
+                    .into());
+            }
+        }
+        if let Some(arr) = value.dyn_ref::<Float32Array>() {
+            let len = arr.length();
+            if len == 2 {
+                let mut buf = [0.0f32; 2];
+                arr.copy_to(&mut buf);
+                return Ok(((buf[0].max(0.0) as u32, buf[1].max(0.0) as u32)).into());
+            }
+            if len == 4 {
+                let mut buf = [0.0f32; 4];
+                arr.copy_to(&mut buf);
+                return Ok(((
+                    buf[0].max(0.0) as u32,
+                    buf[1].max(0.0) as u32,
+                    buf[2].max(0.0) as u32,
+                    buf[3].max(0.0) as u32,
+                ))
+                    .into());
+            }
+        }
+
+        // Array: [x,y,width,height] or [w,h]
+        if let Some(arr) = value.dyn_ref::<Array>() {
+            let len = arr.length();
+            let num = |i: u32| arr.get(i).as_f64().unwrap_or(0.0).max(0.0) as u32;
+            if len == 2 {
+                return Ok(((num(0), num(1))).into());
+            }
+            if len == 4 {
+                return Ok(((num(0), num(1), num(2), num(3))).into());
+            }
+        }
+
+        // Object: support DOMRect/Rect-like objects and min/max variants
+        if value.is_object() {
+            let x = Reflect::get(value, &wasm_bindgen::JsValue::from_str("x"))
+                .ok()
+                .and_then(|v| v.as_f64());
+            let y = Reflect::get(value, &wasm_bindgen::JsValue::from_str("y"))
+                .ok()
+                .and_then(|v| v.as_f64());
+            let w = Reflect::get(value, &wasm_bindgen::JsValue::from_str("width"))
+                .ok()
+                .and_then(|v| v.as_f64());
+            let h = Reflect::get(value, &wasm_bindgen::JsValue::from_str("height"))
+                .ok()
+                .and_then(|v| v.as_f64());
+
+            if let (Some(x), Some(y), Some(w), Some(h)) = (x, y, w, h) {
+                return Ok(((
+                    x.max(0.0) as u32,
+                    y.max(0.0) as u32,
+                    w.max(0.0) as u32,
+                    h.max(0.0) as u32,
+                ))
+                    .into());
+            }
+
+            // min/max variant: { minX, minY, maxX, maxY }
+            let min_x = Reflect::get(value, &wasm_bindgen::JsValue::from_str("minX"))
+                .ok()
+                .and_then(|v| v.as_f64());
+            let min_y = Reflect::get(value, &wasm_bindgen::JsValue::from_str("minY"))
+                .ok()
+                .and_then(|v| v.as_f64());
+            let max_x = Reflect::get(value, &wasm_bindgen::JsValue::from_str("maxX"))
+                .ok()
+                .and_then(|v| v.as_f64());
+            let max_y = Reflect::get(value, &wasm_bindgen::JsValue::from_str("maxY"))
+                .ok()
+                .and_then(|v| v.as_f64());
+
+            if let (Some(ax), Some(ay), Some(bx), Some(by)) = (min_x, min_y, max_x, max_y) {
+                let a = (ax.max(0.0) as u32, ay.max(0.0) as u32);
+                let b = (bx.max(0.0) as u32, by.max(0.0) as u32);
+                return Ok(((a, b)).into());
+            }
+        }
+
+        Err(crate::region::error::RegionError::TypeMismatch(
+            "Cannot convert JavaScript value to Region (expected [x,y,w,h], [w,h], or {x,y,width,height})".into(),
+        ))
+    }
+}
+
+#[cfg(wasm)]
+crate::impl_tryfrom_owned_via_ref!(
+    Region,
+    wasm_bindgen::JsValue,
+    crate::region::error::RegionError
+);
 
 #[cfg(test)]
 mod tests {
