@@ -536,7 +536,7 @@ mod website {
         }
         js_out.push_str("]\n\n");
         js_out.push_str("function fq(rel){ return 'platforms.web.examples.' + rel.replace('../examples/','').replace(/\\\\.js$/, '').replaceAll('/', '.'); }\n");
-        js_out.push_str("(async () => {\n  let failed = 0;\n  globalThis.__HC = globalThis.__HC || { currentModule: null };\n  for (const rel of EXAMPLES) {\n    const name = fq(rel);\n    const head = `test ${name} ... `;\n    try {\n      globalThis.__HC.currentModule = name;\n      console.log(`[begin] module=${name}`);\n      await import(rel);\n      console.log(`[end] module=${name} status=OK`);\n      console.log(head + GREEN + 'OK' + RESET);\n    } catch (e) {\n      failed++;\n      console.log(`[end] module=${name} status=FAILED error=${e?.message || String(e)}]`);\n      console.log(head + RED + 'FAILED' + RESET);\n      console.error(e);\n    } finally {\n      globalThis.__HC.currentModule = null;\n    }\n  }\n  if (failed === 0) {\n    console.log('Headless JS render completed successfully');\n  } else {\n    throw new Error(`${failed} JS examples failed`);\n  }\n})();\n");
+        js_out.push_str("(async () => {\n  const total = EXAMPLES.length;\n  let passed = 0;\n  let failed = 0;\n  console.log(`running ${total} tests`);\n  globalThis.__HC = globalThis.__HC || { currentModule: null };\n  for (const rel of EXAMPLES) {\n    const name = fq(rel);\n    const head = `test ${name} ... `;\n    try {\n      globalThis.__HC.currentModule = name;\n      await import(rel);\n      passed++;\n      console.log(head + GREEN + 'OK' + RESET);\n    } catch (e) {\n      failed++;\n      console.log(head + RED + 'FAILED' + RESET);\n      console.error(e);\n    } finally {\n      globalThis.__HC.currentModule = null;\n    }\n  }\n  if (failed === 0) {\n    console.log(`\\n✅ test result: ok. ${passed} passed; ${failed} failed`);\n  } else {\n    throw new Error(`${failed} JS examples failed`);\n  }\n})();\n");
         let _ = super::meta::write_if_changed(&js_path, &js_out);
 
         // Sort and write Python aggregator
@@ -558,6 +558,17 @@ mod website {
             py_out.push_str(&format!("        '{}',\n", rel_norm));
         }
         py_out.push_str("    ]\n");
+        py_out.push_str("\n    # Announce test count and optionally prepare summary file\n");
+        py_out.push_str("    total = len(files)\n");
+        py_out.push_str("    print(f\"running {total} tests\")\n");
+        py_out.push_str("    summary_path = os.environ.get('FC_PY_SUMMARY_PATH')\n");
+        py_out.push_str("    if summary_path:\n");
+        py_out.push_str("        try:\n");
+        py_out.push_str("            with open(summary_path, 'w') as f:\n");
+        py_out.push_str("                f.write(f\"total={total}\\npassed=0\\nfailed=0\\n\")\n");
+        py_out.push_str("        except Exception:\n");
+        py_out.push_str("            pass\n");
+        py_out.push_str("\n    passed = 0\n");
         py_out.push_str("    failed = 0\n");
         py_out.push_str("    for rel in files:\n");
         py_out.push_str("        name = 'platforms.python.examples.' + rel.replace('/', '.').removesuffix('.py')\n");
@@ -566,13 +577,23 @@ mod website {
         py_out.push_str("        os.environ['FC_CURRENT_TEST'] = name\n");
         py_out.push_str("        try:\n");
         py_out.push_str("            runpy.run_path(str(base / rel), run_name='__main__')\n");
+        py_out.push_str("            passed += 1\n");
         py_out.push_str("            print(head + GREEN + 'OK' + RESET)\n");
         py_out.push_str("        except Exception:\n");
         py_out.push_str("            failed += 1\n");
         py_out.push_str("            print(head + RED + 'FAILED' + RESET)\n");
         py_out.push_str("            traceback.print_exc()\n");
-        py_out.push_str("    if failed:\n");
+        py_out.push_str("\n    if summary_path:\n");
+        py_out.push_str("        try:\n");
+        py_out.push_str("            with open(summary_path, 'w') as f:\n");
+        py_out.push_str("                f.write(f\"total={total}\\npassed={passed}\\nfailed={failed}\\n\")\n");
+        py_out.push_str("        except Exception:\n");
+        py_out.push_str("            pass\n");
+        py_out.push_str("\n    if failed:\n");
+        py_out.push_str("        print(f\"\\n{RED}test result: FAILED{RESET}. {passed} passed; {failed} failed\")\n");
         py_out.push_str("        raise SystemExit(1)\n");
+        py_out.push_str("    else:\n");
+        py_out.push_str("        print(f\"\\n{GREEN}test result: ok{RESET}. {passed} passed; {failed} failed\")\n");
         py_out.push_str("\nif __name__ == '__main__':\n    run_all()\n");
         let _ = super::meta::write_if_changed(&py_path, &py_out);
     }

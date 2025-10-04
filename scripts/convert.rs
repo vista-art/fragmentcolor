@@ -1,4 +1,6 @@
 mod convert {
+    use crate::{js_objectize_sampleroptions_literal, js_region_new_to_array, simplify_js_size_from};
+
     #[derive(Copy, Clone, Debug)]
     enum Lang {
         Js,
@@ -104,11 +106,30 @@ mod convert {
         if t.is_empty() {
             return String::new();
         }
+        // If it already ends with a semicolon, keep as-is
         if t.ends_with(';') {
-            s.to_string()
-        } else {
-            format!("{};", s)
+            return s.to_string();
         }
+        // Do not append semicolons to lines that are clearly mid-expression
+        // Common multi-line JS patterns we should respect:
+        // - Lines ending with an opening bracket/brace/paren: [, {, (
+        // - Lines ending with a comma (array/object items, arg lists): ,
+        // - Pure comment lines starting with //
+        // - Arrow function headers ending with =>
+        let t_no_leading = t.trim_start();
+        if t_no_leading.starts_with("//") {
+            return s.to_string();
+        }
+        if t.ends_with("=>") {
+            return s.to_string();
+        }
+        if let Some(last) = t.chars().rev().find(|c| !c.is_whitespace())
+            && matches!(last, '[' | '{' | '(' | ',')
+        {
+            return s.to_string();
+        }
+        // Otherwise, terminate the statement with a semicolon
+        format!("{};", s)
     }
 
     fn transform_await(line: &str, lang: Lang) -> String {
@@ -350,6 +371,26 @@ mod convert {
         // JS: camelize method names after '.'
         if let Lang::Js = lang {
             rhs = camelize_method_calls_js(&rhs);
+            // JS fixups:
+            // 1) None -> null
+            rhs = rhs.replace("None", "null");
+            // 2) SamplerOptions { ... } -> { ... }
+            if rhs.contains("SamplerOptions {") {
+                rhs = js_objectize_sampleroptions_literal(&rhs);
+            }
+            // 3) Size.from(x) -> x
+            rhs = simplify_js_size_from(&rhs);
+            // 4) Region.new(a,b,c,d) -> [a,b,c,d]
+            rhs = js_region_new_to_array(&rhs);
+            // 5) std.fs.read(path) -> "/healthcheck/public/favicon.png" (served by healthcheck server)
+            if let Some(i) = rhs.find("std.fs.read(") {
+                let before = &rhs[..i];
+                let after = &rhs[i + "std.fs.read(".len()..];
+                if let Some(rp) = after.find(')') {
+                    let tail = &after[rp + 1..];
+                    rhs = format!("{}\"/healthcheck/public/favicon.png\"{}", before, tail);
+                }
+            }
         }
         // Python fix: map std.fs.read(path) -> open(path, "rb").read() in RHS
         if let Lang::Py = lang
@@ -674,24 +715,24 @@ mod convert {
 
             // Imports from fragmentcolor
             if let Some(list) = parse_use_fragmentcolor(t) {
+                // remove Target, WindowTarget, TextureTarget, Size, and SamplerOptions from imports
+                let list: Vec<String> = list
+                    .into_iter()
+                    .filter(|name| {
+                        name != "Target"
+                            && name != "WindowTarget"
+                            && name != "TextureTarget"
+                            && name != "Size"
+                            && name != "SamplerOptions"
+                            && name != "VertexValue"
+                    })
+                    .collect();
                 match lang {
                     Lang::Js => out.push(format!(
                         "import {{ {} }} from \"fragmentcolor\";",
                         list.join(", ")
                     )),
                     Lang::Py => {
-                        // remove Target, WindowTarget, TextureTarget, Size, and SamplerOptions from imports
-                        let list: Vec<String> = list
-                            .into_iter()
-                            .filter(|name| {
-                                name != "Target"
-                                    && name != "WindowTarget"
-                                    && name != "TextureTarget"
-                                    && name != "Size"
-                                    && name != "SamplerOptions"
-                                    && name != "VertexValue"
-                            })
-                            .collect();
                         if !list.is_empty() {
                             out.push(format!("from fragmentcolor import {}", list.join(", ")))
                         }
@@ -769,6 +810,28 @@ mod convert {
 
             // 1) UFCS static call -> dot first
             line = replace_static_call_to_dot(&line);
+            // JS-specific early fixups on raw line
+            if let Lang::Js = lang {
+                // None -> null
+                line = line.replace("None", "null");
+                // SamplerOptions { ... } -> { ... }
+                if line.contains("SamplerOptions {") {
+                    line = js_objectize_sampleroptions_literal(&line);
+                }
+                // Size.from(x) -> x
+                line = simplify_js_size_from(&line);
+                // Region.new(a,b,c,d) -> [a,b,c,d]
+                line = js_region_new_to_array(&line);
+                // std.fs.read("...") -> "/healthcheck/public/favicon.png"
+                if let Some(i) = line.find("std.fs.read(") {
+                    let before = &line[..i];
+                    let after = &line[i + "std.fs.read(".len()..];
+                    if let Some(rp) = after.find(')') {
+                        let tail = &after[rp + 1..];
+                        line = format!("{}\"/healthcheck/public/favicon.png\"{}", before, tail);
+                    }
+                }
+            }
 
             // 1.1) Python: simplify Type.new(args) -> Type(args)
             if let Lang::Py = lang {
@@ -1046,4 +1109,99 @@ mod convert {
         }
         line.to_string()
     }
+}
+
+// JS: Size.from(x) -> x
+fn simplify_js_size_from(line: &str) -> String {
+    let needle = "Size.from(";
+    if let Some(start) = line.find(needle) {
+        // Find matching ')'
+        let mut depth: i32 = 0;
+        let mut end = start + needle.len();
+        let chars: Vec<char> = line.chars().collect();
+        let mut i = end;
+        while i < chars.len() {
+            let c = chars[i];
+            if c == '(' { depth += 1; }
+            if c == ')' {
+                if depth == 0 { end = i; break; }
+                depth -= 1;
+            }
+            i += 1;
+        }
+        if end > start + needle.len() {
+            let before = &line[..start];
+            let inner = &line[start + needle.len()..end];
+            let after = &line[end + 1..];
+            return format!("{}{}{}", before, inner.trim(), after);
+        }
+    }
+    line.to_string()
+}
+
+// JS: SamplerOptions { repeat_x: true, ... } -> { repeat_x: true, ... }
+fn js_objectize_sampleroptions_literal(line: &str) -> String {
+    let needle = "SamplerOptions {";
+    if let Some(start) = line.find(needle) {
+        let chars: Vec<char> = line.chars().collect();
+        let mut depth = 0i32;
+        let mut i = start + needle.len();
+        let mut end = i;
+        while i < chars.len() {
+            let c = chars[i];
+            if c == '{' { depth += 1; }
+            if c == '}' {
+                if depth == 0 { end = i; break; }
+                depth -= 1;
+            }
+            i += 1;
+        }
+        if end > start {
+            let before = &line[..start];
+            let inside = &line[start + needle.len()..end];
+            let after = &line[end + 1..];
+            let mut fields: Vec<String> = Vec::new();
+            for part in inside.split(',') {
+                let p = part.trim();
+                if p.is_empty() { continue; }
+                if let Some(colon) = p.find(':') {
+                    let key = p[..colon].trim();
+                    let mut val = p[colon + 1..].trim().to_string();
+                    // Map booleans and None
+                    val = val.replace("None", "null");
+                    // keep true/false as-is for JS
+                    fields.push(format!("{}: {}", key, val));
+                }
+            }
+            return format!("{}{{{}}}{}", before, fields.join(", "), after);
+        }
+    }
+    line.to_string()
+}
+
+// JS: Region.new(a,b,c,d) -> [a,b,c,d]
+fn js_region_new_to_array(line: &str) -> String {
+    let needle = "Region.new(";
+    if let Some(start) = line.find(needle) {
+        let chars: Vec<char> = line.chars().collect();
+        let mut depth = 0i32;
+        let mut i = start + needle.len();
+        let mut end = i;
+        while i < chars.len() {
+            let c = chars[i];
+            if c == '(' { depth += 1; }
+            if c == ')' {
+                if depth == 0 { end = i; break; }
+                depth -= 1;
+            }
+            i += 1;
+        }
+        if end > start {
+            let before = &line[..start];
+            let args = &line[start + needle.len()..end];
+            let after = &line[end + 1..];
+            return format!("{}[{}]{}", before, args.trim(), after);
+        }
+    }
+    line.to_string()
 }
