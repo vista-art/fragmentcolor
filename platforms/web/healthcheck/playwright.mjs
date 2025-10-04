@@ -1,6 +1,11 @@
 import { chromium } from 'playwright';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const WEB_ROOT = path.resolve(path.join(__dirname, '..'));
 
 const url = process.argv[2] || 'http://localhost:8765/healthcheck/';
 const ARTIFACT_DIR = process.env.ARTIFACT_DIR || path.join(process.cwd(), 'platforms/web/healthcheck/playwright-artifacts');
@@ -51,10 +56,90 @@ const ARTIFACT_DIR = process.env.ARTIFACT_DIR || path.join(process.cwd(), 'platf
 
   page.on('console', (msg) => {
     const text = msg.text();
+    let localLink = '';
+    try {
+      // Prefer stack frames inside the console text over message location (which often points to the runner)
+      const frames = Array.from(text.matchAll(/(http[s]?:[^\s\)]+):(\d+):(\d+)/g));
+      let chosen = null;
+      for (const m of frames) {
+        const urlStr = m[1];
+        if (urlStr.includes('/healthcheck/generated_examples.mjs') || urlStr.includes('/healthcheck/main.js')) continue;
+        // Prefer example files if present
+        chosen = m;
+        if (urlStr.includes('/examples/')) { chosen = m; break; }
+      }
+      if (chosen) {
+        const urlStr = chosen[1];
+        const ln = Number(chosen[2] || 0);
+        const col = Number(chosen[3] || 0);
+        let absLocal = '';
+        if (urlStr.startsWith('http://') || urlStr.startsWith('https://')) {
+          const u = new URL(urlStr);
+          const relPath = decodeURIComponent(u.pathname);
+          const safeRel = path.normalize(relPath).replace(/^\/+/, '');
+          absLocal = path.join(WEB_ROOT, safeRel);
+        } else if (urlStr.startsWith('file://')) {
+          absLocal = fileURLToPath(urlStr);
+        }
+        if (absLocal) {
+          localLink = `${absLocal}:${ln}:${col}`;
+        }
+      } else {
+        // Fallback to the message location, but avoid printing runner files
+        const loc = msg.location();
+        const urlStr = loc?.url || '';
+        if (urlStr && !urlStr.includes('/healthcheck/generated_examples.mjs') && !urlStr.includes('/healthcheck/main.js')) {
+          let absLocal = '';
+          if (urlStr.startsWith('http://') || urlStr.startsWith('https://')) {
+            const u = new URL(urlStr);
+            const relPath = decodeURIComponent(u.pathname);
+            const safeRel = path.normalize(relPath).replace(/^\/+/, '');
+            absLocal = path.join(WEB_ROOT, safeRel);
+          } else if (urlStr.startsWith('file://')) {
+            absLocal = fileURLToPath(urlStr);
+          }
+          if (absLocal) {
+            const ln = loc.lineNumber || 0;
+            const col = loc.columnNumber || 0;
+            localLink = `${absLocal}:${ln}:${col}`;
+          }
+        }
+      }
+    } catch {}
+    if (msg.type() === 'error' && localLink) {
+      console.error(`\n${localLink}\n`);
+    }
     console.log('[console]', text);
     if (text.includes('Headless JS render completed successfully')) ok = true;
   });
   page.on('pageerror', (err) => {
+    // Try to extract a source URL:line:col from the stack and map to local file
+    try {
+      const stack = err?.stack || '';
+      const frames = Array.from(stack.matchAll(/(http[s]?:[^\s\)]+):(\d+):(\d+)/g));
+      let chosen = null;
+      for (const m of frames) {
+        const urlStr = m[1];
+        if (urlStr.includes('/healthcheck/generated_examples.mjs') || urlStr.includes('/healthcheck/main.js')) continue;
+        chosen = m;
+        if (urlStr.includes('/examples/')) { chosen = m; break; }
+      }
+      if (chosen) {
+        const urlStr = chosen[1];
+        const ln = Number(chosen[2] || 0);
+        const col = Number(chosen[3] || 0);
+        let absLocal = '';
+        if (urlStr.startsWith('http://') || urlStr.startsWith('https://')) {
+          const u = new URL(urlStr);
+          const relPath = decodeURIComponent(u.pathname);
+          const safeRel = path.normalize(relPath).replace(/^\/+/, '');
+          absLocal = path.join(WEB_ROOT, safeRel);
+        }
+        if (absLocal) {
+          console.error(`\n${absLocal}:${ln}:${col}\n`);
+        }
+      }
+    } catch {}
     console.error('[pageerror]', err?.message || String(err));
     if (err?.stack) console.error(err.stack);
     errors.push({ type: 'pageerror', message: err?.message || String(err) });
