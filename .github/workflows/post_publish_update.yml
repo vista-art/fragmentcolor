@@ -20,28 +20,38 @@ jobs:
         with:
           ref: main
 
-      - name: Determine version from tag
+      - name: Determine version from event/tag
         id: vars
         run: |
-          # GITHUB_REF looks like refs/tags/v0.10.7 or refs/tags/0.10.7
-          RAW_REF="${GITHUB_REF##*/}"
-          VERSION="${RAW_REF#v}"
+          # Prefer release tag_name (on release event); fallback to GITHUB_REF for tag pushes
+          if [ "${{ github.event_name }}" = "release" ] && [ -n "${{ github.event.release.tag_name }}" ]; then
+            RAW="${{ github.event.release.tag_name }}"
+          else
+            RAW="${GITHUB_REF##*/}"
+          fi
+          VERSION="${RAW#v}"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Wait for npm & PyPI availability
         env:
           VERSION: ${{ steps.vars.outputs.version }}
         run: |
+          set -euo pipefail
           echo "Waiting for npm fragmentcolor@$VERSION and PyPI fragmentcolor==$VERSION to become available..."
-          for i in $(seq 1 30); do
-            NPM_OK=0
-            PYPI_OK=0
-            if npm view fragmentcolor@"$VERSION" version >/dev/null 2>&1; then NPM_OK=1; fi
-            if curl -sSf "https://pypi.org/pypi/fragmentcolor/$VERSION/json" >/dev/null 2>&1; then PYPI_OK=1; fi
+          NPM_OK=0
+          PYPI_OK=0
+          for i in $(seq 1 120); do
+            if npm view "fragmentcolor@$VERSION" version >/dev/null 2>&1; then NPM_OK=1; else NPM_OK=0; fi
+            if curl -sSf "https://pypi.org/pypi/fragmentcolor/$VERSION/json" >/dev/null 2>&1; then PYPI_OK=1; else PYPI_OK=0; fi
             if [ "$NPM_OK" = "1" ] && [ "$PYPI_OK" = "1" ]; then
-              echo "Both registries show version $VERSION"; break; fi
-            echo "Not available yet, retrying in 10s... ($i/30)"; sleep 10;
+              echo "Both registries show version $VERSION"; break
+            fi
+            echo "Not available yet, retrying in 15s... ($i/120)"; sleep 15
           done
+          if [ "$NPM_OK" != "1" ] || [ "$PYPI_OK" != "1" ]; then
+            echo "Timed out waiting for registries to publish version $VERSION" >&2
+            exit 1
+          fi
 
       - name: Update examples and website dependency to released version
         env:
