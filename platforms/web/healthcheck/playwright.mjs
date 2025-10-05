@@ -112,8 +112,7 @@ const ARTIFACT_DIR = process.env.ARTIFACT_DIR || path.join(process.cwd(), 'platf
     console.log('[console]', text);
     if (
       text.includes('Headless JS render completed successfully') ||
-      text.includes('✅ test result: ok') ||
-      text.includes('✅ JS healthcheck finished')
+      text.includes('✅ test result: ok')
     ) ok = true;
   });
   page.on('pageerror', (err) => {
@@ -182,7 +181,7 @@ const ARTIFACT_DIR = process.env.ARTIFACT_DIR || path.join(process.cwd(), 'platf
     await page.waitForEvent('console', {
       predicate: (m) => {
         const t = m.text();
-        return t.includes('Headless JS render completed successfully') || t.includes('✅ test result: ok') || t.includes('✅ JS healthcheck finished');
+        return t.includes('Headless JS render completed successfully') || t.includes('✅ test result: ok');
       },
       timeout: 20000,
     });

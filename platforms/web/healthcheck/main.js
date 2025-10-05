@@ -277,7 +277,11 @@ var<push_constant> pc: PC;
 
 // Auto-generated: run all extracted examples (after init)
 await withModule('platforms.web.healthcheck.generated_examples', async () => {
-  await import('./generated_examples.mjs');
+  const mod = await import('./generated_examples.mjs');
+  const { passed, failed } = await mod.runExamples();
+  if (failed === 0) {
+    console.log(`\n✅ test result: ok. ${passed} passed; ${failed} failed`);
+  } else {
+    throw new Error(`${failed} JS examples failed`);
+  }
 });
-
-console.log('✅ JS healthcheck finished');

@@ -963,7 +963,7 @@ let shader = Shader::default();
 let mut pass = Pass::new("clipped");
 pass.add_shader(&shader);
 
-pass.set_viewport(Region::new(0, 0, 32, 32));
+pass.set_viewport(Region::new((0, 0), (32, 32)));
 
 renderer.render(&pass, &target)?;
 
@@ -989,7 +989,7 @@ const shader = Shader.default();
 const pass = new Pass("clipped");
 pass.addShader(shader);
 
-pass.setViewport([0, 0, 32, 32]);
+pass.setViewport([(0, 0), (32, 32)]);
 
 renderer.render(pass, target);
 
@@ -1012,7 +1012,7 @@ shader = Shader.default()
 rpass = Pass("clipped")
 rpass.add_shader(shader)
 
-rpass.set_viewport(Region(0, 0, 32, 32))
+rpass.set_viewport(Region((0, 0), (32, 32)))
 
 renderer.render(rpass, target)
 

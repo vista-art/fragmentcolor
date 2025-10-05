@@ -81,7 +81,7 @@ const EXAMPLES = [
 ]
 
 function fq(rel){ return 'platforms.web.examples.' + rel.replace('../examples/','').replace(/\\.js$/, '').replaceAll('/', '.'); }
-(async () => {
+export async function runExamples() {
   const total = EXAMPLES.length;
   let passed = 0;
   let failed = 0;
@@ -103,9 +103,5 @@ function fq(rel){ return 'platforms.web.examples.' + rel.replace('../examples/',
       globalThis.__HC.currentModule = null;
     }
   }
-  if (failed === 0) {
-    console.log(`\n✅ test result: ok. ${passed} passed; ${failed} failed`);
-  } else {
-    throw new Error(`${failed} JS examples failed`);
-  }
-})();
+  return { passed, failed };
+}

@@ -57,9 +57,10 @@ impl Mesh {
     }
 
     #[lsp_doc("docs/api/core/mesh/from_vertices.md")]
-    pub fn from_vertices<I>(verts: I) -> Self
+    pub fn from_vertices<I, V>(verts: I) -> Self
     where
-        I: IntoIterator<Item = Vertex>,
+        I: IntoIterator<Item = V>,
+        V: Into<Vertex>,
     {
         let mesh = Mesh::new();
         mesh.add_vertices(verts);

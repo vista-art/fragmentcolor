@@ -28,158 +28,6 @@ impl Default for Region {
     }
 }
 
-crate::impl_from_into_with_refs!(
-    Region,
-    wgpu::Extent3d,
-    |r: Region| wgpu::Extent3d {
-        width: r.width(),
-        height: r.height(),
-        depth_or_array_layers: 1
-    },
-    |e: wgpu::Extent3d| Region::from_size(e.width, e.height)
-);
-
-// -------------------------------------------
-// Trait-based conversions (preferred surface)
-// -------------------------------------------
-
-impl From<(u32, u32)> for Region {
-    #[inline]
-    fn from(size: (u32, u32)) -> Self {
-        Region::from_tuple(size)
-    }
-}
-impl From<&(u32, u32)> for Region {
-    #[inline]
-    fn from(size: &(u32, u32)) -> Self {
-        Region::from_tuple(*size)
-    }
-}
-
-impl From<[u32; 2]> for Region {
-    #[inline]
-    fn from(a: [u32; 2]) -> Self {
-        Region::from_tuple((a[0], a[1]))
-    }
-}
-impl From<&[u32; 2]> for Region {
-    #[inline]
-    fn from(a: &[u32; 2]) -> Self {
-        Region::from_tuple((a[0], a[1]))
-    }
-}
-
-impl From<(u32, u32, u32, u32)> for Region {
-    #[inline]
-    fn from(t: (u32, u32, u32, u32)) -> Self {
-        Region::from_region(t.0, t.1, t.2, t.3)
-    }
-}
-impl From<&(u32, u32, u32, u32)> for Region {
-    #[inline]
-    fn from(t: &(u32, u32, u32, u32)) -> Self {
-        Region::from_region(t.0, t.1, t.2, t.3)
-    }
-}
-
-impl From<[u32; 4]> for Region {
-    #[inline]
-    fn from(a: [u32; 4]) -> Self {
-        Region::from_region(a[0], a[1], a[2], a[3])
-    }
-}
-impl From<&[u32; 4]> for Region {
-    #[inline]
-    fn from(a: &[u32; 4]) -> Self {
-        Region::from_region(a[0], a[1], a[2], a[3])
-    }
-}
-
-impl From<((u32, u32), (u32, u32))> for Region {
-    #[inline]
-    fn from(p: ((u32, u32), (u32, u32))) -> Self {
-        Region::from_tuples(p.0, p.1)
-    }
-}
-impl From<&((u32, u32), (u32, u32))> for Region {
-    #[inline]
-    fn from(p: &((u32, u32), (u32, u32))) -> Self {
-        Region::from_tuples(p.0, p.1)
-    }
-}
-
-impl From<(i32, i32, i32, i32)> for Region {
-    #[inline]
-    fn from(t: (i32, i32, i32, i32)) -> Self {
-        Region::from_region_i32(t.0, t.1, t.2, t.3)
-    }
-}
-impl From<&(i32, i32, i32, i32)> for Region {
-    #[inline]
-    fn from(t: &(i32, i32, i32, i32)) -> Self {
-        Region::from_region_i32(t.0, t.1, t.2, t.3)
-    }
-}
-
-impl From<([i32; 2], [i32; 2])> for Region {
-    #[inline]
-    fn from(p: ([i32; 2], [i32; 2])) -> Self {
-        Region::from_arrays_i32(p.0, p.1)
-    }
-}
-impl From<&([i32; 2], [i32; 2])> for Region {
-    #[inline]
-    fn from(p: &([i32; 2], [i32; 2])) -> Self {
-        Region::from_arrays_i32(p.0, p.1)
-    }
-}
-
-// Outbound conversions for convenience
-impl From<&Region> for Vec2 {
-    #[inline]
-    fn from(r: &Region) -> Self {
-        r.to_vec2()
-    }
-}
-impl From<&Region> for Vec4 {
-    #[inline]
-    fn from(r: &Region) -> Self {
-        r.to_vec4()
-    }
-}
-impl From<&Region> for [f32; 4] {
-    #[inline]
-    fn from(r: &Region) -> Self {
-        r.to_array()
-    }
-}
-
-#[cfg(python)]
-mod python_bindings {
-    use super::*;
-    use pyo3::prelude::*;
-
-    #[pymethods]
-    impl Region {
-        #[new]
-        pub fn new_py(x: u32, y: u32, width: u32, height: u32) -> Self {
-            Region::from_region(x, y, width, height)
-        }
-
-        #[staticmethod]
-        #[pyo3(name = "from_region")]
-        pub fn from_region_py(x: u32, y: u32, width: u32, height: u32) -> Self {
-            Region::from_region(x, y, width, height)
-        }
-
-        #[staticmethod]
-        #[pyo3(name = "from_tuple")]
-        pub fn from_tuple_py(size: (u32, u32)) -> Self {
-            Region::from_tuple(size)
-        }
-    }
-}
-
 impl Region {
     pub fn new(origin: impl Into<(u32, u32)>, size: impl Into<(u32, u32)>) -> Self {
         let (x, y) = origin.into();
@@ -684,6 +532,158 @@ crate::impl_tryfrom_owned_via_ref!(
     crate::region::error::RegionError
 );
 
+crate::impl_from_into_with_refs!(
+    Region,
+    wgpu::Extent3d,
+    |r: Region| wgpu::Extent3d {
+        width: r.width(),
+        height: r.height(),
+        depth_or_array_layers: 1
+    },
+    |e: wgpu::Extent3d| Region::from_size(e.width, e.height)
+);
+
+// -------------------------------------------
+// Trait-based conversions (preferred surface)
+// -------------------------------------------
+
+impl From<(u32, u32)> for Region {
+    #[inline]
+    fn from(size: (u32, u32)) -> Self {
+        Region::from_tuple(size)
+    }
+}
+impl From<&(u32, u32)> for Region {
+    #[inline]
+    fn from(size: &(u32, u32)) -> Self {
+        Region::from_tuple(*size)
+    }
+}
+
+impl From<[u32; 2]> for Region {
+    #[inline]
+    fn from(a: [u32; 2]) -> Self {
+        Region::from_tuple((a[0], a[1]))
+    }
+}
+impl From<&[u32; 2]> for Region {
+    #[inline]
+    fn from(a: &[u32; 2]) -> Self {
+        Region::from_tuple((a[0], a[1]))
+    }
+}
+
+impl From<(u32, u32, u32, u32)> for Region {
+    #[inline]
+    fn from(t: (u32, u32, u32, u32)) -> Self {
+        Region::from_region(t.0, t.1, t.2, t.3)
+    }
+}
+impl From<&(u32, u32, u32, u32)> for Region {
+    #[inline]
+    fn from(t: &(u32, u32, u32, u32)) -> Self {
+        Region::from_region(t.0, t.1, t.2, t.3)
+    }
+}
+
+impl From<[u32; 4]> for Region {
+    #[inline]
+    fn from(a: [u32; 4]) -> Self {
+        Region::from_region(a[0], a[1], a[2], a[3])
+    }
+}
+impl From<&[u32; 4]> for Region {
+    #[inline]
+    fn from(a: &[u32; 4]) -> Self {
+        Region::from_region(a[0], a[1], a[2], a[3])
+    }
+}
+
+impl From<((u32, u32), (u32, u32))> for Region {
+    #[inline]
+    fn from(p: ((u32, u32), (u32, u32))) -> Self {
+        Region::from_tuples(p.0, p.1)
+    }
+}
+impl From<&((u32, u32), (u32, u32))> for Region {
+    #[inline]
+    fn from(p: &((u32, u32), (u32, u32))) -> Self {
+        Region::from_tuples(p.0, p.1)
+    }
+}
+
+impl From<(i32, i32, i32, i32)> for Region {
+    #[inline]
+    fn from(t: (i32, i32, i32, i32)) -> Self {
+        Region::from_region_i32(t.0, t.1, t.2, t.3)
+    }
+}
+impl From<&(i32, i32, i32, i32)> for Region {
+    #[inline]
+    fn from(t: &(i32, i32, i32, i32)) -> Self {
+        Region::from_region_i32(t.0, t.1, t.2, t.3)
+    }
+}
+
+impl From<([i32; 2], [i32; 2])> for Region {
+    #[inline]
+    fn from(p: ([i32; 2], [i32; 2])) -> Self {
+        Region::from_arrays_i32(p.0, p.1)
+    }
+}
+impl From<&([i32; 2], [i32; 2])> for Region {
+    #[inline]
+    fn from(p: &([i32; 2], [i32; 2])) -> Self {
+        Region::from_arrays_i32(p.0, p.1)
+    }
+}
+
+// Outbound conversions for convenience
+impl From<&Region> for Vec2 {
+    #[inline]
+    fn from(r: &Region) -> Self {
+        r.to_vec2()
+    }
+}
+impl From<&Region> for Vec4 {
+    #[inline]
+    fn from(r: &Region) -> Self {
+        r.to_vec4()
+    }
+}
+impl From<&Region> for [f32; 4] {
+    #[inline]
+    fn from(r: &Region) -> Self {
+        r.to_array()
+    }
+}
+
+#[cfg(python)]
+mod python_bindings {
+    use super::*;
+    use pyo3::prelude::*;
+
+    #[pymethods]
+    impl Region {
+        #[new]
+        pub fn new_py(origin: (u32, u32), size: (u32, u32)) -> Self {
+            Region::new(origin, size)
+        }
+
+        #[staticmethod]
+        #[pyo3(name = "from_region")]
+        pub fn from_region_py(x: u32, y: u32, width: u32, height: u32) -> Self {
+            Region::from_region(x, y, width, height)
+        }
+
+        #[staticmethod]
+        #[pyo3(name = "from_tuple")]
+        pub fn from_tuple_py(size: (u32, u32)) -> Self {
+            Region::from_tuple(size)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::Region;
@@ -775,11 +775,6 @@ mod tests {
             Region::from_region_i32(0, 0, 0, 0),
         );
     }
-}
-
-#[cfg(test)]
-mod more_region_tests {
-    use super::Region;
 
     // Story: Construct regions using helpers and verify geometry utilities.
     #[test]
