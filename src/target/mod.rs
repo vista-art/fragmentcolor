@@ -19,7 +19,7 @@ use lsp_doc::lsp_doc;
 
 pub mod error;
 
-#[lsp_doc("docs/api/core/target/target.md")]
+#[lsp_doc("docs/api/targets/target/target.md")]
 pub trait Target {
     fn size(&self) -> Size;
 

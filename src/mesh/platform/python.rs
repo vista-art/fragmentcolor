@@ -199,13 +199,13 @@ fn py_to_instance_or_vertex(obj: &Bound<'_, PyAny>) -> PyResult<Instance> {
 #[pymethods]
 impl Vertex {
     #[new]
-    #[lsp_doc("docs/api/core/vertex/new.md")]
+    #[lsp_doc("docs/api/geometry/vertex/new.md")]
     pub fn new_py(position: Py<PyAny>) -> PyResult<Self> {
         Python::attach(|py| py_to_vertex(position.bind(py)))
     }
 
     #[pyo3(name = "set")]
-    #[lsp_doc("docs/api/core/vertex/set.md")]
+    #[lsp_doc("docs/api/geometry/vertex/set.md")]
     pub fn set_py(&self, key: &str, value: Py<PyAny>) -> PyResult<Self> {
         Python::attach(|py| -> PyResult<Self> {
             let vv = py_to_vertex_value(value.bind(py))?;
@@ -214,7 +214,7 @@ impl Vertex {
     }
 
     #[pyo3(name = "create_instance")]
-    #[lsp_doc("docs/api/core/vertex/create_instance.md")]
+    #[lsp_doc("docs/api/geometry/vertex/create_instance.md")]
     pub fn create_instance_py(&self) -> Instance {
         self.create_instance()
     }
@@ -231,14 +231,14 @@ impl Instance {
 #[pymethods]
 impl Mesh {
     #[new]
-    #[lsp_doc("docs/api/core/mesh/new.md")]
+    #[lsp_doc("docs/api/geometry/mesh/new.md")]
     pub fn new_py() -> Self {
         Self::new()
     }
 
     #[staticmethod]
     #[pyo3(name = "from_vertices")]
-    #[lsp_doc("docs/api/core/mesh/from_vertices.md")]
+    #[lsp_doc("docs/api/geometry/mesh/from_vertices.md")]
     pub fn from_vertices_py(vertices: Py<PyAny>) -> PyResult<Self> {
         Python::attach(|py| -> PyResult<Self> {
             let seq = vertices.bind(py).downcast::<PySequence>()?;
@@ -253,7 +253,7 @@ impl Mesh {
     }
 
     #[pyo3(name = "add_vertex")]
-    #[lsp_doc("docs/api/core/mesh/add_vertex.md")]
+    #[lsp_doc("docs/api/geometry/mesh/add_vertex.md")]
     pub fn add_vertex_py(&mut self, vertex: Py<PyAny>) -> PyResult<()> {
         Python::attach(|py| -> PyResult<()> {
             let vertex = py_to_vertex(vertex.bind(py))?;
@@ -263,7 +263,7 @@ impl Mesh {
     }
 
     #[pyo3(name = "add_vertices")]
-    #[lsp_doc("docs/api/core/mesh/add_vertices.md")]
+    #[lsp_doc("docs/api/geometry/mesh/add_vertices.md")]
     pub fn add_vertices_py(&mut self, vertices: Py<PyAny>) -> PyResult<()> {
         Python::attach(|py| -> PyResult<()> {
             let seq = vertices.bind(py).downcast::<PySequence>()?;
@@ -278,7 +278,7 @@ impl Mesh {
     }
 
     #[pyo3(name = "add_instance")]
-    #[lsp_doc("docs/api/core/mesh/add_instance.md")]
+    #[lsp_doc("docs/api/geometry/mesh/add_instance.md")]
     pub fn add_instance_py(&mut self, item: Py<PyAny>) -> PyResult<()> {
         Python::attach(|py| -> PyResult<()> {
             let instance = py_to_instance_or_vertex(item.bind(py))?;
@@ -288,7 +288,7 @@ impl Mesh {
     }
 
     #[pyo3(name = "add_instances")]
-    #[lsp_doc("docs/api/core/mesh/add_instances.md")]
+    #[lsp_doc("docs/api/geometry/mesh/add_instances.md")]
     pub fn add_instances_py(&mut self, items: Py<PyAny>) -> PyResult<()> {
         Python::attach(|py| -> PyResult<()> {
             let seq = items.bind(py).downcast::<PySequence>()?;
@@ -303,19 +303,19 @@ impl Mesh {
     }
 
     #[pyo3(name = "clear_instances")]
-    #[lsp_doc("docs/api/core/mesh/clear_instances.md")]
+    #[lsp_doc("docs/api/geometry/mesh/clear_instances.md")]
     pub fn clear_instances_py(&mut self) {
         self.clear_instances();
     }
 
     #[pyo3(name = "set_instance_count")]
-    #[lsp_doc("docs/api/core/mesh/set_instance_count.md")]
+    #[lsp_doc("docs/api/geometry/mesh/set_instance_count.md")]
     pub fn set_instance_count_py(&mut self, n: u32) {
         self.set_instance_count(n);
     }
 
     #[pyo3(name = "clear_instance_count")]
-    #[lsp_doc("docs/api/core/mesh/clear_instance_count.md")]
+    #[lsp_doc("docs/api/geometry/mesh/clear_instance_count.md")]
     pub fn clear_instance_count_py(&mut self) {
         self.clear_instance_count();
     }

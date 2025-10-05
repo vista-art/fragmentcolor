@@ -12,13 +12,13 @@ use wasm_bindgen::prelude::*;
 #[derive(Clone, Debug)]
 #[cfg_attr(python, pyclass)]
 #[cfg_attr(wasm, wasm_bindgen)]
-#[lsp_doc("docs/api/primitives/quad/quad.md")]
+#[lsp_doc("docs/api/geometry/quad/quad.md")]
 pub struct Quad {
     object: Arc<MeshObject>,
 }
 
 impl Quad {
-    #[lsp_doc("docs/api/primitives/quad/new.md")]
+    #[lsp_doc("docs/api/geometry/quad/new.md")]
     pub fn new(min: [f32; 2], max: [f32; 2]) -> Self {
         // Build 2 triangles with position (vec2) and uv (vec2)
         let mesh = Mesh::new();
@@ -43,7 +43,7 @@ impl Quad {
         }
     }
 
-    #[lsp_doc("docs/api/primitives/quad/get_mesh.md")]
+    #[lsp_doc("docs/api/geometry/quad/get_mesh.md")]
     pub fn get_mesh(&self) -> Mesh {
         Mesh {
             object: self.object.clone(),
@@ -59,13 +59,13 @@ impl Quad {
 #[pymethods]
 impl Quad {
     #[new]
-    #[lsp_doc("docs/api/primitives/quad/new.md")]
+    #[lsp_doc("docs/api/geometry/quad/new.md")]
     pub fn new_py(min: [f32; 2], max: [f32; 2]) -> Self {
         Self::new(min, max)
     }
 
     #[pyo3(name = "get_mesh")]
-    #[lsp_doc("docs/api/primitives/quad/get_mesh.md")]
+    #[lsp_doc("docs/api/geometry/quad/get_mesh.md")]
     pub fn get_mesh_py(&self) -> Mesh {
         self.get_mesh()
     }
