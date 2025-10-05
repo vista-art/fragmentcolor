@@ -226,7 +226,9 @@ mod website {
                 // non-code content within example section is dropped from desc
             }
 
-            out.push_str(&desc_without);
+            // Escape inline generics in prose so MDX doesn't treat them as JSX
+            let desc_sanitized = sanitize_inline_generics_in_prose(&desc_without);
+            out.push_str(&desc_sanitized);
             out.push('\n');
 
             if captured_any && !main_rust.trim().is_empty() {
@@ -284,8 +286,9 @@ mod website {
 
                 // Separator before each method title for visual grouping
                 out.push_str("\n---\n\n");
-                // Downshift headings for the method description
-                out.push_str(&downshift_headings(pre.trim_end()));
+                // Sanitize prose for MDX generics first, then downshift headings
+                let pre_sanitized = sanitize_inline_generics_in_prose(pre.trim_end());
+                out.push_str(&downshift_headings(&pre_sanitized));
                 out.push('\n');
 
                 // Build example tabs via shared helper
@@ -601,11 +604,115 @@ mod website {
     // Escape backticks for MDX template literal usage in <Code code={`...`} />
     fn sanitize_for_template(s: &str) -> String {
         let mut out = String::with_capacity(s.len());
-        for ch in s.chars() {
-            match ch {
-                '`' => out.push_str("\\`"),
-                _ => out.push(ch),
+        let chars: Vec<char> = s.chars().collect();
+        let mut i = 0usize;
+        while i < chars.len() {
+            let ch = chars[i];
+            if ch == '`' {
+                // Count consecutive backslashes immediately before this backtick
+                let mut bs = 0usize;
+                let mut j = i;
+                while j > 0 {
+                    if chars[j - 1] == '\\' {
+                        bs += 1;
+                        j -= 1;
+                    } else {
+                        break;
+                    }
+                }
+                // If the number of preceding backslashes is even (including 0),
+                // this backtick is not escaped yet. Add one backslash to escape it.
+                if bs % 2 == 0 {
+                    out.push('\\');
+                }
+                out.push('`');
+                i += 1;
+                continue;
             }
+            out.push(ch);
+            i += 1;
+        }
+        out
+    }
+
+    // Sanitize inline generics like Result<(), E> or vec2<f32> in prose (non-code) so MDX doesn't parse them as JSX
+    // This wraps tokens of the form IDENT<...> in backticks, respecting existing inline code spans.
+    fn sanitize_inline_generics_in_prose(s: &str) -> String {
+        let mut out = String::with_capacity(s.len() + 16);
+        let chars: Vec<char> = s.chars().collect();
+        let mut i = 0usize;
+        let mut in_tick = false;
+        while i < chars.len() {
+            let c = chars[i];
+            if c == '`' {
+                in_tick = !in_tick;
+                out.push('`');
+                i += 1;
+                continue;
+            }
+            // Escape bare braces, which MDX treats as expression delimiters
+            if !in_tick && (c == '{' || c == '}') {
+                if c == '{' { out.push_str("&#123;"); } else { out.push_str("&#125;"); }
+                i += 1;
+                continue;
+            }
+            if !in_tick && c == '<' {
+                // Try to find the start of the identifier before '<'
+                let mut j = i;
+                let mut start = i;
+                if j > 0 {
+                    j -= 1;
+                    while j > 0 {
+                        let cj = chars[j];
+                        if cj.is_ascii_alphanumeric() || cj == '_' || cj == ':' {
+                            j -= 1;
+                        } else {
+                            break;
+                        }
+                    }
+                    // Adjust start position
+                    if j == 0 {
+                        if chars[j].is_ascii_alphanumeric() || chars[j] == '_' {
+                            start = 0;
+                        } else {
+                            start = j + 1;
+                        }
+                    } else {
+                        start = j + 1;
+                    }
+                }
+                // Ensure there is actually an identifier immediately before '<'
+                if start < i && (chars[start].is_ascii_alphabetic() || chars[start] == '_') {
+                    // Find the matching '>' (do not cross line)
+                    let mut k = i + 1;
+                    let mut found_gt = None;
+                    while k < chars.len() {
+                        if chars[k] == '>' {
+                            found_gt = Some(k);
+                            break;
+                        }
+                        // stop if we hit backtick or start of an MD link/image '![', or a code fence marker (shouldn't appear in prose blocks we pass in)
+                        if chars[k] == '\n' { break; }
+                        k += 1;
+                    }
+                    if let Some(end_gt) = found_gt {
+                        // Wrap from start..=end_gt in backticks
+                        out.push('`');
+                        for m in start..=end_gt {
+                            out.push(chars[m]);
+                        }
+                        out.push('`');
+                        i = end_gt + 1;
+                        continue;
+                    }
+                }
+                // Fallback: no identifier, or no closing '>' — just output '<'
+                out.push(c);
+                i += 1;
+                continue;
+            }
+            out.push(c);
+            i += 1;
         }
         out
     }

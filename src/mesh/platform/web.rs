@@ -354,7 +354,7 @@ fn js_to_f32x2(value: &JsValue) -> Result<[f32; 2], JsError> {
 #[wasm_bindgen]
 impl Quad {
     #[wasm_bindgen(constructor)]
-    #[lsp_doc("docs/api/core/mesh/primitives/quad/new.md")]
+    #[lsp_doc("docs/api/primitives/quad/new.md")]
     pub fn new_js(min: &JsValue, max: &JsValue) -> Result<Quad, JsError> {
         let min2 = js_to_f32x2(min)?;
         let max2 = js_to_f32x2(max)?;
@@ -362,7 +362,7 @@ impl Quad {
     }
 
     #[wasm_bindgen(js_name = "getMesh")]
-    #[lsp_doc("docs/api/core/mesh/primitives/quad/get_mesh.md")]
+    #[lsp_doc("docs/api/primitives/quad/get_mesh.md")]
     pub fn get_mesh_js(&self) -> Mesh {
         self.get_mesh()
     }

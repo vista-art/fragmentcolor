@@ -34,15 +34,39 @@ Contributions are welcome! This document outlines the current workflow for devel
 3. Create a draft PR and implement the planned tasks (see `ROADMAP.md`).
 4. Ensure all docs exist (`docs/api`), doctests pass, healthchecks are annotated, and the site builds.
 
-## Publishing
+## Release process
 
-- Tag the release on the release branch (e.g., `v0.10.7`).
-  - This triggers npm and PyPI publish workflows.
-- After publish, the `post_publish_update` workflow waits for packages to become available and updates:
-  - `docs/website/package.json` dependencies.fragmentcolor
-  - `examples/javascript/package.json` dependencies.fragmentcolor
-  - Then pushes the changes to `main`.
-- Finally, merge the release branch to `main`.
+1. Create a version branch from `main`: `vMAJOR.MINOR.PATCH`.
+2. Run `./bump_version.py` to bump versions in `Cargo.toml`, `pyproject.toml`, and the top-level version in `docs/website/package.json`.
+3. Open a PR and iterate until all checks are green (lint, fmt, tests, healthchecks, docs site build). Keep `main` protected and green.
+4. Merge the PR to `main`.
+5. Create a GitHub Release (annotated) named `vMAJOR.MINOR.PATCH` targeting the merge commit on `main`.
+6. On release published, CI will:
+   - Build & publish the Web package to npm (skip if already published).
+   - Build & publish Python wheels to PyPI (skip existing).
+   - Publish the Rust crate to crates.io (skip if version exists).
+7. The `post_publish_update` workflow waits for registries, then:
+   - Bumps `fragmentcolor` dependency in `docs/website/package.json` and `examples/javascript/package.json` to the released version and refreshes lockfiles.
+   - Snapshots API docs to `docs/website/src/content/docs/api/v{version}`.
+   - Pushes the changes to `main`.
+8. Vercel auto-deploys `docs/website` (subfolder). Its Ignored Build Step skips build when neither `docs/website` nor `docs/api` changed.
+
+### Ad-hoc website updates
+
+- Docs CI runs on pushes and PRs that touch `docs/website/**`.
+- Heavy healthchecks are gated by paths and won’t run for docs-only changes.
+- Vercel deploys automatically for `docs/website` changes and skips builds when unrelated.
+
+### Required secrets
+
+- `NPM_TOKEN` for npm publish.
+- `PYPI_API_TOKEN` for PyPI upload.
+- `CARGO_REGISTRY_TOKEN` for crates.io publish.
+
+### Tooling versions
+
+- Node 20 and pnpm 10 for docs site builds.
+- Rust toolchain stable in CI.
 
 ## Running locally
 

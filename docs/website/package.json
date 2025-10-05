@@ -7,25 +7,26 @@
     "dev": "astro dev",
     "start": "astro dev",
     "build": "astro check && astro build",
+    "build:vercel": "astro build",
     "preview": "astro preview",
     "astro": "astro"
   },
   "dependencies": {
     "@astrojs/check": "^0.9.4",
     "@astrojs/starlight": "^0.36.0",
-    "@astrojs/vercel": "^8.2.7",
+    "@astrojs/vercel": "^8.2.8",
     "@codemirror/lang-javascript": "^6.2.4",
     "@codemirror/state": "^6.5.2",
-    "@codemirror/view": "^6.38.2",
+    "@codemirror/view": "^6.38.4",
     "@expressive-code/plugin-collapsible-sections": "^0.41.3",
     "@observablehq/inspector": "^5.0.1",
-    "astro": "^5.13.7",
+    "astro": "^5.14.1",
     "codemirror": "^6.0.2",
     "fragmentcolor": "0.10.6",
-    "sharp": "^0.34.3",
+    "sharp": "^0.34.4",
     "starlight-blog": "^0.24.1",
     "thememirror": "^2.0.1",
-    "typescript": "^5.9.2"
+    "typescript": "^5.9.3"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

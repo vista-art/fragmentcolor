@@ -681,7 +681,7 @@ Attach a Mesh to this Pass.
 
 - The mesh is attached to the last shader previously added to this Pass.
 - Validates compatibility with that shaderâs vertex inputs.
-- Returns Result<(), ShaderError>; on error, the mesh is not attached.
+- Returns Result`Result<(), ShaderError>`; on error, the mesh is not attached.
 
 If a Shader wasn't provided earlier, FragmentColor will create a default one.
 
@@ -1586,7 +1586,7 @@ All dependencies will render before this Pass.
 - Ok(()) on success
 - Err(PassError::SelfDependency) if a pass requires itself
 - Err(PassError::DuplicateDependency(name)) if the dependency is already present
-- Err(PassError::DependencyCycle { via }) if adding the dependency would create a cycle
+- Err(PassError::DependencyCycle &#123; via &#125;) if adding the dependency would create a cycle
 
 #### Description
 
