@@ -1001,7 +1001,7 @@ lang="text"
 
 Attach a Mesh to this Shader. The Renderer will draw all meshes attached to it (one draw call per mesh, same pipeline).
 
-This method now validates that the mesh's vertex/instance layout is compatible with the shader's @location inputs and returns Result<(), ShaderError>.
+This method now validates that the mesh's vertex/instance layout is compatible with the shader's @location inputs and returns Result`Result<(), ShaderError>`.
 
 - On success, the mesh is attached and will be drawn when this shader is rendered.
 - On mismatch (missing attribute or type mismatch), returns an error and does not attach.

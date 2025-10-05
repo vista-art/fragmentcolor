@@ -18,20 +18,37 @@ use std::borrow::Borrow;
   - [ ] Script to Test, Compile & Publish iOS
 - [ ] Revemp RenderPass API
   - [ ] It must give access to all wgpu::RenderPass customizations with sensible defaults, so we keep our API simple while still allowing for advanced use cases.
-- [ ] Support 3D Textures
-  - [ ] (check RenderPassColorAttachment.depth_slice)
 - [ ] Create specialized Alias objects:
   - [ ] Compute: newtype for Shader, but only allows compute shaders (Shader continues to allow both)
   - [ ] RenderPass: newtype for Pass, but only allows Render passes (Pass continues to allow both)
   - [ ] ComputePass: newtype for Pass, but only allows Compute passes (Pass continues to allow both)
+- [ ] Custom blending
 
 ## Up Next
+
+### Automated Visual Testing
+
+- Expand snapshot coverage beyond hello_triangle:
+  - [ ] circle fragment shader (deterministic params)
+  - [ ] compute_texture (deterministic inputs)
+  - [ ] particles_splat (seed RNG; accept small tolerance or switch to invariant assertions)
+  - [ ] storage texture pipelines (clear + splat sequence)
+  - [ ] mesh rendering with vertex + instance attributes
+  - [ ] MSAA rendering path and resolve
+  - [ ] push-constant: native and uniform-fallback modes
+- Test harness improvements:
+  - [ ] Add helper to snapshot a Frame (multi-pass) directly
+  - [ ] Document UPDATE_EXPECT flow in CONTRIBUTING
+  - [ ] Add CI step (macOS) to run snapshots and upload tests/error artifacts on failures
+  - [ ] Optional: headless flags for examples to produce snapshots as integration tests
 
 - [ ] Support other types of Window integrations in Python (decouple from RenderCanvas)
   - [ ] Qt
   - [ ] WxWidgets
   - [ ] GLTF
   - [ ] Jupyter
+
+- [ ] Mesh.load_* helpers and JSON inputs.
 
 - [ ] Frame setup Save & Load from JSON
 - [ ] Support Load and Save Shader states as JSON (uniform values, textures, etc.)
@@ -106,8 +123,6 @@ use std::borrow::Borrow;
 
 - [ ] load ShaderToy URLs from Shader::new() and Shader::toy()
 
-- [ ] Custom blending
-
 - [ ] Multisampling (resolve_target in RenderPassColorAttachments)
 
 - [ ] Components library (prefabs)
@@ -176,7 +191,7 @@ use std::borrow::Borrow;
 
 #### Multi-pass rendering
 
-- [ ] Simple shadows
+- [ ] Simple multi-pass projected shadows
 - [ ] Hello ExternalTextures (video processing)
 - [ ] Hello multiple screens
 - [ ] Hello screen regions / viewport

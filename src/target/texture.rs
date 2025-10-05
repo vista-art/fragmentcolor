@@ -34,12 +34,12 @@ impl TextureTarget {
 }
 
 impl Target for TextureTarget {
-    #[lsp_doc("docs/api/core/target/size.md")]
+    #[lsp_doc("docs/api/targets/target/size.md")]
     fn size(&self) -> Size {
         self.texture.size()
     }
 
-    #[lsp_doc("docs/api/core/target/resize.md")]
+    #[lsp_doc("docs/api/targets/target/resize.md")]
     fn resize(&mut self, size: impl Into<Size>) {
         let new_texture = TextureObject::create_destination_texture(
             self.context.as_ref(),
@@ -49,14 +49,14 @@ impl Target for TextureTarget {
         self.texture = Arc::new(new_texture);
     }
 
-    #[lsp_doc("docs/api/core/target/hidden/get_current_frame.md")]
+    #[lsp_doc("docs/api/targets/target/hidden/get_current_frame.md")]
     fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, wgpu::SurfaceError> {
         let view = self.texture.create_view();
         let format = self.texture.format();
         Ok(Box::new(TextureFrame { view, format }))
     }
 
-    #[lsp_doc("docs/api/core/target/get_image.md")]
+    #[lsp_doc("docs/api/targets/target/get_image.md")]
     fn get_image(&self) -> Vec<u8> {
         // Read back pixels from the offscreen texture as a tightly-packed RGBA8 buffer
         let device = &self.context.device;
