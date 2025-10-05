@@ -59,7 +59,7 @@ Contributions are welcome! This document outlines the current workflow for devel
 
 ### Required secrets
 
-- `NPM_TOKEN` for npm publish.
+- `NPM_SECRET` for npm publish.
 - `PYPI_API_TOKEN` for PyPI upload.
 - `CARGO_REGISTRY_TOKEN` for crates.io publish.
 
