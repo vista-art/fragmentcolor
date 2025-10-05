@@ -622,7 +622,7 @@ mod website {
                 }
                 // If the number of preceding backslashes is even (including 0),
                 // this backtick is not escaped yet. Add one backslash to escape it.
-                if bs % 2 == 0 {
+                if bs.is_multiple_of(2) {
                     out.push('\\');
                 }
                 out.push('`');
