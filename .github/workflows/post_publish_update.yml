@@ -1,0 +1,114 @@
+name: Post-publish update consumers
+
+on:
+  release:
+    types: [published]
+  push:
+    tags:
+      - '*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update-consumers:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Determine version from tag
+        id: vars
+        run: |
+          # GITHUB_REF looks like refs/tags/v0.10.7 or refs/tags/0.10.7
+          RAW_REF="${GITHUB_REF##*/}"
+          VERSION="${RAW_REF#v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for npm & PyPI availability
+        env:
+          VERSION: ${{ steps.vars.outputs.version }}
+        run: |
+          echo "Waiting for npm fragmentcolor@$VERSION and PyPI fragmentcolor==$VERSION to become available..."
+          for i in $(seq 1 30); do
+            NPM_OK=0
+            PYPI_OK=0
+            if npm view fragmentcolor@"$VERSION" version >/dev/null 2>&1; then NPM_OK=1; fi
+            if curl -sSf "https://pypi.org/pypi/fragmentcolor/$VERSION/json" >/dev/null 2>&1; then PYPI_OK=1; fi
+            if [ "$NPM_OK" = "1" ] && [ "$PYPI_OK" = "1" ]; then
+              echo "Both registries show version $VERSION"; break; fi
+            echo "Not available yet, retrying in 10s... ($i/30)"; sleep 10;
+          done
+
+      - name: Update examples and website dependency to released version
+        env:
+          VERSION: ${{ steps.vars.outputs.version }}
+        run: |
+          # docs/website
+          if [ -f docs/website/package.json ]; then
+            tmp=$(mktemp)
+            jq --arg v "$VERSION" '.dependencies.fragmentcolor = $v' docs/website/package.json > "$tmp" && mv "$tmp" docs/website/package.json
+          fi
+          # examples/javascript
+          if [ -f examples/javascript/package.json ]; then
+            tmp=$(mktemp)
+            jq --arg v "$VERSION" '.dependencies.fragmentcolor = $v' examples/javascript/package.json > "$tmp" && mv "$tmp" examples/javascript/package.json
+          fi
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+          cache-dependency-path: |
+            docs/website/pnpm-lock.yaml
+            examples/javascript/pnpm-lock.yaml
+
+      - name: Refresh lockfiles after bump
+        run: |
+          if [ -f docs/website/package.json ]; then
+            pnpm --dir docs/website install --no-frozen-lockfile
+          fi
+          if [ -f examples/javascript/package.json ]; then
+            pnpm --dir examples/javascript install --no-frozen-lockfile
+          fi
+
+      - name: Snapshot API docs for version
+        env:
+          VERSION: ${{ steps.vars.outputs.version }}
+        run: |
+          set -euo pipefail
+          LATEST_DIR="docs/website/src/content/docs/api"
+          DEST_DIR="$LATEST_DIR/v${VERSION}"
+          echo "Snapshotting API docs from $LATEST_DIR to $DEST_DIR"
+          if [ ! -d "$LATEST_DIR" ]; then
+            echo "Latest API dir not found: $LATEST_DIR" >&2; exit 1; fi
+          mkdir -p "$DEST_DIR"
+          # Copy top-level *.mdx except index.mdx
+          find "$LATEST_DIR" -maxdepth 1 -type f -name '*.mdx' ! -name 'index.mdx' -exec cp -f {} "$DEST_DIR"/ \;
+          # Copy and rewrite index links to versioned paths
+          cp -f "$LATEST_DIR/index.mdx" "$DEST_DIR/index.mdx"
+          sed -i 's#(/docs/api/#(/docs/api/v'"$VERSION"'/#g' "$DEST_DIR/index.mdx"
+
+      - name: Commit and push to main
+        env:
+          VERSION: ${{ steps.vars.outputs.version }}
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add docs/website/src/content/docs/api/v"$VERSION" || true
+          git add docs/website/package.json docs/website/pnpm-lock.yaml || true
+          git add examples/javascript/package.json examples/javascript/pnpm-lock.yaml || true
+          if git diff --cached --quiet; then
+            echo "No changes to commit"; exit 0; fi
+          git commit -m "docs(api): snapshot latest to v$VERSION and update dependencies after release"
+          git push origin main

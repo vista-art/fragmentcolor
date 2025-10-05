@@ -1,0 +1,32 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/png" href="./public/favicon.png" />
+    <title>FragmentColor Visual Healthcheck</title>
+    <style>
+      html, body { height: 100%; margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Arial, "Apple Color Emoji", "Segoe UI Emoji"; }
+      .wrap { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 16px; }
+      canvas { border: 1px solid #ccc; image-rendering: pixelated; }
+      .ok { color: #0a0; font-weight: 600; }
+      .fail { color: #a00; font-weight: 600; }
+    </style>
+    <script type="importmap">
+      {
+        "imports": {
+          "fragmentcolor": "./pkg/fragmentcolor.js"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <div class="wrap">
+      <h1>FragmentColor Visual Healthcheck</h1>
+      <canvas id="cv" width="256" height="256"></canvas>
+      <div id="status">Initializing...</div>
+    </div>
+    <script type="module" src="./visual.js"></script>
+  </body>
+</html>
+

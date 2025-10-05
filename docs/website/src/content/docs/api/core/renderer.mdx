@@ -1,0 +1,1088 @@
+---
+title: Renderer
+description: "The [Renderer](/api/core/renderer) is the main entry point for [FragmentColor](https://fragmentcolor.org) and normally the first object you create."
+category: core
+categoryLabel: Core
+---
+
+import { Code, Tabs, TabItem, Aside } from "@astrojs/starlight/components";
+
+## Description
+
+The [Renderer](/api/core/renderer) is the main entry point for
+[FragmentColor](https://fragmentcolor.org) and normally the first object you create.
+
+It is used to render
+[Shaders](/api/core/shader),
+[Passes](/api/core/pass), and
+[Frames](/api/core/frame)
+to a [Target](/api/core/target) (canvas, window, or texture).
+
+The [Renderer](/api/core/renderer) internals are lazily initialized
+when the user creates a [Target](/api/core/target).
+
+See the constructor [Renderer::new()](/api/core/renderer/#renderernew)
+description below for details.
+
+
+
+## Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+
+use fragmentcolor::{Shader, Renderer, Target};
+
+let renderer = Renderer::new();
+
+// Use your platform's windowing system to create a window
+let window = fragmentcolor::headless_window([800, 600]);
+
+// Create a Target from it
+let target = renderer.create_target(window).await?;
+let texture_target = renderer.create_texture_target([16, 16]).await?;
+
+// RENDERING
+renderer.render(&Shader::default(), &texture_target)?;
+
+// That's it. Welcome to FragmentColor!
+
+let s = target.size();
+assert_eq!([s.width, s.height], [800, 600]);
+let s2 = texture_target.size();
+assert_eq!([s2.width, s2.height], [16, 16]);
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+`}
+lang="rust" meta="collapse={1-1, 19-25}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+
+import { Shader, Renderer } from "fragmentcolor";
+
+const renderer = new Renderer();
+
+// Use your platform's windowing system to create a window
+const canvas = document.createElement('canvas');
+
+// Create a Target from it
+const target = await renderer.createTarget(canvas);
+const texture_target = await renderer.createTextureTarget([16, 16]);
+
+// RENDERING
+renderer.render(new Shader(""), texture_target);
+
+// That's it. Welcome to FragmentColor!
+
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from rendercanvas.auto import RenderCanvas, loop
+
+from fragmentcolor import Shader, Renderer
+
+renderer = Renderer()
+
+# Use your platform's windowing system to create a window
+canvas = RenderCanvas(size=(800, 600))
+
+# Create a Target from it
+target = renderer.create_target(canvas)
+texture_target = renderer.create_texture_target([16, 16])
+
+# RENDERING
+renderer.render(Shader(""), texture_target)
+
+# That's it. Welcome to FragmentColor!
+
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+## Methods
+
+
+---
+
+### Renderer::new()
+
+#### Creates a new Renderer
+
+At the point of creation, we don't know the [Renderer](/api/core/renderer) will be used offscreen or attached to a Window.
+
+So, the rendering internals are lazily initialized
+when the user creates a [Target](/api/core/target).
+This ensures the adapter and device are compatible with the environment.
+
+The API ensures the [Renderer](/api/core/renderer) is usable when `render()` is called,
+because the `render()` method expects a [Target](/api/core/target) as input, and
+the only way to create a [Target](/api/core/target)
+is by first calling:
+
+- `renderer.create_target(Window)` to create a window adapter, or
+- `renderer.create_texture_target()` to create a target texture
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+
+use fragmentcolor::{Renderer, Target};
+
+let renderer = Renderer::new();
+let texture_target = renderer.create_texture_target([16, 16]).await?;
+
+let s = texture_target.size();
+assert_eq!([s.width, s.height], [16, 16]);
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+`}
+lang="rust" meta="collapse={1-1, 8-12}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+
+import { Renderer } from "fragmentcolor";
+
+const renderer = new Renderer();
+const texture_target = await renderer.createTextureTarget([16, 16]);
+
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+
+from fragmentcolor import Renderer
+
+renderer = Renderer()
+texture_target = renderer.create_texture_target([16, 16])
+
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Renderer::create_target(target: Canvas | Window)
+
+Creates a [Target](/api/core/target) attached to a platform-specific canvas or window.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+
+use fragmentcolor::{Renderer, Target};
+
+let renderer = Renderer::new();
+
+// Use your platform's windowing system to create a window.
+// We officially support Winit. Check the examples folder for details.
+let window = fragmentcolor::headless_window([800, 600]);
+
+let target = renderer.create_target(window).await?;
+
+let s = target.size();
+assert_eq!([s.width, s.height], [800, 600]);
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+`}
+lang="rust" meta="collapse={1-1, 13-17}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+
+import { Renderer } from "fragmentcolor";
+
+const renderer = new Renderer();
+
+// Use your platform's windowing system to create a window.
+// We officially support Winit. Check the examples folder for details.
+const canvas = document.createElement('canvas');
+
+const target = await renderer.createTarget(canvas);
+
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from rendercanvas.auto import RenderCanvas, loop
+
+from fragmentcolor import Renderer
+
+renderer = Renderer()
+
+# Use your platform's windowing system to create a window.
+# We officially support Winit. Check the examples folder for details.
+canvas = RenderCanvas(size=(800, 600))
+
+target = renderer.create_target(canvas)
+
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Renderer::create_texture_target(size: [u32; 2])
+
+Render to an offscreen texture without a Window or Canvas.
+
+This is useful for tests, server-side rendering, or running examples in CI.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+
+use fragmentcolor::{Renderer, Shader, Target};
+let renderer = Renderer::new();
+
+// Create an offscreen texture target with a size of 64x64 pixels.
+let target = renderer.create_texture_target([64, 64]).await?;
+
+renderer.render(&Shader::default(), &target)?;
+
+// get the rendered image
+let image = target.get_image();
+
+// RGBA8
+assert_eq!(image.len(), 64 * 64 * 4);
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+`}
+lang="rust" meta="collapse={1-1, 14-18}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+
+import { Renderer, Shader } from "fragmentcolor";
+const renderer = new Renderer();
+
+// Create an offscreen texture target with a size of 64x64 pixels.
+const target = await renderer.createTextureTarget([64, 64]);
+
+renderer.render(new Shader(""), target);
+
+// get the rendered image
+const image = target.getImage();
+
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from rendercanvas.auto import RenderCanvas, loop
+
+from fragmentcolor import Renderer, Shader
+renderer = Renderer()
+
+# Create an offscreen texture target with a size of 64x64 pixels.
+target = renderer.create_texture_target([64, 64])
+
+renderer.render(Shader(""), target)
+
+# get the rendered image
+image = target.get_image()
+
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Renderer::create_texture
+
+Create a [Texture](/api/core/texture) from various inputs.
+
+- Rust: `create_texture(input)` infers from encoded bytes or file path; use `create_texture_with(input, Some(size), Some(format))` for raw pixel bytes.
+- JS: `await renderer.createTexture(input)` accepts `Uint8Array` bytes, string URL/path, or a CSS selector/HTMLImageElement
+- Python: `renderer.create_texture(input)` accepts `bytes`, `str` path, or a NumPy ndarray shaped `[H, W, C]` where C=1/3/4.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::Renderer;
+let renderer = Renderer::new();
+// Load encoded image bytes (PNG/JPEG) or use a file path
+let image = std::fs::read("logo.png")?;
+let tex = renderer.create_texture(&image).await?;
+_ = tex.size();
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+`}
+lang="rust" meta="collapse={1-1, 7-10}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Renderer } from "fragmentcolor";
+const renderer = new Renderer();
+// Load encoded image bytes (PNG/JPEG) or use a file path
+const image = "/healthcheck/public/favicon.png";
+const tex = await renderer.createTexture(image);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Renderer
+renderer = Renderer()
+# Load encoded image bytes (PNG/JPEG) or use a file path
+image = open("logo.png", "rb").read()
+tex = renderer.create_texture(image)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Renderer::create_texture_with_size
+
+Create a [Texture](/api/core/texture) from various inputs.
+
+- Rust: `create_texture(input)` infers from encoded bytes or file path; use `create_texture_with(input, Some(size), Some(format))` for raw pixel bytes.
+- JS: `await renderer.createTexture(input)` accepts `Uint8Array` bytes, string URL/path, or a CSS selector/HTMLImageElement
+- Python: `renderer.create_texture(input)` accepts `bytes`, `str` path, or a NumPy ndarray shaped `[H, W, C]` where C=1/3/4.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Renderer, Size};
+let renderer = Renderer::new();
+let pixels: Vec<u8> = vec![
+    255,0,0,255,   0,255,0,255,
+    0,0,255,255,   255,255,255,255,
+];
+let tex = renderer.create_texture_with_size(&pixels, [2, 2]).await?;
+_ = tex.size();
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+`}
+lang="rust" meta="collapse={1-1, 9-12}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Renderer } from "fragmentcolor";
+const renderer = new Renderer();
+const pixels = [
+    255,0,0,255,   0,255,0,255,
+    0,0,255,255,   255,255,255,255,
+];
+const tex = await renderer.createTextureWithSize(pixels, [2, 2]);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Renderer
+renderer = Renderer()
+pixels = [
+    255,0,0,255,   0,255,0,255,
+    0,0,255,255,   255,255,255,255,
+]
+tex = renderer.create_texture_with_size(pixels, [2, 2])
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Renderer::create_texture_with_format
+
+Create a [Texture](/api/core/texture) from various inputs.
+
+- Rust: `create_texture(input)` infers from encoded bytes or file path; use `create_texture_with(input, Some(size), Some(format))` for raw pixel bytes.
+- JS: `await renderer.createTexture(input)` accepts `Uint8Array` bytes, string URL/path, or a CSS selector/HTMLImageElement
+- Python: `renderer.create_texture(input)` accepts `bytes`, `str` path, or a NumPy ndarray shaped `[H, W, C]` where C=1/3/4.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Renderer, Size, TextureFormat};
+let renderer = Renderer::new();
+let image = std::fs::read("logo.png")?;
+let tex = renderer.create_texture_with_format(&image, TextureFormat::Rgba).await?;
+_ = tex.size();
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+`}
+lang="rust" meta="collapse={1-1, 6-9}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Renderer, TextureFormat } from "fragmentcolor";
+const renderer = new Renderer();
+const image = "/healthcheck/public/favicon.png";
+const tex = await renderer.createTextureWithFormat(image, TextureFormat.Rgba);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Renderer, TextureFormat
+renderer = Renderer()
+image = open("logo.png", "rb").read()
+tex = renderer.create_texture_with_format(image, TextureFormat.Rgba)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Renderer::create_texture_with
+
+Create a [Texture](/api/core/texture) from various inputs.
+
+- Rust: `create_texture(input)` infers from encoded bytes or file path; use `create_texture_with(input, Some(size), Some(format))` for raw pixel bytes.
+- JS: `await renderer.createTexture(input)` accepts `Uint8Array` bytes, string URL/path, or a CSS selector/HTMLImageElement
+- Python: `renderer.create_texture(input)` accepts `bytes`, `str` path, or a NumPy ndarray shaped `[H, W, C]` where C=1/3/4.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Renderer, Size};
+let renderer = Renderer::new();
+let pixels: Vec<u8> = vec![
+    255,0,0,255,   0,255,0,255,
+    0,0,255,255,   255,255,255,255,
+];
+let tex = renderer.create_texture_with(&pixels, Size::from([2, 2])).await?;
+_ = tex.size();
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+`}
+lang="rust" meta="collapse={1-1, 9-12}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Renderer } from "fragmentcolor";
+const renderer = new Renderer();
+const pixels = [
+    255,0,0,255,   0,255,0,255,
+    0,0,255,255,   255,255,255,255,
+];
+const tex = await renderer.createTextureWith(pixels, [2, 2]);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Renderer
+renderer = Renderer()
+pixels = [
+    255,0,0,255,   0,255,0,255,
+    0,0,255,255,   255,255,255,255,
+]
+tex = renderer.create_texture_with(pixels, [2, 2])
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Renderer::create_storage_texture
+
+Create a storage-class texture for compute or image store/load.
+
+- Default usage: STORAGE_BINDING | TEXTURE_BINDING | COPY_&#123;SRC,DST&#125;
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+
+use fragmentcolor::{Renderer, TextureFormat};
+
+let r = Renderer::new();
+let tex = r.create_storage_texture([64, 64], TextureFormat::Rgba, None).await?;
+
+_ = tex;
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+`}
+lang="rust" meta="collapse={1-1, 8-11}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+
+import { Renderer, TextureFormat } from "fragmentcolor";
+
+const r = new Renderer();
+const tex = await r.createStorageTexture([64, 64], TextureFormat.Rgba, null);
+
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+
+from fragmentcolor import Renderer, TextureFormat
+
+r = Renderer()
+tex = r.create_storage_texture([64, 64], TextureFormat.Rgba, None)
+
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Renderer::create_depth_texture
+
+Create a depth texture using `Depth32Float`.
+
+The created depth texture inherits the renderer's current sample count:
+- If you called create_target(window) (surface-backed), it matches the negotiated MSAA (e.g., 2Ã/4Ã) for that surface.
+- If you are rendering offscreen via create_texture_target, it defaults to 1.
+
+This ensures the depth attachment sample_count matches the pass sample_count.
+If you attach a depth texture with a different sample_count than the pass,
+rendering will return a descriptive validation error.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::Renderer;
+let r = Renderer::new();
+let depth = r.create_depth_texture([800, 600]);
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Renderer } from "fragmentcolor";
+const r = new Renderer();
+const depth = r.createDepthTexture([800, 600]);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Renderer
+r = Renderer()
+depth = r.create_depth_texture([800, 600])
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Renderer::render(renderable: Shader | Pass | Frame, target: Target)
+
+Renders the given object to the given [Target](/api/core/target).
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+
+use fragmentcolor::{Renderer, Shader};
+
+let renderer = Renderer::new();
+let target = renderer.create_texture_target([10, 10]).await?;
+let shader = Shader::default();
+
+renderer.render(&shader, &target)?;
+
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+`}
+lang="rust" meta="collapse={1-1, 11-13}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+
+import { Renderer, Shader } from "fragmentcolor";
+
+const renderer = new Renderer();
+const target = await renderer.createTextureTarget([10, 10]);
+const shader = Shader.default();
+
+renderer.render(shader, target);
+
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+
+from fragmentcolor import Renderer, Shader
+
+renderer = Renderer()
+target = renderer.create_texture_target([10, 10])
+shader = Shader.default()
+
+renderer.render(shader, target)
+
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>

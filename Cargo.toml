@@ -1,6 +1,6 @@
 [package]
 name = "fragmentcolor"
-version = "0.10.6"
+version = "0.10.7"
 homepage = "https://fragmentcolor.org"
 repository = "https://github.com/vista-art/fragmentcolor"
 description = "Easy GPU Rendering for Javascript, Python, Swift and Kotlin"
@@ -15,53 +15,32 @@ edition = "2024"
 name = "fragmentcolor"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[workspace]
+resolver = "3"
+members = ["examples/rust"]
+
 [features]
-glsl = []
-shadertoy = ["glsl"]
-python = ["pyo3"]
+python = ["pyo3", "numpy", "pollster"]
+winit = ["dep:winit", "pollster"]
 
 [dependencies]
-# Python FFI
-pyo3 = { version = "0.25", features = [
-    "abi3-py39",
-    "experimental-async",
-    "generate-import-lib",
-], optional = true }
-
-# Rendering
-wgpu = { version = "26", features = ["glsl", "wgsl", "webgl", "naga-ir"] }
-thiserror = { version = "2" }
-glam = { version = "0.30" }
-encase = { version = "0.11" }
-bytemuck = { version = "1" }
-flume = { version = "0.11" }
-indoc = { version = "2" }
-log = { version = "0.4" }
-sha2 = { version = "0.10" }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = { version = "1.0" }
-parking_lot = { version = "0.12" }
-cfg-if = { version = "1" }
-
-# Shader composition
-naga = { version = "26" }
-naga_oil = { version = "0.19" }
+wgpu = { version = "27", features = ["glsl", "wgsl", "webgl", "naga-ir"] }
+naga = { version = "27", features = ["wgsl-in", "glsl-in"] }
+parking_lot = "0.12"
+derive-new = "0.7"
+thiserror = "2.0"
+bytemuck = "1.0"
+futures = "0.3"
+lsp_doc = "0.2"
+dashmap = "6.1"
+glam = "0.30"
+sha2 = "0.10"
+log = "0.4"
 
 # Serialization
-csscolorparser = "0.7"
-fxhash = "0.2"
-
-# Async
-pollster = "0.4"
-
-# Text rendering
-wgpu_text = "26"
-
-# Time
-instant = "0.1"
-
-# Logging
-env_logger = "0.11"
+csscolorparser = { version = "0.7", default-features = false, features = [
+    "named-colors",
+] }
 
 # Asset loading
 image = { version = "0.25", default-features = false, features = [
@@ -69,64 +48,76 @@ image = { version = "0.25", default-features = false, features = [
     "png",
     "bmp",
     "hdr",
-    "dds",
 ] }
-gltf = { version = "1", features = [
-    "names",
-    "utils",
-    "KHR_lights_punctual",
-], optional = true }
-obj = { version = "0.10", optional = true }
-ddsfile = "0.5"
 
-# Sync
-futures-intrusive = "0.5"
-dashmap = "6.1.0"
+# Python FFI (optional)
+pyo3 = { version = "0.26", features = [
+    "abi3-py39",
+    "experimental-async",
+    "generate-import-lib",
+], optional = true }
+numpy = { version = "0.26", optional = true }
 
 # MacOS
 [target.'cfg(target_os = "macos")'.dependencies]
-cocoa = "0.26"
-objc2 = "0.6"
-objc2-app-kit = "0.3"
+objc2 = { version = "0.6" }
+objc2-app-kit = { version = "0.3" }
 
 # Android & iOS FFI
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-uniffi = { version = "0.29" }
+# uniffi = { version = "0.29" } // planned for v0.10.8
+winit = { version = "0.30", features = ["serde"], optional = true }
 ureq = { version = "3", default-features = false }
-raw-window-handle = { version = "0.6" }
-winit = { version = "0.30", features = ["serde"] }
+pollster = { version = "0.4", optional = true }
 
-# iOS Specific
-[target.'cfg(target_os = "ios")'.dependencies]
-objc = "0.2"
-objc2-app-kit = "0.3"
-core-graphics = "0.25"
+# iOS Specific (planned for v0.10.8)
+# [target.'cfg(target_os = "ios")'.dependencies]
+# objc = "0.2"
+# objc2-app-kit = "0.3"
+# core-graphics = "0.25"
 
 # WASM-Specific
 [target.'cfg(target_family = "wasm")'.dependencies]
-wasm-bindgen = "0.2"
+console_error_panic_hook = "0.1"
 wasm-bindgen-futures = "0.4"
 serde-wasm-bindgen = "0.6"
-console_log = "1.0"
-console_error_panic_hook = { version = "0.1" }
-gloo-utils = { version = "0.2", features = ["serde"] }
+wasm-bindgen-test = "0.3"
+wasm-bindgen = "0.2"
+console_log = "1"
+lsp_doc = "0.2"
 js-sys = "0.3"
+gloo-utils = { version = "0.2", features = ["serde"] }
 web-sys = { version = "0.3", features = [
-    'Document',
-    'Element',
+    'OffscreenCanvasRenderingContext2d',
+    'CanvasRenderingContext2d',
+    'WebGl2RenderingContext',
+    'WebGlRenderingContext',
     'HtmlCanvasElement',
+    'HtmlImageElement',
     'OffscreenCanvas',
-    'Window',
-    'EventTarget',
-    'Location',
-    'Request',
-    'RequestInit',
     'RequestMode',
+    'RequestInit',
+    'EventTarget',
+    'ImageData',
+    'Document',
+    'Location',
     'Response',
+    'Element',
+    'Request',
+    'Window',
 ] }
 
 [build-dependencies]
+phf = { version = "0.13", features = ["macros"] }
+syn = { version = "2.0", features = ["full"] }
+phf_codegen = "0.13"
 cfg_aliases = "0.2"
+quote = "1"
 
 [dev-dependencies]
-rand = { version = "0.9" }
+wasm-bindgen-test = "0.3"
+image-compare = "0.5"
+pollster = "0.4"
+fastrand = "2"
+tempfile = "3"
+proptest = "1"

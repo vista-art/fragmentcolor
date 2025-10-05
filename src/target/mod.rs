@@ -1,9 +1,33 @@
-use std::fmt::{Debug, Formatter};
+mod texture;
+pub use texture::*;
 
+mod window;
+pub use window::*;
+
+mod headless;
+pub use headless::*;
+
+mod all;
+pub use all::*;
+
+mod platform;
+#[cfg(any(python, wasm))]
+pub use platform::*;
+
+use crate::size::Size;
+use lsp_doc::lsp_doc;
+
+pub mod error;
+
+#[lsp_doc("docs/api/targets/target/target.md")]
 pub trait Target {
-    fn size(&self) -> wgpu::Extent3d;
-    fn resize(&mut self, size: wgpu::Extent3d);
+    fn size(&self) -> Size;
+
+    fn resize(&mut self, size: impl Into<Size>);
+
     fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, wgpu::SurfaceError>;
+
+    fn get_image(&self) -> Vec<u8>;
 }
 
 pub trait TargetFrame {
@@ -14,15 +38,3 @@ pub trait TargetFrame {
         true
     }
 }
-
-impl Debug for dyn Target {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Target")
-    }
-}
-
-pub mod texture;
-pub use texture::*;
-
-pub mod window;
-pub use window::*;

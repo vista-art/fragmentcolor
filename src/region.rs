@@ -1,11 +1,15 @@
 use glam::Vec2;
 use glam::Vec4;
 
-use serde::{Deserialize, Serialize};
+#[cfg(wasm)]
+use wasm_bindgen::prelude::*;
 
-#[cfg_attr(feature = "python", pyo3::pyclass)]
+pub mod error;
+
+#[cfg_attr(wasm, wasm_bindgen)]
+#[cfg_attr(python, pyo3::pyclass)]
 /// A region in 2D space designed to handle viewport and texture regions
-#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd)]
 pub struct Region {
     pub min_x: u32,
     pub min_y: u32,
@@ -21,19 +25,6 @@ impl Default for Region {
             max_x: 1,
             max_y: 1,
         }
-    }
-}
-
-impl From<wgpu::Extent3d> for Region {
-    fn from(e: wgpu::Extent3d) -> Self {
-        Self::from_size(e.width, e.height)
-    }
-}
-
-#[cfg(not(wasm))]
-impl From<&winit::dpi::PhysicalSize<u32>> for Region {
-    fn from(s: &winit::dpi::PhysicalSize<u32>) -> Self {
-        Self::from_size(s.width, s.height)
     }
 }
 
@@ -123,26 +114,6 @@ impl Region {
             width: self.width(),
             height: self.height(),
             depth_or_array_layers: 1,
-        }
-    }
-
-    #[cfg(not(wasm))]
-    pub fn from_window_size(size: &winit::dpi::PhysicalSize<u32>) -> Self {
-        Self {
-            min_x: 0,
-            min_y: 0,
-            max_x: size.width,
-            max_y: size.height,
-        }
-    }
-
-    #[cfg(not(wasm))]
-    pub fn from_window_logical_size(size: &winit::dpi::LogicalSize<u32>) -> Self {
-        Self {
-            min_x: 0,
-            min_y: 0,
-            max_x: size.width,
-            max_y: size.height,
         }
     }
 
@@ -429,6 +400,290 @@ fn translate_region(
     )
 }
 
+#[cfg(wasm)]
+impl TryFrom<&wasm_bindgen::JsValue> for Region {
+    type Error = crate::region::error::RegionError;
+
+    fn try_from(value: &wasm_bindgen::JsValue) -> Result<Self, Self::Error> {
+        use js_sys::{Array, Float32Array, Int32Array, Reflect, Uint32Array};
+        use wasm_bindgen::JsCast;
+
+        // Typed arrays: Uint32Array, Int32Array, Float32Array
+        if let Some(arr) = value.dyn_ref::<Uint32Array>() {
+            let len = arr.length();
+            if len == 2 {
+                let mut buf = [0u32; 2];
+                arr.copy_to(&mut buf);
+                return Ok(((buf[0], buf[1])).into());
+            }
+            if len == 4 {
+                let mut buf = [0u32; 4];
+                arr.copy_to(&mut buf);
+                return Ok(((buf[0], buf[1], buf[2], buf[3])).into());
+            }
+        }
+        if let Some(arr) = value.dyn_ref::<Int32Array>() {
+            let len = arr.length();
+            if len == 2 {
+                let mut buf = [0i32; 2];
+                arr.copy_to(&mut buf);
+                return Ok(((buf[0].max(0) as u32, buf[1].max(0) as u32)).into());
+            }
+            if len == 4 {
+                let mut buf = [0i32; 4];
+                arr.copy_to(&mut buf);
+                return Ok(((
+                    buf[0].max(0) as u32,
+                    buf[1].max(0) as u32,
+                    buf[2].max(0) as u32,
+                    buf[3].max(0) as u32,
+                ))
+                    .into());
+            }
+        }
+        if let Some(arr) = value.dyn_ref::<Float32Array>() {
+            let len = arr.length();
+            if len == 2 {
+                let mut buf = [0.0f32; 2];
+                arr.copy_to(&mut buf);
+                return Ok(((buf[0].max(0.0) as u32, buf[1].max(0.0) as u32)).into());
+            }
+            if len == 4 {
+                let mut buf = [0.0f32; 4];
+                arr.copy_to(&mut buf);
+                return Ok(((
+                    buf[0].max(0.0) as u32,
+                    buf[1].max(0.0) as u32,
+                    buf[2].max(0.0) as u32,
+                    buf[3].max(0.0) as u32,
+                ))
+                    .into());
+            }
+        }
+
+        // Array: [x,y,width,height] or [w,h]
+        if let Some(arr) = value.dyn_ref::<Array>() {
+            let len = arr.length();
+            let num = |i: u32| arr.get(i).as_f64().unwrap_or(0.0).max(0.0) as u32;
+            if len == 2 {
+                return Ok(((num(0), num(1))).into());
+            }
+            if len == 4 {
+                return Ok(((num(0), num(1), num(2), num(3))).into());
+            }
+        }
+
+        // Object: support DOMRect/Rect-like objects and min/max variants
+        if value.is_object() {
+            let x = Reflect::get(value, &wasm_bindgen::JsValue::from_str("x"))
+                .ok()
+                .and_then(|v| v.as_f64());
+            let y = Reflect::get(value, &wasm_bindgen::JsValue::from_str("y"))
+                .ok()
+                .and_then(|v| v.as_f64());
+            let w = Reflect::get(value, &wasm_bindgen::JsValue::from_str("width"))
+                .ok()
+                .and_then(|v| v.as_f64());
+            let h = Reflect::get(value, &wasm_bindgen::JsValue::from_str("height"))
+                .ok()
+                .and_then(|v| v.as_f64());
+
+            if let (Some(x), Some(y), Some(w), Some(h)) = (x, y, w, h) {
+                return Ok(((
+                    x.max(0.0) as u32,
+                    y.max(0.0) as u32,
+                    w.max(0.0) as u32,
+                    h.max(0.0) as u32,
+                ))
+                    .into());
+            }
+
+            // min/max variant: { minX, minY, maxX, maxY }
+            let min_x = Reflect::get(value, &wasm_bindgen::JsValue::from_str("minX"))
+                .ok()
+                .and_then(|v| v.as_f64());
+            let min_y = Reflect::get(value, &wasm_bindgen::JsValue::from_str("minY"))
+                .ok()
+                .and_then(|v| v.as_f64());
+            let max_x = Reflect::get(value, &wasm_bindgen::JsValue::from_str("maxX"))
+                .ok()
+                .and_then(|v| v.as_f64());
+            let max_y = Reflect::get(value, &wasm_bindgen::JsValue::from_str("maxY"))
+                .ok()
+                .and_then(|v| v.as_f64());
+
+            if let (Some(ax), Some(ay), Some(bx), Some(by)) = (min_x, min_y, max_x, max_y) {
+                let a = (ax.max(0.0) as u32, ay.max(0.0) as u32);
+                let b = (bx.max(0.0) as u32, by.max(0.0) as u32);
+                return Ok(((a, b)).into());
+            }
+        }
+
+        Err(crate::region::error::RegionError::TypeMismatch(
+            "Cannot convert JavaScript value to Region (expected [x,y,w,h], [w,h], or {x,y,width,height})".into(),
+        ))
+    }
+}
+
+#[cfg(wasm)]
+crate::impl_tryfrom_owned_via_ref!(
+    Region,
+    wasm_bindgen::JsValue,
+    crate::region::error::RegionError
+);
+
+crate::impl_from_into_with_refs!(
+    Region,
+    wgpu::Extent3d,
+    |r: Region| wgpu::Extent3d {
+        width: r.width(),
+        height: r.height(),
+        depth_or_array_layers: 1
+    },
+    |e: wgpu::Extent3d| Region::from_size(e.width, e.height)
+);
+
+// -------------------------------------------
+// Trait-based conversions (preferred surface)
+// -------------------------------------------
+
+impl From<(u32, u32)> for Region {
+    #[inline]
+    fn from(size: (u32, u32)) -> Self {
+        Region::from_tuple(size)
+    }
+}
+impl From<&(u32, u32)> for Region {
+    #[inline]
+    fn from(size: &(u32, u32)) -> Self {
+        Region::from_tuple(*size)
+    }
+}
+
+impl From<[u32; 2]> for Region {
+    #[inline]
+    fn from(a: [u32; 2]) -> Self {
+        Region::from_tuple((a[0], a[1]))
+    }
+}
+impl From<&[u32; 2]> for Region {
+    #[inline]
+    fn from(a: &[u32; 2]) -> Self {
+        Region::from_tuple((a[0], a[1]))
+    }
+}
+
+impl From<(u32, u32, u32, u32)> for Region {
+    #[inline]
+    fn from(t: (u32, u32, u32, u32)) -> Self {
+        Region::from_region(t.0, t.1, t.2, t.3)
+    }
+}
+impl From<&(u32, u32, u32, u32)> for Region {
+    #[inline]
+    fn from(t: &(u32, u32, u32, u32)) -> Self {
+        Region::from_region(t.0, t.1, t.2, t.3)
+    }
+}
+
+impl From<[u32; 4]> for Region {
+    #[inline]
+    fn from(a: [u32; 4]) -> Self {
+        Region::from_region(a[0], a[1], a[2], a[3])
+    }
+}
+impl From<&[u32; 4]> for Region {
+    #[inline]
+    fn from(a: &[u32; 4]) -> Self {
+        Region::from_region(a[0], a[1], a[2], a[3])
+    }
+}
+
+impl From<((u32, u32), (u32, u32))> for Region {
+    #[inline]
+    fn from(p: ((u32, u32), (u32, u32))) -> Self {
+        Region::from_tuples(p.0, p.1)
+    }
+}
+impl From<&((u32, u32), (u32, u32))> for Region {
+    #[inline]
+    fn from(p: &((u32, u32), (u32, u32))) -> Self {
+        Region::from_tuples(p.0, p.1)
+    }
+}
+
+impl From<(i32, i32, i32, i32)> for Region {
+    #[inline]
+    fn from(t: (i32, i32, i32, i32)) -> Self {
+        Region::from_region_i32(t.0, t.1, t.2, t.3)
+    }
+}
+impl From<&(i32, i32, i32, i32)> for Region {
+    #[inline]
+    fn from(t: &(i32, i32, i32, i32)) -> Self {
+        Region::from_region_i32(t.0, t.1, t.2, t.3)
+    }
+}
+
+impl From<([i32; 2], [i32; 2])> for Region {
+    #[inline]
+    fn from(p: ([i32; 2], [i32; 2])) -> Self {
+        Region::from_arrays_i32(p.0, p.1)
+    }
+}
+impl From<&([i32; 2], [i32; 2])> for Region {
+    #[inline]
+    fn from(p: &([i32; 2], [i32; 2])) -> Self {
+        Region::from_arrays_i32(p.0, p.1)
+    }
+}
+
+// Outbound conversions for convenience
+impl From<&Region> for Vec2 {
+    #[inline]
+    fn from(r: &Region) -> Self {
+        r.to_vec2()
+    }
+}
+impl From<&Region> for Vec4 {
+    #[inline]
+    fn from(r: &Region) -> Self {
+        r.to_vec4()
+    }
+}
+impl From<&Region> for [f32; 4] {
+    #[inline]
+    fn from(r: &Region) -> Self {
+        r.to_array()
+    }
+}
+
+#[cfg(python)]
+mod python_bindings {
+    use super::*;
+    use pyo3::prelude::*;
+
+    #[pymethods]
+    impl Region {
+        #[new]
+        pub fn new_py(origin: (u32, u32), size: (u32, u32)) -> Self {
+            Region::new(origin, size)
+        }
+
+        #[staticmethod]
+        #[pyo3(name = "from_region")]
+        pub fn from_region_py(x: u32, y: u32, width: u32, height: u32) -> Self {
+            Region::from_region(x, y, width, height)
+        }
+
+        #[staticmethod]
+        #[pyo3(name = "from_tuple")]
+        pub fn from_tuple_py(size: (u32, u32)) -> Self {
+            Region::from_tuple(size)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::Region;
@@ -519,5 +774,57 @@ mod tests {
             Region::from_region_i32(0, 0, 0, 0),
             Region::from_region_i32(0, 0, 0, 0),
         );
+    }
+
+    // Story: Construct regions using helpers and verify geometry utilities.
+    #[test]
+    fn computes_area_aspect_and_centers() {
+        // Arrange
+        let r = Region::from_region(2, 4, 8, 6); // spans x:[2,10), y:[4,10)
+
+        // Act / Assert
+        assert_eq!(r.width(), 8);
+        assert_eq!(r.height(), 6);
+        assert_eq!(r.area(), 48);
+        assert!((r.aspect() - (8.0 / 6.0)).abs() < 1e-6);
+        assert_eq!(r.pixel_center(), (2 + 4, 4 + 3));
+    }
+
+    // Story: Union grows the region while intersect check reports overlap.
+    #[test]
+    fn unions_and_intersects() {
+        // Arrange
+        let mut a = Region::from_region(0, 0, 4, 4);
+        let b = Region::from_region(2, 2, 4, 4);
+
+        // Act
+        let overlaps = a.intersects(b);
+        a.union(b);
+
+        // Assert
+        assert!(overlaps);
+        assert_eq!(a, Region::from_region(0, 0, 6, 6));
+    }
+
+    // Story: Clamp, encompass and equals work at the boundaries; radii helpers return intuitive values.
+    #[test]
+    fn clamp_encompass_equals_and_radii() {
+        let mut r = Region::from_region(1, 2, 3, 4);
+        r.clamp(2, 3);
+        assert_eq!(r, Region::from_region(1, 2, 1, 1)); // max clamped down
+
+        r.encompass(5, 6);
+        assert_eq!(r.max_x, 6);
+        assert_eq!(r.max_y, 7);
+
+        let r2 = Region::from_region(1, 2, 5, 5);
+        assert!(r.equals(r2));
+
+        let square = Region::from_region(0, 0, 4, 4);
+        assert!((square.inbound_radius() - 2.0).abs() < 1e-6);
+        assert!((square.outbound_radius() - (2.0f32.hypot(2.0))).abs() < 1e-6);
+
+        let c = square.center_f32();
+        assert!((c.x - 2.0).abs() < 1e-6 && (c.y - 2.0).abs() < 1e-6);
     }
 }

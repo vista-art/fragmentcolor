@@ -1,6 +1,10 @@
 from fragmentcolor import Renderer, Shader, Pass
 from rendercanvas.auto import RenderCanvas, loop
+from pathlib import Path
 import random
+
+BASE_DIR = Path(__file__).resolve().parent
+shader_file = str(BASE_DIR / "circle.wgsl")
 
 canvas = RenderCanvas(size=(800, 600))
 renderer = Renderer()
@@ -8,10 +12,9 @@ target = renderer.create_target(canvas)
 
 renderpass = Pass("Multi Object Pass")
 
-
 circles = []
 for _ in range(50):
-    circle = Shader("circle.wgsl")
+    circle = Shader(shader_file)
     circle.set("resolution", [800, 600])
 
     # Random position within canvas bounds

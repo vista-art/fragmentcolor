@@ -1,134 +1,103 @@
-use std::sync::Arc;
-
-use photogeometry::Rect;
-
-use crate::{Bitmap, Destination, Image, PixelFormat, ffi};
+use crate::{Target, TargetFrame, WindowTarget};
 use core_graphics::geometry::CGSize;
 use objc::*;
 
-const BACKENDS: wgpu::Backends = wgpu::Backends::METAL;
-
+/// iOS-specific target that wraps a WindowTarget.
+#[doc(hidden)]
 #[cfg_attr(mobile, derive(uniffi::Object))]
-pub struct Renderer {
-    wrapped: Arc<crate::Renderer>,
+pub struct IosTarget(WindowTarget);
+
+#[doc(hidden)]
+#[cfg_attr(mobile, derive(uniffi::Object))]
+pub struct IosTextureTarget(crate::TextureTarget);
+
+impl Target for IosTarget {
+    fn size(&self) -> crate::Size {
+        self.0.size()
+    }
+    fn resize(&mut self, size: impl Into<crate::Size>) {
+        self.0.resize(size.into());
+    }
+    fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, wgpu::SurfaceError> {
+        self.0.get_current_frame()
+    }
+}
+
+impl Target for IosTextureTarget {
+    fn size(&self) -> crate::Size {
+        self.0.size()
+    }
+    fn resize(&mut self, size: impl Into<crate::Size>) {
+        self.0.resize(size.into());
+    }
+    fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, wgpu::SurfaceError> {
+        self.0.get_current_frame()
+    }
+    fn get_image(&self) -> Vec<u8> {
+        <crate::TextureTarget as Target>::get_image(&self.0)
+    }
 }
 
 #[cfg_attr(mobile, uniffi::export)]
-impl Renderer {
-    #[cfg_attr(mobile, uniffi::constructor)]
-    pub async fn headless() -> Self {
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
-            backends: BACKENDS,
-            ..Default::default()
-        });
-
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions::default())
-            .await
-            .expect("Failed to find an appropriate adapter");
-
-        let (device, queue) = crate::platform::all::request_device(&adapter).await;
-
-        let renderer = crate::Renderer::new(device, queue).await;
-
-        Renderer {
-            wrapped: renderer.into(),
-        }
+impl crate::Renderer {
+    /// Creates a new Renderer (iOS wrapper variant)
+    #[lsp_doc("docs/api/core/renderer/new.md")]
+    pub fn new_ios() -> Self {
+        Self::new()
     }
 
-    pub async fn render_bitmap(
+    /// Create a target from a CAMetalLayer pointer (as u64) on iOS.
+    /// The pointer must remain valid for the lifetime of the target.
+    #[lsp_doc("docs/api/core/renderer/create_target.md")]
+    pub async fn create_target_ios(
         &self,
-        image: &Image,
-        bounds: Option<Arc<Rect>>,
-        pixel_format: PixelFormat,
-    ) -> Option<Arc<Bitmap>> {
-        self.wrapped
-            .render_bitmap(image, bounds.map(|it| *it.as_ref()), pixel_format)
-            .await
-            .ok()
-            .map(|it| it.into())
-    }
-}
-
-#[cfg_attr(mobile, derive(uniffi::Object))]
-pub struct FragmentColor {
-    surface: Option<wgpu::Surface<'static>>,
-    wrapped: Arc<crate::FragmentColor>,
-}
-
-#[cfg_attr(mobile, uniffi::export)]
-impl FragmentColor {
-    #[cfg_attr(mobile, uniffi::constructor)]
-    pub async fn headless() -> Self {
-        let context = headless().await;
-        Self {
-            surface: None,
-            wrapped: crate::FragmentColor::new(context).into(),
-        }
-    }
-
-    /// NOTE: FragmentColor needs a raw pointer to connect with the CAMetalLayer.
-    /// Unfortunately uniffi currently does not support interfacing with raw
-    /// pointers.
-    ///
-    /// As of April 2024, early discussions are happening to add support to it:
-    /// https://github.com/mozilla/uniffi-rs/issues/1946
-    ///
-    /// We can remove this ugly hack once uniffi supports raw pointers
-    #[cfg_attr(mobile, uniffi::constructor)]
-    pub async fn in_metal_layer(metal_layer_ptr: u64) -> Self {
+        metal_layer_ptr: u64,
+    ) -> Result<IosTarget, crate::InitializationError> {
+        // Read drawable size from CAMetalLayer
         let metal_layer = metal_layer_ptr as *mut objc::runtime::Object;
-        let (drawable_width, drawable_height) = unsafe {
+        let (width, height) = unsafe {
             let size: CGSize = objc::msg_send![metal_layer, drawableSize];
             (size.width as u32, size.height as u32)
         };
-
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
-            backends: BACKENDS,
-            ..Default::default()
-        });
-
-        let surface = unsafe {
-            instance
-                .create_surface_unsafe(wgpu::SurfaceTargetUnsafe::CoreAnimationLayer(
-                    metal_layer as _,
-                ))
-                .expect("Failed to create surface")
+        let size = wgpu::Extent3d {
+            width: u32::max(width, 1),
+            height: u32::max(height, 1),
+            depth_or_array_layers: 1,
         };
 
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions {
-                compatible_surface: Some(&surface),
-                ..Default::default()
-            })
-            .await
-            .expect("Failed to find an appropriate adapter");
+        // Build unsafe surface from the CAMetalLayer
+        let instance = crate::renderer::platform::all::create_instance().await;
+        let surface = unsafe {
+            instance.create_surface_unsafe(wgpu::SurfaceTargetUnsafe::CoreAnimationLayer(
+                metal_layer as _,
+            ))?
+        };
 
-        let (device, queue) = crate::platform::all::request_device(&adapter).await;
-        let config = crate::platform::all::configure_surface(&device, &adapter, &surface, &size);
-        let renderer = crate::FragmentColor::new(crate::Renderer::new(device, queue));
+        // Use core helper to configure and produce a WindowTarget
+        let (context, surface, config) = self
+            .create_surface(wgpu::SurfaceTarget::Surface(surface), size)
+            .await?;
 
-        Self {
-            renderer: Some(surface),
-            wrapped: stage.into(),
-        }
+        Ok(IosTarget(WindowTarget::new(context, surface, config)))
     }
 
-    pub fn draw(&self, composition: &ffi::Composition) {
-        let Some(surface) = self.surface.as_ref() else {
-            panic!("Cannot draw on a headless stage, use `render_bitmap` instead");
-        };
+    /// Headless texture target (iOS wrapper variant)
+    #[lsp_doc("docs/api/core/renderer/create_texture_target.md")]
+    pub async fn create_texture_target_ios(
+        &self,
+        size: impl Into<crate::Size>,
+    ) -> Result<IosTextureTarget, crate::InitializationError> {
+        let target = self.create_texture_target(size).await?;
+        Ok(IosTextureTarget(target))
+    }
 
-        let composition = composition.wrapped.read().unwrap();
-
-        let surface_texture = surface
-            .get_current_texture()
-            .expect("Failed to get texture");
-
-        self.wrapped
-            .render(&composition, Destination::Texture(&surface_texture.texture))
-            .expect("Failed rendering");
-
-        surface_texture.present();
+    /// Render wrapper (iOS variant)
+    #[lsp_doc("docs/api/core/renderer/render.md")]
+    pub fn render_ios(
+        &self,
+        renderable: &impl crate::renderer::Renderable,
+        target: &impl crate::Target,
+    ) -> Result<(), crate::RendererError> {
+        self.render(renderable, target)
     }
 }

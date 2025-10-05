@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+./clippy
+cargo test --all --workspace --all-features --all-targets "$@"
+cargo test -p fragmentcolor --doc -- --nocapture

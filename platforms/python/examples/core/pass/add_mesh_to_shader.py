@@ -1,0 +1,19 @@
+from fragmentcolor import Shader, Mesh, Vertex, Pass
+
+mesh = Mesh()
+mesh.add_vertex(Vertex([0.0, 0.0]))
+shader = Shader("""
+  struct VOut { @builtin(position) pos: vec4<f32> };
+  @vertex
+  fn vs_main(@location(0) pos: vec2<f32>) -> VOut {
+    var out: VOut;
+    out.pos = vec4<f32>(pos, 0.0, 1.0);
+    return out;
+  }
+  @fragment
+  fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
+
+""")
+
+rpass = Pass("rpass"); rpass.add_shader(shader)
+rpass.add_mesh_to_shader(mesh, shader)

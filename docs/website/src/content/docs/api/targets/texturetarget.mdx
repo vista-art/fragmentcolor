@@ -1,0 +1,408 @@
+---
+title: TextureTarget
+description: "The [TextureTarget](/api/targets/texturetarget) is an offscreen [Target](/api/core/target) backed by a GPU texture."
+category: targets
+categoryLabel: Targets
+---
+
+import { Code, Tabs, TabItem, Aside } from "@astrojs/starlight/components";
+
+## Description
+
+The [TextureTarget](/api/targets/texturetarget) is an offscreen [Target](/api/core/target) backed by a GPU texture.
+
+Use it for headless rendering, tests, server-side image generation, or CI.
+
+
+
+## Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+
+use fragmentcolor::{Renderer, Shader, Target};
+
+let renderer = Renderer::new();
+let mut target = renderer.create_texture_target([64, 64]).await?;
+
+let shader = Shader::default();
+renderer.render(&shader, &target)?;
+
+let image = target.get_image();
+
+assert_eq!(image.len(), 64 * 64 * 4); // RGBA8
+target.resize([128, 128]);
+assert_eq!(target.size().width, 128);
+assert_eq!(target.size().height, 128);
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+`}
+lang="rust" meta="collapse={1-1, 13-19}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+
+import { Renderer, Shader } from "fragmentcolor";
+
+const renderer = new Renderer();
+const target = await renderer.createTextureTarget([64, 64]);
+
+const shader = Shader.default();
+renderer.render(shader, target);
+
+const image = target.getImage();
+
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+
+from fragmentcolor import Renderer, Shader
+
+renderer = Renderer()
+target = renderer.create_texture_target([64, 64])
+
+shader = Shader.default()
+renderer.render(shader, target)
+
+image = target.get_image()
+
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+## Methods
+
+
+---
+
+### TextureTarget::get_image()
+
+Returns the current contents of the target as a byte array in RGBA8 format.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::{Renderer, Target, Shader};
+
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+
+let renderer = Renderer::new();
+let target = renderer.create_texture_target([16, 16]).await?;
+renderer.render(&Shader::default(), &target)?;
+
+let image = target.get_image();
+
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+`}
+lang="rust" meta="collapse={3-3, 11-13}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Renderer, Shader } from "fragmentcolor";
+
+
+const renderer = new Renderer();
+const target = await renderer.createTextureTarget([16, 16]);
+renderer.render(new Shader(""), target);
+
+const image = target.getImage();
+
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from rendercanvas.auto import RenderCanvas, loop
+from fragmentcolor import Renderer, Shader
+
+
+renderer = Renderer()
+target = renderer.create_texture_target([16, 16])
+renderer.render(Shader(""), target)
+
+image = target.get_image()
+
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### TextureTarget::resize(size: [u32; 2] | (u32, u32))
+
+Resizes the [TextureTarget](/api/targets/texturetarget) to the given width and height.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+
+use fragmentcolor::Renderer;
+
+let renderer = Renderer::new();
+let mut target = renderer.create_texture_target([64, 64]).await?;
+
+target.resize([128, 32]);
+
+assert_eq!(target.size(), [128, 32]);
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+`}
+lang="rust" meta="collapse={1-1, 10-13}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+
+import { Renderer } from "fragmentcolor";
+
+const renderer = new Renderer();
+const target = await renderer.createTextureTarget([64, 64]);
+
+target.resize([128, 32]);
+
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+
+from fragmentcolor import Renderer
+
+renderer = Renderer()
+target = renderer.create_texture_target([64, 64])
+
+target.resize([128, 32])
+
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### TextureTarget::size() -&gt; Size &#123; width: u32, height: u32, depth: u32 &#125;
+
+Returns the size of the [TextureTarget](/api/targets/texturetarget) in pixels.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+
+use fragmentcolor::Renderer;
+
+let renderer = Renderer::new();
+let target = renderer.create_texture_target([64, 64]).await?;
+let size = target.size();
+let width = size.width;
+let height = size.height;
+let depth = size.depth;
+
+assert_eq!(target.size(), [64, 64]);
+assert_eq!(width, 64);
+assert_eq!(height, 64);
+assert_eq!(depth, 1);
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+`}
+lang="rust" meta="collapse={1-1, 12-18}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+
+import { Renderer } from "fragmentcolor";
+
+const renderer = new Renderer();
+const target = await renderer.createTextureTarget([64, 64]);
+const size = target.size();
+const width = size.width;
+const height = size.height;
+const depth = size.depth;
+
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+
+from fragmentcolor import Renderer
+
+renderer = Renderer()
+target = renderer.create_texture_target([64, 64])
+size = target.size
+width = size.width
+height = size.height
+depth = size.depth
+
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>

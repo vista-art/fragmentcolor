@@ -1,85 +1,109 @@
 use thiserror::Error;
 
-#[derive(Error, Debug)]
-pub enum InitializationError {
-    #[error("Failed to find a compatible GPU adapter")]
-    AdapterError(#[from] wgpu::RequestAdapterError),
-    #[error("Failed to create device")]
-    DeviceError(#[from] wgpu::RequestDeviceError),
-    #[error("Failed to create surface")]
-    SurfaceError(#[from] wgpu::CreateSurfaceError),
-    #[error("Initialization error: {0}")]
-    Error(String),
-}
+// Top-level catch-all error
 
 #[derive(Error, Debug)]
-pub enum ShaderError {
-    #[error("Context not initialized")]
-    NoContext(),
-    #[error("Failed to parse shader: {0}")]
-    ParseError(String),
-    #[error("Uniform not found: {0}")]
-    UniformNotFound(String),
-    #[error("Type mismatch for uniform {0}")]
-    TypeMismatch(String),
-    #[error("Field not found in struct: {0}")]
-    FieldNotFound(String),
-    #[error("File not found: {0}")]
-    FileNotFound(#[from] std::io::Error),
-    #[error("WGSL error: {0}")]
-    WgslError(#[from] naga::back::wgsl::Error),
-    #[error("WGSL Parse error: {0}")]
-    WgslParseError(#[from] naga::front::wgsl::ParseError),
-    #[error("GLSL Validation error: {0}")]
-    GlslValidationError(#[from] Box<naga::WithSpan<naga::valid::ValidationError>>),
-    #[error("GLSL Parse errors: {0}")]
-    GlslParseErrors(#[from] naga::front::glsl::ParseErrors),
-    #[error("WGPU error: {0}")]
-    WgpuError(#[from] wgpu::Error),
-    #[error("WGPU Surface Error: {0}")]
-    WgpuSurfaceError(#[from] wgpu::SurfaceError),
-    #[error("JSON Deserialization Error: {0}")]
-    JsonError(#[from] serde_json::Error),
-
+pub enum FragmentColorError {
+    #[error(transparent)]
+    Shader(#[from] crate::shader::error::ShaderError),
+    #[error(transparent)]
+    Color(#[from] crate::color::error::ColorError),
+    #[error(transparent)]
+    Size(#[from] crate::size::error::SizeError),
+    #[error(transparent)]
+    Pass(#[from] crate::pass::error::PassError),
+    #[error(transparent)]
+    Frame(#[from] crate::frame::error::FrameError),
+    #[error(transparent)]
+    Renderer(#[from] crate::renderer::error::RendererError),
+    #[error(transparent)]
+    Init(#[from] crate::renderer::error::InitializationError),
+    #[error(transparent)]
+    Display(#[from] crate::target::error::DisplayError),
     #[cfg(not(wasm))]
-    #[error("URL Request Error: {0}")]
-    RequestError(#[from] ureq::Error),
+    #[error("Network Request Error: {0}")]
+    NetworkRequest(#[from] ureq::Error),
     #[cfg(wasm)]
-    #[error("WASM Error: {0}")]
-    WasmError(String),
+    #[error("FragmentColor WASM Error: {0}")]
+    Error(String),
 }
 
 // Python-specific conversions
 
-#[cfg(feature = "python")]
+#[cfg(python)]
 use pyo3::{create_exception, exceptions::PyException, prelude::*};
-#[cfg(feature = "python")]
-create_exception!(fragment_color, FragmentColorError, PyException);
+#[cfg(python)]
+create_exception!(fragment_color, PyFragmentColorError, PyException);
 
-#[cfg(feature = "python")]
-impl From<PyErr> for ShaderError {
+#[cfg(python)]
+impl From<PyErr> for crate::target::error::DisplayError {
     fn from(e: PyErr) -> Self {
-        ShaderError::ParseError(e.to_string())
+        crate::target::error::DisplayError::Error(e.to_string())
     }
 }
 
-#[cfg(feature = "python")]
-impl From<ShaderError> for PyErr {
-    fn from(e: ShaderError) -> Self {
-        FragmentColorError::new_err(e.to_string())
+#[cfg(python)]
+impl From<crate::target::error::DisplayError> for PyErr {
+    fn from(e: crate::target::error::DisplayError) -> Self {
+        PyFragmentColorError::new_err(e.to_string())
     }
 }
 
-#[cfg(feature = "python")]
-impl From<PyErr> for InitializationError {
-    fn from(e: PyErr) -> Self {
-        InitializationError::Error(e.to_string())
+// WASM-specific conversions
+
+#[cfg(wasm)]
+impl From<wasm_bindgen::JsValue> for FragmentColorError {
+    fn from(value: wasm_bindgen::JsValue) -> Self {
+        let error_string = if let Some(s) = value.as_string() {
+            s
+        } else {
+            format!("{:?}", value)
+        };
+        FragmentColorError::Error(error_string)
     }
 }
 
-#[cfg(feature = "python")]
-impl From<InitializationError> for PyErr {
-    fn from(e: InitializationError) -> Self {
-        FragmentColorError::new_err(e.to_string())
+#[cfg(wasm)]
+impl From<FragmentColorError> for wasm_bindgen::JsValue {
+    fn from(error: FragmentColorError) -> Self {
+        wasm_bindgen::JsValue::from_str(&error.to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Story: Top-level error enum wraps inner error kinds via From and displays sensible messages.
+    #[test]
+    fn wraps_inner_errors_and_displays_messages() {
+        // Arrange / Act
+        let e1: FragmentColorError =
+            crate::shader::error::ShaderError::UniformNotFound("u".into()).into();
+        let e2: FragmentColorError =
+            crate::color::error::ColorError::TypeMismatch("bad".into()).into();
+        let e3: FragmentColorError =
+            crate::size::error::SizeError::TypeMismatch("size".into()).into();
+        let e6: FragmentColorError = crate::renderer::error::RendererError::NoContext.into();
+        let e7: FragmentColorError =
+            crate::renderer::error::InitializationError::Error("init".into()).into();
+        let e8: FragmentColorError =
+            crate::target::error::DisplayError::Error("disp".into()).into();
+
+        #[cfg(not(wasm))]
+        let e9: FragmentColorError = {
+            let err = ureq::get("http://127.0.0.1:1").call().unwrap_err();
+            err.into()
+        };
+
+        // Assert
+        assert!(e1.to_string().contains("Uniform not found"));
+        assert!(e2.to_string().contains("Type mismatch"));
+        assert!(e3.to_string().contains("Type mismatch"));
+        assert!(e6.to_string().contains("Context not initialized"));
+        assert!(e7.to_string().contains("Initialization error"));
+        assert!(e8.to_string().contains("Display Error"));
+        #[cfg(not(wasm))]
+        assert!(e9.to_string().contains("Network"));
     }
 }
