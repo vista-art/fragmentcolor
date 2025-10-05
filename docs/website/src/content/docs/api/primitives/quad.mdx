@@ -1,8 +1,8 @@
 ---
 title: Quad
 description: "A simple rectangle (quad) builder for 2D rendering. Produces a Mesh with position (vec2) and uv (vec2) per-vertex."
-category: core/mesh/primitives
-categoryLabel: Core / Mesh / Primitives
+category: primitives
+categoryLabel: Primitives
 ---
 
 import { Code, Tabs, TabItem, Aside } from "@astrojs/starlight/components";
@@ -94,8 +94,8 @@ lang="text"
 
 Create a quad from two corners (min.xy, max.xy) in clip-space coordinates.
 
-- Position layout: @location(0) vec2<f32>
-- UV layout: @location(1) vec2<f32>
+- Position layout: @location(0) vec2`vec2<f32>`
+- UV layout: @location(1) vec2`vec2<f32>`
 
 #### Example
 

@@ -72,6 +72,69 @@ export default defineConfig({
             href: "./favicon.ico",
           },
         },
+        // Cross-link blog and docs inside the left sidebar (desktop & mobile)
+        {
+          tag: "script",
+          attrs: { type: "module" },
+          content: `
+            const ensureSidebarLink = (ul, href, text) => {
+              try {
+                if (!ul) return;
+                const alt = href.endsWith('/') ? href.slice(0, -1) : href + '/';
+                const existingAnchor = ul.querySelector('a[href="' + href + '"], a[href="' + alt + '"]');
+                if (existingAnchor) {
+                  const li = existingAnchor.closest('li');
+                  if (li && li.parentElement === ul) ul.appendChild(li); // move to last
+                  return;
+                }
+                // Try to clone a simple top-level <li> if present to preserve styling
+                let liTemplate = ul.querySelector(':scope > li > a')?.parentElement;
+                let li;
+                if (liTemplate) {
+                  li = liTemplate.cloneNode(true);
+                  const a = li.querySelector('a');
+                  if (a) {
+                    a.href = href;
+                    a.textContent = text;
+                    // Remove special mobile-only class if present
+                    a.classList.remove('sl-blog-mobile-link');
+                  } else {
+                    li.innerHTML = '';
+                    const na = document.createElement('a');
+                    na.href = href; na.textContent = text; na.classList.add('large');
+                    li.appendChild(na);
+                  }
+                } else {
+                  li = document.createElement('li');
+                  const a = document.createElement('a');
+                  a.href = href; a.textContent = text; a.classList.add('large');
+                  li.appendChild(a);
+                }
+                ul.appendChild(li); // add as last item
+              } catch {}
+            };
+
+            const wire = () => {
+              const isBlog = location.pathname.startsWith('/blog/');
+              const uls = document.querySelectorAll('#starlight__sidebar .top-level');
+              uls.forEach((ul) => {
+                if (isBlog) {
+                  // Blog sidebar: add Docs (last)
+                  ensureSidebarLink(ul, '/welcome/', 'Docs');
+                } else {
+                  // Docs (or non-blog) sidebar: add Blog (last)
+                  ensureSidebarLink(ul, '/blog/', 'Blog');
+                }
+              });
+            };
+
+            if (document.readyState === 'loading') {
+              document.addEventListener('DOMContentLoaded', wire);
+            } else {
+              wire();
+            }
+          `,
+        },
       ],
       social: [
         { icon: "github", label: "GitHub", href: "https://github.com/vista-art/fragmentcolor" },

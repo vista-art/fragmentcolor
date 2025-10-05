@@ -2,6 +2,13 @@ name: Healthcheck Python (wheel)
 
 on:
   pull_request:
+    paths:
+      - 'src/**'
+      - 'Cargo.*'
+      - 'build.rs'
+      - 'platforms/python/**'
+      - 'docs/api/**'
+      - '.github/workflows/healthcheck_python.yml'
   workflow_dispatch:
 
 permissions:

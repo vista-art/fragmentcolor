@@ -1,22 +1,22 @@
 # FragmentColor
 
-[FragmentColor](https://fragmentcolor.org) is a cross-platform GPU programming library implemented in Rust and [wgpu](https://wgpu.rs).
+[FragmentColor](https://fragmentcolor.org) is a cross-platform GPU programming library that is both **easy to use** and powerful enough to leverage modern GPU features.
+
+The API encourages a simple shader composition workflow. You can use **WGSL** or **GLSL** shaders
+for visual consistency across platforms, while avoiding the verbosity of modern GPU APIs.
 
 It has bindings for [**JavaScript**](./README_JS.md) (WASM), [**Python**](./README_PY.md), and draft support for **Swift** and **Kotlin**.
 It targets each platform's native graphics API: **Vulkan**, **Metal**, **DirectX**, **OpenGL**, **WebGL**, and **WebGPU**.
 See [Platform Support](#platform-support) for details.
-
-The API encourages a simple shader composition workflow. You can use **WGSL** or **GLSL** shaders
-for visual consistency across platforms, while avoiding the verbosity of modern GPU APIs.
 
 Check the website for the Getting Started guide and full reference:
 
 - **Documentation:** <https://fragmentcolor.org/welcome>
 - **API Reference:** <https://fragmentcolor.org/api>
 
-> ⚠️ Status
+> [!NOTE] Status
 >
-> FragmentColor is still maturing. Expect minor versions to introduce changes as features evolve.
+> iOS and Android support is not available yet, but planned for version **v0.10.8**.
 > See the [Roadmap](https://github.com/vista-art/fragmentcolor/blob/main/ROADMAP.md) and [Changelog](https://github.com/vista-art/fragmentcolor/blob/main/CHANGELOG.md) for details.
 
 ## Install
@@ -157,6 +157,8 @@ Enter example name, number, 'q'/'quit' to quit:
 - The website lives under `docs/website` and is automatically generated from `docs/api` at build time.
 - Method pages include JavaScript and Python examples extracted from the healthcheck scripts.
 
+For contribution guidelines and the release process, see [CONTRIBUTING.md](./CONTRIBUTING.md).
+
 ## Platform support
 
 Platform support is aligned with upstream [wgpu](https://github.com/gfx-rs/wgpu):
@@ -187,13 +189,17 @@ Platform support is aligned with upstream [wgpu](https://github.com/gfx-rs/wgpu)
 cargo build
 
 # Test (all)
-cargo test
+./test
 
-# Lint (deny warnings)
-cargo clippy --all-targets --all-features -- -D warnings
+# Lint & Format
+./clippy
 
-# Format
-cargo fmt
+# Healthcheck (all platforms)
+./healthcheck
+
+# Filtered Healthcheck
+./healthcheck web
+./healthcheck py
 ```
 
 ### Web (WASM)
@@ -230,55 +236,11 @@ python examples/python/main.py
 - Doc examples follow async + pollster patterns.
 
 ```bash
+./build_docs                    # from root, builds and tests the site
+./run_docs                      # from root, runs the dev server
+
+# or
 pnpm --dir docs/website install
 pnpm --dir docs/website dev      # dev server
 pnpm --dir docs/website build    # static build
-```
-
-## Development
-
-- JavaScript example: `examples/javascript`
-- Python examples: `examples/python`
-- Rust examples: `examples/rust`
-
-### Mesh quick example
-
-```rust
-# async fn run() -> Result<(), Box<dyn std::error::Error>> {
-
-use fragmentcolor::{ Renderer, Pass, Shader, Mesh, Vertex, VertexValue };
-
-let renderer = Renderer::new();
-let target = renderer.create_texture_target([256, 256]).await?;
-
-let wgsl = r#"
-struct VertexOutput { @builtin(position) pos: vec4<f32> };
-@vertex
-fn vs_main(@location(0) pos: vec3<f32>, @location(1) offset: vec2<f32>) -> VOut {
-  var out: VertexOutput;
-  let p = vec3<f32>(pos.xy + offset, pos.z);
-  out.pos = vec4<f32>(p, 1.0);
-  return out;
-}
-@fragment
-fn main(_v: VertexOutput) -> @location(0) vec4<f32> { return vec4<f32>(0.2, 0.8, 0.2, 1.0); }
-"#;
-
-let shader = Shader::new(wgsl)?;
-let pass = Pass::from_shader("mesh", &shader);
-
-let mut mesh = Mesh::new();
-mesh.add_vertices([
-  [-0.5, -0.5, 0.0],
-  [ 0.5, -0.5, 0.0],
-  [ 0.0,  0.5, 0.0],
-]);
-// Instance properties matched by name and type
-mesh.add_instance(Vertex::new([0.0, 0.0]).set("offset", [0.0, 0.0]));
-
-pass.add_mesh(&mesh);
-renderer.render(&pass, &target)?;
-# Ok(())
-# }
-# fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 ```
