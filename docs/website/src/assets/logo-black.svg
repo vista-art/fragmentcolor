@@ -1,0 +1,16 @@
+<svg width="275" height="60" xmlns="http://www.w3.org/2000/svg">
+    <!-- "fragment" in black -->
+    <text x="10" y="45" font-family="Arial" font-size="40" fill="#000000">fragment</text>
+    
+    <!-- "color" with gradient -->
+    <!-- Define the gradient for "color" -->
+    <defs>
+        <linearGradient id="colorGradient">
+            <stop offset="0%" style="stop-color: #ff0083; stop-opacity: 1" />
+            <stop offset="50%" style="stop-color: #8300ff; stop-opacity: 1" />
+            <stop offset="100%" style="stop-color: #0083ff; stop-opacity: 1" />
+        </linearGradient>
+    </defs>
+    <!-- Apply the gradient to the text -->
+    <text x="172" y="45" font-family="Arial" font-size="40" fill="url(#colorGradient)">color</text>
+</svg>

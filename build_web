@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+set -e
+set -x
+
+if [ "$1" = "--debug" ]; then
+    WASM_PACK_CONFIGURATION="--dev"
+    NPM_PACKAGE_TARGET="package_debug"
+else
+    WASM_PACK_CONFIGURATION="--release"
+    NPM_PACKAGE_TARGET="package"
+fi
+
+# Portable way to get repo root (works on macOS and Linux)
+SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+
+# Build WASM package
+wasm-pack build --target web $WASM_PACK_CONFIGURATION --out-dir "$SOURCE_DIR/platforms/web/pkg"
+
+# Ensure npm package has a language-specific README
+if [ -f "$SOURCE_DIR/README_JS.md" ]; then
+  cp "$SOURCE_DIR/README_JS.md" "$SOURCE_DIR/platforms/web/pkg/README.md"
+fi
+
+# Distribute the pkg to web subprojects so local dev servers can import from ./pkg
+for SUB in "repl" "healthcheck"; do
+  DEST="$SOURCE_DIR/platforms/web/$SUB/pkg"
+  mkdir -p "$DEST"
+  # Copy the entire pkg directory contents (JS, WASM, .d.ts, and any helpers)
+  rsync -a --delete "$SOURCE_DIR/platforms/web/pkg/" "$DEST/" 2>/dev/null || cp -a "$SOURCE_DIR/platforms/web/pkg/." "$DEST/"
+done

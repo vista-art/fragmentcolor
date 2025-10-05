@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Exclude platform- and feature-specific glue and winit window target from coverage.
+# We exercise targets via TextureTarget headlessly in CI.
+cargo llvm-cov --workspace --all-features --ignore-filename-regex '(.*/platform/.*|.*/features/.*|.*/target/window\.rs)' --summary-only

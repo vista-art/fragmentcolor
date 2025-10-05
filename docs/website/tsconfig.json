@@ -1,0 +1,24 @@
+{
+	"extends": "astro/tsconfigs/strict",
+	"compilerOptions": {
+		"moduleResolution": "bundler",
+		"verbatimModuleSyntax": true,
+		"allowJs": true,
+		"resolveJsonModule": true,
+		"baseUrl": ".",
+		"paths": {
+			"~/*": ["src/*"]
+		},
+		"types": ["astro/client"]
+	},
+	"include": [
+		"src",
+		"astro.config.mjs",
+		"ec.config.mjs",
+		".astro/types.d.ts"
+	],
+	"exclude": [
+		"dist",
+		"node_modules"
+	]
+}

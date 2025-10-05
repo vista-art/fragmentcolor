@@ -1,9 +1,11 @@
-use crate::Renderer;
+use crate::{
+    Frame, Mesh, Pass, Renderer, RendererError, Shader, Size, Texture, TextureInput, TextureTarget,
+    target::CanvasTarget,
+};
+use js_sys::Array;
+use lsp_doc::lsp_doc;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
-
-pub mod target;
-pub use target::*;
 
 pub enum Canvas {
     Html(web_sys::HtmlCanvasElement),
@@ -49,15 +51,16 @@ impl From<web_sys::OffscreenCanvas> for Canvas {
 #[wasm_bindgen]
 impl Renderer {
     #[wasm_bindgen(constructor)]
-    /// Creates a new Renderer
+    #[lsp_doc("docs/api/core/renderer/new.md")]
     pub fn new_js() -> Self {
         Self::new()
     }
 
-    pub async fn create_target(&self, canvas: JsValue) -> Result<CanvasTarget, JsError> {
-        let canvas = if canvas.has_type::<web_sys::HtmlCanvasElement>() {
-            let canvas = canvas.dyn_into::<web_sys::HtmlCanvasElement>().unwrap();
-            Canvas::Html(canvas)
+    #[wasm_bindgen(js_name = "createTarget")]
+    #[lsp_doc("docs/api/core/renderer/create_target.md")]
+    pub async fn create_target_js(&self, canvas: JsValue) -> Result<CanvasTarget, JsError> {
+        let canvas = if let Some(canvas) = canvas.dyn_ref::<web_sys::HtmlCanvasElement>() {
+            Canvas::Html(canvas.clone())
         } else if let Ok(canvas) = canvas.dyn_into::<web_sys::OffscreenCanvas>() {
             Canvas::Offscreen(canvas)
         } else {
@@ -79,44 +82,171 @@ impl Renderer {
         Ok(CanvasTarget::new(context, surface, config))
     }
 
-    // @TODO
-    // /// Creates a headless Renderer
-    // pub async fn headless() -> Result<Renderer, JsError> {
-    //     let instance = wgpu::util::new_instance_with_webgpu_detection(&wgpu::InstanceDescriptor {
-    //         backends: wgpu::Backends::GL | wgpu::Backends::BROWSER_WEBGPU,
-    //         ..Default::default()
-    //     })
-    //     .await;
+    /// JS: Create a Texture from bytes, URL, or a CSS selector/HTMLImageElement.
+    /// Usage:
+    ///   await renderer.createTexture(u8array)
+    ///   await renderer.createTexture("/path/or/url.png")
+    ///   await renderer.createTexture("#imgId")
+    #[wasm_bindgen(js_name = "createTexture")]
+    #[lsp_doc("docs/api/core/renderer/create_texture.md")]
+    pub async fn create_texture_js(
+        &self,
+        input: &JsValue,
+    ) -> Result<crate::texture::Texture, JsError> {
+        let input_converted: TextureInput = input.try_into()?;
+        Ok(self.create_texture(input_converted).await?)
+    }
 
-    //     let backends = wgpu::Instance::enabled_backend_features();
+    #[wasm_bindgen(js_name = "createTextureWithSize")]
+    #[lsp_doc("docs/api/core/renderer/create_texture_with_size.md")]
+    pub async fn create_texture_with_size_js(
+        &self,
+        input: &JsValue,
+        size: &JsValue,
+    ) -> Result<crate::texture::Texture, JsError> {
+        let size: crate::Size = size.try_into()?;
+        let input_converted: TextureInput = input.try_into()?;
+        Ok(self.create_texture_with_size(input_converted, size).await?)
+    }
 
-    //     let adapter = if !backends.contains(wgpu::Backends::BROWSER_WEBGPU) {
-    //         // Create a DOM canvas element.
-    //         // This is needed to make adapter creation work in WebGL.
-    //         //
-    //         // We must create the surface from the same Instance we create the adapter,
-    //         // and the surface must remain alive during the call to request_adapter(),
-    //         // even though it can be immediately dropped afterwards.
-    //         //
-    //         // Relevant discussion: https://github.com/gfx-rs/wgpu/issues/5190
-    //         let canvas = web_sys::window()
-    //             .unwrap()
-    //             .document()
-    //             .unwrap()
-    //             .create_element("canvas")
-    //             .unwrap()
-    //             .dyn_into::<web_sys::HtmlCanvasElement>()
-    //             .unwrap();
+    #[wasm_bindgen(js_name = "createTextureTarget")]
+    #[lsp_doc("docs/api/core/renderer/create_texture_target.md")]
+    pub async fn create_texture_target_js(
+        &self,
+        size: &JsValue,
+    ) -> Result<crate::TextureTarget, JsError> {
+        let size: Size = size.try_into()?;
+        let target = self.create_texture_target(size).await?;
+        Ok(target)
+    }
 
-    //         let surface = instance.create_surface(wgpu::SurfaceTarget::Canvas(canvas))?;
+    #[wasm_bindgen(js_name = "createTextureWithFormat")]
+    #[lsp_doc("docs/api/core/renderer/create_texture_with_format.md")]
+    pub async fn create_texture_with_format_js(
+        &self,
+        input: &JsValue,
+        format: crate::TextureFormat,
+    ) -> Result<crate::texture::Texture, JsError> {
+        let input_converted: TextureInput = input.try_into()?;
+        Ok(self
+            .create_texture_with_format(input_converted, format)
+            .await?)
+    }
 
-    //         crate::platform::all::request_adapter(&instance, Some(&surface)).await?
-    //     } else {
-    //         crate::platform::all::request_headless_adapter(&instance).await?
-    //     };
+    #[wasm_bindgen(js_name = "createTextureWith")]
+    #[lsp_doc("docs/api/core/renderer/create_texture_with.md")]
+    pub async fn create_texture_with_js(
+        &self,
+        input: &JsValue,
+        options: &JsValue,
+    ) -> Result<crate::texture::Texture, JsError> {
+        // Accept either a bare Size (arrays/typed arrays/object) or an object with fields.
+        let input_converted: TextureInput = input.try_into()?;
+        if let Ok(size) = Size::try_from(options) {
+            let opts = crate::texture::TextureOptions {
+                size: Some(size),
+                ..Default::default()
+            };
+            return Ok(self.create_texture_with(input_converted, opts).await?);
+        }
+        // Fallback: try object with optional size/format (sampler optional; ignored here)
+        use js_sys::Reflect;
+        let mut opts = crate::texture::TextureOptions::default();
+        if let Ok(v) = Reflect::get(options, &JsValue::from_str("size")) {
+            if !v.is_undefined() && !v.is_null() {
+                if let Ok(sz) = Size::try_from(&v) {
+                    opts.size = Some(sz);
+                }
+            }
+        }
+        if let Ok(v) = Reflect::get(options, &JsValue::from_str("format")) {
+            if let Some(n) = v.as_f64() {
+                // wasm-bindgen enums are numeric in JS
+                let code = n as u32;
+                // Safe: TextureFormat has TryFrom<u32> via FromPrimitive in bindgen; fall back to default
+                opts.format = match code {
+                    0 => crate::TextureFormat::R8Unorm,
+                    1 => crate::TextureFormat::Rg8Unorm,
+                    2 => crate::TextureFormat::Rgba8Unorm,
+                    3 => crate::TextureFormat::Rgba8UnormSrgb,
+                    4 => crate::TextureFormat::Bgra8Unorm,
+                    5 => crate::TextureFormat::Rgba16Unorm,
+                    6 => crate::TextureFormat::Rgba32Float,
+                    7 => crate::TextureFormat::Rgba32Uint,
+                    8 => crate::TextureFormat::Rgba32Sint,
+                    9 => crate::TextureFormat::Depth32Float,
+                    10 => crate::TextureFormat::Rgba,
+                    11 => crate::TextureFormat::Bgra,
+                    12 => crate::TextureFormat::Lab,
+                    13 => crate::TextureFormat::L8,
+                    _ => crate::TextureFormat::default(),
+                };
+            }
+        }
+        Ok(self.create_texture_with(input_converted, opts).await?)
+    }
 
-    //     let (device, queue) = crate::platform::all::request_device(&adapter).await?;
+    #[wasm_bindgen(js_name = "createStorageTexture")]
+    #[lsp_doc("docs/api/core/renderer/create_storage_texture.md")]
+    pub async fn create_storage_texture_js(
+        &self,
+        size: &JsValue,
+        format: crate::TextureFormat,
+        usage: Option<u32>,
+    ) -> Result<crate::texture::Texture, JsError> {
+        let size: Size = size.try_into()?;
+        let usage_flags = usage.map(|bits| wgpu::TextureUsages::from_bits_truncate(bits));
+        Ok(self
+            .create_storage_texture(size, format, usage_flags)
+            .await?)
+    }
 
-    //     Ok(Renderer::init(device, queue))
-    // }
+    #[wasm_bindgen(js_name = "createDepthTexture")]
+    #[lsp_doc("docs/api/core/renderer/create_depth_texture.md")]
+    pub async fn create_depth_texture_js(&self, size: &JsValue) -> Result<Texture, JsError> {
+        let size: Size = size.try_into()?;
+        Ok(self.create_depth_texture(size).await?)
+    }
+
+    #[wasm_bindgen(js_name = "render")]
+    #[lsp_doc("docs/api/core/renderer/render.md")]
+    pub fn render_js(&self, renderable: &JsValue, target: &JsValue) -> Result<(), RendererError> {
+        // Canvas target
+        if let Ok(canvas_target) = CanvasTarget::try_from(target) {
+            if let Ok(shader) = Shader::try_from(renderable) {
+                return self.render(&shader, &canvas_target);
+            } else if let Ok(pass) = Pass::try_from(renderable) {
+                return self.render(&pass, &canvas_target);
+            } else if let Ok(frame) = Frame::try_from(renderable) {
+                return self.render(&frame, &canvas_target);
+            } else if let Ok(mesh) = Mesh::try_from(renderable) {
+                return self.render(&mesh, &canvas_target);
+            } else if Array::is_array(renderable) {
+                for item in Array::from(renderable) {
+                    self.render_js(&item, target)?;
+                }
+                return Ok(());
+            }
+        // Texture target
+        } else if let Ok(texture_target) = TextureTarget::try_from(target) {
+            if let Ok(shader) = Shader::try_from(renderable) {
+                return self.render(&shader, &texture_target);
+            } else if let Ok(pass) = Pass::try_from(renderable) {
+                return self.render(&pass, &texture_target);
+            } else if let Ok(frame) = Frame::try_from(renderable) {
+                return self.render(&frame, &texture_target);
+            } else if let Ok(mesh) = Mesh::try_from(renderable) {
+                return self.render(&mesh, &texture_target);
+            } else if Array::is_array(renderable) {
+                for item in Array::from(renderable) {
+                    self.render_js(&item, target)?;
+                }
+                return Ok(());
+            }
+        }
+
+        Err(RendererError::Error(
+            "Invalid target type in render".to_string(),
+        ))
+    }
 }

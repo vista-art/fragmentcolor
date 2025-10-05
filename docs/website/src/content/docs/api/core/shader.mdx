@@ -1,0 +1,1782 @@
+---
+title: Shader
+description: "The [Shader](/api/core/shader) object is the main building block in [FragmentColor](https://fragmentcolor.org)."
+category: core
+categoryLabel: Core
+---
+
+import { Code, Tabs, TabItem, Aside } from "@astrojs/starlight/components";
+
+## Description
+
+The [Shader](/api/core/shader) object is the main building block in [FragmentColor](https://fragmentcolor.org).
+
+It takes a WGSL or GLSL shader source as input, parses it, validates it, and exposes the uniforms as keys.
+
+To draw your shader, you must use your [Shader](/api/core/shader) instance as input to a [Renderer](/api/core/renderer).
+
+You can compose [Shader](/api/core/shader) instances into a [Pass](/api/core/pass) object to create more complex rendering pipelines.
+
+You can also create renderings with multiple Render Passes by using multiple [Pass](/api/core/pass) instances to a [Frame](/api/core/frame) object.
+
+## Uniforms
+
+Classic uniforms are declared with `var<uniform>` and can be nested structs/arrays.
+FragmentColor exposes every root and nested field as addressable keys using dot and index notation:
+
+- Set a field: `shader.set("u.color", [r, g, b, a])`
+- Index arrays: `shader.set("u.arr[1]", value)`
+
+### WGSL example
+
+```wgsl
+struct MyUniform { 
+  color: vec4<f32>, 
+  arr: array<vec4<f32>, 2> 
+};
+
+@group(0) @binding(0) var<uniform> u: MyUniform;
+```
+
+### Notes
+
+- Binding sizes are aligned to 16 bytes for layout correctness; this is handled automatically.
+- Large uniform blobs are uploaded via an internal buffer pool.
+
+## Textures and Samplers
+
+Sampled textures and samplers are supported via `texture_*` and `sampler` declarations.
+You can bind a Texture object created by the Renderer directly to a texture uniform (e.g., `shader.set("tex", &texture)`);
+samplers are provided automatically:
+
+- If a texture is bound in the same group, the sampler defaults to that texture's sampler.
+- Otherwise, a reasonable default sampler is used.
+
+### WGSL example
+
+```wgsl
+@group(0) @binding(0) var tex: texture_2d<f32>;
+@group(0) @binding(1) var samp: sampler;
+```
+
+### Notes
+
+- 2D/3D/Cube and array variants are supported; the correct view dimension is inferred.
+- Integer textures map to Sint/Uint sample types; float textures use filterable float when possible.
+
+## Storage Textures
+
+Writeable/readable image surfaces are supported via storage textures (`texture_storage_*`).
+Access flags are preserved from WGSL and mapped to the device:
+
+- `read` -> read-only storage access
+- `write` -> write-only storage access
+- `read_write` -> read+write (when supported)
+
+### WGSL example
+
+```wgsl
+@group(0) @binding(0) var img: texture_storage_2d<rgba8unorm, write>;
+```
+
+### Notes
+
+- The declared storage format is respected when creating the binding layout.
+- User must ensure the adapter supports the chosen format/access mode.
+
+## Storage Buffers
+
+Structured buffers are supported via `var<storage, read>` or `var<storage, read_write>`
+and can contain nested structs/arrays. FragmentColor preserves and applies the WGSL access flags
+when creating binding layouts and setting visibility.
+
+### WGSL example
+
+```wgsl
+struct Buf { a: vec4<f32> };
+@group(0) @binding(0) var<storage, read> ssbo: Buf;
+```
+
+### Notes
+
+- Read-only buffers are bound with `read-only` storage access; `read_write` allows writes when supported.
+- Buffer byte spans are computed from WGSL shapes; arrays/structs honor stride and alignment.
+- CPU-side updates use the same set("path", value) and get_bytes("path") APIs as uniforms, with array indexing supported (e.g., `buf.items[2].v`).
+- Large buffers are uploaded via a dedicated storage buffer pool.
+
+## Push Constants
+
+Push constants are supported with `var<push_constants>` in all platforms.
+
+They will fallback to regular uniform buffers when:
+
+- push_constants are not natively supported (ex. on Web),
+- multiple push-constant roots are declared, or
+- the total push-constant size exceeds the device limit.
+
+### Notes
+
+In fallback mode, FragmentColor rewrites push constants into classic uniform buffers
+placed in a newly allocated bind group. In this case:
+
+- A bind group slot will be used by this fallback group (allocated as max existing group + 1).
+- There is no check for the max bind groups supported.
+- If you use push constants and many bind groups, very high group indices can exceed device limits.
+- Each push-constant root becomes one uniform buffer binding in the fallback group.
+- Currently, the fallback is applied for render pipelines; compute pipeline fallback may be added later.
+
+
+## Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+
+use fragmentcolor::{Shader, Renderer};
+
+let shader = Shader::new(r#"
+    @vertex
+    fn vs_main(@builtin(vertex_index) index: u32) -> @builtin(position) vec4<f32> {
+        var pos = array<vec2<f32>, 3>(
+            vec2<f32>(-1.0, -1.0),
+            vec2<f32>( 3.0, -1.0),
+            vec2<f32>(-1.0,  3.0)
+        );
+        return vec4<f32>(pos[index], 0.0, 1.0);
+    }
+
+    @group(0) @binding(0)
+    var<uniform> resolution: vec2<f32>;
+
+    @fragment
+    fn fs_main() -> @location(0) vec4<f32> {
+        return vec4<f32>(1.0, 0.0, 0.0, 1.0); // Red
+    }
+"#)?;
+
+// Set the "resolution" uniform
+shader.set("resolution", [800.0, 600.0])?;
+let res: [f32; 2] = shader.get("resolution")?;
+
+let renderer = Renderer::new();
+let target = renderer.create_texture_target([16, 16]).await?;
+renderer.render(&shader, &target)?;
+
+assert_eq!(res, [800.0, 600.0]);
+assert!(shader.list_uniforms().len() >= 1);
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+`}
+lang="rust" meta="collapse={1-1, 33-37}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+
+import { Shader, Renderer } from "fragmentcolor";
+
+const shader = new Shader(\`
+    @vertex
+    fn vs_main(@builtin(vertex_index) index: u32) -> @builtin(position) vec4<f32> {
+        var pos = array<vec2<f32>, 3>(
+            vec2<f32>(-1.0, -1.0),
+            vec2<f32>( 3.0, -1.0),
+            vec2<f32>(-1.0,  3.0)
+        );
+        return vec4<f32>(pos[index], 0.0, 1.0);
+    }
+
+    @group(0) @binding(0)
+    var<uniform> resolution: vec2<f32>;
+
+    @fragment
+    fn fs_main() -> @location(0) vec4<f32> {
+        return vec4<f32>(1.0, 0.0, 0.0, 1.0); // Red
+    }
+
+\`);
+
+// Set the "resolution" uniform
+shader.set("resolution", [800.0, 600.0]);
+const res = shader.get("resolution");
+
+const renderer = new Renderer();
+const target = await renderer.createTextureTarget([16, 16]);
+renderer.render(shader, target);
+
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+
+from fragmentcolor import Shader, Renderer
+
+shader = Shader("""
+    @vertex
+    fn vs_main(@builtin(vertex_index) index: u32) -> @builtin(position) vec4<f32> {
+        var pos = array<vec2<f32>, 3>(
+            vec2<f32>(-1.0, -1.0),
+            vec2<f32>( 3.0, -1.0),
+            vec2<f32>(-1.0,  3.0)
+        );
+        return vec4<f32>(pos[index], 0.0, 1.0);
+    }
+
+    @group(0) @binding(0)
+    var<uniform> resolution: vec2<f32>;
+
+    @fragment
+    fn fs_main() -> @location(0) vec4<f32> {
+        return vec4<f32>(1.0, 0.0, 0.0, 1.0); // Red
+    }
+
+""")
+
+# Set the "resolution" uniform
+shader.set("resolution", [800.0, 600.0])
+res = shader.get("resolution")
+
+renderer = Renderer()
+target = renderer.create_texture_target([16, 16])
+renderer.render(shader, target)
+
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+## Methods
+
+
+---
+
+### Shader::new(source: string)
+
+Creates a new [Shader](/api/core/shader) instance from the given WGSL source string, file path, or URL.
+
+GLSL is also supported if you enable the `glsl` feature.
+Shadertoy-flavored GLSL is supported if the `shadertoy` feature is enabled.
+
+If the optional features are enabled, the constructor will try to automatically
+detect the shader type and parse it accordingly.
+
+If an exception occurs during parsing, the error message will indicate the location of the error.
+
+If the initial source validation passes, the shader is guaranteed to work on the GPU. All uniforms are initialized to their default zero values.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+
+use fragmentcolor::Shader;
+
+let shader = Shader::new(r#"
+    @vertex
+    fn vs_main(@builtin(vertex_index) index: u32) -> @builtin(position) vec4<f32> {
+        var pos = array<vec2<f32>, 3>(
+            vec2<f32>(-1.0, -1.0),
+            vec2<f32>( 3.0, -1.0),
+            vec2<f32>(-1.0,  3.0)
+        );
+        return vec4<f32>(pos[index], 0.0, 1.0);
+    }
+
+    @group(0) @binding(0)
+    var<uniform> resolution: vec2<f32>;
+
+    @fragment
+    fn fs_main() -> @location(0) vec4<f32> {
+        return vec4<f32>(1.0, 0.0, 0.0, 1.0); // Red
+    }
+"#)?;
+
+assert!(shader.list_keys().len() >= 1);
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 25-27}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+
+import { Shader } from "fragmentcolor";
+
+const shader = new Shader(\`
+    @vertex
+    fn vs_main(@builtin(vertex_index) index: u32) -> @builtin(position) vec4<f32> {
+        var pos = array<vec2<f32>, 3>(
+            vec2<f32>(-1.0, -1.0),
+            vec2<f32>( 3.0, -1.0),
+            vec2<f32>(-1.0,  3.0)
+        );
+        return vec4<f32>(pos[index], 0.0, 1.0);
+    }
+
+    @group(0) @binding(0)
+    var<uniform> resolution: vec2<f32>;
+
+    @fragment
+    fn fs_main() -> @location(0) vec4<f32> {
+        return vec4<f32>(1.0, 0.0, 0.0, 1.0); // Red
+    }
+
+\`);
+
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+
+from fragmentcolor import Shader
+
+shader = Shader("""
+    @vertex
+    fn vs_main(@builtin(vertex_index) index: u32) -> @builtin(position) vec4<f32> {
+        var pos = array<vec2<f32>, 3>(
+            vec2<f32>(-1.0, -1.0),
+            vec2<f32>( 3.0, -1.0),
+            vec2<f32>(-1.0,  3.0)
+        );
+        return vec4<f32>(pos[index], 0.0, 1.0);
+    }
+
+    @group(0) @binding(0)
+    var<uniform> resolution: vec2<f32>;
+
+    @fragment
+    fn fs_main() -> @location(0) vec4<f32> {
+        return vec4<f32>(1.0, 0.0, 0.0, 1.0); // Red
+    }
+
+""")
+
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Shader::set(key: string, value: any)
+
+Sets the value of the uniform identified by the given key.
+
+If the key does not exist or the value format is incorrect, the `set` method throws an exception. The shader remains valid, and if the exception is caught, the shader can still be used with the renderer.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Renderer, Shader};
+let r = Renderer::new();
+let shader = Shader::new(r#"
+@group(0) @binding(0) var<uniform> resolution: vec2<f32>;
+
+struct VOut { @builtin(position) pos: vec4<f32> };
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> VOut {
+  var p = array<vec2<f32>, 3>(vec2<f32>(-1.,-1.), vec2<f32>(3.,-1.), vec2<f32>(-1.,3.));
+  var out: VOut;
+  out.pos = vec4<f32>(p[i], 0., 1.);
+  return out;
+}
+@fragment fn main() -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
+"#)?;
+
+// Set scalars/vectors on declared uniforms
+shader.set("resolution", [800.0, 600.0])?;
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 19-20}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Renderer, Shader } from "fragmentcolor";
+const r = new Renderer();
+const shader = new Shader(\`
+@group(0) @binding(0) var<uniform> resolution: vec2<f32>;
+
+struct VOut { @builtin(position) pos: vec4<f32> };
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> VOut {
+  var p = array<vec2<f32>, 3>(vec2<f32>(-1.,-1.), vec2<f32>(3.,-1.), vec2<f32>(-1.,3.));
+  var out: VOut;
+  out.pos = vec4<f32>(p[i], 0., 1.);
+  return out;
+}
+@fragment fn main() -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
+
+\`);
+
+// Set scalars/vectors on declared uniforms
+shader.set("resolution", [800.0, 600.0]);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Renderer, Shader
+r = Renderer()
+shader = Shader("""
+@group(0) @binding(0) var<uniform> resolution: vec2<f32>;
+
+struct VOut { @builtin(position) pos: vec4<f32> };
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> VOut {
+  var p = array<vec2<f32>, 3>(vec2<f32>(-1.,-1.), vec2<f32>(3.,-1.), vec2<f32>(-1.,3.));
+  var out: VOut;
+  out.pos = vec4<f32>(p[i], 0., 1.);
+  return out;
+}
+@fragment fn main() -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
+
+""")
+
+# Set scalars/vectors on declared uniforms
+shader.set("resolution", [800.0, 600.0])
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Shader::get(key: string) -&gt; any
+
+Returns the current value of the uniform identified by the given key.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::Shader;
+
+let shader = Shader::default();
+shader.set("resolution", [800.0, 600.0])?;
+let res: [f32; 2] = shader.get("resolution")?;
+
+assert_eq!(res, [800.0, 600.0]);
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 8-10}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Shader } from "fragmentcolor";
+
+const shader = Shader.default();
+shader.set("resolution", [800.0, 600.0]);
+const res = shader.get("resolution");
+
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Shader
+
+shader = Shader.default()
+shader.set("resolution", [800.0, 600.0])
+res = shader.get("resolution")
+
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Shader::list_uniforms() -&gt; [string]
+
+Returns a list of all uniform names in the [Shader](/api/core/shader) (excluding struct fields).
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::Shader;
+
+let shader = Shader::default();
+let list = shader.list_uniforms();
+
+assert!(list.contains(&"resolution".to_string()));
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 7-9}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Shader } from "fragmentcolor";
+
+const shader = Shader.default();
+const list = shader.listUniforms();
+
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Shader
+
+shader = Shader.default()
+list = shader.list_uniforms()
+
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Shader::list_keys() -&gt; [string]
+
+Returns a list of all keys in the [Shader](/api/core/shader), including uniform names and struct fields using the dot notation.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+
+use fragmentcolor::Shader;
+
+let shader = Shader::default();
+let keys = shader.list_keys();
+
+assert!(keys.contains(&"resolution".to_string()));
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 8-10}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+
+import { Shader } from "fragmentcolor";
+
+const shader = Shader.default();
+const keys = shader.listKeys();
+
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+
+from fragmentcolor import Shader
+
+shader = Shader.default()
+keys = shader.list_keys()
+
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Shader::from_vertex
+
+Build a basic WGSL shader source from a single Vertex layout.
+
+This inspects the vertex position dimensionality (2D or 3D) and optional properties.
+It generates a minimal vertex shader that consumes `@location(0)` position and a fragment shader that returns a flat color by default.
+If a `color: vec4<f32>` property exists, it is passed through to the fragment stage and used as output.
+
+This is intended as a fallback and for quick debugging. Canonical usage is the opposite: write your own shader and then build Meshes that match it.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::{Shader, Vertex};
+
+let vertex = Vertex::new([0.0, 0.0, 0.0]);
+let shader = Shader::from_vertex(&vertex);
+
+let _ = shader;
+`}
+lang="rust" meta="collapse={6-6}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Shader, Vertex } from "fragmentcolor";
+
+const vertex = new Vertex([0.0, 0.0, 0.0]);
+const shader = Shader.fromVertex(vertex);
+
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Shader, Vertex
+
+vertex = Vertex([0.0, 0.0, 0.0])
+shader = Shader.from_vertex(vertex)
+
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Shader::from_mesh
+
+Build a basic WGSL shader source from the first vertex in a Mesh.
+
+The resulting shader automatically adds the provided Mesh to its internal list of Meshes to render,
+so the user doesn't need to call `Shader::add_mesh` manually.
+
+This function uses the **first Vertex** to infer position dimensionality and optional properties.
+
+It generates a minimal vertex shader that consumes `@location(0)` position and a fragment shader that returns a flat color by default. If a `color: vec4<f32>` property exists, it is passed through to the fragment stage and used as output.
+
+#### Empty Mesh Handling
+
+If the Mesh has no vertices, a default shader is returned and a warning is logged.
+Because the default shader does not take any vertex inputs, it is compatible with any Mesh.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::{Mesh, Shader};
+
+let mut mesh = Mesh::new();
+mesh.add_vertex([0.0, 0.0, 0.0]);
+let shader = Shader::from_mesh(&mesh);
+
+let _ = shader;
+`}
+lang="rust" meta="collapse={7-7}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Mesh, Shader } from "fragmentcolor";
+
+const mesh = new Mesh();
+mesh.addVertex([0.0, 0.0, 0.0]);
+const shader = Shader.fromMesh(mesh);
+
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Mesh, Shader
+
+mesh = Mesh()
+mesh.add_vertex([0.0, 0.0, 0.0])
+shader = Shader.from_mesh(mesh)
+
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Shader::add_mesh
+
+Attach a Mesh to this Shader. The Renderer will draw all meshes attached to it (one draw call per mesh, same pipeline).
+
+This method now validates that the mesh's vertex/instance layout is compatible with the shader's @location inputs and returns Result`Result<(), ShaderError>`.
+
+- On success, the mesh is attached and will be drawn when this shader is rendered.
+- On mismatch (missing attribute or type mismatch), returns an error and does not attach.
+
+#### See also
+
+Use Shader::validate_mesh for performing a compatibility check without attaching.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Shader, Mesh};
+
+let shader = Shader::new(r#"
+  @vertex fn vs_main(@location(0) pos: vec3<f32>) -> @builtin(position) vec4<f32> {
+    return vec4<f32>(pos, 1.0);
+  }
+  @fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
+"#)?;
+
+let mesh = Mesh::new();
+mesh.add_vertex([0.0, 0.0, 0.0]);
+
+// Attach mesh to this shader (errors if incompatible)
+shader.add_mesh(&mesh)?;
+
+// Renderer will draw the mesh when rendering this pass.
+// Each Shader represents a RenderPipeline or ComputePipeline
+// in the GPU. Adding multiple meshes to it will draw all meshes
+// and all its instances in the same Pipeline.
+
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 22-23}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Shader, Mesh } from "fragmentcolor";
+
+const shader = new Shader(\`
+  @vertex fn vs_main(@location(0) pos: vec3<f32>) -> @builtin(position) vec4<f32> {
+    return vec4<f32>(pos, 1.0);
+  }
+  @fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
+
+\`);
+
+const mesh = new Mesh();
+mesh.addVertex([0.0, 0.0, 0.0]);
+
+// Attach mesh to this shader (errors if incompatible)
+shader.addMesh(mesh);
+
+// Renderer will draw the mesh when rendering this pass.
+// Each Shader represents a RenderPipeline or ComputePipeline
+// in the GPU. Adding multiple meshes to it will draw all meshes
+// and all its instances in the same Pipeline.
+
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Shader, Mesh
+
+shader = Shader("""
+  @vertex fn vs_main(@location(0) pos: vec3<f32>) -> @builtin(position) vec4<f32> {
+    return vec4<f32>(pos, 1.0);
+  }
+  @fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
+
+""")
+
+mesh = Mesh()
+mesh.add_vertex([0.0, 0.0, 0.0])
+
+# Attach mesh to this shader (errors if incompatible)
+shader.add_mesh(mesh)
+
+# Renderer will draw the mesh when rendering this pass.
+# Each Shader represents a RenderPipeline or ComputePipeline
+# in the GPU. Adding multiple meshes to it will draw all meshes
+# and all its instances in the same Pipeline.
+
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Shader::remove_mesh
+
+Remove a single Mesh previously attached to this Shader.
+If the Mesh is attached multiple times, removes the first match.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Shader, Mesh};
+
+let shader = Shader::new(r#"
+  struct VOut { @builtin(position) pos: vec4<f32> };
+  @vertex
+  fn vs_main(@location(0) pos: vec2<f32>) -> VOut {
+    var out: VOut;
+    out.pos = vec4<f32>(pos, 0.0, 1.0);
+    return out;
+  }
+  @fragment
+  fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.0,0.0,0.0,1.0); }
+"#)?;
+
+let mesh = Mesh::new();
+mesh.add_vertex([0.0, 0.0]);
+shader.add_mesh(&mesh)?;
+
+// Detach the mesh
+shader.remove_mesh(&mesh);
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 22-23}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Shader, Mesh } from "fragmentcolor";
+
+const shader = new Shader(\`
+  struct VOut { @builtin(position) pos: vec4<f32> };
+  @vertex
+  fn vs_main(@location(0) pos: vec2<f32>) -> VOut {
+    var out: VOut;
+    out.pos = vec4<f32>(pos, 0.0, 1.0);
+    return out;
+  }
+  @fragment
+  fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.0,0.0,0.0,1.0); }
+
+\`);
+
+const mesh = new Mesh();
+mesh.addVertex([0.0, 0.0]);
+shader.addMesh(mesh);
+
+// Detach the mesh
+shader.removeMesh(mesh);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Shader, Mesh
+
+shader = Shader("""
+  struct VOut { @builtin(position) pos: vec4<f32> };
+  @vertex
+  fn vs_main(@location(0) pos: vec2<f32>) -> VOut {
+    var out: VOut;
+    out.pos = vec4<f32>(pos, 0.0, 1.0);
+    return out;
+  }
+  @fragment
+  fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.0,0.0,0.0,1.0); }
+
+""")
+
+mesh = Mesh()
+mesh.add_vertex([0.0, 0.0])
+shader.add_mesh(mesh)
+
+# Detach the mesh
+shader.remove_mesh(mesh)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Shader::remove_meshes
+
+Remove multiple meshes from this Shader.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Shader, Mesh};
+
+let shader = Shader::new(r#"
+  struct VOut { @builtin(position) pos: vec4<f32> };
+  @vertex
+  fn vs_main(@location(0) pos: vec2<f32>) -> VOut {
+    var out: VOut;
+    out.pos = vec4<f32>(pos, 0.0, 1.0);
+    return out;
+  }
+  @fragment
+  fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.0,0.0,0.0,1.0); }
+"#)?;
+
+let m1 = Mesh::new();
+m1.add_vertex([0.0, 0.0]);
+let m2 = Mesh::new();
+m2.add_vertex([0.5, 0.0]);
+
+shader.add_mesh(&m1)?;
+shader.add_mesh(&m2)?;
+
+shader.remove_meshes([&m1, &m2]);
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 25-26}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Shader, Mesh } from "fragmentcolor";
+
+const shader = new Shader(\`
+  struct VOut { @builtin(position) pos: vec4<f32> };
+  @vertex
+  fn vs_main(@location(0) pos: vec2<f32>) -> VOut {
+    var out: VOut;
+    out.pos = vec4<f32>(pos, 0.0, 1.0);
+    return out;
+  }
+  @fragment
+  fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.0,0.0,0.0,1.0); }
+
+\`);
+
+const m1 = new Mesh();
+m1.addVertex([0.0, 0.0]);
+const m2 = new Mesh();
+m2.addVertex([0.5, 0.0]);
+
+shader.addMesh(m1);
+shader.addMesh(m2);
+
+shader.removeMeshes([m1, m2]);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Shader, Mesh
+
+shader = Shader("""
+  struct VOut { @builtin(position) pos: vec4<f32> };
+  @vertex
+  fn vs_main(@location(0) pos: vec2<f32>) -> VOut {
+    var out: VOut;
+    out.pos = vec4<f32>(pos, 0.0, 1.0);
+    return out;
+  }
+  @fragment
+  fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.0,0.0,0.0,1.0); }
+
+""")
+
+m1 = Mesh()
+m1.add_vertex([0.0, 0.0])
+m2 = Mesh()
+m2.add_vertex([0.5, 0.0])
+
+shader.add_mesh(m1)
+shader.add_mesh(m2)
+
+shader.remove_meshes([m1, m2])
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Shader::clear_meshes
+
+Remove all meshes attached to this Shader.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Shader, Mesh};
+
+let shader = Shader::new(r#"
+  struct VOut { @builtin(position) pos: vec4<f32> };
+  @vertex
+  fn vs_main(@location(0) pos: vec2<f32>) -> VOut {
+    var out: VOut;
+    out.pos = vec4<f32>(pos, 0.0, 1.0);
+    return out;
+  }
+  @fragment
+  fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.0,0.0,0.0,1.0); }
+"#)?;
+
+let mesh = Mesh::new();
+mesh.add_vertex([0.0, 0.0]);
+shader.add_mesh(&mesh)?;
+
+// Clear all
+shader.clear_meshes();
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 22-23}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Shader, Mesh } from "fragmentcolor";
+
+const shader = new Shader(\`
+  struct VOut { @builtin(position) pos: vec4<f32> };
+  @vertex
+  fn vs_main(@location(0) pos: vec2<f32>) -> VOut {
+    var out: VOut;
+    out.pos = vec4<f32>(pos, 0.0, 1.0);
+    return out;
+  }
+  @fragment
+  fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.0,0.0,0.0,1.0); }
+
+\`);
+
+const mesh = new Mesh();
+mesh.addVertex([0.0, 0.0]);
+shader.addMesh(mesh);
+
+// Clear all
+shader.clearMeshes();
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Shader, Mesh
+
+shader = Shader("""
+  struct VOut { @builtin(position) pos: vec4<f32> };
+  @vertex
+  fn vs_main(@location(0) pos: vec2<f32>) -> VOut {
+    var out: VOut;
+    out.pos = vec4<f32>(pos, 0.0, 1.0);
+    return out;
+  }
+  @fragment
+  fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.0,0.0,0.0,1.0); }
+
+""")
+
+mesh = Mesh()
+mesh.add_vertex([0.0, 0.0])
+shader.add_mesh(mesh)
+
+# Clear all
+shader.clear_meshes()
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Shader::validate_mesh
+
+Validate that a Mesh is compatible with this Shader's vertex inputs.
+
+- Checks presence and type for all @location(...) inputs of the vertex entry point.
+- Matches attributes in the following order:
+  1) Instance attributes by explicit @location index (if the mesh has instances)
+  2) Vertex attributes by explicit @location index (position is assumed at @location(0))
+  3) Fallback by name (tries instance first, then vertex)
+- Returns Ok(()) when all inputs are matched with a compatible wgpu::VertexFormat; returns an error otherwise.
+
+#### Notes
+
+- This method is called automatically when adding a Mesh to a Shader or Pass, so you usually don't need to call it manually.
+- If the Shader has no @location inputs (fullscreen/builtin-only), attaching a Mesh is rejected.
+- This method does not allocate GPU buffers; it inspects CPU-side vertex/instance data only.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Shader, Pass, Mesh};
+
+let shader = Shader::new(r#"
+struct VOut { @builtin(position) pos: vec4<f32> };
+@vertex fn vs_main(@location(0) pos: vec3<f32>) -> VOut {
+  var out: VOut;
+  out.pos = vec4<f32>(pos, 1.0);
+  return out;
+}
+@fragment fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
+"#)?;
+let pass = Pass::from_shader("p", &shader);
+
+let mesh = Mesh::new();
+mesh.add_vertices([
+  [-0.5, -0.5, 0.0],
+  [ 0.5, -0.5, 0.0],
+  [ 0.0,  0.5, 0.0],
+]);
+
+shader.validate_mesh(&mesh)?; // Ok
+pass.add_mesh(&mesh)?;
+
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 25-26}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Shader, Pass, Mesh } from "fragmentcolor";
+
+const shader = new Shader(\`
+struct VOut { @builtin(position) pos: vec4<f32> };
+@vertex fn vs_main(@location(0) pos: vec3<f32>) -> VOut {
+  var out: VOut;
+  out.pos = vec4<f32>(pos, 1.0);
+  return out;
+}
+@fragment fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
+
+\`);
+const pass = new Pass("p"); pass.addShader(shader);
+
+const mesh = new Mesh();
+mesh.addVertices([
+  [-0.5, -0.5, 0.0],
+  [ 0.5, -0.5, 0.0],
+  [ 0.0,  0.5, 0.0],
+]);
+
+shader.validateMesh(mesh); // Ok;
+pass.addMesh(mesh);
+
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Shader, Pass, Mesh
+
+shader = Shader("""
+struct VOut { @builtin(position) pos: vec4<f32> };
+@vertex fn vs_main(@location(0) pos: vec3<f32>) -> VOut {
+  var out: VOut;
+  out.pos = vec4<f32>(pos, 1.0);
+  return out;
+}
+@fragment fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
+
+""")
+rpass = Pass("p"); rpass.add_shader(shader)
+
+mesh = Mesh()
+mesh.add_vertices([
+  [-0.5, -0.5, 0.0],
+  [ 0.5, -0.5, 0.0],
+  [ 0.0,  0.5, 0.0],
+])
+
+shader.validate_mesh(mesh); # Ok
+rpass.add_mesh(mesh)
+
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Shader::is_compute
+
+Returns true if this Shader is a compute shader (has a compute entry point).
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::Shader;
+
+let shader = Shader::new(r#"
+@compute @workgroup_size(1)
+fn cs_main() { }
+"#)?;
+
+// Call the method
+let is_compute = shader.is_compute();
+
+let _ = is_compute;
+assert!(shader.is_compute());
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 12-15}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Shader } from "fragmentcolor";
+
+const shader = new Shader(\`
+@compute @workgroup_size(1)
+fn cs_main() { }
+
+\`);
+
+// Call the method
+const is_compute = shader.isCompute();
+
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Shader
+
+shader = Shader("""
+@compute @workgroup_size(1)
+fn cs_main() { }
+
+""")
+
+# Call the method
+is_compute = shader.is_compute()
+
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>

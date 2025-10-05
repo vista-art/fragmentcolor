@@ -1,0 +1,286 @@
+---
+title: Frame
+description: "The [Frame](/api/core/frame) object is a collection of [Pass](/api/core/pass) objects that are rendered to a [Target](/api/core/target) by the [Renderer](/api/core/renderer)."
+category: core
+categoryLabel: Core
+---
+
+import { Code, Tabs, TabItem, Aside } from "@astrojs/starlight/components";
+
+## Description
+
+The [Frame](/api/core/frame) object is a collection of [Pass](/api/core/pass) objects that are rendered to a [Target](/api/core/target) by the [Renderer](/api/core/renderer).
+
+It is used to render multiple passes to a single target, such as an opaque pass followed by a transparent pass.
+
+You need to inject the [Frame](/api/core/frame) object into the [Renderer](/api/core/renderer) to render it.
+
+
+
+## Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+
+use fragmentcolor::{ Shader, Pass, Renderer, Frame };
+
+let renderer = Renderer::new();
+let target = renderer.create_texture_target([100, 100]).await?;
+
+let pass1 = Pass::new("first");
+let pass2 = Pass::new("second");
+
+let mut frame = Frame::new();
+frame.add_pass(&pass1);
+frame.add_pass(&pass2);
+
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+`}
+lang="rust" meta="collapse={1-1, 15-17}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+
+import { Shader, Pass, Renderer, Frame } from "fragmentcolor";
+
+const renderer = new Renderer();
+const target = await renderer.createTextureTarget([100, 100]);
+
+const pass1 = new Pass("first");
+const pass2 = new Pass("second");
+
+const frame = new Frame();
+frame.addPass(pass1);
+frame.addPass(pass2);
+
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+
+from fragmentcolor import Shader, Pass, Renderer, Frame
+
+renderer = Renderer()
+target = renderer.create_texture_target([100, 100])
+
+pass1 = Pass("first")
+pass2 = Pass("second")
+
+frame = Frame()
+frame.add_pass(pass1)
+frame.add_pass(pass2)
+
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+## Methods
+
+
+---
+
+### Frame::new()
+
+Creates a new [Frame](/api/core/frame) object.
+
+A [Frame](/api/core/frame) is an ordered collection of [Pass](/api/core/pass) objects that will be rendered by the [Renderer](/api/core/renderer) in sequence.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::Frame;
+
+let frame = Frame::new();
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Frame } from "fragmentcolor";
+
+const frame = new Frame();
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Frame
+
+frame = Frame()
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Frame::add_pass(pass: Pass)
+
+Adds a [Pass](/api/core/pass) to this [Frame](/api/core/frame).
+
+Passes are rendered in the order they are added.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::{Frame, Pass};
+
+let mut pass1 = Pass::new("first");
+let mut pass2 = Pass::new("second");
+
+let mut frame = Frame::new();
+frame.add_pass(&pass1);
+frame.add_pass(&pass2);
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Frame, Pass } from "fragmentcolor";
+
+const pass1 = new Pass("first");
+const pass2 = new Pass("second");
+
+const frame = new Frame();
+frame.addPass(pass1);
+frame.addPass(pass2);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Frame, Pass
+
+pass1 = Pass("first")
+pass2 = Pass("second")
+
+frame = Frame()
+frame.add_pass(pass1)
+frame.add_pass(pass2)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder â bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>

@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Allows "fix" or "--fix"
+FLAG=""
+for arg in "$@"; do
+	case "$arg" in
+		fix|--fix)
+			FLAG="--fix"
+			;;
+	esac
+done
+
+cargo clippy --all --workspace --all-features --all-targets $FLAG
+cargo fmt --all

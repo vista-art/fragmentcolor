@@ -1,3 +1,4 @@
 glfw
+numpy
 rendercanvas
 fragmentcolor

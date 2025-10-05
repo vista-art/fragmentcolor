@@ -1,1 +1,2 @@
-
+# [build]
+# rustflags = ["-F", "unused-crate-dependencies"]

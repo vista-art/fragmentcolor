@@ -1,6 +1,8 @@
 /target
 /public
 /_old
+/refactor
+/references
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

@@ -1,0 +1,58 @@
+---
+title: Platform Support
+description: Your future guide to the easiest way to create cross-platform shaders.
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+<Aside type="caution" title="Work in progress">
+Android and iOS bindings are under active development. APIs and behavior may change across releases.
+</Aside>
+
+## Graphics API Support
+
+This library is based on [wgpu](https://github.com/gfx-rs/wgpu) and supports the same upstream platforms:
+
+| API    | Windows      | Linux/Android   | macOS/iOS | Web (wasm)  |
+| ------ | ------------ | --------------- | --------- | ----------- |
+| Vulkan | ✅           | ✅              | 🌋        |             |
+| Metal  |              |                 | ✅        |             |
+| DX12   | ✅           |                 |           |             |
+| OpenGL | 🆗 (GL 3.3+) | 🆗 (GL ES 3.0+) | 📐        | 🆗 (WebGL2) |
+| WebGPU |              |                 |           | ✅          |
+
+- ✅ = First Class Support
+- 🆗 = Downlevel/Best Effort Support
+- 📐 = Requires the [ANGLE](http://angleproject.org/) translation layer (GL ES 3.0 only)
+- 🌋 = Requires the [MoltenVK](https://vulkan.lunarg.com/sdk/home#mac) translation layer
+
+## Programming Languages Bindings
+
+##### **Rust** (Cargo package)
+
+- **MacOS** (Metal)
+- **Windows** (DX12)
+- **Linux** (Vulkan)
+- **Web** (WebGPU)
+- **CI/Server** (Software Renderer)
+
+##### **Javascript** (WebAssembly)
+
+- **Modern Browsers** (WebGPU)
+- **Legacy Broswers** (WebGL2)
+
+##### **Python** (native Python module)
+
+- **Windows** (DX12)
+- **Linux** (Vulkan)
+- **MacOS** (Metal)
+- **Jupyter Notebook** (DX12, Vulkan, Metal)
+
+##### **Swift** (iOS/MacOS static library)
+
+- **iOS** (Metal)
+- **MacOS** (Metal)
+
+##### **Kotlin** (Android static library)
+
+- **Android** (Vulkan)
