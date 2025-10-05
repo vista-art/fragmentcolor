@@ -32,7 +32,7 @@ use crate::{PassObject, Renderable, Shader};
 #[derive(Clone, Debug)]
 #[cfg_attr(python, pyclass)]
 #[cfg_attr(wasm, wasm_bindgen)]
-#[lsp_doc("docs/api/core/mesh/mesh.md")]
+#[lsp_doc("docs/api/geometry/mesh/mesh.md")]
 pub struct Mesh {
     pub(crate) object: Arc<MeshObject>,
     pub(crate) pass: Arc<crate::pass::PassObject>,
@@ -45,7 +45,7 @@ impl Default for Mesh {
 }
 
 impl Mesh {
-    #[lsp_doc("docs/api/core/mesh/new.md")]
+    #[lsp_doc("docs/api/geometry/mesh/new.md")]
     pub fn new() -> Self {
         Self {
             object: Arc::new(MeshObject::new()),
@@ -56,7 +56,7 @@ impl Mesh {
         }
     }
 
-    #[lsp_doc("docs/api/core/mesh/from_vertices.md")]
+    #[lsp_doc("docs/api/geometry/mesh/from_vertices.md")]
     pub fn from_vertices<I, V>(verts: I) -> Self
     where
         I: IntoIterator<Item = V>,
@@ -67,12 +67,12 @@ impl Mesh {
         mesh
     }
 
-    #[lsp_doc("docs/api/core/mesh/add_vertex.md")]
+    #[lsp_doc("docs/api/geometry/mesh/add_vertex.md")]
     pub fn add_vertex<V: Into<Vertex>>(&self, v: V) {
         self.object.add_vertex(v.into());
     }
 
-    #[lsp_doc("docs/api/core/mesh/add_vertices.md")]
+    #[lsp_doc("docs/api/geometry/mesh/add_vertices.md")]
     pub fn add_vertices<I, V>(&self, vertices: I)
     where
         I: IntoIterator<Item = V>,
@@ -83,12 +83,12 @@ impl Mesh {
         }
     }
 
-    #[lsp_doc("docs/api/core/mesh/add_instance.md")]
+    #[lsp_doc("docs/api/geometry/mesh/add_instance.md")]
     pub fn add_instance<T: Into<Instance>>(&self, instance_buffer: T) {
         self.object.add_instance(instance_buffer.into());
     }
 
-    #[lsp_doc("docs/api/core/mesh/add_instances.md")]
+    #[lsp_doc("docs/api/geometry/mesh/add_instances.md")]
     pub fn add_instances<I, T>(&self, instances: I)
     where
         I: IntoIterator<Item = T>,
@@ -99,20 +99,20 @@ impl Mesh {
         }
     }
 
-    #[lsp_doc("docs/api/core/mesh/clear_instances.md")]
+    #[lsp_doc("docs/api/geometry/mesh/clear_instances.md")]
     pub fn clear_instances(&self) {
         self.object.clear_instances();
     }
 
     /// Override how many instances to draw (when not using per-instance attributes).
-    #[lsp_doc("docs/api/core/mesh/set_instance_count.md")]
+    #[lsp_doc("docs/api/geometry/mesh/set_instance_count.md")]
     pub fn set_instance_count(&self, n: u32) {
         *self.object.override_instances.write() = Some(n);
         self.object.invalidate_cache();
     }
 
     /// Clear the instance count override; fall back to instance buffer or 1.
-    #[lsp_doc("docs/api/core/mesh/clear_instance_count.md")]
+    #[lsp_doc("docs/api/geometry/mesh/clear_instance_count.md")]
     pub fn clear_instance_count(&self) {
         *self.object.override_instances.write() = None;
         self.object.invalidate_cache();

@@ -698,8 +698,8 @@ mod website {
                     if let Some(end_gt) = found_gt {
                         // Wrap from start..=end_gt in backticks
                         out.push('`');
-                        for m in start..=end_gt {
-                            out.push(chars[m]);
+                        for &ch in &chars[start..=end_gt] {
+                            out.push(ch);
                         }
                         out.push('`');
                         i = end_gt + 1;

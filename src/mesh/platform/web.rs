@@ -224,7 +224,7 @@ crate::impl_js_bridge!(Instance, crate::mesh::error::MeshError);
 #[wasm_bindgen]
 impl Vertex {
     #[wasm_bindgen(constructor)]
-    #[lsp_doc("docs/api/core/vertex/new.md")]
+    #[lsp_doc("docs/api/geometry/vertex/new.md")]
     pub fn new_js(position: &JsValue) -> Result<Vertex, JsError> {
         js_to_vertex_into(position)
     }
@@ -236,14 +236,14 @@ impl Vertex {
     }
 
     #[wasm_bindgen(js_name = "set")]
-    #[lsp_doc("docs/api/core/vertex/set.md")]
+    #[lsp_doc("docs/api/geometry/vertex/set.md")]
     pub fn set_js(&self, key: &str, value: &JsValue) -> Result<Vertex, JsError> {
         let vv = js_to_vertex_value(value)?;
         Ok(self.clone().set(key, vv))
     }
 
     #[wasm_bindgen(js_name = "createInstance")]
-    #[lsp_doc("docs/api/core/vertex/create_instance.md")]
+    #[lsp_doc("docs/api/geometry/vertex/create_instance.md")]
     pub fn create_instance_js(&self) -> Instance {
         self.create_instance()
     }
@@ -255,13 +255,13 @@ impl Vertex {
 #[wasm_bindgen]
 impl Mesh {
     #[wasm_bindgen(constructor)]
-    #[lsp_doc("docs/api/core/mesh/new.md")]
+    #[lsp_doc("docs/api/geometry/mesh/new.md")]
     pub fn new_js() -> Mesh {
         Mesh::new()
     }
 
     #[wasm_bindgen(js_name = "fromVertices")]
-    #[lsp_doc("docs/api/core/mesh/from_vertices.md")]
+    #[lsp_doc("docs/api/geometry/mesh/from_vertices.md")]
     pub fn from_vertices_js(list: &JsValue) -> Result<Mesh, JsError> {
         let arr = js_sys::Array::is_array(list)
             .then(|| js_sys::Array::from(list))
@@ -275,7 +275,7 @@ impl Mesh {
     }
 
     #[wasm_bindgen(js_name = "addVertex")]
-    #[lsp_doc("docs/api/core/mesh/add_vertex.md")]
+    #[lsp_doc("docs/api/geometry/mesh/add_vertex.md")]
     pub fn add_vertex_js(&mut self, v: &JsValue) -> Result<(), JsError> {
         let vertex = js_to_vertex_into(v)?;
         self.add_vertex(vertex);
@@ -283,7 +283,7 @@ impl Mesh {
     }
 
     #[wasm_bindgen(js_name = "addVertices")]
-    #[lsp_doc("docs/api/core/mesh/add_vertices.md")]
+    #[lsp_doc("docs/api/geometry/mesh/add_vertices.md")]
     pub fn add_vertices_js(&mut self, list: &JsValue) -> Result<(), JsError> {
         let arr = js_sys::Array::is_array(list)
             .then(|| js_sys::Array::from(list))
@@ -298,7 +298,7 @@ impl Mesh {
     }
 
     #[wasm_bindgen(js_name = "addInstance")]
-    #[lsp_doc("docs/api/core/mesh/add_instance.md")]
+    #[lsp_doc("docs/api/geometry/mesh/add_instance.md")]
     pub fn add_instance_js(&mut self, item: &JsValue) -> Result<(), JsError> {
         let inst = js_to_instance_into(item)?;
         self.add_instance(inst);
@@ -306,7 +306,7 @@ impl Mesh {
     }
 
     #[wasm_bindgen(js_name = "addInstances")]
-    #[lsp_doc("docs/api/core/mesh/add_instances.md")]
+    #[lsp_doc("docs/api/geometry/mesh/add_instances.md")]
     pub fn add_instances_js(&mut self, list: &JsValue) -> Result<(), JsError> {
         let arr = js_sys::Array::is_array(list)
             .then(|| js_sys::Array::from(list))
@@ -321,19 +321,19 @@ impl Mesh {
     }
 
     #[wasm_bindgen(js_name = "clearInstances")]
-    #[lsp_doc("docs/api/core/mesh/clear_instances.md")]
+    #[lsp_doc("docs/api/geometry/mesh/clear_instances.md")]
     pub fn clear_instances_js(&mut self) {
         self.clear_instances();
     }
 
     #[wasm_bindgen(js_name = "setInstanceCount")]
-    #[lsp_doc("docs/api/core/mesh/set_instance_count.md")]
+    #[lsp_doc("docs/api/geometry/mesh/set_instance_count.md")]
     pub fn set_instance_count_js(&mut self, n: u32) {
         self.set_instance_count(n);
     }
 
     #[wasm_bindgen(js_name = "clearInstanceCount")]
-    #[lsp_doc("docs/api/core/mesh/clear_instance_count.md")]
+    #[lsp_doc("docs/api/geometry/mesh/clear_instance_count.md")]
     pub fn clear_instance_count_js(&mut self) {
         self.clear_instance_count();
     }
@@ -354,7 +354,7 @@ fn js_to_f32x2(value: &JsValue) -> Result<[f32; 2], JsError> {
 #[wasm_bindgen]
 impl Quad {
     #[wasm_bindgen(constructor)]
-    #[lsp_doc("docs/api/primitives/quad/new.md")]
+    #[lsp_doc("docs/api/geometry/quad/new.md")]
     pub fn new_js(min: &JsValue, max: &JsValue) -> Result<Quad, JsError> {
         let min2 = js_to_f32x2(min)?;
         let max2 = js_to_f32x2(max)?;
@@ -362,7 +362,7 @@ impl Quad {
     }
 
     #[wasm_bindgen(js_name = "getMesh")]
-    #[lsp_doc("docs/api/primitives/quad/get_mesh.md")]
+    #[lsp_doc("docs/api/geometry/quad/get_mesh.md")]
     pub fn get_mesh_js(&self) -> Mesh {
         self.get_mesh()
     }
