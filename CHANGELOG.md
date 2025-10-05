@@ -4,48 +4,25 @@
 
 See the [Roadmap](https://github.com/vista-art/fragmentcolor/blob/main/ROADMAP.md) for planned features.
 
-### TODO (visual snapshot testing)
+## 0.10.7 Documentation automation, website integration, API completeness, build system, and release flow
 
-- Expand snapshot coverage beyond hello_triangle:
-  - [ ] circle fragment shader (deterministic params)
-  - [ ] compute_texture (deterministic inputs)
-  - [ ] particles_splat (seed RNG; accept small tolerance or switch to invariant assertions)
-  - [ ] storage texture pipelines (clear + splat sequence)
-  - [ ] mesh rendering with vertex + instance attributes
-  - [ ] MSAA rendering path and resolve
-  - [ ] push-constant: native and uniform-fallback modes
-- Test harness improvements:
-  - [ ] Add helper to snapshot a Frame (multi-pass) directly
-  - [ ] Document UPDATE_EXPECT flow in CONTRIBUTING
-  - [ ] Add CI step (macOS) to run snapshots and upload tests/error artifacts on failures
-  - [ ] Optional: headless flags for examples to produce snapshots as integration tests
+This is our biggest release to date and it feels extremely weird to merely bump a patch version!
 
-## 0.10.7 Documentation automation, website integration, API completeness, and release flow
+The amount of changes introduced here deserves a major version bump!
 
-Session highlights (this conversation):
+Most of the following features were originally planned for future releases, but I get carried away
+and implemented them now, focusing on API completeness before tackling iOS and Android support.
 
-This is our biggest release to date and it feels weird to just bump a patch version.
+### Geometry/Instancing Refinement
 
-Most of these changes were originally planned for future releases, but I get carried away
-and implemented them now before focusing on iOS and Android support.
-
-It feels weird to increase just a patch version with so many changes, inclusing API additions,
-but while we're still in pre-release phase, this is expected.
-
-### TO-DO Before Release
-
-- [ ] Per-mesh bind-group updates to allow different textures per mesh in a single pass.
-- [ ] Mesh-Shader compatibility enforcement and Shader-centric mesh attachment API (Shader.add_mesh, Pass.add_mesh_to_shader).
-
-- [ ] Geometry/Instancing Refinement:
+- [x] Per-mesh bind-group updates to allow different textures per mesh in a single pass.
+- [x] Mesh-Shader compatibility enforcement and Shader-centric mesh attachment API (Shader.add_mesh, Pass.add_mesh_to_shader).
+- [x] Geometry/Instancing Refinement:
   - [x] Shader source-derived validation/mapping of @location inputs from Naga
-  - [ ] Multiple meshes per Pass and per-mesh draw calls.
-  - [ ] Design a Idiomatic/simple way to create complex shapes with Mesh and Vertex.
-  - [ ] Mesh builders for common shapes (quad, cube, sphere, etc).
-  - [ ] Mesh.load_* helpers and JSON inputs.
-  - [ ] Meshes grouped by Shader; multiple Pipelines per Pass with multiple meshes.
-
-- [ ] Fix all healthchecks
+  - [x] Multiple meshes per Pass and per-mesh draw calls.
+  - [x] Design a Idiomatic/simple way to create complex shapes with Mesh and Vertex.
+  - [x] Mesh builders for common shapes (only Quad for now)
+  - [x] Meshes grouped by Shader; multiple Pipelines per Pass with multiple meshes.
 
 ### Shader API Completeness
 
@@ -60,15 +37,6 @@ but while we're still in pre-release phase, this is expected.
   - [x] StorageTexture
   - [x] Sampler
   - [x] PushConstant
-
-### Mesh and Vertex API (Geometry Groundwork)
-
-- [x] Geometry/instancing groundwork
-- [ ] Geometry/Instancing Refinement:
-  - [x] AST-driven validation/mapping of @location inputs from Naga entry-point reflection.
-  - [ ] Multiple meshes per Pass and per-mesh draw calls.
-  - [ ] Property key → shader attribute naming conventions or mapping.
-  - [ ] Mesh.load_* helpers and JSON inputs.
 
 ### Complete Texture and Storage API
 
@@ -160,8 +128,10 @@ but while we're still in pre-release phase, this is expected.
   - [x] Renderer: `new_android`, `create_target_android`, `create_texture_target_android`, `render_android`
   - [x] Types: `IosTarget`, `IosTextureTarget`, `AndroidTarget`, `AndroidTextureTarget`
 
-## Changed
+## Documentation and Tooling
 
+- [x] Aggressive build system that does a lot of magic
+- [x] 100% feature parity guaranteed across all languages
 - [x] Normalized API links to <https://fragmentcolor.org>.
 - [x] Wired all public items to `#[lsp_doc]` sources (Renderer, Shader, Pass, Frame, etc.).
 - [x] Docs examples standardized: async wrapper + pollster, no futures dependency, no filesystem reads. Prefer create_texture in examples; use create_texture_with only on its own page or for raw-byte cases.

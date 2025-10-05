@@ -2,6 +2,13 @@ name: Healthcheck Web (pkg)
 
 on:
   pull_request:
+    paths:
+      - 'src/**'
+      - 'Cargo.*'
+      - 'build.rs'
+      - 'platforms/web/**'
+      - 'docs/api/**'
+      - '.github/workflows/healthcheck_web.yml'
   workflow_dispatch:
 
 permissions:

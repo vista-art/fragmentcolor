@@ -1,0 +1,307 @@
+---
+title: Vertex
+description: "A single vertex with a required position (2D or 3D) and optional properties like uv and color."
+category: geometry
+categoryLabel: Geometry
+---
+
+import { Code, Tabs, TabItem, Aside } from "@astrojs/starlight/components";
+
+## Description
+
+A single vertex with a required position (2D or 3D) and optional properties like uv and color.
+
+
+
+## Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::mesh::Vertex;
+let v = Vertex::new([0.0, 0.0, 0.0]).set("uv", [0.5, 0.5]);
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Vertex } from "fragmentcolor";
+const v = new Vertex([0.0, 0.0, 0.0]).set("uv", [0.5, 0.5]);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Vertex
+v = Vertex([0.0, 0.0, 0.0]).set("uv", [0.5, 0.5])
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+## Methods
+
+
+---
+
+### Vertex::new
+
+Construct a Vertex from a position (2D or 3D).
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::mesh::Vertex;
+let v = Vertex::new([0.0, 0.0]);
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Vertex } from "fragmentcolor";
+const v = new Vertex([0.0, 0.0]);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Vertex
+v = Vertex([0.0, 0.0])
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Vertex::set
+
+Attach an arbitrary property to the vertex.
+
+Locations and mapping:
+
+- When you call `set(key, value)` for the first time for a given key, the Vertex assigns the next available `@location(N)` to that property (starting after position). Subsequent calls reuse the same location.
+- At render time, shader vertex inputs (declared with `@location(N)`) are derived from the Shader and matched to Vertex/Instance properties by:
+  1) explicit location (instance first, then vertex), then
+  2) name (instance first, then vertex).
+- There is no special-case for location(0) in the mapping; position is just another vertex attribute exposed as `position` with a 2- or 3-component format depending on how you constructed the Vertex.
+
+Planned explicit control:
+
+- You will be able to pin a property to a specific location using a fluent API: `vertex.set(key, value).at(index)`.
+- Vertex construction may also support `Vertex::from_shader(&Shader)` to derive an initial layout directly from the shader AST.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::mesh::{Vertex, VertexValue};
+let v = Vertex::new([0.0, 0.0, 0.0]).set("weight", 1.0).set("color",[1.0, 0.0, 0.0]);
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Vertex } from "fragmentcolor";
+const v = new Vertex([0.0, 0.0, 0.0]).set("weight", 1.0).set("color",[1.0, 0.0, 0.0]);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Vertex
+v = Vertex([0.0, 0.0, 0.0]).set("weight", 1.0).set("color",[1.0, 0.0, 0.0])
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Vertex::create_instance
+
+Create an Instance from this Vertex by cloning all of its properties
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::mesh::Vertex;
+let v = Vertex::new([0.0, 0.0]);
+let inst = v.create_instance();
+_ = inst;
+`}
+lang="rust" meta="collapse={4-4}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Vertex } from "fragmentcolor";
+const v = new Vertex([0.0, 0.0]);
+const inst = v.createInstance();
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Vertex
+v = Vertex([0.0, 0.0])
+inst = v.create_instance()
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>

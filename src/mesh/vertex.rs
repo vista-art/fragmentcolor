@@ -10,7 +10,7 @@ use wasm_bindgen::prelude::*;
 #[cfg_attr(wasm, wasm_bindgen)]
 #[cfg_attr(python, pyclass)]
 #[derive(Clone, Debug)]
-#[lsp_doc("docs/api/core/vertex/vertex.md")]
+#[lsp_doc("docs/api/geometry/vertex/vertex.md")]
 pub struct Vertex {
     pub(crate) position: VertexPosition,
     pub(crate) dimensions: u8,
@@ -86,7 +86,7 @@ impl IntoVertexPositionFull for [u32; 3] {
 }
 
 impl Vertex {
-    #[lsp_doc("docs/api/core/vertex/new.md")]
+    #[lsp_doc("docs/api/geometry/vertex/new.md")]
     pub fn new<P: IntoVertexPositionFull>(position: P) -> Self {
         let (v4, dimensions) = position.into_v4_and_dimensions();
         Self {
@@ -98,7 +98,7 @@ impl Vertex {
         }
     }
 
-    #[lsp_doc("docs/api/core/vertex/set.md")]
+    #[lsp_doc("docs/api/geometry/vertex/set.md")]
     pub fn set<V: Into<VertexValue>>(mut self, key: &str, v: V) -> Self {
         let k = key.to_string();
         if !self.prop_locations.contains_key(&k) {
@@ -109,7 +109,7 @@ impl Vertex {
         self
     }
 
-    #[lsp_doc("docs/api/core/vertex/create_instance.md")]
+    #[lsp_doc("docs/api/geometry/vertex/create_instance.md")]
     pub fn create_instance(&self) -> Instance {
         // Instances do not implicitly copy position; only explicit per-instance properties are carried.
         Instance {

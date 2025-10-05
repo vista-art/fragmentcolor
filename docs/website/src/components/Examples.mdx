@@ -105,7 +105,7 @@ async function start() {
   // You can pass the shader as a source string, file path, or URL:
   const circle = new Shader("./path/to/circle.wgsl");
   const triangle = new Shader("https://fragmentcolor.org/shaders/triangle.wgsl");
-  const shader = new Shader(`
+  const shader = new Shader(\`
     struct VertexOutput {
         @builtin(position) coords: vec4<f32>,
     }
@@ -134,7 +134,7 @@ async function start() {
     fn fs_main() -> @location(0) vec4<f32> {
         return vec4<f32>(my_struct.my_field, 1.0);
     }
-  `);
+  \`);
 
   // The library binds and updates the uniforms automatically
   shader.set("my_struct.my_field", [0.1, 0.8, 0.9]);
@@ -168,6 +168,7 @@ async function start() {
 start();
 `}
 lang="js"
+meta="collapse={16-43}"
 />
 
 </TabItem>
@@ -241,17 +242,17 @@ fn fs_main() -> @location(0) vec4<f32> {
         renderer.render(&frame, &target)?;
 
         // To animate, simply update the uniforms in a loop
-        // (Pseudo-code)
-        // loop {
-        //     circle.set("position", [0.0f32, 0.0])?;
-        //     renderer.render(&frame, &target)?;
-        // }
+        for i in 0..60 {
+            circle.set("position", [0.0f32, i as f32])?;
+            renderer.render(&frame, &target)?;
+        }
 
         Ok(())
     })
 }
 `}
 lang="rust"
+meta="collapse={14-41}"
 />
 
 </TabItem>

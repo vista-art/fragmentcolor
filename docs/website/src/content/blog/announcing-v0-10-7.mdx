@@ -1,0 +1,129 @@
+---
+title: "FragmentColor v0.10.7 — Make more pixels with less code"
+description: "A friendly tour of what you can build today: multi‑pass frames, real textures, typed uniforms, offscreen targets, and Web/Rust/Python parity."
+authors: ["rafaelbeckel"]
+pubDate: "2025-10-05"
+tags: ["release", "rust", "webgpu", "python", "javascript"]
+---
+
+Hello! I’m really happy to share FragmentColor v0.10.7 with you. The short version: you can make more interesting images, with fewer lines, in Rust, the Web, and Python.
+
+Jump in:
+- Docs: https://fragmentcolor.org/welcome
+- API Reference: https://fragmentcolor.org/api
+- Repo: https://github.com/vista-art/fragmentcolor
+
+What you can build now (practical examples)
+
+- One‑shader sketches that render to a window or an offscreen texture. Great for quick experiments and headless tests.
+- Multi‑pass compositions (blur → color grade → UI) by wiring up Passes in a Frame. Declare the order; the engine takes care of the rest.
+- Mesh‑based scenes: attach meshes to shaders, let the library reflect shader inputs and map vertex attributes for you.
+- Real textures: load from bytes, files, or URLs; sample them with custom sampler options; render at your chosen sample count (MSAA) for cleaner edges.
+- Compute‑style work: storage buffers + typed updates mean you can move data around and see it on screen (or offscreen) without ceremony.
+
+New in v0.10.7 (for you)
+
+- Typed uniforms & storage
+  - Set deeply nested fields and arrays, and the engine uploads exactly what’s needed. Same API shape across Rust, Web, and Python.
+- Textures & samplers that “just work”
+  - Create textures from bytes/paths/URLs. Pick sample_count and sampler options. Use storage textures when you need to write.
+- Meshes & passes feel natural
+  - Add meshes to a shader or pass; the renderer reflects shader inputs and wires vertex layouts for you. Multiple meshes, multiple pipelines — no extra boilerplate.
+- Multi‑pass & MSAA
+  - Compose passes into a Frame; pick your target (window or texture). MSAA + resolve are built‑in so your output looks crisp.
+- Portable by default
+  - Rust desktop (Metal/DX12/Vulkan), Web (WebGPU, with WebGL2 downlevel where needed), Python wheels, and a headless path for CI.
+
+Quickstart
+
+Rust
+
+```rust
+use fragmentcolor::{Renderer, Shader, Pass, Frame};
+
+# fn main() -> Result<(), Box<dyn std::error::Error>> {
+let renderer = Renderer::new();
+let target = renderer.create_texture_target([800, 600]);
+
+let mut shader = Shader::new("https://fragmentcolor.org/shaders/hello-triangle.wgsl")?;
+shader.set("uniforms.color", [0.95_f32, 0.2, 0.8])?;
+
+renderer.render(&shader, &target)?;
+# Ok(())
+# }
+```
+
+Web (JavaScript)
+
+```js
+import { Renderer, Shader } from 'fragmentcolor';
+
+const renderer = await Renderer.new();
+const canvas = document.querySelector('canvas');
+const target = await renderer.createTarget(canvas);
+
+const shader = await Shader.new('https://fragmentcolor.org/shaders/hello-triangle.wgsl');
+shader.set('uniforms.color', [0.2, 0.8, 0.95]);
+
+await renderer.render(shader, target);
+```
+
+Python
+
+```python
+from fragmentcolor import Renderer, Shader
+
+renderer = Renderer()
+tex = renderer.create_texture_target([800, 600])
+
+shader = Shader.new("https://fragmentcolor.org/shaders/hello-triangle.wgsl")
+shader.set("uniforms.color", [0.95, 0.6, 0.2])
+
+renderer.render(shader, tex)
+```
+
+A slightly more advanced example (multi‑pass blur in Rust)
+
+```rust
+use fragmentcolor::{Renderer, Shader, Pass, Frame};
+
+# fn main() -> Result<(), Box<dyn std::error::Error>> {
+let renderer = Renderer::new();
+let target = renderer.create_texture_target([1280, 720]);
+
+let scene = Shader::new("https://fragmentcolor.org/shaders/scene.wgsl")?;
+let blur_x = Shader::new("https://fragmentcolor.org/shaders/blur-x.wgsl")?;
+let blur_y = Shader::new("https://fragmentcolor.org/shaders/blur-y.wgsl")?;
+
+let mut p0 = Pass::new("scene");
+p0.add_shader(&scene);
+
+let mut p1 = Pass::new("blur-x");
+p1.add_shader(&blur_x);
+p1.require(&p0)?; // render after scene
+
+let mut p2 = Pass::new("blur-y");
+p2.add_shader(&blur_y);
+p2.require(&p1)?; // render after blur-x
+
+let mut frame = Frame::new();
+frame.add_pass(p0);
+frame.add_pass(p1);
+frame.add_pass(p2);
+
+renderer.render(&frame, &target)?;
+# Ok(())
+# }
+```
+
+Where to next
+
+- Start at the Welcome page for a short tour: https://fragmentcolor.org/welcome
+- Browse the API by object (Renderer, Shader, Pass, Frame, Texture): https://fragmentcolor.org/api
+- See the repository for examples and issues: https://github.com/vista-art/fragmentcolor
+
+If you build something beautiful, tag me — I’d love to see it.
+
+Happy rendering,
+
+— Rafael

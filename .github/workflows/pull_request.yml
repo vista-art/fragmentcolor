@@ -3,7 +3,7 @@ name: "Pull Request"
 on:
   workflow_dispatch:
   push:
-    branches: [master]
+    branches: [main]
   pull_request:
 
 concurrency:
@@ -284,7 +284,7 @@ jobs:
       - name: Install Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 23
+          node-version: 20
           cache: "pnpm"
           cache-dependency-path: "examples/javascript/pnpm-lock.yaml"
 
