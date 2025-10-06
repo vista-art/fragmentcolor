@@ -94,20 +94,20 @@ shader.set("my_vec2", [1.0f32, 1.0])?;
 renderer.render(&shader, &target)?;
 
 // But you can also combine multiple shaders in a render Pass
-let mut rpass = Pass::new("single pass");
-rpass.add_shader(&circle);
-rpass.add_shader(&triangle);
-rpass.add_shader(&shader);
-renderer.render(&rpass, &target)?;
+let pass = Pass::new("single pass");
+pass.add_shader(&circle);
+pass.add_shader(&triangle);
+pass.add_shader(&shader);
+renderer.render(&pass, &target)?;
 
 // You can build arbitrary multi-pass graphs by declaring Pass dependencies
 let blurx = Pass::new("blur x");
 blurx.add_shader(&Shader::new("./shaders/blur_x.wgsl")?);
-blurx.require(&rpass)?; // rpass renders before blurx
+blurx.require(&pass)?; // pass renders before blurx
 
 // Finally, you can combine multiple passes linearly in a Frame
 let frame = Frame::new();
-frame.add_pass(rpass);
+frame.add_pass(pass);
 frame.add_pass(Pass::new("GUI pass"));
 renderer.render(&frame, &target)?;
 
