@@ -148,9 +148,9 @@ mod website {
             while let Some(c) = chars.peek() {
                 if c.is_ascii_digit() { saw_digit = true; chars.next(); } else { break; }
             }
-            if saw_digit {
-                if let Some(sep) = chars.peek() {
-                    if *sep == '.' || *sep == ')' {
+            if saw_digit
+                && let Some(sep) = chars.peek()
+                    && (*sep == '.' || *sep == ')') {
                         // consume separator
                         let _ = chars.next();
                         if matches!(chars.peek(), Some(' ')) { let _ = chars.next(); }
@@ -159,8 +159,6 @@ mod website {
                         if !lab.is_empty() { out.push(lab); }
                         continue;
                     }
-                }
-            }
         }
         // dedup while preserving order
         let mut seen = std::collections::HashSet::new();
@@ -174,12 +172,11 @@ mod website {
     }
 
     fn extract_label_from_list_item(s: &str) -> String {
-        if let Some(i) = s.find('[') {
-            if let Some(j_rel) = s[i + 1..].find(']') {
+        if let Some(i) = s.find('[')
+            && let Some(j_rel) = s[i + 1..].find(']') {
                 let j = i + 1 + j_rel;
                 return s[i + 1..j].trim().to_string();
             }
-        }
         // Fallback: take text up to a link start or end of line
         let before = s.split('(').next().unwrap_or(s);
         before.trim().to_string()
@@ -248,16 +245,13 @@ mod website {
                 let mut seen: _HashSet<String> = _HashSet::new();
                 for name in desired {
                     let key = canonicalize_name(&name);
-                    if let Some(obj) = canon_to_obj.get(&key) {
-                        if seen.insert(obj.clone()) { listed.push(obj.clone()); }
-                    }
+                    if let Some(obj) = canon_to_obj.get(&key)
+                        && seen.insert(obj.clone()) { listed.push(obj.clone()); }
                 }
                 let mut unlisted: Vec<String> = list
-                    .iter()
-                    .cloned()
-                    .filter(|o| !seen.contains(o))
+                    .iter().filter(|&o| !seen.contains(o)).cloned()
                     .collect();
-                unlisted.sort_by(|a, b| a.to_ascii_lowercase().cmp(&b.to_ascii_lowercase()));
+                unlisted.sort_by_key(|a| a.to_ascii_lowercase());
                 listed.extend(unlisted);
                 let mut m: _HashMap<String, usize> = _HashMap::new();
                 for (i, obj) in listed.iter().enumerate() { m.insert(obj.clone(), i); }
