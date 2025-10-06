@@ -1,9 +1,9 @@
 # FragmentColor
 
-[FragmentColor](https://fragmentcolor.org) is a cross-platform GPU programming library that is both **easy to use** and powerful enough to leverage modern GPU features.
+[FragmentColor](https://fragmentcolor.org) is a cross-platform GPU programming library that is both **easy to use** and **powerful**.
 
-The API encourages a simple shader composition workflow. You can use **WGSL** or **GLSL** shaders
-for visual consistency across platforms, while avoiding the verbosity of modern GPU APIs.
+The API encourages a simple shader composition workflow, where you can use **WGSL** or **GLSL** shaders as the source of truth
+for visual consistency across platforms, while **avoiding the verbosity of modern GPU APIs**.
 
 It has bindings for [**JavaScript**](./README_JS.md) (WASM), [**Python**](./README_PY.md), and draft support for **Swift** and **Kotlin**.
 It targets each platform's native graphics API: **Vulkan**, **Metal**, **DirectX**, **OpenGL**, **WebGL**, and **WebGPU**.
@@ -14,9 +14,10 @@ Check the website for the Getting Started guide and full reference:
 - **Documentation:** <https://fragmentcolor.org/welcome>
 - **API Reference:** <https://fragmentcolor.org/api>
 
-> [!NOTE] Status
+> [!NOTE]
 >
 > iOS and Android support is not available yet, but planned for version **v0.10.8**.
+>
 > See the [Roadmap](https://github.com/vista-art/fragmentcolor/blob/main/ROADMAP.md) and [Changelog](https://github.com/vista-art/fragmentcolor/blob/main/CHANGELOG.md) for details.
 
 ## Install
@@ -83,7 +84,7 @@ fn fs_main() -> @location(0) vec4<f32> {
 }
 "#;
 
-let mut shader = Shader::new(wgsl)?;
+let shader = Shader::new(wgsl)?;
 
 // The library binds and updates the uniforms automatically
 shader.set("my_struct.my_field", [0.1f32, 0.8, 0.9])?;
@@ -100,12 +101,12 @@ rpass.add_shader(&shader);
 renderer.render(&rpass, &target)?;
 
 // You can build arbitrary multi-pass graphs by declaring Pass dependencies
-let mut blurx = Pass::new("blur x");
+let blurx = Pass::new("blur x");
 blurx.add_shader(&Shader::new("./shaders/blur_x.wgsl")?);
 blurx.require(&rpass)?; // rpass renders before blurx
 
 // Finally, you can combine multiple passes linearly in a Frame
-let mut frame = Frame::new();
+let frame = Frame::new();
 frame.add_pass(rpass);
 frame.add_pass(Pass::new("GUI pass"));
 renderer.render(&frame, &target)?;
@@ -153,7 +154,7 @@ Enter example name, number, 'q'/'quit' to quit:
 
 ## Documentation & website
 
-- Docs source of truth lives in `docs/api`. The Rust code uses `#[lsp_doc]` to pull these docs into editor hovers.
+- Docs' source of truth lives in `docs/api`. The Rust code uses `#[lsp_doc]` to pull these docs into editor hovers.
 - The website lives under `docs/website` and is automatically generated from `docs/api` at build time.
 - Method pages include JavaScript and Python examples extracted from the healthcheck scripts.
 
