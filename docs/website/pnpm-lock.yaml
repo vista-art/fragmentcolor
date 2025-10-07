@@ -39,14 +39,14 @@ importers:
         specifier: ^6.0.2
         version: 6.0.2
       fragmentcolor:
-        specifier: 0.10.6
-        version: 0.10.6
+        specifier: 0.10.7
+        version: 0.10.7
       sharp:
         specifier: ^0.34.4
         version: 0.34.4
       starlight-blog:
-        specifier: ^0.24.1
-        version: 0.24.1(@astrojs/starlight@0.36.0(astro@5.14.1(@types/node@24.3.1)(@vercel/functions@2.2.13)(rollup@4.50.1)(typescript@5.9.3)(yaml@2.8.1)))(astro@5.14.1(@types/node@24.3.1)(@vercel/functions@2.2.13)(rollup@4.50.1)(typescript@5.9.3)(yaml@2.8.1))
+        specifier: ^0.24.2
+        version: 0.24.2(@astrojs/starlight@0.36.0(astro@5.14.1(@types/node@24.3.1)(@vercel/functions@2.2.13)(rollup@4.50.1)(typescript@5.9.3)(yaml@2.8.1)))(astro@5.14.1(@types/node@24.3.1)(@vercel/functions@2.2.13)(rollup@4.50.1)(typescript@5.9.3)(yaml@2.8.1))
       thememirror:
         specifier: ^2.0.1
         version: 2.0.1(@codemirror/language@6.11.3)(@codemirror/state@6.5.2)(@codemirror/view@6.38.4)
@@ -1266,8 +1266,8 @@ packages:
     resolution: {integrity: sha512-gIXjKqtFuWEgzFRJA9WCQeSJLZDjgJUOMCMzxtvFq/37KojM1BFGufqsCy0r4qSQmYLsZYMeyRqzIWOMup03sw==}
     engines: {node: '>=14'}
 
-  fragmentcolor@0.10.6:
-    resolution: {integrity: sha512-n9n+8pmhc1qcm1MCyLhESg+9WbXPH8jKU2CifCFwvv4cAKBGOtVPu74eGLVfQvkURGjJqQo5p+rEgPKN29ElAA==}
+  fragmentcolor@0.10.7:
+    resolution: {integrity: sha512-xaS8hgRN8hSgb4OMBaWS1L5d1tDijzDqr50PEm1uSJFYZmEi4Spr+VShcbMFkZzg/suHXpjVYPWFlkwpRDmaeg==}
 
   fsevents@2.3.3:
     resolution: {integrity: sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==}
@@ -2046,8 +2046,8 @@ packages:
   space-separated-tokens@2.0.2:
     resolution: {integrity: sha512-PEGlAwrG8yXGXRjW32fGbg66JAlOAwbObuqVoJpv/mRgoWDQfgH1wDPvtzWyUSNAXBGSk8h755YDbbcEy3SH2Q==}
 
-  starlight-blog@0.24.1:
-    resolution: {integrity: sha512-zq4iSl6uXGC352MFjg4G1webPEfdeB4zH1z5sphNo5K5qFvcw/j0NkoR5YWFg7ubIQVasiktjyaSoBs1k8FeiA==}
+  starlight-blog@0.24.2:
+    resolution: {integrity: sha512-3DbT20GnXSUKQPSD6ijAIbbBBnAvEVcyhH0nsv/DSNhh6Jh1eb/whPA9R7KyM28s0YTeyAk4gJ0iGbb7B/uJFA==}
     engines: {node: '>=18.20.8'}
     peerDependencies:
       '@astrojs/starlight': '>=0.33.0'
@@ -2193,6 +2193,9 @@ packages:
 
   unist-util-remove-position@5.0.0:
     resolution: {integrity: sha512-Hp5Kh3wLxv0PHj9m2yZhhLt58KzPtEYKQQ4yxfYFEO7EvHwzyDYnduhHnY1mDxoqr7VUwVuHXk9RXKIiYS1N8Q==}
+
+  unist-util-remove@4.0.0:
+    resolution: {integrity: sha512-b4gokeGId57UVRX/eVKej5gXqGlc9+trkORhFJpu9raqZkZhU0zm8Doi05+HaiBsMEIJowL+2WtQ5ItjsngPXg==}
 
   unist-util-stringify-position@4.0.0:
     resolution: {integrity: sha512-0ASV06AAoKCDkS2+xw5RXJywruurpbC4JZSm7nr7MOt1ojAzvyyaO+UxZf18j8FCF6kmzCZKcAgN/yu2gm2XgQ==}
@@ -3919,7 +3922,7 @@ snapshots:
       cross-spawn: 7.0.6
       signal-exit: 4.1.0
 
-  fragmentcolor@0.10.6: {}
+  fragmentcolor@0.10.7: {}
 
   fsevents@2.3.3:
     optional: true
@@ -5184,18 +5187,22 @@ snapshots:
 
   space-separated-tokens@2.0.2: {}
 
-  starlight-blog@0.24.1(@astrojs/starlight@0.36.0(astro@5.14.1(@types/node@24.3.1)(@vercel/functions@2.2.13)(rollup@4.50.1)(typescript@5.9.3)(yaml@2.8.1)))(astro@5.14.1(@types/node@24.3.1)(@vercel/functions@2.2.13)(rollup@4.50.1)(typescript@5.9.3)(yaml@2.8.1)):
+  starlight-blog@0.24.2(@astrojs/starlight@0.36.0(astro@5.14.1(@types/node@24.3.1)(@vercel/functions@2.2.13)(rollup@4.50.1)(typescript@5.9.3)(yaml@2.8.1)))(astro@5.14.1(@types/node@24.3.1)(@vercel/functions@2.2.13)(rollup@4.50.1)(typescript@5.9.3)(yaml@2.8.1)):
     dependencies:
-      '@astrojs/markdown-remark': 6.3.6
+      '@astrojs/markdown-remark': 6.3.7
       '@astrojs/mdx': 4.3.4(astro@5.14.1(@types/node@24.3.1)(@vercel/functions@2.2.13)(rollup@4.50.1)(typescript@5.9.3)(yaml@2.8.1))
       '@astrojs/rss': 4.0.12
       '@astrojs/starlight': 0.36.0(astro@5.14.1(@types/node@24.3.1)(@vercel/functions@2.2.13)(rollup@4.50.1)(typescript@5.9.3)(yaml@2.8.1))
       astro-remote: 0.3.4
       github-slugger: 2.0.0
+      hast-util-from-html: 2.0.3
+      hast-util-to-html: 9.0.5
+      hast-util-to-string: 3.0.1
       marked: 15.0.12
       marked-plaintify: 1.1.1(marked@15.0.12)
       mdast-util-mdx-expression: 2.0.1
-      ultrahtml: 1.6.0
+      unist-util-is: 6.0.0
+      unist-util-remove: 4.0.0
       unist-util-visit: 5.0.0
     transitivePeerDependencies:
       - astro
@@ -5356,6 +5363,12 @@ snapshots:
     dependencies:
       '@types/unist': 3.0.3
       unist-util-visit: 5.0.0
+
+  unist-util-remove@4.0.0:
+    dependencies:
+      '@types/unist': 3.0.3
+      unist-util-is: 6.0.0
+      unist-util-visit-parents: 6.0.1
 
   unist-util-stringify-position@4.0.0:
     dependencies:
