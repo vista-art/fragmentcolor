@@ -12,7 +12,6 @@ Examples:
 Notes:
 - Scans these roots: docs/website, platforms/web/**, examples/**
 - Skips: node_modules, pkg, dist, build, .astro
-- Skips: platforms/web/healthcheck (uses npm)
 */
 
 import { promises as fs } from 'node:fs';
@@ -32,8 +31,6 @@ const SCAN_ROOTS = [
 function shouldSkipDir(p) {
   const base = path.basename(p);
   if (SKIP_DIRS.has(base)) return true;
-  // Skip npm healthcheck project
-  if (p.includes(path.join('platforms', 'web', 'healthcheck'))) return true;
   return false;
 }
 
@@ -61,11 +58,6 @@ async function* walk(dir, maxDepth = 4, depth = 0) {
 }
 
 async function updatePackageJson(file) {
-  const dir = path.dirname(file);
-  // Skip npm-only projects with a package-lock.json
-  if (await exists(path.join(dir, 'package-lock.json')) && !(await exists(path.join(dir, 'pnpm-lock.yaml')))) {
-    return false;
-  }
   let raw;
   try {
     raw = await fs.readFile(file, 'utf8');

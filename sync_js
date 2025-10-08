@@ -16,16 +16,15 @@ sync_js_deps() {
       node "$ROOT_DIR/scripts/js/sync_pnpm.mjs" --no-frozen
     fi
   else
-    echo "[run_web] Node.js not found; skipping dependency sync. Set FC_SYNC_JS_SKIP=1 to silence." >&2
+    echo "[sync_js] Node.js not found; skipping dependency sync. Set FC_SYNC_JS_SKIP=1 to silence." >&2
     if [ -n "${CI:-}" ]; then
-      echo "[run_web] CI requires Node for dependency sync." >&2
+      echo "[sync_js] CI requires Node for dependency sync." >&2
       return 1
     fi
   fi
 }
 
-# Ensure JS deps are in sync before running the web checks
+# Ensure JS deps are in sync
 if ! sync_js_deps; then
-log_test_fail "$name"
-return 1
+  exit 1
 fi

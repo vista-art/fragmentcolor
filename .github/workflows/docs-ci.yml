@@ -31,11 +31,16 @@ jobs:
           cache: 'pnpm'
           cache-dependency-path: docs/website/pnpm-lock.yaml
 
+      - name: Sync JS dependencies
+        run: |
+          chmod +x ./sync_js
+          ./sync_js
+
       - name: Install dependencies (docs/website)
         run: pnpm --dir docs/website install
 
-      - name: Fail if outdated dependencies (docs/website)
-        run: pnpm --dir docs/website outdated
+      - name: Fail on major version updates (docs/website)
+        run: node scripts/js/ci_fail_on_major_updates.mjs --dir docs/website
 
   build-docs:
     name: Build docs site

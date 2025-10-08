@@ -280,13 +280,22 @@ jobs:
 
       - uses: pnpm/action-setup@v4
         with:
-          version: 9
+          version: 10
       - name: Install Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: "pnpm"
-          cache-dependency-path: "examples/javascript/pnpm-lock.yaml"
+          cache-dependency-path: |
+            examples/javascript/pnpm-lock.yaml
+            platforms/web/repl/pnpm-lock.yaml
+            platforms/web/healthcheck/pnpm-lock.yaml
+            docs/website/pnpm-lock.yaml
+
+      - name: Sync JS dependencies (major-only policy)
+        run: |
+          chmod +x ./sync_js
+          ./sync_js
 
       - name: Install system dependencies for headless GPU
         run: |
@@ -300,7 +309,7 @@ jobs:
 
       - uses: pnpm/action-setup@v4
         with:
-          version: 9
+          version: 10
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
