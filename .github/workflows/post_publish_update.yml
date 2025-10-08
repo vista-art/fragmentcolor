@@ -53,19 +53,26 @@ jobs:
             exit 1
           fi
 
-      - name: Update examples and website dependency to released version
+      - name: Update examples and website dependency to released version (major-only range)
         env:
           VERSION: ${{ steps.vars.outputs.version }}
         run: |
+          set -euo pipefail
+          MAJOR="${VERSION%%.*}"
+          if [ -z "$MAJOR" ]; then echo "Could not parse major from VERSION=$VERSION" >&2; exit 1; fi
+          if [ "$MAJOR" -eq 0 ]; then NEXT="1.0.0"; else NEXT="$((MAJOR+1)).0.0"; fi
+          RANGE=">=$VERSION <$NEXT"
+          echo "Setting fragmentcolor range to: $RANGE"
+
           # docs/website
           if [ -f docs/website/package.json ]; then
             tmp=$(mktemp)
-            jq --arg v "$VERSION" '.dependencies.fragmentcolor = $v' docs/website/package.json > "$tmp" && mv "$tmp" docs/website/package.json
+            jq --arg r "$RANGE" '.dependencies.fragmentcolor = $r' docs/website/package.json > "$tmp" && mv "$tmp" docs/website/package.json
           fi
           # examples/javascript
           if [ -f examples/javascript/package.json ]; then
             tmp=$(mktemp)
-            jq --arg v "$VERSION" '.dependencies.fragmentcolor = $v' examples/javascript/package.json > "$tmp" && mv "$tmp" examples/javascript/package.json
+            jq --arg r "$RANGE" '.dependencies.fragmentcolor = $r' examples/javascript/package.json > "$tmp" && mv "$tmp" examples/javascript/package.json
           fi
 
       - name: Setup pnpm

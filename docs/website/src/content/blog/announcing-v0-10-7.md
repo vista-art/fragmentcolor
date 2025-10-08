@@ -6,20 +6,27 @@ pubDate: "2025-10-05"
 tags: ["release", "rust", "webgpu", "python", "javascript"]
 ---
 
-Hey friends! Today (October 5, 2025) I’m shipping FragmentColor v0.10.7. It’s funny to call this a “patch” when it’s the biggest release I’ve done so far. I got carried away making the docs truthful, the API complete, and the pipeline calmer — and honestly, I’m very excited about what this unlocks for all of us.
+Hey friends!
+
+Today I'm shipping FragmentColor v0.10.7, our biggest release yet.
+
+This version guarantees 100% feature parity across Javascript, Python, and Rust. All the documentstion in this website is auto-generated from the library's source code, and all examples are guaranteed to run.
+
+It's funny to call this a "patch" when it's the biggest release I've done so far. I got carried away making the docs truthful, the API complete, and the pipeline calmer — and honestly, I'm very excited about what this unlocks for all of us.
 
 If you just want to dive in:
-- Docs: https://fragmentcolor.org/welcome
-- API Reference: https://fragmentcolor.org/api
-- Repo: https://github.com/vista-art/fragmentcolor
 
-What’s new (in plain English)
+- Docs: <https://fragmentcolor.org/welcome>
+- API Reference: <https://fragmentcolor.org/api>
+- Repo: <https://github.com/vista-art/fragmentcolor>
 
-- Docs that don’t lie
-  - The docs in docs/api are the single source of truth. During the build, we validate that every public item is documented and has a runnable example. Then we generate the website from those same docs. If it’s on the website, it actually runs.
+What's new (in plain English)
+
+- Docs that don't lie
+  - The docs in docs/api are the single source of truth. During the build, we validate that every public item is documented and has a runnable example. Then we generate the website from those same docs. If it's on the website, it actually runs.
 
 - A friendlier, more complete API
-  - You can pass uniforms, textures, samplers, storage buffers, and push constants with simple set/get methods. Meshes attach to shaders and passes in the obvious way. It feels much more “what I think is what I write”.
+  - You can pass uniforms, textures, samplers, storage buffers, and push constants with simple set/get methods. Meshes attach to shaders and passes in the obvious way. It feels much more "what I think is what I write".
 
 - Rendering that stays out of your way
   - Better pipeline caching, MSAA support, safer surface handling, and a smoother frame path so you can think about images, not plumbing.
@@ -109,18 +116,20 @@ What changed under the hood (still in human terms)
   - Result: IDE hovers match the website, and the website matches reality.
 
 - API & engine quality of life
-  - Clear, typed uniform/storage updates (including arrays and nested structs). Texture and sampler handling that “just works”. Multi‑mesh per pass without drama. MSAA and pipeline caching to keep your frames smooth.
+  - Clear, typed uniform/storage updates (including arrays and nested structs). Texture and sampler handling that "just works". Multi‑mesh per pass without drama. MSAA and pipeline caching to keep your frames smooth.
 
 - Release and distribution
-  - GitHub Release → CI publishes to npm, PyPI, and crates.io → the website bumps its dependency and snapshots the API docs for that version. That’s v0.10.7 in a sentence.
+  - GitHub Release → CI publishes to npm, PyPI, and crates.io → the website bumps its dependency and snapshots the API docs for that version. That's v0.10.7 in a sentence.
 
 Thank you
 
-If you’ve kicked the tires, filed a bug, or just read along, thank you. I’m building FragmentColor to make cross‑platform rendering feel welcoming — whether you’re on Rust, Web, or Python. If you create something colorful, please share it with me — I’d love to see it.
+If you've kicked the tires, filed a bug, or just read along, thank you.
 
-- Docs: https://fragmentcolor.org/welcome
-- API: https://fragmentcolor.org/api
-- GitHub: https://github.com/vista-art/fragmentcolor
+I'm building FragmentColor to make cross‑platform rendering feel welcoming — whether you're on Rust, Web, or Python. If you create something colorful, please share it with me — I'd love to see it!
+
+- Docs: <https://fragmentcolor.org/welcome>
+- API: <https://fragmentcolor.org/api>
+- GitHub: <https://github.com/vista-art/fragmentcolor>
 
 Happy rendering,
 

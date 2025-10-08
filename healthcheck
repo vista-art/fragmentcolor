@@ -131,10 +131,15 @@ wait_for_http() {
 }
 
 ensure_playwright() {
-  # Install Playwright in the healthcheck folder if not available
+  # Install Playwright in the healthcheck folder if not available (pnpm)
   local dir="$ROOT_DIR/platforms/web/healthcheck"
-  ( cd "$dir" && npm i --no-audit --no-fund --no-progress playwright@^1 >/dev/null 2>&1 || true )
-  ( cd "$dir" && npx playwright install chromium >/dev/null 2>&1 || true )
+  if ! command -v pnpm >/dev/null 2>&1; then
+    if command -v corepack >/dev/null 2>&1; then
+      corepack enable pnpm >/dev/null 2>&1 || true
+    fi
+  fi
+  ( cd "$dir" && pnpm i --no-frozen-lockfile --no-optional --ignore-scripts >/dev/null 2>&1 || true )
+  ( cd "$dir" && pnpm exec playwright install chromium >/dev/null 2>&1 || true )
 }
 
 run_web() {

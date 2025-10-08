@@ -11,11 +11,12 @@ Behavior:
 
 Scan roots:
 - docs/website (direct)
-- platforms/web/** (excluding platforms/web/healthcheck)
+- platforms/web/**
 - examples/**
 
 Skips directories: node_modules, pkg, dist, build, .astro
 Only pnpm projects are included: (pnpm-lock.yaml exists) OR (package.json has packageManager: pnpm@...)
+Also widens dependency ranges to "major-only" (>=current <nextMajor) before installs.
 */
 
 import { promises as fs } from 'node:fs';
@@ -23,6 +24,18 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 
 const repoRoot = process.cwd();
+
+// Lazily import the widen script to keep this file standalone if needed
+async function widenAll() {
+  try {
+    const mod = await import(new URL('./widen_dep_ranges.mjs', import.meta.url));
+    if (typeof mod.widenWorkspaceDeps === 'function') {
+      await mod.widenWorkspaceDeps(repoRoot);
+    }
+  } catch (e) {
+    console.warn('[sync_pnpm] widen_dep_ranges.mjs not found or failed, continuing:', e?.message || e);
+  }
+}
 
 function parseArgs(argv) {
   const out = { frozen: undefined, list: false };
@@ -41,7 +54,6 @@ const SKIP_DIRS = new Set(['node_modules', 'pkg', 'dist', 'build', '.astro']);
 function shouldSkipDir(p) {
   const base = path.basename(p);
   if (SKIP_DIRS.has(base)) return true;
-  if (p.includes(path.join('platforms', 'web', 'healthcheck'))) return true; // npm-only project
   return false;
 }
 
@@ -121,6 +133,10 @@ async function main() {
     console.log('[sync_pnpm] no pnpm projects discovered');
     return;
   }
+
+  // Widen dependency ranges to major-only before installations
+  await widenAll();
+
   const flag = args.frozen ? '--frozen-lockfile' : '--no-frozen-lockfile';
   console.log(`[sync_pnpm] syncing ${projects.length} project(s) using ${flag}`);
   for (const d of projects) {
