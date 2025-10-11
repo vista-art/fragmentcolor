@@ -11,5 +11,5 @@ for arg in "$@"; do
 	esac
 done
 
-cargo clippy --all --workspace --all-features --all-targets $FLAG
 cargo fmt --all
+cargo clippy --all --workspace --all-features --all-targets --allow-dirty $FLAG

@@ -118,6 +118,70 @@ mod website {
         out
     }
 
+    // Canonicalize a name for fuzzy matching (lowercase, alphanumeric only)
+    fn canonicalize_name(s: &str) -> String {
+        s.chars()
+            .filter(|c| c.is_ascii_alphanumeric())
+            .collect::<String>()
+            .to_ascii_lowercase()
+    }
+
+    // Parse a category _index.md and extract desired order labels from list items.
+    // Supported forms:
+    // - Renderer
+    // * Shader
+    // 1. Pass
+    // 1) Frame
+    // Also supports markdown links: - [Texture](texture.md)
+    fn parse_index_order(md: &str) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        for line in md.lines() {
+            let lt = line.trim_start();
+            if lt.starts_with('-') || lt.starts_with('*') {
+                let rest = lt[1..].trim_start();
+                out.push(extract_label_from_list_item(rest));
+                continue;
+            }
+            // numeric list: e.g. "1. Item" or "1) Item"
+            let mut chars = lt.chars().peekable();
+            let mut saw_digit = false;
+            while let Some(c) = chars.peek() {
+                if c.is_ascii_digit() { saw_digit = true; chars.next(); } else { break; }
+            }
+            if saw_digit
+                && let Some(sep) = chars.peek()
+                    && (*sep == '.' || *sep == ')') {
+                        // consume separator
+                        let _ = chars.next();
+                        if matches!(chars.peek(), Some(' ')) { let _ = chars.next(); }
+                        let rest: String = chars.collect();
+                        let lab = extract_label_from_list_item(rest.trim());
+                        if !lab.is_empty() { out.push(lab); }
+                        continue;
+                    }
+        }
+        // dedup while preserving order
+        let mut seen = std::collections::HashSet::new();
+        let mut res = Vec::new();
+        for s in out {
+            let t = s.trim();
+            if t.is_empty() { continue; }
+            if seen.insert(t.to_string()) { res.push(t.to_string()); }
+        }
+        res
+    }
+
+    fn extract_label_from_list_item(s: &str) -> String {
+        if let Some(i) = s.find('[')
+            && let Some(j_rel) = s[i + 1..].find(']') {
+                let j = i + 1 + j_rel;
+                return s[i + 1..j].trim().to_string();
+            }
+        // Fallback: take text up to a link start or end of line
+        let before = s.split('(').next().unwrap_or(s);
+        before.trim().to_string()
+    }
+
     /// Step 2: Export examples and pages. Returns the sets needed by later steps.
     pub fn export_examples_and_pages(api_map: &ApiMap) -> ExportOutcome {
         use std::collections::{BTreeMap, HashSet};
@@ -145,6 +209,56 @@ mod website {
             }
         }
 
+        // Build custom order map per category from optional _index.md files under docs/api
+        use std::collections::{BTreeMap as _BTreeMap, HashMap as _HashMap, HashSet as _HashSet};
+        let mut all_by_cat: _BTreeMap<String, Vec<String>> = _BTreeMap::new();
+        // From docs directory scan
+        for (object, _obj_dir, cat_rel) in scan_docs_objects(&docs_root) {
+            if is_hidden_category(&cat_rel) { continue; }
+            all_by_cat.entry(cat_rel).or_default().push(object);
+        }
+        // Include base objects that may not have explicit docs yet
+        for object in super::validation::base_public_objects().iter() {
+            let dir_name = super::validation::object_dir_name(object);
+            let obj_dir = find_object_dir(&docs_root, &dir_name).unwrap_or(docs_root.join(&dir_name));
+            let cat_rel = if obj_dir.exists() { category_rel_from(&docs_root, &obj_dir) } else { String::new() };
+            if is_hidden_category(&cat_rel) { continue; }
+            let list = all_by_cat.entry(cat_rel).or_default();
+            if !list.iter().any(|o| o == object) { list.push(object.to_string()); }
+        }
+        for list in all_by_cat.values_mut() { list.sort(); list.dedup(); }
+
+        let mut orders_map: _HashMap<String, _HashMap<String, usize>> = _HashMap::new();
+        for (cat, list) in all_by_cat.iter() {
+            let dir = if cat.is_empty() { docs_root.clone() } else { docs_root.join(cat) };
+            let idx_path = dir.join("_index.md");
+            if let Ok(idx_md) = std::fs::read_to_string(&idx_path) {
+                let desired = parse_index_order(&idx_md);
+                // Build canonical map from canonical form to object name
+                let mut canon_to_obj: _HashMap<String, String> = _HashMap::new();
+                for obj in list.iter() {
+                    let dir_name = super::validation::object_dir_name(obj);
+                    canon_to_obj.insert(canonicalize_name(obj), obj.clone());
+                    canon_to_obj.insert(canonicalize_name(&dir_name), obj.clone());
+                }
+                let mut listed: Vec<String> = Vec::new();
+                let mut seen: _HashSet<String> = _HashSet::new();
+                for name in desired {
+                    let key = canonicalize_name(&name);
+                    if let Some(obj) = canon_to_obj.get(&key)
+                        && seen.insert(obj.clone()) { listed.push(obj.clone()); }
+                }
+                let mut unlisted: Vec<String> = list
+                    .iter().filter(|&o| !seen.contains(o)).cloned()
+                    .collect();
+                unlisted.sort_by_key(|a| a.to_ascii_lowercase());
+                listed.extend(unlisted);
+                let mut m: _HashMap<String, usize> = _HashMap::new();
+                for (i, obj) in listed.iter().enumerate() { m.insert(obj.clone(), i); }
+                orders_map.insert(cat.clone(), m);
+            }
+        }
+
         // Helper to write a page given an object, its docs dir, category relative path, and ordered method files
         let mut write_page = |object: &str,
                               obj_dir: &std::path::Path,
@@ -158,6 +272,12 @@ mod website {
             let body = strip_after_methods(&strip_leading_h1(&obj_md));
 
             let mut out = String::new();
+            // Determine sidebar order, if any
+            let order_opt: Option<usize> = orders_map
+                .get(cat_rel)
+                .and_then(|m| m.get(object))
+                .cloned();
+
             out.push_str("---\n");
             out.push_str(&format!("title: {}\n", object));
             let desc = description.replace('\n', " ").replace('"', "\\\"");
@@ -165,6 +285,10 @@ mod website {
             if !cat_rel.is_empty() {
                 out.push_str(&format!("category: {}\n", cat_rel));
                 out.push_str(&format!("categoryLabel: {}\n", category_title(cat_rel)));
+            }
+            if let Some(order) = order_opt {
+                out.push_str("sidebar:\n");
+                out.push_str(&format!("  order: {}\n", order));
             }
             out.push_str("---\n\n");
 

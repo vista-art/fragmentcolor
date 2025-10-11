@@ -9,49 +9,49 @@ importers:
   .:
     dependencies:
       '@astrojs/check':
-        specifier: ^0.9.4
+        specifier: '>=0.9.4 <1.0.0'
         version: 0.9.4(typescript@5.9.3)
       '@astrojs/starlight':
-        specifier: ^0.36.0
+        specifier: '>=0.36.0 <1.0.0'
         version: 0.36.0(astro@5.14.1(@types/node@24.3.1)(@vercel/functions@2.2.13)(rollup@4.50.1)(typescript@5.9.3)(yaml@2.8.1))
       '@astrojs/vercel':
-        specifier: ^8.2.8
+        specifier: '>=8.2.8 <9.0.0'
         version: 8.2.8(astro@5.14.1(@types/node@24.3.1)(@vercel/functions@2.2.13)(rollup@4.50.1)(typescript@5.9.3)(yaml@2.8.1))(rollup@4.50.1)
       '@codemirror/lang-javascript':
-        specifier: ^6.2.4
+        specifier: '>=6.2.4 <7.0.0'
         version: 6.2.4
       '@codemirror/state':
-        specifier: ^6.5.2
+        specifier: '>=6.5.2 <7.0.0'
         version: 6.5.2
       '@codemirror/view':
-        specifier: ^6.38.4
-        version: 6.38.4
+        specifier: '>=6.38.5 <7.0.0'
+        version: 6.38.5
       '@expressive-code/plugin-collapsible-sections':
-        specifier: ^0.41.3
+        specifier: '>=0.41.3 <1.0.0'
         version: 0.41.3
       '@observablehq/inspector':
-        specifier: ^5.0.1
+        specifier: '>=5.0.1 <6.0.0'
         version: 5.0.1
       astro:
-        specifier: ^5.14.1
+        specifier: '>=5.14.1 <6.0.0'
         version: 5.14.1(@types/node@24.3.1)(@vercel/functions@2.2.13)(rollup@4.50.1)(typescript@5.9.3)(yaml@2.8.1)
       codemirror:
-        specifier: ^6.0.2
+        specifier: '>=6.0.2 <7.0.0'
         version: 6.0.2
       fragmentcolor:
-        specifier: 0.10.6
-        version: 0.10.6
+        specifier: '>=0.10.7 <1.0.0'
+        version: 0.10.7
       sharp:
-        specifier: ^0.34.4
+        specifier: '>=0.34.4 <1.0.0'
         version: 0.34.4
       starlight-blog:
-        specifier: ^0.24.1
-        version: 0.24.1(@astrojs/starlight@0.36.0(astro@5.14.1(@types/node@24.3.1)(@vercel/functions@2.2.13)(rollup@4.50.1)(typescript@5.9.3)(yaml@2.8.1)))(astro@5.14.1(@types/node@24.3.1)(@vercel/functions@2.2.13)(rollup@4.50.1)(typescript@5.9.3)(yaml@2.8.1))
+        specifier: '>=0.24.2 <1.0.0'
+        version: 0.24.2(@astrojs/starlight@0.36.0(astro@5.14.1(@types/node@24.3.1)(@vercel/functions@2.2.13)(rollup@4.50.1)(typescript@5.9.3)(yaml@2.8.1)))(astro@5.14.1(@types/node@24.3.1)(@vercel/functions@2.2.13)(rollup@4.50.1)(typescript@5.9.3)(yaml@2.8.1))
       thememirror:
-        specifier: ^2.0.1
-        version: 2.0.1(@codemirror/language@6.11.3)(@codemirror/state@6.5.2)(@codemirror/view@6.38.4)
+        specifier: '>=2.0.1 <3.0.0'
+        version: 2.0.1(@codemirror/language@6.11.3)(@codemirror/state@6.5.2)(@codemirror/view@6.38.5)
       typescript:
-        specifier: ^5.9.3
+        specifier: '>=5.9.3 <6.0.0'
         version: 5.9.3
 
 packages:
@@ -167,8 +167,8 @@ packages:
   '@codemirror/state@6.5.2':
     resolution: {integrity: sha512-FVqsPqtPWKVVL3dPSxy8wEF/ymIEuVzF1PK3VbUgrxXpJUSHQWWZz4JMToquRxnkw+36LTamCZG2iua2Ptq0fA==}
 
-  '@codemirror/view@6.38.4':
-    resolution: {integrity: sha512-hduz0suCcUSC/kM8Fq3A9iLwInJDl8fD1xLpTIk+5xkNm8z/FT7UsIa9sOXrkpChh+XXc18RzswE8QqELsVl+g==}
+  '@codemirror/view@6.38.5':
+    resolution: {integrity: sha512-SFVsNAgsAoou+BjRewMqN+m9jaztB9wCWN9RSRgePqUbq8UVlvJfku5zB2KVhLPgH/h0RLk38tvd4tGeAhygnw==}
 
   '@ctrl/tinycolor@4.1.0':
     resolution: {integrity: sha512-WyOx8cJQ+FQus4Mm4uPIZA64gbk3Wxh0so5Lcii0aJifqwoVOlfFtorjLE0Hen4OYyHZMXDWqMmaQemBhgxFRQ==}
@@ -1102,10 +1102,6 @@ packages:
   destr@2.0.5:
     resolution: {integrity: sha512-ugFTXCtDZunbzasqBxrK93Ik/DRYsO6S/fedkWEMKqt04xZ4csmnmwGDBAb07QWNaGMAmnTIemsYZCksjATwsA==}
 
-  detect-libc@2.0.4:
-    resolution: {integrity: sha512-3UDv+G9CsCKO1WKMGw9fwq/SWJYbI0c5Y7LU1AXYoDdbhE2AHQ6N6Nb34sG8Fj7T5APy8qXDCKuuIHd1BR0tVA==}
-    engines: {node: '>=8'}
-
   detect-libc@2.1.1:
     resolution: {integrity: sha512-ecqj/sy1jcK1uWrwpR67UhYrIFQ+5WlGxth34WquCbamhFA6hkkwiu37o6J5xCHdo1oixJRfVRw+ywV+Hq/0Aw==}
     engines: {node: '>=8'}
@@ -1266,8 +1262,8 @@ packages:
     resolution: {integrity: sha512-gIXjKqtFuWEgzFRJA9WCQeSJLZDjgJUOMCMzxtvFq/37KojM1BFGufqsCy0r4qSQmYLsZYMeyRqzIWOMup03sw==}
     engines: {node: '>=14'}
 
-  fragmentcolor@0.10.6:
-    resolution: {integrity: sha512-n9n+8pmhc1qcm1MCyLhESg+9WbXPH8jKU2CifCFwvv4cAKBGOtVPu74eGLVfQvkURGjJqQo5p+rEgPKN29ElAA==}
+  fragmentcolor@0.10.7:
+    resolution: {integrity: sha512-xaS8hgRN8hSgb4OMBaWS1L5d1tDijzDqr50PEm1uSJFYZmEi4Spr+VShcbMFkZzg/suHXpjVYPWFlkwpRDmaeg==}
 
   fsevents@2.3.3:
     resolution: {integrity: sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==}
@@ -2046,8 +2042,8 @@ packages:
   space-separated-tokens@2.0.2:
     resolution: {integrity: sha512-PEGlAwrG8yXGXRjW32fGbg66JAlOAwbObuqVoJpv/mRgoWDQfgH1wDPvtzWyUSNAXBGSk8h755YDbbcEy3SH2Q==}
 
-  starlight-blog@0.24.1:
-    resolution: {integrity: sha512-zq4iSl6uXGC352MFjg4G1webPEfdeB4zH1z5sphNo5K5qFvcw/j0NkoR5YWFg7ubIQVasiktjyaSoBs1k8FeiA==}
+  starlight-blog@0.24.2:
+    resolution: {integrity: sha512-3DbT20GnXSUKQPSD6ijAIbbBBnAvEVcyhH0nsv/DSNhh6Jh1eb/whPA9R7KyM28s0YTeyAk4gJ0iGbb7B/uJFA==}
     engines: {node: '>=18.20.8'}
     peerDependencies:
       '@astrojs/starlight': '>=0.33.0'
@@ -2193,6 +2189,9 @@ packages:
 
   unist-util-remove-position@5.0.0:
     resolution: {integrity: sha512-Hp5Kh3wLxv0PHj9m2yZhhLt58KzPtEYKQQ4yxfYFEO7EvHwzyDYnduhHnY1mDxoqr7VUwVuHXk9RXKIiYS1N8Q==}
+
+  unist-util-remove@4.0.0:
+    resolution: {integrity: sha512-b4gokeGId57UVRX/eVKej5gXqGlc9+trkORhFJpu9raqZkZhU0zm8Doi05+HaiBsMEIJowL+2WtQ5ItjsngPXg==}
 
   unist-util-stringify-position@4.0.0:
     resolution: {integrity: sha512-0ASV06AAoKCDkS2+xw5RXJywruurpbC4JZSm7nr7MOt1ojAzvyyaO+UxZf18j8FCF6kmzCZKcAgN/yu2gm2XgQ==}
@@ -2665,7 +2664,7 @@ snapshots:
 
   '@astrojs/starlight@0.36.0(astro@5.14.1(@types/node@24.3.1)(@vercel/functions@2.2.13)(rollup@4.50.1)(typescript@5.9.3)(yaml@2.8.1))':
     dependencies:
-      '@astrojs/markdown-remark': 6.3.6
+      '@astrojs/markdown-remark': 6.3.7
       '@astrojs/mdx': 4.3.4(astro@5.14.1(@types/node@24.3.1)(@vercel/functions@2.2.13)(rollup@4.50.1)(typescript@5.9.3)(yaml@2.8.1))
       '@astrojs/sitemap': 3.5.1
       '@pagefind/default-ui': 1.4.0
@@ -2762,14 +2761,14 @@ snapshots:
     dependencies:
       '@codemirror/language': 6.11.3
       '@codemirror/state': 6.5.2
-      '@codemirror/view': 6.38.4
+      '@codemirror/view': 6.38.5
       '@lezer/common': 1.2.3
 
   '@codemirror/commands@6.8.1':
     dependencies:
       '@codemirror/language': 6.11.3
       '@codemirror/state': 6.5.2
-      '@codemirror/view': 6.38.4
+      '@codemirror/view': 6.38.5
       '@lezer/common': 1.2.3
 
   '@codemirror/lang-javascript@6.2.4':
@@ -2778,14 +2777,14 @@ snapshots:
       '@codemirror/language': 6.11.3
       '@codemirror/lint': 6.8.5
       '@codemirror/state': 6.5.2
-      '@codemirror/view': 6.38.4
+      '@codemirror/view': 6.38.5
       '@lezer/common': 1.2.3
       '@lezer/javascript': 1.5.2
 
   '@codemirror/language@6.11.3':
     dependencies:
       '@codemirror/state': 6.5.2
-      '@codemirror/view': 6.38.4
+      '@codemirror/view': 6.38.5
       '@lezer/common': 1.2.3
       '@lezer/highlight': 1.2.1
       '@lezer/lr': 1.4.2
@@ -2794,20 +2793,20 @@ snapshots:
   '@codemirror/lint@6.8.5':
     dependencies:
       '@codemirror/state': 6.5.2
-      '@codemirror/view': 6.38.4
+      '@codemirror/view': 6.38.5
       crelt: 1.0.6
 
   '@codemirror/search@6.5.11':
     dependencies:
       '@codemirror/state': 6.5.2
-      '@codemirror/view': 6.38.4
+      '@codemirror/view': 6.38.5
       crelt: 1.0.6
 
   '@codemirror/state@6.5.2':
     dependencies:
       '@marijn/find-cluster-break': 1.0.2
 
-  '@codemirror/view@6.38.4':
+  '@codemirror/view@6.38.5':
     dependencies:
       '@codemirror/state': 6.5.2
       crelt: 1.0.6
@@ -3073,7 +3072,7 @@ snapshots:
   '@mapbox/node-pre-gyp@2.0.0':
     dependencies:
       consola: 3.4.2
-      detect-libc: 2.0.4
+      detect-libc: 2.1.1
       https-proxy-agent: 7.0.6
       node-fetch: 2.7.0
       nopt: 8.1.0
@@ -3665,7 +3664,7 @@ snapshots:
       '@codemirror/lint': 6.8.5
       '@codemirror/search': 6.5.11
       '@codemirror/state': 6.5.2
-      '@codemirror/view': 6.38.4
+      '@codemirror/view': 6.38.5
 
   collapse-white-space@2.1.0: {}
 
@@ -3725,8 +3724,6 @@ snapshots:
   dequal@2.0.3: {}
 
   destr@2.0.5: {}
-
-  detect-libc@2.0.4: {}
 
   detect-libc@2.1.1: {}
 
@@ -3919,7 +3916,7 @@ snapshots:
       cross-spawn: 7.0.6
       signal-exit: 4.1.0
 
-  fragmentcolor@0.10.6: {}
+  fragmentcolor@0.10.7: {}
 
   fsevents@2.3.3:
     optional: true
@@ -5184,18 +5181,22 @@ snapshots:
 
   space-separated-tokens@2.0.2: {}
 
-  starlight-blog@0.24.1(@astrojs/starlight@0.36.0(astro@5.14.1(@types/node@24.3.1)(@vercel/functions@2.2.13)(rollup@4.50.1)(typescript@5.9.3)(yaml@2.8.1)))(astro@5.14.1(@types/node@24.3.1)(@vercel/functions@2.2.13)(rollup@4.50.1)(typescript@5.9.3)(yaml@2.8.1)):
+  starlight-blog@0.24.2(@astrojs/starlight@0.36.0(astro@5.14.1(@types/node@24.3.1)(@vercel/functions@2.2.13)(rollup@4.50.1)(typescript@5.9.3)(yaml@2.8.1)))(astro@5.14.1(@types/node@24.3.1)(@vercel/functions@2.2.13)(rollup@4.50.1)(typescript@5.9.3)(yaml@2.8.1)):
     dependencies:
-      '@astrojs/markdown-remark': 6.3.6
+      '@astrojs/markdown-remark': 6.3.7
       '@astrojs/mdx': 4.3.4(astro@5.14.1(@types/node@24.3.1)(@vercel/functions@2.2.13)(rollup@4.50.1)(typescript@5.9.3)(yaml@2.8.1))
       '@astrojs/rss': 4.0.12
       '@astrojs/starlight': 0.36.0(astro@5.14.1(@types/node@24.3.1)(@vercel/functions@2.2.13)(rollup@4.50.1)(typescript@5.9.3)(yaml@2.8.1))
       astro-remote: 0.3.4
       github-slugger: 2.0.0
+      hast-util-from-html: 2.0.3
+      hast-util-to-html: 9.0.5
+      hast-util-to-string: 3.0.1
       marked: 15.0.12
       marked-plaintify: 1.1.1(marked@15.0.12)
       mdast-util-mdx-expression: 2.0.1
-      ultrahtml: 1.6.0
+      unist-util-is: 6.0.0
+      unist-util-remove: 4.0.0
       unist-util-visit: 5.0.0
     transitivePeerDependencies:
       - astro
@@ -5255,11 +5256,11 @@ snapshots:
       mkdirp: 3.0.1
       yallist: 5.0.0
 
-  thememirror@2.0.1(@codemirror/language@6.11.3)(@codemirror/state@6.5.2)(@codemirror/view@6.38.4):
+  thememirror@2.0.1(@codemirror/language@6.11.3)(@codemirror/state@6.5.2)(@codemirror/view@6.38.5):
     dependencies:
       '@codemirror/language': 6.11.3
       '@codemirror/state': 6.5.2
-      '@codemirror/view': 6.38.4
+      '@codemirror/view': 6.38.5
 
   tiny-inflate@1.0.3: {}
 
@@ -5356,6 +5357,12 @@ snapshots:
     dependencies:
       '@types/unist': 3.0.3
       unist-util-visit: 5.0.0
+
+  unist-util-remove@4.0.0:
+    dependencies:
+      '@types/unist': 3.0.3
+      unist-util-is: 6.0.0
+      unist-util-visit-parents: 6.0.1
 
   unist-util-stringify-position@4.0.0:
     dependencies:

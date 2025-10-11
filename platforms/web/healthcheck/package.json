@@ -10,7 +10,8 @@
   "author": "",
   "license": "ISC",
   "type": "commonjs",
+  "packageManager": "pnpm@10.15.1",
   "dependencies": {
-    "playwright": "^1.55.1"
+    "playwright": ">=1.56.0 <2.0.0"
   }
 }

@@ -704,6 +704,13 @@ mod convert {
                 continue;
             }
 
+            // Drop Rust-only windowing note for non-Rust outputs
+            // "We officially support Winit. Check the examples folder for details." doesn't apply to JS/Python.
+            if t.contains("We officially support Winit") {
+                idx += 1;
+                continue;
+            }
+
             // Special-case: let var = Type::new(r#"..."#) with multi-line raw string
             if let Some((mapped, next_idx)) =
                 try_handle_raw_string_new(&src, idx, lang, &mut py_renames, &mut js_renames)
