@@ -1,4 +1,6 @@
-use fragmentcolor::{App, Frame, Pass, Shader, TextureFormat, run};
+use fragmentcolor::{App, Frame, Pass, Shader, TextureFormat, SetupResult, call, run};
+use std::sync::Arc;
+use winit::window::Window;
 
 fn handle_cursor_moved(
     app: &App,
@@ -176,6 +178,15 @@ pub fn on_resize(app: &App, sz: &winit::dpi::PhysicalSize<u32>) {
     app.resize([sz.width, sz.height]);
 }
 
+// Create a render target for each window on startup
+async fn setup(app: &App, windows: Vec<Arc<Window>>) -> SetupResult {
+    for win in windows {
+        let target = app.get_renderer().create_target(win.clone()).await?;
+        app.add_target(win.id(), target);
+    }
+    Ok(())
+}
+
 fn main() {
     let _ = env_logger::try_init();
     let n: u32 = std::env::var("PARTICLES")
@@ -306,7 +317,9 @@ fn main() {
     app.add("frame.main", frame);
 
     // Drive explicit rendering in draw
-    app.on_resize(on_resize).on_redraw_requested(|app| {
+    app.on_start(call!(setup))
+        .on_resize(on_resize)
+        .on_redraw_requested(|app| {
         let id = app.primary_window_id();
         if let Some(frame) = app.get::<Frame>("frame.main") {
             let r = app.get_renderer();
