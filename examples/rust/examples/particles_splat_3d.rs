@@ -1,4 +1,4 @@
-use fragmentcolor::{App, Frame, Pass, Shader, TextureFormat, SetupResult, call, run};
+use fragmentcolor::{App, Frame, Pass, SetupResult, Shader, TextureFormat, call, run};
 use std::sync::Arc;
 use winit::window::Window;
 
@@ -320,12 +320,12 @@ fn main() {
     app.on_start(call!(setup))
         .on_resize(on_resize)
         .on_redraw_requested(|app| {
-        let id = app.primary_window_id();
-        if let Some(frame) = app.get::<Frame>("frame.main") {
-            let r = app.get_renderer();
-            let _ = app.with_target(id, |t| r.render(&*frame, t));
-        }
-    });
+            let id = app.primary_window_id();
+            if let Some(frame) = app.get::<Frame>("frame.main") {
+                let r = app.get_renderer();
+                let _ = app.with_target(id, |t| r.render(&*frame, t));
+            }
+        });
 
     run(&mut app);
 }
