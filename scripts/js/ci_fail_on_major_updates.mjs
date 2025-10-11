@@ -53,14 +53,38 @@ async function checkDir(dir) {
   const res = await run('pnpm', ['--dir', dir, 'outdated', '--json']);
   const list = [];
   if (!res.out.trim()) return list; // nothing
-  let data;
-  try { data = JSON.parse(res.out); } catch { return list; }
-  for (const item of data) {
+
+  // pnpm --json output format differs across versions/workspaces:
+  // - Sometimes an array of objects
+  // - Sometimes an object map (name -> info)
+  // - In some setups, an object with a packages: [] field
+  let parsed;
+  try {
+    parsed = JSON.parse(res.out);
+  } catch {
+    return list;
+  }
+
+  let items = [];
+  if (Array.isArray(parsed)) {
+    items = parsed;
+  } else if (parsed && typeof parsed === 'object') {
+    if (Array.isArray(parsed.packages)) {
+      items = parsed.packages;
+    } else {
+      items = Object.values(parsed);
+    }
+  } else {
+    return list;
+  }
+
+  for (const item of items) {
     const wantedMaj = major(item.wanted);
     const latestMaj = major(item.latest);
     if (wantedMaj == null || latestMaj == null) continue;
     if (latestMaj > wantedMaj) {
-      list.push({ name: item.package, wanted: item.wanted, latest: item.latest });
+      const name = item.package ?? item.name ?? item.depName ?? item.id ?? 'unknown';
+      list.push({ name, wanted: item.wanted, latest: item.latest });
     }
   }
   return list;
