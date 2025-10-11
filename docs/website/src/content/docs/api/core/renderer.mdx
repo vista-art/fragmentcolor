@@ -3,6 +3,8 @@ title: Renderer
 description: "The [Renderer](/api/core/renderer) is the main entry point for [FragmentColor](https://fragmentcolor.org) and normally the first object you create."
 category: core
 categoryLabel: Core
+sidebar:
+  order: 0
 ---
 
 import { Code, Tabs, TabItem, Aside } from "@astrojs/starlight/components";
@@ -294,7 +296,6 @@ import { Renderer } from "fragmentcolor";
 const renderer = new Renderer();
 
 // Use your platform's windowing system to create a window.
-// We officially support Winit. Check the examples folder for details.
 const canvas = document.createElement('canvas');
 
 const target = await renderer.createTarget(canvas);
@@ -315,7 +316,6 @@ from fragmentcolor import Renderer
 renderer = Renderer()
 
 # Use your platform's windowing system to create a window.
-# We officially support Winit. Check the examples folder for details.
 canvas = RenderCanvas(size=(800, 600))
 
 target = renderer.create_target(canvas)

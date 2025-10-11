@@ -10,15 +10,14 @@
     "preview": "vite preview"
   },
   "devDependencies": {
-    "typescript": "^5.9.3",
-    "vite": "^7.1.9",
-    "vite-plugin-top-level-await": "^1.6.0",
-    "vite-plugin-wasm": "^3.5.0"
+    "typescript": ">=5.9.3 <6.0.0",
+    "vite": ">=7.1.9 <8.0.0",
+    "vite-plugin-top-level-await": ">=1.6.0 <2.0.0",
+    "vite-plugin-wasm": ">=3.5.0 <4.0.0"
   },
   "dependencies": {
-    "@codemirror/state": "^6.5.2",
-    "@codemirror/view": "^6.38.4",
-    "codemirror": "^6.0.1"
+    "@codemirror/state": ">=6.5.2 <7.0.0",
+    "@codemirror/view": ">=6.38.4 <7.0.0",
+    "codemirror": ">=6.0.1 <7.0.0"
   }
 }
-
