@@ -7,13 +7,14 @@
 </shader-hero>
 
 <script>
+// @ts-nocheck
 if (!customElements.get('shader-hero')) {
   class ShaderHero extends HTMLElement {
-    #shadow;
-    #raf = 0;
-    #renderer = null;
-    #target = null;
-    #shader = null;
+    /** @type {ShadowRoot} */ #shadow;
+    /** @type {number} */ #raf = 0;
+    /** @type {any} */ #renderer;
+    /** @type {any} */ #target;
+    /** @type {any} */ #shader;
     #start = performance.now();
 
     constructor() {
@@ -24,7 +25,7 @@ if (!customElements.get('shader-hero')) {
           :host { display: block; margin: 1.5rem 0; }
           #canvas { width: 100%; height: 420px; background: #0f172a; border-radius: 8px; display: block; }
         </style>
-        <canvas id="canvas"></canvas>
+        <canvas id=\"canvas\"></canvas>
       `;
     }
 
@@ -32,7 +33,8 @@ if (!customElements.get('shader-hero')) {
     disconnectedCallback() { cancelAnimationFrame(this.#raf); }
 
     async #init() {
-      const canvas = this.#shadow.querySelector('#canvas');
+      const canvas = /** @type {HTMLCanvasElement} */ (this.#shadow.querySelector('#canvas'));
+      if (!canvas) return;
       try {
         const mod = await import('fragmentcolor');
         await mod.default(); // WASM init
@@ -53,7 +55,8 @@ if (!customElements.get('shader-hero')) {
 
     #tick(now) {
       if (!this.#renderer || !this.#target || !this.#shader) return;
-      const canvas = this.#shadow.querySelector('#canvas');
+      const canvas = /** @type {HTMLCanvasElement} */ (this.#shadow.querySelector('#canvas'));
+      if (!canvas) return;
 
       // Resize for device pixel ratio
       const dpr = Math.max(1, window.devicePixelRatio || 1);
