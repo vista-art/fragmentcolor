@@ -1,0 +1,58 @@
+---
+// Minimal light-DOM canvas test to compare with ShadowRoot behavior
+---
+
+<div style="margin: 1.5rem 0;">
+  <canvas id="fc-top" style="width: 100%; height: 280px; background:#0f172a; border-radius: 8px;"></canvas>
+</div>
+
+<script>
+// @ts-nocheck
+(async () => {
+  try {
+    const canvas = document.getElementById('fc-top');
+    if (!canvas) return;
+
+    const mod = await import('fragmentcolor');
+    const wasmUrl = (await import('fragmentcolor/fragmentcolor_bg.wasm?url')).default;
+    await mod.default(wasmUrl);
+    console.log('[top] init wasm ok', { wasmUrl, keys: Object.keys(mod) });
+
+    const renderer = new mod.Renderer();
+    const target = await renderer.createTarget(canvas);
+    console.log('[top] target ctor', target?.constructor?.name, 'size()', target.size?.());
+
+    const shader = await mod.Shader.fetch('/shaders/swirl.wgsl');
+    console.log('[top] shader ctor', shader?.constructor?.name);
+
+    // initial render test
+    try {
+      shader.set('resolution', [canvas.clientWidth * (window.devicePixelRatio||1), canvas.clientHeight * (window.devicePixelRatio||1)]);
+      shader.set('time', 0);
+      renderer.render(shader, target);
+      console.log('[top] initial render ok');
+    } catch (e) {
+      console.error('[top] initial render failed', e, {
+        targetCtor: target?.constructor?.name,
+        shaderCtor: shader?.constructor?.name,
+      });
+    }
+
+    // animate
+    let start = performance.now();
+    const tick = (now) => {
+      const dpr = Math.max(1, window.devicePixelRatio || 1);
+      const w = Math.max(1, Math.floor(canvas.clientWidth * dpr));
+      const h = Math.max(1, Math.floor(canvas.clientHeight * dpr));
+      if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+      shader.set('resolution', [w, h]);
+      shader.set('time', (now - start)/1000);
+      try { renderer.render(shader, target); } catch (e) { console.error('[top] render failed', e); }
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  } catch (e) {
+    console.error('[top] setup failed', e);
+  }
+})();
+</script>
