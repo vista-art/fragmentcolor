@@ -1,0 +1,77 @@
+---
+// Simple live hero that renders the swirl WGSL shader onto a canvas using fragmentcolor WASM
+---
+
+<shader-hero>
+  <canvas id="canvas"></canvas>
+</shader-hero>
+
+<script>
+if (!customElements.get('shader-hero')) {
+  class ShaderHero extends HTMLElement {
+    #shadow;
+    #raf = 0;
+    #renderer = null;
+    #target = null;
+    #shader = null;
+    #start = performance.now();
+
+    constructor() {
+      super();
+      this.#shadow = this.attachShadow({ mode: 'open' });
+      this.#shadow.innerHTML = `
+        <style>
+          :host { display: block; margin: 1.5rem 0; }
+          #canvas { width: 100%; height: 420px; background: #0f172a; border-radius: 8px; display: block; }
+        </style>
+        <canvas id="canvas"></canvas>
+      `;
+    }
+
+    connectedCallback() { this.#init(); }
+    disconnectedCallback() { cancelAnimationFrame(this.#raf); }
+
+    async #init() {
+      const canvas = this.#shadow.querySelector('#canvas');
+      try {
+        const mod = await import('fragmentcolor');
+        await mod.default(); // WASM init
+
+        this.#renderer = new mod.Renderer();
+        this.#target = await this.#renderer.createTarget(canvas);
+        this.#shader = await mod.Shader.fetch('/shaders/swirl.wgsl');
+
+        const loop = (now) => {
+          this.#raf = requestAnimationFrame(loop);
+          this.#tick(now);
+        };
+        this.#raf = requestAnimationFrame(loop);
+      } catch (e) {
+        console.error('ShaderHero init failed', e);
+      }
+    }
+
+    #tick(now) {
+      if (!this.#renderer || !this.#target || !this.#shader) return;
+      const canvas = this.#shadow.querySelector('#canvas');
+
+      // Resize for device pixel ratio
+      const dpr = Math.max(1, window.devicePixelRatio || 1);
+      const w = Math.max(1, Math.floor(canvas.clientWidth * dpr));
+      const h = Math.max(1, Math.floor(canvas.clientHeight * dpr));
+      if (canvas.width !== w || canvas.height !== h) {
+        canvas.width = w; canvas.height = h;
+      }
+
+      // Update uniforms
+      const t = (now - this.#start) / 1000.0;
+      this.#shader.set('resolution', [w, h]);
+      this.#shader.set('time', t);
+
+      // Render
+      this.#renderer.render(this.#shader, this.#target);
+    }
+  }
+  customElements.define('shader-hero', ShaderHero);
+}
+</script>
