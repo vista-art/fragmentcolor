@@ -45,6 +45,12 @@ if (!customElements.get('shader-hero')) {
         await mod.default(wasmUrl);
         console.log('[hero] init wasm ok', { wasmUrl });
         console.log('[hero] mod keys', Object.keys(mod));
+        console.log('[hero] classes', {
+          Renderer: typeof mod.Renderer,
+          Shader: typeof mod.Shader,
+          CanvasTarget: typeof mod.CanvasTarget,
+          TextureTarget: typeof mod.TextureTarget
+        });
 
         // Create renderer and target
         this.#renderer = new mod.Renderer();
@@ -55,6 +61,14 @@ if (!customElements.get('shader-hero')) {
           hasSize: typeof this.#target?.size === 'function',
           target: this.#target
         });
+        try {
+          const inst = (this.#target && this.#mod && 'CanvasTarget' in this.#mod)
+            ? (this.#target instanceof this.#mod.CanvasTarget)
+            : 'unknown';
+          console.log('[hero] instanceof CanvasTarget?', inst);
+        } catch (e) {
+          console.warn('[hero] instanceof check failed', e);
+        }
 
         // Sanity call: target.size()
         try {
@@ -70,13 +84,23 @@ if (!customElements.get('shader-hero')) {
 
         // Try a one-off test render immediately to catch type identity issues early
         try {
+          const sameRender = (this.#renderer && this.#mod)
+            ? (this.#renderer.render === this.#mod.Renderer?.prototype?.render)
+            : 'unknown';
+          console.log('[hero] render method identity ok?', sameRender);
+          const proto = Object.getPrototypeOf(this.#target);
+          console.log('[hero] target proto ctor', proto?.constructor?.name);
+
           this.#renderer.render(this.#shader, this.#target);
           console.log('[hero] initial render ok');
         } catch (e) {
+          let instanceofCT = 'unknown';
+          try { instanceofCT = this.#target instanceof this.#mod.CanvasTarget; } catch {}
           console.error('[hero] initial render failed', e, {
             rendererCtor: this.#renderer?.constructor?.name,
             targetCtor: this.#target?.constructor?.name,
-            shaderCtor: this.#shader?.constructor?.name
+            shaderCtor: this.#shader?.constructor?.name,
+            instanceofCanvasTarget: instanceofCT,
           });
         }
 
