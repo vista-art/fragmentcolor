@@ -17,6 +17,7 @@ by enforcing the range: ">=<crateVersion> <(major+1).0.0".
 
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import { execSync } from 'node:child_process';
 
 const repoRoot = process.cwd();
 
@@ -103,6 +104,17 @@ async function readCrateVersion(root) {
   }
 }
 
+function readPublishedNpmVersion(pkgName) {
+  try {
+    const out = execSync(`npm view ${pkgName} version`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    const m = out.match(/^(\d+)\.(\d+)\.(\d+)$/);
+    if (!m) return null;
+    return { major: parseInt(m[1], 10), minor: parseInt(m[2], 10), patch: parseInt(m[3], 10) };
+  } catch {
+    return null;
+  }
+}
+
 function widenMap(depMap) {
   if (!depMap) return false;
   let changed = false;
@@ -141,10 +153,10 @@ async function widenPackageJson(file, crateVersionRangeOverride) {
 }
 
 export async function widenWorkspaceDeps(root = repoRoot) {
-  // Determine fragmentcolor aligned range
-  const cv = await readCrateVersion(root);
+  // Determine fragmentcolor aligned range using the latest published npm version (policy: website must depend on latest published)
+  const pv = readPublishedNpmVersion('fragmentcolor');
   let fcRange = null;
-  if (cv) fcRange = makeMajorOnlyRange(cv);
+  if (pv) fcRange = makeMajorOnlyRange(pv);
 
   // Scan roots
   const targets = [];

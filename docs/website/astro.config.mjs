@@ -1,13 +1,24 @@
 import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
 import starlightBlog from "starlight-blog";
-
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import vercel from "@astrojs/vercel";
+
+// Dev-only local alias toggle: set FC_LOCAL_FC=1 to use local pkg during dev
+const useLocalFc = process.env.FC_LOCAL_FC === "1";
+const projectRoot = fileURLToPath(new URL(".", import.meta.url));
+const localFragmentColor = path.resolve(projectRoot, "../../platforms/web/pkg/fragmentcolor.js");
 
 // https://astro.build/config
 export default defineConfig({
   site: "https://fragmentcolor.org",
+  vite: {
+    resolve: {
+      alias: useLocalFc ? { fragmentcolor: localFragmentColor } : {},
+    },
+  },
 
   integrations: [
     starlight({
