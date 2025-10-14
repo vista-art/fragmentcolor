@@ -4,6 +4,20 @@
 
 See the [Roadmap](https://github.com/vista-art/fragmentcolor/blob/main/ROADMAP.md) for planned features.
 
+## 0.10.8 (WIP)
+
+### To do
+
+- [ ] JavaScript: Fix “Invalid target type in render” in website dev by shipping branded JS prototypes in the npm package.
+  - [ ] Ensure branding is injected during build_web (done) and present in the published npm artifact.
+  - [ ] Add CI assertion before npm publish that pkg/fragmentcolor.js contains "__fc_kind".
+  - [ ] Verify website (Astro/Vite dev) works on Chrome and Firefox using the published package.
+- [ ] Demos: add and wire new examples
+  - [ ] swirl (desktop + web)
+  - [ ] any additional demo noted under Examples (keep parity across Rust/Web)
+- [ ] Docs: update README/ROADMAP to target mobile for v0.11.0 (done), and note the 0.10.8 web fix.
+- [ ] Versioning: tag v0.10.8 and publish npm/crates/PyPI.
+
 ## 0.10.7 Documentation automation, website integration, API completeness, build system, and release flow
 
 This is our biggest release to date and it feels extremely weird to merely bump a patch version!
