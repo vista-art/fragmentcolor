@@ -124,8 +124,8 @@ macro_rules! impl_tryfrom_js_ref_anchor {
                 // Prefer a branded property for robust type checks across bundlers
                 let expected: &str = $name;
                 let mut ok = false;
-                if let Ok(b) = Reflect::get(value, &wasm_bindgen::JsValue::from_str("__fc_kind")) {
-                    if let Some(bs) = b.as_string() {
+                if let Ok(brand_value) = Reflect::get(value, &wasm_bindgen::JsValue::from_str("__fc_kind")) {
+                    if let Some(bs) = brand_value.as_string() {
                         if bs == expected { ok = true; }
                     }
                 }
