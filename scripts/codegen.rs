@@ -92,6 +92,39 @@ struct ObjectProperty {
         api_map
     }
 
+    /// Export a newline-delimited list of public API objects relevant for JS branding.
+    ///
+    /// Note: we currently include only types that are wasm-bindgen-exported, because
+    /// those are the ones that actually exist as JS classes at runtime. The filename
+    /// is intentionally platform-agnostic to allow future reuse.
+    pub fn export_api_objects() {
+        use quote::ToTokens;
+        let root = super::meta::workspace_root();
+        let out_path = root.join("generated/api_objects.txt");
+        let info = super::validation::collect_public_structs_info();
+        let mut names: Vec<String> = Vec::new();
+        for (name, attrs, _inner_types) in info {
+            // Consider a struct JS-visible if any attribute token stream mentions "wasm_bindgen"
+            let has_bindgen = attrs
+                .iter()
+                .any(|a| a.to_token_stream().to_string().contains("wasm_bindgen"));
+            if has_bindgen {
+                names.push(name);
+            }
+        }
+        names.sort();
+        names.dedup();
+        // Write one per line
+        let mut buf = String::new();
+        for n in names {
+            buf.push_str(&n);
+            buf.push('\n');
+        }
+        let _ = std::fs::create_dir_all(out_path.parent().unwrap());
+        let _ = std::fs::write(&out_path, buf);
+        println!("cargo::rerun-if-changed={}", out_path.to_string_lossy());
+    }
+
     /// Traverses a Rust library `/src` directory and returns
     /// a HashMap of its public functions and their signatures
     fn extract_public_functions(crate_path: &Path) -> ApiMap {
