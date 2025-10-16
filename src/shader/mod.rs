@@ -1,5 +1,6 @@
 pub mod error;
 use crate::{PassObject, Renderable};
+use dashmap::DashMap;
 pub use error::ShaderError;
 use lsp_doc::lsp_doc;
 use naga::{
@@ -142,6 +143,7 @@ pub(crate) struct ShaderObject {
     pub(crate) module: Module,
     pub(crate) storage: RwLock<UniformStorage>,
     pub(crate) total_bytes: u64,
+    pub(crate) pending: DashMap<String, UniformData>,
     pub(crate) meshes: RwLock<Vec<Arc<crate::mesh::MeshObject>>>,
 }
 
@@ -166,22 +168,36 @@ impl ShaderObject {
     }
 
     /// Set a uniform value.
+    /// Non-blocking: applies immediately when storage is available, otherwise enqueues a last-wins update.
     pub fn set(&self, key: &str, value: impl Into<UniformData>) -> Result<(), ShaderError> {
-        let mut storage = self.storage.write();
-        storage.update(key, &value.into())
+        let val: UniformData = value.into();
+        if let Some(mut storage) = self.storage.try_write() {
+            storage.update(key, &val)
+        } else {
+            self.pending.insert(key.to_string(), val);
+            Ok(())
+        }
     }
 
     // getters
     /// List all the uniforms in the shader.
     pub fn list_uniforms(&self) -> Vec<String> {
-        let storage = self.storage.read();
-        storage.list()
+        if let Some(storage) = self.storage.try_read() {
+            storage.list()
+        } else {
+            log::warn!("Shader storage is busy, returning empty uniforms list");
+            Vec::new()
+        }
     }
 
     /// List all available keys in the shader.
     pub fn list_keys(&self) -> Vec<String> {
-        let storage = self.storage.read();
-        storage.keys()
+        if let Some(storage) = self.storage.try_read() {
+            storage.keys()
+        } else {
+            log::warn!("Shader storage is busy, returning empty uniform keys list");
+            Vec::new()
+        }
     }
 
     /// Create a basic Shader from a vertex.
@@ -236,11 +252,13 @@ impl ShaderObject {
 
     /// Get a uniform value as UniformData enum.
     pub fn get_uniform_data(&self, key: &str) -> Result<UniformData, ShaderError> {
-        let storage = self.storage.read();
+        let storage = self
+            .storage
+            .try_read()
+            .ok_or_else(|| ShaderError::Busy("storage read".into()))?;
         let uniform = storage
             .get(key)
             .ok_or(ShaderError::UniformNotFound(key.into()))?;
-
         Ok(uniform.data.clone())
     }
 
@@ -274,17 +292,20 @@ impl ShaderObject {
             module,
             storage,
             total_bytes,
+            pending: DashMap::new(),
             meshes: RwLock::new(Vec::new()),
         })
     }
 
     /// Get a uniform value as Uniform struct.
     pub(crate) fn get_uniform(&self, key: &str) -> Result<Uniform, ShaderError> {
-        let storage = self.storage.read();
+        let storage = self
+            .storage
+            .try_read()
+            .ok_or_else(|| ShaderError::Busy("storage read".into()))?;
         let uniform = storage
             .get(key)
             .ok_or(ShaderError::UniformNotFound(key.into()))?;
-
         Ok(uniform.clone())
     }
 
@@ -473,6 +494,27 @@ impl ShaderObject {
         // Sort by location to keep a stable order
         inputs.sort_by_key(|vertex_input| vertex_input.location);
         Ok(inputs)
+    }
+
+    /// Apply any queued updates if we can acquire the write lock;
+    /// otherwise leave them queued for later.
+    pub(crate) fn flush_pending(&self) {
+        if self.pending.is_empty() {
+            return;
+        }
+        if let Some(mut storage) = self.storage.try_write() {
+            let updates: Vec<(String, UniformData)> = self
+                .pending
+                .iter()
+                .map(|e| (e.key().clone(), e.value().clone()))
+                .collect();
+            for (k, v) in updates.into_iter() {
+                if let Err(e) = storage.update(&k, &v) {
+                    log::warn!("flush_pending: dropping update for '{}': {}", k, e);
+                }
+                self.pending.remove(&k);
+            }
+        }
     }
 }
 
@@ -1406,5 +1448,49 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,1.,0.,1.); }
         assert!(res.is_err());
         let s = format!("{}", res.unwrap_err());
         assert!(s.contains("Type mismatch for shader input 'offset'"));
+    }
+
+    // Story: non-blocking set() enqueues while storage is write-locked; flush_pending applies updates
+    #[test]
+    fn set_nonblocking_when_locked_then_flush_applies() {
+        // Use the existing SHADER with uniforms: circle, resolution
+        let shader = Shader::new(SHADER).unwrap();
+
+        // Lock storage to simulate contention
+        let _guard = shader.object.storage.write();
+
+        // set() should not error and should enqueue (since write lock is held)
+        shader
+            .set("resolution", [1024.0f32, 768.0f32])
+            .expect("enqueue ok");
+        shader.set("circle.radius", 0.42f32).expect("enqueue ok");
+
+        // Drop lock and flush pending
+        drop(_guard);
+        shader.object.flush_pending();
+
+        // Verify values have been applied
+        let res: [f32; 2] = shader.get("resolution").expect("resolution get");
+        let r: f32 = shader.get("circle.radius").expect("radius get");
+        assert_eq!(res, [1024.0, 768.0]);
+        assert!((r - 0.42).abs() < 1e-6);
+    }
+
+    // Story: last-wins semantics — multiple enqueued writes to the same key result in the last value
+    #[test]
+    fn set_last_wins_queue_semantics() {
+        let shader = Shader::new(SHADER).unwrap();
+        let _guard = shader.object.storage.write();
+
+        // Enqueue several updates while locked
+        for i in 0..10 {
+            shader.set("circle.radius", i as f32).expect("enqueue ok");
+        }
+        drop(_guard);
+        shader.object.flush_pending();
+
+        // Expect the last value (9.0)
+        let r: f32 = shader.get("circle.radius").expect("radius");
+        assert!((r - 9.0).abs() < 1e-6);
     }
 }

@@ -1,4 +1,4 @@
-import { Renderer, TextureFormat } from "fragmentcolor";
+import { Renderer } from "fragmentcolor";
 
 const r = new Renderer();
-const tex = await r.createRenderTexture([256, 256], TextureFormat.Rgba8Unorm);
+const tex = await r.createTextureTarget([256, 256]);

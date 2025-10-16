@@ -20,6 +20,9 @@ fi
 
 OUT_DIR="dist"
 
+# Clean stale wheels to avoid multiple versions in $OUT_DIR
+rm -f "$OUT_DIR"/fragmentcolor-*.whl 2>/dev/null || true
+
 # Build wheels (quiet by default)
 if [[ -n "${FC_VERBOSE:-}" ]]; then
   maturin build --release --out "$OUT_DIR"

@@ -16,7 +16,7 @@ Check the website for the Getting Started guide and full reference:
 
 > [!NOTE]
 >
-> iOS and Android support is not available yet, but planned for version **v0.10.8**.
+> iOS and Android support is not available yet, but planned for version **v0.11.0**.
 >
 > See the [Roadmap](https://github.com/vista-art/fragmentcolor/blob/main/ROADMAP.md) and [Changelog](https://github.com/vista-art/fragmentcolor/blob/main/CHANGELOG.md) for details.
 
@@ -179,7 +179,7 @@ Platform support is aligned with upstream [wgpu](https://github.com/gfx-rs/wgpu)
 
 ## Limitations (planned features)
 
-- Swift & Kotlin bindings are not supported yet, but planned for version v0.10.8.
+- Swift & Kotlin bindings are not supported yet, but planned for version v0.11.0.
 
 ## Common workflows
 

@@ -29,7 +29,7 @@ pub fn resize(app: &App, new_size: &PhysicalSize<u32>) {
 }
 
 async fn setup(app: &App, windows: Vec<Arc<Window>>) -> SetupResult {
-    // Load a small built-in asset (use favicon from docs/website/public if present)
+    // Load a small built-in asset (use favicon from docs/website/public)
     let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     path.pop(); // examples/rust
     path.push("docs/website/public/favicon.png");

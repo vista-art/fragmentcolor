@@ -83,6 +83,7 @@ fn generate_docs() {
     println!("\n🗺️ Generating API map...");
     let api_map = codegen::scan_api();
     codegen::export_api_map(&api_map);
+    codegen::export_api_objects();
     println!("✅ API map successfully generated!\n");
 
     println!("🔎 Validating documentation...");
