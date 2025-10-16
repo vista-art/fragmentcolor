@@ -310,7 +310,7 @@ static GRAPH_VERSION: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Debug)]
 pub struct PassObject {
-    pub pass_type: PassType,
+    pub pass_type: RwLock<PassType>,
     pub(crate) name: Arc<str>,
     pub(crate) input: RwLock<PassInput>,
     pub(crate) shaders: RwLock<Vec<Arc<ShaderObject>>>,
@@ -341,7 +341,7 @@ impl PassObject {
             viewport: RwLock::new(None),
             input: RwLock::new(PassInput::clear(Color::transparent())),
             required_buffer_size: RwLock::new(0),
-            pass_type,
+            pass_type: RwLock::new(pass_type),
             compute_dispatch: RwLock::new((1, 1, 1)),
             color_target: RwLock::new(None),
             depth_target: RwLock::new(None),
@@ -411,7 +411,7 @@ impl PassObject {
     }
 
     pub fn is_compute(&self) -> bool {
-        matches!(self.pass_type, PassType::Compute)
+        matches!(*self.pass_type.read(), PassType::Compute)
     }
 
     pub(crate) fn from_shader_object(name: &str, shader: Arc<ShaderObject>) -> Self {
@@ -426,6 +426,18 @@ impl PassObject {
 
     /// Internal method to add a shader object to this pass.
     fn add_shader_object(&self, shader: Arc<ShaderObject>) {
+        // If this is the first shader added, adopt the shader kind for the pass.
+        {
+            let shaders = self.shaders.read();
+            if shaders.is_empty() {
+                let pass_type = match shader.is_compute() {
+                    true => PassType::Compute,
+                    false => PassType::Render,
+                };
+                *self.pass_type.write() = pass_type;
+            }
+        }
+
         if shader.is_compute() == self.is_compute() {
             *self.required_buffer_size.write() += shader.total_bytes;
             self.shaders.write().push(shader.clone());
