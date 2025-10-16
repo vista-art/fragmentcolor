@@ -98,17 +98,29 @@ struct ObjectProperty {
     /// those are the ones that actually exist as JS classes at runtime. The filename
     /// is intentionally platform-agnostic to allow future reuse.
     pub fn export_api_objects() {
-        use quote::ToTokens;
         let root = super::meta::workspace_root();
         let out_path = root.join("generated/api_objects.txt");
         let info = super::validation::collect_public_structs_info();
         let mut names: Vec<String> = Vec::new();
+        // Helper: detect #[wasm_bindgen] directly or nested via cfg_attr(..., wasm_bindgen, ...)
+        fn has_wasm_bindgen(attrs: &[syn::Attribute]) -> bool {
+            attrs.iter().any(|a| {
+                if a.path().is_ident("wasm_bindgen") {
+                    return true;
+                }
+                let mut found = false;
+                let _ = a.parse_nested_meta(|meta| {
+                    if meta.path.is_ident("wasm_bindgen") {
+                        found = true;
+                    }
+                    Ok(())
+                });
+                found
+            })
+        }
+
         for (name, attrs, _inner_types) in info {
-            // Consider a struct JS-visible if any attribute token stream mentions "wasm_bindgen"
-            let has_bindgen = attrs
-                .iter()
-                .any(|a| a.to_token_stream().to_string().contains("wasm_bindgen"));
-            if has_bindgen {
+            if has_wasm_bindgen(&attrs) {
                 names.push(name);
             }
         }
@@ -120,8 +132,13 @@ struct ObjectProperty {
             buf.push_str(&n);
             buf.push('\n');
         }
-        let _ = std::fs::create_dir_all(out_path.parent().unwrap());
-        let _ = std::fs::write(&out_path, buf);
+        if let Some(parent) = out_path.parent()
+            && let Err(e) = std::fs::create_dir_all(parent) {
+                eprintln!("Warning: Failed to create directory '{}': {}", parent.display(), e);
+            }
+        if let Err(e) = std::fs::write(&out_path, &buf) {
+            eprintln!("Warning: Failed to write to '{}': {}", out_path.display(), e);
+        }
         println!("cargo::rerun-if-changed={}", out_path.to_string_lossy());
     }
 
@@ -327,11 +344,14 @@ struct ObjectProperty {
         });
         (
             module_path.clone(),
-            parse_file(&content)
-                .unwrap_or_else(|_| {
+            match parse_file(&content) {
+                Ok(file) => file,
+                Err(e) => {
+                    eprintln!("Parse error in {}: {}", module_path.display(), e);
                     panic!("Failed to parse module file: {}", module_path.display())
-                })
-                .items,
+                }
+            }
+            .items,
         )
     }
 
