@@ -1,18 +1,16 @@
-name: Post-publish update consumers
+name: Post-publish bump consumers
 
 on:
   release:
     types: [published]
-  push:
-    tags:
-      - '*'
   workflow_dispatch:
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
-  update-consumers:
+  bump-consumers:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout main
@@ -23,7 +21,6 @@ jobs:
       - name: Determine version from event/tag
         id: vars
         run: |
-          # Prefer release tag_name (on release event); fallback to GITHUB_REF for tag pushes
           if [ "${{ github.event_name }}" = "release" ] && [ -n "${{ github.event.release.tag_name }}" ]; then
             RAW="${{ github.event.release.tag_name }}"
           else
@@ -32,28 +29,22 @@ jobs:
           VERSION="${RAW#v}"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Wait for npm & PyPI availability
+      - name: Wait for registries (npm & PyPI)
         env:
           VERSION: ${{ steps.vars.outputs.version }}
         run: |
           set -euo pipefail
           echo "Waiting for npm fragmentcolor@$VERSION and PyPI fragmentcolor==$VERSION to become available..."
-          NPM_OK=0
-          PYPI_OK=0
-          for i in $(seq 1 120); do
-            if npm view "fragmentcolor@$VERSION" version >/dev/null 2>&1; then NPM_OK=1; else NPM_OK=0; fi
-            if curl -sSf "https://pypi.org/pypi/fragmentcolor/$VERSION/json" >/dev/null 2>&1; then PYPI_OK=1; else PYPI_OK=0; fi
-            if [ "$NPM_OK" = "1" ] && [ "$PYPI_OK" = "1" ]; then
-              echo "Both registries show version $VERSION"; break
-            fi
-            echo "Not available yet, retrying in 15s... ($i/120)"; sleep 15
+          for i in $(seq 1 60); do
+            NPM_OK=0; PYPI_OK=0
+            if npm view "fragmentcolor@$VERSION" version >/dev/null 2>&1; then NPM_OK=1; fi
+            if curl -sSf "https://pypi.org/pypi/fragmentcolor/$VERSION/json" >/dev/null 2>&1; then PYPI_OK=1; fi
+            if [ "$NPM_OK" = "1" ] && [ "$PYPI_OK" = "1" ]; then echo "OK"; break; fi
+            echo "Not available yet, retrying in 10s... ($i/60)"; sleep 10
           done
-          if [ "$NPM_OK" != "1" ] || [ "$PYPI_OK" != "1" ]; then
-            echo "Timed out waiting for registries to publish version $VERSION" >&2
-            exit 1
-          fi
 
-      - name: Update examples and website dependency to released version (major-only range)
+      - name: Compute next range and bump dependencies
+        id: bump
         env:
           VERSION: ${{ steps.vars.outputs.version }}
         run: |
@@ -62,17 +53,17 @@ jobs:
           if [ -z "$MAJOR" ]; then echo "Could not parse major from VERSION=$VERSION" >&2; exit 1; fi
           if [ "$MAJOR" -eq 0 ]; then NEXT="1.0.0"; else NEXT="$((MAJOR+1)).0.0"; fi
           RANGE=">=$VERSION <$NEXT"
-          echo "Setting fragmentcolor range to: $RANGE"
+          echo "range=$RANGE" >> "$GITHUB_OUTPUT"
 
-          # docs/website
-          if [ -f docs/website/package.json ]; then
-            tmp=$(mktemp)
-            jq --arg r "$RANGE" '.dependencies.fragmentcolor = $r' docs/website/package.json > "$tmp" && mv "$tmp" docs/website/package.json
-          fi
-          # examples/javascript
+          # Update examples/javascript dependency range (website depends on local vendor)
           if [ -f examples/javascript/package.json ]; then
             tmp=$(mktemp)
             jq --arg r "$RANGE" '.dependencies.fragmentcolor = $r' examples/javascript/package.json > "$tmp" && mv "$tmp" examples/javascript/package.json
+          fi
+
+          # Update VersionBadge.astro if present
+          if [ -f docs/website/src/components/VersionBadge.astro ]; then
+            sed -i "s/^const VERSION = '.*';$/const VERSION = '${VERSION}';/" docs/website/src/components/VersionBadge.astro || true
           fi
 
       - name: Setup pnpm
@@ -87,45 +78,27 @@ jobs:
           node-version: 20
           cache: 'pnpm'
           cache-dependency-path: |
-            docs/website/pnpm-lock.yaml
             examples/javascript/pnpm-lock.yaml
 
-      - name: Refresh lockfiles after bump
+      - name: Refresh lockfiles
         run: |
-          if [ -f docs/website/package.json ]; then
-            pnpm --dir docs/website install --no-frozen-lockfile
-          fi
           if [ -f examples/javascript/package.json ]; then
             pnpm --dir examples/javascript install --no-frozen-lockfile
           fi
 
-      - name: Snapshot API docs for version
-        env:
-          VERSION: ${{ steps.vars.outputs.version }}
-        run: |
-          set -euo pipefail
-          LATEST_DIR="docs/website/src/content/docs/api"
-          DEST_DIR="$LATEST_DIR/v${VERSION}"
-          echo "Snapshotting API docs from $LATEST_DIR to $DEST_DIR"
-          if [ ! -d "$LATEST_DIR" ]; then
-            echo "Latest API dir not found: $LATEST_DIR" >&2; exit 1; fi
-          mkdir -p "$DEST_DIR"
-          # Copy top-level *.mdx except index.mdx
-          find "$LATEST_DIR" -maxdepth 1 -type f -name '*.mdx' ! -name 'index.mdx' -exec cp -f {} "$DEST_DIR"/ \;
-          # Copy and rewrite index links to versioned paths
-          cp -f "$LATEST_DIR/index.mdx" "$DEST_DIR/index.mdx"
-          sed -i 's#(/docs/api/#(/docs/api/v'"$VERSION"'/#g' "$DEST_DIR/index.mdx"
-
-      - name: Commit and push to main
-        env:
-          VERSION: ${{ steps.vars.outputs.version }}
-        run: |
-          git config user.name "github-actions"
-          git config user.email "github-actions@users.noreply.github.com"
-          git add docs/website/src/content/docs/api/v"$VERSION" || true
-          git add docs/website/package.json docs/website/pnpm-lock.yaml || true
-          git add examples/javascript/package.json examples/javascript/pnpm-lock.yaml || true
-          if git diff --cached --quiet; then
-            echo "No changes to commit"; exit 0; fi
-          git commit -m "docs(api): snapshot latest to v$VERSION and update dependencies after release"
-          git push origin main
+      - name: Create pull request
+        uses: peter-evans/create-pull-request@v6
+        with:
+          commit-message: "chore: bump consumers to v${{ steps.vars.outputs.version }}"
+          title: "chore: bump consumers to v${{ steps.vars.outputs.version }}"
+          body: |
+            Bump FragmentColor consumers to v${{ steps.vars.outputs.version }}.
+            - examples/javascript package.json: fragmentcolor ${{ steps.bump.outputs.range }}
+            - VersionBadge.astro updated
+          branch: "chore/bump-consumers-v${{ steps.vars.outputs.version }}"
+          labels: chore
+          signoff: false
+          add-paths: |
+            docs/website/src/components/VersionBadge.astro
+            examples/javascript/package.json
+            examples/javascript/pnpm-lock.yaml
