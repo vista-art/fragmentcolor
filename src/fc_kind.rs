@@ -1,8 +1,8 @@
 //! Cross-language stable kind branding.
 //!
 //! Provides a trait and a helper macro to expose a stable "__fc_kind"
-//! property in JavaScript (via wasm-bindgen) and Python (via pyo3), so
-//! type identity checks remain reliable under bundler/minifier mangling.
+//! property in JavaScript (via wasm-bindgen), so type identity checks
+//! remain stable under bundler/minifier mangling.
 
 /// Marker trait that supplies a stable, compile-time kind string.
 pub trait FcKind {
