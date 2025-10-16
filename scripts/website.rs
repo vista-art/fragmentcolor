@@ -9,29 +9,6 @@ mod website {
         pub ex_py: std::collections::HashSet<String>,
     }
 
-    /// Step 1: Update docs site version badge only
-    pub fn update_version_badge() {
-        let root = meta::workspace_root();
-        let version = std::env::var("CARGO_PKG_VERSION").unwrap_or_else(|_| "0.0.0".to_string());
-        let comp_path = root.join("docs/website/src/components/VersionBadge.astro");
-        if let Ok(src) = std::fs::read_to_string(&comp_path) {
-            let mut out = String::new();
-            let mut changed = false;
-            for line in src.lines() {
-                let lt = line.trim_start();
-                if lt.starts_with("const VERSION = '") {
-                    out.push_str(&format!("const VERSION = '{}';\n", version));
-                    changed = true;
-                } else {
-                    out.push_str(line);
-                    out.push('\n');
-                }
-            }
-            if changed {
-                let _ = super::meta::write_if_changed(&comp_path, &out);
-            }
-        }
-    }
 
     // Site base used by link normalization
     fn site_base() -> String {
