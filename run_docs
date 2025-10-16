@@ -147,7 +147,7 @@ if [ "$CMD" = "preview" ]; then
   pnpm --dir "$SITE_DIR" preview -- --port "$PORT" &
   SERVER_PID=$!
 else
-  pnpm --dir "$SITE_DIR" dev -- --port "$PORT" &
+  FC_LOCAL_FC=1 pnpm --dir "$SITE_DIR" dev -- --port "$PORT" &
   SERVER_PID=$!
 fi
 

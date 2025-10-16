@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 set -e
-set -x
 
 if [ "$1" = "--debug" ]; then
     WASM_PACK_CONFIGURATION="--dev"
@@ -39,7 +38,7 @@ EOF
         printf "  try{ brand(%s, \"%s\"); }catch{}\n" "$NAME" "$NAME"
       done < "$API_OBJECTS_FILE"
     fi
-    echo ")})();"
+    echo "})();"
   } >> "$PKG_JS"
 fi
 
