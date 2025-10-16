@@ -66,7 +66,6 @@ fn draw(app: &App) {
 }
 
 async fn setup(app: &App, windows: Vec<Arc<Window>>) -> SetupResult {
-    // Create a storage texture (power-of-two helps alignment, but not required)
     let size = [1024u32, 1024u32];
     let tex = app
         .get_renderer()
