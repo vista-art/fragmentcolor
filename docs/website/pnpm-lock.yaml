@@ -39,8 +39,8 @@ importers:
         specifier: '>=6.0.2 <7.0.0'
         version: 6.0.2
       fragmentcolor:
-        specifier: '>=0.10.8 <1.0.0'
-        version: 0.10.8
+        specifier: '>=0.10.9 <1.0.0'
+        version: 0.10.9
       sharp:
         specifier: '>=0.34.4 <1.0.0'
         version: 0.34.4
@@ -1262,8 +1262,8 @@ packages:
     resolution: {integrity: sha512-gIXjKqtFuWEgzFRJA9WCQeSJLZDjgJUOMCMzxtvFq/37KojM1BFGufqsCy0r4qSQmYLsZYMeyRqzIWOMup03sw==}
     engines: {node: '>=14'}
 
-  fragmentcolor@0.10.8:
-    resolution: {integrity: sha512-4b+FLnOLuBLiFVq11xJ1v7AUGg9Y08lHH9KDezUKAhL4663NGgkXQQJ3dPuCTOETxXPl6Xo9XoEhNHGxH2fkaw==}
+  fragmentcolor@0.10.9:
+    resolution: {integrity: sha512-0xq554t8L5lmYIW4tB99y25hU+exXLF18MdFgk5I2QKSi+8t6c+qkXCbtmsKr1Hb7/R3FWpKv0SVH+Md4rVntA==}
 
   fsevents@2.3.3:
     resolution: {integrity: sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==}
@@ -3916,7 +3916,7 @@ snapshots:
       cross-spawn: 7.0.6
       signal-exit: 4.1.0
 
-  fragmentcolor@0.10.8: {}
+  fragmentcolor@0.10.9: {}
 
   fsevents@2.3.3:
     optional: true
