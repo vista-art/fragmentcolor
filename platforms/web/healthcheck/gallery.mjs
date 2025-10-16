@@ -29,18 +29,11 @@ function createCard({ rel, urlBase }) {
   openBtn.className = 'btn';
   openBtn.textContent = 'Open';
   openBtn.href = `${urlBase}example.html?rel=${encodeURIComponent(rel)}`;
-  const replBtn = document.createElement('a');
-  replBtn.className = 'btn';
-  replBtn.textContent = 'Open in REPL';
-  // REPL served via Vite; keep link but it may be a separate port/server
-  replBtn.href = '/';
-  replBtn.title = 'Start REPL separately and load this example manually';
   const status = document.createElement('span');
   status.className = 'status';
   status.textContent = '…';
 
   actions.appendChild(openBtn);
-  actions.appendChild(replBtn);
   meta.appendChild(nameEl);
   meta.appendChild(actions);
 
@@ -58,9 +51,25 @@ async function runIntoCanvas(rel, canvas) {
     // Ensure WASM initialized once
     if (!globalThis.__FC_INITED) {
       const wasmUrl = new URL("./pkg/fragmentcolor_bg.wasm", import.meta.url);
-      await init(wasmUrl.href);
+      await init({ module_or_path: wasmUrl.href });
       globalThis.__FC_INITED = true;
     }
+    // Draw a default green frame so non-visual examples still show a result
+    const { Renderer, Shader } = await import('fragmentcolor');
+    const r = new Renderer();
+    const target = await r.createTarget(canvas);
+    const shader = new Shader(`
+struct VOut { @builtin(position) pos: vec4<f32> };
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> VOut {
+  var p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.));
+  var out: VOut;
+  out.pos = vec4f(p[i], 0., 1.);
+  return out;
+}
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4f(0., 1., 0., 1.); }
+`);
+    r.render(shader, target);
+
     // Dynamically import the example; if it runs without throwing, consider OK.
     await import(rel);
     return true;
@@ -72,7 +81,7 @@ async function runIntoCanvas(rel, canvas) {
 
 (async function start() {
   const grid = document.getElementById('grid');
-  const urlBase = '/healthcheck/';
+  const urlBase = '/gallery/';
 
   let list = [];
   try {

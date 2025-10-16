@@ -70,7 +70,7 @@ const server = http.createServer(async (req, res) => {
     if (rel === '/') rel = '/index.html';
 
     // Special route: runtime examples list for gallery
-    if (rel === '/healthcheck/examples.json') {
+    if (rel === '/healthcheck/examples.json' || rel === '/gallery/examples.json') {
       try {
         const base = path.join(WEB_ROOT, 'examples');
         async function walk(dir) {
@@ -100,6 +100,10 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    // Map /gallery to the visual gallery page
+    if (rel === '/gallery' || rel === '/gallery/') rel = '/healthcheck/gallery.html';
+    else if (rel.startsWith('/gallery/')) rel = '/healthcheck' + rel.slice('/gallery'.length);
+
     // Security: prevent path traversal
     const safePath = path.normalize(rel).replace(/^\/+/, '/');
     const abs = path.join(WEB_ROOT, safePath);
@@ -123,8 +127,8 @@ server.listen(PORT, () => {
   const addr = server.address();
   const port = (addr && typeof addr === 'object') ? addr.port : PORT;
   console.log(`[server] serving ${WEB_ROOT} at http://localhost:${port}/`);
-  console.log(`[server] try http://localhost:${port}/healthcheck/visual.html`);
-  console.log(`[server] gallery http://localhost:${port}/healthcheck/gallery.html`);
+  console.log(`[server] open http://localhost:${port}/gallery/`);
+  console.log(`[server] visual http://localhost:${port}/gallery/visual.html`);
 });
 
 function shutdown() {

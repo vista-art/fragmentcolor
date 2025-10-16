@@ -3,16 +3,13 @@ set -euo pipefail
 
 # Run web dev servers and open a page.
 # Usage:
-#   bash run_web                       # opens REPL (platforms/web/repl)
-#   bash run_web repl                  # same as default
+#   bash run_web                       # opens the Gallery (visual examples)
+#   bash run_web gallery               # same as default
 #   bash run_web visual                # opens a minimal visual page (REPL server)
-#   bash run_web healthcheck           # opens the headless healthcheck index page (Node COOP/COEP)
-#   bash run_web gallery               # opens a visual gallery that runs all JS examples
-#   PORT=9000 bash run_web healthcheck # custom port for Node server (healthcheck/gallery)
 #   REPL_PORT=5190 bash run_web repl   # custom Vite dev server port
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PAGE="${1:-repl}"
+PAGE="${1:-gallery}"
 
 # Utilities
 is_port_free() {
@@ -45,7 +42,8 @@ pick_free_port() {
 # Ensure local WASM pkg is built and distributed to subprojects
 "$ROOT_DIR/build_web" --debug
 
-if [ "$PAGE" = "healthcheck" ] || [ "$PAGE" = "gallery" ]; then
+# Serve gallery
+if [ "$PAGE" = "gallery" ]; then
   # Use Node COOP/COEP static server for the healthcheck harness
   if ! command -v node >/dev/null 2>&1; then
     echo "Node.js is required. Install it and re-run." >&2
@@ -56,7 +54,7 @@ if [ "$PAGE" = "healthcheck" ] || [ "$PAGE" = "gallery" ]; then
   if [ -z "${PORT}" ]; then
     PORT="$(pick_free_port 8765)"
   fi
-  echo "[run_web] healthcheck server port: $PORT"
+  echo "[run_web] gallery server port: $PORT"
 
   (
     cd "$ROOT_DIR" && PORT="$PORT" node platforms/web/healthcheck/serve.mjs
@@ -69,12 +67,9 @@ if [ "$PAGE" = "healthcheck" ] || [ "$PAGE" = "gallery" ]; then
   }
   trap cleanup EXIT
 
-  # Wait for server (probe an existing page to avoid 404 on "/")
+  # Wait for server (probe gallery page)
   ATTEMPTS=0
-  PROBE_PATH="/healthcheck/index.html"
-  if [ "$PAGE" = "gallery" ]; then
-    PROBE_PATH="/healthcheck/gallery.html"
-  fi
+  PROBE_PATH="/gallery/index.html"
   until curl -sSf "http://localhost:$PORT$PROBE_PATH" >/dev/null 2>&1; do
     ATTEMPTS=$((ATTEMPTS+1))
     if [ "$ATTEMPTS" -gt 80 ]; then
@@ -84,12 +79,7 @@ if [ "$PAGE" = "healthcheck" ] || [ "$PAGE" = "gallery" ]; then
     sleep 0.25
   done
 
-  if [ "$PAGE" = "gallery" ]; then
-    URL="http://localhost:$PORT/healthcheck/gallery.html"
-  else
-    # Default to skipping texture-target examples for now; override with ?skipTexture=0 if needed
-    URL="http://localhost:$PORT/healthcheck/index.html?skipTexture=1"
-  fi
+  URL="http://localhost:$PORT/gallery/"
 
   # Open the browser
   if command -v open >/dev/null 2>&1; then
