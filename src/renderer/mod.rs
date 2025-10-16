@@ -197,8 +197,7 @@ impl Renderer {
             //
             // From Path
             TextureInput::Path(path) => {
-                let object = crate::TextureObject::from_file(context.as_ref(), path)
-                    .map_err(|e| InitializationError::Error(format!("{}", e)))?;
+                let object = crate::TextureObject::from_file(context.as_ref(), path)?;
                 let object = std::sync::Arc::new(object);
                 let id = context.register_texture(object.clone());
 
@@ -300,9 +299,7 @@ impl Renderer {
         let context = self.context(Some(&surface)).await?;
 
         let adapter = self.adapter.read();
-        let adapter_ref = adapter
-            .as_ref()
-            .ok_or_else(|| InitializationError::Error("Adapter not set after context()".into()))?;
+        let adapter_ref = adapter.as_ref().ok_or(InitializationError::AdapterNotSet)?;
         let config = configure_surface(&context.device, adapter_ref, &surface, &size);
 
         // Negotiate and store effective sample count (currently default wanted=1; configurable later)
@@ -555,7 +552,7 @@ impl RenderContext {
             msaa_texture = Some(texture);
             texture_view = match _msaa_view.as_ref() {
                 Some(v) => v,
-                None => return Err(RendererError::Error("MSAA texture view missing".into())),
+                None => return Err(RendererError::MsaaViewMissing),
             };
             resolve_target = Some(frame.view());
         }
@@ -589,10 +586,10 @@ impl RenderContext {
         if let Some(sc) = depth_sc_opt
             && sc != sample_count
         {
-            return Err(RendererError::Error(format!(
-                "Depth sample_count ({}) does not match pass sample_count ({}). Create the depth texture after create_target(window) to inherit the surface MSAA, or ensure color and depth targets use the same sample_count.",
-                sc, sample_count
-            )));
+            return Err(RendererError::DepthSampleCountMismatch {
+                depth: sc,
+                pass: sample_count,
+            });
         }
 
         let depth_stencil_attachment =
@@ -622,17 +619,11 @@ impl RenderContext {
             .ensure_capacity(required_size, &self.device);
 
         for shader in pass.shaders.read().iter() {
+            shader.flush_pending();
             let shader_meshes = shader.meshes.read().clone();
             let vertex_buffer_layouts = if let Some(first_mesh) = shader_meshes.first() {
                 // Ensure schemas are derived (and buffers packed) before pipeline creation
-                first_mesh
-                    .vertex_buffers(&self.device, &self.queue)
-                    .map_err(|e| {
-                        RendererError::Error(format!(
-                            "Failed to prepare mesh buffers for pipeline creation: {}",
-                            e
-                        ))
-                    })?;
+                first_mesh.vertex_buffers(&self.device, &self.queue)?;
                 // Now derive vertex buffer layouts; propagate any mapping error
                 create_vertex_buffer_layouts(shader, first_mesh.as_ref())?
             } else {
@@ -725,7 +716,9 @@ impl RenderContext {
                             let span_u64 = *span as u64;
                             // Obtain initial bytes for creation or update
                             let init_bytes: Vec<u8> = {
-                                let s = shader.storage.read();
+                                let s = shader.storage.try_read().ok_or_else(|| {
+                                    crate::shader::ShaderError::Busy("storage read".into())
+                                })?;
                                 s.get_bytes(name)
                                     .map(|b| b.to_vec())
                                     .unwrap_or_else(|| vec![0u8; span_u64 as usize])
@@ -779,18 +772,24 @@ impl RenderContext {
                             };
                             // If CPU blob is marked dirty, upload and clear flag
                             let need_upload = {
-                                let s = shader.storage.read();
+                                let s = shader.storage.try_read().ok_or_else(|| {
+                                    crate::shader::ShaderError::Busy("storage read".into())
+                                })?;
                                 s.is_storage_dirty(name)
                             };
                             if need_upload {
                                 let bytes: Vec<u8> = {
-                                    let s = shader.storage.read();
+                                    let s = shader.storage.try_read().ok_or_else(|| {
+                                        crate::shader::ShaderError::Busy("storage read".into())
+                                    })?;
                                     s.get_bytes(name)
                                         .map(|b| b.to_vec())
                                         .unwrap_or_else(|| vec![0u8; span_u64 as usize])
                                 };
                                 self.queue.write_buffer(&buf, 0, &bytes);
-                                let mut s = shader.storage.write();
+                                let mut s = shader.storage.try_write().ok_or_else(|| {
+                                    crate::shader::ShaderError::Busy("storage write".into())
+                                })?;
                                 s.clear_storage_dirty(name);
                             }
 
@@ -937,7 +936,10 @@ impl RenderContext {
 
             // Set native push constants just before draw if applicable
             if let Some(PushMode::Native { root, .. }) = &cached_pipeline.push_mode {
-                let storage = shader.storage.read();
+                let storage = shader
+                    .storage
+                    .try_read()
+                    .ok_or_else(|| crate::shader::ShaderError::Busy("storage read".into()))?;
                 if let Some(bytes) = storage.get_bytes(root) {
                     render_pass.set_push_constants(
                         wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
@@ -995,6 +997,7 @@ impl RenderContext {
         self.storage_pool.write().reset();
 
         for (shader_index, shader) in pass.shaders.read().iter().enumerate() {
+            shader.flush_pending();
             // Build or fetch pipeline
             // Layout signature: hash the bind group layouts
             let layouts = create_bind_group_layouts(&self.device, shader);
@@ -1128,7 +1131,9 @@ impl RenderContext {
                             let span = *span_u32 as u64;
                             // Obtain bytes
                             let init_bytes: Vec<u8> = {
-                                let s = shader.storage.read();
+                                let s = shader.storage.try_read().ok_or_else(|| {
+                                    crate::shader::ShaderError::Busy("storage read".into())
+                                })?;
                                 s.get_bytes(name)
                                     .map(|b| b.to_vec())
                                     .unwrap_or_else(|| vec![0u8; span as usize])
@@ -1179,18 +1184,24 @@ impl RenderContext {
                             };
                             // Upload if dirty
                             let need_upload = {
-                                let s = shader.storage.read();
+                                let s = shader.storage.try_read().ok_or_else(|| {
+                                    crate::shader::ShaderError::Busy("storage read".into())
+                                })?;
                                 s.is_storage_dirty(name)
                             };
                             if need_upload {
                                 let bytes: Vec<u8> = {
-                                    let s = shader.storage.read();
+                                    let s = shader.storage.try_read().ok_or_else(|| {
+                                        crate::shader::ShaderError::Busy("storage read".into())
+                                    })?;
                                     s.get_bytes(name)
                                         .map(|b| b.to_vec())
                                         .unwrap_or_else(|| vec![0u8; span as usize])
                                 };
                                 self.queue.write_buffer(&buf, 0, &bytes);
-                                let mut s = shader.storage.write();
+                                let mut s = shader.storage.try_write().ok_or_else(|| {
+                                    crate::shader::ShaderError::Busy("storage write".into())
+                                })?;
                                 s.clear_storage_dirty(name);
                             }
                             groups
@@ -1201,7 +1212,9 @@ impl RenderContext {
                         }
                     }
                     _ => {
-                        let storage = shader.storage.read();
+                        let storage = shader.storage.try_read().ok_or_else(|| {
+                            crate::shader::ShaderError::Busy("storage read".into())
+                        })?;
                         let bytes = storage
                             .get_bytes(name)
                             .ok_or(crate::ShaderError::UniformNotFound(name.clone()))?;
@@ -2057,6 +2070,9 @@ mod more_error_path_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::thread;
+    use std::time::Duration;
+
     use crate::target::TargetFrame;
     use crate::{Pass, Shader};
 
@@ -2087,6 +2103,60 @@ mod tests {
             .await
             .expect("device");
         (adapter, device, queue)
+    }
+
+    // E2E: stress set() under contention while rendering to a texture target
+    #[test]
+    fn e2e_set_stress_during_render_last_wins() {
+        pollster::block_on(async move {
+            let r = Renderer::new();
+            let target = r
+                .create_texture_target([64u32, 64u32])
+                .await
+                .expect("texture target");
+
+            let wgsl = r#"
+struct VOut { @builtin(position) pos: vec4<f32> };
+@group(0) @binding(0) var<uniform> resolution: vec2<f32>;
+@group(0) @binding(1) var<uniform> time: f32;
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> VOut {
+  let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.));
+  var out: VOut;
+  out.pos = vec4<f32>(p[i], 0., 1.);
+  return out;
+}
+@fragment fn fs_main(_v: VOut) -> @location(0) vec4<f32> {
+  return vec4<f32>(0.2, 0.4, 0.6, 1.0);
+}
+            "#;
+            let shader = crate::Shader::new(wgsl).expect("shader");
+
+            // Writer thread: keep updating time; last-wins
+            let shader_writer = shader.clone();
+            let writer = thread::spawn(move || {
+                for i in 0..1000 {
+                    let t = i as f32 * 0.001;
+                    let _ = shader_writer.set("time", t);
+                    // Small pause to interleave with render
+                    if i % 50 == 0 {
+                        thread::sleep(Duration::from_millis(1));
+                    }
+                }
+            });
+
+            // Render loop; flushes pending automatically
+            for _ in 0..1000u32 {
+                // Also set resolution each frame; should never fail
+                let _ = shader.set("resolution", [64.0f32, 64.0f32]);
+                r.render(&shader, &target).expect("render");
+            }
+
+            writer.join().expect("writer thread");
+
+            // After the loop, we expect the last time value (approx 0.999)
+            let last: f32 = shader.get("time").expect("time get");
+            assert!(last > 0.95 && last <= 1.2, "unexpected last time: {}", last);
+        });
     }
 
     #[test]

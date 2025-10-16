@@ -4,7 +4,7 @@ This roadmap summarizes current focus and planned features.
 
 use std::borrow::Borrow;
 
-## 0.10.8 Swift & Kotlin with Uniffi
+## 0.11.0 Swift & Kotlin with Uniffi
 
 - [ ] Swift Wrappers
 - [ ] Kotlin Wrappers

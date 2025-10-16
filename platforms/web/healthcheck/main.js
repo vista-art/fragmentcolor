@@ -5,7 +5,7 @@ import init, { Renderer, Shader, Pass, Frame, Mesh, Vertex, set_log_level } from
 // installInstrumentation({ Renderer, Shader, Pass, TextureTarget, CanvasTarget });
 
 const wasmUrl = new URL("./pkg/fragmentcolor_bg.wasm", import.meta.url);
-await init(wasmUrl.href);
+await init({ module_or_path: wasmUrl.href });
 
 // Raise log level to see Naga internals in JS console
 try {

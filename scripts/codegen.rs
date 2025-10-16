@@ -92,6 +92,56 @@ struct ObjectProperty {
         api_map
     }
 
+    /// Export a newline-delimited list of public API objects relevant for JS branding.
+    ///
+    /// Note: we currently include only types that are wasm-bindgen-exported, because
+    /// those are the ones that actually exist as JS classes at runtime. The filename
+    /// is intentionally platform-agnostic to allow future reuse.
+    pub fn export_api_objects() {
+        let root = super::meta::workspace_root();
+        let out_path = root.join("generated/api_objects.txt");
+        let info = super::validation::collect_public_structs_info();
+        let mut names: Vec<String> = Vec::new();
+        // Helper: detect #[wasm_bindgen] directly or nested via cfg_attr(..., wasm_bindgen, ...)
+        fn has_wasm_bindgen(attrs: &[syn::Attribute]) -> bool {
+            attrs.iter().any(|a| {
+                if a.path().is_ident("wasm_bindgen") {
+                    return true;
+                }
+                let mut found = false;
+                let _ = a.parse_nested_meta(|meta| {
+                    if meta.path.is_ident("wasm_bindgen") {
+                        found = true;
+                    }
+                    Ok(())
+                });
+                found
+            })
+        }
+
+        for (name, attrs, _inner_types) in info {
+            if has_wasm_bindgen(&attrs) {
+                names.push(name);
+            }
+        }
+        names.sort();
+        names.dedup();
+        // Write one per line
+        let mut buf = String::new();
+        for n in names {
+            buf.push_str(&n);
+            buf.push('\n');
+        }
+        if let Some(parent) = out_path.parent()
+            && let Err(e) = std::fs::create_dir_all(parent) {
+                eprintln!("Warning: Failed to create directory '{}': {}", parent.display(), e);
+            }
+        if let Err(e) = std::fs::write(&out_path, &buf) {
+            eprintln!("Warning: Failed to write to '{}': {}", out_path.display(), e);
+        }
+        println!("cargo::rerun-if-changed={}", out_path.to_string_lossy());
+    }
+
     /// Traverses a Rust library `/src` directory and returns
     /// a HashMap of its public functions and their signatures
     fn extract_public_functions(crate_path: &Path) -> ApiMap {
@@ -294,11 +344,14 @@ struct ObjectProperty {
         });
         (
             module_path.clone(),
-            parse_file(&content)
-                .unwrap_or_else(|_| {
+            match parse_file(&content) {
+                Ok(file) => file,
+                Err(e) => {
+                    eprintln!("Parse error in {}: {}", module_path.display(), e);
                     panic!("Failed to parse module file: {}", module_path.display())
-                })
-                .items,
+                }
+            }
+            .items,
         )
     }
 

@@ -4,6 +4,29 @@
 
 See the [Roadmap](https://github.com/vista-art/fragmentcolor/blob/main/ROADMAP.md) for planned features.
 
+## 0.10.8 Concurrency‑safe uniforms, typed errors, and web gallery
+
+### API changes
+- RendererError: add `MsaaViewMissing` and `DepthSampleCountMismatch`; InitializationError: `AdapterNotSet`.
+- ShaderError: add `Busy`. `set()` is now non‑blocking (queues last‑wins updates); read methods may transiently return `Busy` under contention.
+
+### Internals
+- Non‑blocking uniform updates with pending queue; renderer flushes pending before binding.
+- Pass adopts kind (Render/Compute) from the first attached shader.
+- Web (WASM): pre‑grow linear memory by 64 MiB to reduce mid‑frame `memory.grow` stalls.
+
+### Bug fixes
+- JavaScript: fix "Invalid target type in render" in website by shipping branded JS prototypes in the npm package.
+- Web gallery/healthcheck: use `init({ module_or_path })` for reliable WASM initialization.
+
+### Docs & website
+- Replace old healthcheck pages with a Visual Gallery at `/gallery`; default `run_web` to Gallery.
+- Homepage: add `ShaderHero` and tighten hero spacing; Astro now points to local pkg dir so subpath imports resolve.
+
+### Examples
+- Rust: `swirl` shader moved to `examples/rust/examples/shaders/swirl.wgsl`; example loads by path and uses top‑level `draw`/`resize`.
+- Web: simplify pass dependencies and update to `createTextureTarget()` API.
+
 ## 0.10.7 Documentation automation, website integration, API completeness, build system, and release flow
 
 This is our biggest release to date and it feels extremely weird to merely bump a patch version!

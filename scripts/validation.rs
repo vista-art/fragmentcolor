@@ -635,7 +635,7 @@ mod validation {
         out
     }
 
-    fn collect_public_structs_info() -> Vec<(String, Vec<syn::Attribute>, Vec<String>)> {
+    pub fn collect_public_structs_info() -> Vec<(String, Vec<syn::Attribute>, Vec<String>)> {
         use syn::{Item, Visibility};
         let entry = codegen::parse_lib_entry_point(&meta::workspace_root());
         fn is_doc_hidden(attrs: &[syn::Attribute]) -> bool {

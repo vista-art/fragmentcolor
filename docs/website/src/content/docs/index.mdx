@@ -15,13 +15,16 @@ hero:
       link: /welcome
       icon: document
       variant: secondary
-    # - text: Playground
+    # - text: Playground @TODO enable when playground is ready
     #   link: /welcome/playground
     #   icon: rocket
     #   variant: secondary
 ---
 
 import { Code, Tabs, TabItem } from "@astrojs/starlight/components";
+import ShaderHero from "../../components/ShaderHero.astro";
 import Examples from "../../components/Examples.mdx";
+
+<ShaderHero />
 
 <Examples />

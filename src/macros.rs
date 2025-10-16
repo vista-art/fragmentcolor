@@ -121,16 +121,38 @@ macro_rules! impl_tryfrom_js_ref_anchor {
                 use js_sys::Reflect;
                 use wasm_bindgen::convert::RefFromWasmAbi;
 
-                // Runtime type guard using constructor.name equality to avoid requiring JsCast
-                let ctor = Reflect::get(value, &wasm_bindgen::JsValue::from_str("constructor"))
-                    .map_err(|_| <$err>::Error(format!("Missing constructor on {}", $name)))?;
-                let cname = Reflect::get(&ctor, &wasm_bindgen::JsValue::from_str("name"))
-                    .map_err(|_| <$err>::Error(format!("Missing constructor.name on {}", $name)))?
-                    .as_string()
-                    .ok_or_else(|| {
-                        <$err>::Error(format!("Invalid constructor.name for {}", $name))
-                    })?;
-                if cname != $name {
+                // Prefer a branded property for robust type checks across bundlers
+                let expected: &str = $name;
+                let mut ok = false;
+                if let Ok(brand_value) =
+                    Reflect::get(value, &wasm_bindgen::JsValue::from_str("__fc_kind"))
+                {
+                    if let Some(bs) = brand_value.as_string() {
+                        if bs == expected {
+                            ok = true;
+                        }
+                    }
+                }
+
+                // Fallback: constructor.name (tolerate leading underscores added by bundlers)
+                if !ok {
+                    let ctor = Reflect::get(value, &wasm_bindgen::JsValue::from_str("constructor"))
+                        .map_err(|_| <$err>::Error(format!("Missing constructor on {}", $name)))?;
+                    let cname = Reflect::get(&ctor, &wasm_bindgen::JsValue::from_str("name"))
+                        .map_err(|_| {
+                            <$err>::Error(format!("Missing constructor.name on {}", $name))
+                        })?
+                        .as_string()
+                        .ok_or_else(|| {
+                            <$err>::Error(format!("Invalid constructor.name for {}", $name))
+                        })?;
+                    let normalized = cname.trim_start_matches('_');
+                    if normalized == expected {
+                        ok = true;
+                    }
+                }
+
+                if !ok {
                     return Err(<$err>::Error(format!("Type mismatch: expected {}", $name)));
                 }
 

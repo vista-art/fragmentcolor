@@ -1,3 +1,7 @@
 .header.sl-flex {
   display: grid !important;
 }
+
+.hero {
+  padding-bottom: 1rem !important;
+}

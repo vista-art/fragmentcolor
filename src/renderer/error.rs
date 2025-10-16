@@ -18,6 +18,10 @@ pub enum RendererError {
     TextureError(#[from] crate::texture::TextureError),
     #[error("Texture {0} not found")]
     TextureNotFoundError(crate::texture::TextureId),
+    #[error("MSAA texture view missing")]
+    MsaaViewMissing,
+    #[error("Depth sample_count mismatch: depth={depth} pass={pass}")]
+    DepthSampleCountMismatch { depth: u32, pass: u32 },
     #[error("initialization error: {0}")]
     InitializationError(#[from] InitializationError),
     #[cfg(not(wasm))]
@@ -33,6 +37,8 @@ pub enum RendererError {
 pub enum InitializationError {
     #[error("Failed to find a compatible GPU adapter")]
     AdapterError(#[from] wgpu::RequestAdapterError),
+    #[error("Adapter not set after context()")]
+    AdapterNotSet,
     #[error("Failed to create device")]
     DeviceError(#[from] wgpu::RequestDeviceError),
     #[error("Failed to create surface")]

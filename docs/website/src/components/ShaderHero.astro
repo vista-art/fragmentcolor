@@ -1,0 +1,159 @@
+---
+// Simple live hero that renders the swirl WGSL shader onto a canvas using fragmentcolor WASM
+---
+
+<shader-hero style="display: block; margin: 5rem 0;">
+  <canvas id="canvas"></canvas>
+</shader-hero>
+
+<script>
+// @ts-nocheck
+if (!customElements.get('shader-hero')) {
+  class ShaderHero extends HTMLElement {
+    /** @type {ShadowRoot} */ #shadow;
+    /** @type {number} */ #raf = 0;
+    /** @type {any} */ #renderer;
+    /** @type {any} */ #target;
+    /** @type {any} */ #shader;
+    /** @type {any} */ #mod;
+    #start = performance.now();
+
+    constructor() {
+      super();
+      this.#shadow = this.attachShadow({ mode: 'open' });
+      this.#shadow.innerHTML = `
+        <style>
+          :host { display: block; margin: 1.5rem 0; }
+          #canvas { width: 100%; height: 420px; background: #0f172a; border-radius: 8px; display: block; }
+        </style>
+        <canvas id=\"canvas\"></canvas>
+      `;
+    }
+
+    connectedCallback() { this.#init(); }
+    disconnectedCallback() { cancelAnimationFrame(this.#raf); }
+
+    async #init() {
+      const canvas = /** @type {HTMLCanvasElement} */ (this.#shadow.querySelector('#canvas'));
+      if (!canvas) return;
+      try {
+        // Load single module instance and remember it to avoid identity mismatches
+        const mod = await import('fragmentcolor');
+        this.#mod = mod;
+        // Explicitly pass WASM URL for dev server to avoid 404/mime issues
+        const wasmUrl = (await import('fragmentcolor/fragmentcolor_bg.wasm?url')).default;
+        await mod.default(wasmUrl);
+        console.log('[hero] init wasm ok', { wasmUrl });
+        console.log('[hero] mod keys', Object.keys(mod));
+        console.log('[hero] classes', {
+          Renderer: typeof mod.Renderer,
+          Shader: typeof mod.Shader,
+          CanvasTarget: typeof mod.CanvasTarget,
+          TextureTarget: typeof mod.TextureTarget
+        });
+
+        // Create renderer and target
+        this.#renderer = new mod.Renderer();
+        console.log('[hero] renderer ctor', this.#renderer?.constructor?.name);
+        this.#target = await this.#renderer.createTarget(canvas);
+        console.log('[hero] target created', {
+          ctor: this.#target?.constructor?.name,
+          hasSize: typeof this.#target?.size === 'function',
+          target: this.#target
+        });
+        try {
+          const inst = (this.#target && this.#mod && 'CanvasTarget' in this.#mod)
+            ? (this.#target instanceof this.#mod.CanvasTarget)
+            : 'unknown';
+          console.log('[hero] instanceof CanvasTarget?', inst);
+        } catch (e) {
+          console.warn('[hero] instanceof check failed', e);
+        }
+
+        // Sanity call: target.size()
+        try {
+          const sz = this.#target.size();
+          console.log('[hero] target.size()', sz);
+        } catch (e) {
+          console.error('[hero] target.size() failed', e);
+        }
+
+        // Load shader
+        this.#shader = await mod.Shader.fetch('/shaders/swirl.wgsl');
+        console.log('[hero] shader ready', this.#shader?.constructor?.name);
+
+        // Try a one-off test render immediately to catch type identity issues early
+        try {
+          const sameRender = (this.#renderer && this.#mod)
+            ? (this.#renderer.render === this.#mod.Renderer?.prototype?.render)
+            : 'unknown';
+          console.log('[hero] render method identity ok?', sameRender);
+          const proto = Object.getPrototypeOf(this.#target);
+          console.log('[hero] target proto ctor', proto?.constructor?.name);
+
+          this.#renderer.render(this.#shader, this.#target);
+          console.log('[hero] initial render ok');
+        } catch (e) {
+          let instanceofCT = 'unknown';
+          try { instanceofCT = this.#target instanceof this.#mod.CanvasTarget; } catch {}
+          console.error('[hero] initial render failed', e, {
+            rendererCtor: this.#renderer?.constructor?.name,
+            targetCtor: this.#target?.constructor?.name,
+            shaderCtor: this.#shader?.constructor?.name,
+            instanceofCanvasTarget: instanceofCT,
+          });
+        }
+
+        const loop = (now) => {
+          this.#raf = requestAnimationFrame(loop);
+          this.#tick(now);
+        };
+        this.#raf = requestAnimationFrame(loop);
+      } catch (e) {
+        console.error('ShaderHero init failed', e);
+      }
+    }
+
+    #tick(now) {
+      if (!this.#renderer || !this.#target || !this.#shader) return;
+      const canvas = /** @type {HTMLCanvasElement} */ (this.#shadow.querySelector('#canvas'));
+      if (!canvas) return;
+
+      // Resize for device pixel ratio
+      const dpr = Math.max(1, window.devicePixelRatio || 1);
+      const w = Math.max(1, Math.floor(canvas.clientWidth * dpr));
+      const h = Math.max(1, Math.floor(canvas.clientHeight * dpr));
+      if (canvas.width !== w || canvas.height !== h) {
+        canvas.width = w; canvas.height = h;
+      }
+
+      // Update uniforms
+      const t = (now - this.#start) / 1000.0;
+      try {
+        this.#shader.set('resolution', [w, h]);
+        this.#shader.set('time', t);
+      } catch (e) {
+        console.error('[hero] set uniforms failed', e);
+      }
+
+      // Render with detailed instrumentation
+      try {
+        const info = {
+          rendererCtor: this.#renderer?.constructor?.name,
+          targetCtor: this.#target?.constructor?.name,
+          shaderCtor: this.#shader?.constructor?.name,
+          hasTargetSize: typeof this.#target?.size === 'function'
+        };
+        // Uncomment for verbose per-frame noise:
+        // console.log('[hero] render tick', info);
+        this.#renderer.render(this.#shader, this.#target);
+      } catch (e) {
+        console.error('[hero] render failed', e);
+        // Re-throw to keep devtools stacks visible
+        throw e;
+      }
+    }
+  }
+  customElements.define('shader-hero', ShaderHero);
+}
+</script>
