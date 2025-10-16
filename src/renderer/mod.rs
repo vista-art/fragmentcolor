@@ -2155,6 +2155,9 @@ struct VOut { @builtin(position) pos: vec4<f32> };
 
             writer.join().expect("writer thread");
 
+            // Ensure any last enqueued writes (due to contention) are applied
+            shader.object.flush_pending();
+
             // After the loop, we expect the last time value (approx 0.999)
             let last: f32 = shader.get("time").expect("time get");
             assert!(last > 0.95 && last <= 1.2, "unexpected last time: {}", last);
