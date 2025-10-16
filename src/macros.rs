@@ -124,9 +124,13 @@ macro_rules! impl_tryfrom_js_ref_anchor {
                 // Prefer a branded property for robust type checks across bundlers
                 let expected: &str = $name;
                 let mut ok = false;
-                if let Ok(brand_value) = Reflect::get(value, &wasm_bindgen::JsValue::from_str("__fc_kind")) {
+                if let Ok(brand_value) =
+                    Reflect::get(value, &wasm_bindgen::JsValue::from_str("__fc_kind"))
+                {
                     if let Some(bs) = brand_value.as_string() {
-                        if bs == expected { ok = true; }
+                        if bs == expected {
+                            ok = true;
+                        }
                     }
                 }
 
@@ -135,11 +139,17 @@ macro_rules! impl_tryfrom_js_ref_anchor {
                     let ctor = Reflect::get(value, &wasm_bindgen::JsValue::from_str("constructor"))
                         .map_err(|_| <$err>::Error(format!("Missing constructor on {}", $name)))?;
                     let cname = Reflect::get(&ctor, &wasm_bindgen::JsValue::from_str("name"))
-                        .map_err(|_| <$err>::Error(format!("Missing constructor.name on {}", $name)))?
+                        .map_err(|_| {
+                            <$err>::Error(format!("Missing constructor.name on {}", $name))
+                        })?
                         .as_string()
-                        .ok_or_else(|| <$err>::Error(format!("Invalid constructor.name for {}", $name)))?;
+                        .ok_or_else(|| {
+                            <$err>::Error(format!("Invalid constructor.name for {}", $name))
+                        })?;
                     let normalized = cname.trim_start_matches('_');
-                    if normalized == expected { ok = true; }
+                    if normalized == expected {
+                        ok = true;
+                    }
                 }
 
                 if !ok {
