@@ -84,7 +84,10 @@ mod macros;
 /// Top-level platform-specific initializers
 mod platforms;
 
+/// Stable kind branding across language bindings
+pub mod fc_kind;
+
 pub use {
-    color::*, error::*, frame::*, mesh::*, pass::*, region::*, renderer::*, shader::*, size::*,
-    target::*, texture::*,
+    color::*, error::*, fc_kind::*, frame::*, mesh::*, pass::*, region::*, renderer::*, shader::*,
+    size::*, target::*, texture::*,
 };

@@ -4,6 +4,14 @@
 
 See the [Roadmap](https://github.com/vista-art/fragmentcolor/blob/main/ROADMAP.md) for planned features.
 
+## 0.10.9 Bugfix: Stable kind branding for JS (avoids mangling in minified builds)
+
+### Bugfixes
+
+- Stable kind branding for JS/Python (avoids mangling in minified builds)
+  - `crate::impl_fc_kind!(TypeName, "TypeName");` in each type's file
+  - `pub mod fc_kind;` and `pub use fc_kind::FcKind;` in lib.rs
+
 ## 0.10.8 Concurrency‑safe uniforms, typed errors, and web gallery
 
 ### API changes

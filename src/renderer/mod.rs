@@ -78,6 +78,8 @@ pub struct Renderer {
     context: RwLock<Option<Arc<RenderContext>>>,
 }
 
+crate::impl_fc_kind!(Renderer, "Renderer");
+
 impl Renderer {
     #[lsp_doc("docs/api/core/renderer/new.md")]
     pub fn new() -> Self {

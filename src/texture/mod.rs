@@ -219,6 +219,8 @@ pub struct Texture {
     pub(crate) id: TextureId,
 }
 
+crate::impl_fc_kind!(Texture, "Texture");
+
 impl Texture {
     /// Creates a new Texture from a RenderContext.
     pub(crate) fn new(

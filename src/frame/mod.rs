@@ -23,6 +23,8 @@ pub struct Frame {
     dependencies: Vec<(usize, usize)>,
 }
 
+crate::impl_fc_kind!(Frame, "Frame");
+
 impl Frame {
     #[lsp_doc("docs/api/core/frame/new.md")]
     pub fn new() -> Self {
