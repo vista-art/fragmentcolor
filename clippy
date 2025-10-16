@@ -6,10 +6,10 @@ FLAG=""
 for arg in "$@"; do
 	case "$arg" in
 		fix|--fix)
-			FLAG="--fix"
+			FLAG="--allow-dirty --allow-staged --fix"
 			;;
 	esac
 done
 
 cargo fmt --all
-cargo clippy --all --workspace --all-features --all-targets --allow-dirty $FLAG
+cargo clippy --all --workspace --all-features --all-targets $FLAG
