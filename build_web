@@ -15,32 +15,6 @@ SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 # Build WASM package
 wasm-pack build --target web $WASM_PACK_CONFIGURATION --out-dir "$SOURCE_DIR/platforms/web/pkg"
 
-# Inject stable brand properties on exported class prototypes for robust type checks
-PKG_JS="$SOURCE_DIR/platforms/web/pkg/fragmentcolor.js"
-API_OBJECTS_FILE="$SOURCE_DIR/generated/api_objects.txt"
-if [ -f "$PKG_JS" ]; then
-  {
-    cat <<'EOF'
-(function(){
-  function brand(ctor, name){
-    try{
-      if (typeof ctor === 'function' && ctor.prototype) {
-        Object.defineProperty(ctor.prototype, "__fc_kind", { value: name, configurable: false, enumerable: false, writable: false });
-      }
-    } catch {}
-  }
-EOF
-    if [ -f "$API_OBJECTS_FILE" ]; then
-      while IFS= read -r NAME; do
-        # skip empty lines
-        if [ -z "$NAME" ]; then continue; fi
-        # Emit a guarded brand call; unknown identifiers will throw and be caught
-        printf "  try{ brand(%s, \"%s\"); }catch{}\n" "$NAME" "$NAME"
-      done < "$API_OBJECTS_FILE"
-    fi
-    echo "})();"
-  } >> "$PKG_JS"
-fi
 
 # Ensure npm package has a language-specific README
 if [ -f "$SOURCE_DIR/README_JS.md" ]; then

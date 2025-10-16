@@ -1,7 +1,7 @@
 {
   "name": "fragmentcolor-website",
   "type": "module",
-  "version": "0.10.8",
+  "version": "0.10.9",
   "packageManager": "pnpm@10.15.1",
   "scripts": {
     "dev": "astro dev",
