@@ -91,8 +91,6 @@ fn generate_docs() {
     println!("✅ Docs validated!\n");
 
     println!("🌎 Exporting website (examples + pages)...");
-    println!("==> website::update_version_badge()");
-    website::update_version_badge();
 
     println!("==> website::export_examples_and_pages()");
     let outcome = website::export_examples_and_pages(&api_map);
