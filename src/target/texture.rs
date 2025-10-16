@@ -14,6 +14,8 @@ pub struct TextureTarget {
     pub(crate) id: Arc<parking_lot::RwLock<Option<crate::texture::TextureId>>>,
 }
 
+crate::impl_fc_kind!(TextureTarget, "TextureTarget");
+
 impl TextureTarget {
     pub(crate) fn new(
         context: Arc<RenderContext>,

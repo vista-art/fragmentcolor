@@ -9,7 +9,7 @@ features = ["python", "pyo3/extension-module"]
 
 [project]
 name = "fragmentcolor"
-version = "0.10.8"
+version = "0.10.9"
 description = "Easy cross-platform GPU Rendering for Javascript, Python, Swift and Kotlin"
 readme = "README_PY.md"
 requires-python = ">=3.9"

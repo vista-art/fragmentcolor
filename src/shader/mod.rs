@@ -40,6 +40,8 @@ pub struct Shader {
     pub(crate) object: Arc<ShaderObject>,
 }
 
+crate::impl_fc_kind!(Shader, "Shader");
+
 impl Default for Shader {
     fn default() -> Self {
         Self::new(DEFAULT_SHADER).expect("SAFETY: DEFAULT_SHADER is built-in")

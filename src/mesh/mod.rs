@@ -38,6 +38,8 @@ pub struct Mesh {
     pub(crate) pass: Arc<crate::pass::PassObject>,
 }
 
+crate::impl_fc_kind!(Mesh, "Mesh");
+
 impl Default for Mesh {
     fn default() -> Self {
         Self::new()

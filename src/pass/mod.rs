@@ -66,6 +66,8 @@ pub struct Pass {
     pub(crate) object: Arc<PassObject>,
 }
 
+crate::impl_fc_kind!(Pass, "Pass");
+
 impl Pass {
     #[lsp_doc("docs/api/core/pass/new.md")]
     pub fn new(name: &str) -> Self {

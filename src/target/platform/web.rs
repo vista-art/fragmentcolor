@@ -13,6 +13,8 @@ pub struct CanvasTarget {
     inner: Arc<Mutex<WindowTarget>>,
 }
 
+crate::impl_fc_kind!(CanvasTarget, "CanvasTarget");
+
 impl CanvasTarget {
     pub(crate) fn new(
         context: Arc<RenderContext>,
