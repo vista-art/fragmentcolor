@@ -33,6 +33,8 @@ pub enum ShaderError {
         index: usize,
         len: usize,
     },
+    #[error("Shader busy: {0}")]
+    Busy(String),
     #[cfg(wasm)]
     #[error("WASM Shader Error: {0}")]
     Error(String),
