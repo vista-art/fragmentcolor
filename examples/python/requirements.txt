@@ -1,4 +1,4 @@
 glfw
 numpy
 rendercanvas
-fragmentcolor==0.10.7
+fragmentcolor>=0.10.8

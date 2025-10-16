@@ -59,10 +59,16 @@ if ! compgen -G "$OUT_DIR/*.whl" >/dev/null; then
   echo "No wheel found under $OUT_DIR. Build first or remove --no-build." >&2
   exit 1
 fi
+# Install exactly the newest wheel to avoid pip trying to install multiple versions
+LATEST_WHL=$(ls -t "$OUT_DIR"/fragmentcolor-*.whl 2>/dev/null | head -n1)
+if [[ -z "$LATEST_WHL" ]]; then
+  echo "No wheel found under $OUT_DIR. Build first or remove --no-build." >&2
+  exit 1
+fi
 if [[ -n "${FC_VERBOSE:-}" ]]; then
-  python -m pip install --force-reinstall "$OUT_DIR"/*.whl
+  python -m pip install --force-reinstall "$LATEST_WHL"
 else
-  python -m pip install -q --force-reinstall "$OUT_DIR"/*.whl
+  python -m pip install -q --force-reinstall "$LATEST_WHL"
 fi
 
 # Install example runtime deps (do NOT install fragmentcolor from PyPI here)
