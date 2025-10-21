@@ -11,7 +11,7 @@ function setStatus(text, ok = false) {
 (async () => {
   try {
     const wasmUrl = new URL("./pkg/fragmentcolor_bg.wasm", import.meta.url);
-    await init(wasmUrl.href);
+    await init({ module_or_path: wasmUrl.href });
 
     const renderer = new Renderer();
 

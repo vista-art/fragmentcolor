@@ -101,17 +101,20 @@ impl TryFrom<&wasm_bindgen::JsValue> for TextureInput {
 
         // Case: ArrayBuffer
         if let Some(buf) = value.dyn_ref::<ArrayBuffer>() {
+            // Guard against detached buffers via byte_length() == 0; safe fallback for empty too.
+            if buf.byte_length() == 0 {
+                return Ok(TextureInput::Bytes(Vec::new()));
+            }
             let u8a = Uint8Array::new(buf);
             let mut bytes = vec![0u8; u8a.length() as usize];
             u8a.copy_to(&mut bytes[..]);
             return Ok(TextureInput::Bytes(bytes));
         }
 
-        // Case: ImageData -> use its backing data (Uint8ClampedArray)
+        // Case: ImageData -> use its backing data (Clamped<Vec<u8>> on wasm)
         if let Some(image_data) = value.dyn_ref::<web_sys::ImageData>() {
             let data = image_data.data();
-            let bytes = vec![0u8; data.len() as usize];
-
+            let bytes = data.0;
             return Ok(TextureInput::Bytes(bytes));
         }
 
@@ -124,8 +127,7 @@ impl TryFrom<&wasm_bindgen::JsValue> for TextureInput {
             let height = canvas.height() as f64;
             let img = ctx.get_image_data(0.0, 0.0, width, height)?;
             let data = img.data();
-            let bytes = vec![0u8; data.len() as usize];
-
+            let bytes = data.0;
             return Ok(TextureInput::Bytes(bytes));
         }
 
@@ -138,8 +140,7 @@ impl TryFrom<&wasm_bindgen::JsValue> for TextureInput {
             let height = canvas.height() as f64;
             let img = ctx.get_image_data(0.0, 0.0, width, height)?;
             let data = img.data();
-            let bytes = vec![0u8; data.len() as usize];
-
+            let bytes = data.0;
             return Ok(TextureInput::Bytes(bytes));
         }
 
