@@ -30,7 +30,7 @@ async function fetchText(rel) {
 
   try {
     const wasmUrl = new URL("./pkg/fragmentcolor_bg.wasm", import.meta.url);
-    await init(wasmUrl.href);
+    await init({ module_or_path: wasmUrl.href });
   } catch (e) {
     console.warn('init failed', e);
   }
