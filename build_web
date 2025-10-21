@@ -15,6 +15,12 @@ SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 # Build WASM package
 wasm-pack build --target web $WASM_PACK_CONFIGURATION --out-dir "$SOURCE_DIR/platforms/web/pkg"
 
+# Post-bindgen: patch generated glue with live-memory fallback for Uint8Array constructor
+if command -v node >/dev/null 2>&1; then
+  node "$SOURCE_DIR/platforms/web/patch_glue.mjs" "$SOURCE_DIR/platforms/web/pkg/fragmentcolor.js" || true
+else
+  echo "[build_web] node not found; skipping glue patch" >&2
+fi
 
 # Ensure npm package has a language-specific README
 if [ -f "$SOURCE_DIR/README_JS.md" ]; then
