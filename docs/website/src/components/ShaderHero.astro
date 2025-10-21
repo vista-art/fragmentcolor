@@ -17,6 +17,8 @@ if (!customElements.get('shader-hero')) {
     /** @type {any} */ #shader;
     /** @type {any} */ #mod;
     #start = performance.now();
+    #stopped = false;
+    #ro = null;
 
     constructor() {
       super();
@@ -31,80 +33,34 @@ if (!customElements.get('shader-hero')) {
     }
 
     connectedCallback() { this.#init(); }
-    disconnectedCallback() { cancelAnimationFrame(this.#raf); }
+    disconnectedCallback() { cancelAnimationFrame(this.#raf); try { this.#ro?.disconnect(); } catch {} }
 
     async #init() {
       const canvas = /** @type {HTMLCanvasElement} */ (this.#shadow.querySelector('#canvas'));
       if (!canvas) return;
       try {
-        // Load single module instance and remember it to avoid identity mismatches
         const mod = await import('fragmentcolor');
         this.#mod = mod;
-        // Explicitly pass WASM URL for dev server to avoid 404/mime issues
         const wasmUrl = (await import('fragmentcolor/fragmentcolor_bg.wasm?url')).default;
-        await mod.default(wasmUrl);
-        console.log('[hero] init wasm ok', { wasmUrl });
-        console.log('[hero] mod keys', Object.keys(mod));
-        console.log('[hero] classes', {
-          Renderer: typeof mod.Renderer,
-          Shader: typeof mod.Shader,
-          CanvasTarget: typeof mod.CanvasTarget,
-          TextureTarget: typeof mod.TextureTarget
-        });
+        await mod.default({ module_or_path: wasmUrl });
 
-        // Create renderer and target
         this.#renderer = new mod.Renderer();
-        console.log('[hero] renderer ctor', this.#renderer?.constructor?.name);
         this.#target = await this.#renderer.createTarget(canvas);
-        console.log('[hero] target created', {
-          ctor: this.#target?.constructor?.name,
-          hasSize: typeof this.#target?.size === 'function',
-          target: this.#target
-        });
+
+        const qp = new URLSearchParams(location.search);
+        this.#shader = qp.has('const') ? this.#mod.Shader.default() : await mod.Shader.fetch('/shaders/swirl.wgsl');
+
         try {
-          const inst = (this.#target && this.#mod && 'CanvasTarget' in this.#mod)
-            ? (this.#target instanceof this.#mod.CanvasTarget)
-            : 'unknown';
-          console.log('[hero] instanceof CanvasTarget?', inst);
-        } catch (e) {
-          console.warn('[hero] instanceof check failed', e);
-        }
-
-        // Sanity call: target.size()
-        try {
-          const sz = this.#target.size();
-          console.log('[hero] target.size()', sz);
-        } catch (e) {
-          console.error('[hero] target.size() failed', e);
-        }
-
-        // Load shader
-        this.#shader = await mod.Shader.fetch('/shaders/swirl.wgsl');
-        console.log('[hero] shader ready', this.#shader?.constructor?.name);
-
-        // Try a one-off test render immediately to catch type identity issues early
-        try {
-          const sameRender = (this.#renderer && this.#mod)
-            ? (this.#renderer.render === this.#mod.Renderer?.prototype?.render)
-            : 'unknown';
-          console.log('[hero] render method identity ok?', sameRender);
-          const proto = Object.getPrototypeOf(this.#target);
-          console.log('[hero] target proto ctor', proto?.constructor?.name);
-
-          this.#renderer.render(this.#shader, this.#target);
-          console.log('[hero] initial render ok');
-        } catch (e) {
-          let instanceofCT = 'unknown';
-          try { instanceofCT = this.#target instanceof this.#mod.CanvasTarget; } catch {}
-          console.error('[hero] initial render failed', e, {
-            rendererCtor: this.#renderer?.constructor?.name,
-            targetCtor: this.#target?.constructor?.name,
-            shaderCtor: this.#shader?.constructor?.name,
-            instanceofCanvasTarget: instanceofCT,
-          });
-        }
+          this.#applySize();
+          this.#shader.set('time', 0.0);
+          const canvasEl = canvas;
+          this.#ro = new ResizeObserver(() => this.#applySize());
+          this.#ro.observe(canvasEl);
+          window.addEventListener('resize', () => this.#applySize());
+        } catch {}
 
         const loop = (now) => {
+          if (this.#stopped) return;
           this.#raf = requestAnimationFrame(loop);
           this.#tick(now);
         };
@@ -119,39 +75,45 @@ if (!customElements.get('shader-hero')) {
       const canvas = /** @type {HTMLCanvasElement} */ (this.#shadow.querySelector('#canvas'));
       if (!canvas) return;
 
-      // Resize for device pixel ratio
-      const dpr = Math.max(1, window.devicePixelRatio || 1);
-      const w = Math.max(1, Math.floor(canvas.clientWidth * dpr));
-      const h = Math.max(1, Math.floor(canvas.clientHeight * dpr));
-      if (canvas.width !== w || canvas.height !== h) {
-        canvas.width = w; canvas.height = h;
-      }
-
-      // Update uniforms
       const t = (now - this.#start) / 1000.0;
       try {
-        this.#shader.set('resolution', [w, h]);
         this.#shader.set('time', t);
-      } catch (e) {
-        console.error('[hero] set uniforms failed', e);
+      } catch {
+        // ignore
       }
 
-      // Render with detailed instrumentation
       try {
-        const info = {
-          rendererCtor: this.#renderer?.constructor?.name,
-          targetCtor: this.#target?.constructor?.name,
-          shaderCtor: this.#shader?.constructor?.name,
-          hasTargetSize: typeof this.#target?.size === 'function'
-        };
-        // Uncomment for verbose per-frame noise:
-        // console.log('[hero] render tick', info);
         this.#renderer.render(this.#shader, this.#target);
       } catch (e) {
-        console.error('[hero] render failed', e);
-        // Re-throw to keep devtools stacks visible
-        throw e;
+        if (!this.#stopped) {
+          this.#stopped = true;
+          try {
+            const mlen = (this.#mod && this.#mod.memory && this.#mod.memory.buffer)
+              ? this.#mod.memory.buffer.byteLength
+              : 0;
+            console.error('[hero] render failed (stopping loop)', e, { wasmMemBytes: mlen, stack: e?.stack });
+          } catch {
+            console.error('[hero] render failed (stopping loop)', e);
+          }
+          if (this.#raf) cancelAnimationFrame(this.#raf);
+        }
+        return;
       }
+    }
+
+    #applySize() {
+      try {
+        const canvas = /** @type {HTMLCanvasElement} */ (this.#shadow.querySelector('#canvas'));
+        if (!canvas || !this.#target || !this.#shader) return;
+        const dpr = Math.max(1, window.devicePixelRatio || 1);
+        const w = Math.max(1, Math.floor(canvas.clientWidth * dpr));
+        const h = Math.max(1, Math.floor(canvas.clientHeight * dpr));
+        if (canvas.width !== w || canvas.height !== h) {
+          canvas.width = w; canvas.height = h;
+        }
+        try { this.#target.resize([w, h]); } catch {}
+        try { this.#shader.set('resolution', [w, h]); } catch {}
+      } catch {}
     }
   }
   customElements.define('shader-hero', ShaderHero);

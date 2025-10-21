@@ -4,6 +4,28 @@
 
 See the [Roadmap](https://github.com/vista-art/fragmentcolor/blob/main/ROADMAP.md) for planned features.
 
+## 0.10.10 Web glue guard, ArrayBuffer handling fixes, and website hero cleanup
+
+### Build system
+
+- Web (WASM): add a post-bindgen patch step in `build_web` that hardens the generated glue.
+  - Guard the `Uint8Array(ArrayBuffer)` constructor used by wasm-bindgen shims against detached ArrayBuffer.
+  - On failure, fall back to `new Uint8Array(wasm.memory.buffer)` (live memory) to avoid crashes in long prod runs.
+
+### Web (WASM)
+
+- TextureInput (JS bridge): make ArrayBuffer handling robust on Web — treat `byte_length() == 0` as detached/empty and return an empty byte vector instead of throwing.
+- ImageData/Canvas extraction: use `ImageData.data().0` (Clamped<Vec<u8>>) for efficient copies; remove incorrect `copy_to()` usage on clamped data.
+
+### Docs & website
+
+- ShaderHero: simplify the component and remove heavy per-frame instrumentation/noise; keep a concise render loop and error stop.
+
+### Tooling & misc
+
+- Update `run_docs`, `astro.config.mjs`, and lockfiles for the site and examples.
+
+
 ## 0.10.9 Bugfix: Stable kind branding for JS (avoids mangling in minified builds)
 
 ### Bugfixes
