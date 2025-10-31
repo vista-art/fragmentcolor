@@ -153,6 +153,86 @@ lang="text"
 
 ---
 
+### Texture::id()
+
+Return the stable `TextureId` for this texture instance. The id is valid within the `Renderer` that created it.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Renderer, TextureFormat};
+let renderer = Renderer::new();
+let texture = renderer.create_storage_texture([64, 64], TextureFormat::Rgba, None).await?;
+let id = *texture.id();
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+`}
+lang="rust" meta="collapse={1-1, 6-8}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Renderer, TextureFormat } from "fragmentcolor";
+const renderer = new Renderer();
+const texture = await renderer.createStorageTexture([64, 64], TextureFormat.Rgba, null);
+const id = *texture.id();
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Renderer, TextureFormat
+renderer = Renderer()
+texture = renderer.create_storage_texture([64, 64], TextureFormat.Rgba, None)
+id = *texture.id()
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
 ### Texture::size
 
 Returns the texture size (w, h[, d]).
@@ -398,6 +478,273 @@ opts = {"repeat_x": True, "repeat_y": True, "smooth": True, "compare": None}
 texture.set_sampler_options(opts)
 
 
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Texture::write(bytes)
+
+Efficiently upload raw pixel data into an existing texture. Ideal for video playback or any per-frame dynamic image updates.
+
+- Whole texture updates: use `Texture.write(&bytes)` or `Texture.write_with(&bytes, TextureWriteOptions::whole())`.
+- Sub-rectangle updates: pass origin and size via `TextureWriteOptions`.
+- Bytes per row must be a multiple of 256. When unspecified, compute it from the pixel stride and align up.
+
+#### Notes
+- Supported formats initially: `Rgba8Unorm`, `Rgba8UnormSrgb`, `Bgra8Unorm`, `Bgra8UnormSrgb`, and other 4-bytes-per-pixel formats. Unsupported formats return an error.
+- The texture must have COPY_DST usage.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Renderer, TextureFormat};
+let renderer = Renderer::new();
+let texture = renderer.create_storage_texture([1280, 720], TextureFormat::Rgba, None).await?;
+
+let width = 1280u32;
+let height = 720u32;
+let pixel_size = 4u32; // RGBA8
+let stride = width * pixel_size;
+let align = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT as u32;
+let bpr = ((stride + align - 1) / align) * align; // align to 256
+
+let required = (bpr * (height - 1) + stride) as usize;
+let frame_bytes = vec![0u8; required];
+
+texture.write(&frame_bytes)?;
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+`}
+lang="rust" meta="collapse={1-1, 17-19}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Renderer, TextureFormat } from "fragmentcolor";
+const renderer = new Renderer();
+const texture = await renderer.createStorageTexture([1280, 720], TextureFormat.Rgba, null);
+
+const width = 1280u32;
+const height = 720u32;
+const pixel_size = 4u32; // RGBA8;
+const stride = width * pixel_size;
+const align = wgpu.COPYBYTESPERROWALIGNMENT as u32;
+const bpr = ((stride + align - 1) / align) * align; // align to 256;
+
+const required = (bpr * (height - 1) + stride) as usize;
+const frame_bytes = [0u8; required];
+
+texture.write(frame_bytes);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Renderer, TextureFormat
+renderer = Renderer()
+texture = renderer.create_storage_texture([1280, 720], TextureFormat.Rgba, None)
+
+width = 1280u32
+height = 720u32
+pixel_size = 4u32; # RGBA8
+stride = width * pixel_size
+align = wgpu.COPY_BYTES_PER_ROW_ALIGNMENT as u32
+bpr = ((stride + align - 1) / align) * align; # align to 256
+
+required = (bpr * (height - 1) + stride) as usize
+frame_bytes = [0u8; required]
+
+texture.write(frame_bytes)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Texture::write_with(bytes, options)
+
+Same as `Texture::write`, but allows specifying origin, size, bytes_per_row and rows_per_image.
+
+#### Notes
+- See `Texture::write` for format and alignment details.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Renderer, TextureFormat, TextureWriteOptions};
+let renderer = Renderer::new();
+let texture = renderer.create_storage_texture([640, 480], TextureFormat::Rgba, None).await?;
+
+// Upload a 320x240 region starting at (x=100, y=50)
+let w = 320u32;
+let h = 240u32;
+let pixel = 4u32;
+let stride = w * pixel;
+let align = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT as u32;
+let bpr = ((stride + align - 1) / align) * align;
+let required = (bpr * (h - 1) + stride) as usize;
+let region_bytes = vec![0u8; required];
+let opt = TextureWriteOptions {
+    origin_x: 100,
+    origin_y: 50,
+    origin_z: 0,
+    size_width: w,
+    size_height: h,
+    size_depth: 1,
+    bytes_per_row: Some(bpr),
+    rows_per_image: Some(h),
+};
+texture.write_with(&region_bytes, opt)?;
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+``
+`}
+lang="rust" meta="collapse={1-1, 26-28}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Renderer, TextureFormat, TextureWriteOptions } from "fragmentcolor";
+const renderer = new Renderer();
+const texture = await renderer.createStorageTexture([640, 480], TextureFormat.Rgba, null);
+
+// Upload a 320x240 region starting at (x=100, y=50)
+const w = 320u32;
+const h = 240u32;
+const pixel = 4u32;
+const stride = w * pixel;
+const align = wgpu.COPYBYTESPERROWALIGNMENT as u32;
+const bpr = ((stride + align - 1) / align) * align;
+const required = (bpr * (h - 1) + stride) as usize;
+const region_bytes = [0u8; required];
+const opt = TextureWriteOptions {
+    origin_x: 100,
+    origin_y: 50,
+    origin_z: 0,
+    size_width: w,
+    size_height: h,
+    size_depth: 1,
+    bytes_per_row: Some(bpr),
+    rows_per_image: Some(h),
+};
+texture.writeWith(region_bytes, opt);
+\`\`;
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Renderer, TextureFormat, TextureWriteOptions
+renderer = Renderer()
+texture = renderer.create_storage_texture([640, 480], TextureFormat.Rgba, None)
+
+# Upload a 320x240 region starting at (x=100, y=50)
+w = 320u32
+h = 240u32
+pixel = 4u32
+stride = w * pixel
+align = wgpu.COPY_BYTES_PER_ROW_ALIGNMENT as u32
+bpr = ((stride + align - 1) / align) * align
+required = (bpr * (h - 1) + stride) as usize
+region_bytes = [0u8; required]
+opt = TextureWriteOptions {
+    origin_x: 100,
+    origin_y: 50,
+    origin_z: 0,
+    size_width: w,
+    size_height: h,
+    size_depth: 1,
+    bytes_per_row: Some(bpr),
+    rows_per_image: Some(h),
+}
+texture.write_with(region_bytes, opt)
+\`\`
 `}
 lang="python"
 />

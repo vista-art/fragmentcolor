@@ -32,6 +32,9 @@ pub use buffer_pool::*;
 
 mod texture_pool;
 pub use texture_pool::*;
+mod external_texture;
+mod unregister;
+mod update;
 
 /// The Renderer accepts a generic window handle as input
 /// that must report its display size.
@@ -269,6 +272,46 @@ impl Renderer {
         let obj = std::sync::Arc::new(obj);
         let id = context.register_texture(obj.clone());
         Ok(crate::texture::Texture::new(context, obj, id))
+    }
+
+    #[lsp_doc("docs/api/core/renderer/update_texture.md")]
+    pub fn update_texture(
+        &self,
+        texture_id: crate::texture::TextureId,
+        data: &[u8],
+    ) -> Result<(), RendererError> {
+        self.update_texture_with(
+            texture_id,
+            data,
+            crate::texture::TextureWriteOptions::whole(),
+        )
+    }
+
+    #[lsp_doc("docs/api/core/renderer/update_texture.md")]
+    pub fn update_texture_with(
+        &self,
+        texture_id: crate::texture::TextureId,
+        data: &[u8],
+        options: crate::texture::TextureWriteOptions,
+    ) -> Result<(), RendererError> {
+        update::update_texture(self, texture_id, data, options)
+    }
+
+    #[lsp_doc("docs/api/core/renderer/unregister_texture.md")]
+    pub fn unregister_texture(
+        &self,
+        texture_id: crate::texture::TextureId,
+    ) -> Result<(), RendererError> {
+        unregister::unregister_texture(self, texture_id)
+    }
+
+    #[cfg(wasm)]
+    #[lsp_doc("docs/api/web/external_texture.md")]
+    pub fn create_external_texture_from_html_video(
+        &self,
+        video: &web_sys::HtmlVideoElement,
+    ) -> Result<external_texture::ExternalTextureHandle, RendererError> {
+        external_texture::create_from_html_video(self, video)
     }
 
     #[lsp_doc("docs/api/core/renderer/render.md")]
@@ -1594,18 +1637,11 @@ fn create_bind_group_layouts(
                             count: None,
                         }
                     }
-                    // NEW UPSTREAM API !!! (good news)
-                    // @TODO figure out how this works; this is key for video textures from <video> elements
+                    // External textures (Web): bind as ExternalTexture when available.
                     naga::ImageClass::External => wgpu::BindGroupLayoutEntry {
                         binding: uniform.binding,
-                        visibility: wgpu::ShaderStages::VERTEX
-                            | wgpu::ShaderStages::FRAGMENT
-                            | wgpu::ShaderStages::COMPUTE,
-                        ty: wgpu::BindingType::Texture {
-                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                            view_dimension,
-                            multisampled: false,
-                        },
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::ExternalTexture,
                         count: None,
                     },
                 }

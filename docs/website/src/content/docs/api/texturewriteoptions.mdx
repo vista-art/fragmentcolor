@@ -1,0 +1,340 @@
+---
+title: TextureWriteOptions
+description: "Options to control how raw bytes are uploaded into a texture."
+---
+
+import { Code, Tabs, TabItem, Aside } from "@astrojs/starlight/components";
+
+## Description
+
+Options to control how raw bytes are uploaded into a texture.
+
+Fields
+- origin_x, origin_y, origin_z
+- size_width, size_height, size_depth
+- bytes_per_row: optional; must be a multiple of 256 when provided
+- rows_per_image: optional; defaults to height
+
+
+
+## Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::TextureWriteOptions;
+let width = 64u32; let height = 64u32;
+let pixel = 4u32; let stride = width * pixel;
+let align = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT as u32;
+let bpr = ((stride + align - 1) / align) * align;
+let _opt = fragmentcolor::TextureWriteOptions::whole()
+  .with_bytes_per_row(bpr)
+  .with_rows_per_image(height);
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 10-11}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { TextureWriteOptions } from "fragmentcolor";
+const width = 64u32; let height = 64u32;
+const pixel = 4u32; let stride = width * pixel;
+const align = wgpu.COPYBYTESPERROWALIGNMENT as u32;
+const bpr = ((stride + align - 1) / align) * align;
+const _opt = fragmentcolor.TextureWriteOptions.whole();
+  .withBytesPerRow(bpr);
+  .withRowsPerImage(height);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import TextureWriteOptions
+width = 64u32; let height = 64u32
+pixel = 4u32; let stride = width * pixel
+align = wgpu.COPY_BYTES_PER_ROW_ALIGNMENT as u32
+bpr = ((stride + align - 1) / align) * align
+_opt = fragmentcolor.TextureWriteOptions.whole()
+  .with_bytes_per_row(bpr)
+  .with_rows_per_image(height)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+## Methods
+
+
+---
+
+### TextureWriteOptions::whole()
+
+Create an options object that targets the entire texture region.
+
+- Origin defaults to (0,0,0)
+- Size is inferred from the texture at call time
+- bytes_per_row and rows_per_image are inferred if not set
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::TextureWriteOptions;
+let _opt = fragmentcolor::TextureWriteOptions::whole();
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 4-5}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { TextureWriteOptions } from "fragmentcolor";
+const _opt = fragmentcolor.TextureWriteOptions.whole();
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import TextureWriteOptions
+_opt = fragmentcolor.TextureWriteOptions.whole()
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### TextureWriteOptions::with_bytes_per_row(bytes)
+
+Set the bytes-per-row for the upload. Must be a multiple of 256.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::TextureWriteOptions;
+let width = 64u32; let pixel = 4u32; let stride = width * pixel;
+let align = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT as u32;
+let bpr = ((stride + align - 1) / align) * align;
+let _opt = fragmentcolor::TextureWriteOptions::whole().with_bytes_per_row(bpr);
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 7-8}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { TextureWriteOptions } from "fragmentcolor";
+const width = 64u32; let pixel = 4u32; let stride = width * pixel;
+const align = wgpu.COPYBYTESPERROWALIGNMENT as u32;
+const bpr = ((stride + align - 1) / align) * align;
+const _opt = fragmentcolor.TextureWriteOptions.whole().withBytesPerRow(bpr);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import TextureWriteOptions
+width = 64u32; let pixel = 4u32; let stride = width * pixel
+align = wgpu.COPY_BYTES_PER_ROW_ALIGNMENT as u32
+bpr = ((stride + align - 1) / align) * align
+_opt = fragmentcolor.TextureWriteOptions.whole().with_bytes_per_row(bpr)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### TextureWriteOptions::with_rows_per_image(rows)
+
+Set the number of rows per image for the upload (usually equals the height).
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::TextureWriteOptions;
+let height = 64u32;
+let _opt = fragmentcolor::TextureWriteOptions::whole().with_rows_per_image(height);
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 5-6}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { TextureWriteOptions } from "fragmentcolor";
+const height = 64u32;
+const _opt = fragmentcolor.TextureWriteOptions.whole().withRowsPerImage(height);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import TextureWriteOptions
+height = 64u32
+_opt = fragmentcolor.TextureWriteOptions.whole().with_rows_per_image(height)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
