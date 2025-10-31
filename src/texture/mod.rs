@@ -28,6 +28,40 @@ pub use error::*;
 mod options;
 pub use options::*;
 
+mod write;
+
+#[derive(Debug, Clone)]
+#[lsp_doc("docs/api/texture_write_options/texture_write_options.md")]
+#[derive(Default)]
+pub struct TextureWriteOptions {
+    pub origin_x: u32,
+    pub origin_y: u32,
+    pub origin_z: u32,
+    pub size_width: u32,
+    pub size_height: u32,
+    pub size_depth: u32,
+    pub bytes_per_row: Option<u32>,
+    pub rows_per_image: Option<u32>,
+}
+
+impl TextureWriteOptions {
+    #[lsp_doc("docs/api/texture_write_options/whole.md")]
+    pub fn whole() -> Self {
+        // size_* == 0 means "infer full size" in our implementation
+        Self::default()
+    }
+    #[lsp_doc("docs/api/texture_write_options/with_bytes_per_row.md")]
+    pub fn with_bytes_per_row(mut self, bpr: u32) -> Self {
+        self.bytes_per_row = Some(bpr);
+        self
+    }
+    #[lsp_doc("docs/api/texture_write_options/with_rows_per_image.md")]
+    pub fn with_rows_per_image(mut self, rpi: u32) -> Self {
+        self.rows_per_image = Some(rpi);
+        self
+    }
+}
+
 // Expose Naga image metadata in our public meta struct for now.
 use naga::{ImageClass, ImageDimension};
 
@@ -238,7 +272,8 @@ impl Texture {
 
     /// Return the stable TextureId for this texture.
     /// The id is valid within the Renderer that created it.
-    pub(crate) fn id(&self) -> &TextureId {
+    #[lsp_doc("docs/api/core/texture/id.md")]
+    pub fn id(&self) -> &TextureId {
         &self.id
     }
 
@@ -256,6 +291,17 @@ impl Texture {
     pub fn set_sampler_options(&self, options: SamplerOptions) {
         self.object
             .set_sampler_options(&self.context.device, options);
+    }
+
+    #[lsp_doc("docs/api/core/texture/write.md")]
+    pub fn write(&self, data: &[u8]) -> Result<(), TextureError> {
+        // forward to write_with with whole-region defaults
+        self.write_with(data, TextureWriteOptions::whole())
+    }
+
+    #[lsp_doc("docs/api/core/texture/write_with.md")]
+    pub fn write_with(&self, data: &[u8], opt: TextureWriteOptions) -> Result<(), TextureError> {
+        write::write(self, data, opt)
     }
 }
 
