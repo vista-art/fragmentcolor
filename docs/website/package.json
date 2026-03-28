@@ -3,6 +3,9 @@
   "type": "module",
   "version": "0.10.11",
   "packageManager": "pnpm@10.15.1",
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "scripts": {
     "dev": "astro dev",
     "start": "astro dev",
