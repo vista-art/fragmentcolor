@@ -5,7 +5,7 @@ use crate::{
 use lsp_doc::lsp_doc;
 use pyo3::exceptions::PyTypeError;
 use pyo3::prelude::*;
-use pyo3::types::{PyDict, PyTuple};
+use pyo3::types::PyDict;
 
 pub mod iterator;
 pub use iterator::*;
@@ -15,6 +15,73 @@ pub use renderable::*;
 
 pub(crate) mod handle;
 pub(crate) use handle::*;
+
+fn get_render_canvas_target(
+    py: Python<'_>,
+    canvas: &Py<PyAny>,
+) -> Result<Py<RenderCanvasTarget>, PyErr> {
+    let bound = canvas.bind(py);
+    if let Ok(existing) = bound.getattr("_fragmentcolor_target")
+        && let Ok(target) = existing.downcast::<RenderCanvasTarget>()
+    {
+        return Ok(target.clone().unbind());
+    }
+
+    let none = py.None();
+    let target = Py::new(py, RenderCanvasTarget::new(canvas.clone_ref(py), none))?;
+    bound.setattr("_fragmentcolor_target", &target)?;
+    Ok(target)
+}
+
+fn get_screen_info<'py>(
+    canvas: &pyo3::Bound<'py, PyAny>,
+) -> Result<pyo3::Bound<'py, PyDict>, PyErr> {
+    let info = canvas.call_method1("_rc_get_present_info", (vec!["screen"],))?;
+    if info.is_none() {
+        return Err(crate::error::PyFragmentColorError::new_err(
+            "Object can't render to screen",
+        ));
+    }
+
+    let dict = info.downcast_into::<PyDict>()?;
+    let method = dict
+        .get_item("method")?
+        .ok_or(crate::error::PyFragmentColorError::new_err(
+            "Missing present method",
+        ))?
+        .extract::<String>()?;
+    if method != "screen" {
+        return Err(crate::error::PyFragmentColorError::new_err(
+            "Object can't render to screen",
+        ));
+    }
+
+    Ok(dict)
+}
+
+fn get_required_u64(dict: &pyo3::Bound<'_, PyDict>, name: &str) -> Result<u64, PyErr> {
+    dict.get_item(name)?
+        .ok_or(crate::error::PyFragmentColorError::new_err(format!(
+            "Missing {name} handle",
+        )))?
+        .extract::<u64>()
+}
+
+fn get_optional_u64(dict: &pyo3::Bound<'_, PyDict>, name: &str) -> Result<u64, PyErr> {
+    if let Some(value) = dict.get_item(name)? {
+        value.extract::<u64>()
+    } else {
+        Ok(0)
+    }
+}
+
+fn get_optional_string(dict: &pyo3::Bound<'_, PyDict>, name: &str) -> Result<String, PyErr> {
+    if let Some(value) = dict.get_item(name)? {
+        value.extract::<String>()
+    } else {
+        Ok(String::new())
+    }
+}
 
 #[pymethods]
 impl Renderer {
@@ -31,63 +98,31 @@ impl Renderer {
         rendercanvas: Py<PyAny>,
     ) -> Result<Py<RenderCanvasTarget>, PyErr> {
         Python::attach(|py| -> Result<Py<RenderCanvasTarget>, PyErr> {
-            // If the target is already initialized, return it
-            let libname = PyTuple::new(py, ["fragmentcolor"])?;
-            let py_target = rendercanvas.call_method1(py, "get_context", libname)?; // calls hook
-            let bound_target = py_target.downcast_bound::<RenderCanvasTarget>(py)?;
-            let mut target = bound_target.borrow_mut();
-            if target.is_ready() {
-                return Ok(target.into_pyobject(py)?.unbind());
+            let target = get_render_canvas_target(py, &rendercanvas)?;
+            if target.bind(py).borrow().is_ready() {
+                return Ok(target);
+            }
+            {
+                let mut target_ref = target.bind(py).borrow_mut();
+                let canvas = rendercanvas.bind(py);
+                let screen_info = get_screen_info(canvas)?;
+                let window = get_required_u64(&screen_info, "window")?;
+                let platform = get_optional_string(&screen_info, "platform")?;
+                let display = get_optional_u64(&screen_info, "display")?;
+
+                let size: (u32, u32) = canvas.call_method0("get_physical_size")?.extract()?;
+                let size = wgpu::Extent3d {
+                    width: size.0,
+                    height: size.1,
+                    depth_or_array_layers: 1,
+                };
+                let handles = create_raw_handles(&platform, window, Some(display))?;
+                let (context, surface, config) =
+                    pollster::block_on(self.create_surface(handles, size))?;
+                target_ref.init(context, surface, config);
             }
 
-            // Returns a list of the possible present methods ("screen", "bitmap")
-            let present_methods = rendercanvas.call_method0(py, "_rc_get_present_methods")?;
-
-            // Gets the screen info dictionary (window, platform, display)
-            let dict = present_methods
-                .downcast_bound::<PyDict>(py)?
-                .get_item("screen")?
-                .ok_or(crate::error::PyFragmentColorError::new_err(
-                    "Object can't render to screen",
-                ))?;
-            let screen_info = dict.downcast::<PyDict>()?;
-
-            // Mandatory WindowHandle for all platforms
-            let window: u64 = screen_info
-                .get_item("window")?
-                .ok_or(crate::error::PyFragmentColorError::new_err(
-                    "Missing window handle",
-                ))?
-                .extract()?;
-            // Optional platform and display (only present on Linux)
-            let platform: String = screen_info
-                .get_item("platform")?
-                .unwrap_or("".into_pyobject(py)?.into_any())
-                .extract()?;
-            let display: u64 = screen_info
-                .get_item("display")?
-                .unwrap_or(0u64.into_pyobject(py)?.into_any())
-                .extract()?;
-
-            // Gets the window size to configure the surface
-            let size: (u32, u32) = rendercanvas
-                .call_method0(py, "get_physical_size")?
-                .downcast_bound(py)?
-                .extract()?;
-
-            let size = wgpu::Extent3d {
-                width: size.0,
-                height: size.1,
-                depth_or_array_layers: 1,
-            };
-
-            let handles: WindowHandles = create_raw_handles(&platform, window, Some(display))?;
-
-            let (context, surface, config) =
-                pollster::block_on(self.create_surface(handles, size))?;
-            target.init(context, surface, config);
-
-            Ok(target.into_pyobject(py)?.unbind())
+            Ok(target)
         })
     }
 
@@ -233,6 +268,44 @@ impl Renderer {
             let usage = usage_bits.map(wgpu::TextureUsages::from_bits_truncate);
             let tex = pollster::block_on(self.create_storage_texture(size, format, usage))?;
             Ok(tex)
+        })
+    }
+
+    #[pyo3(name = "update_texture")]
+    #[lsp_doc("docs/api/core/renderer/update_texture.md")]
+    pub fn update_texture_py(&self, texture_id: Py<PyAny>, data: Py<PyAny>) -> Result<(), PyErr> {
+        Python::attach(|py| -> Result<(), PyErr> {
+            let id = crate::texture::py_to_texture_id(texture_id.bind(py))?;
+            let bytes = crate::texture::py_to_texture_bytes(data.bind(py))?;
+            self.update_texture(id, &bytes)?;
+            Ok(())
+        })
+    }
+
+    #[pyo3(name = "update_texture_with")]
+    #[lsp_doc("docs/api/core/renderer/update_texture_with.md")]
+    pub fn update_texture_with_py(
+        &self,
+        texture_id: Py<PyAny>,
+        data: Py<PyAny>,
+        options: Py<PyAny>,
+    ) -> Result<(), PyErr> {
+        Python::attach(|py| -> Result<(), PyErr> {
+            let id = crate::texture::py_to_texture_id(texture_id.bind(py))?;
+            let bytes = crate::texture::py_to_texture_bytes(data.bind(py))?;
+            let opt = crate::texture::py_to_write_options(options.bind(py))?;
+            self.update_texture_with(id, &bytes, opt)?;
+            Ok(())
+        })
+    }
+
+    #[pyo3(name = "unregister_texture")]
+    #[lsp_doc("docs/api/core/renderer/unregister_texture.md")]
+    pub fn unregister_texture_py(&self, texture_id: Py<PyAny>) -> Result<(), PyErr> {
+        Python::attach(|py| -> Result<(), PyErr> {
+            let id = crate::texture::py_to_texture_id(texture_id.bind(py))?;
+            self.unregister_texture(id)?;
+            Ok(())
         })
     }
 

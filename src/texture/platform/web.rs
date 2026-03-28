@@ -3,10 +3,37 @@
 use lsp_doc::lsp_doc;
 use wasm_bindgen::prelude::*;
 
-use crate::{CompareFunction, SamplerOptions, Size, Texture};
+use crate::{CompareFunction, SamplerOptions, Size, Texture, TextureId, TextureWriteOptions};
+
+#[wasm_bindgen]
+impl TextureWriteOptions {
+    #[wasm_bindgen(js_name = "whole")]
+    #[lsp_doc("docs/api/texture_write_options/whole.md")]
+    pub fn whole_js() -> Self {
+        Self::whole()
+    }
+
+    #[wasm_bindgen(js_name = "withBytesPerRow")]
+    #[lsp_doc("docs/api/texture_write_options/with_bytes_per_row.md")]
+    pub fn with_bytes_per_row_js(self, bpr: u32) -> Self {
+        self.with_bytes_per_row(bpr)
+    }
+
+    #[wasm_bindgen(js_name = "withRowsPerImage")]
+    #[lsp_doc("docs/api/texture_write_options/with_rows_per_image.md")]
+    pub fn with_rows_per_image_js(self, rpi: u32) -> Self {
+        self.with_rows_per_image(rpi)
+    }
+}
 
 #[wasm_bindgen]
 impl Texture {
+    #[wasm_bindgen(js_name = "id")]
+    #[lsp_doc("docs/api/core/texture/id.md")]
+    pub fn id_js(&self) -> TextureId {
+        self.id
+    }
+
     #[wasm_bindgen(js_name = "size")]
     #[lsp_doc("docs/api/core/texture/size.md")]
     pub fn size_js(&self) -> Size {
@@ -24,6 +51,23 @@ impl Texture {
     pub fn set_sampler_options_js(&self, options: &JsValue) -> Result<(), JsError> {
         let opts = js_to_sampler_options(options)?;
         self.set_sampler_options(opts);
+        Ok(())
+    }
+
+    #[wasm_bindgen(js_name = "write")]
+    #[lsp_doc("docs/api/core/texture/write.md")]
+    pub fn write_js(&self, data: &JsValue) -> Result<(), JsError> {
+        let bytes = crate::texture::js_to_texture_bytes(data)?;
+        self.write(&bytes)?;
+        Ok(())
+    }
+
+    #[wasm_bindgen(js_name = "writeWith")]
+    #[lsp_doc("docs/api/core/texture/write_with.md")]
+    pub fn write_with_js(&self, data: &JsValue, options: &JsValue) -> Result<(), JsError> {
+        let bytes = crate::texture::js_to_texture_bytes(data)?;
+        let opt = crate::texture::js_to_write_options(options)?;
+        self.write_with(&bytes, opt)?;
         Ok(())
     }
 }

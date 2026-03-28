@@ -1,0 +1,310 @@
+---
+title: TextureWriteOptions
+description: "Options to control how raw bytes are uploaded into a texture."
+---
+
+import { Code, Tabs, TabItem, Aside } from "@astrojs/starlight/components";
+
+## Description
+
+Options to control how raw bytes are uploaded into a texture.
+
+Fields
+- origin_x, origin_y, origin_z
+- size_width, size_height, size_depth
+- bytes_per_row: optional; must be a multiple of 256 when provided
+- rows_per_image: optional; defaults to height
+
+
+
+## Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::TextureWriteOptions;
+let _opt = TextureWriteOptions::whole().with_bytes_per_row(256).with_rows_per_image(64);
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 4-5}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { TextureWriteOptions } from "fragmentcolor";
+const _opt = TextureWriteOptions.whole().withBytesPerRow(256).withRowsPerImage(64);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import TextureWriteOptions
+_opt = TextureWriteOptions.whole().with_bytes_per_row(256).with_rows_per_image(64)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+## Methods
+
+
+---
+
+### TextureWriteOptions::whole()
+
+Create an options object that targets the entire texture region.
+
+- Origin defaults to (0,0,0)
+- Size is inferred from the texture at call time
+- bytes_per_row and rows_per_image are inferred if not set
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::TextureWriteOptions;
+let _opt = TextureWriteOptions::whole();
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 4-5}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { TextureWriteOptions } from "fragmentcolor";
+const _opt = TextureWriteOptions.whole();
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import TextureWriteOptions
+_opt = TextureWriteOptions.whole()
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### TextureWriteOptions::with_bytes_per_row(bytes)
+
+Set the bytes-per-row for the upload. Must be a multiple of 256.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::TextureWriteOptions;
+let _opt = TextureWriteOptions::whole().with_bytes_per_row(256);
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 4-5}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { TextureWriteOptions } from "fragmentcolor";
+const _opt = TextureWriteOptions.whole().withBytesPerRow(256);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import TextureWriteOptions
+_opt = TextureWriteOptions.whole().with_bytes_per_row(256)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### TextureWriteOptions::with_rows_per_image(rows)
+
+Set the number of rows per image for the upload (usually equals the height).
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::TextureWriteOptions;
+let _opt = TextureWriteOptions::whole().with_rows_per_image(64);
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 4-5}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { TextureWriteOptions } from "fragmentcolor";
+const _opt = TextureWriteOptions.whole().withRowsPerImage(64);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import TextureWriteOptions
+_opt = TextureWriteOptions.whole().with_rows_per_image(64)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
