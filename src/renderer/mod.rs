@@ -287,7 +287,7 @@ impl Renderer {
         )
     }
 
-    #[lsp_doc("docs/api/core/renderer/update_texture.md")]
+    #[lsp_doc("docs/api/core/renderer/update_texture_with.md")]
     pub fn update_texture_with(
         &self,
         texture_id: crate::texture::TextureId,
