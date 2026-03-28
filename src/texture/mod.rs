@@ -28,6 +28,42 @@ pub use error::*;
 mod options;
 pub use options::*;
 
+mod write;
+
+#[cfg_attr(wasm, wasm_bindgen)]
+#[cfg_attr(python, pyclass)]
+#[derive(Debug, Clone)]
+#[lsp_doc("docs/api/texture_write_options/texture_write_options.md")]
+#[derive(Default)]
+pub struct TextureWriteOptions {
+    pub origin_x: u32,
+    pub origin_y: u32,
+    pub origin_z: u32,
+    pub size_width: u32,
+    pub size_height: u32,
+    pub size_depth: u32,
+    pub bytes_per_row: Option<u32>,
+    pub rows_per_image: Option<u32>,
+}
+
+impl TextureWriteOptions {
+    #[lsp_doc("docs/api/texture_write_options/whole.md")]
+    pub fn whole() -> Self {
+        // size_* == 0 means "infer full size" in our implementation
+        Self::default()
+    }
+    #[lsp_doc("docs/api/texture_write_options/with_bytes_per_row.md")]
+    pub fn with_bytes_per_row(mut self, bpr: u32) -> Self {
+        self.bytes_per_row = Some(bpr);
+        self
+    }
+    #[lsp_doc("docs/api/texture_write_options/with_rows_per_image.md")]
+    pub fn with_rows_per_image(mut self, rpi: u32) -> Self {
+        self.rows_per_image = Some(rpi);
+        self
+    }
+}
+
 // Expose Naga image metadata in our public meta struct for now.
 use naga::{ImageClass, ImageDimension};
 
@@ -204,6 +240,143 @@ impl From<u64> for TextureId {
     }
 }
 
+#[cfg(wasm)]
+crate::impl_js_bridge!(TextureId, crate::texture::TextureError);
+
+#[cfg(wasm)]
+pub(crate) fn js_to_texture_id(
+    value: &wasm_bindgen::JsValue,
+) -> Result<TextureId, crate::texture::TextureError> {
+    if let Some(number) = value.as_f64() {
+        if number.is_sign_negative() {
+            return Err(crate::texture::TextureError::Error(
+                "TextureId must be a non-negative number".into(),
+            ));
+        }
+        return Ok(TextureId(number as u64));
+    }
+    TextureId::try_from(value)
+}
+
+#[cfg(wasm)]
+pub(crate) fn js_to_texture_bytes(
+    value: &wasm_bindgen::JsValue,
+) -> Result<Vec<u8>, crate::texture::TextureError> {
+    match TextureInput::try_from(value)? {
+        TextureInput::Bytes(bytes) => Ok(bytes),
+        _ => Err(crate::texture::TextureError::Error(
+            "Expected raw byte data".into(),
+        )),
+    }
+}
+
+#[cfg(wasm)]
+pub(crate) fn js_to_write_options(
+    value: &wasm_bindgen::JsValue,
+) -> Result<TextureWriteOptions, crate::texture::TextureError> {
+    use js_sys::Reflect;
+
+    fn read_u32(value: &wasm_bindgen::JsValue, names: &[&str]) -> Option<u32> {
+        for name in names {
+            if let Ok(field) = Reflect::get(value, &wasm_bindgen::JsValue::from_str(name))
+                && let Some(number) = field.as_f64()
+            {
+                return Some(number.max(0.0) as u32);
+            }
+        }
+        None
+    }
+
+    if value.is_undefined() || value.is_null() {
+        return Ok(TextureWriteOptions::whole());
+    }
+
+    let mut opt = TextureWriteOptions::whole();
+    opt.origin_x = read_u32(value, &["originX", "origin_x"]).unwrap_or_default();
+    opt.origin_y = read_u32(value, &["originY", "origin_y"]).unwrap_or_default();
+    opt.origin_z = read_u32(value, &["originZ", "origin_z"]).unwrap_or_default();
+    opt.size_width = read_u32(value, &["sizeWidth", "size_width"]).unwrap_or_default();
+    opt.size_height = read_u32(value, &["sizeHeight", "size_height"]).unwrap_or_default();
+    opt.size_depth = read_u32(value, &["sizeDepth", "size_depth"]).unwrap_or_default();
+    opt.bytes_per_row = read_u32(value, &["bytesPerRow", "bytes_per_row"]);
+    opt.rows_per_image = read_u32(value, &["rowsPerImage", "rows_per_image"]);
+    Ok(opt)
+}
+
+#[cfg(python)]
+pub(crate) fn py_to_texture_id<'py>(
+    any: &pyo3::Bound<'py, pyo3::PyAny>,
+) -> pyo3::PyResult<TextureId> {
+    if let Ok(number) = any.extract::<u64>() {
+        return Ok(TextureId(number));
+    }
+    if let Ok(bound) = any.downcast::<TextureId>() {
+        return Ok(*bound.borrow());
+    }
+    Err(crate::error::PyFragmentColorError::new_err(
+        "Expected a TextureId or integer id",
+    ))
+}
+
+#[cfg(python)]
+pub(crate) fn py_to_texture_bytes<'py>(
+    any: &pyo3::Bound<'py, pyo3::PyAny>,
+) -> pyo3::PyResult<Vec<u8>> {
+    if let Ok(bytes) = any.extract::<Vec<u8>>() {
+        return Ok(bytes);
+    }
+    if let Ok(array) = any.downcast::<numpy::PyArrayDyn<u8>>() {
+        use numpy::PyArrayMethods;
+
+        let view = array.readonly();
+        let bytes = view.as_slice().map_err(|_| {
+            crate::error::PyFragmentColorError::new_err("ndarray must be contiguous")
+        })?;
+        return Ok(bytes.to_vec());
+    }
+    Err(crate::error::PyFragmentColorError::new_err(
+        "Expected raw byte data",
+    ))
+}
+
+#[cfg(python)]
+pub(crate) fn py_to_write_options<'py>(
+    any: &pyo3::Bound<'py, pyo3::PyAny>,
+) -> pyo3::PyResult<TextureWriteOptions> {
+    fn read_u32<'py>(
+        dict: &pyo3::Bound<'py, pyo3::types::PyDict>,
+        names: &[&str],
+    ) -> pyo3::PyResult<Option<u32>> {
+        for name in names {
+            if let Some(value) = dict.get_item(name)? {
+                if value.is_none() {
+                    return Ok(None);
+                }
+                return Ok(Some(value.extract::<u32>()?));
+            }
+        }
+        Ok(None)
+    }
+
+    if let Ok(bound) = any.downcast::<TextureWriteOptions>() {
+        return Ok(bound.borrow().clone());
+    }
+    if let Ok(dict) = any.downcast::<pyo3::types::PyDict>() {
+        let mut opt = TextureWriteOptions::whole();
+        opt.origin_x = read_u32(dict, &["origin_x", "originX"])?.unwrap_or_default();
+        opt.origin_y = read_u32(dict, &["origin_y", "originY"])?.unwrap_or_default();
+        opt.origin_z = read_u32(dict, &["origin_z", "originZ"])?.unwrap_or_default();
+        opt.size_width = read_u32(dict, &["size_width", "sizeWidth"])?.unwrap_or_default();
+        opt.size_height = read_u32(dict, &["size_height", "sizeHeight"])?.unwrap_or_default();
+        opt.size_depth = read_u32(dict, &["size_depth", "sizeDepth"])?.unwrap_or_default();
+        opt.bytes_per_row = read_u32(dict, &["bytes_per_row", "bytesPerRow"])?;
+        opt.rows_per_image = read_u32(dict, &["rows_per_image", "rowsPerImage"])?;
+        return Ok(opt);
+    }
+    Err(crate::error::PyFragmentColorError::new_err(
+        "Expected TextureWriteOptions or a dict of write options",
+    ))
+}
 impl std::fmt::Display for TextureId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
@@ -238,7 +411,8 @@ impl Texture {
 
     /// Return the stable TextureId for this texture.
     /// The id is valid within the Renderer that created it.
-    pub(crate) fn id(&self) -> &TextureId {
+    #[lsp_doc("docs/api/core/texture/id.md")]
+    pub fn id(&self) -> &TextureId {
         &self.id
     }
 
@@ -256,6 +430,17 @@ impl Texture {
     pub fn set_sampler_options(&self, options: SamplerOptions) {
         self.object
             .set_sampler_options(&self.context.device, options);
+    }
+
+    #[lsp_doc("docs/api/core/texture/write.md")]
+    pub fn write(&self, data: &[u8]) -> Result<(), TextureError> {
+        // forward to write_with with whole-region defaults
+        self.write_with(data, TextureWriteOptions::whole())
+    }
+
+    #[lsp_doc("docs/api/core/texture/write_with.md")]
+    pub fn write_with(&self, data: &[u8], opt: TextureWriteOptions) -> Result<(), TextureError> {
+        write::write(self, data, opt)
     }
 }
 

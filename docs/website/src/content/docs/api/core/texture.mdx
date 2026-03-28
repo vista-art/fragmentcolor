@@ -153,6 +153,88 @@ lang="text"
 
 ---
 
+### Texture::id()
+
+Return the stable `TextureId` for this texture instance. The id is valid within the `Renderer` that created it.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Renderer, TextureFormat};
+let renderer = Renderer::new();
+let texture = renderer.create_storage_texture([64, 64], TextureFormat::Rgba, None).await?;
+let id = *texture.id();
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+`}
+lang="rust" meta="collapse={1-1, 6-8}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Renderer, TextureFormat } from "fragmentcolor";
+
+const renderer = new Renderer();
+const texture = await renderer.createStorageTexture([64, 64], TextureFormat.Rgba, null);
+const id = texture.id();
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Renderer, TextureFormat
+
+renderer = Renderer()
+texture = renderer.create_storage_texture([64, 64], TextureFormat.Rgba, None)
+id = texture.id()
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
 ### Texture::size
 
 Returns the texture size (w, h[, d]).
@@ -398,6 +480,195 @@ opts = {"repeat_x": True, "repeat_y": True, "smooth": True, "compare": None}
 texture.set_sampler_options(opts)
 
 
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Texture::write(bytes)
+
+Efficiently upload raw pixel data into an existing texture. Ideal for video playback or any per-frame dynamic image updates.
+
+- Whole texture updates: use `Texture.write(&bytes)` or `Texture.write_with(&bytes, TextureWriteOptions::whole())`.
+- Sub-rectangle updates: pass origin and size via `TextureWriteOptions`.
+- Bytes per row must be a multiple of 256. When unspecified, compute it from the pixel stride and align up.
+
+#### Notes
+- Supported formats initially: `Rgba8Unorm`, `Rgba8UnormSrgb`, `Bgra8Unorm`, `Bgra8UnormSrgb`, and other 4-bytes-per-pixel formats. Unsupported formats return an error.
+- The texture must have COPY_DST usage.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Renderer, TextureFormat};
+let renderer = Renderer::new();
+let texture = renderer.create_storage_texture([64, 64], TextureFormat::Rgba, None).await?;
+let frame_bytes = vec![0u8; 64 * 64 * 4];
+
+texture.write(&frame_bytes)?;
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+`}
+lang="rust" meta="collapse={1-1, 8-10}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Renderer, TextureFormat } from "fragmentcolor";
+
+const renderer = new Renderer();
+const texture = await renderer.createStorageTexture([64, 64], TextureFormat.Rgba, null);
+const frame = new Uint8Array(64 * 64 * 4);
+
+texture.write(frame);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Renderer, TextureFormat
+
+renderer = Renderer()
+texture = renderer.create_storage_texture([64, 64], TextureFormat.Rgba, None)
+frame = bytes(64 * 64 * 4)
+
+texture.write(frame)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Swift placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
+<Code
+code={`
+// Kotlin placeholder: bindings WIP
+
+`}
+lang="text"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Texture::write_with(bytes, options)
+
+Same as `Texture::write`, but allows specifying origin, size, bytes_per_row and rows_per_image.
+
+#### Notes
+- See `Texture::write` for format and alignment details.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Renderer, TextureFormat, TextureWriteOptions};
+let renderer = Renderer::new();
+let texture = renderer.create_storage_texture([64, 32], TextureFormat::Rgba, None).await?;
+let region_bytes = vec![0u8; 64 * 32 * 4];
+let opt = TextureWriteOptions::whole().with_bytes_per_row(256).with_rows_per_image(32);
+texture.write_with(&region_bytes, opt)?;
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+`}
+lang="rust" meta="collapse={1-1, 8-10}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Renderer, TextureFormat, TextureWriteOptions } from "fragmentcolor";
+
+const renderer = new Renderer();
+const texture = await renderer.createStorageTexture([64, 32], TextureFormat.Rgba, null);
+const frame = new Uint8Array(64 * 32 * 4);
+const opt = TextureWriteOptions.whole().withBytesPerRow(256).withRowsPerImage(32);
+
+texture.writeWith(frame, opt);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Renderer, TextureFormat, TextureWriteOptions
+
+renderer = Renderer()
+texture = renderer.create_storage_texture([64, 32], TextureFormat.Rgba, None)
+frame = bytes(64 * 32 * 4)
+opt = TextureWriteOptions.whole().with_bytes_per_row(256).with_rows_per_image(32)
+
+texture.write_with(frame, opt)
 `}
 lang="python"
 />

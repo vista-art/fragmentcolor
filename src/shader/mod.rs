@@ -184,12 +184,9 @@ impl ShaderObject {
     // getters
     /// List all the uniforms in the shader.
     pub fn list_uniforms(&self) -> Vec<String> {
-        if let Some(storage) = self.storage.try_read() {
-            storage.list()
-        } else {
-            log::warn!("Shader storage is busy, returning empty uniforms list");
-            Vec::new()
-        }
+        // Blocking read to avoid empty lists under contention; writers use try_write
+        let storage = self.storage.read();
+        storage.list()
     }
 
     /// List all available keys in the shader.

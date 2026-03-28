@@ -4,6 +4,28 @@
 
 See the [Roadmap](https://github.com/vista-art/fragmentcolor/blob/main/ROADMAP.md) for planned features.
 
+## 0.10.11 Texture write API, renderer texture updates, and external video textures
+
+### API additions
+
+- Add `Texture::id`, `Texture::write`, and `Texture::write_with`.
+- Add `Renderer::update_texture`, `Renderer::update_texture_with`, and `Renderer::unregister_texture`.
+- Add public `TextureWriteOptions` to control upload origin, size, bytes-per-row, and rows-per-image.
+
+### Web
+
+- Add `Renderer::create_external_texture_from_html_video` for sampling HTML video via `texture_external`.
+
+### Python / RenderCanvas
+
+- Restore compatibility with RenderCanvas versions that removed custom string-based `get_context("fragmentcolor")` integrations.
+- `Renderer::create_target` no longer depends on a custom RenderCanvas context name; it now reads screen present info directly, creates the surface from that data, and reuses the cached `RenderCanvasTarget`.
+
+### Docs & generation
+
+- Add docs and generated examples for the new texture-write APIs across Rust, JavaScript, and Python.
+- Support language-specific override snippets when the generic Rust-to-JS/Python conversion is insufficient.
+
 ## 0.10.10 Web glue guard, ArrayBuffer handling fixes, and website hero cleanup
 
 ### Build system
