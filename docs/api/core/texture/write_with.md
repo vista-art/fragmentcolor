@@ -17,4 +17,4 @@ texture.write_with(&region_bytes, opt)?;
 # Ok(())
 # }
 # fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
-``
+```
