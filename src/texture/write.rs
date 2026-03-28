@@ -76,13 +76,12 @@ pub(super) fn write(
         }
     };
     let rows_per_image = opt.rows_per_image.unwrap_or(opt.size_height);
-    if let Some(rpi) = opt.rows_per_image {
-        if rpi < opt.size_height {
+    if let Some(rpi) = opt.rows_per_image
+        && rpi < opt.size_height {
             return Err(TextureError::Error(
                 "rows_per_image must be greater than or equal to size_height".into(),
             ));
         }
-    }
 
     // Required minimum size per WebGPU: bpr*(h-1) + width_in_bytes + (depth-1)*rows_per_image*bpr
     let width_in_bytes = (opt.size_width as u64).saturating_mul(bpp as u64);
