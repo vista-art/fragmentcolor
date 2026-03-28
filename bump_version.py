@@ -87,6 +87,51 @@ def bump_version(file_path, bump_type):
         except Exception as e:
             print(f"Warning: failed updating {site_pkg}: {e}")
 
+    readme = Path('README.md')
+    if readme.exists():
+        try:
+            content = readme.read_text(encoding='utf-8')
+            content = re.sub(
+                r'(fragmentcolor = ")([0-9]+\.[0-9]+\.[0-9]+)(")',
+                rf'\g<1>{new_version}\3',
+                content,
+                count=1,
+            )
+            readme.write_text(content, encoding='utf-8')
+            print(f"Bumped Rust install example in {readme} to {new_version}")
+        except Exception as e:
+            print(f"Warning: failed updating {readme}: {e}")
+
+    py_reqs = Path('examples/python/requirements.txt')
+    if py_reqs.exists():
+        try:
+            content = py_reqs.read_text(encoding='utf-8')
+            content = re.sub(
+                r'(fragmentcolor>=)([0-9]+\.[0-9]+\.[0-9]+)',
+                rf'\g<1>{new_version}',
+                content,
+                count=1,
+            )
+            py_reqs.write_text(content, encoding='utf-8')
+            print(f"Bumped Python example requirement in {py_reqs} to {new_version}")
+        except Exception as e:
+            print(f"Warning: failed updating {py_reqs}: {e}")
+
+    badge = Path('docs/website/src/components/VersionBadge.astro')
+    if badge.exists():
+        try:
+            content = badge.read_text(encoding='utf-8')
+            content = re.sub(
+                r"(const VERSION = ')([0-9]+\.[0-9]+\.[0-9]+)(';)",
+                rf"\g<1>{new_version}\3",
+                content,
+                count=1,
+            )
+            badge.write_text(content, encoding='utf-8')
+            print(f"Bumped website version badge in {badge} to {new_version}")
+        except Exception as e:
+            print(f"Warning: failed updating {badge}: {e}")
+
     return new_version
 
 

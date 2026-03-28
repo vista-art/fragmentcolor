@@ -12,13 +12,7 @@ Fields
 ```rust
 # fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::TextureWriteOptions;
-let width = 64u32; let height = 64u32;
-let pixel = 4u32; let stride = width * pixel;
-let align = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT as u32;
-let bpr = ((stride + align - 1) / align) * align;
-let _opt = fragmentcolor::TextureWriteOptions::whole()
-  .with_bytes_per_row(bpr)
-  .with_rows_per_image(height);
+let _opt = TextureWriteOptions::whole().with_bytes_per_row(256).with_rows_per_image(64);
 # Ok(())
 # }
 ```

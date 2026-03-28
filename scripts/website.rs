@@ -845,6 +845,79 @@ mod website {
         items
     }
 
+    fn extract_first_code_block(md: &str) -> Option<(String, String)> {
+        let mut in_code = false;
+        let mut lang = String::new();
+        let mut code = String::new();
+        for line in md.lines() {
+            let trimmed = line.trim_start();
+            if !in_code && trimmed.starts_with("```") {
+                in_code = true;
+                lang = trimmed
+                    .trim_start_matches("```")
+                    .trim()
+                    .to_ascii_lowercase();
+                continue;
+            }
+            if in_code && trimmed.starts_with("```") {
+                return Some((lang, code.trim_end().to_string()));
+            }
+            if in_code {
+                code.push_str(line);
+                code.push('\n');
+            }
+        }
+        None
+    }
+
+    fn is_placeholder_example(code: &str) -> bool {
+        let text = code.trim().to_ascii_lowercase();
+        text.is_empty()
+            || text.contains("hidden draft")
+            || text.contains("hidden file")
+            || text.contains("no public example")
+    }
+
+    fn read_lang_override(
+        root: &std::path::Path,
+        cat_rel: &str,
+        obj_dir_slug: &str,
+        file_stem: &str,
+        lang_suffix: &str,
+    ) -> Option<String> {
+        let hidden = if cat_rel.is_empty() {
+            root.join("docs/api")
+                .join(obj_dir_slug)
+                .join("hidden")
+                .join(format!("{}_{}.md", file_stem, lang_suffix))
+        } else {
+            root.join("docs/api")
+                .join(cat_rel)
+                .join(obj_dir_slug)
+                .join("hidden")
+                .join(format!("{}_{}.md", file_stem, lang_suffix))
+        };
+        if !hidden.exists() {
+            return None;
+        }
+        let md = std::fs::read_to_string(hidden).ok()?;
+        let (lang, code) = extract_first_code_block(&md)?;
+        if is_placeholder_example(&code) {
+            return None;
+        }
+        let is_rust = lang.is_empty() || lang == "rust" || lang.starts_with("rust,");
+        if !is_rust {
+            return Some(code);
+        }
+
+        let items = lines_to_items(&code);
+        match lang_suffix {
+            "js" => Some(crate::convert::to_js(&items)),
+            "py" => Some(crate::convert::to_py(&items)),
+            _ => Some(code),
+        }
+    }
+
     // Central helper to build Tabs for an example and persist JS/Py files
     fn build_tabs_for_example(
         items: &[(String, bool)],
@@ -887,8 +960,10 @@ mod website {
         };
 
         // Convert to JS/Python
-        let js_code = crate::convert::to_js(items);
-        let py_code = crate::convert::to_py(items);
+        let js_code = read_lang_override(root, cat_rel, obj_dir_slug, file_stem, "js")
+            .unwrap_or_else(|| crate::convert::to_js(items));
+        let py_code = read_lang_override(root, cat_rel, obj_dir_slug, file_stem, "py")
+            .unwrap_or_else(|| crate::convert::to_py(items));
 
         // Persist example files for healthchecks
         let js_rel = if cat_rel.is_empty() {

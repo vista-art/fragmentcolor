@@ -1,6 +1,9 @@
 #[cfg(wasm)]
+use wasm_bindgen::prelude::*;
+#[cfg(wasm)]
+#[wasm_bindgen]
 pub struct ExternalTextureHandle {
-    pub(crate) inner: wgpu::ExternalTexture,
+    pub(crate) _inner: wgpu::ExternalTexture,
 }
 
 #[cfg(wasm)]

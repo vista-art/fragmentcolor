@@ -182,9 +182,10 @@ lang="rust" meta="collapse={1-1, 6-8}"
 <Code
 code={`
 import { Renderer, TextureFormat } from "fragmentcolor";
+
 const renderer = new Renderer();
 const texture = await renderer.createStorageTexture([64, 64], TextureFormat.Rgba, null);
-const id = *texture.id();
+const id = texture.id();
 `}
 lang="js"
 />
@@ -195,9 +196,10 @@ lang="js"
 <Code
 code={`
 from fragmentcolor import Renderer, TextureFormat
+
 renderer = Renderer()
 texture = renderer.create_storage_texture([64, 64], TextureFormat.Rgba, None)
-id = *texture.id()
+id = texture.id()
 `}
 lang="python"
 />
@@ -535,24 +537,15 @@ code={`
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Renderer, TextureFormat};
 let renderer = Renderer::new();
-let texture = renderer.create_storage_texture([1280, 720], TextureFormat::Rgba, None).await?;
-
-let width = 1280u32;
-let height = 720u32;
-let pixel_size = 4u32; // RGBA8
-let stride = width * pixel_size;
-let align = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT as u32;
-let bpr = ((stride + align - 1) / align) * align; // align to 256
-
-let required = (bpr * (height - 1) + stride) as usize;
-let frame_bytes = vec![0u8; required];
+let texture = renderer.create_storage_texture([64, 64], TextureFormat::Rgba, None).await?;
+let frame_bytes = vec![0u8; 64 * 64 * 4];
 
 texture.write(&frame_bytes)?;
 Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 17-19}"
+lang="rust" meta="collapse={1-1, 8-10}"
 />
 
 </TabItem>
@@ -561,20 +554,12 @@ lang="rust" meta="collapse={1-1, 17-19}"
 <Code
 code={`
 import { Renderer, TextureFormat } from "fragmentcolor";
+
 const renderer = new Renderer();
-const texture = await renderer.createStorageTexture([1280, 720], TextureFormat.Rgba, null);
+const texture = await renderer.createStorageTexture([64, 64], TextureFormat.Rgba, null);
+const frame = new Uint8Array(64 * 64 * 4);
 
-const width = 1280u32;
-const height = 720u32;
-const pixel_size = 4u32; // RGBA8;
-const stride = width * pixel_size;
-const align = wgpu.COPYBYTESPERROWALIGNMENT as u32;
-const bpr = ((stride + align - 1) / align) * align; // align to 256;
-
-const required = (bpr * (height - 1) + stride) as usize;
-const frame_bytes = [0u8; required];
-
-texture.write(frame_bytes);
+texture.write(frame);
 `}
 lang="js"
 />
@@ -585,20 +570,12 @@ lang="js"
 <Code
 code={`
 from fragmentcolor import Renderer, TextureFormat
+
 renderer = Renderer()
-texture = renderer.create_storage_texture([1280, 720], TextureFormat.Rgba, None)
+texture = renderer.create_storage_texture([64, 64], TextureFormat.Rgba, None)
+frame = bytes(64 * 64 * 4)
 
-width = 1280u32
-height = 720u32
-pixel_size = 4u32; # RGBA8
-stride = width * pixel_size
-align = wgpu.COPY_BYTES_PER_ROW_ALIGNMENT as u32
-bpr = ((stride + align - 1) / align) * align; # align to 256
-
-required = (bpr * (height - 1) + stride) as usize
-frame_bytes = [0u8; required]
-
-texture.write(frame_bytes)
+texture.write(frame)
 `}
 lang="python"
 />
@@ -651,34 +628,16 @@ code={`
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Renderer, TextureFormat, TextureWriteOptions};
 let renderer = Renderer::new();
-let texture = renderer.create_storage_texture([640, 480], TextureFormat::Rgba, None).await?;
-
-// Upload a 320x240 region starting at (x=100, y=50)
-let w = 320u32;
-let h = 240u32;
-let pixel = 4u32;
-let stride = w * pixel;
-let align = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT as u32;
-let bpr = ((stride + align - 1) / align) * align;
-let required = (bpr * (h - 1) + stride) as usize;
-let region_bytes = vec![0u8; required];
-let opt = TextureWriteOptions {
-    origin_x: 100,
-    origin_y: 50,
-    origin_z: 0,
-    size_width: w,
-    size_height: h,
-    size_depth: 1,
-    bytes_per_row: Some(bpr),
-    rows_per_image: Some(h),
-};
+let texture = renderer.create_storage_texture([64, 32], TextureFormat::Rgba, None).await?;
+let region_bytes = vec![0u8; 64 * 32 * 4];
+let opt = TextureWriteOptions::whole().with_bytes_per_row(256).with_rows_per_image(32);
 texture.write_with(&region_bytes, opt)?;
 Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 ``
 `}
-lang="rust" meta="collapse={1-1, 26-28}"
+lang="rust" meta="collapse={1-1, 8-10}"
 />
 
 </TabItem>
@@ -687,30 +646,13 @@ lang="rust" meta="collapse={1-1, 26-28}"
 <Code
 code={`
 import { Renderer, TextureFormat, TextureWriteOptions } from "fragmentcolor";
-const renderer = new Renderer();
-const texture = await renderer.createStorageTexture([640, 480], TextureFormat.Rgba, null);
 
-// Upload a 320x240 region starting at (x=100, y=50)
-const w = 320u32;
-const h = 240u32;
-const pixel = 4u32;
-const stride = w * pixel;
-const align = wgpu.COPYBYTESPERROWALIGNMENT as u32;
-const bpr = ((stride + align - 1) / align) * align;
-const required = (bpr * (h - 1) + stride) as usize;
-const region_bytes = [0u8; required];
-const opt = TextureWriteOptions {
-    origin_x: 100,
-    origin_y: 50,
-    origin_z: 0,
-    size_width: w,
-    size_height: h,
-    size_depth: 1,
-    bytes_per_row: Some(bpr),
-    rows_per_image: Some(h),
-};
-texture.writeWith(region_bytes, opt);
-\`\`;
+const renderer = new Renderer();
+const texture = await renderer.createStorageTexture([64, 32], TextureFormat.Rgba, null);
+const frame = new Uint8Array(64 * 32 * 4);
+const opt = TextureWriteOptions.whole().withBytesPerRow(256).withRowsPerImage(32);
+
+texture.writeWith(frame, opt);
 `}
 lang="js"
 />
@@ -721,30 +663,13 @@ lang="js"
 <Code
 code={`
 from fragmentcolor import Renderer, TextureFormat, TextureWriteOptions
-renderer = Renderer()
-texture = renderer.create_storage_texture([640, 480], TextureFormat.Rgba, None)
 
-# Upload a 320x240 region starting at (x=100, y=50)
-w = 320u32
-h = 240u32
-pixel = 4u32
-stride = w * pixel
-align = wgpu.COPY_BYTES_PER_ROW_ALIGNMENT as u32
-bpr = ((stride + align - 1) / align) * align
-required = (bpr * (h - 1) + stride) as usize
-region_bytes = [0u8; required]
-opt = TextureWriteOptions {
-    origin_x: 100,
-    origin_y: 50,
-    origin_z: 0,
-    size_width: w,
-    size_height: h,
-    size_depth: 1,
-    bytes_per_row: Some(bpr),
-    rows_per_image: Some(h),
-}
-texture.write_with(region_bytes, opt)
-\`\`
+renderer = Renderer()
+texture = renderer.create_storage_texture([64, 32], TextureFormat.Rgba, None)
+frame = bytes(64 * 32 * 4)
+opt = TextureWriteOptions.whole().with_bytes_per_row(256).with_rows_per_image(32)
+
+texture.write_with(frame, opt)
 `}
 lang="python"
 />

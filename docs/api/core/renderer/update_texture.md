@@ -10,19 +10,9 @@ Update an existing texture by id using raw pixel bytes. This forwards to the tex
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Renderer, TextureFormat};
 let renderer = Renderer::new();
-let id = *renderer
-    .create_storage_texture([640, 480], TextureFormat::Rgba, None)
-    .await?
-    .id();
-
-let width = 640u32;
-let height = 480u32;
-let pixel = 4u32;
-let stride = width * pixel;
-let align = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT as u32;
-let bpr = ((stride + align - 1) / align) * align;
-let required = (bpr * (height - 1) + stride) as usize;
-let frame = vec![0u8; required];
+let texture = renderer.create_storage_texture([64, 64], TextureFormat::Rgba, None).await?;
+let id = *texture.id();
+let frame = vec![0u8; 64 * 64 * 4];
 
 renderer.update_texture(id, &frame)?;
 # Ok(())
