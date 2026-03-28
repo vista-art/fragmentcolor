@@ -499,10 +499,11 @@ lang="rust" meta="collapse={1-1, 7-10}"
 <Code
 code={`
 import { Renderer } from "fragmentcolor";
-const renderer = new Renderer();
-// Load encoded image bytes (PNG/JPEG) or use a file path
 const image = "/healthcheck/public/favicon.png";
+const renderer = new Renderer();
 const tex = await renderer.createTexture(image);
+// use in a shader uniform
+// shader.set("tex", tex);
 `}
 lang="js"
 />
@@ -513,10 +514,8 @@ lang="js"
 <Code
 code={`
 from fragmentcolor import Renderer
-renderer = Renderer()
-# Load encoded image bytes (PNG/JPEG) or use a file path
-image = open("logo.png", "rb").read()
-tex = renderer.create_texture(image)
+# Python binding: renderer.create_texture(input)
+# See main create_texture docs for examples.
 `}
 lang="python"
 />
@@ -1012,26 +1011,16 @@ code={`
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Renderer, TextureFormat};
 let renderer = Renderer::new();
-let id = *renderer
-    .create_storage_texture([640, 480], TextureFormat::Rgba, None)
-    .await?
-    .id();
-
-let width = 640u32;
-let height = 480u32;
-let pixel = 4u32;
-let stride = width * pixel;
-let align = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT as u32;
-let bpr = ((stride + align - 1) / align) * align;
-let required = (bpr * (height - 1) + stride) as usize;
-let frame = vec![0u8; required];
+let texture = renderer.create_storage_texture([64, 64], TextureFormat::Rgba, None).await?;
+let id = *texture.id();
+let frame = vec![0u8; 64 * 64 * 4];
 
 renderer.update_texture(id, &frame)?;
 Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 19-21}"
+lang="rust" meta="collapse={1-1, 9-11}"
 />
 
 </TabItem>
@@ -1040,20 +1029,11 @@ lang="rust" meta="collapse={1-1, 19-21}"
 <Code
 code={`
 import { Renderer, TextureFormat } from "fragmentcolor";
-const renderer = new Renderer();
-const id = *renderer;
-    .createStorageTexture([640, 480], TextureFormat.Rgba, null);
-await ;
-    .id();
 
-const width = 640u32;
-const height = 480u32;
-const pixel = 4u32;
-const stride = width * pixel;
-const align = wgpu.COPYBYTESPERROWALIGNMENT as u32;
-const bpr = ((stride + align - 1) / align) * align;
-const required = (bpr * (height - 1) + stride) as usize;
-const frame = [0u8; required];
+const renderer = new Renderer();
+const texture = await renderer.createStorageTexture([64, 64], TextureFormat.Rgba, null);
+const id = texture.id();
+const frame = new Uint8Array(64 * 64 * 4);
 
 renderer.updateTexture(id, frame);
 `}
@@ -1066,20 +1046,11 @@ lang="js"
 <Code
 code={`
 from fragmentcolor import Renderer, TextureFormat
-renderer = Renderer()
-id = *renderer
-    .create_storage_texture([640, 480], TextureFormat.Rgba, None)
-    
-    .id()
 
-width = 640u32
-height = 480u32
-pixel = 4u32
-stride = width * pixel
-align = wgpu.COPY_BYTES_PER_ROW_ALIGNMENT as u32
-bpr = ((stride + align - 1) / align) * align
-required = (bpr * (height - 1) + stride) as usize
-frame = [0u8; required]
+renderer = Renderer()
+texture = renderer.create_storage_texture([64, 64], TextureFormat.Rgba, None)
+id = texture.id()
+frame = bytes(64 * 64 * 4)
 
 renderer.update_texture(id, frame)
 `}
@@ -1131,20 +1102,10 @@ code={`
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Renderer, TextureFormat, TextureWriteOptions};
 let renderer = Renderer::new();
-let id = *renderer
-    .create_storage_texture([640, 480], TextureFormat::Rgba, None)
-    .await?
-    .id();
-
-let width = 640u32;
-let height = 480u32;
-let pixel = 4u32;
-let stride = width * pixel;
-let align = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT as u32;
-let bpr = ((stride + align - 1) / align) * align;
-let required = (bpr * (height - 1) + stride) as usize;
-let frame = vec![0u8; required];
-let opt = TextureWriteOptions::whole().with_bytes_per_row(bpr);
+let texture = renderer.create_storage_texture([64, 32], TextureFormat::Rgba, None).await?;
+let id = *texture.id();
+let frame = vec![0u8; 64 * 32 * 4];
+let opt = TextureWriteOptions::whole().with_bytes_per_row(256).with_rows_per_image(32);
 
 renderer.update_texture_with(id, &frame, opt)?;
 Ok(())
@@ -1152,7 +1113,7 @@ Ok(())
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 ``
 `}
-lang="rust" meta="collapse={1-1, 20-22}"
+lang="rust" meta="collapse={1-1, 10-12}"
 />
 
 </TabItem>
@@ -1161,24 +1122,14 @@ lang="rust" meta="collapse={1-1, 20-22}"
 <Code
 code={`
 import { Renderer, TextureFormat, TextureWriteOptions } from "fragmentcolor";
-const renderer = new Renderer();
-const id = *renderer;
-    .createStorageTexture([640, 480], TextureFormat.Rgba, null);
-await ;
-    .id();
 
-const width = 640u32;
-const height = 480u32;
-const pixel = 4u32;
-const stride = width * pixel;
-const align = wgpu.COPYBYTESPERROWALIGNMENT as u32;
-const bpr = ((stride + align - 1) / align) * align;
-const required = (bpr * (height - 1) + stride) as usize;
-const frame = [0u8; required];
-const opt = TextureWriteOptions.whole().withBytesPerRow(bpr);
+const renderer = new Renderer();
+const texture = await renderer.createStorageTexture([64, 32], TextureFormat.Rgba, null);
+const id = texture.id();
+const frame = new Uint8Array(64 * 32 * 4);
+const opt = TextureWriteOptions.whole().withBytesPerRow(256).withRowsPerImage(32);
 
 renderer.updateTextureWith(id, frame, opt);
-\`\`;
 `}
 lang="js"
 />
@@ -1189,24 +1140,14 @@ lang="js"
 <Code
 code={`
 from fragmentcolor import Renderer, TextureFormat, TextureWriteOptions
-renderer = Renderer()
-id = *renderer
-    .create_storage_texture([640, 480], TextureFormat.Rgba, None)
-    
-    .id()
 
-width = 640u32
-height = 480u32
-pixel = 4u32
-stride = width * pixel
-align = wgpu.COPY_BYTES_PER_ROW_ALIGNMENT as u32
-bpr = ((stride + align - 1) / align) * align
-required = (bpr * (height - 1) + stride) as usize
-frame = [0u8; required]
-opt = TextureWriteOptions.whole().with_bytes_per_row(bpr)
+renderer = Renderer()
+texture = renderer.create_storage_texture([64, 32], TextureFormat.Rgba, None)
+id = texture.id()
+frame = bytes(64 * 32 * 4)
+opt = TextureWriteOptions.whole().with_bytes_per_row(256).with_rows_per_image(32)
 
 renderer.update_texture_with(id, frame, opt)
-\`\`
 `}
 lang="python"
 />
@@ -1259,17 +1200,15 @@ code={`
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Renderer, TextureFormat};
 let renderer = Renderer::new();
-let id = *renderer
-    .create_storage_texture([16, 16], TextureFormat::Rgba, None)
-    .await?
-    .id();
+let texture = renderer.create_storage_texture([16, 16], TextureFormat::Rgba, None).await?;
+let id = *texture.id();
 
 renderer.unregister_texture(id)?;
 Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 10-12}"
+lang="rust" meta="collapse={1-1, 8-10}"
 />
 
 </TabItem>
@@ -1278,11 +1217,10 @@ lang="rust" meta="collapse={1-1, 10-12}"
 <Code
 code={`
 import { Renderer, TextureFormat } from "fragmentcolor";
+
 const renderer = new Renderer();
-const id = *renderer;
-    .createStorageTexture([16, 16], TextureFormat.Rgba, null);
-await ;
-    .id();
+const texture = await renderer.createStorageTexture([16, 16], TextureFormat.Rgba, null);
+const id = texture.id();
 
 renderer.unregisterTexture(id);
 `}
@@ -1295,11 +1233,10 @@ lang="js"
 <Code
 code={`
 from fragmentcolor import Renderer, TextureFormat
+
 renderer = Renderer()
-id = *renderer
-    .create_storage_texture([16, 16], TextureFormat.Rgba, None)
-    
-    .id()
+texture = renderer.create_storage_texture([16, 16], TextureFormat.Rgba, None)
+id = texture.id()
 
 renderer.unregister_texture(id)
 `}
@@ -1354,23 +1291,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     use wasm_bindgen::JsCast;
     use fragmentcolor::Renderer;
     let renderer = Renderer::new();
-    let window = web_sys::window().unwrap();
-    let document = window.document().unwrap();
-    let element = document.get_element_by_id("video").unwrap();
-    let video = element.dyn_into::<web_sys::HtmlVideoElement>().unwrap();
-    let _handle = renderer.create_external_texture_from_html_video(&video)?;
+    let window =
+        web_sys::window().ok_or_else(|| std::io::Error::other("window not available"))?;
+    let document = window
+        .document()
+        .ok_or_else(|| std::io::Error::other("document not available"))?;
+    let element = document
+        .get_element_by_id("video")
+        .ok_or_else(|| std::io::Error::other("video element not found"))?;
+    let video = element
+        .dyn_into::<web_sys::HtmlVideoElement>()
+        .map_err(|_| std::io::Error::other("element is not a video"))?;
+    let handle = renderer.create_external_texture_from_html_video(&video)?;
+    let _ = handle;
 }
 Ok(())
 }
-let window = web_sys::window().unwrap();
-let document = window.document().unwrap();
-let element = document.get_element_by_id("video").unwrap();
-let video = element.dyn_into::<web_sys::HtmlVideoElement>().unwrap();
-
-let handle = renderer.create_external_texture_from_html_video(&video)?;
-// Build a bind group layout with externalTexture + sampler and bind `handle`.
 `}
-lang="rust" meta="collapse={1-2, 13-14}"
+lang="rust" meta="collapse={1-2, 21-22}"
 />
 
 </TabItem>
@@ -1378,23 +1316,15 @@ lang="rust" meta="collapse={1-2, 13-14}"
 <TabItem label="JavaScript">
 <Code
 code={`
-{
-    use wasm_bindgen.JsCast;
 import { Renderer } from "fragmentcolor";
-const renderer = new Renderer();
-const window = web_sys.window().unwrap();
-const document = window.document().unwrap();
-const element = document.getElementById("video").unwrap();
-const video = element.dynInto.<web_sys.HtmlVideoElement>().unwrap();
-const _handle = renderer.createExternalTextureFromHtmlVideo(video);
-};
-const window = web_sys.window().unwrap();
-const document = window.document().unwrap();
-const element = document.getElementById("video").unwrap();
-const video = element.dynInto.<web_sys.HtmlVideoElement>().unwrap();
 
-const handle = renderer.createExternalTextureFromHtmlVideo(video);
-// Build a bind group layout with externalTexture + sampler and bind \`handle\`.
+const renderer = new Renderer();
+const element = document.getElementById("video");
+
+if (element instanceof HTMLVideoElement) {
+  const handle = renderer.createExternalTextureFromHtmlVideo(element);
+  void handle;
+}
 `}
 lang="js"
 />
@@ -1404,23 +1334,8 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-{
-    use wasm_bindgen.JsCast
-from fragmentcolor import Renderer
-renderer = Renderer()
-window = web_sys.window()
-document = window.document()
-element = document.get_element_by_id("video")
-video = element.dyn_into.<web_sys.HtmlVideoElement>()
-_handle = renderer.create_external_texture_from_html_video(video)
-}
-window = web_sys.window()
-document = window.document()
-element = document.get_element_by_id("video")
-video = element.dyn_into.<web_sys.HtmlVideoElement>()
-
-handle = renderer.create_external_texture_from_html_video(video)
-# Build a bind group layout with externalTexture + sampler and bind \`handle\`.
+# This API is only available on the Web JavaScript binding.
+# On Python, upload decoded video frames with Texture.write() or Texture.write_with().
 `}
 lang="python"
 />

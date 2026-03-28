@@ -11,4 +11,5 @@ Shader
 Size
 Texture
 TextureId
+TextureWriteOptions
 Vertex

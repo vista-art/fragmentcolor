@@ -10,7 +10,7 @@ Create an options object that targets the entire texture region.
 ```rust
 # fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::TextureWriteOptions;
-let _opt = fragmentcolor::TextureWriteOptions::whole();
+let _opt = TextureWriteOptions::whole();
 # Ok(())
 # }
 ```

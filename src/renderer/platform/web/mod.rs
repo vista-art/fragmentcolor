@@ -208,6 +208,48 @@ impl Renderer {
         Ok(self.create_depth_texture(size).await?)
     }
 
+    #[wasm_bindgen(js_name = "updateTexture")]
+    #[lsp_doc("docs/api/core/renderer/update_texture.md")]
+    pub fn update_texture_js(
+        &self,
+        texture_id: &JsValue,
+        data: &JsValue,
+    ) -> Result<(), RendererError> {
+        let id = crate::texture::js_to_texture_id(texture_id)?;
+        let bytes = crate::texture::js_to_texture_bytes(data)?;
+        self.update_texture(id, &bytes)
+    }
+
+    #[wasm_bindgen(js_name = "updateTextureWith")]
+    #[lsp_doc("docs/api/core/renderer/update_texture_with.md")]
+    pub fn update_texture_with_js(
+        &self,
+        texture_id: &JsValue,
+        data: &JsValue,
+        options: &JsValue,
+    ) -> Result<(), RendererError> {
+        let id = crate::texture::js_to_texture_id(texture_id)?;
+        let bytes = crate::texture::js_to_texture_bytes(data)?;
+        let opt = crate::texture::js_to_write_options(options)?;
+        self.update_texture_with(id, &bytes, opt)
+    }
+
+    #[wasm_bindgen(js_name = "unregisterTexture")]
+    #[lsp_doc("docs/api/core/renderer/unregister_texture.md")]
+    pub fn unregister_texture_js(&self, texture_id: &JsValue) -> Result<(), RendererError> {
+        let id = crate::texture::js_to_texture_id(texture_id)?;
+        self.unregister_texture(id)
+    }
+
+    #[wasm_bindgen(js_name = "createExternalTextureFromHtmlVideo")]
+    #[lsp_doc("docs/api/core/renderer/create_external_texture_from_html_video.md")]
+    pub fn create_external_texture_from_html_video_js(
+        &self,
+        video: &web_sys::HtmlVideoElement,
+    ) -> Result<crate::renderer::external_texture::ExternalTextureHandle, RendererError> {
+        self.create_external_texture_from_html_video(video)
+    }
+
     #[wasm_bindgen(js_name = "render")]
     #[lsp_doc("docs/api/core/renderer/render.md")]
     pub fn render_js(&self, renderable: &JsValue, target: &JsValue) -> Result<(), RendererError> {

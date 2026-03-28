@@ -38,6 +38,7 @@ Contributions are welcome! This document outlines the current workflow for devel
 
 1. Create a version branch from `main`: `vMAJOR.MINOR.PATCH`.
 2. Run `./bump_version.py` to bump versions in `Cargo.toml`, `pyproject.toml`, and the top-level version in `docs/website/package.json`.
+   It should also refresh launch-facing version references such as the root README, Python example requirements, and the website version badge.
 3. Open a PR and iterate until all checks are green (lint, fmt, tests, healthchecks, docs site build). Keep `main` protected and green.
 4. Merge the PR to `main`.
 5. Create a GitHub Release (annotated) named `vMAJOR.MINOR.PATCH` targeting the merge commit on `main`.
@@ -47,8 +48,8 @@ Contributions are welcome! This document outlines the current workflow for devel
    - Publish the Rust crate to crates.io (skip if version exists).
 7. The `post_publish_update` workflow waits for registries, then:
    - Bumps `fragmentcolor` dependency in `docs/website/package.json` and `examples/javascript/package.json` to the released version and refreshes lockfiles.
-   - Snapshots API docs to `docs/website/src/content/docs/api/v{version}`.
-   - Pushes the changes to `main`.
+   - Updates `docs/website/src/components/VersionBadge.astro`.
+   - Opens a pull request with those consumer updates.
 8. Vercel auto-deploys `docs/website` (subfolder). Its Ignored Build Step skips build when neither `docs/website` nor `docs/api` changed.
 
 ### Ad-hoc website updates

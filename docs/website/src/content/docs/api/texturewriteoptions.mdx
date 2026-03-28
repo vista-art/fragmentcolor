@@ -26,17 +26,11 @@ Fields
 code={`
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::TextureWriteOptions;
-let width = 64u32; let height = 64u32;
-let pixel = 4u32; let stride = width * pixel;
-let align = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT as u32;
-let bpr = ((stride + align - 1) / align) * align;
-let _opt = fragmentcolor::TextureWriteOptions::whole()
-  .with_bytes_per_row(bpr)
-  .with_rows_per_image(height);
+let _opt = TextureWriteOptions::whole().with_bytes_per_row(256).with_rows_per_image(64);
 Ok(())
 }
 `}
-lang="rust" meta="collapse={1-1, 10-11}"
+lang="rust" meta="collapse={1-1, 4-5}"
 />
 
 </TabItem>
@@ -45,13 +39,7 @@ lang="rust" meta="collapse={1-1, 10-11}"
 <Code
 code={`
 import { TextureWriteOptions } from "fragmentcolor";
-const width = 64u32; let height = 64u32;
-const pixel = 4u32; let stride = width * pixel;
-const align = wgpu.COPYBYTESPERROWALIGNMENT as u32;
-const bpr = ((stride + align - 1) / align) * align;
-const _opt = fragmentcolor.TextureWriteOptions.whole();
-  .withBytesPerRow(bpr);
-  .withRowsPerImage(height);
+const _opt = TextureWriteOptions.whole().withBytesPerRow(256).withRowsPerImage(64);
 `}
 lang="js"
 />
@@ -62,13 +50,7 @@ lang="js"
 <Code
 code={`
 from fragmentcolor import TextureWriteOptions
-width = 64u32; let height = 64u32
-pixel = 4u32; let stride = width * pixel
-align = wgpu.COPY_BYTES_PER_ROW_ALIGNMENT as u32
-bpr = ((stride + align - 1) / align) * align
-_opt = fragmentcolor.TextureWriteOptions.whole()
-  .with_bytes_per_row(bpr)
-  .with_rows_per_image(height)
+_opt = TextureWriteOptions.whole().with_bytes_per_row(256).with_rows_per_image(64)
 `}
 lang="python"
 />
@@ -124,7 +106,7 @@ Create an options object that targets the entire texture region.
 code={`
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::TextureWriteOptions;
-let _opt = fragmentcolor::TextureWriteOptions::whole();
+let _opt = TextureWriteOptions::whole();
 Ok(())
 }
 `}
@@ -137,7 +119,7 @@ lang="rust" meta="collapse={1-1, 4-5}"
 <Code
 code={`
 import { TextureWriteOptions } from "fragmentcolor";
-const _opt = fragmentcolor.TextureWriteOptions.whole();
+const _opt = TextureWriteOptions.whole();
 `}
 lang="js"
 />
@@ -148,7 +130,7 @@ lang="js"
 <Code
 code={`
 from fragmentcolor import TextureWriteOptions
-_opt = fragmentcolor.TextureWriteOptions.whole()
+_opt = TextureWriteOptions.whole()
 `}
 lang="python"
 />
@@ -197,14 +179,11 @@ Set the bytes-per-row for the upload. Must be a multiple of 256.
 code={`
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::TextureWriteOptions;
-let width = 64u32; let pixel = 4u32; let stride = width * pixel;
-let align = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT as u32;
-let bpr = ((stride + align - 1) / align) * align;
-let _opt = fragmentcolor::TextureWriteOptions::whole().with_bytes_per_row(bpr);
+let _opt = TextureWriteOptions::whole().with_bytes_per_row(256);
 Ok(())
 }
 `}
-lang="rust" meta="collapse={1-1, 7-8}"
+lang="rust" meta="collapse={1-1, 4-5}"
 />
 
 </TabItem>
@@ -213,10 +192,7 @@ lang="rust" meta="collapse={1-1, 7-8}"
 <Code
 code={`
 import { TextureWriteOptions } from "fragmentcolor";
-const width = 64u32; let pixel = 4u32; let stride = width * pixel;
-const align = wgpu.COPYBYTESPERROWALIGNMENT as u32;
-const bpr = ((stride + align - 1) / align) * align;
-const _opt = fragmentcolor.TextureWriteOptions.whole().withBytesPerRow(bpr);
+const _opt = TextureWriteOptions.whole().withBytesPerRow(256);
 `}
 lang="js"
 />
@@ -227,10 +203,7 @@ lang="js"
 <Code
 code={`
 from fragmentcolor import TextureWriteOptions
-width = 64u32; let pixel = 4u32; let stride = width * pixel
-align = wgpu.COPY_BYTES_PER_ROW_ALIGNMENT as u32
-bpr = ((stride + align - 1) / align) * align
-_opt = fragmentcolor.TextureWriteOptions.whole().with_bytes_per_row(bpr)
+_opt = TextureWriteOptions.whole().with_bytes_per_row(256)
 `}
 lang="python"
 />
@@ -279,12 +252,11 @@ Set the number of rows per image for the upload (usually equals the height).
 code={`
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::TextureWriteOptions;
-let height = 64u32;
-let _opt = fragmentcolor::TextureWriteOptions::whole().with_rows_per_image(height);
+let _opt = TextureWriteOptions::whole().with_rows_per_image(64);
 Ok(())
 }
 `}
-lang="rust" meta="collapse={1-1, 5-6}"
+lang="rust" meta="collapse={1-1, 4-5}"
 />
 
 </TabItem>
@@ -293,8 +265,7 @@ lang="rust" meta="collapse={1-1, 5-6}"
 <Code
 code={`
 import { TextureWriteOptions } from "fragmentcolor";
-const height = 64u32;
-const _opt = fragmentcolor.TextureWriteOptions.whole().withRowsPerImage(height);
+const _opt = TextureWriteOptions.whole().withRowsPerImage(64);
 `}
 lang="js"
 />
@@ -305,8 +276,7 @@ lang="js"
 <Code
 code={`
 from fragmentcolor import TextureWriteOptions
-height = 64u32
-_opt = fragmentcolor.TextureWriteOptions.whole().with_rows_per_image(height)
+_opt = TextureWriteOptions.whole().with_rows_per_image(64)
 `}
 lang="python"
 />

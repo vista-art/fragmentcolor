@@ -1,2 +1,2 @@
 import { TextureWriteOptions } from "fragmentcolor";
-const _opt = fragmentcolor.TextureWriteOptions.whole();
+const _opt = TextureWriteOptions.whole();
