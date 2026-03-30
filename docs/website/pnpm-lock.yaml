@@ -39,8 +39,8 @@ importers:
         specifier: '>=6.0.2 <7.0.0'
         version: 6.0.2
       fragmentcolor:
-        specifier: '>=0.10.10 <1.0.0'
-        version: 0.10.10
+        specifier: '>=0.10.11 <1.0.0'
+        version: 0.10.11
       sharp:
         specifier: '>=0.34.4 <1.0.0'
         version: 0.34.4
@@ -1239,8 +1239,8 @@ packages:
     resolution: {integrity: sha512-Wp1zXWPVUPBmfoa3Cqc9ctaKuzKAV6uLstRqlR56kSjplf5uAce+qeyYym7F+PHbGTk+tCEdkCW6RD7DX/gBZw==}
     engines: {node: '>=20'}
 
-  fragmentcolor@0.10.10:
-    resolution: {integrity: sha512-M0/5UO/gqee+iNdTQi7qIAOMf/UdVg6wlu/8iuvQfErqWZQjBM2UmDv5YuC7Am4au1RdnPtInMTPFfII2DG+Jg==}
+  fragmentcolor@0.10.11:
+    resolution: {integrity: sha512-SKIomaVCRSlG6AlBdCxnZKxSHety8yAe+WdErePEHMNm1DAEqchZQhK07id/VMT0hnpxlE1Uu6kbdPf6LY0WrQ==}
 
   fsevents@2.3.3:
     resolution: {integrity: sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==}
@@ -3757,7 +3757,7 @@ snapshots:
     dependencies:
       tiny-inflate: 1.0.3
 
-  fragmentcolor@0.10.10: {}
+  fragmentcolor@0.10.11: {}
 
   fsevents@2.3.3:
     optional: true
