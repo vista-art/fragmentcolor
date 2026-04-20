@@ -1,6 +1,6 @@
 [package]
 name = "fragmentcolor"
-version = "0.10.11"
+version = "0.11.0"
 homepage = "https://fragmentcolor.org"
 repository = "https://github.com/vista-art/fragmentcolor"
 description = "Easy GPU Rendering for Javascript, Python, Swift and Kotlin"
@@ -14,6 +14,12 @@ edition = "2024"
 [lib]
 name = "fragmentcolor"
 crate-type = ["staticlib", "cdylib", "rlib"]
+
+# uniffi-bindgen CLI entry point. Built when the crate is compiled for a desktop
+# host so mobile build scripts can run `cargo run --bin uniffi-bindgen generate ...`.
+[[bin]]
+name = "uniffi-bindgen"
+path = "uniffi_bindgen.rs"
 
 [workspace]
 resolver = "3"
@@ -60,21 +66,31 @@ numpy = { version = "0.26", optional = true }
 
 # MacOS
 [target.'cfg(target_os = "macos")'.dependencies]
-objc2 = { version = "0.6" }
 objc2-app-kit = { version = "0.3" }
 
-# Android & iOS FFI
+# Apple (MacOS + iOS)
+[target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
+objc2 = { version = "0.6" }
+
+# Android & iOS FFI (uniffi lives here so it's available on every non-wasm target,
+# including desktop so that `cargo run --bin uniffi-bindgen` works locally)
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-# uniffi = { version = "0.29" } // planned for v0.10.8
+uniffi = { version = "0.29", features = ["cli"] }
 winit = { version = "0.30", features = ["serde"], optional = true }
 ureq = { version = "3", default-features = false }
 pollster = { version = "0.4", optional = true }
 
-# iOS Specific (planned for v0.10.8)
-# [target.'cfg(target_os = "ios")'.dependencies]
-# objc = "0.2"
-# objc2-app-kit = "0.3"
-# core-graphics = "0.25"
+# Mobile (iOS + Android) always needs pollster for blocking on adapter/device
+# creation inside sync FFI entry points (uniffi can't marshal non-Send futures).
+[target.'cfg(any(target_os = "ios", target_os = "android"))'.dependencies]
+pollster = "0.4"
+
+# Android Specific
+[target.'cfg(target_os = "android")'.dependencies]
+jni = "0.21"
+jni_fn = "0.1"
+ndk-sys = "0.6"
+raw-window-handle = "0.6"
 
 # WASM-Specific
 [target.'cfg(target_family = "wasm")'.dependencies]
@@ -113,6 +129,7 @@ syn = { version = "2.0", features = ["full"] }
 phf_codegen = "0.13"
 cfg_aliases = "0.2"
 quote = "1"
+uniffi = { version = "0.29", features = ["build"] }
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3"

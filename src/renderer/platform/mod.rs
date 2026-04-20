@@ -6,18 +6,6 @@ pub use all::*;
 #[cfg(wasm)]
 pub mod web;
 
-/// uniffi (Android)
-#[cfg(android)]
-pub mod android;
-#[cfg(android)]
-pub use android::*;
-
-/// uniffi (iOS)
-#[cfg(ios)]
-pub mod ios;
-#[cfg(ios)]
-pub use ios::*;
-
 /// pyo3 (Python)
 #[cfg(python)]
 pub mod python;

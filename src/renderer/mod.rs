@@ -74,6 +74,7 @@ struct ComputePipeline {
 #[derive(Debug, Default)]
 #[cfg_attr(python, pyclass)]
 #[cfg_attr(wasm, wasm_bindgen)]
+#[cfg_attr(mobile, derive(uniffi::Object))]
 #[lsp_doc("docs/api/core/renderer/renderer.md")]
 pub struct Renderer {
     instance: RwLock<Option<Arc<wgpu::Instance>>>,
@@ -341,6 +342,44 @@ impl Renderer {
     > {
         let instance = self.instance().await;
         let surface = instance.create_surface(handle)?;
+        self.configure_surface_with_context(surface, size).await
+    }
+
+    /// Like `create_surface`, but takes an already-constructed `wgpu::Surface`
+    /// (usually one built from a raw pointer via `instance.create_surface_unsafe`).
+    /// Callers are responsible for ensuring the backing window/layer outlives the surface.
+    #[cfg(ios)]
+    pub(crate) async fn configure_unsafe_surface(
+        &self,
+        target: wgpu::SurfaceTargetUnsafe,
+        size: wgpu::Extent3d,
+    ) -> Result<
+        (
+            Arc<RenderContext>,
+            wgpu::Surface<'static>,
+            wgpu::SurfaceConfiguration,
+        ),
+        InitializationError,
+    > {
+        let instance = self.instance().await;
+        // SAFETY: the caller promises the underlying handle (CAMetalLayer / ANativeWindow / ...)
+        // remains valid for the lifetime of the returned Surface.
+        let surface = unsafe { instance.create_surface_unsafe(target)? };
+        self.configure_surface_with_context(surface, size).await
+    }
+
+    async fn configure_surface_with_context<'window>(
+        &self,
+        surface: wgpu::Surface<'window>,
+        size: wgpu::Extent3d,
+    ) -> Result<
+        (
+            Arc<RenderContext>,
+            wgpu::Surface<'window>,
+            wgpu::SurfaceConfiguration,
+        ),
+        InitializationError,
+    > {
         let context = self.context(Some(&surface)).await?;
 
         let adapter = self.adapter.read();

@@ -2,6 +2,13 @@
 //!
 //! Easy GPU Rendering for Javascript, Python, Kotlin, and Swift.
 
+// Uniffi scaffolding for Swift (iOS) and Kotlin (Android).
+// Must be called at crate root. Compiled on every non-wasm target so
+// `cargo run --bin uniffi-bindgen` works on desktop hosts — the generated
+// FFI symbols are only *used* on mobile.
+#[cfg(not(wasm))]
+uniffi::setup_scaffolding!();
+
 /// # Renderer module.
 ///
 /// The Renderer is the main entry point for rendering operations.
