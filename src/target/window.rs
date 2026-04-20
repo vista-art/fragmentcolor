@@ -2,6 +2,7 @@ use crate::{RenderContext, Size, Target, TargetFrame};
 use lsp_doc::lsp_doc;
 use std::sync::Arc;
 
+#[cfg_attr(mobile, derive(uniffi::Object))]
 #[lsp_doc("docs/api/targets/window_target/window_target.md")]
 pub struct WindowTarget {
     pub(crate) context: Arc<RenderContext>,

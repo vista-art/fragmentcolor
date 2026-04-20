@@ -4,6 +4,46 @@
 
 See the [Roadmap](https://github.com/vista-art/fragmentcolor/blob/main/ROADMAP.md) for planned features.
 
+## 0.11.0 Swift & Kotlin with Uniffi
+
+Initial Swift and Kotlin bindings via [uniffi](https://github.com/mozilla/uniffi-rs). Struct names match
+the Rust core (`Renderer`, `Shader`, `Pass`, `Frame`, `Size`, `Region`, `WindowTarget`, `TextureTarget`)
+so the public API reads the same across every supported platform.
+
+### Build system
+
+- Add `uniffi = "0.29"` under non-wasm targets and wire the build-script helpers for scaffolding.
+- Add `uniffi-bindgen` binary and top-level `uniffi.toml` config.
+- Enable `uniffi::setup_scaffolding!()` for all non-wasm builds.
+- Add iOS dependencies: `objc2-foundation`, `objc2-quartz-core`.
+- Add Android dependencies: `jni`, `jni_fn`, `ndk-sys`, `raw-window-handle`.
+
+### API additions (iOS/Android only)
+
+- `Renderer::from_metal_layer(metal_layer_ptr: u64)` (iOS): build a `WindowTarget` from an existing
+  `CAMetalLayer` pointer.
+- `Renderer::from_android_surface(env, surface)` (Android): build a `WindowTarget` from an
+  `android.view.Surface` via JNI (exposed through a raw `#[jni_fn]` entry point since uniffi
+  cannot marshal `JNIEnv*` directly).
+
+### Unfinished work (planned for later 0.11.x / 0.12.0 iterations)
+
+- [ ] `platforms/swift/` Swift Package (SPM + xcframework binary target)
+- [ ] `platforms/kotlin/fragmentcolor/` Android Library gradle module with `jniLibs` + generated Kotlin
+- [ ] `build_ios` script (build for `aarch64-apple-ios` + `aarch64-apple-ios-sim`, bundle xcframework)
+- [ ] `build_android` script (build all 4 Android ABIs via `cargo-ndk`, copy `.so` into `jniLibs`)
+- [ ] Example iOS app under `platforms/swift/examples/`
+- [ ] Example Android app under `platforms/kotlin/examples/`
+- [ ] E2E tests for iOS/Android wrappers
+- [ ] Script to Test, Compile & Publish Android
+- [ ] Script to Test, Compile & Publish iOS
+- [ ] CI workflow integration (publish xcframework / AAR on release)
+- [ ] Contribute struct-rename support to uniffi upstream (if ever needed for naming parity)
+- [ ] Core helper `create_target_from_surface(surface, size)` to deduplicate Web/Python/iOS/Android
+- [ ] Revamp RenderPass API (expose all `wgpu::RenderPass` customizations with sensible defaults)
+- [ ] Specialized alias objects (`Compute`, `RenderPass`, `ComputePass`)
+- [ ] Custom blending
+
 ## 0.10.11 Texture write API, renderer texture updates, and external video textures
 
 ### API additions
