@@ -1,11 +1,12 @@
 //! iOS-specific entry points for uniffi.
 //!
-//! `Renderer::from_metal_layer` takes the raw pointer of a `CAMetalLayer`
+//! `Renderer::create_target_ios` takes the raw pointer of a `CAMetalLayer`
 //! (as `u64`) and returns a fully-configured `WindowTarget`. The Swift side
 //! obtains the pointer with `Unmanaged.passUnretained(layer).toOpaque()`.
 
 use std::sync::Arc;
 
+use lsp_doc::lsp_doc;
 use objc2::encode::{Encode, Encoding, RefEncode};
 use objc2::msg_send;
 use objc2::runtime::AnyObject;
@@ -38,16 +39,12 @@ unsafe impl RefEncode for CGSize {
 
 #[uniffi::export]
 impl Renderer {
-    /// Build a `WindowTarget` from an existing `CAMetalLayer` pointer.
-    ///
-    /// The layer must remain alive for the lifetime of the returned target.
-    /// Swift callers: `UInt64(UInt(bitPattern: Unmanaged.passUnretained(layer).toOpaque()))`.
-    //
     // Exposed as sync because `wgpu::SurfaceTargetUnsafe` is not `Send`
     // (it wraps a raw pointer), so the resulting future can't satisfy
     // uniffi's `Send` bound on async exports. Adapter/device creation is
     // driven by pollster internally.
-    pub fn from_metal_layer(
+    #[lsp_doc("docs/api/core/renderer/hidden/create_target_ios.md")]
+    pub fn create_target_ios(
         self: Arc<Self>,
         metal_layer_ptr: u64,
     ) -> Result<Arc<WindowTarget>, FragmentColorError> {

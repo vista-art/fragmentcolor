@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+# Build FragmentColor for Android: one .so per ABI into the Kotlin module's
+# jniLibs/ tree, plus a single set of generated Kotlin bindings.
+#
+# Requires:
+#   cargo install cargo-ndk
+#   ANDROID_NDK_HOME pointing at a valid NDK installation
+#
+# Produces:
+#   platforms/kotlin/fragmentcolor/src/main/jniLibs/<abi>/libfragmentcolor.so
+#   platforms/kotlin/fragmentcolor/src/main/java/org/fragmentcolor/generated/*.kt
+#
+# Usage:
+#   ./build_android                        # all ABIs
+#   ./build_android aarch64-linux-android  # one target
+
+set -euo pipefail
+
+NAME="fragmentcolor"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BUILD_DIR="$ROOT_DIR/build"
+BINDINGS_DIR="$ROOT_DIR/platforms/kotlin/fragmentcolor/src/main"
+
+CARGO_FLAGS=(--release)
+if [[ -z "${FC_VERBOSE:-}" ]]; then
+  CARGO_FLAGS+=(-q)
+fi
+
+if ! command -v cargo-ndk >/dev/null 2>&1; then
+  echo "build_android: cargo-ndk not on PATH; run 'cargo install cargo-ndk' first" >&2
+  exit 1
+fi
+
+abi_for_target() {
+  case "$1" in
+    aarch64-linux-android)     echo "arm64-v8a" ;;
+    armv7-linux-androideabi)   echo "armeabi-v7a" ;;
+    x86_64-linux-android)      echo "x86_64" ;;
+    i686-linux-android)        echo "x86" ;;
+    *) echo "unknown-abi-for-$1"; return 1 ;;
+  esac
+}
+
+DEFAULT_TARGETS=(
+  aarch64-linux-android
+  armv7-linux-androideabi
+  x86_64-linux-android
+  i686-linux-android
+)
+
+TARGETS=("$@")
+if [[ ${#TARGETS[@]} -eq 0 ]]; then
+  TARGETS=("${DEFAULT_TARGETS[@]}")
+fi
+
+# Build the union of targets with cargo-ndk (one cargo invocation).
+NDK_ARGS=()
+for t in "${TARGETS[@]}"; do
+  NDK_ARGS+=(--target "$t")
+done
+
+echo "==> Building for ${#TARGETS[@]} Android ABI(s)"
+CARGO_TARGET_DIR="$BUILD_DIR" \
+  cargo ndk "${NDK_ARGS[@]}" \
+  build "${CARGO_FLAGS[@]}"
+
+echo "==> Copying .so files into jniLibs/"
+for t in "${TARGETS[@]}"; do
+  abi=$(abi_for_target "$t")
+  mkdir -p "$BINDINGS_DIR/jniLibs/$abi"
+  cp "$BUILD_DIR/$t/release/lib$NAME.so" \
+     "$BINDINGS_DIR/jniLibs/$abi/lib$NAME.so"
+done
+
+echo "==> Regenerating Kotlin bindings"
+first_abi=$(abi_for_target "${TARGETS[0]}")
+rm -rf "$BINDINGS_DIR/java/org/fragmentcolor/generated"
+mkdir -p "$BINDINGS_DIR/java"
+cargo run "${CARGO_FLAGS[@]}" \
+  --bin uniffi-bindgen generate \
+  --library "$BINDINGS_DIR/jniLibs/$first_abi/lib$NAME.so" \
+  --config "$ROOT_DIR/uniffi.toml" \
+  --language kotlin \
+  --out-dir "$BINDINGS_DIR/java"
+
+echo "build_android: done — bindings at $BINDINGS_DIR/java/org/fragmentcolor/"
