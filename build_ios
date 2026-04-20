@@ -1,0 +1,88 @@
+#!/usr/bin/env bash
+# Build FragmentColor for iOS: one static library per arch, one Swift
+# binding set, one xcframework. Depends on Xcode + a working `cargo` that
+# can target `aarch64-apple-ios` and `aarch64-apple-ios-sim` (both are in
+# `rust-toolchain`).
+#
+# Produces:
+#   build/ios/fragmentcolor.xcframework
+#   platforms/swift/Sources/FragmentColor/generated/*.swift
+#
+# Usage:
+#   ./build_ios                 # release build
+#   FC_VERBOSE=1 ./build_ios    # verbose cargo output
+
+set -euo pipefail
+
+NAME="fragmentcolor"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BUILD_DIR="$ROOT_DIR/build"
+SWIFT_GENERATED="$ROOT_DIR/platforms/swift/Sources/FragmentColor/generated"
+
+CARGO_FLAGS=(--release)
+if [[ -z "${FC_VERBOSE:-}" ]]; then
+  CARGO_FLAGS+=(-q)
+fi
+
+if ! command -v xcodebuild >/dev/null 2>&1; then
+  echo "build_ios: xcodebuild not on PATH; install Xcode first" >&2
+  exit 1
+fi
+
+build_target() {
+  local target="$1"
+  IPHONEOS_DEPLOYMENT_TARGET="16.0" \
+    CARGO_TARGET_DIR="$BUILD_DIR" \
+    cargo build "${CARGO_FLAGS[@]}" --target "$target"
+}
+
+generate_swift_bindings() {
+  local target="$1"
+  local lib_path="$BUILD_DIR/$target/release/lib$NAME.a"
+  cargo run "${CARGO_FLAGS[@]}" \
+    --bin uniffi-bindgen generate \
+    --library "$lib_path" \
+    --config "$ROOT_DIR/uniffi.toml" \
+    --language swift \
+    --out-dir "$BUILD_DIR/$target/release/"
+}
+
+assemble_framework() {
+  local target="$1"
+  local target_dir="$BUILD_DIR/$target/release"
+  local framework_dir="$target_dir/$NAME.framework"
+
+  rm -rf "$framework_dir"
+  mkdir -p "$framework_dir/Headers"
+
+  cp "$target_dir/lib$NAME.a" "$framework_dir/$NAME"
+  find "$target_dir" -maxdepth 1 -name "*.modulemap" -exec cat {} \; \
+    >"$framework_dir/Headers/module.modulemap"
+  find "$target_dir" -maxdepth 1 -name "*.h" -exec cp {} "$framework_dir/Headers/" \;
+}
+
+echo "==> Building for aarch64-apple-ios"
+build_target "aarch64-apple-ios"
+generate_swift_bindings "aarch64-apple-ios"
+assemble_framework "aarch64-apple-ios"
+
+echo "==> Building for aarch64-apple-ios-sim"
+build_target "aarch64-apple-ios-sim"
+generate_swift_bindings "aarch64-apple-ios-sim"
+assemble_framework "aarch64-apple-ios-sim"
+
+echo "==> Bundling xcframework"
+rm -rf "$BUILD_DIR/ios"
+mkdir -p "$BUILD_DIR/ios"
+
+xcodebuild -create-xcframework \
+  -framework "$BUILD_DIR/aarch64-apple-ios/release/$NAME.framework" \
+  -framework "$BUILD_DIR/aarch64-apple-ios-sim/release/$NAME.framework" \
+  -output "$BUILD_DIR/ios/$NAME.xcframework"
+
+echo "==> Copying generated Swift sources"
+rm -rf "$SWIFT_GENERATED"
+mkdir -p "$SWIFT_GENERATED"
+cp "$BUILD_DIR/aarch64-apple-ios/release/"*.swift "$SWIFT_GENERATED/"
+
+echo "build_ios: done — xcframework at $BUILD_DIR/ios/$NAME.xcframework"

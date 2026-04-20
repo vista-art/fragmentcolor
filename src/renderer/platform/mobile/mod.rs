@@ -8,8 +8,17 @@
 //! (uniffi cannot marshal `JNIEnv*`). It is implemented in the `android`
 //! submodule as a raw `#[jni_fn]` entry point that returns an `Arc` pointer;
 //! the Kotlin side reconstructs the `WindowTarget` from that pointer.
+//!
+//! Naming convention mirrors the Web/Python platform modules: mobile-specific
+//! methods carry a `_mobile` / `_ios` / `_android` suffix on the Rust side
+//! and are wrapped by idiomatic Swift/Kotlin extension files on the binding
+//! side. The hidden per-language docs under
+//! `docs/api/core/{object}/hidden/<method>.md` satisfy the build-time
+//! documentation validator without polluting the main website.
 
 use std::sync::Arc;
+
+use lsp_doc::lsp_doc;
 
 use crate::{Renderer, Shader, Size, TextureTarget, WindowTarget};
 
@@ -45,13 +54,17 @@ impl From<crate::ShaderError> for FragmentColorError {
 
 #[uniffi::export]
 impl Renderer {
-    /// Create a new Renderer (Swift/Kotlin default constructor).
+    /// Mobile-only constructor. Swift/Kotlin extension files re-expose this
+    /// as the natural `Renderer()` default initializer.
     #[uniffi::constructor]
-    pub fn create() -> Arc<Self> {
+    #[lsp_doc("docs/api/core/renderer/hidden/new_mobile.md")]
+    pub fn new_mobile() -> Arc<Self> {
         Arc::new(Self::new())
     }
 
-    /// Create a headless `TextureTarget` sized `width` × `height`.
+    /// Create a headless `TextureTarget` sized `width` × `height`. Uniffi-friendly
+    /// concrete-typed variant of `create_texture_target`.
+    #[lsp_doc("docs/api/core/renderer/hidden/create_texture_target_mobile.md")]
     pub async fn create_texture_target_mobile(
         self: Arc<Self>,
         width: u32,
@@ -64,8 +77,13 @@ impl Renderer {
         Ok(Arc::new(tex))
     }
 
-    /// Render a Shader into a WindowTarget.
-    pub fn render_shader_to_window(
+    /// Mobile variant of `render` targeting a `WindowTarget`. Since uniffi
+    /// cannot marshal `&impl Renderable` / `&impl Target`, mobile bindings
+    /// get concrete method pairs per renderable × target combination. A
+    /// Swift/Kotlin extension file recombines them into a single idiomatic
+    /// `render(shader, target)` overload.
+    #[lsp_doc("docs/api/core/renderer/hidden/render_shader_mobile.md")]
+    pub fn render_shader_mobile(
         &self,
         shader: Arc<Shader>,
         target: Arc<WindowTarget>,
@@ -74,24 +92,14 @@ impl Renderer {
             .map_err(FragmentColorError::from)
     }
 
-    /// Render a Shader into a TextureTarget.
-    pub fn render_shader_to_texture(
+    /// Mobile variant of `render` targeting a `TextureTarget`.
+    #[lsp_doc("docs/api/core/renderer/hidden/render_shader_texture_mobile.md")]
+    pub fn render_shader_texture_mobile(
         &self,
         shader: Arc<Shader>,
         target: Arc<TextureTarget>,
     ) -> Result<(), FragmentColorError> {
         self.render(shader.as_ref(), target.as_ref())
-            .map_err(FragmentColorError::from)
-    }
-}
-
-#[uniffi::export]
-impl Shader {
-    /// Build a Shader from source (WGSL or GLSL).
-    #[uniffi::constructor]
-    pub fn from_source(source: String) -> Result<Arc<Self>, FragmentColorError> {
-        Shader::new(&source)
-            .map(Arc::new)
             .map_err(FragmentColorError::from)
     }
 }
