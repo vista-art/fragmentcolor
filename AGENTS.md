@@ -1,6 +1,6 @@
 # AGENTS.md
 
-This file provides guidance to WARP (warp.dev) when working with code in this repository.
+This file is the top-level guide for any AI coding agent (Claude Code, WARP, Cursor, Copilot CLI, …) working in this repository. Per-module rules live in sibling `AGENTS.md` files (see the "Module-level invariants" section below).
 
 Project summary
 - Crate: fragmentcolor (library) with examples in examples/rust (crate fce).
@@ -71,14 +71,14 @@ Big‑picture architecture (how things fit together)
 - CI gates (what must pass on PR)
   - Clippy with warnings denied; rustfmt check; `cargo test` for Rust; build several example binaries; Web healthcheck (Playwright); Python wheel healthcheck; iOS healthcheck (xcodebuild); Android healthcheck (gradle); dependency license audit (cargo‑deny). Release jobs publish to crates.io, npm, PyPI, CocoaPods / Swift Package Index, and Maven Central.
 
-Module‑level invariants (authoritative WARP.md files)
+Module‑level invariants (authoritative AGENTS.md files)
 - These short rule files are the source of truth for non‑negotiable behavior. Do not introduce code that violates them.
-  - src/renderer/WARP.md (pipelines, targets/present, MSAA/resolve, bind‑group hygiene, thin public API)
-  - src/shader/WARP.md (mesh ownership, strict attach‑time validation, reflection/mapping order, precise errors)
-  - src/mesh/WARP.md (schema derivation, CPU/GPU buffer packing/caching, instance handling, validation contract)
-  - src/pass/WARP.md (role, targets, compute vs render, delegation to Shader)
-  - src/frame/WARP.md (DAG semantics, presentation rules, error surface)
-  - src/texture/WARP.md (creation via Renderer, binding/sampling, MSAA/resolve lifecycle)
+  - src/renderer/AGENTS.md (pipelines, targets/present, MSAA/resolve, bind‑group hygiene, thin public API)
+  - src/shader/AGENTS.md (mesh ownership, strict attach‑time validation, reflection/mapping order, precise errors)
+  - src/mesh/AGENTS.md (schema derivation, CPU/GPU buffer packing/caching, instance handling, validation contract)
+  - src/pass/AGENTS.md (role, targets, compute vs render, delegation to Shader)
+  - src/frame/AGENTS.md (DAG semantics, presentation rules, error surface)
+  - src/texture/AGENTS.md (creation via Renderer, binding/sampling, MSAA/resolve lifecycle)
 
 Conventions you’ll see enforced in code
 - Library code avoids unwrap/expect/panic and returns typed errors (thiserror). parking_lot is used for locks. Clippy must be clean; fixers are provided.
@@ -89,4 +89,4 @@ Conventions you’ll see enforced in code
 - Mobile-specific methods (e.g. `Renderer.from_metal_layer` on iOS) live behind `#[cfg(ios)]` / `#[cfg(android)]` in `src/platforms/mobile/` and still require a `docs/api/core/renderer/from_metal_layer.md` page with `## Example` blocks in Rust, Swift, and Kotlin.
 
 Notes and tiny suggestions
-- The per‑module WARP.md files are concise and clear. Keep them authoritative and link to them from PRs when changes touch those areas. No immediate revisions needed.
+- The per‑module AGENTS.md files are concise and clear. Keep them authoritative and link to them from PRs when changes touch those areas. Refresh the relevant module file in the same commit whenever the invariants change.
