@@ -70,15 +70,23 @@ run_ios() {
     return 0
   fi
 
-  # Rebuild the xcframework + regenerate Swift bindings, then run the
-  # SPM healthcheck executable against an iOS simulator. Exit code from
-  # the Swift runner drives pass/fail.
-  if bash "$ROOT_DIR/build_ios" >/dev/null 2>&1 \
-     && xcodebuild \
-          -scheme fragmentcolor-healthcheck \
-          -destination "platform=iOS Simulator,name=iPhone 15" \
-          -workspace "$ROOT_DIR/platforms/swift/healthcheck" \
-          test >/dev/null 2>&1; then
+  # Compile-only check. SPM can't run tests on iOS Simulator without a
+  # wrapping Xcode project (tracked as follow-up in the CHANGELOG); for
+  # now we verify that `./build_ios` produces a working xcframework and
+  # that the Swift Package at `platforms/swift/` links against it cleanly
+  # for the simulator SDK. The Swift-side extensions + generated uniffi
+  # sources all type-check here, which catches the majority of binding
+  # regressions.
+  if ! bash "$ROOT_DIR/build_ios"; then
+    log_test_fail "$name"
+    return 1
+  fi
+
+  if (cd "$ROOT_DIR/platforms/swift" \
+        && xcodebuild \
+             -scheme FragmentColor \
+             -destination "generic/platform=iOS Simulator" \
+             build); then
     log_test_ok "$name"
     return 0
   else
