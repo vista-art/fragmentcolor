@@ -84,18 +84,16 @@ jobs:
           # Only build for the emulator's ABI in CI to keep the job fast.
           ./build_android x86_64-linux-android
 
-      # The Kotlin workspace ships without a committed Gradle wrapper
-      # (keeps the repo lean). Generate one once so `./gradlew` works
-      # inside the emulator runner.
-      - name: Generate Gradle wrapper
-        run: |
-          cd platforms/kotlin
-          gradle wrapper --gradle-version 8.5
-
       # `reactivecircus/android-emulator-runner` creates the AVD, boots the
       # emulator, waits for `sys.boot_completed=1`, and runs the supplied
       # script with the emulator as the connected device. It tears the
       # emulator down on exit so a stuck AVD doesn't stall the runner.
+      #
+      # NOTE: each line in `script:` is executed via `sh -c "<line>"`, so
+      # `cd` does NOT persist between lines. Chain with `&&` (or use a
+      # subshell) so the working directory carries forward. Also use
+      # `gradle` directly — setup-gradle already exposes it and we don't
+      # need the wrapper round-trip.
       - name: Run connectedAndroidTest on emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -106,9 +104,7 @@ jobs:
           force-avd-creation: false
           disable-animations: true
           emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect
-          script: |
-            cd platforms/kotlin
-            ./gradlew fragmentcolor:connectedAndroidTest --stacktrace
+          script: cd platforms/kotlin && gradle fragmentcolor:connectedAndroidTest --stacktrace
 
       - name: Upload generated Kotlin bindings (for inspection)
         if: always()

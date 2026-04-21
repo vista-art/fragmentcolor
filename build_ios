@@ -57,22 +57,34 @@ generate_swift_bindings() {
 # `import FragmentColorFFI` resolves. Xcode identifies a framework module
 # by the `.framework` directory name, the binary file inside it, and the
 # top-level module declaration in `module.modulemap` — all three must
-# match `FFI_NAME`.
+# match `FFI_NAME`. The standard iOS framework layout is:
+#
+#   <Name>.framework/
+#     <Name>          (binary — for static frameworks this is the .a content)
+#     Info.plist
+#     Headers/<Name>.h
+#     Modules/module.modulemap
 assemble_framework() {
   local target="$1"
   local target_dir="$BUILD_DIR/$target/release"
   local framework_dir="$target_dir/$FFI_NAME.framework"
 
+  local platform="iPhoneOS"
+  if [[ "$target" == *-sim ]]; then
+    platform="iPhoneSimulator"
+  fi
+
   rm -rf "$framework_dir"
-  mkdir -p "$framework_dir/Headers"
+  mkdir -p "$framework_dir/Headers" "$framework_dir/Modules"
 
   cp "$target_dir/lib$RUST_NAME.a" "$framework_dir/$FFI_NAME"
 
-  # uniffi emits `fragmentcolorFFI.modulemap` (module name derived from the
-  # crate name). Rewrite the top-level `module <name>` declaration to
-  # `framework module FragmentColorFFI` so Xcode treats it as the
-  # framework's module map and the Swift `import FragmentColorFFI`
-  # resolves.
+  # uniffi emits `<ModuleName>FFI.modulemap` containing
+  # `module <ModuleName>FFI { header "<ModuleName>FFI.h" ... }`.
+  # Rewrite to `framework module ...` and place it under Modules/ so
+  # Xcode's framework loader picks it up (Headers/module.modulemap is
+  # ignored by xcodebuild for frameworks; that path only works for
+  # plain header directories).
   local src_map
   src_map=$(find "$target_dir" -maxdepth 1 -name "*.modulemap" | head -1)
   if [[ -z "$src_map" ]]; then
@@ -80,9 +92,31 @@ assemble_framework() {
     exit 1
   fi
   sed -E "s/^module [A-Za-z0-9_]+ *\\{/framework module $FFI_NAME \\{/" \
-    "$src_map" > "$framework_dir/Headers/module.modulemap"
+    "$src_map" > "$framework_dir/Modules/module.modulemap"
 
   find "$target_dir" -maxdepth 1 -name "*.h" -exec cp {} "$framework_dir/Headers/" \;
+
+  # xcodebuild rejects a framework without an Info.plist. Generate a
+  # minimal one parameterised by the SDK platform so the device + sim
+  # variants advertise the right `CFBundleSupportedPlatforms`.
+  cat > "$framework_dir/Info.plist" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleDevelopmentRegion</key><string>en</string>
+  <key>CFBundleExecutable</key><string>$FFI_NAME</string>
+  <key>CFBundleIdentifier</key><string>org.fragmentcolor.$FFI_NAME</string>
+  <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+  <key>CFBundleName</key><string>$FFI_NAME</string>
+  <key>CFBundlePackageType</key><string>FMWK</string>
+  <key>CFBundleShortVersionString</key><string>1.0</string>
+  <key>CFBundleSupportedPlatforms</key><array><string>$platform</string></array>
+  <key>CFBundleVersion</key><string>1</string>
+  <key>MinimumOSVersion</key><string>16.0</string>
+</dict>
+</plist>
+EOF
 }
 
 echo "==> Building for aarch64-apple-ios"

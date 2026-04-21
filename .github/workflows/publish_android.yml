@@ -78,15 +78,10 @@ jobs:
           chmod +x ./build_android
           ./build_android
 
-      - name: Generate Gradle wrapper
-        run: |
-          cd platforms/kotlin
-          gradle wrapper --gradle-version 8.5
-
       - name: Assemble AAR
         run: |
           cd platforms/kotlin
-          ./gradlew fragmentcolor:assembleRelease
+          gradle fragmentcolor:assembleRelease
 
       - name: Rename AAR
         id: aar
