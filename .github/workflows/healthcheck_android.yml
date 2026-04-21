@@ -69,8 +69,14 @@ jobs:
       - name: Install cargo-ndk
         run: cargo install cargo-ndk --locked
 
+      # Pin Gradle 8.x: Android Gradle Plugin 8.2.x (used in
+      # platforms/kotlin/build.gradle) is incompatible with Gradle 9.x —
+      # `setup-gradle@v3` defaults to the newest stable, which is 9.4.1
+      # at the moment and breaks `:debugAndroidTestRuntimeClasspath`.
       - name: Gradle cache
         uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: "8.10"
 
       - name: Enable KVM
         run: |

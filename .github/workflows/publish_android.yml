@@ -70,8 +70,11 @@ jobs:
       - name: Install cargo-ndk
         run: cargo install cargo-ndk --locked
 
+      # Pin Gradle 8.x — AGP 8.2.x is incompatible with Gradle 9.x.
       - name: Gradle cache
         uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: "8.10"
 
       - name: Build .so for all 4 ABIs + regenerate Kotlin bindings
         run: |
