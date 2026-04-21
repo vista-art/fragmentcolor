@@ -23,8 +23,13 @@ jobs:
     # ubuntu-latest supports KVM acceleration for the Android emulator.
     runs-on: ubuntu-latest
     env:
-      API_LEVEL: "29"
-      TARGET: "default"
+      # `google_apis` ships a system image with working Vulkan emulation via
+      # SwiftShader; `default` does not, so wgpu's adapter/device request
+      # returns `Failed to create device` even though the AVD boots.
+      # API 33 has the most stable host-side GPU translation in current
+      # `reactivecircus/android-emulator-runner` releases.
+      API_LEVEL: "33"
+      TARGET: "google_apis"
       ARCH: "x86_64"
       NDK_VERSION: "27.2.12479018"
     steps:
@@ -109,8 +114,11 @@ jobs:
           profile: pixel
           force-avd-creation: false
           disable-animations: true
+          # `swiftshader_indirect` provides software OpenGL ES + Vulkan that
+          # wgpu can target on the emulator. Pair with `google_apis` system
+          # image (see env above) so the Vulkan loader is present.
           emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect
-          script: cd platforms/kotlin && gradle fragmentcolor:connectedAndroidTest --stacktrace
+          script: cd platforms/kotlin && WGPU_BACKEND=vulkan gradle fragmentcolor:connectedAndroidTest --stacktrace
 
       - name: Upload generated Kotlin bindings (for inspection)
         if: always()
