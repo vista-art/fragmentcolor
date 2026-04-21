@@ -21,7 +21,8 @@ private object RendererJni {
 /**
  * Build a [WindowTarget] from an [android.view.Surface]. Wraps the raw JNI
  * entry point that uniffi cannot expose directly because it needs access
- * to the `JNIEnv*` pointer.
+ * to the `JNIEnv*` pointer. Pairs with the iOS `Renderer.createTarget(layer:)`
+ * extension so the same call site compiles on both platforms.
  */
 fun Renderer.createTarget(surface: Surface): WindowTarget {
     val ptr = RendererJni.create_window_target_from_surface(surface)
@@ -30,19 +31,16 @@ fun Renderer.createTarget(surface: Surface): WindowTarget {
 }
 
 /**
- * Headless texture target. Matches the JS / Python spelling.
- */
-suspend fun Renderer.createTextureTarget(width: UInt, height: UInt): TextureTarget =
-    createTextureTargetMobile(width, height)
-
-/**
- * Single render(...) overload that dispatches to the correct uniffi
- * method based on the target type.
+ * Render a [Shader] into a [WindowTarget]. Single overloaded render(...)
+ * dispatch that matches the spelling used by the JavaScript and Python
+ * bindings. The uniffi layer exports one concrete method per
+ * (renderable × target) combination — see the module docs in
+ * `src/renderer/platform/mobile/mod.rs` for the rationale.
  */
 fun Renderer.render(shader: Shader, target: WindowTarget) {
-    renderShaderMobile(shader, target)
+    renderShader(shader, target)
 }
 
 fun Renderer.render(shader: Shader, target: TextureTarget) {
-    renderShaderTextureMobile(shader, target)
+    renderShaderToTexture(shader, target)
 }

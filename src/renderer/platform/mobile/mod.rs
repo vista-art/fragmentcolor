@@ -11,10 +11,12 @@
 //!
 //! Naming convention mirrors the Web/Python platform modules: mobile-specific
 //! methods carry a `_mobile` / `_ios` / `_android` suffix on the Rust side
-//! and are wrapped by idiomatic Swift/Kotlin extension files on the binding
-//! side. The hidden per-language docs under
-//! `docs/api/core/{object}/hidden/<method>.md` satisfy the build-time
-//! documentation validator without polluting the main website.
+//! so the build-time doc scanner can keep them separate from the Rust-only
+//! API, and every uniffi export carries an explicit `name = "..."` attribute
+//! to expose an idiomatic camelCase name in Swift and Kotlin. The hidden
+//! per-language docs under `docs/api/core/{object}/hidden/<method>.md`
+//! satisfy the build-time documentation validator without polluting the
+//! main website.
 
 use std::sync::Arc;
 
@@ -54,16 +56,20 @@ impl From<crate::ShaderError> for FragmentColorError {
 
 #[uniffi::export]
 impl Renderer {
-    /// Mobile-only constructor. Swift/Kotlin extension files re-expose this
-    /// as the natural `Renderer()` default initializer.
-    #[uniffi::constructor]
+    /// Foreign bindings see this as `Renderer.new()`. On Swift, uniffi
+    /// generates a `convenience init` when the name is `new`, so callers
+    /// write `let r = Renderer()`. Kotlin gets a companion `Renderer.new()`
+    /// factory that the extension in `RendererExtensions.kt` wraps.
+    #[uniffi::constructor(name = "new")]
     #[lsp_doc("docs/api/core/renderer/hidden/new_mobile.md")]
     pub fn new_mobile() -> Arc<Self> {
         Arc::new(Self::new())
     }
 
-    /// Create a headless `TextureTarget` sized `width` × `height`. Uniffi-friendly
-    /// concrete-typed variant of `create_texture_target`.
+    /// Create a headless `TextureTarget` sized `width` × `height`. Uniffi
+    /// cannot marshal `impl Into<Size>`, so the mobile entry point accepts
+    /// width/height as `u32` primitives and builds the `Size` internally.
+    #[uniffi::method(name = "createTextureTarget")]
     #[lsp_doc("docs/api/core/renderer/hidden/create_texture_target_mobile.md")]
     pub async fn create_texture_target_mobile(
         self: Arc<Self>,
@@ -77,11 +83,11 @@ impl Renderer {
         Ok(Arc::new(tex))
     }
 
-    /// Mobile variant of `render` targeting a `WindowTarget`. Since uniffi
-    /// cannot marshal `&impl Renderable` / `&impl Target`, mobile bindings
-    /// get concrete method pairs per renderable × target combination. A
-    /// Swift/Kotlin extension file recombines them into a single idiomatic
-    /// `render(shader, target)` overload.
+    /// Render into a `WindowTarget`. Uniffi cannot marshal `&impl Renderable`
+    /// / `&impl Target`, so mobile bindings ship a pair of concrete methods
+    /// (one per target type); the Swift / Kotlin extension files merge them
+    /// back into a single overloaded `render(shader, target)` for callers.
+    #[uniffi::method(name = "renderShader")]
     #[lsp_doc("docs/api/core/renderer/hidden/render_shader_mobile.md")]
     pub fn render_shader_mobile(
         &self,
@@ -92,7 +98,9 @@ impl Renderer {
             .map_err(FragmentColorError::from)
     }
 
-    /// Mobile variant of `render` targeting a `TextureTarget`.
+    /// Render into a `TextureTarget` (see `render_shader_mobile` for the
+    /// rationale behind the concrete method split).
+    #[uniffi::method(name = "renderShaderToTexture")]
     #[lsp_doc("docs/api/core/renderer/hidden/render_shader_texture_mobile.md")]
     pub fn render_shader_texture_mobile(
         &self,
