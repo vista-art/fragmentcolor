@@ -914,6 +914,8 @@ mod website {
         match lang_suffix {
             "js" => Some(crate::convert::to_js(&items)),
             "py" => Some(crate::convert::to_py(&items)),
+            "swift" => Some(crate::convert::to_swift(&items)),
+            "kotlin" => Some(crate::convert::to_kotlin(&items)),
             _ => Some(code),
         }
     }
@@ -989,32 +991,34 @@ mod website {
         ex_js.insert(js_rel.clone());
         ex_py.insert(py_rel.clone());
 
-        // Swift/Kotlin placeholders
-        let sk_rel = if cat_rel.is_empty() {
-            format!("{}/{}.txt", obj_dir_slug, file_stem)
+        // Swift/Kotlin: transpile from the same Rust items that produced
+        // the JS/Python outputs (uses the JS output internally as a
+        // starting point — see scripts/swift.rs and scripts/kotlin.rs).
+        let swift_code = read_lang_override(root, cat_rel, obj_dir_slug, file_stem, "swift")
+            .unwrap_or_else(|| crate::convert::to_swift(items));
+        let kotlin_code = read_lang_override(root, cat_rel, obj_dir_slug, file_stem, "kotlin")
+            .unwrap_or_else(|| crate::convert::to_kotlin(items));
+
+        let swift_rel = if cat_rel.is_empty() {
+            format!("{}/{}.swift", obj_dir_slug, file_stem)
         } else {
-            format!("{}/{}/{}.txt", cat_rel, obj_dir_slug, file_stem)
+            format!("{}/{}/{}.swift", cat_rel, obj_dir_slug, file_stem)
         };
-        let swift_abs = root.join("platforms/swift/examples").join(&sk_rel);
-        let kotlin_abs = root.join("platforms/kotlin/examples").join(&sk_rel);
+        let kotlin_rel = if cat_rel.is_empty() {
+            format!("{}/{}.kt", obj_dir_slug, file_stem)
+        } else {
+            format!("{}/{}/{}.kt", cat_rel, obj_dir_slug, file_stem)
+        };
+        let swift_abs = root.join("platforms/swift/examples").join(&swift_rel);
+        let kotlin_abs = root.join("platforms/kotlin/examples").join(&kotlin_rel);
         if let Some(parent) = swift_abs.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
         if let Some(parent) = kotlin_abs.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
-        if !swift_abs.exists() {
-            let _ =
-                super::meta::write_if_changed(&swift_abs, "// Swift placeholder: bindings WIP\n");
-        }
-        if !kotlin_abs.exists() {
-            let _ =
-                super::meta::write_if_changed(&kotlin_abs, "// Kotlin placeholder: bindings WIP\n");
-        }
-        let swift_code = std::fs::read_to_string(&swift_abs)
-            .unwrap_or_else(|_| "// Swift placeholder: bindings WIP\n".to_string());
-        let kotlin_code = std::fs::read_to_string(&kotlin_abs)
-            .unwrap_or_else(|_| "// Kotlin placeholder: bindings WIP\n".to_string());
+        let _ = super::meta::write_if_changed(&swift_abs, &swift_code);
+        let _ = super::meta::write_if_changed(&kotlin_abs, &kotlin_code);
 
         // Build Tabs snippet
         let mut tabs = String::new();
@@ -1042,18 +1046,16 @@ mod website {
         tabs.push_str("\n`}\nlang=\"python\"\n/>\n\n</TabItem>\n\n");
 
         tabs.push_str("<TabItem label=\"Swift\">\n");
-        tabs.push_str("<Aside type=\"caution\" title=\"Work in progress\">Swift bindings are not yet available; implementation is in the works.</Aside>\n");
         tabs.push_str("<Code\n");
         tabs.push_str("code={`\n");
-        tabs.push_str(&swift_code);
-        tabs.push_str("\n`}\nlang=\"text\"\n/>\n\n</TabItem>\n\n");
+        tabs.push_str(&sanitize_for_template(&swift_code));
+        tabs.push_str("\n`}\nlang=\"swift\"\n/>\n\n</TabItem>\n\n");
 
         tabs.push_str("<TabItem label=\"Kotlin\">\n");
-        tabs.push_str("<Aside type=\"caution\" title=\"Work in progress\">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>\n");
         tabs.push_str("<Code\n");
         tabs.push_str("code={`\n");
-        tabs.push_str(&kotlin_code);
-        tabs.push_str("\n`}\nlang=\"text\"\n/>\n\n</TabItem>\n\n");
+        tabs.push_str(&sanitize_for_template(&kotlin_code));
+        tabs.push_str("\n`}\nlang=\"kotlin\"\n/>\n\n</TabItem>\n\n");
 
         tabs.push_str("</Tabs>\n\n");
         tabs

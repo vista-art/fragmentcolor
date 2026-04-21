@@ -15,6 +15,28 @@ mod convert {
         convert(items, Lang::Py)
     }
 
+    /// Transpile a Rust example into idiomatic Swift for the website tabs
+    /// and the `platforms/swift/examples/` healthcheck inputs.
+    ///
+    /// Implemented as a post-processor on top of `to_js` since Swift and JS
+    /// share the same control-flow shape in our examples — only a handful
+    /// of syntactic swaps differ (`const` → `let`, `new Type(...)` →
+    /// `Type(...)`, `await` → `try await`, `null` → `nil`, import rewrite,
+    /// backtick template literals → `"""..."""`).
+    pub fn to_swift(items: &[(String, bool)]) -> String {
+        super::swift::js_to_swift(&to_js(items))
+    }
+
+    /// Transpile a Rust example into idiomatic Kotlin.
+    ///
+    /// Same strategy as `to_swift`: start from the JS output, post-process
+    /// a small set of lexical swaps (`const` → `val`, drop `new`, drop
+    /// trailing `;`, rewrite the import statement, swap backticks for
+    /// triple-quoted raw strings).
+    pub fn to_kotlin(items: &[(String, bool)]) -> String {
+        super::kotlin::js_to_kotlin(&to_js(items))
+    }
+
     fn is_ident_char(c: char) -> bool {
         c.is_ascii_alphanumeric() || c == '_'
     }

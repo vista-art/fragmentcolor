@@ -107,6 +107,8 @@ fn generate_docs() {
 include!("scripts/no_panics.rs");
 include!("scripts/codegen.rs");
 include!("scripts/convert.rs");
+include!("scripts/swift.rs");
+include!("scripts/kotlin.rs");
 include!("scripts/validation.rs");
 include!("scripts/website.rs");
 include!("scripts/meta.rs");
