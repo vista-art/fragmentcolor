@@ -94,25 +94,43 @@ lang="python"
 </TabItem>
 
 <TabItem label="Swift">
-<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Swift placeholder â bindings WIP
 
+import FragmentColor
+
+let renderer = Renderer()
+let target = try await renderer.createTextureTarget([100, 100])
+
+let pass1 = Pass("first")
+let pass2 = Pass("second")
+
+let frame = Frame()
+frame.addPass(pass1)
+frame.addPass(pass2)
 `}
-lang="text"
+lang="swift"
 />
 
 </TabItem>
 
 <TabItem label="Kotlin">
-<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Kotlin placeholder â bindings WIP
 
+import org.fragmentcolor.*
+
+val renderer = Renderer()
+val target = renderer.createTextureTarget([100, 100])
+
+val pass1 = Pass("first")
+val pass2 = Pass("second")
+
+val frame = Frame()
+frame.addPass(pass1)
+frame.addPass(pass2)
 `}
-lang="text"
+lang="kotlin"
 />
 
 </TabItem>
@@ -172,25 +190,25 @@ lang="python"
 </TabItem>
 
 <TabItem label="Swift">
-<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Swift placeholder â bindings WIP
+import FragmentColor
 
+let frame = Frame()
 `}
-lang="text"
+lang="swift"
 />
 
 </TabItem>
 
 <TabItem label="Kotlin">
-<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Kotlin placeholder â bindings WIP
+import org.fragmentcolor.*
 
+val frame = Frame()
 `}
-lang="text"
+lang="kotlin"
 />
 
 </TabItem>
@@ -262,25 +280,35 @@ lang="python"
 </TabItem>
 
 <TabItem label="Swift">
-<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Swift placeholder â bindings WIP
+import FragmentColor
 
+let pass1 = Pass("first")
+let pass2 = Pass("second")
+
+let frame = Frame()
+frame.addPass(pass1)
+frame.addPass(pass2)
 `}
-lang="text"
+lang="swift"
 />
 
 </TabItem>
 
 <TabItem label="Kotlin">
-<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Kotlin placeholder â bindings WIP
+import org.fragmentcolor.*
 
+val pass1 = Pass("first")
+val pass2 = Pass("second")
+
+val frame = Frame()
+frame.addPass(pass1)
+frame.addPass(pass2)
 `}
-lang="text"
+lang="kotlin"
 />
 
 </TabItem>

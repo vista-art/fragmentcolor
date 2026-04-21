@@ -79,25 +79,31 @@ lang="python"
 </TabItem>
 
 <TabItem label="Swift">
-<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Swift placeholder: bindings WIP
+import FragmentColor
 
+let mesh = Mesh()
+mesh.addVertex([0.0, 0.5, 0.0])
+mesh.addVertex([-0.5, -0.5, 0.0])
+mesh.addVertex([0.5, -0.5, 0.0])
 `}
-lang="text"
+lang="swift"
 />
 
 </TabItem>
 
 <TabItem label="Kotlin">
-<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Kotlin placeholder: bindings WIP
+import org.fragmentcolor.*
 
+val mesh = Mesh()
+mesh.addVertex([0.0, 0.5, 0.0])
+mesh.addVertex([-0.5, -0.5, 0.0])
+mesh.addVertex([0.5, -0.5, 0.0])
 `}
-lang="text"
+lang="kotlin"
 />
 
 </TabItem>
@@ -153,25 +159,23 @@ lang="python"
 </TabItem>
 
 <TabItem label="Swift">
-<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Swift placeholder: bindings WIP
-
+import FragmentColor
+let m = Mesh()
 `}
-lang="text"
+lang="swift"
 />
 
 </TabItem>
 
 <TabItem label="Kotlin">
-<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Kotlin placeholder: bindings WIP
-
+import org.fragmentcolor.*
+val m = Mesh()
 `}
-lang="text"
+lang="kotlin"
 />
 
 </TabItem>
@@ -238,25 +242,33 @@ lang="python"
 </TabItem>
 
 <TabItem label="Swift">
-<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Swift placeholder: bindings WIP
+import FragmentColor
 
+let mesh = Mesh.fromVertices([
+    [0.0, 0.0],
+    [1.0, 0.0],
+    [0.0, 1.0],
+])
 `}
-lang="text"
+lang="swift"
 />
 
 </TabItem>
 
 <TabItem label="Kotlin">
-<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Kotlin placeholder: bindings WIP
+import org.fragmentcolor.*
 
+val mesh = Mesh.fromVertices([
+    [0.0, 0.0],
+    [1.0, 0.0],
+    [0.0, 1.0],
+])
 `}
-lang="text"
+lang="kotlin"
 />
 
 </TabItem>
@@ -311,25 +323,25 @@ lang="python"
 </TabItem>
 
 <TabItem label="Swift">
-<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Swift placeholder: bindings WIP
-
+import FragmentColor
+let m = Mesh()
+m.addVertex([0.0, 0.0])
 `}
-lang="text"
+lang="swift"
 />
 
 </TabItem>
 
 <TabItem label="Kotlin">
-<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Kotlin placeholder: bindings WIP
-
+import org.fragmentcolor.*
+val m = Mesh()
+m.addVertex([0.0, 0.0])
 `}
-lang="text"
+lang="kotlin"
 />
 
 </TabItem>
@@ -393,25 +405,31 @@ lang="python"
 </TabItem>
 
 <TabItem label="Swift">
-<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Swift placeholder: bindings WIP
-
+import FragmentColor
+let m = Mesh()
+m.addVertices([
+  [0.0, 0.0],
+  [1.0, 0.0],
+])
 `}
-lang="text"
+lang="swift"
 />
 
 </TabItem>
 
 <TabItem label="Kotlin">
-<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Kotlin placeholder: bindings WIP
-
+import org.fragmentcolor.*
+val m = Mesh()
+m.addVertices([
+  [0.0, 0.0],
+  [1.0, 0.0],
+])
 `}
-lang="text"
+lang="kotlin"
 />
 
 </TabItem>
@@ -469,25 +487,27 @@ lang="python"
 </TabItem>
 
 <TabItem label="Swift">
-<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Swift placeholder: bindings WIP
-
+import FragmentColor
+let m = Mesh()
+let v = Vertex([0.0, 0.0])
+m.addInstance(v)
 `}
-lang="text"
+lang="swift"
 />
 
 </TabItem>
 
 <TabItem label="Kotlin">
-<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Kotlin placeholder: bindings WIP
-
+import org.fragmentcolor.*
+val m = Mesh()
+val v = Vertex([0.0, 0.0])
+m.addInstance(v)
 `}
-lang="text"
+lang="kotlin"
 />
 
 </TabItem>
@@ -551,25 +571,31 @@ lang="python"
 </TabItem>
 
 <TabItem label="Swift">
-<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Swift placeholder: bindings WIP
-
+import FragmentColor
+let m = Mesh()
+m.addInstances([
+  Vertex.new([0.0, 0.0]),
+  Vertex.new([1.0, 1.0]),
+])
 `}
-lang="text"
+lang="swift"
 />
 
 </TabItem>
 
 <TabItem label="Kotlin">
-<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Kotlin placeholder: bindings WIP
-
+import org.fragmentcolor.*
+val m = Mesh()
+m.addInstances([
+  Vertex.new([0.0, 0.0]),
+  Vertex.new([1.0, 1.0]),
+])
 `}
-lang="text"
+lang="kotlin"
 />
 
 </TabItem>
@@ -624,25 +650,25 @@ lang="python"
 </TabItem>
 
 <TabItem label="Swift">
-<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Swift placeholder: bindings WIP
-
+import FragmentColor
+let m = Mesh()
+m.clearInstances()
 `}
-lang="text"
+lang="swift"
 />
 
 </TabItem>
 
 <TabItem label="Kotlin">
-<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Kotlin placeholder: bindings WIP
-
+import org.fragmentcolor.*
+val m = Mesh()
+m.clearInstances()
 `}
-lang="text"
+lang="kotlin"
 />
 
 </TabItem>
@@ -717,25 +743,37 @@ lang="python"
 </TabItem>
 
 <TabItem label="Swift">
-<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Swift placeholder: bindings WIP
-
+import FragmentColor
+let m = Mesh()
+m.addVertices([
+    [-0.01, -0.01],
+    [ 0.01, -0.01],
+    [ 0.00,  0.01],
+])
+// draw one million instances
+m.setInstanceCount(1_000_000)
 `}
-lang="text"
+lang="swift"
 />
 
 </TabItem>
 
 <TabItem label="Kotlin">
-<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Kotlin placeholder: bindings WIP
-
+import org.fragmentcolor.*
+val m = Mesh()
+m.addVertices([
+    [-0.01, -0.01],
+    [ 0.01, -0.01],
+    [ 0.00,  0.01],
+])
+// draw one million instances
+m.setInstanceCount(1_000_000)
 `}
-lang="text"
+lang="kotlin"
 />
 
 </TabItem>
@@ -790,25 +828,25 @@ lang="python"
 </TabItem>
 
 <TabItem label="Swift">
-<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Swift placeholder: bindings WIP
-
+import FragmentColor
+let m = Mesh()
+m.clearInstanceCount()
 `}
-lang="text"
+lang="swift"
 />
 
 </TabItem>
 
 <TabItem label="Kotlin">
-<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Kotlin placeholder: bindings WIP
-
+import org.fragmentcolor.*
+val m = Mesh()
+m.clearInstanceCount()
 `}
-lang="text"
+lang="kotlin"
 />
 
 </TabItem>

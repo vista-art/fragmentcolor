@@ -141,25 +141,69 @@ lang="python"
 </TabItem>
 
 <TabItem label="Swift">
-<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Swift placeholder â bindings WIP
 
+import FragmentColor
+
+let renderer = Renderer()
+let canvas = document.createElement('canvas')
+let target = try await renderer.createTarget(canvas)
+let shader = Shader.default()
+
+let pass = Pass("First Pass")
+pass.addShader(shader)
+
+let pass2 = Pass("Second Pass")
+pass2.addShader(shader)
+
+// standalone
+renderer.render(pass, target)
+
+// using a Frame
+let frame = Frame()
+frame.addPass(pass)
+frame.addPass(pass2)
+renderer.render(frame, target)
+
+// vector of passes (consume them)
+renderer.render([pass, pass2], target)
 `}
-lang="text"
+lang="swift"
 />
 
 </TabItem>
 
 <TabItem label="Kotlin">
-<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Kotlin placeholder â bindings WIP
 
+import org.fragmentcolor.*
+
+val renderer = Renderer()
+val canvas = document.createElement('canvas')
+val target = renderer.createTarget(canvas)
+val shader = Shader.default()
+
+val pass = Pass("First Pass")
+pass.addShader(shader)
+
+val pass2 = Pass("Second Pass")
+pass2.addShader(shader)
+
+// standalone
+renderer.render(pass, target)
+
+// using a Frame
+val frame = Frame()
+frame.addPass(pass)
+frame.addPass(pass2)
+renderer.render(frame, target)
+
+// vector of passes (consume them)
+renderer.render([pass, pass2], target)
 `}
-lang="text"
+lang="kotlin"
 />
 
 </TabItem>
@@ -223,25 +267,25 @@ lang="python"
 </TabItem>
 
 <TabItem label="Swift">
-<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Swift placeholder â bindings WIP
+import FragmentColor
 
+let pass = Pass("first pass")
 `}
-lang="text"
+lang="swift"
 />
 
 </TabItem>
 
 <TabItem label="Kotlin">
-<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Kotlin placeholder â bindings WIP
+import org.fragmentcolor.*
 
+val pass = Pass("first pass")
 `}
-lang="text"
+lang="kotlin"
 />
 
 </TabItem>
@@ -301,25 +345,27 @@ lang="python"
 </TabItem>
 
 <TabItem label="Swift">
-<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Swift placeholder â bindings WIP
+import FragmentColor
 
+let cs = Shader("@compute @workgroup_size(8,8,1) fn cs_main() {}").unwrap()
+let pass = Pass("compute"); pass.addShader(cs)
 `}
-lang="text"
+lang="swift"
 />
 
 </TabItem>
 
 <TabItem label="Kotlin">
-<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Kotlin placeholder â bindings WIP
+import org.fragmentcolor.*
 
+val cs = Shader("@compute @workgroup_size(8,8,1) fn cs_main() {}").unwrap()
+val pass = Pass("compute"); pass.addShader(cs)
 `}
-lang="text"
+lang="kotlin"
 />
 
 </TabItem>
@@ -379,25 +425,27 @@ lang="python"
 </TabItem>
 
 <TabItem label="Swift">
-<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Swift placeholder â bindings WIP
+import FragmentColor
 
+let shader = Shader.default()
+let pass = Pass("single"); pass.addShader(shader)
 `}
-lang="text"
+lang="swift"
 />
 
 </TabItem>
 
 <TabItem label="Kotlin">
-<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Kotlin placeholder â bindings WIP
+import org.fragmentcolor.*
 
+val shader = Shader.default()
+val pass = Pass("single"); pass.addShader(shader)
 `}
-lang="text"
+lang="kotlin"
 />
 
 </TabItem>
@@ -488,25 +536,43 @@ lang="python"
 </TabItem>
 
 <TabItem label="Swift">
-<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Swift placeholder â bindings WIP
 
+import FragmentColor
+
+let renderer = Renderer()
+let target = try await renderer.createTextureTarget([64, 64])
+
+let shader = Shader.default()
+let pass = Pass("blend with previous")
+pass.addShader(shader)
+pass.loadPrevious()
+
+renderer.render(pass, target)
 `}
-lang="text"
+lang="swift"
 />
 
 </TabItem>
 
 <TabItem label="Kotlin">
-<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Kotlin placeholder â bindings WIP
 
+import org.fragmentcolor.*
+
+val renderer = Renderer()
+val target = renderer.createTextureTarget([64, 64])
+
+val shader = Shader.default()
+val pass = Pass("blend with previous")
+pass.addShader(shader)
+pass.loadPrevious()
+
+renderer.render(pass, target)
 `}
-lang="text"
+lang="kotlin"
 />
 
 </TabItem>
@@ -570,25 +636,27 @@ lang="python"
 </TabItem>
 
 <TabItem label="Swift">
-<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Swift placeholder â bindings WIP
+import FragmentColor
 
+let pass = Pass("example")
+let input = pass.getInput()
 `}
-lang="text"
+lang="swift"
 />
 
 </TabItem>
 
 <TabItem label="Kotlin">
-<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Kotlin placeholder â bindings WIP
+import org.fragmentcolor.*
 
+val pass = Pass("example")
+val input = pass.getInput()
 `}
-lang="text"
+lang="kotlin"
 />
 
 </TabItem>
@@ -649,25 +717,29 @@ lang="python"
 </TabItem>
 
 <TabItem label="Swift">
-<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Swift placeholder â bindings WIP
+import FragmentColor
 
+let shader = Shader.default()
+let pass = Pass("p")
+pass.addShader(shader)
 `}
-lang="text"
+lang="swift"
 />
 
 </TabItem>
 
 <TabItem label="Kotlin">
-<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Kotlin placeholder â bindings WIP
+import org.fragmentcolor.*
 
+val shader = Shader.default()
+val pass = Pass("p")
+pass.addShader(shader)
 `}
-lang="text"
+lang="kotlin"
 />
 
 </TabItem>
@@ -787,25 +859,61 @@ lang="python"
 </TabItem>
 
 <TabItem label="Swift">
-<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Swift placeholder: bindings WIP
+import FragmentColor
 
+let mesh = Mesh()
+mesh.addVertex([0.0, 0.0])
+
+let shader = Shader("""
+  struct VOut { @builtin(position) pos: vec4<f32> }
+  @vertex
+  fn vs_main(@location(0) pos: vec2<f32>) -> VOut {
+    var out: VOut
+    out.pos = vec4<f32>(pos, 0.0, 1.0)
+    return out
+  }
+  @fragment
+  fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
+
+""")
+
+let pass = Pass("pass"); pass.addShader(shader)
+
+pass.addMesh(mesh)
 `}
-lang="text"
+lang="swift"
 />
 
 </TabItem>
 
 <TabItem label="Kotlin">
-<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Kotlin placeholder: bindings WIP
+import org.fragmentcolor.*
 
+val mesh = Mesh()
+mesh.addVertex([0.0, 0.0])
+
+val shader = Shader("""
+  struct VOut { @builtin(position) pos: vec4<f32> }
+  @vertex
+  fn vs_main(@location(0) pos: vec2<f32>) -> VOut {
+    var out: VOut
+    out.pos = vec4<f32>(pos, 0.0, 1.0)
+    return out
+  }
+  @fragment
+  fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
+
+""")
+
+val pass = Pass("pass"); pass.addShader(shader)
+
+pass.addMesh(mesh)
 `}
-lang="text"
+lang="kotlin"
 />
 
 </TabItem>
@@ -913,25 +1021,57 @@ lang="python"
 </TabItem>
 
 <TabItem label="Swift">
-<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Swift placeholder: bindings WIP
+import FragmentColor
 
+let mesh = Mesh()
+mesh.addVertex(Vertex.new([0.0, 0.0]))
+let shader = Shader("""
+  struct VOut { @builtin(position) pos: vec4<f32> }
+  @vertex
+  fn vs_main(@location(0) pos: vec2<f32>) -> VOut {
+    var out: VOut
+    out.pos = vec4<f32>(pos, 0.0, 1.0)
+    return out
+  }
+  @fragment
+  fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
+
+""")
+
+let pass = Pass("pass"); pass.addShader(shader)
+pass.addMeshToShader(mesh, shader)
 `}
-lang="text"
+lang="swift"
 />
 
 </TabItem>
 
 <TabItem label="Kotlin">
-<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Kotlin placeholder: bindings WIP
+import org.fragmentcolor.*
 
+val mesh = Mesh()
+mesh.addVertex(Vertex.new([0.0, 0.0]))
+val shader = Shader("""
+  struct VOut { @builtin(position) pos: vec4<f32> }
+  @vertex
+  fn vs_main(@location(0) pos: vec2<f32>) -> VOut {
+    var out: VOut
+    out.pos = vec4<f32>(pos, 0.0, 1.0)
+    return out
+  }
+  @fragment
+  fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
+
+""")
+
+val pass = Pass("pass"); pass.addShader(shader)
+pass.addMeshToShader(mesh, shader)
 `}
-lang="text"
+lang="kotlin"
 />
 
 </TabItem>
@@ -1025,25 +1165,45 @@ lang="python"
 </TabItem>
 
 <TabItem label="Swift">
-<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Swift placeholder â bindings WIP
 
+import FragmentColor
+
+let renderer = Renderer()
+let target = try await renderer.createTextureTarget([64, 64])
+
+let shader = Shader.default()
+let pass = Pass("clipped")
+pass.addShader(shader)
+
+pass.setViewport([(0, 0), (32, 32)])
+
+renderer.render(pass, target)
 `}
-lang="text"
+lang="swift"
 />
 
 </TabItem>
 
 <TabItem label="Kotlin">
-<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Kotlin placeholder â bindings WIP
 
+import org.fragmentcolor.*
+
+val renderer = Renderer()
+val target = renderer.createTextureTarget([64, 64])
+
+val shader = Shader.default()
+val pass = Pass("clipped")
+pass.addShader(shader)
+
+pass.setViewport([(0, 0), (32, 32)])
+
+renderer.render(pass, target)
 `}
-lang="text"
+lang="kotlin"
 />
 
 </TabItem>
@@ -1137,25 +1297,45 @@ lang="python"
 </TabItem>
 
 <TabItem label="Swift">
-<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Swift placeholder â bindings WIP
 
+import FragmentColor
+
+let renderer = Renderer()
+let target = try await renderer.createTextureTarget([64, 64])
+
+let shader = Shader.default()
+let pass = Pass("solid background")
+pass.addShader(shader)
+
+pass.setClearColor([0.1, 0.2, 0.3, 1.0])
+
+renderer.render(pass, target)
 `}
-lang="text"
+lang="swift"
 />
 
 </TabItem>
 
 <TabItem label="Kotlin">
-<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Kotlin placeholder â bindings WIP
 
+import org.fragmentcolor.*
+
+val renderer = Renderer()
+val target = renderer.createTextureTarget([64, 64])
+
+val shader = Shader.default()
+val pass = Pass("solid background")
+pass.addShader(shader)
+
+pass.setClearColor([0.1, 0.2, 0.3, 1.0])
+
+renderer.render(pass, target)
 `}
-lang="text"
+lang="kotlin"
 />
 
 </TabItem>
@@ -1213,25 +1393,27 @@ lang="python"
 </TabItem>
 
 <TabItem label="Swift">
-<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Swift placeholder: bindings WIP
-
+import FragmentColor
+let cs = Shader("@compute @workgroup_size(8,8,1) fn cs_main() {}").unwrap()
+let pass = Pass("compute"); pass.addShader(cs)
+pass.setComputeDispatch(64, 64, 1)
 `}
-lang="text"
+lang="swift"
 />
 
 </TabItem>
 
 <TabItem label="Kotlin">
-<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Kotlin placeholder: bindings WIP
-
+import org.fragmentcolor.*
+val cs = Shader("@compute @workgroup_size(8,8,1) fn cs_main() {}").unwrap()
+val pass = Pass("compute"); pass.addShader(cs)
+pass.setComputeDispatch(64, 64, 1)
 `}
-lang="text"
+lang="kotlin"
 />
 
 </TabItem>
@@ -1307,25 +1489,33 @@ lang="python"
 </TabItem>
 
 <TabItem label="Swift">
-<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Swift placeholder: bindings WIP
+import FragmentColor
 
+let r = Renderer()
+let tex_target = try await r.createTextureTarget([512, 512])
+
+let p = Pass("shadow")
+p.addTarget(tex_target)
 `}
-lang="text"
+lang="swift"
 />
 
 </TabItem>
 
 <TabItem label="Kotlin">
-<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Kotlin placeholder: bindings WIP
+import org.fragmentcolor.*
 
+val r = Renderer()
+val tex_target = r.createTextureTarget([512, 512])
+
+val p = Pass("shadow")
+p.addTarget(tex_target)
 `}
-lang="text"
+lang="kotlin"
 />
 
 </TabItem>
@@ -1446,25 +1636,63 @@ lang="python"
 </TabItem>
 
 <TabItem label="Swift">
-<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Swift placeholder: bindings WIP
+import FragmentColor
 
+let renderer = Renderer()
+let target = try await renderer.createTextureTarget([64, 64])
+
+// Create a depth texture usable as a per-pass attachment
+let depth = try await renderer.createDepthTexture([64, 64])
+
+let mesh = Mesh()
+mesh.addVertex([0.0, 0.0, 0.0])
+mesh.addVertex([1.0, 0.0, 0.0])
+mesh.addVertex([0.0, 1.0, 0.0])
+mesh.addVertex([1.0, 1.0, 0.0])
+let shader = Shader.fromMesh(mesh)
+let pass = Pass("scene"); pass.addShader(shader)
+
+// Attach depth texture to enable depth testing.
+// Pipeline will include a matching depth-stencil state
+pass.addDepthTarget(depth)
+
+// Render as usual
+renderer.render(pass, target)
 `}
-lang="text"
+lang="swift"
 />
 
 </TabItem>
 
 <TabItem label="Kotlin">
-<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Kotlin placeholder: bindings WIP
+import org.fragmentcolor.*
 
+val renderer = Renderer()
+val target = renderer.createTextureTarget([64, 64])
+
+// Create a depth texture usable as a per-pass attachment
+val depth = renderer.createDepthTexture([64, 64])
+
+val mesh = Mesh()
+mesh.addVertex([0.0, 0.0, 0.0])
+mesh.addVertex([1.0, 0.0, 0.0])
+mesh.addVertex([0.0, 1.0, 0.0])
+mesh.addVertex([1.0, 1.0, 0.0])
+val shader = Shader.fromMesh(mesh)
+val pass = Pass("scene"); pass.addShader(shader)
+
+// Attach depth texture to enable depth testing.
+// Pipeline will include a matching depth-stencil state
+pass.addDepthTarget(depth)
+
+// Render as usual
+renderer.render(pass, target)
 `}
-lang="text"
+lang="kotlin"
 />
 
 </TabItem>
@@ -1550,25 +1778,41 @@ lang="python"
 </TabItem>
 
 <TabItem label="Swift">
-<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Swift placeholder: bindings WIP
+import FragmentColor
 
+let shader = Shader("""
+@compute @workgroup_size(1)
+fn cs_main() { }
+
+""")
+let pass = Pass("p"); pass.addShader(shader)
+
+// Call the method
+let is_compute = pass.isCompute()
 `}
-lang="text"
+lang="swift"
 />
 
 </TabItem>
 
 <TabItem label="Kotlin">
-<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Kotlin placeholder: bindings WIP
+import org.fragmentcolor.*
 
+val shader = Shader("""
+@compute @workgroup_size(1)
+fn cs_main() { }
+
+""")
+val pass = Pass("p"); pass.addShader(shader)
+
+// Call the method
+val is_compute = pass.isCompute()
 `}
-lang="text"
+lang="kotlin"
 />
 
 </TabItem>
@@ -1673,25 +1917,43 @@ lang="python"
 </TabItem>
 
 <TabItem label="Swift">
-<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Swift placeholder: bindings WIP
-
+import FragmentColor
+let renderer = Renderer()
+let target = try await renderer.createTextureTarget([100,100])
+let color = Pass("color")
+let blurx = Pass("blur_x")
+blurx.require(color); // color before blur_x
+let blury = Pass("blur_y")
+blury.require(blurx); // blur_x before blur_y
+let compose = Pass("compose")
+compose.require(color)
+compose.require(blury); // fan-in; color and blur_y before compose
+renderer.render(compose, target); // compose renders last
 `}
-lang="text"
+lang="swift"
 />
 
 </TabItem>
 
 <TabItem label="Kotlin">
-<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Kotlin placeholder: bindings WIP
-
+import org.fragmentcolor.*
+val renderer = Renderer()
+val target = renderer.createTextureTarget([100,100])
+val color = Pass("color")
+val blurx = Pass("blur_x")
+blurx.require(color); // color before blur_x
+val blury = Pass("blur_y")
+blury.require(blurx); // blur_x before blur_y
+val compose = Pass("compose")
+compose.require(color)
+compose.require(blury); // fan-in; color and blur_y before compose
+renderer.render(compose, target); // compose renders last
 `}
-lang="text"
+lang="kotlin"
 />
 
 </TabItem>
