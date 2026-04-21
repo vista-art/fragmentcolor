@@ -9,7 +9,9 @@
 //
 // The xcframework is downloaded from the matching GitHub Release asset;
 // `publish_swift.yml` builds it, uploads it, and `post_publish_update.yml`
-// rewrites the URL + checksum below to match each release.
+// rewrites the URL + checksum below to match each release. The binary
+// target is named `FragmentColorFFI` because the uniffi-generated Swift
+// does `#if canImport(FragmentColorFFI); import FragmentColorFFI; #endif`.
 //
 // For local development against a freshly-built xcframework, use
 // `platforms/swift/Package.swift` instead (it points at `build/ios/`).
@@ -35,15 +37,15 @@ let package = Package(
         .target(
             name: "FragmentColor",
             dependencies: [
-                .target(name: "fragmentcolorFFI", condition: .when(platforms: [.iOS])),
+                .target(name: "FragmentColorFFI", condition: .when(platforms: [.iOS])),
             ],
             path: "platforms/swift/Sources/FragmentColor",
             exclude: [],
             swiftSettings: []
         ),
         .binaryTarget(
-            name: "fragmentcolorFFI",
-            url: "https://github.com/vista-art/fragmentcolor/releases/download/v\(fragmentcolorVersion)/fragmentcolor.xcframework.zip",
+            name: "FragmentColorFFI",
+            url: "https://github.com/vista-art/fragmentcolor/releases/download/v\(fragmentcolorVersion)/FragmentColorFFI.xcframework.zip",
             checksum: fragmentcolorChecksum
         ),
     ]

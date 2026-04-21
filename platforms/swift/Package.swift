@@ -1,12 +1,18 @@
 // swift-tools-version: 5.9
 //
-// FragmentColor Swift Package.
+// FragmentColor Swift Package — local dev variant.
 //
-// The `FragmentColor` target is a thin layer on top of the uniffi-generated
-// Swift sources that live in `Sources/FragmentColor/generated/` and a
-// pre-built xcframework at `../../build/ios/fragmentcolor.xcframework`.
+// The `FragmentColor` target is a thin Swift layer on top of the
+// uniffi-generated sources in `Sources/FragmentColor/generated/` plus the
+// pre-built `FragmentColorFFI.xcframework` at `../../build/ios/`. Run
+// `./build_ios` at the repo root to regenerate both. The binary target
+// is deliberately named `FragmentColorFFI` so the generated Swift's
+// `#if canImport(FragmentColorFFI); import FragmentColorFFI; #endif`
+// resolves against it.
 //
-// Regenerate both with `./build_ios` at the repo root before building.
+// For Swift Package Manager consumers, use the root `Package.swift` which
+// pulls the xcframework from a GitHub Release asset instead of a local
+// path.
 
 import PackageDescription
 
@@ -26,15 +32,15 @@ let package = Package(
         .target(
             name: "FragmentColor",
             dependencies: [
-                .target(name: "fragmentcolor", condition: .when(platforms: [.iOS])),
+                .target(name: "FragmentColorFFI", condition: .when(platforms: [.iOS])),
             ],
             path: "Sources/FragmentColor",
             exclude: [],
             swiftSettings: []
         ),
         .binaryTarget(
-            name: "fragmentcolor",
-            path: "../../build/ios/fragmentcolor.xcframework"
+            name: "FragmentColorFFI",
+            path: "../../build/ios/FragmentColorFFI.xcframework"
         ),
     ]
 )

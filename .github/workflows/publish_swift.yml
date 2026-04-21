@@ -1,7 +1,7 @@
 name: Publish Swift Package
 
 # Builds the iOS xcframework, zips it, attaches it to the GitHub Release as
-# `fragmentcolor.xcframework.zip`, and computes the SPM checksum. The
+# `FragmentColorFFI.xcframework.zip`, and computes the SPM checksum. The
 # consumer-facing `Package.swift` at the repo root references this URL; the
 # post-publish workflow rewrites the pinned checksum via a follow-up PR.
 #
@@ -58,7 +58,7 @@ jobs:
       - name: Zip xcframework
         run: |
           cd build/ios
-          zip -r -X fragmentcolor.xcframework.zip fragmentcolor.xcframework
+          zip -r -X FragmentColorFFI.xcframework.zip FragmentColorFFI.xcframework
 
       - name: Compute SPM checksum
         id: checksum
@@ -66,7 +66,7 @@ jobs:
           # Swift Package Manager uses `swift package compute-checksum`,
           # which on the same input produces the same hex string as
           # sha256sum. We use swift directly so it matches exactly.
-          CHECKSUM=$(swift package compute-checksum build/ios/fragmentcolor.xcframework.zip)
+          CHECKSUM=$(swift package compute-checksum build/ios/FragmentColorFFI.xcframework.zip)
           echo "checksum=$CHECKSUM" >> "$GITHUB_OUTPUT"
           echo "xcframework checksum: $CHECKSUM"
 
@@ -76,11 +76,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.vars.outputs.tag }}
         run: |
-          gh release upload "$TAG" build/ios/fragmentcolor.xcframework.zip --clobber
+          gh release upload "$TAG" build/ios/FragmentColorFFI.xcframework.zip --clobber
 
       - name: Upload xcframework as workflow artifact (workflow_dispatch)
         if: ${{ github.event_name != 'release' }}
         uses: actions/upload-artifact@v4
         with:
           name: fragmentcolor-xcframework
-          path: build/ios/fragmentcolor.xcframework.zip
+          path: build/ios/FragmentColorFFI.xcframework.zip

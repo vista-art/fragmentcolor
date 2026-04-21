@@ -84,6 +84,14 @@ jobs:
           # Only build for the emulator's ABI in CI to keep the job fast.
           ./build_android x86_64-linux-android
 
+      # The Kotlin workspace ships without a committed Gradle wrapper
+      # (keeps the repo lean). Generate one once so `./gradlew` works
+      # inside the emulator runner.
+      - name: Generate Gradle wrapper
+        run: |
+          cd platforms/kotlin
+          gradle wrapper --gradle-version 8.5
+
       # `reactivecircus/android-emulator-runner` creates the AVD, boots the
       # emulator, waits for `sys.boot_completed=1`, and runs the supplied
       # script with the emulator as the connected device. It tears the
