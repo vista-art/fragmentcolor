@@ -1,0 +1,111 @@
+name: Publish Android AAR
+
+# Builds the Android library for all 4 ABIs, assembles the AAR via gradle,
+# and uploads it to the GitHub Release as `fragmentcolor.aar`.
+#
+# Distributing through Maven Central requires Sonatype OSSRH credentials
+# and GPG signing — that's tracked as follow-up work in the CHANGELOG.
+# For now, users consume the AAR by downloading the release asset or
+# pointing their gradle at the GitHub Release URL.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-upload:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: "recursive"
+
+      - name: Determine version
+        id: vars
+        run: |
+          if [ "${{ github.event_name }}" = "release" ] && [ -n "${{ github.event.release.tag_name }}" ]; then
+            RAW="${{ github.event.release.tag_name }}"
+          else
+            RAW=$(grep '^version = ' Cargo.toml | head -n1 | cut -d'"' -f2)
+            RAW="v$RAW"
+          fi
+          VERSION="${RAW#v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      # NOTE: `packages` must be a single space-separated string — a YAML
+      # block scalar (`|`) hands sdkmanager one name with embedded newlines.
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: "platforms;android-34 ndk;27.2.12479018 platform-tools"
+
+      - name: Export ANDROID_NDK_HOME
+        run: |
+          echo "ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/27.2.12479018" >> "$GITHUB_ENV"
+          echo "NDK_HOME=${ANDROID_HOME}/ndk/27.2.12479018"         >> "$GITHUB_ENV"
+
+      - name: Setup Rust (with Android targets)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android,i686-linux-android
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-directories: ${{ github.workspace }}/build
+          cache-all-crates: true
+
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk --locked
+
+      # Pin Gradle 8.x — AGP 8.2.x is incompatible with Gradle 9.x.
+      - name: Gradle cache
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: "8.10"
+
+      - name: Build .so for all 4 ABIs + regenerate Kotlin bindings
+        run: |
+          chmod +x ./build_android
+          ./build_android
+
+      - name: Assemble AAR
+        run: |
+          cd platforms/kotlin
+          gradle fragmentcolor:assembleRelease
+
+      - name: Rename AAR
+        id: aar
+        run: |
+          AAR_SRC=$(find platforms/kotlin/fragmentcolor/build/outputs/aar -name "*.aar" | head -1)
+          AAR_DST="fragmentcolor-${{ steps.vars.outputs.version }}.aar"
+          cp "$AAR_SRC" "$AAR_DST"
+          echo "aar=$AAR_DST" >> "$GITHUB_OUTPUT"
+
+      - name: Upload AAR to GitHub Release
+        if: ${{ github.event_name == 'release' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.vars.outputs.tag }}
+          AAR: ${{ steps.aar.outputs.aar }}
+        run: |
+          gh release upload "$TAG" "$AAR" --clobber
+
+      - name: Upload AAR as workflow artifact (workflow_dispatch)
+        if: ${{ github.event_name != 'release' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: fragmentcolor-aar
+          path: ${{ steps.aar.outputs.aar }}

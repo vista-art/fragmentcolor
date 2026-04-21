@@ -1,0 +1,146 @@
+#!/usr/bin/env bash
+# Build FragmentColor for iOS: one static library per arch, one Swift
+# binding set, one xcframework. Depends on Xcode + a working `cargo` that
+# can target `aarch64-apple-ios` and `aarch64-apple-ios-sim` (both are in
+# `rust-toolchain`).
+#
+# Produces:
+#   build/ios/FragmentColorFFI.xcframework   (binary target — C types)
+#   platforms/swift/Sources/FragmentColor/generated/*.swift (wrapper)
+#
+# The xcframework is named `FragmentColorFFI` because the uniffi-generated
+# `FragmentColor.swift` does `#if canImport(FragmentColorFFI); import FragmentColorFFI; #endif`
+# to pull in the C-side types (`RustBuffer`, `RustCallStatus`, etc). The
+# binary module name must match that import exactly.
+#
+# Usage:
+#   ./build_ios                 # release build
+#   FC_VERBOSE=1 ./build_ios    # verbose cargo output
+
+set -euo pipefail
+
+RUST_NAME="fragmentcolor"     # cargo crate name (lib<RUST_NAME>.a)
+FFI_NAME="FragmentColorFFI"   # xcframework / binary module name used by Swift
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BUILD_DIR="$ROOT_DIR/build"
+SWIFT_GENERATED="$ROOT_DIR/platforms/swift/Sources/FragmentColor/generated"
+
+CARGO_FLAGS=(--release)
+if [[ -z "${FC_VERBOSE:-}" ]]; then
+  CARGO_FLAGS+=(-q)
+fi
+
+if ! command -v xcodebuild >/dev/null 2>&1; then
+  echo "build_ios: xcodebuild not on PATH; install Xcode first" >&2
+  exit 1
+fi
+
+build_target() {
+  local target="$1"
+  IPHONEOS_DEPLOYMENT_TARGET="16.0" \
+    CARGO_TARGET_DIR="$BUILD_DIR" \
+    cargo build "${CARGO_FLAGS[@]}" --target "$target"
+}
+
+generate_swift_bindings() {
+  local target="$1"
+  local lib_path="$BUILD_DIR/$target/release/lib$RUST_NAME.a"
+  cargo run "${CARGO_FLAGS[@]}" \
+    --bin uniffi-bindgen generate \
+    --library "$lib_path" \
+    --config "$ROOT_DIR/uniffi.toml" \
+    --language swift \
+    --out-dir "$BUILD_DIR/$target/release/"
+}
+
+# Assemble a framework using the FFI_NAME so the Swift-side
+# `import FragmentColorFFI` resolves. Xcode identifies a framework module
+# by the `.framework` directory name, the binary file inside it, and the
+# top-level module declaration in `module.modulemap` — all three must
+# match `FFI_NAME`. The standard iOS framework layout is:
+#
+#   <Name>.framework/
+#     <Name>          (binary — for static frameworks this is the .a content)
+#     Info.plist
+#     Headers/<Name>.h
+#     Modules/module.modulemap
+assemble_framework() {
+  local target="$1"
+  local target_dir="$BUILD_DIR/$target/release"
+  local framework_dir="$target_dir/$FFI_NAME.framework"
+
+  local platform="iPhoneOS"
+  if [[ "$target" == *-sim ]]; then
+    platform="iPhoneSimulator"
+  fi
+
+  rm -rf "$framework_dir"
+  mkdir -p "$framework_dir/Headers" "$framework_dir/Modules"
+
+  cp "$target_dir/lib$RUST_NAME.a" "$framework_dir/$FFI_NAME"
+
+  # uniffi emits `<ModuleName>FFI.modulemap` containing
+  # `module <ModuleName>FFI { header "<ModuleName>FFI.h" ... }`.
+  # Rewrite to `framework module ...` and place it under Modules/ so
+  # Xcode's framework loader picks it up (Headers/module.modulemap is
+  # ignored by xcodebuild for frameworks; that path only works for
+  # plain header directories).
+  local src_map
+  src_map=$(find "$target_dir" -maxdepth 1 -name "*.modulemap" | head -1)
+  if [[ -z "$src_map" ]]; then
+    echo "build_ios: no .modulemap produced by uniffi-bindgen; aborting" >&2
+    exit 1
+  fi
+  sed -E "s/^module [A-Za-z0-9_]+ *\\{/framework module $FFI_NAME \\{/" \
+    "$src_map" > "$framework_dir/Modules/module.modulemap"
+
+  find "$target_dir" -maxdepth 1 -name "*.h" -exec cp {} "$framework_dir/Headers/" \;
+
+  # xcodebuild rejects a framework without an Info.plist. Generate a
+  # minimal one parameterised by the SDK platform so the device + sim
+  # variants advertise the right `CFBundleSupportedPlatforms`.
+  cat > "$framework_dir/Info.plist" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleDevelopmentRegion</key><string>en</string>
+  <key>CFBundleExecutable</key><string>$FFI_NAME</string>
+  <key>CFBundleIdentifier</key><string>org.fragmentcolor.$FFI_NAME</string>
+  <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+  <key>CFBundleName</key><string>$FFI_NAME</string>
+  <key>CFBundlePackageType</key><string>FMWK</string>
+  <key>CFBundleShortVersionString</key><string>1.0</string>
+  <key>CFBundleSupportedPlatforms</key><array><string>$platform</string></array>
+  <key>CFBundleVersion</key><string>1</string>
+  <key>MinimumOSVersion</key><string>16.0</string>
+</dict>
+</plist>
+EOF
+}
+
+echo "==> Building for aarch64-apple-ios"
+build_target "aarch64-apple-ios"
+generate_swift_bindings "aarch64-apple-ios"
+assemble_framework "aarch64-apple-ios"
+
+echo "==> Building for aarch64-apple-ios-sim"
+build_target "aarch64-apple-ios-sim"
+generate_swift_bindings "aarch64-apple-ios-sim"
+assemble_framework "aarch64-apple-ios-sim"
+
+echo "==> Bundling xcframework"
+rm -rf "$BUILD_DIR/ios"
+mkdir -p "$BUILD_DIR/ios"
+
+xcodebuild -create-xcframework \
+  -framework "$BUILD_DIR/aarch64-apple-ios/release/$FFI_NAME.framework" \
+  -framework "$BUILD_DIR/aarch64-apple-ios-sim/release/$FFI_NAME.framework" \
+  -output "$BUILD_DIR/ios/$FFI_NAME.xcframework"
+
+echo "==> Copying generated Swift sources"
+rm -rf "$SWIFT_GENERATED"
+mkdir -p "$SWIFT_GENERATED"
+cp "$BUILD_DIR/aarch64-apple-ios/release/"*.swift "$SWIFT_GENERATED/"
+
+echo "build_ios: done — xcframework at $BUILD_DIR/ios/$FFI_NAME.xcframework"

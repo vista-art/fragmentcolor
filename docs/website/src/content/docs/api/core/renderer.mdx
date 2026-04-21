@@ -120,25 +120,51 @@ lang="python"
 </TabItem>
 
 <TabItem label="Swift">
-<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Swift placeholder â bindings WIP
 
+import FragmentColor
+
+let renderer = Renderer()
+
+// Use your platform's windowing system to create a window
+let canvas = document.createElement('canvas')
+
+// Create a Target from it
+let target = try await renderer.createTarget(canvas)
+let texture_target = try await renderer.createTextureTarget([16, 16])
+
+// RENDERING
+renderer.render(Shader(""), texture_target)
+
+// That's it. Welcome to FragmentColor!
 `}
-lang="text"
+lang="swift"
 />
 
 </TabItem>
 
 <TabItem label="Kotlin">
-<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Kotlin placeholder â bindings WIP
 
+import org.fragmentcolor.*
+
+val renderer = Renderer()
+
+// Use your platform's windowing system to create a window
+val canvas = document.createElement('canvas')
+
+// Create a Target from it
+val target = renderer.createTarget(canvas)
+val texture_target = renderer.createTextureTarget([16, 16])
+
+// RENDERING
+renderer.render(Shader(""), texture_target)
+
+// That's it. Welcome to FragmentColor!
 `}
-lang="text"
+lang="kotlin"
 />
 
 </TabItem>
@@ -225,25 +251,29 @@ lang="python"
 </TabItem>
 
 <TabItem label="Swift">
-<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Swift placeholder â bindings WIP
 
+import FragmentColor
+
+let renderer = Renderer()
+let texture_target = try await renderer.createTextureTarget([16, 16])
 `}
-lang="text"
+lang="swift"
 />
 
 </TabItem>
 
 <TabItem label="Kotlin">
-<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Kotlin placeholder â bindings WIP
 
+import org.fragmentcolor.*
+
+val renderer = Renderer()
+val texture_target = renderer.createTextureTarget([16, 16])
 `}
-lang="text"
+lang="kotlin"
 />
 
 </TabItem>
@@ -327,25 +357,37 @@ lang="python"
 </TabItem>
 
 <TabItem label="Swift">
-<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Swift placeholder â bindings WIP
 
+import FragmentColor
+
+let renderer = Renderer()
+
+// Use your platform's windowing system to create a window.
+let canvas = document.createElement('canvas')
+
+let target = try await renderer.createTarget(canvas)
 `}
-lang="text"
+lang="swift"
 />
 
 </TabItem>
 
 <TabItem label="Kotlin">
-<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Kotlin placeholder â bindings WIP
 
+import org.fragmentcolor.*
+
+val renderer = Renderer()
+
+// Use your platform's windowing system to create a window.
+val canvas = document.createElement('canvas')
+
+val target = renderer.createTarget(canvas)
 `}
-lang="text"
+lang="kotlin"
 />
 
 </TabItem>
@@ -436,25 +478,41 @@ lang="python"
 </TabItem>
 
 <TabItem label="Swift">
-<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Swift placeholder â bindings WIP
 
+import FragmentColor
+let renderer = Renderer()
+
+// Create an offscreen texture target with a size of 64x64 pixels.
+let target = try await renderer.createTextureTarget([64, 64])
+
+renderer.render(Shader(""), target)
+
+// get the rendered image
+let image = target.getImage()
 `}
-lang="text"
+lang="swift"
 />
 
 </TabItem>
 
 <TabItem label="Kotlin">
-<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Kotlin placeholder â bindings WIP
 
+import org.fragmentcolor.*
+val renderer = Renderer()
+
+// Create an offscreen texture target with a size of 64x64 pixels.
+val target = renderer.createTextureTarget([64, 64])
+
+renderer.render(Shader(""), target)
+
+// get the rendered image
+val image = target.getImage()
 `}
-lang="text"
+lang="kotlin"
 />
 
 </TabItem>
@@ -523,25 +581,29 @@ lang="python"
 </TabItem>
 
 <TabItem label="Swift">
-<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Swift placeholder: bindings WIP
-
+import FragmentColor
+let renderer = Renderer()
+// Load encoded image bytes (PNG/JPEG) or use a file path
+let image = "/healthcheck/public/favicon.png"
+let tex = try await renderer.createTexture(image)
 `}
-lang="text"
+lang="swift"
 />
 
 </TabItem>
 
 <TabItem label="Kotlin">
-<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Kotlin placeholder: bindings WIP
-
+import org.fragmentcolor.*
+val renderer = Renderer()
+// Load encoded image bytes (PNG/JPEG) or use a file path
+val image = "/healthcheck/public/favicon.png"
+val tex = renderer.createTexture(image)
 `}
-lang="text"
+lang="kotlin"
 />
 
 </TabItem>
@@ -617,25 +679,33 @@ lang="python"
 </TabItem>
 
 <TabItem label="Swift">
-<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Swift placeholder: bindings WIP
-
+import FragmentColor
+let renderer = Renderer()
+let pixels = [
+    255,0,0,255,   0,255,0,255,
+    0,0,255,255,   255,255,255,255,
+]
+let tex = try await renderer.createTextureWithSize(pixels, [2, 2])
 `}
-lang="text"
+lang="swift"
 />
 
 </TabItem>
 
 <TabItem label="Kotlin">
-<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Kotlin placeholder: bindings WIP
-
+import org.fragmentcolor.*
+val renderer = Renderer()
+val pixels = [
+    255,0,0,255,   0,255,0,255,
+    0,0,255,255,   255,255,255,255,
+]
+val tex = renderer.createTextureWithSize(pixels, [2, 2])
 `}
-lang="text"
+lang="kotlin"
 />
 
 </TabItem>
@@ -702,25 +772,27 @@ lang="python"
 </TabItem>
 
 <TabItem label="Swift">
-<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Swift placeholder: bindings WIP
-
+import FragmentColor
+let renderer = Renderer()
+let image = "/healthcheck/public/favicon.png"
+let tex = try await renderer.createTextureWithFormat(image, TextureFormat.Rgba)
 `}
-lang="text"
+lang="swift"
 />
 
 </TabItem>
 
 <TabItem label="Kotlin">
-<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Kotlin placeholder: bindings WIP
-
+import org.fragmentcolor.*
+val renderer = Renderer()
+val image = "/healthcheck/public/favicon.png"
+val tex = renderer.createTextureWithFormat(image, TextureFormat.Rgba)
 `}
-lang="text"
+lang="kotlin"
 />
 
 </TabItem>
@@ -796,25 +868,33 @@ lang="python"
 </TabItem>
 
 <TabItem label="Swift">
-<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Swift placeholder: bindings WIP
-
+import FragmentColor
+let renderer = Renderer()
+let pixels = [
+    255,0,0,255,   0,255,0,255,
+    0,0,255,255,   255,255,255,255,
+]
+let tex = try await renderer.createTextureWith(pixels, [2, 2])
 `}
-lang="text"
+lang="swift"
 />
 
 </TabItem>
 
 <TabItem label="Kotlin">
-<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Kotlin placeholder: bindings WIP
-
+import org.fragmentcolor.*
+val renderer = Renderer()
+val pixels = [
+    255,0,0,255,   0,255,0,255,
+    0,0,255,255,   255,255,255,255,
+]
+val tex = renderer.createTextureWith(pixels, [2, 2])
 `}
-lang="text"
+lang="kotlin"
 />
 
 </TabItem>
@@ -885,25 +965,29 @@ lang="python"
 </TabItem>
 
 <TabItem label="Swift">
-<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Swift placeholder: bindings WIP
 
+import FragmentColor
+
+let r = Renderer()
+let tex = try await r.createStorageTexture([64, 64], TextureFormat.Rgba, nil)
 `}
-lang="text"
+lang="swift"
 />
 
 </TabItem>
 
 <TabItem label="Kotlin">
-<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Kotlin placeholder: bindings WIP
 
+import org.fragmentcolor.*
+
+val r = Renderer()
+val tex = r.createStorageTexture([64, 64], TextureFormat.Rgba, null)
 `}
-lang="text"
+lang="kotlin"
 />
 
 </TabItem>
@@ -966,25 +1050,25 @@ lang="python"
 </TabItem>
 
 <TabItem label="Swift">
-<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Swift placeholder: bindings WIP
-
+import FragmentColor
+let r = Renderer()
+let depth = r.createDepthTexture([800, 600])
 `}
-lang="text"
+lang="swift"
 />
 
 </TabItem>
 
 <TabItem label="Kotlin">
-<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Kotlin placeholder: bindings WIP
-
+import org.fragmentcolor.*
+val r = Renderer()
+val depth = r.createDepthTexture([800, 600])
 `}
-lang="text"
+lang="kotlin"
 />
 
 </TabItem>
@@ -1060,25 +1144,33 @@ lang="python"
 </TabItem>
 
 <TabItem label="Swift">
-<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Swift placeholder: bindings WIP
+import FragmentColor
+let renderer = Renderer()
+let texture = try await renderer.createStorageTexture([64, 64], TextureFormat.Rgba, nil)
+let id = *texture.id()
+let frame = [0u8; 64 * 64 * 4]
 
+renderer.updateTexture(id, frame)
 `}
-lang="text"
+lang="swift"
 />
 
 </TabItem>
 
 <TabItem label="Kotlin">
-<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Kotlin placeholder: bindings WIP
+import org.fragmentcolor.*
+val renderer = Renderer()
+val texture = renderer.createStorageTexture([64, 64], TextureFormat.Rgba, null)
+val id = *texture.id()
+val frame = [0u8; 64 * 64 * 4]
 
+renderer.updateTexture(id, frame)
 `}
-lang="text"
+lang="kotlin"
 />
 
 </TabItem>
@@ -1154,25 +1246,35 @@ lang="python"
 </TabItem>
 
 <TabItem label="Swift">
-<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Swift placeholder: bindings WIP
+import FragmentColor
+let renderer = Renderer()
+let texture = try await renderer.createStorageTexture([64, 32], TextureFormat.Rgba, nil)
+let id = *texture.id()
+let frame = [0u8; 64 * 32 * 4]
+let opt = TextureWriteOptions.whole().withBytesPerRow(256).withRowsPerImage(32)
 
+renderer.updateTextureWith(id, frame, opt)
 `}
-lang="text"
+lang="swift"
 />
 
 </TabItem>
 
 <TabItem label="Kotlin">
-<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Kotlin placeholder: bindings WIP
+import org.fragmentcolor.*
+val renderer = Renderer()
+val texture = renderer.createStorageTexture([64, 32], TextureFormat.Rgba, null)
+val id = *texture.id()
+val frame = [0u8; 64 * 32 * 4]
+val opt = TextureWriteOptions.whole().withBytesPerRow(256).withRowsPerImage(32)
 
+renderer.updateTextureWith(id, frame, opt)
 `}
-lang="text"
+lang="kotlin"
 />
 
 </TabItem>
@@ -1245,25 +1347,31 @@ lang="python"
 </TabItem>
 
 <TabItem label="Swift">
-<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Swift placeholder: bindings WIP
+import FragmentColor
+let renderer = Renderer()
+let texture = try await renderer.createStorageTexture([16, 16], TextureFormat.Rgba, nil)
+let id = *texture.id()
 
+renderer.unregisterTexture(id)
 `}
-lang="text"
+lang="swift"
 />
 
 </TabItem>
 
 <TabItem label="Kotlin">
-<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Kotlin placeholder: bindings WIP
+import org.fragmentcolor.*
+val renderer = Renderer()
+val texture = renderer.createStorageTexture([16, 16], TextureFormat.Rgba, null)
+val id = *texture.id()
 
+renderer.unregisterTexture(id)
 `}
-lang="text"
+lang="kotlin"
 />
 
 </TabItem>
@@ -1342,25 +1450,55 @@ lang="python"
 </TabItem>
 
 <TabItem label="Swift">
-<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Swift placeholder: bindings WIP
-
+{
+    use wasm_bindgen.JsCast
+import FragmentColor
+let renderer = Renderer()
+let window = 
+        web_sys.window().okOrElse(|| std.io.Error.other("window not available"))
+let document = window
+        .document()
+        .okOrElse(|| std.io.Error.other("document not available"))
+let element = document
+        .getElementById("video")
+        .okOrElse(|| std.io.Error.other("video element not found"))
+let video = element
+        .dynInto.<web_sys.HtmlVideoElement>()
+        .mapErr(|_| std.io.Error.other("element is not a video"))
+let handle = renderer.createExternalTextureFromHtmlVideo(video)
+let _ = handle
+}
 `}
-lang="text"
+lang="swift"
 />
 
 </TabItem>
 
 <TabItem label="Kotlin">
-<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Kotlin placeholder: bindings WIP
-
+{
+    use wasm_bindgen.JsCast
+import org.fragmentcolor.*
+val renderer = Renderer()
+val window = 
+        web_sys.window().okOrElse(|| std.io.Error.other("window not available"))
+val document = window
+        .document()
+        .okOrElse(|| std.io.Error.other("document not available"))
+val element = document
+        .getElementById("video")
+        .okOrElse(|| std.io.Error.other("video element not found"))
+val video = element
+        .dynInto.<web_sys.HtmlVideoElement>()
+        .mapErr(|_| std.io.Error.other("element is not a video"))
+val handle = renderer.createExternalTextureFromHtmlVideo(video)
+val _ = handle
+}
 `}
-lang="text"
+lang="kotlin"
 />
 
 </TabItem>
@@ -1437,25 +1575,35 @@ lang="python"
 </TabItem>
 
 <TabItem label="Swift">
-<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Swift placeholder â bindings WIP
 
+import FragmentColor
+
+let renderer = Renderer()
+let target = try await renderer.createTextureTarget([10, 10])
+let shader = Shader.default()
+
+renderer.render(shader, target)
 `}
-lang="text"
+lang="swift"
 />
 
 </TabItem>
 
 <TabItem label="Kotlin">
-<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Kotlin placeholder â bindings WIP
 
+import org.fragmentcolor.*
+
+val renderer = Renderer()
+val target = renderer.createTextureTarget([10, 10])
+val shader = Shader.default()
+
+renderer.render(shader, target)
 `}
-lang="text"
+lang="kotlin"
 />
 
 </TabItem>

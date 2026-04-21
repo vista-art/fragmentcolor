@@ -1,0 +1,137 @@
+name: Healthcheck Android (Kotlin)
+
+on:
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'Cargo.*'
+      - 'build.rs'
+      - 'scripts/**'
+      - 'platforms/kotlin/**'
+      - 'docs/api/**'
+      - 'uniffi.toml'
+      - 'uniffi_bindgen.rs'
+      - 'build_android'
+      - '.github/workflows/healthcheck_android.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  healthcheck-android:
+    # ubuntu-latest supports KVM acceleration for the Android emulator.
+    runs-on: ubuntu-latest
+    env:
+      # `google_apis` ships a system image with working Vulkan emulation via
+      # SwiftShader; `default` does not, so wgpu's adapter/device request
+      # returns `Failed to create device` even though the AVD boots.
+      # API 33 has the most stable host-side GPU translation in current
+      # `reactivecircus/android-emulator-runner` releases.
+      API_LEVEL: "33"
+      TARGET: "google_apis"
+      ARCH: "x86_64"
+      NDK_VERSION: "27.2.12479018"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: "recursive"
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      # `android-actions/setup-android` installs cmdline-tools and sets
+      # ANDROID_HOME / PATH so sdkmanager is available for the packages
+      # pre-install below. The emulator itself is managed by
+      # `reactivecircus/android-emulator-runner` further down.
+      # NOTE: `packages` must be a single space-separated string — a YAML
+      # block scalar (`|`) hands sdkmanager one name with embedded newlines.
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: "platforms;android-${{ env.API_LEVEL }} ndk;${{ env.NDK_VERSION }} platform-tools"
+
+      - name: Export ANDROID_NDK_HOME
+        run: |
+          echo "ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/${NDK_VERSION}" >> "$GITHUB_ENV"
+          echo "NDK_HOME=${ANDROID_HOME}/ndk/${NDK_VERSION}"         >> "$GITHUB_ENV"
+
+      - name: Setup Rust (with Android targets)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android,i686-linux-android
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-directories: ${{ github.workspace }}/build
+          cache-all-crates: true
+
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk --locked
+
+      # Pin Gradle 8.x: Android Gradle Plugin 8.2.x (used in
+      # platforms/kotlin/build.gradle) is incompatible with Gradle 9.x —
+      # `setup-gradle@v3` defaults to the newest stable, which is 9.4.1
+      # at the moment and breaks `:debugAndroidTestRuntimeClasspath`.
+      - name: Gradle cache
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: "8.10"
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Build .so for emulator ABI + regenerate Kotlin bindings
+        run: |
+          chmod +x ./build_android
+          # Only build for the emulator's ABI in CI to keep the job fast.
+          ./build_android x86_64-linux-android
+
+      # `reactivecircus/android-emulator-runner` creates the AVD, boots the
+      # emulator, waits for `sys.boot_completed=1`, and runs the supplied
+      # script with the emulator as the connected device. It tears the
+      # emulator down on exit so a stuck AVD doesn't stall the runner.
+      #
+      # NOTE: each line in `script:` is executed via `sh -c "<line>"`, so
+      # `cd` does NOT persist between lines. Chain with `&&` (or use a
+      # subshell) so the working directory carries forward. Also use
+      # `gradle` directly — setup-gradle already exposes it and we don't
+      # need the wrapper round-trip.
+      - name: Run connectedAndroidTest on emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ env.API_LEVEL }}
+          target: ${{ env.TARGET }}
+          arch: ${{ env.ARCH }}
+          profile: pixel
+          force-avd-creation: false
+          disable-animations: true
+          # `swiftshader_indirect` provides software OpenGL ES + Vulkan that
+          # wgpu can target on the emulator. Pair with `google_apis` system
+          # image (see env above) so the Vulkan loader is present.
+          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect
+          script: cd platforms/kotlin && WGPU_BACKEND=vulkan gradle fragmentcolor:connectedAndroidTest --stacktrace
+
+      - name: Upload generated Kotlin bindings (for inspection)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kotlin-bindings
+          path: platforms/kotlin/fragmentcolor/src/main/java/org/fragmentcolor/generated/
+          if-no-files-found: warn
+
+      - name: Upload test reports (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-test-reports
+          path: platforms/kotlin/fragmentcolor/build/reports/
+          if-no-files-found: ignore

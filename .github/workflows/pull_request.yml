@@ -24,8 +24,6 @@ jobs:
       core: ${{ steps.changes.outputs.core }}
       web: ${{ steps.changes.outputs.web }}
       python: ${{ steps.changes.outputs.python }}
-      # swift: ${{ steps.changes.outputs.swift }}
-      # kotlin: ${{ steps.changes.outputs.kotlin }}
     steps:
       - uses: actions/checkout@v4
         if: ${{ github.event_name == 'push' }}
@@ -46,10 +44,10 @@ jobs:
             python:
               - "platforms/python/fragmentcolor/**/*"
 
-          # swift:
-          #   - "platforms/swift/**/*"
-          # kotlin:
-          #   - "platforms/kotlin/**/*"
+          # NOTE: iOS / Android healthchecks live in their own workflow files
+          # (healthcheck_ios.yml + healthcheck_android.yml) so they can run
+          # on macos-14 / ubuntu-latest-with-KVM respectively, independent of
+          # the main PR pipeline.
 
   test_core:
     timeout-minutes: 20
@@ -125,124 +123,9 @@ jobs:
       - name: Build example app_healthcheck
         run: cargo build -p fce --example app_healthcheck
 
-  # @TODO Implement Swift bindings
-  # test_swift_bindings:
-  #   timeout-minutes: 20
-  #   name: Test Swift Bindings
-  #   needs: changes
-  #   if: needs.changes.outputs.swift == 'true' || needs.changes.outputs.core == 'true'
-  #   runs-on: [self-hosted, macOS, ARM64]
-  #   env:
-  #     # Disables sccache for iOS: https://github.com/mozilla/sccache/issues/2253
-  #     RUSTC_WRAPPER: ""
-  #   steps:
-  #     - name: Collect telemetry data
-  #       uses: catchpoint/workflow-telemetry-action@v2
-  #       with:
-  #         comment_on_pr: false
-
-  #     - name: Checkout
-  #       uses: actions/checkout@v4
-  #       with:
-  #         submodules: "recursive"
-
-  #     - name: Setup Rust
-  #       uses: actions-rust-lang/setup-rust-toolchain@v1
-  #       with:
-  #         cache: false
-
-  #     - name: Setup Rust cache
-  #       uses: Swatinem/rust-cache@v2
-  #       with:
-  #         cache-directories: ${{ github.workspace }}/build
-  #         cache-all-crates: true
-
-  #     - name: Build iOS
-  #       run: ./build_ios.sh
-
-  #     - name: Build demo App
-  #       working-directory: examples/ios/
-  #       run: |
-  #         set -o pipefail
-  #         xcodebuild \
-  #             -project PhotoGraphDemo_iOS.xcodeproj \
-  #             -scheme PhotoGraphDemo_iOS \
-  #             -sdk iphonesimulator \
-  #             -allowProvisioningUpdates \
-  #             -destination 'platform=iOS Simulator,OS=18.0,name=iPhone 16' \
-  #             build
-
-  # @TODO Implement Kotlin bindings
-  # test_android_bindings:
-  #   timeout-minutes: 30
-  #   name: Test Android Bindings
-  #   needs: changes
-  #   if: needs.changes.outputs.kotlin == 'true' || needs.changes.outputs.core == 'true'
-  #   runs-on: x86_64-ubuntu-engine
-  #   steps:
-  #     - name: Collect telemetry data
-  #       uses: catchpoint/workflow-telemetry-action@v2
-  #       with:
-  #         comment_on_pr: false
-
-  #     - name: Checkout
-  #       uses: actions/checkout@v4
-  #       with:
-  #         submodules: "recursive"
-
-  #     - name: Set up Java
-  #       uses: actions/setup-java@v4
-  #       with:
-  #         distribution: "temurin"
-  #         java-version: 17
-
-  #     - name: Setup Rust
-  #       uses: actions-rust-lang/setup-rust-toolchain@v1
-  #       with:
-  #         cache: false
-
-  #     - name: Setup Rust cache
-  #       uses: Swatinem/rust-cache@v2
-  #       with:
-  #         cache-directories: ${{ github.workspace }}/build
-  #         cache-all-crates: true
-
-  #     - name: Run sccache-cache
-  #       uses: mozilla-actions/sccache-action@v0.0.4
-
-  #     - name: Build Android for CI runner
-  #       run: ./build_android.sh i686-linux-android
-
-  #     - name: Enable KVM
-  #       run: |
-  #         echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-  #         sudo udevadm control --reload-rules
-  #         sudo udevadm trigger --name-match=kvm
-
-  #     - name: Gradle cache
-  #       uses: gradle/actions/setup-gradle@v3
-
-  #     - name: Setup PATH
-  #       run: |
-  #         echo "${ANDROID_HOME}/cmdline-tools/latest/bin" >> "${GITHUB_PATH}"
-  #         echo "${ANDROID_HOME}/platform-tools" >> "${GITHUB_PATH}"
-  #         echo "${ANDROID_HOME}/emulator" >> "${GITHUB_PATH}"
-
-  #     - name: Install Android Emulator
-  #       env:
-  #         API_LEVEL: 29
-  #         ARCH: x86
-  #         TARGET: default
-  #       run: |
-  #         yes | sdkmanager --licenses > /dev/null
-  #         sdkmanager --install "emulator" "platform-tools" "platforms;android-${API_LEVEL}"
-  #         sdkmanager --install "system-images;android-${API_LEVEL};${TARGET};${ARCH}"
-  #         avdmanager create avd -n pixel -k "system-images;android-${API_LEVEL};${TARGET};${ARCH}" --device pixel
-
-  #     - name: Build demo App
-  #       run: |
-  #         emulator -avd pixel -no-window -no-audio &
-  #         cd examples/android/; ./gradlew connectedAndroidTest
+  # iOS + Android bindings live in dedicated workflow files:
+  #   - .github/workflows/healthcheck_ios.yml     (runs on macos-14 with Xcode)
+  #   - .github/workflows/healthcheck_android.yml (runs on ubuntu-latest with KVM)
 
   test_web_bindings:
     timeout-minutes: 20

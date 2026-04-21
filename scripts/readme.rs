@@ -58,20 +58,14 @@ mod readme {
                 first_py: None,
             });
             match lang {
-                "rust" => {
-                    if entry.first_rust.is_none() {
-                        entry.first_rust = Some(CodeBlock { body });
-                    }
+                "rust" if entry.first_rust.is_none() => {
+                    entry.first_rust = Some(CodeBlock { body });
                 }
-                "js" => {
-                    if entry.first_js.is_none() {
-                        entry.first_js = Some(CodeBlock { body });
-                    }
+                "js" if entry.first_js.is_none() => {
+                    entry.first_js = Some(CodeBlock { body });
                 }
-                "python" => {
-                    if entry.first_py.is_none() {
-                        entry.first_py = Some(CodeBlock { body });
-                    }
+                "python" if entry.first_py.is_none() => {
+                    entry.first_py = Some(CodeBlock { body });
                 }
                 _ => {}
             }

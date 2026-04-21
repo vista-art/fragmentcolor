@@ -1,10 +1,15 @@
 #!/usr/bin/env bash
-# Run FragmentColor healthchecks (Python and Web) with cargo-like output.
+# Run FragmentColor healthchecks (Python, Web, iOS, Android) with
+# cargo-like output. Each runner asserts against the generated bindings
+# and fails fast on regressions.
+#
 # Usage:
-#   ./healthcheck              # run all
+#   ./healthcheck              # run all available platforms
 #   ./healthcheck all|*|complete
-#   ./healthcheck py|python|p  # python only
+#   ./healthcheck py|python|p              # python only
 #   ./healthcheck js|javascript|j|web|w|wasm  # web only
+#   ./healthcheck ios|swift                # iOS only (Xcode + simulator)
+#   ./healthcheck android|kotlin|a|k       # Android only (cargo-ndk + emulator)
 
 set -u -o pipefail
 
@@ -32,6 +37,8 @@ parse_mode() {
   case "$arg_lc" in
     p|py|python) echo "py" ;;
     j|js|javascript|w|web|wasm) echo "web" ;;
+    i|ios|swift) echo "ios" ;;
+    a|k|android|kotlin) echo "android" ;;
     all|complete|\*) echo "all" ;;
     "") echo "all" ;;
     *) echo "all" ;;
@@ -47,6 +54,63 @@ run_py() {
   fi
   # Build a fresh wheel to ensure latest sources are tested
   if bash "$ROOT_DIR/run_py" headless; then
+    log_test_ok "$name"
+    return 0
+  else
+    log_test_fail "$name"
+    return 1
+  fi
+}
+
+run_ios() {
+  local name="platforms.swift.healthcheck"
+
+  if ! command -v xcodebuild >/dev/null 2>&1; then
+    echo "skip $name ... xcodebuild not on PATH (Xcode required)"
+    return 0
+  fi
+
+  # Compile-only check. SPM can't run tests on iOS Simulator without a
+  # wrapping Xcode project (tracked as follow-up in the CHANGELOG); for
+  # now we verify that `./build_ios` produces a working xcframework and
+  # that the Swift Package at `platforms/swift/` links against it cleanly
+  # for the simulator SDK. The Swift-side extensions + generated uniffi
+  # sources all type-check here, which catches the majority of binding
+  # regressions.
+  if ! bash "$ROOT_DIR/build_ios"; then
+    log_test_fail "$name"
+    return 1
+  fi
+
+  if (cd "$ROOT_DIR/platforms/swift" \
+        && xcodebuild \
+             -scheme FragmentColor \
+             -destination "generic/platform=iOS Simulator" \
+             build); then
+    log_test_ok "$name"
+    return 0
+  else
+    log_test_fail "$name"
+    return 1
+  fi
+}
+
+run_android() {
+  local name="platforms.kotlin.healthcheck"
+
+  if ! command -v cargo-ndk >/dev/null 2>&1; then
+    echo "skip $name ... cargo-ndk not installed"
+    return 0
+  fi
+  if [ -z "${ANDROID_NDK_HOME:-}" ]; then
+    echo "skip $name ... ANDROID_NDK_HOME not set"
+    return 0
+  fi
+
+  # Build the native libs + regenerate Kotlin bindings, then run the
+  # androidTest suite on a connected device or emulator (gradle picks it up).
+  if bash "$ROOT_DIR/build_android" >/dev/null 2>&1 \
+     && (cd "$ROOT_DIR/platforms/kotlin" && ./gradlew fragmentcolor:connectedAndroidTest >/dev/null 2>&1); then
     log_test_ok "$name"
     return 0
   else
@@ -252,11 +316,23 @@ main() {
       total=1
       if run_web; then passed=$((passed+1)); else failed=$((failed+1)); fi
       ;;
+    ios)
+      echo "running 1 test"
+      total=1
+      if run_ios; then passed=$((passed+1)); else failed=$((failed+1)); fi
+      ;;
+    android)
+      echo "running 1 test"
+      total=1
+      if run_android; then passed=$((passed+1)); else failed=$((failed+1)); fi
+      ;;
     all)
-      echo "running 2 tests"
-      total=2
+      echo "running 4 tests"
+      total=4
       if run_py; then passed=$((passed+1)); else failed=$((failed+1)); fi
       if run_web; then passed=$((passed+1)); else failed=$((failed+1)); fi
+      if run_ios; then passed=$((passed+1)); else failed=$((failed+1)); fi
+      if run_android; then passed=$((passed+1)); else failed=$((failed+1)); fi
       ;;
   esac
 

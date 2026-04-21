@@ -4,19 +4,23 @@ This roadmap summarizes current focus and planned features.
 
 use std::borrow::Borrow;
 
-## 0.11.0 Swift & Kotlin with Uniffi
+## 0.11.0 Swift & Kotlin with Uniffi (in progress)
 
-- [ ] Swift Wrappers
-- [ ] Kotlin Wrappers
-- [ ] Mobile platform wiring
-  - [ ] Contribute to Uniffi to suport renaming structs (so I can follow the same pattern as in Python/JS)
-  - [ ] iOS: create a safe helper to wrap an existing CAMetalLayer into a wgpu::Surface, then delegate to a core helper that returns WindowTarget
-  - [ ] Android: finalize uniffi method scaffolding and ensure JNI handle passing is safe; wire AndroidTarget and AndroidTextureTarget
-  - [ ] Core: add a helper like create_target_from_surface(surface, size) to remove duplication across platforms (Web/Python/iOS/Android)
-  - [ ] Add E2E tests for iOS/Android wrappers once bindings are generated
-  - [ ] Script to Test, Compile & Publish Android
-  - [ ] Script to Test, Compile & Publish iOS
-- [ ] Revemp RenderPass API
+- [x] Uniffi build wiring (deps, scaffolding, bindgen binary, config)
+- [x] Mark core types as `uniffi::Object` (Renderer, Shader, Pass, Frame, Size, Region, WindowTarget, TextureTarget)
+- [x] iOS: `Renderer::from_metal_layer(u64)` wraps `CAMetalLayer` into a `WindowTarget`
+- [x] Android: `Renderer::from_android_surface` wraps an `android.view.Surface` via JNI
+- [ ] Swift Package (`platforms/swift/`): SPM package with xcframework binary target
+- [ ] Kotlin library (`platforms/kotlin/fragmentcolor/`): Android library module with `jniLibs`
+- [ ] `build_ios` script: build rust for iOS targets, generate Swift bindings, bundle xcframework
+- [ ] `build_android` script: build rust via `cargo-ndk`, copy `.so` into `jniLibs`, generate Kotlin bindings
+- [ ] Example iOS app under `platforms/swift/examples/`
+- [ ] Example Android app under `platforms/kotlin/examples/`
+- [ ] Core helper `create_target_from_surface(surface, size)` to remove duplication across platforms (Web/Python/iOS/Android)
+- [ ] E2E tests for iOS/Android wrappers
+- [ ] Script to Test, Compile & Publish Android
+- [ ] Script to Test, Compile & Publish iOS
+- [ ] Revamp RenderPass API
   - [ ] It must give access to all wgpu::RenderPass customizations with sensible defaults, so we keep our API simple while still allowing for advanced use cases.
 - [ ] Create specialized Alias objects:
   - [ ] Compute: newtype for Shader, but only allows compute shaders (Shader continues to allow both)
