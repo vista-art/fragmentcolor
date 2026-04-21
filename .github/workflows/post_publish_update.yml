@@ -40,7 +40,7 @@ jobs:
             NPM_OK=0; PYPI_OK=0; XCF_OK=0
             if npm view "fragmentcolor@$VERSION" version >/dev/null 2>&1; then NPM_OK=1; fi
             if curl -sSf "https://pypi.org/pypi/fragmentcolor/$VERSION/json" >/dev/null 2>&1; then PYPI_OK=1; fi
-            if gh release view "v$VERSION" --json assets -q '.assets[].name' 2>/dev/null | grep -q "fragmentcolor.xcframework.zip"; then XCF_OK=1; fi
+            if gh release view "v$VERSION" --json assets -q '.assets[].name' 2>/dev/null | grep -q "FragmentColorFFI.xcframework.zip"; then XCF_OK=1; fi
             if [ "$NPM_OK" = "1" ] && [ "$PYPI_OK" = "1" ] && [ "$XCF_OK" = "1" ]; then echo "OK"; break; fi
             echo "Not available yet (npm=$NPM_OK pypi=$PYPI_OK xcf=$XCF_OK), retrying in 10s... ($i/60)"; sleep 10
           done
@@ -58,13 +58,13 @@ jobs:
           mkdir -p .release-tmp
           gh release download "v$VERSION" \
             --repo "${GITHUB_REPOSITORY}" \
-            --pattern "fragmentcolor.xcframework.zip" \
+            --pattern "FragmentColorFFI.xcframework.zip" \
             --dir .release-tmp \
             --clobber
           # Use sha256 directly; `swift package compute-checksum` isn't
           # available on ubuntu-latest, but it produces the same hex
           # digest as a plain sha256sum over the zip bytes.
-          CHECKSUM=$(sha256sum .release-tmp/fragmentcolor.xcframework.zip | awk '{print $1}')
+          CHECKSUM=$(sha256sum .release-tmp/FragmentColorFFI.xcframework.zip | awk '{print $1}')
           echo "checksum=$CHECKSUM" >> "$GITHUB_OUTPUT"
           # Update both version and checksum literals in Package.swift.
           if [ -f Package.swift ]; then
