@@ -1,4 +1,4 @@
-import { Code, Tabs, TabItem, Aside } from "@astrojs/starlight/components";
+import { Code, Tabs, TabItem } from "@astrojs/starlight/components";
 
 <Tabs>
 
@@ -175,6 +175,8 @@ meta="collapse={13-40}"
 
 <TabItem label="Rust">
 
+<Code code="cargo add fragmentcolor" lang="bash" />
+
 <Code
 code={`
 use fragmentcolor::{Renderer, Shader, Pass, Frame};
@@ -259,9 +261,7 @@ meta="collapse={14-41}"
 
 <TabItem label="Swift">
 
-<Aside type="caution" title="Work in progress">
-Swift bindings are not yet available; implementation is in the works.
-</Aside>
+<Code code="swift package add https://github.com/vista-art/fragmentcolor" lang="bash" />
 
 <Code code={`
 import FragmentColor
@@ -327,9 +327,8 @@ struct CanvasRepresentation: NSViewRepresentable {
 
 <TabItem label="Kotlin">
 
-<Aside type="caution" title="Work in progress">
-Kotlin/Android bindings are not yet available; implementation is in the works.
-</Aside>
+<Code code={`# app/build.gradle
+implementation("org.fragmentcolor:fragmentcolor:0.11.0")`} lang="bash" />
 
 <Code code={`
 import androidx.compose.foundation.Canvas
