@@ -1,0 +1,111 @@
+name: Healthcheck Android (Kotlin)
+
+on:
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'Cargo.*'
+      - 'build.rs'
+      - 'scripts/**'
+      - 'platforms/kotlin/**'
+      - 'docs/api/**'
+      - 'uniffi.toml'
+      - 'uniffi_bindgen.rs'
+      - 'build_android'
+      - '.github/workflows/healthcheck_android.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  healthcheck-android:
+    # ubuntu-latest supports KVM acceleration for the Android emulator.
+    runs-on: ubuntu-latest
+    env:
+      API_LEVEL: "29"
+      TARGET: "default"
+      ARCH: "x86_64"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: "recursive"
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      - name: Setup Rust (with Android targets)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android,i686-linux-android
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-directories: ${{ github.workspace }}/build
+          cache-all-crates: true
+
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk --locked
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Gradle cache
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Install Android SDK components + emulator
+        run: |
+          yes | sdkmanager --licenses > /dev/null
+          sdkmanager --install "emulator" "platform-tools" "platforms;android-${API_LEVEL}"
+          sdkmanager --install "system-images;android-${API_LEVEL};${TARGET};${ARCH}"
+          avdmanager create avd -n pixel -k "system-images;android-${API_LEVEL};${TARGET};${ARCH}" --device pixel
+
+      - name: Build .so for emulator ABI + regenerate Kotlin bindings
+        env:
+          ANDROID_NDK_HOME: ${{ env.ANDROID_HOME }}/ndk-bundle
+        run: |
+          chmod +x ./build_android
+          # Only build for the emulator's ABI in CI to keep the job fast.
+          ./build_android x86_64-linux-android
+
+      - name: Run Android healthcheck on emulator
+        env:
+          FC_HEALTHCHECK_VERBOSE: "1"
+        run: |
+          # Boot the emulator in the background, wait for it, then run the
+          # androidTest suite. Mirrors `./healthcheck android` but inline so
+          # the failing step is visible in the CI log.
+          "${ANDROID_HOME}/emulator/emulator" -avd pixel -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect &
+          "${ANDROID_HOME}/platform-tools/adb" wait-for-device
+          # Wait for boot completion
+          for i in $(seq 1 60); do
+            booted=$("${ANDROID_HOME}/platform-tools/adb" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
+            if [ "$booted" = "1" ]; then break; fi
+            sleep 5
+          done
+
+          (cd platforms/kotlin && ./gradlew fragmentcolor:connectedAndroidTest --stacktrace)
+
+      - name: Upload generated Kotlin bindings (for inspection)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kotlin-bindings
+          path: platforms/kotlin/fragmentcolor/src/main/java/org/fragmentcolor/generated/
+          if-no-files-found: warn
+
+      - name: Upload test reports (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-test-reports
+          path: platforms/kotlin/fragmentcolor/build/reports/
+          if-no-files-found: ignore
