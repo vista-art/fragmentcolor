@@ -13,9 +13,11 @@ use crate::renderer::platform::mobile::FragmentColorError;
 
 #[uniffi::export]
 impl Shader {
-    /// Swift/Kotlin extensions re-expose this as `Shader(source)` for
-    /// idiomatic construction that matches Rust, JavaScript and Python.
-    #[uniffi::constructor]
+    /// Foreign bindings see this as `Shader.new(source)`. On Swift, uniffi
+    /// generates a `convenience init` when the constructor name is `new`,
+    /// so callers write `let shader = try Shader(source: "...")`. Kotlin
+    /// keeps the same factory signature.
+    #[uniffi::constructor(name = "new")]
     #[lsp_doc("docs/api/core/shader/hidden/new_mobile.md")]
     pub fn new_mobile(source: String) -> Result<Arc<Self>, FragmentColorError> {
         Shader::new(&source)

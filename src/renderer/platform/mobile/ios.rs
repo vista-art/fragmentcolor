@@ -43,6 +43,11 @@ impl Renderer {
     // (it wraps a raw pointer), so the resulting future can't satisfy
     // uniffi's `Send` bound on async exports. Adapter/device creation is
     // driven by pollster internally.
+    //
+    // Foreign bindings see this as `createTarget(metalLayerPtr:)`. A
+    // `Renderer+Extensions.swift` helper accepts a `CAMetalLayer` directly
+    // and extracts the pointer.
+    #[uniffi::method(name = "createTarget")]
     #[lsp_doc("docs/api/core/renderer/hidden/create_target_ios.md")]
     pub fn create_target_ios(
         self: Arc<Self>,
