@@ -43,13 +43,12 @@ jobs:
       # ANDROID_HOME / PATH so sdkmanager is available for the packages
       # pre-install below. The emulator itself is managed by
       # `reactivecircus/android-emulator-runner` further down.
+      # NOTE: `packages` must be a single space-separated string — a YAML
+      # block scalar (`|`) hands sdkmanager one name with embedded newlines.
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
         with:
-          packages: |
-            platforms;android-${{ env.API_LEVEL }}
-            ndk;${{ env.NDK_VERSION }}
-            platform-tools
+          packages: "platforms;android-${{ env.API_LEVEL }} ndk;${{ env.NDK_VERSION }} platform-tools"
 
       - name: Export ANDROID_NDK_HOME
         run: |

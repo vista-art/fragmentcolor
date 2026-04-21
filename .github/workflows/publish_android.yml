@@ -44,13 +44,12 @@ jobs:
           distribution: "temurin"
           java-version: "17"
 
+      # NOTE: `packages` must be a single space-separated string — a YAML
+      # block scalar (`|`) hands sdkmanager one name with embedded newlines.
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
         with:
-          packages: |
-            platforms;android-34
-            ndk;27.2.12479018
-            platform-tools
+          packages: "platforms;android-34 ndk;27.2.12479018 platform-tools"
 
       - name: Export ANDROID_NDK_HOME
         run: |
