@@ -69,7 +69,15 @@ Big‑picture architecture (how things fit together)
   - **The website is only updated after all healthchecks pass.** The post-build website export writes MDX pages under `docs/website/src/content/docs/api/` by combining the canonical Rust docs with language-specific examples sliced from annotated healthcheck scripts. If JS/Python/Swift/Kotlin examples fail to run, the site is not regenerated.
   - These guarantees apply equally to iOS and Android — the same build-time validation that blocks a release when a JS example is missing also blocks a release when the corresponding Swift or Kotlin example is missing.
 - CI gates (what must pass on PR)
-  - Clippy with warnings denied; rustfmt check; `cargo test` for Rust; build several example binaries; Web healthcheck (Playwright); Python wheel healthcheck; iOS healthcheck (xcodebuild); Android healthcheck (gradle); dependency license audit (cargo‑deny). Release jobs publish to crates.io, npm, PyPI, CocoaPods / Swift Package Index, and Maven Central.
+  - Clippy with warnings denied; rustfmt check; `cargo test` for Rust; build several example binaries; Web healthcheck (Playwright); Python wheel healthcheck; iOS healthcheck (xcodebuild on macos-14); Android healthcheck (gradle + emulator on ubuntu-latest KVM); dependency license audit (cargo-deny).
+  - Each platform has its own workflow so a broken runner doesn't block the others: `.github/workflows/{pull_request,healthcheck_python,healthcheck_web,healthcheck_ios,healthcheck_android}.yml`.
+- Release gates (what happens on tag published)
+  - `publish_crates.yml` → crates.io.
+  - `publish_npm.yml` → npm.
+  - `publish_py.yml` → PyPI (wheels + sdist).
+  - `publish_swift.yml` → GitHub Release asset `fragmentcolor.xcframework.zip` (SPM consumes it via the root `Package.swift` binaryTarget URL + checksum).
+  - `publish_android.yml` → GitHub Release asset `fragmentcolor-<version>.aar` (Maven Central publishing is follow-up work).
+  - `post_publish_update.yml` waits for npm, PyPI, and the xcframework asset, then opens a PR that bumps consumer dependency ranges and pins `Package.swift` to the matching checksum.
 
 Module‑level invariants (authoritative AGENTS.md files)
 - These short rule files are the source of truth for non‑negotiable behavior. Do not introduce code that violates them.

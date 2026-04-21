@@ -20,24 +20,116 @@ so the public API reads the same across every supported platform.
 
 ### API additions (iOS/Android only)
 
-- `Renderer::from_metal_layer(metal_layer_ptr: u64)` (iOS): build a `WindowTarget` from an existing
-  `CAMetalLayer` pointer.
-- `Renderer::from_android_surface(env, surface)` (Android): build a `WindowTarget` from an
-  `android.view.Surface` via JNI (exposed through a raw `#[jni_fn]` entry point since uniffi
-  cannot marshal `JNIEnv*` directly).
+- `Renderer::create_target_ios(metal_layer_ptr: u64)` (iOS, exposed as
+  `Renderer.createTarget(metalLayerPtr:)` / `Renderer.createTarget(layer:)` via the Swift
+  extension): build a `WindowTarget` from an existing `CAMetalLayer` pointer.
+- Raw `#[jni_fn]` Android entry point (`create_window_target_from_surface`) that returns
+  `Arc<WindowTarget>` from an `android.view.Surface`; the Kotlin extension wraps it as
+  `Renderer.createTarget(surface:)`. Cannot go through uniffi because uniffi does not marshal
+  `JNIEnv*`.
+- `Renderer::create_texture_target_mobile(width, height)` — uniffi-friendly concrete-typed
+  variant of `create_texture_target`; Swift / Kotlin see it as `createTextureTarget`.
+- `Renderer::render_shader_mobile` / `render_shader_texture_mobile` — uniffi variants of
+  `render` (one per target type, since uniffi can't marshal `impl Trait`). Swift / Kotlin
+  extensions recombine them into a single overloaded `render(shader, target)`.
+- `Shader::new_mobile(source: String)` — uniffi constructor; Swift sees it as `Shader(source:)`
+  via uniffi's `convenience init`, Kotlin sees it as `Shader.new(source)`.
+
+### CI + release pipeline
+
+- Add `.github/workflows/healthcheck_ios.yml` (macos-14 runner with Xcode): builds the
+  xcframework and runs `./healthcheck ios` on an iPhone simulator on every PR that touches
+  `src/**`, `platforms/swift/**`, mobile-relevant build inputs, or the `docs/api` folder.
+- Add `.github/workflows/healthcheck_android.yml` (ubuntu-latest runner with KVM): builds
+  `libfragmentcolor.so` for the emulator ABI via `cargo-ndk`, boots an Android emulator,
+  and runs `./gradlew connectedAndroidTest` with the uniffi-generated Kotlin bindings.
+- Add `.github/workflows/publish_swift.yml`: on release, builds the xcframework, zips it,
+  attaches `fragmentcolor.xcframework.zip` to the GitHub Release as an asset, and records
+  the SPM checksum.
+- Add `.github/workflows/publish_android.yml`: on release, builds the `.so` for all 4 ABIs
+  and uploads `fragmentcolor-<version>.aar` to the GitHub Release.
+- Extend `.github/workflows/post_publish_update.yml`: after waiting for npm, PyPI **and**
+  the xcframework release asset, pins the top-level `Package.swift` `fragmentcolorVersion`
+  / `fragmentcolorChecksum` to match the just-published release and rolls that into the
+  post-publish consumer-update PR.
+
+### Distribution
+
+- Add root-level `Package.swift` for Swift Package Manager consumers. Users depend on the
+  repo URL (`https://github.com/vista-art/fragmentcolor`, `from: "0.11.0"`); SPM resolves
+  the tag, downloads the matching `fragmentcolor.xcframework.zip` from the GitHub Release,
+  and verifies the pinned SHA-256 checksum.
+- The Kotlin AAR is distributed through GitHub Releases for 0.11.x. Maven Central publishing
+  (requires GPG + Sonatype OSSRH credentials) is tracked as follow-up work.
+
+### Texture formats
+
+- [x] Add `TextureFormat::Rgba16Float` (filterable + storage-writable in core WebGPU; no feature opt-in).
+      Enables higher-precision iterative simulation (diffuse + transport + evaporate) without the
+      8-bit storage precision loss, while avoiding `Rgba32Float` (unfilterable, requires
+      `FLOAT32_FILTERABLE`) and `Rgba16Unorm` (requires `RGBA16UNORM_STORAGE`).
+
+### Compute DX
+
+- `Renderer::read_texture(texture_id) -> Vec<u8>` (plus `read_texture_async`) and
+  `Texture::get_image` / `Texture::get_image_async` return the mip-0 contents of any registered
+  texture as tightly-packed bytes in its native format. No more round-tripping through a
+  `TextureTarget` and a fullscreen present to inspect a storage texture.
+- `Renderer::create_storage_texture_with_data(size, format, bytes, usage)` creates a storage
+  texture pre-seeded from a CPU blob in one call — skips the "author a trivial seed WGSL shader"
+  workaround for initial conditions. Expects tightly-packed bytes (no per-row padding) so small
+  textures work without manually padding rows to 256.
+- `Renderer::wait_idle()` blocks until every queued submission on the device has finished.
+  Restores deterministic ordering around `render()` → readback sequences — previously a compute
+  burst followed by `TextureTarget::get_image` could return stale pixels ~30-40% of the time on
+  some Metal adapters because the readback raced the prior submission.
+- Bind group layout now infers `TextureSampleType::Float { filterable: false }` when a sampled
+  texture is only consumed by `textureLoad` (no `textureSample*` anywhere in the module). This
+  unlocks formats like `Rgba32Float` as a sampled source without requiring the `FLOAT32_FILTERABLE`
+  feature. The analysis is conservative: if any sample expression resolves through function
+  arguments or other indirection we cannot statically follow, every image global is flagged as
+  sampled (the pre-existing `filterable: true` layout).
+
+### Bug fixes
+
+- Sampled textures (`texture_2d<f32>`, `texture_2d<i32>`, `texture_2d<u32>`, multisampled, cube, 3D,
+  arrayed, etc.) and samplers (filtering + comparison) now expose `ShaderStages::COMPUTE` in their
+  bind group layouts, matching the visibility already granted to depth textures, uniforms, and
+  read-only storage buffers. Previously compute shaders sampling a non-storage texture — or using
+  a sampler to filter one — failed pipeline creation with "Shader global ResourceBinding ... is not
+  available in the layout / Visibility flags don't include the shader stage", forcing workarounds
+  like declaring sources as `texture_storage_2d<..., read>`.
+- `texture_storage_2d<..., read_write>` is no longer silently downgraded to `ReadOnly`. Naga
+  represents `read_write` as `StorageAccess::LOAD | STORE`, which previously fell through the match
+  arm and produced a read-only bind group layout — any `textureStore` then failed validation. The
+  mapping now emits `StorageTextureAccess::ReadWrite` for the combined case, allowing ping-pong
+  pairs to collapse to a single texture where the format supports it.
+- `Texture::get_image_async` no longer deadlocks on native. The async path now drives
+  `device.poll(Wait)` before awaiting the map callback — without it the oneshot future waits
+  forever because nothing else advances the wgpu event loop on non-web targets.
+
+### Known issues
+
+- Compute→compute sampled-read of a storage-written texture can return all-zero `textureLoad`s on
+  Metal when both passes live in the same command buffer. Binding the source as
+  `texture_storage_2d<..., read>` (which is now laid out correctly) is the working mitigation
+  until we insert explicit encoder-boundary synchronization for this pattern.
 
 ### Unfinished work (planned for later 0.11.x / 0.12.0 iterations)
 
-- [ ] `platforms/swift/` Swift Package (SPM + xcframework binary target)
-- [ ] `platforms/kotlin/fragmentcolor/` Android Library gradle module with `jniLibs` + generated Kotlin
-- [ ] `build_ios` script (build for `aarch64-apple-ios` + `aarch64-apple-ios-sim`, bundle xcframework)
-- [ ] `build_android` script (build all 4 Android ABIs via `cargo-ndk`, copy `.so` into `jniLibs`)
-- [ ] Example iOS app under `platforms/swift/examples/`
-- [ ] Example Android app under `platforms/kotlin/examples/`
-- [ ] E2E tests for iOS/Android wrappers
-- [ ] Script to Test, Compile & Publish Android
-- [ ] Script to Test, Compile & Publish iOS
-- [ ] CI workflow integration (publish xcframework / AAR on release)
+- [x] `platforms/swift/` Swift Package (SPM) + root `Package.swift` pulling xcframework from GitHub Release
+- [x] `platforms/kotlin/fragmentcolor/` Android Library gradle module with `jniLibs` + generated Kotlin
+- [x] `build_ios` script (build for `aarch64-apple-ios` + `aarch64-apple-ios-sim`, bundle xcframework)
+- [x] `build_android` script (build all 4 Android ABIs via `cargo-ndk`, copy `.so` into `jniLibs`)
+- [x] Mobile healthcheck scaffolding (Swift `Healthcheck.swift` + Kotlin `Healthcheck.kt`)
+- [x] CI workflow: `healthcheck_ios.yml` + `healthcheck_android.yml` run on every PR
+- [x] Release workflow: `publish_swift.yml` uploads xcframework, `publish_android.yml` uploads AAR
+- [x] Post-release: `post_publish_update.yml` pins `Package.swift` to the released checksum
+- [ ] Example iOS app under `platforms/swift/examples/` (xcodeproj consuming the SPM package)
+- [ ] Example Android app under `platforms/kotlin/examples/` (gradle project consuming the AAR)
+- [ ] Expand mobile healthchecks beyond the headless smoke test (textures, push constants, frames, …)
+- [ ] Publish Kotlin AAR to Maven Central (requires Sonatype OSSRH creds + GPG signing)
+- [ ] Publish Swift Package to the Swift Package Index (register repo after first tag)
 - [ ] Contribute struct-rename support to uniffi upstream (if ever needed for naming parity)
 - [ ] Core helper `create_target_from_surface(surface, size)` to deduplicate Web/Python/iOS/Android
 - [ ] Revamp RenderPass API (expose all `wgpu::RenderPass` customizations with sensible defaults)

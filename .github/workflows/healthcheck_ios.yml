@@ -1,0 +1,64 @@
+name: Healthcheck iOS (Swift)
+
+on:
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'Cargo.*'
+      - 'build.rs'
+      - 'scripts/**'
+      - 'platforms/swift/**'
+      - 'docs/api/**'
+      - 'uniffi.toml'
+      - 'uniffi_bindgen.rs'
+      - 'build_ios'
+      - '.github/workflows/healthcheck_ios.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  healthcheck-ios:
+    # macos-14 is ARM64 with Xcode 15 preinstalled.
+    runs-on: macos-14
+    env:
+      # sccache interacts poorly with cross-compilation to iOS targets;
+      # disable it for this job even if it's enabled elsewhere.
+      RUSTC_WRAPPER: ""
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: "recursive"
+
+      - name: Setup Rust (with iOS targets)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios,aarch64-apple-ios-sim
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-directories: ${{ github.workspace }}/build
+          cache-all-crates: true
+
+      - name: Build xcframework + regenerate Swift bindings
+        run: |
+          chmod +x ./build_ios
+          ./build_ios
+
+      - name: Run Swift healthcheck on iOS simulator
+        env:
+          FC_HEALTHCHECK_VERBOSE: "1"
+        run: |
+          chmod +x ./healthcheck
+          ./healthcheck ios
+
+      - name: Upload generated Swift bindings (for inspection)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: swift-bindings
+          path: platforms/swift/Sources/FragmentColor/generated/
+          if-no-files-found: warn

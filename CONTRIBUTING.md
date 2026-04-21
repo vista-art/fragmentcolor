@@ -9,12 +9,18 @@ Contributions are welcome! This document outlines the current workflow for devel
   - Per-method page: `docs/api/{object}/{method}.md` with `## Example`.
 - Rust code uses `#[lsp_doc("docs/api/..."))]` to pull docs into editor hovers and unify docs across bindings.
 - The website is generated from `docs/api` at build time into `docs/website/src/content/docs/api/*.mdx`.
-- JavaScript & Python examples on the website are extracted from healthchecks:
+- JavaScript, Python, Swift, and Kotlin examples on the website are extracted from healthchecks:
   - platforms/web/healthcheck/main.js
   - platforms/python/healthcheck.py
+  - platforms/swift/healthcheck/Healthcheck.swift
+  - platforms/kotlin/fragmentcolor/src/androidTest/java/org/fragmentcolor/Healthcheck.kt
   - Use markers like:
     - JS: `// DOC: Renderer.create_texture_target (begin)` ... `// DOC: (end)`
     - Py: `# DOC: Renderer.create_texture_target (begin)` ... `# DOC: (end)`
+    - Swift / Kotlin: `// DOC: Renderer.createTextureTarget (begin)` ... `// DOC: (end)`
+- Swift and Kotlin example files under `platforms/{swift,kotlin}/examples/` are auto-generated
+  from the Rust `## Example` snippets via `scripts/swift.rs` and `scripts/kotlin.rs`. Do not
+  hand-edit those files — update the source `docs/api/**/*.md` and rerun `cargo build`.
 
 ## Conventions
 
@@ -42,15 +48,20 @@ Contributions are welcome! This document outlines the current workflow for devel
 3. Open a PR and iterate until all checks are green (lint, fmt, tests, healthchecks, docs site build). Keep `main` protected and green.
 4. Merge the PR to `main`.
 5. Create a GitHub Release (annotated) named `vMAJOR.MINOR.PATCH` targeting the merge commit on `main`.
-6. On release published, CI will:
+6. On release published, CI will (in parallel):
    - Build & publish the Web package to npm (skip if already published).
    - Build & publish Python wheels to PyPI (skip existing).
    - Publish the Rust crate to crates.io (skip if version exists).
-7. The `post_publish_update` workflow waits for registries, then:
+   - Build the iOS **xcframework** and upload `fragmentcolor.xcframework.zip` to the GitHub Release as an asset.
+   - Build the Android **AAR** (all 4 ABIs) and upload `fragmentcolor-<version>.aar` to the GitHub Release as an asset.
+7. The `post_publish_update` workflow waits for npm, PyPI **and** the xcframework asset to land, then:
    - Bumps `fragmentcolor` dependency in `docs/website/package.json` and `examples/javascript/package.json` to the released version and refreshes lockfiles.
    - Updates `docs/website/src/components/VersionBadge.astro`.
+   - Pins the root-level `Package.swift` `fragmentcolorVersion` / `fragmentcolorChecksum` to the just-published xcframework so Swift Package Manager consumers on `from: "X.Y.Z"` get a matching binary.
    - Opens a pull request with those consumer updates.
 8. Vercel auto-deploys `docs/website` (subfolder). Its Ignored Build Step skips build when neither `docs/website` nor `docs/api` changed.
+9. Swift consumers: `dependencies: [.package(url: "https://github.com/vista-art/fragmentcolor", from: "X.Y.Z")]` — SPM resolves to the matching tag and downloads the xcframework release asset.
+10. Kotlin / Android consumers: for 0.11.x, download `fragmentcolor-<version>.aar` from the GitHub Release and drop it into `libs/`; Maven Central publishing is tracked as follow-up work (CHANGELOG "Unfinished work").
 
 ### Ad-hoc website updates
 
@@ -63,6 +74,7 @@ Contributions are welcome! This document outlines the current workflow for devel
 - `NPM_SECRET` for npm publish.
 - `PYPI_API_TOKEN` for PyPI upload.
 - `CARGO_REGISTRY_TOKEN` for crates.io publish.
+- Swift / Android publish workflows use the default `GITHUB_TOKEN` for release-asset uploads — no extra secret needed until Maven Central support lands.
 
 ### Tooling versions
 
