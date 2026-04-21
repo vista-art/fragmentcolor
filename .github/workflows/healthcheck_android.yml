@@ -26,6 +26,7 @@ jobs:
       API_LEVEL: "29"
       TARGET: "default"
       ARCH: "x86_64"
+      NDK_VERSION: "27.2.12479018"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -37,6 +38,23 @@ jobs:
         with:
           distribution: "temurin"
           java-version: "17"
+
+      # `android-actions/setup-android` installs cmdline-tools and sets
+      # ANDROID_HOME / PATH so sdkmanager is available for the packages
+      # pre-install below. The emulator itself is managed by
+      # `reactivecircus/android-emulator-runner` further down.
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: |
+            platforms;android-${{ env.API_LEVEL }}
+            ndk;${{ env.NDK_VERSION }}
+            platform-tools
+
+      - name: Export ANDROID_NDK_HOME
+        run: |
+          echo "ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/${NDK_VERSION}" >> "$GITHUB_ENV"
+          echo "NDK_HOME=${ANDROID_HOME}/ndk/${NDK_VERSION}"         >> "$GITHUB_ENV"
 
       - name: Setup Rust (with Android targets)
         uses: dtolnay/rust-toolchain@stable
@@ -52,47 +70,38 @@ jobs:
       - name: Install cargo-ndk
         run: cargo install cargo-ndk --locked
 
+      - name: Gradle cache
+        uses: gradle/actions/setup-gradle@v3
+
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: Gradle cache
-        uses: gradle/actions/setup-gradle@v3
-
-      - name: Install Android SDK components + emulator
-        run: |
-          yes | sdkmanager --licenses > /dev/null
-          sdkmanager --install "emulator" "platform-tools" "platforms;android-${API_LEVEL}"
-          sdkmanager --install "system-images;android-${API_LEVEL};${TARGET};${ARCH}"
-          avdmanager create avd -n pixel -k "system-images;android-${API_LEVEL};${TARGET};${ARCH}" --device pixel
-
       - name: Build .so for emulator ABI + regenerate Kotlin bindings
-        env:
-          ANDROID_NDK_HOME: ${{ env.ANDROID_HOME }}/ndk-bundle
         run: |
           chmod +x ./build_android
           # Only build for the emulator's ABI in CI to keep the job fast.
           ./build_android x86_64-linux-android
 
-      - name: Run Android healthcheck on emulator
-        env:
-          FC_HEALTHCHECK_VERBOSE: "1"
-        run: |
-          # Boot the emulator in the background, wait for it, then run the
-          # androidTest suite. Mirrors `./healthcheck android` but inline so
-          # the failing step is visible in the CI log.
-          "${ANDROID_HOME}/emulator/emulator" -avd pixel -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect &
-          "${ANDROID_HOME}/platform-tools/adb" wait-for-device
-          # Wait for boot completion
-          for i in $(seq 1 60); do
-            booted=$("${ANDROID_HOME}/platform-tools/adb" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
-            if [ "$booted" = "1" ]; then break; fi
-            sleep 5
-          done
-
-          (cd platforms/kotlin && ./gradlew fragmentcolor:connectedAndroidTest --stacktrace)
+      # `reactivecircus/android-emulator-runner` creates the AVD, boots the
+      # emulator, waits for `sys.boot_completed=1`, and runs the supplied
+      # script with the emulator as the connected device. It tears the
+      # emulator down on exit so a stuck AVD doesn't stall the runner.
+      - name: Run connectedAndroidTest on emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ env.API_LEVEL }}
+          target: ${{ env.TARGET }}
+          arch: ${{ env.ARCH }}
+          profile: pixel
+          force-avd-creation: false
+          disable-animations: true
+          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect
+          script: |
+            cd platforms/kotlin
+            ./gradlew fragmentcolor:connectedAndroidTest --stacktrace
 
       - name: Upload generated Kotlin bindings (for inspection)
         if: always()
