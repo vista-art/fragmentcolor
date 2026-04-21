@@ -29,7 +29,11 @@ android {
 }
 
 dependencies {
-    implementation "net.java.dev.jna:jna:5.14.0"
+    // `@aar` is critical: the plain JAR is JVM-only and ships no
+    // libjnidispatch.so for Android architectures, so the uniffi-generated
+    // Kotlin throws UnsatisfiedLinkError on the first FFI call. The AAR
+    // bundles per-ABI native dispatch libs.
+    implementation "net.java.dev.jna:jna:5.14.0@aar"
     implementation "androidx.annotation:annotation:1.7.1"
     implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3"
 
