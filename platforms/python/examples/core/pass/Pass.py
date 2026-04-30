@@ -1,6 +1,6 @@
 from rendercanvas.auto import RenderCanvas, loop
 
-from fragmentcolor import Shader, Pass, Renderer, Frame
+from fragmentcolor import Shader, Pass, Renderer
 
 renderer = Renderer()
 canvas = RenderCanvas(size=(100, 100))
@@ -16,11 +16,5 @@ pass2.add_shader(shader)
 # standalone
 renderer.render(rpass, target)
 
-# using a Frame
-frame = Frame()
-frame.add_pass(rpass)
-frame.add_pass(pass2)
-renderer.render(frame, target)
-
-# vector of passes (consume them)
+# vector of passes rendered in order (any iterable of Pass is renderable)
 renderer.render([rpass, pass2], target)

@@ -34,7 +34,6 @@ mod texture_pool;
 pub use texture_pool::*;
 mod external_texture;
 mod unregister;
-mod update;
 
 /// The Renderer accepts a generic window handle as input
 /// that must report its display size.
@@ -262,6 +261,75 @@ impl Renderer {
         Ok(crate::texture::Texture::new(context, obj, id))
     }
 
+    /// Create a storage-class texture pre-seeded with CPU bytes.
+    #[lsp_doc("docs/api/core/renderer/create_storage_texture_with_data.md")]
+    pub async fn create_storage_texture_with_data(
+        &self,
+        size: impl Into<crate::Size>,
+        format: impl Into<crate::TextureFormat>,
+        data: &[u8],
+        usage: Option<wgpu::TextureUsages>,
+    ) -> Result<crate::texture::Texture, RendererError> {
+        let context = self.context(None).await?;
+        let usage = usage.unwrap_or(
+            wgpu::TextureUsages::STORAGE_BINDING
+                | wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::COPY_DST
+                | wgpu::TextureUsages::COPY_SRC,
+        );
+        if !usage.contains(wgpu::TextureUsages::COPY_DST) {
+            return Err(RendererError::CreateTextureError(
+                "create_storage_texture_with_data requires COPY_DST in the usage mask".into(),
+            ));
+        }
+        let wgpu_size: wgpu::Extent3d = size.into().into();
+        let wgpu_format: wgpu::TextureFormat = format.into().into();
+        let bpp = crate::texture::bytes_per_pixel(wgpu_format);
+        if bpp == 0 {
+            return Err(RendererError::CreateTextureError(
+                "Unsupported format for create_storage_texture_with_data (bytes-per-pixel is 0)"
+                    .into(),
+            ));
+        }
+        let expected = (wgpu_size.width as usize)
+            .saturating_mul(wgpu_size.height as usize)
+            .saturating_mul(wgpu_size.depth_or_array_layers.max(1) as usize)
+            .saturating_mul(bpp as usize);
+        if data.len() < expected {
+            return Err(RendererError::CreateTextureError(format!(
+                "Seed data is {} bytes but the texture needs {}",
+                data.len(),
+                expected
+            )));
+        }
+
+        let obj = crate::TextureObject::new(
+            context.as_ref(),
+            wgpu_size,
+            wgpu_format,
+            usage,
+            crate::texture::SamplerOptions::default(),
+        );
+        context.queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                aspect: wgpu::TextureAspect::All,
+                texture: &obj.inner,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+            },
+            data,
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(bpp * wgpu_size.width),
+                rows_per_image: Some(wgpu_size.height),
+            },
+            wgpu_size,
+        );
+        let obj = std::sync::Arc::new(obj);
+        let id = context.register_texture(obj.clone());
+        Ok(crate::texture::Texture::new(context, obj, id))
+    }
+
     /// Create a depth texture (Depth32Float).
     #[lsp_doc("docs/api/core/renderer/create_depth_texture.md")]
     pub async fn create_depth_texture(
@@ -275,29 +343,6 @@ impl Renderer {
         Ok(crate::texture::Texture::new(context, obj, id))
     }
 
-    #[lsp_doc("docs/api/core/renderer/update_texture.md")]
-    pub fn update_texture(
-        &self,
-        texture_id: crate::texture::TextureId,
-        data: &[u8],
-    ) -> Result<(), RendererError> {
-        self.update_texture_with(
-            texture_id,
-            data,
-            crate::texture::TextureWriteOptions::whole(),
-        )
-    }
-
-    #[lsp_doc("docs/api/core/renderer/update_texture_with.md")]
-    pub fn update_texture_with(
-        &self,
-        texture_id: crate::texture::TextureId,
-        data: &[u8],
-        options: crate::texture::TextureWriteOptions,
-    ) -> Result<(), RendererError> {
-        update::update_texture(self, texture_id, data, options)
-    }
-
     #[lsp_doc("docs/api/core/renderer/unregister_texture.md")]
     pub fn unregister_texture(
         &self,
@@ -306,13 +351,73 @@ impl Renderer {
         unregister::unregister_texture(self, texture_id)
     }
 
+    /// Block the current thread until every submission queued on this renderer's device
+    /// has finished executing. Useful to guarantee that readbacks after compute bursts
+    /// observe the finalized results, and to restore deterministic ordering around
+    /// `render` → `read_texture` / `TextureTarget::get_image` sequences.
+    ///
+    /// On WASM this is a no-op — the browser drives submission readiness, and the calling
+    /// thread cannot block. Callers that need a sync point there should await a readback.
+    #[lsp_doc("docs/api/core/renderer/wait_idle.md")]
+    pub fn wait_idle(&self) -> Result<(), RendererError> {
+        let _context = self
+            .context
+            .read()
+            .as_ref()
+            .cloned()
+            .ok_or(RendererError::NoContext)?;
+        #[cfg(not(wasm))]
+        _context
+            .device
+            .poll(wgpu::PollType::Wait {
+                submission_index: None,
+                timeout: Some(std::time::Duration::from_secs(5)),
+            })
+            .map_err(|e| RendererError::Error(format!("wait_idle poll failed: {e:?}")))?;
+        Ok(())
+    }
+
+    #[lsp_doc("docs/api/core/renderer/read_texture.md")]
+    pub fn read_texture(
+        &self,
+        texture_id: crate::texture::TextureId,
+    ) -> Result<Vec<u8>, RendererError> {
+        let context = self
+            .context
+            .read()
+            .as_ref()
+            .cloned()
+            .ok_or(RendererError::NoContext)?;
+        let texture = context
+            .get_texture(&texture_id)
+            .ok_or(RendererError::TextureNotFoundError(texture_id))?;
+        Ok(crate::texture::read_texture_object_sync(&context, &texture)?)
+    }
+
+    #[lsp_doc("docs/api/core/renderer/read_texture_async.md")]
+    pub async fn read_texture_async(
+        &self,
+        texture_id: crate::texture::TextureId,
+    ) -> Result<Vec<u8>, RendererError> {
+        let context = self
+            .context
+            .read()
+            .as_ref()
+            .cloned()
+            .ok_or(RendererError::NoContext)?;
+        let texture = context
+            .get_texture(&texture_id)
+            .ok_or(RendererError::TextureNotFoundError(texture_id))?;
+        Ok(crate::texture::read_texture_object_async(&context, &texture).await?)
+    }
+
     #[cfg(wasm)]
     #[lsp_doc("docs/api/web/external_texture.md")]
-    pub fn create_external_texture_from_html_video(
+    pub fn create_external_texture(
         &self,
         video: &web_sys::HtmlVideoElement,
     ) -> Result<external_texture::ExternalTextureHandle, RendererError> {
-        external_texture::create_from_html_video(self, video)
+        external_texture::create_external_texture(self, video)
     }
 
     #[lsp_doc("docs/api/core/renderer/render.md")]
@@ -502,7 +607,7 @@ impl RenderContext {
         }
     }
 
-    /// Renders a Frame or Shader to a Target.
+    /// Renders any `Renderable` (Shader, Pass, or iterable of Pass) to a Target.
     fn render(
         &self,
         renderable: &impl Renderable,
@@ -517,8 +622,27 @@ impl RenderContext {
         let frame = self.try_get_frame_with_retry(target)?;
 
         let pass_list = renderable.passes();
+        // Apple's Metal driver does not reliably flush tile-based storage-texture writes between
+        // two compute passes recorded in the same command buffer, so a subsequent sampled
+        // (`texture_2d<…>`) read returns zeros on Apple Silicon. Submitting the encoder between
+        // sequential compute passes introduces a submission boundary that reliably flushes the
+        // tile memory. Render passes are unaffected (encoder-end already syncs there).
+        #[cfg(apple)]
+        let mut prev_was_compute = false;
         for pass in pass_list.iter() {
             let pass = pass.as_ref();
+            #[cfg(apple)]
+            {
+                if prev_was_compute && pass.is_compute() {
+                    self.queue.submit(Some(encoder.finish()));
+                    encoder = self
+                        .device
+                        .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                            label: Some("Command Encoder (Metal compute sync split)"),
+                        });
+                }
+                prev_was_compute = pass.is_compute();
+            }
             if pass.is_compute() {
                 self.process_compute_pass(&mut encoder, pass)?
             } else {
@@ -541,10 +665,10 @@ impl RenderContext {
     fn try_get_frame_with_retry(
         &self,
         target: &impl Target,
-    ) -> Result<Box<dyn TargetFrame>, wgpu::SurfaceError> {
+    ) -> Result<Box<dyn TargetFrame>, crate::SurfaceError> {
         match target.get_current_frame() {
             Ok(f) => Ok(f),
-            Err(wgpu::SurfaceError::Lost) | Err(wgpu::SurfaceError::Outdated) => {
+            Err(crate::SurfaceError::Lost) | Err(crate::SurfaceError::Outdated) => {
                 // Retry exactly once.
                 target.get_current_frame()
             }
@@ -694,6 +818,7 @@ impl RenderContext {
             depth_stencil_attachment,
             timestamp_writes: None,
             occlusion_query_set: None,
+            multiview_mask: None,
         };
         let mut render_pass = encoder.begin_render_pass(&descriptor);
 
@@ -777,7 +902,7 @@ impl RenderContext {
                                 address_mode_w: wgpu::AddressMode::ClampToEdge,
                                 mag_filter: wgpu::FilterMode::Linear,
                                 min_filter: wgpu::FilterMode::Linear,
-                                mipmap_filter: wgpu::FilterMode::Linear,
+                                mipmap_filter: wgpu::MipmapFilterMode::Linear,
                                 lod_min_clamp: 0.0,
                                 lod_max_clamp: 100.0,
                                 compare: Some(wgpu::CompareFunction::LessEqual),
@@ -1018,18 +1143,14 @@ impl RenderContext {
                 render_pass.set_bind_group(*group, bind_group, &[]);
             }
 
-            // Set native push constants just before draw if applicable
+            // Set native immediate data just before draw if applicable
             if let Some(PushMode::Native { root, .. }) = &cached_pipeline.push_mode {
                 let storage = shader
                     .storage
                     .try_read()
                     .ok_or_else(|| crate::shader::ShaderError::Busy("storage read".into()))?;
                 if let Some(bytes) = storage.get_bytes(root) {
-                    render_pass.set_push_constants(
-                        wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
-                        0,
-                        bytes,
-                    );
+                    render_pass.set_immediates(0, bytes);
                 }
             }
 
@@ -1115,11 +1236,10 @@ impl RenderContext {
                 .or_insert_with(|| {
                     let mut sorted_groups: Vec<_> = layouts.keys().cloned().collect();
                     sorted_groups.sort();
-                    let mut bind_group_layouts_sorted: Vec<&wgpu::BindGroupLayout> = Vec::new();
+                    let mut bind_group_layouts_sorted: Vec<Option<&wgpu::BindGroupLayout>> =
+                        Vec::new();
                     for g in sorted_groups.into_iter() {
-                        if let Some(l) = layouts.get(&g) {
-                            bind_group_layouts_sorted.push(l);
-                        }
+                        bind_group_layouts_sorted.push(layouts.get(&g));
                     }
 
                     let layout =
@@ -1127,7 +1247,7 @@ impl RenderContext {
                             .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                                 label: Some("Compute Pipeline Layout"),
                                 bind_group_layouts: &bind_group_layouts_sorted,
-                                push_constant_ranges: &[],
+                                immediate_size: 0,
                             });
 
                     let module = Cow::Owned(shader.module.clone());
@@ -1193,7 +1313,7 @@ impl RenderContext {
                                 address_mode_w: wgpu::AddressMode::ClampToEdge,
                                 mag_filter: wgpu::FilterMode::Linear,
                                 min_filter: wgpu::FilterMode::Linear,
-                                mipmap_filter: wgpu::FilterMode::Linear,
+                                mipmap_filter: wgpu::MipmapFilterMode::Linear,
                                 lod_min_clamp: 0.0,
                                 lod_max_clamp: 100.0,
                                 compare: Some(wgpu::CompareFunction::LessEqual),
@@ -1613,11 +1733,15 @@ fn create_bind_group_layouts(
                         let sample_type = match kind {
                             naga::ScalarKind::Sint => wgpu::TextureSampleType::Sint,
                             naga::ScalarKind::Uint => wgpu::TextureSampleType::Uint,
-                            _ => wgpu::TextureSampleType::Float { filterable: true },
+                            _ => wgpu::TextureSampleType::Float {
+                                filterable: meta.sampled,
+                            },
                         };
                         wgpu::BindGroupLayoutEntry {
                             binding: uniform.binding,
-                            visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+                            visibility: wgpu::ShaderStages::VERTEX
+                                | wgpu::ShaderStages::FRAGMENT
+                                | wgpu::ShaderStages::COMPUTE,
                             ty: wgpu::BindingType::Texture {
                                 sample_type,
                                 view_dimension,
@@ -1631,6 +1755,11 @@ fn create_bind_group_layouts(
                         let access = match access {
                             naga::StorageAccess::LOAD => wgpu::StorageTextureAccess::ReadOnly,
                             naga::StorageAccess::STORE => wgpu::StorageTextureAccess::WriteOnly,
+                            _ if access.contains(naga::StorageAccess::LOAD)
+                                && access.contains(naga::StorageAccess::STORE) =>
+                            {
+                                wgpu::StorageTextureAccess::ReadWrite
+                            }
                             _ => wgpu::StorageTextureAccess::ReadOnly,
                         };
                         let format = match format {
@@ -1687,7 +1816,9 @@ fn create_bind_group_layouts(
             }
             UniformData::Sampler(info) => wgpu::BindGroupLayoutEntry {
                 binding: uniform.binding,
-                visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+                visibility: wgpu::ShaderStages::VERTEX
+                    | wgpu::ShaderStages::FRAGMENT
+                    | wgpu::ShaderStages::COMPUTE,
                 ty: wgpu::BindingType::Sampler(if info.comparison {
                     wgpu::SamplerBindingType::Comparison
                 } else {
@@ -1810,7 +1941,7 @@ fn create_render_pipeline(
             fallback_required = true;
         } else if let Some((_, sz)) = push_roots.first() {
             let lim = device.limits();
-            if *sz > lim.max_push_constant_size {
+            if *sz > lim.max_immediate_size {
                 fallback_required = true;
             }
         }
@@ -1856,9 +1987,9 @@ fn create_render_pipeline(
             ordered_map.insert(name.clone(), i as u32);
         }
 
-        // Apply rewrite on globals matching push constant address space
+        // Apply rewrite on globals matching immediate/push-constant address space
         for (_handle, gv) in module.global_variables.iter_mut() {
-            if matches!(gv.space, naga::AddressSpace::PushConstant)
+            if matches!(gv.space, naga::AddressSpace::Immediate)
                 && let Some(name) = gv.name.clone()
                 && let Some(binding) = ordered_map.get(&name)
             {
@@ -1926,28 +2057,21 @@ fn create_render_pipeline(
 
     let mut sorted_groups: Vec<_> = bind_group_layouts.keys().collect();
     sorted_groups.sort();
-    let mut bind_group_layouts_sorted: Vec<&wgpu::BindGroupLayout> = Vec::new();
+    let mut bind_group_layouts_sorted: Vec<Option<&wgpu::BindGroupLayout>> = Vec::new();
     for g in sorted_groups.into_iter() {
-        if let Some(l) = bind_group_layouts.get(g) {
-            bind_group_layouts_sorted.push(l);
-        }
+        bind_group_layouts_sorted.push(bind_group_layouts.get(g));
     }
 
-    // Pipeline layout with optional push-constant ranges
-    let mut push_ranges: Vec<wgpu::PushConstantRange> = Vec::new();
-    if let Some(PushMode::Native { root: _, size }) = &push_mode
-        && *size > 0
-    {
-        push_ranges.push(wgpu::PushConstantRange {
-            stages: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
-            range: 0..*size,
-        });
-    }
+    // Pipeline layout with optional immediate (push-constant) size
+    let immediate_size = match &push_mode {
+        Some(PushMode::Native { size, .. }) => *size,
+        _ => 0,
+    };
 
     let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some("Default Pipeline Layout"),
         bind_group_layouts: &bind_group_layouts_sorted,
-        push_constant_ranges: &push_ranges,
+        immediate_size,
     });
 
     let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -2054,8 +2178,8 @@ fn create_render_pipeline(
         primitive: wgpu::PrimitiveState::default(),
         depth_stencil: depth_format.map(|format| wgpu::DepthStencilState {
             format,
-            depth_write_enabled: true,
-            depth_compare: wgpu::CompareFunction::LessEqual,
+            depth_write_enabled: Some(true),
+            depth_compare: Some(wgpu::CompareFunction::LessEqual),
             stencil: wgpu::StencilState::default(),
             bias: wgpu::DepthBiasState::default(),
         }),
@@ -2064,7 +2188,7 @@ fn create_render_pipeline(
             mask: !0,
             alpha_to_coverage_enabled: false,
         },
-        multiview: None,
+        multiview_mask: None,
         cache: None,
     });
 
@@ -2896,11 +3020,11 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,1.,0.,1.); }
         struct DummyTarget {
             size: crate::Size,
             seq: parking_lot::RwLock<
-                VecDeque<Result<Box<dyn crate::TargetFrame>, wgpu::SurfaceError>>,
+                VecDeque<Result<Box<dyn crate::TargetFrame>, crate::SurfaceError>>,
             >,
         }
         impl DummyTarget {
-            fn new(seq: Vec<Result<Box<dyn crate::TargetFrame>, wgpu::SurfaceError>>) -> Self {
+            fn new(seq: Vec<Result<Box<dyn crate::TargetFrame>, crate::SurfaceError>>) -> Self {
                 Self {
                     size: crate::Size::from((1u32, 1u32)),
                     seq: parking_lot::RwLock::new(seq.into()),
@@ -2913,7 +3037,7 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,1.,0.,1.); }
                 self.size
             }
             fn resize(&mut self, _s: impl Into<crate::Size>) {}
-            fn get_current_frame(&self) -> Result<Box<dyn crate::TargetFrame>, wgpu::SurfaceError> {
+            fn get_current_frame(&self) -> Result<Box<dyn crate::TargetFrame>, crate::SurfaceError> {
                 self.seq
                     .write()
                     .pop_front()
@@ -2930,24 +3054,24 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,1.,0.,1.); }
 
             // Case 1: Lost then Ok -> success
             let t1 = DummyTarget::new(vec![
-                Err(wgpu::SurfaceError::Lost),
+                Err(crate::SurfaceError::Lost),
                 Ok(Box::new(DummyFrame)),
             ]);
             let f1 = ctx.try_get_frame_with_retry(&t1);
             assert!(f1.is_ok());
 
             // Case 2: OutOfMemory -> error returned
-            let t2 = DummyTarget::new(vec![Err(wgpu::SurfaceError::OutOfMemory)]);
+            let t2 = DummyTarget::new(vec![Err(crate::SurfaceError::OutOfMemory)]);
             let f2 = ctx.try_get_frame_with_retry(&t2);
-            assert!(matches!(f2, Err(wgpu::SurfaceError::OutOfMemory)));
+            assert!(matches!(f2, Err(crate::SurfaceError::OutOfMemory)));
 
             // Case 3: Outdated then Timeout -> returns second error
             let t3 = DummyTarget::new(vec![
-                Err(wgpu::SurfaceError::Outdated),
-                Err(wgpu::SurfaceError::Timeout),
+                Err(crate::SurfaceError::Outdated),
+                Err(crate::SurfaceError::Timeout),
             ]);
             let f3 = ctx.try_get_frame_with_retry(&t3);
-            assert!(matches!(f3, Err(wgpu::SurfaceError::Timeout)));
+            assert!(matches!(f3, Err(crate::SurfaceError::Timeout)));
         });
     }
 

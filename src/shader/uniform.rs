@@ -294,6 +294,9 @@ pub(crate) fn convert_type(module: &Module, ty: &Type) -> Result<UniformData, Sh
             dim: *dim,
             arrayed: *arrayed,
             class: *class,
+            // Default optimistic; `parse_uniforms` overrides this based on whether
+            // the corresponding global variable is ever used as an `ImageSample` input.
+            sampled: true,
         })),
 
         _ => Err(ShaderError::TypeMismatch("Unsupported type".into())),

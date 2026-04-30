@@ -21,3 +21,25 @@ shader = Shader("""
     }
 
 """)
+
+from fragmentcolor import Shader
+
+main = """
+    @vertex fn vs(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+        let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.));
+        return vec4<f32>(p[i], 0.0, 1.0);
+    }
+
+    @fragment fn fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
+        let d = circle(pos.xy - vec2<f32>(400.0, 300.0), 100.0);
+        let n = simplex2(pos.xy * 0.01);
+        return vec4<f32>(vec3<f32>(step(0.0, d) + n * 0.1), 1.0);
+    }
+
+"""
+
+shader = Shader([
+    "sdf2d/circle", # pure function: fn circle(p: vec2<f32>, r: f32) -> f32
+    "noise/simplex2", # pure function: fn simplex2(v: vec2<f32>) -> f32
+    main,
+])

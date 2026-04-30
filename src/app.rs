@@ -117,7 +117,7 @@ pub struct App {
     windows: HashMap<WindowId, Arc<Window>>, // created at runtime
     targets: RwLock<HashMap<WindowId, crate::RenderTarget>>, // interior mutability for callbacks
 
-    // Global registry of API objects by key (Shader, Pass, Vec<Pass>, Frame, ...)
+    // Global registry of API objects by key (Shader, Pass, Vec<Pass>, ...)
     objects: RwLock<HashMap<String, Arc<dyn Any + Send + Sync>>>,
 
     // Blueprints to create at resume (if empty, create a single default window)

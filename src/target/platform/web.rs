@@ -63,7 +63,7 @@ impl Target for CanvasTarget {
         self.inner.lock().resize(size);
     }
 
-    fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, wgpu::SurfaceError> {
+    fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, crate::SurfaceError> {
         self.inner.lock().get_current_frame()
     }
 

@@ -115,14 +115,14 @@ mod python_stubs {
         buf.push_str("    width: int\n    height: int\n    depth: int | None\n\n");
         buf.push_str("    def __init__(self, width: int, height: int, depth: int | None = None) -> None: ...\n\n");
 
-        // Region (doc may be absent; best-effort)
-        add_class(&mut buf, "Region", None);
+        // ScreenRegion (doc may be absent; best-effort)
+        add_class(&mut buf, "ScreenRegion", None);
         buf.push_str(
             "    def __init__(self, origin: tuple[int, int], size: tuple[int, int]) -> None: ...\n",
         );
-        buf.push_str("    @classmethod\n    def from_region(cls, x: int, y: int, width: int, height: int) -> 'Region': ...\n");
+        buf.push_str("    @classmethod\n    def from_region(cls, x: int, y: int, width: int, height: int) -> 'ScreenRegion': ...\n");
         buf.push_str(
-            "    @classmethod\n    def from_tuple(cls, size: tuple[int, int]) -> 'Region': ...\n\n",
+            "    @classmethod\n    def from_tuple(cls, size: tuple[int, int]) -> 'ScreenRegion': ...\n\n",
         );
 
         // TextureFormat placeholder
@@ -188,8 +188,6 @@ mod python_stubs {
         add_method_doc(&mut buf, "geometry/mesh", "mesh", "clear_instances");
         buf.push_str("    def set_instance_count(self, n: int) -> None: ...\n");
         add_method_doc(&mut buf, "geometry/mesh", "mesh", "set_instance_count");
-        buf.push_str("    def clear_instance_count(self) -> None: ...\n");
-        add_method_doc(&mut buf, "geometry/mesh", "mesh", "clear_instance_count");
         buf.push_str("\n");
 
         // Quad
@@ -231,7 +229,7 @@ mod python_stubs {
         add_method_doc(&mut buf, "core/pass", "pass", "add_mesh_to_shader");
         buf.push_str("    def set_clear_color(self, color: Sequence[float]) -> None: ...\n");
         add_method_doc(&mut buf, "core/pass", "pass", "set_clear_color");
-        buf.push_str("    def set_viewport(self, viewport: 'Region') -> None: ...\n");
+        buf.push_str("    def set_viewport(self, viewport: 'ScreenRegion') -> None: ...\n");
         add_method_doc(&mut buf, "core/pass", "pass", "set_viewport");
         buf.push_str("    def set_compute_dispatch(self, x: int, y: int, z: int) -> None: ...\n");
         add_method_doc(&mut buf, "core/pass", "pass", "set_compute_dispatch");
@@ -269,7 +267,7 @@ mod python_stubs {
             "Shader",
             doc_with_python_examples("docs/api/core/shader/shader.md"),
         );
-        buf.push_str("    def __init__(self, source: str) -> None: ...\n");
+        buf.push_str("    def __init__(self, input: str | list[str]) -> None: ...\n");
         add_method_doc(&mut buf, "core/shader", "shader", "new");
         buf.push_str("    def set(self, key: str, value: Any) -> None: ...\n");
         add_method_doc(&mut buf, "core/shader", "shader", "set");
@@ -299,6 +297,8 @@ mod python_stubs {
         add_method_doc(&mut buf, "core/shader", "shader", "from_vertex");
         buf.push_str("    @staticmethod\n    def from_mesh(mesh: 'Mesh') -> 'Shader': ...\n");
         add_method_doc(&mut buf, "core/shader", "shader", "from_mesh");
+        buf.push_str("    @staticmethod\n    def set_registry(base_url: str) -> None: ...\n");
+        add_method_doc(&mut buf, "core/shader", "shader", "set_registry");
         buf.push_str("\n");
 
         // Targets

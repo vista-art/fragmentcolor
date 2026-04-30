@@ -26,4 +26,4 @@ let handle = renderer.create_external_texture_from_html_video(&video)?;
 
 Notes
 - Requires browser support for external textures.
-- If not available, consider a fallback: draw the <video> into a canvas and upload pixels via `Texture.write_with` each frame.
+- If not available, consider a fallback: draw the <video> into a canvas and upload pixels via `Texture.write_region` each frame.

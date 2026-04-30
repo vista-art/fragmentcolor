@@ -1,6 +1,6 @@
 # Pass::require(deps)
 
-Declare that this pass depends on one or more other renderables (Pass, Shader, Frame, Mesh).
+Declare that this pass depends on one or more other renderables (Pass, Shader, Mesh).
 All dependencies will render before this Pass.
 
 ## Return value

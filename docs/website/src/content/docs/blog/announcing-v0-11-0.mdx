@@ -1,0 +1,128 @@
+---
+title: "FragmentColor 0.11.0: all five planned languages, mobile included"
+excerpt: "Swift and Kotlin via uniffi complete the planned set of languages. The release also improves the compute-shader API and upgrades to wgpu 29."
+authors: ["rafaelbeckel"]
+date: 2026-04-21
+tags: ["release", "rust", "swift", "kotlin", "ios", "android", "webgpu", "milestone", "draft"]
+---
+
+:::caution[Draft (unreleased)]
+This post is written against the current `v0.11.0` branch and will be dated to the actual release day once the tag lands. Anything here could still shift slightly, but the big pieces are in.
+:::
+
+v0.11.0 completes the set of languages FragmentColor was designed for: **Rust, JavaScript, Python, Swift, and Kotlin**. The same `Renderer`, `Shader`, `Pass`, `Frame`, and `Texture` types now run natively on iOS and Android, with parity to the desktop and web bindings.
+
+The other half of the release improves the compute-shader API and upgrades the wgpu/naga stack it is built on.
+
+### What mobile looks like
+
+On iOS (Swift):
+
+```swift
+import FragmentColor
+
+let renderer = Renderer()
+let target = renderer.createTarget(layer: metalLayer)   // your CAMetalLayer
+let shader = Shader(source: wgslSource)
+try renderer.render(shader, target)
+```
+
+On Android (Kotlin):
+
+```kotlin
+import org.fragmentcolor.*
+
+val renderer = Renderer()
+val target = renderer.createTarget(surface)             // android.view.Surface
+val shader = Shader.new(wgslSource)
+renderer.render(shader, target)
+```
+
+Bindings are generated with [uniffi](https://github.com/mozilla/uniffi-rs), so the type names match the Rust core. A `Shader` is a `Shader` everywhere, so the concepts stay the same as you move between platforms.
+
+### Distribution
+
+- **Swift** ships as a Swift Package. Add `https://github.com/vista-art/fragmentcolor` as a package dependency (`from: "0.11.0"`) and SPM pulls the matching `fragmentcolor.xcframework.zip` from the GitHub release, verifying a pinned SHA-256.
+- **Kotlin** ships as an `.aar` attached to the GitHub release for 0.11.x. Maven Central publishing is in progress.
+
+CI builds the xcframework on every PR that touches the mobile code and runs a headless smoke test on an iPhone simulator. The Android equivalent boots an emulator with KVM and runs `connectedAndroidTest` against the uniffi-generated Kotlin bindings.
+
+### Compute API improvements
+
+The compute API gains three direct additions:
+
+```rust
+// Seed a storage texture from a CPU blob in one call.
+let tex = renderer.create_storage_texture_with_data(
+    [256, 256], TextureFormat::Rgba16Float, &bytes, usage
+)?;
+
+// Read back the contents of any registered texture in its native format.
+let pixels = renderer.read_texture(tex.id())?;
+
+// Block until every queued submission has finished.
+renderer.wait_idle();
+```
+
+`wait_idle()` gives you a predictable ordering point between `render()` and a later readback. This addresses a Metal-side race where a compute burst followed by `TextureTarget::get_image` could return stale pixels on certain adapters.
+
+`TextureFormat::Rgba16Float` joins the supported set: 16-bit float per channel, filterable, and storage-writable without a feature opt-in. It is the right format for iterative simulations where 8-bit precision is not enough and 32-bit is overkill.
+
+### Compute correctness fixes
+
+Three correctness fixes also land:
+
+- Sampled textures and samplers now include `ShaderStages::COMPUTE` in their bind-group layouts, matching uniforms and read-only storage buffers. `textureSample` from a compute shader now works directly, without declaring sources as `texture_storage_2d<..., read>` as a workaround.
+- `texture_storage_2d<..., read_write>` maps to the combined `LOAD | STORE` access. `textureStore` against a `read_write` texture passes validation, and ping-pong pairs that can collapse to a single texture do so.
+- `Texture::get_image_async` now advances the wgpu event loop (`device.poll(Wait)`) on native, so the readback callback always completes.
+
+### An Apple Silicon compute barrier
+
+Apple Silicon requires a submission boundary to flush tile-based storage writes before a later compute pass can sample them with `texture_2d<f32>` / `textureLoad`. Without the boundary, the sample can return zeros silently.
+
+v0.11.0 detects the platform via a new `apple` cfg alias (`target_os = "macos" | "ios"`) and inserts the boundary automatically between sequential compute passes. There is nothing to opt into; non-Apple targets are unaffected.
+
+### Upgrading wgpu 27 → 29
+
+The internal wgpu/naga stack moves from 27.0.1 to 29.0.1. The public FragmentColor API is unchanged. Internally the upgrade involved a sizeable adapter pass: `SurfaceError` was removed, push constants were renamed to "immediates", `depth_write_enabled` became `Option`-typed, bind-group-layout slots became gap-tolerant, and the instance descriptor changed shape.
+
+The one user-visible WGSL change comes from the rename: wgpu 29 accepts `var<immediate>` where 27 accepted `var<push_constant>`. FragmentColor rewrites the old form to the new before passing your source to naga, so existing shaders continue to compile unchanged.
+
+### Roadmap
+
+The next steps beyond 0.11.0 include:
+
+- Example iOS and Android apps under `platforms/swift/examples/` and `platforms/kotlin/examples/`
+- Maven Central publishing for the Kotlin AAR
+- Swift Package Index registration
+- Expanded mobile healthchecks (textures, push constants, frames)
+- A revamped `RenderPass` API that gives you more of `wgpu::RenderPass` with sensible defaults
+- Custom blending
+
+v0.12.0 is the target window for stabilising the API toward 1.0.
+
+---
+
+When this lands, install it with:
+
+```bash
+# Rust
+cargo add fragmentcolor
+
+# JavaScript
+npm install fragmentcolor
+
+# Python
+pip install fragmentcolor rendercanvas glfw
+
+# Swift (Package.swift)
+.package(url: "https://github.com/vista-art/fragmentcolor", from: "0.11.0")
+
+# Kotlin (download fragmentcolor-0.11.0.aar from the GitHub Release)
+```
+
+Release notes (once published): [GitHub v0.11.0](https://github.com/vista-art/fragmentcolor/releases/tag/v0.11.0).
+
+If you build something with this on a phone, tag me. I want to see it running on hardware.
+
+— Rafael

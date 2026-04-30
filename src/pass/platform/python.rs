@@ -71,7 +71,7 @@ impl Pass {
     }
 
     #[pyo3(name = "set_viewport")]
-    pub fn set_viewport_py(&self, viewport: crate::Region) {
+    pub fn set_viewport_py(&self, viewport: crate::ScreenRegion) {
         self.object.set_viewport(viewport);
     }
 

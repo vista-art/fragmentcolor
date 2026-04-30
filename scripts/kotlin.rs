@@ -47,7 +47,206 @@ mod kotlin {
         out = drop_new_keyword(&out);
         out = replace_leading_keyword(&out, "const ", "val ");
         out = drop_await_prefix(&out);
+        out = rewrite_array_fill(&out);
+        out = swap_single_quoted_strings(&out);
+        out = rewrite_bracket_array_to_arrayof(&out);
 
+        out
+    }
+
+    /// `[a, b, c]` (JS / Swift array literal) → `arrayOf(a, b, c)` for
+    /// Kotlin, since Kotlin only allows `[...]` syntax in annotation
+    /// arguments. Bracket-balanced and string-aware so WGSL inside
+    /// triple-quoted strings is left alone.
+    fn rewrite_bracket_array_to_arrayof(line: &str) -> String {
+        let chars: Vec<char> = line.chars().collect();
+        let mut out = String::with_capacity(line.len());
+        let mut i = 0usize;
+        let mut in_dq = false;
+        let mut in_tq = false;
+        while i < chars.len() {
+            // Triple-quote toggle
+            if i + 2 < chars.len()
+                && chars[i] == '"'
+                && chars[i + 1] == '"'
+                && chars[i + 2] == '"'
+            {
+                in_tq = !in_tq;
+                out.push_str("\"\"\"");
+                i += 3;
+                continue;
+            }
+            if !in_tq && chars[i] == '"' {
+                in_dq = !in_dq;
+                out.push('"');
+                i += 1;
+                continue;
+            }
+            // Skip brackets in annotation positions: `@Foo([...])` is fine.
+            // Cheap check: if `[` is preceded by `(` it might still be an
+            // expression argument, so we always rewrite outside strings.
+            if !in_dq && !in_tq && chars[i] == '[' {
+                // Walk to matching `]`.
+                let mut depth = 0i32;
+                let mut close_pos: Option<usize> = None;
+                let mut k = i + 1;
+                while k < chars.len() {
+                    match chars[k] {
+                        '[' => depth += 1,
+                        ']' => {
+                            if depth == 0 {
+                                close_pos = Some(k);
+                                break;
+                            }
+                            depth -= 1;
+                        }
+                        _ => {}
+                    }
+                    k += 1;
+                }
+                if let Some(close) = close_pos {
+                    let inner: String = chars[i + 1..close].iter().collect();
+                    let inner_trim = inner.trim();
+                    // Skip empty `[]` (no items to wrap) and indexer
+                    // patterns like `arr[0]` (single ident/expr without
+                    // commas — those are subscripts, not collection
+                    // literals).
+                    if !inner_trim.is_empty() && inner_trim.contains(',') {
+                        let prev = if i == 0 { ' ' } else { chars[i - 1] };
+                        let prev_is_indexer =
+                            prev.is_ascii_alphanumeric() || prev == '_' || prev == ')' || prev == ']';
+                        if !prev_is_indexer {
+                            out.push_str("arrayOf(");
+                            out.push_str(inner_trim);
+                            out.push(')');
+                            i = close + 1;
+                            continue;
+                        }
+                    }
+                }
+            }
+            out.push(chars[i]);
+            i += 1;
+        }
+        out
+    }
+
+    /// `Array(N).fill(expr)` → `Array(N) { expr }` (Kotlin lambda init).
+    /// Bracket-balanced; mirrors `swift::rewrite_array_fill`.
+    fn rewrite_array_fill(line: &str) -> String {
+        let needle = "Array(";
+        let mut out = String::with_capacity(line.len());
+        let chars: Vec<char> = line.chars().collect();
+        let mut i = 0usize;
+        while i < chars.len() {
+            let rem: String = chars[i..].iter().collect();
+            if rem.starts_with(needle) {
+                let arg_start = i + needle.len();
+                let mut depth = 0i32;
+                let mut arg_close: Option<usize> = None;
+                let mut k = arg_start;
+                while k < chars.len() {
+                    match chars[k] {
+                        '(' => depth += 1,
+                        ')' => {
+                            if depth == 0 {
+                                arg_close = Some(k);
+                                break;
+                            }
+                            depth -= 1;
+                        }
+                        _ => {}
+                    }
+                    k += 1;
+                }
+                if let Some(arg_close) = arg_close {
+                    let after: String = chars[arg_close + 1..].iter().collect();
+                    if let Some(stripped) = after.strip_prefix(".fill(") {
+                        let fill_arg_chars: Vec<char> = stripped.chars().collect();
+                        let mut depth2 = 0i32;
+                        let mut fill_close: Option<usize> = None;
+                        let mut m = 0usize;
+                        while m < fill_arg_chars.len() {
+                            match fill_arg_chars[m] {
+                                '(' => depth2 += 1,
+                                ')' => {
+                                    if depth2 == 0 {
+                                        fill_close = Some(m);
+                                        break;
+                                    }
+                                    depth2 -= 1;
+                                }
+                                _ => {}
+                            }
+                            m += 1;
+                        }
+                        if let Some(fc) = fill_close {
+                            let count: String = chars[arg_start..arg_close].iter().collect();
+                            let expr: String = fill_arg_chars[..fc].iter().collect();
+                            out.push_str(&format!(
+                                "Array({}) {{ {} }}",
+                                count.trim(),
+                                expr.trim()
+                            ));
+                            i = arg_close + 1 + ".fill(".len() + fc + 1;
+                            continue;
+                        }
+                    }
+                }
+            }
+            out.push(chars[i]);
+            i += 1;
+        }
+        out
+    }
+
+    /// Single-quoted JS string → Kotlin double-quoted. Skips content
+    /// inside existing `"..."` / `"""..."""` strings.
+    fn swap_single_quoted_strings(line: &str) -> String {
+        let chars: Vec<char> = line.chars().collect();
+        let mut out = String::with_capacity(line.len());
+        let mut i = 0usize;
+        let mut in_dq = false;
+        let mut in_tq = false;
+        while i < chars.len() {
+            if !in_dq
+                && i + 2 < chars.len()
+                && chars[i] == '"'
+                && chars[i + 1] == '"'
+                && chars[i + 2] == '"'
+            {
+                in_tq = !in_tq;
+                out.push_str("\"\"\"");
+                i += 3;
+                continue;
+            }
+            if !in_tq && !in_dq && chars[i] == '"' {
+                in_dq = true;
+                out.push('"');
+                i += 1;
+                continue;
+            }
+            if in_dq && chars[i] == '"' {
+                in_dq = false;
+                out.push('"');
+                i += 1;
+                continue;
+            }
+            if !in_dq && !in_tq && chars[i] == '\'' {
+                if let Some(end) = chars[i + 1..].iter().position(|c| *c == '\'') {
+                    let inner: String = chars[i + 1..i + 1 + end].iter().collect();
+                    if !inner.contains('"') && !inner.contains('\n') {
+                        out.push('"');
+                        out.push_str(&inner);
+                        out.push('"');
+                        i += 1 + end + 1;
+                        continue;
+                    }
+                }
+            }
+            out.push(chars[i]);
+            i += 1;
+        }
         out
     }
 

@@ -28,41 +28,12 @@ pub use error::*;
 mod options;
 pub use options::*;
 
+mod read;
+pub mod region;
 mod write;
 
-#[cfg_attr(wasm, wasm_bindgen)]
-#[cfg_attr(python, pyclass)]
-#[derive(Debug, Clone)]
-#[lsp_doc("docs/api/texture_write_options/texture_write_options.md")]
-#[derive(Default)]
-pub struct TextureWriteOptions {
-    pub origin_x: u32,
-    pub origin_y: u32,
-    pub origin_z: u32,
-    pub size_width: u32,
-    pub size_height: u32,
-    pub size_depth: u32,
-    pub bytes_per_row: Option<u32>,
-    pub rows_per_image: Option<u32>,
-}
-
-impl TextureWriteOptions {
-    #[lsp_doc("docs/api/texture_write_options/whole.md")]
-    pub fn whole() -> Self {
-        // size_* == 0 means "infer full size" in our implementation
-        Self::default()
-    }
-    #[lsp_doc("docs/api/texture_write_options/with_bytes_per_row.md")]
-    pub fn with_bytes_per_row(mut self, bpr: u32) -> Self {
-        self.bytes_per_row = Some(bpr);
-        self
-    }
-    #[lsp_doc("docs/api/texture_write_options/with_rows_per_image.md")]
-    pub fn with_rows_per_image(mut self, rpi: u32) -> Self {
-        self.rows_per_image = Some(rpi);
-        self
-    }
-}
+pub use region::TextureRegion;
+pub(crate) use read::{read_texture_object_async, read_texture_object_sync};
 
 // Expose Naga image metadata in our public meta struct for now.
 use naga::{ImageClass, ImageDimension};
@@ -270,39 +241,6 @@ pub(crate) fn js_to_texture_bytes(
     }
 }
 
-#[cfg(wasm)]
-pub(crate) fn js_to_write_options(
-    value: &wasm_bindgen::JsValue,
-) -> Result<TextureWriteOptions, crate::texture::TextureError> {
-    use js_sys::Reflect;
-
-    fn read_u32(value: &wasm_bindgen::JsValue, names: &[&str]) -> Option<u32> {
-        for name in names {
-            if let Ok(field) = Reflect::get(value, &wasm_bindgen::JsValue::from_str(name))
-                && let Some(number) = field.as_f64()
-            {
-                return Some(number.max(0.0) as u32);
-            }
-        }
-        None
-    }
-
-    if value.is_undefined() || value.is_null() {
-        return Ok(TextureWriteOptions::whole());
-    }
-
-    let mut opt = TextureWriteOptions::whole();
-    opt.origin_x = read_u32(value, &["originX", "origin_x"]).unwrap_or_default();
-    opt.origin_y = read_u32(value, &["originY", "origin_y"]).unwrap_or_default();
-    opt.origin_z = read_u32(value, &["originZ", "origin_z"]).unwrap_or_default();
-    opt.size_width = read_u32(value, &["sizeWidth", "size_width"]).unwrap_or_default();
-    opt.size_height = read_u32(value, &["sizeHeight", "size_height"]).unwrap_or_default();
-    opt.size_depth = read_u32(value, &["sizeDepth", "size_depth"]).unwrap_or_default();
-    opt.bytes_per_row = read_u32(value, &["bytesPerRow", "bytes_per_row"]);
-    opt.rows_per_image = read_u32(value, &["rowsPerImage", "rows_per_image"]);
-    Ok(opt)
-}
-
 #[cfg(python)]
 pub(crate) fn py_to_texture_id<'py>(
     any: &pyo3::Bound<'py, pyo3::PyAny>,
@@ -339,44 +277,6 @@ pub(crate) fn py_to_texture_bytes<'py>(
     ))
 }
 
-#[cfg(python)]
-pub(crate) fn py_to_write_options<'py>(
-    any: &pyo3::Bound<'py, pyo3::PyAny>,
-) -> pyo3::PyResult<TextureWriteOptions> {
-    fn read_u32<'py>(
-        dict: &pyo3::Bound<'py, pyo3::types::PyDict>,
-        names: &[&str],
-    ) -> pyo3::PyResult<Option<u32>> {
-        for name in names {
-            if let Some(value) = dict.get_item(name)? {
-                if value.is_none() {
-                    return Ok(None);
-                }
-                return Ok(Some(value.extract::<u32>()?));
-            }
-        }
-        Ok(None)
-    }
-
-    if let Ok(bound) = any.downcast::<TextureWriteOptions>() {
-        return Ok(bound.borrow().clone());
-    }
-    if let Ok(dict) = any.downcast::<pyo3::types::PyDict>() {
-        let mut opt = TextureWriteOptions::whole();
-        opt.origin_x = read_u32(dict, &["origin_x", "originX"])?.unwrap_or_default();
-        opt.origin_y = read_u32(dict, &["origin_y", "originY"])?.unwrap_or_default();
-        opt.origin_z = read_u32(dict, &["origin_z", "originZ"])?.unwrap_or_default();
-        opt.size_width = read_u32(dict, &["size_width", "sizeWidth"])?.unwrap_or_default();
-        opt.size_height = read_u32(dict, &["size_height", "sizeHeight"])?.unwrap_or_default();
-        opt.size_depth = read_u32(dict, &["size_depth", "sizeDepth"])?.unwrap_or_default();
-        opt.bytes_per_row = read_u32(dict, &["bytes_per_row", "bytesPerRow"])?;
-        opt.rows_per_image = read_u32(dict, &["rows_per_image", "rowsPerImage"])?;
-        return Ok(opt);
-    }
-    Err(crate::error::PyFragmentColorError::new_err(
-        "Expected TextureWriteOptions or a dict of write options",
-    ))
-}
 impl std::fmt::Display for TextureId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
@@ -385,6 +285,7 @@ impl std::fmt::Display for TextureId {
 
 #[cfg_attr(wasm, wasm_bindgen)]
 #[cfg_attr(python, pyclass)]
+#[cfg_attr(mobile, derive(uniffi::Object))]
 #[derive(Clone, Debug)]
 #[lsp_doc("docs/api/core/texture/texture.md")]
 pub struct Texture {
@@ -434,13 +335,28 @@ impl Texture {
 
     #[lsp_doc("docs/api/core/texture/write.md")]
     pub fn write(&self, data: &[u8]) -> Result<(), TextureError> {
-        // forward to write_with with whole-region defaults
-        self.write_with(data, TextureWriteOptions::whole())
+        // Whole-texture write: TextureRegion::default() carries zeros that the
+        // write path interprets as "infer the full extent".
+        write::write(self, data, TextureRegion::default())
     }
 
-    #[lsp_doc("docs/api/core/texture/write_with.md")]
-    pub fn write_with(&self, data: &[u8], opt: TextureWriteOptions) -> Result<(), TextureError> {
-        write::write(self, data, opt)
+    #[lsp_doc("docs/api/core/texture/write_region.md")]
+    pub fn write_region(
+        &self,
+        data: &[u8],
+        region: impl Into<TextureRegion>,
+    ) -> Result<(), TextureError> {
+        write::write(self, data, region.into())
+    }
+
+    #[lsp_doc("docs/api/core/texture/get_image.md")]
+    pub fn get_image(&self) -> Result<Vec<u8>, TextureError> {
+        read::get_image(self)
+    }
+
+    #[lsp_doc("docs/api/core/texture/get_image_async.md")]
+    pub async fn get_image_async(&self) -> Result<Vec<u8>, TextureError> {
+        read::get_image_async(self).await
     }
 }
 
@@ -452,6 +368,11 @@ pub struct TextureMeta {
     pub dim: ImageDimension,
     pub arrayed: bool,
     pub class: ImageClass,
+    /// Whether the shader ever samples this texture (`textureSample*`). When false
+    /// (only `textureLoad` / image-ops are used), the bind-group layout can request
+    /// a non-filterable sample type, which unlocks formats like Rgba32Float as a
+    /// sampled source without requiring the `FLOAT32_FILTERABLE` feature.
+    pub sampled: bool,
 }
 
 impl TextureMeta {
@@ -464,6 +385,7 @@ impl TextureMeta {
                 kind: naga::ScalarKind::Float,
                 multi: false,
             },
+            sampled: true,
         }
     }
 }
@@ -815,7 +737,7 @@ impl TextureObject {
     }
 }
 
-fn bytes_per_pixel(format: wgpu::TextureFormat) -> u32 {
+pub(crate) fn bytes_per_pixel(format: wgpu::TextureFormat) -> u32 {
     match format {
         wgpu::TextureFormat::R8Unorm
         | wgpu::TextureFormat::R8Uint

@@ -4,7 +4,7 @@ description: "A GPU texture resource. Public API wrapper that holds a shareable 
 category: core
 categoryLabel: Core
 sidebar:
-  order: 4
+  order: 3
 ---
 
 import { Code, Tabs, TabItem, Aside } from "@astrojs/starlight/components";
@@ -168,8 +168,8 @@ val shader = Shader("""
 """)
 
 // 1x1 RGBA (white) raw pixel bytes
-val pixels = [255,255,255,255]
-val texture = renderer.createTextureWithSize(pixels, [1,1])
+val pixels = arrayOf(255,255,255,255)
+val texture = renderer.createTextureWithSize(pixels, arrayOf(1,1))
 
 // insert  the texture in the shader matching the name in the shader
 shader.set("my_texture", texture)
@@ -246,7 +246,7 @@ code={`
 import FragmentColor
 let renderer = Renderer()
 let texture = try await renderer.createStorageTexture([64, 64], TextureFormat.Rgba, nil)
-let id = *texture.id()
+let id = texture.id()
 `}
 lang="swift"
 />
@@ -258,8 +258,8 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 val renderer = Renderer()
-val texture = renderer.createStorageTexture([64, 64], TextureFormat.Rgba, null)
-val id = *texture.id()
+val texture = renderer.createStorageTexture(arrayOf(64, 64), TextureFormat.Rgba, null)
+val id = texture.id()
 `}
 lang="kotlin"
 />
@@ -345,8 +345,8 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 val renderer = Renderer()
-val pixels = [255,255,255,255]
-val tex = renderer.createTextureWithSize(pixels, [1,1])
+val pixels = arrayOf(255,255,255,255)
+val tex = renderer.createTextureWithSize(pixels, arrayOf(1,1))
 val sz = tex.size()
 `}
 lang="kotlin"
@@ -451,8 +451,8 @@ import org.fragmentcolor.*
 
 val renderer = Renderer()
 // 1x1 RGBA (white) raw pixel bytes
-val pixels = [255,255,255,255]
-val tex = renderer.createTextureWithSize(pixels, [1, 1])
+val pixels = arrayOf(255,255,255,255)
+val tex = renderer.createTextureWithSize(pixels, arrayOf(1, 1))
 val a = tex.aspect()
 `}
 lang="kotlin"
@@ -501,7 +501,7 @@ lang="rust" meta="collapse={1-1, 12-14}"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Renderer } from "fragmentcolor";
+import { Renderer, SamplerOptions } from "fragmentcolor";
 const renderer = new Renderer();
 // 1x1 RGBA (white) raw pixel bytes
 const pixels = [255,255,255,255];
@@ -520,7 +520,7 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Renderer
+from fragmentcolor import Renderer, SamplerOptions
 renderer = Renderer()
 # 1x1 RGBA (white) raw pixel bytes
 pixels = [255,255,255,255]
@@ -540,14 +540,13 @@ lang="python"
 <Code
 code={`
 import FragmentColor
+
 let renderer = Renderer()
-// 1x1 RGBA (white) raw pixel bytes
-let pixels = [255,255,255,255]
+let pixels: [UInt8] = [255, 255, 255, 255]
+let texture = try await renderer.createTextureWithSize(pixels: pixels, size: Size(width: 1, height: 1))
 
-let texture = try await renderer.createTextureWithSize(pixels, [1,1])
-let opts = {repeat_x: true, repeat_y: true, smooth: true, compare: nil}
-texture.setSamplerOptions(opts)
-
+let opts = SamplerOptions(repeatX: true, repeatY: true, smooth: true, compare: nil)
+texture.setSamplerOptions(opts: opts)
 `}
 lang="swift"
 />
@@ -558,14 +557,13 @@ lang="swift"
 <Code
 code={`
 import org.fragmentcolor.*
+
 val renderer = Renderer()
-// 1x1 RGBA (white) raw pixel bytes
-val pixels = [255,255,255,255]
+val pixels: ByteArray = byteArrayOf(255.toByte(), 255.toByte(), 255.toByte(), 255.toByte())
+val texture = renderer.createTextureWithSize(pixels, Size(1u, 1u))
 
-val texture = renderer.createTextureWithSize(pixels, [1,1])
-val opts = {repeat_x: true, repeat_y: true, smooth: true, compare: null}
+val opts = SamplerOptions(repeatX = true, repeatY = true, smooth = true, compare = null)
 texture.setSamplerOptions(opts)
-
 `}
 lang="kotlin"
 />
@@ -581,8 +579,8 @@ lang="kotlin"
 
 Efficiently upload raw pixel data into an existing texture. Ideal for video playback or any per-frame dynamic image updates.
 
-- Whole texture updates: use `Texture.write(&bytes)` or `Texture.write_with(&bytes, TextureWriteOptions::whole())`.
-- Sub-rectangle updates: pass origin and size via `TextureWriteOptions`.
+- Whole texture updates: use `Texture.write(&bytes)`.
+- Sub-rectangle updates or explicit data layout: use `Texture.write_region(&bytes, region)`.
 - Bytes per row must be a multiple of 256. When unspecified, compute it from the pixel stride and align up.
 
 #### Notes
@@ -650,7 +648,7 @@ code={`
 import FragmentColor
 let renderer = Renderer()
 let texture = try await renderer.createStorageTexture([64, 64], TextureFormat.Rgba, nil)
-let frame_bytes = [0u8; 64 * 64 * 4]
+let frame_bytes = Array(repeating: 0, count: 64 * 64 * 4)
 
 texture.write(frame_bytes)
 `}
@@ -664,8 +662,8 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 val renderer = Renderer()
-val texture = renderer.createStorageTexture([64, 64], TextureFormat.Rgba, null)
-val frame_bytes = [0u8; 64 * 64 * 4]
+val texture = renderer.createStorageTexture(arrayOf(64, 64), TextureFormat.Rgba, null)
+val frame_bytes = Array(64 * 64 * 4) { 0 }
 
 texture.write(frame_bytes)
 `}
@@ -679,12 +677,20 @@ lang="kotlin"
 
 ---
 
-### Texture::write_with(bytes, options)
+### Texture::write_region(bytes, region)
 
-Same as `Texture::write`, but allows specifying origin, size, bytes_per_row and rows_per_image.
+Same as `Texture::write`, but writes into a sub-region of the texture and/or with explicit source data layout.
+
+The `region` argument accepts anything convertible into a `TextureRegion`:
+- `[w, h]` / `(w, h)` â full size, origin `(0, 0, 0)`
+- `[x, y, w, h]` / `(x, y, w, h)` â 2D rectangle
+- `[x, y, z, w, h, d]` â 3D box (for layered or 3D textures)
+- A `TextureRegion` constructed explicitly with `.with_stride(...)` / `.with_rows(...)` for advanced data-layout control
 
 #### Notes
 - See `Texture::write` for format and alignment details.
+- `bytes_per_row` (set via `.with_stride(...)`) must be a multiple of 256 when provided.
+- `rows_per_image` (set via `.with_rows(...)`) defaults to the region height.
 
 #### Example
 
@@ -694,17 +700,24 @@ Same as `Texture::write`, but allows specifying origin, size, bytes_per_row and 
 <Code
 code={`
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Renderer, TextureFormat, TextureWriteOptions};
+use fragmentcolor::{Renderer, TextureFormat, TextureRegion};
 let renderer = Renderer::new();
 let texture = renderer.create_storage_texture([64, 32], TextureFormat::Rgba, None).await?;
-let region_bytes = vec![0u8; 64 * 32 * 4];
-let opt = TextureWriteOptions::whole().with_bytes_per_row(256).with_rows_per_image(32);
-texture.write_with(&region_bytes, opt)?;
+let bytes = vec![0u8; 64 * 32 * 4];
+
+// Simple sub-rectangle update.
+texture.write_region(&bytes, [0, 0, 64, 32])?;
+
+// Explicit data layout (advanced â when source rows are padded).
+let region = TextureRegion::from([0, 0, 64, 32])
+    .with_stride(256)
+    .with_rows(32);
+texture.write_region(&bytes, region)?;
 Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 8-10}"
+lang="rust" meta="collapse={1-1, 15-17}"
 />
 
 </TabItem>
@@ -712,14 +725,17 @@ lang="rust" meta="collapse={1-1, 8-10}"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Renderer, TextureFormat, TextureWriteOptions } from "fragmentcolor";
+import { Renderer, TextureFormat } from "fragmentcolor";
 
 const renderer = new Renderer();
 const texture = await renderer.createStorageTexture([64, 32], TextureFormat.Rgba, null);
-const frame = new Uint8Array(64 * 32 * 4);
-const opt = TextureWriteOptions.whole().withBytesPerRow(256).withRowsPerImage(32);
+const bytes = new Uint8Array(64 * 32 * 4);
 
-texture.writeWith(frame, opt);
+// Simple sub-rectangle update.
+texture.writeRegion(bytes, [0, 0, 64, 32]);
+
+// Explicit data layout (advanced).
+texture.writeRegion(bytes, { x: 0, y: 0, width: 64, height: 32, bytesPerRow: 256, rowsPerImage: 32 });
 `}
 lang="js"
 />
@@ -729,14 +745,17 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Renderer, TextureFormat, TextureWriteOptions
+from fragmentcolor import Renderer, TextureFormat
 
 renderer = Renderer()
 texture = renderer.create_storage_texture([64, 32], TextureFormat.Rgba, None)
-frame = bytes(64 * 32 * 4)
-opt = TextureWriteOptions.whole().with_bytes_per_row(256).with_rows_per_image(32)
+bytes_data = bytes(64 * 32 * 4)
 
-texture.write_with(frame, opt)
+# Simple sub-rectangle update.
+texture.write_region(bytes_data, [0, 0, 64, 32])
+
+# Explicit data layout (advanced).
+texture.write_region(bytes_data, {"x": 0, "y": 0, "width": 64, "height": 32, "bytes_per_row": 256, "rows_per_image": 32})
 `}
 lang="python"
 />
@@ -749,9 +768,14 @@ code={`
 import FragmentColor
 let renderer = Renderer()
 let texture = try await renderer.createStorageTexture([64, 32], TextureFormat.Rgba, nil)
-let region_bytes = [0u8; 64 * 32 * 4]
-let opt = TextureWriteOptions.whole().withBytesPerRow(256).withRowsPerImage(32)
-texture.writeWith(region_bytes, opt)
+let bytes = Array(repeating: 0, count: 64 * 32 * 4)
+
+// Simple sub-rectangle update.
+texture.writeRegion(bytes, [0, 0, 64, 32])
+
+// Explicit data layout (advanced Ã¢ÂÂ when source rows are padded).
+let region = TextureRegion.from([0, 0, 64, 32]).withStride(256).withRows(32)
+texture.writeRegion(bytes, region)
 `}
 lang="swift"
 />
@@ -763,10 +787,209 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 val renderer = Renderer()
-val texture = renderer.createStorageTexture([64, 32], TextureFormat.Rgba, null)
-val region_bytes = [0u8; 64 * 32 * 4]
-val opt = TextureWriteOptions.whole().withBytesPerRow(256).withRowsPerImage(32)
-texture.writeWith(region_bytes, opt)
+val texture = renderer.createStorageTexture(arrayOf(64, 32), TextureFormat.Rgba, null)
+val bytes = Array(64 * 32 * 4) { 0 }
+
+// Simple sub-rectangle update.
+texture.writeRegion(bytes, arrayOf(0, 0, 64, 32))
+
+// Explicit data layout (advanced Ã¢ÂÂ when source rows are padded).
+val region = TextureRegion.from(arrayOf(0, 0, 64, 32)).withStride(256).withRows(32)
+texture.writeRegion(bytes, region)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Texture::get_image()
+
+Read back the mip-0 contents of this texture as tightly-packed bytes in the texture's native format.
+
+- Blocks the current thread until the GPU readback buffer is mapped (native only).
+- Layer-major on the outside loop when the texture has multiple layers.
+- The texture must have `COPY_SRC` usage; creation helpers like `create_storage_texture` enable it by default.
+
+Prefer [`Texture::get_image_async`] on the web, where blocking is not supported.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Renderer, TextureFormat};
+let renderer = Renderer::new();
+let texture = renderer.create_storage_texture([64, 64], TextureFormat::Rgba, None).await?;
+texture.write(&vec![0u8; 64 * 64 * 4])?;
+
+let bytes = texture.get_image()?;
+assert_eq!(bytes.len(), 64 * 64 * 4);
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+`}
+lang="rust" meta="collapse={1-1, 8-11}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Renderer, TextureFormat } from "fragmentcolor";
+const renderer = new Renderer();
+const texture = await renderer.createStorageTexture([64, 64], TextureFormat.Rgba, null);
+texture.write(Array(64 * 64 * 4).fill(0));
+
+const bytes = texture.getImage();
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Renderer, TextureFormat
+renderer = Renderer()
+texture = renderer.create_storage_texture([64, 64], TextureFormat.Rgba, None)
+texture.write([0] * (64 * 64 * 4))
+
+bytes = texture.get_image()
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+let renderer = Renderer()
+let texture = try await renderer.createStorageTexture([64, 64], TextureFormat.Rgba, nil)
+texture.write(Array(repeating: 0, count: 64 * 64 * 4))
+
+let bytes = texture.getImage()
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+val renderer = Renderer()
+val texture = renderer.createStorageTexture(arrayOf(64, 64), TextureFormat.Rgba, null)
+texture.write(Array(64 * 64 * 4) { 0 })
+
+val bytes = texture.getImage()
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Texture::get_image_async()
+
+Async variant of [`Texture::get_image`] that works on both native and WASM.
+
+Returns the mip-0 contents of this texture as tightly-packed bytes in the texture's native format.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Renderer, TextureFormat};
+let renderer = Renderer::new();
+let texture = renderer.create_storage_texture([64, 64], TextureFormat::Rgba, None).await?;
+texture.write(&vec![0u8; 64 * 64 * 4])?;
+
+let bytes = texture.get_image_async().await?;
+assert_eq!(bytes.len(), 64 * 64 * 4);
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+`}
+lang="rust" meta="collapse={1-1, 8-11}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Renderer, TextureFormat } from "fragmentcolor";
+const renderer = new Renderer();
+const texture = await renderer.createStorageTexture([64, 64], TextureFormat.Rgba, null);
+texture.write(Array(64 * 64 * 4).fill(0));
+
+const bytes = await texture.getImageAsync();
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Renderer, TextureFormat
+renderer = Renderer()
+texture = renderer.create_storage_texture([64, 64], TextureFormat.Rgba, None)
+texture.write([0] * (64 * 64 * 4))
+
+bytes = texture.get_image_async()
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+let renderer = Renderer()
+let texture = try await renderer.createStorageTexture([64, 64], TextureFormat.Rgba, nil)
+texture.write(Array(repeating: 0, count: 64 * 64 * 4))
+
+let bytes = try await texture.getImageAsync()
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+val renderer = Renderer()
+val texture = renderer.createStorageTexture(arrayOf(64, 64), TextureFormat.Rgba, null)
+texture.write(Array(64 * 64 * 4) { 0 })
+
+val bytes = texture.getImageAsync()
 `}
 lang="kotlin"
 />

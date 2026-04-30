@@ -1,4 +1,4 @@
-use fragmentcolor::{App, Frame, Pass, Renderer, SetupResult, Shader, call, run};
+use fragmentcolor::{App, Pass, Renderer, SetupResult, Shader, call, run};
 use std::sync::Arc;
 use winit::dpi::PhysicalSize;
 use winit::window::Window;
@@ -28,9 +28,9 @@ fn on_resize(app: &App, new_size: &PhysicalSize<u32>) {
 
 fn draw(app: &App) {
     let id = app.primary_window_id();
-    if let Some(frame) = app.get::<Frame>("frame.main") {
+    if let Some(pass) = app.get::<Pass>("pass.main") {
         let r = app.get_renderer();
-        let _ = app.with_target(id, |t| r.render(&*frame, t));
+        let _ = app.with_target(id, |t| r.render(&*pass, t));
     }
 }
 
@@ -39,9 +39,7 @@ async fn setup(app: &App, windows: Vec<Arc<Window>>) -> SetupResult {
     shader.set("color", [1.0, 0.0, 0.0, 1.0])?; // red
     let pass = Pass::from_shader("fullscreen", &shader);
 
-    let mut frame = Frame::new();
-    frame.add_pass(&pass);
-    app.add("frame.main", frame);
+    app.add("pass.main", pass);
 
     for win in windows {
         let target = app.get_renderer().create_target(win.clone()).await?;

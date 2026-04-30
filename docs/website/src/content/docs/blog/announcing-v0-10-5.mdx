@@ -1,0 +1,26 @@
+---
+title: "v0.10.5: First Python Release"
+excerpt: "FragmentColor now installs from PyPI on Windows, Linux, and macOS in a single command, with a fully automated wheel pipeline behind it."
+authors: ["rafaelbeckel"]
+date: 2025-03-18
+tags: ["release", "python"]
+---
+
+v0.10.5 is the first [FragmentColor](/blog/first/) release published to PyPI:
+
+```bash
+pip install fragmentcolor rendercanvas glfw
+```
+
+It is also the first release with an automated publishing process. Each of the patches in-between focused on a specific area:
+
+- v0.10.0-2: Library full rewrite, Shader object, first public release with the FragmentColor name.
+- v0.10.3: Moved the crate to Rust's 2024 edition.
+- v0.10.4: Corrected a wheel import and completed the `Pass` / `Frame` API.
+- v0.10.5: Added the automated system that builds and publishes wheels for every desktop OS.
+
+Release notes: [GitHub v0.10.5](https://github.com/vista-art/fragmentcolor/releases/tag/0.10.5).
+
+I plan to publish it on npm on v0.10.6. 
+
+— Rafael

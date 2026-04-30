@@ -1,5 +1,5 @@
 
-import { Shader, Pass, Renderer, Frame } from "fragmentcolor";
+import { Shader, Pass, Renderer } from "fragmentcolor";
 
 const renderer = new Renderer();
 const canvas = document.createElement('canvas');
@@ -15,11 +15,5 @@ pass2.addShader(shader);
 // standalone
 renderer.render(pass, target);
 
-// using a Frame
-const frame = new Frame();
-frame.addPass(pass);
-frame.addPass(pass2);
-renderer.render(frame, target);
-
-// vector of passes (consume them)
+// vector of passes rendered in order (any iterable of Pass is renderable)
 renderer.render([pass, pass2], target);

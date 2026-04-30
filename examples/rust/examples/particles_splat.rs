@@ -1,4 +1,4 @@
-use fragmentcolor::{App, Frame, Pass, Renderer, SetupResult, Shader, TextureFormat, call, run};
+use fragmentcolor::{App, Pass, Renderer, SetupResult, Shader, TextureFormat, call, run};
 use std::sync::Arc;
 use winit::window::Window;
 
@@ -269,35 +269,22 @@ fn main() {
 
     let pass_present = Pass::from_shader("present", &fs_present);
 
-    // Frame
-    let mut frame = Frame::new();
-    frame.add_pass(&pass_update);
-    frame.add_pass(&pass_clear);
-    frame.add_pass(&pass_splat);
-    frame.add_pass(&pass_present);
-
     // Mouse tracking and per-frame center update
     app.on_cursor_moved(handle_cursor_moved);
 
     // Store into registry for callbacks
     app.add("shader.update", cs_update.clone());
-    app.add("frame.main", {
-        let mut f = Frame::new();
-        f.add_pass(&pass_update);
-        f.add_pass(&pass_clear);
-        f.add_pass(&pass_splat);
-        f.add_pass(&pass_present);
-        f
-    });
+    let passes: Vec<Pass> = vec![pass_update, pass_clear, pass_splat, pass_present];
+    app.add("passes.main", passes);
 
     // Drive explicit rendering in draw
     app.on_start(call!(setup))
         .on_resize(on_resize)
         .on_redraw_requested(|app| {
             let id = app.primary_window_id();
-            if let Some(frame) = app.get::<Frame>("frame.main") {
+            if let Some(passes) = app.get::<Vec<Pass>>("passes.main") {
                 let r = app.get_renderer();
-                let _ = app.with_target(id, |t| r.render(&*frame, t));
+                let _ = app.with_target(id, |t| r.render(&*passes, t));
             }
         });
 

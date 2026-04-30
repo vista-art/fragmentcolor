@@ -16,6 +16,8 @@ fn configure_aliases() {
     cfg_aliases! {
         wasm: { target_arch = "wasm32" },
         ios: { target_os = "ios" },
+        macos: { target_os = "macos" },
+        apple: { any(target_os = "macos", target_os = "ios") },
         android: { target_os = "android" },
         mobile: { any(android, ios) },
         desktop: { not(any(wasm, mobile)) },
@@ -24,6 +26,8 @@ fn configure_aliases() {
     }
     println!("cargo::rustc-check-cfg=cfg(wasm)");
     println!("cargo::rustc-check-cfg=cfg(ios)");
+    println!("cargo::rustc-check-cfg=cfg(macos)");
+    println!("cargo::rustc-check-cfg=cfg(apple)");
     println!("cargo::rustc-check-cfg=cfg(android)");
     println!("cargo::rustc-check-cfg=cfg(mobile)");
     println!("cargo::rustc-check-cfg=cfg(desktop)");
@@ -99,7 +103,12 @@ fn generate_docs() {
     website::cleanup_site(&outcome.expected);
 
     println!("==> website::write_healthcheck_aggregators()");
-    website::write_healthcheck_aggregators(&outcome.ex_js, &outcome.ex_py);
+    website::write_healthcheck_aggregators(
+        &outcome.ex_js,
+        &outcome.ex_py,
+        &outcome.ex_swift,
+        &outcome.ex_kotlin,
+    );
 
     println!("✅ Website export done!\n");
 }

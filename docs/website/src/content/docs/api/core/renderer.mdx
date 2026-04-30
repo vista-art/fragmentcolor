@@ -15,9 +15,8 @@ The [Renderer](/api/core/renderer) is the main entry point for
 [FragmentColor](https://fragmentcolor.org) and normally the first object you create.
 
 It is used to render
-[Shaders](/api/core/shader),
-[Passes](/api/core/pass), and
-[Frames](/api/core/frame)
+[Shaders](/api/core/shader) and
+[Passes](/api/core/pass) (single passes or any iterable of them)
 to a [Target](/api/core/target) (canvas, window, or texture).
 
 The [Renderer](/api/core/renderer) internals are lazily initialized
@@ -128,7 +127,7 @@ import FragmentColor
 let renderer = Renderer()
 
 // Use your platform's windowing system to create a window
-let canvas = document.createElement('canvas')
+let canvas = document.createElement("canvas")
 
 // Create a Target from it
 let target = try await renderer.createTarget(canvas)
@@ -153,11 +152,11 @@ import org.fragmentcolor.*
 val renderer = Renderer()
 
 // Use your platform's windowing system to create a window
-val canvas = document.createElement('canvas')
+val canvas = document.createElement("canvas")
 
 // Create a Target from it
 val target = renderer.createTarget(canvas)
-val texture_target = renderer.createTextureTarget([16, 16])
+val texture_target = renderer.createTextureTarget(arrayOf(16, 16))
 
 // RENDERING
 renderer.render(Shader(""), texture_target)
@@ -271,7 +270,7 @@ code={`
 import org.fragmentcolor.*
 
 val renderer = Renderer()
-val texture_target = renderer.createTextureTarget([16, 16])
+val texture_target = renderer.createTextureTarget(arrayOf(16, 16))
 `}
 lang="kotlin"
 />
@@ -365,7 +364,7 @@ import FragmentColor
 let renderer = Renderer()
 
 // Use your platform's windowing system to create a window.
-let canvas = document.createElement('canvas')
+let canvas = document.createElement("canvas")
 
 let target = try await renderer.createTarget(canvas)
 `}
@@ -383,7 +382,7 @@ import org.fragmentcolor.*
 val renderer = Renderer()
 
 // Use your platform's windowing system to create a window.
-val canvas = document.createElement('canvas')
+val canvas = document.createElement("canvas")
 
 val target = renderer.createTarget(canvas)
 `}
@@ -505,7 +504,7 @@ import org.fragmentcolor.*
 val renderer = Renderer()
 
 // Create an offscreen texture target with a size of 64x64 pixels.
-val target = renderer.createTextureTarget([64, 64])
+val target = renderer.createTextureTarget(arrayOf(64, 64))
 
 renderer.render(Shader(""), target)
 
@@ -703,7 +702,7 @@ val pixels = [
     255,0,0,255,   0,255,0,255,
     0,0,255,255,   255,255,255,255,
 ]
-val tex = renderer.createTextureWithSize(pixels, [2, 2])
+val tex = renderer.createTextureWithSize(pixels, arrayOf(2, 2))
 `}
 lang="kotlin"
 />
@@ -892,7 +891,7 @@ val pixels = [
     255,0,0,255,   0,255,0,255,
     0,0,255,255,   255,255,255,255,
 ]
-val tex = renderer.createTextureWith(pixels, [2, 2])
+val tex = renderer.createTextureWith(pixels, arrayOf(2, 2))
 `}
 lang="kotlin"
 />
@@ -985,7 +984,103 @@ code={`
 import org.fragmentcolor.*
 
 val r = Renderer()
-val tex = r.createStorageTexture([64, 64], TextureFormat.Rgba, null)
+val tex = r.createStorageTexture(arrayOf(64, 64), TextureFormat.Rgba, null)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Renderer::create_storage_texture_with_data
+
+Create a storage-class texture pre-seeded with CPU bytes. Convenience wrapper that combines [`Renderer::create_storage_texture`] with a one-shot [`Texture::write`].
+
+- Default usage: `STORAGE_BINDING | TEXTURE_BINDING | COPY_SRC | COPY_DST`. If you pass a custom usage mask it must include `COPY_DST`.
+- Bytes must be tightly packed in the texture's native format: `width * height * depth * bytes_per_pixel(format)`. No per-row padding is required â the upload path does not use the 256-byte alignment rule that `copy_buffer_to_texture` imposes.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Renderer, TextureFormat};
+
+let r = Renderer::new();
+let seed = vec![0u8; 8 * 8 * 4];
+let tex = r
+    .create_storage_texture_with_data([8, 8], TextureFormat::Rgba, &seed, None)
+    .await?;
+
+_ = tex;
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+`}
+lang="rust" meta="collapse={1-1, 10-13}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Renderer, TextureFormat } from "fragmentcolor";
+
+const r = new Renderer();
+const seed = Array(8 * 8 * 4).fill(0);
+const tex = await r.createStorageTextureWithData([8, 8], TextureFormat.Rgba, seed, null);
+
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Renderer, TextureFormat
+
+r = Renderer()
+seed = [0] * (8 * 8 * 4)
+tex = r.create_storage_texture_with_data([8, 8], TextureFormat.Rgba, seed, None)
+
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let r = Renderer()
+let seed = Array(repeating: 0, count: 8 * 8 * 4)
+let tex = try await r.createStorageTextureWithData([8, 8], TextureFormat.Rgba, seed, nil)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val r = Renderer()
+val seed = Array(8 * 8 * 4) { 0 }
+val tex = r.createStorageTextureWithData(arrayOf(8, 8), TextureFormat.Rgba, seed, null)
 `}
 lang="kotlin"
 />
@@ -1066,213 +1161,7 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 val r = Renderer()
-val depth = r.createDepthTexture([800, 600])
-`}
-lang="kotlin"
-/>
-
-</TabItem>
-
-</Tabs>
-
-
----
-
-### Renderer::update_texture(id, bytes)
-
-Update an existing texture by id using raw pixel bytes. This forwards to the textureâs write API under the hood.
-
-- Use `update_texture(id, bytes)` for full-frame writes with sensible defaults.
-- Use `update_texture_with(id, bytes, options)` to control origin, size, and layout.
-
-#### Example
-
-<Tabs>
-
-<TabItem label="Rust">
-<Code
-code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Renderer, TextureFormat};
-let renderer = Renderer::new();
-let texture = renderer.create_storage_texture([64, 64], TextureFormat::Rgba, None).await?;
-let id = *texture.id();
-let frame = vec![0u8; 64 * 64 * 4];
-
-renderer.update_texture(id, &frame)?;
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
-`}
-lang="rust" meta="collapse={1-1, 9-11}"
-/>
-
-</TabItem>
-
-<TabItem label="JavaScript">
-<Code
-code={`
-import { Renderer, TextureFormat } from "fragmentcolor";
-
-const renderer = new Renderer();
-const texture = await renderer.createStorageTexture([64, 64], TextureFormat.Rgba, null);
-const id = texture.id();
-const frame = new Uint8Array(64 * 64 * 4);
-
-renderer.updateTexture(id, frame);
-`}
-lang="js"
-/>
-
-</TabItem>
-
-<TabItem label="Python">
-<Code
-code={`
-from fragmentcolor import Renderer, TextureFormat
-
-renderer = Renderer()
-texture = renderer.create_storage_texture([64, 64], TextureFormat.Rgba, None)
-id = texture.id()
-frame = bytes(64 * 64 * 4)
-
-renderer.update_texture(id, frame)
-`}
-lang="python"
-/>
-
-</TabItem>
-
-<TabItem label="Swift">
-<Code
-code={`
-import FragmentColor
-let renderer = Renderer()
-let texture = try await renderer.createStorageTexture([64, 64], TextureFormat.Rgba, nil)
-let id = *texture.id()
-let frame = [0u8; 64 * 64 * 4]
-
-renderer.updateTexture(id, frame)
-`}
-lang="swift"
-/>
-
-</TabItem>
-
-<TabItem label="Kotlin">
-<Code
-code={`
-import org.fragmentcolor.*
-val renderer = Renderer()
-val texture = renderer.createStorageTexture([64, 64], TextureFormat.Rgba, null)
-val id = *texture.id()
-val frame = [0u8; 64 * 64 * 4]
-
-renderer.updateTexture(id, frame)
-`}
-lang="kotlin"
-/>
-
-</TabItem>
-
-</Tabs>
-
-
----
-
-### Renderer::update_texture_with(id, bytes, options)
-
-Same as `Renderer::update_texture`, but allows specifying origin, size, and layout.
-
-#### Example
-
-<Tabs>
-
-<TabItem label="Rust">
-<Code
-code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Renderer, TextureFormat, TextureWriteOptions};
-let renderer = Renderer::new();
-let texture = renderer.create_storage_texture([64, 32], TextureFormat::Rgba, None).await?;
-let id = *texture.id();
-let frame = vec![0u8; 64 * 32 * 4];
-let opt = TextureWriteOptions::whole().with_bytes_per_row(256).with_rows_per_image(32);
-
-renderer.update_texture_with(id, &frame, opt)?;
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
-`}
-lang="rust" meta="collapse={1-1, 10-12}"
-/>
-
-</TabItem>
-
-<TabItem label="JavaScript">
-<Code
-code={`
-import { Renderer, TextureFormat, TextureWriteOptions } from "fragmentcolor";
-
-const renderer = new Renderer();
-const texture = await renderer.createStorageTexture([64, 32], TextureFormat.Rgba, null);
-const id = texture.id();
-const frame = new Uint8Array(64 * 32 * 4);
-const opt = TextureWriteOptions.whole().withBytesPerRow(256).withRowsPerImage(32);
-
-renderer.updateTextureWith(id, frame, opt);
-`}
-lang="js"
-/>
-
-</TabItem>
-
-<TabItem label="Python">
-<Code
-code={`
-from fragmentcolor import Renderer, TextureFormat, TextureWriteOptions
-
-renderer = Renderer()
-texture = renderer.create_storage_texture([64, 32], TextureFormat.Rgba, None)
-id = texture.id()
-frame = bytes(64 * 32 * 4)
-opt = TextureWriteOptions.whole().with_bytes_per_row(256).with_rows_per_image(32)
-
-renderer.update_texture_with(id, frame, opt)
-`}
-lang="python"
-/>
-
-</TabItem>
-
-<TabItem label="Swift">
-<Code
-code={`
-import FragmentColor
-let renderer = Renderer()
-let texture = try await renderer.createStorageTexture([64, 32], TextureFormat.Rgba, nil)
-let id = *texture.id()
-let frame = [0u8; 64 * 32 * 4]
-let opt = TextureWriteOptions.whole().withBytesPerRow(256).withRowsPerImage(32)
-
-renderer.updateTextureWith(id, frame, opt)
-`}
-lang="swift"
-/>
-
-</TabItem>
-
-<TabItem label="Kotlin">
-<Code
-code={`
-import org.fragmentcolor.*
-val renderer = Renderer()
-val texture = renderer.createStorageTexture([64, 32], TextureFormat.Rgba, null)
-val id = *texture.id()
-val frame = [0u8; 64 * 32 * 4]
-val opt = TextureWriteOptions.whole().withBytesPerRow(256).withRowsPerImage(32)
-
-renderer.updateTextureWith(id, frame, opt)
+val depth = r.createDepthTexture(arrayOf(800, 600))
 `}
 lang="kotlin"
 />
@@ -1352,7 +1241,7 @@ code={`
 import FragmentColor
 let renderer = Renderer()
 let texture = try await renderer.createStorageTexture([16, 16], TextureFormat.Rgba, nil)
-let id = *texture.id()
+let id = texture.id()
 
 renderer.unregisterTexture(id)
 `}
@@ -1366,8 +1255,8 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 val renderer = Renderer()
-val texture = renderer.createStorageTexture([16, 16], TextureFormat.Rgba, null)
-val id = *texture.id()
+val texture = renderer.createStorageTexture(arrayOf(16, 16), TextureFormat.Rgba, null)
+val id = texture.id()
 
 renderer.unregisterTexture(id)
 `}
@@ -1381,9 +1270,14 @@ lang="kotlin"
 
 ---
 
-### Renderer::create_external_texture_from_html_video(video)
+### Renderer::wait_idle()
 
-Create an external texture from an `HtmlVideoElement` for sampling in WGSL via `texture_external` and `textureSampleBaseClampToEdge`.
+Block the current thread until every submission queued on this renderer's device has finished executing.
+
+Use this as an explicit synchronization point between `render()` bursts and readbacks â for example before `Renderer::read_texture`, `Texture::get_image`, or `TextureTarget::get_image` â when you need deterministic ordering rather than the "submission order" the driver normally guarantees.
+
+- Native only (on WASM it is a no-op â the browser drives readiness via its own mapping lifecycle).
+- Returns after the device reports idle or a 5-second timeout.
 
 #### Example
 
@@ -1392,30 +1286,20 @@ Create an external texture from an `HtmlVideoElement` for sampling in WGSL via `
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-[cfg(target_arch = "wasm32")]
-{
-    use wasm_bindgen::JsCast;
-    use fragmentcolor::Renderer;
-    let renderer = Renderer::new();
-    let window =
-        web_sys::window().ok_or_else(|| std::io::Error::other("window not available"))?;
-    let document = window
-        .document()
-        .ok_or_else(|| std::io::Error::other("document not available"))?;
-    let element = document
-        .get_element_by_id("video")
-        .ok_or_else(|| std::io::Error::other("video element not found"))?;
-    let video = element
-        .dyn_into::<web_sys::HtmlVideoElement>()
-        .map_err(|_| std::io::Error::other("element is not a video"))?;
-    let handle = renderer.create_external_texture_from_html_video(&video)?;
-    let _ = handle;
-}
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Renderer, Shader, Target};
+
+let r = Renderer::new();
+let target = r.create_texture_target([8, 8]).await?;
+let shader = Shader::default();
+r.render(&shader, &target)?;
+r.wait_idle()?;
+let _bytes = target.get_image();
 Ok(())
 }
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-2, 21-22}"
+lang="rust" meta="collapse={1-1, 10-12}"
 />
 
 </TabItem>
@@ -1423,15 +1307,14 @@ lang="rust" meta="collapse={1-2, 21-22}"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Renderer } from "fragmentcolor";
+import { Renderer, Shader } from "fragmentcolor";
 
-const renderer = new Renderer();
-const element = document.getElementById("video");
-
-if (element instanceof HTMLVideoElement) {
-  const handle = renderer.createExternalTextureFromHtmlVideo(element);
-  void handle;
-}
+const r = new Renderer();
+const target = await r.createTextureTarget([8, 8]);
+const shader = Shader.default();
+r.render(shader, target);
+r.waitIdle();
+const _bytes = target.getImage();
 `}
 lang="js"
 />
@@ -1441,8 +1324,14 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-# This API is only available on the Web JavaScript binding.
-# On Python, upload decoded video frames with Texture.write() or Texture.write_with().
+from fragmentcolor import Renderer, Shader
+
+r = Renderer()
+target = r.create_texture_target([8, 8])
+shader = Shader.default()
+r.render(shader, target)
+r.wait_idle()
+_bytes = target.get_image()
 `}
 lang="python"
 />
@@ -1452,24 +1341,14 @@ lang="python"
 <TabItem label="Swift">
 <Code
 code={`
-{
-    use wasm_bindgen.JsCast
 import FragmentColor
-let renderer = Renderer()
-let window = 
-        web_sys.window().okOrElse(|| std.io.Error.other("window not available"))
-let document = window
-        .document()
-        .okOrElse(|| std.io.Error.other("document not available"))
-let element = document
-        .getElementById("video")
-        .okOrElse(|| std.io.Error.other("video element not found"))
-let video = element
-        .dynInto.<web_sys.HtmlVideoElement>()
-        .mapErr(|_| std.io.Error.other("element is not a video"))
-let handle = renderer.createExternalTextureFromHtmlVideo(video)
-let _ = handle
-}
+
+let r = Renderer()
+let target = try await r.createTextureTarget([8, 8])
+let shader = Shader.default()
+r.render(shader, target)
+r.waitIdle()
+let _bytes = target.getImage()
 `}
 lang="swift"
 />
@@ -1479,24 +1358,14 @@ lang="swift"
 <TabItem label="Kotlin">
 <Code
 code={`
-{
-    use wasm_bindgen.JsCast
 import org.fragmentcolor.*
-val renderer = Renderer()
-val window = 
-        web_sys.window().okOrElse(|| std.io.Error.other("window not available"))
-val document = window
-        .document()
-        .okOrElse(|| std.io.Error.other("document not available"))
-val element = document
-        .getElementById("video")
-        .okOrElse(|| std.io.Error.other("video element not found"))
-val video = element
-        .dynInto.<web_sys.HtmlVideoElement>()
-        .mapErr(|_| std.io.Error.other("element is not a video"))
-val handle = renderer.createExternalTextureFromHtmlVideo(video)
-val _ = handle
-}
+
+val r = Renderer()
+val target = r.createTextureTarget(arrayOf(8, 8))
+val shader = Shader.default()
+r.render(shader, target)
+r.waitIdle()
+val _bytes = target.getImage()
 `}
 lang="kotlin"
 />
@@ -1508,9 +1377,199 @@ lang="kotlin"
 
 ---
 
-### Renderer::render(renderable: Shader | Pass | Frame, target: Target)
+### Renderer::read_texture(texture_id)
+
+Read back the mip-0 contents of a registered texture as tightly-packed bytes in the texture's native format. Blocks the current thread until the readback buffer is mapped (native only).
+
+Equivalent to calling [`Texture::get_image`] on the handle â useful when you only kept the `TextureId` around.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Renderer, TextureFormat};
+let renderer = Renderer::new();
+let texture = renderer.create_storage_texture([64, 64], TextureFormat::Rgba, None).await?;
+texture.write(&vec![0u8; 64 * 64 * 4])?;
+
+let bytes = renderer.read_texture(*texture.id())?;
+assert_eq!(bytes.len(), 64 * 64 * 4);
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+`}
+lang="rust" meta="collapse={1-1, 8-11}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Renderer, TextureFormat } from "fragmentcolor";
+const renderer = new Renderer();
+const texture = await renderer.createStorageTexture([64, 64], TextureFormat.Rgba, null);
+texture.write(Array(64 * 64 * 4).fill(0));
+
+const bytes = renderer.readTexture(texture.id());
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Renderer, TextureFormat
+renderer = Renderer()
+texture = renderer.create_storage_texture([64, 64], TextureFormat.Rgba, None)
+texture.write([0] * (64 * 64 * 4))
+
+bytes = renderer.read_texture(texture.id())
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+let renderer = Renderer()
+let texture = try await renderer.createStorageTexture([64, 64], TextureFormat.Rgba, nil)
+texture.write(Array(repeating: 0, count: 64 * 64 * 4))
+
+let bytes = renderer.readTexture(texture.id())
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+val renderer = Renderer()
+val texture = renderer.createStorageTexture(arrayOf(64, 64), TextureFormat.Rgba, null)
+texture.write(Array(64 * 64 * 4) { 0 })
+
+val bytes = renderer.readTexture(texture.id())
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Renderer::read_texture_async(texture_id)
+
+Async variant of [`Renderer::read_texture`] that works on both native and WASM.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Renderer, TextureFormat};
+let renderer = Renderer::new();
+let texture = renderer.create_storage_texture([64, 64], TextureFormat::Rgba, None).await?;
+texture.write(&vec![0u8; 64 * 64 * 4])?;
+
+let bytes = renderer.read_texture_async(*texture.id()).await?;
+assert_eq!(bytes.len(), 64 * 64 * 4);
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+`}
+lang="rust" meta="collapse={1-1, 8-11}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Renderer, TextureFormat } from "fragmentcolor";
+const renderer = new Renderer();
+const texture = await renderer.createStorageTexture([64, 64], TextureFormat.Rgba, null);
+texture.write(Array(64 * 64 * 4).fill(0));
+
+const bytes = await renderer.readTextureAsync(texture.id());
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Renderer, TextureFormat
+renderer = Renderer()
+texture = renderer.create_storage_texture([64, 64], TextureFormat.Rgba, None)
+texture.write([0] * (64 * 64 * 4))
+
+bytes = renderer.read_texture_async(texture.id())
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+let renderer = Renderer()
+let texture = try await renderer.createStorageTexture([64, 64], TextureFormat.Rgba, nil)
+texture.write(Array(repeating: 0, count: 64 * 64 * 4))
+
+let bytes = try await renderer.readTextureAsync(texture.id())
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+val renderer = Renderer()
+val texture = renderer.createStorageTexture(arrayOf(64, 64), TextureFormat.Rgba, null)
+texture.write(Array(64 * 64 * 4) { 0 })
+
+val bytes = renderer.readTextureAsync(texture.id())
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Renderer::render(renderable, target)
 
 Renders the given object to the given [Target](/api/core/target).
+
+`renderable` can be a `Shader`, a `Pass`, or any iterable of `Pass` (`Vec<Pass>`, `&[Pass]`, `&[&Pass]`). Passes in an iterable are rendered in order.
 
 #### Example
 
@@ -1598,7 +1657,7 @@ code={`
 import org.fragmentcolor.*
 
 val renderer = Renderer()
-val target = renderer.createTextureTarget([10, 10])
+val target = renderer.createTextureTarget(arrayOf(10, 10))
 val shader = Shader.default()
 
 renderer.render(shader, target)

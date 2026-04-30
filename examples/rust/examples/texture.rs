@@ -1,4 +1,4 @@
-use fragmentcolor::{App, Frame, Pass, Renderer, SetupResult, Shader, call, run};
+use fragmentcolor::{App, Pass, Renderer, SetupResult, Shader, call, run};
 use std::path::PathBuf;
 use std::sync::Arc;
 use winit::dpi::PhysicalSize;
@@ -40,9 +40,7 @@ async fn setup(app: &App, windows: Vec<Arc<Window>>) -> SetupResult {
         shader.set("tex", &tex)?;
     }
     let pass = Pass::from_shader("main", &shader);
-    let mut frame = Frame::new();
-    frame.add_pass(&pass);
-    app.add("frame.main", frame);
+    app.add("pass.main", pass);
 
     for win in windows {
         let target = app.get_renderer().create_target(win.clone()).await?;
@@ -53,9 +51,9 @@ async fn setup(app: &App, windows: Vec<Arc<Window>>) -> SetupResult {
 
 fn draw(app: &App) {
     let id = app.primary_window_id();
-    if let Some(frame) = app.get::<Frame>("frame.main") {
+    if let Some(pass) = app.get::<Pass>("pass.main") {
         let r = app.get_renderer();
-        let _ = app.with_target(id, |t| r.render(&*frame, t));
+        let _ = app.with_target(id, |t| r.render(&*pass, t));
     }
 }
 

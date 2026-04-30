@@ -21,7 +21,7 @@ let package = Package(
             dependencies: [.product(name: "FragmentColor", package: "swift")],
             path: ".",
             exclude: ["Package.swift"],
-            sources: ["Healthcheck.swift"]
+            sources: ["Healthcheck.swift", "GeneratedExamples.swift"]
         ),
     ]
 )

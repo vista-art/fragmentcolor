@@ -2,7 +2,7 @@
 import org.fragmentcolor.*
 
 val renderer = Renderer()
-val target = renderer.createTextureTarget([64, 64])
+val target = renderer.createTextureTarget(arrayOf(64, 64))
 
 val shader = Shader.default()
 val pass = Pass("blend with previous")

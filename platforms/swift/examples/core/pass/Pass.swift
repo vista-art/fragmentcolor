@@ -2,7 +2,7 @@
 import FragmentColor
 
 let renderer = Renderer()
-let canvas = document.createElement('canvas')
+let canvas = document.createElement("canvas")
 let target = try await renderer.createTarget(canvas)
 let shader = Shader.default()
 
@@ -15,11 +15,5 @@ pass2.addShader(shader)
 // standalone
 renderer.render(pass, target)
 
-// using a Frame
-let frame = Frame()
-frame.addPass(pass)
-frame.addPass(pass2)
-renderer.render(frame, target)
-
-// vector of passes (consume them)
+// vector of passes rendered in order (any iterable of Pass is renderable)
 renderer.render([pass, pass2], target)

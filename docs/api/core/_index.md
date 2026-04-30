@@ -8,5 +8,4 @@ Items not listed here will appear after these, sorted alphabetically.
 - Renderer
 - Shader
 - Pass
-- Frame
 - Texture

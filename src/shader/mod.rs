@@ -22,6 +22,11 @@ pub use constants::*;
 pub(crate) mod uniform;
 pub(crate) use uniform::*;
 
+pub mod composer;
+pub use composer::{ShaderInput, ShaderPart};
+
+pub(crate) mod registry;
+
 mod glsl;
 mod input;
 mod platform;
@@ -58,8 +63,8 @@ impl From<Arc<ShaderObject>> for Shader {
 
 impl Shader {
     #[lsp_doc("docs/api/core/shader/new.md")]
-    pub fn new(source: &str) -> Result<Self, ShaderError> {
-        Ok(Self::from(input::load_shader(source)?))
+    pub fn new(input: impl Into<ShaderInput>) -> Result<Self, ShaderError> {
+        Ok(Self::from(input::resolve(input.into())?))
     }
 
     #[lsp_doc("docs/api/core/shader/set.md")]
@@ -133,6 +138,11 @@ impl Shader {
     #[lsp_doc("docs/api/core/shader/is_compute.md")]
     pub fn is_compute(&self) -> bool {
         self.object.is_compute()
+    }
+
+    #[lsp_doc("docs/api/core/shader/set_registry.md")]
+    pub fn set_registry(base_url: &str) {
+        registry::set_registry(base_url);
     }
 }
 
@@ -272,6 +282,16 @@ impl ShaderObject {
 
     /// Create a Shader object from a WGSL source.
     pub fn wgsl(source: &str) -> Result<Self, ShaderError> {
+        // Accept the legacy `push_constant` address space spelling even though naga's WGSL
+        // front end only recognizes `immediate` as of 29.x. Users commonly write the declaration
+        // exactly as `var<push_constant>`; rewrite that form so existing shaders keep parsing.
+        let source_owned;
+        let source = if source.contains("push_constant") {
+            source_owned = source.replace("var<push_constant>", "var<immediate>");
+            source_owned.as_str()
+        } else {
+            source
+        };
         let mut validator = Validator::new(ValidationFlags::all(), Capabilities::all());
         let module = naga::front::wgsl::parse_str(source)?;
         validator.validate(&module).map_err(Box::new)?;
@@ -526,10 +546,64 @@ fn hash(source: &str) -> ShaderHash {
     slice.into()
 }
 
+/// Collect the set of image-class global variables that are ever consumed by an
+/// `ImageSample` expression. Textures outside this set are only read via
+/// `textureLoad`/image ops, and the bind-group layout can request a non-filterable
+/// sample type (unlocking Rgba32Float and similar as sampled sources without
+/// the `FLOAT32_FILTERABLE` feature).
+///
+/// If any `ImageSample` argument cannot be resolved to a direct global (e.g. it
+/// comes from a function parameter), every image global is conservatively
+/// reported as sampled — filterable=true is always a safe layout, filterable=false
+/// is not.
+fn sampled_image_globals(
+    module: &Module,
+) -> std::collections::HashSet<naga::Handle<naga::GlobalVariable>> {
+    use naga::Expression;
+
+    let mut sampled: std::collections::HashSet<naga::Handle<naga::GlobalVariable>> =
+        Default::default();
+    let mut indirect = false;
+
+    let mut visit = |function: &naga::Function| {
+        for (_, expr) in function.expressions.iter() {
+            if let Expression::ImageSample { image, .. } = expr {
+                match &function.expressions[*image] {
+                    Expression::GlobalVariable(handle) => {
+                        sampled.insert(*handle);
+                    }
+                    _ => indirect = true,
+                }
+            }
+        }
+    };
+
+    for (_, f) in module.functions.iter() {
+        visit(f);
+    }
+    for ep in &module.entry_points {
+        visit(&ep.function);
+    }
+
+    if indirect {
+        for (handle, var) in module.global_variables.iter() {
+            if matches!(
+                &module.types[var.ty].inner,
+                naga::TypeInner::Image { .. }
+            ) {
+                sampled.insert(handle);
+            }
+        }
+    }
+
+    sampled
+}
+
 fn parse_uniforms(module: &Module) -> Result<HashMap<String, Uniform>, ShaderError> {
     let mut uniforms = HashMap::new();
+    let sampled_set = sampled_image_globals(module);
 
-    for (_, variable) in module.global_variables.iter() {
+    for (handle, variable) in module.global_variables.iter() {
         // Handle WorkGroup specially: ignore unbound; error on bound (unexpected)
         match variable.space {
             AddressSpace::WorkGroup => {
@@ -541,12 +615,13 @@ fn parse_uniforms(module: &Module) -> Result<HashMap<String, Uniform>, ShaderErr
                     continue;
                 }
             }
-            AddressSpace::PushConstant => {
-                // Parse push constants as a dedicated variant; no binding expected
+            AddressSpace::Immediate => {
+                // Parse immediate data (formerly WGSL push constants) as a dedicated variant;
+                // no binding is expected.
                 let uniform_name = variable
                     .name
                     .clone()
-                    .ok_or(ShaderError::ParseError("Unnamed push constant".into()))?;
+                    .ok_or(ShaderError::ParseError("Unnamed immediate variable".into()))?;
                 let ty = &module.types[variable.ty];
                 let inner = convert_type(module, ty)?;
                 let span = inner.size();
@@ -592,7 +667,13 @@ fn parse_uniforms(module: &Module) -> Result<HashMap<String, Uniform>, ShaderErr
                 let span = inner.size();
                 UniformData::Storage(vec![(inner, span, access.into())])
             }
-            _ => convert_type(module, ty)?,
+            _ => {
+                let mut d = convert_type(module, ty)?;
+                if let UniformData::Texture(ref mut meta) = d {
+                    meta.sampled = sampled_set.contains(&handle);
+                }
+                d
+            }
         };
 
         uniforms.insert(
@@ -758,6 +839,36 @@ mod tests {
 
         let bad = "not wgsl";
         assert!(Shader::try_from(bad).is_err());
+    }
+
+    #[test]
+    fn shader_new_accepts_array_of_sources() {
+        let helper = "fn util() -> f32 { return 1.0; }";
+        let main = r#"
+@vertex fn vs_main() -> @builtin(position) vec4<f32> { return vec4<f32>(util()); }
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }
+        "#;
+
+        let from_array = Shader::new([helper, main]).expect("from [&str; 2]");
+        let from_vec: Vec<String> = vec![helper.to_string(), main.to_string()];
+        let from_vec_call = Shader::new(from_vec).expect("from Vec<String>");
+        let from_slice_str: Shader = Shader::new([helper, main].as_slice()).expect("from &[&str]");
+
+        let _ = from_array.list_uniforms();
+        let _ = from_vec_call.list_keys();
+        let _ = from_slice_str.list_uniforms();
+    }
+
+    #[test]
+    fn shader_new_accepts_owned_string() {
+        let owned: String = DEFAULT_SHADER.to_string();
+        let _ = Shader::new(owned).expect("from String");
+    }
+
+    #[test]
+    fn shader_new_accepts_string_ref() {
+        let owned: String = DEFAULT_SHADER.to_string();
+        let _ = Shader::new(&owned).expect("from &String");
     }
 
     #[test]

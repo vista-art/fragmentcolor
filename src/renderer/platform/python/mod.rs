@@ -271,34 +271,6 @@ impl Renderer {
         })
     }
 
-    #[pyo3(name = "update_texture")]
-    #[lsp_doc("docs/api/core/renderer/update_texture.md")]
-    pub fn update_texture_py(&self, texture_id: Py<PyAny>, data: Py<PyAny>) -> Result<(), PyErr> {
-        Python::attach(|py| -> Result<(), PyErr> {
-            let id = crate::texture::py_to_texture_id(texture_id.bind(py))?;
-            let bytes = crate::texture::py_to_texture_bytes(data.bind(py))?;
-            self.update_texture(id, &bytes)?;
-            Ok(())
-        })
-    }
-
-    #[pyo3(name = "update_texture_with")]
-    #[lsp_doc("docs/api/core/renderer/update_texture_with.md")]
-    pub fn update_texture_with_py(
-        &self,
-        texture_id: Py<PyAny>,
-        data: Py<PyAny>,
-        options: Py<PyAny>,
-    ) -> Result<(), PyErr> {
-        Python::attach(|py| -> Result<(), PyErr> {
-            let id = crate::texture::py_to_texture_id(texture_id.bind(py))?;
-            let bytes = crate::texture::py_to_texture_bytes(data.bind(py))?;
-            let opt = crate::texture::py_to_write_options(options.bind(py))?;
-            self.update_texture_with(id, &bytes, opt)?;
-            Ok(())
-        })
-    }
-
     #[pyo3(name = "unregister_texture")]
     #[lsp_doc("docs/api/core/renderer/unregister_texture.md")]
     pub fn unregister_texture_py(&self, texture_id: Py<PyAny>) -> Result<(), PyErr> {

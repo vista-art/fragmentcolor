@@ -1,4 +1,4 @@
-import init, { Renderer, Shader, Pass, Frame, Mesh, Vertex, set_log_level } from "fragmentcolor";
+import init, { Renderer, Shader, Pass, Mesh, Vertex, set_log_level } from "fragmentcolor";
 
 // import { installInstrumentation } from './instrument.mjs';
 // Install JS-level instrumentation before running any examples or docs coverage.
@@ -131,10 +131,10 @@ fn main(_v: VertexOutput) -> @location(0) vec4<f32> {
   renderer.render(rpass, target);
   renderer.render(rpass, textureTarget);
 
-  const frame = new Frame();
-  frame.addPass(rpass);
-  renderer.render(frame, target);
-  renderer.render(frame, textureTarget);
+  const rpass2 = new Pass("second pass");
+  rpass2.addShader(shader);
+  renderer.render([rpass, rpass2], target);
+  renderer.render([rpass, rpass2], textureTarget);
 
   const res = shader.get("resolution");
   console.log(res);
@@ -241,9 +241,10 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(0.,1.,0.,1.); }
       new Vertex([ 0.5, -0.5, 0.0]),
       new Vertex([ 0.0,  0.5, 0.0]),
     ]);
-    const instA = new Vertex([0.0, 0.0]).set('offset', [0.0, 0.0]).createInstance();
-    const instB = new Vertex([0.25, 0.0]).set('offset', [0.25, 0.0]).createInstance();
-    mesh.addInstances([instA, instB]);
+    mesh.addInstances([
+      { offset: [0.0, 0.0] },
+      { offset: [0.25, 0.0] },
+    ]);
     pass.addMesh(mesh);
     renderer.render(pass, target);
     const img = await target.getImage();

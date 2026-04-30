@@ -115,6 +115,7 @@ impl Vertex {
         Instance {
             properties: self.properties.clone(),
             prop_locations: self.prop_locations.clone(),
+            next_location: self.next_location,
         }
     }
 }
@@ -153,6 +154,27 @@ impl Eq for Vertex {}
 pub struct Instance {
     pub(crate) properties: HashMap<String, VertexValue>,
     pub(crate) prop_locations: HashMap<String, u32>,
+    pub(crate) next_location: u32,
+}
+
+impl Instance {
+    /// Create an empty `Instance`. Chain `.set("key", value)` calls to populate
+    /// per-instance attributes.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Set a per-instance attribute. Locations auto-increment in insertion order
+    /// (instance attributes have their own location namespace, separate from vertex).
+    pub fn set<V: Into<VertexValue>>(mut self, key: &str, v: V) -> Self {
+        let k = key.to_string();
+        if !self.prop_locations.contains_key(&k) {
+            self.prop_locations.insert(k.clone(), self.next_location);
+            self.next_location = self.next_location.saturating_add(1);
+        }
+        self.properties.insert(k, v.into());
+        self
+    }
 }
 
 impl From<Vertex> for Instance {

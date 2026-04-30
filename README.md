@@ -5,7 +5,7 @@
 The API encourages a simple shader composition workflow, where you can use **WGSL** or **GLSL** shaders as the source of truth
 for visual consistency across platforms, while **avoiding the verbosity of modern GPU APIs**.
 
-It has bindings for [**JavaScript**](./README_JS.md) (WASM), [**Python**](./README_PY.md), and draft support for **Swift** and **Kotlin**.
+It has bindings for [**JavaScript**](./README_JS.md) (WASM), [**Python**](./README_PY.md), **Swift** (iOS / macOS), and **Kotlin** (Android).
 It targets each platform's native graphics API: **Vulkan**, **Metal**, **DirectX**, **OpenGL**, **WebGL**, and **WebGPU**.
 See [Platform Support](#platform-support) for details.
 
@@ -13,12 +13,6 @@ Check the website for the Getting Started guide and full reference:
 
 - **Documentation:** <https://fragmentcolor.org/welcome>
 - **API Reference:** <https://fragmentcolor.org/api>
-
-> [!NOTE]
->
-> iOS and Android support is not available yet, but planned for version **v0.11.0**.
->
-> See the [Roadmap](https://github.com/vista-art/fragmentcolor/blob/main/ROADMAP.md) and [Changelog](https://github.com/vista-art/fragmentcolor/blob/main/CHANGELOG.md) for details.
 
 ## Install
 
@@ -41,7 +35,7 @@ We also support JavaScript and Python:
 ```rust
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
-use fragmentcolor::{Renderer, Shader, Pass, Frame};
+use fragmentcolor::{Renderer, Shader, Pass};
 
 // Example window. We officially support winit.
 let window = fragmentcolor::headless_window(800, 600);
@@ -105,16 +99,14 @@ let blurx = Pass::new("blur x");
 blurx.add_shader(&Shader::new("./shaders/blur_x.wgsl")?);
 blurx.require(&pass)?; // pass renders before blurx
 
-// Finally, you can combine multiple passes linearly in a Frame
-let frame = Frame::new();
-frame.add_pass(pass);
-frame.add_pass(Pass::new("GUI pass"));
-renderer.render(&frame, &target)?;
+// Finally, any iterable of Pass can be rendered in order — no extra type needed.
+let passes = vec![pass, Pass::new("GUI pass")];
+renderer.render(&passes, &target)?;
 
 // To animate, simply update the uniforms in a loop
 for i in 0..10 {
     circle.set("position", [i, i])?;
-    renderer.render(&frame, &target)?;
+    renderer.render(&passes, &target)?;
 }
 
 # Ok(())
@@ -179,7 +171,7 @@ Platform support is aligned with upstream [wgpu](https://github.com/gfx-rs/wgpu)
 
 ## Limitations (planned features)
 
-- Swift & Kotlin bindings are not supported yet, but planned for version v0.11.0.
+- See the [Roadmap](./ROADMAP.md) and [Changelog](./CHANGELOG.md) for planned features and known limitations.
 
 ## Common workflows
 

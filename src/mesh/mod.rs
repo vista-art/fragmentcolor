@@ -107,16 +107,10 @@ impl Mesh {
     }
 
     /// Override how many instances to draw (when not using per-instance attributes).
+    /// Cleared automatically by `add_instance` / `add_instances` / `clear_instances`.
     #[lsp_doc("docs/api/geometry/mesh/set_instance_count.md")]
     pub fn set_instance_count(&self, n: u32) {
         *self.object.override_instances.write() = Some(n);
-        self.object.invalidate_cache();
-    }
-
-    /// Clear the instance count override; fall back to instance buffer or 1.
-    #[lsp_doc("docs/api/geometry/mesh/clear_instance_count.md")]
-    pub fn clear_instance_count(&self) {
-        *self.object.override_instances.write() = None;
         self.object.invalidate_cache();
     }
 }
@@ -273,12 +267,17 @@ impl MeshObject {
     fn add_instance(&self, i: Instance) {
         self.insts.write().push(i);
         *self.dirty_instances.write() = true;
+        // Adding a real instance invalidates any prior set_instance_count override
+        // (otherwise the GPU would draw past the actual buffer end).
+        *self.override_instances.write() = None;
         self.invalidate_cache();
     }
 
     fn clear_instances(&self) {
         self.insts.write().clear();
         *self.dirty_instances.write() = true;
+        // Reset to default state: no buffer, no count override, draws as a single instance.
+        *self.override_instances.write() = None;
         self.invalidate_cache();
     }
 
@@ -690,13 +689,13 @@ mod tests {
     fn instance_packing_override_and_vertex_buffers() {
         pollster::block_on(async move {
             let mesh = Mesh::new();
-            use crate::mesh::Vertex;
+            use crate::mesh::{Instance, Vertex};
             mesh.add_vertices([
                 Vertex::new([-0.5f32, -0.5f32]),
                 Vertex::new([0.5f32, -0.5f32]),
                 Vertex::new([0.0f32, 0.5f32]),
             ]);
-            let inst = Vertex::new([0.0f32, 0.0]).set("id", 7u32).create_instance();
+            let inst = Instance::new().set("id", 7u32);
             mesh.add_instances([inst.clone(), inst]);
 
             // Build GPU buffers
@@ -708,7 +707,7 @@ mod tests {
                 .await
                 .expect("device");
 
-            // Without override, instance_count == 2
+            // Without override, instance_count == 2 (matches buffer)
             let (_bufs, counts) = mesh.object.vertex_buffers(&device, &queue).expect("vb");
             assert_eq!(counts.instance_count, 2);
 
@@ -717,10 +716,18 @@ mod tests {
             let (_bufs2, counts2) = mesh.object.vertex_buffers(&device, &queue).expect("vb2");
             assert_eq!(counts2.instance_count, 5);
 
-            // Clear override, back to 2
-            mesh.clear_instance_count();
+            // Adding an instance auto-clears the override (otherwise the GPU would
+            // draw past the actual buffer end and read garbage). count falls back
+            // to the new buffer length (3).
+            mesh.add_instance(Instance::new().set("id", 8u32));
             let (_bufs3, counts3) = mesh.object.vertex_buffers(&device, &queue).expect("vb3");
-            assert_eq!(counts3.instance_count, 2);
+            assert_eq!(counts3.instance_count, 3);
+
+            // clear_instances resets everything: empty buffer + no override → 1.
+            mesh.set_instance_count(99);
+            mesh.clear_instances();
+            let (_bufs4, counts4) = mesh.object.vertex_buffers(&device, &queue).expect("vb4");
+            assert_eq!(counts4.instance_count, 1);
         });
     }
 

@@ -236,6 +236,7 @@ impl UniformStorage {
                             dim: existing.dim,
                             arrayed: existing.arrayed,
                             class: existing.class,
+                            sampled: existing.sampled,
                         }
                     } else {
                         existing.clone()

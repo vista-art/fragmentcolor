@@ -14,9 +14,9 @@ val pass = Pass("p"); pass.addShader(shader)
 
 val mesh = Mesh()
 mesh.addVertices([
-  [-0.5, -0.5, 0.0],
-  [ 0.5, -0.5, 0.0],
-  [ 0.0,  0.5, 0.0],
+  arrayOf(-0.5, -0.5, 0.0),
+  arrayOf(0.5, -0.5, 0.0),
+  arrayOf(0.0,  0.5, 0.0),
 ])
 
 shader.validateMesh(mesh); // Ok

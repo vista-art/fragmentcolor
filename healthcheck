@@ -62,22 +62,36 @@ run_py() {
   fi
 }
 
-run_ios() {
-  local name="platforms.swift.healthcheck"
+# Internal: build the xcframework once. Cached across the two iOS sub-tests
+# below so we don't pay for `./build_ios` twice when running both. Returns 0
+# on success; 1 on failure (any subsequent iOS sub-test should short-circuit).
+_ios_build_xcframework_done=""
+_ios_build_xcframework_rc=0
+ensure_ios_xcframework() {
+  if [ -n "$_ios_build_xcframework_done" ]; then
+    return "$_ios_build_xcframework_rc"
+  fi
+  if bash "$ROOT_DIR/build_ios"; then
+    _ios_build_xcframework_rc=0
+  else
+    _ios_build_xcframework_rc=1
+  fi
+  _ios_build_xcframework_done=1
+  return "$_ios_build_xcframework_rc"
+}
+
+# iOS sub-test 1/2: builds the public Swift Package at `platforms/swift/`
+# (uniffi bindings + thin Swift wrapper) for the iOS Simulator SDK. Catches
+# binding regressions.
+run_ios_bindings() {
+  local name="platforms.swift.bindings"
 
   if ! command -v xcodebuild >/dev/null 2>&1; then
     echo "skip $name ... xcodebuild not on PATH (Xcode required)"
     return 0
   fi
 
-  # Compile-only check. SPM can't run tests on iOS Simulator without a
-  # wrapping Xcode project (tracked as follow-up in the CHANGELOG); for
-  # now we verify that `./build_ios` produces a working xcframework and
-  # that the Swift Package at `platforms/swift/` links against it cleanly
-  # for the simulator SDK. The Swift-side extensions + generated uniffi
-  # sources all type-check here, which catches the majority of binding
-  # regressions.
-  if ! bash "$ROOT_DIR/build_ios"; then
+  if ! ensure_ios_xcframework; then
     log_test_fail "$name"
     return 1
   fi
@@ -85,6 +99,39 @@ run_ios() {
   if (cd "$ROOT_DIR/platforms/swift" \
         && xcodebuild \
              -scheme FragmentColor \
+             -destination "generic/platform=iOS Simulator" \
+             build); then
+    log_test_ok "$name"
+    return 0
+  else
+    log_test_fail "$name"
+    return 1
+  fi
+}
+
+# iOS sub-test 2/2: builds the healthcheck executable, which embeds
+# `GeneratedExamples.swift` — the auto-generated aggregator for every
+# transpiled Swift example under `platforms/swift/examples/`. Compile
+# errors here mean the transpiler (`scripts/convert.rs::to_swift`) emitted
+# something invalid, or the example references an item that uniffi does
+# not export to Swift. Compile-only: GPU-backed runtime execution is a
+# follow-up.
+run_ios_examples() {
+  local name="platforms.swift.examples"
+
+  if ! command -v xcodebuild >/dev/null 2>&1; then
+    echo "skip $name ... xcodebuild not on PATH (Xcode required)"
+    return 0
+  fi
+
+  if ! ensure_ios_xcframework; then
+    log_test_fail "$name"
+    return 1
+  fi
+
+  if (cd "$ROOT_DIR/platforms/swift/healthcheck" \
+        && xcodebuild \
+             -scheme fragmentcolor-healthcheck \
              -destination "generic/platform=iOS Simulator" \
              build); then
     log_test_ok "$name"
@@ -317,9 +364,10 @@ main() {
       if run_web; then passed=$((passed+1)); else failed=$((failed+1)); fi
       ;;
     ios)
-      echo "running 1 test"
-      total=1
-      if run_ios; then passed=$((passed+1)); else failed=$((failed+1)); fi
+      echo "running 2 tests"
+      total=2
+      if run_ios_bindings; then passed=$((passed+1)); else failed=$((failed+1)); fi
+      if run_ios_examples; then passed=$((passed+1)); else failed=$((failed+1)); fi
       ;;
     android)
       echo "running 1 test"
@@ -327,11 +375,12 @@ main() {
       if run_android; then passed=$((passed+1)); else failed=$((failed+1)); fi
       ;;
     all)
-      echo "running 4 tests"
-      total=4
+      echo "running 5 tests"
+      total=5
       if run_py; then passed=$((passed+1)); else failed=$((failed+1)); fi
       if run_web; then passed=$((passed+1)); else failed=$((failed+1)); fi
-      if run_ios; then passed=$((passed+1)); else failed=$((failed+1)); fi
+      if run_ios_bindings; then passed=$((passed+1)); else failed=$((failed+1)); fi
+      if run_ios_examples; then passed=$((passed+1)); else failed=$((failed+1)); fi
       if run_android; then passed=$((passed+1)); else failed=$((failed+1)); fi
       ;;
   esac

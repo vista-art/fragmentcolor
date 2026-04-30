@@ -2,7 +2,7 @@ import os
 import platform
 import importlib
 import numpy as np
-from fragmentcolor import Renderer, Shader, Pass, Frame
+from fragmentcolor import Renderer, Shader, Pass
 
 # Debug diagnostics for CI
 if os.environ.get("FC_HEALTHCHECK_VERBOSE") == "1":
@@ -97,7 +97,7 @@ fn main(pixel: VertexOutput) -> @location(0) vec4<f32> {
     shader.set("circle.radius", 20.0)
     renderer.render(shader, target)
 
-    # Render with a Pass and a Frame
+    # Render with a Pass, then render a sequence of passes (any iterable of Pass is renderable).
     rpass = Pass("single pass")
     rpass.add_shader(shader)
     renderer.render(rpass, target)
@@ -105,9 +105,9 @@ fn main(pixel: VertexOutput) -> @location(0) vec4<f32> {
     shader.set("circle.radius", 30.0)
     renderer.render(rpass, target)
 
-    frame = Frame()
-    frame.add_pass(rpass)
-    renderer.render(frame, target)
+    rpass2 = Pass("second pass")
+    rpass2.add_shader(shader)
+    renderer.render([rpass, rpass2], target)
 
     # Additional API coverage for docs
     radius = shader.get("circle.radius")

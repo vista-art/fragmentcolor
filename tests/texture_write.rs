@@ -1,4 +1,4 @@
-use fragmentcolor::{Renderer, TextureFormat, TextureWriteOptions};
+use fragmentcolor::{Renderer, TextureFormat, TextureRegion};
 
 fn required_bytes(bpr: u32, height: u32, stride: u32, depth: u32, rows_per_image: u32) -> usize {
     // bpr*(h-1) + stride + (depth-1)*rows_per_image*bpr
@@ -31,8 +31,8 @@ fn texture_write_full_ok() {
         let req = required_bytes(bpr, h, stride, 1, h);
         let data = vec![0xABu8; req];
 
-        let opt = TextureWriteOptions::whole().with_bytes_per_row(bpr);
-        tex.write_with(&data, opt).expect("write full ok");
+        let region = TextureRegion::default().with_stride(bpr);
+        tex.write_region(&data, region).expect("write full ok");
     });
 }
 
@@ -48,8 +48,10 @@ fn texture_write_invalid_bpr_alignment() {
         let stride = width * 4;
         // Intentionally use stride (not 256-aligned) for bpr
         let data = vec![0u8; stride as usize];
-        let opt = TextureWriteOptions::whole().with_bytes_per_row(stride);
-        let err = tex.write_with(&data, opt).expect_err("bad bpr must error");
+        let region = TextureRegion::default().with_stride(stride);
+        let err = tex
+            .write_region(&data, region)
+            .expect_err("bad bpr must error");
         let s = format!("{}", err);
         assert!(s.contains("bytes_per_row") || s.contains("multiple"));
     });
@@ -68,9 +70,9 @@ fn texture_write_bpr_smaller_than_stride() {
         // Force bpr smaller than stride while aligned: stride=512, pick bpr=256
         let bpr = 256u32; // aligned and < stride(512)
         let data = vec![0xCDu8; stride as usize];
-        let opt = TextureWriteOptions::whole().with_bytes_per_row(bpr);
+        let region = TextureRegion::default().with_stride(bpr);
         let err = tex
-            .write_with(&data, opt)
+            .write_region(&data, region)
             .expect_err("bpr < stride must err");
         let s = format!("{}", err);
         assert!(s.contains("bytes_per_row smaller"));
@@ -92,9 +94,9 @@ fn texture_write_data_too_small() {
         let bpr = stride.div_ceil(align) * align; // 256
         // Provide only one row of data; required would be 256*(h-1)+stride = 256+32=288
         let too_small = vec![0u8; stride as usize];
-        let opt = TextureWriteOptions::whole().with_bytes_per_row(bpr);
+        let region = TextureRegion::default().with_stride(bpr);
         let err = tex
-            .write_with(&too_small, opt)
+            .write_region(&too_small, region)
             .expect_err("too small must err");
         let s = format!("{}", err);
         assert!(s.contains("smaller") || s.contains("required"));
@@ -119,7 +121,7 @@ fn texture_write_no_copy_dst_usage_errors() {
         let req = required_bytes(bpr, h, stride, 1, h);
         let data = vec![0u8; req];
         let err = tex
-            .write_with(&data, TextureWriteOptions::whole().with_bytes_per_row(bpr))
+            .write_region(&data, TextureRegion::default().with_stride(bpr))
             .expect_err("no COPY_DST should fail");
         let s = format!("{}", err);
         assert!(s.contains("does not allow writes") || s.contains("COPY_DST"));

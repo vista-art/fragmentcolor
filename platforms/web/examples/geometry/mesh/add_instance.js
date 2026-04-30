@@ -1,4 +1,6 @@
-import { Mesh, Vertex } from "fragmentcolor";
+import { Mesh, Instance } from "fragmentcolor";
+
 const m = new Mesh();
-const v = new Vertex([0.0, 0.0]);
-m.addInstance(v);
+const offset = [0.25, 0.10];
+const tint = [1.0, 0.0, 0.0, 1.0];
+m.addInstance(Instance.new().set("offset", offset).set("tint", tint));

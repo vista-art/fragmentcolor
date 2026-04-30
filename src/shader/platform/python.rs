@@ -3,12 +3,28 @@
 use crate::shader::lsp_doc;
 use crate::{Shader, ShaderError, UniformData};
 use pyo3::prelude::*;
+use pyo3::types::PyAnyMethods;
 
 #[pymethods]
 impl Shader {
     #[new]
-    pub fn new_py(source: &str) -> Result<Self, ShaderError> {
-        Shader::new(source)
+    pub fn new_py(input: &Bound<PyAny>) -> Result<Self, ShaderError> {
+        if let Ok(s) = input.extract::<String>() {
+            return Shader::new(s);
+        }
+        if let Ok(v) = input.extract::<Vec<String>>() {
+            return Shader::new(v);
+        }
+        Err(ShaderError::ParseError(
+            "Shader(input): expected str or list[str]".into(),
+        ))
+    }
+
+    #[staticmethod]
+    #[pyo3(name = "set_registry")]
+    #[lsp_doc("docs/api/core/shader/set_registry.md")]
+    pub fn set_registry_py(base_url: &str) {
+        Shader::set_registry(base_url);
     }
 
     #[pyo3(name = "set")]

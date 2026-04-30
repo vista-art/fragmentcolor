@@ -1,0 +1,23 @@
+---
+title: "FragmentColor 0.10.10: long-lived WASM sessions"
+excerpt: "Stability improvements for long-running browser sessions where the WebAssembly memory may detach during the session."
+authors: ["rafaelbeckel"]
+date: 2025-10-21
+tags: ["release", "webgpu", "javascript", "bugfix"]
+---
+
+v0.10.10 improves stability of the WASM bindings during long-running browser sessions. When the `ArrayBuffer` detaches mid-session, the binding switches to a live view of `wasm.memory.buffer` and continues operating.
+
+This release matters most for long-lived browser surfaces such as kiosks, data-viz dashboards, and generative-art screensavers, where a tab can stay open for hours or days.
+
+A few smaller items also land:
+
+- `TextureInput` on the JS bridge treats a zero-byte-length `ArrayBuffer` as detached or empty and returns an empty byte vector. This covers the case where a texture was loaded, the page sat idle, and memory then moved.
+- `ImageData` extraction uses the native `Clamped<Vec<u8>>` path and removes an extra `copy_to` step.
+- The `ShaderHero` component drops its per-frame debug instrumentation.
+
+The public API is unchanged.
+
+Release notes: [GitHub v0.10.10](https://github.com/vista-art/fragmentcolor/releases/tag/v0.10.10).
+
+— Rafael

@@ -192,20 +192,32 @@ fn js_to_vertex_into(value: &JsValue) -> Result<Vertex, JsError> {
 }
 
 fn js_to_instance_into(value: &JsValue) -> Result<Instance, JsError> {
-    // First try direct conversion if it's already an Instance
+    // 1. Already an Instance JS object?
     if let Ok(instance) = Instance::try_from(value) {
         return Ok(instance);
     }
-    // Then try converting from Vertex object
+    // 2. Vertex object (backward-compat: convert via create_instance, dropping position).
     if let Ok(vertex) = Vertex::try_from(value) {
         return Ok(vertex.create_instance());
     }
-    // Finally, accept number/array/typed array -> Vertex -> Instance
-    if let Ok(vertex) = js_to_vertex_into(value) {
-        return Ok(vertex.create_instance());
+    // 3. Plain JS object: { key: value, ... } → Instance::new().set(...).set(...)
+    if value.is_object() && !js_sys::Array::is_array(value) {
+        let obj = js_sys::Object::from(value.clone());
+        let entries = js_sys::Object::entries(&obj);
+        let mut instance = Instance::new();
+        for entry in entries.iter() {
+            let pair = js_sys::Array::from(&entry);
+            let key = pair
+                .get(0)
+                .as_string()
+                .ok_or_else(|| JsError::new("Instance attribute keys must be strings"))?;
+            let vv = js_to_vertex_value(&pair.get(1))?;
+            instance = instance.set(&key, vv);
+        }
+        return Ok(instance);
     }
     Err(JsError::new(
-        "Expected Instance, Vertex, or number/array/typed array",
+        "Expected an Instance, a Vertex, or an object of named attributes",
     ))
 }
 
@@ -246,6 +258,30 @@ impl Vertex {
     #[lsp_doc("docs/api/geometry/vertex/create_instance.md")]
     pub fn create_instance_js(&self) -> Instance {
         self.create_instance()
+    }
+}
+
+// -----------------------------
+// Instance (WASM bindings) — `new Instance()` + `.set(key, value)` builder.
+// JS users typically pass a plain `{ key: value, ... }` object to `mesh.addInstance`,
+// but explicit construction is supported for symmetry with the Rust API.
+// -----------------------------
+#[wasm_bindgen]
+impl Instance {
+    #[wasm_bindgen(constructor)]
+    pub fn new_js() -> Instance {
+        Instance::new()
+    }
+
+    #[wasm_bindgen(js_name = "new")]
+    pub fn new_static() -> Instance {
+        Instance::new()
+    }
+
+    #[wasm_bindgen(js_name = "set")]
+    pub fn set_js(&self, key: &str, value: &JsValue) -> Result<Instance, JsError> {
+        let vv = js_to_vertex_value(value)?;
+        Ok(self.clone().set(key, vv))
     }
 }
 
@@ -330,12 +366,6 @@ impl Mesh {
     #[lsp_doc("docs/api/geometry/mesh/set_instance_count.md")]
     pub fn set_instance_count_js(&mut self, n: u32) {
         self.set_instance_count(n);
-    }
-
-    #[wasm_bindgen(js_name = "clearInstanceCount")]
-    #[lsp_doc("docs/api/geometry/mesh/clear_instance_count.md")]
-    pub fn clear_instance_count_js(&mut self) {
-        self.clear_instance_count();
     }
 }
 
