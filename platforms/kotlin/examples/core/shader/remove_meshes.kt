@@ -14,11 +14,11 @@ val shader = Shader("""
 """)
 
 val m1 = Mesh()
-m1.addVertex([0.0, 0.0])
+m1.addVertex(arrayOf(0.0, 0.0))
 val m2 = Mesh()
-m2.addVertex([0.5, 0.0])
+m2.addVertex(arrayOf(0.5, 0.0))
 
 shader.addMesh(m1)
 shader.addMesh(m2)
 
-shader.removeMeshes([m1, m2])
+shader.removeMeshes(arrayOf(m1, m2))

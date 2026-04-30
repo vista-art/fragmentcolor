@@ -181,19 +181,33 @@ fn py_to_vertex(obj: &Bound<'_, PyAny>) -> PyResult<Vertex> {
     ))
 }
 
-fn py_to_instance_or_vertex(obj: &Bound<'_, PyAny>) -> PyResult<Instance> {
-    // Try direct extraction first (already an Instance)
+fn py_to_instance(obj: &Bound<'_, PyAny>) -> PyResult<Instance> {
+    use pyo3::types::PyDict;
+
+    // 1. Already an Instance.
     if let Ok(i) = obj.extract::<Instance>() {
         return Ok(i);
     }
 
-    // Try to convert to Vertex and then to Instance
-    match py_to_vertex(obj) {
-        Ok(vertex) => Ok(vertex.create_instance()),
-        Err(_) => Err(PyErr::new::<PyTypeError, _>(
-            "Expected a Vertex, Instance, or number/sequence",
-        )),
+    // 2. Plain dict of named attributes: {"key": value, ...} → Instance::new().set(...)
+    if let Ok(dict) = obj.downcast::<PyDict>() {
+        let mut instance = Instance::new();
+        for (key, value) in dict.iter() {
+            let k: String = key.extract()?;
+            let vv = py_to_vertex_value(&value)?;
+            instance = instance.set(&k, vv);
+        }
+        return Ok(instance);
     }
+
+    // 3. Vertex (backward-compat: convert via create_instance, dropping position).
+    if let Ok(vertex) = py_to_vertex(obj) {
+        return Ok(vertex.create_instance());
+    }
+
+    Err(PyErr::new::<PyTypeError, _>(
+        "Expected an Instance, a dict of named attributes, or a Vertex",
+    ))
 }
 
 #[pymethods]
@@ -225,6 +239,14 @@ impl Instance {
     #[new]
     pub fn new_py() -> Self {
         Self::default()
+    }
+
+    #[pyo3(name = "set")]
+    pub fn set_py(&self, key: &str, value: Py<PyAny>) -> PyResult<Self> {
+        Python::attach(|py| -> PyResult<Self> {
+            let vv = py_to_vertex_value(value.bind(py))?;
+            Ok(self.clone().set(key, vv))
+        })
     }
 }
 
@@ -281,7 +303,7 @@ impl Mesh {
     #[lsp_doc("docs/api/geometry/mesh/add_instance.md")]
     pub fn add_instance_py(&mut self, item: Py<PyAny>) -> PyResult<()> {
         Python::attach(|py| -> PyResult<()> {
-            let instance = py_to_instance_or_vertex(item.bind(py))?;
+            let instance = py_to_instance(item.bind(py))?;
             self.add_instance(instance);
             Ok(())
         })
@@ -295,7 +317,7 @@ impl Mesh {
             let len = seq.len()?;
             for i in 0..len {
                 let item = seq.get_item(i)?;
-                let instance = py_to_instance_or_vertex(&item)?;
+                let instance = py_to_instance(&item)?;
                 self.add_instance(instance);
             }
             Ok(())
@@ -312,12 +334,6 @@ impl Mesh {
     #[lsp_doc("docs/api/geometry/mesh/set_instance_count.md")]
     pub fn set_instance_count_py(&mut self, n: u32) {
         self.set_instance_count(n);
-    }
-
-    #[pyo3(name = "clear_instance_count")]
-    #[lsp_doc("docs/api/geometry/mesh/clear_instance_count.md")]
-    pub fn clear_instance_count_py(&mut self) {
-        self.clear_instance_count();
     }
 }
 

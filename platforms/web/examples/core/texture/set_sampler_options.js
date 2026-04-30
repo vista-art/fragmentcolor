@@ -1,4 +1,4 @@
-import { Renderer } from "fragmentcolor";
+import { Renderer, SamplerOptions } from "fragmentcolor";
 const renderer = new Renderer();
 // 1x1 RGBA (white) raw pixel bytes
 const pixels = [255,255,255,255];

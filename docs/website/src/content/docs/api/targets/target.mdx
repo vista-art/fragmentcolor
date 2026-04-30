@@ -105,7 +105,7 @@ import FragmentColor
 let renderer = Renderer()
 
 // Use your platform's windowing system to create a window.
-let canvas = document.createElement('canvas')
+let canvas = document.createElement("canvas")
 
 let target = try await renderer.createTarget(canvas)
 
@@ -127,7 +127,7 @@ import org.fragmentcolor.*
 val renderer = Renderer()
 
 // Use your platform's windowing system to create a window.
-val canvas = document.createElement('canvas')
+val canvas = document.createElement("canvas")
 
 val target = renderer.createTarget(canvas)
 
@@ -240,7 +240,7 @@ code={`
 import org.fragmentcolor.*
 
 val renderer = Renderer()
-val target = renderer.createTextureTarget([16, 16])
+val target = renderer.createTextureTarget(arrayOf(16, 16))
 renderer.render(Shader(""), target)
 
 val image = target.getImage()
@@ -343,9 +343,9 @@ code={`
 import org.fragmentcolor.*
 
 val renderer = Renderer()
-val target = renderer.createTextureTarget([64, 32])
+val target = renderer.createTextureTarget(arrayOf(64, 32))
 
-target.resize([128, 64])
+target.resize(arrayOf(128, 64))
 `}
 lang="kotlin"
 />
@@ -458,7 +458,7 @@ code={`
 import org.fragmentcolor.*
 
 val renderer = Renderer()
-val target = renderer.createTextureTarget([64, 32])
+val target = renderer.createTextureTarget(arrayOf(64, 32))
 val size = target.size()
 val width = size.width
 val height = size.height

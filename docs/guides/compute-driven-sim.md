@@ -8,11 +8,11 @@ and then a render pass will draw them. No per‑frame CPU uploads.
 Why this matters
 
 - Keep large buffers on the GPU and update them in place
-- Separate concerns: one compute pass, one render pass, composed in a Frame
+- Separate concerns: one compute pass, one render pass, rendered in order
 
 ```rust
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Renderer, Shader, Pass, Frame, Target};
+use fragmentcolor::{Renderer, Shader, Pass, Target};
 use fragmentcolor::mesh::{Mesh, Vertex};
 
 let n: u32 = 1_000_000;
@@ -136,11 +136,8 @@ mesh.add_vertices([
 mesh.set_instance_count(n);
 pass_fs.add_mesh(&mesh)?;
 
-// 7) Compose passes in a Frame and render
-let mut frame = Frame::new();
-frame.add_pass(&pass_cs);
-frame.add_pass(&pass_fs);
-renderer.render(&frame, &target)?;
+// 7) Render both passes in order (any iterable of Pass is renderable)
+renderer.render(&vec![pass_cs, pass_fs], &target)?;
 
 // 8) Quick check
 let image = target.get_image();
@@ -154,7 +151,7 @@ What's happening under the hood
 
 - The compute pass updates positions/velocities in persistent storage buffers (kept by the renderer).
 - The render pass reads positions + colors and draws n instances.
-- A Frame collects both passes and runs them in order.
+- Both passes run in the order they appear in the slice passed to render().
 
 Pitfalls / gotchas
 

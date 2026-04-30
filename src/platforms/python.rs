@@ -2,7 +2,7 @@ use pyo3::prelude::*;
 use pyo3::wrap_pyfunction;
 
 use crate::{
-    Frame, Pass, Region, Renderer, Shader, Size,
+    Pass, ScreenRegion, Renderer, Shader, Size,
     target::{PyTextureTarget, RenderCanvasFrame, RenderCanvasTarget, rendercanvas_context_hook},
 };
 
@@ -13,11 +13,10 @@ pub fn fragmentcolor(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Renderer>()?;
     m.add_class::<Shader>()?;
     m.add_class::<Pass>()?;
-    m.add_class::<Frame>()?;
 
     // Helpers
     m.add_class::<Size>()?;
-    m.add_class::<Region>()?;
+    m.add_class::<ScreenRegion>()?;
 
     // Mesh/Vertex bindings
     m.add_class::<crate::mesh::Mesh>()?;
@@ -31,7 +30,6 @@ pub fn fragmentcolor(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Texture handle + format
     m.add_class::<crate::texture::Texture>()?;
     m.add_class::<crate::texture::TextureId>()?;
-    m.add_class::<crate::texture::TextureWriteOptions>()?;
     m.add_class::<crate::TextureFormat>()?;
 
     // TextureTarget (headless) API

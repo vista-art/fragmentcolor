@@ -1,8 +1,8 @@
 import org.fragmentcolor.*
-val renderer = Renderer()
-// 1x1 RGBA (white) raw pixel bytes
-val pixels = [255,255,255,255]
 
-val texture = renderer.createTextureWithSize(pixels, [1,1])
-val opts = {repeat_x: true, repeat_y: true, smooth: true, compare: null}
+val renderer = Renderer()
+val pixels: ByteArray = byteArrayOf(255.toByte(), 255.toByte(), 255.toByte(), 255.toByte())
+val texture = renderer.createTextureWithSize(pixels, Size(1u, 1u))
+
+val opts = SamplerOptions(repeatX = true, repeatY = true, smooth = true, compare = null)
 texture.setSamplerOptions(opts)

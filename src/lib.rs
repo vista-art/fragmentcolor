@@ -1,6 +1,6 @@
 //! # FragmentColor
 //!
-//! Easy GPU Rendering for Javascript, Python, Kotlin, and Swift.
+//! Universal GPU abstraction for Javascript, Python, Swift, and Kotlin.
 
 // Uniffi scaffolding for Swift (iOS) and Kotlin (Android).
 // Must be called at crate root. Compiled on every non-wasm target so
@@ -31,18 +31,13 @@ pub mod shader;
 
 /// # Pass Module
 ///
-/// A Pass represents a single rendering operation that can be part of a Frame.
+/// A Pass represents a single rendering operation; any iterable of Pass is renderable.
 pub mod pass;
 
 /// # Mesh Module
 ///
 /// Mesh represents geometry (vertices, indices, instances) and can be attached to a Pass.
 pub mod mesh;
-
-/// # Frame module
-///
-/// Frame represents a collection of Passes that can be rendered together.
-pub mod frame;
 
 /// # Error module
 ///
@@ -64,9 +59,9 @@ pub mod color;
 /// Cross-target networking helpers (text/bytes over HTTP)
 pub mod net;
 
-/// # Region module
+/// # ScreenRegion module
 ///
-/// Region type conversions and collision detection
+/// ScreenRegion type conversions and collision detection
 pub mod region;
 
 /// Guides (developer docs)
@@ -95,6 +90,6 @@ mod platforms;
 pub mod fc_kind;
 
 pub use {
-    color::*, error::*, fc_kind::*, frame::*, mesh::*, pass::*, region::*, renderer::*, shader::*,
-    size::*, target::*, texture::*,
+    color::*, error::*, fc_kind::*, mesh::*, pass::*, region::*, renderer::*, shader::*, size::*,
+    target::*, texture::*,
 };

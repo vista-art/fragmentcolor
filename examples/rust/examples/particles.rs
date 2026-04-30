@@ -1,5 +1,5 @@
-use fragmentcolor::mesh::{Mesh, Vertex};
-use fragmentcolor::{App, Frame, Pass, Renderer, SetupResult, Shader, call, run};
+use fragmentcolor::mesh::{Instance, Mesh, Vertex};
+use fragmentcolor::{App, Pass, Renderer, SetupResult, Shader, call, run};
 use std::sync::Arc;
 use winit::dpi::PhysicalSize;
 use winit::window::Window;
@@ -84,7 +84,7 @@ fn draw(app: &App) {
         let mut tmp = Vec::with_capacity(state.particles.len());
         for p in &state.particles {
             tmp.push(
-                Vertex::new([0.0, 0.0])
+                Instance::new()
                     .set("offset", p.pos)
                     .set("tint", p.col),
             );
@@ -95,10 +95,8 @@ fn draw(app: &App) {
 
     let id = app.primary_window_id();
     if let Some(pass) = app.get::<Pass>("pass.particles") {
-        let mut frame = Frame::new();
-        frame.add_pass(&pass);
         let r = app.get_renderer();
-        let _ = app.with_target(id, |t| r.render(&frame, t));
+        let _ = app.with_target(id, |t| r.render(&*pass, t));
     }
 }
 
@@ -137,7 +135,7 @@ async fn setup(app: &App, windows: Vec<Arc<Window>>) -> SetupResult {
             col,
         });
         insts.push(
-            Vertex::new([0.0, 0.0])
+            Instance::new()
                 .set("offset", [px, py])
                 .set("tint", col),
         );

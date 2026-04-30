@@ -1,15 +1,17 @@
-# Pass::set_viewport(viewport: Region)
+# Pass::set_viewport(viewport)
 
 Sets the viewport region for this [Pass](https://fragmentcolor.org/api/core/pass).
 
 The viewport restricts drawing to a rectangular area of the [Target](https://fragmentcolor.org/api/core/target).
+
+The `viewport` argument accepts anything convertible into a `ScreenRegion` — an `[x, y, w, h]` array, a `(w, h)` tuple, or a `ScreenRegion` constructed explicitly.
 
 ## Example
 
 ```rust
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
-use fragmentcolor::{Renderer, Pass, Shader, Region};
+use fragmentcolor::{Renderer, Pass, Shader, ScreenRegion};
 
 let renderer = Renderer::new();
 let target = renderer.create_texture_target([64, 64]).await?;
@@ -18,7 +20,7 @@ let shader = Shader::default();
 let mut pass = Pass::new("clipped");
 pass.add_shader(&shader);
 
-pass.set_viewport(Region::new((0, 0), (32, 32)));
+pass.set_viewport(ScreenRegion::new((0, 0), (32, 32)));
 
 renderer.render(&pass, &target)?;
 

@@ -1,6 +1,6 @@
 import org.fragmentcolor.*
 val renderer = Renderer()
-val target = renderer.createTextureTarget([100,100])
+val target = renderer.createTextureTarget(arrayOf(100,100))
 val color = Pass("color")
 val blurx = Pass("blur_x")
 blurx.require(color); // color before blur_x

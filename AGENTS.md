@@ -46,17 +46,16 @@ Common commands
 
 Big‑picture architecture (how things fit together)
 - Public API surface (src/lib.rs)
-  - Core types are re‑exported at the crate root: Renderer, Shader, Pass, Frame, Texture, Target (WindowTarget/TextureTarget), Mesh, Vertex, Size, Color, Region, plus stable kind branding via fc_kind.
+  - Core types are re‑exported at the crate root: Renderer, Shader, Pass, Texture, Target (WindowTarget/TextureTarget), Mesh, Vertex, Size, Color, ScreenRegion, plus stable kind branding via fc_kind.
   - Platform shims live under each module’s platform/ submodule (python, web, winit, etc.).
 - Renderer and context
   - Renderer lazily creates a RenderContext (wgpu::Device/Queue). It caches render/compute pipelines keyed by descriptive structs; manages uniform/storage/readback buffer pools and a small texture pool for transient MSAA.
   - create_target prefers a surface; on failure it logs and falls back to an offscreen TextureTarget so headless/CI runs still work. MSAA for surface targets uses transient textures resolved into the swapchain view.
   - Uniforms/textures are reflected from Shader storage. Textures are registered in a Renderer‑owned registry and referenced by an integer TextureId.
   - Push constants: native push constants are used when available; otherwise they are lowered to a fallback uniform buffer per root on platforms without push‑constant support (e.g., Web).
-- Shader, Mesh, Pass, Frame
+- Shader, Mesh, Pass
   - Shader owns attached meshes and validates compatibility at attach time (formats/locations must match exactly). Fullscreen shaders (no @location vertex inputs) reject mesh attachments.
-  - Pass is a thin orchestrator for shaders and render‑time knobs (viewport, clear color, compute dispatch, optional per‑pass targets). A pass is compute if all attached shaders are compute.
-  - Frame is a small DAG over passes; edges encode ordering; one render leaf is selected to present. Execution uses a topo sort; cycles/invalid refs become clear errors.
+  - Pass is a thin orchestrator for shaders and render‑time knobs (viewport, clear color, compute dispatch, optional per‑pass targets). A pass is compute if all attached shaders are compute. Passes build DAGs via `Pass::require()`; any iterable of Pass is Renderable, so ordered sequences just pass a slice to `Renderer::render`.
 - Documentation‑driven pipeline (THIS IS LOAD-BEARING)
   - Canonical docs live in docs/api and are pulled into Rust via #[lsp_doc(...)] so IDE hovers match the website.
   - build.rs enforces a “no‑panic in library code” policy, scans the public API to generate generated/api_map.rs and language examples, writes healthcheck aggregators, and exports website pages.
@@ -85,14 +84,13 @@ Module‑level invariants (authoritative AGENTS.md files)
   - src/shader/AGENTS.md (mesh ownership, strict attach‑time validation, reflection/mapping order, precise errors)
   - src/mesh/AGENTS.md (schema derivation, CPU/GPU buffer packing/caching, instance handling, validation contract)
   - src/pass/AGENTS.md (role, targets, compute vs render, delegation to Shader)
-  - src/frame/AGENTS.md (DAG semantics, presentation rules, error surface)
   - src/texture/AGENTS.md (creation via Renderer, binding/sampling, MSAA/resolve lifecycle)
 
 Conventions you’ll see enforced in code
 - Library code avoids unwrap/expect/panic and returns typed errors (thiserror). parking_lot is used for locks. Clippy must be clean; fixers are provided.
 - Public methods are intentionally thin and delegate to internal helpers; most logic sits behind re‑exports.
 - Docs live in docs/api; update there first, then build to validate and to regenerate language examples/site.
-- **Struct names match across every binding.** `Renderer`, `Shader`, `Pass`, `Frame`, `WindowTarget`, `TextureTarget`, `Size`, `Region`, `Texture`, etc. are identical in Rust, JS, Python, Swift, and Kotlin. Achieved via `#[pyclass(name = "...")]` on Python, `wasm_bindgen(js_name = ...)` on Web, `#[cfg_attr(mobile, derive(uniffi::Object))]` (uniffi uses the Rust type name verbatim — no renaming needed).
+- **Struct names match across every binding.** `Renderer`, `Shader`, `Pass`, `WindowTarget`, `TextureTarget`, `Size`, `ScreenRegion`, `Texture`, etc. are identical in Rust, JS, Python, Swift, and Kotlin. Achieved via `#[pyclass(name = "...")]` on Python, `wasm_bindgen(js_name = ...)` on Web, `#[cfg_attr(mobile, derive(uniffi::Object))]` (uniffi uses the Rust type name verbatim — no renaming needed).
 - Method naming follows each language's idiom (snake_case in Rust / Python, camelCase in JS / Swift / Kotlin) — the transpilers in `scripts/convert.rs` translate names automatically.
 - Mobile-specific methods (e.g. `Renderer.from_metal_layer` on iOS) live behind `#[cfg(ios)]` / `#[cfg(android)]` in `src/platforms/mobile/` and still require a `docs/api/core/renderer/from_metal_layer.md` page with `## Example` blocks in Rust, Swift, and Kotlin.
 

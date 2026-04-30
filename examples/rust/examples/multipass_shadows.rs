@@ -1,4 +1,4 @@
-use fragmentcolor::{Frame, Pass, Renderer, Shader, Target};
+use fragmentcolor::{Pass, Renderer, Shader, Target};
 
 const CIRCLE_SOURCE: &str = include_str!("shaders/circle.wgsl");
 
@@ -49,11 +49,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         };
 
         // Compose and render
-        let mut frame = Frame::new();
-        frame.add_pass(&pass_shadow);
-        frame.add_pass(&pass_main);
+        let passes: Vec<Pass> = vec![pass_shadow, pass_main];
 
-        renderer.render(&frame, &target)?;
+        renderer.render(&passes, &target)?;
 
         // Quick check
         let image = target.get_image();

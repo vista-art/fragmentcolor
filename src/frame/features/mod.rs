@@ -1,2 +1,0 @@
-mod python;
-mod web;

@@ -1,4 +1,4 @@
-use crate::{Color, Mesh, Region, Renderable, Shader, ShaderObject};
+use crate::{Color, Mesh, ScreenRegion, Renderable, Shader, ShaderObject};
 use lsp_doc::lsp_doc;
 use parking_lot::RwLock;
 use std::collections::HashMap;
@@ -119,7 +119,7 @@ impl Pass {
     }
 
     #[lsp_doc("docs/api/core/pass/set_viewport.md")]
-    pub fn set_viewport(&self, viewport: impl Into<Region>) {
+    pub fn set_viewport(&self, viewport: impl Into<ScreenRegion>) {
         self.object.set_viewport(viewport);
     }
 
@@ -316,7 +316,7 @@ pub struct PassObject {
     pub(crate) name: Arc<str>,
     pub(crate) input: RwLock<PassInput>,
     pub(crate) shaders: RwLock<Vec<Arc<ShaderObject>>>,
-    pub(crate) viewport: RwLock<Option<Region>>,
+    pub(crate) viewport: RwLock<Option<ScreenRegion>>,
     pub(crate) required_buffer_size: RwLock<u64>,
     // For compute passes: dispatch size (defaults to 1,1,1)
     pub(crate) compute_dispatch: RwLock<(u32, u32, u32)>,
@@ -408,7 +408,7 @@ impl PassObject {
         Err(PassError::NoCompatibleShader)
     }
 
-    pub fn set_viewport(&self, viewport: impl Into<Region>) {
+    pub fn set_viewport(&self, viewport: impl Into<ScreenRegion>) {
         *self.viewport.write() = Some(viewport.into());
     }
 
@@ -693,7 +693,7 @@ mod tests {
     fn sets_viewport_rect() {
         // Arrange
         let pass = Pass::new("p");
-        let vp = Region::from_region(2, 4, 8, 6);
+        let vp = ScreenRegion::from_region(2, 4, 8, 6);
 
         // Act
         pass.set_viewport(vp);

@@ -13,8 +13,6 @@ pub enum FragmentColorError {
     #[error(transparent)]
     Pass(#[from] crate::pass::error::PassError),
     #[error(transparent)]
-    Frame(#[from] crate::frame::error::FrameError),
-    #[error(transparent)]
     Renderer(#[from] crate::renderer::error::RendererError),
     #[error(transparent)]
     Init(#[from] crate::renderer::error::InitializationError),

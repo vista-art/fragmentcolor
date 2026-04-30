@@ -15,11 +15,13 @@ The [Shader](/api/core/shader) object is the main building block in [FragmentCol
 
 It takes a WGSL or GLSL shader source as input, parses it, validates it, and exposes the uniforms as keys.
 
+A `Shader::new` call accepts a single source string, a registry **slug** like `"sdf2d/circle"`, an `https://` URL, a local file path, or **an array of any combination of the above** â parts are deduplicated by hash and concatenated in order. This lets you pull pure helper functions from the public registry at `https://fragmentcolor.org/shaders/` into your own shader without copy-pasting. Override the registry base with [Shader::set_registry](/api/core/shader#shaderset_registry).
+
 To draw your shader, you must use your [Shader](/api/core/shader) instance as input to a [Renderer](/api/core/renderer).
 
 You can compose [Shader](/api/core/shader) instances into a [Pass](/api/core/pass) object to create more complex rendering pipelines.
 
-You can also create renderings with multiple Render Passes by using multiple [Pass](/api/core/pass) instances to a [Frame](/api/core/frame) object.
+You can also create renderings with multiple Render Passes by passing an array of [Pass](/api/core/pass) instances to [Renderer::render](/api/core/renderer#renderrender).
 
 ## Uniforms
 
@@ -328,11 +330,11 @@ val shader = Shader("""
 """)
 
 // Set the "resolution" uniform
-shader.set("resolution", [800.0, 600.0])
+shader.set("resolution", arrayOf(800.0, 600.0))
 val res = shader.get("resolution")
 
 val renderer = Renderer()
-val target = renderer.createTextureTarget([16, 16])
+val target = renderer.createTextureTarget(arrayOf(16, 16))
 renderer.render(shader, target)
 `}
 lang="kotlin"
@@ -348,19 +350,19 @@ lang="kotlin"
 
 ---
 
-### Shader::new(source: string)
+### Shader::new(input: string | string[])
 
-Creates a new [Shader](/api/core/shader) instance from the given WGSL source string, file path, or URL.
+Creates a new [Shader](/api/core/shader) from one of:
 
-GLSL is also supported if you enable the `glsl` feature.
-Shadertoy-flavored GLSL is supported if the `shadertoy` feature is enabled.
+- a raw WGSL source string,
+- a registry **slug** like `"sdf2d/circle"` (resolved against [Shader::set_registry](/api/core/shader#shaderset_registry)),
+- a `https://` URL pointing at a `.wgsl` file,
+- a local file path ending in `.wgsl`, `.glsl`, `.frag`, or `.vert`,
+- or **an array** mixing any of the above. Parts are resolved (fetched, read, looked up), deduplicated by source hash, and concatenated in order before validation.
 
-If the optional features are enabled, the constructor will try to automatically
-detect the shader type and parse it accordingly.
+If validation fails, the error message indicates the location of the error. If validation passes, the shader is guaranteed to work on the GPU. All uniforms are initialized to their default zero values.
 
-If an exception occurs during parsing, the error message will indicate the location of the error.
-
-If the initial source validation passes, the shader is guaranteed to work on the GPU. All uniforms are initialized to their default zero values.
+GLSL is supported only as a single part (`.vert` / `.frag` / `.glsl` path). Mixing GLSL with other parts is rejected.
 
 #### Example
 
@@ -396,8 +398,29 @@ let shader = Shader::new(r#"
 assert!(shader.list_keys().len() >= 1);
 Ok(())
 }
+use fragmentcolor::Shader;
+
+let main = r#"
+    @vertex fn vs(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+        let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.));
+        return vec4<f32>(p[i], 0.0, 1.0);
+    }
+
+    @fragment fn fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
+        let d = circle(pos.xy - vec2<f32>(400.0, 300.0), 100.0);
+        let n = simplex2(pos.xy * 0.01);
+        return vec4<f32>(vec3<f32>(step(0.0, d) + n * 0.1), 1.0);
+    }
+"#;
+
+let shader = Shader::new([
+    "sdf2d/circle",      // pure function: fn circle(p: vec2<f32>, r: f32) -> f32
+    "noise/simplex2",    // pure function: fn simplex2(v: vec2<f32>) -> f32
+    main,
+])?;
+Ok::<(), Box<dyn std::error::Error>>(())
 `}
-lang="rust" meta="collapse={1-1, 25-27}"
+lang="rust" meta="collapse={1-1, 25-27, 48-48}"
 />
 
 </TabItem>
@@ -429,6 +452,27 @@ const shader = new Shader(\`
 
 \`);
 
+import { Shader } from "fragmentcolor";
+
+const main = \`
+    @vertex fn vs(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+        let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.));
+        return vec4<f32>(p[i], 0.0, 1.0);
+    }
+
+    @fragment fn fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
+        let d = circle(pos.xy - vec2<f32>(400.0, 300.0), 100.0);
+        let n = simplex2(pos.xy * 0.01);
+        return vec4<f32>(vec3<f32>(step(0.0, d) + n * 0.1), 1.0);
+    }
+
+\`;
+
+const shader = Shader.new([
+    "sdf2d/circle",      // pure function: fn circle(p: vec2<f32>, r: f32) -> f32;
+    "noise/simplex2",    // pure function: fn simplex2(v: vec2<f32>) -> f32;
+    main,
+]);
 `}
 lang="js"
 />
@@ -462,6 +506,27 @@ shader = Shader("""
 
 """)
 
+from fragmentcolor import Shader
+
+main = """
+    @vertex fn vs(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+        let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.));
+        return vec4<f32>(p[i], 0.0, 1.0);
+    }
+
+    @fragment fn fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
+        let d = circle(pos.xy - vec2<f32>(400.0, 300.0), 100.0);
+        let n = simplex2(pos.xy * 0.01);
+        return vec4<f32>(vec3<f32>(step(0.0, d) + n * 0.1), 1.0);
+    }
+
+"""
+
+shader = Shader([
+    "sdf2d/circle", # pure function: fn circle(p: vec2<f32>, r: f32) -> f32
+    "noise/simplex2", # pure function: fn simplex2(v: vec2<f32>) -> f32
+    main,
+])
 `}
 lang="python"
 />
@@ -494,6 +559,27 @@ let shader = Shader("""
     }
 
 """)
+
+
+let main = """
+    @vertex fn vs(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+        let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.))
+        return vec4<f32>(p[i], 0.0, 1.0)
+    }
+
+    @fragment fn fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
+        let d = circle(pos.xy - vec2<f32>(400.0, 300.0), 100.0)
+        let n = simplex2(pos.xy * 0.01)
+        return vec4<f32>(vec3<f32>(step(0.0, d) + n * 0.1), 1.0)
+    }
+
+"""
+
+let shader = Shader.new([
+    "sdf2d/circle",      // pure function: fn circle(p: vec2<f32>, r: f32) -> f32
+    "noise/simplex2",    // pure function: fn simplex2(v: vec2<f32>) -> f32
+    main,
+])
 `}
 lang="swift"
 />
@@ -526,6 +612,27 @@ val shader = Shader("""
     }
 
 """)
+
+
+val main = """
+    @vertex fn vs(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+        let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.))
+        return vec4<f32>(p[i], 0.0, 1.0)
+    }
+
+    @fragment fn fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
+        let d = circle(pos.xy - vec2<f32>(400.0, 300.0), 100.0)
+        let n = simplex2(pos.xy * 0.01)
+        return vec4<f32>(vec3<f32>(step(0.0, d) + n * 0.1), 1.0)
+    }
+
+"""
+
+val shader = Shader.new([
+    "sdf2d/circle",      // pure function: fn circle(p: vec2<f32>, r: f32) -> f32
+    "noise/simplex2",    // pure function: fn simplex2(v: vec2<f32>) -> f32
+    main,
+])
 `}
 lang="kotlin"
 />
@@ -677,7 +784,7 @@ struct VOut { @builtin(position) pos: vec4<f32> }
 """)
 
 // Set scalars/vectors on declared uniforms
-shader.set("resolution", [800.0, 600.0])
+shader.set("resolution", arrayOf(800.0, 600.0))
 `}
 lang="kotlin"
 />
@@ -766,7 +873,7 @@ code={`
 import org.fragmentcolor.*
 
 val shader = Shader.default()
-shader.set("resolution", [800.0, 600.0])
+shader.set("resolution", arrayOf(800.0, 600.0))
 val res = shader.get("resolution")
 `}
 lang="kotlin"
@@ -1029,7 +1136,7 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 
-val vertex = Vertex([0.0, 0.0, 0.0])
+val vertex = Vertex(arrayOf(0.0, 0.0, 0.0))
 val shader = Shader.fromVertex(vertex)
 `}
 lang="kotlin"
@@ -1128,7 +1235,7 @@ code={`
 import org.fragmentcolor.*
 
 val mesh = Mesh()
-mesh.addVertex([0.0, 0.0, 0.0])
+mesh.addVertex(arrayOf(0.0, 0.0, 0.0))
 val shader = Shader.fromMesh(mesh)
 `}
 lang="kotlin"
@@ -1293,7 +1400,7 @@ val shader = Shader("""
 """)
 
 val mesh = Mesh()
-mesh.addVertex([0.0, 0.0, 0.0])
+mesh.addVertex(arrayOf(0.0, 0.0, 0.0))
 
 // Attach mesh to this shader (errors if incompatible)
 shader.addMesh(mesh)
@@ -1463,7 +1570,7 @@ val shader = Shader("""
 """)
 
 val mesh = Mesh()
-mesh.addVertex([0.0, 0.0])
+mesh.addVertex(arrayOf(0.0, 0.0))
 shader.addMesh(mesh)
 
 // Detach the mesh
@@ -1640,14 +1747,14 @@ val shader = Shader("""
 """)
 
 val m1 = Mesh()
-m1.addVertex([0.0, 0.0])
+m1.addVertex(arrayOf(0.0, 0.0))
 val m2 = Mesh()
-m2.addVertex([0.5, 0.0])
+m2.addVertex(arrayOf(0.5, 0.0))
 
 shader.addMesh(m1)
 shader.addMesh(m2)
 
-shader.removeMeshes([m1, m2])
+shader.removeMeshes(arrayOf(m1, m2))
 `}
 lang="kotlin"
 />
@@ -1808,7 +1915,7 @@ val shader = Shader("""
 """)
 
 val mesh = Mesh()
-mesh.addVertex([0.0, 0.0])
+mesh.addVertex(arrayOf(0.0, 0.0))
 shader.addMesh(mesh)
 
 // Clear all
@@ -1997,9 +2104,9 @@ val pass = Pass("p"); pass.addShader(shader)
 
 val mesh = Mesh()
 mesh.addVertices([
-  [-0.5, -0.5, 0.0],
-  [ 0.5, -0.5, 0.0],
-  [ 0.0,  0.5, 0.0],
+  arrayOf(-0.5, -0.5, 0.0),
+  arrayOf(0.5, -0.5, 0.0),
+  arrayOf(0.0,  0.5, 0.0),
 ])
 
 shader.validateMesh(mesh); // Ok
@@ -2119,6 +2226,120 @@ fn cs_main() { }
 
 // Call the method
 val is_compute = shader.isCompute()
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Shader::set_registry(base_url: string)
+
+Override the base URL used to resolve shader **slugs** (e.g. `"sdf2d/circle"`).
+
+When a slug is passed to [Shader::new](/api/core/shader#shadernew), it is expanded to:
+
+```text
+<base_url>/<slug>.wgsl
+```
+
+The default base URL is `https://fragmentcolor.org/shaders/`, which serves the public shader registry. Override it to point at your own collection (a CDN, a local dev server, or a mirror) without changing the rest of your code.
+
+The base may end with or without a trailing slash; both are normalised at lookup time.
+
+This setting is **process-wide**. It applies to every subsequent call to `Shader::new(...)` until overridden again.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+
+use fragmentcolor::Shader;
+
+// Point at your own mirror of the registry
+Shader::set_registry("https://cdn.example.com/shaders/");
+
+// Now `sdf2d/circle` resolves to https://cdn.example.com/shaders/sdf2d/circle.wgsl
+// (Skipping the actual fetch in this doctest)
+let _ = Shader::default();
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 10-12}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+
+import { Shader } from "fragmentcolor";
+
+// Point at your own mirror of the registry
+Shader.setRegistry("https://cdn.example.com/shaders/");
+
+// Now \`sdf2d/circle\` resolves to https://cdn.example.com/shaders/sdf2d/circle.wgsl
+// (Skipping the actual fetch in this doctest)
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+
+from fragmentcolor import Shader
+
+# Point at your own mirror of the registry
+Shader.set_registry("https://cdn.example.com/shaders/")
+
+# Now \`sdf2d/circle\` resolves to https://cdn.example.com/shaders/sdf2d/circle.wgsl
+# (Skipping the actual fetch in this doctest)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+
+import FragmentColor
+
+// Point at your own mirror of the registry
+Shader.setRegistry("https://cdn.example.com/shaders/")
+
+// Now """sdf2d/circle""" resolves to https://cdn.example.com/shaders/sdf2d/circle.wgsl
+// (Skipping the actual fetch in this doctest)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+
+import org.fragmentcolor.*
+
+// Point at your own mirror of the registry
+Shader.setRegistry("https://cdn.example.com/shaders/")
+
+// Now """sdf2d/circle""" resolves to https://cdn.example.com/shaders/sdf2d/circle.wgsl
+// (Skipping the actual fetch in this doctest)
 `}
 lang="kotlin"
 />

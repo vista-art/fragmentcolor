@@ -1,4 +1,4 @@
-use crate::{Size, Target, TargetFrame, TextureTarget, WindowTarget};
+use crate::{Size, SurfaceError, Target, TargetFrame, TextureTarget, WindowTarget};
 
 pub enum RenderTarget {
     Window(WindowTarget),
@@ -41,7 +41,7 @@ impl Target for RenderTarget {
         }
     }
 
-    fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, wgpu::SurfaceError> {
+    fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, SurfaceError> {
         match self {
             RenderTarget::Window(w) => w.get_current_frame(),
             RenderTarget::Texture(t) => t.get_current_frame(),

@@ -22,6 +22,7 @@ export default defineConfig({
         Repl: "./src/components/Repl.astro",
         Examples: "./src/components/Examples.mdx",
         SiteTitle: "./src/components/SiteTitle.astro",
+        Footer: "./src/components/Footer.astro",
       },
       customCss: ["./src/assets/styles/override.css"],
       // @TODO set up a system for automatic translation
@@ -56,7 +57,7 @@ export default defineConfig({
           authors: {
             rafaelbeckel: {
               name: "Rafael Beckel",
-              title: "Creator of FragmentColor",
+              title: "Maintainer",
               picture: "/favicon.png", // Images in the `public` directory are supported.
               url: "https://github.com/rafaelbeckel",
             },

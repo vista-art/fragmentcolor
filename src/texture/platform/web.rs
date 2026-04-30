@@ -3,28 +3,7 @@
 use lsp_doc::lsp_doc;
 use wasm_bindgen::prelude::*;
 
-use crate::{CompareFunction, SamplerOptions, Size, Texture, TextureId, TextureWriteOptions};
-
-#[wasm_bindgen]
-impl TextureWriteOptions {
-    #[wasm_bindgen(js_name = "whole")]
-    #[lsp_doc("docs/api/texture_write_options/whole.md")]
-    pub fn whole_js() -> Self {
-        Self::whole()
-    }
-
-    #[wasm_bindgen(js_name = "withBytesPerRow")]
-    #[lsp_doc("docs/api/texture_write_options/with_bytes_per_row.md")]
-    pub fn with_bytes_per_row_js(self, bpr: u32) -> Self {
-        self.with_bytes_per_row(bpr)
-    }
-
-    #[wasm_bindgen(js_name = "withRowsPerImage")]
-    #[lsp_doc("docs/api/texture_write_options/with_rows_per_image.md")]
-    pub fn with_rows_per_image_js(self, rpi: u32) -> Self {
-        self.with_rows_per_image(rpi)
-    }
-}
+use crate::{CompareFunction, SamplerOptions, Size, Texture, TextureId};
 
 #[wasm_bindgen]
 impl Texture {
@@ -62,12 +41,12 @@ impl Texture {
         Ok(())
     }
 
-    #[wasm_bindgen(js_name = "writeWith")]
-    #[lsp_doc("docs/api/core/texture/write_with.md")]
-    pub fn write_with_js(&self, data: &JsValue, options: &JsValue) -> Result<(), JsError> {
+    #[wasm_bindgen(js_name = "writeRegion")]
+    #[lsp_doc("docs/api/core/texture/write_region.md")]
+    pub fn write_region_js(&self, data: &JsValue, region: &JsValue) -> Result<(), JsError> {
         let bytes = crate::texture::js_to_texture_bytes(data)?;
-        let opt = crate::texture::js_to_write_options(options)?;
-        self.write_with(&bytes, opt)?;
+        let r: crate::TextureRegion = region.try_into()?;
+        self.write_region(&bytes, r)?;
         Ok(())
     }
 }

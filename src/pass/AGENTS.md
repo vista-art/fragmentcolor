@@ -7,7 +7,7 @@ Role
 Targets
 - `Pass::add_target(target)` attaches an offscreen color target for intermediate rendering.
 - `Pass::add_depth_target(target)` attaches an offscreen depth target; sample counts must match the color target.
-- There is no explicit `Frame.present(pass)` — the last render pass in the executed DAG presents to the final frame by default.
+- There is no explicit `present(pass)` API — the last render pass in the executed DAG presents to the final frame by default.
 
 Compute vs render
 - `Pass::is_compute()` reflects whether every attached shader is compute; a pass adopts the kind of the first attached shader.

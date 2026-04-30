@@ -1,5 +1,5 @@
 use crate::{
-    Frame, Mesh, Pass, Renderer, RendererError, Shader, Size, Texture, TextureInput, TextureTarget,
+    Mesh, Pass, Renderer, RendererError, Shader, Size, Texture, TextureInput, TextureTarget,
     target::CanvasTarget,
 };
 use js_sys::Array;
@@ -171,14 +171,15 @@ impl Renderer {
                     3 => crate::TextureFormat::Rgba8UnormSrgb,
                     4 => crate::TextureFormat::Bgra8Unorm,
                     5 => crate::TextureFormat::Rgba16Unorm,
-                    6 => crate::TextureFormat::Rgba32Float,
-                    7 => crate::TextureFormat::Rgba32Uint,
-                    8 => crate::TextureFormat::Rgba32Sint,
-                    9 => crate::TextureFormat::Depth32Float,
-                    10 => crate::TextureFormat::Rgba,
-                    11 => crate::TextureFormat::Bgra,
-                    12 => crate::TextureFormat::Lab,
-                    13 => crate::TextureFormat::L8,
+                    6 => crate::TextureFormat::Rgba16Float,
+                    7 => crate::TextureFormat::Rgba32Float,
+                    8 => crate::TextureFormat::Rgba32Uint,
+                    9 => crate::TextureFormat::Rgba32Sint,
+                    10 => crate::TextureFormat::Depth32Float,
+                    11 => crate::TextureFormat::Rgba,
+                    12 => crate::TextureFormat::Bgra,
+                    13 => crate::TextureFormat::Lab,
+                    14 => crate::TextureFormat::L8,
                     _ => crate::TextureFormat::default(),
                 };
             }
@@ -208,32 +209,6 @@ impl Renderer {
         Ok(self.create_depth_texture(size).await?)
     }
 
-    #[wasm_bindgen(js_name = "updateTexture")]
-    #[lsp_doc("docs/api/core/renderer/update_texture.md")]
-    pub fn update_texture_js(
-        &self,
-        texture_id: &JsValue,
-        data: &JsValue,
-    ) -> Result<(), RendererError> {
-        let id = crate::texture::js_to_texture_id(texture_id)?;
-        let bytes = crate::texture::js_to_texture_bytes(data)?;
-        self.update_texture(id, &bytes)
-    }
-
-    #[wasm_bindgen(js_name = "updateTextureWith")]
-    #[lsp_doc("docs/api/core/renderer/update_texture_with.md")]
-    pub fn update_texture_with_js(
-        &self,
-        texture_id: &JsValue,
-        data: &JsValue,
-        options: &JsValue,
-    ) -> Result<(), RendererError> {
-        let id = crate::texture::js_to_texture_id(texture_id)?;
-        let bytes = crate::texture::js_to_texture_bytes(data)?;
-        let opt = crate::texture::js_to_write_options(options)?;
-        self.update_texture_with(id, &bytes, opt)
-    }
-
     #[wasm_bindgen(js_name = "unregisterTexture")]
     #[lsp_doc("docs/api/core/renderer/unregister_texture.md")]
     pub fn unregister_texture_js(&self, texture_id: &JsValue) -> Result<(), RendererError> {
@@ -241,13 +216,13 @@ impl Renderer {
         self.unregister_texture(id)
     }
 
-    #[wasm_bindgen(js_name = "createExternalTextureFromHtmlVideo")]
-    #[lsp_doc("docs/api/core/renderer/create_external_texture_from_html_video.md")]
-    pub fn create_external_texture_from_html_video_js(
+    #[wasm_bindgen(js_name = "createExternalTexture")]
+    #[lsp_doc("docs/api/core/renderer/hidden/create_external_texture.md")]
+    pub fn create_external_texture_js(
         &self,
         video: &web_sys::HtmlVideoElement,
     ) -> Result<crate::renderer::external_texture::ExternalTextureHandle, RendererError> {
-        self.create_external_texture_from_html_video(video)
+        self.create_external_texture(video)
     }
 
     #[wasm_bindgen(js_name = "render")]
@@ -259,8 +234,6 @@ impl Renderer {
                 return self.render(&shader, &canvas_target);
             } else if let Ok(pass) = Pass::try_from(renderable) {
                 return self.render(&pass, &canvas_target);
-            } else if let Ok(frame) = Frame::try_from(renderable) {
-                return self.render(&frame, &canvas_target);
             } else if let Ok(mesh) = Mesh::try_from(renderable) {
                 return self.render(&mesh, &canvas_target);
             } else if Array::is_array(renderable) {
@@ -275,8 +248,6 @@ impl Renderer {
                 return self.render(&shader, &texture_target);
             } else if let Ok(pass) = Pass::try_from(renderable) {
                 return self.render(&pass, &texture_target);
-            } else if let Ok(frame) = Frame::try_from(renderable) {
-                return self.render(&frame, &texture_target);
             } else if let Ok(mesh) = Mesh::try_from(renderable) {
                 return self.render(&mesh, &texture_target);
             } else if Array::is_array(renderable) {

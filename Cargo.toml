@@ -3,7 +3,7 @@ name = "fragmentcolor"
 version = "0.11.0"
 homepage = "https://fragmentcolor.org"
 repository = "https://github.com/vista-art/fragmentcolor"
-description = "Easy GPU Rendering for Javascript, Python, Swift and Kotlin"
+description = "Universal GPU abstraction for Javascript, Python, Swift and Kotlin"
 authors = ["Vista Tech & Art GmbH"]
 readme = "README.md"
 license = "MIT"
@@ -30,8 +30,8 @@ python = ["pyo3", "numpy", "pollster"]
 winit = ["dep:winit", "pollster"]
 
 [dependencies]
-wgpu = { version = "27", features = ["glsl", "wgsl", "webgl", "naga-ir"] }
-naga = { version = "27", features = ["wgsl-in", "glsl-in"] }
+wgpu = { version = "29", features = ["glsl", "wgsl", "webgl", "naga-ir"] }
+naga = { version = "29", features = ["wgsl-in", "glsl-in"] }
 parking_lot = "0.12"
 derive-new = "0.7"
 thiserror = "2.0"
@@ -39,12 +39,12 @@ bytemuck = "1.0"
 futures = "0.3"
 lsp_doc = "0.2"
 dashmap = "6.1"
-glam = "0.30"
-sha2 = "0.10"
+glam = "0.32"
+sha2 = "0.11"
 log = "0.4"
 
 # Serialization
-csscolorparser = { version = "0.7", default-features = false, features = [
+csscolorparser = { version = "0.8", default-features = false, features = [
     "named-colors",
 ] }
 
@@ -57,12 +57,12 @@ image = { version = "0.25", default-features = false, features = [
 ] }
 
 # Python FFI (optional)
-pyo3 = { version = "0.26", features = [
+pyo3 = { version = "0.28", features = [
     "abi3-py39",
     "experimental-async",
     "generate-import-lib",
 ], optional = true }
-numpy = { version = "0.26", optional = true }
+numpy = { version = "0.28", optional = true }
 
 # MacOS
 [target.'cfg(target_os = "macos")'.dependencies]
@@ -75,7 +75,7 @@ objc2 = { version = "0.6" }
 # Android & iOS FFI (uniffi lives here so it's available on every non-wasm target,
 # including desktop so that `cargo run --bin uniffi-bindgen` works locally)
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-uniffi = { version = "0.29", features = ["cli"] }
+uniffi = { version = "0.31", features = ["cli"] }
 winit = { version = "0.30", features = ["serde"], optional = true }
 ureq = { version = "3", default-features = false }
 pollster = { version = "0.4", optional = true }
@@ -87,7 +87,7 @@ pollster = "0.4"
 
 # Android Specific
 [target.'cfg(target_os = "android")'.dependencies]
-jni = "0.21"
+jni = "0.22"
 jni_fn = "0.1"
 ndk-sys = "0.6"
 raw-window-handle = "0.6"
@@ -102,7 +102,7 @@ wasm-bindgen = "0.2"
 console_log = "1"
 lsp_doc = "0.2"
 js-sys = "0.3"
-gloo-utils = { version = "0.2", features = ["serde"] }
+gloo-utils = { version = "0.3", features = ["serde"] }
 web-sys = { version = "0.3", features = [
     'OffscreenCanvasRenderingContext2d',
     'CanvasRenderingContext2d',
@@ -129,7 +129,7 @@ syn = { version = "2.0", features = ["full"] }
 phf_codegen = "0.13"
 cfg_aliases = "0.2"
 quote = "1"
-uniffi = { version = "0.29", features = ["build"] }
+uniffi = { version = "0.31", features = ["build"] }
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3"

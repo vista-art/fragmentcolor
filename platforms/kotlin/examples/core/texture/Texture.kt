@@ -13,8 +13,8 @@ val shader = Shader("""
 """)
 
 // 1x1 RGBA (white) raw pixel bytes
-val pixels = [255,255,255,255]
-val texture = renderer.createTextureWithSize(pixels, [1,1])
+val pixels = arrayOf(255,255,255,255)
+val texture = renderer.createTextureWithSize(pixels, arrayOf(1,1))
 
 // insert  the texture in the shader matching the name in the shader
 shader.set("my_texture", texture)

@@ -1,9 +1,9 @@
-use fragmentcolor::{Frame, Pass, Renderer, Shader};
+use fragmentcolor::{Pass, Renderer, Shader};
 
-// Story: Render two shaders in a first pass, then render the same two in a second pass within a frame.
+// Story: Render a single pass holding two shaders, then render a sequence of two passes.
 // Arrange / Act / Assert structure keeps the flow readable.
 #[test]
-fn renders_two_passes_then_frame() -> Result<(), Box<dyn std::error::Error>> {
+fn renders_single_pass_then_sequence_of_passes() -> Result<(), Box<dyn std::error::Error>> {
     // Arrange
     let renderer = Renderer::new();
     let target = pollster::block_on(renderer.create_texture_target([10, 10]))?;
@@ -16,17 +16,13 @@ fn renders_two_passes_then_frame() -> Result<(), Box<dyn std::error::Error>> {
     pass1.add_shader(&s2);
     renderer.render(&pass1, &target)?;
 
-    // Act 2: build a second pass and a frame containing both
+    // Act 2: build a second pass and render the sequence directly (Pass slice is Renderable).
     let pass2 = Pass::new("Second Pass");
     pass2.add_shader(&s1);
     pass2.add_shader(&s2);
 
-    let mut frame = Frame::new();
-    frame.add_pass(&pass1);
-    frame.add_pass(&pass2);
-
-    // Assert: render the frame without errors
-    renderer.render(&frame, &target)?;
+    // Assert: render the sequence without errors
+    renderer.render(&vec![pass1, pass2], &target)?;
 
     Ok(())
 }

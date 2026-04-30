@@ -133,14 +133,15 @@ impl Target for RenderCanvasTarget {
         }
     }
 
-    fn get_current_frame(&self) -> Result<Box<dyn crate::TargetFrame>, wgpu::SurfaceError> {
+    fn get_current_frame(&self) -> Result<Box<dyn crate::TargetFrame>, crate::SurfaceError> {
         let target = if let Some(target) = &self.target {
             target
         } else {
-            return Err(wgpu::SurfaceError::Lost);
+            return Err(crate::SurfaceError::Lost);
         };
 
-        let surface_texture = target.surface.get_current_texture()?;
+        let surface_texture =
+            crate::target::surface_texture_from(target.surface.get_current_texture())?;
         let view = surface_texture
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
@@ -279,7 +280,7 @@ impl Target for PyTextureTarget {
         <crate::TextureTarget as Target>::resize(&mut self.inner, size);
     }
 
-    fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, wgpu::SurfaceError> {
+    fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, crate::SurfaceError> {
         self.inner.get_current_frame()
     }
 

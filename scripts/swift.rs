@@ -64,7 +64,139 @@ mod swift {
         out = replace_leading_keyword(&out, "const ", "let ");
         out = prepend_try_to_await(&out);
         out = replace_whole_word(&out, "null", "nil");
+        out = rewrite_array_fill(&out);
+        out = swap_single_quoted_strings(&out);
 
+        out
+    }
+
+    /// `Array(N).fill(expr)` (the JS shape `convert.rs` emits for
+    /// Rust array-repeat) → `Array(repeating: expr, count: N)`. Bracket-
+    /// balanced walk so nested expressions inside the args don't trip it.
+    fn rewrite_array_fill(line: &str) -> String {
+        let needle = "Array(";
+        let mut out = String::with_capacity(line.len());
+        let chars: Vec<char> = line.chars().collect();
+        let mut i = 0usize;
+        while i < chars.len() {
+            let rem: String = chars[i..].iter().collect();
+            if rem.starts_with(needle) {
+                // Walk to matching `)` for `Array(...)`.
+                let arg_start = i + needle.len();
+                let mut depth = 0i32;
+                let mut arg_close: Option<usize> = None;
+                let mut k = arg_start;
+                while k < chars.len() {
+                    match chars[k] {
+                        '(' => depth += 1,
+                        ')' => {
+                            if depth == 0 {
+                                arg_close = Some(k);
+                                break;
+                            }
+                            depth -= 1;
+                        }
+                        _ => {}
+                    }
+                    k += 1;
+                }
+                if let Some(arg_close) = arg_close {
+                    // Expect `.fill(` immediately after.
+                    let after: String = chars[arg_close + 1..].iter().collect();
+                    if let Some(stripped) = after.strip_prefix(".fill(") {
+                        let fill_arg_chars: Vec<char> = stripped.chars().collect();
+                        let mut depth2 = 0i32;
+                        let mut fill_close: Option<usize> = None;
+                        let mut m = 0usize;
+                        while m < fill_arg_chars.len() {
+                            match fill_arg_chars[m] {
+                                '(' => depth2 += 1,
+                                ')' => {
+                                    if depth2 == 0 {
+                                        fill_close = Some(m);
+                                        break;
+                                    }
+                                    depth2 -= 1;
+                                }
+                                _ => {}
+                            }
+                            m += 1;
+                        }
+                        if let Some(fc) = fill_close {
+                            let count: String = chars[arg_start..arg_close].iter().collect();
+                            let expr: String = fill_arg_chars[..fc].iter().collect();
+                            out.push_str(&format!(
+                                "Array(repeating: {}, count: {})",
+                                expr.trim(),
+                                count.trim()
+                            ));
+                            // Advance past the closing `)` of `.fill(...)`.
+                            // arg_close + 1 is the first char of `.fill(`,
+                            // so absolute pos of fill's `)` is arg_close + 1 + ".fill(".len() + fc.
+                            i = arg_close + 1 + ".fill(".len() + fc + 1;
+                            continue;
+                        }
+                    }
+                }
+            }
+            out.push(chars[i]);
+            i += 1;
+        }
+        out
+    }
+
+    /// Convert JS-style single-quoted string literals (`'foo'`) to Swift
+    /// double-quoted (`"foo"`). Skips swaps when we're already inside a
+    /// `"..."` or `"""..."""` so apostrophes in WGSL comments survive.
+    fn swap_single_quoted_strings(line: &str) -> String {
+        let chars: Vec<char> = line.chars().collect();
+        let mut out = String::with_capacity(line.len());
+        let mut i = 0usize;
+        let mut in_dq = false;
+        let mut in_tq = false;
+        while i < chars.len() {
+            // Triple-quote detection
+            if !in_dq
+                && i + 2 < chars.len()
+                && chars[i] == '"'
+                && chars[i + 1] == '"'
+                && chars[i + 2] == '"'
+            {
+                in_tq = !in_tq;
+                out.push_str("\"\"\"");
+                i += 3;
+                continue;
+            }
+            if !in_tq && !in_dq && chars[i] == '"' {
+                in_dq = true;
+                out.push('"');
+                i += 1;
+                continue;
+            }
+            if in_dq && chars[i] == '"' {
+                in_dq = false;
+                out.push('"');
+                i += 1;
+                continue;
+            }
+            // Single quote → swap if outside any string context AND the
+            // matching quote sits on the same line and the content has
+            // no internal `"`.
+            if !in_dq && !in_tq && chars[i] == '\'' {
+                if let Some(end) = chars[i + 1..].iter().position(|c| *c == '\'') {
+                    let inner: String = chars[i + 1..i + 1 + end].iter().collect();
+                    if !inner.contains('"') && !inner.contains('\n') {
+                        out.push('"');
+                        out.push_str(&inner);
+                        out.push('"');
+                        i += 1 + end + 1;
+                        continue;
+                    }
+                }
+            }
+            out.push(chars[i]);
+            i += 1;
+        }
         out
     }
 

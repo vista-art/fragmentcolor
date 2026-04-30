@@ -1,4 +1,6 @@
 import FragmentColor
+
 let m = Mesh()
-let v = Vertex([0.0, 0.0])
-m.addInstance(v)
+let offset = [0.25, 0.10]
+let tint = [1.0, 0.0, 0.0, 1.0]
+m.addInstance(Instance.new().set("offset", offset).set("tint", tint))

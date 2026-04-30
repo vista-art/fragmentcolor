@@ -5,10 +5,15 @@ pub async fn create_instance() -> wgpu::Instance {
     #[cfg(wasm)]
     use wgpu::util::new_instance_with_webgpu_detection;
     #[cfg(wasm)]
-    let instance = new_instance_with_webgpu_detection(&wgpu::InstanceDescriptor::default()).await;
+    let instance = new_instance_with_webgpu_detection(
+        wgpu::InstanceDescriptor::new_without_display_handle_from_env(),
+    )
+    .await;
 
     #[cfg(not(wasm))]
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
+    let instance = wgpu::Instance::new(
+        wgpu::InstanceDescriptor::new_without_display_handle_from_env(),
+    );
 
     instance
 }
@@ -33,7 +38,7 @@ pub async fn request_device(
 ) -> Result<(wgpu::Device, wgpu::Queue), InitializationError> {
     let requested_features = features();
     let mut requested_limits = limits().using_resolution(adapter.limits());
-    requested_limits.max_push_constant_size = adapter.limits().max_push_constant_size;
+    requested_limits.max_immediate_size = adapter.limits().max_immediate_size;
 
     let (device, queue) = adapter
         .request_device(&wgpu::DeviceDescriptor {
@@ -132,7 +137,7 @@ fn features() -> wgpu::Features {
     #[cfg(wasm)]
     let features = wgpu::Features::empty();
     #[cfg(not(wasm))]
-    let features = wgpu::Features::PUSH_CONSTANTS;
+    let features = wgpu::Features::IMMEDIATES;
 
     features
 }

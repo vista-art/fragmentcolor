@@ -10,7 +10,7 @@ Binding & sampling
 - `UniformData::Texture` carries `TextureMeta` (dim, arrayed, class) so `shader.set("tex", &texture)` only updates the id while preserving the reflected metadata.
 
 Updates & readback
-- `Renderer::update_texture` / `update_texture_with` push byte data into an already-registered texture; prefer `TextureWriteOptions::whole()` unless you need a sub-rect.
+- `Texture::write(&bytes)` uploads a whole-texture frame; `Texture::write_region(&bytes, region)` handles sub-rectangles, layered/3D textures, and explicit source layout. The `region` arg accepts `[w,h]`, `[x,y,w,h]`, `[x,y,z,w,h,d]`, or a `TextureRegion` constructed with `.with_stride(...)` / `.with_rows(...)`.
 - `TextureTarget::get_image()` reads back RGBA8 bytes for CI / snapshot tests — window-backed targets return an empty vec because readback is not portable.
 
 MSAA & resolve

@@ -1,0 +1,31 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cargo check *)",
+      "Bash(cargo doc *)",
+      "Bash(cargo test *)",
+      "Bash(2>/dev/null)",
+      "Bash(wait %bvxs9cude)",
+      "Bash([ -s \"$FILE\" ])",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "Bash(gh pr *)",
+      "Bash(gh issue *)",
+      "Bash(gh api *)",
+      "Bash(cargo pkgid *)",
+      "Bash(cargo tree *)",
+      "Bash(git -C /Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor log --all --oneline -- \"src/frame/mod.rs\")",
+      "Bash(git -C /Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor show db0e2ff1 --stat)",
+      "Bash(git -C /Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor show db0e2ff1 src/frame/mod.rs)",
+      "Bash(git -C /Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor show db0e2ff1 src/pass/mod.rs)",
+      "Bash(git -C /Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor show 562aea6c --stat)",
+      "Bash(git -C /Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor log --oneline -- \"src/frame/error.rs\")",
+      "Bash(git -C /Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor show 562aea6c src/frame/error.rs)",
+      "Bash(git -C /Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor log --oneline --all -- \"docs/api/core/frame/present.md\")",
+      "Bash(git -C /Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor show d71b05f4 --stat)",
+      "WebFetch(domain:biomejs.dev)",
+      "Bash(git check-ignore *)",
+      "Bash(awk -F/ '{print $2}')"
+    ]
+  }
+}

@@ -1,4 +1,4 @@
-use fragmentcolor::{App, Frame, Pass, Renderer, SetupResult, Shader, call, run};
+use fragmentcolor::{App, Pass, Renderer, SetupResult, Shader, call, run};
 use std::sync::Arc;
 use winit::dpi::PhysicalSize;
 use winit::window::Window;
@@ -59,9 +59,9 @@ fn draw(app: &App) {
     }
 
     let id = app.primary_window_id();
-    if let (Some(frame), Some(_target)) = (app.get::<Frame>("frame.main"), app.window_size(id)) {
+    if let (Some(passes), Some(_target)) = (app.get::<Vec<Pass>>("passes.main"), app.window_size(id)) {
         let r = app.get_renderer();
-        let _ = app.with_target(id, |tgt| r.render(&*frame, tgt));
+        let _ = app.with_target(id, |tgt| r.render(&*passes, tgt));
     }
 }
 
@@ -88,13 +88,11 @@ async fn setup(app: &App, windows: Vec<Arc<Window>>) -> SetupResult {
     fs.set("tex", &tex)?;
     let pass_fs = Pass::from_shader("render", &fs);
 
-    // Frame with compute then render
-    let mut frame = Frame::new();
-    frame.add_pass(&pass_cs);
-    frame.add_pass(&pass_fs);
+    // Passes with compute then render
+    let passes: Vec<Pass> = vec![pass_cs, pass_fs];
 
     app.add("shader.compute", cs);
-    app.add("frame.main", frame);
+    app.add("passes.main", passes);
 
     // Create targets for all windows
     for win in windows {

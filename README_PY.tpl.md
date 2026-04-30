@@ -16,7 +16,7 @@ pip install fragmentcolor rendercanvas glfw
 ## Quick start
 
 ```python
-from fragmentcolor import Renderer, Shader, Pass, Frame
+from fragmentcolor import Renderer, Shader, Pass
 from rendercanvas.auto import RenderCanvas, loop
 
 # Initializes a renderer and a target compatible with the given canvas
@@ -72,17 +72,15 @@ rpass.add_shader(triangle)
 rpass.add_shader(shader)
 renderer.render(rpass, target)
 
-# Finally, you can combine multiple passes in a Frame
-frame = Frame()
-frame.add_pass(rpass)
-frame.add_pass(Pass("GUI pass"))
-renderer.render(frame, target)
+# Finally, you can render a list of passes in order — no extra type needed.
+passes = [rpass, Pass("GUI pass")]
+renderer.render(passes, target)
 
 # To animate, simply update the uniforms in a loop
 @canvas.request_draw
 def animate():
     circle.set("position", [0.0, 0.0])
-    renderer.render(frame, target)
+    renderer.render(passes, target)
 
 loop.run()
 ```
@@ -125,7 +123,7 @@ Platform support is aligned with upstream wgpu:
 
 ## Limitations (planned features)
 
-- Swift & Kotlin bindings are not supported yet, but planned.
+- See the ROADMAP and CHANGELOG on the [repository](https://github.com/vista-art/fragmentcolor) for planned features and known limitations.
 
 ---
 

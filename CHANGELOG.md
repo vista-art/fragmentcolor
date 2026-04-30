@@ -4,11 +4,87 @@
 
 See the [Roadmap](https://github.com/vista-art/fragmentcolor/blob/main/ROADMAP.md) for planned features.
 
+### Shader composition
+
+- **`Shader::new` now accepts arrays.** The signature is `Shader::new(impl Into<ShaderInput>)`,
+  with `From` impls that classify a single string into one of: raw WGSL/GLSL **source**, registry
+  **slug** (`"sdf2d/circle"`), `https://` **URL**, or local **path**. Pass an array of any
+  combination — parts are resolved (fetched / read / looked up), deduplicated by source hash,
+  and concatenated in order before naga validation. No wrapping or auto-injection: invalid
+  input fails loudly.
+  - Equivalent forms: `Shader::new(src)`, `Shader::new("sdf2d/circle")`,
+    `Shader::new(["sdf2d/circle", "noise/simplex2", main_src])`.
+  - Existing call sites that pass `&str`, `String`, or `&String` keep working unchanged.
+- **`Shader::set_registry(base_url)`** overrides the slug base URL (default
+  `https://fragmentcolor.org/shaders/`). Process-wide; tests use a thread-local override stack.
+- **GLSL** is supported only as a single part; mixing GLSL with WGSL or with other parts is rejected.
+- **Behaviour change:** a string of the shape `^[a-z][a-z0-9_]*/[a-z0-9_]+$` (single line, ≤128
+  chars) is now classified as a **slug** rather than parsed as raw WGSL. Existing
+  `Shader::new("sdf2d/circle")` callers will fetch from the registry instead of erroring.
+- **JS/WASM:** `new Shader(input)` accepts `string | string[]`. URL/slug parts must be resolved
+  via `await Shader.fetch(input)` (which now also accepts `string | string[]`). New
+  `Shader.setRegistry(baseUrl)` static method.
+- **Python:** `Shader(input)` accepts `Union[str, list[str]]`. New static `Shader.set_registry(base_url)`.
+- **Swift / Kotlin (uniffi):** `Shader.new(source)` and new `Shader.compose(parts)` constructors,
+  plus a free `set_shader_registry(base_url)` function. Extension shims provide a single
+  overloaded `Shader(_:)`.
+
 ## 0.11.0 Swift & Kotlin with Uniffi
 
+### API renames + parity closures
+
+- **`Renderer::create_external_texture_from_html_video` → `Renderer::create_external_texture`.**
+  The old name baked the only existing source type into the API; renaming makes the surface
+  cross-platform (every binding now exposes `createExternalTexture` / `create_external_texture`
+  with a per-language source argument: `HTMLVideoElement` on Web, `CVPixelBuffer` raw pointer
+  on iOS via uniffi, `SurfaceTexture` raw pointer on Android via uniffi). The Rust core impl is
+  still a stub returning `RendererError::Error("not implemented yet")` on every platform —
+  the API surface is in place so callers can write portable code paths now and the
+  per-platform plumbing fills in over 0.12.6 (see ROADMAP). `ExternalTextureHandle` is no
+  longer `#[cfg(wasm)]`-gated — it derives `uniffi::Object` on mobile and stays
+  `#[wasm_bindgen]` on Web.
+  - The public doc is **parked at
+    `docs/api/core/renderer/hidden/create_external_texture.md`** until the implementation
+    lands, so the website doesn't advertise an API that throws on every call. The
+    `lsp_doc` reference on the Web wrapper now points at the hidden path; the four
+    per-language hidden overrides (`_js.md` / `_py.md` / `_swift.md` / `_kotlin.md`)
+    were renamed to match and stay parked alongside it as future-implementation
+    references. Move them back to the public top-level once 0.12.6 ships.
+  - Removed: `docs/api/core/renderer/create_external_texture_from_html_video.md` and the four
+    matching hidden overrides; `platforms/{web,python,swift,kotlin}/examples/core/renderer/create_external_texture_from_html_video.*`
+    (regenerated under the new name).
+- **`Texture::set_sampler_options` is now uniffi-exported.** `SamplerOptions` (now
+  `#[derive(uniffi::Record)]`) and `CompareFunction` (now `#[derive(uniffi::Enum)]`) are
+  in the foreign import list for Swift / Kotlin. Added `Texture::set_sampler_options_mobile`
+  shim in the new [src/texture/platform/mobile.rs](src/texture/platform/mobile.rs); the
+  Swift / Kotlin doc examples now show the idiomatic
+  `SamplerOptions(repeatX: true, ...)` constructor instead of a placeholder. Dropped
+  `SamplerOptions` from the foreign-import filter in `scripts/convert.rs` so the import line
+  survives transpilation. Closes one of the parity gaps surfaced by the new doc-example
+  healthchecks.
+
+### API removals
+
+- **`Frame` is gone.** The type was a thin collector over `Pass` objects; after the
+  Sep 30 DAG refactor it held no capability that `Pass::require()` (dependency graph) or
+  an iterable of `Pass` (sequential rendering) didn't already cover. `Renderer::render`
+  already accepts `&Pass`, `&Vec<Pass>`, `&[&Pass]`, `&[Pass]`, and `&Vec<&Pass>` — every
+  Frame use-case transliterates directly. Because every public symbol multiplies across
+  5 language bindings (Rust, JS, Python, Swift, Kotlin), the API surface reduction is
+  worth the transliteration cost — and 0.11.0 is not yet published, so no consumers exist.
+  - Migration: replace `let mut frame = Frame::new(); frame.add_pass(&a); frame.add_pass(&b);
+    renderer.render(&frame, &target);` with `renderer.render(&vec![a, b], &target);`.
+  - Python: `frame = Frame(); frame.add_pass(p); renderer.render(frame, t)` →
+    `renderer.render([p], t)`.
+  - JS: `const frame = new Frame(); frame.addPass(p); renderer.render(frame, t)` →
+    `renderer.render([p], t)`.
+  - Removed: `Frame`, `FrameError`, `docs/api/core/frame/**`, and the per-language
+    `platforms/*/examples/core/frame/**` stubs.
+
 Initial Swift and Kotlin bindings via [uniffi](https://github.com/mozilla/uniffi-rs). Struct names match
-the Rust core (`Renderer`, `Shader`, `Pass`, `Frame`, `Size`, `Region`, `WindowTarget`, `TextureTarget`)
-so the public API reads the same across every supported platform.
+the Rust core (`Renderer`, `Shader`, `Pass`, `Size`, `Region`, `WindowTarget`, `TextureTarget`,
+`Texture`, `SamplerOptions`, `CompareFunction`) so the public API reads the same across every
+supported platform.
 
 ### Build system
 
@@ -34,6 +110,13 @@ so the public API reads the same across every supported platform.
   extensions recombine them into a single overloaded `render(shader, target)`.
 - `Shader::new_mobile(source: String)` — uniffi constructor; Swift sees it as `Shader(source:)`
   via uniffi's `convenience init`, Kotlin sees it as `Shader.new(source)`.
+- `Texture::set_sampler_options_mobile(opts: SamplerOptions)` — uniffi shim; Swift sees it as
+  `setSamplerOptions(opts:)`, Kotlin as `setSamplerOptions(opts)`. Closes the parity gap
+  with the existing Web (`setSamplerOptions`) and Python (`set_sampler_options`) wrappers.
+- `Renderer::create_external_texture_mobile(source_ptr: u64)` — uniffi shim that takes a
+  raw pointer to a native video-frame source (`CVPixelBuffer` on iOS, `SurfaceTexture` on
+  Android). Stub today (returns `FragmentColorError::Render("not implemented yet")`) but
+  the API surface exists on every binding.
 
 ### CI + release pipeline
 
@@ -52,6 +135,34 @@ so the public API reads the same across every supported platform.
   the xcframework release asset, pins the top-level `Package.swift` `fragmentcolorVersion`
   / `fragmentcolorChecksum` to match the just-published release and rolls that into the
   post-publish consumer-update PR.
+
+### Doc-example healthchecks (Swift + Kotlin)
+
+The build script already transpiled every `docs/api/**.md` Rust example into a Swift
+and a Kotlin sibling under `platforms/swift/examples/` and `platforms/kotlin/examples/`,
+but those generated files were only displayed on the website — nothing compiled or
+ran them. JS and Python examples were already aggregated into runnable healthchecks
+(`platforms/web/healthcheck/generated_examples.mjs` + `platforms/python/examples/main.py`);
+Swift and Kotlin had no equivalent, so transpiler regressions and missing uniffi exports
+went unnoticed until they reached the website.
+
+`scripts/website.rs::write_healthcheck_aggregators` now also emits two compile-only
+aggregators that embed every generated example body inside a private wrapper function:
+
+- `platforms/swift/healthcheck/GeneratedExamples.swift` — picked up by the existing
+  SPM executable target. `./healthcheck ios` was split into two sub-tests
+  (`platforms.swift.bindings` + `platforms.swift.examples`); the second runs
+  `xcodebuild -scheme fragmentcolor-healthcheck -destination 'generic/platform=iOS Simulator' build`
+  and fails if any embedded body fails to type-check.
+- `platforms/kotlin/fragmentcolor/src/androidTest/java/org/fragmentcolor/GeneratedExamples.kt`
+  — placed under `androidTest` so the existing
+  `gradle fragmentcolor:connectedAndroidTest` invocation in `./healthcheck android`
+  compiles the wrappers as part of the test source set. No CI YAML change needed.
+
+Compile-only on day one — runtime execution requires a live GPU surface and is
+deferred. The wiring stands on its own; runtime invocation can be promoted later
+by uncommenting calls inside the `@Test` (Kotlin) or referencing the wrappers from
+an `async` runner (Swift).
 
 ### Distribution
 
@@ -108,14 +219,126 @@ so the public API reads the same across every supported platform.
   `device.poll(Wait)` before awaiting the map callback — without it the oneshot future waits
   forever because nothing else advances the wgpu event loop on non-web targets.
 
+### Platform workarounds
+
+- Apple Silicon: on `macos` / `ios` targets the renderer now submits the current command buffer
+  between two sequential compute passes, then records the next compute pass on a fresh encoder.
+  The submission boundary reliably flushes Metal's tile-based storage-texture writes so a
+  subsequent `texture_2d<f32>` / `textureLoad` in the next compute pass observes the results —
+  previously this pattern silently returned zeros. Compile-time routed via a new `apple` cfg
+  alias (`target_os = "macos" | "ios"`); users do not need to opt in, and non-Apple targets are
+  unaffected. The previous workaround (declaring the source as `texture_storage_2d<..., read>`)
+  is no longer required.
+
+### Transpiler — Rust-idiom scrubbing for Swift / Kotlin / JS / Python
+
+The `docs/api/**.md` Rust examples are transpiled to four targets. The previous
+output inherited Rust syntax in several cases — Swift and Kotlin saw it loudest
+once the new aggregators (above) compiled the per-doc output instead of just
+displaying it. Cleanup pass driven by the principle "idiomatic to the target
+language; cut or translate any Rust-specific idiom":
+
+- **Multi-line method chains reassemble** before any per-line transform runs.
+  `let x = r\n  .method()\n  .await?;` → `let x = await r.method();` rather than
+  three orphaned lines that mangled `await`. Raw-string state tracked across the
+  merge so WGSL inside `r#"..."#` is left intact.
+- **Rust integer / float type suffixes stripped**: `0u8` → `0`, `64u32` → `64`,
+  `100.0_f32` → `100.0`, `1isize` → `1`. Suffix probe only fires after a real
+  digit run, so identifiers like `vec3<f32>` are not touched.
+- **Rust unary deref dropped**: `renderer.read_texture(*texture.id())` →
+  `renderer.read_texture(texture.id())`. Multiplication (`a * b`) and pointer
+  types are not matched because both sides would be ident chars.
+- **Rust array-repeat literal translates per language**: `vec![0u8; 256]` /
+  `[0u8; 256]` becomes `Array(256).fill(0)` (JS), `[0] * (256)` (Python),
+  `Array(repeating: 0, count: 256)` (Swift), `Array(256) { 0 }` (Kotlin).
+- **Standalone `let var = r#"..."#`** — multi-line bare raw-string assignments
+  (not just `Type::new(r#"..."#)`) are now gobbled and re-emitted as a single
+  triple-quoted (Swift / Kotlin / Python) or backtick (JS) string. Used by the
+  shader-composition example.
+- **Single-quoted JS string literals → double-quoted** in Swift and Kotlin
+  output. Outside-strings detection so apostrophes inside WGSL comments survive.
+- **Kotlin `[a, b, c]` collection literals → `arrayOf(a, b, c)`** because Kotlin
+  only accepts `[...]` syntax in annotation arguments. Indexer patterns
+  (`arr[0]`) are not rewritten.
+- **Source-level overrides** for examples that have no idiomatic Swift / Kotlin
+  equivalent — added per-language `hidden/<file>_<lang>.md` for
+  `Renderer::create_external_texture_from_html_video` (wasm-Rust-only) and
+  `Texture::set_sampler_options` (uniffi gap). Both render as a stub comment
+  on the website.
+
+After this pass the Swift aggregator parses cleanly under `swiftc -parse` (down
+from 50 parse errors). Type-check / compile errors remain — the per-doc Rust
+APIs still don't always map cleanly onto the uniffi-flattened Swift / Kotlin
+signatures (e.g. Rust `[w, h]` `impl Into<Size>` vs uniffi
+`createTextureTarget(width: UInt, height: UInt)`, `Shader::default()`
+not exported, etc.). Tracked under _Carried over to 0.12.0_.
+
 ### Known issues
 
-- Compute→compute sampled-read of a storage-written texture can return all-zero `textureLoad`s on
-  Metal when both passes live in the same command buffer. Binding the source as
-  `texture_storage_2d<..., read>` (which is now laid out correctly) is the working mitigation
-  until we insert explicit encoder-boundary synchronization for this pattern.
+- The freshly-wired Swift / Kotlin doc-example aggregators (see _Doc-example healthchecks_
+  above) surface a backlog of pre-existing transpiler bugs that the website was already
+  shipping silently. The first round of fixes (above) reduced Swift parse errors from
+  50 to 0; the remaining failures are type-check / compile errors that need either
+  per-language emission with uniffi-signature awareness or source rewrites:
+  - **`headless_window`-derived JS DOM leak** — Rust source uses `headless_window([w, h])`
+    + `renderer.create_target(window)`, which today maps to `document.createElement('canvas')`
+    (JS-specific). Swift / Kotlin output now parses (single quotes swapped) but `document`
+    doesn't exist on those platforms. Either the source examples need to use
+    `create_texture_target([w, h])` (portable across all four languages and uniffi-exported)
+    or per-language `hidden/_swift.md` / `_kotlin.md` overrides need a CAMetalLayer /
+    SurfaceView snippet.
+  - **`Shader.default()` / `Shader.fromMesh(mesh)`** are not uniffi-exported — Swift / Kotlin
+    examples reference methods that don't exist. Either expose them via uniffi or rewrite
+    the source examples to use `Shader::new(source)`.
+  - **Rust `[a, b]` `impl Into<Size>` vs uniffi flattened signatures** — many examples pass
+    `[width, height]` arrays to methods like `createTextureTarget` whose uniffi-exported
+    Swift / Kotlin signature takes positional `width: UInt32, height: UInt32`. Needs
+    per-call-site detection in the transpiler, OR uniffi exports that accept an
+    array-shaped `Size` struct.
+  - 7 stale generated files under `platforms/{swift,kotlin}/examples/` (and `web/`,
+    `python/`) left behind by the recent `docs/api` deletions (`update_texture.md`,
+    `update_texture_with.md`, `write_with.md`, `texture_write_options/**`). The aggregator
+    correctly excludes them but they linger on disk; platform-side cleanup of stale
+    generated files is not yet implemented.
+- Apple Silicon: the same TBDR-flush class of bug also manifests when a compute pass storage-writes
+  a texture and a subsequent render pass in the same command buffer samples it — the render pass's
+  `textureSample*` / `textureLoad` can observe zeros. The 0.11.0 auto-split covers
+  `compute → compute` only; `compute → render` is not yet auto-split. Workaround: insert an
+  explicit split between the two passes (for example, issue two `Renderer::render` calls, or call
+  `Renderer::wait_idle()` between them). Tracked on the roadmap for 0.12.x as an extension of the
+  same `prev_was_compute` heuristic in the pass-dispatch loop.
 
-### Unfinished work (planned for later 0.11.x / 0.12.0 iterations)
+### Dependency Updates
+
+- Upgrade `wgpu` and `naga` from 27.0.1 to 29.0.1. Public fragmentcolor API is unchanged but the
+  internal adapter was updated for every breaking change upstream shipped across 28.x and 29.0:
+  - `wgpu::SurfaceError` was removed in favour of the `CurrentSurfaceTexture` enum. A local
+    `fragmentcolor::SurfaceError` enum (re-exported at the crate root) replaces it with the same
+    `Lost / Outdated / Timeout / OutOfMemory / …` variants, so downstream error enums and the
+    `Target` trait keep a stable shape. A helper converts `wgpu::CurrentSurfaceTexture` back into
+    `Result<SurfaceTexture, SurfaceError>` at every call site.
+  - `InstanceDescriptor::default()` was removed; we now call
+    `InstanceDescriptor::new_without_display_handle_from_env()`, which preserves the previous
+    env-variable-driven configuration behaviour.
+  - WGSL `var<push_constant>` is no longer accepted by naga's WGSL front end (only
+    `var<immediate>`). Existing user shaders keep working: fragmentcolor rewrites
+    `var<push_constant>` → `var<immediate>` before handing the source to naga.
+  - `wgpu::Features::PUSH_CONSTANTS` → `Features::IMMEDIATES`; `Limits::max_push_constant_size` →
+    `max_immediate_size`; `RenderPass::set_push_constants(stages, offset, data)` →
+    `set_immediates(offset, data)` (stage argument dropped);
+    `PipelineLayoutDescriptor::push_constant_ranges` → `immediate_size: u32`. The fallback path
+    that rewrites oversized immediates into uniform buffers was updated for the new
+    `naga::AddressSpace::Immediate` variant.
+  - `RenderPassDescriptor` gained the `multiview_mask: Option<NonZeroU32>` field (set to `None`);
+    `RenderPipelineDescriptor::multiview` was renamed to `multiview_mask`.
+  - `DepthStencilState::depth_write_enabled` and `depth_compare` became `Option<…>` to allow
+    explicit unset semantics (we now pass `Some(true)` / `Some(LessEqual)`).
+  - `PipelineLayoutDescriptor::bind_group_layouts` is now `&[Option<&BindGroupLayout>]` to allow
+    gaps; every call site builds a `Vec<Option<&BindGroupLayout>>` instead of a plain `Vec<_>`.
+  - `SamplerDescriptor::mipmap_filter` now takes `MipmapFilterMode` rather than `FilterMode`.
+  - `wgpu::Instance::new` now takes `InstanceDescriptor` by value (used to be `&_`).
+
+### Shipped in 0.11.0
 
 - [x] `platforms/swift/` Swift Package (SPM) + root `Package.swift` pulling xcframework from GitHub Release
 - [x] `platforms/kotlin/fragmentcolor/` Android Library gradle module with `jniLibs` + generated Kotlin
@@ -125,13 +348,55 @@ so the public API reads the same across every supported platform.
 - [x] CI workflow: `healthcheck_ios.yml` + `healthcheck_android.yml` run on every PR
 - [x] Release workflow: `publish_swift.yml` uploads xcframework, `publish_android.yml` uploads AAR
 - [x] Post-release: `post_publish_update.yml` pins `Package.swift` to the released checksum
+- [x] Swift + Kotlin doc transpilers generating per-language examples from every `docs/api` file
+- [x] Swift + Kotlin doc-example aggregators wired into `./healthcheck ios` (split into
+      `platforms.swift.bindings` + `platforms.swift.examples`) and the existing
+      `connectedAndroidTest` flow — compile-only, mirroring the JS / Python coverage that
+      already existed for the same per-doc transpiled output
+- [x] Compute DX suite: `Renderer::read_texture`, `read_texture_async`, `Texture::get_image` /
+      `get_image_async`, `Renderer::create_storage_texture_with_data`, `Renderer::wait_idle`
+- [x] Bind-group-layout inference: `filterable: false` for textures only used via `textureLoad`
+      (unlocks `Rgba32Float` as a sampled source without `FLOAT32_FILTERABLE`)
+- [x] Compute-shader bind-group visibility: sampled textures + samplers now expose
+      `ShaderStages::COMPUTE` alongside VERTEX/FRAGMENT
+- [x] `texture_storage_2d<..., read_write>` correctly maps to `StorageTextureAccess::ReadWrite`
+      (previously silently downgraded to read-only)
+- [x] `Texture::get_image_async` native deadlock fixed (async path now drives `device.poll(Wait)`)
+- [x] Apple-Silicon auto-split between sequential compute passes to flush TBDR storage writes
+      (compile-time routed via the `apple` cfg alias)
+- [x] `TextureFormat::Rgba16Float` (filterable + storage-writable in core WebGPU; no feature opt-in)
+- [x] `wgpu` / `naga` upgrade from 27.0.1 to 29.0.1 (full adapter — see _Dependency Updates_)
+
+### Carried over to 0.12.0
+
 - [ ] Example iOS app under `platforms/swift/examples/` (xcodeproj consuming the SPM package)
 - [ ] Example Android app under `platforms/kotlin/examples/` (gradle project consuming the AAR)
-- [ ] Expand mobile healthchecks beyond the headless smoke test (textures, push constants, frames, …)
+- [ ] Expand mobile healthchecks beyond the headless smoke test (textures, immediates, frames, …)
+- [ ] Drain the Swift / Kotlin doc-example punch list surfaced by the new aggregators (see
+      _Known issues_). Round 1 (parse errors) is done — Swift now parses 0 errors. Round 2
+      (type / compile errors) needs per-language emission with uniffi-signature awareness:
+      detect `createTextureTarget([w, h])` and rewrite to positional args, replace
+      `headless_window` with `create_texture_target` at the source level (or per-language
+      override), and either expose `Shader::default` / `Shader::from_mesh` via uniffi or
+      rewrite the offending source examples. Then promote both aggregators from compile-only
+      to runtime execution.
+- [ ] Platform-side cleanup of stale generated examples under `platforms/{web,python,swift,kotlin}/examples/`
+      when their source `docs/api/*.md` is deleted (today the website MDX is pruned but the
+      per-platform sources are not)
+- [ ] Implement `Renderer::create_external_texture` for real on every platform — the API
+      surface now exists everywhere as a stub, but the actual mapping needs per-platform
+      plumbing: Web `HTMLVideoElement` → `wgpu::ExternalTexture` (wgpu-web has the hooks),
+      iOS `CVPixelBuffer` (via `CVMetalTextureCacheCreateTextureFromImage`),
+      Android `SurfaceTexture` → `EGLImage` → external sampled texture. Keep the unified
+      `createExternalTexture` entry point and add per-language extension shims that
+      accept the platform-native source type and forward the underlying handle through
+      uniffi (mobile) or wasm-bindgen (web).
 - [ ] Publish Kotlin AAR to Maven Central (requires Sonatype OSSRH creds + GPG signing)
 - [ ] Publish Swift Package to the Swift Package Index (register repo after first tag)
 - [ ] Contribute struct-rename support to uniffi upstream (if ever needed for naming parity)
 - [ ] Core helper `create_target_from_surface(surface, size)` to deduplicate Web/Python/iOS/Android
+- [ ] Extend the Apple auto-split to cover `compute → render` sampled-read hazards (same TBDR
+      class as the already-handled `compute → compute` case; see _Known issues_ above)
 - [ ] Revamp RenderPass API (expose all `wgpu::RenderPass` customizations with sensible defaults)
 - [ ] Specialized alias objects (`Compute`, `RenderPass`, `ComputePass`)
 - [ ] Custom blending

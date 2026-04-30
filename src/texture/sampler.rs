@@ -3,6 +3,7 @@ use wasm_bindgen::prelude::*;
 
 #[cfg_attr(wasm, wasm_bindgen)]
 #[cfg_attr(python, pyo3::pyclass)]
+#[cfg_attr(mobile, derive(uniffi::Record))]
 #[derive(Debug, Copy, Clone)]
 pub struct SamplerOptions {
     pub repeat_x: bool,
@@ -46,6 +47,10 @@ pub fn create_sampler(device: &wgpu::Device, options: SamplerOptions) -> wgpu::S
         true => wgpu::FilterMode::Linear,
         false => wgpu::FilterMode::Nearest,
     };
+    let mipmap_filter = match options.smooth {
+        true => wgpu::MipmapFilterMode::Linear,
+        false => wgpu::MipmapFilterMode::Nearest,
+    };
 
     device.create_sampler(&wgpu::SamplerDescriptor {
         label: Some(&label),
@@ -54,7 +59,7 @@ pub fn create_sampler(device: &wgpu::Device, options: SamplerOptions) -> wgpu::S
         address_mode_w: address_mode_v,
         mag_filter: filter,
         min_filter: filter,
-        mipmap_filter: filter,
+        mipmap_filter,
         lod_min_clamp: 0.0,
         lod_max_clamp: 100.0,
         compare: options.compare.map(Into::into),
@@ -65,6 +70,7 @@ pub fn create_sampler(device: &wgpu::Device, options: SamplerOptions) -> wgpu::S
 
 #[cfg_attr(wasm, wasm_bindgen)]
 #[cfg_attr(python, pyo3::pyclass)]
+#[cfg_attr(mobile, derive(uniffi::Enum))]
 #[derive(Debug, Copy, Clone)]
 pub enum CompareFunction {
     /// Function never passes

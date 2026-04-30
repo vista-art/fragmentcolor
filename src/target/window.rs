@@ -1,4 +1,4 @@
-use crate::{RenderContext, Size, Target, TargetFrame};
+use crate::{RenderContext, Size, SurfaceError, Target, TargetFrame};
 use lsp_doc::lsp_doc;
 use std::sync::Arc;
 
@@ -39,7 +39,7 @@ impl Target for WindowTarget {
     }
 
     #[lsp_doc("docs/api/targets/target/hidden/get_current_frame.md")]
-    fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, wgpu::SurfaceError> {
+    fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, SurfaceError> {
         let frame = self.acquire_frame()?;
         Ok(Box::new(frame))
     }
@@ -55,8 +55,8 @@ impl Target for WindowTarget {
 
 impl WindowTarget {
     /// Try to acquire a frame; on Lost/Outdated, reconfigure and retry once.
-    fn acquire_frame(&self) -> Result<WindowFrame, wgpu::SurfaceError> {
-        match self.surface.get_current_texture() {
+    fn acquire_frame(&self) -> Result<WindowFrame, SurfaceError> {
+        match crate::target::surface_texture_from(self.surface.get_current_texture()) {
             Ok(surface_texture) => {
                 let view = surface_texture
                     .texture
@@ -68,12 +68,13 @@ impl WindowTarget {
                 })
             }
             Err(err) => {
-                use wgpu::SurfaceError::*;
                 match err {
-                    Lost | Outdated => {
+                    SurfaceError::Lost | SurfaceError::Outdated => {
                         // Reconfigure with the last known good config and retry once.
                         self.surface.configure(&self.context.device, &self.config);
-                        let surface_texture = self.surface.get_current_texture()?;
+                        let surface_texture = crate::target::surface_texture_from(
+                            self.surface.get_current_texture(),
+                        )?;
                         let view = surface_texture
                             .texture
                             .create_view(&wgpu::TextureViewDescriptor::default());
@@ -83,7 +84,7 @@ impl WindowTarget {
                             view,
                         })
                     }
-                    Timeout | OutOfMemory | Other => Err(err),
+                    _ => Err(err),
                 }
             }
         }

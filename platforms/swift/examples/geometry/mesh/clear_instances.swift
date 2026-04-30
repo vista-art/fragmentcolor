@@ -1,3 +1,6 @@
 import FragmentColor
+
 let m = Mesh()
-m.clearInstances()
+let red = [1.0, 0.0, 0.0, 1.0]
+m.addInstance(Instance.new().set("tint", red))
+m.clearInstances(); // back to a single uninstanced draw

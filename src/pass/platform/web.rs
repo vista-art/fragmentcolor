@@ -1,7 +1,7 @@
 #![cfg(wasm)]
 
 use crate::{
-    Color, Frame, Mesh, Pass, PassError, PassInput, Renderable, Shader, Texture, TextureTarget,
+    Color, Mesh, Pass, PassError, PassInput, Renderable, Shader, Texture, TextureTarget,
 };
 use js_sys::Array;
 use lsp_doc::lsp_doc;
@@ -35,8 +35,6 @@ impl Pass {
             return self.require(&shader);
         } else if let Ok(pass) = Pass::try_from(dependencies) {
             return self.require(&pass);
-        } else if let Ok(frame) = Frame::try_from(dependencies) {
-            return self.require(&frame);
         } else if let Ok(mesh) = Mesh::try_from(dependencies) {
             return self.require(&mesh);
         } else if Array::is_array(dependencies) {
@@ -47,8 +45,6 @@ impl Pass {
                         Some(Box::new(shader) as Box<dyn Renderable>)
                     } else if let Ok(pass) = Pass::try_from(&v) {
                         Some(Box::new(pass) as Box<dyn Renderable>)
-                    } else if let Ok(frame) = Frame::try_from(&v) {
-                        Some(Box::new(frame) as Box<dyn Renderable>)
                     } else if let Ok(mesh) = Mesh::try_from(&v) {
                         Some(Box::new(mesh) as Box<dyn Renderable>)
                     } else {
@@ -114,7 +110,7 @@ impl Pass {
     #[wasm_bindgen(js_name = "setViewport")]
     #[lsp_doc("docs/api/core/pass/set_viewport.md")]
     pub fn set_viewport_js(&self, region: &JsValue) -> Result<(), JsError> {
-        let r: crate::Region = region.try_into()?;
+        let r: crate::ScreenRegion = region.try_into()?;
         self.set_viewport(r);
         Ok(())
     }
