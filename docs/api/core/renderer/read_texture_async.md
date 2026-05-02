@@ -7,7 +7,7 @@ Async variant of [`Renderer::read_texture`] that works on both native and WASM.
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Renderer, TextureFormat};
 let renderer = Renderer::new();
-let texture = renderer.create_storage_texture([64, 64], TextureFormat::Rgba, None).await?;
+let texture = renderer.create_storage_texture(([64u32, 64u32], TextureFormat::Rgba)).await?;
 texture.write(&vec![0u8; 64 * 64 * 4])?;
 
 let bytes = renderer.read_texture_async(*texture.id()).await?;

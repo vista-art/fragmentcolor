@@ -13,7 +13,7 @@ Prefer [`Texture::get_image_async`] on the web, where blocking is not supported.
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Renderer, TextureFormat};
 let renderer = Renderer::new();
-let texture = renderer.create_storage_texture([64, 64], TextureFormat::Rgba, None).await?;
+let texture = renderer.create_storage_texture(([64u32, 64u32], TextureFormat::Rgba)).await?;
 texture.write(&vec![0u8; 64 * 64 * 4])?;
 
 let bytes = texture.get_image()?;

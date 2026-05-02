@@ -1,0 +1,51 @@
+# API parity waivers.
+#
+# The build-time audit (scripts/parity.rs, hooked into build.rs) requires every
+# documented method/object under docs/api/ to be reachable from every supported
+# platform — JS (wasm), Python, Swift, Kotlin. Entries listed here are
+# intentional, load-bearing exceptions; each must come with a written reason
+# so future maintainers can tell deliberate divergence from accidental drift.
+#
+# Format: one entry per non-comment line.
+#   <doc_path>:<platforms_present>:<reason>
+#
+#   - doc_path           workspace-relative path of the docs/api/*.md file
+#                        whose canonical signature does not exist on every
+#                        platform (e.g. docs/api/core/shader/fetch.md).
+#   - platforms_present  comma-separated subset of: web,python,swift,kotlin
+#   - reason             one-line explanation; colons are allowed.
+#
+# Lines starting with `#` are comments. Blank lines are ignored.
+
+# Web-only async builder. WASM constructors cannot be async (wasm_bindgen does
+# not generate async constructors), and Shader::new on every other platform
+# can resolve URLs and slugs synchronously by blocking on the runtime's I/O.
+# See src/shader/platform/web.rs::fetch and the comment block in
+# docs/api/core/shader/new.md.
+docs/api/core/shader/fetch.md:web:WASM constructors cannot be async; the URL/slug-resolving builder lives here. Synchronous Shader::new covers the same surface on Python/Swift/Kotlin.
+
+# Synchronous read_texture is unavailable on the web (we cannot block the
+# event loop). Native platforms expose it; the web tab uses the async variant.
+docs/api/core/renderer/read_texture.md:python,swift,kotlin:Web cannot block the JS event loop; web uses Renderer::read_texture_async (its sibling docs entry) instead.
+
+# Async read_texture exists on the web for the reason above; on native
+# platforms the synchronous variant is the canonical entry. Listing the async
+# variant as web-only avoids forcing an artificial async wrapper on Python /
+# Swift / Kotlin where it adds nothing beyond the blocking version.
+docs/api/core/renderer/read_texture_async.md:web:Native platforms have synchronous Renderer::read_texture; the async wrapper is only needed where the runtime forbids blocking.
+
+# ---- Aliases (hidden override → canonical) ----
+#
+# These declare which canonical doc a hidden override credits when its
+# filename does not strip to the canonical via the simple `_<platform>`
+# suffix rule. Required when a single canonical method is split into
+# multiple uniffi-bound methods (e.g. uniffi cannot marshal `&impl Trait`,
+# so `Renderer::render` becomes one concrete method per (renderable × target)
+# combination).
+
+docs/api/core/renderer/hidden/render_mobile.md=>docs/api/core/renderer/render.md: uniffi cannot marshal &impl Renderable/Target; the single mobile render entry takes RenderableHandle + TargetHandle uniffi::Enums and Swift/Kotlin extensions overload the natural shapes back on top.
+
+# Shader::new accepts both `String` and `Vec<String>` via `impl Into<ShaderInput>`.
+# Uniffi cannot marshal `impl Into`, so mobile splits this into Shader.new(source)
+# and Shader.compose(parts). Both forms credit the canonical Shader::new docs.
+docs/api/core/shader/hidden/compose_mobile.md=>docs/api/core/shader/new.md: Mobile splits Shader::new's impl-Into-based overload into a separate Shader.compose constructor.

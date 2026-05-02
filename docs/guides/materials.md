@@ -22,13 +22,13 @@ let pix_a: Vec<u8> = vec![
     255, 0,   0, 255,   0, 255,   0, 255,
       0, 0, 255, 255, 255, 255, 255, 255,
 ];
-let tex_a = renderer.create_texture_with_size(&pix_a, [2u32, 2u32]).await?;
+let tex_a = renderer.create_texture((pix_a.as_slice(), [2u32, 2u32])).await?;
 
 let pix_b: Vec<u8> = vec![
       0,   0,   0, 255, 255, 255,   0, 255,
     255,   0, 255, 255,   0, 255, 255, 255,
 ];
-let tex_b = renderer.create_texture_with_size(&pix_b, [2u32, 2u32]).await?;
+let tex_b = renderer.create_texture((pix_b.as_slice(), [2u32, 2u32])).await?;
 
 // 3) One WGSL program (shared) + two Shader instances (“materials”)
 let wgsl = r#"

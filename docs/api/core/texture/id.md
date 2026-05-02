@@ -7,7 +7,7 @@ Return the stable `TextureId` for this texture instance. The id is valid within 
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Renderer, TextureFormat};
 let renderer = Renderer::new();
-let texture = renderer.create_storage_texture([64, 64], TextureFormat::Rgba, None).await?;
+let texture = renderer.create_storage_texture(([64u32, 64u32], TextureFormat::Rgba)).await?;
 let id = *texture.id();
 # Ok(())
 # }
