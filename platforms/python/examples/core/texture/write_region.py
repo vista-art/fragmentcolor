@@ -1,7 +1,7 @@
 from fragmentcolor import Renderer, TextureFormat
 
 renderer = Renderer()
-texture = renderer.create_storage_texture([64, 32], TextureFormat.Rgba, None)
+texture = renderer.create_storage_texture([64, 32], TextureFormat.Rgba)
 bytes_data = bytes(64 * 32 * 4)
 
 # Simple sub-rectangle update.

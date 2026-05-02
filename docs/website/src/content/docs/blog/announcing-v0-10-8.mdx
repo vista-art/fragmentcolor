@@ -16,13 +16,13 @@ Uniform updates queue a last-wins write that the renderer flushes right before b
 
 `RendererError` now includes `MsaaViewMissing` and `DepthSampleCountMismatch`. `InitializationError` includes `AdapterNotSet`. Callers can match on these as enum variants and design recovery paths around them.
 
-### A live shader gallery
+### A live shader demo
 
-The website now has a [Gallery](/gallery): a grid of shaders, each rendered live in the browser on WebGPU. The homepage gets a `ShaderHero` component that runs an interactive shader at the top of the page. Both work as a continuous visual check of WebGPU support across the supported browsers.
+The homepage gets a `ShaderHero` component that runs an interactive shader at the top of the page. The component is the basis for a future gallery of works and serves as a continuous visual check of support across browsers.
 
 ### Smaller things
 
-- WASM memory is pre-grown by 64 MiB at initialisation, eliminating a class of mid-frame `memory.grow` stalls during the first few frames.
+- WASM memory is pre-grown by 64 MiB at initialization, eliminating a class of mid-frame `memory.grow` stalls during the first few frames.
 - `Pass` infers its kind (render vs compute) from the first attached shader; the kind no longer has to be set explicitly.
 - The npm package ships branded JS prototypes, so `instanceof` checks survive minification. (Details in v0.10.9 below.)
 

@@ -1,14 +1,10 @@
 ---
-title: "FragmentColor 0.11.0: all five planned languages, mobile included"
+title: "FragmentColor 0.11.0: all five planned languages release"
 excerpt: "Swift and Kotlin via uniffi complete the planned set of languages. The release also improves the compute-shader API and upgrades to wgpu 29."
 authors: ["rafaelbeckel"]
 date: 2026-04-21
 tags: ["release", "rust", "swift", "kotlin", "ios", "android", "webgpu", "milestone", "draft"]
 ---
-
-:::caution[Draft (unreleased)]
-This post is written against the current `v0.11.0` branch and will be dated to the actual release day once the tag lands. Anything here could still shift slightly, but the big pieces are in.
-:::
 
 v0.11.0 completes the set of languages FragmentColor was designed for: **Rust, JavaScript, Python, Swift, and Kotlin**. The same `Renderer`, `Shader`, `Pass`, `Frame`, and `Texture` types now run natively on iOS and Android, with parity to the desktop and web bindings.
 
@@ -52,10 +48,13 @@ CI builds the xcframework on every PR that touches the mobile code and runs a he
 The compute API gains three direct additions:
 
 ```rust
-// Seed a storage texture from a CPU blob in one call.
-let tex = renderer.create_storage_texture_with_data(
-    [256, 256], TextureFormat::Rgba16Float, &bytes, usage
-)?;
+// Seed a storage texture from a CPU blob in one call. v0.11.0 unifies texture
+// creation behind a single create_storage_texture(input) entry — the tuple
+// `(size, format, bytes)` selects the seeded path; `(size, format)` allocates
+// empty.
+let tex = renderer
+    .create_storage_texture(([256u32, 256u32], TextureFormat::Rgba16Float, bytes))
+    .await?;
 
 // Read back the contents of any registered texture in its native format.
 let pixels = renderer.read_texture(tex.id())?;
@@ -121,8 +120,7 @@ pip install fragmentcolor rendercanvas glfw
 # Kotlin (download fragmentcolor-0.11.0.aar from the GitHub Release)
 ```
 
-Release notes (once published): [GitHub v0.11.0](https://github.com/vista-art/fragmentcolor/releases/tag/v0.11.0).
+Release notes: [GitHub v0.11.0](https://github.com/vista-art/fragmentcolor/releases/tag/v0.11.0).
 
-If you build something with this on a phone, tag me. I want to see it running on hardware.
 
 — Rafael

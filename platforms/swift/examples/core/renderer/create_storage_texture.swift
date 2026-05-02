@@ -1,5 +1,9 @@
-
 import FragmentColor
 
 let r = Renderer()
-let tex = try await r.createStorageTexture([64, 64], TextureFormat.Rgba, nil)
+// Empty storage texture â same single create_storage_texture entry.
+let tex = try await r.createStorageTexture(([64, 64], TextureFormat.Rgba))
+
+// Pre-seeded with bytes â same method, three-tuple form.
+let pixels = Array(repeating: 0, count: 64 * 64 * 4)
+let tex2 = try await r.createStorageTexture(([64, 64], TextureFormat.Rgba, pixels))

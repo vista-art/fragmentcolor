@@ -1,6 +1,6 @@
 import FragmentColor
 let renderer = Renderer()
-let texture = try await renderer.createStorageTexture([64, 32], TextureFormat.Rgba, nil)
+let texture = try await renderer.createStorageTexture(([64, 32], TextureFormat.Rgba))
 let bytes = Array(repeating: 0, count: 64 * 32 * 4)
 
 // Simple sub-rectangle update.

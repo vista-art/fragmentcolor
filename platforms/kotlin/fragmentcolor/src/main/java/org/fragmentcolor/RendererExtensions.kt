@@ -31,16 +31,41 @@ fun Renderer.createTarget(surface: Surface): WindowTarget {
 }
 
 /**
- * Render a [Shader] into a [WindowTarget]. Single overloaded render(...)
- * dispatch that matches the spelling used by the JavaScript and Python
- * bindings. The uniffi layer exports one concrete method per
- * (renderable × target) combination — see the module docs in
- * `src/renderer/platform/mobile/mod.rs` for the rationale.
+ * Single overloaded `render(...)` family that matches the spelling used by
+ * the JavaScript and Python bindings. The uniffi layer exports one concrete
+ * `render(renderable, target)` method that takes `RenderableHandle` +
+ * `TargetHandle` enums — these extensions wrap the native types into the
+ * matching variants invisibly so callers just write
+ * `renderer.render(shader, target)` (or `pass`, `mesh`, `passList`).
  */
 fun Renderer.render(shader: Shader, target: WindowTarget) {
-    renderShader(shader, target)
+    render(RenderableHandle.Shader(shader), TargetHandle.Window(target))
 }
 
 fun Renderer.render(shader: Shader, target: TextureTarget) {
-    renderShaderToTexture(shader, target)
+    render(RenderableHandle.Shader(shader), TargetHandle.Texture(target))
+}
+
+fun Renderer.render(pass: Pass, target: WindowTarget) {
+    render(RenderableHandle.Pass(pass), TargetHandle.Window(target))
+}
+
+fun Renderer.render(pass: Pass, target: TextureTarget) {
+    render(RenderableHandle.Pass(pass), TargetHandle.Texture(target))
+}
+
+fun Renderer.render(mesh: Mesh, target: WindowTarget) {
+    render(RenderableHandle.Mesh(mesh), TargetHandle.Window(target))
+}
+
+fun Renderer.render(mesh: Mesh, target: TextureTarget) {
+    render(RenderableHandle.Mesh(mesh), TargetHandle.Texture(target))
+}
+
+fun Renderer.render(passes: List<Pass>, target: WindowTarget) {
+    render(RenderableHandle.Passes(passes), TargetHandle.Window(target))
+}
+
+fun Renderer.render(passes: List<Pass>, target: TextureTarget) {
+    render(RenderableHandle.Passes(passes), TargetHandle.Texture(target))
 }

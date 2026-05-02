@@ -19,17 +19,42 @@ extension Renderer {
         return try self.createTarget(metalLayerPtr: ptr)
     }
 
-    /// Render a `Shader` into a `WindowTarget`. Single overloaded `render(...)`
-    /// dispatch that matches the spelling used by the JavaScript and Python
-    /// bindings. The uniffi layer exports one concrete method per
-    /// (renderable × target) combination because it cannot handle
-    /// `&impl Renderable` / `&impl Target` generics — see the module docs
-    /// in `src/renderer/platform/mobile/mod.rs` for the rationale.
+    /// Single overloaded `render(...)` family that matches the spelling used
+    /// by the JavaScript and Python bindings. The uniffi layer exports one
+    /// concrete `render(renderable:target:)` method that takes
+    /// `RenderableHandle` + `TargetHandle` enums — these extensions wrap the
+    /// native types into the matching variants invisibly so callers just
+    /// write `try renderer.render(shader, target)` (or `pass`, `mesh`,
+    /// `passList`).
     public func render(_ shader: Shader, _ target: WindowTarget) throws {
-        try self.renderShader(shader: shader, target: target)
+        try self.render(renderable: .shader(shader), target: .window(target))
     }
 
     public func render(_ shader: Shader, _ target: TextureTarget) throws {
-        try self.renderShaderToTexture(shader: shader, target: target)
+        try self.render(renderable: .shader(shader), target: .texture(target))
+    }
+
+    public func render(_ pass: Pass, _ target: WindowTarget) throws {
+        try self.render(renderable: .pass(pass), target: .window(target))
+    }
+
+    public func render(_ pass: Pass, _ target: TextureTarget) throws {
+        try self.render(renderable: .pass(pass), target: .texture(target))
+    }
+
+    public func render(_ mesh: Mesh, _ target: WindowTarget) throws {
+        try self.render(renderable: .mesh(mesh), target: .window(target))
+    }
+
+    public func render(_ mesh: Mesh, _ target: TextureTarget) throws {
+        try self.render(renderable: .mesh(mesh), target: .texture(target))
+    }
+
+    public func render(_ passes: [Pass], _ target: WindowTarget) throws {
+        try self.render(renderable: .passes(passes), target: .window(target))
+    }
+
+    public func render(_ passes: [Pass], _ target: TextureTarget) throws {
+        try self.render(renderable: .passes(passes), target: .texture(target))
     }
 }

@@ -1,6 +1,6 @@
 import org.fragmentcolor.*
 val renderer = Renderer()
-val texture = renderer.createStorageTexture(arrayOf(64, 32), TextureFormat.Rgba, null)
+val texture = renderer.createStorageTexture((arrayOf(64, 32), TextureFormat.Rgba))
 val bytes = Array(64 * 32 * 4) { 0 }
 
 // Simple sub-rectangle update.

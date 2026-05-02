@@ -2,13 +2,13 @@
 title: "FragmentColor 0.10.9: stable type identity through minified builds"
 excerpt: "Public types now carry stable string brands so identity checks survive Terser and similar bundler passes."
 authors: ["rafaelbeckel"]
-date: 2025-10-16
+date: 2025-10-17
 tags: ["release", "javascript", "bugfix"]
 ---
 
 v0.10.9 ships a same-day follow-up to [v0.10.8](/blog/announcing-v0-10-8/) for production builds that go through a minifier. It applies to anyone shipping FragmentColor through Terser or a similar bundler that rewrites class names.
 
-The JavaScript bindings previously used class names as identity tokens (for example, to tell a `Shader` apart from a `Texture`). After minification those names collapsed to single letters, and the identity check appeared as "Invalid target type" from `Renderer.render()`.
+The JavaScript bindings previously used class names as identity tokens (for example, to tell a `Shader` apart from a `Texture`). After minification, those names collapsed to single letters, and the identity check appeared as "Invalid target type" from `Renderer.render()`.
 
 v0.10.9 introduces stable string brands via `impl_fc_kind!(TypeName, "TypeName")` for every public type. The brand is written into the type at compile time and survives any minification pass.
 

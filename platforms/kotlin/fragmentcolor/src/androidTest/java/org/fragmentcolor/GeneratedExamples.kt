@@ -257,16 +257,13 @@ class GeneratedExamples {
 
     @Suppress("unused") private suspend fun _example_core_renderer_create_storage_texture() {
 
-
         val r = Renderer()
-        val tex = r.createStorageTexture(arrayOf(64, 64), TextureFormat.Rgba, null)
-    }
+        // Empty storage texture â same single create_storage_texture entry.
+        val tex = r.createStorageTexture((arrayOf(64, 64), TextureFormat.Rgba))
 
-    @Suppress("unused") private suspend fun _example_core_renderer_create_storage_texture_with_data() {
-
-        val r = Renderer()
-        val seed = Array(8 * 8 * 4) { 0 }
-        val tex = r.createStorageTextureWithData(arrayOf(8, 8), TextureFormat.Rgba, seed, null)
+        // Pre-seeded with bytes â same method, three-tuple form.
+        val pixels = Array(64 * 64 * 4) { 0 }
+        val tex2 = r.createStorageTexture((arrayOf(64, 64), TextureFormat.Rgba, pixels))
     }
 
     @Suppress("unused") private suspend fun _example_core_renderer_create_target() {
@@ -282,9 +279,9 @@ class GeneratedExamples {
 
     @Suppress("unused") private suspend fun _example_core_renderer_create_texture() {
         val renderer = Renderer()
-        // Load encoded image bytes (PNG/JPEG) or use a file path
+        // Encoded image bytes (PNG / JPEG / etc.) â single tuple, no extra method.
         val image = "/healthcheck/public/favicon.png"
-        val tex = renderer.createTexture(image)
+        val tex = renderer.createTexture(image[..])
     }
 
     @Suppress("unused") private suspend fun _example_core_renderer_create_texture_target() {
@@ -300,30 +297,6 @@ class GeneratedExamples {
         val image = target.getImage()
     }
 
-    @Suppress("unused") private suspend fun _example_core_renderer_create_texture_with() {
-        val renderer = Renderer()
-        val pixels = [
-            255,0,0,255,   0,255,0,255,
-            0,0,255,255,   255,255,255,255,
-        ]
-        val tex = renderer.createTextureWith(pixels, arrayOf(2, 2))
-    }
-
-    @Suppress("unused") private suspend fun _example_core_renderer_create_texture_with_format() {
-        val renderer = Renderer()
-        val image = "/healthcheck/public/favicon.png"
-        val tex = renderer.createTextureWithFormat(image, TextureFormat.Rgba)
-    }
-
-    @Suppress("unused") private suspend fun _example_core_renderer_create_texture_with_size() {
-        val renderer = Renderer()
-        val pixels = [
-            255,0,0,255,   0,255,0,255,
-            0,0,255,255,   255,255,255,255,
-        ]
-        val tex = renderer.createTextureWithSize(pixels, arrayOf(2, 2))
-    }
-
     @Suppress("unused") private suspend fun _example_core_renderer_new() {
 
 
@@ -333,7 +306,7 @@ class GeneratedExamples {
 
     @Suppress("unused") private suspend fun _example_core_renderer_read_texture() {
         val renderer = Renderer()
-        val texture = renderer.createStorageTexture(arrayOf(64, 64), TextureFormat.Rgba, null)
+        val texture = renderer.createStorageTexture((arrayOf(64, 64), TextureFormat.Rgba))
         texture.write(Array(64 * 64 * 4) { 0 })
 
         val bytes = renderer.readTexture(texture.id())
@@ -341,7 +314,7 @@ class GeneratedExamples {
 
     @Suppress("unused") private suspend fun _example_core_renderer_read_texture_async() {
         val renderer = Renderer()
-        val texture = renderer.createStorageTexture(arrayOf(64, 64), TextureFormat.Rgba, null)
+        val texture = renderer.createStorageTexture((arrayOf(64, 64), TextureFormat.Rgba))
         texture.write(Array(64 * 64 * 4) { 0 })
 
         val bytes = renderer.readTextureAsync(texture.id())
@@ -359,7 +332,7 @@ class GeneratedExamples {
 
     @Suppress("unused") private suspend fun _example_core_renderer_unregister_texture() {
         val renderer = Renderer()
-        val texture = renderer.createStorageTexture(arrayOf(16, 16), TextureFormat.Rgba, null)
+        val texture = renderer.createStorageTexture((arrayOf(16, 16), TextureFormat.Rgba))
         val id = texture.id()
 
         renderer.unregisterTexture(id)
@@ -619,7 +592,7 @@ class GeneratedExamples {
         // Point at your own mirror of the registry
         Shader.setRegistry("https://cdn.example.com/shaders/")
 
-        // Now """sdf2d/circle""" resolves to https://cdn.example.com/shaders/sdf2d/circle.wgsl
+        // Now the slug "sdf2d/circle" resolves to https://cdn.example.com/shaders/sdf2d/circle.wgsl
         // (Skipping the actual fetch in this doctest)
     }
 
@@ -662,9 +635,11 @@ class GeneratedExamples {
 
         """)
 
-        // 1x1 RGBA (white) raw pixel bytes
+        // 1x1 RGBA (white) raw pixel bytes - single create_texture entry, tuple
+        // form (bytes, format, size) selects the raw-pixel path. Format is
+        // the placeholder Rgba (sRGB-aware) by default.
         val pixels = arrayOf(255,255,255,255)
-        val texture = renderer.createTextureWithSize(pixels, arrayOf(1,1))
+        val texture = renderer.createTexture((pixels, arrayOf(1, 1)))
 
         // insert  the texture in the shader matching the name in the shader
         shader.set("my_texture", texture)
@@ -676,13 +651,13 @@ class GeneratedExamples {
         val renderer = Renderer()
         // 1x1 RGBA (white) raw pixel bytes
         val pixels = arrayOf(255,255,255,255)
-        val tex = renderer.createTextureWithSize(pixels, arrayOf(1, 1))
+        val tex = renderer.createTexture((pixels, arrayOf(1, 1)))
         val a = tex.aspect()
     }
 
     @Suppress("unused") private suspend fun _example_core_texture_get_image() {
         val renderer = Renderer()
-        val texture = renderer.createStorageTexture(arrayOf(64, 64), TextureFormat.Rgba, null)
+        val texture = renderer.createStorageTexture((arrayOf(64, 64), TextureFormat.Rgba))
         texture.write(Array(64 * 64 * 4) { 0 })
 
         val bytes = texture.getImage()
@@ -690,7 +665,7 @@ class GeneratedExamples {
 
     @Suppress("unused") private suspend fun _example_core_texture_get_image_async() {
         val renderer = Renderer()
-        val texture = renderer.createStorageTexture(arrayOf(64, 64), TextureFormat.Rgba, null)
+        val texture = renderer.createStorageTexture((arrayOf(64, 64), TextureFormat.Rgba))
         texture.write(Array(64 * 64 * 4) { 0 })
 
         val bytes = texture.getImageAsync()
@@ -698,7 +673,7 @@ class GeneratedExamples {
 
     @Suppress("unused") private suspend fun _example_core_texture_id() {
         val renderer = Renderer()
-        val texture = renderer.createStorageTexture(arrayOf(64, 64), TextureFormat.Rgba, null)
+        val texture = renderer.createStorageTexture((arrayOf(64, 64), TextureFormat.Rgba))
         val id = texture.id()
     }
 
@@ -706,7 +681,14 @@ class GeneratedExamples {
 
         val renderer = Renderer()
         val pixels: ByteArray = byteArrayOf(255.toByte(), 255.toByte(), 255.toByte(), 255.toByte())
-        val texture = renderer.createTextureWithSize(pixels, Size(1u, 1u))
+        val options = TextureOptions(
+            size = Size(width = 1u, height = 1u, depth = null),
+            format = TextureFormat.RGBA8_UNORM_SRGB,
+            sampler = SamplerOptions(repeatX = false, repeatY = false, smooth = true, compare = null),
+            mipmaps = false,
+            usage = null,
+        )
+        val texture = renderer.createTexture(TextureInputMobile.Bytes(pixels), options)
 
         val opts = SamplerOptions(repeatX = true, repeatY = true, smooth = true, compare = null)
         texture.setSamplerOptions(opts)
@@ -715,13 +697,13 @@ class GeneratedExamples {
     @Suppress("unused") private suspend fun _example_core_texture_size() {
         val renderer = Renderer()
         val pixels = arrayOf(255,255,255,255)
-        val tex = renderer.createTextureWithSize(pixels, arrayOf(1,1))
+        val tex = renderer.createTexture((pixels, arrayOf(1, 1)))
         val sz = tex.size()
     }
 
     @Suppress("unused") private suspend fun _example_core_texture_write() {
         val renderer = Renderer()
-        val texture = renderer.createStorageTexture(arrayOf(64, 64), TextureFormat.Rgba, null)
+        val texture = renderer.createStorageTexture((arrayOf(64, 64), TextureFormat.Rgba))
         val frame_bytes = Array(64 * 64 * 4) { 0 }
 
         texture.write(frame_bytes)
@@ -729,7 +711,7 @@ class GeneratedExamples {
 
     @Suppress("unused") private suspend fun _example_core_texture_write_region() {
         val renderer = Renderer()
-        val texture = renderer.createStorageTexture(arrayOf(64, 32), TextureFormat.Rgba, null)
+        val texture = renderer.createStorageTexture((arrayOf(64, 32), TextureFormat.Rgba))
         val bytes = Array(64 * 32 * 4) { 0 }
 
         // Simple sub-rectangle update.
@@ -738,6 +720,86 @@ class GeneratedExamples {
         // Explicit data layout (advanced â when source rows are padded).
         val region = TextureRegion.from(arrayOf(0, 0, 64, 32)).withStride(256).withRows(32)
         texture.writeRegion(bytes, region)
+    }
+
+    @Suppress("unused") private suspend fun _example_core_texture_mip_chain_TextureMipChain() {
+
+        val renderer = Renderer()
+        // Encoded image bytes the caller has on hand (could come off a worker).
+        val png = [
+            0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
+            // ... full PNG body ...
+        ]
+        val chain = TextureMipChain.prepare((png, TextureFormat.Rgba8UnormSrgb))
+
+        // Hand the chain to the unified create_texture entry - same vocabulary as
+        // every other texture path; From<TextureMipChain> selects the GPU-only
+        // upload internally.
+        val texture = renderer.createTexture(chain)
+    }
+
+    @Suppress("unused") private suspend fun _example_core_texture_mip_chain_base_size() {
+
+        val pixels = Array(16 * 16 * 4) { 0 }
+        val chain = TextureMipChain.prepare((
+            pixels.asSlice(),
+            TextureFormat.Rgba8UnormSrgb,
+            arrayOf(16, 16),
+        ))
+        val (width, height) = chain.baseSize()
+        val _ = (width, height)
+    }
+
+    @Suppress("unused") private suspend fun _example_core_texture_mip_chain_format() {
+
+        val pixels = Array(4 * 4 * 4) { 200 }
+        val chain = TextureMipChain.prepare((
+            pixels.asSlice(),
+            TextureFormat.Rgba8UnormSrgb,
+            arrayOf(4, 4),
+        ))
+        val _ = chain.format()
+    }
+
+    @Suppress("unused") private suspend fun _example_core_texture_mip_chain_level_count() {
+
+        val pixels = Array(8 * 8 * 4) { 0 }
+        val chain = TextureMipChain.prepare((
+            pixels.asSlice(),
+            TextureFormat.Rgba8UnormSrgb,
+            arrayOf(8, 8),
+        ))
+        val count = chain.levelCount()
+        val _ = count
+    }
+
+    @Suppress("unused") private suspend fun _example_core_texture_mip_chain_levels() {
+
+        val pixels = Array(8 * 8 * 4) { 0 }
+        val chain = TextureMipChain.prepare((
+            pixels.asSlice(),
+            TextureFormat.Rgba8UnormSrgb,
+            arrayOf(8, 8),
+        ))
+        val level_zero_bytes = chain.levels()[0]
+        val _ = level_zero_bytes
+    }
+
+    @Suppress("unused") private suspend fun _example_core_texture_mip_chain_prepare() {
+
+        // Encoded path â single tuple, no extra method.
+        val chain = TextureMipChain.prepare((encoded_png_bytes, TextureFormat.Rgba8UnormSrgb))
+
+        // Raw pixel path â same method, just include the size in the tuple.
+        val chain_raw = TextureMipChain.prepare((
+            raw_rgba.asSlice(),
+            TextureFormat.Rgba8UnormSrgb,
+            arrayOf(8, 8),
+        ))
+
+        // Hand the chain to the unified create_texture entry â same vocabulary.
+        val renderer = Renderer()
+        val texture = renderer.createTexture(chain)
     }
 
     @Suppress("unused") private suspend fun _example_geometry_mesh_Mesh() {

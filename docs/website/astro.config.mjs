@@ -78,14 +78,17 @@ export default defineConfig({
           tag: "script",
           attrs: { type: "module" },
           content: `
-            const ensureSidebarLink = (ul, href, text) => {
+            const ensureSidebarLink = (ul, href, text, position) => {
               try {
                 if (!ul) return;
                 const alt = href.endsWith('/') ? href.slice(0, -1) : href + '/';
                 const existingAnchor = ul.querySelector('a[href="' + href + '"], a[href="' + alt + '"]');
                 if (existingAnchor) {
                   const li = existingAnchor.closest('li');
-                  if (li && li.parentElement === ul) ul.appendChild(li); // move to last
+                  if (li && li.parentElement === ul) {
+                    if (position === 'first') ul.insertBefore(li, ul.firstChild);
+                    else ul.appendChild(li);
+                  }
                   return;
                 }
                 // Try to clone a simple top-level <li> if present to preserve styling
@@ -111,7 +114,8 @@ export default defineConfig({
                   a.href = href; a.textContent = text; a.classList.add('large');
                   li.appendChild(a);
                 }
-                ul.appendChild(li); // add as last item
+                if (position === 'first') ul.insertBefore(li, ul.firstChild);
+                else ul.appendChild(li);
               } catch {}
             };
 
@@ -120,11 +124,12 @@ export default defineConfig({
               const uls = document.querySelectorAll('#starlight__sidebar .top-level');
               uls.forEach((ul) => {
                 if (isBlog) {
-                  // Blog sidebar: add Docs (last)
-                  ensureSidebarLink(ul, '/welcome/', 'Docs');
+                  // Blog sidebar: pin Docs at the top so it stays visible even
+                  // when Recent Posts and Tags are expanded and push everything down.
+                  ensureSidebarLink(ul, '/welcome/', 'Docs', 'first');
                 } else {
-                  // Docs (or non-blog) sidebar: add Blog (last)
-                  ensureSidebarLink(ul, '/blog/', 'Blog');
+                  // Docs (or non-blog) sidebar: add Blog last as a sibling section.
+                  ensureSidebarLink(ul, '/blog/', 'Blog', 'last');
                 }
               });
             };
@@ -149,6 +154,10 @@ export default defineConfig({
             { label: "Platform Support", link: "/welcome/platforms" },
             // { label: "Playground", link: "/welcome/playground" }, // @TODO uncomment when JS integration is ready
           ],
+        },
+        {
+          label: "Tutorials",
+          autogenerate: { directory: "tutorials" },
         },
         {
           label: "API Reference",
