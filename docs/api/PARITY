@@ -49,3 +49,16 @@ docs/api/core/renderer/hidden/render_mobile.md=>docs/api/core/renderer/render.md
 # Uniffi cannot marshal `impl Into`, so mobile splits this into Shader.new(source)
 # and Shader.compose(parts). Both forms credit the canonical Shader::new docs.
 docs/api/core/shader/hidden/compose_mobile.md=>docs/api/core/shader/new.md: Mobile splits Shader::new's impl-Into-based overload into a separate Shader.compose constructor.
+
+# ---- Trait-level docs (no platform binding required) ----
+#
+# `Target` is a Rust trait; uniffi/wasm_bindgen/pyo3 cannot expose traits over
+# the FFI boundary. The trait's methods are conceptually available on every
+# concrete target type (WindowTarget, TextureTarget, RenderCanvasTarget,
+# CAMetalLayer-backed targets, etc.) — parity is enforced via the concrete
+# `targets/window_target/*.md` and `targets/texture_target/*.md` entries.
+# These trait docs are kept for human reference but do not require their own
+# bindings.
+docs/api/targets/target/size.md::Trait method; parity enforced via concrete WindowTarget/TextureTarget docs.
+docs/api/targets/target/resize.md::Trait method; parity enforced via concrete WindowTarget/TextureTarget docs.
+docs/api/targets/target/get_image.md::Trait method; parity enforced via concrete WindowTarget/TextureTarget docs.
