@@ -1,8 +1,6 @@
 #![cfg(wasm)]
 
-use crate::{
-    Color, Mesh, Pass, PassError, PassInput, Renderable, Shader, Texture, TextureTarget,
-};
+use crate::{Color, Mesh, Pass, PassError, PassInput, Renderable, Shader, Texture, TextureTarget};
 use js_sys::Array;
 use lsp_doc::lsp_doc;
 use wasm_bindgen::JsValue;

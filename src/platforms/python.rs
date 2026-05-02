@@ -2,7 +2,7 @@ use pyo3::prelude::*;
 use pyo3::wrap_pyfunction;
 
 use crate::{
-    Pass, ScreenRegion, Renderer, Shader, Size,
+    Pass, Renderer, ScreenRegion, Shader, Size,
     target::{PyTextureTarget, RenderCanvasFrame, RenderCanvasTarget, rendercanvas_context_hook},
 };
 

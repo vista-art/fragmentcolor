@@ -27,7 +27,9 @@ pub(crate) fn set_registry(base_url: &str) {
 
 /// Return the active registry base, preferring any thread-local override.
 pub(crate) fn registry_base() -> String {
-    REGISTRY_OVERRIDE.with(|stack| stack.borrow().last().cloned()).unwrap_or_else(|| REGISTRY.read().clone())
+    REGISTRY_OVERRIDE
+        .with(|stack| stack.borrow().last().cloned())
+        .unwrap_or_else(|| REGISTRY.read().clone())
 }
 
 /// Convert a slug like `sdf2d/circle` into a URL `<base>/sdf2d/circle.wgsl`.

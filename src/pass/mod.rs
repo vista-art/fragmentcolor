@@ -1,4 +1,4 @@
-use crate::{Color, Mesh, ScreenRegion, Renderable, Shader, ShaderObject};
+use crate::{Color, Mesh, Renderable, ScreenRegion, Shader, ShaderObject};
 use lsp_doc::lsp_doc;
 use parking_lot::RwLock;
 use std::collections::HashMap;
@@ -61,6 +61,7 @@ impl From<Arc<ShaderObject>> for PassType {
 #[derive(Debug, Clone)]
 #[cfg_attr(python, pyclass)]
 #[cfg_attr(wasm, wasm_bindgen)]
+#[cfg_attr(mobile, derive(uniffi::Object))]
 #[lsp_doc("docs/api/core/pass/pass.md")]
 pub struct Pass {
     pub(crate) object: Arc<PassObject>,
@@ -763,7 +764,7 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.0, 0.0, 0.0, 1.
 
             // Non-depth texture (storage) should not be valid as DepthTarget
             let color_tex = r
-                .create_storage_texture([4u32, 4u32], crate::TextureFormat::default(), None)
+                .create_storage_texture(([4u32, 4u32], crate::TextureFormat::default()))
                 .await
                 .expect("color tex");
             let dt_bad = DepthTarget::try_from(&color_tex);

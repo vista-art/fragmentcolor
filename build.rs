@@ -3,6 +3,7 @@ use cfg_aliases::cfg_aliases;
 fn main() {
     configure_aliases();
     set_build_env();
+    embedded_shaders::generate();
     generate_docs();
     // Generate language-specific READMEs from templates + Rust examples
     println!("cargo::rerun-if-changed=README.md");
@@ -94,6 +95,12 @@ fn generate_docs() {
     validation::validate_docs(&api_map);
     println!("✅ Docs validated!\n");
 
+    println!("🧭 Auditing API parity across platforms...");
+    let parity_report = parity::audit(&meta::workspace_root());
+    let fail_on_gaps = std::env::var("FC_PARITY_STRICT").is_ok();
+    parity::print_report(&parity_report, fail_on_gaps);
+    println!("==> docs/api/PARITY drives intentional divergence (web-only Shader.fetch, etc.).\n");
+
     println!("🌎 Exporting website (examples + pages)...");
 
     println!("==> website::export_examples_and_pages()");
@@ -111,6 +118,10 @@ fn generate_docs() {
     );
 
     println!("✅ Website export done!\n");
+
+    println!("📚 Building tutorials manifest...");
+    tutorials::build();
+    println!("✅ Tutorials manifest written.\n");
 }
 
 include!("scripts/no_panics.rs");
@@ -119,6 +130,9 @@ include!("scripts/convert.rs");
 include!("scripts/swift.rs");
 include!("scripts/kotlin.rs");
 include!("scripts/validation.rs");
+include!("scripts/parity.rs");
 include!("scripts/website.rs");
+include!("scripts/tutorials.rs");
 include!("scripts/meta.rs");
 include!("scripts/readme.rs");
+include!("scripts/embedded_shaders.rs");

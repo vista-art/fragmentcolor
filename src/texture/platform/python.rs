@@ -1,9 +1,77 @@
 #![cfg(python)]
 
 use crate::SamplerOptions;
-use crate::texture::{Texture, TextureId};
+use crate::texture::{Texture, TextureId, TextureMipChain};
+use crate::{Size, TextureFormat};
 use lsp_doc::lsp_doc;
 use pyo3::prelude::*;
+
+#[pymethods]
+impl TextureMipChain {
+    /// Build a chain from `bytes` for `format`. If `size` is `None`, `bytes`
+    /// is decoded as an image (PNG / JPEG / etc.); if `size` is provided,
+    /// `bytes` is treated as raw pixel data already laid out for `format` at
+    /// `size`. Pure CPU work — call from a worker thread (e.g.
+    /// `ThreadPoolExecutor`) and pass the result to
+    /// `renderer.create_texture(chain)` for the GPU upload.
+    #[staticmethod]
+    #[pyo3(name = "prepare", signature = (bytes, format, size=None))]
+    #[lsp_doc("docs/api/core/texture_mip_chain/prepare.md")]
+    pub fn prepare_py(
+        bytes: pyo3::Py<pyo3::types::PyAny>,
+        format: TextureFormat,
+        size: Option<Size>,
+    ) -> pyo3::PyResult<TextureMipChain> {
+        Python::attach(|py| -> pyo3::PyResult<TextureMipChain> {
+            let bytes = crate::texture::py_to_texture_bytes(bytes.bind(py))?;
+            let input = crate::TextureInput {
+                data: crate::TextureData::Bytes(bytes),
+                options: crate::TextureOptions {
+                    size,
+                    format,
+                    ..Default::default()
+                },
+            };
+            Ok(Self::prepare(input)?)
+        })
+    }
+
+    #[pyo3(name = "format")]
+    #[lsp_doc("docs/api/core/texture_mip_chain/format.md")]
+    pub fn format_py(&self) -> TextureFormat {
+        self.format.into()
+    }
+
+    #[pyo3(name = "base_size")]
+    #[lsp_doc("docs/api/core/texture_mip_chain/base_size.md")]
+    pub fn base_size_py(&self) -> Size {
+        let (w, h) = self.base_size();
+        Size::from([w, h])
+    }
+
+    #[pyo3(name = "level_count")]
+    #[lsp_doc("docs/api/core/texture_mip_chain/level_count.md")]
+    pub fn level_count_py(&self) -> u32 {
+        self.level_count() as u32
+    }
+
+    /// Return the bytes for a single mip level. Use `level_count()` to discover
+    /// the valid range.
+    #[pyo3(name = "level")]
+    #[lsp_doc("docs/api/core/texture_mip_chain/levels.md")]
+    pub fn level_py(&self, index: u32) -> pyo3::PyResult<Vec<u8>> {
+        let levels = self.levels();
+        let idx = index as usize;
+        if idx >= levels.len() {
+            return Err(crate::error::PyFragmentColorError::new_err(format!(
+                "level {} out of range; chain has {} levels",
+                idx,
+                levels.len()
+            )));
+        }
+        Ok(levels[idx].clone())
+    }
+}
 
 #[pymethods]
 impl Texture {

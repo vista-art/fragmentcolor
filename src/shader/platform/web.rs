@@ -65,9 +65,18 @@ impl Shader {
                         }
                     }
                 }
-                ShaderPart::Path(_) => {
-                    console::error_1(&"file paths are not supported in WASM".into());
-                    return Shader::default();
+                // In a browser there is no filesystem; a "path-shaped" string
+                // (e.g. "/shaders/swirl.wgsl" or "./local.wgsl") is a relative
+                // URL the browser resolves against `document.baseURI`. Fetch it.
+                ShaderPart::Path(p) => {
+                    let url = p.to_string_lossy().into_owned();
+                    match crate::net::fetch_text(&url).await {
+                        Ok(body) => resolved.push(body),
+                        Err(e) => {
+                            console::error_1(&e);
+                            return Shader::default();
+                        }
+                    }
                 }
             }
         }

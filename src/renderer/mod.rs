@@ -1,7 +1,4 @@
-use crate::{
-    PassObject, ShaderHash, Target, TargetFrame, TextureInput, TextureOptions, TextureTarget,
-    UniformData,
-};
+use crate::{PassObject, ShaderHash, Target, TargetFrame, TextureData, TextureTarget, UniformData};
 use crate::{Size, WindowTarget};
 use dashmap::DashMap;
 use lsp_doc::lsp_doc;
@@ -32,6 +29,7 @@ pub use buffer_pool::*;
 
 mod texture_pool;
 pub use texture_pool::*;
+pub(crate) mod background;
 mod external_texture;
 mod unregister;
 
@@ -140,69 +138,85 @@ impl Renderer {
         Ok(texture)
     }
 
-    /// Create a Texture from a unified input; returns the public Texture wrapper.
-    /// This variant infers size/format from the input when possible (encoded image bytes, file path).
+    /// Create a [Texture](crate::Texture) from a unified spec. The single
+    /// entry point for every shape — bare bytes / path / URL / file (encoded),
+    /// `(input, [w, h])` or `(input, Size)` for raw pixel bytes,
+    /// `(input, TextureFormat)` for an explicit format override,
+    /// `(input, TextureOptions)` for full control, or a `TextureMipChain`
+    /// (built off the renderer thread) for a GPU-only upload.
+    ///
+    /// The CPU work (decode, mipmap chain, raw-byte wrap) runs on a background
+    /// worker on every native target; the calling thread is never pinned.
     #[lsp_doc("docs/api/core/renderer/create_texture.md")]
     pub async fn create_texture(
         &self,
-        input: impl Into<crate::texture::TextureInput>,
+        spec: impl Into<crate::texture::TextureInput>,
     ) -> Result<crate::texture::Texture, RendererError> {
-        self.create_texture_with(input, crate::texture::TextureOptions::default())
-            .await
-    }
-
-    #[lsp_doc("docs/api/core/renderer/create_texture_with_size.md")]
-    pub async fn create_texture_with_size(
-        &self,
-        input: impl Into<TextureInput>,
-        size: impl Into<Size>,
-    ) -> Result<crate::texture::Texture, RendererError> {
-        let options = TextureOptions {
-            size: Some(size.into()),
-            ..Default::default()
-        };
-        self.create_texture_with(input, options).await
-    }
-
-    #[lsp_doc("docs/api/core/renderer/create_texture_with_format.md")]
-    pub async fn create_texture_with_format(
-        &self,
-        input: impl Into<TextureInput>,
-        format: impl Into<crate::texture::TextureFormat>,
-    ) -> Result<crate::texture::Texture, RendererError> {
-        let options = TextureOptions {
-            format: format.into(),
-            ..Default::default()
-        };
-        self.create_texture_with(input, options).await
-    }
-
-    #[lsp_doc("docs/api/core/renderer/create_texture_with.md")]
-    pub async fn create_texture_with(
-        &self,
-        input: impl Into<TextureInput>,
-        options: impl Into<TextureOptions>,
-    ) -> Result<crate::texture::Texture, RendererError> {
-        let options = options.into();
+        let crate::texture::TextureInput { data, options } = spec.into();
         let context = self.context(None).await?;
-        match input.into() {
+        // The default placeholder `TextureFormat::Rgba` means "infer from input".
+        // Any explicit non-default variant becomes a real format override that we
+        // honor on every input arm (including image inputs that would otherwise
+        // pick `Rgba8UnormSrgb` automatically).
+        let format_override = if matches!(options.format, crate::TextureFormat::Rgba) {
+            None
+        } else {
+            Some(wgpu::TextureFormat::from(options.format))
+        };
+        let mipmaps = options.mipmaps;
+        match data {
             //
-            // From Bytes
-            TextureInput::Bytes(bytes) => {
-                let object = if let (Some(sz), fmt) = (options.size, options.format) {
-                    let wfmt: wgpu::TextureFormat = fmt.into();
-                    crate::TextureObject::from_raw_bytes(context.as_ref(), sz.into(), wfmt, &bytes)?
-                } else {
-                    crate::TextureObject::from_bytes(context.as_ref(), &bytes)?
-                };
+            // From Bytes — decode + mipmap gen + GPU writes happen on the
+            // background worker (native) or inline (wasm). The closure captures
+            // an Arc<RenderContext>, which is Send+Sync on native; wgpu::Queue
+            // only needs &self to write_texture, so the worker can do the
+            // uploads without a hop back to the calling thread.
+            TextureData::Bytes(bytes) => {
+                let ctx = context.clone();
+                let opt_size = options.size;
+                let opt_format = options.format;
+                let object = background::run(
+                    move || -> Result<crate::TextureObject, crate::texture::TextureError> {
+                        if let Some(sz) = opt_size {
+                            let wfmt = format_override
+                                .unwrap_or_else(|| wgpu::TextureFormat::from(opt_format));
+                            crate::TextureObject::from_raw_bytes(
+                                ctx.as_ref(),
+                                sz.into(),
+                                wfmt,
+                                &bytes,
+                                mipmaps,
+                            )
+                        } else {
+                            crate::TextureObject::from_bytes(
+                                ctx.as_ref(),
+                                &bytes,
+                                format_override,
+                                mipmaps,
+                            )
+                        }
+                    },
+                )
+                .await?;
                 let object = std::sync::Arc::new(object);
                 let id = context.register_texture(object.clone());
                 Ok(crate::texture::Texture::new(context, object, id))
             }
             //
-            // From Path
-            TextureInput::Path(path) => {
-                let object = crate::TextureObject::from_file(context.as_ref(), path)?;
+            // From Path — file IO + decode + mipmap gen + GPU writes on the worker.
+            TextureData::Path(path) => {
+                let ctx = context.clone();
+                let object = background::run(
+                    move || -> Result<crate::TextureObject, crate::texture::TextureError> {
+                        crate::TextureObject::from_file(
+                            ctx.as_ref(),
+                            path,
+                            format_override,
+                            mipmaps,
+                        )
+                    },
+                )
+                .await?;
                 let object = std::sync::Arc::new(object);
                 let id = context.register_texture(object.clone());
 
@@ -210,97 +224,182 @@ impl Renderer {
             }
             //
             // From another Texture
-            TextureInput::CloneOf(tex) => Ok(tex),
+            TextureData::CloneOf(tex) => Ok(tex),
             //
-            // From a URL
-            TextureInput::Url(url) => {
+            // From a URL — fetch on the calling thread (it's async), then offload
+            // decode + mipmap gen + GPU writes to the worker.
+            TextureData::Url(url) => {
                 let bytes = crate::net::fetch_bytes(&url).await?;
-
-                let object = Arc::new(crate::TextureObject::from_bytes(context.as_ref(), &bytes)?);
+                let ctx = context.clone();
+                let object = background::run(
+                    move || -> Result<crate::TextureObject, crate::texture::TextureError> {
+                        crate::TextureObject::from_bytes(
+                            ctx.as_ref(),
+                            &bytes,
+                            format_override,
+                            mipmaps,
+                        )
+                    },
+                )
+                .await?;
+                let object = Arc::new(object);
                 let id = context.register_texture(object.clone());
 
                 Ok(crate::texture::Texture::new(context, object, id))
             }
             //
-            // From a DynamicImage
-            TextureInput::DynamicImage(dynamic_image) => {
-                let object =
-                    crate::TextureObject::from_loaded_image(context.as_ref(), &dynamic_image);
+            // From a DynamicImage — mipmap gen + GPU writes on the worker.
+            TextureData::DynamicImage(dynamic_image) => {
+                let ctx = context.clone();
+                let object = background::run(move || -> crate::TextureObject {
+                    crate::TextureObject::from_loaded_image(
+                        ctx.as_ref(),
+                        &dynamic_image,
+                        format_override,
+                        mipmaps,
+                    )
+                })
+                .await;
                 let object = std::sync::Arc::new(object);
                 let id = context.register_texture(object.clone());
 
                 Ok(crate::texture::Texture::new(context, object, id))
             }
+            //
+            // From a pre-built CPU mip chain (Texture::prepare). No CPU prep
+            // here — just the GPU writes — but we still go through the worker
+            // so the caller's thread is never blocked on `queue.write_texture`.
+            TextureData::Prepared(chain) => {
+                let ctx = context.clone();
+                let object = background::run(
+                    move || -> Result<crate::TextureObject, crate::texture::TextureError> {
+                        crate::TextureObject::from_prepared_chain(ctx.as_ref(), chain)
+                    },
+                )
+                .await?;
+                let object = std::sync::Arc::new(object);
+                let id = context.register_texture(object.clone());
+                Ok(crate::texture::Texture::new(context, object, id))
+            }
+            //
+            // From a KTX2 container (bytes / path / URL). All three arms
+            // funnel into the same byte-slice loader. options.format and
+            // options.mipmaps are intentionally ignored — the file's own
+            // declared format and pre-baked mip chain win. KTX2 decode is
+            // already cheap (no resampling) so we run it inline for now;
+            // we can route it through the worker if it ever becomes a
+            // bottleneck without changing the public API.
+            TextureData::Ktx2Bytes(bytes) => {
+                let object =
+                    crate::texture::ktx2_loader::from_ktx2_bytes(context.as_ref(), &bytes)?;
+                let object = std::sync::Arc::new(object);
+                let id = context.register_texture(object.clone());
+                Ok(crate::texture::Texture::new(context, object, id))
+            }
+            TextureData::Ktx2Path(path) => {
+                let bytes = std::fs::read(&path).map_err(|e| {
+                    crate::texture::TextureError::CreateTextureError(format!(
+                        "Failed to read KTX2 file {}: {}",
+                        path.display(),
+                        e
+                    ))
+                })?;
+                let object =
+                    crate::texture::ktx2_loader::from_ktx2_bytes(context.as_ref(), &bytes)?;
+                let object = std::sync::Arc::new(object);
+                let id = context.register_texture(object.clone());
+                Ok(crate::texture::Texture::new(context, object, id))
+            }
+            TextureData::Ktx2Url(url) => {
+                let bytes = crate::net::fetch_bytes(&url).await?;
+                let object =
+                    crate::texture::ktx2_loader::from_ktx2_bytes(context.as_ref(), &bytes)?;
+                let object = std::sync::Arc::new(object);
+                let id = context.register_texture(object.clone());
+                Ok(crate::texture::Texture::new(context, object, id))
+            }
+            //
+            // No source data — caller wants `create_storage_texture` instead;
+            // this entry point allocates from a source.
+            TextureData::Empty => Err(RendererError::CreateTextureError(
+                "create_texture requires source data; for an empty allocation use create_storage_texture(input)".into(),
+            )),
         }
     }
 
-    /// Create a storage-class texture with optional explicit usage (default: STORAGE|TEXTURE|COPY_SRC|COPY_DST).
+    /// Create a storage-class texture from a [`crate::TextureInput`]. Same
+    /// transport as `create_texture` — one vocabulary across the API. The
+    /// `From<T>` impls cover the common shapes:
+    ///
+    /// - `(size, format)` → empty storage texture, no initial data.
+    /// - `(size, format, bytes)` → storage texture pre-seeded with `bytes`.
+    ///
+    /// `options.usage` overrides the default storage usage mask
+    /// (`STORAGE | TEXTURE | COPY_SRC | COPY_DST`); use
+    /// `TextureOptions::with_usage(...)` for the typed builder. `options.size`
+    /// is **required** for this entry — there's no source to infer dimensions
+    /// from. Returns [`crate::texture::TextureError::InvalidInput`] when
+    /// missing.
     #[lsp_doc("docs/api/core/renderer/create_storage_texture.md")]
     pub async fn create_storage_texture(
         &self,
-        size: impl Into<crate::Size>,
-        format: impl Into<crate::TextureFormat>,
-        usage: Option<wgpu::TextureUsages>,
-    ) -> Result<crate::texture::Texture, InitializationError> {
-        let context = self.context(None).await?;
-        let usage = usage.unwrap_or(
-            wgpu::TextureUsages::STORAGE_BINDING
-                | wgpu::TextureUsages::TEXTURE_BINDING
-                | wgpu::TextureUsages::COPY_DST
-                | wgpu::TextureUsages::COPY_SRC,
-        );
-        let obj = crate::TextureObject::new(
-            context.as_ref(),
-            size.into().into(),
-            format.into().into(),
-            usage,
-            crate::texture::SamplerOptions::default(),
-        );
-        let obj = std::sync::Arc::new(obj);
-        let id = context.register_texture(obj.clone());
-        Ok(crate::texture::Texture::new(context, obj, id))
-    }
-
-    /// Create a storage-class texture pre-seeded with CPU bytes.
-    #[lsp_doc("docs/api/core/renderer/create_storage_texture_with_data.md")]
-    pub async fn create_storage_texture_with_data(
-        &self,
-        size: impl Into<crate::Size>,
-        format: impl Into<crate::TextureFormat>,
-        data: &[u8],
-        usage: Option<wgpu::TextureUsages>,
+        input: impl Into<crate::TextureInput>,
     ) -> Result<crate::texture::Texture, RendererError> {
+        let crate::TextureInput { data, options } = input.into();
         let context = self.context(None).await?;
-        let usage = usage.unwrap_or(
-            wgpu::TextureUsages::STORAGE_BINDING
-                | wgpu::TextureUsages::TEXTURE_BINDING
-                | wgpu::TextureUsages::COPY_DST
-                | wgpu::TextureUsages::COPY_SRC,
-        );
-        if !usage.contains(wgpu::TextureUsages::COPY_DST) {
-            return Err(RendererError::CreateTextureError(
-                "create_storage_texture_with_data requires COPY_DST in the usage mask".into(),
-            ));
-        }
-        let wgpu_size: wgpu::Extent3d = size.into().into();
-        let wgpu_format: wgpu::TextureFormat = format.into().into();
-        let bpp = crate::texture::bytes_per_pixel(wgpu_format);
-        if bpp == 0 {
-            return Err(RendererError::CreateTextureError(
-                "Unsupported format for create_storage_texture_with_data (bytes-per-pixel is 0)"
-                    .into(),
-            ));
-        }
-        let expected = (wgpu_size.width as usize)
-            .saturating_mul(wgpu_size.height as usize)
-            .saturating_mul(wgpu_size.depth_or_array_layers.max(1) as usize)
-            .saturating_mul(bpp as usize);
-        if data.len() < expected {
-            return Err(RendererError::CreateTextureError(format!(
-                "Seed data is {} bytes but the texture needs {}",
-                data.len(),
-                expected
-            )));
+        let usage = options
+            .usage
+            .map(wgpu::TextureUsages::from_bits_truncate)
+            .unwrap_or(
+                wgpu::TextureUsages::STORAGE_BINDING
+                    | wgpu::TextureUsages::TEXTURE_BINDING
+                    | wgpu::TextureUsages::COPY_DST
+                    | wgpu::TextureUsages::COPY_SRC,
+            );
+        let size = options.size.ok_or_else(|| {
+            RendererError::CreateTextureError(
+                "create_storage_texture requires options.size — pass `(size, format)` or set the field explicitly".into(),
+            )
+        })?;
+        let wgpu_size: wgpu::Extent3d = size.into();
+        let wgpu_format: wgpu::TextureFormat = options.format.into();
+
+        let bytes_opt: Option<Vec<u8>> = match data {
+            crate::TextureData::Empty => None,
+            crate::TextureData::Bytes(bytes) => Some(bytes),
+            other => {
+                return Err(RendererError::CreateTextureError(format!(
+                    "create_storage_texture only accepts TextureData::Empty or Bytes for now (got {:?}); decode external sources first then pass the raw bytes",
+                    std::mem::discriminant(&other)
+                )));
+            }
+        };
+
+        if let Some(ref bytes) = bytes_opt {
+            if !usage.contains(wgpu::TextureUsages::COPY_DST) {
+                return Err(RendererError::CreateTextureError(
+                    "create_storage_texture with seed data requires COPY_DST in the usage mask"
+                        .into(),
+                ));
+            }
+            let bpp = crate::texture::bytes_per_pixel(wgpu_format);
+            if bpp == 0 {
+                return Err(RendererError::CreateTextureError(
+                    "Unsupported format for create_storage_texture seed data (bytes-per-pixel is 0)"
+                        .into(),
+                ));
+            }
+            let expected = (wgpu_size.width as usize)
+                .saturating_mul(wgpu_size.height as usize)
+                .saturating_mul(wgpu_size.depth_or_array_layers.max(1) as usize)
+                .saturating_mul(bpp as usize);
+            if bytes.len() < expected {
+                return Err(RendererError::CreateTextureError(format!(
+                    "Seed data is {} bytes but the texture needs {}",
+                    bytes.len(),
+                    expected
+                )));
+            }
         }
 
         let obj = crate::TextureObject::new(
@@ -310,21 +409,25 @@ impl Renderer {
             usage,
             crate::texture::SamplerOptions::default(),
         );
-        context.queue.write_texture(
-            wgpu::TexelCopyTextureInfo {
-                aspect: wgpu::TextureAspect::All,
-                texture: &obj.inner,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-            },
-            data,
-            wgpu::TexelCopyBufferLayout {
-                offset: 0,
-                bytes_per_row: Some(bpp * wgpu_size.width),
-                rows_per_image: Some(wgpu_size.height),
-            },
-            wgpu_size,
-        );
+
+        if let Some(bytes) = bytes_opt {
+            let bpp = crate::texture::bytes_per_pixel(wgpu_format);
+            context.queue.write_texture(
+                wgpu::TexelCopyTextureInfo {
+                    aspect: wgpu::TextureAspect::All,
+                    texture: &obj.inner,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d::ZERO,
+                },
+                &bytes,
+                wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(bpp * wgpu_size.width),
+                    rows_per_image: Some(wgpu_size.height),
+                },
+                wgpu_size,
+            );
+        }
         let obj = std::sync::Arc::new(obj);
         let id = context.register_texture(obj.clone());
         Ok(crate::texture::Texture::new(context, obj, id))
@@ -391,7 +494,9 @@ impl Renderer {
         let texture = context
             .get_texture(&texture_id)
             .ok_or(RendererError::TextureNotFoundError(texture_id))?;
-        Ok(crate::texture::read_texture_object_sync(&context, &texture)?)
+        Ok(crate::texture::read_texture_object_sync(
+            &context, &texture,
+        )?)
     }
 
     #[lsp_doc("docs/api/core/renderer/read_texture_async.md")]
@@ -2217,6 +2322,7 @@ fn schema_offsets(
 #[cfg(test)]
 mod more_error_path_tests {
     use super::*;
+    use crate::TextureOptions;
 
     // Story: Creating a texture from RGBA8 raw bytes with explicit size succeeds and yields expected size.
     #[test]
@@ -2230,7 +2336,7 @@ mod more_error_path_tests {
                 0, 0, 255, 255,   255, 255, 255, 255,
             ];
             let tex = renderer
-                .create_texture_with(&bytes[..], crate::Size::from((2u32, 2u32)))
+                .create_texture((&bytes[..], crate::Size::from((2u32, 2u32))))
                 .await
                 .expect("texture raw bytes");
             let sz = tex.size();
@@ -2245,10 +2351,10 @@ mod more_error_path_tests {
             let renderer = Renderer::new();
             let bad = [1u8, 2, 3];
             let res = renderer
-                .create_texture_with(
+                .create_texture((
                     &bad[..],
                     TextureOptions::from(crate::Size::from((2u32, 2u32))),
-                )
+                ))
                 .await;
             assert!(res.is_err(), "expected error for insufficient raw bytes");
         });
@@ -2261,7 +2367,7 @@ mod more_error_path_tests {
             let renderer = Renderer::new();
             let p = std::path::PathBuf::from("/path/does/not/exist.png");
             let res = renderer
-                .create_texture_with(&p, TextureOptions::from(crate::Size::from((1u32, 1u32))))
+                .create_texture((&p, TextureOptions::from(crate::Size::from((1u32, 1u32)))))
                 .await;
             assert!(res.is_err());
         });
@@ -2445,7 +2551,7 @@ fn main(v: VOut) -> @location(0) vec4<f32> {
                 0,   0, 255, 255,    255, 255, 255, 255,
             ];
             let tex = renderer
-                .create_texture_with_size(&pixels, [2u32, 2u32])
+                .create_texture((&pixels[..], [2u32, 2u32]))
                 .await
                 .expect("texture");
             shader.set("tex", &tex).expect("set tex");
@@ -3037,7 +3143,9 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,1.,0.,1.); }
                 self.size
             }
             fn resize(&mut self, _s: impl Into<crate::Size>) {}
-            fn get_current_frame(&self) -> Result<Box<dyn crate::TargetFrame>, crate::SurfaceError> {
+            fn get_current_frame(
+                &self,
+            ) -> Result<Box<dyn crate::TargetFrame>, crate::SurfaceError> {
                 self.seq
                     .write()
                     .pop_front()

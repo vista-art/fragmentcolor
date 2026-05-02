@@ -59,7 +59,9 @@ fn draw(app: &App) {
     }
 
     let id = app.primary_window_id();
-    if let (Some(passes), Some(_target)) = (app.get::<Vec<Pass>>("passes.main"), app.window_size(id)) {
+    if let (Some(passes), Some(_target)) =
+        (app.get::<Vec<Pass>>("passes.main"), app.window_size(id))
+    {
         let r = app.get_renderer();
         let _ = app.with_target(id, |tgt| r.render(&*passes, tgt));
     }

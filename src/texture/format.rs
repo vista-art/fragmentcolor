@@ -3,10 +3,13 @@ use wasm_bindgen::prelude::*;
 
 #[cfg_attr(wasm, wasm_bindgen)]
 #[cfg_attr(python, pyo3::pyclass)]
+#[cfg_attr(mobile, derive(uniffi::Enum))]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum TextureFormat {
     R8Unorm,
     Rg8Unorm,
+    R16Unorm,
+    Rg16Unorm,
     Rgba8Unorm,
     Rgba8UnormSrgb,
     Bgra8Unorm,
@@ -29,6 +32,8 @@ crate::impl_from_into_with_refs!(
     |f: TextureFormat| match f {
         TextureFormat::R8Unorm => wgpu::TextureFormat::R8Unorm,
         TextureFormat::Rg8Unorm => wgpu::TextureFormat::Rg8Unorm,
+        TextureFormat::R16Unorm => wgpu::TextureFormat::R16Unorm,
+        TextureFormat::Rg16Unorm => wgpu::TextureFormat::Rg16Unorm,
         TextureFormat::Rgba8Unorm => wgpu::TextureFormat::Rgba8Unorm,
         TextureFormat::Rgba8UnormSrgb => wgpu::TextureFormat::Rgba8UnormSrgb,
         TextureFormat::Bgra8Unorm => wgpu::TextureFormat::Bgra8Unorm,
@@ -46,6 +51,8 @@ crate::impl_from_into_with_refs!(
     |wf: wgpu::TextureFormat| match wf {
         wgpu::TextureFormat::R8Unorm => TextureFormat::R8Unorm,
         wgpu::TextureFormat::Rg8Unorm => TextureFormat::Rg8Unorm,
+        wgpu::TextureFormat::R16Unorm => TextureFormat::R16Unorm,
+        wgpu::TextureFormat::Rg16Unorm => TextureFormat::Rg16Unorm,
         wgpu::TextureFormat::Rgba8Unorm => TextureFormat::Rgba8Unorm,
         wgpu::TextureFormat::Rgba8UnormSrgb => TextureFormat::Rgba8UnormSrgb,
         wgpu::TextureFormat::Bgra8Unorm => TextureFormat::Bgra8Unorm,

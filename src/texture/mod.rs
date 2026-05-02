@@ -17,6 +17,8 @@ pub use sampler::*;
 pub mod format;
 pub use format::*;
 
+pub(crate) mod ktx2_loader;
+
 mod platform;
 
 use crate::{RenderContext, Size};
@@ -32,97 +34,362 @@ mod read;
 pub mod region;
 mod write;
 
-pub use region::TextureRegion;
 pub(crate) use read::{read_texture_object_async, read_texture_object_sync};
+pub use region::TextureRegion;
 
 // Expose Naga image metadata in our public meta struct for now.
 use naga::{ImageClass, ImageDimension};
 
 // Unified input type for creating textures (initial Rust subset)
-#[derive(Debug, Clone)]
-pub enum TextureInput {
+#[derive(Debug, Clone, Default)]
+pub enum TextureData {
+    /// No initial pixel data — allocate the texture and leave the contents
+    /// undefined. Required for `create_storage_texture` when seed data isn't
+    /// provided. Pair with `options.size` (mandatory for this variant) and
+    /// `options.format`.
+    #[default]
+    Empty,
     Bytes(Vec<u8>),
     Path(std::path::PathBuf),
     CloneOf(Texture),
     Url(String),
     DynamicImage(DynamicImage),
+    /// In-memory KTX2 container bytes (decoded by the `ktx2` crate). Distinct
+    /// from `Bytes`/`Path`/`Url` because the KTX2 path trusts the file's own
+    /// declared format and skips the JPEG/PNG sRGB-inference + CPU mipmap
+    /// chain. Use this for pre-baked compressed textures (BC7, ASTC, ETC2)
+    /// from your asset pipeline.
+    Ktx2Bytes(Vec<u8>),
+    /// Path to a `.ktx2` file on disk.
+    Ktx2Path(std::path::PathBuf),
+    /// HTTP(S) URL pointing at a `.ktx2` file. Fetched the same way as `Url`.
+    Ktx2Url(String),
+    /// A pre-computed CPU mipmap chain produced by
+    /// [`TextureMipChain::prepare`] (encoded image bytes) or
+    /// [`TextureMipChain::prepare_raw`] (raw pixel bytes). Lets a worker
+    /// thread (or any non-render thread) do the decode + mip generation,
+    /// then hand the prepared chain to `Renderer::create_texture` for a
+    /// GPU-only upload. The library already runs that prep on a background
+    /// thread for `Bytes`/`Path`/`Url`/`DynamicImage` inputs; reach for this
+    /// only when sharing a chain across textures or when you want explicit
+    /// control over which thread does the work. Cross-language callers
+    /// typically don't construct this variant — they hand `TextureMipChain` directly to
+    /// constructing this variant directly. They hand a `TextureMipChain`
+    /// straight to `Renderer::create_texture` and the unified entry point
+    /// dispatches via `From<TextureMipChain> for TextureInput`.
+    Prepared(TextureMipChain),
 }
 
-impl From<&[u8]> for TextureInput {
+/// A pre-computed CPU mipmap chain. Build with [`TextureMipChain::prepare`]
+/// (encoded image bytes) or [`TextureMipChain::prepare_raw`] (raw pixel bytes),
+/// then pass to [`crate::Renderer::create_texture`] (the unified entry
+/// point dispatches via `From<TextureMipChain> for TextureInput`).
+///
+/// Levels are tightly-packed bytes, level 0 first, with `bytes_per_pixel(format) *
+/// max(1, base_w >> level) * max(1, base_h >> level)` bytes per level.
+#[cfg_attr(wasm, wasm_bindgen)]
+#[cfg_attr(python, pyclass)]
+#[cfg_attr(mobile, derive(uniffi::Object))]
+#[derive(Debug, Clone)]
+#[lsp_doc("docs/api/core/texture_mip_chain/texture_mip_chain.md")]
+pub struct TextureMipChain {
+    pub(crate) format: wgpu::TextureFormat,
+    pub(crate) base_size: (u32, u32),
+    /// Tightly-packed mip levels, level 0 first. Wrapped in `Arc` so cloning
+    /// the handle (or its enclosing `TextureInput::Prepared` variant) does
+    /// not duplicate the (potentially large) byte buffers.
+    pub(crate) levels: std::sync::Arc<Vec<Vec<u8>>>,
+}
+
+crate::impl_fc_kind!(TextureMipChain, "TextureMipChain");
+// Brand-anchored TryFrom<&JsValue> so the JS dispatch in TextureInput's
+// TryFrom can detect a TextureMipChain handle (recovered via __wbg_ptr +
+// __fc_kind brand) and route it as TextureInput::Prepared.
+crate::impl_js_bridge!(TextureMipChain, crate::texture::TextureError);
+
+impl TextureMipChain {
+    /// Build a mip chain from a [`TextureInput`]. Pure CPU work — call from
+    /// any thread (worker, thread pool, async task), then hand the chain to
+    /// [`crate::Renderer::create_texture`] on the renderer thread for a
+    /// GPU-only upload.
+    ///
+    /// Same `TextureInput` transport as `Renderer::create_texture` and
+    /// `Renderer::create_storage_texture` — one vocabulary across the API.
+    /// The `From<T>` impls cover the common call shapes:
+    ///
+    /// ```ignore
+    /// // Encoded image bytes (PNG / JPEG / etc.) — size inferred from the image.
+    /// TextureMipChain::prepare((png_bytes, TextureFormat::Rgba8UnormSrgb))?;
+    ///
+    /// // Raw pixel bytes — caller declares the dimensions.
+    /// TextureMipChain::prepare((rgba_bytes, TextureFormat::Rgba8UnormSrgb, [w, h]))?;
+    /// ```
+    ///
+    /// `prepare` requires a sync-friendly `data` variant: `Bytes`,
+    /// `DynamicImage`, or `Path` (file IO). `Url` (needs async fetch),
+    /// `Ktx2*` (already pre-baked), `Prepared` (already a chain),
+    /// `CloneOf` (existing texture), and `Empty` (nothing to chain) all
+    /// return [`TextureError::InvalidInput`].
+    ///
+    /// Supported formats for the mipmap chain: `Rgba8Unorm`,
+    /// `Rgba8UnormSrgb`, `Bgra8Unorm`, `Bgra8UnormSrgb`, `R8Unorm`,
+    /// `Rg8Unorm`, `R16Unorm`, `Rg16Unorm`, `Rgba16Unorm`. Other formats
+    /// return [`TextureError::UnsupportedMipmapFormat`].
+    #[lsp_doc("docs/api/core/texture_mip_chain/prepare.md")]
+    pub fn prepare(input: impl Into<crate::TextureInput>) -> Result<TextureMipChain, TextureError> {
+        let crate::TextureInput { data, options } = input.into();
+        let public_format = options.format;
+        let wfmt: wgpu::TextureFormat = public_format.into();
+        if !format_supports_cpu_mipmaps(wfmt) {
+            return Err(TextureError::UnsupportedMipmapFormat {
+                format: public_format,
+            });
+        }
+        let image = match data {
+            // Encoded bytes path. If `options.size` is present, treat as raw
+            // pixel data; otherwise decode internally.
+            TextureData::Bytes(bytes) => match options.size {
+                None => image::load_from_memory(&bytes)?,
+                Some(size) => {
+                    let extent: wgpu::Extent3d = size.into();
+                    if extent.width == 0 || extent.height == 0 {
+                        return Err(TextureError::InvalidInput(
+                            "prepare: size must be non-zero in both dimensions".into(),
+                        ));
+                    }
+                    let bpp = bytes_per_pixel(wfmt) as usize;
+                    let expected = bpp * (extent.width as usize) * (extent.height as usize);
+                    if bytes.len() < expected {
+                        return Err(TextureError::InvalidInput(format!(
+                            "prepare: expected {} bytes for {}x{} @ {} bpp, got {}",
+                            expected,
+                            extent.width,
+                            extent.height,
+                            bpp,
+                            bytes.len()
+                        )));
+                    }
+                    wrap_raw_bytes_as_dynamic_image(
+                        &bytes[..expected],
+                        extent.width,
+                        extent.height,
+                        wfmt,
+                    )?
+                }
+            },
+            TextureData::DynamicImage(image) => image,
+            TextureData::Path(path) => image::open(path)?,
+            // Async / pre-baked / non-prep variants don't fit the sync CPU
+            // mipmap pipeline. Surface a clear typed error so callers can
+            // match on the same `InvalidInput` variant they already match
+            // on for shape mismatches.
+            TextureData::Empty => {
+                return Err(TextureError::InvalidInput(
+                    "prepare: TextureData::Empty has no bytes to chain".into(),
+                ));
+            }
+            TextureData::Url(_) => {
+                return Err(TextureError::InvalidInput(
+                    "prepare: TextureData::Url requires async fetch — fetch bytes first, then call prepare with the bytes".into(),
+                ));
+            }
+            TextureData::Ktx2Bytes(_) | TextureData::Ktx2Path(_) | TextureData::Ktx2Url(_) => {
+                return Err(TextureError::InvalidInput(
+                    "prepare: KTX2 inputs already carry a pre-baked mip chain — pass them directly to Renderer::create_texture".into(),
+                ));
+            }
+            TextureData::Prepared(_) => {
+                return Err(TextureError::InvalidInput(
+                    "prepare: TextureData::Prepared is already a TextureMipChain — pass it directly to Renderer::create_texture".into(),
+                ));
+            }
+            TextureData::CloneOf(_) => {
+                return Err(TextureError::InvalidInput(
+                    "prepare: TextureData::CloneOf wraps an existing texture; nothing to chain"
+                        .into(),
+                ));
+            }
+        };
+        Self::from_dynamic_image(&image, public_format, wfmt)
+    }
+
+    fn from_dynamic_image(
+        image: &DynamicImage,
+        public_format: crate::TextureFormat,
+        format: wgpu::TextureFormat,
+    ) -> Result<TextureMipChain, TextureError> {
+        let (width, height) = image.dimensions();
+        if width == 0 || height == 0 {
+            return Err(TextureError::InvalidInput(
+                "prepare: decoded image has zero width or height".into(),
+            ));
+        }
+        let levels = build_mip_chain_bytes(image, format).map_err(|err| match err {
+            // Surface the format mismatch as the typed variant so callers
+            // matching on UnsupportedMipmapFormat catch it both at the
+            // top-level guard and in the inner dispatcher.
+            TextureError::CreateTextureError(_) => TextureError::UnsupportedMipmapFormat {
+                format: public_format,
+            },
+            other => other,
+        })?;
+        Ok(TextureMipChain {
+            format,
+            base_size: (width, height),
+            levels: std::sync::Arc::new(levels),
+        })
+    }
+}
+
+impl TextureMipChain {
+    /// The wgpu format the chain was prepared for.
+    pub fn format(&self) -> wgpu::TextureFormat {
+        self.format
+    }
+
+    /// Base level dimensions (level 0).
+    pub fn base_size(&self) -> (u32, u32) {
+        self.base_size
+    }
+
+    /// Tightly-packed bytes per mip level, level 0 first.
+    pub fn levels(&self) -> &[Vec<u8>] {
+        &self.levels
+    }
+
+    /// Number of mip levels in the chain (>= 1).
+    pub fn level_count(&self) -> usize {
+        self.levels.len()
+    }
+}
+
+impl From<&[u8]> for TextureData {
     fn from(v: &[u8]) -> Self {
-        TextureInput::Bytes(v.to_vec())
+        TextureData::Bytes(v.to_vec())
     }
 }
-impl From<Vec<u8>> for TextureInput {
+impl From<Vec<u8>> for TextureData {
     fn from(v: Vec<u8>) -> Self {
-        TextureInput::Bytes(v)
+        TextureData::Bytes(v)
     }
 }
-impl From<&Vec<u8>> for TextureInput {
+impl From<&Vec<u8>> for TextureData {
     fn from(v: &Vec<u8>) -> Self {
-        TextureInput::Bytes(v.clone())
+        TextureData::Bytes(v.clone())
     }
 }
-impl From<&std::path::Path> for TextureInput {
+impl From<&std::path::Path> for TextureData {
     fn from(p: &std::path::Path) -> Self {
-        TextureInput::Path(p.to_path_buf())
+        TextureData::Path(p.to_path_buf())
     }
 }
-impl From<std::path::PathBuf> for TextureInput {
+impl From<std::path::PathBuf> for TextureData {
     fn from(p: std::path::PathBuf) -> Self {
-        TextureInput::Path(p)
+        TextureData::Path(p)
     }
 }
-impl From<&std::path::PathBuf> for TextureInput {
+impl From<&std::path::PathBuf> for TextureData {
     fn from(p: &std::path::PathBuf) -> Self {
-        TextureInput::Path(p.clone())
+        TextureData::Path(p.clone())
     }
 }
-impl From<&Texture> for TextureInput {
+impl From<&Texture> for TextureData {
     fn from(t: &Texture) -> Self {
-        TextureInput::CloneOf(t.clone())
+        TextureData::CloneOf(t.clone())
+    }
+}
+impl From<TextureMipChain> for TextureData {
+    fn from(chain: TextureMipChain) -> Self {
+        TextureData::Prepared(chain)
+    }
+}
+
+/// Uniffi-marshallable mirror of [`TextureInput`]. Drops the `DynamicImage`
+/// variant (the `image` crate's `DynamicImage` isn't an FFI-friendly type;
+/// callers on every non-Rust platform reach the same outcome by passing
+/// `Bytes` and letting the library decode internally) and uses owned types
+/// uniffi can lower across the FFI (`String` for paths, `Arc<Object>` for
+/// handles).
+///
+/// The Rust core stays on `TextureInput`; this enum exists only so mobile
+/// bindings can carry a concrete variant. Web and Python use their own
+/// dispatch (`TryFrom<JsValue>` / Python kwargs) and never see this type.
+#[cfg(mobile)]
+#[derive(Debug, Clone, uniffi::Enum)]
+pub enum TextureInputMobile {
+    Bytes(Vec<u8>),
+    Path(String),
+    Url(String),
+    CloneOf(std::sync::Arc<Texture>),
+    Prepared(std::sync::Arc<TextureMipChain>),
+    Ktx2Bytes(Vec<u8>),
+    Ktx2Path(String),
+    Ktx2Url(String),
+}
+
+#[cfg(mobile)]
+impl From<TextureInputMobile> for TextureData {
+    fn from(input: TextureInputMobile) -> Self {
+        match input {
+            TextureInputMobile::Bytes(b) => TextureData::Bytes(b),
+            TextureInputMobile::Path(s) => TextureData::Path(std::path::PathBuf::from(s)),
+            TextureInputMobile::Url(s) => TextureData::Url(s),
+            TextureInputMobile::CloneOf(t) => TextureData::CloneOf((*t).clone()),
+            TextureInputMobile::Prepared(c) => TextureData::Prepared((*c).clone()),
+            TextureInputMobile::Ktx2Bytes(b) => TextureData::Ktx2Bytes(b),
+            TextureInputMobile::Ktx2Path(s) => TextureData::Ktx2Path(std::path::PathBuf::from(s)),
+            TextureInputMobile::Ktx2Url(s) => TextureData::Ktx2Url(s),
+        }
     }
 }
 
 #[cfg(wasm)]
-impl TryFrom<&wasm_bindgen::JsValue> for TextureInput {
+impl TryFrom<&wasm_bindgen::JsValue> for TextureData {
     type Error = crate::texture::error::TextureError;
 
     fn try_from(value: &wasm_bindgen::JsValue) -> Result<Self, Self::Error> {
         use js_sys::{Array, ArrayBuffer, Uint8Array, Uint8ClampedArray};
         use wasm_bindgen::JsCast;
 
+        // Case: TextureMipChain handle (built off-thread via TextureMipChain.prepare).
+        // Detected through the branded __fc_kind + __wbg_ptr anchor so it
+        // survives bundler renaming. Must come before the Uint8Array / object
+        // cases because wasm-bindgen handles also satisfy `is_object()`.
+        if let Ok(chain) = TextureMipChain::try_from(value) {
+            return Ok(TextureData::Prepared(chain));
+        }
+
         // Case: Uint8Array (fast path)
         if let Some(u8a) = value.dyn_ref::<Uint8Array>() {
             let mut bytes = vec![0u8; u8a.length() as usize];
             u8a.copy_to(&mut bytes[..]);
-            return Ok(TextureInput::Bytes(bytes));
+            return Ok(TextureData::Bytes(bytes));
         }
 
         // Case: Uint8ClampedArray (ImageData.data)
         if let Some(u8c) = value.dyn_ref::<Uint8ClampedArray>() {
             let mut bytes = vec![0u8; u8c.length() as usize];
             u8c.copy_to(&mut bytes[..]);
-            return Ok(TextureInput::Bytes(bytes));
+            return Ok(TextureData::Bytes(bytes));
         }
 
         // Case: ArrayBuffer
         if let Some(buf) = value.dyn_ref::<ArrayBuffer>() {
             // Guard against detached buffers via byte_length() == 0; safe fallback for empty too.
             if buf.byte_length() == 0 {
-                return Ok(TextureInput::Bytes(Vec::new()));
+                return Ok(TextureData::Bytes(Vec::new()));
             }
             let u8a = Uint8Array::new(buf);
             let mut bytes = vec![0u8; u8a.length() as usize];
             u8a.copy_to(&mut bytes[..]);
-            return Ok(TextureInput::Bytes(bytes));
+            return Ok(TextureData::Bytes(bytes));
         }
 
         // Case: ImageData -> use its backing data (Clamped<Vec<u8>> on wasm)
         if let Some(image_data) = value.dyn_ref::<web_sys::ImageData>() {
             let data = image_data.data();
             let bytes = data.0;
-            return Ok(TextureInput::Bytes(bytes));
+            return Ok(TextureData::Bytes(bytes));
         }
 
         // Case: HTMLCanvasElement -> raw pixel bytes via 2D context
@@ -135,7 +402,7 @@ impl TryFrom<&wasm_bindgen::JsValue> for TextureInput {
             let img = ctx.get_image_data(0.0, 0.0, width, height)?;
             let data = img.data();
             let bytes = data.0;
-            return Ok(TextureInput::Bytes(bytes));
+            return Ok(TextureData::Bytes(bytes));
         }
 
         // Case: OffscreenCanvas -> raw pixel bytes via 2D context
@@ -148,12 +415,12 @@ impl TryFrom<&wasm_bindgen::JsValue> for TextureInput {
             let img = ctx.get_image_data(0.0, 0.0, width, height)?;
             let data = img.data();
             let bytes = data.0;
-            return Ok(TextureInput::Bytes(bytes));
+            return Ok(TextureData::Bytes(bytes));
         }
 
         // Case: HTMLImageElement -> pass through as URL
         if let Some(img) = value.dyn_ref::<web_sys::HtmlImageElement>() {
-            return Ok(TextureInput::Url(img.src()));
+            return Ok(TextureData::Url(img.src()));
         }
 
         // Case: Plain JS Array of numbers
@@ -167,7 +434,7 @@ impl TryFrom<&wasm_bindgen::JsValue> for TextureInput {
                 let b = n.max(0.0).min(255.0) as u8;
                 bytes.push(b);
             }
-            return Ok(TextureInput::Bytes(bytes));
+            return Ok(TextureData::Bytes(bytes));
         }
 
         // Case: String -> selector or URL
@@ -191,7 +458,7 @@ impl TryFrom<&wasm_bindgen::JsValue> for TextureInput {
             } else {
                 s.clone()
             };
-            return Ok(TextureInput::Url(url));
+            return Ok(TextureData::Url(url));
         }
 
         Err(crate::texture::error::TextureError::Error(
@@ -233,8 +500,8 @@ pub(crate) fn js_to_texture_id(
 pub(crate) fn js_to_texture_bytes(
     value: &wasm_bindgen::JsValue,
 ) -> Result<Vec<u8>, crate::texture::TextureError> {
-    match TextureInput::try_from(value)? {
-        TextureInput::Bytes(bytes) => Ok(bytes),
+    match TextureData::try_from(value)? {
+        TextureData::Bytes(bytes) => Ok(bytes),
         _ => Err(crate::texture::TextureError::Error(
             "Expected raw byte data".into(),
         )),
@@ -434,39 +701,59 @@ impl TextureObject {
         }
     }
 
-    /// Creates a texture from a file
-    pub fn from_file(
+    /// Creates a texture from a file.
+    ///
+    /// `format_override = None` infers the format from the image's color type.
+    /// `generate_mipmaps = true` builds a full mip chain at upload (only for
+    /// formats that share the source's RGBA8 byte layout — see `from_loaded_image`).
+    pub(crate) fn from_file(
         context: &RenderContext,
         path: impl AsRef<Path>,
+        format_override: Option<wgpu::TextureFormat>,
+        generate_mipmaps: bool,
     ) -> Result<Self, TextureError> {
         let image = image::open(path)?;
-        Ok(Self::from_loaded_image(context, &image))
+        Ok(Self::from_loaded_image(
+            context,
+            &image,
+            format_override,
+            generate_mipmaps,
+        ))
     }
 
-    /// Creates a new texture resource from raw encoded image bytes
-    /// (PNG/JPEG/HDR, etc.).
-    ///
-    /// Makes an educated guess about the image format
-    /// and automatically detects Width and Height.
-    pub fn from_bytes(context: &RenderContext, bytes: &[u8]) -> Result<Self, TextureError> {
+    /// Creates a texture from encoded image bytes (PNG/JPEG/HDR, etc.).
+    pub(crate) fn from_bytes(
+        context: &RenderContext,
+        bytes: &[u8],
+        format_override: Option<wgpu::TextureFormat>,
+        generate_mipmaps: bool,
+    ) -> Result<Self, TextureError> {
         let image = image::load_from_memory(bytes)?;
-        Ok(Self::from_loaded_image(context, &image))
+        Ok(Self::from_loaded_image(
+            context,
+            &image,
+            format_override,
+            generate_mipmaps,
+        ))
     }
 
     /// Creates a texture from raw pixel bytes with explicit size/format.
     /// The data layout is tightly packed with bytes_per_row = bpp * width.
-    pub fn from_raw_bytes(
+    ///
+    /// When `generate_mipmaps = true`, a full mip chain is built CPU-side via the
+    /// dispatcher in [`write_raw_bytes_levels`]. Mipmaps run for every format
+    /// `format_supports_cpu_mipmaps` accepts (Rgba8/Bgra8 family, R8, Rg8, R16,
+    /// Rg16, Rgba16); other formats fall back to a single level.
+    pub(crate) fn from_raw_bytes(
         context: &RenderContext,
         size: wgpu::Extent3d,
         format: wgpu::TextureFormat,
         data: &[u8],
+        generate_mipmaps: bool,
     ) -> Result<Self, TextureError> {
         let usage = wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST;
-        let descriptor = Self::texture_descriptor("Raw Texture", size, format, usage, 1, 1); // @TODO mip_count, sample_count
-        let texture = context.device.create_texture(&descriptor);
         let bpp = bytes_per_pixel(format);
 
-        // Best-effort guard for buffer size
         let expected = (size.width as usize)
             .saturating_mul(size.height as usize)
             .saturating_mul(size.depth_or_array_layers as usize)
@@ -477,21 +764,18 @@ impl TextureObject {
             ));
         }
 
-        context.queue.write_texture(
-            wgpu::TexelCopyTextureInfo {
-                aspect: wgpu::TextureAspect::All,
-                texture: &texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-            },
-            data,
-            wgpu::TexelCopyBufferLayout {
-                offset: 0,
-                bytes_per_row: Some(bpp * size.width),
-                rows_per_image: Some(size.height),
-            },
-            size,
-        );
+        let want_mips = generate_mipmaps && format_supports_cpu_mipmaps(format);
+        let mip_level_count = if want_mips {
+            mip_level_count_for(size.width, size.height)
+        } else {
+            1
+        };
+
+        let descriptor =
+            Self::texture_descriptor("Raw Texture", size, format, usage, 1, mip_level_count);
+        let texture = context.device.create_texture(&descriptor);
+
+        write_raw_bytes_levels(context, data, &texture, size, format, mip_level_count)?;
 
         let sampler = create_default_sampler(&context.device);
         Ok(Self {
@@ -504,10 +788,20 @@ impl TextureObject {
         })
     }
 
-    /// Internal method to create a TextureId from a DynamicImage instance.
+    /// Internal method to create a TextureObject from a DynamicImage instance.
     ///
-    /// The image is already loaded in memory at this point.
-    pub(crate) fn from_loaded_image(context: &RenderContext, image: &DynamicImage) -> Self {
+    /// `format_override = None` infers the format from `image.color()`. The image is
+    /// re-decoded to match the target format (e.g. `R16Unorm` triggers `to_luma16()`,
+    /// preserving 16-bit precision). Mipmaps are generated CPU-side via
+    /// `image::imageops::resize` for every format the dispatcher recognizes — see
+    /// `format_supports_cpu_mipmaps`. Unrecognized formats fall back to writing
+    /// `to_rgba8` bytes as a single level (best-effort, may misrender for non-RGBA8 layouts).
+    pub(crate) fn from_loaded_image(
+        context: &RenderContext,
+        image: &DynamicImage,
+        format_override: Option<wgpu::TextureFormat>,
+        generate_mipmaps: bool,
+    ) -> Self {
         let label = "Source Texture from Loaded Image";
         let (width, height) = image.dimensions();
         let size = wgpu::Extent3d {
@@ -515,24 +809,20 @@ impl TextureObject {
             height,
             depth_or_array_layers: 1,
         };
-        let format = image.color();
-        let format = match format {
-            image::ColorType::Rgba8 => wgpu::TextureFormat::Rgba8UnormSrgb,
-            image::ColorType::L8 => wgpu::TextureFormat::R8Unorm,
-            image::ColorType::La8 => wgpu::TextureFormat::Rg8Unorm,
-            image::ColorType::Rgb8 => wgpu::TextureFormat::Rgba8UnormSrgb,
-            image::ColorType::L16 => wgpu::TextureFormat::R16Unorm,
-            image::ColorType::La16 => wgpu::TextureFormat::Rg16Unorm,
-            image::ColorType::Rgb16 => wgpu::TextureFormat::Rgba16Unorm,
-            image::ColorType::Rgba16 => wgpu::TextureFormat::Rgba16Unorm,
-            image::ColorType::Rgb32F => wgpu::TextureFormat::Rgba32Float,
-            image::ColorType::Rgba32F => wgpu::TextureFormat::Rgba32Float,
-            _ => wgpu::TextureFormat::Rgba8UnormSrgb,
+        let format = format_override.unwrap_or_else(|| infer_format_from_image(image.color()));
+
+        let want_mips = generate_mipmaps && format_supports_cpu_mipmaps(format);
+        let mip_level_count = if want_mips {
+            mip_level_count_for(width, height)
+        } else {
+            1
         };
-        let descriptor = Self::source_texture_descriptor(label, size, format);
+
+        let usage = wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST;
+        let descriptor = Self::texture_descriptor(label, size, format, usage, 1, mip_level_count);
         let texture = context.device.create_texture(&descriptor);
-        let source = image.to_rgba8();
-        Self::write_data_to_texture(context, source, &texture, size);
+
+        write_image_levels(context, image, &texture, size, format, mip_level_count);
 
         let sampler = create_default_sampler(&context.device);
 
@@ -542,8 +832,98 @@ impl TextureObject {
             sampler: RwLock::new(sampler),
             options: RwLock::new(SamplerOptions::default()),
             format,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            usage,
         }
+    }
+
+    /// Create a TextureObject from a pre-built CPU mip chain. Pure GPU writes —
+    /// no decode, no resize. Used by the `TextureInput::Prepared` path.
+    pub(crate) fn from_prepared_chain(
+        context: &RenderContext,
+        chain: TextureMipChain,
+    ) -> Result<Self, TextureError> {
+        let (w, h) = chain.base_size;
+        if w == 0 || h == 0 {
+            return Err(TextureError::CreateTextureError(
+                "TextureMipChain base_size must be non-zero".into(),
+            ));
+        }
+        if chain.levels.is_empty() {
+            return Err(TextureError::CreateTextureError(
+                "TextureMipChain must contain at least one level".into(),
+            ));
+        }
+        let levels = chain.levels.as_slice();
+        let format = chain.format;
+        let bpp = bytes_per_pixel(format);
+        if bpp == 0 {
+            return Err(TextureError::CreateTextureError(format!(
+                "TextureMipChain format {:?} has zero bytes-per-pixel",
+                format
+            )));
+        }
+
+        for (i, level_bytes) in levels.iter().enumerate() {
+            let level_w = (w >> i).max(1);
+            let level_h = (h >> i).max(1);
+            let expected = (bpp as usize) * (level_w as usize) * (level_h as usize);
+            if level_bytes.len() != expected {
+                return Err(TextureError::CreateTextureError(format!(
+                    "TextureMipChain level {} has {} bytes, expected {} ({}x{} @ {} bpp)",
+                    i,
+                    level_bytes.len(),
+                    expected,
+                    level_w,
+                    level_h,
+                    bpp
+                )));
+            }
+        }
+
+        let size = wgpu::Extent3d {
+            width: w,
+            height: h,
+            depth_or_array_layers: 1,
+        };
+        let usage = wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST;
+        let mip_level_count = levels.len() as u32;
+        let descriptor =
+            Self::texture_descriptor("Prepared Texture", size, format, usage, 1, mip_level_count);
+        let texture = context.device.create_texture(&descriptor);
+
+        for (i, level_bytes) in levels.iter().enumerate() {
+            let level_w = (w >> i).max(1);
+            let level_h = (h >> i).max(1);
+            context.queue.write_texture(
+                wgpu::TexelCopyTextureInfo {
+                    aspect: wgpu::TextureAspect::All,
+                    texture: &texture,
+                    mip_level: i as u32,
+                    origin: wgpu::Origin3d::ZERO,
+                },
+                level_bytes,
+                wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(bpp * level_w),
+                    rows_per_image: Some(level_h),
+                },
+                wgpu::Extent3d {
+                    width: level_w,
+                    height: level_h,
+                    depth_or_array_layers: 1,
+                },
+            );
+        }
+
+        let sampler = create_default_sampler(&context.device);
+        Ok(Self {
+            inner: texture,
+            size,
+            sampler: RwLock::new(sampler),
+            options: RwLock::new(SamplerOptions::default()),
+            format,
+            usage,
+        })
     }
 
     /// Internal method to create a Texture marked as a destination for rendering
@@ -647,24 +1027,6 @@ impl TextureObject {
             .create_view(&wgpu::TextureViewDescriptor::default())
     }
 
-    /// Creates a texture descriptor for a Source Texture
-    fn source_texture_descriptor(
-        label: &'static str,
-        size: wgpu::Extent3d,
-        format: wgpu::TextureFormat,
-    ) -> wgpu::TextureDescriptor<'static> {
-        let sample_count = 1;
-        let mip_level_count = 1;
-        Self::texture_descriptor(
-            label,
-            size,
-            format,
-            wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-            sample_count,
-            mip_level_count,
-        )
-    }
-
     /// Creates a texture descriptor for a Target Texture
     fn target_texture_descriptor(
         label: &'static str,
@@ -708,32 +1070,469 @@ impl TextureObject {
             usage,
         }
     }
+}
 
-    /// Writes pixel data to a texture
-    fn write_data_to_texture(
-        context: &RenderContext,
-        origin_image: image::RgbaImage,
-        target_texture: &wgpu::Texture,
-        size: wgpu::Extent3d,
-    ) {
+/// Number of mip levels in a full chain that goes down to 1×1 for the given dimensions.
+/// Returns 1 for any zero or 1×1 input.
+pub(crate) fn mip_level_count_for(width: u32, height: u32) -> u32 {
+    let max_dim = width.max(height);
+    if max_dim <= 1 {
+        return 1;
+    }
+    1 + max_dim.ilog2()
+}
+
+/// True for formats the CPU mipmap dispatcher in [`write_image_levels`] can fill.
+/// Covers every wgpu format we know how to decode a `DynamicImage` into via the
+/// `image` crate's `to_*` helpers.
+pub(crate) fn format_supports_cpu_mipmaps(format: wgpu::TextureFormat) -> bool {
+    matches!(
+        format,
+        wgpu::TextureFormat::Rgba8Unorm
+            | wgpu::TextureFormat::Rgba8UnormSrgb
+            | wgpu::TextureFormat::Bgra8Unorm
+            | wgpu::TextureFormat::Bgra8UnormSrgb
+            | wgpu::TextureFormat::R8Unorm
+            | wgpu::TextureFormat::Rg8Unorm
+            | wgpu::TextureFormat::R16Unorm
+            | wgpu::TextureFormat::Rg16Unorm
+            | wgpu::TextureFormat::Rgba16Unorm
+    )
+}
+
+/// Map an `image::ColorType` to a sensible default `wgpu::TextureFormat` for sampling.
+pub(crate) fn infer_format_from_image(color: image::ColorType) -> wgpu::TextureFormat {
+    match color {
+        image::ColorType::Rgba8 => wgpu::TextureFormat::Rgba8UnormSrgb,
+        image::ColorType::L8 => wgpu::TextureFormat::R8Unorm,
+        image::ColorType::La8 => wgpu::TextureFormat::Rg8Unorm,
+        image::ColorType::Rgb8 => wgpu::TextureFormat::Rgba8UnormSrgb,
+        image::ColorType::L16 => wgpu::TextureFormat::R16Unorm,
+        image::ColorType::La16 => wgpu::TextureFormat::Rg16Unorm,
+        image::ColorType::Rgb16 => wgpu::TextureFormat::Rgba16Unorm,
+        image::ColorType::Rgba16 => wgpu::TextureFormat::Rgba16Unorm,
+        image::ColorType::Rgb32F => wgpu::TextureFormat::Rgba32Float,
+        image::ColorType::Rgba32F => wgpu::TextureFormat::Rgba32Float,
+        _ => wgpu::TextureFormat::Rgba8UnormSrgb,
+    }
+}
+
+/// Decode `image` into the right pixel buffer for `format`, then upload it as
+/// mip 0 — and (when `mip_level_count > 1`) iteratively downsample with the
+/// Triangle filter for each subsequent level. This is the dispatch that lets us
+/// preserve 16-bit precision (`R16Unorm` from a 16-bit grayscale PNG) instead of
+/// silently going through `to_rgba8`.
+///
+/// Each branch picks the matching `image` crate decoder so the channel layout and
+/// bytes-per-pixel agree with the wgpu format. Unrecognized formats fall back to
+/// writing `to_rgba8` bytes as a single level — best-effort, may misrender for
+/// non-RGBA8 layouts (caller should have caught this via `format_supports_cpu_mipmaps`
+/// when picking `mip_level_count`).
+pub(crate) fn write_image_levels(
+    context: &RenderContext,
+    image: &DynamicImage,
+    texture: &wgpu::Texture,
+    full_size: wgpu::Extent3d,
+    format: wgpu::TextureFormat,
+    mip_level_count: u32,
+) {
+    match format {
+        wgpu::TextureFormat::Rgba8Unorm
+        | wgpu::TextureFormat::Rgba8UnormSrgb
+        | wgpu::TextureFormat::Bgra8Unorm
+        | wgpu::TextureFormat::Bgra8UnormSrgb => {
+            write_pixel_levels(
+                context,
+                image.to_rgba8(),
+                texture,
+                full_size,
+                mip_level_count,
+                4,
+            );
+        }
+        wgpu::TextureFormat::R8Unorm => {
+            write_pixel_levels(
+                context,
+                image.to_luma8(),
+                texture,
+                full_size,
+                mip_level_count,
+                1,
+            );
+        }
+        wgpu::TextureFormat::Rg8Unorm => {
+            write_pixel_levels(
+                context,
+                image.to_luma_alpha8(),
+                texture,
+                full_size,
+                mip_level_count,
+                2,
+            );
+        }
+        wgpu::TextureFormat::R16Unorm => {
+            write_pixel_levels(
+                context,
+                image.to_luma16(),
+                texture,
+                full_size,
+                mip_level_count,
+                2,
+            );
+        }
+        wgpu::TextureFormat::Rg16Unorm => {
+            write_pixel_levels(
+                context,
+                image.to_luma_alpha16(),
+                texture,
+                full_size,
+                mip_level_count,
+                4,
+            );
+        }
+        wgpu::TextureFormat::Rgba16Unorm => {
+            write_pixel_levels(
+                context,
+                image.to_rgba16(),
+                texture,
+                full_size,
+                mip_level_count,
+                8,
+            );
+        }
+        _ => {
+            log::warn!(
+                "from_loaded_image: unsupported texture format {:?}; writing to_rgba8 bytes as a single level (channels and bytes-per-pixel may not match the texture)",
+                format
+            );
+            let source = image.to_rgba8();
+            context.queue.write_texture(
+                wgpu::TexelCopyTextureInfo {
+                    aspect: wgpu::TextureAspect::All,
+                    texture,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d::ZERO,
+                },
+                source.as_raw(),
+                wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(4 * full_size.width),
+                    rows_per_image: Some(full_size.height),
+                },
+                full_size,
+            );
+        }
+    }
+}
+
+/// Wrap raw pixel bytes (already laid out for `format` at `width x height`)
+/// into a `DynamicImage` so [`build_mip_chain_bytes`] can downsample them with
+/// the same Triangle filter used by the inline path. Mirrors the format
+/// dispatch in [`write_raw_bytes_levels`] but produces an in-memory image
+/// instead of writing to the GPU.
+pub(crate) fn wrap_raw_bytes_as_dynamic_image(
+    bytes: &[u8],
+    width: u32,
+    height: u32,
+    format: wgpu::TextureFormat,
+) -> Result<DynamicImage, TextureError> {
+    let pixel_count = (width as usize) * (height as usize);
+    let wrap_err = |kind: &str| {
+        TextureError::CreateTextureError(format!(
+            "Failed to wrap raw bytes as {} for prepare_raw",
+            kind
+        ))
+    };
+    Ok(match format {
+        wgpu::TextureFormat::Rgba8Unorm
+        | wgpu::TextureFormat::Rgba8UnormSrgb
+        | wgpu::TextureFormat::Bgra8Unorm
+        | wgpu::TextureFormat::Bgra8UnormSrgb => DynamicImage::ImageRgba8(
+            image::RgbaImage::from_raw(width, height, bytes[..pixel_count * 4].to_vec())
+                .ok_or_else(|| wrap_err("RgbaImage"))?,
+        ),
+        wgpu::TextureFormat::R8Unorm => DynamicImage::ImageLuma8(
+            image::GrayImage::from_raw(width, height, bytes[..pixel_count].to_vec())
+                .ok_or_else(|| wrap_err("GrayImage"))?,
+        ),
+        wgpu::TextureFormat::Rg8Unorm => DynamicImage::ImageLumaA8(
+            image::GrayAlphaImage::from_raw(width, height, bytes[..pixel_count * 2].to_vec())
+                .ok_or_else(|| wrap_err("GrayAlphaImage"))?,
+        ),
+        wgpu::TextureFormat::R16Unorm => {
+            let words = bytes_to_u16_vec(&bytes[..pixel_count * 2]);
+            DynamicImage::ImageLuma16(
+                image::ImageBuffer::from_raw(width, height, words)
+                    .ok_or_else(|| wrap_err("Luma16"))?,
+            )
+        }
+        wgpu::TextureFormat::Rg16Unorm => {
+            let words = bytes_to_u16_vec(&bytes[..pixel_count * 4]);
+            DynamicImage::ImageLumaA16(
+                image::ImageBuffer::from_raw(width, height, words)
+                    .ok_or_else(|| wrap_err("LumaA16"))?,
+            )
+        }
+        wgpu::TextureFormat::Rgba16Unorm => {
+            let words = bytes_to_u16_vec(&bytes[..pixel_count * 8]);
+            DynamicImage::ImageRgba16(
+                image::ImageBuffer::from_raw(width, height, words)
+                    .ok_or_else(|| wrap_err("Rgba16"))?,
+            )
+        }
+        _ => {
+            return Err(TextureError::CreateTextureError(format!(
+                "wrap_raw_bytes_as_dynamic_image: format {:?} is not supported",
+                format
+            )));
+        }
+    })
+}
+
+/// Pure-CPU mip chain builder used by [`TextureMipChain::prepare`]. Mirrors the format
+/// dispatch in [`write_image_levels`] but buffers each level's bytes into a
+/// `Vec<u8>` instead of writing to a wgpu texture. Caller must have validated
+/// that `format` is in [`format_supports_cpu_mipmaps`].
+pub(crate) fn build_mip_chain_bytes(
+    image: &DynamicImage,
+    format: wgpu::TextureFormat,
+) -> Result<Vec<Vec<u8>>, TextureError> {
+    let (w, h) = image.dimensions();
+    let level_count = mip_level_count_for(w, h) as usize;
+    let chain = match format {
+        wgpu::TextureFormat::Rgba8Unorm
+        | wgpu::TextureFormat::Rgba8UnormSrgb
+        | wgpu::TextureFormat::Bgra8Unorm
+        | wgpu::TextureFormat::Bgra8UnormSrgb => {
+            downsample_levels_to_bytes(image.to_rgba8(), level_count)
+        }
+        wgpu::TextureFormat::R8Unorm => downsample_levels_to_bytes(image.to_luma8(), level_count),
+        wgpu::TextureFormat::Rg8Unorm => {
+            downsample_levels_to_bytes(image.to_luma_alpha8(), level_count)
+        }
+        wgpu::TextureFormat::R16Unorm => downsample_levels_to_bytes(image.to_luma16(), level_count),
+        wgpu::TextureFormat::Rg16Unorm => {
+            downsample_levels_to_bytes(image.to_luma_alpha16(), level_count)
+        }
+        wgpu::TextureFormat::Rgba16Unorm => {
+            downsample_levels_to_bytes(image.to_rgba16(), level_count)
+        }
+        _ => {
+            return Err(TextureError::CreateTextureError(format!(
+                "build_mip_chain_bytes: format {:?} is not supported",
+                format
+            )));
+        }
+    };
+    Ok(chain)
+}
+
+/// Generic level-buffering: starting from `base`, push the bytes of each level
+/// into a fresh `Vec<u8>`, then resample to half size with the Triangle filter.
+/// Identical resampling to [`write_pixel_levels`] — same Triangle filter, same
+/// floor-to-1 dimension shrink — so chains built here render identically to
+/// the inline path.
+fn downsample_levels_to_bytes<P>(
+    base: image::ImageBuffer<P, Vec<P::Subpixel>>,
+    level_count: usize,
+) -> Vec<Vec<u8>>
+where
+    P: image::Pixel + 'static,
+    P::Subpixel: bytemuck::NoUninit + 'static,
+{
+    let mut levels = Vec::with_capacity(level_count);
+    let mut current = base;
+    for level in 0..level_count {
+        let bytes: &[u8] = bytemuck::cast_slice(current.as_raw());
+        levels.push(bytes.to_vec());
+        if level + 1 < level_count {
+            let next_w = (current.width() / 2).max(1);
+            let next_h = (current.height() / 2).max(1);
+            current = image::imageops::resize(
+                &current,
+                next_w,
+                next_h,
+                image::imageops::FilterType::Triangle,
+            );
+        }
+    }
+    levels
+}
+
+/// Wrap pre-decoded raw bytes in the right `ImageBuffer` for `format`, then upload
+/// (and downsample for higher mip levels). Mirrors [`write_image_levels`] but starts
+/// from a `&[u8]` buffer the caller has already laid out tightly. For 16-bit formats,
+/// the byte slice is converted to `Vec<u16>` via `from_le_bytes` (alignment-safe and
+/// matches WebGPU's little-endian element ordering).
+pub(crate) fn write_raw_bytes_levels(
+    context: &RenderContext,
+    bytes: &[u8],
+    texture: &wgpu::Texture,
+    full_size: wgpu::Extent3d,
+    format: wgpu::TextureFormat,
+    mip_level_count: u32,
+) -> Result<(), TextureError> {
+    if mip_level_count == 1 {
+        let bpp = bytes_per_pixel(format);
         context.queue.write_texture(
-            // Tells wgpu where to copy the pixel data from
             wgpu::TexelCopyTextureInfo {
                 aspect: wgpu::TextureAspect::All,
-                texture: target_texture,
+                texture,
                 mip_level: 0,
                 origin: wgpu::Origin3d::ZERO,
             },
-            // The actual pixel data
-            &origin_image,
-            // The layout of the texture
+            bytes,
             wgpu::TexelCopyBufferLayout {
                 offset: 0,
-                bytes_per_row: Some(4 * size.width),
-                rows_per_image: Some(size.height),
+                bytes_per_row: Some(bpp * full_size.width),
+                rows_per_image: Some(full_size.height),
             },
-            size,
-        )
+            full_size,
+        );
+        return Ok(());
+    }
+
+    // Multi-level: wrap into the right ImageBuffer so write_pixel_levels can resample.
+    let w = full_size.width;
+    let h = full_size.height;
+    let pixel_count = (w as usize) * (h as usize);
+
+    let wrap_err = |kind: &str| {
+        TextureError::CreateTextureError(format!(
+            "Failed to wrap raw bytes as {} for mipmap generation",
+            kind
+        ))
+    };
+
+    match format {
+        wgpu::TextureFormat::Rgba8Unorm
+        | wgpu::TextureFormat::Rgba8UnormSrgb
+        | wgpu::TextureFormat::Bgra8Unorm
+        | wgpu::TextureFormat::Bgra8UnormSrgb => {
+            let base = image::RgbaImage::from_raw(w, h, bytes[..pixel_count * 4].to_vec())
+                .ok_or_else(|| wrap_err("RgbaImage"))?;
+            write_pixel_levels(context, base, texture, full_size, mip_level_count, 4);
+        }
+        wgpu::TextureFormat::R8Unorm => {
+            let base: image::GrayImage =
+                image::ImageBuffer::from_raw(w, h, bytes[..pixel_count].to_vec())
+                    .ok_or_else(|| wrap_err("GrayImage"))?;
+            write_pixel_levels(context, base, texture, full_size, mip_level_count, 1);
+        }
+        wgpu::TextureFormat::Rg8Unorm => {
+            let base: image::GrayAlphaImage =
+                image::ImageBuffer::from_raw(w, h, bytes[..pixel_count * 2].to_vec())
+                    .ok_or_else(|| wrap_err("GrayAlphaImage"))?;
+            write_pixel_levels(context, base, texture, full_size, mip_level_count, 2);
+        }
+        wgpu::TextureFormat::R16Unorm => {
+            let words = bytes_to_u16_vec(&bytes[..pixel_count * 2]);
+            let base: image::ImageBuffer<image::Luma<u16>, Vec<u16>> =
+                image::ImageBuffer::from_raw(w, h, words).ok_or_else(|| wrap_err("Luma16"))?;
+            write_pixel_levels(context, base, texture, full_size, mip_level_count, 2);
+        }
+        wgpu::TextureFormat::Rg16Unorm => {
+            let words = bytes_to_u16_vec(&bytes[..pixel_count * 4]);
+            let base: image::ImageBuffer<image::LumaA<u16>, Vec<u16>> =
+                image::ImageBuffer::from_raw(w, h, words).ok_or_else(|| wrap_err("LumaA16"))?;
+            write_pixel_levels(context, base, texture, full_size, mip_level_count, 4);
+        }
+        wgpu::TextureFormat::Rgba16Unorm => {
+            let words = bytes_to_u16_vec(&bytes[..pixel_count * 8]);
+            let base: image::ImageBuffer<image::Rgba<u16>, Vec<u16>> =
+                image::ImageBuffer::from_raw(w, h, words).ok_or_else(|| wrap_err("Rgba16"))?;
+            write_pixel_levels(context, base, texture, full_size, mip_level_count, 8);
+        }
+        _ => {
+            // Caller should have caught this via format_supports_cpu_mipmaps;
+            // be defensive and write a single level.
+            let bpp = bytes_per_pixel(format);
+            context.queue.write_texture(
+                wgpu::TexelCopyTextureInfo {
+                    aspect: wgpu::TextureAspect::All,
+                    texture,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d::ZERO,
+                },
+                bytes,
+                wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(bpp * full_size.width),
+                    rows_per_image: Some(full_size.height),
+                },
+                full_size,
+            );
+        }
+    }
+    Ok(())
+}
+
+/// Convert a tightly-packed byte slice into `Vec<u16>` by reading each pair of
+/// bytes as a little-endian u16. Alignment-safe (the source `&[u8]` need not be
+/// u16-aligned) and matches WebGPU's element ordering for 16-bit formats.
+fn bytes_to_u16_vec(bytes: &[u8]) -> Vec<u16> {
+    bytes
+        .chunks_exact(2)
+        .map(|c| u16::from_le_bytes([c[0], c[1]]))
+        .collect()
+}
+
+/// Generic worker: upload `base` as mip 0, then iteratively downsample with the
+/// Triangle filter until the chain is full. Works for any pixel type the `image`
+/// crate's `imageops::resize` supports (Rgba8, Luma8, LumaA8, Luma16, LumaA16,
+/// Rgba16). Pixel data is reinterpreted to bytes via `bytemuck::cast_slice`,
+/// which is a no-op for `u8` subpixels and a little-endian byte view for `u16`.
+/// All FragmentColor target platforms are little-endian, which matches WebGPU's
+/// expected byte order for `*Unorm` formats.
+pub(crate) fn write_pixel_levels<P>(
+    context: &RenderContext,
+    base: image::ImageBuffer<P, Vec<P::Subpixel>>,
+    texture: &wgpu::Texture,
+    full_size: wgpu::Extent3d,
+    mip_level_count: u32,
+    bpp: u32,
+) where
+    P: image::Pixel + 'static,
+    P::Subpixel: bytemuck::NoUninit + 'static,
+{
+    let mut current = base;
+    let mut current_w = full_size.width;
+    let mut current_h = full_size.height;
+
+    for level in 0..mip_level_count {
+        let bytes: &[u8] = bytemuck::cast_slice(current.as_raw());
+        context.queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                aspect: wgpu::TextureAspect::All,
+                texture,
+                mip_level: level,
+                origin: wgpu::Origin3d::ZERO,
+            },
+            bytes,
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(bpp * current_w),
+                rows_per_image: Some(current_h),
+            },
+            wgpu::Extent3d {
+                width: current_w,
+                height: current_h,
+                depth_or_array_layers: 1,
+            },
+        );
+
+        if level + 1 < mip_level_count {
+            let next_w = (current_w / 2).max(1);
+            let next_h = (current_h / 2).max(1);
+            current = image::imageops::resize(
+                &current,
+                next_w,
+                next_h,
+                image::imageops::FilterType::Triangle,
+            );
+            current_w = next_w;
+            current_h = next_h;
+        }
     }
 }
 
@@ -804,16 +1603,16 @@ mod tests {
     #[test]
     fn texture_input_conversions() {
         let bytes: Vec<u8> = vec![1, 2, 3];
-        let ti1: TextureInput = (&bytes).into();
+        let ti1: TextureData = (&bytes).into();
         match ti1 {
-            TextureInput::Bytes(b) => assert_eq!(b, bytes),
+            TextureData::Bytes(b) => assert_eq!(b, bytes),
             _ => panic!("expected Bytes"),
         }
 
         let p = std::path::PathBuf::from("/tmp/img.png");
-        let ti2: TextureInput = (&p).into();
+        let ti2: TextureData = (&p).into();
         match ti2 {
-            TextureInput::Path(pb) => assert_eq!(pb, p),
+            TextureData::Path(pb) => assert_eq!(pb, p),
             _ => panic!("expected Path"),
         }
     }
@@ -829,7 +1628,7 @@ mod tests {
 
             let r = crate::Renderer::new();
             let tex = r
-                .create_texture(TextureInput::DynamicImage(img))
+                .create_texture(TextureData::DynamicImage(img))
                 .await
                 .expect("create texture from dynamic image");
             assert_eq!(tex.aspect(), 2.0);
@@ -841,6 +1640,299 @@ mod tests {
                 smooth: true,
                 compare: None,
             });
+        });
+    }
+
+    // Story: mip_level_count_for matches the standard "down to 1×1" chain length.
+    #[test]
+    fn mip_level_count_for_known_dims() {
+        assert_eq!(mip_level_count_for(0, 0), 1);
+        assert_eq!(mip_level_count_for(1, 1), 1);
+        assert_eq!(mip_level_count_for(2, 1), 2);
+        assert_eq!(mip_level_count_for(1, 2), 2);
+        assert_eq!(mip_level_count_for(4, 4), 3); // 4, 2, 1
+        assert_eq!(mip_level_count_for(1024, 512), 11); // 1024 → 1
+        // Non-power-of-two: chain length follows the largest dim.
+        assert_eq!(mip_level_count_for(1000, 600), 10); // floor(log2(1000)) + 1
+    }
+
+    // Story: Default options request a mipmap chain; explicit opt-out yields a single level.
+    #[test]
+    fn dynamic_image_creates_mipmap_chain_by_default() {
+        pollster::block_on(async move {
+            // 8x8 solid color image — generates 4 mip levels (8, 4, 2, 1).
+            let pixels = vec![200u8; 8 * 8 * 4];
+            let img =
+                image::DynamicImage::ImageRgba8(image::RgbaImage::from_vec(8, 8, pixels).unwrap());
+            let r = crate::Renderer::new();
+            let tex = r
+                .create_texture(TextureData::DynamicImage(img.clone()))
+                .await
+                .expect("create texture with mipmaps");
+            assert_eq!(tex.object.inner.mip_level_count(), 4);
+
+            // Opt-out: only mip 0
+            let opts = TextureOptions {
+                mipmaps: false,
+                ..Default::default()
+            };
+            let tex_no_mip = r
+                .create_texture((TextureData::DynamicImage(img), opts))
+                .await
+                .expect("create texture without mipmaps");
+            assert_eq!(tex_no_mip.object.inner.mip_level_count(), 1);
+        });
+    }
+
+    // Story: Format override is honored on the DynamicImage arm — same RGBA bytes,
+    // reinterpreted as linear instead of sRGB. Mipmap chain is still generated.
+    #[test]
+    fn format_override_honored_for_image_input() {
+        pollster::block_on(async move {
+            let pixels = vec![128u8; 4 * 4 * 4];
+            let img =
+                image::DynamicImage::ImageRgba8(image::RgbaImage::from_vec(4, 4, pixels).unwrap());
+            let r = crate::Renderer::new();
+
+            let opts = TextureOptions {
+                format: crate::TextureFormat::Rgba8Unorm,
+                ..Default::default()
+            };
+            let tex = r
+                .create_texture((TextureData::DynamicImage(img), opts))
+                .await
+                .expect("create texture with explicit linear format");
+            assert_eq!(tex.object.format, wgpu::TextureFormat::Rgba8Unorm);
+            assert_eq!(tex.object.inner.mip_level_count(), 3); // 4, 2, 1
+        });
+    }
+
+    // Story: 16-bit grayscale source (e.g. height-map PNG) is decoded with
+    // to_luma16 — preserving precision — and uploaded as R16Unorm with mips.
+    #[test]
+    fn luma16_image_uploads_as_r16unorm_with_mipmaps() {
+        pollster::block_on(async move {
+            // 4×4 ramp where each pixel needs the full u16 range to round-trip.
+            let pixels: Vec<u16> = (0..16).map(|i| i * 4096).collect();
+            let buf = image::ImageBuffer::<image::Luma<u16>, _>::from_vec(4, 4, pixels).unwrap();
+            let img = image::DynamicImage::ImageLuma16(buf);
+
+            let r = crate::Renderer::new();
+            let tex = r
+                .create_texture(TextureData::DynamicImage(img))
+                .await
+                .expect("create R16Unorm texture from Luma16 image");
+            assert_eq!(tex.object.format, wgpu::TextureFormat::R16Unorm);
+            assert_eq!(tex.object.inner.mip_level_count(), 3); // 4, 2, 1
+        });
+    }
+
+    // Story: 8-bit grayscale source goes to R8Unorm with the matching CPU mipmap path.
+    #[test]
+    fn luma8_image_uploads_as_r8unorm_with_mipmaps() {
+        pollster::block_on(async move {
+            let pixels: Vec<u8> = (0..16u8).map(|i| i * 16).collect();
+            let buf = image::GrayImage::from_vec(4, 4, pixels).unwrap();
+            let img = image::DynamicImage::ImageLuma8(buf);
+
+            let r = crate::Renderer::new();
+            let tex = r
+                .create_texture(TextureData::DynamicImage(img))
+                .await
+                .expect("create R8Unorm texture from Luma8 image");
+            assert_eq!(tex.object.format, wgpu::TextureFormat::R8Unorm);
+            assert_eq!(tex.object.inner.mip_level_count(), 3); // 4, 2, 1
+        });
+    }
+
+    // Story: prepare with the From<(bytes, format)> impl produces a chain
+    // whose level count and per-level byte sizes match what Renderer::create_texture
+    // computes inline. Mirrors the KTX2 "trust the caller's prebaked levels"
+    // path but for runtime-prepared chains coming off a worker thread.
+    #[test]
+    fn prepare_builds_mipmap_chain_matching_inline_path() {
+        // 8×8 RGBA8 PNG → 4 mip levels (8, 4, 2, 1).
+        let pixels = vec![123u8; 8 * 8 * 4];
+        let img =
+            image::DynamicImage::ImageRgba8(image::RgbaImage::from_vec(8, 8, pixels).unwrap());
+        let mut buf = Vec::new();
+        img.write_to(&mut std::io::Cursor::new(&mut buf), image::ImageFormat::Png)
+            .unwrap();
+        // From<(&[u8], TextureFormat)> — encoded image path.
+        let chain =
+            TextureMipChain::prepare((buf.as_slice(), crate::TextureFormat::Rgba8UnormSrgb))
+                .expect("prepare ok");
+        assert_eq!(chain.level_count(), 4);
+        assert_eq!(chain.base_size(), (8, 8));
+        assert_eq!(chain.format(), wgpu::TextureFormat::Rgba8UnormSrgb);
+        let expected = [4 * 8 * 8, 4 * 4 * 4, 4 * 2 * 2, 4 * 1 * 1];
+        for (i, level) in chain.levels().iter().enumerate() {
+            assert_eq!(level.len(), expected[i], "level {i} byte count");
+        }
+    }
+
+    // Story: the raw-pixel path is selected by providing a `size` — same
+    // single `prepare` entry, the From<(bytes, format, size)> impl carries
+    // it. Exercises tuple, array, and Size as the size argument.
+    #[test]
+    fn prepare_raw_builds_chain_from_raw_pixels() {
+        let pixels = vec![200u8; 8 * 8 * 4];
+        // From<(&[u8], TextureFormat, (u32, u32))>
+        let chain = TextureMipChain::prepare((
+            pixels.as_slice(),
+            crate::TextureFormat::Rgba8UnormSrgb,
+            (8u32, 8u32),
+        ))
+        .expect("prepare with tuple size");
+        assert_eq!(chain.level_count(), 4);
+        assert_eq!(chain.base_size(), (8, 8));
+
+        // From<(&[u8], TextureFormat, [u32; 2])>
+        let chain2 = TextureMipChain::prepare((
+            pixels.as_slice(),
+            crate::TextureFormat::Rgba8UnormSrgb,
+            [8u32, 8u32],
+        ))
+        .expect("prepare with array size");
+        assert_eq!(chain2.base_size(), (8, 8));
+
+        // Explicit `TextureInput` struct literal — same transport as
+        // `Renderer::create_texture` and `create_storage_texture`.
+        let chain3 = TextureMipChain::prepare(crate::TextureInput {
+            data: crate::TextureData::Bytes(pixels.clone()),
+            options: crate::TextureOptions {
+                size: Some(crate::Size::from([8u32, 8u32])),
+                format: crate::TextureFormat::Rgba8UnormSrgb,
+                ..Default::default()
+            },
+        })
+        .expect("prepare with explicit TextureInput");
+        assert_eq!(chain3.base_size(), (8, 8));
+    }
+
+    // Story: prepare's three failure modes (decode, format, shape) surface as
+    // distinct TextureError variants so callers logging tile-cache errors can
+    // distinguish "this tile's bytes are corrupt" from "this format isn't
+    // supported by FC's CPU mipmap path" from "the bytes don't match the
+    // declared shape" without parsing strings.
+    #[test]
+    fn prepare_error_variants_are_distinct() {
+        // 1) Decode failure → MalformedImageError (from `image::ImageError`).
+        let garbage = vec![0xFFu8; 32];
+        let err =
+            TextureMipChain::prepare((garbage.as_slice(), crate::TextureFormat::Rgba8UnormSrgb))
+                .expect_err("garbage bytes should fail to decode");
+        assert!(
+            matches!(err, TextureError::MalformedImageError(_)),
+            "expected MalformedImageError, got {err:?}"
+        );
+
+        // 2) Unsupported format → UnsupportedMipmapFormat carrying the
+        //    public TextureFormat the caller passed in.
+        let pixels = vec![0u8; 4 * 4 * 4];
+        let img =
+            image::DynamicImage::ImageRgba8(image::RgbaImage::from_vec(4, 4, pixels).unwrap());
+        let mut buf = Vec::new();
+        img.write_to(&mut std::io::Cursor::new(&mut buf), image::ImageFormat::Png)
+            .unwrap();
+        let err = TextureMipChain::prepare((buf.as_slice(), crate::TextureFormat::Rgba32Float))
+            .expect_err("Rgba32Float not supported by CPU mipmap path");
+        match err {
+            TextureError::UnsupportedMipmapFormat { format } => {
+                assert_eq!(format, crate::TextureFormat::Rgba32Float);
+            }
+            other => panic!("expected UnsupportedMipmapFormat, got {other:?}"),
+        }
+
+        // 3) Shape mismatch (raw path) → InvalidInput.
+        let too_few_bytes = vec![0u8; 16];
+        let err = TextureMipChain::prepare((
+            too_few_bytes.as_slice(),
+            crate::TextureFormat::Rgba8UnormSrgb,
+            (32u32, 32u32),
+        ))
+        .expect_err("declared 32x32 RGBA but only gave 16 bytes");
+        assert!(
+            matches!(err, TextureError::InvalidInput(_)),
+            "expected InvalidInput, got {err:?}"
+        );
+
+        // 4) Zero size (raw path) → InvalidInput.
+        let err = TextureMipChain::prepare((
+            &[][..],
+            crate::TextureFormat::Rgba8UnormSrgb,
+            (0u32, 16u32),
+        ))
+        .expect_err("zero-width raw input should fail");
+        assert!(
+            matches!(err, TextureError::InvalidInput(_)),
+            "expected InvalidInput, got {err:?}"
+        );
+    }
+
+    // Story: A prepared chain feeds back into create_texture and produces a
+    // texture with the expected format + mip chain — the round-trip RemixBrush
+    // uses for off-main-thread mip generation. Exercises both the
+    // TextureInput::Prepared variant (Rust ergonomics) and the dedicated
+    // create_texture_prepared cross-language entry point.
+    #[test]
+    fn prepared_input_round_trips_through_create_texture() {
+        pollster::block_on(async move {
+            let pixels = vec![77u8; 8 * 8 * 4];
+            let img =
+                image::DynamicImage::ImageRgba8(image::RgbaImage::from_vec(8, 8, pixels).unwrap());
+            let mut buf = Vec::new();
+            img.write_to(&mut std::io::Cursor::new(&mut buf), image::ImageFormat::Png)
+                .unwrap();
+            let chain =
+                TextureMipChain::prepare((buf.as_slice(), crate::TextureFormat::Rgba8UnormSrgb))
+                    .expect("prepare ok");
+            let level_count = chain.level_count() as u32;
+            let r = crate::Renderer::new();
+            let tex = r
+                .create_texture(TextureData::Prepared(chain.clone()))
+                .await
+                .expect("create_texture from Prepared chain");
+            assert_eq!(tex.object.format, wgpu::TextureFormat::Rgba8UnormSrgb);
+            assert_eq!(tex.object.inner.mip_level_count(), level_count);
+            let sz = tex.size();
+            assert_eq!(sz.width, 8);
+            assert_eq!(sz.height, 8);
+
+            // create_texture(chain) reaches the same path via
+            // From<TextureMipChain> for TextureInput. No second method needed.
+            let tex2 = r
+                .create_texture(chain)
+                .await
+                .expect("create_texture from chain");
+            assert_eq!(tex2.object.format, wgpu::TextureFormat::Rgba8UnormSrgb);
+            assert_eq!(tex2.object.inner.mip_level_count(), level_count);
+        });
+    }
+
+    // Story: Raw bytes with R16Unorm format — caller hands us packed little-endian
+    // u16s, we wrap them as a Luma16 buffer and resample for each mip level.
+    #[test]
+    fn raw_bytes_r16unorm_generates_mipmap_chain() {
+        pollster::block_on(async move {
+            // 4×4 image with each u16 cycling through the full range.
+            let words: Vec<u16> = (0..16).map(|i| i * 4096).collect();
+            let mut bytes: Vec<u8> = Vec::with_capacity(words.len() * 2);
+            for w in &words {
+                bytes.extend_from_slice(&w.to_le_bytes());
+            }
+            let opts = TextureOptions {
+                size: Some(crate::Size::from([4u32, 4u32])),
+                format: crate::TextureFormat::R16Unorm,
+                ..Default::default()
+            };
+            let r = crate::Renderer::new();
+            let tex = r
+                .create_texture((&bytes[..], opts))
+                .await
+                .expect("create R16Unorm texture from raw bytes");
+            assert_eq!(tex.object.format, wgpu::TextureFormat::R16Unorm);
+            assert_eq!(tex.object.inner.mip_level_count(), 3); // 4, 2, 1
         });
     }
 }

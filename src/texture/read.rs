@@ -44,10 +44,8 @@ fn prepare_readback(
     }
 
     let row_bytes = width.saturating_mul(bpp);
-    let padded_row_bytes = wgpu::util::align_to(
-        row_bytes as u64,
-        wgpu::COPY_BYTES_PER_ROW_ALIGNMENT as u64,
-    ) as u32;
+    let padded_row_bytes =
+        wgpu::util::align_to(row_bytes as u64, wgpu::COPY_BYTES_PER_ROW_ALIGNMENT as u64) as u32;
     let output_size = padded_row_bytes as u64 * height as u64 * depth as u64;
 
     let buffer = {

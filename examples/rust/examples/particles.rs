@@ -83,11 +83,7 @@ fn draw(app: &App) {
         // rebuild instances
         let mut tmp = Vec::with_capacity(state.particles.len());
         for p in &state.particles {
-            tmp.push(
-                Instance::new()
-                    .set("offset", p.pos)
-                    .set("tint", p.col),
-            );
+            tmp.push(Instance::new().set("offset", p.pos).set("tint", p.col));
         }
         state.mesh.clear_instances();
         state.mesh.add_instances(tmp);
@@ -134,11 +130,7 @@ async fn setup(app: &App, windows: Vec<Arc<Window>>) -> SetupResult {
             vel: [vx, vy],
             col,
         });
-        insts.push(
-            Instance::new()
-                .set("offset", [px, py])
-                .set("tint", col),
-        );
+        insts.push(Instance::new().set("offset", [px, py]).set("tint", col));
     }
     mesh.add_instances(insts);
 
