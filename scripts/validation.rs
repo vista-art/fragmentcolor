@@ -5,11 +5,6 @@ mod validation {
     use std::fs;
     use std::path::Path;
 
-    fn to_snake_case(s: &str) -> String {
-        // Basic snake_case converter for method names (already snake in Rust)
-        s.to_string()
-    }
-
     pub fn object_dir_name(object: &str) -> String {
         // Convert CamelCase to snake_case for directory names
         let mut out = String::new();
@@ -206,7 +201,6 @@ mod validation {
 
         // Enforce documentation for ALL public objects (including wrappers)
         let objects = public_structs_excluding_hidden();
-        let _all_objects = objects.clone();
 
         // Validate objects and their methods
         for object in objects.iter() {
@@ -215,13 +209,12 @@ mod validation {
             let obj_dir = find_object_dir(&docs_root, &dir).unwrap_or(docs_root.join(&dir));
             let object_md = obj_dir.join(format!("{}.md", dir));
             ensure_object_md_ok(object, &object_md, &mut problems);
-            // Link enforcement disabled; links are auto-rewritten during export
 
             for m in &methods_vec {
                 if let Some(fun) = &m.function {
                     let name = &fun.name;
 
-                    let file = to_snake_case(name);
+                    let file = name.clone();
                     let path = obj_dir.join(format!("{}.md", file));
                     if path.exists() {
                         ensure_method_md_ok(object, name, &path, &mut problems);
@@ -235,7 +228,6 @@ mod validation {
                     } else {
                         ensure_method_md_ok(object, name, &path, &mut problems);
                     }
-                    // Link enforcement disabled; links are auto-rewritten during export
                 }
             }
         }
@@ -248,7 +240,6 @@ mod validation {
             let dir_name = obj_dir.file_name().and_then(|s| s.to_str()).unwrap_or("");
             let object_md = obj_dir.join(format!("{}.md", dir_name));
             ensure_object_md_ok(&object, &object_md, &mut problems);
-            // Link enforcement disabled; links are auto-rewritten during export
         }
 
         // NEW: Validate method titles across all docs recursively (non-hidden), independent of API map
