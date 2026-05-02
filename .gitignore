@@ -77,6 +77,9 @@ docs/_build/
 # VSCode
 .vscode/
 
+# Claude Code agent worktrees
+.claude/worktrees/
+
 # Pyenv
 .python-version
 
