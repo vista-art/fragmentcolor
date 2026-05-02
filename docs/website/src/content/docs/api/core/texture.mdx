@@ -13,7 +13,7 @@ import { Code, Tabs, TabItem, Aside } from "@astrojs/starlight/components";
 
 A GPU texture resource. Public API wrapper that holds a shareable reference to the internal TextureObject and a numeric handle used by uniforms.
 
-- Construct via [Renderer](/api/core/renderer)::create_texture_* helpers (no direct constructors)
+- Construct via [Renderer::create_texture(input)](/api/core/renderer/create_texture) â single entry point that takes any `TextureInput`-shaped value (bytes, `(bytes, [w, h])`, `(bytes, format)`, path, URL, KTX2, prepared chain, etc.).
 - Set on shaders with shader.set("key", &[Texture](/api/core/texture))
 - [Texture](/api/core/texture) owns its sampler; you can tweak filtering and wrapping via set_sampler_options.
 
@@ -44,9 +44,11 @@ let shader = Shader::new(r#"
 @fragment fn main() -> @location(0) vec4<f32> { return vec4f(1.,1.,1.,1.); }
 "#)?;
 
-// 1x1 RGBA (white) raw pixel bytes
+// 1x1 RGBA (white) raw pixel bytes - single create_texture entry, tuple
+// form (bytes, format, size) selects the raw-pixel path. Format is
+// the placeholder Rgba (sRGB-aware) by default.
 let pixels: &[u8] = &[255,255,255,255];
-let texture = renderer.create_texture_with_size(pixels, [1,1]).await?;
+let texture = renderer.create_texture((pixels, [1u32, 1u32])).await?;
 
 // insert  the texture in the shader matching the name in the shader
 shader.set("my_texture", &texture)?;
@@ -56,7 +58,7 @@ Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 22-25}"
+lang="rust" meta="collapse={1-1, 24-27}"
 />
 
 </TabItem>
@@ -78,9 +80,11 @@ const shader = new Shader(\`
 
 \`);
 
-// 1x1 RGBA (white) raw pixel bytes
+// 1x1 RGBA (white) raw pixel bytes - single create_texture entry, tuple
+// form (bytes, format, size) selects the raw-pixel path. Format is
+// the placeholder Rgba (sRGB-aware) by default.
 const pixels = [255,255,255,255];
-const texture = await renderer.createTextureWithSize(pixels, [1,1]);
+const texture = await renderer.createTexture((pixels, [1, 1]));
 
 // insert  the texture in the shader matching the name in the shader
 shader.set("my_texture", texture);
@@ -108,9 +112,11 @@ shader = Shader("""
 
 """)
 
-# 1x1 RGBA (white) raw pixel bytes
+# 1x1 RGBA (white) raw pixel bytes - single create_texture entry, tuple
+# form (bytes, format, size) selects the raw-pixel path. Format is
+# the placeholder Rgba (sRGB-aware) by default.
 pixels = [255,255,255,255]
-texture = renderer.create_texture_with_size(pixels, [1,1])
+texture = renderer.create_texture((pixels, [1, 1]))
 
 # insert  the texture in the shader matching the name in the shader
 shader.set("my_texture", texture)
@@ -138,9 +144,11 @@ let shader = Shader("""
 
 """)
 
-// 1x1 RGBA (white) raw pixel bytes
+// 1x1 RGBA (white) raw pixel bytes - single create_texture entry, tuple
+// form (bytes, format, size) selects the raw-pixel path. Format is
+// the placeholder Rgba (sRGB-aware) by default.
 let pixels = [255,255,255,255]
-let texture = try await renderer.createTextureWithSize(pixels, [1,1])
+let texture = try await renderer.createTexture((pixels, [1, 1]))
 
 // insert  the texture in the shader matching the name in the shader
 shader.set("my_texture", texture)
@@ -167,9 +175,11 @@ val shader = Shader("""
 
 """)
 
-// 1x1 RGBA (white) raw pixel bytes
+// 1x1 RGBA (white) raw pixel bytes - single create_texture entry, tuple
+// form (bytes, format, size) selects the raw-pixel path. Format is
+// the placeholder Rgba (sRGB-aware) by default.
 val pixels = arrayOf(255,255,255,255)
-val texture = renderer.createTextureWithSize(pixels, arrayOf(1,1))
+val texture = renderer.createTexture((pixels, arrayOf(1, 1)))
 
 // insert  the texture in the shader matching the name in the shader
 shader.set("my_texture", texture)
@@ -201,7 +211,7 @@ code={`
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Renderer, TextureFormat};
 let renderer = Renderer::new();
-let texture = renderer.create_storage_texture([64, 64], TextureFormat::Rgba, None).await?;
+let texture = renderer.create_storage_texture(([64u32, 64u32], TextureFormat::Rgba)).await?;
 let id = *texture.id();
 Ok(())
 }
@@ -232,7 +242,7 @@ code={`
 from fragmentcolor import Renderer, TextureFormat
 
 renderer = Renderer()
-texture = renderer.create_storage_texture([64, 64], TextureFormat.Rgba, None)
+texture = renderer.create_storage_texture([64, 64], TextureFormat.Rgba)
 id = texture.id()
 `}
 lang="python"
@@ -245,7 +255,7 @@ lang="python"
 code={`
 import FragmentColor
 let renderer = Renderer()
-let texture = try await renderer.createStorageTexture([64, 64], TextureFormat.Rgba, nil)
+let texture = try await renderer.createStorageTexture(([64, 64], TextureFormat.Rgba))
 let id = texture.id()
 `}
 lang="swift"
@@ -258,7 +268,7 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 val renderer = Renderer()
-val texture = renderer.createStorageTexture(arrayOf(64, 64), TextureFormat.Rgba, null)
+val texture = renderer.createStorageTexture((arrayOf(64, 64), TextureFormat.Rgba))
 val id = texture.id()
 `}
 lang="kotlin"
@@ -286,7 +296,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Renderer, Size};
 let renderer = Renderer::new();
 let pixels: &[u8] = &[255,255,255,255];
-let tex = renderer.create_texture_with_size(pixels, [1,1]).await?;
+let tex = renderer.create_texture((pixels, [1u32, 1u32])).await?;
 let sz = tex.size();
 assert_eq!([sz.width, sz.height], [1, 1]);
 Ok(())
@@ -304,7 +314,7 @@ code={`
 import { Renderer } from "fragmentcolor";
 const renderer = new Renderer();
 const pixels = [255,255,255,255];
-const tex = await renderer.createTextureWithSize(pixels, [1,1]);
+const tex = await renderer.createTexture((pixels, [1, 1]));
 const sz = tex.size();
 `}
 lang="js"
@@ -318,7 +328,7 @@ code={`
 from fragmentcolor import Renderer
 renderer = Renderer()
 pixels = [255,255,255,255]
-tex = renderer.create_texture_with_size(pixels, [1,1])
+tex = renderer.create_texture((pixels, [1, 1]))
 sz = tex.size
 `}
 lang="python"
@@ -332,7 +342,7 @@ code={`
 import FragmentColor
 let renderer = Renderer()
 let pixels = [255,255,255,255]
-let tex = try await renderer.createTextureWithSize(pixels, [1,1])
+let tex = try await renderer.createTexture((pixels, [1, 1]))
 let sz = tex.size()
 `}
 lang="swift"
@@ -346,7 +356,7 @@ code={`
 import org.fragmentcolor.*
 val renderer = Renderer()
 val pixels = arrayOf(255,255,255,255)
-val tex = renderer.createTextureWithSize(pixels, arrayOf(1,1))
+val tex = renderer.createTexture((pixels, arrayOf(1, 1)))
 val sz = tex.size()
 `}
 lang="kotlin"
@@ -377,7 +387,7 @@ use fragmentcolor::{Renderer, Size};
 let renderer = Renderer::new();
 // 1x1 RGBA (white) raw pixel bytes
 let pixels: &[u8] = &[255,255,255,255];
-let tex = renderer.create_texture_with_size(pixels, [1, 1]).await?;
+let tex = renderer.create_texture((pixels, [1u32, 1u32])).await?;
 let a = tex.aspect();
 
 assert!(a > 0.0);
@@ -399,7 +409,7 @@ import { Renderer } from "fragmentcolor";
 const renderer = new Renderer();
 // 1x1 RGBA (white) raw pixel bytes
 const pixels = [255,255,255,255];
-const tex = await renderer.createTextureWithSize(pixels, [1, 1]);
+const tex = await renderer.createTexture((pixels, [1, 1]));
 const a = tex.aspect();
 
 `}
@@ -417,7 +427,7 @@ from fragmentcolor import Renderer
 renderer = Renderer()
 # 1x1 RGBA (white) raw pixel bytes
 pixels = [255,255,255,255]
-tex = renderer.create_texture_with_size(pixels, [1, 1])
+tex = renderer.create_texture((pixels, [1, 1]))
 a = tex.aspect()
 
 `}
@@ -435,7 +445,7 @@ import FragmentColor
 let renderer = Renderer()
 // 1x1 RGBA (white) raw pixel bytes
 let pixels = [255,255,255,255]
-let tex = try await renderer.createTextureWithSize(pixels, [1, 1])
+let tex = try await renderer.createTexture((pixels, [1, 1]))
 let a = tex.aspect()
 `}
 lang="swift"
@@ -452,7 +462,7 @@ import org.fragmentcolor.*
 val renderer = Renderer()
 // 1x1 RGBA (white) raw pixel bytes
 val pixels = arrayOf(255,255,255,255)
-val tex = renderer.createTextureWithSize(pixels, arrayOf(1, 1))
+val tex = renderer.createTexture((pixels, arrayOf(1, 1)))
 val a = tex.aspect()
 `}
 lang="kotlin"
@@ -469,6 +479,8 @@ lang="kotlin"
 
 Update the texture sampler options (filtering, wrapping, etc.).
 
+`smooth: true` (the default) uses linear filtering for both magnification and minification, including trilinear interpolation between mip levels when the texture has a mipmap chain (created automatically for source images). `smooth: false` uses nearest-neighbor for everything.
+
 Note: changes take effect on next bind; the renderer recreates the sampler as needed.
 
 #### Example
@@ -484,7 +496,7 @@ let renderer = Renderer::new();
 // 1x1 RGBA (white) raw pixel bytes
 let pixels: &[u8] = &[255,255,255,255];
 
-let texture = renderer.create_texture_with_size(pixels, [1,1]).await?;
+let texture = renderer.create_texture((pixels, [1u32, 1u32])).await?;
 let opts = SamplerOptions { repeat_x: true, repeat_y: true, smooth: true, compare: None };
 texture.set_sampler_options(opts);
 
@@ -506,7 +518,7 @@ const renderer = new Renderer();
 // 1x1 RGBA (white) raw pixel bytes
 const pixels = [255,255,255,255];
 
-const texture = await renderer.createTextureWithSize(pixels, [1,1]);
+const texture = await renderer.createTexture((pixels, [1, 1]));
 const opts = {repeat_x: true, repeat_y: true, smooth: true, compare: null};
 texture.setSamplerOptions(opts);
 
@@ -525,7 +537,7 @@ renderer = Renderer()
 # 1x1 RGBA (white) raw pixel bytes
 pixels = [255,255,255,255]
 
-texture = renderer.create_texture_with_size(pixels, [1,1])
+texture = renderer.create_texture((pixels, [1, 1]))
 opts = {"repeat_x": True, "repeat_y": True, "smooth": True, "compare": None}
 texture.set_sampler_options(opts)
 
@@ -543,7 +555,14 @@ import FragmentColor
 
 let renderer = Renderer()
 let pixels: [UInt8] = [255, 255, 255, 255]
-let texture = try await renderer.createTextureWithSize(pixels: pixels, size: Size(width: 1, height: 1))
+let options = TextureOptions(
+    size: Size(width: 1, height: 1, depth: nil),
+    format: .rgba8UnormSrgb,
+    sampler: SamplerOptions(repeatX: false, repeatY: false, smooth: true, compare: nil),
+    mipmaps: false,
+    usage: nil
+)
+let texture = try await renderer.createTexture(input: .bytes(pixels), options: options)
 
 let opts = SamplerOptions(repeatX: true, repeatY: true, smooth: true, compare: nil)
 texture.setSamplerOptions(opts: opts)
@@ -560,7 +579,14 @@ import org.fragmentcolor.*
 
 val renderer = Renderer()
 val pixels: ByteArray = byteArrayOf(255.toByte(), 255.toByte(), 255.toByte(), 255.toByte())
-val texture = renderer.createTextureWithSize(pixels, Size(1u, 1u))
+val options = TextureOptions(
+    size = Size(width = 1u, height = 1u, depth = null),
+    format = TextureFormat.RGBA8_UNORM_SRGB,
+    sampler = SamplerOptions(repeatX = false, repeatY = false, smooth = true, compare = null),
+    mipmaps = false,
+    usage = null,
+)
+val texture = renderer.createTexture(TextureInputMobile.Bytes(pixels), options)
 
 val opts = SamplerOptions(repeatX = true, repeatY = true, smooth = true, compare = null)
 texture.setSamplerOptions(opts)
@@ -597,7 +623,7 @@ code={`
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Renderer, TextureFormat};
 let renderer = Renderer::new();
-let texture = renderer.create_storage_texture([64, 64], TextureFormat::Rgba, None).await?;
+let texture = renderer.create_storage_texture(([64u32, 64u32], TextureFormat::Rgba)).await?;
 let frame_bytes = vec![0u8; 64 * 64 * 4];
 
 texture.write(&frame_bytes)?;
@@ -632,7 +658,7 @@ code={`
 from fragmentcolor import Renderer, TextureFormat
 
 renderer = Renderer()
-texture = renderer.create_storage_texture([64, 64], TextureFormat.Rgba, None)
+texture = renderer.create_storage_texture([64, 64], TextureFormat.Rgba)
 frame = bytes(64 * 64 * 4)
 
 texture.write(frame)
@@ -647,7 +673,7 @@ lang="python"
 code={`
 import FragmentColor
 let renderer = Renderer()
-let texture = try await renderer.createStorageTexture([64, 64], TextureFormat.Rgba, nil)
+let texture = try await renderer.createStorageTexture(([64, 64], TextureFormat.Rgba))
 let frame_bytes = Array(repeating: 0, count: 64 * 64 * 4)
 
 texture.write(frame_bytes)
@@ -662,7 +688,7 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 val renderer = Renderer()
-val texture = renderer.createStorageTexture(arrayOf(64, 64), TextureFormat.Rgba, null)
+val texture = renderer.createStorageTexture((arrayOf(64, 64), TextureFormat.Rgba))
 val frame_bytes = Array(64 * 64 * 4) { 0 }
 
 texture.write(frame_bytes)
@@ -702,7 +728,7 @@ code={`
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Renderer, TextureFormat, TextureRegion};
 let renderer = Renderer::new();
-let texture = renderer.create_storage_texture([64, 32], TextureFormat::Rgba, None).await?;
+let texture = renderer.create_storage_texture(([64u32, 32u32], TextureFormat::Rgba)).await?;
 let bytes = vec![0u8; 64 * 32 * 4];
 
 // Simple sub-rectangle update.
@@ -748,7 +774,7 @@ code={`
 from fragmentcolor import Renderer, TextureFormat
 
 renderer = Renderer()
-texture = renderer.create_storage_texture([64, 32], TextureFormat.Rgba, None)
+texture = renderer.create_storage_texture([64, 32], TextureFormat.Rgba)
 bytes_data = bytes(64 * 32 * 4)
 
 # Simple sub-rectangle update.
@@ -767,7 +793,7 @@ lang="python"
 code={`
 import FragmentColor
 let renderer = Renderer()
-let texture = try await renderer.createStorageTexture([64, 32], TextureFormat.Rgba, nil)
+let texture = try await renderer.createStorageTexture(([64, 32], TextureFormat.Rgba))
 let bytes = Array(repeating: 0, count: 64 * 32 * 4)
 
 // Simple sub-rectangle update.
@@ -787,7 +813,7 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 val renderer = Renderer()
-val texture = renderer.createStorageTexture(arrayOf(64, 32), TextureFormat.Rgba, null)
+val texture = renderer.createStorageTexture((arrayOf(64, 32), TextureFormat.Rgba))
 val bytes = Array(64 * 32 * 4) { 0 }
 
 // Simple sub-rectangle update.
@@ -827,7 +853,7 @@ code={`
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Renderer, TextureFormat};
 let renderer = Renderer::new();
-let texture = renderer.create_storage_texture([64, 64], TextureFormat::Rgba, None).await?;
+let texture = renderer.create_storage_texture(([64u32, 64u32], TextureFormat::Rgba)).await?;
 texture.write(&vec![0u8; 64 * 64 * 4])?;
 
 let bytes = texture.get_image()?;
@@ -846,7 +872,7 @@ lang="rust" meta="collapse={1-1, 8-11}"
 code={`
 import { Renderer, TextureFormat } from "fragmentcolor";
 const renderer = new Renderer();
-const texture = await renderer.createStorageTexture([64, 64], TextureFormat.Rgba, null);
+const texture = await renderer.createStorageTexture(([64, 64], TextureFormat.Rgba));
 texture.write(Array(64 * 64 * 4).fill(0));
 
 const bytes = texture.getImage();
@@ -861,7 +887,7 @@ lang="js"
 code={`
 from fragmentcolor import Renderer, TextureFormat
 renderer = Renderer()
-texture = renderer.create_storage_texture([64, 64], TextureFormat.Rgba, None)
+texture = renderer.create_storage_texture(([64, 64], TextureFormat.Rgba))
 texture.write([0] * (64 * 64 * 4))
 
 bytes = texture.get_image()
@@ -876,7 +902,7 @@ lang="python"
 code={`
 import FragmentColor
 let renderer = Renderer()
-let texture = try await renderer.createStorageTexture([64, 64], TextureFormat.Rgba, nil)
+let texture = try await renderer.createStorageTexture(([64, 64], TextureFormat.Rgba))
 texture.write(Array(repeating: 0, count: 64 * 64 * 4))
 
 let bytes = texture.getImage()
@@ -891,7 +917,7 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 val renderer = Renderer()
-val texture = renderer.createStorageTexture(arrayOf(64, 64), TextureFormat.Rgba, null)
+val texture = renderer.createStorageTexture((arrayOf(64, 64), TextureFormat.Rgba))
 texture.write(Array(64 * 64 * 4) { 0 })
 
 val bytes = texture.getImage()
@@ -922,7 +948,7 @@ code={`
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Renderer, TextureFormat};
 let renderer = Renderer::new();
-let texture = renderer.create_storage_texture([64, 64], TextureFormat::Rgba, None).await?;
+let texture = renderer.create_storage_texture(([64u32, 64u32], TextureFormat::Rgba)).await?;
 texture.write(&vec![0u8; 64 * 64 * 4])?;
 
 let bytes = texture.get_image_async().await?;
@@ -941,7 +967,7 @@ lang="rust" meta="collapse={1-1, 8-11}"
 code={`
 import { Renderer, TextureFormat } from "fragmentcolor";
 const renderer = new Renderer();
-const texture = await renderer.createStorageTexture([64, 64], TextureFormat.Rgba, null);
+const texture = await renderer.createStorageTexture(([64, 64], TextureFormat.Rgba));
 texture.write(Array(64 * 64 * 4).fill(0));
 
 const bytes = await texture.getImageAsync();
@@ -956,7 +982,7 @@ lang="js"
 code={`
 from fragmentcolor import Renderer, TextureFormat
 renderer = Renderer()
-texture = renderer.create_storage_texture([64, 64], TextureFormat.Rgba, None)
+texture = renderer.create_storage_texture(([64, 64], TextureFormat.Rgba))
 texture.write([0] * (64 * 64 * 4))
 
 bytes = texture.get_image_async()
@@ -971,7 +997,7 @@ lang="python"
 code={`
 import FragmentColor
 let renderer = Renderer()
-let texture = try await renderer.createStorageTexture([64, 64], TextureFormat.Rgba, nil)
+let texture = try await renderer.createStorageTexture(([64, 64], TextureFormat.Rgba))
 texture.write(Array(repeating: 0, count: 64 * 64 * 4))
 
 let bytes = try await texture.getImageAsync()
@@ -986,7 +1012,7 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 val renderer = Renderer()
-val texture = renderer.createStorageTexture(arrayOf(64, 64), TextureFormat.Rgba, null)
+val texture = renderer.createStorageTexture((arrayOf(64, 64), TextureFormat.Rgba))
 texture.write(Array(64 * 64 * 4) { 0 })
 
 val bytes = texture.getImageAsync()

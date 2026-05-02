@@ -247,16 +247,13 @@ private enum _GeneratedExamples {
 
     static func _example_core_renderer_create_storage_texture() async throws {
 
-
         let r = Renderer()
-        let tex = try await r.createStorageTexture([64, 64], TextureFormat.Rgba, nil)
-    }
+        // Empty storage texture â same single create_storage_texture entry.
+        let tex = try await r.createStorageTexture(([64, 64], TextureFormat.Rgba))
 
-    static func _example_core_renderer_create_storage_texture_with_data() async throws {
-
-        let r = Renderer()
-        let seed = Array(repeating: 0, count: 8 * 8 * 4)
-        let tex = try await r.createStorageTextureWithData([8, 8], TextureFormat.Rgba, seed, nil)
+        // Pre-seeded with bytes â same method, three-tuple form.
+        let pixels = Array(repeating: 0, count: 64 * 64 * 4)
+        let tex2 = try await r.createStorageTexture(([64, 64], TextureFormat.Rgba, pixels))
     }
 
     static func _example_core_renderer_create_target() async throws {
@@ -272,9 +269,9 @@ private enum _GeneratedExamples {
 
     static func _example_core_renderer_create_texture() async throws {
         let renderer = Renderer()
-        // Load encoded image bytes (PNG/JPEG) or use a file path
+        // Encoded image bytes (PNG / JPEG / etc.) â single tuple, no extra method.
         let image = "/healthcheck/public/favicon.png"
-        let tex = try await renderer.createTexture(image)
+        let tex = try await renderer.createTexture(image[..])
     }
 
     static func _example_core_renderer_create_texture_target() async throws {
@@ -290,30 +287,6 @@ private enum _GeneratedExamples {
         let image = target.getImage()
     }
 
-    static func _example_core_renderer_create_texture_with() async throws {
-        let renderer = Renderer()
-        let pixels = [
-            255,0,0,255,   0,255,0,255,
-            0,0,255,255,   255,255,255,255,
-        ]
-        let tex = try await renderer.createTextureWith(pixels, [2, 2])
-    }
-
-    static func _example_core_renderer_create_texture_with_format() async throws {
-        let renderer = Renderer()
-        let image = "/healthcheck/public/favicon.png"
-        let tex = try await renderer.createTextureWithFormat(image, TextureFormat.Rgba)
-    }
-
-    static func _example_core_renderer_create_texture_with_size() async throws {
-        let renderer = Renderer()
-        let pixels = [
-            255,0,0,255,   0,255,0,255,
-            0,0,255,255,   255,255,255,255,
-        ]
-        let tex = try await renderer.createTextureWithSize(pixels, [2, 2])
-    }
-
     static func _example_core_renderer_new() async throws {
 
 
@@ -323,7 +296,7 @@ private enum _GeneratedExamples {
 
     static func _example_core_renderer_read_texture() async throws {
         let renderer = Renderer()
-        let texture = try await renderer.createStorageTexture([64, 64], TextureFormat.Rgba, nil)
+        let texture = try await renderer.createStorageTexture(([64, 64], TextureFormat.Rgba))
         texture.write(Array(repeating: 0, count: 64 * 64 * 4))
 
         let bytes = renderer.readTexture(texture.id())
@@ -331,7 +304,7 @@ private enum _GeneratedExamples {
 
     static func _example_core_renderer_read_texture_async() async throws {
         let renderer = Renderer()
-        let texture = try await renderer.createStorageTexture([64, 64], TextureFormat.Rgba, nil)
+        let texture = try await renderer.createStorageTexture(([64, 64], TextureFormat.Rgba))
         texture.write(Array(repeating: 0, count: 64 * 64 * 4))
 
         let bytes = try await renderer.readTextureAsync(texture.id())
@@ -349,7 +322,7 @@ private enum _GeneratedExamples {
 
     static func _example_core_renderer_unregister_texture() async throws {
         let renderer = Renderer()
-        let texture = try await renderer.createStorageTexture([16, 16], TextureFormat.Rgba, nil)
+        let texture = try await renderer.createStorageTexture(([16, 16], TextureFormat.Rgba))
         let id = texture.id()
 
         renderer.unregisterTexture(id)
@@ -609,7 +582,7 @@ private enum _GeneratedExamples {
         // Point at your own mirror of the registry
         Shader.setRegistry("https://cdn.example.com/shaders/")
 
-        // Now """sdf2d/circle""" resolves to https://cdn.example.com/shaders/sdf2d/circle.wgsl
+        // Now the slug "sdf2d/circle" resolves to https://cdn.example.com/shaders/sdf2d/circle.wgsl
         // (Skipping the actual fetch in this doctest)
     }
 
@@ -652,9 +625,11 @@ private enum _GeneratedExamples {
 
         """)
 
-        // 1x1 RGBA (white) raw pixel bytes
+        // 1x1 RGBA (white) raw pixel bytes - single create_texture entry, tuple
+        // form (bytes, format, size) selects the raw-pixel path. Format is
+        // the placeholder Rgba (sRGB-aware) by default.
         let pixels = [255,255,255,255]
-        let texture = try await renderer.createTextureWithSize(pixels, [1,1])
+        let texture = try await renderer.createTexture((pixels, [1, 1]))
 
         // insert  the texture in the shader matching the name in the shader
         shader.set("my_texture", texture)
@@ -666,13 +641,13 @@ private enum _GeneratedExamples {
         let renderer = Renderer()
         // 1x1 RGBA (white) raw pixel bytes
         let pixels = [255,255,255,255]
-        let tex = try await renderer.createTextureWithSize(pixels, [1, 1])
+        let tex = try await renderer.createTexture((pixels, [1, 1]))
         let a = tex.aspect()
     }
 
     static func _example_core_texture_get_image() async throws {
         let renderer = Renderer()
-        let texture = try await renderer.createStorageTexture([64, 64], TextureFormat.Rgba, nil)
+        let texture = try await renderer.createStorageTexture(([64, 64], TextureFormat.Rgba))
         texture.write(Array(repeating: 0, count: 64 * 64 * 4))
 
         let bytes = texture.getImage()
@@ -680,7 +655,7 @@ private enum _GeneratedExamples {
 
     static func _example_core_texture_get_image_async() async throws {
         let renderer = Renderer()
-        let texture = try await renderer.createStorageTexture([64, 64], TextureFormat.Rgba, nil)
+        let texture = try await renderer.createStorageTexture(([64, 64], TextureFormat.Rgba))
         texture.write(Array(repeating: 0, count: 64 * 64 * 4))
 
         let bytes = try await texture.getImageAsync()
@@ -688,7 +663,7 @@ private enum _GeneratedExamples {
 
     static func _example_core_texture_id() async throws {
         let renderer = Renderer()
-        let texture = try await renderer.createStorageTexture([64, 64], TextureFormat.Rgba, nil)
+        let texture = try await renderer.createStorageTexture(([64, 64], TextureFormat.Rgba))
         let id = texture.id()
     }
 
@@ -696,7 +671,14 @@ private enum _GeneratedExamples {
 
         let renderer = Renderer()
         let pixels: [UInt8] = [255, 255, 255, 255]
-        let texture = try await renderer.createTextureWithSize(pixels: pixels, size: Size(width: 1, height: 1))
+        let options = TextureOptions(
+            size: Size(width: 1, height: 1, depth: nil),
+            format: .rgba8UnormSrgb,
+            sampler: SamplerOptions(repeatX: false, repeatY: false, smooth: true, compare: nil),
+            mipmaps: false,
+            usage: nil
+        )
+        let texture = try await renderer.createTexture(input: .bytes(pixels), options: options)
 
         let opts = SamplerOptions(repeatX: true, repeatY: true, smooth: true, compare: nil)
         texture.setSamplerOptions(opts: opts)
@@ -705,13 +687,13 @@ private enum _GeneratedExamples {
     static func _example_core_texture_size() async throws {
         let renderer = Renderer()
         let pixels = [255,255,255,255]
-        let tex = try await renderer.createTextureWithSize(pixels, [1,1])
+        let tex = try await renderer.createTexture((pixels, [1, 1]))
         let sz = tex.size()
     }
 
     static func _example_core_texture_write() async throws {
         let renderer = Renderer()
-        let texture = try await renderer.createStorageTexture([64, 64], TextureFormat.Rgba, nil)
+        let texture = try await renderer.createStorageTexture(([64, 64], TextureFormat.Rgba))
         let frame_bytes = Array(repeating: 0, count: 64 * 64 * 4)
 
         texture.write(frame_bytes)
@@ -719,7 +701,7 @@ private enum _GeneratedExamples {
 
     static func _example_core_texture_write_region() async throws {
         let renderer = Renderer()
-        let texture = try await renderer.createStorageTexture([64, 32], TextureFormat.Rgba, nil)
+        let texture = try await renderer.createStorageTexture(([64, 32], TextureFormat.Rgba))
         let bytes = Array(repeating: 0, count: 64 * 32 * 4)
 
         // Simple sub-rectangle update.
@@ -728,6 +710,86 @@ private enum _GeneratedExamples {
         // Explicit data layout (advanced â when source rows are padded).
         let region = TextureRegion.from([0, 0, 64, 32]).withStride(256).withRows(32)
         texture.writeRegion(bytes, region)
+    }
+
+    static func _example_core_texture_mip_chain_TextureMipChain() async throws {
+
+        let renderer = Renderer()
+        // Encoded image bytes the caller has on hand (could come off a worker).
+        let png = [
+            0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
+            // ... full PNG body ...
+        ]
+        let chain = TextureMipChain.prepare((png, TextureFormat.Rgba8UnormSrgb))
+
+        // Hand the chain to the unified create_texture entry - same vocabulary as
+        // every other texture path; From<TextureMipChain> selects the GPU-only
+        // upload internally.
+        let texture = try await renderer.createTexture(chain)
+    }
+
+    static func _example_core_texture_mip_chain_base_size() async throws {
+
+        let pixels = Array(repeating: 0, count: 16 * 16 * 4)
+        let chain = TextureMipChain.prepare((
+            pixels.asSlice(),
+            TextureFormat.Rgba8UnormSrgb,
+            [16, 16],
+        ))
+        let (width, height) = chain.baseSize()
+        let _ = (width, height)
+    }
+
+    static func _example_core_texture_mip_chain_format() async throws {
+
+        let pixels = Array(repeating: 200, count: 4 * 4 * 4)
+        let chain = TextureMipChain.prepare((
+            pixels.asSlice(),
+            TextureFormat.Rgba8UnormSrgb,
+            [4, 4],
+        ))
+        let _ = chain.format()
+    }
+
+    static func _example_core_texture_mip_chain_level_count() async throws {
+
+        let pixels = Array(repeating: 0, count: 8 * 8 * 4)
+        let chain = TextureMipChain.prepare((
+            pixels.asSlice(),
+            TextureFormat.Rgba8UnormSrgb,
+            [8, 8],
+        ))
+        let count = chain.levelCount()
+        let _ = count
+    }
+
+    static func _example_core_texture_mip_chain_levels() async throws {
+
+        let pixels = Array(repeating: 0, count: 8 * 8 * 4)
+        let chain = TextureMipChain.prepare((
+            pixels.asSlice(),
+            TextureFormat.Rgba8UnormSrgb,
+            [8, 8],
+        ))
+        let level_zero_bytes = chain.levels()[0]
+        let _ = level_zero_bytes
+    }
+
+    static func _example_core_texture_mip_chain_prepare() async throws {
+
+        // Encoded path â single tuple, no extra method.
+        let chain = TextureMipChain.prepare((encoded_png_bytes, TextureFormat.Rgba8UnormSrgb))
+
+        // Raw pixel path â same method, just include the size in the tuple.
+        let chain_raw = TextureMipChain.prepare((
+            raw_rgba.asSlice(),
+            TextureFormat.Rgba8UnormSrgb,
+            [8, 8],
+        ))
+
+        // Hand the chain to the unified create_texture entry â same vocabulary.
+        let renderer = Renderer()
+        let texture = try await renderer.createTexture(chain)
     }
 
     static func _example_geometry_mesh_Mesh() async throws {

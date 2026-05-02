@@ -8,8 +8,6 @@ tags: ["release", "rust", "webgpu", "python", "javascript", "milestone"]
 
 v0.10.7 covers desktop and web, and makes feature parity across Rust, JavaScript, and Python an enforced build requirement. v0.11 is reserved for the upcoming iOS and Android releases.
 
-For context, FragmentColor is a small Rust library that lets you write one WGSL shader and render it from Rust, JavaScript, or Python, to a window or an offscreen texture, on top of [wgpu](https://wgpu.rs). The design goal is for GPU code to feel about as friendly as Canvas 2D.
-
 ### Enforced feature parity
 
 Every public object is documented in [docs/api](https://github.com/vista-art/fragmentcolor/tree/main/docs/api), every doc has an `## Example` section, and the build refuses to compile if a method is missing in any binding. The JavaScript and Python examples on this site are extracted from the same healthcheck scripts that run in CI on every push.
@@ -61,7 +59,5 @@ pip install fragmentcolor rendercanvas glfw
 Full changelog: [GitHub v0.10.7](https://github.com/vista-art/fragmentcolor/releases/tag/v0.10.7).
 
 Start here: [/welcome](/welcome) · [/api](/api) · [GitHub](https://github.com/vista-art/fragmentcolor)
-
-If you build something with this, I'd like to see it.
 
 — Rafael

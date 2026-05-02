@@ -523,11 +523,31 @@ lang="kotlin"
 
 ### Renderer::create_texture
 
-Create a [Texture](/api/core/texture) from various inputs.
+Create a [Texture](/api/core/texture) from any input shape â there is exactly one method.
 
-- Rust: `create_texture(input)` infers from encoded bytes or file path; use `create_texture_with(input, Some(size), Some(format))` for raw pixel bytes.
-- JS: `await renderer.createTexture(input)` accepts `Uint8Array` bytes, string URL/path, or a CSS selector/HTMLImageElement
-- Python: `renderer.create_texture(input)` accepts `bytes`, `str` path, or a NumPy ndarray shaped `[H, W, C]` where C=1/3/4.
+The single `create_texture(spec)` entry point covers every previous variant. The spec's discriminator is the same as the rest of the API: the presence of `size` selects raw-pixel-bytes interpretation; otherwise the input is treated as encoded image data (PNG / JPEG / etc.), a file path, a URL, a KTX2 container, or a pre-built [TextureMipChain](/api/core/texture-mip-chain).
+
+The CPU work (decode, mipmap chain, raw-byte wrap, KTX2 parse) runs on a background worker on every native target â the calling thread is never pinned on `queue.write_texture`. On the web, prep runs inline (wgpu types are `!Send` on `wasm32`); move heavier work into a Web Worker yourself if you need real parallelism.
+
+#### Per-language shapes
+
+- **Rust:** `create_texture(impl Into<TextureInput>)`. The `From<T>` impls give you `(bytes)`, `(bytes, [w, h])`, `(bytes, format)`, `(bytes, options)`, plus paths, URLs, `TextureMipChain`, KTX2 inputs, and explicit `TextureInput { input, options }` literals.
+- **JS:** `await renderer.createTexture(input, options?)`. `input` is `Uint8Array` / `ArrayBuffer` / URL string / CSS selector / `HTMLImageElement` / `HTMLCanvasElement` / `OffscreenCanvas` / `ImageData` / a `TextureMipChain` handle. `options` is an object `{ size?, format?, mipmaps? }`. When `size` is set, `input` is treated as raw pixel bytes.
+- **Python:** `renderer.create_texture(input, size=None, format=None, mipmaps=None)`. `input` is `bytes` / `list[int]` / `str` (path) / numpy `ndarray[H, W, C]` / `TextureMipChain`. Numpy arrays auto-fill `size` if you don't pass it.
+- **Swift / Kotlin (uniffi):** `try await renderer.createTexture(input:options:)` where `input` is `TextureInputMobile` (an enum mirroring `TextureInput` minus the Rust-only `DynamicImage` variant). Swift/Kotlin extension files supply natural overloads (`renderer.createTexture(bytes)`, `renderer.createTexture(chain)`) so callers never see the enum directly.
+
+#### How the discriminator works
+
+| Form | Treatment |
+|------|-----------|
+| `bytes` (no size) | Encoded image â decoded internally (PNG, JPEG, BMP, HDR, etc.). |
+| `(bytes, size)` / options with `size` set | Raw pixel bytes â `bpp(format) * width * height` long, no decode. |
+| `(bytes, format)` / options with `format` set | Encoded image, but interpret as `format` (e.g. `Rgba8Unorm` for normal-map data, `R16Unorm` for 16-bit grayscale). |
+| `path` / `URL` | File or HTTP fetch, then decoded. |
+| `TextureMipChain` | Pre-built CPU mip chain â GPU-only upload. Build via [TextureMipChain::prepare](/api/core/texture-mip-chain/prepare) on a worker thread. |
+| `Ktx2Bytes` / `Ktx2Path` / `Ktx2Url` | KTX2 container (BC / ETC2 / ASTC / uncompressed); the file's declared format and pre-baked mip chain win. |
+
+A full mipmap chain is generated for source images by default (`options.mipmaps = true`). Set to `false` to skip the CPU work for textures that won't be sampled at distance.
 
 #### Example
 
@@ -539,9 +559,9 @@ code={`
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Renderer;
 let renderer = Renderer::new();
-// Load encoded image bytes (PNG/JPEG) or use a file path
+// Encoded image bytes (PNG / JPEG / etc.) â single tuple, no extra method.
 let image = std::fs::read("logo.png")?;
-let tex = renderer.create_texture(&image).await?;
+let tex = renderer.create_texture(&image[..]).await?;
 _ = tex.size();
 Ok(())
 }
@@ -584,9 +604,9 @@ lang="python"
 code={`
 import FragmentColor
 let renderer = Renderer()
-// Load encoded image bytes (PNG/JPEG) or use a file path
+// Encoded image bytes (PNG / JPEG / etc.) Ã¢ÂÂ single tuple, no extra method.
 let image = "/healthcheck/public/favicon.png"
-let tex = try await renderer.createTexture(image)
+let tex = try await renderer.createTexture(image[..])
 `}
 lang="swift"
 />
@@ -598,300 +618,9 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 val renderer = Renderer()
-// Load encoded image bytes (PNG/JPEG) or use a file path
+// Encoded image bytes (PNG / JPEG / etc.) Ã¢ÂÂ single tuple, no extra method.
 val image = "/healthcheck/public/favicon.png"
-val tex = renderer.createTexture(image)
-`}
-lang="kotlin"
-/>
-
-</TabItem>
-
-</Tabs>
-
-
----
-
-### Renderer::create_texture_with_size
-
-Create a [Texture](/api/core/texture) from various inputs.
-
-- Rust: `create_texture(input)` infers from encoded bytes or file path; use `create_texture_with(input, Some(size), Some(format))` for raw pixel bytes.
-- JS: `await renderer.createTexture(input)` accepts `Uint8Array` bytes, string URL/path, or a CSS selector/HTMLImageElement
-- Python: `renderer.create_texture(input)` accepts `bytes`, `str` path, or a NumPy ndarray shaped `[H, W, C]` where C=1/3/4.
-
-#### Example
-
-<Tabs>
-
-<TabItem label="Rust">
-<Code
-code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Renderer, Size};
-let renderer = Renderer::new();
-let pixels: Vec<u8> = vec![
-    255,0,0,255,   0,255,0,255,
-    0,0,255,255,   255,255,255,255,
-];
-let tex = renderer.create_texture_with_size(&pixels, [2, 2]).await?;
-_ = tex.size();
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
-`}
-lang="rust" meta="collapse={1-1, 9-12}"
-/>
-
-</TabItem>
-
-<TabItem label="JavaScript">
-<Code
-code={`
-import { Renderer } from "fragmentcolor";
-const renderer = new Renderer();
-const pixels = [
-    255,0,0,255,   0,255,0,255,
-    0,0,255,255,   255,255,255,255,
-];
-const tex = await renderer.createTextureWithSize(pixels, [2, 2]);
-`}
-lang="js"
-/>
-
-</TabItem>
-
-<TabItem label="Python">
-<Code
-code={`
-from fragmentcolor import Renderer
-renderer = Renderer()
-pixels = [
-    255,0,0,255,   0,255,0,255,
-    0,0,255,255,   255,255,255,255,
-]
-tex = renderer.create_texture_with_size(pixels, [2, 2])
-`}
-lang="python"
-/>
-
-</TabItem>
-
-<TabItem label="Swift">
-<Code
-code={`
-import FragmentColor
-let renderer = Renderer()
-let pixels = [
-    255,0,0,255,   0,255,0,255,
-    0,0,255,255,   255,255,255,255,
-]
-let tex = try await renderer.createTextureWithSize(pixels, [2, 2])
-`}
-lang="swift"
-/>
-
-</TabItem>
-
-<TabItem label="Kotlin">
-<Code
-code={`
-import org.fragmentcolor.*
-val renderer = Renderer()
-val pixels = [
-    255,0,0,255,   0,255,0,255,
-    0,0,255,255,   255,255,255,255,
-]
-val tex = renderer.createTextureWithSize(pixels, arrayOf(2, 2))
-`}
-lang="kotlin"
-/>
-
-</TabItem>
-
-</Tabs>
-
-
----
-
-### Renderer::create_texture_with_format
-
-Create a [Texture](/api/core/texture) from various inputs.
-
-- Rust: `create_texture(input)` infers from encoded bytes or file path; use `create_texture_with(input, Some(size), Some(format))` for raw pixel bytes.
-- JS: `await renderer.createTexture(input)` accepts `Uint8Array` bytes, string URL/path, or a CSS selector/HTMLImageElement
-- Python: `renderer.create_texture(input)` accepts `bytes`, `str` path, or a NumPy ndarray shaped `[H, W, C]` where C=1/3/4.
-
-#### Example
-
-<Tabs>
-
-<TabItem label="Rust">
-<Code
-code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Renderer, Size, TextureFormat};
-let renderer = Renderer::new();
-let image = std::fs::read("logo.png")?;
-let tex = renderer.create_texture_with_format(&image, TextureFormat::Rgba).await?;
-_ = tex.size();
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
-`}
-lang="rust" meta="collapse={1-1, 6-9}"
-/>
-
-</TabItem>
-
-<TabItem label="JavaScript">
-<Code
-code={`
-import { Renderer, TextureFormat } from "fragmentcolor";
-const renderer = new Renderer();
-const image = "/healthcheck/public/favicon.png";
-const tex = await renderer.createTextureWithFormat(image, TextureFormat.Rgba);
-`}
-lang="js"
-/>
-
-</TabItem>
-
-<TabItem label="Python">
-<Code
-code={`
-from fragmentcolor import Renderer, TextureFormat
-renderer = Renderer()
-image = open("logo.png", "rb").read()
-tex = renderer.create_texture_with_format(image, TextureFormat.Rgba)
-`}
-lang="python"
-/>
-
-</TabItem>
-
-<TabItem label="Swift">
-<Code
-code={`
-import FragmentColor
-let renderer = Renderer()
-let image = "/healthcheck/public/favicon.png"
-let tex = try await renderer.createTextureWithFormat(image, TextureFormat.Rgba)
-`}
-lang="swift"
-/>
-
-</TabItem>
-
-<TabItem label="Kotlin">
-<Code
-code={`
-import org.fragmentcolor.*
-val renderer = Renderer()
-val image = "/healthcheck/public/favicon.png"
-val tex = renderer.createTextureWithFormat(image, TextureFormat.Rgba)
-`}
-lang="kotlin"
-/>
-
-</TabItem>
-
-</Tabs>
-
-
----
-
-### Renderer::create_texture_with
-
-Create a [Texture](/api/core/texture) from various inputs.
-
-- Rust: `create_texture(input)` infers from encoded bytes or file path; use `create_texture_with(input, Some(size), Some(format))` for raw pixel bytes.
-- JS: `await renderer.createTexture(input)` accepts `Uint8Array` bytes, string URL/path, or a CSS selector/HTMLImageElement
-- Python: `renderer.create_texture(input)` accepts `bytes`, `str` path, or a NumPy ndarray shaped `[H, W, C]` where C=1/3/4.
-
-#### Example
-
-<Tabs>
-
-<TabItem label="Rust">
-<Code
-code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Renderer, Size};
-let renderer = Renderer::new();
-let pixels: Vec<u8> = vec![
-    255,0,0,255,   0,255,0,255,
-    0,0,255,255,   255,255,255,255,
-];
-let tex = renderer.create_texture_with(&pixels, Size::from([2, 2])).await?;
-_ = tex.size();
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
-`}
-lang="rust" meta="collapse={1-1, 9-12}"
-/>
-
-</TabItem>
-
-<TabItem label="JavaScript">
-<Code
-code={`
-import { Renderer } from "fragmentcolor";
-const renderer = new Renderer();
-const pixels = [
-    255,0,0,255,   0,255,0,255,
-    0,0,255,255,   255,255,255,255,
-];
-const tex = await renderer.createTextureWith(pixels, [2, 2]);
-`}
-lang="js"
-/>
-
-</TabItem>
-
-<TabItem label="Python">
-<Code
-code={`
-from fragmentcolor import Renderer
-renderer = Renderer()
-pixels = [
-    255,0,0,255,   0,255,0,255,
-    0,0,255,255,   255,255,255,255,
-]
-tex = renderer.create_texture_with(pixels, [2, 2])
-`}
-lang="python"
-/>
-
-</TabItem>
-
-<TabItem label="Swift">
-<Code
-code={`
-import FragmentColor
-let renderer = Renderer()
-let pixels = [
-    255,0,0,255,   0,255,0,255,
-    0,0,255,255,   255,255,255,255,
-]
-let tex = try await renderer.createTextureWith(pixels, [2, 2])
-`}
-lang="swift"
-/>
-
-</TabItem>
-
-<TabItem label="Kotlin">
-<Code
-code={`
-import org.fragmentcolor.*
-val renderer = Renderer()
-val pixels = [
-    255,0,0,255,   0,255,0,255,
-    0,0,255,255,   255,255,255,255,
-]
-val tex = renderer.createTextureWith(pixels, arrayOf(2, 2))
+val tex = renderer.createTexture(image[..])
 `}
 lang="kotlin"
 />
@@ -905,9 +634,17 @@ lang="kotlin"
 
 ### Renderer::create_storage_texture
 
-Create a storage-class texture for compute or image store/load.
+Create a storage-class texture (for compute shaders, image store/load, or as a render target). Same `TextureInput` transport as `Renderer::create_texture` and `TextureMipChain::prepare` â one vocabulary across the API.
 
-- Default usage: STORAGE_BINDING | TEXTURE_BINDING | COPY_&#123;SRC,DST&#125;
+The `From<T>` impls cover the common shapes:
+
+- `(size, format)` â empty storage texture, no initial data.
+- `(size, format, bytes)` â storage texture pre-seeded with `bytes`.
+- Explicit `TextureInput { data, options }` literal â full control (set `options.usage` for non-default usage flags via `TextureOptions::with_usage(...)`).
+
+`options.size` is **required** for this entry â there's no source to infer dimensions from. Returns `TextureError::InvalidInput` when missing.
+
+`options.usage` overrides the default `STORAGE | TEXTURE | COPY_SRC | COPY_DST` mask; `None` keeps the default. Cross-language bindings expose this as the underlying `u32` bit mask so it crosses every FFI cleanly.
 
 #### Example
 
@@ -917,114 +654,24 @@ Create a storage-class texture for compute or image store/load.
 <Code
 code={`
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
-
 use fragmentcolor::{Renderer, TextureFormat};
 
 let r = Renderer::new();
-let tex = r.create_storage_texture([64, 64], TextureFormat::Rgba, None).await?;
-
+// Empty storage texture â same single create_storage_texture entry.
+let tex = r.create_storage_texture(([64u32, 64u32], TextureFormat::Rgba)).await?;
 _ = tex;
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
-`}
-lang="rust" meta="collapse={1-1, 8-11}"
-/>
 
-</TabItem>
-
-<TabItem label="JavaScript">
-<Code
-code={`
-
-import { Renderer, TextureFormat } from "fragmentcolor";
-
-const r = new Renderer();
-const tex = await r.createStorageTexture([64, 64], TextureFormat.Rgba, null);
-
-`}
-lang="js"
-/>
-
-</TabItem>
-
-<TabItem label="Python">
-<Code
-code={`
-
-from fragmentcolor import Renderer, TextureFormat
-
-r = Renderer()
-tex = r.create_storage_texture([64, 64], TextureFormat.Rgba, None)
-
-`}
-lang="python"
-/>
-
-</TabItem>
-
-<TabItem label="Swift">
-<Code
-code={`
-
-import FragmentColor
-
-let r = Renderer()
-let tex = try await r.createStorageTexture([64, 64], TextureFormat.Rgba, nil)
-`}
-lang="swift"
-/>
-
-</TabItem>
-
-<TabItem label="Kotlin">
-<Code
-code={`
-
-import org.fragmentcolor.*
-
-val r = Renderer()
-val tex = r.createStorageTexture(arrayOf(64, 64), TextureFormat.Rgba, null)
-`}
-lang="kotlin"
-/>
-
-</TabItem>
-
-</Tabs>
-
-
----
-
-### Renderer::create_storage_texture_with_data
-
-Create a storage-class texture pre-seeded with CPU bytes. Convenience wrapper that combines [`Renderer::create_storage_texture`] with a one-shot [`Texture::write`].
-
-- Default usage: `STORAGE_BINDING | TEXTURE_BINDING | COPY_SRC | COPY_DST`. If you pass a custom usage mask it must include `COPY_DST`.
-- Bytes must be tightly packed in the texture's native format: `width * height * depth * bytes_per_pixel(format)`. No per-row padding is required â the upload path does not use the 256-byte alignment rule that `copy_buffer_to_texture` imposes.
-
-#### Example
-
-<Tabs>
-
-<TabItem label="Rust">
-<Code
-code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Renderer, TextureFormat};
-
-let r = Renderer::new();
-let seed = vec![0u8; 8 * 8 * 4];
-let tex = r
-    .create_storage_texture_with_data([8, 8], TextureFormat::Rgba, &seed, None)
+// Pre-seeded with bytes â same method, three-tuple form.
+let pixels = vec![0u8; 64 * 64 * 4];
+let tex2 = r
+    .create_storage_texture(([64u32, 64u32], TextureFormat::Rgba, pixels))
     .await?;
-
-_ = tex;
+_ = tex2;
 Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 10-13}"
+lang="rust" meta="collapse={1-1, 7-7, 14-17}"
 />
 
 </TabItem>
@@ -1035,9 +682,12 @@ code={`
 import { Renderer, TextureFormat } from "fragmentcolor";
 
 const r = new Renderer();
-const seed = Array(8 * 8 * 4).fill(0);
-const tex = await r.createStorageTextureWithData([8, 8], TextureFormat.Rgba, seed, null);
+// Empty storage texture Ã¢ÂÂ same single create_storage_texture entry.
+const tex = await r.createStorageTexture(([64, 64], TextureFormat.Rgba));
 
+// Pre-seeded with bytes Ã¢ÂÂ same method, three-tuple form.
+const pixels = Array(64 * 64 * 4).fill(0);
+const tex2 = await r.createStorageTexture(([64, 64], TextureFormat.Rgba, pixels));
 `}
 lang="js"
 />
@@ -1050,9 +700,12 @@ code={`
 from fragmentcolor import Renderer, TextureFormat
 
 r = Renderer()
-seed = [0] * (8 * 8 * 4)
-tex = r.create_storage_texture_with_data([8, 8], TextureFormat.Rgba, seed, None)
+# Empty storage texture Ã¢ÂÂ same single create_storage_texture entry.
+tex = r.create_storage_texture(([64, 64], TextureFormat.Rgba))
 
+# Pre-seeded with bytes Ã¢ÂÂ same method, three-tuple form.
+pixels = [0] * (64 * 64 * 4)
+tex2 = r.create_storage_texture(([64, 64], TextureFormat.Rgba, pixels))
 `}
 lang="python"
 />
@@ -1065,8 +718,12 @@ code={`
 import FragmentColor
 
 let r = Renderer()
-let seed = Array(repeating: 0, count: 8 * 8 * 4)
-let tex = try await r.createStorageTextureWithData([8, 8], TextureFormat.Rgba, seed, nil)
+// Empty storage texture Ã¢ÂÂ same single create_storage_texture entry.
+let tex = try await r.createStorageTexture(([64, 64], TextureFormat.Rgba))
+
+// Pre-seeded with bytes Ã¢ÂÂ same method, three-tuple form.
+let pixels = Array(repeating: 0, count: 64 * 64 * 4)
+let tex2 = try await r.createStorageTexture(([64, 64], TextureFormat.Rgba, pixels))
 `}
 lang="swift"
 />
@@ -1079,8 +736,12 @@ code={`
 import org.fragmentcolor.*
 
 val r = Renderer()
-val seed = Array(8 * 8 * 4) { 0 }
-val tex = r.createStorageTextureWithData(arrayOf(8, 8), TextureFormat.Rgba, seed, null)
+// Empty storage texture Ã¢ÂÂ same single create_storage_texture entry.
+val tex = r.createStorageTexture((arrayOf(64, 64), TextureFormat.Rgba))
+
+// Pre-seeded with bytes Ã¢ÂÂ same method, three-tuple form.
+val pixels = Array(64 * 64 * 4) { 0 }
+val tex2 = r.createStorageTexture((arrayOf(64, 64), TextureFormat.Rgba, pixels))
 `}
 lang="kotlin"
 />
@@ -1190,7 +851,7 @@ code={`
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Renderer, TextureFormat};
 let renderer = Renderer::new();
-let texture = renderer.create_storage_texture([16, 16], TextureFormat::Rgba, None).await?;
+let texture = renderer.create_storage_texture(([16u32, 16u32], TextureFormat::Rgba)).await?;
 let id = *texture.id();
 
 renderer.unregister_texture(id)?;
@@ -1225,7 +886,7 @@ code={`
 from fragmentcolor import Renderer, TextureFormat
 
 renderer = Renderer()
-texture = renderer.create_storage_texture([16, 16], TextureFormat.Rgba, None)
+texture = renderer.create_storage_texture([16, 16], TextureFormat.Rgba)
 id = texture.id()
 
 renderer.unregister_texture(id)
@@ -1240,7 +901,7 @@ lang="python"
 code={`
 import FragmentColor
 let renderer = Renderer()
-let texture = try await renderer.createStorageTexture([16, 16], TextureFormat.Rgba, nil)
+let texture = try await renderer.createStorageTexture(([16, 16], TextureFormat.Rgba))
 let id = texture.id()
 
 renderer.unregisterTexture(id)
@@ -1255,7 +916,7 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 val renderer = Renderer()
-val texture = renderer.createStorageTexture(arrayOf(16, 16), TextureFormat.Rgba, null)
+val texture = renderer.createStorageTexture((arrayOf(16, 16), TextureFormat.Rgba))
 val id = texture.id()
 
 renderer.unregisterTexture(id)
@@ -1393,7 +1054,7 @@ code={`
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Renderer, TextureFormat};
 let renderer = Renderer::new();
-let texture = renderer.create_storage_texture([64, 64], TextureFormat::Rgba, None).await?;
+let texture = renderer.create_storage_texture(([64u32, 64u32], TextureFormat::Rgba)).await?;
 texture.write(&vec![0u8; 64 * 64 * 4])?;
 
 let bytes = renderer.read_texture(*texture.id())?;
@@ -1412,7 +1073,7 @@ lang="rust" meta="collapse={1-1, 8-11}"
 code={`
 import { Renderer, TextureFormat } from "fragmentcolor";
 const renderer = new Renderer();
-const texture = await renderer.createStorageTexture([64, 64], TextureFormat.Rgba, null);
+const texture = await renderer.createStorageTexture(([64, 64], TextureFormat.Rgba));
 texture.write(Array(64 * 64 * 4).fill(0));
 
 const bytes = renderer.readTexture(texture.id());
@@ -1427,7 +1088,7 @@ lang="js"
 code={`
 from fragmentcolor import Renderer, TextureFormat
 renderer = Renderer()
-texture = renderer.create_storage_texture([64, 64], TextureFormat.Rgba, None)
+texture = renderer.create_storage_texture(([64, 64], TextureFormat.Rgba))
 texture.write([0] * (64 * 64 * 4))
 
 bytes = renderer.read_texture(texture.id())
@@ -1442,7 +1103,7 @@ lang="python"
 code={`
 import FragmentColor
 let renderer = Renderer()
-let texture = try await renderer.createStorageTexture([64, 64], TextureFormat.Rgba, nil)
+let texture = try await renderer.createStorageTexture(([64, 64], TextureFormat.Rgba))
 texture.write(Array(repeating: 0, count: 64 * 64 * 4))
 
 let bytes = renderer.readTexture(texture.id())
@@ -1457,7 +1118,7 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 val renderer = Renderer()
-val texture = renderer.createStorageTexture(arrayOf(64, 64), TextureFormat.Rgba, null)
+val texture = renderer.createStorageTexture((arrayOf(64, 64), TextureFormat.Rgba))
 texture.write(Array(64 * 64 * 4) { 0 })
 
 val bytes = renderer.readTexture(texture.id())
@@ -1486,7 +1147,7 @@ code={`
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Renderer, TextureFormat};
 let renderer = Renderer::new();
-let texture = renderer.create_storage_texture([64, 64], TextureFormat::Rgba, None).await?;
+let texture = renderer.create_storage_texture(([64u32, 64u32], TextureFormat::Rgba)).await?;
 texture.write(&vec![0u8; 64 * 64 * 4])?;
 
 let bytes = renderer.read_texture_async(*texture.id()).await?;
@@ -1505,7 +1166,7 @@ lang="rust" meta="collapse={1-1, 8-11}"
 code={`
 import { Renderer, TextureFormat } from "fragmentcolor";
 const renderer = new Renderer();
-const texture = await renderer.createStorageTexture([64, 64], TextureFormat.Rgba, null);
+const texture = await renderer.createStorageTexture(([64, 64], TextureFormat.Rgba));
 texture.write(Array(64 * 64 * 4).fill(0));
 
 const bytes = await renderer.readTextureAsync(texture.id());
@@ -1520,7 +1181,7 @@ lang="js"
 code={`
 from fragmentcolor import Renderer, TextureFormat
 renderer = Renderer()
-texture = renderer.create_storage_texture([64, 64], TextureFormat.Rgba, None)
+texture = renderer.create_storage_texture(([64, 64], TextureFormat.Rgba))
 texture.write([0] * (64 * 64 * 4))
 
 bytes = renderer.read_texture_async(texture.id())
@@ -1535,7 +1196,7 @@ lang="python"
 code={`
 import FragmentColor
 let renderer = Renderer()
-let texture = try await renderer.createStorageTexture([64, 64], TextureFormat.Rgba, nil)
+let texture = try await renderer.createStorageTexture(([64, 64], TextureFormat.Rgba))
 texture.write(Array(repeating: 0, count: 64 * 64 * 4))
 
 let bytes = try await renderer.readTextureAsync(texture.id())
@@ -1550,7 +1211,7 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 val renderer = Renderer()
-val texture = renderer.createStorageTexture(arrayOf(64, 64), TextureFormat.Rgba, null)
+val texture = renderer.createStorageTexture((arrayOf(64, 64), TextureFormat.Rgba))
 texture.write(Array(64 * 64 * 4) { 0 })
 
 val bytes = renderer.readTextureAsync(texture.id())
