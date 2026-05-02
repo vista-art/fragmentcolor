@@ -162,7 +162,10 @@ mod website {
     }
 
     /// Step 2: Export examples and pages. Returns the sets needed by later steps.
-    pub fn export_examples_and_pages(api_map: &ApiMap) -> ExportOutcome {
+    pub fn export_examples_and_pages(
+        catalog: &super::codegen::ApiCatalog,
+        api_map: &ApiMap,
+    ) -> ExportOutcome {
         use std::collections::{BTreeMap, HashSet};
         let root = meta::workspace_root();
         let docs_root = root.join("docs/api");
@@ -199,7 +202,7 @@ mod website {
             all_by_cat.entry(cat_rel).or_default().push(object);
         }
         // Include base objects that may not have explicit docs yet
-        for object in super::validation::base_public_objects().iter() {
+        for object in catalog.base_public_objects().iter() {
             let dir_name = super::docs::object_dir_name(object);
             let obj_dir = super::docs::find_object_dir(&docs_root, &dir_name).unwrap_or(docs_root.join(&dir_name));
             let cat_rel = if obj_dir.exists() { super::docs::category_rel_from(&docs_root, &obj_dir) } else { String::new() };
@@ -451,7 +454,7 @@ mod website {
         };
 
         // Iterate objects discovered from AST (base objects only)
-        let objects = super::validation::base_public_objects();
+        let objects = catalog.base_public_objects();
         for object in objects.iter() {
             let dir_name = super::docs::object_dir_name(object);
             let obj_dir =
