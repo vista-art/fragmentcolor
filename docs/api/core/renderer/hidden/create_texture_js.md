@@ -2,9 +2,9 @@
 
 Create a [Texture](https://fragmentcolor.org/api/core/texture) from various inputs.
 
-- Rust: `create_texture(input)` infers from encoded bytes or file path; use `create_texture_with(input, Some(size), Some(format))` for raw pixel bytes.
-- JS: `await renderer.createTexture(input)` accepts `Uint8Array` bytes, string URL/path, or a CSS selector/HTMLImageElement
-- Python: `renderer.create_texture(input)` accepts `bytes`, `str` path, or a NumPy ndarray shaped `[H, W, C]` where C=1/3/4.
+- Rust: `create_texture(input)` takes any `impl Into<TextureInput>` — bare bytes / `(bytes, [w, h])` / `(bytes, format)` / `(bytes, format, size)` / paths / URLs / KTX2 / `TextureMipChain`.
+- JS: `await renderer.createTexture(input, options?)` accepts `Uint8Array` bytes, string URL/path, CSS selector, `HTMLImageElement`, `HTMLCanvasElement`, `OffscreenCanvas`, `ImageData`, or a `TextureMipChain` handle. `options` is an optional `{ size?, format?, mipmaps? }` object — when `size` is set, `input` is treated as raw pixel data.
+- Python: `renderer.create_texture(input, size=None, format=None, mipmaps=None)` accepts `bytes`, `str` path, NumPy ndarray shaped `[H, W, C]` where C=1/3/4, or a `TextureMipChain`. Numpy arrays auto-fill `size`.
 
 ## Example
 

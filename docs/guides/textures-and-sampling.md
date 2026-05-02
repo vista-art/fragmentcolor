@@ -28,7 +28,7 @@ let pixels: Vec<u8> = vec![
     255, 0,   0, 255,   0, 255,   0, 255,
       0, 0, 255, 255, 255, 255, 255, 255,
 ];
-let tex = renderer.create_texture_with_size(&pixels, [2u32, 2u32]).await?;
+let tex = renderer.create_texture((pixels.as_slice(), [2u32, 2u32])).await?;
 
 // 3) WGSL that samples the texture (library provides a default sampler)
 let wgsl = r#"

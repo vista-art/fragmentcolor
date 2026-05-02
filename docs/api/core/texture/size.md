@@ -9,7 +9,7 @@ Returns the texture size (w, h[, d]).
 use fragmentcolor::{Renderer, Size};
 let renderer = Renderer::new();
 let pixels: &[u8] = &[255,255,255,255];
-let tex = renderer.create_texture_with_size(pixels, [1,1]).await?;
+let tex = renderer.create_texture((pixels, [1u32, 1u32])).await?;
 let sz = tex.size();
 # assert_eq!([sz.width, sz.height], [1, 1]);
 # Ok(())
