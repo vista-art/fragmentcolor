@@ -182,7 +182,7 @@ mod website {
 
         // Build set of known top-level categories for link normalization
         let mut top_categories: HashSet<String> = HashSet::new();
-        for (_object, _dir, cat_rel) in scan_docs_objects(&docs_root) {
+        for (_object, _dir, cat_rel) in super::docs::scan_docs_objects(&docs_root) {
             if !cat_rel.is_empty()
                 && let Some(first) = cat_rel.split('/').next()
             {
@@ -194,15 +194,15 @@ mod website {
         use std::collections::{BTreeMap as _BTreeMap, HashMap as _HashMap, HashSet as _HashSet};
         let mut all_by_cat: _BTreeMap<String, Vec<String>> = _BTreeMap::new();
         // From docs directory scan
-        for (object, _obj_dir, cat_rel) in scan_docs_objects(&docs_root) {
+        for (object, _obj_dir, cat_rel) in super::docs::scan_docs_objects(&docs_root) {
             if is_hidden_category(&cat_rel) { continue; }
             all_by_cat.entry(cat_rel).or_default().push(object);
         }
         // Include base objects that may not have explicit docs yet
         for object in super::validation::base_public_objects().iter() {
-            let dir_name = super::validation::object_dir_name(object);
-            let obj_dir = find_object_dir(&docs_root, &dir_name).unwrap_or(docs_root.join(&dir_name));
-            let cat_rel = if obj_dir.exists() { category_rel_from(&docs_root, &obj_dir) } else { String::new() };
+            let dir_name = super::docs::object_dir_name(object);
+            let obj_dir = super::docs::find_object_dir(&docs_root, &dir_name).unwrap_or(docs_root.join(&dir_name));
+            let cat_rel = if obj_dir.exists() { super::docs::category_rel_from(&docs_root, &obj_dir) } else { String::new() };
             if is_hidden_category(&cat_rel) { continue; }
             let list = all_by_cat.entry(cat_rel).or_default();
             if !list.iter().any(|o| o == object) { list.push(object.to_string()); }
@@ -218,7 +218,7 @@ mod website {
                 // Build canonical map from canonical form to object name
                 let mut canon_to_obj: _HashMap<String, String> = _HashMap::new();
                 for obj in list.iter() {
-                    let dir_name = super::validation::object_dir_name(obj);
+                    let dir_name = super::docs::object_dir_name(obj);
                     canon_to_obj.insert(canonicalize_name(obj), obj.clone());
                     canon_to_obj.insert(canonicalize_name(&dir_name), obj.clone());
                 }
@@ -453,11 +453,11 @@ mod website {
         // Iterate objects discovered from AST (base objects only)
         let objects = super::validation::base_public_objects();
         for object in objects.iter() {
-            let dir_name = super::validation::object_dir_name(object);
+            let dir_name = super::docs::object_dir_name(object);
             let obj_dir =
-                find_object_dir(&docs_root, &dir_name).unwrap_or(docs_root.join(&dir_name));
+                super::docs::find_object_dir(&docs_root, &dir_name).unwrap_or(docs_root.join(&dir_name));
             let cat_rel = if obj_dir.exists() {
-                category_rel_from(&docs_root, &obj_dir)
+                super::docs::category_rel_from(&docs_root, &obj_dir)
             } else {
                 String::new()
             };
@@ -509,7 +509,7 @@ mod website {
         }
 
         // Extras: any docs-only objects in docs/api (recursively) not already processed
-        for (object, obj_dir, cat_rel) in scan_docs_objects(&docs_root) {
+        for (object, obj_dir, cat_rel) in super::docs::scan_docs_objects(&docs_root) {
             if processed.contains(&object) {
                 continue;
             }
@@ -1323,70 +1323,6 @@ mod website {
             out.push('\n');
         }
         out.trim_end().to_string()
-    }
-
-    fn find_object_dir(docs_root: &std::path::Path, dir_name: &str) -> Option<std::path::PathBuf> {
-        fn walk(root: &std::path::Path, target: &str) -> Option<std::path::PathBuf> {
-            if !root.is_dir() {
-                return None;
-            }
-            for entry in std::fs::read_dir(root).ok()?.flatten() {
-                let p = entry.path();
-                if p.is_dir() {
-                    if p.file_name().and_then(|s| s.to_str()) == Some(target) {
-                        let md = p.join(format!("{}.md", target));
-                        if md.exists() {
-                            return Some(p);
-                        }
-                    }
-                    if let Some(found) = walk(&p, target) {
-                        return Some(found);
-                    }
-                }
-            }
-            None
-        }
-        walk(docs_root, dir_name)
-    }
-
-    fn category_rel_from(docs_root: &std::path::Path, obj_dir: &std::path::Path) -> String {
-        let parent = obj_dir.parent().unwrap_or(docs_root);
-        if let Ok(rel) = parent.strip_prefix(docs_root) {
-            rel.to_string_lossy().replace('\\', "/")
-        } else {
-            String::new()
-        }
-    }
-
-    fn scan_docs_objects(docs_root: &std::path::Path) -> Vec<(String, std::path::PathBuf, String)> {
-        fn walk(
-            dir: &std::path::Path,
-            root: &std::path::Path,
-            out: &mut Vec<(String, std::path::PathBuf, String)>,
-        ) {
-            if !dir.is_dir() {
-                return;
-            }
-            for entry in std::fs::read_dir(dir).ok().into_iter().flatten().flatten() {
-                let p = entry.path();
-                if p.is_dir() {
-                    if let Some(name) = p.file_name().and_then(|s| s.to_str()) {
-                        let md = p.join(format!("{}.md", name));
-                        if md.exists() {
-                            let object = super::validation::dir_to_object_name(name);
-                            let cat = category_rel_from(root, &p);
-                            out.push((object, p.clone(), cat));
-                            // Do not descend into this object dir further
-                            continue;
-                        }
-                    }
-                    walk(&p, root, out);
-                }
-            }
-        }
-        let mut out = Vec::new();
-        walk(docs_root, docs_root, &mut out);
-        out
     }
 
     fn is_hidden_category(cat_rel: &str) -> bool {

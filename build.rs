@@ -129,6 +129,7 @@ include!("scripts/codegen.rs");
 include!("scripts/convert.rs");
 include!("scripts/swift.rs");
 include!("scripts/kotlin.rs");
+include!("scripts/docs.rs");
 include!("scripts/validation.rs");
 include!("scripts/parity.rs");
 include!("scripts/website.rs");

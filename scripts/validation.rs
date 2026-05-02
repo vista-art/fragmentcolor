@@ -5,22 +5,6 @@ mod validation {
     use std::fs;
     use std::path::Path;
 
-    pub fn object_dir_name(object: &str) -> String {
-        // Convert CamelCase to snake_case for directory names
-        let mut out = String::new();
-        for (i, ch) in object.chars().enumerate() {
-            if ch.is_uppercase() {
-                if i != 0 {
-                    out.push('_');
-                }
-                out.push(ch.to_ascii_lowercase());
-            } else {
-                out.push(ch);
-            }
-        }
-        out
-    }
-
     fn ensure_object_md_ok(object: &str, path: &Path, problems: &mut Vec<String>) {
         if !path.exists() {
             problems.push(format!("Missing object file: {}", path.display()));
@@ -140,73 +124,15 @@ mod validation {
         let root = meta::workspace_root();
         let docs_root = root.join("docs/api");
 
-        // Helper: find the directory for an object recursively (must contain <dir>/<dir>.md)
-        fn find_object_dir(
-            docs_root: &std::path::Path,
-            dir_name: &str,
-        ) -> Option<std::path::PathBuf> {
-            fn walk(root: &std::path::Path, target: &str) -> Option<std::path::PathBuf> {
-                if !root.is_dir() {
-                    return None;
-                }
-                for entry in std::fs::read_dir(root).ok()?.flatten() {
-                    let p = entry.path();
-                    if p.is_dir() {
-                        if p.file_name().and_then(|s| s.to_str()) == Some(target) {
-                            let md = p.join(format!("{}.md", target));
-                            if md.exists() {
-                                return Some(p);
-                            }
-                        }
-                        if let Some(found) = walk(&p, target) {
-                            return Some(found);
-                        }
-                    }
-                }
-                None
-            }
-            walk(docs_root, dir_name)
-        }
-
-        // Helper: recursively enumerate all object dirs found under docs_root
-        fn scan_docs_objects(docs_root: &std::path::Path) -> Vec<(String, std::path::PathBuf)> {
-            fn walk(
-                dir: &std::path::Path,
-                _root: &std::path::Path,
-                out: &mut Vec<(String, std::path::PathBuf)>,
-            ) {
-                if !dir.is_dir() {
-                    return;
-                }
-                for entry in std::fs::read_dir(dir).ok().into_iter().flatten().flatten() {
-                    let p = entry.path();
-                    if p.is_dir() {
-                        if let Some(name) = p.file_name().and_then(|s| s.to_str()) {
-                            let md = p.join(format!("{}.md", name));
-                            if md.exists() {
-                                let object = dir_to_object_name(name);
-                                out.push((object, p.clone()));
-                                // Do not descend into this object dir further
-                                continue;
-                            }
-                        }
-                        walk(&p, _root, out);
-                    }
-                }
-            }
-            let mut out = Vec::new();
-            walk(docs_root, docs_root, &mut out);
-            out
-        }
-
         // Enforce documentation for ALL public objects (including wrappers)
         let objects = public_structs_excluding_hidden();
 
         // Validate objects and their methods
         for object in objects.iter() {
             let methods_vec = api_map.get(object).cloned().unwrap_or_default();
-            let dir = object_dir_name(object);
-            let obj_dir = find_object_dir(&docs_root, &dir).unwrap_or(docs_root.join(&dir));
+            let dir = super::docs::object_dir_name(object);
+            let obj_dir = super::docs::find_object_dir(&docs_root, &dir)
+                .unwrap_or(docs_root.join(&dir));
             let object_md = obj_dir.join(format!("{}.md", dir));
             ensure_object_md_ok(object, &object_md, &mut problems);
 
@@ -233,7 +159,7 @@ mod validation {
         }
 
         // Also validate any docs-only objects under docs/api not present in allowed (recursively)
-        for (object, obj_dir) in scan_docs_objects(&docs_root) {
+        for (object, obj_dir, _cat) in super::docs::scan_docs_objects(&docs_root) {
             if objects.iter().any(|o| o == &object) {
                 continue;
             }
@@ -243,7 +169,7 @@ mod validation {
         }
 
         // NEW: Validate method titles across all docs recursively (non-hidden), independent of API map
-        for (object, obj_dir) in scan_docs_objects(&docs_root) {
+        for (object, obj_dir, _cat) in super::docs::scan_docs_objects(&docs_root) {
             let dir_name = obj_dir.file_name().and_then(|s| s.to_str()).unwrap_or("");
             if let Ok(read_dir) = std::fs::read_dir(&obj_dir) {
                 for e in read_dir.flatten() {
@@ -284,26 +210,6 @@ mod validation {
         enforce_lsp_doc_coverage(&objects, api_map, &mut problems);
 
         // If we reach here, validation passed.
-    }
-
-    // Website export steps are invoked directly from generate_docs()
-
-    pub fn dir_to_object_name(dir: &str) -> String {
-        let mut out = String::new();
-        let mut capitalize = true;
-        for ch in dir.chars() {
-            if ch == '_' {
-                capitalize = true;
-                continue;
-            }
-            if capitalize {
-                out.push(ch.to_ascii_uppercase());
-            } else {
-                out.push(ch);
-            }
-            capitalize = false;
-        }
-        out
     }
 
     pub fn public_structs_excluding_hidden() -> Vec<String> {
