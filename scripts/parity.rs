@@ -131,6 +131,34 @@ mod parity {
         pub missing: BTreeSet<Platform>,
     }
 
+    /// Audit operating mode. Selected by environment in `build.rs`:
+    ///
+    ///   - default                          → `Strict`. Phase 3 forcing function.
+    ///   - `FC_PARITY_LENIENT=1`            → `Warn`. Local opt-out.
+    ///   - `FC_PARITY_REWRITE_BASELINE=1`   → `RewriteBaseline`. Snapshot the
+    ///                                        current state into PARITY_BASELINE,
+    ///                                        then exit cleanly. Used after a
+    ///                                        Phase 3 batch closes gaps so the
+    ///                                        ratchet tightens.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum Mode {
+        Warn,
+        Strict,
+        RewriteBaseline,
+    }
+
+    /// Currently-acknowledged gaps + unresolved bindings, loaded from
+    /// PARITY_BASELINE. Strict mode panics on anything in the live audit
+    /// that is NOT a subset of these baselines.
+    #[derive(Default, Debug)]
+    struct Baseline {
+        /// Per-doc acknowledged missing platforms. Live gap is acceptable
+        /// when its missing-set is a subset of the baseline's.
+        gaps: BTreeMap<DocPath, BTreeSet<Platform>>,
+        /// Per-lsp-doc-path acknowledged credited platforms. Same subset rule.
+        unresolved: BTreeMap<String, BTreeSet<Platform>>,
+    }
+
     /// Public entry point. Walks docs/api/ and src/ once each, applies
     /// waivers and aliases, and returns the resulting report.
     pub fn audit(workspace_root: &Path) -> ParityReport {
@@ -225,35 +253,183 @@ mod parity {
         None
     }
 
-    /// Print the report. `fail_build` panics the build script with a summary
-    /// when there are gaps; otherwise gaps are printed as warnings.
-    pub fn print_report(report: &ParityReport, fail_build: bool) {
+    /// Print the report and (in Strict mode) panic if any drift is detected
+    /// outside the acknowledged baseline. `baseline_path` points to
+    /// `docs/api/PARITY_BASELINE` — see `Baseline` for format.
+    pub fn print_report(report: &ParityReport, mode: Mode, baseline_path: &Path) {
         let total = report.doc_count;
         let bound = report.bound_doc_count;
-        let gaps = report.gaps.len();
+        let gap_count = report.gaps.len();
+        let unresolved_count = report.unresolved_bindings.len();
         let waivers = report.waiver_count;
         let aliases = report.alias_count;
-        let unresolved = report.unresolved_bindings.len();
+
+        if matches!(mode, Mode::RewriteBaseline) {
+            match write_baseline(baseline_path, report) {
+                Ok(_) => println!(
+                    "✅ Baseline rewritten: {} acknowledged gap(s), {} acknowledged unresolved binding(s) → {}",
+                    gap_count,
+                    unresolved_count,
+                    baseline_path.display()
+                ),
+                Err(e) => panic!(
+                    "Failed to write baseline at {}: {}",
+                    baseline_path.display(),
+                    e
+                ),
+            }
+            return;
+        }
 
         if report.gaps.is_empty() && report.unresolved_bindings.is_empty() {
             println!(
-                "✅ API parity: {} documented entries, {} bound on every supported platform, {} explicit waiver(s), {} alias(es).",
+                "✅ API parity: {} documented entries, {} bound on every supported platform, {} waiver(s), {} alias(es).",
                 total, bound, waivers, aliases
             );
             return;
         }
 
-        let header_emoji = if fail_build { "❌" } else { "⚠️" };
-        let header_mode = if fail_build { "FAIL" } else { "WARN" };
+        let baseline = if matches!(mode, Mode::Strict) {
+            load_baseline(baseline_path)
+        } else {
+            Baseline::default()
+        };
+
+        // Partition gaps and unresolved entries by their relationship to the baseline.
+        let (acknowledged_gaps, regressed_gaps, new_gaps) = classify_gaps(&report.gaps, &baseline);
+        let (acknowledged_unres, regressed_unres, new_unres) =
+            classify_unresolved(&report.unresolved_bindings, &baseline);
+        let closed_gap_count = baseline.gaps.len() - (acknowledged_gaps.len() + regressed_gaps.len());
+        let closed_unres_count =
+            baseline.unresolved.len() - (acknowledged_unres.len() + regressed_unres.len());
+
+        let header_emoji = match mode {
+            Mode::Warn => "⚠️",
+            Mode::Strict if !new_gaps.is_empty() || !new_unres.is_empty() || !regressed_gaps.is_empty() || !regressed_unres.is_empty() => "❌",
+            Mode::Strict => "✅",
+            Mode::RewriteBaseline => unreachable!(),
+        };
+        let header_mode = match mode {
+            Mode::Warn => "WARN",
+            Mode::Strict => "STRICT",
+            Mode::RewriteBaseline => unreachable!(),
+        };
+
         println!(
-            "\n{} API parity {}: {} of {} documented entries lack bindings on one or more platforms; {} unresolved lsp_doc link(s) ({} bound somewhere; {} waiver(s); {} alias(es)).",
-            header_emoji, header_mode, gaps, total, unresolved, bound, waivers, aliases
+            "\n{} API parity {}: {} gap(s) over {} documented entries; {} unresolved lsp_doc link(s).",
+            header_emoji, header_mode, gap_count, total, unresolved_count
+        );
+        println!(
+            "    bound: {}  waivers: {}  aliases: {}  baseline: {} gap + {} unresolved",
+            bound, waivers, aliases, baseline.gaps.len(), baseline.unresolved.len()
         );
 
-        // Group gaps by which set of platforms is missing — easier to read than
-        // a flat list.
+        // ALWAYS print the live state grouped by missing-platform-set, so the
+        // human reader sees the full picture regardless of mode.
+        print_live_groups(&report.gaps, &report.unresolved_bindings);
+
+        // Strict mode follow-up: list anything that violates the baseline.
+        if matches!(mode, Mode::Strict) {
+            if !new_gaps.is_empty() {
+                println!(
+                    "\n  ❌ NEW gaps not acknowledged in baseline ({} doc(s)):",
+                    new_gaps.len()
+                );
+                for g in &new_gaps {
+                    println!(
+                        "    - {} missing on [{}]",
+                        g.doc_path,
+                        g.missing.iter().map(|p| p.label()).collect::<Vec<_>>().join(", ")
+                    );
+                }
+            }
+            if !regressed_gaps.is_empty() {
+                println!(
+                    "\n  ❌ REGRESSED gaps (now missing on more platforms than baseline acknowledged) ({} doc(s)):",
+                    regressed_gaps.len()
+                );
+                for (g, baseline_set) in &regressed_gaps {
+                    let live: Vec<&str> = g.missing.iter().map(|p| p.label()).collect();
+                    let baseline_str: Vec<&str> = baseline_set.iter().map(|p| p.label()).collect();
+                    println!(
+                        "    - {} now missing on [{}], baseline acknowledged [{}]",
+                        g.doc_path,
+                        live.join(", "),
+                        baseline_str.join(", ")
+                    );
+                }
+            }
+            if !new_unres.is_empty() {
+                println!(
+                    "\n  ❌ NEW unresolved lsp_doc paths ({} binding(s)):",
+                    new_unres.len()
+                );
+                for (path, plats) in &new_unres {
+                    let labels: Vec<&str> = plats.iter().map(|p| p.label()).collect();
+                    println!("    - {}  [credited: {}]", path, labels.join(", "));
+                }
+            }
+            if !regressed_unres.is_empty() {
+                println!(
+                    "\n  ❌ REGRESSED unresolved bindings ({} binding(s) now credited on more platforms than baseline):",
+                    regressed_unres.len()
+                );
+                for (path, plats, baseline_set) in &regressed_unres {
+                    let live: Vec<&str> = plats.iter().map(|p| p.label()).collect();
+                    let baseline_str: Vec<&str> = baseline_set.iter().map(|p| p.label()).collect();
+                    println!(
+                        "    - {}  live: [{}]  baseline: [{}]",
+                        path,
+                        live.join(", "),
+                        baseline_str.join(", ")
+                    );
+                }
+            }
+            if closed_gap_count > 0 || closed_unres_count > 0 {
+                println!(
+                    "\n  ✅ Closed since last baseline rewrite: {} gap(s), {} unresolved binding(s).",
+                    closed_gap_count, closed_unres_count
+                );
+                if closed_gap_count > 0 || closed_unres_count > 0 {
+                    println!(
+                        "     Run `FC_PARITY_REWRITE_BASELINE=1 cargo build --lib` to tighten the ratchet."
+                    );
+                }
+            }
+        }
+
+        let footer = match mode {
+            Mode::Warn => "\n  ℹ️  Warn mode (FC_PARITY_LENIENT=1). Strict mode is the default; set FC_PARITY_LENIENT=1 to suppress.\n",
+            Mode::Strict => "\n",
+            Mode::RewriteBaseline => unreachable!(),
+        };
+        println!("{}", footer);
+
+        if matches!(mode, Mode::Strict)
+            && (!new_gaps.is_empty()
+                || !regressed_gaps.is_empty()
+                || !new_unres.is_empty()
+                || !regressed_unres.is_empty())
+        {
+            panic!(
+                "API parity STRICT failed: {} new gap(s), {} regressed gap(s), {} new unresolved binding(s), {} regressed unresolved binding(s). Either bind the missing surface, list a waiver/alias in docs/api/PARITY, or extend the baseline (FC_PARITY_REWRITE_BASELINE=1).",
+                new_gaps.len(),
+                regressed_gaps.len(),
+                new_unres.len(),
+                regressed_unres.len()
+            );
+        }
+    }
+
+    /// Print the live gap grouping (regardless of mode) — easier to read
+    /// than a flat list and stays useful for human consumption even when
+    /// the audit doesn't fail.
+    fn print_live_groups(
+        gaps: &[Gap],
+        unresolved: &[(String, BTreeSet<Platform>)],
+    ) {
         let mut by_missing: BTreeMap<BTreeSet<Platform>, Vec<&Gap>> = BTreeMap::new();
-        for g in &report.gaps {
+        for g in gaps {
             by_missing.entry(g.missing.clone()).or_default().push(g);
         }
         let mut groups: Vec<(BTreeSet<Platform>, Vec<&Gap>)> = by_missing.into_iter().collect();
@@ -267,31 +443,166 @@ mod parity {
             }
         }
 
-        if !report.unresolved_bindings.is_empty() {
+        if !unresolved.is_empty() {
             println!(
-                "\n  Unresolved lsp_doc paths ({} bindings point at a docs file that no longer exists or doesn't strip to a real canonical):",
-                unresolved
+                "\n  Unresolved lsp_doc paths ({} binding(s)):",
+                unresolved.len()
             );
-            let mut sorted = report.unresolved_bindings.clone();
+            let mut sorted = unresolved.to_vec();
             sorted.sort_by(|a, b| a.0.cmp(&b.0));
             for (path, plats) in sorted {
                 let labels: Vec<&str> = plats.iter().map(|p| p.label()).collect();
                 println!("    - {}  [credited: {}]", path, labels.join(", "));
             }
         }
+    }
 
-        let footer = if fail_build {
-            "\n\nBuild failed because API parity is enforced. Add a binding or list a waiver/alias in docs/api/PARITY.\n"
-        } else {
-            "\n\nThis is a warning. Convergence to zero gaps is tracked under the API-parity initiative; the audit will be flipped to fail-build mode (set FC_PARITY_STRICT=1 to opt in early) once the contract is reached.\n"
+    /// Partition live gaps by relation to the baseline:
+    ///   - acknowledged: live missing-set is a subset of baseline missing-set
+    ///   - regressed:    live missing-set has at least one platform not in baseline
+    ///   - new:          doc path is not in baseline at all
+    fn classify_gaps<'a>(
+        live: &'a [Gap],
+        baseline: &Baseline,
+    ) -> (Vec<&'a Gap>, Vec<(&'a Gap, BTreeSet<Platform>)>, Vec<&'a Gap>) {
+        let mut acknowledged = Vec::new();
+        let mut regressed = Vec::new();
+        let mut new_gaps = Vec::new();
+        for g in live {
+            match baseline.gaps.get(&g.doc_path) {
+                None => new_gaps.push(g),
+                Some(baseline_set) => {
+                    if g.missing.is_subset(baseline_set) {
+                        acknowledged.push(g);
+                    } else {
+                        regressed.push((g, baseline_set.clone()));
+                    }
+                }
+            }
+        }
+        (acknowledged, regressed, new_gaps)
+    }
+
+    fn classify_unresolved<'a>(
+        live: &'a [(String, BTreeSet<Platform>)],
+        baseline: &Baseline,
+    ) -> (
+        Vec<&'a (String, BTreeSet<Platform>)>,
+        Vec<(&'a String, &'a BTreeSet<Platform>, BTreeSet<Platform>)>,
+        Vec<&'a (String, BTreeSet<Platform>)>,
+    ) {
+        let mut acknowledged = Vec::new();
+        let mut regressed = Vec::new();
+        let mut new_unres = Vec::new();
+        for entry in live {
+            let (path, plats) = entry;
+            match baseline.unresolved.get(path) {
+                None => new_unres.push(entry),
+                Some(baseline_set) => {
+                    if plats.is_subset(baseline_set) {
+                        acknowledged.push(entry);
+                    } else {
+                        regressed.push((path, plats, baseline_set.clone()));
+                    }
+                }
+            }
+        }
+        (acknowledged, regressed, new_unres)
+    }
+
+    fn load_baseline(file: &Path) -> Baseline {
+        let mut b = Baseline::default();
+        let text = match fs::read_to_string(file) {
+            Ok(t) => t,
+            Err(_) => return b,
         };
-        println!("{}", footer);
+        for (lineno, raw) in text.lines().enumerate() {
+            let line = raw.trim();
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+            let mut parts = line.splitn(3, ':');
+            let kind = match parts.next() {
+                Some(s) => s.trim(),
+                None => continue,
+            };
+            let key = match parts.next() {
+                Some(s) => s.trim().to_string(),
+                None => {
+                    eprintln!(
+                        "docs/api/PARITY_BASELINE:{}: malformed line: {}",
+                        lineno + 1,
+                        line
+                    );
+                    continue;
+                }
+            };
+            let plats_str = parts.next().map(str::trim).unwrap_or("");
+            let mut plats = BTreeSet::new();
+            for p in plats_str.split(',').map(str::trim).filter(|s| !s.is_empty()) {
+                if let Some(parsed) = parse_platform(p) {
+                    plats.insert(parsed);
+                }
+            }
+            match kind {
+                "gap" => {
+                    b.gaps.insert(key, plats);
+                }
+                "unresolved" => {
+                    b.unresolved.insert(key, plats);
+                }
+                other => {
+                    eprintln!(
+                        "docs/api/PARITY_BASELINE:{}: unknown kind '{}'",
+                        lineno + 1,
+                        other
+                    );
+                }
+            }
+        }
+        b
+    }
 
-        if fail_build {
-            panic!(
-                "API parity audit failed: {} unwaived gap(s), {} unresolved lsp_doc link(s).",
-                gaps, unresolved
-            );
+    fn write_baseline(file: &Path, report: &ParityReport) -> std::io::Result<()> {
+        let mut out = String::new();
+        out.push_str("# Auto-generated by build.rs (scripts/parity.rs).\n");
+        out.push_str("# Lists currently-acknowledged parity gaps. The audit fails on any\n");
+        out.push_str("# gap or unresolved binding that is NOT a subset of the entries here.\n");
+        out.push_str("# Trim entries as Phase 3 closes them; regenerate with:\n");
+        out.push_str("#   FC_PARITY_REWRITE_BASELINE=1 cargo build --lib\n");
+        out.push_str("#\n");
+        out.push_str("# Line format:\n");
+        out.push_str("#   gap:<canonical_doc>:<comma_separated_missing_platforms>\n");
+        out.push_str("#   unresolved:<lsp_doc_path>:<comma_separated_credited_platforms>\n\n");
+        let mut gaps: Vec<&Gap> = report.gaps.iter().collect();
+        gaps.sort_by(|a, b| a.doc_path.cmp(&b.doc_path));
+        for g in &gaps {
+            let plats: Vec<&str> = g.missing.iter().map(|p| p.label()).collect();
+            out.push_str(&format!("gap:{}:{}\n", g.doc_path, plats.join(",")));
+        }
+        if !gaps.is_empty() && !report.unresolved_bindings.is_empty() {
+            out.push('\n');
+        }
+        let mut unres: Vec<&(String, BTreeSet<Platform>)> =
+            report.unresolved_bindings.iter().collect();
+        unres.sort_by(|a, b| a.0.cmp(&b.0));
+        for (path, plats) in &unres {
+            let plats: Vec<&str> = plats.iter().map(|p| p.label()).collect();
+            out.push_str(&format!("unresolved:{}:{}\n", path, plats.join(",")));
+        }
+        if let Some(parent) = file.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::write(file, out)
+    }
+
+    fn parse_platform(s: &str) -> Option<Platform> {
+        match s {
+            "web" => Some(Platform::Web),
+            "python" => Some(Platform::Python),
+            "swift" => Some(Platform::Swift),
+            "kotlin" => Some(Platform::Kotlin),
+            _ => None,
         }
     }
 

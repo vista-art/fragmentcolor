@@ -97,10 +97,41 @@ fn generate_docs() {
     println!("✅ Docs validated!\n");
 
     println!("🧭 Auditing API parity across platforms...");
-    let parity_report = parity::audit(&meta::workspace_root());
-    let fail_on_gaps = std::env::var("FC_PARITY_STRICT").is_ok();
-    parity::print_report(&parity_report, fail_on_gaps);
-    println!("==> docs/api/PARITY drives intentional divergence (web-only Shader.fetch, etc.).\n");
+    let workspace = meta::workspace_root();
+    let parity_report = parity::audit(&workspace);
+    let baseline_path = workspace.join("docs/api/PARITY_BASELINE");
+    // Mode selection:
+    //   FC_PARITY_REWRITE_BASELINE=1 → snapshot the current state into PARITY_BASELINE
+    //                                  and exit cleanly. Use after a Phase 3 batch
+    //                                  closes gaps so the ratchet tightens.
+    //   FC_PARITY_LENIENT=1          → Warn (print only). Local opt-out.
+    //   default + baseline missing   → bootstrap: snapshot once, continue. Lets a
+    //                                  fresh checkout build before any baseline file
+    //                                  exists (e.g. first time this lands on `main`).
+    //   default + baseline present   → Strict (fail on drift outside baseline).
+    let mode = if std::env::var("FC_PARITY_REWRITE_BASELINE").is_ok() {
+        parity::Mode::RewriteBaseline
+    } else if std::env::var("FC_PARITY_LENIENT").is_ok() {
+        parity::Mode::Warn
+    } else if !baseline_path.exists() {
+        println!("==> PARITY_BASELINE missing; bootstrapping it from the current audit state.");
+        parity::Mode::RewriteBaseline
+    } else {
+        parity::Mode::Strict
+    };
+    println!("cargo::rerun-if-env-changed=FC_PARITY_LENIENT");
+    println!("cargo::rerun-if-env-changed=FC_PARITY_REWRITE_BASELINE");
+    println!("cargo::rerun-if-changed=docs/api/PARITY");
+    println!("cargo::rerun-if-changed=docs/api/PARITY_BASELINE");
+    // Rerun the audit (and the rest of generate_docs) whenever src/ or
+    // docs/api/ change. Without these directives cargo would only watch the
+    // explicit paths we declare elsewhere — meaning a new uniffi binding in
+    // src/ would not retrigger the audit, and drift would slip through until
+    // an unrelated file in the rerun list changed.
+    println!("cargo::rerun-if-changed=src");
+    println!("cargo::rerun-if-changed=docs/api");
+    parity::print_report(&parity_report, mode, &baseline_path);
+    println!("==> docs/api/PARITY drives intentional divergence; PARITY_BASELINE tracks Phase-3 backlog.\n");
 
     println!("🌎 Exporting website (examples + pages)...");
 
