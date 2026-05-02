@@ -9,6 +9,7 @@ use std::sync::Arc;
 #[pymethods]
 impl Pass {
     #[new]
+    #[lsp_doc("docs/api/core/pass/new.md")]
     pub fn new_py(name: &str) -> Self {
         Self {
             object: Arc::new(PassObject::new(name, PassType::Render)),
@@ -17,6 +18,7 @@ impl Pass {
 
     #[staticmethod]
     #[pyo3(name = "compute")]
+    #[lsp_doc("docs/api/core/pass/compute.md")]
     pub fn compute_py(name: &str) -> Self {
         Self {
             object: Arc::new(PassObject::new(name, PassType::Compute)),
@@ -25,6 +27,7 @@ impl Pass {
 
     #[staticmethod]
     #[pyo3(name = "from_shader")]
+    #[lsp_doc("docs/api/core/pass/from_shader.md")]
     pub fn from_shader_py(name: &str, shader: &Shader) -> Self {
         Self {
             object: Arc::new(PassObject::from_shader_object(name, shader.object.clone())),
@@ -37,26 +40,31 @@ impl Pass {
     }
 
     #[pyo3(name = "load_previous")]
+    #[lsp_doc("docs/api/core/pass/load_previous.md")]
     pub fn load_previous_py(&self) {
         *self.object.input.write() = PassInput::load();
     }
 
     #[pyo3(name = "get_input")]
+    #[lsp_doc("docs/api/core/pass/get_input.md")]
     pub fn get_input_py(&self) -> PassInput {
         self.object.get_input()
     }
 
     #[pyo3(name = "add_shader")]
+    #[lsp_doc("docs/api/core/pass/add_shader.md")]
     pub fn add_shader_py(&self, shader: &Shader) {
         self.object.add_shader(shader);
     }
 
     #[pyo3(name = "add_mesh")]
+    #[lsp_doc("docs/api/core/pass/add_mesh.md")]
     pub fn add_mesh_py(&self, mesh: &crate::mesh::Mesh) -> Result<(), PyErr> {
         self.add_mesh(mesh).map_err(|e| e.into())
     }
 
     #[pyo3(name = "add_mesh_to_shader")]
+    #[lsp_doc("docs/api/core/pass/add_mesh_to_shader.md")]
     pub fn add_mesh_to_shader_py(
         &self,
         mesh: &crate::mesh::Mesh,
@@ -66,11 +74,13 @@ impl Pass {
     }
 
     #[pyo3(name = "set_clear_color")]
+    #[lsp_doc("docs/api/core/pass/set_clear_color.md")]
     pub fn set_clear_color_py(&self, color: [f32; 4]) {
         self.object.set_clear_color(color);
     }
 
     #[pyo3(name = "set_viewport")]
+    #[lsp_doc("docs/api/core/pass/set_viewport.md")]
     pub fn set_viewport_py(&self, viewport: crate::ScreenRegion) {
         self.object.set_viewport(viewport);
     }

@@ -11,6 +11,7 @@ use crate::{Shader, ShaderError, UniformData};
 #[wasm_bindgen]
 impl Shader {
     #[wasm_bindgen(constructor)]
+    #[lsp_doc("docs/api/core/shader/new.md")]
     pub fn new_js(input: &JsValue) -> Self {
         let parts = match jsvalue_to_string_vec(input) {
             Ok(v) => v,

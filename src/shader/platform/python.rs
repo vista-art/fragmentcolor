@@ -8,6 +8,7 @@ use pyo3::types::PyAnyMethods;
 #[pymethods]
 impl Shader {
     #[new]
+    #[lsp_doc("docs/api/core/shader/new.md")]
     pub fn new_py(input: &Bound<PyAny>) -> Result<Self, ShaderError> {
         if let Ok(s) = input.extract::<String>() {
             return Shader::new(s);
@@ -28,6 +29,7 @@ impl Shader {
     }
 
     #[pyo3(name = "set")]
+    #[lsp_doc("docs/api/core/shader/set.md")]
     pub fn set_py(&self, key: &str, value: Py<PyAny>) -> Result<(), PyErr> {
         Python::attach(|py| -> Result<(), PyErr> {
             // If it's a Texture object, map to UniformData::Texture with id only
@@ -45,6 +47,7 @@ impl Shader {
     }
 
     #[pyo3(name = "get")]
+    #[lsp_doc("docs/api/core/shader/get.md")]
     pub fn get_py(&self, key: &str) -> Result<Py<PyAny>, PyErr> {
         Python::attach(|py| -> Result<Py<PyAny>, PyErr> {
             let data = self.object.get_uniform_data(key)?;
@@ -56,11 +59,13 @@ impl Shader {
     }
 
     #[pyo3(name = "list_uniforms")]
+    #[lsp_doc("docs/api/core/shader/list_uniforms.md")]
     pub fn list_uniforms_py(&self) -> Vec<String> {
         self.list_uniforms()
     }
 
     #[pyo3(name = "list_keys")]
+    #[lsp_doc("docs/api/core/shader/list_keys.md")]
     pub fn list_keys_py(&self) -> Vec<String> {
         self.list_keys()
     }
@@ -114,6 +119,7 @@ impl Shader {
 
     #[staticmethod]
     #[pyo3(name = "default")]
+    #[lsp_doc("docs/api/core/shader/default.md")]
     pub fn default_py() -> Self {
         Shader::default()
     }

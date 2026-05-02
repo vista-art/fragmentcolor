@@ -84,18 +84,21 @@ impl Texture {
     /// Python property: size -> returns a Size object
     #[getter]
     #[pyo3(name = "size")]
+    #[lsp_doc("docs/api/core/texture/size.md")]
     pub fn size_prop(&self) -> crate::Size {
         self.size()
     }
 
     /// Python method: aspect() -> f32
     #[pyo3(name = "aspect")]
+    #[lsp_doc("docs/api/core/texture/aspect.md")]
     pub fn aspect_py(&self) -> f32 {
         self.aspect()
     }
 
     /// Accepts a dict with keys repeat_x, repeat_y, smooth, compare
     #[pyo3(name = "set_sampler_options")]
+    #[lsp_doc("docs/api/core/texture/set_sampler_options.md")]
     pub fn set_sampler_options_py(
         &self,
         options: pyo3::Py<pyo3::types::PyAny>,
