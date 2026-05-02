@@ -318,91 +318,26 @@ mod validation {
         super::codegen::build_catalog().base_public_objects()
     }
 
-    fn has_lsp_doc(attrs: &[syn::Attribute]) -> bool {
-        super::codegen::has_lsp_doc(attrs)
-    }
-
-    /// Enforce that all public methods referenced in the API map have #[lsp_doc].
+    /// Enforce that all public methods referenced in the API map have `#[lsp_doc]`.
     ///
-    /// Strategy:
-    /// - Walk the crate's AST and collect (Type, method) pairs that are public and annotated with #[lsp_doc].
-    /// - For each object and its methods in the provided ApiMap, verify the (Type, method) exists in the collected set.
-    /// - Report a problem for any missing annotation.
+    /// Reads `(Type, method)` pairs from the catalog (filtered to public,
+    /// non-hidden, lsp-doc'd methods) and verifies every method listed under
+    /// each object in `api_map` is present.
     pub fn enforce_lsp_doc_coverage(
         objects: &[String],
         api_map: &ApiMap,
         problems: &mut Vec<String>,
     ) {
-        use quote::ToTokens;
-        use syn::{ImplItem, Item, Visibility};
-
-        let entry = super::codegen::parse_lib_entry_point(&meta::workspace_root());
-
-        fn is_doc_hidden(attrs: &[syn::Attribute]) -> bool {
-            attrs.iter().any(|a| {
-                a.to_token_stream().to_string().contains("doc")
-                    && a.to_token_stream().to_string().contains("hidden")
-            })
-        }
-
-        // Collect documented structs and methods
         use std::collections::HashSet;
-        let mut doc_structs: HashSet<String> = HashSet::new();
-        let mut doc_methods: HashSet<(String, String)> = HashSet::new();
 
-        fn walk(
-            path: &std::path::Path,
-            items: Vec<Item>,
-            doc_structs: &mut HashSet<String>,
-            doc_methods: &mut HashSet<(String, String)>,
-        ) {
-            for item in items {
-                match item {
-                    Item::Mod(m) => {
-                        if let Visibility::Public(_) = m.vis {
-                            let (mod_path, mod_items) = super::codegen::parse_module(path, &m);
-                            walk(&mod_path, mod_items, doc_structs, doc_methods);
-                        }
-                    }
-                    Item::Struct(s) => {
-                        if let Visibility::Public(_) = s.vis
-                            && !is_doc_hidden(&s.attrs)
-                            && super::validation::has_lsp_doc(&s.attrs)
-                        {
-                            doc_structs.insert(s.ident.to_string());
-                        }
-                    }
-                    Item::Impl(item_impl) => {
-                        // Only track inherent impls for types
-                        if let syn::Type::Path(type_path) = *item_impl.self_ty {
-                            let type_name =
-                                type_path.path.segments.last().unwrap().ident.to_string();
-                            for impl_item in item_impl.items {
-                                if let ImplItem::Fn(method) = impl_item
-                                    && matches!(method.vis, Visibility::Public(_))
-                                    && !is_doc_hidden(&method.attrs)
-                                    && super::validation::has_lsp_doc(&method.attrs)
-                                {
-                                    let name = method.sig.ident.to_string();
-                                    doc_methods.insert((type_name.clone(), name));
-                                }
-                            }
-                        }
-                    }
-                    _ => {}
-                }
-            }
-        }
+        let catalog = super::codegen::build_catalog();
+        let doc_methods: HashSet<(String, String)> = catalog
+            .methods
+            .iter()
+            .filter(|m| !m.is_doc_hidden && m.has_lsp_doc)
+            .map(|m| (m.type_name.clone(), m.method_name.clone()))
+            .collect();
 
-        walk(
-            entry.0.as_path(),
-            entry.1.items,
-            &mut doc_structs,
-            &mut doc_methods,
-        );
-
-        // Objects were pre-filtered to those with #[lsp_doc], so struct-level checks are typically satisfied.
-        // Check method-level coverage using the in-memory ApiMap.
         for o in objects {
             if let Some(list) = api_map.get(o) {
                 for prop in list {
