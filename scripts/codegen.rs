@@ -77,14 +77,14 @@ struct ObjectProperty {
         Rename(String, String),
     }
 
-    pub fn scan_api() -> ApiMap {
+    pub fn scan_api(catalog: &ApiCatalog) -> ApiMap {
         let crate_root = super::meta::workspace_root();
 
         let mut api_map = extract_public_functions(crate_root.as_ref());
 
         // Keep only documented public objects; drop file-key entries (free
         // functions) and any hidden/internal types.
-        let objects = build_catalog().public_structs_excluding_hidden();
+        let objects = catalog.public_structs_excluding_hidden();
         api_map.retain(|k, _| objects.contains(k));
 
         api_map
@@ -95,10 +95,10 @@ struct ObjectProperty {
     /// Note: we currently include only types that are wasm-bindgen-exported, because
     /// those are the ones that actually exist as JS classes at runtime. The filename
     /// is intentionally platform-agnostic to allow future reuse.
-    pub fn export_api_objects() {
+    pub fn export_api_objects(catalog: &ApiCatalog) {
         let root = super::meta::workspace_root();
         let out_path = root.join("generated/api_objects.txt");
-        let info = build_catalog().collect_public_structs_info();
+        let info = catalog.collect_public_structs_info();
         let mut names: Vec<String> = Vec::new();
         // Helper: detect #[wasm_bindgen] directly or nested via cfg_attr(..., wasm_bindgen, ...)
         fn has_wasm_bindgen(attrs: &[syn::Attribute]) -> bool {
@@ -637,8 +637,10 @@ struct ObjectProperty {
         attrs.iter().any(|a| a.path().is_ident("lsp_doc"))
     }
 
-    /// Build the catalog from a fresh AST walk. Cheap; called by the
-    /// validation/parity helpers as their single source of truth.
+    /// Build the catalog from a fresh AST walk. Not cached — `syn::Attribute`
+    /// is `!Sync` in build-script context (proc-macro2 fallback uses Rc), so
+    /// it cannot live in a `static`. Callers re-walk on each call; cheap in
+    /// practice. The walker itself is the single source of truth.
     pub fn build_catalog() -> ApiCatalog {
         let crate_root = super::meta::workspace_root();
         let (entry_path, parsed) = parse_lib_entry_point(&crate_root);

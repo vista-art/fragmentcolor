@@ -86,13 +86,14 @@ fn generate_docs() {
     }
 
     println!("\n🗺️ Generating API map...");
-    let api_map = codegen::scan_api();
+    let catalog = codegen::build_catalog();
+    let api_map = codegen::scan_api(&catalog);
     codegen::export_api_map(&api_map);
-    codegen::export_api_objects();
+    codegen::export_api_objects(&catalog);
     println!("✅ API map successfully generated!\n");
 
     println!("🔎 Validating documentation...");
-    validation::validate_docs(&api_map);
+    validation::validate_docs(&catalog, &api_map);
     println!("✅ Docs validated!\n");
 
     println!("🧭 Auditing API parity across platforms...");
@@ -104,7 +105,7 @@ fn generate_docs() {
     println!("🌎 Exporting website (examples + pages)...");
 
     println!("==> website::export_examples_and_pages()");
-    let outcome = website::export_examples_and_pages(&api_map);
+    let outcome = website::export_examples_and_pages(&catalog, &api_map);
 
     println!("==> website::cleanup_site()");
     website::cleanup_site(&outcome.expected);

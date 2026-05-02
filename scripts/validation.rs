@@ -118,14 +118,14 @@ mod validation {
         found
     }
 
-    pub fn validate_docs(api_map: &ApiMap) {
+    pub fn validate_docs(catalog: &super::codegen::ApiCatalog, api_map: &ApiMap) {
         let mut problems = Vec::new();
         let mut warnings = Vec::new();
         let root = meta::workspace_root();
         let docs_root = root.join("docs/api");
 
         // Enforce documentation for ALL public objects (including wrappers)
-        let objects = public_structs_excluding_hidden();
+        let objects = catalog.public_structs_excluding_hidden();
 
         // Validate objects and their methods
         for object in objects.iter() {
@@ -207,17 +207,9 @@ mod validation {
         }
 
         // Enforce that all public methods referenced in the API map have #[lsp_doc]
-        enforce_lsp_doc_coverage(&objects, api_map, &mut problems);
+        enforce_lsp_doc_coverage(catalog, &objects, api_map, &mut problems);
 
         // If we reach here, validation passed.
-    }
-
-    pub fn public_structs_excluding_hidden() -> Vec<String> {
-        super::codegen::build_catalog().public_structs_excluding_hidden()
-    }
-
-    pub fn base_public_objects() -> Vec<String> {
-        super::codegen::build_catalog().base_public_objects()
     }
 
     /// Enforce that all public methods referenced in the API map have `#[lsp_doc]`.
@@ -226,13 +218,13 @@ mod validation {
     /// non-hidden, lsp-doc'd methods) and verifies every method listed under
     /// each object in `api_map` is present.
     pub fn enforce_lsp_doc_coverage(
+        catalog: &super::codegen::ApiCatalog,
         objects: &[String],
         api_map: &ApiMap,
         problems: &mut Vec<String>,
     ) {
         use std::collections::HashSet;
 
-        let catalog = super::codegen::build_catalog();
         let doc_methods: HashSet<(String, String)> = catalog
             .methods
             .iter()
