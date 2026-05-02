@@ -11,9 +11,8 @@ pub async fn create_instance() -> wgpu::Instance {
     .await;
 
     #[cfg(not(wasm))]
-    let instance = wgpu::Instance::new(
-        wgpu::InstanceDescriptor::new_without_display_handle_from_env(),
-    );
+    let instance =
+        wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env());
 
     instance
 }
@@ -36,7 +35,7 @@ pub async fn request_adapter(
 pub async fn request_device(
     adapter: &wgpu::Adapter,
 ) -> Result<(wgpu::Device, wgpu::Queue), InitializationError> {
-    let requested_features = features();
+    let requested_features = features() | available_compression_features(adapter);
     let mut requested_limits = limits().using_resolution(adapter.limits());
     requested_limits.max_immediate_size = adapter.limits().max_immediate_size;
 
@@ -140,6 +139,23 @@ fn features() -> wgpu::Features {
     let features = wgpu::Features::IMMEDIATES;
 
     features
+}
+
+/// Opt into every block-compression feature the adapter advertises so that
+/// KTX2 textures with BC / ETC2 / ASTC payloads can be uploaded as-is. Only
+/// what's actually supported gets requested — unsupported features stay off
+/// and the caller still gets a working device. KTX2 files in unsupported
+/// formats fail at upload time with a clear error rather than during device
+/// creation.
+fn available_compression_features(adapter: &wgpu::Adapter) -> wgpu::Features {
+    let supported = adapter.features();
+    let candidates = wgpu::Features::TEXTURE_COMPRESSION_BC
+        | wgpu::Features::TEXTURE_COMPRESSION_BC_SLICED_3D
+        | wgpu::Features::TEXTURE_COMPRESSION_ETC2
+        | wgpu::Features::TEXTURE_COMPRESSION_ASTC
+        | wgpu::Features::TEXTURE_COMPRESSION_ASTC_SLICED_3D
+        | wgpu::Features::TEXTURE_COMPRESSION_ASTC_HDR;
+    supported & candidates
 }
 
 fn memory_hints() -> wgpu::MemoryHints {

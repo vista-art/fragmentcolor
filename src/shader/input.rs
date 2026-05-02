@@ -85,6 +85,15 @@ fn resolve_part(part: &ShaderPart) -> Result<Resolved, ShaderError> {
         ShaderPart::Path(p) => read_path(p),
         ShaderPart::Url(u) => fetch_url(u),
         ShaderPart::Slug(slug) => {
+            // If the slug's category was compiled in (via a `shaders-<cat>`
+            // feature), serve the embedded copy and skip the network
+            // entirely. Otherwise fall back to fetching the URL form.
+            if let Some(body) = crate::shader::embedded::lookup(slug) {
+                return Ok(Resolved {
+                    body: body.to_string(),
+                    glsl: None,
+                });
+            }
             let url = crate::shader::registry::slug_to_url(slug);
             fetch_url(&url)
         }
@@ -255,10 +264,14 @@ mod tests {
     // We can't hit the network in unit tests, so we just verify that the override
     // is consulted (the resolver tries to fetch the override URL and returns a
     // network error, not a classification error).
+    //
+    // Uses `unknown_category/no_such_shader` — a slug shape that cannot match
+    // any embedded entry regardless of which `shaders-*` features are on, so
+    // the resolver always falls through to fetching the URL form.
     #[test]
     fn slug_uses_registry_override() {
         with_registry("http://127.0.0.1:1/", || {
-            let input = ShaderInput::from("sdf2d/circle");
+            let input = ShaderInput::from("unknown_category/no_such_shader");
             let err = resolve(input).expect_err("expected fetch failure");
             match err {
                 #[cfg(not(wasm))]
@@ -268,5 +281,77 @@ mod tests {
                 other => panic!("unexpected: {other:?}"),
             }
         });
+    }
+
+    // Story: Without any `shaders-*` feature enabled, the embedded lookup must
+    // return None for every slug — the resolver always falls back to URL fetch.
+    #[test]
+    fn embedded_lookup_misses_when_no_feature_enabled() {
+        // Lookups that would match if features were on:
+        for slug in ["postfx/vignette", "noise/simplex2", "sdf2d/circle"] {
+            // We can't directly assert "no feature" at runtime, but if every
+            // category feature is off in this build, the lookup must be None.
+            // Tests with features on live in `embedded_lookup_*_feature_*`.
+            let got = crate::shader::embedded::lookup(slug);
+            #[cfg(not(any(
+                feature = "shaders-postfx",
+                feature = "shaders-noise",
+                feature = "shaders-sdf2d",
+            )))]
+            assert!(got.is_none(), "expected None for {slug}, got Some");
+            // When at least one of these features IS on, the assertion is
+            // tautological for that slug; skip it. Keep the loop running so the
+            // test compiles in either configuration.
+            let _ = got;
+        }
+    }
+
+    // Story: When `shaders-postfx` is enabled, the embedded lookup returns the
+    // helper source verbatim and the resolver short-circuits the URL fetch —
+    // verified by pointing the registry at an unreachable URL and confirming
+    // a slug-only resolve still succeeds.
+    #[cfg(feature = "shaders-postfx")]
+    #[test]
+    fn embedded_postfx_serves_without_network() {
+        // The lookup itself returns Some.
+        let body = crate::shader::embedded::lookup("postfx/vignette")
+            .expect("expected embedded postfx/vignette");
+        assert!(
+            body.contains("fn vignette("),
+            "embedded body looks wrong: {body}"
+        );
+
+        // Compose with a small main shader and resolve through the full pipeline.
+        // Registry override points nowhere — if the resolver tried to fetch
+        // anything, this would error with a network failure instead.
+        let main = r#"
+struct VOut { @builtin(position) pos: vec4<f32>, @location(0) uv: vec2<f32> };
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> VOut {
+  var p = array<vec2<f32>, 3>(vec2<f32>(-1.,-1.), vec2<f32>(3.,-1.), vec2<f32>(-1.,3.));
+  var uv = array<vec2<f32>, 3>(vec2<f32>(0.,1.), vec2<f32>(2.,1.), vec2<f32>(0.,-1.));
+  var out: VOut; out.pos = vec4<f32>(p[i], 0., 1.); out.uv = uv[i]; return out;
+}
+@fragment fn fs_main(in: VOut) -> @location(0) vec4<f32> {
+  let v = vignette(in.uv, 0.5, 0.3);
+  return vec4<f32>(v, v, v, 1.0);
+}
+"#;
+        with_registry("http://127.0.0.1:1/", || {
+            let input = ShaderInput::from(["postfx/vignette", main].as_slice());
+            let res = resolve(input);
+            assert!(res.is_ok(), "expected embedded short-circuit, got {res:?}");
+        });
+    }
+
+    // Story: A slug whose category feature is NOT enabled still falls through
+    // to URL fetch, even when other category features are on.
+    #[cfg(all(feature = "shaders-postfx", not(feature = "shaders-sdf")))]
+    #[test]
+    fn embedded_other_categories_still_miss() {
+        let got = crate::shader::embedded::lookup("sdf/sphere");
+        assert!(
+            got.is_none(),
+            "sdf shouldn't be embedded without its feature"
+        );
     }
 }

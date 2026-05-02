@@ -23,3 +23,23 @@ anyhow = "1"
 
 [build-dependencies]
 cfg_aliases = "0.2"
+
+# Tutorial examples — each tutorial step's `example.rs` is registered here
+# so `cargo build --examples -p fce` validates that every published step
+# still compiles and runs as a complete program. Multi-step tutorials get
+# one entry per step folder.
+[[example]]
+name = "tutorial_01_hello_triangle_three_lines"
+path = "../../docs/tutorials/01-hello-triangle/01-three-lines/example.rs"
+
+[[example]]
+name = "tutorial_01_hello_triangle_vertex_gradient"
+path = "../../docs/tutorials/01-hello-triangle/02-vertex-gradient/example.rs"
+
+[[example]]
+name = "tutorial_01_hello_triangle_particle_trail"
+path = "../../docs/tutorials/01-hello-triangle/03-particle-trail/example.rs"
+
+[[example]]
+name = "tutorial_01_hello_triangle_postfx_pass"
+path = "../../docs/tutorials/01-hello-triangle/04-postfx-pass/example.rs"

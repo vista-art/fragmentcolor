@@ -32,6 +32,7 @@ use crate::{PassObject, Renderable, Shader};
 #[derive(Clone, Debug)]
 #[cfg_attr(python, pyclass)]
 #[cfg_attr(wasm, wasm_bindgen)]
+#[cfg_attr(mobile, derive(uniffi::Object))]
 #[lsp_doc("docs/api/geometry/mesh/mesh.md")]
 pub struct Mesh {
     pub(crate) object: Arc<MeshObject>,

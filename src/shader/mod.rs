@@ -27,6 +27,8 @@ pub use composer::{ShaderInput, ShaderPart};
 
 pub(crate) mod registry;
 
+pub(crate) mod embedded;
+
 mod glsl;
 mod input;
 mod platform;
@@ -587,10 +589,7 @@ fn sampled_image_globals(
 
     if indirect {
         for (handle, var) in module.global_variables.iter() {
-            if matches!(
-                &module.types[var.ty].inner,
-                naga::TypeInner::Image { .. }
-            ) {
+            if matches!(&module.types[var.ty].inner, naga::TypeInner::Image { .. }) {
                 sampled.insert(handle);
             }
         }

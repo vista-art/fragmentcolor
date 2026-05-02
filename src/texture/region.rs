@@ -4,8 +4,6 @@
 //! the source bytes are laid out. Public methods accept `impl Into<TextureRegion>`
 //! so JS / Python callers pass raw arrays or objects, never the type itself.
 
-use crate::texture::TextureError;
-
 /// Where in a texture to write, and how source bytes are laid out.
 ///
 /// `origin` and `size` are 3D — `[x, y, z]` and `[width, height, depth]` —
@@ -121,6 +119,9 @@ impl From<crate::ScreenRegion> for TextureRegion {
 // -------------------------------------------
 
 #[cfg(wasm)]
+use crate::texture::TextureError;
+
+#[cfg(wasm)]
 impl TryFrom<&wasm_bindgen::JsValue> for TextureRegion {
     type Error = TextureError;
 
@@ -187,8 +188,8 @@ impl TryFrom<&wasm_bindgen::JsValue> for TextureRegion {
             };
 
             // min/max variant
-            let has_minmax = read(&["minX", "min_x"]).is_some()
-                || read(&["maxX", "max_x"]).is_some();
+            let has_minmax =
+                read(&["minX", "min_x"]).is_some() || read(&["maxX", "max_x"]).is_some();
             if has_minmax {
                 let min_x = read(&["minX", "min_x"]).unwrap_or(0);
                 let min_y = read(&["minY", "min_y"]).unwrap_or(0);

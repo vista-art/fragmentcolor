@@ -91,6 +91,13 @@ impl TextureTarget {
         let data = self.get_image_async().await;
         js_sys::Uint8Array::from(data.as_slice())
     }
+
+    /// Get a sampleable Texture handle for binding in a shader uniform.
+    /// Mirrors the native `TextureTarget::texture()` method.
+    #[wasm_bindgen(js_name = "texture")]
+    pub fn texture_js(&self) -> crate::texture::Texture {
+        self.texture()
+    }
 }
 
 crate::impl_js_bridge!(CanvasTarget, ShaderError);

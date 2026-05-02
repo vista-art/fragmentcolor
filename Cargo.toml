@@ -29,6 +29,74 @@ members = ["examples/rust"]
 python = ["pyo3", "numpy", "pollster"]
 winit = ["dep:winit", "pollster"]
 
+# ---------------------------------------------------------------------------
+# Embedded shader registry — opt in to bake registry shaders into the binary
+# ---------------------------------------------------------------------------
+# Themed per-category, like web-sys's per-type features. Each `shaders-<cat>`
+# embeds every `.wgsl` under `docs/website/public/shaders/<cat>/` so slugs
+# like `postfx/vignette` resolve synchronously and offline (no URL fetch,
+# no async dance, no live network at startup). Slugs whose category isn't
+# enabled fall back to the URL-fetch path.
+shaders-camera   = []
+shaders-color    = []
+shaders-dither   = []
+shaders-easing   = []
+shaders-encode   = []
+shaders-geom     = []
+shaders-gradient = []
+shaders-hash     = []
+shaders-intersect = []
+shaders-lighting = []
+shaders-map      = []
+shaders-math     = []
+shaders-noise    = []
+shaders-pattern  = []
+shaders-postfx   = []
+shaders-raymarch = []
+shaders-sample   = []
+shaders-sdf      = []
+shaders-sdf2d    = []
+
+# Convenience umbrellas. Pick a vibe; pull the categories it implies.
+shaders-2d = [
+    "shaders-color",
+    "shaders-gradient",
+    "shaders-noise",
+    "shaders-pattern",
+    "shaders-postfx",
+    "shaders-sdf2d",
+]
+shaders-3d = [
+    "shaders-camera",
+    "shaders-color",
+    "shaders-lighting",
+    "shaders-noise",
+    "shaders-raymarch",
+    "shaders-sample",
+    "shaders-sdf",
+]
+shaders-all = [
+    "shaders-camera",
+    "shaders-color",
+    "shaders-dither",
+    "shaders-easing",
+    "shaders-encode",
+    "shaders-geom",
+    "shaders-gradient",
+    "shaders-hash",
+    "shaders-intersect",
+    "shaders-lighting",
+    "shaders-map",
+    "shaders-math",
+    "shaders-noise",
+    "shaders-pattern",
+    "shaders-postfx",
+    "shaders-raymarch",
+    "shaders-sample",
+    "shaders-sdf",
+    "shaders-sdf2d",
+]
+
 [dependencies]
 wgpu = { version = "29", features = ["glsl", "wgsl", "webgl", "naga-ir"] }
 naga = { version = "29", features = ["wgsl-in", "glsl-in"] }
@@ -55,6 +123,7 @@ image = { version = "0.25", default-features = false, features = [
     "bmp",
     "hdr",
 ] }
+ktx2 = "0.5"
 
 # Python FFI (optional)
 pyo3 = { version = "0.28", features = [

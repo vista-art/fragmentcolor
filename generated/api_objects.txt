@@ -10,4 +10,5 @@ Shader
 Size
 Texture
 TextureId
+TextureMipChain
 Vertex

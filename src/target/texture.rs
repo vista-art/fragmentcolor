@@ -5,7 +5,7 @@ use std::sync::Arc;
 #[cfg(wasm)]
 use wasm_bindgen::prelude::*;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 #[cfg_attr(wasm, wasm_bindgen)]
 #[cfg_attr(mobile, derive(uniffi::Object))]
 #[lsp_doc("docs/api/targets/texture_target/texture_target.md")]
@@ -61,13 +61,11 @@ impl Target for TextureTarget {
 
     #[lsp_doc("docs/api/targets/target/get_image.md")]
     fn get_image(&self) -> Vec<u8> {
-        let mut pixels =
-            crate::texture::read_texture_object_sync(&self.context, &self.texture).unwrap_or_else(
-                |e| {
-                    log::error!("TextureTarget::get_image failed: {:?}", e);
-                    Vec::new()
-                },
-            );
+        let mut pixels = crate::texture::read_texture_object_sync(&self.context, &self.texture)
+            .unwrap_or_else(|e| {
+                log::error!("TextureTarget::get_image failed: {:?}", e);
+                Vec::new()
+            });
         swap_bgra_to_rgba(&mut pixels, self.texture.format());
         pixels
     }

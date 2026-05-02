@@ -56,11 +56,15 @@ impl ShaderPart {
             return ShaderPart::Url(trimmed.to_string());
         }
 
-        if starts_with_path_anchor(trimmed) {
+        let single_token = is_single_token(trimmed);
+
+        // Path detection requires a single-line, whitespace-free string. Without
+        // this guard, a multi-line WGSL source whose first non-whitespace bytes
+        // are `//` (a comment) would match `starts_with('/')` and get classified
+        // as a path. Real paths are single tokens.
+        if single_token && starts_with_path_anchor(trimmed) {
             return ShaderPart::Path(PathBuf::from(trimmed));
         }
-
-        let single_token = is_single_token(trimmed);
 
         if single_token && has_shader_extension(trimmed) {
             return ShaderPart::Path(PathBuf::from(trimmed));
@@ -75,10 +79,19 @@ impl ShaderPart {
 }
 
 fn strip_http_prefix(s: &str) -> Option<&str> {
-    s.strip_prefix("http://").or_else(|| s.strip_prefix("https://"))
+    s.strip_prefix("http://")
+        .or_else(|| s.strip_prefix("https://"))
 }
 
 fn starts_with_path_anchor(s: &str) -> bool {
+    // `//` is the line-comment marker in WGSL/JS/Rust/Swift/Kotlin and never
+    // a valid path prefix in any environment we target. Reject early so that
+    // single-token strings beginning with a comment (rare but possible: a
+    // minified shader, a copy-paste with a leading `//directive`) aren't
+    // mis-classified as paths.
+    if s.starts_with("//") {
+        return false;
+    }
     s.starts_with("./") || s.starts_with("../") || s.starts_with('/') || s.starts_with("~/")
 }
 
@@ -114,7 +127,8 @@ fn is_slug(s: &str) -> bool {
         return false;
     }
 
-    name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+    name.chars()
+        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
 }
 
 impl From<&str> for ShaderInput {
@@ -279,6 +293,30 @@ mod tests {
         assert_path(&p, "shader.vert");
     }
 
+    // Regression: a multi-line shader source whose first non-whitespace bytes
+    // are a `//` line comment must not be classified as a Path just because
+    // the comment marker happens to start with `/`. This was the bug that broke
+    // the front-page swirl shader: Shader.fetch fetched the URL successfully,
+    // but the resulting WGSL body was re-classified as a path on the second
+    // pass through Shader::new and resolution then tried to read it as a file.
+    #[test]
+    fn classifier_source_with_leading_line_comment_is_source() {
+        let src = "// Fullscreen swirl palette demo (shader-only)\n\
+                   // Ported from a Shadertoy-style fragment to WGSL\n\
+                   \n\
+                   struct VOut { @builtin(position) pos: vec4<f32> };\n";
+        let p = ShaderPart::classify(src);
+        assert_source(&p, src);
+    }
+
+    // Even a single-line `// foo` (no newline) shouldn't be a path — `//` is a
+    // comment marker in every language we target, never a path prefix.
+    #[test]
+    fn classifier_single_line_starting_with_double_slash_is_source() {
+        let p = ShaderPart::classify("//something");
+        assert_source(&p, "//something");
+    }
+
     #[test]
     fn classifier_slug_two_segments() {
         let p = ShaderPart::classify("sdf2d/circle");
@@ -340,7 +378,8 @@ mod tests {
 
     #[test]
     fn classifier_source_multiline() {
-        let src = "@vertex\nfn vs_main() -> @builtin(position) vec4<f32> { return vec4<f32>(0.0); }";
+        let src =
+            "@vertex\nfn vs_main() -> @builtin(position) vec4<f32> { return vec4<f32>(0.0); }";
         let p = ShaderPart::classify(src);
         assert_source(&p, src);
     }

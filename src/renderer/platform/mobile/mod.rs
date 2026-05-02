@@ -54,6 +54,12 @@ impl From<crate::ShaderError> for FragmentColorError {
     }
 }
 
+impl From<crate::texture::TextureError> for FragmentColorError {
+    fn from(e: crate::texture::TextureError) -> Self {
+        FragmentColorError::Render(e.to_string())
+    }
+}
+
 #[uniffi::export]
 impl Renderer {
     /// Foreign bindings see this as `Renderer.new()`. On Swift, uniffi
@@ -83,32 +89,87 @@ impl Renderer {
         Ok(Arc::new(tex))
     }
 
-    /// Render into a `WindowTarget`. Uniffi cannot marshal `&impl Renderable`
-    /// / `&impl Target`, so mobile bindings ship a pair of concrete methods
-    /// (one per target type); the Swift / Kotlin extension files merge them
-    /// back into a single overloaded `render(shader, target)` for callers.
-    #[uniffi::method(name = "renderShader")]
-    #[lsp_doc("docs/api/core/renderer/hidden/render_shader_mobile.md")]
-    pub fn render_shader_mobile(
-        &self,
-        shader: Arc<Shader>,
-        target: Arc<WindowTarget>,
-    ) -> Result<(), FragmentColorError> {
-        self.render(shader.as_ref(), target.as_ref())
-            .map_err(FragmentColorError::from)
+    /// Single mobile entry point for texture creation. Mirrors the canonical
+    /// Rust `Renderer::create_texture(impl Into<TextureInput>)` — uniffi
+    /// can't marshal `impl Into`, so the mobile shim takes the input as a
+    /// concrete enum + an optional `TextureOptions`. Swift / Kotlin
+    /// extension files supply the natural overloads (e.g. `renderer.createTexture(bytes)`,
+    /// `renderer.createTexture(chain)`) by wrapping the enum invisibly.
+    #[uniffi::method(name = "createTexture")]
+    #[lsp_doc("docs/api/core/renderer/create_texture.md")]
+    pub async fn create_texture_mobile(
+        self: Arc<Self>,
+        input: crate::texture::TextureInputMobile,
+        options: Option<crate::texture::TextureOptions>,
+    ) -> Result<Arc<crate::texture::Texture>, FragmentColorError> {
+        let spec = crate::texture::TextureInput {
+            data: input.into(),
+            options: options.unwrap_or_default(),
+        };
+        let tex = self
+            .create_texture(spec)
+            .await
+            .map_err(FragmentColorError::from)?;
+        Ok(Arc::new(tex))
     }
 
-    /// Render into a `TextureTarget` (see `render_shader_mobile` for the
-    /// rationale behind the concrete method split).
-    #[uniffi::method(name = "renderShaderToTexture")]
-    #[lsp_doc("docs/api/core/renderer/hidden/render_shader_texture_mobile.md")]
-    pub fn render_shader_texture_mobile(
-        &self,
-        shader: Arc<Shader>,
-        target: Arc<TextureTarget>,
+    /// Allocate a storage-class texture, optionally pre-seeded with `data`.
+    /// Mirrors the canonical `Renderer::create_storage_texture(impl Into<TextureInput>)`
+    /// — uniffi can't marshal `impl Into`, so the mobile shim takes the
+    /// fields directly and the body builds a `TextureInput` from them.
+    /// `usage_bits = None` defaults to STORAGE | TEXTURE | COPY_SRC | COPY_DST.
+    #[uniffi::method(name = "createStorageTexture")]
+    #[lsp_doc("docs/api/core/renderer/create_storage_texture.md")]
+    pub async fn create_storage_texture_mobile(
+        self: Arc<Self>,
+        size: Size,
+        format: crate::TextureFormat,
+        data: Option<Vec<u8>>,
+        usage_bits: Option<u32>,
+    ) -> Result<Arc<crate::texture::Texture>, FragmentColorError> {
+        let input = crate::TextureInput {
+            data: match data {
+                Some(bytes) => crate::TextureData::Bytes(bytes),
+                None => crate::TextureData::Empty,
+            },
+            options: crate::TextureOptions {
+                size: Some(size),
+                format,
+                usage: usage_bits,
+                ..Default::default()
+            },
+        };
+        let tex = self
+            .create_storage_texture(input)
+            .await
+            .map_err(FragmentColorError::from)?;
+        Ok(Arc::new(tex))
+    }
+
+    /// Single mobile `render` entry. Mirrors the canonical Rust
+    /// `Renderer::render(&impl Renderable, &impl Target)` — uniffi can't
+    /// marshal `&impl Trait`, so the mobile shim takes the concrete enums
+    /// `RenderableHandle` (Shader / Pass / Mesh / Passes) and `TargetHandle`
+    /// (Window / Texture). Swift and Kotlin extension files supply natural
+    /// overloads (`renderer.render(shader, target)`,
+    /// `renderer.render(pass, target)`, etc.) that wrap the concrete value
+    /// into the matching enum variant invisibly, so callers never see the
+    /// mobile-only mirror types.
+    #[uniffi::method(name = "render")]
+    #[lsp_doc("docs/api/core/renderer/render.md")]
+    pub fn render_mobile(
+        self: Arc<Self>,
+        renderable: crate::renderer::renderable::RenderableHandle,
+        target: crate::renderer::renderable::TargetHandle,
     ) -> Result<(), FragmentColorError> {
-        self.render(shader.as_ref(), target.as_ref())
-            .map_err(FragmentColorError::from)
+        match target {
+            crate::renderer::renderable::TargetHandle::Window(window_target) => self
+                .render(&renderable, window_target.as_ref())
+                .map_err(FragmentColorError::from),
+            crate::renderer::renderable::TargetHandle::Texture(texture_target) => self
+                .render(&renderable, texture_target.as_ref())
+                .map_err(FragmentColorError::from),
+        }
     }
 
     /// Wrap a native platform video-frame source as an external texture.
@@ -123,7 +184,8 @@ impl Renderer {
     pub fn create_external_texture_mobile(
         self: Arc<Self>,
         source_ptr: u64,
-    ) -> Result<Arc<crate::renderer::external_texture::ExternalTextureHandle>, FragmentColorError> {
+    ) -> Result<Arc<crate::renderer::external_texture::ExternalTextureHandle>, FragmentColorError>
+    {
         crate::renderer::external_texture::create_external_texture_from_native(&self, source_ptr)
             .map_err(FragmentColorError::from)
     }
