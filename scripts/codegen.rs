@@ -80,13 +80,11 @@ struct ObjectProperty {
     pub fn scan_api() -> ApiMap {
         let crate_root = super::meta::workspace_root();
 
-        // Extract functions from source
         let mut api_map = extract_public_functions(crate_root.as_ref());
 
-        // Derive canonical public objects from AST: all top-level pub structs excluding #[doc(hidden)]
-        let objects = super::validation::public_structs_excluding_hidden();
-
-        // Keep only objects discovered in code (exclude file-key entries and hidden/internal types)
+        // Keep only documented public objects; drop file-key entries (free
+        // functions) and any hidden/internal types.
+        let objects = build_catalog().public_structs_excluding_hidden();
         api_map.retain(|k, _| objects.contains(k));
 
         api_map
@@ -100,7 +98,7 @@ struct ObjectProperty {
     pub fn export_api_objects() {
         let root = super::meta::workspace_root();
         let out_path = root.join("generated/api_objects.txt");
-        let info = super::validation::collect_public_structs_info();
+        let info = build_catalog().collect_public_structs_info();
         let mut names: Vec<String> = Vec::new();
         // Helper: detect #[wasm_bindgen] directly or nested via cfg_attr(..., wasm_bindgen, ...)
         fn has_wasm_bindgen(attrs: &[syn::Attribute]) -> bool {
