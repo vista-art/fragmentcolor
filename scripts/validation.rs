@@ -310,10 +310,6 @@ mod validation {
         super::codegen::build_catalog().public_structs_excluding_hidden()
     }
 
-    pub fn collect_public_structs_info() -> Vec<(String, Vec<syn::Attribute>, Vec<String>)> {
-        super::codegen::build_catalog().collect_public_structs_info()
-    }
-
     pub fn base_public_objects() -> Vec<String> {
         super::codegen::build_catalog().base_public_objects()
     }
