@@ -544,4 +544,200 @@ struct ObjectProperty {
         )
         .unwrap();
     }
+
+    // ----------------------------------------------------------------------
+    // ApiCatalog
+    //
+    // Single-pass AST walk that records the metadata downstream consumers
+    // (validation, parity) used to re-derive via independent walks. Built
+    // lazily once per build-script run via `catalog()`.
+    // ----------------------------------------------------------------------
+
+    #[derive(Clone, Debug)]
+    pub struct StructEntry {
+        pub name: String,
+        pub attrs: Vec<syn::Attribute>,
+        pub is_doc_hidden: bool,
+        pub has_lsp_doc: bool,
+        /// Type idents pulled from the struct's fields (after dedup), used
+        /// for wrapper detection in `base_public_objects`.
+        pub inner_types: Vec<String>,
+    }
+
+    #[derive(Clone, Debug)]
+    pub struct MethodEntry {
+        pub type_name: String,
+        pub method_name: String,
+        pub has_lsp_doc: bool,
+        pub is_doc_hidden: bool,
+    }
+
+    #[derive(Default, Debug)]
+    pub struct ApiCatalog {
+        pub structs: Vec<StructEntry>,
+        pub methods: Vec<MethodEntry>,
+    }
+
+    impl ApiCatalog {
+        /// Public structs with `#[lsp_doc]` and not `#[doc(hidden)]`,
+        /// sorted and de-duplicated by name.
+        pub fn public_structs_excluding_hidden(&self) -> Vec<String> {
+            let mut out: Vec<String> = self
+                .structs
+                .iter()
+                .filter(|s| !s.is_doc_hidden && s.has_lsp_doc)
+                .map(|s| s.name.clone())
+                .collect();
+            out.sort();
+            out.dedup();
+            out
+        }
+
+        /// Triplet form `(name, attrs, inner_types)` for every public struct
+        /// not marked `#[doc(hidden)]` (regardless of `#[lsp_doc]`).
+        pub fn collect_public_structs_info(
+            &self,
+        ) -> Vec<(String, Vec<syn::Attribute>, Vec<String>)> {
+            self.structs
+                .iter()
+                .filter(|s| !s.is_doc_hidden)
+                .map(|s| (s.name.clone(), s.attrs.clone(), s.inner_types.clone()))
+                .collect()
+        }
+
+        /// Documented public structs that are not wrappers around another
+        /// documented type (used as the canonical object set for the website).
+        pub fn base_public_objects(&self) -> Vec<String> {
+            let info = self.collect_public_structs_info();
+            let documented: HashSet<String> = info
+                .iter()
+                .filter(|(_, attrs, _)| has_lsp_doc(attrs))
+                .map(|(n, _, _)| n.clone())
+                .collect();
+            let wrappers: HashSet<String> = info
+                .iter()
+                .filter(|(n, _, inner)| inner.iter().any(|t| documented.contains(t) && t != n))
+                .map(|(n, _, _)| n.clone())
+                .collect();
+            info.iter()
+                .filter(|(n, attrs, _)| {
+                    documented.contains(n) && !wrappers.contains(n) && has_lsp_doc(attrs)
+                })
+                .map(|(n, _, _)| n.clone())
+                .collect()
+        }
+    }
+
+    pub fn is_doc_hidden(attrs: &[syn::Attribute]) -> bool {
+        attrs.iter().any(|a| {
+            let s = a.to_token_stream().to_string();
+            s.contains("doc") && s.contains("hidden")
+        })
+    }
+
+    pub fn has_lsp_doc(attrs: &[syn::Attribute]) -> bool {
+        attrs.iter().any(|a| a.path().is_ident("lsp_doc"))
+    }
+
+    /// Build the catalog from a fresh AST walk. Cheap; called by the
+    /// validation/parity helpers as their single source of truth.
+    pub fn build_catalog() -> ApiCatalog {
+        let crate_root = super::meta::workspace_root();
+        let (entry_path, parsed) = parse_lib_entry_point(&crate_root);
+        let mut catalog = ApiCatalog::default();
+        walk_catalog(&entry_path, parsed.items, &mut catalog);
+        catalog
+    }
+
+    fn walk_catalog(path: &Path, items: Vec<Item>, catalog: &mut ApiCatalog) {
+        for item in items {
+            match item {
+                Item::Mod(m) => {
+                    if let Visibility::Public(_) = m.vis {
+                        let (mod_path, mod_items) = parse_module(path, &m);
+                        walk_catalog(&mod_path, mod_items, catalog);
+                    }
+                }
+                Item::Struct(s) => {
+                    if let Visibility::Public(_) = s.vis {
+                        let mut inner_types = Vec::new();
+                        match &s.fields {
+                            syn::Fields::Unnamed(unnamed) => {
+                                if unnamed.unnamed.len() == 1 {
+                                    collect_type_idents(
+                                        &unnamed.unnamed[0].ty,
+                                        &mut inner_types,
+                                    );
+                                }
+                            }
+                            syn::Fields::Named(named) => {
+                                for f in named.named.iter() {
+                                    collect_type_idents(&f.ty, &mut inner_types);
+                                }
+                            }
+                            syn::Fields::Unit => {}
+                        }
+                        inner_types.sort();
+                        inner_types.dedup();
+                        catalog.structs.push(StructEntry {
+                            name: s.ident.to_string(),
+                            is_doc_hidden: is_doc_hidden(&s.attrs),
+                            has_lsp_doc: has_lsp_doc(&s.attrs),
+                            attrs: s.attrs,
+                            inner_types,
+                        });
+                    }
+                }
+                Item::Impl(item_impl) => {
+                    if let syn::Type::Path(type_path) = *item_impl.self_ty {
+                        let type_name =
+                            type_path.path.segments.last().unwrap().ident.to_string();
+                        for impl_item in item_impl.items {
+                            if let ImplItem::Fn(method) = impl_item
+                                && matches!(method.vis, Visibility::Public(_))
+                            {
+                                catalog.methods.push(MethodEntry {
+                                    type_name: type_name.clone(),
+                                    method_name: method.sig.ident.to_string(),
+                                    has_lsp_doc: has_lsp_doc(&method.attrs),
+                                    is_doc_hidden: is_doc_hidden(&method.attrs),
+                                });
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    fn collect_type_idents(ty: &syn::Type, out: &mut Vec<String>) {
+        use syn::{GenericArgument, PathArguments, Type};
+        match ty {
+            Type::Path(tp) => {
+                if let Some(seg) = tp.path.segments.last() {
+                    out.push(seg.ident.to_string());
+                }
+                for seg in &tp.path.segments {
+                    if let PathArguments::AngleBracketed(ab) = &seg.arguments {
+                        for arg in &ab.args {
+                            if let GenericArgument::Type(inner) = arg {
+                                collect_type_idents(inner, out);
+                            }
+                        }
+                    }
+                }
+            }
+            Type::Reference(r) => collect_type_idents(&r.elem, out),
+            Type::Paren(p) => collect_type_idents(&p.elem, out),
+            Type::Group(g) => collect_type_idents(&g.elem, out),
+            Type::Tuple(t) => {
+                for elem in &t.elems {
+                    collect_type_idents(elem, out);
+                }
+            }
+            Type::Array(a) => collect_type_idents(&a.elem, out),
+            _ => {}
+        }
+    }
 }

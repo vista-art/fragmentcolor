@@ -307,169 +307,19 @@ mod validation {
     }
 
     pub fn public_structs_excluding_hidden() -> Vec<String> {
-        use syn::{Item, Visibility};
-        let entry = super::codegen::parse_lib_entry_point(&meta::workspace_root());
-        fn is_doc_hidden(attrs: &[syn::Attribute]) -> bool {
-            use quote::ToTokens;
-            attrs.iter().any(|a| {
-                a.to_token_stream().to_string().contains("doc")
-                    && a.to_token_stream().to_string().contains("hidden")
-            })
-        }
-        fn walk(path: &std::path::Path, items: Vec<Item>, out: &mut Vec<String>) {
-            for item in items {
-                match item {
-                    Item::Mod(m) => {
-                        if let Visibility::Public(_) = m.vis {
-                            let (mod_path, mod_items) = super::codegen::parse_module(path, &m);
-                            walk(&mod_path, mod_items, out);
-                        }
-                    }
-                    Item::Struct(s) => {
-                        if let Visibility::Public(_) = s.vis
-                            && !is_doc_hidden(&s.attrs)
-                            && has_lsp_doc(&s.attrs)
-                        {
-                            let name = s.ident.to_string();
-                            if !out.contains(&name) {
-                                out.push(name);
-                            }
-                        }
-                    }
-                    _ => {}
-                }
-            }
-        }
-        let mut out = Vec::new();
-        walk(entry.0.as_path(), entry.1.items, &mut out);
-        out.sort();
-        out
+        super::codegen::build_catalog().public_structs_excluding_hidden()
     }
 
     pub fn collect_public_structs_info() -> Vec<(String, Vec<syn::Attribute>, Vec<String>)> {
-        use syn::{Item, Visibility};
-        let entry = codegen::parse_lib_entry_point(&meta::workspace_root());
-        fn is_doc_hidden(attrs: &[syn::Attribute]) -> bool {
-            use quote::ToTokens;
-            attrs.iter().any(|a| {
-                a.to_token_stream().to_string().contains("doc")
-                    && a.to_token_stream().to_string().contains("hidden")
-            })
-        }
-        fn collect_type_idents(ty: &syn::Type, out: &mut Vec<String>) {
-            use syn::{GenericArgument, PathArguments, Type};
-            match ty {
-                Type::Path(tp) => {
-                    if let Some(seg) = tp.path.segments.last() {
-                        out.push(seg.ident.to_string());
-                    }
-                    for seg in &tp.path.segments {
-                        if let PathArguments::AngleBracketed(ab) = &seg.arguments {
-                            for arg in &ab.args {
-                                if let GenericArgument::Type(inner) = arg {
-                                    collect_type_idents(inner, out);
-                                }
-                            }
-                        }
-                    }
-                }
-                Type::Reference(r) => collect_type_idents(&r.elem, out),
-                Type::Paren(p) => collect_type_idents(&p.elem, out),
-                Type::Group(g) => collect_type_idents(&g.elem, out),
-                Type::Tuple(t) => {
-                    for elem in &t.elems {
-                        collect_type_idents(elem, out);
-                    }
-                }
-                Type::Array(a) => collect_type_idents(&a.elem, out),
-                _ => {}
-            }
-        }
-        fn walk(
-            path: &std::path::Path,
-            items: Vec<Item>,
-            out: &mut Vec<(String, Vec<syn::Attribute>, Vec<String>)>,
-        ) {
-            for item in items {
-                match item {
-                    Item::Mod(m) => {
-                        if let Visibility::Public(_) = m.vis {
-                            let (mod_path, mod_items) = super::codegen::parse_module(path, &m);
-                            walk(&mod_path, mod_items, out);
-                        }
-                    }
-                    Item::Struct(s) => {
-                        if let Visibility::Public(_) = s.vis
-                            && !is_doc_hidden(&s.attrs)
-                        {
-                            let name = s.ident.to_string();
-                            let mut inner_types = Vec::new();
-                            match &s.fields {
-                                syn::Fields::Unnamed(unnamed) => {
-                                    if unnamed.unnamed.len() == 1 {
-                                        collect_type_idents(
-                                            &unnamed.unnamed[0].ty,
-                                            &mut inner_types,
-                                        );
-                                    }
-                                }
-                                syn::Fields::Named(named) => {
-                                    for f in named.named.iter() {
-                                        collect_type_idents(&f.ty, &mut inner_types);
-                                    }
-                                }
-                                syn::Fields::Unit => {}
-                            }
-                            // Dedup to reduce noise like [Option, WindowTarget, WindowTarget]
-                            inner_types.sort();
-                            inner_types.dedup();
-                            out.push((name, s.attrs.clone(), inner_types));
-                        }
-                    }
-                    _ => {}
-                }
-            }
-        }
-        let mut out = Vec::new();
-        walk(entry.0.as_path(), entry.1.items, &mut out);
-        out
+        super::codegen::build_catalog().collect_public_structs_info()
     }
 
     pub fn base_public_objects() -> Vec<String> {
-        let info = collect_public_structs_info();
-        // Consider only documented types as canonical API objects.
-        let documented: std::collections::HashSet<String> = info
-            .iter()
-            .filter(|(_, attrs, _)| has_lsp_doc(attrs))
-            .map(|(n, _, _)| n.clone())
-            .collect();
-
-        // A struct is a wrapper if:
-        // - It is a tuple newtype around a documented type, OR
-        // - It contains a field that references a documented type (possibly nested in generics like Option<T>, Arc<T>, etc.)
-        // We detect by checking whether any collected inner type idents match a documented name.
-        let wrapper_names: std::collections::HashSet<String> = info
-            .iter()
-            .filter(|(n, _attrs, inner)| {
-                // Prevent self-matching in degenerate cases
-                inner.iter().any(|t| documented.contains(t) && t != n)
-            })
-            .map(|(n, _, _)| n.clone())
-            .collect();
-
-        // Base objects are documented types that are not wrappers
-        let base: Vec<String> = info
-            .iter()
-            .filter(|(n, attrs, _)| {
-                documented.contains(n) && !wrapper_names.contains(n) && has_lsp_doc(attrs)
-            })
-            .map(|(n, _, _)| n.clone())
-            .collect();
-        base
+        super::codegen::build_catalog().base_public_objects()
     }
 
     fn has_lsp_doc(attrs: &[syn::Attribute]) -> bool {
-        attrs.iter().any(|a| a.path().is_ident("lsp_doc"))
+        super::codegen::has_lsp_doc(attrs)
     }
 
     /// Enforce that all public methods referenced in the API map have #[lsp_doc].
