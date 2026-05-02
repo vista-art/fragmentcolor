@@ -60,6 +60,7 @@ impl RenderCanvasTarget {
         self.target.is_some()
     }
 
+    #[lsp_doc("docs/api/targets/window_target/size.md")]
     pub fn size(&self) -> PySize3 {
         let size = <Self as Target>::size(self);
         PySize3 {
@@ -69,6 +70,7 @@ impl RenderCanvasTarget {
         }
     }
 
+    #[lsp_doc("docs/api/targets/window_target/resize.md")]
     pub fn resize(&mut self, size: crate::PySize) {
         let size: Size = size.into();
         <Self as Target>::resize(self, size);
@@ -188,6 +190,7 @@ pub struct PyTextureTarget {
 #[pymethods]
 impl PyTextureTarget {
     #[getter]
+    #[lsp_doc("docs/api/targets/texture_target/size.md")]
     pub fn size(&self) -> PySize3 {
         let size = <Self as Target>::size(self);
         PySize3 {
@@ -197,6 +200,7 @@ impl PyTextureTarget {
         }
     }
 
+    #[lsp_doc("docs/api/targets/texture_target/resize.md")]
     pub fn resize(&mut self, size: crate::PySize) {
         let size: Size = size.into();
         <Self as Target>::resize(self, size);
@@ -213,6 +217,7 @@ impl PyTextureTarget {
     }
 
     /// Read back the RGBA image as a Python list of ints (byte values).
+    #[lsp_doc("docs/api/targets/texture_target/get_image.md")]
     pub fn get_image(&self) -> Result<Py<numpy::PyArray3<u8>>, PyErr> {
         const BPP: usize = 4; // Bytes per pixel (RGBA8)
         let data = <crate::TextureTarget as Target>::get_image(&self.inner);

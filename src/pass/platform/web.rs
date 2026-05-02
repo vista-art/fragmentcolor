@@ -145,7 +145,7 @@ impl Pass {
     }
 
     #[wasm_bindgen(js_name = "isCompute")]
-    #[lsp_doc("docs/api/core/shader/is_compute.md")]
+    #[lsp_doc("docs/api/core/pass/is_compute.md")]
     pub fn is_compute_js(&self) -> bool {
         self.is_compute()
     }
