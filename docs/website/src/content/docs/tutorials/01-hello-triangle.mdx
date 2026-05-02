@@ -178,7 +178,7 @@ film grain. Two more objects from the core API show up here:
 - **`Pass`** — the unit of "render this to that". Lets you chain effects.
 - **`Texture`** — the bridge between two passes (or a sampleable input).
 
-And we get to use the **shader composition** system we set up in v0.11
+And we get to use FragmentColor's **shader composition** system
 for the postfx itself: instead of writing the vignette and grain by hand,
 we pull them out of the [public registry](https://fragmentcolor.org/shaders/)
 and let `Shader::new` glue them together with a small main shader.

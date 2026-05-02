@@ -1,6 +1,8 @@
 # Web External Texture (video)
 
-Bind an HTML video element as an external texture on Web. In WGSL, declare `texture_external` and sample with `textureSampleBaseClampToEdge`.
+Bind an `HTMLVideoElement` as an external texture so shaders can sample decoded video frames directly via `texture_external` and `textureSampleBaseClampToEdge`, without copying pixels through the CPU.
+
+> **Status:** the API surface is in place on every binding so portable code can be written against it today, but every entry point currently returns `"not implemented yet"`. Track [Renderer::create_external_texture](https://fragmentcolor.org/api/core/renderer/create_external_texture) for progress.
 
 WGSL
 ```wgsl
@@ -15,15 +17,20 @@ fn fs_main(v_uv: vec2f) -> @location(0) vec4f {
 
 Rust (wasm)
 ```rust
-let window = web_sys::window().unwrap();
-let document = window.document().unwrap();
-let element = document.get_element_by_id("video").unwrap();
-let video = element.dyn_into::<web_sys::HtmlVideoElement>().unwrap();
-
-let handle = renderer.create_external_texture_from_html_video(&video)?;
-// Build a bind group layout with externalTexture + sampler, then create a bind group using `handle`.
+# #[cfg(target_arch = "wasm32")]
+# fn run() -> Result<(), Box<dyn std::error::Error>> {
+# use wasm_bindgen::JsCast;
+use fragmentcolor::Renderer;
+let renderer = Renderer::new();
+# let video = web_sys::window().unwrap()
+#     .document().unwrap()
+#     .get_element_by_id("video").unwrap()
+#     .dyn_into::<web_sys::HtmlVideoElement>().unwrap();
+let handle = renderer.create_external_texture(&video)?;
+let _ = handle;
+# Ok(())
+# }
+# fn main() {}
 ```
 
-Notes
-- Requires browser support for external textures.
-- If not available, consider a fallback: draw the <video> into a canvas and upload pixels via `Texture.write_region` each frame.
+Today's workaround: draw the `<video>` into a canvas and upload pixels via `Texture.write_region` each frame.

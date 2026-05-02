@@ -2,7 +2,7 @@
 
 Create a [Texture](https://fragmentcolor.org/api/core/texture) from any input shape — there is exactly one method.
 
-The single `create_texture(spec)` entry point covers every previous variant. The spec's discriminator is the same as the rest of the API: the presence of `size` selects raw-pixel-bytes interpretation; otherwise the input is treated as encoded image data (PNG / JPEG / etc.), a file path, a URL, a KTX2 container, or a pre-built [TextureMipChain](https://fragmentcolor.org/api/core/texture-mip-chain).
+The single `create_texture(spec)` entry point covers every input shape. The spec's discriminator: the presence of `size` selects raw-pixel-bytes interpretation; otherwise the input is treated as encoded image data (PNG / JPEG / etc.), a file path, a URL, a KTX2 container, or a pre-built [TextureMipChain](https://fragmentcolor.org/api/core/texture-mip-chain).
 
 The CPU work (decode, mipmap chain, raw-byte wrap, KTX2 parse) runs on a background worker on every native target — the calling thread is never pinned on `queue.write_texture`. On the web, prep runs inline (wgpu types are `!Send` on `wasm32`); move heavier work into a Web Worker yourself if you need real parallelism.
 
