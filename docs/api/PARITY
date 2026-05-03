@@ -62,3 +62,9 @@ docs/api/core/shader/hidden/compose_mobile.md=>docs/api/core/shader/new.md: Mobi
 docs/api/targets/target/size.md::Trait method; parity enforced via concrete WindowTarget/TextureTarget docs.
 docs/api/targets/target/resize.md::Trait method; parity enforced via concrete WindowTarget/TextureTarget docs.
 docs/api/targets/target/get_image.md::Trait method; parity enforced via concrete WindowTarget/TextureTarget docs.
+
+# Python has no portable native video-frame source equivalent to
+# HTMLVideoElement / CVPixelBuffer / SurfaceTexture. Callers decode video
+# frames host-side and upload via Texture.write() / Texture.write_region()
+# instead. See docs/api/core/renderer/hidden/create_external_texture_py.md.
+docs/api/core/renderer/create_external_texture.md:web,swift,kotlin:Python lacks a portable native video-frame source; use Texture.write/write_region to upload decoded frames instead.
