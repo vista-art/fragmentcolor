@@ -13,6 +13,7 @@ pub struct SamplerOptions {
 }
 
 #[cfg_attr(python, pyo3::pyclass)]
+#[cfg_attr(mobile, derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct SamplerInfo {
     pub comparison: bool,

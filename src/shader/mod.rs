@@ -1086,9 +1086,9 @@ fn vs_main(@location(0) pos: vec3<f32>, @location(1) offset: vec2<f32>) -> VOut 
         let (_, _, u_tex) = s.uniforms.get("tex").expect("tex uniform");
         match &u_tex.data {
             UniformData::Texture(meta) => {
-                assert_eq!(meta.dim, naga::ImageDimension::D2);
+                assert_eq!(meta.dim, crate::texture::TextureDim::D2);
                 match meta.class {
-                    naga::ImageClass::Sampled { .. } => {}
+                    crate::texture::TextureClass::Sampled { .. } => {}
                     _ => panic!("expected sampled image class"),
                 }
             }
