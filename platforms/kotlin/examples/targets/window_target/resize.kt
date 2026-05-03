@@ -2,6 +2,6 @@
 import org.fragmentcolor.*
 
 val renderer = Renderer()
-val target = renderer.createTextureTarget(arrayOf(64, 32))
+val target = renderer.createTextureTarget(64u, 32u)
 
-target.resize(arrayOf(128, 64))
+target.resize(128u, 64u)

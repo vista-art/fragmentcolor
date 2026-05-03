@@ -1,7 +1,7 @@
 import org.fragmentcolor.*
 
 val mesh = Mesh()
-mesh.addVertex(arrayOf(0.0, 0.0))
+mesh.addVertex(Vertex(listOf(0.0f, 0.0f)))
 
 val shader = Shader("""
   struct VOut { @builtin(position) pos: vec4<f32> }

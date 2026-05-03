@@ -4,11 +4,11 @@ import org.fragmentcolor.*
 val renderer = Renderer()
 
 // Use your platform's windowing system to create a window
-val canvas = document.createElement("canvas")
+// HEADLESS: canvas creation not needed on Android
 
 // Create a Target from it
-val target = renderer.createTarget(canvas)
-val texture_target = renderer.createTextureTarget(arrayOf(16, 16))
+val target = renderer.createTextureTarget(800u, 600u)
+val texture_target = renderer.createTextureTarget(16u, 16u)
 
 // RENDERING
 renderer.render(Shader(""), texture_target)

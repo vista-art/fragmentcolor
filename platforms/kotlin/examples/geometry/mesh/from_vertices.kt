@@ -1,7 +1,3 @@
 import org.fragmentcolor.*
 
-val mesh = Mesh.fromVertices([
-    arrayOf(0.0, 0.0),
-    arrayOf(1.0, 0.0),
-    arrayOf(0.0, 1.0),
-])
+val mesh = Mesh.fromVertices(listOf(Vertex(listOf(0.0f, 0.0f)), Vertex(listOf(1.0f, 0.0f)), Vertex(listOf(0.0f, 1.0f))))

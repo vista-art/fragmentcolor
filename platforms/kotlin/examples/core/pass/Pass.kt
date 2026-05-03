@@ -2,8 +2,8 @@
 import org.fragmentcolor.*
 
 val renderer = Renderer()
-val canvas = document.createElement("canvas")
-val target = renderer.createTarget(canvas)
+// HEADLESS: canvas creation not needed on Android
+val target = renderer.createTextureTarget(800u, 600u)
 val shader = Shader.default()
 
 val pass = Pass("First Pass")
@@ -16,4 +16,4 @@ pass2.addShader(shader)
 renderer.render(pass, target)
 
 // vector of passes rendered in order (any iterable of Pass is renderable)
-renderer.render(arrayOf(pass, pass2), target)
+renderer.render(listOf(pass, pass2), target)

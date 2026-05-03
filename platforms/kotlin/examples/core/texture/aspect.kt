@@ -3,6 +3,6 @@ import org.fragmentcolor.*
 
 val renderer = Renderer()
 // 1x1 RGBA (white) raw pixel bytes
-val pixels = arrayOf(255,255,255,255)
-val tex = renderer.createTexture((pixels, arrayOf(1, 1)))
+val pixels = listOf(255.0f, 255.0f, 255.0f, 255.0f)
+val tex = renderer.createTexture(TextureInputMobile.Bytes(pixels.let { ba -> ByteArray(ba.size) { i -> ba[i].toInt().and(0xFF).toByte() } }), null)
 val a = tex.aspect()
