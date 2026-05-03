@@ -204,7 +204,7 @@ impl Renderer {
         self: Arc<Self>,
         texture_id: u64,
     ) -> Result<(), FragmentColorError> {
-        self.unregister_texture(crate::texture::TextureId(texture_id))
+        self.unregister_texture(crate::texture::TextureId { id: texture_id })
             .map_err(FragmentColorError::from)
     }
 
