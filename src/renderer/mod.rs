@@ -1025,7 +1025,9 @@ impl RenderContext {
                             .push((uniform.binding, sampler));
                     }
                     UniformData::Storage(data) => {
-                        if let Some((_inner, span, _access)) = data.first() {
+                        if let Some(crate::shader::uniform::StorageEntry { span, .. }) =
+                            data.first()
+                        {
                             // Acquire persistent storage buffer and upload only if necessary
                             let span_u64 = *span as u64;
                             // Obtain initial bytes for creation or update
@@ -1436,7 +1438,9 @@ impl RenderContext {
                             .push((uniform.binding, sampler));
                     }
                     UniformData::Storage(data) => {
-                        if let Some((_inner, span_u32, _access)) = data.first() {
+                        if let Some(crate::shader::uniform::StorageEntry { span: span_u32, .. }) =
+                            data.first()
+                        {
                             let span = *span_u32 as u64;
                             // Obtain bytes
                             let init_bytes: Vec<u8> = {
@@ -1812,17 +1816,20 @@ fn create_bind_group_layouts(
         use crate::shader::uniform::UniformData;
         let entry = match &uniform.data {
             UniformData::Texture(meta) => {
-                // Map naga metadata to wgpu binding types
+                use crate::texture::{
+                    TextureClass, TextureDim, TextureScalarKind, TextureStorageFormat,
+                };
+                // Map our uniffi-friendly metadata to wgpu binding types
                 let view_dimension = match (meta.dim, meta.arrayed) {
-                    (naga::ImageDimension::D2, false) => wgpu::TextureViewDimension::D2,
-                    (naga::ImageDimension::D2, true) => wgpu::TextureViewDimension::D2Array,
-                    (naga::ImageDimension::D3, _) => wgpu::TextureViewDimension::D3,
-                    (naga::ImageDimension::Cube, false) => wgpu::TextureViewDimension::Cube,
-                    (naga::ImageDimension::Cube, true) => wgpu::TextureViewDimension::CubeArray,
+                    (TextureDim::D2, false) => wgpu::TextureViewDimension::D2,
+                    (TextureDim::D2, true) => wgpu::TextureViewDimension::D2Array,
+                    (TextureDim::D3, _) => wgpu::TextureViewDimension::D3,
+                    (TextureDim::Cube, false) => wgpu::TextureViewDimension::Cube,
+                    (TextureDim::Cube, true) => wgpu::TextureViewDimension::CubeArray,
                     _ => wgpu::TextureViewDimension::D2,
                 };
                 match &meta.class {
-                    naga::ImageClass::Depth { .. } => wgpu::BindGroupLayoutEntry {
+                    TextureClass::Depth { .. } => wgpu::BindGroupLayoutEntry {
                         binding: uniform.binding,
                         visibility: wgpu::ShaderStages::VERTEX
                             | wgpu::ShaderStages::FRAGMENT
@@ -1834,10 +1841,10 @@ fn create_bind_group_layouts(
                         },
                         count: None,
                     },
-                    naga::ImageClass::Sampled { kind, multi } => {
+                    TextureClass::Sampled { kind, multi } => {
                         let sample_type = match kind {
-                            naga::ScalarKind::Sint => wgpu::TextureSampleType::Sint,
-                            naga::ScalarKind::Uint => wgpu::TextureSampleType::Uint,
+                            TextureScalarKind::Sint => wgpu::TextureSampleType::Sint,
+                            TextureScalarKind::Uint => wgpu::TextureSampleType::Uint,
                             _ => wgpu::TextureSampleType::Float {
                                 filterable: meta.sampled,
                             },
@@ -1855,48 +1862,48 @@ fn create_bind_group_layouts(
                             count: None,
                         }
                     }
-                    naga::ImageClass::Storage { format, access } => {
-                        let access = *access;
-                        let access = match access {
-                            naga::StorageAccess::LOAD => wgpu::StorageTextureAccess::ReadOnly,
-                            naga::StorageAccess::STORE => wgpu::StorageTextureAccess::WriteOnly,
-                            _ if access.contains(naga::StorageAccess::LOAD)
-                                && access.contains(naga::StorageAccess::STORE) =>
-                            {
-                                wgpu::StorageTextureAccess::ReadWrite
-                            }
-                            _ => wgpu::StorageTextureAccess::ReadOnly,
+                    TextureClass::Storage { format, access } => {
+                        let access = if access.load && access.store {
+                            wgpu::StorageTextureAccess::ReadWrite
+                        } else if access.load {
+                            wgpu::StorageTextureAccess::ReadOnly
+                        } else if access.store {
+                            wgpu::StorageTextureAccess::WriteOnly
+                        } else {
+                            wgpu::StorageTextureAccess::ReadOnly
                         };
                         let format = match format {
-                            naga::StorageFormat::R8Unorm => wgpu::TextureFormat::R8Unorm,
-                            naga::StorageFormat::R8Snorm => wgpu::TextureFormat::R8Snorm,
-                            naga::StorageFormat::R8Uint => wgpu::TextureFormat::R8Uint,
-                            naga::StorageFormat::R8Sint => wgpu::TextureFormat::R8Sint,
-                            naga::StorageFormat::R16Uint => wgpu::TextureFormat::R16Uint,
-                            naga::StorageFormat::R16Sint => wgpu::TextureFormat::R16Sint,
-                            naga::StorageFormat::R16Float => wgpu::TextureFormat::R16Float,
-                            naga::StorageFormat::Rg8Unorm => wgpu::TextureFormat::Rg8Unorm,
-                            naga::StorageFormat::Rg8Snorm => wgpu::TextureFormat::Rg8Snorm,
-                            naga::StorageFormat::Rg8Uint => wgpu::TextureFormat::Rg8Uint,
-                            naga::StorageFormat::Rg8Sint => wgpu::TextureFormat::Rg8Sint,
-                            naga::StorageFormat::Rg16Uint => wgpu::TextureFormat::Rg16Uint,
-                            naga::StorageFormat::Rg16Sint => wgpu::TextureFormat::Rg16Sint,
-                            naga::StorageFormat::Rg16Float => wgpu::TextureFormat::Rg16Float,
-                            naga::StorageFormat::Rgba8Unorm => wgpu::TextureFormat::Rgba8Unorm,
-                            naga::StorageFormat::Rgba8Snorm => wgpu::TextureFormat::Rgba8Snorm,
-                            naga::StorageFormat::Rgba8Uint => wgpu::TextureFormat::Rgba8Uint,
-                            naga::StorageFormat::Rgba8Sint => wgpu::TextureFormat::Rgba8Sint,
-                            naga::StorageFormat::Bgra8Unorm => wgpu::TextureFormat::Bgra8Unorm,
-                            naga::StorageFormat::Rgb10a2Unorm => wgpu::TextureFormat::Rgb10a2Unorm,
-                            naga::StorageFormat::Rg11b10Ufloat => {
+                            TextureStorageFormat::R8Unorm => wgpu::TextureFormat::R8Unorm,
+                            TextureStorageFormat::R8Snorm => wgpu::TextureFormat::R8Snorm,
+                            TextureStorageFormat::R8Uint => wgpu::TextureFormat::R8Uint,
+                            TextureStorageFormat::R8Sint => wgpu::TextureFormat::R8Sint,
+                            TextureStorageFormat::R16Uint => wgpu::TextureFormat::R16Uint,
+                            TextureStorageFormat::R16Sint => wgpu::TextureFormat::R16Sint,
+                            TextureStorageFormat::R16Float => wgpu::TextureFormat::R16Float,
+                            TextureStorageFormat::Rg8Unorm => wgpu::TextureFormat::Rg8Unorm,
+                            TextureStorageFormat::Rg8Snorm => wgpu::TextureFormat::Rg8Snorm,
+                            TextureStorageFormat::Rg8Uint => wgpu::TextureFormat::Rg8Uint,
+                            TextureStorageFormat::Rg8Sint => wgpu::TextureFormat::Rg8Sint,
+                            TextureStorageFormat::Rg16Uint => wgpu::TextureFormat::Rg16Uint,
+                            TextureStorageFormat::Rg16Sint => wgpu::TextureFormat::Rg16Sint,
+                            TextureStorageFormat::Rg16Float => wgpu::TextureFormat::Rg16Float,
+                            TextureStorageFormat::Rgba8Unorm => wgpu::TextureFormat::Rgba8Unorm,
+                            TextureStorageFormat::Rgba8Snorm => wgpu::TextureFormat::Rgba8Snorm,
+                            TextureStorageFormat::Rgba8Uint => wgpu::TextureFormat::Rgba8Uint,
+                            TextureStorageFormat::Rgba8Sint => wgpu::TextureFormat::Rgba8Sint,
+                            TextureStorageFormat::Bgra8Unorm => wgpu::TextureFormat::Bgra8Unorm,
+                            TextureStorageFormat::Rgb10a2Unorm => {
+                                wgpu::TextureFormat::Rgb10a2Unorm
+                            }
+                            TextureStorageFormat::Rg11b10Ufloat => {
                                 wgpu::TextureFormat::Rg11b10Ufloat
                             }
-                            naga::StorageFormat::Rgba16Uint => wgpu::TextureFormat::Rgba16Uint,
-                            naga::StorageFormat::Rgba16Sint => wgpu::TextureFormat::Rgba16Sint,
-                            naga::StorageFormat::Rgba16Float => wgpu::TextureFormat::Rgba16Float,
-                            naga::StorageFormat::Rgba32Uint => wgpu::TextureFormat::Rgba32Uint,
-                            naga::StorageFormat::Rgba32Sint => wgpu::TextureFormat::Rgba32Sint,
-                            naga::StorageFormat::Rgba32Float => wgpu::TextureFormat::Rgba32Float,
+                            TextureStorageFormat::Rgba16Uint => wgpu::TextureFormat::Rgba16Uint,
+                            TextureStorageFormat::Rgba16Sint => wgpu::TextureFormat::Rgba16Sint,
+                            TextureStorageFormat::Rgba16Float => wgpu::TextureFormat::Rgba16Float,
+                            TextureStorageFormat::Rgba32Uint => wgpu::TextureFormat::Rgba32Uint,
+                            TextureStorageFormat::Rgba32Sint => wgpu::TextureFormat::Rgba32Sint,
+                            TextureStorageFormat::Rgba32Float => wgpu::TextureFormat::Rgba32Float,
                             _ => wgpu::TextureFormat::Rgba8Unorm,
                         };
                         wgpu::BindGroupLayoutEntry {
@@ -1911,7 +1918,7 @@ fn create_bind_group_layouts(
                         }
                     }
                     // External textures (Web): bind as ExternalTexture when available.
-                    naga::ImageClass::External => wgpu::BindGroupLayoutEntry {
+                    TextureClass::External => wgpu::BindGroupLayoutEntry {
                         binding: uniform.binding,
                         visibility: wgpu::ShaderStages::FRAGMENT,
                         ty: wgpu::BindingType::ExternalTexture,
@@ -1932,7 +1939,9 @@ fn create_bind_group_layouts(
                 count: None,
             },
             UniformData::Storage(data) => {
-                if let Some((_inner, span, access)) = data.first() {
+                if let Some(crate::shader::uniform::StorageEntry { span, access, .. }) =
+                    data.first()
+                {
                     let min = if *span == 0 { 16 } else { *span as u64 };
                     let min = unsafe { std::num::NonZeroU64::new_unchecked(min) };
 
@@ -2028,7 +2037,7 @@ fn create_render_pipeline(
             continue;
         }
         if let UniformData::PushConstant(data) = &u.data
-            && let Some((_inner, span)) = data.first()
+            && let Some(crate::shader::uniform::PushEntry { span, .. }) = data.first()
         {
             push_roots.push((name.clone(), *span));
         }

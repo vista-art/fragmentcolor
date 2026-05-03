@@ -39,8 +39,10 @@ pub use region::TextureRegion;
 #[cfg(mobile)]
 pub use region::TextureRegionMobile;
 
-// Expose Naga image metadata in our public meta struct for now.
-use naga::{ImageClass, ImageDimension};
+pub mod meta;
+pub use meta::{
+    TextureClass, TextureDim, TextureScalarKind, TextureStorageAccess, TextureStorageFormat,
+};
 
 // Unified input type for creating textures (initial Rust subset)
 #[derive(Debug, Clone, Default)]
@@ -485,6 +487,12 @@ impl From<u64> for TextureId {
     }
 }
 
+impl From<TextureId> for u64 {
+    fn from(value: TextureId) -> Self {
+        value.id
+    }
+}
+
 #[cfg(wasm)]
 crate::impl_js_bridge!(TextureId, crate::texture::TextureError);
 
@@ -631,12 +639,13 @@ impl Texture {
 
 // Metadata for textures parsed from shader source; users do not construct directly.
 #[cfg_attr(python, pyo3::pyclass)]
+#[cfg_attr(mobile, derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct TextureMeta {
     pub id: TextureId,
-    pub dim: ImageDimension,
+    pub dim: TextureDim,
     pub arrayed: bool,
-    pub class: ImageClass,
+    pub class: TextureClass,
     /// Whether the shader ever samples this texture (`textureSample*`). When false
     /// (only `textureLoad` / image-ops are used), the bind-group layout can request
     /// a non-filterable sample type, which unlocks formats like Rgba32Float as a
@@ -648,10 +657,10 @@ impl TextureMeta {
     pub fn with_id_only(id: TextureId) -> Self {
         TextureMeta {
             id,
-            dim: ImageDimension::D2,
+            dim: TextureDim::D2,
             arrayed: false,
-            class: ImageClass::Sampled {
-                kind: naga::ScalarKind::Float,
+            class: TextureClass::Sampled {
+                kind: TextureScalarKind::Float,
                 multi: false,
             },
             sampled: true,

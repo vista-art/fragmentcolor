@@ -630,7 +630,10 @@ fn parse_uniforms(module: &Module) -> Result<HashMap<String, Uniform>, ShaderErr
                         name: uniform_name,
                         group: 0,
                         binding: 0,
-                        data: UniformData::PushConstant(vec![(inner, span)]),
+                        data: UniformData::PushConstant(vec![crate::shader::uniform::PushEntry {
+                            inner: vec![inner],
+                            span,
+                        }]),
                     },
                 );
                 continue;
@@ -664,7 +667,11 @@ fn parse_uniforms(module: &Module) -> Result<HashMap<String, Uniform>, ShaderErr
                 // convert_type will yield a Struct/Array/etc. shape; wrap it
                 let inner = convert_type(module, ty)?;
                 let span = inner.size();
-                UniformData::Storage(vec![(inner, span, access.into())])
+                UniformData::Storage(vec![crate::shader::uniform::StorageEntry {
+                    inner: vec![inner],
+                    span,
+                    access: access.into(),
+                }])
             }
             _ => {
                 let mut d = convert_type(module, ty)?;
@@ -1079,9 +1086,9 @@ fn vs_main(@location(0) pos: vec3<f32>, @location(1) offset: vec2<f32>) -> VOut 
         let (_, _, u_tex) = s.uniforms.get("tex").expect("tex uniform");
         match &u_tex.data {
             UniformData::Texture(meta) => {
-                assert_eq!(meta.dim, naga::ImageDimension::D2);
+                assert_eq!(meta.dim, crate::texture::TextureDim::D2);
                 match meta.class {
-                    naga::ImageClass::Sampled { .. } => {}
+                    crate::texture::TextureClass::Sampled { .. } => {}
                     _ => panic!("expected sampled image class"),
                 }
             }
@@ -1120,18 +1127,26 @@ struct Buf { a: vec4<f32> };
         let (_, size, u) = s.uniforms.get("ssbo").expect("ssbo uniform");
         match u.data.clone() {
             UniformData::Storage(data) => {
-                let (inner, span, access) = data.first().expect("storage data");
+                let entry = data.first().expect("storage data");
+                let crate::shader::uniform::StorageEntry {
+                    inner,
+                    span,
+                    access,
+                } = entry;
                 assert_eq!(*span, *size);
                 assert!(access == &StorageAccess::Read);
-                match inner {
-                    UniformData::Struct((fields, s)) => {
-                        assert_eq!(s.clone(), 16); // vec4<f32>
+                match inner.first().expect("inner shape") {
+                    UniformData::Struct(s) => {
+                        assert_eq!(s.size, 16); // vec4<f32>
                         // Should have one field named 'a'
                         let mut seen_a = false;
-                        for (_ofs, name, f) in fields.iter() {
-                            if name == "a" {
+                        for f in s.fields.iter() {
+                            if f.name == "a" {
                                 seen_a = true;
-                                assert!(matches!(f, UniformData::Vec4(_)));
+                                assert!(matches!(
+                                    f.ty.first().expect("field shape"),
+                                    UniformData::Vec4(_)
+                                ));
                             }
                         }
                         assert!(seen_a);
@@ -1160,7 +1175,8 @@ struct Buf { a: vec4<f32> };
         let (_, _, u) = s.uniforms.get("sbuf").expect("sbuf uniform");
         match u.data.clone() {
             UniformData::Storage(data) => {
-                let (_, _, access) = data.first().expect("storage data");
+                let crate::shader::uniform::StorageEntry { access, .. } =
+                    data.first().expect("storage data");
                 assert!(access == &StorageAccess::ReadWrite);
             }
             _ => panic!("sbuf is not a storage buffer uniform"),
@@ -1185,11 +1201,12 @@ struct Outer { a: vec4<f32>, arr: array<vec4<f32>, 2>, inner: Inner };
         let (_, _, u) = s.uniforms.get("sto").expect("sto uniform");
         match &u.data {
             UniformData::Storage(data) => {
-                let (inner, span, _) = data.first().expect("storage data");
+                let crate::shader::uniform::StorageEntry { inner, span, .. } =
+                    data.first().expect("storage data");
                 // a:16 + arr:2*16 + inner.c:16 = 64
                 assert_eq!(span.clone(), 64);
-                match inner {
-                    UniformData::Struct((_fields, s)) => assert_eq!(s.clone(), 64),
+                match inner.first().expect("inner shape") {
+                    UniformData::Struct(s) => assert_eq!(s.size, 64),
                     _ => panic!("inner is not struct"),
                 }
             }
@@ -1374,12 +1391,12 @@ struct Buf { items: array<Item, 3> };
         let (_, _, u) = s.uniforms.get("buf").expect("buf uniform");
         let stride = match &u.data {
             UniformData::Storage(data) => {
-                let (inner, _span, _) = data.first().unwrap();
-                match inner {
-                    UniformData::Struct((fields, _)) => {
+                let crate::shader::uniform::StorageEntry { inner, .. } = data.first().unwrap();
+                match inner.first().expect("inner shape") {
+                    UniformData::Struct(s) => {
                         // fields[0] should be items: Array
-                        match &fields[0].2 {
-                            UniformData::Array(items) => items.first().unwrap().2,
+                        match s.fields[0].ty.first().expect("field shape") {
+                            UniformData::Array(items) => items.first().unwrap().stride,
                             _ => 0,
                         }
                     }
