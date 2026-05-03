@@ -236,11 +236,16 @@ impl Vertex {
 
 #[pymethods]
 impl Instance {
+    // Instance is a helper value type; its constructors/methods are not
+    // separately documented as user API. Mark as doc(hidden) to satisfy
+    // the parity audit's unlabeled-export check.
+    #[doc(hidden)]
     #[new]
     pub fn new_py() -> Self {
         Self::default()
     }
 
+    #[doc(hidden)]
     #[pyo3(name = "set")]
     pub fn set_py(&self, key: &str, value: Py<PyAny>) -> PyResult<Self> {
         Python::attach(|py| -> PyResult<Self> {
@@ -338,55 +343,68 @@ impl Mesh {
 }
 
 /// Tiny factory class to construct typed VertexValue variants from Python.
+/// Internal helper — not part of the public documented API.
 #[pyclass(name = "VertexValue")]
 pub struct PyVertexValue;
 
 #[pymethods]
 impl PyVertexValue {
+    #[doc(hidden)]
     #[staticmethod]
     pub fn f32(x: f32) -> VertexValue {
         VertexValue::F32(x)
     }
+    #[doc(hidden)]
     #[staticmethod]
     pub fn f32x2(x: [f32; 2]) -> VertexValue {
         VertexValue::F32x2(x)
     }
+    #[doc(hidden)]
     #[staticmethod]
     pub fn f32x3(x: [f32; 3]) -> VertexValue {
         VertexValue::F32x3(x)
     }
+    #[doc(hidden)]
     #[staticmethod]
     pub fn f32x4(x: [f32; 4]) -> VertexValue {
         VertexValue::F32x4(x)
     }
+    #[doc(hidden)]
     #[staticmethod]
     pub fn u32(x: u32) -> VertexValue {
         VertexValue::U32(x)
     }
+    #[doc(hidden)]
     #[staticmethod]
     pub fn u32x2(x: [u32; 2]) -> VertexValue {
         VertexValue::U32x2(x)
     }
+    #[doc(hidden)]
     #[staticmethod]
     pub fn u32x3(x: [u32; 3]) -> VertexValue {
         VertexValue::U32x3(x)
     }
+    #[doc(hidden)]
     #[staticmethod]
     pub fn u32x4(x: [u32; 4]) -> VertexValue {
         VertexValue::U32x4(x)
     }
+    #[doc(hidden)]
     #[staticmethod]
     pub fn i32(x: i32) -> VertexValue {
         VertexValue::I32(x)
     }
+    #[doc(hidden)]
     #[staticmethod]
     pub fn i32x2(x: [i32; 2]) -> VertexValue {
         VertexValue::I32x2(x)
     }
+    #[doc(hidden)]
     #[staticmethod]
     pub fn i32x3(x: [i32; 3]) -> VertexValue {
         VertexValue::I32x3(x)
     }
+    #[doc(hidden)]
     #[staticmethod]
     pub fn i32x4(x: [i32; 4]) -> VertexValue {
         VertexValue::I32x4(x)

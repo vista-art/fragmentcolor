@@ -242,6 +242,8 @@ impl Vertex {
     }
 
     // Support Rust-style Vertex::new([...]) in JS as Vertex.new([...])
+    // JS compat shim — same entry point as the constructor; not separately documented.
+    #[doc(hidden)]
     #[wasm_bindgen(js_name = "new")]
     pub fn new_static(position: &JsValue) -> Result<Vertex, JsError> {
         js_to_vertex_into(position)
@@ -268,16 +270,22 @@ impl Vertex {
 // -----------------------------
 #[wasm_bindgen]
 impl Instance {
+    // Instance is a helper value type; its constructors are not separately
+    // documented as user API — callers use Vertex.createInstance() or plain
+    // object literals passed to Mesh.addInstance().
+    #[doc(hidden)]
     #[wasm_bindgen(constructor)]
     pub fn new_js() -> Instance {
         Instance::new()
     }
 
+    #[doc(hidden)]
     #[wasm_bindgen(js_name = "new")]
     pub fn new_static() -> Instance {
         Instance::new()
     }
 
+    #[doc(hidden)]
     #[wasm_bindgen(js_name = "set")]
     pub fn set_js(&self, key: &str, value: &JsValue) -> Result<Instance, JsError> {
         let vv = js_to_vertex_value(value)?;

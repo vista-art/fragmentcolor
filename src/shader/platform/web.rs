@@ -181,6 +181,7 @@ impl Shader {
     }
 
     // No-op Result::unwrap shim for transpiled examples that used Rust .unwrap()
+    #[doc(hidden)]
     #[wasm_bindgen(js_name = "unwrap")]
     pub fn unwrap_js(&self) -> Self {
         self.clone()

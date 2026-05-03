@@ -68,8 +68,15 @@ impl Vertex {
 
 #[uniffi::export]
 impl Instance {
+    // Instance is a helper value type; its constructors/methods are not
+    // separately documented as user API — callers receive instances via
+    // Vertex.createInstance() or Mesh.addInstance(). These bindings exist
+    // to satisfy uniffi's requirement that all exported types have exported
+    // constructors, but they do not correspond to documented public API.
+
     /// Create an empty `Instance`. Chain `.set(key:value:)` calls to populate
     /// per-instance attributes.
+    #[doc(hidden)]
     #[uniffi::constructor(name = "new")]
     pub fn new_mobile() -> Arc<Self> {
         Arc::new(Self::new())
@@ -78,6 +85,7 @@ impl Instance {
     /// Set a per-instance attribute by key.
     ///
     /// Returns the updated `Instance` (builder style).
+    #[doc(hidden)]
     #[uniffi::method(name = "set")]
     pub fn set_mobile(self: Arc<Self>, key: String, value: VertexValue) -> Arc<Self> {
         Arc::new((*self).clone().set(&key, value))
