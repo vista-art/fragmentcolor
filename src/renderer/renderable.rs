@@ -60,11 +60,15 @@ impl Renderable for RenderableHandle {
 /// `&impl Target`, so the mobile `render` entry takes this enum and the
 /// implementation matches and dispatches to the typed `Renderer::render`
 /// underneath.
+///
+/// Both variants are the mobile wrapper types (`MobileWindowTarget` /
+/// `MobileTextureTarget`) that carry a `Mutex` / `RwLock` inside, allowing
+/// `resize()` to be called on a shared `Arc` from Swift / Kotlin.
 #[cfg(mobile)]
 #[derive(Debug, Clone, uniffi::Enum)]
 pub enum TargetHandle {
-    Window(Arc<crate::WindowTarget>),
-    Texture(Arc<crate::TextureTarget>),
+    Window(Arc<crate::MobileWindowTarget>),
+    Texture(Arc<crate::MobileTextureTarget>),
 }
 
 #[cfg(test)]

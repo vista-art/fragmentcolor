@@ -12,6 +12,7 @@ use objc2::msg_send;
 use objc2::runtime::AnyObject;
 
 use crate::{Renderer, WindowTarget};
+use crate::MobileWindowTarget;
 
 use super::FragmentColorError;
 
@@ -52,7 +53,7 @@ impl Renderer {
     pub fn create_target_ios(
         self: Arc<Self>,
         metal_layer_ptr: u64,
-    ) -> Result<Arc<WindowTarget>, FragmentColorError> {
+    ) -> Result<Arc<MobileWindowTarget>, FragmentColorError> {
         // Read drawableSize off the CAMetalLayer via Objective-C runtime.
         let layer = metal_layer_ptr as *mut AnyObject;
         let size: CGSize = unsafe { msg_send![layer, drawableSize] };
@@ -67,6 +68,6 @@ impl Renderer {
             pollster::block_on(self.configure_unsafe_surface(target, extent))
                 .map_err(FragmentColorError::from)?;
 
-        Ok(Arc::new(WindowTarget::new(context, surface, config)))
+        Ok(MobileWindowTarget::new(WindowTarget::new(context, surface, config)))
     }
 }

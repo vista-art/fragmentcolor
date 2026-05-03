@@ -11,7 +11,7 @@ mod all;
 pub use all::*;
 
 mod platform;
-#[cfg(any(python, wasm))]
+#[cfg(any(python, wasm, mobile))]
 pub use platform::*;
 
 use crate::size::Size;

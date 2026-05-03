@@ -17,6 +17,7 @@ use raw_window_handle::{
 };
 
 use crate::{Renderer, WindowTarget};
+use crate::MobileWindowTarget;
 
 /// HasWindowHandle + HasDisplayHandle wrapper over an `ANativeWindow`.
 #[derive(Debug)]
@@ -67,7 +68,10 @@ impl HasDisplayHandle for AndroidNativeWindow {
     }
 }
 
-async fn build_window_target(env: *mut JNIEnv<'_>, surface: jobject) -> Option<Arc<WindowTarget>> {
+async fn build_window_target(
+    env: *mut JNIEnv<'_>,
+    surface: jobject,
+) -> Option<Arc<MobileWindowTarget>> {
     let window = AndroidNativeWindow::from_surface(env, surface);
     let size = wgpu::Extent3d {
         width: u32::max(window.width(), 1),
@@ -81,13 +85,13 @@ async fn build_window_target(env: *mut JNIEnv<'_>, surface: jobject) -> Option<A
         .create_surface(wgpu::SurfaceTarget::Window(handle), size)
         .await
         .ok()?;
-    Some(Arc::new(WindowTarget::new(context, surface, config)))
+    Some(MobileWindowTarget::new(WindowTarget::new(context, surface, config)))
 }
 
 /// Raw JNI entry point. Returns `Arc::into_raw(target)` as an opaque pointer
-/// (cast to `*const WindowTarget` for jlong compatibility). Caller owns the
-/// resulting Arc — the uniffi-generated Kotlin bindings take ownership on
-/// `WindowTarget(Pointer(ptr))`.
+/// (cast to `*const MobileWindowTarget` for jlong compatibility). Caller owns
+/// the resulting Arc — the uniffi-generated Kotlin bindings take ownership on
+/// `MobileWindowTarget(Pointer(ptr))`.
 ///
 /// Returns `std::ptr::null()` on failure.
 #[unsafe(no_mangle)]
@@ -96,7 +100,7 @@ pub fn create_window_target_from_surface(
     env: *mut JNIEnv,
     _class: JClass,
     surface: jobject,
-) -> *const WindowTarget {
+) -> *const MobileWindowTarget {
     match pollster::block_on(build_window_target(env, surface)) {
         Some(target) => Arc::into_raw(target),
         None => std::ptr::null(),
