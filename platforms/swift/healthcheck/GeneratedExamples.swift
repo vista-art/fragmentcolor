@@ -13,6 +13,7 @@
 //      export to Swift.
 // Fix the source — this file is regenerated on every cargo build.
 
+import Foundation
 import FragmentColor
 
 @available(iOS 16.0, *)
@@ -242,7 +243,7 @@ private enum _GeneratedExamples {
 
     static func _example_core_renderer_create_depth_texture() async throws {
         let r = Renderer()
-        let depth = r.createDepthTexture([800, 600])
+        let depth = try await r.createDepthTexture([800, 600])
     }
 
     static func _example_core_renderer_create_external_texture() async throws {
@@ -279,7 +280,7 @@ private enum _GeneratedExamples {
         let renderer = Renderer()
         // Encoded image bytes (PNG / JPEG / etc.) â single tuple, no extra method.
         let image = "/healthcheck/public/favicon.png"
-        let tex = try await renderer.createTexture(image[...])
+        let tex = try await renderer.createTexture(image)
     }
 
     static func _example_core_renderer_create_texture_target() async throws {
@@ -307,7 +308,7 @@ private enum _GeneratedExamples {
         let texture = try await renderer.createStorageTexture(([64, 64], TextureFormat.rgba))
         try texture.write(Array(repeating: 0, count: 64 * 64 * 4))
 
-        let bytes = renderer.readTexture(texture.id())
+        let bytes = try renderer.readTexture(texture.id())
     }
 
     static func _example_core_renderer_read_texture_async() async throws {
@@ -433,7 +434,7 @@ private enum _GeneratedExamples {
 
     static func _example_core_shader_from_vertex() async throws {
 
-        let vertex = Vertex([0.0, 0.0, 0.0])
+        let vertex = try Vertex([0.0, 0.0, 0.0])
         let shader = Shader.fromVertex(vertex)
     }
 
@@ -471,7 +472,6 @@ private enum _GeneratedExamples {
 
     static func _example_core_shader_new() async throws {
 
-
         let shader = try Shader("""
             @vertex
             fn vs_main(@builtin(vertex_index) index: u32) -> @builtin(position) vec4<f32> {
@@ -508,7 +508,7 @@ private enum _GeneratedExamples {
 
         """
 
-        let shader = Shader.new([
+        let shader2 = try Shader.new([
             "sdf2d/circle",      // pure function: fn circle(p: vec2<f32>, r: f32) -> f32
             "noise/simplex2",    // pure function: fn simplex2(v: vec2<f32>) -> f32
             main,
@@ -678,7 +678,7 @@ private enum _GeneratedExamples {
             mipmaps: false,
             usage: nil
         )
-        let texture = try await renderer.createTexture(input: .bytes(pixels), options: options)
+        let texture = try await renderer.createTexture(input: .bytes(Data(pixels)), options: options)
 
         let opts = SamplerOptions(repeatX: true, repeatY: true, smooth: true, compare: nil)
         texture.setSamplerOptions(opts: opts)
@@ -720,7 +720,7 @@ private enum _GeneratedExamples {
             0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
             // ... full PNG body ...
         ]
-        let chain = TextureMipChain.prepare((png, TextureFormat.rgba8UnormSrgb))
+        let chain = try TextureMipChain.prepare((png, TextureFormat.rgba8UnormSrgb))
 
         // Hand the chain to the unified create_texture entry - same vocabulary as
         // every other texture path; From<TextureMipChain> selects the GPU-only
@@ -731,20 +731,20 @@ private enum _GeneratedExamples {
     static func _example_core_texture_mip_chain_base_size() async throws {
 
         let pixels = Array(repeating: 0, count: 16 * 16 * 4)
-        let chain = TextureMipChain.prepare((
-            pixels.asSlice(),
+        let chain = try TextureMipChain.prepare((
+            pixels,
             TextureFormat.rgba8UnormSrgb,
             [16, 16],
         ))
-        let (width, height) = chain.baseSize()
-        let _ = (width, height)
+        let size = chain.baseSize()
+        let _ = size
     }
 
     static func _example_core_texture_mip_chain_format() async throws {
 
         let pixels = Array(repeating: 200, count: 4 * 4 * 4)
-        let chain = TextureMipChain.prepare((
-            pixels.asSlice(),
+        let chain = try TextureMipChain.prepare((
+            pixels,
             TextureFormat.rgba8UnormSrgb,
             [4, 4],
         ))
@@ -754,8 +754,8 @@ private enum _GeneratedExamples {
     static func _example_core_texture_mip_chain_level_count() async throws {
 
         let pixels = Array(repeating: 0, count: 8 * 8 * 4)
-        let chain = TextureMipChain.prepare((
-            pixels.asSlice(),
+        let chain = try TextureMipChain.prepare((
+            pixels,
             TextureFormat.rgba8UnormSrgb,
             [8, 8],
         ))
@@ -765,29 +765,23 @@ private enum _GeneratedExamples {
 
     static func _example_core_texture_mip_chain_levels() async throws {
 
-        let pixels = Array(repeating: 0, count: 8 * 8 * 4)
-        let chain = TextureMipChain.prepare((
-            pixels.asSlice(),
-            TextureFormat.rgba8UnormSrgb,
-            [8, 8],
-        ))
-        let level_zero_bytes = chain.levels()[0]
+        let pixels = Array(repeating: UInt8(0), count: 8 * 8 * 4)
+        let chain = try TextureMipChain.prepare((pixels, TextureFormat.rgba8UnormSrgb, [8, 8]))
+        let level_zero_bytes = try chain.level(index: 0)
         let _ = level_zero_bytes
     }
 
     static func _example_core_texture_mip_chain_prepare() async throws {
 
-        // Encoded path â single tuple, no extra method.
-        let chain = TextureMipChain.prepare((encoded_png_bytes, TextureFormat.rgba8UnormSrgb))
+        // Encoded path -- single tuple, no extra method.
+        let encoded_png_bytes: [UInt8] = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]
+        let chain = try TextureMipChain.prepare((encoded_png_bytes, TextureFormat.rgba8UnormSrgb))
 
-        // Raw pixel path â same method, just include the size in the tuple.
-        let chain_raw = TextureMipChain.prepare((
-            raw_rgba.asSlice(),
-            TextureFormat.rgba8UnormSrgb,
-            [8, 8],
-        ))
+        // Raw pixel path -- same method, just include the size in the tuple.
+        let raw_rgba = Array(repeating: UInt8(200), count: 8 * 8 * 4)
+        let chain_raw = try TextureMipChain.prepare((raw_rgba, TextureFormat.rgba8UnormSrgb, [8, 8]))
 
-        // Hand the chain to the unified create_texture entry â same vocabulary.
+        // Hand the chain to the unified create_texture entry -- same vocabulary.
         let renderer = Renderer()
         let texture = try await renderer.createTexture(chain)
     }
@@ -868,18 +862,18 @@ private enum _GeneratedExamples {
 
     static func _example_geometry_quad_Quad() async throws {
 
-        let quad = Quad([-0.5, -0.5], [0.5, 0.5])
+        let quad = try Quad([-0.5, -0.5], [0.5, 0.5])
     }
 
     static func _example_geometry_quad_get_mesh() async throws {
 
-        let quad = Quad([-0.5, -0.5], [0.5, 0.5])
+        let quad = try Quad([-0.5, -0.5], [0.5, 0.5])
         let mesh = quad.getMesh()
     }
 
     static func _example_geometry_quad_new() async throws {
 
-        let quad = Quad([-0.5, -0.5], [0.5, 0.5])
+        let quad = try Quad([-0.5, -0.5], [0.5, 0.5])
     }
 
     static func _example_geometry_vertex_Vertex() async throws {
@@ -887,12 +881,12 @@ private enum _GeneratedExamples {
     }
 
     static func _example_geometry_vertex_create_instance() async throws {
-        let v = Vertex([0.0, 0.0])
+        let v = try Vertex([0.0, 0.0])
         let inst = v.createInstance()
     }
 
     static func _example_geometry_vertex_new() async throws {
-        let v = Vertex([0.0, 0.0])
+        let v = try Vertex([0.0, 0.0])
     }
 
     static func _example_geometry_vertex_set() async throws {
