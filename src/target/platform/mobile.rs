@@ -30,7 +30,7 @@ use crate::{Size, SurfaceError, Target, TargetFrame, TextureTarget, WindowTarget
 /// Kotlin. `WindowTarget::get_image()` always returns an empty byte array —
 /// window-backed surfaces are not readable; use a
 /// [`MobileTextureTarget`] for pixel-readback.
-#[derive(uniffi::Object)]
+#[derive(Debug, uniffi::Object)]
 pub struct MobileWindowTarget {
     inner: Mutex<WindowTarget>,
 }
@@ -100,7 +100,7 @@ impl Target for MobileWindowTarget {
 /// Exposes `size()`, `resize(width, height)`, and `get_image()` to Swift and
 /// Kotlin. `get_image()` returns a packed RGBA8 byte array of the offscreen
 /// texture contents.
-#[derive(uniffi::Object)]
+#[derive(Debug, uniffi::Object)]
 pub struct MobileTextureTarget {
     inner: RwLock<TextureTarget>,
 }
