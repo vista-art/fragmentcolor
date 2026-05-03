@@ -89,6 +89,37 @@ extension Vertex {
     }
 }
 
+extension Mesh {
+    // MARK: - Convenience instance methods
+
+    /// Append a single instance without an argument label.
+    public func addInstance(_ instance: Instance) {
+        addInstance(instance: instance)
+    }
+
+    /// Append multiple instances without an argument label.
+    public func addInstances(_ instances: [Instance]) {
+        addInstances(instances: instances)
+    }
+
+    /// Set the instance draw count without an argument label.
+    public func setInstanceCount(_ n: UInt32) {
+        setInstanceCount(n: n)
+    }
+}
+
+extension Quad {
+    /// Create a Quad from two unlabeled corner arrays (clip-space min, max).
+    public convenience init(_ min: [Float], _ max: [Float]) throws {
+        try self.init(min: min, max: max)
+    }
+
+    /// Create a Quad from unlabeled Double corner arrays.
+    public convenience init(_ min: [Double], _ max: [Double]) throws {
+        try self.init(min: min.map { Float($0) }, max: max.map { Float($0) })
+    }
+}
+
 extension Instance {
     /// Create an empty Instance. Same as `Instance()` but matches the
     /// JS / Python `Instance.new()` call shape used in doc examples.
