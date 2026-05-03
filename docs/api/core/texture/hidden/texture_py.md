@@ -1,3 +1,10 @@
+# Texture (Python)
+
+Python-specific example for creating and using a Texture.
+
+## Example
+
+```python
 from fragmentcolor import Renderer, Shader
 renderer = Renderer()
 shader = Shader("""
@@ -16,3 +23,4 @@ texture = renderer.create_texture(pixels, size=[1, 1])
 
 # insert the texture in the shader matching the name in the shader
 shader.set("my_texture", texture)
+```
