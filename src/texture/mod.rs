@@ -36,6 +36,8 @@ mod write;
 
 pub(crate) use read::{read_texture_object_async, read_texture_object_sync};
 pub use region::TextureRegion;
+#[cfg(mobile)]
+pub use region::TextureRegionMobile;
 
 // Expose Naga image metadata in our public meta struct for now.
 use naga::{ImageClass, ImageDimension};
@@ -469,12 +471,17 @@ impl TryFrom<&wasm_bindgen::JsValue> for TextureData {
 
 #[cfg_attr(wasm, wasm_bindgen)]
 #[cfg_attr(python, pyclass)]
+#[cfg_attr(mobile, derive(uniffi::Record))]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub struct TextureId(pub u64);
+pub struct TextureId {
+    /// The underlying numeric identifier. Valid within the `Renderer` that
+    /// created it; stable for the lifetime of the texture registration.
+    pub id: u64,
+}
 
 impl From<u64> for TextureId {
     fn from(value: u64) -> Self {
-        TextureId(value)
+        TextureId { id: value }
     }
 }
 
@@ -491,7 +498,7 @@ pub(crate) fn js_to_texture_id(
                 "TextureId must be a non-negative number".into(),
             ));
         }
-        return Ok(TextureId(number as u64));
+        return Ok(TextureId { id: number as u64 });
     }
     TextureId::try_from(value)
 }
@@ -513,7 +520,7 @@ pub(crate) fn py_to_texture_id<'py>(
     any: &pyo3::Bound<'py, pyo3::PyAny>,
 ) -> pyo3::PyResult<TextureId> {
     if let Ok(number) = any.extract::<u64>() {
-        return Ok(TextureId(number));
+        return Ok(TextureId { id: number });
     }
     if let Ok(bound) = any.downcast::<TextureId>() {
         return Ok(*bound.borrow());
@@ -546,7 +553,7 @@ pub(crate) fn py_to_texture_bytes<'py>(
 
 impl std::fmt::Display for TextureId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
+        write!(f, "{}", self.id)
     }
 }
 

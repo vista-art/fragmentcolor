@@ -788,7 +788,7 @@ impl RenderContext {
         texture: Arc<crate::TextureObject>,
     ) -> crate::texture::TextureId {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
-        let texture_id = crate::texture::TextureId(id);
+        let texture_id = crate::texture::TextureId { id };
         self.textures.insert(texture_id, texture);
         texture_id
     }

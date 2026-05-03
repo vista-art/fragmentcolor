@@ -290,7 +290,7 @@ pub(crate) fn convert_type(module: &Module, ty: &Type) -> Result<UniformData, Sh
             arrayed,
             class,
         } => Ok(UniformData::Texture(crate::texture::TextureMeta {
-            id: crate::texture::TextureId(0),
+            id: crate::texture::TextureId { id: 0 },
             dim: *dim,
             arrayed: *arrayed,
             class: *class,
@@ -954,7 +954,7 @@ impl From<UniformData> for wasm_bindgen::JsValue {
                 arr.into()
             }
 
-            UniformData::Texture(meta) => wasm_bindgen::JsValue::from_f64(meta.id.0 as f64),
+            UniformData::Texture(meta) => wasm_bindgen::JsValue::from_f64(meta.id.id as f64),
 
             UniformData::Sampler(info) => {
                 let obj = Object::new();
