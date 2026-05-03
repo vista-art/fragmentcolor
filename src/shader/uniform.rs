@@ -1057,9 +1057,12 @@ impl From<UniformData> for wasm_bindgen::JsValue {
             UniformData::Array(items) => {
                 let arr = Array::new();
                 for ArrayElement { ty, count, .. } in items {
-                    let item_js: wasm_bindgen::JsValue = (*ty).into();
-                    for _ in 0..count {
-                        arr.push(&item_js);
+                    // ty is Vec<UniformData> with a length-1 invariant; use first().
+                    if let Some(inner) = ty.into_iter().next() {
+                        let item_js: wasm_bindgen::JsValue = inner.into();
+                        for _ in 0..count {
+                            arr.push(&item_js);
+                        }
                     }
                 }
                 arr.into()
@@ -1068,11 +1071,14 @@ impl From<UniformData> for wasm_bindgen::JsValue {
             UniformData::Struct(StructShape { fields, .. }) => {
                 let obj = Object::new();
                 for StructField { name, ty, .. } in fields {
-                    let _ = Reflect::set(
-                        &obj,
-                        &wasm_bindgen::JsValue::from_str(&name),
-                        &(*ty).into(),
-                    );
+                    // ty is Vec<UniformData> with a length-1 invariant; use first().
+                    if let Some(inner) = ty.into_iter().next() {
+                        let _ = Reflect::set(
+                            &obj,
+                            &wasm_bindgen::JsValue::from_str(&name),
+                            &inner.into(),
+                        );
+                    }
                 }
                 obj.into()
             }
