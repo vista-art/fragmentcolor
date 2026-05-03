@@ -172,6 +172,50 @@ impl Renderer {
         }
     }
 
+    /// Create a depth texture (Depth32Float) at the given size.
+    ///
+    /// Uniffi cannot marshal `impl Into<Size>`, so width/height are taken as
+    /// `u32` primitives and a `Size` is constructed internally.
+    #[uniffi::method(name = "createDepthTexture")]
+    #[lsp_doc("docs/api/core/renderer/hidden/create_depth_texture_mobile.md")]
+    pub async fn create_depth_texture_mobile(
+        self: Arc<Self>,
+        width: u32,
+        height: u32,
+    ) -> Result<Arc<crate::texture::Texture>, FragmentColorError> {
+        let tex = self
+            .create_depth_texture(crate::Size::new(width, height, None))
+            .await
+            .map_err(FragmentColorError::from)?;
+        Ok(Arc::new(tex))
+    }
+
+    /// Remove a texture from the renderer's registry by its raw numeric ID.
+    ///
+    /// TextureId wraps a `u64`; passing the raw value here avoids the need for
+    /// a separate uniffi::Object binding for TextureId while the texture agent
+    /// lands that binding on a parallel branch.
+    #[uniffi::method(name = "unregisterTexture")]
+    #[lsp_doc("docs/api/core/renderer/hidden/unregister_texture_mobile.md")]
+    pub fn unregister_texture_mobile(
+        self: Arc<Self>,
+        texture_id: u64,
+    ) -> Result<(), FragmentColorError> {
+        self.unregister_texture(crate::texture::TextureId(texture_id))
+            .map_err(FragmentColorError::from)
+    }
+
+    /// Block until all GPU submissions on this device have finished.
+    ///
+    /// Useful before readbacks (`read_texture`, `Texture.id`, `TextureTarget.getImage`)
+    /// to ensure deterministic ordering. This is a genuine blocking call on
+    /// native platforms; on web it is a no-op.
+    #[uniffi::method(name = "waitIdle")]
+    #[lsp_doc("docs/api/core/renderer/hidden/wait_idle_mobile.md")]
+    pub fn wait_idle_mobile(self: Arc<Self>) -> Result<(), FragmentColorError> {
+        self.wait_idle().map_err(FragmentColorError::from)
+    }
+
     /// Wrap a native platform video-frame source as an external texture.
     /// The Web binding accepts an `HTMLVideoElement`; the mobile bindings
     /// take a raw pointer (`u64`) to a `CVPixelBuffer` (iOS) or

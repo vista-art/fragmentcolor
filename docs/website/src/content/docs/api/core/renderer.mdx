@@ -525,7 +525,7 @@ lang="kotlin"
 
 Create a [Texture](/api/core/texture) from any input shape â there is exactly one method.
 
-The single `create_texture(spec)` entry point covers every previous variant. The spec's discriminator is the same as the rest of the API: the presence of `size` selects raw-pixel-bytes interpretation; otherwise the input is treated as encoded image data (PNG / JPEG / etc.), a file path, a URL, a KTX2 container, or a pre-built [TextureMipChain](/api/core/texture-mip-chain).
+The single `create_texture(spec)` entry point covers every input shape. The spec's discriminator: the presence of `size` selects raw-pixel-bytes interpretation; otherwise the input is treated as encoded image data (PNG / JPEG / etc.), a file path, a URL, a KTX2 container, or a pre-built [TextureMipChain](/api/core/texture-mip-chain).
 
 The CPU work (decode, mipmap chain, raw-byte wrap, KTX2 parse) runs on a background worker on every native target â the calling thread is never pinned on `queue.write_texture`. On the web, prep runs inline (wgpu types are `!Send` on `wasm32`); move heavier work into a Web Worker yourself if you need real parallelism.
 
@@ -970,12 +970,12 @@ lang="rust" meta="collapse={1-1, 10-12}"
 code={`
 import { Renderer, Shader } from "fragmentcolor";
 
-const r = new Renderer();
-const target = await r.createTextureTarget([8, 8]);
-const shader = Shader.default();
-r.render(shader, target);
-r.waitIdle();
-const _bytes = target.getImage();
+const renderer = new Renderer();
+const target = await renderer.createTextureTarget({ width: 8, height: 8 });
+const shader = new Shader("void main() { fragColor = vec4(1.0); }");
+renderer.render(shader, target);
+renderer.waitIdle();
+const bytes = target.getImage();
 `}
 lang="js"
 />
@@ -987,12 +987,12 @@ lang="js"
 code={`
 from fragmentcolor import Renderer, Shader
 
-r = Renderer()
-target = r.create_texture_target([8, 8])
-shader = Shader.default()
-r.render(shader, target)
-r.wait_idle()
-_bytes = target.get_image()
+renderer = Renderer()
+target = renderer.create_texture_target((8, 8))
+shader = Shader("void main() { fragColor = vec4(1.0); }")
+renderer.render(shader, target)
+renderer.wait_idle()
+bytes = target.get_image()
 `}
 lang="python"
 />
