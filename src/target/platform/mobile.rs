@@ -112,6 +112,15 @@ impl MobileTextureTarget {
             inner: RwLock::new(target),
         })
     }
+
+    /// Return a clone of the underlying `TextureTarget`.
+    ///
+    /// Used by `Pass::add_target` and `Pass::add_depth_target` which need a
+    /// typed `&TextureTarget` to dispatch through the `TryInto<ColorTarget>`
+    /// / `TryInto<DepthTarget>` conversions.
+    pub fn texture_target(&self) -> TextureTarget {
+        self.inner.read().clone()
+    }
 }
 
 #[uniffi::export]

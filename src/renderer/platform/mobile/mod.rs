@@ -61,6 +61,12 @@ impl From<crate::texture::TextureError> for FragmentColorError {
     }
 }
 
+impl From<crate::pass::PassError> for FragmentColorError {
+    fn from(e: crate::pass::PassError) -> Self {
+        FragmentColorError::Render(e.to_string())
+    }
+}
+
 #[uniffi::export]
 impl Renderer {
     /// Foreign bindings see this as `Renderer.new()`. On Swift, uniffi
