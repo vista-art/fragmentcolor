@@ -12,6 +12,7 @@ use wasm_bindgen::prelude::*;
 #[derive(Clone, Debug)]
 #[cfg_attr(python, pyclass)]
 #[cfg_attr(wasm, wasm_bindgen)]
+#[cfg_attr(mobile, derive(uniffi::Object))]
 #[lsp_doc("docs/api/geometry/quad/quad.md")]
 pub struct Quad {
     object: Arc<MeshObject>,
