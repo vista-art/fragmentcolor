@@ -4,15 +4,12 @@ package org.fragmentcolor
 // Matches the call shapes used by the JavaScript and Python bindings so
 // cross-platform examples read the same on every platform.
 
-/**
- * `Shader.setRegistry(...)` matching the JS / Python static-method
- * spelling. Uniffi has no static-method form on `uniffi::Object`, so
- * the underlying binding is a constructor that returns a default
- * Shader; this wrapper discards the dummy instance.
- */
-fun Shader.Companion.setRegistry(baseUrl: String) {
-    Shader.setRegistry(baseUrl)
-}
+// Shader.setRegistry(baseUrl) is provided directly by the uniffi-generated
+// companion object — calling it returns a Shader that the caller may discard.
+// We deliberately do NOT define a Void-returning extension here because such
+// an extension would shadow the generated method and cause infinite recursion
+// when this file calls Shader.setRegistry(baseUrl) (the call resolves to the
+// shadowing extension, not the underlying companion method).
 
 /** Set a Float uniform. */
 fun Shader.set(key: String, value: Float) {

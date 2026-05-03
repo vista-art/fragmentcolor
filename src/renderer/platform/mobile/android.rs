@@ -41,7 +41,11 @@ unsafe impl Sync for AndroidNativeWindow {}
 impl AndroidNativeWindow {
     fn from_surface(env: *mut JNIEnv, surface: jobject) -> Self {
         // ANativeWindow_fromSurface retains the surface; Drop releases it.
-        let window = unsafe { ndk_sys::ANativeWindow_fromSurface(env as *mut _, surface) };
+        // Cast surface: jni 0.22 uses jni-sys 0.4's _jobject; ndk-sys 0.6 expects
+        // jni-sys 0.3's _jobject. They're both pointer-sized opaque types, so
+        // a raw cast through *mut _ is safe.
+        let window =
+            unsafe { ndk_sys::ANativeWindow_fromSurface(env as *mut _, surface as *mut _) };
         Self { window }
     }
 
