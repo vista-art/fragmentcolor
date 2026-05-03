@@ -1,10 +1,5 @@
 import org.fragmentcolor.*
 
-val pixels = Array(8 * 8 * 4) { 0 }
-val chain = TextureMipChain.prepare((
-    pixels.asSlice(),
-    TextureFormat.Rgba8UnormSrgb,
-    arrayOf(8, 8),
-))
+val pixels = ByteArray(8 * 8 * 4)
+val chain = TextureMipChain.prepare(pixels, TextureFormat.RGBA8_UNORM_SRGB, Size(width=8u, height=8u, depth=null))
 val count = chain.levelCount()
-val _ = count

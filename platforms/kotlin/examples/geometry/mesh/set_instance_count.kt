@@ -1,9 +1,5 @@
 import org.fragmentcolor.*
 val m = Mesh()
-m.addVertices([
-    arrayOf(-0.01, -0.01),
-    arrayOf(0.01, -0.01),
-    arrayOf(0.00,  0.01),
-])
+m.addVertices(listOf(Vertex(listOf(-0.01f, -0.01f)), Vertex(listOf(0.01f, -0.01f)), Vertex(listOf(0.00f, 0.01f))))
 // Draw one million instances, fetching per-particle data from a storage buffer.
-m.setInstanceCount(1_000_000)
+m.setInstanceCount(1_000_000u)

@@ -1,5 +1,5 @@
 import org.fragmentcolor.*
 
 val shader = Shader.default()
-shader.set("resolution", arrayOf(800.0, 600.0))
+shader.set("resolution", floatArrayOf(800.0f, 600.0f))
 val res = shader.get("resolution")

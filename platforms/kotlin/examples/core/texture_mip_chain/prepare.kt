@@ -1,15 +1,13 @@
 import org.fragmentcolor.*
 
 // Encoded path â single tuple, no extra method.
-val chain = TextureMipChain.prepare((encoded_png_bytes, TextureFormat.Rgba8UnormSrgb))
+val encoded_png_bytes: ByteArray = byteArrayOf()
+val chain = TextureMipChain.prepare(encoded_png_bytes, TextureFormat.RGBA8_UNORM_SRGB, null)
 
 // Raw pixel path â same method, just include the size in the tuple.
-val chain_raw = TextureMipChain.prepare((
-    raw_rgba.asSlice(),
-    TextureFormat.Rgba8UnormSrgb,
-    arrayOf(8, 8),
-))
+val raw_rgba: ByteArray = ByteArray(8 * 8 * 4)
+val chain_raw = TextureMipChain.prepare(raw_rgba, TextureFormat.RGBA8_UNORM_SRGB, Size(width=8u, height=8u, depth=null))
 
 // Hand the chain to the unified create_texture entry â same vocabulary.
 val renderer = Renderer()
-val texture = renderer.createTexture(chain)
+val texture = renderer.createTexture(TextureInputMobile.Prepared(chain), null)

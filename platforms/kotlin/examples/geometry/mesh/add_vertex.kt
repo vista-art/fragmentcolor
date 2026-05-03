@@ -1,3 +1,3 @@
 import org.fragmentcolor.*
 val m = Mesh()
-m.addVertex(arrayOf(0.0, 0.0))
+m.addVertex(Vertex(listOf(0.0f, 0.0f)))

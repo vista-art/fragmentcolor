@@ -15,8 +15,8 @@ val shader = Shader("""
 // 1x1 RGBA (white) raw pixel bytes - single create_texture entry, tuple
 // form (bytes, format, size) selects the raw-pixel path. Format is
 // the placeholder Rgba (sRGB-aware) by default.
-val pixels = arrayOf(255,255,255,255)
-val texture = renderer.createTexture((pixels, arrayOf(1, 1)))
+val pixels = listOf(255.0f, 255.0f, 255.0f, 255.0f)
+val texture = renderer.createTexture(TextureInputMobile.Bytes(pixels.let { ba -> ByteArray(ba.size) { i -> ba[i].toInt().and(0xFF).toByte() } }), null)
 
 // insert  the texture in the shader matching the name in the shader
 shader.set("my_texture", texture)
