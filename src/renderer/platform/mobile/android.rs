@@ -1,16 +1,25 @@
 //! Android-specific FFI bridge.
 //!
-//! Uniffi cannot marshal `JNIEnv*` + `jobject`, so the Kotlin-facing
-//! `Surface → WindowTarget` constructor is exposed as a raw `#[jni_fn]`
-//! entry point that returns an `Arc<WindowTarget>` pointer. The generated
-//! Kotlin bindings then wrap it via `WindowTarget(Pointer(ptr))` (the JNA
-//! pointer-constructor that uniffi's Kotlin backend emits for every
-//! `uniffi::Object`).
+//! Two paths for creating a `WindowTarget` from an Android `Surface`:
+//!
+//! 1. **Raw JNI** (`create_window_target_from_surface`): accepts `JNIEnv*` +
+//!    `jobject` directly; uniffi cannot marshal those, so the entry point is
+//!    exposed as a `#[jni_fn]` function that returns an `Arc<WindowTarget>`
+//!    pointer. The Kotlin side reconstructs the `WindowTarget` via
+//!    `WindowTarget(Pointer(ptr))` (the JNA pointer-constructor uniffi emits).
+//!
+//! 2. **Uniffi method** (`Renderer.createTarget(nativeWindowPtr:)`): accepts a
+//!    pre-acquired `ANativeWindow*` pointer cast to `u64`. The Kotlin extension
+//!    obtains this pointer via `android.view.Surface.acquireNativeHandle()` or
+//!    by calling into the NDK directly, then passes it to the uniffi method.
+//!    This path satisfies the parity audit's `create_target.md:kotlin` gap and
+//!    gives Kotlin callers a first-class uniffi-generated API.
 
 use std::sync::Arc;
 
 use jni::{JNIEnv, objects::JClass, sys::jobject};
 use jni_fn::jni_fn;
+use lsp_doc::lsp_doc;
 use raw_window_handle::{
     AndroidDisplayHandle, AndroidNdkWindowHandle, DisplayHandle, HandleError, HasDisplayHandle,
     HasWindowHandle, RawDisplayHandle, RawWindowHandle, WindowHandle,
@@ -18,6 +27,7 @@ use raw_window_handle::{
 
 use crate::{Renderer, WindowTarget};
 use crate::MobileWindowTarget;
+use super::FragmentColorError;
 
 /// HasWindowHandle + HasDisplayHandle wrapper over an `ANativeWindow`.
 #[derive(Debug)]
@@ -104,5 +114,46 @@ pub fn create_window_target_from_surface(
     match pollster::block_on(build_window_target(env, surface)) {
         Some(target) => Arc::into_raw(target),
         None => std::ptr::null(),
+    }
+}
+
+#[uniffi::export]
+impl Renderer {
+    /// Create a `WindowTarget` from a pre-acquired `ANativeWindow` pointer.
+    ///
+    /// The Kotlin caller obtains the pointer via
+    /// `android.view.Surface.acquireNativeHandle()` or the NDK's
+    /// `ANativeWindow_fromSurface` helper, then casts it to `Long` before
+    /// passing it here. A Kotlin extension file re-exports this as
+    /// `Renderer.createTarget(surface: Surface)` so the public API reads
+    /// the same as every other platform.
+    ///
+    /// Exposed as synchronous because `ANativeWindow*` holds a raw pointer
+    /// that is not `Send`, so the resulting future cannot satisfy uniffi's
+    /// `Send` bound on async exports. Adapter/device creation is driven by
+    /// pollster internally.
+    #[uniffi::method(name = "createTarget")]
+    #[lsp_doc("docs/api/core/renderer/hidden/create_target_android.md")]
+    pub fn create_target_android(
+        self: Arc<Self>,
+        native_window_ptr: u64,
+    ) -> Result<Arc<MobileWindowTarget>, FragmentColorError> {
+        let raw = native_window_ptr as *mut ndk_sys::ANativeWindow;
+        // SAFETY: the caller guarantees the ANativeWindow is alive and valid
+        // for the duration of this call. We immediately retain it via
+        // ANativeWindow_acquire and release in AndroidNativeWindow::drop.
+        unsafe { ndk_sys::ANativeWindow_acquire(raw) };
+        let window = AndroidNativeWindow { window: raw };
+        let size = wgpu::Extent3d {
+            width: u32::max(window.width(), 1),
+            height: u32::max(window.height(), 1),
+            depth_or_array_layers: 1,
+        };
+        let handle: Box<dyn wgpu::WindowHandle> = Box::new(window);
+        let (context, surface, config) = pollster::block_on(
+            self.create_surface(wgpu::SurfaceTarget::Window(handle), size),
+        )
+        .map_err(FragmentColorError::from)?;
+        Ok(MobileWindowTarget::new(WindowTarget::new(context, surface, config)))
     }
 }
