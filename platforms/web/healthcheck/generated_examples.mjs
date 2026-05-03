@@ -47,7 +47,6 @@ const EXAMPLES = [
   '../examples/core/texture/Texture.js',
   '../examples/core/texture/aspect.js',
   '../examples/core/texture/get_image.js',
-  '../examples/core/texture/get_image_async.js',
   '../examples/core/texture/id.js',
   '../examples/core/texture/set_sampler_options.js',
   '../examples/core/texture/size.js',

@@ -116,6 +116,13 @@ impl Texture {
         self.write_region(&bytes, r)?;
         Ok(())
     }
+
+    #[wasm_bindgen(js_name = "getImage")]
+    #[lsp_doc("docs/api/core/texture/get_image.md")]
+    pub async fn get_image_js(&self) -> Result<js_sys::Uint8Array, JsError> {
+        let bytes = self.get_image().await.map_err(|e| JsError::new(&e.to_string()))?;
+        Ok(js_sys::Uint8Array::from(bytes.as_slice()))
+    }
 }
 
 // Helper: parse JS values into CompareFunction. Accepts string names (case-insensitive)
