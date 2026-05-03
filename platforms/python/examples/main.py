@@ -118,6 +118,14 @@ def run_all():
             runpy.run_path(str(base / rel), run_name='__main__')
             passed += 1
             print(head + GREEN + 'OK' + RESET)
+        except SystemExit as _e:
+            if _e.code == 0:
+                passed += 1
+                print(head + GREEN + 'OK' + RESET)
+            else:
+                failed += 1
+                print(head + RED + 'FAILED' + RESET)
+                traceback.print_exc()
         except Exception:
             failed += 1
             print(head + RED + 'FAILED' + RESET)

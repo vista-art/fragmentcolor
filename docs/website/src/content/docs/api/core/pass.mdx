@@ -95,6 +95,11 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
+import os, sys
+# Skip this example in headless/CI environments that have no display surface.
+if os.environ.get('DISPLAY') is None and sys.platform != 'win32' and os.environ.get('FC_ALLOW_WINDOW') != '1':
+    raise SystemExit(0)
+
 from rendercanvas.auto import RenderCanvas, loop
 
 from fragmentcolor import Shader, Pass, Renderer
@@ -115,7 +120,6 @@ renderer.render(rpass, target)
 
 # vector of passes rendered in order (any iterable of Pass is renderable)
 renderer.render([rpass, pass2], target)
-
 `}
 lang="python"
 />

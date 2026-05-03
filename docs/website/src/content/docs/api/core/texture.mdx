@@ -98,7 +98,6 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-
 from fragmentcolor import Renderer, Shader
 renderer = Renderer()
 shader = Shader("""
@@ -109,18 +108,14 @@ shader = Shader("""
   return vec4f(p[i], 0., 1.);
 }
 @fragment fn main() -> @location(0) vec4<f32> { return vec4f(1.,1.,1.,1.); }
-
 """)
 
-# 1x1 RGBA (white) raw pixel bytes - single create_texture entry, tuple
-# form (bytes, format, size) selects the raw-pixel path. Format is
-# the placeholder Rgba (sRGB-aware) by default.
-pixels = [255,255,255,255]
-texture = renderer.create_texture((pixels, [1, 1]))
+# 1x1 RGBA (white) raw pixel bytes -- positional: (data, size=...).
+pixels = [255, 255, 255, 255]
+texture = renderer.create_texture(pixels, size=[1, 1])
 
-# insert  the texture in the shader matching the name in the shader
+# insert the texture in the shader matching the name in the shader
 shader.set("my_texture", texture)
-
 `}
 lang="python"
 />
@@ -327,8 +322,8 @@ lang="js"
 code={`
 from fragmentcolor import Renderer
 renderer = Renderer()
-pixels = [255,255,255,255]
-tex = renderer.create_texture((pixels, [1, 1]))
+pixels = [255, 255, 255, 255]
+tex = renderer.create_texture(pixels, size=[1, 1])
 sz = tex.size
 `}
 lang="python"
@@ -421,15 +416,13 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-
 from fragmentcolor import Renderer
 
 renderer = Renderer()
 # 1x1 RGBA (white) raw pixel bytes
-pixels = [255,255,255,255]
-tex = renderer.create_texture((pixels, [1, 1]))
+pixels = [255, 255, 255, 255]
+tex = renderer.create_texture(pixels, size=[1, 1])
 a = tex.aspect()
-
 `}
 lang="python"
 />
@@ -535,13 +528,11 @@ code={`
 from fragmentcolor import Renderer, SamplerOptions
 renderer = Renderer()
 # 1x1 RGBA (white) raw pixel bytes
-pixels = [255,255,255,255]
+pixels = [255, 255, 255, 255]
 
-texture = renderer.create_texture((pixels, [1, 1]))
+texture = renderer.create_texture(pixels, size=[1, 1])
 opts = {"repeat_x": True, "repeat_y": True, "smooth": True, "compare": None}
 texture.set_sampler_options(opts)
-
-
 `}
 lang="python"
 />
@@ -885,7 +876,7 @@ lang="js"
 code={`
 from fragmentcolor import Renderer, TextureFormat
 renderer = Renderer()
-texture = renderer.create_storage_texture(([64, 64], TextureFormat.Rgba))
+texture = renderer.create_storage_texture([64, 64], TextureFormat.Rgba)
 texture.write([0] * (64 * 64 * 4))
 
 bytes = texture.get_image()

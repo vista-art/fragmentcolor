@@ -1947,7 +1947,7 @@ fn create_bind_group_layouts(
                         }
                     }
                     // External textures (Web): bind as ExternalTexture when available.
-                    TextureClass::External => wgpu::BindGroupLayoutEntry {
+                    TextureClass::External() => wgpu::BindGroupLayoutEntry {
                         binding: uniform.binding,
                         visibility: wgpu::ShaderStages::FRAGMENT,
                         ty: wgpu::BindingType::ExternalTexture,
