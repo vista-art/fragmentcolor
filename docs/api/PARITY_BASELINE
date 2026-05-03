@@ -8,31 +8,7 @@
 #   gap:<canonical_doc>:<comma_separated_missing_platforms>
 #   unresolved:<lsp_doc_path>:<comma_separated_credited_platforms>
 
-gap:docs/api/core/pass/add_depth_target.md:swift,kotlin
-gap:docs/api/core/pass/add_mesh.md:swift,kotlin
-gap:docs/api/core/pass/add_mesh_to_shader.md:swift,kotlin
-gap:docs/api/core/pass/add_shader.md:swift,kotlin
-gap:docs/api/core/pass/add_target.md:swift,kotlin
-gap:docs/api/core/pass/compute.md:swift,kotlin
-gap:docs/api/core/pass/from_shader.md:swift,kotlin
-gap:docs/api/core/pass/get_input.md:swift,kotlin
-gap:docs/api/core/pass/is_compute.md:swift,kotlin
-gap:docs/api/core/pass/load_previous.md:swift,kotlin
-gap:docs/api/core/pass/new.md:swift,kotlin
-gap:docs/api/core/pass/require.md:swift,kotlin
-gap:docs/api/core/pass/set_clear_color.md:swift,kotlin
-gap:docs/api/core/pass/set_compute_dispatch.md:swift,kotlin
-gap:docs/api/core/pass/set_viewport.md:swift,kotlin
-gap:docs/api/core/shader/add_mesh.md:swift,kotlin
-gap:docs/api/core/shader/clear_meshes.md:swift,kotlin
 gap:docs/api/core/shader/default.md:web
-gap:docs/api/core/shader/from_mesh.md:swift,kotlin
-gap:docs/api/core/shader/from_vertex.md:swift,kotlin
-gap:docs/api/core/shader/remove_mesh.md:swift,kotlin
-gap:docs/api/core/shader/remove_meshes.md:swift,kotlin
-gap:docs/api/core/shader/validate_mesh.md:swift,kotlin
-gap:docs/api/geometry/quad/get_mesh.md:swift,kotlin
-gap:docs/api/geometry/quad/new.md:swift,kotlin
 gap:docs/api/targets/texture_target/get_image.md:web
 gap:docs/api/targets/texture_target/resize.md:web
 gap:docs/api/targets/texture_target/size.md:web
