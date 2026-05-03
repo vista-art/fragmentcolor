@@ -21,6 +21,62 @@ pub struct TextureRegion {
     pub rows_per_image: Option<u32>,
 }
 
+/// Mobile-only flat version of [`TextureRegion`] for uniffi FFI.
+///
+/// Uniffi cannot marshal fixed-size arrays (`[u32; 3]`), so the mobile
+/// binding exposes the 3D origin and size as individual `u32` fields.
+/// Use `origin_x/y/z = 0` and `size_width/height/depth = 0` (the defaults)
+/// to target the whole texture; the write path interprets zeros as
+/// "infer the full extent from the texture dimensions".
+#[cfg(mobile)]
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct TextureRegionMobile {
+    pub origin_x: u32,
+    pub origin_y: u32,
+    pub origin_z: u32,
+    /// Width of the region to write. `0` → infer (full texture width).
+    pub size_width: u32,
+    /// Height of the region to write. `0` → infer (full texture height).
+    pub size_height: u32,
+    /// Depth of the region to write. `0` → infer (full texture depth, usually 1).
+    pub size_depth: u32,
+    pub bytes_per_row: Option<u32>,
+    pub rows_per_image: Option<u32>,
+}
+
+#[cfg(mobile)]
+impl Default for TextureRegionMobile {
+    /// "Whole texture" sentinel — all zeros tells the write path to infer the
+    /// full extent. Equivalent to `TextureRegion::default()` on the Rust side.
+    fn default() -> Self {
+        Self {
+            origin_x: 0,
+            origin_y: 0,
+            origin_z: 0,
+            size_width: 0,
+            size_height: 0,
+            size_depth: 0,
+            bytes_per_row: None,
+            rows_per_image: None,
+        }
+    }
+}
+
+#[cfg(mobile)]
+impl From<TextureRegionMobile> for TextureRegion {
+    fn from(m: TextureRegionMobile) -> Self {
+        // Zeros are preserved — the write path interprets [0,0,0] size as
+        // "infer the full extent from the texture dimensions", matching
+        // TextureRegion::default() semantics.
+        TextureRegion {
+            origin: [m.origin_x, m.origin_y, m.origin_z],
+            size: [m.size_width, m.size_height, m.size_depth],
+            bytes_per_row: m.bytes_per_row,
+            rows_per_image: m.rows_per_image,
+        }
+    }
+}
+
 impl Default for TextureRegion {
     /// "Whole texture" sentinel — `size` of `[0, 0, 0]` is interpreted by the
     /// write path as "infer the full extent from the texture itself".
