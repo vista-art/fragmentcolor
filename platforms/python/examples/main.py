@@ -26,6 +26,7 @@ def run_all():
         'core/pass/set_viewport.py',
         'core/renderer/Renderer.py',
         'core/renderer/create_depth_texture.py',
+        'core/renderer/create_external_texture.py',
         'core/renderer/create_storage_texture.py',
         'core/renderer/create_target.py',
         'core/renderer/create_texture.py',

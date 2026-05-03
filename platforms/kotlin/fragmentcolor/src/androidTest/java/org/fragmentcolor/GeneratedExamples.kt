@@ -255,6 +255,14 @@ class GeneratedExamples {
         val depth = r.createDepthTexture(arrayOf(800, 600))
     }
 
+    @Suppress("unused") private suspend fun _example_core_renderer_create_external_texture() {
+        // Once supported:
+        //   val renderer = Renderer()
+        //   val surfaceTexture: SurfaceTexture = /* from MediaCodec / Camera2 */
+        //   val ptr: ULong = surfaceTexture.nativeHandle()  // hypothetical helper
+        //   val handle = renderer.createExternalTexture(ptr)
+    }
+
     @Suppress("unused") private suspend fun _example_core_renderer_create_storage_texture() {
 
         val r = Renderer()

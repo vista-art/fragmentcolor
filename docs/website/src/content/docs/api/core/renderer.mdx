@@ -1226,6 +1226,106 @@ lang="kotlin"
 
 ---
 
+### Renderer::create_external_texture(source)
+
+Wrap a native platform video-frame source as an external texture so a WGSL
+shader can sample it directly via `texture_external` /
+`textureSampleBaseClampToEdge`, without an intermediate CPU upload.
+
+The `source` argument is platform-specific:
+
+- **Web**: `HTMLVideoElement` (or anything that decodes into one).
+- **iOS**: a `CVPixelBuffer`-backed handle (passed as a raw `UInt64` pointer
+  over the uniffi boundary).
+- **Android**: a `SurfaceTexture` handle (passed as a raw `ULong` pointer).
+
+Returns an error on every platform today â the API surface is in place, the
+implementation is a follow-up.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::Renderer;
+let renderer = Renderer::new();
+// platform-specific source handle passed here
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+`}
+lang="rust" meta="collapse={1-1, 5-7}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Renderer } from "fragmentcolor";
+
+const renderer = new Renderer();
+const element = document.getElementById("video");
+
+if (element instanceof HTMLVideoElement) {
+  const handle = renderer.createExternalTexture(element);
+  void handle;
+}
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+# Python: decode video frames host-side and upload via Texture.write().
+# A native external-texture source equivalent is not exposed on this binding.
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+// Once supported:
+//   let renderer = Renderer()
+//   let pixelBuffer: CVPixelBuffer = /* from AVPlayerItemVideoOutput */
+//   let ptr = UInt64(UInt(bitPattern: Unmanaged.passUnretained(pixelBuffer).toOpaque()))
+//   let handle = try renderer.createExternalTexture(sourcePtr: ptr)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+// Once supported:
+//   val renderer = Renderer()
+//   val surfaceTexture: SurfaceTexture = /* from MediaCodec / Camera2 */
+//   val ptr: ULong = surfaceTexture.nativeHandle()  // hypothetical helper
+//   val handle = renderer.createExternalTexture(ptr)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
 ### Renderer::render(renderable, target)
 
 Renders the given object to the given [Target](/api/core/target).
