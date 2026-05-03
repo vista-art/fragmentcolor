@@ -1,3 +1,10 @@
+# Pass (Python)
+
+Python-specific example for creating and rendering a Pass. Requires a windowing system.
+
+## Example
+
+```python
 import os, sys
 # Skip this example in headless/CI environments that have no display surface.
 if os.environ.get('DISPLAY') is None and sys.platform != 'win32' and os.environ.get('FC_ALLOW_WINDOW') != '1':
@@ -23,3 +30,4 @@ renderer.render(rpass, target)
 
 # vector of passes rendered in order (any iterable of Pass is renderable)
 renderer.render([rpass, pass2], target)
+```

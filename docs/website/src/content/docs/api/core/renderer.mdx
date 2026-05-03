@@ -700,12 +700,12 @@ code={`
 from fragmentcolor import Renderer, TextureFormat
 
 r = Renderer()
-# Empty storage texture Ã¢ÂÂ same single create_storage_texture entry.
-tex = r.create_storage_texture(([64, 64], TextureFormat.Rgba))
+# Empty storage texture -- positional args: (size, format).
+tex = r.create_storage_texture([64, 64], TextureFormat.Rgba)
 
-# Pre-seeded with bytes Ã¢ÂÂ same method, three-tuple form.
+# Pre-seeded with bytes -- same method, optional data kwarg.
 pixels = [0] * (64 * 64 * 4)
-tex2 = r.create_storage_texture(([64, 64], TextureFormat.Rgba, pixels))
+tex2 = r.create_storage_texture([64, 64], TextureFormat.Rgba, data=pixels)
 `}
 lang="python"
 />
@@ -989,7 +989,13 @@ from fragmentcolor import Renderer, Shader
 
 renderer = Renderer()
 target = renderer.create_texture_target((8, 8))
-shader = Shader("void main() { fragColor = vec4(1.0); }")
+shader = Shader("""
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.));
+  return vec4f(p[i], 0., 1.);
+}
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4f(1., 1., 1., 1.); }
+""")
 renderer.render(shader, target)
 renderer.wait_idle()
 bytes = target.get_image()
@@ -1088,10 +1094,10 @@ lang="js"
 code={`
 from fragmentcolor import Renderer, TextureFormat
 renderer = Renderer()
-texture = renderer.create_storage_texture(([64, 64], TextureFormat.Rgba))
+texture = renderer.create_storage_texture([64, 64], TextureFormat.Rgba)
 texture.write([0] * (64 * 64 * 4))
 
-bytes = renderer.read_texture(texture.id())
+bytes = texture.get_image()
 `}
 lang="python"
 />
@@ -1181,10 +1187,11 @@ lang="js"
 code={`
 from fragmentcolor import Renderer, TextureFormat
 renderer = Renderer()
-texture = renderer.create_storage_texture(([64, 64], TextureFormat.Rgba))
+texture = renderer.create_storage_texture([64, 64], TextureFormat.Rgba)
 texture.write([0] * (64 * 64 * 4))
 
-bytes = renderer.read_texture_async(texture.id())
+# In Python, get_image() is synchronous (blocks internally via pollster).
+bytes = texture.get_image()
 `}
 lang="python"
 />

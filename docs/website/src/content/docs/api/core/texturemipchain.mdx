@@ -97,16 +97,11 @@ code={`
 from fragmentcolor import Renderer, TextureFormat, TextureMipChain
 
 renderer = Renderer()
-# Encoded image bytes the caller has on hand (could come off a worker).
-png = [
-    0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
-# ... full PNG body ...
-]
-chain = TextureMipChain.prepare((png, TextureFormat.Rgba8UnormSrgb))
+# Minimal 1x1 RGBA raw pixel bytes.
+pixels = [255, 0, 0, 255]
+chain = TextureMipChain.prepare(pixels, TextureFormat.Rgba8UnormSrgb, [1, 1])
 
-# Hand the chain to the unified create_texture entry - same vocabulary as
-# every other texture path; From<TextureMipChain> selects the GPU-only
-# upload internally.
+# Hand the chain to the unified create_texture entry.
 texture = renderer.create_texture(chain)
 `}
 lang="python"
@@ -261,17 +256,11 @@ lang="js"
 code={`
 from fragmentcolor import Renderer, TextureFormat, TextureMipChain
 
-# Encoded path Ã¢ÂÂ single tuple, no extra method.
-chain = TextureMipChain.prepare((encoded_png_bytes, TextureFormat.Rgba8UnormSrgb))
+# Raw pixel path -- positional args: prepare(bytes, format, size).
+raw_rgba = [200] * (8 * 8 * 4)
+chain = TextureMipChain.prepare(raw_rgba, TextureFormat.Rgba8UnormSrgb, [8, 8])
 
-# Raw pixel path Ã¢ÂÂ same method, just include the size in the tuple.
-chain_raw = TextureMipChain.prepare((
-    raw_rgba.as_slice(),
-    TextureFormat.Rgba8UnormSrgb,
-    [8, 8],
-))
-
-# Hand the chain to the unified create_texture entry Ã¢ÂÂ same vocabulary.
+# Hand the chain to the unified create_texture entry.
 renderer = Renderer()
 texture = renderer.create_texture(chain)
 `}
@@ -384,11 +373,7 @@ code={`
 from fragmentcolor import TextureFormat, TextureMipChain
 
 pixels = [200] * (4 * 4 * 4)
-chain = TextureMipChain.prepare((
-    pixels.as_slice(),
-    TextureFormat.Rgba8UnormSrgb,
-    [4, 4],
-))
+chain = TextureMipChain.prepare(pixels, TextureFormat.Rgba8UnormSrgb, [4, 4])
 _ = chain.format()
 `}
 lang="python"
@@ -492,11 +477,7 @@ code={`
 from fragmentcolor import TextureFormat, TextureMipChain
 
 pixels = [0] * (16 * 16 * 4)
-chain = TextureMipChain.prepare((
-    pixels.as_slice(),
-    TextureFormat.Rgba8UnormSrgb,
-    [16, 16],
-))
+chain = TextureMipChain.prepare(pixels, TextureFormat.Rgba8UnormSrgb, [16, 16])
 (width, height) = chain.base_size()
 _ = (width, height)
 `}
@@ -604,12 +585,8 @@ code={`
 from fragmentcolor import TextureFormat, TextureMipChain
 
 pixels = [0] * (8 * 8 * 4)
-chain = TextureMipChain.prepare((
-    pixels.as_slice(),
-    TextureFormat.Rgba8UnormSrgb,
-    [8, 8],
-))
-level_zero_bytes = chain.levels()[0]
+chain = TextureMipChain.prepare(pixels, TextureFormat.Rgba8UnormSrgb, [8, 8])
+level_zero_bytes = chain.level(0)
 _ = level_zero_bytes
 `}
 lang="python"
@@ -714,11 +691,7 @@ code={`
 from fragmentcolor import TextureFormat, TextureMipChain
 
 pixels = [0] * (8 * 8 * 4)
-chain = TextureMipChain.prepare((
-    pixels.as_slice(),
-    TextureFormat.Rgba8UnormSrgb,
-    [8, 8],
-))
+chain = TextureMipChain.prepare(pixels, TextureFormat.Rgba8UnormSrgb, [8, 8])
 count = chain.level_count()
 _ = count
 `}

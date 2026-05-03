@@ -1,10 +1,17 @@
-# Renderer.create_depth_texture_py
+# Renderer::create_storage_texture (Python)
 
-Python wrapper for Renderer::create_depth_texture.
-Hidden from public website; used for IDE hover with lsp_doc.
+Python-only entry point for creating a storage texture with explicit size and format.
 
 ## Example
 
-```rust
-// hidden draft; no public example
+```python
+from fragmentcolor import Renderer, TextureFormat
+
+r = Renderer()
+# Empty storage texture -- positional args: (size, format).
+tex = r.create_storage_texture([64, 64], TextureFormat.Rgba)
+
+# Pre-seeded with bytes -- same method, optional data kwarg.
+pixels = [0] * (64 * 64 * 4)
+tex2 = r.create_storage_texture([64, 64], TextureFormat.Rgba, data=pixels)
 ```
