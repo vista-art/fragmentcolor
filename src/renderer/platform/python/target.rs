@@ -76,6 +76,15 @@ impl RenderCanvasTarget {
         <Self as Target>::resize(self, size);
     }
 
+    /// Returns an empty byte array.
+    ///
+    /// Window-backed targets are not readable across all GPU backends.
+    /// Use a `TextureTarget` and call `get_image()` there instead.
+    #[lsp_doc("docs/api/targets/window_target/get_image.md")]
+    pub fn get_image(&self) -> Vec<u8> {
+        <Self as Target>::get_image(self)
+    }
+
     // We can't export a impl Trait block with Pyo3, so this is a
     // duck-typed interface that a context must implement, to be usable with RenderCanvas.
     // Upstream documentation: https://rendercanvas.readthedocs.io/stable/contextapi.html

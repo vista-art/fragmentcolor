@@ -74,3 +74,9 @@ docs/api/targets/target/get_image.md::Trait method; parity enforced via concrete
 # combination are browser-native concepts with no meaningful parallel on
 # Python or mobile runtimes.
 docs/api/web/external_texture.md:web:Web-only feature overview; HTMLVideoElement and texture_external are browser-native. Concrete per-platform bindings live in docs/api/core/renderer/hidden/ and credit the canonical create_external_texture path separately.
+
+# Python has no portable native video-frame source equivalent to
+# HTMLVideoElement / CVPixelBuffer / SurfaceTexture. Callers decode video
+# frames host-side and upload via Texture.write() / Texture.write_region()
+# instead. See docs/api/core/renderer/hidden/create_external_texture_py.md.
+docs/api/core/renderer/create_external_texture.md:web,swift,kotlin:Python lacks a portable native video-frame source; use Texture.write/write_region to upload decoded frames instead.
