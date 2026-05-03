@@ -624,12 +624,7 @@ impl Texture {
     }
 
     #[lsp_doc("docs/api/core/texture/get_image.md")]
-    pub fn get_image(&self) -> Result<Vec<u8>, TextureError> {
-        read::get_image(self)
-    }
-
-    #[lsp_doc("docs/api/core/texture/get_image_async.md")]
-    pub async fn get_image_async(&self) -> Result<Vec<u8>, TextureError> {
+    pub async fn get_image(&self) -> Result<Vec<u8>, TextureError> {
         read::get_image_async(self).await
     }
 }

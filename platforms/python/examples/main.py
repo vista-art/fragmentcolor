@@ -55,7 +55,6 @@ def run_all():
         'core/texture/Texture.py',
         'core/texture/aspect.py',
         'core/texture/get_image.py',
-        'core/texture/get_image_async.py',
         'core/texture/id.py',
         'core/texture/set_sampler_options.py',
         'core/texture/size.py',

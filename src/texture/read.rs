@@ -171,10 +171,6 @@ pub(crate) async fn read_texture_object_async(
     Ok(extract_pixels(&plan))
 }
 
-pub(super) fn get_image(texture: &Texture) -> Result<Vec<u8>, TextureError> {
-    read_texture_object_sync(&texture.context, &texture.object)
-}
-
 pub(super) async fn get_image_async(texture: &Texture) -> Result<Vec<u8>, TextureError> {
     read_texture_object_async(&texture.context, &texture.object).await
 }
