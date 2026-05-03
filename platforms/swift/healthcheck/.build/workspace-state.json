@@ -1,0 +1,44 @@
+{
+  "object" : {
+    "artifacts" : [
+      {
+        "kind" : {
+          "xcframework" : {
+
+          }
+        },
+        "packageRef" : {
+          "identity" : "swift",
+          "kind" : "fileSystem",
+          "location" : "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift",
+          "name" : "FragmentColor"
+        },
+        "path" : "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/build/ios/FragmentColorFFI.xcframework",
+        "source" : {
+          "type" : "local"
+        },
+        "targetName" : "FragmentColorFFI"
+      }
+    ],
+    "dependencies" : [
+      {
+        "basedOn" : null,
+        "packageRef" : {
+          "identity" : "swift",
+          "kind" : "fileSystem",
+          "location" : "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift",
+          "name" : "FragmentColor"
+        },
+        "state" : {
+          "name" : "fileSystem",
+          "path" : "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift"
+        },
+        "subpath" : "swift"
+      }
+    ],
+    "prebuilts" : [
+
+    ]
+  },
+  "version" : 7
+}

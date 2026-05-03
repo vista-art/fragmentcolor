@@ -13,6 +13,7 @@
 //  into the generated MDX pages.
 //
 
+import Foundation
 import FragmentColor
 
 enum HealthcheckError: Error {
