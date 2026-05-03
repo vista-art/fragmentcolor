@@ -1025,7 +1025,9 @@ impl RenderContext {
                             .push((uniform.binding, sampler));
                     }
                     UniformData::Storage(data) => {
-                        if let Some((_inner, span, _access)) = data.first() {
+                        if let Some(crate::shader::uniform::StorageEntry { span, .. }) =
+                            data.first()
+                        {
                             // Acquire persistent storage buffer and upload only if necessary
                             let span_u64 = *span as u64;
                             // Obtain initial bytes for creation or update
@@ -1436,7 +1438,9 @@ impl RenderContext {
                             .push((uniform.binding, sampler));
                     }
                     UniformData::Storage(data) => {
-                        if let Some((_inner, span_u32, _access)) = data.first() {
+                        if let Some(crate::shader::uniform::StorageEntry { span: span_u32, .. }) =
+                            data.first()
+                        {
                             let span = *span_u32 as u64;
                             // Obtain bytes
                             let init_bytes: Vec<u8> = {
@@ -1932,7 +1936,9 @@ fn create_bind_group_layouts(
                 count: None,
             },
             UniformData::Storage(data) => {
-                if let Some((_inner, span, access)) = data.first() {
+                if let Some(crate::shader::uniform::StorageEntry { span, access, .. }) =
+                    data.first()
+                {
                     let min = if *span == 0 { 16 } else { *span as u64 };
                     let min = unsafe { std::num::NonZeroU64::new_unchecked(min) };
 
@@ -2028,7 +2034,7 @@ fn create_render_pipeline(
             continue;
         }
         if let UniformData::PushConstant(data) = &u.data
-            && let Some((_inner, span)) = data.first()
+            && let Some(crate::shader::uniform::PushEntry { span, .. }) = data.first()
         {
             push_roots.push((name.clone(), *span));
         }
