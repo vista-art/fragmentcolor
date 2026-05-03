@@ -5,6 +5,7 @@
 /references
 /plans
 /.build/
+**/.build/
 /.claude/
 
 # Byte-compiled / optimized / DLL files
