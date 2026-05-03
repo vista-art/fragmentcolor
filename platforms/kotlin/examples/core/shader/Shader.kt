@@ -23,9 +23,9 @@ val shader = Shader("""
 """)
 
 // Set the "resolution" uniform
-shader.set("resolution", arrayOf(800.0, 600.0))
+shader.set("resolution", floatArrayOf(800.0f, 600.0f))
 val res = shader.get("resolution")
 
 val renderer = Renderer()
-val target = renderer.createTextureTarget(arrayOf(16, 16))
+val target = renderer.createTextureTarget(16u, 16u)
 renderer.render(shader, target)

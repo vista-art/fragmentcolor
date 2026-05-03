@@ -1,4 +1,4 @@
 import org.fragmentcolor.*
 
-val quad = Quad(arrayOf(-0.5, -0.5), arrayOf(0.5, 0.5))
+val quad = Quad(listOf(-0.5f, -0.5f), listOf(0.5f, 0.5f))
 val mesh = quad.getMesh()

@@ -1,11 +1,7 @@
 import org.fragmentcolor.*
 
 val m = Mesh()
-val red = arrayOf(1.0, 0.0, 0.0, 1.0)
-val green = arrayOf(0.0, 1.0, 0.0, 1.0)
-val blue = arrayOf(0.0, 0.0, 1.0, 1.0)
-m.addInstances([
-    Instance.new().set("tint", red),
-    Instance.new().set("tint", green),
-    Instance.new().set("tint", blue),
-])
+val red = listOf(1.0f, 0.0f, 0.0f, 1.0f)
+val green = listOf(0.0f, 1.0f, 0.0f, 1.0f)
+val blue = listOf(0.0f, 0.0f, 1.0f, 1.0f)
+m.addInstances(listOf(Instance().set("tint", red), Instance().set("tint", green), Instance().set("tint", blue),))

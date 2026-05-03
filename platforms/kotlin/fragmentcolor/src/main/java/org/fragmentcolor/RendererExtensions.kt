@@ -69,3 +69,11 @@ fun Renderer.render(passes: List<Pass>, target: MobileWindowTarget) {
 fun Renderer.render(passes: List<Pass>, target: MobileTextureTarget) {
     render(RenderableHandle.Passes(passes), TargetHandle.Texture(target))
 }
+
+/**
+ * Unregister a texture by its [TextureId] wrapper. Unwraps to the underlying
+ * [ULong] handle that the uniffi API expects.
+ */
+fun Renderer.unregisterTexture(textureId: TextureId) {
+    unregisterTexture(textureId.id)
+}
