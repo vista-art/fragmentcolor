@@ -3,6 +3,7 @@ use std::collections::{HashMap, HashSet};
 use crate::ShaderError;
 
 use super::{Uniform, UniformData};
+use super::uniform::{ArrayElement, PushEntry, StorageEntry, StructField, StructShape};
 
 #[derive(Debug, Clone)]
 pub(crate) struct UniformStorage {
@@ -64,7 +65,7 @@ impl UniformStorage {
         // so compute explicitly.
         let mut index_size = uniform.data.size();
         if let UniformData::PushConstant(data) = &uniform.data
-            && let Some((_uniform, span)) = data.first()
+            && let Some(PushEntry { span, .. }) = data.first()
         {
             index_size = *span;
         }
@@ -75,8 +76,13 @@ impl UniformStorage {
         );
 
         // If the Uniform is a struct, we also index its fields to allow granular access
-        if let UniformData::Struct((fields, _)) = &uniform.data {
-            for (field_offset, field_name, field) in fields {
+        if let UniformData::Struct(StructShape { fields, .. }) = &uniform.data {
+            for StructField {
+                offset: field_offset,
+                name: field_name,
+                ty: field,
+            } in fields
+            {
                 let key = format!("{}.{}", uniform.name, field_name);
                 self.uniforms.insert(
                     key.clone(),
@@ -87,7 +93,7 @@ impl UniformStorage {
                             name: key,
                             group: uniform.group,
                             binding: uniform.binding,
-                            data: field.clone(),
+                            data: (**field).clone(),
                         },
                     ),
                 );
@@ -96,7 +102,7 @@ impl UniformStorage {
 
         // Storage buffers have their own GPU buffer; create a CPU blob and index fields with offsets
         if let UniformData::Storage(data) = &uniform.data
-            && let Some((inner, span, _)) = data.iter().next()
+            && let Some(StorageEntry { inner, span, .. }) = data.iter().next()
         {
             // Create blob if missing
             self.storage_blobs
@@ -104,8 +110,13 @@ impl UniformStorage {
                 .or_insert_with(|| vec![0u8; *span as usize]);
 
             // Index fields with their declared offsets relative to the storage blob
-            if let UniformData::Struct((fields, _)) = inner {
-                for (field_offset, field_name, field) in fields {
+            if let UniformData::Struct(StructShape { fields, .. }) = inner.as_ref() {
+                for StructField {
+                    offset: field_offset,
+                    name: field_name,
+                    ty: field,
+                } in fields
+                {
                     let key = format!("{}.{}", uniform.name, field_name);
                     self.uniforms.insert(
                         key.clone(),
@@ -116,7 +127,7 @@ impl UniformStorage {
                                 name: key,
                                 group: uniform.group,
                                 binding: uniform.binding,
-                                data: field.clone(),
+                                data: (**field).clone(),
                             },
                         ),
                     );
@@ -140,7 +151,7 @@ impl UniformStorage {
 
         // Push constants: maintain a per-root CPU blob similar to storage
         if let UniformData::PushConstant(data) = &uniform.data
-            && let Some((inner, span)) = data.iter().next()
+            && let Some(PushEntry { inner, span }) = data.iter().next()
         {
             let span = *span;
             self.push_blobs
@@ -148,8 +159,13 @@ impl UniformStorage {
                 .or_insert_with(|| vec![0u8; span as usize]);
 
             // Index fields for direct access if it's a struct
-            if let UniformData::Struct((fields, _)) = inner {
-                for (field_offset, field_name, field) in fields {
+            if let UniformData::Struct(StructShape { fields, .. }) = inner.as_ref() {
+                for StructField {
+                    offset: field_offset,
+                    name: field_name,
+                    ty: field,
+                } in fields
+                {
                     let key = format!("{}.{}", uniform.name, field_name);
                     self.uniforms.insert(
                         key.clone(),
@@ -160,7 +176,7 @@ impl UniformStorage {
                                 name: key,
                                 group: uniform.group,
                                 binding: uniform.binding,
-                                data: field.clone(),
+                                data: (**field).clone(),
                             },
                         ),
                     );
@@ -280,7 +296,7 @@ impl UniformStorage {
             if let Some(blob) = self.storage_blobs.get_mut(root) {
                 match value {
                     UniformData::Storage(data) if key == root => {
-                        if let Some((inner, span, _)) = data.iter().next() {
+                        if let Some(StorageEntry { inner, span, .. }) = data.iter().next() {
                             // Write full storage blob from inner
                             let data = inner.to_bytes();
                             let n = (*span as usize).min(data.len());
@@ -315,7 +331,7 @@ impl UniformStorage {
             if let Some(blob) = self.push_blobs.get_mut(root) {
                 match value {
                     UniformData::PushConstant(data) if key == root => {
-                        if let Some((inner, span)) = data.iter().next() {
+                        if let Some(PushEntry { inner, span }) = data.iter().next() {
                             let data = inner.to_bytes();
                             let n = (*span as usize).min(data.len());
                             if blob.len() < *span as usize {
@@ -358,7 +374,7 @@ impl UniformStorage {
             let (rel_ofs, leaf_sz) = if is_storage {
                 // For storage buffers, traverse the inner shape
                 if let UniformData::Storage(data) = &root_uniform.data {
-                    if let Some((inner, _span, _)) = data.first() {
+                    if let Some(StorageEntry { inner, .. }) = data.first() {
                         compute_offset(inner, &parts, key)?
                     } else {
                         return Err(ShaderError::InvalidKey(key.into()));
@@ -368,7 +384,7 @@ impl UniformStorage {
                 }
             } else if is_push {
                 if let UniformData::PushConstant(data) = &root_uniform.data {
-                    if let Some((inner, _span)) = data.first() {
+                    if let Some(PushEntry { inner, .. }) = data.first() {
                         compute_offset(inner, &parts, key)?
                     } else {
                         return Err(ShaderError::InvalidKey(key.into()));
@@ -486,7 +502,7 @@ impl UniformStorage {
             let is_push = matches!(root_uniform.data, UniformData::PushConstant(_));
             let (rel_ofs, leaf_sz) = if is_storage {
                 if let UniformData::Storage(data) = &root_uniform.data {
-                    if let Some((inner, _span, _)) = data.first() {
+                    if let Some(StorageEntry { inner, .. }) = data.first() {
                         compute_offset(inner, &parts, key).ok()?
                     } else {
                         return None;
@@ -496,7 +512,7 @@ impl UniformStorage {
                 }
             } else if is_push {
                 if let UniformData::PushConstant(data) = &root_uniform.data {
-                    if let Some((inner, _span)) = data.first() {
+                    if let Some(PushEntry { inner, .. }) = data.first() {
                         compute_offset(inner, &parts, key).ok()?
                     } else {
                         return None;
@@ -634,12 +650,17 @@ fn compute_offset(
     let mut i = 0usize;
     while i < parts.len() {
         match cur {
-            UniformData::Struct((fields, _span)) => match &parts[i] {
+            UniformData::Struct(StructShape { fields, .. }) => match &parts[i] {
                 Segment::Field(name) => {
                     let mut found = None;
-                    for (fo, fname, f) in fields.iter() {
+                    for StructField {
+                        offset: fo,
+                        name: fname,
+                        ty: f,
+                    } in fields.iter()
+                    {
                         if fname == name {
-                            found = Some((*fo, f));
+                            found = Some((*fo, f.as_ref()));
                             break;
                         }
                     }
@@ -654,7 +675,7 @@ fn compute_offset(
                 Segment::Index(_) => return Err(ShaderError::InvalidKey(key.into())),
             },
             UniformData::Array(items) => {
-                if let Some((elem, count, stride)) = items.first() {
+                if let Some(ArrayElement { ty, count, stride }) = items.first() {
                     match &parts[i] {
                         Segment::Index(idx) => {
                             let n = *count as usize;
@@ -666,7 +687,7 @@ fn compute_offset(
                                 });
                             }
                             ofs = ofs.saturating_add((*idx as u32) * *stride);
-                            cur = elem;
+                            cur = ty.as_ref();
                             i += 1;
                         }
                         Segment::Field(_) => return Err(ShaderError::InvalidKey(key.into())),
