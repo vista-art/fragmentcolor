@@ -44,9 +44,8 @@ impl TextureMipChain {
 
     #[pyo3(name = "base_size")]
     #[lsp_doc("docs/api/core/texture_mip_chain/base_size.md")]
-    pub fn base_size_py(&self) -> Size {
-        let (w, h) = self.base_size();
-        Size::from([w, h])
+    pub fn base_size_py(&self) -> (u32, u32) {
+        self.base_size()
     }
 
     #[pyo3(name = "level_count")]
