@@ -12,11 +12,9 @@ shader = Shader("""
 
 """)
 
-# 1x1 RGBA (white) raw pixel bytes - single create_texture entry, tuple
-# form (bytes, format, size) selects the raw-pixel path. Format is
-# the placeholder Rgba (sRGB-aware) by default.
-pixels = [255,255,255,255]
-texture = renderer.create_texture((pixels, [1, 1]))
+# 1x1 RGBA (white) raw pixel bytes -- positional: (data, size=...).
+pixels = [255, 255, 255, 255]
+texture = renderer.create_texture(pixels, size=[1, 1])
 
-# insert  the texture in the shader matching the name in the shader
+# insert the texture in the shader matching the name in the shader
 shader.set("my_texture", texture)
