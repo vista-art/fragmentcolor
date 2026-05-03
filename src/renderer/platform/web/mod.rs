@@ -162,7 +162,7 @@ impl Renderer {
     }
 
     #[wasm_bindgen(js_name = "createExternalTexture")]
-    #[lsp_doc("docs/api/core/renderer/hidden/create_external_texture.md")]
+    #[lsp_doc("docs/api/core/renderer/hidden/create_external_texture_js.md")]
     pub fn create_external_texture_js(
         &self,
         video: &web_sys::HtmlVideoElement,

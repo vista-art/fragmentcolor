@@ -23,6 +23,7 @@ use std::sync::Arc;
 use lsp_doc::lsp_doc;
 
 use crate::{Renderer, Shader, Size, TextureTarget, WindowTarget};
+use crate::{MobileTextureTarget, MobileWindowTarget};
 
 /// Mobile-facing error type. Flattens every internal error to its `Display`
 /// representation so Swift/Kotlin callers get a single typed error to match on.
@@ -75,18 +76,20 @@ impl Renderer {
     /// Create a headless `TextureTarget` sized `width` × `height`. Uniffi
     /// cannot marshal `impl Into<Size>`, so the mobile entry point accepts
     /// width/height as `u32` primitives and builds the `Size` internally.
+    /// Returns a `MobileTextureTarget` wrapper that exposes `size()`,
+    /// `resize()`, and `get_image()` on the Swift / Kotlin side.
     #[uniffi::method(name = "createTextureTarget")]
     #[lsp_doc("docs/api/core/renderer/hidden/create_texture_target_mobile.md")]
     pub async fn create_texture_target_mobile(
         self: Arc<Self>,
         width: u32,
         height: u32,
-    ) -> Result<Arc<TextureTarget>, FragmentColorError> {
+    ) -> Result<Arc<MobileTextureTarget>, FragmentColorError> {
         let tex = self
             .create_texture_target(Size::new(width, height, None))
             .await
             .map_err(FragmentColorError::from)?;
-        Ok(Arc::new(tex))
+        Ok(MobileTextureTarget::new(tex))
     }
 
     /// Single mobile entry point for texture creation. Mirrors the canonical
