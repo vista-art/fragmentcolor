@@ -23,11 +23,6 @@ gap:docs/api/core/pass/require.md:swift,kotlin
 gap:docs/api/core/pass/set_clear_color.md:swift,kotlin
 gap:docs/api/core/pass/set_compute_dispatch.md:swift,kotlin
 gap:docs/api/core/pass/set_viewport.md:swift,kotlin
-gap:docs/api/core/renderer/create_depth_texture.md:swift,kotlin
-gap:docs/api/core/renderer/create_render_texture.md:web,python,swift,kotlin
-gap:docs/api/core/renderer/create_target.md:kotlin
-gap:docs/api/core/renderer/unregister_texture.md:swift,kotlin
-gap:docs/api/core/renderer/wait_idle.md:web,python,swift,kotlin
 gap:docs/api/core/shader/add_mesh.md:swift,kotlin
 gap:docs/api/core/shader/clear_meshes.md:swift,kotlin
 gap:docs/api/core/shader/default.md:web,swift,kotlin
