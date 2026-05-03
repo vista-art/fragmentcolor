@@ -37,6 +37,22 @@ mod parity {
     //! not exist on platforms whose `Shader::new(URL)` can block on I/O.
     //! These cases are listed in `docs/api/PARITY` with a written reason.
     //!
+    //! ## Unlabeled-export check
+    //!
+    //! A second check catches the opposite blind spot: platform-bound `pub fn`
+    //! items that exist but carry no `#[lsp_doc(...)]`. When a binding agent
+    //! forgets to add `#[lsp_doc]`, the gap check silently considers the API
+    //! "missing" on that platform — the binding exists but is uncredited.
+    //!
+    //! Scope: **platform-only** — only `pub fn` methods inside impl blocks
+    //! decorated with `#[wasm_bindgen]`, `#[pymethods]`, or `#[uniffi::export]`
+    //! are checked. Free functions and non-platform impl blocks are out of scope.
+    //!
+    //! Exemption: add `#[doc(hidden)]` to any platform-bound method that is
+    //! intentionally internal (JS compat shims, internal duck-typed interfaces,
+    //! helper type constructors, etc.). The check skips methods annotated with
+    //! `#[doc(hidden)]`.
+    //!
     //! ## Mode
     //!
     //! The audit currently runs in **warn mode** — gaps are printed but do
@@ -111,6 +127,21 @@ mod parity {
         aliases: BTreeMap<DocPath, DocPath>,
     }
 
+    /// A platform-bound `pub fn` that has neither an `#[lsp_doc(...)]` nor an
+    /// `#[doc(hidden)]` annotation. This is the "forgotten lsp_doc" blind spot:
+    /// the binding exists but is uncredited to the parity audit.
+    ///
+    /// Fields:
+    ///   - `file`        — workspace-relative path of the source file
+    ///   - `fn_name`     — the Rust function name (e.g. `texture_js`)
+    ///   - `platform`    — which binding context it was found in
+    #[derive(Debug, Clone)]
+    pub struct UnlabeledExport {
+        pub file: String,
+        pub fn_name: String,
+        pub platform: Platform,
+    }
+
     #[derive(Debug)]
     pub struct ParityReport {
         pub gaps: Vec<Gap>,
@@ -121,6 +152,11 @@ mod parity {
         /// resolution). Each is a real binding pointing at a dangling docs
         /// link — surfaced as a warning so the offending file can be fixed.
         pub unresolved_bindings: Vec<(String, BTreeSet<Platform>)>,
+        /// Platform-bound `pub fn` items that have neither `#[lsp_doc(...)]`
+        /// nor `#[doc(hidden)]`. These are "uncredited exports" — the binding
+        /// exists but the parity audit cannot credit it because the annotation
+        /// is missing. Fix by adding `#[lsp_doc(...)]` or `#[doc(hidden)]`.
+        pub unlabeled_exports: Vec<UnlabeledExport>,
         pub bound_doc_count: usize,
         pub doc_count: usize,
     }
@@ -147,9 +183,9 @@ mod parity {
         RewriteBaseline,
     }
 
-    /// Currently-acknowledged gaps + unresolved bindings, loaded from
-    /// PARITY_BASELINE. Strict mode panics on anything in the live audit
-    /// that is NOT a subset of these baselines.
+    /// Currently-acknowledged gaps + unresolved bindings + unlabeled exports,
+    /// loaded from PARITY_BASELINE. Strict mode panics on anything in the live
+    /// audit that is NOT a subset of these baselines.
     #[derive(Default, Debug)]
     struct Baseline {
         /// Per-doc acknowledged missing platforms. Live gap is acceptable
@@ -157,6 +193,10 @@ mod parity {
         gaps: BTreeMap<DocPath, BTreeSet<Platform>>,
         /// Per-lsp-doc-path acknowledged credited platforms. Same subset rule.
         unresolved: BTreeMap<String, BTreeSet<Platform>>,
+        /// Set of "<file>:<fn_name>" pairs acknowledged as unlabeled exports.
+        /// Each entry is an uncredited platform export that the team has not
+        /// yet fixed. Strict mode panics on any NEW entry not in this set.
+        unlabeled: BTreeSet<String>,
     }
 
     /// Public entry point. Walks docs/api/ and src/ once each, applies
@@ -165,6 +205,7 @@ mod parity {
         let raw_bindings = scan_bindings(&workspace_root.join("src"));
         let docs = scan_docs(&workspace_root.join("docs/api"));
         let waivers = load_waivers(&workspace_root.join("docs/api/PARITY"));
+        let unlabeled_exports = scan_unlabeled_exports(&workspace_root.join("src"), workspace_root);
 
         // Resolve every raw binding's lsp_doc string to a canonical doc path.
         // Strategy:
@@ -224,6 +265,7 @@ mod parity {
             waiver_count: waivers.entries.len(),
             alias_count: waivers.aliases.len(),
             unresolved_bindings: unresolved,
+            unlabeled_exports,
             bound_doc_count,
             doc_count: docs.len(),
         }
@@ -261,15 +303,17 @@ mod parity {
         let bound = report.bound_doc_count;
         let gap_count = report.gaps.len();
         let unresolved_count = report.unresolved_bindings.len();
+        let unlabeled_count = report.unlabeled_exports.len();
         let waivers = report.waiver_count;
         let aliases = report.alias_count;
 
         if matches!(mode, Mode::RewriteBaseline) {
             match write_baseline(baseline_path, report) {
                 Ok(_) => println!(
-                    "✅ Baseline rewritten: {} acknowledged gap(s), {} acknowledged unresolved binding(s) → {}",
+                    "✅ Baseline rewritten: {} acknowledged gap(s), {} acknowledged unresolved binding(s), {} acknowledged unlabeled export(s) → {}",
                     gap_count,
                     unresolved_count,
+                    unlabeled_count,
                     baseline_path.display()
                 ),
                 Err(e) => panic!(
@@ -281,7 +325,7 @@ mod parity {
             return;
         }
 
-        if report.gaps.is_empty() && report.unresolved_bindings.is_empty() {
+        if report.gaps.is_empty() && report.unresolved_bindings.is_empty() && report.unlabeled_exports.is_empty() {
             println!(
                 "✅ API parity: {} documented entries, {} bound on every supported platform, {} waiver(s), {} alias(es).",
                 total, bound, waivers, aliases
@@ -299,13 +343,24 @@ mod parity {
         let (acknowledged_gaps, regressed_gaps, new_gaps) = classify_gaps(&report.gaps, &baseline);
         let (acknowledged_unres, regressed_unres, new_unres) =
             classify_unresolved(&report.unresolved_bindings, &baseline);
+        let (acknowledged_unlabeled, new_unlabeled) =
+            classify_unlabeled(&report.unlabeled_exports, &baseline);
         let closed_gap_count = baseline.gaps.len() - (acknowledged_gaps.len() + regressed_gaps.len());
         let closed_unres_count =
             baseline.unresolved.len() - (acknowledged_unres.len() + regressed_unres.len());
+        let closed_unlabeled_count =
+            baseline.unlabeled.len().saturating_sub(acknowledged_unlabeled.len());
+
+        let has_strict_failure = matches!(mode, Mode::Strict)
+            && (!new_gaps.is_empty()
+                || !regressed_gaps.is_empty()
+                || !new_unres.is_empty()
+                || !regressed_unres.is_empty()
+                || !new_unlabeled.is_empty());
 
         let header_emoji = match mode {
             Mode::Warn => "⚠️",
-            Mode::Strict if !new_gaps.is_empty() || !new_unres.is_empty() || !regressed_gaps.is_empty() || !regressed_unres.is_empty() => "❌",
+            Mode::Strict if has_strict_failure => "❌",
             Mode::Strict => "✅",
             Mode::RewriteBaseline => unreachable!(),
         };
@@ -316,17 +371,17 @@ mod parity {
         };
 
         println!(
-            "\n{} API parity {}: {} gap(s) over {} documented entries; {} unresolved lsp_doc link(s).",
-            header_emoji, header_mode, gap_count, total, unresolved_count
+            "\n{} API parity {}: {} gap(s) over {} documented entries; {} unresolved lsp_doc link(s); {} unlabeled export(s).",
+            header_emoji, header_mode, gap_count, total, unresolved_count, unlabeled_count
         );
         println!(
-            "    bound: {}  waivers: {}  aliases: {}  baseline: {} gap + {} unresolved",
-            bound, waivers, aliases, baseline.gaps.len(), baseline.unresolved.len()
+            "    bound: {}  waivers: {}  aliases: {}  baseline: {} gap + {} unresolved + {} unlabeled",
+            bound, waivers, aliases, baseline.gaps.len(), baseline.unresolved.len(), baseline.unlabeled.len()
         );
 
         // ALWAYS print the live state grouped by missing-platform-set, so the
         // human reader sees the full picture regardless of mode.
-        print_live_groups(&report.gaps, &report.unresolved_bindings);
+        print_live_groups(&report.gaps, &report.unresolved_bindings, &report.unlabeled_exports);
 
         // Strict mode follow-up: list anything that violates the baseline.
         if matches!(mode, Mode::Strict) {
@@ -385,16 +440,29 @@ mod parity {
                     );
                 }
             }
-            if closed_gap_count > 0 || closed_unres_count > 0 {
+            if !new_unlabeled.is_empty() {
                 println!(
-                    "\n  ✅ Closed since last baseline rewrite: {} gap(s), {} unresolved binding(s).",
-                    closed_gap_count, closed_unres_count
+                    "\n  ❌ NEW unlabeled platform exports ({} fn(s)) — add #[lsp_doc(...)] or #[doc(hidden)]:",
+                    new_unlabeled.len()
                 );
-                if closed_gap_count > 0 || closed_unres_count > 0 {
+                for exp in &new_unlabeled {
                     println!(
-                        "     Run `FC_PARITY_REWRITE_BASELINE=1 cargo build --lib` to tighten the ratchet."
+                        "    - {}  fn {}  [{}]",
+                        exp.file,
+                        exp.fn_name,
+                        exp.platform.label()
                     );
                 }
+            }
+            let closed_any = closed_gap_count > 0 || closed_unres_count > 0 || closed_unlabeled_count > 0;
+            if closed_any {
+                println!(
+                    "\n  ✅ Closed since last baseline rewrite: {} gap(s), {} unresolved binding(s), {} unlabeled export(s).",
+                    closed_gap_count, closed_unres_count, closed_unlabeled_count
+                );
+                println!(
+                    "     Run `FC_PARITY_REWRITE_BASELINE=1 cargo build --lib` to tighten the ratchet."
+                );
             }
         }
 
@@ -405,18 +473,14 @@ mod parity {
         };
         println!("{}", footer);
 
-        if matches!(mode, Mode::Strict)
-            && (!new_gaps.is_empty()
-                || !regressed_gaps.is_empty()
-                || !new_unres.is_empty()
-                || !regressed_unres.is_empty())
-        {
+        if has_strict_failure {
             panic!(
-                "API parity STRICT failed: {} new gap(s), {} regressed gap(s), {} new unresolved binding(s), {} regressed unresolved binding(s). Either bind the missing surface, list a waiver/alias in docs/api/PARITY, or extend the baseline (FC_PARITY_REWRITE_BASELINE=1).",
+                "API parity STRICT failed: {} new gap(s), {} regressed gap(s), {} new unresolved binding(s), {} regressed unresolved binding(s), {} new unlabeled export(s). Fix by: (a) adding #[lsp_doc(\"docs/api/...\")] to credit the binding, (b) adding #[doc(hidden)] if the export is intentionally internal, or (c) extend the baseline (FC_PARITY_REWRITE_BASELINE=1).",
                 new_gaps.len(),
                 regressed_gaps.len(),
                 new_unres.len(),
-                regressed_unres.len()
+                regressed_unres.len(),
+                new_unlabeled.len()
             );
         }
     }
@@ -427,6 +491,7 @@ mod parity {
     fn print_live_groups(
         gaps: &[Gap],
         unresolved: &[(String, BTreeSet<Platform>)],
+        unlabeled: &[UnlabeledExport],
     ) {
         let mut by_missing: BTreeMap<BTreeSet<Platform>, Vec<&Gap>> = BTreeMap::new();
         for g in gaps {
@@ -453,6 +518,18 @@ mod parity {
             for (path, plats) in sorted {
                 let labels: Vec<&str> = plats.iter().map(|p| p.label()).collect();
                 println!("    - {}  [credited: {}]", path, labels.join(", "));
+            }
+        }
+
+        if !unlabeled.is_empty() {
+            println!(
+                "\n  Unlabeled platform exports ({} fn(s)) — missing #[lsp_doc] or #[doc(hidden)]:",
+                unlabeled.len()
+            );
+            let mut sorted = unlabeled.to_vec();
+            sorted.sort_by(|a, b| a.file.cmp(&b.file).then(a.fn_name.cmp(&b.fn_name)));
+            for exp in sorted {
+                println!("    - {}  fn {}  [{}]", exp.file, exp.fn_name, exp.platform.label());
             }
         }
     }
@@ -510,6 +587,25 @@ mod parity {
         (acknowledged, regressed, new_unres)
     }
 
+    /// Partition unlabeled exports into acknowledged (in baseline) vs new (not in baseline).
+    /// The key is `"<file>:<fn_name>"`, matching the format written by `write_baseline`.
+    fn classify_unlabeled<'a>(
+        live: &'a [UnlabeledExport],
+        baseline: &Baseline,
+    ) -> (Vec<&'a UnlabeledExport>, Vec<&'a UnlabeledExport>) {
+        let mut acknowledged = Vec::new();
+        let mut new_items = Vec::new();
+        for exp in live {
+            let key = format!("{}:{}", exp.file, exp.fn_name);
+            if baseline.unlabeled.contains(&key) {
+                acknowledged.push(exp);
+            } else {
+                new_items.push(exp);
+            }
+        }
+        (acknowledged, new_items)
+    }
+
     fn load_baseline(file: &Path) -> Baseline {
         let mut b = Baseline::default();
         let text = match fs::read_to_string(file) {
@@ -551,6 +647,11 @@ mod parity {
                 "unresolved" => {
                     b.unresolved.insert(key, plats);
                 }
+                "unlabeled" => {
+                    // Key format: "<workspace-relative-file>:<fn_name>"
+                    // plats_str is unused for unlabeled entries (no platform set to track).
+                    b.unlabeled.insert(key);
+                }
                 other => {
                     eprintln!(
                         "docs/api/PARITY_BASELINE:{}: unknown kind '{}'",
@@ -573,7 +674,8 @@ mod parity {
         out.push_str("#\n");
         out.push_str("# Line format:\n");
         out.push_str("#   gap:<canonical_doc>:<comma_separated_missing_platforms>\n");
-        out.push_str("#   unresolved:<lsp_doc_path>:<comma_separated_credited_platforms>\n\n");
+        out.push_str("#   unresolved:<lsp_doc_path>:<comma_separated_credited_platforms>\n");
+        out.push_str("#   unlabeled:<workspace-relative-file>:<fn_name>\n\n");
         let mut gaps: Vec<&Gap> = report.gaps.iter().collect();
         gaps.sort_by(|a, b| a.doc_path.cmp(&b.doc_path));
         for g in &gaps {
@@ -589,6 +691,16 @@ mod parity {
         for (path, plats) in &unres {
             let plats: Vec<&str> = plats.iter().map(|p| p.label()).collect();
             out.push_str(&format!("unresolved:{}:{}\n", path, plats.join(",")));
+        }
+        if !report.unlabeled_exports.is_empty() {
+            if !gaps.is_empty() || !report.unresolved_bindings.is_empty() {
+                out.push('\n');
+            }
+            let mut unlabeled: Vec<&UnlabeledExport> = report.unlabeled_exports.iter().collect();
+            unlabeled.sort_by(|a, b| a.file.cmp(&b.file).then(a.fn_name.cmp(&b.fn_name)));
+            for exp in unlabeled {
+                out.push_str(&format!("unlabeled:{}:{}\n", exp.file, exp.fn_name));
+            }
         }
         if let Some(parent) = file.parent() {
             fs::create_dir_all(parent)?;
@@ -781,6 +893,171 @@ mod parity {
                 credit_binding(b, &doc, &impl_platforms);
             }
         }
+    }
+
+    // -- unlabeled-export scan -------------------------------------------
+
+    /// Walk `src/` and collect all `pub fn` methods inside platform-bound
+    /// impl blocks (`#[wasm_bindgen]`, `#[pymethods]`, `#[uniffi::export]`)
+    /// that carry neither `#[lsp_doc(...)]` nor `#[doc(hidden)]`.
+    ///
+    /// These "unlabeled exports" are the blind spot the audit was designed to
+    /// catch: the binding exists and is accessible from the platform, but no
+    /// `#[lsp_doc]` annotation credits it against any docs/api entry. Fix by
+    /// adding `#[lsp_doc("docs/api/...")]` (to credit it) or `#[doc(hidden)]`
+    /// (to declare it intentionally internal).
+    fn scan_unlabeled_exports(src_root: &Path, workspace_root: &Path) -> Vec<UnlabeledExport> {
+        let mut out = Vec::new();
+        if !src_root.exists() {
+            return out;
+        }
+        walk_src_unlabeled(src_root, workspace_root, &mut out);
+        out.sort_by(|a, b| a.file.cmp(&b.file).then(a.fn_name.cmp(&b.fn_name)));
+        out
+    }
+
+    fn walk_src_unlabeled(dir: &Path, workspace_root: &Path, out: &mut Vec<UnlabeledExport>) {
+        let read = match fs::read_dir(dir) {
+            Ok(r) => r,
+            Err(_) => return,
+        };
+        for entry in read.flatten() {
+            let p = entry.path();
+            if p.is_dir() {
+                walk_src_unlabeled(&p, workspace_root, out);
+                continue;
+            }
+            if p.extension().and_then(|s| s.to_str()) != Some("rs") {
+                continue;
+            }
+            process_file_unlabeled(&p, workspace_root, out);
+        }
+    }
+
+    fn process_file_unlabeled(
+        file: &Path,
+        workspace_root: &Path,
+        out: &mut Vec<UnlabeledExport>,
+    ) {
+        let text = match fs::read_to_string(file) {
+            Ok(t) => t,
+            Err(_) => return,
+        };
+        let parsed = match syn::parse_file(&text) {
+            Ok(p) => p,
+            Err(_) => return,
+        };
+        // Compute the workspace-relative path once for all items in this file.
+        let rel_path = match file.strip_prefix(workspace_root) {
+            Ok(r) => r.to_string_lossy().replace('\\', "/"),
+            Err(_) => file.to_string_lossy().into_owned(),
+        };
+        for item in &parsed.items {
+            collect_unlabeled_item(item, &rel_path, out);
+        }
+    }
+
+    /// Recursively walk items looking for impl blocks decorated with a platform
+    /// binding attribute. For each such impl block, inspect every `pub fn`
+    /// method: if it has neither `#[lsp_doc(...)]` nor `#[doc(hidden)]`, record
+    /// it as an unlabeled export.
+    fn collect_unlabeled_item(item: &Item, rel_path: &str, out: &mut Vec<UnlabeledExport>) {
+        match item {
+            Item::Impl(it) => collect_unlabeled_impl(it, rel_path, out),
+            Item::Mod(it) => {
+                if let Some((_, items)) = &it.content {
+                    for inner in items {
+                        collect_unlabeled_item(inner, rel_path, out);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Determine the platform context of an impl block from its attributes.
+    /// Only considers *direct* platform binding attributes:
+    ///   - `#[wasm_bindgen]`   → Web
+    ///   - `#[pymethods]`      → Python
+    ///   - `#[uniffi::export]` → Swift + Kotlin
+    ///
+    /// Intentionally does NOT consider file-level `#![cfg(...)]` gates here:
+    /// those gates select which platform COMPILES the file, but they don't
+    /// make every un-annotated `pub fn` in the file a platform binding.
+    /// Only explicit binding attributes on the impl block itself are meaningful
+    /// for the unlabeled-export check.
+    fn impl_platform(it: &ItemImpl) -> Option<Platform> {
+        for a in &it.attrs {
+            if attr_is(a, "wasm_bindgen") {
+                return Some(Platform::Web);
+            }
+            if attr_is(a, "pymethods") {
+                return Some(Platform::Python);
+            }
+            if is_uniffi_export(a) {
+                return Some(Platform::Swift); // Swift+Kotlin; we return Swift as the marker.
+            }
+        }
+        None
+    }
+
+    fn collect_unlabeled_impl(it: &ItemImpl, rel_path: &str, out: &mut Vec<UnlabeledExport>) {
+        let platform = match impl_platform(it) {
+            Some(p) => p,
+            None => return, // not a platform impl block — skip entirely
+        };
+
+        for impl_item in &it.items {
+            let method = match impl_item {
+                ImplItem::Fn(m) => m,
+                _ => continue,
+            };
+
+            // Only care about `pub fn` — private helpers are intentionally untracked.
+            if !matches!(method.vis, syn::Visibility::Public(_)) {
+                continue;
+            }
+
+            let has_lsp_doc = lsp_doc_path(&method.attrs).is_some();
+            let has_doc_hidden = is_doc_hidden(&method.attrs);
+
+            if !has_lsp_doc && !has_doc_hidden {
+                out.push(UnlabeledExport {
+                    file: rel_path.to_string(),
+                    fn_name: method.sig.ident.to_string(),
+                    platform,
+                });
+            }
+        }
+    }
+
+    /// Returns `true` when attrs contains `#[doc(hidden)]`.
+    fn is_doc_hidden(attrs: &[Attribute]) -> bool {
+        for a in attrs {
+            if !a.path().is_ident("doc") {
+                continue;
+            }
+            // `#[doc(hidden)]` — Meta::List form with token `hidden`
+            if let Meta::List(list) = &a.meta {
+                let toks = list.tokens.to_string();
+                if toks.trim() == "hidden" {
+                    return true;
+                }
+            }
+            // `#[doc = "hidden"]` — NameValue form (rare but valid)
+            if let Meta::NameValue(nv) = &a.meta {
+                if let syn::Expr::Lit(syn::ExprLit {
+                    lit: syn::Lit::Str(s),
+                    ..
+                }) = &nv.value
+                {
+                    if s.value().trim() == "hidden" {
+                        return true;
+                    }
+                }
+            }
+        }
+        false
     }
 
     /// A binding's `#[lsp_doc(...)]` value is recorded verbatim. The

@@ -50,6 +50,12 @@ docs/api/core/renderer/hidden/render_mobile.md=>docs/api/core/renderer/render.md
 # and Shader.compose(parts). Both forms credit the canonical Shader::new docs.
 docs/api/core/shader/hidden/compose_mobile.md=>docs/api/core/shader/new.md: Mobile splits Shader::new's impl-Into-based overload into a separate Shader.compose constructor.
 
+# TextureTarget::texture() exists only on the web (wasm_bindgen) — native platforms
+# pass TextureTarget directly to renderer.render() and the binding is implicit.
+# The lsp_doc points at a hidden web-only doc; alias it to itself so the audit
+# credits the binding without requiring a canonical multi-platform entry.
+docs/api/targets/texture_target/hidden/texture_js.md=>docs/api/targets/texture_target/hidden/texture_js.md: Web-only; TextureTarget::texture() returns a Texture handle for use as a shader uniform. On native platforms the TextureTarget is passed directly to renderer.render() and the texture binding is implicit.
+
 # ---- Trait-level docs (no platform binding required) ----
 #
 # `Target` is a Rust trait; uniffi/wasm_bindgen/pyo3 cannot expose traits over
