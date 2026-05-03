@@ -6,12 +6,18 @@
 //! classifier (raw source / slug / URL / path) on the Rust side. Swift / Kotlin
 //! extension shims provide a single overloaded `Shader(_:)` that picks the
 //! right constructor based on argument type.
+//!
+//! The mesh-aware constructors (`fromMesh`, `fromVertex`) and instance methods
+//! (`addMesh`, `removeMesh`, `removeMeshes`, `clearMeshes`, `validateMesh`)
+//! accept `Arc<Mesh>` / `Arc<Vertex>` directly — uniffi natively marshals
+//! `Arc<T>` for any `uniffi::Object`.
 
 use std::sync::Arc;
 
 use lsp_doc::lsp_doc;
 
 use crate::Shader;
+use crate::mesh::{Mesh, Vertex};
 use crate::renderer::platform::mobile::FragmentColorError;
 use crate::shader::uniform::UniformData;
 
@@ -89,5 +95,75 @@ impl Shader {
     #[lsp_doc("docs/api/core/shader/is_compute.md")]
     pub fn is_compute_mobile(&self) -> bool {
         self.is_compute()
+    }
+
+    // ------------------------------------------------------------------
+    // Mesh-aware constructors
+    // ------------------------------------------------------------------
+
+    /// Build a basic WGSL shader from the first vertex in a `Mesh`.
+    /// Automatically attaches the mesh so callers don't need a separate
+    /// `addMesh` call. Mobile shim because uniffi cannot marshal `&Mesh`
+    /// (shared reference) across the FFI boundary — it requires `Arc<T>`.
+    #[uniffi::constructor(name = "fromMesh")]
+    #[lsp_doc("docs/api/core/shader/hidden/from_mesh_mobile.md")]
+    pub fn from_mesh_mobile(mesh: Arc<Mesh>) -> Arc<Self> {
+        Arc::new(Shader::from_mesh(&mesh))
+    }
+
+    /// Build a basic WGSL shader from a single `Vertex` layout.
+    /// Mobile shim because uniffi cannot marshal `&Vertex` across the FFI
+    /// boundary — it requires `Arc<T>`.
+    #[uniffi::constructor(name = "fromVertex")]
+    #[lsp_doc("docs/api/core/shader/hidden/from_vertex_mobile.md")]
+    pub fn from_vertex_mobile(vertex: Arc<Vertex>) -> Arc<Self> {
+        Arc::new(Shader::from_vertex(&vertex))
+    }
+
+    // ------------------------------------------------------------------
+    // Mesh-aware instance methods
+    // ------------------------------------------------------------------
+
+    /// Attach a `Mesh` to this shader. The Renderer will draw all attached
+    /// meshes in the same pipeline. Validates layout compatibility first;
+    /// returns an error and does not attach on mismatch.
+    #[uniffi::method(name = "addMesh")]
+    #[lsp_doc("docs/api/core/shader/add_mesh.md")]
+    pub fn add_mesh_mobile(self: Arc<Self>, mesh: Arc<Mesh>) -> Result<(), FragmentColorError> {
+        self.add_mesh(&mesh).map_err(FragmentColorError::from)
+    }
+
+    /// Detach a specific `Mesh` from this shader.
+    #[uniffi::method(name = "removeMesh")]
+    #[lsp_doc("docs/api/core/shader/remove_mesh.md")]
+    pub fn remove_mesh_mobile(self: Arc<Self>, mesh: Arc<Mesh>) {
+        self.remove_mesh(&mesh);
+    }
+
+    /// Detach a list of meshes from this shader.
+    #[uniffi::method(name = "removeMeshes")]
+    #[lsp_doc("docs/api/core/shader/remove_meshes.md")]
+    pub fn remove_meshes_mobile(self: Arc<Self>, meshes: Vec<Arc<Mesh>>) {
+        for m in meshes {
+            self.remove_mesh(&m);
+        }
+    }
+
+    /// Detach all meshes from this shader.
+    #[uniffi::method(name = "clearMeshes")]
+    #[lsp_doc("docs/api/core/shader/clear_meshes.md")]
+    pub fn clear_meshes_mobile(self: Arc<Self>) {
+        self.clear_meshes();
+    }
+
+    /// Check whether a `Mesh`'s vertex/instance layout is compatible with
+    /// this shader's `@location` inputs — without attaching it.
+    #[uniffi::method(name = "validateMesh")]
+    #[lsp_doc("docs/api/core/shader/validate_mesh.md")]
+    pub fn validate_mesh_mobile(
+        self: Arc<Self>,
+        mesh: Arc<Mesh>,
+    ) -> Result<(), FragmentColorError> {
+        self.validate_mesh(&mesh).map_err(FragmentColorError::from)
     }
 }
