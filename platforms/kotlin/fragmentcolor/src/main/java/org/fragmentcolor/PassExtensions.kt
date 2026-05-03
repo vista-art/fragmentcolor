@@ -22,11 +22,13 @@ fun Pass.require(mesh: Mesh) {
 }
 
 /** Declare multiple [Pass] objects as ordered dependencies. */
+@JvmName("requirePasses")
 fun Pass.require(passes: List<Pass>) {
     require(passes.map { RenderableHandle.Pass(it) })
 }
 
 /** Declare a heterogeneous list of renderables as dependencies. */
+@JvmName("requireRenderables")
 fun Pass.require(deps: List<RenderableHandle>) {
     require(deps)
 }
@@ -34,12 +36,12 @@ fun Pass.require(deps: List<RenderableHandle>) {
 // ── Targets ───────────────────────────────────────────────────────────────────
 
 /** Set the colour attachment target for this pass. */
-fun Pass.addTarget(target: TextureTarget) {
+fun Pass.addTarget(target: MobileTextureTarget) {
     addTarget(TargetHandle.Texture(target))
 }
 
 /** Set the depth attachment target for this pass. */
-fun Pass.addDepthTarget(target: TextureTarget) {
+fun Pass.addDepthTarget(target: MobileTextureTarget) {
     addDepthTarget(TargetHandle.Texture(target))
 }
 
