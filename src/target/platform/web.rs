@@ -98,6 +98,7 @@ impl TextureTarget {
     /// Get a sampleable Texture handle for binding in a shader uniform.
     /// Mirrors the native `TextureTarget::texture()` method.
     #[wasm_bindgen(js_name = "texture")]
+    #[lsp_doc("docs/api/targets/texture_target/hidden/texture_js.md")]
     pub fn texture_js(&self) -> crate::texture::Texture {
         self.texture()
     }

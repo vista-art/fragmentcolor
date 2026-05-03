@@ -667,17 +667,23 @@ mod python_bindings {
 
     #[pymethods]
     impl ScreenRegion {
+        // ScreenRegion is a value type used as an argument to pass.setViewport()
+        // and similar APIs. Its constructors are internal plumbing; the parity
+        // audit tracks the parent methods, not the value type itself.
+        #[doc(hidden)]
         #[new]
         pub fn new_py(origin: (u32, u32), size: (u32, u32)) -> Self {
             ScreenRegion::new(origin, size)
         }
 
+        #[doc(hidden)]
         #[staticmethod]
         #[pyo3(name = "from_region")]
         pub fn from_region_py(x: u32, y: u32, width: u32, height: u32) -> Self {
             ScreenRegion::from_region(x, y, width, height)
         }
 
+        #[doc(hidden)]
         #[staticmethod]
         #[pyo3(name = "from_tuple")]
         pub fn from_tuple_py(size: (u32, u32)) -> Self {
