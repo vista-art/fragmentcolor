@@ -37,8 +37,6 @@ gap:docs/api/core/shader/remove_meshes.md:swift,kotlin
 gap:docs/api/core/shader/set.md:swift,kotlin
 gap:docs/api/core/shader/set_registry.md:swift,kotlin
 gap:docs/api/core/shader/validate_mesh.md:swift,kotlin
-gap:docs/api/core/texture/get_image.md:web,python,swift,kotlin
-gap:docs/api/core/texture/get_image_async.md:web,python,swift,kotlin
 gap:docs/api/geometry/quad/get_mesh.md:swift,kotlin
 gap:docs/api/geometry/quad/new.md:swift,kotlin
 gap:docs/api/targets/texture_target/get_image.md:web
