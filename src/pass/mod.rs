@@ -12,6 +12,9 @@ use wasm_bindgen::prelude::*;
 
 mod platform;
 
+#[cfg(mobile)]
+pub use platform::mobile::MobilePassInput;
+
 pub mod error;
 pub use error::*;
 
