@@ -148,6 +148,26 @@ mod swift {
         //     appear as plain calls in the JS output.
         out = insert_try_for_throws(&out);
 
+        // 14. Add `try await` to known async-throws method calls that appear
+        //     without `await` in the JS output (because JS may call them synchronously
+        //     but the Swift FFI binding is `async throws`).
+        out = insert_try_await_for_async_throws(&out);
+
+        // 15. Strip Rust slice notation `identifier[...]` → `identifier` when `...`
+        //     is the only content inside brackets (a full-range slice).
+        //     e.g. `image[...]` → `image`, `pixels.asSlice()` → `pixels`.
+        out = strip_rust_slice_notation(&out);
+
+        // 17. Fix `.bytes(identifier)` → `.bytes(Data(identifier))` so `[UInt8]` arrays
+        //     pass into `TextureInputMobile.bytes(Data)` correctly.
+        out = fix_texture_input_bytes(&out);
+
+        // 16. Rewrite `let (width, height) = expr.baseSize()` → `let size = expr.baseSize()`.
+        //     Swift's `baseSize()` returns a `Size` struct, not a tuple; the Rust doc
+        //     example uses tuple destructuring which doesn't translate directly.
+        //     Also rewrite the follow-up `let _ = (width, height)` → `let _ = size`.
+        out = rewrite_base_size_tuple(&out);
+
         out
     }
 
@@ -318,6 +338,196 @@ mod swift {
         out
     }
 
+    /// Rewrite `let (width, height) = expr.baseSize()` → `let size = expr.baseSize()`.
+    /// Swift's `TextureMipChain.baseSize()` returns a `Size` struct, not a `(UInt32, UInt32)`
+    /// tuple, so the Rust-style tuple destructuring pattern doesn't compile.
+    /// Also rewrites `let _ = (width, height)` → `let _ = size` (follow-up guard line).
+    fn rewrite_base_size_tuple(line: &str) -> String {
+        let trimmed = line.trim_start();
+        let indent: String = line.chars().take_while(|c| c.is_whitespace()).collect();
+
+        // Handle standalone `let _ = (ident, ident, ...)` → `let _ = size`
+        // This is the follow-up guard line after a baseSize() tuple destructure.
+        if let Some(rest) = trimmed.strip_prefix("let _ = (") {
+            if let Some(vars) = rest.strip_suffix(')') {
+                let all_idents = vars.split(',').all(|v| {
+                    let v = v.trim();
+                    !v.is_empty() && v.chars().all(|c: char| c.is_alphanumeric() || c == '_')
+                });
+                if all_idents && !vars.is_empty() {
+                    return format!("{}let _ = size", indent);
+                }
+            }
+        }
+
+        // Match `let (width, height) = <expr>.baseSize()` or `const (width, height) = ...`
+        for prefix in &["let ", "const "] {
+            if let Some(rest) = trimmed.strip_prefix(prefix) {
+                if let Some(inner) = rest.strip_prefix('(') {
+                    // Extract content up to matching `)`
+                    if let Some(close) = inner.find(')') {
+                        let after_paren = inner[close + 1..].trim_start();
+                        if let Some(eq_rest) = after_paren.strip_prefix('=') {
+                            let rhs = eq_rest.trim_start();
+                            if rhs.contains(".baseSize()") {
+                                // Replace tuple destructuring with `let size = expr.baseSize()`
+                                let expr = rhs.trim_end_matches(|c: char| c == '\r' || c == '\n');
+                                return format!("{}let size = {}", indent, expr);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        line.to_string()
+    }
+
+    /// Rewrite `.bytes(ident)` → `.bytes(Data(ident))` when `ident` is a simple identifier.
+    /// `TextureInputMobile.bytes(Data)` requires `Data`, but transpiled code often passes
+    /// `[UInt8]` arrays directly. Only wraps simple identifiers (not already `Data(...)` calls).
+    fn fix_texture_input_bytes(line: &str) -> String {
+        const NEEDLE: &str = ".bytes(";
+        if !line.contains(NEEDLE) {
+            return line.to_string();
+        }
+        let mut out = String::with_capacity(line.len() + 8);
+        let chars: Vec<char> = line.chars().collect();
+        let needle_chars: Vec<char> = NEEDLE.chars().collect();
+        let mut i = 0usize;
+        while i < chars.len() {
+            // Look for `.bytes(`
+            let end = i + needle_chars.len();
+            if end <= chars.len() && chars[i..end] == needle_chars[..] {
+                out.push_str(NEEDLE);
+                i = end;
+                // Peek at the argument inside `.bytes(...)`.
+                // Collect the argument (up to matching `)`)
+                let arg_start = i;
+                let mut depth = 0i32;
+                let mut k = i;
+                while k < chars.len() {
+                    match chars[k] {
+                        '(' => depth += 1,
+                        ')' => {
+                            if depth == 0 {
+                                break;
+                            }
+                            depth -= 1;
+                        }
+                        _ => {}
+                    }
+                    k += 1;
+                }
+                let arg: String = chars[arg_start..k].iter().collect();
+                let arg_trimmed = arg.trim();
+                // Only wrap if arg is a plain identifier (no parens, no brackets, no spaces)
+                // or a `[...]` literal that isn't already `Data(...)`.
+                let is_plain_ident = arg_trimmed.chars().all(|c: char| c.is_alphanumeric() || c == '_');
+                let already_data = arg_trimmed.starts_with("Data(");
+                if !already_data && is_plain_ident && !arg_trimmed.is_empty() {
+                    out.push_str(&format!("Data({}", arg));
+                    if k < chars.len() && chars[k] == ')' {
+                        out.push_str("))");
+                        i = k + 1;
+                        continue;
+                    }
+                }
+                // Not a plain identifier — pass through unchanged
+                out.push_str(&arg);
+                i = k;
+                continue;
+            }
+            out.push(chars[i]);
+            i += 1;
+        }
+        out
+    }
+
+    /// Strip Rust slice / `as_slice()` notation that has no equivalent in Swift:
+    /// - `identifier[...]`  → `identifier`  (full-range borrow `&x[..]` after `&`-strip → `x[...]`)
+    /// - `.asSlice()`        → ``            (Rust `.as_slice()` method — just drop it)
+    fn strip_rust_slice_notation(line: &str) -> String {
+        // 1. Remove `.asSlice()` (comes from Rust `.as_slice()` transliterated by to_js).
+        let line = line.replace(".asSlice()", "");
+        // 2. Remove `[...]` when it's a full-range slice: `ident[...]` → `ident`.
+        //    We look for `]` at end of word preceded by `[...]` (exactly three dots).
+        let mut out = String::with_capacity(line.len());
+        let chars: Vec<char> = line.chars().collect();
+        let mut i = 0usize;
+        while i < chars.len() {
+            // Look for `[...` pattern: opening bracket followed by exactly three dots
+            // and then `]` (no other content inside).
+            if chars[i] == '[' {
+                // Check if next chars are `...`
+                if i + 4 <= chars.len()
+                    && chars[i + 1] == '.'
+                    && chars[i + 2] == '.'
+                    && chars[i + 3] == '.'
+                {
+                    // Check if this `...` is followed immediately by `]`
+                    if i + 4 < chars.len() && chars[i + 4] == ']' {
+                        // Skip `[...]` entirely.
+                        i += 5;
+                        continue;
+                    }
+                }
+            }
+            out.push(chars[i]);
+            i += 1;
+        }
+        out
+    }
+
+    /// Insert `try await ` before calls to methods known to be `async throws` in the
+    /// uniffi Swift API when they appear without any existing `await` on the line.
+    /// These are methods the JS binding treats as synchronous (no `await`) but the
+    /// uniffi-generated Swift method is `async throws`.
+    fn insert_try_await_for_async_throws(line: &str) -> String {
+        // Methods that are `async throws` in Swift but appear without `await` in JS output.
+        const ASYNC_THROWING_METHODS: &[&str] = &[
+            ".createDepthTexture(",
+        ];
+
+        let trimmed = line.trim_start();
+
+        // Already has try/await — nothing to do.
+        if trimmed.starts_with("try ") || trimmed.starts_with("try!") || trimmed.contains("await ") {
+            return line.to_string();
+        }
+        // Skip comments and string literals.
+        if trimmed.starts_with("//") || trimmed.starts_with("/*") || trimmed.starts_with("\"") {
+            return line.to_string();
+        }
+
+        let indent: String = line.chars().take_while(|c| c.is_whitespace()).collect();
+
+        // Assignment: `let x = obj.asyncMethod(...)` → `let x = try await obj.asyncMethod(...)`
+        for prefix in &["let ", "var "] {
+            if let Some(rest) = trimmed.strip_prefix(prefix) {
+                if let Some(eq_pos) = rest.find('=') {
+                    let rhs = rest[eq_pos + 1..].trim_start();
+                    let var_part = &rest[..eq_pos + 1];
+                    for meth in ASYNC_THROWING_METHODS {
+                        if rhs.contains(meth) && !rhs.starts_with("try ") && !rhs.contains("await ") {
+                            return format!("{}{}{} try await {}", indent, prefix, var_part, rhs);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Standalone call: `obj.asyncMethod(...)`
+        for meth in ASYNC_THROWING_METHODS {
+            if trimmed.contains(meth) {
+                if trimmed.starts_with(|c: char| c.is_alphanumeric() || c == '_') {
+                    return format!("{}try await {}", indent, trimmed);
+                }
+            }
+        }
+
+        line.to_string()
+    }
+
     /// Insert `try ` before calls to methods known to be `throws` in the uniffi API
     /// when they appear without any existing `try` or `await` prefix on the line.
     ///
@@ -352,6 +562,7 @@ mod swift {
             ".render(",
             ".unregisterTexture(",
             ".waitIdle(",
+            ".readTexture(",
             // Texture
             ".write(",
             ".writeRegion(",
@@ -361,6 +572,14 @@ mod swift {
         // Matched as `let x = TypeName(` or standalone `TypeName(`.
         const THROWING_CTORS: &[&str] = &[
             "Shader(",
+            "Vertex(",
+            "Quad(",
+        ];
+        // Static methods that are `throws` (matched as `TypeName.method(` on the RHS
+        // or as a standalone expression).
+        const THROWING_STATIC_METHODS: &[&str] = &[
+            "Shader.new(",
+            "TextureMipChain.prepare(",
         ];
 
         let trimmed = line.trim_start();
@@ -397,6 +616,12 @@ mod swift {
                             return format!("{}{}{} try {}", indent, prefix, var_part, rhs);
                         }
                     }
+                    // Check throwing static methods (e.g. `Shader.new(`, `TextureMipChain.prepare(`).
+                    for sm in THROWING_STATIC_METHODS {
+                        if rhs.starts_with(sm) && !rhs.starts_with("try ") && !rhs.contains("await ") {
+                            return format!("{}{}{} try {}", indent, prefix, var_part, rhs);
+                        }
+                    }
                 }
             }
         }
@@ -410,6 +635,13 @@ mod swift {
                 if trimmed.starts_with(|c: char| c.is_alphanumeric() || c == '_' || c == '(') {
                     return format!("{}try {}", indent, trimmed);
                 }
+            }
+        }
+
+        // Case 3: Standalone throwing static method call (`Shader.new(`, `TextureMipChain.prepare(`).
+        for sm in THROWING_STATIC_METHODS {
+            if trimmed.starts_with(sm) && !trimmed.starts_with("try ") && !trimmed.contains("await ") {
+                return format!("{}try {}", indent, trimmed);
             }
         }
 
