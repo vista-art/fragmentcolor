@@ -631,7 +631,7 @@ fn parse_uniforms(module: &Module) -> Result<HashMap<String, Uniform>, ShaderErr
                         group: 0,
                         binding: 0,
                         data: UniformData::PushConstant(vec![crate::shader::uniform::PushEntry {
-                            inner: Box::new(inner),
+                            inner: vec![inner],
                             span,
                         }]),
                     },
@@ -668,7 +668,7 @@ fn parse_uniforms(module: &Module) -> Result<HashMap<String, Uniform>, ShaderErr
                 let inner = convert_type(module, ty)?;
                 let span = inner.size();
                 UniformData::Storage(vec![crate::shader::uniform::StorageEntry {
-                    inner: Box::new(inner),
+                    inner: vec![inner],
                     span,
                     access: access.into(),
                 }])
@@ -1135,7 +1135,7 @@ struct Buf { a: vec4<f32> };
                 } = entry;
                 assert_eq!(*span, *size);
                 assert!(access == &StorageAccess::Read);
-                match inner.as_ref() {
+                match inner.first().expect("inner shape") {
                     UniformData::Struct(s) => {
                         assert_eq!(s.size, 16); // vec4<f32>
                         // Should have one field named 'a'
@@ -1143,7 +1143,10 @@ struct Buf { a: vec4<f32> };
                         for f in s.fields.iter() {
                             if f.name == "a" {
                                 seen_a = true;
-                                assert!(matches!(f.ty.as_ref(), UniformData::Vec4(_)));
+                                assert!(matches!(
+                                    f.ty.first().expect("field shape"),
+                                    UniformData::Vec4(_)
+                                ));
                             }
                         }
                         assert!(seen_a);
@@ -1202,7 +1205,7 @@ struct Outer { a: vec4<f32>, arr: array<vec4<f32>, 2>, inner: Inner };
                     data.first().expect("storage data");
                 // a:16 + arr:2*16 + inner.c:16 = 64
                 assert_eq!(span.clone(), 64);
-                match inner.as_ref() {
+                match inner.first().expect("inner shape") {
                     UniformData::Struct(s) => assert_eq!(s.size, 64),
                     _ => panic!("inner is not struct"),
                 }
@@ -1389,10 +1392,10 @@ struct Buf { items: array<Item, 3> };
         let stride = match &u.data {
             UniformData::Storage(data) => {
                 let crate::shader::uniform::StorageEntry { inner, .. } = data.first().unwrap();
-                match inner.as_ref() {
+                match inner.first().expect("inner shape") {
                     UniformData::Struct(s) => {
                         // fields[0] should be items: Array
-                        match s.fields[0].ty.as_ref() {
+                        match s.fields[0].ty.first().expect("field shape") {
                             UniformData::Array(items) => items.first().unwrap().stride,
                             _ => 0,
                         }

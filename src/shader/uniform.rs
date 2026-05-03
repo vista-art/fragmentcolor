@@ -18,6 +18,7 @@ pub(crate) struct Uniform {
 }
 
 #[cfg_attr(python, derive(FromPyObject, IntoPyObject))]
+#[cfg_attr(mobile, derive(uniffi::Enum))]
 #[derive(Debug, Clone, PartialEq)]
 /// Converts from User Input
 pub enum UniformData {
@@ -66,15 +67,17 @@ pub enum UniformData {
 }
 
 #[cfg_attr(python, derive(FromPyObject, IntoPyObject))]
+#[cfg_attr(mobile, derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq)]
 /// Element shape used inside `UniformData::Array`.
 pub struct ArrayElement {
-    pub ty: Box<UniformData>,
+    pub ty: Vec<UniformData>,
     pub count: u32,
     pub stride: u32,
 }
 
 #[cfg_attr(python, derive(FromPyObject, IntoPyObject))]
+#[cfg_attr(mobile, derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq)]
 /// Struct shape used inside `UniformData::Struct`.
 pub struct StructShape {
@@ -83,33 +86,37 @@ pub struct StructShape {
 }
 
 #[cfg_attr(python, derive(FromPyObject, IntoPyObject))]
+#[cfg_attr(mobile, derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq)]
 /// One member of a struct shape.
 pub struct StructField {
     pub offset: u32,
     pub name: String,
-    pub ty: Box<UniformData>,
+    pub ty: Vec<UniformData>,
 }
 
 #[cfg_attr(python, derive(FromPyObject, IntoPyObject))]
+#[cfg_attr(mobile, derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq)]
 /// Storage buffer root entry used inside `UniformData::Storage`.
 pub struct StorageEntry {
-    pub inner: Box<UniformData>,
+    pub inner: Vec<UniformData>,
     pub span: u32,
     pub access: StorageAccess,
 }
 
 #[cfg_attr(python, derive(FromPyObject, IntoPyObject))]
+#[cfg_attr(mobile, derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq)]
 /// Push constant root entry used inside `UniformData::PushConstant`.
 pub struct PushEntry {
-    pub inner: Box<UniformData>,
+    pub inner: Vec<UniformData>,
     pub span: u32,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(python, pyclass)]
+#[cfg_attr(mobile, derive(uniffi::Enum))]
 pub enum StorageAccess {
     Read,
     Write,
@@ -175,8 +182,10 @@ impl UniformData {
                 // Respect naga-provided stride when laying out arrays.
                 // items holds a single ArrayElement record.
                 let mut bytes = Vec::new();
-                if let Some(ArrayElement { ty, count, stride }) = items.first() {
-                    let elem_bytes = ty.to_bytes();
+                if let Some(ArrayElement { ty, count, stride }) = items.first()
+                    && let Some(elem) = ty.first()
+                {
+                    let elem_bytes = elem.to_bytes();
                     let total = (*stride as usize).saturating_mul(*count as usize);
                     bytes.resize(total, 0);
                     for i in 0..*count as usize {
@@ -193,7 +202,10 @@ impl UniformData {
                 // Allocate the full struct span and lay out fields at their declared offsets.
                 let mut bytes = vec![0u8; *size as usize];
                 for StructField { offset, ty, .. } in fields.iter() {
-                    let data = ty.to_bytes();
+                    let Some(field) = ty.first() else {
+                        continue;
+                    };
+                    let data = field.to_bytes();
                     let start = *offset as usize;
                     let end = start + data.len();
                     if end <= bytes.len() {
@@ -203,9 +215,11 @@ impl UniformData {
                 bytes
             }
             Self::Storage(data) => {
-                if let Some(StorageEntry { inner, span, .. }) = data.iter().next() {
+                if let Some(StorageEntry { inner, span, .. }) = data.iter().next()
+                    && let Some(shape) = inner.first()
+                {
                     // Flatten inner representation; ensure it matches the declared span.
-                    let mut bytes = inner.to_bytes();
+                    let mut bytes = shape.to_bytes();
                     if bytes.len() < *span as usize {
                         bytes.resize(*span as usize, 0);
                     } else if bytes.len() > *span as usize {
@@ -217,9 +231,11 @@ impl UniformData {
                 }
             }
             Self::PushConstant(data) => {
-                if let Some(PushEntry { inner, span }) = data.iter().next() {
+                if let Some(PushEntry { inner, span }) = data.iter().next()
+                    && let Some(shape) = inner.first()
+                {
                     // Flatten inner representation; ensure it matches the declared span.
-                    let mut bytes = inner.to_bytes();
+                    let mut bytes = shape.to_bytes();
                     if bytes.len() < *span as usize {
                         bytes.resize(*span as usize, 0);
                     } else if bytes.len() > *span as usize {
@@ -319,7 +335,7 @@ pub(crate) fn convert_type(module: &Module, ty: &Type) -> Result<UniformData, Sh
                 fields.push(StructField {
                     offset: member.offset,
                     name,
-                    ty: Box::new(field),
+                    ty: vec![field],
                 });
             }
 
@@ -340,7 +356,7 @@ pub(crate) fn convert_type(module: &Module, ty: &Type) -> Result<UniformData, Sh
             let base_ty = convert_type(module, &module.types[*base])?;
 
             let item = ArrayElement {
-                ty: Box::new(base_ty),
+                ty: vec![base_ty],
                 count: size,
                 stride: *stride,
             };
@@ -1087,12 +1103,12 @@ mod tests {
                 StructField {
                     offset: 0,
                     name: "a".into(),
-                    ty: Box::new(UniformData::Vec4(vec![1.0, 2.0, 3.0, 4.0])),
+                    ty: vec![UniformData::Vec4(vec![1.0, 2.0, 3.0, 4.0])],
                 },
                 StructField {
                     offset: 16,
                     name: "b".into(),
-                    ty: Box::new(UniformData::Vec2(vec![9.0, 8.0])),
+                    ty: vec![UniformData::Vec2(vec![9.0, 8.0])],
                 },
             ],
             size: 32,
@@ -1106,7 +1122,7 @@ mod tests {
 
         // Array of vec4 with count 2 and stride 16
         let arr = UniformData::Array(vec![ArrayElement {
-            ty: Box::new(UniformData::Vec4(vec![0.5, 0.5, 0.5, 0.5])),
+            ty: vec![UniformData::Vec4(vec![0.5, 0.5, 0.5, 0.5])],
             count: 2,
             stride: 16,
         }]);
@@ -1121,7 +1137,7 @@ mod tests {
 
         // Storage wraps a shape with span and clamps/truncates to the span
         let stor = UniformData::Storage(vec![StorageEntry {
-            inner: Box::new(UniformData::Vec4(vec![1.0, 2.0, 3.0, 4.0])),
+            inner: vec![UniformData::Vec4(vec![1.0, 2.0, 3.0, 4.0])],
             span: 8,
             access: StorageAccess::Read,
         }]);
@@ -1173,7 +1189,7 @@ mod tests {
     fn array_stride_padding_is_honored() {
         // Two vec2 (8 bytes each) with stride 16 -> 32 total
         let u = UniformData::Array(vec![ArrayElement {
-            ty: Box::new(UniformData::Vec2(vec![2.0, 4.0])),
+            ty: vec![UniformData::Vec2(vec![2.0, 4.0])],
             count: 2,
             stride: 16,
         }]);
@@ -1334,7 +1350,7 @@ mod tests {
     #[test]
     fn push_constant_to_bytes_and_size() {
         let u = UniformData::PushConstant(vec![PushEntry {
-            inner: Box::new(UniformData::Vec4(vec![10.0, 20.0, 30.0, 40.0])),
+            inner: vec![UniformData::Vec4(vec![10.0, 20.0, 30.0, 40.0])],
             span: 8,
         }]);
         let bytes = u.to_bytes();
