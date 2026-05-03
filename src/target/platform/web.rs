@@ -75,6 +75,7 @@ impl Target for CanvasTarget {
 #[wasm_bindgen]
 impl TextureTarget {
     #[wasm_bindgen(js_name = "resize")]
+    #[lsp_doc("docs/api/targets/texture_target/resize.md")]
     pub fn resize_js(&mut self, size: &JsValue) -> Result<(), JsError> {
         let size: Size = size.try_into()?;
         self.resize(size);
@@ -82,11 +83,13 @@ impl TextureTarget {
     }
 
     #[wasm_bindgen(js_name = "size")]
+    #[lsp_doc("docs/api/targets/texture_target/size.md")]
     pub fn size_js(&self) -> Size {
         self.size()
     }
 
     #[wasm_bindgen(js_name = "getImage")]
+    #[lsp_doc("docs/api/targets/texture_target/get_image.md")]
     pub async fn get_image_js(&self) -> js_sys::Uint8Array {
         let data = self.get_image_async().await;
         js_sys::Uint8Array::from(data.as_slice())
