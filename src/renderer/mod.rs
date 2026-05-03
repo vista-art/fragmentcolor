@@ -540,6 +540,36 @@ impl RenderContext {
         self.sample_count.load(Ordering::Relaxed).max(1)
     }
 
+    /// Build a bind group with an active validation error scope so that
+    /// invalid descriptors surface as `RendererError::ValidationError`
+    /// instead of being swallowed by the device's uncaptured-error handler.
+    ///
+    /// On wasm, `pop_error_scope` resolves asynchronously and cannot be
+    /// awaited from this sync render path, so we fall through to the
+    /// uncaptured-error handler exactly as before.
+    fn create_bind_group_checked(
+        &self,
+        desc: &wgpu::BindGroupDescriptor<'_>,
+    ) -> Result<wgpu::BindGroup, RendererError> {
+        #[cfg(not(wasm))]
+        {
+            self.device
+                .push_error_scope(wgpu::ErrorFilter::Validation);
+            let bind_group = self.device.create_bind_group(desc);
+            if let Some(err) = futures::executor::block_on(self.device.pop_error_scope()) {
+                return Err(RendererError::ValidationError {
+                    label: desc.label.unwrap_or("<unlabeled bind group>").to_string(),
+                    message: err.to_string(),
+                });
+            }
+            Ok(bind_group)
+        }
+        #[cfg(wasm)]
+        {
+            Ok(self.device.create_bind_group(desc))
+        }
+    }
+
     fn process_render_pass(
         &self,
         encoder: &mut wgpu::CommandEncoder,
@@ -950,11 +980,11 @@ impl RenderContext {
                 // Sort by binding index to match layout order
                 entries.sort_by_key(|e| e.binding);
 
-                let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                let bind_group = self.create_bind_group_checked(&wgpu::BindGroupDescriptor {
                     layout,
                     entries: &entries,
                     label: Some(&format!("Bind Group for group: {}", group_index)),
-                });
+                })?;
                 present_groups.insert(group_index);
                 bind_groups.push((group_index, bind_group));
             }
@@ -963,11 +993,11 @@ impl RenderContext {
             for (group, layout) in cached_pipeline.bind_group_layouts.iter() {
                 if !present_groups.contains(group) {
                     // Create an empty bind group (layout is expected to have zero entries for placeholders)
-                    let empty = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    let empty = self.create_bind_group_checked(&wgpu::BindGroupDescriptor {
                         layout,
                         entries: &[],
                         label: Some(&format!("Empty Bind Group for group: {}", group)),
-                    });
+                    })?;
                     bind_groups.push((*group, empty));
                 }
             }
@@ -1319,11 +1349,11 @@ impl RenderContext {
                     });
                 }
                 entries.sort_by_key(|e| e.binding);
-                let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                let bind_group = self.create_bind_group_checked(&wgpu::BindGroupDescriptor {
                     layout,
                     entries: &entries,
                     label: Some(&format!("Compute Bind Group for group: {}", group)),
-                });
+                })?;
                 bind_groups.push((group, bind_group));
             }
             bind_groups.sort_by_key(|(group_index, _)| *group_index);
@@ -2101,6 +2131,57 @@ mod more_error_path_tests {
                 .create_texture_with(&p, TextureOptions::from(crate::Size::from((1u32, 1u32))))
                 .await;
             assert!(res.is_err());
+        });
+    }
+
+    // Story: create_bind_group_checked surfaces wgpu validation errors as
+    // RendererError::ValidationError instead of leaking through the device's
+    // uncaptured-error handler. Repro: a layout that requires one uniform
+    // buffer entry, paired with a descriptor that supplies zero entries.
+    #[test]
+    fn create_bind_group_checked_surfaces_validation_errors() {
+        pollster::block_on(async move {
+            let renderer = Renderer::new();
+            let context = renderer.context(None).await.expect("render context");
+            let layout =
+                context
+                    .device
+                    .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                        label: Some("test layout"),
+                        entries: &[wgpu::BindGroupLayoutEntry {
+                            binding: 0,
+                            visibility: wgpu::ShaderStages::FRAGMENT,
+                            ty: wgpu::BindingType::Buffer {
+                                ty: wgpu::BufferBindingType::Uniform,
+                                has_dynamic_offset: false,
+                                min_binding_size: None,
+                            },
+                            count: None,
+                        }],
+                    });
+
+            let result = context.create_bind_group_checked(&wgpu::BindGroupDescriptor {
+                layout: &layout,
+                entries: &[],
+                label: Some("intentionally invalid bind group"),
+            });
+
+            match result {
+                Err(RendererError::ValidationError { label, message }) => {
+                    assert_eq!(label, "intentionally invalid bind group");
+                    assert!(
+                        !message.is_empty(),
+                        "expected non-empty validation message, got empty"
+                    );
+                }
+                Err(other) => panic!(
+                    "expected ValidationError, got different RendererError: {:?}",
+                    other
+                ),
+                Ok(_) => panic!(
+                    "expected ValidationError for layout/entries mismatch, got Ok bind group"
+                ),
+            }
         });
     }
 }
