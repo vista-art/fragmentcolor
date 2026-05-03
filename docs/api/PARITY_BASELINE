@@ -7,4 +7,5 @@
 # Line format:
 #   gap:<canonical_doc>:<comma_separated_missing_platforms>
 #   unresolved:<lsp_doc_path>:<comma_separated_credited_platforms>
+#   unlabeled:<workspace-relative-file>:<fn_name>
 

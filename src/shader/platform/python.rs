@@ -108,10 +108,14 @@ impl Shader {
         self.is_compute()
     }
 
+    // Internal duck-typed interface used by PyRenderable dispatch — not part of public docs.
+    #[doc(hidden)]
     pub fn renderable_type(&self) -> &'static str {
         "Shader"
     }
 
+    // Internal duck-typed interface used by PyRenderable dispatch — not part of public docs.
+    #[doc(hidden)]
     #[pyo3(name = "passes")]
     pub fn passes_py(&self) -> crate::PyPassIterator {
         crate::PyPassIterator(vec![self.pass.clone()])
