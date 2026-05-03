@@ -821,10 +821,9 @@ impl RenderContext {
     ) -> Result<wgpu::BindGroup, RendererError> {
         #[cfg(not(wasm))]
         {
-            self.device
-                .push_error_scope(wgpu::ErrorFilter::Validation);
+            let scope = self.device.push_error_scope(wgpu::ErrorFilter::Validation);
             let bind_group = self.device.create_bind_group(desc);
-            if let Some(err) = futures::executor::block_on(self.device.pop_error_scope()) {
+            if let Some(err) = futures::executor::block_on(scope.pop()) {
                 return Err(RendererError::ValidationError {
                     label: desc.label.unwrap_or("<unlabeled bind group>").to_string(),
                     message: err.to_string(),
