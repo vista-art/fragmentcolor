@@ -1,4 +1,4 @@
 import org.fragmentcolor.*
 
-val vertex = Vertex(arrayOf(0.0, 0.0, 0.0))
+val vertex = Vertex(listOf(0.0f, 0.0f, 0.0f))
 val shader = Shader.fromVertex(vertex)

@@ -1,6 +1,6 @@
 import org.fragmentcolor.*
 
 val m = Mesh()
-val red = arrayOf(1.0, 0.0, 0.0, 1.0)
-m.addInstance(Instance.new().set("tint", red))
+val red = listOf(1.0f, 0.0f, 0.0f, 1.0f)
+m.addInstance(Instance().set("tint", red))
 m.clearInstances(); // back to a single uninstanced draw

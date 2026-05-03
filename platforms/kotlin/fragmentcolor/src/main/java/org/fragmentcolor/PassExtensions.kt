@@ -56,3 +56,22 @@ fun Pass.setClearColor(r: Float, g: Float, b: Float, a: Float = 1.0f) {
 fun Pass.setClearColor(rgba: List<Float>) {
     setClearColor(rgba)
 }
+
+/** Set the compute dispatch sizes from [Int] arguments (convenience; converts to UInt). */
+fun Pass.setComputeDispatch(x: Int, y: Int, z: Int) {
+    setComputeDispatch(x.toUInt(), y.toUInt(), z.toUInt())
+}
+
+/**
+ * Attach a depth [Texture] (created via `Renderer.createDepthTexture`) as the
+ * depth-stencil attachment for this pass.
+ *
+ * The Kotlin/uniffi binding wraps the texture handle into a [MobileTextureTarget]
+ * and passes it as [TargetHandle.Texture]. The underlying Rust type is the same
+ * Arc<dyn Target> — the depth-format is carried as a texture attribute.
+ */
+fun Pass.addDepthTarget(texture: Texture) {
+    // Re-wrap the depth texture handle as a MobileTextureTarget for the TargetHandle
+    val asMobileTarget = MobileTextureTarget(UniffiWithHandle, texture.uniffiCloneHandle())
+    addDepthTarget(TargetHandle.Texture(asMobileTarget))
+}

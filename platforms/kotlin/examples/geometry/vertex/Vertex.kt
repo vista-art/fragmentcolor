@@ -1,2 +1,2 @@
 import org.fragmentcolor.*
-val v = Vertex(arrayOf(0.0, 0.0, 0.0)).set("uv", arrayOf(0.5, 0.5))
+val v = Vertex(listOf(0.0f, 0.0f, 0.0f)).set("uv", floatArrayOf(0.5f, 0.5f))
