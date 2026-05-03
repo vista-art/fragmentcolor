@@ -16,7 +16,7 @@ use lsp_doc::lsp_doc;
 use std::sync::Arc;
 
 use crate::renderer::platform::mobile::FragmentColorError;
-use crate::mesh::{Instance, Mesh, Vertex, VertexValue};
+use crate::mesh::{Instance, Mesh, Quad, Vertex, VertexValue};
 
 // -----------------------------------------------------------------
 // Vertex (uniffi bindings)
@@ -152,5 +152,40 @@ impl Mesh {
     #[lsp_doc("docs/api/geometry/mesh/set_instance_count.md")]
     pub fn set_instance_count_mobile(&self, n: u32) {
         self.set_instance_count(n);
+    }
+}
+
+// -----------------------------------------------------------------
+// Quad (uniffi bindings)
+// -----------------------------------------------------------------
+
+#[uniffi::export]
+impl Quad {
+    /// Create a `Quad` from two corners (min.xy, max.xy) in clip-space coordinates.
+    /// Accepts exactly 2 components per argument; any other length returns an error.
+    /// Mobile shim because uniffi cannot marshal fixed-size arrays.
+    #[uniffi::constructor(name = "new")]
+    #[lsp_doc("docs/api/geometry/quad/hidden/new_mobile.md")]
+    pub fn new_mobile(min: Vec<f32>, max: Vec<f32>) -> Result<Arc<Self>, FragmentColorError> {
+        if min.len() != 2 {
+            return Err(FragmentColorError::Render(format!(
+                "Quad min must have exactly 2 components; got {}",
+                min.len()
+            )));
+        }
+        if max.len() != 2 {
+            return Err(FragmentColorError::Render(format!(
+                "Quad max must have exactly 2 components; got {}",
+                max.len()
+            )));
+        }
+        Ok(Arc::new(Quad::new([min[0], min[1]], [max[0], max[1]])))
+    }
+
+    /// Get the `Mesh` built by this `Quad`.
+    #[uniffi::method(name = "getMesh")]
+    #[lsp_doc("docs/api/geometry/quad/hidden/get_mesh_mobile.md")]
+    pub fn get_mesh_mobile(self: Arc<Self>) -> Arc<Mesh> {
+        Arc::new(self.get_mesh())
     }
 }
