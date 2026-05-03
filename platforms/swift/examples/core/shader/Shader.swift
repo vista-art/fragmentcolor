@@ -1,7 +1,7 @@
 
 import FragmentColor
 
-let shader = Shader("""
+let shader = try Shader("""
     @vertex
     fn vs_main(@builtin(vertex_index) index: u32) -> @builtin(position) vec4<f32> {
         var pos = array<vec2<f32>, 3>(
@@ -23,9 +23,9 @@ let shader = Shader("""
 """)
 
 // Set the "resolution" uniform
-shader.set("resolution", [800.0, 600.0])
-let res = shader.get("resolution")
+try shader.set("resolution", [800.0, 600.0])
+let res = try shader.get("resolution")
 
 let renderer = Renderer()
 let target = try await renderer.createTextureTarget([16, 16])
-renderer.render(shader, target)
+try renderer.render(shader, target)

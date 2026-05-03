@@ -1,0 +1,4 @@
+framework module FragmentColorFFI {
+  header "FragmentColorFFI.h"
+  export *
+}

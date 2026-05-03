@@ -8,6 +8,6 @@ let shader = Shader.default()
 let pass = Pass("solid background")
 pass.addShader(shader)
 
-pass.setClearColor([0.1, 0.2, 0.3, 1.0])
+try pass.setClearColor([0.1, 0.2, 0.3, 1.0])
 
-renderer.render(pass, target)
+try renderer.render(pass, target)

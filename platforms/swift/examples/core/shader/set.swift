@@ -1,6 +1,6 @@
 import FragmentColor
 let r = Renderer()
-let shader = Shader("""
+let shader = try Shader("""
 @group(0) @binding(0) var<uniform> resolution: vec2<f32>
 
 struct VOut { @builtin(position) pos: vec4<f32> }
@@ -15,4 +15,4 @@ struct VOut { @builtin(position) pos: vec4<f32> }
 """)
 
 // Set scalars/vectors on declared uniforms
-shader.set("resolution", [800.0, 600.0])
+try shader.set("resolution", [800.0, 600.0])

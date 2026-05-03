@@ -1,6 +1,6 @@
 import FragmentColor
 let m = Mesh()
-m.addVertices([
+try m.addVertices([
     [-0.01, -0.01],
     [ 0.01, -0.01],
     [ 0.00,  0.01],

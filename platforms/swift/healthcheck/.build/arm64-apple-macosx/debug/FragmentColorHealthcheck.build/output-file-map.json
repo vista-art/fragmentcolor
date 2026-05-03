@@ -1,0 +1,19 @@
+{
+  "": {
+    "swift-dependencies": "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-macosx/debug/FragmentColorHealthcheck.build/primary.swiftdeps"
+  },
+  "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/GeneratedExamples.swift": {
+    "dependencies": "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-macosx/debug/FragmentColorHealthcheck.build/GeneratedExamples.d",
+    "object": "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-macosx/debug/FragmentColorHealthcheck.build/GeneratedExamples.swift.o",
+    "swiftmodule": "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-macosx/debug/FragmentColorHealthcheck.build/GeneratedExamples~partial.swiftmodule",
+    "swift-dependencies": "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-macosx/debug/FragmentColorHealthcheck.build/GeneratedExamples.swiftdeps",
+    "diagnostics": "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-macosx/debug/FragmentColorHealthcheck.build/GeneratedExamples.dia"
+  },
+  "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/Healthcheck.swift": {
+    "dependencies": "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-macosx/debug/FragmentColorHealthcheck.build/Healthcheck.d",
+    "object": "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-macosx/debug/FragmentColorHealthcheck.build/Healthcheck.swift.o",
+    "swiftmodule": "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-macosx/debug/FragmentColorHealthcheck.build/Healthcheck~partial.swiftmodule",
+    "swift-dependencies": "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-macosx/debug/FragmentColorHealthcheck.build/Healthcheck.swiftdeps",
+    "diagnostics": "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-macosx/debug/FragmentColorHealthcheck.build/Healthcheck.dia"
+  }
+}
