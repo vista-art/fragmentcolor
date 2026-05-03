@@ -1,12 +1,9 @@
 from fragmentcolor import Renderer, TextureFormat, TextureMipChain
 
 renderer = Renderer()
-# Encoded image bytes the caller has on hand (could come off a worker).
-png = [
-    0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
-# ... full PNG body ...
-]
-chain = TextureMipChain.prepare((png, TextureFormat.Rgba8UnormSrgb))
+# Minimal 1x1 RGBA raw pixel bytes.
+pixels = [255, 0, 0, 255]
+chain = TextureMipChain.prepare(pixels, TextureFormat.Rgba8UnormSrgb, [1, 1])
 
 # Hand the chain to the unified create_texture entry - same vocabulary as
 # every other texture path; From<TextureMipChain> selects the GPU-only
