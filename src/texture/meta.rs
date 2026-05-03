@@ -288,7 +288,7 @@ pub enum TextureClass {
     Depth {
         multi: bool,
     },
-    External,
+    External(),
 }
 
 impl From<naga::ImageClass> for TextureClass {
@@ -303,7 +303,7 @@ impl From<naga::ImageClass> for TextureClass {
                 access: access.into(),
             },
             naga::ImageClass::Depth { multi } => TextureClass::Depth { multi },
-            naga::ImageClass::External => TextureClass::External,
+            naga::ImageClass::External => TextureClass::External(),
         }
     }
 }
@@ -320,7 +320,7 @@ impl From<TextureClass> for naga::ImageClass {
                 access: access.into(),
             },
             TextureClass::Depth { multi } => naga::ImageClass::Depth { multi },
-            TextureClass::External => naga::ImageClass::External,
+            TextureClass::External() => naga::ImageClass::External,
         }
     }
 }

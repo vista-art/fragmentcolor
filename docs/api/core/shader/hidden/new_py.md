@@ -1,3 +1,10 @@
+# Shader::new (Python)
+
+Create a shader from a WGSL string or a list of strings. URL slugs require network access.
+
+## Example
+
+```python
 from fragmentcolor import Shader
 
 # Simple WGSL fragment shader
@@ -8,3 +15,4 @@ shader = Shader("""
 }
 @fragment fn fs_main() -> @location(0) vec4<f32> { return vec4f(1., 0., 0., 1.); }
 """)
+```
