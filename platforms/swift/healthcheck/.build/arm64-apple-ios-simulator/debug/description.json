@@ -1,0 +1,581 @@
+{
+  "builtTestProducts" : [
+
+  ],
+  "copyCommands" : {
+    "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-ios-simulator/debug/FragmentColorFFI.framework" : {
+      "inputs" : [
+        {
+          "kind" : "directory",
+          "name" : "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/build/ios/FragmentColorFFI.xcframework/ios-arm64-simulator/FragmentColorFFI.framework"
+        }
+      ],
+      "outputs" : [
+        {
+          "kind" : "directory",
+          "name" : "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-ios-simulator/debug/FragmentColorFFI.framework"
+        }
+      ]
+    }
+  },
+  "explicitTargetDependencyImportCheckingMode" : {
+    "none" : {
+
+    }
+  },
+  "generatedSourceTargetSet" : [
+
+  ],
+  "pluginDescriptions" : [
+
+  ],
+  "swiftCommands" : {
+    "C.FragmentColor-arm64-apple-ios16.0-simulator-debug.module" : {
+      "executable" : "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "fileList" : "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-ios-simulator/debug/FragmentColor.build/sources",
+      "importPath" : "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-ios-simulator/debug/Modules",
+      "inputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/Sources/FragmentColor/Mesh+Extensions.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/Sources/FragmentColor/Pass+Extensions.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/Sources/FragmentColor/Renderer+Extensions.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/Sources/FragmentColor/Shader+Extensions.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/Sources/FragmentColor/Texture+Extensions.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/Sources/FragmentColor/generated/FragmentColor.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-ios-simulator/debug/swift-version--58304C5D6DBC2206.txt"
+        },
+        {
+          "kind" : "directory",
+          "name" : "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-ios-simulator/debug/FragmentColorFFI.framework"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-ios-simulator/debug/FragmentColor.build/sources"
+        }
+      ],
+      "isLibrary" : true,
+      "moduleName" : "FragmentColor",
+      "moduleOutputPath" : "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-ios-simulator/debug/Modules/FragmentColor.swiftmodule",
+      "objects" : [
+        "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-ios-simulator/debug/FragmentColor.build/Mesh+Extensions.swift.o",
+        "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-ios-simulator/debug/FragmentColor.build/Pass+Extensions.swift.o",
+        "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-ios-simulator/debug/FragmentColor.build/Renderer+Extensions.swift.o",
+        "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-ios-simulator/debug/FragmentColor.build/Shader+Extensions.swift.o",
+        "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-ios-simulator/debug/FragmentColor.build/Texture+Extensions.swift.o",
+        "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-ios-simulator/debug/FragmentColor.build/FragmentColor.swift.o"
+      ],
+      "otherArguments" : [
+        "-target",
+        "arm64-apple-ios16.0-simulator",
+        "-incremental",
+        "-enable-batch-mode",
+        "-serialize-diagnostics",
+        "-index-store-path",
+        "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-ios-simulator/debug/index/store",
+        "-Onone",
+        "-enable-testing",
+        "-j8",
+        "-DSWIFT_PACKAGE",
+        "-DDEBUG",
+        "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+        "-I",
+        "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/build/ios/FragmentColorFFI.xcframework/ios-arm64-simulator",
+        "-Xcc",
+        "-I",
+        "-Xcc",
+        "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/build/ios/FragmentColorFFI.xcframework/ios-arm64-simulator",
+        "-module-cache-path",
+        "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-ios-simulator/debug/ModuleCache",
+        "-parseable-output",
+        "-parse-as-library",
+        "-F",
+        "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-ios-simulator/debug",
+        "-emit-objc-header",
+        "-emit-objc-header-path",
+        "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-ios-simulator/debug/FragmentColor.build/include/FragmentColor-Swift.h",
+        "-swift-version",
+        "5",
+        "-plugin-path",
+        "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+        "-sdk",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.4.sdk",
+        "-F",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/Frameworks",
+        "-I",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib",
+        "-L",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib",
+        "-g",
+        "-Xcc",
+        "-isysroot",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.4.sdk",
+        "-Xcc",
+        "-F",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/Frameworks",
+        "-Xcc",
+        "-fPIC",
+        "-Xcc",
+        "-g",
+        "-package-name",
+        "swift"
+      ],
+      "outputFileMapPath" : "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-ios-simulator/debug/FragmentColor.build/output-file-map.json",
+      "outputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-ios-simulator/debug/FragmentColor.build/Mesh+Extensions.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-ios-simulator/debug/FragmentColor.build/Pass+Extensions.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-ios-simulator/debug/FragmentColor.build/Renderer+Extensions.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-ios-simulator/debug/FragmentColor.build/Shader+Extensions.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-ios-simulator/debug/FragmentColor.build/Texture+Extensions.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-ios-simulator/debug/FragmentColor.build/FragmentColor.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-ios-simulator/debug/Modules/FragmentColor.swiftmodule"
+        }
+      ],
+      "prepareForIndexing" : false,
+      "sources" : [
+        "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/Sources/FragmentColor/Mesh+Extensions.swift",
+        "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/Sources/FragmentColor/Pass+Extensions.swift",
+        "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/Sources/FragmentColor/Renderer+Extensions.swift",
+        "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/Sources/FragmentColor/Shader+Extensions.swift",
+        "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/Sources/FragmentColor/Texture+Extensions.swift",
+        "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/Sources/FragmentColor/generated/FragmentColor.swift"
+      ],
+      "tempsPath" : "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-ios-simulator/debug/FragmentColor.build",
+      "wholeModuleOptimization" : false
+    },
+    "C.FragmentColorHealthcheck-arm64-apple-ios16.0-simulator-debug.module" : {
+      "executable" : "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "fileList" : "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-ios-simulator/debug/FragmentColorHealthcheck.build/sources",
+      "importPath" : "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-ios-simulator/debug/Modules",
+      "inputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/GeneratedExamples.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/Healthcheck.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-ios-simulator/debug/swift-version--58304C5D6DBC2206.txt"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-ios-simulator/debug/Modules/FragmentColor.swiftmodule"
+        },
+        {
+          "kind" : "directory",
+          "name" : "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-ios-simulator/debug/FragmentColorFFI.framework"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-ios-simulator/debug/FragmentColorHealthcheck.build/sources"
+        }
+      ],
+      "isLibrary" : false,
+      "moduleName" : "FragmentColorHealthcheck",
+      "moduleOutputPath" : "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-ios-simulator/debug/Modules/FragmentColorHealthcheck.swiftmodule",
+      "objects" : [
+        "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-ios-simulator/debug/FragmentColorHealthcheck.build/GeneratedExamples.swift.o",
+        "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-ios-simulator/debug/FragmentColorHealthcheck.build/Healthcheck.swift.o"
+      ],
+      "otherArguments" : [
+        "-target",
+        "arm64-apple-ios16.0-simulator",
+        "-incremental",
+        "-enable-batch-mode",
+        "-serialize-diagnostics",
+        "-index-store-path",
+        "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-ios-simulator/debug/index/store",
+        "-Onone",
+        "-enable-testing",
+        "-j8",
+        "-DSWIFT_PACKAGE",
+        "-DDEBUG",
+        "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+        "-I",
+        "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/build/ios/FragmentColorFFI.xcframework/ios-arm64-simulator",
+        "-Xcc",
+        "-I",
+        "-Xcc",
+        "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/build/ios/FragmentColorFFI.xcframework/ios-arm64-simulator",
+        "-module-cache-path",
+        "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-ios-simulator/debug/ModuleCache",
+        "-parseable-output",
+        "-Xfrontend",
+        "-entry-point-function-name",
+        "-Xfrontend",
+        "FragmentColorHealthcheck_main",
+        "-F",
+        "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-ios-simulator/debug",
+        "-swift-version",
+        "5",
+        "-plugin-path",
+        "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+        "-sdk",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.4.sdk",
+        "-F",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/Frameworks",
+        "-I",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib",
+        "-L",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib",
+        "-g",
+        "-Xcc",
+        "-isysroot",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.4.sdk",
+        "-Xcc",
+        "-F",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/Frameworks",
+        "-Xcc",
+        "-fPIC",
+        "-Xcc",
+        "-g",
+        "-package-name",
+        "healthcheck"
+      ],
+      "outputFileMapPath" : "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-ios-simulator/debug/FragmentColorHealthcheck.build/output-file-map.json",
+      "outputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-ios-simulator/debug/FragmentColorHealthcheck.build/GeneratedExamples.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-ios-simulator/debug/FragmentColorHealthcheck.build/Healthcheck.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-ios-simulator/debug/Modules/FragmentColorHealthcheck.swiftmodule"
+        }
+      ],
+      "prepareForIndexing" : false,
+      "sources" : [
+        "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/GeneratedExamples.swift",
+        "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/Healthcheck.swift"
+      ],
+      "tempsPath" : "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-ios-simulator/debug/FragmentColorHealthcheck.build",
+      "wholeModuleOptimization" : false
+    }
+  },
+  "swiftFrontendCommands" : {
+
+  },
+  "swiftTargetScanArgs" : {
+    "FragmentColor" : [
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "-module-name",
+      "FragmentColor",
+      "-package-name",
+      "swift",
+      "-c",
+      "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/Sources/FragmentColor/Mesh+Extensions.swift",
+      "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/Sources/FragmentColor/Pass+Extensions.swift",
+      "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/Sources/FragmentColor/Renderer+Extensions.swift",
+      "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/Sources/FragmentColor/Shader+Extensions.swift",
+      "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/Sources/FragmentColor/Texture+Extensions.swift",
+      "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/Sources/FragmentColor/generated/FragmentColor.swift",
+      "-I",
+      "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-ios-simulator/debug/Modules",
+      "-target",
+      "arm64-apple-ios16.0-simulator",
+      "-incremental",
+      "-enable-batch-mode",
+      "-serialize-diagnostics",
+      "-index-store-path",
+      "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-ios-simulator/debug/index/store",
+      "-Onone",
+      "-enable-testing",
+      "-j8",
+      "-DSWIFT_PACKAGE",
+      "-DDEBUG",
+      "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+      "-I",
+      "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/build/ios/FragmentColorFFI.xcframework/ios-arm64-simulator",
+      "-Xcc",
+      "-I",
+      "-Xcc",
+      "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/build/ios/FragmentColorFFI.xcframework/ios-arm64-simulator",
+      "-module-cache-path",
+      "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-ios-simulator/debug/ModuleCache",
+      "-parseable-output",
+      "-parse-as-library",
+      "-F",
+      "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-ios-simulator/debug",
+      "-emit-objc-header",
+      "-emit-objc-header-path",
+      "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-ios-simulator/debug/FragmentColor.build/include/FragmentColor-Swift.h",
+      "-swift-version",
+      "5",
+      "-plugin-path",
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+      "-sdk",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.4.sdk",
+      "-F",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/Frameworks",
+      "-I",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib",
+      "-L",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib",
+      "-g",
+      "-Xcc",
+      "-isysroot",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.4.sdk",
+      "-Xcc",
+      "-F",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/Frameworks",
+      "-Xcc",
+      "-fPIC",
+      "-Xcc",
+      "-g",
+      "-package-name",
+      "swift",
+      "-driver-use-frontend-path",
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"
+    ],
+    "FragmentColorHealthcheck" : [
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "-module-name",
+      "FragmentColorHealthcheck",
+      "-package-name",
+      "healthcheck",
+      "-c",
+      "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/GeneratedExamples.swift",
+      "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/Healthcheck.swift",
+      "-I",
+      "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-ios-simulator/debug/Modules",
+      "-target",
+      "arm64-apple-ios16.0-simulator",
+      "-incremental",
+      "-enable-batch-mode",
+      "-serialize-diagnostics",
+      "-index-store-path",
+      "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-ios-simulator/debug/index/store",
+      "-Onone",
+      "-enable-testing",
+      "-j8",
+      "-DSWIFT_PACKAGE",
+      "-DDEBUG",
+      "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+      "-I",
+      "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/build/ios/FragmentColorFFI.xcframework/ios-arm64-simulator",
+      "-Xcc",
+      "-I",
+      "-Xcc",
+      "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/build/ios/FragmentColorFFI.xcframework/ios-arm64-simulator",
+      "-module-cache-path",
+      "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-ios-simulator/debug/ModuleCache",
+      "-parseable-output",
+      "-Xfrontend",
+      "-entry-point-function-name",
+      "-Xfrontend",
+      "FragmentColorHealthcheck_main",
+      "-F",
+      "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-ios-simulator/debug",
+      "-swift-version",
+      "5",
+      "-plugin-path",
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+      "-sdk",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.4.sdk",
+      "-F",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/Frameworks",
+      "-I",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib",
+      "-L",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib",
+      "-g",
+      "-Xcc",
+      "-isysroot",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.4.sdk",
+      "-Xcc",
+      "-F",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/Frameworks",
+      "-Xcc",
+      "-fPIC",
+      "-Xcc",
+      "-g",
+      "-package-name",
+      "healthcheck",
+      "-driver-use-frontend-path",
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"
+    ]
+  },
+  "targetDependencyMap" : {
+    "FragmentColor" : [
+      "FragmentColorFFI"
+    ],
+    "FragmentColorHealthcheck" : [
+      "FragmentColor",
+      "FragmentColorFFI"
+    ]
+  },
+  "testDiscoveryCommands" : {
+
+  },
+  "testEntryPointCommands" : {
+
+  },
+  "traitConfiguration" : {
+    "default" : {
+
+    }
+  },
+  "writeCommands" : {
+    "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-ios-simulator/debug/FragmentColor.build/sources" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<sources-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/Sources/FragmentColor/Mesh+Extensions.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/Sources/FragmentColor/Pass+Extensions.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/Sources/FragmentColor/Renderer+Extensions.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/Sources/FragmentColor/Shader+Extensions.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/Sources/FragmentColor/Texture+Extensions.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/Sources/FragmentColor/generated/FragmentColor.swift"
+        }
+      ],
+      "outputFilePath" : "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-ios-simulator/debug/FragmentColor.build/sources"
+    },
+    "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-ios-simulator/debug/FragmentColorHealthcheck.build/sources" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<sources-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/GeneratedExamples.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/Healthcheck.swift"
+        }
+      ],
+      "outputFilePath" : "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-ios-simulator/debug/FragmentColorHealthcheck.build/sources"
+    },
+    "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-ios-simulator/debug/fragmentcolor-healthcheck.product/Objects.LinkFileList" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<link-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-ios-simulator/debug/FragmentColor.build/FragmentColor.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-ios-simulator/debug/FragmentColor.build/Mesh+Extensions.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-ios-simulator/debug/FragmentColor.build/Pass+Extensions.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-ios-simulator/debug/FragmentColor.build/Renderer+Extensions.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-ios-simulator/debug/FragmentColor.build/Shader+Extensions.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-ios-simulator/debug/FragmentColor.build/Texture+Extensions.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-ios-simulator/debug/FragmentColorHealthcheck.build/GeneratedExamples.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-ios-simulator/debug/FragmentColorHealthcheck.build/Healthcheck.swift.o"
+        }
+      ],
+      "outputFilePath" : "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-ios-simulator/debug/fragmentcolor-healthcheck.product/Objects.LinkFileList"
+    },
+    "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-ios-simulator/debug/swift-version--58304C5D6DBC2206.txt" : {
+      "alwaysOutOfDate" : true,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<swift-get-version>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"
+        }
+      ],
+      "outputFilePath" : "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/healthcheck/.build/arm64-apple-ios-simulator/debug/swift-version--58304C5D6DBC2206.txt"
+    }
+  }
+}

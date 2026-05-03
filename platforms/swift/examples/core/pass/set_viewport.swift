@@ -10,4 +10,4 @@ pass.addShader(shader)
 
 pass.setViewport([(0, 0), (32, 32)])
 
-renderer.render(pass, target)
+try renderer.render(pass, target)

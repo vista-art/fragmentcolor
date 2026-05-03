@@ -9,4 +9,4 @@ let pass = Pass("blend with previous")
 pass.addShader(shader)
 pass.loadPrevious()
 
-renderer.render(pass, target)
+try renderer.render(pass, target)

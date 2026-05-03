@@ -1,0 +1,50 @@
+client:
+  name: basic
+  file-system: device-agnostic
+tools: {}
+targets:
+  "FragmentColor-arm64-apple-macosx-debug.module": ["<FragmentColor-arm64-apple-macosx-debug.module>"]
+  "PackageStructure": ["<PackageStructure>"]
+  "main": ["<FragmentColor-arm64-apple-macosx-debug.module>"]
+  "test": ["<FragmentColor-arm64-apple-macosx-debug.module>"]
+default: "main"
+nodes:
+  "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/build/ios/FragmentColorFFI.xcframework/":
+    is-directory-structure: true
+    content-exclusion-patterns: [".git",".build"]
+  "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/Sources/FragmentColor/":
+    is-directory-structure: true
+    content-exclusion-patterns: [".git",".build"]
+commands:
+  "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/.build/arm64-apple-macosx/debug/FragmentColor.build/sources":
+    tool: write-auxiliary-file
+    inputs: ["<sources-file-list>","/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/Sources/FragmentColor/Mesh+Extensions.swift","/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/Sources/FragmentColor/Pass+Extensions.swift","/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/Sources/FragmentColor/Renderer+Extensions.swift","/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/Sources/FragmentColor/Shader+Extensions.swift","/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/Sources/FragmentColor/Texture+Extensions.swift","/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/Sources/FragmentColor/generated/FragmentColor.swift"]
+    outputs: ["/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/.build/arm64-apple-macosx/debug/FragmentColor.build/sources"]
+    description: "Write auxiliary file /Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/.build/arm64-apple-macosx/debug/FragmentColor.build/sources"
+
+  "/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt":
+    tool: write-auxiliary-file
+    inputs: ["<swift-get-version>","/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"]
+    outputs: ["/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt"]
+    always-out-of-date: "true"
+    description: "Write auxiliary file /Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt"
+
+  "<FragmentColor-arm64-apple-macosx-debug.module>":
+    tool: phony
+    inputs: ["/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/.build/arm64-apple-macosx/debug/FragmentColor.build/Mesh+Extensions.swift.o","/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/.build/arm64-apple-macosx/debug/FragmentColor.build/Pass+Extensions.swift.o","/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/.build/arm64-apple-macosx/debug/FragmentColor.build/Renderer+Extensions.swift.o","/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/.build/arm64-apple-macosx/debug/FragmentColor.build/Shader+Extensions.swift.o","/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/.build/arm64-apple-macosx/debug/FragmentColor.build/Texture+Extensions.swift.o","/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/.build/arm64-apple-macosx/debug/FragmentColor.build/FragmentColor.swift.o","/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/.build/arm64-apple-macosx/debug/Modules/FragmentColor.swiftmodule"]
+    outputs: ["<FragmentColor-arm64-apple-macosx-debug.module>"]
+
+  "C.FragmentColor-arm64-apple-macosx-debug.module":
+    tool: shell
+    inputs: ["/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/Sources/FragmentColor/Mesh+Extensions.swift","/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/Sources/FragmentColor/Pass+Extensions.swift","/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/Sources/FragmentColor/Renderer+Extensions.swift","/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/Sources/FragmentColor/Shader+Extensions.swift","/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/Sources/FragmentColor/Texture+Extensions.swift","/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/Sources/FragmentColor/generated/FragmentColor.swift","/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt","/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/.build/arm64-apple-macosx/debug/FragmentColor.build/sources"]
+    outputs: ["/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/.build/arm64-apple-macosx/debug/FragmentColor.build/Mesh+Extensions.swift.o","/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/.build/arm64-apple-macosx/debug/FragmentColor.build/Pass+Extensions.swift.o","/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/.build/arm64-apple-macosx/debug/FragmentColor.build/Renderer+Extensions.swift.o","/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/.build/arm64-apple-macosx/debug/FragmentColor.build/Shader+Extensions.swift.o","/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/.build/arm64-apple-macosx/debug/FragmentColor.build/Texture+Extensions.swift.o","/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/.build/arm64-apple-macosx/debug/FragmentColor.build/FragmentColor.swift.o","/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/.build/arm64-apple-macosx/debug/Modules/FragmentColor.swiftmodule"]
+    description: "Compiling Swift Module 'FragmentColor' (6 sources)"
+    args: ["/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc","-module-name","FragmentColor","-emit-dependencies","-emit-module","-emit-module-path","/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/.build/arm64-apple-macosx/debug/Modules/FragmentColor.swiftmodule","-output-file-map","/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/.build/arm64-apple-macosx/debug/FragmentColor.build/output-file-map.json","-parse-as-library","-incremental","-c","@/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/.build/arm64-apple-macosx/debug/FragmentColor.build/sources","-I","/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/.build/arm64-apple-macosx/debug/Modules","-target","arm64-apple-macosx10.13","-incremental","-enable-batch-mode","-serialize-diagnostics","-index-store-path","/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/.build/arm64-apple-macosx/debug/index/store","-Onone","-enable-testing","-j8","-DSWIFT_PACKAGE","-DDEBUG","-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE","-module-cache-path","/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/.build/arm64-apple-macosx/debug/ModuleCache","-parseable-output","-parse-as-library","-emit-objc-header","-emit-objc-header-path","/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/.build/arm64-apple-macosx/debug/FragmentColor.build/include/FragmentColor-Swift.h","-swift-version","5","-plugin-path","/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing","-sdk","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.4.sdk","-F","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks","-I","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib","-L","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib","-g","-sdk","/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.4.sdk","-target","arm64-apple-ios16-simulator","-F","/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/build/ios/FragmentColorFFI.xcframework/ios-arm64-simulator/FragmentColorFFI.framework/..","-Xcc","-isysroot","-Xcc","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.4.sdk","-Xcc","-F","-Xcc","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks","-Xcc","-fPIC","-Xcc","-g","-package-name","swift"]
+
+  "PackageStructure":
+    tool: package-structure-tool
+    inputs: ["/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/build/ios/FragmentColorFFI.xcframework/","/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/Sources/FragmentColor/","/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/Package.swift","/Users/rafaelbeckel/LocalProjects/Rust/fragmentcolor/platforms/swift/Package.resolved"]
+    outputs: ["<PackageStructure>"]
+    description: "Planning build"
+    allow-missing-inputs: true
+

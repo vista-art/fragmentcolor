@@ -2,8 +2,8 @@
 import FragmentColor
 
 let renderer = Renderer()
-let canvas = document.createElement("canvas")
-let target = try await renderer.createTarget(canvas)
+// iOS: window/canvas provided by CAMetalLayer at runtime
+let target = try await renderer.createTextureTarget([800, 600])
 let shader = Shader.default()
 
 let pass = Pass("First Pass")
@@ -13,7 +13,7 @@ let pass2 = Pass("Second Pass")
 pass2.addShader(shader)
 
 // standalone
-renderer.render(pass, target)
+try renderer.render(pass, target)
 
 // vector of passes rendered in order (any iterable of Pass is renderable)
-renderer.render([pass, pass2], target)
+try renderer.render([pass, pass2], target)

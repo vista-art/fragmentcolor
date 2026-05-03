@@ -8,7 +8,7 @@ import PackageDescription
 
 let package = Package(
     name: "FragmentColorHealthcheck",
-    platforms: [.iOS(.v16)],
+    platforms: [.iOS(.v16), .macOS(.v12)],
     products: [
         .executable(name: "fragmentcolor-healthcheck", targets: ["FragmentColorHealthcheck"]),
     ],
