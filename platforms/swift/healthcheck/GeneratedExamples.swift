@@ -650,15 +650,7 @@ private enum _GeneratedExamples {
         let texture = try await renderer.createStorageTexture(([64, 64], TextureFormat.Rgba))
         texture.write(Array(repeating: 0, count: 64 * 64 * 4))
 
-        let bytes = texture.getImage()
-    }
-
-    static func _example_core_texture_get_image_async() async throws {
-        let renderer = Renderer()
-        let texture = try await renderer.createStorageTexture(([64, 64], TextureFormat.Rgba))
-        texture.write(Array(repeating: 0, count: 64 * 64 * 4))
-
-        let bytes = try await texture.getImageAsync()
+        let bytes = try await texture.getImage()
     }
 
     static func _example_core_texture_id() async throws {

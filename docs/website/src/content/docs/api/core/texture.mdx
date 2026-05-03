@@ -837,11 +837,9 @@ lang="kotlin"
 
 Read back the mip-0 contents of this texture as tightly-packed bytes in the texture's native format.
 
-- Blocks the current thread until the GPU readback buffer is mapped (native only).
+- Works on both native and WASM by awaiting the GPU readback buffer mapping via an async oneshot channel.
 - Layer-major on the outside loop when the texture has multiple layers.
 - The texture must have `COPY_SRC` usage; creation helpers like `create_storage_texture` enable it by default.
-
-Prefer [`Texture::get_image_async`] on the web, where blocking is not supported.
 
 #### Example
 
@@ -856,7 +854,7 @@ let renderer = Renderer::new();
 let texture = renderer.create_storage_texture(([64u32, 64u32], TextureFormat::Rgba)).await?;
 texture.write(&vec![0u8; 64 * 64 * 4])?;
 
-let bytes = texture.get_image()?;
+let bytes = texture.get_image().await?;
 assert_eq!(bytes.len(), 64 * 64 * 4);
 Ok(())
 }
@@ -875,7 +873,7 @@ const renderer = new Renderer();
 const texture = await renderer.createStorageTexture(([64, 64], TextureFormat.Rgba));
 texture.write(Array(64 * 64 * 4).fill(0));
 
-const bytes = texture.getImage();
+const bytes = await texture.getImage();
 `}
 lang="js"
 />
@@ -905,7 +903,7 @@ let renderer = Renderer()
 let texture = try await renderer.createStorageTexture(([64, 64], TextureFormat.Rgba))
 texture.write(Array(repeating: 0, count: 64 * 64 * 4))
 
-let bytes = texture.getImage()
+let bytes = try await texture.getImage()
 `}
 lang="swift"
 />
@@ -921,101 +919,6 @@ val texture = renderer.createStorageTexture((arrayOf(64, 64), TextureFormat.Rgba
 texture.write(Array(64 * 64 * 4) { 0 })
 
 val bytes = texture.getImage()
-`}
-lang="kotlin"
-/>
-
-</TabItem>
-
-</Tabs>
-
-
----
-
-### Texture::get_image_async()
-
-Async variant of [`Texture::get_image`] that works on both native and WASM.
-
-Returns the mip-0 contents of this texture as tightly-packed bytes in the texture's native format.
-
-#### Example
-
-<Tabs>
-
-<TabItem label="Rust">
-<Code
-code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Renderer, TextureFormat};
-let renderer = Renderer::new();
-let texture = renderer.create_storage_texture(([64u32, 64u32], TextureFormat::Rgba)).await?;
-texture.write(&vec![0u8; 64 * 64 * 4])?;
-
-let bytes = texture.get_image_async().await?;
-assert_eq!(bytes.len(), 64 * 64 * 4);
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
-`}
-lang="rust" meta="collapse={1-1, 8-11}"
-/>
-
-</TabItem>
-
-<TabItem label="JavaScript">
-<Code
-code={`
-import { Renderer, TextureFormat } from "fragmentcolor";
-const renderer = new Renderer();
-const texture = await renderer.createStorageTexture(([64, 64], TextureFormat.Rgba));
-texture.write(Array(64 * 64 * 4).fill(0));
-
-const bytes = await texture.getImageAsync();
-`}
-lang="js"
-/>
-
-</TabItem>
-
-<TabItem label="Python">
-<Code
-code={`
-from fragmentcolor import Renderer, TextureFormat
-renderer = Renderer()
-texture = renderer.create_storage_texture(([64, 64], TextureFormat.Rgba))
-texture.write([0] * (64 * 64 * 4))
-
-bytes = texture.get_image_async()
-`}
-lang="python"
-/>
-
-</TabItem>
-
-<TabItem label="Swift">
-<Code
-code={`
-import FragmentColor
-let renderer = Renderer()
-let texture = try await renderer.createStorageTexture(([64, 64], TextureFormat.Rgba))
-texture.write(Array(repeating: 0, count: 64 * 64 * 4))
-
-let bytes = try await texture.getImageAsync()
-`}
-lang="swift"
-/>
-
-</TabItem>
-
-<TabItem label="Kotlin">
-<Code
-code={`
-import org.fragmentcolor.*
-val renderer = Renderer()
-val texture = renderer.createStorageTexture((arrayOf(64, 64), TextureFormat.Rgba))
-texture.write(Array(64 * 64 * 4) { 0 })
-
-val bytes = texture.getImageAsync()
 `}
 lang="kotlin"
 />
