@@ -14,6 +14,8 @@ pub enum RendererError {
     MeshError(#[from] crate::mesh::MeshError),
     #[error("Bind Group Layout error: {0}")]
     BindGroupLayoutError(String),
+    #[error("GPU validation error while building '{label}': {message}")]
+    ValidationError { label: String, message: String },
     #[error("Texture error: {0}")]
     TextureError(#[from] crate::texture::TextureError),
     #[error("Texture {0} not found")]
