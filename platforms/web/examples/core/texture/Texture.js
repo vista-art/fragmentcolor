@@ -12,11 +12,10 @@ const shader = new Shader(`
 
 `);
 
-// 1x1 RGBA (white) raw pixel bytes - single create_texture entry, tuple
-// form (bytes, format, size) selects the raw-pixel path. Format is
-// the placeholder Rgba (sRGB-aware) by default.
-const pixels = [255,255,255,255];
-const texture = await renderer.createTexture((pixels, [1, 1]));
+// 1x1 RGBA (white) raw pixel bytes.
+// Pass size in options to select the raw-pixel path.
+const pixels = new Uint8Array([255,255,255,255]);
+const texture = await renderer.createTexture(pixels, { size: [1, 1] });
 
 // insert  the texture in the shader matching the name in the shader
 shader.set("my_texture", texture);
