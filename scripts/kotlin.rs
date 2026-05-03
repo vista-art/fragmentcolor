@@ -138,6 +138,7 @@ mod kotlin {
         out = rewrite_createtexture_pixels_tuple(&out);
         out = rewrite_texturemipchain_prepare_tuple(&out);
         out = rewrite_setviewport_tuple(&out);
+        out = rewrite_setcomputedispatch_int_to_uint(&out);
         out = rewrite_render_array_to_list(&out);
         out = rewrite_removemeshes_array_to_list(&out);
         out = rewrite_addinstances_array_to_list(&out);
@@ -634,6 +635,55 @@ mod kotlin {
             return line.replace(needle, ".render(listOf(");
         }
         line.to_string()
+    }
+
+    // `pass.setComputeDispatch(64, 64, 1)` → `pass.setComputeDispatch(64u, 64u, 1u)`
+    //
+    // The uniffi-generated member method takes `(UInt, UInt, UInt)` and Kotlin
+    // member methods take precedence over the Int-arg extension in
+    // PassExtensions.kt. Signed→unsigned conversion of integer constants is
+    // disallowed, so we suffix each literal with `u` to make them UInt.
+    fn rewrite_setcomputedispatch_int_to_uint(line: &str) -> String {
+        let needle = ".setComputeDispatch(";
+        let Some(start) = line.find(needle) else {
+            return line.to_string();
+        };
+        let call_start = start + needle.len();
+        let chars: Vec<char> = line.chars().collect();
+        let mut depth = 0i32;
+        let mut end = call_start;
+        let mut j = call_start;
+        while j < chars.len() {
+            match chars[j] {
+                '(' => depth += 1,
+                ')' => {
+                    if depth == 0 {
+                        end = j;
+                        break;
+                    }
+                    depth -= 1;
+                }
+                _ => {}
+            }
+            j += 1;
+        }
+        let inner: String = chars[call_start..end].iter().collect();
+        // Suffix each comma-separated bare integer with `u`
+        let parts: Vec<String> = inner
+            .split(',')
+            .map(|p| {
+                let trimmed = p.trim();
+                if trimmed.parse::<u64>().is_ok() {
+                    format!("{}u", trimmed)
+                } else {
+                    p.to_string()
+                }
+            })
+            .collect();
+        let new_inner = parts.join(",");
+        let before = &line[..call_start];
+        let after = &line[end..];
+        format!("{}{}{}", before, new_inner, after)
     }
 
     // `shader.removeMeshes(arrayOf(m1, m2))` → `shader.removeMeshes(listOf(m1, m2))`
