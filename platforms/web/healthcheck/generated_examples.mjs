@@ -19,6 +19,7 @@ const EXAMPLES = [
   '../examples/core/pass/set_viewport.js',
   '../examples/core/renderer/Renderer.js',
   '../examples/core/renderer/create_depth_texture.js',
+  '../examples/core/renderer/create_external_texture.js',
   '../examples/core/renderer/create_storage_texture.js',
   '../examples/core/renderer/create_target.js',
   '../examples/core/renderer/create_texture.js',

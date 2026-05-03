@@ -245,6 +245,14 @@ private enum _GeneratedExamples {
         let depth = r.createDepthTexture([800, 600])
     }
 
+    static func _example_core_renderer_create_external_texture() async throws {
+        // Once supported:
+        //   let renderer = Renderer()
+        //   let pixelBuffer: CVPixelBuffer = /* from AVPlayerItemVideoOutput */
+        //   let ptr = UInt64(UInt(bitPattern: Unmanaged.passUnretained(pixelBuffer).toOpaque()))
+        //   let handle = try renderer.createExternalTexture(sourcePtr: ptr)
+    }
+
     static func _example_core_renderer_create_storage_texture() async throws {
 
         let r = Renderer()
