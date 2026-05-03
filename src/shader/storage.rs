@@ -83,17 +83,20 @@ impl UniformStorage {
                 ty: field,
             } in fields
             {
+                let Some(field_data) = field.first() else {
+                    continue;
+                };
                 let key = format!("{}.{}", uniform.name, field_name);
                 self.uniforms.insert(
                     key.clone(),
                     (
                         base_offset + field_offset,
-                        field.size(),
+                        field_data.size(),
                         Uniform {
                             name: key,
                             group: uniform.group,
                             binding: uniform.binding,
-                            data: (**field).clone(),
+                            data: field_data.clone(),
                         },
                     ),
                 );
@@ -110,24 +113,29 @@ impl UniformStorage {
                 .or_insert_with(|| vec![0u8; *span as usize]);
 
             // Index fields with their declared offsets relative to the storage blob
-            if let UniformData::Struct(StructShape { fields, .. }) = inner.as_ref() {
+            if let Some(inner_shape) = inner.first()
+                && let UniformData::Struct(StructShape { fields, .. }) = inner_shape
+            {
                 for StructField {
                     offset: field_offset,
                     name: field_name,
                     ty: field,
                 } in fields
                 {
+                    let Some(field_data) = field.first() else {
+                        continue;
+                    };
                     let key = format!("{}.{}", uniform.name, field_name);
                     self.uniforms.insert(
                         key.clone(),
                         (
                             *field_offset,
-                            field.size(),
+                            field_data.size(),
                             Uniform {
                                 name: key,
                                 group: uniform.group,
                                 binding: uniform.binding,
-                                data: (**field).clone(),
+                                data: field_data.clone(),
                             },
                         ),
                     );
@@ -159,24 +167,29 @@ impl UniformStorage {
                 .or_insert_with(|| vec![0u8; span as usize]);
 
             // Index fields for direct access if it's a struct
-            if let UniformData::Struct(StructShape { fields, .. }) = inner.as_ref() {
+            if let Some(inner_shape) = inner.first()
+                && let UniformData::Struct(StructShape { fields, .. }) = inner_shape
+            {
                 for StructField {
                     offset: field_offset,
                     name: field_name,
                     ty: field,
                 } in fields
                 {
+                    let Some(field_data) = field.first() else {
+                        continue;
+                    };
                     let key = format!("{}.{}", uniform.name, field_name);
                     self.uniforms.insert(
                         key.clone(),
                         (
                             *field_offset,
-                            field.size(),
+                            field_data.size(),
                             Uniform {
                                 name: key,
                                 group: uniform.group,
                                 binding: uniform.binding,
-                                data: (**field).clone(),
+                                data: field_data.clone(),
                             },
                         ),
                     );
@@ -296,9 +309,11 @@ impl UniformStorage {
             if let Some(blob) = self.storage_blobs.get_mut(root) {
                 match value {
                     UniformData::Storage(data) if key == root => {
-                        if let Some(StorageEntry { inner, span, .. }) = data.iter().next() {
+                        if let Some(StorageEntry { inner, span, .. }) = data.iter().next()
+                            && let Some(shape) = inner.first()
+                        {
                             // Write full storage blob from inner
-                            let data = inner.to_bytes();
+                            let data = shape.to_bytes();
                             let n = (*span as usize).min(data.len());
                             if blob.len() < *span as usize {
                                 blob.resize(*span as usize, 0);
@@ -331,8 +346,10 @@ impl UniformStorage {
             if let Some(blob) = self.push_blobs.get_mut(root) {
                 match value {
                     UniformData::PushConstant(data) if key == root => {
-                        if let Some(PushEntry { inner, span }) = data.iter().next() {
-                            let data = inner.to_bytes();
+                        if let Some(PushEntry { inner, span }) = data.iter().next()
+                            && let Some(shape) = inner.first()
+                        {
+                            let data = shape.to_bytes();
                             let n = (*span as usize).min(data.len());
                             if blob.len() < *span as usize {
                                 blob.resize(*span as usize, 0);
@@ -373,22 +390,20 @@ impl UniformStorage {
 
             let (rel_ofs, leaf_sz) = if is_storage {
                 // For storage buffers, traverse the inner shape
-                if let UniformData::Storage(data) = &root_uniform.data {
-                    if let Some(StorageEntry { inner, .. }) = data.first() {
-                        compute_offset(inner, &parts, key)?
-                    } else {
-                        return Err(ShaderError::InvalidKey(key.into()));
-                    }
+                if let UniformData::Storage(data) = &root_uniform.data
+                    && let Some(StorageEntry { inner, .. }) = data.first()
+                    && let Some(shape) = inner.first()
+                {
+                    compute_offset(shape, &parts, key)?
                 } else {
                     return Err(ShaderError::InvalidKey(key.into()));
                 }
             } else if is_push {
-                if let UniformData::PushConstant(data) = &root_uniform.data {
-                    if let Some(PushEntry { inner, .. }) = data.first() {
-                        compute_offset(inner, &parts, key)?
-                    } else {
-                        return Err(ShaderError::InvalidKey(key.into()));
-                    }
+                if let UniformData::PushConstant(data) = &root_uniform.data
+                    && let Some(PushEntry { inner, .. }) = data.first()
+                    && let Some(shape) = inner.first()
+                {
+                    compute_offset(shape, &parts, key)?
                 } else {
                     return Err(ShaderError::InvalidKey(key.into()));
                 }
@@ -501,22 +516,20 @@ impl UniformStorage {
             let is_storage = matches!(root_uniform.data, UniformData::Storage(_));
             let is_push = matches!(root_uniform.data, UniformData::PushConstant(_));
             let (rel_ofs, leaf_sz) = if is_storage {
-                if let UniformData::Storage(data) = &root_uniform.data {
-                    if let Some(StorageEntry { inner, .. }) = data.first() {
-                        compute_offset(inner, &parts, key).ok()?
-                    } else {
-                        return None;
-                    }
+                if let UniformData::Storage(data) = &root_uniform.data
+                    && let Some(StorageEntry { inner, .. }) = data.first()
+                    && let Some(shape) = inner.first()
+                {
+                    compute_offset(shape, &parts, key).ok()?
                 } else {
                     return None;
                 }
             } else if is_push {
-                if let UniformData::PushConstant(data) = &root_uniform.data {
-                    if let Some(PushEntry { inner, .. }) = data.first() {
-                        compute_offset(inner, &parts, key).ok()?
-                    } else {
-                        return None;
-                    }
+                if let UniformData::PushConstant(data) = &root_uniform.data
+                    && let Some(PushEntry { inner, .. }) = data.first()
+                    && let Some(shape) = inner.first()
+                {
+                    compute_offset(shape, &parts, key).ok()?
                 } else {
                     return None;
                 }
@@ -660,7 +673,9 @@ fn compute_offset(
                     } in fields.iter()
                     {
                         if fname == name {
-                            found = Some((*fo, f.as_ref()));
+                            if let Some(field_shape) = f.first() {
+                                found = Some((*fo, field_shape));
+                            }
                             break;
                         }
                     }
@@ -675,7 +690,9 @@ fn compute_offset(
                 Segment::Index(_) => return Err(ShaderError::InvalidKey(key.into())),
             },
             UniformData::Array(items) => {
-                if let Some(ArrayElement { ty, count, stride }) = items.first() {
+                if let Some(ArrayElement { ty, count, stride }) = items.first()
+                    && let Some(elem_shape) = ty.first()
+                {
                     match &parts[i] {
                         Segment::Index(idx) => {
                             let n = *count as usize;
@@ -687,7 +704,7 @@ fn compute_offset(
                                 });
                             }
                             ofs = ofs.saturating_add((*idx as u32) * *stride);
-                            cur = ty.as_ref();
+                            cur = elem_shape;
                             i += 1;
                         }
                         Segment::Field(_) => return Err(ShaderError::InvalidKey(key.into())),

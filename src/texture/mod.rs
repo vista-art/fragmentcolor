@@ -471,7 +471,6 @@ impl TryFrom<&wasm_bindgen::JsValue> for TextureData {
 
 #[cfg_attr(wasm, wasm_bindgen)]
 #[cfg_attr(python, pyclass)]
-#[cfg_attr(mobile, derive(uniffi::Record))]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct TextureId(pub u64);
 
@@ -480,6 +479,18 @@ impl From<u64> for TextureId {
         TextureId(value)
     }
 }
+
+impl From<TextureId> for u64 {
+    fn from(value: TextureId) -> Self {
+        value.0
+    }
+}
+
+// uniffi cannot derive `Record` on tuple structs (`pub struct TextureId(pub u64)`);
+// register it as a custom type that lowers to `u64` across the FFI boundary.
+// `From<u64> for TextureId` and `From<TextureId> for u64` provide the conversions.
+#[cfg(mobile)]
+uniffi::custom_type!(TextureId, u64);
 
 #[cfg(wasm)]
 crate::impl_js_bridge!(TextureId, crate::texture::TextureError);
