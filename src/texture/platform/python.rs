@@ -20,10 +20,11 @@ impl TextureMipChain {
     pub fn prepare_py(
         bytes: pyo3::Py<pyo3::types::PyAny>,
         format: TextureFormat,
-        size: Option<Size>,
+        size: Option<crate::size::PySize>,
     ) -> pyo3::PyResult<TextureMipChain> {
         Python::attach(|py| -> pyo3::PyResult<TextureMipChain> {
             let bytes = crate::texture::py_to_texture_bytes(bytes.bind(py))?;
+            let size: Option<Size> = size.map(Into::into);
             let input = crate::TextureInput {
                 data: crate::TextureData::Bytes(bytes),
                 options: crate::TextureOptions {
