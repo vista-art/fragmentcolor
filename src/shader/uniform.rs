@@ -357,9 +357,9 @@ pub(crate) fn convert_type(module: &Module, ty: &Type) -> Result<UniformData, Sh
             class,
         } => Ok(UniformData::Texture(crate::texture::TextureMeta {
             id: crate::texture::TextureId(0),
-            dim: *dim,
+            dim: (*dim).into(),
             arrayed: *arrayed,
-            class: *class,
+            class: (*class).into(),
             // Default optimistic; `parse_uniforms` overrides this based on whether
             // the corresponding global variable is ever used as an `ImageSample` input.
             sampled: true,
