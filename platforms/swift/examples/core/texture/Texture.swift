@@ -1,7 +1,7 @@
 
 import FragmentColor
 let renderer = Renderer()
-let shader = Shader("""
+let shader = try Shader("""
 @group(0) @binding(0) var my_texture: texture_2d<f32>
 @group(0) @binding(1) var my_sampler: sampler
 @vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
@@ -19,4 +19,4 @@ let pixels = [255,255,255,255]
 let texture = try await renderer.createTexture((pixels, [1, 1]))
 
 // insert  the texture in the shader matching the name in the shader
-shader.set("my_texture", texture)
+try shader.set("my_texture", texture)

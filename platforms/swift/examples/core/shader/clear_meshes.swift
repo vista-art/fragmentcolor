@@ -1,6 +1,6 @@
 import FragmentColor
 
-let shader = Shader("""
+let shader = try Shader("""
   struct VOut { @builtin(position) pos: vec4<f32> }
   @vertex
   fn vs_main(@location(0) pos: vec2<f32>) -> VOut {
@@ -14,8 +14,8 @@ let shader = Shader("""
 """)
 
 let mesh = Mesh()
-mesh.addVertex([0.0, 0.0])
-shader.addMesh(mesh)
+try mesh.addVertex([0.0, 0.0])
+try shader.addMesh(mesh)
 
 // Clear all
 shader.clearMeshes()
