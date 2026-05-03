@@ -25,7 +25,7 @@ fn renderer_unregister_then_unregister_again_fails() {
 #[test]
 fn renderer_unregister_unknown_id_fails() {
     let r = Renderer::new();
-    let bogus = fragmentcolor::texture::TextureId(9_999_999);
+    let bogus = fragmentcolor::texture::TextureId { id: 9_999_999 };
     let err = r
         .unregister_texture(bogus)
         .expect_err("missing id should err");

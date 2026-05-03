@@ -230,7 +230,7 @@ impl UniformStorage {
             // Allow updating Texture with TextureMeta (id + naga metadata) and preserve shader metadata if caller passed id-only
             match (&uniform.data, value) {
                 (UniformData::Texture(existing), UniformData::Texture(incoming)) => {
-                    let merged = if incoming.id.0 != 0 {
+                    let merged = if incoming.id.id != 0 {
                         crate::texture::TextureMeta {
                             id: incoming.id,
                             dim: existing.dim,
