@@ -75,6 +75,17 @@ impl Texture {
         self.write_region(&bytes, region)
             .map_err(FragmentColorError::from)
     }
+
+    /// Read back the mip-0 contents of this texture as tightly-packed bytes
+    /// in the texture's native format. Uniffi exposes this as a Swift
+    /// `suspend fun` / Kotlin `suspend fun` automatically. Foreign callers
+    /// await this in a coroutine or `Task`; the underlying GPU readback is
+    /// driven by the async `read_texture_object_async` path.
+    #[uniffi::method(name = "getImage")]
+    #[lsp_doc("docs/api/core/texture/get_image.md")]
+    pub async fn get_image_mobile(self: Arc<Self>) -> Result<Vec<u8>, FragmentColorError> {
+        self.get_image().await.map_err(FragmentColorError::from)
+    }
 }
 
 #[uniffi::export]

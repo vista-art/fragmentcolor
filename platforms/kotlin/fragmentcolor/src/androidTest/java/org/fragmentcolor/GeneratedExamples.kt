@@ -671,14 +671,6 @@ class GeneratedExamples {
         val bytes = texture.getImage()
     }
 
-    @Suppress("unused") private suspend fun _example_core_texture_get_image_async() {
-        val renderer = Renderer()
-        val texture = renderer.createStorageTexture((arrayOf(64, 64), TextureFormat.Rgba))
-        texture.write(Array(64 * 64 * 4) { 0 })
-
-        val bytes = texture.getImageAsync()
-    }
-
     @Suppress("unused") private suspend fun _example_core_texture_id() {
         val renderer = Renderer()
         val texture = renderer.createStorageTexture((arrayOf(64, 64), TextureFormat.Rgba))

@@ -156,4 +156,16 @@ impl Texture {
             Ok(())
         })
     }
+
+    /// Read back the mip-0 contents of this texture as tightly-packed bytes
+    /// in the texture's native format. Blocks the Python thread synchronously
+    /// (via `pollster::block_on`) — the async readback is the canonical
+    /// implementation; the blocking wrapper exists because Python does not
+    /// have a native async runtime that integrates with the GPU device loop.
+    #[pyo3(name = "get_image")]
+    #[lsp_doc("docs/api/core/texture/get_image.md")]
+    pub fn get_image_py(&self) -> pyo3::PyResult<Vec<u8>> {
+        pollster::block_on(self.get_image())
+            .map_err(|e| crate::error::PyFragmentColorError::new_err(e.to_string()))
+    }
 }
