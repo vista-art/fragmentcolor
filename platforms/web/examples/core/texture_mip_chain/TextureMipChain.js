@@ -1,12 +1,11 @@
 import { Renderer, TextureFormat, TextureMipChain } from "fragmentcolor";
 
 const renderer = new Renderer();
-// Encoded image bytes the caller has on hand (could come off a worker).
-const png = [
-    0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
-    // ... full PNG body ...
-];
-const chain = TextureMipChain.prepare((png, TextureFormat.Rgba8UnormSrgb));
+// Minimal 1x1 encoded PNG bytes.
+const b64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGM4ceIEAAS0AlkWLoFAAAAAAElFTkSuQmCC";
+const pngBytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+// Encoded path: size=null, bytes decoded as an image.
+const chain = TextureMipChain.prepare(pngBytes, TextureFormat.Rgba8UnormSrgb, null);
 
 // Hand the chain to the unified create_texture entry - same vocabulary as
 // every other texture path; From<TextureMipChain> selects the GPU-only

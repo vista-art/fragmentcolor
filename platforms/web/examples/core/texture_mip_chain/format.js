@@ -1,9 +1,6 @@
 import { TextureFormat, TextureMipChain } from "fragmentcolor";
 
-const pixels = Array(4 * 4 * 4).fill(200);
-const chain = TextureMipChain.prepare((
-    pixels.asSlice(),
-    TextureFormat.Rgba8UnormSrgb,
-    [4, 4],
-));
-const _ = chain.format();
+const b64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGM4ceIEAAS0AlkWLoFAAAAAAElFTkSuQmCC";
+const pngBytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+const chain = TextureMipChain.prepare(pngBytes, TextureFormat.Rgba8UnormSrgb, null);
+const fmt = chain.format();
