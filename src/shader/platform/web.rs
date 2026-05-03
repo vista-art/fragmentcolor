@@ -187,6 +187,7 @@ impl Shader {
     }
 
     #[wasm_bindgen(js_name = "default")]
+    #[lsp_doc("docs/api/core/shader/default.md")]
     pub fn default_js() -> Self {
         Shader::default()
     }
