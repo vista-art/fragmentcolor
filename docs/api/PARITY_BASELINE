@@ -8,7 +8,3 @@
 #   gap:<canonical_doc>:<comma_separated_missing_platforms>
 #   unresolved:<lsp_doc_path>:<comma_separated_credited_platforms>
 
-gap:docs/api/core/shader/default.md:web
-gap:docs/api/targets/texture_target/get_image.md:web
-gap:docs/api/targets/texture_target/resize.md:web
-gap:docs/api/targets/texture_target/size.md:web
