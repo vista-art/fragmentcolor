@@ -704,6 +704,14 @@ mod website {
         py_out.push_str("            runpy.run_path(str(base / rel), run_name='__main__')\n");
         py_out.push_str("            passed += 1\n");
         py_out.push_str("            print(head + GREEN + 'OK' + RESET)\n");
+        py_out.push_str("        except SystemExit as _e:\n");
+        py_out.push_str("            if _e.code == 0:\n");
+        py_out.push_str("                passed += 1\n");
+        py_out.push_str("                print(head + GREEN + 'OK' + RESET)\n");
+        py_out.push_str("            else:\n");
+        py_out.push_str("                failed += 1\n");
+        py_out.push_str("                print(head + RED + 'FAILED' + RESET)\n");
+        py_out.push_str("                traceback.print_exc()\n");
         py_out.push_str("        except Exception:\n");
         py_out.push_str("            failed += 1\n");
         py_out.push_str("            print(head + RED + 'FAILED' + RESET)\n");
