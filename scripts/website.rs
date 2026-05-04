@@ -1045,6 +1045,26 @@ mod website {
             || text.contains("no public example")
     }
 
+    /// `Texture` → `texture`, `TextureMipChain` → `texture_mip_chain`,
+    /// `read_texture` → `read_texture` (already snake). Used by
+    /// `read_lang_override` to fall back to the source-file naming
+    /// convention when the lookup uses the CamelCase struct name as
+    /// `file_stem`.
+    fn camel_to_snake(s: &str) -> String {
+        let mut out = String::with_capacity(s.len() + 4);
+        for (i, ch) in s.chars().enumerate() {
+            if ch.is_ascii_uppercase() {
+                if i > 0 {
+                    out.push('_');
+                }
+                out.push(ch.to_ascii_lowercase());
+            } else {
+                out.push(ch);
+            }
+        }
+        out
+    }
+
     fn read_lang_override(
         root: &std::path::Path,
         cat_rel: &str,
@@ -1052,21 +1072,36 @@ mod website {
         file_stem: &str,
         lang_suffix: &str,
     ) -> Option<String> {
-        let hidden = if cat_rel.is_empty() {
-            root.join("docs/api")
-                .join(obj_dir_slug)
-                .join("hidden")
-                .join(format!("{}_{}.md", file_stem, lang_suffix))
+        // Class entry-point examples use the CamelCase struct name as the
+        // `file_stem` (e.g. `Texture`, `TextureMipChain`), so the natural
+        // override path is `Texture_py.md`. The earlier convention put the
+        // override at the snake_cased source-file stem (`texture_py.md`) —
+        // both happen to coexist in `git ls-files` because macOS HFS+ is
+        // case-insensitive. On Linux (case-sensitive) the lookup misses,
+        // the override is silently ignored, and the fall-through Rust→
+        // target conversion produces wrong API shape (e.g. CI's
+        // `Texture.py` ends up with `create_texture((pixels, [1, 1]))`
+        // tuple form instead of the kwargs the override carries).
+        //
+        // Try the exact stem first, then the snake_cased form, so both
+        // override naming conventions resolve identically across OSes.
+        let dir = if cat_rel.is_empty() {
+            root.join("docs/api").join(obj_dir_slug).join("hidden")
         } else {
             root.join("docs/api")
                 .join(cat_rel)
                 .join(obj_dir_slug)
                 .join("hidden")
-                .join(format!("{}_{}.md", file_stem, lang_suffix))
         };
-        if !hidden.exists() {
-            return None;
-        }
+        let candidates = [
+            dir.join(format!("{}_{}.md", file_stem, lang_suffix)),
+            dir.join(format!(
+                "{}_{}.md",
+                camel_to_snake(file_stem),
+                lang_suffix
+            )),
+        ];
+        let hidden = candidates.into_iter().find(|p| p.exists())?;
         let md = std::fs::read_to_string(hidden).ok()?;
         let (lang, code) = extract_first_code_block(&md)?;
         if is_placeholder_example(&code) {
