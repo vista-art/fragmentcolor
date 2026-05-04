@@ -69,17 +69,14 @@ docs/api/targets/target/size.md::Trait method; parity enforced via concrete Wind
 docs/api/targets/target/resize.md::Trait method; parity enforced via concrete WindowTarget/TextureTarget docs.
 docs/api/targets/target/get_image.md::Trait method; parity enforced via concrete WindowTarget/TextureTarget docs.
 
-# ---- Web-only conceptual docs ----
+# ---- Hidden / not-yet-exposed conceptual docs ----
 #
-# docs/api/web/ holds feature-overview pages for capabilities that are
-# structurally exclusive to the WASM/browser platform. The concrete entry
-# points are documented via `docs/api/core/renderer/hidden/create_external_texture.md`
-# (JS) and `docs/api/core/renderer/hidden/create_external_texture_mobile.md`
-# (Swift/Kotlin). This overview page lives in docs/api/web/ precisely because
-# the HTMLVideoElement API and `texture_external` / `textureSampleBaseClampToEdge`
-# combination are browser-native concepts with no meaningful parallel on
-# Python or mobile runtimes.
-docs/api/web/external_texture.md:web:Web-only feature overview; HTMLVideoElement and texture_external are browser-native. Concrete per-platform bindings live in docs/api/core/renderer/hidden/ and credit the canonical create_external_texture path separately.
+# `docs/api/web/external_texture.md` was moved to `docs/api/web/hidden/`
+# because every implementation is still a stub returning
+# RendererError::Error("not implemented yet"). See ROADMAP.md 0.11.1 entry —
+# at least one concrete working example (likely web's HTMLVideoElement path)
+# is required before the public-facing doc returns. Tracked across all
+# platforms in the 0.13.x "Live media" milestone.
 
 # Python has no portable native video-frame source equivalent to
 # HTMLVideoElement / CVPixelBuffer / SurfaceTexture. Callers decode video

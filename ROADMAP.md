@@ -22,6 +22,16 @@ surface, expand examples and tutorials, seed a small shader collection that
 demonstrates the registry mechanism shipped in the 0.11.0 shader-composition
 work.
 
+### 0.11.1 — pre-shipping unblockers
+- [ ] **`external_texture` minimum-viable example.** The cross-platform API
+      surface was renamed in 0.11.0 but every implementation is still a stub
+      returning `RendererError::Error("not implemented yet")`. We can't
+      ship the public-facing `docs/api/web/external_texture.md` until at
+      least one concrete runtime example works end-to-end (web's
+      `HTMLVideoElement` → `wgpu::ExternalTexture` path is the obvious
+      first; full per-platform plumbing is tracked in 0.13.x). Until that
+      example exists the doc stays parked at `docs/api/web/hidden/`.
+
 ### Stability + perf
 - [ ] Centralized device-lost handler: re-request adapter/device, rebuild render context, reconfigure surfaces/targets, clear or rebuild caches/pools safely; docs covering preserved-vs-reinitialized state; simulated-device-lost test where the GPU backend permits
 - [ ] Extend the existing `compute → compute` auto-split (shipped 0.11.0) to also cover the `compute (storage-write) → render (sampled-read)` hazard in a single command buffer (Apple TBDR flush)
