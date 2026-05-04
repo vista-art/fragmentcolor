@@ -498,7 +498,7 @@ impl Renderer {
     }
 
     #[cfg(wasm)]
-    #[lsp_doc("docs/api/web/external_texture.md")]
+    #[lsp_doc("docs/api/web/hidden/external_texture.md")]
     pub fn create_external_texture(
         &self,
         video: &web_sys::HtmlVideoElement,
