@@ -313,7 +313,7 @@ private enum _GeneratedExamples {
         let target = try await r.createTextureTarget([8, 8])
         let shader = Shader.default()
         try r.render(shader, target)
-        try r.waitIdle()
+        r.wait()
         let _bytes = try await target.getImage()
     }
 

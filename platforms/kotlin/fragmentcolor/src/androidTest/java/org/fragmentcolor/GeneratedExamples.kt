@@ -323,7 +323,7 @@ class GeneratedExamples {
         val target = r.createTextureTarget(8u, 8u)
         val shader = Shader.default()
         r.render(shader, target)
-        r.waitIdle()
+        r.wait()
         val _bytes = target.getImage()
     }
 

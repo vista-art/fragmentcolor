@@ -931,7 +931,7 @@ lang="kotlin"
 
 ---
 
-### Renderer::wait_idle()
+### Renderer::wait()
 
 Block the current thread until every submission queued on this renderer's device has finished executing.
 
@@ -954,7 +954,7 @@ let r = Renderer::new();
 let target = r.create_texture_target([8, 8]).await?;
 let shader = Shader::default();
 r.render(&shader, &target)?;
-r.wait_idle()?;
+r.wait()?;
 let _bytes = target.get_image().await;
 Ok(())
 }
@@ -997,7 +997,7 @@ shader = Shader("""
 @fragment fn fs_main() -> @location(0) vec4<f32> { return vec4f(1., 1., 1., 1.); }
 """)
 renderer.render(shader, target)
-renderer.wait_idle()
+renderer.wait()
 bytes = target.get_image()
 `}
 lang="python"
@@ -1014,7 +1014,7 @@ let r = Renderer()
 let target = try await r.createTextureTarget([8, 8])
 let shader = Shader.default()
 try r.render(shader, target)
-try r.waitIdle()
+r.wait()
 let _bytes = try await target.getImage()
 `}
 lang="swift"
@@ -1031,7 +1031,7 @@ val r = Renderer()
 val target = r.createTextureTarget(8u, 8u)
 val shader = Shader.default()
 r.render(shader, target)
-r.waitIdle()
+r.wait()
 val _bytes = target.getImage()
 `}
 lang="kotlin"
