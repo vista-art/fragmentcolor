@@ -3,14 +3,16 @@
 # artifact builds (wasm-pack, maturin, cargo-ndk, xcodebuild). Catches:
 #   * platform-specific compile errors (iOS / wasm / Android targets)
 #   * '-D warnings' lint regressions (matches CI strict mode)
+#   * doctest regressions (CI runs `cargo test`, which includes --doc;
+#     `cargo check` alone does NOT typecheck doctests)
 #   * the build-time API parity audit (runs in build.rs on any cargo
 #     check, so each target invocation re-validates parity)
 #
 # Usage:
-#   ./check           # cargo check --lib on host + iOS + wasm + Android (-D warnings)
-#   ./check fast      # host only (skip cross-target checks)
+#   ./check           # cargo check --lib (host + iOS + wasm + Android, -D warnings) + cargo test --doc
+#   ./check fast      # host check only (skip cross-target checks AND doctests)
 #   ./check lint      # adds cargo fmt --check + cargo clippy across all targets/features
-#   ./check all       # everything: lint + cross-targets + JS lockfile sync check
+#   ./check all       # everything: lint + cross-targets + doctests + JS lockfile sync check
 #
 # Targets are skipped gracefully if the matching `rustup target` isn't
 # installed; the script reports what was skipped at the end.
@@ -88,6 +90,20 @@ if [ "$ARG" != "fast" ]; then
       skip "$target (not installed; rustup target add $target)"
     fi
   done
+fi
+
+# ── doctests (skip in 'fast' mode) ─────────────────────────────────────────
+# `cargo check` does not typecheck doctests, so an async-signature change
+# in the public API can land green locally and break CI's `cargo test`. Run
+# the doctest pass here to mirror what CI actually executes.
+if [ "$ARG" != "fast" ]; then
+  step "cargo test --doc (-D warnings)"
+  if RUSTFLAGS='-D warnings' cargo test --doc; then
+    ok "doctests"
+    RAN+=("doctests")
+  else
+    fail "doctests"
+  fi
 fi
 
 # ── lint mode: format + clippy across all targets/features ────────────────

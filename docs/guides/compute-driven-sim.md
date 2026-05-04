@@ -140,7 +140,7 @@ pass_fs.add_mesh(&mesh)?;
 renderer.render(&vec![pass_cs, pass_fs], &target)?;
 
 // 8) Quick check
-let image = target.get_image();
+let image = target.get_image().await;
 assert_eq!(image.len(), 64 * 64 * 4);
 # Ok(())
 # }

@@ -18,7 +18,7 @@ let target = r.create_texture_target([8, 8]).await?;
 let shader = Shader::default();
 r.render(&shader, &target)?;
 r.wait_idle()?;
-let _bytes = target.get_image();
+let _bytes = target.get_image().await;
 # Ok(())
 # }
 # fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
