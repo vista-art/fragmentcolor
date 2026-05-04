@@ -89,7 +89,7 @@ impl Pass {
 
     #[lsp_doc("docs/api/core/pass/from_shader.md")]
     pub fn from_shader(name: &str, shader: &Shader) -> Self {
-        let obj = Arc::new(PassObject::from_shader_object(name, shader.object.clone()));
+        let obj = Arc::new(PassObject::from_shader(name, shader.object.clone()));
         PassObject::ensure_flat_current(&obj);
         Self { object: obj }
     }
@@ -109,17 +109,12 @@ impl Pass {
 
     #[lsp_doc("docs/api/core/pass/add_shader.md")]
     pub fn add_shader(&self, shader: &Shader) {
-        self.object.add_shader(shader);
+        self.object.add_shader(shader.object.clone());
     }
 
     #[lsp_doc("docs/api/core/pass/add_mesh.md")]
     pub fn add_mesh(&self, mesh: &Mesh) -> Result<(), PassError> {
         self.object.add_mesh(mesh)
-    }
-
-    #[lsp_doc("docs/api/core/pass/add_mesh_to_shader.md")]
-    pub fn add_mesh_to_shader(&self, mesh: &Mesh, shader: &Shader) -> Result<(), PassError> {
-        Ok(shader.add_mesh(mesh)?)
     }
 
     #[lsp_doc("docs/api/core/pass/set_viewport.md")]
@@ -143,7 +138,7 @@ impl Pass {
         T: TryInto<ColorTarget, Error = PassError>,
     {
         let ct = target.try_into()?;
-        self.object.set_color_target_id(ct.id);
+        self.object.set_color_target(ct.id);
         Ok(())
     }
 
@@ -153,7 +148,7 @@ impl Pass {
         T: TryInto<DepthTarget, Error = PassError>,
     {
         let dt = target.try_into()?;
-        self.object.set_depth_target_id(dt.id);
+        self.object.set_depth_target(dt.id);
         Ok(())
     }
 
@@ -381,18 +376,35 @@ impl PassObject {
     }
 
     /// Add a shader to this pass. The shader must be compatible with the pass type.
-    pub fn add_shader(&self, shader: &Shader) {
-        self.add_shader_object(shader.object.clone())
+    pub(crate) fn add_shader(&self, shader: Arc<ShaderObject>) {
+        // If this is the first shader added, adopt the shader kind for the pass.
+        {
+            let shaders = self.shaders.read();
+            if shaders.is_empty() {
+                let pass_type = match shader.is_compute() {
+                    true => PassType::Compute,
+                    false => PassType::Render,
+                };
+                *self.pass_type.write() = pass_type;
+            }
+        }
+
+        if shader.is_compute() == self.is_compute() {
+            *self.required_buffer_size.write() += shader.total_bytes;
+            self.shaders.write().push(shader);
+        } else {
+            log::warn!("Cannot add a compute shader to a render pass or vice versa");
+        }
     }
 
-    pub fn set_color_target_id(&self, id: crate::texture::TextureId) {
+    pub fn set_color_target(&self, id: crate::texture::TextureId) {
         *self.color_target.write() = Some(id);
         // Selecting a color target marks this pass as intermediate by default
         *self.present_to_target.write() = false;
     }
 
     /// Set per-pass depth attachment by TextureId.
-    pub fn set_depth_target_id(&self, id: crate::texture::TextureId) {
+    pub fn set_depth_target(&self, id: crate::texture::TextureId) {
         *self.depth_target.write() = Some(id);
     }
 
@@ -420,36 +432,14 @@ impl PassObject {
         matches!(*self.pass_type.read(), PassType::Compute)
     }
 
-    pub(crate) fn from_shader_object(name: &str, shader: Arc<ShaderObject>) -> Self {
+    pub(crate) fn from_shader(name: &str, shader: Arc<ShaderObject>) -> Self {
         let pass_type = match shader.is_compute() {
             true => PassType::Compute,
             false => PassType::Render,
         };
         let object = Self::new(name, pass_type);
-        object.add_shader_object(shader);
+        object.add_shader(shader);
         object
-    }
-
-    /// Internal method to add a shader object to this pass.
-    fn add_shader_object(&self, shader: Arc<ShaderObject>) {
-        // If this is the first shader added, adopt the shader kind for the pass.
-        {
-            let shaders = self.shaders.read();
-            if shaders.is_empty() {
-                let pass_type = match shader.is_compute() {
-                    true => PassType::Compute,
-                    false => PassType::Render,
-                };
-                *self.pass_type.write() = pass_type;
-            }
-        }
-
-        if shader.is_compute() == self.is_compute() {
-            *self.required_buffer_size.write() += shader.total_bytes;
-            self.shaders.write().push(shader.clone());
-        } else {
-            log::warn!("Cannot add a compute shader to a render pass or vice versa");
-        }
     }
 
     // Link a list of dependencies into this node, maintain sibling order, rebuild caches, and propagate.
@@ -620,7 +610,7 @@ impl From<Shader> for Pass {
 
 impl From<Arc<ShaderObject>> for PassObject {
     fn from(shader: Arc<ShaderObject>) -> Self {
-        Self::from_shader_object("Default Pass from ShaderObject", shader)
+        Self::from_shader("Default Pass from ShaderObject", shader)
     }
 }
 
@@ -712,34 +702,6 @@ mod tests {
         let p = Pass::compute("c");
         p.set_compute_dispatch(0, 2, 0);
         assert_eq!(*p.object.compute_dispatch.read(), (1, 2, 1));
-    }
-
-    // Story: adding a mesh explicitly to a shader via pass helper succeeds when compatible.
-    #[test]
-    fn add_mesh_to_shader_happy_path() {
-        // Shader that expects @location(0) position (vec2)
-        let wgsl = r#"
-struct VOut { @builtin(position) pos: vec4<f32> };
-@vertex
-fn vs_main(@location(0) position: vec2<f32>) -> VOut {
-  var out: VOut;
-  out.pos = vec4<f32>(position, 0.0, 1.0);
-  return out;
-}
-@fragment
-fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.0, 0.0, 0.0, 1.0); }
-        "#;
-        let shader = Shader::new(wgsl).expect("shader with pos input");
-        let pass = Pass::from_shader("p", &shader);
-        let mesh = Mesh::new();
-        use crate::mesh::Vertex;
-        mesh.add_vertices([
-            Vertex::new([-0.5f32, -0.5f32]),
-            Vertex::new([0.5f32, -0.5f32]),
-            Vertex::new([0.0f32, 0.5f32]),
-        ]);
-        let res = pass.add_mesh_to_shader(&mesh, &shader);
-        assert!(res.is_ok(), "mesh should be compatible: {:?}", res);
     }
 
     // Story: ColorTarget/DepthTarget validations pass/fail as per format and usage.

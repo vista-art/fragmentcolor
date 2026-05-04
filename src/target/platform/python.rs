@@ -89,7 +89,7 @@ impl RenderCanvasTarget {
     /// Use a `TextureTarget` and call `get_image()` there instead.
     #[lsp_doc("docs/api/targets/window_target/get_image.md")]
     pub fn get_image(&self) -> Vec<u8> {
-        <Self as Target>::get_image(self)
+        Vec::new()
     }
 
     // We can't export a impl Trait block with Pyo3, so this is a
@@ -174,8 +174,7 @@ impl Target for RenderCanvasTarget {
         }))
     }
 
-    fn get_image(&self) -> Vec<u8> {
-        // Window-backed targets are not readback-friendly; prefer TextureTarget for screenshots.
+    async fn get_image(&self) -> Vec<u8> {
         Vec::new()
     }
 }
@@ -243,7 +242,7 @@ impl PyTextureTarget {
     #[lsp_doc("docs/api/targets/texture_target/get_image.md")]
     pub fn get_image(&self) -> Result<Py<numpy::PyArray3<u8>>, PyErr> {
         const BPP: usize = 4; // Bytes per pixel (RGBA8)
-        let data = <crate::TextureTarget as Target>::get_image(&self.inner);
+        let data = pollster::block_on(self.inner.get_image());
         let width = self.size().width as usize;
         let height = self.size().height as usize;
 
@@ -315,7 +314,7 @@ impl Target for PyTextureTarget {
         self.inner.get_current_frame()
     }
 
-    fn get_image(&self) -> Vec<u8> {
-        <crate::TextureTarget as Target>::get_image(&self.inner)
+    async fn get_image(&self) -> Vec<u8> {
+        self.inner.get_image().await
     }
 }

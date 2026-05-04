@@ -120,7 +120,7 @@ let png = [
     0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
     // ... full PNG body ...
 ]
-let chain = TextureMipChain.prepare((png, TextureFormat.Rgba8UnormSrgb))
+let chain = try TextureMipChain.prepare((png, TextureFormat.rgba8UnormSrgb))
 
 // Hand the chain to the unified create_texture entry - same vocabulary as
 // every other texture path; From<TextureMipChain> selects the GPU-only
@@ -139,16 +139,13 @@ import org.fragmentcolor.*
 
 val renderer = Renderer()
 // Encoded image bytes the caller has on hand (could come off a worker).
-val png = [
-    0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
-    // ... full PNG body ...
-]
-val chain = TextureMipChain.prepare((png, TextureFormat.Rgba8UnormSrgb))
+val png = byteArrayOf(0x89.toByte(), 0x50.toByte(), 0x4E.toByte(), 0x47.toByte(), 0x0D.toByte(), 0x0A.toByte(), 0x1A.toByte(), 0x0A.toByte())
+val chain = TextureMipChain.prepare(png, TextureFormat.RGBA8_UNORM_SRGB, null)
 
 // Hand the chain to the unified create_texture entry - same vocabulary as
 // every other texture path; From<TextureMipChain> selects the GPU-only
 // upload internally.
-val texture = renderer.createTexture(chain)
+val texture = renderer.createTexture(TextureInputMobile.Prepared(chain), null)
 `}
 lang="kotlin"
 />
@@ -232,17 +229,17 @@ lang="rust" meta="collapse={1-1, 4-8, 12-12, 23-27}"
 code={`
 import { Renderer, TextureFormat, TextureMipChain } from "fragmentcolor";
 
-// Encoded path Ã¢ÂÂ single tuple, no extra method.
+// Encoded path â single tuple, no extra method.
 const chain = TextureMipChain.prepare((encoded_png_bytes, TextureFormat.Rgba8UnormSrgb));
 
-// Raw pixel path Ã¢ÂÂ same method, just include the size in the tuple.
+// Raw pixel path â same method, just include the size in the tuple.
 const chain_raw = TextureMipChain.prepare((
     raw_rgba.asSlice(),
     TextureFormat.Rgba8UnormSrgb,
     [8, 8],
 ));
 
-// Hand the chain to the unified create_texture entry Ã¢ÂÂ same vocabulary.
+// Hand the chain to the unified create_texture entry â same vocabulary.
 const renderer = new Renderer();
 const texture = await renderer.createTexture(chain);
 `}
@@ -274,17 +271,17 @@ lang="python"
 code={`
 import FragmentColor
 
-// Encoded path Ã¢ÂÂ single tuple, no extra method.
-let chain = TextureMipChain.prepare((encoded_png_bytes, TextureFormat.Rgba8UnormSrgb))
+// Encoded path â single tuple, no extra method.
+let chain = try TextureMipChain.prepare((encoded_png_bytes, TextureFormat.rgba8UnormSrgb))
 
-// Raw pixel path Ã¢ÂÂ same method, just include the size in the tuple.
-let chain_raw = TextureMipChain.prepare((
-    raw_rgba.asSlice(),
-    TextureFormat.Rgba8UnormSrgb,
+// Raw pixel path â same method, just include the size in the tuple.
+let chain_raw = try TextureMipChain.prepare((
+    raw_rgba,
+    TextureFormat.rgba8UnormSrgb,
     [8, 8],
 ))
 
-// Hand the chain to the unified create_texture entry Ã¢ÂÂ same vocabulary.
+// Hand the chain to the unified create_texture entry â same vocabulary.
 let renderer = Renderer()
 let texture = try await renderer.createTexture(chain)
 `}
@@ -298,19 +295,17 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 
-// Encoded path Ã¢ÂÂ single tuple, no extra method.
-val chain = TextureMipChain.prepare((encoded_png_bytes, TextureFormat.Rgba8UnormSrgb))
+// Encoded path â single tuple, no extra method.
+val encoded_png_bytes: ByteArray = byteArrayOf()
+val chain = TextureMipChain.prepare(encoded_png_bytes, TextureFormat.RGBA8_UNORM_SRGB, null)
 
-// Raw pixel path Ã¢ÂÂ same method, just include the size in the tuple.
-val chain_raw = TextureMipChain.prepare((
-    raw_rgba.asSlice(),
-    TextureFormat.Rgba8UnormSrgb,
-    arrayOf(8, 8),
-))
+// Raw pixel path â same method, just include the size in the tuple.
+val raw_rgba: ByteArray = ByteArray(8 * 8 * 4)
+val chain_raw = TextureMipChain.prepare(raw_rgba, TextureFormat.RGBA8_UNORM_SRGB, Size(width=8u, height=8u, depth=null))
 
-// Hand the chain to the unified create_texture entry Ã¢ÂÂ same vocabulary.
+// Hand the chain to the unified create_texture entry â same vocabulary.
 val renderer = Renderer()
-val texture = renderer.createTexture(chain)
+val texture = renderer.createTexture(TextureInputMobile.Prepared(chain), null)
 `}
 lang="kotlin"
 />
@@ -387,9 +382,9 @@ code={`
 import FragmentColor
 
 let pixels = Array(repeating: 200, count: 4 * 4 * 4)
-let chain = TextureMipChain.prepare((
-    pixels.asSlice(),
-    TextureFormat.Rgba8UnormSrgb,
+let chain = try TextureMipChain.prepare((
+    pixels,
+    TextureFormat.rgba8UnormSrgb,
     [4, 4],
 ))
 let _ = chain.format()
@@ -404,13 +399,9 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 
-val pixels = Array(4 * 4 * 4) { 200 }
-val chain = TextureMipChain.prepare((
-    pixels.asSlice(),
-    TextureFormat.Rgba8UnormSrgb,
-    arrayOf(4, 4),
-))
-val _ = chain.format()
+val pixels = ByteArray(4 * 4 * 4)
+val chain = TextureMipChain.prepare(pixels, TextureFormat.RGBA8_UNORM_SRGB, Size(width=4u, height=4u, depth=null))
+
 `}
 lang="kotlin"
 />
@@ -492,13 +483,13 @@ code={`
 import FragmentColor
 
 let pixels = Array(repeating: 0, count: 16 * 16 * 4)
-let chain = TextureMipChain.prepare((
-    pixels.asSlice(),
-    TextureFormat.Rgba8UnormSrgb,
+let chain = try TextureMipChain.prepare((
+    pixels,
+    TextureFormat.rgba8UnormSrgb,
     [16, 16],
 ))
-let (width, height) = chain.baseSize()
-let _ = (width, height)
+let size = chain.baseSize()
+let _ = size
 `}
 lang="swift"
 />
@@ -510,14 +501,12 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 
-val pixels = Array(16 * 16 * 4) { 0 }
-val chain = TextureMipChain.prepare((
-    pixels.asSlice(),
-    TextureFormat.Rgba8UnormSrgb,
-    arrayOf(16, 16),
-))
-val (width, height) = chain.baseSize()
-val _ = (width, height)
+val pixels = ByteArray(16 * 16 * 4)
+val chain = TextureMipChain.prepare(pixels, TextureFormat.RGBA8_UNORM_SRGB, Size(width=16u, height=16u, depth=null))
+val tmp_size = chain.baseSize()
+val width = tmp_size.width
+val height = tmp_size.height
+
 `}
 lang="kotlin"
 />
@@ -600,9 +589,9 @@ code={`
 import FragmentColor
 
 let pixels = Array(repeating: 0, count: 8 * 8 * 4)
-let chain = TextureMipChain.prepare((
-    pixels.asSlice(),
-    TextureFormat.Rgba8UnormSrgb,
+let chain = try TextureMipChain.prepare((
+    pixels,
+    TextureFormat.rgba8UnormSrgb,
     [8, 8],
 ))
 let level_zero_bytes = chain.levels()[0]
@@ -618,14 +607,10 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 
-val pixels = Array(8 * 8 * 4) { 0 }
-val chain = TextureMipChain.prepare((
-    pixels.asSlice(),
-    TextureFormat.Rgba8UnormSrgb,
-    arrayOf(8, 8),
-))
-val level_zero_bytes = chain.levels()[0]
-val _ = level_zero_bytes
+val pixels = ByteArray(8 * 8 * 4)
+val chain = TextureMipChain.prepare(pixels, TextureFormat.RGBA8_UNORM_SRGB, Size(width=8u, height=8u, depth=null))
+val level_zero_bytes = chain.level(0u)
+
 `}
 lang="kotlin"
 />
@@ -706,9 +691,9 @@ code={`
 import FragmentColor
 
 let pixels = Array(repeating: 0, count: 8 * 8 * 4)
-let chain = TextureMipChain.prepare((
-    pixels.asSlice(),
-    TextureFormat.Rgba8UnormSrgb,
+let chain = try TextureMipChain.prepare((
+    pixels,
+    TextureFormat.rgba8UnormSrgb,
     [8, 8],
 ))
 let count = chain.levelCount()
@@ -724,14 +709,10 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 
-val pixels = Array(8 * 8 * 4) { 0 }
-val chain = TextureMipChain.prepare((
-    pixels.asSlice(),
-    TextureFormat.Rgba8UnormSrgb,
-    arrayOf(8, 8),
-))
+val pixels = ByteArray(8 * 8 * 4)
+val chain = TextureMipChain.prepare(pixels, TextureFormat.RGBA8_UNORM_SRGB, Size(width=8u, height=8u, depth=null))
 val count = chain.levelCount()
-val _ = count
+
 `}
 lang="kotlin"
 />

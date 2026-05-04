@@ -107,49 +107,17 @@ fn extract_pixels(plan: &ReadbackPlan) -> Vec<u8> {
 }
 
 /// Read the mip-0 contents of `texture` as tightly-packed bytes in the texture's
-/// native format. Blocks the current thread until the readback buffer is mapped.
-///
-/// On WASM the browser thread cannot block, so the poll fails and this returns an
-/// empty Vec with a logged error — prefer [`read_texture_object_async`] there.
-pub(crate) fn read_texture_object_sync(
-    context: &RenderContext,
-    texture: &TextureObject,
-) -> Result<Vec<u8>, TextureError> {
-    let plan = prepare_readback(context, texture, "Texture readback encoder (sync)")?;
-
-    let slice = plan.buffer.slice(..);
-    let (tx, rx) = std::sync::mpsc::channel();
-    slice.map_async(wgpu::MapMode::Read, move |r| {
-        let _ = tx.send(r);
-    });
-
-    if let Err(e) = context.device.poll(wgpu::PollType::Wait {
-        submission_index: None,
-        timeout: Some(std::time::Duration::from_secs(5)),
-    }) {
-        log::error!("Device poll error during readback mapping: {:?}", e);
-        #[cfg(wasm)]
-        {
-            log::error!("Ensure the page is cross-origin isolated to enable readbacks.");
-        }
-        return Ok(Vec::new());
-    }
-    let _ = rx.recv();
-
-    Ok(extract_pixels(&plan))
-}
-
-/// Async variant of [`read_texture_object_sync`] that works on both native and WASM.
+/// native format.
 ///
 /// On native the caller must still drive the device forward for the map callback to fire;
 /// this function does a synchronous `device.poll(Wait)` before awaiting so callers do not
 /// have to. On web the browser schedules the callback automatically, so the poll is a
 /// no-op / ignored.
-pub(crate) async fn read_texture_object_async(
+pub(crate) async fn read_pixels(
     context: &RenderContext,
     texture: &TextureObject,
 ) -> Result<Vec<u8>, TextureError> {
-    let plan = prepare_readback(context, texture, "Texture readback encoder (async)")?;
+    let plan = prepare_readback(context, texture, "Texture readback encoder")?;
 
     let slice = plan.buffer.slice(..);
     let (tx, rx) = futures::channel::oneshot::channel();
@@ -171,6 +139,6 @@ pub(crate) async fn read_texture_object_async(
     Ok(extract_pixels(&plan))
 }
 
-pub(super) async fn get_image_async(texture: &Texture) -> Result<Vec<u8>, TextureError> {
-    read_texture_object_async(&texture.context, &texture.object).await
+pub(super) async fn get_image(texture: &Texture) -> Result<Vec<u8>, TextureError> {
+    read_pixels(&texture.context, &texture.object).await
 }

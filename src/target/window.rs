@@ -45,11 +45,12 @@ impl Target for WindowTarget {
         Ok(Box::new(frame))
     }
 
+    /// Reading back from a presentable surface needs `COPY_SRC` on the
+    /// swapchain config, which we don't request yet. Returns an empty
+    /// `Vec` for now; render to a [`TextureTarget`] instead when readback
+    /// is required (CI image comparison, screenshot tooling).
     #[lsp_doc("docs/api/targets/target/get_image.md")]
-    fn get_image(&self) -> Vec<u8> {
-        // Reading back from a presentable surface is not portable across backends,
-        // especially on WebGPU/WebGL. Prefer rendering to a TextureTarget when
-        // readback is required (e.g., for CI image comparison).
+    async fn get_image(&self) -> Vec<u8> {
         Vec::new()
     }
 }

@@ -83,7 +83,21 @@ pub trait Target {
 
     fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, SurfaceError>;
 
-    fn get_image(&self) -> Vec<u8>;
+    /// Read back the target's current contents as packed RGBA8 bytes
+    /// (row-major, top-left origin). Async because GPU readback is
+    /// asynchronous on every backend (browser `mapAsync` / native
+    /// `device.poll(Wait)`).
+    ///
+    /// The shape is uniform across all `Target` implementations so callers
+    /// can write portable code (`target.get_image().await`). What each
+    /// impl actually returns:
+    /// - `TextureTarget` — the offscreen texture's pixels.
+    /// - `WindowTarget` — empty `Vec` for now; screen capture from a
+    ///   presentable surface needs `COPY_SRC` on the swapchain config and
+    ///   isn't yet wired up. Use a `TextureTarget` when readback is
+    ///   required (CI image comparison, screenshot tooling).
+    #[allow(async_fn_in_trait)]
+    async fn get_image(&self) -> Vec<u8>;
 }
 
 pub trait TargetFrame {

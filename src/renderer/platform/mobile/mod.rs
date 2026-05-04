@@ -203,7 +203,7 @@ impl Renderer {
     /// bytes in the texture's native format. Uniffi exposes this as a Swift
     /// `async throws` / Kotlin `suspend fun` automatically. Foreign callers
     /// await this in a coroutine or `Task`; the underlying GPU readback is
-    /// driven by the async `read_texture_object_async` path.
+    /// driven by the async `texture::read::read_pixels` path.
     #[uniffi::method(name = "readTexture")]
     #[lsp_doc("docs/api/core/renderer/read_texture.md")]
     pub async fn read_texture_mobile(
@@ -255,7 +255,7 @@ impl Renderer {
         source_ptr: u64,
     ) -> Result<Arc<crate::renderer::external_texture::ExternalTextureHandle>, FragmentColorError>
     {
-        crate::renderer::external_texture::create_external_texture_from_native(&self, source_ptr)
+        crate::renderer::external_texture::ExternalTextureHandle::from_native(&self, source_ptr)
             .map_err(FragmentColorError::from)
     }
 }

@@ -13,5 +13,5 @@ Compute vs render
 - `Pass::is_compute()` reflects whether every attached shader is compute; a pass adopts the kind of the first attached shader.
 
 Mesh handling
-- `Pass::add_mesh(mesh)` and `Pass::add_mesh_to_shader(mesh, shader)` delegate to the relevant shader; `Pass` never owns mesh validation itself.
+- `Pass::add_mesh(mesh)` delegates to the last compatible shader. For per-shader attachment, callers use `Shader::add_mesh(mesh)` directly. `Pass` never owns mesh validation itself.
 - Rejecting incompatible meshes is the shader's job; passes propagate the resulting `PassError` unchanged.

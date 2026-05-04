@@ -268,7 +268,7 @@ code={`
 
 import FragmentColor
 
-let shader = Shader("""
+let shader = try Shader("""
     @vertex
     fn vs_main(@builtin(vertex_index) index: u32) -> @builtin(position) vec4<f32> {
         var pos = array<vec2<f32>, 3>(
@@ -290,12 +290,12 @@ let shader = Shader("""
 """)
 
 // Set the "resolution" uniform
-shader.set("resolution", [800.0, 600.0])
-let res = shader.get("resolution")
+try shader.set("resolution", [800.0, 600.0])
+let res = try shader.get("resolution")
 
 let renderer = Renderer()
 let target = try await renderer.createTextureTarget([16, 16])
-renderer.render(shader, target)
+try renderer.render(shader, target)
 `}
 lang="swift"
 />
@@ -330,11 +330,11 @@ val shader = Shader("""
 """)
 
 // Set the "resolution" uniform
-shader.set("resolution", arrayOf(800.0, 600.0))
+shader.set("resolution", floatArrayOf(800.0f, 600.0f))
 val res = shader.get("resolution")
 
 val renderer = Renderer()
-val target = renderer.createTextureTarget(arrayOf(16, 16))
+val target = renderer.createTextureTarget(16u, 16u)
 renderer.render(shader, target)
 `}
 lang="kotlin"
@@ -504,7 +504,7 @@ code={`
 
 import FragmentColor
 
-let shader = Shader("""
+let shader = try Shader("""
     @vertex
     fn vs_main(@builtin(vertex_index) index: u32) -> @builtin(position) vec4<f32> {
         var pos = array<vec2<f32>, 3>(
@@ -540,7 +540,7 @@ let main = """
 
 """
 
-let shader = Shader.new([
+let shader = try Shader.new([
     "sdf2d/circle",      // pure function: fn circle(p: vec2<f32>, r: f32) -> f32
     "noise/simplex2",    // pure function: fn simplex2(v: vec2<f32>) -> f32
     main,
@@ -593,11 +593,145 @@ val main = """
 
 """
 
-val shader = Shader.new([
-    "sdf2d/circle",      // pure function: fn circle(p: vec2<f32>, r: f32) -> f32
-    "noise/simplex2",    // pure function: fn simplex2(v: vec2<f32>) -> f32
-    main,
-])
+val shader2 = Shader.compose(listOf("sdf2d/circle", "noise/simplex2", main,))
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Shader::fetch(input)
+
+Async constructor that resolves a URL, registry slug, file path, or raw WGSL
+source and returns a compiled `Shader`. Available on all four platforms.
+
+Each part of `input` is classified as one of:
+
+- **Raw WGSL source** â used directly, no I/O.
+- **URL** (`https://...`) â fetched over the network.
+- **Registry slug** (`"category/name"`) â looked up in the slug registry (or
+  served from the embedded library if the matching `shaders-<category>` feature
+  is compiled in).
+- **File path** (starts with `/`, `./`, `../`, `~/`, or ends with `.wgsl` /
+  `.glsl` / `.frag` / `.vert`) â read from disk (native platforms only).
+
+Parts are deduplicated by source hash and concatenated in order before
+compilation. On WASM, `Shader::new` cannot perform network I/O because
+constructors cannot be async; `Shader.fetch` is the required path there.
+On Python, Swift, and Kotlin, `Shader.fetch` and `Shader.new` are both
+available: `new` resolves URLs synchronously (blocking), while `fetch`
+is the idiomatic async path.
+
+#### Platform notes
+
+| Platform | Spelling | Async mechanism |
+|----------|----------|-----------------|
+| Web (JS) | `await Shader.fetch(input)` | `Promise` via `wasm_bindgen` async |
+| Python   | `Shader.fetch(input)` | Blocks the calling thread via `pollster::block_on` |
+| Swift    | `try await Shader.fetch(input)` | `async throws` via uniffi async method |
+| Kotlin   | `ShaderFetch(input)` | `suspend fun` via uniffi async method |
+
+> **Note (Swift / Kotlin):** uniffi 0.31 does not support async constructors.
+> The underlying uniffi binding is an `async` instance method; the Swift
+> `Shader.fetch(_:)` and Kotlin `ShaderFetch(...)` wrappers handle the
+> throw-away receiver internally so callers see a clean static factory.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+
+use fragmentcolor::Shader;
+
+// Single URL
+let shader = Shader::fetch("https://fragmentcolor.org/shaders/sdf2d/circle.wgsl").await?;
+
+// Registry slug
+let shader2 = Shader::fetch("sdf2d/circle").await?;
+
+let _ = (shader, shader2);
+Ok(())
+}
+fn main() { let _ = pollster::block_on(run()); }
+`}
+lang="rust" meta="collapse={1-1, 11-14}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+
+import { Shader } from "fragmentcolor";
+
+// Single URL
+const shader = await Shader.fetch("https://fragmentcolor.org/shaders/sdf2d/circle.wgsl");
+
+// Registry slug
+const shader2 = await Shader.fetch("sdf2d/circle");
+
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+
+from fragmentcolor import Shader
+
+# Single URL
+shader = Shader.fetch("https://fragmentcolor.org/shaders/sdf2d/circle.wgsl")
+
+# Registry slug
+shader2 = Shader.fetch("sdf2d/circle")
+
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+
+import FragmentColor
+
+// Single URL
+let shader = try await Shader.fetch("https://fragmentcolor.org/shaders/sdf2d/circle.wgsl")
+
+// Registry slug
+let shader2 = try await Shader.fetch("sdf2d/circle")
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+
+import org.fragmentcolor.*
+
+// Single URL
+val shader = Shader.fetch("https://fragmentcolor.org/shaders/sdf2d/circle.wgsl")
+
+// Registry slug
+val shader2 = Shader.fetch("sdf2d/circle")
 `}
 lang="kotlin"
 />
@@ -707,7 +841,7 @@ lang="python"
 code={`
 import FragmentColor
 let r = Renderer()
-let shader = Shader("""
+let shader = try Shader("""
 @group(0) @binding(0) var<uniform> resolution: vec2<f32>
 
 struct VOut { @builtin(position) pos: vec4<f32> }
@@ -722,7 +856,7 @@ struct VOut { @builtin(position) pos: vec4<f32> }
 """)
 
 // Set scalars/vectors on declared uniforms
-shader.set("resolution", [800.0, 600.0])
+try shader.set("resolution", [800.0, 600.0])
 `}
 lang="swift"
 />
@@ -749,7 +883,7 @@ struct VOut { @builtin(position) pos: vec4<f32> }
 """)
 
 // Set scalars/vectors on declared uniforms
-shader.set("resolution", arrayOf(800.0, 600.0))
+shader.set("resolution", floatArrayOf(800.0f, 600.0f))
 `}
 lang="kotlin"
 />
@@ -824,8 +958,8 @@ code={`
 import FragmentColor
 
 let shader = Shader.default()
-shader.set("resolution", [800.0, 600.0])
-let res = shader.get("resolution")
+try shader.set("resolution", [800.0, 600.0])
+let res = try shader.get("resolution")
 `}
 lang="swift"
 />
@@ -838,7 +972,7 @@ code={`
 import org.fragmentcolor.*
 
 val shader = Shader.default()
-shader.set("resolution", arrayOf(800.0, 600.0))
+shader.set("resolution", floatArrayOf(800.0f, 600.0f))
 val res = shader.get("resolution")
 `}
 lang="kotlin"
@@ -1088,7 +1222,7 @@ lang="python"
 code={`
 import FragmentColor
 
-let vertex = Vertex([0.0, 0.0, 0.0])
+let vertex = try Vertex([0.0, 0.0, 0.0])
 let shader = Shader.fromVertex(vertex)
 `}
 lang="swift"
@@ -1101,7 +1235,7 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 
-val vertex = Vertex(arrayOf(0.0, 0.0, 0.0))
+val vertex = Vertex(listOf(0.0f, 0.0f, 0.0f))
 val shader = Shader.fromVertex(vertex)
 `}
 lang="kotlin"
@@ -1186,7 +1320,7 @@ code={`
 import FragmentColor
 
 let mesh = Mesh()
-mesh.addVertex([0.0, 0.0, 0.0])
+try mesh.addVertex([0.0, 0.0, 0.0])
 let shader = Shader.fromMesh(mesh)
 `}
 lang="swift"
@@ -1200,7 +1334,7 @@ code={`
 import org.fragmentcolor.*
 
 val mesh = Mesh()
-mesh.addVertex(arrayOf(0.0, 0.0, 0.0))
+mesh.addVertex(Vertex(listOf(0.0f, 0.0f, 0.0f)))
 val shader = Shader.fromMesh(mesh)
 `}
 lang="kotlin"
@@ -1327,7 +1461,7 @@ lang="python"
 code={`
 import FragmentColor
 
-let shader = Shader("""
+let shader = try Shader("""
   @vertex fn vs_main(@location(0) pos: vec3<f32>) -> @builtin(position) vec4<f32> {
     return vec4<f32>(pos, 1.0)
   }
@@ -1336,10 +1470,10 @@ let shader = Shader("""
 """)
 
 let mesh = Mesh()
-mesh.addVertex([0.0, 0.0, 0.0])
+try mesh.addVertex([0.0, 0.0, 0.0])
 
 // Attach mesh to this shader (errors if incompatible)
-shader.addMesh(mesh)
+try shader.addMesh(mesh)
 
 // Renderer will draw the mesh when rendering this pass.
 // Each Shader represents a RenderPipeline or ComputePipeline
@@ -1365,7 +1499,7 @@ val shader = Shader("""
 """)
 
 val mesh = Mesh()
-mesh.addVertex(arrayOf(0.0, 0.0, 0.0))
+mesh.addVertex(Vertex(listOf(0.0f, 0.0f, 0.0f)))
 
 // Attach mesh to this shader (errors if incompatible)
 shader.addMesh(mesh)
@@ -1491,7 +1625,7 @@ lang="python"
 code={`
 import FragmentColor
 
-let shader = Shader("""
+let shader = try Shader("""
   struct VOut { @builtin(position) pos: vec4<f32> }
   @vertex
   fn vs_main(@location(0) pos: vec2<f32>) -> VOut {
@@ -1505,11 +1639,11 @@ let shader = Shader("""
 """)
 
 let mesh = Mesh()
-mesh.addVertex([0.0, 0.0])
-shader.addMesh(mesh)
+try mesh.addVertex([0.0, 0.0])
+try shader.addMesh(mesh)
 
 // Detach the mesh
-shader.removeMesh(mesh)
+try shader.removeMesh(mesh)
 `}
 lang="swift"
 />
@@ -1535,7 +1669,7 @@ val shader = Shader("""
 """)
 
 val mesh = Mesh()
-mesh.addVertex(arrayOf(0.0, 0.0))
+mesh.addVertex(Vertex(listOf(0.0f, 0.0f)))
 shader.addMesh(mesh)
 
 // Detach the mesh
@@ -1665,7 +1799,7 @@ lang="python"
 code={`
 import FragmentColor
 
-let shader = Shader("""
+let shader = try Shader("""
   struct VOut { @builtin(position) pos: vec4<f32> }
   @vertex
   fn vs_main(@location(0) pos: vec2<f32>) -> VOut {
@@ -1679,12 +1813,12 @@ let shader = Shader("""
 """)
 
 let m1 = Mesh()
-m1.addVertex([0.0, 0.0])
+try m1.addVertex([0.0, 0.0])
 let m2 = Mesh()
-m2.addVertex([0.5, 0.0])
+try m2.addVertex([0.5, 0.0])
 
-shader.addMesh(m1)
-shader.addMesh(m2)
+try shader.addMesh(m1)
+try shader.addMesh(m2)
 
 shader.removeMeshes([m1, m2])
 `}
@@ -1712,14 +1846,14 @@ val shader = Shader("""
 """)
 
 val m1 = Mesh()
-m1.addVertex(arrayOf(0.0, 0.0))
+m1.addVertex(Vertex(listOf(0.0f, 0.0f)))
 val m2 = Mesh()
-m2.addVertex(arrayOf(0.5, 0.0))
+m2.addVertex(Vertex(listOf(0.5f, 0.0f)))
 
 shader.addMesh(m1)
 shader.addMesh(m2)
 
-shader.removeMeshes(arrayOf(m1, m2))
+shader.removeMeshes(listOf(m1, m2))
 `}
 lang="kotlin"
 />
@@ -1836,7 +1970,7 @@ lang="python"
 code={`
 import FragmentColor
 
-let shader = Shader("""
+let shader = try Shader("""
   struct VOut { @builtin(position) pos: vec4<f32> }
   @vertex
   fn vs_main(@location(0) pos: vec2<f32>) -> VOut {
@@ -1850,8 +1984,8 @@ let shader = Shader("""
 """)
 
 let mesh = Mesh()
-mesh.addVertex([0.0, 0.0])
-shader.addMesh(mesh)
+try mesh.addVertex([0.0, 0.0])
+try shader.addMesh(mesh)
 
 // Clear all
 shader.clearMeshes()
@@ -1880,7 +2014,7 @@ val shader = Shader("""
 """)
 
 val mesh = Mesh()
-mesh.addVertex(arrayOf(0.0, 0.0))
+mesh.addVertex(Vertex(listOf(0.0f, 0.0f)))
 shader.addMesh(mesh)
 
 // Clear all
@@ -2023,7 +2157,7 @@ lang="python"
 code={`
 import FragmentColor
 
-let shader = Shader("""
+let shader = try Shader("""
 struct VOut { @builtin(position) pos: vec4<f32> }
 @vertex fn vs_main(@location(0) pos: vec3<f32>) -> VOut {
   var out: VOut
@@ -2036,14 +2170,14 @@ struct VOut { @builtin(position) pos: vec4<f32> }
 let pass = Pass("p"); pass.addShader(shader)
 
 let mesh = Mesh()
-mesh.addVertices([
+try mesh.addVertices([
   [-0.5, -0.5, 0.0],
   [ 0.5, -0.5, 0.0],
   [ 0.0,  0.5, 0.0],
 ])
 
-shader.validateMesh(mesh); // Ok
-pass.addMesh(mesh)
+try shader.validateMesh(mesh); // Ok
+try pass.addMesh(mesh)
 `}
 lang="swift"
 />
@@ -2068,11 +2202,7 @@ struct VOut { @builtin(position) pos: vec4<f32> }
 val pass = Pass("p"); pass.addShader(shader)
 
 val mesh = Mesh()
-mesh.addVertices([
-  arrayOf(-0.5, -0.5, 0.0),
-  arrayOf(0.5, -0.5, 0.0),
-  arrayOf(0.0,  0.5, 0.0),
-])
+mesh.addVertices(listOf(Vertex(listOf(-0.5f, -0.5f, 0.0f)), Vertex(listOf(0.5f, -0.5f, 0.0f)), Vertex(listOf(0.0f, 0.5f, 0.0f))))
 
 shader.validateMesh(mesh); // Ok
 pass.addMesh(mesh)
@@ -2164,7 +2294,7 @@ lang="python"
 code={`
 import FragmentColor
 
-let shader = Shader("""
+let shader = try Shader("""
 @compute @workgroup_size(1)
 fn cs_main() { }
 

@@ -185,6 +185,7 @@ pub(crate) fn from_ktx2_bytes(
         depth_or_array_layers: 1,
     };
     let usage = wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST;
+    crate::texture::check_format(context.device.features(), wgpu_format, usage)?;
     let descriptor = wgpu::TextureDescriptor {
         label: Some("KTX2 Source Texture"),
         size,

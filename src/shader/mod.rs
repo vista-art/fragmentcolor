@@ -66,7 +66,7 @@ impl From<Arc<ShaderObject>> for Shader {
 impl Shader {
     #[lsp_doc("docs/api/core/shader/new.md")]
     pub fn new(input: impl Into<ShaderInput>) -> Result<Self, ShaderError> {
-        Ok(Self::from(input::resolve(input.into())?))
+        Ok(Self::from(input::blocking::resolve(input.into())?))
     }
 
     /// Async constructor: resolve each part of `input` by fetching URLs and
@@ -81,7 +81,7 @@ impl Shader {
     /// (via `pollster::block_on` on Python; uniffi async on Swift/Kotlin).
     #[lsp_doc("docs/api/core/shader/fetch.md")]
     pub async fn fetch(input: impl Into<ShaderInput>) -> Result<Self, ShaderError> {
-        Ok(Self::from(input::resolve_async(input.into()).await?))
+        Ok(Self::from(input::resolve(input.into()).await?))
     }
 
     #[lsp_doc("docs/api/core/shader/set.md")]

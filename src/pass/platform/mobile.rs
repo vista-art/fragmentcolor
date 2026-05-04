@@ -79,7 +79,7 @@ impl Pass {
     #[uniffi::method(name = "addShader")]
     #[lsp_doc("docs/api/core/pass/add_shader.md")]
     pub fn add_shader_mobile(&self, shader: Arc<Shader>) {
-        self.object.add_shader(&shader);
+        self.object.add_shader(shader.object.clone());
     }
 
     /// Add a mesh to the last compatible shader in this pass.
@@ -87,18 +87,6 @@ impl Pass {
     #[lsp_doc("docs/api/core/pass/add_mesh.md")]
     pub fn add_mesh_mobile(&self, mesh: Arc<Mesh>) -> Result<(), FragmentColorError> {
         self.add_mesh(&mesh)
-            .map_err(|e: PassError| FragmentColorError::Render(e.to_string()))
-    }
-
-    /// Add a mesh to a specific shader in this pass.
-    #[uniffi::method(name = "addMeshToShader")]
-    #[lsp_doc("docs/api/core/pass/add_mesh_to_shader.md")]
-    pub fn add_mesh_to_shader_mobile(
-        &self,
-        mesh: Arc<Mesh>,
-        shader: Arc<Shader>,
-    ) -> Result<(), FragmentColorError> {
-        self.add_mesh_to_shader(&mesh, &shader)
             .map_err(|e: PassError| FragmentColorError::Render(e.to_string()))
     }
 

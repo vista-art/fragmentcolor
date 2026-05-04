@@ -12,34 +12,126 @@ use std::sync::Arc;
 /// source hash, concat in order, then compile as WGSL (or GLSL for a single
 /// GLSL part). This is the shared implementation backing `Shader::fetch` on
 /// all platforms.
-pub(super) async fn resolve_async(input: ShaderInput) -> Result<Arc<ShaderObject>, ShaderError> {
+///
+/// Sync callers (`Shader::new`) use [`blocking::resolve`] in the
+/// `blocking` submodule below — same convention as `reqwest::blocking`.
+pub(super) async fn resolve(input: ShaderInput) -> Result<Arc<ShaderObject>, ShaderError> {
     if input.is_empty() {
         return Ok(Arc::new(ShaderObject::default()));
     }
 
     let mut resolved: Vec<Resolved> = Vec::with_capacity(input.parts().len());
     for part in input.parts() {
-        resolved.push(resolve_part_async(part).await?);
+        resolved.push(resolve_part(part).await?);
     }
 
     finish_resolve(resolved)
 }
 
-/// Resolve a `ShaderInput` into a single `ShaderObject`:
-/// fetch URLs / read paths / look up slugs, dedup by source hash, concat in order,
-/// then dispatch to `ShaderObject::wgsl` (or the GLSL path for a single GLSL part).
-pub(super) fn resolve(input: ShaderInput) -> Result<Arc<ShaderObject>, ShaderError> {
-    if input.is_empty() {
-        return Ok(Arc::new(ShaderObject::default()));
+async fn resolve_part(part: &ShaderPart) -> Result<Resolved, ShaderError> {
+    match part {
+        ShaderPart::Source(s) => Ok(Resolved {
+            body: s.clone(),
+            glsl: None,
+        }),
+        ShaderPart::Path(p) => read_path(p),
+        ShaderPart::Url(u) => fetch_url(u).await,
+        ShaderPart::Slug(slug) => {
+            if let Some(body) = crate::shader::embedded::lookup(slug) {
+                return Ok(Resolved {
+                    body: body.to_string(),
+                    glsl: None,
+                });
+            }
+            let url = crate::shader::registry::slug_to_url(slug);
+            fetch_url(&url).await
+        }
+    }
+}
+
+#[cfg(not(wasm))]
+async fn fetch_url(url: &str) -> Result<Resolved, ShaderError> {
+    let body = crate::net::fetch_text(url).await?;
+    Ok(Resolved {
+        body,
+        glsl: glsl_kind_from_url(url),
+    })
+}
+
+#[cfg(wasm)]
+async fn fetch_url(url: &str) -> Result<Resolved, ShaderError> {
+    let body = crate::net::fetch_text(url)
+        .await
+        .map_err(ShaderError::from)?;
+    Ok(Resolved {
+        body,
+        glsl: glsl_kind_from_url(url),
+    })
+}
+
+/// Blocking variant of [`resolve`]. Used by `Shader::new`, which is sync
+/// across all platforms (uniffi/wasm-bindgen/pyo3 constructors can't be
+/// async). Mirrors `reqwest::blocking` — the namespace is the disambiguator,
+/// not a `_sync` suffix on the function name.
+///
+/// On native, HTTP fetches go through `ureq` (blocking). On wasm, the
+/// in-browser `fetch` API is async-only, so any `Url`/`Slug` part returns an
+/// error directing callers to `Shader::fetch`.
+pub(crate) mod blocking {
+    use super::*;
+
+    pub(crate) fn resolve(input: ShaderInput) -> Result<Arc<ShaderObject>, ShaderError> {
+        if input.is_empty() {
+            return Ok(Arc::new(ShaderObject::default()));
+        }
+
+        let resolved: Vec<Resolved> = input
+            .parts()
+            .iter()
+            .map(resolve_part)
+            .collect::<Result<_, _>>()?;
+
+        finish_resolve(resolved)
     }
 
-    let resolved: Vec<Resolved> = input
-        .parts()
-        .iter()
-        .map(resolve_part)
-        .collect::<Result<_, _>>()?;
+    fn resolve_part(part: &ShaderPart) -> Result<Resolved, ShaderError> {
+        match part {
+            ShaderPart::Source(s) => Ok(Resolved {
+                body: s.clone(),
+                glsl: None,
+            }),
+            ShaderPart::Path(p) => read_path(p),
+            ShaderPart::Url(u) => fetch_url(u),
+            ShaderPart::Slug(slug) => {
+                if let Some(body) = crate::shader::embedded::lookup(slug) {
+                    return Ok(Resolved {
+                        body: body.to_string(),
+                        glsl: None,
+                    });
+                }
+                let url = crate::shader::registry::slug_to_url(slug);
+                fetch_url(&url)
+            }
+        }
+    }
 
-    finish_resolve(resolved)
+    #[cfg(not(wasm))]
+    fn fetch_url(url: &str) -> Result<Resolved, ShaderError> {
+        let body = ureq::get(url).call()?.body_mut().read_to_string()?;
+        Ok(Resolved {
+            body,
+            glsl: glsl_kind_from_url(url),
+        })
+    }
+
+    #[cfg(wasm)]
+    fn fetch_url(_url: &str) -> Result<Resolved, ShaderError> {
+        Err(ShaderError::Error(
+            "HTTP requests in the constructor are not supported in WASM. \
+             Use `await Shader.fetch(input)` to compose shaders from URLs or registry slugs."
+                .into(),
+        ))
+    }
 }
 
 /// Shared finish step: dedup, merge, and compile resolved parts.
@@ -84,7 +176,7 @@ fn finish_resolve(resolved: Vec<Resolved>) -> Result<Arc<ShaderObject>, ShaderEr
 
 #[cfg(test)]
 fn load_shader(source: &str) -> Result<Arc<ShaderObject>, ShaderError> {
-    resolve(ShaderInput::from(source))
+    blocking::resolve(ShaderInput::from(source))
 }
 
 #[derive(Clone, Copy)]
@@ -98,95 +190,12 @@ struct Resolved {
     glsl: Option<GlslKind>,
 }
 
-fn resolve_part(part: &ShaderPart) -> Result<Resolved, ShaderError> {
-    match part {
-        ShaderPart::Source(s) => Ok(Resolved {
-            body: s.clone(),
-            glsl: None,
-        }),
-        ShaderPart::Path(p) => read_path(p),
-        ShaderPart::Url(u) => fetch_url(u),
-        ShaderPart::Slug(slug) => {
-            // If the slug's category was compiled in (via a `shaders-<cat>`
-            // feature), serve the embedded copy and skip the network
-            // entirely. Otherwise fall back to fetching the URL form.
-            if let Some(body) = crate::shader::embedded::lookup(slug) {
-                return Ok(Resolved {
-                    body: body.to_string(),
-                    glsl: None,
-                });
-            }
-            let url = crate::shader::registry::slug_to_url(slug);
-            fetch_url(&url)
-        }
-    }
-}
-
-async fn resolve_part_async(part: &ShaderPart) -> Result<Resolved, ShaderError> {
-    match part {
-        ShaderPart::Source(s) => Ok(Resolved {
-            body: s.clone(),
-            glsl: None,
-        }),
-        ShaderPart::Path(p) => read_path(p),
-        ShaderPart::Url(u) => fetch_url_async(u).await,
-        ShaderPart::Slug(slug) => {
-            if let Some(body) = crate::shader::embedded::lookup(slug) {
-                return Ok(Resolved {
-                    body: body.to_string(),
-                    glsl: None,
-                });
-            }
-            let url = crate::shader::registry::slug_to_url(slug);
-            fetch_url_async(&url).await
-        }
-    }
-}
-
 fn read_path(path: &Path) -> Result<Resolved, ShaderError> {
     let body = std::fs::read_to_string(path)?;
     Ok(Resolved {
         body,
         glsl: glsl_kind_from_extension(path),
     })
-}
-
-#[cfg(not(wasm))]
-async fn fetch_url_async(url: &str) -> Result<Resolved, ShaderError> {
-    let body = crate::net::fetch_text(url).await?;
-    Ok(Resolved {
-        body,
-        glsl: glsl_kind_from_url(url),
-    })
-}
-
-#[cfg(wasm)]
-async fn fetch_url_async(url: &str) -> Result<Resolved, ShaderError> {
-    let body = crate::net::fetch_text(url)
-        .await
-        .map_err(ShaderError::from)?;
-    Ok(Resolved {
-        body,
-        glsl: glsl_kind_from_url(url),
-    })
-}
-
-#[cfg(not(wasm))]
-fn fetch_url(url: &str) -> Result<Resolved, ShaderError> {
-    let body = ureq::get(url).call()?.body_mut().read_to_string()?;
-    Ok(Resolved {
-        body,
-        glsl: glsl_kind_from_url(url),
-    })
-}
-
-#[cfg(wasm)]
-fn fetch_url(_url: &str) -> Result<Resolved, ShaderError> {
-    Err(ShaderError::Error(
-        "HTTP requests in the constructor are not supported in WASM. \
-         Use `await Shader.fetch(input)` to compose shaders from URLs or registry slugs."
-            .into(),
-    ))
 }
 
 fn glsl_kind_from_extension(path: &Path) -> Option<GlslKind> {
@@ -267,7 +276,7 @@ mod tests {
 @fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }
         "#;
         let input = ShaderInput::from([helper, main]);
-        let res = resolve(input);
+        let res = blocking::resolve(input);
         assert!(res.is_ok(), "{res:?}");
     }
 
@@ -280,7 +289,7 @@ mod tests {
 @fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }
         "#;
         let input = ShaderInput::from([helper, helper, main]);
-        let res = resolve(input);
+        let res = blocking::resolve(input);
         assert!(res.is_ok(), "{res:?}");
     }
 
@@ -292,7 +301,7 @@ mod tests {
 @fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }
         "#;
         let input = ShaderInput::from(["", main, "   "]);
-        let res = resolve(input);
+        let res = blocking::resolve(input);
         assert!(res.is_ok(), "{res:?}");
     }
 
@@ -300,7 +309,7 @@ mod tests {
     #[test]
     fn empty_input_falls_back_to_default() {
         let input = ShaderInput::from("");
-        let res = resolve(input).expect("default fallback");
+        let res = blocking::resolve(input).expect("default fallback");
         let _ = res; // construction succeeded
     }
 
@@ -323,7 +332,7 @@ mod tests {
         .to_string();
 
         let input = ShaderInput::from(vec![frag_path, main]);
-        let err = resolve(input).expect_err("must reject mixed GLSL+WGSL");
+        let err = blocking::resolve(input).expect_err("must reject mixed GLSL+WGSL");
         match err {
             ShaderError::ParseError(_) => {}
             other => panic!("unexpected: {other:?}"),
@@ -342,7 +351,7 @@ mod tests {
     fn slug_uses_registry_override() {
         with_registry("http://127.0.0.1:1/", || {
             let input = ShaderInput::from("unknown_category/no_such_shader");
-            let err = resolve(input).expect_err("expected fetch failure");
+            let err = blocking::resolve(input).expect_err("expected fetch failure");
             match err {
                 #[cfg(not(wasm))]
                 ShaderError::RequestError(_) | ShaderError::FileNotFound(_) => {}
@@ -408,7 +417,7 @@ struct VOut { @builtin(position) pos: vec4<f32>, @location(0) uv: vec2<f32> };
 "#;
         with_registry("http://127.0.0.1:1/", || {
             let input = ShaderInput::from(["postfx/vignette", main].as_slice());
-            let res = resolve(input);
+            let res = blocking::resolve(input);
             assert!(res.is_ok(), "expected embedded short-circuit, got {res:?}");
         });
     }

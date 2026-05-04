@@ -100,12 +100,12 @@ code={`
 import FragmentColor
 
 // Use your platform's windowing system to create a window.
-let canvas = document.createElement("canvas")
+// iOS: window/canvas provided by CAMetalLayer at runtime
 
 let renderer = Renderer()
-let target = try await renderer.createTarget(canvas)
+let target = try await renderer.createTextureTarget([800, 600])
 
-renderer.render(Shader(""), target)
+try renderer.render(Shader(""), target)
 `}
 lang="swift"
 />
@@ -119,10 +119,10 @@ code={`
 import org.fragmentcolor.*
 
 // Use your platform's windowing system to create a window.
-val canvas = document.createElement("canvas")
+// HEADLESS: canvas creation not needed on Android
 
 val renderer = Renderer()
-val target = renderer.createTarget(canvas)
+val target = renderer.createTextureTarget(800u, 600u)
 
 renderer.render(Shader(""), target)
 `}
@@ -217,7 +217,7 @@ import FragmentColor
 
 let renderer = Renderer()
 let target = try await renderer.createTextureTarget([16, 16])
-renderer.render(Shader(""), target)
+try renderer.render(Shader(""), target)
 
 let image = target.getImage()
 `}
@@ -233,7 +233,7 @@ code={`
 import org.fragmentcolor.*
 
 val renderer = Renderer()
-val target = renderer.createTextureTarget(arrayOf(16, 16))
+val target = renderer.createTextureTarget(16u, 16u)
 renderer.render(Shader(""), target)
 
 val image = target.getImage()
@@ -335,9 +335,9 @@ code={`
 import org.fragmentcolor.*
 
 val renderer = Renderer()
-val target = renderer.createTextureTarget(arrayOf(64, 32))
+val target = renderer.createTextureTarget(64u, 32u)
 
-target.resize(arrayOf(128, 64))
+target.resize(128u, 64u)
 `}
 lang="kotlin"
 />
@@ -428,7 +428,7 @@ code={`
 import org.fragmentcolor.*
 
 val renderer = Renderer()
-val target = renderer.createTextureTarget(arrayOf(64, 32))
+val target = renderer.createTextureTarget(64u, 32u)
 `}
 lang="kotlin"
 />

@@ -67,8 +67,8 @@ impl Target for CanvasTarget {
         self.inner.lock().get_current_frame()
     }
 
-    fn get_image(&self) -> Vec<u8> {
-        vec![]
+    async fn get_image(&self) -> Vec<u8> {
+        Vec::new()
     }
 }
 
@@ -91,7 +91,7 @@ impl TextureTarget {
     #[wasm_bindgen(js_name = "getImage")]
     #[lsp_doc("docs/api/targets/texture_target/get_image.md")]
     pub async fn get_image_js(&self) -> js_sys::Uint8Array {
-        let data = self.get_image_async().await;
+        let data = self.get_image().await;
         js_sys::Uint8Array::from(data.as_slice())
     }
 

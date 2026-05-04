@@ -85,27 +85,6 @@ private enum _GeneratedExamples {
         try pass.addMesh(mesh)
     }
 
-    static func _example_core_pass_add_mesh_to_shader() async throws {
-
-        let mesh = Mesh()
-        try mesh.addVertex(try Vertex([0.0, 0.0]))
-        let shader = try Shader("""
-          struct VOut { @builtin(position) pos: vec4<f32> }
-          @vertex
-          fn vs_main(@location(0) pos: vec2<f32>) -> VOut {
-            var out: VOut
-            out.pos = vec4<f32>(pos, 0.0, 1.0)
-            return out
-          }
-          @fragment
-          fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
-
-        """)
-
-        let pass = Pass("pass"); pass.addShader(shader)
-        try pass.addMeshToShader(mesh, shader)
-    }
-
     static func _example_core_pass_add_shader() async throws {
 
         let shader = Shader.default()
@@ -256,10 +235,10 @@ private enum _GeneratedExamples {
     static func _example_core_renderer_create_storage_texture() async throws {
 
         let r = Renderer()
-        // Empty storage texture â same single create_storage_texture entry.
+        // Empty storage texture — same single create_storage_texture entry.
         let tex = try await r.createStorageTexture(([64, 64], TextureFormat.rgba))
 
-        // Pre-seeded with bytes â same method, three-tuple form.
+        // Pre-seeded with bytes — same method, three-tuple form.
         let pixels = Array(repeating: 0, count: 64 * 64 * 4)
         let tex2 = try await r.createStorageTexture(([64, 64], TextureFormat.rgba, pixels))
     }
@@ -277,7 +256,7 @@ private enum _GeneratedExamples {
 
     static func _example_core_renderer_create_texture() async throws {
         let renderer = Renderer()
-        // Encoded image bytes (PNG / JPEG / etc.) â single tuple, no extra method.
+        // Encoded image bytes (PNG / JPEG / etc.) — single tuple, no extra method.
         let image = "/healthcheck/public/favicon.png"
         let tex = try await renderer.createTexture(image)
     }
@@ -709,7 +688,7 @@ private enum _GeneratedExamples {
         // Simple sub-rectangle update.
         try texture.writeRegion(bytes, [0, 0, 64, 32])
 
-        // Explicit data layout (advanced â when source rows are padded).
+        // Explicit data layout (advanced — when source rows are padded).
         let region = TextureRegionMobile.from([0, 0, 64, 32]).withStride(256).withRows(32)
         try texture.writeRegion(bytes, region)
     }
@@ -779,17 +758,17 @@ private enum _GeneratedExamples {
 
     static func _example_core_texture_mip_chain_prepare() async throws {
 
-        // Encoded path â single tuple, no extra method.
+        // Encoded path — single tuple, no extra method.
         let chain = try TextureMipChain.prepare((encoded_png_bytes, TextureFormat.rgba8UnormSrgb))
 
-        // Raw pixel path â same method, just include the size in the tuple.
+        // Raw pixel path — same method, just include the size in the tuple.
         let chain_raw = try TextureMipChain.prepare((
             raw_rgba,
             TextureFormat.rgba8UnormSrgb,
             [8, 8],
         ))
 
-        // Hand the chain to the unified create_texture entry â same vocabulary.
+        // Hand the chain to the unified create_texture entry — same vocabulary.
         let renderer = Renderer()
         let texture = try await renderer.createTexture(chain)
     }

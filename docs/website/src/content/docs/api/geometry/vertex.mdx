@@ -56,7 +56,7 @@ lang="python"
 <Code
 code={`
 import FragmentColor
-let v = Vertex([0.0, 0.0, 0.0]).set("uv", [0.5, 0.5])
+let v = try Vertex([0.0, 0.0, 0.0]).set("uv", [0.5, 0.5])
 `}
 lang="swift"
 />
@@ -67,7 +67,7 @@ lang="swift"
 <Code
 code={`
 import org.fragmentcolor.*
-val v = Vertex(arrayOf(0.0, 0.0, 0.0)).set("uv", arrayOf(0.5, 0.5))
+val v = Vertex(listOf(0.0f, 0.0f, 0.0f)).set("uv", floatArrayOf(0.5f, 0.5f))
 `}
 lang="kotlin"
 />
@@ -127,7 +127,7 @@ lang="python"
 <Code
 code={`
 import FragmentColor
-let v = Vertex([0.0, 0.0])
+let v = try Vertex([0.0, 0.0])
 `}
 lang="swift"
 />
@@ -138,7 +138,7 @@ lang="swift"
 <Code
 code={`
 import org.fragmentcolor.*
-val v = Vertex(arrayOf(0.0, 0.0))
+val v = Vertex(listOf(0.0f, 0.0f))
 `}
 lang="kotlin"
 />
@@ -208,7 +208,7 @@ lang="python"
 <Code
 code={`
 import FragmentColor
-let v = Vertex([0.0, 0.0, 0.0]).set("weight", 1.0).set("color",[1.0, 0.0, 0.0])
+let v = try Vertex([0.0, 0.0, 0.0]).set("weight", 1.0).set("color",[1.0, 0.0, 0.0])
 `}
 lang="swift"
 />
@@ -219,7 +219,7 @@ lang="swift"
 <Code
 code={`
 import org.fragmentcolor.*
-val v = Vertex(arrayOf(0.0, 0.0, 0.0)).set("weight", 1.0).set("color",arrayOf(1.0, 0.0, 0.0))
+val v = Vertex(listOf(0.0f, 0.0f, 0.0f)).set("weight", 1.0).set("color", listOf(1.0f, 0.0f, 0.0f))
 `}
 lang="kotlin"
 />
@@ -280,7 +280,7 @@ lang="python"
 <Code
 code={`
 import FragmentColor
-let v = Vertex([0.0, 0.0])
+let v = try Vertex([0.0, 0.0])
 let inst = v.createInstance()
 `}
 lang="swift"
@@ -292,7 +292,7 @@ lang="swift"
 <Code
 code={`
 import org.fragmentcolor.*
-val v = Vertex(arrayOf(0.0, 0.0))
+val v = Vertex(listOf(0.0f, 0.0f))
 val inst = v.createInstance()
 `}
 lang="kotlin"

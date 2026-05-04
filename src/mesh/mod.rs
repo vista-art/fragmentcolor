@@ -124,7 +124,7 @@ impl Renderable for Mesh {
         if self.pass.shaders.read().is_empty() {
             if let Some(first) = self.object.verts.read().first().cloned() {
                 let shader = Shader::from_vertex(&first);
-                self.pass.add_shader(&shader);
+                self.pass.add_shader(shader.object.clone());
                 _ = shader.add_mesh(self);
             }
         } else if let Some(shader) = self.pass.shaders.read().last().cloned() {
@@ -372,7 +372,7 @@ impl MeshObject {
             return Ok(cached.clone());
         }
 
-        let result = self.create_gpu_vertex_buffers(device, queue)?;
+        let result = self.upload_vertex_buffers(device, queue)?;
 
         *self.gpu_cache.write() = Some(result.clone());
         *self.cache_valid.write() = true;
@@ -380,7 +380,7 @@ impl MeshObject {
         Ok(result)
     }
 
-    fn create_gpu_vertex_buffers(
+    fn upload_vertex_buffers(
         &self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
@@ -534,7 +534,7 @@ pub(crate) struct DrawCounts {
 }
 
 impl MeshObject {
-    pub(crate) fn first_vertex_location_map(&self) -> (u32, HashMap<u32, String>) {
+    pub(crate) fn vertex_location_map(&self) -> (u32, HashMap<u32, String>) {
         let verts = self.verts.read();
         if let Some(v) = verts.first() {
             // position defaults to 0; properties follow insertion order via stored map
@@ -548,7 +548,7 @@ impl MeshObject {
             (0u32, HashMap::new())
         }
     }
-    pub(crate) fn first_instance_location_map(&self) -> HashMap<u32, String> {
+    pub(crate) fn instance_location_map(&self) -> HashMap<u32, String> {
         let insts = self.insts.read();
         if let Some(i) = insts.first() {
             let mut rev: HashMap<u32, String> = HashMap::new();

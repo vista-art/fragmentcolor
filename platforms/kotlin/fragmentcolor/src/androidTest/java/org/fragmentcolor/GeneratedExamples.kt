@@ -95,27 +95,6 @@ class GeneratedExamples {
         pass.addMesh(mesh)
     }
 
-    @Suppress("unused") private suspend fun _example_core_pass_add_mesh_to_shader() {
-
-        val mesh = Mesh()
-        mesh.addVertex(Vertex(listOf(0.0f, 0.0f)))
-        val shader = Shader("""
-          struct VOut { @builtin(position) pos: vec4<f32> }
-          @vertex
-          fn vs_main(@location(0) pos: vec2<f32>) -> VOut {
-            var out: VOut
-            out.pos = vec4<f32>(pos, 0.0, 1.0)
-            return out
-          }
-          @fragment
-          fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
-
-        """)
-
-        val pass = Pass("pass"); pass.addShader(shader)
-        pass.addMeshToShader(mesh, shader)
-    }
-
     @Suppress("unused") private suspend fun _example_core_pass_add_shader() {
 
         val shader = Shader.default()
@@ -266,10 +245,10 @@ class GeneratedExamples {
     @Suppress("unused") private suspend fun _example_core_renderer_create_storage_texture() {
 
         val r = Renderer()
-        // Empty storage texture â same single create_storage_texture entry.
+        // Empty storage texture — same single create_storage_texture entry.
         val tex = r.createStorageTexture(Size(width=64u, height=64u, depth=null), TextureFormat.RGBA, null, null)
 
-        // Pre-seeded with bytes â same method, three-tuple form.
+        // Pre-seeded with bytes — same method, three-tuple form.
         val pixels = ByteArray(64 * 64 * 4)
         val tex2 = r.createStorageTexture(Size(width=64u, height=64u, depth=null), TextureFormat.RGBA, pixels, null)
     }
@@ -287,7 +266,7 @@ class GeneratedExamples {
 
     @Suppress("unused") private suspend fun _example_core_renderer_create_texture() {
         val renderer = Renderer()
-        // Encoded image bytes (PNG / JPEG / etc.) â single tuple, no extra method.
+        // Encoded image bytes (PNG / JPEG / etc.) — single tuple, no extra method.
         val image = "/healthcheck/public/favicon.png"
         val tex = renderer.createTexture(TextureInputMobile.Path(image), null)
     }
@@ -317,7 +296,7 @@ class GeneratedExamples {
         val texture = renderer.createStorageTexture(Size(width=64u, height=64u, depth=null), TextureFormat.RGBA, null, null)
         texture.write(ByteArray(64 * 64 * 4))
 
-        val bytes = texture.getImage()
+        val bytes = renderer.readTexture(texture.id())
     }
 
     @Suppress("unused") private suspend fun _example_core_renderer_render() {
@@ -711,7 +690,7 @@ class GeneratedExamples {
         // Simple sub-rectangle update.
         texture.writeRegion(bytes, TextureRegionMobile(0u, 0u, 0u, 64u, 32u, 0u, null, null))
 
-        // Explicit data layout (advanced â when source rows are padded).
+        // Explicit data layout (advanced — when source rows are padded).
         val region = TextureRegionMobile(0u, 0u, 0u, 64u, 32u, 0u, 256u, 32u)
         texture.writeRegion(bytes, region)
     }
@@ -760,15 +739,15 @@ class GeneratedExamples {
 
     @Suppress("unused") private suspend fun _example_core_texture_mip_chain_prepare() {
 
-        // Encoded path â single tuple, no extra method.
+        // Encoded path — single tuple, no extra method.
         val encoded_png_bytes: ByteArray = byteArrayOf()
         val chain = TextureMipChain.prepare(encoded_png_bytes, TextureFormat.RGBA8_UNORM_SRGB, null)
 
-        // Raw pixel path â same method, just include the size in the tuple.
+        // Raw pixel path — same method, just include the size in the tuple.
         val raw_rgba: ByteArray = ByteArray(8 * 8 * 4)
         val chain_raw = TextureMipChain.prepare(raw_rgba, TextureFormat.RGBA8_UNORM_SRGB, Size(width=8u, height=8u, depth=null))
 
-        // Hand the chain to the unified create_texture entry â same vocabulary.
+        // Hand the chain to the unified create_texture entry — same vocabulary.
         val renderer = Renderer()
         val texture = renderer.createTexture(TextureInputMobile.Prepared(chain), null)
     }

@@ -1,3 +1,3 @@
 import FragmentColor
 
-let quad = Quad([-0.5, -0.5], [0.5, 0.5])
+let quad = try Quad([-0.5, -0.5], [0.5, 0.5])

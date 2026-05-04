@@ -133,8 +133,8 @@ code={`
 import FragmentColor
 
 let renderer = Renderer()
-let canvas = document.createElement("canvas")
-let target = try await renderer.createTarget(canvas)
+// iOS: window/canvas provided by CAMetalLayer at runtime
+let target = try await renderer.createTextureTarget([800, 600])
 let shader = Shader.default()
 
 let pass = Pass("First Pass")
@@ -144,10 +144,10 @@ let pass2 = Pass("Second Pass")
 pass2.addShader(shader)
 
 // standalone
-renderer.render(pass, target)
+try renderer.render(pass, target)
 
 // vector of passes rendered in order (any iterable of Pass is renderable)
-renderer.render([pass, pass2], target)
+try renderer.render([pass, pass2], target)
 `}
 lang="swift"
 />
@@ -161,8 +161,8 @@ code={`
 import org.fragmentcolor.*
 
 val renderer = Renderer()
-val canvas = document.createElement("canvas")
-val target = renderer.createTarget(canvas)
+// HEADLESS: canvas creation not needed on Android
+val target = renderer.createTextureTarget(800u, 600u)
 val shader = Shader.default()
 
 val pass = Pass("First Pass")
@@ -175,7 +175,7 @@ pass2.addShader(shader)
 renderer.render(pass, target)
 
 // vector of passes rendered in order (any iterable of Pass is renderable)
-renderer.render(arrayOf(pass, pass2), target)
+renderer.render(listOf(pass, pass2), target)
 `}
 lang="kotlin"
 />
@@ -323,7 +323,7 @@ lang="python"
 code={`
 import FragmentColor
 
-let cs = Shader("@compute @workgroup_size(8,8,1) fn cs_main() {}").unwrap()
+let cs = try! Shader("@compute @workgroup_size(8,8,1) fn cs_main() {}")
 let pass = Pass("compute"); pass.addShader(cs)
 `}
 lang="swift"
@@ -336,7 +336,7 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 
-val cs = Shader("@compute @workgroup_size(8,8,1) fn cs_main() {}").unwrap()
+val cs = Shader("@compute @workgroup_size(8,8,1) fn cs_main() {}")
 val pass = Pass("compute"); pass.addShader(cs)
 `}
 lang="kotlin"
@@ -523,7 +523,7 @@ let pass = Pass("blend with previous")
 pass.addShader(shader)
 pass.loadPrevious()
 
-renderer.render(pass, target)
+try renderer.render(pass, target)
 `}
 lang="swift"
 />
@@ -537,7 +537,7 @@ code={`
 import org.fragmentcolor.*
 
 val renderer = Renderer()
-val target = renderer.createTextureTarget(arrayOf(64, 64))
+val target = renderer.createTextureTarget(64u, 64u)
 
 val shader = Shader.default()
 val pass = Pass("blend with previous")
@@ -838,9 +838,9 @@ code={`
 import FragmentColor
 
 let mesh = Mesh()
-mesh.addVertex([0.0, 0.0])
+try mesh.addVertex([0.0, 0.0])
 
-let shader = Shader("""
+let shader = try Shader("""
   struct VOut { @builtin(position) pos: vec4<f32> }
   @vertex
   fn vs_main(@location(0) pos: vec2<f32>) -> VOut {
@@ -855,7 +855,7 @@ let shader = Shader("""
 
 let pass = Pass("pass"); pass.addShader(shader)
 
-pass.addMesh(mesh)
+try pass.addMesh(mesh)
 `}
 lang="swift"
 />
@@ -868,7 +868,7 @@ code={`
 import org.fragmentcolor.*
 
 val mesh = Mesh()
-mesh.addVertex(arrayOf(0.0, 0.0))
+mesh.addVertex(Vertex(listOf(0.0f, 0.0f)))
 
 val shader = Shader("""
   struct VOut { @builtin(position) pos: vec4<f32> }
@@ -886,164 +886,6 @@ val shader = Shader("""
 val pass = Pass("pass"); pass.addShader(shader)
 
 pass.addMesh(mesh)
-`}
-lang="kotlin"
-/>
-
-</TabItem>
-
-</Tabs>
-
-
----
-
-### Pass::add_mesh_to_shader
-
-Attach a Mesh to a specific Shader in this Pass. This forwards to `shader.add_mesh(mesh)` and returns the same Result.
-
-#### Example
-
-<Tabs>
-
-<TabItem label="Rust">
-<Code
-code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Shader, Mesh, Vertex, Pass};
-
-let mesh = Mesh::new();
-mesh.add_vertex(Vertex::new([0.0, 0.0]));
-let shader = Shader::new(r#"
-  struct VOut { @builtin(position) pos: vec4<f32> };
-  @vertex
-  fn vs_main(@location(0) pos: vec2<f32>) -> VOut {
-    var out: VOut;
-    out.pos = vec4<f32>(pos, 0.0, 1.0);
-    return out;
-  }
-  @fragment
-  fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
-"#)?;
-
-let pass = Pass::from_shader("pass", &shader);
-pass.add_mesh_to_shader(&mesh, &shader)?;
-
-Ok(())
-}
-`}
-lang="rust" meta="collapse={1-1, 21-22}"
-/>
-
-</TabItem>
-
-<TabItem label="JavaScript">
-<Code
-code={`
-import { Shader, Mesh, Vertex, Pass } from "fragmentcolor";
-
-const mesh = new Mesh();
-mesh.addVertex(Vertex.new([0.0, 0.0]));
-const shader = new Shader(\`
-  struct VOut { @builtin(position) pos: vec4<f32> };
-  @vertex
-  fn vs_main(@location(0) pos: vec2<f32>) -> VOut {
-    var out: VOut;
-    out.pos = vec4<f32>(pos, 0.0, 1.0);
-    return out;
-  }
-  @fragment
-  fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
-
-\`);
-
-const pass = new Pass("pass"); pass.addShader(shader);
-pass.addMeshToShader(mesh, shader);
-
-`}
-lang="js"
-/>
-
-</TabItem>
-
-<TabItem label="Python">
-<Code
-code={`
-from fragmentcolor import Shader, Mesh, Vertex, Pass
-
-mesh = Mesh()
-mesh.add_vertex(Vertex([0.0, 0.0]))
-shader = Shader("""
-  struct VOut { @builtin(position) pos: vec4<f32> };
-  @vertex
-  fn vs_main(@location(0) pos: vec2<f32>) -> VOut {
-    var out: VOut;
-    out.pos = vec4<f32>(pos, 0.0, 1.0);
-    return out;
-  }
-  @fragment
-  fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
-
-""")
-
-rpass = Pass("rpass"); rpass.add_shader(shader)
-rpass.add_mesh_to_shader(mesh, shader)
-
-`}
-lang="python"
-/>
-
-</TabItem>
-
-<TabItem label="Swift">
-<Code
-code={`
-import FragmentColor
-
-let mesh = Mesh()
-mesh.addVertex(Vertex.new([0.0, 0.0]))
-let shader = Shader("""
-  struct VOut { @builtin(position) pos: vec4<f32> }
-  @vertex
-  fn vs_main(@location(0) pos: vec2<f32>) -> VOut {
-    var out: VOut
-    out.pos = vec4<f32>(pos, 0.0, 1.0)
-    return out
-  }
-  @fragment
-  fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
-
-""")
-
-let pass = Pass("pass"); pass.addShader(shader)
-pass.addMeshToShader(mesh, shader)
-`}
-lang="swift"
-/>
-
-</TabItem>
-
-<TabItem label="Kotlin">
-<Code
-code={`
-import org.fragmentcolor.*
-
-val mesh = Mesh()
-mesh.addVertex(Vertex.new(arrayOf(0.0, 0.0)))
-val shader = Shader("""
-  struct VOut { @builtin(position) pos: vec4<f32> }
-  @vertex
-  fn vs_main(@location(0) pos: vec2<f32>) -> VOut {
-    var out: VOut
-    out.pos = vec4<f32>(pos, 0.0, 1.0)
-    return out
-  }
-  @fragment
-  fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
-
-""")
-
-val pass = Pass("pass"); pass.addShader(shader)
-pass.addMeshToShader(mesh, shader)
 `}
 lang="kotlin"
 />
@@ -1155,7 +997,7 @@ pass.addShader(shader)
 
 pass.setViewport([(0, 0), (32, 32)])
 
-renderer.render(pass, target)
+try renderer.render(pass, target)
 `}
 lang="swift"
 />
@@ -1169,13 +1011,13 @@ code={`
 import org.fragmentcolor.*
 
 val renderer = Renderer()
-val target = renderer.createTextureTarget(arrayOf(64, 64))
+val target = renderer.createTextureTarget(64u, 64u)
 
 val shader = Shader.default()
 val pass = Pass("clipped")
 pass.addShader(shader)
 
-pass.setViewport(arrayOf((0, 0), (32, 32)))
+pass.setViewport(ScreenRegion(minX=0u, minY=0u, maxX=32u, maxY=32u))
 
 renderer.render(pass, target)
 `}
@@ -1285,9 +1127,9 @@ let shader = Shader.default()
 let pass = Pass("solid background")
 pass.addShader(shader)
 
-pass.setClearColor([0.1, 0.2, 0.3, 1.0])
+try pass.setClearColor([0.1, 0.2, 0.3, 1.0])
 
-renderer.render(pass, target)
+try renderer.render(pass, target)
 `}
 lang="swift"
 />
@@ -1301,13 +1143,13 @@ code={`
 import org.fragmentcolor.*
 
 val renderer = Renderer()
-val target = renderer.createTextureTarget(arrayOf(64, 64))
+val target = renderer.createTextureTarget(64u, 64u)
 
 val shader = Shader.default()
 val pass = Pass("solid background")
 pass.addShader(shader)
 
-pass.setClearColor(arrayOf(0.1, 0.2, 0.3, 1.0))
+pass.setClearColor(listOf(0.1f, 0.2f, 0.3f, 1.0f))
 
 renderer.render(pass, target)
 `}
@@ -1372,7 +1214,7 @@ lang="python"
 <Code
 code={`
 import FragmentColor
-let cs = Shader("@compute @workgroup_size(8,8,1) fn cs_main() {}").unwrap()
+let cs = try! Shader("@compute @workgroup_size(8,8,1) fn cs_main() {}")
 let pass = Pass("compute"); pass.addShader(cs)
 pass.setComputeDispatch(64, 64, 1)
 `}
@@ -1385,9 +1227,9 @@ lang="swift"
 <Code
 code={`
 import org.fragmentcolor.*
-val cs = Shader("@compute @workgroup_size(8,8,1) fn cs_main() {}").unwrap()
+val cs = Shader("@compute @workgroup_size(8,8,1) fn cs_main() {}")
 val pass = Pass("compute"); pass.addShader(cs)
-pass.setComputeDispatch(64, 64, 1)
+pass.setComputeDispatch(64u,64u,1u)
 `}
 lang="kotlin"
 />
@@ -1473,7 +1315,7 @@ let r = Renderer()
 let tex_target = try await r.createTextureTarget([512, 512])
 
 let p = Pass("shadow")
-p.addTarget(tex_target)
+try p.addTarget(tex_target)
 `}
 lang="swift"
 />
@@ -1486,7 +1328,7 @@ code={`
 import org.fragmentcolor.*
 
 val r = Renderer()
-val tex_target = r.createTextureTarget(arrayOf(512, 512))
+val tex_target = r.createTextureTarget(512u, 512u)
 
 val p = Pass("shadow")
 p.addTarget(tex_target)
@@ -1623,19 +1465,19 @@ let target = try await renderer.createTextureTarget([64, 64])
 let depth = try await renderer.createDepthTexture([64, 64])
 
 let mesh = Mesh()
-mesh.addVertex([0.0, 0.0, 0.0])
-mesh.addVertex([1.0, 0.0, 0.0])
-mesh.addVertex([0.0, 1.0, 0.0])
-mesh.addVertex([1.0, 1.0, 0.0])
+try mesh.addVertex([0.0, 0.0, 0.0])
+try mesh.addVertex([1.0, 0.0, 0.0])
+try mesh.addVertex([0.0, 1.0, 0.0])
+try mesh.addVertex([1.0, 1.0, 0.0])
 let shader = Shader.fromMesh(mesh)
 let pass = Pass("scene"); pass.addShader(shader)
 
 // Attach depth texture to enable depth testing.
 // Pipeline will include a matching depth-stencil state
-pass.addDepthTarget(depth)
+try pass.addDepthTarget(depth)
 
 // Render as usual
-renderer.render(pass, target)
+try renderer.render(pass, target)
 `}
 lang="swift"
 />
@@ -1648,16 +1490,16 @@ code={`
 import org.fragmentcolor.*
 
 val renderer = Renderer()
-val target = renderer.createTextureTarget(arrayOf(64, 64))
+val target = renderer.createTextureTarget(64u, 64u)
 
 // Create a depth texture usable as a per-pass attachment
-val depth = renderer.createDepthTexture(arrayOf(64, 64))
+val depth = renderer.createDepthTexture(64u, 64u)
 
 val mesh = Mesh()
-mesh.addVertex(arrayOf(0.0, 0.0, 0.0))
-mesh.addVertex(arrayOf(1.0, 0.0, 0.0))
-mesh.addVertex(arrayOf(0.0, 1.0, 0.0))
-mesh.addVertex(arrayOf(1.0, 1.0, 0.0))
+mesh.addVertex(Vertex(listOf(0.0f, 0.0f, 0.0f)))
+mesh.addVertex(Vertex(listOf(1.0f, 0.0f, 0.0f)))
+mesh.addVertex(Vertex(listOf(0.0f, 1.0f, 0.0f)))
+mesh.addVertex(Vertex(listOf(1.0f, 1.0f, 0.0f)))
 val shader = Shader.fromMesh(mesh)
 val pass = Pass("scene"); pass.addShader(shader)
 
@@ -1758,7 +1600,7 @@ lang="python"
 code={`
 import FragmentColor
 
-let shader = Shader("""
+let shader = try Shader("""
 @compute @workgroup_size(1)
 fn cs_main() { }
 
@@ -1900,13 +1742,13 @@ let renderer = Renderer()
 let target = try await renderer.createTextureTarget([100,100])
 let color = Pass("color")
 let blurx = Pass("blur_x")
-blurx.require(color); // color before blur_x
+try blurx.require(color); // color before blur_x
 let blury = Pass("blur_y")
-blury.require(blurx); // blur_x before blur_y
+try blury.require(blurx); // blur_x before blur_y
 let compose = Pass("compose")
-compose.require(color)
-compose.require(blury); // fan-in; color and blur_y before compose
-renderer.render(compose, target); // compose renders last
+try compose.require(color)
+try compose.require(blury); // fan-in; color and blur_y before compose
+try renderer.render(compose, target); // compose renders last
 `}
 lang="swift"
 />
@@ -1918,7 +1760,7 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 val renderer = Renderer()
-val target = renderer.createTextureTarget(arrayOf(100,100))
+val target = renderer.createTextureTarget(100u, 100u)
 val color = Pass("color")
 val blurx = Pass("blur_x")
 blurx.require(color); // color before blur_x

@@ -20,22 +20,24 @@ pub struct ExternalTextureHandle {
     pub(crate) _inner: wgpu::ExternalTexture,
 }
 
-#[cfg(wasm)]
-pub fn create_external_texture(
-    _r: &crate::renderer::Renderer,
-    _video: &web_sys::HtmlVideoElement,
-) -> Result<ExternalTextureHandle, crate::renderer::error::RendererError> {
-    Err(crate::renderer::error::RendererError::Error(
-        "External texture import not implemented yet".into(),
-    ))
-}
+impl ExternalTextureHandle {
+    #[cfg(wasm)]
+    pub fn from_video(
+        _r: &crate::renderer::Renderer,
+        _video: &web_sys::HtmlVideoElement,
+    ) -> Result<Self, crate::renderer::error::RendererError> {
+        Err(crate::renderer::error::RendererError::Error(
+            "External texture import not implemented yet".into(),
+        ))
+    }
 
-#[cfg(mobile)]
-pub fn create_external_texture_from_native(
-    _r: &crate::renderer::Renderer,
-    _source_ptr: u64,
-) -> Result<std::sync::Arc<ExternalTextureHandle>, crate::renderer::error::RendererError> {
-    Err(crate::renderer::error::RendererError::Error(
-        "External texture import not implemented yet".into(),
-    ))
+    #[cfg(mobile)]
+    pub fn from_native(
+        _r: &crate::renderer::Renderer,
+        _source_ptr: u64,
+    ) -> Result<std::sync::Arc<Self>, crate::renderer::error::RendererError> {
+        Err(crate::renderer::error::RendererError::Error(
+            "External texture import not implemented yet".into(),
+        ))
+    }
 }
