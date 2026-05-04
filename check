@@ -1,0 +1,143 @@
+#!/usr/bin/env bash
+# Pre-push fast validator. Mirrors what CI rejects, without the full
+# artifact builds (wasm-pack, maturin, cargo-ndk, xcodebuild). Catches:
+#   * platform-specific compile errors (iOS / wasm / Android targets)
+#   * '-D warnings' lint regressions (matches CI strict mode)
+#   * the build-time API parity audit (runs in build.rs on any cargo
+#     check, so each target invocation re-validates parity)
+#
+# Usage:
+#   ./check           # cargo check --lib on host + iOS + wasm + Android (-D warnings)
+#   ./check fast      # host only (skip cross-target checks)
+#   ./check lint      # adds cargo fmt --check + cargo clippy across all targets/features
+#   ./check all       # everything: lint + cross-targets + JS lockfile sync check
+#
+# Targets are skipped gracefully if the matching `rustup target` isn't
+# installed; the script reports what was skipped at the end.
+
+set -uo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+cd "$ROOT_DIR"
+
+GREEN="\033[1;32m"
+RED="\033[1;31m"
+YELLOW="\033[1;33m"
+DIM="\033[2m"
+RESET="\033[0m"
+
+ARG="${1:-default}"
+FAILED=0
+SKIPPED=()
+RAN=()
+
+step() {
+  printf "${DIM}==>${RESET} %s\n" "$*"
+}
+
+ok() {
+  printf "${GREEN}✓${RESET} %s\n" "$*"
+}
+
+fail() {
+  printf "${RED}✗${RESET} %s\n" "$*"
+  FAILED=1
+}
+
+skip() {
+  printf "${YELLOW}~${RESET} %s\n" "$*"
+  SKIPPED+=("$1")
+}
+
+run_check() {
+  # run_check <label> <target-or-empty>
+  local label="$1"
+  local target="${2:-}"
+  if [ -n "$target" ]; then
+    step "cargo check --lib --target $target (-D warnings)"
+    if RUSTFLAGS='-D warnings' cargo check --lib --target "$target"; then
+      ok "$label"
+      RAN+=("$label")
+    else
+      fail "$label"
+    fi
+  else
+    step "cargo check --lib (-D warnings)"
+    if RUSTFLAGS='-D warnings' cargo check --lib; then
+      ok "$label"
+      RAN+=("$label")
+    else
+      fail "$label"
+    fi
+  fi
+}
+
+target_installed() {
+  rustup target list --installed 2>/dev/null | grep -q "^$1\$"
+}
+
+# ── host check ─────────────────────────────────────────────────────────────
+run_check "host (default features)"
+
+# ── cross-target checks (skip if not in 'fast' mode) ──────────────────────
+if [ "$ARG" != "fast" ]; then
+  for target in aarch64-apple-ios wasm32-unknown-unknown aarch64-linux-android; do
+    if target_installed "$target"; then
+      run_check "$target" "$target"
+    else
+      skip "$target (not installed; rustup target add $target)"
+    fi
+  done
+fi
+
+# ── lint mode: format + clippy across all targets/features ────────────────
+if [ "$ARG" = "lint" ] || [ "$ARG" = "all" ]; then
+  step "cargo fmt --all -- --check"
+  if cargo fmt --all -- --check; then
+    ok "fmt"
+    RAN+=("fmt")
+  else
+    fail "fmt (run \`./clippy\` to fix)"
+  fi
+
+  step "cargo clippy --all --workspace --all-features --all-targets -- -D warnings"
+  if cargo clippy --all --workspace --all-features --all-targets -- -D warnings; then
+    ok "clippy"
+    RAN+=("clippy")
+  else
+    fail "clippy"
+  fi
+fi
+
+# ── all mode: also verify JS lockfile is in sync ──────────────────────────
+if [ "$ARG" = "all" ]; then
+  if [ -x "$ROOT_DIR/sync_js" ]; then
+    step "./sync_js (JS lockfile sync — CI runs --frozen-lockfile)"
+    if "$ROOT_DIR/sync_js"; then
+      if git diff --exit-code -- 'docs/website/pnpm-lock.yaml' 'docs/website/package.json' >/dev/null; then
+        ok "js-lockfile (in sync)"
+        RAN+=("js-lockfile")
+      else
+        fail "js-lockfile (out of sync; commit the regenerated docs/website/pnpm-lock.yaml + package.json)"
+      fi
+    else
+      fail "js-lockfile (sync_js failed)"
+    fi
+  else
+    skip "js-lockfile (./sync_js not found)"
+  fi
+fi
+
+# ── summary ───────────────────────────────────────────────────────────────
+echo ""
+if [ "$FAILED" -eq 0 ]; then
+  printf "${GREEN}All checks passed${RESET} (%d ran" "${#RAN[@]}"
+  if [ "${#SKIPPED[@]}" -gt 0 ]; then
+    printf ", %d skipped" "${#SKIPPED[@]}"
+  fi
+  printf ").\n"
+  exit 0
+else
+  printf "${RED}One or more checks failed.${RESET}\n"
+  exit 1
+fi

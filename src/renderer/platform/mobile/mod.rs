@@ -22,8 +22,8 @@ use std::sync::Arc;
 
 use lsp_doc::lsp_doc;
 
-use crate::{MobileTextureTarget, MobileWindowTarget};
-use crate::{Renderer, Shader, Size, TextureTarget, WindowTarget};
+use crate::MobileTextureTarget;
+use crate::{Renderer, Size};
 
 /// Mobile-facing error type. Flattens every internal error to its `Display`
 /// representation so Swift/Kotlin callers get a single typed error to match on.

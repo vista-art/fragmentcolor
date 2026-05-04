@@ -14,6 +14,12 @@
 //!    by calling into the NDK directly, then passes it to the uniffi method.
 //!    This path satisfies the parity audit's `create_target.md:kotlin` gap and
 //!    gives Kotlin callers a first-class uniffi-generated API.
+//!
+//! TODO(0.11.x): migrate `jni::JNIEnv` → `jni::EnvUnowned` (FFI-safe entry
+//! points) and `jni::Env` (full API). The deprecation lives behind
+//! `#[allow(deprecated)]` here until the rewrite. See jni 0.22 release notes.
+
+#![allow(deprecated)]
 
 use std::sync::Arc;
 
