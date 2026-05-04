@@ -163,11 +163,25 @@ impl Renderer {
 
     /// No-op on WASM — the browser drives submission readiness. Provided for
     /// API parity; callers that need a sync point on the web should await a
-    /// readback (`read_texture_async` / `Texture.getImage`).
+    /// readback (`Renderer.readTexture` / `Texture.getImage`).
     #[wasm_bindgen(js_name = "waitIdle")]
     #[lsp_doc("docs/api/core/renderer/hidden/wait_idle_js.md")]
     pub fn wait_idle_js(&self) -> Result<(), RendererError> {
         self.wait_idle()
+    }
+
+    #[wasm_bindgen(js_name = "readTexture")]
+    #[lsp_doc("docs/api/core/renderer/read_texture.md")]
+    pub async fn read_texture_js(
+        &self,
+        texture_id: &JsValue,
+    ) -> Result<js_sys::Uint8Array, JsError> {
+        let id = crate::texture::js_to_texture_id(texture_id)?;
+        let bytes = self
+            .read_texture(id)
+            .await
+            .map_err(|e| JsError::new(&e.to_string()))?;
+        Ok(js_sys::Uint8Array::from(bytes.as_slice()))
     }
 
     #[wasm_bindgen(js_name = "createExternalTexture")]

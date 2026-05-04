@@ -214,7 +214,7 @@ class GeneratedExamples {
     @Suppress("unused") private suspend fun _example_core_pass_set_compute_dispatch() {
         val cs = Shader("@compute @workgroup_size(8,8,1) fn cs_main() {}")
         val pass = Pass("compute"); pass.addShader(cs)
-        pass.setComputeDispatch(64, 64, 1)
+        pass.setComputeDispatch(64u,64u,1u)
     }
 
     @Suppress("unused") private suspend fun _example_core_pass_set_viewport() {
@@ -313,14 +313,6 @@ class GeneratedExamples {
     }
 
     @Suppress("unused") private suspend fun _example_core_renderer_read_texture() {
-        val renderer = Renderer()
-        val texture = renderer.createStorageTexture(Size(width=64u, height=64u, depth=null), TextureFormat.RGBA, null, null)
-        texture.write(ByteArray(64 * 64 * 4))
-
-        val bytes = texture.getImage()
-    }
-
-    @Suppress("unused") private suspend fun _example_core_renderer_read_texture_async() {
         val renderer = Renderer()
         val texture = renderer.createStorageTexture(Size(width=64u, height=64u, depth=null), TextureFormat.RGBA, null, null)
         texture.write(ByteArray(64 * 64 * 4))
@@ -432,6 +424,16 @@ class GeneratedExamples {
 
         // Clear all
         shader.clearMeshes()
+    }
+
+    @Suppress("unused") private suspend fun _example_core_shader_fetch() {
+
+
+        // Single URL
+        val shader = Shader.fetch("https://fragmentcolor.org/shaders/sdf2d/circle.wgsl")
+
+        // Registry slug
+        val shader2 = Shader.fetch("sdf2d/circle")
     }
 
     @Suppress("unused") private suspend fun _example_core_shader_from_mesh() {

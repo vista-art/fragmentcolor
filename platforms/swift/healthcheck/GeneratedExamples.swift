@@ -13,7 +13,6 @@
 //      export to Swift.
 // Fix the source — this file is regenerated on every cargo build.
 
-import Foundation
 import FragmentColor
 
 @available(iOS 16.0, *)
@@ -308,15 +307,7 @@ private enum _GeneratedExamples {
         let texture = try await renderer.createStorageTexture(([64, 64], TextureFormat.rgba))
         try texture.write(Array(repeating: 0, count: 64 * 64 * 4))
 
-        let bytes = try renderer.readTexture(texture.id())
-    }
-
-    static func _example_core_renderer_read_texture_async() async throws {
-        let renderer = Renderer()
-        let texture = try await renderer.createStorageTexture(([64, 64], TextureFormat.rgba))
-        try texture.write(Array(repeating: 0, count: 64 * 64 * 4))
-
-        let bytes = try await renderer.readTextureAsync(texture.id())
+        let bytes = try await renderer.readTexture(texture.id())
     }
 
     static func _example_core_renderer_render() async throws {
@@ -425,6 +416,16 @@ private enum _GeneratedExamples {
         shader.clearMeshes()
     }
 
+    static func _example_core_shader_fetch() async throws {
+
+
+        // Single URL
+        let shader = try await Shader.fetch("https://fragmentcolor.org/shaders/sdf2d/circle.wgsl")
+
+        // Registry slug
+        let shader2 = try await Shader.fetch("sdf2d/circle")
+    }
+
     static func _example_core_shader_from_mesh() async throws {
 
         let mesh = Mesh()
@@ -472,6 +473,7 @@ private enum _GeneratedExamples {
 
     static func _example_core_shader_new() async throws {
 
+
         let shader = try Shader("""
             @vertex
             fn vs_main(@builtin(vertex_index) index: u32) -> @builtin(position) vec4<f32> {
@@ -508,7 +510,7 @@ private enum _GeneratedExamples {
 
         """
 
-        let shader2 = try Shader.new([
+        let shader = try Shader.new([
             "sdf2d/circle",      // pure function: fn circle(p: vec2<f32>, r: f32) -> f32
             "noise/simplex2",    // pure function: fn simplex2(v: vec2<f32>) -> f32
             main,
@@ -678,7 +680,7 @@ private enum _GeneratedExamples {
             mipmaps: false,
             usage: nil
         )
-        let texture = try await renderer.createTexture(input: .bytes(Data(pixels)), options: options)
+        let texture = try await renderer.createTexture(input: .bytes(pixels), options: options)
 
         let opts = SamplerOptions(repeatX: true, repeatY: true, smooth: true, compare: nil)
         texture.setSamplerOptions(opts: opts)
@@ -765,23 +767,29 @@ private enum _GeneratedExamples {
 
     static func _example_core_texture_mip_chain_levels() async throws {
 
-        let pixels = Array(repeating: UInt8(0), count: 8 * 8 * 4)
-        let chain = try TextureMipChain.prepare((pixels, TextureFormat.rgba8UnormSrgb, [8, 8]))
-        let level_zero_bytes = try chain.level(index: 0)
+        let pixels = Array(repeating: 0, count: 8 * 8 * 4)
+        let chain = try TextureMipChain.prepare((
+            pixels,
+            TextureFormat.rgba8UnormSrgb,
+            [8, 8],
+        ))
+        let level_zero_bytes = chain.levels()[0]
         let _ = level_zero_bytes
     }
 
     static func _example_core_texture_mip_chain_prepare() async throws {
 
-        // Encoded path -- single tuple, no extra method.
-        let encoded_png_bytes: [UInt8] = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]
+        // Encoded path â single tuple, no extra method.
         let chain = try TextureMipChain.prepare((encoded_png_bytes, TextureFormat.rgba8UnormSrgb))
 
-        // Raw pixel path -- same method, just include the size in the tuple.
-        let raw_rgba = Array(repeating: UInt8(200), count: 8 * 8 * 4)
-        let chain_raw = try TextureMipChain.prepare((raw_rgba, TextureFormat.rgba8UnormSrgb, [8, 8]))
+        // Raw pixel path â same method, just include the size in the tuple.
+        let chain_raw = try TextureMipChain.prepare((
+            raw_rgba,
+            TextureFormat.rgba8UnormSrgb,
+            [8, 8],
+        ))
 
-        // Hand the chain to the unified create_texture entry -- same vocabulary.
+        // Hand the chain to the unified create_texture entry â same vocabulary.
         let renderer = Renderer()
         let texture = try await renderer.createTexture(chain)
     }
