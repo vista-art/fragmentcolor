@@ -510,8 +510,7 @@ mod convert {
         let names = [".as_slice", ".as_ref", ".to_vec"];
         let mut out = line.to_string();
         for needle in names {
-            loop {
-                let Some(pos) = out.find(needle) else { break };
+            while let Some(pos) = out.find(needle) {
                 let chars: Vec<char> = out.chars().collect();
                 let after_name = pos + needle.len();
                 let mut k = after_name;

@@ -15,14 +15,26 @@ impl TextureMipChain {
     /// `format` at `size`. Pure CPU work — call from a Web Worker (or the
     /// main thread) and pass the result to `renderer.createTexture(chain)`
     /// for the GPU upload.
+    ///
+    /// `size` accepts the same shapes the rest of the JS API does:
+    /// `[w, h]`, `[w, h, d]`, a typed array, or a `Size` object — see
+    /// `Size::try_from(&JsValue)` for the full list. Forcing callers to
+    /// construct a wasm-bindgen `Size` instance (which has no JS-side
+    /// constructor anyway) would break parity with `createStorageTexture`,
+    /// `createTextureTarget`, and friends.
     #[wasm_bindgen(js_name = "prepare")]
     #[lsp_doc("docs/api/core/texture_mip_chain/prepare.md")]
     pub fn prepare_js(
         bytes: &JsValue,
         format: TextureFormat,
-        size: Option<Size>,
+        size: &JsValue,
     ) -> Result<TextureMipChain, JsError> {
         let bytes = crate::texture::js_to_texture_bytes(bytes)?;
+        let size: Option<Size> = if size.is_undefined() || size.is_null() {
+            None
+        } else {
+            Some(size.try_into()?)
+        };
         let input = crate::TextureInput {
             data: crate::TextureData::Bytes(bytes),
             options: crate::TextureOptions {
