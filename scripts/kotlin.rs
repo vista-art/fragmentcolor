@@ -1,8 +1,14 @@
 mod kotlin {
-    //! Kotlin transpilation.
+    //! Kotlin transpilation — second phase.
     //!
-    //! Same approach as `swift.rs`: post-process the JS output. Kotlin
-    //! differs from Swift in:
+    //! `convert::to_kotlin` runs the per-line emitter with `Lang::Kotlin`,
+    //! producing a JS-shaped intermediate. This module finishes the job
+    //! with the bulk-text swaps that don't fit a per-line model. Folding
+    //! these into per-line `Lang::Kotlin` match arms inside `convert.rs`
+    //! is queued for the next pass; doing them here keeps the transition
+    //! incremental.
+    //!
+    //! Kotlin differs from Swift in:
     //!   - `null` stays as `null` (Kotlin keyword).
     //!   - `const` → `val` (not `let`).
     //!   - Async methods are `suspend` functions; callers drop `await`
@@ -11,8 +17,11 @@ mod kotlin {
     //!   - Import becomes `import org.fragmentcolor.*`.
     //!   - Trailing semicolons are optional and we strip them.
 
-    pub fn js_to_kotlin(js: &str) -> String {
-        let js = crate::swift::swap_backticks_for_triple_quotes(js);
+    /// Finalize the Kotlin output emitted by `convert(_, Lang::Kotlin, _)`.
+    /// Takes the JS-shaped intermediate and applies the bulk-text swaps
+    /// documented above to land on idiomatic Kotlin.
+    pub fn finalize(ir: &str) -> String {
+        let js = crate::swift::swap_backticks_for_triple_quotes(ir);
         // Join multi-line expressions (open-paren continuation) into single lines
         // so that per-line rewrites can see the full call.
         let js = join_continuation_lines(&js);
@@ -1854,7 +1863,7 @@ mod kotlin {
     }
 
     // Drop lines that are `val _ = ...` (Kotlin reserves `_`).
-    // Called from js_to_kotlin per-line AFTER rewrite_line.
+    // Called from kotlin::finalize per-line AFTER rewrite_line.
     fn drop_underscore_val(line: &str) -> String {
         let trimmed = line.trim_start();
         if trimmed.starts_with("val _ =") || trimmed == "val _" {

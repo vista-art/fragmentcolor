@@ -1,21 +1,33 @@
 mod convert {
     use crate::{js_objectize_sampleroptions_literal, js_region_new_to_array, simplify_js_size_from};
 
-    #[derive(Copy, Clone, Debug)]
+    /// Target languages for the Rust→FFI example transpiler.
+    ///
+    /// All four variants are first-class entries to the same `convert(...)`
+    /// pipeline. During the per-line emit pass Swift and Kotlin share JS's
+    /// control-flow shape (`{ ... }` blocks, `;` terminators, the
+    /// `new Type(...)` constructor form), so internal match sites group
+    /// them together via `Lang::Js | Lang::Swift | Lang::Kotlin =>` arms.
+    /// The bulk-text post-processors in `scripts/{swift,kotlin}.rs` then
+    /// finish the job — backticks → `"""`, `null` → `nil`, throwing-init
+    /// `try!` insertion, etc. Folding those post-processors into per-line
+    /// match arms here is the next refactor; this enum is honest about
+    /// the four supported targets in the meantime.
+    #[derive(Copy, Clone, Debug, PartialEq, Eq)]
     enum Lang {
         Js,
         Py,
+        Swift,
+        Kotlin,
     }
 
     pub fn to_js(items: &[(String, bool)]) -> String {
         // Web JS output: collapse multi-line statements and unwrap Rust
         // 1-tuple-wrapped call args (`f((a, b))` → `f(a, b)`). The Swift
-        // / Kotlin transpilers re-use `convert` as an intermediate IR and
-        // have their own tuple-aware rewrites (see
-        // `kotlin::rewrite_texturemipchain_prepare_tuple`,
-        // `kotlin::rewrite_shader_new_to_compose`), so they avoid both
-        // peephole passes via `to_js_keep_tuples` to preserve the
-        // shape they expect.
+        // and Kotlin emitters skip both peephole passes because their own
+        // tuple-aware rewrites (`kotlin::rewrite_texturemipchain_prepare_tuple`,
+        // `kotlin::rewrite_shader_new_to_compose`, swift's tuple→Size
+        // baseSize rewrite) rely on the original Rust shape.
         let raw = convert(items, Lang::Js, /*aggressive_js_flatten=*/ true);
         flatten_tuple_call_args_js_multiline(&raw)
     }
@@ -24,34 +36,31 @@ mod convert {
         convert(items, Lang::Py, false)
     }
 
-    /// JS output with Rust-style tuple-wrapped call args and multi-line
-    /// statement structure left intact. Used as the IR feeding `to_swift`
-    /// / `to_kotlin`, where the downstream transpilers do their own
-    /// tuple / array rewrites and rely on the original line layout.
-    fn to_js_keep_tuples(items: &[(String, bool)]) -> String {
-        convert(items, Lang::Js, /*aggressive_js_flatten=*/ false)
-    }
-
     /// Transpile a Rust example into idiomatic Swift for the website tabs
     /// and the `platforms/swift/examples/` healthcheck inputs.
     ///
-    /// Implemented as a post-processor on top of `to_js` since Swift and JS
-    /// share the same control-flow shape in our examples — only a handful
-    /// of syntactic swaps differ (`const` → `let`, `new Type(...)` →
-    /// `Type(...)`, `await` → `try await`, `null` → `nil`, import rewrite,
-    /// backtick template literals → `"""..."""`).
+    /// Two-phase pipeline: the per-line emitter (`convert(_, Lang::Swift, _)`)
+    /// produces a JS-shaped intermediate (Swift shares JS's control flow),
+    /// then `swift::finalize` finishes the syntactic swaps that don't
+    /// fit a per-line model — backtick template literals → `"""`,
+    /// `null` → `nil`, `try` insertion for throwing inits, the canvas →
+    /// `createTextureTarget` rewrite for headless examples, etc.
     pub fn to_swift(items: &[(String, bool)]) -> String {
-        super::swift::js_to_swift(&to_js_keep_tuples(items))
+        let ir = convert(items, Lang::Swift, /*aggressive_js_flatten=*/ false);
+        super::swift::finalize(&ir)
     }
 
     /// Transpile a Rust example into idiomatic Kotlin.
     ///
-    /// Same strategy as `to_swift`: start from the JS output, post-process
-    /// a small set of lexical swaps (`const` → `val`, drop `new`, drop
-    /// trailing `;`, rewrite the import statement, swap backticks for
-    /// triple-quoted raw strings).
+    /// Same two-phase pipeline as `to_swift`: per-line emit
+    /// (`convert(_, Lang::Kotlin, _)`) yields a JS-shaped intermediate,
+    /// then `kotlin::finalize` applies the bulk-text rewrites
+    /// (`const` → `val`, drop `new`, drop trailing `;`, backticks →
+    /// `"""`, `await` prefix drop because `suspend` functions are called
+    /// directly inside coroutine scope).
     pub fn to_kotlin(items: &[(String, bool)]) -> String {
-        super::kotlin::js_to_kotlin(&to_js_keep_tuples(items))
+        let ir = convert(items, Lang::Kotlin, /*aggressive_js_flatten=*/ false);
+        super::kotlin::finalize(&ir)
     }
 
     /// Multi-line variant of `flatten_tuple_call_args_js`. Splits the
@@ -395,7 +404,7 @@ mod convert {
     // valid per-language form. Walks bracket-and-paren balanced so
     // nested expressions don't trip the pattern.
     //   JS: `Array(N).fill(expr)` — picked up + idiomatized further by
-    //       `swift::js_to_swift` / `kotlin::js_to_kotlin`.
+    //       `swift::finalize` / `kotlin::finalize`.
     //   Py: `[expr] * N`.
     fn convert_rust_array_repeat(line: &str, lang: Lang) -> String {
         if !line.contains('[') || !line.contains(';') {
@@ -437,7 +446,7 @@ mod convert {
                     let expr = expr.trim();
                     let count = count.trim();
                     let replacement = match lang {
-                        Lang::Js => format!("Array({}).fill({})", count, expr),
+                        Lang::Js | Lang::Swift | Lang::Kotlin => format!("Array({}).fill({})", count, expr),
                         Lang::Py => format!("[{}] * ({})", expr, count),
                     };
                     out.push_str(&replacement);
@@ -829,8 +838,8 @@ mod convert {
         //   Py:  drop `.await` entirely — Python wrappers are sync.
         //
         // The Swift / Kotlin paths consume the JS output as IR and then
-        // adjust: `js_to_swift` rewrites `await expr` → `try await expr`,
-        // while `js_to_kotlin` drops the `await` prefix because uniffi
+        // adjust: `swift::finalize` rewrites `await expr` → `try await expr`,
+        // while `kotlin::finalize` drops the `await` prefix because uniffi
         // exposes async Rust as Kotlin `suspend` (no await needed).
         let mut out = line.to_string();
         // Process the `?`-suffixed form first so its tail (anything after
@@ -840,7 +849,7 @@ mod convert {
                 continue;
             }
             match lang {
-                Lang::Js => {
+                Lang::Js | Lang::Swift | Lang::Kotlin => {
                     if let Some(pos) = out.find(needle) {
                         // Preserve left side if present
                         if let Some(eq) = out[..pos].rfind('=') {
@@ -873,7 +882,7 @@ mod convert {
         }
         // Remove stray Rust error-propagation '?' for both langs (JS/Py)
         match lang {
-            Lang::Js => {
+            Lang::Js | Lang::Swift | Lang::Kotlin => {
                 // Replace common patterns
                 let mut s = out.replace(")?;", ");");
                 s = s.replace(")?\n", ")\n");
@@ -901,7 +910,7 @@ mod convert {
         let a = parts.next().unwrap_or("").trim();
         let b = parts.next().unwrap_or("").trim();
         match lang {
-            Lang::Js => Some(format!(
+            Lang::Js | Lang::Swift | Lang::Kotlin => Some(format!(
                 "if (JSON.stringify({}) !== JSON.stringify({})) {{ throw new Error(\"assert_eq failed\"); }}",
                 a, b
             )),
@@ -1005,7 +1014,7 @@ mod convert {
                         }
                     }
                 }
-                Lang::Js => {
+                Lang::Js | Lang::Swift | Lang::Kotlin => {
                     if let (Some(_), Some(_)) = (rhs.find('('), rhs.rfind(')')) {
                         rhs = "document.createElement('canvas');".to_string();
                         if var == "window" {
@@ -1022,7 +1031,7 @@ mod convert {
                 if let Some(endp) = args_with.rfind(')') {
                     let args = &args_with[..endp];
                     rhs = match lang {
-                        Lang::Js => format!("new {}({})", ty, args.trim()),
+                        Lang::Js | Lang::Swift | Lang::Kotlin => format!("new {}({})", ty, args.trim()),
                         Lang::Py => format!("{}({})", ty, args.trim()),
                     };
                 }
@@ -1042,7 +1051,7 @@ mod convert {
                 let mut a2 = parts.next().unwrap_or("").trim().to_string();
                 a2 = strip_refs(&a2);
                 match lang {
-                    Lang::Js => {
+                    Lang::Js | Lang::Swift | Lang::Kotlin => {
                         rhs = format!("new Pass({}); {}.addShader({})", a1, var, a2);
                     }
                     Lang::Py => {
@@ -1072,7 +1081,7 @@ mod convert {
         rhs = transform_await(&rhs, lang);
 
         // JS: camelize method names after '.'
-        if let Lang::Js = lang {
+        if matches!(lang, Lang::Js | Lang::Swift | Lang::Kotlin) {
             rhs = camelize_method_calls_js(&rhs);
             // JS fixups:
             // 1) None -> null
@@ -1124,7 +1133,7 @@ mod convert {
                     var
                 }
             }
-            Lang::Js => {
+            Lang::Js | Lang::Swift | Lang::Kotlin => {
                 if var == "window" && js_renames.get("window").is_some() {
                     "canvas"
                 } else {
@@ -1146,11 +1155,11 @@ mod convert {
         // Apply pending variable renames inside RHS for both languages (e.g., window->canvas)
         rhs = match lang {
             Lang::Py => apply_renames_py(&rhs, py_renames),
-            Lang::Js => apply_renames_py(&rhs, js_renames),
+            Lang::Js | Lang::Swift | Lang::Kotlin => apply_renames_py(&rhs, js_renames),
         };
 
         let mut line_out = match lang {
-            Lang::Js => ensure_js_semicolon(&format!("const {} = {}", var_out, rhs)),
+            Lang::Js | Lang::Swift | Lang::Kotlin => ensure_js_semicolon(&format!("const {} = {}", var_out, rhs)),
             Lang::Py => format!("{} = {}", var_out, rhs),
         };
         // Python: Convert JS-style '//' comments to Python '#', but only when
@@ -1394,8 +1403,8 @@ mod convert {
     ) -> String {
         let body = body_lines.join("\n");
         match (lang, ty) {
-            (Lang::Js, Some(ty)) => format!("const {} = new {}(`\n{}\n`);", var_out, ty, body),
-            (Lang::Js, None) => format!("const {} = `\n{}\n`;", var_out, body),
+            (Lang::Js | Lang::Swift | Lang::Kotlin, Some(ty)) => format!("const {} = new {}(`\n{}\n`);", var_out, ty, body),
+            (Lang::Js | Lang::Swift | Lang::Kotlin, None) => format!("const {} = `\n{}\n`;", var_out, body),
             (Lang::Py, Some(ty)) => format!("{} = {}(\"\"\"\n{}\n\"\"\")", var_out, ty, body),
             (Lang::Py, None) => format!("{} = \"\"\"\n{}\n\"\"\"", var_out, body),
         }
@@ -1438,12 +1447,13 @@ mod convert {
         // left untouched.
         //
         // Gated behind `aggressive_js_flatten` because the Swift / Kotlin
-        // transpilers feed off `to_js_keep_tuples` and rely on the
-        // original line layout (e.g. `Shader.new([\n    "...",\n])` is
-        // detected by `kotlin::rewrite_shader_new_to_compose` only after
-        // `js_to_kotlin` does its own array→arrayOf substitution; if we
-        // join here, the array elements end up on a single line with
-        // line comments slurping subsequent items).
+        // emitters call `convert(_, _, /*aggressive_js_flatten=*/ false)`
+        // and rely on the original line layout (e.g.
+        // `Shader.new([\n    "...",\n])` is detected by
+        // `kotlin::rewrite_shader_new_to_compose` only after `kotlin::finalize`
+        // does its own array→arrayOf substitution; if we join here, the
+        // array elements end up on a single line with line comments
+        // slurping subsequent items).
         if aggressive_js_flatten {
             src = reassemble_open_bracket_lines(src);
         }
@@ -1534,7 +1544,7 @@ mod convert {
                     })
                     .collect();
                 match lang {
-                    Lang::Js => out.push(format!(
+                    Lang::Js | Lang::Swift | Lang::Kotlin => out.push(format!(
                         "import {{ {} }} from \"fragmentcolor\";",
                         list.join(", ")
                     )),
@@ -1589,7 +1599,7 @@ mod convert {
             // Map assert_eq!
             if let Some(mapped) = map_assert(t, lang) {
                 out.push(match lang {
-                    Lang::Js => ensure_js_semicolon(&mapped),
+                    Lang::Js | Lang::Swift | Lang::Kotlin => ensure_js_semicolon(&mapped),
                     Lang::Py => mapped,
                 });
                 idx += 1;
@@ -1615,7 +1625,7 @@ mod convert {
             // 1) UFCS static call -> dot first
             line = replace_static_call_to_dot(&line);
             // JS-specific early fixups on raw line
-            if let Lang::Js = lang {
+            if matches!(lang, Lang::Js | Lang::Swift | Lang::Kotlin) {
                 // None -> null
                 line = line.replace("None", "null");
                 // SamplerOptions { ... } -> { ... }
@@ -1655,10 +1665,10 @@ mod convert {
             // 1.1) Convert Vec syntax (vec![], Vec::new()) into JS/Py arrays
             line = convert_vec_syntax(&line);
 
-            // 2) Drop explicit module prefix for JS/Py when present: fragmentcolor.Shader -> Shader
-            if matches!(lang, Lang::Js | Lang::Py) {
-                line = line.replace("fragmentcolor.Shader", "Shader");
-            }
+            // 2) Drop explicit module prefix on every target — Swift/Kotlin
+            // both fall through `swift::finalize` / `kotlin::finalize` after this so
+            // they want the same plain `Shader` token the JS/Py emitters do.
+            line = line.replace("fragmentcolor.Shader", "Shader");
 
             // 3) Handling for Shader::default();
             if line.contains("Shader::default()")
@@ -1667,7 +1677,7 @@ mod convert {
                 || line.contains("fragmentcolor::Shader.default()")
             {
                 line = match lang {
-                    Lang::Js => line
+                    Lang::Js | Lang::Swift | Lang::Kotlin => line
                         .replace("Shader::default()", "new Shader(\"\")")
                         .replace("fragmentcolor::Shader::default()", "new Shader(\"\")")
                         .replace("Shader.default()", "new Shader(\"\")")
@@ -1721,13 +1731,13 @@ mod convert {
             }
 
             // 7) JS camelize methods
-            if let Lang::Js = lang {
+            if matches!(lang, Lang::Js | Lang::Swift | Lang::Kotlin) {
                 line = camelize_method_calls_js(&line);
             }
 
             // 8) Language-specific trailing cleanup
             match lang {
-                Lang::Js => {
+                Lang::Js | Lang::Swift | Lang::Kotlin => {
                     line = ensure_js_semicolon(&line);
                 }
                 Lang::Py => {
@@ -1740,7 +1750,7 @@ mod convert {
                 Lang::Py => {
                     line = apply_renames_py(&line, &py_renames);
                 }
-                Lang::Js => {
+                Lang::Js | Lang::Swift | Lang::Kotlin => {
                     line = apply_renames_py(&line, &js_renames);
                 }
             }
