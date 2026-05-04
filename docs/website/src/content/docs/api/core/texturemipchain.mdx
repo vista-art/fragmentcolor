@@ -74,17 +74,17 @@ code={`
 import { Renderer, TextureFormat, TextureMipChain } from "fragmentcolor";
 
 const renderer = new Renderer();
-// Encoded image bytes the caller has on hand (could come off a worker).
-const png = [
-    0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
-    // ... full PNG body ...
-];
-const chain = TextureMipChain.prepare((png, TextureFormat.Rgba8UnormSrgb));
+// Real encoded PNG bytes: served by the healthcheck server so the example
+// runs end-to-end without packaging its own fixture.
+const pngResp = await fetch("/healthcheck/public/favicon.png");
+const pngBytes = new Uint8Array(await pngResp.arrayBuffer());
+const chain = TextureMipChain.prepare(pngBytes, TextureFormat.Rgba8UnormSrgb);
 
 // Hand the chain to the unified create_texture entry - same vocabulary as
 // every other texture path; From<TextureMipChain> selects the GPU-only
 // upload internally.
 const texture = await renderer.createTexture(chain);
+const _ = texture.size();
 `}
 lang="js"
 />
@@ -229,19 +229,24 @@ lang="rust" meta="collapse={1-1, 4-8, 12-12, 23-27}"
 code={`
 import { Renderer, TextureFormat, TextureMipChain } from "fragmentcolor";
 
-// Encoded path â single tuple, no extra method.
-const chain = TextureMipChain.prepare((encoded_png_bytes, TextureFormat.Rgba8UnormSrgb));
+// Encoded path - prepare from PNG / JPEG bytes (size is inferred).
+// Use a fixture you have on hand. The favicon below is served by the
+// healthcheck server so the example runs end-to-end without the test
+// having to bring its own bytes.
+const pngResp = await fetch("/healthcheck/public/favicon.png");
+const pngBytes = new Uint8Array(await pngResp.arrayBuffer());
+const chain = TextureMipChain.prepare(pngBytes, TextureFormat.Rgba8UnormSrgb);
 
-// Raw pixel path â same method, just include the size in the tuple.
-const chain_raw = TextureMipChain.prepare((
-    raw_rgba.asSlice(),
-    TextureFormat.Rgba8UnormSrgb,
-    [8, 8],
-));
+// Raw pixel path - same method, just include the size.
+const rawRgba = new Uint8Array(8 * 8 * 4);
+rawRgba.fill(200);
+const chainRaw = TextureMipChain.prepare(rawRgba, TextureFormat.Rgba8UnormSrgb, [8, 8]);
 
-// Hand the chain to the unified create_texture entry â same vocabulary.
+// Hand the chain to the unified create_texture entry - same vocabulary.
 const renderer = new Renderer();
 const texture = await renderer.createTexture(chain);
+const _ = chainRaw.levelCount();
+const __ = texture.size();
 `}
 lang="js"
 />
@@ -349,12 +354,9 @@ lang="rust" meta="collapse={10-10}"
 code={`
 import { TextureFormat, TextureMipChain } from "fragmentcolor";
 
-const pixels = Array(4 * 4 * 4).fill(200);
-const chain = TextureMipChain.prepare((
-    pixels.asSlice(),
-    TextureFormat.Rgba8UnormSrgb,
-    [4, 4],
-));
+const pixels = new Uint8Array(4 * 4 * 4);
+pixels.fill(200);
+const chain = TextureMipChain.prepare(pixels, TextureFormat.Rgba8UnormSrgb, [4, 4]);
 const _ = chain.format();
 `}
 lang="js"
@@ -448,14 +450,11 @@ lang="rust" meta="collapse={10-11, 13-13}"
 code={`
 import { TextureFormat, TextureMipChain } from "fragmentcolor";
 
-const pixels = Array(16 * 16 * 4).fill(0);
-const chain = TextureMipChain.prepare((
-    pixels.asSlice(),
-    TextureFormat.Rgba8UnormSrgb,
-    [16, 16],
-));
-const (width, height) = chain.baseSize();
-const _ = (width, height);
+const pixels = new Uint8Array(16 * 16 * 4);
+const chain = TextureMipChain.prepare(pixels, TextureFormat.Rgba8UnormSrgb, [16, 16]);
+const sz = chain.baseSize();
+const width = sz.width;
+const height = sz.height;
 `}
 lang="js"
 />
@@ -554,14 +553,10 @@ lang="rust" meta="collapse={10-10, 12-12}"
 code={`
 import { TextureFormat, TextureMipChain } from "fragmentcolor";
 
-const pixels = Array(8 * 8 * 4).fill(0);
-const chain = TextureMipChain.prepare((
-    pixels.asSlice(),
-    TextureFormat.Rgba8UnormSrgb,
-    [8, 8],
-));
-const level_zero_bytes = chain.levels()[0];
-const _ = level_zero_bytes;
+const pixels = new Uint8Array(8 * 8 * 4);
+const chain = TextureMipChain.prepare(pixels, TextureFormat.Rgba8UnormSrgb, [8, 8]);
+const levelZeroBytes = chain.level(0);
+const _ = levelZeroBytes;
 `}
 lang="js"
 />
@@ -656,12 +651,8 @@ lang="rust" meta="collapse={10-10, 12-12}"
 code={`
 import { TextureFormat, TextureMipChain } from "fragmentcolor";
 
-const pixels = Array(8 * 8 * 4).fill(0);
-const chain = TextureMipChain.prepare((
-    pixels.asSlice(),
-    TextureFormat.Rgba8UnormSrgb,
-    [8, 8],
-));
+const pixels = new Uint8Array(8 * 8 * 4);
+const chain = TextureMipChain.prepare(pixels, TextureFormat.Rgba8UnormSrgb, [8, 8]);
 const count = chain.levelCount();
 const _ = count;
 `}

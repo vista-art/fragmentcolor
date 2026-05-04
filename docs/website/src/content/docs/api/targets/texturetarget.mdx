@@ -59,7 +59,7 @@ const target = await renderer.createTextureTarget([64, 64]);
 const shader = Shader.default();
 renderer.render(shader, target);
 
-const image = target.getImage().await;
+const image = await target.getImage();
 
 `}
 lang="js"
@@ -79,7 +79,7 @@ target = renderer.create_texture_target([64, 64])
 shader = Shader.default()
 renderer.render(shader, target)
 
-image = target.get_image().await
+image = target.get_image()
 
 `}
 lang="python"
@@ -99,7 +99,7 @@ let target = try await renderer.createTextureTarget([64, 64])
 let shader = Shader.default()
 try renderer.render(shader, target)
 
-let image = target.getImage().await
+let image = try await target.getImage()
 `}
 lang="swift"
 />
@@ -118,7 +118,7 @@ val target = renderer.createTextureTarget(64u, 64u)
 val shader = Shader.default()
 renderer.render(shader, target)
 
-val image = target.getImage().await
+val image = target.getImage()
 `}
 lang="kotlin"
 />
@@ -173,7 +173,7 @@ const renderer = new Renderer();
 const target = await renderer.createTextureTarget([16, 16]);
 renderer.render(new Shader(""), target);
 
-const image = target.getImage().await;
+const image = await target.getImage();
 
 `}
 lang="js"
@@ -192,7 +192,7 @@ renderer = Renderer()
 target = renderer.create_texture_target([16, 16])
 renderer.render(Shader(""), target)
 
-image = target.get_image().await
+image = target.get_image()
 
 `}
 lang="python"
@@ -210,7 +210,7 @@ let renderer = Renderer()
 let target = try await renderer.createTextureTarget([16, 16])
 try renderer.render(Shader(""), target)
 
-let image = target.getImage().await
+let image = try await target.getImage()
 `}
 lang="swift"
 />
@@ -227,7 +227,7 @@ val renderer = Renderer()
 val target = renderer.createTextureTarget(16u, 16u)
 renderer.render(Shader(""), target)
 
-val image = target.getImage().await
+val image = target.getImage()
 `}
 lang="kotlin"
 />

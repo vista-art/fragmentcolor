@@ -66,7 +66,6 @@ lang="rust" meta="collapse={1-1, 24-27}"
 <TabItem label="JavaScript">
 <Code
 code={`
-
 import { Renderer, Shader } from "fragmentcolor";
 const renderer = new Renderer();
 const shader = new Shader(\`
@@ -77,18 +76,15 @@ const shader = new Shader(\`
   return vec4f(p[i], 0., 1.);
 }
 @fragment fn main() -> @location(0) vec4<f32> { return vec4f(1.,1.,1.,1.); }
-
 \`);
 
-// 1x1 RGBA (white) raw pixel bytes - single create_texture entry, tuple
-// form (bytes, format, size) selects the raw-pixel path. Format is
-// the placeholder Rgba (sRGB-aware) by default.
-const pixels = [255,255,255,255];
-const texture = await renderer.createTexture((pixels, [1, 1]));
+// 1x1 RGBA (white) raw pixel bytes. With size set, createTexture skips
+// the image decoder and uploads the bytes directly as raw pixel data.
+const pixels = new Uint8Array([255, 255, 255, 255]);
+const texture = await renderer.createTexture(pixels, { size: [1, 1] });
 
-// insert  the texture in the shader matching the name in the shader
+// Insert the texture in the shader matching the name in the shader.
 shader.set("my_texture", texture);
-
 `}
 lang="js"
 />
@@ -308,8 +304,8 @@ lang="rust" meta="collapse={1-1, 7-10}"
 code={`
 import { Renderer } from "fragmentcolor";
 const renderer = new Renderer();
-const pixels = [255,255,255,255];
-const tex = await renderer.createTexture((pixels, [1, 1]));
+const pixels = new Uint8Array([255, 255, 255, 255]);
+const tex = await renderer.createTexture(pixels, { size: [1, 1] });
 const sz = tex.size();
 `}
 lang="js"
@@ -398,15 +394,13 @@ lang="rust" meta="collapse={1-1, 11-14}"
 <TabItem label="JavaScript">
 <Code
 code={`
-
 import { Renderer } from "fragmentcolor";
 
 const renderer = new Renderer();
 // 1x1 RGBA (white) raw pixel bytes
-const pixels = [255,255,255,255];
-const tex = await renderer.createTexture((pixels, [1, 1]));
+const pixels = new Uint8Array([255, 255, 255, 255]);
+const tex = await renderer.createTexture(pixels, { size: [1, 1] });
 const a = tex.aspect();
-
 `}
 lang="js"
 />
@@ -506,16 +500,13 @@ lang="rust" meta="collapse={1-1, 12-14}"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Renderer, SamplerOptions } from "fragmentcolor";
+import { Renderer } from "fragmentcolor";
 const renderer = new Renderer();
 // 1x1 RGBA (white) raw pixel bytes
-const pixels = [255,255,255,255];
-
-const texture = await renderer.createTexture((pixels, [1, 1]));
-const opts = {repeat_x: true, repeat_y: true, smooth: true, compare: null};
+const pixels = new Uint8Array([255, 255, 255, 255]);
+const texture = await renderer.createTexture(pixels, { size: [1, 1] });
+const opts = { repeatX: true, repeatY: true, smooth: true, compare: null };
 texture.setSamplerOptions(opts);
-
-
 `}
 lang="js"
 />
@@ -861,7 +852,7 @@ lang="rust" meta="collapse={1-1, 8-11}"
 code={`
 import { Renderer, TextureFormat } from "fragmentcolor";
 const renderer = new Renderer();
-const texture = await renderer.createStorageTexture(([64, 64], TextureFormat.Rgba));
+const texture = await renderer.createStorageTexture([64, 64], TextureFormat.Rgba);
 texture.write(Array(64 * 64 * 4).fill(0));
 
 const bytes = await texture.getImage();

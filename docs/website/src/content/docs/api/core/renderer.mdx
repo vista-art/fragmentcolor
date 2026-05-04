@@ -446,7 +446,7 @@ const target = await renderer.createTextureTarget([64, 64]);
 renderer.render(new Shader(""), target);
 
 // get the rendered image
-const image = target.getImage().await;
+const image = await target.getImage();
 
 `}
 lang="js"
@@ -468,7 +468,7 @@ target = renderer.create_texture_target([64, 64])
 renderer.render(Shader(""), target)
 
 # get the rendered image
-image = target.get_image().await
+image = target.get_image()
 
 `}
 lang="python"
@@ -489,7 +489,7 @@ let target = try await renderer.createTextureTarget([64, 64])
 try renderer.render(Shader(""), target)
 
 // get the rendered image
-let image = target.getImage().await
+let image = try await target.getImage()
 `}
 lang="swift"
 />
@@ -509,7 +509,7 @@ val target = renderer.createTextureTarget(64u, 64u)
 renderer.render(Shader(""), target)
 
 // get the rendered image
-val image = target.getImage().await
+val image = target.getImage()
 `}
 lang="kotlin"
 />
@@ -683,11 +683,11 @@ import { Renderer, TextureFormat } from "fragmentcolor";
 
 const r = new Renderer();
 // Empty storage texture â same single create_storage_texture entry.
-const tex = await r.createStorageTexture(([64, 64], TextureFormat.Rgba));
+const tex = await r.createStorageTexture([64, 64], TextureFormat.Rgba);
 
 // Pre-seeded with bytes â same method, three-tuple form.
 const pixels = Array(64 * 64 * 4).fill(0);
-const tex2 = await r.createStorageTexture(([64, 64], TextureFormat.Rgba, pixels));
+const tex2 = await r.createStorageTexture([64, 64], TextureFormat.Rgba, pixels);
 `}
 lang="js"
 />
@@ -1015,7 +1015,7 @@ let target = try await r.createTextureTarget([8, 8])
 let shader = Shader.default()
 try r.render(shader, target)
 try r.waitIdle()
-let _bytes = target.getImage().await
+let _bytes = try await target.getImage()
 `}
 lang="swift"
 />
@@ -1032,7 +1032,7 @@ val target = r.createTextureTarget(8u, 8u)
 val shader = Shader.default()
 r.render(shader, target)
 r.waitIdle()
-val _bytes = target.getImage().await
+val _bytes = target.getImage()
 `}
 lang="kotlin"
 />

@@ -1,3 +1,10 @@
+# Texture (JavaScript)
+
+JavaScript-specific example for the [Texture](https://fragmentcolor.org/api/core/texture) constructor flow. Mirrors the Rust example but writes the call directly in the JS shape (`createTexture(input, options?)`) instead of relying on the Rust→JS tuple translation.
+
+## Example
+
+```js
 import { Renderer, Shader } from "fragmentcolor";
 const renderer = new Renderer();
 const shader = new Shader(`
@@ -17,3 +24,4 @@ const texture = await renderer.createTexture(pixels, { size: [1, 1] });
 
 // Insert the texture in the shader matching the name in the shader.
 shader.set("my_texture", texture);
+```

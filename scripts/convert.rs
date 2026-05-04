@@ -8,11 +8,28 @@ mod convert {
     }
 
     pub fn to_js(items: &[(String, bool)]) -> String {
-        convert(items, Lang::Js)
+        // Web JS output: collapse multi-line statements and unwrap Rust
+        // 1-tuple-wrapped call args (`f((a, b))` → `f(a, b)`). The Swift
+        // / Kotlin transpilers re-use `convert` as an intermediate IR and
+        // have their own tuple-aware rewrites (see
+        // `kotlin::rewrite_texturemipchain_prepare_tuple`,
+        // `kotlin::rewrite_shader_new_to_compose`), so they avoid both
+        // peephole passes via `to_js_keep_tuples` to preserve the
+        // shape they expect.
+        let raw = convert(items, Lang::Js, /*aggressive_js_flatten=*/ true);
+        flatten_tuple_call_args_js_multiline(&raw)
     }
 
     pub fn to_py(items: &[(String, bool)]) -> String {
-        convert(items, Lang::Py)
+        convert(items, Lang::Py, false)
+    }
+
+    /// JS output with Rust-style tuple-wrapped call args and multi-line
+    /// statement structure left intact. Used as the IR feeding `to_swift`
+    /// / `to_kotlin`, where the downstream transpilers do their own
+    /// tuple / array rewrites and rely on the original line layout.
+    fn to_js_keep_tuples(items: &[(String, bool)]) -> String {
+        convert(items, Lang::Js, /*aggressive_js_flatten=*/ false)
     }
 
     /// Transpile a Rust example into idiomatic Swift for the website tabs
@@ -24,7 +41,7 @@ mod convert {
     /// `Type(...)`, `await` → `try await`, `null` → `nil`, import rewrite,
     /// backtick template literals → `"""..."""`).
     pub fn to_swift(items: &[(String, bool)]) -> String {
-        super::swift::js_to_swift(&to_js(items))
+        super::swift::js_to_swift(&to_js_keep_tuples(items))
     }
 
     /// Transpile a Rust example into idiomatic Kotlin.
@@ -34,7 +51,25 @@ mod convert {
     /// trailing `;`, rewrite the import statement, swap backticks for
     /// triple-quoted raw strings).
     pub fn to_kotlin(items: &[(String, bool)]) -> String {
-        super::kotlin::js_to_kotlin(&to_js(items))
+        super::kotlin::js_to_kotlin(&to_js_keep_tuples(items))
+    }
+
+    /// Multi-line variant of `flatten_tuple_call_args_js`. Splits the
+    /// joined output by lines and applies the per-line flatten so calls
+    /// that survived as single logical lines (post
+    /// `reassemble_open_bracket_lines`) still have their wrap stripped.
+    /// Preserves a trailing newline if the input had one.
+    fn flatten_tuple_call_args_js_multiline(s: &str) -> String {
+        let trailing_newline = s.ends_with('\n');
+        let mut out = s
+            .lines()
+            .map(flatten_tuple_call_args_js)
+            .collect::<Vec<_>>()
+            .join("\n");
+        if trailing_newline {
+            out.push('\n');
+        }
+        out
     }
 
     fn is_ident_char(c: char) -> bool {
@@ -119,6 +154,161 @@ mod convert {
             }
             out.push(chars[i]);
             i += 1;
+        }
+        out
+    }
+
+    // Merge multi-line statements whose first line opens unbalanced
+    // brackets / parens / braces. Walks line-by-line, tracking depth of
+    // `()`, `[]`, `{}` and Rust raw-string state. While depth > 0 at the
+    // end of a line, the next line is concatenated with a single space
+    // separator. This collapses multi-arg method calls split across
+    // lines (e.g. `f(\n    a,\n    b,\n)`) into a single logical line so
+    // the downstream peephole transforms can see the whole expression.
+    fn reassemble_open_bracket_lines(lines: Vec<String>) -> Vec<String> {
+        let mut out: Vec<String> = Vec::with_capacity(lines.len());
+        let mut buffer: Option<String> = None;
+        let mut depth_paren: i32 = 0;
+        let mut depth_brack: i32 = 0;
+        let mut depth_brace: i32 = 0;
+        // Per-line walker: counts unbalanced delimiters, tracks raw
+        // string state, and reports whether the line ends inside a
+        // line comment. `raw_hashes_in` carries the cross-line
+        // raw-string state. Returns (delta_paren, delta_brack,
+        // delta_brace, raw_hashes_out, has_line_comment).
+        fn line_deltas(
+            line: &str,
+            raw_hashes_in: Option<usize>,
+        ) -> (i32, i32, i32, Option<usize>, bool) {
+            let chars: Vec<char> = line.chars().collect();
+            let mut in_str: Option<char> = None;
+            let mut in_line_comment = false;
+            let mut local_paren: i32 = 0;
+            let mut local_brack: i32 = 0;
+            let mut local_brace: i32 = 0;
+            let mut k = 0usize;
+            let mut local_raw_hashes: Option<usize> = raw_hashes_in;
+            while k < chars.len() {
+                let c = chars[k];
+                if in_line_comment {
+                    break;
+                }
+                if local_raw_hashes.is_some() {
+                    if c == '"' {
+                        let need = local_raw_hashes.unwrap();
+                        let mut got = 0usize;
+                        let mut j = k + 1;
+                        while j < chars.len() && chars[j] == '#' && got < need {
+                            got += 1;
+                            j += 1;
+                        }
+                        if got == need {
+                            local_raw_hashes = None;
+                            k = j;
+                            continue;
+                        }
+                    }
+                    k += 1;
+                    continue;
+                }
+                if let Some(q) = in_str {
+                    if c == '\\' && k + 1 < chars.len() {
+                        k += 2;
+                        continue;
+                    }
+                    if c == q {
+                        in_str = None;
+                    }
+                    k += 1;
+                    continue;
+                }
+                // Detect raw string opener `r#*"`.
+                if c == 'r' {
+                    let mut j = k + 1;
+                    let mut hashes = 0usize;
+                    while j < chars.len() && chars[j] == '#' {
+                        hashes += 1;
+                        j += 1;
+                    }
+                    if j < chars.len() && chars[j] == '"' {
+                        local_raw_hashes = Some(hashes);
+                        k = j + 1;
+                        continue;
+                    }
+                }
+                match c {
+                    '"' | '\'' | '`' => {
+                        in_str = Some(c);
+                    }
+                    '/' if k + 1 < chars.len() && chars[k + 1] == '/' => {
+                        in_line_comment = true;
+                    }
+                    '(' => local_paren += 1,
+                    ')' => local_paren -= 1,
+                    '[' => local_brack += 1,
+                    ']' => local_brack -= 1,
+                    '{' => local_brace += 1,
+                    '}' => local_brace -= 1,
+                    _ => {}
+                }
+                k += 1;
+            }
+            (
+                local_paren,
+                local_brack,
+                local_brace,
+                local_raw_hashes,
+                in_line_comment,
+            )
+        }
+        let mut raw_hashes: Option<usize> = None;
+        // Whether the line we just buffered ended inside a `//` line
+        // comment. If so, the next line MUST be appended with a newline
+        // — collapsing to a space would slurp the next code into the
+        // comment.
+        let mut prev_had_line_comment = false;
+        for line in lines {
+            let (dp, db, dbr, new_raw, has_comment) = line_deltas(&line, raw_hashes);
+            depth_paren += dp;
+            depth_brack += db;
+            depth_brace += dbr;
+            // Append to buffer or start a new buffer.
+            if let Some(buf) = buffer.as_mut() {
+                // Inside a raw string we use `\n` to preserve WGSL line
+                // structure; if the previous fragment ended inside a `//`
+                // comment, also use `\n` so the comment terminates before
+                // the next token. Otherwise collapse to a single space so
+                // multi-arg calls fit on one logical line.
+                if raw_hashes.is_some() || prev_had_line_comment {
+                    buf.push('\n');
+                    buf.push_str(&line);
+                } else {
+                    buf.push(' ');
+                    buf.push_str(line.trim_start());
+                }
+            } else if depth_paren > 0 || depth_brack > 0 || depth_brace > 0 || new_raw.is_some()
+            {
+                buffer = Some(line.clone());
+            } else {
+                out.push(line.clone());
+            }
+            raw_hashes = new_raw;
+            prev_had_line_comment = has_comment;
+            // Flush when balanced AND no open raw string.
+            if depth_paren <= 0
+                && depth_brack <= 0
+                && depth_brace <= 0
+                && raw_hashes.is_none()
+                && let Some(buf) = buffer.take()
+            {
+                out.push(buf);
+                depth_paren = depth_paren.max(0);
+                depth_brack = depth_brack.max(0);
+                depth_brace = depth_brace.max(0);
+            }
+        }
+        if let Some(buf) = buffer.take() {
+            out.push(buf);
         }
         out
     }
@@ -303,6 +493,225 @@ mod convert {
         out
     }
 
+    // Strip Rust slice-cast method calls that have no JS / Python analogue:
+    // `bytes.as_slice()`, `vec.as_ref()`, `s.to_vec()`. These coerce types
+    // in Rust but the receiver in JS / Python already has the right shape.
+    // Only matches an empty argument list (`(...)` with whitespace only).
+    fn strip_rust_coercion_calls(line: &str) -> String {
+        let names = [".as_slice", ".as_ref", ".to_vec"];
+        let mut out = line.to_string();
+        for needle in names {
+            loop {
+                let Some(pos) = out.find(needle) else { break };
+                let chars: Vec<char> = out.chars().collect();
+                let after_name = pos + needle.len();
+                let mut k = after_name;
+                while k < chars.len() && chars[k].is_whitespace() {
+                    k += 1;
+                }
+                if k >= chars.len() || chars[k] != '(' {
+                    break;
+                }
+                k += 1;
+                while k < chars.len() && chars[k].is_whitespace() {
+                    k += 1;
+                }
+                if k >= chars.len() || chars[k] != ')' {
+                    break;
+                }
+                let close = k;
+                let next_ch = chars.get(close + 1).copied();
+                if let Some(c) = next_ch
+                    && is_ident_char(c)
+                {
+                    break;
+                }
+                let mut new_out = String::with_capacity(out.len());
+                new_out.push_str(&chars[..pos].iter().collect::<String>());
+                new_out.push_str(&chars[close + 1..].iter().collect::<String>());
+                out = new_out;
+            }
+        }
+        out
+    }
+
+    // Detect a Rust 1-tuple-wrapped argument list and unwrap it for JS.
+    //
+    // `f((a, b, c))` becomes `f(a, b, c)`. Rust uses tuples to dispatch
+    // through `From<(A, B, ...)>` impls; JS exposes the same shapes as
+    // plain positional args. Only fires when the entire argument list of
+    // the call is a single parenthesised tuple — `f([a, b])`, `f((a))`
+    // (parens around one expr, not a tuple), and `f(x, (a, b))` are left
+    // alone.
+    fn flatten_tuple_call_args_js(line: &str) -> String {
+        let chars: Vec<char> = line.chars().collect();
+        let mut out = String::with_capacity(line.len());
+        let mut i = 0usize;
+        while i < chars.len() {
+            if chars[i] != '(' {
+                out.push(chars[i]);
+                i += 1;
+                continue;
+            }
+            let prev_is_ident = i > 0 && is_ident_char(chars[i - 1]);
+            if !prev_is_ident {
+                out.push(chars[i]);
+                i += 1;
+                continue;
+            }
+            let mut depth_paren = 1i32;
+            let mut depth_brack = 0i32;
+            let mut depth_brace = 0i32;
+            let mut in_str: Option<char> = None;
+            let mut j = i + 1;
+            let mut close_outer: Option<usize> = None;
+            while j < chars.len() {
+                let c = chars[j];
+                match in_str {
+                    Some(q) => {
+                        if c == '\\' && j + 1 < chars.len() {
+                            j += 2;
+                            continue;
+                        }
+                        if c == q {
+                            in_str = None;
+                        }
+                    }
+                    None => match c {
+                        '"' | '\'' | '`' => in_str = Some(c),
+                        '(' => depth_paren += 1,
+                        ')' => {
+                            depth_paren -= 1;
+                            if depth_paren == 0 && depth_brack == 0 && depth_brace == 0 {
+                                close_outer = Some(j);
+                                break;
+                            }
+                        }
+                        '[' => depth_brack += 1,
+                        ']' => depth_brack -= 1,
+                        '{' => depth_brace += 1,
+                        '}' => depth_brace -= 1,
+                        _ => {}
+                    },
+                }
+                j += 1;
+            }
+            let Some(close_outer) = close_outer else {
+                out.push_str(&chars[i..].iter().collect::<String>());
+                break;
+            };
+            let inner_start = i + 1;
+            let inner_end = close_outer;
+            let mut a = inner_start;
+            while a < inner_end && chars[a].is_whitespace() {
+                a += 1;
+            }
+            let mut b = inner_end;
+            while b > a && chars[b - 1].is_whitespace() {
+                b -= 1;
+            }
+            let is_paren_wrapped = a < b && chars[a] == '(' && chars[b - 1] == ')';
+            if !is_paren_wrapped {
+                out.push(chars[i]);
+                i += 1;
+                continue;
+            }
+            let mut dp = 1i32;
+            let mut db = 0i32;
+            let mut dbr = 0i32;
+            let mut s2: Option<char> = None;
+            let mut k = a + 1;
+            let mut matched: Option<usize> = None;
+            while k < b {
+                let c = chars[k];
+                match s2 {
+                    Some(q) => {
+                        if c == '\\' && k + 1 < b {
+                            k += 2;
+                            continue;
+                        }
+                        if c == q {
+                            s2 = None;
+                        }
+                    }
+                    None => match c {
+                        '"' | '\'' | '`' => s2 = Some(c),
+                        '(' => dp += 1,
+                        ')' => {
+                            dp -= 1;
+                            if dp == 0 && db == 0 && dbr == 0 {
+                                matched = Some(k);
+                                break;
+                            }
+                        }
+                        '[' => db += 1,
+                        ']' => db -= 1,
+                        '{' => dbr += 1,
+                        '}' => dbr -= 1,
+                        _ => {}
+                    },
+                }
+                k += 1;
+            }
+            let Some(matched) = matched else {
+                out.push(chars[i]);
+                i += 1;
+                continue;
+            };
+            if matched + 1 != b {
+                out.push(chars[i]);
+                i += 1;
+                continue;
+            }
+            let mut has_top_comma = false;
+            let mut dp2 = 0i32;
+            let mut db2 = 0i32;
+            let mut dbr2 = 0i32;
+            let mut s3: Option<char> = None;
+            let mut t_i = a + 1;
+            while t_i < matched {
+                let c = chars[t_i];
+                match s3 {
+                    Some(q) => {
+                        if c == '\\' && t_i + 1 < matched {
+                            t_i += 2;
+                            continue;
+                        }
+                        if c == q {
+                            s3 = None;
+                        }
+                    }
+                    None => match c {
+                        '"' | '\'' | '`' => s3 = Some(c),
+                        '(' => dp2 += 1,
+                        ')' => dp2 -= 1,
+                        '[' => db2 += 1,
+                        ']' => db2 -= 1,
+                        '{' => dbr2 += 1,
+                        '}' => dbr2 -= 1,
+                        ',' if dp2 == 0 && db2 == 0 && dbr2 == 0 => {
+                            has_top_comma = true;
+                            break;
+                        }
+                        _ => {}
+                    },
+                }
+                t_i += 1;
+            }
+            if !has_top_comma {
+                out.push(chars[i]);
+                i += 1;
+                continue;
+            }
+            let inner: String = chars[a + 1..matched].iter().collect();
+            out.push('(');
+            out.push_str(inner.trim());
+            out.push(')');
+            i = close_outer + 1;
+        }
+        out
+    }
+
     fn snake_to_camel(s: &str) -> String {
         let mut out = String::with_capacity(s.len());
         let mut upper = false;
@@ -414,23 +823,36 @@ mod convert {
     }
 
     fn transform_await(line: &str, lang: Lang) -> String {
-        // Handle `.await?` -> `await` (JS) or remove (Py). Also drop Rust error `?` in JS/Py.
+        // Handle `.await?` and bare `.await`:
+        //   JS:  `expr.await(?)` → `await expr` (with the `?` separately
+        //        triggering Rust error-propagation cleanup below).
+        //   Py:  drop `.await` entirely — Python wrappers are sync.
+        //
+        // The Swift / Kotlin paths consume the JS output as IR and then
+        // adjust: `js_to_swift` rewrites `await expr` → `try await expr`,
+        // while `js_to_kotlin` drops the `await` prefix because uniffi
+        // exposes async Rust as Kotlin `suspend` (no await needed).
         let mut out = line.to_string();
-        if out.contains(".await?") {
+        // Process the `?`-suffixed form first so its tail (anything after
+        // `.await?`) survives the rewrite intact.
+        for needle in [".await?", ".await"] {
+            if !out.contains(needle) {
+                continue;
+            }
             match lang {
                 Lang::Js => {
-                    if let Some(pos) = out.find(".await?") {
+                    if let Some(pos) = out.find(needle) {
                         // Preserve left side if present
                         if let Some(eq) = out[..pos].rfind('=') {
                             let (lhs, expr) = out.split_at(eq + 1);
                             let expr = expr.trim();
-                            let before_await = &expr[..expr.rfind(".await?").unwrap_or(expr.len())];
+                            let before_await = &expr[..expr.rfind(needle).unwrap_or(expr.len())];
                             let mut s = String::new();
                             s.push_str(lhs);
                             s.push(' ');
                             s.push_str("await ");
                             s.push_str(before_await.trim());
-                            let tail = &out[pos + ".await?".len()..];
+                            let tail = &out[pos + needle.len()..];
                             s.push_str(tail);
                             out = s;
                         } else {
@@ -438,14 +860,14 @@ mod convert {
                             let mut s = String::new();
                             s.push_str("await ");
                             s.push_str(before_await.trim());
-                            let tail = &out[pos + ".await?".len()..];
+                            let tail = &out[pos + needle.len()..];
                             s.push_str(tail);
                             out = s;
                         }
                     }
                 }
                 Lang::Py => {
-                    out = out.replace(".await?", "");
+                    out = out.replace(needle, "");
                 }
             }
         }
@@ -979,7 +1401,7 @@ mod convert {
         }
     }
 
-    fn convert(items: &[(String, bool)], lang: Lang) -> String {
+    fn convert(items: &[(String, bool)], lang: Lang, aggressive_js_flatten: bool) -> String {
         use std::collections::HashMap;
         // Collect visible lines only
         let mut src: Vec<String> = Vec::new();
@@ -996,11 +1418,34 @@ mod convert {
         for line in src.iter_mut() {
             *line = strip_rust_numeric_suffixes(line);
             *line = strip_rust_deref_star(line);
+            // Rust slice-cast no-ops (`bytes.as_slice()`, `vec.as_ref()`,
+            // `s.to_vec()`) have no JS / Python / Swift / Kotlin analogue —
+            // the receiver already has the right shape.
+            *line = strip_rust_coercion_calls(line);
             // `vec![...]` → `[...]`. Strip BEFORE the array-repeat pass
             // so `vec![0; N]` → `[0; N]` → `Array(N).fill(0)`. Otherwise
             // the array-repeat pass leaves the `vec!` prefix orphaned.
             *line = convert_vec_syntax(line);
             *line = convert_rust_array_repeat(line, lang);
+        }
+        // Pre-pass: collapse multi-line statements whose first line
+        // opens unbalanced parens / brackets / braces. Without this, a
+        // statement like
+        //   `f(\n    a,\n    b,\n)`
+        // splits into 4 lines and the line-by-line transforms below can't
+        // peephole the whole expression (e.g. the tuple-flatten pass for
+        // `f((a, b))` wouldn't fire). Raw-string–aware so WGSL bodies are
+        // left untouched.
+        //
+        // Gated behind `aggressive_js_flatten` because the Swift / Kotlin
+        // transpilers feed off `to_js_keep_tuples` and rely on the
+        // original line layout (e.g. `Shader.new([\n    "...",\n])` is
+        // detected by `kotlin::rewrite_shader_new_to_compose` only after
+        // `js_to_kotlin` does its own array→arrayOf substitution; if we
+        // join here, the array elements end up on a single line with
+        // line comments slurping subsequent items).
+        if aggressive_js_flatten {
+            src = reassemble_open_bracket_lines(src);
         }
         // Pre-pass: reassemble multi-line method chains. A line that begins
         // with `.` (after trimming) and follows an unterminated previous

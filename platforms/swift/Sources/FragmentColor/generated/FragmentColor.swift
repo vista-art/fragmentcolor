@@ -1044,12 +1044,11 @@ public protocol MobileTextureTargetProtocol: AnyObject, Sendable {
     
     /**
      * Returns the current offscreen texture contents as a packed RGBA8
-     * byte array (row-major, top-left origin).
-     *
-     * Blocks until the GPU readback is complete. On large textures this may
-     * take several milliseconds — call from a background thread / coroutine.
+     * byte array (row-major, top-left origin). Uniffi exposes this as a
+     * Swift / Kotlin `suspend fun`; the underlying readback runs through
+     * `TextureTarget::get_image` async.
      */
-    func getImage()  -> Data
+    func getImage() async  -> Data
     
     /**
      * Resizes the offscreen texture to `width` × `height` pixels.
@@ -1128,17 +1127,26 @@ open class MobileTextureTarget: MobileTextureTargetProtocol, @unchecked Sendable
     
     /**
      * Returns the current offscreen texture contents as a packed RGBA8
-     * byte array (row-major, top-left origin).
-     *
-     * Blocks until the GPU readback is complete. On large textures this may
-     * take several milliseconds — call from a background thread / coroutine.
+     * byte array (row-major, top-left origin). Uniffi exposes this as a
+     * Swift / Kotlin `suspend fun`; the underlying readback runs through
+     * `TextureTarget::get_image` async.
      */
-open func getImage() -> Data  {
-    return try!  FfiConverterData.lift(try! rustCall() {
-    uniffi_fragmentcolor_fn_method_mobiletexturetarget_getimage(
-            self.uniffiCloneHandle(),$0
-    )
-})
+open func getImage()async  -> Data  {
+    return
+        try!  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_fragmentcolor_fn_method_mobiletexturetarget_getimage(
+                    self.uniffiCloneHandle()
+                    
+                )
+            },
+            pollFunc: ffi_fragmentcolor_rust_future_poll_rust_buffer,
+            completeFunc: ffi_fragmentcolor_rust_future_complete_rust_buffer,
+            freeFunc: ffi_fragmentcolor_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterData.lift,
+            errorHandler: nil
+            
+        )
 }
     
     /**
@@ -1234,7 +1242,7 @@ public protocol MobileWindowTargetProtocol: AnyObject, Sendable {
      * Window-backed surfaces are not readable across all GPU backends.
      * Use a [`MobileTextureTarget`] and call `get_image()` there instead.
      */
-    func getImage()  -> Data
+    func getImage() async  -> Data
     
     /**
      * Resizes the window surface to `width` × `height` pixels.
@@ -1317,12 +1325,22 @@ open class MobileWindowTarget: MobileWindowTargetProtocol, @unchecked Sendable {
      * Window-backed surfaces are not readable across all GPU backends.
      * Use a [`MobileTextureTarget`] and call `get_image()` there instead.
      */
-open func getImage() -> Data  {
-    return try!  FfiConverterData.lift(try! rustCall() {
-    uniffi_fragmentcolor_fn_method_mobilewindowtarget_getimage(
-            self.uniffiCloneHandle(),$0
-    )
-})
+open func getImage()async  -> Data  {
+    return
+        try!  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_fragmentcolor_fn_method_mobilewindowtarget_getimage(
+                    self.uniffiCloneHandle()
+                    
+                )
+            },
+            pollFunc: ffi_fragmentcolor_rust_future_poll_rust_buffer,
+            completeFunc: ffi_fragmentcolor_rust_future_complete_rust_buffer,
+            freeFunc: ffi_fragmentcolor_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterData.lift,
+            errorHandler: nil
+            
+        )
 }
     
     /**
@@ -1415,11 +1433,6 @@ public protocol PassProtocol: AnyObject, Sendable {
      * Add a mesh to the last compatible shader in this pass.
      */
     func addMesh(mesh: Mesh) throws 
-    
-    /**
-     * Add a mesh to a specific shader in this pass.
-     */
-    func addMeshToShader(mesh: Mesh, shader: Shader) throws 
     
     /**
      * Attach a shader to this pass.
@@ -1592,18 +1605,6 @@ open func addMesh(mesh: Mesh)throws   {try rustCallWithError(FfiConverterTypeFra
     uniffi_fragmentcolor_fn_method_pass_addmesh(
             self.uniffiCloneHandle(),
         FfiConverterTypeMesh_lower(mesh),$0
-    )
-}
-}
-    
-    /**
-     * Add a mesh to a specific shader in this pass.
-     */
-open func addMeshToShader(mesh: Mesh, shader: Shader)throws   {try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
-    uniffi_fragmentcolor_fn_method_pass_addmeshtoshader(
-            self.uniffiCloneHandle(),
-        FfiConverterTypeMesh_lower(mesh),
-        FfiConverterTypeShader_lower(shader),$0
     )
 }
 }
@@ -1961,6 +1962,15 @@ public protocol RendererProtocol: AnyObject, Sendable {
     func createTextureTarget(width: UInt32, height: UInt32) async throws  -> MobileTextureTarget
     
     /**
+     * Read back the mip-0 contents of a registered texture as tightly-packed
+     * bytes in the texture's native format. Uniffi exposes this as a Swift
+     * `async throws` / Kotlin `suspend fun` automatically. Foreign callers
+     * await this in a coroutine or `Task`; the underlying GPU readback is
+     * driven by the async `texture::read::read_pixels` path.
+     */
+    func readTexture(textureId: UInt64) async throws  -> Data
+    
+    /**
      * Single mobile `render` entry. Mirrors the canonical Rust
      * `Renderer::render(&impl Renderable, &impl Target)` — uniffi can't
      * marshal `&impl Trait`, so the mobile shim takes the concrete enums
@@ -2175,6 +2185,30 @@ open func createTextureTarget(width: UInt32, height: UInt32)async throws  -> Mob
 }
     
     /**
+     * Read back the mip-0 contents of a registered texture as tightly-packed
+     * bytes in the texture's native format. Uniffi exposes this as a Swift
+     * `async throws` / Kotlin `suspend fun` automatically. Foreign callers
+     * await this in a coroutine or `Task`; the underlying GPU readback is
+     * driven by the async `texture::read::read_pixels` path.
+     */
+open func readTexture(textureId: UInt64)async throws  -> Data  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_fragmentcolor_fn_method_renderer_readtexture(
+                    self.uniffiCloneHandle(),
+                    FfiConverterUInt64.lower(textureId)
+                )
+            },
+            pollFunc: ffi_fragmentcolor_rust_future_poll_rust_buffer,
+            completeFunc: ffi_fragmentcolor_rust_future_complete_rust_buffer,
+            freeFunc: ffi_fragmentcolor_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterData.lift,
+            errorHandler: FfiConverterTypeFragmentColorError_lift
+        )
+}
+    
+    /**
      * Single mobile `render` entry. Mirrors the canonical Rust
      * `Renderer::render(&impl Renderable, &impl Target)` — uniffi can't
      * marshal `&impl Trait`, so the mobile shim takes the concrete enums
@@ -2295,6 +2329,27 @@ public protocol ShaderProtocol: AnyObject, Sendable {
      * Detach all meshes from this shader.
      */
     func clearMeshes() 
+    
+    /**
+     * Async fetch constructor: resolve each part of `input` (URL, slug, file
+     * path, or raw source) over the network, then compile the merged WGSL.
+     *
+     * Uniffi 0.31 does not support async constructors, so this is expressed
+     * as an async method rather than a constructor. Swift / Kotlin extension
+     * shims provide `Shader.fetch(input:)` as a static async factory so
+     * callers never need to hold a dummy instance.
+     *
+     * Swift callers: `let shader = try await Shader.fetch("https://...")`
+     * Kotlin callers: `val shader = Shader.fetch("https://...")`
+     */
+    func fetch(input: String) async throws  -> Shader
+    
+    /**
+     * Async fetch constructor (multi-part): resolve each element of `parts`
+     * independently then compile the merged WGSL. Mirrors `Shader.compose`
+     * but fetches remote parts asynchronously.
+     */
+    func fetchCompose(parts: [String]) async throws  -> Shader
     
     func get(key: String) throws  -> UniformData
     
@@ -2476,6 +2531,57 @@ open func clearMeshes()  {try! rustCall() {
 }
 }
     
+    /**
+     * Async fetch constructor: resolve each part of `input` (URL, slug, file
+     * path, or raw source) over the network, then compile the merged WGSL.
+     *
+     * Uniffi 0.31 does not support async constructors, so this is expressed
+     * as an async method rather than a constructor. Swift / Kotlin extension
+     * shims provide `Shader.fetch(input:)` as a static async factory so
+     * callers never need to hold a dummy instance.
+     *
+     * Swift callers: `let shader = try await Shader.fetch("https://...")`
+     * Kotlin callers: `val shader = Shader.fetch("https://...")`
+     */
+open func fetch(input: String)async throws  -> Shader  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_fragmentcolor_fn_method_shader_fetch(
+                    self.uniffiCloneHandle(),
+                    FfiConverterString.lower(input)
+                )
+            },
+            pollFunc: ffi_fragmentcolor_rust_future_poll_u64,
+            completeFunc: ffi_fragmentcolor_rust_future_complete_u64,
+            freeFunc: ffi_fragmentcolor_rust_future_free_u64,
+            liftFunc: FfiConverterTypeShader_lift,
+            errorHandler: FfiConverterTypeFragmentColorError_lift
+        )
+}
+    
+    /**
+     * Async fetch constructor (multi-part): resolve each element of `parts`
+     * independently then compile the merged WGSL. Mirrors `Shader.compose`
+     * but fetches remote parts asynchronously.
+     */
+open func fetchCompose(parts: [String])async throws  -> Shader  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_fragmentcolor_fn_method_shader_fetchcompose(
+                    self.uniffiCloneHandle(),
+                    FfiConverterSequenceString.lower(parts)
+                )
+            },
+            pollFunc: ffi_fragmentcolor_rust_future_poll_u64,
+            completeFunc: ffi_fragmentcolor_rust_future_complete_u64,
+            freeFunc: ffi_fragmentcolor_rust_future_free_u64,
+            liftFunc: FfiConverterTypeShader_lift,
+            errorHandler: FfiConverterTypeFragmentColorError_lift
+        )
+}
+    
 open func get(key: String)throws  -> UniformData  {
     return try  FfiConverterTypeUniformData_lift(try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
     uniffi_fragmentcolor_fn_method_shader_get(
@@ -2614,7 +2720,7 @@ public protocol TextureProtocol: AnyObject, Sendable {
      * in the texture's native format. Uniffi exposes this as a Swift
      * `suspend fun` / Kotlin `suspend fun` automatically. Foreign callers
      * await this in a coroutine or `Task`; the underlying GPU readback is
-     * driven by the async `read_texture_object_async` path.
+     * driven by the async `texture::read::read_pixels` path.
      */
     func getImage() async throws  -> Data
     
@@ -2725,7 +2831,7 @@ open func aspect() -> Float  {
      * in the texture's native format. Uniffi exposes this as a Swift
      * `suspend fun` / Kotlin `suspend fun` automatically. Foreign callers
      * await this in a coroutine or `Task`; the underlying GPU readback is
-     * driven by the async `read_texture_object_async` path.
+     * driven by the async `texture::read::read_pixels` path.
      */
 open func getImage()async throws  -> Data  {
     return
@@ -6968,9 +7074,6 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_pass_addmesh() != 50161) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_pass_addmeshtoshader() != 8858) {
-        return InitializationResult.apiChecksumMismatch
-    }
     if (uniffi_fragmentcolor_checksum_method_pass_addshader() != 51444) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -7013,6 +7116,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_renderer_createtexturetarget() != 18679) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_fragmentcolor_checksum_method_renderer_readtexture() != 3544) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_fragmentcolor_checksum_method_renderer_render() != 50295) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -7029,6 +7135,12 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_shader_clearmeshes() != 40775) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_shader_fetch() != 25104) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fragmentcolor_checksum_method_shader_fetchcompose() != 35557) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_shader_get() != 37943) {
@@ -7055,7 +7167,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_shader_validatemesh() != 32311) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_mobiletexturetarget_getimage() != 63687) {
+    if (uniffi_fragmentcolor_checksum_method_mobiletexturetarget_getimage() != 15321) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_mobiletexturetarget_resize() != 38101) {
@@ -7064,7 +7176,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_mobiletexturetarget_size() != 10461) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_mobilewindowtarget_getimage() != 47338) {
+    if (uniffi_fragmentcolor_checksum_method_mobilewindowtarget_getimage() != 16873) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_mobilewindowtarget_resize() != 65051) {
@@ -7076,7 +7188,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_texture_aspect() != 32251) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_texture_getimage() != 62650) {
+    if (uniffi_fragmentcolor_checksum_method_texture_getimage() != 49245) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_texture_id() != 9370) {

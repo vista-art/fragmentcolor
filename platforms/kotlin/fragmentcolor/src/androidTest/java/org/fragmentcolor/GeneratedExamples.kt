@@ -281,7 +281,7 @@ class GeneratedExamples {
         renderer.render(Shader(""), target)
 
         // get the rendered image
-        val image = target.getImage().await
+        val image = target.getImage()
     }
 
     @Suppress("unused") private suspend fun _example_core_renderer_new() {
@@ -324,7 +324,7 @@ class GeneratedExamples {
         val shader = Shader.default()
         r.render(shader, target)
         r.waitIdle()
-        val _bytes = target.getImage().await
+        val _bytes = target.getImage()
     }
 
     @Suppress("unused") private suspend fun _example_core_shader_Shader() {
@@ -866,7 +866,7 @@ class GeneratedExamples {
         val target = renderer.createTextureTarget(16u, 16u)
         renderer.render(Shader(""), target)
 
-        val image = target.getImage().await
+        val image = target.getImage()
     }
 
     @Suppress("unused") private suspend fun _example_targets_target_resize() {
@@ -898,7 +898,7 @@ class GeneratedExamples {
         val shader = Shader.default()
         renderer.render(shader, target)
 
-        val image = target.getImage().await
+        val image = target.getImage()
     }
 
     @Suppress("unused") private suspend fun _example_targets_texture_target_get_image() {
@@ -908,7 +908,7 @@ class GeneratedExamples {
         val target = renderer.createTextureTarget(16u, 16u)
         renderer.render(Shader(""), target)
 
-        val image = target.getImage().await
+        val image = target.getImage()
     }
 
     @Suppress("unused") private suspend fun _example_targets_texture_target_resize() {
@@ -950,7 +950,7 @@ class GeneratedExamples {
         val target = renderer.createTextureTarget(16u, 16u)
         renderer.render(Shader(""), target)
 
-        val image = target.getImage().await
+        val image = target.getImage()
     }
 
     @Suppress("unused") private suspend fun _example_targets_window_target_resize() {

@@ -77,3 +77,13 @@ fun Renderer.render(passes: List<Pass>, target: MobileTextureTarget) {
 fun Renderer.unregisterTexture(textureId: TextureId) {
     unregisterTexture(textureId.id)
 }
+
+/**
+ * Read back a registered texture's mip-0 contents by its [TextureId] wrapper.
+ * Unwraps to the underlying [ULong] handle that the uniffi API expects so
+ * callers can write `renderer.readTexture(texture.id())` directly — matching
+ * the spelling used by JavaScript, Python, and Swift bindings.
+ */
+suspend fun Renderer.readTexture(textureId: TextureId): ByteArray {
+    return readTexture(textureId.id)
+}

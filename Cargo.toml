@@ -146,8 +146,21 @@ objc2 = { version = "0.6" }
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 uniffi = { version = "0.31", features = ["cli"] }
 winit = { version = "0.30", features = ["serde"], optional = true }
+# `Shader::fetch` runs HTTP via ureq on every non-wasm target. TLS support is
+# enabled only on desktop OSes — mobile cross-compiles need the NDK clang
+# toolchain to build ring (rustls's crypto provider), which `./check` and
+# many local dev setups don't have. Mobile callers fetching `https://` URLs
+# get a "TLS required" error; bundle shaders via `Shader::new(include_str!)`
+# or load via the registry slug instead.
 ureq = { version = "3", default-features = false }
 pollster = { version = "0.4", optional = true }
+
+# Desktop-only: enable ureq's TLS so HTTPS fetches work in the python wheel,
+# the rust crate on linux/macos/windows, and any tooling/CLIs we ship there.
+# Cargo unions feature flags from all matching target sections, so this
+# layers `rustls` on top of the no-default-features base above.
+[target.'cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))'.dependencies]
+ureq = { version = "3", default-features = false, features = ["rustls"] }
 
 # Mobile (iOS + Android) always needs pollster for blocking on adapter/device
 # creation inside sync FFI entry points (uniffi can't marshal non-Send futures).
