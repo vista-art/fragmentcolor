@@ -21,6 +21,25 @@ impl Shader {
         ))
     }
 
+    /// Async-shaped constructor: fetches each part of `input` from the network
+    /// (URL or slug) or reads file paths, then compiles the merged source.
+    /// Blocks the Python thread synchronously via `pollster::block_on` —
+    /// call from a thread-pool worker if you want non-blocking behaviour.
+    #[staticmethod]
+    #[pyo3(name = "fetch")]
+    #[lsp_doc("docs/api/core/shader/fetch.md")]
+    pub fn fetch_py(input: &Bound<PyAny>) -> Result<Self, ShaderError> {
+        if let Ok(s) = input.extract::<String>() {
+            return pollster::block_on(Shader::fetch(s));
+        }
+        if let Ok(v) = input.extract::<Vec<String>>() {
+            return pollster::block_on(Shader::fetch(v));
+        }
+        Err(ShaderError::ParseError(
+            "Shader.fetch(input): expected str or list[str]".into(),
+        ))
+    }
+
     #[staticmethod]
     #[pyo3(name = "set_registry")]
     #[lsp_doc("docs/api/core/shader/set_registry.md")]
