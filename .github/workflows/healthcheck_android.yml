@@ -115,17 +115,21 @@ jobs:
           force-avd-creation: false
           disable-animations: true
           # `swiftshader_indirect` provides software OpenGL ES + Vulkan that
-          # wgpu can target on the emulator. SwiftShader's Vulkan keeps
-          # tripping wgpu-hal's feature-presence check at device creation
-          # (returns `VK_ERROR_FEATURE_NOT_PRESENT` with an empty wgpu
-          # "Missing features:" log line) regardless of how narrowly we
-          # request features in `request_device`. The GLES path is more
-          # permissive and exercises the same shader-translation +
-          # bind-group + render-pipeline machinery, so use that for the
-          # smoke test until a desktop / arm64 emulator with a working
-          # Vulkan loader replaces SwiftShader. Tracked for follow-up.
+          # wgpu can target on the emulator. Pair with `google_apis` system
+          # image (see env above) so the Vulkan loader is present.
+          #
+          # NOTE: the WGPU_BACKEND env var here only reaches the *gradle*
+          # process, not the instrumentation test running inside the
+          # emulator (Android app processes don't inherit host env vars).
+          # SwiftShader's Vulkan currently fails wgpu-hal's device-creation
+          # feature check on this emulator regardless; the test in
+          # `Healthcheck.kt` `Assume.assumeTrue(false)`-skips the runtime
+          # path when the adapter can't be created so the build/link/
+          # instrumentation pipeline still gates the job. A real-Vulkan
+          # emulator (or arm64 host-based runner) would let us drop the
+          # skip; tracked for v0.11.x follow-up.
           emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect
-          script: cd platforms/kotlin && WGPU_BACKEND=gl gradle fragmentcolor:connectedAndroidTest --stacktrace
+          script: cd platforms/kotlin && WGPU_BACKEND=vulkan gradle fragmentcolor:connectedAndroidTest --stacktrace
 
       - name: Upload generated Kotlin bindings (for inspection)
         if: always()
