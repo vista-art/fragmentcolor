@@ -347,18 +347,23 @@ mod convert {
     }
 
     fn replace_static_call_to_dot(line: &str) -> String {
-        // Replace patterns like Type::method( -> Type.method(
-        let mut out = String::new();
+        // Replace patterns like Type::method( -> Type.method(.
+        //
+        // Iterate by `chars()` rather than `as_bytes()` so multi-byte UTF-8
+        // sequences (em-dashes, smart quotes, etc.) survive intact. The old
+        // byte-loop pushed each raw byte as a `char`, which split the 3-byte
+        // U+2014 (—) into U+00E2 + U+0080 + U+0094 — visible as the
+        // mojibake "â" + 2 invisible controls in py/swift/kotlin output.
+        let chars: Vec<char> = line.chars().collect();
+        let mut out = String::with_capacity(line.len());
         let mut i = 0usize;
-        let bytes = line.as_bytes();
-        while i < bytes.len() {
-            if i + 2 < bytes.len() && bytes[i] == b':' && bytes[i + 1] == b':' {
-                // Replace '::' with '.'
+        while i < chars.len() {
+            if i + 1 < chars.len() && chars[i] == ':' && chars[i + 1] == ':' {
                 out.push('.');
                 i += 2;
                 continue;
             }
-            out.push(bytes[i] as char);
+            out.push(chars[i]);
             i += 1;
         }
         out
