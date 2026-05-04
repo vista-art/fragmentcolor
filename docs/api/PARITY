@@ -17,6 +17,18 @@
 #
 # Lines starting with `#` are comments. Blank lines are ignored.
 
+# Synchronous read_texture is unavailable on the web (we cannot block the
+# event loop). Native platforms expose it; the web tab uses the async variant.
+# (Will be removed once the parallel read-texture-unify branch lands and
+# collapses these into a single async read_texture across all 4 platforms.)
+docs/api/core/renderer/read_texture.md:python,swift,kotlin:Web cannot block the JS event loop; web uses Renderer::read_texture_async (its sibling docs entry) instead.
+
+# Async read_texture exists on the web for the reason above; on native
+# platforms the synchronous variant is the canonical entry. Listing the async
+# variant as web-only avoids forcing an artificial async wrapper on Python /
+# Swift / Kotlin where it adds nothing beyond the blocking version.
+docs/api/core/renderer/read_texture_async.md:web:Native platforms have synchronous Renderer::read_texture; the async wrapper is only needed where the runtime forbids blocking.
+
 # ---- Aliases (hidden override → canonical) ----
 #
 # These declare which canonical doc a hidden override credits when its
