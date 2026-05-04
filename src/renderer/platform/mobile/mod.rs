@@ -236,9 +236,9 @@ impl Renderer {
     /// to ensure deterministic ordering. This is a genuine blocking call on
     /// native platforms; on web it is a no-op.
     #[uniffi::method(name = "waitIdle")]
-    #[lsp_doc("docs/api/core/renderer/hidden/wait_idle_mobile.md")]
-    pub fn wait_idle_mobile(self: Arc<Self>) -> Result<(), FragmentColorError> {
-        self.wait_idle().map_err(FragmentColorError::from)
+    #[lsp_doc("docs/api/core/renderer/hidden/wait_mobile.md")]
+    pub fn wait_mobile(self: Arc<Self>) -> Result<(), FragmentColorError> {
+        self.wait().map_err(FragmentColorError::from)
     }
 
     /// Wrap a native platform video-frame source as an external texture.

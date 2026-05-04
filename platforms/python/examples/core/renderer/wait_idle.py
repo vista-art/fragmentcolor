@@ -10,5 +10,5 @@ shader = Shader("""
 @fragment fn fs_main() -> @location(0) vec4<f32> { return vec4f(1., 1., 1., 1.); }
 """)
 renderer.render(shader, target)
-renderer.wait_idle()
+renderer.wait()
 bytes = target.get_image()

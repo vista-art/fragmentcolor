@@ -307,7 +307,7 @@ private enum _GeneratedExamples {
         try renderer.unregisterTexture(id)
     }
 
-    static func _example_core_renderer_wait_idle() async throws {
+    static func _example_core_renderer_wait() async throws {
 
         let r = Renderer()
         let target = try await r.createTextureTarget([8, 8])

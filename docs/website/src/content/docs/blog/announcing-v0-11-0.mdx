@@ -105,10 +105,10 @@ let tex = renderer
 let pixels = renderer.read_texture(tex.id())?;
 
 // Block until every queued submission has finished.
-renderer.wait_idle();
+renderer.wait();
 ```
 
-`wait_idle()` gives you a predictable ordering point between `render()` and a later readback. This addresses a Metal-side race where a compute burst followed by `TextureTarget::get_image` could return stale pixels on certain adapters.
+`wait()` gives you a predictable ordering point between `render()` and a later readback. This addresses a Metal-side race where a compute burst followed by `TextureTarget::get_image` could return stale pixels on certain adapters.
 
 `TextureFormat::Rgba16Float` joins the supported set: 16-bit float per channel, filterable, and storage-writable without a feature opt-in. It is the right format for iterative simulations where 8-bit precision is not enough and 32-bit is overkill.
 
@@ -126,7 +126,7 @@ Apple Silicon requires a submission boundary to flush tile-based storage writes 
 
 v0.11.0 detects the platform via a new `apple` cfg alias (`target_os = "macos" | "ios"`) and inserts the boundary automatically between sequential compute passes. There is nothing to opt into; non-Apple targets are unaffected.
 
-The same TBDR class of bug also affects `compute → render` sequences in the same command buffer; the auto-split for that case is queued for v0.11.x. Workaround until then: insert an explicit split (issue two `Renderer::render` calls, or call `Renderer::wait_idle()` between them).
+The same TBDR class of bug also affects `compute → render` sequences in the same command buffer; the auto-split for that case is queued for v0.11.x. Workaround until then: insert an explicit split (issue two `Renderer::render` calls, or call `Renderer::wait()` between them).
 
 ### `R16Unorm` (and the 16-bit norm family) now works on every adapter that advertises the feature
 
