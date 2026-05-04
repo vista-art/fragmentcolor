@@ -481,26 +481,7 @@ impl Renderer {
     }
 
     #[lsp_doc("docs/api/core/renderer/read_texture.md")]
-    pub fn read_texture(
-        &self,
-        texture_id: crate::texture::TextureId,
-    ) -> Result<Vec<u8>, RendererError> {
-        let context = self
-            .context
-            .read()
-            .as_ref()
-            .cloned()
-            .ok_or(RendererError::NoContext)?;
-        let texture = context
-            .get_texture(&texture_id)
-            .ok_or(RendererError::TextureNotFoundError(texture_id))?;
-        Ok(crate::texture::read_texture_object_sync(
-            &context, &texture,
-        )?)
-    }
-
-    #[lsp_doc("docs/api/core/renderer/read_texture_async.md")]
-    pub async fn read_texture_async(
+    pub async fn read_texture(
         &self,
         texture_id: crate::texture::TextureId,
     ) -> Result<Vec<u8>, RendererError> {
