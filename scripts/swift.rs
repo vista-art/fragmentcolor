@@ -1,11 +1,15 @@
 mod swift {
-    //! Swift transpilation.
+    //! Swift transpilation — second phase.
     //!
-    //! We start from the JS output (see `convert::to_swift`) and apply a
-    //! handful of lexical swaps to produce idiomatic Swift. This deliberately
-    //! avoids re-implementing the full Rust → language pipeline a second
-    //! time — JS already does all the hard work (method name camelizing,
-    //! `::` → `.`, collapsing `impl Into<T>` constructors, etc.).
+    //! `convert::to_swift` runs the per-line emitter with `Lang::Swift`,
+    //! producing a JS-shaped intermediate (Swift shares JS's control flow:
+    //! `{...}` blocks, `;` terminators, `new Type(...)`, `const`, backtick
+    //! template literals). This module finishes the job with the lexical
+    //! swaps that don't fit a per-line model.
+    //!
+    //! Folding these into per-line `Lang::Swift` match arms inside
+    //! `convert.rs` is queued for the next pass; doing them here keeps the
+    //! transition incremental.
     //!
     //! Rules applied in order:
     //!
@@ -27,8 +31,12 @@ mod swift {
     //! 14. `try` insertion for known throwing methods called without `await`
     //!     (uniffi marks most methods `throws`; JS equivalents are synchronous).
 
-    pub fn js_to_swift(js: &str) -> String {
-        let js = swap_backticks_for_triple_quotes(js);
+    /// Finalize the Swift output emitted by `convert(_, Lang::Swift, _)`.
+    /// Takes the JS-shaped intermediate produced by the per-line emitter
+    /// and applies the bulk-text swaps documented at the top of this
+    /// module to land on idiomatic Swift.
+    pub fn finalize(ir: &str) -> String {
+        let js = swap_backticks_for_triple_quotes(ir);
 
         let mut out: Vec<String> = Vec::with_capacity(js.lines().count());
         let mut has_fragmentcolor_import = false;
