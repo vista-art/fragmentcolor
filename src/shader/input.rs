@@ -8,6 +8,23 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+/// Async resolve: fetch URLs / slugs / read paths asynchronously, dedup by
+/// source hash, concat in order, then compile as WGSL (or GLSL for a single
+/// GLSL part). This is the shared implementation backing `Shader::fetch` on
+/// all platforms.
+pub(super) async fn resolve_async(input: ShaderInput) -> Result<Arc<ShaderObject>, ShaderError> {
+    if input.is_empty() {
+        return Ok(Arc::new(ShaderObject::default()));
+    }
+
+    let mut resolved: Vec<Resolved> = Vec::with_capacity(input.parts().len());
+    for part in input.parts() {
+        resolved.push(resolve_part_async(part).await?);
+    }
+
+    finish_resolve(resolved)
+}
+
 /// Resolve a `ShaderInput` into a single `ShaderObject`:
 /// fetch URLs / read paths / look up slugs, dedup by source hash, concat in order,
 /// then dispatch to `ShaderObject::wgsl` (or the GLSL path for a single GLSL part).
@@ -22,6 +39,11 @@ pub(super) fn resolve(input: ShaderInput) -> Result<Arc<ShaderObject>, ShaderErr
         .map(resolve_part)
         .collect::<Result<_, _>>()?;
 
+    finish_resolve(resolved)
+}
+
+/// Shared finish step: dedup, merge, and compile resolved parts.
+fn finish_resolve(resolved: Vec<Resolved>) -> Result<Arc<ShaderObject>, ShaderError> {
     let non_empty: Vec<&Resolved> = resolved.iter().filter(|r| !r.body.is_empty()).collect();
 
     if non_empty.is_empty() {
@@ -100,11 +122,52 @@ fn resolve_part(part: &ShaderPart) -> Result<Resolved, ShaderError> {
     }
 }
 
+async fn resolve_part_async(part: &ShaderPart) -> Result<Resolved, ShaderError> {
+    match part {
+        ShaderPart::Source(s) => Ok(Resolved {
+            body: s.clone(),
+            glsl: None,
+        }),
+        ShaderPart::Path(p) => read_path(p),
+        ShaderPart::Url(u) => fetch_url_async(u).await,
+        ShaderPart::Slug(slug) => {
+            if let Some(body) = crate::shader::embedded::lookup(slug) {
+                return Ok(Resolved {
+                    body: body.to_string(),
+                    glsl: None,
+                });
+            }
+            let url = crate::shader::registry::slug_to_url(slug);
+            fetch_url_async(&url).await
+        }
+    }
+}
+
 fn read_path(path: &Path) -> Result<Resolved, ShaderError> {
     let body = std::fs::read_to_string(path)?;
     Ok(Resolved {
         body,
         glsl: glsl_kind_from_extension(path),
+    })
+}
+
+#[cfg(not(wasm))]
+async fn fetch_url_async(url: &str) -> Result<Resolved, ShaderError> {
+    let body = crate::net::fetch_text(url).await?;
+    Ok(Resolved {
+        body,
+        glsl: glsl_kind_from_url(url),
+    })
+}
+
+#[cfg(wasm)]
+async fn fetch_url_async(url: &str) -> Result<Resolved, ShaderError> {
+    let body = crate::net::fetch_text(url)
+        .await
+        .map_err(ShaderError::from)?;
+    Ok(Resolved {
+        body,
+        glsl: glsl_kind_from_url(url),
     })
 }
 
@@ -140,6 +203,13 @@ fn glsl_kind_from_url(url: &str) -> Option<GlslKind> {
     let path = url.split('?').next().unwrap_or(url);
     let pb = PathBuf::from(path);
     glsl_kind_from_extension(&pb)
+}
+
+#[cfg(wasm)]
+fn glsl_kind_from_url(url: &str) -> Option<GlslKind> {
+    let path = url.split('?').next().unwrap_or(url);
+    let path = std::path::Path::new(path);
+    glsl_kind_from_extension(path)
 }
 
 #[cfg(test)]

@@ -1,20 +1,38 @@
-# Shader::fetch(input: string | string[])
+# Shader::fetch(input)
 
-## Available for Javascript only
+Async constructor that resolves a URL, registry slug, file path, or raw WGSL
+source and returns a compiled `Shader`. Available on all four platforms.
 
-Async constructor for Javascript to build a shader whose parts come from the network.
+Each part of `input` is classified as one of:
 
-In most platforms the [Shader](https://fragmentcolor.org/api/core/shader) constructor accepts URLs and registry slugs directly. In WASM the constructor cannot perform network requests because constructors cannot be async, so `Shader.fetch(...)` is the async path.
+- **Raw WGSL source** — used directly, no I/O.
+- **URL** (`https://...`) — fetched over the network.
+- **Registry slug** (`"category/name"`) — looked up in the slug registry (or
+  served from the embedded library if the matching `shaders-<category>` feature
+  is compiled in).
+- **File path** (starts with `/`, `./`, `../`, `~/`, or ends with `.wgsl` /
+  `.glsl` / `.frag` / `.vert`) — read from disk (native platforms only).
 
-`fetch` accepts the same input forms as the Rust constructor:
+Parts are deduplicated by source hash and concatenated in order before
+compilation. On WASM, `Shader::new` cannot perform network I/O because
+constructors cannot be async; `Shader.fetch` is the required path there.
+On Python, Swift, and Kotlin, `Shader.fetch` and `Shader.new` are both
+available: `new` resolves URLs synchronously (blocking), while `fetch`
+is the idiomatic async path.
 
-- A single raw shader source string (no fetch happens, but the call is still async-shaped).
-- A single URL (`https://...`) or registry slug (`"sdf2d/circle"`).
-- An array mixing any of the above.
+## Platform notes
 
-Each part is fetched (URL or slug) or used directly (raw source). The resolved sources are concatenated in order, deduplicated by hash, and validated as a single WGSL shader.
+| Platform | Spelling | Async mechanism |
+|----------|----------|-----------------|
+| Web (JS) | `await Shader.fetch(input)` | `Promise` via `wasm_bindgen` async |
+| Python   | `Shader.fetch(input)` | Blocks the calling thread via `pollster::block_on` |
+| Swift    | `try await Shader.fetch(input)` | `async throws` via uniffi async method |
+| Kotlin   | `ShaderFetch(input)` | `suspend fun` via uniffi async method |
 
-If validation fails, the error message will indicate the location of the error.
+> **Note (Swift / Kotlin):** uniffi 0.31 does not support async constructors.
+> The underlying uniffi binding is an `async` instance method; the Swift
+> `Shader.fetch(_:)` and Kotlin `ShaderFetch(...)` wrappers handle the
+> throw-away receiver internally so callers see a clean static factory.
 
 ## Example
 
@@ -26,7 +44,10 @@ use fragmentcolor::Shader;
 // Single URL
 let shader = Shader::fetch("https://fragmentcolor.org/shaders/sdf2d/circle.wgsl").await?;
 
-# let _ = shader;
+// Registry slug
+let shader2 = Shader::fetch("sdf2d/circle").await?;
+
+# let _ = (shader, shader2);
 # Ok(())
 # }
 # fn main() { let _ = pollster::block_on(run()); }
