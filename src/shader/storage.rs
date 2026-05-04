@@ -2,8 +2,8 @@ use std::collections::{HashMap, HashSet};
 
 use crate::ShaderError;
 
-use super::{Uniform, UniformData};
 use super::uniform::{ArrayElement, PushEntry, StorageEntry, StructField, StructShape};
+use super::{Uniform, UniformData};
 
 #[derive(Debug, Clone)]
 pub(crate) struct UniformStorage {

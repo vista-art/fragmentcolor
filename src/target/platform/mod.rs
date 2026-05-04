@@ -1,6 +1,6 @@
+mod mobile;
 mod python;
 mod web;
-mod mobile;
 
 #[cfg(python)]
 pub use python::*;

@@ -1776,7 +1776,7 @@ mod tests {
         assert_eq!(chain.level_count(), 4);
         assert_eq!(chain.base_size(), (8, 8));
         assert_eq!(chain.format(), wgpu::TextureFormat::Rgba8UnormSrgb);
-        let expected = [4 * 8 * 8, 4 * 4 * 4, 4 * 2 * 2, 4 * 1 * 1];
+        let expected = [4 * 8 * 8, 4 * 4 * 4, 4 * 2 * 2, 4];
         for (i, level) in chain.levels().iter().enumerate() {
             assert_eq!(level.len(), expected[i], "level {i} byte count");
         }

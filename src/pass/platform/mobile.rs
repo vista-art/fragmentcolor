@@ -186,10 +186,7 @@ impl Pass {
     /// detected, or if the same dependency appears twice.
     #[uniffi::method(name = "require")]
     #[lsp_doc("docs/api/core/pass/hidden/require_mobile.md")]
-    pub fn require_mobile(
-        &self,
-        deps: Vec<RenderableHandle>,
-    ) -> Result<(), FragmentColorError> {
+    pub fn require_mobile(&self, deps: Vec<RenderableHandle>) -> Result<(), FragmentColorError> {
         for dep in deps {
             self.require(&dep)
                 .map_err(|e: PassError| FragmentColorError::Render(e.to_string()))?;

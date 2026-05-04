@@ -11,8 +11,8 @@ use objc2::encode::{Encode, Encoding, RefEncode};
 use objc2::msg_send;
 use objc2::runtime::AnyObject;
 
-use crate::{Renderer, WindowTarget};
 use crate::MobileWindowTarget;
+use crate::{Renderer, WindowTarget};
 
 use super::FragmentColorError;
 
@@ -68,6 +68,8 @@ impl Renderer {
             pollster::block_on(self.configure_unsafe_surface(target, extent))
                 .map_err(FragmentColorError::from)?;
 
-        Ok(MobileWindowTarget::new(WindowTarget::new(context, surface, config)))
+        Ok(MobileWindowTarget::new(WindowTarget::new(
+            context, surface, config,
+        )))
     }
 }
