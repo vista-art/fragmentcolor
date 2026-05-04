@@ -9,4 +9,4 @@ target = renderer.create_texture_target([64, 64])
 renderer.render(Shader(""), target)
 
 # get the rendered image
-image = target.get_image()
+image = target.get_image().await

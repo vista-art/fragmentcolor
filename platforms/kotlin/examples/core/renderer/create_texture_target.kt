@@ -8,4 +8,4 @@ val target = renderer.createTextureTarget(64u, 64u)
 renderer.render(Shader(""), target)
 
 // get the rendered image
-val image = target.getImage()
+val image = target.getImage().await

@@ -271,7 +271,7 @@ private enum _GeneratedExamples {
         try renderer.render(Shader(""), target)
 
         // get the rendered image
-        let image = target.getImage()
+        let image = target.getImage().await
     }
 
     static func _example_core_renderer_new() async throws {
@@ -314,7 +314,7 @@ private enum _GeneratedExamples {
         let shader = Shader.default()
         try r.render(shader, target)
         try r.waitIdle()
-        let _bytes = target.getImage()
+        let _bytes = target.getImage().await
     }
 
     static func _example_core_shader_Shader() async throws {
@@ -902,7 +902,7 @@ private enum _GeneratedExamples {
         let target = try await renderer.createTextureTarget([16, 16])
         try renderer.render(Shader(""), target)
 
-        let image = target.getImage()
+        let image = target.getImage().await
     }
 
     static func _example_targets_target_resize() async throws {
@@ -934,7 +934,7 @@ private enum _GeneratedExamples {
         let shader = Shader.default()
         try renderer.render(shader, target)
 
-        let image = target.getImage()
+        let image = target.getImage().await
     }
 
     static func _example_targets_texture_target_get_image() async throws {
@@ -944,7 +944,7 @@ private enum _GeneratedExamples {
         let target = try await renderer.createTextureTarget([16, 16])
         try renderer.render(Shader(""), target)
 
-        let image = target.getImage()
+        let image = target.getImage().await
     }
 
     static func _example_targets_texture_target_resize() async throws {
@@ -986,7 +986,7 @@ private enum _GeneratedExamples {
         let target = try await renderer.createTextureTarget([16, 16])
         try renderer.render(Shader(""), target)
 
-        let image = target.getImage()
+        let image = target.getImage().await
     }
 
     static func _example_targets_window_target_resize() async throws {
