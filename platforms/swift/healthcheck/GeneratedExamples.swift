@@ -696,81 +696,84 @@ private enum _GeneratedExamples {
     static func _example_core_texture_mip_chain_TextureMipChain() async throws {
 
         let renderer = Renderer()
-        // Encoded image bytes the caller has on hand (could come off a worker).
-        let png = [
-            0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
-            // ... full PNG body ...
-        ]
-        let chain = try TextureMipChain.prepare((png, TextureFormat.rgba8UnormSrgb))
 
-        // Hand the chain to the unified create_texture entry - same vocabulary as
-        // every other texture path; From<TextureMipChain> selects the GPU-only
-        // upload internally.
-        let texture = try await renderer.createTexture(chain)
+        // Minimal 1×1 RGBA raw pixel bytes.
+        let pixels = Data([255, 0, 0, 255])
+        let chain = try TextureMipChain.prepare(
+            bytes: pixels,
+            format: .rgba8UnormSrgb,
+            size: Size(width: 1, height: 1, depth: nil)
+        )
+
+        // Hand the chain to the unified create_texture entry.
+        let texture = try await renderer.createTexture(input: .prepared(chain))
+        let _ = texture.size()
     }
 
     static func _example_core_texture_mip_chain_base_size() async throws {
 
-        let pixels = Array(repeating: 0, count: 16 * 16 * 4)
-        let chain = try TextureMipChain.prepare((
-            pixels,
-            TextureFormat.rgba8UnormSrgb,
-            [16, 16],
-        ))
-        let size = chain.baseSize()
-        let _ = size
+        let pixels = Data(repeating: 0, count: 16 * 16 * 4)
+        let chain = try TextureMipChain.prepare(
+            bytes: pixels,
+            format: .rgba8UnormSrgb,
+            size: Size(width: 16, height: 16, depth: nil)
+        )
+        let sz = chain.baseSize()
+        let width = sz.width
+        let height = sz.height
+        let _ = (width, height)
     }
 
     static func _example_core_texture_mip_chain_format() async throws {
 
-        let pixels = Array(repeating: 200, count: 4 * 4 * 4)
-        let chain = try TextureMipChain.prepare((
-            pixels,
-            TextureFormat.rgba8UnormSrgb,
-            [4, 4],
-        ))
+        let pixels = Data(repeating: 200, count: 4 * 4 * 4)
+        let chain = try TextureMipChain.prepare(
+            bytes: pixels,
+            format: .rgba8UnormSrgb,
+            size: Size(width: 4, height: 4, depth: nil)
+        )
         let _ = chain.format()
     }
 
     static func _example_core_texture_mip_chain_level_count() async throws {
 
-        let pixels = Array(repeating: 0, count: 8 * 8 * 4)
-        let chain = try TextureMipChain.prepare((
-            pixels,
-            TextureFormat.rgba8UnormSrgb,
-            [8, 8],
-        ))
+        let pixels = Data(repeating: 0, count: 8 * 8 * 4)
+        let chain = try TextureMipChain.prepare(
+            bytes: pixels,
+            format: .rgba8UnormSrgb,
+            size: Size(width: 8, height: 8, depth: nil)
+        )
         let count = chain.levelCount()
         let _ = count
     }
 
     static func _example_core_texture_mip_chain_levels() async throws {
 
-        let pixels = Array(repeating: 0, count: 8 * 8 * 4)
-        let chain = try TextureMipChain.prepare((
-            pixels,
-            TextureFormat.rgba8UnormSrgb,
-            [8, 8],
-        ))
-        let level_zero_bytes = chain.levels()[0]
-        let _ = level_zero_bytes
+        let pixels = Data(repeating: 0, count: 8 * 8 * 4)
+        let chain = try TextureMipChain.prepare(
+            bytes: pixels,
+            format: .rgba8UnormSrgb,
+            size: Size(width: 8, height: 8, depth: nil)
+        )
+        let levelZeroBytes = try chain.level(index: 0)
+        let _ = levelZeroBytes
     }
 
     static func _example_core_texture_mip_chain_prepare() async throws {
 
-        // Encoded path — single tuple, no extra method.
-        let chain = try TextureMipChain.prepare((encoded_png_bytes, TextureFormat.rgba8UnormSrgb))
-
-        // Raw pixel path — same method, just include the size in the tuple.
-        let chain_raw = try TextureMipChain.prepare((
-            raw_rgba,
-            TextureFormat.rgba8UnormSrgb,
-            [8, 8],
-        ))
+        // Raw RGBA path — same method as encoded, just include the size.
+        let rawRgba = Data(repeating: 200, count: 8 * 8 * 4)
+        let chainRaw = try TextureMipChain.prepare(
+            bytes: rawRgba,
+            format: .rgba8UnormSrgb,
+            size: Size(width: 8, height: 8, depth: nil)
+        )
 
         // Hand the chain to the unified create_texture entry — same vocabulary.
         let renderer = Renderer()
-        let texture = try await renderer.createTexture(chain)
+        let texture = try await renderer.createTexture(input: .prepared(chainRaw))
+        let _ = chainRaw.levelCount()
+        let __ = texture.size()
     }
 
     static func _example_geometry_mesh_Mesh() async throws {

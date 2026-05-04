@@ -1,3 +1,11 @@
+# TextureMipChain::level_count (Swift)
+
+Swift override for `TextureMipChain::level_count`. See
+`prepare_swift.md` for the rationale.
+
+## Example
+
+```swift
 import FragmentColor
 import Foundation
 
@@ -7,5 +15,6 @@ let chain = try TextureMipChain.prepare(
     format: .rgba8UnormSrgb,
     size: Size(width: 8, height: 8, depth: nil)
 )
-let levelZeroBytes = try chain.level(index: 0)
-let _ = levelZeroBytes
+let count = chain.levelCount()
+let _ = count
+```
