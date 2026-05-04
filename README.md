@@ -99,7 +99,7 @@ let blurx = Pass::new("blur x");
 blurx.add_shader(&Shader::new("./shaders/blur_x.wgsl")?);
 blurx.require(&pass)?; // pass renders before blurx
 
-// Finally, any iterable of Pass can be rendered in order — no extra type needed.
+// Finally, any iterable of Pass can be rendered in order
 let passes = vec![pass, Pass::new("GUI pass")];
 renderer.render(&passes, &target)?;
 

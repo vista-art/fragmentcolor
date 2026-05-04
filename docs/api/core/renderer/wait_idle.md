@@ -1,4 +1,4 @@
-# Renderer::wait_idle()
+# Renderer::wait()
 
 Block the current thread until every submission queued on this renderer's device has finished executing.
 
@@ -17,7 +17,7 @@ let r = Renderer::new();
 let target = r.create_texture_target([8, 8]).await?;
 let shader = Shader::default();
 r.render(&shader, &target)?;
-r.wait_idle()?;
+r.wait()?;
 let _bytes = target.get_image().await;
 # Ok(())
 # }

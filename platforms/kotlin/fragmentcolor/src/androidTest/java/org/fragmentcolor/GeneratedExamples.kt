@@ -317,7 +317,7 @@ class GeneratedExamples {
         renderer.unregisterTexture(id)
     }
 
-    @Suppress("unused") private suspend fun _example_core_renderer_wait_idle() {
+    @Suppress("unused") private suspend fun _example_core_renderer_wait() {
 
         val r = Renderer()
         val target = r.createTextureTarget(8u, 8u)

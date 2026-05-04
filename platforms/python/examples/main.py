@@ -1,9 +1,14 @@
 # Auto-generated: executes all Python examples with cargo-like output.
-import runpy, pathlib, sys, traceback, os
+import runpy
+import pathlib
+import sys
+import traceback
+import os
 
-GREEN='[1;32m'
-RED='[1;31m'
-RESET='[0m'
+GREEN = '[1;32m'
+RED = '[1;31m'
+RESET = '[0m'
+
 
 def run_all():
     base = pathlib.Path(__file__).parent
@@ -34,7 +39,7 @@ def run_all():
         'core/renderer/read_texture.py',
         'core/renderer/render.py',
         'core/renderer/unregister_texture.py',
-        'core/renderer/wait_idle.py',
+        'core/renderer/wait.py',
         'core/shader/Shader.py',
         'core/shader/add_mesh.py',
         'core/shader/clear_meshes.py',
@@ -109,7 +114,8 @@ def run_all():
     passed = 0
     failed = 0
     for rel in files:
-        name = 'platforms.python.examples.' + rel.replace('/', '.').removesuffix('.py')
+        name = 'platforms.python.examples.' + \
+            rel.replace('/', '.').removesuffix('.py')
         head = f'test {name} ... '
         os.environ['FC_RUNNER'] = 'python'
         os.environ['FC_CURRENT_TEST'] = name
@@ -142,6 +148,7 @@ def run_all():
         raise SystemExit(1)
     else:
         print(f"\n{GREEN}test result: ok{RESET}. {passed} passed; {failed} failed")
+
 
 if __name__ == '__main__':
     run_all()

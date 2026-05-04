@@ -27,7 +27,7 @@ const EXAMPLES = [
   '../examples/core/renderer/read_texture.js',
   '../examples/core/renderer/render.js',
   '../examples/core/renderer/unregister_texture.js',
-  '../examples/core/renderer/wait_idle.js',
+  '../examples/core/renderer/wait.js',
   '../examples/core/shader/Shader.js',
   '../examples/core/shader/add_mesh.js',
   '../examples/core/shader/clear_meshes.js',

@@ -413,7 +413,7 @@ an `async` runner (Swift).
   texture pre-seeded from a CPU blob in one call — skips the "author a trivial seed WGSL shader"
   workaround for initial conditions. Expects tightly-packed bytes (no per-row padding) so small
   textures work without manually padding rows to 256.
-- `Renderer::wait_idle()` blocks until every queued submission on the device has finished.
+- `Renderer::wait()` blocks until every queued submission on the device has finished.
   Restores deterministic ordering around `render()` → readback sequences — previously a compute
   burst followed by `TextureTarget::get_image` could return stale pixels ~30-40% of the time on
   some Metal adapters because the readback raced the prior submission.
@@ -528,7 +528,7 @@ not exported, etc.). Tracked under _Carried over to 0.12.0_.
   `textureSample*` / `textureLoad` can observe zeros. The 0.11.0 auto-split covers
   `compute → compute` only; `compute → render` is not yet auto-split. Workaround: insert an
   explicit split between the two passes (for example, issue two `Renderer::render` calls, or call
-  `Renderer::wait_idle()` between them). Tracked on the roadmap for 0.12.x as an extension of the
+  `Renderer::wait()` between them). Tracked on the roadmap for 0.12.x as an extension of the
   same `prev_was_compute` heuristic in the pass-dispatch loop.
 
 ### Dependency Updates
@@ -577,7 +577,7 @@ not exported, etc.). Tracked under _Carried over to 0.12.0_.
       `connectedAndroidTest` flow — compile-only, mirroring the JS / Python coverage that
       already existed for the same per-doc transpiled output
 - [x] Compute DX suite: `Renderer::read_texture`, `read_texture_async`, `Texture::get_image` /
-      `get_image_async`, `Renderer::create_storage_texture_with_data`, `Renderer::wait_idle`
+      `get_image_async`, `Renderer::create_storage_texture_with_data`, `Renderer::wait`
 - [x] Bind-group-layout inference: `filterable: false` for textures only used via `textureLoad`
       (unlocks `Rgba32Float` as a sampled source without `FLOAT32_FILTERABLE`)
 - [x] Compute-shader bind-group visibility: sampled textures + samplers now expose

@@ -312,8 +312,8 @@ impl Renderer {
     ///
     /// On WASM this is a no-op — the browser drives submission readiness, and the calling
     /// thread cannot block. Callers that need a sync point there should await a readback.
-    #[lsp_doc("docs/api/core/renderer/wait_idle.md")]
-    pub fn wait_idle(&self) -> Result<(), RendererError> {
+    #[lsp_doc("docs/api/core/renderer/wait.md")]
+    pub fn wait(&self) -> Result<(), RendererError> {
         let _context = self
             .context
             .read()
@@ -327,7 +327,7 @@ impl Renderer {
                 submission_index: None,
                 timeout: Some(std::time::Duration::from_secs(5)),
             })
-            .map_err(|e| RendererError::Error(format!("wait_idle poll failed: {e:?}")))?;
+            .map_err(|e| RendererError::Error(format!("wait poll failed: {e:?}")))?;
         Ok(())
     }
 

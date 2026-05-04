@@ -1,6 +1,6 @@
-# Renderer::wait_idle()
+# Renderer::wait()
 
-Python wrapper for `Renderer::wait_idle`. Blocks until all GPU submissions have finished.
+Python wrapper for `Renderer::wait`. Blocks until all GPU submissions have finished.
 
 ## Example
 
@@ -17,6 +17,6 @@ shader = Shader("""
 @fragment fn fs_main() -> @location(0) vec4<f32> { return vec4f(1., 1., 1., 1.); }
 """)
 renderer.render(shader, target)
-renderer.wait_idle()
+renderer.wait()
 bytes = target.get_image()
 ```

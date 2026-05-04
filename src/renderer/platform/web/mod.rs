@@ -165,9 +165,9 @@ impl Renderer {
     /// API parity; callers that need a sync point on the web should await a
     /// readback (`Renderer.readTexture` / `Texture.getImage`).
     #[wasm_bindgen(js_name = "waitIdle")]
-    #[lsp_doc("docs/api/core/renderer/hidden/wait_idle_js.md")]
-    pub fn wait_idle_js(&self) -> Result<(), RendererError> {
-        self.wait_idle()
+    #[lsp_doc("docs/api/core/renderer/hidden/wait_js.md")]
+    pub fn wait_js(&self) -> Result<(), RendererError> {
+        self.wait()
     }
 
     #[wasm_bindgen(js_name = "readTexture")]

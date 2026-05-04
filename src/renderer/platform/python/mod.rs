@@ -251,10 +251,10 @@ impl Renderer {
     }
 
     /// Block until GPU work is done. Useful before readbacks.
-    #[pyo3(name = "wait_idle")]
-    #[lsp_doc("docs/api/core/renderer/hidden/wait_idle_py.md")]
-    pub fn wait_idle_py(&self) -> Result<(), PyErr> {
-        self.wait_idle().map_err(Into::into)
+    #[pyo3(name = "wait")]
+    #[lsp_doc("docs/api/core/renderer/hidden/wait_py.md")]
+    pub fn wait_py(&self) -> Result<(), PyErr> {
+        self.wait().map_err(Into::into)
     }
 }
 
