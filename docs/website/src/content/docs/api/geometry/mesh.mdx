@@ -214,11 +214,7 @@ lang="rust"
 code={`
 import { Mesh } from "fragmentcolor";
 
-const mesh = Mesh.fromVertices([
-    [0.0, 0.0],
-    [1.0, 0.0],
-    [0.0, 1.0],
-]);
+const mesh = Mesh.fromVertices([ [0.0, 0.0], [1.0, 0.0], [0.0, 1.0], ]);
 `}
 lang="js"
 />
@@ -375,10 +371,7 @@ lang="rust"
 code={`
 import { Mesh } from "fragmentcolor";
 const m = new Mesh();
-m.addVertices([
-  [0.0, 0.0],
-  [1.0, 0.0],
-]);
+m.addVertices([ [0.0, 0.0], [1.0, 0.0], ]);
 `}
 lang="js"
 />
@@ -571,11 +564,7 @@ const m = new Mesh();
 const red = [1.0, 0.0, 0.0, 1.0];
 const green = [0.0, 1.0, 0.0, 1.0];
 const blue = [0.0, 0.0, 1.0, 1.0];
-m.addInstances([
-    Instance.new().set("tint", red),
-    Instance.new().set("tint", green),
-    Instance.new().set("tint", blue),
-]);
+m.addInstances([ Instance.new().set("tint", red), Instance.new().set("tint", green), Instance.new().set("tint", blue), ]);
 `}
 lang="js"
 />
@@ -776,11 +765,7 @@ lang="rust"
 code={`
 import { Mesh } from "fragmentcolor";
 const m = new Mesh();
-m.addVertices([
-    [-0.01, -0.01],
-    [ 0.01, -0.01],
-    [ 0.00,  0.01],
-]);
+m.addVertices([ [-0.01, -0.01], [ 0.01, -0.01], [ 0.00,  0.01], ]);
 // Draw one million instances, fetching per-particle data from a storage buffer.
 m.setInstanceCount(1_000_000);
 `}

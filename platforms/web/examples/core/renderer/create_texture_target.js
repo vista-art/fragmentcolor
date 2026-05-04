@@ -8,4 +8,4 @@ const target = await renderer.createTextureTarget([64, 64]);
 renderer.render(new Shader(""), target);
 
 // get the rendered image
-const image = target.getImage().await;
+const image = await target.getImage();

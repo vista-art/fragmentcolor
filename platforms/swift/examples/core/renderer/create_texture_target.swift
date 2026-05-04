@@ -8,4 +8,4 @@ let target = try await renderer.createTextureTarget([64, 64])
 try renderer.render(Shader(""), target)
 
 // get the rendered image
-let image = target.getImage().await
+let image = try await target.getImage()

@@ -129,3 +129,34 @@ suspend fun ShaderFetch(input: String): Shader =
  */
 suspend fun ShaderFetch(parts: List<String>): Shader =
     Shader.default().fetchCompose(parts)
+
+// Companion-object extensions that mirror the static-factory spelling used by
+// the JavaScript, Python, and Swift bindings: `Shader.fetch(input)` /
+// `Shader.fetch(parts)`. uniffi 0.31 cannot generate async constructors, so
+// the underlying binding is an instance method on `Shader`; these wrappers
+// create a throw-away default instance and discard it after the fetch.
+
+/**
+ * Static-factory async fetch: resolve a single URL, slug, file path, or raw
+ * WGSL source and return a compiled [Shader]. Matches `Shader.fetch(...)` on
+ * JavaScript, Python, and Swift.
+ *
+ * Usage:
+ * ```kotlin
+ * val shader = Shader.fetch("https://example.com/shader.wgsl")
+ * ```
+ */
+suspend fun Shader.Companion.fetch(input: String): Shader =
+    Shader.default().fetch(input)
+
+/**
+ * Static-factory async fetch (multi-part): resolve each entry asynchronously,
+ * merge them, and return a compiled [Shader].
+ *
+ * Usage:
+ * ```kotlin
+ * val shader = Shader.fetch(listOf("sdf2d/circle", mySource))
+ * ```
+ */
+suspend fun Shader.Companion.fetch(parts: List<String>): Shader =
+    Shader.default().fetchCompose(parts)

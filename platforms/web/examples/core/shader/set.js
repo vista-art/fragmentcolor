@@ -1,6 +1,7 @@
 import { Renderer, Shader } from "fragmentcolor";
 const r = new Renderer();
 const shader = new Shader(`
+
 @group(0) @binding(0) var<uniform> resolution: vec2<f32>;
 
 struct VOut { @builtin(position) pos: vec4<f32> };

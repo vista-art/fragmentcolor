@@ -1,3 +1,12 @@
+# TextureMipChain (JavaScript)
+
+JavaScript example for `TextureMipChain`. Use the `prepare(bytes, format, size?)`
+positional-args entry, then hand the chain to `renderer.createTexture(chain)`
+for the GPU upload.
+
+## Example
+
+```js
 import { Renderer, TextureFormat, TextureMipChain } from "fragmentcolor";
 
 const renderer = new Renderer();
@@ -12,3 +21,4 @@ const chain = TextureMipChain.prepare(pngBytes, TextureFormat.Rgba8UnormSrgb);
 // upload internally.
 const texture = await renderer.createTexture(chain);
 const _ = texture.size();
+```

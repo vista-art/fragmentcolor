@@ -2,6 +2,7 @@
 import { Shader, Renderer } from "fragmentcolor";
 
 const shader = new Shader(`
+
     @vertex
     fn vs_main(@builtin(vertex_index) index: u32) -> @builtin(position) vec4<f32> {
         var pos = array<vec2<f32>, 3>(
