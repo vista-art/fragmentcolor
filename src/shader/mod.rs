@@ -202,6 +202,7 @@ impl ShaderObject {
     pub fn set(&self, key: &str, value: impl Into<UniformData>) -> Result<(), ShaderError> {
         let val: UniformData = value.into();
         if let Some(mut storage) = self.storage.try_write() {
+            self.pending.remove(key);
             storage.update(key, &val)
         } else {
             self.pending.insert(key.to_string(), val);
@@ -278,11 +279,17 @@ impl ShaderObject {
     }
 
     /// Get a uniform value as UniformData enum.
+    ///
+    /// Blocking read: waits briefly (microseconds) for any in-flight `set`
+    /// to release the write lock. The previous `try_read` surfaced as
+    /// `Busy("storage read")` from `Shader::get` under contention with
+    /// concurrent setters — a defensible contract but uniformly
+    /// surprising for callers expecting the shader to be query-able at
+    /// any time. The clone-and-return body holds the lock only during
+    /// the lookup; no lock is held across the return, so re-entrance
+    /// from caller code (e.g. `let v = get(); set(v)`) is safe.
     pub fn get_uniform_data(&self, key: &str) -> Result<UniformData, ShaderError> {
-        let storage = self
-            .storage
-            .try_read()
-            .ok_or_else(|| ShaderError::Busy("storage read".into()))?;
+        let storage = self.storage.read();
         let uniform = storage
             .get(key)
             .ok_or(ShaderError::UniformNotFound(key.into()))?;
@@ -325,11 +332,13 @@ impl ShaderObject {
     }
 
     /// Get a uniform value as Uniform struct.
+    ///
+    /// Blocking read for the same reason as `get_uniform_data`. Used
+    /// from the render path (`Renderer::process_*_pass`) and shader
+    /// internals where the previous `try_read` would intermittently
+    /// fail under stress.
     pub(crate) fn get_uniform(&self, key: &str) -> Result<Uniform, ShaderError> {
-        let storage = self
-            .storage
-            .try_read()
-            .ok_or_else(|| ShaderError::Busy("storage read".into()))?;
+        let storage = self.storage.read();
         let uniform = storage
             .get(key)
             .ok_or(ShaderError::UniformNotFound(key.into()))?;
@@ -524,7 +533,8 @@ impl ShaderObject {
     }
 
     /// Apply any queued updates if we can acquire the write lock;
-    /// otherwise leave them queued for later.
+    /// otherwise leave them queued for later. Best-effort: callers
+    /// that need a guaranteed flush re-call until `pending.is_empty()`.
     pub(crate) fn flush_pending(&self) {
         if self.pending.is_empty() {
             return;

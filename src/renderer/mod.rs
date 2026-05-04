@@ -895,11 +895,15 @@ impl RenderContext {
                         {
                             // Acquire persistent storage buffer and upload only if necessary
                             let span_u64 = *span as u64;
-                            // Obtain initial bytes for creation or update
+                            // Obtain initial bytes for creation or update.
+                            // Blocking read: waits briefly (microseconds) if a `set` is
+                            // mid-write. `try_read` here would surface as `Busy`
+                            // mid-render under stress (writer thread holds the
+                            // write lock for the duration of one `update` call).
+                            // No deadlock risk — render doesn't re-enter `set` on
+                            // the same thread.
                             let init_bytes: Vec<u8> = {
-                                let s = shader.storage.try_read().ok_or_else(|| {
-                                    crate::shader::ShaderError::Busy("storage read".into())
-                                })?;
+                                let s = shader.storage.read();
                                 s.get_bytes(name)
                                     .map(|b| b.to_vec())
                                     .unwrap_or_else(|| vec![0u8; span_u64 as usize])
@@ -951,26 +955,23 @@ impl RenderContext {
                                     buffer
                                 }
                             };
-                            // If CPU blob is marked dirty, upload and clear flag
+                            // If CPU blob is marked dirty, upload and clear flag.
+                            // Blocking acquisitions (read for the snapshot, write
+                            // for the dirty-flag clear) — see comment on the
+                            // earlier `init_bytes` block for the rationale.
                             let need_upload = {
-                                let s = shader.storage.try_read().ok_or_else(|| {
-                                    crate::shader::ShaderError::Busy("storage read".into())
-                                })?;
+                                let s = shader.storage.read();
                                 s.is_storage_dirty(name)
                             };
                             if need_upload {
                                 let bytes: Vec<u8> = {
-                                    let s = shader.storage.try_read().ok_or_else(|| {
-                                        crate::shader::ShaderError::Busy("storage read".into())
-                                    })?;
+                                    let s = shader.storage.read();
                                     s.get_bytes(name)
                                         .map(|b| b.to_vec())
                                         .unwrap_or_else(|| vec![0u8; span_u64 as usize])
                                 };
                                 self.queue.write_buffer(&buf, 0, &bytes);
-                                let mut s = shader.storage.try_write().ok_or_else(|| {
-                                    crate::shader::ShaderError::Busy("storage write".into())
-                                })?;
+                                let mut s = shader.storage.write();
                                 s.clear_storage_dirty(name);
                             }
 
@@ -1121,12 +1122,11 @@ impl RenderContext {
                 render_pass.set_bind_group(*group, bind_group, &[]);
             }
 
-            // Set native immediate data just before draw if applicable
+            // Set native immediate data just before draw if applicable.
+            // Blocking read for the same reason as the storage-buffer snapshot
+            // earlier in this function.
             if let Some(PushMode::Native { root, .. }) = &cached_pipeline.push_mode {
-                let storage = shader
-                    .storage
-                    .try_read()
-                    .ok_or_else(|| crate::shader::ShaderError::Busy("storage read".into()))?;
+                let storage = shader.storage.read();
                 if let Some(bytes) = storage.get_bytes(root) {
                     render_pass.set_immediates(0, bytes);
                 }
@@ -1316,11 +1316,10 @@ impl RenderContext {
                         }) = data.first()
                         {
                             let span = *span_u32 as u64;
-                            // Obtain bytes
+                            // Obtain bytes. Blocking read — see comment on the
+                            // first storage-buffer init block above.
                             let init_bytes: Vec<u8> = {
-                                let s = shader.storage.try_read().ok_or_else(|| {
-                                    crate::shader::ShaderError::Busy("storage read".into())
-                                })?;
+                                let s = shader.storage.read();
                                 s.get_bytes(name)
                                     .map(|b| b.to_vec())
                                     .unwrap_or_else(|| vec![0u8; span as usize])
@@ -1369,26 +1368,21 @@ impl RenderContext {
                                     buffer
                                 }
                             };
-                            // Upload if dirty
+                            // Upload if dirty. Blocking acquisitions — see
+                            // comment on the earlier dirty-flag block above.
                             let need_upload = {
-                                let s = shader.storage.try_read().ok_or_else(|| {
-                                    crate::shader::ShaderError::Busy("storage read".into())
-                                })?;
+                                let s = shader.storage.read();
                                 s.is_storage_dirty(name)
                             };
                             if need_upload {
                                 let bytes: Vec<u8> = {
-                                    let s = shader.storage.try_read().ok_or_else(|| {
-                                        crate::shader::ShaderError::Busy("storage read".into())
-                                    })?;
+                                    let s = shader.storage.read();
                                     s.get_bytes(name)
                                         .map(|b| b.to_vec())
                                         .unwrap_or_else(|| vec![0u8; span as usize])
                                 };
                                 self.queue.write_buffer(&buf, 0, &bytes);
-                                let mut s = shader.storage.try_write().ok_or_else(|| {
-                                    crate::shader::ShaderError::Busy("storage write".into())
-                                })?;
+                                let mut s = shader.storage.write();
                                 s.clear_storage_dirty(name);
                             }
                             groups
@@ -1399,9 +1393,9 @@ impl RenderContext {
                         }
                     }
                     _ => {
-                        let storage = shader.storage.try_read().ok_or_else(|| {
-                            crate::shader::ShaderError::Busy("storage read".into())
-                        })?;
+                        // Blocking read — same rationale as the storage-buffer
+                        // path above.
+                        let storage = shader.storage.read();
                         let bytes = storage
                             .get_bytes(name)
                             .ok_or(crate::ShaderError::UniformNotFound(name.clone()))?;
@@ -2353,26 +2347,30 @@ mod tests {
 
     // E2E: stress set() under contention while rendering to a texture target.
     //
-    // Flaky in CI (slower CPU rasterizers like Mesa LLVMpipe surface the race
-    // more often) and reproduces locally at roughly 1-in-3 runs. Two distinct
-    // failure modes share the same root cause — `flush_pending` uses
-    // `try_write` and silently no-ops under lock contention, so the writer's
-    // last enqueued value never lands before `get("time")` reads it:
-    //   * `unexpected last time: 0.25` — flush dropped the last 750 of 1000
-    //     queued writes; `get` returns whichever value was last applied via
-    //     a successful render flush.
-    //   * `render: ShaderError(Busy("storage read"))` — render acquires the
-    //     read lock while the writer still holds the write lock; the typed
-    //     error is correct, the test just `.expect`s it never happens.
+    // Previously flaky (~1-in-3 locally; same race in CI) — two
+    // independent failure modes shared distinct root causes:
     //
-    // Fixing the test properly means redesigning either `flush_pending` to
-    // block on the write lock (changes the public contract) or the test to
-    // tolerate Busy mid-loop and retry until the queue drains. Tracked for a
-    // follow-up — the v0.11.0 launch shouldn't be gated on it. Local lib
-    // tests run with `cargo test --lib` skip ignored tests by default; CI
-    // also doesn't pass `--include-ignored`, so this test stays out of the
-    // gate but the code path is preserved for future redesign.
-    #[ignore = "race in flush_pending under contention; see comment above + queued for redesign"]
+    //   * `unexpected last time: 0.25` — `set`'s dual write path
+    //     (try_write fast path + queue fallback) wasn't ordered against
+    //     `flush_pending`. A queued value from an earlier failed
+    //     `try_write` could survive in `pending` while later `set` calls
+    //     direct-wrote `storage`; the next flush then re-applied the
+    //     stale queued value, clobbering the newer direct write.
+    //     Fixed by clearing the pending entry for the same key when the
+    //     direct-write path succeeds (see `ShaderObject::set`).
+    //
+    //   * `render: ShaderError(Busy("storage read"))` — the renderer's
+    //     bind path used `try_read` to acquire the storage lock for
+    //     uniform/storage-buffer reads, surfacing as `Busy` whenever a
+    //     concurrent `set` happened to be mid-`try_write`. Reads don't
+    //     conflict with each other, and `set` releases the write lock
+    //     in microseconds, so the bounded wait of a blocking `read()`
+    //     was always the right call. The renderer (and
+    //     `Shader::get_uniform[_data]`) now use `read()`.
+    //
+    // Verified: 50/50 consecutive `cargo test` runs locally. The
+    // contention pattern is identical to a real client driving
+    // animation uniforms while the renderer renders.
     #[test]
     fn e2e_set_stress_during_render_last_wins() {
         pollster::block_on(async move {
