@@ -1,3 +1,12 @@
+# TextureMipChain (Swift)
+
+Swift override for the `TextureMipChain` entry-point example. See
+`prepare_swift.md` for the rationale (Rust tuple syntax crashes the
+swift-frontend type-checker; the Swift binding takes positional args).
+
+## Example
+
+```swift
 import FragmentColor
 import Foundation
 
@@ -14,3 +23,4 @@ let chain = try TextureMipChain.prepare(
 // Hand the chain to the unified create_texture entry.
 let texture = try await renderer.createTexture(input: .prepared(chain))
 let _ = texture.size()
+```

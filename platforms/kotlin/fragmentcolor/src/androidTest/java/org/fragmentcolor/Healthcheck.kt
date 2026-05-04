@@ -25,8 +25,9 @@ class Healthcheck {
         // `VK_ERROR_FEATURE_NOT_PRESENT` with an empty wgpu-hal
         // "Missing features:" log line) and whose GLES path doesn't
         // currently expose a wgpu-compatible adapter through SwiftShader's
-        // EGL implementation. Either yields `Internal: Requested feature
-        // is not available on this device` at `Renderer()` construction.
+        // EGL implementation. The error surfaces at the first call that
+        // forces device creation — typically `createTextureTarget`,
+        // since `Renderer()` is lazy on the Rust side.
         //
         // Skip the runtime smoke (rather than fail) when the emulator's
         // GPU driver can't produce an adapter: the test still validates
@@ -35,15 +36,14 @@ class Healthcheck {
         // surface for the CI job. A real-Vulkan emulator
         // (e.g. moltenvk on macOS-host runners) would exercise the
         // runtime path; tracked for v0.11.x follow-up.
-        val renderer = try {
-            // DOC: Renderer.new (begin)
-            Renderer()
-            // DOC: (end)
+        try {
+            runHeadlessRenderSmoke()
         } catch (e: Throwable) {
             val msg = e.message ?: e.toString()
             if (msg.contains("not available on this device", ignoreCase = true) ||
                 msg.contains("VK_ERROR_FEATURE_NOT_PRESENT", ignoreCase = true) ||
-                msg.contains("no suitable adapter", ignoreCase = true)
+                msg.contains("no suitable adapter", ignoreCase = true) ||
+                msg.contains("Failed to create VkDevice", ignoreCase = true)
             ) {
                 Log.w(
                     "FragmentColorHealthcheck",
@@ -58,6 +58,12 @@ class Healthcheck {
             }
             throw e
         }
+    }
+
+    private suspend fun runHeadlessRenderSmoke() {
+        // DOC: Renderer.new (begin)
+        val renderer = Renderer()
+        // DOC: (end)
 
         // DOC: Renderer.create_texture_target (begin)
         val target = renderer.createTextureTarget(32u, 64u)

@@ -1,3 +1,15 @@
+# TextureMipChain::prepare (Swift)
+
+Swift override for `TextureMipChain::prepare`. The Swift binding (uniffi
+constructor) takes positional args `(bytes: Data, format: TextureFormat,
+size: Size?)` — `size` is optional. Wrapping the call in a Rust-style
+tuple (`prepare((bytes, format, size))`) crashes the swift-frontend
+type-checker (see CI healthcheck failures up to 87e61e5a); the override
+sticks to native positional Swift syntax.
+
+## Example
+
+```swift
 import FragmentColor
 import Foundation
 
@@ -14,3 +26,4 @@ let renderer = Renderer()
 let texture = try await renderer.createTexture(input: .prepared(chainRaw))
 let _ = chainRaw.levelCount()
 let __ = texture.size()
+```
