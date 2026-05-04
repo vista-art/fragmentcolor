@@ -1,6 +1,6 @@
 # Renderer::read_texture (Python)
 
-In Python, read back texture pixels via the texture object's get_image() method.
+Python wrapper for `Renderer::read_texture`. Blocks the Python thread synchronously (via `pollster::block_on`) and returns the tightly-packed pixel bytes for the registered texture in its native format.
 
 ## Example
 
@@ -10,5 +10,5 @@ renderer = Renderer()
 texture = renderer.create_storage_texture([64, 64], TextureFormat.Rgba)
 texture.write([0] * (64 * 64 * 4))
 
-bytes = texture.get_image()
+bytes = renderer.read_texture(texture.id())
 ```

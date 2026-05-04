@@ -199,6 +199,22 @@ impl Renderer {
         Ok(Arc::new(tex))
     }
 
+    /// Read back the mip-0 contents of a registered texture as tightly-packed
+    /// bytes in the texture's native format. Uniffi exposes this as a Swift
+    /// `async throws` / Kotlin `suspend fun` automatically. Foreign callers
+    /// await this in a coroutine or `Task`; the underlying GPU readback is
+    /// driven by the async `read_texture_object_async` path.
+    #[uniffi::method(name = "readTexture")]
+    #[lsp_doc("docs/api/core/renderer/read_texture.md")]
+    pub async fn read_texture_mobile(
+        self: Arc<Self>,
+        texture_id: u64,
+    ) -> Result<Vec<u8>, FragmentColorError> {
+        self.read_texture(crate::texture::TextureId { id: texture_id })
+            .await
+            .map_err(FragmentColorError::from)
+    }
+
     /// Remove a texture from the renderer's registry by its raw numeric ID.
     ///
     /// TextureId wraps a `u64`; passing the raw value here avoids the need for
