@@ -158,4 +158,34 @@ extension Shader {
     public static func fromMesh(_ mesh: Mesh) -> Shader {
         return Shader.fromMesh(mesh: mesh)
     }
+
+    // MARK: - Async fetch factory
+
+    /// Resolve a single URL, slug, file path, or raw WGSL source asynchronously
+    /// and return a compiled `Shader`. This is the explicit async factory that
+    /// mirrors `Shader.fetch(...)` on Web and Python.
+    ///
+    /// The underlying uniffi binding exposes `fetch` as an instance method
+    /// (uniffi 0.31 does not support async constructors); this static wrapper
+    /// creates a throw-away default instance to call through, then returns the
+    /// freshly fetched shader.
+    ///
+    /// Usage:
+    /// ```swift
+    /// let shader = try await Shader.fetch("https://example.com/shader.wgsl")
+    /// ```
+    public static func fetch(_ input: String) async throws -> Shader {
+        return try await Shader.default().fetch(input: input)
+    }
+
+    /// Resolve an array of parts (URLs, slugs, paths, raw WGSL) asynchronously,
+    /// merge them, and return a compiled `Shader`.
+    ///
+    /// Usage:
+    /// ```swift
+    /// let shader = try await Shader.fetch(["sdf2d/circle", mySource])
+    /// ```
+    public static func fetch(_ parts: [String]) async throws -> Shader {
+        return try await Shader.default().fetchCompose(parts: parts)
+    }
 }

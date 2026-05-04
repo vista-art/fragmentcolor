@@ -69,6 +69,21 @@ impl Shader {
         Ok(Self::from(input::resolve(input.into())?))
     }
 
+    /// Async constructor: resolve each part of `input` by fetching URLs and
+    /// registry slugs over the network, reading file paths, or using raw WGSL
+    /// source verbatim. Parts are deduplicated by source hash and concatenated
+    /// in order before being compiled.
+    ///
+    /// Use this method when one or more parts of the shader must be fetched
+    /// from the network. On WASM this is the *only* way to compose shaders
+    /// from remote URLs because constructors cannot be async. On Python, Swift,
+    /// and Kotlin the network I/O blocks the calling thread
+    /// (via `pollster::block_on` on Python; uniffi async on Swift/Kotlin).
+    #[lsp_doc("docs/api/core/shader/fetch.md")]
+    pub async fn fetch(input: impl Into<ShaderInput>) -> Result<Self, ShaderError> {
+        Ok(Self::from(input::resolve_async(input.into()).await?))
+    }
+
     #[lsp_doc("docs/api/core/shader/set.md")]
     pub fn set(&self, key: &str, value: impl Into<UniformData>) -> Result<(), ShaderError> {
         self.object.set(key, value)

@@ -65,6 +65,40 @@ impl Shader {
         Arc::new(Shader::default())
     }
 
+    /// Async fetch constructor: resolve each part of `input` (URL, slug, file
+    /// path, or raw source) over the network, then compile the merged WGSL.
+    ///
+    /// Uniffi 0.31 does not support async constructors, so this is expressed
+    /// as an async method rather than a constructor. Swift / Kotlin extension
+    /// shims provide `Shader.fetch(input:)` as a static async factory so
+    /// callers never need to hold a dummy instance.
+    ///
+    /// Swift callers: `let shader = try await Shader.fetch("https://...")`
+    /// Kotlin callers: `val shader = Shader.fetch("https://...")`
+    #[uniffi::method(name = "fetch")]
+    #[lsp_doc("docs/api/core/shader/hidden/fetch_mobile.md")]
+    pub async fn fetch_mobile(self: Arc<Self>, input: String) -> Result<Arc<Self>, FragmentColorError> {
+        Shader::fetch(input)
+            .await
+            .map(Arc::new)
+            .map_err(FragmentColorError::from)
+    }
+
+    /// Async fetch constructor (multi-part): resolve each element of `parts`
+    /// independently then compile the merged WGSL. Mirrors `Shader.compose`
+    /// but fetches remote parts asynchronously.
+    #[uniffi::method(name = "fetchCompose")]
+    #[lsp_doc("docs/api/core/shader/hidden/fetch_compose_mobile.md")]
+    pub async fn fetch_compose_mobile(
+        self: Arc<Self>,
+        parts: Vec<String>,
+    ) -> Result<Arc<Self>, FragmentColorError> {
+        Shader::fetch(parts)
+            .await
+            .map(Arc::new)
+            .map_err(FragmentColorError::from)
+    }
+
     #[uniffi::method(name = "set")]
     #[lsp_doc("docs/api/core/shader/set.md")]
     pub fn set_mobile(&self, key: String, value: UniformData) -> Result<(), FragmentColorError> {

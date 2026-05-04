@@ -17,23 +17,6 @@
 #
 # Lines starting with `#` are comments. Blank lines are ignored.
 
-# Web-only async builder. WASM constructors cannot be async (wasm_bindgen does
-# not generate async constructors), and Shader::new on every other platform
-# can resolve URLs and slugs synchronously by blocking on the runtime's I/O.
-# See src/shader/platform/web.rs::fetch and the comment block in
-# docs/api/core/shader/new.md.
-docs/api/core/shader/fetch.md:web:WASM constructors cannot be async; the URL/slug-resolving builder lives here. Synchronous Shader::new covers the same surface on Python/Swift/Kotlin.
-
-# Synchronous read_texture is unavailable on the web (we cannot block the
-# event loop). Native platforms expose it; the web tab uses the async variant.
-docs/api/core/renderer/read_texture.md:python,swift,kotlin:Web cannot block the JS event loop; web uses Renderer::read_texture_async (its sibling docs entry) instead.
-
-# Async read_texture exists on the web for the reason above; on native
-# platforms the synchronous variant is the canonical entry. Listing the async
-# variant as web-only avoids forcing an artificial async wrapper on Python /
-# Swift / Kotlin where it adds nothing beyond the blocking version.
-docs/api/core/renderer/read_texture_async.md:web:Native platforms have synchronous Renderer::read_texture; the async wrapper is only needed where the runtime forbids blocking.
-
 # ---- Aliases (hidden override → canonical) ----
 #
 # These declare which canonical doc a hidden override credits when its
@@ -49,6 +32,13 @@ docs/api/core/renderer/hidden/render_mobile.md=>docs/api/core/renderer/render.md
 # Uniffi cannot marshal `impl Into`, so mobile splits this into Shader.new(source)
 # and Shader.compose(parts). Both forms credit the canonical Shader::new docs.
 docs/api/core/shader/hidden/compose_mobile.md=>docs/api/core/shader/new.md: Mobile splits Shader::new's impl-Into-based overload into a separate Shader.compose constructor.
+
+# Shader::fetch is async; uniffi 0.31 does not support async constructors, so
+# both the single-part (fetch_mobile) and multi-part (fetch_compose_mobile)
+# bindings are expressed as async instance methods. Extension shims provide
+# static-factory spellings on Swift and Kotlin.
+docs/api/core/shader/hidden/fetch_mobile.md=>docs/api/core/shader/fetch.md: Mobile exposes fetch as an async instance method (uniffi 0.31 lacks async constructors); Swift/Kotlin shims wrap it as a static factory.
+docs/api/core/shader/hidden/fetch_compose_mobile.md=>docs/api/core/shader/fetch.md: Mobile multi-part fetch variant; same async-method workaround as fetch_mobile.
 
 # TextureTarget::texture() exists only on the web (wasm_bindgen) — native platforms
 # pass TextureTarget directly to renderer.render() and the binding is implicit.

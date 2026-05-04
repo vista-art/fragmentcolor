@@ -1,5 +1,8 @@
 package org.fragmentcolor
 
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+
 // Idiomatic Kotlin wrappers on top of the uniffi-generated Shader API.
 // Matches the call shapes used by the JavaScript and Python bindings so
 // cross-platform examples read the same on every platform.
@@ -94,3 +97,35 @@ fun Shader.set(key: String, texture: Texture) {
     )
     set(key, UniformData.Texture(meta))
 }
+
+// ---------------------------------------------------------------------------
+// Async fetch factory helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolve a single URL, slug, file path, or raw WGSL source asynchronously
+ * and return a compiled [Shader]. Mirrors `Shader.fetch(...)` on Web and Python.
+ *
+ * The underlying uniffi binding exposes `fetch` as a `suspend` instance method
+ * (uniffi 0.31 does not support async constructors); this companion-style
+ * top-level function creates a throw-away default instance to call through.
+ *
+ * Usage:
+ * ```kotlin
+ * val shader = ShaderFetch("https://example.com/shader.wgsl")
+ * ```
+ */
+suspend fun ShaderFetch(input: String): Shader =
+    Shader.default().fetch(input)
+
+/**
+ * Resolve an array of parts (URLs, slugs, paths, raw WGSL) asynchronously,
+ * merge them, and return a compiled [Shader].
+ *
+ * Usage:
+ * ```kotlin
+ * val shader = ShaderFetch(listOf("sdf2d/circle", mySource))
+ * ```
+ */
+suspend fun ShaderFetch(parts: List<String>): Shader =
+    Shader.default().fetchCompose(parts)
