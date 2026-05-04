@@ -927,12 +927,10 @@ mod kotlin {
         line.to_string()
     }
 
-    // `renderer.readTexture(texture.id())` → `texture.getImage()`
-    // `renderer.readTextureAsync(texture.id())` → `texture.getImage()`
-    // These don't exist in the uniffi mobile binding; getImage() on the texture is the equivalent.
+    // `renderer.readTexture(texture.id())` is now a real uniffi mobile binding —
+    // no rewrite needed. The old `readTextureAsync` no longer exists.
     fn rewrite_readtexture_to_getimage(line: &str) -> String {
-        let out = replace_method_call_with_expr(line, "readTexture", "texture.id()", "texture.getImage()");
-        replace_method_call_with_expr(&out, "readTextureAsync", "texture.id()", "texture.getImage()")
+        line.to_string()
     }
 
     // Replace `<receiver>.method(arg)` with `replacement` where receiver is any identifier chain.
