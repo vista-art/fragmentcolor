@@ -35,9 +35,36 @@ pub async fn request_adapter(
 pub async fn request_device(
     adapter: &wgpu::Adapter,
 ) -> Result<(wgpu::Device, wgpu::Queue), InitializationError> {
-    let requested_features = features(adapter) | format_features(adapter);
-    let mut requested_limits = limits().using_resolution(adapter.limits());
-    requested_limits.max_immediate_size = adapter.limits().max_immediate_size;
+    // Features: probe a curated set of stable, end-user-relevant features
+    // and request only the ones the adapter advertises. Two constraints
+    // shape the list:
+    //   * `adapter.features()` includes wgpu-experimental features
+    //     (`EXPERIMENTAL_RAY_QUERY`, `EXPERIMENTAL_MESH_SHADER`,
+    //     `EXPERIMENTAL_COOPERATIVE_MATRIX`) that wgpu requires routed
+    //     through `experimental_features` — passing them via
+    //     `required_features` errors with `ExperimentalFeaturesNotEnabled`
+    //     on macOS Metal. We don't use any experimental features today.
+    //   * The Android emulator's SwiftShader Vulkan rejects `IMMEDIATES`
+    //     at device creation; the existing uniform-buffer fallback path
+    //     covers callers when the feature isn't available.
+    // Limits: take the adapter's advertised limits directly. wgpu's
+    // `Limits::default()` baseline exceeds what some emulators can
+    // provide (`max_buffer_size`, `max_storage_buffer_binding_size`),
+    // and Vulkan reports those mismatches via the same
+    // `VK_ERROR_FEATURE_NOT_PRESENT` we hit before — but with an empty
+    // wgpu-hal "Missing features:" log line because the constraint is on
+    // limits, not features.
+    let candidates = wgpu::Features::IMMEDIATES
+        | wgpu::Features::TEXTURE_COMPRESSION_BC
+        | wgpu::Features::TEXTURE_COMPRESSION_BC_SLICED_3D
+        | wgpu::Features::TEXTURE_COMPRESSION_ETC2
+        | wgpu::Features::TEXTURE_COMPRESSION_ASTC
+        | wgpu::Features::TEXTURE_COMPRESSION_ASTC_SLICED_3D
+        | wgpu::Features::TEXTURE_COMPRESSION_ASTC_HDR
+        | wgpu::Features::TEXTURE_FORMAT_16BIT_NORM
+        | wgpu::Features::FLOAT32_FILTERABLE;
+    let requested_features = adapter.features() & candidates;
+    let requested_limits = adapter.limits();
 
     let (device, queue) = adapter
         .request_device(&wgpu::DeviceDescriptor {
@@ -122,61 +149,11 @@ fn choose_surface_format_from(formats: &[wgpu::TextureFormat]) -> wgpu::TextureF
         .unwrap_or(wgpu::TextureFormat::Rgba8Unorm)
 }
 
-fn limits() -> wgpu::Limits {
-    #[cfg(wasm)]
-    let limits = wgpu::Limits::downlevel_webgl2_defaults();
-
-    #[cfg(not(wasm))]
-    let limits = wgpu::Limits::default();
-
-    limits
-}
-
-fn features(adapter: &wgpu::Adapter) -> wgpu::Features {
-    #[cfg(wasm)]
-    {
-        let _ = adapter; // not used on wasm; web features are advertised separately
-        wgpu::Features::empty()
-    }
-    #[cfg(not(wasm))]
-    {
-        // IMMEDIATES (push constants) is preferred — it shaves a uniform-buffer
-        // hop off every render — but it isn't universally available. The
-        // Android emulator's SwiftShader Vulkan, downlevel desktop drivers,
-        // and most GLES paths advertise neither IMMEDIATES nor PUSH_CONSTANTS.
-        // Probe the adapter and fall through to the existing uniform-buffer
-        // fallback path (`shader::input::push_constant_fallback`) when the
-        // feature is missing, the same shape as the format-feature probe in
-        // `format_features` below.
-        adapter.features() & wgpu::Features::IMMEDIATES
-    }
-}
-
-/// Opt into every texture-format feature the adapter advertises so that
-/// consumers can use the matching formats (compressed payloads, 16-bit
-/// norms, HDR filtering) without per-app device-descriptor surgery. Only
-/// what's actually supported gets requested — unsupported features stay
-/// off and the caller still gets a working device. Inputs in formats the
-/// adapter doesn't support fail at upload time with a clear error rather
-/// than during device creation.
-fn format_features(adapter: &wgpu::Adapter) -> wgpu::Features {
-    let supported = adapter.features();
-    let candidates = wgpu::Features::TEXTURE_COMPRESSION_BC
-        | wgpu::Features::TEXTURE_COMPRESSION_BC_SLICED_3D
-        | wgpu::Features::TEXTURE_COMPRESSION_ETC2
-        | wgpu::Features::TEXTURE_COMPRESSION_ASTC
-        | wgpu::Features::TEXTURE_COMPRESSION_ASTC_SLICED_3D
-        | wgpu::Features::TEXTURE_COMPRESSION_ASTC_HDR
-        // 16-bit norm formats (R16/Rg16/Rgba16 Unorm + Snorm) require this
-        // feature for TEXTURE_BINDING usage on Metal. Without it, creation
-        // succeeds but the texture is silently invalid; first use trips an
-        // InvalidResource validation error. Apple Silicon advertises it.
-        | wgpu::Features::TEXTURE_FORMAT_16BIT_NORM
-        // HDR filtering: enables linear filtering on Rgba32Float (and the
-        // 16-bit float family once wgpu exposes a separate gate for it).
-        | wgpu::Features::FLOAT32_FILTERABLE;
-    supported & candidates
-}
+// The previous `features()` and `format_features()` helpers folded into
+// the inline `candidates` mask in `request_device` above. Limits selection
+// (also there) takes `adapter.limits()` directly — no more
+// `Limits::default().using_resolution(...)`, which exceeded what
+// downlevel emulators could provide.
 
 fn memory_hints() -> wgpu::MemoryHints {
     wgpu::MemoryHints::Performance
