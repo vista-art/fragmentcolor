@@ -102,6 +102,13 @@ export default defineConfig({
                     a.textContent = text;
                     // Remove special mobile-only class if present
                     a.classList.remove('sl-blog-mobile-link');
+                    // The template might be the currently-active page (e.g. "All Posts"
+                    // is the first top-level <li> on /blog/). Strip any active state
+                    // markers so the injected cross-link doesn't show up as selected.
+                    a.removeAttribute('aria-current');
+                    a.classList.remove('sl-link-current');
+                    li.removeAttribute('data-current-parent');
+                    li.classList.remove('sl-link-current', 'current');
                   } else {
                     li.innerHTML = '';
                     const na = document.createElement('a');
