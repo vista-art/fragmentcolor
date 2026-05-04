@@ -896,8 +896,8 @@ mod kotlin {
     fn rewrite_shader_set_array(line: &str) -> String {
         // Match `.set(<key>, arrayOf(...))`
         let needle = ", arrayOf(";
-        if line.contains(".set(") && line.contains(needle) {
-            if let Some(array_start) = line.find(needle) {
+        if line.contains(".set(") && line.contains(needle)
+            && let Some(array_start) = line.find(needle) {
                 let inner_start = array_start + needle.len();
                 let chars: Vec<char> = line.chars().collect();
                 let mut depth = 0i32;
@@ -923,7 +923,6 @@ mod kotlin {
                     return format!("{}, floatArrayOf({})){}",  before, float_args, rest);
                 }
             }
-        }
         line.to_string()
     }
 
@@ -931,24 +930,6 @@ mod kotlin {
     // no rewrite needed. The old `readTextureAsync` no longer exists.
     fn rewrite_readtexture_to_getimage(line: &str) -> String {
         line.to_string()
-    }
-
-    // Replace `<receiver>.method(arg)` with `replacement` where receiver is any identifier chain.
-    fn replace_method_call_with_expr(line: &str, method: &str, arg: &str, replacement: &str) -> String {
-        let needle = format!(".{}({})", method, arg);
-        if let Some(pos) = line.find(&needle) {
-            // Walk back from pos to find the start of the receiver identifier chain
-            let before = &line[..pos];
-            let receiver_start = before
-                .rfind(|c: char| !c.is_ascii_alphanumeric() && c != '_' && c != '.')
-                .map(|p| p + 1)
-                .unwrap_or(0);
-            let prefix = &line[..receiver_start];
-            let after = &line[pos + needle.len()..];
-            format!("{}{}{}", prefix, replacement, after)
-        } else {
-            line.to_string()
-        }
     }
 
     // Rewrite TextureFormat camelCase to SCREAMING_SNAKE_CASE for Kotlin enum.
@@ -1234,8 +1215,8 @@ mod kotlin {
                 i += 1;
                 continue;
             }
-            if !in_dq && !in_tq && chars[i] == '\'' {
-                if let Some(end) = chars[i + 1..].iter().position(|c| *c == '\'') {
+            if !in_dq && !in_tq && chars[i] == '\''
+                && let Some(end) = chars[i + 1..].iter().position(|c| *c == '\'') {
                     let inner: String = chars[i + 1..i + 1 + end].iter().collect();
                     if !inner.contains('"') && !inner.contains('\n') {
                         out.push('"');
@@ -1245,7 +1226,6 @@ mod kotlin {
                         continue;
                     }
                 }
-            }
             out.push(chars[i]);
             i += 1;
         }
@@ -1647,11 +1627,10 @@ mod kotlin {
 
         // Handle `TextureRegionMobile(arrayOf(x, y, w, h)).withStride(S).withRows(R)` →
         // `TextureRegionMobile(xu, yu, 0u, wu, hu, 0u, Su, Ru)`
-        if line.contains("TextureRegionMobile(arrayOf(") {
-            if let Some(result) = rewrite_texture_region_builder(&line) {
+        if line.contains("TextureRegionMobile(arrayOf(")
+            && let Some(result) = rewrite_texture_region_builder(&line) {
                 return result;
             }
-        }
         line
     }
 

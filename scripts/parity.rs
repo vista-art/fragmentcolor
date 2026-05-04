@@ -1045,17 +1045,14 @@ mod parity {
                 }
             }
             // `#[doc = "hidden"]` — NameValue form (rare but valid)
-            if let Meta::NameValue(nv) = &a.meta {
-                if let syn::Expr::Lit(syn::ExprLit {
+            if let Meta::NameValue(nv) = &a.meta
+                && let syn::Expr::Lit(syn::ExprLit {
                     lit: syn::Lit::Str(s),
                     ..
                 }) = &nv.value
-                {
-                    if s.value().trim() == "hidden" {
+                    && s.value().trim() == "hidden" {
                         return true;
                     }
-                }
-            }
         }
         false
     }

@@ -1448,8 +1448,9 @@ impl RenderContext {
                             .push((uniform.binding, sampler));
                     }
                     UniformData::Storage(data) => {
-                        if let Some(crate::shader::uniform::StorageEntry { span: span_u32, .. }) =
-                            data.first()
+                        if let Some(crate::shader::uniform::StorageEntry {
+                            span: span_u32, ..
+                        }) = data.first()
                         {
                             let span = *span_u32 as u64;
                             // Obtain bytes
@@ -1902,9 +1903,7 @@ fn create_bind_group_layouts(
                             TextureStorageFormat::Rgba8Uint => wgpu::TextureFormat::Rgba8Uint,
                             TextureStorageFormat::Rgba8Sint => wgpu::TextureFormat::Rgba8Sint,
                             TextureStorageFormat::Bgra8Unorm => wgpu::TextureFormat::Bgra8Unorm,
-                            TextureStorageFormat::Rgb10a2Unorm => {
-                                wgpu::TextureFormat::Rgb10a2Unorm
-                            }
+                            TextureStorageFormat::Rgb10a2Unorm => wgpu::TextureFormat::Rgb10a2Unorm,
                             TextureStorageFormat::Rg11b10Ufloat => {
                                 wgpu::TextureFormat::Rg11b10Ufloat
                             }

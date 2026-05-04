@@ -55,13 +55,12 @@ mod swift {
                 // Pattern: `const <varname> = document.createElement(...)` (JS) or
                 //           `let <varname> = document.createElement(...)` (already-processed)
                 for decl_prefix in &["const ", "let ", "var "] {
-                    if let Some(var_part) = trimmed.strip_prefix(decl_prefix) {
-                        if let Some(eq_pos) = var_part.find('=') {
+                    if let Some(var_part) = trimmed.strip_prefix(decl_prefix)
+                        && let Some(eq_pos) = var_part.find('=') {
                             let var_name = var_part[..eq_pos].trim().to_string();
                             pending_canvas_var = Some(var_name);
                             break;
                         }
-                    }
                 }
                 let indent: String = line.chars().take_while(|c| c.is_whitespace()).collect();
                 out.push(format!("{}// iOS: window/canvas provided by CAMetalLayer at runtime", indent));
@@ -251,7 +250,7 @@ mod swift {
     /// In Rust, `Shader::new(src).unwrap()` is common; in Swift the
     /// equivalent is `try! Shader(src)` (the init is `throws`).
     fn rewrite_unwrap(line: &str) -> String {
-        let trimmed = line.trim_start();
+        let _trimmed = line.trim_start();
         // Look for `.unwrap()` at end of expression.
         if !line.contains(".unwrap()") {
             return line.to_string();
@@ -261,13 +260,12 @@ mod swift {
         // Strip `.unwrap()` and prepend `try! ` (or `try ` if already in try context).
         let body = body.replace(".unwrap()", "");
         // Detect assignment prefix `let x = ...` or plain statement.
-        if let Some(rest) = body.strip_prefix("let ") {
-            if let Some(eq) = rest.find('=') {
+        if let Some(rest) = body.strip_prefix("let ")
+            && let Some(eq) = rest.find('=') {
                 let var_part = &rest[..eq + 1]; // "varname ="
                 let rhs = rest[eq + 1..].trim();
                 return format!("{}let {} try! {}", indent, var_part, rhs);
             }
-        }
         // For plain statements like `foo.bar().unwrap()` → `try! foo.bar()`.
         if !body.starts_with("try") {
             format!("{}try! {}", indent, body.trim_start())
@@ -348,8 +346,8 @@ mod swift {
 
         // Handle standalone `let _ = (ident, ident, ...)` → `let _ = size`
         // This is the follow-up guard line after a baseSize() tuple destructure.
-        if let Some(rest) = trimmed.strip_prefix("let _ = (") {
-            if let Some(vars) = rest.strip_suffix(')') {
+        if let Some(rest) = trimmed.strip_prefix("let _ = (")
+            && let Some(vars) = rest.strip_suffix(')') {
                 let all_idents = vars.split(',').all(|v| {
                     let v = v.trim();
                     !v.is_empty() && v.chars().all(|c: char| c.is_alphanumeric() || c == '_')
@@ -358,12 +356,11 @@ mod swift {
                     return format!("{}let _ = size", indent);
                 }
             }
-        }
 
         // Match `let (width, height) = <expr>.baseSize()` or `const (width, height) = ...`
         for prefix in &["let ", "const "] {
-            if let Some(rest) = trimmed.strip_prefix(prefix) {
-                if let Some(inner) = rest.strip_prefix('(') {
+            if let Some(rest) = trimmed.strip_prefix(prefix)
+                && let Some(inner) = rest.strip_prefix('(') {
                     // Extract content up to matching `)`
                     if let Some(close) = inner.find(')') {
                         let after_paren = inner[close + 1..].trim_start();
@@ -371,13 +368,12 @@ mod swift {
                             let rhs = eq_rest.trim_start();
                             if rhs.contains(".baseSize()") {
                                 // Replace tuple destructuring with `let size = expr.baseSize()`
-                                let expr = rhs.trim_end_matches(|c: char| c == '\r' || c == '\n');
+                                let expr = rhs.trim_end_matches(['\r', '\n']);
                                 return format!("{}let size = {}", indent, expr);
                             }
                         }
                     }
                 }
-            }
         }
         line.to_string()
     }
@@ -503,8 +499,8 @@ mod swift {
 
         // Assignment: `let x = obj.asyncMethod(...)` → `let x = try await obj.asyncMethod(...)`
         for prefix in &["let ", "var "] {
-            if let Some(rest) = trimmed.strip_prefix(prefix) {
-                if let Some(eq_pos) = rest.find('=') {
+            if let Some(rest) = trimmed.strip_prefix(prefix)
+                && let Some(eq_pos) = rest.find('=') {
                     let rhs = rest[eq_pos + 1..].trim_start();
                     let var_part = &rest[..eq_pos + 1];
                     for meth in ASYNC_THROWING_METHODS {
@@ -513,16 +509,14 @@ mod swift {
                         }
                     }
                 }
-            }
         }
 
         // Standalone call: `obj.asyncMethod(...)`
         for meth in ASYNC_THROWING_METHODS {
-            if trimmed.contains(meth) {
-                if trimmed.starts_with(|c: char| c.is_alphanumeric() || c == '_') {
+            if trimmed.contains(meth)
+                && trimmed.starts_with(|c: char| c.is_alphanumeric() || c == '_') {
                     return format!("{}try await {}", indent, trimmed);
                 }
-            }
         }
 
         line.to_string()
@@ -599,8 +593,8 @@ mod swift {
 
         // Case 1: `let x = <throwing_call>` or `var x = <throwing_call>`.
         for prefix in &["let ", "var "] {
-            if let Some(rest) = trimmed.strip_prefix(prefix) {
-                if let Some(eq_pos) = rest.find('=') {
+            if let Some(rest) = trimmed.strip_prefix(prefix)
+                && let Some(eq_pos) = rest.find('=') {
                     let rhs = rest[eq_pos + 1..].trim_start();
                     let var_part = &rest[..eq_pos + 1]; // "varname ="
                     // Check throwing method calls.
@@ -623,7 +617,6 @@ mod swift {
                         }
                     }
                 }
-            }
         }
 
         // Case 2: Standalone statement that is a throwing method call.
@@ -770,8 +763,8 @@ mod swift {
             // Single quote → swap if outside any string context AND the
             // matching quote sits on the same line and the content has
             // no internal `"`.
-            if !in_dq && !in_tq && chars[i] == '\'' {
-                if let Some(end) = chars[i + 1..].iter().position(|c| *c == '\'') {
+            if !in_dq && !in_tq && chars[i] == '\''
+                && let Some(end) = chars[i + 1..].iter().position(|c| *c == '\'') {
                     let inner: String = chars[i + 1..i + 1 + end].iter().collect();
                     if !inner.contains('"') && !inner.contains('\n') {
                         out.push('"');
@@ -781,7 +774,6 @@ mod swift {
                         continue;
                     }
                 }
-            }
             out.push(chars[i]);
             i += 1;
         }

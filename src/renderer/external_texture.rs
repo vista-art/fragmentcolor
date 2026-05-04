@@ -14,6 +14,7 @@ use wasm_bindgen::prelude::*;
 
 #[cfg_attr(wasm, wasm_bindgen)]
 #[cfg_attr(mobile, derive(uniffi::Object))]
+#[allow(dead_code)] // Placeholder type; real implementation lands in 0.13.x (see ROADMAP.md "External textures (video)").
 pub struct ExternalTextureHandle {
     #[cfg(wasm)]
     pub(crate) _inner: wgpu::ExternalTexture,

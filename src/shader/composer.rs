@@ -367,7 +367,7 @@ mod tests {
 
     #[test]
     fn classifier_rejects_slug_too_long() {
-        let long_name: String = std::iter::repeat('a').take(SLUG_MAX_LEN).collect();
+        let long_name: String = std::iter::repeat_n('a', SLUG_MAX_LEN).collect();
         let candidate = format!("cat/{long_name}");
         let p = ShaderPart::classify(&candidate);
         match p {

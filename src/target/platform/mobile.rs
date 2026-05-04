@@ -173,4 +173,3 @@ impl Target for MobileTextureTarget {
         Target::get_image(&*self.inner.read())
     }
 }
-

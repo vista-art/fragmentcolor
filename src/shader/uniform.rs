@@ -638,11 +638,8 @@ crate::impl_from_into_with_refs!(
     UniformData,
     [[f32; 3]; 3],
     |d: UniformData| match d {
-        UniformData::Mat3(m) if m.len() >= 9 => [
-            [m[0], m[1], m[2]],
-            [m[3], m[4], m[5]],
-            [m[6], m[7], m[8]],
-        ],
+        UniformData::Mat3(m) if m.len() >= 9 =>
+            [[m[0], m[1], m[2]], [m[3], m[4], m[5]], [m[6], m[7], m[8]],],
         _ => [[0.0; 3]; 3],
     },
     |m: [[f32; 3]; 3]| UniformData::Mat3(m.iter().flatten().copied().collect())

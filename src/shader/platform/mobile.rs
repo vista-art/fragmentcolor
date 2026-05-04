@@ -77,7 +77,10 @@ impl Shader {
     /// Kotlin callers: `val shader = Shader.fetch("https://...")`
     #[uniffi::method(name = "fetch")]
     #[lsp_doc("docs/api/core/shader/hidden/fetch_mobile.md")]
-    pub async fn fetch_mobile(self: Arc<Self>, input: String) -> Result<Arc<Self>, FragmentColorError> {
+    pub async fn fetch_mobile(
+        self: Arc<Self>,
+        input: String,
+    ) -> Result<Arc<Self>, FragmentColorError> {
         Shader::fetch(input)
             .await
             .map(Arc::new)

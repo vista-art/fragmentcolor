@@ -25,9 +25,9 @@ use raw_window_handle::{
     HasWindowHandle, RawDisplayHandle, RawWindowHandle, WindowHandle,
 };
 
-use crate::{Renderer, WindowTarget};
-use crate::MobileWindowTarget;
 use super::FragmentColorError;
+use crate::MobileWindowTarget;
+use crate::{Renderer, WindowTarget};
 
 /// HasWindowHandle + HasDisplayHandle wrapper over an `ANativeWindow`.
 #[derive(Debug)]
@@ -99,7 +99,9 @@ async fn build_window_target(
         .create_surface(wgpu::SurfaceTarget::Window(handle), size)
         .await
         .ok()?;
-    Some(MobileWindowTarget::new(WindowTarget::new(context, surface, config)))
+    Some(MobileWindowTarget::new(WindowTarget::new(
+        context, surface, config,
+    )))
 }
 
 /// Raw JNI entry point. Returns `Arc::into_raw(target)` as an opaque pointer
@@ -154,10 +156,11 @@ impl Renderer {
             depth_or_array_layers: 1,
         };
         let handle: Box<dyn wgpu::WindowHandle> = Box::new(window);
-        let (context, surface, config) = pollster::block_on(
-            self.create_surface(wgpu::SurfaceTarget::Window(handle), size),
-        )
-        .map_err(FragmentColorError::from)?;
-        Ok(MobileWindowTarget::new(WindowTarget::new(context, surface, config)))
+        let (context, surface, config) =
+            pollster::block_on(self.create_surface(wgpu::SurfaceTarget::Window(handle), size))
+                .map_err(FragmentColorError::from)?;
+        Ok(MobileWindowTarget::new(WindowTarget::new(
+            context, surface, config,
+        )))
     }
 }

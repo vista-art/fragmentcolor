@@ -404,7 +404,7 @@ mod tests {
         pollster::block_on(async move {
             let l0: Vec<u8> = vec![0xAA; 4 * 4 * 4];
             let l1: Vec<u8> = vec![0xBB; 2 * 2 * 4];
-            let l2: Vec<u8> = vec![0xCC; 1 * 1 * 4];
+            let l2: Vec<u8> = vec![0xCC; 4];
             let bytes = Ktx2Test {
                 format: VkFormat::R8G8B8A8_SRGB,
                 width: 4,

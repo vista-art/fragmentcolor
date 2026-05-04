@@ -120,7 +120,10 @@ impl Texture {
     #[wasm_bindgen(js_name = "getImage")]
     #[lsp_doc("docs/api/core/texture/get_image.md")]
     pub async fn get_image_js(&self) -> Result<js_sys::Uint8Array, JsError> {
-        let bytes = self.get_image().await.map_err(|e| JsError::new(&e.to_string()))?;
+        let bytes = self
+            .get_image()
+            .await
+            .map_err(|e| JsError::new(&e.to_string()))?;
         Ok(js_sys::Uint8Array::from(bytes.as_slice()))
     }
 }
