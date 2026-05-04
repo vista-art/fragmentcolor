@@ -127,14 +127,14 @@ import FragmentColor
 let renderer = Renderer()
 
 // Use your platform's windowing system to create a window
-let canvas = document.createElement("canvas")
+// iOS: window/canvas provided by CAMetalLayer at runtime
 
 // Create a Target from it
-let target = try await renderer.createTarget(canvas)
+let target = try await renderer.createTextureTarget([800, 600])
 let texture_target = try await renderer.createTextureTarget([16, 16])
 
 // RENDERING
-renderer.render(Shader(""), texture_target)
+try renderer.render(Shader(""), texture_target)
 
 // That's it. Welcome to FragmentColor!
 `}
@@ -152,11 +152,11 @@ import org.fragmentcolor.*
 val renderer = Renderer()
 
 // Use your platform's windowing system to create a window
-val canvas = document.createElement("canvas")
+// HEADLESS: canvas creation not needed on Android
 
 // Create a Target from it
-val target = renderer.createTarget(canvas)
-val texture_target = renderer.createTextureTarget(arrayOf(16, 16))
+val target = renderer.createTextureTarget(800u, 600u)
+val texture_target = renderer.createTextureTarget(16u, 16u)
 
 // RENDERING
 renderer.render(Shader(""), texture_target)
@@ -270,7 +270,7 @@ code={`
 import org.fragmentcolor.*
 
 val renderer = Renderer()
-val texture_target = renderer.createTextureTarget(arrayOf(16, 16))
+val texture_target = renderer.createTextureTarget(16u, 16u)
 `}
 lang="kotlin"
 />
@@ -364,9 +364,9 @@ import FragmentColor
 let renderer = Renderer()
 
 // Use your platform's windowing system to create a window.
-let canvas = document.createElement("canvas")
+// iOS: window/canvas provided by CAMetalLayer at runtime
 
-let target = try await renderer.createTarget(canvas)
+let target = try await renderer.createTextureTarget([800, 600])
 `}
 lang="swift"
 />
@@ -382,9 +382,9 @@ import org.fragmentcolor.*
 val renderer = Renderer()
 
 // Use your platform's windowing system to create a window.
-val canvas = document.createElement("canvas")
+// HEADLESS: canvas creation not needed on Android
 
-val target = renderer.createTarget(canvas)
+val target = renderer.createTextureTarget(800u, 600u)
 `}
 lang="kotlin"
 />
@@ -486,7 +486,7 @@ let renderer = Renderer()
 // Create an offscreen texture target with a size of 64x64 pixels.
 let target = try await renderer.createTextureTarget([64, 64])
 
-renderer.render(Shader(""), target)
+try renderer.render(Shader(""), target)
 
 // get the rendered image
 let image = target.getImage()
@@ -504,7 +504,7 @@ import org.fragmentcolor.*
 val renderer = Renderer()
 
 // Create an offscreen texture target with a size of 64x64 pixels.
-val target = renderer.createTextureTarget(arrayOf(64, 64))
+val target = renderer.createTextureTarget(64u, 64u)
 
 renderer.render(Shader(""), target)
 
@@ -606,7 +606,7 @@ import FragmentColor
 let renderer = Renderer()
 // Encoded image bytes (PNG / JPEG / etc.) Ã¢ÂÂ single tuple, no extra method.
 let image = "/healthcheck/public/favicon.png"
-let tex = try await renderer.createTexture(image[..])
+let tex = try await renderer.createTexture(image)
 `}
 lang="swift"
 />
@@ -620,7 +620,7 @@ import org.fragmentcolor.*
 val renderer = Renderer()
 // Encoded image bytes (PNG / JPEG / etc.) Ã¢ÂÂ single tuple, no extra method.
 val image = "/healthcheck/public/favicon.png"
-val tex = renderer.createTexture(image[..])
+val tex = renderer.createTexture(TextureInputMobile.Path(image), null)
 `}
 lang="kotlin"
 />
@@ -719,11 +719,11 @@ import FragmentColor
 
 let r = Renderer()
 // Empty storage texture Ã¢ÂÂ same single create_storage_texture entry.
-let tex = try await r.createStorageTexture(([64, 64], TextureFormat.Rgba))
+let tex = try await r.createStorageTexture(([64, 64], TextureFormat.rgba))
 
 // Pre-seeded with bytes Ã¢ÂÂ same method, three-tuple form.
 let pixels = Array(repeating: 0, count: 64 * 64 * 4)
-let tex2 = try await r.createStorageTexture(([64, 64], TextureFormat.Rgba, pixels))
+let tex2 = try await r.createStorageTexture(([64, 64], TextureFormat.rgba, pixels))
 `}
 lang="swift"
 />
@@ -737,11 +737,11 @@ import org.fragmentcolor.*
 
 val r = Renderer()
 // Empty storage texture Ã¢ÂÂ same single create_storage_texture entry.
-val tex = r.createStorageTexture((arrayOf(64, 64), TextureFormat.Rgba))
+val tex = r.createStorageTexture(Size(width=64u, height=64u, depth=null), TextureFormat.RGBA, null, null)
 
 // Pre-seeded with bytes Ã¢ÂÂ same method, three-tuple form.
-val pixels = Array(64 * 64 * 4) { 0 }
-val tex2 = r.createStorageTexture((arrayOf(64, 64), TextureFormat.Rgba, pixels))
+val pixels = ByteArray(64 * 64 * 4)
+val tex2 = r.createStorageTexture(Size(width=64u, height=64u, depth=null), TextureFormat.RGBA, pixels, null)
 `}
 lang="kotlin"
 />
@@ -810,7 +810,7 @@ lang="python"
 code={`
 import FragmentColor
 let r = Renderer()
-let depth = r.createDepthTexture([800, 600])
+let depth = try await r.createDepthTexture([800, 600])
 `}
 lang="swift"
 />
@@ -822,7 +822,7 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 val r = Renderer()
-val depth = r.createDepthTexture(arrayOf(800, 600))
+val depth = r.createDepthTexture(800u, 600u)
 `}
 lang="kotlin"
 />
@@ -901,10 +901,10 @@ lang="python"
 code={`
 import FragmentColor
 let renderer = Renderer()
-let texture = try await renderer.createStorageTexture(([16, 16], TextureFormat.Rgba))
+let texture = try await renderer.createStorageTexture(([16, 16], TextureFormat.rgba))
 let id = texture.id()
 
-renderer.unregisterTexture(id)
+try renderer.unregisterTexture(id)
 `}
 lang="swift"
 />
@@ -916,7 +916,7 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 val renderer = Renderer()
-val texture = renderer.createStorageTexture((arrayOf(16, 16), TextureFormat.Rgba))
+val texture = renderer.createStorageTexture(Size(width=16u, height=16u, depth=null), TextureFormat.RGBA, null, null)
 val id = texture.id()
 
 renderer.unregisterTexture(id)
@@ -1013,8 +1013,8 @@ import FragmentColor
 let r = Renderer()
 let target = try await r.createTextureTarget([8, 8])
 let shader = Shader.default()
-r.render(shader, target)
-r.waitIdle()
+try r.render(shader, target)
+try r.waitIdle()
 let _bytes = target.getImage()
 `}
 lang="swift"
@@ -1028,7 +1028,7 @@ code={`
 import org.fragmentcolor.*
 
 val r = Renderer()
-val target = r.createTextureTarget(arrayOf(8, 8))
+val target = r.createTextureTarget(8u, 8u)
 val shader = Shader.default()
 r.render(shader, target)
 r.waitIdle()
@@ -1046,9 +1046,11 @@ lang="kotlin"
 
 ### Renderer::read_texture(texture_id)
 
-Read back the mip-0 contents of a registered texture as tightly-packed bytes in the texture's native format. Blocks the current thread until the readback buffer is mapped (native only).
+Read back the mip-0 contents of a registered texture as tightly-packed bytes in the texture's native format.
 
-Equivalent to calling [`Texture::get_image`] on the handle â useful when you only kept the `TextureId` around.
+- Works on both native and WASM by awaiting the GPU readback buffer mapping via an async oneshot channel.
+- Equivalent to calling [`Texture::get_image`] on the handle â useful when you only kept the `TextureId` around.
+- The texture must have `COPY_SRC` usage; creation helpers like `create_storage_texture` enable it by default.
 
 #### Example
 
@@ -1063,7 +1065,7 @@ let renderer = Renderer::new();
 let texture = renderer.create_storage_texture(([64u32, 64u32], TextureFormat::Rgba)).await?;
 texture.write(&vec![0u8; 64 * 64 * 4])?;
 
-let bytes = renderer.read_texture(*texture.id())?;
+let bytes = renderer.read_texture(*texture.id()).await?;
 assert_eq!(bytes.len(), 64 * 64 * 4);
 Ok(())
 }
@@ -1079,10 +1081,10 @@ lang="rust" meta="collapse={1-1, 8-11}"
 code={`
 import { Renderer, TextureFormat } from "fragmentcolor";
 const renderer = new Renderer();
-const texture = await renderer.createStorageTexture(([64, 64], TextureFormat.Rgba));
-texture.write(Array(64 * 64 * 4).fill(0));
+const texture = await renderer.createStorageTexture([64, 64], TextureFormat.Rgba);
+texture.write(new Uint8Array(64 * 64 * 4));
 
-const bytes = renderer.readTexture(texture.id());
+const bytes = await renderer.readTexture(texture.id());
 `}
 lang="js"
 />
@@ -1097,7 +1099,7 @@ renderer = Renderer()
 texture = renderer.create_storage_texture([64, 64], TextureFormat.Rgba)
 texture.write([0] * (64 * 64 * 4))
 
-bytes = texture.get_image()
+bytes = renderer.read_texture(texture.id())
 `}
 lang="python"
 />
@@ -1109,10 +1111,10 @@ lang="python"
 code={`
 import FragmentColor
 let renderer = Renderer()
-let texture = try await renderer.createStorageTexture(([64, 64], TextureFormat.Rgba))
-texture.write(Array(repeating: 0, count: 64 * 64 * 4))
+let texture = try await renderer.createStorageTexture(([64, 64], TextureFormat.rgba))
+try texture.write(Array(repeating: 0, count: 64 * 64 * 4))
 
-let bytes = renderer.readTexture(texture.id())
+let bytes = try await renderer.readTexture(texture.id())
 `}
 lang="swift"
 />
@@ -1124,104 +1126,10 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 val renderer = Renderer()
-val texture = renderer.createStorageTexture((arrayOf(64, 64), TextureFormat.Rgba))
-texture.write(Array(64 * 64 * 4) { 0 })
+val texture = renderer.createStorageTexture(Size(width=64u, height=64u, depth=null), TextureFormat.RGBA, null, null)
+texture.write(ByteArray(64 * 64 * 4))
 
-val bytes = renderer.readTexture(texture.id())
-`}
-lang="kotlin"
-/>
-
-</TabItem>
-
-</Tabs>
-
-
----
-
-### Renderer::read_texture_async(texture_id)
-
-Async variant of [`Renderer::read_texture`] that works on both native and WASM.
-
-#### Example
-
-<Tabs>
-
-<TabItem label="Rust">
-<Code
-code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Renderer, TextureFormat};
-let renderer = Renderer::new();
-let texture = renderer.create_storage_texture(([64u32, 64u32], TextureFormat::Rgba)).await?;
-texture.write(&vec![0u8; 64 * 64 * 4])?;
-
-let bytes = renderer.read_texture_async(*texture.id()).await?;
-assert_eq!(bytes.len(), 64 * 64 * 4);
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
-`}
-lang="rust" meta="collapse={1-1, 8-11}"
-/>
-
-</TabItem>
-
-<TabItem label="JavaScript">
-<Code
-code={`
-import { Renderer, TextureFormat } from "fragmentcolor";
-const renderer = new Renderer();
-const texture = await renderer.createStorageTexture(([64, 64], TextureFormat.Rgba));
-texture.write(Array(64 * 64 * 4).fill(0));
-
-const bytes = await renderer.readTextureAsync(texture.id());
-`}
-lang="js"
-/>
-
-</TabItem>
-
-<TabItem label="Python">
-<Code
-code={`
-from fragmentcolor import Renderer, TextureFormat
-renderer = Renderer()
-texture = renderer.create_storage_texture([64, 64], TextureFormat.Rgba)
-texture.write([0] * (64 * 64 * 4))
-
-# In Python, get_image() is synchronous (blocks internally via pollster).
-bytes = texture.get_image()
-`}
-lang="python"
-/>
-
-</TabItem>
-
-<TabItem label="Swift">
-<Code
-code={`
-import FragmentColor
-let renderer = Renderer()
-let texture = try await renderer.createStorageTexture(([64, 64], TextureFormat.Rgba))
-texture.write(Array(repeating: 0, count: 64 * 64 * 4))
-
-let bytes = try await renderer.readTextureAsync(texture.id())
-`}
-lang="swift"
-/>
-
-</TabItem>
-
-<TabItem label="Kotlin">
-<Code
-code={`
-import org.fragmentcolor.*
-val renderer = Renderer()
-val texture = renderer.createStorageTexture((arrayOf(64, 64), TextureFormat.Rgba))
-texture.write(Array(64 * 64 * 4) { 0 })
-
-val bytes = renderer.readTextureAsync(texture.id())
+val bytes = texture.getImage()
 `}
 lang="kotlin"
 />
@@ -1411,7 +1319,7 @@ let renderer = Renderer()
 let target = try await renderer.createTextureTarget([10, 10])
 let shader = Shader.default()
 
-renderer.render(shader, target)
+try renderer.render(shader, target)
 `}
 lang="swift"
 />
@@ -1425,7 +1333,7 @@ code={`
 import org.fragmentcolor.*
 
 val renderer = Renderer()
-val target = renderer.createTextureTarget(arrayOf(10, 10))
+val target = renderer.createTextureTarget(10u, 10u)
 val shader = Shader.default()
 
 renderer.render(shader, target)

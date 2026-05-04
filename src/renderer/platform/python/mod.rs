@@ -234,6 +234,22 @@ impl Renderer {
         })
     }
 
+    /// Read back the mip-0 contents of a registered texture as tightly-packed
+    /// bytes in the texture's native format. Blocks the Python thread
+    /// synchronously (via `pollster::block_on`) — the async readback is the
+    /// canonical implementation; the blocking wrapper exists because Python
+    /// does not have a native async runtime that integrates with the GPU
+    /// device loop.
+    #[pyo3(name = "read_texture")]
+    #[lsp_doc("docs/api/core/renderer/read_texture.md")]
+    pub fn read_texture_py(&self, texture_id: Py<PyAny>) -> Result<Vec<u8>, PyErr> {
+        Python::attach(|py| -> Result<Vec<u8>, PyErr> {
+            let id = crate::texture::py_to_texture_id(texture_id.bind(py))?;
+            pollster::block_on(self.read_texture(id))
+                .map_err(|e| crate::error::PyFragmentColorError::new_err(e.to_string()))
+        })
+    }
+
     /// Block until GPU work is done. Useful before readbacks.
     #[pyo3(name = "wait_idle")]
     #[lsp_doc("docs/api/core/renderer/hidden/wait_idle_py.md")]
