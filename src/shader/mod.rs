@@ -299,16 +299,6 @@ impl ShaderObject {
 
     /// Create a Shader object from a WGSL source.
     pub fn wgsl(source: &str) -> Result<Self, ShaderError> {
-        // Accept the legacy `push_constant` address space spelling even though naga's WGSL
-        // front end only recognizes `immediate` as of 29.x. Users commonly write the declaration
-        // exactly as `var<push_constant>`; rewrite that form so existing shaders keep parsing.
-        let source_owned;
-        let source = if source.contains("push_constant") {
-            source_owned = source.replace("var<push_constant>", "var<immediate>");
-            source_owned.as_str()
-        } else {
-            source
-        };
         let mut validator = Validator::new(ValidationFlags::all(), Capabilities::all());
         let module = naga::front::wgsl::parse_str(source)?;
         validator.validate(&module).map_err(Box::new)?;
@@ -1264,7 +1254,7 @@ fn cs_main() { }
     fn push_constant_parsing_and_set() {
         let wgsl = r#"
 struct PC { v: f32 };
-var<push_constant> pc: PC;
+var<immediate> pc: PC;
 @vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
   let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.));
   return vec4f(p[i], 0., 1.);
@@ -1289,8 +1279,8 @@ var<push_constant> pc: PC;
         let wgsl = r#"
 struct A { v: f32 };
 struct B { c: vec4<f32> };
-var<push_constant> a: A;
-var<push_constant> b: B;
+var<immediate> a: A;
+var<immediate> b: B;
 @vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
   let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.));
   return vec4f(p[i], 0., 1.);

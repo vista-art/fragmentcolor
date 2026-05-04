@@ -1,5 +1,5 @@
 ---
-title: "FragmentColor 0.11.0: all five planned languages release"
+title: "v0.11.0: all planned languages release"
 excerpt: "Swift and Kotlin via uniffi complete the planned set of languages. The release also improves the compute-shader API and upgrades to wgpu 29."
 authors: ["rafaelbeckel"]
 date: 2026-05-02
@@ -38,10 +38,10 @@ Bindings are generated with [uniffi](https://github.com/mozilla/uniffi-rs), so t
 
 ### Distribution
 
-- **Swift** ships as a Swift Package. Add `https://github.com/vista-art/fragmentcolor` as a package dependency (`from: "0.11.0"`) and SPM pulls the matching `fragmentcolor.xcframework.zip` from the GitHub release, verifying a pinned SHA-256.
+- **Swift** ships as a Swift Package. Add `https://github.com/vista-art/fragmentcolor` as a package dependency (`from: "0.11.0"`), and SPM pulls the matching `fragmentcolor.xcframework.zip` from the GitHub release, verifying a pinned SHA-256.
 - **Kotlin** ships as an `.aar` attached to the GitHub release for 0.11.x. Maven Central publishing is in progress.
 
-CI builds the xcframework on every PR that touches the mobile code and runs a headless smoke test on an iPhone simulator. The Android equivalent boots an emulator with KVM and runs `connectedAndroidTest` against the uniffi-generated Kotlin bindings.
+CI builds the xcframework on every PR that touches the mobile code and runs a headless smoke test on an iPhone simulator. The Android equivalent boots an emulator with KVM and runs `connectedAndroidTest` against the Kotlin bindings.
 
 ### Compute API improvements
 
@@ -85,7 +85,7 @@ v0.11.0 detects the platform via a new `apple` cfg alias (`target_os = "macos" |
 
 The internal wgpu/naga stack moves from 27.0.1 to 29.0.1. The public FragmentColor API is unchanged. Internally the upgrade involved a sizeable adapter pass: `SurfaceError` was removed, push constants were renamed to "immediates", `depth_write_enabled` became `Option`-typed, bind-group-layout slots became gap-tolerant, and the instance descriptor changed shape.
 
-The one user-visible WGSL change comes from the rename: wgpu 29 accepts `var<immediate>` where 27 accepted `var<push_constant>`. FragmentColor rewrites the old form to the new before passing your source to naga, so existing shaders continue to compile unchanged.
+The one user-visible WGSL change comes from the rename: wgpu 29 accepts `var<immediate>` where 27 accepted `var<push_constant>`. Update any shader that declared its push constants with the old spelling — naga's WGSL front end no longer recognizes it.
 
 ### Roadmap
 

@@ -14,7 +14,7 @@ fn push_constant_single_root_renders_color() {
 
         let wgsl = r#"
 struct PC { color: vec4<f32> };
-var<push_constant> pc: PC;
+var<immediate> pc: PC;
 @vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
   let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.));
   return vec4f(p[i], 0., 1.);
@@ -49,8 +49,8 @@ fn push_constant_multi_root_fallback_renders_color() {
         let wgsl = r#"
 struct A { v: f32 };
 struct B { color: vec4<f32> };
-var<push_constant> a: A;
-var<push_constant> b: B;
+var<immediate> a: A;
+var<immediate> b: B;
 @vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
   let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.));
   return vec4f(p[i], 0., 1.);

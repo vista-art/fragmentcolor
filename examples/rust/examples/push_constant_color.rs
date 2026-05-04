@@ -9,7 +9,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // WGSL with a push-constant color used by the fragment shader
         let wgsl = r#"
 struct PC { color: vec4<f32> };
-var<push_constant> pc: PC;
+var<immediate> pc: PC;
 
 @vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
   let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.));
