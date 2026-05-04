@@ -2,7 +2,7 @@
 use wasm_bindgen::prelude::*;
 
 #[cfg_attr(wasm, wasm_bindgen)]
-#[cfg_attr(python, pyo3::pyclass)]
+#[cfg_attr(python, pyo3::pyclass(from_py_object))]
 #[cfg_attr(mobile, derive(uniffi::Record))]
 #[derive(Debug, Copy, Clone)]
 pub struct SamplerOptions {
@@ -12,7 +12,7 @@ pub struct SamplerOptions {
     pub compare: Option<CompareFunction>,
 }
 
-#[cfg_attr(python, pyo3::pyclass)]
+#[cfg_attr(python, pyo3::pyclass(from_py_object))]
 #[cfg_attr(mobile, derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct SamplerInfo {
@@ -70,7 +70,7 @@ pub fn create_sampler(device: &wgpu::Device, options: SamplerOptions) -> wgpu::S
 }
 
 #[cfg_attr(wasm, wasm_bindgen)]
-#[cfg_attr(python, pyo3::pyclass)]
+#[cfg_attr(python, pyo3::pyclass(from_py_object))]
 #[cfg_attr(mobile, derive(uniffi::Enum))]
 #[derive(Debug, Copy, Clone)]
 pub enum CompareFunction {

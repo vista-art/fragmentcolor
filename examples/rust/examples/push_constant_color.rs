@@ -31,7 +31,7 @@ var<push_constant> pc: PC;
 
         assert_eq!(target.size().width, 512);
         assert_eq!(target.size().height, 512);
-        let pixels = target.get_image();
+        let pixels = target.get_image().await;
         assert_eq!(pixels.len(), 512 * 512 * 4);
 
         Ok(())

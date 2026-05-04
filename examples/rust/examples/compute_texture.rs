@@ -71,7 +71,7 @@ async fn setup(app: &App, windows: Vec<Arc<Window>>) -> SetupResult {
     let size = [1024u32, 1024u32];
     let tex = app
         .get_renderer()
-        .create_storage_texture(size, fragmentcolor::TextureFormat::Rgba, None)
+        .create_storage_texture((size, fragmentcolor::TextureFormat::Rgba))
         .await?;
 
     // Compute shader + pass

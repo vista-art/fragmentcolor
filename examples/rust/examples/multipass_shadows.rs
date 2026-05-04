@@ -54,7 +54,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         renderer.render(&passes, &target)?;
 
         // Quick check
-        let image = target.get_image();
+        let image = target.get_image().await;
         assert_eq!(image.len(), (size[0] * size[1] * 4) as usize);
         Ok(())
     })

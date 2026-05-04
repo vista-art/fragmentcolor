@@ -318,7 +318,7 @@ pub(crate) fn py_to_texture_region<'py>(
     }
 
     // Sequence (list / tuple) of length 2, 4, or 6
-    if let Ok(seq) = any.downcast::<PySequence>() {
+    if let Ok(seq) = any.cast::<PySequence>() {
         let len = seq.len()?;
         let read = |i: usize| -> pyo3::PyResult<u32> { seq.get_item(i)?.extract::<u32>() };
         return match len {
@@ -331,12 +331,12 @@ pub(crate) fn py_to_texture_region<'py>(
         };
     }
     // Explicit tuple/list paths in case downcast<PySequence> doesn't catch them on some types.
-    if any.downcast::<PyTuple>().is_ok() || any.downcast::<PyList>().is_ok() {
+    if any.cast::<PyTuple>().is_ok() || any.cast::<PyList>().is_ok() {
         // delegated above
     }
 
     // Dict variant
-    if let Ok(dict) = any.downcast::<PyDict>() {
+    if let Ok(dict) = any.cast::<PyDict>() {
         // min/max variant
         let has_minmax = read_dict_u32(dict, &["min_x", "minX"])?.is_some()
             || read_dict_u32(dict, &["max_x", "maxX"])?.is_some();

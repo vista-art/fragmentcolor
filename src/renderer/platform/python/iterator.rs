@@ -2,7 +2,10 @@ use crate::PassObject;
 use pyo3::prelude::*;
 use std::sync::Arc;
 
-#[pyclass]
+// `from_py_object` opts in to the FromPyObject derive that pyo3 used to
+// generate automatically for `#[pyclass]` + `Clone` types; the auto-derive
+// is being removed in a future pyo3 release.
+#[pyclass(from_py_object)]
 #[derive(Debug, Clone)]
 pub struct PyPassIterator(pub Vec<Arc<PassObject>>);
 

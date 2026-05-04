@@ -1918,11 +1918,10 @@ mod kotlin {
         };
         for (idx, name) in names.iter().enumerate() {
             let field = field_names.get(idx).copied().unwrap_or("componentN()");
-            let accessor = if field.ends_with("()") {
-                format!("{}.{}", tmp, field)
-            } else {
-                format!("{}.{}", tmp, field)
-            };
+            // Both branches currently produce the same `tmp.field` accessor —
+            // the conditional is here so future emitters (e.g. `.field` getter
+            // vs `.field()` method) can diverge without restructuring.
+            let accessor = format!("{}.{}", tmp, field);
             out.push_str(&format!("\n{}val {} = {}", indent, name, accessor));
         }
         Some(out)

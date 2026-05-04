@@ -19,7 +19,7 @@ pub mod error;
 pub use error::*;
 
 #[cfg_attr(wasm, wasm_bindgen)]
-#[cfg_attr(python, pyclass)]
+#[cfg_attr(python, pyclass(from_py_object))]
 // Resource Definitions
 #[derive(Debug, Clone)]
 pub struct PassInput {
@@ -62,7 +62,7 @@ impl From<Arc<ShaderObject>> for PassType {
 }
 
 #[derive(Debug, Clone)]
-#[cfg_attr(python, pyclass)]
+#[cfg_attr(python, pyclass(from_py_object))]
 #[cfg_attr(wasm, wasm_bindgen)]
 #[cfg_attr(mobile, derive(uniffi::Object))]
 #[lsp_doc("docs/api/core/pass/pass.md")]

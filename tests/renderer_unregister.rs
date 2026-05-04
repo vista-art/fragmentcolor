@@ -5,7 +5,7 @@ fn renderer_unregister_then_unregister_again_fails() {
     pollster::block_on(async move {
         let r = Renderer::new();
         let tex = r
-            .create_storage_texture([4u32, 4u32], TextureFormat::Rgba, None)
+            .create_storage_texture(([4u32, 4u32], TextureFormat::Rgba))
             .await
             .expect("create tex");
         let id = *tex.id();

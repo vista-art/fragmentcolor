@@ -105,7 +105,7 @@ impl Texture {
     ) -> pyo3::PyResult<()> {
         pyo3::Python::attach(|py| -> pyo3::PyResult<()> {
             let any = options.bind(py);
-            let opts = if let Ok(d) = any.downcast::<pyo3::types::PyDict>() {
+            let opts = if let Ok(d) = any.cast::<pyo3::types::PyDict>() {
                 let mut o = SamplerOptions::default();
                 if let Some(v) = d.get_item("repeat_x")? {
                     o.repeat_x = v.extract()?;

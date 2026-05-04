@@ -26,7 +26,7 @@ fn py_to_vertex_value(obj: &Bound<'_, PyAny>) -> PyResult<VertexValue> {
     }
 
     // Sequence => choose F32xN (fallback), or integer variants if all ints
-    if let Ok(seq) = obj.downcast::<PySequence>() {
+    if let Ok(seq) = obj.cast::<PySequence>() {
         let len = seq.len()?;
         if !(1..=4).contains(&len) {
             return Err(PyErr::new::<PyTypeError, _>(format!(
@@ -190,7 +190,7 @@ fn py_to_instance(obj: &Bound<'_, PyAny>) -> PyResult<Instance> {
     }
 
     // 2. Plain dict of named attributes: {"key": value, ...} → Instance::new().set(...)
-    if let Ok(dict) = obj.downcast::<PyDict>() {
+    if let Ok(dict) = obj.cast::<PyDict>() {
         let mut instance = Instance::new();
         for (key, value) in dict.iter() {
             let k: String = key.extract()?;
@@ -268,7 +268,7 @@ impl Mesh {
     #[lsp_doc("docs/api/geometry/mesh/from_vertices.md")]
     pub fn from_vertices_py(vertices: Py<PyAny>) -> PyResult<Self> {
         Python::attach(|py| -> PyResult<Self> {
-            let seq = vertices.bind(py).downcast::<PySequence>()?;
+            let seq = vertices.bind(py).cast::<PySequence>()?;
             let len = seq.len()?;
             let mut list: Vec<Vertex> = Vec::with_capacity(len);
             for i in 0..len {
@@ -293,7 +293,7 @@ impl Mesh {
     #[lsp_doc("docs/api/geometry/mesh/add_vertices.md")]
     pub fn add_vertices_py(&mut self, vertices: Py<PyAny>) -> PyResult<()> {
         Python::attach(|py| -> PyResult<()> {
-            let seq = vertices.bind(py).downcast::<PySequence>()?;
+            let seq = vertices.bind(py).cast::<PySequence>()?;
             let len = seq.len()?;
             for i in 0..len {
                 let item = seq.get_item(i)?;
@@ -318,7 +318,7 @@ impl Mesh {
     #[lsp_doc("docs/api/geometry/mesh/add_instances.md")]
     pub fn add_instances_py(&mut self, items: Py<PyAny>) -> PyResult<()> {
         Python::attach(|py| -> PyResult<()> {
-            let seq = items.bind(py).downcast::<PySequence>()?;
+            let seq = items.bind(py).cast::<PySequence>()?;
             let len = seq.len()?;
             for i in 0..len {
                 let item = seq.get_item(i)?;

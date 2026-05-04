@@ -159,14 +159,13 @@ mod tutorials {
                 }
                 if let Some(name) = rest.strip_prefix("#endregion:") {
                     let name = name.trim();
-                    while let Some((open_name, lines)) = active.pop() {
+                    if let Some((open_name, lines)) = active.pop() {
                         if open_name == name {
                             out.insert(name.to_string(), dedent(&lines));
-                            break;
+                        } else {
+                            // Mismatched: re-push and bail this endregion gracefully.
+                            active.push((open_name, lines));
                         }
-                        // Mismatched: re-push and bail this endregion gracefully.
-                        active.push((open_name, lines));
-                        break;
                     }
                     continue;
                 }

@@ -1,4 +1,4 @@
-use fragmentcolor::mesh::{Instance, Mesh, Vertex};
+use fragmentcolor::mesh::{Instance, Mesh};
 use fragmentcolor::{App, Pass, Renderer, SetupResult, Shader, call, run};
 use std::sync::Arc;
 use winit::dpi::PhysicalSize;

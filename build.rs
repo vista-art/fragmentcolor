@@ -131,7 +131,9 @@ fn generate_docs() {
     println!("cargo::rerun-if-changed=src");
     println!("cargo::rerun-if-changed=docs/api");
     parity::print_report(&parity_report, mode, &baseline_path);
-    println!("==> docs/api/PARITY drives intentional divergence; PARITY_BASELINE tracks Phase-3 backlog.\n");
+    println!(
+        "==> docs/api/PARITY drives intentional divergence; PARITY_BASELINE tracks Phase-3 backlog.\n"
+    );
 
     println!("🌎 Exporting website (examples + pages)...");
 
