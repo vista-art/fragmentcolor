@@ -171,7 +171,7 @@ let renderer = Renderer::new();
 let target = renderer.create_texture_target([16, 16]).await?;
 renderer.render(&Shader::default(), &target)?;
 
-let image = target.get_image();
+let image = target.get_image().await;
 
 assert_eq!(image.len(), 16 * 16 * 4); // RGBA8
 Ok(())
@@ -193,7 +193,7 @@ const renderer = new Renderer();
 const target = await renderer.createTextureTarget([16, 16]);
 renderer.render(new Shader(""), target);
 
-const image = target.getImage();
+const image = target.getImage().await;
 
 `}
 lang="js"
@@ -212,7 +212,7 @@ renderer = Renderer()
 target = renderer.create_texture_target([16, 16])
 renderer.render(Shader(""), target)
 
-image = target.get_image()
+image = target.get_image().await
 
 `}
 lang="python"
@@ -230,7 +230,7 @@ let renderer = Renderer()
 let target = try await renderer.createTextureTarget([16, 16])
 try renderer.render(Shader(""), target)
 
-let image = target.getImage()
+let image = target.getImage().await
 `}
 lang="swift"
 />
@@ -247,7 +247,7 @@ val renderer = Renderer()
 val target = renderer.createTextureTarget(16u, 16u)
 renderer.render(Shader(""), target)
 
-val image = target.getImage()
+val image = target.getImage().await
 `}
 lang="kotlin"
 />

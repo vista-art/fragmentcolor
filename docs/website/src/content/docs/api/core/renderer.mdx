@@ -420,7 +420,7 @@ let target = renderer.create_texture_target([64, 64]).await?;
 renderer.render(&Shader::default(), &target)?;
 
 // get the rendered image
-let image = target.get_image();
+let image = target.get_image().await;
 
 // RGBA8
 assert_eq!(image.len(), 64 * 64 * 4);
@@ -446,7 +446,7 @@ const target = await renderer.createTextureTarget([64, 64]);
 renderer.render(new Shader(""), target);
 
 // get the rendered image
-const image = target.getImage();
+const image = target.getImage().await;
 
 `}
 lang="js"
@@ -468,7 +468,7 @@ target = renderer.create_texture_target([64, 64])
 renderer.render(Shader(""), target)
 
 # get the rendered image
-image = target.get_image()
+image = target.get_image().await
 
 `}
 lang="python"
@@ -489,7 +489,7 @@ let target = try await renderer.createTextureTarget([64, 64])
 try renderer.render(Shader(""), target)
 
 // get the rendered image
-let image = target.getImage()
+let image = target.getImage().await
 `}
 lang="swift"
 />
@@ -509,7 +509,7 @@ val target = renderer.createTextureTarget(64u, 64u)
 renderer.render(Shader(""), target)
 
 // get the rendered image
-val image = target.getImage()
+val image = target.getImage().await
 `}
 lang="kotlin"
 />
@@ -955,7 +955,7 @@ let target = r.create_texture_target([8, 8]).await?;
 let shader = Shader::default();
 r.render(&shader, &target)?;
 r.wait_idle()?;
-let _bytes = target.get_image();
+let _bytes = target.get_image().await;
 Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
@@ -1015,7 +1015,7 @@ let target = try await r.createTextureTarget([8, 8])
 let shader = Shader.default()
 try r.render(shader, target)
 try r.waitIdle()
-let _bytes = target.getImage()
+let _bytes = target.getImage().await
 `}
 lang="swift"
 />
@@ -1032,7 +1032,7 @@ val target = r.createTextureTarget(8u, 8u)
 val shader = Shader.default()
 r.render(shader, target)
 r.waitIdle()
-val _bytes = target.getImage()
+val _bytes = target.getImage().await
 `}
 lang="kotlin"
 />

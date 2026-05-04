@@ -1,12 +1,12 @@
 ---
-title: "FragmentColor 0.10.10: long-lived WASM sessions"
+title: "v0.10.10: long-lived WASM sessions"
 excerpt: "Stability improvements for long-running browser sessions where the WebAssembly memory may detach during the session."
 authors: ["rafaelbeckel"]
 date: 2025-10-21
 tags: ["release", "webgpu", "javascript", "bugfix"]
 ---
 
-v0.10.10 improves stability of the WASM bindings during long-running browser sessions. When the `ArrayBuffer` detaches mid-session, the binding switches to a live view of `wasm.memory.buffer` and continues operating.
+v0.10.10 improves the stability of the WASM bindings during long-running browser sessions. When the `ArrayBuffer` detaches mid-session, the binding switches to a live view of `wasm.memory.buffer` and continues operating.
 
 This release matters most for long-lived browser surfaces such as kiosks, data-viz dashboards, and generative-art screensavers, where a tab can stay open for hours or days.
 
