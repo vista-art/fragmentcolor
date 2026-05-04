@@ -53,7 +53,7 @@ sdk.dir=/opt/homebrew/share/android-commandlinetools
 ### 2. Genuine binding bugs surfaced (also flagged by other healthchecks)
 
 - `Instance::new()` starts `next_location = 0` → collides with `@location(0)` vertex position (Web + Swift agents flagged the same)
-- `readTexture` / `readTextureAsync` — referenced by examples but missing from uniffi mobile binding
+- `readTexture` — now a proper `#[uniffi::method]` async binding (landed; `readTextureAsync` deleted)
 - `TextureRegionMobile.from()` static method missing from uniffi binding
 
 ## To run instrumented tests end-to-end
