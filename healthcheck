@@ -129,9 +129,14 @@ run_ios_examples() {
     return 1
   fi
 
+  # SPM exposes the *package* name (`FragmentColorHealthcheck`) as the
+  # xcodebuild scheme, not the executable product name
+  # (`fragmentcolor-healthcheck`). `xcodebuild -list` from
+  # `platforms/swift/healthcheck/` lists exactly one scheme:
+  # `FragmentColorHealthcheck`.
   if (cd "$ROOT_DIR/platforms/swift/healthcheck" \
         && xcodebuild \
-             -scheme fragmentcolor-healthcheck \
+             -scheme FragmentColorHealthcheck \
              -destination "generic/platform=iOS Simulator" \
              build); then
     log_test_ok "$name"

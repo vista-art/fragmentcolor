@@ -33,10 +33,10 @@ pub enum TextureError {
     /// requested format with the requested usage. Common case: `R16Unorm`
     /// (and its Rg/Rgba/Snorm cousins) need
     /// [`wgpu::Features::TEXTURE_FORMAT_16BIT_NORM`] for `TEXTURE_BINDING`.
-    /// FragmentColor probes for this feature on every adapter that
-    /// advertises it — see `format_features` in `renderer/platform/all.rs` — so the
-    /// only path to this error is a device that genuinely doesn't support
-    /// the format. Surfaces capability constraints at the API boundary
+    /// FragmentColor requests every feature the adapter advertises at
+    /// device creation (see `request_device` in `renderer/platform/all.rs`),
+    /// so the only path to this error is a device that genuinely doesn't
+    /// advertise the format-feature this format needs. Surfaces capability constraints at the API boundary
     /// instead of letting them detonate as runtime validation cascades on
     /// first use. The `format` field carries the underlying
     /// `wgpu::TextureFormat` so the message stays accurate for variants
