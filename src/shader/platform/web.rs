@@ -5,7 +5,6 @@ use std::convert::TryInto;
 use wasm_bindgen::prelude::*;
 use web_sys::console;
 
-use crate::shader::ShaderPart;
 use crate::{Shader, ShaderError, UniformData};
 
 #[wasm_bindgen]
@@ -35,8 +34,9 @@ impl Shader {
         Shader::set_registry(base_url);
     }
 
+    #[wasm_bindgen(js_name = "fetch")]
     #[lsp_doc("docs/api/core/shader/fetch.md")]
-    pub async fn fetch(input: &JsValue) -> Self {
+    pub async fn fetch_js(input: &JsValue) -> Self {
         let parts = match jsvalue_to_string_vec(input) {
             Ok(v) => v,
             Err(msg) => {
@@ -45,47 +45,10 @@ impl Shader {
             }
         };
 
-        let mut resolved: Vec<String> = Vec::with_capacity(parts.len());
-        for raw in parts {
-            match ShaderPart::classify(&raw) {
-                ShaderPart::Source(s) => resolved.push(s),
-                ShaderPart::Url(u) => match crate::net::fetch_text(&u).await {
-                    Ok(body) => resolved.push(body),
-                    Err(e) => {
-                        console::error_1(&e);
-                        return Shader::default();
-                    }
-                },
-                ShaderPart::Slug(slug) => {
-                    let url = crate::shader::registry::slug_to_url(&slug);
-                    match crate::net::fetch_text(&url).await {
-                        Ok(body) => resolved.push(body),
-                        Err(e) => {
-                            console::error_1(&e);
-                            return Shader::default();
-                        }
-                    }
-                }
-                // In a browser there is no filesystem; a "path-shaped" string
-                // (e.g. "/shaders/swirl.wgsl" or "./local.wgsl") is a relative
-                // URL the browser resolves against `document.baseURI`. Fetch it.
-                ShaderPart::Path(p) => {
-                    let url = p.to_string_lossy().into_owned();
-                    match crate::net::fetch_text(&url).await {
-                        Ok(body) => resolved.push(body),
-                        Err(e) => {
-                            console::error_1(&e);
-                            return Shader::default();
-                        }
-                    }
-                }
-            }
-        }
-
-        match Shader::new(resolved) {
+        match Shader::fetch(parts).await {
             Ok(shader) => shader,
-            Err(_) => {
-                console::error_1(&"failed to create shader, returning default".into());
+            Err(e) => {
+                console::error_1(&e.to_string().into());
                 Shader::default()
             }
         }
