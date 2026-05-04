@@ -29,10 +29,11 @@ extension Pass {
         try addMesh(mesh: mesh)
     }
 
-    /// Attach a mesh to a specific shader in this pass (unlabeled overload).
-    public func addMeshToShader(_ mesh: Mesh, _ shader: Shader) throws {
-        try addMeshToShader(mesh: mesh, shader: shader)
-    }
+    // `addMeshToShader(mesh:shader:)` was removed in the v0.11.0 naming pass —
+    // the body was a thin convenience over `shader.addMesh(mesh)?` that
+    // ignored the receiver. The uniffi-generated method is gone, so this
+    // wrapper went with it. Callers attach a mesh to a specific shader by
+    // calling `shader.addMesh(mesh)` directly.
 
     // MARK: - Dependencies (require)
 

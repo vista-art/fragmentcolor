@@ -35,7 +35,7 @@ pub async fn request_adapter(
 pub async fn request_device(
     adapter: &wgpu::Adapter,
 ) -> Result<(wgpu::Device, wgpu::Queue), InitializationError> {
-    let requested_features = features() | format_features(adapter);
+    let requested_features = features(adapter) | format_features(adapter);
     let mut requested_limits = limits().using_resolution(adapter.limits());
     requested_limits.max_immediate_size = adapter.limits().max_immediate_size;
 
@@ -132,13 +132,24 @@ fn limits() -> wgpu::Limits {
     limits
 }
 
-fn features() -> wgpu::Features {
+fn features(adapter: &wgpu::Adapter) -> wgpu::Features {
     #[cfg(wasm)]
-    let features = wgpu::Features::empty();
+    {
+        let _ = adapter; // not used on wasm; web features are advertised separately
+        wgpu::Features::empty()
+    }
     #[cfg(not(wasm))]
-    let features = wgpu::Features::IMMEDIATES;
-
-    features
+    {
+        // IMMEDIATES (push constants) is preferred — it shaves a uniform-buffer
+        // hop off every render — but it isn't universally available. The
+        // Android emulator's SwiftShader Vulkan, downlevel desktop drivers,
+        // and most GLES paths advertise neither IMMEDIATES nor PUSH_CONSTANTS.
+        // Probe the adapter and fall through to the existing uniform-buffer
+        // fallback path (`shader::input::push_constant_fallback`) when the
+        // feature is missing, the same shape as the format-feature probe in
+        // `format_features` below.
+        adapter.features() & wgpu::Features::IMMEDIATES
+    }
 }
 
 /// Opt into every texture-format feature the adapter advertises so that
