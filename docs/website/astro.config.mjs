@@ -168,4 +168,22 @@ export default defineConfig({
   ],
 
   adapter: vercel(),
+
+  vite: {
+    optimizeDeps: {
+      // These packages break Vite's dep pre-bundler in this Astro+Vite combo:
+      // optimize step claims success but the bundled file never lands in
+      // node_modules/.vite/deps, so requests hit "504 Outdated Optimize Dep"
+      // with empty body — Firefox surfaces it as MIME-type / nosniff errors.
+      // Excluding them serves the packages as native ESM at runtime.
+      exclude: [
+        "fragmentcolor",
+        "codemirror",
+        "@codemirror/state",
+        "@codemirror/language",
+        "@codemirror/lang-markdown",
+        "thememirror",
+      ],
+    },
+  },
 });
