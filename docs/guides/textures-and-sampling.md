@@ -53,7 +53,7 @@ let rpass = Pass::from_shader("tex_sample", &shader);
 renderer.render(&rpass, &target)?;
 
 // Prove execution (RGBA8, tightly packed)
-let image = target.get_image();
+let image = target.get_image().await;
 assert_eq!(image.len(), 64 * 64 * 4);
 # Ok(())
 # }
