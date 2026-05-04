@@ -128,7 +128,7 @@ code={`
 
 import FragmentColor
 let renderer = Renderer()
-let shader = Shader("""
+let shader = try Shader("""
 @group(0) @binding(0) var my_texture: texture_2d<f32>
 @group(0) @binding(1) var my_sampler: sampler
 @vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
@@ -146,7 +146,7 @@ let pixels = [255,255,255,255]
 let texture = try await renderer.createTexture((pixels, [1, 1]))
 
 // insert  the texture in the shader matching the name in the shader
-shader.set("my_texture", texture)
+try shader.set("my_texture", texture)
 `}
 lang="swift"
 />
@@ -173,8 +173,8 @@ val shader = Shader("""
 // 1x1 RGBA (white) raw pixel bytes - single create_texture entry, tuple
 // form (bytes, format, size) selects the raw-pixel path. Format is
 // the placeholder Rgba (sRGB-aware) by default.
-val pixels = arrayOf(255,255,255,255)
-val texture = renderer.createTexture((pixels, arrayOf(1, 1)))
+val pixels = listOf(255.0f, 255.0f, 255.0f, 255.0f)
+val texture = renderer.createTexture(TextureInputMobile.Bytes(pixels.let { ba -> ByteArray(ba.size) { i -> ba[i].toInt().and(0xFF).toByte() } }), null)
 
 // insert  the texture in the shader matching the name in the shader
 shader.set("my_texture", texture)
@@ -250,7 +250,7 @@ lang="python"
 code={`
 import FragmentColor
 let renderer = Renderer()
-let texture = try await renderer.createStorageTexture(([64, 64], TextureFormat.Rgba))
+let texture = try await renderer.createStorageTexture(([64, 64], TextureFormat.rgba))
 let id = texture.id()
 `}
 lang="swift"
@@ -263,7 +263,7 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 val renderer = Renderer()
-val texture = renderer.createStorageTexture((arrayOf(64, 64), TextureFormat.Rgba))
+val texture = renderer.createStorageTexture(Size(width=64u, height=64u, depth=null), TextureFormat.RGBA, null, null)
 val id = texture.id()
 `}
 lang="kotlin"
@@ -350,8 +350,8 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 val renderer = Renderer()
-val pixels = arrayOf(255,255,255,255)
-val tex = renderer.createTexture((pixels, arrayOf(1, 1)))
+val pixels = listOf(255.0f, 255.0f, 255.0f, 255.0f)
+val tex = renderer.createTexture(TextureInputMobile.Bytes(pixels.let { ba -> ByteArray(ba.size) { i -> ba[i].toInt().and(0xFF).toByte() } }), null)
 val sz = tex.size()
 `}
 lang="kotlin"
@@ -454,8 +454,8 @@ import org.fragmentcolor.*
 
 val renderer = Renderer()
 // 1x1 RGBA (white) raw pixel bytes
-val pixels = arrayOf(255,255,255,255)
-val tex = renderer.createTexture((pixels, arrayOf(1, 1)))
+val pixels = listOf(255.0f, 255.0f, 255.0f, 255.0f)
+val tex = renderer.createTexture(TextureInputMobile.Bytes(pixels.let { ba -> ByteArray(ba.size) { i -> ba[i].toInt().and(0xFF).toByte() } }), null)
 val a = tex.aspect()
 `}
 lang="kotlin"
@@ -664,10 +664,10 @@ lang="python"
 code={`
 import FragmentColor
 let renderer = Renderer()
-let texture = try await renderer.createStorageTexture(([64, 64], TextureFormat.Rgba))
+let texture = try await renderer.createStorageTexture(([64, 64], TextureFormat.rgba))
 let frame_bytes = Array(repeating: 0, count: 64 * 64 * 4)
 
-texture.write(frame_bytes)
+try texture.write(frame_bytes)
 `}
 lang="swift"
 />
@@ -679,8 +679,8 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 val renderer = Renderer()
-val texture = renderer.createStorageTexture((arrayOf(64, 64), TextureFormat.Rgba))
-val frame_bytes = Array(64 * 64 * 4) { 0 }
+val texture = renderer.createStorageTexture(Size(width=64u, height=64u, depth=null), TextureFormat.RGBA, null, null)
+val frame_bytes = ByteArray(64 * 64 * 4)
 
 texture.write(frame_bytes)
 `}
@@ -784,15 +784,15 @@ lang="python"
 code={`
 import FragmentColor
 let renderer = Renderer()
-let texture = try await renderer.createStorageTexture(([64, 32], TextureFormat.Rgba))
+let texture = try await renderer.createStorageTexture(([64, 32], TextureFormat.rgba))
 let bytes = Array(repeating: 0, count: 64 * 32 * 4)
 
 // Simple sub-rectangle update.
-texture.writeRegion(bytes, [0, 0, 64, 32])
+try texture.writeRegion(bytes, [0, 0, 64, 32])
 
-// Explicit data layout (advanced Ã¢ÂÂ when source rows are padded).
-let region = TextureRegion.from([0, 0, 64, 32]).withStride(256).withRows(32)
-texture.writeRegion(bytes, region)
+// Explicit data layout (advanced â when source rows are padded).
+let region = TextureRegionMobile.from([0, 0, 64, 32]).withStride(256).withRows(32)
+try texture.writeRegion(bytes, region)
 `}
 lang="swift"
 />
@@ -804,14 +804,14 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 val renderer = Renderer()
-val texture = renderer.createStorageTexture((arrayOf(64, 32), TextureFormat.Rgba))
-val bytes = Array(64 * 32 * 4) { 0 }
+val texture = renderer.createStorageTexture(Size(width=64u, height=32u, depth=null), TextureFormat.RGBA, null, null)
+val bytes = ByteArray(64 * 32 * 4)
 
 // Simple sub-rectangle update.
-texture.writeRegion(bytes, arrayOf(0, 0, 64, 32))
+texture.writeRegion(bytes, TextureRegionMobile(0u, 0u, 0u, 64u, 32u, 0u, null, null))
 
-// Explicit data layout (advanced Ã¢ÂÂ when source rows are padded).
-val region = TextureRegion.from(arrayOf(0, 0, 64, 32)).withStride(256).withRows(32)
+// Explicit data layout (advanced â when source rows are padded).
+val region = TextureRegionMobile(0u, 0u, 0u, 64u, 32u, 0u, 256u, 32u)
 texture.writeRegion(bytes, region)
 `}
 lang="kotlin"
@@ -891,8 +891,8 @@ lang="python"
 code={`
 import FragmentColor
 let renderer = Renderer()
-let texture = try await renderer.createStorageTexture(([64, 64], TextureFormat.Rgba))
-texture.write(Array(repeating: 0, count: 64 * 64 * 4))
+let texture = try await renderer.createStorageTexture(([64, 64], TextureFormat.rgba))
+try texture.write(Array(repeating: 0, count: 64 * 64 * 4))
 
 let bytes = try await texture.getImage()
 `}
@@ -906,8 +906,8 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 val renderer = Renderer()
-val texture = renderer.createStorageTexture((arrayOf(64, 64), TextureFormat.Rgba))
-texture.write(Array(64 * 64 * 4) { 0 })
+val texture = renderer.createStorageTexture(Size(width=64u, height=64u, depth=null), TextureFormat.RGBA, null, null)
+texture.write(ByteArray(64 * 64 * 4))
 
 val bytes = texture.getImage()
 `}

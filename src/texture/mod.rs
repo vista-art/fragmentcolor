@@ -9,7 +9,6 @@ use pyo3::prelude::*;
 #[cfg(wasm)]
 use wasm_bindgen::prelude::*;
 
-use std::path::Path;
 
 mod sampler;
 pub use sampler::*;
@@ -34,7 +33,7 @@ mod read;
 pub mod region;
 mod write;
 
-pub(crate) use read::{read_texture_object_async, read_texture_object_sync};
+pub(crate) use read::read_pixels;
 pub use region::TextureRegion;
 #[cfg(mobile)]
 pub use region::TextureRegionMobile;
@@ -144,7 +143,7 @@ impl TextureMipChain {
         let crate::TextureInput { data, options } = input.into();
         let public_format = options.format;
         let wfmt: wgpu::TextureFormat = public_format.into();
-        if !format_supports_cpu_mipmaps(wfmt) {
+        if !supports_cpu_mipmaps(wfmt) {
             return Err(TextureError::UnsupportedMipmapFormat {
                 format: public_format,
             });
@@ -173,7 +172,7 @@ impl TextureMipChain {
                             bytes.len()
                         )));
                     }
-                    wrap_raw_bytes_as_dynamic_image(
+                    bytes_as_image(
                         &bytes[..expected],
                         extent.width,
                         extent.height,
@@ -228,7 +227,7 @@ impl TextureMipChain {
                 "prepare: decoded image has zero width or height".into(),
             ));
         }
-        let levels = build_mip_chain_bytes(image, format).map_err(|err| match err {
+        let levels = build_mip_chain(image, format).map_err(|err| match err {
             // Surface the format mismatch as the typed variant so callers
             // matching on UnsupportedMipmapFormat catch it both at the
             // top-level guard and in the inner dispatcher.
@@ -633,7 +632,7 @@ impl Texture {
 
     #[lsp_doc("docs/api/core/texture/get_image.md")]
     pub async fn get_image(&self) -> Result<Vec<u8>, TextureError> {
-        read::get_image_async(self).await
+        read::get_image(self).await
     }
 }
 
@@ -690,72 +689,119 @@ pub(crate) struct TextureObject {
 // platform-specific bindings live under texture/platform/{python,web}.rs
 
 impl TextureObject {
-    /// Create a texture with an explicit usage mask (e.g., storage textures)
+    /// Create a texture with an explicit usage mask (e.g., storage textures).
+    /// Validates that the active device's enabled features cover `format`
+    /// when `usage` includes `TEXTURE_BINDING`; returns
+    /// [`TextureError::UnsupportedFormatForUsage`] if not.
     pub fn new(
         context: &RenderContext,
         size: wgpu::Extent3d,
         format: wgpu::TextureFormat,
         usage: wgpu::TextureUsages,
         options: SamplerOptions,
-    ) -> Self {
+    ) -> Result<Self, TextureError> {
+        check_format(context.device.features(), format, usage)?;
         let descriptor = Self::texture_descriptor("Generic Texture", size, format, usage, 1, 1); // @TODO mip_count, sample_count
         let inner = context.device.create_texture(&descriptor);
         let size = inner.size();
         let sampler = create_sampler(&context.device, options);
-        Self {
+        Ok(Self {
             inner,
             size,
             sampler: RwLock::new(sampler),
             options: RwLock::new(options),
             format,
             usage,
+        })
+    }
+
+    /// Single dispatch point used by [`crate::Renderer::create_texture`] for
+    /// every [`TextureInput`] source variant except `Empty` and `CloneOf`
+    /// (handled at the renderer boundary). URL parts are fetched on the
+    /// calling thread (async); decode + GPU upload run on the background
+    /// worker (native) or inline (wasm).
+    pub(crate) async fn from_input(
+        context: Arc<RenderContext>,
+        input: TextureInput,
+    ) -> Result<Self, TextureError> {
+        let TextureInput { data, options } = input;
+        let format_override = if matches!(options.format, crate::TextureFormat::Rgba) {
+            None
+        } else {
+            Some(wgpu::TextureFormat::from(options.format))
+        };
+        let mipmaps = options.mipmaps;
+        let opt_size = options.size;
+        let opt_format = options.format;
+
+        // URL variants need an async fetch on the calling thread; everything
+        // else runs on the background worker. Pre-fetch and forward the
+        // resulting bytes as the matching non-URL variant.
+        async fn fetch(url: &str) -> Result<Vec<u8>, TextureError> {
+            crate::net::fetch_bytes(url)
+                .await
+                .map_err(|e| TextureError::CreateTextureError(format!("URL fetch failed: {e:?}")))
         }
-    }
+        let data = match data {
+            TextureData::Url(url) => TextureData::Bytes(fetch(&url).await?),
+            TextureData::Ktx2Url(url) => TextureData::Ktx2Bytes(fetch(&url).await?),
+            other => other,
+        };
 
-    /// Creates a texture from a file.
-    ///
-    /// `format_override = None` infers the format from the image's color type.
-    /// `generate_mipmaps = true` builds a full mip chain at upload (only for
-    /// formats that share the source's RGBA8 byte layout — see `from_loaded_image`).
-    pub(crate) fn from_file(
-        context: &RenderContext,
-        path: impl AsRef<Path>,
-        format_override: Option<wgpu::TextureFormat>,
-        generate_mipmaps: bool,
-    ) -> Result<Self, TextureError> {
-        let image = image::open(path)?;
-        Ok(Self::from_loaded_image(
-            context,
-            &image,
-            format_override,
-            generate_mipmaps,
-        ))
-    }
-
-    /// Creates a texture from encoded image bytes (PNG/JPEG/HDR, etc.).
-    pub(crate) fn from_bytes(
-        context: &RenderContext,
-        bytes: &[u8],
-        format_override: Option<wgpu::TextureFormat>,
-        generate_mipmaps: bool,
-    ) -> Result<Self, TextureError> {
-        let image = image::load_from_memory(bytes)?;
-        Ok(Self::from_loaded_image(
-            context,
-            &image,
-            format_override,
-            generate_mipmaps,
-        ))
+        crate::renderer::background::run(move || -> Result<Self, TextureError> {
+            match data {
+                TextureData::Bytes(bytes) => {
+                    if let Some(sz) = opt_size {
+                        let wfmt = format_override
+                            .unwrap_or_else(|| wgpu::TextureFormat::from(opt_format));
+                        Self::from_raw_bytes(context.as_ref(), sz.into(), wfmt, &bytes, mipmaps)
+                    } else {
+                        let image = image::load_from_memory(&bytes)?;
+                        Self::from_image(context.as_ref(), &image, format_override, mipmaps)
+                    }
+                }
+                TextureData::Path(path) => {
+                    let image = image::open(&path)?;
+                    Self::from_image(context.as_ref(), &image, format_override, mipmaps)
+                }
+                TextureData::DynamicImage(image) => {
+                    Self::from_image(context.as_ref(), &image, format_override, mipmaps)
+                }
+                TextureData::Prepared(chain) => Self::from_chain(context.as_ref(), chain),
+                TextureData::Ktx2Bytes(bytes) => {
+                    ktx2_loader::from_ktx2_bytes(context.as_ref(), &bytes)
+                }
+                TextureData::Ktx2Path(path) => {
+                    let bytes = std::fs::read(&path).map_err(|e| {
+                        TextureError::CreateTextureError(format!(
+                            "Failed to read KTX2 file {}: {}",
+                            path.display(),
+                            e
+                        ))
+                    })?;
+                    ktx2_loader::from_ktx2_bytes(context.as_ref(), &bytes)
+                }
+                TextureData::Url(_) | TextureData::Ktx2Url(_) => Err(
+                    TextureError::InvalidInput(
+                        "from_input: URL variant should have been pre-fetched on the calling thread".into(),
+                    ),
+                ),
+                TextureData::CloneOf(_) | TextureData::Empty => Err(TextureError::InvalidInput(
+                    "from_input: CloneOf and Empty are handled by Renderer::create_texture; do not pass them to the dispatcher".into(),
+                )),
+            }
+        })
+        .await
     }
 
     /// Creates a texture from raw pixel bytes with explicit size/format.
     /// The data layout is tightly packed with bytes_per_row = bpp * width.
     ///
     /// When `generate_mipmaps = true`, a full mip chain is built CPU-side via the
-    /// dispatcher in [`write_raw_bytes_levels`]. Mipmaps run for every format
-    /// `format_supports_cpu_mipmaps` accepts (Rgba8/Bgra8 family, R8, Rg8, R16,
+    /// dispatcher in [`write_levels`]. Mipmaps run for every format
+    /// `supports_cpu_mipmaps` accepts (Rgba8/Bgra8 family, R8, Rg8, R16,
     /// Rg16, Rgba16); other formats fall back to a single level.
-    pub(crate) fn from_raw_bytes(
+    fn from_raw_bytes(
         context: &RenderContext,
         size: wgpu::Extent3d,
         format: wgpu::TextureFormat,
@@ -763,6 +809,7 @@ impl TextureObject {
         generate_mipmaps: bool,
     ) -> Result<Self, TextureError> {
         let usage = wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST;
+        check_format(context.device.features(), format, usage)?;
         let bpp = bytes_per_pixel(format);
 
         let expected = (size.width as usize)
@@ -775,7 +822,7 @@ impl TextureObject {
             ));
         }
 
-        let want_mips = generate_mipmaps && format_supports_cpu_mipmaps(format);
+        let want_mips = generate_mipmaps && supports_cpu_mipmaps(format);
         let mip_level_count = if want_mips {
             mip_level_count_for(size.width, size.height)
         } else {
@@ -786,7 +833,7 @@ impl TextureObject {
             Self::texture_descriptor("Raw Texture", size, format, usage, 1, mip_level_count);
         let texture = context.device.create_texture(&descriptor);
 
-        write_raw_bytes_levels(context, data, &texture, size, format, mip_level_count)?;
+        write_levels(context, data, &texture, size, format, mip_level_count)?;
 
         let sampler = create_default_sampler(&context.device);
         Ok(Self {
@@ -805,14 +852,14 @@ impl TextureObject {
     /// re-decoded to match the target format (e.g. `R16Unorm` triggers `to_luma16()`,
     /// preserving 16-bit precision). Mipmaps are generated CPU-side via
     /// `image::imageops::resize` for every format the dispatcher recognizes — see
-    /// `format_supports_cpu_mipmaps`. Unrecognized formats fall back to writing
+    /// `supports_cpu_mipmaps`. Unrecognized formats fall back to writing
     /// `to_rgba8` bytes as a single level (best-effort, may misrender for non-RGBA8 layouts).
-    pub(crate) fn from_loaded_image(
+    fn from_image(
         context: &RenderContext,
         image: &DynamicImage,
         format_override: Option<wgpu::TextureFormat>,
         generate_mipmaps: bool,
-    ) -> Self {
+    ) -> Result<Self, TextureError> {
         let label = "Source Texture from Loaded Image";
         let (width, height) = image.dimensions();
         let size = wgpu::Extent3d {
@@ -820,16 +867,16 @@ impl TextureObject {
             height,
             depth_or_array_layers: 1,
         };
-        let format = format_override.unwrap_or_else(|| infer_format_from_image(image.color()));
+        let format = format_override.unwrap_or_else(|| infer_format(image.color()));
+        let usage = wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST;
+        check_format(context.device.features(), format, usage)?;
 
-        let want_mips = generate_mipmaps && format_supports_cpu_mipmaps(format);
+        let want_mips = generate_mipmaps && supports_cpu_mipmaps(format);
         let mip_level_count = if want_mips {
             mip_level_count_for(width, height)
         } else {
             1
         };
-
-        let usage = wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST;
         let descriptor = Self::texture_descriptor(label, size, format, usage, 1, mip_level_count);
         let texture = context.device.create_texture(&descriptor);
 
@@ -837,19 +884,19 @@ impl TextureObject {
 
         let sampler = create_default_sampler(&context.device);
 
-        Self {
+        Ok(Self {
             inner: texture,
             size,
             sampler: RwLock::new(sampler),
             options: RwLock::new(SamplerOptions::default()),
             format,
             usage,
-        }
+        })
     }
 
     /// Create a TextureObject from a pre-built CPU mip chain. Pure GPU writes —
     /// no decode, no resize. Used by the `TextureInput::Prepared` path.
-    pub(crate) fn from_prepared_chain(
+    fn from_chain(
         context: &RenderContext,
         chain: TextureMipChain,
     ) -> Result<Self, TextureError> {
@@ -866,6 +913,8 @@ impl TextureObject {
         }
         let levels = chain.levels.as_slice();
         let format = chain.format;
+        let usage = wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST;
+        check_format(context.device.features(), format, usage)?;
         let bpp = bytes_per_pixel(format);
         if bpp == 0 {
             return Err(TextureError::CreateTextureError(format!(
@@ -896,7 +945,6 @@ impl TextureObject {
             height: h,
             depth_or_array_layers: 1,
         };
-        let usage = wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST;
         let mip_level_count = levels.len() as u32;
         let descriptor =
             Self::texture_descriptor("Prepared Texture", size, format, usage, 1, mip_level_count);
@@ -964,14 +1012,10 @@ impl TextureObject {
     /// the render_pipeline and for creating the depth texture itself.
     pub const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 
-    /// Creates a depth texture inheriting the current renderer sample count.
-    pub fn create_depth_texture(context: &RenderContext, size: wgpu::Extent3d) -> Self {
-        let sc = context.sample_count();
-        Self::create_depth_texture_with_count(context, size, sc)
-    }
-
-    /// Creates a depth texture with an explicit MSAA sample count.
-    pub fn create_depth_texture_with_count(
+    /// Creates a depth texture with the given MSAA `sample_count`. Pass
+    /// `context.sample_count()` to inherit the renderer's negotiated count;
+    /// pass `1` for a non-MSAA depth attachment.
+    pub fn create_depth_texture(
         context: &RenderContext,
         size: wgpu::Extent3d,
         sample_count: u32,
@@ -1096,7 +1140,7 @@ pub(crate) fn mip_level_count_for(width: u32, height: u32) -> u32 {
 /// True for formats the CPU mipmap dispatcher in [`write_image_levels`] can fill.
 /// Covers every wgpu format we know how to decode a `DynamicImage` into via the
 /// `image` crate's `to_*` helpers.
-pub(crate) fn format_supports_cpu_mipmaps(format: wgpu::TextureFormat) -> bool {
+pub(crate) fn supports_cpu_mipmaps(format: wgpu::TextureFormat) -> bool {
     matches!(
         format,
         wgpu::TextureFormat::Rgba8Unorm
@@ -1111,8 +1155,52 @@ pub(crate) fn format_supports_cpu_mipmaps(format: wgpu::TextureFormat) -> bool {
     )
 }
 
+/// Return the wgpu feature required to use `format` with `TEXTURE_BINDING`,
+/// if any. Returns `None` for formats that don't gate on a feature (the
+/// common 8-bit and float formats). The list mirrors the wgpu validation
+/// rules and grows as wgpu adds new format-feature pairings.
+pub(crate) fn format_feature(format: wgpu::TextureFormat) -> Option<wgpu::Features> {
+    use wgpu::TextureFormat as F;
+    match format {
+        F::R16Unorm
+        | F::Rg16Unorm
+        | F::Rgba16Unorm
+        | F::R16Snorm
+        | F::Rg16Snorm
+        | F::Rgba16Snorm => Some(wgpu::Features::TEXTURE_FORMAT_16BIT_NORM),
+        _ => None,
+    }
+}
+
+/// Fail-fast guard: if `usage` includes `TEXTURE_BINDING` and the active
+/// device doesn't have the wgpu feature required for `format`, return a
+/// typed error instead of letting `device.create_texture` produce a
+/// silently-invalid texture that detonates on first `create_view` /
+/// copy / sample. Skips the check when the texture isn't bindable as a
+/// sampled texture (the format-feature pairings only gate that usage).
+/// Called from every `TextureObject` constructor that takes a
+/// user-controlled format.
+pub(crate) fn check_format(
+    device_features: wgpu::Features,
+    format: wgpu::TextureFormat,
+    usage: wgpu::TextureUsages,
+) -> Result<(), TextureError> {
+    if !usage.contains(wgpu::TextureUsages::TEXTURE_BINDING) {
+        return Ok(());
+    }
+    if let Some(feature) = format_feature(format)
+        && !device_features.contains(feature)
+    {
+        return Err(TextureError::UnsupportedFormatForUsage {
+            format,
+            missing_feature: feature,
+        });
+    }
+    Ok(())
+}
+
 /// Map an `image::ColorType` to a sensible default `wgpu::TextureFormat` for sampling.
-pub(crate) fn infer_format_from_image(color: image::ColorType) -> wgpu::TextureFormat {
+pub(crate) fn infer_format(color: image::ColorType) -> wgpu::TextureFormat {
     match color {
         image::ColorType::Rgba8 => wgpu::TextureFormat::Rgba8UnormSrgb,
         image::ColorType::L8 => wgpu::TextureFormat::R8Unorm,
@@ -1137,7 +1225,7 @@ pub(crate) fn infer_format_from_image(color: image::ColorType) -> wgpu::TextureF
 /// Each branch picks the matching `image` crate decoder so the channel layout and
 /// bytes-per-pixel agree with the wgpu format. Unrecognized formats fall back to
 /// writing `to_rgba8` bytes as a single level — best-effort, may misrender for
-/// non-RGBA8 layouts (caller should have caught this via `format_supports_cpu_mipmaps`
+/// non-RGBA8 layouts (caller should have caught this via `supports_cpu_mipmaps`
 /// when picking `mip_level_count`).
 pub(crate) fn write_image_levels(
     context: &RenderContext,
@@ -1213,7 +1301,7 @@ pub(crate) fn write_image_levels(
         }
         _ => {
             log::warn!(
-                "from_loaded_image: unsupported texture format {:?}; writing to_rgba8 bytes as a single level (channels and bytes-per-pixel may not match the texture)",
+                "from_image: unsupported texture format {:?}; writing to_rgba8 bytes as a single level (channels and bytes-per-pixel may not match the texture)",
                 format
             );
             let source = image.to_rgba8();
@@ -1237,11 +1325,11 @@ pub(crate) fn write_image_levels(
 }
 
 /// Wrap raw pixel bytes (already laid out for `format` at `width x height`)
-/// into a `DynamicImage` so [`build_mip_chain_bytes`] can downsample them with
+/// into a `DynamicImage` so [`build_mip_chain`] can downsample them with
 /// the same Triangle filter used by the inline path. Mirrors the format
-/// dispatch in [`write_raw_bytes_levels`] but produces an in-memory image
+/// dispatch in [`write_levels`] but produces an in-memory image
 /// instead of writing to the GPU.
-pub(crate) fn wrap_raw_bytes_as_dynamic_image(
+pub(crate) fn bytes_as_image(
     bytes: &[u8],
     width: u32,
     height: u32,
@@ -1293,7 +1381,7 @@ pub(crate) fn wrap_raw_bytes_as_dynamic_image(
         }
         _ => {
             return Err(TextureError::CreateTextureError(format!(
-                "wrap_raw_bytes_as_dynamic_image: format {:?} is not supported",
+                "bytes_as_image: format {:?} is not supported",
                 format
             )));
         }
@@ -1303,8 +1391,8 @@ pub(crate) fn wrap_raw_bytes_as_dynamic_image(
 /// Pure-CPU mip chain builder used by [`TextureMipChain::prepare`]. Mirrors the format
 /// dispatch in [`write_image_levels`] but buffers each level's bytes into a
 /// `Vec<u8>` instead of writing to a wgpu texture. Caller must have validated
-/// that `format` is in [`format_supports_cpu_mipmaps`].
-pub(crate) fn build_mip_chain_bytes(
+/// that `format` is in [`supports_cpu_mipmaps`].
+pub(crate) fn build_mip_chain(
     image: &DynamicImage,
     format: wgpu::TextureFormat,
 ) -> Result<Vec<Vec<u8>>, TextureError> {
@@ -1330,7 +1418,7 @@ pub(crate) fn build_mip_chain_bytes(
         }
         _ => {
             return Err(TextureError::CreateTextureError(format!(
-                "build_mip_chain_bytes: format {:?} is not supported",
+                "build_mip_chain: format {:?} is not supported",
                 format
             )));
         }
@@ -1375,7 +1463,7 @@ where
 /// from a `&[u8]` buffer the caller has already laid out tightly. For 16-bit formats,
 /// the byte slice is converted to `Vec<u16>` via `from_le_bytes` (alignment-safe and
 /// matches WebGPU's little-endian element ordering).
-pub(crate) fn write_raw_bytes_levels(
+pub(crate) fn write_levels(
     context: &RenderContext,
     bytes: &[u8],
     texture: &wgpu::Texture,
@@ -1455,7 +1543,7 @@ pub(crate) fn write_raw_bytes_levels(
             write_pixel_levels(context, base, texture, full_size, mip_level_count, 8);
         }
         _ => {
-            // Caller should have caught this via format_supports_cpu_mipmaps;
+            // Caller should have caught this via supports_cpu_mipmaps;
             // be defensive and write a single level.
             let bpp = bytes_per_pixel(format);
             context.queue.write_texture(
@@ -1945,5 +2033,78 @@ mod tests {
             assert_eq!(tex.object.format, wgpu::TextureFormat::R16Unorm);
             assert_eq!(tex.object.inner.mip_level_count(), 3); // 4, 2, 1
         });
+    }
+
+    // Story: format_feature maps every 16-bit norm variant to
+    // TEXTURE_FORMAT_16BIT_NORM and leaves the common 8-bit / float formats
+    // unmapped (no feature gate). Pure-table function; no GPU required.
+    #[test]
+    fn format_feature_covers_16bit_norms_only() {
+        for f in [
+            wgpu::TextureFormat::R16Unorm,
+            wgpu::TextureFormat::Rg16Unorm,
+            wgpu::TextureFormat::Rgba16Unorm,
+            wgpu::TextureFormat::R16Snorm,
+            wgpu::TextureFormat::Rg16Snorm,
+            wgpu::TextureFormat::Rgba16Snorm,
+        ] {
+            assert_eq!(
+                format_feature(f),
+                Some(wgpu::Features::TEXTURE_FORMAT_16BIT_NORM),
+                "format {:?} should gate on TEXTURE_FORMAT_16BIT_NORM",
+                f,
+            );
+        }
+        for f in [
+            wgpu::TextureFormat::R8Unorm,
+            wgpu::TextureFormat::Rgba8Unorm,
+            wgpu::TextureFormat::Rgba8UnormSrgb,
+            wgpu::TextureFormat::Rgba16Float,
+            wgpu::TextureFormat::Rgba32Float,
+        ] {
+            assert!(
+                format_feature(f).is_none(),
+                "format {:?} should not gate on a feature",
+                f,
+            );
+        }
+    }
+
+    // Story: check_format fires when the device is missing the
+    // required feature AND the usage mask includes TEXTURE_BINDING. Storage-
+    // only usage skips the check. Pure-table; no GPU required.
+    #[test]
+    fn check_format_fails_fast_when_feature_absent() {
+        let empty = wgpu::Features::empty();
+        let with_norm = wgpu::Features::TEXTURE_FORMAT_16BIT_NORM;
+        let bind_only = wgpu::TextureUsages::TEXTURE_BINDING;
+        let storage_only = wgpu::TextureUsages::STORAGE_BINDING;
+
+        // Bindable + missing feature → typed error carrying the wgpu format
+        // and the missing feature, so consumers can match on it.
+        let err = check_format(empty, wgpu::TextureFormat::R16Unorm, bind_only)
+            .expect_err("R16Unorm without TEXTURE_FORMAT_16BIT_NORM must fail");
+        match err {
+            TextureError::UnsupportedFormatForUsage {
+                format,
+                missing_feature,
+            } => {
+                assert_eq!(format, wgpu::TextureFormat::R16Unorm);
+                assert_eq!(missing_feature, wgpu::Features::TEXTURE_FORMAT_16BIT_NORM);
+            }
+            other => panic!("expected UnsupportedFormatForUsage, got {:?}", other),
+        }
+
+        // Bindable + feature present → ok.
+        check_format(with_norm, wgpu::TextureFormat::R16Unorm, bind_only)
+            .expect("with feature should be ok");
+
+        // Format that doesn't gate on a feature → always ok.
+        check_format(empty, wgpu::TextureFormat::Rgba8Unorm, bind_only)
+            .expect("Rgba8Unorm should always be ok");
+
+        // Storage-only usage skips the gate (different validation rules apply).
+        check_format(empty, wgpu::TextureFormat::R16Unorm, storage_only)
+            .expect("storage-only usage should skip the binding gate");
     }
 }

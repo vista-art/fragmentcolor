@@ -35,7 +35,7 @@ pub async fn request_adapter(
 pub async fn request_device(
     adapter: &wgpu::Adapter,
 ) -> Result<(wgpu::Device, wgpu::Queue), InitializationError> {
-    let requested_features = features() | available_compression_features(adapter);
+    let requested_features = features() | format_features(adapter);
     let mut requested_limits = limits().using_resolution(adapter.limits());
     requested_limits.max_immediate_size = adapter.limits().max_immediate_size;
 
@@ -141,20 +141,29 @@ fn features() -> wgpu::Features {
     features
 }
 
-/// Opt into every block-compression feature the adapter advertises so that
-/// KTX2 textures with BC / ETC2 / ASTC payloads can be uploaded as-is. Only
-/// what's actually supported gets requested — unsupported features stay off
-/// and the caller still gets a working device. KTX2 files in unsupported
-/// formats fail at upload time with a clear error rather than during device
-/// creation.
-fn available_compression_features(adapter: &wgpu::Adapter) -> wgpu::Features {
+/// Opt into every texture-format feature the adapter advertises so that
+/// consumers can use the matching formats (compressed payloads, 16-bit
+/// norms, HDR filtering) without per-app device-descriptor surgery. Only
+/// what's actually supported gets requested — unsupported features stay
+/// off and the caller still gets a working device. Inputs in formats the
+/// adapter doesn't support fail at upload time with a clear error rather
+/// than during device creation.
+fn format_features(adapter: &wgpu::Adapter) -> wgpu::Features {
     let supported = adapter.features();
     let candidates = wgpu::Features::TEXTURE_COMPRESSION_BC
         | wgpu::Features::TEXTURE_COMPRESSION_BC_SLICED_3D
         | wgpu::Features::TEXTURE_COMPRESSION_ETC2
         | wgpu::Features::TEXTURE_COMPRESSION_ASTC
         | wgpu::Features::TEXTURE_COMPRESSION_ASTC_SLICED_3D
-        | wgpu::Features::TEXTURE_COMPRESSION_ASTC_HDR;
+        | wgpu::Features::TEXTURE_COMPRESSION_ASTC_HDR
+        // 16-bit norm formats (R16/Rg16/Rgba16 Unorm + Snorm) require this
+        // feature for TEXTURE_BINDING usage on Metal. Without it, creation
+        // succeeds but the texture is silently invalid; first use trips an
+        // InvalidResource validation error. Apple Silicon advertises it.
+        | wgpu::Features::TEXTURE_FORMAT_16BIT_NORM
+        // HDR filtering: enables linear filtering on Rgba32Float (and the
+        // 16-bit float family once wgpu exposes a separate gate for it).
+        | wgpu::Features::FLOAT32_FILTERABLE;
     supported & candidates
 }
 

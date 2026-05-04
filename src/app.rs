@@ -123,16 +123,19 @@ pub struct App {
     // Blueprints to create at resume (if empty, create a single default window)
     blueprints: Vec<WindowAttributes>,
 
-    // Registered callbacks
-    on_event: RwLock<Vec<WindowEventCallback>>, // called for every WindowEvent
-    on_draw: RwLock<Vec<WindowEventCallback>>,  // called when WindowEvent::RedrawRequested
+    // Draw callbacks fire on `WindowEvent::RedrawRequested` — kept as a
+    // dedicated channel because animation/uniform-update flows are common
+    // enough to warrant a one-call shortcut.
+    on_draw: RwLock<Vec<WindowEventCallback>>,
 
-    // Event-specific callback registries
+    // Event-specific callback registries. All event handling routes through
+    // `on_event(kind, f)` / `on_window_event(id, kind, f)`; there is no
+    // top-level catch-all (callers register per-kind handlers — same model
+    // as `on_device_event(kind, f)`).
     primary_by_kind: RwLock<HashMap<EventKind, Vec<WindowEventCallback>>>,
     per_window_by_kind: RwLock<HashMap<WindowId, HashMap<EventKind, Vec<WindowEventCallback>>>>,
 
-    // Device event registries (no window association)
-    on_device_event: RwLock<Vec<DeviceEventCallback>>, // called for every DeviceEvent
+    // Device event registry, keyed by kind. Mirrors the window-event side.
     device_by_kind: RwLock<HashMap<DeviceEvent, Vec<DeviceEventCallback>>>,
 
     // Startup hook (async)
@@ -149,11 +152,9 @@ impl App {
             targets: RwLock::new(HashMap::new()),
             objects: RwLock::new(HashMap::new()),
             blueprints: Vec::new(),
-            on_event: RwLock::new(Vec::new()),
             on_draw: RwLock::new(Vec::new()),
             primary_by_kind: RwLock::new(HashMap::new()),
             per_window_by_kind: RwLock::new(HashMap::new()),
-            on_device_event: RwLock::new(Vec::new()),
             device_by_kind: RwLock::new(HashMap::new()),
             start_callback: None,
             primary_window: None,
@@ -197,15 +198,6 @@ impl App {
             .and_then(|a| a.downcast::<T>().ok())
     }
 
-    // Register a callback that receives every window event.
-    pub fn on_event<F>(&mut self, f: F) -> &mut Self
-    where
-        F: FnMut(&App, WindowId, &WindowEvent) + Send + 'static,
-    {
-        self.on_event.write().push(Box::new(f));
-        self
-    }
-
     // Register a callback that runs on every RedrawRequested (use to animate/update uniforms).
     pub fn on_draw<F>(&mut self, f: F) -> &mut Self
     where
@@ -217,8 +209,9 @@ impl App {
 
     // Event-specific registration -----------------------------------------------------------
 
-    // Generic registration for future coverage (window events)
-    pub fn on_event_kind<F>(&mut self, kind: EventKind, f: F) -> &mut Self
+    // Register a kind-filtered handler that fires on the primary window
+    // when an event matches `kind`.
+    pub fn on_event<F>(&mut self, kind: EventKind, f: F) -> &mut Self
     where
         F: FnMut(&App, WindowId, &WindowEvent) + Send + 'static,
     {
@@ -230,7 +223,7 @@ impl App {
         self
     }
 
-    pub fn on_window_event_kind<F>(&mut self, id: WindowId, kind: EventKind, f: F) -> &mut Self
+    pub fn on_window_event<F>(&mut self, id: WindowId, kind: EventKind, f: F) -> &mut Self
     where
         F: FnMut(&App, WindowId, &WindowEvent) + Send + 'static,
     {
@@ -245,15 +238,7 @@ impl App {
     }
 
     // Device event registration ---------------------------------------------------------------
-    pub fn on_device_event<F>(&mut self, f: F) -> &mut Self
-    where
-        F: FnMut(&App, winit::event::DeviceId, &winit::event::DeviceEvent) + Send + 'static,
-    {
-        self.on_device_event.write().push(Box::new(f));
-        self
-    }
-
-    pub fn on_device_event_kind<F>(&mut self, kind: DeviceEvent, f: F) -> &mut Self
+    pub fn on_device_event<F>(&mut self, kind: DeviceEvent, f: F) -> &mut Self
     where
         F: FnMut(&App, winit::event::DeviceId, &winit::event::DeviceEvent) + Send + 'static,
     {
@@ -367,14 +352,6 @@ impl ApplicationHandler for App {
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
-        // 1) Always forward event to generic callbacks first
-        {
-            let mut cbs = self.on_event.write();
-            for cb in cbs.iter_mut() {
-                cb(&*self, id, &event);
-            }
-        }
-
         // Dispatch event-specific registries
         let kind = kind_of(&event);
         if let Some(primary) = self.primary_window
@@ -430,14 +407,7 @@ impl ApplicationHandler for App {
         device_id: winit::event::DeviceId,
         event: winit::event::DeviceEvent,
     ) {
-        // 1) Forward to generic device callbacks
-        {
-            let mut cbs = self.on_device_event.write();
-            for cb in cbs.iter_mut() {
-                cb(&*self, device_id, &event);
-            }
-        }
-        // 2) Dispatch by kind to typed handlers
+        // Dispatch by kind to typed handlers
         let kind = match &event {
             winit::event::DeviceEvent::Added => DeviceEvent::Added,
             winit::event::DeviceEvent::Removed => DeviceEvent::Removed,
@@ -490,7 +460,7 @@ macro_rules! define_typed_event_handlers {
                 pub fn $name<F>(&mut self, mut f: F) -> &mut Self
                 where F: FnMut(&App $(, $p_ty)*) + Send + 'static
                 {
-                    self.on_event_kind(EventKind::$kind, move |app, _id, ev| {
+                    self.on_event(EventKind::$kind, move |app, _id, ev| {
                         if let $pat = ev {
                             f(app $(, $p_arg)*)
                         }
@@ -499,7 +469,7 @@ macro_rules! define_typed_event_handlers {
                 pub fn $per_window<F>(&mut self, id: WindowId, mut f: F) -> &mut Self
                 where F: FnMut(&App $(, $w_ty)*) + Send + 'static
                 {
-                    self.on_window_event_kind(id, EventKind::$kind, move |app, id, ev| {
+                    self.on_window_event(id, EventKind::$kind, move |app, id, ev| {
                         if let $pat = ev {
                             f(app, id $(, $w_arg)*)
                         }
@@ -510,6 +480,11 @@ macro_rules! define_typed_event_handlers {
     }
 }
 
+// Pattern bindings use `ref` explicitly so the macro keeps producing
+// reference-typed locals. Rust 2024's match-ergonomics defaults bind by
+// value (auto-deref'ing the scrutinee), which would have meant rewriting
+// every `call_primary` arg below. Adding `ref` once per pattern preserves
+// the pre-2024 binding mode and keeps the call_primary expressions intact.
 define_typed_event_handlers! {
     (on_resize, on_window_resize, Resized,
         match WindowEvent::Resized(size),
@@ -668,7 +643,7 @@ macro_rules! define_typed_device_handlers {
                 pub fn $name<F>(&mut self, mut f: F) -> &mut Self
                 where F: FnMut(&App, winit::event::DeviceId $(, $p_ty)*) + Send + 'static
                 {
-                    self.on_device_event_kind(DeviceEvent::$kind, move |app, device_id, ev| {
+                    self.on_device_event(DeviceEvent::$kind, move |app, device_id, ev| {
                         if let $pat = ev {
                             f(app, device_id $(, $p_arg)*)
                         }
@@ -724,19 +699,15 @@ mod tests {
 
         // Act: register callbacks of multiple kinds
         let _ = app
-            .on_event(|_a, _id, _e| {})
             .on_draw(|_a, _id, _e| {})
             .on_resize(|_a, _s| {})
             .on_window_close_requested(WindowId::from(1), |_a, _id| {})
-            .on_device_event(|_a, _id, _e| {})
             .on_device_mouse_motion(|_a, _id, _delta| {});
 
         // Assert: internal registries captured entries
         assert_eq!(app.blueprints.len(), 1);
-        assert_eq!(app.on_event.read().len(), 1);
         assert_eq!(app.on_draw.read().len(), 1);
         let _ = app.primary_by_kind.read().len();
-        assert_eq!(app.on_device_event.read().len(), 1);
         let _ = app.device_by_kind.read().len();
     }
 
@@ -843,9 +814,7 @@ mod tests {
     fn device_event_registration_maps_receive_entries() {
         let renderer = Renderer::new();
         let mut app = App::new(renderer);
-        app.on_device_event(|_, _, _| {});
         app.on_device_motion(|_, _, _, _| {});
-        assert_eq!(app.on_device_event.read().len(), 1);
         let m = app.device_by_kind.read();
         assert!(m.get(&DeviceEvent::Motion).is_some());
     }

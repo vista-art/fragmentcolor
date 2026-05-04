@@ -4,6 +4,49 @@
 
 See the [Roadmap](https://github.com/vista-art/fragmentcolor/blob/main/ROADMAP.md) for planned features.
 
+### `R16Unorm` (and the 16-bit norm family) now works on every adapter that advertises the feature
+
+Diagnosed against RemixBrush's painting shader saga (`docs/PHASE-3.3.5a-runtime-saga.md` in the consumer repo): an `R16Unorm` `TextureMipChain` that round-tripped fine through `prepare → from_chain → device.create_texture` produced a silently-invalid texture on Apple Silicon, then exploded on first `create_view()` with an `InvalidResource` cascade that drowned the consumer's stderr 60 times per second. Same for `Rg16Unorm`, `Rgba16Unorm`, and the three `*Snorm` variants. Three layered fixes so the failure mode no longer reaches the user:
+
+- **Adapter feature probe widened.** `request_device` now opportunistically requests `TEXTURE_FORMAT_16BIT_NORM` (and `FLOAT32_FILTERABLE`) alongside the texture-compression features it already negotiated. On every adapter that advertises the feature — every Apple Silicon device, every modern desktop GPU on Vulkan/Metal — `R16Unorm` + `TEXTURE_BINDING` now Just Works. The probe stays opt-in via `adapter.features().contains(...)` so adapters that don't advertise the feature still get a working device.
+- **Fail-fast on adapters without the feature.** New `TextureError::UnsupportedFormatForUsage { format: wgpu::TextureFormat, missing_feature: wgpu::Features }` variant + `check_format(features, format, usage)` guard called at every `device.create_texture` site that takes a user-controlled format (`TextureObject::{new, from_input}`, the KTX2 loader). Consumers see a typed error at the API boundary — `"Texture format R16Unorm is not supported by the active device for the requested usage (missing wgpu feature TEXTURE_FORMAT_16BIT_NORM)"` — instead of the cascade-50-frames-later landmine.
+- **wgpu validation scope around bind-group + view creation.** New `RenderContext::validate(label, op)` helper folds the prior `create_bind_group_checked` (which only wrapped `create_bind_group`) into a single generic that wraps any wgpu call whose validation failure would otherwise leak via `on_uncaptured_error` to stderr. `process_render_pass` and `process_compute_pass` now wrap both `tex.create_view()` and `device.create_bind_group()` with it, so consumers get one programmatic `RendererError::ValidationError { label, message }` instead of the 4-tier validation cascade `[Texture::create_view → InvalidResource] → [Device::create_bind_group → InvalidResource] → [set_bind_group → InvalidResource] → [Queue::submit → InvalidResource]` they used to flood logs with.
+- **Regression test landed:** `renderer::tests::render_with_r16unorm_texture_smoke` exercises the full consumer path (R16Unorm prepared chain → bound via uniform → `renderer.render` → asserts no error). Plus pure-table unit tests for the lookup helpers (`format_feature_covers_16bit_norms_only`, `check_format_fails_fast_when_feature_absent`).
+
+### Method naming pass — single canonical name per operation, no `_kind` / `_async` / `_object` / `_with_X` / `_checked` suffixes
+
+Audit + cleanup landed across the public API and internal helpers, on top of the API-thinning section above. The rule: **1 verb or max 3 words; suffixes only when they disambiguate genuinely distinct inputs (`from_file` vs `from_bytes`)**. Internal helpers pay the same tax as the public surface. Consumer-visible (Rust-side) renames are listed below; platform binding suffixes (`_js` / `_mobile` / `_py` / `_android` / `_ios`) are forced by uniffi/wasm-bindgen/pyo3 needing distinct signatures and stay.
+
+**Public Rust API (consumer-visible):**
+- `Pass::add_mesh_to_shader(mesh, shader)` **removed**. The body was `shader.add_mesh(mesh)?` — a thin convenience that ignored `&self`. Callers use `shader.add_mesh(mesh)` directly. Deleted along with the per-platform wrappers (`add_mesh_to_shader_js/_mobile/_py`), the doc page (`docs/api/core/pass/add_mesh_to_shader.md`), and the four per-language example files.
+- `PassObject::set_color_target_id(id)` → `set_color_target(id)`; `set_depth_target_id(id)` → `set_depth_target(id)`. The arg name carries the type.
+- `App::on_event_kind(kind, f)` → `on_event(kind, f)`; `on_window_event_kind(id, kind, f)` → `on_window_event(id, kind, f)`; `on_device_event_kind(kind, f)` → `on_device_event(kind, f)`. The catch-all variants `on_event(f)` / `on_device_event(f)` (no `kind` arg) were removed entirely — kind-filtered registration is the only way; callers wanting every-event coverage register handlers per-kind. (The 1-arg / 2-arg overload via different names — `on_any_event` / `on_event` — was tried and rejected: "writing extra variants with `_any_` etc makes the file more confusing to read.")
+- `create_external_texture_from_native(_r, _ptr)` (free fn) + `create_external_texture(_r, _video)` (free fn) → `ExternalTextureHandle::from_native(renderer, ptr)` + `ExternalTextureHandle::from_video(renderer, video)` (associated functions on the type). The implementation is still a stub — the API moves to where it belongs.
+- `Target` trait gained `async fn get_image(&self) -> Vec<u8>` (was a sync method, then removed mid-refactor). Now async-only on the trait, mirroring `Texture::get_image()`. `TextureTarget::get_image_async` removed (the trait method covers it). `WindowTarget::get_image` is a stub returning `Vec::new()` for now — proper screen capture from a presentable surface needs `COPY_SRC` on the swapchain config, queued for v0.11.x; the API surface is uniform across every Target type today.
+
+**`TextureObject` constructor family folded 5 → 1.** The five `pub(crate) from_*` constructors (`from_file`, `from_bytes`, `from_raw_bytes`, `from_image`, `from_chain` — the latter two renamed from `from_loaded_image` and `from_prepared_chain`) collapsed into a single async dispatcher `TextureObject::from_input(context, input)` matching on the `TextureData` variant. URL parts pre-fetch on the calling thread; everything else dispatches to the background worker. `Renderer::create_texture` shrank from ~165 lines (8-arm match + duplicated registration) to ~22 lines (handle `CloneOf` / `Empty` at the boundary, then delegate). The remaining three unique upload paths (`from_raw_bytes`, `from_image`, `from_chain`) stay as private helpers inside the impl. `from_file` and `from_bytes` deleted as trivial adapters (their bodies — `image::open` / `image::load_from_memory` — are inlined in the dispatcher's match arms).
+
+**Sync/async pair unification (used the `blocking` submodule convention from `reqwest::blocking`).**
+- `shader/input.rs`: `resolve_async` → `resolve` (async, top-level); the previous sync `resolve` moved to `blocking::resolve` (matching `reqwest::blocking`). Same for `resolve_part` and `fetch_url` helpers.
+- `texture/read.rs`: `read_texture_object_async` → `read_pixels` (async). The previous sync `read_texture_object_sync` was the only consumer of the now-removed `Target::get_image` sync trait method; with `Target::get_image` now async, the sync read path is gone entirely. Internal `get_image_async` helper inside `texture/read.rs` lost its suffix to `get_image` (no companion to disambiguate).
+
+**Internal helpers (renderer + texture + mesh):**
+- `try_with_validation` → `validate` (renderer/mod.rs).
+- `configure_surface_with_context` → `configure_surface` (renderer/mod.rs).
+- `try_get_frame_with_retry` → `acquire_frame` (renderer/mod.rs).
+- `create_vertex_buffer_layouts` → `vertex_buffer_layouts` (renderer/mod.rs).
+- `create_bind_group_layouts` → `bind_group_layouts` (renderer/mod.rs).
+- `available_compression_features` (then briefly `available_texture_format_features`) → `format_features` (renderer/platform/all.rs).
+- `format_supports_cpu_mipmaps` → `supports_cpu_mipmaps` (texture/mod.rs).
+- `build_mip_chain_bytes` → `build_mip_chain` (texture/mod.rs).
+- `write_raw_bytes_levels` → `write_levels` (texture/mod.rs).
+- `wrap_raw_bytes_as_dynamic_image` → `bytes_as_image` (texture/mod.rs).
+- `infer_format_from_image` → `infer_format` (texture/mod.rs).
+- `validate_format_for_binding` → `check_format` (texture/mod.rs); paired `required_feature_for_binding` → `format_feature`.
+- `first_vertex_location_map` → `vertex_location_map` (mesh/mod.rs); `first_instance_location_map` → `instance_location_map`.
+- `create_gpu_vertex_buffers` → `upload_vertex_buffers` (mesh/mod.rs).
+- `Pass::from_shader_object` + `add_shader_object` (private internal duplicates of the public `Pass::from_shader` / `add_shader`) folded — the `PassObject` versions now take `Arc<ShaderObject>` directly and the public `Pass` wrappers do the `&Shader → Arc` extraction at the boundary.
+
 ### API thinning — single-method-per-operation across every binding, single transport across the API
 
 A multi-slice refactor that:

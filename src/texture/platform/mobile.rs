@@ -80,7 +80,7 @@ impl Texture {
     /// in the texture's native format. Uniffi exposes this as a Swift
     /// `suspend fun` / Kotlin `suspend fun` automatically. Foreign callers
     /// await this in a coroutine or `Task`; the underlying GPU readback is
-    /// driven by the async `read_texture_object_async` path.
+    /// driven by the async `texture::read::read_pixels` path.
     #[uniffi::method(name = "getImage")]
     #[lsp_doc("docs/api/core/texture/get_image.md")]
     pub async fn get_image_mobile(self: Arc<Self>) -> Result<Vec<u8>, FragmentColorError> {

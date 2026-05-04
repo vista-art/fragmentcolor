@@ -59,9 +59,14 @@ impl Target for TextureTarget {
         Ok(Box::new(TextureFrame { view, format }))
     }
 
+    /// Read back the offscreen texture contents as packed RGBA8 bytes
+    /// (row-major, top-left origin). Mirrors `Texture::get_image()` — both
+    /// are async-only so the readback path is identical on every backend
+    /// (browser `fetch`/`mapAsync`, native `device.poll(Wait)`, etc.).
     #[lsp_doc("docs/api/targets/target/get_image.md")]
-    fn get_image(&self) -> Vec<u8> {
-        let mut pixels = crate::texture::read_texture_object_sync(&self.context, &self.texture)
+    async fn get_image(&self) -> Vec<u8> {
+        let mut pixels = crate::texture::read_pixels(&self.context, &self.texture)
+            .await
             .unwrap_or_else(|e| {
                 log::error!("TextureTarget::get_image failed: {:?}", e);
                 Vec::new()
@@ -80,17 +85,6 @@ impl TextureTarget {
         let id = self.context.register_texture(self.texture.clone());
         *self.id.write() = Some(id);
         crate::texture::Texture::new(self.context.clone(), self.texture.clone(), id)
-    }
-
-    pub async fn get_image_async(&self) -> Vec<u8> {
-        let mut pixels = crate::texture::read_texture_object_async(&self.context, &self.texture)
-            .await
-            .unwrap_or_else(|e| {
-                log::error!("TextureTarget::get_image_async failed: {:?}", e);
-                Vec::new()
-            });
-        swap_bgra_to_rgba(&mut pixels, self.texture.format());
-        pixels
     }
 }
 

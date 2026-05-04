@@ -30,7 +30,7 @@ impl Pass {
     #[lsp_doc("docs/api/core/pass/from_shader.md")]
     pub fn from_shader_py(name: &str, shader: &Shader) -> Self {
         Self {
-            object: Arc::new(PassObject::from_shader_object(name, shader.object.clone())),
+            object: Arc::new(PassObject::from_shader(name, shader.object.clone())),
         }
     }
 
@@ -56,23 +56,13 @@ impl Pass {
     #[pyo3(name = "add_shader")]
     #[lsp_doc("docs/api/core/pass/add_shader.md")]
     pub fn add_shader_py(&self, shader: &Shader) {
-        self.object.add_shader(shader);
+        self.object.add_shader(shader.object.clone());
     }
 
     #[pyo3(name = "add_mesh")]
     #[lsp_doc("docs/api/core/pass/add_mesh.md")]
     pub fn add_mesh_py(&self, mesh: &crate::mesh::Mesh) -> Result<(), PyErr> {
         self.add_mesh(mesh).map_err(|e| e.into())
-    }
-
-    #[pyo3(name = "add_mesh_to_shader")]
-    #[lsp_doc("docs/api/core/pass/add_mesh_to_shader.md")]
-    pub fn add_mesh_to_shader_py(
-        &self,
-        mesh: &crate::mesh::Mesh,
-        shader: &crate::Shader,
-    ) -> Result<(), PyErr> {
-        self.add_mesh_to_shader(mesh, shader).map_err(|e| e.into())
     }
 
     #[pyo3(name = "set_clear_color")]

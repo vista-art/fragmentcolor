@@ -69,8 +69,8 @@ impl MobileWindowTarget {
     /// Use a [`MobileTextureTarget`] and call `get_image()` there instead.
     #[uniffi::method(name = "getImage")]
     #[lsp_doc("docs/api/targets/window_target/get_image.md")]
-    pub fn get_image_mobile(&self) -> Vec<u8> {
-        Target::get_image(&*self.inner.lock())
+    pub async fn get_image_mobile(&self) -> Vec<u8> {
+        Vec::new()
     }
 }
 
@@ -88,8 +88,8 @@ impl Target for MobileWindowTarget {
         self.inner.lock().get_current_frame()
     }
 
-    fn get_image(&self) -> Vec<u8> {
-        Target::get_image(&*self.inner.lock())
+    async fn get_image(&self) -> Vec<u8> {
+        Vec::new()
     }
 }
 
@@ -144,14 +144,15 @@ impl MobileTextureTarget {
     }
 
     /// Returns the current offscreen texture contents as a packed RGBA8
-    /// byte array (row-major, top-left origin).
-    ///
-    /// Blocks until the GPU readback is complete. On large textures this may
-    /// take several milliseconds — call from a background thread / coroutine.
+    /// byte array (row-major, top-left origin). Uniffi exposes this as a
+    /// Swift / Kotlin `suspend fun`; the underlying readback runs through
+    /// `TextureTarget::get_image` async.
     #[uniffi::method(name = "getImage")]
     #[lsp_doc("docs/api/targets/texture_target/get_image.md")]
-    pub fn get_image_mobile(&self) -> Vec<u8> {
-        Target::get_image(&*self.inner.read())
+    pub async fn get_image_mobile(&self) -> Vec<u8> {
+        // Inner is a TextureTarget; clone to release the read-lock before await.
+        let inner = self.inner.read().clone();
+        inner.get_image().await
     }
 }
 
@@ -169,7 +170,10 @@ impl Target for MobileTextureTarget {
         self.inner.read().get_current_frame()
     }
 
-    fn get_image(&self) -> Vec<u8> {
-        Target::get_image(&*self.inner.read())
+    async fn get_image(&self) -> Vec<u8> {
+        // Snapshot the inner TextureTarget so we can release the read-lock
+        // before awaiting the GPU readback.
+        let inner = self.inner.read().clone();
+        inner.get_image().await
     }
 }

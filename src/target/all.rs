@@ -48,10 +48,10 @@ impl Target for RenderTarget {
         }
     }
 
-    fn get_image(&self) -> Vec<u8> {
+    async fn get_image(&self) -> Vec<u8> {
         match self {
-            RenderTarget::Window(w) => w.get_image(),
-            RenderTarget::Texture(t) => t.get_image(),
+            RenderTarget::Window(w) => w.get_image().await,
+            RenderTarget::Texture(t) => t.get_image().await,
         }
     }
 }
@@ -63,33 +63,37 @@ mod tests {
     // Story: RenderTarget delegates to underlying texture target for size/resize/frame/image.
     #[test]
     fn delegates_for_texture_variant() {
-        let r = crate::Renderer::new();
-        let rt = pollster::block_on(r.create_texture_target([8, 6])).expect("tex");
-        let mut any = RenderTarget::from(rt);
+        pollster::block_on(async move {
+            let r = crate::Renderer::new();
+            let rt = r.create_texture_target([8, 6]).await.expect("tex");
+            let mut any = RenderTarget::from(rt);
 
-        let s = any.size();
-        assert_eq!([s.width, s.height], [8, 6]);
+            let s = any.size();
+            assert_eq!([s.width, s.height], [8, 6]);
 
-        any.resize([4, 4]);
-        let s2 = any.size();
-        assert_eq!([s2.width, s2.height], [4, 4]);
+            any.resize([4, 4]);
+            let s2 = any.size();
+            assert_eq!([s2.width, s2.height], [4, 4]);
 
-        let fr = any.get_current_frame().expect("frame");
-        let _fmt = fr.format();
-        let img = any.get_image();
-        assert_eq!(img.len() as u32, 4 * 4 * 4);
+            let fr = any.get_current_frame().expect("frame");
+            let _fmt = fr.format();
+            let img = any.get_image().await;
+            assert_eq!(img.len() as u32, 4 * 4 * 4);
+        });
     }
 
     // Story: RenderTarget created from headless window behaves like texture-backed variant.
     #[test]
     fn delegates_for_window_variant_headless_fallback() {
-        let r = crate::Renderer::new();
-        let headless = crate::headless_window([10, 12]);
-        let target = pollster::block_on(r.create_target(headless)).expect("target");
+        pollster::block_on(async move {
+            let r = crate::Renderer::new();
+            let headless = crate::headless_window([10, 12]);
+            let target = r.create_target(headless).await.expect("target");
 
-        let size = target.size();
-        assert_eq!([size.width, size.height], [10, 12]);
-        let image = target.get_image();
-        assert_eq!(image.len() as u32, 10 * 12 * 4);
+            let size = target.size();
+            assert_eq!([size.width, size.height], [10, 12]);
+            let image = target.get_image().await;
+            assert_eq!(image.len() as u32, 10 * 12 * 4);
+        });
     }
 }

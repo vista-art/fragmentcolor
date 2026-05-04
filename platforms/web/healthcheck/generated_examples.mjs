@@ -4,7 +4,6 @@ const EXAMPLES = [
   '../examples/core/pass/Pass.js',
   '../examples/core/pass/add_depth_target.js',
   '../examples/core/pass/add_mesh.js',
-  '../examples/core/pass/add_mesh_to_shader.js',
   '../examples/core/pass/add_shader.js',
   '../examples/core/pass/add_target.js',
   '../examples/core/pass/compute.js',

@@ -1,9 +1,9 @@
-import { Renderer } from "fragmentcolor";
+import { Renderer, SamplerOptions } from "fragmentcolor";
 const renderer = new Renderer();
 // 1x1 RGBA (white) raw pixel bytes
-const pixels = new Uint8Array([255,255,255,255]);
+const pixels = [255,255,255,255];
 
-const texture = await renderer.createTexture(pixels, { size: [1, 1] });
+const texture = await renderer.createTexture((pixels, [1, 1]));
 const opts = {repeat_x: true, repeat_y: true, smooth: true, compare: null};
 texture.setSamplerOptions(opts);
 
