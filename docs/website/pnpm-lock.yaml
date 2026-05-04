@@ -28,7 +28,7 @@ importers:
         specifier: '>=6.2.4 <7.0.0'
         version: 6.2.4
       '@codemirror/lang-markdown':
-        specifier: ^6.5.0
+        specifier: '>=6.5.0 <7.0.0'
         version: 6.5.0
       '@codemirror/language':
         specifier: 6.12.3
@@ -52,8 +52,8 @@ importers:
         specifier: '>=6.0.2 <7.0.0'
         version: 6.0.2
       fragmentcolor:
-        specifier: file:../../platforms/web/pkg
-        version: file:../../platforms/web/pkg
+        specifier: '>=0.10.11 <1.0.0'
+        version: 0.10.11
       sharp:
         specifier: '>=0.34.4 <1.0.0'
         version: 0.34.4
@@ -1262,8 +1262,8 @@ packages:
     resolution: {integrity: sha512-Wp1zXWPVUPBmfoa3Cqc9ctaKuzKAV6uLstRqlR56kSjplf5uAce+qeyYym7F+PHbGTk+tCEdkCW6RD7DX/gBZw==}
     engines: {node: '>=20'}
 
-  fragmentcolor@file:../../platforms/web/pkg:
-    resolution: {directory: ../../platforms/web/pkg, type: directory}
+  fragmentcolor@0.10.11:
+    resolution: {integrity: sha512-SKIomaVCRSlG6AlBdCxnZKxSHety8yAe+WdErePEHMNm1DAEqchZQhK07id/VMT0hnpxlE1Uu6kbdPf6LY0WrQ==}
 
   fsevents@2.3.3:
     resolution: {integrity: sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==}
@@ -3779,7 +3779,7 @@ snapshots:
     dependencies:
       tiny-inflate: 1.0.3
 
-  fragmentcolor@file:../../platforms/web/pkg: {}
+  fragmentcolor@0.10.11: {}
 
   fsevents@2.3.3:
     optional: true
