@@ -258,13 +258,13 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(0.,1.,0.,1.); }
 });
 
 // Signal success for Playwright harness if we reached this point
-// Push constants smoke: solid color via var<push_constant>
+// Push constants smoke: solid color via var<immediate>
 await withModule('platforms.web.healthcheck.push_constant.smoke', async () => {
     const renderer = new Renderer();
     const target = await renderer.createTextureTarget([8, 8]);
     const shader = new Shader(`
 struct PC { color: vec4<f32> };
-var<push_constant> pc: PC;
+var<immediate> pc: PC;
 @vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
   let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.));
   return vec4f(p[i], 0., 1.);

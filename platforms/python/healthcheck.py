@@ -161,10 +161,10 @@ fn main(v: VOut) -> @location(0) vec4<f32> {
     tex.set_sampler_options(
         {"repeat_x": True, "repeat_y": False, "smooth": True, "compare": None})
 
-    # Push constants smoke: solid color via var<push_constant>
+    # Push constants smoke: solid color via var<immediate>
     pc_shader = Shader("""
 struct PC { color: vec4<f32> };
-var<push_constant> pc: PC;
+var<immediate> pc: PC;
 @vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
   let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.));
   return vec4f(p[i], 0., 1.);
