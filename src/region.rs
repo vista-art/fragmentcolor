@@ -7,7 +7,7 @@ use wasm_bindgen::prelude::*;
 pub mod error;
 
 #[cfg_attr(wasm, wasm_bindgen)]
-#[cfg_attr(python, pyo3::pyclass)]
+#[cfg_attr(python, pyo3::pyclass(from_py_object))]
 #[cfg_attr(mobile, derive(uniffi::Record))]
 /// A 2D pixel-space rectangle used for viewports and scissor rects.
 /// For texture upload regions see `TextureRegion` in the texture module.

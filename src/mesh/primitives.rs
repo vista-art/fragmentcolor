@@ -10,7 +10,7 @@ use pyo3::prelude::*;
 use wasm_bindgen::prelude::*;
 
 #[derive(Clone, Debug)]
-#[cfg_attr(python, pyclass)]
+#[cfg_attr(python, pyclass(from_py_object))]
 #[cfg_attr(wasm, wasm_bindgen)]
 #[cfg_attr(mobile, derive(uniffi::Object))]
 #[lsp_doc("docs/api/geometry/quad/quad.md")]

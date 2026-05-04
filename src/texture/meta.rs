@@ -9,7 +9,7 @@
 use pyo3::prelude::*;
 
 /// Image-view dimension. Mirrors `naga::ImageDimension`.
-#[cfg_attr(python, pyclass)]
+#[cfg_attr(python, pyclass(from_py_object))]
 #[cfg_attr(mobile, derive(uniffi::Enum))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TextureDim {
@@ -44,7 +44,7 @@ impl From<TextureDim> for naga::ImageDimension {
 /// Texel scalar kind for sampled textures. Mirrors the relevant `naga::ScalarKind`
 /// variants. Naga's abstract numeric variants are folded into `Float` since they
 /// cannot reach the runtime backends.
-#[cfg_attr(python, pyclass)]
+#[cfg_attr(python, pyclass(from_py_object))]
 #[cfg_attr(mobile, derive(uniffi::Enum))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TextureScalarKind {
@@ -83,7 +83,7 @@ impl From<TextureScalarKind> for naga::ScalarKind {
 ///
 /// Variants outside of the set the renderer translates to `wgpu::TextureFormat`
 /// fall through to the renderer's `Rgba8Unorm` fallback.
-#[cfg_attr(python, pyclass)]
+#[cfg_attr(python, pyclass(from_py_object))]
 #[cfg_attr(mobile, derive(uniffi::Enum))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TextureStorageFormat {
@@ -235,7 +235,7 @@ impl From<TextureStorageFormat> for naga::StorageFormat {
 }
 
 /// Storage-texture access flags. Boolean mirror of the `naga::StorageAccess` bitflags.
-#[cfg_attr(python, pyclass)]
+#[cfg_attr(python, pyclass(from_py_object))]
 #[cfg_attr(mobile, derive(uniffi::Record))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TextureStorageAccess {
@@ -273,7 +273,7 @@ impl From<TextureStorageAccess> for naga::StorageAccess {
 }
 
 /// Image sub-class. Mirrors `naga::ImageClass`.
-#[cfg_attr(python, pyclass)]
+#[cfg_attr(python, pyclass(from_py_object))]
 #[cfg_attr(mobile, derive(uniffi::Enum))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TextureClass {

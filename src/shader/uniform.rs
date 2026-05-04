@@ -115,7 +115,7 @@ pub struct PushEntry {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-#[cfg_attr(python, pyclass)]
+#[cfg_attr(python, pyclass(from_py_object))]
 #[cfg_attr(mobile, derive(uniffi::Enum))]
 pub enum StorageAccess {
     Read,

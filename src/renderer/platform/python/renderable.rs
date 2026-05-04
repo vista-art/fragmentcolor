@@ -40,11 +40,11 @@ impl PyRenderable {
         {
             return match rtype.as_str() {
                 "Pass" => {
-                    let pass = obj.downcast::<Pass>()?;
+                    let pass = obj.cast::<Pass>()?;
                     Ok(PyRenderable::try_from(pass)?)
                 }
                 "Shader" => {
-                    let shader = obj.downcast::<Shader>()?;
+                    let shader = obj.cast::<Shader>()?;
                     Ok(PyRenderable::try_from(shader)?)
                 }
                 _ => Err(PyErr::new::<pyo3::exceptions::PyTypeError, _>(
@@ -54,7 +54,7 @@ impl PyRenderable {
         }
 
         // Try a Python sequence (list/tuple) of renderables
-        if let Ok(seq) = obj.downcast::<PySequence>() {
+        if let Ok(seq) = obj.cast::<PySequence>() {
             let len = seq.len()?;
             let mut all: Vec<Arc<PassObject>> = Vec::with_capacity(len);
             for i in 0..len {

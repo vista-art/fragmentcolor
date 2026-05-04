@@ -22,7 +22,7 @@ fn get_render_canvas_target(
 ) -> Result<Py<RenderCanvasTarget>, PyErr> {
     let bound = canvas.bind(py);
     if let Ok(existing) = bound.getattr("_fragmentcolor_target")
-        && let Ok(target) = existing.downcast::<RenderCanvasTarget>()
+        && let Ok(target) = existing.cast::<RenderCanvasTarget>()
     {
         return Ok(target.clone().unbind());
     }
@@ -43,7 +43,7 @@ fn get_screen_info<'py>(
         ));
     }
 
-    let dict = info.downcast_into::<PyDict>()?;
+    let dict = info.cast_into::<PyDict>()?;
     let method = dict
         .get_item("method")?
         .ok_or(crate::error::PyFragmentColorError::new_err(
@@ -167,10 +167,10 @@ impl Renderer {
             let r = crate::PyRenderable::from_any(renderable.bind(py))?;
 
             // Downcast target to supported targets
-            if let Ok(bound) = target.bind(py).downcast::<RenderCanvasTarget>() {
+            if let Ok(bound) = target.bind(py).cast::<RenderCanvasTarget>() {
                 self.render(&r, &*bound.borrow())?;
                 Ok(())
-            } else if let Ok(bound) = target.bind(py).downcast::<PyTextureTarget>() {
+            } else if let Ok(bound) = target.bind(py).cast::<PyTextureTarget>() {
                 self.render(&r, &*bound.borrow())?;
                 Ok(())
             } else {
@@ -306,7 +306,7 @@ fn py_to_texture_spec(
         });
     }
     // numpy ndarray → RGBA8 + auto-fill size if not explicitly provided.
-    if let Ok(any) = input.downcast::<numpy::PyArrayDyn<u8>>() {
+    if let Ok(any) = input.cast::<numpy::PyArrayDyn<u8>>() {
         use numpy::{PyArrayMethods, PyUntypedArrayMethods};
         let arr = any.readonly();
         let shape = arr.shape();
@@ -354,7 +354,7 @@ fn py_to_texture_spec(
         }
     }
     // TextureMipChain handle (built off-thread via TextureMipChain.prepare).
-    if let Ok(chain_ref) = input.downcast::<crate::texture::TextureMipChain>() {
+    if let Ok(chain_ref) = input.cast::<crate::texture::TextureMipChain>() {
         let chain = chain_ref.borrow().clone();
         return Ok(TextureInput {
             data: TextureData::Prepared(chain),

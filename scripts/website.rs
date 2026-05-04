@@ -1087,7 +1087,11 @@ mod website {
         }
     }
 
-    // Central helper to build Tabs for an example and persist JS/Py files
+    // Central helper to build Tabs for an example and persist JS/Py files.
+    // Nine args is more than clippy's default, but each one is load-bearing
+    // and the four `ex_*` sets carry distinct per-language state — folding
+    // them into a struct would just trade arg count for boilerplate.
+    #[allow(clippy::too_many_arguments)]
     fn build_tabs_for_example(
         items: &[(String, bool)],
         cat_rel: &str,

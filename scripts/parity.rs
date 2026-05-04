@@ -97,6 +97,23 @@ mod parity {
     /// in `#[lsp_doc(...)]` attributes verbatim.
     type DocPath = String;
 
+    /// Output of `classify_gaps`: three live-vs-baseline buckets per gap.
+    /// 0: acknowledged (subset of baseline), 1: regressed (with baseline
+    /// missing-set for the diff), 2: new (not in baseline).
+    type GapClassification<'a> = (
+        Vec<&'a Gap>,
+        Vec<(&'a Gap, BTreeSet<Platform>)>,
+        Vec<&'a Gap>,
+    );
+
+    /// Output of `classify_unresolved`: same partition shape as
+    /// `GapClassification`, keyed on the unresolved-binding tuple.
+    type UnresolvedClassification<'a> = (
+        Vec<&'a (String, BTreeSet<Platform>)>,
+        Vec<(&'a String, &'a BTreeSet<Platform>, BTreeSet<Platform>)>,
+        Vec<&'a (String, BTreeSet<Platform>)>,
+    );
+
     #[derive(Default, Debug)]
     struct Bindings {
         per_doc: BTreeMap<DocPath, BTreeSet<Platform>>,
@@ -172,10 +189,8 @@ mod parity {
     ///   - default                          → `Strict`. Phase 3 forcing function.
     ///   - `FC_PARITY_LENIENT=1`            → `Warn`. Local opt-out.
     ///   - `FC_PARITY_REWRITE_BASELINE=1`   → `RewriteBaseline`. Snapshot the
-    ///                                        current state into PARITY_BASELINE,
-    ///                                        then exit cleanly. Used after a
-    ///                                        Phase 3 batch closes gaps so the
-    ///                                        ratchet tightens.
+    ///     current state into PARITY_BASELINE, then exit cleanly. Used after
+    ///     a Phase 3 batch closes gaps so the ratchet tightens.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum Mode {
         Warn,
@@ -538,10 +553,7 @@ mod parity {
     ///   - acknowledged: live missing-set is a subset of baseline missing-set
     ///   - regressed:    live missing-set has at least one platform not in baseline
     ///   - new:          doc path is not in baseline at all
-    fn classify_gaps<'a>(
-        live: &'a [Gap],
-        baseline: &Baseline,
-    ) -> (Vec<&'a Gap>, Vec<(&'a Gap, BTreeSet<Platform>)>, Vec<&'a Gap>) {
+    fn classify_gaps<'a>(live: &'a [Gap], baseline: &Baseline) -> GapClassification<'a> {
         let mut acknowledged = Vec::new();
         let mut regressed = Vec::new();
         let mut new_gaps = Vec::new();
@@ -563,11 +575,7 @@ mod parity {
     fn classify_unresolved<'a>(
         live: &'a [(String, BTreeSet<Platform>)],
         baseline: &Baseline,
-    ) -> (
-        Vec<&'a (String, BTreeSet<Platform>)>,
-        Vec<(&'a String, &'a BTreeSet<Platform>, BTreeSet<Platform>)>,
-        Vec<&'a (String, BTreeSet<Platform>)>,
-    ) {
+    ) -> UnresolvedClassification<'a> {
         let mut acknowledged = Vec::new();
         let mut regressed = Vec::new();
         let mut new_unres = Vec::new();

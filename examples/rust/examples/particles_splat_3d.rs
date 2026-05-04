@@ -210,10 +210,10 @@ fn main() {
         .unwrap_or(4.0);
 
     // Shaders
-    let cs_update = Shader::new(&make_update_wgsl(n)).expect("update shader");
+    let cs_update = Shader::new(make_update_wgsl(n)).expect("update shader");
     let cs_clear = Shader::new(CLEAR_WGSL).expect("clear shader");
     let cs_splat =
-        Shader::new(&make_splat_wgsl(n, particle_size, min_size, max_size)).expect("splat shader");
+        Shader::new(make_splat_wgsl(n, particle_size, min_size, max_size)).expect("splat shader");
     let fs_present = Shader::new(FS_PRESENT_WGSL).expect("present shader");
 
     // Storage buffers: positions/velocities/colors (now 3D)
@@ -267,7 +267,7 @@ fn main() {
     let tex_size = [1024u32, 1024u32];
     let tex = pollster::block_on(async {
         app.renderer()
-            .create_storage_texture(tex_size, TextureFormat::Rgba8Unorm, None)
+            .create_storage_texture((tex_size, TextureFormat::Rgba8Unorm))
             .await
             .expect("create splat texture")
     });

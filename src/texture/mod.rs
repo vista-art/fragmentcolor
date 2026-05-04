@@ -9,7 +9,6 @@ use pyo3::prelude::*;
 #[cfg(wasm)]
 use wasm_bindgen::prelude::*;
 
-
 mod sampler;
 pub use sampler::*;
 
@@ -91,7 +90,7 @@ pub enum TextureData {
 /// Levels are tightly-packed bytes, level 0 first, with `bytes_per_pixel(format) *
 /// max(1, base_w >> level) * max(1, base_h >> level)` bytes per level.
 #[cfg_attr(wasm, wasm_bindgen)]
-#[cfg_attr(python, pyclass)]
+#[cfg_attr(python, pyclass(from_py_object))]
 #[cfg_attr(mobile, derive(uniffi::Object))]
 #[derive(Debug, Clone)]
 #[lsp_doc("docs/api/core/texture_mip_chain/texture_mip_chain.md")]
@@ -172,12 +171,7 @@ impl TextureMipChain {
                             bytes.len()
                         )));
                     }
-                    bytes_as_image(
-                        &bytes[..expected],
-                        extent.width,
-                        extent.height,
-                        wfmt,
-                    )?
+                    bytes_as_image(&bytes[..expected], extent.width, extent.height, wfmt)?
                 }
             },
             TextureData::DynamicImage(image) => image,
@@ -471,7 +465,7 @@ impl TryFrom<&wasm_bindgen::JsValue> for TextureData {
 }
 
 #[cfg_attr(wasm, wasm_bindgen)]
-#[cfg_attr(python, pyclass)]
+#[cfg_attr(python, pyclass(from_py_object))]
 #[cfg_attr(mobile, derive(uniffi::Record))]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct TextureId {
@@ -529,7 +523,7 @@ pub(crate) fn py_to_texture_id<'py>(
     if let Ok(number) = any.extract::<u64>() {
         return Ok(TextureId { id: number });
     }
-    if let Ok(bound) = any.downcast::<TextureId>() {
+    if let Ok(bound) = any.cast::<TextureId>() {
         return Ok(*bound.borrow());
     }
     Err(crate::error::PyFragmentColorError::new_err(
@@ -544,7 +538,7 @@ pub(crate) fn py_to_texture_bytes<'py>(
     if let Ok(bytes) = any.extract::<Vec<u8>>() {
         return Ok(bytes);
     }
-    if let Ok(array) = any.downcast::<numpy::PyArrayDyn<u8>>() {
+    if let Ok(array) = any.cast::<numpy::PyArrayDyn<u8>>() {
         use numpy::PyArrayMethods;
 
         let view = array.readonly();
@@ -565,7 +559,7 @@ impl std::fmt::Display for TextureId {
 }
 
 #[cfg_attr(wasm, wasm_bindgen)]
-#[cfg_attr(python, pyclass)]
+#[cfg_attr(python, pyclass(from_py_object))]
 #[cfg_attr(mobile, derive(uniffi::Object))]
 #[derive(Clone, Debug)]
 #[lsp_doc("docs/api/core/texture/texture.md")]
@@ -637,7 +631,7 @@ impl Texture {
 }
 
 // Metadata for textures parsed from shader source; users do not construct directly.
-#[cfg_attr(python, pyo3::pyclass)]
+#[cfg_attr(python, pyo3::pyclass(from_py_object))]
 #[cfg_attr(mobile, derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct TextureMeta {
@@ -896,10 +890,7 @@ impl TextureObject {
 
     /// Create a TextureObject from a pre-built CPU mip chain. Pure GPU writes —
     /// no decode, no resize. Used by the `TextureInput::Prepared` path.
-    fn from_chain(
-        context: &RenderContext,
-        chain: TextureMipChain,
-    ) -> Result<Self, TextureError> {
+    fn from_chain(context: &RenderContext, chain: TextureMipChain) -> Result<Self, TextureError> {
         let (w, h) = chain.base_size;
         if w == 0 || h == 0 {
             return Err(TextureError::CreateTextureError(

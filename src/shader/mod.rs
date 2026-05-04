@@ -39,7 +39,7 @@ use storage::*;
 pub type ShaderHash = [u8; 32];
 
 #[cfg_attr(wasm, wasm_bindgen)]
-#[cfg_attr(python, pyclass)]
+#[cfg_attr(python, pyclass(from_py_object))]
 #[cfg_attr(mobile, derive(uniffi::Object))]
 #[derive(Debug, Clone)]
 #[lsp_doc("docs/api/core/shader/shader.md")]

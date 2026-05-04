@@ -8,7 +8,7 @@ use pyo3::prelude::*;
 use wasm_bindgen::prelude::*;
 
 #[cfg_attr(wasm, wasm_bindgen)]
-#[cfg_attr(python, pyclass)]
+#[cfg_attr(python, pyclass(from_py_object))]
 #[cfg_attr(mobile, derive(uniffi::Object))]
 #[derive(Clone, Debug)]
 #[lsp_doc("docs/api/geometry/vertex/vertex.md")]
@@ -150,7 +150,7 @@ impl PartialEq for Vertex {
 impl Eq for Vertex {}
 
 #[cfg_attr(wasm, wasm_bindgen)]
-#[cfg_attr(python, pyclass)]
+#[cfg_attr(python, pyclass(from_py_object))]
 #[cfg_attr(mobile, derive(uniffi::Object))]
 #[derive(Clone, Debug, Default)]
 pub struct Instance {

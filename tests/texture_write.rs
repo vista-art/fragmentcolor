@@ -18,7 +18,7 @@ fn texture_write_full_ok() {
         let r = Renderer::new();
         let size = [2u32, 2u32];
         let tex = r
-            .create_storage_texture(size, TextureFormat::Rgba, None)
+            .create_storage_texture((size, TextureFormat::Rgba))
             .await
             .expect("create storage tex");
 
@@ -41,7 +41,7 @@ fn texture_write_invalid_bpr_alignment() {
     pollster::block_on(async move {
         let r = Renderer::new();
         let tex = r
-            .create_storage_texture([4u32, 1u32], TextureFormat::Rgba, None)
+            .create_storage_texture(([4u32, 1u32], TextureFormat::Rgba))
             .await
             .expect("create storage tex");
         let width = 4u32;
@@ -62,7 +62,7 @@ fn texture_write_bpr_smaller_than_stride() {
     pollster::block_on(async move {
         let r = Renderer::new();
         let tex = r
-            .create_storage_texture([128u32, 1u32], TextureFormat::Rgba, None)
+            .create_storage_texture(([128u32, 1u32], TextureFormat::Rgba))
             .await
             .expect("create storage tex");
         let width = 128u32;
@@ -84,7 +84,7 @@ fn texture_write_data_too_small() {
     pollster::block_on(async move {
         let r = Renderer::new();
         let tex = r
-            .create_storage_texture([8u32, 2u32], TextureFormat::Rgba, None)
+            .create_storage_texture(([8u32, 2u32], TextureFormat::Rgba))
             .await
             .expect("create storage tex");
         let width = 8u32;
