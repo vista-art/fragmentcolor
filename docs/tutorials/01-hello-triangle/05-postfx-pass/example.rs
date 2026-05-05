@@ -46,7 +46,9 @@ fn vs_main(
         cos(time * 0.9 + phase * 1.4) * 0.05,
     );
     let world = position.xy * scale + center + wobble;
-    let glow = 0.55 + 0.45 * sin(time * 2.0 + phase);
+    // Same easing-driven pulse as step 4.
+    let raw = 0.5 + 0.5 * sin(time * 2.0 + phase);
+    let glow = 0.4 + 0.6 * in_out_sine(raw);
 
     var out: VOut;
     out.pos = vec4<f32>(world, 0.0, 1.0);
@@ -85,10 +87,22 @@ fn vs_main(@builtin(vertex_index) i: u32) -> VOut {
 
 @fragment
 fn fs_main(in: VOut) -> @location(0) vec4<f32> {
-    let base   = textureSample(scene, samp, in.uv).rgb;
+    // Sample the same texture three times at slightly offset UVs — one
+    // sample per channel — for a subtle film-style chromatic split.
+    let off = chromatic_offsets(in.uv, 0.006);
+    let r = textureSample(scene, samp, off[0]).r;
+    let g = textureSample(scene, samp, off[1]).g;
+    let b = textureSample(scene, samp, off[2]).b;
+    var color = vec3<f32>(r, g, b);
+
+    // Hejl/Burgess-Dawson filmic curve to roll off highlights.
+    color = tonemap_filmic(color);
+
+    // Edge darkening + a touch of frame-correlated grain.
     let v_mask = vignette(in.uv, 0.55, 0.40);
-    let g      = film_grain(in.uv, time) * 0.06;
-    return vec4<f32>(base * v_mask + g, 1.0);
+    let grain  = film_grain(in.uv, time) * 0.05;
+
+    return vec4<f32>(color * v_mask + grain, 1.0);
 }
 "#;
 // #endregion: postfx-shader
