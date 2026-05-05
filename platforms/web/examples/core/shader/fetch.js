@@ -1,8 +1,8 @@
 
 import { Shader } from "fragmentcolor";
 
-// Single URL
+// Full registry URL.
 const shader = await Shader.fetch("https://fragmentcolor.org/shaders/sdf2d/circle.wgsl");
 
-// Registry slug
+// Equivalent shorthand using the registry slug.
 const shader2 = await Shader.fetch("sdf2d/circle");

@@ -252,6 +252,41 @@ Naming convention (post-rename): `TextureData` is the source enum (`Empty | Byte
   plus a free `set_shader_registry(base_url)` function. Extension shims provide a single
   overloaded `Shader(_:)`.
 
+## 0.11.1 Embedded shader registry by default, network behind a feature flag
+
+Patch release that unblocks the Linux PyPI publish path. v0.11.0 shipped to crates.io, npm, the Swift xcframework, and the Android AAR, but the PyPI wheels never landed. Reframes the underlying decision: a graphics library should not drag a TLS stack into every consumer's dep tree.
+
+### Defaults
+
+- **The whole public shader library (about 86 KB of WGSL across 233 files) is now embedded by default** on every native build. `Shader::new("sdf2d/circle")` resolves from the binary, no network needed. Slim down with `default-features = false` if size matters.
+- **Registry URLs short-circuit to the embedded library.** A URL of the form `<registry-base>/<category>/<name>.wgsl` (default base `https://fragmentcolor.org/shaders/`) is detected as a registry URL and resolved locally on native, no network round-trip. So `Shader::new("https://fragmentcolor.org/shaders/sdf2d/circle.wgsl")` and `Shader::new("sdf2d/circle")` produce the same result, and the verbose URL form keeps working in docs and quickstart examples on every platform.
+- **The web build (`build_web`) skips the embedded library** via `--no-default-features`. Slugs and registry URLs resolve over the browser's `fetch()` against the live registry instead, keeping the wasm bundle small.
+- **`network` is a new Cargo feature, off by default on every native target.** When on, `ureq` is compiled with `native-tls` so off-registry URLs (`https://example.com/foo.wgsl`, etc.) and arbitrary `Renderer::create_texture(url)` calls fetch over the platform's system TLS stack (OpenSSL on Linux, Schannel on Windows, Secure Transport on macOS). When off, those non-registry URL paths return a typed `NetworkError::feature_disabled()` with a clear "rebuild with `--features network`" message.
+- **No API drift.** `Shader::fetch` and `Renderer::create_texture` accept the same input shapes on every binding. Slugs, registry URLs, file paths, and raw source work everywhere; only off-registry URL fetches change behaviour based on how the binary was compiled.
+
+### Internal
+
+- New `crate::net::NetworkError` replaces direct `ureq::Error` references in `FragmentColorError::NetworkRequest`, `RendererError::NetworkRequestError`, and `ShaderError::RequestError`. `From<ureq::Error>` is provided when the feature is on so call sites keep using `?` unchanged.
+- `ureq` is now an optional dep gated on the `network` feature. Without the feature, `ring`, `rustls`, and `openssl-sys` are out of the default dep tree entirely; PyPI wheels build cleanly across every Linux arch.
+
+### CI
+
+- Regenerate `.github/workflows/publish_py.yml` with maturin 1.13.1. Picks up newer action versions (`actions/checkout@v6`, `setup-python@v6`, `upload-artifact@v6`, `download-artifact@v7`, `attest-build-provenance@v3`), drops the Node.js 20 deprecation warnings, switches to `uv publish`, builds wheels on every PR (so cross-compile breakage is caught before release), and adds a Windows ARM64 target.
+
+### Metadata
+
+- Bump PyPI development status from `2 - Pre-Alpha` to `3 - Alpha`. Five language bindings ship; the API is settling but pre-1.0 churn continues.
+
+### Migration
+
+Most call sites need no changes. Registry URLs (`https://fragmentcolor.org/shaders/<category>/<name>.wgsl`) now resolve from the embedded library on native, with no network needed and no code changes required.
+
+Off-registry URLs (anything that doesn't match `<registry-base>/<category>/<name>.wgsl`) on native:
+
+- **If you can use a registry slug or registry URL,** that's the easiest path. It works offline on every platform.
+- **If you need an arbitrary URL on native,** add `--features network` to your build (`cargo add fragmentcolor --features network`, or rebuild the Python wheel with `maturin build --features network`).
+- **The web binding is unchanged.** `Shader.fetch(url)` keeps working through `fetch()` in the browser for any URL.
+
 ## 0.11.0 Swift & Kotlin with Uniffi
 
 ### API renames + parity closures

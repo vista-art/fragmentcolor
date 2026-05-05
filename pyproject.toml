@@ -9,7 +9,7 @@ features = ["python", "pyo3/extension-module"]
 
 [project]
 name = "fragmentcolor"
-version = "0.11.0"
+version = "0.11.1"
 description = "Easy cross-platform GPU Rendering for Javascript, Python, Swift and Kotlin"
 readme = "README_PY.md"
 requires-python = ">=3.9"
@@ -18,7 +18,7 @@ keywords = ["graphics", "rendering", "wgpu", "cross-platform", "art"]
 authors = [{ name = "Rafael Beckel" }]
 maintainers = [{ name = "Rafael Beckel" }]
 classifiers = [
-    "Development Status :: 2 - Pre-Alpha",
+    "Development Status :: 3 - Alpha",
     "Programming Language :: Rust",
     "Environment :: GPU",
     "Intended Audience :: Developers",

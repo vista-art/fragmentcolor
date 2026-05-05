@@ -31,9 +31,10 @@ async function start() {
   const renderer = new Renderer();
   const target = await renderer.createTarget(canvas);
 
-  // You can pass the shader as a source string, file path, or URL:
-  const circle = new Shader("./path/to/circle.wgsl");
-  const triangle = new Shader("https://fragmentcolor.org/shaders/triangle.wgsl");
+  // You can pass the shader as a source string, a registry slug, or an
+  // https URL pointing at a .wgsl file.
+  const circle = await Shader.fetch("./path/to/circle.wgsl");
+  const triangle = await Shader.fetch("https://fragmentcolor.org/shaders/sdf2d/circle.wgsl");
   const shader = new Shader(`
     struct VertexOutput {
         @builtin(position) coords: vec4<f32>,
@@ -79,7 +80,7 @@ async function start() {
   rpass.addShader(shader);
   renderer.render(rpass, target);
 
-  // Finally, you can render an array of passes in order — no extra type needed.
+  // Finally, you can render an array of passes in order. No extra type needed.
   const passes = [rpass, new Pass("GUI pass")];
   renderer.render(passes, target);
 

@@ -24,7 +24,7 @@ pub enum ShaderError {
     GlslParseErrors(#[from] naga::front::glsl::ParseErrors),
     #[cfg(not(wasm))]
     #[error("URL Request Error: {0}")]
-    RequestError(#[from] ureq::Error),
+    RequestError(#[from] crate::net::NetworkError),
     #[error("File not found: {0}")]
     FileNotFound(#[from] std::io::Error),
     #[error("Index out of bounds for {key}: index {index} >= len {len}")]

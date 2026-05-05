@@ -12,8 +12,14 @@ fi
 # Portable way to get repo root (works on macOS and Linux)
 SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 
-# Build WASM package
-wasm-pack build --target web $WASM_PACK_CONFIGURATION --out-dir "$SOURCE_DIR/platforms/web/pkg"
+# Build WASM package.
+#
+# `--no-default-features` skips the `shaders-all` default — slugs resolve via
+# the live registry over the browser's `fetch` on web, so embedding the
+# whole library (~86 KB of WGSL) into the wasm bundle is wasted size.
+# Native Rust / Python / Swift / Kotlin builds keep the embedded library
+# (no network needed by default).
+wasm-pack build --target web $WASM_PACK_CONFIGURATION --out-dir "$SOURCE_DIR/platforms/web/pkg" -- --no-default-features
 
 # Post-bindgen: patch generated glue with live-memory fallback for Uint8Array constructor
 if command -v node >/dev/null 2>&1; then

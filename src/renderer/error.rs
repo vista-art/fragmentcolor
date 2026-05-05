@@ -28,7 +28,7 @@ pub enum RendererError {
     InitializationError(#[from] InitializationError),
     #[cfg(not(wasm))]
     #[error("Network request error: {0}")]
-    NetworkRequestError(#[from] ureq::Error),
+    NetworkRequestError(#[from] crate::net::NetworkError),
     #[error("Malformed input error: {0}")]
     IoError(#[from] std::io::Error),
     #[error("Renderer error: {0}")]
@@ -146,7 +146,7 @@ mod tests {
         // NetworkRequestError (non-WASM)
         #[cfg(not(wasm))]
         {
-            let net = ureq::get("http://127.0.0.1:1").call().unwrap_err();
+            let net = crate::net::NetworkError("connection refused".into());
             let e4: RendererError = net.into();
             assert!(matches!(e4, RendererError::NetworkRequestError(_)));
         }
