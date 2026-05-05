@@ -1,0 +1,162 @@
+---
+title: "Hash"
+description: A catalog of hash functions in the FragmentColor shader registry.
+---
+
+A **hash function** turns a small input — a coordinate, a cell index, a
+seed integer — into a deterministic pseudo-random output. In a shader,
+that lets you generate procedural noise, jitter, value tables, and
+per-cell variation without sampling a texture and without any global
+state. The same input always produces the same output, so the result is
+stable across frames and across GPUs.
+
+Every entry below is a single pure WGSL function in the registry. Pull
+one into a composition by slug, then call it from your fragment stage:
+
+```rust
+let main = r#"
+@fragment fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+    let h = hash12(in.uv * 128.0);
+    return vec4<f32>(h, h, h, 1.0);
+}
+"#;
+let shader = Shader::new(&["hash/hash12", main])?;
+```
+
+Each preview below renders the hash output as a noise field — grayscale
+for scalar-returning hashes, RGB for vector-returning hashes — sampled
+across the 256x256 viewport. Float-input hashes are sampled on the UV
+plane scaled up; integer-input hashes are sampled on a per-pixel grid
+key. Use these as building blocks for procedural patterns or tune the
+input scale to taste.
+
+## hash11
+
+1D to 1D float hash in `[0, 1)`. Good default for procedural noise seeds.
+
+```wgsl
+fn hash11(p: f32) -> f32
+```
+
+![hash/hash11 preview](/shaders/hash/hash11.png)
+
+## hash12
+
+2D to 1D float hash in `[0, 1)`.
+
+```wgsl
+fn hash12(p: vec2<f32>) -> f32
+```
+
+![hash/hash12 preview](/shaders/hash/hash12.png)
+
+## hash13
+
+3D to 1D float hash in `[0, 1)`.
+
+```wgsl
+fn hash13(p: vec3<f32>) -> f32
+```
+
+![hash/hash13 preview](/shaders/hash/hash13.png)
+
+## hash21
+
+1D to 2D float hash in `[0, 1)`. Useful when you need two correlated
+random values from a single seed.
+
+```wgsl
+fn hash21(p: f32) -> vec2<f32>
+```
+
+![hash/hash21 preview](/shaders/hash/hash21.png)
+
+## hash22
+
+2D to 2D float hash in `[0, 1)`. Useful for 2D procedural offsets, like
+jittering a grid or drawing per-cell vectors.
+
+```wgsl
+fn hash22(p: vec2<f32>) -> vec2<f32>
+```
+
+![hash/hash22 preview](/shaders/hash/hash22.png)
+
+## hash23
+
+2D to 3D float hash in `[0, 1)`. Three correlated random channels keyed
+by a 2D coordinate.
+
+```wgsl
+fn hash23(p: vec2<f32>) -> vec3<f32>
+```
+
+![hash/hash23 preview](/shaders/hash/hash23.png)
+
+## hash33
+
+3D to 3D float hash in `[0, 1)`. Drop-in random direction or color seed
+keyed by a 3D coordinate.
+
+```wgsl
+fn hash33(p: vec3<f32>) -> vec3<f32>
+```
+
+![hash/hash33 preview](/shaders/hash/hash33.png)
+
+## iqint1
+
+Inigo Quilez's simple integer hash, `u32` to `f32` in `[0, 1)`. Cheap and
+good enough for most pixel-grid hashing.
+
+```wgsl
+fn iqint1(n: u32) -> f32
+```
+
+![hash/iqint1 preview](/shaders/hash/iqint1.png)
+
+## pcg
+
+PCG random integer hash, 1D to 1D. Pass the output to successive calls
+to step an RNG, or just use it as a stateless hash. Returns a `u32` —
+divide by `4294967295.0` to get a float in `[0, 1]`.
+
+```wgsl
+fn pcg(n: u32) -> u32
+```
+
+![hash/pcg preview](/shaders/hash/pcg.png)
+
+## pcg2d
+
+Mark Jarzynski's 2D PCG hash, `vec2<u32>` to `vec2<u32>`. High quality,
+cheap, and the standard choice when you need two correlated random
+integers from a 2D key.
+
+```wgsl
+fn pcg2d(v: vec2<u32>) -> vec2<u32>
+```
+
+![hash/pcg2d preview](/shaders/hash/pcg2d.png)
+
+## pcg3d
+
+Mark Jarzynski's 3D PCG hash, `vec3<u32>` to `vec3<u32>`. Three
+high-quality correlated integers from a 3D key.
+
+```wgsl
+fn pcg3d(v: vec3<u32>) -> vec3<u32>
+```
+
+![hash/pcg3d preview](/shaders/hash/pcg3d.png)
+
+## wang
+
+Wang hash `u32` to `u32`. Old but sturdy; reasonable as a single-value
+integer hash.
+
+```wgsl
+fn wang(n: u32) -> u32
+```
+
+![hash/wang preview](/shaders/hash/wang.png)
