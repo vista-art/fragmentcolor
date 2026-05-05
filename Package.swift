@@ -21,7 +21,7 @@
 import PackageDescription
 
 let fragmentcolorVersion = "0.11.0"
-let fragmentcolorChecksum = "0000000000000000000000000000000000000000000000000000000000000000"
+let fragmentcolorChecksum = "3e0dad22006a38344c163792e3645b9bae99f9919a4ed9080b6c9e4151ea42ea"
 
 let package = Package(
     name: "FragmentColor",
