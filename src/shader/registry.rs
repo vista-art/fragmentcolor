@@ -167,10 +167,7 @@ mod tests {
     fn url_to_slug_rejects_non_registry_urls() {
         with_registry("https://fragmentcolor.org/shaders/", || {
             // Different host
-            assert_eq!(
-                url_to_slug("https://other.example.com/foo/bar.wgsl"),
-                None
-            );
+            assert_eq!(url_to_slug("https://other.example.com/foo/bar.wgsl"), None);
             // Missing .wgsl suffix
             assert_eq!(
                 url_to_slug("https://fragmentcolor.org/shaders/sdf2d/circle"),
