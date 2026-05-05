@@ -1,26 +1,17 @@
 # TextureMipChain::prepare
 
-Build a mip chain off the renderer thread, then hand it to `Renderer::create_texture` for a GPU-only upload. Pure CPU work — call from any worker / thread pool / async task / Web Worker.
+Build a mip chain off the renderer thread, then hand it to `Renderer::create_texture` for a GPU-only upload. The work is pure CPU; call it from any worker, thread pool, async task, or Web Worker.
 
-`prepare(input)` takes the same `TextureInput` transport as `Renderer::create_texture` and `Renderer::create_storage_texture` — one vocabulary across the API. The discriminator is whether `options.size` is set:
+`prepare(input)` accepts the same shapes as `Renderer::create_texture` and `Renderer::create_storage_texture`. Whether the bytes are decoded depends on `size`:
 
-- **Encoded path** — `size` absent. `data: Bytes` is decoded internally and the chain inherits the image's dimensions. Use when you have PNG / JPEG bytes from disk, network, or a worker decoder that emits encoded blobs.
-- **Raw path** — `size` present. `data: Bytes` is treated as already laid out for `format` at `size` — no decode. Use when your decoder already produced pixel-format-matching bytes (typical for tile-cache pipelines that fold mipmap generation into the same hop).
+- **Encoded:** `size` absent. The bytes are decoded as PNG / JPEG / etc. and the chain inherits the image's dimensions. Use this when you have an encoded blob from disk, the network, or a decoder that emits encoded data.
+- **Raw:** `size` present. The bytes are treated as already laid out for `format` at `size`. Use this when your decoder already produced pixel-format-matching bytes (typical for tile-cache pipelines that bake mipmap generation into the same step).
 
-`prepare` requires a sync-friendly `data` variant: `Bytes`, `DynamicImage`, or `Path` (file IO). `Url` (needs async fetch), `Ktx2*` (already pre-baked), `Prepared` (already a chain), `CloneOf` (existing texture), and `Empty` (no source) all return `TextureError::InvalidInput` with a clear message pointing at the right entry point.
+`prepare` runs synchronously and accepts only sync-friendly inputs: bytes, a `DynamicImage`, or a file path. URL inputs (which need async fetch), KTX2 inputs (already pre-baked), an existing chain, an existing texture, and empty inputs all return `TextureError::InvalidInput` with a message pointing at the right entry point.
 
-Supported formats for the mipmap chain: `Rgba8Unorm`, `Rgba8UnormSrgb`, `Bgra8Unorm`, `Bgra8UnormSrgb`, `R8Unorm`, `Rg8Unorm`, `R16Unorm`, `Rg16Unorm`, `Rgba16Unorm`. Other formats return `TextureError::UnsupportedMipmapFormat`. Decode failures surface as `MalformedImageError`; size / byte-count mismatches as `InvalidInput`.
+Supported formats: `Rgba8Unorm`, `Rgba8UnormSrgb`, `Bgra8Unorm`, `Bgra8UnormSrgb`, `R8Unorm`, `Rg8Unorm`, `R16Unorm`, `Rg16Unorm`, `Rgba16Unorm`. Other formats return `TextureError::UnsupportedMipmapFormat`. Decode failures surface as `MalformedImageError`; size and byte-count mismatches as `InvalidInput`.
 
-Rust callers use the `From<T>` impls — there's almost never a reason to construct `TextureInput` literally:
-
-| Form | Produces | Path |
-|------|----------|------|
-| `(bytes, format)` | `data: Bytes`, `options.format = format` | encoded |
-| `(bytes, format, [w, h])` | adds `options.size = Some([w, h])` | raw |
-| `(bytes, format, (w, h))` | same as above | raw |
-| `(bytes, format, Size::from(...))` | same as above | raw |
-
-Cross-language bindings expose `prepare(bytes, format, size?)` — `size` is optional / nullable. Swift / Kotlin extensions wrap the constructor so users call `TextureMipChain.prepare(bytes:format:)` (encoded) or `TextureMipChain.prepare(bytes:format:size:)` (raw) without seeing the underlying `TextureInput` plumbing.
+The cross-language bindings expose `prepare(bytes, format, size?)` with `size` optional. Swift and Kotlin add overloads so you call `TextureMipChain.prepare(bytes:format:)` for the encoded path and `TextureMipChain.prepare(bytes:format:size:)` for the raw path.
 
 ## Example
 
@@ -33,18 +24,18 @@ use fragmentcolor::{Renderer, TextureFormat, TextureMipChain};
 # let mut png_buf = Vec::new();
 # img.write_to(&mut std::io::Cursor::new(&mut png_buf), image::ImageFormat::Png)?;
 # let encoded_png_bytes = png_buf.as_slice();
-// Encoded path — single tuple, no extra method.
+// Encoded path: pass bytes plus the format you expect.
 let chain = TextureMipChain::prepare((encoded_png_bytes, TextureFormat::Rgba8UnormSrgb))?;
 
 # let raw_rgba = vec![200u8; 8 * 8 * 4];
-// Raw pixel path — same method, just include the size in the tuple.
+// Raw path: include the size so prepare skips decoding.
 let chain_raw = TextureMipChain::prepare((
     raw_rgba.as_slice(),
     TextureFormat::Rgba8UnormSrgb,
-    [8u32, 8u32],
+    [8, 8],
 ))?;
 
-// Hand the chain to the unified create_texture entry — same vocabulary.
+// Upload the chain through the regular create_texture entry point.
 let renderer = Renderer::new();
 let texture = renderer.create_texture(chain).await?;
 # _ = texture.size();

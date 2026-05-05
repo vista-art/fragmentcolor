@@ -235,10 +235,11 @@ private enum _GeneratedExamples {
     static func _example_core_renderer_create_storage_texture() async throws {
 
         let r = Renderer()
-        // Empty storage texture — same single create_storage_texture entry.
+
+        // Empty storage texture.
         let tex = try await r.createStorageTexture(([64, 64], TextureFormat.rgba))
 
-        // Pre-seeded with bytes — same method, three-tuple form.
+        // Pre-seeded with bytes.
         let pixels = Array(repeating: 0, count: 64 * 64 * 4)
         let tex2 = try await r.createStorageTexture(([64, 64], TextureFormat.rgba, pixels))
     }
@@ -256,7 +257,6 @@ private enum _GeneratedExamples {
 
     static func _example_core_renderer_create_texture() async throws {
         let renderer = Renderer()
-        // Encoded image bytes (PNG / JPEG / etc.) — single tuple, no extra method.
         let image = "/healthcheck/public/favicon.png"
         let tex = try await renderer.createTexture(image)
     }
@@ -614,13 +614,12 @@ private enum _GeneratedExamples {
 
         """)
 
-        // 1x1 RGBA (white) raw pixel bytes - single create_texture entry, tuple
-        // form (bytes, format, size) selects the raw-pixel path. Format is
-        // the placeholder Rgba (sRGB-aware) by default.
-        let pixels = [255,255,255,255]
+        // 1x1 white pixel. Passing a size tells create_texture to read the bytes
+        // as raw pixels; the default format is Rgba (sRGB-aware).
+        let pixels = [255, 255, 255, 255]
         let texture = try await renderer.createTexture((pixels, [1, 1]))
 
-        // insert  the texture in the shader matching the name in the shader
+        // Bind the texture to the uniform name declared in WGSL.
         try shader.set("my_texture", texture)
     }
 
@@ -761,7 +760,7 @@ private enum _GeneratedExamples {
 
     static func _example_core_texture_mip_chain_prepare() async throws {
 
-        // Raw RGBA path — same method as encoded, just include the size.
+        // Raw RGBA path: include the size so prepare skips decoding.
         let rawRgba = Data(repeating: 200, count: 8 * 8 * 4)
         let chainRaw = try TextureMipChain.prepare(
             bytes: rawRgba,
@@ -769,7 +768,7 @@ private enum _GeneratedExamples {
             size: Size(width: 8, height: 8, depth: nil)
         )
 
-        // Hand the chain to the unified create_texture entry — same vocabulary.
+        // Upload the chain through the regular createTexture entry point.
         let renderer = Renderer()
         let texture = try await renderer.createTexture(input: .prepared(chainRaw))
         let _ = chainRaw.levelCount()

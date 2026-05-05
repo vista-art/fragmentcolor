@@ -12,7 +12,7 @@ If validation fails, the error message indicates the location of the error. If v
 
 GLSL is supported only as a single part (`.vert` / `.frag` / `.glsl` path). Mixing GLSL with other parts is rejected.
 
-## Example — single source
+## Example - Single Shader Source
 
 ```rust
 # fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -44,7 +44,7 @@ let shader = Shader::new(r#"
 # }
 ```
 
-## Example — composition with registry slugs
+## Example - Shader Composition
 
 The public registry at `https://fragmentcolor.org/shaders/` exposes pure helper
 functions you can pull into your own shader. Pass them alongside your main

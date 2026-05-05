@@ -11,7 +11,7 @@ let pixels: Vec<u8> = vec![200; 4 * 4 * 4];
 let chain = TextureMipChain::prepare((
     pixels.as_slice(),
     TextureFormat::Rgba8UnormSrgb,
-    [4u32, 4u32],
+    [4, 4],
 ))?;
 let _ = chain.format();
 # Ok::<(), Box<dyn std::error::Error>>(())

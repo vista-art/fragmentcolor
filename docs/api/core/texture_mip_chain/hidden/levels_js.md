@@ -1,8 +1,8 @@
 # TextureMipChain::levels (JavaScript)
 
 JavaScript override for `TextureMipChain::levels`. The JS binding
-exposes a single `level(index)` accessor returning a `Uint8Array`, rather
-than a `levels()` collection — same data, just one level at a time.
+exposes a `level(index)` accessor returning a `Uint8Array`, rather than
+a `levels()` collection.
 
 ## Example
 

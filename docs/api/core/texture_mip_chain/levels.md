@@ -13,7 +13,7 @@ let pixels: Vec<u8> = vec![0; 8 * 8 * 4];
 let chain = TextureMipChain::prepare((
     pixels.as_slice(),
     TextureFormat::Rgba8UnormSrgb,
-    [8u32, 8u32],
+    [8, 8],
 ))?;
 let level_zero_bytes = &chain.levels()[0];
 # assert_eq!(level_zero_bytes.len(), 8 * 8 * 4);

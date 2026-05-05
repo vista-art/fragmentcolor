@@ -245,10 +245,11 @@ class GeneratedExamples {
     @Suppress("unused") private suspend fun _example_core_renderer_create_storage_texture() {
 
         val r = Renderer()
-        // Empty storage texture — same single create_storage_texture entry.
+
+        // Empty storage texture.
         val tex = r.createStorageTexture(Size(width=64u, height=64u, depth=null), TextureFormat.RGBA, null, null)
 
-        // Pre-seeded with bytes — same method, three-tuple form.
+        // Pre-seeded with bytes.
         val pixels = ByteArray(64 * 64 * 4)
         val tex2 = r.createStorageTexture(Size(width=64u, height=64u, depth=null), TextureFormat.RGBA, pixels, null)
     }
@@ -266,7 +267,6 @@ class GeneratedExamples {
 
     @Suppress("unused") private suspend fun _example_core_renderer_create_texture() {
         val renderer = Renderer()
-        // Encoded image bytes (PNG / JPEG / etc.) — single tuple, no extra method.
         val image = "/healthcheck/public/favicon.png"
         val tex = renderer.createTexture(TextureInputMobile.Path(image), null)
     }
@@ -616,13 +616,12 @@ class GeneratedExamples {
 
         """)
 
-        // 1x1 RGBA (white) raw pixel bytes - single create_texture entry, tuple
-        // form (bytes, format, size) selects the raw-pixel path. Format is
-        // the placeholder Rgba (sRGB-aware) by default.
+        // 1x1 white pixel. Passing a size tells create_texture to read the bytes
+        // as raw pixels; the default format is Rgba (sRGB-aware).
         val pixels = listOf(255.0f, 255.0f, 255.0f, 255.0f)
         val texture = renderer.createTexture(TextureInputMobile.Bytes(pixels.let { ba -> ByteArray(ba.size) { i -> ba[i].toInt().and(0xFF).toByte() } }), null)
 
-        // insert  the texture in the shader matching the name in the shader
+        // Bind the texture to the uniform name declared in WGSL.
         shader.set("my_texture", texture)
     }
 
@@ -702,9 +701,7 @@ class GeneratedExamples {
         val png = byteArrayOf(0x89.toByte(), 0x50.toByte(), 0x4E.toByte(), 0x47.toByte(), 0x0D.toByte(), 0x0A.toByte(), 0x1A.toByte(), 0x0A.toByte())
         val chain = TextureMipChain.prepare(png, TextureFormat.RGBA8_UNORM_SRGB, null)
 
-        // Hand the chain to the unified create_texture entry - same vocabulary as
-        // every other texture path; From<TextureMipChain> selects the GPU-only
-        // upload internally.
+        // Upload the chain through the regular create_texture entry point.
         val texture = renderer.createTexture(TextureInputMobile.Prepared(chain), null)
     }
 
@@ -739,15 +736,15 @@ class GeneratedExamples {
 
     @Suppress("unused") private suspend fun _example_core_texture_mip_chain_prepare() {
 
-        // Encoded path — single tuple, no extra method.
+        // Encoded path: pass bytes plus the format you expect.
         val encoded_png_bytes: ByteArray = byteArrayOf()
         val chain = TextureMipChain.prepare(encoded_png_bytes, TextureFormat.RGBA8_UNORM_SRGB, null)
 
-        // Raw pixel path — same method, just include the size in the tuple.
+        // Raw path: include the size so prepare skips decoding.
         val raw_rgba: ByteArray = ByteArray(8 * 8 * 4)
         val chain_raw = TextureMipChain.prepare(raw_rgba, TextureFormat.RGBA8_UNORM_SRGB, Size(width=8u, height=8u, depth=null))
 
-        // Hand the chain to the unified create_texture entry — same vocabulary.
+        // Upload the chain through the regular create_texture entry point.
         val renderer = Renderer()
         val texture = renderer.createTexture(TextureInputMobile.Prepared(chain), null)
     }

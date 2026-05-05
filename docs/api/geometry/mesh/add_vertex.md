@@ -1,6 +1,9 @@
 # Mesh::add_vertex
 
-Add a single vertex to the mesh.
+Append a single vertex to the mesh. Pass an array literal for the
+position (`[x, y]` or `[x, y, z]`); for vertices that carry `uv`, `color`,
+or other per-vertex attributes, build a [Vertex](https://fragmentcolor.org/api/geometry/vertex)
+first and pass it in.
 
 ## Example
 

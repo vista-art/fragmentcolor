@@ -642,7 +642,10 @@ lang="kotlin"
 
 ### Pass::add_shader(shader: Shader)
 
-Adds a [Shader](/api/core/shader) object to the [Pass](/api/core/pass).
+Add a [Shader](/api/core/shader) to the
+[Pass](/api/core/pass). Shaders run in the order
+they were added, sharing the pass's targets, viewport, clear color, and
+load policy.
 
 #### Example
 
@@ -1166,7 +1169,11 @@ lang="kotlin"
 
 ### Pass::set_compute_dispatch
 
-Set the compute dispatch size for a compute pass.
+Set the workgroup-grid size for a compute pass. The three numbers are the
+number of workgroups to dispatch in each dimension; total invocations are
+`x * y * z * workgroup_size_x * workgroup_size_y * workgroup_size_z`,
+where the per-workgroup size comes from the WGSL `@workgroup_size`
+attribute. Has no effect on render passes.
 
 #### Example
 

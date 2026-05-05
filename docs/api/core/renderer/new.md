@@ -1,20 +1,16 @@
 # Renderer::new()
 
-## Creates a new Renderer
+Create a new [Renderer](https://fragmentcolor.org/api/core/renderer).
 
-At the point of creation, we don't know the [Renderer](https://fragmentcolor.org/api/core/renderer) will be used offscreen or attached to a Window.
+The renderer's GPU adapter and device are initialized lazily on the first
+target you create, so the same `Renderer` works whether you end up
+rendering offscreen or attaching it to a window. By the time `render()`
+is called the GPU resources are already in place — `render` requires a
+[Target](https://fragmentcolor.org/api/core/target), and the only way to
+build one is through this renderer:
 
-So, the rendering internals are lazily initialized
-when the user creates a [Target](https://fragmentcolor.org/api/core/target).
-This ensures the adapter and device are compatible with the environment.
-
-The API ensures the [Renderer](https://fragmentcolor.org/api/core/renderer) is usable when `render()` is called,
-because the `render()` method expects a [Target](https://fragmentcolor.org/api/core/target) as input, and
-the only way to create a [Target](https://fragmentcolor.org/api/core/target)
-is by first calling:
-
-- `renderer.create_target(Window)` to create a window adapter, or
-- `renderer.create_texture_target()` to create a target texture
+- `renderer.create_target(Window)` for an on-screen target, or
+- `renderer.create_texture_target([w, h])` for offscreen rendering.
 
 ## Example
 

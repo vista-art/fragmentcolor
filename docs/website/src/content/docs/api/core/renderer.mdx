@@ -178,21 +178,17 @@ lang="kotlin"
 
 ### Renderer::new()
 
-#### Creates a new Renderer
+Create a new [Renderer](/api/core/renderer).
 
-At the point of creation, we don't know the [Renderer](/api/core/renderer) will be used offscreen or attached to a Window.
+The renderer's GPU adapter and device are initialized lazily on the first
+target you create, so the same `Renderer` works whether you end up
+rendering offscreen or attaching it to a window. By the time `render()`
+is called the GPU resources are already in place â `render` requires a
+[Target](/api/core/target), and the only way to
+build one is through this renderer:
 
-So, the rendering internals are lazily initialized
-when the user creates a [Target](/api/core/target).
-This ensures the adapter and device are compatible with the environment.
-
-The API ensures the [Renderer](/api/core/renderer) is usable when `render()` is called,
-because the `render()` method expects a [Target](/api/core/target) as input, and
-the only way to create a [Target](/api/core/target)
-is by first calling:
-
-- `renderer.create_target(Window)` to create a window adapter, or
-- `renderer.create_texture_target()` to create a target texture
+- `renderer.create_target(Window)` for an on-screen target, or
+- `renderer.create_texture_target([w, h])` for offscreen rendering.
 
 #### Example
 
@@ -523,28 +519,28 @@ lang="kotlin"
 
 ### Renderer::create_texture
 
-Create a [Texture](/api/core/texture) from any input shape â there is exactly one method.
+Create a [Texture](/api/core/texture) from bytes, a file path, a URL, a KTX2 container, or a pre-built [TextureMipChain](/api/core/texture-mip-chain).
 
-The single `create_texture(spec)` entry point covers every input shape. The spec's discriminator: the presence of `size` selects raw-pixel-bytes interpretation; otherwise the input is treated as encoded image data (PNG / JPEG / etc.), a file path, a URL, a KTX2 container, or a pre-built [TextureMipChain](/api/core/texture-mip-chain).
+When you pass a `size`, the bytes are treated as raw pixels in the chosen format. Without a size, the bytes (or the file/URL contents) are decoded as PNG, JPEG, BMP, HDR, etc.
 
-The CPU work (decode, mipmap chain, raw-byte wrap, KTX2 parse) runs on a background worker on every native target â the calling thread is never pinned on `queue.write_texture`. On the web, prep runs inline (wgpu types are `!Send` on `wasm32`); move heavier work into a Web Worker yourself if you need real parallelism.
+Decode and mipmap generation run on a background worker on native platforms. On the web they run inline on the caller's thread; move heavy decode into a Web Worker if you need parallelism.
 
 #### Per-language shapes
 
-- **Rust:** `create_texture(impl Into<TextureInput>)`. The `From<T>` impls give you `(bytes)`, `(bytes, [w, h])`, `(bytes, format)`, `(bytes, options)`, plus paths, URLs, `TextureMipChain`, KTX2 inputs, and explicit `TextureInput { input, options }` literals.
-- **JS:** `await renderer.createTexture(input, options?)`. `input` is `Uint8Array` / `ArrayBuffer` / URL string / CSS selector / `HTMLImageElement` / `HTMLCanvasElement` / `OffscreenCanvas` / `ImageData` / a `TextureMipChain` handle. `options` is an object `{ size?, format?, mipmaps? }`. When `size` is set, `input` is treated as raw pixel bytes.
-- **Python:** `renderer.create_texture(input, size=None, format=None, mipmaps=None)`. `input` is `bytes` / `list[int]` / `str` (path) / numpy `ndarray[H, W, C]` / `TextureMipChain`. Numpy arrays auto-fill `size` if you don't pass it.
-- **Swift / Kotlin (uniffi):** `try await renderer.createTexture(input:options:)` where `input` is `TextureInputMobile` (an enum mirroring `TextureInput` minus the Rust-only `DynamicImage` variant). Swift/Kotlin extension files supply natural overloads (`renderer.createTexture(bytes)`, `renderer.createTexture(chain)`) so callers never see the enum directly.
+- **Rust:** `create_texture(input)`. `input` accepts bare bytes, `(bytes, [w, h])`, `(bytes, format)`, `(bytes, options)`, a path, a URL, a `TextureMipChain`, or a KTX2 input.
+- **JS:** `await renderer.createTexture(input, options?)`. `input` is `Uint8Array` / `ArrayBuffer` / URL string / CSS selector / `HTMLImageElement` / `HTMLCanvasElement` / `OffscreenCanvas` / `ImageData` / a `TextureMipChain` handle. `options` is `{ size?, format?, mipmaps? }`; when `size` is set, `input` is read as raw pixel bytes.
+- **Python:** `renderer.create_texture(input, size=None, format=None, mipmaps=None)`. `input` is `bytes` / `list[int]` / `str` (path) / numpy `ndarray[H, W, C]` / `TextureMipChain`. Numpy arrays fill in `size` for you.
+- **Swift / Kotlin:** `try await renderer.createTexture(bytes)` or `renderer.createTexture(chain)`. Overloads in the binding wrap the underlying enum, so you write the natural call.
 
 #### How the discriminator works
 
 | Form | Treatment |
 |------|-----------|
-| `bytes` (no size) | Encoded image â decoded internally (PNG, JPEG, BMP, HDR, etc.). |
-| `(bytes, size)` / options with `size` set | Raw pixel bytes â `bpp(format) * width * height` long, no decode. |
-| `(bytes, format)` / options with `format` set | Encoded image, but interpret as `format` (e.g. `Rgba8Unorm` for normal-map data, `R16Unorm` for 16-bit grayscale). |
+| `bytes` (no size) | Encoded image; decoded internally (PNG, JPEG, BMP, HDR, etc.). |
+| `(bytes, size)` / options with `size` set | Raw pixel bytes; `bpp(format) * width * height` long, no decode. |
+| `(bytes, format)` / options with `format` set | Encoded image reinterpreted as `format` (e.g. `Rgba8Unorm` for normal-map data, `R16Unorm` for 16-bit grayscale). |
 | `path` / `URL` | File or HTTP fetch, then decoded. |
-| `TextureMipChain` | Pre-built CPU mip chain â GPU-only upload. Build via [TextureMipChain::prepare](/api/core/texture-mip-chain/prepare) on a worker thread. |
+| `TextureMipChain` | Pre-built CPU mip chain; GPU-only upload. Build via [TextureMipChain::prepare](/api/core/texture-mip-chain/prepare) on a worker thread. |
 | `Ktx2Bytes` / `Ktx2Path` / `Ktx2Url` | KTX2 container (BC / ETC2 / ASTC / uncompressed); the file's declared format and pre-baked mip chain win. |
 
 A full mipmap chain is generated for source images by default (`options.mipmaps = true`). Set to `false` to skip the CPU work for textures that won't be sampled at distance.
@@ -559,7 +555,6 @@ code={`
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Renderer;
 let renderer = Renderer::new();
-// Encoded image bytes (PNG / JPEG / etc.) â single tuple, no extra method.
 let image = std::fs::read("logo.png")?;
 let tex = renderer.create_texture(&image[..]).await?;
 _ = tex.size();
@@ -567,7 +562,7 @@ Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 7-10}"
+lang="rust" meta="collapse={1-1, 6-9}"
 />
 
 </TabItem>
@@ -604,7 +599,6 @@ lang="python"
 code={`
 import FragmentColor
 let renderer = Renderer()
-// Encoded image bytes (PNG / JPEG / etc.) â single tuple, no extra method.
 let image = "/healthcheck/public/favicon.png"
 let tex = try await renderer.createTexture(image)
 `}
@@ -618,7 +612,6 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 val renderer = Renderer()
-// Encoded image bytes (PNG / JPEG / etc.) â single tuple, no extra method.
 val image = "/healthcheck/public/favicon.png"
 val tex = renderer.createTexture(TextureInputMobile.Path(image), null)
 `}
@@ -634,17 +627,17 @@ lang="kotlin"
 
 ### Renderer::create_storage_texture
 
-Create a storage-class texture (for compute shaders, image store/load, or as a render target). Same `TextureInput` transport as `Renderer::create_texture` and `TextureMipChain::prepare` â one vocabulary across the API.
+Create a storage-class texture for compute shaders, image store/load, or as a render target. The input shapes mirror `Renderer::create_texture` and `TextureMipChain::prepare`.
 
-The `From<T>` impls cover the common shapes:
+Common forms:
 
-- `(size, format)` â empty storage texture, no initial data.
-- `(size, format, bytes)` â storage texture pre-seeded with `bytes`.
-- Explicit `TextureInput { data, options }` literal â full control (set `options.usage` for non-default usage flags via `TextureOptions::with_usage(...)`).
+- `(size, format)` â empty storage texture, no initial data.
+- `(size, format, bytes)` â storage texture pre-seeded with `bytes`.
+- A full `TextureInput { data, options }` literal â pass `options.usage` (via `TextureOptions::with_usage(...)`) for non-default usage flags.
 
-`options.size` is **required** for this entry â there's no source to infer dimensions from. Returns `TextureError::InvalidInput` when missing.
+`size` is required; storage textures have no source to infer dimensions from. Missing it returns `TextureError::InvalidInput`.
 
-`options.usage` overrides the default `STORAGE | TEXTURE | COPY_SRC | COPY_DST` mask; `None` keeps the default. Cross-language bindings expose this as the underlying `u32` bit mask so it crosses every FFI cleanly.
+`options.usage` overrides the default mask of `STORAGE | TEXTURE | COPY_SRC | COPY_DST`. The bindings expose it as a `u32` bitmask, so the same flag values work in every language.
 
 #### Example
 
@@ -657,21 +650,22 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Renderer, TextureFormat};
 
 let r = Renderer::new();
-// Empty storage texture â same single create_storage_texture entry.
-let tex = r.create_storage_texture(([64u32, 64u32], TextureFormat::Rgba)).await?;
+
+// Empty storage texture.
+let tex = r.create_storage_texture(([64, 64], TextureFormat::Rgba)).await?;
 _ = tex;
 
-// Pre-seeded with bytes â same method, three-tuple form.
+// Pre-seeded with bytes.
 let pixels = vec![0u8; 64 * 64 * 4];
 let tex2 = r
-    .create_storage_texture(([64u32, 64u32], TextureFormat::Rgba, pixels))
+    .create_storage_texture(([64, 64], TextureFormat::Rgba, pixels))
     .await?;
 _ = tex2;
 Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 7-7, 14-17}"
+lang="rust" meta="collapse={1-1, 8-8, 15-18}"
 />
 
 </TabItem>
@@ -682,10 +676,11 @@ code={`
 import { Renderer, TextureFormat } from "fragmentcolor";
 
 const r = new Renderer();
-// Empty storage texture â same single create_storage_texture entry.
+
+// Empty storage texture.
 const tex = await r.createStorageTexture([64, 64], TextureFormat.Rgba);
 
-// Pre-seeded with bytes â same method, three-tuple form.
+// Pre-seeded with bytes.
 const pixels = Array(64 * 64 * 4).fill(0);
 const tex2 = await r.createStorageTexture([64, 64], TextureFormat.Rgba, pixels);
 `}
@@ -718,10 +713,11 @@ code={`
 import FragmentColor
 
 let r = Renderer()
-// Empty storage texture â same single create_storage_texture entry.
+
+// Empty storage texture.
 let tex = try await r.createStorageTexture(([64, 64], TextureFormat.rgba))
 
-// Pre-seeded with bytes â same method, three-tuple form.
+// Pre-seeded with bytes.
 let pixels = Array(repeating: 0, count: 64 * 64 * 4)
 let tex2 = try await r.createStorageTexture(([64, 64], TextureFormat.rgba, pixels))
 `}
@@ -736,10 +732,11 @@ code={`
 import org.fragmentcolor.*
 
 val r = Renderer()
-// Empty storage texture â same single create_storage_texture entry.
+
+// Empty storage texture.
 val tex = r.createStorageTexture(Size(width=64u, height=64u, depth=null), TextureFormat.RGBA, null, null)
 
-// Pre-seeded with bytes â same method, three-tuple form.
+// Pre-seeded with bytes.
 val pixels = ByteArray(64 * 64 * 4)
 val tex2 = r.createStorageTexture(Size(width=64u, height=64u, depth=null), TextureFormat.RGBA, pixels, null)
 `}
@@ -851,7 +848,7 @@ code={`
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Renderer, TextureFormat};
 let renderer = Renderer::new();
-let texture = renderer.create_storage_texture(([16u32, 16u32], TextureFormat::Rgba)).await?;
+let texture = renderer.create_storage_texture(([16, 16], TextureFormat::Rgba)).await?;
 let id = *texture.id();
 
 renderer.unregister_texture(id)?;
@@ -933,12 +930,12 @@ lang="kotlin"
 
 ### Renderer::wait()
 
-Block the current thread until every submission queued on this renderer's device has finished executing.
+Block the calling thread until every submission queued on this renderer's device has finished executing.
 
-Use this as an explicit synchronization point between `render()` bursts and readbacks â for example before `Renderer::read_texture`, `Texture::get_image`, or `TextureTarget::get_image` â when you need deterministic ordering rather than the "submission order" the driver normally guarantees.
+Call `wait` between `render()` bursts and a readback â `Renderer::read_texture`, `Texture::get_image`, or `TextureTarget::get_image` â when you need deterministic ordering. Without it you get the driver's normal submission ordering, which is usually fine but doesn't guarantee a render is complete when the readback begins.
 
-- Native only (on WASM it is a no-op â the browser drives readiness via its own mapping lifecycle).
-- Returns after the device reports idle or a 5-second timeout.
+- Native only. On the web this is a no-op; the browser drives readiness through its own mapping lifecycle.
+- Returns when the device reports idle, or after a 5-second timeout.
 
 #### Example
 
@@ -1048,9 +1045,9 @@ lang="kotlin"
 
 Read back the mip-0 contents of a registered texture as tightly-packed bytes in the texture's native format.
 
-- Works on both native and WASM by awaiting the GPU readback buffer mapping via an async oneshot channel.
-- Equivalent to calling [`Texture::get_image`] on the handle â useful when you only kept the `TextureId` around.
-- The texture must have `COPY_SRC` usage; creation helpers like `create_storage_texture` enable it by default.
+- Works on native and on the web; the call awaits the GPU readback mapping.
+- Equivalent to calling [`Texture::get_image`] on the texture handle. Use this entry point when you only kept the `TextureId` around.
+- The texture must have `COPY_SRC` usage. Creation helpers like `create_storage_texture` enable it by default.
 
 #### Example
 
@@ -1062,7 +1059,7 @@ code={`
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Renderer, TextureFormat};
 let renderer = Renderer::new();
-let texture = renderer.create_storage_texture(([64u32, 64u32], TextureFormat::Rgba)).await?;
+let texture = renderer.create_storage_texture(([64, 64], TextureFormat::Rgba)).await?;
 texture.write(&vec![0u8; 64 * 64 * 4])?;
 
 let bytes = renderer.read_texture(*texture.id()).await?;

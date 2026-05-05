@@ -2,10 +2,10 @@
 
 Swift override for `TextureMipChain::prepare`. The Swift binding (uniffi
 constructor) takes positional args `(bytes: Data, format: TextureFormat,
-size: Size?)` — `size` is optional. Wrapping the call in a Rust-style
-tuple (`prepare((bytes, format, size))`) crashes the swift-frontend
-type-checker (see CI healthcheck failures up to 87e61e5a); the override
-sticks to native positional Swift syntax.
+size: Size?)` with `size` optional. The override sticks to native
+positional Swift syntax — wrapping the call in a Rust-style tuple
+(`prepare((bytes, format, size))`) crashes the swift-frontend type
+checker (see CI healthcheck failures up to 87e61e5a).
 
 ## Example
 
@@ -13,7 +13,7 @@ sticks to native positional Swift syntax.
 import FragmentColor
 import Foundation
 
-// Raw RGBA path — same method as encoded, just include the size.
+// Raw RGBA path: include the size so prepare skips decoding.
 let rawRgba = Data(repeating: 200, count: 8 * 8 * 4)
 let chainRaw = try TextureMipChain.prepare(
     bytes: rawRgba,
@@ -21,7 +21,7 @@ let chainRaw = try TextureMipChain.prepare(
     size: Size(width: 8, height: 8, depth: nil)
 )
 
-// Hand the chain to the unified create_texture entry — same vocabulary.
+// Upload the chain through the regular createTexture entry point.
 let renderer = Renderer()
 let texture = try await renderer.createTexture(input: .prepared(chainRaw))
 let _ = chainRaw.levelCount()

@@ -15,7 +15,7 @@ Efficiently upload raw pixel data into an existing texture. Ideal for video play
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Renderer, TextureFormat};
 let renderer = Renderer::new();
-let texture = renderer.create_storage_texture(([64u32, 64u32], TextureFormat::Rgba)).await?;
+let texture = renderer.create_storage_texture(([64, 64], TextureFormat::Rgba)).await?;
 let frame_bytes = vec![0u8; 64 * 64 * 4];
 
 texture.write(&frame_bytes)?;

@@ -1,11 +1,11 @@
 # Renderer::wait()
 
-Block the current thread until every submission queued on this renderer's device has finished executing.
+Block the calling thread until every submission queued on this renderer's device has finished executing.
 
-Use this as an explicit synchronization point between `render()` bursts and readbacks — for example before `Renderer::read_texture`, `Texture::get_image`, or `TextureTarget::get_image` — when you need deterministic ordering rather than the "submission order" the driver normally guarantees.
+Call `wait` between `render()` bursts and a readback — `Renderer::read_texture`, `Texture::get_image`, or `TextureTarget::get_image` — when you need deterministic ordering. Without it you get the driver's normal submission ordering, which is usually fine but doesn't guarantee a render is complete when the readback begins.
 
-- Native only (on WASM it is a no-op — the browser drives readiness via its own mapping lifecycle).
-- Returns after the device reports idle or a 5-second timeout.
+- Native only. On the web this is a no-op; the browser drives readiness through its own mapping lifecycle.
+- Returns when the device reports idle, or after a 5-second timeout.
 
 ## Example
 

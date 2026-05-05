@@ -12,11 +12,10 @@ let shader = try Shader("""
 
 """)
 
-// 1x1 RGBA (white) raw pixel bytes - single create_texture entry, tuple
-// form (bytes, format, size) selects the raw-pixel path. Format is
-// the placeholder Rgba (sRGB-aware) by default.
-let pixels = [255,255,255,255]
+// 1x1 white pixel. Passing a size tells create_texture to read the bytes
+// as raw pixels; the default format is Rgba (sRGB-aware).
+let pixels = [255, 255, 255, 255]
 let texture = try await renderer.createTexture((pixels, [1, 1]))
 
-// insert  the texture in the shader matching the name in the shader
+// Bind the texture to the uniform name declared in WGSL.
 try shader.set("my_texture", texture)

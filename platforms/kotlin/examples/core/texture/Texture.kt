@@ -12,11 +12,10 @@ val shader = Shader("""
 
 """)
 
-// 1x1 RGBA (white) raw pixel bytes - single create_texture entry, tuple
-// form (bytes, format, size) selects the raw-pixel path. Format is
-// the placeholder Rgba (sRGB-aware) by default.
+// 1x1 white pixel. Passing a size tells create_texture to read the bytes
+// as raw pixels; the default format is Rgba (sRGB-aware).
 val pixels = listOf(255.0f, 255.0f, 255.0f, 255.0f)
 val texture = renderer.createTexture(TextureInputMobile.Bytes(pixels.let { ba -> ByteArray(ba.size) { i -> ba[i].toInt().and(0xFF).toByte() } }), null)
 
-// insert  the texture in the shader matching the name in the shader
+// Bind the texture to the uniform name declared in WGSL.
 shader.set("my_texture", texture)

@@ -4,7 +4,7 @@ The [Shader](https://fragmentcolor.org/api/core/shader) object is the main build
 
 It takes a WGSL or GLSL shader source as input, parses it, validates it, and exposes the uniforms as keys.
 
-A `Shader::new` call accepts a single source string, a registry **slug** like `"sdf2d/circle"`, an `https://` URL, a local file path, or **an array of any combination of the above** — parts are deduplicated by hash and concatenated in order. This lets you pull pure helper functions from the public registry at `https://fragmentcolor.org/shaders/` into your own shader without copy-pasting. Override the registry base with [Shader::set_registry](https://fragmentcolor.org/api/core/shader#shaderset_registry).
+`Shader::new` accepts a source string, a registry slug like `"sdf2d/circle"`, an `https://` URL, a local file path, or an array mixing any of those. Array parts are deduplicated by hash and concatenated in order, so you can pull pure helper functions from the public registry at `https://fragmentcolor.org/shaders/` into your own shader without copy-pasting. Override the registry base with [Shader::set_registry](https://fragmentcolor.org/api/core/shader#shaderset_registry).
 
 To draw your shader, you must use your [Shader](https://fragmentcolor.org/api/core/shader) instance as input to a [Renderer](https://fragmentcolor.org/api/core/renderer).
 
@@ -73,10 +73,7 @@ struct MyUniform {
 @group(0) @binding(0) var<uniform> u: MyUniform;
 ```
 
-### Notes
-
-- Binding sizes are aligned to 16 bytes for layout correctness; this is handled automatically.
-- Large uniform blobs are uploaded via an internal buffer pool.
+FragmentColor handles std140-style 16-byte alignment for you, and large uniform blobs are pooled internally — there is nothing to configure.
 
 ## Textures and Samplers
 
@@ -94,10 +91,7 @@ samplers are provided automatically:
 @group(0) @binding(1) var samp: sampler;
 ```
 
-### Notes
-
-- 2D/3D/Cube and array variants are supported; the correct view dimension is inferred.
-- Integer textures map to Sint/Uint sample types; float textures use filterable float when possible.
+2D, 3D, cube, and array variants are all supported; the correct view dimension is inferred from the WGSL declaration. Integer textures map to `Sint` / `Uint` sample types; float textures use filterable float when the device allows it.
 
 ## Storage Textures
 
@@ -114,10 +108,7 @@ Access flags are preserved from WGSL and mapped to the device:
 @group(0) @binding(0) var img: texture_storage_2d<rgba8unorm, write>;
 ```
 
-### Notes
-
-- The declared storage format is respected when creating the binding layout.
-- User must ensure the adapter supports the chosen format/access mode.
+The declared storage format flows through to the binding layout untouched. You're responsible for picking a format and access mode the adapter supports.
 
 ## Storage Buffers
 
@@ -132,12 +123,7 @@ struct Buf { a: vec4<f32> };
 @group(0) @binding(0) var<storage, read> ssbo: Buf;
 ```
 
-### Notes
-
-- Read-only buffers are bound with `read-only` storage access; `read_write` allows writes when supported.
-- Buffer byte spans are computed from WGSL shapes; arrays/structs honor stride and alignment.
-- CPU-side updates use the same set("path", value) and get_bytes("path") APIs as uniforms, with array indexing supported (e.g., `buf.items[2].v`).
-- Large buffers are uploaded via a dedicated storage buffer pool.
+Read-only buffers bind with `read-only` storage access; `read_write` allows writes where the device supports it. CPU-side updates use the same `shader.set("path", value)` API as uniforms, with array indexing (e.g. `buf.items[2].v`). Buffer byte spans are computed from the WGSL shape — arrays and structs honor stride and alignment automatically — and large buffers are pooled internally.
 
 ## Push Constants
 
@@ -149,13 +135,4 @@ They will fallback to regular uniform buffers when:
 - multiple push-constant roots are declared, or
 - the total push-constant size exceeds the device limit.
 
-### Notes
-
-In fallback mode, FragmentColor rewrites push constants into classic uniform buffers
-placed in a newly allocated bind group. In this case:
-
-- A bind group slot will be used by this fallback group (allocated as max existing group + 1).
-- There is no check for the max bind groups supported.
-- If you use push constants and many bind groups, very high group indices can exceed device limits.
-- Each push-constant root becomes one uniform buffer binding in the fallback group.
-- Currently, the fallback is applied for render pipelines; compute pipeline fallback may be added later.
+In fallback mode, push constants are rewritten as classic uniform buffers in a newly allocated bind group (one binding per push-constant root). The fallback group goes into the next free slot (`max_existing_group + 1`); FragmentColor does not check the device's `max_bind_groups` limit, so a shader that already uses many bind groups *and* push constants can exceed it. Render pipelines fall back today; compute pipeline fallback may follow.
