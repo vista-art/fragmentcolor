@@ -1,0 +1,190 @@
+---
+title: "Lighting"
+description: A catalog of lighting and BRDF helpers in the FragmentColor shader registry.
+---
+
+The **lighting** category bundles the small, pure WGSL building blocks that
+shading models are made of — diffuse terms (Lambert, half-Lambert, Oren-Nayar,
+Disney/Burley), specular lobes (Phong, Blinn-Phong, Cook-Torrance), the
+microfacet primitives that feed PBR pipelines (GGX normal distribution, Smith
+masking-shadowing, Schlick Fresnel and its roughness-aware variant), plus a
+couple of rim and falloff helpers (rim, inverse-square / range attenuation).
+
+Each function takes the bare vectors and parameters it needs (`n`, `l`, `v`,
+roughness, `f0`, …) and returns just its slice of the lighting equation, so
+you can mix and match: a Cook-Torrance specular alongside a Disney diffuse, a
+rim term layered over Lambert, a point light driven by a range-clamped
+attenuation. Pull the slug into a composition and call the function from your
+fragment stage:
+
+```rust
+let main = r#"
+@fragment fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+    // ... compute n, l, v from your geometry / G-buffer ...
+    let diffuse = albedo * lambert(n, l);
+    let spec    = vec3<f32>(1.0) * blinn_phong(n, l, v, 64.0);
+    return vec4<f32>(diffuse + spec, 1.0);
+}
+"#;
+let shader = Shader::new(&["lighting/lambert", "lighting/blinn_phong", main])?;
+```
+
+Each preview below shades a flat sphere lit from the upper-right with a
+single directional or point light, so the shape of each term is visible
+in isolation.
+
+## attenuation_inverse_square
+
+Physically-based `1 / d²` falloff with a `min_d` guard against the
+singularity at the light position.
+
+```wgsl
+fn attenuation_inverse_square(distance: f32, min_d: f32) -> f32
+```
+
+![lighting/attenuation_inverse_square preview](/shaders/lighting/attenuation_inverse_square.png)
+
+## attenuation_range
+
+Inverse-square falloff clamped to a finite `range` (Unreal-style window
+function). Smoothly fades to zero at the cutoff.
+
+```wgsl
+fn attenuation_range(distance: f32, range: f32) -> f32
+```
+
+![lighting/attenuation_range preview](/shaders/lighting/attenuation_range.png)
+
+## blinn_phong
+
+Blinn half-vector specular term. Cheaper and usually nicer-looking than
+classic Phong; `shine` is the specular exponent.
+
+```wgsl
+fn blinn_phong(n: vec3<f32>, l: vec3<f32>, v: vec3<f32>, shine: f32) -> f32
+```
+
+![lighting/blinn_phong preview](/shaders/lighting/blinn_phong.png)
+
+## cook_torrance
+
+Microfacet specular BRDF: `D · G · F / (4 · NdV · NdL)` with inlined GGX
+distribution, Smith geometry, and Schlick Fresnel. Pass surface `f0`
+(reflectance at normal incidence) and `roughness` in `[0, 1]`.
+
+```wgsl
+fn cook_torrance(n: vec3<f32>, l: vec3<f32>, v: vec3<f32>, f0: vec3<f32>, roughness: f32) -> vec3<f32>
+```
+
+![lighting/cook_torrance preview](/shaders/lighting/cook_torrance.png)
+
+## disney_diffuse
+
+Burley's Disney diffuse term — energy-preserving rough-surface diffuse
+with a slightly brighter Fresnel-aware grazing edge.
+
+```wgsl
+fn disney_diffuse(n: vec3<f32>, l: vec3<f32>, v: vec3<f32>, roughness: f32) -> f32
+```
+
+![lighting/disney_diffuse preview](/shaders/lighting/disney_diffuse.png)
+
+## fresnel_schlick
+
+Schlick's approximation to the Fresnel reflectance: `f0 + (1 - f0) · (1 -
+cosθ)⁵`. Use `cosθ = max(dot(n, v), 0)` for direct lighting.
+
+```wgsl
+fn fresnel_schlick(cos_theta: f32, f0: vec3<f32>) -> vec3<f32>
+```
+
+![lighting/fresnel_schlick preview](/shaders/lighting/fresnel_schlick.png)
+
+## fresnel_schlick_roughness
+
+Lagarde's roughness-aware Schlick variant. Used with pre-integrated
+environment maps so rough surfaces don't get an unrealistic grazing-angle
+spike.
+
+```wgsl
+fn fresnel_schlick_roughness(cos_theta: f32, f0: vec3<f32>, roughness: f32) -> vec3<f32>
+```
+
+![lighting/fresnel_schlick_roughness preview](/shaders/lighting/fresnel_schlick_roughness.png)
+
+## ggx_d
+
+GGX / Trowbridge-Reitz normal distribution function. Returns the
+microfacet density at the given half-vector.
+
+```wgsl
+fn ggx_d(n: vec3<f32>, h: vec3<f32>, roughness: f32) -> f32
+```
+
+![lighting/ggx_d preview](/shaders/lighting/ggx_d.png)
+
+## half_lambert
+
+Valve-style wrapped diffuse: `((n·l) · 0.5 + 0.5)²`. Softer terminator,
+useful for stylized or NPR shading.
+
+```wgsl
+fn half_lambert(n: vec3<f32>, l: vec3<f32>) -> f32
+```
+
+![lighting/half_lambert preview](/shaders/lighting/half_lambert.png)
+
+## lambert
+
+Classic Lambertian diffuse: `max(n · l, 0)`. Pass unnormalized vectors;
+they are normalized inside.
+
+```wgsl
+fn lambert(n: vec3<f32>, l: vec3<f32>) -> f32
+```
+
+![lighting/lambert preview](/shaders/lighting/lambert.png)
+
+## oren_nayar
+
+Oren-Nayar diffuse for rough surfaces. Reduces the retroreflective bleed
+that pure Lambert produces and gives a flatter, dustier look.
+
+```wgsl
+fn oren_nayar(n: vec3<f32>, l: vec3<f32>, v: vec3<f32>, roughness: f32) -> f32
+```
+
+![lighting/oren_nayar preview](/shaders/lighting/oren_nayar.png)
+
+## phong
+
+Classic Phong specular: reflect the light vector around the normal and
+take `max(r · v, 0)` to the `shine` power.
+
+```wgsl
+fn phong(n: vec3<f32>, l: vec3<f32>, v: vec3<f32>, shine: f32) -> f32
+```
+
+![lighting/phong preview](/shaders/lighting/phong.png)
+
+## rim
+
+Rim / back-light term proportional to `(1 - n · v)^power`. Layer over a
+diffuse base for an edge glow.
+
+```wgsl
+fn rim(n: vec3<f32>, v: vec3<f32>, power: f32) -> f32
+```
+
+![lighting/rim preview](/shaders/lighting/rim.png)
+
+## smith_g
+
+Smith masking-and-shadowing geometry term, with Schlick-GGX `G1` applied
+in both the view and light directions and combined as a product.
+
+```wgsl
+fn smith_g(n: vec3<f32>, v: vec3<f32>, l: vec3<f32>, roughness: f32) -> f32
+```
+
+![lighting/smith_g preview](/shaders/lighting/smith_g.png)
