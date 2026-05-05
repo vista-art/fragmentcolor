@@ -1,8 +1,8 @@
 
 import org.fragmentcolor.*
 
-// Single URL
+// Full registry URL.
 val shader = Shader.fetch("https://fragmentcolor.org/shaders/sdf2d/circle.wgsl")
 
-// Registry slug
+// Equivalent shorthand using the registry slug.
 val shader2 = Shader.fetch("sdf2d/circle")

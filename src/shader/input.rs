@@ -34,8 +34,31 @@ async fn resolve_part(part: &ShaderPart) -> Result<Resolved, ShaderError> {
             body: s.clone(),
             glsl: None,
         }),
+        // Browsers have no filesystem; resolve path-shaped inputs as URLs
+        // against the document origin via the native fetch API. Relative
+        // paths (`/foo.wgsl`, `./foo.wgsl`, `foo.wgsl`) all work because
+        // `Request::new_with_str` does the URL resolution itself.
+        #[cfg(wasm)]
+        ShaderPart::Path(p) => fetch_url(&p.to_string_lossy()).await,
+        #[cfg(not(wasm))]
         ShaderPart::Path(p) => read_path(p),
-        ShaderPart::Url(u) => fetch_url(u).await,
+        ShaderPart::Url(u) => {
+            // Registry-URL short-circuit: if the URL is `<base>/<category>/<name>.wgsl`
+            // for the active registry base AND that slug is in the embedded
+            // library, resolve from the binary instead of hitting the network.
+            // Lets doc snippets that write the full URL work offline on
+            // native (no `network` feature needed) when the matching
+            // `shaders-<category>` feature is on.
+            if let Some(slug) = crate::shader::registry::url_to_slug(u)
+                && let Some(body) = crate::shader::embedded::lookup(&slug)
+            {
+                return Ok(Resolved {
+                    body: body.to_string(),
+                    glsl: None,
+                });
+            }
+            fetch_url(u).await
+        }
         ShaderPart::Slug(slug) => {
             if let Some(body) = crate::shader::embedded::lookup(slug) {
                 return Ok(Resolved {
@@ -100,8 +123,30 @@ pub(crate) mod blocking {
                 body: s.clone(),
                 glsl: None,
             }),
+            // Browsers have no filesystem and the constructor is sync, so
+            // path-shaped inputs cannot be resolved here. Direct callers to
+            // `Shader::fetch`, which resolves paths as URLs relative to origin.
+            #[cfg(wasm)]
+            ShaderPart::Path(_) => Err(ShaderError::Error(
+                "Filesystem reads in the constructor are not supported in WASM. \
+                 Use `await Shader.fetch(input)` to load shaders from URLs or paths relative to origin."
+                    .into(),
+            )),
+            #[cfg(not(wasm))]
             ShaderPart::Path(p) => read_path(p),
-            ShaderPart::Url(u) => fetch_url(u),
+            ShaderPart::Url(u) => {
+                // Registry-URL short-circuit (sync variant). See the async
+                // `resolve_part` for the rationale.
+                if let Some(slug) = crate::shader::registry::url_to_slug(u)
+                    && let Some(body) = crate::shader::embedded::lookup(&slug)
+                {
+                    return Ok(Resolved {
+                        body: body.to_string(),
+                        glsl: None,
+                    });
+                }
+                fetch_url(u)
+            }
             ShaderPart::Slug(slug) => {
                 if let Some(body) = crate::shader::embedded::lookup(slug) {
                     return Ok(Resolved {
@@ -115,13 +160,38 @@ pub(crate) mod blocking {
         }
     }
 
-    #[cfg(not(wasm))]
+    // Native sync URL fetch. Available when the `network` Cargo feature is on
+    // and the target is a desktop OS; otherwise the fallback below returns
+    // `NetworkError::feature_disabled()` so callers see a clear message
+    // instead of a missing-method error.
+    #[cfg(all(
+        not(wasm),
+        feature = "network",
+        any(target_os = "linux", target_os = "macos", target_os = "windows")
+    ))]
     fn fetch_url(url: &str) -> Result<Resolved, ShaderError> {
-        let body = ureq::get(url).call()?.body_mut().read_to_string()?;
+        let resp = ureq::get(url)
+            .call()
+            .map_err(crate::net::NetworkError::from)?;
+        let body = resp
+            .into_body()
+            .read_to_string()
+            .map_err(|e| crate::net::NetworkError(e.to_string()))?;
         Ok(Resolved {
             body,
             glsl: glsl_kind_from_url(url),
         })
+    }
+
+    #[cfg(all(
+        not(wasm),
+        not(all(
+            feature = "network",
+            any(target_os = "linux", target_os = "macos", target_os = "windows")
+        ))
+    ))]
+    fn fetch_url(_url: &str) -> Result<Resolved, ShaderError> {
+        Err(crate::net::NetworkError::feature_disabled().into())
     }
 
     #[cfg(wasm)]
@@ -190,6 +260,7 @@ struct Resolved {
     glsl: Option<GlslKind>,
 }
 
+#[cfg(not(wasm))]
 fn read_path(path: &Path) -> Result<Resolved, ShaderError> {
     let body = std::fs::read_to_string(path)?;
     Ok(Resolved {

@@ -44,9 +44,10 @@ let window = fragmentcolor::headless_window(800, 600);
 let renderer = Renderer::new();
 let target = renderer.create_target(&window).await?;
 
-// You can pass the shader as a source string, file path, or URL:
+// You can pass the shader as a source string, a file path, a registry slug,
+// or an https URL pointing at a .wgsl file.
 let circle = Shader::new("./path/to/circle.wgsl")?;
-let triangle = Shader::new("https://fragmentcolor.org/shaders/triangle.wgsl")?;
+let triangle = Shader::new("https://fragmentcolor.org/shaders/sdf2d/circle.wgsl")?;
 let wgsl = r#"
 struct VertexOutput {
     @builtin(position) coords: vec4<f32>,

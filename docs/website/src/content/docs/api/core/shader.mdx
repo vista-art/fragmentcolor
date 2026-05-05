@@ -330,17 +330,24 @@ lang="kotlin"
 
 ### Shader::new(input: string | string[])
 
-Creates a new [Shader](/api/core/shader) from one of:
+Creates a new [Shader](/api/core/shader). The input
+is a single string, or an array of strings, of any of these shapes:
 
-- a raw WGSL source string,
-- a registry **slug** like `"sdf2d/circle"` (resolved against [Shader::set_registry](/api/core/shader#shaderset_registry)),
-- a `https://` URL pointing at a `.wgsl` file,
-- a local file path ending in `.wgsl`, `.glsl`, `.frag`, or `.vert`,
-- or **an array** mixing any of the above. Parts are resolved (fetched, read, looked up), deduplicated by source hash, and concatenated in order before validation.
+- a raw WGSL source string
+- a registry slug like `"sdf2d/circle"`, which pulls a helper function from the public registry at `https://fragmentcolor.org/shaders/`
+- an `https://` URL pointing at a `.wgsl` file
+- a local file path ending in `.wgsl`, `.glsl`, `.frag`, or `.vert`
 
-If validation fails, the error message indicates the location of the error. If validation passes, the shader is guaranteed to work on the GPU. All uniforms are initialized to their default zero values.
+When you pass an array, parts are deduplicated by source hash and concatenated
+in order before validation, so you can compose pure helper functions from the
+registry with your own source.
 
-GLSL is supported only as a single part (`.vert` / `.frag` / `.glsl` path). Mixing GLSL with other parts is rejected.
+If validation fails, the error message points at the line in the resulting
+WGSL. If validation passes, the shader is guaranteed to work on the GPU. All
+uniforms are initialized to zero.
+
+GLSL is supported only as a single part (a `.vert`, `.frag`, or `.glsl`
+file). Mixing GLSL with other parts is rejected.
 
 #### Example
 
@@ -561,27 +568,21 @@ lang="kotlin"
 
 ### Shader::fetch(input)
 
-Async constructor that resolves a URL, registry slug, file path, or raw WGSL
-source and returns a compiled `Shader`. Available on all four platforms.
+Async constructor that returns a compiled `Shader` from one or more parts.
+Each part can be:
 
-Each part of `input` is classified as one of:
-
-- **Raw WGSL source** â used directly, no I/O.
-- **URL** (`https://...`) â fetched over the network.
-- **Registry slug** (`"category/name"`) â looked up in the slug registry (or
-  served from the embedded library if the matching `shaders-<category>` feature
-  is compiled in).
-- **File path** (starts with `/`, `./`, `../`, `~/`, or ends with `.wgsl` /
-  `.glsl` / `.frag` / `.vert`) â read from disk (native platforms only).
+- a raw WGSL source string
+- a registry slug like `"sdf2d/circle"`
+- an `https://` URL pointing at a `.wgsl` file
+- a local file path ending in `.wgsl`, `.glsl`, `.frag`, or `.vert`
+  (native platforms only)
 
 Parts are deduplicated by source hash and concatenated in order before
-compilation. On WASM, `Shader::new` cannot perform network I/O because
-constructors cannot be async; `Shader.fetch` is the required path there.
-On Python, Swift, and Kotlin, `Shader.fetch` and `Shader.new` are both
-available: `new` resolves URLs synchronously (blocking), while `fetch`
-is the idiomatic async path.
+compilation. `fetch` is the async path used when any part needs network or
+file I/O. `Shader::new` covers the same shapes for callers that prefer a
+synchronous constructor.
 
-#### Platform notes
+#### Platforms
 
 | Platform | Spelling | Async mechanism |
 |----------|----------|-----------------|
@@ -606,10 +607,10 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
 use fragmentcolor::Shader;
 
-// Single URL
+// Full registry URL.
 let shader = Shader::fetch("https://fragmentcolor.org/shaders/sdf2d/circle.wgsl").await?;
 
-// Registry slug
+// Equivalent shorthand using the registry slug.
 let shader2 = Shader::fetch("sdf2d/circle").await?;
 
 let _ = (shader, shader2);
@@ -628,10 +629,10 @@ code={`
 
 import { Shader } from "fragmentcolor";
 
-// Single URL
+// Full registry URL.
 const shader = await Shader.fetch("https://fragmentcolor.org/shaders/sdf2d/circle.wgsl");
 
-// Registry slug
+// Equivalent shorthand using the registry slug.
 const shader2 = await Shader.fetch("sdf2d/circle");
 
 `}
@@ -643,18 +644,12 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-import os, sys
-# Skip the network round-trip in CI (no outbound network or no shader host).
-# Set FC_ALLOW_NETWORK=1 to run the live URL fetch locally.
-if os.environ.get('FC_ALLOW_NETWORK') != '1':
-    raise SystemExit(0)
-
 from fragmentcolor import Shader
 
-# Single URL
+# Full registry URL.
 shader = Shader.fetch("https://fragmentcolor.org/shaders/sdf2d/circle.wgsl")
 
-# Registry slug
+# Equivalent shorthand using the registry slug.
 shader2 = Shader.fetch("sdf2d/circle")
 `}
 lang="python"
@@ -668,10 +663,10 @@ code={`
 
 import FragmentColor
 
-// Single URL
+// Full registry URL.
 let shader = try await Shader.fetch("https://fragmentcolor.org/shaders/sdf2d/circle.wgsl")
 
-// Registry slug
+// Equivalent shorthand using the registry slug.
 let shader2 = try await Shader.fetch("sdf2d/circle")
 `}
 lang="swift"
@@ -685,10 +680,10 @@ code={`
 
 import org.fragmentcolor.*
 
-// Single URL
+// Full registry URL.
 val shader = Shader.fetch("https://fragmentcolor.org/shaders/sdf2d/circle.wgsl")
 
-// Registry slug
+// Equivalent shorthand using the registry slug.
 val shader2 = Shader.fetch("sdf2d/circle")
 `}
 lang="kotlin"

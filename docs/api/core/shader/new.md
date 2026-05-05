@@ -1,16 +1,23 @@
 # Shader::new(input: string | string[])
 
-Creates a new [Shader](https://fragmentcolor.org/api/core/shader) from one of:
+Creates a new [Shader](https://fragmentcolor.org/api/core/shader). The input
+is a single string, or an array of strings, of any of these shapes:
 
-- a raw WGSL source string,
-- a registry **slug** like `"sdf2d/circle"` (resolved against [Shader::set_registry](https://fragmentcolor.org/api/core/shader#shaderset_registry)),
-- a `https://` URL pointing at a `.wgsl` file,
-- a local file path ending in `.wgsl`, `.glsl`, `.frag`, or `.vert`,
-- or **an array** mixing any of the above. Parts are resolved (fetched, read, looked up), deduplicated by source hash, and concatenated in order before validation.
+- a raw WGSL source string
+- a registry slug like `"sdf2d/circle"`, which pulls a helper function from the public registry at `https://fragmentcolor.org/shaders/`
+- an `https://` URL pointing at a `.wgsl` file
+- a local file path ending in `.wgsl`, `.glsl`, `.frag`, or `.vert`
 
-If validation fails, the error message indicates the location of the error. If validation passes, the shader is guaranteed to work on the GPU. All uniforms are initialized to their default zero values.
+When you pass an array, parts are deduplicated by source hash and concatenated
+in order before validation, so you can compose pure helper functions from the
+registry with your own source.
 
-GLSL is supported only as a single part (`.vert` / `.frag` / `.glsl` path). Mixing GLSL with other parts is rejected.
+If validation fails, the error message points at the line in the resulting
+WGSL. If validation passes, the shader is guaranteed to work on the GPU. All
+uniforms are initialized to zero.
+
+GLSL is supported only as a single part (a `.vert`, `.frag`, or `.glsl`
+file). Mixing GLSL with other parts is rejected.
 
 ## Example - Single Shader Source
 
@@ -46,10 +53,9 @@ let shader = Shader::new(r#"
 
 ## Example - Shader Composition
 
-The public registry at `https://fragmentcolor.org/shaders/` exposes pure helper
-functions you can pull into your own shader. Pass them alongside your main
-source as an array; they are concatenated in order and treated as a single
-WGSL module.
+Pull pure helper functions from the public registry alongside your own
+source. Parts are concatenated in order and compiled as a single WGSL
+module.
 
 ```rust,ignore
 use fragmentcolor::Shader;
@@ -75,9 +81,10 @@ let shader = Shader::new([
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-## Platform-specific: Web
+## Web
 
-In WASM the constructor cannot perform network requests. Pass an array of
-**raw source strings** to `new Shader([...])`, or use the async
-[Shader::fetch](https://fragmentcolor.org/api/core/shader#shaderfetch) builder
-to resolve URLs and slugs.
+In WASM the constructor cannot perform network requests, because
+constructors cannot be async. Pass raw source strings to `new Shader([...])`,
+or use the async
+[Shader::fetch](https://fragmentcolor.org/api/core/shader#shaderfetch)
+builder to resolve URLs and slugs over the browser's `fetch()`.

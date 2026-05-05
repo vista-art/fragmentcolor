@@ -1,23 +1,136 @@
-//! Cross-target URL fetching helpers
-//! Returns errors as Strings so call-sites can convert to their local error types.
+//! Cross-target URL fetching helpers.
+//!
+//! - **Web**: always uses `web_sys::fetch` (the browser's built-in). The
+//!   `network` Cargo feature does not affect wasm builds.
+//! - **Desktop (Linux / macOS / Windows) with `--features network`**: uses
+//!   `ureq` with `native-tls` (system TLS stack).
+//! - **Desktop without `network`, and mobile (iOS / Android)**: the fetch
+//!   helpers are still exported so call sites compile uniformly, but they
+//!   return `NetworkError::feature_disabled()` at runtime. Embedded
+//!   registry slugs (the `shaders-*` features) keep working without
+//!   network.
 
 #[cfg(wasm)]
 use wasm_bindgen_test::__rt::wasm_bindgen::JsValue;
 
-#[cfg(not(wasm))]
-pub async fn fetch_text(url: &str) -> Result<String, ureq::Error> {
-    let resp = ureq::get(url).call()?;
-    let out = resp.into_body().read_to_string()?;
+/// Single error type for HTTP fetches across every target. `Display` carries
+/// a human-readable message; `From<ureq::Error>` is provided when the
+/// `network` feature is enabled so call sites can use `?` directly.
+#[derive(Debug, thiserror::Error)]
+#[error("{0}")]
+pub struct NetworkError(pub String);
+
+impl NetworkError {
+    /// Message used by every native fetch helper when the `network` feature
+    /// is not compiled in. Exposed as a constant so callers that want to
+    /// distinguish "feature disabled" from a real network failure can
+    /// substring-match without hard-coding the prose.
+    pub const FEATURE_DISABLED: &'static str = "fragmentcolor was built without the `network` feature; URL fetching is unavailable. \
+         Use `Shader::new(<source>)` / `Shader::new(<file path>)` / Shader::new(<registry slug>) instead, \
+         or rebuild the library manually with `cargo build --features network`.";
+
+    pub fn feature_disabled() -> Self {
+        NetworkError(Self::FEATURE_DISABLED.to_string())
+    }
+}
+
+#[cfg(all(not(wasm), feature = "network"))]
+impl From<ureq::Error> for NetworkError {
+    fn from(e: ureq::Error) -> Self {
+        NetworkError(e.to_string())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Native HTTP agent (only when `network` feature is on, on desktop targets).
+// ---------------------------------------------------------------------------
+//
+// ureq 3.x defaults to Rustls when no provider is configured; we set
+// `TlsProvider::NativeTls` explicitly so the dep tree picks the system TLS
+// stack instead of `ring`. Lazy-init via `OnceLock` so the agent is shared
+// across calls.
+#[cfg(all(
+    not(wasm),
+    feature = "network",
+    any(target_os = "linux", target_os = "macos", target_os = "windows")
+))]
+fn agent() -> &'static ureq::Agent {
+    use std::sync::OnceLock;
+    use ureq::config::Config;
+    use ureq::tls::{TlsConfig, TlsProvider};
+    static AGENT: OnceLock<ureq::Agent> = OnceLock::new();
+    AGENT.get_or_init(|| {
+        Config::builder()
+            .tls_config(
+                TlsConfig::builder()
+                    .provider(TlsProvider::NativeTls)
+                    .build(),
+            )
+            .build()
+            .into()
+    })
+}
+
+#[cfg(all(
+    not(wasm),
+    feature = "network",
+    any(target_os = "linux", target_os = "macos", target_os = "windows")
+))]
+pub async fn fetch_text(url: &str) -> Result<String, NetworkError> {
+    let resp = agent().get(url).call()?;
+    let out = resp
+        .into_body()
+        .read_to_string()
+        .map_err(|e| NetworkError(e.to_string()))?;
     Ok(out)
 }
 
-#[cfg(not(wasm))]
-pub async fn fetch_bytes(url: &str) -> Result<Vec<u8>, ureq::Error> {
-    let resp = ureq::get(url).call()?;
-    let out = resp.into_body().read_to_vec()?;
+#[cfg(all(
+    not(wasm),
+    feature = "network",
+    any(target_os = "linux", target_os = "macos", target_os = "windows")
+))]
+pub async fn fetch_bytes(url: &str) -> Result<Vec<u8>, NetworkError> {
+    let resp = agent().get(url).call()?;
+    let out = resp
+        .into_body()
+        .read_to_vec()
+        .map_err(|e| NetworkError(e.to_string()))?;
     Ok(out)
 }
 
+// ---------------------------------------------------------------------------
+// Native fallback: feature disabled, or mobile (iOS / Android always lacks
+// ureq). Returns a clear typed error so callers can surface "rebuild with
+// --features network" without having to special-case the build configuration
+// themselves.
+// ---------------------------------------------------------------------------
+#[cfg(all(
+    not(wasm),
+    not(all(
+        feature = "network",
+        any(target_os = "linux", target_os = "macos", target_os = "windows")
+    ))
+))]
+pub async fn fetch_text(_url: &str) -> Result<String, NetworkError> {
+    Err(NetworkError::feature_disabled())
+}
+
+#[cfg(all(
+    not(wasm),
+    not(all(
+        feature = "network",
+        any(target_os = "linux", target_os = "macos", target_os = "windows")
+    ))
+))]
+pub async fn fetch_bytes(_url: &str) -> Result<Vec<u8>, NetworkError> {
+    Err(NetworkError::feature_disabled())
+}
+
+// ---------------------------------------------------------------------------
+// Web (wasm32): always uses the browser's native `fetch`. No Cargo feature
+// dependency, no extra deps to bundle.
+// ---------------------------------------------------------------------------
 #[cfg(wasm)]
 pub async fn fetch_text(url: &str) -> Result<String, JsValue> {
     use wasm_bindgen::{JsCast, JsError};
@@ -75,21 +188,19 @@ pub async fn fetch_bytes(url: &str) -> Result<Vec<u8>, JsValue> {
 mod tests {
     use super::*;
 
-    // Story: Attempting to fetch from an unroutable local port should yield a network error
-    // for both text and bytes helpers.
+    // Story: every native fetch surfaces a `NetworkError`. With `--features
+    // network` an unreachable host produces a connect failure; without it
+    // every URL errors with FEATURE_DISABLED. Both satisfy `is_err`.
     #[test]
-    fn returns_error_on_unreachable_host() {
+    fn returns_error_for_unreachable_or_disabled() {
         pollster::block_on(async move {
-            // Arrange
             let url = "http://127.0.0.1:1/";
 
-            // Act
             let t = fetch_text(url).await;
             let b = fetch_bytes(url).await;
 
-            // Assert
-            assert!(t.is_err(), "fetch_text should error on unreachable host");
-            assert!(b.is_err(), "fetch_bytes should error on unreachable host");
+            assert!(t.is_err(), "fetch_text should error");
+            assert!(b.is_err(), "fetch_bytes should error");
         });
     }
 }

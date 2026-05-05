@@ -40,6 +40,42 @@ pub(crate) fn slug_to_url(slug: &str) -> String {
     format!("{trimmed_base}/{trimmed_slug}.wgsl")
 }
 
+/// Inverse of [`slug_to_url`]: if `url` is a registry URL of the form
+/// `<base>/<category>/<name>.wgsl` for the active registry base, return the
+/// slug `<category>/<name>`. Otherwise return `None`.
+///
+/// Used at part-resolution time to short-circuit registry-URLs to the
+/// embedded shader library: a doc snippet that writes the full URL still
+/// resolves locally on native (no network needed) when the matching
+/// `shaders-<category>` feature is on, falling through to the URL-fetch
+/// path only for URLs that don't map to a registered slug.
+pub(crate) fn url_to_slug(url: &str) -> Option<String> {
+    let base = registry_base();
+    let trimmed_base = base.trim_end_matches('/');
+    let rest = url.strip_prefix(trimmed_base)?.trim_start_matches('/');
+    let stem = rest.strip_suffix(".wgsl")?;
+    // A valid slug is `category/name` — exactly one slash, both halves
+    // ASCII-lowercase (digits / underscore allowed). Anything else (extra
+    // path segments, query strings, mixed case, …) means the URL is *not*
+    // a registry URL even if it shares the base prefix; fall through to
+    // network fetch.
+    let mut parts = stem.split('/');
+    let category = parts.next().filter(|c| !c.is_empty())?;
+    let name = parts.next().filter(|n| !n.is_empty())?;
+    if parts.next().is_some() {
+        return None;
+    }
+    let slug_ok = |s: &str| {
+        let mut chars = s.chars();
+        matches!(chars.next(), Some(c) if c.is_ascii_lowercase())
+            && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+    };
+    if !slug_ok(category) || !slug_ok(name) {
+        return None;
+    }
+    Some(format!("{category}/{name}"))
+}
+
 /// Run a closure with a thread-local registry override; restores the previous value on drop.
 /// Used in tests to avoid races on the process-wide global.
 #[cfg(test)]
@@ -109,6 +145,59 @@ mod tests {
                 assert_eq!(registry_base(), "https://inner.example.com/");
             });
             assert_eq!(registry_base(), "https://outer.example.com/");
+        });
+    }
+
+    #[test]
+    fn url_to_slug_extracts_category_and_name() {
+        with_registry("https://fragmentcolor.org/shaders/", || {
+            assert_eq!(
+                url_to_slug("https://fragmentcolor.org/shaders/sdf2d/circle.wgsl"),
+                Some("sdf2d/circle".to_string())
+            );
+            // Trailing-slash variants on the base normalize the same way.
+            assert_eq!(
+                url_to_slug("https://fragmentcolor.org/shaders/noise/simplex2.wgsl"),
+                Some("noise/simplex2".to_string())
+            );
+        });
+    }
+
+    #[test]
+    fn url_to_slug_rejects_non_registry_urls() {
+        with_registry("https://fragmentcolor.org/shaders/", || {
+            // Different host
+            assert_eq!(url_to_slug("https://other.example.com/foo/bar.wgsl"), None);
+            // Missing .wgsl suffix
+            assert_eq!(
+                url_to_slug("https://fragmentcolor.org/shaders/sdf2d/circle"),
+                None
+            );
+            // Extra path segments past category/name
+            assert_eq!(
+                url_to_slug("https://fragmentcolor.org/shaders/a/b/c.wgsl"),
+                None
+            );
+            // Uppercase letters in slug position
+            assert_eq!(
+                url_to_slug("https://fragmentcolor.org/shaders/SDF2D/circle.wgsl"),
+                None
+            );
+        });
+    }
+
+    #[test]
+    fn url_to_slug_uses_overridden_registry() {
+        with_registry("https://my-cdn.example.com/shaders/", || {
+            assert_eq!(
+                url_to_slug("https://my-cdn.example.com/shaders/sdf2d/circle.wgsl"),
+                Some("sdf2d/circle".to_string())
+            );
+            // The default base must not match when an override is active.
+            assert_eq!(
+                url_to_slug("https://fragmentcolor.org/shaders/sdf2d/circle.wgsl"),
+                None
+            );
         });
     }
 

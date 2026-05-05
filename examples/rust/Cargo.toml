@@ -16,6 +16,9 @@ pollster = "0.4"
 fastrand = "2"
 bytemuck = "1"
 
+# PNG output for the registry-gallery example
+image = { version = "0.25", default-features = false, features = ["png"] }
+
 # CLI examples
 crossterm = "0.29"
 ratatui = "0.29"

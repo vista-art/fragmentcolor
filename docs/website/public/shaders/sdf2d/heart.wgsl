@@ -1,10 +1,33 @@
-// sdf2d/heart — heart shape centered near origin, scale `s`.
+// sdf2d/heart — signed distance to a heart shape. Lobes sit at positive y,
+// apex (the pointy bottom) at origin. Scale by `s`. For UV space (y-down),
+// flip p.y at the call site: `heart(vec2<f32>(p.x, -p.y), s)`.
+//
+// Implementation: Inigo Quilez's 2D heart formula
+// (https://iquilezles.org/articles/distfunctions2d/) plus a clamp that
+// fixes the formula's only flaw: it treats the wedge diagonal y = -x as
+// extending infinitely below the apex, leaving phantom zero-crossings
+// down-and-out from the heart. We clamp the result to the radial distance
+// from the apex (origin) when we're below it, which gives a real lower
+// bound and erases the phantom artifact.
 fn heart(p: vec2<f32>, s: f32) -> f32 {
-  var q = vec2<f32>(abs(p.x), p.y) / s;
-  q.y = q.y + 0.3;
-  let a = length(q - vec2<f32>(0.25, 0.75)) - 0.25 * sqrt(2.0);
-  let b = q - vec2<f32>(0.0, 1.0);
-  let c = length(vec2<f32>(b.x, max(b.y + q.x * 0.0, 0.0)));
-  let d = max(dot(q, vec2<f32>(0.7071, 0.7071)), 0.0) - 1.0;
-  return s * min(a, d);
+  var q = p / s;
+  q.x = abs(q.x);
+
+  // Upper lobe: distance to a circle of radius sqrt(2)/4 at (0.25, 0.75).
+  let lobe = length(q - vec2<f32>(0.25, 0.75)) - sqrt(2.0) / 4.0;
+
+  // Body: unsigned distance to either the top dip (0, 1) or the wedge
+  // diagonal y = -x, signed by which side of y = x we are on.
+  let to_top_sq = dot(q - vec2<f32>(0.0, 1.0), q - vec2<f32>(0.0, 1.0));
+  let to_diag_sq = 0.5 * (q.x + q.y) * (q.x + q.y);
+  let body = sqrt(min(to_top_sq, to_diag_sq)) * sign(q.x - q.y);
+
+  // Clamp below the apex: when q.y < 0, the closest point on the heart
+  // is the apex (origin), so the true distance is at least length(q).
+  let below = step(q.y, 0.0);
+  let clamped = mix(body, max(body, length(q)), below);
+
+  // Branchless region select: above the diagonal -> lobe, below -> body.
+  let in_lobe = step(1.0, q.x + q.y);
+  return s * mix(clamped, lobe, in_lobe);
 }

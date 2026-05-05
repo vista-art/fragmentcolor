@@ -97,3 +97,7 @@ docs/_build/
 sources.txt
 
 fragmentcolor.code-workspace
+
+# Local-only example outputs (gallery PNGs, scratch renders, etc.).
+# Will become the registry catalog thumbnails on the website later.
+examples/rust/out/
