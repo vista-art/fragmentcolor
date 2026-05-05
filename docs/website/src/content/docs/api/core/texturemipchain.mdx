@@ -79,9 +79,7 @@ const pngResp = await fetch("/healthcheck/public/favicon.png");
 const pngBytes = new Uint8Array(await pngResp.arrayBuffer());
 const chain = TextureMipChain.prepare(pngBytes, TextureFormat.Rgba8UnormSrgb);
 
-// Hand the chain to the unified create_texture entry - same vocabulary as
-// every other texture path; From<TextureMipChain> selects the GPU-only
-// upload internally.
+// Upload the chain through the regular createTexture entry point.
 const texture = await renderer.createTexture(chain);
 const _ = texture.size();
 `}
