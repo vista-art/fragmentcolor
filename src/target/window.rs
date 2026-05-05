@@ -1,7 +1,9 @@
-use crate::{RenderContext, Size, Target, TargetFrame};
+use crate::{RenderContext, Size, SurfaceError, Target, TargetFrame};
 use lsp_doc::lsp_doc;
 use std::sync::Arc;
 
+#[cfg_attr(mobile, derive(uniffi::Object))]
+#[derive(Debug)]
 #[lsp_doc("docs/api/targets/window_target/window_target.md")]
 pub struct WindowTarget {
     pub(crate) context: Arc<RenderContext>,
@@ -38,24 +40,25 @@ impl Target for WindowTarget {
     }
 
     #[lsp_doc("docs/api/targets/target/hidden/get_current_frame.md")]
-    fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, wgpu::SurfaceError> {
+    fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, SurfaceError> {
         let frame = self.acquire_frame()?;
         Ok(Box::new(frame))
     }
 
+    /// Reading back from a presentable surface needs `COPY_SRC` on the
+    /// swapchain config, which we don't request yet. Returns an empty
+    /// `Vec` for now; render to a [`TextureTarget`] instead when readback
+    /// is required (CI image comparison, screenshot tooling).
     #[lsp_doc("docs/api/targets/target/get_image.md")]
-    fn get_image(&self) -> Vec<u8> {
-        // Reading back from a presentable surface is not portable across backends,
-        // especially on WebGPU/WebGL. Prefer rendering to a TextureTarget when
-        // readback is required (e.g., for CI image comparison).
+    async fn get_image(&self) -> Vec<u8> {
         Vec::new()
     }
 }
 
 impl WindowTarget {
     /// Try to acquire a frame; on Lost/Outdated, reconfigure and retry once.
-    fn acquire_frame(&self) -> Result<WindowFrame, wgpu::SurfaceError> {
-        match self.surface.get_current_texture() {
+    fn acquire_frame(&self) -> Result<WindowFrame, SurfaceError> {
+        match crate::target::surface_texture_from(self.surface.get_current_texture()) {
             Ok(surface_texture) => {
                 let view = surface_texture
                     .texture
@@ -67,12 +70,13 @@ impl WindowTarget {
                 })
             }
             Err(err) => {
-                use wgpu::SurfaceError::*;
                 match err {
-                    Lost | Outdated => {
+                    SurfaceError::Lost | SurfaceError::Outdated => {
                         // Reconfigure with the last known good config and retry once.
                         self.surface.configure(&self.context.device, &self.config);
-                        let surface_texture = self.surface.get_current_texture()?;
+                        let surface_texture = crate::target::surface_texture_from(
+                            self.surface.get_current_texture(),
+                        )?;
                         let view = surface_texture
                             .texture
                             .create_view(&wgpu::TextureViewDescriptor::default());
@@ -82,7 +86,7 @@ impl WindowTarget {
                             view,
                         })
                     }
-                    Timeout | OutOfMemory | Other => Err(err),
+                    _ => Err(err),
                 }
             }
         }

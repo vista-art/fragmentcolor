@@ -5,10 +5,14 @@ pub async fn create_instance() -> wgpu::Instance {
     #[cfg(wasm)]
     use wgpu::util::new_instance_with_webgpu_detection;
     #[cfg(wasm)]
-    let instance = new_instance_with_webgpu_detection(&wgpu::InstanceDescriptor::default()).await;
+    let instance = new_instance_with_webgpu_detection(
+        wgpu::InstanceDescriptor::new_without_display_handle_from_env(),
+    )
+    .await;
 
     #[cfg(not(wasm))]
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
+    let instance =
+        wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env());
 
     instance
 }
@@ -31,9 +35,36 @@ pub async fn request_adapter(
 pub async fn request_device(
     adapter: &wgpu::Adapter,
 ) -> Result<(wgpu::Device, wgpu::Queue), InitializationError> {
-    let requested_features = features();
-    let mut requested_limits = limits().using_resolution(adapter.limits());
-    requested_limits.max_push_constant_size = adapter.limits().max_push_constant_size;
+    // Features: probe a curated set of stable, end-user-relevant features
+    // and request only the ones the adapter advertises. Two constraints
+    // shape the list:
+    //   * `adapter.features()` includes wgpu-experimental features
+    //     (`EXPERIMENTAL_RAY_QUERY`, `EXPERIMENTAL_MESH_SHADER`,
+    //     `EXPERIMENTAL_COOPERATIVE_MATRIX`) that wgpu requires routed
+    //     through `experimental_features` — passing them via
+    //     `required_features` errors with `ExperimentalFeaturesNotEnabled`
+    //     on macOS Metal. We don't use any experimental features today.
+    //   * The Android emulator's SwiftShader Vulkan rejects `IMMEDIATES`
+    //     at device creation; the existing uniform-buffer fallback path
+    //     covers callers when the feature isn't available.
+    // Limits: take the adapter's advertised limits directly. wgpu's
+    // `Limits::default()` baseline exceeds what some emulators can
+    // provide (`max_buffer_size`, `max_storage_buffer_binding_size`),
+    // and Vulkan reports those mismatches via the same
+    // `VK_ERROR_FEATURE_NOT_PRESENT` we hit before — but with an empty
+    // wgpu-hal "Missing features:" log line because the constraint is on
+    // limits, not features.
+    let candidates = wgpu::Features::IMMEDIATES
+        | wgpu::Features::TEXTURE_COMPRESSION_BC
+        | wgpu::Features::TEXTURE_COMPRESSION_BC_SLICED_3D
+        | wgpu::Features::TEXTURE_COMPRESSION_ETC2
+        | wgpu::Features::TEXTURE_COMPRESSION_ASTC
+        | wgpu::Features::TEXTURE_COMPRESSION_ASTC_SLICED_3D
+        | wgpu::Features::TEXTURE_COMPRESSION_ASTC_HDR
+        | wgpu::Features::TEXTURE_FORMAT_16BIT_NORM
+        | wgpu::Features::FLOAT32_FILTERABLE;
+    let requested_features = adapter.features() & candidates;
+    let requested_limits = adapter.limits();
 
     let (device, queue) = adapter
         .request_device(&wgpu::DeviceDescriptor {
@@ -118,24 +149,11 @@ fn choose_surface_format_from(formats: &[wgpu::TextureFormat]) -> wgpu::TextureF
         .unwrap_or(wgpu::TextureFormat::Rgba8Unorm)
 }
 
-fn limits() -> wgpu::Limits {
-    #[cfg(wasm)]
-    let limits = wgpu::Limits::downlevel_webgl2_defaults();
-
-    #[cfg(not(wasm))]
-    let limits = wgpu::Limits::default();
-
-    limits
-}
-
-fn features() -> wgpu::Features {
-    #[cfg(wasm)]
-    let features = wgpu::Features::empty();
-    #[cfg(not(wasm))]
-    let features = wgpu::Features::PUSH_CONSTANTS;
-
-    features
-}
+// The previous `features()` and `format_features()` helpers folded into
+// the inline `candidates` mask in `request_device` above. Limits selection
+// (also there) takes `adapter.limits()` directly — no more
+// `Limits::default().using_resolution(...)`, which exceeded what
+// downlevel emulators could provide.
 
 fn memory_hints() -> wgpu::MemoryHints {
     wgpu::MemoryHints::Performance

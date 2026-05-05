@@ -1,2 +1,0 @@
-import { TextureWriteOptions } from "fragmentcolor";
-const _opt = TextureWriteOptions.whole();

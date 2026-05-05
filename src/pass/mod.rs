@@ -1,4 +1,4 @@
-use crate::{Color, Mesh, Region, Renderable, Shader, ShaderObject};
+use crate::{Color, Mesh, Renderable, ScreenRegion, Shader, ShaderObject};
 use lsp_doc::lsp_doc;
 use parking_lot::RwLock;
 use std::collections::HashMap;
@@ -12,11 +12,14 @@ use wasm_bindgen::prelude::*;
 
 mod platform;
 
+#[cfg(mobile)]
+pub use platform::mobile::MobilePassInput;
+
 pub mod error;
 pub use error::*;
 
 #[cfg_attr(wasm, wasm_bindgen)]
-#[cfg_attr(python, pyclass)]
+#[cfg_attr(python, pyclass(from_py_object))]
 // Resource Definitions
 #[derive(Debug, Clone)]
 pub struct PassInput {
@@ -59,8 +62,9 @@ impl From<Arc<ShaderObject>> for PassType {
 }
 
 #[derive(Debug, Clone)]
-#[cfg_attr(python, pyclass)]
+#[cfg_attr(python, pyclass(from_py_object))]
 #[cfg_attr(wasm, wasm_bindgen)]
+#[cfg_attr(mobile, derive(uniffi::Object))]
 #[lsp_doc("docs/api/core/pass/pass.md")]
 pub struct Pass {
     pub(crate) object: Arc<PassObject>,
@@ -85,7 +89,7 @@ impl Pass {
 
     #[lsp_doc("docs/api/core/pass/from_shader.md")]
     pub fn from_shader(name: &str, shader: &Shader) -> Self {
-        let obj = Arc::new(PassObject::from_shader_object(name, shader.object.clone()));
+        let obj = Arc::new(PassObject::from_shader(name, shader.object.clone()));
         PassObject::ensure_flat_current(&obj);
         Self { object: obj }
     }
@@ -105,7 +109,7 @@ impl Pass {
 
     #[lsp_doc("docs/api/core/pass/add_shader.md")]
     pub fn add_shader(&self, shader: &Shader) {
-        self.object.add_shader(shader);
+        self.object.add_shader(shader.object.clone());
     }
 
     #[lsp_doc("docs/api/core/pass/add_mesh.md")]
@@ -113,13 +117,8 @@ impl Pass {
         self.object.add_mesh(mesh)
     }
 
-    #[lsp_doc("docs/api/core/pass/add_mesh_to_shader.md")]
-    pub fn add_mesh_to_shader(&self, mesh: &Mesh, shader: &Shader) -> Result<(), PassError> {
-        Ok(shader.add_mesh(mesh)?)
-    }
-
     #[lsp_doc("docs/api/core/pass/set_viewport.md")]
-    pub fn set_viewport(&self, viewport: impl Into<Region>) {
+    pub fn set_viewport(&self, viewport: impl Into<ScreenRegion>) {
         self.object.set_viewport(viewport);
     }
 
@@ -139,7 +138,7 @@ impl Pass {
         T: TryInto<ColorTarget, Error = PassError>,
     {
         let ct = target.try_into()?;
-        self.object.set_color_target_id(ct.id);
+        self.object.set_color_target(ct.id);
         Ok(())
     }
 
@@ -149,7 +148,7 @@ impl Pass {
         T: TryInto<DepthTarget, Error = PassError>,
     {
         let dt = target.try_into()?;
-        self.object.set_depth_target_id(dt.id);
+        self.object.set_depth_target(dt.id);
         Ok(())
     }
 
@@ -316,7 +315,7 @@ pub struct PassObject {
     pub(crate) name: Arc<str>,
     pub(crate) input: RwLock<PassInput>,
     pub(crate) shaders: RwLock<Vec<Arc<ShaderObject>>>,
-    pub(crate) viewport: RwLock<Option<Region>>,
+    pub(crate) viewport: RwLock<Option<ScreenRegion>>,
     pub(crate) required_buffer_size: RwLock<u64>,
     // For compute passes: dispatch size (defaults to 1,1,1)
     pub(crate) compute_dispatch: RwLock<(u32, u32, u32)>,
@@ -377,18 +376,35 @@ impl PassObject {
     }
 
     /// Add a shader to this pass. The shader must be compatible with the pass type.
-    pub fn add_shader(&self, shader: &Shader) {
-        self.add_shader_object(shader.object.clone())
+    pub(crate) fn add_shader(&self, shader: Arc<ShaderObject>) {
+        // If this is the first shader added, adopt the shader kind for the pass.
+        {
+            let shaders = self.shaders.read();
+            if shaders.is_empty() {
+                let pass_type = match shader.is_compute() {
+                    true => PassType::Compute,
+                    false => PassType::Render,
+                };
+                *self.pass_type.write() = pass_type;
+            }
+        }
+
+        if shader.is_compute() == self.is_compute() {
+            *self.required_buffer_size.write() += shader.total_bytes;
+            self.shaders.write().push(shader);
+        } else {
+            log::warn!("Cannot add a compute shader to a render pass or vice versa");
+        }
     }
 
-    pub fn set_color_target_id(&self, id: crate::texture::TextureId) {
+    pub fn set_color_target(&self, id: crate::texture::TextureId) {
         *self.color_target.write() = Some(id);
         // Selecting a color target marks this pass as intermediate by default
         *self.present_to_target.write() = false;
     }
 
     /// Set per-pass depth attachment by TextureId.
-    pub fn set_depth_target_id(&self, id: crate::texture::TextureId) {
+    pub fn set_depth_target(&self, id: crate::texture::TextureId) {
         *self.depth_target.write() = Some(id);
     }
 
@@ -408,7 +424,7 @@ impl PassObject {
         Err(PassError::NoCompatibleShader)
     }
 
-    pub fn set_viewport(&self, viewport: impl Into<Region>) {
+    pub fn set_viewport(&self, viewport: impl Into<ScreenRegion>) {
         *self.viewport.write() = Some(viewport.into());
     }
 
@@ -416,36 +432,14 @@ impl PassObject {
         matches!(*self.pass_type.read(), PassType::Compute)
     }
 
-    pub(crate) fn from_shader_object(name: &str, shader: Arc<ShaderObject>) -> Self {
+    pub(crate) fn from_shader(name: &str, shader: Arc<ShaderObject>) -> Self {
         let pass_type = match shader.is_compute() {
             true => PassType::Compute,
             false => PassType::Render,
         };
         let object = Self::new(name, pass_type);
-        object.add_shader_object(shader);
+        object.add_shader(shader);
         object
-    }
-
-    /// Internal method to add a shader object to this pass.
-    fn add_shader_object(&self, shader: Arc<ShaderObject>) {
-        // If this is the first shader added, adopt the shader kind for the pass.
-        {
-            let shaders = self.shaders.read();
-            if shaders.is_empty() {
-                let pass_type = match shader.is_compute() {
-                    true => PassType::Compute,
-                    false => PassType::Render,
-                };
-                *self.pass_type.write() = pass_type;
-            }
-        }
-
-        if shader.is_compute() == self.is_compute() {
-            *self.required_buffer_size.write() += shader.total_bytes;
-            self.shaders.write().push(shader.clone());
-        } else {
-            log::warn!("Cannot add a compute shader to a render pass or vice versa");
-        }
     }
 
     // Link a list of dependencies into this node, maintain sibling order, rebuild caches, and propagate.
@@ -616,7 +610,7 @@ impl From<Shader> for Pass {
 
 impl From<Arc<ShaderObject>> for PassObject {
     fn from(shader: Arc<ShaderObject>) -> Self {
-        Self::from_shader_object("Default Pass from ShaderObject", shader)
+        Self::from_shader("Default Pass from ShaderObject", shader)
     }
 }
 
@@ -693,7 +687,7 @@ mod tests {
     fn sets_viewport_rect() {
         // Arrange
         let pass = Pass::new("p");
-        let vp = Region::from_region(2, 4, 8, 6);
+        let vp = ScreenRegion::from_region(2, 4, 8, 6);
 
         // Act
         pass.set_viewport(vp);
@@ -708,34 +702,6 @@ mod tests {
         let p = Pass::compute("c");
         p.set_compute_dispatch(0, 2, 0);
         assert_eq!(*p.object.compute_dispatch.read(), (1, 2, 1));
-    }
-
-    // Story: adding a mesh explicitly to a shader via pass helper succeeds when compatible.
-    #[test]
-    fn add_mesh_to_shader_happy_path() {
-        // Shader that expects @location(0) position (vec2)
-        let wgsl = r#"
-struct VOut { @builtin(position) pos: vec4<f32> };
-@vertex
-fn vs_main(@location(0) position: vec2<f32>) -> VOut {
-  var out: VOut;
-  out.pos = vec4<f32>(position, 0.0, 1.0);
-  return out;
-}
-@fragment
-fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.0, 0.0, 0.0, 1.0); }
-        "#;
-        let shader = Shader::new(wgsl).expect("shader with pos input");
-        let pass = Pass::from_shader("p", &shader);
-        let mesh = Mesh::new();
-        use crate::mesh::Vertex;
-        mesh.add_vertices([
-            Vertex::new([-0.5f32, -0.5f32]),
-            Vertex::new([0.5f32, -0.5f32]),
-            Vertex::new([0.0f32, 0.5f32]),
-        ]);
-        let res = pass.add_mesh_to_shader(&mesh, &shader);
-        assert!(res.is_ok(), "mesh should be compatible: {:?}", res);
     }
 
     // Story: ColorTarget/DepthTarget validations pass/fail as per format and usage.
@@ -763,7 +729,7 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.0, 0.0, 0.0, 1.
 
             // Non-depth texture (storage) should not be valid as DepthTarget
             let color_tex = r
-                .create_storage_texture([4u32, 4u32], crate::TextureFormat::default(), None)
+                .create_storage_texture(([4u32, 4u32], crate::TextureFormat::default()))
                 .await
                 .expect("color tex");
             let dt_bad = DepthTarget::try_from(&color_tex);

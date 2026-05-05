@@ -1,4 +1,4 @@
-use fragmentcolor::{App, Frame, Pass, Renderer, SetupResult, Shader, call, run};
+use fragmentcolor::{App, Pass, Renderer, SetupResult, Shader, call, run};
 use std::sync::Arc;
 use winit::dpi::PhysicalSize;
 use winit::window::Window;
@@ -14,7 +14,7 @@ fn draw(app: &App) {
 
     let id = app.primary_window_id();
 
-    if let (Some(frame), Some(size)) = (app.get::<Frame>("frame.main"), app.window_size(id)) {
+    if let (Some(pass), Some(size)) = (app.get::<Pass>("pass.main"), app.window_size(id)) {
         if let Some(shader) = app.get::<Shader>("shader.main") {
             let res = [size.width as f32, size.height as f32];
             let _ = shader.set("resolution", res);
@@ -22,7 +22,7 @@ fn draw(app: &App) {
             let _ = shader.set("time", t);
         }
         let r = app.get_renderer();
-        let _ = app.with_target(id, |t| r.render(&*frame, t));
+        let _ = app.with_target(id, |t| r.render(&*pass, t));
     }
 }
 
@@ -31,11 +31,8 @@ async fn setup(app: &App, windows: Vec<Arc<Window>>) -> SetupResult {
     let shader = Shader::new(src)?;
     let pass = Pass::from_shader("main", &shader);
 
-    let mut frame = Frame::new();
-    frame.add_pass(&pass);
-
     app.add("shader.main", shader);
-    app.add("frame.main", frame);
+    app.add("pass.main", pass);
 
     for win in windows {
         let target = app.get_renderer().create_target(win.clone()).await?;

@@ -1,5 +1,5 @@
 use fragmentcolor::mesh::{Mesh, Vertex};
-use fragmentcolor::{App, Frame, Pass, Renderer, SetupResult, Shader, call, run};
+use fragmentcolor::{App, Pass, Renderer, SetupResult, Shader, call, run};
 use std::sync::Arc;
 use winit::dpi::PhysicalSize;
 use winit::window::Window;
@@ -89,9 +89,9 @@ fn draw(app: &App) {
     }
 
     let id = app.primary_window_id();
-    if let Some(frame) = app.get::<Frame>("frame.main") {
+    if let Some(passes) = app.get::<Vec<Pass>>("passes.main") {
         let r = app.get_renderer();
-        let _ = app.with_target(id, |t| r.render(&*frame, t));
+        let _ = app.with_target(id, |t| r.render(&*passes, t));
     }
 }
 
@@ -161,13 +161,11 @@ async fn setup(app: &App, windows: Vec<Arc<Window>>) -> SetupResult {
     mesh.set_instance_count(n);
     pass_fs.add_mesh(&mesh).expect("mesh is compatible");
 
-    // Frame: compute then render
-    let mut frame = Frame::new();
-    frame.add_pass(&pass_cs);
-    frame.add_pass(&pass_fs);
+    // Passes: compute then render
+    let passes: Vec<Pass> = vec![pass_cs, pass_fs];
 
     app.add("shader.compute", cs);
-    app.add("frame.main", frame);
+    app.add("passes.main", passes);
 
     for win in windows {
         let target = app.get_renderer().create_target(win.clone()).await?;

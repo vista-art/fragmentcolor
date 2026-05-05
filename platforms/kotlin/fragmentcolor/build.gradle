@@ -1,0 +1,44 @@
+// Kotlin / Android library module for FragmentColor.
+//
+// Consumes the JNI shared libraries (one per ABI) + generated Kotlin
+// bindings produced by `./build_android` at the repo root. The generated
+// Kotlin files land under src/main/java/org/fragmentcolor/generated/ and
+// are overwritten on every build — do not hand-edit.
+
+plugins {
+    id 'com.android.library'
+    id 'org.jetbrains.kotlin.android'
+}
+
+android {
+    namespace 'org.fragmentcolor'
+    compileSdk 34
+    defaultConfig {
+        minSdk 28
+        targetSdk 34
+        consumerProguardFiles "proguard-rules.pro"
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    kotlinOptions {
+        jvmTarget = JavaVersion.VERSION_17.toString()
+    }
+}
+
+dependencies {
+    // `@aar` is critical: the plain JAR is JVM-only and ships no
+    // libjnidispatch.so for Android architectures, so the uniffi-generated
+    // Kotlin throws UnsatisfiedLinkError on the first FFI call. The AAR
+    // bundles per-ABI native dispatch libs.
+    implementation "net.java.dev.jna:jna:5.14.0@aar"
+    implementation "androidx.annotation:annotation:1.7.1"
+    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3"
+
+    androidTestImplementation "org.jetbrains.kotlin:kotlin-test:1.9.22"
+    androidTestImplementation "org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3"
+    androidTestImplementation "androidx.test:rules:1.5.0"
+    androidTestImplementation "androidx.test.ext:junit:1.1.5"
+}

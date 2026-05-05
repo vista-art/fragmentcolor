@@ -3,26 +3,84 @@
 use lsp_doc::lsp_doc;
 use wasm_bindgen::prelude::*;
 
-use crate::{CompareFunction, SamplerOptions, Size, Texture, TextureId, TextureWriteOptions};
+use crate::{
+    CompareFunction, SamplerOptions, Size, Texture, TextureFormat, TextureId, TextureMipChain,
+};
 
 #[wasm_bindgen]
-impl TextureWriteOptions {
-    #[wasm_bindgen(js_name = "whole")]
-    #[lsp_doc("docs/api/texture_write_options/whole.md")]
-    pub fn whole_js() -> Self {
-        Self::whole()
+impl TextureMipChain {
+    /// Build a chain from `bytes` for `format`. If `size` is undefined / null,
+    /// `bytes` is decoded as an image (PNG / JPEG / etc.); if `size` is
+    /// provided, `bytes` is treated as raw pixel data already laid out for
+    /// `format` at `size`. Pure CPU work — call from a Web Worker (or the
+    /// main thread) and pass the result to `renderer.createTexture(chain)`
+    /// for the GPU upload.
+    ///
+    /// `size` accepts the same shapes the rest of the JS API does:
+    /// `[w, h]`, `[w, h, d]`, a typed array, or a `Size` object — see
+    /// `Size::try_from(&JsValue)` for the full list. Forcing callers to
+    /// construct a wasm-bindgen `Size` instance (which has no JS-side
+    /// constructor anyway) would break parity with `createStorageTexture`,
+    /// `createTextureTarget`, and friends.
+    #[wasm_bindgen(js_name = "prepare")]
+    #[lsp_doc("docs/api/core/texture_mip_chain/prepare.md")]
+    pub fn prepare_js(
+        bytes: &JsValue,
+        format: TextureFormat,
+        size: &JsValue,
+    ) -> Result<TextureMipChain, JsError> {
+        let bytes = crate::texture::js_to_texture_bytes(bytes)?;
+        let size: Option<Size> = if size.is_undefined() || size.is_null() {
+            None
+        } else {
+            Some(size.try_into()?)
+        };
+        let input = crate::TextureInput {
+            data: crate::TextureData::Bytes(bytes),
+            options: crate::TextureOptions {
+                size,
+                format,
+                ..Default::default()
+            },
+        };
+        Ok(Self::prepare(input)?)
     }
 
-    #[wasm_bindgen(js_name = "withBytesPerRow")]
-    #[lsp_doc("docs/api/texture_write_options/with_bytes_per_row.md")]
-    pub fn with_bytes_per_row_js(self, bpr: u32) -> Self {
-        self.with_bytes_per_row(bpr)
+    #[wasm_bindgen(js_name = "format")]
+    #[lsp_doc("docs/api/core/texture_mip_chain/format.md")]
+    pub fn format_js(&self) -> TextureFormat {
+        self.format.into()
     }
 
-    #[wasm_bindgen(js_name = "withRowsPerImage")]
-    #[lsp_doc("docs/api/texture_write_options/with_rows_per_image.md")]
-    pub fn with_rows_per_image_js(self, rpi: u32) -> Self {
-        self.with_rows_per_image(rpi)
+    #[wasm_bindgen(js_name = "baseSize")]
+    #[lsp_doc("docs/api/core/texture_mip_chain/base_size.md")]
+    pub fn base_size_js(&self) -> Size {
+        let (w, h) = self.base_size();
+        Size::from([w, h])
+    }
+
+    #[wasm_bindgen(js_name = "levelCount")]
+    #[lsp_doc("docs/api/core/texture_mip_chain/level_count.md")]
+    pub fn level_count_js(&self) -> u32 {
+        self.level_count() as u32
+    }
+
+    /// Return the bytes for a single mip level as a `Uint8Array`. Use
+    /// `levelCount()` to discover the valid range. Returns an error if the
+    /// requested level is out of range.
+    #[wasm_bindgen(js_name = "level")]
+    #[lsp_doc("docs/api/core/texture_mip_chain/levels.md")]
+    pub fn level_js(&self, index: u32) -> Result<js_sys::Uint8Array, JsError> {
+        let levels = self.levels();
+        let idx = index as usize;
+        if idx >= levels.len() {
+            return Err(JsError::new(&format!(
+                "level {} out of range; chain has {} levels",
+                idx,
+                levels.len()
+            )));
+        }
+        Ok(js_sys::Uint8Array::from(levels[idx].as_slice()))
     }
 }
 
@@ -62,13 +120,23 @@ impl Texture {
         Ok(())
     }
 
-    #[wasm_bindgen(js_name = "writeWith")]
-    #[lsp_doc("docs/api/core/texture/write_with.md")]
-    pub fn write_with_js(&self, data: &JsValue, options: &JsValue) -> Result<(), JsError> {
+    #[wasm_bindgen(js_name = "writeRegion")]
+    #[lsp_doc("docs/api/core/texture/write_region.md")]
+    pub fn write_region_js(&self, data: &JsValue, region: &JsValue) -> Result<(), JsError> {
         let bytes = crate::texture::js_to_texture_bytes(data)?;
-        let opt = crate::texture::js_to_write_options(options)?;
-        self.write_with(&bytes, opt)?;
+        let r: crate::TextureRegion = region.try_into()?;
+        self.write_region(&bytes, r)?;
         Ok(())
+    }
+
+    #[wasm_bindgen(js_name = "getImage")]
+    #[lsp_doc("docs/api/core/texture/get_image.md")]
+    pub async fn get_image_js(&self) -> Result<js_sys::Uint8Array, JsError> {
+        let bytes = self
+            .get_image()
+            .await
+            .map_err(|e| JsError::new(&e.to_string()))?;
+        Ok(js_sys::Uint8Array::from(bytes.as_slice()))
     }
 }
 

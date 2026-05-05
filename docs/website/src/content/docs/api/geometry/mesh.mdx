@@ -79,25 +79,31 @@ lang="python"
 </TabItem>
 
 <TabItem label="Swift">
-<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Swift placeholder: bindings WIP
+import FragmentColor
 
+let mesh = Mesh()
+try mesh.addVertex([0.0, 0.5, 0.0])
+try mesh.addVertex([-0.5, -0.5, 0.0])
+try mesh.addVertex([0.5, -0.5, 0.0])
 `}
-lang="text"
+lang="swift"
 />
 
 </TabItem>
 
 <TabItem label="Kotlin">
-<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Kotlin placeholder: bindings WIP
+import org.fragmentcolor.*
 
+val mesh = Mesh()
+mesh.addVertex(Vertex(listOf(0.0f, 0.5f, 0.0f)))
+mesh.addVertex(Vertex(listOf(-0.5f, -0.5f, 0.0f)))
+mesh.addVertex(Vertex(listOf(0.5f, -0.5f, 0.0f)))
 `}
-lang="text"
+lang="kotlin"
 />
 
 </TabItem>
@@ -112,7 +118,9 @@ lang="text"
 
 ### Mesh::new
 
-Create an empty mesh.
+Create an empty mesh. Add vertices with `add_vertex` (or `add_vertices`)
+and instances with `add_instance`, then attach the mesh to a shader to
+draw it.
 
 #### Example
 
@@ -153,25 +161,23 @@ lang="python"
 </TabItem>
 
 <TabItem label="Swift">
-<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Swift placeholder: bindings WIP
-
+import FragmentColor
+let m = Mesh()
 `}
-lang="text"
+lang="swift"
 />
 
 </TabItem>
 
 <TabItem label="Kotlin">
-<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Kotlin placeholder: bindings WIP
-
+import org.fragmentcolor.*
+val m = Mesh()
 `}
-lang="text"
+lang="kotlin"
 />
 
 </TabItem>
@@ -210,11 +216,7 @@ lang="rust"
 code={`
 import { Mesh } from "fragmentcolor";
 
-const mesh = Mesh.fromVertices([
-    [0.0, 0.0],
-    [1.0, 0.0],
-    [0.0, 1.0],
-]);
+const mesh = Mesh.fromVertices([ [0.0, 0.0], [1.0, 0.0], [0.0, 1.0], ]);
 `}
 lang="js"
 />
@@ -238,25 +240,29 @@ lang="python"
 </TabItem>
 
 <TabItem label="Swift">
-<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Swift placeholder: bindings WIP
+import FragmentColor
 
+let mesh = try Mesh.fromVertices([
+    [0.0, 0.0],
+    [1.0, 0.0],
+    [0.0, 1.0],
+])
 `}
-lang="text"
+lang="swift"
 />
 
 </TabItem>
 
 <TabItem label="Kotlin">
-<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Kotlin placeholder: bindings WIP
+import org.fragmentcolor.*
 
+val mesh = Mesh.fromVertices(listOf(Vertex(listOf(0.0f, 0.0f)), Vertex(listOf(1.0f, 0.0f)), Vertex(listOf(0.0f, 1.0f))))
 `}
-lang="text"
+lang="kotlin"
 />
 
 </TabItem>
@@ -268,7 +274,10 @@ lang="text"
 
 ### Mesh::add_vertex
 
-Add a single vertex to the mesh.
+Append a single vertex to the mesh. Pass an array literal for the
+position (`[x, y]` or `[x, y, z]`); for vertices that carry `uv`, `color`,
+or other per-vertex attributes, build a [Vertex](/api/geometry/vertex)
+first and pass it in.
 
 #### Example
 
@@ -311,25 +320,25 @@ lang="python"
 </TabItem>
 
 <TabItem label="Swift">
-<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Swift placeholder: bindings WIP
-
+import FragmentColor
+let m = Mesh()
+try m.addVertex([0.0, 0.0])
 `}
-lang="text"
+lang="swift"
 />
 
 </TabItem>
 
 <TabItem label="Kotlin">
-<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Kotlin placeholder: bindings WIP
-
+import org.fragmentcolor.*
+val m = Mesh()
+m.addVertex(Vertex(listOf(0.0f, 0.0f)))
 `}
-lang="text"
+lang="kotlin"
 />
 
 </TabItem>
@@ -367,10 +376,7 @@ lang="rust"
 code={`
 import { Mesh } from "fragmentcolor";
 const m = new Mesh();
-m.addVertices([
-  [0.0, 0.0],
-  [1.0, 0.0],
-]);
+m.addVertices([ [0.0, 0.0], [1.0, 0.0], ]);
 `}
 lang="js"
 />
@@ -393,25 +399,28 @@ lang="python"
 </TabItem>
 
 <TabItem label="Swift">
-<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Swift placeholder: bindings WIP
-
+import FragmentColor
+let m = Mesh()
+try m.addVertices([
+  [0.0, 0.0],
+  [1.0, 0.0],
+])
 `}
-lang="text"
+lang="swift"
 />
 
 </TabItem>
 
 <TabItem label="Kotlin">
-<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Kotlin placeholder: bindings WIP
-
+import org.fragmentcolor.*
+val m = Mesh()
+m.addVertices(listOf(Vertex(listOf(0.0f, 0.0f)), Vertex(listOf(1.0f, 0.0f))))
 `}
-lang="text"
+lang="kotlin"
 />
 
 </TabItem>
@@ -423,7 +432,14 @@ lang="text"
 
 ### Mesh::add_instance
 
-Add a single instance (any Vertex can be converted into an instance).
+Add a single per-instance attribute set to the mesh.
+
+An `Instance` is a bag of named attributes (transform, color, id, â¦) sent to
+the shader's per-instance inputs. It carries no position â the mesh's vertices
+are reused for every instance.
+
+Adding an instance also clears any previously set instance count override
+(see `Mesh::set_instance_count`).
 
 #### Example
 
@@ -432,10 +448,12 @@ Add a single instance (any Vertex can be converted into an instance).
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::mesh::{Mesh, Vertex};
-let mut m = Mesh::new();
-let v = Vertex::new([0.0, 0.0]);
-m.add_instance(v);
+use fragmentcolor::mesh::{Mesh, Instance};
+
+let m = Mesh::new();
+let offset: [f32; 2] = [0.25, 0.10];
+let tint:   [f32; 4] = [1.0, 0.0, 0.0, 1.0];
+m.add_instance(Instance::new().set("offset", offset).set("tint", tint));
 `}
 lang="rust"
 />
@@ -445,10 +463,12 @@ lang="rust"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Mesh, Vertex } from "fragmentcolor";
+import { Mesh, Instance } from "fragmentcolor";
+
 const m = new Mesh();
-const v = new Vertex([0.0, 0.0]);
-m.addInstance(v);
+const offset = [0.25, 0.10];
+const tint = [1.0, 0.0, 0.0, 1.0];
+m.addInstance(Instance.new().set("offset", offset).set("tint", tint));
 `}
 lang="js"
 />
@@ -458,10 +478,12 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Mesh, Vertex
+from fragmentcolor import Mesh, Instance
+
 m = Mesh()
-v = Vertex([0.0, 0.0])
-m.add_instance(v)
+offset = [0.25, 0.10]
+tint = [1.0, 0.0, 0.0, 1.0]
+m.add_instance(Instance().set("offset", offset).set("tint", tint))
 `}
 lang="python"
 />
@@ -469,25 +491,31 @@ lang="python"
 </TabItem>
 
 <TabItem label="Swift">
-<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Swift placeholder: bindings WIP
+import FragmentColor
 
+let m = Mesh()
+let offset = [0.25, 0.10]
+let tint = [1.0, 0.0, 0.0, 1.0]
+try m.addInstance(Instance().set("offset", offset).set("tint", tint))
 `}
-lang="text"
+lang="swift"
 />
 
 </TabItem>
 
 <TabItem label="Kotlin">
-<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Kotlin placeholder: bindings WIP
+import org.fragmentcolor.*
 
+val m = Mesh()
+val offset = listOf(0.25f, 0.10f)
+val tint = listOf(1.0f, 0.0f, 0.0f, 1.0f)
+m.addInstance(Instance().set("offset", offset).set("tint", tint))
 `}
-lang="text"
+lang="kotlin"
 />
 
 </TabItem>
@@ -499,7 +527,14 @@ lang="text"
 
 ### Mesh::add_instances
 
-Add many instances to the mesh.
+Add many per-instance attribute sets to the mesh in one call.
+
+Each `Instance` is a bag of named attributes (transform, color, id, â¦) sent to
+the shader's per-instance inputs. Instances carry no position â the mesh's
+vertices are reused for every instance.
+
+Adding instances also clears any previously set instance count override
+(see `Mesh::set_instance_count`).
 
 #### Example
 
@@ -508,11 +543,16 @@ Add many instances to the mesh.
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::mesh::{Mesh, Vertex};
-let mut m = Mesh::new();
+use fragmentcolor::mesh::{Mesh, Instance};
+
+let m = Mesh::new();
+let red:   [f32; 4] = [1.0, 0.0, 0.0, 1.0];
+let green: [f32; 4] = [0.0, 1.0, 0.0, 1.0];
+let blue:  [f32; 4] = [0.0, 0.0, 1.0, 1.0];
 m.add_instances([
-  Vertex::new([0.0, 0.0]),
-  Vertex::new([1.0, 1.0]),
+    Instance::new().set("tint", red),
+    Instance::new().set("tint", green),
+    Instance::new().set("tint", blue),
 ]);
 `}
 lang="rust"
@@ -523,12 +563,13 @@ lang="rust"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Mesh, Vertex } from "fragmentcolor";
+import { Mesh, Instance } from "fragmentcolor";
+
 const m = new Mesh();
-m.addInstances([
-  Vertex.new([0.0, 0.0]),
-  Vertex.new([1.0, 1.0]),
-]);
+const red = [1.0, 0.0, 0.0, 1.0];
+const green = [0.0, 1.0, 0.0, 1.0];
+const blue = [0.0, 0.0, 1.0, 1.0];
+m.addInstances([ Instance.new().set("tint", red), Instance.new().set("tint", green), Instance.new().set("tint", blue), ]);
 `}
 lang="js"
 />
@@ -538,11 +579,16 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Mesh, Vertex
+from fragmentcolor import Mesh, Instance
+
 m = Mesh()
+red = [1.0, 0.0, 0.0, 1.0]
+green = [0.0, 1.0, 0.0, 1.0]
+blue = [0.0, 0.0, 1.0, 1.0]
 m.add_instances([
-  Vertex([0.0, 0.0]),
-  Vertex([1.0, 1.0]),
+    Instance().set("tint", red),
+    Instance().set("tint", green),
+    Instance().set("tint", blue),
 ])
 `}
 lang="python"
@@ -551,25 +597,37 @@ lang="python"
 </TabItem>
 
 <TabItem label="Swift">
-<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Swift placeholder: bindings WIP
+import FragmentColor
 
+let m = Mesh()
+let red = [1.0, 0.0, 0.0, 1.0]
+let green = [0.0, 1.0, 0.0, 1.0]
+let blue = [0.0, 0.0, 1.0, 1.0]
+m.addInstances([
+    try Instance().set("tint", red),
+    try Instance().set("tint", green),
+    try Instance().set("tint", blue),
+])
 `}
-lang="text"
+lang="swift"
 />
 
 </TabItem>
 
 <TabItem label="Kotlin">
-<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Kotlin placeholder: bindings WIP
+import org.fragmentcolor.*
 
+val m = Mesh()
+val red = listOf(1.0f, 0.0f, 0.0f, 1.0f)
+val green = listOf(0.0f, 1.0f, 0.0f, 1.0f)
+val blue = listOf(0.0f, 0.0f, 1.0f, 1.0f)
+m.addInstances(listOf(Instance().set("tint", red), Instance().set("tint", green), Instance().set("tint", blue),))
 `}
-lang="text"
+lang="kotlin"
 />
 
 </TabItem>
@@ -581,7 +639,14 @@ lang="text"
 
 ### Mesh::clear_instances
 
-Remove all instances from a mesh (render defaults to 1 instance).
+Reset the mesh's instance state to the default (1 draw, no per-instance data).
+
+Specifically, this:
+- Drops any per-instance attributes added via `add_instance` / `add_instances`.
+- Clears any count override previously set with `set_instance_count`.
+
+After calling, the mesh renders as a single instance unless you populate it
+again or call `set_instance_count`.
 
 #### Example
 
@@ -590,9 +655,12 @@ Remove all instances from a mesh (render defaults to 1 instance).
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::mesh::Mesh;
-let mut m = Mesh::new();
-m.clear_instances();
+use fragmentcolor::mesh::{Mesh, Instance};
+
+let m = Mesh::new();
+let red: [f32; 4] = [1.0, 0.0, 0.0, 1.0];
+m.add_instance(Instance::new().set("tint", red));
+m.clear_instances(); // back to a single uninstanced draw
 `}
 lang="rust"
 />
@@ -602,9 +670,12 @@ lang="rust"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Mesh } from "fragmentcolor";
+import { Mesh, Instance } from "fragmentcolor";
+
 const m = new Mesh();
-m.clearInstances();
+const red = [1.0, 0.0, 0.0, 1.0];
+m.addInstance(Instance.new().set("tint", red));
+m.clearInstances(); // back to a single uninstanced draw;
 `}
 lang="js"
 />
@@ -614,9 +685,12 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Mesh
+from fragmentcolor import Mesh, Instance
+
 m = Mesh()
-m.clear_instances()
+red = [1.0, 0.0, 0.0, 1.0]
+m.add_instance(Instance().set("tint", red))
+m.clear_instances(); # back to a single uninstanced draw
 `}
 lang="python"
 />
@@ -624,25 +698,31 @@ lang="python"
 </TabItem>
 
 <TabItem label="Swift">
-<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Swift placeholder: bindings WIP
+import FragmentColor
 
+let m = Mesh()
+let red = [1.0, 0.0, 0.0, 1.0]
+try m.addInstance(Instance().set("tint", red))
+m.clearInstances(); // back to a single uninstanced draw
 `}
-lang="text"
+lang="swift"
 />
 
 </TabItem>
 
 <TabItem label="Kotlin">
-<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Kotlin placeholder: bindings WIP
+import org.fragmentcolor.*
 
+val m = Mesh()
+val red = listOf(1.0f, 0.0f, 0.0f, 1.0f)
+m.addInstance(Instance().set("tint", red))
+m.clearInstances(); // back to a single uninstanced draw
 `}
-lang="text"
+lang="kotlin"
 />
 
 </TabItem>
@@ -656,7 +736,12 @@ lang="text"
 
 Override how many instances to draw without providing per-instance attributes.
 
-Use this when driving instance data from a storage buffer and indexing via @builtin(instance_index).
+Use this when driving instance data from a storage buffer and indexing via
+`@builtin(instance_index)` in the vertex shader â common for compute-driven
+simulations and large particle systems.
+
+The override is automatically cleared if you later call `add_instance` /
+`add_instances` (those carry their own count) or `clear_instances`.
 
 #### Example
 
@@ -672,7 +757,7 @@ m.add_vertices([
     [ 0.01, -0.01],
     [ 0.00,  0.01],
 ]);
-// draw one million instances
+// Draw one million instances, fetching per-particle data from a storage buffer.
 m.set_instance_count(1_000_000);
 `}
 lang="rust"
@@ -685,12 +770,8 @@ lang="rust"
 code={`
 import { Mesh } from "fragmentcolor";
 const m = new Mesh();
-m.addVertices([
-    [-0.01, -0.01],
-    [ 0.01, -0.01],
-    [ 0.00,  0.01],
-]);
-// draw one million instances
+m.addVertices([ [-0.01, -0.01], [ 0.01, -0.01], [ 0.00,  0.01], ]);
+// Draw one million instances, fetching per-particle data from a storage buffer.
 m.setInstanceCount(1_000_000);
 `}
 lang="js"
@@ -708,7 +789,7 @@ m.add_vertices([
     [ 0.01, -0.01],
     [ 0.00,  0.01],
 ])
-# draw one million instances
+# Draw one million instances, fetching per-particle data from a storage buffer.
 m.set_instance_count(1_000_000)
 `}
 lang="python"
@@ -717,98 +798,33 @@ lang="python"
 </TabItem>
 
 <TabItem label="Swift">
-<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Swift placeholder: bindings WIP
-
+import FragmentColor
+let m = Mesh()
+try m.addVertices([
+    [-0.01, -0.01],
+    [ 0.01, -0.01],
+    [ 0.00,  0.01],
+])
+// Draw one million instances, fetching per-particle data from a storage buffer.
+m.setInstanceCount(1_000_000)
 `}
-lang="text"
+lang="swift"
 />
 
 </TabItem>
 
 <TabItem label="Kotlin">
-<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Kotlin placeholder: bindings WIP
-
+import org.fragmentcolor.*
+val m = Mesh()
+m.addVertices(listOf(Vertex(listOf(-0.01f, -0.01f)), Vertex(listOf(0.01f, -0.01f)), Vertex(listOf(0.00f, 0.01f))))
+// Draw one million instances, fetching per-particle data from a storage buffer.
+m.setInstanceCount(1_000_000u)
 `}
-lang="text"
-/>
-
-</TabItem>
-
-</Tabs>
-
-
----
-
-### Mesh::clear_instance_count
-
-Remove all instances from a mesh (render defaults to 1 instance).
-
-#### Example
-
-<Tabs>
-
-<TabItem label="Rust">
-<Code
-code={`
-use fragmentcolor::mesh::Mesh;
-let mut m = Mesh::new();
-m.clear_instance_count();
-`}
-lang="rust"
-/>
-
-</TabItem>
-
-<TabItem label="JavaScript">
-<Code
-code={`
-import { Mesh } from "fragmentcolor";
-const m = new Mesh();
-m.clearInstanceCount();
-`}
-lang="js"
-/>
-
-</TabItem>
-
-<TabItem label="Python">
-<Code
-code={`
-from fragmentcolor import Mesh
-m = Mesh()
-m.clear_instance_count()
-`}
-lang="python"
-/>
-
-</TabItem>
-
-<TabItem label="Swift">
-<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
-<Code
-code={`
-// Swift placeholder: bindings WIP
-
-`}
-lang="text"
-/>
-
-</TabItem>
-
-<TabItem label="Kotlin">
-<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
-<Code
-code={`
-// Kotlin placeholder: bindings WIP
-
-`}
-lang="text"
+lang="kotlin"
 />
 
 </TabItem>

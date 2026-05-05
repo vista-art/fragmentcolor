@@ -2,7 +2,7 @@ import os
 import platform
 import importlib
 import numpy as np
-from fragmentcolor import Renderer, Shader, Pass, Frame
+from fragmentcolor import Renderer, Shader, Pass
 
 # Debug diagnostics for CI
 if os.environ.get("FC_HEALTHCHECK_VERBOSE") == "1":
@@ -97,7 +97,7 @@ fn main(pixel: VertexOutput) -> @location(0) vec4<f32> {
     shader.set("circle.radius", 20.0)
     renderer.render(shader, target)
 
-    # Render with a Pass and a Frame
+    # Render with a Pass, then render a sequence of passes (any iterable of Pass is renderable).
     rpass = Pass("single pass")
     rpass.add_shader(shader)
     renderer.render(rpass, target)
@@ -105,9 +105,9 @@ fn main(pixel: VertexOutput) -> @location(0) vec4<f32> {
     shader.set("circle.radius", 30.0)
     renderer.render(rpass, target)
 
-    frame = Frame()
-    frame.add_pass(rpass)
-    renderer.render(frame, target)
+    rpass2 = Pass("second pass")
+    rpass2.add_shader(shader)
+    renderer.render([rpass, rpass2], target)
 
     # Additional API coverage for docs
     radius = shader.get("circle.radius")
@@ -161,10 +161,10 @@ fn main(v: VOut) -> @location(0) vec4<f32> {
     tex.set_sampler_options(
         {"repeat_x": True, "repeat_y": False, "smooth": True, "compare": None})
 
-    # Push constants smoke: solid color via var<push_constant>
+    # Push constants smoke: solid color via var<immediate>
     pc_shader = Shader("""
 struct PC { color: vec4<f32> };
-var<push_constant> pc: PC;
+var<immediate> pc: PC;
 @vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
   let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.));
   return vec4f(p[i], 0., 1.);

@@ -1,0 +1,269 @@
+#!/usr/bin/env bash
+# Build FragmentColor for iOS: one static library per arch, one Swift
+# binding set, one xcframework. Depends on Xcode + a working `cargo` that
+# can target `aarch64-apple-ios` and `aarch64-apple-ios-sim` (both are in
+# `rust-toolchain`).
+#
+# Produces:
+#   build/ios/FragmentColorFFI.xcframework         (iOS-only — for release publishing)
+#   build/ios-macos/FragmentColorFFI.xcframework   (iOS + optional macOS slice — for local dev)
+#   platforms/swift/Sources/FragmentColor/generated/*.swift (wrapper)
+#
+# `build/ios/` is the canonical iOS-only artifact zipped + uploaded by
+# `.github/workflows/publish_swift.yml` (the published consumer-facing
+# Swift Package Manager artifact). `build/ios-macos/` is what the dev
+# `platforms/swift/Package.swift` binaryTarget points at; it always contains
+# the iOS slices, plus a macOS arm64 slice when `aarch64-apple-darwin` is
+# installed locally so a developer can run `swift build` on macOS without
+# repointing Package.swift.
+#
+# The xcframework is named `FragmentColorFFI` because the uniffi-generated
+# `FragmentColor.swift` does `#if canImport(FragmentColorFFI); import FragmentColorFFI; #endif`
+# to pull in the C-side types (`RustBuffer`, `RustCallStatus`, etc). The
+# binary module name must match that import exactly.
+#
+# Usage:
+#   ./build_ios                 # release build
+#   FC_VERBOSE=1 ./build_ios    # verbose cargo output
+
+set -euo pipefail
+
+RUST_NAME="fragmentcolor"     # cargo crate name (lib<RUST_NAME>.a)
+FFI_NAME="FragmentColorFFI"   # xcframework / binary module name used by Swift
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BUILD_DIR="$ROOT_DIR/build"
+SWIFT_GENERATED="$ROOT_DIR/platforms/swift/Sources/FragmentColor/generated"
+MACOS_STUBS_C="$ROOT_DIR/scripts/swift/macos_stubs.c"
+
+CARGO_FLAGS=(--release)
+if [[ -z "${FC_VERBOSE:-}" ]]; then
+  CARGO_FLAGS+=(-q)
+fi
+
+if ! command -v xcodebuild >/dev/null 2>&1; then
+  echo "build_ios: xcodebuild not on PATH; install Xcode first" >&2
+  exit 1
+fi
+
+build_target() {
+  local target="$1"
+  IPHONEOS_DEPLOYMENT_TARGET="16.0" \
+    CARGO_TARGET_DIR="$BUILD_DIR" \
+    cargo build "${CARGO_FLAGS[@]}" --target "$target"
+}
+
+generate_swift_bindings() {
+  local target="$1"
+  local lib_path="$BUILD_DIR/$target/release/lib$RUST_NAME.a"
+  cargo run "${CARGO_FLAGS[@]}" \
+    --bin uniffi-bindgen generate \
+    --library "$lib_path" \
+    --config "$ROOT_DIR/uniffi.toml" \
+    --language swift \
+    --out-dir "$BUILD_DIR/$target/release/"
+}
+
+# Assemble a framework using the FFI_NAME so the Swift-side
+# `import FragmentColorFFI` resolves. Xcode identifies a framework module
+# by the `.framework` directory name, the binary file inside it, and the
+# top-level module declaration in `module.modulemap` — all three must
+# match `FFI_NAME`. The standard iOS framework layout is:
+#
+#   <Name>.framework/
+#     <Name>          (binary — for static frameworks this is the .a content)
+#     Info.plist
+#     Headers/<Name>.h
+#     Modules/module.modulemap
+assemble_framework() {
+  local target="$1"
+  local target_dir="$BUILD_DIR/$target/release"
+  local framework_dir="$target_dir/$FFI_NAME.framework"
+
+  local platform="iPhoneOS"
+  if [[ "$target" == *-sim ]]; then
+    platform="iPhoneSimulator"
+  fi
+
+  rm -rf "$framework_dir"
+  mkdir -p "$framework_dir/Headers" "$framework_dir/Modules"
+
+  cp "$target_dir/lib$RUST_NAME.a" "$framework_dir/$FFI_NAME"
+
+  # uniffi emits `<ModuleName>FFI.modulemap` containing
+  # `module <ModuleName>FFI { header "<ModuleName>FFI.h" ... }`.
+  # Rewrite to `framework module ...` and place it under Modules/ so
+  # Xcode's framework loader picks it up (Headers/module.modulemap is
+  # ignored by xcodebuild for frameworks; that path only works for
+  # plain header directories).
+  local src_map
+  src_map=$(find "$target_dir" -maxdepth 1 -name "*.modulemap" | head -1)
+  if [[ -z "$src_map" ]]; then
+    echo "build_ios: no .modulemap produced by uniffi-bindgen; aborting" >&2
+    exit 1
+  fi
+  sed -E "s/^module [A-Za-z0-9_]+ *\\{/framework module $FFI_NAME \\{/" \
+    "$src_map" > "$framework_dir/Modules/module.modulemap"
+
+  find "$target_dir" -maxdepth 1 -name "*.h" -exec cp {} "$framework_dir/Headers/" \;
+
+  # xcodebuild rejects a framework without an Info.plist. Generate a
+  # minimal one parameterised by the SDK platform so the device + sim
+  # variants advertise the right `CFBundleSupportedPlatforms`.
+  cat > "$framework_dir/Info.plist" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleDevelopmentRegion</key><string>en</string>
+  <key>CFBundleExecutable</key><string>$FFI_NAME</string>
+  <key>CFBundleIdentifier</key><string>org.fragmentcolor.$FFI_NAME</string>
+  <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+  <key>CFBundleName</key><string>$FFI_NAME</string>
+  <key>CFBundlePackageType</key><string>FMWK</string>
+  <key>CFBundleShortVersionString</key><string>1.0</string>
+  <key>CFBundleSupportedPlatforms</key><array><string>$platform</string></array>
+  <key>CFBundleVersion</key><string>1</string>
+  <key>MinimumOSVersion</key><string>16.0</string>
+</dict>
+</plist>
+EOF
+}
+
+# Build a macOS arm64 dylib from the same Rust crate plus a small C stub
+# that supplies iOS-only uniffi symbols (`Renderer.createTarget`). The
+# resulting `.framework` is glued onto the dev xcframework so that
+# `swift build` on a developer's Mac resolves both the FFI types and the
+# generated `FragmentColor.swift` symbol references. No-op when the
+# `aarch64-apple-darwin` target is not installed (e.g. CI runners only set
+# up iOS targets).
+assemble_macos_framework() {
+  local target="aarch64-apple-darwin"
+  local target_dir="$BUILD_DIR/$target/release"
+  local framework_dir="$target_dir/$FFI_NAME.framework"
+
+  echo "==> Building for $target (--cfg mobile)"
+  IPHONEOS_DEPLOYMENT_TARGET="" \
+  RUSTFLAGS="--cfg mobile" \
+  CARGO_TARGET_DIR="$BUILD_DIR" \
+    cargo build "${CARGO_FLAGS[@]}" --lib --target "$target"
+
+  rm -rf "$framework_dir"
+  mkdir -p "$framework_dir/Headers" "$framework_dir/Modules"
+
+  # Use the macOS SDK from Xcode so libSystem and friends resolve. Plain
+  # `clang` outside `xcrun` does not know where the SDK lives on macOS.
+  local macos_sdk
+  macos_sdk=$(xcrun --sdk macosx --show-sdk-path)
+
+  # Compile the iOS-only stub symbols.
+  local stubs_obj="$target_dir/macos_stubs.o"
+  xcrun --sdk macosx clang \
+    -arch arm64 -target arm64-apple-macos12 \
+    -isysroot "$macos_sdk" \
+    -O2 -fPIC \
+    -c "$MACOS_STUBS_C" -o "$stubs_obj"
+
+  # Link the Rust dylib + stubs into a single shared library matching the
+  # FFI_NAME so the framework binary path matches the module name.
+  local rust_dylib="$target_dir/lib$RUST_NAME.dylib"
+  local fwk_bin="$framework_dir/$FFI_NAME"
+  xcrun --sdk macosx clang \
+    -arch arm64 -target arm64-apple-macos12 \
+    -isysroot "$macos_sdk" \
+    -dynamiclib \
+    -install_name "@rpath/$FFI_NAME.framework/$FFI_NAME" \
+    -framework Foundation \
+    -framework CoreFoundation \
+    -framework Metal \
+    -framework QuartzCore \
+    -framework CoreGraphics \
+    "$rust_dylib" "$stubs_obj" \
+    -o "$fwk_bin"
+
+  # Reuse the iOS-side Headers + module.modulemap (generated by uniffi). The
+  # FFI type layout is identical across platforms; the modulemap only names
+  # the framework module.
+  local ios_target_dir="$BUILD_DIR/aarch64-apple-ios/release"
+  find "$ios_target_dir" -maxdepth 1 -name "*.h" -exec cp {} "$framework_dir/Headers/" \;
+  local src_map
+  src_map=$(find "$ios_target_dir" -maxdepth 1 -name "*.modulemap" | head -1)
+  if [[ -z "$src_map" ]]; then
+    echo "build_ios: no .modulemap available for macOS slice; aborting" >&2
+    exit 1
+  fi
+  sed -E "s/^module [A-Za-z0-9_]+ *\\{/framework module $FFI_NAME \\{/" \
+    "$src_map" > "$framework_dir/Modules/module.modulemap"
+
+  cat > "$framework_dir/Info.plist" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleDevelopmentRegion</key><string>en</string>
+  <key>CFBundleExecutable</key><string>$FFI_NAME</string>
+  <key>CFBundleIdentifier</key><string>org.fragmentcolor.$FFI_NAME</string>
+  <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+  <key>CFBundleName</key><string>$FFI_NAME</string>
+  <key>CFBundlePackageType</key><string>FMWK</string>
+  <key>CFBundleShortVersionString</key><string>1.0</string>
+  <key>CFBundleSupportedPlatforms</key><array><string>MacOSX</string></array>
+  <key>CFBundleVersion</key><string>1</string>
+  <key>MinimumOSVersion</key><string>12.0</string>
+</dict>
+</plist>
+EOF
+}
+
+echo "==> Building for aarch64-apple-ios"
+build_target "aarch64-apple-ios"
+generate_swift_bindings "aarch64-apple-ios"
+assemble_framework "aarch64-apple-ios"
+
+echo "==> Building for aarch64-apple-ios-sim"
+build_target "aarch64-apple-ios-sim"
+generate_swift_bindings "aarch64-apple-ios-sim"
+assemble_framework "aarch64-apple-ios-sim"
+
+echo "==> Bundling iOS xcframework"
+rm -rf "$BUILD_DIR/ios"
+mkdir -p "$BUILD_DIR/ios"
+
+xcodebuild -create-xcframework \
+  -framework "$BUILD_DIR/aarch64-apple-ios/release/$FFI_NAME.framework" \
+  -framework "$BUILD_DIR/aarch64-apple-ios-sim/release/$FFI_NAME.framework" \
+  -output "$BUILD_DIR/ios/$FFI_NAME.xcframework"
+
+echo "==> Bundling dev xcframework (build/ios-macos)"
+rm -rf "$BUILD_DIR/ios-macos"
+mkdir -p "$BUILD_DIR/ios-macos"
+
+XCFRAMEWORK_ARGS=(
+  -framework "$BUILD_DIR/aarch64-apple-ios/release/$FFI_NAME.framework"
+  -framework "$BUILD_DIR/aarch64-apple-ios-sim/release/$FFI_NAME.framework"
+)
+
+# `aarch64-apple-darwin` is not installed on the iOS healthcheck CI runner,
+# only on developer Macs. When absent, we ship `build/ios-macos/` with iOS
+# slices only — that is enough for `xcodebuild -destination "iOS Simulator"`
+# in CI but not for `swift build` on macOS (which needs a macOS slice).
+if rustup target list --installed 2>/dev/null | grep -q '^aarch64-apple-darwin$'; then
+  assemble_macos_framework
+  XCFRAMEWORK_ARGS+=(
+    -framework "$BUILD_DIR/aarch64-apple-darwin/release/$FFI_NAME.framework"
+  )
+else
+  echo "==> Skipping macOS slice (aarch64-apple-darwin target not installed)"
+fi
+
+xcodebuild -create-xcframework \
+  "${XCFRAMEWORK_ARGS[@]}" \
+  -output "$BUILD_DIR/ios-macos/$FFI_NAME.xcframework"
+
+echo "==> Copying generated Swift sources"
+rm -rf "$SWIFT_GENERATED"
+mkdir -p "$SWIFT_GENERATED"
+cp "$BUILD_DIR/aarch64-apple-ios/release/"*.swift "$SWIFT_GENERATED/"
+
+echo "build_ios: done"
+echo "  iOS xcframework:  $BUILD_DIR/ios/$FFI_NAME.xcframework"
+echo "  dev xcframework:  $BUILD_DIR/ios-macos/$FFI_NAME.xcframework"

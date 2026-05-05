@@ -1,4 +1,4 @@
-use fragmentcolor::{App, Frame, Pass, SetupResult, Shader, TextureFormat, call, run};
+use fragmentcolor::{App, Pass, SetupResult, Shader, TextureFormat, call, run};
 use std::sync::Arc;
 use winit::window::Window;
 
@@ -210,10 +210,10 @@ fn main() {
         .unwrap_or(4.0);
 
     // Shaders
-    let cs_update = Shader::new(&make_update_wgsl(n)).expect("update shader");
+    let cs_update = Shader::new(make_update_wgsl(n)).expect("update shader");
     let cs_clear = Shader::new(CLEAR_WGSL).expect("clear shader");
     let cs_splat =
-        Shader::new(&make_splat_wgsl(n, particle_size, min_size, max_size)).expect("splat shader");
+        Shader::new(make_splat_wgsl(n, particle_size, min_size, max_size)).expect("splat shader");
     let fs_present = Shader::new(FS_PRESENT_WGSL).expect("present shader");
 
     // Storage buffers: positions/velocities/colors (now 3D)
@@ -267,7 +267,7 @@ fn main() {
     let tex_size = [1024u32, 1024u32];
     let tex = pollster::block_on(async {
         app.renderer()
-            .create_storage_texture(tex_size, TextureFormat::Rgba8Unorm, None)
+            .create_storage_texture((tex_size, TextureFormat::Rgba8Unorm))
             .await
             .expect("create splat texture")
     });
@@ -303,27 +303,23 @@ fn main() {
 
     let pass_present = Pass::from_shader("present", &fs_present);
 
-    // Frame
-    let mut frame = Frame::new();
-    frame.add_pass(&pass_update);
-    frame.add_pass(&pass_clear);
-    frame.add_pass(&pass_splat);
-    frame.add_pass(&pass_present);
+    // Passes
+    let passes: Vec<Pass> = vec![pass_update, pass_clear, pass_splat, pass_present];
 
     // Mouse tracking and per-frame center update
     app.on_cursor_moved(handle_cursor_moved);
 
-    // Store frame
-    app.add("frame.main", frame);
+    // Store passes
+    app.add("passes.main", passes);
 
     // Drive explicit rendering in draw
     app.on_start(call!(setup))
         .on_resize(on_resize)
         .on_redraw_requested(|app| {
             let id = app.primary_window_id();
-            if let Some(frame) = app.get::<Frame>("frame.main") {
+            if let Some(passes) = app.get::<Vec<Pass>>("passes.main") {
                 let r = app.get_renderer();
-                let _ = app.with_target(id, |t| r.render(&*frame, t));
+                let _ = app.with_target(id, |t| r.render(&*passes, t));
             }
         });
 

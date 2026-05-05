@@ -1,5 +1,5 @@
 use fragmentcolor::mesh::{Mesh, Vertex};
-use fragmentcolor::{App, Frame, Pass, Renderer, SetupResult, Shader, call, run};
+use fragmentcolor::{App, Pass, Renderer, SetupResult, Shader, call, run};
 use std::sync::Arc;
 use winit::dpi::PhysicalSize;
 use winit::window::Window;
@@ -92,11 +92,9 @@ fn draw(app: &App) {
             let _ = shader.set("particles", &s.blob[..]);
         }
 
-        let mut frame = Frame::new();
-        frame.add_pass(&pass);
         let id = app.primary_window_id();
         let r = app.get_renderer();
-        let _ = app.with_target(id, |t| r.render(&frame, t));
+        let _ = app.with_target(id, |t| r.render(&*pass, t));
     }
 }
 

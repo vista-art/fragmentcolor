@@ -3,6 +3,7 @@ use cfg_aliases::cfg_aliases;
 fn main() {
     configure_aliases();
     set_build_env();
+    embedded_shaders::generate();
     generate_docs();
     // Generate language-specific READMEs from templates + Rust examples
     println!("cargo::rerun-if-changed=README.md");
@@ -16,6 +17,8 @@ fn configure_aliases() {
     cfg_aliases! {
         wasm: { target_arch = "wasm32" },
         ios: { target_os = "ios" },
+        macos: { target_os = "macos" },
+        apple: { any(target_os = "macos", target_os = "ios") },
         android: { target_os = "android" },
         mobile: { any(android, ios) },
         desktop: { not(any(wasm, mobile)) },
@@ -24,6 +27,8 @@ fn configure_aliases() {
     }
     println!("cargo::rustc-check-cfg=cfg(wasm)");
     println!("cargo::rustc-check-cfg=cfg(ios)");
+    println!("cargo::rustc-check-cfg=cfg(macos)");
+    println!("cargo::rustc-check-cfg=cfg(apple)");
     println!("cargo::rustc-check-cfg=cfg(android)");
     println!("cargo::rustc-check-cfg=cfg(mobile)");
     println!("cargo::rustc-check-cfg=cfg(desktop)");
@@ -81,33 +86,88 @@ fn generate_docs() {
     }
 
     println!("\n🗺️ Generating API map...");
-    let api_map = codegen::scan_api();
+    let catalog = codegen::build_catalog();
+    let api_map = codegen::scan_api(&catalog);
     codegen::export_api_map(&api_map);
-    codegen::export_api_objects();
+    codegen::export_api_objects(&catalog);
     println!("✅ API map successfully generated!\n");
 
     println!("🔎 Validating documentation...");
-    validation::validate_docs(&api_map);
+    validation::validate_docs(&catalog, &api_map);
     println!("✅ Docs validated!\n");
+
+    println!("🧭 Auditing API parity across platforms...");
+    let workspace = meta::workspace_root();
+    let parity_report = parity::audit(&workspace);
+    let baseline_path = workspace.join("docs/api/PARITY_BASELINE");
+    // Mode selection:
+    //   FC_PARITY_REWRITE_BASELINE=1 → snapshot the current state into PARITY_BASELINE
+    //                                  and exit cleanly. Use after a Phase 3 batch
+    //                                  closes gaps so the ratchet tightens.
+    //   FC_PARITY_LENIENT=1          → Warn (print only). Local opt-out.
+    //   default + baseline missing   → bootstrap: snapshot once, continue. Lets a
+    //                                  fresh checkout build before any baseline file
+    //                                  exists (e.g. first time this lands on `main`).
+    //   default + baseline present   → Strict (fail on drift outside baseline).
+    let mode = if std::env::var("FC_PARITY_REWRITE_BASELINE").is_ok() {
+        parity::Mode::RewriteBaseline
+    } else if std::env::var("FC_PARITY_LENIENT").is_ok() {
+        parity::Mode::Warn
+    } else if !baseline_path.exists() {
+        println!("==> PARITY_BASELINE missing; bootstrapping it from the current audit state.");
+        parity::Mode::RewriteBaseline
+    } else {
+        parity::Mode::Strict
+    };
+    println!("cargo::rerun-if-env-changed=FC_PARITY_LENIENT");
+    println!("cargo::rerun-if-env-changed=FC_PARITY_REWRITE_BASELINE");
+    println!("cargo::rerun-if-changed=docs/api/PARITY");
+    println!("cargo::rerun-if-changed=docs/api/PARITY_BASELINE");
+    // Rerun the audit (and the rest of generate_docs) whenever src/ or
+    // docs/api/ change. Without these directives cargo would only watch the
+    // explicit paths we declare elsewhere — meaning a new uniffi binding in
+    // src/ would not retrigger the audit, and drift would slip through until
+    // an unrelated file in the rerun list changed.
+    println!("cargo::rerun-if-changed=src");
+    println!("cargo::rerun-if-changed=docs/api");
+    parity::print_report(&parity_report, mode, &baseline_path);
+    println!(
+        "==> docs/api/PARITY drives intentional divergence; PARITY_BASELINE tracks Phase-3 backlog.\n"
+    );
 
     println!("🌎 Exporting website (examples + pages)...");
 
     println!("==> website::export_examples_and_pages()");
-    let outcome = website::export_examples_and_pages(&api_map);
+    let outcome = website::export_examples_and_pages(&catalog, &api_map);
 
     println!("==> website::cleanup_site()");
     website::cleanup_site(&outcome.expected);
 
     println!("==> website::write_healthcheck_aggregators()");
-    website::write_healthcheck_aggregators(&outcome.ex_js, &outcome.ex_py);
+    website::write_healthcheck_aggregators(
+        &outcome.ex_js,
+        &outcome.ex_py,
+        &outcome.ex_swift,
+        &outcome.ex_kotlin,
+    );
 
     println!("✅ Website export done!\n");
+
+    println!("📚 Building tutorials manifest...");
+    tutorials::build();
+    println!("✅ Tutorials manifest written.\n");
 }
 
 include!("scripts/no_panics.rs");
 include!("scripts/codegen.rs");
 include!("scripts/convert.rs");
+include!("scripts/swift.rs");
+include!("scripts/kotlin.rs");
+include!("scripts/docs.rs");
 include!("scripts/validation.rs");
+include!("scripts/parity.rs");
 include!("scripts/website.rs");
+include!("scripts/tutorials.rs");
 include!("scripts/meta.rs");
 include!("scripts/readme.rs");
+include!("scripts/embedded_shaders.rs");

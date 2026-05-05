@@ -8,13 +8,9 @@ RESET='[0m'
 def run_all():
     base = pathlib.Path(__file__).parent
     files = [
-        'core/frame/Frame.py',
-        'core/frame/add_pass.py',
-        'core/frame/new.py',
         'core/pass/Pass.py',
         'core/pass/add_depth_target.py',
         'core/pass/add_mesh.py',
-        'core/pass/add_mesh_to_shader.py',
         'core/pass/add_shader.py',
         'core/pass/add_target.py',
         'core/pass/compute.py',
@@ -29,22 +25,19 @@ def run_all():
         'core/pass/set_viewport.py',
         'core/renderer/Renderer.py',
         'core/renderer/create_depth_texture.py',
-        'core/renderer/create_external_texture_from_html_video.py',
+        'core/renderer/create_external_texture.py',
         'core/renderer/create_storage_texture.py',
         'core/renderer/create_target.py',
         'core/renderer/create_texture.py',
         'core/renderer/create_texture_target.py',
-        'core/renderer/create_texture_with.py',
-        'core/renderer/create_texture_with_format.py',
-        'core/renderer/create_texture_with_size.py',
         'core/renderer/new.py',
+        'core/renderer/read_texture.py',
         'core/renderer/render.py',
         'core/renderer/unregister_texture.py',
-        'core/renderer/update_texture.py',
-        'core/renderer/update_texture_with.py',
         'core/shader/Shader.py',
         'core/shader/add_mesh.py',
         'core/shader/clear_meshes.py',
+        'core/shader/fetch.py',
         'core/shader/from_mesh.py',
         'core/shader/from_vertex.py',
         'core/shader/get.py',
@@ -55,20 +48,27 @@ def run_all():
         'core/shader/remove_mesh.py',
         'core/shader/remove_meshes.py',
         'core/shader/set.py',
+        'core/shader/set_registry.py',
         'core/shader/validate_mesh.py',
         'core/texture/Texture.py',
         'core/texture/aspect.py',
+        'core/texture/get_image.py',
         'core/texture/id.py',
         'core/texture/set_sampler_options.py',
         'core/texture/size.py',
         'core/texture/write.py',
-        'core/texture/write_with.py',
+        'core/texture/write_region.py',
+        'core/texture_mip_chain/TextureMipChain.py',
+        'core/texture_mip_chain/base_size.py',
+        'core/texture_mip_chain/format.py',
+        'core/texture_mip_chain/level_count.py',
+        'core/texture_mip_chain/levels.py',
+        'core/texture_mip_chain/prepare.py',
         'geometry/mesh/Mesh.py',
         'geometry/mesh/add_instance.py',
         'geometry/mesh/add_instances.py',
         'geometry/mesh/add_vertex.py',
         'geometry/mesh/add_vertices.py',
-        'geometry/mesh/clear_instance_count.py',
         'geometry/mesh/clear_instances.py',
         'geometry/mesh/from_vertices.py',
         'geometry/mesh/new.py',
@@ -92,10 +92,6 @@ def run_all():
         'targets/window_target/get_image.py',
         'targets/window_target/resize.py',
         'targets/window_target/size.py',
-        'texture_write_options/TextureWriteOptions.py',
-        'texture_write_options/whole.py',
-        'texture_write_options/with_bytes_per_row.py',
-        'texture_write_options/with_rows_per_image.py',
     ]
 
     # Announce test count and optionally prepare summary file
@@ -120,6 +116,14 @@ def run_all():
             runpy.run_path(str(base / rel), run_name='__main__')
             passed += 1
             print(head + GREEN + 'OK' + RESET)
+        except SystemExit as _e:
+            if _e.code == 0:
+                passed += 1
+                print(head + GREEN + 'OK' + RESET)
+            else:
+                failed += 1
+                print(head + RED + 'FAILED' + RESET)
+                traceback.print_exc()
         except Exception:
             failed += 1
             print(head + RED + 'FAILED' + RESET)

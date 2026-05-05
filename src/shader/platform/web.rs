@@ -10,21 +10,45 @@ use crate::{Shader, ShaderError, UniformData};
 #[wasm_bindgen]
 impl Shader {
     #[wasm_bindgen(constructor)]
-    pub fn new_js(source: &str) -> Self {
-        if let Ok(shader) = Shader::new(source) {
-            shader
-        } else {
-            console::error_1(&"failed to create shader, returning default".into());
-            Shader::default()
+    #[lsp_doc("docs/api/core/shader/new.md")]
+    pub fn new_js(input: &JsValue) -> Self {
+        let parts = match jsvalue_to_string_vec(input) {
+            Ok(v) => v,
+            Err(msg) => {
+                console::error_1(&msg.into());
+                return Shader::default();
+            }
+        };
+        match Shader::new(parts) {
+            Ok(shader) => shader,
+            Err(_) => {
+                console::error_1(&"failed to create shader, returning default".into());
+                Shader::default()
+            }
         }
     }
 
+    #[wasm_bindgen(js_name = "setRegistry")]
+    #[lsp_doc("docs/api/core/shader/set_registry.md")]
+    pub fn set_registry_js(base_url: &str) {
+        Shader::set_registry(base_url);
+    }
+
+    #[wasm_bindgen(js_name = "fetch")]
     #[lsp_doc("docs/api/core/shader/fetch.md")]
-    pub async fn fetch(url: &str) -> Self {
-        match crate::net::fetch_text(url).await {
-            Ok(body) => Self::new_js(&body),
+    pub async fn fetch_js(input: &JsValue) -> Self {
+        let parts = match jsvalue_to_string_vec(input) {
+            Ok(v) => v,
+            Err(msg) => {
+                console::error_1(&msg.into());
+                return Shader::default();
+            }
+        };
+
+        match Shader::fetch(parts).await {
+            Ok(shader) => shader,
             Err(e) => {
-                console::error_1(&e);
+                console::error_1(&e.to_string().into());
                 Shader::default()
             }
         }
@@ -120,15 +144,36 @@ impl Shader {
     }
 
     // No-op Result::unwrap shim for transpiled examples that used Rust .unwrap()
+    #[doc(hidden)]
     #[wasm_bindgen(js_name = "unwrap")]
     pub fn unwrap_js(&self) -> Self {
         self.clone()
     }
 
     #[wasm_bindgen(js_name = "default")]
+    #[lsp_doc("docs/api/core/shader/default.md")]
     pub fn default_js() -> Self {
         Shader::default()
     }
+}
+
+/// Accept either a single JS string or a JS array of strings, return Vec<String>.
+fn jsvalue_to_string_vec(input: &JsValue) -> Result<Vec<String>, String> {
+    if let Some(s) = input.as_string() {
+        return Ok(vec![s]);
+    }
+    if js_sys::Array::is_array(input) {
+        let arr = js_sys::Array::from(input);
+        let mut out = Vec::with_capacity(arr.length() as usize);
+        for v in arr.iter() {
+            match v.as_string() {
+                Some(s) => out.push(s),
+                None => return Err("Shader input array contains a non-string element".into()),
+            }
+        }
+        return Ok(out);
+    }
+    Err("Shader input must be a string or an array of strings".into())
 }
 
 #[cfg(test)]

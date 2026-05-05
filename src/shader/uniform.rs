@@ -18,6 +18,7 @@ pub(crate) struct Uniform {
 }
 
 #[cfg_attr(python, derive(FromPyObject, IntoPyObject))]
+#[cfg_attr(mobile, derive(uniffi::Enum))]
 #[derive(Debug, Clone, PartialEq)]
 /// Converts from User Input
 pub enum UniformData {
@@ -25,36 +26,97 @@ pub enum UniformData {
     UInt(u32),
     Int(i32),
     Float(f32),
-    Vec2([f32; 2]),
-    Vec3([f32; 3]),
-    Vec4([f32; 4]),
-    UVec2([u32; 2]),
-    UVec3([u32; 3]),
-    UVec4([u32; 4]),
-    IVec2([i32; 2]),
-    IVec3([i32; 3]),
-    IVec4([i32; 4]),
-    Mat2([[f32; 2]; 2]),
-    Mat3([[f32; 3]; 3]),
-    Mat4([[f32; 4]; 4]),
+    /// Vec2: exactly 2 elements
+    Vec2(Vec<f32>),
+    /// Vec3: exactly 3 elements
+    Vec3(Vec<f32>),
+    /// Vec4: exactly 4 elements
+    Vec4(Vec<f32>),
+    /// UVec2: exactly 2 elements
+    UVec2(Vec<u32>),
+    /// UVec3: exactly 3 elements
+    UVec3(Vec<u32>),
+    /// UVec4: exactly 4 elements
+    UVec4(Vec<u32>),
+    /// IVec2: exactly 2 elements
+    IVec2(Vec<i32>),
+    /// IVec3: exactly 3 elements
+    IVec3(Vec<i32>),
+    /// IVec4: exactly 4 elements
+    IVec4(Vec<i32>),
+    /// Mat2: 4 elements (flattened 2x2, row-major)
+    Mat2(Vec<f32>),
+    /// Mat3: 9 elements (flattened 3x3, row-major)
+    Mat3(Vec<f32>),
+    /// Mat4: 16 elements (flattened 4x4, row-major)
+    Mat4(Vec<f32>),
     Texture(crate::texture::TextureMeta),
     Sampler(crate::texture::SamplerInfo),
-    // Array: (type, count, stride)
-    Array(Vec<(UniformData, u32, u32)>),
-    // Struct: name -> ((offset, name, field), struct_size)
-    Struct((Vec<(u32, String, UniformData)>, u32)),
-    // Storage buffer: (inner shape, total size/span, access flags)
-    // Stored as a Vec to avoid infinite recursion (Box doesn't implement FromPyObject)
-    Storage(Vec<(UniformData, u32, StorageAccess)>),
-    // Push constant root: (inner_shape, span)
-    // Vec used for PyO3 compatibility; Same pattern as Storage.
-    PushConstant(Vec<(UniformData, u32)>),
-    // Raw bytes (opaque); intended for storage-root or push-root updates via Shader::set("root", bytes)
+    /// Array shape: element type, count, and stride.
+    Array(Vec<ArrayElement>),
+    /// Struct shape: ordered fields and total size/span in bytes.
+    Struct(StructShape),
+    /// Storage buffer root: inner shape, span, access flags.
+    /// Stored as a Vec to avoid infinite recursion (Box doesn't implement FromPyObject).
+    Storage(Vec<StorageEntry>),
+    /// Push constant root: inner shape and span.
+    /// Vec used for PyO3 compatibility; same pattern as Storage.
+    PushConstant(Vec<PushEntry>),
+    /// Raw bytes (opaque); intended for storage-root or push-root updates via Shader::set("root", bytes)
     Bytes(Vec<u8>),
 }
 
+#[cfg_attr(python, derive(FromPyObject, IntoPyObject))]
+#[cfg_attr(mobile, derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq)]
-#[cfg_attr(python, pyclass)]
+/// Element shape used inside `UniformData::Array`.
+pub struct ArrayElement {
+    pub ty: Vec<UniformData>,
+    pub count: u32,
+    pub stride: u32,
+}
+
+#[cfg_attr(python, derive(FromPyObject, IntoPyObject))]
+#[cfg_attr(mobile, derive(uniffi::Record))]
+#[derive(Debug, Clone, PartialEq)]
+/// Struct shape used inside `UniformData::Struct`.
+pub struct StructShape {
+    pub fields: Vec<StructField>,
+    pub size: u32,
+}
+
+#[cfg_attr(python, derive(FromPyObject, IntoPyObject))]
+#[cfg_attr(mobile, derive(uniffi::Record))]
+#[derive(Debug, Clone, PartialEq)]
+/// One member of a struct shape.
+pub struct StructField {
+    pub offset: u32,
+    pub name: String,
+    pub ty: Vec<UniformData>,
+}
+
+#[cfg_attr(python, derive(FromPyObject, IntoPyObject))]
+#[cfg_attr(mobile, derive(uniffi::Record))]
+#[derive(Debug, Clone, PartialEq)]
+/// Storage buffer root entry used inside `UniformData::Storage`.
+pub struct StorageEntry {
+    pub inner: Vec<UniformData>,
+    pub span: u32,
+    pub access: StorageAccess,
+}
+
+#[cfg_attr(python, derive(FromPyObject, IntoPyObject))]
+#[cfg_attr(mobile, derive(uniffi::Record))]
+#[derive(Debug, Clone, PartialEq)]
+/// Push constant root entry used inside `UniformData::PushConstant`.
+pub struct PushEntry {
+    pub inner: Vec<UniformData>,
+    pub span: u32,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(python, pyclass(from_py_object))]
+#[cfg_attr(mobile, derive(uniffi::Enum))]
 pub enum StorageAccess {
     Read,
     Write,
@@ -102,15 +164,15 @@ impl UniformData {
             Self::Float(v) => bytemuck::bytes_of(v).to_vec(),
             Self::Int(v) => bytemuck::bytes_of(v).to_vec(),
             Self::UInt(v) => bytemuck::bytes_of(v).to_vec(),
-            Self::Vec2(v) => bytemuck::cast_slice(v).to_vec(),
-            Self::Vec3(v) => bytemuck::cast_slice(v).to_vec(),
-            Self::Vec4(v) => bytemuck::cast_slice(v).to_vec(),
-            Self::IVec2(v) => bytemuck::cast_slice(v).to_vec(),
-            Self::IVec3(v) => bytemuck::cast_slice(v).to_vec(),
-            Self::IVec4(v) => bytemuck::cast_slice(v).to_vec(),
-            Self::UVec2(v) => bytemuck::cast_slice(v).to_vec(),
-            Self::UVec3(v) => bytemuck::cast_slice(v).to_vec(),
-            Self::UVec4(v) => bytemuck::cast_slice(v).to_vec(),
+            Self::Vec2(v) => bytemuck::cast_slice(v.as_slice()).to_vec(),
+            Self::Vec3(v) => bytemuck::cast_slice(v.as_slice()).to_vec(),
+            Self::Vec4(v) => bytemuck::cast_slice(v.as_slice()).to_vec(),
+            Self::IVec2(v) => bytemuck::cast_slice(v.as_slice()).to_vec(),
+            Self::IVec3(v) => bytemuck::cast_slice(v.as_slice()).to_vec(),
+            Self::IVec4(v) => bytemuck::cast_slice(v.as_slice()).to_vec(),
+            Self::UVec2(v) => bytemuck::cast_slice(v.as_slice()).to_vec(),
+            Self::UVec3(v) => bytemuck::cast_slice(v.as_slice()).to_vec(),
+            Self::UVec4(v) => bytemuck::cast_slice(v.as_slice()).to_vec(),
             Self::Mat2(v) => bytemuck::cast_slice(v.as_slice()).to_vec(),
             Self::Mat3(v) => bytemuck::cast_slice(v.as_slice()).to_vec(),
             Self::Mat4(v) => bytemuck::cast_slice(v.as_slice()).to_vec(),
@@ -118,9 +180,11 @@ impl UniformData {
             Self::Sampler(_s) => Vec::new(),
             Self::Array(items) => {
                 // Respect naga-provided stride when laying out arrays.
-                // items holds a single (elem_ty, count, stride) tuple.
+                // items holds a single ArrayElement record.
                 let mut bytes = Vec::new();
-                if let Some((elem, count, stride)) = items.first() {
+                if let Some(ArrayElement { ty, count, stride }) = items.first()
+                    && let Some(elem) = ty.first()
+                {
                     let elem_bytes = elem.to_bytes();
                     let total = (*stride as usize).saturating_mul(*count as usize);
                     bytes.resize(total, 0);
@@ -134,10 +198,13 @@ impl UniformData {
                 }
                 bytes
             }
-            Self::Struct((fields, span)) => {
+            Self::Struct(StructShape { fields, size }) => {
                 // Allocate the full struct span and lay out fields at their declared offsets.
-                let mut bytes = vec![0u8; *span as usize];
-                for (offset, _name, field) in fields.iter() {
+                let mut bytes = vec![0u8; *size as usize];
+                for StructField { offset, ty, .. } in fields.iter() {
+                    let Some(field) = ty.first() else {
+                        continue;
+                    };
                     let data = field.to_bytes();
                     let start = *offset as usize;
                     let end = start + data.len();
@@ -148,9 +215,11 @@ impl UniformData {
                 bytes
             }
             Self::Storage(data) => {
-                if let Some((inner, span, _access)) = &data.iter().next() {
+                if let Some(StorageEntry { inner, span, .. }) = data.iter().next()
+                    && let Some(shape) = inner.first()
+                {
                     // Flatten inner representation; ensure it matches the declared span.
-                    let mut bytes = inner.to_bytes();
+                    let mut bytes = shape.to_bytes();
                     if bytes.len() < *span as usize {
                         bytes.resize(*span as usize, 0);
                     } else if bytes.len() > *span as usize {
@@ -162,9 +231,11 @@ impl UniformData {
                 }
             }
             Self::PushConstant(data) => {
-                if let Some((inner, span)) = &data.iter().next() {
+                if let Some(PushEntry { inner, span }) = data.iter().next()
+                    && let Some(shape) = inner.first()
+                {
                     // Flatten inner representation; ensure it matches the declared span.
-                    let mut bytes = inner.to_bytes();
+                    let mut bytes = shape.to_bytes();
                     if bytes.len() < *span as usize {
                         bytes.resize(*span as usize, 0);
                     } else if bytes.len() > *span as usize {
@@ -200,13 +271,13 @@ impl UniformData {
             Self::Texture(_) => 0,
             Self::Sampler(_) => 0,
             Self::Array(items) => {
-                if let Some((_elem, count, stride)) = items.first() {
+                if let Some(ArrayElement { count, stride, .. }) = items.first() {
                     stride * count
                 } else {
                     0
                 }
             }
-            Self::Struct((_, size)) => *size,
+            Self::Struct(StructShape { size, .. }) => *size,
             // Storage buffers do not contribute to the CPU-side uniform buffer; size is 0 here.
             Self::Storage(_) => 0,
             // Push constants do not contribute to the CPU-side uniform buffer aggregate; return 0 here.
@@ -228,28 +299,28 @@ pub(crate) fn convert_type(module: &Module, ty: &Type) -> Result<UniformData, Sh
         }),
         TypeInner::Vector { size, scalar, .. } => match scalar.kind {
             ScalarKind::Float => Ok(match size {
-                VectorSize::Bi => UniformData::Vec2([0.0; 2]),
-                VectorSize::Tri => UniformData::Vec3([0.0; 3]),
-                VectorSize::Quad => UniformData::Vec4([0.0; 4]),
+                VectorSize::Bi => UniformData::Vec2(vec![0.0; 2]),
+                VectorSize::Tri => UniformData::Vec3(vec![0.0; 3]),
+                VectorSize::Quad => UniformData::Vec4(vec![0.0; 4]),
             }),
             ScalarKind::Uint => Ok(match size {
-                VectorSize::Bi => UniformData::UVec2([0; 2]),
-                VectorSize::Tri => UniformData::UVec3([0; 3]),
-                VectorSize::Quad => UniformData::UVec4([0; 4]),
+                VectorSize::Bi => UniformData::UVec2(vec![0; 2]),
+                VectorSize::Tri => UniformData::UVec3(vec![0; 3]),
+                VectorSize::Quad => UniformData::UVec4(vec![0; 4]),
             }),
             ScalarKind::Sint => Ok(match size {
-                VectorSize::Bi => UniformData::IVec2([0; 2]),
-                VectorSize::Tri => UniformData::IVec3([0; 3]),
-                VectorSize::Quad => UniformData::IVec4([0; 4]),
+                VectorSize::Bi => UniformData::IVec2(vec![0; 2]),
+                VectorSize::Tri => UniformData::IVec3(vec![0; 3]),
+                VectorSize::Quad => UniformData::IVec4(vec![0; 4]),
             }),
             _ => Err(ShaderError::TypeMismatch(
                 "Unsupported vector scalar type".into(),
             )),
         },
         TypeInner::Matrix { columns, rows, .. } => Ok(match (columns, rows) {
-            (VectorSize::Bi, VectorSize::Bi) => UniformData::Mat2([[0.0; 2]; 2]),
-            (VectorSize::Tri, VectorSize::Tri) => UniformData::Mat3([[0.0; 3]; 3]),
-            (VectorSize::Quad, VectorSize::Quad) => UniformData::Mat4([[0.0; 4]; 4]),
+            (VectorSize::Bi, VectorSize::Bi) => UniformData::Mat2(vec![0.0; 4]),
+            (VectorSize::Tri, VectorSize::Tri) => UniformData::Mat3(vec![0.0; 9]),
+            (VectorSize::Quad, VectorSize::Quad) => UniformData::Mat4(vec![0.0; 16]),
             _ => {
                 return Err(ShaderError::TypeMismatch(
                     "Unsupported matrix dimensions".into(),
@@ -261,10 +332,17 @@ pub(crate) fn convert_type(module: &Module, ty: &Type) -> Result<UniformData, Sh
             for member in members {
                 let name = member.name.clone().unwrap_or_default();
                 let field = convert_type(module, &module.types[member.ty])?;
-                fields.push((member.offset, name, field));
+                fields.push(StructField {
+                    offset: member.offset,
+                    name,
+                    ty: vec![field],
+                });
             }
 
-            Ok(UniformData::Struct((fields, *span)))
+            Ok(UniformData::Struct(StructShape {
+                fields,
+                size: *span,
+            }))
         }
         TypeInner::Array { base, size, stride } => {
             let size = match size {
@@ -277,7 +355,11 @@ pub(crate) fn convert_type(module: &Module, ty: &Type) -> Result<UniformData, Sh
             };
             let base_ty = convert_type(module, &module.types[*base])?;
 
-            let item = (base_ty, size, *stride);
+            let item = ArrayElement {
+                ty: vec![base_ty],
+                count: size,
+                stride: *stride,
+            };
             Ok(UniformData::Array(vec![item]))
         }
         TypeInner::Sampler { comparison } => {
@@ -290,10 +372,13 @@ pub(crate) fn convert_type(module: &Module, ty: &Type) -> Result<UniformData, Sh
             arrayed,
             class,
         } => Ok(UniformData::Texture(crate::texture::TextureMeta {
-            id: crate::texture::TextureId(0),
-            dim: *dim,
+            id: crate::texture::TextureId { id: 0 },
+            dim: (*dim).into(),
             arrayed: *arrayed,
-            class: *class,
+            class: (*class).into(),
+            // Default optimistic; `parse_uniforms` overrides this based on whether
+            // the corresponding global variable is ever used as an `ImageSample` input.
+            sampled: true,
         })),
 
         _ => Err(ShaderError::TypeMismatch("Unsupported type".into())),
@@ -382,50 +467,50 @@ crate::impl_from_into_with_refs!(
     UniformData,
     [f32; 2],
     |d: UniformData| match d {
-        UniformData::Vec2(v) => v,
+        UniformData::Vec2(v) if v.len() >= 2 => [v[0], v[1]],
         _ => [0.0; 2],
     },
-    |a: [f32; 2]| UniformData::Vec2(a)
+    |a: [f32; 2]| UniformData::Vec2(a.to_vec())
 );
 
 crate::impl_from_into_with_refs!(
     UniformData,
     [i32; 2],
     |d: UniformData| match d {
-        UniformData::IVec2(v) => v,
+        UniformData::IVec2(v) if v.len() >= 2 => [v[0], v[1]],
         _ => [0; 2],
     },
-    |a: [i32; 2]| UniformData::IVec2(a)
+    |a: [i32; 2]| UniformData::IVec2(a.to_vec())
 );
 
 crate::impl_from_into_with_refs!(
     UniformData,
     [u32; 2],
     |d: UniformData| match d {
-        UniformData::UVec2(v) => v,
+        UniformData::UVec2(v) if v.len() >= 2 => [v[0], v[1]],
         _ => [0; 2],
     },
-    |a: [u32; 2]| UniformData::UVec2(a)
+    |a: [u32; 2]| UniformData::UVec2(a.to_vec())
 );
 
 crate::impl_from_into_with_refs!(
     UniformData,
     (f32, f32),
     |d: UniformData| match d {
-        UniformData::Vec2(v) => (v[0], v[1]),
+        UniformData::Vec2(v) if v.len() >= 2 => (v[0], v[1]),
         _ => (0.0, 0.0),
     },
-    |t: (f32, f32)| UniformData::Vec2([t.0, t.1])
+    |t: (f32, f32)| UniformData::Vec2(vec![t.0, t.1])
 );
 
 crate::impl_from_into_with_refs!(
     UniformData,
     glam::Vec2,
     |d: UniformData| match d {
-        UniformData::Vec2(v) => glam::Vec2::from(v),
+        UniformData::Vec2(v) if v.len() >= 2 => glam::Vec2::new(v[0], v[1]),
         _ => glam::Vec2::ZERO,
     },
-    |v: glam::Vec2| UniformData::Vec2(v.to_array())
+    |v: glam::Vec2| UniformData::Vec2(v.to_array().to_vec())
 );
 
 // 3 elements
@@ -434,50 +519,50 @@ crate::impl_from_into_with_refs!(
     UniformData,
     [f32; 3],
     |d: UniformData| match d {
-        UniformData::Vec3(v) => v,
+        UniformData::Vec3(v) if v.len() >= 3 => [v[0], v[1], v[2]],
         _ => [0.0; 3],
     },
-    |a: [f32; 3]| UniformData::Vec3(a)
+    |a: [f32; 3]| UniformData::Vec3(a.to_vec())
 );
 
 crate::impl_from_into_with_refs!(
     UniformData,
     [i32; 3],
     |d: UniformData| match d {
-        UniformData::IVec3(v) => v,
+        UniformData::IVec3(v) if v.len() >= 3 => [v[0], v[1], v[2]],
         _ => [0; 3],
     },
-    |a: [i32; 3]| UniformData::IVec3(a)
+    |a: [i32; 3]| UniformData::IVec3(a.to_vec())
 );
 
 crate::impl_from_into_with_refs!(
     UniformData,
     [u32; 3],
     |d: UniformData| match d {
-        UniformData::UVec3(v) => v,
+        UniformData::UVec3(v) if v.len() >= 3 => [v[0], v[1], v[2]],
         _ => [0; 3],
     },
-    |a: [u32; 3]| UniformData::UVec3(a)
+    |a: [u32; 3]| UniformData::UVec3(a.to_vec())
 );
 
 crate::impl_from_into_with_refs!(
     UniformData,
     (f32, f32, f32),
     |d: UniformData| match d {
-        UniformData::Vec3(v) => (v[0], v[1], v[2]),
+        UniformData::Vec3(v) if v.len() >= 3 => (v[0], v[1], v[2]),
         _ => (0.0, 0.0, 0.0),
     },
-    |t: (f32, f32, f32)| UniformData::Vec3([t.0, t.1, t.2])
+    |t: (f32, f32, f32)| UniformData::Vec3(vec![t.0, t.1, t.2])
 );
 
 crate::impl_from_into_with_refs!(
     UniformData,
     glam::Vec3,
     |d: UniformData| match d {
-        UniformData::Vec3(v) => glam::Vec3::from(v),
+        UniformData::Vec3(v) if v.len() >= 3 => glam::Vec3::new(v[0], v[1], v[2]),
         _ => glam::Vec3::ZERO,
     },
-    |v: glam::Vec3| UniformData::Vec3(v.to_array())
+    |v: glam::Vec3| UniformData::Vec3(v.to_array().to_vec())
 );
 
 // 4 elements
@@ -486,50 +571,50 @@ crate::impl_from_into_with_refs!(
     UniformData,
     [f32; 4],
     |d: UniformData| match d {
-        UniformData::Vec4(v) => v,
+        UniformData::Vec4(v) if v.len() >= 4 => [v[0], v[1], v[2], v[3]],
         _ => [0.0; 4],
     },
-    |a: [f32; 4]| UniformData::Vec4(a)
+    |a: [f32; 4]| UniformData::Vec4(a.to_vec())
 );
 
 crate::impl_from_into_with_refs!(
     UniformData,
     [i32; 4],
     |d: UniformData| match d {
-        UniformData::IVec4(v) => v,
+        UniformData::IVec4(v) if v.len() >= 4 => [v[0], v[1], v[2], v[3]],
         _ => [0; 4],
     },
-    |a: [i32; 4]| UniformData::IVec4(a)
+    |a: [i32; 4]| UniformData::IVec4(a.to_vec())
 );
 
 crate::impl_from_into_with_refs!(
     UniformData,
     [u32; 4],
     |d: UniformData| match d {
-        UniformData::UVec4(v) => v,
+        UniformData::UVec4(v) if v.len() >= 4 => [v[0], v[1], v[2], v[3]],
         _ => [0; 4],
     },
-    |a: [u32; 4]| UniformData::UVec4(a)
+    |a: [u32; 4]| UniformData::UVec4(a.to_vec())
 );
 
 crate::impl_from_into_with_refs!(
     UniformData,
     (f32, f32, f32, f32),
     |d: UniformData| match d {
-        UniformData::Vec4(v) => (v[0], v[1], v[2], v[3]),
+        UniformData::Vec4(v) if v.len() >= 4 => (v[0], v[1], v[2], v[3]),
         _ => (0.0, 0.0, 0.0, 0.0),
     },
-    |t: (f32, f32, f32, f32)| UniformData::Vec4([t.0, t.1, t.2, t.3])
+    |t: (f32, f32, f32, f32)| UniformData::Vec4(vec![t.0, t.1, t.2, t.3])
 );
 
 crate::impl_from_into_with_refs!(
     UniformData,
     glam::Vec4,
     |d: UniformData| match d {
-        UniformData::Vec4(v) => glam::Vec4::from(v),
+        UniformData::Vec4(v) if v.len() >= 4 => glam::Vec4::new(v[0], v[1], v[2], v[3]),
         _ => glam::Vec4::ZERO,
     },
-    |v: glam::Vec4| UniformData::Vec4(v.to_array())
+    |v: glam::Vec4| UniformData::Vec4(v.to_array().to_vec())
 );
 
 // 2 elements
@@ -543,80 +628,86 @@ crate::impl_from_into_with_refs!(
     UniformData,
     [[f32; 2]; 2],
     |d: UniformData| match d {
-        UniformData::Mat2(m) => m,
+        UniformData::Mat2(m) if m.len() >= 4 => [[m[0], m[1]], [m[2], m[3]]],
         _ => [[0.0; 2]; 2],
     },
-    |m: [[f32; 2]; 2]| UniformData::Mat2(m)
+    |m: [[f32; 2]; 2]| UniformData::Mat2(m.iter().flatten().copied().collect())
 );
 
 crate::impl_from_into_with_refs!(
     UniformData,
     [[f32; 3]; 3],
     |d: UniformData| match d {
-        UniformData::Mat3(m) => m,
+        UniformData::Mat3(m) if m.len() >= 9 =>
+            [[m[0], m[1], m[2]], [m[3], m[4], m[5]], [m[6], m[7], m[8]],],
         _ => [[0.0; 3]; 3],
     },
-    |m: [[f32; 3]; 3]| UniformData::Mat3(m)
+    |m: [[f32; 3]; 3]| UniformData::Mat3(m.iter().flatten().copied().collect())
 );
 
 crate::impl_from_into_with_refs!(
     UniformData,
     [[f32; 4]; 4],
     |d: UniformData| match d {
-        UniformData::Mat4(m) => m,
+        UniformData::Mat4(m) if m.len() >= 16 => [
+            [m[0], m[1], m[2], m[3]],
+            [m[4], m[5], m[6], m[7]],
+            [m[8], m[9], m[10], m[11]],
+            [m[12], m[13], m[14], m[15]],
+        ],
         _ => [[0.0; 4]; 4],
     },
-    |m: [[f32; 4]; 4]| UniformData::Mat4(m)
+    |m: [[f32; 4]; 4]| UniformData::Mat4(m.iter().flatten().copied().collect())
 );
 
 crate::impl_from_into_with_refs!(
     UniformData,
     wgpu::Extent3d,
     |data: UniformData| match data {
-        UniformData::Vec2([w, h]) => wgpu::Extent3d {
-            width: w as u32,
-            height: h as u32,
+        UniformData::Vec2(v) if v.len() >= 2 => wgpu::Extent3d {
+            width: v[0] as u32,
+            height: v[1] as u32,
             depth_or_array_layers: 1,
         },
-        UniformData::Vec3([w, h, d]) => wgpu::Extent3d {
-            width: w as u32,
-            height: h as u32,
-            depth_or_array_layers: d as u32,
+        UniformData::Vec3(v) if v.len() >= 3 => wgpu::Extent3d {
+            width: v[0] as u32,
+            height: v[1] as u32,
+            depth_or_array_layers: v[2] as u32,
         },
-        UniformData::Vec4([w, h, d, _]) => wgpu::Extent3d {
-            width: w as u32,
-            height: h as u32,
-            depth_or_array_layers: d as u32,
+        UniformData::Vec4(v) if v.len() >= 4 => wgpu::Extent3d {
+            width: v[0] as u32,
+            height: v[1] as u32,
+            depth_or_array_layers: v[2] as u32,
         },
-        UniformData::UVec2([w, h]) => wgpu::Extent3d {
-            width: w,
-            height: h,
+        UniformData::UVec2(v) if v.len() >= 2 => wgpu::Extent3d {
+            width: v[0],
+            height: v[1],
             depth_or_array_layers: 1,
         },
-        UniformData::UVec3([w, h, d]) => wgpu::Extent3d {
-            width: w,
-            height: h,
-            depth_or_array_layers: d,
+        UniformData::UVec3(v) if v.len() >= 3 => wgpu::Extent3d {
+            width: v[0],
+            height: v[1],
+            depth_or_array_layers: v[2],
         },
-        UniformData::UVec4([w, h, d, _]) => wgpu::Extent3d {
-            width: w,
-            height: h,
-            depth_or_array_layers: d,
+        UniformData::UVec4(v) if v.len() >= 4 => wgpu::Extent3d {
+            width: v[0],
+            height: v[1],
+            depth_or_array_layers: v[2],
         },
-        UniformData::IVec2([w, h]) => wgpu::Extent3d {
-            width: w as u32,
-            height: h as u32,
+        UniformData::IVec2(v) if v.len() >= 2 => wgpu::Extent3d {
+            width: v[0] as u32,
+            height: v[1] as u32,
             depth_or_array_layers: 1,
         },
-        UniformData::IVec3([w, h, d]) => wgpu::Extent3d {
-            width: w as u32,
-            height: h as u32,
-            depth_or_array_layers: d as u32,
+        UniformData::IVec3(v) if v.len() >= 3 => wgpu::Extent3d {
+            width: v[0] as u32,
+            height: v[1] as u32,
+            depth_or_array_layers: v[2] as u32,
         },
-        UniformData::IVec4([w, h, d, _]) => wgpu::Extent3d {
-            width: w as u32,
-            height: h as u32,
-            depth_or_array_layers: d as u32,
+        UniformData::IVec4(v) if v.len() >= 4 => wgpu::Extent3d {
+            width: v[0] as u32,
+            height: v[1] as u32,
+            depth_or_array_layers: v[2] as u32,
         },
         _ => wgpu::Extent3d {
             width: 0,
@@ -624,7 +715,7 @@ crate::impl_from_into_with_refs!(
             depth_or_array_layers: 0,
         },
     },
-    |value: wgpu::Extent3d| UniformData::UVec3([
+    |value: wgpu::Extent3d| UniformData::UVec3(vec![
         value.width,
         value.height,
         value.depth_or_array_layers,
@@ -933,25 +1024,22 @@ impl From<UniformData> for wasm_bindgen::JsValue {
             }
 
             UniformData::Mat2(m) => {
-                let flat: Vec<f32> = m.iter().flat_map(|row| row.iter()).copied().collect();
                 let arr = Float32Array::new_with_length(4);
-                arr.copy_from(&flat);
+                arr.copy_from(&m);
                 arr.into()
             }
             UniformData::Mat3(m) => {
-                let flat: Vec<f32> = m.iter().flat_map(|row| row.iter()).copied().collect();
                 let arr = Float32Array::new_with_length(9);
-                arr.copy_from(&flat);
+                arr.copy_from(&m);
                 arr.into()
             }
             UniformData::Mat4(m) => {
-                let flat: Vec<f32> = m.iter().flat_map(|row| row.iter()).copied().collect();
                 let arr = Float32Array::new_with_length(16);
-                arr.copy_from(&flat);
+                arr.copy_from(&m);
                 arr.into()
             }
 
-            UniformData::Texture(meta) => wasm_bindgen::JsValue::from_f64(meta.id.0 as f64),
+            UniformData::Texture(meta) => wasm_bindgen::JsValue::from_f64(meta.id.id as f64),
 
             UniformData::Sampler(info) => {
                 let obj = Object::new();
@@ -965,20 +1053,29 @@ impl From<UniformData> for wasm_bindgen::JsValue {
 
             UniformData::Array(items) => {
                 let arr = Array::new();
-                for (item, count, _stride) in items {
-                    let item_js: wasm_bindgen::JsValue = item.into();
-                    for _ in 0..count {
-                        arr.push(&item_js);
+                for ArrayElement { ty, count, .. } in items {
+                    // ty is Vec<UniformData> with a length-1 invariant; use first().
+                    if let Some(inner) = ty.into_iter().next() {
+                        let item_js: wasm_bindgen::JsValue = inner.into();
+                        for _ in 0..count {
+                            arr.push(&item_js);
+                        }
                     }
                 }
                 arr.into()
             }
 
-            UniformData::Struct((fields, _)) => {
+            UniformData::Struct(StructShape { fields, .. }) => {
                 let obj = Object::new();
-                for (_, name, data) in fields {
-                    let _ =
-                        Reflect::set(&obj, &wasm_bindgen::JsValue::from_str(&name), &data.into());
+                for StructField { name, ty, .. } in fields {
+                    // ty is Vec<UniformData> with a length-1 invariant; use first().
+                    if let Some(inner) = ty.into_iter().next() {
+                        let _ = Reflect::set(
+                            &obj,
+                            &wasm_bindgen::JsValue::from_str(&name),
+                            &inner.into(),
+                        );
+                    }
                 }
                 obj.into()
             }
@@ -1004,13 +1101,21 @@ mod tests {
     #[test]
     fn uniformdata_layouts_struct_array_storage() {
         // Struct with two fields at offsets 0 and 16, span 32
-        let s = UniformData::Struct((
-            vec![
-                (0, "a".into(), UniformData::Vec4([1.0, 2.0, 3.0, 4.0])),
-                (16, "b".into(), UniformData::Vec2([9.0, 8.0])),
+        let s = UniformData::Struct(StructShape {
+            fields: vec![
+                StructField {
+                    offset: 0,
+                    name: "a".into(),
+                    ty: vec![UniformData::Vec4(vec![1.0, 2.0, 3.0, 4.0])],
+                },
+                StructField {
+                    offset: 16,
+                    name: "b".into(),
+                    ty: vec![UniformData::Vec2(vec![9.0, 8.0])],
+                },
             ],
-            32,
-        ));
+            size: 32,
+        });
         let bytes = s.to_bytes();
         assert_eq!(bytes.len(), 32);
         let a: [f32; 4] = bytemuck::cast_slice(&bytes[0..16]).try_into().unwrap();
@@ -1019,7 +1124,11 @@ mod tests {
         assert_eq!(b, [9.0, 8.0]);
 
         // Array of vec4 with count 2 and stride 16
-        let arr = UniformData::Array(vec![(UniformData::Vec4([0.5, 0.5, 0.5, 0.5]), 2, 16)]);
+        let arr = UniformData::Array(vec![ArrayElement {
+            ty: vec![UniformData::Vec4(vec![0.5, 0.5, 0.5, 0.5])],
+            count: 2,
+            stride: 16,
+        }]);
         let bytes = arr.to_bytes();
         assert_eq!(bytes.len(), 32);
         // first element at 0..16
@@ -1030,11 +1139,11 @@ mod tests {
         assert_eq!(e1, [0.5, 0.5, 0.5, 0.5]);
 
         // Storage wraps a shape with span and clamps/truncates to the span
-        let stor = UniformData::Storage(vec![(
-            UniformData::Vec4([1.0, 2.0, 3.0, 4.0]),
-            8,
-            StorageAccess::Read,
-        )]);
+        let stor = UniformData::Storage(vec![StorageEntry {
+            inner: vec![UniformData::Vec4(vec![1.0, 2.0, 3.0, 4.0])],
+            span: 8,
+            access: StorageAccess::Read,
+        }]);
         let bytes = stor.to_bytes();
         assert_eq!(bytes.len(), 8);
         // size() for Struct/Array reflects spans, Storage returns 0 for CPU uniform upload
@@ -1070,19 +1179,23 @@ mod tests {
     #[test]
     fn scalar_vector_matrix_sizes_and_bytes() {
         assert_eq!(UniformData::Float(1.0).to_bytes().len(), 4);
-        assert_eq!(UniformData::Vec3([1.0, 2.0, 3.0]).to_bytes().len(), 12);
-        assert_eq!(UniformData::Mat2([[0.0; 2]; 2]).to_bytes().len(), 16);
-        assert_eq!(UniformData::Mat3([[0.0; 3]; 3]).to_bytes().len(), 36);
-        assert_eq!(UniformData::Mat4([[0.0; 4]; 4]).to_bytes().len(), 64);
-        assert_eq!(UniformData::Vec3([0.0; 3]).size(), 12);
-        assert_eq!(UniformData::Mat3([[0.0; 3]; 3]).size(), 36);
+        assert_eq!(UniformData::Vec3(vec![1.0, 2.0, 3.0]).to_bytes().len(), 12);
+        assert_eq!(UniformData::Mat2(vec![0.0; 4]).to_bytes().len(), 16);
+        assert_eq!(UniformData::Mat3(vec![0.0; 9]).to_bytes().len(), 36);
+        assert_eq!(UniformData::Mat4(vec![0.0; 16]).to_bytes().len(), 64);
+        assert_eq!(UniformData::Vec3(vec![0.0; 3]).size(), 12);
+        assert_eq!(UniformData::Mat3(vec![0.0; 9]).size(), 36);
     }
 
     // Story: Array stride padding is honored; elements land at multiples of stride with zeros in between.
     #[test]
     fn array_stride_padding_is_honored() {
         // Two vec2 (8 bytes each) with stride 16 -> 32 total
-        let u = UniformData::Array(vec![(UniformData::Vec2([2.0, 4.0]), 2, 16)]);
+        let u = UniformData::Array(vec![ArrayElement {
+            ty: vec![UniformData::Vec2(vec![2.0, 4.0])],
+            count: 2,
+            stride: 16,
+        }]);
         let bytes = u.to_bytes();
         assert_eq!(bytes.len(), 32);
         let e0: [f32; 2] = bytemuck::cast_slice(&bytes[0..8]).try_into().unwrap();
@@ -1097,9 +1210,9 @@ mod tests {
     #[test]
     fn extent3d_conversions_from_uniforms() {
         use wgpu::Extent3d;
-        let e: Extent3d = UniformData::UVec3([10, 20, 3]).into();
+        let e: Extent3d = UniformData::UVec3(vec![10, 20, 3]).into();
         assert_eq!((e.width, e.height, e.depth_or_array_layers), (10, 20, 3));
-        let e2: Extent3d = UniformData::Vec4([9.0, 8.0, 7.0, 6.0]).into();
+        let e2: Extent3d = UniformData::Vec4(vec![9.0, 8.0, 7.0, 6.0]).into();
         assert_eq!((e2.width, e2.height, e2.depth_or_array_layers), (9, 8, 7));
         let e3: Extent3d = UniformData::Bool(true).into();
         assert_eq!((e3.width, e3.height, e3.depth_or_array_layers), (0, 0, 0));
@@ -1197,16 +1310,16 @@ mod tests {
     #[test]
     fn extent3d_more_conversions() {
         use wgpu::Extent3d;
-        let e: Extent3d = UniformData::Vec2([100.0, 200.0]).into();
+        let e: Extent3d = UniformData::Vec2(vec![100.0, 200.0]).into();
         assert_eq!((e.width, e.height, e.depth_or_array_layers), (100, 200, 1));
 
-        let e: Extent3d = UniformData::IVec2([3, 4]).into();
+        let e: Extent3d = UniformData::IVec2(vec![3, 4]).into();
         assert_eq!((e.width, e.height, e.depth_or_array_layers), (3, 4, 1));
 
-        let e: Extent3d = UniformData::IVec3([5, 6, 7]).into();
+        let e: Extent3d = UniformData::IVec3(vec![5, 6, 7]).into();
         assert_eq!((e.width, e.height, e.depth_or_array_layers), (5, 6, 7));
 
-        let e: Extent3d = UniformData::UVec4([9, 8, 7, 6]).into();
+        let e: Extent3d = UniformData::UVec4(vec![9, 8, 7, 6]).into();
         assert_eq!((e.width, e.height, e.depth_or_array_layers), (9, 8, 7));
     }
 
@@ -1239,7 +1352,10 @@ mod tests {
     // Story: PushConstant to_bytes respects span and size() is zero.
     #[test]
     fn push_constant_to_bytes_and_size() {
-        let u = UniformData::PushConstant(vec![(UniformData::Vec4([10.0, 20.0, 30.0, 40.0]), 8)]);
+        let u = UniformData::PushConstant(vec![PushEntry {
+            inner: vec![UniformData::Vec4(vec![10.0, 20.0, 30.0, 40.0])],
+            span: 8,
+        }]);
         let bytes = u.to_bytes();
         assert_eq!(bytes.len(), 8);
         let first_two: [f32; 2] = bytemuck::cast_slice(&bytes).try_into().unwrap();

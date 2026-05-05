@@ -49,6 +49,9 @@ pub struct PySize3 {
 
 #[pymethods]
 impl RenderCanvasTarget {
+    // Constructor for the RenderCanvas protocol object — not user-facing API;
+    // instantiated internally by Renderer::create_target_py().
+    #[doc(hidden)]
     #[new]
     pub fn new(canvas: Py<PyAny>, _present_methods: Py<PyAny>) -> Self {
         Self {
@@ -58,10 +61,13 @@ impl RenderCanvasTarget {
         }
     }
 
+    // Internal RenderCanvas protocol sentinel — not a public documented method.
+    #[doc(hidden)]
     pub fn is_ready(&self) -> bool {
         self.target.is_some()
     }
 
+    #[lsp_doc("docs/api/targets/window_target/size.md")]
     pub fn size(&self) -> PySize3 {
         let size = <Self as Target>::size(self);
         PySize3 {
@@ -71,9 +77,19 @@ impl RenderCanvasTarget {
         }
     }
 
+    #[lsp_doc("docs/api/targets/window_target/resize.md")]
     pub fn resize(&mut self, size: crate::PySize) {
         let size: Size = size.into();
         <Self as Target>::resize(self, size);
+    }
+
+    /// Returns an empty byte array.
+    ///
+    /// Window-backed targets are not readable across all GPU backends.
+    /// Use a `TextureTarget` and call `get_image()` there instead.
+    #[lsp_doc("docs/api/targets/window_target/get_image.md")]
+    pub fn get_image(&self) -> Vec<u8> {
+        Vec::new()
     }
 
     // We can't export a impl Trait block with Pyo3, so this is a
@@ -83,11 +99,15 @@ impl RenderCanvasTarget {
     // fn canvas(&self) -> Py<PyAny>;
     // fn present(&self) -> Result<Py<PyDict>, PyErr>;
 
+    // Internal RenderCanvas protocol property — not a public documented method.
+    #[doc(hidden)]
     #[getter]
     pub fn canvas(&self) -> Py<PyAny> {
         Python::attach(|py| self.canvas.clone_ref(py))
     }
 
+    // Internal RenderCanvas protocol method — not a public documented method.
+    #[doc(hidden)]
     pub fn present(&self) -> Result<Py<PyDict>, PyErr> {
         Python::attach(|py| -> PyResult<Py<PyDict>> {
             let dict = PyDict::new(py);
@@ -135,14 +155,15 @@ impl Target for RenderCanvasTarget {
         }
     }
 
-    fn get_current_frame(&self) -> Result<Box<dyn crate::TargetFrame>, wgpu::SurfaceError> {
+    fn get_current_frame(&self) -> Result<Box<dyn crate::TargetFrame>, crate::SurfaceError> {
         let target = if let Some(target) = &self.target {
             target
         } else {
-            return Err(wgpu::SurfaceError::Lost);
+            return Err(crate::SurfaceError::Lost);
         };
 
-        let surface_texture = target.surface.get_current_texture()?;
+        let surface_texture =
+            crate::target::surface_texture_from(target.surface.get_current_texture())?;
         let view = surface_texture
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
@@ -153,8 +174,7 @@ impl Target for RenderCanvasTarget {
         }))
     }
 
-    fn get_image(&self) -> Vec<u8> {
-        // Window-backed targets are not readback-friendly; prefer TextureTarget for screenshots.
+    async fn get_image(&self) -> Vec<u8> {
         Vec::new()
     }
 }
@@ -188,6 +208,7 @@ pub struct PyTextureTarget {
 
 #[pymethods]
 impl PyTextureTarget {
+    #[lsp_doc("docs/api/targets/texture_target/size.md")]
     #[getter]
     pub fn size(&self) -> PySize3 {
         let size = <Self as Target>::size(self);
@@ -198,12 +219,16 @@ impl PyTextureTarget {
         }
     }
 
+    #[lsp_doc("docs/api/targets/texture_target/resize.md")]
     pub fn resize(&mut self, size: crate::PySize) {
         let size: Size = size.into();
         <Self as Target>::resize(self, size);
     }
 
-    /// Acquire a frame (Python-facing wrapper). This minimal wrapper exposes `format()` only.
+    /// Acquire a frame (Python-facing wrapper). Internal — callers use get_image().
+    // PyTargetFrame is an internal plumbing type that exposes a minimal
+    // RenderCanvas-compatible interface; it has no canonical API doc entry.
+    #[doc(hidden)]
     pub fn get_current_frame(&self) -> PyTargetFrame {
         // TextureTarget::get_current_frame format mirrors inner texture format; fall back to a sane default
         let format = match <crate::TextureTarget as Target>::get_current_frame(&self.inner) {
@@ -214,9 +239,10 @@ impl PyTextureTarget {
     }
 
     /// Read back the RGBA image as a Python list of ints (byte values).
+    #[lsp_doc("docs/api/targets/texture_target/get_image.md")]
     pub fn get_image(&self) -> Result<Py<numpy::PyArray3<u8>>, PyErr> {
         const BPP: usize = 4; // Bytes per pixel (RGBA8)
-        let data = <crate::TextureTarget as Target>::get_image(&self.inner);
+        let data = pollster::block_on(self.inner.get_image());
         let width = self.size().width as usize;
         let height = self.size().height as usize;
 
@@ -263,10 +289,13 @@ pub struct PyTargetFrame {
 
 #[pymethods]
 impl PyTargetFrame {
+    // PyTargetFrame is an internal RenderCanvas-protocol type — not part of public docs.
+    #[doc(hidden)]
     pub fn format(&self) -> String {
         format!("{:?}", self.format)
     }
 
+    #[doc(hidden)]
     pub fn present(&self) {
         // No-op for offscreen textures in Python bindings
     }
@@ -281,11 +310,11 @@ impl Target for PyTextureTarget {
         <crate::TextureTarget as Target>::resize(&mut self.inner, size);
     }
 
-    fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, wgpu::SurfaceError> {
+    fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, crate::SurfaceError> {
         self.inner.get_current_frame()
     }
 
-    fn get_image(&self) -> Vec<u8> {
-        <crate::TextureTarget as Target>::get_image(&self.inner)
+    async fn get_image(&self) -> Vec<u8> {
+        self.inner.get_image().await
     }
 }

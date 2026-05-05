@@ -1,0 +1,2 @@
+rootProject.name = 'fragmentcolor-kotlin'
+include ':fragmentcolor'

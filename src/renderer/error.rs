@@ -5,7 +5,7 @@ pub enum RendererError {
     #[error("Context not initialized")]
     NoContext,
     #[error("Surface error: failed to acquire frame: {0}")]
-    SurfaceError(#[from] wgpu::SurfaceError),
+    SurfaceError(#[from] crate::target::SurfaceError),
     #[error("Failed to create texture: {0}")]
     CreateTextureError(String),
     #[error("Shader error: {0}")]
@@ -14,6 +14,8 @@ pub enum RendererError {
     MeshError(#[from] crate::mesh::MeshError),
     #[error("Bind Group Layout error: {0}")]
     BindGroupLayoutError(String),
+    #[error("GPU validation error while building '{label}': {message}")]
+    ValidationError { label: String, message: String },
     #[error("Texture error: {0}")]
     TextureError(#[from] crate::texture::TextureError),
     #[error("Texture {0} not found")]
@@ -128,7 +130,7 @@ mod tests {
     #[test]
     fn renderer_error_variants_and_from() {
         // NoContext
-        let e = RendererError::NoContext;
+        let e: RendererError = RendererError::NoContext;
         assert!(e.to_string().contains("Context not initialized"));
 
         // InitializationError conversion
@@ -153,7 +155,7 @@ mod tests {
     // Story: SurfaceError variants are wrapped with a helpful message in Display.
     #[test]
     fn surface_error_display_includes_inner() {
-        let e = RendererError::SurfaceError(wgpu::SurfaceError::OutOfMemory);
+        let e = RendererError::SurfaceError(crate::target::SurfaceError::OutOfMemory);
         let s = e.to_string();
         assert!(s.contains("Surface error"));
         assert!(s.contains("failed to acquire frame"));

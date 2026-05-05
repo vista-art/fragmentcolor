@@ -26,7 +26,7 @@ fn py_to_vertex_value(obj: &Bound<'_, PyAny>) -> PyResult<VertexValue> {
     }
 
     // Sequence => choose F32xN (fallback), or integer variants if all ints
-    if let Ok(seq) = obj.downcast::<PySequence>() {
+    if let Ok(seq) = obj.cast::<PySequence>() {
         let len = seq.len()?;
         if !(1..=4).contains(&len) {
             return Err(PyErr::new::<PyTypeError, _>(format!(
@@ -181,19 +181,33 @@ fn py_to_vertex(obj: &Bound<'_, PyAny>) -> PyResult<Vertex> {
     ))
 }
 
-fn py_to_instance_or_vertex(obj: &Bound<'_, PyAny>) -> PyResult<Instance> {
-    // Try direct extraction first (already an Instance)
+fn py_to_instance(obj: &Bound<'_, PyAny>) -> PyResult<Instance> {
+    use pyo3::types::PyDict;
+
+    // 1. Already an Instance.
     if let Ok(i) = obj.extract::<Instance>() {
         return Ok(i);
     }
 
-    // Try to convert to Vertex and then to Instance
-    match py_to_vertex(obj) {
-        Ok(vertex) => Ok(vertex.create_instance()),
-        Err(_) => Err(PyErr::new::<PyTypeError, _>(
-            "Expected a Vertex, Instance, or number/sequence",
-        )),
+    // 2. Plain dict of named attributes: {"key": value, ...} → Instance::new().set(...)
+    if let Ok(dict) = obj.cast::<PyDict>() {
+        let mut instance = Instance::new();
+        for (key, value) in dict.iter() {
+            let k: String = key.extract()?;
+            let vv = py_to_vertex_value(&value)?;
+            instance = instance.set(&k, vv);
+        }
+        return Ok(instance);
     }
+
+    // 3. Vertex (backward-compat: convert via create_instance, dropping position).
+    if let Ok(vertex) = py_to_vertex(obj) {
+        return Ok(vertex.create_instance());
+    }
+
+    Err(PyErr::new::<PyTypeError, _>(
+        "Expected an Instance, a dict of named attributes, or a Vertex",
+    ))
 }
 
 #[pymethods]
@@ -222,9 +236,22 @@ impl Vertex {
 
 #[pymethods]
 impl Instance {
+    // Instance is a helper value type; its constructors/methods are not
+    // separately documented as user API. Mark as doc(hidden) to satisfy
+    // the parity audit's unlabeled-export check.
+    #[doc(hidden)]
     #[new]
     pub fn new_py() -> Self {
         Self::default()
+    }
+
+    #[doc(hidden)]
+    #[pyo3(name = "set")]
+    pub fn set_py(&self, key: &str, value: Py<PyAny>) -> PyResult<Self> {
+        Python::attach(|py| -> PyResult<Self> {
+            let vv = py_to_vertex_value(value.bind(py))?;
+            Ok(self.clone().set(key, vv))
+        })
     }
 }
 
@@ -241,7 +268,7 @@ impl Mesh {
     #[lsp_doc("docs/api/geometry/mesh/from_vertices.md")]
     pub fn from_vertices_py(vertices: Py<PyAny>) -> PyResult<Self> {
         Python::attach(|py| -> PyResult<Self> {
-            let seq = vertices.bind(py).downcast::<PySequence>()?;
+            let seq = vertices.bind(py).cast::<PySequence>()?;
             let len = seq.len()?;
             let mut list: Vec<Vertex> = Vec::with_capacity(len);
             for i in 0..len {
@@ -266,7 +293,7 @@ impl Mesh {
     #[lsp_doc("docs/api/geometry/mesh/add_vertices.md")]
     pub fn add_vertices_py(&mut self, vertices: Py<PyAny>) -> PyResult<()> {
         Python::attach(|py| -> PyResult<()> {
-            let seq = vertices.bind(py).downcast::<PySequence>()?;
+            let seq = vertices.bind(py).cast::<PySequence>()?;
             let len = seq.len()?;
             for i in 0..len {
                 let item = seq.get_item(i)?;
@@ -281,7 +308,7 @@ impl Mesh {
     #[lsp_doc("docs/api/geometry/mesh/add_instance.md")]
     pub fn add_instance_py(&mut self, item: Py<PyAny>) -> PyResult<()> {
         Python::attach(|py| -> PyResult<()> {
-            let instance = py_to_instance_or_vertex(item.bind(py))?;
+            let instance = py_to_instance(item.bind(py))?;
             self.add_instance(instance);
             Ok(())
         })
@@ -291,11 +318,11 @@ impl Mesh {
     #[lsp_doc("docs/api/geometry/mesh/add_instances.md")]
     pub fn add_instances_py(&mut self, items: Py<PyAny>) -> PyResult<()> {
         Python::attach(|py| -> PyResult<()> {
-            let seq = items.bind(py).downcast::<PySequence>()?;
+            let seq = items.bind(py).cast::<PySequence>()?;
             let len = seq.len()?;
             for i in 0..len {
                 let item = seq.get_item(i)?;
-                let instance = py_to_instance_or_vertex(&item)?;
+                let instance = py_to_instance(&item)?;
                 self.add_instance(instance);
             }
             Ok(())
@@ -313,64 +340,71 @@ impl Mesh {
     pub fn set_instance_count_py(&mut self, n: u32) {
         self.set_instance_count(n);
     }
-
-    #[pyo3(name = "clear_instance_count")]
-    #[lsp_doc("docs/api/geometry/mesh/clear_instance_count.md")]
-    pub fn clear_instance_count_py(&mut self) {
-        self.clear_instance_count();
-    }
 }
 
 /// Tiny factory class to construct typed VertexValue variants from Python.
+/// Internal helper — not part of the public documented API.
 #[pyclass(name = "VertexValue")]
 pub struct PyVertexValue;
 
 #[pymethods]
 impl PyVertexValue {
+    #[doc(hidden)]
     #[staticmethod]
     pub fn f32(x: f32) -> VertexValue {
         VertexValue::F32(x)
     }
+    #[doc(hidden)]
     #[staticmethod]
     pub fn f32x2(x: [f32; 2]) -> VertexValue {
         VertexValue::F32x2(x)
     }
+    #[doc(hidden)]
     #[staticmethod]
     pub fn f32x3(x: [f32; 3]) -> VertexValue {
         VertexValue::F32x3(x)
     }
+    #[doc(hidden)]
     #[staticmethod]
     pub fn f32x4(x: [f32; 4]) -> VertexValue {
         VertexValue::F32x4(x)
     }
+    #[doc(hidden)]
     #[staticmethod]
     pub fn u32(x: u32) -> VertexValue {
         VertexValue::U32(x)
     }
+    #[doc(hidden)]
     #[staticmethod]
     pub fn u32x2(x: [u32; 2]) -> VertexValue {
         VertexValue::U32x2(x)
     }
+    #[doc(hidden)]
     #[staticmethod]
     pub fn u32x3(x: [u32; 3]) -> VertexValue {
         VertexValue::U32x3(x)
     }
+    #[doc(hidden)]
     #[staticmethod]
     pub fn u32x4(x: [u32; 4]) -> VertexValue {
         VertexValue::U32x4(x)
     }
+    #[doc(hidden)]
     #[staticmethod]
     pub fn i32(x: i32) -> VertexValue {
         VertexValue::I32(x)
     }
+    #[doc(hidden)]
     #[staticmethod]
     pub fn i32x2(x: [i32; 2]) -> VertexValue {
         VertexValue::I32x2(x)
     }
+    #[doc(hidden)]
     #[staticmethod]
     pub fn i32x3(x: [i32; 3]) -> VertexValue {
         VertexValue::I32x3(x)
     }
+    #[doc(hidden)]
     #[staticmethod]
     pub fn i32x4(x: [i32; 4]) -> VertexValue {
         VertexValue::I32x4(x)

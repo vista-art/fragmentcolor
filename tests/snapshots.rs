@@ -78,7 +78,7 @@ async fn render_pass_to_rgba(pass: &Pass, size: [u32; 2]) -> RgbaImage {
         .await
         .expect("texture target");
     renderer.render(pass, &target).expect("render ok");
-    let bytes = target.get_image();
+    let bytes = target.get_image().await;
 
     RgbaImage::from_raw(size[0], size[1], bytes).expect("rgba shape")
 }

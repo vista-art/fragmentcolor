@@ -1,0 +1,86 @@
+name: Publish Swift Package
+
+# Builds the iOS xcframework, zips it, attaches it to the GitHub Release as
+# `FragmentColorFFI.xcframework.zip`, and computes the SPM checksum. The
+# consumer-facing `Package.swift` at the repo root references this URL; the
+# post-publish workflow rewrites the pinned checksum via a follow-up PR.
+#
+# Swift Package Manager has no central registry — distribution is via git
+# URL + `.binaryTarget(url:, checksum:)`, so "publishing" means uploading
+# the xcframework zip to the release and updating the checksum in
+# `Package.swift`.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write   # needed to upload the release asset
+
+jobs:
+  build-and-upload:
+    runs-on: macos-14
+    outputs:
+      checksum: ${{ steps.checksum.outputs.checksum }}
+      version: ${{ steps.vars.outputs.version }}
+    env:
+      RUSTC_WRAPPER: ""
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: "recursive"
+
+      - name: Determine version
+        id: vars
+        run: |
+          if [ "${{ github.event_name }}" = "release" ] && [ -n "${{ github.event.release.tag_name }}" ]; then
+            RAW="${{ github.event.release.tag_name }}"
+          else
+            RAW=$(grep '^version = ' Cargo.toml | head -n1 | cut -d'"' -f2)
+            RAW="v$RAW"
+          fi
+          VERSION="${RAW#v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Rust (with iOS targets)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios,aarch64-apple-ios-sim
+
+      - name: Build xcframework
+        run: |
+          chmod +x ./build_ios
+          ./build_ios
+
+      - name: Zip xcframework
+        run: |
+          cd build/ios
+          zip -r -X FragmentColorFFI.xcframework.zip FragmentColorFFI.xcframework
+
+      - name: Compute SPM checksum
+        id: checksum
+        run: |
+          # Swift Package Manager uses `swift package compute-checksum`,
+          # which on the same input produces the same hex string as
+          # sha256sum. We use swift directly so it matches exactly.
+          CHECKSUM=$(swift package compute-checksum build/ios/FragmentColorFFI.xcframework.zip)
+          echo "checksum=$CHECKSUM" >> "$GITHUB_OUTPUT"
+          echo "xcframework checksum: $CHECKSUM"
+
+      - name: Upload xcframework to GitHub Release
+        if: ${{ github.event_name == 'release' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.vars.outputs.tag }}
+        run: |
+          gh release upload "$TAG" build/ios/FragmentColorFFI.xcframework.zip --clobber
+
+      - name: Upload xcframework as workflow artifact (workflow_dispatch)
+        if: ${{ github.event_name != 'release' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: fragmentcolor-xcframework
+          path: build/ios/FragmentColorFFI.xcframework.zip

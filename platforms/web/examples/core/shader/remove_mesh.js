@@ -1,6 +1,7 @@
 import { Shader, Mesh } from "fragmentcolor";
 
 const shader = new Shader(`
+
   struct VOut { @builtin(position) pos: vec4<f32> };
   @vertex
   fn vs_main(@location(0) pos: vec2<f32>) -> VOut {

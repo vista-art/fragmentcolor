@@ -22,6 +22,7 @@ export default defineConfig({
         Repl: "./src/components/Repl.astro",
         Examples: "./src/components/Examples.mdx",
         SiteTitle: "./src/components/SiteTitle.astro",
+        Footer: "./src/components/Footer.astro",
       },
       customCss: ["./src/assets/styles/override.css"],
       // @TODO set up a system for automatic translation
@@ -56,7 +57,7 @@ export default defineConfig({
           authors: {
             rafaelbeckel: {
               name: "Rafael Beckel",
-              title: "Creator of FragmentColor",
+              title: "Maintainer",
               picture: "/favicon.png", // Images in the `public` directory are supported.
               url: "https://github.com/rafaelbeckel",
             },
@@ -77,14 +78,17 @@ export default defineConfig({
           tag: "script",
           attrs: { type: "module" },
           content: `
-            const ensureSidebarLink = (ul, href, text) => {
+            const ensureSidebarLink = (ul, href, text, position) => {
               try {
                 if (!ul) return;
                 const alt = href.endsWith('/') ? href.slice(0, -1) : href + '/';
                 const existingAnchor = ul.querySelector('a[href="' + href + '"], a[href="' + alt + '"]');
                 if (existingAnchor) {
                   const li = existingAnchor.closest('li');
-                  if (li && li.parentElement === ul) ul.appendChild(li); // move to last
+                  if (li && li.parentElement === ul) {
+                    if (position === 'first') ul.insertBefore(li, ul.firstChild);
+                    else ul.appendChild(li);
+                  }
                   return;
                 }
                 // Try to clone a simple top-level <li> if present to preserve styling
@@ -98,6 +102,13 @@ export default defineConfig({
                     a.textContent = text;
                     // Remove special mobile-only class if present
                     a.classList.remove('sl-blog-mobile-link');
+                    // The template might be the currently-active page (e.g. "All Posts"
+                    // is the first top-level <li> on /blog/). Strip any active state
+                    // markers so the injected cross-link doesn't show up as selected.
+                    a.removeAttribute('aria-current');
+                    a.classList.remove('sl-link-current');
+                    li.removeAttribute('data-current-parent');
+                    li.classList.remove('sl-link-current', 'current');
                   } else {
                     li.innerHTML = '';
                     const na = document.createElement('a');
@@ -110,7 +121,8 @@ export default defineConfig({
                   a.href = href; a.textContent = text; a.classList.add('large');
                   li.appendChild(a);
                 }
-                ul.appendChild(li); // add as last item
+                if (position === 'first') ul.insertBefore(li, ul.firstChild);
+                else ul.appendChild(li);
               } catch {}
             };
 
@@ -119,11 +131,12 @@ export default defineConfig({
               const uls = document.querySelectorAll('#starlight__sidebar .top-level');
               uls.forEach((ul) => {
                 if (isBlog) {
-                  // Blog sidebar: add Docs (last)
-                  ensureSidebarLink(ul, '/welcome/', 'Docs');
+                  // Blog sidebar: pin Docs at the top so it stays visible even
+                  // when Recent Posts and Tags are expanded and push everything down.
+                  ensureSidebarLink(ul, '/welcome/', 'Docs', 'first');
                 } else {
-                  // Docs (or non-blog) sidebar: add Blog (last)
-                  ensureSidebarLink(ul, '/blog/', 'Blog');
+                  // Docs (or non-blog) sidebar: add Blog last as a sibling section.
+                  ensureSidebarLink(ul, '/blog/', 'Blog', 'last');
                 }
               });
             };
@@ -150,6 +163,10 @@ export default defineConfig({
           ],
         },
         {
+          label: "Tutorials",
+          autogenerate: { directory: "tutorials" },
+        },
+        {
           label: "API Reference",
           autogenerate: { directory: "api" },
         },
@@ -158,4 +175,22 @@ export default defineConfig({
   ],
 
   adapter: vercel(),
+
+  vite: {
+    optimizeDeps: {
+      // These packages break Vite's dep pre-bundler in this Astro+Vite combo:
+      // optimize step claims success but the bundled file never lands in
+      // node_modules/.vite/deps, so requests hit "504 Outdated Optimize Dep"
+      // with empty body — Firefox surfaces it as MIME-type / nosniff errors.
+      // Excluding them serves the packages as native ESM at runtime.
+      exclude: [
+        "fragmentcolor",
+        "codemirror",
+        "@codemirror/state",
+        "@codemirror/language",
+        "@codemirror/lang-markdown",
+        "thememirror",
+      ],
+    },
+  },
 });

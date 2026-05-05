@@ -1,5 +1,5 @@
 use fastrand::Rng;
-use fragmentcolor::{App, Frame, Pass, Renderer, SetupResult, Shader, Size, call, run};
+use fragmentcolor::{App, Pass, Renderer, SetupResult, Shader, Size, call, run};
 use std::sync::Arc;
 use winit::dpi::PhysicalSize;
 use winit::window::Window;
@@ -13,9 +13,9 @@ fn on_resize(app: &App, new_size: &PhysicalSize<u32>) {
 
 fn draw(app: &App) {
     let id = app.primary_window_id();
-    if let Some(frame) = app.get::<Frame>("frame.main") {
+    if let Some(pass) = app.get::<Pass>("pass.main") {
         let r = app.get_renderer();
-        let _ = app.with_target(id, |t| r.render(&*frame, t));
+        let _ = app.with_target(id, |t| r.render(&*pass, t));
     }
 }
 
@@ -65,11 +65,7 @@ async fn setup(app: &App, windows: Vec<Arc<Window>>) -> SetupResult {
         pass.add_shader(&circle);
     }
 
-    // Compose into a frame (single pass)
-    let mut frame = Frame::new();
-    frame.add_pass(&pass);
-
-    app.add("frame.main", frame);
+    app.add("pass.main", pass);
 
     // Create targets for all windows
     for win in windows {

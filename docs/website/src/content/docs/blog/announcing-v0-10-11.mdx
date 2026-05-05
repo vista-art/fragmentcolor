@@ -1,0 +1,48 @@
+---
+title: "v0.10.11: direct texture writes and external video on the web"
+excerpt: "Writing pixel data directly into textures, zero-copy HTML video textures on the web, and updated Python integration with RenderCanvas 2.0."
+authors: ["rafaelbeckel"]
+date: 2026-03-30
+tags: ["release", "rust", "webgpu", "python", "javascript"]
+---
+
+v0.10.11 introduces direct writes to textures from CPU memory, zero-copy HTML video textures on the web, and updated Python integration with RenderCanvas 2.0. It is the final desktop and web release before mobile.
+
+### Writing to textures
+
+Bitmap and pixel data can now be written directly into a texture, without a shader pass:
+
+```rust
+let texture = renderer.create_texture_with_size([512, 512]);
+texture.write(&renderer, &pixel_bytes)?;
+```
+
+The API also includes `Texture::write_with` for partial updates with explicit origin, size, and bytes-per-row, and `Renderer::update_texture` / `update_texture_with` on the renderer side. `Renderer::unregister_texture` removes a texture from the registry on demand.
+
+### Sampling HTML `<video>` on the web
+
+The web binding gains a zero-copy path from the browser's video decoder via WebGPU's `texture_external`:
+
+```js
+const video = document.querySelector('video');
+const texture = await renderer.createExternalTextureFromHtmlVideo(video);
+shader.set('frame', texture);
+```
+
+This avoids the extra `drawImage(video, …)` step. Chromium has full support; Safari's WebGPU has the binding too, though its API changes from time to time. Please open an issue if something behaves unexpectedly.
+
+### RenderCanvas 2.0 compatibility
+
+`Renderer::create_target` reads screen-present info directly from RenderCanvas and builds the surface from that, replacing the previous custom context name. Pinning an older RenderCanvas is no longer necessary.
+
+### Per-language doc overrides
+
+The system that generates JS and Python examples from Rust doc-strings supports per-language override snippets for cases where a direct translation reads awkwardly. The texture-write pages are the immediate use case: `&[u8]` in Rust, `Uint8Array` in JS, and `bytes` in Python all want slightly different framing.
+
+---
+
+Mobile is next. [v0.11.0](/blog/announcing-v0-11-0/) is in development.
+
+Release notes: [GitHub v0.10.11](https://github.com/vista-art/fragmentcolor/releases/tag/v0.10.11).
+
+— Rafael

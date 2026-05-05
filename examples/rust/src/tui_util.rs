@@ -74,7 +74,8 @@ impl<W: Write> TerminalRenderer<W> {
 
     pub fn draw_shader(&mut self, shader: &Shader) -> anyhow::Result<()> {
         self.renderer.render(shader, &self.target)?;
-        let rgba = self.target.get_image();
+        // `Target::get_image` is async; the TUI loop is sync — block here.
+        let rgba = pollster::block_on(self.target.get_image());
         let size = self.target.size();
         let widget = match self.color_mode {
             ColorMode::TrueColor => rgba_to_half_block_cells_true(&rgba, size.width, size.height),

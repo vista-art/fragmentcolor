@@ -4,6 +4,7 @@ const mesh = new Mesh();
 mesh.addVertex([0.0, 0.0]);
 
 const shader = new Shader(`
+
   struct VOut { @builtin(position) pos: vec4<f32> };
   @vertex
   fn vs_main(@location(0) pos: vec2<f32>) -> VOut {

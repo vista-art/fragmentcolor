@@ -1,4 +1,3 @@
-
 from fragmentcolor import Renderer, Shader
 renderer = Renderer()
 shader = Shader("""
@@ -9,12 +8,11 @@ shader = Shader("""
   return vec4f(p[i], 0., 1.);
 }
 @fragment fn main() -> @location(0) vec4<f32> { return vec4f(1.,1.,1.,1.); }
-
 """)
 
-# 1x1 RGBA (white) raw pixel bytes
-pixels = [255,255,255,255]
-texture = renderer.create_texture_with_size(pixels, [1,1])
+# 1x1 RGBA (white) raw pixel bytes -- positional: (data, size=...).
+pixels = [255, 255, 255, 255]
+texture = renderer.create_texture(pixels, size=[1, 1])
 
-# insert  the texture in the shader matching the name in the shader
+# insert the texture in the shader matching the name in the shader
 shader.set("my_texture", texture)

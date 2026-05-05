@@ -1,0 +1,63 @@
+---
+title: "v0.10.7: feature parity across Rust, JavaScript, and Python"
+excerpt: "Textures, meshes, multi-pass, MSAA, and a build that fails locally if any binding is missing a method."
+authors: ["rafaelbeckel"]
+date: 2025-10-05
+tags: ["release", "rust", "webgpu", "python", "javascript", "milestone"]
+---
+
+v0.10.7 covers desktop and web, and makes feature parity across Rust, JavaScript, and Python an enforced build requirement. v0.11 is reserved for the upcoming iOS and Android releases.
+
+### Enforced feature parity
+
+Every public object is documented in [docs/api](https://github.com/vista-art/fragmentcolor/tree/main/docs/api), every doc has an `## Example` section, and the build refuses to compile if a method is missing in any binding. The JavaScript and Python examples on this site are extracted from the same healthcheck scripts that run in CI on every push.
+
+### Textures and samplers are part of the core API
+
+Textures load from bytes, paths, or URLs:
+
+```python
+from fragmentcolor import Renderer, Shader
+
+renderer = Renderer()
+texture = renderer.create_texture("https://fragmentcolor.org/images/logo.png")
+
+shader = Shader.new("...your shader...")
+shader.set("image", texture)
+shader.set("sampler", {"filter": "linear"})
+```
+
+Sample counts give you MSAA with automatic resolve. Storage textures support shader-side writes. Depth textures end up in the right layout because the renderer reads your shader's binding metadata directly.
+
+### Meshes and multi-pass without the extra setup
+
+`Shader.add_mesh()` and `Pass.add_mesh_to_shader()` cover vertex-layout configuration. The library inspects your shader's `@location` inputs and refuses to attach a mesh that doesn't fit. Multiple meshes per pass work, instancing works, and pipelines are cached by `(shader, format, sample_count)`, so reusing the same shader across passes is cheap.
+
+A new `Frame` object combines passes into a render graph (for example, "blur-x after scene, blur-y after blur-x"), with explicit `require()` edges that set the order.
+
+### One interface for everything you upload to a GPU
+
+Uniforms, uniform arrays, storage buffers, storage buffer arrays, vertex buffers, index buffers, textures, storage textures, samplers, push constants. All of them go through `shader.set("path.to.field", value)`, and the layout is inferred from your WGSL. Push constants fall back to a uniform buffer on targets that don't support them.
+
+### Offscreen, headless, and CI-friendly
+
+Rendering to a `TextureTarget` on any platform without a window is the documented path for headless tests. Useful if you want to snapshot-test a shader, or run generative art from a cron job.
+
+If you want to try this:
+
+```bash
+# Rust
+cargo add fragmentcolor
+
+# JavaScript
+npm install fragmentcolor
+
+# Python
+pip install fragmentcolor rendercanvas glfw
+```
+
+Full changelog: [GitHub v0.10.7](https://github.com/vista-art/fragmentcolor/releases/tag/v0.10.7).
+
+Start here: [/welcome](/welcome) · [/api](/api) · [GitHub](https://github.com/vista-art/fragmentcolor)
+
+— Rafael

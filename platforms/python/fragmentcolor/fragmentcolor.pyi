@@ -7,7 +7,7 @@ import numpy.typing as npt
 
 PySize = tuple[int, int] | tuple[int, int, int] | Sequence[int] | Mapping[str, int]
 NDArrayU8 = npt.NDArray[numpy.uint8]
-Renderable = 'Shader' | 'Pass' | 'Frame' | Sequence['Shader' | 'Pass']
+Renderable = 'Shader' | 'Pass' | Sequence['Shader' | 'Pass']
 
 class FragmentColorError(Exception): ...
 
@@ -63,7 +63,7 @@ class Texture:
     
     # 1x1 RGBA (white) raw pixel bytes
     pixels = [255,255,255,255]
-    texture = renderer.create_texture_with_size(pixels, [1,1])
+    texture = renderer.create_texture(pixels, size=[1, 1])
     
     # insert  the texture in the shader matching the name in the shader
     shader.set("my_texture", texture)
@@ -84,7 +84,7 @@ class Texture:
     from fragmentcolor import Renderer
     renderer = Renderer()
     pixels = [255,255,255,255]
-    tex = renderer.create_texture_with_size(pixels, [1,1])
+    tex = renderer.create_texture(pixels, size=[1, 1])
     sz = tex.size
     ```
     """
@@ -105,7 +105,7 @@ class Texture:
     renderer = Renderer()
     # 1x1 RGBA (white) raw pixel bytes
     pixels = [255,255,255,255]
-    tex = renderer.create_texture_with_size(pixels, [1, 1])
+    tex = renderer.create_texture(pixels, size=[1, 1])
     a = tex.aspect()
     ```
     """
@@ -127,7 +127,7 @@ class Texture:
     # 1x1 RGBA (white) raw pixel bytes
     pixels = [255,255,255,255]
     
-    texture = renderer.create_texture_with_size(pixels, [1,1])
+    texture = renderer.create_texture(pixels, size=[1, 1])
     opts = {"repeat_x": True, "repeat_y": True, "smooth": True, "compare": None}
     texture.set_sampler_options(opts)
     ```
@@ -374,29 +374,23 @@ class Pass:
     
     ```python
     from rendercanvas.auto import RenderCanvas, loop
-    
-    from fragmentcolor import Shader, Pass, Renderer, Frame
-    
+
+    from fragmentcolor import Shader, Pass, Renderer
+
     renderer = Renderer()
     canvas = RenderCanvas(size=(100, 100))
     target = renderer.create_target(canvas)
     shader = Shader.default()
-    
+
     rpass = Pass("First Pass")
     rpass.add_shader(shader)
-    
+
     pass2 = Pass("Second Pass")
     pass2.add_shader(shader)
-    
+
     # standalone
     renderer.render(rpass, target)
-    
-    # using a Frame
-    frame = Frame()
-    frame.add_pass(rpass)
-    frame.add_pass(pass2)
-    renderer.render(frame, target)
-    
+
     # vector of passes (consume them)
     renderer.render([rpass, pass2], target)
     ```
@@ -754,7 +748,7 @@ class Pass:
     """
     # Pass::require(deps)
     
-    Declare that this pass depends on one or more other renderables (Pass, Shader, Frame, Mesh).
+    Declare that this pass depends on one or more other renderables (Pass, Shader, Mesh).
     All dependencies will render before this Pass.
     
     ## Return value
@@ -795,78 +789,6 @@ class Pass:
     ```
     """
 
-class Frame:
-    """
-    # Frame
-    
-    The [Frame](https://fragmentcolor.org/api/core/frame) object is a collection of [Pass](https://fragmentcolor.org/api/core/pass) objects that are rendered to a [Target](https://fragmentcolor.org/api/core/target) by the [Renderer](https://fragmentcolor.org/api/core/renderer).
-    
-    It is used to render multiple passes to a single target, such as an opaque pass followed by a transparent pass.
-    
-    You need to inject the [Frame](https://fragmentcolor.org/api/core/frame) object into the [Renderer](https://fragmentcolor.org/api/core/renderer) to render it.
-    
-    
-    
-    Example (Python):
-    
-    ```python
-    
-    from fragmentcolor import Shader, Pass, Renderer, Frame
-    
-    renderer = Renderer()
-    target = renderer.create_texture_target([100, 100])
-    
-    pass1 = Pass("first")
-    pass2 = Pass("second")
-    
-    frame = Frame()
-    frame.add_pass(pass1)
-    frame.add_pass(pass2)
-    ```
-    """
-    def __init__(self) -> None: ...
-    """
-    # Frame::new()
-    
-    Creates a new [Frame](https://fragmentcolor.org/api/core/frame) object.
-    
-    A [Frame](https://fragmentcolor.org/api/core/frame) is an ordered collection of [Pass](https://fragmentcolor.org/api/core/pass) objects that will be rendered by the [Renderer](https://fragmentcolor.org/api/core/renderer) in sequence.
-    
-    
-    
-    Example (Python):
-    
-    ```python
-    from fragmentcolor import Frame
-    
-    frame = Frame()
-    ```
-    """
-    def passes(self) -> Sequence['Pass']: ...
-    def add_pass(self, pass_: 'Pass') -> None: ...
-    """
-    # Frame::add_pass(pass: Pass)
-    
-    Adds a [Pass](https://fragmentcolor.org/api/core/pass) to this [Frame](https://fragmentcolor.org/api/core/frame).
-    
-    Passes are rendered in the order they are added.
-    
-    
-    
-    Example (Python):
-    
-    ```python
-    from fragmentcolor import Frame, Pass
-    
-    pass1 = Pass("first")
-    pass2 = Pass("second")
-    
-    frame = Frame()
-    frame.add_pass(pass1)
-    frame.add_pass(pass2)
-    ```
-    """
-
 class Shader:
     """
     # Shader
@@ -877,9 +799,7 @@ class Shader:
     
     To draw your shader, you must use your [Shader](https://fragmentcolor.org/api/core/shader) instance as input to a [Renderer](https://fragmentcolor.org/api/core/renderer).
     
-    You can compose [Shader](https://fragmentcolor.org/api/core/shader) instances into a [Pass](https://fragmentcolor.org/api/core/pass) object to create more complex rendering pipelines.
-    
-    You can also create renderings with multiple Render Passes by using multiple [Pass](https://fragmentcolor.org/api/core/pass) instances to a [Frame](https://fragmentcolor.org/api/core/frame) object.
+    You can compose [Shader](https://fragmentcolor.org/api/core/shader) instances into a [Pass](https://fragmentcolor.org/api/core/pass) object to create more complex rendering pipelines, and order multiple passes by passing a list of [Pass](https://fragmentcolor.org/api/core/pass) to [Renderer.render](https://fragmentcolor.org/api/core/renderer/render).
     
     
     
@@ -1758,61 +1678,6 @@ class Renderer:
     from fragmentcolor import Renderer
     # Python binding: renderer.create_texture(input)
     # See main create_texture docs for examples.
-    ```
-    """
-    @overload
-    def create_texture_with_size(self, input: bytes | bytearray | Sequence[int], size: PySize) -> Texture: ...
-    @overload
-    def create_texture_with_size(self, input: str, size: PySize) -> Texture: ...
-    @overload
-    def create_texture_with_size(self, input: NDArrayU8, size: PySize) -> Texture: ...
-    """
-    # Renderer.create_depth_texture_py
-    
-    Python wrapper for Renderer::create_depth_texture.
-    Hidden from public website; used for IDE hover with lsp_doc.
-    
-    
-    
-    Example (Python):
-    
-    ```python
-    # hidden draft; no public example
-    ```
-    """
-    @overload
-    def create_texture_with_format(self, input: bytes | bytearray | Sequence[int], format: TextureFormat) -> Texture: ...
-    @overload
-    def create_texture_with_format(self, input: str, format: TextureFormat) -> Texture: ...
-    @overload
-    def create_texture_with_format(self, input: NDArrayU8, format: TextureFormat) -> Texture: ...
-    """
-    # Renderer.create_depth_texture_py
-    
-    Python wrapper for Renderer::create_depth_texture.
-    Hidden from public website; used for IDE hover with lsp_doc.
-    
-    
-    
-    Example (Python):
-    
-    ```python
-    # hidden draft; no public example
-    ```
-    """
-    def create_texture_with(self, input: bytes | bytearray | Sequence[int] | str | NDArrayU8, size: PySize | None = None) -> Texture: ...
-    """
-    # Renderer.create_depth_texture_py
-    
-    Python wrapper for Renderer::create_depth_texture.
-    Hidden from public website; used for IDE hover with lsp_doc.
-    
-    
-    
-    Example (Python):
-    
-    ```python
-    # hidden draft; no public example
     ```
     """
     def render(self, renderable: Renderable, target: RenderCanvasTarget | TextureTarget) -> None: ...

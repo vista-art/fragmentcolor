@@ -10,7 +10,7 @@ Explicitly remove a texture from the renderer’s registry.
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Renderer, TextureFormat};
 let renderer = Renderer::new();
-let texture = renderer.create_storage_texture([16, 16], TextureFormat::Rgba, None).await?;
+let texture = renderer.create_storage_texture(([16, 16], TextureFormat::Rgba)).await?;
 let id = *texture.id();
 
 renderer.unregister_texture(id)?;

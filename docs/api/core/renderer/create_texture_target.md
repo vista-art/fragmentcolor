@@ -18,7 +18,7 @@ let target = renderer.create_texture_target([64, 64]).await?;
 renderer.render(&Shader::default(), &target)?;
 
 // get the rendered image
-let image = target.get_image();
+let image = target.get_image().await;
 
 # // RGBA8
 # assert_eq!(image.len(), 64 * 64 * 4);

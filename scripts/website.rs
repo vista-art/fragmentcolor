@@ -7,6 +7,8 @@ mod website {
         pub expected: std::collections::HashSet<String>,
         pub ex_js: std::collections::HashSet<String>,
         pub ex_py: std::collections::HashSet<String>,
+        pub ex_swift: std::collections::HashSet<String>,
+        pub ex_kotlin: std::collections::HashSet<String>,
     }
 
 
@@ -160,7 +162,10 @@ mod website {
     }
 
     /// Step 2: Export examples and pages. Returns the sets needed by later steps.
-    pub fn export_examples_and_pages(api_map: &ApiMap) -> ExportOutcome {
+    pub fn export_examples_and_pages(
+        catalog: &super::codegen::ApiCatalog,
+        api_map: &ApiMap,
+    ) -> ExportOutcome {
         use std::collections::{BTreeMap, HashSet};
         let root = meta::workspace_root();
         let docs_root = root.join("docs/api");
@@ -175,10 +180,12 @@ mod website {
         // Collected example file paths for platform healthchecks
         let mut ex_js: std::collections::HashSet<String> = std::collections::HashSet::new();
         let mut ex_py: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut ex_swift: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut ex_kotlin: std::collections::HashSet<String> = std::collections::HashSet::new();
 
         // Build set of known top-level categories for link normalization
         let mut top_categories: HashSet<String> = HashSet::new();
-        for (_object, _dir, cat_rel) in scan_docs_objects(&docs_root) {
+        for (_object, _dir, cat_rel) in super::docs::scan_docs_objects(&docs_root) {
             if !cat_rel.is_empty()
                 && let Some(first) = cat_rel.split('/').next()
             {
@@ -190,15 +197,15 @@ mod website {
         use std::collections::{BTreeMap as _BTreeMap, HashMap as _HashMap, HashSet as _HashSet};
         let mut all_by_cat: _BTreeMap<String, Vec<String>> = _BTreeMap::new();
         // From docs directory scan
-        for (object, _obj_dir, cat_rel) in scan_docs_objects(&docs_root) {
+        for (object, _obj_dir, cat_rel) in super::docs::scan_docs_objects(&docs_root) {
             if is_hidden_category(&cat_rel) { continue; }
             all_by_cat.entry(cat_rel).or_default().push(object);
         }
         // Include base objects that may not have explicit docs yet
-        for object in super::validation::base_public_objects().iter() {
-            let dir_name = super::validation::object_dir_name(object);
-            let obj_dir = find_object_dir(&docs_root, &dir_name).unwrap_or(docs_root.join(&dir_name));
-            let cat_rel = if obj_dir.exists() { category_rel_from(&docs_root, &obj_dir) } else { String::new() };
+        for object in catalog.base_public_objects().iter() {
+            let dir_name = super::docs::object_dir_name(object);
+            let obj_dir = super::docs::find_object_dir(&docs_root, &dir_name).unwrap_or(docs_root.join(&dir_name));
+            let cat_rel = if obj_dir.exists() { super::docs::category_rel_from(&docs_root, &obj_dir) } else { String::new() };
             if is_hidden_category(&cat_rel) { continue; }
             let list = all_by_cat.entry(cat_rel).or_default();
             if !list.iter().any(|o| o == object) { list.push(object.to_string()); }
@@ -214,7 +221,7 @@ mod website {
                 // Build canonical map from canonical form to object name
                 let mut canon_to_obj: _HashMap<String, String> = _HashMap::new();
                 for obj in list.iter() {
-                    let dir_name = super::validation::object_dir_name(obj);
+                    let dir_name = super::docs::object_dir_name(obj);
                     canon_to_obj.insert(canonicalize_name(obj), obj.clone());
                     canon_to_obj.insert(canonicalize_name(&dir_name), obj.clone());
                 }
@@ -343,6 +350,8 @@ mod website {
                     &root,
                     &mut ex_js,
                     &mut ex_py,
+                    &mut ex_swift,
+                    &mut ex_kotlin,
                 );
                 out.push_str("\n## Example\n\n");
                 out.push_str(&tabs);
@@ -396,7 +405,15 @@ mod website {
                 let dir_slug = obj_dir.file_name().and_then(|s| s.to_str()).unwrap_or("");
                 let items = lines_to_items(&rust_body);
                 let tabs = build_tabs_for_example(
-                    &items, cat_rel, dir_slug, file, &root, &mut ex_js, &mut ex_py,
+                    &items,
+                    cat_rel,
+                    dir_slug,
+                    file,
+                    &root,
+                    &mut ex_js,
+                    &mut ex_py,
+                    &mut ex_swift,
+                    &mut ex_kotlin,
                 );
                 out.push_str("\n#### Example\n\n");
                 out.push_str(&tabs);
@@ -437,13 +454,13 @@ mod website {
         };
 
         // Iterate objects discovered from AST (base objects only)
-        let objects = super::validation::base_public_objects();
+        let objects = catalog.base_public_objects();
         for object in objects.iter() {
-            let dir_name = super::validation::object_dir_name(object);
+            let dir_name = super::docs::object_dir_name(object);
             let obj_dir =
-                find_object_dir(&docs_root, &dir_name).unwrap_or(docs_root.join(&dir_name));
+                super::docs::find_object_dir(&docs_root, &dir_name).unwrap_or(docs_root.join(&dir_name));
             let cat_rel = if obj_dir.exists() {
-                category_rel_from(&docs_root, &obj_dir)
+                super::docs::category_rel_from(&docs_root, &obj_dir)
             } else {
                 String::new()
             };
@@ -495,7 +512,7 @@ mod website {
         }
 
         // Extras: any docs-only objects in docs/api (recursively) not already processed
-        for (object, obj_dir, cat_rel) in scan_docs_objects(&docs_root) {
+        for (object, obj_dir, cat_rel) in super::docs::scan_docs_objects(&docs_root) {
             if processed.contains(&object) {
                 continue;
             }
@@ -581,6 +598,8 @@ mod website {
             expected,
             ex_js,
             ex_py,
+            ex_swift,
+            ex_kotlin,
         }
     }
 
@@ -619,6 +638,8 @@ mod website {
     pub fn write_healthcheck_aggregators(
         ex_js: &std::collections::HashSet<String>,
         ex_py: &std::collections::HashSet<String>,
+        ex_swift: &std::collections::HashSet<String>,
+        ex_kotlin: &std::collections::HashSet<String>,
     ) {
         let root = meta::workspace_root();
 
@@ -683,6 +704,14 @@ mod website {
         py_out.push_str("            runpy.run_path(str(base / rel), run_name='__main__')\n");
         py_out.push_str("            passed += 1\n");
         py_out.push_str("            print(head + GREEN + 'OK' + RESET)\n");
+        py_out.push_str("        except SystemExit as _e:\n");
+        py_out.push_str("            if _e.code == 0:\n");
+        py_out.push_str("                passed += 1\n");
+        py_out.push_str("                print(head + GREEN + 'OK' + RESET)\n");
+        py_out.push_str("            else:\n");
+        py_out.push_str("                failed += 1\n");
+        py_out.push_str("                print(head + RED + 'FAILED' + RESET)\n");
+        py_out.push_str("                traceback.print_exc()\n");
         py_out.push_str("        except Exception:\n");
         py_out.push_str("            failed += 1\n");
         py_out.push_str("            print(head + RED + 'FAILED' + RESET)\n");
@@ -700,6 +729,144 @@ mod website {
         py_out.push_str("        print(f\"\\n{GREEN}test result: ok{RESET}. {passed} passed; {failed} failed\")\n");
         py_out.push_str("\nif __name__ == '__main__':\n    run_all()\n");
         let _ = super::meta::write_if_changed(&py_path, &py_out);
+
+        // Sort and write Swift aggregator (compile-only on iOS Simulator).
+        // Each generated `.swift` example is read from disk, its `import`
+        // lines stripped, and the body inlined inside a private function.
+        // The compiler type-checks every body during the SPM build run by
+        // `./healthcheck ios`; failures here mean either a `convert::to_swift`
+        // shortcoming or a missing uniffi export, not an aggregator bug.
+        let mut swift_list: Vec<String> = ex_swift.iter().cloned().collect();
+        swift_list.sort();
+        let swift_aggregator_path =
+            root.join("platforms/swift/healthcheck/GeneratedExamples.swift");
+        if let Some(parent) = swift_aggregator_path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let mut swift_out = String::new();
+        swift_out.push_str("// AUTO-GENERATED by build.rs (scripts/website.rs). DO NOT EDIT.\n");
+        swift_out.push_str("//\n");
+        swift_out.push_str("// Compile-only aggregator for every transpiled Swift example under\n");
+        swift_out.push_str("// `platforms/swift/examples/`. Each function below embeds the body\n");
+        swift_out.push_str("// of one example so the compiler type-checks it. Functions are\n");
+        swift_out.push_str("// never invoked at runtime — wiring up GPU-backed runtime\n");
+        swift_out.push_str("// execution is a follow-up task.\n");
+        swift_out.push_str("//\n");
+        swift_out.push_str("// A failure here means either:\n");
+        swift_out.push_str("//  (a) the source `docs/api/**.md` example uses a Rust API that\n");
+        swift_out.push_str("//      `scripts/convert.rs::to_swift` cannot map, or\n");
+        swift_out.push_str("//  (b) the example references an item that uniffi does not\n");
+        swift_out.push_str("//      export to Swift.\n");
+        swift_out.push_str("// Fix the source — this file is regenerated on every cargo build.\n");
+        swift_out.push('\n');
+        swift_out.push_str("import FragmentColor\n");
+        swift_out.push('\n');
+        swift_out.push_str("@available(iOS 16.0, *)\n");
+        swift_out.push_str("private enum _GeneratedExamples {\n");
+        for rel in &swift_list {
+            let stem = rel.strip_suffix(".swift").unwrap_or(rel);
+            let slug = ident_slug(stem);
+            let example_path = root.join("platforms/swift/examples").join(rel);
+            let body = std::fs::read_to_string(&example_path).unwrap_or_default();
+            let body_clean = strip_lang_lines(&body, &["import "]);
+            swift_out.push_str(&format!(
+                "    static func _example_{}() async throws {{\n",
+                slug
+            ));
+            for line in body_clean.lines() {
+                if line.trim().is_empty() {
+                    swift_out.push('\n');
+                } else {
+                    swift_out.push_str("        ");
+                    swift_out.push_str(line);
+                    swift_out.push('\n');
+                }
+            }
+            swift_out.push_str("    }\n\n");
+        }
+        swift_out.push_str("}\n");
+        let _ = super::meta::write_if_changed(&swift_aggregator_path, &swift_out);
+
+        // Sort and write Kotlin aggregator.
+        // Lives under `androidTest/` so it's compiled (and the @Test class
+        // executed as a no-op) by the existing
+        // `gradle fragmentcolor:connectedAndroidTest` invocation in
+        // `./healthcheck android`. The wrappers are private suspend fns
+        // that the Kotlin compiler type-checks at build time.
+        let mut kotlin_list: Vec<String> = ex_kotlin.iter().cloned().collect();
+        kotlin_list.sort();
+        let kotlin_aggregator_path = root.join(
+            "platforms/kotlin/fragmentcolor/src/androidTest/java/org/fragmentcolor/GeneratedExamples.kt",
+        );
+        if let Some(parent) = kotlin_aggregator_path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let mut k_out = String::new();
+        k_out.push_str("package org.fragmentcolor\n\n");
+        k_out.push_str("// AUTO-GENERATED by build.rs (scripts/website.rs). DO NOT EDIT.\n");
+        k_out.push_str("//\n");
+        k_out.push_str("// Compile-only aggregator for every transpiled Kotlin example under\n");
+        k_out.push_str("// `platforms/kotlin/examples/`. Each function below embeds the body\n");
+        k_out.push_str("// of one example so kotlinc type-checks it during\n");
+        k_out.push_str("// `connectedAndroidTest`. Functions are never invoked at runtime —\n");
+        k_out.push_str("// wiring up GPU-backed runtime execution is a follow-up task.\n");
+        k_out.push_str("//\n");
+        k_out.push_str("// A failure here means either:\n");
+        k_out.push_str("//  (a) the source `docs/api/**.md` example uses a Rust API that\n");
+        k_out.push_str("//      `scripts/convert.rs::to_kotlin` cannot map, or\n");
+        k_out.push_str("//  (b) the example references an item that uniffi does not export\n");
+        k_out.push_str("//      to Kotlin.\n");
+        k_out.push_str("// Fix the source — this file is regenerated on every cargo build.\n");
+        k_out.push('\n');
+        k_out.push_str("import androidx.test.ext.junit.runners.AndroidJUnit4\n");
+        k_out.push_str("import org.junit.Test\n");
+        k_out.push_str("import org.junit.runner.RunWith\n\n");
+        k_out.push_str("@RunWith(AndroidJUnit4::class)\n");
+        k_out.push_str("class GeneratedExamples {\n");
+        k_out.push_str("    @Test\n");
+        k_out.push_str("    fun compileGeneratedExamples() {\n");
+        k_out.push_str("        // Empty body. The value of this test is that all wrappers\n");
+        k_out.push_str("        // below are type-checked at compile time.\n");
+        k_out.push_str("    }\n\n");
+        for rel in &kotlin_list {
+            let stem = rel.strip_suffix(".kt").unwrap_or(rel);
+            let slug = ident_slug(stem);
+            let example_path = root.join("platforms/kotlin/examples").join(rel);
+            let body = std::fs::read_to_string(&example_path).unwrap_or_default();
+            let body_clean = strip_lang_lines(&body, &["import ", "package "]);
+            k_out.push_str(&format!(
+                "    @Suppress(\"unused\") private suspend fun _example_{}() {{\n",
+                slug
+            ));
+            for line in body_clean.lines() {
+                if line.trim().is_empty() {
+                    k_out.push('\n');
+                } else {
+                    k_out.push_str("        ");
+                    k_out.push_str(line);
+                    k_out.push('\n');
+                }
+            }
+            k_out.push_str("    }\n\n");
+        }
+        k_out.push_str("}\n");
+        let _ = super::meta::write_if_changed(&kotlin_aggregator_path, &k_out);
+    }
+
+    fn ident_slug(s: &str) -> String {
+        s.chars()
+            .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+            .collect()
+    }
+
+    fn strip_lang_lines(body: &str, prefixes: &[&str]) -> String {
+        body.lines()
+            .filter(|line| {
+                let t = line.trim_start();
+                !prefixes.iter().any(|p| t.starts_with(p))
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
     }
 
     // Escape backticks for MDX template literal usage in <Code code={`...`} />
@@ -878,6 +1045,26 @@ mod website {
             || text.contains("no public example")
     }
 
+    /// `Texture` → `texture`, `TextureMipChain` → `texture_mip_chain`,
+    /// `read_texture` → `read_texture` (already snake). Used by
+    /// `read_lang_override` to fall back to the source-file naming
+    /// convention when the lookup uses the CamelCase struct name as
+    /// `file_stem`.
+    fn camel_to_snake(s: &str) -> String {
+        let mut out = String::with_capacity(s.len() + 4);
+        for (i, ch) in s.chars().enumerate() {
+            if ch.is_ascii_uppercase() {
+                if i > 0 {
+                    out.push('_');
+                }
+                out.push(ch.to_ascii_lowercase());
+            } else {
+                out.push(ch);
+            }
+        }
+        out
+    }
+
     fn read_lang_override(
         root: &std::path::Path,
         cat_rel: &str,
@@ -885,21 +1072,36 @@ mod website {
         file_stem: &str,
         lang_suffix: &str,
     ) -> Option<String> {
-        let hidden = if cat_rel.is_empty() {
-            root.join("docs/api")
-                .join(obj_dir_slug)
-                .join("hidden")
-                .join(format!("{}_{}.md", file_stem, lang_suffix))
+        // Class entry-point examples use the CamelCase struct name as the
+        // `file_stem` (e.g. `Texture`, `TextureMipChain`), so the natural
+        // override path is `Texture_py.md`. The earlier convention put the
+        // override at the snake_cased source-file stem (`texture_py.md`) —
+        // both happen to coexist in `git ls-files` because macOS HFS+ is
+        // case-insensitive. On Linux (case-sensitive) the lookup misses,
+        // the override is silently ignored, and the fall-through Rust→
+        // target conversion produces wrong API shape (e.g. CI's
+        // `Texture.py` ends up with `create_texture((pixels, [1, 1]))`
+        // tuple form instead of the kwargs the override carries).
+        //
+        // Try the exact stem first, then the snake_cased form, so both
+        // override naming conventions resolve identically across OSes.
+        let dir = if cat_rel.is_empty() {
+            root.join("docs/api").join(obj_dir_slug).join("hidden")
         } else {
             root.join("docs/api")
                 .join(cat_rel)
                 .join(obj_dir_slug)
                 .join("hidden")
-                .join(format!("{}_{}.md", file_stem, lang_suffix))
         };
-        if !hidden.exists() {
-            return None;
-        }
+        let candidates = [
+            dir.join(format!("{}_{}.md", file_stem, lang_suffix)),
+            dir.join(format!(
+                "{}_{}.md",
+                camel_to_snake(file_stem),
+                lang_suffix
+            )),
+        ];
+        let hidden = candidates.into_iter().find(|p| p.exists())?;
         let md = std::fs::read_to_string(hidden).ok()?;
         let (lang, code) = extract_first_code_block(&md)?;
         if is_placeholder_example(&code) {
@@ -914,11 +1116,17 @@ mod website {
         match lang_suffix {
             "js" => Some(crate::convert::to_js(&items)),
             "py" => Some(crate::convert::to_py(&items)),
+            "swift" => Some(crate::convert::to_swift(&items)),
+            "kotlin" => Some(crate::convert::to_kotlin(&items)),
             _ => Some(code),
         }
     }
 
-    // Central helper to build Tabs for an example and persist JS/Py files
+    // Central helper to build Tabs for an example and persist JS/Py files.
+    // Nine args is more than clippy's default, but each one is load-bearing
+    // and the four `ex_*` sets carry distinct per-language state — folding
+    // them into a struct would just trade arg count for boilerplate.
+    #[allow(clippy::too_many_arguments)]
     fn build_tabs_for_example(
         items: &[(String, bool)],
         cat_rel: &str,
@@ -927,6 +1135,8 @@ mod website {
         root: &std::path::Path,
         ex_js: &mut std::collections::HashSet<String>,
         ex_py: &mut std::collections::HashSet<String>,
+        ex_swift: &mut std::collections::HashSet<String>,
+        ex_kotlin: &mut std::collections::HashSet<String>,
     ) -> String {
         // Compute collapse ranges (1-based inclusive) from hidden runs
         let mut ranges: Vec<(usize, usize)> = Vec::new();
@@ -989,32 +1199,36 @@ mod website {
         ex_js.insert(js_rel.clone());
         ex_py.insert(py_rel.clone());
 
-        // Swift/Kotlin placeholders
-        let sk_rel = if cat_rel.is_empty() {
-            format!("{}/{}.txt", obj_dir_slug, file_stem)
+        // Swift/Kotlin: transpile from the same Rust items that produced
+        // the JS/Python outputs (uses the JS output internally as a
+        // starting point — see scripts/swift.rs and scripts/kotlin.rs).
+        let swift_code = read_lang_override(root, cat_rel, obj_dir_slug, file_stem, "swift")
+            .unwrap_or_else(|| crate::convert::to_swift(items));
+        let kotlin_code = read_lang_override(root, cat_rel, obj_dir_slug, file_stem, "kotlin")
+            .unwrap_or_else(|| crate::convert::to_kotlin(items));
+
+        let swift_rel = if cat_rel.is_empty() {
+            format!("{}/{}.swift", obj_dir_slug, file_stem)
         } else {
-            format!("{}/{}/{}.txt", cat_rel, obj_dir_slug, file_stem)
+            format!("{}/{}/{}.swift", cat_rel, obj_dir_slug, file_stem)
         };
-        let swift_abs = root.join("platforms/swift/examples").join(&sk_rel);
-        let kotlin_abs = root.join("platforms/kotlin/examples").join(&sk_rel);
+        let kotlin_rel = if cat_rel.is_empty() {
+            format!("{}/{}.kt", obj_dir_slug, file_stem)
+        } else {
+            format!("{}/{}/{}.kt", cat_rel, obj_dir_slug, file_stem)
+        };
+        let swift_abs = root.join("platforms/swift/examples").join(&swift_rel);
+        let kotlin_abs = root.join("platforms/kotlin/examples").join(&kotlin_rel);
         if let Some(parent) = swift_abs.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
         if let Some(parent) = kotlin_abs.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
-        if !swift_abs.exists() {
-            let _ =
-                super::meta::write_if_changed(&swift_abs, "// Swift placeholder: bindings WIP\n");
-        }
-        if !kotlin_abs.exists() {
-            let _ =
-                super::meta::write_if_changed(&kotlin_abs, "// Kotlin placeholder: bindings WIP\n");
-        }
-        let swift_code = std::fs::read_to_string(&swift_abs)
-            .unwrap_or_else(|_| "// Swift placeholder: bindings WIP\n".to_string());
-        let kotlin_code = std::fs::read_to_string(&kotlin_abs)
-            .unwrap_or_else(|_| "// Kotlin placeholder: bindings WIP\n".to_string());
+        let _ = super::meta::write_if_changed(&swift_abs, &swift_code);
+        let _ = super::meta::write_if_changed(&kotlin_abs, &kotlin_code);
+        ex_swift.insert(swift_rel.clone());
+        ex_kotlin.insert(kotlin_rel.clone());
 
         // Build Tabs snippet
         let mut tabs = String::new();
@@ -1042,18 +1256,16 @@ mod website {
         tabs.push_str("\n`}\nlang=\"python\"\n/>\n\n</TabItem>\n\n");
 
         tabs.push_str("<TabItem label=\"Swift\">\n");
-        tabs.push_str("<Aside type=\"caution\" title=\"Work in progress\">Swift bindings are not yet available; implementation is in the works.</Aside>\n");
         tabs.push_str("<Code\n");
         tabs.push_str("code={`\n");
-        tabs.push_str(&swift_code);
-        tabs.push_str("\n`}\nlang=\"text\"\n/>\n\n</TabItem>\n\n");
+        tabs.push_str(&sanitize_for_template(&swift_code));
+        tabs.push_str("\n`}\nlang=\"swift\"\n/>\n\n</TabItem>\n\n");
 
         tabs.push_str("<TabItem label=\"Kotlin\">\n");
-        tabs.push_str("<Aside type=\"caution\" title=\"Work in progress\">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>\n");
         tabs.push_str("<Code\n");
         tabs.push_str("code={`\n");
-        tabs.push_str(&kotlin_code);
-        tabs.push_str("\n`}\nlang=\"text\"\n/>\n\n</TabItem>\n\n");
+        tabs.push_str(&sanitize_for_template(&kotlin_code));
+        tabs.push_str("\n`}\nlang=\"kotlin\"\n/>\n\n</TabItem>\n\n");
 
         tabs.push_str("</Tabs>\n\n");
         tabs
@@ -1161,70 +1373,6 @@ mod website {
             out.push('\n');
         }
         out.trim_end().to_string()
-    }
-
-    fn find_object_dir(docs_root: &std::path::Path, dir_name: &str) -> Option<std::path::PathBuf> {
-        fn walk(root: &std::path::Path, target: &str) -> Option<std::path::PathBuf> {
-            if !root.is_dir() {
-                return None;
-            }
-            for entry in std::fs::read_dir(root).ok()?.flatten() {
-                let p = entry.path();
-                if p.is_dir() {
-                    if p.file_name().and_then(|s| s.to_str()) == Some(target) {
-                        let md = p.join(format!("{}.md", target));
-                        if md.exists() {
-                            return Some(p);
-                        }
-                    }
-                    if let Some(found) = walk(&p, target) {
-                        return Some(found);
-                    }
-                }
-            }
-            None
-        }
-        walk(docs_root, dir_name)
-    }
-
-    fn category_rel_from(docs_root: &std::path::Path, obj_dir: &std::path::Path) -> String {
-        let parent = obj_dir.parent().unwrap_or(docs_root);
-        if let Ok(rel) = parent.strip_prefix(docs_root) {
-            rel.to_string_lossy().replace('\\', "/")
-        } else {
-            String::new()
-        }
-    }
-
-    fn scan_docs_objects(docs_root: &std::path::Path) -> Vec<(String, std::path::PathBuf, String)> {
-        fn walk(
-            dir: &std::path::Path,
-            root: &std::path::Path,
-            out: &mut Vec<(String, std::path::PathBuf, String)>,
-        ) {
-            if !dir.is_dir() {
-                return;
-            }
-            for entry in std::fs::read_dir(dir).ok().into_iter().flatten().flatten() {
-                let p = entry.path();
-                if p.is_dir() {
-                    if let Some(name) = p.file_name().and_then(|s| s.to_str()) {
-                        let md = p.join(format!("{}.md", name));
-                        if md.exists() {
-                            let object = super::validation::dir_to_object_name(name);
-                            let cat = category_rel_from(root, &p);
-                            out.push((object, p.clone(), cat));
-                            // Do not descend into this object dir further
-                            continue;
-                        }
-                    }
-                    walk(&p, root, out);
-                }
-            }
-        }
-        let mut out = Vec::new();
-        walk(docs_root, docs_root, &mut out);
-        out
     }
 
     fn is_hidden_category(cat_rel: &str) -> bool {

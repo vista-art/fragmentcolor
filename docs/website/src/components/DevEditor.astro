@@ -1,0 +1,245 @@
+---
+const isDev = import.meta.env.DEV;
+const entry = Astro.locals.starlightRoute?.entry;
+const filePath = entry?.filePath ?? "";
+const canEdit =
+  isDev && filePath && (filePath.endsWith(".md") || filePath.endsWith(".mdx"));
+---
+
+{
+  canEdit && (
+    <div class="dev-editor-root" data-file-path={filePath}>
+      <button class="dev-editor-trigger" type="button" title="Edit this page (dev only)">
+        ✎ Edit
+      </button>
+      <div class="dev-editor-backdrop" hidden>
+        <div class="dev-editor-panel">
+          <div class="dev-editor-header">
+            <span class="dev-editor-title">{filePath}</span>
+            <div class="dev-editor-actions">
+              <button class="dev-editor-save" type="button">
+                Save (⌘S)
+              </button>
+              <button class="dev-editor-cancel" type="button">
+                Close (Esc)
+              </button>
+            </div>
+          </div>
+          <div class="dev-editor-host" />
+          <div class="dev-editor-status" />
+        </div>
+      </div>
+      <style is:inline>
+        .dev-editor-trigger {
+          position: fixed;
+          bottom: 1rem;
+          right: 1rem;
+          z-index: 2147483646;
+          background: var(--sl-color-accent, #9d7cd8);
+          color: #fff;
+          border: none;
+          border-radius: 6px;
+          padding: 0.5rem 0.85rem;
+          font-size: 0.875rem;
+          font-weight: 600;
+          cursor: pointer;
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+          font-family: inherit;
+        }
+        .dev-editor-trigger:hover {
+          filter: brightness(1.1);
+        }
+        .dev-editor-backdrop {
+          position: fixed;
+          inset: 0;
+          background: rgba(0, 0, 0, 0.65);
+          z-index: 2147483647;
+          display: grid;
+          place-items: center;
+          padding: 2rem;
+        }
+        .dev-editor-backdrop[hidden] {
+          display: none;
+        }
+        .dev-editor-panel {
+          background: var(--sl-color-bg, #17181c);
+          color: var(--sl-color-white, #fff);
+          width: min(100%, 1100px);
+          height: min(92vh, 900px);
+          border-radius: 8px;
+          display: flex;
+          flex-direction: column;
+          border: 1px solid var(--sl-color-gray-5, #444);
+          overflow: hidden;
+        }
+        .dev-editor-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 0.6rem 0.85rem;
+          border-bottom: 1px solid var(--sl-color-gray-5, #444);
+          font-family: var(--__sl-font-mono, ui-monospace, monospace);
+          font-size: 0.8rem;
+          gap: 1rem;
+        }
+        .dev-editor-title {
+          opacity: 0.75;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          min-width: 0;
+        }
+        .dev-editor-actions {
+          display: flex;
+          gap: 0.5rem;
+          flex-shrink: 0;
+        }
+        .dev-editor-actions button {
+          background: var(--sl-color-gray-6, #2b2d33);
+          color: var(--sl-color-white, #fff);
+          border: 1px solid var(--sl-color-gray-5, #444);
+          border-radius: 4px;
+          padding: 0.35rem 0.7rem;
+          cursor: pointer;
+          font-size: 0.8rem;
+          font-family: inherit;
+        }
+        .dev-editor-save {
+          background: var(--sl-color-accent, #9d7cd8) !important;
+          border-color: transparent !important;
+        }
+        .dev-editor-host {
+          flex: 1;
+          min-height: 0;
+          overflow: hidden;
+          background: #282a36;
+        }
+        .dev-editor-host .cm-editor {
+          height: 100%;
+          font-size: 14px;
+        }
+        .dev-editor-host .cm-scroller {
+          font-family: var(--__sl-font-mono, ui-monospace, monospace);
+        }
+        .dev-editor-status {
+          padding: 0.4rem 0.85rem;
+          border-top: 1px solid var(--sl-color-gray-5, #444);
+          font-size: 0.75rem;
+          min-height: 1.6em;
+          opacity: 0.75;
+          font-family: var(--__sl-font-mono, ui-monospace, monospace);
+        }
+      </style>
+    </div>
+  )
+}
+
+<script>
+  import { EditorState } from "@codemirror/state";
+  import { EditorView, basicSetup } from "codemirror";
+  import { markdown } from "@codemirror/lang-markdown";
+  import { syntaxHighlighting, defaultHighlightStyle } from "@codemirror/language";
+  import { dracula } from "thememirror";
+
+  if (import.meta.env.DEV) {
+    (() => {
+      const root = document.querySelector<HTMLDivElement>(".dev-editor-root");
+      if (!root) return;
+
+      // Portal to <body> to escape any ancestor stacking contexts
+      // (Starlight's `.main-pane` uses `isolation: isolate`).
+      if (root.parentElement !== document.body) {
+        document.body.appendChild(root);
+      }
+
+      const filePath = root.dataset.filePath || "";
+      const trigger = root.querySelector<HTMLButtonElement>(".dev-editor-trigger")!;
+      const backdrop = root.querySelector<HTMLDivElement>(".dev-editor-backdrop")!;
+      const host = root.querySelector<HTMLDivElement>(".dev-editor-host")!;
+      const status = root.querySelector<HTMLDivElement>(".dev-editor-status")!;
+      const saveBtn = root.querySelector<HTMLButtonElement>(".dev-editor-save")!;
+      const cancelBtn = root.querySelector<HTMLButtonElement>(".dev-editor-cancel")!;
+
+      let view: import("@codemirror/view").EditorView | null = null;
+
+      function mount(doc: string) {
+        view?.destroy();
+        view = new EditorView({
+          state: EditorState.create({
+            doc,
+            extensions: [
+              basicSetup,
+              markdown(),
+              dracula,
+              syntaxHighlighting(defaultHighlightStyle),
+              EditorView.lineWrapping,
+              EditorView.theme({
+                "&": { height: "100%" },
+                ".cm-scroller": { overflow: "auto" },
+              }),
+            ],
+          }),
+          parent: host,
+        });
+        view.focus();
+      }
+
+      async function open() {
+        status.textContent = "Loading…";
+        backdrop.hidden = false;
+        try {
+          const res = await fetch(
+            `/api/dev/edit?path=${encodeURIComponent(filePath)}`,
+          );
+          if (!res.ok) throw new Error(await res.text());
+          mount(await res.text());
+          status.textContent = "";
+        } catch (e) {
+          status.textContent = `Load failed: ${e}`;
+        }
+      }
+
+      function close() {
+        backdrop.hidden = true;
+      }
+
+      async function save() {
+        if (!view) return;
+        status.textContent = "Saving…";
+        try {
+          const res = await fetch("/api/dev/edit", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              path: filePath,
+              content: view.state.doc.toString(),
+            }),
+          });
+          if (!res.ok) throw new Error(await res.text());
+          status.textContent = "Saved — reloading";
+          setTimeout(() => location.reload(), 400);
+        } catch (e) {
+          status.textContent = `Save failed: ${e}`;
+        }
+      }
+
+      trigger.addEventListener("click", open);
+      cancelBtn.addEventListener("click", close);
+      saveBtn.addEventListener("click", save);
+      backdrop.addEventListener("click", (e) => {
+        if (e.target === backdrop) close();
+      });
+
+      document.addEventListener("keydown", (e) => {
+        if (backdrop.hidden) return;
+        if (e.key === "Escape") {
+          e.preventDefault();
+          close();
+        } else if ((e.metaKey || e.ctrlKey) && e.key === "s") {
+          e.preventDefault();
+          save();
+        }
+      });
+    })();
+  }
+</script>

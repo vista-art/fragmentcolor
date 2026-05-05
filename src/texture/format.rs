@@ -2,15 +2,19 @@
 use wasm_bindgen::prelude::*;
 
 #[cfg_attr(wasm, wasm_bindgen)]
-#[cfg_attr(python, pyo3::pyclass)]
+#[cfg_attr(python, pyo3::pyclass(from_py_object))]
+#[cfg_attr(mobile, derive(uniffi::Enum))]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum TextureFormat {
     R8Unorm,
     Rg8Unorm,
+    R16Unorm,
+    Rg16Unorm,
     Rgba8Unorm,
     Rgba8UnormSrgb,
     Bgra8Unorm,
     Rgba16Unorm,
+    Rgba16Float,
     Rgba32Float,
     Rgba32Uint,
     Rgba32Sint,
@@ -28,10 +32,13 @@ crate::impl_from_into_with_refs!(
     |f: TextureFormat| match f {
         TextureFormat::R8Unorm => wgpu::TextureFormat::R8Unorm,
         TextureFormat::Rg8Unorm => wgpu::TextureFormat::Rg8Unorm,
+        TextureFormat::R16Unorm => wgpu::TextureFormat::R16Unorm,
+        TextureFormat::Rg16Unorm => wgpu::TextureFormat::Rg16Unorm,
         TextureFormat::Rgba8Unorm => wgpu::TextureFormat::Rgba8Unorm,
         TextureFormat::Rgba8UnormSrgb => wgpu::TextureFormat::Rgba8UnormSrgb,
         TextureFormat::Bgra8Unorm => wgpu::TextureFormat::Bgra8Unorm,
         TextureFormat::Rgba16Unorm => wgpu::TextureFormat::Rgba16Unorm,
+        TextureFormat::Rgba16Float => wgpu::TextureFormat::Rgba16Float,
         TextureFormat::Rgba32Float => wgpu::TextureFormat::Rgba32Float,
         TextureFormat::Rgba32Uint => wgpu::TextureFormat::Rgba32Uint,
         TextureFormat::Rgba32Sint => wgpu::TextureFormat::Rgba32Sint,
@@ -44,10 +51,13 @@ crate::impl_from_into_with_refs!(
     |wf: wgpu::TextureFormat| match wf {
         wgpu::TextureFormat::R8Unorm => TextureFormat::R8Unorm,
         wgpu::TextureFormat::Rg8Unorm => TextureFormat::Rg8Unorm,
+        wgpu::TextureFormat::R16Unorm => TextureFormat::R16Unorm,
+        wgpu::TextureFormat::Rg16Unorm => TextureFormat::Rg16Unorm,
         wgpu::TextureFormat::Rgba8Unorm => TextureFormat::Rgba8Unorm,
         wgpu::TextureFormat::Rgba8UnormSrgb => TextureFormat::Rgba8UnormSrgb,
         wgpu::TextureFormat::Bgra8Unorm => TextureFormat::Bgra8Unorm,
         wgpu::TextureFormat::Rgba16Unorm => TextureFormat::Rgba16Unorm,
+        wgpu::TextureFormat::Rgba16Float => TextureFormat::Rgba16Float,
         wgpu::TextureFormat::Rgba32Float => TextureFormat::Rgba32Float,
         wgpu::TextureFormat::Rgba32Uint => TextureFormat::Rgba32Uint,
         wgpu::TextureFormat::Rgba32Sint => TextureFormat::Rgba32Sint,

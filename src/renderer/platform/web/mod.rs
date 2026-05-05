@@ -1,5 +1,5 @@
 use crate::{
-    Frame, Mesh, Pass, Renderer, RendererError, Shader, Size, Texture, TextureInput, TextureTarget,
+    Mesh, Pass, Renderer, RendererError, Shader, Size, Texture, TextureData, TextureTarget,
     target::CanvasTarget,
 };
 use js_sys::Array;
@@ -82,31 +82,32 @@ impl Renderer {
         Ok(CanvasTarget::new(context, surface, config))
     }
 
-    /// JS: Create a Texture from bytes, URL, or a CSS selector/HTMLImageElement.
-    /// Usage:
-    ///   await renderer.createTexture(u8array)
-    ///   await renderer.createTexture("/path/or/url.png")
-    ///   await renderer.createTexture("#imgId")
+    /// JS: Create a Texture from any input shape — Uint8Array bytes, URL
+    /// string, file path, CSS selector, HTMLImageElement, ImageData, OffscreenCanvas,
+    /// HTMLCanvasElement, or a `TextureMipChain` handle (built off-thread via
+    /// `TextureMipChain.prepare`). Optional second argument is an options object
+    /// `{ size?, format?, mipmaps?, sampler? }`. When `size` is present, `bytes`
+    /// is treated as raw pixel data; otherwise it's decoded as an encoded image.
     #[wasm_bindgen(js_name = "createTexture")]
     #[lsp_doc("docs/api/core/renderer/create_texture.md")]
     pub async fn create_texture_js(
         &self,
         input: &JsValue,
+        options: Option<JsValue>,
     ) -> Result<crate::texture::Texture, JsError> {
-        let input_converted: TextureInput = input.try_into()?;
-        Ok(self.create_texture(input_converted).await?)
-    }
-
-    #[wasm_bindgen(js_name = "createTextureWithSize")]
-    #[lsp_doc("docs/api/core/renderer/create_texture_with_size.md")]
-    pub async fn create_texture_with_size_js(
-        &self,
-        input: &JsValue,
-        size: &JsValue,
-    ) -> Result<crate::texture::Texture, JsError> {
-        let size: crate::Size = size.try_into()?;
-        let input_converted: TextureInput = input.try_into()?;
-        Ok(self.create_texture_with_size(input_converted, size).await?)
+        let data: TextureData = input.try_into()?;
+        let opts = match options {
+            None => crate::texture::TextureOptions::default(),
+            Some(value) if value.is_undefined() || value.is_null() => {
+                crate::texture::TextureOptions::default()
+            }
+            Some(value) => js_to_texture_options(&value)?,
+        };
+        let input = crate::texture::TextureInput {
+            data,
+            options: opts,
+        };
+        Ok(self.create_texture(input).await?)
     }
 
     #[wasm_bindgen(js_name = "createTextureTarget")]
@@ -120,85 +121,30 @@ impl Renderer {
         Ok(target)
     }
 
-    #[wasm_bindgen(js_name = "createTextureWithFormat")]
-    #[lsp_doc("docs/api/core/renderer/create_texture_with_format.md")]
-    pub async fn create_texture_with_format_js(
-        &self,
-        input: &JsValue,
-        format: crate::TextureFormat,
-    ) -> Result<crate::texture::Texture, JsError> {
-        let input_converted: TextureInput = input.try_into()?;
-        Ok(self
-            .create_texture_with_format(input_converted, format)
-            .await?)
-    }
-
-    #[wasm_bindgen(js_name = "createTextureWith")]
-    #[lsp_doc("docs/api/core/renderer/create_texture_with.md")]
-    pub async fn create_texture_with_js(
-        &self,
-        input: &JsValue,
-        options: &JsValue,
-    ) -> Result<crate::texture::Texture, JsError> {
-        // Accept either a bare Size (arrays/typed arrays/object) or an object with fields.
-        let input_converted: TextureInput = input.try_into()?;
-        if let Ok(size) = Size::try_from(options) {
-            let opts = crate::texture::TextureOptions {
-                size: Some(size),
-                ..Default::default()
-            };
-            return Ok(self.create_texture_with(input_converted, opts).await?);
-        }
-        // Fallback: try object with optional size/format (sampler optional; ignored here)
-        use js_sys::Reflect;
-        let mut opts = crate::texture::TextureOptions::default();
-        if let Ok(v) = Reflect::get(options, &JsValue::from_str("size")) {
-            if !v.is_undefined() && !v.is_null() {
-                if let Ok(sz) = Size::try_from(&v) {
-                    opts.size = Some(sz);
-                }
-            }
-        }
-        if let Ok(v) = Reflect::get(options, &JsValue::from_str("format")) {
-            if let Some(n) = v.as_f64() {
-                // wasm-bindgen enums are numeric in JS
-                let code = n as u32;
-                // Safe: TextureFormat has TryFrom<u32> via FromPrimitive in bindgen; fall back to default
-                opts.format = match code {
-                    0 => crate::TextureFormat::R8Unorm,
-                    1 => crate::TextureFormat::Rg8Unorm,
-                    2 => crate::TextureFormat::Rgba8Unorm,
-                    3 => crate::TextureFormat::Rgba8UnormSrgb,
-                    4 => crate::TextureFormat::Bgra8Unorm,
-                    5 => crate::TextureFormat::Rgba16Unorm,
-                    6 => crate::TextureFormat::Rgba32Float,
-                    7 => crate::TextureFormat::Rgba32Uint,
-                    8 => crate::TextureFormat::Rgba32Sint,
-                    9 => crate::TextureFormat::Depth32Float,
-                    10 => crate::TextureFormat::Rgba,
-                    11 => crate::TextureFormat::Bgra,
-                    12 => crate::TextureFormat::Lab,
-                    13 => crate::TextureFormat::L8,
-                    _ => crate::TextureFormat::default(),
-                };
-            }
-        }
-        Ok(self.create_texture_with(input_converted, opts).await?)
-    }
-
     #[wasm_bindgen(js_name = "createStorageTexture")]
     #[lsp_doc("docs/api/core/renderer/create_storage_texture.md")]
     pub async fn create_storage_texture_js(
         &self,
         size: &JsValue,
         format: crate::TextureFormat,
+        data: Option<js_sys::Uint8Array>,
         usage: Option<u32>,
     ) -> Result<crate::texture::Texture, JsError> {
         let size: Size = size.try_into()?;
-        let usage_flags = usage.map(|bits| wgpu::TextureUsages::from_bits_truncate(bits));
-        Ok(self
-            .create_storage_texture(size, format, usage_flags)
-            .await?)
+        let data_vec = data.map(|arr| arr.to_vec());
+        let input = crate::TextureInput {
+            data: match data_vec {
+                Some(bytes) => crate::TextureData::Bytes(bytes),
+                None => crate::TextureData::Empty,
+            },
+            options: crate::TextureOptions {
+                size: Some(size),
+                format,
+                usage,
+                ..Default::default()
+            },
+        };
+        Ok(self.create_storage_texture(input).await?)
     }
 
     #[wasm_bindgen(js_name = "createDepthTexture")]
@@ -208,32 +154,6 @@ impl Renderer {
         Ok(self.create_depth_texture(size).await?)
     }
 
-    #[wasm_bindgen(js_name = "updateTexture")]
-    #[lsp_doc("docs/api/core/renderer/update_texture.md")]
-    pub fn update_texture_js(
-        &self,
-        texture_id: &JsValue,
-        data: &JsValue,
-    ) -> Result<(), RendererError> {
-        let id = crate::texture::js_to_texture_id(texture_id)?;
-        let bytes = crate::texture::js_to_texture_bytes(data)?;
-        self.update_texture(id, &bytes)
-    }
-
-    #[wasm_bindgen(js_name = "updateTextureWith")]
-    #[lsp_doc("docs/api/core/renderer/update_texture_with.md")]
-    pub fn update_texture_with_js(
-        &self,
-        texture_id: &JsValue,
-        data: &JsValue,
-        options: &JsValue,
-    ) -> Result<(), RendererError> {
-        let id = crate::texture::js_to_texture_id(texture_id)?;
-        let bytes = crate::texture::js_to_texture_bytes(data)?;
-        let opt = crate::texture::js_to_write_options(options)?;
-        self.update_texture_with(id, &bytes, opt)
-    }
-
     #[wasm_bindgen(js_name = "unregisterTexture")]
     #[lsp_doc("docs/api/core/renderer/unregister_texture.md")]
     pub fn unregister_texture_js(&self, texture_id: &JsValue) -> Result<(), RendererError> {
@@ -241,13 +161,27 @@ impl Renderer {
         self.unregister_texture(id)
     }
 
-    #[wasm_bindgen(js_name = "createExternalTextureFromHtmlVideo")]
-    #[lsp_doc("docs/api/core/renderer/create_external_texture_from_html_video.md")]
-    pub fn create_external_texture_from_html_video_js(
+    #[wasm_bindgen(js_name = "readTexture")]
+    #[lsp_doc("docs/api/core/renderer/read_texture.md")]
+    pub async fn read_texture_js(
+        &self,
+        texture_id: &JsValue,
+    ) -> Result<js_sys::Uint8Array, JsError> {
+        let id = crate::texture::js_to_texture_id(texture_id)?;
+        let bytes = self
+            .read_texture(id)
+            .await
+            .map_err(|e| JsError::new(&e.to_string()))?;
+        Ok(js_sys::Uint8Array::from(bytes.as_slice()))
+    }
+
+    #[wasm_bindgen(js_name = "createExternalTexture")]
+    #[lsp_doc("docs/api/core/renderer/hidden/create_external_texture_js.md")]
+    pub fn create_external_texture_js(
         &self,
         video: &web_sys::HtmlVideoElement,
     ) -> Result<crate::renderer::external_texture::ExternalTextureHandle, RendererError> {
-        self.create_external_texture_from_html_video(video)
+        self.create_external_texture(video)
     }
 
     #[wasm_bindgen(js_name = "render")]
@@ -259,8 +193,6 @@ impl Renderer {
                 return self.render(&shader, &canvas_target);
             } else if let Ok(pass) = Pass::try_from(renderable) {
                 return self.render(&pass, &canvas_target);
-            } else if let Ok(frame) = Frame::try_from(renderable) {
-                return self.render(&frame, &canvas_target);
             } else if let Ok(mesh) = Mesh::try_from(renderable) {
                 return self.render(&mesh, &canvas_target);
             } else if Array::is_array(renderable) {
@@ -275,8 +207,6 @@ impl Renderer {
                 return self.render(&shader, &texture_target);
             } else if let Ok(pass) = Pass::try_from(renderable) {
                 return self.render(&pass, &texture_target);
-            } else if let Ok(frame) = Frame::try_from(renderable) {
-                return self.render(&frame, &texture_target);
             } else if let Ok(mesh) = Mesh::try_from(renderable) {
                 return self.render(&mesh, &texture_target);
             } else if Array::is_array(renderable) {
@@ -290,5 +220,77 @@ impl Renderer {
         Err(RendererError::Error(
             "Invalid target type in render".to_string(),
         ))
+    }
+}
+
+/// Decode a JS value into [`crate::texture::TextureOptions`].
+///
+/// Accepts any of:
+/// - A bare Size (`[w, h]`, `{width, height}`, etc.) — sets `options.size`,
+///   leaving the rest at defaults. Equivalent to the old
+///   `createTextureWithSize(input, size)` shortcut.
+/// - A bare `TextureFormat` (numeric enum) — sets `options.format`. Equivalent
+///   to the old `createTextureWithFormat(input, format)` shortcut.
+/// - An options object `{ size?, format?, mipmaps? }` — explicit field-by-field.
+fn js_to_texture_options(value: &JsValue) -> Result<crate::texture::TextureOptions, JsError> {
+    // Bare Size shorthand (matches the old createTextureWithSize ergonomics).
+    if let Ok(size) = Size::try_from(value) {
+        return Ok(crate::texture::TextureOptions {
+            size: Some(size),
+            ..Default::default()
+        });
+    }
+    // Bare TextureFormat shorthand (matches the old createTextureWithFormat).
+    if let Some(n) = value.as_f64() {
+        return Ok(crate::texture::TextureOptions {
+            format: js_format_from_code(n as u32),
+            ..Default::default()
+        });
+    }
+    // Object with optional fields.
+    use js_sys::Reflect;
+    let mut opts = crate::texture::TextureOptions::default();
+    if let Ok(v) = Reflect::get(value, &JsValue::from_str("size"))
+        && !v.is_undefined()
+        && !v.is_null()
+        && let Ok(sz) = Size::try_from(&v)
+    {
+        opts.size = Some(sz);
+    }
+    if let Ok(v) = Reflect::get(value, &JsValue::from_str("format"))
+        && let Some(n) = v.as_f64()
+    {
+        opts.format = js_format_from_code(n as u32);
+    }
+    if let Ok(v) = Reflect::get(value, &JsValue::from_str("mipmaps"))
+        && let Some(b) = v.as_bool()
+    {
+        opts.mipmaps = b;
+    }
+    Ok(opts)
+}
+
+/// Map the wasm-bindgen numeric enum code back to a `TextureFormat`. Mirrors
+/// the variant order in `src/texture/format.rs` — keep in sync.
+fn js_format_from_code(code: u32) -> crate::TextureFormat {
+    match code {
+        0 => crate::TextureFormat::R8Unorm,
+        1 => crate::TextureFormat::Rg8Unorm,
+        2 => crate::TextureFormat::R16Unorm,
+        3 => crate::TextureFormat::Rg16Unorm,
+        4 => crate::TextureFormat::Rgba8Unorm,
+        5 => crate::TextureFormat::Rgba8UnormSrgb,
+        6 => crate::TextureFormat::Bgra8Unorm,
+        7 => crate::TextureFormat::Rgba16Unorm,
+        8 => crate::TextureFormat::Rgba16Float,
+        9 => crate::TextureFormat::Rgba32Float,
+        10 => crate::TextureFormat::Rgba32Uint,
+        11 => crate::TextureFormat::Rgba32Sint,
+        12 => crate::TextureFormat::Depth32Float,
+        13 => crate::TextureFormat::Rgba,
+        14 => crate::TextureFormat::Bgra,
+        15 => crate::TextureFormat::Lab,
+        16 => crate::TextureFormat::L8,
+        _ => crate::TextureFormat::default(),
     }
 }

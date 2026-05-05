@@ -1,7 +1,4 @@
-use crate::{
-    PassObject, ShaderHash, Target, TargetFrame, TextureInput, TextureOptions, TextureTarget,
-    UniformData,
-};
+use crate::{PassObject, ShaderHash, Target, TargetFrame, TextureData, TextureTarget, UniformData};
 use crate::{Size, WindowTarget};
 use dashmap::DashMap;
 use lsp_doc::lsp_doc;
@@ -32,9 +29,9 @@ pub use buffer_pool::*;
 
 mod texture_pool;
 pub use texture_pool::*;
+pub(crate) mod background;
 mod external_texture;
 mod unregister;
-mod update;
 
 /// The Renderer accepts a generic window handle as input
 /// that must report its display size.
@@ -74,6 +71,7 @@ struct ComputePipeline {
 #[derive(Debug, Default)]
 #[cfg_attr(python, pyclass)]
 #[cfg_attr(wasm, wasm_bindgen)]
+#[cfg_attr(mobile, derive(uniffi::Object))]
 #[lsp_doc("docs/api/core/renderer/renderer.md")]
 pub struct Renderer {
     instance: RwLock<Option<Arc<wgpu::Instance>>>,
@@ -140,122 +138,142 @@ impl Renderer {
         Ok(texture)
     }
 
-    /// Create a Texture from a unified input; returns the public Texture wrapper.
-    /// This variant infers size/format from the input when possible (encoded image bytes, file path).
+    /// Create a [Texture](crate::Texture) from a unified spec. The single
+    /// entry point for every shape — bare bytes / path / URL / file (encoded),
+    /// `(input, [w, h])` or `(input, Size)` for raw pixel bytes,
+    /// `(input, TextureFormat)` for an explicit format override,
+    /// `(input, TextureOptions)` for full control, or a `TextureMipChain`
+    /// (built off the renderer thread) for a GPU-only upload.
+    ///
+    /// The CPU work (decode, mipmap chain, raw-byte wrap) runs on a background
+    /// worker on every native target; the calling thread is never pinned.
     #[lsp_doc("docs/api/core/renderer/create_texture.md")]
     pub async fn create_texture(
         &self,
-        input: impl Into<crate::texture::TextureInput>,
+        spec: impl Into<crate::texture::TextureInput>,
     ) -> Result<crate::texture::Texture, RendererError> {
-        self.create_texture_with(input, crate::texture::TextureOptions::default())
-            .await
-    }
+        let input = spec.into();
 
-    #[lsp_doc("docs/api/core/renderer/create_texture_with_size.md")]
-    pub async fn create_texture_with_size(
-        &self,
-        input: impl Into<TextureInput>,
-        size: impl Into<Size>,
-    ) -> Result<crate::texture::Texture, RendererError> {
-        let options = TextureOptions {
-            size: Some(size.into()),
-            ..Default::default()
-        };
-        self.create_texture_with(input, options).await
-    }
-
-    #[lsp_doc("docs/api/core/renderer/create_texture_with_format.md")]
-    pub async fn create_texture_with_format(
-        &self,
-        input: impl Into<TextureInput>,
-        format: impl Into<crate::texture::TextureFormat>,
-    ) -> Result<crate::texture::Texture, RendererError> {
-        let options = TextureOptions {
-            format: format.into(),
-            ..Default::default()
-        };
-        self.create_texture_with(input, options).await
-    }
-
-    #[lsp_doc("docs/api/core/renderer/create_texture_with.md")]
-    pub async fn create_texture_with(
-        &self,
-        input: impl Into<TextureInput>,
-        options: impl Into<TextureOptions>,
-    ) -> Result<crate::texture::Texture, RendererError> {
-        let options = options.into();
-        let context = self.context(None).await?;
-        match input.into() {
-            //
-            // From Bytes
-            TextureInput::Bytes(bytes) => {
-                let object = if let (Some(sz), fmt) = (options.size, options.format) {
-                    let wfmt: wgpu::TextureFormat = fmt.into();
-                    crate::TextureObject::from_raw_bytes(context.as_ref(), sz.into(), wfmt, &bytes)?
-                } else {
-                    crate::TextureObject::from_bytes(context.as_ref(), &bytes)?
-                };
-                let object = std::sync::Arc::new(object);
-                let id = context.register_texture(object.clone());
-                Ok(crate::texture::Texture::new(context, object, id))
-            }
-            //
-            // From Path
-            TextureInput::Path(path) => {
-                let object = crate::TextureObject::from_file(context.as_ref(), path)?;
-                let object = std::sync::Arc::new(object);
-                let id = context.register_texture(object.clone());
-
-                Ok(crate::texture::Texture::new(context, object, id))
-            }
-            //
-            // From another Texture
-            TextureInput::CloneOf(tex) => Ok(tex),
-            //
-            // From a URL
-            TextureInput::Url(url) => {
-                let bytes = crate::net::fetch_bytes(&url).await?;
-
-                let object = Arc::new(crate::TextureObject::from_bytes(context.as_ref(), &bytes)?);
-                let id = context.register_texture(object.clone());
-
-                Ok(crate::texture::Texture::new(context, object, id))
-            }
-            //
-            // From a DynamicImage
-            TextureInput::DynamicImage(dynamic_image) => {
-                let object =
-                    crate::TextureObject::from_loaded_image(context.as_ref(), &dynamic_image);
-                let object = std::sync::Arc::new(object);
-                let id = context.register_texture(object.clone());
-
-                Ok(crate::texture::Texture::new(context, object, id))
-            }
+        // CloneOf and Empty don't produce a new TextureObject — handle them
+        // here so the dispatcher in `TextureObject::from_input` only sees
+        // variants it can actually upload.
+        if let TextureData::CloneOf(tex) = input.data {
+            return Ok(tex);
         }
+        if matches!(input.data, TextureData::Empty) {
+            return Err(RendererError::CreateTextureError(
+                "create_texture requires source data; for an empty allocation use create_storage_texture(input)".into(),
+            ));
+        }
+
+        let context = self.context(None).await?;
+        let object = crate::TextureObject::from_input(context.clone(), input).await?;
+        let object = std::sync::Arc::new(object);
+        let id = context.register_texture(object.clone());
+        Ok(crate::texture::Texture::new(context, object, id))
     }
 
-    /// Create a storage-class texture with optional explicit usage (default: STORAGE|TEXTURE|COPY_SRC|COPY_DST).
+    /// Create a storage-class texture from a [`crate::TextureInput`]. Same
+    /// transport as `create_texture` — one vocabulary across the API. The
+    /// `From<T>` impls cover the common shapes:
+    ///
+    /// - `(size, format)` → empty storage texture, no initial data.
+    /// - `(size, format, bytes)` → storage texture pre-seeded with `bytes`.
+    ///
+    /// `options.usage` overrides the default storage usage mask
+    /// (`STORAGE | TEXTURE | COPY_SRC | COPY_DST`); use
+    /// `TextureOptions::with_usage(...)` for the typed builder. `options.size`
+    /// is **required** for this entry — there's no source to infer dimensions
+    /// from. Returns [`crate::texture::TextureError::InvalidInput`] when
+    /// missing.
     #[lsp_doc("docs/api/core/renderer/create_storage_texture.md")]
     pub async fn create_storage_texture(
         &self,
-        size: impl Into<crate::Size>,
-        format: impl Into<crate::TextureFormat>,
-        usage: Option<wgpu::TextureUsages>,
-    ) -> Result<crate::texture::Texture, InitializationError> {
+        input: impl Into<crate::TextureInput>,
+    ) -> Result<crate::texture::Texture, RendererError> {
+        let crate::TextureInput { data, options } = input.into();
         let context = self.context(None).await?;
-        let usage = usage.unwrap_or(
-            wgpu::TextureUsages::STORAGE_BINDING
-                | wgpu::TextureUsages::TEXTURE_BINDING
-                | wgpu::TextureUsages::COPY_DST
-                | wgpu::TextureUsages::COPY_SRC,
-        );
+        let usage = options
+            .usage
+            .map(wgpu::TextureUsages::from_bits_truncate)
+            .unwrap_or(
+                wgpu::TextureUsages::STORAGE_BINDING
+                    | wgpu::TextureUsages::TEXTURE_BINDING
+                    | wgpu::TextureUsages::COPY_DST
+                    | wgpu::TextureUsages::COPY_SRC,
+            );
+        let size = options.size.ok_or_else(|| {
+            RendererError::CreateTextureError(
+                "create_storage_texture requires options.size — pass `(size, format)` or set the field explicitly".into(),
+            )
+        })?;
+        let wgpu_size: wgpu::Extent3d = size.into();
+        let wgpu_format: wgpu::TextureFormat = options.format.into();
+
+        let bytes_opt: Option<Vec<u8>> = match data {
+            crate::TextureData::Empty => None,
+            crate::TextureData::Bytes(bytes) => Some(bytes),
+            other => {
+                return Err(RendererError::CreateTextureError(format!(
+                    "create_storage_texture only accepts TextureData::Empty or Bytes for now (got {:?}); decode external sources first then pass the raw bytes",
+                    std::mem::discriminant(&other)
+                )));
+            }
+        };
+
+        if let Some(ref bytes) = bytes_opt {
+            if !usage.contains(wgpu::TextureUsages::COPY_DST) {
+                return Err(RendererError::CreateTextureError(
+                    "create_storage_texture with seed data requires COPY_DST in the usage mask"
+                        .into(),
+                ));
+            }
+            let bpp = crate::texture::bytes_per_pixel(wgpu_format);
+            if bpp == 0 {
+                return Err(RendererError::CreateTextureError(
+                    "Unsupported format for create_storage_texture seed data (bytes-per-pixel is 0)"
+                        .into(),
+                ));
+            }
+            let expected = (wgpu_size.width as usize)
+                .saturating_mul(wgpu_size.height as usize)
+                .saturating_mul(wgpu_size.depth_or_array_layers.max(1) as usize)
+                .saturating_mul(bpp as usize);
+            if bytes.len() < expected {
+                return Err(RendererError::CreateTextureError(format!(
+                    "Seed data is {} bytes but the texture needs {}",
+                    bytes.len(),
+                    expected
+                )));
+            }
+        }
+
         let obj = crate::TextureObject::new(
             context.as_ref(),
-            size.into().into(),
-            format.into().into(),
+            wgpu_size,
+            wgpu_format,
             usage,
             crate::texture::SamplerOptions::default(),
-        );
+        )?;
+
+        if let Some(bytes) = bytes_opt {
+            let bpp = crate::texture::bytes_per_pixel(wgpu_format);
+            context.queue.write_texture(
+                wgpu::TexelCopyTextureInfo {
+                    aspect: wgpu::TextureAspect::All,
+                    texture: &obj.inner,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d::ZERO,
+                },
+                &bytes,
+                wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(bpp * wgpu_size.width),
+                    rows_per_image: Some(wgpu_size.height),
+                },
+                wgpu_size,
+            );
+        }
         let obj = std::sync::Arc::new(obj);
         let id = context.register_texture(obj.clone());
         Ok(crate::texture::Texture::new(context, obj, id))
@@ -268,33 +286,15 @@ impl Renderer {
         size: impl Into<crate::Size>,
     ) -> Result<crate::texture::Texture, InitializationError> {
         let context = self.context(None).await?;
-        let obj = crate::TextureObject::create_depth_texture(context.as_ref(), size.into().into());
+        let sample_count = context.sample_count();
+        let obj = crate::TextureObject::create_depth_texture(
+            context.as_ref(),
+            size.into().into(),
+            sample_count,
+        );
         let obj = std::sync::Arc::new(obj);
         let id = context.register_texture(obj.clone());
         Ok(crate::texture::Texture::new(context, obj, id))
-    }
-
-    #[lsp_doc("docs/api/core/renderer/update_texture.md")]
-    pub fn update_texture(
-        &self,
-        texture_id: crate::texture::TextureId,
-        data: &[u8],
-    ) -> Result<(), RendererError> {
-        self.update_texture_with(
-            texture_id,
-            data,
-            crate::texture::TextureWriteOptions::whole(),
-        )
-    }
-
-    #[lsp_doc("docs/api/core/renderer/update_texture_with.md")]
-    pub fn update_texture_with(
-        &self,
-        texture_id: crate::texture::TextureId,
-        data: &[u8],
-        options: crate::texture::TextureWriteOptions,
-    ) -> Result<(), RendererError> {
-        update::update_texture(self, texture_id, data, options)
     }
 
     #[lsp_doc("docs/api/core/renderer/unregister_texture.md")]
@@ -305,13 +305,30 @@ impl Renderer {
         unregister::unregister_texture(self, texture_id)
     }
 
+    #[lsp_doc("docs/api/core/renderer/read_texture.md")]
+    pub async fn read_texture(
+        &self,
+        texture_id: crate::texture::TextureId,
+    ) -> Result<Vec<u8>, RendererError> {
+        let context = self
+            .context
+            .read()
+            .as_ref()
+            .cloned()
+            .ok_or(RendererError::NoContext)?;
+        let texture = context
+            .get_texture(&texture_id)
+            .ok_or(RendererError::TextureNotFoundError(texture_id))?;
+        Ok(crate::texture::read_pixels(&context, &texture).await?)
+    }
+
     #[cfg(wasm)]
-    #[lsp_doc("docs/api/web/external_texture.md")]
-    pub fn create_external_texture_from_html_video(
+    #[lsp_doc("docs/api/web/hidden/external_texture.md")]
+    pub fn create_external_texture(
         &self,
         video: &web_sys::HtmlVideoElement,
     ) -> Result<external_texture::ExternalTextureHandle, RendererError> {
-        external_texture::create_from_html_video(self, video)
+        external_texture::ExternalTextureHandle::from_video(self, video)
     }
 
     #[lsp_doc("docs/api/core/renderer/render.md")]
@@ -341,6 +358,44 @@ impl Renderer {
     > {
         let instance = self.instance().await;
         let surface = instance.create_surface(handle)?;
+        self.configure_surface(surface, size).await
+    }
+
+    /// Like `create_surface`, but takes an already-constructed `wgpu::Surface`
+    /// (usually one built from a raw pointer via `instance.create_surface_unsafe`).
+    /// Callers are responsible for ensuring the backing window/layer outlives the surface.
+    #[cfg(ios)]
+    pub(crate) async fn configure_unsafe_surface(
+        &self,
+        target: wgpu::SurfaceTargetUnsafe,
+        size: wgpu::Extent3d,
+    ) -> Result<
+        (
+            Arc<RenderContext>,
+            wgpu::Surface<'static>,
+            wgpu::SurfaceConfiguration,
+        ),
+        InitializationError,
+    > {
+        let instance = self.instance().await;
+        // SAFETY: the caller promises the underlying handle (CAMetalLayer / ANativeWindow / ...)
+        // remains valid for the lifetime of the returned Surface.
+        let surface = unsafe { instance.create_surface_unsafe(target)? };
+        self.configure_surface(surface, size).await
+    }
+
+    async fn configure_surface<'window>(
+        &self,
+        surface: wgpu::Surface<'window>,
+        size: wgpu::Extent3d,
+    ) -> Result<
+        (
+            Arc<RenderContext>,
+            wgpu::Surface<'window>,
+            wgpu::SurfaceConfiguration,
+        ),
+        InitializationError,
+    > {
         let context = self.context(Some(&surface)).await?;
 
         let adapter = self.adapter.read();
@@ -463,7 +518,7 @@ impl RenderContext {
         }
     }
 
-    /// Renders a Frame or Shader to a Target.
+    /// Renders any `Renderable` (Shader, Pass, or iterable of Pass) to a Target.
     fn render(
         &self,
         renderable: &impl Renderable,
@@ -475,11 +530,30 @@ impl RenderContext {
                 label: Some("Command Encoder"),
             });
 
-        let frame = self.try_get_frame_with_retry(target)?;
+        let frame = self.acquire_frame(target)?;
 
         let pass_list = renderable.passes();
+        // Apple's Metal driver does not reliably flush tile-based storage-texture writes between
+        // two compute passes recorded in the same command buffer, so a subsequent sampled
+        // (`texture_2d<…>`) read returns zeros on Apple Silicon. Submitting the encoder between
+        // sequential compute passes introduces a submission boundary that reliably flushes the
+        // tile memory. Render passes are unaffected (encoder-end already syncs there).
+        #[cfg(apple)]
+        let mut prev_was_compute = false;
         for pass in pass_list.iter() {
             let pass = pass.as_ref();
+            #[cfg(apple)]
+            {
+                if prev_was_compute && pass.is_compute() {
+                    self.queue.submit(Some(encoder.finish()));
+                    encoder = self
+                        .device
+                        .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                            label: Some("Command Encoder (Metal compute sync split)"),
+                        });
+                }
+                prev_was_compute = pass.is_compute();
+            }
             if pass.is_compute() {
                 self.process_compute_pass(&mut encoder, pass)?
             } else {
@@ -499,13 +573,13 @@ impl RenderContext {
     /// Try to get a frame once, and on Lost/Outdated, retry exactly once.
     /// This is a centralized, generic helper; specific targets may still
     /// perform their own recovery internally (e.g., WindowTarget).
-    fn try_get_frame_with_retry(
+    fn acquire_frame(
         &self,
         target: &impl Target,
-    ) -> Result<Box<dyn TargetFrame>, wgpu::SurfaceError> {
+    ) -> Result<Box<dyn TargetFrame>, crate::SurfaceError> {
         match target.get_current_frame() {
             Ok(f) => Ok(f),
-            Err(wgpu::SurfaceError::Lost) | Err(wgpu::SurfaceError::Outdated) => {
+            Err(crate::SurfaceError::Lost) | Err(crate::SurfaceError::Outdated) => {
                 // Retry exactly once.
                 target.get_current_frame()
             }
@@ -520,7 +594,7 @@ impl RenderContext {
         texture: Arc<crate::TextureObject>,
     ) -> crate::texture::TextureId {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
-        let texture_id = crate::texture::TextureId(id);
+        let texture_id = crate::texture::TextureId { id };
         self.textures.insert(texture_id, texture);
         texture_id
     }
@@ -538,6 +612,36 @@ impl RenderContext {
 
     pub(crate) fn sample_count(&self) -> u32 {
         self.sample_count.load(Ordering::Relaxed).max(1)
+    }
+
+    /// Run a wgpu operation inside a validation error scope so that any
+    /// validation failure surfaces as a typed
+    /// `RendererError::ValidationError` instead of being swallowed by the
+    /// device's `on_uncaptured_error` handler. Wrap any wgpu call whose
+    /// failure mode would otherwise leak to stderr — `create_bind_group`,
+    /// `Texture::create_view`, etc.
+    ///
+    /// On wasm, `pop_error_scope` resolves asynchronously and cannot be
+    /// awaited from this sync render path; the closure runs and its
+    /// result is returned unwrapped, matching the prior behavior.
+    fn validate<T>(&self, label: &str, op: impl FnOnce() -> T) -> Result<T, RendererError> {
+        #[cfg(not(wasm))]
+        {
+            let scope = self.device.push_error_scope(wgpu::ErrorFilter::Validation);
+            let value = op();
+            if let Some(err) = futures::executor::block_on(scope.pop()) {
+                return Err(RendererError::ValidationError {
+                    label: label.to_string(),
+                    message: err.to_string(),
+                });
+            }
+            Ok(value)
+        }
+        #[cfg(wasm)]
+        {
+            let _ = label;
+            Ok(op())
+        }
     }
 
     fn process_render_pass(
@@ -655,6 +759,7 @@ impl RenderContext {
             depth_stencil_attachment,
             timestamp_writes: None,
             occlusion_query_set: None,
+            multiview_mask: None,
         };
         let mut render_pass = encoder.begin_render_pass(&descriptor);
 
@@ -666,11 +771,11 @@ impl RenderContext {
         for shader in pass.shaders.read().iter() {
             shader.flush_pending();
             let shader_meshes = shader.meshes.read().clone();
-            let vertex_buffer_layouts = if let Some(first_mesh) = shader_meshes.first() {
+            let layouts = if let Some(first_mesh) = shader_meshes.first() {
                 // Ensure schemas are derived (and buffers packed) before pipeline creation
                 first_mesh.vertex_buffers(&self.device, &self.queue)?;
                 // Now derive vertex buffer layouts; propagate any mapping error
-                create_vertex_buffer_layouts(shader, first_mesh.as_ref())?
+                vertex_buffer_layouts(shader, first_mesh.as_ref())?
             } else {
                 None
             };
@@ -690,7 +795,7 @@ impl RenderContext {
                         shader,
                         color_format,
                         sample_count,
-                        vertex_buffer_layouts,
+                        layouts,
                         depth_format,
                     )
                 });
@@ -715,7 +820,10 @@ impl RenderContext {
                 match &uniform.data {
                     UniformData::Texture(meta) => {
                         if let Some(tex) = self.get_texture(&meta.id) {
-                            let view = tex.create_view();
+                            let view = self.validate(
+                                &format!("texture view for binding '{}'", name),
+                                || tex.create_view(),
+                            )?;
                             let sampler = tex.sampler();
                             let group_entry = groups.entry(uniform.group).or_default();
                             group_entry.views.push((uniform.binding, view));
@@ -738,7 +846,7 @@ impl RenderContext {
                                 address_mode_w: wgpu::AddressMode::ClampToEdge,
                                 mag_filter: wgpu::FilterMode::Linear,
                                 min_filter: wgpu::FilterMode::Linear,
-                                mipmap_filter: wgpu::FilterMode::Linear,
+                                mipmap_filter: wgpu::MipmapFilterMode::Linear,
                                 lod_min_clamp: 0.0,
                                 lod_max_clamp: 100.0,
                                 compare: Some(wgpu::CompareFunction::LessEqual),
@@ -756,14 +864,20 @@ impl RenderContext {
                             .push((uniform.binding, sampler));
                     }
                     UniformData::Storage(data) => {
-                        if let Some((_inner, span, _access)) = data.first() {
+                        if let Some(crate::shader::uniform::StorageEntry { span, .. }) =
+                            data.first()
+                        {
                             // Acquire persistent storage buffer and upload only if necessary
                             let span_u64 = *span as u64;
-                            // Obtain initial bytes for creation or update
+                            // Obtain initial bytes for creation or update.
+                            // Blocking read: waits briefly (microseconds) if a `set` is
+                            // mid-write. `try_read` here would surface as `Busy`
+                            // mid-render under stress (writer thread holds the
+                            // write lock for the duration of one `update` call).
+                            // No deadlock risk — render doesn't re-enter `set` on
+                            // the same thread.
                             let init_bytes: Vec<u8> = {
-                                let s = shader.storage.try_read().ok_or_else(|| {
-                                    crate::shader::ShaderError::Busy("storage read".into())
-                                })?;
+                                let s = shader.storage.read();
                                 s.get_bytes(name)
                                     .map(|b| b.to_vec())
                                     .unwrap_or_else(|| vec![0u8; span_u64 as usize])
@@ -815,26 +929,23 @@ impl RenderContext {
                                     buffer
                                 }
                             };
-                            // If CPU blob is marked dirty, upload and clear flag
+                            // If CPU blob is marked dirty, upload and clear flag.
+                            // Blocking acquisitions (read for the snapshot, write
+                            // for the dirty-flag clear) — see comment on the
+                            // earlier `init_bytes` block for the rationale.
                             let need_upload = {
-                                let s = shader.storage.try_read().ok_or_else(|| {
-                                    crate::shader::ShaderError::Busy("storage read".into())
-                                })?;
+                                let s = shader.storage.read();
                                 s.is_storage_dirty(name)
                             };
                             if need_upload {
                                 let bytes: Vec<u8> = {
-                                    let s = shader.storage.try_read().ok_or_else(|| {
-                                        crate::shader::ShaderError::Busy("storage read".into())
-                                    })?;
+                                    let s = shader.storage.read();
                                     s.get_bytes(name)
                                         .map(|b| b.to_vec())
                                         .unwrap_or_else(|| vec![0u8; span_u64 as usize])
                                 };
                                 self.queue.write_buffer(&buf, 0, &bytes);
-                                let mut s = shader.storage.try_write().ok_or_else(|| {
-                                    crate::shader::ShaderError::Busy("storage write".into())
-                                })?;
+                                let mut s = shader.storage.write();
                                 s.clear_storage_dirty(name);
                             }
 
@@ -950,11 +1061,14 @@ impl RenderContext {
                 // Sort by binding index to match layout order
                 entries.sort_by_key(|e| e.binding);
 
-                let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                    layout,
-                    entries: &entries,
-                    label: Some(&format!("Bind Group for group: {}", group_index)),
-                });
+                let label = format!("Bind Group for group: {}", group_index);
+                let bind_group = self.validate(&label, || {
+                    self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                        layout,
+                        entries: &entries,
+                        label: Some(&label),
+                    })
+                })?;
                 present_groups.insert(group_index);
                 bind_groups.push((group_index, bind_group));
             }
@@ -963,11 +1077,14 @@ impl RenderContext {
             for (group, layout) in cached_pipeline.bind_group_layouts.iter() {
                 if !present_groups.contains(group) {
                     // Create an empty bind group (layout is expected to have zero entries for placeholders)
-                    let empty = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                        layout,
-                        entries: &[],
-                        label: Some(&format!("Empty Bind Group for group: {}", group)),
-                    });
+                    let label = format!("Empty Bind Group for group: {}", group);
+                    let empty = self.validate(&label, || {
+                        self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                            layout,
+                            entries: &[],
+                            label: Some(&label),
+                        })
+                    })?;
                     bind_groups.push((*group, empty));
                 }
             }
@@ -979,18 +1096,13 @@ impl RenderContext {
                 render_pass.set_bind_group(*group, bind_group, &[]);
             }
 
-            // Set native push constants just before draw if applicable
+            // Set native immediate data just before draw if applicable.
+            // Blocking read for the same reason as the storage-buffer snapshot
+            // earlier in this function.
             if let Some(PushMode::Native { root, .. }) = &cached_pipeline.push_mode {
-                let storage = shader
-                    .storage
-                    .try_read()
-                    .ok_or_else(|| crate::shader::ShaderError::Busy("storage read".into()))?;
+                let storage = shader.storage.read();
                 if let Some(bytes) = storage.get_bytes(root) {
-                    render_pass.set_push_constants(
-                        wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
-                        0,
-                        bytes,
-                    );
+                    render_pass.set_immediates(0, bytes);
                 }
             }
 
@@ -1045,7 +1157,7 @@ impl RenderContext {
             shader.flush_pending();
             // Build or fetch pipeline
             // Layout signature: hash the bind group layouts
-            let layouts = create_bind_group_layouts(&self.device, shader);
+            let layouts = bind_group_layouts(&self.device, shader);
 
             use sha2::{Digest, Sha256};
             let mut hasher = Sha256::new();
@@ -1076,19 +1188,17 @@ impl RenderContext {
                 .or_insert_with(|| {
                     let mut sorted_groups: Vec<_> = layouts.keys().cloned().collect();
                     sorted_groups.sort();
-                    let mut bind_group_layouts_sorted: Vec<&wgpu::BindGroupLayout> = Vec::new();
+                    let mut sorted_layouts: Vec<Option<&wgpu::BindGroupLayout>> = Vec::new();
                     for g in sorted_groups.into_iter() {
-                        if let Some(l) = layouts.get(&g) {
-                            bind_group_layouts_sorted.push(l);
-                        }
+                        sorted_layouts.push(layouts.get(&g));
                     }
 
                     let layout =
                         self.device
                             .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                                 label: Some("Compute Pipeline Layout"),
-                                bind_group_layouts: &bind_group_layouts_sorted,
-                                push_constant_ranges: &[],
+                                bind_group_layouts: &sorted_layouts,
+                                immediate_size: 0,
                             });
 
                     let module = Cow::Owned(shader.module.clone());
@@ -1137,7 +1247,10 @@ impl RenderContext {
                 match &uniform.data {
                     UniformData::Texture(meta) => {
                         if let Some(tex) = self.get_texture(&meta.id) {
-                            let view = tex.create_view();
+                            let view = self.validate(
+                                &format!("texture view for binding '{}'", name),
+                                || tex.create_view(),
+                            )?;
                             groups
                                 .entry(uniform.group)
                                 .or_default()
@@ -1154,7 +1267,7 @@ impl RenderContext {
                                 address_mode_w: wgpu::AddressMode::ClampToEdge,
                                 mag_filter: wgpu::FilterMode::Linear,
                                 min_filter: wgpu::FilterMode::Linear,
-                                mipmap_filter: wgpu::FilterMode::Linear,
+                                mipmap_filter: wgpu::MipmapFilterMode::Linear,
                                 lod_min_clamp: 0.0,
                                 lod_max_clamp: 100.0,
                                 compare: Some(wgpu::CompareFunction::LessEqual),
@@ -1172,13 +1285,15 @@ impl RenderContext {
                             .push((uniform.binding, sampler));
                     }
                     UniformData::Storage(data) => {
-                        if let Some((_inner, span_u32, _access)) = data.first() {
+                        if let Some(crate::shader::uniform::StorageEntry {
+                            span: span_u32, ..
+                        }) = data.first()
+                        {
                             let span = *span_u32 as u64;
-                            // Obtain bytes
+                            // Obtain bytes. Blocking read — see comment on the
+                            // first storage-buffer init block above.
                             let init_bytes: Vec<u8> = {
-                                let s = shader.storage.try_read().ok_or_else(|| {
-                                    crate::shader::ShaderError::Busy("storage read".into())
-                                })?;
+                                let s = shader.storage.read();
                                 s.get_bytes(name)
                                     .map(|b| b.to_vec())
                                     .unwrap_or_else(|| vec![0u8; span as usize])
@@ -1227,26 +1342,21 @@ impl RenderContext {
                                     buffer
                                 }
                             };
-                            // Upload if dirty
+                            // Upload if dirty. Blocking acquisitions — see
+                            // comment on the earlier dirty-flag block above.
                             let need_upload = {
-                                let s = shader.storage.try_read().ok_or_else(|| {
-                                    crate::shader::ShaderError::Busy("storage read".into())
-                                })?;
+                                let s = shader.storage.read();
                                 s.is_storage_dirty(name)
                             };
                             if need_upload {
                                 let bytes: Vec<u8> = {
-                                    let s = shader.storage.try_read().ok_or_else(|| {
-                                        crate::shader::ShaderError::Busy("storage read".into())
-                                    })?;
+                                    let s = shader.storage.read();
                                     s.get_bytes(name)
                                         .map(|b| b.to_vec())
                                         .unwrap_or_else(|| vec![0u8; span as usize])
                                 };
                                 self.queue.write_buffer(&buf, 0, &bytes);
-                                let mut s = shader.storage.try_write().ok_or_else(|| {
-                                    crate::shader::ShaderError::Busy("storage write".into())
-                                })?;
+                                let mut s = shader.storage.write();
                                 s.clear_storage_dirty(name);
                             }
                             groups
@@ -1257,9 +1367,9 @@ impl RenderContext {
                         }
                     }
                     _ => {
-                        let storage = shader.storage.try_read().ok_or_else(|| {
-                            crate::shader::ShaderError::Busy("storage read".into())
-                        })?;
+                        // Blocking read — same rationale as the storage-buffer
+                        // path above.
+                        let storage = shader.storage.read();
                         let bytes = storage
                             .get_bytes(name)
                             .ok_or(crate::ShaderError::UniformNotFound(name.clone()))?;
@@ -1319,11 +1429,14 @@ impl RenderContext {
                     });
                 }
                 entries.sort_by_key(|e| e.binding);
-                let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                    layout,
-                    entries: &entries,
-                    label: Some(&format!("Compute Bind Group for group: {}", group)),
-                });
+                let label = format!("Compute Bind Group for group: {}", group);
+                let bind_group = self.validate(&label, || {
+                    self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                        layout,
+                        entries: &entries,
+                        label: Some(&label),
+                    })
+                })?;
                 bind_groups.push((group, bind_group));
             }
             bind_groups.sort_by_key(|(group_index, _)| *group_index);
@@ -1358,7 +1471,7 @@ type VertexLayouts = (
 // @TODO the Shader should provide this
 //.      - heck if the logic in the Shader is the same
 //.      - Create and persist the layouts in the ShaderObject
-fn create_vertex_buffer_layouts(
+fn vertex_buffer_layouts(
     shader: &crate::ShaderObject,
     mesh: &crate::mesh::MeshObject,
 ) -> Result<Option<VertexLayouts>, RendererError> {
@@ -1390,14 +1503,14 @@ fn create_vertex_buffer_layouts(
     let mut instance_attributes: Vec<wgpu::VertexAttribute> = Vec::new();
 
     // Build optional index->name maps from the first vertex/instance
-    let (vertex_location, vertex_location_map) = mesh.first_vertex_location_map();
-    let instance_location_map = mesh.first_instance_location_map();
+    let (vertex_location, vertex_locations) = mesh.vertex_location_map();
+    let instance_locations = mesh.instance_location_map();
 
     for vertex_input in vertex_inputs.iter() {
         let mut placed = false;
 
         // 1) Try instance by explicit index
-        if let Some(name) = instance_location_map.get(&vertex_input.location)
+        if let Some(name) = instance_locations.get(&vertex_input.location)
             && let Some((offset, format_mesh)) =
                 instance_map.as_ref().and_then(|map| map.get(name)).cloned()
         {
@@ -1434,7 +1547,7 @@ fn create_vertex_buffer_layouts(
                 placed = true;
             }
             if !placed
-                && let Some(name) = vertex_location_map.get(&vertex_input.location)
+                && let Some(name) = vertex_locations.get(&vertex_input.location)
                 && let Some((offset, format_mesh)) = vertex_map.get(name.as_str()).cloned()
             {
                 if vertex_input.format != format_mesh {
@@ -1521,7 +1634,7 @@ fn create_vertex_buffer_layouts(
     Ok(Some((vertex_layout, instance_layout)))
 }
 
-fn create_bind_group_layouts(
+fn bind_group_layouts(
     device: &wgpu::Device,
     shader: &crate::ShaderObject,
 ) -> HashMap<u32, wgpu::BindGroupLayout> {
@@ -1548,17 +1661,20 @@ fn create_bind_group_layouts(
         use crate::shader::uniform::UniformData;
         let entry = match &uniform.data {
             UniformData::Texture(meta) => {
-                // Map naga metadata to wgpu binding types
+                use crate::texture::{
+                    TextureClass, TextureDim, TextureScalarKind, TextureStorageFormat,
+                };
+                // Map our uniffi-friendly metadata to wgpu binding types
                 let view_dimension = match (meta.dim, meta.arrayed) {
-                    (naga::ImageDimension::D2, false) => wgpu::TextureViewDimension::D2,
-                    (naga::ImageDimension::D2, true) => wgpu::TextureViewDimension::D2Array,
-                    (naga::ImageDimension::D3, _) => wgpu::TextureViewDimension::D3,
-                    (naga::ImageDimension::Cube, false) => wgpu::TextureViewDimension::Cube,
-                    (naga::ImageDimension::Cube, true) => wgpu::TextureViewDimension::CubeArray,
+                    (TextureDim::D2, false) => wgpu::TextureViewDimension::D2,
+                    (TextureDim::D2, true) => wgpu::TextureViewDimension::D2Array,
+                    (TextureDim::D3, _) => wgpu::TextureViewDimension::D3,
+                    (TextureDim::Cube, false) => wgpu::TextureViewDimension::Cube,
+                    (TextureDim::Cube, true) => wgpu::TextureViewDimension::CubeArray,
                     _ => wgpu::TextureViewDimension::D2,
                 };
                 match &meta.class {
-                    naga::ImageClass::Depth { .. } => wgpu::BindGroupLayoutEntry {
+                    TextureClass::Depth { .. } => wgpu::BindGroupLayoutEntry {
                         binding: uniform.binding,
                         visibility: wgpu::ShaderStages::VERTEX
                             | wgpu::ShaderStages::FRAGMENT
@@ -1570,15 +1686,19 @@ fn create_bind_group_layouts(
                         },
                         count: None,
                     },
-                    naga::ImageClass::Sampled { kind, multi } => {
+                    TextureClass::Sampled { kind, multi } => {
                         let sample_type = match kind {
-                            naga::ScalarKind::Sint => wgpu::TextureSampleType::Sint,
-                            naga::ScalarKind::Uint => wgpu::TextureSampleType::Uint,
-                            _ => wgpu::TextureSampleType::Float { filterable: true },
+                            TextureScalarKind::Sint => wgpu::TextureSampleType::Sint,
+                            TextureScalarKind::Uint => wgpu::TextureSampleType::Uint,
+                            _ => wgpu::TextureSampleType::Float {
+                                filterable: meta.sampled,
+                            },
                         };
                         wgpu::BindGroupLayoutEntry {
                             binding: uniform.binding,
-                            visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+                            visibility: wgpu::ShaderStages::VERTEX
+                                | wgpu::ShaderStages::FRAGMENT
+                                | wgpu::ShaderStages::COMPUTE,
                             ty: wgpu::BindingType::Texture {
                                 sample_type,
                                 view_dimension,
@@ -1587,43 +1707,46 @@ fn create_bind_group_layouts(
                             count: None,
                         }
                     }
-                    naga::ImageClass::Storage { format, access } => {
-                        let access = *access;
-                        let access = match access {
-                            naga::StorageAccess::LOAD => wgpu::StorageTextureAccess::ReadOnly,
-                            naga::StorageAccess::STORE => wgpu::StorageTextureAccess::WriteOnly,
-                            _ => wgpu::StorageTextureAccess::ReadOnly,
+                    TextureClass::Storage { format, access } => {
+                        let access = if access.load && access.store {
+                            wgpu::StorageTextureAccess::ReadWrite
+                        } else if access.load {
+                            wgpu::StorageTextureAccess::ReadOnly
+                        } else if access.store {
+                            wgpu::StorageTextureAccess::WriteOnly
+                        } else {
+                            wgpu::StorageTextureAccess::ReadOnly
                         };
                         let format = match format {
-                            naga::StorageFormat::R8Unorm => wgpu::TextureFormat::R8Unorm,
-                            naga::StorageFormat::R8Snorm => wgpu::TextureFormat::R8Snorm,
-                            naga::StorageFormat::R8Uint => wgpu::TextureFormat::R8Uint,
-                            naga::StorageFormat::R8Sint => wgpu::TextureFormat::R8Sint,
-                            naga::StorageFormat::R16Uint => wgpu::TextureFormat::R16Uint,
-                            naga::StorageFormat::R16Sint => wgpu::TextureFormat::R16Sint,
-                            naga::StorageFormat::R16Float => wgpu::TextureFormat::R16Float,
-                            naga::StorageFormat::Rg8Unorm => wgpu::TextureFormat::Rg8Unorm,
-                            naga::StorageFormat::Rg8Snorm => wgpu::TextureFormat::Rg8Snorm,
-                            naga::StorageFormat::Rg8Uint => wgpu::TextureFormat::Rg8Uint,
-                            naga::StorageFormat::Rg8Sint => wgpu::TextureFormat::Rg8Sint,
-                            naga::StorageFormat::Rg16Uint => wgpu::TextureFormat::Rg16Uint,
-                            naga::StorageFormat::Rg16Sint => wgpu::TextureFormat::Rg16Sint,
-                            naga::StorageFormat::Rg16Float => wgpu::TextureFormat::Rg16Float,
-                            naga::StorageFormat::Rgba8Unorm => wgpu::TextureFormat::Rgba8Unorm,
-                            naga::StorageFormat::Rgba8Snorm => wgpu::TextureFormat::Rgba8Snorm,
-                            naga::StorageFormat::Rgba8Uint => wgpu::TextureFormat::Rgba8Uint,
-                            naga::StorageFormat::Rgba8Sint => wgpu::TextureFormat::Rgba8Sint,
-                            naga::StorageFormat::Bgra8Unorm => wgpu::TextureFormat::Bgra8Unorm,
-                            naga::StorageFormat::Rgb10a2Unorm => wgpu::TextureFormat::Rgb10a2Unorm,
-                            naga::StorageFormat::Rg11b10Ufloat => {
+                            TextureStorageFormat::R8Unorm => wgpu::TextureFormat::R8Unorm,
+                            TextureStorageFormat::R8Snorm => wgpu::TextureFormat::R8Snorm,
+                            TextureStorageFormat::R8Uint => wgpu::TextureFormat::R8Uint,
+                            TextureStorageFormat::R8Sint => wgpu::TextureFormat::R8Sint,
+                            TextureStorageFormat::R16Uint => wgpu::TextureFormat::R16Uint,
+                            TextureStorageFormat::R16Sint => wgpu::TextureFormat::R16Sint,
+                            TextureStorageFormat::R16Float => wgpu::TextureFormat::R16Float,
+                            TextureStorageFormat::Rg8Unorm => wgpu::TextureFormat::Rg8Unorm,
+                            TextureStorageFormat::Rg8Snorm => wgpu::TextureFormat::Rg8Snorm,
+                            TextureStorageFormat::Rg8Uint => wgpu::TextureFormat::Rg8Uint,
+                            TextureStorageFormat::Rg8Sint => wgpu::TextureFormat::Rg8Sint,
+                            TextureStorageFormat::Rg16Uint => wgpu::TextureFormat::Rg16Uint,
+                            TextureStorageFormat::Rg16Sint => wgpu::TextureFormat::Rg16Sint,
+                            TextureStorageFormat::Rg16Float => wgpu::TextureFormat::Rg16Float,
+                            TextureStorageFormat::Rgba8Unorm => wgpu::TextureFormat::Rgba8Unorm,
+                            TextureStorageFormat::Rgba8Snorm => wgpu::TextureFormat::Rgba8Snorm,
+                            TextureStorageFormat::Rgba8Uint => wgpu::TextureFormat::Rgba8Uint,
+                            TextureStorageFormat::Rgba8Sint => wgpu::TextureFormat::Rgba8Sint,
+                            TextureStorageFormat::Bgra8Unorm => wgpu::TextureFormat::Bgra8Unorm,
+                            TextureStorageFormat::Rgb10a2Unorm => wgpu::TextureFormat::Rgb10a2Unorm,
+                            TextureStorageFormat::Rg11b10Ufloat => {
                                 wgpu::TextureFormat::Rg11b10Ufloat
                             }
-                            naga::StorageFormat::Rgba16Uint => wgpu::TextureFormat::Rgba16Uint,
-                            naga::StorageFormat::Rgba16Sint => wgpu::TextureFormat::Rgba16Sint,
-                            naga::StorageFormat::Rgba16Float => wgpu::TextureFormat::Rgba16Float,
-                            naga::StorageFormat::Rgba32Uint => wgpu::TextureFormat::Rgba32Uint,
-                            naga::StorageFormat::Rgba32Sint => wgpu::TextureFormat::Rgba32Sint,
-                            naga::StorageFormat::Rgba32Float => wgpu::TextureFormat::Rgba32Float,
+                            TextureStorageFormat::Rgba16Uint => wgpu::TextureFormat::Rgba16Uint,
+                            TextureStorageFormat::Rgba16Sint => wgpu::TextureFormat::Rgba16Sint,
+                            TextureStorageFormat::Rgba16Float => wgpu::TextureFormat::Rgba16Float,
+                            TextureStorageFormat::Rgba32Uint => wgpu::TextureFormat::Rgba32Uint,
+                            TextureStorageFormat::Rgba32Sint => wgpu::TextureFormat::Rgba32Sint,
+                            TextureStorageFormat::Rgba32Float => wgpu::TextureFormat::Rgba32Float,
                             _ => wgpu::TextureFormat::Rgba8Unorm,
                         };
                         wgpu::BindGroupLayoutEntry {
@@ -1638,7 +1761,7 @@ fn create_bind_group_layouts(
                         }
                     }
                     // External textures (Web): bind as ExternalTexture when available.
-                    naga::ImageClass::External => wgpu::BindGroupLayoutEntry {
+                    TextureClass::External() => wgpu::BindGroupLayoutEntry {
                         binding: uniform.binding,
                         visibility: wgpu::ShaderStages::FRAGMENT,
                         ty: wgpu::BindingType::ExternalTexture,
@@ -1648,7 +1771,9 @@ fn create_bind_group_layouts(
             }
             UniformData::Sampler(info) => wgpu::BindGroupLayoutEntry {
                 binding: uniform.binding,
-                visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+                visibility: wgpu::ShaderStages::VERTEX
+                    | wgpu::ShaderStages::FRAGMENT
+                    | wgpu::ShaderStages::COMPUTE,
                 ty: wgpu::BindingType::Sampler(if info.comparison {
                     wgpu::SamplerBindingType::Comparison
                 } else {
@@ -1657,7 +1782,9 @@ fn create_bind_group_layouts(
                 count: None,
             },
             UniformData::Storage(data) => {
-                if let Some((_inner, span, access)) = data.first() {
+                if let Some(crate::shader::uniform::StorageEntry { span, access, .. }) =
+                    data.first()
+                {
                     let min = if *span == 0 { 16 } else { *span as u64 };
                     let min = unsafe { std::num::NonZeroU64::new_unchecked(min) };
 
@@ -1732,7 +1859,7 @@ fn create_render_pipeline(
     vertex_layouts: Option<VertexLayouts>,
     depth_format: Option<wgpu::TextureFormat>,
 ) -> RenderPipeline {
-    let mut bind_group_layouts = create_bind_group_layouts(device, shader);
+    let mut layouts = bind_group_layouts(device, shader);
 
     let mut vs_entry = None;
     let mut fs_entry = None;
@@ -1753,7 +1880,7 @@ fn create_render_pipeline(
             continue;
         }
         if let UniformData::PushConstant(data) = &u.data
-            && let Some((_inner, span)) = data.first()
+            && let Some(crate::shader::uniform::PushEntry { span, .. }) = data.first()
         {
             push_roots.push((name.clone(), *span));
         }
@@ -1771,7 +1898,7 @@ fn create_render_pipeline(
             fallback_required = true;
         } else if let Some((_, sz)) = push_roots.first() {
             let lim = device.limits();
-            if *sz > lim.max_push_constant_size {
+            if *sz > lim.max_immediate_size {
                 fallback_required = true;
             }
         }
@@ -1817,9 +1944,9 @@ fn create_render_pipeline(
             ordered_map.insert(name.clone(), i as u32);
         }
 
-        // Apply rewrite on globals matching push constant address space
+        // Apply rewrite on globals matching immediate/push-constant address space
         for (_handle, gv) in module.global_variables.iter_mut() {
-            if matches!(gv.space, naga::AddressSpace::PushConstant)
+            if matches!(gv.space, naga::AddressSpace::Immediate)
                 && let Some(name) = gv.name.clone()
                 && let Some(binding) = ordered_map.get(&name)
             {
@@ -1858,7 +1985,7 @@ fn create_render_pipeline(
             label: Some("Bind Group Layout (fallback push)"),
             entries: &entries,
         });
-        bind_group_layouts.insert(fallback_group, layout);
+        layouts.insert(fallback_group, layout);
         push_mode = Some(PushMode::Fallback {
             group: fallback_group,
             bindings: bindings_map,
@@ -1874,9 +2001,9 @@ fn create_render_pipeline(
 
     // Ensure placeholder empty layouts for missing lower-index groups so that the positional
     // indices of the pipeline layout match shader @group() numbers (important for fallback).
-    if let Some(max_g) = bind_group_layouts.keys().max().copied() {
+    if let Some(max_g) = layouts.keys().max().copied() {
         for g in 0..=max_g {
-            bind_group_layouts.entry(g).or_insert_with(|| {
+            layouts.entry(g).or_insert_with(|| {
                 device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                     label: Some("Empty Bind Group Layout (placeholder)"),
                     entries: &[],
@@ -1885,30 +2012,23 @@ fn create_render_pipeline(
         }
     }
 
-    let mut sorted_groups: Vec<_> = bind_group_layouts.keys().collect();
+    let mut sorted_groups: Vec<_> = layouts.keys().collect();
     sorted_groups.sort();
-    let mut bind_group_layouts_sorted: Vec<&wgpu::BindGroupLayout> = Vec::new();
+    let mut sorted_layouts: Vec<Option<&wgpu::BindGroupLayout>> = Vec::new();
     for g in sorted_groups.into_iter() {
-        if let Some(l) = bind_group_layouts.get(g) {
-            bind_group_layouts_sorted.push(l);
-        }
+        sorted_layouts.push(layouts.get(g));
     }
 
-    // Pipeline layout with optional push-constant ranges
-    let mut push_ranges: Vec<wgpu::PushConstantRange> = Vec::new();
-    if let Some(PushMode::Native { root: _, size }) = &push_mode
-        && *size > 0
-    {
-        push_ranges.push(wgpu::PushConstantRange {
-            stages: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
-            range: 0..*size,
-        });
-    }
+    // Pipeline layout with optional immediate (push-constant) size
+    let immediate_size = match &push_mode {
+        Some(PushMode::Native { size, .. }) => *size,
+        _ => 0,
+    };
 
     let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some("Default Pipeline Layout"),
-        bind_group_layouts: &bind_group_layouts_sorted,
-        push_constant_ranges: &push_ranges,
+        bind_group_layouts: &sorted_layouts,
+        immediate_size,
     });
 
     let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -2015,8 +2135,8 @@ fn create_render_pipeline(
         primitive: wgpu::PrimitiveState::default(),
         depth_stencil: depth_format.map(|format| wgpu::DepthStencilState {
             format,
-            depth_write_enabled: true,
-            depth_compare: wgpu::CompareFunction::LessEqual,
+            depth_write_enabled: Some(true),
+            depth_compare: Some(wgpu::CompareFunction::LessEqual),
             stencil: wgpu::StencilState::default(),
             bias: wgpu::DepthBiasState::default(),
         }),
@@ -2025,13 +2145,13 @@ fn create_render_pipeline(
             mask: !0,
             alpha_to_coverage_enabled: false,
         },
-        multiview: None,
+        multiview_mask: None,
         cache: None,
     });
 
     RenderPipeline {
         pipeline,
-        bind_group_layouts: bind_group_layouts.clone(),
+        bind_group_layouts: layouts.clone(),
         push_mode,
     }
 }
@@ -2054,6 +2174,7 @@ fn schema_offsets(
 #[cfg(test)]
 mod more_error_path_tests {
     use super::*;
+    use crate::TextureOptions;
 
     // Story: Creating a texture from RGBA8 raw bytes with explicit size succeeds and yields expected size.
     #[test]
@@ -2067,7 +2188,7 @@ mod more_error_path_tests {
                 0, 0, 255, 255,   255, 255, 255, 255,
             ];
             let tex = renderer
-                .create_texture_with(&bytes[..], crate::Size::from((2u32, 2u32)))
+                .create_texture((&bytes[..], crate::Size::from((2u32, 2u32))))
                 .await
                 .expect("texture raw bytes");
             let sz = tex.size();
@@ -2082,10 +2203,10 @@ mod more_error_path_tests {
             let renderer = Renderer::new();
             let bad = [1u8, 2, 3];
             let res = renderer
-                .create_texture_with(
+                .create_texture((
                     &bad[..],
                     TextureOptions::from(crate::Size::from((2u32, 2u32))),
-                )
+                ))
                 .await;
             assert!(res.is_err(), "expected error for insufficient raw bytes");
         });
@@ -2098,9 +2219,64 @@ mod more_error_path_tests {
             let renderer = Renderer::new();
             let p = std::path::PathBuf::from("/path/does/not/exist.png");
             let res = renderer
-                .create_texture_with(&p, TextureOptions::from(crate::Size::from((1u32, 1u32))))
+                .create_texture((&p, TextureOptions::from(crate::Size::from((1u32, 1u32)))))
                 .await;
             assert!(res.is_err());
+        });
+    }
+
+    // Story: validate() surfaces wgpu validation errors as
+    // RendererError::ValidationError instead of leaking through the device's
+    // uncaptured-error handler. Repro: a layout that requires one uniform
+    // buffer entry, paired with a descriptor that supplies zero entries.
+    #[test]
+    fn validate_surfaces_wgpu_errors() {
+        pollster::block_on(async move {
+            let renderer = Renderer::new();
+            let context = renderer.context(None).await.expect("render context");
+            let layout =
+                context
+                    .device
+                    .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                        label: Some("test layout"),
+                        entries: &[wgpu::BindGroupLayoutEntry {
+                            binding: 0,
+                            visibility: wgpu::ShaderStages::FRAGMENT,
+                            ty: wgpu::BindingType::Buffer {
+                                ty: wgpu::BufferBindingType::Uniform,
+                                has_dynamic_offset: false,
+                                min_binding_size: None,
+                            },
+                            count: None,
+                        }],
+                    });
+
+            let result = context.validate("intentionally invalid bind group", || {
+                context
+                    .device
+                    .create_bind_group(&wgpu::BindGroupDescriptor {
+                        layout: &layout,
+                        entries: &[],
+                        label: Some("intentionally invalid bind group"),
+                    })
+            });
+
+            match result {
+                Err(RendererError::ValidationError { label, message }) => {
+                    assert_eq!(label, "intentionally invalid bind group");
+                    assert!(
+                        !message.is_empty(),
+                        "expected non-empty validation message, got empty"
+                    );
+                }
+                Err(other) => panic!(
+                    "expected ValidationError, got different RendererError: {:?}",
+                    other
+                ),
+                Ok(_) => panic!(
+                    "expected ValidationError for layout/entries mismatch, got Ok bind group"
+                ),
+            }
         });
     }
 }
@@ -2143,7 +2319,32 @@ mod tests {
         (adapter, device, queue)
     }
 
-    // E2E: stress set() under contention while rendering to a texture target
+    // E2E: stress set() under contention while rendering to a texture target.
+    //
+    // Previously flaky (~1-in-3 locally; same race in CI) — two
+    // independent failure modes shared distinct root causes:
+    //
+    //   * `unexpected last time: 0.25` — `set`'s dual write path
+    //     (try_write fast path + queue fallback) wasn't ordered against
+    //     `flush_pending`. A queued value from an earlier failed
+    //     `try_write` could survive in `pending` while later `set` calls
+    //     direct-wrote `storage`; the next flush then re-applied the
+    //     stale queued value, clobbering the newer direct write.
+    //     Fixed by clearing the pending entry for the same key when the
+    //     direct-write path succeeds (see `ShaderObject::set`).
+    //
+    //   * `render: ShaderError(Busy("storage read"))` — the renderer's
+    //     bind path used `try_read` to acquire the storage lock for
+    //     uniform/storage-buffer reads, surfacing as `Busy` whenever a
+    //     concurrent `set` happened to be mid-`try_write`. Reads don't
+    //     conflict with each other, and `set` releases the write lock
+    //     in microseconds, so the bounded wait of a blocking `read()`
+    //     was always the right call. The renderer (and
+    //     `Shader::get_uniform[_data]`) now use `read()`.
+    //
+    // Verified: 50/50 consecutive `cargo test` runs locally. The
+    // contention pattern is identical to a real client driving
+    // animation uniforms while the renderer renders.
     #[test]
     fn e2e_set_stress_during_render_last_wins() {
         pollster::block_on(async move {
@@ -2282,7 +2483,7 @@ fn main(v: VOut) -> @location(0) vec4<f32> {
                 0,   0, 255, 255,    255, 255, 255, 255,
             ];
             let tex = renderer
-                .create_texture_with_size(&pixels, [2u32, 2u32])
+                .create_texture((&pixels[..], [2u32, 2u32]))
                 .await
                 .expect("texture");
             shader.set("tex", &tex).expect("set tex");
@@ -2290,9 +2491,70 @@ fn main(v: VOut) -> @location(0) vec4<f32> {
             // Render should succeed without panicking
             renderer.render(&shader, &target).expect("render ok");
 
-            let image: Vec<u8> = target.get_image();
+            let image: Vec<u8> = target.get_image().await;
 
             assert_eq!(image.len(), 8 * 8 * 4);
+        });
+    }
+
+    // Story: Bind an R16Unorm texture (prepared mip chain) into a shader and
+    // render. This is the consumer's failing path (RemixBrush, FC-BUG report
+    // 2026-05-04): without TEXTURE_FORMAT_16BIT_NORM in the device candidates,
+    // the texture is silently invalid and `create_view` cascades into an
+    // InvalidResource validation error at every frame. With the fix, this
+    // round-trips cleanly. textureLoad (no filtering) keeps the layout valid
+    // even on devices that lack 16-bit-norm filtering.
+    #[test]
+    fn render_with_r16unorm_texture_smoke() {
+        pollster::block_on(async move {
+            let renderer = Renderer::new();
+            let target = renderer
+                .create_texture_target([8u32, 8u32])
+                .await
+                .expect("texture target");
+
+            let wgsl = r#"
+@group(0) @binding(0) var height: texture_2d<f32>;
+
+struct VOut { @builtin(position) pos: vec4<f32>, @location(0) uv: vec2<f32> };
+@vertex
+fn vs_main(@builtin(vertex_index) i: u32) -> VOut {
+    var p = array<vec2<f32>, 3>(vec2<f32>(-1.,-1.), vec2<f32>(3.,-1.), vec2<f32>(-1.,3.));
+    var uv = array<vec2<f32>, 3>(vec2<f32>(0.,1.), vec2<f32>(2.,1.), vec2<f32>(0.,-1.));
+    var out: VOut;
+    out.pos = vec4<f32>(p[i], 0., 1.);
+    out.uv = uv[i];
+    return out;
+}
+@fragment
+fn main(v: VOut) -> @location(0) vec4<f32> {
+    let h = textureLoad(height, vec2<i32>(0, 0), 0).r;
+    return vec4<f32>(h, h, h, 1.0);
+}
+            "#;
+            let shader = crate::Shader::new(wgsl).expect("shader");
+
+            // 4×4 R16Unorm raw data — same shape as RemixBrush's height tile.
+            let words: Vec<u16> = (0..16).map(|i| i * 4096).collect();
+            let mut bytes: Vec<u8> = Vec::with_capacity(words.len() * 2);
+            for w in &words {
+                bytes.extend_from_slice(&w.to_le_bytes());
+            }
+            let chain = crate::texture::TextureMipChain::prepare((
+                bytes.as_slice(),
+                crate::TextureFormat::R16Unorm,
+                [4u32, 4u32],
+            ))
+            .expect("prepare R16Unorm chain");
+            let tex = renderer
+                .create_texture(chain)
+                .await
+                .expect("create R16Unorm texture from prepared chain");
+            shader.set("height", &tex).expect("bind R16Unorm");
+
+            renderer
+                .render(&shader, &target)
+                .expect("render with R16Unorm texture");
         });
     }
 
@@ -2522,7 +2784,7 @@ fn main(v: VOut) -> @location(0) vec4<f32> { return v.tint; }
             pass.add_mesh(&mesh).expect("mesh is compatible");
             renderer.render(&pass, &target).expect("render ok");
 
-            let img = target.get_image();
+            let img = target.get_image().await;
             let w = size[0];
             // Helper: map NDC [-1,1] to pixel coordinate [0..w-1]
             let ndc_to_px = |x_ndc: f32, w: u32| -> u32 {
@@ -2697,7 +2959,7 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(0.1,0.9,0.1,1.0);
             if sc > 1 {
                 ctx.set_sample_count(sc);
                 // Create a matching-sample depth texture and register it
-                let depth_obj = crate::TextureObject::create_depth_texture(&ctx, size);
+                let depth_obj = crate::TextureObject::create_depth_texture(&ctx, size, sc);
                 let depth_obj = std::sync::Arc::new(depth_obj);
                 let depth_id = ctx.register_texture(depth_obj.clone());
 
@@ -2708,7 +2970,7 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(0.1,0.9,0.1,1.0);
                     let passes = pass.passes();
                     passes.first().cloned().expect("pass")
                 };
-                first_pass.set_depth_target_id(depth_id);
+                first_pass.set_depth_target(depth_id);
 
                 let mut encoder = ctx
                     .device
@@ -2837,9 +3099,9 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,1.,0.,1.); }
         });
     }
 
-    // Story: try_get_frame_with_retry retries once on Lost/Outdated and returns other errors as-is.
+    // Story: acquire_frame retries once on Lost/Outdated and returns other errors as-is.
     #[test]
-    fn try_get_frame_with_retry_exercises_paths() {
+    fn acquire_frame_exercises_paths() {
         use std::collections::VecDeque;
         struct DummyFrame;
         impl crate::TargetFrame for DummyFrame {
@@ -2857,11 +3119,11 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,1.,0.,1.); }
         struct DummyTarget {
             size: crate::Size,
             seq: parking_lot::RwLock<
-                VecDeque<Result<Box<dyn crate::TargetFrame>, wgpu::SurfaceError>>,
+                VecDeque<Result<Box<dyn crate::TargetFrame>, crate::SurfaceError>>,
             >,
         }
         impl DummyTarget {
-            fn new(seq: Vec<Result<Box<dyn crate::TargetFrame>, wgpu::SurfaceError>>) -> Self {
+            fn new(seq: Vec<Result<Box<dyn crate::TargetFrame>, crate::SurfaceError>>) -> Self {
                 Self {
                     size: crate::Size::from((1u32, 1u32)),
                     seq: parking_lot::RwLock::new(seq.into()),
@@ -2874,13 +3136,15 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,1.,0.,1.); }
                 self.size
             }
             fn resize(&mut self, _s: impl Into<crate::Size>) {}
-            fn get_current_frame(&self) -> Result<Box<dyn crate::TargetFrame>, wgpu::SurfaceError> {
+            fn get_current_frame(
+                &self,
+            ) -> Result<Box<dyn crate::TargetFrame>, crate::SurfaceError> {
                 self.seq
                     .write()
                     .pop_front()
                     .unwrap_or_else(|| Ok(Box::new(DummyFrame)))
             }
-            fn get_image(&self) -> Vec<u8> {
+            async fn get_image(&self) -> Vec<u8> {
                 Vec::new()
             }
         }
@@ -2891,24 +3155,24 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,1.,0.,1.); }
 
             // Case 1: Lost then Ok -> success
             let t1 = DummyTarget::new(vec![
-                Err(wgpu::SurfaceError::Lost),
+                Err(crate::SurfaceError::Lost),
                 Ok(Box::new(DummyFrame)),
             ]);
-            let f1 = ctx.try_get_frame_with_retry(&t1);
+            let f1 = ctx.acquire_frame(&t1);
             assert!(f1.is_ok());
 
             // Case 2: OutOfMemory -> error returned
-            let t2 = DummyTarget::new(vec![Err(wgpu::SurfaceError::OutOfMemory)]);
-            let f2 = ctx.try_get_frame_with_retry(&t2);
-            assert!(matches!(f2, Err(wgpu::SurfaceError::OutOfMemory)));
+            let t2 = DummyTarget::new(vec![Err(crate::SurfaceError::OutOfMemory)]);
+            let f2 = ctx.acquire_frame(&t2);
+            assert!(matches!(f2, Err(crate::SurfaceError::OutOfMemory)));
 
             // Case 3: Outdated then Timeout -> returns second error
             let t3 = DummyTarget::new(vec![
-                Err(wgpu::SurfaceError::Outdated),
-                Err(wgpu::SurfaceError::Timeout),
+                Err(crate::SurfaceError::Outdated),
+                Err(crate::SurfaceError::Timeout),
             ]);
-            let f3 = ctx.try_get_frame_with_retry(&t3);
-            assert!(matches!(f3, Err(wgpu::SurfaceError::Timeout)));
+            let f3 = ctx.acquire_frame(&t3);
+            assert!(matches!(f3, Err(crate::SurfaceError::Timeout)));
         });
     }
 
@@ -2968,7 +3232,7 @@ fn main() -> @location(0) vec4<f32> {
 
             // Force pass sample_count = 4 while making depth texture sample_count = 1
             ctx.set_sample_count(4);
-            let depth_obj = crate::TextureObject::create_depth_texture_with_count(&ctx, size, 1);
+            let depth_obj = crate::TextureObject::create_depth_texture(&ctx, size, 1);
             let depth_obj = std::sync::Arc::new(depth_obj);
             let depth_id = ctx.register_texture(depth_obj.clone());
 
@@ -2978,7 +3242,7 @@ fn main() -> @location(0) vec4<f32> {
                 let passes = pass.passes();
                 passes.first().cloned().expect("pass")
             };
-            first_pass.set_depth_target_id(depth_id);
+            first_pass.set_depth_target(depth_id);
 
             let mut encoder = ctx
                 .device
