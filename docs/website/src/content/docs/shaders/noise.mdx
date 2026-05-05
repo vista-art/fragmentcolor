@@ -1,0 +1,137 @@
+---
+title: "Noise"
+description: A catalog of procedural noise functions in the FragmentColor shader registry.
+---
+
+**Procedural noise** is the workhorse of generative shading: a deterministic
+pseudo-random field you can sample anywhere to drive textures, displacement,
+clouds, terrain, fluid motion, and more. Every entry below is a single pure
+WGSL function in the registry. Pull one into a composition by slug, then call
+it from your fragment stage:
+
+```rust
+let main = r#"
+@fragment fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+    let n = simplex2(in.uv * 6.0) * 0.5 + 0.5;
+    return vec4<f32>(n, n, n, 1.0);
+}
+"#;
+let shader = Shader::new(&["noise/simplex2", main])?;
+```
+
+Each preview below renders the field directly on a UV grid, scaled so the
+features are clearly visible. Output ranges vary — value-style functions land
+in `[0, 1)`, gradient/simplex variants in roughly `[-1, 1]`, and the multi-
+octave family (fbm, ridged, turbulence) sums into wider ranges that you may
+want to `saturate` or remap before shading.
+
+## curl2
+
+2D curl noise — a divergence-free 2D vector field derived from a scalar
+potential. Useful for fluid-like motion and particle advection.
+
+```wgsl
+fn curl2(p: vec2<f32>) -> vec2<f32>
+```
+
+![noise/curl2 preview](/shaders/noise/curl2.png)
+
+## fbm2
+
+2D fractal Brownian motion: stacked octaves of value noise with halving
+amplitude. Output sums to roughly `[0, 1]` for typical octave counts.
+
+```wgsl
+fn fbm2(p: vec2<f32>, octaves: u32) -> f32
+```
+
+![noise/fbm2 preview](/shaders/noise/fbm2.png)
+
+## fbm3
+
+3D fractal Brownian motion. Sample on a fixed slice (e.g. `z = 0`) for a
+2D look, or animate `z` for a smooth time evolution.
+
+```wgsl
+fn fbm3(p: vec3<f32>, octaves: u32) -> f32
+```
+
+![noise/fbm3 preview](/shaders/noise/fbm3.png)
+
+## gradient2
+
+2D gradient (Perlin-style) noise in roughly `[-1, 1]`. Smooth
+derivatives make this a good choice for displacement and bump mapping.
+
+```wgsl
+fn gradient2(p: vec2<f32>) -> f32
+```
+
+![noise/gradient2 preview](/shaders/noise/gradient2.png)
+
+## ridged2
+
+2D ridged multifractal — fbm built from `1 - |noise|`. Produces crisp
+mountain-ridge patterns; great for terrain and lightning.
+
+```wgsl
+fn ridged2(p: vec2<f32>, octaves: u32) -> f32
+```
+
+![noise/ridged2 preview](/shaders/noise/ridged2.png)
+
+## simplex2
+
+2D simplex noise in roughly `[-1, 1]` (Ashima-style). Cheaper and less
+grid-aligned than gradient noise; the default choice for most shaders.
+
+```wgsl
+fn simplex2(p: vec2<f32>) -> f32
+```
+
+![noise/simplex2 preview](/shaders/noise/simplex2.png)
+
+## turbulence2
+
+2D turbulence: fbm built from `|noise|`, giving sharper creases than plain
+fbm. Classic for flame, smoke, and marble.
+
+```wgsl
+fn turbulence2(p: vec2<f32>, octaves: u32) -> f32
+```
+
+![noise/turbulence2 preview](/shaders/noise/turbulence2.png)
+
+## value2
+
+2D value noise in `[0, 1)`. Hash-and-interpolate; fastest of the smooth
+noises, with visibly grid-aligned features.
+
+```wgsl
+fn value2(p: vec2<f32>) -> f32
+```
+
+![noise/value2 preview](/shaders/noise/value2.png)
+
+## value3
+
+3D value noise in `[0, 1)`. Sample on a slice for a 2D look, or animate
+the third axis for time-evolving fields.
+
+```wgsl
+fn value3(p: vec3<f32>) -> f32
+```
+
+![noise/value3 preview](/shaders/noise/value3.png)
+
+## worley2
+
+2D Worley (cellular) noise. Returns the distances `(F1, F2)` to the
+nearest and second-nearest feature points — common patterns are `F1` for
+cells, `F2 - F1` for edges.
+
+```wgsl
+fn worley2(p: vec2<f32>) -> vec2<f32>
+```
+
+![noise/worley2 preview](/shaders/noise/worley2.png)

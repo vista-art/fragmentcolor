@@ -1,6 +1,6 @@
 // camera/look_at — right-handed look-at view matrix (world → view).
-fn look_at(eye: vec3<f32>, target: vec3<f32>, up: vec3<f32>) -> mat4x4<f32> {
-  let f = normalize(target - eye);
+fn look_at(eye: vec3<f32>, at: vec3<f32>, up: vec3<f32>) -> mat4x4<f32> {
+  let f = normalize(at - eye);
   let s = normalize(cross(f, up));
   let u = cross(s, f);
   return mat4x4<f32>(

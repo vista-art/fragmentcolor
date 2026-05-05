@@ -1,0 +1,121 @@
+---
+title: "Encode"
+description: A catalog of encode/decode and bit-packing helpers in the FragmentColor shader registry.
+---
+
+The `encode/` category collects pure WGSL helpers for **packing data into
+fewer bytes** and **decoding it back**. The pairs are designed to be
+mutually inverse up to the documented quantisation: pack a colour into a
+`u32`, store it in a buffer, unpack it later and you should get the same
+colour back to within 8-bit precision. Use them to compress G-buffers,
+shrink particle payloads, or interleave coordinates for spatial hashing.
+
+Pull a slug into a composition and call it directly from your shader:
+
+```rust
+let main = r#"
+@fragment fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+    let src = vec3<f32>(in.uv, 0.5);
+    let p = pack_rgb8(src);
+    let c = unpack_rgb8(p);
+    return vec4<f32>(c, 1.0);
+}
+"#;
+let shader = Shader::new(&["encode/pack_rgb8", "encode/unpack_rgb8", main])?;
+```
+
+Each preview below feeds a UV-derived test signal through the helper and
+visualises the result as RGB. Lossless pairs (pack + unpack) round-trip
+cleanly; lone encoders surface the bit pattern through the channel split,
+and lone decoders synthesise a packed input from UVs to show the field.
+
+## f32_to_half_bits
+
+Convert a single-precision float to IEEE 754 half-precision bits in the
+low 16 of a `u32`. Handles normals, denormals, zero, and infinity; NaN
+becomes a quiet NaN.
+
+```wgsl
+fn f32_to_half_bits(x: f32) -> u32
+```
+
+![encode/f32_to_half_bits preview](/shaders/encode/f32_to_half_bits.png)
+
+## morton2d
+
+Interleave the bits of `(x, y)` into a single `u32` (Morton / Z-order
+curve). Useful for spatial hashing and cache-friendly grid traversal.
+
+```wgsl
+fn morton2d(x: u32, y: u32) -> u32
+```
+
+![encode/morton2d preview](/shaders/encode/morton2d.png)
+
+## pack_normal_octahedron
+
+Project a unit `vec3` normal onto the octahedron and unfold it into a
+`vec2` in `[-1, 1]^2`. Pairs with `unpack_normal_octahedron` for compact
+2x16f normal storage in a G-buffer.
+
+```wgsl
+fn pack_normal_octahedron(n: vec3<f32>) -> vec2<f32>
+```
+
+![encode/pack_normal_octahedron preview](/shaders/encode/pack_normal_octahedron.png)
+
+## pack_rgb8
+
+Pack a unit-range RGB colour into a single `u32` using the
+`0x00BBGGRR` byte layout. Alpha is unused; use `pack_unorm_4x8` if you
+need it.
+
+```wgsl
+fn pack_rgb8(c: vec3<f32>) -> u32
+```
+
+![encode/pack_rgb8 preview](/shaders/encode/pack_rgb8.png)
+
+## pack_unorm_4x8
+
+Pack a `vec4` in `[0, 1]` into a single `u32` (`0xAABBGGRR` layout). Mirrors
+WGSL's built-in `pack4x8unorm` semantics for portability.
+
+```wgsl
+fn pack_unorm_4x8(c: vec4<f32>) -> u32
+```
+
+![encode/pack_unorm_4x8 preview](/shaders/encode/pack_unorm_4x8.png)
+
+## unpack_normal_octahedron
+
+Inverse of `pack_normal_octahedron`: take a `vec2` in `[-1, 1]^2` and
+reconstruct the unit normal. Output is normalised.
+
+```wgsl
+fn unpack_normal_octahedron(e: vec2<f32>) -> vec3<f32>
+```
+
+![encode/unpack_normal_octahedron preview](/shaders/encode/unpack_normal_octahedron.png)
+
+## unpack_rgb8
+
+Inverse of `pack_rgb8`: read three bytes from a `u32` and return a
+`vec3` in `[0, 1]`.
+
+```wgsl
+fn unpack_rgb8(p: u32) -> vec3<f32>
+```
+
+![encode/unpack_rgb8 preview](/shaders/encode/unpack_rgb8.png)
+
+## unpack_unorm_4x8
+
+Inverse of `pack_unorm_4x8`: read four bytes from a `u32` and return a
+`vec4` in `[0, 1]`. Mirrors WGSL's built-in `unpack4x8unorm` semantics.
+
+```wgsl
+fn unpack_unorm_4x8(p: u32) -> vec4<f32>
+```
+
+![encode/unpack_unorm_4x8 preview](/shaders/encode/unpack_unorm_4x8.png)

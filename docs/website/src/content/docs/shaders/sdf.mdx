@@ -1,0 +1,304 @@
+---
+title: "3D SDFs"
+description: A catalog of 3D signed-distance functions in the FragmentColor shader registry.
+---
+
+A **3D signed-distance function** maps a point in space to a single
+`f32`: the shortest distance from that point to the surface of a solid.
+The sign tells you which side you are on — negative inside the volume,
+positive outside, zero exactly on the surface. With a sphere-tracer that
+steps along each ray by the current distance value, that one number is
+enough to render lit, intersected, smoothly-blended geometry without a
+mesh.
+
+The registry separates **primitives** (`sphere`, `box`, `torus`, …) that
+return a distance, from **operators** (`op_*`) that combine or warp
+distances. Booleans (`op_union`, `op_subtract`, `op_intersect`, plus
+their smooth variants) take two distances and return one. Domain
+operators (`op_bend`, `op_twist`, `op_mirror`, `op_repeat`,
+`op_elongate`) transform the input point before you sample a primitive.
+`op_round` and `op_onion` reshape any distance into a rounded or hollow
+version.
+
+Every entry below is a single pure WGSL function in the registry. Pull
+one (or several, for compositions) into a `Shader::new` call, then call
+them from a fragment stage that runs a small sphere-trace and shades the
+hit:
+
+```rust
+let main = r#"
+fn scene(p: vec3<f32>) -> f32 { return sphere(p, 0.7); }
+@fragment fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+    // ... sphere-trace `scene` and Lambert-shade the hit ...
+}
+"#;
+let shader = Shader::new(&["sdf/sphere", main])?;
+```
+
+Each preview below renders the SDF on a 256×256 fragment with a fixed
+camera at `(0, 0, -2.5)` looking down `+z`, sphere-traces the scene, and
+applies a single Lambert light. Tune the parameters to your own scene;
+the registry shape is just the function.
+
+## box
+
+Axis-aligned box centered at the origin with half-extents `b`.
+
+```wgsl
+fn box(p: vec3<f32>, b: vec3<f32>) -> f32
+```
+
+![sdf/box preview](/shaders/sdf/box.png)
+
+## capsule
+
+Capsule (pill) between endpoints `a` and `b` with radius `r`.
+
+```wgsl
+fn capsule(p: vec3<f32>, a: vec3<f32>, b: vec3<f32>, r: f32) -> f32
+```
+
+![sdf/capsule preview](/shaders/sdf/capsule.png)
+
+## cone
+
+Infinite cone with half-angle encoded as `c = vec2(sin, cos)`. Apex at
+the origin, axis along `+y`. Combine with a plane or box to bound it.
+
+```wgsl
+fn cone(p: vec3<f32>, c: vec2<f32>) -> f32
+```
+
+![sdf/cone preview](/shaders/sdf/cone.png)
+
+## cylinder
+
+Capped vertical cylinder with half-height `h` and radius `r`.
+
+```wgsl
+fn cylinder(p: vec3<f32>, h: f32, r: f32) -> f32
+```
+
+![sdf/cylinder preview](/shaders/sdf/cylinder.png)
+
+## ellipsoid
+
+Approximate signed distance to an ellipsoid with axis radii `r`. The
+gradient is not unit length, but it is close enough for sphere-tracing.
+
+```wgsl
+fn ellipsoid(p: vec3<f32>, r: vec3<f32>) -> f32
+```
+
+![sdf/ellipsoid preview](/shaders/sdf/ellipsoid.png)
+
+## hexagonal_prism
+
+Hexagonal prism with `h.x` = circumradius and `h.y` = half-height.
+
+```wgsl
+fn hexagonal_prism(p: vec3<f32>, h: vec2<f32>) -> f32
+```
+
+![sdf/hexagonal_prism preview](/shaders/sdf/hexagonal_prism.png)
+
+## octahedron
+
+Regular octahedron with half-diagonal `s`. Exact SDF.
+
+```wgsl
+fn octahedron(p: vec3<f32>, s: f32) -> f32
+```
+
+![sdf/octahedron preview](/shaders/sdf/octahedron.png)
+
+## op_bend
+
+Domain operator: bends space around the Z axis with bend rate `k`.
+Returns the transformed point — pass it to a primitive. The preview
+applies it to a long rounded box.
+
+```wgsl
+fn op_bend(p: vec3<f32>, k: f32) -> vec3<f32>
+```
+
+![sdf/op_bend preview](/shaders/sdf/op_bend.png)
+
+## op_elongate
+
+Domain operator: stretches an SDF along axes by `h` (per-axis distance
+to extend). Returns a displaced point. The preview elongates a sphere
+along x.
+
+```wgsl
+fn op_elongate(p: vec3<f32>, h: vec3<f32>) -> vec3<f32>
+```
+
+![sdf/op_elongate preview](/shaders/sdf/op_elongate.png)
+
+## op_intersect
+
+Boolean intersection of two distance values: `max(a, b)`. The preview
+intersects a sphere and a box.
+
+```wgsl
+fn op_intersect(a: f32, b: f32) -> f32
+```
+
+![sdf/op_intersect preview](/shaders/sdf/op_intersect.png)
+
+## op_mirror
+
+Domain operator: reflects the negative half-space onto the positive
+half along the unit axis `a`. The preview mirrors an offset sphere.
+
+```wgsl
+fn op_mirror(p: vec3<f32>, a: vec3<f32>) -> vec3<f32>
+```
+
+![sdf/op_mirror preview](/shaders/sdf/op_mirror.png)
+
+## op_onion
+
+Hollows any signed distance into a thin shell of thickness `t`:
+`abs(d) - t`. The preview applies it to a sphere and slices it open with
+a box subtraction so you can see the shell.
+
+```wgsl
+fn op_onion(d: f32, t: f32) -> f32
+```
+
+![sdf/op_onion preview](/shaders/sdf/op_onion.png)
+
+## op_repeat
+
+Domain operator: tiles the input point on an infinite grid with cell
+size `c`. Returns a displaced point. The preview tiles a small sphere.
+
+```wgsl
+fn op_repeat(p: vec3<f32>, c: vec3<f32>) -> vec3<f32>
+```
+
+![sdf/op_repeat preview](/shaders/sdf/op_repeat.png)
+
+## op_round
+
+Uniformly inflates or rounds any SDF by `r`: `d - r`. The preview
+applies it to an octahedron.
+
+```wgsl
+fn op_round(d: f32, r: f32) -> f32
+```
+
+![sdf/op_round preview](/shaders/sdf/op_round.png)
+
+## op_smooth_intersect
+
+Smooth intersection of two distances with blend radius `k`. The preview
+intersects two offset spheres.
+
+```wgsl
+fn op_smooth_intersect(a: f32, b: f32, k: f32) -> f32
+```
+
+![sdf/op_smooth_intersect preview](/shaders/sdf/op_smooth_intersect.png)
+
+## op_smooth_subtract
+
+Smooth subtraction `a − b` with blend radius `k`. The preview subtracts
+a sphere from a box.
+
+```wgsl
+fn op_smooth_subtract(a: f32, b: f32, k: f32) -> f32
+```
+
+![sdf/op_smooth_subtract preview](/shaders/sdf/op_smooth_subtract.png)
+
+## op_smooth_union
+
+Quadratic-polynomial smooth union with blend radius `k`. The preview
+fuses two offset spheres.
+
+```wgsl
+fn op_smooth_union(a: f32, b: f32, k: f32) -> f32
+```
+
+![sdf/op_smooth_union preview](/shaders/sdf/op_smooth_union.png)
+
+## op_subtract
+
+Boolean subtraction `a − b`: `max(a, -b)`. The preview cuts a sphere
+out of a box.
+
+```wgsl
+fn op_subtract(a: f32, b: f32) -> f32
+```
+
+![sdf/op_subtract preview](/shaders/sdf/op_subtract.png)
+
+## op_twist
+
+Domain operator: twists space around the Y axis with twist rate `k`.
+Returns the transformed point. The preview applies it to a long box.
+
+```wgsl
+fn op_twist(p: vec3<f32>, k: f32) -> vec3<f32>
+```
+
+![sdf/op_twist preview](/shaders/sdf/op_twist.png)
+
+## op_union
+
+Boolean union of two distance values: `min(a, b)`. The preview unites a
+sphere and an offset box.
+
+```wgsl
+fn op_union(a: f32, b: f32) -> f32
+```
+
+![sdf/op_union preview](/shaders/sdf/op_union.png)
+
+## plane
+
+Signed distance to a plane with normal `n` (normalized inside) and
+offset `h`: `dot(p, normalize(n)) + h`. The preview intersects a tilted
+plane with a bounding sphere so the trace terminates.
+
+```wgsl
+fn plane(p: vec3<f32>, n: vec3<f32>, h: f32) -> f32
+```
+
+![sdf/plane preview](/shaders/sdf/plane.png)
+
+## rounded_box
+
+Box with half-extents `b` and rounded corners of radius `r` (subtracted
+from the box).
+
+```wgsl
+fn rounded_box(p: vec3<f32>, b: vec3<f32>, r: f32) -> f32
+```
+
+![sdf/rounded_box preview](/shaders/sdf/rounded_box.png)
+
+## sphere
+
+Signed distance to a sphere of radius `r` centered at the origin:
+`length(p) - r`.
+
+```wgsl
+fn sphere(p: vec3<f32>, r: f32) -> f32
+```
+
+![sdf/sphere preview](/shaders/sdf/sphere.png)
+
+## torus
+
+Torus in the XZ plane with major radius `t.x` and tube (minor) radius
+`t.y`.
+
+```wgsl
+fn torus(p: vec3<f32>, t: vec2<f32>) -> f32
+```
+
+![sdf/torus preview](/shaders/sdf/torus.png)
