@@ -1,26 +1,20 @@
 # Shader::fetch(input)
 
-Async constructor that resolves a URL, registry slug, file path, or raw WGSL
-source and returns a compiled `Shader`. Available on all four platforms.
+Async constructor that returns a compiled `Shader` from one or more parts.
+Each part can be:
 
-Each part of `input` is classified as one of:
-
-- **Raw WGSL source** — used directly, no I/O.
-- **URL** (`https://...`) — fetched over the network.
-- **Registry slug** (`"category/name"`) — looked up in the slug registry (or
-  served from the embedded library if the matching `shaders-<category>` feature
-  is compiled in).
-- **File path** (starts with `/`, `./`, `../`, `~/`, or ends with `.wgsl` /
-  `.glsl` / `.frag` / `.vert`) — read from disk (native platforms only).
+- a raw WGSL source string
+- a registry slug like `"sdf2d/circle"`
+- an `https://` URL pointing at a `.wgsl` file
+- a local file path ending in `.wgsl`, `.glsl`, `.frag`, or `.vert`
+  (native platforms only)
 
 Parts are deduplicated by source hash and concatenated in order before
-compilation. On WASM, `Shader::new` cannot perform network I/O because
-constructors cannot be async; `Shader.fetch` is the required path there.
-On Python, Swift, and Kotlin, `Shader.fetch` and `Shader.new` are both
-available: `new` resolves URLs synchronously (blocking), while `fetch`
-is the idiomatic async path.
+compilation. `fetch` is the async path used when any part needs network or
+file I/O. `Shader::new` covers the same shapes for callers that prefer a
+synchronous constructor.
 
-## Platform notes
+## Platforms
 
 | Platform | Spelling | Async mechanism |
 |----------|----------|-----------------|
@@ -41,10 +35,10 @@ is the idiomatic async path.
 
 use fragmentcolor::Shader;
 
-// Single URL
+// Full registry URL.
 let shader = Shader::fetch("https://fragmentcolor.org/shaders/sdf2d/circle.wgsl").await?;
 
-// Registry slug
+// Equivalent shorthand using the registry slug.
 let shader2 = Shader::fetch("sdf2d/circle").await?;
 
 # let _ = (shader, shader2);
@@ -52,3 +46,6 @@ let shader2 = Shader::fetch("sdf2d/circle").await?;
 # }
 # fn main() { let _ = pollster::block_on(run()); }
 ```
+
+For composition (passing multiple parts as an array), see
+[Shader::new](https://fragmentcolor.org/api/core/shader#shadernew).

@@ -20,7 +20,7 @@ pub enum FragmentColorError {
     Display(#[from] crate::target::error::DisplayError),
     #[cfg(not(wasm))]
     #[error("Network Request Error: {0}")]
-    NetworkRequest(#[from] ureq::Error),
+    NetworkRequest(#[from] crate::net::NetworkError),
     #[cfg(wasm)]
     #[error("FragmentColor WASM Error: {0}")]
     Error(String),
@@ -90,7 +90,7 @@ mod tests {
 
         #[cfg(not(wasm))]
         let e9: FragmentColorError = {
-            let err = ureq::get("http://127.0.0.1:1").call().unwrap_err();
+            let err = crate::net::NetworkError("connection refused".into());
             err.into()
         };
 

@@ -388,10 +388,10 @@ private enum _GeneratedExamples {
     static func _example_core_shader_fetch() async throws {
 
 
-        // Single URL
+        // Full registry URL.
         let shader = try await Shader.fetch("https://fragmentcolor.org/shaders/sdf2d/circle.wgsl")
 
-        // Registry slug
+        // Equivalent shorthand using the registry slug.
         let shader2 = try await Shader.fetch("sdf2d/circle")
     }
 
