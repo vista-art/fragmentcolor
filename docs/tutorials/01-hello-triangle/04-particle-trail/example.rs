@@ -38,7 +38,11 @@ fn vs_main(
         cos(time * 0.9 + phase * 1.4) * 0.05,
     );
     let world = position.xy * scale + center + wobble;
-    let glow = 0.55 + 0.45 * sin(time * 2.0 + phase);
+    // Same oscillation as before, routed through `easing/in_out_sine`
+    // (a registry slug we pulled in at Shader::new) to soften the
+    // peaks and troughs into a slower-feeling pulse.
+    let raw = 0.5 + 0.5 * sin(time * 2.0 + phase);
+    let glow = 0.4 + 0.6 * in_out_sine(raw);
 
     var out: VOut;
     out.pos = vec4<f32>(world, 0.0, 1.0);
@@ -55,7 +59,10 @@ fn fs_main(in: VOut) -> @location(0) vec4<f32> {
 
 // #region: setup
 async fn setup(app: &App, windows: Vec<Arc<Window>>) -> SetupResult {
-    let shader = Shader::new(PARTICLE_WGSL)?;
+    // Pull `easing/in_out_sine` from the catalog and link it with our
+    // particle source. Same Shader::new constructor as step 2, just one
+    // more slug.
+    let shader = Shader::new(["easing/in_out_sine", PARTICLE_WGSL])?;
     shader.set("time", 0.0_f32)?;
 
     // The base triangle: same gradient shape as step 2.

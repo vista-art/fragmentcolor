@@ -1,4 +1,7 @@
-// Step 3 — one triangle, many instances, a tiny particle field (JS port).
+// Step 4 — one triangle, many instances, a tiny particle field (JS port).
+//
+// Pulls `easing/in_out_sine` from the catalog so the per-instance pulse
+// rides through a smoother bell-curve than a raw sine.
 
 import { Instance, Mesh, Shader, Vertex } from "fragmentcolor";
 
@@ -27,7 +30,10 @@ fn vs_main(
         cos(time * 0.9 + phase * 1.4) * 0.05,
     );
     let world = position.xy * scale + center + wobble;
-    let glow = 0.55 + 0.45 * sin(time * 2.0 + phase);
+    // Same oscillation as before, routed through \`easing/in_out_sine\`
+    // (a registry slug we pulled in at Shader.fetch) for a softer pulse.
+    let raw = 0.5 + 0.5 * sin(time * 2.0 + phase);
+    let glow = 0.4 + 0.6 * in_out_sine(raw);
 
     var out: VOut;
     out.pos = vec4<f32>(world, 0.0, 1.0);
@@ -44,7 +50,10 @@ fn fs_main(in: VOut) -> @location(0) vec4<f32> {
 
 // #region: setup
 export async function setup(_renderer, _target) {
-    const shader = new Shader(PARTICLE_WGSL);
+    // Shader.fetch is the async builder — needed because slugs and URLs
+    // require fetching. Same constructor as the rest of the tutorial,
+    // just with one more entry in the array.
+    const shader = await Shader.fetch(["easing/in_out_sine", PARTICLE_WGSL]);
     shader.set("time", 0.0);
 
     const mesh = new Mesh();
