@@ -63,18 +63,19 @@ impl Target for CanvasTarget {
         self.inner.lock().resize(size);
     }
 
-    fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, wgpu::SurfaceError> {
+    fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, crate::SurfaceError> {
         self.inner.lock().get_current_frame()
     }
 
-    fn get_image(&self) -> Vec<u8> {
-        vec![]
+    async fn get_image(&self) -> Vec<u8> {
+        Vec::new()
     }
 }
 
 #[wasm_bindgen]
 impl TextureTarget {
     #[wasm_bindgen(js_name = "resize")]
+    #[lsp_doc("docs/api/targets/texture_target/resize.md")]
     pub fn resize_js(&mut self, size: &JsValue) -> Result<(), JsError> {
         let size: Size = size.try_into()?;
         self.resize(size);
@@ -82,14 +83,24 @@ impl TextureTarget {
     }
 
     #[wasm_bindgen(js_name = "size")]
+    #[lsp_doc("docs/api/targets/texture_target/size.md")]
     pub fn size_js(&self) -> Size {
         self.size()
     }
 
     #[wasm_bindgen(js_name = "getImage")]
+    #[lsp_doc("docs/api/targets/texture_target/get_image.md")]
     pub async fn get_image_js(&self) -> js_sys::Uint8Array {
-        let data = self.get_image_async().await;
+        let data = self.get_image().await;
         js_sys::Uint8Array::from(data.as_slice())
+    }
+
+    /// Get a sampleable Texture handle for binding in a shader uniform.
+    /// Mirrors the native `TextureTarget::texture()` method.
+    #[wasm_bindgen(js_name = "texture")]
+    #[lsp_doc("docs/api/targets/texture_target/hidden/texture_js.md")]
+    pub fn texture_js(&self) -> crate::texture::Texture {
+        self.texture()
     }
 }
 

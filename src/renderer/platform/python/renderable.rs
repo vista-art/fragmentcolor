@@ -1,4 +1,4 @@
-use crate::{Frame, Pass, PassObject, PyPassIterator, Renderable, Shader};
+use crate::{Pass, PassObject, PyPassIterator, Renderable, Shader};
 use pyo3::prelude::*;
 use pyo3::types::{PyAny, PySequence};
 use std::sync::Arc;
@@ -6,16 +6,6 @@ use std::sync::Arc;
 #[pyclass]
 pub struct PyRenderable {
     iterator: PyPassIterator,
-}
-
-impl<'py> TryFrom<&'py Bound<'py, Frame>> for PyRenderable {
-    type Error = PyErr;
-    fn try_from(frame: &Bound<'py, Frame>) -> PyResult<Self> {
-        Python::attach(|_| -> PyResult<Self> {
-            let iterator = frame.call_method0("passes")?.extract::<PyPassIterator>()?;
-            Ok(Self { iterator })
-        })
-    }
 }
 
 impl<'py> TryFrom<&'py Bound<'py, Shader>> for PyRenderable {
@@ -40,7 +30,7 @@ impl<'py> TryFrom<&'py Bound<'py, Pass>> for PyRenderable {
 
 impl PyRenderable {
     /// Build a renderable from a Python object:
-    /// - Frame, Pass, Shader
+    /// - Pass, Shader
     /// - Or a Python sequence (list/tuple) of these; collects all passes across items
     pub fn from_any<'py>(obj: &Bound<'py, PyAny>) -> PyResult<Self> {
         // Try object with renderable_type()
@@ -49,26 +39,22 @@ impl PyRenderable {
             .and_then(|v| v.extract::<String>())
         {
             return match rtype.as_str() {
-                "Frame" => {
-                    let frame = obj.downcast::<Frame>()?;
-                    Ok(PyRenderable::try_from(frame)?)
-                }
                 "Pass" => {
-                    let pass = obj.downcast::<Pass>()?;
+                    let pass = obj.cast::<Pass>()?;
                     Ok(PyRenderable::try_from(pass)?)
                 }
                 "Shader" => {
-                    let shader = obj.downcast::<Shader>()?;
+                    let shader = obj.cast::<Shader>()?;
                     Ok(PyRenderable::try_from(shader)?)
                 }
                 _ => Err(PyErr::new::<pyo3::exceptions::PyTypeError, _>(
-                    "Expected Frame, Pass, or Shader",
+                    "Expected Pass or Shader",
                 )),
             };
         }
 
         // Try a Python sequence (list/tuple) of renderables
-        if let Ok(seq) = obj.downcast::<PySequence>() {
+        if let Ok(seq) = obj.cast::<PySequence>() {
             let len = seq.len()?;
             let mut all: Vec<Arc<PassObject>> = Vec::with_capacity(len);
             for i in 0..len {
@@ -85,7 +71,7 @@ impl PyRenderable {
         }
 
         Err(PyErr::new::<pyo3::exceptions::PyTypeError, _>(
-            "Expected a Frame, Pass, Shader, or a sequence of them",
+            "Expected a Pass, Shader, or a sequence of them",
         ))
     }
 }

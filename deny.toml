@@ -12,4 +12,11 @@ allow = [
     "ISC",
     "Zlib",
     "Unicode-3.0",
+    # webpki-roots ships the Mozilla CA bundle under the Linux Foundation's
+    # Community Data License Agreement — Permissive, v2.0. It's a pure
+    # data set, not code, and the CDLA-Permissive-2.0 terms (no copyleft,
+    # no attribution requirement on derivative data) are at least as
+    # permissive as MIT for the embedded data we redistribute. Pulled in
+    # transitively via ureq's `rustls` feature on desktop targets.
+    "CDLA-Permissive-2.0",
 ]

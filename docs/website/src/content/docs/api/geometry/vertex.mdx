@@ -1,6 +1,6 @@
 ---
 title: Vertex
-description: "A single vertex with a required position (2D or 3D) and optional properties like uv and color."
+description: "A single vertex: a required 2D or 3D position plus any per-vertex attributes your shader declares (commonly `uv` and `color`, but any key the shader's vertex stage reads is fair game). Build vertices and feed them into a [Mesh](/api/geometry/mesh) to draw."
 category: geometry
 categoryLabel: Geometry
 sidebar:
@@ -11,7 +11,10 @@ import { Code, Tabs, TabItem, Aside } from "@astrojs/starlight/components";
 
 ## Description
 
-A single vertex with a required position (2D or 3D) and optional properties like uv and color.
+A single vertex: a required 2D or 3D position plus any per-vertex
+attributes your shader declares (commonly `uv` and `color`, but any key
+the shader's vertex stage reads is fair game). Build vertices and feed
+them into a [Mesh](/api/geometry/mesh) to draw.
 
 
 
@@ -53,25 +56,23 @@ lang="python"
 </TabItem>
 
 <TabItem label="Swift">
-<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Swift placeholder: bindings WIP
-
+import FragmentColor
+let v = try Vertex([0.0, 0.0, 0.0]).set("uv", [0.5, 0.5])
 `}
-lang="text"
+lang="swift"
 />
 
 </TabItem>
 
 <TabItem label="Kotlin">
-<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Kotlin placeholder: bindings WIP
-
+import org.fragmentcolor.*
+val v = Vertex(listOf(0.0f, 0.0f, 0.0f)).set("uv", floatArrayOf(0.5f, 0.5f))
 `}
-lang="text"
+lang="kotlin"
 />
 
 </TabItem>
@@ -86,7 +87,9 @@ lang="text"
 
 ### Vertex::new
 
-Construct a Vertex from a position (2D or 3D).
+Construct a `Vertex` from a 2D or 3D position. Set additional attributes
+(`uv`, `color`, custom keys) with `set` to match the per-vertex inputs
+your shader declares.
 
 #### Example
 
@@ -126,25 +129,23 @@ lang="python"
 </TabItem>
 
 <TabItem label="Swift">
-<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Swift placeholder: bindings WIP
-
+import FragmentColor
+let v = try Vertex([0.0, 0.0])
 `}
-lang="text"
+lang="swift"
 />
 
 </TabItem>
 
 <TabItem label="Kotlin">
-<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Kotlin placeholder: bindings WIP
-
+import org.fragmentcolor.*
+val v = Vertex(listOf(0.0f, 0.0f))
 `}
-lang="text"
+lang="kotlin"
 />
 
 </TabItem>
@@ -209,25 +210,23 @@ lang="python"
 </TabItem>
 
 <TabItem label="Swift">
-<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Swift placeholder: bindings WIP
-
+import FragmentColor
+let v = try Vertex([0.0, 0.0, 0.0]).set("weight", 1.0).set("color",[1.0, 0.0, 0.0])
 `}
-lang="text"
+lang="swift"
 />
 
 </TabItem>
 
 <TabItem label="Kotlin">
-<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Kotlin placeholder: bindings WIP
-
+import org.fragmentcolor.*
+val v = Vertex(listOf(0.0f, 0.0f, 0.0f)).set("weight", 1.0).set("color", listOf(1.0f, 0.0f, 0.0f))
 `}
-lang="text"
+lang="kotlin"
 />
 
 </TabItem>
@@ -239,7 +238,10 @@ lang="text"
 
 ### Vertex::create_instance
 
-Create an Instance from this Vertex by cloning all of its properties
+Create an `Instance` that inherits this vertex's attributes. Use this
+when you want a starting point for an instance whose per-instance values
+mostly match the source vertex, then call `set` on the result to change
+the fields that differ.
 
 #### Example
 
@@ -283,25 +285,25 @@ lang="python"
 </TabItem>
 
 <TabItem label="Swift">
-<Aside type="caution" title="Work in progress">Swift bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Swift placeholder: bindings WIP
-
+import FragmentColor
+let v = try Vertex([0.0, 0.0])
+let inst = v.createInstance()
 `}
-lang="text"
+lang="swift"
 />
 
 </TabItem>
 
 <TabItem label="Kotlin">
-<Aside type="caution" title="Work in progress">Kotlin/Android bindings are not yet available; implementation is in the works.</Aside>
 <Code
 code={`
-// Kotlin placeholder: bindings WIP
-
+import org.fragmentcolor.*
+val v = Vertex(listOf(0.0f, 0.0f))
+val inst = v.createInstance()
 `}
-lang="text"
+lang="kotlin"
 />
 
 </TabItem>

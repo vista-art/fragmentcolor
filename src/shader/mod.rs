@@ -22,6 +22,13 @@ pub use constants::*;
 pub(crate) mod uniform;
 pub(crate) use uniform::*;
 
+pub mod composer;
+pub use composer::{ShaderInput, ShaderPart};
+
+pub(crate) mod registry;
+
+pub(crate) mod embedded;
+
 mod glsl;
 mod input;
 mod platform;
@@ -32,7 +39,8 @@ use storage::*;
 pub type ShaderHash = [u8; 32];
 
 #[cfg_attr(wasm, wasm_bindgen)]
-#[cfg_attr(python, pyclass)]
+#[cfg_attr(python, pyclass(from_py_object))]
+#[cfg_attr(mobile, derive(uniffi::Object))]
 #[derive(Debug, Clone)]
 #[lsp_doc("docs/api/core/shader/shader.md")]
 pub struct Shader {
@@ -57,8 +65,23 @@ impl From<Arc<ShaderObject>> for Shader {
 
 impl Shader {
     #[lsp_doc("docs/api/core/shader/new.md")]
-    pub fn new(source: &str) -> Result<Self, ShaderError> {
-        Ok(Self::from(input::load_shader(source)?))
+    pub fn new(input: impl Into<ShaderInput>) -> Result<Self, ShaderError> {
+        Ok(Self::from(input::blocking::resolve(input.into())?))
+    }
+
+    /// Async constructor: resolve each part of `input` by fetching URLs and
+    /// registry slugs over the network, reading file paths, or using raw WGSL
+    /// source verbatim. Parts are deduplicated by source hash and concatenated
+    /// in order before being compiled.
+    ///
+    /// Use this method when one or more parts of the shader must be fetched
+    /// from the network. On WASM this is the *only* way to compose shaders
+    /// from remote URLs because constructors cannot be async. On Python, Swift,
+    /// and Kotlin the network I/O blocks the calling thread
+    /// (via `pollster::block_on` on Python; uniffi async on Swift/Kotlin).
+    #[lsp_doc("docs/api/core/shader/fetch.md")]
+    pub async fn fetch(input: impl Into<ShaderInput>) -> Result<Self, ShaderError> {
+        Ok(Self::from(input::resolve(input.into()).await?))
     }
 
     #[lsp_doc("docs/api/core/shader/set.md")]
@@ -133,6 +156,11 @@ impl Shader {
     pub fn is_compute(&self) -> bool {
         self.object.is_compute()
     }
+
+    #[lsp_doc("docs/api/core/shader/set_registry.md")]
+    pub fn set_registry(base_url: &str) {
+        registry::set_registry(base_url);
+    }
 }
 
 /// FragmentColor's Shader internal implementation.
@@ -174,6 +202,7 @@ impl ShaderObject {
     pub fn set(&self, key: &str, value: impl Into<UniformData>) -> Result<(), ShaderError> {
         let val: UniformData = value.into();
         if let Some(mut storage) = self.storage.try_write() {
+            self.pending.remove(key);
             storage.update(key, &val)
         } else {
             self.pending.insert(key.to_string(), val);
@@ -250,11 +279,17 @@ impl ShaderObject {
     }
 
     /// Get a uniform value as UniformData enum.
+    ///
+    /// Blocking read: waits briefly (microseconds) for any in-flight `set`
+    /// to release the write lock. The previous `try_read` surfaced as
+    /// `Busy("storage read")` from `Shader::get` under contention with
+    /// concurrent setters — a defensible contract but uniformly
+    /// surprising for callers expecting the shader to be query-able at
+    /// any time. The clone-and-return body holds the lock only during
+    /// the lookup; no lock is held across the return, so re-entrance
+    /// from caller code (e.g. `let v = get(); set(v)`) is safe.
     pub fn get_uniform_data(&self, key: &str) -> Result<UniformData, ShaderError> {
-        let storage = self
-            .storage
-            .try_read()
-            .ok_or_else(|| ShaderError::Busy("storage read".into()))?;
+        let storage = self.storage.read();
         let uniform = storage
             .get(key)
             .ok_or(ShaderError::UniformNotFound(key.into()))?;
@@ -297,11 +332,13 @@ impl ShaderObject {
     }
 
     /// Get a uniform value as Uniform struct.
+    ///
+    /// Blocking read for the same reason as `get_uniform_data`. Used
+    /// from the render path (`Renderer::process_*_pass`) and shader
+    /// internals where the previous `try_read` would intermittently
+    /// fail under stress.
     pub(crate) fn get_uniform(&self, key: &str) -> Result<Uniform, ShaderError> {
-        let storage = self
-            .storage
-            .try_read()
-            .ok_or_else(|| ShaderError::Busy("storage read".into()))?;
+        let storage = self.storage.read();
         let uniform = storage
             .get(key)
             .ok_or(ShaderError::UniformNotFound(key.into()))?;
@@ -496,7 +533,8 @@ impl ShaderObject {
     }
 
     /// Apply any queued updates if we can acquire the write lock;
-    /// otherwise leave them queued for later.
+    /// otherwise leave them queued for later. Best-effort: callers
+    /// that need a guaranteed flush re-call until `pending.is_empty()`.
     pub(crate) fn flush_pending(&self) {
         if self.pending.is_empty() {
             return;
@@ -525,10 +563,61 @@ fn hash(source: &str) -> ShaderHash {
     slice.into()
 }
 
+/// Collect the set of image-class global variables that are ever consumed by an
+/// `ImageSample` expression. Textures outside this set are only read via
+/// `textureLoad`/image ops, and the bind-group layout can request a non-filterable
+/// sample type (unlocking Rgba32Float and similar as sampled sources without
+/// the `FLOAT32_FILTERABLE` feature).
+///
+/// If any `ImageSample` argument cannot be resolved to a direct global (e.g. it
+/// comes from a function parameter), every image global is conservatively
+/// reported as sampled — filterable=true is always a safe layout, filterable=false
+/// is not.
+fn sampled_image_globals(
+    module: &Module,
+) -> std::collections::HashSet<naga::Handle<naga::GlobalVariable>> {
+    use naga::Expression;
+
+    let mut sampled: std::collections::HashSet<naga::Handle<naga::GlobalVariable>> =
+        Default::default();
+    let mut indirect = false;
+
+    let mut visit = |function: &naga::Function| {
+        for (_, expr) in function.expressions.iter() {
+            if let Expression::ImageSample { image, .. } = expr {
+                match &function.expressions[*image] {
+                    Expression::GlobalVariable(handle) => {
+                        sampled.insert(*handle);
+                    }
+                    _ => indirect = true,
+                }
+            }
+        }
+    };
+
+    for (_, f) in module.functions.iter() {
+        visit(f);
+    }
+    for ep in &module.entry_points {
+        visit(&ep.function);
+    }
+
+    if indirect {
+        for (handle, var) in module.global_variables.iter() {
+            if matches!(&module.types[var.ty].inner, naga::TypeInner::Image { .. }) {
+                sampled.insert(handle);
+            }
+        }
+    }
+
+    sampled
+}
+
 fn parse_uniforms(module: &Module) -> Result<HashMap<String, Uniform>, ShaderError> {
     let mut uniforms = HashMap::new();
+    let sampled_set = sampled_image_globals(module);
 
-    for (_, variable) in module.global_variables.iter() {
+    for (handle, variable) in module.global_variables.iter() {
         // Handle WorkGroup specially: ignore unbound; error on bound (unexpected)
         match variable.space {
             AddressSpace::WorkGroup => {
@@ -540,12 +629,13 @@ fn parse_uniforms(module: &Module) -> Result<HashMap<String, Uniform>, ShaderErr
                     continue;
                 }
             }
-            AddressSpace::PushConstant => {
-                // Parse push constants as a dedicated variant; no binding expected
+            AddressSpace::Immediate => {
+                // Parse immediate data (formerly WGSL push constants) as a dedicated variant;
+                // no binding is expected.
                 let uniform_name = variable
                     .name
                     .clone()
-                    .ok_or(ShaderError::ParseError("Unnamed push constant".into()))?;
+                    .ok_or(ShaderError::ParseError("Unnamed immediate variable".into()))?;
                 let ty = &module.types[variable.ty];
                 let inner = convert_type(module, ty)?;
                 let span = inner.size();
@@ -555,7 +645,10 @@ fn parse_uniforms(module: &Module) -> Result<HashMap<String, Uniform>, ShaderErr
                         name: uniform_name,
                         group: 0,
                         binding: 0,
-                        data: UniformData::PushConstant(vec![(inner, span)]),
+                        data: UniformData::PushConstant(vec![crate::shader::uniform::PushEntry {
+                            inner: vec![inner],
+                            span,
+                        }]),
                     },
                 );
                 continue;
@@ -589,9 +682,19 @@ fn parse_uniforms(module: &Module) -> Result<HashMap<String, Uniform>, ShaderErr
                 // convert_type will yield a Struct/Array/etc. shape; wrap it
                 let inner = convert_type(module, ty)?;
                 let span = inner.size();
-                UniformData::Storage(vec![(inner, span, access.into())])
+                UniformData::Storage(vec![crate::shader::uniform::StorageEntry {
+                    inner: vec![inner],
+                    span,
+                    access: access.into(),
+                }])
             }
-            _ => convert_type(module, ty)?,
+            _ => {
+                let mut d = convert_type(module, ty)?;
+                if let UniformData::Texture(ref mut meta) = d {
+                    meta.sampled = sampled_set.contains(&handle);
+                }
+                d
+            }
         };
 
         uniforms.insert(
@@ -757,6 +860,36 @@ mod tests {
 
         let bad = "not wgsl";
         assert!(Shader::try_from(bad).is_err());
+    }
+
+    #[test]
+    fn shader_new_accepts_array_of_sources() {
+        let helper = "fn util() -> f32 { return 1.0; }";
+        let main = r#"
+@vertex fn vs_main() -> @builtin(position) vec4<f32> { return vec4<f32>(util()); }
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.0); }
+        "#;
+
+        let from_array = Shader::new([helper, main]).expect("from [&str; 2]");
+        let from_vec: Vec<String> = vec![helper.to_string(), main.to_string()];
+        let from_vec_call = Shader::new(from_vec).expect("from Vec<String>");
+        let from_slice_str: Shader = Shader::new([helper, main].as_slice()).expect("from &[&str]");
+
+        let _ = from_array.list_uniforms();
+        let _ = from_vec_call.list_keys();
+        let _ = from_slice_str.list_uniforms();
+    }
+
+    #[test]
+    fn shader_new_accepts_owned_string() {
+        let owned: String = DEFAULT_SHADER.to_string();
+        let _ = Shader::new(owned).expect("from String");
+    }
+
+    #[test]
+    fn shader_new_accepts_string_ref() {
+        let owned: String = DEFAULT_SHADER.to_string();
+        let _ = Shader::new(&owned).expect("from &String");
     }
 
     #[test]
@@ -968,9 +1101,9 @@ fn vs_main(@location(0) pos: vec3<f32>, @location(1) offset: vec2<f32>) -> VOut 
         let (_, _, u_tex) = s.uniforms.get("tex").expect("tex uniform");
         match &u_tex.data {
             UniformData::Texture(meta) => {
-                assert_eq!(meta.dim, naga::ImageDimension::D2);
+                assert_eq!(meta.dim, crate::texture::TextureDim::D2);
                 match meta.class {
-                    naga::ImageClass::Sampled { .. } => {}
+                    crate::texture::TextureClass::Sampled { .. } => {}
                     _ => panic!("expected sampled image class"),
                 }
             }
@@ -1009,18 +1142,26 @@ struct Buf { a: vec4<f32> };
         let (_, size, u) = s.uniforms.get("ssbo").expect("ssbo uniform");
         match u.data.clone() {
             UniformData::Storage(data) => {
-                let (inner, span, access) = data.first().expect("storage data");
+                let entry = data.first().expect("storage data");
+                let crate::shader::uniform::StorageEntry {
+                    inner,
+                    span,
+                    access,
+                } = entry;
                 assert_eq!(*span, *size);
                 assert!(access == &StorageAccess::Read);
-                match inner {
-                    UniformData::Struct((fields, s)) => {
-                        assert_eq!(s.clone(), 16); // vec4<f32>
+                match inner.first().expect("inner shape") {
+                    UniformData::Struct(s) => {
+                        assert_eq!(s.size, 16); // vec4<f32>
                         // Should have one field named 'a'
                         let mut seen_a = false;
-                        for (_ofs, name, f) in fields.iter() {
-                            if name == "a" {
+                        for f in s.fields.iter() {
+                            if f.name == "a" {
                                 seen_a = true;
-                                assert!(matches!(f, UniformData::Vec4(_)));
+                                assert!(matches!(
+                                    f.ty.first().expect("field shape"),
+                                    UniformData::Vec4(_)
+                                ));
                             }
                         }
                         assert!(seen_a);
@@ -1049,7 +1190,8 @@ struct Buf { a: vec4<f32> };
         let (_, _, u) = s.uniforms.get("sbuf").expect("sbuf uniform");
         match u.data.clone() {
             UniformData::Storage(data) => {
-                let (_, _, access) = data.first().expect("storage data");
+                let crate::shader::uniform::StorageEntry { access, .. } =
+                    data.first().expect("storage data");
                 assert!(access == &StorageAccess::ReadWrite);
             }
             _ => panic!("sbuf is not a storage buffer uniform"),
@@ -1074,11 +1216,12 @@ struct Outer { a: vec4<f32>, arr: array<vec4<f32>, 2>, inner: Inner };
         let (_, _, u) = s.uniforms.get("sto").expect("sto uniform");
         match &u.data {
             UniformData::Storage(data) => {
-                let (inner, span, _) = data.first().expect("storage data");
+                let crate::shader::uniform::StorageEntry { inner, span, .. } =
+                    data.first().expect("storage data");
                 // a:16 + arr:2*16 + inner.c:16 = 64
                 assert_eq!(span.clone(), 64);
-                match inner {
-                    UniformData::Struct((_fields, s)) => assert_eq!(s.clone(), 64),
+                match inner.first().expect("inner shape") {
+                    UniformData::Struct(s) => assert_eq!(s.size, 64),
                     _ => panic!("inner is not struct"),
                 }
             }
@@ -1121,7 +1264,7 @@ fn cs_main() { }
     fn push_constant_parsing_and_set() {
         let wgsl = r#"
 struct PC { v: f32 };
-var<push_constant> pc: PC;
+var<immediate> pc: PC;
 @vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
   let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.));
   return vec4f(p[i], 0., 1.);
@@ -1146,8 +1289,8 @@ var<push_constant> pc: PC;
         let wgsl = r#"
 struct A { v: f32 };
 struct B { c: vec4<f32> };
-var<push_constant> a: A;
-var<push_constant> b: B;
+var<immediate> a: A;
+var<immediate> b: B;
 @vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
   let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.));
   return vec4f(p[i], 0., 1.);
@@ -1263,12 +1406,12 @@ struct Buf { items: array<Item, 3> };
         let (_, _, u) = s.uniforms.get("buf").expect("buf uniform");
         let stride = match &u.data {
             UniformData::Storage(data) => {
-                let (inner, _span, _) = data.first().unwrap();
-                match inner {
-                    UniformData::Struct((fields, _)) => {
+                let crate::shader::uniform::StorageEntry { inner, .. } = data.first().unwrap();
+                match inner.first().expect("inner shape") {
+                    UniformData::Struct(s) => {
                         // fields[0] should be items: Array
-                        match &fields[0].2 {
-                            UniformData::Array(items) => items.first().unwrap().2,
+                        match s.fields[0].ty.first().expect("field shape") {
+                            UniformData::Array(items) => items.first().unwrap().stride,
                             _ => 0,
                         }
                     }

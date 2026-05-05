@@ -1,0 +1,202 @@
+---
+// <Demo file="01-hello-triangle/04-postfx-pass/example.rs" />
+//
+// Renders a live canvas that runs the transpiled JS port of a tutorial step.
+// Picks up `setup(renderer, target)` and `frame(state, renderer, target, time, size)`
+// from the example.js module copied under src/tutorials/<...>/example.js, and
+// drives them with WASM-initialized Renderer + canvas Target.
+//
+// Generalization of the ShaderHero front-page demo. ShaderHero will refactor
+// to use this component once it stabilizes.
+
+import { tutorials } from "../generated/tutorials";
+
+interface Props {
+  file: string;
+  /** Pixel height for the canvas. Default 420px. */
+  height?: string;
+}
+
+const { file, height = "420px" } = Astro.props;
+
+const entry = tutorials[file];
+if (!entry) {
+  throw new Error(`<Demo>: no tutorial entry for "${file}".`);
+}
+if (!entry.jsModulePath) {
+  throw new Error(`<Demo>: tutorial "${file}" has no companion example.js.`);
+}
+
+// The Vite-relative import key the runtime will look up.
+const moduleKey = `../tutorials/${entry.jsModulePath}`;
+---
+
+<tutorial-demo
+  data-module-key={moduleKey}
+  data-canvas-height={height}
+  style="display: block; margin: 1.5rem 0;">
+</tutorial-demo>
+
+<script>
+// @ts-nocheck
+// Vite picks up every example.js under src/tutorials/ at build time so
+// dynamic imports below resolve to bundled chunks. Without the `eager: false`
+// loaders, Demo would have to guess the URL of each module and bypass Vite.
+const tutorialModules = import.meta.glob('../tutorials/**/example.js');
+
+if (!customElements.get('tutorial-demo')) {
+  class TutorialDemo extends HTMLElement {
+    #shadow;
+    #canvas;
+    #raf = 0;
+    #stopped = false;
+    #renderer;
+    #target;
+    #state;
+    #frame;
+    #ro;
+    #start = performance.now();
+    #fcModule;
+
+    constructor() {
+      super();
+      this.#shadow = this.attachShadow({ mode: 'open' });
+      const height = this.dataset.canvasHeight || '420px';
+      this.#shadow.innerHTML = `
+        <style>
+          :host { display: block; margin: 1.5rem 0; }
+          .frame {
+            position: relative;
+            width: 100%;
+            height: ${height};
+            border-radius: 8px;
+            overflow: hidden;
+            background: #0f172a;
+          }
+          canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+            background: #0f172a;
+          }
+          .err {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem 1.5rem;
+            color: #fca5a5;
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: 0.85rem;
+            background: rgba(15, 23, 42, 0.9);
+            text-align: center;
+            white-space: pre-wrap;
+            display: none;
+          }
+          .err.visible { display: flex; }
+        </style>
+        <div class="frame">
+          <canvas></canvas>
+          <div class="err" role="alert"></div>
+        </div>
+      `;
+      this.#canvas = this.#shadow.querySelector('canvas');
+    }
+
+    async connectedCallback() {
+      try {
+        await this.#init();
+      } catch (e) {
+        console.error('[Demo] init failed', e);
+        this.#showError(`init: ${e?.message || e}`);
+      }
+    }
+
+    disconnectedCallback() {
+      this.#stopped = true;
+      cancelAnimationFrame(this.#raf);
+      try { this.#ro?.disconnect(); } catch {}
+    }
+
+    async #init() {
+      // 1) Boot WASM (idempotent — wasm-bindgen guards against double init).
+      const fc = await import('fragmentcolor');
+      this.#fcModule = fc;
+      const wasmUrl = (await import('fragmentcolor/fragmentcolor_bg.wasm?url')).default;
+      await fc.default({ module_or_path: wasmUrl });
+
+      // 2) Point slug resolution at the local /shaders/ tree so dev works offline
+      //    (and prod works against fragmentcolor.org/shaders/, which is the same files).
+      try { fc.Shader.setRegistry('/shaders/'); } catch {}
+
+      // 3) Renderer + canvas target.
+      this.#renderer = new fc.Renderer();
+      this.#applySize(); // size the canvas before creating the target
+      this.#target = await this.#renderer.createTarget(this.#canvas);
+      this.#target.resize([this.#canvas.width, this.#canvas.height]);
+
+      // 4) Load the tutorial module via Vite's pre-registered loaders.
+      const key = this.dataset.moduleKey;
+      const loader = tutorialModules[key];
+      if (!loader) {
+        throw new Error(`No bundled module for "${key}". Known: ${Object.keys(tutorialModules).join(', ')}`);
+      }
+      const example = await loader();
+      if (typeof example.setup !== 'function' || typeof example.frame !== 'function') {
+        throw new Error('example.js must export `setup` and `frame` functions');
+      }
+
+      // 5) Build initial state.
+      this.#state = await example.setup(this.#renderer, this.#target);
+      this.#frame = example.frame;
+
+      // 6) Resize observer keeps the canvas in sync with layout changes.
+      this.#ro = new ResizeObserver(() => this.#applySize());
+      this.#ro.observe(this.#canvas);
+      window.addEventListener('resize', () => this.#applySize());
+
+      // 7) RAF loop.
+      const loop = (now) => {
+        if (this.#stopped) return;
+        this.#raf = requestAnimationFrame(loop);
+        try {
+          const t = (now - this.#start) / 1000.0;
+          const size = [this.#canvas.width, this.#canvas.height];
+          this.#frame(this.#state, this.#renderer, this.#target, t, size);
+        } catch (e) {
+          console.error('[Demo] frame failed (stopping loop)', e);
+          this.#stopped = true;
+          cancelAnimationFrame(this.#raf);
+          this.#showError(`frame: ${e?.message || e}`);
+        }
+      };
+      this.#raf = requestAnimationFrame(loop);
+    }
+
+    #applySize() {
+      try {
+        if (!this.#canvas) return;
+        const dpr = Math.max(1, window.devicePixelRatio || 1);
+        const w = Math.max(1, Math.floor(this.#canvas.clientWidth * dpr));
+        const h = Math.max(1, Math.floor(this.#canvas.clientHeight * dpr));
+        if (this.#canvas.width !== w || this.#canvas.height !== h) {
+          this.#canvas.width = w;
+          this.#canvas.height = h;
+        }
+        if (this.#target) {
+          try { this.#target.resize([w, h]); } catch {}
+        }
+      } catch {}
+    }
+
+    #showError(msg) {
+      const div = this.#shadow.querySelector('.err');
+      if (!div) return;
+      div.textContent = msg;
+      div.classList.add('visible');
+    }
+  }
+  customElements.define('tutorial-demo', TutorialDemo);
+}
+</script>

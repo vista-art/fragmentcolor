@@ -1,18 +1,18 @@
-# Shader::new(source: string)
+# Shader::new(input: string | string[])
 
-Creates a new [Shader](https://fragmentcolor.org/api/core/shader) instance from the given WGSL source string, file path, or URL.
+Creates a new [Shader](https://fragmentcolor.org/api/core/shader) from one of:
 
-GLSL is also supported if you enable the `glsl` feature.
-Shadertoy-flavored GLSL is supported if the `shadertoy` feature is enabled.
+- a raw WGSL source string,
+- a registry **slug** like `"sdf2d/circle"` (resolved against [Shader::set_registry](https://fragmentcolor.org/api/core/shader#shaderset_registry)),
+- a `https://` URL pointing at a `.wgsl` file,
+- a local file path ending in `.wgsl`, `.glsl`, `.frag`, or `.vert`,
+- or **an array** mixing any of the above. Parts are resolved (fetched, read, looked up), deduplicated by source hash, and concatenated in order before validation.
 
-If the optional features are enabled, the constructor will try to automatically
-detect the shader type and parse it accordingly.
+If validation fails, the error message indicates the location of the error. If validation passes, the shader is guaranteed to work on the GPU. All uniforms are initialized to their default zero values.
 
-If an exception occurs during parsing, the error message will indicate the location of the error.
+GLSL is supported only as a single part (`.vert` / `.frag` / `.glsl` path). Mixing GLSL with other parts is rejected.
 
-If the initial source validation passes, the shader is guaranteed to work on the GPU. All uniforms are initialized to their default zero values.
-
-## Example
+## Example - Single Shader Source
 
 ```rust
 # fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -44,6 +44,40 @@ let shader = Shader::new(r#"
 # }
 ```
 
+## Example - Shader Composition
+
+The public registry at `https://fragmentcolor.org/shaders/` exposes pure helper
+functions you can pull into your own shader. Pass them alongside your main
+source as an array; they are concatenated in order and treated as a single
+WGSL module.
+
+```rust,ignore
+use fragmentcolor::Shader;
+
+let main = r#"
+    @vertex fn vs(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+        let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.));
+        return vec4<f32>(p[i], 0.0, 1.0);
+    }
+
+    @fragment fn fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
+        let d = circle(pos.xy - vec2<f32>(400.0, 300.0), 100.0);
+        let n = simplex2(pos.xy * 0.01);
+        return vec4<f32>(vec3<f32>(step(0.0, d) + n * 0.1), 1.0);
+    }
+"#;
+
+let shader = Shader::new([
+    "sdf2d/circle",      // pure function: fn circle(p: vec2<f32>, r: f32) -> f32
+    "noise/simplex2",    // pure function: fn simplex2(v: vec2<f32>) -> f32
+    main,
+])?;
+# Ok::<(), Box<dyn std::error::Error>>(())
+```
+
 ## Platform-specific: Web
 
-In WASM, the constructor cannot fetch a URL directly. Use [Shader](https://fragmentcolor.org/api/core/shader)::[fetch](https://fragmentcolor.org/api/core/shader) instead.
+In WASM the constructor cannot perform network requests. Pass an array of
+**raw source strings** to `new Shader([...])`, or use the async
+[Shader::fetch](https://fragmentcolor.org/api/core/shader#shaderfetch) builder
+to resolve URLs and slugs.

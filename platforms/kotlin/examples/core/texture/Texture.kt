@@ -1,0 +1,21 @@
+
+import org.fragmentcolor.*
+val renderer = Renderer()
+val shader = Shader("""
+@group(0) @binding(0) var my_texture: texture_2d<f32>
+@group(0) @binding(1) var my_sampler: sampler
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.))
+  return vec4f(p[i], 0., 1.)
+}
+@fragment fn main() -> @location(0) vec4<f32> { return vec4f(1.,1.,1.,1.); }
+
+""")
+
+// 1x1 white pixel. Passing a size tells create_texture to read the bytes
+// as raw pixels; the default format is Rgba (sRGB-aware).
+val pixels = listOf(255.0f, 255.0f, 255.0f, 255.0f)
+val texture = renderer.createTexture(TextureInputMobile.Bytes(pixels.let { ba -> ByteArray(ba.size) { i -> ba[i].toInt().and(0xFF).toByte() } }), null)
+
+// Bind the texture to the uniform name declared in WGSL.
+shader.set("my_texture", texture)

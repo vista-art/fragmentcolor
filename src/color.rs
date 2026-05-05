@@ -7,7 +7,7 @@ pub mod error;
 
 /// Can be specified as 0xRRGGBBAA
 #[cfg_attr(wasm, wasm_bindgen)]
-#[cfg_attr(python, pyo3::pyclass)]
+#[cfg_attr(python, pyo3::pyclass(from_py_object))]
 #[derive(Clone, Copy, Debug, Default, Hash, PartialEq, PartialOrd)]
 pub struct Color(pub u32);
 

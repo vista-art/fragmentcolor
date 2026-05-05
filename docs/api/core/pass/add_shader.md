@@ -1,6 +1,9 @@
 # Pass::add_shader(shader: Shader)
 
-Adds a [Shader](https://fragmentcolor.org/api/core/shader) object to the [Pass](https://fragmentcolor.org/api/core/pass).
+Add a [Shader](https://fragmentcolor.org/api/core/shader) to the
+[Pass](https://fragmentcolor.org/api/core/pass). Shaders run in the order
+they were added, sharing the pass's targets, viewport, clear color, and
+load policy.
 
 ## Example
 

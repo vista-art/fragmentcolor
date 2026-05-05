@@ -1,6 +1,8 @@
 # Vertex::new
 
-Construct a Vertex from a position (2D or 3D).
+Construct a `Vertex` from a 2D or 3D position. Set additional attributes
+(`uv`, `color`, custom keys) with `set` to match the per-vertex inputs
+your shader declares.
 
 ## Example
 

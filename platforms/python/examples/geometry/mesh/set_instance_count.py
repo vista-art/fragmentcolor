@@ -5,5 +5,5 @@ m.add_vertices([
     [ 0.01, -0.01],
     [ 0.00,  0.01],
 ])
-# draw one million instances
+# Draw one million instances, fetching per-particle data from a storage buffer.
 m.set_instance_count(1_000_000)

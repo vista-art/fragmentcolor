@@ -10,8 +10,9 @@ use pyo3::prelude::*;
 use wasm_bindgen::prelude::*;
 
 #[derive(Clone, Debug)]
-#[cfg_attr(python, pyclass)]
+#[cfg_attr(python, pyclass(from_py_object))]
 #[cfg_attr(wasm, wasm_bindgen)]
+#[cfg_attr(mobile, derive(uniffi::Object))]
 #[lsp_doc("docs/api/geometry/quad/quad.md")]
 pub struct Quad {
     object: Arc<MeshObject>,
@@ -123,7 +124,7 @@ mod tests {
         assert_eq!(uv(5), Some([0.0, 1.0]));
 
         // Location map: position at 0, uv at 1
-        let (pos_loc, rev) = mesh.object.first_vertex_location_map();
+        let (pos_loc, rev) = mesh.object.vertex_location_map();
         assert_eq!(pos_loc, 0);
         assert_eq!(rev.get(&1).map(|s| s.as_str()), Some("uv"));
     }

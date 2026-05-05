@@ -1,9 +1,9 @@
 [package]
 name = "fragmentcolor"
-version = "0.10.11"
+version = "0.11.0"
 homepage = "https://fragmentcolor.org"
 repository = "https://github.com/vista-art/fragmentcolor"
-description = "Easy GPU Rendering for Javascript, Python, Swift and Kotlin"
+description = "Universal GPU abstraction for Javascript, Python, Swift and Kotlin"
 authors = ["Vista Tech & Art GmbH"]
 readme = "README.md"
 license = "MIT"
@@ -15,6 +15,12 @@ edition = "2024"
 name = "fragmentcolor"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+# uniffi-bindgen CLI entry point. Built when the crate is compiled for a desktop
+# host so mobile build scripts can run `cargo run --bin uniffi-bindgen generate ...`.
+[[bin]]
+name = "uniffi-bindgen"
+path = "uniffi_bindgen.rs"
+
 [workspace]
 resolver = "3"
 members = ["examples/rust"]
@@ -23,9 +29,77 @@ members = ["examples/rust"]
 python = ["pyo3", "numpy", "pollster"]
 winit = ["dep:winit", "pollster"]
 
+# ---------------------------------------------------------------------------
+# Embedded shader registry — opt in to bake registry shaders into the binary
+# ---------------------------------------------------------------------------
+# Themed per-category, like web-sys's per-type features. Each `shaders-<cat>`
+# embeds every `.wgsl` under `docs/website/public/shaders/<cat>/` so slugs
+# like `postfx/vignette` resolve synchronously and offline (no URL fetch,
+# no async dance, no live network at startup). Slugs whose category isn't
+# enabled fall back to the URL-fetch path.
+shaders-camera   = []
+shaders-color    = []
+shaders-dither   = []
+shaders-easing   = []
+shaders-encode   = []
+shaders-geom     = []
+shaders-gradient = []
+shaders-hash     = []
+shaders-intersect = []
+shaders-lighting = []
+shaders-map      = []
+shaders-math     = []
+shaders-noise    = []
+shaders-pattern  = []
+shaders-postfx   = []
+shaders-raymarch = []
+shaders-sample   = []
+shaders-sdf      = []
+shaders-sdf2d    = []
+
+# Convenience umbrellas. Pick a vibe; pull the categories it implies.
+shaders-2d = [
+    "shaders-color",
+    "shaders-gradient",
+    "shaders-noise",
+    "shaders-pattern",
+    "shaders-postfx",
+    "shaders-sdf2d",
+]
+shaders-3d = [
+    "shaders-camera",
+    "shaders-color",
+    "shaders-lighting",
+    "shaders-noise",
+    "shaders-raymarch",
+    "shaders-sample",
+    "shaders-sdf",
+]
+shaders-all = [
+    "shaders-camera",
+    "shaders-color",
+    "shaders-dither",
+    "shaders-easing",
+    "shaders-encode",
+    "shaders-geom",
+    "shaders-gradient",
+    "shaders-hash",
+    "shaders-intersect",
+    "shaders-lighting",
+    "shaders-map",
+    "shaders-math",
+    "shaders-noise",
+    "shaders-pattern",
+    "shaders-postfx",
+    "shaders-raymarch",
+    "shaders-sample",
+    "shaders-sdf",
+    "shaders-sdf2d",
+]
+
 [dependencies]
-wgpu = { version = "27", features = ["glsl", "wgsl", "webgl", "naga-ir"] }
-naga = { version = "27", features = ["wgsl-in", "glsl-in"] }
+wgpu = { version = "29", features = ["glsl", "wgsl", "webgl", "naga-ir"] }
+naga = { version = "29", features = ["wgsl-in", "glsl-in"] }
 parking_lot = "0.12"
 derive-new = "0.7"
 thiserror = "2.0"
@@ -33,12 +107,12 @@ bytemuck = "1.0"
 futures = "0.3"
 lsp_doc = "0.2"
 dashmap = "6.1"
-glam = "0.30"
-sha2 = "0.10"
+glam = "0.32"
+sha2 = "0.11"
 log = "0.4"
 
 # Serialization
-csscolorparser = { version = "0.7", default-features = false, features = [
+csscolorparser = { version = "0.8", default-features = false, features = [
     "named-colors",
 ] }
 
@@ -49,32 +123,56 @@ image = { version = "0.25", default-features = false, features = [
     "bmp",
     "hdr",
 ] }
+ktx2 = "0.5"
 
 # Python FFI (optional)
-pyo3 = { version = "0.26", features = [
+pyo3 = { version = "0.28", features = [
     "abi3-py39",
     "experimental-async",
     "generate-import-lib",
 ], optional = true }
-numpy = { version = "0.26", optional = true }
+numpy = { version = "0.28", optional = true }
 
 # MacOS
 [target.'cfg(target_os = "macos")'.dependencies]
-objc2 = { version = "0.6" }
 objc2-app-kit = { version = "0.3" }
 
-# Android & iOS FFI
+# Apple (MacOS + iOS)
+[target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
+objc2 = { version = "0.6" }
+
+# Android & iOS FFI (uniffi lives here so it's available on every non-wasm target,
+# including desktop so that `cargo run --bin uniffi-bindgen` works locally)
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-# uniffi = { version = "0.29" } // planned for v0.10.8
+uniffi = { version = "0.31", features = ["cli"] }
 winit = { version = "0.30", features = ["serde"], optional = true }
+# `Shader::fetch` runs HTTP via ureq on every non-wasm target. TLS support is
+# enabled only on desktop OSes — mobile cross-compiles need the NDK clang
+# toolchain to build ring (rustls's crypto provider), which `./check` and
+# many local dev setups don't have. Mobile callers fetching `https://` URLs
+# get a "TLS required" error; bundle shaders via `Shader::new(include_str!)`
+# or load via the registry slug instead.
 ureq = { version = "3", default-features = false }
 pollster = { version = "0.4", optional = true }
 
-# iOS Specific (planned for v0.10.8)
-# [target.'cfg(target_os = "ios")'.dependencies]
-# objc = "0.2"
-# objc2-app-kit = "0.3"
-# core-graphics = "0.25"
+# Desktop-only: enable ureq's TLS so HTTPS fetches work in the python wheel,
+# the rust crate on linux/macos/windows, and any tooling/CLIs we ship there.
+# Cargo unions feature flags from all matching target sections, so this
+# layers `rustls` on top of the no-default-features base above.
+[target.'cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))'.dependencies]
+ureq = { version = "3", default-features = false, features = ["rustls"] }
+
+# Mobile (iOS + Android) always needs pollster for blocking on adapter/device
+# creation inside sync FFI entry points (uniffi can't marshal non-Send futures).
+[target.'cfg(any(target_os = "ios", target_os = "android"))'.dependencies]
+pollster = "0.4"
+
+# Android Specific
+[target.'cfg(target_os = "android")'.dependencies]
+jni = "0.22"
+jni_fn = "0.1"
+ndk-sys = "0.6"
+raw-window-handle = "0.6"
 
 # WASM-Specific
 [target.'cfg(target_family = "wasm")'.dependencies]
@@ -86,7 +184,7 @@ wasm-bindgen = "0.2"
 console_log = "1"
 lsp_doc = "0.2"
 js-sys = "0.3"
-gloo-utils = { version = "0.2", features = ["serde"] }
+gloo-utils = { version = "0.3", features = ["serde"] }
 web-sys = { version = "0.3", features = [
     'OffscreenCanvasRenderingContext2d',
     'CanvasRenderingContext2d',
@@ -113,6 +211,7 @@ syn = { version = "2.0", features = ["full"] }
 phf_codegen = "0.13"
 cfg_aliases = "0.2"
 quote = "1"
+uniffi = { version = "0.31", features = ["build"] }
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3"

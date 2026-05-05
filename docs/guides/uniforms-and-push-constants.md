@@ -24,7 +24,7 @@ struct U { offset: vec2<f32> };
 @group(0) @binding(0) var<uniform> u: U;
 
 struct PC { color: vec4<f32> };
-var<push_constant> pc: PC;
+var<immediate> pc: PC;
 
 @vertex
 fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
@@ -53,7 +53,7 @@ let pass = Pass::from_shader("params", &shader);
 renderer.render(&pass, &target)?;
 
 // 4) Quick check
-let image = target.get_image();
+let image = target.get_image().await;
 assert_eq!(image.len(), 64 * 64 * 4);
 # Ok(())
 # }

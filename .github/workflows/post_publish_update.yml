@@ -29,19 +29,49 @@ jobs:
           VERSION="${RAW#v}"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Wait for registries (npm & PyPI)
+      - name: Wait for registries (npm, PyPI, GitHub Release xcframework)
         env:
           VERSION: ${{ steps.vars.outputs.version }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          echo "Waiting for npm fragmentcolor@$VERSION and PyPI fragmentcolor==$VERSION to become available..."
+          echo "Waiting for npm, PyPI and the xcframework release asset to be available..."
           for i in $(seq 1 60); do
-            NPM_OK=0; PYPI_OK=0
+            NPM_OK=0; PYPI_OK=0; XCF_OK=0
             if npm view "fragmentcolor@$VERSION" version >/dev/null 2>&1; then NPM_OK=1; fi
             if curl -sSf "https://pypi.org/pypi/fragmentcolor/$VERSION/json" >/dev/null 2>&1; then PYPI_OK=1; fi
-            if [ "$NPM_OK" = "1" ] && [ "$PYPI_OK" = "1" ]; then echo "OK"; break; fi
-            echo "Not available yet, retrying in 10s... ($i/60)"; sleep 10
+            if gh release view "v$VERSION" --json assets -q '.assets[].name' 2>/dev/null | grep -q "FragmentColorFFI.xcframework.zip"; then XCF_OK=1; fi
+            if [ "$NPM_OK" = "1" ] && [ "$PYPI_OK" = "1" ] && [ "$XCF_OK" = "1" ]; then echo "OK"; break; fi
+            echo "Not available yet (npm=$NPM_OK pypi=$PYPI_OK xcf=$XCF_OK), retrying in 10s... ($i/60)"; sleep 10
           done
+
+      - name: Pin Swift Package.swift to the released xcframework
+        id: swift_pin
+        env:
+          VERSION: ${{ steps.vars.outputs.version }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # Download the xcframework asset, compute its SPM checksum, and
+          # write it into Package.swift so consumers pulling the tag see
+          # a matching URL + checksum pair.
+          mkdir -p .release-tmp
+          gh release download "v$VERSION" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --pattern "FragmentColorFFI.xcframework.zip" \
+            --dir .release-tmp \
+            --clobber
+          # Use sha256 directly; `swift package compute-checksum` isn't
+          # available on ubuntu-latest, but it produces the same hex
+          # digest as a plain sha256sum over the zip bytes.
+          CHECKSUM=$(sha256sum .release-tmp/FragmentColorFFI.xcframework.zip | awk '{print $1}')
+          echo "checksum=$CHECKSUM" >> "$GITHUB_OUTPUT"
+          # Update both version and checksum literals in Package.swift.
+          if [ -f Package.swift ]; then
+            sed -i "s/^let fragmentcolorVersion = \".*\"$/let fragmentcolorVersion = \"${VERSION}\"/" Package.swift
+            sed -i "s/^let fragmentcolorChecksum = \".*\"$/let fragmentcolorChecksum = \"${CHECKSUM}\"/" Package.swift
+          fi
+          rm -rf .release-tmp
 
       - name: Compute next range and bump dependencies
         id: bump
@@ -105,6 +135,7 @@ jobs:
             - docs/website package.json: fragmentcolor ${{ steps.bump.outputs.range }}
             - examples/javascript package.json: fragmentcolor ${{ steps.bump.outputs.range }}
             - VersionBadge.astro updated
+            - Package.swift pinned to xcframework checksum ${{ steps.swift_pin.outputs.checksum }}
           branch: "chore/bump-consumers-v${{ steps.vars.outputs.version }}"
           labels: chore
           signoff: false
@@ -114,3 +145,4 @@ jobs:
             docs/website/src/components/VersionBadge.astro
             examples/javascript/package.json
             examples/javascript/pnpm-lock.yaml
+            Package.swift

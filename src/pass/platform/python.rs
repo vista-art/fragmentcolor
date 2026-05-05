@@ -9,6 +9,7 @@ use std::sync::Arc;
 #[pymethods]
 impl Pass {
     #[new]
+    #[lsp_doc("docs/api/core/pass/new.md")]
     pub fn new_py(name: &str) -> Self {
         Self {
             object: Arc::new(PassObject::new(name, PassType::Render)),
@@ -17,6 +18,7 @@ impl Pass {
 
     #[staticmethod]
     #[pyo3(name = "compute")]
+    #[lsp_doc("docs/api/core/pass/compute.md")]
     pub fn compute_py(name: &str) -> Self {
         Self {
             object: Arc::new(PassObject::new(name, PassType::Compute)),
@@ -25,53 +27,53 @@ impl Pass {
 
     #[staticmethod]
     #[pyo3(name = "from_shader")]
+    #[lsp_doc("docs/api/core/pass/from_shader.md")]
     pub fn from_shader_py(name: &str, shader: &Shader) -> Self {
         Self {
-            object: Arc::new(PassObject::from_shader_object(name, shader.object.clone())),
+            object: Arc::new(PassObject::from_shader(name, shader.object.clone())),
         }
     }
 
+    // Internal duck-typed interface used by PyRenderable dispatch — not part of public docs.
+    #[doc(hidden)]
     #[pyo3(name = "passes")]
     pub fn passes_py(&self) -> crate::PyPassIterator {
         crate::PyPassIterator(vec![self.object.clone()])
     }
 
     #[pyo3(name = "load_previous")]
+    #[lsp_doc("docs/api/core/pass/load_previous.md")]
     pub fn load_previous_py(&self) {
         *self.object.input.write() = PassInput::load();
     }
 
     #[pyo3(name = "get_input")]
+    #[lsp_doc("docs/api/core/pass/get_input.md")]
     pub fn get_input_py(&self) -> PassInput {
         self.object.get_input()
     }
 
     #[pyo3(name = "add_shader")]
+    #[lsp_doc("docs/api/core/pass/add_shader.md")]
     pub fn add_shader_py(&self, shader: &Shader) {
-        self.object.add_shader(shader);
+        self.object.add_shader(shader.object.clone());
     }
 
     #[pyo3(name = "add_mesh")]
+    #[lsp_doc("docs/api/core/pass/add_mesh.md")]
     pub fn add_mesh_py(&self, mesh: &crate::mesh::Mesh) -> Result<(), PyErr> {
         self.add_mesh(mesh).map_err(|e| e.into())
     }
 
-    #[pyo3(name = "add_mesh_to_shader")]
-    pub fn add_mesh_to_shader_py(
-        &self,
-        mesh: &crate::mesh::Mesh,
-        shader: &crate::Shader,
-    ) -> Result<(), PyErr> {
-        self.add_mesh_to_shader(mesh, shader).map_err(|e| e.into())
-    }
-
     #[pyo3(name = "set_clear_color")]
+    #[lsp_doc("docs/api/core/pass/set_clear_color.md")]
     pub fn set_clear_color_py(&self, color: [f32; 4]) {
         self.object.set_clear_color(color);
     }
 
     #[pyo3(name = "set_viewport")]
-    pub fn set_viewport_py(&self, viewport: crate::Region) {
+    #[lsp_doc("docs/api/core/pass/set_viewport.md")]
+    pub fn set_viewport_py(&self, viewport: crate::ScreenRegion) {
         self.object.set_viewport(viewport);
     }
 
@@ -86,12 +88,12 @@ impl Pass {
     pub fn add_target_py(&self, target: Py<PyAny>) -> Result<(), PyErr> {
         Python::attach(|py| -> Result<(), PyErr> {
             // Try TextureTarget wrapper first
-            if let Ok(bound) = target.bind(py).downcast::<crate::target::PyTextureTarget>() {
+            if let Ok(bound) = target.bind(py).cast::<crate::target::PyTextureTarget>() {
                 let tt = bound.borrow();
                 return self.add_target(&tt.inner).map_err(|e| e.into());
             }
             // Try Texture handle
-            if let Ok(tex) = target.bind(py).downcast::<crate::texture::Texture>() {
+            if let Ok(tex) = target.bind(py).cast::<crate::texture::Texture>() {
                 let t = tex.borrow();
                 return self.add_target(&*t).map_err(|e| e.into());
             }
@@ -106,12 +108,12 @@ impl Pass {
     pub fn add_depth_target_py(&self, target: Py<PyAny>) -> Result<(), PyErr> {
         Python::attach(|py| -> Result<(), PyErr> {
             // Depth textures are Texture handles
-            if let Ok(tex) = target.bind(py).downcast::<crate::texture::Texture>() {
+            if let Ok(tex) = target.bind(py).cast::<crate::texture::Texture>() {
                 let t = tex.borrow();
                 return self.add_depth_target(&*t).map_err(|e| e.into());
             }
             // Or a TextureTarget (if provided)
-            if let Ok(bound) = target.bind(py).downcast::<crate::target::PyTextureTarget>() {
+            if let Ok(bound) = target.bind(py).cast::<crate::target::PyTextureTarget>() {
                 let tt = bound.borrow();
                 return self.add_depth_target(&tt.inner).map_err(|e| e.into());
             }
@@ -137,6 +139,8 @@ impl Pass {
         })
     }
 
+    // Internal duck-typed interface used by PyRenderable dispatch — not part of public docs.
+    #[doc(hidden)]
     pub fn renderable_type(&self) -> &'static str {
         "Pass"
     }

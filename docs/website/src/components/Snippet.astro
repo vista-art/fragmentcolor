@@ -1,0 +1,67 @@
+---
+// <Snippet file="01-hello-triangle/04-postfx-pass/example.rs" region="setup" />
+//
+// Renders 5-language code tabs for a slice of a tutorial example. The `file`
+// prop is the path of the example.rs relative to docs/tutorials/. If `region`
+// is omitted the tab shows the full file. Region content is sliced from the
+// canonical Rust source; JS comes from the hand-written example.js companion;
+// Py / Swift / Kotlin are line-level transpilations.
+
+import { Code, Tabs, TabItem } from "@astrojs/starlight/components";
+import { tutorials, type LangSlice } from "../generated/tutorials";
+
+interface Props {
+  file: string;
+  region?: string;
+}
+
+const { file, region } = Astro.props;
+
+const entry = tutorials[file];
+if (!entry) {
+  throw new Error(
+    `<Snippet>: no tutorial entry for "${file}". Available: ${Object.keys(tutorials).join(", ")}`
+  );
+}
+
+let slice: LangSlice;
+if (region) {
+  const r = entry.regions[region];
+  if (!r) {
+    throw new Error(
+      `<Snippet>: no region "${region}" in "${file}". Available: ${Object.keys(entry.regions).join(", ")}`
+    );
+  }
+  slice = r;
+} else {
+  slice = entry.full;
+}
+---
+
+<Tabs syncKey="lang">
+  {slice.rust && (
+    <TabItem label="Rust">
+      <Code code={slice.rust} lang="rust" />
+    </TabItem>
+  )}
+  {slice.js && (
+    <TabItem label="JavaScript">
+      <Code code={slice.js} lang="javascript" />
+    </TabItem>
+  )}
+  {slice.py && (
+    <TabItem label="Python">
+      <Code code={slice.py} lang="python" />
+    </TabItem>
+  )}
+  {slice.swift && (
+    <TabItem label="Swift">
+      <Code code={slice.swift} lang="swift" />
+    </TabItem>
+  )}
+  {slice.kotlin && (
+    <TabItem label="Kotlin">
+      <Code code={slice.kotlin} lang="kotlin" />
+    </TabItem>
+  )}
+</Tabs>

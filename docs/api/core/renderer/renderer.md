@@ -4,9 +4,8 @@ The [Renderer](https://fragmentcolor.org/api/core/renderer) is the main entry po
 [FragmentColor](https://fragmentcolor.org) and normally the first object you create.
 
 It is used to render
-[Shaders](https://fragmentcolor.org/api/core/shader),
-[Passes](https://fragmentcolor.org/api/core/pass), and
-[Frames](https://fragmentcolor.org/api/core/frame)
+[Shaders](https://fragmentcolor.org/api/core/shader) and
+[Passes](https://fragmentcolor.org/api/core/pass) (single passes or any iterable of them)
 to a [Target](https://fragmentcolor.org/api/core/target) (canvas, window, or texture).
 
 The [Renderer](https://fragmentcolor.org/api/core/renderer) internals are lazily initialized

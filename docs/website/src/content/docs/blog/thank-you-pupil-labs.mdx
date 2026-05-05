@@ -1,0 +1,19 @@
+---
+title: "Where it all started"
+excerpt: "The codebase that became FragmentColor was first written inside Pupil Labs and released to the public under the MIT license. A short note on the seed of the design idea that came out of it."
+authors: ["rafaelbeckel"]
+date: 2023-09-15
+tags: ["history"]
+---
+
+[FragmentColor](https://fragmentcolor.org) was first written inside [Pupil Labs](https://pupil-labs.com), an eye-tracking company from Berlin.
+
+It was originally called **PLRender**, an attempt at an in-house engine for bridging the gap between JavaScript and Python, and my early attempts at building with [wgpu](https://wgpu.rs),  which was at version `0.17` at the time.
+
+PLRender's initial exploratory design was driven by a "we'll need everything eventually" motivation: it had a scene graph, an ECS, reflection-based components, a few rendering primitives, collision detection, and (added later as an afterthought) a generic `Shader` object that could take arbitrary GLSL input.
+
+The `Shader` object turned out to be the only piece we actually needed. That observation is what eventually became the [v0.10.0](http://localhost:4321/blog/first/) version: a full hard-reset rewrite that removed EVERYTHING from the library but the `Shader` object.
+
+I'm grateful to Pupil Labs for generously releasing the code under the MIT license, and, in particular, Moritz, who asked the right question at the right time.
+
+— Rafael

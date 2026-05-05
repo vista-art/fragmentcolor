@@ -1,10 +1,21 @@
-# Renderer.create_target_android
+# Renderer.createTarget (Android)
 
-Platform-specific method for Android.
-Hidden from public website, available for IDE hover via lsp_doc.
+Android-specific constructor that wraps a pre-acquired `ANativeWindow` pointer into a
+`WindowTarget`. A Kotlin extension file re-exposes this as `Renderer.createTarget(surface)`
+so the public API reads the same as every other platform.
+
+The Kotlin side obtains the pointer via `android.view.Surface.acquireNativeHandle()` or
+by calling into the NDK directly, then passes it as `Long` / `ULong`.
+
+Exposed as synchronous because `ANativeWindow*` holds a raw pointer that cannot be held
+across `await` in a `Send` future.
 
 ## Example
 
-```rust
-// hidden file; no public example
+```kotlin
+// In RendererExtensions.kt:
+fun Renderer.createTarget(surface: Surface): WindowTarget {
+    val ptr = surface.acquireNativeHandle()
+    return createTarget(nativeWindowPtr = ptr.toULong())
+}
 ```

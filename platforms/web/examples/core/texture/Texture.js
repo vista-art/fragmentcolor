@@ -1,4 +1,3 @@
-
 import { Renderer, Shader } from "fragmentcolor";
 const renderer = new Renderer();
 const shader = new Shader(`
@@ -9,12 +8,12 @@ const shader = new Shader(`
   return vec4f(p[i], 0., 1.);
 }
 @fragment fn main() -> @location(0) vec4<f32> { return vec4f(1.,1.,1.,1.); }
-
 `);
 
-// 1x1 RGBA (white) raw pixel bytes
-const pixels = [255,255,255,255];
-const texture = await renderer.createTextureWithSize(pixels, [1,1]);
+// 1x1 RGBA (white) raw pixel bytes. With size set, createTexture skips
+// the image decoder and uploads the bytes directly as raw pixel data.
+const pixels = new Uint8Array([255, 255, 255, 255]);
+const texture = await renderer.createTexture(pixels, { size: [1, 1] });
 
-// insert  the texture in the shader matching the name in the shader
+// Insert the texture in the shader matching the name in the shader.
 shader.set("my_texture", texture);

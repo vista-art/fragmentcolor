@@ -1,0 +1,31 @@
+---
+title: "v0.10.8: non-blocking uniforms, structured errors, and a new gallery"
+excerpt: "Per-frame uniform updates from worker threads now run lock-free. Error variants get explicit shapes. The website ships a live shader gallery."
+authors: ["rafaelbeckel"]
+date: 2025-10-16
+tags: ["release", "rust", "webgpu", "javascript"]
+---
+
+v0.10.8 lands three focused improvements informed by real-world use of the library, plus a refreshed visual front for the website.
+
+### Non-blocking `shader.set()`
+
+Uniform updates queue a last-wins write that the renderer flushes right before binding, without taking a lock on the render thread. Per-frame updates from worker threads are now safe at the API level. Read methods still return `ShaderError::Busy` when another consumer holds the lock; writes always succeed.
+
+### Structured error variants
+
+`RendererError` now includes `MsaaViewMissing` and `DepthSampleCountMismatch`. `InitializationError` includes `AdapterNotSet`. Callers can match on these as enum variants and design recovery paths around them.
+
+### A live shader demo
+
+The homepage gets a `ShaderHero` component that runs an interactive shader at the top of the page. The component is the basis for a future gallery of works and serves as a continuous visual check of support across browsers.
+
+### Smaller things
+
+- WASM memory is pre-grown by 64 MiB at initialization, eliminating a class of mid-frame `memory.grow` stalls during the first few frames.
+- `Pass` infers its kind (render vs compute) from the first attached shader; the kind no longer has to be set explicitly.
+- The npm package ships branded JS prototypes, so `instanceof` checks survive minification. (Details in v0.10.9 below.)
+
+Full changelog: [GitHub v0.10.8](https://github.com/vista-art/fragmentcolor/releases/tag/v0.10.8).
+
+— Rafael

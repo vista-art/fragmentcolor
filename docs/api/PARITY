@@ -1,0 +1,75 @@
+# API parity waivers.
+#
+# The build-time audit (scripts/parity.rs, hooked into build.rs) requires every
+# documented method/object under docs/api/ to be reachable from every supported
+# platform — JS (wasm), Python, Swift, Kotlin. Entries listed here are
+# intentional, load-bearing exceptions; each must come with a written reason
+# so future maintainers can tell deliberate divergence from accidental drift.
+#
+# Format: one entry per non-comment line.
+#   <doc_path>:<platforms_present>:<reason>
+#
+#   - doc_path           workspace-relative path of the docs/api/*.md file
+#                        whose canonical signature does not exist on every
+#                        platform (e.g. docs/api/core/shader/fetch.md).
+#   - platforms_present  comma-separated subset of: web,python,swift,kotlin
+#   - reason             one-line explanation; colons are allowed.
+#
+# Lines starting with `#` are comments. Blank lines are ignored.
+
+# ---- Aliases (hidden override → canonical) ----
+#
+# These declare which canonical doc a hidden override credits when its
+# filename does not strip to the canonical via the simple `_<platform>`
+# suffix rule. Required when a single canonical method is split into
+# multiple uniffi-bound methods (e.g. uniffi cannot marshal `&impl Trait`,
+# so `Renderer::render` becomes one concrete method per (renderable × target)
+# combination).
+
+docs/api/core/renderer/hidden/render_mobile.md=>docs/api/core/renderer/render.md: uniffi cannot marshal &impl Renderable/Target; the single mobile render entry takes RenderableHandle + TargetHandle uniffi::Enums and Swift/Kotlin extensions overload the natural shapes back on top.
+
+# Shader::new accepts both `String` and `Vec<String>` via `impl Into<ShaderInput>`.
+# Uniffi cannot marshal `impl Into`, so mobile splits this into Shader.new(source)
+# and Shader.compose(parts). Both forms credit the canonical Shader::new docs.
+docs/api/core/shader/hidden/compose_mobile.md=>docs/api/core/shader/new.md: Mobile splits Shader::new's impl-Into-based overload into a separate Shader.compose constructor.
+
+# Shader::fetch is async; uniffi 0.31 does not support async constructors, so
+# both the single-part (fetch_mobile) and multi-part (fetch_compose_mobile)
+# bindings are expressed as async instance methods. Extension shims provide
+# static-factory spellings on Swift and Kotlin.
+docs/api/core/shader/hidden/fetch_mobile.md=>docs/api/core/shader/fetch.md: Mobile exposes fetch as an async instance method (uniffi 0.31 lacks async constructors); Swift/Kotlin shims wrap it as a static factory.
+docs/api/core/shader/hidden/fetch_compose_mobile.md=>docs/api/core/shader/fetch.md: Mobile multi-part fetch variant; same async-method workaround as fetch_mobile.
+
+# TextureTarget::texture() exists only on the web (wasm_bindgen) — native platforms
+# pass TextureTarget directly to renderer.render() and the binding is implicit.
+# The lsp_doc points at a hidden web-only doc; alias it to itself so the audit
+# credits the binding without requiring a canonical multi-platform entry.
+docs/api/targets/texture_target/hidden/texture_js.md=>docs/api/targets/texture_target/hidden/texture_js.md: Web-only; TextureTarget::texture() returns a Texture handle for use as a shader uniform. On native platforms the TextureTarget is passed directly to renderer.render() and the texture binding is implicit.
+
+# ---- Trait-level docs (no platform binding required) ----
+#
+# `Target` is a Rust trait; uniffi/wasm_bindgen/pyo3 cannot expose traits over
+# the FFI boundary. The trait's methods are conceptually available on every
+# concrete target type (WindowTarget, TextureTarget, RenderCanvasTarget,
+# CAMetalLayer-backed targets, etc.) — parity is enforced via the concrete
+# `targets/window_target/*.md` and `targets/texture_target/*.md` entries.
+# These trait docs are kept for human reference but do not require their own
+# bindings.
+docs/api/targets/target/size.md::Trait method; parity enforced via concrete WindowTarget/TextureTarget docs.
+docs/api/targets/target/resize.md::Trait method; parity enforced via concrete WindowTarget/TextureTarget docs.
+docs/api/targets/target/get_image.md::Trait method; parity enforced via concrete WindowTarget/TextureTarget docs.
+
+# ---- Hidden / not-yet-exposed conceptual docs ----
+#
+# `docs/api/web/external_texture.md` was moved to `docs/api/web/hidden/`
+# because every implementation is still a stub returning
+# RendererError::Error("not implemented yet"). See ROADMAP.md 0.11.1 entry —
+# at least one concrete working example (likely web's HTMLVideoElement path)
+# is required before the public-facing doc returns. Tracked across all
+# platforms in the 0.13.x "Live media" milestone.
+
+# Python has no portable native video-frame source equivalent to
+# HTMLVideoElement / CVPixelBuffer / SurfaceTexture. Callers decode video
+# frames host-side and upload via Texture.write() / Texture.write_region()
+# instead. See docs/api/core/renderer/hidden/create_external_texture_py.md.
+docs/api/core/renderer/create_external_texture.md:web,swift,kotlin:Python lacks a portable native video-frame source; use Texture.write/write_region to upload decoded frames instead.

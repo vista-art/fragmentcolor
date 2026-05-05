@@ -1,4 +1,4 @@
-from fragmentcolor import Renderer, Shader, Pass, Frame
+from fragmentcolor import Renderer, Shader, Pass
 
 
 def main():
@@ -69,10 +69,10 @@ fn main(pixel: VertexOutput) -> @location(0) vec4<f32> {
     rpass.add_shader(shader)
     renderer.render(rpass, target)
 
-    # Frame
-    frame = Frame()
-    frame.add_pass(rpass)
-    renderer.render(frame, target)
+    # Multiple passes in order: any sequence of Pass objects is renderable.
+    rpass2 = Pass("second pass")
+    rpass2.add_shader(shader)
+    renderer.render([rpass, rpass2], target)
 
     print("Headless Python render completed successfully")
 

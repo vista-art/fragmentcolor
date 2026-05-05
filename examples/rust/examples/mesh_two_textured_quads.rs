@@ -41,7 +41,7 @@ fn fs_main(v: VOut) -> @location(0) vec4<f32> {
             0, 0, 255, 255,   255, 255, 255, 255,
         ];
         let tex = renderer
-            .create_texture_with_size(&pixels, [2u32, 2u32])
+            .create_texture((&pixels[..], [2u32, 2u32]))
             .await
             .expect("texture");
         shader.set("tex", &tex).expect("set tex");
@@ -50,15 +50,15 @@ fn fs_main(v: VOut) -> @location(0) vec4<f32> {
         let left: Mesh = Quad::new([-0.9, -0.5], [-0.1, 0.5]).into();
         let right: Mesh = Quad::new([0.1, -0.5], [0.9, 0.5]).into();
 
-        // Attach meshes to the shader in this pass
-        pass.add_mesh_to_shader(&left, &shader).expect("left ok");
-        pass.add_mesh_to_shader(&right, &shader).expect("right ok");
+        // Attach meshes to the shader in this pass via the Shader API.
+        shader.add_mesh(&left).expect("left ok");
+        shader.add_mesh(&right).expect("right ok");
 
         // Render
         renderer.render(&pass, &target).expect("render ok");
 
         // Optionally: read back image; here we just assert size
-        let image = target.get_image();
+        let image = target.get_image().await;
         assert_eq!(image.len(), 256 * 256 * 4);
     });
 }

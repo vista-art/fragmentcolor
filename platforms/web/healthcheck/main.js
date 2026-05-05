@@ -1,4 +1,4 @@
-import init, { Renderer, Shader, Pass, Frame, Mesh, Vertex, set_log_level } from "fragmentcolor";
+import init, { Renderer, Shader, Pass, Mesh, Vertex, Instance, set_log_level } from "fragmentcolor";
 
 // import { installInstrumentation } from './instrument.mjs';
 // Install JS-level instrumentation before running any examples or docs coverage.
@@ -36,19 +36,19 @@ await withModule('platforms.web.healthcheck.texture.inputs.smoke', async () => {
   const r = new Renderer();
 
   // 1) Plain Array (1x1 RGBA)
-  const texA = await r.createTextureWithSize([255,255,255,255], [1,1]);
+  const texA = await r.createTexture([255,255,255,255], { size: [1,1] });
   console.log('created from plain array 1x1');
 
   // 2) Uint8ClampedArray from ImageData
   const id = new ImageData(new Uint8ClampedArray([255,0,0,255]), 1, 1);
-  const texB = await r.createTextureWithSize(id.data, [1,1]);
+  const texB = await r.createTexture(id.data, { size: [1,1] });
   console.log('created from ImageData.data 1x1');
 
   // 3) HTMLCanvasElement
   const c = document.createElement('canvas'); c.width = 1; c.height = 1;
   const ctx = c.getContext('2d');
   if (ctx) { ctx.fillStyle = 'white'; ctx.fillRect(0,0,1,1); }
-  const texC = await r.createTextureWithSize(c, [1,1]);
+  const texC = await r.createTexture(c, { size: [1,1] });
   console.log('created from HTMLCanvasElement via data URL');
 
   // also via createTexture (encoded data URL)
@@ -60,7 +60,7 @@ await withModule('platforms.web.healthcheck.texture.inputs.smoke', async () => {
     const oc = new OffscreenCanvas(1,1);
     const oc2d = oc.getContext('2d');
     if (oc2d) { oc2d.fillStyle = 'white'; oc2d.fillRect(0,0,1,1); }
-    const texD = await r.createTextureWithSize(oc, [1,1]); // raw bytes path
+    const texD = await r.createTexture(oc, { size: [1,1] }); // raw bytes path
     console.log('created from OffscreenCanvas (raw bytes)');
 
     const blob = await oc.convertToBlob();
@@ -131,10 +131,10 @@ fn main(_v: VertexOutput) -> @location(0) vec4<f32> {
   renderer.render(rpass, target);
   renderer.render(rpass, textureTarget);
 
-  const frame = new Frame();
-  frame.addPass(rpass);
-  renderer.render(frame, target);
-  renderer.render(frame, textureTarget);
+  const rpass2 = new Pass("second pass");
+  rpass2.addShader(shader);
+  renderer.render([rpass, rpass2], target);
+  renderer.render([rpass, rpass2], textureTarget);
 
   const res = shader.get("resolution");
   console.log(res);
@@ -156,7 +156,7 @@ await withModule('platforms.web.healthcheck.texture.smoke', async () => {
       255,0,0,255,    0,255,0,255,
       0,0,255,255,    255,255,255,255,
     ]);
-    const tex = await renderer.createTextureWithSize(pixels, [2, 2]);
+    const tex = await renderer.createTexture(pixels, { size: [2, 2] });
     console.log('Created texture from raw RGBA bytes with explicit size');
     
     // Test setting texture on shader
@@ -218,6 +218,9 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
 });
 
 // Mesh smoke: two instances with offsets
+// Instance attributes share the location namespace with vertex attributes.
+// Vertex position occupies @location(0), so instance attribute "offset" must be at @location(1).
+// Use Vertex.set to allocate location 1 for "offset", then createInstance to copy that layout.
 await withModule('platforms.web.healthcheck.mesh.instances.smoke', async () => {
     const renderer = new Renderer();
     const target = await renderer.createTextureTarget([32, 32]);
@@ -233,31 +236,35 @@ fn vs_main(@location(0) pos: vec3<f32>, @location(1) offset: vec2<f32>) -> VOut 
 @fragment
 fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(0.,1.,0.,1.); }
 `);
-    const pass = new Pass('mesh-inst');
-    pass.addShader(shader);
     const mesh = new Mesh();
     mesh.addVertices([
       new Vertex([-0.5, -0.5, 0.0]),
       new Vertex([ 0.5, -0.5, 0.0]),
       new Vertex([ 0.0,  0.5, 0.0]),
     ]);
-    const instA = new Vertex([0.0, 0.0]).set('offset', [0.0, 0.0]).createInstance();
-    const instB = new Vertex([0.25, 0.0]).set('offset', [0.25, 0.0]).createInstance();
-    mesh.addInstances([instA, instB]);
-    pass.addMesh(mesh);
+    // Use a template vertex with the "offset" property at location 1 (position = location 0).
+    // createInstance() preserves the prop_locations so instance "offset" stays at location 1.
+    const template = new Vertex([0.0, 0.0, 0.0]).set("offset", [0.0, 0.0]);
+    mesh.addInstances([
+      template.createInstance().set("offset", [0.0, 0.0]),
+      template.createInstance().set("offset", [0.25, 0.0]),
+    ]);
+    shader.addMesh(mesh);
+    const pass = new Pass('mesh-inst');
+    pass.addShader(shader);
     renderer.render(pass, target);
     const img = await target.getImage();
     console.log('mesh.instances image bytes:', img?.length || 0);
 });
 
 // Signal success for Playwright harness if we reached this point
-// Push constants smoke: solid color via var<push_constant>
+// Push constants smoke: solid color via var<immediate>
 await withModule('platforms.web.healthcheck.push_constant.smoke', async () => {
     const renderer = new Renderer();
     const target = await renderer.createTextureTarget([8, 8]);
     const shader = new Shader(`
 struct PC { color: vec4<f32> };
-var<push_constant> pc: PC;
+var<immediate> pc: PC;
 @vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
   let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.));
   return vec4f(p[i], 0., 1.);

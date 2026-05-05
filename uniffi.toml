@@ -1,0 +1,8 @@
+[bindings.swift]
+module_name = "FragmentColor"
+
+[bindings.kotlin]
+package_name = "org.fragmentcolor"
+android = true
+android_cleaner = true
+generate_immutable_records = true

@@ -1,8 +1,6 @@
 #![cfg(wasm)]
 
-use crate::{
-    Color, Frame, Mesh, Pass, PassError, PassInput, Renderable, Shader, Texture, TextureTarget,
-};
+use crate::{Color, Mesh, Pass, PassError, PassInput, Renderable, Shader, Texture, TextureTarget};
 use js_sys::Array;
 use lsp_doc::lsp_doc;
 use wasm_bindgen::JsValue;
@@ -35,8 +33,6 @@ impl Pass {
             return self.require(&shader);
         } else if let Ok(pass) = Pass::try_from(dependencies) {
             return self.require(&pass);
-        } else if let Ok(frame) = Frame::try_from(dependencies) {
-            return self.require(&frame);
         } else if let Ok(mesh) = Mesh::try_from(dependencies) {
             return self.require(&mesh);
         } else if Array::is_array(dependencies) {
@@ -47,8 +43,6 @@ impl Pass {
                         Some(Box::new(shader) as Box<dyn Renderable>)
                     } else if let Ok(pass) = Pass::try_from(&v) {
                         Some(Box::new(pass) as Box<dyn Renderable>)
-                    } else if let Ok(frame) = Frame::try_from(&v) {
-                        Some(Box::new(frame) as Box<dyn Renderable>)
                     } else if let Ok(mesh) = Mesh::try_from(&v) {
                         Some(Box::new(mesh) as Box<dyn Renderable>)
                     } else {
@@ -78,23 +72,13 @@ impl Pass {
     #[wasm_bindgen(js_name = "addShader")]
     #[lsp_doc("docs/api/core/pass/add_shader.md")]
     pub fn add_shader_js(&self, shader: &Shader) {
-        self.object.add_shader(shader);
+        self.object.add_shader(shader.object.clone());
     }
 
     #[wasm_bindgen(js_name = "addMesh")]
     #[lsp_doc("docs/api/core/pass/add_mesh.md")]
     pub fn add_mesh_js(&self, mesh: &crate::mesh::Mesh) -> Result<(), JsError> {
         Ok(self.add_mesh(mesh)?)
-    }
-
-    #[wasm_bindgen(js_name = "addMeshToShader")]
-    #[lsp_doc("docs/api/core/pass/add_mesh_to_shader.md")]
-    pub fn add_mesh_to_shader_js(
-        &self,
-        mesh: &crate::mesh::Mesh,
-        shader: &Shader,
-    ) -> Result<(), JsError> {
-        Ok(self.add_mesh_to_shader(mesh, shader)?)
     }
 
     #[wasm_bindgen(js_name = "setClearColor")]
@@ -114,7 +98,7 @@ impl Pass {
     #[wasm_bindgen(js_name = "setViewport")]
     #[lsp_doc("docs/api/core/pass/set_viewport.md")]
     pub fn set_viewport_js(&self, region: &JsValue) -> Result<(), JsError> {
-        let r: crate::Region = region.try_into()?;
+        let r: crate::ScreenRegion = region.try_into()?;
         self.set_viewport(r);
         Ok(())
     }
@@ -151,7 +135,7 @@ impl Pass {
     }
 
     #[wasm_bindgen(js_name = "isCompute")]
-    #[lsp_doc("docs/api/core/shader/is_compute.md")]
+    #[lsp_doc("docs/api/core/pass/is_compute.md")]
     pub fn is_compute_js(&self) -> bool {
         self.is_compute()
     }

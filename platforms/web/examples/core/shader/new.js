@@ -1,4 +1,3 @@
-
 import { Shader } from "fragmentcolor";
 
 const shader = new Shader(`
@@ -19,5 +18,4 @@ const shader = new Shader(`
     fn fs_main() -> @location(0) vec4<f32> {
         return vec4<f32>(1.0, 0.0, 0.0, 1.0); // Red
     }
-
 `);

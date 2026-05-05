@@ -1,0 +1,708 @@
+---
+title: TextureMipChain
+description: "A pre-computed CPU mipmap chain ready to upload as a [Texture](/api/core/texture). Build one off the renderer thread (worker, thread pool, async task, Web Worker) so the GPU thread only has to do `queue.write_texture` calls."
+category: core
+categoryLabel: Core
+sidebar:
+  order: 4
+---
+
+import { Code, Tabs, TabItem, Aside } from "@astrojs/starlight/components";
+
+## Description
+
+A pre-computed CPU mipmap chain ready to upload as a [Texture](/api/core/texture). Build one off the renderer thread (worker, thread pool, async task, Web Worker) so the GPU thread only has to do `queue.write_texture` calls.
+
+Most callers never need to construct this directly: `Renderer::create_texture(bytes)` already runs decode and mipmap generation on a background worker on every native target. Reach for `TextureMipChain` when you want explicit control:
+
+- share one chain across many textures without rebuilding it,
+- bake mipmap generation into a decode pipeline that already runs on a worker,
+- drive prep on your own thread pool (rayon, Swift `Task`, Kotlin `Dispatchers.Default`, Python `ThreadPoolExecutor`, Web Worker).
+
+Build with `TextureMipChain::prepare(input)`; the input shapes match `Renderer::create_texture` and `Renderer::create_storage_texture`. Whether the bytes are decoded depends on `size`:
+
+- `prepare((bytes, format))` â encoded image bytes (PNG, JPEG, etc.); size is inferred from the decoded image.
+- `prepare((bytes, format, size))` â raw pixel bytes already laid out for `format` at `size`.
+
+In Swift, Kotlin, JS, and Python, the binding is `prepare(bytes, format, size?)` with `size` optional.
+
+Upload by passing the chain to `Renderer::create_texture(chain)`; cross-language users hand the chain handle directly to `createTexture`.
+
+Supported formats: `Rgba8Unorm`, `Rgba8UnormSrgb`, `Bgra8Unorm`, `Bgra8UnormSrgb`, `R8Unorm`, `Rg8Unorm`, `R16Unorm`, `Rg16Unorm`, `Rgba16Unorm`. Other formats return `TextureError::UnsupportedMipmapFormat`.
+
+
+
+## Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Renderer, TextureFormat, TextureMipChain};
+
+let renderer = Renderer::new();
+// Encoded image bytes the caller has on hand (could come off a worker).
+let png: &[u8] = &[
+    0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
+    // ... full PNG body ...
+// Hidden: build a real 1Ã1 PNG so the doctest doesn't need a fixture.
+];
+let img = image::DynamicImage::ImageRgba8(image::RgbaImage::from_vec(1, 1, vec![255, 0, 0, 255]).unwrap());
+let mut png_buf = Vec::new();
+img.write_to(&mut std::io::Cursor::new(&mut png_buf), image::ImageFormat::Png)?;
+let png = png_buf.as_slice();
+let chain = TextureMipChain::prepare((png, TextureFormat::Rgba8UnormSrgb))?;
+
+// Upload the chain through the regular create_texture entry point.
+let texture = renderer.create_texture(chain).await?;
+_ = texture.size();
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+`}
+lang="rust" meta="collapse={1-1, 9-9, 11-14, 19-22}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Renderer, TextureFormat, TextureMipChain } from "fragmentcolor";
+
+const renderer = new Renderer();
+// Real encoded PNG bytes: served by the healthcheck server so the example
+// runs end-to-end without packaging its own fixture.
+const pngResp = await fetch("/healthcheck/public/favicon.png");
+const pngBytes = new Uint8Array(await pngResp.arrayBuffer());
+const chain = TextureMipChain.prepare(pngBytes, TextureFormat.Rgba8UnormSrgb);
+
+// Upload the chain through the regular createTexture entry point.
+const texture = await renderer.createTexture(chain);
+const _ = texture.size();
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Renderer, TextureFormat, TextureMipChain
+
+renderer = Renderer()
+# Minimal 1x1 RGBA raw pixel bytes.
+pixels = [255, 0, 0, 255]
+chain = TextureMipChain.prepare(pixels, TextureFormat.Rgba8UnormSrgb, [1, 1])
+
+# Hand the chain to the unified create_texture entry.
+texture = renderer.create_texture(chain)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+import Foundation
+
+let renderer = Renderer()
+
+// Minimal 1Ã1 RGBA raw pixel bytes.
+let pixels = Data([255, 0, 0, 255])
+let chain = try TextureMipChain.prepare(
+    bytes: pixels,
+    format: .rgba8UnormSrgb,
+    size: Size(width: 1, height: 1, depth: nil)
+)
+
+// Hand the chain to the unified create_texture entry.
+let texture = try await renderer.createTexture(input: .prepared(chain))
+let _ = texture.size()
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val renderer = Renderer()
+// Encoded image bytes the caller has on hand (could come off a worker).
+val png = byteArrayOf(0x89.toByte(), 0x50.toByte(), 0x4E.toByte(), 0x47.toByte(), 0x0D.toByte(), 0x0A.toByte(), 0x1A.toByte(), 0x0A.toByte())
+val chain = TextureMipChain.prepare(png, TextureFormat.RGBA8_UNORM_SRGB, null)
+
+// Upload the chain through the regular create_texture entry point.
+val texture = renderer.createTexture(TextureInputMobile.Prepared(chain), null)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+## Methods
+
+
+---
+
+### TextureMipChain::prepare
+
+Build a mip chain off the renderer thread, then hand it to `Renderer::create_texture` for a GPU-only upload. The work is pure CPU; call it from any worker, thread pool, async task, or Web Worker.
+
+`prepare(input)` accepts the same shapes as `Renderer::create_texture` and `Renderer::create_storage_texture`. Whether the bytes are decoded depends on `size`:
+
+- **Encoded:** `size` absent. The bytes are decoded as PNG / JPEG / etc. and the chain inherits the image's dimensions. Use this when you have an encoded blob from disk, the network, or a decoder that emits encoded data.
+- **Raw:** `size` present. The bytes are treated as already laid out for `format` at `size`. Use this when your decoder already produced pixel-format-matching bytes (typical for tile-cache pipelines that bake mipmap generation into the same step).
+
+`prepare` runs synchronously and accepts only sync-friendly inputs: bytes, a `DynamicImage`, or a file path. URL inputs (which need async fetch), KTX2 inputs (already pre-baked), an existing chain, an existing texture, and empty inputs all return `TextureError::InvalidInput` with a message pointing at the right entry point.
+
+Supported formats: `Rgba8Unorm`, `Rgba8UnormSrgb`, `Bgra8Unorm`, `Bgra8UnormSrgb`, `R8Unorm`, `Rg8Unorm`, `R16Unorm`, `Rg16Unorm`, `Rgba16Unorm`. Other formats return `TextureError::UnsupportedMipmapFormat`. Decode failures surface as `MalformedImageError`; size and byte-count mismatches as `InvalidInput`.
+
+The cross-language bindings expose `prepare(bytes, format, size?)` with `size` optional. Swift and Kotlin add overloads so you call `TextureMipChain.prepare(bytes:format:)` for the encoded path and `TextureMipChain.prepare(bytes:format:size:)` for the raw path.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Renderer, TextureFormat, TextureMipChain};
+
+// Build a real 1Ã1 PNG so the doctest doesn't need a fixture.
+let img = image::DynamicImage::ImageRgba8(image::RgbaImage::from_vec(1, 1, vec![255, 0, 0, 255]).unwrap());
+let mut png_buf = Vec::new();
+img.write_to(&mut std::io::Cursor::new(&mut png_buf), image::ImageFormat::Png)?;
+let encoded_png_bytes = png_buf.as_slice();
+// Encoded path: pass bytes plus the format you expect.
+let chain = TextureMipChain::prepare((encoded_png_bytes, TextureFormat::Rgba8UnormSrgb))?;
+
+let raw_rgba = vec![200u8; 8 * 8 * 4];
+// Raw path: include the size so prepare skips decoding.
+let chain_raw = TextureMipChain::prepare((
+    raw_rgba.as_slice(),
+    TextureFormat::Rgba8UnormSrgb,
+    [8, 8],
+))?;
+
+// Upload the chain through the regular create_texture entry point.
+let renderer = Renderer::new();
+let texture = renderer.create_texture(chain).await?;
+_ = texture.size();
+_ = chain_raw.level_count();
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+`}
+lang="rust" meta="collapse={1-1, 4-8, 12-12, 23-27}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Renderer, TextureFormat, TextureMipChain } from "fragmentcolor";
+
+// Encoded path - prepare from PNG / JPEG bytes (size is inferred).
+// Use a fixture you have on hand. The favicon below is served by the
+// healthcheck server so the example runs end-to-end without the test
+// having to bring its own bytes.
+const pngResp = await fetch("/healthcheck/public/favicon.png");
+const pngBytes = new Uint8Array(await pngResp.arrayBuffer());
+const chain = TextureMipChain.prepare(pngBytes, TextureFormat.Rgba8UnormSrgb);
+
+// Raw pixel path: include the size so prepare skips decoding.
+const rawRgba = new Uint8Array(8 * 8 * 4);
+rawRgba.fill(200);
+const chainRaw = TextureMipChain.prepare(rawRgba, TextureFormat.Rgba8UnormSrgb, [8, 8]);
+
+// Upload the chain through the regular createTexture entry point.
+const renderer = new Renderer();
+const texture = await renderer.createTexture(chain);
+const _ = chainRaw.levelCount();
+const __ = texture.size();
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Renderer, TextureFormat, TextureMipChain
+
+# Raw pixel path -- positional args: prepare(bytes, format, size).
+raw_rgba = [200] * (8 * 8 * 4)
+chain = TextureMipChain.prepare(raw_rgba, TextureFormat.Rgba8UnormSrgb, [8, 8])
+
+# Hand the chain to the unified create_texture entry.
+renderer = Renderer()
+texture = renderer.create_texture(chain)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+import Foundation
+
+// Raw RGBA path: include the size so prepare skips decoding.
+let rawRgba = Data(repeating: 200, count: 8 * 8 * 4)
+let chainRaw = try TextureMipChain.prepare(
+    bytes: rawRgba,
+    format: .rgba8UnormSrgb,
+    size: Size(width: 8, height: 8, depth: nil)
+)
+
+// Upload the chain through the regular createTexture entry point.
+let renderer = Renderer()
+let texture = try await renderer.createTexture(input: .prepared(chainRaw))
+let _ = chainRaw.levelCount()
+let __ = texture.size()
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+// Encoded path: pass bytes plus the format you expect.
+val encoded_png_bytes: ByteArray = byteArrayOf()
+val chain = TextureMipChain.prepare(encoded_png_bytes, TextureFormat.RGBA8_UNORM_SRGB, null)
+
+// Raw path: include the size so prepare skips decoding.
+val raw_rgba: ByteArray = ByteArray(8 * 8 * 4)
+val chain_raw = TextureMipChain.prepare(raw_rgba, TextureFormat.RGBA8_UNORM_SRGB, Size(width=8u, height=8u, depth=null))
+
+// Upload the chain through the regular create_texture entry point.
+val renderer = Renderer()
+val texture = renderer.createTexture(TextureInputMobile.Prepared(chain), null)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### TextureMipChain::format
+
+Return the wgpu texture format the chain was prepared for. Matches the `format` argument passed to `prepare(...)`.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::{TextureFormat, TextureMipChain};
+
+let pixels: Vec<u8> = vec![200; 4 * 4 * 4];
+let chain = TextureMipChain::prepare((
+    pixels.as_slice(),
+    TextureFormat::Rgba8UnormSrgb,
+    [4, 4],
+))?;
+let _ = chain.format();
+Ok::<(), Box<dyn std::error::Error>>(())
+`}
+lang="rust" meta="collapse={10-10}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { TextureFormat, TextureMipChain } from "fragmentcolor";
+
+const pixels = new Uint8Array(4 * 4 * 4);
+pixels.fill(200);
+const chain = TextureMipChain.prepare(pixels, TextureFormat.Rgba8UnormSrgb, [4, 4]);
+const _ = chain.format();
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import TextureFormat, TextureMipChain
+
+pixels = [200] * (4 * 4 * 4)
+chain = TextureMipChain.prepare(pixels, TextureFormat.Rgba8UnormSrgb, [4, 4])
+_ = chain.format()
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+import Foundation
+
+let pixels = Data(repeating: 200, count: 4 * 4 * 4)
+let chain = try TextureMipChain.prepare(
+    bytes: pixels,
+    format: .rgba8UnormSrgb,
+    size: Size(width: 4, height: 4, depth: nil)
+)
+let _ = chain.format()
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val pixels = ByteArray(4 * 4 * 4)
+val chain = TextureMipChain.prepare(pixels, TextureFormat.RGBA8_UNORM_SRGB, Size(width=4u, height=4u, depth=null))
+
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### TextureMipChain::base_size
+
+Return the base level (level 0) dimensions as `(width, height)`. The mip chain has a level for each `1 + floor(log2(max(width, height)))`.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::{TextureFormat, TextureMipChain};
+
+let pixels: Vec<u8> = vec![0; 16 * 16 * 4];
+let chain = TextureMipChain::prepare((
+    pixels.as_slice(),
+    TextureFormat::Rgba8UnormSrgb,
+    [16, 16],
+))?;
+let (width, height) = chain.base_size();
+assert_eq!(width, 16);
+assert_eq!(height, 16);
+let _ = (width, height);
+Ok::<(), Box<dyn std::error::Error>>(())
+`}
+lang="rust" meta="collapse={10-11, 13-13}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { TextureFormat, TextureMipChain } from "fragmentcolor";
+
+const pixels = new Uint8Array(16 * 16 * 4);
+const chain = TextureMipChain.prepare(pixels, TextureFormat.Rgba8UnormSrgb, [16, 16]);
+const sz = chain.baseSize();
+const width = sz.width;
+const height = sz.height;
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import TextureFormat, TextureMipChain
+
+pixels = [0] * (16 * 16 * 4)
+chain = TextureMipChain.prepare(pixels, TextureFormat.Rgba8UnormSrgb, [16, 16])
+(width, height) = chain.base_size()
+_ = (width, height)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+import Foundation
+
+let pixels = Data(repeating: 0, count: 16 * 16 * 4)
+let chain = try TextureMipChain.prepare(
+    bytes: pixels,
+    format: .rgba8UnormSrgb,
+    size: Size(width: 16, height: 16, depth: nil)
+)
+let sz = chain.baseSize()
+let width = sz.width
+let height = sz.height
+let _ = (width, height)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val pixels = ByteArray(16 * 16 * 4)
+val chain = TextureMipChain.prepare(pixels, TextureFormat.RGBA8_UNORM_SRGB, Size(width=16u, height=16u, depth=null))
+val tmp_size = chain.baseSize()
+val width = tmp_size.width
+val height = tmp_size.height
+
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### TextureMipChain::levels
+
+Return the tightly-packed bytes for each mip level, level 0 first. Each level has `bytes_per_pixel(format) * max(1, base_w >> level) * max(1, base_h >> level)` bytes.
+
+This is mostly useful for inspection, debugging, or persisting the chain to disk. The renderer reads the bytes directly when uploading via `Renderer::create_texture(chain)`; you do not need to copy them yourself.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::{TextureFormat, TextureMipChain};
+
+let pixels: Vec<u8> = vec![0; 8 * 8 * 4];
+let chain = TextureMipChain::prepare((
+    pixels.as_slice(),
+    TextureFormat::Rgba8UnormSrgb,
+    [8, 8],
+))?;
+let level_zero_bytes = &chain.levels()[0];
+assert_eq!(level_zero_bytes.len(), 8 * 8 * 4);
+let _ = level_zero_bytes;
+Ok::<(), Box<dyn std::error::Error>>(())
+`}
+lang="rust" meta="collapse={10-10, 12-12}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { TextureFormat, TextureMipChain } from "fragmentcolor";
+
+const pixels = new Uint8Array(8 * 8 * 4);
+const chain = TextureMipChain.prepare(pixels, TextureFormat.Rgba8UnormSrgb, [8, 8]);
+const levelZeroBytes = chain.level(0);
+const _ = levelZeroBytes;
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import TextureFormat, TextureMipChain
+
+pixels = [0] * (8 * 8 * 4)
+chain = TextureMipChain.prepare(pixels, TextureFormat.Rgba8UnormSrgb, [8, 8])
+level_zero_bytes = chain.level(0)
+_ = level_zero_bytes
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+import Foundation
+
+let pixels = Data(repeating: 0, count: 8 * 8 * 4)
+let chain = try TextureMipChain.prepare(
+    bytes: pixels,
+    format: .rgba8UnormSrgb,
+    size: Size(width: 8, height: 8, depth: nil)
+)
+let levelZeroBytes = try chain.level(index: 0)
+let _ = levelZeroBytes
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val pixels = ByteArray(8 * 8 * 4)
+val chain = TextureMipChain.prepare(pixels, TextureFormat.RGBA8_UNORM_SRGB, Size(width=8u, height=8u, depth=null))
+val level_zero_bytes = chain.level(0u)
+
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### TextureMipChain::level_count
+
+Return the number of mip levels in the chain (always `>= 1`). For a base size of `w x h`, this is `1 + floor(log2(max(w, h)))`.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::{TextureFormat, TextureMipChain};
+
+let pixels: Vec<u8> = vec![0; 8 * 8 * 4];
+let chain = TextureMipChain::prepare((
+    pixels.as_slice(),
+    TextureFormat::Rgba8UnormSrgb,
+    [8, 8],
+))?;
+let count = chain.level_count();
+assert_eq!(count, 4); // 8, 4, 2, 1
+let _ = count;
+Ok::<(), Box<dyn std::error::Error>>(())
+`}
+lang="rust" meta="collapse={10-10, 12-12}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { TextureFormat, TextureMipChain } from "fragmentcolor";
+
+const pixels = new Uint8Array(8 * 8 * 4);
+const chain = TextureMipChain.prepare(pixels, TextureFormat.Rgba8UnormSrgb, [8, 8]);
+const count = chain.levelCount();
+const _ = count;
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import TextureFormat, TextureMipChain
+
+pixels = [0] * (8 * 8 * 4)
+chain = TextureMipChain.prepare(pixels, TextureFormat.Rgba8UnormSrgb, [8, 8])
+count = chain.level_count()
+_ = count
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+import Foundation
+
+let pixels = Data(repeating: 0, count: 8 * 8 * 4)
+let chain = try TextureMipChain.prepare(
+    bytes: pixels,
+    format: .rgba8UnormSrgb,
+    size: Size(width: 8, height: 8, depth: nil)
+)
+let count = chain.levelCount()
+let _ = count
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val pixels = ByteArray(8 * 8 * 4)
+val chain = TextureMipChain.prepare(pixels, TextureFormat.RGBA8_UNORM_SRGB, Size(width=8u, height=8u, depth=null))
+val count = chain.levelCount()
+
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>

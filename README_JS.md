@@ -20,7 +20,7 @@ yarn add fragmentcolor
 ## Quick start
 
 ```js
-import init, { Renderer, Shader, Pass, Frame } from "fragmentcolor";
+import init, { Renderer, Shader, Pass } from "fragmentcolor";
 
 async function start() {
   // Initializes the WASM module
@@ -79,16 +79,14 @@ async function start() {
   rpass.addShader(shader);
   renderer.render(rpass, target);
 
-  // Finally, you can combine multiple passes in a Frame
-  const frame = new Frame();
-  frame.addPass(rpass);
-  frame.addPass(new Pass("GUI pass"));
-  renderer.render(frame, target);
+  // Finally, you can render an array of passes in order — no extra type needed.
+  const passes = [rpass, new Pass("GUI pass")];
+  renderer.render(passes, target);
 
   // To animate, simply update the uniforms in a loop
   function animate() {
     circle.set("position", [0.0, 0.0]);
-    renderer.render(frame, target);
+    renderer.render(passes, target);
     requestAnimationFrame(animate);
   }
   animate();
@@ -136,7 +134,7 @@ Platform support is aligned with upstream wgpu:
 
 ## Limitations (planned features)
 
-- Swift & Kotlin bindings are not supported yet, but planned.
+- See the ROADMAP and CHANGELOG on the [repository](https://github.com/vista-art/fragmentcolor) for planned features and known limitations.
 
 ---
 

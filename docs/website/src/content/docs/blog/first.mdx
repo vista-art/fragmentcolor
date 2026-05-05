@@ -1,13 +1,53 @@
 ---
-title: First post
-date: 2025-03-12 11:47:11
-lastUpdated: 2025-03-12 11:47:11
+title: "v0.10.0: The Shader Object"
+excerpt: "The v0.10.0 release introduces the Shader-centered design, completes the rename from PLRender, and sets the shape of the API for what comes next."
+authors: ["rafaelbeckel"]
+date: 2024-02-15
+tags: ["release", "milestone", "history"]
 ---
 
-### Hello World!
+This is the first release of FragmentColor.
 
-If you are reading this, you arrived here in the very early days of development.
+[FragmentColor](https://fragmentcolor.org) is a universal GPU abstraction layer where you can simply write some WGSL or GLSL code, forget about pipeline setup, set uniforms by key-value, and it will render on every device in existence. That's it.
 
-You can check the [Documentation](/welcome) and the [API Reference](/api) for more information.
+This version is a full rewrite of the original PLRender engine from Pupil Labs, removing every module and keeping only three simple objects: the **Shader**, the **Renderer**, and the **Target**.
 
-Follow the project on [GitHub](https://github.com/vista-art/fragmentcolor) to stay tuned on the latest updates.
+The central idea behind FragmentColor is **runtime shader reflection**. The shader code dictates the structures around it, and there is no need for you to think about buffer layouts and manual pipeline setup; you can just set your uniforms with the dot notation using the same name you declared in the shader itself:
+
+```rust
+let shader = Shader::new("shader source defining my_uniform");
+shader.set("my_uniform", 0.5);
+renderer.render(shader);
+```
+
+Feel free to [read the docs](https://fragmentcolor.com/welcome) for more details.
+
+Install it on your favorite platform with:
+
+```bash
+cargo add fragmentcolor
+npm install fragmentcolor
+pip install fragmentcolor
+```
+
+### Design Goals
+
+[FragmentColor](https://fragmentcolor.org) aims to be the simplest GPU abstraction API in existence: being both simpler **and** more powerful than OpenGL. It builds on top of `wgpu` and abstracts away all the low-level boilerplate.
+
+The core is minimalist on purpose. Only a few basic types (`Shader`, `Pass`, `Texture`, `Renderer`, `Target`, `Vertex`, and `Mesh`) can combine into anything you want to build or quickly prototype.
+
+We're also keeping up with [wgpu](https://wgpu.rs) and naga as they evolve, the WebGPU standards, and the WASM ecosystem. Every time there is a new API change or new upstream capability, we aim to implement it as quickly as possible and make the abstraction around it automated and minimal.
+
+### Credits / Acknowledgments
+
+- The Renderer API draws heavily from [pygfx](https://pygfx.org), a beautiful Python rendering engine that aims at a higher level than us. It is closer to Three.js for Python, with its own scene graph and renderable objects. FragmentColor uses pygfx's [RenderCanvas](https://github.com/pygfx/rendercanvas) abstraction for the Python render surface. 
+
+- The Shader-centric design came from Pupil Labs, as stated in our [origin story]().
+
+- Some of the GPU optimization techniques were inspired by [Ruffle](https://ruffle.rs) Flash Player engine.
+
+- Although most of the old code did not survive the full refactor, I owe most of my learning to kwark's (the wgpu contributor) and his minimalistic prototype engine [Baryon](https://github.com/kvark/baryon). 
+
+- And, of course, nobody starts their wgpu journey without passing through the fantastic [Learn Wgpu](https://sotrh.github.io/learn-wgpu/) series by Ben Hansen.
+
+— Rafael

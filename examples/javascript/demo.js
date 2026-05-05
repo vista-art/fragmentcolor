@@ -20,7 +20,7 @@ async function run() {
 
   function animate() {
     shader.set("circle.position", [0.0, 0.0]);
-    renderer.render(shader, target); // simple example usage, it can also accept Frame objects containing multiple render passes
+    renderer.render(shader, target); // can also accept a Pass, or an array of Pass objects, for multi-pass rendering
 
     requestAnimationFrame(animate);
   }

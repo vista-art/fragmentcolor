@@ -8,7 +8,8 @@ use pyo3::prelude::*;
 use wasm_bindgen::prelude::*;
 
 #[cfg_attr(wasm, wasm_bindgen)]
-#[cfg_attr(python, pyclass)]
+#[cfg_attr(python, pyclass(from_py_object))]
+#[cfg_attr(mobile, derive(uniffi::Object))]
 #[derive(Clone, Debug)]
 #[lsp_doc("docs/api/geometry/vertex/vertex.md")]
 pub struct Vertex {
@@ -115,6 +116,7 @@ impl Vertex {
         Instance {
             properties: self.properties.clone(),
             prop_locations: self.prop_locations.clone(),
+            next_location: self.next_location,
         }
     }
 }
@@ -148,11 +150,33 @@ impl PartialEq for Vertex {
 impl Eq for Vertex {}
 
 #[cfg_attr(wasm, wasm_bindgen)]
-#[cfg_attr(python, pyclass)]
+#[cfg_attr(python, pyclass(from_py_object))]
+#[cfg_attr(mobile, derive(uniffi::Object))]
 #[derive(Clone, Debug, Default)]
 pub struct Instance {
     pub(crate) properties: HashMap<String, VertexValue>,
     pub(crate) prop_locations: HashMap<String, u32>,
+    pub(crate) next_location: u32,
+}
+
+impl Instance {
+    /// Create an empty `Instance`. Chain `.set("key", value)` calls to populate
+    /// per-instance attributes.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Set a per-instance attribute. Locations auto-increment in insertion order
+    /// (instance attributes have their own location namespace, separate from vertex).
+    pub fn set<V: Into<VertexValue>>(mut self, key: &str, v: V) -> Self {
+        let k = key.to_string();
+        if !self.prop_locations.contains_key(&k) {
+            self.prop_locations.insert(k.clone(), self.next_location);
+            self.next_location = self.next_location.saturating_add(1);
+        }
+        self.properties.insert(k, v.into());
+        self
+    }
 }
 
 impl From<Vertex> for Instance {
@@ -167,20 +191,48 @@ impl From<&Vertex> for Instance {
 }
 
 #[cfg_attr(python, derive(FromPyObject, IntoPyObject))]
+#[cfg_attr(mobile, derive(uniffi::Enum))]
 #[derive(Clone, Debug, PartialEq)]
 pub enum VertexValue {
     F32(f32),
+    #[cfg(not(mobile))]
     F32x2([f32; 2]),
+    #[cfg(mobile)]
+    F32x2(Vec<f32>),
+    #[cfg(not(mobile))]
     F32x3([f32; 3]),
+    #[cfg(mobile)]
+    F32x3(Vec<f32>),
+    #[cfg(not(mobile))]
     F32x4([f32; 4]),
+    #[cfg(mobile)]
+    F32x4(Vec<f32>),
     U32(u32),
+    #[cfg(not(mobile))]
     U32x2([u32; 2]),
+    #[cfg(mobile)]
+    U32x2(Vec<u32>),
+    #[cfg(not(mobile))]
     U32x3([u32; 3]),
+    #[cfg(mobile)]
+    U32x3(Vec<u32>),
+    #[cfg(not(mobile))]
     U32x4([u32; 4]),
+    #[cfg(mobile)]
+    U32x4(Vec<u32>),
     I32(i32),
+    #[cfg(not(mobile))]
     I32x2([i32; 2]),
+    #[cfg(mobile)]
+    I32x2(Vec<i32>),
+    #[cfg(not(mobile))]
     I32x3([i32; 3]),
+    #[cfg(mobile)]
+    I32x3(Vec<i32>),
+    #[cfg(not(mobile))]
     I32x4([i32; 4]),
+    #[cfg(mobile)]
+    I32x4(Vec<i32>),
 }
 
 // Convenient conversions so callers can use plain arrays/scalars
@@ -191,17 +243,26 @@ impl From<f32> for VertexValue {
 }
 impl From<[f32; 2]> for VertexValue {
     fn from(v: [f32; 2]) -> Self {
-        VertexValue::F32x2(v)
+        #[cfg(not(mobile))]
+        return VertexValue::F32x2(v);
+        #[cfg(mobile)]
+        return VertexValue::F32x2(v.to_vec());
     }
 }
 impl From<[f32; 3]> for VertexValue {
     fn from(v: [f32; 3]) -> Self {
-        VertexValue::F32x3(v)
+        #[cfg(not(mobile))]
+        return VertexValue::F32x3(v);
+        #[cfg(mobile)]
+        return VertexValue::F32x3(v.to_vec());
     }
 }
 impl From<[f32; 4]> for VertexValue {
     fn from(v: [f32; 4]) -> Self {
-        VertexValue::F32x4(v)
+        #[cfg(not(mobile))]
+        return VertexValue::F32x4(v);
+        #[cfg(mobile)]
+        return VertexValue::F32x4(v.to_vec());
     }
 }
 impl From<u32> for VertexValue {
@@ -211,17 +272,26 @@ impl From<u32> for VertexValue {
 }
 impl From<[u32; 2]> for VertexValue {
     fn from(v: [u32; 2]) -> Self {
-        VertexValue::U32x2(v)
+        #[cfg(not(mobile))]
+        return VertexValue::U32x2(v);
+        #[cfg(mobile)]
+        return VertexValue::U32x2(v.to_vec());
     }
 }
 impl From<[u32; 3]> for VertexValue {
     fn from(v: [u32; 3]) -> Self {
-        VertexValue::U32x3(v)
+        #[cfg(not(mobile))]
+        return VertexValue::U32x3(v);
+        #[cfg(mobile)]
+        return VertexValue::U32x3(v.to_vec());
     }
 }
 impl From<[u32; 4]> for VertexValue {
     fn from(v: [u32; 4]) -> Self {
-        VertexValue::U32x4(v)
+        #[cfg(not(mobile))]
+        return VertexValue::U32x4(v);
+        #[cfg(mobile)]
+        return VertexValue::U32x4(v.to_vec());
     }
 }
 impl From<i32> for VertexValue {
@@ -231,17 +301,26 @@ impl From<i32> for VertexValue {
 }
 impl From<[i32; 2]> for VertexValue {
     fn from(v: [i32; 2]) -> Self {
-        VertexValue::I32x2(v)
+        #[cfg(not(mobile))]
+        return VertexValue::I32x2(v);
+        #[cfg(mobile)]
+        return VertexValue::I32x2(v.to_vec());
     }
 }
 impl From<[i32; 3]> for VertexValue {
     fn from(v: [i32; 3]) -> Self {
-        VertexValue::I32x3(v)
+        #[cfg(not(mobile))]
+        return VertexValue::I32x3(v);
+        #[cfg(mobile)]
+        return VertexValue::I32x3(v.to_vec());
     }
 }
 impl From<[i32; 4]> for VertexValue {
     fn from(v: [i32; 4]) -> Self {
-        VertexValue::I32x4(v)
+        #[cfg(not(mobile))]
+        return VertexValue::I32x4(v);
+        #[cfg(mobile)]
+        return VertexValue::I32x4(v.to_vec());
     }
 }
 
