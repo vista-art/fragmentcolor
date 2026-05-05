@@ -15,8 +15,11 @@
 //   - Clicking the overlay (or supplying `autoplay`) triggers the existing
 //     init flow (WASM, renderer, target, example module, RAF loop).
 //   - After init, an IntersectionObserver pauses the RAF loop while the
-//     canvas is offscreen and resumes it on entry. The play overlay does
-//     not return.
+//     canvas is offscreen and resumes it on entry.
+//   - Only one demo runs at a time on a given page: when one starts (or
+//     resumes) it dispatches a `tutorial-demo-started` event; all others
+//     pause their RAF loop and re-show the play overlay so the reader
+//     can resume them with a click.
 
 import { tutorials } from "../generated/tutorials";
 
@@ -63,14 +66,17 @@ if (!customElements.get('tutorial-demo')) {
     #playBtn;
     #raf = 0;
     #stopped = false;
-    #paused = false;
+    #paused = false;       // viewport-driven pause (IntersectionObserver)
+    #userPaused = false;   // pause caused by another demo starting
     #started = false;
     #renderer;
     #target;
     #state;
     #frame;
+    #loop;
     #ro;
     #io;
+    #onOtherStarted;
     #start = performance.now();
     #fcModule;
 
@@ -170,6 +176,19 @@ if (!customElements.get('tutorial-demo')) {
 
     connectedCallback() {
       this.#playBtn?.addEventListener('click', () => this.#start_());
+
+      // Pause when another demo starts so the page only ever runs one
+      // RAF loop at a time. Show the play overlay so the reader can
+      // resume this one with a click.
+      this.#onOtherStarted = (e) => {
+        if (e.detail === this) return;
+        if (!this.#started || this.#userPaused) return;
+        this.#userPaused = true;
+        cancelAnimationFrame(this.#raf);
+        this.#playBtn?.classList.remove('hidden');
+      };
+      document.addEventListener('tutorial-demo-started', this.#onOtherStarted);
+
       const auto = this.dataset.autoplay === '1';
       if (auto) {
         // Defer to the next microtask so the host element is fully attached
@@ -183,13 +202,27 @@ if (!customElements.get('tutorial-demo')) {
       cancelAnimationFrame(this.#raf);
       try { this.#ro?.disconnect(); } catch {}
       try { this.#io?.disconnect(); } catch {}
+      if (this.#onOtherStarted) {
+        document.removeEventListener('tutorial-demo-started', this.#onOtherStarted);
+      }
     }
 
     async #start_() {
-      if (this.#started) return;
+      // First click: full init.
+      // Subsequent clicks (after another demo paused us): resume only.
+      if (this.#started) {
+        if (!this.#userPaused) return;
+        this.#userPaused = false;
+        this.#playBtn?.classList.add('hidden');
+        this.#start = performance.now();
+        if (this.#loop) this.#raf = requestAnimationFrame(this.#loop);
+        document.dispatchEvent(new CustomEvent('tutorial-demo-started', { detail: this }));
+        return;
+      }
       this.#started = true;
       this.#playBtn?.classList.add('hidden');
       this.#start = performance.now();
+      document.dispatchEvent(new CustomEvent('tutorial-demo-started', { detail: this }));
       try {
         await this.#init();
       } catch (e) {
@@ -235,32 +268,11 @@ if (!customElements.get('tutorial-demo')) {
       this.#ro.observe(this.#canvas);
       window.addEventListener('resize', () => this.#applySize());
 
-      // 7) Pause / resume the RAF loop based on viewport visibility so an
-      //    offscreen demo doesn't burn GPU time. We re-anchor #start when
-      //    resuming so animations don't jump forward by the offscreen
-      //    duration.
-      if ('IntersectionObserver' in window) {
-        this.#io = new IntersectionObserver((entries) => {
-          for (const entry of entries) {
-            if (entry.isIntersecting) {
-              if (this.#paused) {
-                this.#paused = false;
-                this.#start = performance.now();
-                this.#raf = requestAnimationFrame(loop);
-              }
-            } else {
-              this.#paused = true;
-              cancelAnimationFrame(this.#raf);
-            }
-          }
-        }, { threshold: 0.01 });
-        this.#io.observe(this);
-      }
-
-      // 8) RAF loop.
-      const loop = (now) => {
-        if (this.#stopped || this.#paused) return;
-        this.#raf = requestAnimationFrame(loop);
+      // 7) RAF loop, stored on `this` so the IntersectionObserver and
+      //    the cross-demo coordination can re-arm it.
+      this.#loop = (now) => {
+        if (this.#stopped || this.#paused || this.#userPaused) return;
+        this.#raf = requestAnimationFrame(this.#loop);
         try {
           const t = (now - this.#start) / 1000.0;
           const size = [this.#canvas.width, this.#canvas.height];
@@ -272,7 +284,32 @@ if (!customElements.get('tutorial-demo')) {
           this.#showError(`frame: ${e?.message || e}`);
         }
       };
-      this.#raf = requestAnimationFrame(loop);
+
+      // 8) Pause / resume the RAF loop based on viewport visibility so an
+      //    offscreen demo doesn't burn GPU time. We re-anchor #start when
+      //    resuming so animations don't jump forward by the offscreen
+      //    duration. Resumes only if the demo isn't user-paused too.
+      if ('IntersectionObserver' in window) {
+        this.#io = new IntersectionObserver((entries) => {
+          for (const entry of entries) {
+            if (entry.isIntersecting) {
+              if (this.#paused && !this.#userPaused) {
+                this.#paused = false;
+                this.#start = performance.now();
+                this.#raf = requestAnimationFrame(this.#loop);
+              } else {
+                this.#paused = false;
+              }
+            } else {
+              this.#paused = true;
+              cancelAnimationFrame(this.#raf);
+            }
+          }
+        }, { threshold: 0.01 });
+        this.#io.observe(this);
+      }
+
+      this.#raf = requestAnimationFrame(this.#loop);
     }
 
     #applySize() {

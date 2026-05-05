@@ -1,0 +1,85 @@
+---
+// <Lang /> — inline text that swaps with the active language tab.
+//
+// Reads the active label from localStorage (Starlight's syncKey "lang")
+// and re-renders when the reader clicks a different language tab inside
+// any `<starlight-tabs[data-sync-key="lang"]>` on the page. Defaults to
+// the language name itself, so a bare `<Lang />` reads as "Rust" /
+// "JavaScript" / etc. Override per-language for arbitrary substitutions:
+//
+//   the change took five lines of <Lang />.
+//   open a <Lang rust="winit window" js="canvas" py="window" /> and...
+
+interface Props {
+  rust?: string;
+  js?: string;
+  py?: string;
+  swift?: string;
+  kotlin?: string;
+}
+
+const {
+  rust = "Rust",
+  js = "JavaScript",
+  py = "Python",
+  swift = "Swift",
+  kotlin = "Kotlin",
+} = Astro.props;
+---
+
+<lang-text
+  data-rust={rust}
+  data-js={js}
+  data-py={py}
+  data-swift={swift}
+  data-kotlin={kotlin}>{rust}</lang-text>
+
+<script is:inline>
+  // One-time wiring of all <lang-text> elements on the page.
+  if (!window.__langTextWired) {
+    window.__langTextWired = true;
+
+    const STORAGE_KEY = "starlight-synced-tabs__lang";
+    const LABEL_TO_DATA = {
+      Rust: "rust",
+      JavaScript: "js",
+      Python: "py",
+      Swift: "swift",
+      Kotlin: "kotlin",
+    };
+
+    function update() {
+      let label;
+      try {
+        label = localStorage.getItem(STORAGE_KEY);
+      } catch {
+        // localStorage may be disabled (private mode, restricted iframe);
+        // fall back to the default first-tab label.
+      }
+      const key = LABEL_TO_DATA[label || ""] || "rust";
+      document.querySelectorAll("lang-text").forEach((el) => {
+        const v = el.dataset[key];
+        if (v !== undefined && v !== null) el.textContent = v;
+      });
+    }
+
+    function init() {
+      update();
+      // Tab clicks within lang-keyed Starlight tabs update localStorage.
+      // We listen for the click and re-read on the next frame.
+      document.addEventListener("click", (e) => {
+        const tab = e.target?.closest?.('[role="tab"]');
+        if (!tab) return;
+        const tabsParent = tab.closest('starlight-tabs[data-sync-key="lang"]');
+        if (!tabsParent) return;
+        requestAnimationFrame(update);
+      });
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", init);
+    } else {
+      init();
+    }
+  }
+</script>
