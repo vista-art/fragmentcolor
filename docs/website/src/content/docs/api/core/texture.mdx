@@ -13,9 +13,9 @@ import { Code, Tabs, TabItem, Aside } from "@astrojs/starlight/components";
 
 A GPU texture resource. Public API wrapper that holds a shareable reference to the internal TextureObject and a numeric handle used by uniforms.
 
-- Construct via [Renderer::create_texture(input)](/api/core/renderer/create_texture) â single entry point that takes any `TextureInput`-shaped value (bytes, `(bytes, [w, h])`, `(bytes, format)`, path, URL, KTX2, prepared chain, etc.).
-- Set on shaders with shader.set("key", &[Texture](/api/core/texture))
-- [Texture](/api/core/texture) owns its sampler; you can tweak filtering and wrapping via set_sampler_options.
+- Construct via [Renderer::create_texture(input)](/api/core/renderer/create_texture). `input` accepts bytes, `(bytes, [w, h])`, `(bytes, format)`, a path, a URL, a KTX2 container, or a prepared chain.
+- Bind to a shader with `shader.set("key", &texture)`.
+- The texture owns its sampler; tweak filtering and wrapping via `set_sampler_options`.
 
 ## How to use
 
@@ -44,13 +44,12 @@ let shader = Shader::new(r#"
 @fragment fn main() -> @location(0) vec4<f32> { return vec4f(1.,1.,1.,1.); }
 "#)?;
 
-// 1x1 RGBA (white) raw pixel bytes - single create_texture entry, tuple
-// form (bytes, format, size) selects the raw-pixel path. Format is
-// the placeholder Rgba (sRGB-aware) by default.
-let pixels: &[u8] = &[255,255,255,255];
-let texture = renderer.create_texture((pixels, [1u32, 1u32])).await?;
+// 1x1 white pixel. Passing a size tells create_texture to read the bytes
+// as raw pixels; the default format is Rgba (sRGB-aware).
+let pixels: &[u8] = &[255, 255, 255, 255];
+let texture = renderer.create_texture((pixels, [1, 1])).await?;
 
-// insert  the texture in the shader matching the name in the shader
+// Bind the texture to the uniform name declared in WGSL.
 shader.set("my_texture", &texture)?;
 
 _ = shader;
@@ -58,7 +57,7 @@ Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 24-27}"
+lang="rust" meta="collapse={1-1, 23-26}"
 />
 
 </TabItem>
@@ -135,13 +134,12 @@ let shader = try Shader("""
 
 """)
 
-// 1x1 RGBA (white) raw pixel bytes - single create_texture entry, tuple
-// form (bytes, format, size) selects the raw-pixel path. Format is
-// the placeholder Rgba (sRGB-aware) by default.
-let pixels = [255,255,255,255]
+// 1x1 white pixel. Passing a size tells create_texture to read the bytes
+// as raw pixels; the default format is Rgba (sRGB-aware).
+let pixels = [255, 255, 255, 255]
 let texture = try await renderer.createTexture((pixels, [1, 1]))
 
-// insert  the texture in the shader matching the name in the shader
+// Bind the texture to the uniform name declared in WGSL.
 try shader.set("my_texture", texture)
 `}
 lang="swift"
@@ -166,13 +164,12 @@ val shader = Shader("""
 
 """)
 
-// 1x1 RGBA (white) raw pixel bytes - single create_texture entry, tuple
-// form (bytes, format, size) selects the raw-pixel path. Format is
-// the placeholder Rgba (sRGB-aware) by default.
+// 1x1 white pixel. Passing a size tells create_texture to read the bytes
+// as raw pixels; the default format is Rgba (sRGB-aware).
 val pixels = listOf(255.0f, 255.0f, 255.0f, 255.0f)
 val texture = renderer.createTexture(TextureInputMobile.Bytes(pixels.let { ba -> ByteArray(ba.size) { i -> ba[i].toInt().and(0xFF).toByte() } }), null)
 
-// insert  the texture in the shader matching the name in the shader
+// Bind the texture to the uniform name declared in WGSL.
 shader.set("my_texture", texture)
 `}
 lang="kotlin"
@@ -190,7 +187,10 @@ lang="kotlin"
 
 ### Texture::id()
 
-Return the stable `TextureId` for this texture instance. The id is valid within the `Renderer` that created it.
+Return the stable `TextureId` for this texture. The id is valid within
+the `Renderer` that created it and is the handle uniforms use to refer to
+the texture, so you can keep one around to bind, look up, or unregister
+the texture without holding the full `Texture` value.
 
 #### Example
 
@@ -202,7 +202,7 @@ code={`
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Renderer, TextureFormat};
 let renderer = Renderer::new();
-let texture = renderer.create_storage_texture(([64u32, 64u32], TextureFormat::Rgba)).await?;
+let texture = renderer.create_storage_texture(([64, 64], TextureFormat::Rgba)).await?;
 let id = *texture.id();
 Ok(())
 }
@@ -274,7 +274,9 @@ lang="kotlin"
 
 ### Texture::size
 
-Returns the texture size (w, h[, d]).
+Return the texture's dimensions as a `Size` (`width`, `height`, and an
+optional `depth` for 3D or array textures). The size reflects the
+allocated GPU resource and is constant for the lifetime of the texture.
 
 #### Example
 
@@ -287,7 +289,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Renderer, Size};
 let renderer = Renderer::new();
 let pixels: &[u8] = &[255,255,255,255];
-let tex = renderer.create_texture((pixels, [1u32, 1u32])).await?;
+let tex = renderer.create_texture((pixels, [1, 1])).await?;
 let sz = tex.size();
 assert_eq!([sz.width, sz.height], [1, 1]);
 Ok(())
@@ -362,7 +364,9 @@ lang="kotlin"
 
 ### Texture::aspect
 
-Returns width/height as f32.
+Return the texture's `width / height` as `f32`. Useful for setting up
+projection matrices or laying out a sprite without recomputing the ratio
+on every frame.
 
 #### Example
 
@@ -378,7 +382,7 @@ use fragmentcolor::{Renderer, Size};
 let renderer = Renderer::new();
 // 1x1 RGBA (white) raw pixel bytes
 let pixels: &[u8] = &[255,255,255,255];
-let tex = renderer.create_texture((pixels, [1u32, 1u32])).await?;
+let tex = renderer.create_texture((pixels, [1, 1])).await?;
 let a = tex.aspect();
 
 assert!(a > 0.0);
@@ -483,7 +487,7 @@ let renderer = Renderer::new();
 // 1x1 RGBA (white) raw pixel bytes
 let pixels: &[u8] = &[255,255,255,255];
 
-let texture = renderer.create_texture((pixels, [1u32, 1u32])).await?;
+let texture = renderer.create_texture((pixels, [1, 1])).await?;
 let opts = SamplerOptions { repeat_x: true, repeat_y: true, smooth: true, compare: None };
 texture.set_sampler_options(opts);
 
@@ -605,7 +609,7 @@ code={`
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Renderer, TextureFormat};
 let renderer = Renderer::new();
-let texture = renderer.create_storage_texture(([64u32, 64u32], TextureFormat::Rgba)).await?;
+let texture = renderer.create_storage_texture(([64, 64], TextureFormat::Rgba)).await?;
 let frame_bytes = vec![0u8; 64 * 64 * 4];
 
 texture.write(&frame_bytes)?;
@@ -710,7 +714,7 @@ code={`
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Renderer, TextureFormat, TextureRegion};
 let renderer = Renderer::new();
-let texture = renderer.create_storage_texture(([64u32, 32u32], TextureFormat::Rgba)).await?;
+let texture = renderer.create_storage_texture(([64, 32], TextureFormat::Rgba)).await?;
 let bytes = vec![0u8; 64 * 32 * 4];
 
 // Simple sub-rectangle update.
@@ -819,9 +823,9 @@ lang="kotlin"
 
 Read back the mip-0 contents of this texture as tightly-packed bytes in the texture's native format.
 
-- Works on both native and WASM by awaiting the GPU readback buffer mapping via an async oneshot channel.
-- Layer-major on the outside loop when the texture has multiple layers.
-- The texture must have `COPY_SRC` usage; creation helpers like `create_storage_texture` enable it by default.
+- Works on native and on the web; the call awaits the GPU readback mapping.
+- For multi-layer textures, layers come first in the byte layout (layer-major).
+- The texture must have `COPY_SRC` usage. Creation helpers like `create_storage_texture` enable it by default.
 
 #### Example
 
@@ -833,7 +837,7 @@ code={`
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Renderer, TextureFormat};
 let renderer = Renderer::new();
-let texture = renderer.create_storage_texture(([64u32, 64u32], TextureFormat::Rgba)).await?;
+let texture = renderer.create_storage_texture(([64, 64], TextureFormat::Rgba)).await?;
 texture.write(&vec![0u8; 64 * 64 * 4])?;
 
 let bytes = texture.get_image().await?;

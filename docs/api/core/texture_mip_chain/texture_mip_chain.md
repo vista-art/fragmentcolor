@@ -1,22 +1,23 @@
 # TextureMipChain
 
-A pre-computed CPU mipmap chain ready to upload as a [Texture](https://fragmentcolor.org/api/core/texture). Build one off the renderer thread (worker / thread pool / async task / Web Worker) so the GPU thread only has to do `queue.write_texture` calls.
+A pre-computed CPU mipmap chain ready to upload as a [Texture](https://fragmentcolor.org/api/core/texture). Build one off the renderer thread (worker, thread pool, async task, Web Worker) so the GPU thread only has to do `queue.write_texture` calls.
 
-You usually do **not** need to construct one of these — `Renderer::create_texture(bytes)` already runs decode + mipmap generation on a background worker on every native target. Reach for `TextureMipChain` when you want explicit control:
+Most callers never need to construct this directly: `Renderer::create_texture(bytes)` already runs decode and mipmap generation on a background worker on every native target. Reach for `TextureMipChain` when you want explicit control:
 
-- share one chain across many textures without rebuilding it
-- fold mipmap generation into an existing decode pipeline that already runs on a worker
-- drive prep on your own thread pool (rayon / Swift `Task` / Kotlin `Dispatchers.Default` / Python `ThreadPoolExecutor` / Web Worker)
+- share one chain across many textures without rebuilding it,
+- bake mipmap generation into a decode pipeline that already runs on a worker,
+- drive prep on your own thread pool (rayon, Swift `Task`, Kotlin `Dispatchers.Default`, Python `ThreadPoolExecutor`, Web Worker).
 
-Construct via the single `TextureMipChain::prepare(input)` entry — same `TextureInput` transport as `Renderer::create_texture` and `Renderer::create_storage_texture`. The discriminator is whether `options.size` is present:
-- `prepare((bytes, format))` — encoded image bytes (PNG / JPEG / etc.); size inferred from the decoded image.
+Build with `TextureMipChain::prepare(input)`; the input shapes match `Renderer::create_texture` and `Renderer::create_storage_texture`. Whether the bytes are decoded depends on `size`:
+
+- `prepare((bytes, format))` — encoded image bytes (PNG, JPEG, etc.); size is inferred from the decoded image.
 - `prepare((bytes, format, size))` — raw pixel bytes already laid out for `format` at `size`.
 
-Cross-language bindings call `prepare(bytes, format, size?)` with `size` optional / nullable.
+In Swift, Kotlin, JS, and Python, the binding is `prepare(bytes, format, size?)` with `size` optional.
 
-Consume via the single `Renderer::create_texture(input)` entry — `From<TextureMipChain> for TextureInput` lets you pass the chain directly: `renderer.create_texture(chain).await`. Cross-language users see the same shape (the chain handle goes straight into `createTexture`).
+Upload by passing the chain to `Renderer::create_texture(chain)`; cross-language users hand the chain handle directly to `createTexture`.
 
-Supported formats are the ones with a CPU mipmap path: `Rgba8Unorm`, `Rgba8UnormSrgb`, `Bgra8Unorm`, `Bgra8UnormSrgb`, `R8Unorm`, `Rg8Unorm`, `R16Unorm`, `Rg16Unorm`, `Rgba16Unorm`. Other formats return `TextureError::UnsupportedMipmapFormat`.
+Supported formats: `Rgba8Unorm`, `Rgba8UnormSrgb`, `Bgra8Unorm`, `Bgra8UnormSrgb`, `R8Unorm`, `Rg8Unorm`, `R16Unorm`, `Rg16Unorm`, `Rgba16Unorm`. Other formats return `TextureError::UnsupportedMipmapFormat`.
 
 ## Example
 
@@ -37,9 +38,7 @@ let png: &[u8] = &[
 # let png = png_buf.as_slice();
 let chain = TextureMipChain::prepare((png, TextureFormat::Rgba8UnormSrgb))?;
 
-// Hand the chain to the unified create_texture entry - same vocabulary as
-// every other texture path; From<TextureMipChain> selects the GPU-only
-// upload internally.
+// Upload the chain through the regular create_texture entry point.
 let texture = renderer.create_texture(chain).await?;
 # _ = texture.size();
 # Ok(())

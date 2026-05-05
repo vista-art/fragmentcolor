@@ -1,6 +1,6 @@
 ---
 title: TextureMipChain
-description: "A pre-computed CPU mipmap chain ready to upload as a [Texture](/api/core/texture). Build one off the renderer thread (worker / thread pool / async task / Web Worker) so the GPU thread only has to do `queue.write_texture` calls."
+description: "A pre-computed CPU mipmap chain ready to upload as a [Texture](/api/core/texture). Build one off the renderer thread (worker, thread pool, async task, Web Worker) so the GPU thread only has to do `queue.write_texture` calls."
 category: core
 categoryLabel: Core
 sidebar:
@@ -11,23 +11,24 @@ import { Code, Tabs, TabItem, Aside } from "@astrojs/starlight/components";
 
 ## Description
 
-A pre-computed CPU mipmap chain ready to upload as a [Texture](/api/core/texture). Build one off the renderer thread (worker / thread pool / async task / Web Worker) so the GPU thread only has to do `queue.write_texture` calls.
+A pre-computed CPU mipmap chain ready to upload as a [Texture](/api/core/texture). Build one off the renderer thread (worker, thread pool, async task, Web Worker) so the GPU thread only has to do `queue.write_texture` calls.
 
-You usually do **not** need to construct one of these â `Renderer::create_texture(bytes)` already runs decode + mipmap generation on a background worker on every native target. Reach for `TextureMipChain` when you want explicit control:
+Most callers never need to construct this directly: `Renderer::create_texture(bytes)` already runs decode and mipmap generation on a background worker on every native target. Reach for `TextureMipChain` when you want explicit control:
 
-- share one chain across many textures without rebuilding it
-- fold mipmap generation into an existing decode pipeline that already runs on a worker
-- drive prep on your own thread pool (rayon / Swift `Task` / Kotlin `Dispatchers.Default` / Python `ThreadPoolExecutor` / Web Worker)
+- share one chain across many textures without rebuilding it,
+- bake mipmap generation into a decode pipeline that already runs on a worker,
+- drive prep on your own thread pool (rayon, Swift `Task`, Kotlin `Dispatchers.Default`, Python `ThreadPoolExecutor`, Web Worker).
 
-Construct via the single `TextureMipChain::prepare(input)` entry â same `TextureInput` transport as `Renderer::create_texture` and `Renderer::create_storage_texture`. The discriminator is whether `options.size` is present:
-- `prepare((bytes, format))` â encoded image bytes (PNG / JPEG / etc.); size inferred from the decoded image.
+Build with `TextureMipChain::prepare(input)`; the input shapes match `Renderer::create_texture` and `Renderer::create_storage_texture`. Whether the bytes are decoded depends on `size`:
+
+- `prepare((bytes, format))` â encoded image bytes (PNG, JPEG, etc.); size is inferred from the decoded image.
 - `prepare((bytes, format, size))` â raw pixel bytes already laid out for `format` at `size`.
 
-Cross-language bindings call `prepare(bytes, format, size?)` with `size` optional / nullable.
+In Swift, Kotlin, JS, and Python, the binding is `prepare(bytes, format, size?)` with `size` optional.
 
-Consume via the single `Renderer::create_texture(input)` entry â `From<TextureMipChain> for TextureInput` lets you pass the chain directly: `renderer.create_texture(chain).await`. Cross-language users see the same shape (the chain handle goes straight into `createTexture`).
+Upload by passing the chain to `Renderer::create_texture(chain)`; cross-language users hand the chain handle directly to `createTexture`.
 
-Supported formats are the ones with a CPU mipmap path: `Rgba8Unorm`, `Rgba8UnormSrgb`, `Bgra8Unorm`, `Bgra8UnormSrgb`, `R8Unorm`, `Rg8Unorm`, `R16Unorm`, `Rg16Unorm`, `Rgba16Unorm`. Other formats return `TextureError::UnsupportedMipmapFormat`.
+Supported formats: `Rgba8Unorm`, `Rgba8UnormSrgb`, `Bgra8Unorm`, `Bgra8UnormSrgb`, `R8Unorm`, `Rg8Unorm`, `R16Unorm`, `Rg16Unorm`, `Rgba16Unorm`. Other formats return `TextureError::UnsupportedMipmapFormat`.
 
 
 
@@ -54,16 +55,14 @@ img.write_to(&mut std::io::Cursor::new(&mut png_buf), image::ImageFormat::Png)?;
 let png = png_buf.as_slice();
 let chain = TextureMipChain::prepare((png, TextureFormat::Rgba8UnormSrgb))?;
 
-// Hand the chain to the unified create_texture entry - same vocabulary as
-// every other texture path; From<TextureMipChain> selects the GPU-only
-// upload internally.
+// Upload the chain through the regular create_texture entry point.
 let texture = renderer.create_texture(chain).await?;
 _ = texture.size();
 Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 9-9, 11-14, 21-24}"
+lang="rust" meta="collapse={1-1, 9-9, 11-14, 19-22}"
 />
 
 </TabItem>
@@ -144,9 +143,7 @@ val renderer = Renderer()
 val png = byteArrayOf(0x89.toByte(), 0x50.toByte(), 0x4E.toByte(), 0x47.toByte(), 0x0D.toByte(), 0x0A.toByte(), 0x1A.toByte(), 0x0A.toByte())
 val chain = TextureMipChain.prepare(png, TextureFormat.RGBA8_UNORM_SRGB, null)
 
-// Hand the chain to the unified create_texture entry - same vocabulary as
-// every other texture path; From<TextureMipChain> selects the GPU-only
-// upload internally.
+// Upload the chain through the regular create_texture entry point.
 val texture = renderer.createTexture(TextureInputMobile.Prepared(chain), null)
 `}
 lang="kotlin"
@@ -164,27 +161,18 @@ lang="kotlin"
 
 ### TextureMipChain::prepare
 
-Build a mip chain off the renderer thread, then hand it to `Renderer::create_texture` for a GPU-only upload. Pure CPU work â call from any worker / thread pool / async task / Web Worker.
+Build a mip chain off the renderer thread, then hand it to `Renderer::create_texture` for a GPU-only upload. The work is pure CPU; call it from any worker, thread pool, async task, or Web Worker.
 
-`prepare(input)` takes the same `TextureInput` transport as `Renderer::create_texture` and `Renderer::create_storage_texture` â one vocabulary across the API. The discriminator is whether `options.size` is set:
+`prepare(input)` accepts the same shapes as `Renderer::create_texture` and `Renderer::create_storage_texture`. Whether the bytes are decoded depends on `size`:
 
-- **Encoded path** â `size` absent. `data: Bytes` is decoded internally and the chain inherits the image's dimensions. Use when you have PNG / JPEG bytes from disk, network, or a worker decoder that emits encoded blobs.
-- **Raw path** â `size` present. `data: Bytes` is treated as already laid out for `format` at `size` â no decode. Use when your decoder already produced pixel-format-matching bytes (typical for tile-cache pipelines that fold mipmap generation into the same hop).
+- **Encoded:** `size` absent. The bytes are decoded as PNG / JPEG / etc. and the chain inherits the image's dimensions. Use this when you have an encoded blob from disk, the network, or a decoder that emits encoded data.
+- **Raw:** `size` present. The bytes are treated as already laid out for `format` at `size`. Use this when your decoder already produced pixel-format-matching bytes (typical for tile-cache pipelines that bake mipmap generation into the same step).
 
-`prepare` requires a sync-friendly `data` variant: `Bytes`, `DynamicImage`, or `Path` (file IO). `Url` (needs async fetch), `Ktx2*` (already pre-baked), `Prepared` (already a chain), `CloneOf` (existing texture), and `Empty` (no source) all return `TextureError::InvalidInput` with a clear message pointing at the right entry point.
+`prepare` runs synchronously and accepts only sync-friendly inputs: bytes, a `DynamicImage`, or a file path. URL inputs (which need async fetch), KTX2 inputs (already pre-baked), an existing chain, an existing texture, and empty inputs all return `TextureError::InvalidInput` with a message pointing at the right entry point.
 
-Supported formats for the mipmap chain: `Rgba8Unorm`, `Rgba8UnormSrgb`, `Bgra8Unorm`, `Bgra8UnormSrgb`, `R8Unorm`, `Rg8Unorm`, `R16Unorm`, `Rg16Unorm`, `Rgba16Unorm`. Other formats return `TextureError::UnsupportedMipmapFormat`. Decode failures surface as `MalformedImageError`; size / byte-count mismatches as `InvalidInput`.
+Supported formats: `Rgba8Unorm`, `Rgba8UnormSrgb`, `Bgra8Unorm`, `Bgra8UnormSrgb`, `R8Unorm`, `Rg8Unorm`, `R16Unorm`, `Rg16Unorm`, `Rgba16Unorm`. Other formats return `TextureError::UnsupportedMipmapFormat`. Decode failures surface as `MalformedImageError`; size and byte-count mismatches as `InvalidInput`.
 
-Rust callers use the `From<T>` impls â there's almost never a reason to construct `TextureInput` literally:
-
-| Form | Produces | Path |
-|------|----------|------|
-| `(bytes, format)` | `data: Bytes`, `options.format = format` | encoded |
-| `(bytes, format, [w, h])` | adds `options.size = Some([w, h])` | raw |
-| `(bytes, format, (w, h))` | same as above | raw |
-| `(bytes, format, Size::from(...))` | same as above | raw |
-
-Cross-language bindings expose `prepare(bytes, format, size?)` â `size` is optional / nullable. Swift / Kotlin extensions wrap the constructor so users call `TextureMipChain.prepare(bytes:format:)` (encoded) or `TextureMipChain.prepare(bytes:format:size:)` (raw) without seeing the underlying `TextureInput` plumbing.
+The cross-language bindings expose `prepare(bytes, format, size?)` with `size` optional. Swift and Kotlin add overloads so you call `TextureMipChain.prepare(bytes:format:)` for the encoded path and `TextureMipChain.prepare(bytes:format:size:)` for the raw path.
 
 #### Example
 
@@ -201,18 +189,18 @@ let img = image::DynamicImage::ImageRgba8(image::RgbaImage::from_vec(1, 1, vec![
 let mut png_buf = Vec::new();
 img.write_to(&mut std::io::Cursor::new(&mut png_buf), image::ImageFormat::Png)?;
 let encoded_png_bytes = png_buf.as_slice();
-// Encoded path â single tuple, no extra method.
+// Encoded path: pass bytes plus the format you expect.
 let chain = TextureMipChain::prepare((encoded_png_bytes, TextureFormat::Rgba8UnormSrgb))?;
 
 let raw_rgba = vec![200u8; 8 * 8 * 4];
-// Raw pixel path â same method, just include the size in the tuple.
+// Raw path: include the size so prepare skips decoding.
 let chain_raw = TextureMipChain::prepare((
     raw_rgba.as_slice(),
     TextureFormat::Rgba8UnormSrgb,
-    [8u32, 8u32],
+    [8, 8],
 ))?;
 
-// Hand the chain to the unified create_texture entry â same vocabulary.
+// Upload the chain through the regular create_texture entry point.
 let renderer = Renderer::new();
 let texture = renderer.create_texture(chain).await?;
 _ = texture.size();
@@ -239,12 +227,12 @@ const pngResp = await fetch("/healthcheck/public/favicon.png");
 const pngBytes = new Uint8Array(await pngResp.arrayBuffer());
 const chain = TextureMipChain.prepare(pngBytes, TextureFormat.Rgba8UnormSrgb);
 
-// Raw pixel path - same method, just include the size.
+// Raw pixel path: include the size so prepare skips decoding.
 const rawRgba = new Uint8Array(8 * 8 * 4);
 rawRgba.fill(200);
 const chainRaw = TextureMipChain.prepare(rawRgba, TextureFormat.Rgba8UnormSrgb, [8, 8]);
 
-// Hand the chain to the unified create_texture entry - same vocabulary.
+// Upload the chain through the regular createTexture entry point.
 const renderer = new Renderer();
 const texture = await renderer.createTexture(chain);
 const _ = chainRaw.levelCount();
@@ -279,7 +267,7 @@ code={`
 import FragmentColor
 import Foundation
 
-// Raw RGBA path â same method as encoded, just include the size.
+// Raw RGBA path: include the size so prepare skips decoding.
 let rawRgba = Data(repeating: 200, count: 8 * 8 * 4)
 let chainRaw = try TextureMipChain.prepare(
     bytes: rawRgba,
@@ -287,7 +275,7 @@ let chainRaw = try TextureMipChain.prepare(
     size: Size(width: 8, height: 8, depth: nil)
 )
 
-// Hand the chain to the unified create_texture entry â same vocabulary.
+// Upload the chain through the regular createTexture entry point.
 let renderer = Renderer()
 let texture = try await renderer.createTexture(input: .prepared(chainRaw))
 let _ = chainRaw.levelCount()
@@ -303,15 +291,15 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 
-// Encoded path â single tuple, no extra method.
+// Encoded path: pass bytes plus the format you expect.
 val encoded_png_bytes: ByteArray = byteArrayOf()
 val chain = TextureMipChain.prepare(encoded_png_bytes, TextureFormat.RGBA8_UNORM_SRGB, null)
 
-// Raw pixel path â same method, just include the size in the tuple.
+// Raw path: include the size so prepare skips decoding.
 val raw_rgba: ByteArray = ByteArray(8 * 8 * 4)
 val chain_raw = TextureMipChain.prepare(raw_rgba, TextureFormat.RGBA8_UNORM_SRGB, Size(width=8u, height=8u, depth=null))
 
-// Hand the chain to the unified create_texture entry â same vocabulary.
+// Upload the chain through the regular create_texture entry point.
 val renderer = Renderer()
 val texture = renderer.createTexture(TextureInputMobile.Prepared(chain), null)
 `}
@@ -342,7 +330,7 @@ let pixels: Vec<u8> = vec![200; 4 * 4 * 4];
 let chain = TextureMipChain::prepare((
     pixels.as_slice(),
     TextureFormat::Rgba8UnormSrgb,
-    [4u32, 4u32],
+    [4, 4],
 ))?;
 let _ = chain.format();
 Ok::<(), Box<dyn std::error::Error>>(())
@@ -436,7 +424,7 @@ let pixels: Vec<u8> = vec![0; 16 * 16 * 4];
 let chain = TextureMipChain::prepare((
     pixels.as_slice(),
     TextureFormat::Rgba8UnormSrgb,
-    [16u32, 16u32],
+    [16, 16],
 ))?;
 let (width, height) = chain.base_size();
 assert_eq!(width, 16);
@@ -543,7 +531,7 @@ let pixels: Vec<u8> = vec![0; 8 * 8 * 4];
 let chain = TextureMipChain::prepare((
     pixels.as_slice(),
     TextureFormat::Rgba8UnormSrgb,
-    [8u32, 8u32],
+    [8, 8],
 ))?;
 let level_zero_bytes = &chain.levels()[0];
 assert_eq!(level_zero_bytes.len(), 8 * 8 * 4);
@@ -642,7 +630,7 @@ let pixels: Vec<u8> = vec![0; 8 * 8 * 4];
 let chain = TextureMipChain::prepare((
     pixels.as_slice(),
     TextureFormat::Rgba8UnormSrgb,
-    [8u32, 8u32],
+    [8, 8],
 ))?;
 let count = chain.level_count();
 assert_eq!(count, 4); // 8, 4, 2, 1

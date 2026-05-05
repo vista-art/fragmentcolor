@@ -11,7 +11,7 @@ let pixels: Vec<u8> = vec![0; 8 * 8 * 4];
 let chain = TextureMipChain::prepare((
     pixels.as_slice(),
     TextureFormat::Rgba8UnormSrgb,
-    [8u32, 8u32],
+    [8, 8],
 ))?;
 let count = chain.level_count();
 # assert_eq!(count, 4); // 8, 4, 2, 1

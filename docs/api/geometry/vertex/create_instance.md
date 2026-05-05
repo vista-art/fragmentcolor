@@ -1,6 +1,9 @@
 # Vertex::create_instance
 
-Create an Instance from this Vertex by cloning all of its properties
+Create an `Instance` that inherits this vertex's attributes. Use this
+when you want a starting point for an instance whose per-instance values
+mostly match the source vertex, then call `set` on the result to change
+the fields that differ.
 
 ## Example
 

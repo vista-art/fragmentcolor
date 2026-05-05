@@ -1,6 +1,9 @@
 # Vertex
 
-A single vertex with a required position (2D or 3D) and optional properties like uv and color.
+A single vertex: a required 2D or 3D position plus any per-vertex
+attributes your shader declares (commonly `uv` and `color`, but any key
+the shader's vertex stage reads is fair game). Build vertices and feed
+them into a [Mesh](https://fragmentcolor.org/api/geometry/mesh) to draw.
 
 ## Example
 

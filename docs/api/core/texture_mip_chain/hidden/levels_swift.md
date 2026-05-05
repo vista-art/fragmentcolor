@@ -1,8 +1,8 @@
 # TextureMipChain::levels (Swift)
 
 Swift override for `TextureMipChain::levels`. The Swift binding exposes
-a single `level(index)` accessor returning `Data`, rather than a
-`levels()` collection — same data, just one level at a time.
+a `level(index)` accessor returning `Data`, rather than a `levels()`
+collection.
 
 ## Example
 

@@ -2,9 +2,9 @@
 
 A GPU texture resource. Public API wrapper that holds a shareable reference to the internal TextureObject and a numeric handle used by uniforms.
 
-- Construct via [Renderer::create_texture(input)](https://fragmentcolor.org/api/core/renderer/create_texture) — single entry point that takes any `TextureInput`-shaped value (bytes, `(bytes, [w, h])`, `(bytes, format)`, path, URL, KTX2, prepared chain, etc.).
-- Set on shaders with shader.set("key", &[Texture](https://fragmentcolor.org/api/core/texture))
-- [Texture](https://fragmentcolor.org/api/core/texture) owns its sampler; you can tweak filtering and wrapping via set_sampler_options.
+- Construct via [Renderer::create_texture(input)](https://fragmentcolor.org/api/core/renderer/create_texture). `input` accepts bytes, `(bytes, [w, h])`, `(bytes, format)`, a path, a URL, a KTX2 container, or a prepared chain.
+- Bind to a shader with `shader.set("key", &texture)`.
+- The texture owns its sampler; tweak filtering and wrapping via `set_sampler_options`.
 
 ## How to use
 
@@ -35,13 +35,12 @@ let shader = Shader::new(r#"
 @fragment fn main() -> @location(0) vec4<f32> { return vec4f(1.,1.,1.,1.); }
 "#)?;
 
-// 1x1 RGBA (white) raw pixel bytes - single create_texture entry, tuple
-// form (bytes, format, size) selects the raw-pixel path. Format is
-// the placeholder Rgba (sRGB-aware) by default.
-let pixels: &[u8] = &[255,255,255,255];
-let texture = renderer.create_texture((pixels, [1u32, 1u32])).await?;
+// 1x1 white pixel. Passing a size tells create_texture to read the bytes
+// as raw pixels; the default format is Rgba (sRGB-aware).
+let pixels: &[u8] = &[255, 255, 255, 255];
+let texture = renderer.create_texture((pixels, [1, 1])).await?;
 
-// insert  the texture in the shader matching the name in the shader
+// Bind the texture to the uniform name declared in WGSL.
 shader.set("my_texture", &texture)?;
 
 # _ = shader;

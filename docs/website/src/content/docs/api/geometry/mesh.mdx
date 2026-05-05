@@ -118,7 +118,9 @@ lang="kotlin"
 
 ### Mesh::new
 
-Create an empty mesh.
+Create an empty mesh. Add vertices with `add_vertex` (or `add_vertices`)
+and instances with `add_instance`, then attach the mesh to a shader to
+draw it.
 
 #### Example
 
@@ -272,7 +274,10 @@ lang="kotlin"
 
 ### Mesh::add_vertex
 
-Add a single vertex to the mesh.
+Append a single vertex to the mesh. Pass an array literal for the
+position (`[x, y]` or `[x, y, z]`); for vertices that carry `uv`, `color`,
+or other per-vertex attributes, build a [Vertex](/api/geometry/vertex)
+first and pass it in.
 
 #### Example
 

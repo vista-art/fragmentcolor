@@ -11,7 +11,7 @@ let pixels: Vec<u8> = vec![0; 16 * 16 * 4];
 let chain = TextureMipChain::prepare((
     pixels.as_slice(),
     TextureFormat::Rgba8UnormSrgb,
-    [16u32, 16u32],
+    [16, 16],
 ))?;
 let (width, height) = chain.base_size();
 # assert_eq!(width, 16);

@@ -15,7 +15,7 @@ let renderer = Renderer::new();
 // 1x1 RGBA (white) raw pixel bytes
 let pixels: &[u8] = &[255,255,255,255];
 
-let texture = renderer.create_texture((pixels, [1u32, 1u32])).await?;
+let texture = renderer.create_texture((pixels, [1, 1])).await?;
 let opts = SamplerOptions { repeat_x: true, repeat_y: true, smooth: true, compare: None };
 texture.set_sampler_options(opts);
 
