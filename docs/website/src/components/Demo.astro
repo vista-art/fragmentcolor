@@ -8,6 +8,15 @@
 //
 // Generalization of the ShaderHero front-page demo. ShaderHero will refactor
 // to use this component once it stabilizes.
+//
+// Lazy-start behaviour:
+//   - On mount the canvas frame is rendered with a play (▶) overlay; no
+//     WASM is loaded and no example.js is imported.
+//   - Clicking the overlay (or supplying `autoplay`) triggers the existing
+//     init flow (WASM, renderer, target, example module, RAF loop).
+//   - After init, an IntersectionObserver pauses the RAF loop while the
+//     canvas is offscreen and resumes it on entry. The play overlay does
+//     not return.
 
 import { tutorials } from "../generated/tutorials";
 
@@ -15,9 +24,11 @@ interface Props {
   file: string;
   /** Pixel height for the canvas. Default 420px. */
   height?: string;
+  /** If true, the demo boots WASM immediately instead of waiting for a click. */
+  autoplay?: boolean;
 }
 
-const { file, height = "420px" } = Astro.props;
+const { file, height = "420px", autoplay = false } = Astro.props;
 
 const entry = tutorials[file];
 if (!entry) {
@@ -34,6 +45,7 @@ const moduleKey = `../tutorials/${entry.jsModulePath}`;
 <tutorial-demo
   data-module-key={moduleKey}
   data-canvas-height={height}
+  data-autoplay={autoplay ? "1" : "0"}
   style="display: block; margin: 1.5rem 0;">
 </tutorial-demo>
 
@@ -48,13 +60,17 @@ if (!customElements.get('tutorial-demo')) {
   class TutorialDemo extends HTMLElement {
     #shadow;
     #canvas;
+    #playBtn;
     #raf = 0;
     #stopped = false;
+    #paused = false;
+    #started = false;
     #renderer;
     #target;
     #state;
     #frame;
     #ro;
+    #io;
     #start = performance.now();
     #fcModule;
 
@@ -71,13 +87,13 @@ if (!customElements.get('tutorial-demo')) {
             height: ${height};
             border-radius: 8px;
             overflow: hidden;
-            background: #0f172a;
+            background: linear-gradient(135deg, #0b1124 0%, #0f172a 60%, #111827 100%);
           }
           canvas {
             width: 100%;
             height: 100%;
             display: block;
-            background: #0f172a;
+            background: transparent;
           }
           .err {
             position: absolute;
@@ -95,21 +111,70 @@ if (!customElements.get('tutorial-demo')) {
             display: none;
           }
           .err.visible { display: flex; }
+          .play {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: transparent;
+            border: 0;
+            padding: 0;
+            margin: 0;
+            cursor: pointer;
+            color: inherit;
+            font: inherit;
+            -webkit-appearance: none;
+            appearance: none;
+          }
+          .play:focus-visible {
+            outline: 2px solid rgba(255, 255, 255, 0.6);
+            outline-offset: -4px;
+          }
+          .play .disc {
+            width: 64px;
+            height: 64px;
+            border-radius: 50%;
+            background: rgba(15, 23, 42, 0.55);
+            backdrop-filter: blur(2px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 120ms ease, background 120ms ease;
+          }
+          .play:hover .disc {
+            background: rgba(15, 23, 42, 0.75);
+            transform: scale(1.05);
+          }
+          .play .triangle {
+            width: 0;
+            height: 0;
+            border-left: 18px solid #ffffff;
+            border-top: 12px solid transparent;
+            border-bottom: 12px solid transparent;
+            margin-left: 4px;
+          }
+          .play.hidden { display: none; }
         </style>
         <div class="frame">
           <canvas></canvas>
+          <button class="play" type="button" aria-label="Start demo">
+            <span class="disc"><span class="triangle"></span></span>
+          </button>
           <div class="err" role="alert"></div>
         </div>
       `;
       this.#canvas = this.#shadow.querySelector('canvas');
+      this.#playBtn = this.#shadow.querySelector('.play');
     }
 
-    async connectedCallback() {
-      try {
-        await this.#init();
-      } catch (e) {
-        console.error('[Demo] init failed', e);
-        this.#showError(`init: ${e?.message || e}`);
+    connectedCallback() {
+      this.#playBtn?.addEventListener('click', () => this.#start_());
+      const auto = this.dataset.autoplay === '1';
+      if (auto) {
+        // Defer to the next microtask so the host element is fully attached
+        // before WASM init kicks off.
+        queueMicrotask(() => this.#start_());
       }
     }
 
@@ -117,6 +182,20 @@ if (!customElements.get('tutorial-demo')) {
       this.#stopped = true;
       cancelAnimationFrame(this.#raf);
       try { this.#ro?.disconnect(); } catch {}
+      try { this.#io?.disconnect(); } catch {}
+    }
+
+    async #start_() {
+      if (this.#started) return;
+      this.#started = true;
+      this.#playBtn?.classList.add('hidden');
+      this.#start = performance.now();
+      try {
+        await this.#init();
+      } catch (e) {
+        console.error('[Demo] init failed', e);
+        this.#showError(`init: ${e?.message || e}`);
+      }
     }
 
     async #init() {
@@ -156,9 +235,31 @@ if (!customElements.get('tutorial-demo')) {
       this.#ro.observe(this.#canvas);
       window.addEventListener('resize', () => this.#applySize());
 
-      // 7) RAF loop.
+      // 7) Pause / resume the RAF loop based on viewport visibility so an
+      //    offscreen demo doesn't burn GPU time. We re-anchor #start when
+      //    resuming so animations don't jump forward by the offscreen
+      //    duration.
+      if ('IntersectionObserver' in window) {
+        this.#io = new IntersectionObserver((entries) => {
+          for (const entry of entries) {
+            if (entry.isIntersecting) {
+              if (this.#paused) {
+                this.#paused = false;
+                this.#start = performance.now();
+                this.#raf = requestAnimationFrame(loop);
+              }
+            } else {
+              this.#paused = true;
+              cancelAnimationFrame(this.#raf);
+            }
+          }
+        }, { threshold: 0.01 });
+        this.#io.observe(this);
+      }
+
+      // 8) RAF loop.
       const loop = (now) => {
-        if (this.#stopped) return;
+        if (this.#stopped || this.#paused) return;
         this.#raf = requestAnimationFrame(loop);
         try {
           const t = (now - this.#start) / 1000.0;
