@@ -34,6 +34,13 @@ async fn resolve_part(part: &ShaderPart) -> Result<Resolved, ShaderError> {
             body: s.clone(),
             glsl: None,
         }),
+        // Browsers have no filesystem; resolve path-shaped inputs as URLs
+        // against the document origin via the native fetch API. Relative
+        // paths (`/foo.wgsl`, `./foo.wgsl`, `foo.wgsl`) all work because
+        // `Request::new_with_str` does the URL resolution itself.
+        #[cfg(wasm)]
+        ShaderPart::Path(p) => fetch_url(&p.to_string_lossy()).await,
+        #[cfg(not(wasm))]
         ShaderPart::Path(p) => read_path(p),
         ShaderPart::Url(u) => {
             // Registry-URL short-circuit: if the URL is `<base>/<category>/<name>.wgsl`
@@ -116,6 +123,16 @@ pub(crate) mod blocking {
                 body: s.clone(),
                 glsl: None,
             }),
+            // Browsers have no filesystem and the constructor is sync, so
+            // path-shaped inputs cannot be resolved here. Direct callers to
+            // `Shader::fetch`, which resolves paths as URLs relative to origin.
+            #[cfg(wasm)]
+            ShaderPart::Path(_) => Err(ShaderError::Error(
+                "Filesystem reads in the constructor are not supported in WASM. \
+                 Use `await Shader.fetch(input)` to load shaders from URLs or paths relative to origin."
+                    .into(),
+            )),
+            #[cfg(not(wasm))]
             ShaderPart::Path(p) => read_path(p),
             ShaderPart::Url(u) => {
                 // Registry-URL short-circuit (sync variant). See the async
@@ -243,6 +260,7 @@ struct Resolved {
     glsl: Option<GlslKind>,
 }
 
+#[cfg(not(wasm))]
 fn read_path(path: &Path) -> Result<Resolved, ShaderError> {
     let body = std::fs::read_to_string(path)?;
     Ok(Resolved {
