@@ -6,9 +6,9 @@ date: 2026-05-04
 tags: ["release", "rust", "swift", "kotlin", "ios", "android", "webgpu", "milestone"]
 ---
 
-v0.11.0 completes the set of languages FragmentColor was designed for: **Rust, JavaScript, Python, Swift, and Kotlin**. The same `Renderer`, `Shader`, `Pass`, and `Texture` types now run natively on iOS and Android, with parity to the desktop and web bindings.
+v0.11.0 completes the set of languages FragmentColor was designed for: **Rust, JavaScript, Python, Swift, and Kotlin**. The same `Renderer`, `Shader`, `Pass`, and `Texture` types now run natively on iOS and Android, at parity with the desktop and web bindings.
 
-The other half of the release is a substantial pass over the API itself: a single texture-input vocabulary, shader composition primitives that set up the upcoming registry, KTX2 + wider format support for production asset pipelines, off-the-renderer-thread texture decoding, a method-naming audit, and the wgpu/naga 27 → 29 upgrade.
+The other half of the release is a substantial pass over the API itself. The texture API now has a single, unified shape; `Shader` gained composition primitives that set up the upcoming registry; KTX2 and wider source-format coverage land for production asset pipelines; texture decoding moves off the renderer thread; method naming got a top-to-bottom audit; and the underlying wgpu/naga stack moves from 27 to 29.
 
 ### What mobile looks like
 
@@ -34,42 +34,43 @@ val shader = Shader.new(wgslSource)
 renderer.render(shader, target)
 ```
 
-Bindings are generated with [uniffi](https://github.com/mozilla/uniffi-rs), so the type names match the Rust core. A `Shader` is a `Shader` everywhere, so the concepts stay the same as you move between platforms.
+Bindings are generated with [uniffi](https://github.com/mozilla/uniffi-rs), so the type names match the Rust core and the concepts carry over verbatim as you move between platforms.
 
 ### Distribution
 
-- **Swift** ships as a Swift Package. Add `https://github.com/vista-art/fragmentcolor` as a package dependency (`from: "0.11.0"`), and SPM pulls the matching `fragmentcolor.xcframework.zip` from the GitHub release, verifying a pinned SHA-256.
+- **Swift** ships as a Swift Package. Add `https://github.com/vista-art/fragmentcolor` as a package dependency (`from: "0.11.0"`); SPM pulls the matching `fragmentcolor.xcframework.zip` from the GitHub release and verifies it against a pinned SHA-256.
 - **Kotlin** ships as an `.aar` attached to the GitHub release for 0.11.x. Maven Central publishing is in progress.
 
-CI builds the xcframework on every PR that touches the mobile code and runs a headless smoke test on an iPhone simulator. The Android equivalent boots an emulator with KVM and runs `connectedAndroidTest` against the Kotlin bindings.
+Every PR that touches mobile code rebuilds the xcframework and runs a headless smoke test on an iPhone simulator. The Android equivalent boots a KVM-accelerated emulator and runs `connectedAndroidTest` against the Kotlin bindings.
 
 ### Five-language healthchecks
 
-Every public method has a Rust example in `docs/api/`. The build script transpiles each example into JavaScript, Python, Swift, and Kotlin, then aggregates the per-language outputs into compile-only test files that ride along with each platform's existing healthcheck. Running `./healthcheck` now exercises ~88 examples on every binding: JavaScript and Python execute them through Playwright + a headless wheel; Swift and Kotlin compile them as part of `xcodebuild` and `connectedAndroidTest`. Five languages, one source of truth, one CI gate.
+Every public method has a Rust example in `docs/api/`. The build script transpiles each example into JavaScript, Python, Swift, and Kotlin, then aggregates the per-language outputs into compile-only test files that ride along with each platform's existing healthcheck.
 
-### A unified texture vocabulary
+`./healthcheck` now exercises ~88 examples on every binding. JavaScript and Python execute them through Playwright and a headless wheel; Swift and Kotlin compile them as part of `xcodebuild` and `connectedAndroidTest`. The Rust files in `docs/api/` are the source of truth, so a doctest regression on Rust is the only thing that can let an inconsistency through.
 
-Texture creation in v0.10.x had three transports (`TextureSpec`, `StorageTextureInput`, `PrepareSpec`) and ~9 entry points (`create_texture_with_size`, `create_texture_with_format`, `create_texture_prepared`, `create_storage_texture_with_data`, …). v0.11.0 collapses the surface to **one transport, three entry points**:
+### A unified texture API
+
+Texture creation in v0.10.x had three transports (`TextureSpec`, `StorageTextureInput`, `PrepareSpec`) and around nine entry points (`create_texture_with_size`, `create_texture_with_format`, `create_texture_prepared`, `create_storage_texture_with_data`, ...). v0.11.0 collapses the surface to three entry points that all accept the same input shapes:
 
 ```rust
-// Same vocabulary, three places to use it.
-let tex   = renderer.create_texture(("image.png", )).await?;          // file path
-let tex   = renderer.create_texture((png_bytes,)).await?;             // encoded bytes
+let tex   = renderer.create_texture("image.png").await?;              // file path
+let tex   = renderer.create_texture(png_bytes).await?;                // encoded bytes
 let tex   = renderer.create_texture((rgba, [w, h])).await?;           // raw pixels
 let store = renderer.create_storage_texture(([256, 256], TextureFormat::Rgba16Float)).await?;
 let chain = TextureMipChain::prepare((png_bytes, TextureFormat::Rgba8UnormSrgb))?;
 let tex   = renderer.create_texture(chain).await?;                    // pre-baked
 ```
 
-Internally there's one `TextureInput { data: TextureData, options: TextureOptions }` and a small constellation of `From` impls that select the right `TextureData` variant from each tuple shape. JS, Python, Swift, and Kotlin all see the same call shapes.
+The same call shapes work in JavaScript, Python, Swift, and Kotlin, with each binding using its native syntax for the tuple/options.
 
-**`TextureMipChain` is a new public type, available on every binding.** It builds the CPU mipmap chain off-thread from encoded image bytes (`prepare`) or raw pixels (`prepare_raw`), so a tile-cache loader on its own worker thread can fold the resize pass into the same hop and hand the renderer a finished chain. RemixBrush's painted-canvas tile uploads drop the GPU thread's per-tile cost from ~30–50 ms to a `queue.write_texture` call.
+**`TextureMipChain` is a new public type on every binding.** It builds the CPU mipmap chain off-thread from encoded image bytes or raw pixels, so a tile-cache loader on its own worker thread can fold the resize pass into the same hop and hand the renderer a finished chain. In RemixBrush, painted-canvas tile uploads dropped from 30–50 ms of GPU-thread work to a single `queue.write_texture` call.
 
-**`Renderer::create_texture` itself no longer blocks the renderer thread on native targets.** Decoding, the Triangle-filter mipmap chain, and the per-level `wgpu::Queue::write_texture` calls run on a single named worker (`fragmentcolor-bg`); the public API stays `await`-shaped, but the caller's GPU / event-loop thread is no longer pinned for the duration. The wasm path keeps today's behavior (`wgpu::Device` is `!Send` on `wasm32`).
+**`Renderer::create_texture` no longer blocks the renderer thread on native targets.** Decoding, the Triangle-filter mipmap chain, and the per-level texture writes run on a named background worker; the public API stays `await`-shaped, but the caller's GPU and event-loop threads are no longer pinned for the duration. On the web, the work runs inline because the underlying GPU types can't be moved across threads — drop heavy decode into a Web Worker yourself if you need parallelism there.
 
 ### Shader composition
 
-`Shader::new` now classifies its input. A single string becomes raw WGSL/GLSL **source**, a registry **slug** (`"sdf2d/circle"`), an `https://` **URL**, or a local **path**, depending on shape. An array of any combination is resolved (fetched / read / looked up), deduplicated by source hash, and concatenated in order.
+`Shader::new` now classifies its input by shape: a single string is raw WGSL/GLSL **source**, a registry **slug** like `"sdf2d/circle"`, an `https://` **URL**, or a local **path**. An array mixing any of those is resolved (fetched, read, looked up), deduplicated by source hash, and concatenated in order before validation.
 
 ```rust
 let shader = Shader::new(["sdf2d/circle", "noise/simplex2", main_src])?;
@@ -77,81 +78,90 @@ let shader = Shader::fetch("https://fragmentcolor.org/shaders/sdf2d/circle.wgsl"
 let shader = Shader::new("sdf2d/circle")?;  // resolves through the registry
 ```
 
-`Shader::fetch` is async, classifies the input the same way, and exists on every binding (`await Shader.fetch(...)` in JS / Python; `try await Shader.fetch(...)` in Swift; `Shader.fetch(...)` in Kotlin). `Shader::set_registry(base_url)` overrides the slug base URL.
+`Shader::fetch` is the async path; it classifies input the same way as `new` and is available on every binding (`await Shader.fetch(...)` in JS and Python, `try await Shader.fetch(...)` in Swift, `Shader.fetch(...)` in Kotlin). Override the slug base URL with `Shader::set_registry(base_url)`.
 
-This is the on-ramp to the registry that ships in v0.14.x. The composition machinery (parts, dedup, slug → URL resolution) is in place today; the curated shader collection at `shaders.fragmentcolor.org` is filled in over the 0.11.x → 0.14.x window. GLSL is supported as a single part; mixing GLSL with WGSL or with other parts is rejected.
+This is the on-ramp to the curated registry that lands in v0.14.x. The composition machinery — parts, dedup, slug-to-URL resolution — is in place today; the shader collection at `shaders.fragmentcolor.org` fills in over the 0.11.x → 0.14.x window. GLSL is supported as a single part; mixing GLSL with WGSL or with other parts is rejected.
 
-### Production texture loading: KTX2 + wider formats
+### Production texture loading: KTX2 and wider formats
 
-**KTX2 container support.** `TextureInput` gained three KTX2 variants (`Ktx2Bytes`, `Ktx2Path`, `Ktx2Url`) that go through the same `Renderer::create_texture` entry point as JPEG / PNG. The KTX2 path trusts the file's declared format and pre-baked mip chain — `TextureOptions.format` and `TextureOptions.mipmaps` are intentionally ignored for KTX2 inputs because doing them twice would round-trip through a worse approximation. Format coverage spans uncompressed RGBA8 / RGBA16F / R-G-RG-RGBA 8/16-bit, the BC family (BC1–BC7), ETC2 RGB/RGBA/RGB-A1, and ASTC 4×4 + 8×8 — mapped from Vulkan `VkFormat` values per the KTX2 spec. Compression GPU features are requested opportunistically at device creation; adapters without a given feature still get a working device, and KTX2 loads of formats the GPU can't sample fail at upload with a clear error.
+**KTX2 container support.** `TextureInput` gained three KTX2 variants — `Ktx2Bytes`, `Ktx2Path`, `Ktx2Url` — that go through the regular `Renderer::create_texture` entry point alongside JPEG and PNG. KTX2 inputs trust the file's declared format and pre-baked mip chain; `TextureOptions.format` and `TextureOptions.mipmaps` are deliberately ignored for them, because re-running either step would round-trip through a worse approximation.
 
-**Wider source-image format support.** Source-image decoding now picks the right pixel buffer for the target format: `R8Unorm` via `to_luma8`, `R16Unorm` via `to_luma16`, `Rg8Unorm` via `to_luma_alpha8`, `Rg16Unorm` via `to_luma_alpha16`, `Rgba16Unorm` via `to_rgba16`. The previous code path went through `to_rgba8` for everything, which silently truncated 16-bit-per-channel input — useful height maps and mask buffers loaded through `Renderer::create_texture(path)` were producing 8-bit output without a warning.
+Format coverage:
 
-**Source-image mipmaps + trilinear filtering by default.** `Renderer::create_texture` now generates a full mipmap chain at upload via `image::imageops::resize` with the Triangle filter, and the default linear sampler picks `mipmap_filter: Linear` when `smooth: true`. The "moving moiré" you'd see when zooming out on a textured quad whose source has high-frequency detail (canvas weave in painted JPEGs being the canonical case) is gone. Opt out with `TextureOptions { mipmaps: false, .. }` for textures you'll only sample 1:1.
+- Uncompressed RGBA8, RGBA16F, and the R / G / RG / RGBA 8- and 16-bit families.
+- BC1–BC7.
+- ETC2 RGB, RGBA, and RGB-A1.
+- ASTC 4×4 and 8×8.
+
+The mapping from Vulkan `VkFormat` values follows the KTX2 spec. Compression features are requested opportunistically at device creation, so adapters without a given feature still get a working device — a KTX2 load that targets a format the GPU can't sample fails at upload with a clear error rather than at sample time.
+
+**Wider source-image coverage.** Source-image decoding now picks the right pixel buffer for the target format: `R8Unorm` via `to_luma8`, `R16Unorm` via `to_luma16`, `Rg8Unorm` via `to_luma_alpha8`, `Rg16Unorm` via `to_luma_alpha16`, and `Rgba16Unorm` via `to_rgba16`. The previous code path went through `to_rgba8` for everything, silently truncating 16-bit-per-channel input — height maps and mask buffers loaded through `Renderer::create_texture(path)` were producing 8-bit output without a warning.
+
+**Mipmaps and trilinear filtering by default.** `Renderer::create_texture` now generates a full mipmap chain at upload (Triangle filter via `image::imageops::resize`), and the default linear sampler picks `mipmap_filter: Linear` when `smooth: true`. The moving moiré you'd see when zooming out on a textured quad with high-frequency detail — canvas weave in painted JPEGs is the canonical case — is gone. Opt out with `TextureOptions { mipmaps: false, .. }` for textures you'll only ever sample at 1:1.
 
 ### Compute API improvements
 
-The compute API gains three direct additions:
+Two direct additions:
 
 ```rust
-// Seed a storage texture from a CPU blob in one call. Same TextureInput
-// vocabulary as create_texture: (size, format) allocates empty,
-// (size, format, bytes) seeds from a buffer.
+// Seed a storage texture from a CPU blob in one call.
+// (size, format) allocates empty; (size, format, bytes) seeds from a buffer.
 let tex = renderer
-    .create_storage_texture(([256u32, 256u32], TextureFormat::Rgba16Float, bytes))
+    .create_storage_texture(([256, 256], TextureFormat::Rgba16Float, bytes))
     .await?;
 
 // Read back the contents of any registered texture in its native format.
-let pixels = renderer.read_texture(tex.id())?;
-
-// Block until every queued submission has finished.
-renderer.wait();
+let pixels = renderer.read_texture(*tex.id()).await?;
 ```
 
-`wait()` gives you a predictable ordering point between `render()` and a later readback. This addresses a Metal-side race where a compute burst followed by `TextureTarget::get_image` could return stale pixels on certain adapters.
+Readbacks (`Renderer::read_texture`, `Texture::get_image`, `TextureTarget::get_image`) poll the device internally before mapping the staging buffer, so a `render → readback` sequence is deterministic without any explicit synchronization on the caller's side.
 
-`TextureFormat::Rgba16Float` joins the supported set: 16-bit float per channel, filterable, and storage-writable without a feature opt-in. It is the right format for iterative simulations where 8-bit precision is not enough and 32-bit is overkill.
+`TextureFormat::Rgba16Float` joins the supported set: 16-bit float per channel, filterable, and storage-writable without a feature opt-in. The right pick for iterative simulations where 8-bit precision isn't enough and 32-bit is overkill.
 
 ### Compute correctness fixes
 
 Three correctness fixes also land:
 
-- Sampled textures and samplers now include `ShaderStages::COMPUTE` in their bind-group layouts, matching uniforms and read-only storage buffers. `textureSample` from a compute shader now works directly, without declaring sources as `texture_storage_2d<..., read>` as a workaround.
-- `texture_storage_2d<..., read_write>` maps to the combined `LOAD | STORE` access. `textureStore` against a `read_write` texture passes validation, and ping-pong pairs that can collapse to a single texture do so.
-- `Texture::get_image` now advances the wgpu event loop (`device.poll(Wait)`) on native, so the readback callback always completes.
+- Sampled textures and samplers now include `ShaderStages::COMPUTE` in their bind-group layouts, matching uniforms and read-only storage buffers. `textureSample` from a compute shader works directly, without the workaround of declaring sources as `texture_storage_2d<..., read>`.
+- `texture_storage_2d<..., read_write>` maps to combined `LOAD | STORE` access. `textureStore` against a `read_write` texture passes validation, and ping-pong pairs that can collapse to a single texture do so.
+- `Texture::get_image` advances the wgpu event loop on native (`device.poll(Wait)`), so the readback callback always completes.
 
 ### An Apple Silicon compute barrier
 
-Apple Silicon requires a submission boundary to flush tile-based storage writes before a later compute pass can sample them with `texture_2d<f32>` / `textureLoad`. Without the boundary, the sample can return zeros silently.
+Apple Silicon needs a submission boundary to flush tile-based storage writes before a later compute pass can sample them through `texture_2d<f32>` / `textureLoad`. Without the boundary, the sample silently returns zeros.
 
-v0.11.0 detects the platform via a new `apple` cfg alias (`target_os = "macos" | "ios"`) and inserts the boundary automatically between sequential compute passes. There is nothing to opt into; non-Apple targets are unaffected.
+v0.11.0 detects the platform and inserts the boundary automatically between sequential compute passes on macOS and iOS. There's nothing to opt into; non-Apple targets are unaffected.
 
-The same TBDR class of bug also affects `compute → render` sequences in the same command buffer; the auto-split for that case is queued for v0.11.x. Workaround until then: insert an explicit split (issue two `Renderer::render` calls, or call `Renderer::wait()` between them).
+The same class of TBDR bug also affects `compute → render` sequences inside one command buffer; the auto-split for that case is queued for v0.11.x. Until it lands, the workaround is to issue two separate `Renderer::render` calls — each one ends with its own submission, which is enough of a boundary in practice.
 
-### `R16Unorm` (and the 16-bit norm family) now works on every adapter that advertises the feature
+### `R16Unorm` (and the 16-bit norm family) now works on every adapter that advertises it
 
-A bug surfaced through RemixBrush's painting shader path: an `R16Unorm` `TextureMipChain` that round-tripped fine through `prepare → device.create_texture` produced a silently-invalid texture on Apple Silicon, then exploded on first `create_view()` with an `InvalidResource` cascade that drowned consumer logs 60 times per second. Same for `Rg16Unorm`, `Rgba16Unorm`, and the three `*Snorm` variants.
+A bug surfaced through RemixBrush's painting shader path: an `R16Unorm` `TextureMipChain` that round-tripped cleanly through `prepare → device.create_texture` produced a silently-invalid texture on Apple Silicon, then exploded on the first `create_view()` with an `InvalidResource` cascade that drowned consumer logs 60 times per second. Same for `Rg16Unorm`, `Rgba16Unorm`, and the three `*Snorm` variants.
 
-Three layered fixes so the failure mode no longer reaches the user: the adapter feature probe now opportunistically requests `TEXTURE_FORMAT_16BIT_NORM` (and `FLOAT32_FILTERABLE`) on every adapter that advertises them, a `TextureError::UnsupportedFormatForUsage` guard fails fast at the API boundary on adapters that don't, and a new `RenderContext::validate(label, op)` helper folds bind-group + view creation through wgpu's validation scope so any leftover validation failures come back as one programmatic error instead of a four-tier cascade.
+Three layered fixes, so the failure mode no longer reaches the user:
 
-### API naming pass: single canonical name per operation
+- The adapter feature probe opportunistically requests `TEXTURE_FORMAT_16BIT_NORM` and `FLOAT32_FILTERABLE` on every adapter that advertises them.
+- A `TextureError::UnsupportedFormatForUsage` guard fails fast at the API boundary on adapters that don't.
+- A new `RenderContext::validate(label, op)` helper folds bind-group and view creation through wgpu's validation scope, so any remaining validation failures come back as one programmatic error instead of a four-tier cascade.
 
-A cross-cutting audit. The rule: **1 verb or max 3 words**; suffixes only when they disambiguate genuinely distinct inputs (`from_file` vs `from_bytes`). No `_async` / `_kind` / `_object` / `_with_X` / `_checked` variants. Internal helpers paid the same tax.
+### API naming pass
 
-Consumer-visible (Rust):
+A cross-cutting audit. The rule: one verb, or at most three words. Suffixes only when they disambiguate genuinely distinct inputs (`from_file` vs `from_bytes`). No `_async`, `_kind`, `_object`, `_with_X`, or `_checked` variants. Internal helpers paid the same tax.
+
+Consumer-visible changes (Rust):
 
 - `TextureTarget::get_image_async` → removed. `Target::get_image` is now `async fn` on the trait, mirroring `Texture::get_image()`.
-- `Pass::add_mesh_to_shader(mesh, shader)` → removed. Body was `shader.add_mesh(mesh)?`. Use `shader.add_mesh(mesh)` directly.
+- `Pass::add_mesh_to_shader(mesh, shader)` → removed. The body was `shader.add_mesh(mesh)?`; use `shader.add_mesh(mesh)` directly.
 - `App::on_event_kind` / `on_window_event_kind` / `on_device_event_kind` → drop `_kind`. The catch-all variants `on_event(f)` (no `kind` arg) were removed entirely; kind-filtered registration is the only way.
 - `set_color_target_id(id)` → `set_color_target(id)`. The arg name carries the type.
-- `create_external_texture_from_native` / `create_external_texture` (free fns) → `ExternalTextureHandle::from_native` / `from_video` (associated functions).
-- `create_texture_with_size` / `_with_format` / `_with` / `_prepared` → `create_texture(input)`. Same for `create_storage_texture` and `TextureMipChain::prepare`.
+- `create_external_texture_from_native` / `create_external_texture` (free functions) → `ExternalTextureHandle::from_native` / `from_video` (associated functions).
+- `create_texture_with_size` / `_with_format` / `_with` / `_prepared` → `create_texture(input)`. Same shape for `create_storage_texture` and `TextureMipChain::prepare`.
 
 Sync/async pair unification borrows the `blocking` submodule convention from `reqwest::blocking`: `shader::input::resolve_async` → `resolve` (top-level, async); the previous sync `resolve` moves to `blocking::resolve`.
 
 ### `Frame` is gone
 
-The `Frame` type was a thin collector over `Pass` objects that, after the dependency-graph refactor a few releases ago, held no capability that `Pass::require()` (DAG) or an iterable of `Pass` (sequential rendering) didn't already cover. `Renderer::render` already accepts `&Pass`, `&Vec<Pass>`, `&[&Pass]`, `&[Pass]`, and `&Vec<&Pass>` — every Frame use case transliterates directly. Because every public symbol multiplies across five language bindings, the API surface reduction is worth the transliteration cost.
+`Frame` was a thin collector over `Pass` objects. After the dependency-graph refactor a few releases ago, it held no capability that `Pass::require()` (DAG) or an iterable of `Pass` (sequential rendering) didn't already cover. `Renderer::render` already accepts a single pass, a `Vec<Pass>`, or a slice of either, so every `Frame` use case transliterates directly. Each public symbol multiplies across five language bindings, and shrinking that surface is worth the transliteration cost.
 
 ```rust
 // Before
@@ -164,33 +174,33 @@ renderer.render(&frame, &target);
 renderer.render(&vec![a, b], &target);
 ```
 
-Same migration pattern in JS / Python / Swift / Kotlin: pass the array directly to `renderer.render`.
+The same migration applies in JS, Python, Swift, and Kotlin: pass the array directly to `renderer.render`.
 
 ### Upgrading wgpu 27 → 29
 
-The internal wgpu/naga stack moves from 27.0.1 to 29.0.1. The public FragmentColor API is unchanged. Internally the upgrade involved a sizeable adapter pass: `SurfaceError` was removed, push constants were renamed to "immediates", `depth_write_enabled` became `Option`-typed, bind-group-layout slots became gap-tolerant, and the instance descriptor changed shape.
+The internal wgpu/naga stack moves from 27.0.1 to 29.0.1; the public FragmentColor API is unchanged. The upgrade involved a sizeable adapter pass internally: `SurfaceError` was removed, push constants were renamed to "immediates", `depth_write_enabled` became `Option`-typed, bind-group-layout slots became gap-tolerant, and the instance descriptor changed shape.
 
-The one user-visible WGSL change comes from the rename: wgpu 29 accepts `var<immediate>` where 27 accepted `var<push_constant>`. Update any shader that declared its push constants with the old spelling — naga's WGSL front end no longer recognizes it.
+The one user-visible WGSL change comes from that rename: wgpu 29 accepts `var<immediate>` where 27 accepted `var<push_constant>`. Update any shader that still uses the old spelling — naga's WGSL front end no longer recognizes it.
 
 ### Roadmap
 
-The next steps beyond 0.11.0 include:
+Next up beyond 0.11.0:
 
-- Example iOS and Android apps under `platforms/swift/examples/` and `platforms/kotlin/examples/`
-- Maven Central publishing for the Kotlin AAR
-- Swift Package Index registration
-- Expanded mobile healthchecks (textures, immediates, frames)
-- A revamped `RenderPass` API that gives you more of `wgpu::RenderPass` with sensible defaults
-- A `compute → render` auto-split to cover the second half of the Apple TBDR hazard
-- Custom blending
-- The first end-to-end `external_texture` implementation (the API surface is everywhere; the per-platform plumbing is the gap)
-- Snapshot testing and hot reload
+- Example iOS and Android apps under `platforms/swift/examples/` and `platforms/kotlin/examples/`.
+- Maven Central publishing for the Kotlin AAR.
+- Swift Package Index registration.
+- Expanded mobile healthchecks (textures, immediates, full render loops).
+- A revamped `RenderPass` API that gives you more of `wgpu::RenderPass` with sensible defaults.
+- A `compute → render` auto-split, covering the second half of the Apple TBDR hazard.
+- Custom blending.
+- The first end-to-end `external_texture` implementation. The API surface is in place on every binding; the per-platform plumbing is the gap.
+- Snapshot testing and hot reload.
 
-v0.12.0 is the asset-pipeline cut (KTX2 streaming, glTF, Basis Universal, post-FX templates). v0.14.0 is the live-coding REPL + WGSL composition with a hosted registry. v1.0 is API stability.
+v0.12.0 is the asset-pipeline cut: KTX2 streaming, glTF, Basis Universal, post-FX templates. v0.14.0 is the live-coding REPL plus WGSL composition with a hosted registry. v1.0 is API stability.
 
 ---
 
-When this lands, install it with:
+Install it with:
 
 ```bash
 # Rust

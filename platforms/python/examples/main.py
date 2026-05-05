@@ -34,7 +34,6 @@ def run_all():
         'core/renderer/read_texture.py',
         'core/renderer/render.py',
         'core/renderer/unregister_texture.py',
-        'core/renderer/wait.py',
         'core/shader/Shader.py',
         'core/shader/add_mesh.py',
         'core/shader/clear_meshes.py',
