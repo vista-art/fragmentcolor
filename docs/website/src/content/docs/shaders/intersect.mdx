@@ -1,0 +1,113 @@
+---
+title: "Intersection Tests"
+description: A catalog of ray–shape intersection tests in the FragmentColor shader registry.
+---
+
+A **ray–shape intersection** answers a single question: at what distance
+`t` along a ray `ro + rd * t` does the ray first touch a given shape?
+That `t` is the workhorse behind ray casting, ray tracing, mouse picking,
+and every "what's under this pointer in 3D" query — once you have it,
+you can shade by hit normal, place reflections, mask shadows, or build
+the next ray. Tests that produce two roots (sphere, box, cylinder)
+return `(t_near, t_far)` so you can also use them as solid volumes.
+
+Every entry below is a single pure WGSL function in the registry. Pull
+one into a composition by slug and call it from your fragment stage:
+
+```rust
+let main = r#"
+@fragment fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+    let ndc = in.uv * 2.0 - vec2<f32>(1.0);
+    let ro  = vec3<f32>(0.0, 0.0, -2.5);
+    let rd  = normalize(vec3<f32>(ndc.x, -ndc.y, 1.5));
+    let hit = ray_sphere(ro, rd, vec3<f32>(0.0), 0.85);
+    if (hit.x < 0.0) { return vec4<f32>(0.10, 0.12, 0.18, 1.0); }
+    let n = normalize((ro + rd * hit.x));
+    return vec4<f32>(n * 0.5 + vec3<f32>(0.5), 1.0);
+}
+"#;
+let shader = Shader::new(&["intersect/ray_sphere", main])?;
+```
+
+Each preview below uses a fixed pinhole camera (`ro = (0, 0, -2.5)`,
+forward `+z`) and shades by hit normal, hit distance, or the slab
+`(t_near, t_far)` depending on what each test returns.
+
+## ray_box
+
+Ray vs axis-aligned box centered at `center` with half-extents `b`,
+using the slab method. Returns `(t_near, t_far)` or `(-1, -1)` on miss.
+
+```wgsl
+fn ray_box(ro: vec3<f32>, rd: vec3<f32>, center: vec3<f32>, b: vec3<f32>) -> vec2<f32>
+```
+
+![intersect/ray_box preview](/shaders/intersect/ray_box.png)
+
+## ray_capsule
+
+Ray vs capsule between endpoints `pa` and `pb` with radius `r`. Returns
+the nearest positive `t` on hit, or `-1` on miss.
+
+```wgsl
+fn ray_capsule(ro: vec3<f32>, rd: vec3<f32>, pa: vec3<f32>, pb: vec3<f32>, r: f32) -> f32
+```
+
+![intersect/ray_capsule preview](/shaders/intersect/ray_capsule.png)
+
+## ray_cylinder
+
+Ray vs an infinite cylinder along the `+y` axis, centered at the origin,
+with radius `r`. Returns `(t_near, t_far)` or `(-1, -1)` on miss.
+
+```wgsl
+fn ray_cylinder(ro: vec3<f32>, rd: vec3<f32>, r: f32) -> vec2<f32>
+```
+
+![intersect/ray_cylinder preview](/shaders/intersect/ray_cylinder.png)
+
+## ray_disk
+
+Ray vs a finite disk at `center` with unit normal `n` and radius `r`.
+Returns the hit distance `t`, or `-1` on miss.
+
+```wgsl
+fn ray_disk(ro: vec3<f32>, rd: vec3<f32>, center: vec3<f32>, n: vec3<f32>, r: f32) -> f32
+```
+
+![intersect/ray_disk preview](/shaders/intersect/ray_disk.png)
+
+## ray_plane
+
+Ray vs an infinite plane with unit normal `n` and origin-distance `d`.
+Returns `t` (which may be negative if the plane is behind the ray), or
+the sentinel `1e30` when the ray is parallel to the plane.
+
+```wgsl
+fn ray_plane(ro: vec3<f32>, rd: vec3<f32>, n: vec3<f32>, d: f32) -> f32
+```
+
+![intersect/ray_plane preview](/shaders/intersect/ray_plane.png)
+
+## ray_sphere
+
+Ray vs sphere at `center` with radius `radius`. Assumes `rd` is unit
+length. Returns `(t_near, t_far)` or `(-1, -1)` on miss.
+
+```wgsl
+fn ray_sphere(ro: vec3<f32>, rd: vec3<f32>, center: vec3<f32>, radius: f32) -> vec2<f32>
+```
+
+![intersect/ray_sphere preview](/shaders/intersect/ray_sphere.png)
+
+## ray_triangle
+
+Möller–Trumbore ray–triangle intersection against vertices `a`, `b`, `c`.
+Returns `vec4(t, u, v, 1)` on hit (where `(u, v)` are barycentric
+coordinates), or `(-1, -1, -1, -1)` on miss.
+
+```wgsl
+fn ray_triangle(ro: vec3<f32>, rd: vec3<f32>, a: vec3<f32>, b: vec3<f32>, c: vec3<f32>) -> vec4<f32>
+```
+
+![intersect/ray_triangle preview](/shaders/intersect/ray_triangle.png)

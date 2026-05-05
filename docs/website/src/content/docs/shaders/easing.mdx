@@ -1,0 +1,242 @@
+---
+title: "Easing"
+description: A catalog of easing curves in the FragmentColor shader registry.
+---
+
+An **easing** function maps a normalised time `t` in `[0, 1]` to an
+eased output, also typically in `[0, 1]`, that you use to animate
+properties non-linearly. The standard naming convention from Robert
+Penner's classic library is preserved here: `in_*` curves accelerate
+from rest, `out_*` curves decelerate to rest, and `in_out_*` curves do
+both — easing in for the first half of the duration and easing out
+for the second.
+
+Every entry below is a single pure WGSL function in the registry. Pull
+one into a composition by slug, then call it from any stage:
+
+```rust
+let main = r#"
+@fragment fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+    let t = in.uv.x;
+    let y = out_cubic(t);
+    return vec4<f32>(vec3<f32>(y), 1.0);
+}
+"#;
+let shader = Shader::new(&["easing/out_cubic", main])?;
+```
+
+Each preview below plots `y = ease(uv.x)` as a soft accent line over a
+dark grid; warm tones mark `in_*`, cool tones mark `out_*`, and neutral
+tones mark `in_out_*`. The vertical axis is `y = 0` at the bottom and
+`y = 1` at the top; curves that overshoot or undershoot (`in_back`,
+`out_back`, `out_elastic`) leave the unit box deliberately.
+
+## in_back
+
+Cubic curve with overshoot before the start, using the classic Robert
+Penner constants.
+
+```wgsl
+fn in_back(t: f32) -> f32
+```
+
+![easing/in_back preview](/shaders/easing/in_back.png)
+
+## in_cubic
+
+`t^3` — slow start, steep finish.
+
+```wgsl
+fn in_cubic(t: f32) -> f32
+```
+
+![easing/in_cubic preview](/shaders/easing/in_cubic.png)
+
+## in_expo
+
+`2^(10*(t - 1))` with an exact `0` at `t = 0`.
+
+```wgsl
+fn in_expo(t: f32) -> f32
+```
+
+![easing/in_expo preview](/shaders/easing/in_expo.png)
+
+## in_out_cubic
+
+Cubic curve mirrored about `t = 0.5`: `4 t^3` for `t < 0.5`, the matching
+reflection for `t >= 0.5`.
+
+```wgsl
+fn in_out_cubic(t: f32) -> f32
+```
+
+![easing/in_out_cubic preview](/shaders/easing/in_out_cubic.png)
+
+## in_out_expo
+
+Symmetric exponential ease that snaps to exact `0` and `1` at the
+endpoints to avoid the residual offset of pure `2^x`.
+
+```wgsl
+fn in_out_expo(t: f32) -> f32
+```
+
+![easing/in_out_expo preview](/shaders/easing/in_out_expo.png)
+
+## in_out_quad
+
+Quadratic curve mirrored about `t = 0.5`: `2 t^2` for `t < 0.5`, the
+matching reflection for `t >= 0.5`.
+
+```wgsl
+fn in_out_quad(t: f32) -> f32
+```
+
+![easing/in_out_quad preview](/shaders/easing/in_out_quad.png)
+
+## in_out_quart
+
+Quartic curve mirrored about `t = 0.5`: sharper S-shape than
+`in_out_cubic`.
+
+```wgsl
+fn in_out_quart(t: f32) -> f32
+```
+
+![easing/in_out_quart preview](/shaders/easing/in_out_quart.png)
+
+## in_out_sine
+
+`-(cos(pi t) - 1) / 2` — the smoothest of the standard S-curves.
+
+```wgsl
+fn in_out_sine(t: f32) -> f32
+```
+
+![easing/in_out_sine preview](/shaders/easing/in_out_sine.png)
+
+## in_quad
+
+`t^2` — gentle slow start.
+
+```wgsl
+fn in_quad(t: f32) -> f32
+```
+
+![easing/in_quad preview](/shaders/easing/in_quad.png)
+
+## in_quart
+
+`t^4` — much slower start than `in_quad`, holds near zero longer.
+
+```wgsl
+fn in_quart(t: f32) -> f32
+```
+
+![easing/in_quart preview](/shaders/easing/in_quart.png)
+
+## in_sine
+
+`1 - cos(t * pi/2)` — quarter-sine ramp in.
+
+```wgsl
+fn in_sine(t: f32) -> f32
+```
+
+![easing/in_sine preview](/shaders/easing/in_sine.png)
+
+## linear
+
+Identity curve. The reference baseline for every other entry on this
+page.
+
+```wgsl
+fn linear(t: f32) -> f32
+```
+
+![easing/linear preview](/shaders/easing/linear.png)
+
+## out_back
+
+Overshoots past `1` near the end, then settles. Classic Robert Penner
+constants.
+
+```wgsl
+fn out_back(t: f32) -> f32
+```
+
+![easing/out_back preview](/shaders/easing/out_back.png)
+
+## out_bounce
+
+Three-step Penner bounce-out: the value lands on `1` after three
+diminishing rebounds.
+
+```wgsl
+fn out_bounce(t: f32) -> f32
+```
+
+![easing/out_bounce preview](/shaders/easing/out_bounce.png)
+
+## out_cubic
+
+`1 - (1 - t)^3` — fast start, smooth landing.
+
+```wgsl
+fn out_cubic(t: f32) -> f32
+```
+
+![easing/out_cubic preview](/shaders/easing/out_cubic.png)
+
+## out_elastic
+
+Damped sinusoidal oscillation that settles to `1`. The curve briefly
+exceeds `1` and dips below it before damping out.
+
+```wgsl
+fn out_elastic(t: f32) -> f32
+```
+
+![easing/out_elastic preview](/shaders/easing/out_elastic.png)
+
+## out_expo
+
+`1 - 2^(-10 t)` with an exact `1` at `t = 1`.
+
+```wgsl
+fn out_expo(t: f32) -> f32
+```
+
+![easing/out_expo preview](/shaders/easing/out_expo.png)
+
+## out_quad
+
+`1 - (1 - t)^2` — gentle landing.
+
+```wgsl
+fn out_quad(t: f32) -> f32
+```
+
+![easing/out_quad preview](/shaders/easing/out_quad.png)
+
+## out_quart
+
+`1 - (1 - t)^4` — sharper deceleration than `out_quad`, very gentle
+final approach.
+
+```wgsl
+fn out_quart(t: f32) -> f32
+```
+
+![easing/out_quart preview](/shaders/easing/out_quart.png)
+
+## out_sine
+
+`sin(t * pi/2)` — quarter-sine ramp out.
+
+```wgsl
+fn out_sine(t: f32) -> f32
+```
+
+![easing/out_sine preview](/shaders/easing/out_sine.png)

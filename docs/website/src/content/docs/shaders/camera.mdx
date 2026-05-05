@@ -1,0 +1,153 @@
+---
+title: "Camera"
+description: A catalog of camera, projection, and transform helpers in the FragmentColor shader registry.
+---
+
+The **camera** category collects the matrix-builders and ray helpers you
+reach for when wiring 3D math into a shader: view and projection
+matrices, the four basic affine transforms, and the two unprojection
+helpers that turn a screen pixel into either a world-space ray or a
+world-space point. Each helper is a single pure WGSL function — no
+uniforms, no globals, no side effects — so you can compose them by slug
+and call them inline.
+
+The previews below stage a small fixed scene (a raymarched cube, a
+ground plane, or a ray-direction visualization) and apply the helper to
+it. In your own shader you would chain these with the rest of your
+pipeline: `proj * view * model * vec4<f32>(p, 1.0)` is the canonical
+form, where `proj` comes from `perspective` or `orthographic`, `view`
+comes from `look_at`, and `model` is some product of `translate`,
+`rotate_*`, and `scale`.
+
+```rust
+let main = r#"
+@fragment fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+    let view = look_at(vec3<f32>(2.0, 1.5, 3.0), vec3<f32>(0.0), vec3<f32>(0.0, 1.0, 0.0));
+    let proj = perspective(1.0, 1.0, 0.1, 100.0);
+    let mvp  = proj * view;
+    // ... use mvp to project geometry ...
+    return vec4<f32>(0.0);
+}
+"#;
+let shader = Shader::new(&["camera/look_at", "camera/perspective", main])?;
+```
+
+## look_at
+
+Right-handed look-at view matrix (world to view) given an eye position,
+a target point, and an up vector.
+
+```wgsl
+fn look_at(eye: vec3<f32>, target: vec3<f32>, up: vec3<f32>) -> mat4x4<f32>
+```
+
+![camera/look_at preview](/shaders/camera/look_at.png)
+
+## orthographic
+
+Right-handed orthographic projection from a view-space box defined by
+the planes `l, r, b, t, near, far` into clip space.
+
+```wgsl
+fn orthographic(l: f32, r: f32, b: f32, t: f32, near: f32, far: f32) -> mat4x4<f32>
+```
+
+![camera/orthographic preview](/shaders/camera/orthographic.png)
+
+## perspective
+
+Right-handed perspective projection mapping view space to clip space.
+`fov_y` is the vertical field of view in radians, `aspect` is
+`width / height`.
+
+```wgsl
+fn perspective(fov_y: f32, aspect: f32, near: f32, far: f32) -> mat4x4<f32>
+```
+
+![camera/perspective preview](/shaders/camera/perspective.png)
+
+## ray_from_uv
+
+Builds a world-space ray direction from a screen UV. `view` is the
+world-to-view 3x3 basis (rows: right, up, forward looking at -z). Useful
+for raymarching directly from a fullscreen triangle.
+
+```wgsl
+fn ray_from_uv(uv: vec2<f32>, aspect: f32, fov_y: f32, view: mat3x3<f32>) -> vec3<f32>
+```
+
+![camera/ray_from_uv preview](/shaders/camera/ray_from_uv.png)
+
+## rotate_axis
+
+Rodrigues 4x4 rotation around an arbitrary unit axis by `a` radians.
+Pass a normalized axis; results are undefined otherwise.
+
+```wgsl
+fn rotate_axis(axis: vec3<f32>, a: f32) -> mat4x4<f32>
+```
+
+![camera/rotate_axis preview](/shaders/camera/rotate_axis.png)
+
+## rotate_x
+
+4x4 rotation around the X axis by `a` radians.
+
+```wgsl
+fn rotate_x(a: f32) -> mat4x4<f32>
+```
+
+![camera/rotate_x preview](/shaders/camera/rotate_x.png)
+
+## rotate_y
+
+4x4 rotation around the Y axis by `a` radians.
+
+```wgsl
+fn rotate_y(a: f32) -> mat4x4<f32>
+```
+
+![camera/rotate_y preview](/shaders/camera/rotate_y.png)
+
+## rotate_z
+
+4x4 rotation around the Z axis by `a` radians.
+
+```wgsl
+fn rotate_z(a: f32) -> mat4x4<f32>
+```
+
+![camera/rotate_z preview](/shaders/camera/rotate_z.png)
+
+## scale
+
+4x4 non-uniform scale matrix. Pass `vec3<f32>(s)` for uniform scale.
+
+```wgsl
+fn scale(s: vec3<f32>) -> mat4x4<f32>
+```
+
+![camera/scale preview](/shaders/camera/scale.png)
+
+## screen_to_world
+
+Unprojects a UV plus a depth value through the inverse of a view-projection
+matrix back into world coordinates. The depth is in clip-space `z` units
+(typically `0` for the near plane, `1` for the far plane in the convention
+your matrix produces).
+
+```wgsl
+fn screen_to_world(uv: vec2<f32>, depth: f32, view_proj_inv: mat4x4<f32>) -> vec3<f32>
+```
+
+![camera/screen_to_world preview](/shaders/camera/screen_to_world.png)
+
+## translate
+
+4x4 translation matrix.
+
+```wgsl
+fn translate(t: vec3<f32>) -> mat4x4<f32>
+```
+
+![camera/translate preview](/shaders/camera/translate.png)

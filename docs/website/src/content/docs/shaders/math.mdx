@@ -1,0 +1,158 @@
+---
+title: "Math"
+description: A catalog of small math helpers in the FragmentColor shader registry.
+---
+
+The `math/` slugs are tiny, allocation-free helpers you reach for when
+writing every other category in this catalog: linear remaps,
+anti-aliased steps, soft pulses, and a few coordinate-space utilities.
+Each one is a single pure WGSL function. Pull a slug into a composition,
+then call it from your fragment stage:
+
+```rust
+let main = r#"
+@fragment fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+    let y = smootherstep(0.0, 1.0, in.uv.x);
+    return vec4<f32>(vec3<f32>(y), 1.0);
+}
+"#;
+let shader = Shader::new(&["math/smootherstep", main])?;
+```
+
+Scalar 1D helpers are previewed below as a `y = fn(uv.x)` plot on a dark
+grid — read the curve from left to right, with `uv.x` along the bottom.
+2D helpers (checker, grid, NDC remap) are rendered as a field across UV
+space.
+
+## checker
+
+Classic 0/1 checkerboard with `cells` cells per UV unit.
+
+```wgsl
+fn checker(uv: vec2<f32>, cells: f32) -> f32
+```
+
+![math/checker preview](/shaders/math/checker.png)
+
+## grid_aa
+
+Anti-aliased grid lines: returns `1.0` near a grid line and `0.0`
+between. `period` is the spacing in UV units; `line_width` is the
+half-thickness in the same units.
+
+```wgsl
+fn grid_aa(uv: vec2<f32>, period: f32, line_width: f32) -> f32
+```
+
+![math/grid_aa preview](/shaders/math/grid_aa.png)
+
+## line_aa
+
+Anti-aliased 1D line at coordinate `pos` with half-width `w`. Returns
+`1.0` on the line and `0.0` far away, with a smooth ramp inside `w`.
+
+```wgsl
+fn line_aa(pos: f32, x: f32, w: f32) -> f32
+```
+
+![math/line_aa preview](/shaders/math/line_aa.png)
+
+## ndc_to_uv
+
+Normalised-device coordinates (`-1..1`, y up) to UVs (`0..1`, y down).
+
+```wgsl
+fn ndc_to_uv(ndc: vec2<f32>) -> vec2<f32>
+```
+
+![math/ndc_to_uv preview](/shaders/math/ndc_to_uv.png)
+
+## pulse
+
+Hard rectangular pulse: `1.0` inside `[a, b]`, `0.0` outside.
+
+```wgsl
+fn pulse(a: f32, b: f32, x: f32) -> f32
+```
+
+![math/pulse preview](/shaders/math/pulse.png)
+
+## remap
+
+Linear remap from `[in_min, in_max]` to `[out_min, out_max]`. The
+function does not clamp — values outside the input range extrapolate
+linearly past the output range.
+
+```wgsl
+fn remap(x: f32, in_min: f32, in_max: f32, out_min: f32, out_max: f32) -> f32
+```
+
+![math/remap preview](/shaders/math/remap.png)
+
+## remap_clamped
+
+Same as `remap`, but the output is clamped to `[out_min, out_max]` —
+the curve is flat outside the input window.
+
+```wgsl
+fn remap_clamped(x: f32, in_min: f32, in_max: f32, out_min: f32, out_max: f32) -> f32
+```
+
+![math/remap_clamped preview](/shaders/math/remap_clamped.png)
+
+## rsqrt
+
+Reciprocal square root with a tiny guard so zero inputs don't return
+`Inf`.
+
+```wgsl
+fn rsqrt(x: f32) -> f32
+```
+
+![math/rsqrt preview](/shaders/math/rsqrt.png)
+
+## saturate
+
+Clamps a value to the unit interval `[0, 1]`.
+
+```wgsl
+fn saturate(x: f32) -> f32
+```
+
+![math/saturate preview](/shaders/math/saturate.png)
+
+## smooth_pulse
+
+Soft pulse with `smoothstep` ramps of width `w` on each edge: gradually
+rises into the band `[a, b]` and falls back out.
+
+```wgsl
+fn smooth_pulse(a: f32, b: f32, w: f32, x: f32) -> f32
+```
+
+![math/smooth_pulse preview](/shaders/math/smooth_pulse.png)
+
+## smootherstep
+
+Ken Perlin's second-order smoothstep: `6t^5 - 15t^4 + 10t^3`. Same
+endpoints and `[0, 1]` range as `smoothstep`, but with zero first and
+second derivatives at both ends — useful when you want C2 continuity
+along an animation curve.
+
+```wgsl
+fn smootherstep(edge0: f32, edge1: f32, x: f32) -> f32
+```
+
+![math/smootherstep preview](/shaders/math/smootherstep.png)
+
+## step_aa
+
+Screen-space anti-aliased step. `w` is the pixel-space spread of `x`
+(typically `length(vec2(dpdx(x), dpdy(x)))` or a similar `fwidth`
+proxy); the function smooths the edge across that width.
+
+```wgsl
+fn step_aa(edge: f32, x: f32, w: f32) -> f32
+```
+
+![math/step_aa preview](/shaders/math/step_aa.png)

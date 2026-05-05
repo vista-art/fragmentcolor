@@ -167,6 +167,11 @@ export default defineConfig({
           autogenerate: { directory: "tutorials" },
         },
         {
+          label: "Shader Catalog",
+          autogenerate: { directory: "shaders" },
+          collapsed: true,
+        },
+        {
           label: "API Reference",
           autogenerate: { directory: "api" },
         },

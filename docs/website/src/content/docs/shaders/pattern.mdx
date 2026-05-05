@@ -1,0 +1,140 @@
+---
+title: "Patterns"
+description: A catalog of repeating procedural pattern functions in the FragmentColor shader registry.
+---
+
+A **pattern** is a pure WGSL function that maps a UV point to a mask in
+`[0, 1]` (or richer per-cell info, like the hex grid below). Tile a UV
+surface with one of these and you have stripes, dots, hex grids, weaves
+and bricks — no textures, no vertex buffers, no allocations. The mask is
+already anti-aliased, so it composes cleanly with SDFs, noise, and
+post-processing.
+
+Every entry below is a single pure WGSL function in the registry. Pull
+one into a composition by slug, then call it from your fragment stage:
+
+```rust
+let main = r#"
+@fragment fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+    let m = dots(in.uv, 12.0, 0.25, 0.02);
+    let bg = vec3<f32>(0.10, 0.12, 0.18);
+    let fg = vec3<f32>(0.95, 0.65, 0.40);
+    return vec4<f32>(mix(bg, fg, m), 1.0);
+}
+"#;
+let shader = Shader::new(&["pattern/dots", main])?;
+```
+
+Each preview below renders the pattern directly across the frame and
+mixes a muted background against a single accent. Tune the parameters to
+your own scene; the registry shape is just the function.
+
+## brick
+
+Staggered running-bond brick grid. `cells` controls bricks per UV unit
+on each axis, `mortar` is the mortar half-width as a fraction of a cell,
+and `fw` is the smoothing width. Returns 1 inside a brick body, 0 on
+mortar lines.
+
+```wgsl
+fn brick(uv: vec2<f32>, cells: vec2<f32>, mortar: f32, fw: f32) -> f32
+```
+
+![pattern/brick preview](/shaders/pattern/brick.png)
+
+## chevron
+
+V-shaped stripes. `period` is the vertical spacing between V-tips and
+`slant` controls how far each V leans horizontally. `fw` smooths the
+stripe edges.
+
+```wgsl
+fn chevron(uv: vec2<f32>, period: f32, slant: f32, fw: f32) -> f32
+```
+
+![pattern/chevron preview](/shaders/pattern/chevron.png)
+
+## dots
+
+Circular dots on a square grid. `cells` is the number of dots per UV
+unit, `radius` is the dot radius in cell units (so `0.5` exactly tiles),
+and `fw` is the anti-aliasing width.
+
+```wgsl
+fn dots(uv: vec2<f32>, cells: f32, radius: f32, fw: f32) -> f32
+```
+
+![pattern/dots preview](/shaders/pattern/dots.png)
+
+## hexgrid
+
+Hexagonal tiling helper. Returns a `vec3<f32>` whose `.x` is the distance
+to the nearest hex edge (use it as a line mask) and whose `.yz` is an
+integer-valued hex id you can hash for per-cell colour.
+
+```wgsl
+fn hexgrid(uv: vec2<f32>, scale: f32) -> vec3<f32>
+```
+
+![pattern/hexgrid preview](/shaders/pattern/hexgrid.png)
+
+## stripes
+
+Straight stripes in any direction. `direction` is normalised inside the
+function. `period` is the stripe period in UV units, `duty` is the
+fraction of each period that is "on" (0.5 for equal stripes), and `fw`
+anti-aliases the edges.
+
+```wgsl
+fn stripes(uv: vec2<f32>, direction: vec2<f32>, period: f32, duty: f32, fw: f32) -> f32
+```
+
+![pattern/stripes preview](/shaders/pattern/stripes.png)
+
+## trigrid
+
+Triangular grid line mask. `scale` controls cells per UV unit,
+`thickness` is the line width as a fraction of a cell, and `fw` smooths
+the line edges. Returns 1 on a line and 0 inside a cell.
+
+```wgsl
+fn trigrid(uv: vec2<f32>, scale: f32, thickness: f32, fw: f32) -> f32
+```
+
+![pattern/trigrid preview](/shaders/pattern/trigrid.png)
+
+## truchet
+
+Truchet tiles with a randomly-rotated quarter-arc per cell, producing
+woven-looking curves. Returns the unsigned distance to the nearest arc;
+threshold it for a line mask, or smooth-step a thicker band for ribbons.
+
+```wgsl
+fn truchet(uv: vec2<f32>, scale: f32) -> f32
+```
+
+![pattern/truchet preview](/shaders/pattern/truchet.png)
+
+## weave
+
+Simple over/under weave pattern. `cells` is the thread density per UV
+unit, and `fw` smooths the ridge/valley boundary. Returns a soft mask in
+`[0, 1]` you can mix between a warp and a weft colour.
+
+```wgsl
+fn weave(uv: vec2<f32>, cells: f32, fw: f32) -> f32
+```
+
+![pattern/weave preview](/shaders/pattern/weave.png)
+
+## zebra
+
+Wavy zebra stripes driven by a sine of `(uv.x + uv.y * warp + phase)`.
+`freq` is stripes per UV unit, `warp` adds a diagonal skew, `phase`
+shifts the wave (animate it for motion), and `fw` smooths the edges.
+
+```wgsl
+fn zebra(uv: vec2<f32>, freq: f32, warp: f32, phase: f32, fw: f32) -> f32
+```
+
+![pattern/zebra preview](/shaders/pattern/zebra.png)
