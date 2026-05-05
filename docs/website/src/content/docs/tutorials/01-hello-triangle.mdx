@@ -184,7 +184,10 @@ for the postfx itself: instead of writing the vignette and grain by hand,
 we pull them out of the [public registry](https://fragmentcolor.org/shaders/)
 and let `Shader::new` glue them together with a small main shader.
 
-<Snippet file="01-hello-triangle/04-postfx-pass/example.rs" region="postfx-shader" />
+<Snippet
+  file="01-hello-triangle/04-postfx-pass/example.rs"
+  regions={["setup", "postfx-shader"]}
+  labels={["Host", "Shader"]} />
 
 `Shader::new` accepts an array of "things" — raw source strings, registry
 slugs, URLs, file paths, you name it. It fetches the helpers, hashes
@@ -192,12 +195,10 @@ them, glues everything together, and validates the result with naga
 before any GPU work happens. Two pure WGSL functions live in the registry
 forever; we just borrow them.
 
-Now we wire the two passes together. The particle pass writes to the
-intermediate texture; the postfx pass reads from it and writes to the
-canvas. `Pass::require` declares the dependency so the renderer knows
-the order:
-
-<Snippet file="01-hello-triangle/04-postfx-pass/example.rs" region="setup" />
+The Host tab above also shows how the two passes are wired together:
+the particle pass writes to the intermediate texture; the postfx pass
+reads from it and writes to the canvas. `Pass::require` declares the
+dependency so the renderer knows the order.
 
 Two passes in one render call:
 
