@@ -307,16 +307,6 @@ private enum _GeneratedExamples {
         try renderer.unregisterTexture(id)
     }
 
-    static func _example_core_renderer_wait() async throws {
-
-        let r = Renderer()
-        let target = try await r.createTextureTarget([8, 8])
-        let shader = Shader.default()
-        try r.render(shader, target)
-        r.wait()
-        let _bytes = try await target.getImage()
-    }
-
     static func _example_core_shader_Shader() async throws {
 
 

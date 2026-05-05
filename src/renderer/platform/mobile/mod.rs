@@ -230,17 +230,6 @@ impl Renderer {
             .map_err(FragmentColorError::from)
     }
 
-    /// Block until all GPU submissions on this device have finished.
-    ///
-    /// Useful before readbacks (`read_texture`, `Texture.id`, `TextureTarget.getImage`)
-    /// to ensure deterministic ordering. This is a genuine blocking call on
-    /// native platforms; on web it is a no-op.
-    #[uniffi::method(name = "waitIdle")]
-    #[lsp_doc("docs/api/core/renderer/hidden/wait_mobile.md")]
-    pub fn wait_mobile(self: Arc<Self>) -> Result<(), FragmentColorError> {
-        self.wait().map_err(FragmentColorError::from)
-    }
-
     /// Wrap a native platform video-frame source as an external texture.
     /// The Web binding accepts an `HTMLVideoElement`; the mobile bindings
     /// take a raw pointer (`u64`) to a `CVPixelBuffer` (iOS) or

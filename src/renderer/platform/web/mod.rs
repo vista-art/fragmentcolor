@@ -161,15 +161,6 @@ impl Renderer {
         self.unregister_texture(id)
     }
 
-    /// No-op on WASM — the browser drives submission readiness. Provided for
-    /// API parity; callers that need a sync point on the web should await a
-    /// readback (`Renderer.readTexture` / `Texture.getImage`).
-    #[wasm_bindgen(js_name = "waitIdle")]
-    #[lsp_doc("docs/api/core/renderer/hidden/wait_js.md")]
-    pub fn wait_js(&self) -> Result<(), RendererError> {
-        self.wait()
-    }
-
     #[wasm_bindgen(js_name = "readTexture")]
     #[lsp_doc("docs/api/core/renderer/read_texture.md")]
     pub async fn read_texture_js(

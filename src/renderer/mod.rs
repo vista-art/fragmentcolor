@@ -305,32 +305,6 @@ impl Renderer {
         unregister::unregister_texture(self, texture_id)
     }
 
-    /// Block the current thread until every submission queued on this renderer's device
-    /// has finished executing. Useful to guarantee that readbacks after compute bursts
-    /// observe the finalized results, and to restore deterministic ordering around
-    /// `render` → `read_texture` / `TextureTarget::get_image` sequences.
-    ///
-    /// On WASM this is a no-op — the browser drives submission readiness, and the calling
-    /// thread cannot block. Callers that need a sync point there should await a readback.
-    #[lsp_doc("docs/api/core/renderer/wait.md")]
-    pub fn wait(&self) -> Result<(), RendererError> {
-        let _context = self
-            .context
-            .read()
-            .as_ref()
-            .cloned()
-            .ok_or(RendererError::NoContext)?;
-        #[cfg(not(wasm))]
-        _context
-            .device
-            .poll(wgpu::PollType::Wait {
-                submission_index: None,
-                timeout: Some(std::time::Duration::from_secs(5)),
-            })
-            .map_err(|e| RendererError::Error(format!("wait poll failed: {e:?}")))?;
-        Ok(())
-    }
-
     #[lsp_doc("docs/api/core/renderer/read_texture.md")]
     pub async fn read_texture(
         &self,
