@@ -24,9 +24,10 @@ canvas = RenderCanvas(size=(800, 600))
 renderer = Renderer()
 target = renderer.create_target(canvas)
 
-# You can pass the shader as a source string, file path, or URL:
+# You can pass the shader as a source string, a file path, a registry slug,
+# or an https URL pointing at a .wgsl file.
 circle = Shader("./path/to/circle.wgsl")
-triangle = Shader("https://fragmentcolor.org/shaders/triangle.wgsl")
+triangle = Shader("https://fragmentcolor.org/shaders/sdf2d/circle.wgsl")
 shader = Shader("""
 struct VertexOutput {
     @builtin(position) coords: vec4<f32>,
@@ -72,7 +73,7 @@ rpass.add_shader(triangle)
 rpass.add_shader(shader)
 renderer.render(rpass, target)
 
-# Finally, you can render a list of passes in order — no extra type needed.
+# Finally, you can render a list of passes in order. No extra type needed.
 passes = [rpass, Pass("GUI pass")]
 renderer.render(passes, target)
 

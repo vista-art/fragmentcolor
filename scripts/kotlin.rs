@@ -149,6 +149,7 @@ mod kotlin {
         out = rewrite_setviewport_tuple(&out);
         out = rewrite_setcomputedispatch_int_to_uint(&out);
         out = rewrite_render_array_to_list(&out);
+        out = rewrite_shader_fetch_array_to_list(&out);
         out = rewrite_removemeshes_array_to_list(&out);
         out = rewrite_addinstances_array_to_list(&out);
         out = rewrite_addvertices_array_to_list(&out);
@@ -644,6 +645,29 @@ mod kotlin {
             return line.replace(needle, ".render(listOf(");
         }
         line.to_string()
+    }
+
+    // `Shader.fetch(arrayOf("a", "b"))` → `Shader.fetch(listOf("a", "b"))`
+    //
+    // The uniffi binding for `Shader::fetch(impl Into<ShaderInput>)` exposes
+    // a `fetch(parts: List<String>)` overload on Kotlin. The default
+    // bracket→arrayOf rewrite produces `Array<String>`, which doesn't match
+    // `List<String>` in Kotlin's type system; this swap aligns the call to
+    // the uniffi overload. (The single-string `fetch(input: String)` overload
+    // is unaffected — only array-literal arguments hit this path.)
+    //
+    // Same fix applies to `Shader.compose(parts)` for parity.
+    fn rewrite_shader_fetch_array_to_list(line: &str) -> String {
+        let line = if line.contains("Shader.fetch(arrayOf(") {
+            line.replace("Shader.fetch(arrayOf(", "Shader.fetch(listOf(")
+        } else {
+            line.to_string()
+        };
+        if line.contains("Shader.compose(arrayOf(") {
+            line.replace("Shader.compose(arrayOf(", "Shader.compose(listOf(")
+        } else {
+            line
+        }
     }
 
     // `pass.setComputeDispatch(64, 64, 1)` → `pass.setComputeDispatch(64u, 64u, 1u)`
