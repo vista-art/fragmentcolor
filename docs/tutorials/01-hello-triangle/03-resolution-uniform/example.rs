@@ -24,10 +24,11 @@ struct VOut { @builtin(position) pos: vec4<f32> };
 
 @vertex
 fn vs_main(@builtin(vertex_index) i: u32) -> VOut {
+    // Equilateral triangle in NDC; aspect-corrected below.
     var p = array<vec2<f32>, 3>(
-        vec2<f32>(-0.6, -0.5),
-        vec2<f32>( 0.6, -0.5),
-        vec2<f32>( 0.0,  0.7),
+        vec2<f32>(-0.6, -0.35),
+        vec2<f32>( 0.6, -0.35),
+        vec2<f32>( 0.0,  0.69),
     );
     // Aspect-correct so the triangle keeps its shape on any canvas.
     // `max(.., 1.0)` keeps things sane if `resolution` hasn't been set
