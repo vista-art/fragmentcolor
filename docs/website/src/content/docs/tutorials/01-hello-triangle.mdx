@@ -11,14 +11,19 @@ import Lang from "../../../components/Lang.astro";
 import LangSelector from "../../../components/LangSelector.astro";
 import MultiCode from "../../../components/MultiCode.astro";
 import ColorTriangle from "../../../components/ColorTriangle.astro";
+import Lock from "../../../components/Lock.astro";
 
 <LangSelector />
+
+<Lock id="opening" description="article opener" comments="voice already iterated; do not paraphrase">
 
 There's a rite of passage in graphics programming:  **Drawing your first triangle.**
 
 **This typically takes thousands of lines of code.** Pick any tutorial for OpenGL, Vulkan, or raw WebGPU, and you'll spend an afternoon setting pixel formats, allocating command pools, and wiring descriptor sets & binding groups before any colored pixel reaches the screen.
 
 **We're going to do it in 5 lines of <Lang/>**.
+
+</Lock>
 
 ## Step 1 — Hello, triangle!
 
@@ -46,7 +51,6 @@ val renderer = Renderer()
 val target = renderer.createTarget(canvas)`}
 />
 
----
 
 Surface and Renderer are ready. Now we need to decide: *what* to draw?
 
