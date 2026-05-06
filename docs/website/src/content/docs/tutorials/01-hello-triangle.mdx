@@ -45,27 +45,7 @@ val target = renderer.createTarget(canvas)`}
 
 Surface and Renderer ready. Now we need to decide: *what* to draw?
 
-That's what a **`Shader`** does — it's a tiny program that runs once per pixel. It's the smallest unit FragmentColor can render, and we don't need anything else to see cool things on screen. Let's grab a quick example off the public registry:
-
-<MultiCode
-  rust={`let shader = Shader::new("https://fragmentcolor.org/triangle.wgsl")?;
-shader.set("color", [0.95, 0.30, 0.42, 1.0])?;
-renderer.render(&shader, &target);`}
-  js={`const shader = await Shader.fetch("https://fragmentcolor.org/triangle.wgsl");
-shader.set("color", [0.95, 0.30, 0.42, 1.0]);
-renderer.render(shader, target);`}
-  py={`shader = Shader.fetch("https://fragmentcolor.org/triangle.wgsl")
-shader.set("color", [0.95, 0.30, 0.42, 1.0])
-renderer.render(shader, target)`}
-  swift={`let shader = try await Shader.fetch("https://fragmentcolor.org/triangle.wgsl")
-shader.set("color", [0.95, 0.30, 0.42, 1.0])
-renderer.render(shader, target)`}
-  kotlin={`val shader = Shader::fetch("https://fragmentcolor.org/triangle.wgsl")
-shader.set("color", floatArrayOf(0.95f, 0.30f, 0.42f, 1.0f))
-renderer.render(shader, target)`}
-/>
-
-Here's what those three lines actually produce — pick a color and watch the triangle redraw:
+That's what a **`Shader`** does — it's a tiny program that runs once per pixel. It's the smallest unit FragmentColor can render, and we don't need anything else to see cool things on screen. Let's grab a quick example off the public registry — and try clicking the color literal in the snippet:
 
 <ColorTriangle />
 
