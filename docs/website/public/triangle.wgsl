@@ -10,10 +10,12 @@ struct VOut { @builtin(position) pos: vec4<f32> };
 
 @vertex
 fn vs_main(@builtin(vertex_index) i: u32) -> VOut {
+    // Equilateral triangle in NDC. apex_y / base_y come from
+    // height = side * sqrt(3) / 2 with side = 1.2.
     var p = array<vec2<f32>, 3>(
-        vec2<f32>(-0.6, -0.5),
-        vec2<f32>( 0.6, -0.5),
-        vec2<f32>( 0.0,  0.7),
+        vec2<f32>(-0.6, -0.35),
+        vec2<f32>( 0.6, -0.35),
+        vec2<f32>( 0.0,  0.69),
     );
     var out: VOut;
     out.pos = vec4<f32>(p[i], 0.0, 1.0);
