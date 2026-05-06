@@ -1,7 +1,9 @@
-// Step 4 — one triangle, many instances, a tiny particle field (JS port).
+// Step 5 — one triangle, many instances, a tiny particle field (JS port).
 //
 // Pulls `easing/in_out_sine` from the catalog so the per-instance pulse
-// rides through a smoother bell-curve than a raw sine.
+// rides through a smoother bell-curve than a raw sine. The shader also
+// carries the `resolution` uniform from step 2 so the field stays
+// evenly distributed and each particle keeps its shape on any canvas.
 
 import { Mesh, Shader, Vertex } from "fragmentcolor";
 
@@ -14,7 +16,8 @@ struct VOut {
     @location(0) color: vec3<f32>,
 };
 
-@group(0) @binding(0) var<uniform> time: f32;
+@group(0) @binding(0) var<uniform> resolution: vec2<f32>;
+@group(0) @binding(1) var<uniform> time: f32;
 
 @vertex
 fn vs_main(
@@ -29,7 +32,14 @@ fn vs_main(
         sin(time * 1.3 + phase) * 0.05,
         cos(time * 0.9 + phase * 1.4) * 0.05,
     );
-    let world = position.xy * scale + center + wobble;
+    var world = position.xy * scale + center + wobble;
+    // Aspect-correct so each particle's triangle stays equilateral and
+    // the field stays evenly distributed regardless of canvas shape.
+    let res = max(resolution, vec2<f32>(1.0));
+    let aspect = res.x / res.y;
+    if (aspect > 1.0) { world.x = world.x / aspect; }
+    else              { world.y = world.y * aspect; }
+
     // Same oscillation as before, routed through \`easing/in_out_sine\`
     // (a registry slug we pulled in at Shader.fetch) for a softer pulse.
     let raw = 0.5 + 0.5 * sin(time * 2.0 + phase);
@@ -56,11 +66,12 @@ export async function setup(_renderer, _target) {
     const shader = await Shader.fetch(["easing/in_out_sine", PARTICLE_WGSL]);
     shader.set("time", 0.0);
 
+    // Same equilateral base triangle as step 4.
     const mesh = new Mesh();
     mesh.addVertices([
-        new Vertex([-0.6, -0.5, 0.0]).set("color", [0.95, 0.30, 0.42]),
-        new Vertex([ 0.6, -0.5, 0.0]).set("color", [0.30, 0.85, 0.55]),
-        new Vertex([ 0.0,  0.7, 0.0]).set("color", [0.30, 0.55, 0.95]),
+        new Vertex([-0.7, -0.4, 0.0]).set("color", [0.95, 0.30, 0.42]),
+        new Vertex([ 0.7, -0.4, 0.0]).set("color", [0.30, 0.85, 0.55]),
+        new Vertex([ 0.0,  0.8, 0.0]).set("color", [0.30, 0.55, 0.95]),
     ]);
 
     const TAU = Math.PI * 2;
@@ -88,7 +99,8 @@ export async function setup(_renderer, _target) {
 // #endregion: setup
 
 // #region: frame
-export function frame(state, renderer, target, time, _size) {
+export function frame(state, renderer, target, time, size) {
+    state.shader.set("resolution", size);
     state.shader.set("time", time);
     renderer.render(state.shader, target);
 }

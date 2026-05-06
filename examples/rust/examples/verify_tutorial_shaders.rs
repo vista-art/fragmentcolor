@@ -10,24 +10,31 @@
 use fragmentcolor::mesh::{Mesh, Vertex};
 use fragmentcolor::{Pass, Renderer, Shader, Target};
 
-const STEP_2_NOISY: &str = r#"
+// Step 3 — compose-noise (carries the resolution uniform from step 2).
+const STEP_3_NOISY: &str = r#"
 struct VOut {
     @builtin(position) pos: vec4<f32>,
     @location(0) uv: vec2<f32>,
 };
 
 @group(0) @binding(0) var<uniform> color: vec4<f32>;
-@group(0) @binding(1) var<uniform> time: f32;
+@group(0) @binding(1) var<uniform> resolution: vec2<f32>;
+@group(0) @binding(2) var<uniform> time: f32;
 
 @vertex
 fn vs_main(@builtin(vertex_index) i: u32) -> VOut {
     var p  = array<vec2<f32>, 3>(
-        vec2<f32>(-0.6, -0.5),
-        vec2<f32>( 0.6, -0.5),
-        vec2<f32>( 0.0,  0.7),
+        vec2<f32>(-0.7, -0.4),
+        vec2<f32>( 0.7, -0.4),
+        vec2<f32>( 0.0,  0.8),
     );
+    let res = max(resolution, vec2<f32>(1.0));
+    let aspect = res.x / res.y;
+    var pos = p[i];
+    if (aspect > 1.0) { pos.x = pos.x / aspect; }
+    else              { pos.y = pos.y * aspect; }
     var out: VOut;
-    out.pos = vec4<f32>(p[i], 0.0, 1.0);
+    out.pos = vec4<f32>(pos, 0.0, 1.0);
     out.uv = (p[i] + vec2<f32>(1.0)) * 0.5;
     return out;
 }
@@ -40,13 +47,15 @@ fn fs_main(in: VOut) -> @location(0) vec4<f32> {
 }
 "#;
 
-const STEP_4_PARTICLE: &str = r#"
+// Step 5 — particle-trail (aspect-corrected against the canvas).
+const STEP_5_PARTICLE: &str = r#"
 struct VOut {
     @builtin(position) pos: vec4<f32>,
     @location(0) color: vec3<f32>,
 };
 
-@group(0) @binding(0) var<uniform> time: f32;
+@group(0) @binding(0) var<uniform> resolution: vec2<f32>;
+@group(0) @binding(1) var<uniform> time: f32;
 
 @vertex
 fn vs_main(
@@ -61,7 +70,11 @@ fn vs_main(
         sin(time * 1.3 + phase) * 0.05,
         cos(time * 0.9 + phase * 1.4) * 0.05,
     );
-    let world = position.xy * scale + center + wobble;
+    var world = position.xy * scale + center + wobble;
+    let res = max(resolution, vec2<f32>(1.0));
+    let aspect = res.x / res.y;
+    if (aspect > 1.0) { world.x = world.x / aspect; }
+    else              { world.y = world.y * aspect; }
     let raw = 0.5 + 0.5 * sin(time * 2.0 + phase);
     let glow = 0.4 + 0.6 * in_out_sine(raw);
 
@@ -77,7 +90,9 @@ fn fs_main(in: VOut) -> @location(0) vec4<f32> {
 }
 "#;
 
-const STEP_5_POSTFX: &str = r#"
+// Step 6 — postfx fullscreen-triangle shader (no aspect correction needed:
+// the intermediate scene texture is square, the postfx is fullscreen).
+const STEP_6_POSTFX: &str = r#"
 struct VOut {
     @builtin(position) pos: vec4<f32>,
     @location(0) uv: vec2<f32>,
@@ -128,27 +143,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Step 1 — URL-loaded triangle. Skip in this offline check; the
         // URL fetch goes to the network. Validation is exercised by the
         // existing tutorial_01_hello_triangle_three_lines example.
-        println!("  · step 1 (URL): exercised by tutorial_01_hello_triangle_three_lines");
+        println!("  · step 1 (three-lines, URL): exercised by tutorial_01_hello_triangle_three_lines");
 
-        // Step 2 — noise/simplex2 + inline triangle.
-        check("step 2 (compose-noise)", &["noise/simplex2", STEP_2_NOISY]);
+        // Step 2 — resolution-uniform: inline only, exercised by its own example.
+        println!("  · step 2 (resolution-uniform): exercised by its own example");
 
-        // Step 3 — inline only (no slugs).
-        // Validated by tutorial_01_hello_triangle_vertex_gradient.
-        println!("  · step 3 (vertex-gradient): exercised by its own example");
+        // Step 3 — noise/simplex2 + inline aspect-corrected triangle.
+        check("step 3 (compose-noise)", &["noise/simplex2", STEP_3_NOISY]);
 
-        // Step 4 — easing/in_out_sine + inline particle source.
-        check("step 4 (particle-trail)", &["easing/in_out_sine", STEP_4_PARTICLE]);
+        // Step 4 — vertex-gradient: exercised by its own example.
+        println!("  · step 4 (vertex-gradient): exercised by its own example");
 
-        // Step 5 — four registry slugs + inline postfx main.
+        // Step 5 — easing/in_out_sine + inline particle source.
+        check("step 5 (particle-trail)", &["easing/in_out_sine", STEP_5_PARTICLE]);
+
+        // Step 6 — four registry slugs + inline postfx main.
         check(
-            "step 5 (postfx-pass)",
+            "step 6 (postfx-pass)",
             &[
                 "postfx/chromatic_offsets",
                 "color/tonemap_filmic",
                 "postfx/vignette",
                 "postfx/film_grain",
-                STEP_5_POSTFX,
+                STEP_6_POSTFX,
             ],
         );
 
@@ -160,13 +177,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let renderer = Renderer::new();
         let target = renderer.create_texture_target([256, 256]).await?;
 
-        let particle_shader = Shader::new(["easing/in_out_sine", STEP_4_PARTICLE])?;
+        let particle_shader = Shader::new(["easing/in_out_sine", STEP_5_PARTICLE])?;
         particle_shader.set("time", 0.0_f32)?;
+        particle_shader.set("resolution", [256.0_f32, 256.0])?;
         let mesh = Mesh::new();
         mesh.add_vertices([
-            Vertex::new([-0.6, -0.5, 0.0]).set("color", [0.95, 0.30, 0.42]),
-            Vertex::new([0.6, -0.5, 0.0]).set("color", [0.30, 0.85, 0.55]),
-            Vertex::new([0.0, 0.7, 0.0]).set("color", [0.30, 0.55, 0.95]),
+            Vertex::new([-0.7, -0.4, 0.0]).set("color", [0.95, 0.30, 0.42]),
+            Vertex::new([ 0.7, -0.4, 0.0]).set("color", [0.30, 0.85, 0.55]),
+            Vertex::new([ 0.0,  0.8, 0.0]).set("color", [0.30, 0.55, 0.95]),
         ]);
         // Use a Vertex template so instance properties get auto-incrementing
         // locations starting at 1 instead of 0 — keeping clear of the
@@ -191,7 +209,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "color/tonemap_filmic",
             "postfx/vignette",
             "postfx/film_grain",
-            STEP_5_POSTFX,
+            STEP_6_POSTFX,
         ])?;
         postfx.set("scene", &scene_tex)?;
         postfx.set("time", 0.0_f32)?;

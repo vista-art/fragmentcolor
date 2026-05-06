@@ -19,11 +19,11 @@ struct VOut { @builtin(position) pos: vec4<f32> };
 
 @vertex
 fn vs_main(@builtin(vertex_index) i: u32) -> VOut {
-    // Equilateral triangle in NDC; aspect-corrected below.
+    // Equilateral triangle in NDC, centroid at origin; aspect-corrected below.
     var p = array<vec2<f32>, 3>(
-        vec2<f32>(-0.6, -0.35),
-        vec2<f32>( 0.6, -0.35),
-        vec2<f32>( 0.0,  0.69),
+        vec2<f32>(-0.7, -0.4),
+        vec2<f32>( 0.7, -0.4),
+        vec2<f32>( 0.0,  0.8),
     );
     let res = max(resolution, vec2<f32>(1.0));
     let aspect = res.x / res.y;

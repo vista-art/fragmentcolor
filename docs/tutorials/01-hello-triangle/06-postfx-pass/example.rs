@@ -115,9 +115,9 @@ async fn setup(app: &App, windows: Vec<Arc<Window>>) -> SetupResult {
 
     let mesh = Mesh::new();
     mesh.add_vertices([
-        Vertex::new([-0.6, -0.5, 0.0]).set("color", [0.95, 0.30, 0.42]),
-        Vertex::new([0.6, -0.5, 0.0]).set("color", [0.30, 0.85, 0.55]),
-        Vertex::new([0.0, 0.7, 0.0]).set("color", [0.30, 0.55, 0.95]),
+        Vertex::new([-0.7, -0.4, 0.0]).set("color", [0.95, 0.30, 0.42]),
+        Vertex::new([ 0.7, -0.4, 0.0]).set("color", [0.30, 0.85, 0.55]),
+        Vertex::new([ 0.0,  0.8, 0.0]).set("color", [0.30, 0.55, 0.95]),
     ]);
 
     let mut instances = Vec::with_capacity(PARTICLE_COUNT);
