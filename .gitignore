@@ -103,5 +103,7 @@ fragmentcolor.code-workspace
 examples/rust/out/
 
 # Lock-block versioning store (dev-mode metadata, not persisted).
-# scripts/locks.rs writes here; the locks CLI reads from here.
-.claude/locks/
+# The website's Astro integration (docs/website/integrations/locks.ts)
+# writes here; the locks CLI (examples/rust/examples/locks.rs) reads
+# from here. Co-located with the website that owns it.
+docs/website/.locks/

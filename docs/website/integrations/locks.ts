@@ -2,9 +2,10 @@
 //
 // Scans `docs/website/src/content/docs/**/*.{md,mdx}`, hashes the inner
 // content of every <Lock> block (SHA-256), and tracks per-block version
-// history in `<repo>/.claude/locks/locks.json`. The store is gitignored
-// and chmod 600'd on POSIX systems — convention-level "agents shouldn't
-// poke at this directly," not real enforcement.
+// history in `docs/website/.locks/locks.json` — co-located with the
+// website that owns it, gitignored, chmod 600'd on POSIX systems.
+// Convention-level "agents shouldn't poke at this directly," not real
+// enforcement.
 //
 // Runs in two places:
 //   * `astro:server:setup` — initial scan, then watches the docs tree
@@ -69,7 +70,9 @@ interface Store {
 }
 
 const DOCS_REL = "src/content/docs";
-const STORE_REL = ".claude/locks/locks.json";
+// Relative to the website's project root (docs/website/). Co-located
+// with the dev runtime that owns it.
+const STORE_REL = ".locks/locks.json";
 
 function hashContent(s: string): string {
   return createHash("sha256").update(s, "utf8").digest("hex");
@@ -279,12 +282,15 @@ interface RunPaths {
 }
 
 function pathsFromProjectRoot(projectRoot: string): RunPaths {
+  // `repoRoot` is kept so post_id stays repo-relative — it's the
+  // identifier readers expect to see in the CLI / store, not a
+  // website-project-relative path that hides where the file lives.
   const repoRoot = path.resolve(projectRoot, "..", "..");
   return {
     projectRoot,
     repoRoot,
     docsDir: path.join(projectRoot, DOCS_REL),
-    storePath: path.join(repoRoot, STORE_REL),
+    storePath: path.join(projectRoot, STORE_REL),
   };
 }
 

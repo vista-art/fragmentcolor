@@ -1,7 +1,8 @@
 //! locks — inspect the lock-block versioning store.
 //!
-//! Reads `.claude/locks/locks.json` (written by scripts/locks.rs at
-//! build time) and surfaces it for review:
+//! Reads `docs/website/.locks/locks.json` (written by the website's
+//! Astro integration at `docs/website/integrations/locks.ts`) and
+//! surfaces it for review:
 //!
 //!   cargo run --release -p fce --example locks -- status
 //!     One line per (post, lock_id), with current version + last
@@ -20,10 +21,10 @@
 //!     the most recent two. With one, diffs that one against the
 //!     current version.
 //!
-//! Convention: this binary is read-only. Edits to the store happen
-//! through scripts/locks.rs (build time). Manual tweaks to the JSON
-//! are not supported and will likely round-trip away on the next
-//! build.
+//! Convention: this binary is read-only. The website's Astro
+//! integration owns writes — manual tweaks to the JSON are not
+//! supported and will likely round-trip away on the next dev-server
+//! save or production build.
 
 use serde::Deserialize;
 use similar::{ChangeTag, TextDiff};
@@ -32,7 +33,7 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-const STORE_REL: &str = ".claude/locks/locks.json";
+const STORE_REL: &str = "docs/website/.locks/locks.json";
 
 #[derive(Deserialize, Default)]
 struct Store {
