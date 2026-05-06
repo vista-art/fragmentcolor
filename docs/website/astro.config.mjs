@@ -6,10 +6,17 @@ import { fileURLToPath } from "node:url";
 
 import vercel from "@astrojs/vercel";
 
+// Lock-block versioning: scans `<Lock id="...">` regions in MDX/MD on
+// dev-server start + on every save (via Vite's watcher), and on every
+// production build. Owner of `.claude/locks/locks.json`. See the
+// integration source for full docs.
+import locks from "./integrations/locks";
+
 // https://astro.build/config
 export default defineConfig({
   site: "https://fragmentcolor.org",
   integrations: [
+    locks(),
     starlight({
       title: "Fragment Color",
       logo: {
