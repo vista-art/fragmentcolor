@@ -148,6 +148,52 @@ export default defineConfig({
             }
           `,
         },
+        // <Lang /> wiring — keeps inline tab-synced text up to date
+        // without rendering DOM siblings next to the substitution span.
+        // Lives here (page-level head) so the component itself only
+        // emits the <span>, avoiding inline-context whitespace artefacts.
+        {
+          tag: "style",
+          content: ".lang-text{display:inline;margin:0;padding:0;white-space:normal;}",
+        },
+        {
+          tag: "script",
+          attrs: { type: "module" },
+          content: `
+            const STORAGE_KEY = "starlight-synced-tabs__lang";
+            const LABEL_TO_DATA = {
+              Rust: "rust",
+              JavaScript: "js",
+              Python: "py",
+              Swift: "swift",
+              Kotlin: "kotlin",
+            };
+            function updateLangText() {
+              let label;
+              try { label = localStorage.getItem(STORAGE_KEY); } catch {}
+              const key = LABEL_TO_DATA[label || ""] || "rust";
+              document.querySelectorAll(".lang-text").forEach((el) => {
+                const v = el.dataset[key];
+                if (v !== undefined && v !== null) el.textContent = v;
+              });
+            }
+            function initLangText() {
+              updateLangText();
+              document.addEventListener("click", (e) => {
+                const tab = e.target?.closest?.('[role="tab"]');
+                if (!tab) return;
+                const tabsParent = tab.closest('starlight-tabs[data-sync-key="lang"]');
+                if (!tabsParent) return;
+                requestAnimationFrame(updateLangText);
+              });
+            }
+            if (document.readyState === "loading") {
+              document.addEventListener("DOMContentLoaded", initLangText);
+            } else {
+              initLangText();
+            }
+          `,
+        },
       ],
       social: [
         { icon: "github", label: "GitHub", href: "https://github.com/vista-art/fragmentcolor" },

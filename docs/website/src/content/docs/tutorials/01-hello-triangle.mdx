@@ -8,6 +8,7 @@ import Snippet from "../../../components/Snippet.astro";
 import Demo from "../../../components/Demo.astro";
 import Lang from "../../../components/Lang.astro";
 import LangSelector from "../../../components/LangSelector.astro";
+import MultiCode from "../../../components/MultiCode.astro";
 
 <LangSelector />
 
@@ -23,21 +24,45 @@ Then we'll add a few more to show you what triangles can do when they play toget
 
 To draw anything anywhere, we need two things: a **surface** to draw to, and **something that draws**. In FragmentColor those are a `Target` (wraps a canvas or window) and a `Renderer`. Let's create them!
 
-```rust
-// canvas is platform-specific
+<MultiCode
+  rust={`// canvas is platform-specific
 let renderer = Renderer::new();
-let target = renderer.create_target(canvas).await?;
-```
+let target = renderer.create_target(canvas).await?;`}
+  js={`// canvas is the <canvas> DOM element
+const renderer = new Renderer();
+const target = await renderer.createTarget(canvas);`}
+  py={`# canvas is platform-specific
+renderer = Renderer()
+target = await renderer.create_target(canvas)`}
+  swift={`// canvas is platform-specific (UIView, NSView, ...)
+let renderer = Renderer()
+let target = try await renderer.createTarget(canvas)`}
+  kotlin={`// canvas is platform-specific (SurfaceView, ...)
+val renderer = Renderer()
+val target = renderer.createTarget(canvas)`}
+/>
 
 Surface and Renderer ready. Now we need to decide: *what* to draw?
 
 That's what a **`Shader`** does — it's a tiny program that runs once per pixel. It's the smallest unit FragmentColor can render, and we don't need anything else to see cool things on screen. Let's grab a quick example off the public registry:
 
-```rust
-let shader = Shader::new("https://fragmentcolor.org/triangle.wgsl")?;
+<MultiCode
+  rust={`let shader = Shader::new("https://fragmentcolor.org/triangle.wgsl")?;
 shader.set("color", [0.95, 0.30, 0.42, 1.0])?;
-renderer.render(&shader, &target);
-```
+renderer.render(&shader, &target);`}
+  js={`const shader = await Shader.fetch("https://fragmentcolor.org/triangle.wgsl");
+shader.set("color", [0.95, 0.30, 0.42, 1.0]);
+renderer.render(shader, target);`}
+  py={`shader = Shader.fetch("https://fragmentcolor.org/triangle.wgsl")
+shader.set("color", [0.95, 0.30, 0.42, 1.0])
+renderer.render(shader, target)`}
+  swift={`let shader = try await Shader.fetch("https://fragmentcolor.org/triangle.wgsl")
+shader.set("color", [0.95, 0.30, 0.42, 1.0])
+renderer.render(shader, target)`}
+  kotlin={`val shader = Shader.fetch("https://fragmentcolor.org/triangle.wgsl")
+shader.set("color", floatArrayOf(0.95f, 0.30f, 0.42f, 1.0f))
+renderer.render(shader, target)`}
+/>
 
 Congratulations! You just drew your first triangle!
 
