@@ -98,16 +98,35 @@ renderer.render(shader, target)`,
 <style>
   .color-triangle {
     margin: 1.5rem 0;
+    /* Container queries below respond to the component's actual available
+       width, not the viewport. Lets the layout collapse to a stack inside
+       narrow column areas (e.g. a TOC-on page) without chasing breakpoints. */
+    container-type: inline-size;
+    container-name: colortri;
   }
   .ct-grid {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(220px, 1fr);
+    grid-template-columns: minmax(0, 1fr) minmax(240px, 1fr);
     gap: 1rem;
     align-items: stretch;
   }
-  @media (max-width: 720px) {
+  @container colortri (max-width: 720px) {
     .ct-grid {
       grid-template-columns: 1fr;
+    }
+    .ct-canvas-wrap {
+      min-height: 260px;
+    }
+  }
+  /* Fallback for browsers without container query support. */
+  @supports not (container-type: inline-size) {
+    @media (max-width: 900px) {
+      .ct-grid {
+        grid-template-columns: 1fr;
+      }
+      .ct-canvas-wrap {
+        min-height: 260px;
+      }
     }
   }
 
