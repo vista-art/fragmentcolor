@@ -107,8 +107,9 @@ If you genuinely think a locked region needs changing, surface it to the user in
 
 How the system works (so you understand what you're respecting):
 
-- `scripts/locks.rs` runs at build time. It scans `docs/website/src/content/docs/**/*.{md,mdx}`, hashes the inner content of every `<Lock>` block, and tracks per-block version history in `.claude/locks/locks.json` (gitignored, `chmod 600`). An unpaired or nested `<Lock>` fails the build with a clear error; missing `id` does the same.
-- `cargo run --release -p fce --example locks -- status | history | diff` is the CLI the user reads to inspect history and compare versions.
+- `docs/website/integrations/locks.ts` is the Astro integration that owns the lock store. It runs in two places: `astro:server:setup` does an initial scan and then watches `docs/website/src/content/docs/**/*.{md,mdx}` via Vite's file watcher (re-scans only the changed file on save); `astro:build:start` does a full scan on production builds. Either path hashes the inner content of every `<Lock>` block (SHA-256), upserts into `.claude/locks/locks.json` (gitignored, `chmod 600`), and bumps a per-block version when content changes. An unpaired or nested `<Lock>` fails the production build with a clear error; on the dev server the same error logs as a warning so the page still renders.
+- The Rust build pipeline does NOT touch the lock store. Editing prose should never trigger a `cargo build`.
+- `cargo run --release -p fce --example locks -- status | history | diff` is a thin Rust CLI that READS the JSON and surfaces history + coloured diffs. Read-only.
 - The hash store is convention-protected, not enforced — any process running as the user can write to it. The protection is that you (the agent) are reading this and choosing to respect the marker.
 
 You **can** add new content **outside** locked regions, and you can re-format / restructure unlocked content normally. If you create new lock blocks of your own, that's also fine — the build script will pick them up and start a version history.

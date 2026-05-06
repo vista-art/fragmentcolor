@@ -10,10 +10,6 @@ fn main() {
     println!("cargo::rerun-if-changed=README_JS.tpl.md");
     println!("cargo::rerun-if-changed=README_PY.tpl.md");
     readme::generate_readmes();
-    // Scan MDX content for `<Lock id="...">` blocks; track per-block
-    // version history in `.claude/locks/locks.json`. Fails the build on
-    // unpaired or nested Lock tags. See scripts/locks.rs.
-    locks::run();
 }
 
 /// Configures custom cfg aliases for conditional compilation
@@ -175,4 +171,3 @@ include!("scripts/tutorials.rs");
 include!("scripts/meta.rs");
 include!("scripts/readme.rs");
 include!("scripts/embedded_shaders.rs");
-include!("scripts/locks.rs");
