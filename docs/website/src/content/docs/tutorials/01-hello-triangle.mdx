@@ -79,12 +79,11 @@ struct VOut { @builtin(position) pos: vec4<f32> };
 
 @vertex
 fn vs_main(@builtin(vertex_index) i: u32) -> VOut {
-    // Equilateral triangle in NDC. apex_y / base_y come from
-    // height = side * sqrt(3) / 2 with side = 1.2.
+    // Equilateral triangle in NDC, centroid at origin.
     var p = array<vec2<f32>, 3>(
-        vec2<f32>(-0.6, -0.35),
-        vec2<f32>( 0.6, -0.35),
-        vec2<f32>( 0.0,  0.69),
+        vec2<f32>(-0.7, -0.4),
+        vec2<f32>( 0.7, -0.4),
+        vec2<f32>( 0.0,  0.8),
     );
     var out: VOut;
     out.pos = vec4<f32>(p[i], 0.0, 1.0);
@@ -99,43 +98,43 @@ fn fs_main() -> @location(0) vec4<f32> {
 
 The `@group(0) @binding(0) var<uniform> color: vec4<f32>` line is what made `shader.set("color", ...)` work — FragmentColor reflected the binding right off the WGSL source. The `@vertex` stage runs three times and picks one of three positions. The `@fragment` stage returns the uniform as the pixel color. One triangle, one color.
 
-## Step 2 — Compose from the catalog
+## Step 2 — A second uniform
 
-Same `Shader::new` constructor, only this time we pass an *array*. It can mix any number of inline source strings, URLs, file paths, **or registry slugs** — short paths into FragmentColor's [shader catalog](/shaders/), each one a small pure WGSL function we can pull in by name.
-
-Here's the same triangle, but now with a soft simplex-noise breath shimmering across its surface. The host points the constructor at one slug (`noise/simplex2`) and one inline source:
-
-<Snippet file="01-hello-triangle/02-compose-noise/example.rs" region="setup" />
-
-The inline source calls `simplex2(...)` straight from the fragment stage as if it were a normal WGSL function — because, well, it now is:
-
-<Snippet file="01-hello-triangle/02-compose-noise/example.rs" region="shader" />
-
-`Shader::new` fetches each slug (the registry is embedded by default — no network), validates the merged source through naga, and links everything into one program. Slugs are content-addressed, so importing the same helper from two different shaders compiles it once and reuses it.
-
-<Demo file="01-hello-triangle/02-compose-noise/example.rs" />
-
-There are 225 of these helpers in the catalog right now — easing curves, color spaces, post-processing kernels, lighting models, hashes, SDFs in 2D and 3D. We'll keep dipping in for the rest of this tutorial.
-
-## Step 3 — A second uniform
-
-Try resizing the page wider, then taller. Watch the triangle.
+Try resizing the page wider, then taller. Watch the triangle in step 1's demo.
 
 It stretches. The shape we see isn't really a triangle anymore on a wide canvas — it's a wide isoceles thing, scaled along x to fill the canvas. That's because we hardcoded the positions in **NDC** (normalized device coordinates), where `[-1, 1]` maps across the canvas independently along each axis. When the canvas isn't square, our shape isn't either.
 
 The fix is information the shader doesn't have yet: the canvas aspect ratio. We need another input. Same `Shader` API, one more `set("...", ...)` call per frame:
 
-<Snippet file="01-hello-triangle/03-resolution-uniform/example.rs" region="frame" />
+<Snippet file="01-hello-triangle/02-resolution-uniform/example.rs" region="frame" />
 
 And in the shader, we declare a second uniform and use it to squeeze whichever axis is longer:
 
-<Snippet file="01-hello-triangle/03-resolution-uniform/example.rs" region="shader" />
+<Snippet file="01-hello-triangle/02-resolution-uniform/example.rs" region="shader" />
 
 `@group(0) @binding(1) var<uniform> resolution: vec2<f32>` is reflected by FragmentColor exactly the way `color` was — `set("resolution", [w, h])` finds it by name. The `max(.., 1.0)` is just paranoia: WGSL uniforms default to zero, and we'd rather render at 1:1 than divide by it.
 
-<Demo file="01-hello-triangle/03-resolution-uniform/example.rs" />
+<Demo file="01-hello-triangle/02-resolution-uniform/example.rs" />
 
-Try resizing the page now. The triangle holds its shape. Two uniforms instead of one, and the shader stops caring about the canvas.
+Try resizing the page now. The triangle holds its shape. Two uniforms instead of one, and the shader stops caring about the canvas. Every shader from here on carries a `resolution` uniform alongside its other inputs — the demos handle it for you.
+
+## Step 3 — Compose from the catalog
+
+Same `Shader::new` constructor, only this time we pass an *array*. It can mix any number of inline source strings, URLs, file paths, **or registry slugs** — short paths into FragmentColor's [shader catalog](/shaders/), each one a small pure WGSL function we can pull in by name.
+
+Here's the same triangle, but now with a soft simplex-noise breath shimmering across its surface. The host points the constructor at one slug (`noise/simplex2`) and one inline source:
+
+<Snippet file="01-hello-triangle/03-compose-noise/example.rs" region="setup" />
+
+The inline source calls `simplex2(...)` straight from the fragment stage as if it were a normal WGSL function — because, well, it now is:
+
+<Snippet file="01-hello-triangle/03-compose-noise/example.rs" region="shader" />
+
+`Shader::new` fetches each slug (the registry is embedded by default — no network), validates the merged source through naga, and links everything into one program. Slugs are content-addressed, so importing the same helper from two different shaders compiles it once and reuses it.
+
+<Demo file="01-hello-triangle/03-compose-noise/example.rs" />
+
+There are 225 of these helpers in the catalog right now — easing curves, color spaces, post-processing kernels, lighting models, hashes, SDFs in 2D and 3D. We'll keep dipping in for the rest of this tutorial.
 
 ## Step 4 — Bring your own vertices
 

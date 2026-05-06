@@ -36,12 +36,12 @@ name = "tutorial_01_hello_triangle_three_lines"
 path = "../../docs/tutorials/01-hello-triangle/01-three-lines/example.rs"
 
 [[example]]
-name = "tutorial_01_hello_triangle_compose_noise"
-path = "../../docs/tutorials/01-hello-triangle/02-compose-noise/example.rs"
+name = "tutorial_01_hello_triangle_resolution_uniform"
+path = "../../docs/tutorials/01-hello-triangle/02-resolution-uniform/example.rs"
 
 [[example]]
-name = "tutorial_01_hello_triangle_resolution_uniform"
-path = "../../docs/tutorials/01-hello-triangle/03-resolution-uniform/example.rs"
+name = "tutorial_01_hello_triangle_compose_noise"
+path = "../../docs/tutorials/01-hello-triangle/03-compose-noise/example.rs"
 
 [[example]]
 name = "tutorial_01_hello_triangle_vertex_gradient"

@@ -1,4 +1,4 @@
-// Step 3 — one triangle, many instances, a tiny particle field.
+// Step 5 — one triangle, many instances, a tiny particle field.
 //
 // Same gradient triangle from step 2, but now we throw a few thousand
 // copies of it onto the screen with per-instance offsets and let the GPU
@@ -7,7 +7,7 @@
 // thousands of triangles.
 
 use fragmentcolor::mesh::{Mesh, Vertex};
-use fragmentcolor::{App, Renderer, SetupResult, Shader, call, run};
+use fragmentcolor::{App, Renderer, SetupResult, Shader, Target, call, run};
 use std::sync::{Arc, OnceLock};
 use std::time::Instant;
 use winit::dpi::PhysicalSize;
@@ -22,7 +22,8 @@ struct VOut {
     @location(0) color: vec3<f32>,
 };
 
-@group(0) @binding(0) var<uniform> time: f32;
+@group(0) @binding(0) var<uniform> resolution: vec2<f32>;
+@group(0) @binding(1) var<uniform> time: f32;
 
 @vertex
 fn vs_main(
@@ -37,7 +38,14 @@ fn vs_main(
         sin(time * 1.3 + phase) * 0.05,
         cos(time * 0.9 + phase * 1.4) * 0.05,
     );
-    let world = position.xy * scale + center + wobble;
+    var world = position.xy * scale + center + wobble;
+    // Aspect-correct so each particle's triangle stays equilateral and
+    // the field stays evenly distributed regardless of canvas shape.
+    let res = max(resolution, vec2<f32>(1.0));
+    let aspect = res.x / res.y;
+    if (aspect > 1.0) { world.x = world.x / aspect; }
+    else              { world.y = world.y * aspect; }
+
     // Same oscillation as before, routed through `easing/in_out_sine`
     // (a registry slug we pulled in at Shader::new) to soften the
     // peaks and troughs into a slower-feeling pulse.
@@ -65,12 +73,12 @@ async fn setup(app: &App, windows: Vec<Arc<Window>>) -> SetupResult {
     let shader = Shader::new(["easing/in_out_sine", PARTICLE_WGSL])?;
     shader.set("time", 0.0_f32)?;
 
-    // The base triangle: same gradient shape as step 2.
+    // The base triangle: same equilateral shape as step 4.
     let mesh = Mesh::new();
     mesh.add_vertices([
-        Vertex::new([-0.6, -0.5, 0.0]).set("color", [0.95, 0.30, 0.42]),
-        Vertex::new([0.6, -0.5, 0.0]).set("color", [0.30, 0.85, 0.55]),
-        Vertex::new([0.0, 0.7, 0.0]).set("color", [0.30, 0.55, 0.95]),
+        Vertex::new([-0.7, -0.4, 0.0]).set("color", [0.95, 0.30, 0.42]),
+        Vertex::new([ 0.7, -0.4, 0.0]).set("color", [0.30, 0.85, 0.55]),
+        Vertex::new([ 0.0,  0.8, 0.0]).set("color", [0.30, 0.55, 0.95]),
     ]);
 
     // Many instances of that same triangle, sprinkled across NDC space.
@@ -121,7 +129,11 @@ fn draw(app: &App) {
         let _ = shader.set("time", time);
         let id = app.primary_window_id();
         let renderer = app.get_renderer();
-        let _ = app.with_target(id, |target| renderer.render(&*shader, target));
+        let _ = app.with_target(id, |target| {
+            let s = target.size();
+            let _ = shader.set("resolution", [s.width as f32, s.height as f32]);
+            renderer.render(&*shader, target)
+        });
     }
 }
 // #endregion: frame
