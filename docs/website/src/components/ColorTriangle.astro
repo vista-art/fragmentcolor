@@ -1,0 +1,299 @@
+---
+// <ColorTriangle /> — the static-triangle counterpart to <Demo>.
+//
+// Loads the same `https://fragmentcolor.org/triangle.wgsl` shader the
+// tutorial discusses, renders it ONCE at the chosen color, and exposes
+// a native color picker that mutates the `color` uniform and re-renders
+// on demand. There's no RAF loop — picking a color is the only thing
+// that triggers a draw, which mirrors what those three lines of code
+// actually do (set + render, then stop).
+//
+// This component is the seed of a fuller Repl: today the only knob is
+// the color literal; later iterations can let the reader edit the
+// source string itself and watch the canvas respond. The contract
+// stays the same: load shader, set uniforms, render once.
+
+interface Props {
+  /** Initial RGBA color, each in [0, 1]. Defaults to the tutorial's pink. */
+  initialColor?: [number, number, number, number];
+  /** Pixel height for the canvas. */
+  height?: string;
+  /** WGSL source URL or registry slug; defaults to the tutorial shader. */
+  shaderUrl?: string;
+}
+
+const {
+  initialColor = [0.95, 0.30, 0.42, 1.0],
+  height = "200px",
+  shaderUrl = "https://fragmentcolor.org/triangle.wgsl",
+} = Astro.props;
+---
+
+<color-triangle
+  data-color={JSON.stringify(initialColor)}
+  data-height={height}
+  data-shader-url={shaderUrl}
+  style="display:block;margin:1.5rem 0;">
+</color-triangle>
+
+<script>
+// @ts-nocheck
+if (!customElements.get('color-triangle')) {
+  function rgbaToHex([r, g, b]) {
+    const c = (n) => Math.max(0, Math.min(255, Math.round(n * 255)))
+      .toString(16).padStart(2, '0');
+    return `#${c(r)}${c(g)}${c(b)}`;
+  }
+  function hexToRgb(hex) {
+    const m = /^#([0-9a-f]{6})$/i.exec(hex.trim());
+    if (!m) return [0, 0, 0];
+    const n = parseInt(m[1], 16);
+    return [((n >> 16) & 0xff) / 255, ((n >> 8) & 0xff) / 255, (n & 0xff) / 255];
+  }
+
+  class ColorTriangle extends HTMLElement {
+    #shadow;
+    #canvas;
+    #picker;
+    #valuesEl;
+    #renderer;
+    #target;
+    #shader;
+    #color;
+    #stopped = false;
+    #started = false;
+    #ro;
+    #io;
+
+    constructor() {
+      super();
+      this.#shadow = this.attachShadow({ mode: 'open' });
+      const height = this.dataset.height || '200px';
+      const initial = JSON.parse(this.dataset.color || '[0.95,0.30,0.42,1.0]');
+      this.#color = initial;
+      const hex = rgbaToHex(initial);
+      this.#shadow.innerHTML = `
+        <style>
+          :host { display: block; margin: 1.5rem 0; }
+          .row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1rem;
+            align-items: stretch;
+          }
+          .frame {
+            position: relative;
+            flex: 1 1 200px;
+            min-width: 200px;
+            height: ${height};
+            border-radius: 8px;
+            overflow: hidden;
+            background: linear-gradient(135deg, #0b1124 0%, #0f172a 60%, #111827 100%);
+          }
+          canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+            background: transparent;
+          }
+          .err {
+            position: absolute;
+            inset: 0;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem;
+            color: #fca5a5;
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: 0.8rem;
+            background: rgba(15, 23, 42, 0.9);
+            text-align: center;
+            white-space: pre-wrap;
+          }
+          .err.visible { display: flex; }
+          .controls {
+            flex: 0 0 auto;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            justify-content: center;
+            min-width: 12rem;
+            padding: 0.75rem 1rem;
+            border: 1px solid #2b2d3a;
+            border-radius: 8px;
+            background: rgba(15, 23, 42, 0.5);
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: 0.8rem;
+            color: #cbd5e1;
+          }
+          .controls label {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.75rem;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            color: #94a3b8;
+          }
+          input[type="color"] {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 100%;
+            height: 2.5rem;
+            border: 1px solid #2b2d3a;
+            border-radius: 6px;
+            padding: 0;
+            background: transparent;
+            cursor: pointer;
+          }
+          input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+          input[type="color"]::-webkit-color-swatch { border: 0; border-radius: 5px; }
+          input[type="color"]::-moz-color-swatch { border: 0; border-radius: 5px; }
+          .values {
+            font-feature-settings: "tnum";
+            color: #94a3b8;
+          }
+          .values code {
+            color: #e2e8f0;
+            background: transparent;
+            padding: 0;
+          }
+          .hint {
+            font-size: 0.7rem;
+            color: #64748b;
+            font-family: var(--__sl-font, ui-sans-serif, system-ui, sans-serif);
+            text-transform: none;
+            letter-spacing: 0;
+          }
+        </style>
+        <div class="row">
+          <div class="frame">
+            <canvas></canvas>
+            <div class="err" role="alert"></div>
+          </div>
+          <div class="controls">
+            <label>Pick a color
+              <input type="color" value="${hex}" />
+            </label>
+            <div class="values">
+              <code class="rgba">[${initial.map((v, i) => i < 3 ? v.toFixed(2) : v.toFixed(1)).join(', ')}]</code>
+            </div>
+            <div class="hint">No render loop here — the canvas redraws once per picked color, exactly like the three lines above.</div>
+          </div>
+        </div>
+      `;
+      this.#canvas = this.#shadow.querySelector('canvas');
+      this.#picker = this.#shadow.querySelector('input[type="color"]');
+      this.#valuesEl = this.#shadow.querySelector('.values .rgba');
+    }
+
+    connectedCallback() {
+      this.#picker.addEventListener('input', (e) => {
+        const rgb = hexToRgb(e.target.value);
+        this.#color = [rgb[0], rgb[1], rgb[2], this.#color[3]];
+        this.#updateValues();
+        this.#renderOnce();
+      });
+
+      // Lazy init when the canvas first enters the viewport so we don't
+      // spin up WebGPU for a component the reader never scrolls to.
+      if ('IntersectionObserver' in window) {
+        this.#io = new IntersectionObserver((entries, obs) => {
+          for (const entry of entries) {
+            if (entry.isIntersecting) {
+              obs.disconnect();
+              this.#start();
+              break;
+            }
+          }
+        }, { threshold: 0.01 });
+        this.#io.observe(this);
+      } else {
+        // No IO available — start immediately.
+        queueMicrotask(() => this.#start());
+      }
+    }
+
+    disconnectedCallback() {
+      this.#stopped = true;
+      try { this.#ro?.disconnect(); } catch {}
+      try { this.#io?.disconnect(); } catch {}
+    }
+
+    async #start() {
+      if (this.#started || this.#stopped) return;
+      this.#started = true;
+      try {
+        await this.#init();
+      } catch (e) {
+        console.error('[ColorTriangle] init failed', e);
+        this.#showError(`init: ${e?.message || e}`);
+      }
+    }
+
+    async #init() {
+      const fc = await import('fragmentcolor');
+      const wasmUrl = (await import('fragmentcolor/fragmentcolor_bg.wasm?url')).default;
+      await fc.default({ module_or_path: wasmUrl });
+
+      try { fc.Shader.setRegistry('/shaders/'); } catch {}
+
+      this.#renderer = new fc.Renderer();
+      this.#applySize();
+      this.#target = await this.#renderer.createTarget(this.#canvas);
+      this.#target.resize([this.#canvas.width, this.#canvas.height]);
+
+      const url = this.dataset.shaderUrl || 'https://fragmentcolor.org/triangle.wgsl';
+      this.#shader = await fc.Shader.fetch(url);
+
+      this.#ro = new ResizeObserver(() => {
+        this.#applySize();
+        this.#renderOnce();
+      });
+      this.#ro.observe(this.#canvas);
+
+      this.#renderOnce();
+    }
+
+    #renderOnce() {
+      if (!this.#renderer || !this.#target || !this.#shader || this.#stopped) return;
+      try {
+        this.#shader.set('color', this.#color);
+        this.#renderer.render(this.#shader, this.#target);
+      } catch (e) {
+        console.error('[ColorTriangle] render failed', e);
+        this.#showError(`render: ${e?.message || e}`);
+      }
+    }
+
+    #updateValues() {
+      const [r, g, b, a] = this.#color;
+      this.#valuesEl.textContent = `[${r.toFixed(2)}, ${g.toFixed(2)}, ${b.toFixed(2)}, ${a.toFixed(1)}]`;
+    }
+
+    #applySize() {
+      try {
+        if (!this.#canvas) return;
+        const dpr = Math.max(1, window.devicePixelRatio || 1);
+        const w = Math.max(1, Math.floor(this.#canvas.clientWidth * dpr));
+        const h = Math.max(1, Math.floor(this.#canvas.clientHeight * dpr));
+        if (this.#canvas.width !== w || this.#canvas.height !== h) {
+          this.#canvas.width = w;
+          this.#canvas.height = h;
+        }
+        if (this.#target) {
+          try { this.#target.resize([w, h]); } catch {}
+        }
+      } catch {}
+    }
+
+    #showError(msg) {
+      const div = this.#shadow.querySelector('.err');
+      if (!div) return;
+      div.textContent = msg;
+      div.classList.add('visible');
+    }
+  }
+  customElements.define('color-triangle', ColorTriangle);
+}
+</script>
