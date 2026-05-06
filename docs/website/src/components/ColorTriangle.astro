@@ -1,26 +1,31 @@
 ---
 // <ColorTriangle /> — code on one side, triangle on the other. Nothing else.
 //
-// The code is rendered with the `[r, g, b, a]` literal as an inline
-// button. Click it and the browser's native color picker opens; pick a
-// new color and the literal text rewrites in place AND the canvas
-// re-renders. There is no second UI widget — the picker is a transient
-// editor for the literal, the way a date picker is the editor for a
-// date input. The reader's mental model stays clean: the code drives
-// the triangle, period.
+// The code is rendered by Starlight's <Code> component (same Expressive
+// Code path the rest of the page uses), so the theme — background, font,
+// keyword colors — matches every other Snippet block on the article.
+// A unique per-language identifier placeholder (`__CLR_RUST__` etc.) is
+// what each code sample contains where the `[r, g, b, a]` literal would
+// be; Shiki tokenises it as an identifier (single span). Right after
+// mount, a small client script walks each rendered code block, finds
+// the placeholder span, and replaces it with a `<button class="lit">`
+// containing the live literal. Click that button and the browser's
+// native color picker opens; pick a new color and the literal text
+// rewrites in place AND the canvas re-renders. There is no second UI
+// widget — the picker is a transient editor for the literal, the way a
+// date picker is the editor for a date input. The reader's mental
+// model stays clean: the code drives the triangle, period.
 //
-// Renders a per-language code block under a <Tabs syncKey="lang">, so
-// the LangSelector + every Snippet on the page stay in sync. Each
-// language stores its own literal template (Rust/JS/Python/Swift use
-// `[r, g, b, a]`; Kotlin uses `floatArrayOf(rf, gf, bf, af)`); the
-// underlying RGBA value is shared so editing in one tab updates all.
+// Tabs use syncKey="lang" so the LangSelector + every Snippet on the
+// page stay in step. Each language stores its own literal format
+// (Rust/JS/Python/Swift use `[r, g, b, a]`; Kotlin uses
+// `floatArrayOf(rf, gf, bf, af)`); the underlying RGBA value is shared
+// so editing in one tab updates all.
 //
-// The shader is the same one the tutorial discusses
-// (https://fragmentcolor.org/triangle.wgsl by default). Render is a
-// single render-once-per-change — no RAF loop — matching what those
-// three lines of code actually do.
+// Render is single-shot (no RAF loop) — exactly what those three lines
+// of code do when you actually run them.
 
-import { Tabs, TabItem } from "@astrojs/starlight/components";
+import { Code, Tabs, TabItem } from "@astrojs/starlight/components";
 
 interface Props {
   /** Initial RGBA color, each in [0, 1]. */
@@ -33,39 +38,36 @@ interface Props {
 
 const {
   initialColor = [0.95, 0.30, 0.42, 1.0],
-  height = "220px",
+  height = "240px",
   shaderUrl = "https://fragmentcolor.org/triangle.wgsl",
 } = Astro.props;
 
-const fmt = (n: number) => n.toFixed(2);
-const fmtA = (n: number) => n.toFixed(1);
-const [r0, g0, b0, a0] = initialColor;
-const arrLit = `[${fmt(r0)}, ${fmt(g0)}, ${fmt(b0)}, ${fmtA(a0)}]`;
-const ktLit = `floatArrayOf(${fmt(r0)}f, ${fmt(g0)}f, ${fmt(b0)}f, ${fmtA(a0)}f)`;
-
-// Each template embeds the exact <button class="lit" data-lang="..."> markup
-// inline so syntax-class spans don't fight us. Keep these in sync with
-// MultiCode's bodies in the tutorial.
-const tpl = (lang: string, body: string) =>
-  `<button class="lit" type="button" data-lang="${lang}">${
-    lang === "kotlin" ? ktLit : arrLit
-  }</button>`;
+// Per-language identifier placeholders. Each is a valid identifier in
+// the language so Shiki tokenises it as one span; the client script
+// then swaps that span for the interactive button.
+const PLACEHOLDER = {
+  rust: "__CLR_RUST__",
+  js: "__CLR_JS__",
+  py: "__CLR_PY__",
+  swift: "__CLR_SWIFT__",
+  kotlin: "__CLR_KT__",
+};
 
 const code = {
   rust: `let shader = Shader::new("${shaderUrl}")?;
-shader.set("color", ${tpl("rust", "")})?;
+shader.set("color", ${PLACEHOLDER.rust})?;
 renderer.render(&shader, &target);`,
   js: `const shader = await Shader.fetch("${shaderUrl}");
-shader.set("color", ${tpl("js", "")});
+shader.set("color", ${PLACEHOLDER.js});
 renderer.render(shader, target);`,
   py: `shader = Shader.fetch("${shaderUrl}")
-shader.set("color", ${tpl("py", "")})
+shader.set("color", ${PLACEHOLDER.py})
 renderer.render(shader, target)`,
   swift: `let shader = try await Shader.fetch("${shaderUrl}")
-shader.set("color", ${tpl("swift", "")})
+shader.set("color", ${PLACEHOLDER.swift})
 renderer.render(shader, target)`,
-  kotlin: `val shader = Shader::fetch("${shaderUrl}")
-shader.set("color", ${tpl("kotlin", "")})
+  kotlin: `val shader = Shader.fetch("${shaderUrl}")
+shader.set("color", ${PLACEHOLDER.kotlin})
 renderer.render(shader, target)`,
 };
 ---
@@ -77,16 +79,16 @@ renderer.render(shader, target)`,
   data-height={height}>
 
   <div class="ct-grid">
-    <div class="ct-code">
+    <div class="ct-code" data-placeholders={JSON.stringify(PLACEHOLDER)}>
       <Tabs syncKey="lang">
-        <TabItem label="Rust"><pre><code set:html={code.rust} /></pre></TabItem>
-        <TabItem label="JavaScript"><pre><code set:html={code.js} /></pre></TabItem>
-        <TabItem label="Python"><pre><code set:html={code.py} /></pre></TabItem>
-        <TabItem label="Swift"><pre><code set:html={code.swift} /></pre></TabItem>
-        <TabItem label="Kotlin"><pre><code set:html={code.kotlin} /></pre></TabItem>
+        <TabItem label="Rust"><Code code={code.rust} lang="rust" /></TabItem>
+        <TabItem label="JavaScript"><Code code={code.js} lang="javascript" /></TabItem>
+        <TabItem label="Python"><Code code={code.py} lang="python" /></TabItem>
+        <TabItem label="Swift"><Code code={code.swift} lang="swift" /></TabItem>
+        <TabItem label="Kotlin"><Code code={code.kotlin} lang="kotlin" /></TabItem>
       </Tabs>
     </div>
-    <div class="ct-canvas-wrap">
+    <div class="ct-canvas-wrap" style={`height:${height};`}>
       <canvas></canvas>
       <div class="ct-err" role="alert"></div>
     </div>
@@ -98,80 +100,55 @@ renderer.render(shader, target)`,
 <style>
   .color-triangle {
     margin: 1.5rem 0;
-    /* Container queries below respond to the component's actual available
-       width, not the viewport. Lets the layout collapse to a stack inside
-       narrow column areas (e.g. a TOC-on page) without chasing breakpoints. */
+    /* Container queries respond to the component's actual available
+       width, not the viewport. Lets the layout collapse to a stack
+       inside narrow column areas without chasing breakpoints. */
     container-type: inline-size;
     container-name: colortri;
   }
   .ct-grid {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(240px, 1fr);
+    grid-template-columns: minmax(0, 1.4fr) minmax(240px, 1fr);
     gap: 1rem;
     align-items: stretch;
   }
   @container colortri (max-width: 720px) {
-    .ct-grid {
-      grid-template-columns: 1fr;
-    }
-    .ct-canvas-wrap {
-      min-height: 260px;
-    }
+    .ct-grid { grid-template-columns: 1fr; }
+    .ct-canvas-wrap { min-height: 260px; }
   }
-  /* Fallback for browsers without container query support. */
   @supports not (container-type: inline-size) {
     @media (max-width: 900px) {
-      .ct-grid {
-        grid-template-columns: 1fr;
-      }
-      .ct-canvas-wrap {
-        min-height: 260px;
-      }
+      .ct-grid { grid-template-columns: 1fr; }
+      .ct-canvas-wrap { min-height: 260px; }
     }
   }
 
-  .ct-code :global(pre) {
-    margin: 0;
-    padding: 0.85rem 1rem;
-    background: #282a36;
-    color: #f8f8f2;
-    border-radius: 6px;
-    overflow-x: auto;
-    font-family: var(--__sl-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
-    font-size: 0.85rem;
-    line-height: 1.55;
-  }
-  .ct-code :global(code) {
-    background: transparent;
-    padding: 0;
-    color: inherit;
-  }
-
-  /* The literal is a button styled to look like inline code. Hover and
-     focus get a subtle hint that it's interactive. */
+  /* The literal-as-button. Inherits Expressive Code's surrounding token
+     color so it visually fits the highlighted line; the underline hint
+     is the only thing that says "I'm interactive". */
   .ct-code :global(button.lit) {
     display: inline;
     padding: 0;
     margin: 0;
     border: 0;
     background: transparent;
-    color: #ffb86c;
+    color: inherit;
     font: inherit;
     cursor: pointer;
-    text-decoration: underline dotted rgba(255, 184, 108, 0.6);
+    text-decoration: underline dotted currentColor;
     text-underline-offset: 3px;
+    text-decoration-thickness: 1px;
+    opacity: 0.95;
   }
   .ct-code :global(button.lit:hover),
   .ct-code :global(button.lit:focus-visible) {
-    color: #ffd29a;
-    text-decoration-color: rgba(255, 210, 154, 1);
+    opacity: 1;
+    text-decoration-style: solid;
     outline: none;
   }
 
   .ct-canvas-wrap {
     position: relative;
-    height: 100%;
-    min-height: 220px;
     border-radius: 8px;
     overflow: hidden;
     background: linear-gradient(135deg, #0b1124 0%, #0f172a 60%, #111827 100%);
@@ -198,7 +175,6 @@ renderer.render(shader, target)`,
   }
   .ct-err.visible { display: flex; }
 
-  /* Hidden color picker — clicked programmatically when a literal is clicked. */
   .ct-picker {
     position: absolute;
     width: 1px;
@@ -211,6 +187,11 @@ renderer.render(shader, target)`,
     overflow: hidden;
     clip: rect(0 0 0 0);
   }
+
+  /* Briefly hide the placeholders if JS hasn't run yet — they're
+     not human-readable. The script clears `data-pending` on first
+     pass. Falls back to fully visible if the script never runs. */
+  .ct-code[data-pending="1"] :global(.ec-line) { visibility: hidden; }
 </style>
 
 <script>
@@ -235,17 +216,61 @@ function literalFor(lang, rgba) {
   return `[${f2(rgba[0])}, ${f2(rgba[1])}, ${f2(rgba[2])}, ${f1(rgba[3])}]`;
 }
 
-document.querySelectorAll('.color-triangle').forEach((root) => {
+function wireColorTriangle(root) {
   if (root.dataset.ctWired === '1') return;
   root.dataset.ctWired = '1';
 
   const rgba = JSON.parse(root.dataset.rgba || '[0.95,0.30,0.42,1.0]');
   const shaderUrl = root.dataset.shaderUrl || 'https://fragmentcolor.org/triangle.wgsl';
+  const codeWrap = root.querySelector('.ct-code');
+  const placeholders = JSON.parse(codeWrap.dataset.placeholders || '{}');
   const canvas = root.querySelector('canvas');
   const errEl = root.querySelector('.ct-err');
   const picker = root.querySelector('input.ct-picker');
-  const lits = root.querySelectorAll('button.lit');
 
+  // Reverse-map: identifier text -> language key.
+  const placeholderToLang = {};
+  for (const [lang, ph] of Object.entries(placeholders)) {
+    placeholderToLang[ph] = lang;
+  }
+
+  // Walk every text node under the rendered code and replace any
+  // placeholder identifier with a <button>. Expressive Code splits
+  // identifiers into single text nodes inside <span> wrappers, so a
+  // textContent equality check is enough.
+  codeWrap.dataset.pending = '1';
+  const walker = document.createTreeWalker(codeWrap, NodeFilter.SHOW_TEXT);
+  const replacements = [];
+  let node;
+  while ((node = walker.nextNode())) {
+    const t = node.nodeValue;
+    if (!t) continue;
+    for (const [ph, lang] of Object.entries(placeholderToLang)) {
+      if (t.includes(ph)) {
+        replacements.push({ node, ph, lang });
+        break;
+      }
+    }
+  }
+  for (const { node, ph, lang } of replacements) {
+    const text = node.nodeValue;
+    const idx = text.indexOf(ph);
+    const before = text.slice(0, idx);
+    const after = text.slice(idx + ph.length);
+    const parent = node.parentNode;
+    const button = document.createElement('button');
+    button.className = 'lit';
+    button.type = 'button';
+    button.dataset.lang = lang;
+    button.textContent = literalFor(lang, rgba);
+    if (before) parent.insertBefore(document.createTextNode(before), node);
+    parent.insertBefore(button, node);
+    if (after) parent.insertBefore(document.createTextNode(after), node);
+    parent.removeChild(node);
+  }
+  codeWrap.removeAttribute('data-pending');
+
+  const lits = codeWrap.querySelectorAll('button.lit');
   let renderer, target, shader, started = false, stopped = false;
 
   function showError(msg) {
@@ -285,12 +310,9 @@ document.querySelectorAll('.color-triangle').forEach((root) => {
     } catch {}
   }
 
-  // Wire literal clicks → open the hidden picker.
   lits.forEach((btn) => {
     btn.addEventListener('click', () => {
       picker.value = rgbaToHex(rgba);
-      // Position the picker near the clicked literal so the native picker
-      // pops next to it on browsers that anchor it to the input.
       const rect = btn.getBoundingClientRect();
       picker.style.position = 'absolute';
       picker.style.top = `${window.scrollY + rect.bottom}px`;
@@ -306,7 +328,6 @@ document.querySelectorAll('.color-triangle').forEach((root) => {
     renderOnce();
   });
 
-  // Set initial display values (in case the prefilled markup drifts).
   applyToLiterals();
 
   async function init() {
@@ -331,7 +352,6 @@ document.querySelectorAll('.color-triangle').forEach((root) => {
     }
   }
 
-  // Lazy-load on first viewport intersection.
   if ('IntersectionObserver' in window) {
     const io = new IntersectionObserver((entries, obs) => {
       for (const entry of entries) {
@@ -342,5 +362,7 @@ document.querySelectorAll('.color-triangle').forEach((root) => {
   } else {
     queueMicrotask(init);
   }
-});
+}
+
+document.querySelectorAll('.color-triangle').forEach(wireColorTriangle);
 </script>
