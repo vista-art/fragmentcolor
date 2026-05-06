@@ -27,15 +27,26 @@ const {
 } = Astro.props;
 ---
 
-<lang-text
+<span
+  class="lang-text"
   data-rust={rust}
   data-js={js}
   data-py={py}
   data-swift={swift}
-  data-kotlin={kotlin}>{rust}</lang-text>
+  data-kotlin={kotlin}>{rust}</span>
+
+<style>
+  /* Inline, zero-width whitespace handling — just a regular text node. */
+  .lang-text {
+    display: inline;
+    margin: 0;
+    padding: 0;
+    white-space: normal;
+  }
+</style>
 
 <script is:inline>
-  // One-time wiring of all <lang-text> elements on the page.
+  // One-time wiring of all .lang-text elements on the page.
   if (!window.__langTextWired) {
     window.__langTextWired = true;
 
@@ -53,11 +64,10 @@ const {
       try {
         label = localStorage.getItem(STORAGE_KEY);
       } catch {
-        // localStorage may be disabled (private mode, restricted iframe);
-        // fall back to the default first-tab label.
+        // localStorage may be disabled (private mode, restricted iframe).
       }
       const key = LABEL_TO_DATA[label || ""] || "rust";
-      document.querySelectorAll("lang-text").forEach((el) => {
+      document.querySelectorAll(".lang-text").forEach((el) => {
         const v = el.dataset[key];
         if (v !== undefined && v !== null) el.textContent = v;
       });

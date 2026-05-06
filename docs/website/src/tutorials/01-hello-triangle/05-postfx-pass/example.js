@@ -7,7 +7,7 @@
 //   postfx/vignette          — multiplier that darkens the edges
 //   postfx/film_grain        — per-frame additive grain
 
-import { Instance, Mesh, Pass, Shader, Vertex } from "fragmentcolor";
+import { Mesh, Pass, Shader, Vertex } from "fragmentcolor";
 
 const PARTICLE_COUNT = 1500;
 const SCENE_SIZE = 1024;
@@ -23,11 +23,11 @@ struct VOut {
 
 @vertex
 fn vs_main(
-    @location(0) position: vec3<f32>,
-    @location(1) color: vec3<f32>,
-    @location(2) center: vec2<f32>,
-    @location(3) phase: f32,
-    @location(4) tint: vec3<f32>,
+    @location(0) position: vec3<f32>,    // per-vertex
+    @location(1) center: vec2<f32>,       // per-instance
+    @location(2) phase: f32,               // per-instance
+    @location(3) tint: vec3<f32>,          // per-instance
+    @location(4) color: vec3<f32>,         // per-vertex
 ) -> VOut {
     let scale = 0.045;
     let wobble = vec2<f32>(
@@ -111,8 +111,11 @@ export async function setup(renderer, _target) {
     const TAU = Math.PI * 2;
     const instances = [];
     for (let i = 0; i < PARTICLE_COUNT; i++) {
+        // Use a Vertex template so instance properties get auto-incrementing
+        // locations starting at 1 — clear of the vertex `position` slot at
+        // @location(0). The Vertex's position is dropped on conversion.
         instances.push(
-            new Instance()
+            new Vertex([0.0, 0.0])
                 .set("center", [Math.random() * 1.8 - 0.9, Math.random() * 1.8 - 0.9])
                 .set("phase", Math.random() * TAU)
                 .set("tint", [
@@ -123,6 +126,12 @@ export async function setup(renderer, _target) {
         );
     }
     mesh.addInstances(instances);
+
+    // Bind the mesh to the particle shader so the renderer knows the
+    // vertex layout. Pass.addMesh below registers the mesh with the
+    // pass; this call registers it with the shader so the slug-composed
+    // shader picks up the per-vertex/per-instance attribute layout.
+    particleShader.addMesh(mesh);
 
     // Intermediate texture target — the bridge between the two passes.
     const intermediate = await renderer.createTextureTarget([SCENE_SIZE, SCENE_SIZE]);

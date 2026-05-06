@@ -6,7 +6,7 @@
 // 4-object model earns its keep: one mesh, one shader, one render call,
 // thousands of triangles.
 
-use fragmentcolor::mesh::{Instance, Mesh, Vertex};
+use fragmentcolor::mesh::{Mesh, Vertex};
 use fragmentcolor::{App, Renderer, SetupResult, Shader, call, run};
 use std::sync::{Arc, OnceLock};
 use std::time::Instant;
@@ -26,11 +26,11 @@ struct VOut {
 
 @vertex
 fn vs_main(
-    @location(0) position: vec3<f32>,
-    @location(1) color: vec3<f32>,
-    @location(2) center: vec2<f32>,
-    @location(3) phase: f32,
-    @location(4) tint: vec3<f32>,
+    @location(0) position: vec3<f32>,    // per-vertex
+    @location(1) center: vec2<f32>,       // per-instance
+    @location(2) phase: f32,               // per-instance
+    @location(3) tint: vec3<f32>,          // per-instance
+    @location(4) color: vec3<f32>,         // per-vertex
 ) -> VOut {
     let scale = 0.045;
     let wobble = vec2<f32>(
@@ -84,8 +84,11 @@ async fn setup(app: &App, windows: Vec<Arc<Window>>) -> SetupResult {
             0.6 + fastrand::f32() * 0.4,
             0.6 + fastrand::f32() * 0.4,
         ];
+        // Use a Vertex template so instance properties get auto-incrementing
+        // locations starting at 1 — clear of the vertex `position` slot at
+        // @location(0).
         instances.push(
-            Instance::new()
+            Vertex::new([0.0, 0.0])
                 .set("center", [cx, cy])
                 .set("phase", phase)
                 .set("tint", tint),

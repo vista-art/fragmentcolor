@@ -13,7 +13,7 @@
 // public registry (`postfx/vignette` and `postfx/film_grain`) plus a small
 // main shader that ties them together.
 
-use fragmentcolor::mesh::{Instance, Mesh, Vertex};
+use fragmentcolor::mesh::{Mesh, Vertex};
 use fragmentcolor::{App, Pass, Renderer, SetupResult, Shader, call, run};
 use std::sync::{Arc, OnceLock};
 use std::time::Instant;
@@ -34,11 +34,11 @@ struct VOut {
 
 @vertex
 fn vs_main(
-    @location(0) position: vec3<f32>,
-    @location(1) color: vec3<f32>,
-    @location(2) center: vec2<f32>,
-    @location(3) phase: f32,
-    @location(4) tint: vec3<f32>,
+    @location(0) position: vec3<f32>,    // per-vertex
+    @location(1) center: vec2<f32>,       // per-instance
+    @location(2) phase: f32,               // per-instance
+    @location(3) tint: vec3<f32>,          // per-instance
+    @location(4) color: vec3<f32>,         // per-vertex
 ) -> VOut {
     let scale = 0.045;
     let wobble = vec2<f32>(
@@ -109,8 +109,8 @@ fn fs_main(in: VOut) -> @location(0) vec4<f32> {
 
 // #region: setup
 async fn setup(app: &App, windows: Vec<Arc<Window>>) -> SetupResult {
-    // Particle shader and mesh — same as step 3.
-    let particle_shader = Shader::new(PARTICLE_WGSL)?;
+    // Particle shader and mesh — same as step 4.
+    let particle_shader = Shader::new(["easing/in_out_sine", PARTICLE_WGSL])?;
     particle_shader.set("time", 0.0_f32)?;
 
     let mesh = Mesh::new();
@@ -130,14 +130,23 @@ async fn setup(app: &App, windows: Vec<Arc<Window>>) -> SetupResult {
             0.6 + fastrand::f32() * 0.4,
             0.6 + fastrand::f32() * 0.4,
         ];
+        // Use a Vertex template so instance properties get auto-incrementing
+        // locations starting at 1 — clear of the vertex `position` slot at
+        // @location(0).
         instances.push(
-            Instance::new()
+            Vertex::new([0.0, 0.0])
                 .set("center", [cx, cy])
                 .set("phase", phase)
                 .set("tint", tint),
         );
     }
     mesh.add_instances(instances);
+
+    // Bind the mesh to the particle shader so the renderer knows the
+    // vertex layout. Pass::add_mesh below registers the mesh with the
+    // pass; this call registers it with the shader so the slug-composed
+    // shader picks up the per-vertex/per-instance attribute layout.
+    particle_shader.add_mesh(&mesh)?;
 
     // Intermediate texture target — the bridge between the two passes.
     // The postfx shader holds a Texture handle pointing at the same GPU
@@ -150,11 +159,17 @@ async fn setup(app: &App, windows: Vec<Arc<Window>>) -> SetupResult {
         .await?;
     let scene_texture = intermediate.texture();
 
-    // Postfx shader composed from two registry slugs and a main source.
-    // `postfx/vignette` and `postfx/film_grain` are pure WGSL helper
-    // functions; Shader::new concatenates them with our main shader and
-    // hands the merged source to naga for validation.
-    let postfx_shader = Shader::new(["postfx/vignette", "postfx/film_grain", POSTFX_MAIN_WGSL])?;
+    // Postfx shader composed from four registry slugs and a main source.
+    // Each slug is a pure WGSL helper function; Shader::new concatenates
+    // them with our main shader and hands the merged source to naga for
+    // validation.
+    let postfx_shader = Shader::new([
+        "postfx/chromatic_offsets",
+        "color/tonemap_filmic",
+        "postfx/vignette",
+        "postfx/film_grain",
+        POSTFX_MAIN_WGSL,
+    ])?;
     postfx_shader.set("scene", &scene_texture)?;
     postfx_shader.set("time", 0.0_f32)?;
 

@@ -3,7 +3,7 @@
 // Pulls `easing/in_out_sine` from the catalog so the per-instance pulse
 // rides through a smoother bell-curve than a raw sine.
 
-import { Instance, Mesh, Shader, Vertex } from "fragmentcolor";
+import { Mesh, Shader, Vertex } from "fragmentcolor";
 
 const PARTICLE_COUNT = 1500;
 
@@ -18,11 +18,11 @@ struct VOut {
 
 @vertex
 fn vs_main(
-    @location(0) position: vec3<f32>,
-    @location(1) color: vec3<f32>,
-    @location(2) center: vec2<f32>,
-    @location(3) phase: f32,
-    @location(4) tint: vec3<f32>,
+    @location(0) position: vec3<f32>,    // per-vertex
+    @location(1) center: vec2<f32>,       // per-instance
+    @location(2) phase: f32,               // per-instance
+    @location(3) tint: vec3<f32>,          // per-instance
+    @location(4) color: vec3<f32>,         // per-vertex
 ) -> VOut {
     let scale = 0.045;
     let wobble = vec2<f32>(
@@ -66,8 +66,11 @@ export async function setup(_renderer, _target) {
     const TAU = Math.PI * 2;
     const instances = [];
     for (let i = 0; i < PARTICLE_COUNT; i++) {
+        // Use a Vertex template so instance properties get auto-incrementing
+        // locations starting at 1 — clear of the vertex `position` slot at
+        // @location(0). The Vertex's position is dropped on conversion.
         instances.push(
-            new Instance()
+            new Vertex([0.0, 0.0])
                 .set("center", [Math.random() * 1.8 - 0.9, Math.random() * 1.8 - 0.9])
                 .set("phase", Math.random() * TAU)
                 .set("tint", [
