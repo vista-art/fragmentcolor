@@ -14,26 +14,24 @@ import ColorTriangle from "../../../components/ColorTriangle.astro";
 
 <LangSelector />
 
-There's a rite of passage in graphics programming: drawing your first triangle!
+There's a rite of passage in graphics programming: **drawing your first triangle!**
 
-**This typically takes thousands of lines of code.** Pick any tutorial for OpenGL, Vulkan, or raw WebGPU, and you'll spend an afternoon negotiating pixel formats, allocating command pools, and wiring descriptor sets before a single colored pixel reaches the screen.
+**This typically takes thousands of lines of code.** Pick any tutorial for OpenGL, Vulkan, or raw WebGPU, and you'll spend an afternoon setting pixel formats, allocating command pools, and wiring descriptor sets & binding groups before any colored pixel reaches the screen.
 
-We're going to do it in **six** lines of <Lang/>.
-
-Then we'll grow it into a cool scene with a filmic post-processing effect. In the process, you'll meet every object in the FragmentColor API, plus our growing [shader catalog](/shaders/).
+**We're going to do it in six lines** of <Lang/>.
 
 ## Step 1 — Hello, triangle!
 
 To draw anything anywhere, we need two things: a **surface** to draw to, and **something that draws**. In FragmentColor those are a `Target` (wraps a canvas or window) and a `Renderer`. Let's create them!
 
 <MultiCode
-  rust={`// canvas is platform-specific
+  rust={`// canvas is a winit Window
 let renderer = Renderer::new();
 let target = renderer.create_target(canvas).await?;`}
   js={`// canvas is the <canvas> DOM element
 const renderer = new Renderer();
 const target = await renderer.createTarget(canvas);`}
-  py={`# canvas is platform-specific
+  py={`# canvas is platform-specific (typically glfw)
 renderer = Renderer()
 target = await renderer.create_target(canvas)`}
   swift={`// canvas is platform-specific (UIView, NSView, ...)
@@ -44,9 +42,9 @@ val renderer = Renderer()
 val target = renderer.createTarget(canvas)`}
 />
 
-Surface and Renderer ready. Now we need to decide: *what* to draw?
+Surface and Renderer are ready. Now we need to decide: *what* to draw?
 
-That's what a **`Shader`** does — it's a tiny program that runs once per pixel. It's the smallest unit FragmentColor can render, and we don't need anything else to see cool things on screen. Let's grab a quick example off the public registry — and try clicking the color literal in the snippet:
+That's what a **`Shader`** does. Shaders are tiny programs that run once per pixel. It's the smallest unit FragmentColor can render, and we don't need anything else to see cool things on screen. Let's grab a quick example from our  [shader catalog](/shaders/)  :
 
 <ColorTriangle />
 
@@ -72,6 +70,7 @@ Before we move on, let's peek at the shader living at that URL — it's the othe
 struct VOut { @builtin(position) pos: vec4<f32> };
 
 @group(0) @binding(0) var<uniform> color: vec4<f32>;
+@group(0) @binding(1) var<uniform> resolution: vec2<f32>;
 
 @vertex
 fn vs_main(@builtin(vertex_index) i: u32) -> VOut {
@@ -80,8 +79,13 @@ fn vs_main(@builtin(vertex_index) i: u32) -> VOut {
         vec2<f32>( 0.6, -0.5),
         vec2<f32>( 0.0,  0.7),
     );
+    // Aspect-correct so the triangle keeps its shape on any canvas size.
+    let res = max(resolution, vec2<f32>(1.0));
+    let aspect = res.x / res.y;
+    var pos = p[i];
+    if (aspect > 1.0) { pos.x = pos.x / aspect; } else { pos.y = pos.y * aspect; }
     var out: VOut;
-    out.pos = vec4<f32>(p[i], 0.0, 1.0);
+    out.pos = vec4<f32>(pos, 0.0, 1.0);
     return out;
 }
 
@@ -91,7 +95,7 @@ fn fs_main() -> @location(0) vec4<f32> {
 }
 ```
 
-The `@group(0) @binding(0) var<uniform> color: vec4<f32>` line is what made `shader.set("color", ...)` work — FragmentColor reflected the binding right off the WGSL source. The `@vertex` stage runs three times and picks one of three positions. The `@fragment` stage returns the uniform as the pixel color. One triangle, one color.
+The `@group(0) @binding(0) var<uniform> color: vec4<f32>` line is what made `shader.set("color", ...)` work — FragmentColor reflected the binding right off the WGSL source. The `resolution` uniform on the next line gets the canvas size set on it the same way (the demo does it for you). The `@vertex` stage runs three times and picks one of three aspect-corrected positions. The `@fragment` stage returns the uniform as the pixel color. One triangle, one color.
 
 ## Step 2 — Compose from the catalog
 
