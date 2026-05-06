@@ -124,8 +124,9 @@ renderer.render(shader, target)`,
   }
 
   /* The literal-as-button. Inherits Expressive Code's surrounding token
-     color so it visually fits the highlighted line; the underline hint
-     is the only thing that says "I'm interactive". */
+     color so it visually fits the highlighted line; a tiny color
+     swatch glyph just before the literal text is the "I'm interactive"
+     indicator that survives both light and dark themes. */
   .ct-code :global(button.lit) {
     display: inline;
     padding: 0;
@@ -135,16 +136,33 @@ renderer.render(shader, target)`,
     color: inherit;
     font: inherit;
     cursor: pointer;
-    text-decoration: underline dotted currentColor;
-    text-underline-offset: 3px;
-    text-decoration-thickness: 1px;
-    opacity: 0.95;
+    text-decoration: none;
+    border-radius: 2px;
   }
-  .ct-code :global(button.lit:hover),
   .ct-code :global(button.lit:focus-visible) {
-    opacity: 1;
-    text-decoration-style: solid;
-    outline: none;
+    outline: 2px solid var(--sl-color-text-accent, #9d7cd8);
+    outline-offset: 2px;
+  }
+  .ct-code :global(.lit-swatch) {
+    display: inline-block;
+    width: 0.85em;
+    height: 0.85em;
+    margin-right: 0.35em;
+    vertical-align: -0.1em;
+    border-radius: 3px;
+    /* Border uses currentColor at low alpha so it's visible against any
+       Expressive Code theme background — light or dark. */
+    box-shadow:
+      inset 0 0 0 1px rgba(255, 255, 255, 0.18),
+      0 0 0 1px rgba(0, 0, 0, 0.45);
+    transition: box-shadow 120ms ease;
+  }
+  .ct-code :global(button.lit:hover .lit-swatch),
+  .ct-code :global(button.lit:focus-visible .lit-swatch) {
+    box-shadow:
+      inset 0 0 0 1px rgba(255, 255, 255, 0.32),
+      0 0 0 1px rgba(0, 0, 0, 0.65),
+      0 0 0 3px rgba(157, 124, 216, 0.35);
   }
 
   .ct-canvas-wrap {
@@ -262,7 +280,15 @@ function wireColorTriangle(root) {
     button.className = 'lit';
     button.type = 'button';
     button.dataset.lang = lang;
-    button.textContent = literalFor(lang, rgba);
+    const swatch = document.createElement('span');
+    swatch.className = 'lit-swatch';
+    swatch.setAttribute('aria-hidden', 'true');
+    swatch.style.backgroundColor = rgbaToHex(rgba);
+    const litText = document.createElement('span');
+    litText.className = 'lit-text';
+    litText.textContent = literalFor(lang, rgba);
+    button.append(swatch, litText);
+    button.setAttribute('aria-label', `Edit color: ${litText.textContent}`);
     if (before) parent.insertBefore(document.createTextNode(before), node);
     parent.insertBefore(button, node);
     if (after) parent.insertBefore(document.createTextNode(after), node);
@@ -280,10 +306,16 @@ function wireColorTriangle(root) {
   }
 
   function applyToLiterals() {
+    const hex = rgbaToHex(rgba);
     lits.forEach((btn) => {
-      btn.textContent = literalFor(btn.dataset.lang, rgba);
+      const text = literalFor(btn.dataset.lang, rgba);
+      const litText = btn.querySelector('.lit-text');
+      const swatch = btn.querySelector('.lit-swatch');
+      if (litText) litText.textContent = text;
+      if (swatch) swatch.style.backgroundColor = hex;
+      btn.setAttribute('aria-label', `Edit color: ${text}`);
     });
-    picker.value = rgbaToHex(rgba);
+    picker.value = hex;
   }
 
   function renderOnce() {
