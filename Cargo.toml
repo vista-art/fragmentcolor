@@ -237,6 +237,9 @@ phf_codegen = "0.13"
 cfg_aliases = "0.2"
 quote = "1"
 uniffi = { version = "0.31", features = ["build"] }
+# scripts/locks.rs reads/writes .claude/locks/locks.json
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3"
