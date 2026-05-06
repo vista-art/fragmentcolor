@@ -7,14 +7,13 @@
 }
 
 /* ---------------------------------------------------------------------
- * Article body breathing room.
+ * Article body breathing room — asymmetric.
  *
- * Starlight's default vertical rhythm is tight — works great for API
- * reference where tables of contents and small code blocks dominate,
- * but tutorial articles have larger interactive components (Snippet
- * tab groups, ColorTriangle, Demo canvases) and the prose feels
- * cramped around them. Add generous margins around block-level
- * components, and extra space before each h2 so section breaks read.
+ * Reading flow: text -> code reads in sequence, so the gap ABOVE a
+ * block stays compact. After the block, the reader needs to switch
+ * gears (digest the code, return to prose), so the gap BELOW a block
+ * is generous. h2 transitions get even more — section breaks should
+ * read as section breaks.
  *
  * Targeting direct children of .sl-markdown-content keeps these rules
  * out of nested contexts (e.g. inside ColorTriangle's own inner
@@ -25,17 +24,19 @@
 .sl-markdown-content > .expressive-code,
 .sl-markdown-content > tutorial-demo,
 .sl-markdown-content > .color-triangle {
-  margin-top: 2.5rem;
-  margin-bottom: 2.5rem;
+  margin-top: 1.5rem;     /* compact: text leads into the code */
+  margin-bottom: 3.5rem;  /* generous: breathing room after the code */
 }
 
-/* Sit a little tighter when a block follows another block — the user
- * reads them as a group. */
-.sl-markdown-content > starlight-tabs + starlight-tabs,
-.sl-markdown-content > .expressive-code + .expressive-code,
-.sl-markdown-content > starlight-tabs + .expressive-code,
-.sl-markdown-content > .expressive-code + starlight-tabs {
-  margin-top: 1.5rem;
+/* When a block is immediately followed by another block, the reader
+ * groups them — tighten the trailing margin of the first so the pair
+ * doesn't get torn apart. `:has()` lets us reach upward from the
+ * sibling pattern. */
+.sl-markdown-content > starlight-tabs:has(+ starlight-tabs),
+.sl-markdown-content > starlight-tabs:has(+ .expressive-code),
+.sl-markdown-content > .expressive-code:has(+ starlight-tabs),
+.sl-markdown-content > .expressive-code:has(+ .expressive-code) {
+  margin-bottom: 1rem;
 }
 
 /* Section breaks should feel like section breaks. */
@@ -43,10 +44,11 @@
   margin-top: 4rem;
 }
 
-/* Block right before the next section should breathe. */
+/* Even more when an h2 follows a block — that's the strongest visual
+ * gear shift on the page. */
 .sl-markdown-content > starlight-tabs + h2,
 .sl-markdown-content > .expressive-code + h2,
 .sl-markdown-content > tutorial-demo + h2,
 .sl-markdown-content > .color-triangle + h2 {
-  margin-top: 5rem;
+  margin-top: 5.5rem;
 }
