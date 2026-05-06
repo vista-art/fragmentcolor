@@ -15,13 +15,11 @@ export async function setup(_renderer, _target) {
 // #endregion: setup
 
 // #region: frame
-export function frame(state, renderer, target, time, size) {
+export function frame(state, renderer, target, time, _size) {
     const r = 0.5 + 0.45 * Math.sin(time * 0.7);
     const g = 0.5 + 0.45 * Math.cos(time * 0.5 + 1.7);
     const b = 0.5 + 0.45 * Math.sin(time * 0.9 + 3.1);
     state.shader.set("color", [r, g, b, 1.0]);
-    // triangle.wgsl aspect-corrects via the `resolution` uniform.
-    state.shader.set("resolution", size);
     renderer.render(state.shader, target);
 }
 // #endregion: frame

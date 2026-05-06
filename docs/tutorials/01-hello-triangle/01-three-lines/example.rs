@@ -11,7 +11,7 @@
 // the OS event loop. It's identical in every step of this tutorial; the
 // FragmentColor API surface lives entirely inside the two regions.
 
-use fragmentcolor::{App, Renderer, SetupResult, Shader, Target, call, run};
+use fragmentcolor::{App, Renderer, SetupResult, Shader, call, run};
 use std::sync::{Arc, OnceLock};
 use std::time::Instant;
 use winit::dpi::PhysicalSize;
@@ -48,13 +48,7 @@ fn draw(app: &App) {
 
         let id = app.primary_window_id();
         let renderer = app.get_renderer();
-        let _ = app.with_target(id, |target| {
-            // The triangle.wgsl shader takes a `resolution` uniform so it
-            // can aspect-correct its baked positions on any window size.
-            let s = target.size();
-            let _ = shader.set("resolution", [s.width as f32, s.height as f32]);
-            renderer.render(&*shader, target)
-        });
+        let _ = app.with_target(id, |target| renderer.render(&*shader, target));
     }
 }
 // #endregion: frame

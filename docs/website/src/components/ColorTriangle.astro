@@ -322,10 +322,6 @@ function wireColorTriangle(root) {
     if (!renderer || !target || !shader || stopped) return;
     try {
       shader.set('color', rgba);
-      // The triangle.wgsl shader takes a `resolution` uniform so the
-      // shape stays a triangle on any canvas size. Set it from the
-      // current canvas pixel dimensions before every render.
-      shader.set('resolution', [canvas.width, canvas.height]);
       renderer.render(shader, target);
     } catch (e) {
       console.error('[ColorTriangle] render failed', e);
