@@ -9,6 +9,7 @@ import Demo from "../../../components/Demo.astro";
 import Lang from "../../../components/Lang.astro";
 import LangSelector from "../../../components/LangSelector.astro";
 import MultiCode from "../../../components/MultiCode.astro";
+import ColorTriangle from "../../../components/ColorTriangle.astro";
 
 <LangSelector />
 
@@ -18,7 +19,7 @@ There's a rite of passage in graphics programming: drawing your first triangle!
 
 We're going to do it in **six** lines of <Lang/>.
 
-Then we'll add a few more to show you what triangles can do when they play together. This one triangle will grow into a million-particle scene with a filmic post-processing effect, and you'll meet every object in the FragmentColor core API along the way, plus our growing [shader catalog](/shaders/).
+Then we'll grow it into a cool scene with a filmic post-processing effect. In the process, you'll meet every object in the FragmentColor API, plus our growing [shader catalog](/shaders/).
 
 ## Step 1 — Hello, triangle!
 
@@ -59,10 +60,14 @@ renderer.render(shader, target)`}
   swift={`let shader = try await Shader.fetch("https://fragmentcolor.org/triangle.wgsl")
 shader.set("color", [0.95, 0.30, 0.42, 1.0])
 renderer.render(shader, target)`}
-  kotlin={`val shader = Shader.fetch("https://fragmentcolor.org/triangle.wgsl")
+  kotlin={`val shader = Shader::fetch("https://fragmentcolor.org/triangle.wgsl")
 shader.set("color", floatArrayOf(0.95f, 0.30f, 0.42f, 1.0f))
 renderer.render(shader, target)`}
 />
+
+Here's what those three lines actually produce — pick a color and watch the triangle redraw:
+
+<ColorTriangle />
 
 Congratulations! You just drew your first triangle!
 
