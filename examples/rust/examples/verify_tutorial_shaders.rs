@@ -7,7 +7,8 @@
 //! Not registered in any test target — it's a manual gate the tutorial
 //! author runs after editing inline WGSL or swapping registry slugs.
 
-use fragmentcolor::{Renderer, Shader, Target};
+use fragmentcolor::mesh::{Mesh, Vertex};
+use fragmentcolor::{Pass, Renderer, Shader, Target};
 
 const STEP_2_NOISY: &str = r#"
 struct VOut {
@@ -50,10 +51,10 @@ struct VOut {
 @vertex
 fn vs_main(
     @location(0) position: vec3<f32>,
-    @location(1) color: vec3<f32>,
-    @location(2) center: vec2<f32>,
-    @location(3) phase: f32,
-    @location(4) tint: vec3<f32>,
+    @location(1) center: vec2<f32>,
+    @location(2) phase: f32,
+    @location(3) tint: vec3<f32>,
+    @location(4) color: vec3<f32>,
 ) -> VOut {
     let scale = 0.045;
     let wobble = vec2<f32>(
@@ -151,10 +152,40 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ],
         );
 
-        // For the postfx step, also try a real render (with a stub texture
-        // input) to confirm pipeline creation works end to end.
+        // For the postfx step, also stand up the full multipass setup
+        // exactly the way the tutorial does — particle shader + mesh +
+        // instances + intermediate texture + postfx shader + two passes —
+        // so that "compatible shader for this mesh" / vertex-layout bugs
+        // can't slip through compilation alone.
         let renderer = Renderer::new();
         let target = renderer.create_texture_target([256, 256]).await?;
+
+        let particle_shader = Shader::new(["easing/in_out_sine", STEP_4_PARTICLE])?;
+        particle_shader.set("time", 0.0_f32)?;
+        let mesh = Mesh::new();
+        mesh.add_vertices([
+            Vertex::new([-0.6, -0.5, 0.0]).set("color", [0.95, 0.30, 0.42]),
+            Vertex::new([0.6, -0.5, 0.0]).set("color", [0.30, 0.85, 0.55]),
+            Vertex::new([0.0, 0.7, 0.0]).set("color", [0.30, 0.55, 0.95]),
+        ]);
+        // Use a Vertex template so instance properties get auto-incrementing
+        // locations starting at 1 instead of 0 — keeping clear of the
+        // vertex `position` slot at @location(0).
+        mesh.add_instances([
+            Vertex::new([0.0, 0.0])
+                .set("center", [0.0_f32, 0.0])
+                .set("phase", 0.0_f32)
+                .set("tint", [1.0_f32, 1.0, 1.0]),
+        ]);
+        particle_shader.add_mesh(&mesh)?;
+
+        let intermediate = renderer.create_texture_target([256, 256]).await?;
+        let scene_tex = intermediate.texture();
+
+        let particle_pass = Pass::from_shader("particles", &particle_shader);
+        particle_pass.add_mesh(&mesh)?;
+        particle_pass.add_target(&intermediate)?;
+
         let postfx = Shader::new([
             "postfx/chromatic_offsets",
             "color/tonemap_filmic",
@@ -162,17 +193,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "postfx/film_grain",
             STEP_5_POSTFX,
         ])?;
-
-        // Need a scene texture to sample. Use the target's own texture as a stand-in.
-        let scene_tex = target.texture();
         postfx.set("scene", &scene_tex)?;
         postfx.set("time", 0.0_f32)?;
-        renderer.render(&postfx, &target)?;
+
+        let postfx_pass = Pass::from_shader("postfx", &postfx);
+        postfx_pass.require(&particle_pass)?;
+
+        let passes = vec![particle_pass, postfx_pass];
+        renderer.render(&passes, &target)?;
         let bytes = target.get_image().await;
         if bytes.is_empty() {
-            return Err("step 5 render returned empty buffer".into());
+            return Err("step 5 multipass render returned empty buffer".into());
         }
-        println!("  ✓ step 5 renders end-to-end ({} bytes)", bytes.len());
+        println!("  ✓ step 5 multipass renders end-to-end ({} bytes)", bytes.len());
 
         println!("All tutorial shaders verified.");
         Ok(())
