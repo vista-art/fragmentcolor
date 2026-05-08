@@ -1,256 +1,98 @@
 # Changelog
 
-## Unreleased
+## 0.11.2 — Texture pipeline + API refinement
 
-See the [Roadmap](https://github.com/vista-art/fragmentcolor/blob/main/ROADMAP.md) for planned features.
+The catalog/integration cycle: texture creation moved off the main thread, KTX2 + 16-bit format support landed, the public API thinned to a single transport per operation, and the texture-related public surface gets a structural cleanup before tagging.
 
-### `R16Unorm` (and the 16-bit norm family) now works on every adapter that advertises the feature
+### `R16Unorm` and the 16-bit norm family
 
-Diagnosed against RemixBrush's painting shader saga (`docs/PHASE-3.3.5a-runtime-saga.md` in the consumer repo): an `R16Unorm` `TextureMipChain` that round-tripped fine through `prepare → from_chain → device.create_texture` produced a silently-invalid texture on Apple Silicon, then exploded on first `create_view()` with an `InvalidResource` cascade that drowned the consumer's stderr 60 times per second. Same for `Rg16Unorm`, `Rgba16Unorm`, and the three `*Snorm` variants. Three layered fixes so the failure mode no longer reaches the user:
+Diagnosed against RemixBrush's painting shader saga (`docs/PHASE-3.3.5a-runtime-saga.md` in the consumer repo): an `R16Unorm` `TextureMipChain` that round-tripped fine through `prepare → from_chain → device.create_texture` produced a silently-invalid texture on Apple Silicon, then exploded on first `create_view()` with an `InvalidResource` cascade that drowned stderr 60 times per second. Same for `Rg16Unorm`, `Rgba16Unorm`, and the three `*Snorm` variants.
 
-- **Adapter feature probe widened.** `request_device` now opportunistically requests `TEXTURE_FORMAT_16BIT_NORM` (and `FLOAT32_FILTERABLE`) alongside the texture-compression features it already negotiated. On every adapter that advertises the feature — every Apple Silicon device, every modern desktop GPU on Vulkan/Metal — `R16Unorm` + `TEXTURE_BINDING` now Just Works. The probe stays opt-in via `adapter.features().contains(...)` so adapters that don't advertise the feature still get a working device.
-- **Fail-fast on adapters without the feature.** New `TextureError::UnsupportedFormatForUsage { format: wgpu::TextureFormat, missing_feature: wgpu::Features }` variant + `check_format(features, format, usage)` guard called at every `device.create_texture` site that takes a user-controlled format (`TextureObject::{new, from_input}`, the KTX2 loader). Consumers see a typed error at the API boundary — `"Texture format R16Unorm is not supported by the active device for the requested usage (missing wgpu feature TEXTURE_FORMAT_16BIT_NORM)"` — instead of the cascade-50-frames-later landmine.
-- **wgpu validation scope around bind-group + view creation.** New `RenderContext::validate(label, op)` helper folds the prior `create_bind_group_checked` (which only wrapped `create_bind_group`) into a single generic that wraps any wgpu call whose validation failure would otherwise leak via `on_uncaptured_error` to stderr. `process_render_pass` and `process_compute_pass` now wrap both `tex.create_view()` and `device.create_bind_group()` with it, so consumers get one programmatic `RendererError::ValidationError { label, message }` instead of the 4-tier validation cascade `[Texture::create_view → InvalidResource] → [Device::create_bind_group → InvalidResource] → [set_bind_group → InvalidResource] → [Queue::submit → InvalidResource]` they used to flood logs with.
-- **Regression test landed:** `renderer::tests::render_with_r16unorm_texture_smoke` exercises the full consumer path (R16Unorm prepared chain → bound via uniform → `renderer.render` → asserts no error). Plus pure-table unit tests for the lookup helpers (`format_feature_covers_16bit_norms_only`, `check_format_fails_fast_when_feature_absent`).
+- [x] **Adapter feature probe widened.** `request_device` opportunistically requests `TEXTURE_FORMAT_16BIT_NORM` and `FLOAT32_FILTERABLE` alongside the texture-compression features. Apple Silicon and modern desktop adapters get a working `R16Unorm` + `TEXTURE_BINDING` path; opt-in via `adapter.features().contains(...)` so non-supporting adapters still get a working device.
+- [x] **Fail-fast on adapters without the feature.** New `TextureError::UnsupportedFormatForUsage { format, missing_feature }` variant + `check_format(features, format, usage)` guard at every user-controlled `device.create_texture` site (`TextureObject::{new, from_input}`, KTX2 loader). Typed error at the API boundary instead of the cascade-50-frames-later landmine.
+- [x] **wgpu validation scope around bind-group + view creation.** `RenderContext::validate(label, op)` folds the prior `create_bind_group_checked` into a generic that wraps any wgpu call whose validation failure would otherwise leak via `on_uncaptured_error`. `process_render_pass` and `process_compute_pass` wrap both `tex.create_view()` and `device.create_bind_group()`. Single `RendererError::ValidationError { label, message }` instead of the 4-tier validation cascade.
+- [x] **Regression test:** `renderer::tests::render_with_r16unorm_texture_smoke` exercises the full consumer path (R16Unorm prepared chain → bound via uniform → `renderer.render` → asserts no error). Plus pure-table units (`format_feature_covers_16bit_norms_only`, `check_format_fails_fast_when_feature_absent`).
 
-### Method naming pass — single canonical name per operation, no `_kind` / `_async` / `_object` / `_with_X` / `_checked` suffixes
+### Method naming pass — single canonical name per operation
 
-Audit + cleanup landed across the public API and internal helpers, on top of the API-thinning section above. The rule: **1 verb or max 3 words; suffixes only when they disambiguate genuinely distinct inputs (`from_file` vs `from_bytes`)**. Internal helpers pay the same tax as the public surface. Consumer-visible (Rust-side) renames are listed below; platform binding suffixes (`_js` / `_mobile` / `_py` / `_android` / `_ios`) are forced by uniffi/wasm-bindgen/pyo3 needing distinct signatures and stay.
+Audit + cleanup across the public API and internal helpers. Rule: 1 verb or max 3 words; suffixes only when they disambiguate genuinely distinct inputs (`from_file` vs `from_bytes`). Platform binding suffixes (`_js` / `_mobile` / `_py` / `_android` / `_ios`) are forced by uniffi/wasm-bindgen/pyo3 needing distinct signatures and stay.
 
-**Public Rust API (consumer-visible):**
-- `Pass::add_mesh_to_shader(mesh, shader)` **removed**. The body was `shader.add_mesh(mesh)?` — a thin convenience that ignored `&self`. Callers use `shader.add_mesh(mesh)` directly. Deleted along with the per-platform wrappers (`add_mesh_to_shader_js/_mobile/_py`), the doc page (`docs/api/core/pass/add_mesh_to_shader.md`), and the four per-language example files.
-- `PassObject::set_color_target_id(id)` → `set_color_target(id)`; `set_depth_target_id(id)` → `set_depth_target(id)`. The arg name carries the type.
-- `App::on_event_kind(kind, f)` → `on_event(kind, f)`; `on_window_event_kind(id, kind, f)` → `on_window_event(id, kind, f)`; `on_device_event_kind(kind, f)` → `on_device_event(kind, f)`. The catch-all variants `on_event(f)` / `on_device_event(f)` (no `kind` arg) were removed entirely — kind-filtered registration is the only way; callers wanting every-event coverage register handlers per-kind. (The 1-arg / 2-arg overload via different names — `on_any_event` / `on_event` — was tried and rejected: "writing extra variants with `_any_` etc makes the file more confusing to read.")
-- `create_external_texture_from_native(_r, _ptr)` (free fn) + `create_external_texture(_r, _video)` (free fn) → `ExternalTextureHandle::from_native(renderer, ptr)` + `ExternalTextureHandle::from_video(renderer, video)` (associated functions on the type). The implementation is still a stub — the API moves to where it belongs.
-- `Target` trait gained `async fn get_image(&self) -> Vec<u8>` (was a sync method, then removed mid-refactor). Now async-only on the trait, mirroring `Texture::get_image()`. `TextureTarget::get_image_async` removed (the trait method covers it). `WindowTarget::get_image` is a stub returning `Vec::new()` for now — proper screen capture from a presentable surface needs `COPY_SRC` on the swapchain config, queued for v0.11.x; the API surface is uniform across every Target type today.
+- [x] `Pass::add_mesh_to_shader(mesh, shader)` removed (was `shader.add_mesh(mesh)?` ignoring `&self`). Callers use `shader.add_mesh(mesh)` directly. Per-platform wrappers, doc page, example files removed.
+- [x] `PassObject::set_color_target_id(id)` → `set_color_target(id)`; same for `set_depth_target_id` → `set_depth_target`. The arg name carries the type.
+- [x] `App::on_event_kind(kind, f)` → `on_event(kind, f)`; same for `on_window_event_kind` and `on_device_event_kind`. Catch-all `on_event(f)` / `on_device_event(f)` (no `kind` arg) variants removed — kind-filtered registration is the only way.
+- [x] Free fns `create_external_texture_from_native(_r, _ptr)` and `create_external_texture(_r, _video)` → `ExternalTextureHandle::from_native(renderer, ptr)` and `ExternalTextureHandle::from_video(renderer, video)`. Implementation still a stub; the API moves to where it belongs.
+- [x] `Target` trait gained async `get_image() -> Vec<u8>`, mirroring `Texture::get_image()`. `TextureTarget::get_image_async` removed (the trait method covers it). `WindowTarget::get_image` is a stub returning `Vec::new()` — proper screen capture from a presentable surface needs `COPY_SRC` on the swapchain config (queued).
+- [x] `TextureObject` constructor family folded 5 → 1: `from_file` / `from_bytes` / `from_raw_bytes` / `from_image` / `from_chain` (latter two renamed from `from_loaded_image` / `from_prepared_chain`) collapsed into `TextureObject::from_input(context, input)`. `Renderer::create_texture` shrank from ~165 lines (8-arm match + duplicated registration) to ~22.
+- [x] Sync/async pair unification using the `blocking` submodule convention from `reqwest::blocking`. `shader/input.rs` `resolve_async` → `resolve` (async); the prior sync `resolve` → `blocking::resolve`. Same for `resolve_part` and `fetch_url`. `texture/read.rs` `read_texture_object_async` → `read_pixels` (async); sync read path gone (only consumer was `Target::get_image`'s removed sync variant).
+- [x] Internal helper renames (renderer + texture + mesh): `try_with_validation` → `validate`; `configure_surface_with_context` → `configure_surface`; `try_get_frame_with_retry` → `acquire_frame`; `create_vertex_buffer_layouts` → `vertex_buffer_layouts`; `create_bind_group_layouts` → `bind_group_layouts`; `available_compression_features` → `format_features`; `format_supports_cpu_mipmaps` → `supports_cpu_mipmaps`; `build_mip_chain_bytes` → `build_mip_chain`; `write_raw_bytes_levels` → `write_levels`; `wrap_raw_bytes_as_dynamic_image` → `bytes_as_image`; `infer_format_from_image` → `infer_format`; `validate_format_for_binding` → `check_format` + `required_feature_for_binding` → `format_feature`; `first_vertex_location_map` → `vertex_location_map` + `first_instance_location_map` → `instance_location_map`; `create_gpu_vertex_buffers` → `upload_vertex_buffers`.
+- [x] `Pass::from_shader_object` + `add_shader_object` (private internal duplicates of the public `Pass::from_shader` / `add_shader`) folded — `PassObject` versions take `Arc<ShaderObject>` directly, public `Pass` wrappers do the `&Shader → Arc` extraction at the boundary.
 
-**`TextureObject` constructor family folded 5 → 1.** The five `pub(crate) from_*` constructors (`from_file`, `from_bytes`, `from_raw_bytes`, `from_image`, `from_chain` — the latter two renamed from `from_loaded_image` and `from_prepared_chain`) collapsed into a single async dispatcher `TextureObject::from_input(context, input)` matching on the `TextureData` variant. URL parts pre-fetch on the calling thread; everything else dispatches to the background worker. `Renderer::create_texture` shrank from ~165 lines (8-arm match + duplicated registration) to ~22 lines (handle `CloneOf` / `Empty` at the boundary, then delegate). The remaining three unique upload paths (`from_raw_bytes`, `from_image`, `from_chain`) stay as private helpers inside the impl. `from_file` and `from_bytes` deleted as trivial adapters (their bodies — `image::open` / `image::load_from_memory` — are inlined in the dispatcher's match arms).
+### API thinning — single-method-per-operation, single transport
 
-**Sync/async pair unification (used the `blocking` submodule convention from `reqwest::blocking`).**
-- `shader/input.rs`: `resolve_async` → `resolve` (async, top-level); the previous sync `resolve` moved to `blocking::resolve` (matching `reqwest::blocking`). Same for `resolve_part` and `fetch_url` helpers.
-- `texture/read.rs`: `read_texture_object_async` → `read_pixels` (async). The previous sync `read_texture_object_sync` was the only consumer of the now-removed `Target::get_image` sync trait method; with `Target::get_image` now async, the sync read path is gone entirely. Internal `get_image_async` helper inside `texture/read.rs` lost its suffix to `get_image` (no companion to disambiguate).
+Multi-slice refactor: collapses `_with_*` method families into single canonical methods with `From<T>` impls; unifies the cross-language surface so JS/Python/Swift/Kotlin see the same shapes; merges three texture-input transports (`TextureSpec` / `StorageTextureInput` / `PrepareSpec`) into one shared `TextureInput`.
 
-**Internal helpers (renderer + texture + mesh):**
-- `try_with_validation` → `validate` (renderer/mod.rs).
-- `configure_surface_with_context` → `configure_surface` (renderer/mod.rs).
-- `try_get_frame_with_retry` → `acquire_frame` (renderer/mod.rs).
-- `create_vertex_buffer_layouts` → `vertex_buffer_layouts` (renderer/mod.rs).
-- `create_bind_group_layouts` → `bind_group_layouts` (renderer/mod.rs).
-- `available_compression_features` (then briefly `available_texture_format_features`) → `format_features` (renderer/platform/all.rs).
-- `format_supports_cpu_mipmaps` → `supports_cpu_mipmaps` (texture/mod.rs).
-- `build_mip_chain_bytes` → `build_mip_chain` (texture/mod.rs).
-- `write_raw_bytes_levels` → `write_levels` (texture/mod.rs).
-- `wrap_raw_bytes_as_dynamic_image` → `bytes_as_image` (texture/mod.rs).
-- `infer_format_from_image` → `infer_format` (texture/mod.rs).
-- `validate_format_for_binding` → `check_format` (texture/mod.rs); paired `required_feature_for_binding` → `format_feature`.
-- `first_vertex_location_map` → `vertex_location_map` (mesh/mod.rs); `first_instance_location_map` → `instance_location_map`.
-- `create_gpu_vertex_buffers` → `upload_vertex_buffers` (mesh/mod.rs).
-- `Pass::from_shader_object` + `add_shader_object` (private internal duplicates of the public `Pass::from_shader` / `add_shader`) folded — the `PassObject` versions now take `Arc<ShaderObject>` directly and the public `Pass` wrappers do the `&Shader → Arc` extraction at the boundary.
+- [x] **Naming.** `TextureData` is the source enum (`Empty | Bytes | Path | Url | DynamicImage | Ktx2* | CloneOf | Prepared`); `TextureInput { data, options }` is the universal transport; `TextureOptions` carries `size: Option<Size>`, `format`, `sampler`, `mipmaps`, `usage: Option<u32>` (raw bit mask, with a `with_usage(wgpu::TextureUsages)` builder for typed Rust call sites).
+- [x] **`Renderer::create_texture(input)` is the single texture-creation entry.** Drops `_with_size`, `_with_format`, `_with`, and `_prepared`. JS/Python collapse to one method with optional `options` arg; mobile takes uniffi-marshallable `TextureInputMobile` enum + `TextureOptions` (`uniffi::Record`); Swift/Kotlin extension files supply natural overloads.
+- [x] **`Renderer::create_storage_texture(input)` is the single storage entry.** Drops `_with_data` and the separate `StorageTextureInput`. `From<(size, format)>` produces empty form; `From<(size, format, bytes)>` produces seeded. `options.usage` overrides the default storage-usage mask.
+- [x] **`TextureMipChain::prepare(input)` is the single CPU-prep entry.** Drops `PrepareSpec`. Tuple `From` impls cover `(bytes, format)` for encoded and `(bytes, format, size)` for raw. `prepare` validates `data` is a sync-friendly variant (`Bytes`, `DynamicImage`, `Path`) and surfaces a typed `InvalidInput` error pointing at the right entry point for variants it can't handle (`Url` → fetch first, `Ktx2*` → already pre-baked, `Prepared` → already a chain, `Empty` → nothing to prepare).
+- [x] **`Renderer::render(renderable, target)` is the single render entry on every platform.** Mobile uniffi binding's split `renderShader` + `renderShaderToTexture` replaced by `RenderableHandle` (`Shader | Pass | Mesh | Passes`) + `TargetHandle` (`Window | Texture`) `uniffi::Enum`s. Swift/Kotlin extensions supply natural overloads. `Pass` and `Mesh` derive `uniffi::Object` so they can ride inside the handle enums.
+- [x] **Cross-language brand detection for `TextureMipChain` handles in JS** via the existing `__fc_kind` + `__wbg_ptr` anchor pattern (`impl_js_bridge!`).
+- [x] **Net surface delta:** ~9 Rust methods → 4. ~24 FFI shims → ~9. Three transport types → one. Same `TextureInput` flows through all three texture paths.
+- [x] **Trade-offs accepted:** "size required for storage" + "data must be sync-friendly for prepare" are runtime validations, not compile-time guarantees. Same convention as the existing KTX2 paths silently ignoring `options.format` / `options.mipmaps`.
+- [ ] **Follow-up (not in this change):** structurally splitting `src/renderer/platform/mobile/` into per-language `ios.rs` + `android.rs` so each language's idioms get their own translation layer.
 
-### API thinning — single-method-per-operation across every binding, single transport across the API
+### Texture creation off the main thread
 
-A multi-slice refactor that:
-1. Collapses the `_with_*` method families into single canonical methods that take a transport object with many `From<T>` impls (so Rust call sites stay tight);
-2. Unifies the cross-language surface so JS / Python / Swift / Kotlin all see the same shapes; and
-3. **Merges the three texture-input transports (`TextureSpec` / `StorageTextureInput` / `PrepareSpec`) into one shared `TextureInput`** so `create_texture`, `create_storage_texture`, and `TextureMipChain::prepare` all read from the same vocabulary.
-
-Naming convention (post-rename): `TextureData` is the source enum (`Empty | Bytes | Path | Url | DynamicImage | Ktx2* | CloneOf | Prepared`); `TextureInput { data: TextureData, options: TextureOptions }` is the universal transport carried into every entry point; `TextureOptions` carries `size: Option<Size>`, `format`, `sampler`, `mipmaps`, and `usage: Option<u32>` (raw bit mask, with a `with_usage(wgpu::TextureUsages)` builder for typed Rust call sites).
-
-- **`Renderer::create_texture(input)` is the single texture-creation entry.** Drops `create_texture_with_size`, `create_texture_with_format`, `create_texture_with`, and `create_texture_prepared` — every shape now goes through `create_texture(impl Into<TextureInput>)`. JS / Python collapse to one method with an optional `options` arg; mobile takes a uniffi-marshallable `TextureInputMobile` enum + optional `TextureOptions` (now a `uniffi::Record`); Swift / Kotlin extension files supply natural overloads.
-- **`Renderer::create_storage_texture(input)` is the single storage-texture entry.** Drops `create_storage_texture_with_data` and the separate `StorageTextureInput` transport — same `TextureInput` as `create_texture`, with the discriminator `data: TextureData::Empty` (no initial data, just allocate) vs. `data: TextureData::Bytes(...)` (pre-seed). The `From<(size, format)>` impl produces the empty form; `From<(size, format, bytes)>` produces the seeded form. `options.usage` overrides the default storage-usage mask.
-- **`TextureMipChain::prepare(input)` is the single CPU-prep entry.** Drops the separate `PrepareSpec` transport — `prepare` takes the same `TextureInput` as the renderer methods. Tuple `From` impls cover the common shapes (`(bytes, format)` for encoded, `(bytes, format, size)` for raw); `prepare` validates `data` is a sync-friendly variant (`Bytes`, `DynamicImage`, `Path`) and surfaces a typed `InvalidInput` error pointing at the right entry point for the variants it can't handle (`Url` → fetch first, `Ktx2*` → already pre-baked, `Prepared` → already a chain, `Empty` → nothing to prepare).
-- **`Renderer::render(renderable, target)` is the single render entry on every platform.** The mobile uniffi binding used to ship `renderShader` + `renderShaderToTexture` because uniffi can't marshal `&impl Renderable` / `&impl Target`; now `RenderableHandle` (`Shader | Pass | Mesh | Passes`) and `TargetHandle` (`Window | Texture`) `uniffi::Enum`s carry the dispatch, and Swift / Kotlin extension files supply natural overloads (`renderer.render(shader, target)` / `(pass, target)` / `(mesh, target)` / `(passes, target)`) that wrap the concrete handle into the matching variant invisibly. End users never see the mobile-only mirror types. `Pass` and `Mesh` now derive `uniffi::Object` so they can ride inside the handle enums.
-- **Cross-language brand detection for `TextureMipChain` handles in JS.** Reused the codebase's existing `__fc_kind` + `__wbg_ptr` anchor pattern (see `impl_js_bridge!`) so `await renderer.createTexture(chain)` finds the chain in the dispatched `TextureData` without `dyn_ref` (which doesn't work for wasm-bindgen-exposed types).
-- **Net surface delta:** ~9 Rust methods → 4. ~24 FFI shims → ~9. Three transport types → one. Every `create_texture` / `create_storage_texture` / `prepare` / `render` call site now reads the same way on Rust, JS, Python, Swift, and Kotlin, and the same `TextureInput` flows through all three texture paths.
-- **Trade-off accepted for the unification:** "size required for storage" and "data must be sync-friendly for prepare" are runtime validations rather than compile-time guarantees. Same convention as the existing KTX2 paths silently ignoring `options.format` / `options.mipmaps`.
-- **Follow-up noted (not in this change):** structurally splitting `src/renderer/platform/mobile/` into per-language `ios.rs` + `android.rs` so each language's idioms get their own translation layer. The render unification above doesn't require it (Swift / Kotlin extension files already live in `platforms/swift/` and `platforms/kotlin/`), and bundling that split into this change risks over-scoping.
-
-### Texture creation off the main thread (transparent on native, opt-in escape hatch on every language)
-
-- **`Renderer::create_texture` no longer blocks the calling thread on CPU work.**
-  Decoding (`image::load_from_memory` / `image::open`), the
-  `image::imageops::resize` Triangle-filter mipmap chain, and the per-level
-  `wgpu::Queue::write_texture` calls now run on a single named worker
-  (`fragmentcolor-bg`) on every native target. The public API is unchanged —
-  `let tex = renderer.create_texture(bytes).await?` still returns a `Texture`
-  whose GPU writes are submitted by the time the future resolves — but the
-  caller's thread (typically the GPU / event-loop thread) is no longer pinned
-  for the ~30–50 ms a 512×512 RGBA tile costs. Affects the `Bytes`, `Path`,
-  `Url` (after the async fetch), and `DynamicImage` arms; KTX2 inputs are
-  cheap to decode and stay inline for now. The worker is process-wide and
-  lazy — first `create_texture` call spawns it, no thread pool to configure,
-  no runtime to pick.
-- **Wasm keeps today's behavior.** `wgpu::Device` and `wgpu::Queue` are
-  `!Send` on `wasm32` (they hold JS objects bound to the page's main thread),
-  so the `cfg(wasm)` path runs the prep inline. No regression vs. previous
-  releases; web users who need real parallelism can move decode + prep into a
-  Web Worker themselves.
-- **New `TextureMipChain` type, available on every language binding.** Builds
-  a CPU mipmap chain off the renderer thread so callers driving their own
-  decode pipeline (RemixBrush's tile cache, anyone using rayon / Swift
-  `Task` / Kotlin `Dispatchers.Default` / Python `ThreadPoolExecutor` / a
-  Web Worker) can fold the mipmap pass into the same hop. Two constructors:
-  - `TextureMipChain::prepare(bytes, format)` — encoded image bytes
-    (PNG/JPEG/etc.); decodes internally with the `image` crate.
-  - `TextureMipChain::prepare_raw(bytes, size, format)` — raw pixel bytes
-    already laid out for the format. The path RemixBrush uses after JPEG
-    decode.
-  Supported formats match `format_supports_cpu_mipmaps` (Rgba8/Bgra8 Unorm +
-  Srgb, R8, Rg8, R16, Rg16, Rgba16); other formats return a clear error.
-  The chain is consumed via `Renderer::create_texture_prepared(chain)` (the
-  cross-language entry point) or `Renderer::create_texture(TextureInput::Prepared(chain))`
-  (Rust ergonomics, same internals). `TextureMipChain` derives `Clone` via an
-  internal `Arc<Vec<Vec<u8>>>` so handing the same chain to multiple textures
-  doesn't duplicate the byte buffers.
-- **Cross-language exposure**: `TextureMipChain` is bound via
-  `#[wasm_bindgen]` (Web), `#[pyclass]` + `#[staticmethod]` (Python), and
-  `#[uniffi::constructor]` (Swift / Kotlin via uniffi). Constructors return
-  the type; accessors (`format()` / `baseSize()` / `levelCount()` / `level(i)`)
-  let callers inspect or persist a chain. To make the uniffi side work,
-  `TextureFormat` now derives `uniffi::Enum` and `Size` derives
-  `uniffi::Record`; both already had Web/Python bindings, so existing call
-  sites are unaffected.
-- **Typed error surface for the prepare path.** `TextureError` gained two
-  variants so callers (RemixBrush's tile-cache logger, anyone funneling
-  prepare failures into a single user-facing message) can tell at a glance
-  what went wrong on a corrupt tile vs. a misconfigured pipeline:
-  - `TextureError::MalformedImageError(image::ImageError)` — the input bytes
-    couldn't be decoded as an image. (Variant existed; the doc comment is
-    new and now explicitly contrasts it with the other two.)
-  - `TextureError::UnsupportedMipmapFormat { format: TextureFormat }` — the
-    bytes were fine but the requested target format isn't supported by the
-    CPU mipmap dispatcher. The variant carries the public `TextureFormat`
-    so callers can match without reverse-engineering a string.
-  - `TextureError::InvalidInput(String)` — the bytes parsed but didn't
-    match the declared shape (zero size, byte count too small for
-    `bpp * width * height`, etc.). Distinct from `MalformedImageError`.
-- **`prepare_raw` accepts `impl Into<Size>`** on the canonical Rust
-  signature, matching the `create_texture_with_size` pattern. Callers can
-  pass `(w, h)`, `[w, h]`, or a bare `Size`; cross-language bindings still
-  take a concrete `Size` (uniffi / wasm-bindgen / pyo3 don't marshal
-  generics).
-- **No new dependencies.** The worker uses `std::thread` + `std::sync::mpsc`
-  for the job queue and `futures::channel::oneshot` (already a dep) for the
-  per-call reply.
-- **What's intentionally out of scope:** multi-worker pool (one worker fully
-  unblocks the main thread, which is the primary ask; we'll scale to N when
-  batch throughput becomes the limiter), drop-cancellation (orphaned futures
-  let wgpu drop the texture on its own — fine for the typical caller),
-  shader-compile / buffer-upload offload (same pattern would apply, no
-  reported bottleneck yet), `TextureInput` marshalling across FFI (cross-language
-  callers use the dedicated `create_texture_prepared` entry point instead).
+- [x] **`Renderer::create_texture` no longer blocks the calling thread on CPU work.** Decoding (`image::load_from_memory` / `image::open`), the `image::imageops::resize` Triangle-filter mipmap chain, and the per-level `wgpu::Queue::write_texture` calls run on a single named worker (`fragmentcolor-bg`) on every native target. Affects `Bytes` / `Path` / `Url` (post-fetch) / `DynamicImage`; KTX2 inputs stay inline (cheap to decode). Worker is process-wide and lazy.
+- [x] **Wasm keeps today's behavior.** `wgpu::Device` and `wgpu::Queue` are `!Send` on `wasm32`; the `cfg(wasm)` path runs prep inline. No regression vs. previous releases; web users who need real parallelism can move decode + prep into a Web Worker themselves.
+- [x] **`TextureMipChain` exposed on every binding.** Two constructors: `TextureMipChain::prepare(bytes, format)` (encoded; decodes via `image`) and `TextureMipChain::prepare_raw(bytes, size, format)` (raw pixel bytes). Consumed via `Renderer::create_texture_prepared(chain)` (cross-language) or `Renderer::create_texture(TextureInput::Prepared(chain))` (Rust ergonomics). `Clone` via internal `Arc<Vec<Vec<u8>>>` so handing the same chain to multiple textures doesn't duplicate the byte buffers.
+- [x] **Cross-language exposure:** bound via `#[wasm_bindgen]` (Web), `#[pyclass]` + `#[staticmethod]` (Python), and `#[uniffi::constructor]` (Swift/Kotlin). Accessors (`format()` / `baseSize()` / `levelCount()` / `level(i)`) let callers inspect or persist a chain. `TextureFormat` derives `uniffi::Enum`, `Size` derives `uniffi::Record`.
+- [x] **Typed error surface for prepare:** `MalformedImageError(image::ImageError)` (decode failure), `UnsupportedMipmapFormat { format }` (target format unsupported by CPU mipmap dispatcher), `InvalidInput(String)` (bytes parsed but didn't match declared shape — zero size, byte count too small for `bpp * width * height`).
+- [x] **`prepare_raw` accepts `impl Into<Size>`** on the canonical Rust signature; bindings still take a concrete `Size` (uniffi / wasm-bindgen / pyo3 don't marshal generics).
+- [x] **No new dependencies.** Worker uses `std::thread` + `std::sync::mpsc` for the job queue and `futures::channel::oneshot` (already a dep) for the per-call reply.
+- [ ] **Out of scope (deferred):** multi-worker pool, drop-cancellation, shader-compile / buffer-upload offload, `TextureInput` marshalling across FFI for the prepared-chain path.
 
 ### KTX2 container support (BC / ETC2 / ASTC + uncompressed)
 
-- **`TextureInput` gained three KTX2 variants** — `Ktx2Bytes(Vec<u8>)`,
-  `Ktx2Path(PathBuf)`, and `Ktx2Url(String)` — so consumers with an asset
-  pipeline that emits `.ktx2` files (BC7 on desktop, ASTC on mobile / WebGPU,
-  ETC2 on Android, uncompressed RGBA8/RGBA16F as a fallback) can load them
-  through the same `Renderer::create_texture(_with)` entry points as JPEG/PNG
-  sources. Pure-Rust parsing via the `ktx2` crate; no C++ build pollution.
-- **The KTX2 path trusts the file's declared format and pre-baked mip chain.**
-  We don't second-guess the encoder's sRGB choice or run our CPU
-  `imageops::resize` chain — both `options.format` and `options.mipmaps` are
-  intentionally ignored for KTX2 inputs. Encoders pick the format and chain
-  on purpose; doing it twice would only round-trip through a worse
-  approximation.
-- **Compression GPU features are requested opportunistically at device
-  creation.** The renderer now asks for whatever subset of
-  `TEXTURE_COMPRESSION_BC` / `_ETC2` / `_ASTC` (and the SLICED_3D / HDR
-  variants) the active adapter advertises. Adapters without a given feature
-  still get a working device; KTX2 loads of formats the GPU can't sample fail
-  at upload with a clear error rather than crashing inside wgpu validation.
-- **Format coverage** (mapped from Vulkan `VkFormat` to `wgpu::TextureFormat`):
-  RGBA8 UNORM/SRGB, BGRA8 UNORM/SRGB, R8/Rg8/R16/Rg16/Rgba16 UNORM, RGBA16F,
-  BC1–BC7 (UNORM and SRGB variants), ETC2 RGB/RGBA/RGB-A1 (UNORM and SRGB),
-  ASTC 4×4 and 8×8 (UNORM and SRGB). Other VkFormats fail loudly so consumers
-  see them; extending the table is a one-line change per format.
-- **Out of scope (deferred to follow-up PRs only when needed):** Basis
-  Universal transcoding (`VK_FORMAT_UNDEFINED` payloads), supercompression
-  schemes (zstd / zlib / BasisLZ), cube maps, array textures, 3D textures,
-  and progressive intra-file mip streaming. The use case driving this PR
-  ships per-tile complete `.ktx2` files; tile-level streaming lives at the
-  consumer's viewer layer, not inside this loader.
+- [x] **`TextureInput` gained three KTX2 variants** — `Ktx2Bytes(Vec<u8>)`, `Ktx2Path(PathBuf)`, `Ktx2Url(String)` — through the same `Renderer::create_texture(_with)` entry points as JPEG/PNG. Pure-Rust parsing via the `ktx2` crate; no C++ build pollution.
+- [x] **The KTX2 path trusts the file's declared format and pre-baked mip chain.** `options.format` and `options.mipmaps` are intentionally ignored for KTX2 inputs — encoders pick the format and chain on purpose; doing it twice would only round-trip through a worse approximation.
+- [x] **Compression GPU features requested opportunistically at device creation:** `TEXTURE_COMPRESSION_BC` / `_ETC2` / `_ASTC` (and SLICED_3D / HDR variants) per adapter advertisement. Adapters without a given feature still get a working device; KTX2 loads of unsupported formats fail at upload with a clear error rather than crashing inside wgpu validation.
+- [x] **Format coverage** (Vulkan `VkFormat` → `wgpu::TextureFormat`): RGBA8 UNORM/SRGB, BGRA8 UNORM/SRGB, R8/Rg8/R16/Rg16/Rgba16 UNORM, RGBA16F, BC1–BC7 (UNORM and SRGB), ETC2 RGB/RGBA/RGB-A1 (UNORM and SRGB), ASTC 4×4 and 8×8 (UNORM and SRGB). Other VkFormats fail loudly.
+- [ ] **Out of scope (deferred):** Basis Universal transcoding (`VK_FORMAT_UNDEFINED` payloads), supercompression schemes (zstd / zlib / BasisLZ), cube maps, array textures, 3D textures, progressive intra-file mip streaming.
 
 ### Wider source-image format support (R8 / Rg8 / R16 / Rg16 / Rgba16)
 
-- **`Renderer::create_texture` now decodes images into the right pixel buffer for
-  the target format**, instead of going through `to_rgba8` for everything. A
-  16-bit grayscale PNG loaded with `format: TextureFormat::R16Unorm` is now
-  re-decoded with `to_luma16` so the upper 8 bits aren't truncated — useful for
-  height maps, mask buffers, and other high-precision single-channel data. The
-  same dispatch handles `R8Unorm` (via `to_luma8`), `Rg8Unorm` (`to_luma_alpha8`),
-  `Rg16Unorm` (`to_luma_alpha16`), and `Rgba16Unorm` (`to_rgba16`). Mipmap
-  generation runs over the typed `ImageBuffer` for each of those formats too,
-  preserving precision at every level.
-- **`TextureFormat` gained `R16Unorm` and `Rg16Unorm` variants** so callers can
-  request 16-bit single- and dual-channel textures from any binding (Rust, JS,
-  Python, Swift, Kotlin) without dropping to raw bytes. The numeric ordering of
-  the JS bridge enum shifted to insert the new variants alongside the other
-  8-bit formats — JS callers passing format integers directly should re-read
-  the values from the regenerated bindings.
-- **`from_raw_bytes` mipmap support generalized** to the same set of formats.
-  16-bit byte slices are decoded to `Vec<u16>` via `from_le_bytes` before
-  resampling — alignment-safe, matches WebGPU's little-endian element order.
-- Pre-existing bug fixed as a side effect: previously, a 16-bit PNG fed through
-  `create_texture(path)` would be created with format `R16Unorm` (per the
-  `image::ColorType` inference) but written with `to_rgba8` bytes (4 bpp into a
-  2-bpp texture), producing garbled rows. The new dispatch makes the inferred
-  format and the byte layout actually agree.
+- [x] **`Renderer::create_texture` decodes images into the right pixel buffer for the target format**, instead of `to_rgba8` for everything. 16-bit grayscale PNG with `format: TextureFormat::R16Unorm` → `to_luma16` (no upper-byte truncation). Same dispatch handles `R8Unorm` (`to_luma8`), `Rg8Unorm` (`to_luma_alpha8`), `Rg16Unorm` (`to_luma_alpha16`), `Rgba16Unorm` (`to_rgba16`). Mipmap generation runs over the typed `ImageBuffer`, preserving precision at every level.
+- [x] **`TextureFormat` gained `R16Unorm` and `Rg16Unorm` variants** on every binding. JS bridge enum numeric ordering shifted to insert the new variants — JS callers passing format integers directly should re-read from regenerated bindings.
+- [x] **`from_raw_bytes` mipmap support generalized** to the same set of formats. 16-bit byte slices decoded to `Vec<u16>` via `from_le_bytes` before resampling — alignment-safe, matches WebGPU's little-endian element order.
+- [x] **Pre-existing bug fixed as a side effect:** a 16-bit PNG fed through `create_texture(path)` was created with format `R16Unorm` (per `image::ColorType` inference) but written with `to_rgba8` bytes (4 bpp into a 2-bpp texture), producing garbled rows. The new dispatch makes the inferred format and byte layout agree.
 
 ### Source-image mipmaps + trilinear filtering
 
-- **`Renderer::create_texture` and friends now generate a full mipmap chain at upload** for
-  source images (file path, encoded bytes, URL, `DynamicImage`). Combined with the existing
-  default linear sampler — which also picks `mipmap_filter: Linear` when `smooth: true` —
-  textured surfaces now get proper trilinear filtering at any zoom or rotation. Fixes the
-  classic "moving moiré" artifact when zooming out on a textured quad whose source image
-  has high-frequency detail (canvas weave in painted JPEGs being the canonical case).
-  Downsampling happens CPU-side via `image::imageops::resize` with the Triangle filter;
-  resampling runs directly on the source bytes (sRGB-encoded for color content) — visually
-  close to a gamma-correct pass and dramatically better than no mipmaps. No GPU work is
-  added at render time.
-- **`TextureOptions` gained `mipmaps: bool` (default `true`).** Set to `false` to skip the
-  CPU work for textures that won't be sampled at distance (single-pixel sentinels, render
-  targets you'll only sample 1:1, etc.). Existing call sites that build `TextureOptions`
-  with `..Default::default()` get mipmaps automatically.
-- **`TextureOptions.format` is now honored on every input arm** of `Renderer::create_texture_with`,
-  not just the raw-bytes-with-size path. The sentinel default `TextureFormat::Rgba` still
-  means "infer from input" (preserving the prior behavior — a JPEG/PNG keeps loading as
-  `Rgba8UnormSrgb`); any explicit variant becomes a real override. This unblocks loading
-  RGBA8 PNGs as `Rgba8Unorm` (linear bytes, no sRGB conversion at sample time) for
-  normal-map / non-color data without the `from_raw_bytes` round-trip.
-- **`TextureObject` constructors generalized in place.** `from_file`, `from_bytes`,
-  `from_raw_bytes`, and `from_loaded_image` each gained `(format_override, generate_mipmaps)`
-  trailing parameters. They're `pub(crate)` so this is internal only — the dead pre-existing
-  no-arg wrappers got pruned rather than kept as forwarders.
-- Mipmap generation only runs for color formats that share the source's RGBA8 byte layout
-  (Rgba8 family + Bgra8). Other formats stay single-level even when `mipmaps: true`.
+- [x] **`Renderer::create_texture` and friends now generate a full mipmap chain at upload** for source images (file path, encoded bytes, URL, `DynamicImage`). Combined with the default linear sampler picking `mipmap_filter: Linear` when `smooth: true`, textured surfaces get proper trilinear filtering at any zoom or rotation. Fixes the moving-moiré artifact when zooming out on a textured quad whose source image has high-frequency detail (canvas weave in painted JPEGs being the canonical case). CPU-side via `image::imageops::resize` with the Triangle filter; resampling runs directly on the source bytes (sRGB-encoded for color content). No GPU work added at render time.
+- [x] **`TextureOptions.mipmaps: bool` (default `true`).** Set `false` to skip CPU work for textures that won't be sampled at distance (single-pixel sentinels, render targets sampled 1:1).
+- [x] **`TextureOptions.format` honored on every input arm** of `create_texture_with`, not just the raw-bytes-with-size path. Sentinel default `TextureFormat::Rgba` still means "infer from input"; explicit variants override. Unblocks loading RGBA8 PNGs as `Rgba8Unorm` (linear bytes) for normal-map / non-color data without the `from_raw_bytes` round-trip.
+- [x] **`TextureObject` constructors generalized in place.** `from_file` / `from_bytes` / `from_raw_bytes` / `from_loaded_image` each gained `(format_override, generate_mipmaps)` trailing parameters (`pub(crate)`).
+- [x] Mipmap generation runs only for color formats sharing the source's RGBA8 byte layout (Rgba8 family + Bgra8); other formats stay single-level even when `mipmaps: true`.
 
 ### Shader composition
 
-- **`Shader::new` now accepts arrays.** The signature is `Shader::new(impl Into<ShaderInput>)`,
-  with `From` impls that classify a single string into one of: raw WGSL/GLSL **source**, registry
-  **slug** (`"sdf2d/circle"`), `https://` **URL**, or local **path**. Pass an array of any
-  combination — parts are resolved (fetched / read / looked up), deduplicated by source hash,
-  and concatenated in order before naga validation. No wrapping or auto-injection: invalid
-  input fails loudly.
-  - Equivalent forms: `Shader::new(src)`, `Shader::new("sdf2d/circle")`,
-    `Shader::new(["sdf2d/circle", "noise/simplex2", main_src])`.
-  - Existing call sites that pass `&str`, `String`, or `&String` keep working unchanged.
-- **`Shader::set_registry(base_url)`** overrides the slug base URL (default
-  `https://fragmentcolor.org/shaders/`). Process-wide; tests use a thread-local override stack.
-- **GLSL** is supported only as a single part; mixing GLSL with WGSL or with other parts is rejected.
-- **Behaviour change:** a string of the shape `^[a-z][a-z0-9_]*/[a-z0-9_]+$` (single line, ≤128
-  chars) is now classified as a **slug** rather than parsed as raw WGSL. Existing
-  `Shader::new("sdf2d/circle")` callers will fetch from the registry instead of erroring.
-- **JS/WASM:** `new Shader(input)` accepts `string | string[]`. URL/slug parts must be resolved
-  via `await Shader.fetch(input)` (which now also accepts `string | string[]`). New
-  `Shader.setRegistry(baseUrl)` static method.
-- **Python:** `Shader(input)` accepts `Union[str, list[str]]`. New static `Shader.set_registry(base_url)`.
-- **Swift / Kotlin (uniffi):** `Shader.new(source)` and new `Shader.compose(parts)` constructors,
-  plus a free `set_shader_registry(base_url)` function. Extension shims provide a single
-  overloaded `Shader(_:)`.
+- [x] **`Shader::new` accepts arrays.** Signature is `Shader::new(impl Into<ShaderInput>)`, with `From` impls classifying a single string into raw WGSL/GLSL **source**, registry **slug** (`"sdf2d/circle"`), `https://` **URL**, or local **path**. Pass an array of any combination — parts resolved (fetched / read / looked up), deduped by source hash, concatenated in order before naga validation. No wrapping or auto-injection; invalid input fails loudly.
+- [x] Equivalent forms: `Shader::new(src)`, `Shader::new("sdf2d/circle")`, `Shader::new(["sdf2d/circle", "noise/simplex2", main_src])`. Existing call sites passing `&str` / `String` / `&String` keep working unchanged.
+- [x] **`Shader::set_registry(base_url)`** overrides the slug base URL (default `https://fragmentcolor.org/shaders/`). Process-wide; tests use a thread-local override stack.
+- [x] **GLSL** is supported only as a single part; mixing GLSL with WGSL or with other parts is rejected.
+- [x] **Behaviour change:** a string of shape `^[a-z][a-z0-9_]*/[a-z0-9_]+$` (single line, ≤128 chars) is now classified as a **slug** rather than parsed as raw WGSL. Existing `Shader::new("sdf2d/circle")` callers fetch from the registry instead of erroring.
+- [x] **JS/WASM:** `new Shader(input)` accepts `string | string[]`. URL/slug parts must be resolved via `await Shader.fetch(input)` (also accepts `string | string[]`). New `Shader.setRegistry(baseUrl)` static.
+- [x] **Python:** `Shader(input)` accepts `Union[str, list[str]]`. New static `Shader.set_registry(base_url)`.
+- [x] **Swift / Kotlin (uniffi):** `Shader.new(source)` and new `Shader.compose(parts)` constructors, plus a free `set_shader_registry(base_url)` function. Extension shims provide a single overloaded `Shader(_:)`.
+
+### Texture group restructure (Mipmap + Texture out of `core/`)
+
+- [ ] Rename `TextureMipChain` → `Mipmap` (Rust type, FFI brand strings, `__fc_kind`, all cross-platform bindings). Method renames: `prepare` → `build`, `base_size` → `size`, `level_count` → `count`. `format` and `levels` unchanged.
+- [ ] Restructure docs groups: new `docs/api/texture/` containing `Texture` and `Mipmap`. `core/` shrinks to `Renderer`, `Shader`, `Pass`. Texture is reframed as an external input alongside Vertex (in `geometry/`); future texture helpers (Sprite, Atlas, etc.) get a home.
+- [ ] Migrate platform examples: `platforms/{python,web,kotlin,swift}/examples/core/texture/` → `…/examples/texture/texture/`; `…/examples/core/texture_mip_chain/` → `…/examples/texture/mipmap/`.
+- [ ] Update `lsp_doc("…")` paths, `generated/api_objects.txt`, `generated/api_map.rs`, `_index.md` files for both old and new groups.
+- [ ] RemixBrush migration commit (separate, in the consumer repo): `TextureMipChain` → `Mipmap`, `prepare` → `build`, `level_count` → `count`.
 
 ## 0.11.1 Embedded shader registry by default, network behind a feature flag
 
