@@ -84,8 +84,8 @@ impl Renderer {
 
     /// JS: Create a Texture from any input shape — Uint8Array bytes, URL
     /// string, file path, CSS selector, HTMLImageElement, ImageData, OffscreenCanvas,
-    /// HTMLCanvasElement, or a `TextureMipChain` handle (built off-thread via
-    /// `TextureMipChain.prepare`). Optional second argument is an options object
+    /// HTMLCanvasElement, or a `Mipmap` handle (built off-thread via
+    /// `Mipmap.build`). Optional second argument is an options object
     /// `{ size?, format?, mipmaps?, sampler? }`. When `size` is present, `bytes`
     /// is treated as raw pixel data; otherwise it's decoded as an encoded image.
     #[wasm_bindgen(js_name = "createTexture")]

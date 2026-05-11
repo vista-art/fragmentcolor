@@ -137,7 +137,7 @@ impl Renderer {
     }
 
     /// Single Python entry point. Accepts bytes, list, str (path or URL),
-    /// numpy ndarray, or a TextureMipChain handle. Optional kwargs:
+    /// numpy ndarray, or a Mipmap handle. Optional kwargs:
     /// `size=(w, h)` (forces raw-pixel interpretation of bytes),
     /// `format=TextureFormat.X`, `mipmaps=True/False`.
     #[pyo3(
@@ -346,8 +346,8 @@ fn py_to_texture_spec(
             });
         }
     }
-    // TextureMipChain handle (built off-thread via TextureMipChain.prepare).
-    if let Ok(chain_ref) = input.cast::<crate::texture::TextureMipChain>() {
+    // Mipmap handle (built off-thread via Mipmap.build).
+    if let Ok(chain_ref) = input.cast::<crate::texture::Mipmap>() {
         let chain = chain_ref.borrow().clone();
         return Ok(TextureInput {
             data: TextureData::Prepared(chain),
@@ -355,6 +355,6 @@ fn py_to_texture_spec(
         });
     }
     Err(crate::error::PyFragmentColorError::new_err(
-        "Unsupported input for create_texture (expected bytes, list, str path, numpy ndarray, or TextureMipChain)",
+        "Unsupported input for create_texture (expected bytes, list, str path, numpy ndarray, or Mipmap)",
     ))
 }

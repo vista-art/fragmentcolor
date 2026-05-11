@@ -142,7 +142,7 @@ impl Renderer {
     /// entry point for every shape — bare bytes / path / URL / file (encoded),
     /// `(input, [w, h])` or `(input, Size)` for raw pixel bytes,
     /// `(input, TextureFormat)` for an explicit format override,
-    /// `(input, TextureOptions)` for full control, or a `TextureMipChain`
+    /// `(input, TextureOptions)` for full control, or a `Mipmap`
     /// (built off the renderer thread) for a GPU-only upload.
     ///
     /// The CPU work (decode, mipmap chain, raw-byte wrap) runs on a background
@@ -2540,12 +2540,12 @@ fn main(v: VOut) -> @location(0) vec4<f32> {
             for w in &words {
                 bytes.extend_from_slice(&w.to_le_bytes());
             }
-            let chain = crate::texture::TextureMipChain::prepare((
+            let chain = crate::texture::Mipmap::build((
                 bytes.as_slice(),
                 crate::TextureFormat::R16Unorm,
                 [4u32, 4u32],
             ))
-            .expect("prepare R16Unorm chain");
+            .expect("build R16Unorm chain");
             let tex = renderer
                 .create_texture(chain)
                 .await

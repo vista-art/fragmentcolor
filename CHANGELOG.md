@@ -88,10 +88,10 @@ Multi-slice refactor: collapses `_with_*` method families into single canonical 
 
 ### Texture group restructure (Mipmap + Texture out of `core/`)
 
-- [ ] Rename `TextureMipChain` → `Mipmap` (Rust type, FFI brand strings, `__fc_kind`, all cross-platform bindings). Method renames: `prepare` → `build`, `base_size` → `size`, `level_count` → `count`. `format` and `levels` unchanged.
-- [ ] Restructure docs groups: new `docs/api/texture/` containing `Texture` and `Mipmap`. `core/` shrinks to `Renderer`, `Shader`, `Pass`. Texture is reframed as an external input alongside Vertex (in `geometry/`); future texture helpers (Sprite, Atlas, etc.) get a home.
-- [ ] Migrate platform examples: `platforms/{python,web,kotlin,swift}/examples/core/texture/` → `…/examples/texture/texture/`; `…/examples/core/texture_mip_chain/` → `…/examples/texture/mipmap/`.
-- [ ] Update `lsp_doc("…")` paths, `generated/api_objects.txt`, `generated/api_map.rs`, `_index.md` files for both old and new groups.
+- [x] Rename `TextureMipChain` → `Mipmap` (Rust type, FFI brand strings, `__fc_kind`, all cross-platform bindings). Method renames: `prepare` → `build`, `base_size` → `size`, `level_count` → `count`. `format` and `levels` unchanged.
+- [x] Restructure docs groups: new `docs/api/texture/` containing `Texture` and `Mipmap`. `core/` shrinks to `Renderer`, `Shader`, `Pass`. Texture is reframed as an external input alongside Vertex (in `geometry/`); future texture helpers (Sprite, Atlas, etc.) get a home.
+- [x] Migrate platform examples: `platforms/{python,web,kotlin,swift}/examples/core/texture/` → `…/examples/texture/texture/`; `…/examples/core/texture_mip_chain/` → `…/examples/texture/mipmap/`.
+- [x] Update `lsp_doc("…")` paths, `generated/api_objects.txt`, `generated/api_map.rs`, `_index.md` files for both old and new groups.
 - [ ] RemixBrush migration commit (separate, in the consumer repo): `TextureMipChain` → `Mipmap`, `prepare` → `build`, `level_count` → `count`.
 
 ## 0.11.1 Embedded shader registry by default, network behind a feature flag

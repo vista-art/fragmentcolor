@@ -592,153 +592,6 @@ class GeneratedExamples {
         pass.addMesh(mesh)
     }
 
-    @Suppress("unused") private suspend fun _example_core_texture_Texture() {
-
-        val renderer = Renderer()
-        val shader = Shader("""
-        @group(0) @binding(0) var my_texture: texture_2d<f32>
-        @group(0) @binding(1) var my_sampler: sampler
-        @vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
-          let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.))
-          return vec4f(p[i], 0., 1.)
-        }
-        @fragment fn main() -> @location(0) vec4<f32> { return vec4f(1.,1.,1.,1.); }
-
-        """)
-
-        // 1x1 white pixel. Passing a size tells create_texture to read the bytes
-        // as raw pixels; the default format is Rgba (sRGB-aware).
-        val pixels = listOf(255.0f, 255.0f, 255.0f, 255.0f)
-        val texture = renderer.createTexture(TextureInputMobile.Bytes(pixels.let { ba -> ByteArray(ba.size) { i -> ba[i].toInt().and(0xFF).toByte() } }), null)
-
-        // Bind the texture to the uniform name declared in WGSL.
-        shader.set("my_texture", texture)
-    }
-
-    @Suppress("unused") private suspend fun _example_core_texture_aspect() {
-
-
-        val renderer = Renderer()
-        // 1x1 RGBA (white) raw pixel bytes
-        val pixels = listOf(255.0f, 255.0f, 255.0f, 255.0f)
-        val tex = renderer.createTexture(TextureInputMobile.Bytes(pixels.let { ba -> ByteArray(ba.size) { i -> ba[i].toInt().and(0xFF).toByte() } }), null)
-        val a = tex.aspect()
-    }
-
-    @Suppress("unused") private suspend fun _example_core_texture_get_image() {
-        val renderer = Renderer()
-        val texture = renderer.createStorageTexture(Size(width=64u, height=64u, depth=null), TextureFormat.RGBA, null, null)
-        texture.write(ByteArray(64 * 64 * 4))
-
-        val bytes = texture.getImage()
-    }
-
-    @Suppress("unused") private suspend fun _example_core_texture_id() {
-        val renderer = Renderer()
-        val texture = renderer.createStorageTexture(Size(width=64u, height=64u, depth=null), TextureFormat.RGBA, null, null)
-        val id = texture.id()
-    }
-
-    @Suppress("unused") private suspend fun _example_core_texture_set_sampler_options() {
-
-        val renderer = Renderer()
-        val pixels: ByteArray = byteArrayOf(255.toByte(), 255.toByte(), 255.toByte(), 255.toByte())
-        val options = TextureOptions(
-            size = Size(width = 1u, height = 1u, depth = null),
-            format = TextureFormat.RGBA8_UNORM_SRGB,
-            sampler = SamplerOptions(repeatX = false, repeatY = false, smooth = true, compare = null),
-            mipmaps = false,
-            usage = null,
-        )
-        val texture = renderer.createTexture(TextureInputMobile.Bytes(pixels), options)
-
-        val opts = SamplerOptions(repeatX = true, repeatY = true, smooth = true, compare = null)
-        texture.setSamplerOptions(opts)
-    }
-
-    @Suppress("unused") private suspend fun _example_core_texture_size() {
-        val renderer = Renderer()
-        val pixels = listOf(255.0f, 255.0f, 255.0f, 255.0f)
-        val tex = renderer.createTexture(TextureInputMobile.Bytes(pixels.let { ba -> ByteArray(ba.size) { i -> ba[i].toInt().and(0xFF).toByte() } }), null)
-        val sz = tex.size()
-    }
-
-    @Suppress("unused") private suspend fun _example_core_texture_write() {
-        val renderer = Renderer()
-        val texture = renderer.createStorageTexture(Size(width=64u, height=64u, depth=null), TextureFormat.RGBA, null, null)
-        val frame_bytes = ByteArray(64 * 64 * 4)
-
-        texture.write(frame_bytes)
-    }
-
-    @Suppress("unused") private suspend fun _example_core_texture_write_region() {
-        val renderer = Renderer()
-        val texture = renderer.createStorageTexture(Size(width=64u, height=32u, depth=null), TextureFormat.RGBA, null, null)
-        val bytes = ByteArray(64 * 32 * 4)
-
-        // Simple sub-rectangle update.
-        texture.writeRegion(bytes, TextureRegionMobile(0u, 0u, 0u, 64u, 32u, 0u, null, null))
-
-        // Explicit data layout (advanced — when source rows are padded).
-        val region = TextureRegionMobile(0u, 0u, 0u, 64u, 32u, 0u, 256u, 32u)
-        texture.writeRegion(bytes, region)
-    }
-
-    @Suppress("unused") private suspend fun _example_core_texture_mip_chain_TextureMipChain() {
-
-        val renderer = Renderer()
-        // Encoded image bytes the caller has on hand (could come off a worker).
-        val png = byteArrayOf(0x89.toByte(), 0x50.toByte(), 0x4E.toByte(), 0x47.toByte(), 0x0D.toByte(), 0x0A.toByte(), 0x1A.toByte(), 0x0A.toByte())
-        val chain = TextureMipChain.prepare(png, TextureFormat.RGBA8_UNORM_SRGB, null)
-
-        // Upload the chain through the regular create_texture entry point.
-        val texture = renderer.createTexture(TextureInputMobile.Prepared(chain), null)
-    }
-
-    @Suppress("unused") private suspend fun _example_core_texture_mip_chain_base_size() {
-
-        val pixels = ByteArray(16 * 16 * 4)
-        val chain = TextureMipChain.prepare(pixels, TextureFormat.RGBA8_UNORM_SRGB, Size(width=16u, height=16u, depth=null))
-        val tmp_size = chain.baseSize()
-        val width = tmp_size.width
-        val height = tmp_size.height
-    }
-
-    @Suppress("unused") private suspend fun _example_core_texture_mip_chain_format() {
-
-        val pixels = ByteArray(4 * 4 * 4)
-        val chain = TextureMipChain.prepare(pixels, TextureFormat.RGBA8_UNORM_SRGB, Size(width=4u, height=4u, depth=null))
-    }
-
-    @Suppress("unused") private suspend fun _example_core_texture_mip_chain_level_count() {
-
-        val pixels = ByteArray(8 * 8 * 4)
-        val chain = TextureMipChain.prepare(pixels, TextureFormat.RGBA8_UNORM_SRGB, Size(width=8u, height=8u, depth=null))
-        val count = chain.levelCount()
-    }
-
-    @Suppress("unused") private suspend fun _example_core_texture_mip_chain_levels() {
-
-        val pixels = ByteArray(8 * 8 * 4)
-        val chain = TextureMipChain.prepare(pixels, TextureFormat.RGBA8_UNORM_SRGB, Size(width=8u, height=8u, depth=null))
-        val level_zero_bytes = chain.level(0u)
-    }
-
-    @Suppress("unused") private suspend fun _example_core_texture_mip_chain_prepare() {
-
-        // Encoded path: pass bytes plus the format you expect.
-        val encoded_png_bytes: ByteArray = byteArrayOf()
-        val chain = TextureMipChain.prepare(encoded_png_bytes, TextureFormat.RGBA8_UNORM_SRGB, null)
-
-        // Raw path: include the size so prepare skips decoding.
-        val raw_rgba: ByteArray = ByteArray(8 * 8 * 4)
-        val chain_raw = TextureMipChain.prepare(raw_rgba, TextureFormat.RGBA8_UNORM_SRGB, Size(width=8u, height=8u, depth=null))
-
-        // Upload the chain through the regular create_texture entry point.
-        val renderer = Renderer()
-        val texture = renderer.createTexture(TextureInputMobile.Prepared(chain), null)
-    }
-
     @Suppress("unused") private suspend fun _example_geometry_mesh_Mesh() {
 
         val mesh = Mesh()
@@ -954,6 +807,153 @@ class GeneratedExamples {
 
         val renderer = Renderer()
         val target = renderer.createTextureTarget(64u, 32u)
+    }
+
+    @Suppress("unused") private suspend fun _example_texture_mipmap_Mipmap() {
+
+        val renderer = Renderer()
+        // Encoded image bytes the caller has on hand (could come off a worker).
+        val png = byteArrayOf(0x89.toByte(), 0x50.toByte(), 0x4E.toByte(), 0x47.toByte(), 0x0D.toByte(), 0x0A.toByte(), 0x1A.toByte(), 0x0A.toByte())
+        val chain = Mipmap.build(png, TextureFormat.RGBA8_UNORM_SRGB, null)
+
+        // Upload the chain through the regular create_texture entry point.
+        val texture = renderer.createTexture(TextureInputMobile.Prepared(chain), null)
+    }
+
+    @Suppress("unused") private suspend fun _example_texture_mipmap_build() {
+
+        // Encoded path: pass bytes plus the format you expect.
+        val encoded_png_bytes: ByteArray = byteArrayOf()
+        val chain = Mipmap.build(encoded_png_bytes, TextureFormat.RGBA8_UNORM_SRGB, null)
+
+        // Raw path: include the size so build skips decoding.
+        val raw_rgba: ByteArray = ByteArray(8 * 8 * 4)
+        val chain_raw = Mipmap.build(raw_rgba, TextureFormat.RGBA8_UNORM_SRGB, Size(width=8u, height=8u, depth=null))
+
+        // Upload the chain through the regular create_texture entry point.
+        val renderer = Renderer()
+        val texture = renderer.createTexture(TextureInputMobile.Prepared(chain), null)
+    }
+
+    @Suppress("unused") private suspend fun _example_texture_mipmap_count() {
+
+        val pixels = ByteArray(8 * 8 * 4)
+        val chain = Mipmap.build(pixels, TextureFormat.RGBA8_UNORM_SRGB, Size(width=8u, height=8u, depth=null))
+        val count = chain.count()
+    }
+
+    @Suppress("unused") private suspend fun _example_texture_mipmap_format() {
+
+        val pixels = ByteArray(4 * 4 * 4)
+        val chain = Mipmap.build(pixels, TextureFormat.RGBA8_UNORM_SRGB, Size(width=4u, height=4u, depth=null))
+    }
+
+    @Suppress("unused") private suspend fun _example_texture_mipmap_levels() {
+
+        val pixels = ByteArray(8 * 8 * 4)
+        val chain = Mipmap.build(pixels, TextureFormat.RGBA8_UNORM_SRGB, Size(width=8u, height=8u, depth=null))
+        val level_zero_bytes = chain.level(0u)
+    }
+
+    @Suppress("unused") private suspend fun _example_texture_mipmap_size() {
+
+        val pixels = ByteArray(16 * 16 * 4)
+        val chain = Mipmap.build(pixels, TextureFormat.RGBA8_UNORM_SRGB, Size(width=16u, height=16u, depth=null))
+        val tmp_size = chain.size()
+        val width = tmp_size.width
+        val height = tmp_size.height
+    }
+
+    @Suppress("unused") private suspend fun _example_texture_texture_Texture() {
+
+        val renderer = Renderer()
+        val shader = Shader("""
+        @group(0) @binding(0) var my_texture: texture_2d<f32>
+        @group(0) @binding(1) var my_sampler: sampler
+        @vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+          let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.))
+          return vec4f(p[i], 0., 1.)
+        }
+        @fragment fn main() -> @location(0) vec4<f32> { return vec4f(1.,1.,1.,1.); }
+
+        """)
+
+        // 1x1 white pixel. Passing a size tells create_texture to read the bytes
+        // as raw pixels; the default format is Rgba (sRGB-aware).
+        val pixels = listOf(255.0f, 255.0f, 255.0f, 255.0f)
+        val texture = renderer.createTexture(TextureInputMobile.Bytes(pixels.let { ba -> ByteArray(ba.size) { i -> ba[i].toInt().and(0xFF).toByte() } }), null)
+
+        // Bind the texture to the uniform name declared in WGSL.
+        shader.set("my_texture", texture)
+    }
+
+    @Suppress("unused") private suspend fun _example_texture_texture_aspect() {
+
+
+        val renderer = Renderer()
+        // 1x1 RGBA (white) raw pixel bytes
+        val pixels = listOf(255.0f, 255.0f, 255.0f, 255.0f)
+        val tex = renderer.createTexture(TextureInputMobile.Bytes(pixels.let { ba -> ByteArray(ba.size) { i -> ba[i].toInt().and(0xFF).toByte() } }), null)
+        val a = tex.aspect()
+    }
+
+    @Suppress("unused") private suspend fun _example_texture_texture_get_image() {
+        val renderer = Renderer()
+        val texture = renderer.createStorageTexture(Size(width=64u, height=64u, depth=null), TextureFormat.RGBA, null, null)
+        texture.write(ByteArray(64 * 64 * 4))
+
+        val bytes = texture.getImage()
+    }
+
+    @Suppress("unused") private suspend fun _example_texture_texture_id() {
+        val renderer = Renderer()
+        val texture = renderer.createStorageTexture(Size(width=64u, height=64u, depth=null), TextureFormat.RGBA, null, null)
+        val id = texture.id()
+    }
+
+    @Suppress("unused") private suspend fun _example_texture_texture_set_sampler_options() {
+
+        val renderer = Renderer()
+        val pixels: ByteArray = byteArrayOf(255.toByte(), 255.toByte(), 255.toByte(), 255.toByte())
+        val options = TextureOptions(
+            size = Size(width = 1u, height = 1u, depth = null),
+            format = TextureFormat.RGBA8_UNORM_SRGB,
+            sampler = SamplerOptions(repeatX = false, repeatY = false, smooth = true, compare = null),
+            mipmaps = false,
+            usage = null,
+        )
+        val texture = renderer.createTexture(TextureInputMobile.Bytes(pixels), options)
+
+        val opts = SamplerOptions(repeatX = true, repeatY = true, smooth = true, compare = null)
+        texture.setSamplerOptions(opts)
+    }
+
+    @Suppress("unused") private suspend fun _example_texture_texture_size() {
+        val renderer = Renderer()
+        val pixels = listOf(255.0f, 255.0f, 255.0f, 255.0f)
+        val tex = renderer.createTexture(TextureInputMobile.Bytes(pixels.let { ba -> ByteArray(ba.size) { i -> ba[i].toInt().and(0xFF).toByte() } }), null)
+        val sz = tex.size()
+    }
+
+    @Suppress("unused") private suspend fun _example_texture_texture_write() {
+        val renderer = Renderer()
+        val texture = renderer.createStorageTexture(Size(width=64u, height=64u, depth=null), TextureFormat.RGBA, null, null)
+        val frame_bytes = ByteArray(64 * 64 * 4)
+
+        texture.write(frame_bytes)
+    }
+
+    @Suppress("unused") private suspend fun _example_texture_texture_write_region() {
+        val renderer = Renderer()
+        val texture = renderer.createStorageTexture(Size(width=64u, height=32u, depth=null), TextureFormat.RGBA, null, null)
+        val bytes = ByteArray(64 * 32 * 4)
+
+        // Simple sub-rectangle update.
+        texture.writeRegion(bytes, TextureRegionMobile(0u, 0u, 0u, 64u, 32u, 0u, null, null))
+
+        // Explicit data layout (advanced — when source rows are padded).
+        val region = TextureRegionMobile(0u, 0u, 0u, 64u, 32u, 0u, 256u, 32u)
+        texture.writeRegion(bytes, region)
     }
 
 }

@@ -51,7 +51,7 @@ spec_from_input!(
     &std::path::PathBuf,
     &crate::Texture,
     crate::TextureData,
-    crate::texture::TextureMipChain,
+    crate::texture::Mipmap,
 );
 
 // ---------------------------------------------------------------------------
@@ -86,14 +86,14 @@ spec_from_input_with_options!(
     &std::path::PathBuf,
     &crate::Texture,
     crate::TextureData,
-    crate::texture::TextureMipChain,
+    crate::texture::Mipmap,
 );
 
 // ---------------------------------------------------------------------------
 // Storage / size-driven shapes — `(size, format)` allocates an empty storage
 // texture (data = TextureData::Empty); `(size, format, bytes)` pre-seeds it.
 // These are the same `TextureInput` type the source-driven paths use, so
-// `create_texture`, `create_storage_texture`, and `TextureMipChain::prepare`
+// `create_texture`, `create_storage_texture`, and `Mipmap::build`
 // all read from one transport. The methods themselves do the validation
 // (`create_storage_texture` requires `options.size.is_some()`; `prepare`
 // requires `data` to be a sync-friendly variant).
@@ -112,7 +112,7 @@ impl<S: Into<Size>, F: Into<TextureFormat>> From<(S, F)> for TextureInput {
     }
 }
 
-// Source-first 3-tuple: `(bytes, format, size)` — used by `TextureMipChain::prepare`
+// Source-first 3-tuple: `(bytes, format, size)` — used by `Mipmap::build`
 // for the raw-pixel path and by `Renderer::create_texture` whenever the caller
 // has already-decoded bytes plus a known size + format. The size-first
 // counterpart `(size, format, bytes)` lives below for the storage idiom; the

@@ -1,6 +1,6 @@
 # Renderer::create_storage_texture
 
-Create a storage-class texture for compute shaders, image store/load, or as a render target. The input shapes mirror `Renderer::create_texture` and `TextureMipChain::prepare`.
+Create a storage-class texture for compute shaders, image store/load, or as a render target. The input shapes mirror `Renderer::create_texture` and `Mipmap::build`.
 
 Common forms:
 

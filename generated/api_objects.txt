@@ -1,6 +1,7 @@
 Color
 Instance
 Mesh
+Mipmap
 Pass
 PassInput
 Quad
@@ -10,5 +11,4 @@ Shader
 Size
 Texture
 TextureId
-TextureMipChain
 Vertex

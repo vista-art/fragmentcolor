@@ -1045,7 +1045,7 @@ mod website {
             || text.contains("no public example")
     }
 
-    /// `Texture` → `texture`, `TextureMipChain` → `texture_mip_chain`,
+    /// `Texture` → `texture`, `WindowTarget` → `window_target`,
     /// `read_texture` → `read_texture` (already snake). Used by
     /// `read_lang_override` to fall back to the source-file naming
     /// convention when the lookup uses the CamelCase struct name as
@@ -1073,7 +1073,7 @@ mod website {
         lang_suffix: &str,
     ) -> Option<String> {
         // Class entry-point examples use the CamelCase struct name as the
-        // `file_stem` (e.g. `Texture`, `TextureMipChain`), so the natural
+        // `file_stem` (e.g. `Texture`, `Mipmap`), so the natural
         // override path is `Texture_py.md`. The earlier convention put the
         // override at the snake_cased source-file stem (`texture_py.md`) —
         // both happen to coexist in `git ls-files` because macOS HFS+ is

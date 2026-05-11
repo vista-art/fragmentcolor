@@ -1,13 +1,13 @@
 #![cfg(python)]
 
 use crate::SamplerOptions;
-use crate::texture::{Texture, TextureId, TextureMipChain};
+use crate::texture::{Texture, TextureId, Mipmap};
 use crate::{Size, TextureFormat};
 use lsp_doc::lsp_doc;
 use pyo3::prelude::*;
 
 #[pymethods]
-impl TextureMipChain {
+impl Mipmap {
     /// Build a chain from `bytes` for `format`. If `size` is `None`, `bytes`
     /// is decoded as an image (PNG / JPEG / etc.); if `size` is provided,
     /// `bytes` is treated as raw pixel data already laid out for `format` at
@@ -15,14 +15,14 @@ impl TextureMipChain {
     /// `ThreadPoolExecutor`) and pass the result to
     /// `renderer.create_texture(chain)` for the GPU upload.
     #[staticmethod]
-    #[pyo3(name = "prepare", signature = (bytes, format, size=None))]
-    #[lsp_doc("docs/api/core/texture_mip_chain/prepare.md")]
-    pub fn prepare_py(
+    #[pyo3(name = "build", signature = (bytes, format, size=None))]
+    #[lsp_doc("docs/api/texture/mipmap/build.md")]
+    pub fn build_py(
         bytes: pyo3::Py<pyo3::types::PyAny>,
         format: TextureFormat,
         size: Option<crate::size::PySize>,
-    ) -> pyo3::PyResult<TextureMipChain> {
-        Python::attach(|py| -> pyo3::PyResult<TextureMipChain> {
+    ) -> pyo3::PyResult<Mipmap> {
+        Python::attach(|py| -> pyo3::PyResult<Mipmap> {
             let bytes = crate::texture::py_to_texture_bytes(bytes.bind(py))?;
             let size: Option<Size> = size.map(Into::into);
             let input = crate::TextureInput {
@@ -33,32 +33,32 @@ impl TextureMipChain {
                     ..Default::default()
                 },
             };
-            Ok(Self::prepare(input)?)
+            Ok(Self::build(input)?)
         })
     }
 
     #[pyo3(name = "format")]
-    #[lsp_doc("docs/api/core/texture_mip_chain/format.md")]
+    #[lsp_doc("docs/api/texture/mipmap/format.md")]
     pub fn format_py(&self) -> TextureFormat {
         self.format.into()
     }
 
-    #[pyo3(name = "base_size")]
-    #[lsp_doc("docs/api/core/texture_mip_chain/base_size.md")]
-    pub fn base_size_py(&self) -> (u32, u32) {
-        self.base_size()
+    #[pyo3(name = "size")]
+    #[lsp_doc("docs/api/texture/mipmap/size.md")]
+    pub fn size_py(&self) -> (u32, u32) {
+        self.size()
     }
 
-    #[pyo3(name = "level_count")]
-    #[lsp_doc("docs/api/core/texture_mip_chain/level_count.md")]
-    pub fn level_count_py(&self) -> u32 {
-        self.level_count() as u32
+    #[pyo3(name = "count")]
+    #[lsp_doc("docs/api/texture/mipmap/count.md")]
+    pub fn count_py(&self) -> u32 {
+        self.count() as u32
     }
 
-    /// Return the bytes for a single mip level. Use `level_count()` to discover
+    /// Return the bytes for a single mip level. Use `count()` to discover
     /// the valid range.
     #[pyo3(name = "level")]
-    #[lsp_doc("docs/api/core/texture_mip_chain/levels.md")]
+    #[lsp_doc("docs/api/texture/mipmap/levels.md")]
     pub fn level_py(&self, index: u32) -> pyo3::PyResult<Vec<u8>> {
         let levels = self.levels();
         let idx = index as usize;
@@ -76,7 +76,7 @@ impl TextureMipChain {
 #[pymethods]
 impl Texture {
     #[pyo3(name = "id")]
-    #[lsp_doc("docs/api/core/texture/id.md")]
+    #[lsp_doc("docs/api/texture/texture/id.md")]
     pub fn id_py(&self) -> TextureId {
         self.id
     }
@@ -84,21 +84,21 @@ impl Texture {
     /// Python property: size -> returns a Size object
     #[getter]
     #[pyo3(name = "size")]
-    #[lsp_doc("docs/api/core/texture/size.md")]
+    #[lsp_doc("docs/api/texture/texture/size.md")]
     pub fn size_prop(&self) -> crate::Size {
         self.size()
     }
 
     /// Python method: aspect() -> f32
     #[pyo3(name = "aspect")]
-    #[lsp_doc("docs/api/core/texture/aspect.md")]
+    #[lsp_doc("docs/api/texture/texture/aspect.md")]
     pub fn aspect_py(&self) -> f32 {
         self.aspect()
     }
 
     /// Accepts a dict with keys repeat_x, repeat_y, smooth, compare
     #[pyo3(name = "set_sampler_options")]
-    #[lsp_doc("docs/api/core/texture/set_sampler_options.md")]
+    #[lsp_doc("docs/api/texture/texture/set_sampler_options.md")]
     pub fn set_sampler_options_py(
         &self,
         options: pyo3::Py<pyo3::types::PyAny>,
@@ -133,7 +133,7 @@ impl Texture {
     }
 
     #[pyo3(name = "write")]
-    #[lsp_doc("docs/api/core/texture/write.md")]
+    #[lsp_doc("docs/api/texture/texture/write.md")]
     pub fn write_py(&self, data: pyo3::Py<pyo3::types::PyAny>) -> pyo3::PyResult<()> {
         pyo3::Python::attach(|py| -> pyo3::PyResult<()> {
             let bytes = crate::texture::py_to_texture_bytes(data.bind(py))?;
@@ -143,7 +143,7 @@ impl Texture {
     }
 
     #[pyo3(name = "write_region")]
-    #[lsp_doc("docs/api/core/texture/write_region.md")]
+    #[lsp_doc("docs/api/texture/texture/write_region.md")]
     pub fn write_region_py(
         &self,
         data: pyo3::Py<pyo3::types::PyAny>,
@@ -163,7 +163,7 @@ impl Texture {
     /// implementation; the blocking wrapper exists because Python does not
     /// have a native async runtime that integrates with the GPU device loop.
     #[pyo3(name = "get_image")]
-    #[lsp_doc("docs/api/core/texture/get_image.md")]
+    #[lsp_doc("docs/api/texture/texture/get_image.md")]
     pub fn get_image_py(&self) -> pyo3::PyResult<Vec<u8>> {
         pollster::block_on(self.get_image())
             .map_err(|e| crate::error::PyFragmentColorError::new_err(e.to_string()))

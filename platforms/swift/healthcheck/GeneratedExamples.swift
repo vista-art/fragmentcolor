@@ -590,181 +590,6 @@ private enum _GeneratedExamples {
         try pass.addMesh(mesh)
     }
 
-    static func _example_core_texture_Texture() async throws {
-
-        let renderer = Renderer()
-        let shader = try Shader("""
-        @group(0) @binding(0) var my_texture: texture_2d<f32>
-        @group(0) @binding(1) var my_sampler: sampler
-        @vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
-          let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.))
-          return vec4f(p[i], 0., 1.)
-        }
-        @fragment fn main() -> @location(0) vec4<f32> { return vec4f(1.,1.,1.,1.); }
-
-        """)
-
-        // 1x1 white pixel. Passing a size tells create_texture to read the bytes
-        // as raw pixels; the default format is Rgba (sRGB-aware).
-        let pixels = [255, 255, 255, 255]
-        let texture = try await renderer.createTexture((pixels, [1, 1]))
-
-        // Bind the texture to the uniform name declared in WGSL.
-        try shader.set("my_texture", texture)
-    }
-
-    static func _example_core_texture_aspect() async throws {
-
-
-        let renderer = Renderer()
-        // 1x1 RGBA (white) raw pixel bytes
-        let pixels = [255,255,255,255]
-        let tex = try await renderer.createTexture((pixels, [1, 1]))
-        let a = tex.aspect()
-    }
-
-    static func _example_core_texture_get_image() async throws {
-        let renderer = Renderer()
-        let texture = try await renderer.createStorageTexture(([64, 64], TextureFormat.rgba))
-        try texture.write(Array(repeating: 0, count: 64 * 64 * 4))
-
-        let bytes = try await texture.getImage()
-    }
-
-    static func _example_core_texture_id() async throws {
-        let renderer = Renderer()
-        let texture = try await renderer.createStorageTexture(([64, 64], TextureFormat.rgba))
-        let id = texture.id()
-    }
-
-    static func _example_core_texture_set_sampler_options() async throws {
-
-        let renderer = Renderer()
-        let pixels: [UInt8] = [255, 255, 255, 255]
-        let options = TextureOptions(
-            size: Size(width: 1, height: 1, depth: nil),
-            format: .rgba8UnormSrgb,
-            sampler: SamplerOptions(repeatX: false, repeatY: false, smooth: true, compare: nil),
-            mipmaps: false,
-            usage: nil
-        )
-        let texture = try await renderer.createTexture(input: .bytes(pixels), options: options)
-
-        let opts = SamplerOptions(repeatX: true, repeatY: true, smooth: true, compare: nil)
-        texture.setSamplerOptions(opts: opts)
-    }
-
-    static func _example_core_texture_size() async throws {
-        let renderer = Renderer()
-        let pixels = [255,255,255,255]
-        let tex = try await renderer.createTexture((pixels, [1, 1]))
-        let sz = tex.size()
-    }
-
-    static func _example_core_texture_write() async throws {
-        let renderer = Renderer()
-        let texture = try await renderer.createStorageTexture(([64, 64], TextureFormat.rgba))
-        let frame_bytes = Array(repeating: 0, count: 64 * 64 * 4)
-
-        try texture.write(frame_bytes)
-    }
-
-    static func _example_core_texture_write_region() async throws {
-        let renderer = Renderer()
-        let texture = try await renderer.createStorageTexture(([64, 32], TextureFormat.rgba))
-        let bytes = Array(repeating: 0, count: 64 * 32 * 4)
-
-        // Simple sub-rectangle update.
-        try texture.writeRegion(bytes, [0, 0, 64, 32])
-
-        // Explicit data layout (advanced — when source rows are padded).
-        let region = TextureRegionMobile.from([0, 0, 64, 32]).withStride(256).withRows(32)
-        try texture.writeRegion(bytes, region)
-    }
-
-    static func _example_core_texture_mip_chain_TextureMipChain() async throws {
-
-        let renderer = Renderer()
-
-        // Minimal 1×1 RGBA raw pixel bytes.
-        let pixels = Data([255, 0, 0, 255])
-        let chain = try TextureMipChain.prepare(
-            bytes: pixels,
-            format: .rgba8UnormSrgb,
-            size: Size(width: 1, height: 1, depth: nil)
-        )
-
-        // Hand the chain to the unified create_texture entry.
-        let texture = try await renderer.createTexture(input: .prepared(chain))
-        let _ = texture.size()
-    }
-
-    static func _example_core_texture_mip_chain_base_size() async throws {
-
-        let pixels = Data(repeating: 0, count: 16 * 16 * 4)
-        let chain = try TextureMipChain.prepare(
-            bytes: pixels,
-            format: .rgba8UnormSrgb,
-            size: Size(width: 16, height: 16, depth: nil)
-        )
-        let sz = chain.baseSize()
-        let width = sz.width
-        let height = sz.height
-        let _ = (width, height)
-    }
-
-    static func _example_core_texture_mip_chain_format() async throws {
-
-        let pixels = Data(repeating: 200, count: 4 * 4 * 4)
-        let chain = try TextureMipChain.prepare(
-            bytes: pixels,
-            format: .rgba8UnormSrgb,
-            size: Size(width: 4, height: 4, depth: nil)
-        )
-        let _ = chain.format()
-    }
-
-    static func _example_core_texture_mip_chain_level_count() async throws {
-
-        let pixels = Data(repeating: 0, count: 8 * 8 * 4)
-        let chain = try TextureMipChain.prepare(
-            bytes: pixels,
-            format: .rgba8UnormSrgb,
-            size: Size(width: 8, height: 8, depth: nil)
-        )
-        let count = chain.levelCount()
-        let _ = count
-    }
-
-    static func _example_core_texture_mip_chain_levels() async throws {
-
-        let pixels = Data(repeating: 0, count: 8 * 8 * 4)
-        let chain = try TextureMipChain.prepare(
-            bytes: pixels,
-            format: .rgba8UnormSrgb,
-            size: Size(width: 8, height: 8, depth: nil)
-        )
-        let levelZeroBytes = try chain.level(index: 0)
-        let _ = levelZeroBytes
-    }
-
-    static func _example_core_texture_mip_chain_prepare() async throws {
-
-        // Raw RGBA path: include the size so prepare skips decoding.
-        let rawRgba = Data(repeating: 200, count: 8 * 8 * 4)
-        let chainRaw = try TextureMipChain.prepare(
-            bytes: rawRgba,
-            format: .rgba8UnormSrgb,
-            size: Size(width: 8, height: 8, depth: nil)
-        )
-
-        // Upload the chain through the regular createTexture entry point.
-        let renderer = Renderer()
-        let texture = try await renderer.createTexture(input: .prepared(chainRaw))
-        let _ = chainRaw.levelCount()
-        let __ = texture.size()
-    }
-
     static func _example_geometry_mesh_Mesh() async throws {
 
         let mesh = Mesh()
@@ -995,6 +820,181 @@ private enum _GeneratedExamples {
 
         let renderer = Renderer()
         let target = try await renderer.createTextureTarget([64, 32])
+    }
+
+    static func _example_texture_mipmap_Mipmap() async throws {
+
+        let renderer = Renderer()
+
+        // Minimal 1×1 RGBA raw pixel bytes.
+        let pixels = Data([255, 0, 0, 255])
+        let chain = try Mipmap.build(
+            bytes: pixels,
+            format: .rgba8UnormSrgb,
+            size: Size(width: 1, height: 1, depth: nil)
+        )
+
+        // Hand the chain to the unified create_texture entry.
+        let texture = try await renderer.createTexture(input: .prepared(chain))
+        let _ = texture.size()
+    }
+
+    static func _example_texture_mipmap_build() async throws {
+
+        // Raw RGBA path: include the size so prepare skips decoding.
+        let rawRgba = Data(repeating: 200, count: 8 * 8 * 4)
+        let chainRaw = try Mipmap.build(
+            bytes: rawRgba,
+            format: .rgba8UnormSrgb,
+            size: Size(width: 8, height: 8, depth: nil)
+        )
+
+        // Upload the chain through the regular createTexture entry point.
+        let renderer = Renderer()
+        let texture = try await renderer.createTexture(input: .prepared(chainRaw))
+        let _ = chainRaw.count()
+        let __ = texture.size()
+    }
+
+    static func _example_texture_mipmap_count() async throws {
+
+        let pixels = Data(repeating: 0, count: 8 * 8 * 4)
+        let chain = try Mipmap.build(
+            bytes: pixels,
+            format: .rgba8UnormSrgb,
+            size: Size(width: 8, height: 8, depth: nil)
+        )
+        let count = chain.count()
+        let _ = count
+    }
+
+    static func _example_texture_mipmap_format() async throws {
+
+        let pixels = Data(repeating: 200, count: 4 * 4 * 4)
+        let chain = try Mipmap.build(
+            bytes: pixels,
+            format: .rgba8UnormSrgb,
+            size: Size(width: 4, height: 4, depth: nil)
+        )
+        let _ = chain.format()
+    }
+
+    static func _example_texture_mipmap_levels() async throws {
+
+        let pixels = Data(repeating: 0, count: 8 * 8 * 4)
+        let chain = try Mipmap.build(
+            bytes: pixels,
+            format: .rgba8UnormSrgb,
+            size: Size(width: 8, height: 8, depth: nil)
+        )
+        let levelZeroBytes = try chain.level(index: 0)
+        let _ = levelZeroBytes
+    }
+
+    static func _example_texture_mipmap_size() async throws {
+
+        let pixels = Data(repeating: 0, count: 16 * 16 * 4)
+        let chain = try Mipmap.build(
+            bytes: pixels,
+            format: .rgba8UnormSrgb,
+            size: Size(width: 16, height: 16, depth: nil)
+        )
+        let sz = chain.size()
+        let width = sz.width
+        let height = sz.height
+        let _ = (width, height)
+    }
+
+    static func _example_texture_texture_Texture() async throws {
+
+        let renderer = Renderer()
+        let shader = try Shader("""
+        @group(0) @binding(0) var my_texture: texture_2d<f32>
+        @group(0) @binding(1) var my_sampler: sampler
+        @vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+          let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.))
+          return vec4f(p[i], 0., 1.)
+        }
+        @fragment fn main() -> @location(0) vec4<f32> { return vec4f(1.,1.,1.,1.); }
+
+        """)
+
+        // 1x1 white pixel. Passing a size tells create_texture to read the bytes
+        // as raw pixels; the default format is Rgba (sRGB-aware).
+        let pixels = [255, 255, 255, 255]
+        let texture = try await renderer.createTexture((pixels, [1, 1]))
+
+        // Bind the texture to the uniform name declared in WGSL.
+        try shader.set("my_texture", texture)
+    }
+
+    static func _example_texture_texture_aspect() async throws {
+
+
+        let renderer = Renderer()
+        // 1x1 RGBA (white) raw pixel bytes
+        let pixels = [255,255,255,255]
+        let tex = try await renderer.createTexture((pixels, [1, 1]))
+        let a = tex.aspect()
+    }
+
+    static func _example_texture_texture_get_image() async throws {
+        let renderer = Renderer()
+        let texture = try await renderer.createStorageTexture(([64, 64], TextureFormat.rgba))
+        try texture.write(Array(repeating: 0, count: 64 * 64 * 4))
+
+        let bytes = try await texture.getImage()
+    }
+
+    static func _example_texture_texture_id() async throws {
+        let renderer = Renderer()
+        let texture = try await renderer.createStorageTexture(([64, 64], TextureFormat.rgba))
+        let id = texture.id()
+    }
+
+    static func _example_texture_texture_set_sampler_options() async throws {
+
+        let renderer = Renderer()
+        let pixels: [UInt8] = [255, 255, 255, 255]
+        let options = TextureOptions(
+            size: Size(width: 1, height: 1, depth: nil),
+            format: .rgba8UnormSrgb,
+            sampler: SamplerOptions(repeatX: false, repeatY: false, smooth: true, compare: nil),
+            mipmaps: false,
+            usage: nil
+        )
+        let texture = try await renderer.createTexture(input: .bytes(pixels), options: options)
+
+        let opts = SamplerOptions(repeatX: true, repeatY: true, smooth: true, compare: nil)
+        texture.setSamplerOptions(opts: opts)
+    }
+
+    static func _example_texture_texture_size() async throws {
+        let renderer = Renderer()
+        let pixels = [255,255,255,255]
+        let tex = try await renderer.createTexture((pixels, [1, 1]))
+        let sz = tex.size()
+    }
+
+    static func _example_texture_texture_write() async throws {
+        let renderer = Renderer()
+        let texture = try await renderer.createStorageTexture(([64, 64], TextureFormat.rgba))
+        let frame_bytes = Array(repeating: 0, count: 64 * 64 * 4)
+
+        try texture.write(frame_bytes)
+    }
+
+    static func _example_texture_texture_write_region() async throws {
+        let renderer = Renderer()
+        let texture = try await renderer.createStorageTexture(([64, 32], TextureFormat.rgba))
+        let bytes = Array(repeating: 0, count: 64 * 32 * 4)
+
+        // Simple sub-rectangle update.
+        try texture.writeRegion(bytes, [0, 0, 64, 32])
+
+        // Explicit data layout (advanced — when source rows are padded).
+        let region = TextureRegionMobile.from([0, 0, 64, 32]).withStride(256).withRows(32)
+        try texture.writeRegion(bytes, region)
     }
 
 }

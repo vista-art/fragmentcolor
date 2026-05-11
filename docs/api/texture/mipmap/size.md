@@ -1,0 +1,21 @@
+# Mipmap::size
+
+Return the base level (level 0) dimensions as `(width, height)`. The mip chain has a level for each `1 + floor(log2(max(width, height)))`.
+
+## Example
+
+```rust
+use fragmentcolor::{Mipmap, TextureFormat};
+
+let pixels: Vec<u8> = vec![0; 16 * 16 * 4];
+let chain = Mipmap::build((
+    pixels.as_slice(),
+    TextureFormat::Rgba8UnormSrgb,
+    [16, 16],
+))?;
+let (width, height) = chain.size();
+# assert_eq!(width, 16);
+# assert_eq!(height, 16);
+let _ = (width, height);
+# Ok::<(), Box<dyn std::error::Error>>(())
+```

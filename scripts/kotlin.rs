@@ -145,7 +145,7 @@ mod kotlin {
         out = rewrite_createstoragetexture_tuple(&out);
         out = rewrite_createtexture_path(&out);
         out = rewrite_createtexture_pixels_tuple(&out);
-        out = rewrite_texturemipchain_prepare_tuple(&out);
+        out = rewrite_mipmap_build_tuple(&out);
         out = rewrite_setviewport_tuple(&out);
         out = rewrite_setcomputedispatch_int_to_uint(&out);
         out = rewrite_render_array_to_list(&out);
@@ -435,7 +435,7 @@ mod kotlin {
         if !inner_trim.contains("arrayOf") && !inner_trim.contains("Array(") && !inner_trim.contains(',') {
             let before = &line[..start + needle.len() - 1];
             let after = &line[end + 1..];
-            // Detect TextureMipChain variables by naming convention
+            // Detect Mipmap variables by naming convention
             let is_mip_chain = inner_trim.contains("chain") || inner_trim.contains("mip");
             let variant = if is_mip_chain { "Prepared" } else { "Path" };
             return format!("{}(TextureInputMobile.{}({}), null){}", before, variant, inner_trim, after);
@@ -493,12 +493,12 @@ mod kotlin {
         }
     }
 
-    // `TextureMipChain.prepare((bytes, format))` or
-    // `TextureMipChain.prepare((bytes, format, arrayOf(w,h)))` →
-    // `TextureMipChain.prepare(bytes, format, null)` or
-    // `TextureMipChain.prepare(bytes, format, Size(...))`
-    fn rewrite_texturemipchain_prepare_tuple(line: &str) -> String {
-        let needle = "TextureMipChain.prepare(";
+    // `Mipmap.build((bytes, format))` or
+    // `Mipmap.build((bytes, format, arrayOf(w,h)))` →
+    // `Mipmap.build(bytes, format, null)` or
+    // `Mipmap.build(bytes, format, Size(...))`
+    fn rewrite_mipmap_build_tuple(line: &str) -> String {
+        let needle = "Mipmap.build(";
         let Some(start) = line.find(needle) else { return line.to_string(); };
         let call_start = start + needle.len();
         let chars: Vec<char> = line.chars().collect();

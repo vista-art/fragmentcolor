@@ -116,8 +116,8 @@ extension Renderer {
         return try await createTexture(input: .path(path), options: nil)
     }
 
-    /// Create a texture from a `TextureMipChain`.
-    public func createTexture(_ chain: TextureMipChain) async throws -> Texture {
+    /// Create a texture from a `Mipmap`.
+    public func createTexture(_ chain: Mipmap) async throws -> Texture {
         return try await createTexture(input: .prepared(chain), options: nil)
     }
 

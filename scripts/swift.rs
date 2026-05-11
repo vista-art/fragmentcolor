@@ -173,7 +173,7 @@ mod swift {
         //     Swift's `baseSize()` returns a `Size` struct, not a tuple; the Rust doc
         //     example uses tuple destructuring which doesn't translate directly.
         //     Also rewrite the follow-up `let _ = (width, height)` → `let _ = size`.
-        out = rewrite_base_size_tuple(&out);
+        out = rewrite_size_tuple(&out);
 
         out
     }
@@ -344,16 +344,16 @@ mod swift {
         out
     }
 
-    /// Rewrite `let (width, height) = expr.baseSize()` → `let size = expr.baseSize()`.
-    /// Swift's `TextureMipChain.baseSize()` returns a `Size` struct, not a `(UInt32, UInt32)`
+    /// Rewrite `let (width, height) = expr.size()` → `let size = expr.size()`.
+    /// Swift's `Mipmap.size()` returns a `Size` struct, not a `(UInt32, UInt32)`
     /// tuple, so the Rust-style tuple destructuring pattern doesn't compile.
     /// Also rewrites `let _ = (width, height)` → `let _ = size` (follow-up guard line).
-    fn rewrite_base_size_tuple(line: &str) -> String {
+    fn rewrite_size_tuple(line: &str) -> String {
         let trimmed = line.trim_start();
         let indent: String = line.chars().take_while(|c| c.is_whitespace()).collect();
 
         // Handle standalone `let _ = (ident, ident, ...)` → `let _ = size`
-        // This is the follow-up guard line after a baseSize() tuple destructure.
+        // This is the follow-up guard line after a size() tuple destructure.
         if let Some(rest) = trimmed.strip_prefix("let _ = (")
             && let Some(vars) = rest.strip_suffix(')') {
                 let all_idents = vars.split(',').all(|v| {
@@ -365,7 +365,7 @@ mod swift {
                 }
             }
 
-        // Match `let (width, height) = <expr>.baseSize()` or `const (width, height) = ...`
+        // Match `let (width, height) = <expr>.size()` or `const (width, height) = ...`
         for prefix in &["let ", "const "] {
             if let Some(rest) = trimmed.strip_prefix(prefix)
                 && let Some(inner) = rest.strip_prefix('(') {
@@ -374,8 +374,8 @@ mod swift {
                         let after_paren = inner[close + 1..].trim_start();
                         if let Some(eq_rest) = after_paren.strip_prefix('=') {
                             let rhs = eq_rest.trim_start();
-                            if rhs.contains(".baseSize()") {
-                                // Replace tuple destructuring with `let size = expr.baseSize()`
+                            if rhs.contains(".size()") {
+                                // Replace tuple destructuring with `let size = expr.size()`
                                 let expr = rhs.trim_end_matches(['\r', '\n']);
                                 return format!("{}let size = {}", indent, expr);
                             }
@@ -581,7 +581,7 @@ mod swift {
         // or as a standalone expression).
         const THROWING_STATIC_METHODS: &[&str] = &[
             "Shader.new(",
-            "TextureMipChain.prepare(",
+            "Mipmap.build(",
         ];
 
         let trimmed = line.trim_start();
@@ -618,7 +618,7 @@ mod swift {
                             return format!("{}{}{} try {}", indent, prefix, var_part, rhs);
                         }
                     }
-                    // Check throwing static methods (e.g. `Shader.new(`, `TextureMipChain.prepare(`).
+                    // Check throwing static methods (e.g. `Shader.new(`, `Mipmap.build(`).
                     for sm in THROWING_STATIC_METHODS {
                         if rhs.starts_with(sm) && !rhs.starts_with("try ") && !rhs.contains("await ") {
                             return format!("{}{}{} try {}", indent, prefix, var_part, rhs);
@@ -639,7 +639,7 @@ mod swift {
             }
         }
 
-        // Case 3: Standalone throwing static method call (`Shader.new(`, `TextureMipChain.prepare(`).
+        // Case 3: Standalone throwing static method call (`Shader.new(`, `Mipmap.build(`).
         for sm in THROWING_STATIC_METHODS {
             if trimmed.starts_with(sm) && !trimmed.starts_with("try ") && !trimmed.contains("await ") {
                 return format!("{}try {}", indent, trimmed);
