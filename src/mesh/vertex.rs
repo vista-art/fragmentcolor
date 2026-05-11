@@ -87,6 +87,24 @@ impl IntoVertexPositionFull for [u32; 3] {
 }
 
 impl Vertex {
+    /// Canonical attribute keys for the most common per-vertex channels. Pass
+    /// these to [`Vertex::set`] (or equivalently, use the bare lowercase
+    /// string) so the loader, the shader, and any later glTF import agree on
+    /// names without bikeshedding.
+    ///
+    /// Use the numbered forms (`UV0`, `UV1`, `COLOR0`, `COLOR1`) when a mesh
+    /// carries multiple sets — typical for glTF imports with secondary UV
+    /// layers or vertex colour palettes. For meshes with a single texcoord
+    /// and a single colour, plain string `"uv"` / `"color"` literals remain
+    /// valid (FC matches by string).
+    pub const POSITION: &'static str = "position";
+    pub const NORMAL: &'static str = "normal";
+    pub const TANGENT: &'static str = "tangent";
+    pub const UV0: &'static str = "uv0";
+    pub const UV1: &'static str = "uv1";
+    pub const COLOR0: &'static str = "color0";
+    pub const COLOR1: &'static str = "color1";
+
     #[lsp_doc("docs/api/geometry/vertex/new.md")]
     pub fn new<P: IntoVertexPositionFull>(position: P) -> Self {
         let (v4, dimensions) = position.into_v4_and_dimensions();
@@ -407,6 +425,27 @@ mod tests {
         let v = v.set("extra", 1u32);
         assert_eq!(*v.prop_locations.get("extra").unwrap(), u32::MAX);
         assert_eq!(v.next_location, u32::MAX);
+    }
+
+    #[test]
+    fn attribute_name_constants_match_string_lookup() {
+        // The Vertex::POSITION / NORMAL / TANGENT / UV0 / UV1 / COLOR0 /
+        // COLOR1 constants are conveniences for the common attribute keys;
+        // they must resolve to the same string the bare literal does so
+        // mixing the two styles in a codebase doesn't drift.
+        let v = Vertex::new([0.0f32, 0.0, 0.0])
+            .set(Vertex::UV0, [0.5f32, 0.5])
+            .set(Vertex::COLOR0, [1.0f32, 1.0, 1.0, 1.0])
+            .set(Vertex::NORMAL, [0.0f32, 1.0, 0.0]);
+        assert!(v.properties.contains_key("uv0"));
+        assert!(v.properties.contains_key("color0"));
+        assert!(v.properties.contains_key("normal"));
+        // Constants are plain `&'static str`, so they're directly comparable
+        // to literal strings — no PartialEq impl required.
+        assert_eq!(Vertex::POSITION, "position");
+        assert_eq!(Vertex::TANGENT, "tangent");
+        assert_eq!(Vertex::UV1, "uv1");
+        assert_eq!(Vertex::COLOR1, "color1");
     }
 
     #[test]

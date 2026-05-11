@@ -86,6 +86,24 @@ Multi-slice refactor: collapses `_with_*` method families into single canonical 
 - [x] **Python:** `Shader(input)` accepts `Union[str, list[str]]`. New static `Shader.set_registry(base_url)`.
 - [x] **Swift / Kotlin (uniffi):** `Shader.new(source)` and new `Shader.compose(parts)` constructors, plus a free `set_shader_registry(base_url)` function. Extension shims provide a single overloaded `Shader(_:)`.
 
+### Vertex attribute name constants
+
+Canonical string keys for the common per-vertex channels so the (forthcoming) glTF loader, user shaders, and `Vertex::set` call sites all agree on attribute names without bikeshedding. They're plain `&'static str` literals — `vertex.set(Vertex::UV0, [...])` and `vertex.set("uv0", [...])` are equivalent.
+
+- [x] `Vertex::POSITION = "position"` (implicit via `Vertex::new`)
+- [x] `Vertex::NORMAL = "normal"`
+- [x] `Vertex::TANGENT = "tangent"`
+- [x] `Vertex::UV0 = "uv0"`, `Vertex::UV1 = "uv1"`
+- [x] `Vertex::COLOR0 = "color0"`, `Vertex::COLOR1 = "color1"`
+- [x] Test: `mesh::vertex::tests::attribute_name_constants_match_string_lookup` round-trips the constants through `set` and asserts the string values.
+
+### Pass depth-test (documentation polish — no API change)
+
+The depth-test path was already implicit: `Pass::add_depth_target(depth_tex)` enables depth-test and depth-write for the pass; not calling it means painter's-algorithm rendering. The behaviour is consistent and adequate for 3D mesh occlusion, but the docs underplayed it.
+
+- [x] `docs/api/core/pass/add_depth_target.md` rewritten to lead with "depth-test is enabled" and surface the opt-out (just don't attach). Example reframed as a 3D-mesh-over-quad pattern matching the canonical RemixBrush-style consumer.
+- [ ] (Deferred) Explicit `Pass::set_depth_test_enabled(bool)` / `set_depth_write_enabled(bool)` setters for the depth-attached-but-test-disabled case (translucent overlays). Holding until a real consumer needs it.
+
 ### Texture group restructure (Mipmap + Texture out of `core/`)
 
 - [x] Rename `TextureMipChain` → `Mipmap` (Rust type, FFI brand strings, `__fc_kind`, all cross-platform bindings). Method renames: `prepare` → `build`, `base_size` → `size`, `level_count` → `count`. `format` and `levels` unchanged.

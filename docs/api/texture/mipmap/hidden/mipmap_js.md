@@ -1,6 +1,6 @@
 # Mipmap (JavaScript)
 
-JavaScript example for `Mipmap`. Use the `prepare(bytes, format, size?)`
+JavaScript example for `Mipmap`. Use the `build(bytes, format, size?)`
 positional-args entry, then hand the chain to `renderer.createTexture(chain)`
 for the GPU upload.
 

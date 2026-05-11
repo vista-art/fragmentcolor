@@ -1,8 +1,9 @@
-# Mipmap::levels (Swift)
+# Mipmap::level (Swift)
 
-Swift override for `Mipmap::levels`. The Swift binding exposes
-a `level(index)` accessor returning `Data`, rather than a `levels()`
-collection.
+Swift override for `Mipmap::levels`. The Swift binding exposes a
+`level(index)` accessor returning `Data` (one level at a time), rather
+than a `levels()` collection — `&[Vec<u8>]` doesn't marshal through
+uniffi, so callers index per level.
 
 ## Example
 

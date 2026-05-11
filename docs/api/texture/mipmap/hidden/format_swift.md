@@ -1,6 +1,6 @@
 # Mipmap::format (Swift)
 
-Swift override for `Mipmap::format`. See `prepare_swift.md`
+Swift override for `Mipmap::format`. See `build_swift.md`
 for the rationale (Rust tuple syntax crashes the swift-frontend
 type-checker).
 

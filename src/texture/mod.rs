@@ -235,22 +235,22 @@ impl Mipmap {
 }
 
 impl Mipmap {
-    /// The wgpu format the chain was prepared for.
+    #[lsp_doc("docs/api/texture/mipmap/format.md")]
     pub fn format(&self) -> wgpu::TextureFormat {
         self.format
     }
 
-    /// Base level dimensions (level 0).
+    #[lsp_doc("docs/api/texture/mipmap/size.md")]
     pub fn size(&self) -> (u32, u32) {
         self.base_size
     }
 
-    /// Tightly-packed bytes per mip level, level 0 first.
+    #[lsp_doc("docs/api/texture/mipmap/levels.md")]
     pub fn levels(&self) -> &[Vec<u8>] {
         &self.levels
     }
 
-    /// Number of mip levels in the chain (>= 1).
+    #[lsp_doc("docs/api/texture/mipmap/count.md")]
     pub fn count(&self) -> usize {
         self.levels.len()
     }

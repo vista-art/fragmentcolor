@@ -1,7 +1,7 @@
 import FragmentColor
 import Foundation
 
-// Raw RGBA path: include the size so prepare skips decoding.
+// Raw RGBA path: include the size so build skips decoding.
 let rawRgba = Data(repeating: 200, count: 8 * 8 * 4)
 let chainRaw = try Mipmap.build(
     bytes: rawRgba,

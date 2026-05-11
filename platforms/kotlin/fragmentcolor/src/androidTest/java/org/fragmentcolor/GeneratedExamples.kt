@@ -53,7 +53,7 @@ class GeneratedExamples {
         val renderer = Renderer()
         val target = renderer.createTextureTarget(64u, 64u)
 
-        // Create a depth texture usable as a per-pass attachment
+        // One depth attachment shared across the 3D-content pass.
         val depth = renderer.createDepthTexture(64u, 64u)
 
         val mesh = Mesh()
@@ -62,13 +62,12 @@ class GeneratedExamples {
         mesh.addVertex(Vertex(listOf(0.0f, 1.0f, 0.0f)))
         mesh.addVertex(Vertex(listOf(1.0f, 1.0f, 0.0f)))
         val shader = Shader.fromMesh(mesh)
-        val pass = Pass("scene"); pass.addShader(shader)
+        val pass = Pass("blobs"); pass.addShader(shader)
 
-        // Attach depth texture to enable depth testing.
-        // Pipeline will include a matching depth-stencil state
+        // Depth-test on — closer fragments win, the pass writes to the depth
+        // buffer so subsequent draws within the same pass see the depth.
         pass.addDepthTarget(depth)
 
-        // Render as usual
         renderer.render(pass, target)
     }
 
@@ -668,7 +667,7 @@ class GeneratedExamples {
     }
 
     @Suppress("unused") private suspend fun _example_geometry_vertex_Vertex() {
-        val v = Vertex(listOf(0.0f, 0.0f, 0.0f)).set("uv", floatArrayOf(0.5f, 0.5f))
+        val v = Vertex(listOf(0.0f, 0.0f, 0.0f)).set(Vertex.UV0, floatArrayOf(0.5f, 0.5f)).set(Vertex.NORMAL, listOf(0.0f, 1.0f, 0.0f))
     }
 
     @Suppress("unused") private suspend fun _example_geometry_vertex_create_instance() {
@@ -811,18 +810,21 @@ class GeneratedExamples {
 
     @Suppress("unused") private suspend fun _example_texture_mipmap_Mipmap() {
 
-        val renderer = Renderer()
-        // Encoded image bytes the caller has on hand (could come off a worker).
-        val png = byteArrayOf(0x89.toByte(), 0x50.toByte(), 0x4E.toByte(), 0x47.toByte(), 0x0D.toByte(), 0x0A.toByte(), 0x1A.toByte(), 0x0A.toByte())
+        // Imagine """png""" came off your asset loader on a worker thread.
+
+        // Decode + mipmap generation. Pure CPU; run it wherever you like.
         val chain = Mipmap.build(png, TextureFormat.RGBA8_UNORM_SRGB, null)
 
-        // Upload the chain through the regular create_texture entry point.
+        // Back on the renderer thread, the upload is just a GPU write.
+        val renderer = Renderer()
         val texture = renderer.createTexture(TextureInputMobile.Prepared(chain), null)
     }
 
     @Suppress("unused") private suspend fun _example_texture_mipmap_build() {
 
-        // Encoded path: pass bytes plus the format you expect.
+
+        // Encoded path: bytes plus the format you want the chain to live in.
+        // The dimensions come from the decoded image.
         val encoded_png_bytes: ByteArray = byteArrayOf()
         val chain = Mipmap.build(encoded_png_bytes, TextureFormat.RGBA8_UNORM_SRGB, null)
 
@@ -830,7 +832,7 @@ class GeneratedExamples {
         val raw_rgba: ByteArray = ByteArray(8 * 8 * 4)
         val chain_raw = Mipmap.build(raw_rgba, TextureFormat.RGBA8_UNORM_SRGB, Size(width=8u, height=8u, depth=null))
 
-        // Upload the chain through the regular create_texture entry point.
+        // Either chain uploads the same way.
         val renderer = Renderer()
         val texture = renderer.createTexture(TextureInputMobile.Prepared(chain), null)
     }

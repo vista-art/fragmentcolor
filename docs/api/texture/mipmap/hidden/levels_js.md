@@ -1,8 +1,9 @@
-# Mipmap::levels (JavaScript)
+# Mipmap::level (JavaScript)
 
-JavaScript override for `Mipmap::levels`. The JS binding
-exposes a `level(index)` accessor returning a `Uint8Array`, rather than
-a `levels()` collection.
+JavaScript override for `Mipmap::levels`. The JS binding exposes a
+`level(index)` accessor returning a `Uint8Array` (one level at a time),
+rather than a `levels()` collection — `&[Vec<u8>]` doesn't marshal
+cleanly across the wasm boundary, so callers index per level.
 
 ## Example
 

@@ -1353,12 +1353,11 @@ lang="kotlin"
 
 ### Pass::add_depth_target
 
-Select a depth attachment for this pass.
+Attach a depth texture to this pass. Once attached, the renderer builds the pipeline with a matching depth-stencil state and **depth-test is enabled** â fragments behind the current contents of the depth buffer are discarded, and the pass writes to the depth buffer as it draws. That's what you want for 3D meshes that occlude each other.
 
-The target must be a stable texture created by the same Renderer with create_depth_texture().
+The target must be a depth texture (`Depth32Float` is the canonical format) created by the same `Renderer` via [`create_depth_texture`](/api/core/renderer/create_depth_texture). The depth attachment's sample count must match the color attachments' â mixing 1Ã and 4Ã MSAA in the same pass returns `RendererError::DepthSampleCountMismatch`.
 
-When a depth target is attached, the renderer will create a render pipeline with a depth-stencil
-matching the texture format (e.g., `Depth32Float`) of the created texture.
+To **opt out** of depth testing, simply don't call `add_depth_target` â the pass renders without depth-state, painter's-algorithm style (later draws win).
 
 #### Example
 
@@ -1373,7 +1372,7 @@ use fragmentcolor::{Renderer, Pass, Shader, Mesh};
 let renderer = Renderer::new();
 let target = renderer.create_texture_target([64, 64]).await?;
 
-// Create a depth texture usable as a per-pass attachment
+// One depth attachment shared across the 3D-content pass.
 let depth = renderer.create_depth_texture([64, 64]).await?;
 
 let mut mesh = Mesh::new();
@@ -1382,19 +1381,18 @@ mesh.add_vertex([1.0, 0.0, 0.0]);
 mesh.add_vertex([0.0, 1.0, 0.0]);
 mesh.add_vertex([1.0, 1.0, 0.0]);
 let shader = Shader::from_mesh(&mesh);
-let pass = Pass::from_shader("scene", &shader);
+let pass = Pass::from_shader("blobs", &shader);
 
-// Attach depth texture to enable depth testing.
-// Pipeline will include a matching depth-stencil state
+// Depth-test on â closer fragments win, the pass writes to the depth
+// buffer so subsequent draws within the same pass see the depth.
 pass.add_depth_target(&depth)?;
 
-// Render as usual
 renderer.render(&pass, &target)?;
 Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 24-26}"
+lang="rust" meta="collapse={1-1, 23-25}"
 />
 
 </TabItem>
@@ -1407,7 +1405,7 @@ import { Renderer, Pass, Shader, Mesh } from "fragmentcolor";
 const renderer = new Renderer();
 const target = await renderer.createTextureTarget([64, 64]);
 
-// Create a depth texture usable as a per-pass attachment
+// One depth attachment shared across the 3D-content pass.
 const depth = await renderer.createDepthTexture([64, 64]);
 
 const mesh = new Mesh();
@@ -1416,13 +1414,12 @@ mesh.addVertex([1.0, 0.0, 0.0]);
 mesh.addVertex([0.0, 1.0, 0.0]);
 mesh.addVertex([1.0, 1.0, 0.0]);
 const shader = Shader.fromMesh(mesh);
-const pass = new Pass("scene"); pass.addShader(shader);
+const pass = new Pass("blobs"); pass.addShader(shader);
 
-// Attach depth texture to enable depth testing.
-// Pipeline will include a matching depth-stencil state
+// Depth-test on â closer fragments win, the pass writes to the depth
+// buffer so subsequent draws within the same pass see the depth.
 pass.addDepthTarget(depth);
 
-// Render as usual
 renderer.render(pass, target);
 `}
 lang="js"
@@ -1438,7 +1435,7 @@ from fragmentcolor import Renderer, Pass, Shader, Mesh
 renderer = Renderer()
 target = renderer.create_texture_target([64, 64])
 
-# Create a depth texture usable as a per-pass attachment
+# One depth attachment shared across the 3D-content pass.
 depth = renderer.create_depth_texture([64, 64])
 
 mesh = Mesh()
@@ -1447,13 +1444,12 @@ mesh.add_vertex([1.0, 0.0, 0.0])
 mesh.add_vertex([0.0, 1.0, 0.0])
 mesh.add_vertex([1.0, 1.0, 0.0])
 shader = Shader.from_mesh(mesh)
-rpass = Pass("scene"); rpass.add_shader(shader)
+rpass = Pass("blobs"); rpass.add_shader(shader)
 
-# Attach depth texture to enable depth testing.
-# Pipeline will include a matching depth-stencil state
+# Depth-test on â closer fragments win, the rpass writes to the depth
+# buffer so subsequent draws within the same rpass see the depth.
 rpass.add_depth_target(depth)
 
-# Render as usual
 renderer.render(rpass, target)
 `}
 lang="python"
@@ -1469,7 +1465,7 @@ import FragmentColor
 let renderer = Renderer()
 let target = try await renderer.createTextureTarget([64, 64])
 
-// Create a depth texture usable as a per-pass attachment
+// One depth attachment shared across the 3D-content pass.
 let depth = try await renderer.createDepthTexture([64, 64])
 
 let mesh = Mesh()
@@ -1478,13 +1474,12 @@ try mesh.addVertex([1.0, 0.0, 0.0])
 try mesh.addVertex([0.0, 1.0, 0.0])
 try mesh.addVertex([1.0, 1.0, 0.0])
 let shader = Shader.fromMesh(mesh)
-let pass = Pass("scene"); pass.addShader(shader)
+let pass = Pass("blobs"); pass.addShader(shader)
 
-// Attach depth texture to enable depth testing.
-// Pipeline will include a matching depth-stencil state
+// Depth-test on â closer fragments win, the pass writes to the depth
+// buffer so subsequent draws within the same pass see the depth.
 try pass.addDepthTarget(depth)
 
-// Render as usual
 try renderer.render(pass, target)
 `}
 lang="swift"
@@ -1500,7 +1495,7 @@ import org.fragmentcolor.*
 val renderer = Renderer()
 val target = renderer.createTextureTarget(64u, 64u)
 
-// Create a depth texture usable as a per-pass attachment
+// One depth attachment shared across the 3D-content pass.
 val depth = renderer.createDepthTexture(64u, 64u)
 
 val mesh = Mesh()
@@ -1509,13 +1504,12 @@ mesh.addVertex(Vertex(listOf(1.0f, 0.0f, 0.0f)))
 mesh.addVertex(Vertex(listOf(0.0f, 1.0f, 0.0f)))
 mesh.addVertex(Vertex(listOf(1.0f, 1.0f, 0.0f)))
 val shader = Shader.fromMesh(mesh)
-val pass = Pass("scene"); pass.addShader(shader)
+val pass = Pass("blobs"); pass.addShader(shader)
 
-// Attach depth texture to enable depth testing.
-// Pipeline will include a matching depth-stencil state
+// Depth-test on â closer fragments win, the pass writes to the depth
+// buffer so subsequent draws within the same pass see the depth.
 pass.addDepthTarget(depth)
 
-// Render as usual
 renderer.render(pass, target)
 `}
 lang="kotlin"

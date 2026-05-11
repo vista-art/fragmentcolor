@@ -1,7 +1,7 @@
 # Mipmap::count (Swift)
 
 Swift override for `Mipmap::count`. See
-`prepare_swift.md` for the rationale.
+`build_swift.md` for the rationale.
 
 ## Example
 

@@ -1,6 +1,8 @@
 import org.fragmentcolor.*
 
-// Encoded path: pass bytes plus the format you expect.
+
+// Encoded path: bytes plus the format you want the chain to live in.
+// The dimensions come from the decoded image.
 val encoded_png_bytes: ByteArray = byteArrayOf()
 val chain = Mipmap.build(encoded_png_bytes, TextureFormat.RGBA8_UNORM_SRGB, null)
 
@@ -8,6 +10,6 @@ val chain = Mipmap.build(encoded_png_bytes, TextureFormat.RGBA8_UNORM_SRGB, null
 val raw_rgba: ByteArray = ByteArray(8 * 8 * 4)
 val chain_raw = Mipmap.build(raw_rgba, TextureFormat.RGBA8_UNORM_SRGB, Size(width=8u, height=8u, depth=null))
 
-// Upload the chain through the regular create_texture entry point.
+// Either chain uploads the same way.
 val renderer = Renderer()
 val texture = renderer.createTexture(TextureInputMobile.Prepared(chain), null)

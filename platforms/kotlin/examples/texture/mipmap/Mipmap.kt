@@ -1,9 +1,10 @@
 import org.fragmentcolor.*
 
-val renderer = Renderer()
-// Encoded image bytes the caller has on hand (could come off a worker).
-val png = byteArrayOf(0x89.toByte(), 0x50.toByte(), 0x4E.toByte(), 0x47.toByte(), 0x0D.toByte(), 0x0A.toByte(), 0x1A.toByte(), 0x0A.toByte())
+// Imagine """png""" came off your asset loader on a worker thread.
+
+// Decode + mipmap generation. Pure CPU; run it wherever you like.
 val chain = Mipmap.build(png, TextureFormat.RGBA8_UNORM_SRGB, null)
 
-// Upload the chain through the regular create_texture entry point.
+// Back on the renderer thread, the upload is just a GPU write.
+val renderer = Renderer()
 val texture = renderer.createTexture(TextureInputMobile.Prepared(chain), null)

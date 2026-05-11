@@ -1,7 +1,7 @@
 # Mipmap (Swift)
 
 Swift override for the `Mipmap` entry-point example. See
-`prepare_swift.md` for the rationale (Rust tuple syntax crashes the
+`build_swift.md` for the rationale (Rust tuple syntax crashes the
 swift-frontend type-checker; the Swift binding takes positional args).
 
 ## Example

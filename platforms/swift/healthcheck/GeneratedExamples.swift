@@ -43,7 +43,7 @@ private enum _GeneratedExamples {
         let renderer = Renderer()
         let target = try await renderer.createTextureTarget([64, 64])
 
-        // Create a depth texture usable as a per-pass attachment
+        // One depth attachment shared across the 3D-content pass.
         let depth = try await renderer.createDepthTexture([64, 64])
 
         let mesh = Mesh()
@@ -52,13 +52,12 @@ private enum _GeneratedExamples {
         try mesh.addVertex([0.0, 1.0, 0.0])
         try mesh.addVertex([1.0, 1.0, 0.0])
         let shader = Shader.fromMesh(mesh)
-        let pass = Pass("scene"); pass.addShader(shader)
+        let pass = Pass("blobs"); pass.addShader(shader)
 
-        // Attach depth texture to enable depth testing.
-        // Pipeline will include a matching depth-stencil state
+        // Depth-test on — closer fragments win, the pass writes to the depth
+        // buffer so subsequent draws within the same pass see the depth.
         try pass.addDepthTarget(depth)
 
-        // Render as usual
         try renderer.render(pass, target)
     }
 
@@ -681,7 +680,7 @@ private enum _GeneratedExamples {
     }
 
     static func _example_geometry_vertex_Vertex() async throws {
-        let v = try Vertex([0.0, 0.0, 0.0]).set("uv", [0.5, 0.5])
+        let v = try Vertex([0.0, 0.0, 0.0]).set(Vertex.uV0, [0.5, 0.5]).set(Vertex.nORMAL, [0.0, 1.0, 0.0])
     }
 
     static func _example_geometry_vertex_create_instance() async throws {
@@ -841,7 +840,7 @@ private enum _GeneratedExamples {
 
     static func _example_texture_mipmap_build() async throws {
 
-        // Raw RGBA path: include the size so prepare skips decoding.
+        // Raw RGBA path: include the size so build skips decoding.
         let rawRgba = Data(repeating: 200, count: 8 * 8 * 4)
         let chainRaw = try Mipmap.build(
             bytes: rawRgba,

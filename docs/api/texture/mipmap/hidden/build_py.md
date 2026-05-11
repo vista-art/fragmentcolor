@@ -1,13 +1,13 @@
 # Mipmap::build (Python)
 
-Build a mip chain with positional args: prepare(bytes, format, size=None).
+Build a mip chain with positional args: build(bytes, format, size=None).
 
 ## Example
 
 ```python
 from fragmentcolor import Renderer, TextureFormat, Mipmap
 
-# Raw pixel path -- positional args: prepare(bytes, format, size).
+# Raw pixel path -- positional args: build(bytes, format, size).
 raw_rgba = [200] * (8 * 8 * 4)
 chain = Mipmap.build(raw_rgba, TextureFormat.Rgba8UnormSrgb, [8, 8])
 
