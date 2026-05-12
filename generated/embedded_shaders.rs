@@ -300,6 +300,10 @@ pub(crate) fn lookup(slug: &str) -> Option<&'static str> {
         #[cfg(feature = "shaders-map")]
         "map/wave" => Some(include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/website/public/shaders/map/wave.wgsl"))),
 
+        // -- material --
+        #[cfg(feature = "shaders-material")]
+        "material/pbr" => Some(include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/website/public/shaders/material/pbr.wgsl"))),
+
         // -- math --
         #[cfg(feature = "shaders-math")]
         "math/checker" => Some(include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/website/public/shaders/math/checker.wgsl"))),
@@ -325,6 +329,10 @@ pub(crate) fn lookup(slug: &str) -> Option<&'static str> {
         "math/smootherstep" => Some(include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/website/public/shaders/math/smootherstep.wgsl"))),
         #[cfg(feature = "shaders-math")]
         "math/step_aa" => Some(include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/website/public/shaders/math/step_aa.wgsl"))),
+
+        // -- mesh --
+        #[cfg(feature = "shaders-mesh")]
+        "mesh/transform" => Some(include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/website/public/shaders/mesh/transform.wgsl"))),
 
         // -- noise --
         #[cfg(feature = "shaders-noise")]

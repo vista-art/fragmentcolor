@@ -90,6 +90,17 @@ impl Pass {
             .map_err(|e: PassError| FragmentColorError::Render(e.to_string()))
     }
 
+    /// Add a Model (Mesh + Material + transform) to this pass in one call.
+    #[uniffi::method(name = "addModel")]
+    #[lsp_doc("docs/api/core/pass/add_model.md")]
+    pub fn add_model_mobile(
+        &self,
+        model: Arc<crate::Model>,
+    ) -> Result<(), FragmentColorError> {
+        self.add_model(&model)
+            .map_err(|e: PassError| FragmentColorError::Render(e.to_string()))
+    }
+
     /// Set the render target (color attachment) for this pass.
     ///
     /// The `target` must be a `TargetHandle::Texture` variant; window targets

@@ -94,6 +94,25 @@ class GeneratedExamples {
         pass.addMesh(mesh)
     }
 
+    @Suppress("unused") private suspend fun _example_core_pass_add_model() {
+
+        val mesh = Mesh()
+        mesh.addVertex( Vertex.new(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 0.0f, 1.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), )
+        mesh.addVertex( Vertex.new(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 0.0f, 1.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
+        mesh.addVertex( Vertex.new(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 0.0f, 1.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f)), )
+
+        val template = Material.pbr().baseColor(listOf(0.85f, 0.4f, 0.2f, 1.0f))
+        val pass = Pass("scene")
+
+        val m1 = Model(mesh.clone(), template.clone())
+        m1.translate(listOf(-1.0f, 0.0f, 0.0f))
+        pass.addModel(m1)
+
+        val m2 = Model(mesh, template)
+        m2.translate(listOf(1.0f, 0.0f, 0.0f))
+        pass.addModel(m2)
+    }
+
     @Suppress("unused") private suspend fun _example_core_pass_add_shader() {
 
         val shader = Shader.default()
@@ -394,6 +413,26 @@ class GeneratedExamples {
         shader.clearMeshes()
     }
 
+    @Suppress("unused") private suspend fun _example_core_shader_duplicate() {
+
+        val template = Shader("""
+            struct Tint { color: vec4<f32> }
+            @group(0) @binding(0) var<uniform> tint: Tint
+            @vertex fn vs(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+                let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.))
+                return vec4<f32>(p[i], 0.0, 1.0)
+            }
+            @fragment fn fs() -> @location(0) vec4<f32> { return tint.color; }
+
+        """)
+        template.set("tint.color", floatArrayOf(1.0f, 0.0f, 0.0f, 1.0f))
+
+        // Independent copy — sets on """red""" do not bleed into """template""" or """blue""".
+        val red = template.duplicate()
+        val blue = template.duplicate()
+        blue.set("tint.color", floatArrayOf(0.0f, 0.4f, 1.0f, 1.0f))
+    }
+
     @Suppress("unused") private suspend fun _example_core_shader_fetch() {
 
 
@@ -681,6 +720,190 @@ class GeneratedExamples {
 
     @Suppress("unused") private suspend fun _example_geometry_vertex_set() {
         val v = Vertex(listOf(0.0f, 0.0f, 0.0f)).set("weight", 1.0).set("color", listOf(1.0f, 0.0f, 0.0f))
+    }
+
+    @Suppress("unused") private suspend fun _example_scene_material_Material() {
+
+        val mesh = Mesh()
+        mesh.addVertex( Vertex.new(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 0.0f, 1.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), )
+
+        val material = Material.pbr().baseColor(listOf(0.85f, 0.2f, 0.2f, 1.0f)).metallic(0.0).roughness(0.4).emissive(listOf(0.0f, 0.0f, 0.05f))
+
+        val model = Model(mesh, material)
+    }
+
+    @Suppress("unused") private suspend fun _example_scene_material_alpha_cutoff() {
+
+        val foliage = Material.pbr().alphaCutoff(0.3)
+    }
+
+    @Suppress("unused") private suspend fun _example_scene_material_base_color() {
+
+        val red = Material.pbr().baseColor(listOf(1.0f, 0.2f, 0.2f, 1.0f))
+    }
+
+    @Suppress("unused") private suspend fun _example_scene_material_base_color_texture() {
+
+        val renderer = Renderer()
+        val texture = renderer.createTexture(arrayOf(255, 200, 120, 255, 255,  240, 180, 255, 230,  180, 100, 255, 255,  220, 150, 255, await))
+        val mat = Material.pbr().baseColorTexture(texture)
+    }
+
+    @Suppress("unused") private suspend fun _example_scene_material_custom() {
+
+        val wireframe = Shader("""
+            struct MeshTransform { model: mat4x4<f32> }
+            struct Camera { view_proj: mat4x4<f32>, position: vec3<f32> }
+            @group(0) @binding(0) var<uniform> camera: Camera
+            @group(1) @binding(0) var<uniform> mesh: MeshTransform
+
+            @vertex
+            fn vs_main(@location(0) p: vec3<f32>) -> @builtin(position) vec4<f32> {
+                return camera.view_proj * mesh.model * vec4<f32>(p, 1.0)
+            }
+            @fragment fn fs_main() -> @location(0) vec4<f32> {
+                return vec4<f32>(0.0, 1.0, 0.4, 1.0)
+            }
+
+        """)
+
+        val wire_mat = Material.custom(wireframe)
+    }
+
+    @Suppress("unused") private suspend fun _example_scene_material_emissive() {
+
+        val lava = Material.pbr().baseColor(listOf(0.1f, 0.05f, 0.0f, 1.0f)).emissive(listOf(1.5f, 0.4f, 0.1f))
+    }
+
+    @Suppress("unused") private suspend fun _example_scene_material_emissive_texture() {
+
+        val renderer = Renderer()
+        val glow = renderer.createTexture(arrayOf(255, 0, 0, 255, 255,   0, 0, 255, 255,   0, 0, 255, 255,   0, 0, 255, await))
+        val mat = Material.pbr().emissive(listOf(0.8f, 0.0f, 0.0f)).emissiveTexture(glow)
+    }
+
+    @Suppress("unused") private suspend fun _example_scene_material_metallic() {
+
+        val chrome = Material.pbr().metallic(1.0).roughness(0.05)
+    }
+
+    @Suppress("unused") private suspend fun _example_scene_material_metallic_roughness_texture() {
+
+        val renderer = Renderer()
+        val mr_map = renderer.createTexture(arrayOf(0, 200, 50, 255, 0,   240, 80, 255, 0,   180, 30, 255, 0,   220, 60, 255, await))
+        val mat = Material.pbr().metallicRoughnessTexture(mr_map)
+    }
+
+    @Suppress("unused") private suspend fun _example_scene_material_normal_scale() {
+
+        val detailed = Material.pbr().normalScale(1.5)
+    }
+
+    @Suppress("unused") private suspend fun _example_scene_material_normal_texture() {
+
+        val renderer = Renderer()
+        val normal_map = renderer.createTexture(arrayOf(128, 128, 255, 255, 128,   128, 255, 255, 128,   128, 255, 255, 128,   128, 255, 255, await))
+        val mat = Material.pbr().normalTexture(normal_map).normalScale(1.2)
+    }
+
+    @Suppress("unused") private suspend fun _example_scene_material_occlusion_strength() {
+
+        val crevices = Material.pbr().occlusionStrength(0.8)
+    }
+
+    @Suppress("unused") private suspend fun _example_scene_material_occlusion_texture() {
+
+        val renderer = Renderer()
+        val ao = renderer.createTexture(arrayOf(220, 0, 0, 255, 180,   0, 0, 255, 200,   0, 0, 255, 160,   0, 0, 255, await))
+        val mat = Material.pbr().occlusionTexture(ao)
+    }
+
+    @Suppress("unused") private suspend fun _example_scene_material_pbr() {
+
+        val bronze = Material.pbr().baseColor(listOf(0.8f, 0.5f, 0.2f, 1.0f)).metallic(1.0).roughness(0.3)
+    }
+
+    @Suppress("unused") private suspend fun _example_scene_material_roughness() {
+
+        val satin = Material.pbr().roughness(0.35)
+    }
+
+    @Suppress("unused") private suspend fun _example_scene_material_shader() {
+
+        val material = Material.pbr()
+        material.shader().set("camera.viewProj", listOf(arrayOf(1.0f, 0.0f, 0.0f, 0.0)f, arrayOf(0.0f, 1.0f, 0.0f, 0.0)f, arrayOf(0.0f, 0.0f, 1.0f, 0.0)f, arrayOf(0.0f, 0.0f, 0.0f, 1.0)f, .0f))
+        material.shader().set("camera.position", floatArrayOf(0.0f, 0.0f, 5.0f))
+    }
+
+    @Suppress("unused") private suspend fun _example_scene_model_material() {
+
+        val mesh = Mesh()
+        mesh.addVertex( Vertex.new(listOf(0.0f, 0.0f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 1.0f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
+
+        val model = Model(mesh, Material.pbr())
+        model.material().shader().set("camera.position", floatArrayOf(0.0f, 0.0f, 5.0f))
+    }
+
+    @Suppress("unused") private suspend fun _example_scene_model_mesh() {
+
+        val mesh = Mesh()
+        mesh.addVertex( Vertex.new(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 0.0f, 1.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), )
+
+        val model = Model(mesh, Material.pbr())
+        model.mesh().addVertex( Vertex.new(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 0.0f, 1.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
+    }
+
+    @Suppress("unused") private suspend fun _example_scene_model_new() {
+
+        val mesh = Mesh()
+        mesh.addVertex( Vertex.new(listOf(0.0f, 0.0f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 1.0f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
+
+        val model = Model(mesh, Material.pbr())
+    }
+
+    @Suppress("unused") private suspend fun _example_scene_model_rotate() {
+
+        val mesh = Mesh()
+        mesh.addVertex( Vertex.new(listOf(0.0f, 0.0f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 1.0f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
+
+        val model = Model(mesh, Material.pbr())
+        model.rotate(listOf(0.0f, 1.0f, 0.0f), std.f32.consts.FRACPI2)
+    }
+
+    @Suppress("unused") private suspend fun _example_scene_model_scale() {
+
+        val mesh = Mesh()
+        mesh.addVertex( Vertex.new(listOf(0.0f, 0.0f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 1.0f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
+
+        val model = Model(mesh, Material.pbr())
+        model.scale(listOf(2.0f, 2.0f, 2.0f))
+    }
+
+    @Suppress("unused") private suspend fun _example_scene_model_set_transform() {
+
+        val mesh = Mesh()
+        mesh.addVertex( Vertex.new(listOf(0.0f, 0.0f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 1.0f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
+
+        val model = Model(mesh, Material.pbr())
+        model.setTransform(arrayOf(listOf(2.0f, 0.0f, 0.0f, 0.0f), listOf(0.0f, 2.0f, 0.0f, 0.0f), listOf(0.0f, 0.0f, 2.0f, 0.0f), listOf(3.0f, 0.0f, 0.0f, 1.0f),))
+    }
+
+    @Suppress("unused") private suspend fun _example_scene_model_transform() {
+
+        val mesh = Mesh()
+        mesh.addVertex( Vertex.new(listOf(0.0f, 0.0f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 1.0f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
+
+        val model = Model(mesh, Material.pbr())
+        val identity = model.transform()
+    }
+
+    @Suppress("unused") private suspend fun _example_scene_model_translate() {
+
+        val mesh = Mesh()
+        mesh.addVertex( Vertex.new(listOf(0.0f, 0.0f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 1.0f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
+
+        val model = Model(mesh, Material.pbr())
+        model.translate(listOf(5.0f, 0.0f, -2.0f))
     }
 
     @Suppress("unused") private suspend fun _example_targets_target_Target() {

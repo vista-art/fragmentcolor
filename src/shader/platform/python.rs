@@ -164,6 +164,12 @@ impl Shader {
     pub fn from_mesh_py(mesh: &crate::mesh::Mesh) -> Self {
         Shader::from_mesh(mesh)
     }
+
+    #[pyo3(name = "duplicate")]
+    #[lsp_doc("docs/api/core/shader/duplicate.md")]
+    pub fn duplicate_py(&self) -> Result<Self, PyErr> {
+        self.duplicate().map_err(|e| e.into())
+    }
 }
 
 /// Convert a Python value to `UniformData`, guided by the expected variant when

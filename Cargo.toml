@@ -78,7 +78,9 @@ shaders-hash     = []
 shaders-intersect = []
 shaders-lighting = []
 shaders-map      = []
+shaders-material = []
 shaders-math     = []
+shaders-mesh     = []
 shaders-noise    = []
 shaders-pattern  = []
 shaders-postfx   = []
@@ -100,6 +102,8 @@ shaders-3d = [
     "shaders-camera",
     "shaders-color",
     "shaders-lighting",
+    "shaders-material",
+    "shaders-mesh",
     "shaders-noise",
     "shaders-raymarch",
     "shaders-sample",
@@ -117,7 +121,9 @@ shaders-all = [
     "shaders-intersect",
     "shaders-lighting",
     "shaders-map",
+    "shaders-material",
     "shaders-math",
+    "shaders-mesh",
     "shaders-noise",
     "shaders-pattern",
     "shaders-postfx",

@@ -65,6 +65,12 @@ impl Pass {
         self.add_mesh(mesh).map_err(|e| e.into())
     }
 
+    #[pyo3(name = "add_model")]
+    #[lsp_doc("docs/api/core/pass/add_model.md")]
+    pub fn add_model_py(&self, model: &crate::Model) -> Result<(), PyErr> {
+        self.add_model(model).map_err(|e| e.into())
+    }
+
     #[pyo3(name = "set_clear_color")]
     #[lsp_doc("docs/api/core/pass/set_clear_color.md")]
     pub fn set_clear_color_py(&self, color: [f32; 4]) {

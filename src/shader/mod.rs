@@ -122,6 +122,20 @@ impl Shader {
         Self::from(Arc::new(shader_object))
     }
 
+    /// Build a fresh `Shader` that compiles the same WGSL source as `self`
+    /// but starts with its own uniform-storage and mesh-attachment state. The
+    /// underlying GPU pipeline is shared (wgpu deduplicates by module hash),
+    /// so the cost is one uniform buffer's worth of allocation per duplicate.
+    ///
+    /// `Model::new` uses this to give each model an independent `mesh.model`
+    /// uniform slot when many models share a single `Material`. Public so
+    /// advanced callers can do the same thing manually for non-PBR shading.
+    #[lsp_doc("docs/api/core/shader/duplicate.md")]
+    pub fn duplicate(&self) -> Result<Self, ShaderError> {
+        let object = ShaderObject::wgsl(self.object.source.as_ref())?;
+        Ok(Self::from(Arc::new(object)))
+    }
+
     #[lsp_doc("docs/api/core/shader/add_mesh.md")]
     pub fn add_mesh(&self, mesh: &crate::mesh::Mesh) -> Result<(), ShaderError> {
         self.object.add_mesh(mesh.object.clone())
@@ -175,6 +189,12 @@ pub(crate) struct ShaderObject {
     pub(crate) total_bytes: u64,
     pub(crate) pending: DashMap<String, UniformData>,
     pub(crate) meshes: RwLock<Vec<Arc<crate::mesh::MeshObject>>>,
+    // WGSL source we compiled from (GLSL paths cross-compile to WGSL and end up
+    // here too). Kept so a Shader can spawn an independent uniform-state copy
+    // of itself — see `Shader::duplicate`, used by `Model::new` to give each
+    // model its own per-instance `mesh.model` slot without colliding with
+    // siblings that share a Material.
+    pub(crate) source: Arc<str>,
 }
 
 impl Default for ShaderObject {
@@ -328,6 +348,7 @@ impl ShaderObject {
             total_bytes,
             pending: DashMap::new(),
             meshes: RwLock::new(Vec::new()),
+            source: Arc::<str>::from(source),
         })
     }
 

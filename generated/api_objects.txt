@@ -1,7 +1,9 @@
 Color
 Instance
+Material
 Mesh
 Mipmap
+Model
 Pass
 PassInput
 Quad

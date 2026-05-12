@@ -901,6 +901,193 @@ lang="kotlin"
 
 ---
 
+### Pass::add_model
+
+Add a [Model](/api/scene/model) to this render pass.
+This is the high-level shortcut that handles the three operations a manual
+attachment would need:
+
+1. Push the Model's Material shader onto the pass.
+2. Attach the Model's Mesh to that shader.
+3. The Model already keeps its `mesh.model` uniform synchronised with its
+   transform, so the freshly-queued draw uses the current position.
+
+Each Model carries its own Shader (cloned from the Material at construction
+time) so per-Model transforms don't collide when many Models share the same
+template Material. For RemixBrush-style "279 blobs with one PBR look,
+different positions" you create one Material, clone it into each Model, set
+the Model's transform, and `add_model` each one. That's 279 draw calls
+today; the API doesn't change when batched instancing lands.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Material, Mesh, Model, Pass, Vertex};
+
+let mesh = Mesh::new();
+mesh.add_vertex(
+    Vertex::new([0.0, 0.5, 0.0])
+        .set(Vertex::NORMAL, [0.0, 0.0, 1.0])
+        .set(Vertex::UV0, [0.5, 1.0]),
+);
+mesh.add_vertex(
+    Vertex::new([-0.5, -0.5, 0.0])
+        .set(Vertex::NORMAL, [0.0, 0.0, 1.0])
+        .set(Vertex::UV0, [0.0, 0.0]),
+);
+mesh.add_vertex(
+    Vertex::new([0.5, -0.5, 0.0])
+        .set(Vertex::NORMAL, [0.0, 0.0, 1.0])
+        .set(Vertex::UV0, [1.0, 0.0]),
+);
+
+let template = Material::pbr().base_color([0.85, 0.4, 0.2, 1.0]);
+let pass = Pass::new("scene");
+
+let m1 = Model::new(mesh.clone(), template.clone());
+m1.translate([-1.0, 0.0, 0.0]);
+pass.add_model(&m1)?;
+
+let m2 = Model::new(mesh, template);
+m2.translate([1.0, 0.0, 0.0]);
+pass.add_model(&m2)?;
+
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 32-33}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Material, Mesh, Model, Pass, Vertex } from "fragmentcolor";
+
+const mesh = new Mesh();
+mesh.addVertex( Vertex.new([0.0, 0.5, 0.0]) .set(Vertex.NORMAL, [0.0, 0.0, 1.0]) .set(Vertex.UV0, [0.5, 1.0]), );
+mesh.addVertex( Vertex.new([-0.5, -0.5, 0.0]) .set(Vertex.NORMAL, [0.0, 0.0, 1.0]) .set(Vertex.UV0, [0.0, 0.0]), );
+mesh.addVertex( Vertex.new([0.5, -0.5, 0.0]) .set(Vertex.NORMAL, [0.0, 0.0, 1.0]) .set(Vertex.UV0, [1.0, 0.0]), );
+
+const template = Material.pbr().baseColor([0.85, 0.4, 0.2, 1.0]);
+const pass = new Pass("scene");
+
+const m1 = new Model(mesh.clone(), template.clone());
+m1.translate([-1.0, 0.0, 0.0]);
+pass.addModel(m1);
+
+const m2 = new Model(mesh, template);
+m2.translate([1.0, 0.0, 0.0]);
+pass.addModel(m2);
+
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Material, Mesh, Model, Pass, Vertex
+
+mesh = Mesh()
+mesh.add_vertex(
+    Vertex([0.0, 0.5, 0.0]).set(Vertex.NORMAL, [0.0, 0.0, 1.0]).set(Vertex.UV0, [0.5, 1.0]),
+)
+mesh.add_vertex(
+    Vertex([-0.5, -0.5, 0.0]).set(Vertex.NORMAL, [0.0, 0.0, 1.0]).set(Vertex.UV0, [0.0, 0.0]),
+)
+mesh.add_vertex(
+    Vertex([0.5, -0.5, 0.0]).set(Vertex.NORMAL, [0.0, 0.0, 1.0]).set(Vertex.UV0, [1.0, 0.0]),
+)
+
+template = Material.pbr().base_color([0.85, 0.4, 0.2, 1.0])
+rpass = Pass("scene")
+
+m1 = Model(mesh.clone(), template.clone())
+m1.translate([-1.0, 0.0, 0.0])
+rpass.add_model(m1)
+
+m2 = Model(mesh, template)
+m2.translate([1.0, 0.0, 0.0])
+rpass.add_model(m2)
+
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let mesh = Mesh()
+try mesh.addVertex(
+    try Vertex([0.0, 0.5, 0.0]).set(Vertex.nORMAL, [0.0, 0.0, 1.0]).set(Vertex.uV0, [0.5, 1.0]),
+)
+try mesh.addVertex(
+    try Vertex([-0.5, -0.5, 0.0]).set(Vertex.nORMAL, [0.0, 0.0, 1.0]).set(Vertex.uV0, [0.0, 0.0]),
+)
+try mesh.addVertex(
+    try Vertex([0.5, -0.5, 0.0]).set(Vertex.nORMAL, [0.0, 0.0, 1.0]).set(Vertex.uV0, [1.0, 0.0]),
+)
+
+let template = Material.pbr().baseColor([0.85, 0.4, 0.2, 1.0])
+let pass = Pass("scene")
+
+let m1 = Model(mesh.clone(), template.clone())
+m1.translate([-1.0, 0.0, 0.0])
+pass.addModel(m1)
+
+let m2 = Model(mesh, template)
+m2.translate([1.0, 0.0, 0.0])
+pass.addModel(m2)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val mesh = Mesh()
+mesh.addVertex( Vertex.new(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 0.0f, 1.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), )
+mesh.addVertex( Vertex.new(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 0.0f, 1.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
+mesh.addVertex( Vertex.new(listOf(0.5f, -0.5f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 0.0f, 1.0f)).set(Vertex.UV0, listOf(1.0f, 0.0f)), )
+
+val template = Material.pbr().baseColor(listOf(0.85f, 0.4f, 0.2f, 1.0f))
+val pass = Pass("scene")
+
+val m1 = Model(mesh.clone(), template.clone())
+m1.translate(listOf(-1.0f, 0.0f, 0.0f))
+pass.addModel(m1)
+
+val m2 = Model(mesh, template)
+m2.translate(listOf(1.0f, 0.0f, 0.0f))
+pass.addModel(m2)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
 ### Pass::set_viewport(viewport)
 
 Sets the viewport region for this [Pass](/api/core/pass).

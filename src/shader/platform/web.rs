@@ -67,6 +67,12 @@ impl Shader {
         Self::from_mesh(m)
     }
 
+    #[wasm_bindgen(js_name = "duplicate")]
+    #[lsp_doc("docs/api/core/shader/duplicate.md")]
+    pub fn duplicate_js(&self) -> Result<Shader, ShaderError> {
+        self.duplicate()
+    }
+
     #[wasm_bindgen(js_name = "set")]
     #[lsp_doc("docs/api/core/shader/set.md")]
     pub fn set_js(&self, key: &str, value: &JsValue) -> Result<(), ShaderError> {

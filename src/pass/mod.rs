@@ -117,6 +117,17 @@ impl Pass {
         self.object.add_mesh(mesh)
     }
 
+    #[lsp_doc("docs/api/core/pass/add_model.md")]
+    pub fn add_model(&self, model: &crate::Model) -> Result<(), PassError> {
+        // Each Model owns its own Shader so its `mesh.model` uniform doesn't
+        // collide with siblings that share the source Material. Push that
+        // shader onto the pass first, then attach the Model's mesh — `add_mesh`
+        // walks shaders in reverse-added order and picks the last compatible
+        // one, which is the shader we just added.
+        self.add_shader(&model.material.shader);
+        self.add_mesh(&model.mesh)
+    }
+
     #[lsp_doc("docs/api/core/pass/set_viewport.md")]
     pub fn set_viewport(&self, viewport: impl Into<ScreenRegion>) {
         self.object.set_viewport(viewport);

@@ -1,0 +1,954 @@
+---
+title: Model
+description: "A `Model` pairs a [Mesh](/api/geometry/mesh) with a [Material](/api/scene/material) and adds a per-Model 4Ã4 transform. It's the unit you actually add to a `Pass` when rendering 3D content; the Material handles shading, the Mesh handles geometry, the Model handles \"where in the world\"."
+category: scene
+categoryLabel: Scene
+sidebar:
+  order: 0
+---
+
+import { Code, Tabs, TabItem, Aside } from "@astrojs/starlight/components";
+
+## Description
+
+A `Model` pairs a [Mesh](/api/geometry/mesh) with a
+[Material](/api/scene/material) and adds a per-Model
+4Ã4 transform. It's the unit you actually add to a `Pass` when rendering 3D
+content; the Material handles shading, the Mesh handles geometry, the Model
+handles "where in the world".
+
+Each `Model::new` takes ownership of the Material it's given and stores it
+as-is. The Material's `shader` carries the Model's `mesh.model` uniform â
+modifying the Model's transform writes to that uniform on its own shader.
+If you want N Models with the same look and different transforms, clone the
+template Material into each: `Material::clone` is a deep clone that spawns
+an independent shader copy, so per-Model transforms don't collide.
+
+For RemixBrush-style fan-out (one Material template, many positioned
+instances), the pattern is:
+
+```text
+template = Material::pbr().base_color(...)
+for each blob:
+  model = Model::new(blob.mesh, template.clone())
+  model.set_transform(blob.matrix)
+  pass.add_model(&model)
+```
+
+That's N draw calls today (one per Model). Phase 2 batches Models sharing
+the same Material into one instanced draw â the API doesn't change.
+
+
+## Methods
+
+
+---
+
+### Model::material
+
+Borrow the Material the Model owns. The Material wraps a Shader; reach
+through `model.material().shader()` if you need direct uniform manipulation
+(camera state, custom uniforms not exposed by Material's setters).
+
+Note: this returns the Model's *own* Material (independent of whatever
+template was passed to `Model::new`), so tweaking it affects this Model
+alone.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Material, Mesh, Model, Vertex};
+
+let mesh = Mesh::new();
+mesh.add_vertex(
+    Vertex::new([0.0, 0.0, 0.0])
+        .set(Vertex::NORMAL, [0.0, 1.0, 0.0])
+        .set(Vertex::UV0, [0.0, 0.0]),
+);
+
+let model = Model::new(mesh, Material::pbr());
+model.material().shader().set("camera.position", [0.0_f32, 0.0, 5.0])?;
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 13-14}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Material, Mesh, Model, Vertex } from "fragmentcolor";
+
+const mesh = new Mesh();
+mesh.addVertex( Vertex.new([0.0, 0.0, 0.0]) .set(Vertex.NORMAL, [0.0, 1.0, 0.0]) .set(Vertex.UV0, [0.0, 0.0]), );
+
+const model = new Model(mesh, Material.pbr());
+model.material().shader().set("camera.position", [0.0, 0.0, 5.0]);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Material, Mesh, Model, Vertex
+
+mesh = Mesh()
+mesh.add_vertex(
+    Vertex([0.0, 0.0, 0.0]).set(Vertex.NORMAL, [0.0, 1.0, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+)
+
+model = Model(mesh, Material.pbr())
+model.material().shader().set("camera.position", [0.0_, 0.0, 5.0])
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let mesh = Mesh()
+try mesh.addVertex(
+    try Vertex([0.0, 0.0, 0.0]).set(Vertex.nORMAL, [0.0, 1.0, 0.0]).set(Vertex.uV0, [0.0, 0.0]),
+)
+
+let model = Model(mesh, Material.pbr())
+try model.material().shader().set("camera.position", [0.0, 0.0, 5.0])
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val mesh = Mesh()
+mesh.addVertex( Vertex.new(listOf(0.0f, 0.0f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 1.0f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
+
+val model = Model(mesh, Material.pbr())
+model.material().shader().set("camera.position", floatArrayOf(0.0f, 0.0f, 5.0f))
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Model::mesh
+
+Borrow the Mesh the Model owns. Useful for adding more vertices or instances
+to the geometry after construction without losing access through the Model
+handle.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Material, Mesh, Model, Vertex};
+
+let mut mesh = Mesh::new();
+mesh.add_vertex(
+    Vertex::new([0.0, 0.5, 0.0])
+        .set(Vertex::NORMAL, [0.0, 0.0, 1.0])
+        .set(Vertex::UV0, [0.5, 1.0]),
+);
+
+let model = Model::new(mesh, Material::pbr());
+model.mesh().add_vertex(
+    Vertex::new([-0.5, -0.5, 0.0])
+        .set(Vertex::NORMAL, [0.0, 0.0, 1.0])
+        .set(Vertex::UV0, [0.0, 0.0]),
+);
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 17-18}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Material, Mesh, Model, Vertex } from "fragmentcolor";
+
+const mesh = new Mesh();
+mesh.addVertex( Vertex.new([0.0, 0.5, 0.0]) .set(Vertex.NORMAL, [0.0, 0.0, 1.0]) .set(Vertex.UV0, [0.5, 1.0]), );
+
+const model = new Model(mesh, Material.pbr());
+model.mesh().addVertex( Vertex.new([-0.5, -0.5, 0.0]) .set(Vertex.NORMAL, [0.0, 0.0, 1.0]) .set(Vertex.UV0, [0.0, 0.0]), );
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Material, Mesh, Model, Vertex
+
+mesh = Mesh()
+mesh.add_vertex(
+    Vertex([0.0, 0.5, 0.0]).set(Vertex.NORMAL, [0.0, 0.0, 1.0]).set(Vertex.UV0, [0.5, 1.0]),
+)
+
+model = Model(mesh, Material.pbr())
+model.mesh().add_vertex(
+    Vertex([-0.5, -0.5, 0.0]).set(Vertex.NORMAL, [0.0, 0.0, 1.0]).set(Vertex.UV0, [0.0, 0.0]),
+)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let mesh = Mesh()
+try mesh.addVertex(
+    try Vertex([0.0, 0.5, 0.0]).set(Vertex.nORMAL, [0.0, 0.0, 1.0]).set(Vertex.uV0, [0.5, 1.0]),
+)
+
+let model = Model(mesh, Material.pbr())
+try model.mesh().addVertex(
+    try Vertex([-0.5, -0.5, 0.0]).set(Vertex.nORMAL, [0.0, 0.0, 1.0]).set(Vertex.uV0, [0.0, 0.0]),
+)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val mesh = Mesh()
+mesh.addVertex( Vertex.new(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 0.0f, 1.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), )
+
+val model = Model(mesh, Material.pbr())
+model.mesh().addVertex( Vertex.new(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 0.0f, 1.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Model::new
+
+Construct a `Model` from a `Mesh` and a `Material`. Both arguments are taken
+by value â the Model owns them. The transform starts at the 4Ã4 identity
+matrix and the Material's `mesh.model` uniform is initialised to match.
+
+If you want several Models that share a look, clone the Material before each
+`Model::new` â `Material::clone` is a deep clone that gives each Model its
+own independent shader copy, so per-Model transforms don't collide.
+
+`Material::pbr()` requires the Mesh's first vertex to declare position
+(`vec3`), normal (`vec3`), and uv0 (`vec2`) in that exact insertion order,
+so the locations align with the PBR shader's vertex inputs. Custom shaders
+via `Material::custom(...)` can use any layout.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Material, Mesh, Model, Vertex};
+
+let mut mesh = Mesh::new();
+mesh.add_vertex(
+    Vertex::new([0.0, 0.0, 0.0])
+        .set(Vertex::NORMAL, [0.0, 1.0, 0.0])
+        .set(Vertex::UV0, [0.0, 0.0]),
+);
+
+let model = Model::new(mesh, Material::pbr());
+
+let _ = model;
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 13-15}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Material, Mesh, Model, Vertex } from "fragmentcolor";
+
+const mesh = new Mesh();
+mesh.addVertex( Vertex.new([0.0, 0.0, 0.0]) .set(Vertex.NORMAL, [0.0, 1.0, 0.0]) .set(Vertex.UV0, [0.0, 0.0]), );
+
+const model = new Model(mesh, Material.pbr());
+
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Material, Mesh, Model, Vertex
+
+mesh = Mesh()
+mesh.add_vertex(
+    Vertex([0.0, 0.0, 0.0]).set(Vertex.NORMAL, [0.0, 1.0, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+)
+
+model = Model(mesh, Material.pbr())
+
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let mesh = Mesh()
+try mesh.addVertex(
+    try Vertex([0.0, 0.0, 0.0]).set(Vertex.nORMAL, [0.0, 1.0, 0.0]).set(Vertex.uV0, [0.0, 0.0]),
+)
+
+let model = Model(mesh, Material.pbr())
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val mesh = Mesh()
+mesh.addVertex( Vertex.new(listOf(0.0f, 0.0f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 1.0f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
+
+val model = Model(mesh, Material.pbr())
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Model::rotate
+
+Rotate the Model around `axis` (in local space) by `radians`. Post-multiplies
+the current transform by an axis-angle rotation, so a rotated-then-translated
+Model spins in place around its own origin rather than orbiting the world
+origin. The axis is normalised internally; a zero-length axis is rejected
+with a debug log and no change.
+
+For pure world-space rotations (e.g. tumbling around a fixed pivot), compose
+the matrix yourself and call [set_transform](/api/scene/model#modelset_transform).
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Material, Mesh, Model, Vertex};
+
+let mesh = Mesh::new();
+mesh.add_vertex(
+    Vertex::new([0.0, 0.0, 0.0])
+        .set(Vertex::NORMAL, [0.0, 1.0, 0.0])
+        .set(Vertex::UV0, [0.0, 0.0]),
+);
+
+let model = Model::new(mesh, Material::pbr());
+model.rotate([0.0, 1.0, 0.0], std::f32::consts::FRAC_PI_2);
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 13-14}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Material, Mesh, Model, Vertex } from "fragmentcolor";
+
+const mesh = new Mesh();
+mesh.addVertex( Vertex.new([0.0, 0.0, 0.0]) .set(Vertex.NORMAL, [0.0, 1.0, 0.0]) .set(Vertex.UV0, [0.0, 0.0]), );
+
+const model = new Model(mesh, Material.pbr());
+model.rotate([0.0, 1.0, 0.0], std.f32.consts.FRACPI2);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Material, Mesh, Model, Vertex
+
+mesh = Mesh()
+mesh.add_vertex(
+    Vertex([0.0, 0.0, 0.0]).set(Vertex.NORMAL, [0.0, 1.0, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+)
+
+model = Model(mesh, Material.pbr())
+model.rotate([0.0, 1.0, 0.0], std.f32.consts.FRAC_PI_2)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let mesh = Mesh()
+try mesh.addVertex(
+    try Vertex([0.0, 0.0, 0.0]).set(Vertex.nORMAL, [0.0, 1.0, 0.0]).set(Vertex.uV0, [0.0, 0.0]),
+)
+
+let model = Model(mesh, Material.pbr())
+model.rotate([0.0, 1.0, 0.0], std.f32.consts.fRACPI2)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val mesh = Mesh()
+mesh.addVertex( Vertex.new(listOf(0.0f, 0.0f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 1.0f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
+
+val model = Model(mesh, Material.pbr())
+model.rotate(listOf(0.0f, 1.0f, 0.0f), std.f32.consts.FRACPI2)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Model::scale
+
+Scale the Model by per-axis `factor` (in local space). Post-multiplies the
+current transform by a scale matrix, so the Model grows or shrinks around
+its own origin without sliding through space.
+
+Use uniform scales (`[s, s, s]`) when possible â non-uniform scale breaks
+the cheap normal-transform path the default PBR shader uses, so a stretched
+Model will shade slightly off. For a correct non-uniform-scale normal, use
+`Material::custom` with a shader that ships the explicit cofactor matrix.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Material, Mesh, Model, Vertex};
+
+let mesh = Mesh::new();
+mesh.add_vertex(
+    Vertex::new([0.0, 0.0, 0.0])
+        .set(Vertex::NORMAL, [0.0, 1.0, 0.0])
+        .set(Vertex::UV0, [0.0, 0.0]),
+);
+
+let model = Model::new(mesh, Material::pbr());
+model.scale([2.0, 2.0, 2.0]);
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 13-14}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Material, Mesh, Model, Vertex } from "fragmentcolor";
+
+const mesh = new Mesh();
+mesh.addVertex( Vertex.new([0.0, 0.0, 0.0]) .set(Vertex.NORMAL, [0.0, 1.0, 0.0]) .set(Vertex.UV0, [0.0, 0.0]), );
+
+const model = new Model(mesh, Material.pbr());
+model.scale([2.0, 2.0, 2.0]);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Material, Mesh, Model, Vertex
+
+mesh = Mesh()
+mesh.add_vertex(
+    Vertex([0.0, 0.0, 0.0]).set(Vertex.NORMAL, [0.0, 1.0, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+)
+
+model = Model(mesh, Material.pbr())
+model.scale([2.0, 2.0, 2.0])
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let mesh = Mesh()
+try mesh.addVertex(
+    try Vertex([0.0, 0.0, 0.0]).set(Vertex.nORMAL, [0.0, 1.0, 0.0]).set(Vertex.uV0, [0.0, 0.0]),
+)
+
+let model = Model(mesh, Material.pbr())
+model.scale([2.0, 2.0, 2.0])
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val mesh = Mesh()
+mesh.addVertex( Vertex.new(listOf(0.0f, 0.0f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 1.0f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
+
+val model = Model(mesh, Material.pbr())
+model.scale(listOf(2.0f, 2.0f, 2.0f))
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Model::set_transform
+
+Replace the Model's 4Ã4 transform wholesale, in column-major order. Useful
+when you already have a matrix from a math library or a glTF node and want
+to apply it directly without composing through `translate` / `rotate` /
+`scale`.
+
+Updates the Material shader's `mesh.model` uniform immediately. To read the
+current transform, see [Model::transform](/api/scene/model#modeltransform).
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Material, Mesh, Model, Vertex};
+
+let mesh = Mesh::new();
+mesh.add_vertex(
+    Vertex::new([0.0, 0.0, 0.0])
+        .set(Vertex::NORMAL, [0.0, 1.0, 0.0])
+        .set(Vertex::UV0, [0.0, 0.0]),
+);
+
+let model = Model::new(mesh, Material::pbr());
+model.set_transform([
+    [2.0, 0.0, 0.0, 0.0],
+    [0.0, 2.0, 0.0, 0.0],
+    [0.0, 0.0, 2.0, 0.0],
+    [3.0, 0.0, 0.0, 1.0],
+]);
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 18-19}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Material, Mesh, Model, Vertex } from "fragmentcolor";
+
+const mesh = new Mesh();
+mesh.addVertex( Vertex.new([0.0, 0.0, 0.0]) .set(Vertex.NORMAL, [0.0, 1.0, 0.0]) .set(Vertex.UV0, [0.0, 0.0]), );
+
+const model = new Model(mesh, Material.pbr());
+model.setTransform([ [2.0, 0.0, 0.0, 0.0], [0.0, 2.0, 0.0, 0.0], [0.0, 0.0, 2.0, 0.0], [3.0, 0.0, 0.0, 1.0], ]);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Material, Mesh, Model, Vertex
+
+mesh = Mesh()
+mesh.add_vertex(
+    Vertex([0.0, 0.0, 0.0]).set(Vertex.NORMAL, [0.0, 1.0, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+)
+
+model = Model(mesh, Material.pbr())
+model.set_transform([
+    [2.0, 0.0, 0.0, 0.0],
+    [0.0, 2.0, 0.0, 0.0],
+    [0.0, 0.0, 2.0, 0.0],
+    [3.0, 0.0, 0.0, 1.0],
+])
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let mesh = Mesh()
+try mesh.addVertex(
+    try Vertex([0.0, 0.0, 0.0]).set(Vertex.nORMAL, [0.0, 1.0, 0.0]).set(Vertex.uV0, [0.0, 0.0]),
+)
+
+let model = Model(mesh, Material.pbr())
+model.setTransform([
+    [2.0, 0.0, 0.0, 0.0],
+    [0.0, 2.0, 0.0, 0.0],
+    [0.0, 0.0, 2.0, 0.0],
+    [3.0, 0.0, 0.0, 1.0],
+])
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val mesh = Mesh()
+mesh.addVertex( Vertex.new(listOf(0.0f, 0.0f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 1.0f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
+
+val model = Model(mesh, Material.pbr())
+model.setTransform(arrayOf(listOf(2.0f, 0.0f, 0.0f, 0.0f), listOf(0.0f, 2.0f, 0.0f, 0.0f), listOf(0.0f, 0.0f, 2.0f, 0.0f), listOf(3.0f, 0.0f, 0.0f, 1.0f),))
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Model::transform
+
+Read the Model's current 4Ã4 transform in column-major order, matching
+WGSL's `mat4x4<f32>` layout and glam's `to_cols_array_2d`. The transform
+starts at the identity matrix and is modified by `set_transform`,
+`translate`, `rotate`, and `scale`.
+
+For the setter, see [Model::set_transform](/api/scene/model#modelset_transform).
+Rust doesn't allow getter/setter overloads on the same name, so the read
+side is `transform` and the write side is `set_transform`.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Material, Mesh, Model, Vertex};
+
+let mesh = Mesh::new();
+mesh.add_vertex(
+    Vertex::new([0.0, 0.0, 0.0])
+        .set(Vertex::NORMAL, [0.0, 1.0, 0.0])
+        .set(Vertex::UV0, [0.0, 0.0]),
+);
+
+let model = Model::new(mesh, Material::pbr());
+let identity = model.transform();
+assert_eq!(identity[0], [1.0, 0.0, 0.0, 0.0]);
+assert_eq!(identity[3], [0.0, 0.0, 0.0, 1.0]);
+let _ = identity;
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 13-17}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Material, Mesh, Model, Vertex } from "fragmentcolor";
+
+const mesh = new Mesh();
+mesh.addVertex( Vertex.new([0.0, 0.0, 0.0]) .set(Vertex.NORMAL, [0.0, 1.0, 0.0]) .set(Vertex.UV0, [0.0, 0.0]), );
+
+const model = new Model(mesh, Material.pbr());
+const identity = model.transform();
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Material, Mesh, Model, Vertex
+
+mesh = Mesh()
+mesh.add_vertex(
+    Vertex([0.0, 0.0, 0.0]).set(Vertex.NORMAL, [0.0, 1.0, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+)
+
+model = Model(mesh, Material.pbr())
+identity = model.transform()
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let mesh = Mesh()
+try mesh.addVertex(
+    try Vertex([0.0, 0.0, 0.0]).set(Vertex.nORMAL, [0.0, 1.0, 0.0]).set(Vertex.uV0, [0.0, 0.0]),
+)
+
+let model = Model(mesh, Material.pbr())
+let identity = model.transform()
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val mesh = Mesh()
+mesh.addVertex( Vertex.new(listOf(0.0f, 0.0f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 1.0f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
+
+val model = Model(mesh, Material.pbr())
+val identity = model.transform()
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Model::translate
+
+Move the Model by `offset` in world coordinates. Pre-multiplies the current
+transform by a translation matrix, so the result is independent of the
+Model's current rotation â `translate([1, 0, 0])` always moves one unit
+along the world X axis.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Material, Mesh, Model, Vertex};
+
+let mesh = Mesh::new();
+mesh.add_vertex(
+    Vertex::new([0.0, 0.0, 0.0])
+        .set(Vertex::NORMAL, [0.0, 1.0, 0.0])
+        .set(Vertex::UV0, [0.0, 0.0]),
+);
+
+let model = Model::new(mesh, Material::pbr());
+model.translate([5.0, 0.0, -2.0]);
+
+let m = model.transform();
+// The translation lives in the fourth column when column-major.
+assert_eq!(m[3], [5.0, 0.0, -2.0, 1.0]);
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 14-18}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Material, Mesh, Model, Vertex } from "fragmentcolor";
+
+const mesh = new Mesh();
+mesh.addVertex( Vertex.new([0.0, 0.0, 0.0]) .set(Vertex.NORMAL, [0.0, 1.0, 0.0]) .set(Vertex.UV0, [0.0, 0.0]), );
+
+const model = new Model(mesh, Material.pbr());
+model.translate([5.0, 0.0, -2.0]);
+
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Material, Mesh, Model, Vertex
+
+mesh = Mesh()
+mesh.add_vertex(
+    Vertex([0.0, 0.0, 0.0]).set(Vertex.NORMAL, [0.0, 1.0, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+)
+
+model = Model(mesh, Material.pbr())
+model.translate([5.0, 0.0, -2.0])
+
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let mesh = Mesh()
+try mesh.addVertex(
+    try Vertex([0.0, 0.0, 0.0]).set(Vertex.nORMAL, [0.0, 1.0, 0.0]).set(Vertex.uV0, [0.0, 0.0]),
+)
+
+let model = Model(mesh, Material.pbr())
+model.translate([5.0, 0.0, -2.0])
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val mesh = Mesh()
+mesh.addVertex( Vertex.new(listOf(0.0f, 0.0f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 1.0f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
+
+val model = Model(mesh, Material.pbr())
+model.translate(listOf(5.0f, 0.0f, -2.0f))
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>

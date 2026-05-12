@@ -81,6 +81,12 @@ impl Pass {
         Ok(self.add_mesh(mesh)?)
     }
 
+    #[wasm_bindgen(js_name = "addModel")]
+    #[lsp_doc("docs/api/core/pass/add_model.md")]
+    pub fn add_model_js(&self, model: &crate::Model) -> Result<(), JsError> {
+        Ok(self.add_model(model)?)
+    }
+
     #[wasm_bindgen(js_name = "setClearColor")]
     #[lsp_doc("docs/api/core/pass/set_clear_color.md")]
     pub fn set_clear_color_js(&self, color: &JsValue) -> Result<(), JsError> {
