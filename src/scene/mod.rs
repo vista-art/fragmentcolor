@@ -7,13 +7,15 @@
 use glam::{Mat4, Vec3};
 use lsp_doc::lsp_doc;
 use parking_lot::RwLock;
+use std::sync::Arc;
 
 #[cfg(python)]
 use pyo3::prelude::*;
 #[cfg(wasm)]
 use wasm_bindgen::prelude::*;
 
-use crate::mesh::Instance;
+use crate::mesh::MeshObject;
+use crate::shader::ShaderObject;
 use crate::{Material, Mesh};
 
 mod platform;
@@ -21,12 +23,16 @@ mod platform;
 #[cfg_attr(wasm, wasm_bindgen)]
 #[cfg_attr(python, pyclass(from_py_object))]
 #[cfg_attr(mobile, derive(uniffi::Object))]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[lsp_doc("docs/api/scene/model/model.md")]
 pub struct Model {
     pub(crate) mesh: Mesh,
     pub(crate) material: Material,
-    pub(crate) transform: RwLock<Mat4>,
+    // Arc-shared so the Pass can hold a *live* reference to the transform
+    // through `Pass::add_model`; the renderer reads the current value at draw
+    // time. Mutating `Model::translate` after `Pass::add_model` is picked up on
+    // the next render — no re-add needed.
+    pub(crate) transform: Arc<RwLock<Mat4>>,
 }
 
 crate::impl_fc_kind!(Model, "Model");
@@ -34,13 +40,11 @@ crate::impl_fc_kind!(Model, "Model");
 impl Model {
     #[lsp_doc("docs/api/scene/model/new.md")]
     pub fn new(mesh: Mesh, material: Material) -> Self {
-        let model = Self {
+        Self {
             mesh,
             material,
-            transform: RwLock::new(Mat4::IDENTITY),
-        };
-        model.sync_transform();
-        model
+            transform: Arc::new(RwLock::new(Mat4::IDENTITY)),
+        }
     }
 
     #[lsp_doc("docs/api/scene/model/mesh.md")]
@@ -64,18 +68,14 @@ impl Model {
     #[lsp_doc("docs/api/scene/model/set_transform.md")]
     pub fn set_transform(&self, matrix: [[f32; 4]; 4]) {
         *self.transform.write() = Mat4::from_cols_array_2d(&matrix);
-        self.sync_transform();
     }
 
     /// Pre-multiply by a world-space translation. Result: the model moves by
     /// `offset` in world coordinates.
     #[lsp_doc("docs/api/scene/model/translate.md")]
     pub fn translate(&self, offset: [f32; 3]) {
-        {
-            let mut t = self.transform.write();
-            *t = Mat4::from_translation(Vec3::from(offset)) * *t;
-        }
-        self.sync_transform();
+        let mut t = self.transform.write();
+        *t = Mat4::from_translation(Vec3::from(offset)) * *t;
     }
 
     /// Post-multiply by a rotation around the given axis (in local space).
@@ -89,57 +89,29 @@ impl Model {
             log::warn!("Model::rotate ignored: axis is zero-length");
             return;
         }
-        {
-            let mut t = self.transform.write();
-            *t = *t * Mat4::from_axis_angle(axis_vec / length, radians);
-        }
-        self.sync_transform();
+        let mut t = self.transform.write();
+        *t = *t * Mat4::from_axis_angle(axis_vec / length, radians);
     }
 
     /// Post-multiply by a per-axis scale (in local space). Result: the model
     /// grows or shrinks around its local origin without moving its origin.
     #[lsp_doc("docs/api/scene/model/scale.md")]
     pub fn scale(&self, factor: [f32; 3]) {
-        {
-            let mut t = self.transform.write();
-            *t = *t * Mat4::from_scale(Vec3::from(factor));
-        }
-        self.sync_transform();
+        let mut t = self.transform.write();
+        *t = *t * Mat4::from_scale(Vec3::from(factor));
     }
+}
 
-    /// Push the current model matrix into the mesh's per-instance attribute
-    /// stream as a single instance (4 vec4 columns).
-    ///
-    /// Why instance attributes instead of a `mesh.model` uniform: the
-    /// renderer batches by shader-pipeline hash and issues one draw per
-    /// attached mesh, but a uniform is per-shader, so many Models sharing a
-    /// Material would collide on the slot. The instance-attribute path is
-    /// per-mesh state by design and rides the existing FC instancing
-    /// machinery — no renderer changes, no shader duplication, no collisions.
-    ///
-    /// The first three vertex `@location` slots (0..2) are reserved for
-    /// position, normal, and uv0 — the layout `Material::pbr` expects — so
-    /// the instance's auto-location counter starts at 3 to avoid colliding
-    /// with them in WGSL's shared location namespace.
-    ///
-    /// **Caveat:** the Mesh's instance buffer is shared across Arc-clones of
-    /// the Mesh handle. Two Models that share a Mesh (`Mesh::clone` is an
-    /// Arc-clone) collide on the same instance buffer — the most recent
-    /// `set_transform` / `translate` / `rotate` / `scale` wins. For batched
-    /// instancing (one shared Mesh, many instances), drop down to the
-    /// `Mesh::add_instance(...)` + `Material::custom(...)` API directly.
-    fn sync_transform(&self) {
-        let m = self.transform.read().to_cols_array_2d();
-        self.mesh.clear_instances();
-        let mut inst = Instance::new();
-        inst.next_location = 3;
-        self.mesh.add_instance(
-            inst.set("model_0", m[0])
-                .set("model_1", m[1])
-                .set("model_2", m[2])
-                .set("model_3", m[3]),
-        );
-    }
+/// A single Model queued on a Pass: the Material's Shader, the Model's Mesh,
+/// and a live Arc reference to the Model's transform. The renderer groups
+/// entries by (Shader, Mesh) and builds a per-Pass instance buffer (4 vec4
+/// columns per entry, taken at draw time so transform mutations between
+/// `add_model` and `render` are picked up live).
+#[derive(Debug, Clone)]
+pub(crate) struct ModelEntry {
+    pub(crate) shader: Arc<ShaderObject>,
+    pub(crate) mesh: Arc<MeshObject>,
+    pub(crate) transform: Arc<RwLock<Mat4>>,
 }
 
 #[cfg(test)]
@@ -163,28 +135,14 @@ mod tests {
         mesh
     }
 
-    fn instance_row(mesh: &Mesh, key: &str) -> [f32; 4] {
-        // Peek at the most recent instance written to the mesh; tests use this
-        // to verify Model::sync_transform routed the matrix into the per-
-        // instance attribute stream.
-        let insts = mesh.object.insts.read();
-        let inst = insts.last().expect("mesh has at least one instance");
-        match inst.properties.get(key).expect("instance property") {
-            crate::mesh::VertexValue::F32x4(v) => *v,
-            other => panic!("expected F32x4 for '{key}', got {other:?}"),
-        }
-    }
-
     #[test]
-    fn new_starts_at_identity_and_writes_one_instance() {
+    fn new_starts_at_identity() {
         let model = Model::new(pbr_triangle_mesh(), Material::pbr().expect("pbr"));
         let m = model.transform();
         assert_eq!(m[0], [1.0, 0.0, 0.0, 0.0]);
+        assert_eq!(m[1], [0.0, 1.0, 0.0, 0.0]);
+        assert_eq!(m[2], [0.0, 0.0, 1.0, 0.0]);
         assert_eq!(m[3], [0.0, 0.0, 0.0, 1.0]);
-
-        assert_eq!(model.mesh.object.insts.read().len(), 1);
-        assert_eq!(instance_row(&model.mesh, "model_0"), m[0]);
-        assert_eq!(instance_row(&model.mesh, "model_3"), m[3]);
     }
 
     #[test]
@@ -192,9 +150,7 @@ mod tests {
         let model = Model::new(pbr_triangle_mesh(), Material::pbr().expect("pbr"));
         model.translate([5.0, 0.0, -2.0]);
         let m = model.transform();
-        // Column-major: translation lives in column 3.
         assert_eq!(m[3], [5.0, 0.0, -2.0, 1.0]);
-        assert_eq!(instance_row(&model.mesh, "model_3"), [5.0, 0.0, -2.0, 1.0]);
     }
 
     #[test]
@@ -203,8 +159,6 @@ mod tests {
         model.rotate([0.0, 1.0, 0.0], std::f32::consts::FRAC_PI_2);
         model.translate([1.0, 0.0, 0.0]);
         let m = model.transform();
-        // Translation is pre-multiplied (world-space), so column 3 always
-        // matches the world offset regardless of prior rotation.
         assert!((m[3][0] - 1.0).abs() < 1.0e-5, "got {m:?}");
         assert!((m[3][2]).abs() < 1.0e-5, "got {m:?}");
     }
@@ -215,9 +169,7 @@ mod tests {
         model.translate([3.0, 0.0, 0.0]);
         model.scale([2.0, 2.0, 2.0]);
         let m = model.transform();
-        // Post-multiplied scale does not move the origin.
         assert_eq!(m[3][0], 3.0);
-        // Diagonal scaled.
         assert!((m[0][0] - 2.0).abs() < 1.0e-5);
         assert!((m[1][1] - 2.0).abs() < 1.0e-5);
         assert!((m[2][2] - 2.0).abs() < 1.0e-5);
@@ -233,60 +185,29 @@ mod tests {
     }
 
     #[test]
-    fn set_transform_replaces_wholesale_and_writes_instance() {
-        let model = Model::new(pbr_triangle_mesh(), Material::pbr().expect("pbr"));
-        let cols = [
-            [2.0_f32, 0.0, 0.0, 0.0],
-            [0.0, 2.0, 0.0, 0.0],
-            [0.0, 0.0, 2.0, 0.0],
-            [4.0, 5.0, 6.0, 1.0],
-        ];
-        model.set_transform(cols);
-        assert_eq!(instance_row(&model.mesh, "model_0"), cols[0]);
-        assert_eq!(instance_row(&model.mesh, "model_3"), cols[3]);
+    fn clone_shares_transform_live() {
+        // Model::clone is a shallow Arc-share; mutating one handle's transform
+        // is visible on the clone (and on any Pass that already holds a live
+        // entry — that's how batched instancing picks up updates between
+        // `Pass::add_model` and `Renderer::render`).
+        let m1 = Model::new(pbr_triangle_mesh(), Material::pbr().expect("pbr"));
+        let m2 = m1.clone();
+        m1.translate([7.0, 0.0, 0.0]);
+        assert_eq!(m2.transform()[3], [7.0, 0.0, 0.0, 1.0]);
     }
 
     #[test]
-    fn two_models_with_distinct_meshes_keep_independent_transforms() {
-        let template = Material::pbr().expect("pbr").base_color([0.5, 0.5, 0.5, 1.0]);
-
-        let m1 = Model::new(pbr_triangle_mesh(), template.clone());
-        m1.set_transform([
-            [1.0, 0.0, 0.0, 0.0],
-            [0.0, 1.0, 0.0, 0.0],
-            [0.0, 0.0, 1.0, 0.0],
-            [10.0, 0.0, 0.0, 1.0],
-        ]);
-
-        let m2 = Model::new(pbr_triangle_mesh(), template);
-        m2.set_transform([
-            [1.0, 0.0, 0.0, 0.0],
-            [0.0, 1.0, 0.0, 0.0],
-            [0.0, 0.0, 1.0, 0.0],
-            [-10.0, 0.0, 0.0, 1.0],
-        ]);
-
-        // Distinct Meshes → distinct instance buffers; transforms don't
-        // collide. Shared Material → shared Shader Arc, single pipeline.
-        assert_eq!(instance_row(&m1.mesh, "model_3"), [10.0, 0.0, 0.0, 1.0]);
-        assert_eq!(instance_row(&m2.mesh, "model_3"), [-10.0, 0.0, 0.0, 1.0]);
-        assert!(std::sync::Arc::ptr_eq(
-            &m1.material.shader.object,
-            &m2.material.shader.object
-        ));
-    }
-
-    #[test]
-    fn pass_add_model_pushes_shader_and_attaches_mesh() {
+    fn pass_add_model_queues_one_entry() {
         let pass = crate::Pass::new("test");
         let m = Model::new(pbr_triangle_mesh(), Material::pbr().expect("pbr"));
-        pass.add_model(&m)
-            .expect("Pass::add_model succeeds with PBR-compatible mesh");
+        pass.add_model(&m).expect("add_model");
+        assert_eq!(pass.object.model_entries.read().len(), 1);
+        assert_eq!(pass.object.shaders.read().len(), 1);
         assert!(!pass.is_compute());
     }
 
     #[test]
-    fn pass_add_model_dedupes_shared_shader() {
+    fn pass_add_model_dedupes_shared_shader_and_mesh() {
         let pass = crate::Pass::new("scene");
         let template = Material::pbr().expect("pbr");
 
@@ -296,8 +217,28 @@ mod tests {
         pass.add_model(&b).expect("b");
 
         // Two Models sharing one Material → one shader queued on the pass,
-        // not two. The renderer iterates shaders once, hits the cached
-        // pipeline once, and draws both meshes under it.
+        // two model entries.
         assert_eq!(pass.object.shaders.read().len(), 1);
+        assert_eq!(pass.object.model_entries.read().len(), 2);
+    }
+
+    #[test]
+    fn pass_add_model_carries_live_transform() {
+        let pass = crate::Pass::new("scene");
+        let m = Model::new(pbr_triangle_mesh(), Material::pbr().expect("pbr"));
+        pass.add_model(&m).expect("add_model");
+
+        // Mutate the Model AFTER add_model. The Pass's entry holds an Arc to
+        // the same RwLock<Mat4>, so the new value is observable through the
+        // entry.
+        m.set_transform([
+            [1.0, 0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0],
+            [9.0, 0.0, 0.0, 1.0],
+        ]);
+        let entries = pass.object.model_entries.read();
+        let live = entries[0].transform.read().to_cols_array_2d();
+        assert_eq!(live[3], [9.0, 0.0, 0.0, 1.0]);
     }
 }

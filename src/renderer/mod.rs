@@ -644,6 +644,50 @@ impl RenderContext {
         }
     }
 
+    /// Build a per-(Shader, Mesh) override map from a Pass's queued Model
+    /// entries. Each entry contributes a row of 4 `vec4<f32>` columns (a
+    /// `mat4x4<f32>`) snapshotted from the live transform at this moment;
+    /// rows for the same (Shader, Mesh) pair pack into a single GPU buffer
+    /// the renderer binds at vertex_buffer(1) below. The map's key is a pair
+    /// of `Arc::as_ptr(...) as usize` — pointer identity, the same equality
+    /// `Pass::add_model` uses to dedupe attachments.
+    fn build_model_instance_overrides(
+        &self,
+        pass: &PassObject,
+    ) -> HashMap<(usize, usize), (wgpu::Buffer, u32)> {
+        let entries = pass.model_entries.read();
+        if entries.is_empty() {
+            return HashMap::new();
+        }
+        let mut groups: HashMap<(usize, usize), Vec<u8>> = HashMap::new();
+        for entry in entries.iter() {
+            let key = (
+                Arc::as_ptr(&entry.shader) as usize,
+                Arc::as_ptr(&entry.mesh) as usize,
+            );
+            let m = entry.transform.read().to_cols_array_2d();
+            let slot = groups.entry(key).or_default();
+            for col in m.iter() {
+                for v in col.iter() {
+                    slot.extend_from_slice(&v.to_le_bytes());
+                }
+            }
+        }
+        let mut overrides = HashMap::with_capacity(groups.len());
+        for (key, bytes) in groups {
+            let count = (bytes.len() / 64) as u32;
+            let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("Pass model instance buffer"),
+                size: bytes.len() as u64,
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+            self.queue.write_buffer(&buffer, 0, &bytes);
+            overrides.insert(key, (buffer, count));
+        }
+        overrides
+    }
+
     fn process_render_pass(
         &self,
         encoder: &mut wgpu::CommandEncoder,
@@ -653,6 +697,11 @@ impl RenderContext {
     ) -> Result<(), RendererError> {
         self.buffer_pool.write().reset();
         self.storage_pool.write().reset();
+
+        // Snapshot per-Model transforms for this Pass into GPU instance
+        // buffers BEFORE begin_render_pass — the wgpu::Buffer handles need to
+        // outlive the render_pass. Keys are (shader_ptr, mesh_ptr).
+        let model_overrides = self.build_model_instance_overrides(pass);
 
         let load_op = match pass.get_input().load {
             true => wgpu::LoadOp::Load,
@@ -1109,13 +1158,31 @@ impl RenderContext {
             match shader_meshes.len() {
                 0 => render_pass.draw(0..3, 0..1),
                 _ => {
+                    let shader_ptr = Arc::as_ptr(shader) as usize;
                     for mesh_object in shader_meshes.iter() {
                         let (refs, counts) =
                             mesh_object.vertex_buffers(&self.device, &self.queue)?;
                         render_pass.set_vertex_buffer(0, refs.vertex_buffer.slice(..));
-                        if let Some(instance_buffer) = &refs.instance_buffer {
-                            render_pass.set_vertex_buffer(1, instance_buffer.slice(..));
-                        }
+
+                        // Per-Pass Model override takes precedence over the
+                        // Mesh's own instance buffer. The override carries N
+                        // model matrices (one per Model::add_model call that
+                        // referenced this shader+mesh); the fall-through path
+                        // is for Meshes whose instances came from a direct
+                        // `Mesh::add_instance` call (crowd rendering, etc.).
+                        let override_key = (shader_ptr, Arc::as_ptr(mesh_object) as usize);
+                        let instance_count = if let Some((buf, count)) =
+                            model_overrides.get(&override_key)
+                        {
+                            render_pass.set_vertex_buffer(1, buf.slice(..));
+                            *count
+                        } else {
+                            if let Some(instance_buffer) = &refs.instance_buffer {
+                                render_pass.set_vertex_buffer(1, instance_buffer.slice(..));
+                            }
+                            counts.instance_count
+                        };
+
                         render_pass.set_index_buffer(
                             refs.index_buffer.slice(..),
                             wgpu::IndexFormat::Uint32,
@@ -1123,7 +1190,7 @@ impl RenderContext {
                         render_pass.draw_indexed(
                             0..counts.index_count,
                             0,
-                            0..counts.instance_count,
+                            0..instance_count,
                         );
                     }
                 }

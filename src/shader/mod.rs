@@ -393,7 +393,13 @@ impl ShaderObject {
             }
         };
 
-        // Build maps from the first instance (if present)
+        // Build maps from the first instance (if present), falling back to
+        // the schema declared on the Mesh when no instances are present yet.
+        // `Pass::add_model` declares the model-instance schema (the four vec4
+        // columns of mat4x4) without populating any instances on the Mesh —
+        // the per-Model transforms ride a Pass-owned instance buffer instead.
+        // Without this fall-through, validate_mesh would reject the Material's
+        // PBR shader because `model_0..3` look unprovisioned.
         let (i_loc_map, i_name_map) = {
             let insts = mesh.insts.read();
             if let Some(i) = insts.first() {
@@ -406,6 +412,16 @@ impl ShaderObject {
                     }
                 }
                 (loc, by_name)
+            } else if let Some(schema) = mesh.instance_schema.read().as_ref() {
+                // Schema-only mode: locations aren't known (no prop_locations
+                // without an Instance), so only the by-name map is populated.
+                // The renderer's vertex_buffer_layouts has the same name-based
+                // fallback and the pipeline layout matches.
+                let mut by_name: HashMap<String, wgpu::VertexFormat> = HashMap::new();
+                for field in schema.fields.iter() {
+                    by_name.insert(field.name.clone(), field.fmt);
+                }
+                (HashMap::new(), by_name)
             } else {
                 (HashMap::new(), HashMap::new())
             }

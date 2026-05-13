@@ -119,12 +119,21 @@ impl Pass {
 
     #[lsp_doc("docs/api/core/pass/add_model.md")]
     pub fn add_model(&self, model: &crate::Model) -> Result<(), PassError> {
-        // Per-Model transform rides the Mesh's per-instance attribute stream
-        // (Model::sync_transform wrote it on construction / every translate /
-        // rotate / scale / set_transform), so there's no per-Model shader to
-        // duplicate. Many Models that share a Material drop down to one
-        // shader entry + one pipeline lookup + one bind-group setup.
         let shader_arc = &model.material.shader.object;
+
+        // Declare the model-instance vertex schema on the Mesh first, so the
+        // shader's mesh-validation (inside `add_mesh` below) sees `model_0..3`
+        // at the per-instance slot and accepts the layout. The Mesh's `insts`
+        // stays empty; per-Model transforms ride the Pass's `model_entries`
+        // queue and the renderer builds the buffer at draw time.
+        if model.mesh.object.instance_schema.read().is_none() {
+            model.mesh.object.declare_model_instance_schema();
+        }
+
+        // Dedupe shader-attach: many Models that share one Material's Shader
+        // should result in one entry on the pass. The renderer iterates
+        // shaders linearly and a doubled entry would set pipeline + bind
+        // groups twice for the same draws.
         let shader_present = self
             .object
             .shaders
@@ -134,9 +143,9 @@ impl Pass {
         if !shader_present {
             self.add_shader(&model.material.shader);
         }
-        // Attach the Model's Mesh to the Material's Shader, idempotent. The
-        // renderer iterates shader.meshes linearly and would otherwise draw a
-        // doubly-attached mesh twice.
+
+        // Dedupe mesh-attach onto the shader. Without this the renderer would
+        // iterate the doubly-attached mesh and draw it twice.
         let mesh_attached = shader_arc
             .meshes
             .read()
@@ -145,6 +154,12 @@ impl Pass {
         if !mesh_attached {
             model.material.shader.add_mesh(&model.mesh)?;
         }
+
+        self.object.model_entries.write().push(crate::scene::ModelEntry {
+            shader: shader_arc.clone(),
+            mesh: model.mesh.object.clone(),
+            transform: model.transform.clone(),
+        });
         Ok(())
     }
 
@@ -346,6 +361,15 @@ pub struct PassObject {
     pub(crate) name: Arc<str>,
     pub(crate) input: RwLock<PassInput>,
     pub(crate) shaders: RwLock<Vec<Arc<ShaderObject>>>,
+    // Per-Pass live references to Models queued via `Pass::add_model`. Each entry
+    // carries an Arc-shared transform so the renderer reads the current value at
+    // draw time. Grouped by (shader, mesh) the entries become the rows of a
+    // Pass-owned instance buffer — that's the batched-instancing path: many
+    // Models sharing a (Material, Mesh) pair collapse to one draw with N
+    // instances, with no shader duplication and no mutation of the Mesh's own
+    // instance buffer (so the same Mesh in another Pass with different Models
+    // doesn't clobber state).
+    pub(crate) model_entries: RwLock<Vec<crate::scene::ModelEntry>>,
     pub(crate) viewport: RwLock<Option<ScreenRegion>>,
     pub(crate) required_buffer_size: RwLock<u64>,
     // For compute passes: dispatch size (defaults to 1,1,1)
@@ -370,6 +394,7 @@ impl PassObject {
         Self {
             name: Arc::from(name),
             shaders: RwLock::new(Vec::new()),
+            model_entries: RwLock::new(Vec::new()),
             viewport: RwLock::new(None),
             input: RwLock::new(PassInput::clear(Color::transparent())),
             required_buffer_size: RwLock::new(0),

@@ -282,9 +282,34 @@ impl MeshObject {
         self.invalidate_cache();
     }
 
-    fn invalidate_cache(&self) {
+    pub(crate) fn invalidate_cache(&self) {
         *self.cache_valid.write() = false;
         *self.gpu_cache.write() = None;
+    }
+
+    /// Declare the per-Model instance vertex schema (four `vec4<f32>` columns
+    /// of a `mat4x4<f32>` at attribute names `model_0..model_3`) without
+    /// adding any instance data. `Pass::add_model` calls this on first use of
+    /// a Mesh so the pipeline created from this Mesh's Shader has a slot-1
+    /// instance VertexBufferLayout matching the PBR vertex shader's
+    /// `@location(3..6)` inputs. Idempotent: a no-op if the Mesh already has
+    /// an instance schema (set either by the user via `add_instance` or by a
+    /// prior `Pass::add_model` call).
+    pub(crate) fn declare_model_instance_schema(&self) {
+        if self.instance_schema.read().is_some() {
+            return;
+        }
+        let fields = ["model_0", "model_1", "model_2", "model_3"]
+            .into_iter()
+            .map(|name| Field {
+                name: name.to_string(),
+                fmt: wgpu::VertexFormat::Float32x4,
+                size: 16,
+            })
+            .collect::<Vec<_>>();
+        let stride: u64 = fields.iter().map(|f| f.size).sum();
+        *self.instance_schema.write() = Some(VertexSchema { stride, fields });
+        self.invalidate_cache();
     }
 
     fn ensure_packed(&self) -> Result<(), MeshError> {
