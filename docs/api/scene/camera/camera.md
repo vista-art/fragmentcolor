@@ -2,8 +2,12 @@
 
 A `Camera` packages the two things every 3D render needs into one object: a
 projection (how the view frustum maps to clip space) and a view (where the
-camera sits and what it looks at). It's the first-class replacement for
-manually calling `material.shader().set("camera.view_proj", ...)` every frame.
+camera sits and what it looks at). Pass it to
+[`Material::add`](https://fragmentcolor.org/api/scene/material#add) to wire
+its `camera.view_proj` and `camera.position` into the material's shader; the
+Camera holds Arc-shared state, so subsequent
+[`look_at`](https://fragmentcolor.org/api/scene/camera/look_at) calls
+propagate to every Material that absorbed it.
 
 Internally a Camera carries:
 
@@ -20,11 +24,7 @@ Internally a Camera carries:
 
 The Camera is the user's domain, not the Material's: a Material is "what the
 surface looks like under any light from any viewpoint", a Camera is "which
-viewpoint we're using right now". [`Camera::bind`](https://fragmentcolor.org/api/scene/camera/bind)
-writes the matching uniforms (`camera.view_proj` and `camera.position`) into
-a Shader — typically a Material's shader. If a shader doesn't declare those
-uniforms the call is a best-effort no-op with a debug log, same as
-`Material`'s setters.
+viewpoint we're using right now".
 
 ## Methods
 
@@ -32,10 +32,9 @@ uniforms the call is a best-effort no-op with a debug log, same as
 | -------------- | --------------------------------------------------------- |
 | `perspective`  | construct a perspective Camera from FOV / aspect / near / far |
 | `orthographic` | construct an orthographic Camera from the six frustum planes  |
-| `look_at`      | position the eye and aim at a target (chainable setter)   |
+| `look_at`      | position the eye and aim at a target (chainable, live)    |
 | `view_proj`    | read `proj * view` as a column-major 4x4                  |
 | `position`     | read the world-space eye position                         |
-| `bind`         | write `camera.*` uniforms into a Shader                   |
 
 ## Example
 
@@ -48,7 +47,10 @@ let camera = Camera::perspective(60.0_f32.to_radians(), 16.0 / 9.0, 0.1, 100.0)
 
 let renderer = Renderer::new();
 let material = Material::pbr(&renderer).await?;
-camera.bind(material.shader());
+material.add(&camera);
+
+// Move later — the Material picks up the new view at the next render.
+camera.look_at([3.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
 # Ok(())
 # }
 # fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }

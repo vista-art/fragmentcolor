@@ -18,6 +18,13 @@ light: a parallel beam coming from a fixed world-space direction with a
 tinted color. This is sun / moon / fill-light territory, and it's the
 shape `Material::pbr` expects out of the box.
 
+Pass a Light to [`Material::add`](/api/scene/material#add)
+to wire its `light.direction` and `light.color` into the material's shader.
+The Light holds Arc-shared state, so later
+[`set_direction`](/api/scene/light/set_direction)
+and [`set_color`](/api/scene/light/set_color)
+calls propagate to every Material that absorbed it.
+
 Internally a Light carries:
 
 - A `direction` (vec3) â the world-space direction the light *travels in*.
@@ -27,126 +34,14 @@ Internally a Light carries:
   `[0.3, 0.0, 0.0]` is dim red, etc. Not premultiplied; the shader scales
   the diffuse + specular response by this value directly.
 
-[`Light::bind`](/api/scene/light/bind) writes the
-two values into a Shader as `light.direction` and `light.color`. If the
-shader doesn't declare those uniforms the call is a best-effort no-op
-with a debug log â same pattern as `Camera::bind` and `Material`'s setters.
-
-Point and spot lights are a follow-up. The type name reserves the
-abstraction â when we add them, the API will either grow distinct
+Point and spot lights ship as follow-ups. The type name reserves the
+abstraction â when they arrive, the API will either grow distinct
 `Light::point(...)` / `Light::spot(...)` constructors or split into
 distinct `DirectionalLight` / `PointLight` / `SpotLight` types; either
 way today's `Light::directional` call site stays valid.
 
 
 ## Methods
-
-
----
-
-### Light::bind
-
-Write the light state into a `Shader`. Sets `light.direction` (the
-world-space travel direction) and `light.color` (linear RGB) in one call.
-The typical target is a Material's shader â `Material::pbr` carries both
-uniforms by default and feeds them into the Cook-Torrance + Lambert shading
-chain.
-
-The call is best-effort: if the target shader doesn't declare one of the
-two uniforms (e.g. an unlit shader, or a custom shader that only consumes
-`light.color`), the underlying `Shader::set` returns an error which is
-silently demoted to a `log::debug!`. Mirrors `Camera::bind` and `Material`'s
-setters.
-
-#### Example
-
-<Tabs>
-
-<TabItem label="Rust">
-<Code
-code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Light, Material, Renderer};
-
-let renderer = Renderer::new();
-let material = Material::pbr(&renderer).await?;
-let sun = Light::directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9]);
-sun.bind(material.shader());
-
-let dir: [f32; 3] = material.shader().get("light.direction")?;
-assert_eq!(dir, [0.3, -1.0, -0.4]);
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
-`}
-lang="rust" meta="collapse={1-1, 9-13}"
-/>
-
-</TabItem>
-
-<TabItem label="JavaScript">
-<Code
-code={`
-import { Light, Material, Renderer } from "fragmentcolor";
-
-const renderer = new Renderer();
-const material = await Material.pbr(renderer);
-const sun = Light.directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9]);
-sun.bind(material.shader());
-
-`}
-lang="js"
-/>
-
-</TabItem>
-
-<TabItem label="Python">
-<Code
-code={`
-from fragmentcolor import Light, Material, Renderer
-
-renderer = Renderer()
-material = Material.pbr(renderer)
-sun = Light.directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9])
-sun.bind(material.shader())
-
-`}
-lang="python"
-/>
-
-</TabItem>
-
-<TabItem label="Swift">
-<Code
-code={`
-import FragmentColor
-
-let renderer = Renderer()
-let material = try await Material.pbr(renderer)
-let sun = Light.directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9])
-sun.bind(material.shader())
-`}
-lang="swift"
-/>
-
-</TabItem>
-
-<TabItem label="Kotlin">
-<Code
-code={`
-import org.fragmentcolor.*
-
-val renderer = Renderer()
-val material = Material.pbr(renderer)
-val sun = Light.directional(listOf(0.3f, -1.0f, -0.4f), listOf(1.0f, 0.95f, 0.9f))
-sun.bind(material.shader())
-`}
-lang="kotlin"
-/>
-
-</TabItem>
-
-</Tabs>
 
 
 ---
@@ -407,6 +302,186 @@ code={`
 import org.fragmentcolor.*
 
 val sun = Light.directional(listOf(0.3f, -1.0f, -0.4f), listOf(1.0f, 0.95f, 0.9f))
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Light::set_color
+
+Update the linear-RGB color / intensity. The new value is written into
+every Material that absorbed this Light via
+[`Material::add`](/api/scene/material#add).
+
+Returns a handle to the same Light (Arc-shared) for chaining.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::Light;
+
+let lamp = Light::directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
+// Warm-tinted bulb after the user toggles the warm-light switch.
+lamp.set_color([1.0, 0.85, 0.7]);
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 7-8}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Light } from "fragmentcolor";
+
+const lamp = Light.directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
+// Warm-tinted bulb after the user toggles the warm-light switch.
+lamp.setColor([1.0, 0.85, 0.7]);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Light
+
+lamp = Light.directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
+# Warm-tinted bulb after the user toggles the warm-light switch.
+lamp.set_color([1.0, 0.85, 0.7])
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let lamp = Light.directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
+// Warm-tinted bulb after the user toggles the warm-light switch.
+lamp.setColor([1.0, 0.85, 0.7])
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val lamp = Light.directional(listOf(0.0f, -1.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f))
+// Warm-tinted bulb after the user toggles the warm-light switch.
+lamp.setColor(listOf(1.0f, 0.85f, 0.7f))
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Light::set_direction
+
+Update the world-space travel direction. The new value is written into
+every Material that absorbed this Light via
+[`Material::add`](/api/scene/material#add).
+
+Returns a handle to the same Light (Arc-shared) for chaining.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::Light;
+
+let sun = Light::directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
+// Reorient to a late-afternoon angle.
+sun.set_direction([0.7, -0.5, -0.5]);
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 7-8}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Light } from "fragmentcolor";
+
+const sun = Light.directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
+// Reorient to a late-afternoon angle.
+sun.setDirection([0.7, -0.5, -0.5]);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Light
+
+sun = Light.directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
+# Reorient to a late-afternoon angle.
+sun.set_direction([0.7, -0.5, -0.5])
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let sun = Light.directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
+// Reorient to a late-afternoon angle.
+sun.setDirection([0.7, -0.5, -0.5])
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val sun = Light.directional(listOf(0.0f, -1.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f))
+// Reorient to a late-afternoon angle.
+sun.setDirection(listOf(0.7f, -0.5f, -0.5f))
 `}
 lang="kotlin"
 />

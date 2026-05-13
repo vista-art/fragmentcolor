@@ -55,11 +55,12 @@ mismatch — use `Material::custom(...)` to bring your own vertex layout.
 | `light.direction`            | `[0, -1, 0]` (down)  |
 | `light.color`                | `[1, 1, 1]`          |
 
-The camera and light are the user's domain, not the Material's — set them
-with [`Camera::bind`](https://fragmentcolor.org/api/scene/camera/bind) and
-[`Light::bind`](https://fragmentcolor.org/api/scene/light/bind). Each
-writes the matching `camera.*` / `light.*` uniforms into the Material's
-shader in one call. Dropping down to `material.shader().set(...)` directly
+The camera and light are the user's domain, not the Material's. Pass them
+to [`Material::add`](https://fragmentcolor.org/api/scene/material#add) — the
+typed [Camera](https://fragmentcolor.org/api/scene/camera) and
+[Light](https://fragmentcolor.org/api/scene/light) handles seed the matching
+`camera.*` / `light.*` uniforms and propagate any later updates back into
+the Material's shader. Dropping down to `material.shader().set(...)` directly
 is still supported if you need it.
 
 ## Example

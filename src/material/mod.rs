@@ -118,6 +118,17 @@ impl Material {
         &self.shader
     }
 
+    /// Absorb a scene [`Component`](crate::scene::Component) — typically a
+    /// [`Camera`](crate::Camera) or [`Light`](crate::Light) — into this
+    /// Material's uniform state. The component holds an Arc-shared backing,
+    /// so subsequent mutations on the source object propagate to every
+    /// Material it was added to. Chainable.
+    #[lsp_doc("docs/api/scene/material/add.md")]
+    pub fn add<C: crate::scene::Component>(&self, component: &C) -> &Self {
+        component.apply(&self.shader);
+        self
+    }
+
     fn apply_defaults(&self) {
         // glTF 2.0 PBR-MR factor defaults, with two ergonomic deviations: we
         // default `metallic=0` and `roughness=1` instead of glTF's

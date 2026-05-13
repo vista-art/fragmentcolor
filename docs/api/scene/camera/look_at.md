@@ -2,8 +2,10 @@
 
 Position the camera in world space. `eye` is where the camera is, `target`
 is the point it aims at, and `up` is the world-space up vector that
-orients the roll (almost always `[0, 1, 0]`). Returns `self`, so it
-chains cleanly off a `perspective` or `orthographic` constructor.
+orients the roll (almost always `[0, 1, 0]`). Returns a handle to the
+same Camera (Arc-shared backing) so it chains cleanly off a `perspective`
+or `orthographic` constructor and can be called again after the Camera
+has been added to a Material — the new view propagates live.
 
 Internally builds the view matrix with `glam::Mat4::look_at_rh`. The
 result is a right-handed view matrix that pairs with the right-handed

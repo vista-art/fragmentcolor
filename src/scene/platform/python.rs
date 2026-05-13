@@ -4,7 +4,7 @@ use lsp_doc::lsp_doc;
 use pyo3::prelude::*;
 
 use crate::scene::{Camera, Light, Model};
-use crate::{Material, Mesh, Shader};
+use crate::{Material, Mesh};
 
 #[pymethods]
 impl Model {
@@ -101,12 +101,6 @@ impl Camera {
     pub fn position_py(&self) -> [f32; 3] {
         self.position()
     }
-
-    #[pyo3(name = "bind")]
-    #[lsp_doc("docs/api/scene/camera/bind.md")]
-    pub fn bind_py(&self, shader: &Shader) {
-        self.bind(shader);
-    }
 }
 
 #[pymethods]
@@ -130,9 +124,15 @@ impl Light {
         self.color()
     }
 
-    #[pyo3(name = "bind")]
-    #[lsp_doc("docs/api/scene/light/bind.md")]
-    pub fn bind_py(&self, shader: &Shader) {
-        self.bind(shader);
+    #[pyo3(name = "set_direction")]
+    #[lsp_doc("docs/api/scene/light/set_direction.md")]
+    pub fn set_direction_py(&self, direction: [f32; 3]) -> Self {
+        self.set_direction(direction)
+    }
+
+    #[pyo3(name = "set_color")]
+    #[lsp_doc("docs/api/scene/light/set_color.md")]
+    pub fn set_color_py(&self, color: [f32; 3]) -> Self {
+        self.set_color(color)
     }
 }

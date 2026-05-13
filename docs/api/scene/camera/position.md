@@ -6,9 +6,10 @@ call, or `[0, 0, 0]` if the camera has only been constructed (the default
 view is identity, with the eye at the origin).
 
 Shaders that need the eye position (specular highlights, fresnel,
-parallax) typically pull it from the `camera.position` uniform written by
-[`Camera::bind`](https://fragmentcolor.org/api/scene/camera/bind) — caching
-it here keeps every frame cheap (no view-matrix inversion on the GPU side).
+parallax) typically pull it from the `camera.position` uniform seeded by
+[`Material::add`](https://fragmentcolor.org/api/scene/material#add) when
+the Camera is absorbed — caching it here keeps every frame cheap (no
+view-matrix inversion on the GPU side).
 
 ## Example
 

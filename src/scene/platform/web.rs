@@ -4,7 +4,7 @@ use lsp_doc::lsp_doc;
 use wasm_bindgen::prelude::*;
 
 use crate::scene::{Camera, Light, Model};
-use crate::{Material, Mesh, Shader};
+use crate::{Material, Mesh};
 
 #[wasm_bindgen]
 impl Model {
@@ -135,11 +135,6 @@ impl Camera {
         self.position().to_vec()
     }
 
-    #[wasm_bindgen(js_name = "bind")]
-    #[lsp_doc("docs/api/scene/camera/bind.md")]
-    pub fn bind_js(&self, shader: &Shader) {
-        self.bind(shader);
-    }
 }
 
 #[wasm_bindgen]
@@ -164,10 +159,18 @@ impl Light {
         self.color().to_vec()
     }
 
-    #[wasm_bindgen(js_name = "bind")]
-    #[lsp_doc("docs/api/scene/light/bind.md")]
-    pub fn bind_js(&self, shader: &Shader) {
-        self.bind(shader);
+    #[wasm_bindgen(js_name = "setDirection")]
+    #[lsp_doc("docs/api/scene/light/set_direction.md")]
+    pub fn set_direction_js(&self, direction: Vec<f32>) -> Result<Light, JsError> {
+        let direction = vec3(&direction, "Light.setDirection")?;
+        Ok(self.set_direction(direction))
+    }
+
+    #[wasm_bindgen(js_name = "setColor")]
+    #[lsp_doc("docs/api/scene/light/set_color.md")]
+    pub fn set_color_js(&self, color: Vec<f32>) -> Result<Light, JsError> {
+        let color = vec3(&color, "Light.setColor")?;
+        Ok(self.set_color(color))
     }
 }
 

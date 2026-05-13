@@ -13,8 +13,11 @@ want a Material variant with different state, build a fresh
 clones share their Shader handle (Arc-clone) so mutations are visible across
 all clones.
 
-For camera + light state specifically, prefer the typed helpers over raw
-`shader().set(...)`:
+For camera + light state specifically, prefer absorbing the typed
+[Camera](https://fragmentcolor.org/api/scene/camera) and
+[Light](https://fragmentcolor.org/api/scene/light) via
+[`Material::add`](https://fragmentcolor.org/api/scene/material#add) over
+raw `shader().set(...)` — the typed handles propagate updates live:
 
 ```rust
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
@@ -24,10 +27,8 @@ let renderer = Renderer::new();
 let material = Material::pbr(&renderer).await?;
 let camera = Camera::perspective(60.0_f32.to_radians(), 16.0 / 9.0, 0.1, 100.0)
     .look_at([0.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
-camera.bind(material.shader());
-
 let sun = Light::directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9]);
-sun.bind(material.shader());
+material.add(&camera).add(&sun);
 # Ok(())
 # }
 # fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }

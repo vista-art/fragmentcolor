@@ -4,8 +4,10 @@ Read the combined `proj * view` matrix as a column-major 4x4. Column-major
 matches WGSL's `mat4x4<f32>` storage and glam's `to_cols_array_2d()`, so
 the result is ready to feed directly into a Shader's `camera.view_proj`
 uniform via `Shader::set(...)` if you need direct control. For the common
-case, use [`Camera::bind`](https://fragmentcolor.org/api/scene/camera/bind)
-to write both `view_proj` and `position` in one call.
+case, pass the Camera to
+[`Material::add`](https://fragmentcolor.org/api/scene/material#add) — the
+Material seeds `camera.view_proj` + `camera.position` and keeps them in
+sync with later updates.
 
 ## Example
 

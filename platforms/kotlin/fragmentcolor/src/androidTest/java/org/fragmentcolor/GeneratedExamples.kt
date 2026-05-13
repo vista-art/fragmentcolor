@@ -725,15 +725,6 @@ class GeneratedExamples {
         val v = Vertex(listOf(0.0f, 0.0f, 0.0f)).set("weight", 1.0).set("color", listOf(1.0f, 0.0f, 0.0f))
     }
 
-    @Suppress("unused") private suspend fun _example_scene_camera_bind() {
-
-        val camera = Camera.perspective(60.0.toRadians(), 16.0 / 9.0, 0.1, 100.0).lookAt(listOf(0.0f, 1.0f, 5.0f), listOf(0.0f, 0.0f, 0.0f), listOf(0.0f, 1.0f, 0.0f))
-
-        val renderer = Renderer()
-        val material = Material.pbr(renderer)
-        camera.bind(material.shader())
-    }
-
     @Suppress("unused") private suspend fun _example_scene_camera_look_at() {
 
         val camera = Camera.perspective(60.0.toRadians(), 16.0 / 9.0, 0.1, 100.0).lookAt(listOf(0.0f, 1.0f, 5.0f), listOf(0.0f, 0.0f, 0.0f), listOf(0.0f, 1.0f, 0.0f))
@@ -764,14 +755,6 @@ class GeneratedExamples {
         val m = camera.viewProj()
     }
 
-    @Suppress("unused") private suspend fun _example_scene_light_bind() {
-
-        val renderer = Renderer()
-        val material = Material.pbr(renderer)
-        val sun = Light.directional(listOf(0.3f, -1.0f, -0.4f), listOf(1.0f, 0.95f, 0.9f))
-        sun.bind(material.shader())
-    }
-
     @Suppress("unused") private suspend fun _example_scene_light_color() {
 
         val warm = Light.directional(listOf(0.0f, -1.0f, 0.0f), listOf(1.0f, 0.85f, 0.7f))
@@ -789,6 +772,20 @@ class GeneratedExamples {
         val sun = Light.directional(listOf(0.3f, -1.0f, -0.4f), listOf(1.0f, 0.95f, 0.9f))
     }
 
+    @Suppress("unused") private suspend fun _example_scene_light_set_color() {
+
+        val lamp = Light.directional(listOf(0.0f, -1.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f))
+        // Warm-tinted bulb after the user toggles the warm-light switch.
+        lamp.setColor(listOf(1.0f, 0.85f, 0.7f))
+    }
+
+    @Suppress("unused") private suspend fun _example_scene_light_set_direction() {
+
+        val sun = Light.directional(listOf(0.0f, -1.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f))
+        // Reorient to a late-afternoon angle.
+        sun.setDirection(listOf(0.7f, -0.5f, -0.5f))
+    }
+
     @Suppress("unused") private suspend fun _example_scene_material_Material() {
 
         val renderer = Renderer()
@@ -798,6 +795,21 @@ class GeneratedExamples {
         val material = Material.pbr(renderer).baseColor(listOf(0.85f, 0.2f, 0.2f, 1.0f)).metallic(0.0).roughness(0.4).emissive(listOf(0.0f, 0.0f, 0.05f))
 
         val model = Model(mesh, material)
+    }
+
+    @Suppress("unused") private suspend fun _example_scene_material_add() {
+
+        val renderer = Renderer()
+        val material = Material.pbr(renderer)
+
+        val camera = Camera.perspective(60.0.toRadians(), 16.0 / 9.0, 0.1, 100.0).lookAt(listOf(0.0f, 1.0f, 5.0f), listOf(0.0f, 0.0f, 0.0f), listOf(0.0f, 1.0f, 0.0f))
+        val sun = Light.directional(listOf(0.3f, -1.0f, -0.4f), listOf(1.0f, 0.95f, 0.9f))
+
+        material.add(camera).add(sun)
+
+        // Updating the camera later is enough — the Material picks the new
+        // view_proj up at the next render without re-adding.
+        camera.lookAt(listOf(3.0f, 1.0f, 5.0f), listOf(0.0f, 0.0f, 0.0f), listOf(0.0f, 1.0f, 0.0f))
     }
 
     @Suppress("unused") private suspend fun _example_scene_material_alpha_cutoff() {

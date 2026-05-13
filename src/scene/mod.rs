@@ -19,10 +19,12 @@ use crate::shader::ShaderObject;
 use crate::{Material, Mesh};
 
 mod camera;
+mod component;
 mod light;
 mod platform;
 
 pub use camera::*;
+pub use component::Component;
 pub use light::*;
 
 #[cfg_attr(wasm, wasm_bindgen)]

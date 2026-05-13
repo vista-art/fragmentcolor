@@ -753,15 +753,6 @@ private enum _GeneratedExamples {
         let v = try Vertex([0.0, 0.0, 0.0]).set("weight", 1.0).set("color",[1.0, 0.0, 0.0])
     }
 
-    static func _example_scene_camera_bind() async throws {
-
-        let camera = Camera.perspective(60.0.toRadians(), 16.0 / 9.0, 0.1, 100.0).lookAt([0.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
-
-        let renderer = Renderer()
-        let material = try await Material.pbr(renderer)
-        camera.bind(material.shader())
-    }
-
     static func _example_scene_camera_look_at() async throws {
 
         let camera = Camera.perspective(60.0.toRadians(), 16.0 / 9.0, 0.1, 100.0).lookAt([0.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
@@ -793,14 +784,6 @@ private enum _GeneratedExamples {
         let _ = m
     }
 
-    static func _example_scene_light_bind() async throws {
-
-        let renderer = Renderer()
-        let material = try await Material.pbr(renderer)
-        let sun = Light.directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9])
-        sun.bind(material.shader())
-    }
-
     static func _example_scene_light_color() async throws {
 
         let warm = Light.directional([0.0, -1.0, 0.0], [1.0, 0.85, 0.7])
@@ -818,6 +801,20 @@ private enum _GeneratedExamples {
         let sun = Light.directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9])
     }
 
+    static func _example_scene_light_set_color() async throws {
+
+        let lamp = Light.directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
+        // Warm-tinted bulb after the user toggles the warm-light switch.
+        lamp.setColor([1.0, 0.85, 0.7])
+    }
+
+    static func _example_scene_light_set_direction() async throws {
+
+        let sun = Light.directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
+        // Reorient to a late-afternoon angle.
+        sun.setDirection([0.7, -0.5, -0.5])
+    }
+
     static func _example_scene_material_Material() async throws {
 
         let renderer = Renderer()
@@ -829,6 +826,21 @@ private enum _GeneratedExamples {
         let material = try await Material.pbr(renderer).baseColor([0.85, 0.2, 0.2, 1.0]).metallic(0.0).roughness(0.4).emissive([0.0, 0.0, 0.05])
 
         let model = Model(mesh, material)
+    }
+
+    static func _example_scene_material_add() async throws {
+
+        let renderer = Renderer()
+        let material = try await Material.pbr(renderer)
+
+        let camera = Camera.perspective(60.0.toRadians(), 16.0 / 9.0, 0.1, 100.0).lookAt([0.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+        let sun = Light.directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9])
+
+        material.add(camera).add(sun)
+
+        // Updating the camera later is enough — the Material picks the new
+        // view_proj up at the next render without re-adding.
+        camera.lookAt([3.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
     }
 
     static func _example_scene_material_alpha_cutoff() async throws {

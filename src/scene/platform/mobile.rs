@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use crate::renderer::platform::mobile::FragmentColorError;
 use crate::scene::{Camera, Light, Model};
-use crate::{Material, Mesh, Shader};
+use crate::{Material, Mesh};
 
 #[uniffi::export]
 impl Model {
@@ -151,11 +151,6 @@ impl Camera {
         self.position().to_vec()
     }
 
-    #[uniffi::method(name = "bind")]
-    #[lsp_doc("docs/api/scene/camera/bind.md")]
-    pub fn bind_mobile(self: Arc<Self>, shader: Arc<Shader>) {
-        self.bind(&shader);
-    }
 }
 
 #[uniffi::export]
@@ -183,10 +178,24 @@ impl Light {
         self.color().to_vec()
     }
 
-    #[uniffi::method(name = "bind")]
-    #[lsp_doc("docs/api/scene/light/bind.md")]
-    pub fn bind_mobile(self: Arc<Self>, shader: Arc<Shader>) {
-        self.bind(&shader);
+    #[uniffi::method(name = "setDirection")]
+    #[lsp_doc("docs/api/scene/light/set_direction.md")]
+    pub fn set_direction_mobile(
+        self: Arc<Self>,
+        direction: Vec<f32>,
+    ) -> Result<Arc<Self>, FragmentColorError> {
+        let direction = take_vec3(&direction, "Light.setDirection")?;
+        Ok(Arc::new(self.set_direction(direction)))
+    }
+
+    #[uniffi::method(name = "setColor")]
+    #[lsp_doc("docs/api/scene/light/set_color.md")]
+    pub fn set_color_mobile(
+        self: Arc<Self>,
+        color: Vec<f32>,
+    ) -> Result<Arc<Self>, FragmentColorError> {
+        let color = take_vec3(&color, "Light.setColor")?;
+        Ok(Arc::new(self.set_color(color)))
     }
 }
 
