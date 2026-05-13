@@ -375,6 +375,43 @@ impl Mesh {
     pub fn set_instance_count_js(&mut self, n: u32) {
         self.set_instance_count(n);
     }
+
+    #[wasm_bindgen(js_name = "setIndices")]
+    #[lsp_doc("docs/api/geometry/mesh/set_indices.md")]
+    pub fn set_indices_js(&mut self, indices: &JsValue) -> Result<(), JsError> {
+        use js_sys::{Array, Uint32Array};
+        let out: Vec<u32> = if let Some(arr) = indices.dyn_ref::<Uint32Array>() {
+            let mut buf = vec![0u32; arr.length() as usize];
+            arr.copy_to(&mut buf[..]);
+            buf
+        } else if let Some(arr) = indices.dyn_ref::<Array>() {
+            let len = arr.length();
+            let mut buf = Vec::with_capacity(len as usize);
+            for i in 0..len {
+                let n = arr
+                    .get(i)
+                    .as_f64()
+                    .ok_or_else(|| JsError::new("Indices must be numbers"))?;
+                if n < 0.0 || n > u32::MAX as f64 {
+                    return Err(JsError::new("Indices must fit in a u32"));
+                }
+                buf.push(n as u32);
+            }
+            buf
+        } else {
+            return Err(JsError::new(
+                "Expected Uint32Array or an array of numbers for indices",
+            ));
+        };
+        self.set_indices(out);
+        Ok(())
+    }
+
+    #[wasm_bindgen(js_name = "clearIndices")]
+    #[lsp_doc("docs/api/geometry/mesh/clear_indices.md")]
+    pub fn clear_indices_js(&mut self) {
+        self.clear_indices();
+    }
 }
 
 // -----------------------------

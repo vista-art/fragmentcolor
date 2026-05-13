@@ -656,6 +656,18 @@ private enum _GeneratedExamples {
         ])
     }
 
+    static func _example_geometry_mesh_clear_indices() async throws {
+
+        let mesh = Mesh()
+        try mesh.addVertices([
+            try Vertex([-0.5, -0.5]),
+            try Vertex([ 0.5, -0.5]),
+            try Vertex([ 0.0,  0.5]),
+        ])
+        mesh.setIndices([0, 1, 2])
+        mesh.clearIndices(); // back to auto-derived dedup
+    }
+
     static func _example_geometry_mesh_clear_instances() async throws {
 
         let m = Mesh()
@@ -675,6 +687,25 @@ private enum _GeneratedExamples {
 
     static func _example_geometry_mesh_new() async throws {
         let m = Mesh()
+    }
+
+    static func _example_geometry_mesh_set_indices() async throws {
+
+        // A quad split into two triangles via explicit indexing. The four corners
+        // happen to carry distinct UVs (only positions repeat), so we keep them
+        // all and reference each by index.
+        let mesh = Mesh()
+        let uv00 = [0.0, 0.0]
+        let uv10 = [1.0, 0.0]
+        let uv11 = [1.0, 1.0]
+        let uv01 = [0.0, 1.0]
+        try mesh.addVertices([
+            try Vertex([-0.5, -0.5]).set("uv", uv00),
+            try Vertex([ 0.5, -0.5]).set("uv", uv10),
+            try Vertex([ 0.5,  0.5]).set("uv", uv11),
+            try Vertex([-0.5,  0.5]).set("uv", uv01),
+        ])
+        mesh.setIndices([0, 1, 2, 0, 2, 3])
     }
 
     static func _example_geometry_mesh_set_instance_count() async throws {

@@ -114,6 +114,16 @@ impl Mesh {
         *self.object.override_instances.write() = Some(n);
         self.object.invalidate_cache();
     }
+
+    #[lsp_doc("docs/api/geometry/mesh/set_indices.md")]
+    pub fn set_indices<I: IntoIterator<Item = u32>>(&self, indices: I) {
+        self.object.set_indices(indices.into_iter().collect());
+    }
+
+    #[lsp_doc("docs/api/geometry/mesh/clear_indices.md")]
+    pub fn clear_indices(&self) {
+        self.object.clear_indices();
+    }
 }
 
 // -----------------------------
@@ -198,6 +208,7 @@ pub(crate) struct MeshObject {
     pub(crate) packed_insts: RwLock<Vec<u8>>, // instances packed by schema
 
     pub(crate) indices: RwLock<Vec<u32>>, // indices referencing unique verts
+    pub(crate) indices_overridden: RwLock<bool>, // user supplied indices via set_indices
 
     // Schemas
     pub(crate) vertex_schema: RwLock<Option<VertexSchema>>, // derived from first vertex
@@ -248,6 +259,7 @@ impl MeshObject {
             packed_verts: RwLock::new(Vec::new()),
             packed_insts: RwLock::new(Vec::new()),
             indices: RwLock::new(Vec::new()),
+            indices_overridden: RwLock::new(false),
             vertex_schema: RwLock::new(None),
             instance_schema: RwLock::new(None),
             dirty_vertices: RwLock::new(false),
@@ -279,6 +291,21 @@ impl MeshObject {
         *self.dirty_instances.write() = true;
         // Reset to default state: no buffer, no count override, draws as a single instance.
         *self.override_instances.write() = None;
+        self.invalidate_cache();
+    }
+
+    fn set_indices(&self, indices: Vec<u32>) {
+        *self.indices.write() = indices;
+        *self.indices_overridden.write() = true;
+        // Vertices need to be re-packed in insertion order (no dedup).
+        *self.dirty_vertices.write() = true;
+        self.invalidate_cache();
+    }
+
+    fn clear_indices(&self) {
+        *self.indices_overridden.write() = false;
+        // Force ensure_packed to re-derive indices via the dedup path.
+        *self.dirty_vertices.write() = true;
         self.invalidate_cache();
     }
 
@@ -333,32 +360,41 @@ impl MeshObject {
         if *self.dirty_vertices.read() {
             let verts = self.verts.read();
             let schema = self.vertex_schema.read();
-            // Dedup by full equality
-            let mut map: HashMap<VertexKey, u32> = HashMap::new();
-            let mut unique: Vec<&Vertex> = Vec::new();
-            let mut idx: Vec<u32> = Vec::new();
-            for v in verts.iter() {
-                let key = VertexKey::from(v);
-                if let Some(&i) = map.get(&key) {
-                    idx.push(i);
-                } else {
-                    let i = unique.len() as u32;
-                    map.insert(key, i);
-                    unique.push(v);
-                    idx.push(i);
-                }
-            }
-            // Pack bytes
+            let overridden = *self.indices_overridden.read();
             let mut bytes = Vec::new();
-            let _stride = schema.as_ref().map(|s| s.stride).unwrap_or(0);
-            for v in unique.iter() {
-                let Some(schema_ref) = schema.as_ref() else {
-                    return Err(MeshError::NoVertexSchema);
-                };
-                pack_vertex(&mut bytes, v, schema_ref);
+            if overridden {
+                // Pack every vertex in insertion order; preserve user-supplied indices.
+                for v in verts.iter() {
+                    let Some(schema_ref) = schema.as_ref() else {
+                        return Err(MeshError::NoVertexSchema);
+                    };
+                    pack_vertex(&mut bytes, v, schema_ref);
+                }
+            } else {
+                // Dedup by full equality and derive indices.
+                let mut map: HashMap<VertexKey, u32> = HashMap::new();
+                let mut unique: Vec<&Vertex> = Vec::new();
+                let mut idx: Vec<u32> = Vec::new();
+                for v in verts.iter() {
+                    let key = VertexKey::from(v);
+                    if let Some(&i) = map.get(&key) {
+                        idx.push(i);
+                    } else {
+                        let i = unique.len() as u32;
+                        map.insert(key, i);
+                        unique.push(v);
+                        idx.push(i);
+                    }
+                }
+                for v in unique.iter() {
+                    let Some(schema_ref) = schema.as_ref() else {
+                        return Err(MeshError::NoVertexSchema);
+                    };
+                    pack_vertex(&mut bytes, v, schema_ref);
+                }
+                *self.indices.write() = idx;
             }
             *self.packed_verts.write() = bytes;
-            *self.indices.write() = idx;
             *self.dirty_vertices.write() = false;
         }
         // Pack instances if dirty
@@ -768,5 +804,91 @@ mod tests {
         ]);
         let passes = mesh.passes();
         assert_eq!(passes.len(), 1);
+    }
+
+    #[test]
+    fn set_indices_preserves_non_deduped_vertices() {
+        let mesh = Mesh::new();
+        use crate::mesh::Vertex;
+        // Three vertices with fully identical attributes — the auto path
+        // would collapse these into a single unique vertex.
+        let v = Vertex::new([0.0f32, 0.0]).set("uv", [0.5f32, 0.5]);
+        mesh.add_vertex(v.clone());
+        mesh.add_vertex(v.clone());
+        mesh.add_vertex(v);
+        mesh.set_indices([0u32, 1, 2]);
+
+        mesh.object.ensure_packed().expect("pack");
+        let stride = mesh.object.vertex_schema.read().as_ref().unwrap().stride;
+        let pv = mesh.object.packed_verts.read().clone();
+        let idx = mesh.object.indices.read().clone();
+        // No dedup: 3 vertices worth of bytes, and indices preserved verbatim.
+        assert_eq!(pv.len() as u64, 3 * stride);
+        assert_eq!(idx, vec![0, 1, 2]);
+    }
+
+    #[test]
+    fn clear_indices_restores_auto_derivation() {
+        let mesh = Mesh::new();
+        use crate::mesh::Vertex;
+        let a = Vertex::new([0.0f32, 0.0]).set("uv", [0.0f32, 0.0]);
+        let b = Vertex::new([1.0f32, 0.0]).set("uv", [1.0f32, 0.0]);
+        mesh.add_vertices([a.clone(), b.clone(), a.clone()]);
+
+        // Switch to override mode with explicit indices.
+        mesh.set_indices([0u32, 1, 2]);
+        mesh.object.ensure_packed().expect("pack override");
+        let stride = mesh.object.vertex_schema.read().as_ref().unwrap().stride;
+        assert_eq!(mesh.object.packed_verts.read().len() as u64, 3 * stride);
+        assert_eq!(*mesh.object.indices.read(), vec![0, 1, 2]);
+
+        // Clear and re-pack: dedup should collapse `a` and produce derived indices.
+        mesh.clear_indices();
+        mesh.object.ensure_packed().expect("pack auto");
+        assert_eq!(mesh.object.packed_verts.read().len() as u64, 2 * stride);
+        assert_eq!(*mesh.object.indices.read(), vec![0, 1, 0]);
+    }
+
+    // Story: a triangle drawn from explicit indices renders without error.
+    #[test]
+    fn render_with_mesh_explicit_indices() {
+        pollster::block_on(async move {
+            let renderer = crate::renderer::Renderer::new();
+            let target = renderer
+                .create_texture_target([16u32, 16u32])
+                .await
+                .expect("texture target");
+
+            let wgsl = r#"
+struct VOut { @builtin(position) pos: vec4<f32> };
+@vertex
+fn vs_main(@location(0) pos: vec2<f32>) -> VOut {
+  var out: VOut;
+  out.pos = vec4<f32>(pos, 0.0, 1.0);
+  return out;
+}
+@fragment
+fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(0.,1.,0.,1.); }
+            "#;
+
+            let shader = crate::Shader::new(wgsl).expect("shader");
+            let pass = crate::Pass::from_shader("mesh-explicit-indices", &shader);
+
+            let mesh = Mesh::new();
+            use crate::mesh::Vertex;
+            // Four corners of a quad, sharing two positions across the
+            // diagonal — dedup would collapse them; explicit indices keep
+            // every corner so we can draw two triangles cleanly.
+            mesh.add_vertices([
+                Vertex::new([-0.5f32, -0.5]),
+                Vertex::new([0.5f32, -0.5]),
+                Vertex::new([0.5f32, 0.5]),
+                Vertex::new([-0.5f32, 0.5]),
+            ]);
+            mesh.set_indices([0u32, 1, 2, 0, 2, 3]);
+
+            pass.add_mesh(&mesh).expect("mesh is compatible");
+            renderer.render(&pass, &target).expect("render ok");
+        });
     }
 }

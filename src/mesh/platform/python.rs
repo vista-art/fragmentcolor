@@ -340,6 +340,28 @@ impl Mesh {
     pub fn set_instance_count_py(&mut self, n: u32) {
         self.set_instance_count(n);
     }
+
+    #[pyo3(name = "set_indices")]
+    #[lsp_doc("docs/api/geometry/mesh/set_indices.md")]
+    pub fn set_indices_py(&mut self, indices: Py<PyAny>) -> PyResult<()> {
+        Python::attach(|py| -> PyResult<()> {
+            let seq = indices.bind(py).cast::<PySequence>()?;
+            let len = seq.len()?;
+            let mut out: Vec<u32> = Vec::with_capacity(len);
+            for i in 0..len {
+                let item = seq.get_item(i)?;
+                out.push(item.extract::<u32>()?);
+            }
+            self.set_indices(out);
+            Ok(())
+        })
+    }
+
+    #[pyo3(name = "clear_indices")]
+    #[lsp_doc("docs/api/geometry/mesh/clear_indices.md")]
+    pub fn clear_indices_py(&mut self) {
+        self.clear_indices();
+    }
 }
 
 /// Tiny factory class to construct typed VertexValue variants from Python.

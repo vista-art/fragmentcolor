@@ -4,6 +4,10 @@
 
 The catalog/integration cycle: texture creation moved off the main thread, KTX2 + 16-bit format support landed, the public API thinned to a single transport per operation, and the texture-related public surface gets a structural cleanup before tagging.
 
+### Mesh indices
+
+- [x] **User-supplied indices via `Mesh::set_indices` / `Mesh::clear_indices`.** The auto path still dedupes vertices by full-attribute equality before producing an index array — fine for hand-built meshes, wrong for assets that already carry their own indexing (glTF loaders, OBJ importers, sharp-edge corners with split UVs / normals / tangents where two corners share a position but differ on other attributes). After `mesh.set_indices([...])` the mesh skips the dedup HashMap, packs every vertex in insertion order, and uses the indices the caller provided verbatim; `mesh.clear_indices()` returns to the auto-derived path. Plumbed through `MeshObject::indices_overridden` and a branch in `ensure_packed`; full parity across the four bindings (`set_indices` / `setIndices` on Python / JS / Swift / Kotlin).
+
 ### Higher-level Scene objects — Material + Model
 
 Closes the v0.11.2 wishlist item "per-mesh transform" without polluting Mesh with shader state. Adds two new top-level types under `src/scene/` and `src/material/` plus a new `mesh/` and `material/` shader-registry category. The original framing was "Mesh::set_transform"; rejected because uniforms belong on the Shader, not on Mesh — see `docs/api/scene/material/material.md` for the design notes.

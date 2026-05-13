@@ -161,6 +161,20 @@ impl Mesh {
     pub fn set_instance_count_mobile(&self, n: u32) {
         self.set_instance_count(n);
     }
+
+    /// Supply explicit indices, bypassing the auto-derived dedup pass.
+    #[uniffi::method(name = "setIndices")]
+    #[lsp_doc("docs/api/geometry/mesh/set_indices.md")]
+    pub fn set_indices_mobile(&self, indices: Vec<u32>) {
+        self.set_indices(indices);
+    }
+
+    /// Drop user-supplied indices and return to auto-derived dedup indexing.
+    #[uniffi::method(name = "clearIndices")]
+    #[lsp_doc("docs/api/geometry/mesh/clear_indices.md")]
+    pub fn clear_indices_mobile(&self) {
+        self.clear_indices();
+    }
 }
 
 // -----------------------------------------------------------------
