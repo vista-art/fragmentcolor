@@ -1,0 +1,636 @@
+---
+title: Camera
+description: "A `Camera` packages the two things every 3D render needs into one object: a projection (how the view frustum maps to clip space) and a view (where the camera sits and what it looks at). It's the first-class replacement for manually calling `material.shader().set(\"camera.view_proj\", ...)` every frame."
+category: scene
+categoryLabel: Scene
+sidebar:
+  order: 2
+---
+
+import { Code, Tabs, TabItem, Aside } from "@astrojs/starlight/components";
+
+## Description
+
+A `Camera` packages the two things every 3D render needs into one object: a
+projection (how the view frustum maps to clip space) and a view (where the
+camera sits and what it looks at). It's the first-class replacement for
+manually calling `material.shader().set("camera.view_proj", ...)` every frame.
+
+Internally a Camera carries:
+
+- A `proj` matrix built by [`Camera::perspective`](/api/scene/camera/perspective)
+  or [`Camera::orthographic`](/api/scene/camera/orthographic).
+  Both use glam's right-handed builders (`Mat4::perspective_rh`,
+  `Mat4::orthographic_rh`), which match wgpu's NDC depth range `[0, 1]`.
+- A `view` matrix initialized to identity (eye at origin, looking down `-Z`,
+  with `+Y` up). Call [`look_at`](/api/scene/camera/look_at)
+  to position the camera in world space.
+- The world-space `position` of the eye â kept alongside the view matrix so
+  shaders that need it (specular highlights, fresnel) don't have to invert
+  the view matrix on every frame.
+
+The Camera is the user's domain, not the Material's: a Material is "what the
+surface looks like under any light from any viewpoint", a Camera is "which
+viewpoint we're using right now". [`Camera::bind`](/api/scene/camera/bind)
+writes the matching uniforms (`camera.view_proj` and `camera.position`) into
+a Shader â typically a Material's shader. If a shader doesn't declare those
+uniforms the call is a best-effort no-op with a debug log, same as
+`Material`'s setters.
+
+
+## Methods
+
+
+---
+
+### Camera::bind
+
+Write the camera state into a `Shader`. Sets `camera.view_proj`
+(`proj * view`, column-major) and `camera.position` (the world-space eye)
+in one call. The typical target is a Material's shader â both `Material::pbr`
+and any custom shader that follows the PBR uniform naming will pick the
+values up immediately.
+
+The call is best-effort: if the target shader doesn't declare one of the
+two uniforms (e.g. a 2D Material that only needs a projection matrix), the
+underlying `Shader::set` returns an error which is silently demoted to a
+`log::debug!`. This matches Material's own setters â you can call `bind`
+defensively without worrying about the shader's surface.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Camera, Material};
+
+let camera = Camera::perspective(60.0_f32.to_radians(), 16.0 / 9.0, 0.1, 100.0)
+    .look_at([0.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+
+let material = Material::pbr()?;
+camera.bind(material.shader());
+
+// The shader now carries the camera state â view_proj is non-identity.
+let m: [[f32; 4]; 4] = material.shader().get("camera.view_proj")?;
+assert!(m != [
+	[1.0, 0.0, 0.0, 0.0],
+	[0.0, 1.0, 0.0, 0.0],
+	[0.0, 0.0, 1.0, 0.0],
+	[0.0, 0.0, 0.0, 1.0],
+]);
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 10-19}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Camera, Material } from "fragmentcolor";
+
+const camera = Camera.perspective(60.0.toRadians(), 16.0 / 9.0, 0.1, 100.0).lookAt([0.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+
+const material = Material.pbr();
+camera.bind(material.shader());
+
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Camera, Material
+
+camera = Camera.perspective(60.0_.to_radians(), 16.0 / 9.0, 0.1, 100.0).look_at([0.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+
+material = Material.pbr()
+camera.bind(material.shader())
+
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let camera = Camera.perspective(60.0.toRadians(), 16.0 / 9.0, 0.1, 100.0).lookAt([0.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+
+let material = Material.pbr()
+camera.bind(material.shader())
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val camera = Camera.perspective(60.0.toRadians(), 16.0 / 9.0, 0.1, 100.0).lookAt(listOf(0.0f, 1.0f, 5.0f), listOf(0.0f, 0.0f, 0.0f), listOf(0.0f, 1.0f, 0.0f))
+
+val material = Material.pbr()
+camera.bind(material.shader())
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Camera::look_at
+
+Position the camera in world space. `eye` is where the camera is, `target`
+is the point it aims at, and `up` is the world-space up vector that
+orients the roll (almost always `[0, 1, 0]`). Returns `self`, so it
+chains cleanly off a `perspective` or `orthographic` constructor.
+
+Internally builds the view matrix with `glam::Mat4::look_at_rh`. The
+result is a right-handed view matrix that pairs with the right-handed
+projection produced by [`perspective`](/api/scene/camera/perspective)
+and [`orthographic`](/api/scene/camera/orthographic).
+
+The eye position is cached on the Camera and exposed via
+[`position`](/api/scene/camera/position) so
+shaders that need it (specular highlights, fresnel) don't have to invert
+the view matrix on every frame.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::Camera;
+
+let camera = Camera::perspective(60.0_f32.to_radians(), 16.0 / 9.0, 0.1, 100.0)
+    .look_at([0.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+
+assert_eq!(camera.position(), [0.0, 1.0, 5.0]);
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 7-9}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Camera } from "fragmentcolor";
+
+const camera = Camera.perspective(60.0.toRadians(), 16.0 / 9.0, 0.1, 100.0).lookAt([0.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Camera
+
+camera = Camera.perspective(60.0_.to_radians(), 16.0 / 9.0, 0.1, 100.0).look_at([0.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let camera = Camera.perspective(60.0.toRadians(), 16.0 / 9.0, 0.1, 100.0).lookAt([0.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val camera = Camera.perspective(60.0.toRadians(), 16.0 / 9.0, 0.1, 100.0).lookAt(listOf(0.0f, 1.0f, 5.0f), listOf(0.0f, 0.0f, 0.0f), listOf(0.0f, 1.0f, 0.0f))
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Camera::orthographic
+
+Construct a Camera with an orthographic projection. The six arguments are
+the frustum planes in view space: `left`, `right`, `bottom`, `top`, `near`,
+`far`. Use this when you need a flat 2D look (UI overlays, 2D-in-3D
+gameplay, isometric scenes) or for shadow-map style passes where you want
+parallel projection.
+
+Built on `glam::Mat4::orthographic_rh`, which targets wgpu's NDC depth
+range `[0, 1]` â pair with a depth attachment configured for that range
+when you add the Camera to a Pass that does depth testing.
+
+The view component starts at identity: eye at the world origin, looking
+down `-Z`, with `+Y` up. Chain [`look_at`](/api/scene/camera/look_at)
+to position the camera before binding it.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::Camera;
+
+// A 16:9 viewport, 10 world units tall, depth range 0.1..100.
+let camera = Camera::orthographic(-8.0, 8.0, -4.5, 4.5, 0.1, 100.0);
+
+let m = camera.view_proj();
+// Orthographic preserves parallel lines: the bottom-right corner is the
+// projection-only [3][3] term, which is 1.0 (unlike perspective's 0).
+assert!((m[3][3] - 1.0).abs() < 1.0e-5);
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 7-12}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Camera } from "fragmentcolor";
+
+// A 16:9 viewport, 10 world units tall, depth range 0.1..100.
+const camera = Camera.orthographic(-8.0, 8.0, -4.5, 4.5, 0.1, 100.0);
+
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Camera
+
+# A 16:9 viewport, 10 world units tall, depth range 0.1..100.
+camera = Camera.orthographic(-8.0, 8.0, -4.5, 4.5, 0.1, 100.0)
+
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+// A 16:9 viewport, 10 world units tall, depth range 0.1...100.
+let camera = Camera.orthographic(-8.0, 8.0, -4.5, 4.5, 0.1, 100.0)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+// A 16:9 viewport, 10 world units tall, depth range 0.1..100.
+val camera = Camera.orthographic(-8.0, 8.0, -4.5, 4.5, 0.1, 100.0)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Camera::perspective
+
+Construct a Camera with a perspective projection. `fovy_radians` is the
+vertical field of view (use `degrees.to_radians()` if you're starting from
+degrees); `aspect` is width / height; `near` and `far` clip the depth range.
+
+Built on `glam::Mat4::perspective_rh`, which targets wgpu's NDC depth
+range `[0, 1]` â pair with a depth attachment configured for that range
+when you add the Camera to a Pass that does depth testing.
+
+The view component starts at identity: eye at the world origin, looking
+down `-Z`, with `+Y` up. Chain [`look_at`](/api/scene/camera/look_at)
+to position the camera before binding it.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::Camera;
+
+let camera = Camera::perspective(60.0_f32.to_radians(), 16.0 / 9.0, 0.1, 100.0);
+
+// Perspective collapses the depth axis into a non-trivial matrix; the
+// [2][3] term encodes the -1 wgpu uses for the homogeneous w divide.
+let m = camera.view_proj();
+assert!((m[2][3] + 1.0).abs() < 1.0e-5);
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 6-11}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Camera } from "fragmentcolor";
+
+const camera = Camera.perspective(60.0.toRadians(), 16.0 / 9.0, 0.1, 100.0);
+
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Camera
+
+camera = Camera.perspective(60.0_.to_radians(), 16.0 / 9.0, 0.1, 100.0)
+
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let camera = Camera.perspective(60.0.toRadians(), 16.0 / 9.0, 0.1, 100.0)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val camera = Camera.perspective(60.0.toRadians(), 16.0 / 9.0, 0.1, 100.0)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Camera::position
+
+Read the world-space eye position as `[x, y, z]`. This is the value set by
+the most recent [`look_at`](/api/scene/camera/look_at)
+call, or `[0, 0, 0]` if the camera has only been constructed (the default
+view is identity, with the eye at the origin).
+
+Shaders that need the eye position (specular highlights, fresnel,
+parallax) typically pull it from the `camera.position` uniform written by
+[`Camera::bind`](/api/scene/camera/bind) â caching
+it here keeps every frame cheap (no view-matrix inversion on the GPU side).
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::Camera;
+
+let camera = Camera::perspective(60.0_f32.to_radians(), 16.0 / 9.0, 0.1, 100.0)
+    .look_at([3.0, 2.0, 8.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+
+let eye = camera.position();
+assert_eq!(eye, [3.0, 2.0, 8.0]);
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 8-10}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Camera } from "fragmentcolor";
+
+const camera = Camera.perspective(60.0.toRadians(), 16.0 / 9.0, 0.1, 100.0).lookAt([3.0, 2.0, 8.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+
+const eye = camera.position();
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Camera
+
+camera = Camera.perspective(60.0_.to_radians(), 16.0 / 9.0, 0.1, 100.0).look_at([3.0, 2.0, 8.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+
+eye = camera.position()
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let camera = Camera.perspective(60.0.toRadians(), 16.0 / 9.0, 0.1, 100.0).lookAt([3.0, 2.0, 8.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+
+let eye = camera.position()
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val camera = Camera.perspective(60.0.toRadians(), 16.0 / 9.0, 0.1, 100.0).lookAt(listOf(3.0f, 2.0f, 8.0f), listOf(0.0f, 0.0f, 0.0f), listOf(0.0f, 1.0f, 0.0f))
+
+val eye = camera.position()
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Camera::view_proj
+
+Read the combined `proj * view` matrix as a column-major 4x4. Column-major
+matches WGSL's `mat4x4<f32>` storage and glam's `to_cols_array_2d()`, so
+the result is ready to feed directly into a Shader's `camera.view_proj`
+uniform via `Shader::set(...)` if you need direct control. For the common
+case, use [`Camera::bind`](/api/scene/camera/bind)
+to write both `view_proj` and `position` in one call.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::Camera;
+
+let camera = Camera::perspective(60.0_f32.to_radians(), 16.0 / 9.0, 0.1, 100.0)
+    .look_at([0.0, 0.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+
+let m = camera.view_proj();
+// Column 3 (translation) reflects the eye offset baked into the view matrix.
+assert!(m[3][2] != 0.0);
+let _ = m;
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 8-9, 11-12}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Camera } from "fragmentcolor";
+
+const camera = Camera.perspective(60.0.toRadians(), 16.0 / 9.0, 0.1, 100.0).lookAt([0.0, 0.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+
+const m = camera.viewProj();
+const _ = m;
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Camera
+
+camera = Camera.perspective(60.0_.to_radians(), 16.0 / 9.0, 0.1, 100.0).look_at([0.0, 0.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+
+m = camera.view_proj()
+_ = m
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let camera = Camera.perspective(60.0.toRadians(), 16.0 / 9.0, 0.1, 100.0).lookAt([0.0, 0.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+
+let m = camera.viewProj()
+let _ = m
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val camera = Camera.perspective(60.0.toRadians(), 16.0 / 9.0, 0.1, 100.0).lookAt(listOf(0.0f, 0.0f, 5.0f), listOf(0.0f, 0.0f, 0.0f), listOf(0.0f, 1.0f, 0.0f))
+
+val m = camera.viewProj()
+
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>

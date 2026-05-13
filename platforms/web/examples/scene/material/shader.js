@@ -1,5 +1,6 @@
 import { Material } from "fragmentcolor";
 
+// Direct uniform access for a custom field that isn't covered by the
+// Material setters or by Camera / Light.
 const material = Material.pbr();
-material.shader().set( "camera.viewProj", [ [1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0], ], );
-material.shader().set("camera.position", [0.0, 0.0, 5.0]);
+material.shader().set("material.alphaCutoff", 0.25);

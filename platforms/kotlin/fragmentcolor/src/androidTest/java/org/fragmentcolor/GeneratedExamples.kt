@@ -724,6 +724,68 @@ class GeneratedExamples {
         val v = Vertex(listOf(0.0f, 0.0f, 0.0f)).set("weight", 1.0).set("color", listOf(1.0f, 0.0f, 0.0f))
     }
 
+    @Suppress("unused") private suspend fun _example_scene_camera_bind() {
+
+        val camera = Camera.perspective(60.0.toRadians(), 16.0 / 9.0, 0.1, 100.0).lookAt(listOf(0.0f, 1.0f, 5.0f), listOf(0.0f, 0.0f, 0.0f), listOf(0.0f, 1.0f, 0.0f))
+
+        val material = Material.pbr()
+        camera.bind(material.shader())
+    }
+
+    @Suppress("unused") private suspend fun _example_scene_camera_look_at() {
+
+        val camera = Camera.perspective(60.0.toRadians(), 16.0 / 9.0, 0.1, 100.0).lookAt(listOf(0.0f, 1.0f, 5.0f), listOf(0.0f, 0.0f, 0.0f), listOf(0.0f, 1.0f, 0.0f))
+    }
+
+    @Suppress("unused") private suspend fun _example_scene_camera_orthographic() {
+
+        // A 16:9 viewport, 10 world units tall, depth range 0.1..100.
+        val camera = Camera.orthographic(-8.0, 8.0, -4.5, 4.5, 0.1, 100.0)
+    }
+
+    @Suppress("unused") private suspend fun _example_scene_camera_perspective() {
+
+        val camera = Camera.perspective(60.0.toRadians(), 16.0 / 9.0, 0.1, 100.0)
+    }
+
+    @Suppress("unused") private suspend fun _example_scene_camera_position() {
+
+        val camera = Camera.perspective(60.0.toRadians(), 16.0 / 9.0, 0.1, 100.0).lookAt(listOf(3.0f, 2.0f, 8.0f), listOf(0.0f, 0.0f, 0.0f), listOf(0.0f, 1.0f, 0.0f))
+
+        val eye = camera.position()
+    }
+
+    @Suppress("unused") private suspend fun _example_scene_camera_view_proj() {
+
+        val camera = Camera.perspective(60.0.toRadians(), 16.0 / 9.0, 0.1, 100.0).lookAt(listOf(0.0f, 0.0f, 5.0f), listOf(0.0f, 0.0f, 0.0f), listOf(0.0f, 1.0f, 0.0f))
+
+        val m = camera.viewProj()
+    }
+
+    @Suppress("unused") private suspend fun _example_scene_light_bind() {
+
+        val material = Material.pbr()
+        val sun = Light.directional(listOf(0.3f, -1.0f, -0.4f), listOf(1.0f, 0.95f, 0.9f))
+        sun.bind(material.shader())
+    }
+
+    @Suppress("unused") private suspend fun _example_scene_light_color() {
+
+        val warm = Light.directional(listOf(0.0f, -1.0f, 0.0f), listOf(1.0f, 0.85f, 0.7f))
+        val color = warm.color()
+    }
+
+    @Suppress("unused") private suspend fun _example_scene_light_direction() {
+
+        val sun = Light.directional(listOf(0.3f, -1.0f, -0.4f), listOf(1.0f, 1.0f, 1.0f))
+        val dir = sun.direction()
+    }
+
+    @Suppress("unused") private suspend fun _example_scene_light_directional() {
+
+        val sun = Light.directional(listOf(0.3f, -1.0f, -0.4f), listOf(1.0f, 0.95f, 0.9f))
+    }
+
     @Suppress("unused") private suspend fun _example_scene_material_Material() {
 
         val mesh = Mesh()
@@ -832,9 +894,10 @@ class GeneratedExamples {
 
     @Suppress("unused") private suspend fun _example_scene_material_shader() {
 
+        // Direct uniform access for a custom field that isn't covered by the
+        // Material setters or by Camera / Light.
         val material = Material.pbr()
-        material.shader().set("camera.viewProj", listOf(arrayOf(1.0f, 0.0f, 0.0f, 0.0)f, arrayOf(0.0f, 1.0f, 0.0f, 0.0)f, arrayOf(0.0f, 0.0f, 1.0f, 0.0)f, arrayOf(0.0f, 0.0f, 0.0f, 1.0)f, .0f))
-        material.shader().set("camera.position", floatArrayOf(0.0f, 0.0f, 5.0f))
+        material.shader().set("material.alphaCutoff", 0.25)
     }
 
     @Suppress("unused") private suspend fun _example_scene_model_material() {

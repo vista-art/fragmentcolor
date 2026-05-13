@@ -18,7 +18,12 @@ use crate::mesh::MeshObject;
 use crate::shader::ShaderObject;
 use crate::{Material, Mesh};
 
+mod camera;
+mod light;
 mod platform;
+
+pub use camera::*;
+pub use light::*;
 
 #[cfg_attr(wasm, wasm_bindgen)]
 #[cfg_attr(python, pyclass(from_py_object))]

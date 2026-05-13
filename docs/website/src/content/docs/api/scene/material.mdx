@@ -1440,9 +1440,12 @@ mismatch â use `Material::custom(...)` to bring your own vertex layout.
 | `light.direction`            | `[0, -1, 0]` (down)  |
 | `light.color`                | `[1, 1, 1]`          |
 
-You set `camera.view_proj` and `camera.position` directly via
-`material.shader().set(...)` â the camera is the user's domain, not the
-Material's. A Camera object is planned for a follow-up.
+The camera and light are the user's domain, not the Material's â set them
+with [`Camera::bind`](/api/scene/camera/bind) and
+[`Light::bind`](/api/scene/light/bind). Each
+writes the matching `camera.*` / `light.*` uniforms into the Material's
+shader in one call. Dropping down to `material.shader().set(...)` directly
+is still supported if you need it.
 
 #### Example
 
@@ -1609,13 +1612,33 @@ lang="kotlin"
 
 Borrow the underlying `Shader` to drop down to direct uniform manipulation â
 the escape hatch when the Material's typed setters don't cover what you need
-(camera state, custom uniforms, raw texture binds outside the glTF PBR slots).
+(custom uniforms beyond the glTF PBR field set, raw texture binds, anything
+the [Camera](/api/scene/camera) /
+[Light](/api/scene/light) helpers don't speak to).
 
 The returned reference is the same `Shader` the Material is built around, so
 changes propagate immediately to every Model that uses this Material. If you
 want a Material variant with different state, build a fresh
 `Material::pbr().<setters>` rather than cloning â `Material` clones share
 their Shader handle (Arc-clone) so mutations are visible across all clones.
+
+For camera + light state specifically, prefer the typed helpers over raw
+`shader().set(...)`:
+
+```rust collapse={1-1, 11-12}
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Camera, Light, Material};
+
+let material = Material::pbr()?;
+let camera = Camera::perspective(60.0_f32.to_radians(), 16.0 / 9.0, 0.1, 100.0)
+    .look_at([0.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+camera.bind(material.shader());
+
+let sun = Light::directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9]);
+sun.bind(material.shader());
+Ok(())
+}
+```
 
 #### Example
 
@@ -1627,21 +1650,14 @@ code={`
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Material;
 
+// Direct uniform access for a custom field that isn't covered by the
+// Material setters or by Camera / Light.
 let material = Material::pbr()?;
-material.shader().set(
-    "camera.view_proj",
-    [
-        [1.0_f32, 0.0, 0.0, 0.0],
-        [0.0, 1.0, 0.0, 0.0],
-        [0.0, 0.0, 1.0, 0.0],
-        [0.0, 0.0, 0.0, 1.0],
-    ],
-)?;
-material.shader().set("camera.position", [0.0_f32, 0.0, 5.0])?;
+material.shader().set("material.alpha_cutoff", 0.25_f32)?;
 Ok(())
 }
 `}
-lang="rust" meta="collapse={1-1, 15-16}"
+lang="rust" meta="collapse={1-1, 8-9}"
 />
 
 </TabItem>
@@ -1651,9 +1667,10 @@ lang="rust" meta="collapse={1-1, 15-16}"
 code={`
 import { Material } from "fragmentcolor";
 
+// Direct uniform access for a custom field that isn't covered by the
+// Material setters or by Camera / Light.
 const material = Material.pbr();
-material.shader().set( "camera.viewProj", [ [1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0], ], );
-material.shader().set("camera.position", [0.0, 0.0, 5.0]);
+material.shader().set("material.alphaCutoff", 0.25);
 `}
 lang="js"
 />
@@ -1665,17 +1682,10 @@ lang="js"
 code={`
 from fragmentcolor import Material
 
+# Direct uniform access for a custom field that isn't covered by the
+# Material setters or by Camera / Light.
 material = Material.pbr()
-material.shader().set(
-    "camera.view_proj",
-    [
-        [1.0_, 0.0, 0.0, 0.0],
-        [0.0, 1.0, 0.0, 0.0],
-        [0.0, 0.0, 1.0, 0.0],
-        [0.0, 0.0, 0.0, 1.0],
-    ],
-)
-material.shader().set("camera.position", [0.0_, 0.0, 5.0])
+material.shader().set("material.alpha_cutoff", 0.25_)
 `}
 lang="python"
 />
@@ -1687,17 +1697,10 @@ lang="python"
 code={`
 import FragmentColor
 
+// Direct uniform access for a custom field that isn't covered by the
+// Material setters or by Camera / Light.
 let material = Material.pbr()
-try material.shader().set(
-    "camera.viewProj",
-    [
-        [1.0, 0.0, 0.0, 0.0],
-        [0.0, 1.0, 0.0, 0.0],
-        [0.0, 0.0, 1.0, 0.0],
-        [0.0, 0.0, 0.0, 1.0],
-    ],
-)
-try material.shader().set("camera.position", [0.0, 0.0, 5.0])
+try material.shader().set("material.alphaCutoff", 0.25)
 `}
 lang="swift"
 />
@@ -1709,9 +1712,10 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 
+// Direct uniform access for a custom field that isn't covered by the
+// Material setters or by Camera / Light.
 val material = Material.pbr()
-material.shader().set("camera.viewProj", listOf(arrayOf(1.0f, 0.0f, 0.0f, 0.0)f, arrayOf(0.0f, 1.0f, 0.0f, 0.0)f, arrayOf(0.0f, 0.0f, 1.0f, 0.0)f, arrayOf(0.0f, 0.0f, 0.0f, 1.0)f, .0f))
-material.shader().set("camera.position", floatArrayOf(0.0f, 0.0f, 5.0f))
+material.shader().set("material.alphaCutoff", 0.25)
 `}
 lang="kotlin"
 />

@@ -3,9 +3,9 @@
 use lsp_doc::lsp_doc;
 use std::sync::Arc;
 
-use crate::scene::Model;
 use crate::renderer::platform::mobile::FragmentColorError;
-use crate::{Material, Mesh};
+use crate::scene::{Camera, Light, Model};
+use crate::{Material, Mesh, Shader};
 
 #[uniffi::export]
 impl Model {
@@ -65,7 +65,7 @@ impl Model {
         self: Arc<Self>,
         offset: Vec<f32>,
     ) -> Result<(), FragmentColorError> {
-        let arr = take_vec3(&offset, "translate")?;
+        let arr = take_vec3(&offset, "Model.translate")?;
         self.translate(arr);
         Ok(())
     }
@@ -77,7 +77,7 @@ impl Model {
         axis: Vec<f32>,
         radians: f32,
     ) -> Result<(), FragmentColorError> {
-        let arr = take_vec3(&axis, "rotate")?;
+        let arr = take_vec3(&axis, "Model.rotate")?;
         self.rotate(arr, radians);
         Ok(())
     }
@@ -88,9 +88,105 @@ impl Model {
         self: Arc<Self>,
         factor: Vec<f32>,
     ) -> Result<(), FragmentColorError> {
-        let arr = take_vec3(&factor, "scale")?;
+        let arr = take_vec3(&factor, "Model.scale")?;
         self.scale(arr);
         Ok(())
+    }
+}
+
+#[uniffi::export]
+impl Camera {
+    #[uniffi::constructor(name = "perspective")]
+    #[lsp_doc("docs/api/scene/camera/perspective.md")]
+    pub fn perspective_mobile(
+        fovy_radians: f32,
+        aspect: f32,
+        near: f32,
+        far: f32,
+    ) -> Arc<Self> {
+        Arc::new(Camera::perspective(fovy_radians, aspect, near, far))
+    }
+
+    #[uniffi::constructor(name = "orthographic")]
+    #[lsp_doc("docs/api/scene/camera/orthographic.md")]
+    pub fn orthographic_mobile(
+        left: f32,
+        right: f32,
+        bottom: f32,
+        top: f32,
+        near: f32,
+        far: f32,
+    ) -> Arc<Self> {
+        Arc::new(Camera::orthographic(left, right, bottom, top, near, far))
+    }
+
+    #[uniffi::method(name = "lookAt")]
+    #[lsp_doc("docs/api/scene/camera/look_at.md")]
+    pub fn look_at_mobile(
+        self: Arc<Self>,
+        eye: Vec<f32>,
+        target: Vec<f32>,
+        up: Vec<f32>,
+    ) -> Result<Arc<Self>, FragmentColorError> {
+        let eye = take_vec3(&eye, "Camera.lookAt eye")?;
+        let target = take_vec3(&target, "Camera.lookAt target")?;
+        let up = take_vec3(&up, "Camera.lookAt up")?;
+        Ok(Arc::new((*self).clone().look_at(eye, target, up)))
+    }
+
+    #[uniffi::method(name = "viewProj")]
+    #[lsp_doc("docs/api/scene/camera/view_proj.md")]
+    pub fn view_proj_mobile(self: Arc<Self>) -> Vec<f32> {
+        let cols = self.view_proj();
+        let mut out = Vec::with_capacity(16);
+        for col in cols.iter() {
+            out.extend_from_slice(col);
+        }
+        out
+    }
+
+    #[uniffi::method(name = "position")]
+    #[lsp_doc("docs/api/scene/camera/position.md")]
+    pub fn position_mobile(self: Arc<Self>) -> Vec<f32> {
+        self.position().to_vec()
+    }
+
+    #[uniffi::method(name = "bind")]
+    #[lsp_doc("docs/api/scene/camera/bind.md")]
+    pub fn bind_mobile(self: Arc<Self>, shader: Arc<Shader>) {
+        self.bind(&shader);
+    }
+}
+
+#[uniffi::export]
+impl Light {
+    #[uniffi::constructor(name = "directional")]
+    #[lsp_doc("docs/api/scene/light/directional.md")]
+    pub fn directional_mobile(
+        direction: Vec<f32>,
+        color: Vec<f32>,
+    ) -> Result<Arc<Self>, FragmentColorError> {
+        let direction = take_vec3(&direction, "Light.directional direction")?;
+        let color = take_vec3(&color, "Light.directional color")?;
+        Ok(Arc::new(Light::directional(direction, color)))
+    }
+
+    #[uniffi::method(name = "direction")]
+    #[lsp_doc("docs/api/scene/light/direction.md")]
+    pub fn direction_mobile(self: Arc<Self>) -> Vec<f32> {
+        self.direction().to_vec()
+    }
+
+    #[uniffi::method(name = "color")]
+    #[lsp_doc("docs/api/scene/light/color.md")]
+    pub fn color_mobile(self: Arc<Self>) -> Vec<f32> {
+        self.color().to_vec()
+    }
+
+    #[uniffi::method(name = "bind")]
+    #[lsp_doc("docs/api/scene/light/bind.md")]
+    pub fn bind_mobile(self: Arc<Self>, shader: Arc<Shader>) {
+        self.bind(&shader);
     }
 }
 
@@ -101,7 +197,7 @@ fn material_share(material: &Material) -> Material {
 fn take_vec3(v: &[f32], field: &str) -> Result<[f32; 3], FragmentColorError> {
     if v.len() != 3 {
         return Err(FragmentColorError::Render(format!(
-            "Model.{field}: expected an array of length 3, got {}",
+            "{field}: expected an array of length 3, got {}",
             v.len()
         )));
     }

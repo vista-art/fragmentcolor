@@ -1,13 +1,6 @@
 from fragmentcolor import Material
 
+# Direct uniform access for a custom field that isn't covered by the
+# Material setters or by Camera / Light.
 material = Material.pbr()
-material.shader().set(
-    "camera.view_proj",
-    [
-        [1.0_, 0.0, 0.0, 0.0],
-        [0.0, 1.0, 0.0, 0.0],
-        [0.0, 0.0, 1.0, 0.0],
-        [0.0, 0.0, 0.0, 1.0],
-    ],
-)
-material.shader().set("camera.position", [0.0_, 0.0, 5.0])
+material.shader().set("material.alpha_cutoff", 0.25_)

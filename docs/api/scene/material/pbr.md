@@ -42,9 +42,12 @@ mismatch — use `Material::custom(...)` to bring your own vertex layout.
 | `light.direction`            | `[0, -1, 0]` (down)  |
 | `light.color`                | `[1, 1, 1]`          |
 
-You set `camera.view_proj` and `camera.position` directly via
-`material.shader().set(...)` — the camera is the user's domain, not the
-Material's. A Camera object is planned for a follow-up.
+The camera and light are the user's domain, not the Material's — set them
+with [`Camera::bind`](https://fragmentcolor.org/api/scene/camera/bind) and
+[`Light::bind`](https://fragmentcolor.org/api/scene/light/bind). Each
+writes the matching `camera.*` / `light.*` uniforms into the Material's
+shader in one call. Dropping down to `material.shader().set(...)` directly
+is still supported if you need it.
 
 ## Example
 

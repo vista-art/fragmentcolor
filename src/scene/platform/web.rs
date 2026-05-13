@@ -3,8 +3,8 @@
 use lsp_doc::lsp_doc;
 use wasm_bindgen::prelude::*;
 
-use crate::scene::Model;
-use crate::{Material, Mesh};
+use crate::scene::{Camera, Light, Model};
+use crate::{Material, Mesh, Shader};
 
 #[wasm_bindgen]
 impl Model {
@@ -61,7 +61,7 @@ impl Model {
     #[wasm_bindgen(js_name = "translate")]
     #[lsp_doc("docs/api/scene/model/translate.md")]
     pub fn translate_js(&self, offset: Vec<f32>) -> Result<(), JsError> {
-        let arr = vec3(&offset, "translate")?;
+        let arr = vec3(&offset, "Model.translate")?;
         self.translate(arr);
         Ok(())
     }
@@ -69,7 +69,7 @@ impl Model {
     #[wasm_bindgen(js_name = "rotate")]
     #[lsp_doc("docs/api/scene/model/rotate.md")]
     pub fn rotate_js(&self, axis: Vec<f32>, radians: f32) -> Result<(), JsError> {
-        let arr = vec3(&axis, "rotate")?;
+        let arr = vec3(&axis, "Model.rotate")?;
         self.rotate(arr, radians);
         Ok(())
     }
@@ -77,23 +77,111 @@ impl Model {
     #[wasm_bindgen(js_name = "scale")]
     #[lsp_doc("docs/api/scene/model/scale.md")]
     pub fn scale_js(&self, factor: Vec<f32>) -> Result<(), JsError> {
-        let arr = vec3(&factor, "scale")?;
+        let arr = vec3(&factor, "Model.scale")?;
         self.scale(arr);
         Ok(())
     }
 }
 
+#[wasm_bindgen]
+impl Camera {
+    #[wasm_bindgen(js_name = "perspective")]
+    #[lsp_doc("docs/api/scene/camera/perspective.md")]
+    pub fn perspective_js(fovy_radians: f32, aspect: f32, near: f32, far: f32) -> Camera {
+        Camera::perspective(fovy_radians, aspect, near, far)
+    }
+
+    #[wasm_bindgen(js_name = "orthographic")]
+    #[lsp_doc("docs/api/scene/camera/orthographic.md")]
+    pub fn orthographic_js(
+        left: f32,
+        right: f32,
+        bottom: f32,
+        top: f32,
+        near: f32,
+        far: f32,
+    ) -> Camera {
+        Camera::orthographic(left, right, bottom, top, near, far)
+    }
+
+    #[wasm_bindgen(js_name = "lookAt")]
+    #[lsp_doc("docs/api/scene/camera/look_at.md")]
+    pub fn look_at_js(
+        &self,
+        eye: Vec<f32>,
+        target: Vec<f32>,
+        up: Vec<f32>,
+    ) -> Result<Camera, JsError> {
+        let eye = vec3(&eye, "Camera.lookAt eye")?;
+        let target = vec3(&target, "Camera.lookAt target")?;
+        let up = vec3(&up, "Camera.lookAt up")?;
+        Ok(self.clone().look_at(eye, target, up))
+    }
+
+    #[wasm_bindgen(js_name = "viewProj")]
+    #[lsp_doc("docs/api/scene/camera/view_proj.md")]
+    pub fn view_proj_js(&self) -> Vec<f32> {
+        let cols = self.view_proj();
+        let mut flat = Vec::with_capacity(16);
+        for col in cols.iter() {
+            flat.extend_from_slice(col);
+        }
+        flat
+    }
+
+    #[wasm_bindgen(js_name = "position")]
+    #[lsp_doc("docs/api/scene/camera/position.md")]
+    pub fn position_js(&self) -> Vec<f32> {
+        self.position().to_vec()
+    }
+
+    #[wasm_bindgen(js_name = "bind")]
+    #[lsp_doc("docs/api/scene/camera/bind.md")]
+    pub fn bind_js(&self, shader: &Shader) {
+        self.bind(shader);
+    }
+}
+
+#[wasm_bindgen]
+impl Light {
+    #[wasm_bindgen(js_name = "directional")]
+    #[lsp_doc("docs/api/scene/light/directional.md")]
+    pub fn directional_js(direction: Vec<f32>, color: Vec<f32>) -> Result<Light, JsError> {
+        let direction = vec3(&direction, "Light.directional direction")?;
+        let color = vec3(&color, "Light.directional color")?;
+        Ok(Light::directional(direction, color))
+    }
+
+    #[wasm_bindgen(js_name = "direction")]
+    #[lsp_doc("docs/api/scene/light/direction.md")]
+    pub fn direction_js(&self) -> Vec<f32> {
+        self.direction().to_vec()
+    }
+
+    #[wasm_bindgen(js_name = "color")]
+    #[lsp_doc("docs/api/scene/light/color.md")]
+    pub fn color_js(&self) -> Vec<f32> {
+        self.color().to_vec()
+    }
+
+    #[wasm_bindgen(js_name = "bind")]
+    #[lsp_doc("docs/api/scene/light/bind.md")]
+    pub fn bind_js(&self, shader: &Shader) {
+        self.bind(shader);
+    }
+}
+
 fn material_share(material: &Material) -> Material {
     // Share the Material's shader (Arc-clone) so the JS handle and the new
-    // Material observe the same uniform state. Use Material::clone() when you
-    // want an independent copy (it routes through Shader::duplicate).
+    // Material observe the same uniform state. Material::clone is itself a
+    // shallow Arc-share — the same shape, just routed through the derive.
     Material::custom(material.shader.clone())
 }
 
 fn vec3(v: &[f32], field: &str) -> Result<[f32; 3], JsError> {
     if v.len() != 3 {
         return Err(JsError::new(&format!(
-            "Model.{field}: expected an array of length 3"
+            "{field}: expected an array of length 3"
         )));
     }
     Ok([v[0], v[1], v[2]])

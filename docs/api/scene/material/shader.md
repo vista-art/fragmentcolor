@@ -2,7 +2,9 @@
 
 Borrow the underlying `Shader` to drop down to direct uniform manipulation —
 the escape hatch when the Material's typed setters don't cover what you need
-(camera state, custom uniforms, raw texture binds outside the glTF PBR slots).
+(custom uniforms beyond the glTF PBR field set, raw texture binds, anything
+the [Camera](https://fragmentcolor.org/api/scene/camera) /
+[Light](https://fragmentcolor.org/api/scene/light) helpers don't speak to).
 
 The returned reference is the same `Shader` the Material is built around, so
 changes propagate immediately to every Model that uses this Material. If you
@@ -10,23 +12,34 @@ want a Material variant with different state, build a fresh
 `Material::pbr().<setters>` rather than cloning — `Material` clones share
 their Shader handle (Arc-clone) so mutations are visible across all clones.
 
+For camera + light state specifically, prefer the typed helpers over raw
+`shader().set(...)`:
+
+```rust
+# fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Camera, Light, Material};
+
+let material = Material::pbr()?;
+let camera = Camera::perspective(60.0_f32.to_radians(), 16.0 / 9.0, 0.1, 100.0)
+    .look_at([0.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+camera.bind(material.shader());
+
+let sun = Light::directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9]);
+sun.bind(material.shader());
+# Ok(())
+# }
+```
+
 ## Example
 
 ```rust
 # fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Material;
 
+// Direct uniform access for a custom field that isn't covered by the
+// Material setters or by Camera / Light.
 let material = Material::pbr()?;
-material.shader().set(
-    "camera.view_proj",
-    [
-        [1.0_f32, 0.0, 0.0, 0.0],
-        [0.0, 1.0, 0.0, 0.0],
-        [0.0, 0.0, 1.0, 0.0],
-        [0.0, 0.0, 0.0, 1.0],
-    ],
-)?;
-material.shader().set("camera.position", [0.0_f32, 0.0, 5.0])?;
+material.shader().set("material.alpha_cutoff", 0.25_f32)?;
 # Ok(())
 # }
 ```

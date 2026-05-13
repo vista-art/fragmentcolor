@@ -752,6 +752,69 @@ private enum _GeneratedExamples {
         let v = try Vertex([0.0, 0.0, 0.0]).set("weight", 1.0).set("color",[1.0, 0.0, 0.0])
     }
 
+    static func _example_scene_camera_bind() async throws {
+
+        let camera = Camera.perspective(60.0.toRadians(), 16.0 / 9.0, 0.1, 100.0).lookAt([0.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+
+        let material = Material.pbr()
+        camera.bind(material.shader())
+    }
+
+    static func _example_scene_camera_look_at() async throws {
+
+        let camera = Camera.perspective(60.0.toRadians(), 16.0 / 9.0, 0.1, 100.0).lookAt([0.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+    }
+
+    static func _example_scene_camera_orthographic() async throws {
+
+        // A 16:9 viewport, 10 world units tall, depth range 0.1...100.
+        let camera = Camera.orthographic(-8.0, 8.0, -4.5, 4.5, 0.1, 100.0)
+    }
+
+    static func _example_scene_camera_perspective() async throws {
+
+        let camera = Camera.perspective(60.0.toRadians(), 16.0 / 9.0, 0.1, 100.0)
+    }
+
+    static func _example_scene_camera_position() async throws {
+
+        let camera = Camera.perspective(60.0.toRadians(), 16.0 / 9.0, 0.1, 100.0).lookAt([3.0, 2.0, 8.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+
+        let eye = camera.position()
+    }
+
+    static func _example_scene_camera_view_proj() async throws {
+
+        let camera = Camera.perspective(60.0.toRadians(), 16.0 / 9.0, 0.1, 100.0).lookAt([0.0, 0.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+
+        let m = camera.viewProj()
+        let _ = m
+    }
+
+    static func _example_scene_light_bind() async throws {
+
+        let material = Material.pbr()
+        let sun = Light.directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9])
+        sun.bind(material.shader())
+    }
+
+    static func _example_scene_light_color() async throws {
+
+        let warm = Light.directional([0.0, -1.0, 0.0], [1.0, 0.85, 0.7])
+        let color = warm.color()
+    }
+
+    static func _example_scene_light_direction() async throws {
+
+        let sun = Light.directional([0.3, -1.0, -0.4], [1.0, 1.0, 1.0])
+        let dir = sun.direction()
+    }
+
+    static func _example_scene_light_directional() async throws {
+
+        let sun = Light.directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9])
+    }
+
     static func _example_scene_material_Material() async throws {
 
         let mesh = Mesh()
@@ -887,17 +950,10 @@ private enum _GeneratedExamples {
 
     static func _example_scene_material_shader() async throws {
 
+        // Direct uniform access for a custom field that isn't covered by the
+        // Material setters or by Camera / Light.
         let material = Material.pbr()
-        try material.shader().set(
-            "camera.viewProj",
-            [
-                [1.0, 0.0, 0.0, 0.0],
-                [0.0, 1.0, 0.0, 0.0],
-                [0.0, 0.0, 1.0, 0.0],
-                [0.0, 0.0, 0.0, 1.0],
-            ],
-        )
-        try material.shader().set("camera.position", [0.0, 0.0, 5.0])
+        try material.shader().set("material.alphaCutoff", 0.25)
     }
 
     static func _example_scene_model_material() async throws {
