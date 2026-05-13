@@ -1,6 +1,6 @@
 ---
 title: Camera
-description: "A `Camera` packages the two things every 3D render needs into one object: a projection (how the view frustum maps to clip space) and a view (where the camera sits and what it looks at). Pass it to [`Material::add`](/api/scene/material#add) to wire its `camera.view_proj` and `camera.position` into the material's shader; the Camera holds Arc-shared state, so subsequent [`look_at`](/api/scene/camera/look_at) calls propagate to every Material that absorbed it."
+description: "A `Camera` packages the two things every 3D render needs into one object: a projection (how the view frustum maps to clip space) and a view (where the camera sits and what it looks at). Pass it to [`Pass::add`](/api/core/pass#add) to wire its `camera.view_proj` and `camera.position` into every shader the pass renders; the Camera holds Arc-shared state, so subsequent [`look_at`](/api/scene/camera/look_at) calls propagate to every shader the Camera has been wired into."
 category: scene
 categoryLabel: Scene
 sidebar:
@@ -14,11 +14,11 @@ import { Code, Tabs, TabItem, Aside } from "@astrojs/starlight/components";
 A `Camera` packages the two things every 3D render needs into one object: a
 projection (how the view frustum maps to clip space) and a view (where the
 camera sits and what it looks at). Pass it to
-[`Material::add`](/api/scene/material#add) to wire
-its `camera.view_proj` and `camera.position` into the material's shader; the
-Camera holds Arc-shared state, so subsequent
+[`Pass::add`](/api/core/pass#add) to wire its
+`camera.view_proj` and `camera.position` into every shader the pass renders;
+the Camera holds Arc-shared state, so subsequent
 [`look_at`](/api/scene/camera/look_at) calls
-propagate to every Material that absorbed it.
+propagate to every shader the Camera has been wired into.
 
 Internally a Camera carries:
 

@@ -1,9 +1,10 @@
 //! Render a single PBR-shaded triangle through Model + Material + Pass.
 //!
 //! Demonstrates the v0.11.2 higher-level path: build a `Mesh`, wrap it in a
-//! `Model` paired with `Material::pbr()`, absorb a `Camera` and a `Light` via
-//! `material.add(...)`, then hand the Model to a `Pass` via `add_model`. The
-//! Material ships the default Cook-Torrance + GGX physically-based shader.
+//! `Model` paired with `Material::pbr()`, hand the Model to a `Pass` via
+//! `add_model`, then absorb a `Camera` and a `Light` into the `Pass` so
+//! every shader on the pass picks them up. The Material ships the default
+//! Cook-Torrance + GGX physically-based shader.
 
 use fragmentcolor::{Camera, Light, Material, Mesh, Model, Pass, Renderer, Target, Vertex};
 
@@ -37,17 +38,17 @@ fn main() {
             .metallic(0.0)
             .roughness(0.35);
 
-        let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0)
-            .look_at([0.0, 0.0, 2.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
-        let sun = Light::directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9]);
-        material.add(&camera).add(&sun);
-
         let model = Model::new(mesh, material);
         // Nudge it slightly to the right to show the per-Model transform path.
         model.translate([0.1, 0.0, 0.0]);
 
+        let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0)
+            .look_at([0.0, 0.0, 2.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+        let sun = Light::directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9]);
+
         let pass = Pass::new("triangle");
         pass.add_model(&model).expect("add_model");
+        pass.add(&camera).add(&sun);
         renderer.render(&pass, &target).expect("render");
 
         let image = target.get_image().await;

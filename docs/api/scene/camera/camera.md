@@ -3,11 +3,11 @@
 A `Camera` packages the two things every 3D render needs into one object: a
 projection (how the view frustum maps to clip space) and a view (where the
 camera sits and what it looks at). Pass it to
-[`Material::add`](https://fragmentcolor.org/api/scene/material#add) to wire
-its `camera.view_proj` and `camera.position` into the material's shader; the
-Camera holds Arc-shared state, so subsequent
+[`Pass::add`](https://fragmentcolor.org/api/core/pass#add) to wire its
+`camera.view_proj` and `camera.position` into every shader the pass renders;
+the Camera holds Arc-shared state, so subsequent
 [`look_at`](https://fragmentcolor.org/api/scene/camera/look_at) calls
-propagate to every Material that absorbed it.
+propagate to every shader the Camera has been wired into.
 
 Internally a Camera carries:
 
@@ -40,16 +40,25 @@ viewpoint we're using right now".
 
 ```rust
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Camera, Material, Renderer};
+use fragmentcolor::{Camera, Material, Mesh, Model, Pass, Renderer, Vertex};
 
+let renderer = Renderer::new();
 let camera = Camera::perspective(60.0_f32.to_radians(), 16.0 / 9.0, 0.1, 100.0)
     .look_at([0.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
 
-let renderer = Renderer::new();
-let material = Material::pbr(&renderer).await?;
-material.add(&camera);
+let mesh = Mesh::new();
+mesh.add_vertex(
+    Vertex::new([0.0, 0.5, 0.0])
+        .set(Vertex::NORMAL, [0.0, 0.0, 1.0])
+        .set(Vertex::UV0, [0.5, 1.0]),
+);
+let model = Model::new(mesh, Material::pbr(&renderer).await?);
 
-// Move later — the Material picks up the new view at the next render.
+let pass = Pass::new("scene");
+pass.add_model(&model)?;
+pass.add(&camera);
+
+// Move later — every shader on the pass picks up the new view at the next render.
 camera.look_at([3.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
 # Ok(())
 # }

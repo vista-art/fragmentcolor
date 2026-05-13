@@ -3,9 +3,9 @@
 //! Wraps the `proj` + `view` matrix pair every 3D render needs into one
 //! object, plus the world-space eye position for shaders that consume it
 //! directly (specular highlights, fresnel). A Camera holds Arc-shared state,
-//! so the same value can be added to multiple Materials with
-//! `material.add(&camera)`; later mutations (`camera.look_at(...)`) propagate
-//! to every Material that absorbed it.
+//! so the same value can be absorbed by multiple Passes with `pass.add(&camera)`;
+//! later mutations (`camera.look_at(...)`) propagate to every shader the
+//! Camera has been wired into.
 
 use glam::{Mat4, Vec3};
 use lsp_doc::lsp_doc;
@@ -191,13 +191,27 @@ mod tests {
         assert_eq!(camera.position(), [0.0, 0.0, 5.0]);
     }
 
+    fn pbr_triangle_mesh() -> crate::Mesh {
+        let mesh = crate::Mesh::new();
+        mesh.add_vertex(
+            crate::mesh::Vertex::new([0.0, 0.5, 0.0])
+                .set(crate::mesh::Vertex::NORMAL, [0.0, 0.0, 1.0])
+                .set(crate::mesh::Vertex::UV0, [0.5, 1.0]),
+        );
+        mesh
+    }
+
     #[test]
-    fn add_via_material_seeds_shader_uniforms() {
+    fn pass_add_seeds_shader_uniforms() {
         let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0)
             .look_at([1.0, 2.0, 3.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
         let renderer = crate::Renderer::new();
         let material = pollster::block_on(Material::pbr(&renderer)).expect("pbr");
-        material.add(&camera);
+        let model = crate::scene::Model::new(pbr_triangle_mesh(), material.clone());
+
+        let pass = crate::Pass::new("scene");
+        pass.add_model(&model).expect("add_model");
+        pass.add(&camera);
 
         let m: [[f32; 4]; 4] = material
             .shader()
@@ -213,13 +227,17 @@ mod tests {
     }
 
     #[test]
-    fn mutations_propagate_to_absorbed_materials() {
-        // Add the camera to a Material, then move it. The Material's shader
-        // should see the new view_proj without a second add() call.
+    fn mutations_propagate_to_all_pass_shaders() {
+        // The same camera absorbed by a pass shows live updates on every
+        // shader the pass wires it into, with no second `add` call.
         let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0);
         let renderer = crate::Renderer::new();
         let material = pollster::block_on(Material::pbr(&renderer)).expect("pbr");
-        material.add(&camera);
+        let model = crate::scene::Model::new(pbr_triangle_mesh(), material.clone());
+
+        let pass = crate::Pass::new("scene");
+        pass.add_model(&model).expect("add_model");
+        pass.add(&camera);
 
         camera.look_at([5.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
         let p: [f32; 3] = material.shader().get("camera.position").unwrap();
@@ -227,23 +245,21 @@ mod tests {
     }
 
     #[test]
-    fn add_silently_noops_when_uniforms_missing() {
-        let shader = crate::Shader::new(
-            r#"
-            @vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
-                let p = array<vec2<f32>, 3>(vec2f(-1.0,-1.0), vec2f(3.0,-1.0), vec2f(-1.0,3.0));
-                return vec4<f32>(p[i], 0.0, 1.0);
-            }
-            @fragment fn fs_main() -> @location(0) vec4<f32> {
-                return vec4<f32>(1.0);
-            }
-            "#,
-        )
-        .expect("compile");
+    fn pass_add_before_model_still_reaches_the_new_shader() {
+        // Camera added before any models — the pass remembers it and applies
+        // to each shader as `add_model` brings them in.
+        let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0)
+            .look_at([0.0, 0.0, 7.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+        let renderer = crate::Renderer::new();
+        let material = pollster::block_on(Material::pbr(&renderer)).expect("pbr");
 
-        let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0);
-        let material = Material::custom(shader);
-        // Should not panic; missing uniforms are demoted to debug logs.
-        material.add(&camera);
+        let pass = crate::Pass::new("scene");
+        pass.add(&camera);
+
+        let model = crate::scene::Model::new(pbr_triangle_mesh(), material.clone());
+        pass.add_model(&model).expect("add_model");
+
+        let p: [f32; 3] = material.shader().get("camera.position").unwrap();
+        assert_eq!(p, [0.0, 0.0, 7.0]);
     }
 }

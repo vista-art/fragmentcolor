@@ -142,6 +142,11 @@ impl Pass {
             .any(|s| std::sync::Arc::ptr_eq(s, shader_arc));
         if !shader_present {
             self.add_shader(&model.material.shader);
+            // Apply every component already on the pass to this new shader,
+            // so a Camera or Light added before any Model still wires through.
+            for component in self.object.components.read().iter() {
+                component.apply(&model.material.shader);
+            }
         }
 
         // Dedupe mesh-attach onto the shader. Without this the renderer would
@@ -161,6 +166,27 @@ impl Pass {
             transform: model.transform.clone(),
         });
         Ok(())
+    }
+
+    /// Absorb a scene [`Component`](crate::scene::Component) — typically a
+    /// [`Camera`](crate::Camera) or [`Light`](crate::Light) — into this
+    /// pass. The component is applied to every shader currently in the pass
+    /// and to every shader added afterwards via
+    /// [`add_model`](Pass::add_model). The component holds an Arc-shared
+    /// backing, so subsequent mutations on the same value propagate to
+    /// every absorbed shader. Chainable.
+    #[lsp_doc("docs/api/core/pass/add.md")]
+    pub fn add<C: crate::scene::Component + Clone>(&self, component: &C) -> &Self {
+        // Apply now to every shader currently on the pass.
+        let shaders: Vec<Arc<ShaderObject>> =
+            self.object.shaders.read().iter().cloned().collect();
+        for s in shaders {
+            component.apply(&crate::Shader::from(s));
+        }
+        // Store a clone (cheap Arc-share for Camera / Light) so future shaders
+        // joining via `add_model` pick the component up too.
+        self.object.components.write().push(Box::new(component.clone()));
+        self
     }
 
     #[lsp_doc("docs/api/core/pass/set_viewport.md")]
@@ -370,6 +396,13 @@ pub struct PassObject {
     // instance buffer (so the same Mesh in another Pass with different Models
     // doesn't clobber state).
     pub(crate) model_entries: RwLock<Vec<crate::scene::ModelEntry>>,
+    // Scene-level components (Camera, Light, ...) absorbed via `Pass::add`.
+    // Each Component is applied to every shader currently in the pass on
+    // `add`, and re-applied to a Model's shader when the Model joins the
+    // pass via `add_model`. The Component implementation typically tracks
+    // its own `Weak<ShaderObject>` list so subsequent mutations on the
+    // source value propagate live without a second `add` call.
+    pub(crate) components: RwLock<Vec<Box<dyn crate::scene::Component>>>,
     pub(crate) viewport: RwLock<Option<ScreenRegion>>,
     pub(crate) required_buffer_size: RwLock<u64>,
     // For compute passes: dispatch size (defaults to 1,1,1)
@@ -395,6 +428,7 @@ impl PassObject {
             name: Arc::from(name),
             shaders: RwLock::new(Vec::new()),
             model_entries: RwLock::new(Vec::new()),
+            components: RwLock::new(Vec::new()),
             viewport: RwLock::new(None),
             input: RwLock::new(PassInput::clear(Color::transparent())),
             required_buffer_size: RwLock::new(0),

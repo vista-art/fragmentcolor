@@ -31,18 +31,6 @@ impl Material {
         Arc::new(self.shader.clone())
     }
 
-    #[uniffi::method(name = "addCamera")]
-    #[lsp_doc("docs/api/scene/material/add.md")]
-    pub fn add_camera_mobile(self: Arc<Self>, camera: Arc<crate::scene::Camera>) {
-        self.add(camera.as_ref());
-    }
-
-    #[uniffi::method(name = "addLight")]
-    #[lsp_doc("docs/api/scene/material/add.md")]
-    pub fn add_light_mobile(self: Arc<Self>, light: Arc<crate::scene::Light>) {
-        self.add(light.as_ref());
-    }
-
     #[uniffi::method(name = "baseColor")]
     #[lsp_doc("docs/api/scene/material/base_color.md")]
     pub fn base_color_mobile(self: Arc<Self>, color: Vec<f32>) -> Result<(), FragmentColorError> {

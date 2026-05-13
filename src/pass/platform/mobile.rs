@@ -101,6 +101,18 @@ impl Pass {
             .map_err(|e: PassError| FragmentColorError::Render(e.to_string()))
     }
 
+    #[uniffi::method(name = "addCamera")]
+    #[lsp_doc("docs/api/core/pass/add.md")]
+    pub fn add_camera_mobile(&self, camera: Arc<crate::scene::Camera>) {
+        self.add(camera.as_ref());
+    }
+
+    #[uniffi::method(name = "addLight")]
+    #[lsp_doc("docs/api/core/pass/add.md")]
+    pub fn add_light_mobile(&self, light: Arc<crate::scene::Light>) {
+        self.add(light.as_ref());
+    }
+
     /// Set the render target (color attachment) for this pass.
     ///
     /// The `target` must be a `TargetHandle::Texture` variant; window targets

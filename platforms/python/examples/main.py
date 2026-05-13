@@ -9,6 +9,7 @@ def run_all():
     base = pathlib.Path(__file__).parent
     files = [
         'core/pass/Pass.py',
+        'core/pass/add.py',
         'core/pass/add_depth_target.py',
         'core/pass/add_mesh.py',
         'core/pass/add_model.py',
@@ -80,7 +81,6 @@ def run_all():
         'scene/light/set_color.py',
         'scene/light/set_direction.py',
         'scene/material/Material.py',
-        'scene/material/add.py',
         'scene/material/alpha_cutoff.py',
         'scene/material/alpha_mode.py',
         'scene/material/base_color.py',

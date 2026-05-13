@@ -28,18 +28,6 @@ impl Material {
         self.shader.clone()
     }
 
-    #[wasm_bindgen(js_name = "addCamera")]
-    #[lsp_doc("docs/api/scene/material/add.md")]
-    pub fn add_camera_js(&self, camera: &crate::scene::Camera) {
-        self.add(camera);
-    }
-
-    #[wasm_bindgen(js_name = "addLight")]
-    #[lsp_doc("docs/api/scene/material/add.md")]
-    pub fn add_light_js(&self, light: &crate::scene::Light) {
-        self.add(light);
-    }
-
     #[wasm_bindgen(js_name = "baseColor")]
     #[lsp_doc("docs/api/scene/material/base_color.md")]
     pub fn base_color_js(&self, color: Vec<f32>) -> Result<(), JsError> {

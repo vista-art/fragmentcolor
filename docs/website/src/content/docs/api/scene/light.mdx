@@ -18,12 +18,12 @@ light: a parallel beam coming from a fixed world-space direction with a
 tinted color. This is sun / moon / fill-light territory, and it's the
 shape `Material::pbr` expects out of the box.
 
-Pass a Light to [`Material::add`](/api/scene/material#add)
-to wire its `light.direction` and `light.color` into the material's shader.
-The Light holds Arc-shared state, so later
+Pass a Light to [`Pass::add`](/api/core/pass#add)
+to wire its `light.direction` and `light.color` into every shader the pass
+renders. The Light holds Arc-shared state, so later
 [`set_direction`](/api/scene/light/set_direction)
 and [`set_color`](/api/scene/light/set_color)
-calls propagate to every Material that absorbed it.
+calls propagate to every shader the Light has been wired into.
 
 Internally a Light carries:
 

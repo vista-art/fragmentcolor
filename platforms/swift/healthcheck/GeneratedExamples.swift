@@ -38,6 +38,28 @@ private enum _GeneratedExamples {
         try renderer.render([pass, pass2], target)
     }
 
+    static func _example_core_pass_add() async throws {
+
+        let renderer = Renderer()
+
+        let mesh = Mesh()
+        try mesh.addVertex(
+            try Vertex([0.0, 0.5, 0.0]).set(Vertex.nORMAL, [0.0, 0.0, 1.0]).set(Vertex.uV0, [0.5, 1.0]),
+        )
+        let model = try await Model(mesh, Material.pbr(renderer))
+
+        let camera = Camera.perspective(60.0.toRadians(), 1.0, 0.1, 100.0).lookAt([0.0, 0.0, 2.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+        let sun = Light.directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9])
+
+        let pass = Pass("scene")
+        pass.addModel(model)
+        pass.add(camera).add(sun)
+
+        // Updating the camera later is enough — every Model already on the pass
+        // picks the view_proj up at the next render.
+        camera.lookAt([3.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+    }
+
     static func _example_core_pass_add_depth_target() async throws {
 
         let renderer = Renderer()
@@ -826,21 +848,6 @@ private enum _GeneratedExamples {
         let material = try await Material.pbr(renderer).baseColor([0.85, 0.2, 0.2, 1.0]).metallic(0.0).roughness(0.4).emissive([0.0, 0.0, 0.05])
 
         let model = Model(mesh, material)
-    }
-
-    static func _example_scene_material_add() async throws {
-
-        let renderer = Renderer()
-        let material = try await Material.pbr(renderer)
-
-        let camera = Camera.perspective(60.0.toRadians(), 16.0 / 9.0, 0.1, 100.0).lookAt([0.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
-        let sun = Light.directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9])
-
-        material.add(camera).add(sun)
-
-        // Updating the camera later is enough — the Material picks the new
-        // view_proj up at the next render without re-adding.
-        camera.lookAt([3.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
     }
 
     static func _example_scene_material_alpha_cutoff() async throws {

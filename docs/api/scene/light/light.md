@@ -7,12 +7,12 @@ light: a parallel beam coming from a fixed world-space direction with a
 tinted color. This is sun / moon / fill-light territory, and it's the
 shape `Material::pbr` expects out of the box.
 
-Pass a Light to [`Material::add`](https://fragmentcolor.org/api/scene/material#add)
-to wire its `light.direction` and `light.color` into the material's shader.
-The Light holds Arc-shared state, so later
+Pass a Light to [`Pass::add`](https://fragmentcolor.org/api/core/pass#add)
+to wire its `light.direction` and `light.color` into every shader the pass
+renders. The Light holds Arc-shared state, so later
 [`set_direction`](https://fragmentcolor.org/api/scene/light/set_direction)
 and [`set_color`](https://fragmentcolor.org/api/scene/light/set_color)
-calls propagate to every Material that absorbed it.
+calls propagate to every shader the Light has been wired into.
 
 Internally a Light carries:
 
@@ -43,14 +43,23 @@ way today's `Light::directional` call site stays valid.
 
 ```rust
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Light, Material, Renderer};
+use fragmentcolor::{Light, Material, Mesh, Model, Pass, Renderer, Vertex};
 
 let renderer = Renderer::new();
-let material = Material::pbr(&renderer).await?;
+let mesh = Mesh::new();
+mesh.add_vertex(
+    Vertex::new([0.0, 0.5, 0.0])
+        .set(Vertex::NORMAL, [0.0, 0.0, 1.0])
+        .set(Vertex::UV0, [0.5, 1.0]),
+);
+let model = Model::new(mesh, Material::pbr(&renderer).await?);
 let sun = Light::directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9]);
-material.add(&sun);
 
-// Warm-tinted update — propagates to the Material above.
+let pass = Pass::new("scene");
+pass.add_model(&model)?;
+pass.add(&sun);
+
+// Warm-tinted update — propagates to every shader on the pass.
 sun.set_color([1.0, 0.85, 0.7]);
 # Ok(())
 # }

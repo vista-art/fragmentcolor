@@ -1,9 +1,9 @@
 //! Light — directional lighting primitive.
 //!
 //! Holds a world-space travel direction and a linear-RGB color in Arc-shared
-//! state, so the same Light can be added to multiple Materials with
-//! `material.add(&light)`; later `set_direction` / `set_color` calls
-//! propagate to every Material that absorbed it.
+//! state, so the same Light can be absorbed by multiple Passes with
+//! `pass.add(&light)`; later `set_direction` / `set_color` calls propagate
+//! to every shader the Light has been wired into.
 //!
 //! MVP: directional only. The type name `Light` reserves the abstraction for
 //! point / spot variants — coming as separate constructors on this type, or
@@ -136,12 +136,26 @@ mod tests {
         assert_eq!(light.color(), [1.0, 0.95, 0.9]);
     }
 
+    fn pbr_triangle_mesh() -> crate::Mesh {
+        let mesh = crate::Mesh::new();
+        mesh.add_vertex(
+            crate::mesh::Vertex::new([0.0, 0.5, 0.0])
+                .set(crate::mesh::Vertex::NORMAL, [0.0, 0.0, 1.0])
+                .set(crate::mesh::Vertex::UV0, [0.5, 1.0]),
+        );
+        mesh
+    }
+
     #[test]
-    fn add_via_material_seeds_shader_uniforms() {
+    fn pass_add_seeds_shader_uniforms() {
         let light = Light::directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9]);
         let renderer = crate::Renderer::new();
         let material = pollster::block_on(Material::pbr(&renderer)).expect("pbr");
-        material.add(&light);
+        let model = crate::scene::Model::new(pbr_triangle_mesh(), material.clone());
+
+        let pass = crate::Pass::new("scene");
+        pass.add_model(&model).expect("add_model");
+        pass.add(&light);
 
         let dir: [f32; 3] = material
             .shader()
@@ -154,33 +168,18 @@ mod tests {
     }
 
     #[test]
-    fn set_direction_propagates_to_absorbed_materials() {
+    fn set_direction_propagates_to_all_pass_shaders() {
         let light = Light::directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
         let renderer = crate::Renderer::new();
         let material = pollster::block_on(Material::pbr(&renderer)).expect("pbr");
-        material.add(&light);
+        let model = crate::scene::Model::new(pbr_triangle_mesh(), material.clone());
+
+        let pass = crate::Pass::new("scene");
+        pass.add_model(&model).expect("add_model");
+        pass.add(&light);
 
         light.set_direction([0.5, -0.5, 0.0]);
         let dir: [f32; 3] = material.shader().get("light.direction").unwrap();
         assert_eq!(dir, [0.5, -0.5, 0.0]);
-    }
-
-    #[test]
-    fn add_silently_noops_when_uniforms_missing() {
-        let shader = crate::Shader::new(
-            r#"
-            @vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
-                let p = array<vec2<f32>, 3>(vec2f(-1.0,-1.0), vec2f(3.0,-1.0), vec2f(-1.0,3.0));
-                return vec4<f32>(p[i], 0.0, 1.0);
-            }
-            @fragment fn fs_main() -> @location(0) vec4<f32> {
-                return vec4<f32>(1.0);
-            }
-            "#,
-        )
-        .expect("compile");
-        let light = Light::directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
-        let material = Material::custom(shader);
-        material.add(&light);
     }
 }

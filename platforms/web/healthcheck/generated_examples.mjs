@@ -2,6 +2,7 @@
 const GREEN='\u001b[1;32m'; const RED='\u001b[1;31m'; const RESET='\u001b[0m';
 const EXAMPLES = [
   '../examples/core/pass/Pass.js',
+  '../examples/core/pass/add.js',
   '../examples/core/pass/add_depth_target.js',
   '../examples/core/pass/add_mesh.js',
   '../examples/core/pass/add_model.js',
@@ -73,7 +74,6 @@ const EXAMPLES = [
   '../examples/scene/light/set_color.js',
   '../examples/scene/light/set_direction.js',
   '../examples/scene/material/Material.js',
-  '../examples/scene/material/add.js',
   '../examples/scene/material/alpha_cutoff.js',
   '../examples/scene/material/alpha_mode.js',
   '../examples/scene/material/base_color.js',
