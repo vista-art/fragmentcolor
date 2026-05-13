@@ -1,3 +1,4 @@
 import org.fragmentcolor.*
 
-val detailed = Material.pbr()?.normalScale(1.5)
+val renderer = Renderer()
+val detailed = Material.pbr(renderer).normalScale(1.5)

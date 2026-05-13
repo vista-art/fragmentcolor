@@ -1,3 +1,4 @@
 import FragmentColor
 
-let foliage = Material.pbr()?.alphaCutoff(0.3)
+let renderer = Renderer()
+let foliage = try await Material.pbr(renderer).alphaCutoff(0.3)

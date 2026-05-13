@@ -1,12 +1,12 @@
 # Material::base_color_texture
 
-Bind a texture to the canonical `base_color_map` slot. With a custom shader
-that samples it, the per-fragment albedo is `material.base_color *
-textureSample(base_color_map, sampler, in.uv)`.
+Bind a texture to the canonical `base_color_map` slot. The default PBR
+shader samples it in `fs_main` and multiplies by the factor: per-fragment
+albedo is `material.base_color * textureSample(base_color_map, sampler, in.uv)`.
 
-The factors-only built-in PBR shader does not yet sample this slot — the
-binding name is reserved so this call is forward-compatible with the
-follow-up that adds texture sampling.
+Unset, this slot resolves to a 1×1 white default the renderer hands out
+lazily — so calling `Material::pbr(&renderer).await?` without binding a
+texture renders correctly under the factor alone.
 
 ## Example
 
@@ -21,7 +21,7 @@ let texture = renderer.create_texture(&[
     230,  180, 100, 255,
     255,  220, 150, 255,
 ][..]).await?;
-let mat = Material::pbr()?.base_color_texture(&texture);
+let mat = Material::pbr(&renderer).await?.base_color_texture(&texture);
 # let _ = mat;
 # Ok(())
 # }

@@ -39,12 +39,14 @@ way today's `Light::directional` call site stays valid.
 ## Example
 
 ```rust
-# fn main() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Light, Material};
+# async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Light, Material, Renderer};
 
-let material = Material::pbr()?;
+let renderer = Renderer::new();
+let material = Material::pbr(&renderer).await?;
 let sun = Light::directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9]);
 sun.bind(material.shader());
 # Ok(())
 # }
+# fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 ```

@@ -64,16 +64,16 @@ defensively without worrying about the shader's surface.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Camera, Material};
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Camera, Material, Renderer};
 
 let camera = Camera::perspective(60.0_f32.to_radians(), 16.0 / 9.0, 0.1, 100.0)
     .look_at([0.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
 
-let material = Material::pbr()?;
+let renderer = Renderer::new();
+let material = Material::pbr(&renderer).await?;
 camera.bind(material.shader());
 
-// The shader now carries the camera state â view_proj is non-identity.
 let m: [[f32; 4]; 4] = material.shader().get("camera.view_proj")?;
 assert!(m != [
 	[1.0, 0.0, 0.0, 0.0],
@@ -83,8 +83,9 @@ assert!(m != [
 ]);
 Ok(())
 }
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 10-19}"
+lang="rust" meta="collapse={1-1, 11-20}"
 />
 
 </TabItem>
@@ -92,11 +93,12 @@ lang="rust" meta="collapse={1-1, 10-19}"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Camera, Material } from "fragmentcolor";
+import { Camera, Material, Renderer } from "fragmentcolor";
 
 const camera = Camera.perspective(60.0.toRadians(), 16.0 / 9.0, 0.1, 100.0).lookAt([0.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
 
-const material = Material.pbr();
+const renderer = new Renderer();
+const material = await Material.pbr(renderer);
 camera.bind(material.shader());
 
 `}
@@ -108,11 +110,12 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Camera, Material
+from fragmentcolor import Camera, Material, Renderer
 
 camera = Camera.perspective(60.0_.to_radians(), 16.0 / 9.0, 0.1, 100.0).look_at([0.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
 
-material = Material.pbr()
+renderer = Renderer()
+material = Material.pbr(renderer)
 camera.bind(material.shader())
 
 `}
@@ -128,7 +131,8 @@ import FragmentColor
 
 let camera = Camera.perspective(60.0.toRadians(), 16.0 / 9.0, 0.1, 100.0).lookAt([0.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
 
-let material = Material.pbr()
+let renderer = Renderer()
+let material = try await Material.pbr(renderer)
 camera.bind(material.shader())
 `}
 lang="swift"
@@ -143,7 +147,8 @@ import org.fragmentcolor.*
 
 val camera = Camera.perspective(60.0.toRadians(), 16.0 / 9.0, 0.1, 100.0).lookAt(listOf(0.0f, 1.0f, 5.0f), listOf(0.0f, 0.0f, 0.0f), listOf(0.0f, 1.0f, 0.0f))
 
-val material = Material.pbr()
+val renderer = Renderer()
+val material = Material.pbr(renderer)
 camera.bind(material.shader())
 `}
 lang="kotlin"

@@ -1,3 +1,4 @@
 import FragmentColor
 
-let chrome = Material.pbr()?.metallic(1.0).roughness(0.05)
+let renderer = Renderer()
+let chrome = try await Material.pbr(renderer).metallic(1.0).roughness(0.05)

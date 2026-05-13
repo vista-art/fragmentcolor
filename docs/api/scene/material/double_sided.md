@@ -18,18 +18,21 @@ values.
 ## Example
 
 ```rust
-# fn main() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{AlphaMode, Material};
+# async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{AlphaMode, Material, Renderer};
 
+let renderer = Renderer::new();
 // Leaf cards: thin, single-quad geometry; needs both sides + alpha cut-out.
-let leaf = Material::pbr()?
+let leaf = Material::pbr(&renderer)
+    .await?
     .double_sided(true)
     .alpha_mode(AlphaMode::Mask)
     .alpha_cutoff(0.5);
 
 // Default is single-sided — back-face culling on.
-let solid_mesh = Material::pbr()?.double_sided(false);
+let solid_mesh = Material::pbr(&renderer).await?.double_sided(false);
 # let _ = (leaf, solid_mesh);
 # Ok(())
 # }
+# fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 ```

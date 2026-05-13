@@ -1,3 +1,4 @@
-from fragmentcolor import Material
+from fragmentcolor import Material, Renderer
 
-crevices = Material.pbr().occlusion_strength(0.8)
+renderer = Renderer()
+crevices = Material.pbr(renderer).occlusion_strength(0.8)

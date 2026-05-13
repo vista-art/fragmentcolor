@@ -1,3 +1,4 @@
-import { Material } from "fragmentcolor";
+import { Material, Renderer } from "fragmentcolor";
 
-const bronze = Material.pbr()?.baseColor([0.8, 0.5, 0.2, 1.0]).metallic(1.0).roughness(0.3);
+const renderer = new Renderer();
+const bronze = await Material.pbr(renderer).baseColor([0.8, 0.5, 0.2, 1.0]).metallic(1.0).roughness(0.3);

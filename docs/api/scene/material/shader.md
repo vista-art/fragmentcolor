@@ -9,17 +9,19 @@ the [Camera](https://fragmentcolor.org/api/scene/camera) /
 The returned reference is the same `Shader` the Material is built around, so
 changes propagate immediately to every Model that uses this Material. If you
 want a Material variant with different state, build a fresh
-`Material::pbr().<setters>` rather than cloning — `Material` clones share
-their Shader handle (Arc-clone) so mutations are visible across all clones.
+`Material::pbr(&renderer).await?.<setters>` rather than cloning — `Material`
+clones share their Shader handle (Arc-clone) so mutations are visible across
+all clones.
 
 For camera + light state specifically, prefer the typed helpers over raw
 `shader().set(...)`:
 
 ```rust
-# fn main() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Camera, Light, Material};
+# async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Camera, Light, Material, Renderer};
 
-let material = Material::pbr()?;
+let renderer = Renderer::new();
+let material = Material::pbr(&renderer).await?;
 let camera = Camera::perspective(60.0_f32.to_radians(), 16.0 / 9.0, 0.1, 100.0)
     .look_at([0.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
 camera.bind(material.shader());
@@ -28,18 +30,21 @@ let sun = Light::directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9]);
 sun.bind(material.shader());
 # Ok(())
 # }
+# fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 ```
 
 ## Example
 
 ```rust
-# fn main() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::Material;
+# async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Material, Renderer};
 
 // Direct uniform access for a custom field that isn't covered by the
 // Material setters or by Camera / Light.
-let material = Material::pbr()?;
+let renderer = Renderer::new();
+let material = Material::pbr(&renderer).await?;
 material.shader().set("material.alpha_cutoff", 0.25_f32)?;
 # Ok(())
 # }
+# fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 ```

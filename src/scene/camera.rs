@@ -148,7 +148,8 @@ mod tests {
     fn bind_writes_view_proj_and_position_to_material_shader() {
         let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0)
             .look_at([1.0, 2.0, 3.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
-        let material = Material::pbr().expect("pbr");
+        let renderer = crate::Renderer::new();
+        let material = pollster::block_on(Material::pbr(&renderer)).expect("pbr");
         camera.bind(material.shader());
 
         let m: [[f32; 4]; 4] = material

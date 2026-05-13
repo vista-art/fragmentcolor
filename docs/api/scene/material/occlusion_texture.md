@@ -2,10 +2,11 @@
 
 Bind an ambient-occlusion map to the canonical `occlusion_map` slot.
 Following glTF 2.0, only the red channel is read; the sampled value is
-blended toward `1.0` by `1 - material.occlusion_strength`.
+blended toward `1.0` by `1 - material.occlusion_strength` inside the
+default PBR shader, then multiplied into the diffuse term.
 
-The factors-only built-in PBR shader does not yet sample this slot — the
-binding name is reserved so this call is forward-compatible.
+Unset, this slot resolves to a 1×1 white default so the multiplied
+occlusion factor is `1.0` and no darkening is applied.
 
 ## Example
 
@@ -20,7 +21,7 @@ let ao = renderer.create_texture(&[
     200,   0, 0, 255,
     160,   0, 0, 255,
 ][..]).await?;
-let mat = Material::pbr()?.occlusion_texture(&ao);
+let mat = Material::pbr(&renderer).await?.occlusion_texture(&ao);
 # let _ = mat;
 # Ok(())
 # }

@@ -32,7 +32,8 @@ fn main() {
             );
         }
 
-        let material = Material::pbr()
+        let material = Material::pbr(&renderer)
+            .await
             .expect("PBR Material requires shaders-mesh + shaders-material features (default)")
             .base_color([0.85, 0.4, 0.2, 1.0])
             .metallic(0.0)

@@ -10,11 +10,13 @@ Maps to the `material.roughness` uniform. Default is `1.0`.
 ## Example
 
 ```rust
-# fn main() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::Material;
+# async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Material, Renderer};
 
-let satin = Material::pbr()?.roughness(0.35);
+let renderer = Renderer::new();
+let satin = Material::pbr(&renderer).await?.roughness(0.35);
 # let _ = satin;
 # Ok(())
 # }
+# fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 ```

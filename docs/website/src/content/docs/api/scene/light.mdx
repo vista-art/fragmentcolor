@@ -65,20 +65,21 @@ setters.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Light, Material};
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Light, Material, Renderer};
 
-let material = Material::pbr()?;
+let renderer = Renderer::new();
+let material = Material::pbr(&renderer).await?;
 let sun = Light::directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9]);
 sun.bind(material.shader());
 
-// The shader's light.direction now matches the Light's.
 let dir: [f32; 3] = material.shader().get("light.direction")?;
 assert_eq!(dir, [0.3, -1.0, -0.4]);
 Ok(())
 }
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 8-12}"
+lang="rust" meta="collapse={1-1, 9-13}"
 />
 
 </TabItem>
@@ -86,9 +87,10 @@ lang="rust" meta="collapse={1-1, 8-12}"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Light, Material } from "fragmentcolor";
+import { Light, Material, Renderer } from "fragmentcolor";
 
-const material = Material.pbr();
+const renderer = new Renderer();
+const material = await Material.pbr(renderer);
 const sun = Light.directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9]);
 sun.bind(material.shader());
 
@@ -101,9 +103,10 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Light, Material
+from fragmentcolor import Light, Material, Renderer
 
-material = Material.pbr()
+renderer = Renderer()
+material = Material.pbr(renderer)
 sun = Light.directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9])
 sun.bind(material.shader())
 
@@ -118,7 +121,8 @@ lang="python"
 code={`
 import FragmentColor
 
-let material = Material.pbr()
+let renderer = Renderer()
+let material = try await Material.pbr(renderer)
 let sun = Light.directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9])
 sun.bind(material.shader())
 `}
@@ -132,7 +136,8 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 
-val material = Material.pbr()
+val renderer = Renderer()
+val material = Material.pbr(renderer)
 val sun = Light.directional(listOf(0.3f, -1.0f, -0.4f), listOf(1.0f, 0.95f, 0.9f))
 sun.bind(material.shader())
 `}

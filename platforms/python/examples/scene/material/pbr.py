@@ -1,3 +1,4 @@
-from fragmentcolor import Material
+from fragmentcolor import Material, Renderer
 
-bronze = Material.pbr().base_color([0.8, 0.5, 0.2, 1.0]).metallic(1.0).roughness(0.3)
+renderer = Renderer()
+bronze = Material.pbr(renderer).base_color([0.8, 0.5, 0.2, 1.0]).metallic(1.0).roughness(0.3)

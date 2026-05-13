@@ -77,6 +77,25 @@ pub struct Renderer {
     instance: RwLock<Option<Arc<wgpu::Instance>>>,
     adapter: RwLock<Option<wgpu::Adapter>>,
     context: RwLock<Option<Arc<RenderContext>>>,
+    // Lazy-init bundle of 1×1 fallback maps the default PBR shader binds when
+    // a Material::pbr doesn't supply its own texture for a given slot. We
+    // follow the same `RwLock<Option<Arc<…>>>` shape as `context` rather than
+    // `OnceLock` so the cell can be populated from an `async fn` that needs
+    // the GPU context (texture creation is async).
+    default_pbr_textures: RwLock<Option<Arc<DefaultPbrTextures>>>,
+}
+
+/// 1×1 fallback textures the renderer hands to `Material::pbr` when a slot
+/// isn't overridden. Each value is chosen so that
+/// `factor * sampled = factor` in the shader (i.e. binding the default is
+/// equivalent to "no map").
+#[derive(Debug)]
+pub(crate) struct DefaultPbrTextures {
+    pub(crate) base_color: crate::texture::Texture,
+    pub(crate) metallic_roughness: crate::texture::Texture,
+    pub(crate) normal: crate::texture::Texture,
+    pub(crate) occlusion: crate::texture::Texture,
+    pub(crate) emissive: crate::texture::Texture,
 }
 
 crate::impl_fc_kind!(Renderer, "Renderer");
@@ -88,7 +107,58 @@ impl Renderer {
             instance: RwLock::new(None),
             adapter: RwLock::new(None),
             context: RwLock::new(None),
+            default_pbr_textures: RwLock::new(None),
         }
+    }
+
+    /// Borrow (or lazy-create) the shared `DefaultPbrTextures` for this
+    /// renderer. Returns an `Arc` so the caller doesn't pin the renderer's
+    /// internal lock across awaits.
+    ///
+    /// First call drives texture creation against this renderer's GPU
+    /// context — five 1×1 uploads, sequenced. Subsequent calls are an
+    /// `Arc::clone` of the cached handle.
+    pub(crate) async fn default_pbr_textures(
+        &self,
+    ) -> Result<Arc<DefaultPbrTextures>, RendererError> {
+        if let Some(existing) = self.default_pbr_textures.read().clone() {
+            return Ok(existing);
+        }
+        let size = crate::Size::from((1u32, 1u32));
+        // base_color = (255, 255, 255, 255) — solid white
+        let base_color = self
+            .create_texture((vec![255u8, 255, 255, 255], size))
+            .await?;
+        // metallic_roughness = (R=0, G=1, B=1, A=1). The shader swizzles
+        // `.bgr` so .r becomes the metallic channel (=1) and .g the
+        // roughness channel (=1). `factor * 1 = factor` → defaults inert.
+        let metallic_roughness = self
+            .create_texture((vec![0u8, 255, 255, 255], size))
+            .await?;
+        // normal = (128, 128, 255, 255) — neutral tangent-space (0, 0, 1)
+        // after the `* 2.0 - 1.0` decode.
+        let normal = self
+            .create_texture((vec![128u8, 128, 255, 255], size))
+            .await?;
+        // occlusion = white in the red channel → no darkening.
+        let occlusion = self
+            .create_texture((vec![255u8, 255, 255, 255], size))
+            .await?;
+        // emissive = white. The factor defaults to [0, 0, 0] so the product
+        // is 0 → no emission unless the user calls `emissive(…)`.
+        let emissive = self
+            .create_texture((vec![255u8, 255, 255, 255], size))
+            .await?;
+
+        let bundle = Arc::new(DefaultPbrTextures {
+            base_color,
+            metallic_roughness,
+            normal,
+            occlusion,
+            emissive,
+        });
+        *self.default_pbr_textures.write() = Some(bundle.clone());
+        Ok(bundle)
     }
 
     #[lsp_doc("docs/api/core/renderer/create_target.md")]

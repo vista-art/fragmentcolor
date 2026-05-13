@@ -10,11 +10,13 @@ is `[1, 1, 1, 1]`.
 ## Example
 
 ```rust
-# fn main() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::Material;
+# async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Material, Renderer};
 
-let red = Material::pbr()?.base_color([1.0, 0.2, 0.2, 1.0]);
+let renderer = Renderer::new();
+let red = Material::pbr(&renderer).await?.base_color([1.0, 0.2, 0.2, 1.0]);
 # let _ = red;
 # Ok(())
 # }
+# fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 ```

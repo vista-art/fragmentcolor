@@ -1,3 +1,4 @@
-from fragmentcolor import Material
+from fragmentcolor import Material, Renderer
 
-satin = Material.pbr().roughness(0.35)
+renderer = Renderer()
+satin = Material.pbr(renderer).roughness(0.35)

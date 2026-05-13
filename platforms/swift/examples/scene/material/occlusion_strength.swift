@@ -1,3 +1,4 @@
 import FragmentColor
 
-let crevices = Material.pbr()?.occlusionStrength(0.8)
+let renderer = Renderer()
+let crevices = try await Material.pbr(renderer).occlusionStrength(0.8)

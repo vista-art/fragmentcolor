@@ -4,15 +4,17 @@ use lsp_doc::lsp_doc;
 use pyo3::prelude::*;
 
 use crate::material::{AlphaMode, Material, set_or_warn, set_texture_or_warn};
-use crate::Shader;
+use crate::{Renderer, Shader};
 
 #[pymethods]
 impl Material {
     #[staticmethod]
     #[pyo3(name = "pbr")]
     #[lsp_doc("docs/api/scene/material/pbr.md")]
-    pub fn pbr_py() -> Result<Self, PyErr> {
-        Material::pbr().map_err(|e| e.into())
+    pub fn pbr_py(renderer: &Renderer) -> Result<Self, PyErr> {
+        // The Python surface is sync; block on the async core. Mirrors
+        // `Renderer::create_texture_py`'s pollster::block_on bridge.
+        pollster::block_on(Material::pbr(renderer)).map_err(|e| e.into())
     }
 
     #[staticmethod]

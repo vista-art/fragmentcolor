@@ -1,3 +1,4 @@
-import { Material } from "fragmentcolor";
+import { Material, Renderer } from "fragmentcolor";
 
-const detailed = Material.pbr()?.normalScale(1.5);
+const renderer = new Renderer();
+const detailed = await Material.pbr(renderer).normalScale(1.5);

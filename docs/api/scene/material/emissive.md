@@ -10,13 +10,15 @@ Maps to the `material.emissive` uniform. Default is `[0, 0, 0]`.
 ## Example
 
 ```rust
-# fn main() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::Material;
+# async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Material, Renderer};
 
-let lava = Material::pbr()?
+let renderer = Renderer::new();
+let lava = Material::pbr(&renderer).await?
     .base_color([0.1, 0.05, 0.0, 1.0])
     .emissive([1.5, 0.4, 0.1]);
 # let _ = lava;
 # Ok(())
 # }
+# fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 ```

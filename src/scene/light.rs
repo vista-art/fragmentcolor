@@ -80,7 +80,8 @@ mod tests {
     #[test]
     fn bind_writes_direction_and_color_to_material_shader() {
         let light = Light::directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9]);
-        let material = Material::pbr().expect("pbr");
+        let renderer = crate::Renderer::new();
+        let material = pollster::block_on(Material::pbr(&renderer)).expect("pbr");
         light.bind(material.shader());
 
         let dir: [f32; 3] = material

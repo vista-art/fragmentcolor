@@ -1,3 +1,4 @@
-import { Material } from "fragmentcolor";
+import { Material, Renderer } from "fragmentcolor";
 
-const foliage = Material.pbr()?.alphaCutoff(0.3);
+const renderer = new Renderer();
+const foliage = await Material.pbr(renderer).alphaCutoff(0.3);

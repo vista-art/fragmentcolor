@@ -140,9 +140,13 @@ mod tests {
         mesh
     }
 
+    fn pbr_material() -> Material {
+        pollster::block_on(Material::pbr(&crate::Renderer::new())).expect("pbr")
+    }
+
     #[test]
     fn new_starts_at_identity() {
-        let model = Model::new(pbr_triangle_mesh(), Material::pbr().expect("pbr"));
+        let model = Model::new(pbr_triangle_mesh(), pbr_material());
         let m = model.transform();
         assert_eq!(m[0], [1.0, 0.0, 0.0, 0.0]);
         assert_eq!(m[1], [0.0, 1.0, 0.0, 0.0]);
@@ -152,7 +156,7 @@ mod tests {
 
     #[test]
     fn translate_moves_in_world_space() {
-        let model = Model::new(pbr_triangle_mesh(), Material::pbr().expect("pbr"));
+        let model = Model::new(pbr_triangle_mesh(), pbr_material());
         model.translate([5.0, 0.0, -2.0]);
         let m = model.transform();
         assert_eq!(m[3], [5.0, 0.0, -2.0, 1.0]);
@@ -160,7 +164,7 @@ mod tests {
 
     #[test]
     fn rotate_then_translate_translates_in_world_space() {
-        let model = Model::new(pbr_triangle_mesh(), Material::pbr().expect("pbr"));
+        let model = Model::new(pbr_triangle_mesh(), pbr_material());
         model.rotate([0.0, 1.0, 0.0], std::f32::consts::FRAC_PI_2);
         model.translate([1.0, 0.0, 0.0]);
         let m = model.transform();
@@ -170,7 +174,7 @@ mod tests {
 
     #[test]
     fn scale_is_local_post_multiply() {
-        let model = Model::new(pbr_triangle_mesh(), Material::pbr().expect("pbr"));
+        let model = Model::new(pbr_triangle_mesh(), pbr_material());
         model.translate([3.0, 0.0, 0.0]);
         model.scale([2.0, 2.0, 2.0]);
         let m = model.transform();
@@ -182,7 +186,7 @@ mod tests {
 
     #[test]
     fn rotate_ignores_zero_axis() {
-        let model = Model::new(pbr_triangle_mesh(), Material::pbr().expect("pbr"));
+        let model = Model::new(pbr_triangle_mesh(), pbr_material());
         let before = model.transform();
         model.rotate([0.0, 0.0, 0.0], 1.57);
         let after = model.transform();
@@ -195,7 +199,7 @@ mod tests {
         // is visible on the clone (and on any Pass that already holds a live
         // entry — that's how batched instancing picks up updates between
         // `Pass::add_model` and `Renderer::render`).
-        let m1 = Model::new(pbr_triangle_mesh(), Material::pbr().expect("pbr"));
+        let m1 = Model::new(pbr_triangle_mesh(), pbr_material());
         let m2 = m1.clone();
         m1.translate([7.0, 0.0, 0.0]);
         assert_eq!(m2.transform()[3], [7.0, 0.0, 0.0, 1.0]);
@@ -204,7 +208,7 @@ mod tests {
     #[test]
     fn pass_add_model_queues_one_entry() {
         let pass = crate::Pass::new("test");
-        let m = Model::new(pbr_triangle_mesh(), Material::pbr().expect("pbr"));
+        let m = Model::new(pbr_triangle_mesh(), pbr_material());
         pass.add_model(&m).expect("add_model");
         assert_eq!(pass.object.model_entries.read().len(), 1);
         assert_eq!(pass.object.shaders.read().len(), 1);
@@ -214,7 +218,7 @@ mod tests {
     #[test]
     fn pass_add_model_dedupes_shared_shader_and_mesh() {
         let pass = crate::Pass::new("scene");
-        let template = Material::pbr().expect("pbr");
+        let template = pbr_material();
 
         let a = Model::new(pbr_triangle_mesh(), template.clone());
         let b = Model::new(pbr_triangle_mesh(), template);
@@ -230,7 +234,7 @@ mod tests {
     #[test]
     fn pass_add_model_carries_live_transform() {
         let pass = crate::Pass::new("scene");
-        let m = Model::new(pbr_triangle_mesh(), Material::pbr().expect("pbr"));
+        let m = Model::new(pbr_triangle_mesh(), pbr_material());
         pass.add_model(&m).expect("add_model");
 
         // Mutate the Model AFTER add_model. The Pass's entry holds an Arc to

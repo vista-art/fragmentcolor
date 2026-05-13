@@ -40,14 +40,16 @@ uniforms the call is a best-effort no-op with a debug log, same as
 ## Example
 
 ```rust
-# fn main() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Camera, Material};
+# async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Camera, Material, Renderer};
 
 let camera = Camera::perspective(60.0_f32.to_radians(), 16.0 / 9.0, 0.1, 100.0)
     .look_at([0.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
 
-let material = Material::pbr()?;
+let renderer = Renderer::new();
+let material = Material::pbr(&renderer).await?;
 camera.bind(material.shader());
 # Ok(())
 # }
+# fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 ```

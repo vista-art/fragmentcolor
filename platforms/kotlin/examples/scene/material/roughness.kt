@@ -1,3 +1,4 @@
 import org.fragmentcolor.*
 
-val satin = Material.pbr()?.roughness(0.35)
+val renderer = Renderer()
+val satin = Material.pbr(renderer).roughness(0.35)

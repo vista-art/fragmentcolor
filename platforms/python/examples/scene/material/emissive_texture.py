@@ -7,4 +7,4 @@ glow = renderer.create_texture([
     255,   0, 0, 255,
     255,   0, 0, 255,
 ][..])
-mat = Material.pbr().emissive([0.8, 0.0, 0.0]).emissive_texture(glow)
+mat = Material.pbr(renderer).emissive([0.8, 0.0, 0.0]).emissive_texture(glow)

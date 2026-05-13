@@ -71,9 +71,10 @@ alone.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Material, Mesh, Model, Vertex};
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Material, Mesh, Model, Renderer, Vertex};
 
+let renderer = Renderer::new();
 let mesh = Mesh::new();
 mesh.add_vertex(
     Vertex::new([0.0, 0.0, 0.0])
@@ -81,12 +82,13 @@ mesh.add_vertex(
         .set(Vertex::UV0, [0.0, 0.0]),
 );
 
-let model = Model::new(mesh, Material::pbr()?);
+let model = Model::new(mesh, Material::pbr(&renderer).await?);
 model.material().shader().set("camera.position", [0.0_f32, 0.0, 5.0])?;
 Ok(())
 }
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 13-14}"
+lang="rust" meta="collapse={1-1, 14-16}"
 />
 
 </TabItem>
@@ -94,12 +96,13 @@ lang="rust" meta="collapse={1-1, 13-14}"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Material, Mesh, Model, Vertex } from "fragmentcolor";
+import { Material, Mesh, Model, Renderer, Vertex } from "fragmentcolor";
 
+const renderer = new Renderer();
 const mesh = new Mesh();
 mesh.addVertex( Vertex.new([0.0, 0.0, 0.0]) .set(Vertex.NORMAL, [0.0, 1.0, 0.0]) .set(Vertex.UV0, [0.0, 0.0]), );
 
-const model = new Model(mesh, Material.pbr()?);
+const model = await new Model(mesh, Material.pbr(renderer));
 model.material().shader().set("camera.position", [0.0, 0.0, 5.0]);
 `}
 lang="js"
@@ -110,14 +113,15 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Material, Mesh, Model, Vertex
+from fragmentcolor import Material, Mesh, Model, Renderer, Vertex
 
+renderer = Renderer()
 mesh = Mesh()
 mesh.add_vertex(
     Vertex([0.0, 0.0, 0.0]).set(Vertex.NORMAL, [0.0, 1.0, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
 )
 
-model = Model(mesh, Material.pbr())
+model = Model(mesh, Material.pbr(renderer))
 model.material().shader().set("camera.position", [0.0_, 0.0, 5.0])
 `}
 lang="python"
@@ -130,12 +134,13 @@ lang="python"
 code={`
 import FragmentColor
 
+let renderer = Renderer()
 let mesh = Mesh()
 try mesh.addVertex(
     try Vertex([0.0, 0.0, 0.0]).set(Vertex.nORMAL, [0.0, 1.0, 0.0]).set(Vertex.uV0, [0.0, 0.0]),
 )
 
-let model = Model(mesh, Material.pbr()?)
+let model = try await Model(mesh, Material.pbr(renderer))
 try model.material().shader().set("camera.position", [0.0, 0.0, 5.0])
 `}
 lang="swift"
@@ -148,10 +153,11 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 
+val renderer = Renderer()
 val mesh = Mesh()
 mesh.addVertex( Vertex.new(listOf(0.0f, 0.0f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 1.0f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
 
-val model = Model(mesh, Material.pbr()?)
+val model = Model(mesh, Material.pbr(renderer))
 model.material().shader().set("camera.position", floatArrayOf(0.0f, 0.0f, 5.0f))
 `}
 lang="kotlin"
@@ -177,9 +183,10 @@ handle.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Material, Mesh, Model, Vertex};
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Material, Mesh, Model, Renderer, Vertex};
 
+let renderer = Renderer::new();
 let mut mesh = Mesh::new();
 mesh.add_vertex(
     Vertex::new([0.0, 0.5, 0.0])
@@ -187,7 +194,7 @@ mesh.add_vertex(
         .set(Vertex::UV0, [0.5, 1.0]),
 );
 
-let model = Model::new(mesh, Material::pbr()?);
+let model = Model::new(mesh, Material::pbr(&renderer).await?);
 model.mesh().add_vertex(
     Vertex::new([-0.5, -0.5, 0.0])
         .set(Vertex::NORMAL, [0.0, 0.0, 1.0])
@@ -195,8 +202,9 @@ model.mesh().add_vertex(
 );
 Ok(())
 }
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 17-18}"
+lang="rust" meta="collapse={1-1, 18-20}"
 />
 
 </TabItem>
@@ -204,12 +212,13 @@ lang="rust" meta="collapse={1-1, 17-18}"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Material, Mesh, Model, Vertex } from "fragmentcolor";
+import { Material, Mesh, Model, Renderer, Vertex } from "fragmentcolor";
 
+const renderer = new Renderer();
 const mesh = new Mesh();
 mesh.addVertex( Vertex.new([0.0, 0.5, 0.0]) .set(Vertex.NORMAL, [0.0, 0.0, 1.0]) .set(Vertex.UV0, [0.5, 1.0]), );
 
-const model = new Model(mesh, Material.pbr()?);
+const model = await new Model(mesh, Material.pbr(renderer));
 model.mesh().addVertex( Vertex.new([-0.5, -0.5, 0.0]) .set(Vertex.NORMAL, [0.0, 0.0, 1.0]) .set(Vertex.UV0, [0.0, 0.0]), );
 `}
 lang="js"
@@ -220,14 +229,15 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Material, Mesh, Model, Vertex
+from fragmentcolor import Material, Mesh, Model, Renderer, Vertex
 
+renderer = Renderer()
 mesh = Mesh()
 mesh.add_vertex(
     Vertex([0.0, 0.5, 0.0]).set(Vertex.NORMAL, [0.0, 0.0, 1.0]).set(Vertex.UV0, [0.5, 1.0]),
 )
 
-model = Model(mesh, Material.pbr())
+model = Model(mesh, Material.pbr(renderer))
 model.mesh().add_vertex(
     Vertex([-0.5, -0.5, 0.0]).set(Vertex.NORMAL, [0.0, 0.0, 1.0]).set(Vertex.UV0, [0.0, 0.0]),
 )
@@ -242,12 +252,13 @@ lang="python"
 code={`
 import FragmentColor
 
+let renderer = Renderer()
 let mesh = Mesh()
 try mesh.addVertex(
     try Vertex([0.0, 0.5, 0.0]).set(Vertex.nORMAL, [0.0, 0.0, 1.0]).set(Vertex.uV0, [0.5, 1.0]),
 )
 
-let model = Model(mesh, Material.pbr()?)
+let model = try await Model(mesh, Material.pbr(renderer))
 try model.mesh().addVertex(
     try Vertex([-0.5, -0.5, 0.0]).set(Vertex.nORMAL, [0.0, 0.0, 1.0]).set(Vertex.uV0, [0.0, 0.0]),
 )
@@ -262,10 +273,11 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 
+val renderer = Renderer()
 val mesh = Mesh()
 mesh.addVertex( Vertex.new(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 0.0f, 1.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), )
 
-val model = Model(mesh, Material.pbr()?)
+val model = Model(mesh, Material.pbr(renderer))
 model.mesh().addVertex( Vertex.new(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 0.0f, 1.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
 `}
 lang="kotlin"
@@ -304,9 +316,10 @@ via `Material::custom(...)` can use any layout.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Material, Mesh, Model, Vertex};
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Material, Mesh, Model, Renderer, Vertex};
 
+let renderer = Renderer::new();
 let mut mesh = Mesh::new();
 mesh.add_vertex(
     Vertex::new([0.0, 0.0, 0.0])
@@ -314,13 +327,14 @@ mesh.add_vertex(
         .set(Vertex::UV0, [0.0, 0.0]),
 );
 
-let model = Model::new(mesh, Material::pbr()?);
+let model = Model::new(mesh, Material::pbr(&renderer).await?);
 
 let _ = model;
 Ok(())
 }
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 13-15}"
+lang="rust" meta="collapse={1-1, 14-17}"
 />
 
 </TabItem>
@@ -328,12 +342,13 @@ lang="rust" meta="collapse={1-1, 13-15}"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Material, Mesh, Model, Vertex } from "fragmentcolor";
+import { Material, Mesh, Model, Renderer, Vertex } from "fragmentcolor";
 
+const renderer = new Renderer();
 const mesh = new Mesh();
 mesh.addVertex( Vertex.new([0.0, 0.0, 0.0]) .set(Vertex.NORMAL, [0.0, 1.0, 0.0]) .set(Vertex.UV0, [0.0, 0.0]), );
 
-const model = new Model(mesh, Material.pbr()?);
+const model = await new Model(mesh, Material.pbr(renderer));
 
 `}
 lang="js"
@@ -344,14 +359,15 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Material, Mesh, Model, Vertex
+from fragmentcolor import Material, Mesh, Model, Renderer, Vertex
 
+renderer = Renderer()
 mesh = Mesh()
 mesh.add_vertex(
     Vertex([0.0, 0.0, 0.0]).set(Vertex.NORMAL, [0.0, 1.0, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
 )
 
-model = Model(mesh, Material.pbr())
+model = Model(mesh, Material.pbr(renderer))
 
 `}
 lang="python"
@@ -364,12 +380,13 @@ lang="python"
 code={`
 import FragmentColor
 
+let renderer = Renderer()
 let mesh = Mesh()
 try mesh.addVertex(
     try Vertex([0.0, 0.0, 0.0]).set(Vertex.nORMAL, [0.0, 1.0, 0.0]).set(Vertex.uV0, [0.0, 0.0]),
 )
 
-let model = Model(mesh, Material.pbr()?)
+let model = try await Model(mesh, Material.pbr(renderer))
 `}
 lang="swift"
 />
@@ -381,10 +398,11 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 
+val renderer = Renderer()
 val mesh = Mesh()
 mesh.addVertex( Vertex.new(listOf(0.0f, 0.0f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 1.0f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
 
-val model = Model(mesh, Material.pbr()?)
+val model = Model(mesh, Material.pbr(renderer))
 `}
 lang="kotlin"
 />
@@ -414,9 +432,10 @@ the matrix yourself and call [set_transform](/api/scene/model#modelset_transform
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Material, Mesh, Model, Vertex};
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Material, Mesh, Model, Renderer, Vertex};
 
+let renderer = Renderer::new();
 let mesh = Mesh::new();
 mesh.add_vertex(
     Vertex::new([0.0, 0.0, 0.0])
@@ -424,12 +443,13 @@ mesh.add_vertex(
         .set(Vertex::UV0, [0.0, 0.0]),
 );
 
-let model = Model::new(mesh, Material::pbr()?);
+let model = Model::new(mesh, Material::pbr(&renderer).await?);
 model.rotate([0.0, 1.0, 0.0], std::f32::consts::FRAC_PI_2);
 Ok(())
 }
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 13-14}"
+lang="rust" meta="collapse={1-1, 14-16}"
 />
 
 </TabItem>
@@ -437,12 +457,13 @@ lang="rust" meta="collapse={1-1, 13-14}"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Material, Mesh, Model, Vertex } from "fragmentcolor";
+import { Material, Mesh, Model, Renderer, Vertex } from "fragmentcolor";
 
+const renderer = new Renderer();
 const mesh = new Mesh();
 mesh.addVertex( Vertex.new([0.0, 0.0, 0.0]) .set(Vertex.NORMAL, [0.0, 1.0, 0.0]) .set(Vertex.UV0, [0.0, 0.0]), );
 
-const model = new Model(mesh, Material.pbr()?);
+const model = await new Model(mesh, Material.pbr(renderer));
 model.rotate([0.0, 1.0, 0.0], std.f32.consts.FRACPI2);
 `}
 lang="js"
@@ -453,14 +474,15 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Material, Mesh, Model, Vertex
+from fragmentcolor import Material, Mesh, Model, Renderer, Vertex
 
+renderer = Renderer()
 mesh = Mesh()
 mesh.add_vertex(
     Vertex([0.0, 0.0, 0.0]).set(Vertex.NORMAL, [0.0, 1.0, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
 )
 
-model = Model(mesh, Material.pbr())
+model = Model(mesh, Material.pbr(renderer))
 model.rotate([0.0, 1.0, 0.0], std.f32.consts.FRAC_PI_2)
 `}
 lang="python"
@@ -473,12 +495,13 @@ lang="python"
 code={`
 import FragmentColor
 
+let renderer = Renderer()
 let mesh = Mesh()
 try mesh.addVertex(
     try Vertex([0.0, 0.0, 0.0]).set(Vertex.nORMAL, [0.0, 1.0, 0.0]).set(Vertex.uV0, [0.0, 0.0]),
 )
 
-let model = Model(mesh, Material.pbr()?)
+let model = try await Model(mesh, Material.pbr(renderer))
 model.rotate([0.0, 1.0, 0.0], std.f32.consts.fRACPI2)
 `}
 lang="swift"
@@ -491,10 +514,11 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 
+val renderer = Renderer()
 val mesh = Mesh()
 mesh.addVertex( Vertex.new(listOf(0.0f, 0.0f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 1.0f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
 
-val model = Model(mesh, Material.pbr()?)
+val model = Model(mesh, Material.pbr(renderer))
 model.rotate(listOf(0.0f, 1.0f, 0.0f), std.f32.consts.FRACPI2)
 `}
 lang="kotlin"
@@ -525,9 +549,10 @@ Model will shade slightly off. For a correct non-uniform-scale normal, use
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Material, Mesh, Model, Vertex};
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Material, Mesh, Model, Renderer, Vertex};
 
+let renderer = Renderer::new();
 let mesh = Mesh::new();
 mesh.add_vertex(
     Vertex::new([0.0, 0.0, 0.0])
@@ -535,12 +560,13 @@ mesh.add_vertex(
         .set(Vertex::UV0, [0.0, 0.0]),
 );
 
-let model = Model::new(mesh, Material::pbr()?);
+let model = Model::new(mesh, Material::pbr(&renderer).await?);
 model.scale([2.0, 2.0, 2.0]);
 Ok(())
 }
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 13-14}"
+lang="rust" meta="collapse={1-1, 14-16}"
 />
 
 </TabItem>
@@ -548,12 +574,13 @@ lang="rust" meta="collapse={1-1, 13-14}"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Material, Mesh, Model, Vertex } from "fragmentcolor";
+import { Material, Mesh, Model, Renderer, Vertex } from "fragmentcolor";
 
+const renderer = new Renderer();
 const mesh = new Mesh();
 mesh.addVertex( Vertex.new([0.0, 0.0, 0.0]) .set(Vertex.NORMAL, [0.0, 1.0, 0.0]) .set(Vertex.UV0, [0.0, 0.0]), );
 
-const model = new Model(mesh, Material.pbr()?);
+const model = await new Model(mesh, Material.pbr(renderer));
 model.scale([2.0, 2.0, 2.0]);
 `}
 lang="js"
@@ -564,14 +591,15 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Material, Mesh, Model, Vertex
+from fragmentcolor import Material, Mesh, Model, Renderer, Vertex
 
+renderer = Renderer()
 mesh = Mesh()
 mesh.add_vertex(
     Vertex([0.0, 0.0, 0.0]).set(Vertex.NORMAL, [0.0, 1.0, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
 )
 
-model = Model(mesh, Material.pbr())
+model = Model(mesh, Material.pbr(renderer))
 model.scale([2.0, 2.0, 2.0])
 `}
 lang="python"
@@ -584,12 +612,13 @@ lang="python"
 code={`
 import FragmentColor
 
+let renderer = Renderer()
 let mesh = Mesh()
 try mesh.addVertex(
     try Vertex([0.0, 0.0, 0.0]).set(Vertex.nORMAL, [0.0, 1.0, 0.0]).set(Vertex.uV0, [0.0, 0.0]),
 )
 
-let model = Model(mesh, Material.pbr()?)
+let model = try await Model(mesh, Material.pbr(renderer))
 model.scale([2.0, 2.0, 2.0])
 `}
 lang="swift"
@@ -602,10 +631,11 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 
+val renderer = Renderer()
 val mesh = Mesh()
 mesh.addVertex( Vertex.new(listOf(0.0f, 0.0f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 1.0f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
 
-val model = Model(mesh, Material.pbr()?)
+val model = Model(mesh, Material.pbr(renderer))
 model.scale(listOf(2.0f, 2.0f, 2.0f))
 `}
 lang="kotlin"
@@ -636,9 +666,10 @@ immediately (locations 3..6). To read the current transform, see
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Material, Mesh, Model, Vertex};
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Material, Mesh, Model, Renderer, Vertex};
 
+let renderer = Renderer::new();
 let mesh = Mesh::new();
 mesh.add_vertex(
     Vertex::new([0.0, 0.0, 0.0])
@@ -646,7 +677,7 @@ mesh.add_vertex(
         .set(Vertex::UV0, [0.0, 0.0]),
 );
 
-let model = Model::new(mesh, Material::pbr()?);
+let model = Model::new(mesh, Material::pbr(&renderer).await?);
 model.set_transform([
     [2.0, 0.0, 0.0, 0.0],
     [0.0, 2.0, 0.0, 0.0],
@@ -655,8 +686,9 @@ model.set_transform([
 ]);
 Ok(())
 }
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 18-19}"
+lang="rust" meta="collapse={1-1, 19-21}"
 />
 
 </TabItem>
@@ -664,12 +696,13 @@ lang="rust" meta="collapse={1-1, 18-19}"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Material, Mesh, Model, Vertex } from "fragmentcolor";
+import { Material, Mesh, Model, Renderer, Vertex } from "fragmentcolor";
 
+const renderer = new Renderer();
 const mesh = new Mesh();
 mesh.addVertex( Vertex.new([0.0, 0.0, 0.0]) .set(Vertex.NORMAL, [0.0, 1.0, 0.0]) .set(Vertex.UV0, [0.0, 0.0]), );
 
-const model = new Model(mesh, Material.pbr()?);
+const model = await new Model(mesh, Material.pbr(renderer));
 model.setTransform([ [2.0, 0.0, 0.0, 0.0], [0.0, 2.0, 0.0, 0.0], [0.0, 0.0, 2.0, 0.0], [3.0, 0.0, 0.0, 1.0], ]);
 `}
 lang="js"
@@ -680,14 +713,15 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Material, Mesh, Model, Vertex
+from fragmentcolor import Material, Mesh, Model, Renderer, Vertex
 
+renderer = Renderer()
 mesh = Mesh()
 mesh.add_vertex(
     Vertex([0.0, 0.0, 0.0]).set(Vertex.NORMAL, [0.0, 1.0, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
 )
 
-model = Model(mesh, Material.pbr())
+model = Model(mesh, Material.pbr(renderer))
 model.set_transform([
     [2.0, 0.0, 0.0, 0.0],
     [0.0, 2.0, 0.0, 0.0],
@@ -705,12 +739,13 @@ lang="python"
 code={`
 import FragmentColor
 
+let renderer = Renderer()
 let mesh = Mesh()
 try mesh.addVertex(
     try Vertex([0.0, 0.0, 0.0]).set(Vertex.nORMAL, [0.0, 1.0, 0.0]).set(Vertex.uV0, [0.0, 0.0]),
 )
 
-let model = Model(mesh, Material.pbr()?)
+let model = try await Model(mesh, Material.pbr(renderer))
 model.setTransform([
     [2.0, 0.0, 0.0, 0.0],
     [0.0, 2.0, 0.0, 0.0],
@@ -728,10 +763,11 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 
+val renderer = Renderer()
 val mesh = Mesh()
 mesh.addVertex( Vertex.new(listOf(0.0f, 0.0f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 1.0f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
 
-val model = Model(mesh, Material.pbr()?)
+val model = Model(mesh, Material.pbr(renderer))
 model.setTransform(arrayOf(listOf(2.0f, 0.0f, 0.0f, 0.0f), listOf(0.0f, 2.0f, 0.0f, 0.0f), listOf(0.0f, 0.0f, 2.0f, 0.0f), listOf(3.0f, 0.0f, 0.0f, 1.0f),))
 `}
 lang="kotlin"
@@ -762,9 +798,10 @@ side is `transform` and the write side is `set_transform`.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Material, Mesh, Model, Vertex};
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Material, Mesh, Model, Renderer, Vertex};
 
+let renderer = Renderer::new();
 let mesh = Mesh::new();
 mesh.add_vertex(
     Vertex::new([0.0, 0.0, 0.0])
@@ -772,15 +809,16 @@ mesh.add_vertex(
         .set(Vertex::UV0, [0.0, 0.0]),
 );
 
-let model = Model::new(mesh, Material::pbr()?);
+let model = Model::new(mesh, Material::pbr(&renderer).await?);
 let identity = model.transform();
 assert_eq!(identity[0], [1.0, 0.0, 0.0, 0.0]);
 assert_eq!(identity[3], [0.0, 0.0, 0.0, 1.0]);
 let _ = identity;
 Ok(())
 }
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 13-17}"
+lang="rust" meta="collapse={1-1, 14-19}"
 />
 
 </TabItem>
@@ -788,12 +826,13 @@ lang="rust" meta="collapse={1-1, 13-17}"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Material, Mesh, Model, Vertex } from "fragmentcolor";
+import { Material, Mesh, Model, Renderer, Vertex } from "fragmentcolor";
 
+const renderer = new Renderer();
 const mesh = new Mesh();
 mesh.addVertex( Vertex.new([0.0, 0.0, 0.0]) .set(Vertex.NORMAL, [0.0, 1.0, 0.0]) .set(Vertex.UV0, [0.0, 0.0]), );
 
-const model = new Model(mesh, Material.pbr()?);
+const model = await new Model(mesh, Material.pbr(renderer));
 const identity = model.transform();
 `}
 lang="js"
@@ -804,14 +843,15 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Material, Mesh, Model, Vertex
+from fragmentcolor import Material, Mesh, Model, Renderer, Vertex
 
+renderer = Renderer()
 mesh = Mesh()
 mesh.add_vertex(
     Vertex([0.0, 0.0, 0.0]).set(Vertex.NORMAL, [0.0, 1.0, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
 )
 
-model = Model(mesh, Material.pbr())
+model = Model(mesh, Material.pbr(renderer))
 identity = model.transform()
 `}
 lang="python"
@@ -824,12 +864,13 @@ lang="python"
 code={`
 import FragmentColor
 
+let renderer = Renderer()
 let mesh = Mesh()
 try mesh.addVertex(
     try Vertex([0.0, 0.0, 0.0]).set(Vertex.nORMAL, [0.0, 1.0, 0.0]).set(Vertex.uV0, [0.0, 0.0]),
 )
 
-let model = Model(mesh, Material.pbr()?)
+let model = try await Model(mesh, Material.pbr(renderer))
 let identity = model.transform()
 `}
 lang="swift"
@@ -842,10 +883,11 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 
+val renderer = Renderer()
 val mesh = Mesh()
 mesh.addVertex( Vertex.new(listOf(0.0f, 0.0f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 1.0f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
 
-val model = Model(mesh, Material.pbr()?)
+val model = Model(mesh, Material.pbr(renderer))
 val identity = model.transform()
 `}
 lang="kotlin"
@@ -872,9 +914,10 @@ along the world X axis.
 <TabItem label="Rust">
 <Code
 code={`
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Material, Mesh, Model, Vertex};
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Material, Mesh, Model, Renderer, Vertex};
 
+let renderer = Renderer::new();
 let mesh = Mesh::new();
 mesh.add_vertex(
     Vertex::new([0.0, 0.0, 0.0])
@@ -882,7 +925,7 @@ mesh.add_vertex(
         .set(Vertex::UV0, [0.0, 0.0]),
 );
 
-let model = Model::new(mesh, Material::pbr()?);
+let model = Model::new(mesh, Material::pbr(&renderer).await?);
 model.translate([5.0, 0.0, -2.0]);
 
 let m = model.transform();
@@ -890,8 +933,9 @@ let m = model.transform();
 assert_eq!(m[3], [5.0, 0.0, -2.0, 1.0]);
 Ok(())
 }
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 14-18}"
+lang="rust" meta="collapse={1-1, 15-20}"
 />
 
 </TabItem>
@@ -899,12 +943,13 @@ lang="rust" meta="collapse={1-1, 14-18}"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Material, Mesh, Model, Vertex } from "fragmentcolor";
+import { Material, Mesh, Model, Renderer, Vertex } from "fragmentcolor";
 
+const renderer = new Renderer();
 const mesh = new Mesh();
 mesh.addVertex( Vertex.new([0.0, 0.0, 0.0]) .set(Vertex.NORMAL, [0.0, 1.0, 0.0]) .set(Vertex.UV0, [0.0, 0.0]), );
 
-const model = new Model(mesh, Material.pbr()?);
+const model = await new Model(mesh, Material.pbr(renderer));
 model.translate([5.0, 0.0, -2.0]);
 
 `}
@@ -916,14 +961,15 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Material, Mesh, Model, Vertex
+from fragmentcolor import Material, Mesh, Model, Renderer, Vertex
 
+renderer = Renderer()
 mesh = Mesh()
 mesh.add_vertex(
     Vertex([0.0, 0.0, 0.0]).set(Vertex.NORMAL, [0.0, 1.0, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
 )
 
-model = Model(mesh, Material.pbr())
+model = Model(mesh, Material.pbr(renderer))
 model.translate([5.0, 0.0, -2.0])
 
 `}
@@ -937,12 +983,13 @@ lang="python"
 code={`
 import FragmentColor
 
+let renderer = Renderer()
 let mesh = Mesh()
 try mesh.addVertex(
     try Vertex([0.0, 0.0, 0.0]).set(Vertex.nORMAL, [0.0, 1.0, 0.0]).set(Vertex.uV0, [0.0, 0.0]),
 )
 
-let model = Model(mesh, Material.pbr()?)
+let model = try await Model(mesh, Material.pbr(renderer))
 model.translate([5.0, 0.0, -2.0])
 `}
 lang="swift"
@@ -955,10 +1002,11 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 
+val renderer = Renderer()
 val mesh = Mesh()
 mesh.addVertex( Vertex.new(listOf(0.0f, 0.0f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 1.0f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
 
-val model = Model(mesh, Material.pbr()?)
+val model = Model(mesh, Material.pbr(renderer))
 model.translate(listOf(5.0f, 0.0f, -2.0f))
 `}
 lang="kotlin"

@@ -27,19 +27,23 @@ draw call inside a frame.
 ## Example
 
 ```rust
-# fn main() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{AlphaMode, Material};
+# async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{AlphaMode, Material, Renderer};
 
-let foliage = Material::pbr()?
+let renderer = Renderer::new();
+let foliage = Material::pbr(&renderer)
+    .await?
     .alpha_mode(AlphaMode::Mask)
     .alpha_cutoff(0.3);
 
-let glass = Material::pbr()?
+let glass = Material::pbr(&renderer)
+    .await?
     .base_color([0.9, 0.95, 1.0, 0.25])
     .alpha_mode(AlphaMode::Blend);
 
-let solid = Material::pbr()?.alpha_mode(AlphaMode::Opaque);
+let solid = Material::pbr(&renderer).await?.alpha_mode(AlphaMode::Opaque);
 # let _ = (foliage, glass, solid);
 # Ok(())
 # }
+# fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 ```

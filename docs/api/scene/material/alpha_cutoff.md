@@ -11,11 +11,13 @@ when you want hard-edged cut-out transparency (foliage, chain-link, decals).
 ## Example
 
 ```rust
-# fn main() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::Material;
+# async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Material, Renderer};
 
-let foliage = Material::pbr()?.alpha_cutoff(0.3);
+let renderer = Renderer::new();
+let foliage = Material::pbr(&renderer).await?.alpha_cutoff(0.3);
 # let _ = foliage;
 # Ok(())
 # }
+# fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 ```

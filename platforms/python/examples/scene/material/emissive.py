@@ -1,3 +1,4 @@
-from fragmentcolor import Material
+from fragmentcolor import Material, Renderer
 
-lava = Material.pbr().base_color([0.1, 0.05, 0.0, 1.0]).emissive([1.5, 0.4, 0.1])
+renderer = Renderer()
+lava = Material.pbr(renderer).base_color([0.1, 0.05, 0.0, 1.0]).emissive([1.5, 0.4, 0.1])

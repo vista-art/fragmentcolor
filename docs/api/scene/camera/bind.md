@@ -15,16 +15,16 @@ defensively without worrying about the shader's surface.
 ## Example
 
 ```rust
-# fn main() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Camera, Material};
+# async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Camera, Material, Renderer};
 
 let camera = Camera::perspective(60.0_f32.to_radians(), 16.0 / 9.0, 0.1, 100.0)
     .look_at([0.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
 
-let material = Material::pbr()?;
+let renderer = Renderer::new();
+let material = Material::pbr(&renderer).await?;
 camera.bind(material.shader());
 
-# // The shader now carries the camera state — view_proj is non-identity.
 # let m: [[f32; 4]; 4] = material.shader().get("camera.view_proj")?;
 # assert!(m != [
 # 	[1.0, 0.0, 0.0, 0.0],
@@ -34,4 +34,5 @@ camera.bind(material.shader());
 # ]);
 # Ok(())
 # }
+# fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 ```

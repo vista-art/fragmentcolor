@@ -3,10 +3,11 @@
 Bind a texture to the canonical `metallic_roughness_map` slot. Following
 glTF 2.0, the green channel encodes per-fragment roughness, the blue channel
 encodes metallic — both multiplied by their respective factors at sample
-time.
+time inside the default PBR shader.
 
-The factors-only built-in PBR shader does not yet sample this slot — the
-binding name is reserved so this call is forward-compatible.
+Unset, this slot resolves to a 1×1 default with `(R=0, G=1, B=1, A=1)` so
+the factor multiplication passes both `material.metallic` and
+`material.roughness` through unchanged.
 
 ## Example
 
@@ -21,7 +22,7 @@ let mr_map = renderer.create_texture(&[
     0,   180, 30, 255,
     0,   220, 60, 255,
 ][..]).await?;
-let mat = Material::pbr()?.metallic_roughness_texture(&mr_map);
+let mat = Material::pbr(&renderer).await?.metallic_roughness_texture(&mr_map);
 # let _ = mat;
 # Ok(())
 # }

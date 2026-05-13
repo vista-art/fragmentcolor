@@ -4,14 +4,16 @@ use lsp_doc::lsp_doc;
 use wasm_bindgen::prelude::*;
 
 use crate::material::{AlphaMode, Material, set_or_warn, set_texture_or_warn};
-use crate::Shader;
+use crate::{Renderer, Shader};
 
 #[wasm_bindgen]
 impl Material {
     #[wasm_bindgen(js_name = "pbr")]
     #[lsp_doc("docs/api/scene/material/pbr.md")]
-    pub fn pbr_js() -> Result<Material, JsError> {
-        Material::pbr().map_err(|e| JsError::new(&e.to_string()))
+    pub async fn pbr_js(renderer: &Renderer) -> Result<Material, JsError> {
+        Material::pbr(renderer)
+            .await
+            .map_err(|e| JsError::new(&e.to_string()))
     }
 
     #[wasm_bindgen(js_name = "custom")]

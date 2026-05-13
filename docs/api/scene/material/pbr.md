@@ -6,6 +6,12 @@ glTF 2.0 PBR-MR defaults, lightly tweaked so a freshly-constructed Material
 renders as a clean white surface under the default light rather than dark
 gunmetal.
 
+`pbr` takes the `Renderer` so it can seed each of the five glTF texture
+slots with a sensible 1×1 default pulled from the renderer's lazy texture
+cache. That way the underlying shader has every binding it needs out of the
+box and the per-factor render is correct even when no map is attached. Call
+the texture setters to override any of them.
+
 The shader uses:
 
 - **Cook-Torrance specular** with GGX normal distribution, Smith geometry,
@@ -13,7 +19,10 @@ The shader uses:
 - **Lambertian diffuse** with energy conservation against the specular
   Fresnel and metalness.
 - **One directional light** (uniform `light`), one camera (uniform `camera`),
-  per-Model transform via `mesh.model`.
+  per-Model transform via the instance-attribute stream.
+- **glTF 2.0 PBR-MR texture sampling** — five sampled maps (`base_color_map`,
+  `metallic_roughness_map`, `normal_map`, `occlusion_map`, `emissive_map`)
+  combined with their matching factors per the spec.
 
 The vertex inputs the shader expects, in this order:
 
@@ -36,7 +45,11 @@ mismatch — use `Material::custom(...)` to bring your own vertex layout.
 | `material.occlusion_strength`| `1.0`                |
 | `material.emissive`          | `[0, 0, 0]`          |
 | `material.alpha_cutoff`      | `0.5`                |
-| `mesh.model`                 | identity 4×4         |
+| `base_color_map`             | 1×1 white            |
+| `metallic_roughness_map`     | 1×1 (R=0, G=1, B=1)  |
+| `normal_map`                 | 1×1 flat (128,128,255) |
+| `occlusion_map`              | 1×1 white            |
+| `emissive_map`               | 1×1 white            |
 | `camera.view_proj`           | identity 4×4         |
 | `camera.position`            | `[0, 0, 0]`          |
 | `light.direction`            | `[0, -1, 0]` (down)  |
@@ -52,10 +65,11 @@ is still supported if you need it.
 ## Example
 
 ```rust
-# fn main() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::Material;
+# async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Material, Renderer};
 
-let bronze = Material::pbr()?
+let renderer = Renderer::new();
+let bronze = Material::pbr(&renderer).await?
     .base_color([0.8, 0.5, 0.2, 1.0])
     .metallic(1.0)
     .roughness(0.3);
@@ -63,4 +77,5 @@ let bronze = Material::pbr()?
 # let _ = bronze;
 # Ok(())
 # }
+# fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 ```

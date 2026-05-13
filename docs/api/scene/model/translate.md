@@ -8,9 +8,10 @@ along the world X axis.
 ## Example
 
 ```rust
-# fn main() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Material, Mesh, Model, Vertex};
+# async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Material, Mesh, Model, Renderer, Vertex};
 
+let renderer = Renderer::new();
 let mesh = Mesh::new();
 mesh.add_vertex(
     Vertex::new([0.0, 0.0, 0.0])
@@ -18,7 +19,7 @@ mesh.add_vertex(
         .set(Vertex::UV0, [0.0, 0.0]),
 );
 
-let model = Model::new(mesh, Material::pbr()?);
+let model = Model::new(mesh, Material::pbr(&renderer).await?);
 model.translate([5.0, 0.0, -2.0]);
 
 # let m = model.transform();
@@ -26,4 +27,5 @@ model.translate([5.0, 0.0, -2.0]);
 # assert_eq!(m[3], [5.0, 0.0, -2.0, 1.0]);
 # Ok(())
 # }
+# fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 ```

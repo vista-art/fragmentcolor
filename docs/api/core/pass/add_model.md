@@ -19,9 +19,10 @@ today; the API doesn't change when batched instancing lands.
 ## Example
 
 ```rust
-# fn main() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Material, Mesh, Model, Pass, Vertex};
+# async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Material, Mesh, Model, Pass, Renderer, Vertex};
 
+let renderer = Renderer::new();
 let mesh = Mesh::new();
 mesh.add_vertex(
     Vertex::new([0.0, 0.5, 0.0])
@@ -39,7 +40,7 @@ mesh.add_vertex(
         .set(Vertex::UV0, [1.0, 0.0]),
 );
 
-let template = Material::pbr()?.base_color([0.85, 0.4, 0.2, 1.0]);
+let template = Material::pbr(&renderer).await?.base_color([0.85, 0.4, 0.2, 1.0]);
 let pass = Pass::new("scene");
 
 let m1 = Model::new(mesh.clone(), template.clone());
@@ -52,4 +53,5 @@ pass.add_model(&m2)?;
 
 # Ok(())
 # }
+# fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 ```

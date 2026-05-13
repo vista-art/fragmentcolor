@@ -6,14 +6,15 @@ use std::sync::Arc;
 use crate::material::{AlphaMode, Material, set_or_warn, set_texture_or_warn};
 use crate::renderer::platform::mobile::FragmentColorError;
 use crate::texture::Texture;
-use crate::Shader;
+use crate::{Renderer, Shader};
 
 #[uniffi::export]
 impl Material {
     #[uniffi::constructor(name = "pbr")]
     #[lsp_doc("docs/api/scene/material/pbr.md")]
-    pub fn pbr_mobile() -> Result<Arc<Self>, FragmentColorError> {
-        Material::pbr()
+    pub async fn pbr_mobile(renderer: Arc<Renderer>) -> Result<Arc<Self>, FragmentColorError> {
+        Material::pbr(renderer.as_ref())
+            .await
             .map(Arc::new)
             .map_err(|e| FragmentColorError::Render(e.to_string()))
     }

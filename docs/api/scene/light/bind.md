@@ -15,16 +15,17 @@ setters.
 ## Example
 
 ```rust
-# fn main() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Light, Material};
+# async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Light, Material, Renderer};
 
-let material = Material::pbr()?;
+let renderer = Renderer::new();
+let material = Material::pbr(&renderer).await?;
 let sun = Light::directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9]);
 sun.bind(material.shader());
 
-# // The shader's light.direction now matches the Light's.
 # let dir: [f32; 3] = material.shader().get("light.direction")?;
 # assert_eq!(dir, [0.3, -1.0, -0.4]);
 # Ok(())
 # }
+# fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 ```

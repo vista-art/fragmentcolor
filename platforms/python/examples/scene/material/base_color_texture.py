@@ -7,4 +7,4 @@ texture = renderer.create_texture([
     230,  180, 100, 255,
     255,  220, 150, 255,
 ][..])
-mat = Material.pbr().base_color_texture(texture)
+mat = Material.pbr(renderer).base_color_texture(texture)
