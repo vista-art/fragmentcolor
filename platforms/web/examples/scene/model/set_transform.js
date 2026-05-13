@@ -4,5 +4,5 @@ const renderer = new Renderer();
 const mesh = new Mesh();
 mesh.addVertex( Vertex.new([0.0, 0.0, 0.0]) .set(Vertex.NORMAL, [0.0, 1.0, 0.0]) .set(Vertex.UV0, [0.0, 0.0]), );
 
-const model = await new Model(mesh, Material.pbr(renderer));
+const model = new Model(mesh, Material.pbr()?);
 model.setTransform([ [2.0, 0.0, 0.0, 0.0], [0.0, 2.0, 0.0, 0.0], [0.0, 0.0, 2.0, 0.0], [3.0, 0.0, 0.0, 1.0], ]);

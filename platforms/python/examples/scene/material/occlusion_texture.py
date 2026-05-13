@@ -7,4 +7,4 @@ ao = renderer.create_texture([
     200,   0, 0, 255,
     160,   0, 0, 255,
 ][..])
-mat = Material.pbr(renderer).occlusion_texture(ao)
+mat = Material.pbr().occlusion_texture(ao)

@@ -22,7 +22,7 @@ mesh.add_vertex(
         .set(Vertex::UV0, [0.0, 0.0]),
 );
 
-let model = Model::new(mesh, Material::pbr(&renderer).await?);
+let model = Model::new(mesh, Material::pbr()?);
 model.material().shader().set("camera.position", [0.0_f32, 0.0, 5.0])?;
 # Ok(())
 # }

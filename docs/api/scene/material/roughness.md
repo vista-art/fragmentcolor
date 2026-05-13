@@ -14,7 +14,7 @@ Maps to the `material.roughness` uniform. Default is `1.0`.
 use fragmentcolor::{Material, Renderer};
 
 let renderer = Renderer::new();
-let satin = Material::pbr(&renderer).await?.roughness(0.35);
+let satin = Material::pbr()?.roughness(0.35);
 # let _ = satin;
 # Ok(())
 # }

@@ -7,4 +7,4 @@ let texture = renderer.createTexture([
     230,  180, 100, 255,
     255,  220, 150, 255,
 try await ])
-let mat = try await Material.pbr(renderer).baseColorTexture(texture)
+let mat = Material.pbr()?.baseColorTexture(texture)

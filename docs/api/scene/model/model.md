@@ -22,7 +22,7 @@ template = Material::pbr().base_color(...)
 for each blob:
   model = Model::new(blob.mesh, template.clone())
   model.set_transform(blob.matrix)
-  pass.add_model(&model)
+  pass.add(&model)
 ```
 
 Pipeline cached once by shader hash; one bind-group setup per pass; N draws
@@ -64,7 +64,7 @@ mesh.add_vertex(
         .set(Vertex::UV0, [0.5, 1.0]),
 );
 
-let mat = Material::pbr(&renderer).await?.base_color([0.3, 0.6, 1.0, 1.0]);
+let mat = Material::pbr()?.base_color([0.3, 0.6, 1.0, 1.0]);
 let model = Model::new(mesh, mat);
 model.translate([2.0, 0.0, 0.0]);
 model.scale([1.5, 1.5, 1.5]);

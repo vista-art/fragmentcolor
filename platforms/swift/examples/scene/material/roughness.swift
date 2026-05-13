@@ -1,4 +1,4 @@
 import FragmentColor
 
 let renderer = Renderer()
-let satin = try await Material.pbr(renderer).roughness(0.35)
+let satin = Material.pbr()?.roughness(0.35)

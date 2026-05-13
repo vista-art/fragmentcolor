@@ -21,7 +21,7 @@ let ao = renderer.create_texture(&[
     200,   0, 0, 255,
     160,   0, 0, 255,
 ][..]).await?;
-let mat = Material::pbr(&renderer).await?.occlusion_texture(&ao);
+let mat = Material::pbr()?.occlusion_texture(&ao);
 # let _ = mat;
 # Ok(())
 # }

@@ -15,7 +15,7 @@ perturbation by this value before combining with the world-space normal.
 use fragmentcolor::{Material, Renderer};
 
 let renderer = Renderer::new();
-let detailed = Material::pbr(&renderer).await?.normal_scale(1.5);
+let detailed = Material::pbr()?.normal_scale(1.5);
 # let _ = detailed;
 # Ok(())
 # }

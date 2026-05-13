@@ -9,7 +9,7 @@ the [Camera](https://fragmentcolor.org/api/scene/camera) /
 The returned reference is the same `Shader` the Material is built around, so
 changes propagate immediately to every Model that uses this Material. If you
 want a Material variant with different state, build a fresh
-`Material::pbr(&renderer).await?.<setters>` rather than cloning — `Material`
+`Material::pbr()?.<setters>` rather than cloning — `Material`
 clones share their Shader handle (Arc-clone) so mutations are visible across
 all clones.
 
@@ -29,7 +29,7 @@ use fragmentcolor::{Material, Renderer};
 // Direct uniform access for a custom field that isn't covered by the
 // Material setters or by Camera / Light.
 let renderer = Renderer::new();
-let material = Material::pbr(&renderer).await?;
+let material = Material::pbr()?;
 material.shader().set("material.alpha_cutoff", 0.25_f32)?;
 # Ok(())
 # }

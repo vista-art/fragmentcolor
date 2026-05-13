@@ -92,25 +92,36 @@ impl Pass {
 
     /// Add a Model (Mesh + Material + transform) to this pass in one call.
     #[uniffi::method(name = "addModel")]
-    #[lsp_doc("docs/api/core/pass/add_model.md")]
+    #[lsp_doc("docs/api/core/pass/add.md")]
     pub fn add_model_mobile(
         &self,
         model: Arc<crate::Model>,
     ) -> Result<(), FragmentColorError> {
-        self.add_model(&model)
+        self.add(model.as_ref())
+            .map(|_| ())
             .map_err(|e: PassError| FragmentColorError::Render(e.to_string()))
     }
 
     #[uniffi::method(name = "addCamera")]
     #[lsp_doc("docs/api/core/pass/add.md")]
-    pub fn add_camera_mobile(&self, camera: Arc<crate::scene::Camera>) {
-        self.add(camera.as_ref());
+    pub fn add_camera_mobile(
+        &self,
+        camera: Arc<crate::scene::Camera>,
+    ) -> Result<(), FragmentColorError> {
+        self.add(camera.as_ref())
+            .map(|_| ())
+            .map_err(|e: PassError| FragmentColorError::Render(e.to_string()))
     }
 
     #[uniffi::method(name = "addLight")]
     #[lsp_doc("docs/api/core/pass/add.md")]
-    pub fn add_light_mobile(&self, light: Arc<crate::scene::Light>) {
-        self.add(light.as_ref());
+    pub fn add_light_mobile(
+        &self,
+        light: Arc<crate::scene::Light>,
+    ) -> Result<(), FragmentColorError> {
+        self.add(light.as_ref())
+            .map(|_| ())
+            .map_err(|e: PassError| FragmentColorError::Render(e.to_string()))
     }
 
     /// Set the render target (color attachment) for this pass.

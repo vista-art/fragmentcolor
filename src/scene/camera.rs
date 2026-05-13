@@ -17,7 +17,7 @@ use pyo3::prelude::*;
 #[cfg(wasm)]
 use wasm_bindgen::prelude::*;
 
-use crate::scene::Component;
+use crate::scene::SceneObject;
 use crate::shader::ShaderObject;
 use crate::Shader;
 
@@ -138,8 +138,22 @@ impl Camera {
     }
 }
 
-impl Component for Camera {
-    fn apply(&self, shader: &Shader) {
+impl SceneObject for Camera {
+    fn attach(&self, pass: &crate::Pass) -> Result<(), crate::PassError> {
+        // Apply current state to every shader already on the pass.
+        let shaders: Vec<Arc<ShaderObject>> =
+            pass.object.shaders.read().iter().cloned().collect();
+        for s in shaders {
+            self.apply_to_shader(&Shader::from(s));
+        }
+        // Store a handle so future shaders joining via Model::attach also pick
+        // the camera state up (and so the renderer can re-invoke apply on a
+        // per-shader basis).
+        pass.object.scene_objects.write().push(Box::new(self.clone()));
+        Ok(())
+    }
+
+    fn apply_to_shader(&self, shader: &Shader) {
         let _ = shader.set("camera.view_proj", self.view_proj());
         let _ = shader.set("camera.position", self.position());
         self.object
@@ -205,12 +219,11 @@ mod tests {
     fn pass_add_seeds_shader_uniforms() {
         let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0)
             .look_at([1.0, 2.0, 3.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
-        let renderer = crate::Renderer::new();
-        let material = pollster::block_on(Material::pbr(&renderer)).expect("pbr");
+        let material = Material::pbr().expect("pbr");
         let model = crate::scene::Model::new(pbr_triangle_mesh(), material.clone());
 
         let pass = crate::Pass::new("scene");
-        pass.add_model(&model).expect("add_model");
+        pass.add(&model).expect("add_model");
         pass.add(&camera);
 
         let m: [[f32; 4]; 4] = material
@@ -231,12 +244,11 @@ mod tests {
         // The same camera absorbed by a pass shows live updates on every
         // shader the pass wires it into, with no second `add` call.
         let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0);
-        let renderer = crate::Renderer::new();
-        let material = pollster::block_on(Material::pbr(&renderer)).expect("pbr");
+        let material = Material::pbr().expect("pbr");
         let model = crate::scene::Model::new(pbr_triangle_mesh(), material.clone());
 
         let pass = crate::Pass::new("scene");
-        pass.add_model(&model).expect("add_model");
+        pass.add(&model).expect("add_model");
         pass.add(&camera);
 
         camera.look_at([5.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
@@ -250,14 +262,13 @@ mod tests {
         // to each shader as `add_model` brings them in.
         let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0)
             .look_at([0.0, 0.0, 7.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
-        let renderer = crate::Renderer::new();
-        let material = pollster::block_on(Material::pbr(&renderer)).expect("pbr");
+        let material = Material::pbr().expect("pbr");
 
         let pass = crate::Pass::new("scene");
         pass.add(&camera);
 
         let model = crate::scene::Model::new(pbr_triangle_mesh(), material.clone());
-        pass.add_model(&model).expect("add_model");
+        pass.add(&model).expect("add_model");
 
         let p: [f32; 3] = material.shader().get("camera.position").unwrap();
         assert_eq!(p, [0.0, 0.0, 7.0]);

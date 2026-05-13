@@ -12,7 +12,6 @@ def run_all():
         'core/pass/add.py',
         'core/pass/add_depth_target.py',
         'core/pass/add_mesh.py',
-        'core/pass/add_model.py',
         'core/pass/add_shader.py',
         'core/pass/add_target.py',
         'core/pass/compute.py',

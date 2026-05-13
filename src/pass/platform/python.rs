@@ -66,21 +66,21 @@ impl Pass {
     }
 
     #[pyo3(name = "add_model")]
-    #[lsp_doc("docs/api/core/pass/add_model.md")]
+    #[lsp_doc("docs/api/core/pass/add.md")]
     pub fn add_model_py(&self, model: &crate::Model) -> Result<(), PyErr> {
-        self.add_model(model).map_err(|e| e.into())
+        self.add(model).map(|_| ()).map_err(|e| e.into())
     }
 
     #[pyo3(name = "add_camera")]
     #[lsp_doc("docs/api/core/pass/add.md")]
-    pub fn add_camera_py(&self, camera: &crate::scene::Camera) {
-        self.add(camera);
+    pub fn add_camera_py(&self, camera: &crate::scene::Camera) -> Result<(), PyErr> {
+        self.add(camera).map(|_| ()).map_err(|e| e.into())
     }
 
     #[pyo3(name = "add_light")]
     #[lsp_doc("docs/api/core/pass/add.md")]
-    pub fn add_light_py(&self, light: &crate::scene::Light) {
-        self.add(light);
+    pub fn add_light_py(&self, light: &crate::scene::Light) -> Result<(), PyErr> {
+        self.add(light).map(|_| ()).map_err(|e| e.into())
     }
 
     #[pyo3(name = "set_clear_color")]

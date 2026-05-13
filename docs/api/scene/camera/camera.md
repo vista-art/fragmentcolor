@@ -52,10 +52,10 @@ mesh.add_vertex(
         .set(Vertex::NORMAL, [0.0, 0.0, 1.0])
         .set(Vertex::UV0, [0.5, 1.0]),
 );
-let model = Model::new(mesh, Material::pbr(&renderer).await?);
+let model = Model::new(mesh, Material::pbr()?);
 
 let pass = Pass::new("scene");
-pass.add_model(&model)?;
+pass.add(&model)?;
 pass.add(&camera);
 
 // Move later — every shader on the pass picks up the new view at the next render.

@@ -14,7 +14,7 @@ is `[1, 1, 1, 1]`.
 use fragmentcolor::{Material, Renderer};
 
 let renderer = Renderer::new();
-let red = Material::pbr(&renderer).await?.base_color([1.0, 0.2, 0.2, 1.0]);
+let red = Material::pbr()?.base_color([1.0, 0.2, 0.2, 1.0]);
 # let _ = red;
 # Ok(())
 # }

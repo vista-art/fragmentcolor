@@ -66,7 +66,7 @@ mesh.add_vertex(
         .set(Vertex::UV0, [0.5, 1.0]),
 );
 
-let material = Material::pbr(&renderer).await?
+let material = Material::pbr()?
     .base_color([0.85, 0.2, 0.2, 1.0])
     .metallic(0.0)
     .roughness(0.4)

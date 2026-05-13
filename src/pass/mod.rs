@@ -117,76 +117,25 @@ impl Pass {
         self.object.add_mesh(mesh)
     }
 
-    #[lsp_doc("docs/api/core/pass/add_model.md")]
-    pub fn add_model(&self, model: &crate::Model) -> Result<(), PassError> {
-        let shader_arc = &model.material.shader.object;
-
-        // Declare the model-instance vertex schema on the Mesh first, so the
-        // shader's mesh-validation (inside `add_mesh` below) sees `model_0..3`
-        // at the per-instance slot and accepts the layout. The Mesh's `insts`
-        // stays empty; per-Model transforms ride the Pass's `model_entries`
-        // queue and the renderer builds the buffer at draw time.
-        if model.mesh.object.instance_schema.read().is_none() {
-            model.mesh.object.declare_model_instance_schema();
-        }
-
-        // Dedupe shader-attach: many Models that share one Material's Shader
-        // should result in one entry on the pass. The renderer iterates
-        // shaders linearly and a doubled entry would set pipeline + bind
-        // groups twice for the same draws.
-        let shader_present = self
-            .object
-            .shaders
-            .read()
-            .iter()
-            .any(|s| std::sync::Arc::ptr_eq(s, shader_arc));
-        if !shader_present {
-            self.add_shader(&model.material.shader);
-            // Apply every component already on the pass to this new shader,
-            // so a Camera or Light added before any Model still wires through.
-            for component in self.object.components.read().iter() {
-                component.apply(&model.material.shader);
-            }
-        }
-
-        // Dedupe mesh-attach onto the shader. Without this the renderer would
-        // iterate the doubly-attached mesh and draw it twice.
-        let mesh_attached = shader_arc
-            .meshes
-            .read()
-            .iter()
-            .any(|m| std::sync::Arc::ptr_eq(m, &model.mesh.object));
-        if !mesh_attached {
-            model.material.shader.add_mesh(&model.mesh)?;
-        }
-
-        self.object.model_entries.write().push(crate::scene::ModelEntry {
-            shader: shader_arc.clone(),
-            mesh: model.mesh.object.clone(),
-            transform: model.transform.clone(),
-        });
-        Ok(())
+    /// Absorb a [`SceneObject`](crate::scene::SceneObject) — Model, Camera,
+    /// Light, or any custom node — into this pass. Each implementation owns
+    /// its own attach behaviour: Model queues a draw, Camera and Light wire
+    /// their uniforms into every shader the pass renders (current and
+    /// future). Chainable; errors short-circuit the chain.
+    #[lsp_doc("docs/api/core/pass/add.md")]
+    pub fn add<O: crate::scene::SceneObject>(&self, object: &O) -> Result<&Self, PassError> {
+        object.attach(self)?;
+        Ok(self)
     }
 
-    /// Absorb a scene [`Component`](crate::scene::Component) — typically a
-    /// [`Camera`](crate::Camera) or [`Light`](crate::Light) — into this
-    /// pass. The component is applied to every shader currently in the pass
-    /// and to every shader added afterwards via
-    /// [`add_model`](Pass::add_model). The component holds an Arc-shared
-    /// backing, so subsequent mutations on the same value propagate to
-    /// every absorbed shader. Chainable.
-    #[lsp_doc("docs/api/core/pass/add.md")]
-    pub fn add<C: crate::scene::Component + Clone>(&self, component: &C) -> &Self {
-        // Apply now to every shader currently on the pass.
-        let shaders: Vec<Arc<ShaderObject>> =
-            self.object.shaders.read().iter().cloned().collect();
-        for s in shaders {
-            component.apply(&crate::Shader::from(s));
+    /// Re-invoke `apply_to_shader` on every absorbed scene object for the
+    /// given shader. Called by `Model::attach` when a Model brings a new
+    /// shader to the pass; the Camera / Light objects that opted into live
+    /// propagation see the new shader and write their state into it.
+    pub(crate) fn replay_scene_objects(&self, shader: &crate::Shader) {
+        for object in self.object.scene_objects.read().iter() {
+            object.apply_to_shader(shader);
         }
-        // Store a clone (cheap Arc-share for Camera / Light) so future shaders
-        // joining via `add_model` pick the component up too.
-        self.object.components.write().push(Box::new(component.clone()));
-        self
     }
 
     #[lsp_doc("docs/api/core/pass/set_viewport.md")]
@@ -396,13 +345,14 @@ pub struct PassObject {
     // instance buffer (so the same Mesh in another Pass with different Models
     // doesn't clobber state).
     pub(crate) model_entries: RwLock<Vec<crate::scene::ModelEntry>>,
-    // Scene-level components (Camera, Light, ...) absorbed via `Pass::add`.
-    // Each Component is applied to every shader currently in the pass on
-    // `add`, and re-applied to a Model's shader when the Model joins the
-    // pass via `add_model`. The Component implementation typically tracks
-    // its own `Weak<ShaderObject>` list so subsequent mutations on the
-    // source value propagate live without a second `add` call.
-    pub(crate) components: RwLock<Vec<Box<dyn crate::scene::Component>>>,
+    // Scene-level objects (Camera, Light, ...) absorbed via `Pass::add`.
+    // Each one's `apply_to_shader` hook is re-invoked when a new shader
+    // joins the pass via `Model::attach`, so order of attachment doesn't
+    // matter. Implementors that need live propagation (Camera, Light)
+    // track their own `Weak<ShaderObject>` list so subsequent mutations
+    // on the source value reach every absorbed shader without a second
+    // `add` call. Model doesn't go in this list (its work is one-shot).
+    pub(crate) scene_objects: RwLock<Vec<Box<dyn crate::scene::SceneObject>>>,
     pub(crate) viewport: RwLock<Option<ScreenRegion>>,
     pub(crate) required_buffer_size: RwLock<u64>,
     // For compute passes: dispatch size (defaults to 1,1,1)
@@ -428,7 +378,7 @@ impl PassObject {
             name: Arc::from(name),
             shaders: RwLock::new(Vec::new()),
             model_entries: RwLock::new(Vec::new()),
-            components: RwLock::new(Vec::new()),
+            scene_objects: RwLock::new(Vec::new()),
             viewport: RwLock::new(None),
             input: RwLock::new(PassInput::clear(Color::transparent())),
             required_buffer_size: RwLock::new(0),

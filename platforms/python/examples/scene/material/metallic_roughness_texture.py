@@ -7,4 +7,4 @@ mr_map = renderer.create_texture([
     0,   180, 30, 255,
     0,   220, 60, 255,
 ][..])
-mat = Material.pbr(renderer).metallic_roughness_texture(mr_map)
+mat = Material.pbr().metallic_roughness_texture(mr_map)

@@ -82,21 +82,21 @@ impl Pass {
     }
 
     #[wasm_bindgen(js_name = "addModel")]
-    #[lsp_doc("docs/api/core/pass/add_model.md")]
+    #[lsp_doc("docs/api/core/pass/add.md")]
     pub fn add_model_js(&self, model: &crate::Model) -> Result<(), JsError> {
-        Ok(self.add_model(model)?)
+        self.add(model).map(|_| ()).map_err(|e| e.into())
     }
 
     #[wasm_bindgen(js_name = "addCamera")]
     #[lsp_doc("docs/api/core/pass/add.md")]
-    pub fn add_camera_js(&self, camera: &crate::scene::Camera) {
-        self.add(camera);
+    pub fn add_camera_js(&self, camera: &crate::scene::Camera) -> Result<(), JsError> {
+        self.add(camera).map(|_| ()).map_err(|e| e.into())
     }
 
     #[wasm_bindgen(js_name = "addLight")]
     #[lsp_doc("docs/api/core/pass/add.md")]
-    pub fn add_light_js(&self, light: &crate::scene::Light) {
-        self.add(light);
+    pub fn add_light_js(&self, light: &crate::scene::Light) -> Result<(), JsError> {
+        self.add(light).map(|_| ()).map_err(|e| e.into())
     }
 
     #[wasm_bindgen(js_name = "setClearColor")]

@@ -1,4 +1,4 @@
 import org.fragmentcolor.*
 
 val renderer = Renderer()
-val foliage = Material.pbr(renderer).alphaCutoff(0.3)
+val foliage = Material.pbr()?.alphaCutoff(0.3)

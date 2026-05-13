@@ -1,10 +1,10 @@
 //! Render a single PBR-shaded triangle through Model + Material + Pass.
 //!
 //! Demonstrates the v0.11.2 higher-level path: build a `Mesh`, wrap it in a
-//! `Model` paired with `Material::pbr()`, hand the Model to a `Pass` via
-//! `add_model`, then absorb a `Camera` and a `Light` into the `Pass` so
-//! every shader on the pass picks them up. The Material ships the default
-//! Cook-Torrance + GGX physically-based shader.
+//! `Model` paired with `Material::pbr()`, and absorb the Model plus a
+//! `Camera` and a `Light` into a `Pass` through the unified `Pass::add`.
+//! The Material ships the default Cook-Torrance + GGX physically-based
+//! shader.
 
 use fragmentcolor::{Camera, Light, Material, Mesh, Model, Pass, Renderer, Target, Vertex};
 
@@ -31,8 +31,7 @@ fn main() {
             );
         }
 
-        let material = Material::pbr(&renderer)
-            .await
+        let material = Material::pbr()
             .expect("PBR Material requires shaders-mesh + shaders-material features (default)")
             .base_color([0.85, 0.4, 0.2, 1.0])
             .metallic(0.0)
@@ -47,8 +46,12 @@ fn main() {
         let sun = Light::directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9]);
 
         let pass = Pass::new("triangle");
-        pass.add_model(&model).expect("add_model");
-        pass.add(&camera).add(&sun);
+        pass.add(&model)
+            .expect("model")
+            .add(&camera)
+            .expect("camera")
+            .add(&sun)
+            .expect("sun");
         renderer.render(&pass, &target).expect("render");
 
         let image = target.get_image().await;

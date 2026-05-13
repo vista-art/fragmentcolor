@@ -5,7 +5,7 @@ shader samples it in `fs_main` and multiplies by the factor: per-fragment
 albedo is `material.base_color * textureSample(base_color_map, sampler, in.uv)`.
 
 Unset, this slot resolves to a 1×1 white default the renderer hands out
-lazily — so calling `Material::pbr(&renderer).await?` without binding a
+lazily — so calling `Material::pbr()?` without binding a
 texture renders correctly under the factor alone.
 
 ## Example
@@ -21,7 +21,7 @@ let texture = renderer.create_texture(&[
     230,  180, 100, 255,
     255,  220, 150, 255,
 ][..]).await?;
-let mat = Material::pbr(&renderer).await?.base_color_texture(&texture);
+let mat = Material::pbr()?.base_color_texture(&texture);
 # let _ = mat;
 # Ok(())
 # }

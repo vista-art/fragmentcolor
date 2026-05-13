@@ -23,7 +23,7 @@ mesh.add_vertex(
         .set(Vertex::UV0, [0.0, 0.0]),
 );
 
-let model = Model::new(mesh, Material::pbr(&renderer).await?);
+let model = Model::new(mesh, Material::pbr()?);
 model.set_transform([
     [2.0, 0.0, 0.0, 0.0],
     [0.0, 2.0, 0.0, 0.0],

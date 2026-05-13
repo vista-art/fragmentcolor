@@ -19,13 +19,13 @@ use crate::shader::ShaderObject;
 use crate::{Material, Mesh};
 
 mod camera;
-mod component;
 mod light;
+mod object;
 mod platform;
 
 pub use camera::*;
-pub use component::Component;
 pub use light::*;
+pub use object::SceneObject;
 
 #[cfg_attr(wasm, wasm_bindgen)]
 #[cfg_attr(python, pyclass(from_py_object))]
@@ -36,10 +36,60 @@ pub struct Model {
     pub(crate) mesh: Mesh,
     pub(crate) material: Material,
     // Arc-shared so the Pass can hold a *live* reference to the transform
-    // through `Pass::add_model`; the renderer reads the current value at draw
-    // time. Mutating `Model::translate` after `Pass::add_model` is picked up on
-    // the next render — no re-add needed.
+    // through `Pass::add`; the renderer reads the current value at draw
+    // time. Mutating `Model::translate` after `pass.add(&model)` is picked
+    // up on the next render — no re-add needed.
     pub(crate) transform: Arc<RwLock<Mat4>>,
+}
+
+impl SceneObject for Model {
+    fn attach(&self, pass: &crate::Pass) -> Result<(), crate::PassError> {
+        let shader_arc = &self.material.shader.object;
+
+        // Declare the model-instance vertex schema on the Mesh first, so the
+        // shader's mesh-validation (inside `add_mesh` below) sees `model_0..3`
+        // at the per-instance slot and accepts the layout. The Mesh's `insts`
+        // stays empty; per-Model transforms ride the Pass's `model_entries`
+        // queue and the renderer builds the buffer at draw time.
+        if self.mesh.object.instance_schema.read().is_none() {
+            self.mesh.object.declare_model_instance_schema();
+        }
+
+        // Dedupe shader-attach: many Models that share one Material's Shader
+        // should result in one entry on the pass. The renderer iterates
+        // shaders linearly and a doubled entry would set pipeline + bind
+        // groups twice for the same draws. When a new shader joins, replay
+        // every scene object on the pass against it so order-of-add (Camera
+        // before Model, Light after Model, …) doesn't matter.
+        let shader_present = pass
+            .object
+            .shaders
+            .read()
+            .iter()
+            .any(|s| Arc::ptr_eq(s, shader_arc));
+        if !shader_present {
+            pass.add_shader(&self.material.shader);
+            pass.replay_scene_objects(&self.material.shader);
+        }
+
+        // Dedupe mesh-attach onto the shader. Without this the renderer
+        // would iterate the doubly-attached mesh and draw it twice.
+        let mesh_attached = shader_arc
+            .meshes
+            .read()
+            .iter()
+            .any(|m| Arc::ptr_eq(m, &self.mesh.object));
+        if !mesh_attached {
+            self.material.shader.add_mesh(&self.mesh)?;
+        }
+
+        pass.object.model_entries.write().push(ModelEntry {
+            shader: shader_arc.clone(),
+            mesh: self.mesh.object.clone(),
+            transform: self.transform.clone(),
+        });
+        Ok(())
+    }
 }
 
 crate::impl_fc_kind!(Model, "Model");
@@ -143,7 +193,7 @@ mod tests {
     }
 
     fn pbr_material() -> Material {
-        pollster::block_on(Material::pbr(&crate::Renderer::new())).expect("pbr")
+        Material::pbr().expect("pbr")
     }
 
     #[test]
@@ -211,7 +261,7 @@ mod tests {
     fn pass_add_model_queues_one_entry() {
         let pass = crate::Pass::new("test");
         let m = Model::new(pbr_triangle_mesh(), pbr_material());
-        pass.add_model(&m).expect("add_model");
+        pass.add(&m).expect("add_model");
         assert_eq!(pass.object.model_entries.read().len(), 1);
         assert_eq!(pass.object.shaders.read().len(), 1);
         assert!(!pass.is_compute());
@@ -224,8 +274,8 @@ mod tests {
 
         let a = Model::new(pbr_triangle_mesh(), template.clone());
         let b = Model::new(pbr_triangle_mesh(), template);
-        pass.add_model(&a).expect("a");
-        pass.add_model(&b).expect("b");
+        pass.add(&a).expect("a");
+        pass.add(&b).expect("b");
 
         // Two Models sharing one Material → one shader queued on the pass,
         // two model entries.
@@ -237,7 +287,7 @@ mod tests {
     fn pass_add_model_carries_live_transform() {
         let pass = crate::Pass::new("scene");
         let m = Model::new(pbr_triangle_mesh(), pbr_material());
-        pass.add_model(&m).expect("add_model");
+        pass.add(&m).expect("add_model");
 
         // Mutate the Model AFTER add_model. The Pass's entry holds an Arc to
         // the same RwLock<Mat4>, so the new value is observable through the

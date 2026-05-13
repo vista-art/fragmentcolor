@@ -31,17 +31,15 @@ draw call inside a frame.
 use fragmentcolor::{AlphaMode, Material, Renderer};
 
 let renderer = Renderer::new();
-let foliage = Material::pbr(&renderer)
-    .await?
+let foliage = Material::pbr()?
     .alpha_mode(AlphaMode::Mask)
     .alpha_cutoff(0.3);
 
-let glass = Material::pbr(&renderer)
-    .await?
+let glass = Material::pbr()?
     .base_color([0.9, 0.95, 1.0, 0.25])
     .alpha_mode(AlphaMode::Blend);
 
-let solid = Material::pbr(&renderer).await?.alpha_mode(AlphaMode::Opaque);
+let solid = Material::pbr()?.alpha_mode(AlphaMode::Opaque);
 # let _ = (foliage, glass, solid);
 # Ok(())
 # }

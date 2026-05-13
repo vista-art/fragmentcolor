@@ -77,25 +77,6 @@ pub struct Renderer {
     instance: RwLock<Option<Arc<wgpu::Instance>>>,
     adapter: RwLock<Option<wgpu::Adapter>>,
     context: RwLock<Option<Arc<RenderContext>>>,
-    // Lazy-init bundle of 1×1 fallback maps the default PBR shader binds when
-    // a Material::pbr doesn't supply its own texture for a given slot. We
-    // follow the same `RwLock<Option<Arc<…>>>` shape as `context` rather than
-    // `OnceLock` so the cell can be populated from an `async fn` that needs
-    // the GPU context (texture creation is async).
-    default_pbr_textures: RwLock<Option<Arc<DefaultPbrTextures>>>,
-}
-
-/// 1×1 fallback textures the renderer hands to `Material::pbr` when a slot
-/// isn't overridden. Each value is chosen so that
-/// `factor * sampled = factor` in the shader (i.e. binding the default is
-/// equivalent to "no map").
-#[derive(Debug)]
-pub(crate) struct DefaultPbrTextures {
-    pub(crate) base_color: crate::texture::Texture,
-    pub(crate) metallic_roughness: crate::texture::Texture,
-    pub(crate) normal: crate::texture::Texture,
-    pub(crate) occlusion: crate::texture::Texture,
-    pub(crate) emissive: crate::texture::Texture,
 }
 
 crate::impl_fc_kind!(Renderer, "Renderer");
@@ -107,58 +88,7 @@ impl Renderer {
             instance: RwLock::new(None),
             adapter: RwLock::new(None),
             context: RwLock::new(None),
-            default_pbr_textures: RwLock::new(None),
         }
-    }
-
-    /// Borrow (or lazy-create) the shared `DefaultPbrTextures` for this
-    /// renderer. Returns an `Arc` so the caller doesn't pin the renderer's
-    /// internal lock across awaits.
-    ///
-    /// First call drives texture creation against this renderer's GPU
-    /// context — five 1×1 uploads, sequenced. Subsequent calls are an
-    /// `Arc::clone` of the cached handle.
-    pub(crate) async fn default_pbr_textures(
-        &self,
-    ) -> Result<Arc<DefaultPbrTextures>, RendererError> {
-        if let Some(existing) = self.default_pbr_textures.read().clone() {
-            return Ok(existing);
-        }
-        let size = crate::Size::from((1u32, 1u32));
-        // base_color = (255, 255, 255, 255) — solid white
-        let base_color = self
-            .create_texture((vec![255u8, 255, 255, 255], size))
-            .await?;
-        // metallic_roughness = (R=0, G=1, B=1, A=1). The shader swizzles
-        // `.bgr` so .r becomes the metallic channel (=1) and .g the
-        // roughness channel (=1). `factor * 1 = factor` → defaults inert.
-        let metallic_roughness = self
-            .create_texture((vec![0u8, 255, 255, 255], size))
-            .await?;
-        // normal = (128, 128, 255, 255) — neutral tangent-space (0, 0, 1)
-        // after the `* 2.0 - 1.0` decode.
-        let normal = self
-            .create_texture((vec![128u8, 128, 255, 255], size))
-            .await?;
-        // occlusion = white in the red channel → no darkening.
-        let occlusion = self
-            .create_texture((vec![255u8, 255, 255, 255], size))
-            .await?;
-        // emissive = white. The factor defaults to [0, 0, 0] so the product
-        // is 0 → no emission unless the user calls `emissive(…)`.
-        let emissive = self
-            .create_texture((vec![255u8, 255, 255, 255], size))
-            .await?;
-
-        let bundle = Arc::new(DefaultPbrTextures {
-            base_color,
-            metallic_roughness,
-            normal,
-            occlusion,
-            emissive,
-        });
-        *self.default_pbr_textures.write() = Some(bundle.clone());
-        Ok(bundle)
     }
 
     #[lsp_doc("docs/api/core/renderer/create_target.md")]
@@ -568,6 +498,37 @@ pub struct RenderContext {
 
     // MSAA sample count negotiated for current target/format
     sample_count: AtomicU32,
+
+    // Lazy-init 1x1 fallback textures for the default PBR shader's glTF
+    // texture-map bindings. Populated synchronously on first use inside
+    // `process_render_pass`, so `Material::pbr` doesn't need a Renderer.
+    pbr_defaults: RwLock<Option<Arc<PbrDefaults>>>,
+}
+
+#[derive(Debug)]
+pub(crate) struct PbrDefaults {
+    /// Five (view, sampler) pairs the renderer binds to the PBR-named slots
+    /// when a Material::pbr Shader doesn't have a user-supplied texture for
+    /// the slot. The byte payload is chosen so `factor * sample = factor`
+    /// (binding the default is equivalent to "no map").
+    pub(crate) base_color: (wgpu::TextureView, wgpu::Sampler),
+    pub(crate) metallic_roughness: (wgpu::TextureView, wgpu::Sampler),
+    pub(crate) normal: (wgpu::TextureView, wgpu::Sampler),
+    pub(crate) occlusion: (wgpu::TextureView, wgpu::Sampler),
+    pub(crate) emissive: (wgpu::TextureView, wgpu::Sampler),
+}
+
+impl PbrDefaults {
+    fn slot(&self, uniform_name: &str) -> Option<&(wgpu::TextureView, wgpu::Sampler)> {
+        match uniform_name {
+            "base_color_map" => Some(&self.base_color),
+            "metallic_roughness_map" => Some(&self.metallic_roughness),
+            "normal_map" => Some(&self.normal),
+            "occlusion_map" => Some(&self.occlusion),
+            "emissive_map" => Some(&self.emissive),
+            _ => None,
+        }
+    }
 }
 
 impl RenderContext {
@@ -593,7 +554,72 @@ impl RenderContext {
             next_id: AtomicU64::new(1),
             storage_registry: DashMap::new(),
             sample_count: AtomicU32::new(1),
+            pbr_defaults: RwLock::new(None),
         }
+    }
+
+    /// Borrow the lazy 1x1 PBR fallback textures, creating them on first use.
+    /// Used to fill the default PBR shader's texture-map bindings when a
+    /// `Material::pbr` doesn't supply its own texture for the slot. Pure
+    /// sync calls against the wgpu device — no FC texture registry, no
+    /// async hop.
+    fn pbr_defaults(&self) -> Arc<PbrDefaults> {
+        if let Some(existing) = self.pbr_defaults.read().clone() {
+            return existing;
+        }
+        let sampler = self.device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("PBR default sampler"),
+            ..Default::default()
+        });
+        let make = |label: &'static str, rgba: [u8; 4]| -> wgpu::TextureView {
+            let tex = self.device.create_texture(&wgpu::TextureDescriptor {
+                label: Some(label),
+                size: wgpu::Extent3d {
+                    width: 1,
+                    height: 1,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Rgba8Unorm,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                view_formats: &[],
+            });
+            self.queue.write_texture(
+                wgpu::TexelCopyTextureInfo {
+                    texture: &tex,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
+                },
+                &rgba,
+                wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(4),
+                    rows_per_image: Some(1),
+                },
+                wgpu::Extent3d {
+                    width: 1,
+                    height: 1,
+                    depth_or_array_layers: 1,
+                },
+            );
+            tex.create_view(&wgpu::TextureViewDescriptor::default())
+        };
+        // Defaults chosen so `factor * sample = factor` in the shader.
+        let bundle = Arc::new(PbrDefaults {
+            base_color: (make("PBR default base_color", [255, 255, 255, 255]), sampler.clone()),
+            // glTF stores metallic in .b and roughness in .g; the shader's
+            // .bgr swizzle puts metallic in .r (=1) and roughness in .g (=1).
+            metallic_roughness: (make("PBR default metallic_roughness", [0, 255, 255, 255]), sampler.clone()),
+            // Neutral tangent-space normal (0, 0, 1) after the * 2.0 - 1.0 decode.
+            normal: (make("PBR default normal", [128, 128, 255, 255]), sampler.clone()),
+            occlusion: (make("PBR default occlusion", [255, 255, 255, 255]), sampler.clone()),
+            emissive: (make("PBR default emissive", [255, 255, 255, 255]), sampler),
+        });
+        *self.pbr_defaults.write() = Some(bundle.clone());
+        bundle
     }
 
     /// Renders any `Renderable` (Shader, Pass, or iterable of Pass) to a Target.
@@ -950,6 +976,7 @@ impl RenderContext {
             }
 
             let mut groups: HashMap<u32, BindGroupResources> = HashMap::new();
+            let mut pbr_defaults_handle: Option<Arc<PbrDefaults>> = None;
             for name in &shader.list_uniforms() {
                 let uniform = shader.get_uniform(name)?;
 
@@ -965,11 +992,22 @@ impl RenderContext {
                             group_entry.views.push((uniform.binding, view));
                             group_entry.last_texture_sampler = Some(sampler);
                         } else {
-                            log::warn!(
-                                "Texture handle {:?} not found for uniform {}",
-                                meta.id,
-                                name
-                            );
+                            // No user texture — fall back to the PBR default for
+                            // the known glTF slot names so `Material::pbr` works
+                            // without the caller supplying every map.
+                            let defaults = pbr_defaults_handle
+                                .get_or_insert_with(|| self.pbr_defaults());
+                            if let Some((view, sampler)) = defaults.slot(name) {
+                                let group_entry = groups.entry(uniform.group).or_default();
+                                group_entry.views.push((uniform.binding, view.clone()));
+                                group_entry.last_texture_sampler = Some(sampler.clone());
+                            } else {
+                                log::warn!(
+                                    "Texture handle {:?} not found for uniform {}",
+                                    meta.id,
+                                    name
+                                );
+                            }
                         }
                     }
                     UniformData::Sampler(info) => {

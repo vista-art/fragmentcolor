@@ -19,7 +19,7 @@ use pyo3::prelude::*;
 #[cfg(wasm)]
 use wasm_bindgen::prelude::*;
 
-use crate::scene::Component;
+use crate::scene::SceneObject;
 use crate::shader::ShaderObject;
 use crate::Shader;
 
@@ -113,8 +113,18 @@ impl Light {
     }
 }
 
-impl Component for Light {
-    fn apply(&self, shader: &Shader) {
+impl SceneObject for Light {
+    fn attach(&self, pass: &crate::Pass) -> Result<(), crate::PassError> {
+        let shaders: Vec<Arc<ShaderObject>> =
+            pass.object.shaders.read().iter().cloned().collect();
+        for s in shaders {
+            self.apply_to_shader(&Shader::from(s));
+        }
+        pass.object.scene_objects.write().push(Box::new(self.clone()));
+        Ok(())
+    }
+
+    fn apply_to_shader(&self, shader: &Shader) {
         let _ = shader.set("light.direction", self.direction());
         let _ = shader.set("light.color", self.color());
         self.object
@@ -149,12 +159,11 @@ mod tests {
     #[test]
     fn pass_add_seeds_shader_uniforms() {
         let light = Light::directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9]);
-        let renderer = crate::Renderer::new();
-        let material = pollster::block_on(Material::pbr(&renderer)).expect("pbr");
+        let material = Material::pbr().expect("pbr");
         let model = crate::scene::Model::new(pbr_triangle_mesh(), material.clone());
 
         let pass = crate::Pass::new("scene");
-        pass.add_model(&model).expect("add_model");
+        pass.add(&model).expect("add_model");
         pass.add(&light);
 
         let dir: [f32; 3] = material
@@ -170,12 +179,11 @@ mod tests {
     #[test]
     fn set_direction_propagates_to_all_pass_shaders() {
         let light = Light::directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
-        let renderer = crate::Renderer::new();
-        let material = pollster::block_on(Material::pbr(&renderer)).expect("pbr");
+        let material = Material::pbr().expect("pbr");
         let model = crate::scene::Model::new(pbr_triangle_mesh(), material.clone());
 
         let pass = crate::Pass::new("scene");
-        pass.add_model(&model).expect("add_model");
+        pass.add(&model).expect("add_model");
         pass.add(&light);
 
         light.set_direction([0.5, -0.5, 0.0]);

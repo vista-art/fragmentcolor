@@ -1,4 +1,4 @@
 import FragmentColor
 
 let renderer = Renderer()
-let detailed = try await Material.pbr(renderer).normalScale(1.5)
+let detailed = Material.pbr()?.normalScale(1.5)

@@ -15,7 +15,7 @@ the result into the diffuse term.
 use fragmentcolor::{Material, Renderer};
 
 let renderer = Renderer::new();
-let crevices = Material::pbr(&renderer).await?.occlusion_strength(0.8);
+let crevices = Material::pbr()?.occlusion_strength(0.8);
 # let _ = crevices;
 # Ok(())
 # }

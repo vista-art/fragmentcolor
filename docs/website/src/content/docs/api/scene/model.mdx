@@ -33,7 +33,7 @@ template = Material::pbr().base_color(...)
 for each blob:
   model = Model::new(blob.mesh, template.clone())
   model.set_transform(blob.matrix)
-  pass.add_model(&model)
+  pass.add(&model)
 ```
 
 Pipeline cached once by shader hash; one bind-group setup per pass; N draws
@@ -82,7 +82,7 @@ mesh.add_vertex(
         .set(Vertex::UV0, [0.0, 0.0]),
 );
 
-let model = Model::new(mesh, Material::pbr(&renderer).await?);
+let model = Model::new(mesh, Material::pbr()?);
 model.material().shader().set("camera.position", [0.0_f32, 0.0, 5.0])?;
 Ok(())
 }
@@ -102,7 +102,7 @@ const renderer = new Renderer();
 const mesh = new Mesh();
 mesh.addVertex( Vertex.new([0.0, 0.0, 0.0]) .set(Vertex.NORMAL, [0.0, 1.0, 0.0]) .set(Vertex.UV0, [0.0, 0.0]), );
 
-const model = await new Model(mesh, Material.pbr(renderer));
+const model = new Model(mesh, Material.pbr()?);
 model.material().shader().set("camera.position", [0.0, 0.0, 5.0]);
 `}
 lang="js"
@@ -121,7 +121,7 @@ mesh.add_vertex(
     Vertex([0.0, 0.0, 0.0]).set(Vertex.NORMAL, [0.0, 1.0, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
 )
 
-model = Model(mesh, Material.pbr(renderer))
+model = Model(mesh, Material.pbr())
 model.material().shader().set("camera.position", [0.0_, 0.0, 5.0])
 `}
 lang="python"
@@ -140,7 +140,7 @@ try mesh.addVertex(
     try Vertex([0.0, 0.0, 0.0]).set(Vertex.nORMAL, [0.0, 1.0, 0.0]).set(Vertex.uV0, [0.0, 0.0]),
 )
 
-let model = try await Model(mesh, Material.pbr(renderer))
+let model = Model(mesh, Material.pbr()?)
 try model.material().shader().set("camera.position", [0.0, 0.0, 5.0])
 `}
 lang="swift"
@@ -157,7 +157,7 @@ val renderer = Renderer()
 val mesh = Mesh()
 mesh.addVertex( Vertex.new(listOf(0.0f, 0.0f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 1.0f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
 
-val model = Model(mesh, Material.pbr(renderer))
+val model = Model(mesh, Material.pbr()?)
 model.material().shader().set("camera.position", floatArrayOf(0.0f, 0.0f, 5.0f))
 `}
 lang="kotlin"
@@ -194,7 +194,7 @@ mesh.add_vertex(
         .set(Vertex::UV0, [0.5, 1.0]),
 );
 
-let model = Model::new(mesh, Material::pbr(&renderer).await?);
+let model = Model::new(mesh, Material::pbr()?);
 model.mesh().add_vertex(
     Vertex::new([-0.5, -0.5, 0.0])
         .set(Vertex::NORMAL, [0.0, 0.0, 1.0])
@@ -218,7 +218,7 @@ const renderer = new Renderer();
 const mesh = new Mesh();
 mesh.addVertex( Vertex.new([0.0, 0.5, 0.0]) .set(Vertex.NORMAL, [0.0, 0.0, 1.0]) .set(Vertex.UV0, [0.5, 1.0]), );
 
-const model = await new Model(mesh, Material.pbr(renderer));
+const model = new Model(mesh, Material.pbr()?);
 model.mesh().addVertex( Vertex.new([-0.5, -0.5, 0.0]) .set(Vertex.NORMAL, [0.0, 0.0, 1.0]) .set(Vertex.UV0, [0.0, 0.0]), );
 `}
 lang="js"
@@ -237,7 +237,7 @@ mesh.add_vertex(
     Vertex([0.0, 0.5, 0.0]).set(Vertex.NORMAL, [0.0, 0.0, 1.0]).set(Vertex.UV0, [0.5, 1.0]),
 )
 
-model = Model(mesh, Material.pbr(renderer))
+model = Model(mesh, Material.pbr())
 model.mesh().add_vertex(
     Vertex([-0.5, -0.5, 0.0]).set(Vertex.NORMAL, [0.0, 0.0, 1.0]).set(Vertex.UV0, [0.0, 0.0]),
 )
@@ -258,7 +258,7 @@ try mesh.addVertex(
     try Vertex([0.0, 0.5, 0.0]).set(Vertex.nORMAL, [0.0, 0.0, 1.0]).set(Vertex.uV0, [0.5, 1.0]),
 )
 
-let model = try await Model(mesh, Material.pbr(renderer))
+let model = Model(mesh, Material.pbr()?)
 try model.mesh().addVertex(
     try Vertex([-0.5, -0.5, 0.0]).set(Vertex.nORMAL, [0.0, 0.0, 1.0]).set(Vertex.uV0, [0.0, 0.0]),
 )
@@ -277,7 +277,7 @@ val renderer = Renderer()
 val mesh = Mesh()
 mesh.addVertex( Vertex.new(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 0.0f, 1.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), )
 
-val model = Model(mesh, Material.pbr(renderer))
+val model = Model(mesh, Material.pbr()?)
 model.mesh().addVertex( Vertex.new(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 0.0f, 1.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
 `}
 lang="kotlin"
@@ -327,7 +327,7 @@ mesh.add_vertex(
         .set(Vertex::UV0, [0.0, 0.0]),
 );
 
-let model = Model::new(mesh, Material::pbr(&renderer).await?);
+let model = Model::new(mesh, Material::pbr()?);
 
 let _ = model;
 Ok(())
@@ -348,7 +348,7 @@ const renderer = new Renderer();
 const mesh = new Mesh();
 mesh.addVertex( Vertex.new([0.0, 0.0, 0.0]) .set(Vertex.NORMAL, [0.0, 1.0, 0.0]) .set(Vertex.UV0, [0.0, 0.0]), );
 
-const model = await new Model(mesh, Material.pbr(renderer));
+const model = new Model(mesh, Material.pbr()?);
 
 `}
 lang="js"
@@ -367,7 +367,7 @@ mesh.add_vertex(
     Vertex([0.0, 0.0, 0.0]).set(Vertex.NORMAL, [0.0, 1.0, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
 )
 
-model = Model(mesh, Material.pbr(renderer))
+model = Model(mesh, Material.pbr())
 
 `}
 lang="python"
@@ -386,7 +386,7 @@ try mesh.addVertex(
     try Vertex([0.0, 0.0, 0.0]).set(Vertex.nORMAL, [0.0, 1.0, 0.0]).set(Vertex.uV0, [0.0, 0.0]),
 )
 
-let model = try await Model(mesh, Material.pbr(renderer))
+let model = Model(mesh, Material.pbr()?)
 `}
 lang="swift"
 />
@@ -402,7 +402,7 @@ val renderer = Renderer()
 val mesh = Mesh()
 mesh.addVertex( Vertex.new(listOf(0.0f, 0.0f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 1.0f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
 
-val model = Model(mesh, Material.pbr(renderer))
+val model = Model(mesh, Material.pbr()?)
 `}
 lang="kotlin"
 />
@@ -443,7 +443,7 @@ mesh.add_vertex(
         .set(Vertex::UV0, [0.0, 0.0]),
 );
 
-let model = Model::new(mesh, Material::pbr(&renderer).await?);
+let model = Model::new(mesh, Material::pbr()?);
 model.rotate([0.0, 1.0, 0.0], std::f32::consts::FRAC_PI_2);
 Ok(())
 }
@@ -463,7 +463,7 @@ const renderer = new Renderer();
 const mesh = new Mesh();
 mesh.addVertex( Vertex.new([0.0, 0.0, 0.0]) .set(Vertex.NORMAL, [0.0, 1.0, 0.0]) .set(Vertex.UV0, [0.0, 0.0]), );
 
-const model = await new Model(mesh, Material.pbr(renderer));
+const model = new Model(mesh, Material.pbr()?);
 model.rotate([0.0, 1.0, 0.0], std.f32.consts.FRACPI2);
 `}
 lang="js"
@@ -482,7 +482,7 @@ mesh.add_vertex(
     Vertex([0.0, 0.0, 0.0]).set(Vertex.NORMAL, [0.0, 1.0, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
 )
 
-model = Model(mesh, Material.pbr(renderer))
+model = Model(mesh, Material.pbr())
 model.rotate([0.0, 1.0, 0.0], std.f32.consts.FRAC_PI_2)
 `}
 lang="python"
@@ -501,7 +501,7 @@ try mesh.addVertex(
     try Vertex([0.0, 0.0, 0.0]).set(Vertex.nORMAL, [0.0, 1.0, 0.0]).set(Vertex.uV0, [0.0, 0.0]),
 )
 
-let model = try await Model(mesh, Material.pbr(renderer))
+let model = Model(mesh, Material.pbr()?)
 model.rotate([0.0, 1.0, 0.0], std.f32.consts.fRACPI2)
 `}
 lang="swift"
@@ -518,7 +518,7 @@ val renderer = Renderer()
 val mesh = Mesh()
 mesh.addVertex( Vertex.new(listOf(0.0f, 0.0f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 1.0f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
 
-val model = Model(mesh, Material.pbr(renderer))
+val model = Model(mesh, Material.pbr()?)
 model.rotate(listOf(0.0f, 1.0f, 0.0f), std.f32.consts.FRACPI2)
 `}
 lang="kotlin"
@@ -560,7 +560,7 @@ mesh.add_vertex(
         .set(Vertex::UV0, [0.0, 0.0]),
 );
 
-let model = Model::new(mesh, Material::pbr(&renderer).await?);
+let model = Model::new(mesh, Material::pbr()?);
 model.scale([2.0, 2.0, 2.0]);
 Ok(())
 }
@@ -580,7 +580,7 @@ const renderer = new Renderer();
 const mesh = new Mesh();
 mesh.addVertex( Vertex.new([0.0, 0.0, 0.0]) .set(Vertex.NORMAL, [0.0, 1.0, 0.0]) .set(Vertex.UV0, [0.0, 0.0]), );
 
-const model = await new Model(mesh, Material.pbr(renderer));
+const model = new Model(mesh, Material.pbr()?);
 model.scale([2.0, 2.0, 2.0]);
 `}
 lang="js"
@@ -599,7 +599,7 @@ mesh.add_vertex(
     Vertex([0.0, 0.0, 0.0]).set(Vertex.NORMAL, [0.0, 1.0, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
 )
 
-model = Model(mesh, Material.pbr(renderer))
+model = Model(mesh, Material.pbr())
 model.scale([2.0, 2.0, 2.0])
 `}
 lang="python"
@@ -618,7 +618,7 @@ try mesh.addVertex(
     try Vertex([0.0, 0.0, 0.0]).set(Vertex.nORMAL, [0.0, 1.0, 0.0]).set(Vertex.uV0, [0.0, 0.0]),
 )
 
-let model = try await Model(mesh, Material.pbr(renderer))
+let model = Model(mesh, Material.pbr()?)
 model.scale([2.0, 2.0, 2.0])
 `}
 lang="swift"
@@ -635,7 +635,7 @@ val renderer = Renderer()
 val mesh = Mesh()
 mesh.addVertex( Vertex.new(listOf(0.0f, 0.0f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 1.0f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
 
-val model = Model(mesh, Material.pbr(renderer))
+val model = Model(mesh, Material.pbr()?)
 model.scale(listOf(2.0f, 2.0f, 2.0f))
 `}
 lang="kotlin"
@@ -677,7 +677,7 @@ mesh.add_vertex(
         .set(Vertex::UV0, [0.0, 0.0]),
 );
 
-let model = Model::new(mesh, Material::pbr(&renderer).await?);
+let model = Model::new(mesh, Material::pbr()?);
 model.set_transform([
     [2.0, 0.0, 0.0, 0.0],
     [0.0, 2.0, 0.0, 0.0],
@@ -702,7 +702,7 @@ const renderer = new Renderer();
 const mesh = new Mesh();
 mesh.addVertex( Vertex.new([0.0, 0.0, 0.0]) .set(Vertex.NORMAL, [0.0, 1.0, 0.0]) .set(Vertex.UV0, [0.0, 0.0]), );
 
-const model = await new Model(mesh, Material.pbr(renderer));
+const model = new Model(mesh, Material.pbr()?);
 model.setTransform([ [2.0, 0.0, 0.0, 0.0], [0.0, 2.0, 0.0, 0.0], [0.0, 0.0, 2.0, 0.0], [3.0, 0.0, 0.0, 1.0], ]);
 `}
 lang="js"
@@ -721,7 +721,7 @@ mesh.add_vertex(
     Vertex([0.0, 0.0, 0.0]).set(Vertex.NORMAL, [0.0, 1.0, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
 )
 
-model = Model(mesh, Material.pbr(renderer))
+model = Model(mesh, Material.pbr())
 model.set_transform([
     [2.0, 0.0, 0.0, 0.0],
     [0.0, 2.0, 0.0, 0.0],
@@ -745,7 +745,7 @@ try mesh.addVertex(
     try Vertex([0.0, 0.0, 0.0]).set(Vertex.nORMAL, [0.0, 1.0, 0.0]).set(Vertex.uV0, [0.0, 0.0]),
 )
 
-let model = try await Model(mesh, Material.pbr(renderer))
+let model = Model(mesh, Material.pbr()?)
 model.setTransform([
     [2.0, 0.0, 0.0, 0.0],
     [0.0, 2.0, 0.0, 0.0],
@@ -767,7 +767,7 @@ val renderer = Renderer()
 val mesh = Mesh()
 mesh.addVertex( Vertex.new(listOf(0.0f, 0.0f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 1.0f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
 
-val model = Model(mesh, Material.pbr(renderer))
+val model = Model(mesh, Material.pbr()?)
 model.setTransform(arrayOf(listOf(2.0f, 0.0f, 0.0f, 0.0f), listOf(0.0f, 2.0f, 0.0f, 0.0f), listOf(0.0f, 0.0f, 2.0f, 0.0f), listOf(3.0f, 0.0f, 0.0f, 1.0f),))
 `}
 lang="kotlin"
@@ -809,7 +809,7 @@ mesh.add_vertex(
         .set(Vertex::UV0, [0.0, 0.0]),
 );
 
-let model = Model::new(mesh, Material::pbr(&renderer).await?);
+let model = Model::new(mesh, Material::pbr()?);
 let identity = model.transform();
 assert_eq!(identity[0], [1.0, 0.0, 0.0, 0.0]);
 assert_eq!(identity[3], [0.0, 0.0, 0.0, 1.0]);
@@ -832,7 +832,7 @@ const renderer = new Renderer();
 const mesh = new Mesh();
 mesh.addVertex( Vertex.new([0.0, 0.0, 0.0]) .set(Vertex.NORMAL, [0.0, 1.0, 0.0]) .set(Vertex.UV0, [0.0, 0.0]), );
 
-const model = await new Model(mesh, Material.pbr(renderer));
+const model = new Model(mesh, Material.pbr()?);
 const identity = model.transform();
 `}
 lang="js"
@@ -851,7 +851,7 @@ mesh.add_vertex(
     Vertex([0.0, 0.0, 0.0]).set(Vertex.NORMAL, [0.0, 1.0, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
 )
 
-model = Model(mesh, Material.pbr(renderer))
+model = Model(mesh, Material.pbr())
 identity = model.transform()
 `}
 lang="python"
@@ -870,7 +870,7 @@ try mesh.addVertex(
     try Vertex([0.0, 0.0, 0.0]).set(Vertex.nORMAL, [0.0, 1.0, 0.0]).set(Vertex.uV0, [0.0, 0.0]),
 )
 
-let model = try await Model(mesh, Material.pbr(renderer))
+let model = Model(mesh, Material.pbr()?)
 let identity = model.transform()
 `}
 lang="swift"
@@ -887,7 +887,7 @@ val renderer = Renderer()
 val mesh = Mesh()
 mesh.addVertex( Vertex.new(listOf(0.0f, 0.0f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 1.0f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
 
-val model = Model(mesh, Material.pbr(renderer))
+val model = Model(mesh, Material.pbr()?)
 val identity = model.transform()
 `}
 lang="kotlin"
@@ -925,7 +925,7 @@ mesh.add_vertex(
         .set(Vertex::UV0, [0.0, 0.0]),
 );
 
-let model = Model::new(mesh, Material::pbr(&renderer).await?);
+let model = Model::new(mesh, Material::pbr()?);
 model.translate([5.0, 0.0, -2.0]);
 
 let m = model.transform();
@@ -949,7 +949,7 @@ const renderer = new Renderer();
 const mesh = new Mesh();
 mesh.addVertex( Vertex.new([0.0, 0.0, 0.0]) .set(Vertex.NORMAL, [0.0, 1.0, 0.0]) .set(Vertex.UV0, [0.0, 0.0]), );
 
-const model = await new Model(mesh, Material.pbr(renderer));
+const model = new Model(mesh, Material.pbr()?);
 model.translate([5.0, 0.0, -2.0]);
 
 `}
@@ -969,7 +969,7 @@ mesh.add_vertex(
     Vertex([0.0, 0.0, 0.0]).set(Vertex.NORMAL, [0.0, 1.0, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
 )
 
-model = Model(mesh, Material.pbr(renderer))
+model = Model(mesh, Material.pbr())
 model.translate([5.0, 0.0, -2.0])
 
 `}
@@ -989,7 +989,7 @@ try mesh.addVertex(
     try Vertex([0.0, 0.0, 0.0]).set(Vertex.nORMAL, [0.0, 1.0, 0.0]).set(Vertex.uV0, [0.0, 0.0]),
 )
 
-let model = try await Model(mesh, Material.pbr(renderer))
+let model = Model(mesh, Material.pbr()?)
 model.translate([5.0, 0.0, -2.0])
 `}
 lang="swift"
@@ -1006,7 +1006,7 @@ val renderer = Renderer()
 val mesh = Mesh()
 mesh.addVertex( Vertex.new(listOf(0.0f, 0.0f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 1.0f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
 
-val model = Model(mesh, Material.pbr(renderer))
+val model = Model(mesh, Material.pbr()?)
 model.translate(listOf(5.0f, 0.0f, -2.0f))
 `}
 lang="kotlin"

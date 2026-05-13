@@ -15,7 +15,7 @@ when you want hard-edged cut-out transparency (foliage, chain-link, decals).
 use fragmentcolor::{Material, Renderer};
 
 let renderer = Renderer::new();
-let foliage = Material::pbr(&renderer).await?.alpha_cutoff(0.3);
+let foliage = Material::pbr()?.alpha_cutoff(0.3);
 # let _ = foliage;
 # Ok(())
 # }

@@ -16,7 +16,7 @@ under the factor-driven defaults.
 use fragmentcolor::{Material, Renderer};
 
 let renderer = Renderer::new();
-let chrome = Material::pbr(&renderer).await?.metallic(1.0).roughness(0.05);
+let chrome = Material::pbr()?.metallic(1.0).roughness(0.05);
 # let _ = chrome;
 # Ok(())
 # }
