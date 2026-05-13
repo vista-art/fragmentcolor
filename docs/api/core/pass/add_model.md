@@ -39,7 +39,7 @@ mesh.add_vertex(
         .set(Vertex::UV0, [1.0, 0.0]),
 );
 
-let template = Material::pbr().base_color([0.85, 0.4, 0.2, 1.0]);
+let template = Material::pbr()?.base_color([0.85, 0.4, 0.2, 1.0]);
 let pass = Pass::new("scene");
 
 let m1 = Model::new(mesh.clone(), template.clone());

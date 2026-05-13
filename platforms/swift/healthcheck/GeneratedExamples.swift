@@ -97,7 +97,7 @@ private enum _GeneratedExamples {
             try Vertex([0.5, -0.5, 0.0]).set(Vertex.nORMAL, [0.0, 0.0, 1.0]).set(Vertex.uV0, [1.0, 0.0]),
         )
 
-        let template = Material.pbr().baseColor([0.85, 0.4, 0.2, 1.0])
+        let template = Material.pbr()?.baseColor([0.85, 0.4, 0.2, 1.0])
         let pass = Pass("scene")
 
         let m1 = Model(mesh.clone(), template.clone())
@@ -407,26 +407,6 @@ private enum _GeneratedExamples {
 
         // Clear all
         shader.clearMeshes()
-    }
-
-    static func _example_core_shader_duplicate() async throws {
-
-        let template = try Shader("""
-            struct Tint { color: vec4<f32> }
-            @group(0) @binding(0) var<uniform> tint: Tint
-            @vertex fn vs(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
-                let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.))
-                return vec4<f32>(p[i], 0.0, 1.0)
-            }
-            @fragment fn fs() -> @location(0) vec4<f32> { return tint.color; }
-
-        """)
-        try template.set("tint.color", [1.0, 0.0, 0.0, 1.0])
-
-        // Independent copy — sets on """red""" do not bleed into """template""" or """blue""".
-        let red = template.duplicate()
-        let blue = template.duplicate()
-        try blue.set("tint.color", [0.0, 0.4, 1.0, 1.0])
     }
 
     static func _example_core_shader_fetch() async throws {
@@ -748,19 +728,19 @@ private enum _GeneratedExamples {
             try Vertex([0.0, 0.5, 0.0]).set(Vertex.nORMAL, [0.0, 0.0, 1.0]).set(Vertex.uV0, [0.5, 1.0]),
         )
 
-        let material = Material.pbr().baseColor([0.85, 0.2, 0.2, 1.0]).metallic(0.0).roughness(0.4).emissive([0.0, 0.0, 0.05])
+        let material = Material.pbr()?.baseColor([0.85, 0.2, 0.2, 1.0]).metallic(0.0).roughness(0.4).emissive([0.0, 0.0, 0.05])
 
         let model = Model(mesh, material)
     }
 
     static func _example_scene_material_alpha_cutoff() async throws {
 
-        let foliage = Material.pbr().alphaCutoff(0.3)
+        let foliage = Material.pbr()?.alphaCutoff(0.3)
     }
 
     static func _example_scene_material_base_color() async throws {
 
-        let red = Material.pbr().baseColor([1.0, 0.2, 0.2, 1.0])
+        let red = Material.pbr()?.baseColor([1.0, 0.2, 0.2, 1.0])
     }
 
     static func _example_scene_material_base_color_texture() async throws {
@@ -772,7 +752,7 @@ private enum _GeneratedExamples {
             230,  180, 100, 255,
             255,  220, 150, 255,
         try await ])
-        let mat = Material.pbr().baseColorTexture(texture)
+        let mat = Material.pbr()?.baseColorTexture(texture)
     }
 
     static func _example_scene_material_custom() async throws {
@@ -798,7 +778,7 @@ private enum _GeneratedExamples {
 
     static func _example_scene_material_emissive() async throws {
 
-        let lava = Material.pbr().baseColor([0.1, 0.05, 0.0, 1.0]).emissive([1.5, 0.4, 0.1])
+        let lava = Material.pbr()?.baseColor([0.1, 0.05, 0.0, 1.0]).emissive([1.5, 0.4, 0.1])
     }
 
     static func _example_scene_material_emissive_texture() async throws {
@@ -810,12 +790,12 @@ private enum _GeneratedExamples {
             255,   0, 0, 255,
             255,   0, 0, 255,
         try await ])
-        let mat = Material.pbr().emissive([0.8, 0.0, 0.0]).emissiveTexture(glow)
+        let mat = Material.pbr()?.emissive([0.8, 0.0, 0.0]).emissiveTexture(glow)
     }
 
     static func _example_scene_material_metallic() async throws {
 
-        let chrome = Material.pbr().metallic(1.0).roughness(0.05)
+        let chrome = Material.pbr()?.metallic(1.0).roughness(0.05)
     }
 
     static func _example_scene_material_metallic_roughness_texture() async throws {
@@ -827,12 +807,12 @@ private enum _GeneratedExamples {
             0,   180, 30, 255,
             0,   220, 60, 255,
         try await ])
-        let mat = Material.pbr().metallicRoughnessTexture(mr_map)
+        let mat = Material.pbr()?.metallicRoughnessTexture(mr_map)
     }
 
     static func _example_scene_material_normal_scale() async throws {
 
-        let detailed = Material.pbr().normalScale(1.5)
+        let detailed = Material.pbr()?.normalScale(1.5)
     }
 
     static func _example_scene_material_normal_texture() async throws {
@@ -844,12 +824,12 @@ private enum _GeneratedExamples {
             128,   128, 255, 255,
             128,   128, 255, 255,
         try await ])
-        let mat = Material.pbr().normalTexture(normal_map).normalScale(1.2)
+        let mat = Material.pbr()?.normalTexture(normal_map).normalScale(1.2)
     }
 
     static func _example_scene_material_occlusion_strength() async throws {
 
-        let crevices = Material.pbr().occlusionStrength(0.8)
+        let crevices = Material.pbr()?.occlusionStrength(0.8)
     }
 
     static func _example_scene_material_occlusion_texture() async throws {
@@ -861,17 +841,17 @@ private enum _GeneratedExamples {
             200,   0, 0, 255,
             160,   0, 0, 255,
         try await ])
-        let mat = Material.pbr().occlusionTexture(ao)
+        let mat = Material.pbr()?.occlusionTexture(ao)
     }
 
     static func _example_scene_material_pbr() async throws {
 
-        let bronze = Material.pbr().baseColor([0.8, 0.5, 0.2, 1.0]).metallic(1.0).roughness(0.3)
+        let bronze = Material.pbr()?.baseColor([0.8, 0.5, 0.2, 1.0]).metallic(1.0).roughness(0.3)
     }
 
     static func _example_scene_material_roughness() async throws {
 
-        let satin = Material.pbr().roughness(0.35)
+        let satin = Material.pbr()?.roughness(0.35)
     }
 
     static func _example_scene_material_shader() async throws {
@@ -896,7 +876,7 @@ private enum _GeneratedExamples {
             try Vertex([0.0, 0.0, 0.0]).set(Vertex.nORMAL, [0.0, 1.0, 0.0]).set(Vertex.uV0, [0.0, 0.0]),
         )
 
-        let model = Model(mesh, Material.pbr())
+        let model = Model(mesh, Material.pbr()?)
         try model.material().shader().set("camera.position", [0.0, 0.0, 5.0])
     }
 
@@ -907,7 +887,7 @@ private enum _GeneratedExamples {
             try Vertex([0.0, 0.5, 0.0]).set(Vertex.nORMAL, [0.0, 0.0, 1.0]).set(Vertex.uV0, [0.5, 1.0]),
         )
 
-        let model = Model(mesh, Material.pbr())
+        let model = Model(mesh, Material.pbr()?)
         try model.mesh().addVertex(
             try Vertex([-0.5, -0.5, 0.0]).set(Vertex.nORMAL, [0.0, 0.0, 1.0]).set(Vertex.uV0, [0.0, 0.0]),
         )
@@ -920,7 +900,7 @@ private enum _GeneratedExamples {
             try Vertex([0.0, 0.0, 0.0]).set(Vertex.nORMAL, [0.0, 1.0, 0.0]).set(Vertex.uV0, [0.0, 0.0]),
         )
 
-        let model = Model(mesh, Material.pbr())
+        let model = Model(mesh, Material.pbr()?)
     }
 
     static func _example_scene_model_rotate() async throws {
@@ -930,7 +910,7 @@ private enum _GeneratedExamples {
             try Vertex([0.0, 0.0, 0.0]).set(Vertex.nORMAL, [0.0, 1.0, 0.0]).set(Vertex.uV0, [0.0, 0.0]),
         )
 
-        let model = Model(mesh, Material.pbr())
+        let model = Model(mesh, Material.pbr()?)
         model.rotate([0.0, 1.0, 0.0], std.f32.consts.fRACPI2)
     }
 
@@ -941,7 +921,7 @@ private enum _GeneratedExamples {
             try Vertex([0.0, 0.0, 0.0]).set(Vertex.nORMAL, [0.0, 1.0, 0.0]).set(Vertex.uV0, [0.0, 0.0]),
         )
 
-        let model = Model(mesh, Material.pbr())
+        let model = Model(mesh, Material.pbr()?)
         model.scale([2.0, 2.0, 2.0])
     }
 
@@ -952,7 +932,7 @@ private enum _GeneratedExamples {
             try Vertex([0.0, 0.0, 0.0]).set(Vertex.nORMAL, [0.0, 1.0, 0.0]).set(Vertex.uV0, [0.0, 0.0]),
         )
 
-        let model = Model(mesh, Material.pbr())
+        let model = Model(mesh, Material.pbr()?)
         model.setTransform([
             [2.0, 0.0, 0.0, 0.0],
             [0.0, 2.0, 0.0, 0.0],
@@ -968,7 +948,7 @@ private enum _GeneratedExamples {
             try Vertex([0.0, 0.0, 0.0]).set(Vertex.nORMAL, [0.0, 1.0, 0.0]).set(Vertex.uV0, [0.0, 0.0]),
         )
 
-        let model = Model(mesh, Material.pbr())
+        let model = Model(mesh, Material.pbr()?)
         let identity = model.transform()
     }
 
@@ -979,7 +959,7 @@ private enum _GeneratedExamples {
             try Vertex([0.0, 0.0, 0.0]).set(Vertex.nORMAL, [0.0, 1.0, 0.0]).set(Vertex.uV0, [0.0, 0.0]),
         )
 
-        let model = Model(mesh, Material.pbr())
+        let model = Model(mesh, Material.pbr()?)
         model.translate([5.0, 0.0, -2.0])
     }
 

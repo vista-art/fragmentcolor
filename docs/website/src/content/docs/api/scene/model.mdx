@@ -17,15 +17,16 @@ A `Model` pairs a [Mesh](/api/geometry/mesh) with a
 content; the Material handles shading, the Mesh handles geometry, the Model
 handles "where in the world".
 
-Each `Model::new` takes ownership of the Material it's given and stores it
-as-is. The Material's `shader` carries the Model's `mesh.model` uniform â
-modifying the Model's transform writes to that uniform on its own shader.
-If you want N Models with the same look and different transforms, clone the
-template Material into each: `Material::clone` is a deep clone that spawns
-an independent shader copy, so per-Model transforms don't collide.
+Each `Model::new` takes ownership of the Material it's given. Cloning the
+Material before passing it in is cheap â `Material::clone` is an Arc-clone
+(handle share), not a deep duplicate. The per-Model transform is *not* a
+Material uniform: it's written as four `vec4<f32>` columns into the Mesh's
+per-instance attribute stream at locations 3..6. Many Models can share one
+Material's Shader without colliding because each Model writes its transform
+to **its own** Mesh's instance buffer.
 
-For RemixBrush-style fan-out (one Material template, many positioned
-instances), the pattern is:
+For RemixBrush-style fan-out (one Material, many positioned instances on
+unique geometries), the pattern is:
 
 ```text
 template = Material::pbr().base_color(...)
@@ -35,8 +36,17 @@ for each blob:
   pass.add_model(&model)
 ```
 
-That's N draw calls today (one per Model). Phase 2 batches Models sharing
-the same Material into one instanced draw â the API doesn't change.
+Pipeline cached once by shader hash; one bind-group setup per pass; N draws
+(one per unique Mesh). For *batched* instancing â one shared Mesh, many
+transforms in one draw â drop down to `Mesh::add_instance(...)` directly
+with a `Material::custom(shader_that_reads_instance_attrs)`. The Model API
+is for one logical thing per draw, not for managing your own per-instance
+buffers.
+
+**Caveat:** the Mesh's instance buffer is Arc-shared via `Mesh::clone`. Two
+Models that share a Mesh handle (`mesh.clone()`) collide on the same instance
+buffer â the most recent transform-mutating call wins. Give each Model its
+own Mesh.
 
 
 ## Methods
@@ -71,7 +81,7 @@ mesh.add_vertex(
         .set(Vertex::UV0, [0.0, 0.0]),
 );
 
-let model = Model::new(mesh, Material::pbr());
+let model = Model::new(mesh, Material::pbr()?);
 model.material().shader().set("camera.position", [0.0_f32, 0.0, 5.0])?;
 Ok(())
 }
@@ -89,7 +99,7 @@ import { Material, Mesh, Model, Vertex } from "fragmentcolor";
 const mesh = new Mesh();
 mesh.addVertex( Vertex.new([0.0, 0.0, 0.0]) .set(Vertex.NORMAL, [0.0, 1.0, 0.0]) .set(Vertex.UV0, [0.0, 0.0]), );
 
-const model = new Model(mesh, Material.pbr());
+const model = new Model(mesh, Material.pbr()?);
 model.material().shader().set("camera.position", [0.0, 0.0, 5.0]);
 `}
 lang="js"
@@ -125,7 +135,7 @@ try mesh.addVertex(
     try Vertex([0.0, 0.0, 0.0]).set(Vertex.nORMAL, [0.0, 1.0, 0.0]).set(Vertex.uV0, [0.0, 0.0]),
 )
 
-let model = Model(mesh, Material.pbr())
+let model = Model(mesh, Material.pbr()?)
 try model.material().shader().set("camera.position", [0.0, 0.0, 5.0])
 `}
 lang="swift"
@@ -141,7 +151,7 @@ import org.fragmentcolor.*
 val mesh = Mesh()
 mesh.addVertex( Vertex.new(listOf(0.0f, 0.0f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 1.0f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
 
-val model = Model(mesh, Material.pbr())
+val model = Model(mesh, Material.pbr()?)
 model.material().shader().set("camera.position", floatArrayOf(0.0f, 0.0f, 5.0f))
 `}
 lang="kotlin"
@@ -177,7 +187,7 @@ mesh.add_vertex(
         .set(Vertex::UV0, [0.5, 1.0]),
 );
 
-let model = Model::new(mesh, Material::pbr());
+let model = Model::new(mesh, Material::pbr()?);
 model.mesh().add_vertex(
     Vertex::new([-0.5, -0.5, 0.0])
         .set(Vertex::NORMAL, [0.0, 0.0, 1.0])
@@ -199,7 +209,7 @@ import { Material, Mesh, Model, Vertex } from "fragmentcolor";
 const mesh = new Mesh();
 mesh.addVertex( Vertex.new([0.0, 0.5, 0.0]) .set(Vertex.NORMAL, [0.0, 0.0, 1.0]) .set(Vertex.UV0, [0.5, 1.0]), );
 
-const model = new Model(mesh, Material.pbr());
+const model = new Model(mesh, Material.pbr()?);
 model.mesh().addVertex( Vertex.new([-0.5, -0.5, 0.0]) .set(Vertex.NORMAL, [0.0, 0.0, 1.0]) .set(Vertex.UV0, [0.0, 0.0]), );
 `}
 lang="js"
@@ -237,7 +247,7 @@ try mesh.addVertex(
     try Vertex([0.0, 0.5, 0.0]).set(Vertex.nORMAL, [0.0, 0.0, 1.0]).set(Vertex.uV0, [0.5, 1.0]),
 )
 
-let model = Model(mesh, Material.pbr())
+let model = Model(mesh, Material.pbr()?)
 try model.mesh().addVertex(
     try Vertex([-0.5, -0.5, 0.0]).set(Vertex.nORMAL, [0.0, 0.0, 1.0]).set(Vertex.uV0, [0.0, 0.0]),
 )
@@ -255,7 +265,7 @@ import org.fragmentcolor.*
 val mesh = Mesh()
 mesh.addVertex( Vertex.new(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 0.0f, 1.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), )
 
-val model = Model(mesh, Material.pbr())
+val model = Model(mesh, Material.pbr()?)
 model.mesh().addVertex( Vertex.new(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 0.0f, 1.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
 `}
 lang="kotlin"
@@ -272,13 +282,17 @@ lang="kotlin"
 
 Construct a `Model` from a `Mesh` and a `Material`. Both arguments are taken
 by value â the Model owns them. The transform starts at the 4Ã4 identity
-matrix and the Material's `mesh.model` uniform is initialised to match.
+matrix; `Model::sync_transform` writes it as a single instance into the
+Mesh's per-instance attribute stream (four `vec4<f32>` columns at locations
+3..6).
 
 If you want several Models that share a look, clone the Material before each
-`Model::new` â `Material::clone` is a deep clone that gives each Model its
-own independent shader copy, so per-Model transforms don't collide.
+`Model::new`. `Material::clone` is a cheap Arc-clone (handle share, not a
+deep duplicate), so the Models share one pipeline + one bind-group setup.
+Per-Model transforms don't collide because each Model owns its own Mesh, and
+the transform lives on the Mesh's instance buffer, not the Material's Shader.
 
-`Material::pbr()` requires the Mesh's first vertex to declare position
+`Material::pbr` requires the Mesh's first vertex to declare position
 (`vec3`), normal (`vec3`), and uv0 (`vec2`) in that exact insertion order,
 so the locations align with the PBR shader's vertex inputs. Custom shaders
 via `Material::custom(...)` can use any layout.
@@ -300,7 +314,7 @@ mesh.add_vertex(
         .set(Vertex::UV0, [0.0, 0.0]),
 );
 
-let model = Model::new(mesh, Material::pbr());
+let model = Model::new(mesh, Material::pbr()?);
 
 let _ = model;
 Ok(())
@@ -319,7 +333,7 @@ import { Material, Mesh, Model, Vertex } from "fragmentcolor";
 const mesh = new Mesh();
 mesh.addVertex( Vertex.new([0.0, 0.0, 0.0]) .set(Vertex.NORMAL, [0.0, 1.0, 0.0]) .set(Vertex.UV0, [0.0, 0.0]), );
 
-const model = new Model(mesh, Material.pbr());
+const model = new Model(mesh, Material.pbr()?);
 
 `}
 lang="js"
@@ -355,7 +369,7 @@ try mesh.addVertex(
     try Vertex([0.0, 0.0, 0.0]).set(Vertex.nORMAL, [0.0, 1.0, 0.0]).set(Vertex.uV0, [0.0, 0.0]),
 )
 
-let model = Model(mesh, Material.pbr())
+let model = Model(mesh, Material.pbr()?)
 `}
 lang="swift"
 />
@@ -370,7 +384,7 @@ import org.fragmentcolor.*
 val mesh = Mesh()
 mesh.addVertex( Vertex.new(listOf(0.0f, 0.0f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 1.0f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
 
-val model = Model(mesh, Material.pbr())
+val model = Model(mesh, Material.pbr()?)
 `}
 lang="kotlin"
 />
@@ -410,7 +424,7 @@ mesh.add_vertex(
         .set(Vertex::UV0, [0.0, 0.0]),
 );
 
-let model = Model::new(mesh, Material::pbr());
+let model = Model::new(mesh, Material::pbr()?);
 model.rotate([0.0, 1.0, 0.0], std::f32::consts::FRAC_PI_2);
 Ok(())
 }
@@ -428,7 +442,7 @@ import { Material, Mesh, Model, Vertex } from "fragmentcolor";
 const mesh = new Mesh();
 mesh.addVertex( Vertex.new([0.0, 0.0, 0.0]) .set(Vertex.NORMAL, [0.0, 1.0, 0.0]) .set(Vertex.UV0, [0.0, 0.0]), );
 
-const model = new Model(mesh, Material.pbr());
+const model = new Model(mesh, Material.pbr()?);
 model.rotate([0.0, 1.0, 0.0], std.f32.consts.FRACPI2);
 `}
 lang="js"
@@ -464,7 +478,7 @@ try mesh.addVertex(
     try Vertex([0.0, 0.0, 0.0]).set(Vertex.nORMAL, [0.0, 1.0, 0.0]).set(Vertex.uV0, [0.0, 0.0]),
 )
 
-let model = Model(mesh, Material.pbr())
+let model = Model(mesh, Material.pbr()?)
 model.rotate([0.0, 1.0, 0.0], std.f32.consts.fRACPI2)
 `}
 lang="swift"
@@ -480,7 +494,7 @@ import org.fragmentcolor.*
 val mesh = Mesh()
 mesh.addVertex( Vertex.new(listOf(0.0f, 0.0f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 1.0f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
 
-val model = Model(mesh, Material.pbr())
+val model = Model(mesh, Material.pbr()?)
 model.rotate(listOf(0.0f, 1.0f, 0.0f), std.f32.consts.FRACPI2)
 `}
 lang="kotlin"
@@ -521,7 +535,7 @@ mesh.add_vertex(
         .set(Vertex::UV0, [0.0, 0.0]),
 );
 
-let model = Model::new(mesh, Material::pbr());
+let model = Model::new(mesh, Material::pbr()?);
 model.scale([2.0, 2.0, 2.0]);
 Ok(())
 }
@@ -539,7 +553,7 @@ import { Material, Mesh, Model, Vertex } from "fragmentcolor";
 const mesh = new Mesh();
 mesh.addVertex( Vertex.new([0.0, 0.0, 0.0]) .set(Vertex.NORMAL, [0.0, 1.0, 0.0]) .set(Vertex.UV0, [0.0, 0.0]), );
 
-const model = new Model(mesh, Material.pbr());
+const model = new Model(mesh, Material.pbr()?);
 model.scale([2.0, 2.0, 2.0]);
 `}
 lang="js"
@@ -575,7 +589,7 @@ try mesh.addVertex(
     try Vertex([0.0, 0.0, 0.0]).set(Vertex.nORMAL, [0.0, 1.0, 0.0]).set(Vertex.uV0, [0.0, 0.0]),
 )
 
-let model = Model(mesh, Material.pbr())
+let model = Model(mesh, Material.pbr()?)
 model.scale([2.0, 2.0, 2.0])
 `}
 lang="swift"
@@ -591,7 +605,7 @@ import org.fragmentcolor.*
 val mesh = Mesh()
 mesh.addVertex( Vertex.new(listOf(0.0f, 0.0f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 1.0f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
 
-val model = Model(mesh, Material.pbr())
+val model = Model(mesh, Material.pbr()?)
 model.scale(listOf(2.0f, 2.0f, 2.0f))
 `}
 lang="kotlin"
@@ -611,8 +625,9 @@ when you already have a matrix from a math library or a glTF node and want
 to apply it directly without composing through `translate` / `rotate` /
 `scale`.
 
-Updates the Material shader's `mesh.model` uniform immediately. To read the
-current transform, see [Model::transform](/api/scene/model#modeltransform).
+Writes the four columns into the Mesh's per-instance attribute stream
+immediately (locations 3..6). To read the current transform, see
+[Model::transform](/api/scene/model#modeltransform).
 
 #### Example
 
@@ -631,7 +646,7 @@ mesh.add_vertex(
         .set(Vertex::UV0, [0.0, 0.0]),
 );
 
-let model = Model::new(mesh, Material::pbr());
+let model = Model::new(mesh, Material::pbr()?);
 model.set_transform([
     [2.0, 0.0, 0.0, 0.0],
     [0.0, 2.0, 0.0, 0.0],
@@ -654,7 +669,7 @@ import { Material, Mesh, Model, Vertex } from "fragmentcolor";
 const mesh = new Mesh();
 mesh.addVertex( Vertex.new([0.0, 0.0, 0.0]) .set(Vertex.NORMAL, [0.0, 1.0, 0.0]) .set(Vertex.UV0, [0.0, 0.0]), );
 
-const model = new Model(mesh, Material.pbr());
+const model = new Model(mesh, Material.pbr()?);
 model.setTransform([ [2.0, 0.0, 0.0, 0.0], [0.0, 2.0, 0.0, 0.0], [0.0, 0.0, 2.0, 0.0], [3.0, 0.0, 0.0, 1.0], ]);
 `}
 lang="js"
@@ -695,7 +710,7 @@ try mesh.addVertex(
     try Vertex([0.0, 0.0, 0.0]).set(Vertex.nORMAL, [0.0, 1.0, 0.0]).set(Vertex.uV0, [0.0, 0.0]),
 )
 
-let model = Model(mesh, Material.pbr())
+let model = Model(mesh, Material.pbr()?)
 model.setTransform([
     [2.0, 0.0, 0.0, 0.0],
     [0.0, 2.0, 0.0, 0.0],
@@ -716,7 +731,7 @@ import org.fragmentcolor.*
 val mesh = Mesh()
 mesh.addVertex( Vertex.new(listOf(0.0f, 0.0f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 1.0f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
 
-val model = Model(mesh, Material.pbr())
+val model = Model(mesh, Material.pbr()?)
 model.setTransform(arrayOf(listOf(2.0f, 0.0f, 0.0f, 0.0f), listOf(0.0f, 2.0f, 0.0f, 0.0f), listOf(0.0f, 0.0f, 2.0f, 0.0f), listOf(3.0f, 0.0f, 0.0f, 1.0f),))
 `}
 lang="kotlin"
@@ -757,7 +772,7 @@ mesh.add_vertex(
         .set(Vertex::UV0, [0.0, 0.0]),
 );
 
-let model = Model::new(mesh, Material::pbr());
+let model = Model::new(mesh, Material::pbr()?);
 let identity = model.transform();
 assert_eq!(identity[0], [1.0, 0.0, 0.0, 0.0]);
 assert_eq!(identity[3], [0.0, 0.0, 0.0, 1.0]);
@@ -778,7 +793,7 @@ import { Material, Mesh, Model, Vertex } from "fragmentcolor";
 const mesh = new Mesh();
 mesh.addVertex( Vertex.new([0.0, 0.0, 0.0]) .set(Vertex.NORMAL, [0.0, 1.0, 0.0]) .set(Vertex.UV0, [0.0, 0.0]), );
 
-const model = new Model(mesh, Material.pbr());
+const model = new Model(mesh, Material.pbr()?);
 const identity = model.transform();
 `}
 lang="js"
@@ -814,7 +829,7 @@ try mesh.addVertex(
     try Vertex([0.0, 0.0, 0.0]).set(Vertex.nORMAL, [0.0, 1.0, 0.0]).set(Vertex.uV0, [0.0, 0.0]),
 )
 
-let model = Model(mesh, Material.pbr())
+let model = Model(mesh, Material.pbr()?)
 let identity = model.transform()
 `}
 lang="swift"
@@ -830,7 +845,7 @@ import org.fragmentcolor.*
 val mesh = Mesh()
 mesh.addVertex( Vertex.new(listOf(0.0f, 0.0f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 1.0f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
 
-val model = Model(mesh, Material.pbr())
+val model = Model(mesh, Material.pbr()?)
 val identity = model.transform()
 `}
 lang="kotlin"
@@ -867,7 +882,7 @@ mesh.add_vertex(
         .set(Vertex::UV0, [0.0, 0.0]),
 );
 
-let model = Model::new(mesh, Material::pbr());
+let model = Model::new(mesh, Material::pbr()?);
 model.translate([5.0, 0.0, -2.0]);
 
 let m = model.transform();
@@ -889,7 +904,7 @@ import { Material, Mesh, Model, Vertex } from "fragmentcolor";
 const mesh = new Mesh();
 mesh.addVertex( Vertex.new([0.0, 0.0, 0.0]) .set(Vertex.NORMAL, [0.0, 1.0, 0.0]) .set(Vertex.UV0, [0.0, 0.0]), );
 
-const model = new Model(mesh, Material.pbr());
+const model = new Model(mesh, Material.pbr()?);
 model.translate([5.0, 0.0, -2.0]);
 
 `}
@@ -927,7 +942,7 @@ try mesh.addVertex(
     try Vertex([0.0, 0.0, 0.0]).set(Vertex.nORMAL, [0.0, 1.0, 0.0]).set(Vertex.uV0, [0.0, 0.0]),
 )
 
-let model = Model(mesh, Material.pbr())
+let model = Model(mesh, Material.pbr()?)
 model.translate([5.0, 0.0, -2.0])
 `}
 lang="swift"
@@ -943,7 +958,7 @@ import org.fragmentcolor.*
 val mesh = Mesh()
 mesh.addVertex( Vertex.new(listOf(0.0f, 0.0f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 1.0f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
 
-val model = Model(mesh, Material.pbr())
+val model = Model(mesh, Material.pbr()?)
 model.translate(listOf(5.0f, 0.0f, -2.0f))
 `}
 lang="kotlin"

@@ -157,16 +157,6 @@ impl Shader {
         Arc::new(Shader::from_vertex(&vertex))
     }
 
-    /// Build an independent copy that compiles the same source but starts
-    /// with its own uniform-storage and mesh-attachment state.
-    #[uniffi::method(name = "duplicate")]
-    #[lsp_doc("docs/api/core/shader/duplicate.md")]
-    pub fn duplicate_mobile(self: Arc<Self>) -> Result<Arc<Self>, FragmentColorError> {
-        self.duplicate()
-            .map(Arc::new)
-            .map_err(FragmentColorError::from)
-    }
-
     // ------------------------------------------------------------------
     // Mesh-aware instance methods
     // ------------------------------------------------------------------

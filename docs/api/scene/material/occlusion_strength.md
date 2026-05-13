@@ -15,7 +15,7 @@ value is stored but inert until occlusion sampling lands or you use a
 # fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Material;
 
-let crevices = Material::pbr().occlusion_strength(0.8);
+let crevices = Material::pbr()?.occlusion_strength(0.8);
 # let _ = crevices;
 # Ok(())
 # }

@@ -1,3 +1,3 @@
 import { Material } from "fragmentcolor";
 
-const foliage = Material.pbr().alphaCutoff(0.3);
+const foliage = Material.pbr()?.alphaCutoff(0.3);

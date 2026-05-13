@@ -6,15 +6,16 @@ A `Model` pairs a [Mesh](https://fragmentcolor.org/api/geometry/mesh) with a
 content; the Material handles shading, the Mesh handles geometry, the Model
 handles "where in the world".
 
-Each `Model::new` takes ownership of the Material it's given and stores it
-as-is. The Material's `shader` carries the Model's `mesh.model` uniform —
-modifying the Model's transform writes to that uniform on its own shader.
-If you want N Models with the same look and different transforms, clone the
-template Material into each: `Material::clone` is a deep clone that spawns
-an independent shader copy, so per-Model transforms don't collide.
+Each `Model::new` takes ownership of the Material it's given. Cloning the
+Material before passing it in is cheap — `Material::clone` is an Arc-clone
+(handle share), not a deep duplicate. The per-Model transform is *not* a
+Material uniform: it's written as four `vec4<f32>` columns into the Mesh's
+per-instance attribute stream at locations 3..6. Many Models can share one
+Material's Shader without colliding because each Model writes its transform
+to **its own** Mesh's instance buffer.
 
-For RemixBrush-style fan-out (one Material template, many positioned
-instances), the pattern is:
+For RemixBrush-style fan-out (one Material, many positioned instances on
+unique geometries), the pattern is:
 
 ```text
 template = Material::pbr().base_color(...)
@@ -24,8 +25,17 @@ for each blob:
   pass.add_model(&model)
 ```
 
-That's N draw calls today (one per Model). Phase 2 batches Models sharing
-the same Material into one instanced draw — the API doesn't change.
+Pipeline cached once by shader hash; one bind-group setup per pass; N draws
+(one per unique Mesh). For *batched* instancing — one shared Mesh, many
+transforms in one draw — drop down to `Mesh::add_instance(...)` directly
+with a `Material::custom(shader_that_reads_instance_attrs)`. The Model API
+is for one logical thing per draw, not for managing your own per-instance
+buffers.
+
+**Caveat:** the Mesh's instance buffer is Arc-shared via `Mesh::clone`. Two
+Models that share a Mesh handle (`mesh.clone()`) collide on the same instance
+buffer — the most recent transform-mutating call wins. Give each Model its
+own Mesh.
 
 ## Methods
 
@@ -53,7 +63,7 @@ mesh.add_vertex(
         .set(Vertex::UV0, [0.5, 1.0]),
 );
 
-let mat = Material::pbr().base_color([0.3, 0.6, 1.0, 1.0]);
+let mat = Material::pbr()?.base_color([0.3, 0.6, 1.0, 1.0]);
 let model = Model::new(mesh, mat);
 model.translate([2.0, 0.0, 0.0]);
 model.scale([1.5, 1.5, 1.5]);

@@ -5,8 +5,9 @@ when you already have a matrix from a math library or a glTF node and want
 to apply it directly without composing through `translate` / `rotate` /
 `scale`.
 
-Updates the Material shader's `mesh.model` uniform immediately. To read the
-current transform, see [Model::transform](https://fragmentcolor.org/api/scene/model#modeltransform).
+Writes the four columns into the Mesh's per-instance attribute stream
+immediately (locations 3..6). To read the current transform, see
+[Model::transform](https://fragmentcolor.org/api/scene/model#modeltransform).
 
 ## Example
 
@@ -21,7 +22,7 @@ mesh.add_vertex(
         .set(Vertex::UV0, [0.0, 0.0]),
 );
 
-let model = Model::new(mesh, Material::pbr());
+let model = Model::new(mesh, Material::pbr()?);
 model.set_transform([
     [2.0, 0.0, 0.0, 0.0],
     [0.0, 2.0, 0.0, 0.0],

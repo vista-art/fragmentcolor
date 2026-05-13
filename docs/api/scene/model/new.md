@@ -2,13 +2,17 @@
 
 Construct a `Model` from a `Mesh` and a `Material`. Both arguments are taken
 by value — the Model owns them. The transform starts at the 4×4 identity
-matrix and the Material's `mesh.model` uniform is initialised to match.
+matrix; `Model::sync_transform` writes it as a single instance into the
+Mesh's per-instance attribute stream (four `vec4<f32>` columns at locations
+3..6).
 
 If you want several Models that share a look, clone the Material before each
-`Model::new` — `Material::clone` is a deep clone that gives each Model its
-own independent shader copy, so per-Model transforms don't collide.
+`Model::new`. `Material::clone` is a cheap Arc-clone (handle share, not a
+deep duplicate), so the Models share one pipeline + one bind-group setup.
+Per-Model transforms don't collide because each Model owns its own Mesh, and
+the transform lives on the Mesh's instance buffer, not the Material's Shader.
 
-`Material::pbr()` requires the Mesh's first vertex to declare position
+`Material::pbr` requires the Mesh's first vertex to declare position
 (`vec3`), normal (`vec3`), and uv0 (`vec2`) in that exact insertion order,
 so the locations align with the PBR shader's vertex inputs. Custom shaders
 via `Material::custom(...)` can use any layout.
@@ -26,7 +30,7 @@ mesh.add_vertex(
         .set(Vertex::UV0, [0.0, 0.0]),
 );
 
-let model = Model::new(mesh, Material::pbr());
+let model = Model::new(mesh, Material::pbr()?);
 
 # let _ = model;
 # Ok(())

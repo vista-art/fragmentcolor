@@ -31,7 +31,6 @@ const EXAMPLES = [
   '../examples/core/shader/Shader.js',
   '../examples/core/shader/add_mesh.js',
   '../examples/core/shader/clear_meshes.js',
-  '../examples/core/shader/duplicate.js',
   '../examples/core/shader/fetch.js',
   '../examples/core/shader/from_mesh.js',
   '../examples/core/shader/from_vertex.js',

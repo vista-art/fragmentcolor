@@ -5,9 +5,10 @@ the escape hatch when the Material's typed setters don't cover what you need
 (camera state, custom uniforms, raw texture binds outside the glTF PBR slots).
 
 The returned reference is the same `Shader` the Material is built around, so
-changes propagate immediately. Cloning the Material gives you an independent
-Shader copy ([Material](https://fragmentcolor.org/api/scene/material) clone
-spawns a fresh duplicate); the borrow returned here is *not* independent.
+changes propagate immediately to every Model that uses this Material. If you
+want a Material variant with different state, build a fresh
+`Material::pbr().<setters>` rather than cloning — `Material` clones share
+their Shader handle (Arc-clone) so mutations are visible across all clones.
 
 ## Example
 
@@ -15,7 +16,7 @@ spawns a fresh duplicate); the borrow returned here is *not* independent.
 # fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Material;
 
-let material = Material::pbr();
+let material = Material::pbr()?;
 material.shader().set(
     "camera.view_proj",
     [

@@ -21,7 +21,7 @@ let texture = renderer.create_texture(&[
     230,  180, 100, 255,
     255,  220, 150, 255,
 ][..]).await?;
-let mat = Material::pbr().base_color_texture(&texture);
+let mat = Material::pbr()?.base_color_texture(&texture);
 # let _ = mat;
 # Ok(())
 # }

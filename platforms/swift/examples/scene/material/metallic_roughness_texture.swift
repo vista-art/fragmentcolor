@@ -7,4 +7,4 @@ let mr_map = renderer.createTexture([
     0,   180, 30, 255,
     0,   220, 60, 255,
 try await ])
-let mat = Material.pbr().metallicRoughnessTexture(mr_map)
+let mat = Material.pbr()?.metallicRoughnessTexture(mr_map)

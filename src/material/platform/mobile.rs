@@ -12,8 +12,10 @@ use crate::Shader;
 impl Material {
     #[uniffi::constructor(name = "pbr")]
     #[lsp_doc("docs/api/scene/material/pbr.md")]
-    pub fn pbr_mobile() -> Arc<Self> {
-        Arc::new(Material::pbr())
+    pub fn pbr_mobile() -> Result<Arc<Self>, FragmentColorError> {
+        Material::pbr()
+            .map(Arc::new)
+            .map_err(|e| FragmentColorError::Render(e.to_string()))
     }
 
     #[uniffi::constructor(name = "custom")]

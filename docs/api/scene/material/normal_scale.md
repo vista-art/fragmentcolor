@@ -15,7 +15,7 @@ sampling lands or under a `Material::custom` shader that reads the uniform.
 # fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Material;
 
-let detailed = Material::pbr().normal_scale(1.5);
+let detailed = Material::pbr()?.normal_scale(1.5);
 # let _ = detailed;
 # Ok(())
 # }

@@ -1,13 +1,18 @@
 //! Material — PBR data + `Shader` bundle.
 //!
-//! `Material::pbr()` ships FragmentColor's default physically-based shader and
-//! the glTF 2.0 PBR-MR field set as builder-style setters. `Material::custom`
-//! wraps an arbitrary `Shader` and reuses the same setter API for any uniform
-//! the custom shader happens to declare under matching paths.
+//! `Material::pbr()` ships FragmentColor's default physically-based shader
+//! and the glTF 2.0 PBR-MR field set as builder-style setters.
+//! `Material::custom(shader)` wraps an arbitrary `Shader` and reuses the same
+//! setter API for any uniform the custom shader happens to declare under
+//! matching paths.
 //!
-//! Higher-level than `Shader` because it carries the PBR contract (factor +
-//! texture pairings, alpha modes, etc.) on top of the WGSL — see
-//! [docs/api/scene/material](../../docs/api/scene/material/material.md).
+//! Per-Model transform is *not* a Material uniform — it rides on the per-
+//! instance vertex attribute stream written by `Model::sync_transform`. That
+//! means many Models can share one Material's Shader without colliding on a
+//! `mesh.model` uniform; the renderer batches them by pipeline hash and pays
+//! one bind-group setup for the whole group. Material itself is `Clone`
+//! (shallow, Arc-share) — cloning gives you another handle to the same
+//! underlying shader state, not an independent copy.
 
 use lsp_doc::lsp_doc;
 
@@ -16,24 +21,21 @@ use pyo3::prelude::*;
 #[cfg(wasm)]
 use wasm_bindgen::prelude::*;
 
-use crate::{Shader, UniformData};
+use crate::{Shader, ShaderError, UniformData};
 
 mod platform;
 
-/// Pulled from the registry on disk via `include_str!` so `Material::pbr()`
-/// works regardless of which `shaders-*` Cargo features the consumer picked
-/// (the registry is published as raw `.wgsl` for direct reuse from custom
-/// shaders, but the default Material shader must compile in any build).
-const PBR_HELPERS_MESH: &str =
-    include_str!("../../docs/website/public/shaders/mesh/transform.wgsl");
-const PBR_HELPERS_MATERIAL: &str =
-    include_str!("../../docs/website/public/shaders/material/pbr.wgsl");
+/// Assembled vertex+fragment+uniform block for the built-in PBR shader. The
+/// `mesh/transform` and `material/pbr` registry snippets are pulled in as
+/// composition parts at construction time — they declare no bindings of
+/// their own, only helper functions, so they slot in cleanly alongside this
+/// main body.
 const PBR_MAIN: &str = include_str!("pbr_main.wgsl");
 
 #[cfg_attr(wasm, wasm_bindgen)]
 #[cfg_attr(python, pyclass(from_py_object))]
 #[cfg_attr(mobile, derive(uniffi::Object))]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[lsp_doc("docs/api/scene/material/material.md")]
 pub struct Material {
     pub(crate) shader: Shader,
@@ -42,13 +44,23 @@ pub struct Material {
 crate::impl_fc_kind!(Material, "Material");
 
 impl Material {
+    /// Build a Material with FragmentColor's default physically-based shader.
+    ///
+    /// Returns `Err(ShaderError)` only when the registry slugs `mesh/transform`
+    /// and `material/pbr` can't be resolved — i.e. on a build that opted out
+    /// of both the `shaders-mesh` and `shaders-material` Cargo features
+    /// (the default `shaders-all` includes both). For web slim builds
+    /// (`--no-default-features`), enable them explicitly:
+    ///
+    /// ```text
+    /// --features=shaders-mesh,shaders-material
+    /// ```
     #[lsp_doc("docs/api/scene/material/pbr.md")]
-    pub fn pbr() -> Self {
-        let shader = Shader::new([PBR_HELPERS_MESH, PBR_HELPERS_MATERIAL, PBR_MAIN])
-            .expect("SAFETY: PBR template source is a known-good built-in validated by doctest");
+    pub fn pbr() -> Result<Self, ShaderError> {
+        let shader = Shader::new(["mesh/transform", "material/pbr", PBR_MAIN])?;
         let material = Self { shader };
         material.apply_defaults();
-        material
+        Ok(material)
     }
 
     #[lsp_doc("docs/api/scene/material/custom.md")]
@@ -81,7 +93,6 @@ impl Material {
             [0.0, 0.0, 1.0, 0.0],
             [0.0, 0.0, 0.0, 1.0],
         ];
-        let _ = self.shader.set("mesh.model", identity);
         let _ = self.shader.set("camera.view_proj", identity);
         let _ = self.shader.set("camera.position", [0.0_f32, 0.0, 0.0]);
         let _ = self.shader.set("light.direction", [0.0_f32, -1.0, 0.0]);
@@ -134,12 +145,12 @@ impl Material {
 
     // --- texture setters ---
     //
-    // Texture setters always store the texture under the canonical glTF
-    // binding name. The factors-only default PBR shader doesn't declare these
-    // bindings yet, so the calls log-warn and return self. They become
-    // effective with `Material::custom(shader_that_samples_textures)` today,
-    // and with `Material::pbr` in the follow-up that adds texture sampling to
-    // the default shader (see CHANGELOG).
+    // Texture setters store the texture under the canonical glTF binding name.
+    // The factors-only default PBR shader doesn't declare these bindings yet,
+    // so the calls log-warn and return self. They become effective with
+    // `Material::custom(shader_that_samples_textures)` today, and with
+    // `Material::pbr` in the follow-up that adds texture sampling to the
+    // default shader (see CHANGELOG).
 
     #[lsp_doc("docs/api/scene/material/base_color_texture.md")]
     pub fn base_color_texture(self, texture: &crate::texture::Texture) -> Self {
@@ -172,27 +183,6 @@ impl Material {
     }
 }
 
-impl Clone for Material {
-    fn clone(&self) -> Self {
-        // Cloning a Material spawns an independent uniform-storage copy so a
-        // setter on the clone doesn't bleed back into the source. The compile
-        // cost is one ShaderObject reparse; the GPU pipeline is shared by
-        // hash so cloning many Materials from the same template is cheap at
-        // the wgpu layer.
-        let shader = self
-            .shader
-            .duplicate()
-            .expect("SAFETY: the source string the Shader was compiled from is preserved on ShaderObject, so re-parsing it here cannot fail");
-        Self { shader }
-    }
-}
-
-impl Default for Material {
-    fn default() -> Self {
-        Self::pbr()
-    }
-}
-
 pub(crate) fn set_or_warn<V: Into<UniformData>>(shader: &Shader, key: &str, value: V) {
     if let Err(e) = shader.set(key, value) {
         log::warn!("Material setter '{key}' did not apply: {e}");
@@ -212,7 +202,7 @@ mod tests {
 
     #[test]
     fn pbr_seeds_default_uniforms() {
-        let mat = Material::pbr();
+        let mat = Material::pbr().expect("pbr template compiles");
         let base: [f32; 4] = mat.shader().get("material.base_color").expect("base_color");
         assert_eq!(base, [1.0, 1.0, 1.0, 1.0]);
         let metallic: f32 = mat.shader().get("material.metallic").expect("metallic");
@@ -224,6 +214,7 @@ mod tests {
     #[test]
     fn builder_setters_update_uniforms() {
         let mat = Material::pbr()
+            .expect("pbr")
             .base_color([0.4, 0.7, 0.2, 0.8])
             .metallic(0.6)
             .roughness(0.25)
@@ -240,14 +231,17 @@ mod tests {
     }
 
     #[test]
-    fn clone_is_independent_from_source() {
-        let original = Material::pbr().base_color([1.0, 0.0, 0.0, 1.0]);
-        let duplicated = original.clone().base_color([0.0, 1.0, 0.0, 1.0]);
+    fn clone_shares_shader_state() {
+        let original = Material::pbr().expect("pbr").base_color([1.0, 0.0, 0.0, 1.0]);
+        let handle_b = original.clone();
+        // Mutating one handle is visible on the other — the share is shallow
+        // by design so renderer batching can see one pipeline for the pair.
+        let _ = handle_b.shader().set("material.base_color", [0.0_f32, 1.0, 0.0, 1.0]);
 
         let original_color: [f32; 4] = original.shader().get("material.base_color").unwrap();
-        let duplicated_color: [f32; 4] = duplicated.shader().get("material.base_color").unwrap();
-        assert_eq!(original_color, [1.0, 0.0, 0.0, 1.0]);
-        assert_eq!(duplicated_color, [0.0, 1.0, 0.0, 1.0]);
+        let b_color: [f32; 4] = handle_b.shader().get("material.base_color").unwrap();
+        assert_eq!(original_color, [0.0, 1.0, 0.0, 1.0]);
+        assert_eq!(b_color, [0.0, 1.0, 0.0, 1.0]);
     }
 
     #[test]

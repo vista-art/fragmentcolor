@@ -21,7 +21,7 @@ let mr_map = renderer.create_texture(&[
     0,   180, 30, 255,
     0,   220, 60, 255,
 ][..]).await?;
-let mat = Material::pbr().metallic_roughness_texture(&mr_map);
+let mat = Material::pbr()?.metallic_roughness_texture(&mr_map);
 # let _ = mat;
 # Ok(())
 # }

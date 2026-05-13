@@ -13,6 +13,7 @@ use pyo3::prelude::*;
 #[cfg(wasm)]
 use wasm_bindgen::prelude::*;
 
+use crate::mesh::Instance;
 use crate::{Material, Mesh};
 
 mod platform;
@@ -106,14 +107,38 @@ impl Model {
         self.sync_transform();
     }
 
+    /// Push the current model matrix into the mesh's per-instance attribute
+    /// stream as a single instance (4 vec4 columns).
+    ///
+    /// Why instance attributes instead of a `mesh.model` uniform: the
+    /// renderer batches by shader-pipeline hash and issues one draw per
+    /// attached mesh, but a uniform is per-shader, so many Models sharing a
+    /// Material would collide on the slot. The instance-attribute path is
+    /// per-mesh state by design and rides the existing FC instancing
+    /// machinery — no renderer changes, no shader duplication, no collisions.
+    ///
+    /// The first three vertex `@location` slots (0..2) are reserved for
+    /// position, normal, and uv0 — the layout `Material::pbr` expects — so
+    /// the instance's auto-location counter starts at 3 to avoid colliding
+    /// with them in WGSL's shared location namespace.
+    ///
+    /// **Caveat:** the Mesh's instance buffer is shared across Arc-clones of
+    /// the Mesh handle. Two Models that share a Mesh (`Mesh::clone` is an
+    /// Arc-clone) collide on the same instance buffer — the most recent
+    /// `set_transform` / `translate` / `rotate` / `scale` wins. For batched
+    /// instancing (one shared Mesh, many instances), drop down to the
+    /// `Mesh::add_instance(...)` + `Material::custom(...)` API directly.
     fn sync_transform(&self) {
-        let mat = self.transform.read().to_cols_array_2d();
-        if let Err(e) = self.material.shader.set("mesh.model", mat) {
-            // Custom shaders without a `mesh.model` uniform get a one-time
-            // log at debug level — not warn, because for many custom shaders
-            // this is intentional (e.g. fullscreen post-processing).
-            log::debug!("Model::sync_transform: shader has no 'mesh.model' uniform: {e}");
-        }
+        let m = self.transform.read().to_cols_array_2d();
+        self.mesh.clear_instances();
+        let mut inst = Instance::new();
+        inst.next_location = 3;
+        self.mesh.add_instance(
+            inst.set("model_0", m[0])
+                .set("model_1", m[1])
+                .set("model_2", m[2])
+                .set("model_3", m[3]),
+        );
     }
 }
 
@@ -138,31 +163,43 @@ mod tests {
         mesh
     }
 
+    fn instance_row(mesh: &Mesh, key: &str) -> [f32; 4] {
+        // Peek at the most recent instance written to the mesh; tests use this
+        // to verify Model::sync_transform routed the matrix into the per-
+        // instance attribute stream.
+        let insts = mesh.object.insts.read();
+        let inst = insts.last().expect("mesh has at least one instance");
+        match inst.properties.get(key).expect("instance property") {
+            crate::mesh::VertexValue::F32x4(v) => *v,
+            other => panic!("expected F32x4 for '{key}', got {other:?}"),
+        }
+    }
+
     #[test]
-    fn new_starts_at_identity_and_syncs_shader() {
-        let model = Model::new(pbr_triangle_mesh(), Material::pbr());
+    fn new_starts_at_identity_and_writes_one_instance() {
+        let model = Model::new(pbr_triangle_mesh(), Material::pbr().expect("pbr"));
         let m = model.transform();
         assert_eq!(m[0], [1.0, 0.0, 0.0, 0.0]);
-        assert_eq!(m[1], [0.0, 1.0, 0.0, 0.0]);
-        assert_eq!(m[2], [0.0, 0.0, 1.0, 0.0]);
         assert_eq!(m[3], [0.0, 0.0, 0.0, 1.0]);
 
-        let on_shader: [[f32; 4]; 4] = model.material.shader.get("mesh.model").unwrap();
-        assert_eq!(on_shader, m);
+        assert_eq!(model.mesh.object.insts.read().len(), 1);
+        assert_eq!(instance_row(&model.mesh, "model_0"), m[0]);
+        assert_eq!(instance_row(&model.mesh, "model_3"), m[3]);
     }
 
     #[test]
     fn translate_moves_in_world_space() {
-        let model = Model::new(pbr_triangle_mesh(), Material::pbr());
+        let model = Model::new(pbr_triangle_mesh(), Material::pbr().expect("pbr"));
         model.translate([5.0, 0.0, -2.0]);
         let m = model.transform();
         // Column-major: translation lives in column 3.
         assert_eq!(m[3], [5.0, 0.0, -2.0, 1.0]);
+        assert_eq!(instance_row(&model.mesh, "model_3"), [5.0, 0.0, -2.0, 1.0]);
     }
 
     #[test]
     fn rotate_then_translate_translates_in_world_space() {
-        let model = Model::new(pbr_triangle_mesh(), Material::pbr());
+        let model = Model::new(pbr_triangle_mesh(), Material::pbr().expect("pbr"));
         model.rotate([0.0, 1.0, 0.0], std::f32::consts::FRAC_PI_2);
         model.translate([1.0, 0.0, 0.0]);
         let m = model.transform();
@@ -174,7 +211,7 @@ mod tests {
 
     #[test]
     fn scale_is_local_post_multiply() {
-        let model = Model::new(pbr_triangle_mesh(), Material::pbr());
+        let model = Model::new(pbr_triangle_mesh(), Material::pbr().expect("pbr"));
         model.translate([3.0, 0.0, 0.0]);
         model.scale([2.0, 2.0, 2.0]);
         let m = model.transform();
@@ -188,7 +225,7 @@ mod tests {
 
     #[test]
     fn rotate_ignores_zero_axis() {
-        let model = Model::new(pbr_triangle_mesh(), Material::pbr());
+        let model = Model::new(pbr_triangle_mesh(), Material::pbr().expect("pbr"));
         let before = model.transform();
         model.rotate([0.0, 0.0, 0.0], 1.57);
         let after = model.transform();
@@ -196,26 +233,24 @@ mod tests {
     }
 
     #[test]
-    fn set_transform_replaces_wholesale_and_syncs_shader() {
-        let model = Model::new(pbr_triangle_mesh(), Material::pbr());
-        let scale_then_translate = [
+    fn set_transform_replaces_wholesale_and_writes_instance() {
+        let model = Model::new(pbr_triangle_mesh(), Material::pbr().expect("pbr"));
+        let cols = [
             [2.0_f32, 0.0, 0.0, 0.0],
             [0.0, 2.0, 0.0, 0.0],
             [0.0, 0.0, 2.0, 0.0],
             [4.0, 5.0, 6.0, 1.0],
         ];
-        model.set_transform(scale_then_translate);
-        let on_shader: [[f32; 4]; 4] =
-            model.material.shader.get("mesh.model").unwrap();
-        assert_eq!(on_shader, scale_then_translate);
+        model.set_transform(cols);
+        assert_eq!(instance_row(&model.mesh, "model_0"), cols[0]);
+        assert_eq!(instance_row(&model.mesh, "model_3"), cols[3]);
     }
 
     #[test]
-    fn two_models_share_template_material_but_have_independent_transforms() {
-        let template = Material::pbr().base_color([0.5, 0.5, 0.5, 1.0]);
-        let mesh = pbr_triangle_mesh();
+    fn two_models_with_distinct_meshes_keep_independent_transforms() {
+        let template = Material::pbr().expect("pbr").base_color([0.5, 0.5, 0.5, 1.0]);
 
-        let m1 = Model::new(mesh.clone(), template.clone());
+        let m1 = Model::new(pbr_triangle_mesh(), template.clone());
         m1.set_transform([
             [1.0, 0.0, 0.0, 0.0],
             [0.0, 1.0, 0.0, 0.0],
@@ -223,7 +258,7 @@ mod tests {
             [10.0, 0.0, 0.0, 1.0],
         ]);
 
-        let m2 = Model::new(mesh, template);
+        let m2 = Model::new(pbr_triangle_mesh(), template);
         m2.set_transform([
             [1.0, 0.0, 0.0, 0.0],
             [0.0, 1.0, 0.0, 0.0],
@@ -231,18 +266,38 @@ mod tests {
             [-10.0, 0.0, 0.0, 1.0],
         ]);
 
-        let on_m1: [[f32; 4]; 4] = m1.material.shader.get("mesh.model").unwrap();
-        let on_m2: [[f32; 4]; 4] = m2.material.shader.get("mesh.model").unwrap();
-        assert_eq!(on_m1[3][0], 10.0);
-        assert_eq!(on_m2[3][0], -10.0);
+        // Distinct Meshes → distinct instance buffers; transforms don't
+        // collide. Shared Material → shared Shader Arc, single pipeline.
+        assert_eq!(instance_row(&m1.mesh, "model_3"), [10.0, 0.0, 0.0, 1.0]);
+        assert_eq!(instance_row(&m2.mesh, "model_3"), [-10.0, 0.0, 0.0, 1.0]);
+        assert!(std::sync::Arc::ptr_eq(
+            &m1.material.shader.object,
+            &m2.material.shader.object
+        ));
     }
 
     #[test]
     fn pass_add_model_pushes_shader_and_attaches_mesh() {
         let pass = crate::Pass::new("test");
-        let m = Model::new(pbr_triangle_mesh(), Material::pbr());
-        pass.add_model(&m).expect("Pass::add_model succeeds with PBR-compatible mesh");
-        // Compute pass would reject; render pass should adopt the shader.
+        let m = Model::new(pbr_triangle_mesh(), Material::pbr().expect("pbr"));
+        pass.add_model(&m)
+            .expect("Pass::add_model succeeds with PBR-compatible mesh");
         assert!(!pass.is_compute());
+    }
+
+    #[test]
+    fn pass_add_model_dedupes_shared_shader() {
+        let pass = crate::Pass::new("scene");
+        let template = Material::pbr().expect("pbr");
+
+        let a = Model::new(pbr_triangle_mesh(), template.clone());
+        let b = Model::new(pbr_triangle_mesh(), template);
+        pass.add_model(&a).expect("a");
+        pass.add_model(&b).expect("b");
+
+        // Two Models sharing one Material → one shader queued on the pass,
+        // not two. The renderer iterates shaders once, hits the cached
+        // pipeline once, and draws both meshes under it.
+        assert_eq!(pass.object.shaders.read().len(), 1);
     }
 }

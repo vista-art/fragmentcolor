@@ -5,12 +5,15 @@ color, metallic, roughness, emissive, normal scale, occlusion strength,
 alpha cutoff, plus the matching set of optional textures — and exposes
 each as a builder-style setter.
 
-The default `Material::pbr()` constructs the bundle from FragmentColor's
+The default `Material::pbr` constructs the bundle from FragmentColor's
 built-in physically-based shader (Cook-Torrance specular with GGX + Smith +
 Schlick, Lambertian diffuse with energy conservation), pre-populated with
-sensible defaults. You can also call `Material::custom(shader)` to wrap your
-own shader; the same setters apply best-effort, no-op-ing for uniform paths
-the shader doesn't declare.
+sensible defaults. It returns `Result` because the helper snippets it composes
+(`mesh/transform`, `material/pbr`) must be available at build time — they
+ship in the default `shaders-all` feature, so this is only an error path for
+slim opt-out builds. You can also call `Material::custom(shader)` to wrap
+your own shader; the same setters apply best-effort, no-op-ing for uniform
+paths the shader doesn't declare.
 
 Materials are typically combined with a [Mesh](https://fragmentcolor.org/api/geometry/mesh)
 into a [Model](https://fragmentcolor.org/api/scene/model) — that's the
@@ -20,12 +23,15 @@ anything on its own.
 ## What lives where
 
 - **Factor uniforms** (base color, metallic, …) are stored on the shader as
-  `material.<name>` fields and read every frame.
+  `material.<name>` fields and read every frame. They're per-Material, so
+  many Models that share a Material share these values.
 - **Texture bindings** (base color texture, …) are stored under the
   canonical glTF binding names (`base_color_map`, `metallic_roughness_map`,
   `normal_map`, `occlusion_map`, `emissive_map`).
-- **`mesh.model`** is reserved for the per-Model transform — `Model` writes
-  it on its own shader copy, not directly on the source Material.
+- **Per-Model transform** rides the **per-instance vertex attribute** stream
+  at locations 3..6 (four `vec4<f32>` columns of `mat4x4<f32>`), populated by
+  `Model::sync_transform`. It's *not* a Material uniform — that way Models
+  sharing one Material don't collide on a `mesh.model` slot.
 
 ## What's deferred
 
@@ -52,7 +58,7 @@ mesh.add_vertex(
         .set(Vertex::UV0, [0.5, 1.0]),
 );
 
-let material = Material::pbr()
+let material = Material::pbr()?
     .base_color([0.85, 0.2, 0.2, 1.0])
     .metallic(0.0)
     .roughness(0.4)

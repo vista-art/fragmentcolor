@@ -7,4 +7,4 @@ let ao = renderer.createTexture([
     200,   0, 0, 255,
     160,   0, 0, 255,
 try await ])
-let mat = Material.pbr().occlusionTexture(ao)
+let mat = Material.pbr()?.occlusionTexture(ao)

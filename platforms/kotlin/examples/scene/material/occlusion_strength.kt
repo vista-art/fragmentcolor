@@ -1,3 +1,3 @@
 import org.fragmentcolor.*
 
-val crevices = Material.pbr().occlusionStrength(0.8)
+val crevices = Material.pbr()?.occlusionStrength(0.8)

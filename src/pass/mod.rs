@@ -119,13 +119,33 @@ impl Pass {
 
     #[lsp_doc("docs/api/core/pass/add_model.md")]
     pub fn add_model(&self, model: &crate::Model) -> Result<(), PassError> {
-        // Each Model owns its own Shader so its `mesh.model` uniform doesn't
-        // collide with siblings that share the source Material. Push that
-        // shader onto the pass first, then attach the Model's mesh — `add_mesh`
-        // walks shaders in reverse-added order and picks the last compatible
-        // one, which is the shader we just added.
-        self.add_shader(&model.material.shader);
-        self.add_mesh(&model.mesh)
+        // Per-Model transform rides the Mesh's per-instance attribute stream
+        // (Model::sync_transform wrote it on construction / every translate /
+        // rotate / scale / set_transform), so there's no per-Model shader to
+        // duplicate. Many Models that share a Material drop down to one
+        // shader entry + one pipeline lookup + one bind-group setup.
+        let shader_arc = &model.material.shader.object;
+        let shader_present = self
+            .object
+            .shaders
+            .read()
+            .iter()
+            .any(|s| std::sync::Arc::ptr_eq(s, shader_arc));
+        if !shader_present {
+            self.add_shader(&model.material.shader);
+        }
+        // Attach the Model's Mesh to the Material's Shader, idempotent. The
+        // renderer iterates shader.meshes linearly and would otherwise draw a
+        // doubly-attached mesh twice.
+        let mesh_attached = shader_arc
+            .meshes
+            .read()
+            .iter()
+            .any(|m| std::sync::Arc::ptr_eq(m, &model.mesh.object));
+        if !mesh_attached {
+            model.material.shader.add_mesh(&model.mesh)?;
+        }
+        Ok(())
     }
 
     #[lsp_doc("docs/api/core/pass/set_viewport.md")]

@@ -10,8 +10,8 @@ use crate::Shader;
 impl Material {
     #[wasm_bindgen(js_name = "pbr")]
     #[lsp_doc("docs/api/scene/material/pbr.md")]
-    pub fn pbr_js() -> Self {
-        Material::pbr()
+    pub fn pbr_js() -> Result<Material, JsError> {
+        Material::pbr().map_err(|e| JsError::new(&e.to_string()))
     }
 
     #[wasm_bindgen(js_name = "custom")]

@@ -38,7 +38,6 @@ def run_all():
         'core/shader/Shader.py',
         'core/shader/add_mesh.py',
         'core/shader/clear_meshes.py',
-        'core/shader/duplicate.py',
         'core/shader/fetch.py',
         'core/shader/from_mesh.py',
         'core/shader/from_vertex.py',
