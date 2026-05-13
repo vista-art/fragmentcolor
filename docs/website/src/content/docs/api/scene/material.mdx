@@ -53,8 +53,10 @@ no-op-with-debug-log on the default PBR shader. Texture sampling in the
 default shader lands in a follow-up; the binding names are stable so you
 don't need to rewrite consumer code when it ships.
 
-`alpha_mode` and `double_sided` are not in this MVP â they need
-pipeline-state plumbing that's coming next.
+`alpha_mode` (`Opaque` / `Mask` / `Blend`) and `double_sided` are wired through
+to the pipeline. See `Material::alpha_mode` and `Material::double_sided`. Mask
+mode uses `material.alpha_cutoff` to discard transparent fragments; Blend uses
+standard `SrcAlpha/OneMinusSrcAlpha` over-blend with depth-write turned off.
 
 
 
@@ -173,14 +175,13 @@ lang="kotlin"
 
 ### Material::alpha_cutoff
 
-Sets the alpha threshold used when (a future) alpha mode is `MASK` â
-fragments whose alpha falls below this value are discarded. Stored on
-`material.alpha_cutoff`; default `0.5`, matching glTF 2.0.
+Sets the alpha threshold used by `AlphaMode::Mask` â fragments whose
+`base_color.a` falls below this value are `discard`ed in the fragment
+shader. Stored on `material.alpha_cutoff`; default `0.5`, matching glTF 2.0.
 
-Alpha modes themselves are not yet wired through the renderer in this
-release; setting this value today is forward-compatible â once the alpha-mode
-plumbing lands you don't have to rebuild any Materials you've already
-authored.
+Only `AlphaMode::Mask` reads this value; in `Opaque` and `Blend` modes the
+fragment shader ignores it. Use it together with `Material::alpha_mode`
+when you want hard-edged cut-out transparency (foliage, chain-link, decals).
 
 #### Example
 
@@ -244,6 +245,129 @@ code={`
 import org.fragmentcolor.*
 
 val foliage = Material.pbr()?.alphaCutoff(0.3)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Material::alpha_mode
+
+Set how the renderer interprets the alpha channel of the material's output. Mirrors the
+glTF 2.0 `alphaMode` semantics â pipeline state is baked into the WebGPU pipeline, so
+different `AlphaMode` values for the same shader cache to distinct pipelines.
+
+The three variants:
+
+- `AlphaMode::Opaque` (default) â depth-test is on, blending is off. Alpha is written
+  out but ignored by the framebuffer. Pick this for solid surfaces; it's the cheapest
+  option and the only one that lets the depth buffer fully describe the geometry.
+- `AlphaMode::Mask` â depth-test is on, blending is off, but the fragment shader
+  `discard`s any pixel whose `material.base_color.a` falls below `material.alpha_cutoff`.
+  The classic foliage / chain-link / decal trick: keeps the perf profile of opaque
+  geometry (no order dependence, full depth writes) while letting silhouettes punch
+  out hard-edged transparency. Tune the cut-off with `Material::alpha_cutoff`.
+- `AlphaMode::Blend` â depth-test stays on but depth-write turns off, and the color
+  target uses standard `SrcAlpha / OneMinusSrcAlpha` over-blend. Use for glass, smoke,
+  fades, decals that need soft edges. Order-dependent: sort back-to-front yourself
+  before submitting if you care about correctness across overlapping translucent layers.
+
+This is a pipeline-state flag â changing it forces the renderer to rebuild the pipeline
+for the affected `(shader, alpha_mode, double_sided)` key. Switching it every frame is
+fine in practice (the second build hits the cache from then on) but avoid toggling per
+draw call inside a frame.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{AlphaMode, Material};
+
+let foliage = Material::pbr()?
+    .alpha_mode(AlphaMode::Mask)
+    .alpha_cutoff(0.3);
+
+let glass = Material::pbr()?
+    .base_color([0.9, 0.95, 1.0, 0.25])
+    .alpha_mode(AlphaMode::Blend);
+
+let solid = Material::pbr()?.alpha_mode(AlphaMode::Opaque);
+let _ = (foliage, glass, solid);
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 13-15}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { AlphaMode, Material } from "fragmentcolor";
+
+const foliage = Material.pbr()?.alphaMode(AlphaMode.Mask).alphaCutoff(0.3);
+
+const glass = Material.pbr()?.baseColor([0.9, 0.95, 1.0, 0.25]).alphaMode(AlphaMode.Blend);
+
+const solid = Material.pbr()?.alphaMode(AlphaMode.Opaque);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import AlphaMode, Material
+
+foliage = Material.pbr().alpha_mode(AlphaMode.Mask).alpha_cutoff(0.3)
+
+glass = Material.pbr().base_color([0.9, 0.95, 1.0, 0.25]).alpha_mode(AlphaMode.Blend)
+
+solid = Material.pbr().alpha_mode(AlphaMode.Opaque)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let foliage = Material.pbr()?.alphaMode(AlphaMode.mask).alphaCutoff(0.3)
+
+let glass = Material.pbr()?.baseColor([0.9, 0.95, 1.0, 0.25]).alphaMode(AlphaMode.blend)
+
+let solid = Material.pbr()?.alphaMode(AlphaMode.opaque)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val foliage = Material.pbr()?.alphaMode(AlphaMode.Mask).alphaCutoff(0.3)
+
+val glass = Material.pbr()?.baseColor(listOf(0.9f, 0.95f, 1.0f, 0.25f)).alphaMode(AlphaMode.Blend)
+
+val solid = Material.pbr()?.alphaMode(AlphaMode.Opaque)
 `}
 lang="kotlin"
 />
@@ -614,6 +738,119 @@ val wireframe = Shader("""
 """)
 
 val wire_mat = Material.custom(wireframe)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Material::double_sided
+
+Toggle backface culling for this material's pipeline. When `true`, the renderer skips
+its default back-face cull and draws both faces of every triangle. When `false`
+(the default), back faces are culled â the standard CCW-winding-is-front convention.
+
+Mirrors glTF 2.0's `doubleSided`. Reach for it on thin geometry that legitimately reads
+from both sides â a single-quad leaf card, a cloth banner, decals applied to non-closed
+meshes, or any authored asset that comes out of a tool that didn't bother to mirror its
+back faces. For closed solid geometry, leave it off â the culled back faces are a free
+~50% fragment-shader saving on every draw.
+
+Like `alpha_mode`, this is a pipeline-state flag and bakes into the WebGPU pipeline.
+The renderer caches a separate pipeline per `(shader, alpha_mode, double_sided)` key,
+so toggling it doesn't fight the shader cache as long as you stay on a small set of
+values.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{AlphaMode, Material};
+
+// Leaf cards: thin, single-quad geometry; needs both sides + alpha cut-out.
+let leaf = Material::pbr()?
+    .double_sided(true)
+    .alpha_mode(AlphaMode::Mask)
+    .alpha_cutoff(0.5);
+
+// Default is single-sided â back-face culling on.
+let solid_mesh = Material::pbr()?.double_sided(false);
+let _ = (leaf, solid_mesh);
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 12-14}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { AlphaMode, Material } from "fragmentcolor";
+
+// Leaf cards: thin, single-quad geometry; needs both sides + alpha cut-out.
+const leaf = Material.pbr()?.doubleSided(true).alphaMode(AlphaMode.Mask).alphaCutoff(0.5);
+
+// Default is single-sided â back-face culling on.
+const solid_mesh = Material.pbr()?.doubleSided(false);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import AlphaMode, Material
+
+# Leaf cards: thin, single-quad geometry; needs both sides + alpha cut-out.
+leaf = Material.pbr().double_sided(true).alpha_mode(AlphaMode.Mask).alpha_cutoff(0.5)
+
+# Default is single-sided â back-face culling on.
+solid_mesh = Material.pbr().double_sided(false)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+// Leaf cards: thin, single-quad geometry; needs both sides + alpha cut-out.
+let leaf = Material.pbr()?.doubleSided(true).alphaMode(AlphaMode.mask).alphaCutoff(0.5)
+
+// Default is single-sided â back-face culling on.
+let solid_mesh = Material.pbr()?.doubleSided(false)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+// Leaf cards: thin, single-quad geometry; needs both sides + alpha cut-out.
+val leaf = Material.pbr()?.doubleSided(true).alphaMode(AlphaMode.Mask).alphaCutoff(0.5)
+
+// Default is single-sided â back-face culling on.
+val solid_mesh = Material.pbr()?.doubleSided(false)
 `}
 lang="kotlin"
 />

@@ -832,6 +832,15 @@ private enum _GeneratedExamples {
         let foliage = Material.pbr()?.alphaCutoff(0.3)
     }
 
+    static func _example_scene_material_alpha_mode() async throws {
+
+        let foliage = Material.pbr()?.alphaMode(AlphaMode.mask).alphaCutoff(0.3)
+
+        let glass = Material.pbr()?.baseColor([0.9, 0.95, 1.0, 0.25]).alphaMode(AlphaMode.blend)
+
+        let solid = Material.pbr()?.alphaMode(AlphaMode.opaque)
+    }
+
     static func _example_scene_material_base_color() async throws {
 
         let red = Material.pbr()?.baseColor([1.0, 0.2, 0.2, 1.0])
@@ -868,6 +877,15 @@ private enum _GeneratedExamples {
         """)
 
         let wire_mat = Material.custom(wireframe)
+    }
+
+    static func _example_scene_material_double_sided() async throws {
+
+        // Leaf cards: thin, single-quad geometry; needs both sides + alpha cut-out.
+        let leaf = Material.pbr()?.doubleSided(true).alphaMode(AlphaMode.mask).alphaCutoff(0.5)
+
+        // Default is single-sided — back-face culling on.
+        let solid_mesh = Material.pbr()?.doubleSided(false)
     }
 
     static func _example_scene_material_emissive() async throws {

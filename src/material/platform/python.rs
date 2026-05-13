@@ -3,7 +3,7 @@
 use lsp_doc::lsp_doc;
 use pyo3::prelude::*;
 
-use crate::material::{Material, set_or_warn, set_texture_or_warn};
+use crate::material::{AlphaMode, Material, set_or_warn, set_texture_or_warn};
 use crate::Shader;
 
 #[pymethods]
@@ -72,6 +72,21 @@ impl Material {
     #[lsp_doc("docs/api/scene/material/alpha_cutoff.md")]
     pub fn alpha_cutoff_py(&self, value: f32) {
         set_or_warn(&self.shader, "material.alpha_cutoff", value);
+    }
+
+    #[pyo3(name = "alpha_mode")]
+    #[lsp_doc("docs/api/scene/material/alpha_mode.md")]
+    pub fn alpha_mode_py(&self, mode: AlphaMode) {
+        *self.alpha_mode.write() = mode;
+        self.shader.object.set_alpha_mode(mode);
+        set_or_warn(&self.shader, "material.alpha_mode_flag", mode.flag());
+    }
+
+    #[pyo3(name = "double_sided")]
+    #[lsp_doc("docs/api/scene/material/double_sided.md")]
+    pub fn double_sided_py(&self, value: bool) {
+        *self.double_sided.write() = value;
+        self.shader.object.set_double_sided(value);
     }
 
     #[pyo3(name = "base_color_texture")]

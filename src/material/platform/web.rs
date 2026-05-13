@@ -3,7 +3,7 @@
 use lsp_doc::lsp_doc;
 use wasm_bindgen::prelude::*;
 
-use crate::material::{Material, set_or_warn, set_texture_or_warn};
+use crate::material::{AlphaMode, Material, set_or_warn, set_texture_or_warn};
 use crate::Shader;
 
 #[wasm_bindgen]
@@ -70,6 +70,21 @@ impl Material {
     #[lsp_doc("docs/api/scene/material/alpha_cutoff.md")]
     pub fn alpha_cutoff_js(&self, value: f32) {
         set_or_warn(&self.shader, "material.alpha_cutoff", value);
+    }
+
+    #[wasm_bindgen(js_name = "alphaMode")]
+    #[lsp_doc("docs/api/scene/material/alpha_mode.md")]
+    pub fn alpha_mode_js(&self, mode: AlphaMode) {
+        *self.alpha_mode.write() = mode;
+        self.shader.object.set_alpha_mode(mode);
+        set_or_warn(&self.shader, "material.alpha_mode_flag", mode.flag());
+    }
+
+    #[wasm_bindgen(js_name = "doubleSided")]
+    #[lsp_doc("docs/api/scene/material/double_sided.md")]
+    pub fn double_sided_js(&self, value: bool) {
+        *self.double_sided.write() = value;
+        self.shader.object.set_double_sided(value);
     }
 
     #[wasm_bindgen(js_name = "baseColorTexture")]

@@ -33,10 +33,71 @@ Closes the v0.11.2 wishlist item "per-mesh transform" without polluting Mesh wit
 - [x] **Cross-language bindings** for `Material`, `Model`, and `Pass::add_model` on Python / wasm-bindgen / uniffi (Swift, Kotlin). Builder-style chaining is Rust-only; in other languages setters mutate in place (Material is Arc-shared internally, so multi-statement setup gives the same shape without forcing a deep clone on every call).
 - [x] **Docs:** new `docs/api/scene/{material,model}/` group (16 + 9 method pages, both `_index.md` group orderings), plus `docs/api/core/pass/add_model.md`.
 - [x] **Example:** `examples/rust/examples/model_pbr_triangle.rs` — single PBR-shaded triangle rendered through Model + Material + Pass::add_model, including camera and light overrides on the underlying Shader.
-- [x] **Tests:** unit tests covering Material defaults, builder setters, shallow-clone share semantics, custom-shader silent no-op, Model transform composition (identity, pre-mult translate, post-mult rotate/scale, zero-axis rejection), live-reference share across `Model::clone`, Pass-entry dedupe for shared shaders, and the live-transform pickup between `add_model` and render. 213 lib tests, 116 doctests, all passing.
-- [ ] **RemixBrush migration commit (separate repo)** — adopt `Model::new(blob.mesh, Material::pbr(&renderer)?.base_color(blob_color))` for the impasto-blob pipeline; replace the hand-rolled per-blob uniform plumbing. No FC-side change needed.
-- [ ] **`Scene` object.** Collection of Models with traversal / sort / light management. Currently `src/scene/` houses `Model` (plus `Camera` and `Light` from a parallel commit); the module name reserves the spot for the collection type.
+- [x] **Tests:** unit tests covering Material defaults, builder setters, shallow-clone share semantics, custom-shader silent no-op, Model transform composition (identity, pre-mult translate, post-mult rotate/scale, zero-axis rejection), live-reference share across `Model::clone`, Pass-entry dedupe for shared shaders, and the live-transform pickup between `add_model` and render. 213 lib tests, 116 doctests, all passing at this stage; the integrated v0.11.2 totals (after the parallel commits below) land higher.
+- [ ] **RemixBrush migration commit (separate repo)** — adopt `Model::new(blob.mesh, Material::pbr()?.base_color(blob_color).alpha_mode(...).base_color_texture(&map))` for the impasto-blob pipeline; replace the hand-rolled per-blob uniform plumbing. No FC-side change needed.
+- [ ] **`Scene` object.** Collection of Models with traversal / sort / light management. Currently `src/scene/` houses `Model`, `Camera`, and `Light`; the module name reserves the spot for the collection type.
 - [ ] **glTF loader.** Coming in a separate commit this cycle. The Material field set, indexed Mesh, AlphaMode/double-sided state, and PBR texture sampling are all in place ahead of the loader.
+
+### Material alpha mode + double-sided
+
+Wires the glTF 2.0 `alphaMode` and `doubleSided` flags through Material into the
+renderer's pipeline state, closing the deferred item from the Material MVP. Pipeline
+state is baked into the wgpu pipeline at build time, so different settings against
+the same shader cache to distinct pipelines.
+
+- [x] **New `AlphaMode` enum** at `src/material/alpha_mode.rs`: `Opaque` (default;
+  depth-test on, blending off), `Mask` (fragment `discard`ed when
+  `material.base_color.a < material.alpha_cutoff`), `Blend` (depth-test on,
+  depth-write off, standard `SrcAlpha / OneMinusSrcAlpha` over-blend). Bound on
+  every binding: `wasm_bindgen`-derived for JS, `pyclass(eq, eq_int)` for Python,
+  `uniffi::Enum` for Swift / Kotlin.
+- [x] **`Material::alpha_mode(self, mode: AlphaMode) -> Self`** and
+  **`Material::double_sided(self, value: bool) -> Self`** builder setters on
+  `src/material/mod.rs`. Cross-language shims (`alpha_mode` / `double_sided` in
+  Python, `alphaMode` / `doubleSided` in JS / Swift / Kotlin) mutate in place
+  through `&self` since uniffi / pyo3 / wasm-bindgen can't take `self` by value.
+  Material stores both as `Arc<RwLock<…>>` so shallow `Clone` continues to share
+  state across handles, matching the existing semantics.
+- [x] **`ShaderObject` back-references** (`alpha_mode: RwLock<AlphaMode>` +
+  `double_sided: RwLock<bool>`) carry the values from Material down to the
+  renderer, which iterates `pass.shaders` at draw time and doesn't otherwise know
+  which Material a shader belongs to. Material's setters write through to the
+  shader's back-reference so the renderer reads consistent state every frame.
+- [x] **`RenderPipelineKey` extended** with `alpha_mode` + `double_sided`. The
+  renderer caches a separate pipeline per `(shader_hash, color_format,
+  depth_format, sample_count, alpha_mode, double_sided)` tuple. `create_render_pipeline`
+  picks `cull_mode: if double_sided { None } else { Some(wgpu::Face::Back) }`;
+  the color target's `blend` field switches on `AlphaMode` (`Opaque` / `Mask` → no
+  blending, `Blend` → `wgpu::BlendState::ALPHA_BLENDING`); `depth_stencil`'s
+  `depth_write_enabled` flips off for `Blend`.
+- [x] **`pbr_main.wgsl`** gained `alpha_mode_flag: u32` on the `PbrMaterial` uniform
+  and a `material.alpha_mode_flag == 1u && material.base_color.a < material.alpha_cutoff`
+  → `discard` branch at the top of `fs_main`. `Opaque` and `Blend` ignore the flag —
+  their semantics live in pipeline state, not fragment-shader logic.
+- [x] **Tests:** five new ones in `src/material/mod.rs::tests` —
+  `alpha_mode_setter_updates_shader_back_reference`,
+  `double_sided_setter_updates_shader_back_reference` (state propagation),
+  `mask_mode_discards_transparent_fragments`,
+  `opaque_mode_keeps_below_cutoff_fragments` (Mask discard end-to-end through
+  the renderer with an offscreen `TextureTarget` readback), and
+  `double_sided_true_renders_back_facing_triangle` (back-face cull flip).
+  218 lib tests + 118 doctests passing.
+- [x] **Behaviour notes for raw `Shader` callers.**
+  - The renderer's previous default of `wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING`
+    on every pipeline is gone — blend is now driven entirely by Material's
+    `alpha_mode`. Shaders that hit the renderer without a Material in the
+    middle render with blending **off** (the new `AlphaMode::Opaque` default).
+    Callers relying on the old behaviour migrate by wrapping the shader in
+    `Material::custom(shader).alpha_mode(AlphaMode::Blend)`.
+  - To keep no-Material rendering working for back-facing geometry, the
+    `ShaderObject` default for `double_sided` is `true` (which sets
+    `cull_mode: None`). `Material::pbr` and `Material::custom` both flip it
+    to `false` on the back-reference so the Material path follows glTF 2.0's
+    single-sided default.
+- [x] **Docs:** `docs/api/scene/material/alpha_mode.md` and
+  `docs/api/scene/material/double_sided.md` lead with what the flag does, when
+  to reach for each variant, and the glTF 2.0 mapping. `docs/api/scene/material/material.md`
+  and `alpha_cutoff.md` updated to drop the "not yet wired" caveat.
 
 ### `R16Unorm` and the 16-bit norm family
 

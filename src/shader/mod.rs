@@ -167,6 +167,13 @@ impl Shader {
 ///
 /// The ShaderObject is wrapped in an Arc and managed by the Shader struct.
 /// This allows it to be shared between multiple passes and render pipelines.
+///
+/// `alpha_mode` and `double_sided` are pipeline-state back-references owned
+/// by Material (see `src/material/`). The renderer reads them when building
+/// a `RenderPipelineKey` so different Material configurations cache to
+/// distinct pipelines. They live here rather than on Material because the
+/// renderer iterates `pass.shaders` (Arc<ShaderObject>) at draw time and
+/// doesn't otherwise know which Material a shader belongs to.
 #[derive(Debug)]
 pub(crate) struct ShaderObject {
     pub(crate) hash: ShaderHash,
@@ -175,6 +182,8 @@ pub(crate) struct ShaderObject {
     pub(crate) total_bytes: u64,
     pub(crate) pending: DashMap<String, UniformData>,
     pub(crate) meshes: RwLock<Vec<Arc<crate::mesh::MeshObject>>>,
+    pub(crate) alpha_mode: RwLock<crate::material::AlphaMode>,
+    pub(crate) double_sided: RwLock<bool>,
 }
 
 impl Default for ShaderObject {
@@ -278,6 +287,20 @@ impl ShaderObject {
         self.meshes.write().clear();
     }
 
+    /// Set the pipeline-state alpha mode for this shader. Called by
+    /// `Material::alpha_mode`; the renderer reads it when building a
+    /// `RenderPipelineKey`. See [`crate::material::AlphaMode`].
+    pub(crate) fn set_alpha_mode(&self, mode: crate::material::AlphaMode) {
+        *self.alpha_mode.write() = mode;
+    }
+
+    /// Set the pipeline-state double-sided flag for this shader. Called by
+    /// `Material::double_sided`; the renderer reads it to flip the
+    /// `cull_mode` and key it into the pipeline cache.
+    pub(crate) fn set_double_sided(&self, value: bool) {
+        *self.double_sided.write() = value;
+    }
+
     /// Get a uniform value as UniformData enum.
     ///
     /// Blocking read: waits briefly (microseconds) for any in-flight `set`
@@ -328,6 +351,14 @@ impl ShaderObject {
             total_bytes,
             pending: DashMap::new(),
             meshes: RwLock::new(Vec::new()),
+            alpha_mode: RwLock::new(crate::material::AlphaMode::default()),
+            // Default `double_sided=true` for shaders used directly: this
+            // preserves the pre-Material renderer behaviour (no back-face
+            // cull) for callers who build a Shader without going through
+            // Material. `Material::pbr()` flips it back to `false` so that
+            // path follows the glTF 2.0 default (single-sided = back-face
+            // cull on).
+            double_sided: RwLock::new(true),
         })
     }
 

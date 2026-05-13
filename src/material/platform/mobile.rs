@@ -3,7 +3,7 @@
 use lsp_doc::lsp_doc;
 use std::sync::Arc;
 
-use crate::material::{Material, set_or_warn, set_texture_or_warn};
+use crate::material::{AlphaMode, Material, set_or_warn, set_texture_or_warn};
 use crate::renderer::platform::mobile::FragmentColorError;
 use crate::texture::Texture;
 use crate::Shader;
@@ -77,6 +77,21 @@ impl Material {
     #[lsp_doc("docs/api/scene/material/alpha_cutoff.md")]
     pub fn alpha_cutoff_mobile(self: Arc<Self>, value: f32) {
         set_or_warn(&self.shader, "material.alpha_cutoff", value);
+    }
+
+    #[uniffi::method(name = "alphaMode")]
+    #[lsp_doc("docs/api/scene/material/alpha_mode.md")]
+    pub fn alpha_mode_mobile(self: Arc<Self>, mode: AlphaMode) {
+        *self.alpha_mode.write() = mode;
+        self.shader.object.set_alpha_mode(mode);
+        set_or_warn(&self.shader, "material.alpha_mode_flag", mode.flag());
+    }
+
+    #[uniffi::method(name = "doubleSided")]
+    #[lsp_doc("docs/api/scene/material/double_sided.md")]
+    pub fn double_sided_mobile(self: Arc<Self>, value: bool) {
+        *self.double_sided.write() = value;
+        self.shader.object.set_double_sided(value);
     }
 
     #[uniffi::method(name = "baseColorTexture")]

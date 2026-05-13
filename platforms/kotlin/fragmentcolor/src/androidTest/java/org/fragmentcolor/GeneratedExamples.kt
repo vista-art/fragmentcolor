@@ -801,6 +801,15 @@ class GeneratedExamples {
         val foliage = Material.pbr()?.alphaCutoff(0.3)
     }
 
+    @Suppress("unused") private suspend fun _example_scene_material_alpha_mode() {
+
+        val foliage = Material.pbr()?.alphaMode(AlphaMode.Mask).alphaCutoff(0.3)
+
+        val glass = Material.pbr()?.baseColor(listOf(0.9f, 0.95f, 1.0f, 0.25f)).alphaMode(AlphaMode.Blend)
+
+        val solid = Material.pbr()?.alphaMode(AlphaMode.Opaque)
+    }
+
     @Suppress("unused") private suspend fun _example_scene_material_base_color() {
 
         val red = Material.pbr()?.baseColor(listOf(1.0f, 0.2f, 0.2f, 1.0f))
@@ -832,6 +841,15 @@ class GeneratedExamples {
         """)
 
         val wire_mat = Material.custom(wireframe)
+    }
+
+    @Suppress("unused") private suspend fun _example_scene_material_double_sided() {
+
+        // Leaf cards: thin, single-quad geometry; needs both sides + alpha cut-out.
+        val leaf = Material.pbr()?.doubleSided(true).alphaMode(AlphaMode.Mask).alphaCutoff(0.5)
+
+        // Default is single-sided — back-face culling on.
+        val solid_mesh = Material.pbr()?.doubleSided(false)
     }
 
     @Suppress("unused") private suspend fun _example_scene_material_emissive() {

@@ -451,6 +451,14 @@ struct RenderPipelineKey {
     color_format: wgpu::TextureFormat,
     depth_format: Option<wgpu::TextureFormat>,
     sample_count: u32,
+    /// `Material::alpha_mode` bakes into the pipeline: `Opaque`/`Mask`
+    /// turn blending off, `Blend` flips on standard alpha-over and disables
+    /// depth-write. Different modes against the same shader hash therefore
+    /// need different pipelines.
+    alpha_mode: crate::material::AlphaMode,
+    /// `Material::double_sided` flips the `cull_mode` on the primitive
+    /// state, so it also baked into the pipeline.
+    double_sided: bool,
 }
 
 // Key for caching compute pipelines
@@ -829,11 +837,18 @@ impl RenderContext {
                 None
             };
 
+            // Snapshot the Material-owned pipeline-state flags from the
+            // shader's back-references. Drop the read locks immediately so
+            // we don't hold them across the pipeline build.
+            let alpha_mode = *shader.alpha_mode.read();
+            let double_sided = *shader.double_sided.read();
             let pipeline_key = RenderPipelineKey {
                 shader_hash: shader.hash,
                 color_format,
                 depth_format,
                 sample_count,
+                alpha_mode,
+                double_sided,
             };
             let cached_pipeline = self
                 .render_pipelines
@@ -846,6 +861,8 @@ impl RenderContext {
                         sample_count,
                         layouts,
                         depth_format,
+                        alpha_mode,
+                        double_sided,
                     )
                 });
 
@@ -1925,6 +1942,8 @@ fn create_render_pipeline(
     sample_count: u32,
     vertex_layouts: Option<VertexLayouts>,
     depth_format: Option<wgpu::TextureFormat>,
+    alpha_mode: crate::material::AlphaMode,
+    double_sided: bool,
 ) -> RenderPipeline {
     let mut layouts = bind_group_layouts(device, shader);
 
@@ -2122,87 +2141,50 @@ fn create_render_pipeline(
             entry_point: Some(fs_entry.as_deref().unwrap_or("fs_main")),
             targets: &[Some(wgpu::ColorTargetState {
                 format,
-                blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
-                // @TODO implement more granular control over blending
-                //
-                // Linear Interpolation Formula: Fa*Fc + (1-Fa)*Bc
-                //
-                // In wgpu:
-                // FACTOR * Src (OPERATION) FACTOR * Dst
-                //
-                // Where:
-                // Src is the Foreground (image on top)
-                // Dst is the Background (image on bottom)
-                //
-                // FACTOR can be:
-                //   /// 0.0
-                //   Zero = 0,
-                //   /// 1.0
-                //   One = 1,
-                //   /// S.color
-                //   Src = 2,
-                //   /// 1.0 - S.color
-                //   OneMinusSrc = 3,
-                //   /// S.alpha
-                //   SrcAlpha = 4,
-                //   /// 1.0 - S.alpha
-                //   OneMinusSrcAlpha = 5,
-                //   /// D.color
-                //   Dst = 6,
-                //   /// 1.0 - D.color
-                //   OneMinusDst = 7,
-                //   /// D.alpha
-                //   DstAlpha = 8,
-                //   /// 1.0 - D.alpha
-                //   OneMinusDstAlpha = 9,
-                //   /// min(S.alpha, 1.0 - D.alpha)
-                //   SrcAlphaSaturated = 10,
-                //   /// Constant
-                //   Constant = 11,
-                //   /// 1.0 - Constant
-                //   OneMinusConstant = 12,
-                //   /// S1.color
-                //   Src1 = 13,
-                //   /// 1.0 - S1.color
-                //   OneMinusSrc1 = 14,
-                //   /// S1.alpha
-                //   Src1Alpha = 15,
-                //   /// 1.0 - S1.alpha
-                //   OneMinusSrc1Alpha = 16,
-                //
-                // OPERATION Can be:
-                //   /// Src + Dst
-                //   #[default]
-                //   Add = 0,
-                //   /// Src - Dst
-                //   Subtract = 1,
-                //   /// Dst - Src
-                //   ReverseSubtract = 2,
-                //   /// min(Src, Dst)
-                //   Min = 3,
-                //   /// max(Src, Dst)
-                //   Max = 4,
-                //
-                // blend: Some(wgpu::BlendState {
-                //     color: wgpu::BlendComponent {
-                //         src_factor: wgpu::BlendFactor::One,
-                //         dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
-                //         operation: wgpu::BlendOperation::Add,
-                //     },
-                //     alpha: wgpu::BlendComponent {
-                //         src_factor: wgpu::BlendFactor::One,
-                //         dst_factor: wgpu::BlendFactor::Zero,
-                //         operation: wgpu::BlendOperation::Add,
-                //     },
-                // }),
+                // Blend state baked from Material::alpha_mode:
+                //   Opaque / Mask -> no blending (alpha bits go to the FB
+                //                    but the equation ignores them; Mask
+                //                    does its work via `discard` in the
+                //                    fragment shader).
+                //   Blend         -> standard SrcAlpha/OneMinusSrcAlpha
+                //                    over-blend.
+                blend: match alpha_mode {
+                    crate::material::AlphaMode::Opaque
+                    | crate::material::AlphaMode::Mask => None,
+                    crate::material::AlphaMode::Blend => {
+                        Some(wgpu::BlendState::ALPHA_BLENDING)
+                    }
+                },
+                // Custom (non-glTF-MR) blend equations are tracked under
+                // the roadmap's "Custom blending" item — Material's
+                // AlphaMode covers the three glTF 2.0 modes; anything more
+                // exotic will ride on a separate per-Material slot.
                 write_mask: wgpu::ColorWrites::ALL,
             })],
             compilation_options: wgpu::PipelineCompilationOptions::default(),
         }),
-        primitive: wgpu::PrimitiveState::default(),
+        primitive: wgpu::PrimitiveState {
+            // `double_sided=true` (the ShaderObject default) leaves
+            // `cull_mode: None`, matching the renderer's pre-Material
+            // behaviour. `Material::pbr` (and `Material::custom`) flip
+            // it to `false`, which engages standard back-face culling —
+            // the glTF 2.0 default for single-sided materials.
+            cull_mode: if double_sided {
+                None
+            } else {
+                Some(wgpu::Face::Back)
+            },
+            ..wgpu::PrimitiveState::default()
+        },
         depth_stencil: depth_format.map(|format| wgpu::DepthStencilState {
             format,
-            depth_write_enabled: Some(true),
+            // Blend disables depth-write so translucent fragments don't
+            // occlude later geometry in the same pass. Opaque / Mask keep
+            // depth-write on.
+            depth_write_enabled: Some(matches!(
+                alpha_mode,
+                crate::material::AlphaMode::Opaque | crate::material::AlphaMode::Mask
+            )),
             depth_compare: Some(wgpu::CompareFunction::LessEqual),
             stencil: wgpu::StencilState::default(),
             bias: wgpu::DepthBiasState::default(),

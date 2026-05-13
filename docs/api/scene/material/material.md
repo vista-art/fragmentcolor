@@ -42,8 +42,10 @@ no-op-with-debug-log on the default PBR shader. Texture sampling in the
 default shader lands in a follow-up; the binding names are stable so you
 don't need to rewrite consumer code when it ships.
 
-`alpha_mode` and `double_sided` are not in this MVP — they need
-pipeline-state plumbing that's coming next.
+`alpha_mode` (`Opaque` / `Mask` / `Blend`) and `double_sided` are wired through
+to the pipeline. See `Material::alpha_mode` and `Material::double_sided`. Mask
+mode uses `material.alpha_cutoff` to discard transparent fragments; Blend uses
+standard `SrcAlpha/OneMinusSrcAlpha` over-blend with depth-write turned off.
 
 ## Example
 

@@ -30,6 +30,11 @@ struct PbrMaterial {
   normal_scale: f32,
   occlusion_strength: f32,
   alpha_cutoff: f32,
+  // glTF 2.0 `alphaMode` projected to a numeric flag: 0=Opaque, 1=Mask,
+  // 2=Blend. Only `Mask` gates a `discard` in fs_main; `Opaque` and
+  // `Blend` ignore the flag — their behaviour is pipeline-state
+  // (depth-write, blend equation) rather than fragment-shader logic.
+  alpha_mode_flag: u32,
 }
 
 struct DirectionalLight {
@@ -70,6 +75,13 @@ fn vs_main(
 
 @fragment
 fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
+  // Mask alpha mode: discard fragments below the cut-off before doing any
+  // lighting work. Cheap; runs before the BRDF. Opaque and Blend ignore
+  // this branch — their semantics live in pipeline state (depth-write +
+  // blend equation), not fragment-shader logic.
+  if (material.alpha_mode_flag == 1u && material.base_color.a < material.alpha_cutoff) {
+    discard;
+  }
   let albedo = material.base_color.rgb;
   let v = normalize(camera.position - in.world);
   let l = normalize(-light.direction);
