@@ -480,6 +480,65 @@ impl Renderer {
     }
 }
 
+/// One translucent draw to issue inside the blend phase of a pass. The
+/// renderer builds these from `Pass::model_entries` whose Material declares
+/// `alpha_mode: Blend`, sorts them back-to-front by `eye_z`, then walks the
+/// sorted list reusing each shader's already-built pipeline + bind groups
+/// with a fresh single-instance vertex buffer per draw. Per-entry buffers
+/// kill the instance-batching for blend draws (which is unavoidable when
+/// over-blending needs strict depth ordering) but every other allocation
+/// stays cached across draws.
+#[derive(Debug)]
+struct BlendDraw {
+    /// Pointer identity of the shader Arc. Same key the opaque batching
+    /// uses, looked up by the blend-phase loop to find the cached
+    /// pipeline + bind groups (filed under this key in `process_render_pass`).
+    shader_ptr: usize,
+    /// Pointer identity of the mesh Arc. Pairs with `shader_ptr` for the
+    /// vertex-buffer lookup.
+    #[allow(dead_code)]
+    mesh_ptr: usize,
+    /// Strong handle to the shader, kept here so `shader_ptr` stays valid
+    /// throughout the render pass — the ModelEntry's Arc release at end
+    /// of `build_pass_draws` would otherwise leave the raw pointer
+    /// dangling against a freed allocation.
+    #[allow(dead_code)]
+    shader: Arc<crate::shader::ShaderObject>,
+    /// Strong handle to the mesh so we can fetch its vertex + index buffers
+    /// when the draw runs.
+    mesh: Arc<crate::mesh::MeshObject>,
+    /// World matrix snapshot taken at queue-build time. Same value used to
+    /// compute `eye_z` — keeping them in sync per draw is what makes the
+    /// "live transform" semantics work correctly across the blend phase.
+    transform: glam::Mat4,
+    /// Eye-space Z of the model origin: `(view * transform * vec4(0,0,0,1)).z`.
+    /// Sort comparator field — smaller is farther from the camera (the
+    /// camera looks down -Z in right-handed view space), so we sort
+    /// ascending and draw farthest-first.
+    eye_z: f32,
+    /// Single-instance vertex buffer holding this entry's `transform` as
+    /// four `vec4<f32>` columns. Populated lazily in `build_pass_draws`
+    /// after the sort lands so the buffers don't churn during the sort
+    /// compare callback.
+    instance_buffer: Option<wgpu::Buffer>,
+}
+
+/// Output of `Renderer::build_pass_draws`. Splits the pass's Model entries
+/// into the two draw-time categories the renderer cares about: batched
+/// opaque/mask draws (one instanced GPU call per `(shader, mesh)` pair)
+/// and individually-ordered blend draws.
+#[derive(Default, Debug)]
+struct PassDraws {
+    /// Per-(shader_ptr, mesh_ptr) instance buffer + instance count. Keys
+    /// match the `Pass::add_model` dedupe identity. Bound at vertex slot 1
+    /// for the corresponding shader+mesh draw.
+    opaque_overrides: HashMap<(usize, usize), (wgpu::Buffer, u32)>,
+    /// Translucent draws, **sorted back-to-front** by eye-space Z. The
+    /// renderer walks this list inside the blend phase, looking each
+    /// shader's pipeline + bind groups up by `shader_ptr`.
+    blend_draws: Vec<BlendDraw>,
+}
+
 /// Key for caching render pipelines
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct RenderPipelineKey {
@@ -784,37 +843,87 @@ impl RenderContext {
         }
     }
 
-    /// Build a per-(Shader, Mesh) override map from a Pass's queued Model
-    /// entries. Each entry contributes a row of 4 `vec4<f32>` columns (a
-    /// `mat4x4<f32>`) snapshotted from the live transform at this moment;
-    /// rows for the same (Shader, Mesh) pair pack into a single GPU buffer
-    /// the renderer binds at vertex_buffer(1) below. The map's key is a pair
-    /// of `Arc::as_ptr(...) as usize` — pointer identity, the same equality
-    /// `Pass::add_model` uses to dedupe attachments.
-    fn build_model_instance_overrides(
-        &self,
-        pass: &PassObject,
-    ) -> HashMap<(usize, usize), (wgpu::Buffer, u32)> {
+    /// Per-Model draw buffers gathered from a Pass, split by alpha mode.
+    ///
+    /// Opaque/Mask entries collapse to one batched instance buffer per
+    /// `(shader_ptr, mesh_ptr)` pair — the auto-instancing path. The
+    /// renderer binds the buffer at vertex_buffer(1) and issues a single
+    /// `draw_indexed(.., 0..count)`, which is the cheapest path for
+    /// crowds of shared-material geometry.
+    ///
+    /// Blend entries are *not* batched: each blend draw needs to be
+    /// submitted back-to-front by eye-space depth for correct
+    /// over-blending, so we carry per-entry singleton buffers plus a
+    /// snapshot of the camera-space Z each entry's transform lands at.
+    /// The renderer sorts these by `eye_z` (descending = far→near)
+    /// inside the blend phase. If the pass has no camera attached (no
+    /// `pass.add(&camera)` call), `eye_z` defaults to 0.0 and the
+    /// resulting order is insertion-order — correct for a single
+    /// translucent object, best-effort for multiple.
+    fn build_pass_draws(&self, pass: &PassObject) -> PassDraws {
         let entries = pass.model_entries.read();
+        let mut out = PassDraws::default();
         if entries.is_empty() {
-            return HashMap::new();
+            return out;
         }
-        let mut groups: HashMap<(usize, usize), Vec<u8>> = HashMap::new();
+
+        // Compute eye-Z via the cached view matrix; `None` means no Camera
+        // was attached to the pass, in which case we leave `eye_z` at 0
+        // and the sort is a no-op (stable, insertion order preserved).
+        let view_mat: Option<glam::Mat4> = pass
+            .camera_snapshot
+            .read()
+            .as_ref()
+            .map(|snap| glam::Mat4::from_cols_array_2d(&snap.view));
+
+        let mut opaque_groups: HashMap<(usize, usize), Vec<u8>> = HashMap::new();
         for entry in entries.iter() {
+            let alpha_mode = *entry.shader.alpha_mode.read();
             let key = (
                 Arc::as_ptr(&entry.shader) as usize,
                 Arc::as_ptr(&entry.mesh) as usize,
             );
-            let m = entry.transform.read().to_cols_array_2d();
-            let slot = groups.entry(key).or_default();
-            for col in m.iter() {
-                for v in col.iter() {
-                    slot.extend_from_slice(&v.to_le_bytes());
+            let transform = *entry.transform.read();
+            match alpha_mode {
+                crate::material::AlphaMode::Opaque | crate::material::AlphaMode::Mask => {
+                    let m = transform.to_cols_array_2d();
+                    let slot = opaque_groups.entry(key).or_default();
+                    for col in m.iter() {
+                        for v in col.iter() {
+                            slot.extend_from_slice(&v.to_le_bytes());
+                        }
+                    }
+                }
+                crate::material::AlphaMode::Blend => {
+                    // Eye-space Z of the model's origin (its world position is
+                    // `transform * (0, 0, 0, 1)` → the fourth column). Multiplied
+                    // by the view matrix to land in camera space; the `.z`
+                    // component is the depth we sort against.
+                    //
+                    // Why model origin and not bounding-box centroid? Centroid
+                    // would be more accurate for elongated meshes but requires
+                    // mesh AABB plumbing we don't have yet. Origin works
+                    // for the common case (mesh centered around its local
+                    // origin); if it ever falls short the fix is to plumb
+                    // per-Mesh world-space AABB through `MeshObject`.
+                    let origin_world = transform * glam::Vec4::new(0.0, 0.0, 0.0, 1.0);
+                    let eye_z = view_mat
+                        .map(|v| (v * origin_world).z)
+                        .unwrap_or(0.0);
+                    out.blend_draws.push(BlendDraw {
+                        shader_ptr: key.0,
+                        mesh_ptr: key.1,
+                        shader: entry.shader.clone(),
+                        mesh: entry.mesh.clone(),
+                        transform,
+                        eye_z,
+                        instance_buffer: None,
+                    });
                 }
             }
         }
-        let mut overrides = HashMap::with_capacity(groups.len());
-        for (key, bytes) in groups {
+
+        for (key, bytes) in opaque_groups {
             let count = (bytes.len() / 64) as u32;
             let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("Pass model instance buffer"),
@@ -823,9 +932,38 @@ impl RenderContext {
                 mapped_at_creation: false,
             });
             self.queue.write_buffer(&buffer, 0, &bytes);
-            overrides.insert(key, (buffer, count));
+            out.opaque_overrides.insert(key, (buffer, count));
         }
-        overrides
+
+        // Back-to-front: highest `eye_z` is closest to the eye in
+        // right-handed view space (the camera looks down its -Z axis, so
+        // farther geometry has a *more negative* Z and a *smaller* `eye_z`
+        // value). We want to draw the smallest values first.
+        out.blend_draws
+            .sort_by(|a, b| a.eye_z.partial_cmp(&b.eye_z).unwrap_or(std::cmp::Ordering::Equal));
+
+        // Materialize one tiny instance buffer per blend draw — 64 bytes
+        // each. Cheap to allocate, cheaper to recycle into a buffer pool
+        // later if profiling shows a need.
+        for draw in out.blend_draws.iter_mut() {
+            let m = draw.transform.to_cols_array_2d();
+            let mut bytes = Vec::with_capacity(64);
+            for col in m.iter() {
+                for v in col.iter() {
+                    bytes.extend_from_slice(&v.to_le_bytes());
+                }
+            }
+            let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("Pass blend model instance buffer"),
+                size: bytes.len() as u64,
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+            self.queue.write_buffer(&buffer, 0, &bytes);
+            draw.instance_buffer = Some(buffer);
+        }
+
+        out
     }
 
     fn process_render_pass(
@@ -839,9 +977,14 @@ impl RenderContext {
         self.storage_pool.write().reset();
 
         // Snapshot per-Model transforms for this Pass into GPU instance
-        // buffers BEFORE begin_render_pass — the wgpu::Buffer handles need to
-        // outlive the render_pass. Keys are (shader_ptr, mesh_ptr).
-        let model_overrides = self.build_model_instance_overrides(pass);
+        // buffers BEFORE begin_render_pass — the wgpu::Buffer handles need
+        // to outlive the render_pass. Opaque/Mask entries collapse to one
+        // batched buffer per `(shader_ptr, mesh_ptr)` (auto-instancing);
+        // Blend entries get one buffer each, kept in a sorted Vec so the
+        // blend phase can walk them back-to-front by eye-space depth.
+        let pass_draws = self.build_pass_draws(pass);
+        let model_overrides = &pass_draws.opaque_overrides;
+        let blend_draws = &pass_draws.blend_draws;
 
         let load_op = match pass.get_input().load {
             true => wgpu::LoadOp::Load,
@@ -1320,39 +1463,87 @@ impl RenderContext {
                 0 => render_pass.draw(0..3, 0..1),
                 _ => {
                     let shader_ptr = Arc::as_ptr(shader) as usize;
-                    for mesh_object in shader_meshes.iter() {
-                        let (refs, counts) =
-                            mesh_object.vertex_buffers(&self.device, &self.queue)?;
-                        render_pass.set_vertex_buffer(0, refs.vertex_buffer.slice(..));
+                    match alpha_mode {
+                        crate::material::AlphaMode::Opaque
+                        | crate::material::AlphaMode::Mask => {
+                            // Auto-instancing path: one batched draw per
+                            // (shader, mesh) pair regardless of how many
+                            // Models contributed. The instance override map
+                            // packs all queued model matrices into one
+                            // vertex buffer at slot 1.
+                            for mesh_object in shader_meshes.iter() {
+                                let (refs, counts) =
+                                    mesh_object.vertex_buffers(&self.device, &self.queue)?;
+                                render_pass.set_vertex_buffer(0, refs.vertex_buffer.slice(..));
 
-                        // Per-Pass Model override takes precedence over the
-                        // Mesh's own instance buffer. The override carries N
-                        // model matrices (one per Model::add_model call that
-                        // referenced this shader+mesh); the fall-through path
-                        // is for Meshes whose instances came from a direct
-                        // `Mesh::add_instance` call (crowd rendering, etc.).
-                        let override_key = (shader_ptr, Arc::as_ptr(mesh_object) as usize);
-                        let instance_count = if let Some((buf, count)) =
-                            model_overrides.get(&override_key)
-                        {
-                            render_pass.set_vertex_buffer(1, buf.slice(..));
-                            *count
-                        } else {
-                            if let Some(instance_buffer) = &refs.instance_buffer {
-                                render_pass.set_vertex_buffer(1, instance_buffer.slice(..));
+                                // Per-Pass Model override takes precedence over the
+                                // Mesh's own instance buffer. The override carries N
+                                // model matrices (one per Model::add_model call that
+                                // referenced this shader+mesh); the fall-through path
+                                // is for Meshes whose instances came from a direct
+                                // `Mesh::add_instance` call (crowd rendering, etc.).
+                                let override_key =
+                                    (shader_ptr, Arc::as_ptr(mesh_object) as usize);
+                                let instance_count = if let Some((buf, count)) =
+                                    model_overrides.get(&override_key)
+                                {
+                                    render_pass.set_vertex_buffer(1, buf.slice(..));
+                                    *count
+                                } else {
+                                    if let Some(instance_buffer) = &refs.instance_buffer {
+                                        render_pass.set_vertex_buffer(1, instance_buffer.slice(..));
+                                    }
+                                    counts.instance_count
+                                };
+
+                                render_pass.set_index_buffer(
+                                    refs.index_buffer.slice(..),
+                                    wgpu::IndexFormat::Uint32,
+                                );
+                                render_pass.draw_indexed(
+                                    0..counts.index_count,
+                                    0,
+                                    0..instance_count,
+                                );
                             }
-                            counts.instance_count
-                        };
-
-                        render_pass.set_index_buffer(
-                            refs.index_buffer.slice(..),
-                            wgpu::IndexFormat::Uint32,
-                        );
-                        render_pass.draw_indexed(
-                            0..counts.index_count,
-                            0,
-                            0..instance_count,
-                        );
+                        }
+                        crate::material::AlphaMode::Blend => {
+                            // Translucent path: instance batching is unsafe
+                            // because two overlapping translucent fragments
+                            // need strict back-to-front draw order for the
+                            // over-blend to converge to the right color.
+                            // `blend_draws` was sorted by eye-space Z when
+                            // we built it (far→near). Walk the subset for
+                            // this shader in that order and submit one
+                            // draw per entry with its own single-instance
+                            // vertex buffer at slot 1.
+                            //
+                            // Known limitation: this is per-shader sorting.
+                            // Multiple translucent Materials in the same
+                            // Pass interleave per-shader, not globally —
+                            // shader A's farthest is drawn after shader B's
+                            // nearest if B comes earlier in `pass.shaders`.
+                            // In practice most scenes use one translucent
+                            // Material (shared shader); cross-Material
+                            // interleaving rides on a follow-up.
+                            for draw in blend_draws.iter() {
+                                if draw.shader_ptr != shader_ptr {
+                                    continue;
+                                }
+                                let Some(buf) = draw.instance_buffer.as_ref() else {
+                                    continue;
+                                };
+                                let (refs, counts) =
+                                    draw.mesh.vertex_buffers(&self.device, &self.queue)?;
+                                render_pass.set_vertex_buffer(0, refs.vertex_buffer.slice(..));
+                                render_pass.set_vertex_buffer(1, buf.slice(..));
+                                render_pass.set_index_buffer(
+                                    refs.index_buffer.slice(..),
+                                    wgpu::IndexFormat::Uint32,
+                                );
+                                render_pass.draw_indexed(0..counts.index_count, 0, 0..1);
+                            }
+                        }
                     }
                 }
             }

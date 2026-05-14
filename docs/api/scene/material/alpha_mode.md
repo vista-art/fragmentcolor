@@ -16,8 +16,13 @@ The three variants:
   out hard-edged transparency. Tune the cut-off with `Material::alpha_cutoff`.
 - `AlphaMode::Blend` — depth-test stays on but depth-write turns off, and the color
   target uses standard `SrcAlpha / OneMinusSrcAlpha` over-blend. Use for glass, smoke,
-  fades, decals that need soft edges. Order-dependent: sort back-to-front yourself
-  before submitting if you care about correctness across overlapping translucent layers.
+  fades, decals that need soft edges. The renderer sorts blend Models on the Pass
+  back-to-front by eye-space Z before drawing, using the Camera attached via
+  `Pass::add(&camera)`. Translucent surfaces over-blend in the right order without the
+  caller managing it. Limitation: sorts by per-Model origin (not per-fragment), so
+  self-intersecting or interpenetrating translucent meshes can still show artifacts;
+  cross-Material interleaving falls back to per-shader sort (one translucent Material
+  shared across many Models is the path that's order-correct).
 
 This is a pipeline-state flag — changing it forces the renderer to rebuild the pipeline
 for the affected `(shader, alpha_mode, double_sided)` key. Switching it every frame is

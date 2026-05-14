@@ -17,6 +17,7 @@ use pyo3::prelude::*;
 #[cfg(wasm)]
 use wasm_bindgen::prelude::*;
 
+use crate::pass::{CameraSnapshot, PassObject};
 use crate::scene::SceneObject;
 use crate::shader::ShaderObject;
 use crate::Shader;
@@ -28,6 +29,12 @@ pub(crate) struct CameraObject {
     /// shader doesn't keep the Camera-side handle alive — and so a Camera
     /// passed to many Materials doesn't grow unbounded.
     attached: RwLock<Vec<Weak<ShaderObject>>>,
+    /// Passes that have absorbed this Camera. Each entry's
+    /// `camera_snapshot` slot mirrors the Camera's current state (view +
+    /// position) so the renderer can sort translucent draws back-to-front
+    /// without going through the shader's uniform storage. Held weakly so a
+    /// dropped Pass doesn't keep the Camera-side handle alive.
+    attached_passes: RwLock<Vec<Weak<PassObject>>>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -54,6 +61,7 @@ impl Camera {
             object: Arc::new(CameraObject {
                 state: RwLock::new(state),
                 attached: RwLock::new(Vec::new()),
+                attached_passes: RwLock::new(Vec::new()),
             }),
         }
     }
@@ -121,10 +129,16 @@ impl Camera {
 
     /// Push the current state to every shader that absorbed this Camera,
     /// dropping `Weak` entries whose `ShaderObject` has already been
-    /// freed.
+    /// freed. Also refreshes the `camera_snapshot` on every Pass that
+    /// absorbed this Camera so the renderer can read world-space eye
+    /// position and view matrix without going through a shader uniform.
     fn propagate(&self) {
         let vp = self.view_proj();
         let pos = self.position();
+        let snapshot = CameraSnapshot {
+            position: pos,
+            view: self.view(),
+        };
         let mut attached = self.object.attached.write();
         attached.retain(|weak| {
             if let Some(shader) = weak.upgrade() {
@@ -135,6 +149,22 @@ impl Camera {
                 false
             }
         });
+        let mut attached_passes = self.object.attached_passes.write();
+        attached_passes.retain(|weak| {
+            if let Some(pass) = weak.upgrade() {
+                *pass.camera_snapshot.write() = Some(snapshot);
+                true
+            } else {
+                false
+            }
+        });
+    }
+
+    /// Read the view matrix as a column-major 4×4. Mirrors
+    /// `Camera::view_proj`'s storage layout (WGSL `mat4x4<f32>` /
+    /// `glam::Mat4::to_cols_array_2d`).
+    fn view(&self) -> [[f32; 4]; 4] {
+        self.object.state.read().view.to_cols_array_2d()
     }
 }
 
@@ -146,6 +176,18 @@ impl SceneObject for Camera {
         for s in shaders {
             self.apply_to_shader(&Shader::from(s));
         }
+        // Stamp the Pass's camera snapshot so the renderer can sort translucent
+        // draws back-to-front without going through `Shader::get`. Register a
+        // Weak<PassObject> on the Camera so subsequent `Camera::look_at` mutations
+        // refresh the snapshot in step with every absorbing Pass.
+        *pass.object.camera_snapshot.write() = Some(CameraSnapshot {
+            position: self.position(),
+            view: self.view(),
+        });
+        self.object
+            .attached_passes
+            .write()
+            .push(Arc::downgrade(&pass.object));
         // Store a handle so future shaders joining via Model::attach also pick
         // the camera state up (and so the renderer can re-invoke apply on a
         // per-shader basis).
@@ -270,5 +312,36 @@ mod tests {
 
         let p: [f32; 3] = material.shader().get("camera.position").unwrap();
         assert_eq!(p, [0.0, 0.0, 7.0]);
+    }
+
+    #[test]
+    fn pass_add_stamps_camera_snapshot() {
+        // The renderer reads `pass.camera_snapshot` directly when sorting
+        // translucent draws — going through `Shader::get("camera.position")`
+        // would only work for shaders that happen to expose those uniforms
+        // under canonical names. Camera::attach pins the snapshot on the
+        // pass and Camera::look_at updates it.
+        let pass = crate::Pass::new("scene");
+        assert!(pass.object.camera_snapshot.read().is_none());
+
+        let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0)
+            .look_at([0.0, 0.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+        pass.add(&camera);
+
+        let snap = pass.object.camera_snapshot.read().expect("snapshot stamped");
+        assert_eq!(snap.position, [0.0, 0.0, 5.0]);
+        // View matrix translates world by -5 along +Z (eye at +5 → world origin
+        // lands at -5 in eye space). Right-handed look_at_rh: the eye sits at
+        // the negation of the view matrix's third column's first three rows.
+        // Verify via the translation column (column 3, rows 0..3).
+        let translation = snap.view[3];
+        assert!((translation[2] + 5.0).abs() < 1.0e-5, "got {translation:?}");
+
+        // look_at should refresh the snapshot
+        camera.look_at([0.0, 0.0, 10.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+        let snap2 = pass.object.camera_snapshot.read().expect("snapshot refreshed");
+        assert_eq!(snap2.position, [0.0, 0.0, 10.0]);
+        let translation2 = snap2.view[3];
+        assert!((translation2[2] + 10.0).abs() < 1.0e-5, "got {translation2:?}");
     }
 }

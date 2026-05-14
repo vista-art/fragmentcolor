@@ -330,6 +330,34 @@ crate::impl_js_bridge!(Pass, PassError);
 
 static GRAPH_VERSION: AtomicU64 = AtomicU64::new(1);
 
+/// World-space camera state cached on a Pass via `Camera::attach`. Carried
+/// here (not just inside the shader uniform) so the renderer can read the
+/// eye position and view matrix without round-tripping through the shader's
+/// `Shader::get("camera.position")` path — which would only work for
+/// shaders that happen to expose those uniforms under canonical names.
+///
+/// Used by `process_render_pass` to sort the `Pass::model_entries` whose
+/// Material declares `alpha_mode: Blend` back-to-front by eye-space depth
+/// before submitting the blend phase. Updated whenever the Camera's
+/// `propagate` runs (i.e. on `Camera::look_at` after `pass.add(&camera)`).
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct CameraSnapshot {
+    /// World-space eye position. Mirrors `Camera::position()`. Carried
+    /// alongside `view` so downstream uses that want eye-position-relative
+    /// effects (LOD selection, billboards) can pull both from one
+    /// snapshot — keeping the renderer's "Pass owns the camera state"
+    /// guarantee from fragmenting into per-feature shader reads.
+    #[allow(dead_code)]
+    pub(crate) position: [f32; 3],
+    /// View matrix (world → camera), column-major. Mirrors the `view`
+    /// component of `Camera::view_proj`. The renderer needs this for the
+    /// sort — eye-space Z is `(view * world)[2]`, not just `length(eye -
+    /// world)`. World-space distance ties incorrectly for objects spread
+    /// laterally on a vertical plane (a row of glass panels viewed
+    /// edge-on); eye-Z resolves them in the right order.
+    pub(crate) view: [[f32; 4]; 4],
+}
+
 #[derive(Debug)]
 pub struct PassObject {
     pub pass_type: RwLock<PassType>,
@@ -355,6 +383,20 @@ pub struct PassObject {
     pub(crate) scene_objects: RwLock<Vec<Box<dyn crate::scene::SceneObject>>>,
     pub(crate) viewport: RwLock<Option<ScreenRegion>>,
     pub(crate) required_buffer_size: RwLock<u64>,
+    /// Snapshot of the most recently attached Camera's `(view, position)`,
+    /// taken when `Camera::attach` runs (and refreshed by `Camera::look_at`
+    /// through `Camera::propagate`). The renderer reads this to sort
+    /// translucent draws (`alpha_mode: Blend`) back-to-front by per-Model
+    /// eye-space depth. `None` means no Camera was attached to this pass
+    /// — the renderer falls back to insertion order, which is correct for
+    /// opaque-only passes and the best it can do otherwise.
+    ///
+    /// Storing the view matrix (not just the eye position) lets the sort
+    /// account for non-axis-aligned cameras — eye-Z depth in camera space
+    /// is what matters for over-blend correctness, not world-space
+    /// distance from the eye. Stored as a column-major `[[f32; 4]; 4]` to
+    /// match `Camera::view_proj` and `glam::Mat4::to_cols_array_2d`.
+    pub(crate) camera_snapshot: RwLock<Option<CameraSnapshot>>,
     // For compute passes: dispatch size (defaults to 1,1,1)
     pub(crate) compute_dispatch: RwLock<(u32, u32, u32)>,
     // Milestone A: optional per-pass color target
@@ -382,6 +424,7 @@ impl PassObject {
             viewport: RwLock::new(None),
             input: RwLock::new(PassInput::clear(Color::transparent())),
             required_buffer_size: RwLock::new(0),
+            camera_snapshot: RwLock::new(None),
             pass_type: RwLock::new(pass_type),
             compute_dispatch: RwLock::new((1, 1, 1)),
             color_target: RwLock::new(None),

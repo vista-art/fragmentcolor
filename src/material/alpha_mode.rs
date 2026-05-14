@@ -22,9 +22,11 @@ use wasm_bindgen::prelude::*;
 ///   `material.base_color.a < material.alpha_cutoff` are `discard`ed in the
 ///   fragment shader. Hard-edged cut-out; perf profile matches opaque.
 /// - `Blend`: depth-test on but depth-write **off**, color target uses
-///   standard `SrcAlpha / OneMinusSrcAlpha` over-blend. Order-dependent;
-///   sort back-to-front before submitting if you care about correctness
-///   across overlapping translucent layers.
+///   standard `SrcAlpha / OneMinusSrcAlpha` over-blend. The renderer sorts
+///   Models with this mode back-to-front by eye-space Z before drawing,
+///   using the Camera attached via `Pass::add(&camera)` — no caller-side
+///   sorting required. Sort granularity is per-Model (not per-fragment),
+///   so self-intersecting translucent meshes can still show artifacts.
 #[cfg_attr(wasm, wasm_bindgen)]
 #[cfg_attr(python, pyclass(eq, eq_int))]
 #[cfg_attr(mobile, derive(uniffi::Enum))]
