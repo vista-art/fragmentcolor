@@ -184,6 +184,20 @@ pub(crate) struct ShaderObject {
     pub(crate) meshes: RwLock<Vec<Arc<crate::mesh::MeshObject>>>,
     pub(crate) alpha_mode: RwLock<crate::material::AlphaMode>,
     pub(crate) double_sided: RwLock<bool>,
+    /// Texture uploads queued by lazy setters (typically the Material's
+    /// `*_texture(impl Into<TextureInput>)` family). The renderer drains
+    /// this list at first render and via the explicit `Renderer::load`
+    /// surface; each entry becomes a real GPU texture + a
+    /// `UniformData::Texture` write under the recorded key.
+    pub(crate) pending_textures: RwLock<Vec<PendingTexture>>,
+}
+
+/// A texture upload waiting to be realized — slot key plus the TextureInput
+/// the renderer will hand to `create_texture`.
+#[derive(Debug, Clone)]
+pub(crate) struct PendingTexture {
+    pub key: String,
+    pub input: crate::TextureInput,
 }
 
 impl Default for ShaderObject {
@@ -359,7 +373,38 @@ impl ShaderObject {
             // path follows the glTF 2.0 default (single-sided = back-face
             // cull on).
             double_sided: RwLock::new(true),
+            pending_textures: RwLock::new(Vec::new()),
         })
+    }
+
+    /// Either set a texture uniform immediately (if the input wraps an
+    /// already-uploaded `Texture` via `TextureData::CloneOf`) or queue the
+    /// upload for the renderer to drain on the next `load` / `render`.
+    ///
+    /// Used by the Material `*_texture` setters so callers can pass either
+    /// a pre-built `Texture` (eager path) or a path / bytes / URL
+    /// (lazy path) through the same builder method.
+    pub(crate) fn queue_or_set_texture(
+        &self,
+        key: impl Into<String>,
+        input: crate::TextureInput,
+    ) -> Result<(), ShaderError> {
+        use crate::shader::UniformData;
+        use crate::texture::TextureMeta;
+        let key = key.into();
+        if let crate::TextureData::CloneOf(ref tex) = input.data {
+            let meta = TextureMeta::with_id_only(*tex.id());
+            return self.set(&key, UniformData::Texture(meta));
+        }
+        self.pending_textures
+            .write()
+            .push(PendingTexture { key, input });
+        Ok(())
+    }
+
+    /// Take the current pending-texture queue, leaving the slot empty.
+    pub(crate) fn drain_pending_textures(&self) -> Vec<PendingTexture> {
+        std::mem::take(&mut *self.pending_textures.write())
     }
 
     /// Get a uniform value as Uniform struct.

@@ -331,12 +331,48 @@ impl Renderer {
         external_texture::ExternalTextureHandle::from_video(self, video)
     }
 
+    /// Realize every pending GPU upload referenced by `renderable` — the
+    /// texture inputs queued by Material's lazy `*_texture` setters, the
+    /// loader-built Scenes, and so on. After `load` returns, `render` against
+    /// the same renderable is GPU-only.
+    ///
+    /// `render` runs `load` automatically the first time it sees a renderable
+    /// with pending uploads, so calling `load` is optional; reach for it when
+    /// you want to amortize the decode + upload cost outside the render loop.
+    #[lsp_doc("docs/api/core/renderer/load.md")]
+    pub async fn load(&self, renderable: &impl Renderable) -> Result<(), RendererError> {
+        for pass in renderable.passes().iter() {
+            let shaders: Vec<Arc<crate::shader::ShaderObject>> =
+                pass.shaders.read().iter().cloned().collect();
+            for shader in shaders {
+                let pending = shader.drain_pending_textures();
+                if pending.is_empty() {
+                    continue;
+                }
+                for entry in pending {
+                    let texture = self.create_texture(entry.input).await?;
+                    let meta = crate::texture::TextureMeta::with_id_only(*texture.id());
+                    let _ = shader.set(&entry.key, UniformData::Texture(meta));
+                }
+            }
+        }
+        Ok(())
+    }
+
     #[lsp_doc("docs/api/core/renderer/render.md")]
     pub fn render(
         &self,
         renderable: &impl Renderable,
         target: &impl Target,
     ) -> Result<(), RendererError> {
+        // Drain any pending texture uploads from lazy Material setters before
+        // we touch the GPU. Cheap when nothing is pending — the load future
+        // doesn't await anything in that case. On native we block via
+        // `futures::executor`; on wasm there's no blocking executor, so the
+        // wasm async wrapper (`render_js`) is responsible for awaiting
+        // `load` explicitly.
+        #[cfg(not(wasm))]
+        futures::executor::block_on(self.load(renderable))?;
         if let Some(context) = self.context.read().as_ref() {
             context.render(renderable, target)
         } else {

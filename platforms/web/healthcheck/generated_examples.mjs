@@ -24,6 +24,7 @@ const EXAMPLES = [
   '../examples/core/renderer/create_target.js',
   '../examples/core/renderer/create_texture.js',
   '../examples/core/renderer/create_texture_target.js',
+  '../examples/core/renderer/load.js',
   '../examples/core/renderer/new.js',
   '../examples/core/renderer/read_texture.js',
   '../examples/core/renderer/render.js',

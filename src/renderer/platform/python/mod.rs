@@ -159,6 +159,16 @@ impl Renderer {
         })
     }
 
+    #[pyo3(name = "load")]
+    #[lsp_doc("docs/api/core/renderer/load.md")]
+    pub fn load_py(&self, renderable: Py<PyAny>) -> Result<(), PyErr> {
+        Python::attach(|py| -> Result<(), PyErr> {
+            let r = crate::PyRenderable::from_any(renderable.bind(py))?;
+            pollster::block_on(self.load(&r))?;
+            Ok(())
+        })
+    }
+
     #[pyo3(name = "render")]
     #[lsp_doc("docs/api/core/renderer/render.md")]
     pub fn render_py(&self, renderable: Py<PyAny>, target: Py<PyAny>) -> Result<(), PyErr> {

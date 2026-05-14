@@ -217,39 +217,72 @@ impl Material {
 
     // --- texture setters ---
     //
-    // Each setter overrides the corresponding 1×1 default the renderer seeded
-    // at construction time. The default PBR shader samples every slot in
-    // `fs_main` and combines it with the matching factor per the glTF 2.0
-    // spec; with a `Material::custom(shader)` they're still best-effort under
-    // the same binding names, no-op-ing for shaders that don't declare them.
+    // Each setter accepts either an already-uploaded `Texture` (the eager
+    // path — the underlying `From<&Texture> for TextureInput` produces a
+    // `TextureData::CloneOf` that's set on the shader immediately) or any
+    // `Into<TextureInput>` value (path, bytes, URL, …) for the lazy path.
+    // Lazy inputs are queued on the Shader's pending-texture list and the
+    // renderer drains them on first render or via the explicit
+    // [`Renderer::load`](crate::Renderer::load) surface.
+    //
+    // Color-space hints: `base_color` and `emissive` are sRGB per glTF 2.0;
+    // the three data-encoding maps (`metallic_roughness`, `normal`,
+    // `occlusion`) are linear. The setters inject the right
+    // `TextureFormat` only when the caller hasn't already picked one — pass
+    // `(source, TextureFormat::...)` to override.
 
     #[lsp_doc("docs/api/scene/material/base_color_texture.md")]
-    pub fn base_color_texture(self, texture: &crate::texture::Texture) -> Self {
-        set_texture_or_warn(&self.shader, "base_color_map", texture);
+    pub fn base_color_texture(self, source: impl Into<crate::TextureInput>) -> Self {
+        queue_texture_or_warn(
+            &self.shader,
+            "base_color_map",
+            source.into(),
+            Some(crate::TextureFormat::Rgba8UnormSrgb),
+        );
         self
     }
 
     #[lsp_doc("docs/api/scene/material/metallic_roughness_texture.md")]
-    pub fn metallic_roughness_texture(self, texture: &crate::texture::Texture) -> Self {
-        set_texture_or_warn(&self.shader, "metallic_roughness_map", texture);
+    pub fn metallic_roughness_texture(self, source: impl Into<crate::TextureInput>) -> Self {
+        queue_texture_or_warn(
+            &self.shader,
+            "metallic_roughness_map",
+            source.into(),
+            Some(crate::TextureFormat::Rgba8Unorm),
+        );
         self
     }
 
     #[lsp_doc("docs/api/scene/material/normal_texture.md")]
-    pub fn normal_texture(self, texture: &crate::texture::Texture) -> Self {
-        set_texture_or_warn(&self.shader, "normal_map", texture);
+    pub fn normal_texture(self, source: impl Into<crate::TextureInput>) -> Self {
+        queue_texture_or_warn(
+            &self.shader,
+            "normal_map",
+            source.into(),
+            Some(crate::TextureFormat::Rgba8Unorm),
+        );
         self
     }
 
     #[lsp_doc("docs/api/scene/material/occlusion_texture.md")]
-    pub fn occlusion_texture(self, texture: &crate::texture::Texture) -> Self {
-        set_texture_or_warn(&self.shader, "occlusion_map", texture);
+    pub fn occlusion_texture(self, source: impl Into<crate::TextureInput>) -> Self {
+        queue_texture_or_warn(
+            &self.shader,
+            "occlusion_map",
+            source.into(),
+            Some(crate::TextureFormat::Rgba8Unorm),
+        );
         self
     }
 
     #[lsp_doc("docs/api/scene/material/emissive_texture.md")]
-    pub fn emissive_texture(self, texture: &crate::texture::Texture) -> Self {
-        set_texture_or_warn(&self.shader, "emissive_map", texture);
+    pub fn emissive_texture(self, source: impl Into<crate::TextureInput>) -> Self {
+        queue_texture_or_warn(
+            &self.shader,
+            "emissive_map",
+            source.into(),
+            Some(crate::TextureFormat::Rgba8UnormSrgb),
+        );
         self
     }
 }
@@ -260,9 +293,23 @@ pub(crate) fn set_or_warn<V: Into<UniformData>>(shader: &Shader, key: &str, valu
     }
 }
 
-pub(crate) fn set_texture_or_warn(shader: &Shader, key: &str, texture: &crate::texture::Texture) {
-    let meta = crate::texture::TextureMeta::with_id_only(*texture.id());
-    if let Err(e) = shader.set(key, UniformData::Texture(meta)) {
+/// Either set a texture uniform immediately (when the input wraps an
+/// already-uploaded `Texture`) or queue the upload on the Shader for the
+/// renderer to drain at load/render time. `srgb_hint` lets the calling
+/// setter inject the glTF-correct color space when the caller didn't pick a
+/// non-default format — pass `None` for shaders that don't care.
+pub(crate) fn queue_texture_or_warn(
+    shader: &Shader,
+    key: &str,
+    mut input: crate::TextureInput,
+    srgb_hint: Option<crate::TextureFormat>,
+) {
+    if let Some(hint) = srgb_hint {
+        if input.options.format == crate::TextureFormat::default() {
+            input.options.format = hint;
+        }
+    }
+    if let Err(e) = shader.object.queue_or_set_texture(key, input) {
         log::warn!("Material texture '{key}' did not apply: {e}");
     }
 }
@@ -458,6 +505,81 @@ mod tests {
             assert!(
                 has_red && has_blue,
                 "expected sampled base_color texture to contribute red and blue pixels; got neither (has_red={has_red}, has_blue={has_blue})"
+            );
+        });
+    }
+
+    #[test]
+    fn base_color_texture_with_raw_bytes_is_pending_until_render() {
+        // The lazy path: `(bytes, [w, h])` produces a TextureInput whose data
+        // is `Bytes`, which queues on the Shader's pending list instead of
+        // setting the uniform immediately. Renderer::render drains it on the
+        // first call.
+        pollster::block_on(async move {
+            let renderer = Renderer::new();
+            let target = renderer
+                .create_texture_target([8u32, 8u32])
+                .await
+                .expect("texture target");
+
+            #[rustfmt::skip]
+            let pixels: Vec<u8> = vec![
+                255, 0, 0, 255,    0, 255, 0, 255,
+                  0, 0, 255, 255,  255, 255, 255, 255,
+            ];
+            let mat = Material::pbr()
+                .expect("pbr")
+                .base_color_texture((pixels, [2u32, 2u32]));
+
+            // Before any render: one entry queued on the Shader, no Texture
+            // uniform yet (the default 1×1 white texture meta from
+            // pbr_defaults is what the bind group will see on the first
+            // pass if nobody drains).
+            assert_eq!(
+                mat.shader.object.pending_textures.read().len(),
+                1,
+                "expected 1 pending texture before render"
+            );
+
+            let model = crate::scene::Model::new(pbr_triangle_mesh(), mat.clone());
+            let pass = Pass::new("lazy-upload");
+            pass.add(&model).expect("add_model");
+            renderer
+                .render(&pass, &target)
+                .expect("render drains pending");
+
+            // After render: pending list is empty (drained); the Material's
+            // shader now carries a real TextureMeta for the base_color slot.
+            assert!(
+                mat.shader.object.pending_textures.read().is_empty(),
+                "expected pending list to be drained by render"
+            );
+            let img = target.get_image().await;
+            assert_eq!(img.len(), 8 * 8 * 4);
+        });
+    }
+
+    #[test]
+    fn texture_setter_with_existing_texture_skips_pending_queue() {
+        // The eager path: passing `&Texture` flows through
+        // `From<&Texture> for TextureInput` → `TextureData::CloneOf` →
+        // immediate uniform write, no pending entry.
+        pollster::block_on(async move {
+            let renderer = Renderer::new();
+            #[rustfmt::skip]
+            let pixels: [u8; 16] = [
+                255, 0, 0, 255,    0, 255, 0, 255,
+                  0, 0, 255, 255,  255, 255, 255, 255,
+            ];
+            let tex = renderer
+                .create_texture((&pixels[..], crate::Size::from((2u32, 2u32))))
+                .await
+                .expect("texture");
+
+            let mat = Material::pbr().expect("pbr").base_color_texture(&tex);
+            assert!(
+                mat.shader.object.pending_textures.read().is_empty(),
+                "eager texture path must not queue"
             );
         });
     }

@@ -184,6 +184,38 @@ impl Renderer {
         self.create_external_texture(video)
     }
 
+    #[wasm_bindgen(js_name = "load")]
+    #[lsp_doc("docs/api/core/renderer/load.md")]
+    pub async fn load_js(&self, renderable: &JsValue) -> Result<(), JsError> {
+        if let Ok(shader) = Shader::try_from(renderable) {
+            return self
+                .load(&shader)
+                .await
+                .map_err(|e| JsError::new(&e.to_string()));
+        }
+        if let Ok(pass) = Pass::try_from(renderable) {
+            return self
+                .load(&pass)
+                .await
+                .map_err(|e| JsError::new(&e.to_string()));
+        }
+        if let Ok(mesh) = Mesh::try_from(renderable) {
+            return self
+                .load(&mesh)
+                .await
+                .map_err(|e| JsError::new(&e.to_string()));
+        }
+        if let Ok(scene) = crate::Scene::try_from(renderable) {
+            return self
+                .load(&scene)
+                .await
+                .map_err(|e| JsError::new(&e.to_string()));
+        }
+        Err(JsError::new(
+            "Renderer.load: unsupported renderable type (expected Shader, Pass, Mesh, or Scene)",
+        ))
+    }
+
     #[wasm_bindgen(js_name = "render")]
     #[lsp_doc("docs/api/core/renderer/render.md")]
     pub fn render_js(&self, renderable: &JsValue, target: &JsValue) -> Result<(), RendererError> {

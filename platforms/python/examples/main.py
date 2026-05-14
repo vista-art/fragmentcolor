@@ -31,6 +31,7 @@ def run_all():
         'core/renderer/create_target.py',
         'core/renderer/create_texture.py',
         'core/renderer/create_texture_target.py',
+        'core/renderer/load.py',
         'core/renderer/new.py',
         'core/renderer/read_texture.py',
         'core/renderer/render.py',
