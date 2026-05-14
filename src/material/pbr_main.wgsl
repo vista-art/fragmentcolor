@@ -42,6 +42,14 @@ struct PbrMaterial {
   // `Blend` ignore the flag — their behaviour is pipeline-state
   // (depth-write, blend equation) rather than fragment-shader logic.
   alpha_mode_flag: u32,
+  // KHR_texture_transform — single global UV transform applied to every
+  // map's sampling UV. Spec-correct per-map transforms are a follow-up;
+  // most glTF assets only carry KHR_texture_transform on `base_color`
+  // anyway, and the global path covers that case losslessly when the
+  // other maps share the same transform (or are absent).
+  uv_offset: vec2<f32>,
+  uv_scale: vec2<f32>,
+  uv_rotation: f32,
 }
 
 // glTF KHR_lights_punctual model. Each entry in `lights.lights[i]` is one
@@ -130,11 +138,21 @@ fn vs_main(
 
 @fragment
 fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
+  // KHR_texture_transform — single global UV transform applied to every
+  // map sample. Scale → rotate → offset matches the spec's transform
+  // composition. Defaults (scale = [1,1], rotation = 0, offset = [0,0])
+  // map every UV to itself so unset materials sample as before.
+  let scaled = in.uv * material.uv_scale;
+  let s = sin(material.uv_rotation);
+  let c = cos(material.uv_rotation);
+  let rotated = vec2<f32>(scaled.x * c - scaled.y * s, scaled.x * s + scaled.y * c);
+  let uv = rotated + material.uv_offset;
+
   // Base color (albedo / F0 source) = factor × map sample × vertex tint.
   // glTF `COLOR_0` is a per-vertex linear-RGB(A) multiplier, defaults to
   // white so the existing factor × map product is preserved when the
   // mesh doesn't carry vertex colors.
-  let base_color_sample = textureSample(base_color_map, pbr_sampler, in.uv);
+  let base_color_sample = textureSample(base_color_map, pbr_sampler, uv);
   let albedo = material.base_color.rgb * base_color_sample.rgb * in.vertex_color.rgb;
   let alpha = material.base_color.a * base_color_sample.a * in.vertex_color.a;
 
@@ -152,7 +170,7 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
   // by the spec; some authoring tools stash ambient occlusion in it (the
   // "ORM" texture packing convention) — we read it from `occlusion_map`
   // instead, so the unused channel here is harmless.
-  let mr = textureSample(metallic_roughness_map, pbr_sampler, in.uv).bgr;
+  let mr = textureSample(metallic_roughness_map, pbr_sampler, uv).bgr;
   let metallic = material.metallic * mr.r;
   let roughness = material.roughness * mr.g;
 
@@ -164,17 +182,17 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
   // finished as a follow-up. The 1×1 default `(128, 128, 255)` decodes to
   // `(0, 0, 1)` → scaled XY is `(0, 0)` → addition is a no-op, so unset
   // maps don't perturb the lit normal.
-  let n_sample = textureSample(normal_map, pbr_sampler, in.uv).xyz * 2.0 - 1.0;
+  let n_sample = textureSample(normal_map, pbr_sampler, uv).xyz * 2.0 - 1.0;
   let n_perturb = vec3<f32>(n_sample.xy * material.normal_scale, 0.0);
   let world_normal = normalize(in.world_normal + n_perturb);
 
   // Occlusion. glTF reads only the red channel; blend toward `1.0` by the
   // strength factor so `strength = 0` ignores the map entirely.
-  let ao_sample = textureSample(occlusion_map, pbr_sampler, in.uv).r;
+  let ao_sample = textureSample(occlusion_map, pbr_sampler, uv).r;
   let ao = mix(1.0, ao_sample, material.occlusion_strength);
 
   // Emissive = factor * map sample.
-  let emissive_sample = textureSample(emissive_map, pbr_sampler, in.uv).rgb;
+  let emissive_sample = textureSample(emissive_map, pbr_sampler, uv).rgb;
   let emissive_color = material.emissive * emissive_sample;
 
   let v = normalize(camera.position - in.world);

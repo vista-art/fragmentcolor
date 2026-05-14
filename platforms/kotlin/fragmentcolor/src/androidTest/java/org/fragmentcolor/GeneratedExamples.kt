@@ -1015,6 +1015,12 @@ class GeneratedExamples {
         material.shader().set("material.alphaCutoff", 0.25)
     }
 
+    @Suppress("unused") private suspend fun _example_scene_material_uv_transform() {
+
+        // Tile the texture 4× in both directions, rotate 45°, shift by half a tile.
+        val brick = Material.pbr()?.uvTransform(listOf(0.5f, 0.0f), listOf(4.0f, 4.0f), std.f32.consts.FRACPI4)
+    }
+
     @Suppress("unused") private suspend fun _example_scene_model_material() {
 
         val renderer = Renderer()

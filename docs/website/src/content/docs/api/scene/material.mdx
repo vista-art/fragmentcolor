@@ -2047,3 +2047,101 @@ lang="kotlin"
 </TabItem>
 
 </Tabs>
+
+
+---
+
+### Material::uv_transform
+
+Set a global UV transform applied to every map sample. Matches glTF's
+[`KHR_texture_transform`](https://github.com/KhronosGroup/glTF/tree/main/extensions/2.0/Khronos/KHR_texture_transform)
+composition: scale â rotate â offset, with the result fed to every
+`textureSample` in the PBR fragment shader.
+
+- `offset` translates the UV after scale + rotation (`[0, 0]` is no translation)
+- `scale` multiplies the UV first (`[1, 1]` is no scale)
+- `rotation` rotates the scaled UV in radians (positive = counter-clockwise
+  in WGSL's `(u, v)` convention)
+
+Defaults to identity (scale `[1, 1]`, rotation `0`, offset `[0, 0]`) so an
+unset Material samples textures untransformed. Today the transform is
+shared across all five texture slots â per-map transforms (and the per-map
+`texCoord` selector that picks `UV0` vs `UV1`) are a follow-up. For glTFs
+that carry `KHR_texture_transform` only on the base-color map (the most
+common case), the global path is lossless.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::Material;
+
+// Tile the texture 4Ã in both directions, rotate 45Â°, shift by half a tile.
+let brick = Material::pbr()?
+    .uv_transform([0.5, 0.0], [4.0, 4.0], std::f32::consts::FRAC_PI_4);
+let _ = brick;
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 7-9}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Material } from "fragmentcolor";
+
+// Tile the texture 4Ã in both directions, rotate 45Â°, shift by half a tile.
+const brick = Material.pbr()?.uvTransform([0.5, 0.0], [4.0, 4.0], std.f32.consts.FRACPI4);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Material
+
+# Tile the texture 4Ã in both directions, rotate 45Â°, shift by half a tile.
+brick = Material.pbr().uv_transform([0.5, 0.0], [4.0, 4.0], std.f32.consts.FRAC_PI_4)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+// Tile the texture 4Ã in both directions, rotate 45Â°, shift by half a tile.
+let brick = Material.pbr()?.uvTransform([0.5, 0.0], [4.0, 4.0], std.f32.consts.fRACPI4)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+// Tile the texture 4Ã in both directions, rotate 45Â°, shift by half a tile.
+val brick = Material.pbr()?.uvTransform(listOf(0.5f, 0.0f), listOf(4.0f, 4.0f), std.f32.consts.FRACPI4)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>

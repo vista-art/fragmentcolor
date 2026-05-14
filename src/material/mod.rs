@@ -129,6 +129,12 @@ impl Material {
         // 0 == Opaque (matches AlphaMode::default().flag()). The Mask branch
         // gates on this flag in fs_main; other modes ignore it.
         let _ = self.shader.set("material.alpha_mode_flag", 0_u32);
+        // KHR_texture_transform defaults — identity (scale = 1, offset = 0,
+        // rotation = 0), so every UV passes through unchanged. The
+        // `material.uv_transform(...)` builder overrides these.
+        let _ = self.shader.set("material.uv_offset", [0.0_f32, 0.0]);
+        let _ = self.shader.set("material.uv_scale", [1.0_f32, 1.0]);
+        let _ = self.shader.set("material.uv_rotation", 0.0_f32);
         let identity = [
             [1.0_f32, 0.0, 0.0, 0.0],
             [0.0, 1.0, 0.0, 0.0],
@@ -213,6 +219,14 @@ impl Material {
     #[lsp_doc("docs/api/scene/material/alpha_cutoff.md")]
     pub fn alpha_cutoff(self, value: f32) -> Self {
         set_or_warn(&self.shader, "material.alpha_cutoff", value);
+        self
+    }
+
+    #[lsp_doc("docs/api/scene/material/uv_transform.md")]
+    pub fn uv_transform(self, offset: [f32; 2], scale: [f32; 2], rotation: f32) -> Self {
+        set_or_warn(&self.shader, "material.uv_offset", offset);
+        set_or_warn(&self.shader, "material.uv_scale", scale);
+        set_or_warn(&self.shader, "material.uv_rotation", rotation);
         self
     }
 

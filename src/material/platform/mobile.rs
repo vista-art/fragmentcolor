@@ -79,6 +79,22 @@ impl Material {
         set_or_warn(&self.shader, "material.alpha_cutoff", value);
     }
 
+    #[uniffi::method(name = "uvTransform")]
+    #[lsp_doc("docs/api/scene/material/uv_transform.md")]
+    pub fn uv_transform_mobile(
+        self: Arc<Self>,
+        offset: Vec<f32>,
+        scale: Vec<f32>,
+        rotation: f32,
+    ) -> Result<(), FragmentColorError> {
+        let o = take_vec2(&offset, "uvTransform offset")?;
+        let s = take_vec2(&scale, "uvTransform scale")?;
+        set_or_warn(&self.shader, "material.uv_offset", o);
+        set_or_warn(&self.shader, "material.uv_scale", s);
+        set_or_warn(&self.shader, "material.uv_rotation", rotation);
+        Ok(())
+    }
+
     #[uniffi::method(name = "alphaMode")]
     #[lsp_doc("docs/api/scene/material/alpha_mode.md")]
     pub fn alpha_mode_mobile(self: Arc<Self>, mode: AlphaMode) {
@@ -123,6 +139,16 @@ impl Material {
     pub fn emissive_texture_mobile(self: Arc<Self>, texture: Arc<Texture>) {
         set_texture_or_warn(&self.shader, "emissive_map", &texture);
     }
+}
+
+fn take_vec2(v: &[f32], field: &str) -> Result<[f32; 2], FragmentColorError> {
+    if v.len() != 2 {
+        return Err(FragmentColorError::Render(format!(
+            "Material.{field}: expected an array of length 2, got {}",
+            v.len()
+        )));
+    }
+    Ok([v[0], v[1]])
 }
 
 fn take_vec3(v: &[f32], field: &str) -> Result<[f32; 3], FragmentColorError> {

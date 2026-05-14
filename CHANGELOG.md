@@ -4,6 +4,17 @@
 
 The catalog/integration cycle: texture creation moved off the main thread, KTX2 + 16-bit format support landed, the public API thinned to a single transport per operation, and the texture-related public surface gets a structural cleanup before tagging.
 
+### Material — `KHR_texture_transform` (global UV transform)
+
+Fifth "wild glTF" gap closed. `Material::uv_transform(offset, scale, rotation)` lets callers tile, rotate, or offset every texture sample with a single setter; the loader promotes a glTF `KHR_texture_transform` extension on the base-color slot to the same uniform automatically. Today the transform is global to a Material (one transform for all five maps); per-map transforms — and the per-map `texCoord` selector that picks `UV0` vs `UV1` — are a follow-up. The global path covers the most common usage of the extension losslessly (KHR_texture_transform is usually applied to `base_color` alone).
+
+- [x] **`Material::uv_transform([f32; 2] offset, [f32; 2] scale, f32 rotation)`** builder method. Sets three uniforms (`material.uv_offset`, `material.uv_scale`, `material.uv_rotation`) routed through the existing PBR Material uniform binding. `Material::apply_defaults` seeds identity (`scale = [1,1]`, `rotation = 0`, `offset = [0,0]`) so unset materials sample textures untransformed.
+- [x] **WGSL `fs_main`** applies the transform in scale → rotate → offset order (matches the glTF spec's composition) once per fragment, then feeds the result to every `textureSample` call. The matrix math is cheap (a sin/cos pair + two muls + an add) — well within fragment-shader budget.
+- [x] **Loader:** `info.texture_transform()` on the base-color `TextureInfo` lifts the extension's offset / scale / rotation into the Material via `uv_transform`. Other-slot transforms are ignored for now; the loader will warn in a follow-up commit when an asset has divergent per-map transforms.
+- [x] **`gltf` crate feature** `KHR_texture_transform` enabled in Cargo.toml alongside `KHR_lights_punctual`.
+- [x] **Cross-platform bindings:** Python (`material.uv_transform(offset, scale, rotation)`), JS / wasm-bindgen (`material.uvTransform(offset, scale, rotation)`), Swift / Kotlin via uniffi (`material.uvTransform(offset, scale, rotation)`). All take length-2 arrays and validate.
+- [x] **Tests:** 255 lib tests + 152 doctests passing (`uv_transform` adds one doctest); `gltf_scene` example renders.
+
 ### PBR shader — vertex colors (`COLOR_0`) + second UV set (`TEXCOORD_1`)
 
 Two more "wild glTF" gaps closed: per-vertex tinting via `COLOR_0` and the secondary UV set used by maps that opt out of `TEXCOORD_0`. Both attributes become required PBR vertex inputs so the renderer's pipeline layout is stable across meshes; defaults (`[1,1,1,1]` for color, `[0,0]` for uv1) preserve behaviour for callers that don't supply them.

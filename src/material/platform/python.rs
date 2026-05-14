@@ -74,6 +74,14 @@ impl Material {
         set_or_warn(&self.shader, "material.alpha_cutoff", value);
     }
 
+    #[pyo3(name = "uv_transform")]
+    #[lsp_doc("docs/api/scene/material/uv_transform.md")]
+    pub fn uv_transform_py(&self, offset: [f32; 2], scale: [f32; 2], rotation: f32) {
+        set_or_warn(&self.shader, "material.uv_offset", offset);
+        set_or_warn(&self.shader, "material.uv_scale", scale);
+        set_or_warn(&self.shader, "material.uv_rotation", rotation);
+    }
+
     #[pyo3(name = "alpha_mode")]
     #[lsp_doc("docs/api/scene/material/alpha_mode.md")]
     pub fn alpha_mode_py(&self, mode: AlphaMode) {

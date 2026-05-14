@@ -109,6 +109,7 @@ def run_all():
         'scene/material/pbr.py',
         'scene/material/roughness.py',
         'scene/material/shader.py',
+        'scene/material/uv_transform.py',
         'scene/model/material.py',
         'scene/model/mesh.py',
         'scene/model/new.py',

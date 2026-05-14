@@ -72,6 +72,22 @@ impl Material {
         set_or_warn(&self.shader, "material.alpha_cutoff", value);
     }
 
+    #[wasm_bindgen(js_name = "uvTransform")]
+    #[lsp_doc("docs/api/scene/material/uv_transform.md")]
+    pub fn uv_transform_js(
+        &self,
+        offset: Vec<f32>,
+        scale: Vec<f32>,
+        rotation: f32,
+    ) -> Result<(), JsError> {
+        let o = vec2_from_vec(&offset, "Material.uvTransform offset")?;
+        let s = vec2_from_vec(&scale, "Material.uvTransform scale")?;
+        set_or_warn(&self.shader, "material.uv_offset", o);
+        set_or_warn(&self.shader, "material.uv_scale", s);
+        set_or_warn(&self.shader, "material.uv_rotation", rotation);
+        Ok(())
+    }
+
     #[wasm_bindgen(js_name = "alphaMode")]
     #[lsp_doc("docs/api/scene/material/alpha_mode.md")]
     pub fn alpha_mode_js(&self, mode: AlphaMode) {
@@ -116,6 +132,15 @@ impl Material {
     pub fn emissive_texture_js(&self, texture: &crate::texture::Texture) {
         set_texture_or_warn(&self.shader, "emissive_map", texture);
     }
+}
+
+fn vec2_from_vec(v: &[f32], field: &str) -> Result<[f32; 2], JsError> {
+    if v.len() != 2 {
+        return Err(JsError::new(&format!(
+            "Material.{field}: expected an array of length 2"
+        )));
+    }
+    Ok([v[0], v[1]])
 }
 
 fn vec3_from_vec(v: &[f32], field: &str) -> Result<[f32; 3], JsError> {

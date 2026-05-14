@@ -1073,6 +1073,12 @@ private enum _GeneratedExamples {
         try material.shader().set("material.alphaCutoff", 0.25)
     }
 
+    static func _example_scene_material_uv_transform() async throws {
+
+        // Tile the texture 4× in both directions, rotate 45°, shift by half a tile.
+        let brick = Material.pbr()?.uvTransform([0.5, 0.0], [4.0, 4.0], std.f32.consts.fRACPI4)
+    }
+
     static func _example_scene_model_material() async throws {
 
         let renderer = Renderer()

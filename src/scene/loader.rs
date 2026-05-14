@@ -366,6 +366,17 @@ fn build_material(
 
     if let Some(info) = pbr.base_color_texture() {
         material = material.base_color_texture(image_to_texture_input(&info.texture(), images)?);
+        // KHR_texture_transform on the base-color slot is the most common
+        // usage of the extension; promote it to the Material's global
+        // transform. Other map-specific transforms (rare) are ignored
+        // today — per-map transforms land alongside the per-map
+        // `texCoord` selector.
+        if let Some(t) = info.texture_transform() {
+            let offset = t.offset();
+            let scale = t.scale();
+            let rotation = t.rotation();
+            material = material.uv_transform(offset, scale, rotation);
+        }
     }
     if let Some(info) = pbr.metallic_roughness_texture() {
         material =

@@ -164,7 +164,7 @@ ktx2 = "0.5"
 # (`gltf::import` / `import_slice`); `utils` adds the typed accessors that
 # decode `u8`/`u16` indices and tightly-packed vertex attributes; the
 # `KHR_lights_punctual` extension is opt-in.
-gltf = { version = "1", features = ["KHR_lights_punctual"] }
+gltf = { version = "1", features = ["KHR_lights_punctual", "KHR_texture_transform"] }
 
 # Python FFI (optional)
 pyo3 = { version = "0.28", features = [

@@ -102,6 +102,7 @@ const EXAMPLES = [
   '../examples/scene/material/pbr.js',
   '../examples/scene/material/roughness.js',
   '../examples/scene/material/shader.js',
+  '../examples/scene/material/uv_transform.js',
   '../examples/scene/model/material.js',
   '../examples/scene/model/mesh.js',
   '../examples/scene/model/new.js',
