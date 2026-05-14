@@ -61,6 +61,13 @@ impl Default for Scene {
 }
 
 impl Scene {
+    #[lsp_doc("docs/api/scene/scene/load.md")]
+    pub fn load(
+        source: impl Into<crate::scene::SceneSource>,
+    ) -> Result<Self, crate::scene::SceneLoadError> {
+        crate::scene::loader::load(source.into())
+    }
+
     #[lsp_doc("docs/api/scene/scene/new.md")]
     pub fn new() -> Self {
         Self {

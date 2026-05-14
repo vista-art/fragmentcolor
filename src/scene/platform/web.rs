@@ -258,6 +258,23 @@ impl Scene {
         Scene::new()
     }
 
+    /// Load a scene file. Pass a string for a path / URL-like locator, or a
+    /// `Uint8Array` for an in-memory `.glb` payload.
+    #[wasm_bindgen(js_name = "load")]
+    #[lsp_doc("docs/api/scene/scene/load.md")]
+    pub fn load_js(source: &JsValue) -> Result<Scene, JsError> {
+        let scene_source = if let Some(s) = source.as_string() {
+            crate::scene::SceneSource::gltf(s)
+        } else if let Ok(arr) = source.dyn_ref::<js_sys::Uint8Array>().ok_or(()) {
+            crate::scene::SceneSource::gltf(arr.to_vec())
+        } else {
+            return Err(JsError::new(
+                "Scene.load: expected a path string or a Uint8Array",
+            ));
+        };
+        Scene::load(scene_source).map_err(|e| JsError::new(&e.to_string()))
+    }
+
     #[wasm_bindgen(js_name = "addModel")]
     #[lsp_doc("docs/api/scene/scene/add.md")]
     pub fn add_model_js(&self, model: &Model) -> Result<(), JsError> {

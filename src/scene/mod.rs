@@ -22,12 +22,14 @@ use crate::{Material, Mesh};
 
 mod camera;
 mod light;
+mod loader;
 mod object;
 mod platform;
 mod scene;
 
 pub use camera::*;
 pub use light::*;
+pub use loader::{GltfSource, SceneLoadError, SceneSource};
 pub use object::SceneObject;
 pub use scene::Scene;
 

@@ -112,6 +112,7 @@ const EXAMPLES = [
   '../examples/scene/model/translate.js',
   '../examples/scene/scene/add.js',
   '../examples/scene/scene/add_pass.js',
+  '../examples/scene/scene/load.js',
   '../examples/scene/scene/new.js',
   '../examples/targets/target/Target.js',
   '../examples/targets/target/get_image.js',

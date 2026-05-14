@@ -213,6 +213,28 @@ impl Scene {
         Scene::new()
     }
 
+    /// Load a scene file. Pass a path string for `.gltf` / `.glb` files;
+    /// pass a `bytes` object for an in-memory `.glb` payload.
+    #[staticmethod]
+    #[pyo3(name = "load")]
+    #[lsp_doc("docs/api/scene/scene/load.md")]
+    pub fn load_py(source: Py<PyAny>) -> Result<Self, PyErr> {
+        Python::attach(|py| -> Result<Self, PyErr> {
+            let bound = source.bind(py);
+            let scene_source = if let Ok(s) = bound.extract::<String>() {
+                crate::scene::SceneSource::gltf(s)
+            } else if let Ok(b) = bound.extract::<Vec<u8>>() {
+                crate::scene::SceneSource::gltf(b)
+            } else {
+                return Err(pyo3::exceptions::PyTypeError::new_err(
+                    "Scene.load: expected a path string or a bytes object",
+                ));
+            };
+            Scene::load(scene_source)
+                .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
+        })
+    }
+
     #[pyo3(name = "add_model")]
     #[lsp_doc("docs/api/scene/scene/add.md")]
     pub fn add_model_py(&self, model: &Model) -> Result<(), PyErr> {

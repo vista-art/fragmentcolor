@@ -160,6 +160,11 @@ image = { version = "0.25", default-features = false, features = [
     "hdr",
 ] }
 ktx2 = "0.5"
+# Read-only glTF 2.0 / GLB loader. `import` is the default file-I/O surface
+# (`gltf::import` / `import_slice`); `utils` adds the typed accessors that
+# decode `u8`/`u16` indices and tightly-packed vertex attributes; the
+# `KHR_lights_punctual` extension is opt-in.
+gltf = { version = "1", features = ["KHR_lights_punctual"] }
 
 # Python FFI (optional)
 pyo3 = { version = "0.28", features = [

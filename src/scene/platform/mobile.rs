@@ -293,6 +293,17 @@ impl Scene {
         Arc::new(Scene::new())
     }
 
+    /// Load a scene from a file on disk. Pass a path for `.gltf` / `.glb`
+    /// files. In-memory `.glb` bytes are not exposed on mobile yet — call
+    /// from Rust if you need that shape.
+    #[uniffi::constructor(name = "load")]
+    #[lsp_doc("docs/api/scene/scene/load.md")]
+    pub fn load_mobile(path: String) -> Result<Arc<Self>, FragmentColorError> {
+        Scene::load(crate::scene::SceneSource::gltf(path))
+            .map(Arc::new)
+            .map_err(|e| FragmentColorError::Render(e.to_string()))
+    }
+
     #[uniffi::method(name = "addModel")]
     #[lsp_doc("docs/api/scene/scene/add.md")]
     pub fn add_model_mobile(
