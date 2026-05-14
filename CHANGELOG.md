@@ -15,6 +15,7 @@ Closes the v0.11.2 wishlist item "glTF loader". `Scene::load(impl Into<SceneSour
 - [x] **`Scene::load` cross-language bindings.** Python (`Scene.load("path.gltf")` or `Scene.load(bytes)` — auto-detects string vs bytes), JS / wasm-bindgen (`Scene.load(stringOrUint8Array)`), Swift / Kotlin via uniffi (`Scene.load(path)` — bytes-via-FFI deferred; mobile callers fetch to disk or use the Rust API directly).
 - [x] **Docs:** `docs/api/scene/scene/load.md` (canonical) + `hidden/load_bytes_mobile.md` retired in favor of a single `load(path)` on mobile.
 - [x] **Tests:** `load_minimal_triangle_glb_returns_scene_with_one_model` constructs a valid `.glb` in memory (`build_minimal_triangle_glb` helper, single triangle, POSITION only) and asserts `scene.passes()` returns one default Pass with one Model entry. `load_falls_back_through_into_for_path_inputs` exercises the `&str → GltfSource → SceneSource` chain. 248 lib tests + 150 doctests passing.
+- [x] **Example:** `examples/rust/examples/gltf_scene.rs` — builds a minimal `.glb` in memory, hands it to `Scene::load`, and renders the result through `renderer.render(&scene, &target)` with the renderer's default Camera + Light injected at draw time. Single self-contained file; no external asset needed.
 
 ### Material — lazy texture sources + `Renderer::load`
 
