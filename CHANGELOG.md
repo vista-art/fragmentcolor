@@ -4,6 +4,20 @@
 
 The catalog/integration cycle: texture creation moved off the main thread, KTX2 + 16-bit format support landed, the public API thinned to a single transport per operation, and the texture-related public surface gets a structural cleanup before tagging.
 
+### Wild-glTF correctness — six of seven gaps closed
+
+This session closed six of the seven "wild glTF" correctness gaps flagged after the loader landed. The remaining item — transparency depth-sort for `alpha_mode: Blend` materials — is deferred to its own session: it requires partitioning `Pass::model_entries` by alpha mode, breaking the (shader, mesh) instance batching for blend draws (each blend entry needs its own draw call to preserve back-to-front ordering), and threading camera position to the sort comparator. The clean implementation is a few hundred lines of renderer surgery and is best done with a dedicated focus pass; opaque + Mask glTFs render correctly today, and most "wild" assets (the Khronos sample pack, Sketchfab static models, RemixBrush's brushwork) fall in that bucket.
+
+Closed in this session:
+1. **Multi-light + ambient** (prior commit `09a79bdb`)
+2. **Face-normal fallback + sampler options** (commit `3ecd35aa`)
+3. **`COLOR_0` + `TEXCOORD_1` vertex inputs** (commit `97f281d0`)
+4. **`KHR_texture_transform`** (commit `12feec48`)
+5. **Tangent-space normal mapping** (this commit)
+
+Deferred:
+6. **Transparency depth-sort** — needs renderer partition + per-entry draw for blend.
+
 ### Tangent-space normal mapping
 
 Sixth "wild glTF" gap closed. Normal maps now apply correctly to non-Z-facing surfaces via a full TBN transform — replaces the placeholder additive perturbation that worked only on geometry facing the camera. Tangents come from the glTF `TANGENT` accessor when present, with a fixed-axis fallback for assets that omit them (MikkTSpace tangent generation is a follow-up).
