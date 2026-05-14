@@ -30,7 +30,9 @@ let mesh = Mesh::new();
 mesh.add_vertex(
     Vertex::new([0.0, 0.5, 0.0])
         .set(Vertex::NORMAL, [0.0, 0.0, 1.0])
-        .set(Vertex::UV0, [0.5, 1.0]),
+        .set(Vertex::UV0, [0.5, 1.0])
+        .set(Vertex::COLOR0, [1.0, 1.0, 1.0, 1.0])
+        .set(Vertex::UV1, [0.0, 0.0]),
 );
 // Raw 2×2 RGBA pixel bytes — uploaded lazily by `Renderer::load` below.
 // In practice the loader hands the setter encoded PNG/JPEG bytes (from a

@@ -61,7 +61,9 @@ let mut mesh = Mesh::new();
 mesh.add_vertex(
     Vertex::new([0.0, 0.5, 0.0])
         .set(Vertex::NORMAL, [0.0, 0.0, 1.0])
-        .set(Vertex::UV0, [0.5, 1.0]),
+        .set(Vertex::UV0, [0.5, 1.0])
+        .set(Vertex::COLOR0, [1.0, 1.0, 1.0, 1.0])
+        .set(Vertex::UV1, [0.0, 0.0]),
 );
 
 let mat = Material::pbr()?.base_color([0.3, 0.6, 1.0, 1.0]);

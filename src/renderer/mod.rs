@@ -1734,75 +1734,40 @@ fn vertex_buffer_layouts(
     let (vertex_location, vertex_locations) = mesh.vertex_location_map();
     let instance_locations = mesh.instance_location_map();
 
+    // Match each shader vertex-input to a mesh attribute. Name match wins
+    // over location match: shaders that use fixed `@location(...)` slots
+    // (e.g. the PBR shader's `model_0..model_3` at locations 3..6) collide
+    // with the vertex's auto-incremented locations once the vertex carries
+    // many attributes (NORMAL, UV0, COLOR0, UV1, ...). The mesh's
+    // location_map numbers in its own buffer-local space, not the shader's
+    // global one, so a shader-location of 4 means "model_1" for the
+    // instance buffer but might be "uv1" in the vertex map. Falling back to
+    // location-match would then mis-attribute the slot. Name-first kills
+    // the ambiguity — `position`, `model_*`, `color0`, etc. resolve by
+    // string. Location-based matching catches the remaining case where the
+    // shader's input name doesn't appear in either map (raw / generated
+    // shaders).
     for vertex_input in vertex_inputs.iter() {
         let mut placed = false;
 
-        // 1) Try instance by explicit index
-        if let Some(name) = instance_locations.get(&vertex_input.location)
-            && let Some((offset, format_mesh)) =
-                instance_map.as_ref().and_then(|map| map.get(name)).cloned()
-        {
+        let assert_format = |format_mesh: wgpu::VertexFormat,
+                             stream: &'static str|
+         -> Result<(), RendererError> {
             if vertex_input.format != format_mesh {
                 return Err(RendererError::Error(format!(
-                    "Type mismatch for shader input '{}' @location({}): shader expects {:?}, mesh has {:?}",
+                    "Type mismatch for shader input '{}' @location({}) ({stream}): shader expects {:?}, mesh has {:?}",
                     vertex_input.name, vertex_input.location, vertex_input.format, format_mesh
                 )));
             }
-            instance_attributes.push(wgpu::VertexAttribute {
-                format: vertex_input.format,
-                offset,
-                shader_location: vertex_input.location,
-            });
-            placed = true;
-        }
-        // 2) Try vertex by explicit index (position or property)
-        if !placed {
-            // position index
-            if vertex_input.location == vertex_location
-                && let Some((offset, format_mesh)) = vertex_map.get("position").cloned()
-            {
-                if vertex_input.format != format_mesh {
-                    return Err(RendererError::Error(format!(
-                        "Type mismatch for vertex 'position' @location({}): shader expects {:?}, mesh has {:?}",
-                        vertex_input.location, vertex_input.format, format_mesh
-                    )));
-                }
-                vertex_attributes.push(wgpu::VertexAttribute {
-                    format: vertex_input.format,
-                    offset,
-                    shader_location: vertex_input.location,
-                });
-                placed = true;
-            }
-            if !placed
-                && let Some(name) = vertex_locations.get(&vertex_input.location)
-                && let Some((offset, format_mesh)) = vertex_map.get(name.as_str()).cloned()
-            {
-                if vertex_input.format != format_mesh {
-                    return Err(RendererError::Error(format!(
-                        "Type mismatch for shader input '{}' @location({}): shader expects {:?}, mesh has {:?}",
-                        vertex_input.name, vertex_input.location, vertex_input.format, format_mesh
-                    )));
-                }
-                vertex_attributes.push(wgpu::VertexAttribute {
-                    format: vertex_input.format,
-                    offset,
-                    shader_location: vertex_input.location,
-                });
-                placed = true;
-            }
-        }
-        // 3) Fallback: match by name (instance then vertex)
-        if !placed
-            && let Some(ref mi) = instance_map
+            Ok(())
+        };
+
+        // 1) Name match against instance (handles `model_*` at fixed shader
+        //    locations regardless of the mesh's instance-side numbering).
+        if let Some(ref mi) = instance_map
             && let Some((offset, format_mesh)) = mi.get(vertex_input.name.as_str()).cloned()
         {
-            if vertex_input.format != format_mesh {
-                return Err(RendererError::Error(format!(
-                    "Type mismatch for shader input '{}' @location({}): shader expects {:?}, mesh has {:?}",
-                    vertex_input.name, vertex_input.location, vertex_input.format, format_mesh
-                )));
-            }
+            assert_format(format_mesh, "instance")?;
             instance_attributes.push(wgpu::VertexAttribute {
                 format: vertex_input.format,
                 offset,
@@ -1810,15 +1775,54 @@ fn vertex_buffer_layouts(
             });
             placed = true;
         }
+        // 2) Name match against vertex (handles NORMAL / UV0 / UV1 /
+        //    COLOR0 / TANGENT regardless of insertion order).
         if !placed
             && let Some((offset, format_mesh)) = vertex_map.get(vertex_input.name.as_str()).cloned()
         {
-            if vertex_input.format != format_mesh {
-                return Err(RendererError::Error(format!(
-                    "Type mismatch for shader input '{}' @location({}): shader expects {:?}, mesh has {:?}",
-                    vertex_input.name, vertex_input.location, vertex_input.format, format_mesh
-                )));
-            }
+            assert_format(format_mesh, "vertex")?;
+            vertex_attributes.push(wgpu::VertexAttribute {
+                format: vertex_input.format,
+                offset,
+                shader_location: vertex_input.location,
+            });
+            placed = true;
+        }
+        // 3) Position fallback — the only vertex slot that's commonly
+        //    unnamed in the mesh map.
+        if !placed
+            && vertex_input.location == vertex_location
+            && let Some((offset, format_mesh)) = vertex_map.get("position").cloned()
+        {
+            assert_format(format_mesh, "vertex/position")?;
+            vertex_attributes.push(wgpu::VertexAttribute {
+                format: vertex_input.format,
+                offset,
+                shader_location: vertex_input.location,
+            });
+            placed = true;
+        }
+        // 4) Instance match by buffer-local location index (for instance
+        //    schemas built without canonical names).
+        if !placed
+            && let Some(name) = instance_locations.get(&vertex_input.location)
+            && let Some((offset, format_mesh)) =
+                instance_map.as_ref().and_then(|map| map.get(name)).cloned()
+        {
+            assert_format(format_mesh, "instance/loc")?;
+            instance_attributes.push(wgpu::VertexAttribute {
+                format: vertex_input.format,
+                offset,
+                shader_location: vertex_input.location,
+            });
+            placed = true;
+        }
+        // 5) Vertex match by buffer-local location index.
+        if !placed
+            && let Some(name) = vertex_locations.get(&vertex_input.location)
+            && let Some((offset, format_mesh)) = vertex_map.get(name.as_str()).cloned()
+        {
+            assert_format(format_mesh, "vertex/loc")?;
             vertex_attributes.push(wgpu::VertexAttribute {
                 format: vertex_input.format,
                 offset,

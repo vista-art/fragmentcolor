@@ -207,6 +207,9 @@ fn build_mesh_and_material(
         .collect();
     let supplied_normals: Option<Vec<[f32; 3]>> = reader.read_normals().map(|it| it.collect());
     let uvs: Option<Vec<[f32; 2]>> = reader.read_tex_coords(0).map(|it| it.into_f32().collect());
+    let uv1s: Option<Vec<[f32; 2]>> = reader.read_tex_coords(1).map(|it| it.into_f32().collect());
+    let colors: Option<Vec<[f32; 4]>> =
+        reader.read_colors(0).map(|it| it.into_rgba_f32().collect());
     let indices: Option<Vec<u32>> = reader.read_indices().map(|it| it.into_u32().collect());
 
     // glTF normals are optional; when missing, compute per-vertex normals
@@ -224,6 +227,7 @@ fn build_mesh_and_material(
 
     let fallback_normal = [0.0_f32, 0.0, 1.0];
     let fallback_uv = [0.0_f32, 0.0];
+    let fallback_color = [1.0_f32, 1.0, 1.0, 1.0];
     for (i, pos) in positions.iter().enumerate() {
         let n = normals
             .and_then(|ns| ns.get(i).copied())
@@ -232,10 +236,20 @@ fn build_mesh_and_material(
             .as_ref()
             .and_then(|us| us.get(i).copied())
             .unwrap_or(fallback_uv);
+        let uv1 = uv1s
+            .as_ref()
+            .and_then(|us| us.get(i).copied())
+            .unwrap_or(fallback_uv);
+        let color = colors
+            .as_ref()
+            .and_then(|cs| cs.get(i).copied())
+            .unwrap_or(fallback_color);
         mesh.add_vertex(
             crate::mesh::Vertex::new(*pos)
                 .set(crate::mesh::Vertex::NORMAL, n)
-                .set(crate::mesh::Vertex::UV0, uv),
+                .set(crate::mesh::Vertex::UV0, uv)
+                .set(crate::mesh::Vertex::COLOR0, color)
+                .set(crate::mesh::Vertex::UV1, uv1),
         );
     }
 

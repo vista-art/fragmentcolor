@@ -319,7 +319,9 @@ let mesh = Mesh::new();
 mesh.add_vertex(
     Vertex::new([0.0, 0.5, 0.0])
         .set(Vertex::NORMAL, [0.0, 0.0, 1.0])
-        .set(Vertex::UV0, [0.5, 1.0]),
+        .set(Vertex::UV0, [0.5, 1.0])
+        .set(Vertex::COLOR0, [1.0, 1.0, 1.0, 1.0])
+        .set(Vertex::UV1, [0.0, 0.0]),
 );
 let model = Model::new(mesh, Material::pbr()?);
 
@@ -341,7 +343,7 @@ Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 27-30}"
+lang="rust" meta="collapse={1-1, 29-32}"
 />
 
 </TabItem>
@@ -354,7 +356,7 @@ import { Camera, Light, Material, Mesh, Model, Renderer, Scene, Vertex } from "f
 const renderer = new Renderer();
 
 const mesh = new Mesh();
-mesh.addVertex( Vertex.new([0.0, 0.5, 0.0]) .set(Vertex.NORMAL, [0.0, 0.0, 1.0]) .set(Vertex.UV0, [0.5, 1.0]), );
+mesh.addVertex( Vertex.new([0.0, 0.5, 0.0]) .set(Vertex.NORMAL, [0.0, 0.0, 1.0]) .set(Vertex.UV0, [0.5, 1.0]) .set(Vertex.COLOR0, [1.0, 1.0, 1.0, 1.0]) .set(Vertex.UV1, [0.0, 0.0]), );
 const model = new Model(mesh, Material.pbr()?);
 
 const camera = Camera.perspective(60.0.toRadians(), 1.0, 0.1, 100.0).lookAt([0.0, 0.0, 3.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
@@ -381,7 +383,7 @@ renderer = Renderer()
 
 mesh = Mesh()
 mesh.add_vertex(
-    Vertex([0.0, 0.5, 0.0]).set(Vertex.NORMAL, [0.0, 0.0, 1.0]).set(Vertex.UV0, [0.5, 1.0]),
+    Vertex([0.0, 0.5, 0.0]).set(Vertex.NORMAL, [0.0, 0.0, 1.0]).set(Vertex.UV0, [0.5, 1.0]).set(Vertex.COLOR0, [1.0, 1.0, 1.0, 1.0]).set(Vertex.UV1, [0.0, 0.0]),
 )
 model = Model(mesh, Material.pbr())
 
@@ -409,7 +411,7 @@ let renderer = Renderer()
 
 let mesh = Mesh()
 try mesh.addVertex(
-    try Vertex([0.0, 0.5, 0.0]).set(Vertex.nORMAL, [0.0, 0.0, 1.0]).set(Vertex.uV0, [0.5, 1.0]),
+    try Vertex([0.0, 0.5, 0.0]).set(Vertex.nORMAL, [0.0, 0.0, 1.0]).set(Vertex.uV0, [0.5, 1.0]).set(Vertex.cOLOR0, [1.0, 1.0, 1.0, 1.0]).set(Vertex.uV1, [0.0, 0.0]),
 )
 let model = Model(mesh, Material.pbr()?)
 
@@ -436,7 +438,7 @@ import org.fragmentcolor.*
 val renderer = Renderer()
 
 val mesh = Mesh()
-mesh.addVertex( Vertex.new(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 0.0f, 1.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), )
+mesh.addVertex( Vertex.new(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 0.0f, 1.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)).set(Vertex.COLOR0, listOf(1.0f, 1.0f, 1.0f, 1.0f)).set(Vertex.UV1, listOf(0.0f, 0.0f)), )
 val model = Model(mesh, Material.pbr()?)
 
 val camera = Camera.perspective(60.0.toRadians(), 1.0, 0.1, 100.0).lookAt(listOf(0.0f, 0.0f, 3.0f), listOf(0.0f, 0.0f, 0.0f), listOf(0.0f, 1.0f, 0.0f))
@@ -492,7 +494,9 @@ let mesh = Mesh::new();
 mesh.add_vertex(
     Vertex::new([0.0, 0.5, 0.0])
         .set(Vertex::NORMAL, [0.0, 0.0, 1.0])
-        .set(Vertex::UV0, [0.5, 1.0]),
+        .set(Vertex::UV0, [0.5, 1.0])
+        .set(Vertex::COLOR0, [1.0, 1.0, 1.0, 1.0])
+        .set(Vertex::UV1, [0.0, 0.0]),
 );
 
 let scene = Scene::new();
@@ -506,7 +510,7 @@ Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 21-23}"
+lang="rust" meta="collapse={1-1, 23-25}"
 />
 
 </TabItem>
@@ -520,7 +524,7 @@ const renderer = new Renderer();
 const target = await renderer.createTextureTarget([64, 64]);
 
 const mesh = new Mesh();
-mesh.addVertex( Vertex.new([0.0, 0.5, 0.0]) .set(Vertex.NORMAL, [0.0, 0.0, 1.0]) .set(Vertex.UV0, [0.5, 1.0]), );
+mesh.addVertex( Vertex.new([0.0, 0.5, 0.0]) .set(Vertex.NORMAL, [0.0, 0.0, 1.0]) .set(Vertex.UV0, [0.5, 1.0]) .set(Vertex.COLOR0, [1.0, 1.0, 1.0, 1.0]) .set(Vertex.UV1, [0.0, 0.0]), );
 
 const scene = new Scene();
 // Warm dusk ambient â applies to every Material added below.
@@ -545,7 +549,7 @@ target = renderer.create_texture_target([64, 64])
 
 mesh = Mesh()
 mesh.add_vertex(
-    Vertex([0.0, 0.5, 0.0]).set(Vertex.NORMAL, [0.0, 0.0, 1.0]).set(Vertex.UV0, [0.5, 1.0]),
+    Vertex([0.0, 0.5, 0.0]).set(Vertex.NORMAL, [0.0, 0.0, 1.0]).set(Vertex.UV0, [0.5, 1.0]).set(Vertex.COLOR0, [1.0, 1.0, 1.0, 1.0]).set(Vertex.UV1, [0.0, 0.0]),
 )
 
 scene = Scene()
@@ -571,7 +575,7 @@ let target = try await renderer.createTextureTarget([64, 64])
 
 let mesh = Mesh()
 try mesh.addVertex(
-    try Vertex([0.0, 0.5, 0.0]).set(Vertex.nORMAL, [0.0, 0.0, 1.0]).set(Vertex.uV0, [0.5, 1.0]),
+    try Vertex([0.0, 0.5, 0.0]).set(Vertex.nORMAL, [0.0, 0.0, 1.0]).set(Vertex.uV0, [0.5, 1.0]).set(Vertex.cOLOR0, [1.0, 1.0, 1.0, 1.0]).set(Vertex.uV1, [0.0, 0.0]),
 )
 
 let scene = Scene()
@@ -596,7 +600,7 @@ val renderer = Renderer()
 val target = renderer.createTextureTarget(64u, 64u)
 
 val mesh = Mesh()
-mesh.addVertex( Vertex.new(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 0.0f, 1.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), )
+mesh.addVertex( Vertex.new(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 0.0f, 1.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)).set(Vertex.COLOR0, listOf(1.0f, 1.0f, 1.0f, 1.0f)).set(Vertex.UV1, listOf(0.0f, 0.0f)), )
 
 val scene = Scene()
 // Warm dusk ambient â applies to every Material added below.
@@ -657,7 +661,9 @@ let mesh = Mesh::new();
 mesh.add_vertex(
     Vertex::new([0.0, 0.5, 0.0])
         .set(Vertex::NORMAL, [0.0, 0.0, 1.0])
-        .set(Vertex::UV0, [0.5, 1.0]),
+        .set(Vertex::UV0, [0.5, 1.0])
+        .set(Vertex::COLOR0, [1.0, 1.0, 1.0, 1.0])
+        .set(Vertex::UV1, [0.0, 0.0]),
 );
 let model = Model::new(mesh, Material::pbr()?);
 
@@ -674,7 +680,7 @@ Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 22-25}"
+lang="rust" meta="collapse={1-1, 24-27}"
 />
 
 </TabItem>
@@ -687,7 +693,7 @@ import { Material, Mesh, Model, Pass, Renderer, Scene, Vertex } from "fragmentco
 const renderer = new Renderer();
 
 const mesh = new Mesh();
-mesh.addVertex( Vertex.new([0.0, 0.5, 0.0]) .set(Vertex.NORMAL, [0.0, 0.0, 1.0]) .set(Vertex.UV0, [0.5, 1.0]), );
+mesh.addVertex( Vertex.new([0.0, 0.5, 0.0]) .set(Vertex.NORMAL, [0.0, 0.0, 1.0]) .set(Vertex.UV0, [0.5, 1.0]) .set(Vertex.COLOR0, [1.0, 1.0, 1.0, 1.0]) .set(Vertex.UV1, [0.0, 0.0]), );
 const model = new Model(mesh, Material.pbr()?);
 
 // A backdrop pass that clears to a soft blue before the scene's main draw.
@@ -713,7 +719,7 @@ renderer = Renderer()
 
 mesh = Mesh()
 mesh.add_vertex(
-    Vertex([0.0, 0.5, 0.0]).set(Vertex.NORMAL, [0.0, 0.0, 1.0]).set(Vertex.UV0, [0.5, 1.0]),
+    Vertex([0.0, 0.5, 0.0]).set(Vertex.NORMAL, [0.0, 0.0, 1.0]).set(Vertex.UV0, [0.5, 1.0]).set(Vertex.COLOR0, [1.0, 1.0, 1.0, 1.0]).set(Vertex.UV1, [0.0, 0.0]),
 )
 model = Model(mesh, Material.pbr())
 
@@ -740,7 +746,7 @@ let renderer = Renderer()
 
 let mesh = Mesh()
 try mesh.addVertex(
-    try Vertex([0.0, 0.5, 0.0]).set(Vertex.nORMAL, [0.0, 0.0, 1.0]).set(Vertex.uV0, [0.5, 1.0]),
+    try Vertex([0.0, 0.5, 0.0]).set(Vertex.nORMAL, [0.0, 0.0, 1.0]).set(Vertex.uV0, [0.5, 1.0]).set(Vertex.cOLOR0, [1.0, 1.0, 1.0, 1.0]).set(Vertex.uV1, [0.0, 0.0]),
 )
 let model = Model(mesh, Material.pbr()?)
 
@@ -765,7 +771,7 @@ import org.fragmentcolor.*
 val renderer = Renderer()
 
 val mesh = Mesh()
-mesh.addVertex( Vertex.new(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 0.0f, 1.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), )
+mesh.addVertex( Vertex.new(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 0.0f, 1.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)).set(Vertex.COLOR0, listOf(1.0f, 1.0f, 1.0f, 1.0f)).set(Vertex.UV1, listOf(0.0f, 0.0f)), )
 val model = Model(mesh, Material.pbr()?)
 
 // A backdrop pass that clears to a soft blue before the scene's main draw.

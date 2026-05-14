@@ -14,10 +14,15 @@
 // across many Models is therefore free (1 pipeline + 1 bind-group set);
 // each Model contributes its own row to the instance buffer.
 //
-// Vertex layout the mesh must provide, in order:
+// Vertex layout the mesh must provide:
 //   @location(0) position : vec3<f32>
 //   @location(1) normal   : vec3<f32>
 //   @location(2) uv0      : vec2<f32>
+//   @location(7) color0   : vec4<f32>  — glTF COLOR_0 vertex tint (white default)
+//   @location(8) uv1      : vec2<f32>  — glTF TEXCOORD_1, used by maps that
+//                                        opt into the second UV set (the
+//                                        per-map `texCoord` selector lands
+//                                        with KHR_texture_transform)
 
 struct Camera {
   view_proj: mat4x4<f32>,
@@ -95,6 +100,8 @@ struct VsOut {
   @location(0) world: vec3<f32>,
   @location(1) world_normal: vec3<f32>,
   @location(2) uv: vec2<f32>,
+  @location(3) vertex_color: vec4<f32>,
+  @location(4) uv1: vec2<f32>,
 }
 
 @vertex
@@ -106,6 +113,8 @@ fn vs_main(
   @location(4) model_1: vec4<f32>,
   @location(5) model_2: vec4<f32>,
   @location(6) model_3: vec4<f32>,
+  @location(7) color0: vec4<f32>,
+  @location(8) uv1: vec2<f32>,
 ) -> VsOut {
   let model = mat4x4<f32>(model_0, model_1, model_2, model_3);
   var out: VsOut;
@@ -114,15 +123,20 @@ fn vs_main(
   out.world = world.xyz;
   out.world_normal = mesh_transform_normal(normal, model);
   out.uv = uv0;
+  out.vertex_color = color0;
+  out.uv1 = uv1;
   return out;
 }
 
 @fragment
 fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
-  // Base color (albedo / F0 source) = factor * map sample.
+  // Base color (albedo / F0 source) = factor × map sample × vertex tint.
+  // glTF `COLOR_0` is a per-vertex linear-RGB(A) multiplier, defaults to
+  // white so the existing factor × map product is preserved when the
+  // mesh doesn't carry vertex colors.
   let base_color_sample = textureSample(base_color_map, pbr_sampler, in.uv);
-  let albedo = material.base_color.rgb * base_color_sample.rgb;
-  let alpha = material.base_color.a * base_color_sample.a;
+  let albedo = material.base_color.rgb * base_color_sample.rgb * in.vertex_color.rgb;
+  let alpha = material.base_color.a * base_color_sample.a * in.vertex_color.a;
 
   // Mask alpha mode: discard fragments below the cut-off before doing any
   // lighting work. Cheap; runs before the BRDF. Opaque and Blend ignore

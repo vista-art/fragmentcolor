@@ -71,7 +71,9 @@ let mesh = Mesh::new();
 mesh.add_vertex(
     Vertex::new([0.0, 0.5, 0.0])
         .set(Vertex::NORMAL, [0.0, 0.0, 1.0])
-        .set(Vertex::UV0, [0.5, 1.0]),
+        .set(Vertex::UV0, [0.5, 1.0])
+        .set(Vertex::COLOR0, [1.0, 1.0, 1.0, 1.0])
+        .set(Vertex::UV1, [0.0, 0.0]),
 );
 let model = Model::new(mesh, Material::pbr()?);
 
@@ -84,9 +86,9 @@ let torch = Light::spot([0.0, 1.8, 1.0], [0.0, -0.3, -1.0], [1.0, 0.9, 0.7])
 let pass = Pass::new("scene");
 pass.add(&model)?;
 pass.add(&sun);
-// Multi-light scenes will iterate this binding in a follow-up; today only
-// the last-attached light is consulted by the PBR shader.
-let _ = torch;
+// Both lights accumulate per-fragment — the PBR shader loops over
+// `lights.count` slots (cap of 8) and sums their contributions.
+pass.add(&torch);
 # Ok(())
 # }
 # fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }

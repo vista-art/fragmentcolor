@@ -191,7 +191,9 @@ let mut mesh = Mesh::new();
 mesh.add_vertex(
     Vertex::new([0.0, 0.5, 0.0])
         .set(Vertex::NORMAL, [0.0, 0.0, 1.0])
-        .set(Vertex::UV0, [0.5, 1.0]),
+        .set(Vertex::UV0, [0.5, 1.0])
+        .set(Vertex::COLOR0, [1.0, 1.0, 1.0, 1.0])
+        .set(Vertex::UV1, [0.0, 0.0]),
 );
 
 let model = Model::new(mesh, Material::pbr()?);
@@ -204,7 +206,7 @@ Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 18-20}"
+lang="rust" meta="collapse={1-1, 20-22}"
 />
 
 </TabItem>
@@ -216,7 +218,7 @@ import { Material, Mesh, Model, Renderer, Vertex } from "fragmentcolor";
 
 const renderer = new Renderer();
 const mesh = new Mesh();
-mesh.addVertex( Vertex.new([0.0, 0.5, 0.0]) .set(Vertex.NORMAL, [0.0, 0.0, 1.0]) .set(Vertex.UV0, [0.5, 1.0]), );
+mesh.addVertex( Vertex.new([0.0, 0.5, 0.0]) .set(Vertex.NORMAL, [0.0, 0.0, 1.0]) .set(Vertex.UV0, [0.5, 1.0]) .set(Vertex.COLOR0, [1.0, 1.0, 1.0, 1.0]) .set(Vertex.UV1, [0.0, 0.0]), );
 
 const model = new Model(mesh, Material.pbr()?);
 model.mesh().addVertex( Vertex.new([-0.5, -0.5, 0.0]) .set(Vertex.NORMAL, [0.0, 0.0, 1.0]) .set(Vertex.UV0, [0.0, 0.0]), );
@@ -234,7 +236,7 @@ from fragmentcolor import Material, Mesh, Model, Renderer, Vertex
 renderer = Renderer()
 mesh = Mesh()
 mesh.add_vertex(
-    Vertex([0.0, 0.5, 0.0]).set(Vertex.NORMAL, [0.0, 0.0, 1.0]).set(Vertex.UV0, [0.5, 1.0]),
+    Vertex([0.0, 0.5, 0.0]).set(Vertex.NORMAL, [0.0, 0.0, 1.0]).set(Vertex.UV0, [0.5, 1.0]).set(Vertex.COLOR0, [1.0, 1.0, 1.0, 1.0]).set(Vertex.UV1, [0.0, 0.0]),
 )
 
 model = Model(mesh, Material.pbr())
@@ -255,7 +257,7 @@ import FragmentColor
 let renderer = Renderer()
 let mesh = Mesh()
 try mesh.addVertex(
-    try Vertex([0.0, 0.5, 0.0]).set(Vertex.nORMAL, [0.0, 0.0, 1.0]).set(Vertex.uV0, [0.5, 1.0]),
+    try Vertex([0.0, 0.5, 0.0]).set(Vertex.nORMAL, [0.0, 0.0, 1.0]).set(Vertex.uV0, [0.5, 1.0]).set(Vertex.cOLOR0, [1.0, 1.0, 1.0, 1.0]).set(Vertex.uV1, [0.0, 0.0]),
 )
 
 let model = Model(mesh, Material.pbr()?)
@@ -275,7 +277,7 @@ import org.fragmentcolor.*
 
 val renderer = Renderer()
 val mesh = Mesh()
-mesh.addVertex( Vertex.new(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 0.0f, 1.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), )
+mesh.addVertex( Vertex.new(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 0.0f, 1.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)).set(Vertex.COLOR0, listOf(1.0f, 1.0f, 1.0f, 1.0f)).set(Vertex.UV1, listOf(0.0f, 0.0f)), )
 
 val model = Model(mesh, Material.pbr()?)
 model.mesh().addVertex( Vertex.new(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 0.0f, 1.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )

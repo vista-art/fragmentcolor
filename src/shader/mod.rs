@@ -514,12 +514,64 @@ impl ShaderObject {
         // position location is assumed to be 0
         let pos_loc: u32 = 0;
 
-        // Validate each shader input
+        // Validate each shader input. Name match wins over location match —
+        // see the parallel comment in `Renderer::vertex_buffer_layouts` for
+        // the why: shader `@location(...)` indices and the mesh's
+        // buffer-local location maps live in different namespaces, so any
+        // shader that mixes fixed locations with the Vertex's
+        // auto-incremented ones (e.g. PBR with `model_0..model_3` at 3..6
+        // alongside `color0` / `uv1` on the vertex side) trips the
+        // location-first matcher.
         for inp in inputs.iter() {
             let mut matched = false;
 
-            // 1) Try instance by explicit location
-            if let Some((_, f)) = i_loc_map.get(&inp.location) {
+            // 1) Name match against instance (e.g. `model_*`).
+            if let Some(fmt) = i_name_map.get(&inp.name) {
+                if *fmt == inp.format {
+                    matched = true;
+                } else {
+                    return Err(ShaderError::TypeMismatch(format!(
+                        "Type mismatch for shader input '{}' by name: shader expects {:?}, mesh has {:?}",
+                        inp.name, inp.format, fmt
+                    )));
+                }
+            }
+
+            // 2) Name match against vertex (NORMAL / UV0 / UV1 / COLOR0 /
+            //    TANGENT etc.).
+            if !matched && let Some(fmt) = v_name_map.get(&inp.name) {
+                if *fmt == inp.format {
+                    matched = true;
+                } else {
+                    return Err(ShaderError::TypeMismatch(format!(
+                        "Type mismatch for shader input '{}' by name: shader expects {:?}, mesh has {:?}",
+                        inp.name, inp.format, fmt
+                    )));
+                }
+            }
+
+            // 3) Position fallback — the only vertex slot that's commonly
+            //    unnamed on the shader side.
+            if !matched && inp.location == pos_loc {
+                if let Some(pos_fmt) = pos_fmt_opt {
+                    if pos_fmt == inp.format {
+                        matched = true;
+                    } else {
+                        return Err(ShaderError::TypeMismatch(format!(
+                            "Type mismatch for vertex 'position' @location({}): shader expects {:?}, mesh has {:?}",
+                            inp.location, inp.format, pos_fmt
+                        )));
+                    }
+                } else {
+                    return Err(ShaderError::InvalidKey(
+                        "Mesh has no vertices to provide 'position'".into(),
+                    ));
+                }
+            }
+
+            // 4) Instance match by buffer-local location index (raw shaders
+            //    without canonical names).
+            if !matched && let Some((_, f)) = i_loc_map.get(&inp.location) {
                 if *f == inp.format {
                     matched = true;
                 } else {
@@ -530,55 +582,15 @@ impl ShaderObject {
                 }
             }
 
-            // 2) Try vertex by explicit location (position or other property)
-            if !matched {
-                if inp.location == pos_loc {
-                    if let Some(pos_fmt) = pos_fmt_opt {
-                        if pos_fmt == inp.format {
-                            matched = true;
-                        } else {
-                            return Err(ShaderError::TypeMismatch(format!(
-                                "Type mismatch for vertex 'position' @location({}): shader expects {:?}, mesh has {:?}",
-                                inp.location, inp.format, pos_fmt
-                            )));
-                        }
-                    } else {
-                        return Err(ShaderError::InvalidKey(
-                            "Mesh has no vertices to provide 'position'".into(),
-                        ));
-                    }
-                } else if let Some((_, f)) = v_loc_map.get(&inp.location) {
-                    if *f == inp.format {
-                        matched = true;
-                    } else {
-                        return Err(ShaderError::TypeMismatch(format!(
-                            "Type mismatch for shader input '{}' @location({}): shader expects {:?}, mesh has {:?}",
-                            inp.name, inp.location, inp.format, *f
-                        )));
-                    }
-                }
-            }
-
-            // 3) Fallback by name: instance first, then vertex
-            if !matched {
-                if let Some(fmt) = i_name_map.get(&inp.name) {
-                    if *fmt == inp.format {
-                        matched = true;
-                    } else {
-                        return Err(ShaderError::TypeMismatch(format!(
-                            "Type mismatch for shader input '{}' by name: shader expects {:?}, mesh has {:?}",
-                            inp.name, inp.format, fmt
-                        )));
-                    }
-                } else if let Some(fmt) = v_name_map.get(&inp.name) {
-                    if *fmt == inp.format {
-                        matched = true;
-                    } else {
-                        return Err(ShaderError::TypeMismatch(format!(
-                            "Type mismatch for shader input '{}' by name: shader expects {:?}, mesh has {:?}",
-                            inp.name, inp.format, fmt
-                        )));
-                    }
+            // 5) Vertex match by buffer-local location index.
+            if !matched && let Some((_, f)) = v_loc_map.get(&inp.location) {
+                if *f == inp.format {
+                    matched = true;
+                } else {
+                    return Err(ShaderError::TypeMismatch(format!(
+                        "Type mismatch for shader input '{}' @location({}): shader expects {:?}, mesh has {:?}",
+                        inp.name, inp.location, inp.format, *f
+                    )));
                 }
             }
 

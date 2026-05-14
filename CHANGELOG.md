@@ -4,6 +4,16 @@
 
 The catalog/integration cycle: texture creation moved off the main thread, KTX2 + 16-bit format support landed, the public API thinned to a single transport per operation, and the texture-related public surface gets a structural cleanup before tagging.
 
+### PBR shader — vertex colors (`COLOR_0`) + second UV set (`TEXCOORD_1`)
+
+Two more "wild glTF" gaps closed: per-vertex tinting via `COLOR_0` and the secondary UV set used by maps that opt out of `TEXCOORD_0`. Both attributes become required PBR vertex inputs so the renderer's pipeline layout is stable across meshes; defaults (`[1,1,1,1]` for color, `[0,0]` for uv1) preserve behaviour for callers that don't supply them.
+
+- [x] **WGSL `vs_main` inputs:** `@location(7) color0: vec4<f32>` and `@location(8) uv1: vec2<f32>`. Pass through to `fs_main` via `VsOut.vertex_color` and `VsOut.uv1`. `fs_main` multiplies `albedo *= in.vertex_color.rgb` and `alpha *= in.vertex_color.a` so the existing factor × map product is preserved when vertex color is white. `uv1` is plumbed for the upcoming `KHR_texture_transform` + per-map `texCoord` selector work (the shader still samples every map from `uv0` today).
+- [x] **Loader:** `reader.read_colors(0)` extracts `COLOR_0` (decoded to `[f32; 4]` via the gltf crate's typed accessor); `reader.read_tex_coords(1)` extracts `TEXCOORD_1`. Both fall back to defaults when the primitive omits them, and the vertex always carries the four-attribute set so the PBR pipeline layout stays consistent across glTF assets.
+- [x] **Bind-point matcher rewrite.** Adding two new vertex attributes exposed a long-standing bug in `Renderer::vertex_buffer_layouts` and `Shader::validate_mesh`: both prioritized location-based matching, which mis-routed shader inputs once the mesh's auto-incremented vertex locations collided with the shader's fixed instance-attribute locations (`model_0..model_3` at 3..6). Both matchers now prefer name match first (`position` / `model_*` / `color0` / `uv1` / etc.) and fall back to location only for unnamed slots. Unblocks every future vertex-attribute addition.
+- [x] **All PBR vertex call sites updated** to seed `COLOR0` and `UV1` defaults: `src/scene/light.rs`, `src/scene/camera.rs`, `src/scene/mod.rs`, `src/scene/scene.rs`, `src/material/mod.rs`, `examples/rust/examples/model_pbr_triangle.rs`, plus 20 doctest examples under `docs/api/`.
+- [x] **Tests:** existing 255 lib tests + 151 doctests all pass; the `gltf_scene` and `model_pbr_triangle` examples render with the new vertex layout.
+
 ### glTF loader — face-normal fallback + sampler options
 
 Two of the seven "wild glTF" correctness gaps closed. POSITION-only assets now smooth-shade correctly instead of getting the +Z placeholder normal; per-texture sampler state from glTF (wrap modes + magFilter) flows into FragmentColor's `SamplerOptions` instead of taking the renderer default.
