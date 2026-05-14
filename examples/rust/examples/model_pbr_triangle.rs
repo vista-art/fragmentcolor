@@ -1,12 +1,13 @@
-//! Render a single PBR-shaded triangle through Model + Material + Pass.
+//! Render a single PBR-shaded triangle through Scene + Model + Material.
 //!
-//! Demonstrates the v0.11.2 higher-level path: build a `Mesh`, wrap it in a
+//! Demonstrates the v0.11.2 top-level path: build a `Mesh`, wrap it in a
 //! `Model` paired with `Material::pbr()`, and absorb the Model plus a
-//! `Camera` and a `Light` into a `Pass` through the unified `Pass::add`.
-//! The Material ships the default Cook-Torrance + GGX physically-based
-//! shader.
+//! `Camera` and a `Light` into a `Scene` through the unified `Scene::add`.
+//! The Scene owns the Pass under the hood and feeds the whole thing into
+//! the Renderer in one call. The Material ships the default Cook-Torrance +
+//! GGX physically-based shader.
 
-use fragmentcolor::{Camera, Light, Material, Mesh, Model, Pass, Renderer, Target, Vertex};
+use fragmentcolor::{Camera, Light, Material, Mesh, Model, Renderer, Scene, Target, Vertex};
 
 fn main() {
     pollster::block_on(async move {
@@ -45,14 +46,15 @@ fn main() {
             .look_at([0.0, 0.0, 2.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
         let sun = Light::directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9]);
 
-        let pass = Pass::new("triangle");
-        pass.add(&model)
+        let scene = Scene::new();
+        scene
+            .add(&model)
             .expect("model")
             .add(&camera)
             .expect("camera")
             .add(&sun)
             .expect("sun");
-        renderer.render(&pass, &target).expect("render");
+        renderer.render(&scene, &target).expect("render");
 
         let image = target.get_image().await;
         assert_eq!(image.len(), 256 * 256 * 4);

@@ -48,9 +48,9 @@ pub mod material;
 
 /// # Scene Module
 ///
-/// Higher-level objects that combine Mesh + Material into a renderable thing
-/// with a per-instance transform. See [Model](crate::Model). A full Scene
-/// object that owns many Models is on the roadmap.
+/// Top-level container for the real-world things you render — Models,
+/// Cameras, Lights, custom SceneObjects. See [Scene](crate::Scene),
+/// [Model](crate::Model), [Camera](crate::Camera), and [Light](crate::Light).
 pub mod scene;
 
 /// # Error module

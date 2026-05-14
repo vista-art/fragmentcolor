@@ -1008,6 +1008,48 @@ class GeneratedExamples {
         model.translate(listOf(5.0f, 0.0f, -2.0f))
     }
 
+    @Suppress("unused") private suspend fun _example_scene_scene_add() {
+
+        val renderer = Renderer()
+
+        val mesh = Mesh()
+        mesh.addVertex( Vertex.new(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 0.0f, 1.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), )
+        val model = Model(mesh, Material.pbr()?)
+
+        val camera = Camera.perspective(60.0.toRadians(), 1.0, 0.1, 100.0).lookAt(listOf(0.0f, 0.0f, 3.0f), listOf(0.0f, 0.0f, 0.0f), listOf(0.0f, 1.0f, 0.0f))
+        val sun = Light.directional(listOf(0.3f, -1.0f, -0.4f), listOf(1.0f, 0.95f, 0.9f))
+
+        val scene = Scene()
+        scene.add(model)?.add(camera)?.add(sun)
+
+        // Updating the camera later is enough — every shader on the scene picks
+        // the view_proj up at the next render.
+        camera.lookAt(listOf(3.0f, 1.0f, 5.0f), listOf(0.0f, 0.0f, 0.0f), listOf(0.0f, 1.0f, 0.0f))
+    }
+
+    @Suppress("unused") private suspend fun _example_scene_scene_add_pass() {
+
+        val renderer = Renderer()
+
+        val mesh = Mesh()
+        mesh.addVertex( Vertex.new(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 0.0f, 1.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)), )
+        val model = Model(mesh, Material.pbr()?)
+
+        // A backdrop pass that clears to a soft blue before the scene's main draw.
+        val backdrop = Pass("backdrop")
+        backdrop.setClearColor(listOf(0.05f, 0.08f, 0.12f, 1.0f))
+
+        val scene = Scene()
+        scene.addPass(backdrop)
+        scene.add(model)
+    }
+
+    @Suppress("unused") private suspend fun _example_scene_scene_new() {
+
+        val scene = Scene()
+        // scene is empty; add Models / Cameras / Lights with """scene.add(...)""".
+    }
+
     @Suppress("unused") private suspend fun _example_targets_target_Target() {
 
 

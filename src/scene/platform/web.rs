@@ -3,8 +3,8 @@
 use lsp_doc::lsp_doc;
 use wasm_bindgen::prelude::*;
 
-use crate::scene::{Camera, Light, Model};
-use crate::{Material, Mesh};
+use crate::scene::{Camera, Light, Model, Scene};
+use crate::{Material, Mesh, Pass};
 
 #[wasm_bindgen]
 impl Model {
@@ -173,6 +173,43 @@ impl Light {
         Ok(self.set_color(color))
     }
 }
+
+#[wasm_bindgen]
+impl Scene {
+    #[wasm_bindgen(constructor)]
+    #[lsp_doc("docs/api/scene/scene/new.md")]
+    pub fn new_js() -> Self {
+        Scene::new()
+    }
+
+    #[wasm_bindgen(js_name = "addModel")]
+    #[lsp_doc("docs/api/scene/scene/add.md")]
+    pub fn add_model_js(&self, model: &Model) -> Result<(), JsError> {
+        self.add(model).map(|_| ()).map_err(|e| e.into())
+    }
+
+    #[wasm_bindgen(js_name = "addCamera")]
+    #[lsp_doc("docs/api/scene/scene/add.md")]
+    pub fn add_camera_js(&self, camera: &Camera) -> Result<(), JsError> {
+        self.add(camera).map(|_| ()).map_err(|e| e.into())
+    }
+
+    #[wasm_bindgen(js_name = "addLight")]
+    #[lsp_doc("docs/api/scene/scene/add.md")]
+    pub fn add_light_js(&self, light: &Light) -> Result<(), JsError> {
+        self.add(light).map(|_| ()).map_err(|e| e.into())
+    }
+
+    #[wasm_bindgen(js_name = "addPass")]
+    #[lsp_doc("docs/api/scene/scene/add_pass.md")]
+    pub fn add_pass_js(&self, pass: &Pass) {
+        self.add_pass(pass);
+    }
+}
+
+// JsValue -> Scene bridge so the Renderer's `render` dispatch can detect a
+// Scene the same way it detects a Pass / Shader / Mesh.
+crate::impl_js_bridge!(Scene, crate::PassError);
 
 fn material_share(material: &Material) -> Material {
     // Share the Material's shader (Arc-clone) so the JS handle and the new

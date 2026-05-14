@@ -3,8 +3,8 @@
 use lsp_doc::lsp_doc;
 use pyo3::prelude::*;
 
-use crate::scene::{Camera, Light, Model};
-use crate::{Material, Mesh};
+use crate::scene::{Camera, Light, Model, Scene};
+use crate::{Material, Mesh, Pass};
 
 #[pymethods]
 impl Model {
@@ -134,5 +134,54 @@ impl Light {
     #[lsp_doc("docs/api/scene/light/set_color.md")]
     pub fn set_color_py(&self, color: [f32; 3]) -> Self {
         self.set_color(color)
+    }
+}
+
+#[pymethods]
+impl Scene {
+    #[new]
+    #[lsp_doc("docs/api/scene/scene/new.md")]
+    pub fn new_py() -> Self {
+        Scene::new()
+    }
+
+    #[pyo3(name = "add_model")]
+    #[lsp_doc("docs/api/scene/scene/add.md")]
+    pub fn add_model_py(&self, model: &Model) -> Result<(), PyErr> {
+        self.add(model).map(|_| ()).map_err(|e| e.into())
+    }
+
+    #[pyo3(name = "add_camera")]
+    #[lsp_doc("docs/api/scene/scene/add.md")]
+    pub fn add_camera_py(&self, camera: &Camera) -> Result<(), PyErr> {
+        self.add(camera).map(|_| ()).map_err(|e| e.into())
+    }
+
+    #[pyo3(name = "add_light")]
+    #[lsp_doc("docs/api/scene/scene/add.md")]
+    pub fn add_light_py(&self, light: &Light) -> Result<(), PyErr> {
+        self.add(light).map(|_| ()).map_err(|e| e.into())
+    }
+
+    #[pyo3(name = "add_pass")]
+    #[lsp_doc("docs/api/scene/scene/add_pass.md")]
+    pub fn add_pass_py(&self, pass: &Pass) {
+        self.add_pass(pass);
+    }
+
+    // Internal duck-typed interface used by PyRenderable dispatch — not part
+    // of public docs.
+    #[doc(hidden)]
+    #[pyo3(name = "passes")]
+    pub fn passes_py(&self) -> crate::PyPassIterator {
+        let list = <Self as crate::Renderable>::passes(self);
+        crate::PyPassIterator(list.iter().cloned().collect())
+    }
+
+    // Internal duck-typed interface used by PyRenderable dispatch — not part
+    // of public docs.
+    #[doc(hidden)]
+    pub fn renderable_type(&self) -> &'static str {
+        "Scene"
     }
 }

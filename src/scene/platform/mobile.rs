@@ -4,8 +4,8 @@ use lsp_doc::lsp_doc;
 use std::sync::Arc;
 
 use crate::renderer::platform::mobile::FragmentColorError;
-use crate::scene::{Camera, Light, Model};
-use crate::{Material, Mesh};
+use crate::scene::{Camera, Light, Model, Scene};
+use crate::{Material, Mesh, Pass};
 
 #[uniffi::export]
 impl Model {
@@ -196,6 +196,54 @@ impl Light {
     ) -> Result<Arc<Self>, FragmentColorError> {
         let color = take_vec3(&color, "Light.setColor")?;
         Ok(Arc::new(self.set_color(color)))
+    }
+}
+
+#[uniffi::export]
+impl Scene {
+    #[uniffi::constructor(name = "new")]
+    #[lsp_doc("docs/api/scene/scene/new.md")]
+    pub fn new_mobile() -> Arc<Self> {
+        Arc::new(Scene::new())
+    }
+
+    #[uniffi::method(name = "addModel")]
+    #[lsp_doc("docs/api/scene/scene/add.md")]
+    pub fn add_model_mobile(
+        self: Arc<Self>,
+        model: Arc<Model>,
+    ) -> Result<(), FragmentColorError> {
+        self.add(model.as_ref())
+            .map(|_| ())
+            .map_err(|e| FragmentColorError::Render(e.to_string()))
+    }
+
+    #[uniffi::method(name = "addCamera")]
+    #[lsp_doc("docs/api/scene/scene/add.md")]
+    pub fn add_camera_mobile(
+        self: Arc<Self>,
+        camera: Arc<Camera>,
+    ) -> Result<(), FragmentColorError> {
+        self.add(camera.as_ref())
+            .map(|_| ())
+            .map_err(|e| FragmentColorError::Render(e.to_string()))
+    }
+
+    #[uniffi::method(name = "addLight")]
+    #[lsp_doc("docs/api/scene/scene/add.md")]
+    pub fn add_light_mobile(
+        self: Arc<Self>,
+        light: Arc<Light>,
+    ) -> Result<(), FragmentColorError> {
+        self.add(light.as_ref())
+            .map(|_| ())
+            .map_err(|e| FragmentColorError::Render(e.to_string()))
+    }
+
+    #[uniffi::method(name = "addPass")]
+    #[lsp_doc("docs/api/scene/scene/add_pass.md")]
+    pub fn add_pass_mobile(self: Arc<Self>, pass: Arc<Pass>) {
+        self.add_pass(pass.as_ref());
     }
 }
 

@@ -1083,6 +1083,52 @@ private enum _GeneratedExamples {
         model.translate([5.0, 0.0, -2.0])
     }
 
+    static func _example_scene_scene_add() async throws {
+
+        let renderer = Renderer()
+
+        let mesh = Mesh()
+        try mesh.addVertex(
+            try Vertex([0.0, 0.5, 0.0]).set(Vertex.nORMAL, [0.0, 0.0, 1.0]).set(Vertex.uV0, [0.5, 1.0]),
+        )
+        let model = Model(mesh, Material.pbr()?)
+
+        let camera = Camera.perspective(60.0.toRadians(), 1.0, 0.1, 100.0).lookAt([0.0, 0.0, 3.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+        let sun = Light.directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9])
+
+        let scene = Scene()
+        scene.add(model)?.add(camera)?.add(sun)
+
+        // Updating the camera later is enough — every shader on the scene picks
+        // the view_proj up at the next render.
+        camera.lookAt([3.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+    }
+
+    static func _example_scene_scene_add_pass() async throws {
+
+        let renderer = Renderer()
+
+        let mesh = Mesh()
+        try mesh.addVertex(
+            try Vertex([0.0, 0.5, 0.0]).set(Vertex.nORMAL, [0.0, 0.0, 1.0]).set(Vertex.uV0, [0.5, 1.0]),
+        )
+        let model = Model(mesh, Material.pbr()?)
+
+        // A backdrop pass that clears to a soft blue before the scene's main draw.
+        let backdrop = Pass("backdrop")
+        try backdrop.setClearColor([0.05, 0.08, 0.12, 1.0])
+
+        let scene = Scene()
+        scene.addPass(backdrop)
+        scene.add(model)
+    }
+
+    static func _example_scene_scene_new() async throws {
+
+        let scene = Scene()
+        // scene is empty; add Models / Cameras / Lights with """scene.add(...)""".
+    }
+
     static func _example_targets_target_Target() async throws {
 
 

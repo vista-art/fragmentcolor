@@ -1,8 +1,10 @@
-//! Scene module — higher-level renderables on top of Mesh + Material.
+//! Scene module — higher-level abstractions on top of Mesh + Material.
 //!
-//! Currently houses [`Model`] (Mesh + Material + transform). A full `Scene`
-//! object that owns many Models with traversal / sort hooks is on the
-//! roadmap; this module is the landing spot for it when it ships.
+//! Houses [`Scene`] (the top-level container), [`Model`] (Mesh + Material +
+//! transform), [`Camera`], [`Light`], and the [`SceneObject`] trait that
+//! ties them together. The split mirrors glTF / USD: a Scene is a flat list
+//! of nodes (geometry, viewpoints, lights), and the renderer walks the
+//! scene to produce a frame.
 
 use glam::{Mat4, Vec3};
 use lsp_doc::lsp_doc;
@@ -22,10 +24,12 @@ mod camera;
 mod light;
 mod object;
 mod platform;
+mod scene;
 
 pub use camera::*;
 pub use light::*;
 pub use object::SceneObject;
+pub use scene::Scene;
 
 #[cfg_attr(wasm, wasm_bindgen)]
 #[cfg_attr(python, pyclass(from_py_object))]

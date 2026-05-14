@@ -195,6 +195,8 @@ impl Renderer {
                 return self.render(&pass, &canvas_target);
             } else if let Ok(mesh) = Mesh::try_from(renderable) {
                 return self.render(&mesh, &canvas_target);
+            } else if let Ok(scene) = crate::Scene::try_from(renderable) {
+                return self.render(&scene, &canvas_target);
             } else if Array::is_array(renderable) {
                 for item in Array::from(renderable) {
                     self.render_js(&item, target)?;
@@ -209,6 +211,8 @@ impl Renderer {
                 return self.render(&pass, &texture_target);
             } else if let Ok(mesh) = Mesh::try_from(renderable) {
                 return self.render(&mesh, &texture_target);
+            } else if let Ok(scene) = crate::Scene::try_from(renderable) {
+                return self.render(&scene, &texture_target);
             } else if Array::is_array(renderable) {
                 for item in Array::from(renderable) {
                     self.render_js(&item, target)?;
