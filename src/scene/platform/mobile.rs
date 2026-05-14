@@ -166,16 +166,70 @@ impl Light {
         Ok(Arc::new(Light::directional(direction, color)))
     }
 
+    #[uniffi::constructor(name = "point")]
+    #[lsp_doc("docs/api/scene/light/point.md")]
+    pub fn point_mobile(
+        position: Vec<f32>,
+        color: Vec<f32>,
+    ) -> Result<Arc<Self>, FragmentColorError> {
+        let position = take_vec3(&position, "Light.point position")?;
+        let color = take_vec3(&color, "Light.point color")?;
+        Ok(Arc::new(Light::point(position, color)))
+    }
+
+    #[uniffi::constructor(name = "spot")]
+    #[lsp_doc("docs/api/scene/light/spot.md")]
+    pub fn spot_mobile(
+        position: Vec<f32>,
+        direction: Vec<f32>,
+        color: Vec<f32>,
+    ) -> Result<Arc<Self>, FragmentColorError> {
+        let position = take_vec3(&position, "Light.spot position")?;
+        let direction = take_vec3(&direction, "Light.spot direction")?;
+        let color = take_vec3(&color, "Light.spot color")?;
+        Ok(Arc::new(Light::spot(position, direction, color)))
+    }
+
     #[uniffi::method(name = "direction")]
     #[lsp_doc("docs/api/scene/light/direction.md")]
     pub fn direction_mobile(self: Arc<Self>) -> Vec<f32> {
         self.direction().to_vec()
     }
 
+    #[uniffi::method(name = "position")]
+    #[lsp_doc("docs/api/scene/light/position.md")]
+    pub fn position_mobile(self: Arc<Self>) -> Vec<f32> {
+        self.position().to_vec()
+    }
+
     #[uniffi::method(name = "color")]
     #[lsp_doc("docs/api/scene/light/color.md")]
     pub fn color_mobile(self: Arc<Self>) -> Vec<f32> {
         self.color().to_vec()
+    }
+
+    #[uniffi::method(name = "intensity")]
+    #[lsp_doc("docs/api/scene/light/intensity.md")]
+    pub fn intensity_mobile(self: Arc<Self>) -> f32 {
+        self.intensity()
+    }
+
+    #[uniffi::method(name = "range")]
+    #[lsp_doc("docs/api/scene/light/range.md")]
+    pub fn range_mobile(self: Arc<Self>) -> f32 {
+        self.range()
+    }
+
+    #[uniffi::method(name = "innerConeAngle")]
+    #[lsp_doc("docs/api/scene/light/inner_cone_angle.md")]
+    pub fn inner_cone_angle_mobile(self: Arc<Self>) -> f32 {
+        self.inner_cone_angle()
+    }
+
+    #[uniffi::method(name = "outerConeAngle")]
+    #[lsp_doc("docs/api/scene/light/outer_cone_angle.md")]
+    pub fn outer_cone_angle_mobile(self: Arc<Self>) -> f32 {
+        self.outer_cone_angle()
     }
 
     #[uniffi::method(name = "setDirection")]
@@ -188,6 +242,16 @@ impl Light {
         Ok(Arc::new(self.set_direction(direction)))
     }
 
+    #[uniffi::method(name = "setPosition")]
+    #[lsp_doc("docs/api/scene/light/set_position.md")]
+    pub fn set_position_mobile(
+        self: Arc<Self>,
+        position: Vec<f32>,
+    ) -> Result<Arc<Self>, FragmentColorError> {
+        let position = take_vec3(&position, "Light.setPosition")?;
+        Ok(Arc::new(self.set_position(position)))
+    }
+
     #[uniffi::method(name = "setColor")]
     #[lsp_doc("docs/api/scene/light/set_color.md")]
     pub fn set_color_mobile(
@@ -196,6 +260,28 @@ impl Light {
     ) -> Result<Arc<Self>, FragmentColorError> {
         let color = take_vec3(&color, "Light.setColor")?;
         Ok(Arc::new(self.set_color(color)))
+    }
+
+    #[uniffi::method(name = "setIntensity")]
+    #[lsp_doc("docs/api/scene/light/set_intensity.md")]
+    pub fn set_intensity_mobile(self: Arc<Self>, value: f32) -> Arc<Self> {
+        Arc::new(self.set_intensity(value))
+    }
+
+    #[uniffi::method(name = "setRange")]
+    #[lsp_doc("docs/api/scene/light/set_range.md")]
+    pub fn set_range_mobile(self: Arc<Self>, value: f32) -> Arc<Self> {
+        Arc::new(self.set_range(value))
+    }
+
+    #[uniffi::method(name = "setConeAngles")]
+    #[lsp_doc("docs/api/scene/light/set_cone_angles.md")]
+    pub fn set_cone_angles_mobile(
+        self: Arc<Self>,
+        inner_radians: f32,
+        outer_radians: f32,
+    ) -> Arc<Self> {
+        Arc::new(self.set_cone_angles(inner_radians, outer_radians))
     }
 }
 

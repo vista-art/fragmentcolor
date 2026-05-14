@@ -796,6 +796,41 @@ private enum _GeneratedExamples {
         let sun = Light.directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9])
     }
 
+    static func _example_scene_light_inner_cone_angle() async throws {
+
+        let torch = Light.spot([0.0, 1.0, 0.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0]).setConeAngles(0.2, 0.5)
+        let inner = torch.innerConeAngle()
+    }
+
+    static func _example_scene_light_intensity() async throws {
+
+        let lamp = Light.point([0.0, 1.0, 0.0], [1.0, 0.95, 0.8]).setIntensity(12.0)
+        let scale = lamp.intensity()
+    }
+
+    static func _example_scene_light_outer_cone_angle() async throws {
+
+        let torch = Light.spot([0.0, 1.0, 0.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0]).setConeAngles(0.2, 0.5)
+        let outer = torch.outerConeAngle()
+    }
+
+    static func _example_scene_light_point() async throws {
+
+        let bulb = Light.point([0.0, 2.5, 0.0], [1.0, 0.95, 0.8]).setIntensity(15.0)
+    }
+
+    static func _example_scene_light_position() async throws {
+
+        let bulb = Light.point([3.0, 2.5, -1.0], [1.0, 1.0, 1.0])
+        let pos = bulb.position()
+    }
+
+    static func _example_scene_light_range() async throws {
+
+        let bulb = Light.point([0.0, 0.0, 0.0], [1.0, 1.0, 1.0]).setRange(8.0)
+        let cutoff = bulb.range()
+    }
+
     static func _example_scene_light_set_color() async throws {
 
         let lamp = Light.directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
@@ -803,11 +838,40 @@ private enum _GeneratedExamples {
         lamp.setColor([1.0, 0.85, 0.7])
     }
 
+    static func _example_scene_light_set_cone_angles() async throws {
+
+        let torch = Light.spot([0.0, 1.0, 0.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
+        torch.setConeAngles(0.15, 0.5)
+    }
+
     static func _example_scene_light_set_direction() async throws {
 
         let sun = Light.directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
         // Reorient to a late-afternoon angle.
         sun.setDirection([0.7, -0.5, -0.5])
+    }
+
+    static func _example_scene_light_set_intensity() async throws {
+
+        let lamp = Light.point([0.0, 1.0, 0.0], [1.0, 0.95, 0.8])
+        lamp.setIntensity(15.0)
+    }
+
+    static func _example_scene_light_set_position() async throws {
+
+        let bulb = Light.point([0.0, 0.0, 0.0], [1.0, 1.0, 1.0])
+        bulb.setPosition([2.0, 3.0, -1.0])
+    }
+
+    static func _example_scene_light_set_range() async throws {
+
+        let bulb = Light.point([0.0, 0.0, 0.0], [1.0, 1.0, 1.0])
+        bulb.setRange(8.0)
+    }
+
+    static func _example_scene_light_spot() async throws {
+
+        let torch = Light.spot([0.0, 1.8, 1.0], [0.0, -0.3, -1.0], [1.0, 0.9, 0.7]).setIntensity(5.0).setConeAngles(0.15, 0.4)
     }
 
     static func _example_scene_material_Material() async throws {

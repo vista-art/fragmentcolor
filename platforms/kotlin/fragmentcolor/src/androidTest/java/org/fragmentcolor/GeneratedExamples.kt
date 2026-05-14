@@ -771,6 +771,41 @@ class GeneratedExamples {
         val sun = Light.directional(listOf(0.3f, -1.0f, -0.4f), listOf(1.0f, 0.95f, 0.9f))
     }
 
+    @Suppress("unused") private suspend fun _example_scene_light_inner_cone_angle() {
+
+        val torch = Light.spot(listOf(0.0f, 1.0f, 0.0f), listOf(0.0f, -1.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f)).setConeAngles(0.2, 0.5)
+        val inner = torch.innerConeAngle()
+    }
+
+    @Suppress("unused") private suspend fun _example_scene_light_intensity() {
+
+        val lamp = Light.point(listOf(0.0f, 1.0f, 0.0f), listOf(1.0f, 0.95f, 0.8f)).setIntensity(12.0)
+        val scale = lamp.intensity()
+    }
+
+    @Suppress("unused") private suspend fun _example_scene_light_outer_cone_angle() {
+
+        val torch = Light.spot(listOf(0.0f, 1.0f, 0.0f), listOf(0.0f, -1.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f)).setConeAngles(0.2, 0.5)
+        val outer = torch.outerConeAngle()
+    }
+
+    @Suppress("unused") private suspend fun _example_scene_light_point() {
+
+        val bulb = Light.point(listOf(0.0f, 2.5f, 0.0f), listOf(1.0f, 0.95f, 0.8f)).setIntensity(15.0)
+    }
+
+    @Suppress("unused") private suspend fun _example_scene_light_position() {
+
+        val bulb = Light.point(listOf(3.0f, 2.5f, -1.0f), listOf(1.0f, 1.0f, 1.0f))
+        val pos = bulb.position()
+    }
+
+    @Suppress("unused") private suspend fun _example_scene_light_range() {
+
+        val bulb = Light.point(listOf(0.0f, 0.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f)).setRange(8.0)
+        val cutoff = bulb.range()
+    }
+
     @Suppress("unused") private suspend fun _example_scene_light_set_color() {
 
         val lamp = Light.directional(listOf(0.0f, -1.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f))
@@ -778,11 +813,40 @@ class GeneratedExamples {
         lamp.setColor(listOf(1.0f, 0.85f, 0.7f))
     }
 
+    @Suppress("unused") private suspend fun _example_scene_light_set_cone_angles() {
+
+        val torch = Light.spot(listOf(0.0f, 1.0f, 0.0f), listOf(0.0f, -1.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f))
+        torch.setConeAngles(0.15, 0.5)
+    }
+
     @Suppress("unused") private suspend fun _example_scene_light_set_direction() {
 
         val sun = Light.directional(listOf(0.0f, -1.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f))
         // Reorient to a late-afternoon angle.
         sun.setDirection(listOf(0.7f, -0.5f, -0.5f))
+    }
+
+    @Suppress("unused") private suspend fun _example_scene_light_set_intensity() {
+
+        val lamp = Light.point(listOf(0.0f, 1.0f, 0.0f), listOf(1.0f, 0.95f, 0.8f))
+        lamp.setIntensity(15.0)
+    }
+
+    @Suppress("unused") private suspend fun _example_scene_light_set_position() {
+
+        val bulb = Light.point(listOf(0.0f, 0.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f))
+        bulb.setPosition(listOf(2.0f, 3.0f, -1.0f))
+    }
+
+    @Suppress("unused") private suspend fun _example_scene_light_set_range() {
+
+        val bulb = Light.point(listOf(0.0f, 0.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f))
+        bulb.setRange(8.0)
+    }
+
+    @Suppress("unused") private suspend fun _example_scene_light_spot() {
+
+        val torch = Light.spot(listOf(0.0f, 1.8f, 1.0f), listOf(0.0f, -0.3f, -1.0f), listOf(1.0f, 0.9f, 0.7f)).setIntensity(5.0).setConeAngles(0.15, 0.4)
     }
 
     @Suppress("unused") private suspend fun _example_scene_material_Material() {

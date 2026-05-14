@@ -2,42 +2,63 @@
 
 A `Light` is the first-class scene lighting primitive — paired with a
 [`Camera`](https://fragmentcolor.org/api/scene/camera), it covers the two
-inputs every shaded 3D render needs. The MVP supports a single directional
-light: a parallel beam coming from a fixed world-space direction with a
-tinted color. This is sun / moon / fill-light territory, and it's the
-shape `Material::pbr` expects out of the box.
+inputs every shaded 3D render needs. The variant is fixed at construction:
+
+- [`Light::directional`](https://fragmentcolor.org/api/scene/light/directional) —
+  parallel rays from a fixed world-space direction. Sun, moon, fill.
+- [`Light::point`](https://fragmentcolor.org/api/scene/light/point) — radiates
+  from a fixed world-space position with inverse-square distance falloff.
+  Bulbs, candles, fireballs.
+- [`Light::spot`](https://fragmentcolor.org/api/scene/light/spot) — point
+  light constrained to a cone aligned with `-direction`, with smooth
+  falloff between an inner and outer cone angle. Flashlights, headlamps,
+  stage lighting.
 
 Pass a Light to [`Pass::add`](https://fragmentcolor.org/api/core/pass#add)
-to wire its `light.direction` and `light.color` into every shader the pass
-renders. The Light holds Arc-shared state, so later
-[`set_direction`](https://fragmentcolor.org/api/scene/light/set_direction)
-and [`set_color`](https://fragmentcolor.org/api/scene/light/set_color)
-calls propagate to every shader the Light has been wired into.
+or [`Scene::add`](https://fragmentcolor.org/api/scene/scene/add) to wire
+its uniform fields into every shader the pass renders. The Light holds
+Arc-shared state, so later mutators propagate to every shader the Light
+has been wired into.
 
-Internally a Light carries:
+The underlying uniform follows glTF's
+[`KHR_lights_punctual`](https://github.com/KhronosGroup/glTF/tree/main/extensions/2.0/Khronos/KHR_lights_punctual)
+shape — one binding with a `kind` discriminator plus the union of fields
+for all three variants. Fields irrelevant to the active variant are
+stored but ignored by the shader (`position` on a directional, `direction`
+on a point, cone angles on anything other than a spot).
 
-- A `direction` (vec3) — the world-space direction the light *travels in*.
-  `[0, -1, 0]` is "noon sun pointing straight down". Length isn't
-  normalized here; shaders normalize at sample time as needed.
-- A `color` (vec3) — linear RGB intensity. `[1, 1, 1]` is full white,
-  `[0.3, 0.0, 0.0]` is dim red, etc. Not premultiplied; the shader scales
-  the diffuse + specular response by this value directly.
+## Fields
 
-Point and spot lights ship as follow-ups. The type name reserves the
-abstraction — when they arrive, the API will either grow distinct
-`Light::point(...)` / `Light::spot(...)` constructors or split into
-distinct `DirectionalLight` / `PointLight` / `SpotLight` types; either
-way today's `Light::directional` call site stays valid.
+| name                | applies to             | what it does                                          |
+| ------------------- | ---------------------- | ----------------------------------------------------- |
+| `direction`         | directional, spot      | world-space travel direction; cone axis is `-direction` |
+| `position`          | point, spot            | world-space origin                                     |
+| `color`             | all                    | linear-RGB tint                                       |
+| `intensity`         | all                    | scalar multiplier applied to `color`                   |
+| `range`             | point, spot            | maximum influence radius (0 = unlimited)               |
+| `inner_cone_angle`  | spot                   | full-intensity half-angle (radians)                    |
+| `outer_cone_angle`  | spot                   | zero-contribution half-angle (radians)                 |
 
 ## Methods
 
-| name            | what it does                                          |
-| --------------- | ----------------------------------------------------- |
-| `directional`   | construct a directional light from direction + color  |
-| `direction`     | read the world-space direction                        |
-| `color`         | read the linear-RGB color                             |
-| `set_direction` | update the world-space direction (live propagation)   |
-| `set_color`     | update the linear-RGB color (live propagation)        |
+| name                | what it does                                          |
+| ------------------- | ----------------------------------------------------- |
+| `directional`       | construct a directional light from direction + color  |
+| `point`             | construct a point light from position + color         |
+| `spot`              | construct a spot light from position + direction + color |
+| `direction`         | read the world-space direction                        |
+| `position`          | read the world-space position                         |
+| `color`             | read the linear-RGB color                             |
+| `intensity`         | read the scalar intensity multiplier                  |
+| `range`             | read the maximum influence radius                     |
+| `inner_cone_angle`  | read the inner cone half-angle                        |
+| `outer_cone_angle`  | read the outer cone half-angle                        |
+| `set_direction`     | update the world-space direction (live propagation)   |
+| `set_position`      | update the world-space position (live propagation)    |
+| `set_color`         | update the linear-RGB color (live propagation)        |
+| `set_intensity`     | update the scalar intensity (live propagation)        |
+| `set_range`         | update the influence radius (live propagation)        |
+| `set_cone_angles`   | update the inner + outer cone angles (live propagation) |
 
 ## Example
 
@@ -53,14 +74,19 @@ mesh.add_vertex(
         .set(Vertex::UV0, [0.5, 1.0]),
 );
 let model = Model::new(mesh, Material::pbr()?);
+
+// A sun (key) and a torch (rim) in the same scene.
 let sun = Light::directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9]);
+let torch = Light::spot([0.0, 1.8, 1.0], [0.0, -0.3, -1.0], [1.0, 0.9, 0.7])
+    .set_intensity(5.0)
+    .set_cone_angles(0.15, 0.4);
 
 let pass = Pass::new("scene");
 pass.add(&model)?;
 pass.add(&sun);
-
-// Warm-tinted update — propagates to every shader on the pass.
-sun.set_color([1.0, 0.85, 0.7]);
+// Multi-light scenes will iterate this binding in a follow-up; today only
+// the last-attached light is consulted by the PBR shader.
+let _ = torch;
 # Ok(())
 # }
 # fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }

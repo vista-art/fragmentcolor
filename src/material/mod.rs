@@ -137,8 +137,21 @@ impl Material {
         ];
         let _ = self.shader.set("camera.view_proj", identity);
         let _ = self.shader.set("camera.position", [0.0_f32, 0.0, 0.0]);
+        // Directional default — sun-style angled top-down white light. The
+        // other variants' fields are also seeded so an unattached Material
+        // renders with the same lighting as the attached-directional case
+        // and so a later `Light::point`/`Light::spot` attach overwrites a
+        // well-defined baseline.
+        let _ = self.shader.set("light.kind", 0_u32);
         let _ = self.shader.set("light.direction", [0.0_f32, -1.0, 0.0]);
+        let _ = self.shader.set("light.position", [0.0_f32, 0.0, 0.0]);
         let _ = self.shader.set("light.color", [1.0_f32, 1.0, 1.0]);
+        let _ = self.shader.set("light.intensity", 1.0_f32);
+        let _ = self.shader.set("light.range", 0.0_f32);
+        let _ = self.shader.set("light.inner_cone_cos", 1.0_f32);
+        let _ = self
+            .shader
+            .set("light.outer_cone_cos", std::f32::consts::FRAC_PI_4.cos());
     }
 
     // --- factor setters ---

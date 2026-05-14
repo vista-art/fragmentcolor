@@ -3,7 +3,8 @@
 // Composes the `mesh/transform` and `material/pbr` registry snippets with
 // this main body. Bindings (overridable via shader.set):
 //   group 0 binding 0 — camera   (view_proj, position)
-//   group 0 binding 1 — light    (directional: direction, color)
+//   group 0 binding 1 — light    (KHR_lights_punctual shape: kind, direction,
+//                                 position, color, intensity, range, cone cos)
 //   group 1 binding 0 — material (PBR factors + alpha_mode flag)
 //   group 2 bindings 0..5 — five glTF PBR-MR maps + shared sampler
 //
@@ -38,13 +39,28 @@ struct PbrMaterial {
   alpha_mode_flag: u32,
 }
 
-struct DirectionalLight {
+// glTF KHR_lights_punctual model. One binding holds the active light; `kind`
+// selects which fields fs_main consults:
+//   0 = directional — parallel rays, only `direction` matters
+//   1 = point       — inverse-square distance from `position`, optional
+//                     `range` cutoff (0 = unlimited)
+//   2 = spot        — point + cone falloff via `inner_cone_cos` /
+//                     `outer_cone_cos`, cone axis = `-direction`
+// `intensity` scales `color` uniformly so glTF's per-light intensity slots in
+// without Rust-side premultiplication.
+struct Light {
+  kind: u32,
+  intensity: f32,
+  range: f32,
+  inner_cone_cos: f32,
+  position: vec3<f32>,
+  outer_cone_cos: f32,
   direction: vec3<f32>,
   color: vec3<f32>,
 }
 
 @group(0) @binding(0) var<uniform> camera: Camera;
-@group(0) @binding(1) var<uniform> light: DirectionalLight;
+@group(0) @binding(1) var<uniform> light: Light;
 @group(1) @binding(0) var<uniform> material: PbrMaterial;
 
 // glTF 2.0 PBR-MR texture maps. Every Material::pbr starts with a 1×1
@@ -132,11 +148,34 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
   let emissive_color = material.emissive * emissive_sample;
 
   let v = normalize(camera.position - in.world);
-  let l = normalize(-light.direction);
+
+  // Per-fragment light direction `l` (surface → light) and attenuation.
+  // Directional lights are unattenuated parallel rays; point and spot use
+  // inverse-square distance with optional range cutoff; spot adds a smooth
+  // cone falloff between the inner and outer cone cosines.
+  var l: vec3<f32>;
+  var attenuation: f32 = 1.0;
+  if (light.kind == 0u) {
+    l = normalize(-light.direction);
+  } else {
+    let to_light = light.position - in.world;
+    let dist = length(to_light);
+    l = to_light / max(dist, 1.0e-6);
+    attenuation = 1.0 / max(dist * dist, 1.0e-4);
+    if (light.range > 0.0) {
+      attenuation = attenuation * max(0.0, 1.0 - pow(dist / light.range, 4.0));
+    }
+    if (light.kind == 2u) {
+      let spot_axis = normalize(-light.direction);
+      let cos_angle = dot(spot_axis, l);
+      attenuation = attenuation * smoothstep(light.outer_cone_cos, light.inner_cone_cos, cos_angle);
+    }
+  }
+  let radiance = light.color * light.intensity * attenuation;
   let lit = pbr_shade(
     world_normal, l, v,
     albedo, metallic, roughness,
-    light.color,
+    radiance,
   );
   // Cheap ambient term so unlit faces don't read as pitch-black. Real scenes
   // would replace this with image-based lighting; that's a Phase 2 follow-up.

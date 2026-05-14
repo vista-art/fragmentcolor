@@ -112,10 +112,30 @@ impl Light {
         Light::directional(direction, color)
     }
 
+    #[staticmethod]
+    #[pyo3(name = "point")]
+    #[lsp_doc("docs/api/scene/light/point.md")]
+    pub fn point_py(position: [f32; 3], color: [f32; 3]) -> Self {
+        Light::point(position, color)
+    }
+
+    #[staticmethod]
+    #[pyo3(name = "spot")]
+    #[lsp_doc("docs/api/scene/light/spot.md")]
+    pub fn spot_py(position: [f32; 3], direction: [f32; 3], color: [f32; 3]) -> Self {
+        Light::spot(position, direction, color)
+    }
+
     #[pyo3(name = "direction")]
     #[lsp_doc("docs/api/scene/light/direction.md")]
     pub fn direction_py(&self) -> [f32; 3] {
         self.direction()
+    }
+
+    #[pyo3(name = "position")]
+    #[lsp_doc("docs/api/scene/light/position.md")]
+    pub fn position_py(&self) -> [f32; 3] {
+        self.position()
     }
 
     #[pyo3(name = "color")]
@@ -124,16 +144,64 @@ impl Light {
         self.color()
     }
 
+    #[pyo3(name = "intensity")]
+    #[lsp_doc("docs/api/scene/light/intensity.md")]
+    pub fn intensity_py(&self) -> f32 {
+        self.intensity()
+    }
+
+    #[pyo3(name = "range")]
+    #[lsp_doc("docs/api/scene/light/range.md")]
+    pub fn range_py(&self) -> f32 {
+        self.range()
+    }
+
+    #[pyo3(name = "inner_cone_angle")]
+    #[lsp_doc("docs/api/scene/light/inner_cone_angle.md")]
+    pub fn inner_cone_angle_py(&self) -> f32 {
+        self.inner_cone_angle()
+    }
+
+    #[pyo3(name = "outer_cone_angle")]
+    #[lsp_doc("docs/api/scene/light/outer_cone_angle.md")]
+    pub fn outer_cone_angle_py(&self) -> f32 {
+        self.outer_cone_angle()
+    }
+
     #[pyo3(name = "set_direction")]
     #[lsp_doc("docs/api/scene/light/set_direction.md")]
     pub fn set_direction_py(&self, direction: [f32; 3]) -> Self {
         self.set_direction(direction)
     }
 
+    #[pyo3(name = "set_position")]
+    #[lsp_doc("docs/api/scene/light/set_position.md")]
+    pub fn set_position_py(&self, position: [f32; 3]) -> Self {
+        self.set_position(position)
+    }
+
     #[pyo3(name = "set_color")]
     #[lsp_doc("docs/api/scene/light/set_color.md")]
     pub fn set_color_py(&self, color: [f32; 3]) -> Self {
         self.set_color(color)
+    }
+
+    #[pyo3(name = "set_intensity")]
+    #[lsp_doc("docs/api/scene/light/set_intensity.md")]
+    pub fn set_intensity_py(&self, value: f32) -> Self {
+        self.set_intensity(value)
+    }
+
+    #[pyo3(name = "set_range")]
+    #[lsp_doc("docs/api/scene/light/set_range.md")]
+    pub fn set_range_py(&self, value: f32) -> Self {
+        self.set_range(value)
+    }
+
+    #[pyo3(name = "set_cone_angles")]
+    #[lsp_doc("docs/api/scene/light/set_cone_angles.md")]
+    pub fn set_cone_angles_py(&self, inner_radians: f32, outer_radians: f32) -> Self {
+        self.set_cone_angles(inner_radians, outer_radians)
     }
 }
 

@@ -147,16 +147,67 @@ impl Light {
         Ok(Light::directional(direction, color))
     }
 
+    #[wasm_bindgen(js_name = "point")]
+    #[lsp_doc("docs/api/scene/light/point.md")]
+    pub fn point_js(position: Vec<f32>, color: Vec<f32>) -> Result<Light, JsError> {
+        let position = vec3(&position, "Light.point position")?;
+        let color = vec3(&color, "Light.point color")?;
+        Ok(Light::point(position, color))
+    }
+
+    #[wasm_bindgen(js_name = "spot")]
+    #[lsp_doc("docs/api/scene/light/spot.md")]
+    pub fn spot_js(
+        position: Vec<f32>,
+        direction: Vec<f32>,
+        color: Vec<f32>,
+    ) -> Result<Light, JsError> {
+        let position = vec3(&position, "Light.spot position")?;
+        let direction = vec3(&direction, "Light.spot direction")?;
+        let color = vec3(&color, "Light.spot color")?;
+        Ok(Light::spot(position, direction, color))
+    }
+
     #[wasm_bindgen(js_name = "direction")]
     #[lsp_doc("docs/api/scene/light/direction.md")]
     pub fn direction_js(&self) -> Vec<f32> {
         self.direction().to_vec()
     }
 
+    #[wasm_bindgen(js_name = "position")]
+    #[lsp_doc("docs/api/scene/light/position.md")]
+    pub fn position_js(&self) -> Vec<f32> {
+        self.position().to_vec()
+    }
+
     #[wasm_bindgen(js_name = "color")]
     #[lsp_doc("docs/api/scene/light/color.md")]
     pub fn color_js(&self) -> Vec<f32> {
         self.color().to_vec()
+    }
+
+    #[wasm_bindgen(js_name = "intensity")]
+    #[lsp_doc("docs/api/scene/light/intensity.md")]
+    pub fn intensity_js(&self) -> f32 {
+        self.intensity()
+    }
+
+    #[wasm_bindgen(js_name = "range")]
+    #[lsp_doc("docs/api/scene/light/range.md")]
+    pub fn range_js(&self) -> f32 {
+        self.range()
+    }
+
+    #[wasm_bindgen(js_name = "innerConeAngle")]
+    #[lsp_doc("docs/api/scene/light/inner_cone_angle.md")]
+    pub fn inner_cone_angle_js(&self) -> f32 {
+        self.inner_cone_angle()
+    }
+
+    #[wasm_bindgen(js_name = "outerConeAngle")]
+    #[lsp_doc("docs/api/scene/light/outer_cone_angle.md")]
+    pub fn outer_cone_angle_js(&self) -> f32 {
+        self.outer_cone_angle()
     }
 
     #[wasm_bindgen(js_name = "setDirection")]
@@ -166,11 +217,36 @@ impl Light {
         Ok(self.set_direction(direction))
     }
 
+    #[wasm_bindgen(js_name = "setPosition")]
+    #[lsp_doc("docs/api/scene/light/set_position.md")]
+    pub fn set_position_js(&self, position: Vec<f32>) -> Result<Light, JsError> {
+        let position = vec3(&position, "Light.setPosition")?;
+        Ok(self.set_position(position))
+    }
+
     #[wasm_bindgen(js_name = "setColor")]
     #[lsp_doc("docs/api/scene/light/set_color.md")]
     pub fn set_color_js(&self, color: Vec<f32>) -> Result<Light, JsError> {
         let color = vec3(&color, "Light.setColor")?;
         Ok(self.set_color(color))
+    }
+
+    #[wasm_bindgen(js_name = "setIntensity")]
+    #[lsp_doc("docs/api/scene/light/set_intensity.md")]
+    pub fn set_intensity_js(&self, value: f32) -> Light {
+        self.set_intensity(value)
+    }
+
+    #[wasm_bindgen(js_name = "setRange")]
+    #[lsp_doc("docs/api/scene/light/set_range.md")]
+    pub fn set_range_js(&self, value: f32) -> Light {
+        self.set_range(value)
+    }
+
+    #[wasm_bindgen(js_name = "setConeAngles")]
+    #[lsp_doc("docs/api/scene/light/set_cone_angles.md")]
+    pub fn set_cone_angles_js(&self, inner_radians: f32, outer_radians: f32) -> Light {
+        self.set_cone_angles(inner_radians, outer_radians)
     }
 }
 
