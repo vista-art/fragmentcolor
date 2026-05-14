@@ -62,6 +62,7 @@ const EXAMPLES = [
   '../examples/geometry/vertex/Vertex.js',
   '../examples/geometry/vertex/create_instance.js',
   '../examples/geometry/vertex/new.js',
+  '../examples/geometry/vertex/pbr.js',
   '../examples/geometry/vertex/set.js',
   '../examples/scene/camera/look_at.js',
   '../examples/scene/camera/orthographic.js',

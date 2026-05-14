@@ -190,9 +190,7 @@ mod tests {
             ([0.5, -0.5, 0.0], [1.0, 0.0]),
         ] {
             mesh.add_vertex(
-                Vertex::new(p)
-                    .set(Vertex::NORMAL, [0.0, 0.0, 1.0])
-                    .set(Vertex::UV0, uv).set(Vertex::COLOR0, [1.0, 1.0, 1.0, 1.0]).set(Vertex::UV1, [0.0, 0.0]).set(Vertex::TANGENT, [1.0, 0.0, 0.0, 1.0]),
+                Vertex::pbr(p).set(Vertex::UV0, uv),
             );
         }
         mesh

@@ -353,9 +353,7 @@ mod tests {
     fn pbr_triangle_mesh() -> crate::Mesh {
         let mesh = crate::Mesh::new();
         mesh.add_vertex(
-            crate::mesh::Vertex::new([0.0, 0.5, 0.0])
-                .set(crate::mesh::Vertex::NORMAL, [0.0, 0.0, 1.0])
-                .set(crate::mesh::Vertex::UV0, [0.5, 1.0]).set(crate::mesh::Vertex::COLOR0, [1.0_f32, 1.0, 1.0, 1.0]).set(crate::mesh::Vertex::UV1, [0.0_f32, 0.0]).set(crate::mesh::Vertex::TANGENT, [1.0_f32, 0.0, 0.0, 1.0]),
+            crate::mesh::Vertex::pbr([0.0, 0.5, 0.0]).set(crate::mesh::Vertex::UV0, [0.5, 1.0]),
         );
         mesh
     }

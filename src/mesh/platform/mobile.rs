@@ -44,6 +44,27 @@ impl Vertex {
         Ok(Arc::new(v))
     }
 
+    /// Construct a `Vertex` with PBR-shader defaults seeded for the
+    /// optional attributes (`NORMAL`, `UV0`, `COLOR0`, `UV1`, `TANGENT`).
+    /// Mobile shim because uniffi cannot marshal the generic position
+    /// type.
+    #[uniffi::constructor(name = "pbr")]
+    #[lsp_doc("docs/api/geometry/vertex/pbr.md")]
+    pub fn pbr_mobile(position: Vec<f32>) -> Result<Arc<Self>, FragmentColorError> {
+        let v = match position.len() {
+            2 => Vertex::pbr([position[0], position[1]]),
+            3 => Vertex::pbr([position[0], position[1], position[2]]),
+            4 => Vertex::pbr([position[0], position[1], position[2], position[3]]),
+            n => {
+                return Err(FragmentColorError::Render(format!(
+                    "Vertex position must have 2, 3, or 4 components; got {}",
+                    n
+                )));
+            }
+        };
+        Ok(Arc::new(v))
+    }
+
     /// Set a vertex attribute by key. `VertexValue` is a `uniffi::Enum` so
     /// Swift/Kotlin callers construct the variant directly.
     ///

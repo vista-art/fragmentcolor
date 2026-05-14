@@ -58,11 +58,7 @@ let target = renderer.create_texture_target([256u32, 256u32]).await?;
 
 let mesh = Mesh::new();
 mesh.add_vertex(
-    Vertex::new([0.0, 0.5, 0.0])
-        .set(Vertex::NORMAL, [0.0, 0.0, 1.0])
-        .set(Vertex::UV0, [0.5, 1.0])
-        .set(Vertex::COLOR0, [1.0, 1.0, 1.0, 1.0])
-        .set(Vertex::UV1, [0.0, 0.0]).set(Vertex::TANGENT, [1.0, 0.0, 0.0, 1.0]),
+    Vertex::pbr([0.0, 0.5, 0.0]).set(Vertex::UV0, [0.5, 1.0]),
 );
 let model = Model::new(mesh, Material::pbr()?.base_color([0.8, 0.3, 0.2, 1.0]));
 

@@ -4,6 +4,15 @@
 
 The catalog/integration cycle: texture creation moved off the main thread, KTX2 + 16-bit format support landed, the public API thinned to a single transport per operation, and the texture-related public surface gets a structural cleanup before tagging.
 
+### `Vertex::pbr` convenience helper
+
+Quality-of-life cleanup after the v0.11.2 PBR vertex layout grew to five optional attributes (`NORMAL`, `UV0`, `COLOR0`, `UV1`, `TANGENT`). `Vertex::pbr(position)` constructs a vertex with all five seeded to neutral identity defaults — chain `.set(...)` to override the ones the caller actually has data for. Mechanical-but-significant doctest cleanup: 17 files trimmed of the 5-line `Vertex::new(...).set(NORMAL,...).set(UV0,...).set(COLOR0,...).set(UV1,...).set(TANGENT,...)` chain.
+
+- [x] **`Vertex::pbr<P: IntoVertexPositionFull>(position)`** in `src/mesh/vertex.rs`. Layers default `NORMAL = [0,0,1]`, `UV0 = [0,0]`, `COLOR0 = [1,1,1,1]`, `UV1 = [0,0]`, `TANGENT = [1,0,0,1]` onto a fresh `Vertex::new` via the existing `.set(...)` chain so re-overrides via `.set(Vertex::NORMAL, real)` work as expected (the prop_location stays put on second set, only the value updates).
+- [x] **Cross-platform bindings:** Python (`Vertex.pbr([x, y, z])`), JS / wasm-bindgen (`Vertex.pbr([x, y, z])`), Swift / Kotlin via uniffi (`Vertex.pbr([x, y, z])` accepting `Vec<f32>` of length 2 / 3 / 4 like `Vertex.new`).
+- [x] **Bulk refactor** of 17 files (6 internal test helpers + the `model_pbr_triangle` example + 10 doctest examples under `docs/api/`) to use `Vertex::pbr(p).set(Vertex::UV0, uv)` instead of the 5-line default chain. Net diff: -150 lines.
+- [x] **Verification:** 255 lib tests + 153 doctests passing (`Vertex::pbr` adds one doctest); `gltf_scene` and `model_pbr_triangle` examples render.
+
 ### Wild-glTF correctness — six of seven gaps closed
 
 This session closed six of the seven "wild glTF" correctness gaps flagged after the loader landed. The remaining item — transparency depth-sort for `alpha_mode: Blend` materials — is deferred to its own session: it requires partitioning `Pass::model_entries` by alpha mode, breaking the (shader, mesh) instance batching for blend draws (each blend entry needs its own draw call to preserve back-to-front ordering), and threading camera position to the sort comparator. The clean implementation is a few hundred lines of renderer surgery and is best done with a dedicated focus pass; opaque + Mask glTFs render correctly today, and most "wild" assets (the Khronos sample pack, Sketchfab static models, RemixBrush's brushwork) fall in that bucket.

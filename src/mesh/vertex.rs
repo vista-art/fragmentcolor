@@ -117,6 +117,23 @@ impl Vertex {
         }
     }
 
+    #[lsp_doc("docs/api/geometry/vertex/pbr.md")]
+    pub fn pbr<P: IntoVertexPositionFull>(position: P) -> Self {
+        // Seed every attribute `Material::pbr` reads in its vertex shader
+        // with a neutral identity value. Chain `.set(...)` afterwards to
+        // override the slots a real mesh actually has data for. The
+        // defaults match the loader's fallbacks for missing glTF
+        // accessors, so a vertex built via `Vertex::pbr(pos)` alone
+        // renders the same way the loader renders a glTF primitive that
+        // carries only POSITION.
+        Self::new(position)
+            .set(Self::NORMAL, [0.0_f32, 0.0, 1.0])
+            .set(Self::UV0, [0.0_f32, 0.0])
+            .set(Self::COLOR0, [1.0_f32, 1.0, 1.0, 1.0])
+            .set(Self::UV1, [0.0_f32, 0.0])
+            .set(Self::TANGENT, [1.0_f32, 0.0, 0.0, 1.0])
+    }
+
     #[lsp_doc("docs/api/geometry/vertex/set.md")]
     pub fn set<V: Into<VertexValue>>(mut self, key: &str, v: V) -> Self {
         let k = key.to_string();

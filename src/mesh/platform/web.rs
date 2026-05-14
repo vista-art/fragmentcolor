@@ -249,6 +249,17 @@ impl Vertex {
         js_to_vertex_into(position)
     }
 
+    #[wasm_bindgen(js_name = "pbr")]
+    #[lsp_doc("docs/api/geometry/vertex/pbr.md")]
+    pub fn pbr_js(position: &JsValue) -> Result<Vertex, JsError> {
+        let v = js_to_vertex_into(position)?;
+        Ok(v.set(Self::NORMAL, [0.0_f32, 0.0, 1.0])
+            .set(Self::UV0, [0.0_f32, 0.0])
+            .set(Self::COLOR0, [1.0_f32, 1.0, 1.0, 1.0])
+            .set(Self::UV1, [0.0_f32, 0.0])
+            .set(Self::TANGENT, [1.0_f32, 0.0, 0.0, 1.0]))
+    }
+
     #[wasm_bindgen(js_name = "set")]
     #[lsp_doc("docs/api/geometry/vertex/set.md")]
     pub fn set_js(&self, key: &str, value: &JsValue) -> Result<Vertex, JsError> {

@@ -3,7 +3,7 @@ import org.fragmentcolor.*
 val renderer = Renderer()
 
 val mesh = Mesh()
-mesh.addVertex( Vertex.new(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 0.0f, 1.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)).set(Vertex.COLOR0, listOf(1.0f, 1.0f, 1.0f, 1.0f)).set(Vertex.UV1, listOf(0.0f, 0.0f)).set(Vertex.TANGENT, listOf(1.0f, 0.0f, 0.0f, 1.0f)), )
+mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, floatArrayOf(0.5f, 1.0f)), )
 val model = Model(mesh, Material.pbr()?)
 
 val camera = Camera.perspective(60.0.toRadians(), 1.0, 0.1, 100.0).lookAt(listOf(0.0f, 0.0f, 3.0f), listOf(0.0f, 0.0f, 0.0f), listOf(0.0f, 1.0f, 0.0f))

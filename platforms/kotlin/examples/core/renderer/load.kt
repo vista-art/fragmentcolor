@@ -4,7 +4,7 @@ val renderer = Renderer()
 val target = renderer.createTextureTarget(64u, 64u)
 
 val mesh = Mesh()
-mesh.addVertex( Vertex.new(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 0.0f, 1.0f)).set(Vertex.UV0, listOf(0.5f, 1.0f)).set(Vertex.COLOR0, listOf(1.0f, 1.0f, 1.0f, 1.0f)).set(Vertex.UV1, listOf(0.0f, 0.0f)).set(Vertex.TANGENT, listOf(1.0f, 0.0f, 0.0f, 1.0f)), )
+mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, floatArrayOf(0.5f, 1.0f)), )
 // Raw 2×2 RGBA pixel bytes — uploaded lazily by """Renderer.load""" below.
  
 // vocabulary covers all of them.

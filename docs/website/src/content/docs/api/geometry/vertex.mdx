@@ -168,6 +168,137 @@ lang="kotlin"
 
 ---
 
+### Vertex::pbr
+
+Construct a `Vertex` that matches the PBR shader's vertex input layout.
+Seeds every attribute [`Material::pbr`](/api/scene/material/pbr)
+reads (`NORMAL`, `UV0`, `COLOR0`, `UV1`, `TANGENT`) with a neutral identity
+default; chain `.set(...)` to override the slots a real mesh has data for.
+
+A vertex built with `Vertex::pbr(pos)` alone renders the same way
+[`Scene::load`](/api/scene/scene/load) renders a
+glTF primitive that carries only POSITION â face-normal computation, UV
+defaults, vertex tint, and tangents all collapse to the values the loader
+falls back to. Useful for building PBR meshes by hand without spelling
+out every default attribute.
+
+Defaults:
+
+| attribute | default value           | what it means                                   |
+| --------- | ----------------------- | ----------------------------------------------- |
+| `NORMAL`  | `[0, 0, 1]`             | forward-facing surface                          |
+| `UV0`     | `[0, 0]`                | corner of the texture                           |
+| `COLOR0`  | `[1, 1, 1, 1]`          | identity vertex tint                            |
+| `UV1`     | `[0, 0]`                | unused; only matters for maps that opt into UV1 |
+| `TANGENT` | `[1, 0, 0, 1]`          | T = +X, bitangent sign +1                       |
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Mesh, Vertex};
+
+let mesh = Mesh::new();
+for (pos, uv) in [
+    ([0.0_f32, 0.5, 0.0], [0.5_f32, 1.0]),
+    ([-0.5, -0.5, 0.0], [0.0, 0.0]),
+    ([0.5, -0.5, 0.0], [1.0, 0.0]),
+] {
+    // Override only what the mesh actually carries; NORMAL / COLOR0 / UV1 /
+    // TANGENT use their identity defaults.
+    mesh.add_vertex(Vertex::pbr(pos).set(Vertex::UV0, uv));
+}
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 14-15}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Mesh, Vertex } from "fragmentcolor";
+
+const mesh = new Mesh();
+for (pos, uv) in [ ([0.0, 0.5, 0.0], [0.5, 1.0]), ([-0.5, -0.5, 0.0], [0.0, 0.0]), ([0.5, -0.5, 0.0], [1.0, 0.0]), ] { // Override only what the mesh actually carries; NORMAL / COLOR0 / UV1 /
+    // TANGENT use their identity defaults.
+    mesh.addVertex(Vertex.pbr(pos).set(Vertex.UV0, uv)); };
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Mesh, Vertex
+
+mesh = Mesh()
+for (pos, uv) in [
+    ([0.0_, 0.5, 0.0], [0.5_, 1.0]),
+    ([-0.5, -0.5, 0.0], [0.0, 0.0]),
+    ([0.5, -0.5, 0.0], [1.0, 0.0]),
+] {
+# Override only what the mesh actually carries; NORMAL / COLOR0 / UV1 /
+# TANGENT use their identity defaults.
+    mesh.add_vertex(Vertex.pbr(pos).set(Vertex.UV0, uv))
+}
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let mesh = Mesh()
+for (pos, uv) in [
+    ([0.0, 0.5, 0.0], [0.5, 1.0]),
+    ([-0.5, -0.5, 0.0], [0.0, 0.0]),
+    ([0.5, -0.5, 0.0], [1.0, 0.0]),
+] {
+    // Override only what the mesh actually carries; NORMAL / COLOR0 / UV1 /
+    // TANGENT use their identity defaults.
+    try mesh.addVertex(Vertex.pbr(pos).set(Vertex.uV0, uv))
+}
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val mesh = Mesh()
+for (pos, uv) in arrayOf((listOf(0.0f, 0.5f, 0.0f), listOf(0.5f, 1.0f)), (listOf(-0.5f, -0.5f, 0.0f), listOf(0.0f, 0.0f)), (listOf(0.5f, -0.5f, 0.0f), listOf(1.0f, 0.0f)),) {
+    // Override only what the mesh actually carries; NORMAL / COLOR0 / UV1 /
+    // TANGENT use their identity defaults.
+    mesh.addVertex(Vertex.pbr(pos).set(Vertex.UV0, uv))
+}
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
 ### Vertex::set
 
 Attach an arbitrary property to the vertex.

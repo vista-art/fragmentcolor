@@ -25,11 +25,7 @@ let target = renderer.create_texture_target([64u32, 64u32]).await?;
 
 let mesh = Mesh::new();
 mesh.add_vertex(
-    Vertex::new([0.0, 0.5, 0.0])
-        .set(Vertex::NORMAL, [0.0, 0.0, 1.0])
-        .set(Vertex::UV0, [0.5, 1.0])
-        .set(Vertex::COLOR0, [1.0, 1.0, 1.0, 1.0])
-        .set(Vertex::UV1, [0.0, 0.0]).set(Vertex::TANGENT, [1.0, 0.0, 0.0, 1.0]),
+    Vertex::pbr([0.0, 0.5, 0.0]).set(Vertex::UV0, [0.5, 1.0]),
 );
 
 let scene = Scene::new();

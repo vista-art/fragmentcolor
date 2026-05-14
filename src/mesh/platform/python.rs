@@ -218,6 +218,23 @@ impl Vertex {
         Python::attach(|py| py_to_vertex(position.bind(py)))
     }
 
+    #[staticmethod]
+    #[pyo3(name = "pbr")]
+    #[lsp_doc("docs/api/geometry/vertex/pbr.md")]
+    pub fn pbr_py(position: Py<PyAny>) -> PyResult<Self> {
+        Python::attach(|py| -> PyResult<Self> {
+            // Build the base Vertex from the position, then layer the
+            // PBR identity defaults via the same `.set(...)` chain
+            // `Vertex::pbr` uses on the Rust side.
+            let v = py_to_vertex(position.bind(py))?;
+            Ok(v.set(Self::NORMAL, [0.0_f32, 0.0, 1.0])
+                .set(Self::UV0, [0.0_f32, 0.0])
+                .set(Self::COLOR0, [1.0_f32, 1.0, 1.0, 1.0])
+                .set(Self::UV1, [0.0_f32, 0.0])
+                .set(Self::TANGENT, [1.0_f32, 0.0, 0.0, 1.0]))
+        })
+    }
+
     #[pyo3(name = "set")]
     #[lsp_doc("docs/api/geometry/vertex/set.md")]
     pub fn set_py(&self, key: &str, value: Py<PyAny>) -> PyResult<Self> {

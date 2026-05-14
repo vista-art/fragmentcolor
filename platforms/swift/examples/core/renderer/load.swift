@@ -5,7 +5,7 @@ let target = try await renderer.createTextureTarget([64, 64])
 
 let mesh = Mesh()
 try mesh.addVertex(
-    try Vertex([0.0, 0.5, 0.0]).set(Vertex.nORMAL, [0.0, 0.0, 1.0]).set(Vertex.uV0, [0.5, 1.0]).set(Vertex.cOLOR0, [1.0, 1.0, 1.0, 1.0]).set(Vertex.uV1, [0.0, 0.0]).set(Vertex.tANGENT, [1.0, 0.0, 0.0, 1.0]),
+    try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.uV0, [0.5, 1.0]),
 )
 // Raw 2×2 RGBA pixel bytes — uploaded lazily by """Renderer.load""" below.
 // In practice the loader hands the setter encoded PNG/JPEG bytes (from a

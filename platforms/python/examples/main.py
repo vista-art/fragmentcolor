@@ -69,6 +69,7 @@ def run_all():
         'geometry/vertex/Vertex.py',
         'geometry/vertex/create_instance.py',
         'geometry/vertex/new.py',
+        'geometry/vertex/pbr.py',
         'geometry/vertex/set.py',
         'scene/camera/look_at.py',
         'scene/camera/orthographic.py',

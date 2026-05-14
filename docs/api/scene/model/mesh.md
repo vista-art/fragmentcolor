@@ -13,11 +13,7 @@ use fragmentcolor::{Material, Mesh, Model, Renderer, Vertex};
 let renderer = Renderer::new();
 let mut mesh = Mesh::new();
 mesh.add_vertex(
-    Vertex::new([0.0, 0.5, 0.0])
-        .set(Vertex::NORMAL, [0.0, 0.0, 1.0])
-        .set(Vertex::UV0, [0.5, 1.0])
-        .set(Vertex::COLOR0, [1.0, 1.0, 1.0, 1.0])
-        .set(Vertex::UV1, [0.0, 0.0]).set(Vertex::TANGENT, [1.0, 0.0, 0.0, 1.0]),
+    Vertex::pbr([0.0, 0.5, 0.0]).set(Vertex::UV0, [0.5, 1.0]),
 );
 
 let model = Model::new(mesh, Material::pbr()?);
