@@ -4,6 +4,15 @@
 
 The catalog/integration cycle: texture creation moved off the main thread, KTX2 + 16-bit format support landed, the public API thinned to a single transport per operation, and the texture-related public surface gets a structural cleanup before tagging.
 
+### glTF loader — face-normal fallback + sampler options
+
+Two of the seven "wild glTF" correctness gaps closed. POSITION-only assets now smooth-shade correctly instead of getting the +Z placeholder normal; per-texture sampler state from glTF (wrap modes + magFilter) flows into FragmentColor's `SamplerOptions` instead of taking the renderer default.
+
+- [x] **Face-normal computation** in `src/scene/loader.rs`. When a glTF primitive omits `NORMAL`, the loader walks every triangle, accumulates the un-normalized cross product into each vertex slot (area-weighted contribution by construction), and normalizes. Falls back to `+Z` only for vertices no triangle touches. Handles both indexed and sequential-triplet primitive modes. Degenerate triangles (zero-area) contribute zero and don't poison neighbours.
+- [x] **`map_sampler_options(&gltf::Sampler)`** translates glTF's `wrapS` / `wrapT` (`REPEAT` / `MIRRORED_REPEAT` / `CLAMP_TO_EDGE`) into `SamplerOptions::repeat_*`, and `magFilter` / `minFilter` (`NEAREST` / `LINEAR` variants) into `smooth`. `MIRRORED_REPEAT` collapses to `REPEAT` (FragmentColor's sampler doesn't expose mirror yet); mipmap-filter variants of `minFilter` collapse to their base filter — the upload path runs its own mipmap-chain decision based on `options.mipmaps`.
+- [x] **`image_to_texture_input`** plumbs the sampler options through `TextureOptions { sampler, .. }` so the renderer's lazy upload path picks them up; the Material's slot-format hint (sRGB vs linear) still wins over the default. Tiled textures repeat instead of clamp; pixel-art / texel-art assets keep their nearest filtering instead of getting smoothed.
+- [x] **Tests:** `compute_vertex_normals_indexed_yz_face` (YZ-plane triangle → +X normal, verifies the computation differs from the +Z placeholder), `_non_indexed_walks_triplets` (covers the unindexed branch), `_averages_shared_vertex` (shared vertex across two faces normalizes correctly), `map_sampler_options_handles_repeat_and_nearest` (REPEAT + NEAREST round-trip from glTF JSON). 255 lib tests + 151 doctests passing.
+
 ### Multi-light + ambient
 
 Closes the placeholder "multi-light scenes will iterate this binding in a follow-up" item from the prior commit. The PBR shader's lighting binding moves from a single `Light` to a `LightArray { count, ambient, lights: array<Light, 8> }`; `fs_main` loops over `lights.count`, sums per-light contributions, and adds `albedo * lights.ambient` on top. Removes the silent downgrade for any glTF or hand-built scene with more than one light.

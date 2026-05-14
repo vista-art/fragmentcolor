@@ -205,21 +205,27 @@ fn build_mesh_and_material(
             SceneLoadError::Invalid("glTF primitive has no POSITION attribute".into())
         })?
         .collect();
-    let normals: Option<Vec<[f32; 3]>> = reader.read_normals().map(|it| it.collect());
+    let supplied_normals: Option<Vec<[f32; 3]>> = reader.read_normals().map(|it| it.collect());
     let uvs: Option<Vec<[f32; 2]>> = reader.read_tex_coords(0).map(|it| it.into_f32().collect());
+    let indices: Option<Vec<u32>> = reader.read_indices().map(|it| it.into_u32().collect());
 
-    // glTF allows POSITION-only meshes; the PBR shader expects NORMAL +
-    // UV0 too. Fill missing slots with sensible placeholders so unlit /
-    // untextured assets still render. Forward-Z normal keeps lighting
-    // math finite (a zero normal would NaN out the BRDF); zero UV samples
-    // the 1×1 default textures at their corner — neutral and correct.
-    // Authoring tools that care about per-vertex shading produce normals;
-    // this only matters for hand-built or stripped assets.
+    // glTF normals are optional; when missing, compute per-vertex normals
+    // by accumulating face normals across every triangle that touches the
+    // vertex (area-weighted average from the un-normalized cross product).
+    // Produces smooth shading on closed meshes and matches what authoring
+    // tools would have written. Falls back to the +Z placeholder only for
+    // degenerate vertices that touch no triangle.
+    let computed_normals = if supplied_normals.is_none() {
+        Some(compute_vertex_normals(&positions, indices.as_deref()))
+    } else {
+        None
+    };
+    let normals = supplied_normals.as_ref().or(computed_normals.as_ref());
+
     let fallback_normal = [0.0_f32, 0.0, 1.0];
     let fallback_uv = [0.0_f32, 0.0];
     for (i, pos) in positions.iter().enumerate() {
         let n = normals
-            .as_ref()
             .and_then(|ns| ns.get(i).copied())
             .unwrap_or(fallback_normal);
         let uv = uvs
@@ -233,13 +239,88 @@ fn build_mesh_and_material(
         );
     }
 
-    if let Some(indices) = reader.read_indices() {
-        let idx: Vec<u32> = indices.into_u32().collect();
+    if let Some(idx) = indices {
         mesh.set_indices(idx);
     }
 
     let material = build_material(&primitive.material(), images)?;
     Ok((mesh, material))
+}
+
+/// Smooth per-vertex normals from positions + an optional index buffer.
+/// Accumulates the un-normalized cross product of each triangle into the
+/// vertex slots it touches (area-weighted contribution by construction);
+/// the final normalize step turns the accumulated direction into a unit
+/// vector. Degenerate vertices (zero accumulated direction, or untouched
+/// by any triangle) fall back to a forward-Z normal so the BRDF stays
+/// finite — matches the glTF 2.0 default for POSITION-only meshes.
+fn compute_vertex_normals(positions: &[[f32; 3]], indices: Option<&[u32]>) -> Vec<[f32; 3]> {
+    let mut accum = vec![Vec3::ZERO; positions.len()];
+    let n_verts = positions.len();
+    let visit_triangle = |a: usize, b: usize, c: usize, accum: &mut [Vec3]| {
+        if a >= n_verts || b >= n_verts || c >= n_verts {
+            return;
+        }
+        let v0 = Vec3::from(positions[a]);
+        let v1 = Vec3::from(positions[b]);
+        let v2 = Vec3::from(positions[c]);
+        let face = (v1 - v0).cross(v2 - v0);
+        accum[a] += face;
+        accum[b] += face;
+        accum[c] += face;
+    };
+    if let Some(idx) = indices {
+        for tri in idx.chunks_exact(3) {
+            visit_triangle(tri[0] as usize, tri[1] as usize, tri[2] as usize, &mut accum);
+        }
+    } else {
+        let mut i = 0;
+        while i + 2 < n_verts {
+            visit_triangle(i, i + 1, i + 2, &mut accum);
+            i += 3;
+        }
+    }
+    accum
+        .iter()
+        .map(|v| {
+            v.try_normalize()
+                .unwrap_or(Vec3::new(0.0, 0.0, 1.0))
+                .to_array()
+        })
+        .collect()
+}
+
+/// Translate a glTF texture's sampler into FragmentColor's
+/// [`SamplerOptions`]. glTF's `MIRRORED_REPEAT` collapses to `REPEAT`
+/// (FragmentColor's sampler doesn't expose mirror today); mipmap-filter
+/// variants of `min_filter` collapse to their base filter — the upload
+/// path runs its own mipmap chain decision based on `options.mipmaps`.
+fn map_sampler_options(sampler: &gltf::texture::Sampler<'_>) -> crate::SamplerOptions {
+    use gltf::texture::{MagFilter, MinFilter, WrappingMode};
+    let smooth = match (sampler.mag_filter(), sampler.min_filter()) {
+        // `Nearest` mag-filter is the strongest signal for pixel-art /
+        // texel-art assets; respect it. Linear (or unspecified) keeps
+        // the FragmentColor default smooth=true.
+        (Some(MagFilter::Nearest), _) => false,
+        (_, Some(MinFilter::Nearest))
+        | (_, Some(MinFilter::NearestMipmapNearest))
+        | (_, Some(MinFilter::NearestMipmapLinear)) => false,
+        _ => true,
+    };
+    let repeat_x = matches!(
+        sampler.wrap_s(),
+        WrappingMode::Repeat | WrappingMode::MirroredRepeat
+    );
+    let repeat_y = matches!(
+        sampler.wrap_t(),
+        WrappingMode::Repeat | WrappingMode::MirroredRepeat
+    );
+    crate::SamplerOptions {
+        repeat_x,
+        repeat_y,
+        smooth,
+        compare: None,
+    }
 }
 
 fn build_material(
@@ -345,9 +426,13 @@ fn image_to_texture_input(
         }
     };
 
+    let sampler_options = map_sampler_options(&texture.sampler());
     Ok(TextureInput {
         data: TextureData::DynamicImage(dynamic),
-        options: Default::default(),
+        options: crate::TextureOptions {
+            sampler: sampler_options,
+            ..Default::default()
+        },
     })
 }
 
@@ -478,5 +563,75 @@ mod tests {
         // the actual file IO error is what we want to see.
         let result = Scene::load(SceneSource::gltf("/definitely/not/a/real/path.glb"));
         assert!(result.is_err(), "expected a load error for a bogus path");
+    }
+
+    #[test]
+    fn compute_vertex_normals_indexed_yz_face() {
+        // Triangle in the YZ plane. Face normal = +X. Without
+        // face-normal computation the fallback +Z would shade this
+        // triangle as if it pointed forward — visibly wrong.
+        let positions = [[0.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
+        let indices = [0u32, 1, 2];
+        let normals = compute_vertex_normals(&positions, Some(&indices));
+        for n in normals {
+            assert!((n[0] - 1.0).abs() < 1.0e-6, "got {n:?}");
+            assert!(n[1].abs() < 1.0e-6);
+            assert!(n[2].abs() < 1.0e-6);
+        }
+    }
+
+    #[test]
+    fn compute_vertex_normals_non_indexed_walks_triplets() {
+        // Same YZ-plane triangle but unindexed: positions in sequential
+        // triplets. The loader treats every three consecutive positions
+        // as one face.
+        let positions = [[0.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
+        let normals = compute_vertex_normals(&positions, None);
+        for n in normals {
+            assert!((n[0] - 1.0).abs() < 1.0e-6, "got {n:?}");
+        }
+    }
+
+    #[test]
+    fn compute_vertex_normals_averages_shared_vertex() {
+        // Two coplanar triangles sharing vertex 0 — both contribute the
+        // same +Z face normal, so the shared vertex normalizes to +Z too
+        // (un-degenerate after normalization).
+        let positions = [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [-1.0, 0.0, 0.0],
+            [0.0, -1.0, 0.0],
+        ];
+        let indices = [0u32, 1, 2, 0, 3, 4];
+        let normals = compute_vertex_normals(&positions, Some(&indices));
+        assert!((normals[0][2] - 1.0).abs() < 1.0e-6, "shared {normals:?}");
+    }
+
+    #[test]
+    fn map_sampler_options_handles_repeat_and_nearest() {
+        // Build a minimal glTF programmatically that includes a sampler
+        // with REPEAT wrap + NEAREST filtering, then exercise the
+        // translation to FragmentColor's SamplerOptions.
+        let json = r#"{
+            "asset": { "version": "2.0" },
+            "scene": 0,
+            "scenes": [{ "nodes": [] }],
+            "samplers": [{
+                "magFilter": 9728,
+                "minFilter": 9728,
+                "wrapS": 10497,
+                "wrapT": 10497
+            }]
+        }"#;
+        let doc = gltf::Gltf::from_slice(json.as_bytes())
+            .expect("parse glTF JSON")
+            .document;
+        let sampler = doc.samplers().next().expect("sampler");
+        let opts = map_sampler_options(&sampler);
+        assert!(opts.repeat_x);
+        assert!(opts.repeat_y);
+        assert!(!opts.smooth, "magFilter=9728 (NEAREST) should set smooth=false");
     }
 }
