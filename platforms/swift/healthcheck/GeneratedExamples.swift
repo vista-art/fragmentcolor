@@ -44,7 +44,7 @@ private enum _GeneratedExamples {
 
         let mesh = Mesh()
         try mesh.addVertex(
-            try Vertex([0.0, 0.5, 0.0]).set(Vertex.nORMAL, [0.0, 0.0, 1.0]).set(Vertex.uV0, [0.5, 1.0]).set(Vertex.cOLOR0, [1.0, 1.0, 1.0, 1.0]).set(Vertex.uV1, [0.0, 0.0]),
+            try Vertex([0.0, 0.5, 0.0]).set(Vertex.nORMAL, [0.0, 0.0, 1.0]).set(Vertex.uV0, [0.5, 1.0]).set(Vertex.cOLOR0, [1.0, 1.0, 1.0, 1.0]).set(Vertex.uV1, [0.0, 0.0]).set(Vertex.tANGENT, [1.0, 0.0, 0.0, 1.0]),
         )
         let model = Model(mesh, Material.pbr()?)
 
@@ -301,7 +301,7 @@ private enum _GeneratedExamples {
 
         let mesh = Mesh()
         try mesh.addVertex(
-            try Vertex([0.0, 0.5, 0.0]).set(Vertex.nORMAL, [0.0, 0.0, 1.0]).set(Vertex.uV0, [0.5, 1.0]).set(Vertex.cOLOR0, [1.0, 1.0, 1.0, 1.0]).set(Vertex.uV1, [0.0, 0.0]),
+            try Vertex([0.0, 0.5, 0.0]).set(Vertex.nORMAL, [0.0, 0.0, 1.0]).set(Vertex.uV0, [0.5, 1.0]).set(Vertex.cOLOR0, [1.0, 1.0, 1.0, 1.0]).set(Vertex.uV1, [0.0, 0.0]).set(Vertex.tANGENT, [1.0, 0.0, 0.0, 1.0]),
         )
         // Raw 2×2 RGBA pixel bytes — uploaded lazily by """Renderer.load""" below.
         // In practice the loader hands the setter encoded PNG/JPEG bytes (from a
@@ -907,7 +907,7 @@ private enum _GeneratedExamples {
         let renderer = Renderer()
         let mesh = Mesh()
         try mesh.addVertex(
-            try Vertex([0.0, 0.5, 0.0]).set(Vertex.nORMAL, [0.0, 0.0, 1.0]).set(Vertex.uV0, [0.5, 1.0]).set(Vertex.cOLOR0, [1.0, 1.0, 1.0, 1.0]).set(Vertex.uV1, [0.0, 0.0]),
+            try Vertex([0.0, 0.5, 0.0]).set(Vertex.nORMAL, [0.0, 0.0, 1.0]).set(Vertex.uV0, [0.5, 1.0]).set(Vertex.cOLOR0, [1.0, 1.0, 1.0, 1.0]).set(Vertex.uV1, [0.0, 0.0]).set(Vertex.tANGENT, [1.0, 0.0, 0.0, 1.0]),
         )
 
         let material = Material.pbr()?.baseColor([0.85, 0.2, 0.2, 1.0]).metallic(0.0).roughness(0.4).emissive([0.0, 0.0, 0.05])
@@ -1096,7 +1096,7 @@ private enum _GeneratedExamples {
         let renderer = Renderer()
         let mesh = Mesh()
         try mesh.addVertex(
-            try Vertex([0.0, 0.5, 0.0]).set(Vertex.nORMAL, [0.0, 0.0, 1.0]).set(Vertex.uV0, [0.5, 1.0]).set(Vertex.cOLOR0, [1.0, 1.0, 1.0, 1.0]).set(Vertex.uV1, [0.0, 0.0]),
+            try Vertex([0.0, 0.5, 0.0]).set(Vertex.nORMAL, [0.0, 0.0, 1.0]).set(Vertex.uV0, [0.5, 1.0]).set(Vertex.cOLOR0, [1.0, 1.0, 1.0, 1.0]).set(Vertex.uV1, [0.0, 0.0]).set(Vertex.tANGENT, [1.0, 0.0, 0.0, 1.0]),
         )
 
         let model = Model(mesh, Material.pbr()?)
@@ -1187,7 +1187,7 @@ private enum _GeneratedExamples {
 
         let mesh = Mesh()
         try mesh.addVertex(
-            try Vertex([0.0, 0.5, 0.0]).set(Vertex.nORMAL, [0.0, 0.0, 1.0]).set(Vertex.uV0, [0.5, 1.0]).set(Vertex.cOLOR0, [1.0, 1.0, 1.0, 1.0]).set(Vertex.uV1, [0.0, 0.0]),
+            try Vertex([0.0, 0.5, 0.0]).set(Vertex.nORMAL, [0.0, 0.0, 1.0]).set(Vertex.uV0, [0.5, 1.0]).set(Vertex.cOLOR0, [1.0, 1.0, 1.0, 1.0]).set(Vertex.uV1, [0.0, 0.0]).set(Vertex.tANGENT, [1.0, 0.0, 0.0, 1.0]),
         )
         let model = Model(mesh, Material.pbr()?)
 
@@ -1208,7 +1208,7 @@ private enum _GeneratedExamples {
 
         let mesh = Mesh()
         try mesh.addVertex(
-            try Vertex([0.0, 0.5, 0.0]).set(Vertex.nORMAL, [0.0, 0.0, 1.0]).set(Vertex.uV0, [0.5, 1.0]).set(Vertex.cOLOR0, [1.0, 1.0, 1.0, 1.0]).set(Vertex.uV1, [0.0, 0.0]),
+            try Vertex([0.0, 0.5, 0.0]).set(Vertex.nORMAL, [0.0, 0.0, 1.0]).set(Vertex.uV0, [0.5, 1.0]).set(Vertex.cOLOR0, [1.0, 1.0, 1.0, 1.0]).set(Vertex.uV1, [0.0, 0.0]).set(Vertex.tANGENT, [1.0, 0.0, 0.0, 1.0]),
         )
         let model = Model(mesh, Material.pbr()?)
 
@@ -1228,7 +1228,7 @@ private enum _GeneratedExamples {
 
         let mesh = Mesh()
         try mesh.addVertex(
-            try Vertex([0.0, 0.5, 0.0]).set(Vertex.nORMAL, [0.0, 0.0, 1.0]).set(Vertex.uV0, [0.5, 1.0]).set(Vertex.cOLOR0, [1.0, 1.0, 1.0, 1.0]).set(Vertex.uV1, [0.0, 0.0]),
+            try Vertex([0.0, 0.5, 0.0]).set(Vertex.nORMAL, [0.0, 0.0, 1.0]).set(Vertex.uV0, [0.5, 1.0]).set(Vertex.cOLOR0, [1.0, 1.0, 1.0, 1.0]).set(Vertex.uV1, [0.0, 0.0]).set(Vertex.tANGENT, [1.0, 0.0, 0.0, 1.0]),
         )
 
         let scene = Scene()

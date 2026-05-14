@@ -62,7 +62,7 @@ mesh.add_vertex(
         .set(Vertex::NORMAL, [0.0, 0.0, 1.0])
         .set(Vertex::UV0, [0.5, 1.0])
         .set(Vertex::COLOR0, [1.0, 1.0, 1.0, 1.0])
-        .set(Vertex::UV1, [0.0, 0.0]),
+        .set(Vertex::UV1, [0.0, 0.0]).set(Vertex::TANGENT, [1.0, 0.0, 0.0, 1.0]),
 );
 let model = Model::new(mesh, Material::pbr()?.base_color([0.8, 0.3, 0.2, 1.0]));
 

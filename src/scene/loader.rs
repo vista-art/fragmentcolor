@@ -210,6 +210,7 @@ fn build_mesh_and_material(
     let uv1s: Option<Vec<[f32; 2]>> = reader.read_tex_coords(1).map(|it| it.into_f32().collect());
     let colors: Option<Vec<[f32; 4]>> =
         reader.read_colors(0).map(|it| it.into_rgba_f32().collect());
+    let tangents: Option<Vec<[f32; 4]>> = reader.read_tangents().map(|it| it.collect());
     let indices: Option<Vec<u32>> = reader.read_indices().map(|it| it.into_u32().collect());
 
     // glTF normals are optional; when missing, compute per-vertex normals
@@ -228,6 +229,12 @@ fn build_mesh_and_material(
     let fallback_normal = [0.0_f32, 0.0, 1.0];
     let fallback_uv = [0.0_f32, 0.0];
     let fallback_color = [1.0_f32, 1.0, 1.0, 1.0];
+    // glTF spec: tangent.xyz is unit-length, .w is ±1 (bitangent sign).
+    // The default `[1, 0, 0, 1]` gives a sensible T = +X / B = +Y / N = +Z
+    // basis for assets that don't ship tangents; normal-map sampling on
+    // surfaces that face +Z stays correct, while non-Z surfaces will look
+    // wrong until the loader computes MikkTSpace tangents (follow-up).
+    let fallback_tangent = [1.0_f32, 0.0, 0.0, 1.0];
     for (i, pos) in positions.iter().enumerate() {
         let n = normals
             .and_then(|ns| ns.get(i).copied())
@@ -244,12 +251,17 @@ fn build_mesh_and_material(
             .as_ref()
             .and_then(|cs| cs.get(i).copied())
             .unwrap_or(fallback_color);
+        let tangent = tangents
+            .as_ref()
+            .and_then(|ts| ts.get(i).copied())
+            .unwrap_or(fallback_tangent);
         mesh.add_vertex(
             crate::mesh::Vertex::new(*pos)
                 .set(crate::mesh::Vertex::NORMAL, n)
                 .set(crate::mesh::Vertex::UV0, uv)
                 .set(crate::mesh::Vertex::COLOR0, color)
-                .set(crate::mesh::Vertex::UV1, uv1),
+                .set(crate::mesh::Vertex::UV1, uv1)
+                .set(crate::mesh::Vertex::TANGENT, tangent),
         );
     }
 

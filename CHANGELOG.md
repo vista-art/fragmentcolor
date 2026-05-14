@@ -4,6 +4,16 @@
 
 The catalog/integration cycle: texture creation moved off the main thread, KTX2 + 16-bit format support landed, the public API thinned to a single transport per operation, and the texture-related public surface gets a structural cleanup before tagging.
 
+### Tangent-space normal mapping
+
+Sixth "wild glTF" gap closed. Normal maps now apply correctly to non-Z-facing surfaces via a full TBN transform — replaces the placeholder additive perturbation that worked only on geometry facing the camera. Tangents come from the glTF `TANGENT` accessor when present, with a fixed-axis fallback for assets that omit them (MikkTSpace tangent generation is a follow-up).
+
+- [x] **WGSL `vs_main` input** `@location(9) tangent: vec4<f32>` — glTF spec layout: `.xyz` = object-space tangent direction, `.w` = ±1 bitangent sign for TBN handedness. Transformed by the model matrix's upper-3×3 (tangents are direction vectors, no inverse-transpose) and forwarded to `fs_main` via `VsOut.world_tangent`.
+- [x] **`fs_main` TBN transform** replaces the placeholder normal perturbation. Decodes the tangent-space normal from `[0, 1]` → `[-1, 1]`, scales the XY by `material.normal_scale` (glTF spec), then rotates into world space through `T·tn.x + B·tn.y + N·tn.z` where `B = cross(N, T) * tangent.w`. The default 1×1 normal-map encoding `(128, 128, 255)` decodes to tangent-space `(0, 0, 1)` → the lit normal collapses to geometric `N`, so unset normal maps don't perturb shading. Normal maps now light correctly on non-Z-facing surfaces.
+- [x] **Loader:** `reader.read_tangents()` extracts `TANGENT` (decoded to `[f32; 4]` via the gltf crate's typed accessor); fallback is `[1, 0, 0, 1]` (T = +X, sign = +1) for assets that omit tangents. Documented in-line as the MikkTSpace-tangent follow-up.
+- [x] **All PBR vertex call sites updated** to seed `TANGENT` defaults: `src/scene/{light,camera,mod,scene}.rs`, `src/material/mod.rs`, the `model_pbr_triangle` example, and 20 doctest examples under `docs/api/`.
+- [x] **Tests:** 255 lib tests + 152 doctests passing; the `gltf_scene` and `model_pbr_triangle` examples render with the new vertex layout.
+
 ### Material — `KHR_texture_transform` (global UV transform)
 
 Fifth "wild glTF" gap closed. `Material::uv_transform(offset, scale, rotation)` lets callers tile, rotate, or offset every texture sample with a single setter; the loader promotes a glTF `KHR_texture_transform` extension on the base-color slot to the same uniform automatically. Today the transform is global to a Material (one transform for all five maps); per-map transforms — and the per-map `texCoord` selector that picks `UV0` vs `UV1` — are a follow-up. The global path covers the most common usage of the extension losslessly (KHR_texture_transform is usually applied to `base_color` alone).

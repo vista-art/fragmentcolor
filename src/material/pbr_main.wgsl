@@ -23,6 +23,10 @@
 //                                        opt into the second UV set (the
 //                                        per-map `texCoord` selector lands
 //                                        with KHR_texture_transform)
+//   @location(9) tangent  : vec4<f32>  — glTF TANGENT; `xyz` is the tangent
+//                                        direction in object space, `w` is
+//                                        the bitangent sign (±1) for the
+//                                        TBN handedness
 
 struct Camera {
   view_proj: mat4x4<f32>,
@@ -110,6 +114,9 @@ struct VsOut {
   @location(2) uv: vec2<f32>,
   @location(3) vertex_color: vec4<f32>,
   @location(4) uv1: vec2<f32>,
+  // World-space tangent in .xyz; bitangent sign in .w (the spec's
+  // handedness flag — `B = cross(N, T) * tangent.w`).
+  @location(5) world_tangent: vec4<f32>,
 }
 
 @vertex
@@ -123,6 +130,7 @@ fn vs_main(
   @location(6) model_3: vec4<f32>,
   @location(7) color0: vec4<f32>,
   @location(8) uv1: vec2<f32>,
+  @location(9) tangent: vec4<f32>,
 ) -> VsOut {
   let model = mat4x4<f32>(model_0, model_1, model_2, model_3);
   var out: VsOut;
@@ -133,6 +141,11 @@ fn vs_main(
   out.uv = uv0;
   out.vertex_color = color0;
   out.uv1 = uv1;
+  // Tangents are direction vectors, transformed by the model matrix's
+  // upper-3×3 (no inverse-transpose) — the bitangent sign in .w stays
+  // untouched.
+  let t_world = (model * vec4<f32>(tangent.xyz, 0.0)).xyz;
+  out.world_tangent = vec4<f32>(t_world, tangent.w);
   return out;
 }
 
@@ -174,17 +187,20 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
   let metallic = material.metallic * mr.r;
   let roughness = material.roughness * mr.g;
 
-  // Normal mapping. Decode the stored `[0, 1]` byte triple into a
-  // `[-1, 1]` tangent-space normal, scale the XY perturbation by
-  // `material.normal_scale`, and add it additively to the interpolated
-  // world-space normal. This is a placeholder combine that proves the
-  // binding works while the full tangent-space-to-world TBN transform is
-  // finished as a follow-up. The 1×1 default `(128, 128, 255)` decodes to
-  // `(0, 0, 1)` → scaled XY is `(0, 0)` → addition is a no-op, so unset
-  // maps don't perturb the lit normal.
+  // Normal mapping via the full TBN transform. Decode the stored `[0, 1]`
+  // byte triple into a `[-1, 1]` tangent-space normal, scale the XY by
+  // `material.normal_scale`, then rotate it from tangent into world space
+  // through `(T, B, N)`. The 1×1 default normal map encodes
+  // `(128, 128, 255)` → tangent-space `(0, 0, 1)` → final `world_normal`
+  // collapses to the geometric `N`, so unset maps don't perturb shading.
+  // glTF spec: `B = cross(N, T) * tangent.w` (handedness preserved
+  // through model transform + the `tangent.w` sign).
   let n_sample = textureSample(normal_map, pbr_sampler, uv).xyz * 2.0 - 1.0;
-  let n_perturb = vec3<f32>(n_sample.xy * material.normal_scale, 0.0);
-  let world_normal = normalize(in.world_normal + n_perturb);
+  let tn = vec3<f32>(n_sample.xy * material.normal_scale, n_sample.z);
+  let n = normalize(in.world_normal);
+  let t = normalize(in.world_tangent.xyz);
+  let b = cross(n, t) * in.world_tangent.w;
+  let world_normal = normalize(t * tn.x + b * tn.y + n * tn.z);
 
   // Occlusion. glTF reads only the red channel; blend toward `1.0` by the
   // strength factor so `strength = 0` ignores the map entirely.
