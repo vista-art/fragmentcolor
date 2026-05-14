@@ -133,9 +133,17 @@ lang="kotlin"
 
 ---
 
-### TextureTarget::get_image()
+### TextureTarget::texture
 
-Returns the current contents of the target as a byte array in RGBA8 format.
+Return a sampleable [`Texture`](/api/texture/texture)
+handle that aliases the offscreen render target's storage. Useful for
+multi-pass pipelines: render into the `TextureTarget`, then bind the
+returned `Texture` as a shader uniform on the next pass to read it back.
+
+The first call registers the underlying texture object with the renderer
+and caches the resulting `TextureId`; subsequent calls return a fresh
+`Texture` handle pointing at the same registered id (no duplicate
+registration). The returned handle is `Clone` â pass it around freely.
 
 #### Example
 
@@ -144,21 +152,32 @@ Returns the current contents of the target as a byte array in RGBA8 format.
 <TabItem label="Rust">
 <Code
 code={`
-use fragmentcolor::{Renderer, Target, Shader};
-
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Renderer, Shader};
 
 let renderer = Renderer::new();
-let target = renderer.create_texture_target([16, 16]).await?;
-renderer.render(&Shader::default(), &target)?;
+let target = renderer.create_texture_target([256u32, 256u32]).await?;
 
-let image = target.get_image().await;
+// Bind the offscreen target's contents as a uniform on a downstream
+// post-processing shader.
+let post = Shader::new(r#"
+    @group(0) @binding(0) var input_image : texture_2d<f32>;
+    @group(0) @binding(1) var input_sampler : sampler;
 
+    @vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+        let p = array<vec2<f32>, 3>(vec2f(-1.0,-1.0), vec2f(3.0,-1.0), vec2f(-1.0,3.0));
+        return vec4<f32>(p[i], 0.0, 1.0);
+    }
+    @fragment fn fs_main(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
+        return textureSample(input_image, input_sampler, vec2<f32>(0.5, 0.5));
+    }
+"#)?;
+post.set("input_image", &target.texture())?;
 Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={3-3, 11-13}"
+lang="rust" meta="collapse={1-1, 22-24}"
 />
 
 </TabItem>
@@ -166,15 +185,17 @@ lang="rust" meta="collapse={3-3, 11-13}"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Renderer, Shader } from "fragmentcolor";
-
-
 const renderer = new Renderer();
-const target = await renderer.createTextureTarget([16, 16]);
-renderer.render(new Shader(""), target);
-
-const image = await target.getImage();
-
+const target = await renderer.createTextureTarget([512, 512]);
+const postShader = new Shader(\`
+  @group(0) @binding(0) var t: texture_2d<f32>;
+  @fragment fn main() -> @location(0) vec4f {
+    return textureSample(t, s, in.uv);
+  }
+\`);
+const tex = target.texture();
+await postShader.set("t", tex);
+renderer.render(postShader, target);
 `}
 lang="js"
 />
@@ -184,16 +205,27 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from rendercanvas.auto import RenderCanvas, loop
 from fragmentcolor import Renderer, Shader
 
-
 renderer = Renderer()
-target = renderer.create_texture_target([16, 16])
-renderer.render(Shader(""), target)
+target = renderer.create_texture_target([256, 256])
 
-image = target.get_image()
+# Bind the offscreen target's contents as a uniform on a downstream
+# post-processing shader.
+post = Shader("""
+    @group(0) @binding(0) var input_image : texture_2d<f32>;
+    @group(0) @binding(1) var input_sampler : sampler;
 
+    @vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+        let p = array<vec2<f32>, 3>(vec2f(-1.0,-1.0), vec2f(3.0,-1.0), vec2f(-1.0,3.0));
+        return vec4<f32>(p[i], 0.0, 1.0);
+    }
+    @fragment fn fs_main(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
+        return textureSample(input_image, input_sampler, vec2<f32>(0.5, 0.5));
+    }
+
+""")
+post.set("input_image", target.texture())
 `}
 lang="python"
 />
@@ -205,12 +237,25 @@ lang="python"
 code={`
 import FragmentColor
 
-
 let renderer = Renderer()
-let target = try await renderer.createTextureTarget([16, 16])
-try renderer.render(Shader(""), target)
+let target = try await renderer.createTextureTarget([256, 256])
 
-let image = try await target.getImage()
+// Bind the offscreen target's contents as a uniform on a downstream
+// post-processing shader.
+let post = try Shader("""
+    @group(0) @binding(0) var input_image : texture_2d<f32>
+    @group(0) @binding(1) var input_sampler : sampler
+
+    @vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+        let p = array<vec2<f32>, 3>(vec2f(-1.0,-1.0), vec2f(3.0,-1.0), vec2f(-1.0,3.0))
+        return vec4<f32>(p[i], 0.0, 1.0)
+    }
+    @fragment fn fs_main(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
+        return textureSample(input_image, input_sampler, vec2<f32>(0.5, 0.5))
+    }
+
+""")
+try post.set("input_image", target.texture())
 `}
 lang="swift"
 />
@@ -222,227 +267,25 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 
-
 val renderer = Renderer()
-val target = renderer.createTextureTarget(16u, 16u)
-renderer.render(Shader(""), target)
-
-val image = target.getImage()
-`}
-lang="kotlin"
-/>
-
-</TabItem>
-
-</Tabs>
-
-
----
-
-### TextureTarget::resize(size: [u32; 2] | (u32, u32))
-
-Resizes the [TextureTarget](/api/targets/texturetarget) to the given width and height.
-
-#### Example
-
-<Tabs>
-
-<TabItem label="Rust">
-<Code
-code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-
-use fragmentcolor::Renderer;
-
-let renderer = Renderer::new();
-let mut target = renderer.create_texture_target([64, 64]).await?;
-
-target.resize([128, 32]);
-
-assert_eq!(target.size(), [128, 32]);
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
-`}
-lang="rust" meta="collapse={1-1, 10-13}"
-/>
-
-</TabItem>
-
-<TabItem label="JavaScript">
-<Code
-code={`
-
-import { Renderer } from "fragmentcolor";
-
-const renderer = new Renderer();
-const target = await renderer.createTextureTarget([64, 64]);
-
-target.resize([128, 32]);
-
-`}
-lang="js"
-/>
-
-</TabItem>
-
-<TabItem label="Python">
-<Code
-code={`
-
-from fragmentcolor import Renderer
-
-renderer = Renderer()
-target = renderer.create_texture_target([64, 64])
-
-target.resize([128, 32])
-
-`}
-lang="python"
-/>
-
-</TabItem>
-
-<TabItem label="Swift">
-<Code
-code={`
-
-import FragmentColor
-
-let renderer = Renderer()
-let target = try await renderer.createTextureTarget([64, 64])
-
-target.resize([128, 32])
-`}
-lang="swift"
-/>
-
-</TabItem>
-
-<TabItem label="Kotlin">
-<Code
-code={`
-
-import org.fragmentcolor.*
-
-val renderer = Renderer()
-val target = renderer.createTextureTarget(64u, 64u)
-
-target.resize(128u, 32u)
-`}
-lang="kotlin"
-/>
-
-</TabItem>
-
-</Tabs>
-
-
----
-
-### TextureTarget::size() -&gt; Size &#123; width: u32, height: u32, depth: u32 &#125;
-
-Returns the size of the [TextureTarget](/api/targets/texturetarget) in pixels.
-
-#### Example
-
-<Tabs>
-
-<TabItem label="Rust">
-<Code
-code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-
-use fragmentcolor::Renderer;
-
-let renderer = Renderer::new();
-let target = renderer.create_texture_target([64, 64]).await?;
-let size = target.size();
-let width = size.width;
-let height = size.height;
-let depth = size.depth;
-
-assert_eq!(target.size(), [64, 64]);
-assert_eq!(width, 64);
-assert_eq!(height, 64);
-assert_eq!(depth, 1);
-Ok(())
-}
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
-`}
-lang="rust" meta="collapse={1-1, 12-18}"
-/>
-
-</TabItem>
-
-<TabItem label="JavaScript">
-<Code
-code={`
-
-import { Renderer } from "fragmentcolor";
-
-const renderer = new Renderer();
-const target = await renderer.createTextureTarget([64, 64]);
-const size = target.size();
-const width = size.width;
-const height = size.height;
-const depth = size.depth;
-
-`}
-lang="js"
-/>
-
-</TabItem>
-
-<TabItem label="Python">
-<Code
-code={`
-
-from fragmentcolor import Renderer
-
-renderer = Renderer()
-target = renderer.create_texture_target([64, 64])
-size = target.size
-width = size.width
-height = size.height
-depth = size.depth
-
-`}
-lang="python"
-/>
-
-</TabItem>
-
-<TabItem label="Swift">
-<Code
-code={`
-
-import FragmentColor
-
-let renderer = Renderer()
-let target = try await renderer.createTextureTarget([64, 64])
-let size = target.size()
-let width = size.width
-let height = size.height
-let depth = size.depth
-`}
-lang="swift"
-/>
-
-</TabItem>
-
-<TabItem label="Kotlin">
-<Code
-code={`
-
-import org.fragmentcolor.*
-
-val renderer = Renderer()
-val target = renderer.createTextureTarget(64u, 64u)
-val size = target.size()
-val width = size.width
-val height = size.height
-val depth = size.depth
+val target = renderer.createTextureTarget(256u, 256u)
+
+// Bind the offscreen target's contents as a uniform on a downstream
+// post-processing shader.
+val post = Shader("""
+    @group(0) @binding(0) var input_image : texture_2d<f32>
+    @group(0) @binding(1) var input_sampler : sampler
+
+    @vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+        let p = array<vec2<f32>, 3>(vec2f(-1.0,-1.0), vec2f(3.0,-1.0), vec2f(-1.0,3.0))
+        return vec4<f32>(p[i], 0.0, 1.0)
+    }
+    @fragment fn fs_main(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
+        return textureSample(input_image, input_sampler, vec2<f32>(0.5, 0.5))
+    }
+
+""")
+post.set("input_image", target.texture())
 `}
 lang="kotlin"
 />

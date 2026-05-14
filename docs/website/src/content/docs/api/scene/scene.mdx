@@ -56,6 +56,97 @@ add your own, your values win.
 
 ---
 
+### Scene::new
+
+Build an empty `Scene`. No `Renderer` argument, no async, nothing to await
+â the Scene's GPU resources initialise lazily when it's first rendered.
+
+The first call to [`Scene::add`](/api/scene/scene/add)
+creates a default [Pass](/api/core/pass) under the
+hood and routes the object into it. Multiple
+[SceneObjects](/api/scene) share that one Pass
+unless you explicitly add more via
+[`Scene::add_pass`](/api/scene/scene/add_pass).
+
+`Scene` is `Clone` (shallow Arc-share) â cloning gives another handle to
+the same underlying scene, so mutations on one clone are visible on the
+other.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::Scene;
+
+let scene = Scene::new();
+// scene is empty; add Models / Cameras / Lights with `scene.add(...)`.
+let _ = scene;
+`}
+lang="rust" meta="collapse={5-5}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Scene } from "fragmentcolor";
+
+const scene = new Scene();
+// scene is empty; add Models / Cameras / Lights with \`scene.add(...)\`.
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Scene
+
+scene = Scene()
+# scene is empty; add Models / Cameras / Lights with \`scene.add(...)\`.
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let scene = Scene()
+// scene is empty; add Models / Cameras / Lights with """scene.add(...)""".
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val scene = Scene()
+// scene is empty; add Models / Cameras / Lights with """scene.add(...)""".
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
 ### Scene::add
 
 Absorb any [`SceneObject`](/api/scene) â a
@@ -397,97 +488,6 @@ backdrop.setClearColor(listOf(0.05f, 0.08f, 0.12f, 1.0f))
 val scene = Scene()
 scene.addPass(backdrop)
 scene.add(model)
-`}
-lang="kotlin"
-/>
-
-</TabItem>
-
-</Tabs>
-
-
----
-
-### Scene::new
-
-Build an empty `Scene`. No `Renderer` argument, no async, nothing to await
-â the Scene's GPU resources initialise lazily when it's first rendered.
-
-The first call to [`Scene::add`](/api/scene/scene/add)
-creates a default [Pass](/api/core/pass) under the
-hood and routes the object into it. Multiple
-[SceneObjects](/api/scene) share that one Pass
-unless you explicitly add more via
-[`Scene::add_pass`](/api/scene/scene/add_pass).
-
-`Scene` is `Clone` (shallow Arc-share) â cloning gives another handle to
-the same underlying scene, so mutations on one clone are visible on the
-other.
-
-#### Example
-
-<Tabs>
-
-<TabItem label="Rust">
-<Code
-code={`
-use fragmentcolor::Scene;
-
-let scene = Scene::new();
-// scene is empty; add Models / Cameras / Lights with `scene.add(...)`.
-let _ = scene;
-`}
-lang="rust" meta="collapse={5-5}"
-/>
-
-</TabItem>
-
-<TabItem label="JavaScript">
-<Code
-code={`
-import { Scene } from "fragmentcolor";
-
-const scene = new Scene();
-// scene is empty; add Models / Cameras / Lights with \`scene.add(...)\`.
-`}
-lang="js"
-/>
-
-</TabItem>
-
-<TabItem label="Python">
-<Code
-code={`
-from fragmentcolor import Scene
-
-scene = Scene()
-# scene is empty; add Models / Cameras / Lights with \`scene.add(...)\`.
-`}
-lang="python"
-/>
-
-</TabItem>
-
-<TabItem label="Swift">
-<Code
-code={`
-import FragmentColor
-
-let scene = Scene()
-// scene is empty; add Models / Cameras / Lights with """scene.add(...)""".
-`}
-lang="swift"
-/>
-
-</TabItem>
-
-<TabItem label="Kotlin">
-<Code
-code={`
-import org.fragmentcolor.*
-
-val scene = Scene()
-// scene is empty; add Models / Cameras / Lights with """scene.add(...)""".
 `}
 lang="kotlin"
 />

@@ -77,7 +77,7 @@ impl Target for TextureTarget {
 }
 
 impl TextureTarget {
-    /// Obtain a sampleable Texture handle for binding in shaders.
+    #[lsp_doc("docs/api/targets/texture_target/texture.md")]
     pub fn texture(&self) -> crate::texture::Texture {
         if let Some(id) = *self.id.read() {
             return crate::texture::Texture::new(self.context.clone(), self.texture.clone(), id);

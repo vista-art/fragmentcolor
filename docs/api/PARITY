@@ -40,11 +40,15 @@ docs/api/core/shader/hidden/compose_mobile.md=>docs/api/core/shader/new.md: Mobi
 docs/api/core/shader/hidden/fetch_mobile.md=>docs/api/core/shader/fetch.md: Mobile exposes fetch as an async instance method (uniffi 0.31 lacks async constructors); Swift/Kotlin shims wrap it as a static factory.
 docs/api/core/shader/hidden/fetch_compose_mobile.md=>docs/api/core/shader/fetch.md: Mobile multi-part fetch variant; same async-method workaround as fetch_mobile.
 
-# TextureTarget::texture() exists only on the web (wasm_bindgen) — native platforms
-# pass TextureTarget directly to renderer.render() and the binding is implicit.
-# The lsp_doc points at a hidden web-only doc; alias it to itself so the audit
-# credits the binding without requiring a canonical multi-platform entry.
-docs/api/targets/texture_target/hidden/texture_js.md=>docs/api/targets/texture_target/hidden/texture_js.md: Web-only; TextureTarget::texture() returns a Texture handle for use as a shader uniform. On native platforms the TextureTarget is passed directly to renderer.render() and the texture binding is implicit.
+# TextureTarget::texture() — the canonical doc lives at
+# docs/api/targets/texture_target/texture.md and the Web binding is the
+# `_js` shim under hidden/, so the suffix-strip rule already credits Web
+# without an explicit alias entry.
+#
+# Native platforms (Python / Swift / Kotlin) currently lack the binding —
+# the offscreen TextureTarget is passed directly to renderer.render() and
+# the texture binding is implicit there — so the gap is acknowledged in
+# PARITY_BASELINE rather than waived here.
 
 # ---- Trait-level docs (no platform binding required) ----
 #

@@ -1,5 +1,8 @@
+Camera
+CanvasTarget
 Color
 Instance
+Light
 Material
 Mesh
 Mipmap
@@ -8,9 +11,13 @@ Pass
 PassInput
 Quad
 Renderer
+SamplerOptions
+Scene
 ScreenRegion
 Shader
 Size
 Texture
 TextureId
+TextureOptions
+TextureTarget
 Vertex
