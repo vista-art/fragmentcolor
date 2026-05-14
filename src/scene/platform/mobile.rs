@@ -342,6 +342,17 @@ impl Scene {
     pub fn add_pass_mobile(self: Arc<Self>, pass: Arc<Pass>) {
         self.add_pass(pass.as_ref());
     }
+
+    #[uniffi::method(name = "ambient")]
+    #[lsp_doc("docs/api/scene/scene/ambient.md")]
+    pub fn ambient_mobile(
+        self: Arc<Self>,
+        color: Vec<f32>,
+    ) -> Result<(), FragmentColorError> {
+        let c = take_vec3(&color, "Scene.ambient")?;
+        self.ambient(c);
+        Ok(())
+    }
 }
 
 fn material_share(material: &Material) -> Material {

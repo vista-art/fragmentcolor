@@ -137,21 +137,39 @@ impl Material {
         ];
         let _ = self.shader.set("camera.view_proj", identity);
         let _ = self.shader.set("camera.position", [0.0_f32, 0.0, 0.0]);
-        // Directional default — sun-style angled top-down white light. The
-        // other variants' fields are also seeded so an unattached Material
-        // renders with the same lighting as the attached-directional case
-        // and so a later `Light::point`/`Light::spot` attach overwrites a
-        // well-defined baseline.
-        let _ = self.shader.set("light.kind", 0_u32);
-        let _ = self.shader.set("light.direction", [0.0_f32, -1.0, 0.0]);
-        let _ = self.shader.set("light.position", [0.0_f32, 0.0, 0.0]);
-        let _ = self.shader.set("light.color", [1.0_f32, 1.0, 1.0]);
-        let _ = self.shader.set("light.intensity", 1.0_f32);
-        let _ = self.shader.set("light.range", 0.0_f32);
-        let _ = self.shader.set("light.inner_cone_cos", 1.0_f32);
+        // Default lighting: one directional light at slot 0 (sun-style
+        // angled top-down white). `lights.count = 1` so a freshly-built
+        // Material renders correctly without any Light attached; the
+        // first `pass.add(&light)` writes to slot 0 too, overwriting the
+        // defaults. Subsequent Lights take slots 1, 2, … up to
+        // `PBR_MAX_LIGHTS` (8). Ambient is a small grey tint so unlit
+        // faces don't read as pitch-black — matches the prior shader's
+        // hardcoded `* 0.03` term.
+        let _ = self.shader.set("lights.count", 1_u32);
         let _ = self
             .shader
-            .set("light.outer_cone_cos", std::f32::consts::FRAC_PI_4.cos());
+            .set("lights.ambient", [0.03_f32, 0.03, 0.03]);
+        let _ = self.shader.set("lights.lights[0].kind", 0_u32);
+        let _ = self
+            .shader
+            .set("lights.lights[0].direction", [0.0_f32, -1.0, 0.0]);
+        let _ = self
+            .shader
+            .set("lights.lights[0].position", [0.0_f32, 0.0, 0.0]);
+        let _ = self
+            .shader
+            .set("lights.lights[0].color", [1.0_f32, 1.0, 1.0]);
+        let _ = self
+            .shader
+            .set("lights.lights[0].intensity", 1.0_f32);
+        let _ = self.shader.set("lights.lights[0].range", 0.0_f32);
+        let _ = self
+            .shader
+            .set("lights.lights[0].inner_cone_cos", 1.0_f32);
+        let _ = self.shader.set(
+            "lights.lights[0].outer_cone_cos",
+            std::f32::consts::FRAC_PI_4.cos(),
+        );
     }
 
     // --- factor setters ---
@@ -468,8 +486,8 @@ mod tests {
                 .base_color_texture(&tex);
 
             mat.shader().set("camera.position", [0.0_f32, 0.0, 1.0]).ok();
-            mat.shader().set("light.direction", [0.0_f32, 0.0, -1.0]).ok();
-            mat.shader().set("light.color", [1.0_f32, 1.0, 1.0]).ok();
+            mat.shader().set("lights.lights[0].direction", [0.0_f32, 0.0, -1.0]).ok();
+            mat.shader().set("lights.lights[0].color", [1.0_f32, 1.0, 1.0]).ok();
 
             let mesh = Mesh::new();
             for (pos, uv) in [

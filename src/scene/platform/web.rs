@@ -298,6 +298,14 @@ impl Scene {
     pub fn add_pass_js(&self, pass: &Pass) {
         self.add_pass(pass);
     }
+
+    #[wasm_bindgen(js_name = "ambient")]
+    #[lsp_doc("docs/api/scene/scene/ambient.md")]
+    pub fn ambient_js(&self, color: Vec<f32>) -> Result<(), JsError> {
+        let c = vec3(&color, "Scene.ambient")?;
+        self.ambient(c);
+        Ok(())
+    }
 }
 
 // JsValue -> Scene bridge so the Renderer's `render` dispatch can detect a

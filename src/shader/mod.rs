@@ -184,6 +184,13 @@ pub(crate) struct ShaderObject {
     pub(crate) meshes: RwLock<Vec<Arc<crate::mesh::MeshObject>>>,
     pub(crate) alpha_mode: RwLock<crate::material::AlphaMode>,
     pub(crate) double_sided: RwLock<bool>,
+    /// Number of user-attached Lights on this Shader. `Light::apply_to_shader`
+    /// consults this counter to allocate the next free slot in the WGSL
+    /// `lights.lights[..]` array. Material::pbr seeds slot 0 with a dim
+    /// directional default; the first `Light` attached overwrites that
+    /// slot (so adding one Light replaces the placeholder rather than
+    /// double-lighting the scene).
+    pub(crate) user_lights_attached: RwLock<u32>,
     /// Texture uploads queued by lazy setters (typically the Material's
     /// `*_texture(impl Into<TextureInput>)` family). The renderer drains
     /// this list at first render and via the explicit `Renderer::load`
@@ -374,6 +381,7 @@ impl ShaderObject {
             // cull on).
             double_sided: RwLock::new(true),
             pending_textures: RwLock::new(Vec::new()),
+            user_lights_attached: RwLock::new(0),
         })
     }
 

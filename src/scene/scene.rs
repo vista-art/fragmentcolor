@@ -50,6 +50,9 @@ pub(crate) struct SceneInner {
     /// supplied their own.
     pub(crate) has_camera: RwLock<bool>,
     pub(crate) has_light: RwLock<bool>,
+    /// Scene-wide ambient color (`lights.ambient` in the PBR shader). Set
+    /// via `Scene::ambient`; cached so Models added afterwards inherit it.
+    pub(crate) ambient: RwLock<Option<[f32; 3]>>,
 }
 
 crate::impl_fc_kind!(Scene, "Scene");
@@ -76,6 +79,7 @@ impl Scene {
                 extra_passes: RwLock::new(Vec::new()),
                 has_camera: RwLock::new(false),
                 has_light: RwLock::new(false),
+                ambient: RwLock::new(None),
             }),
         }
     }
@@ -94,7 +98,35 @@ impl Scene {
         } else if tid == std::any::TypeId::of::<Light>() {
             *self.inner.has_light.write() = true;
         }
+        // Re-stamp the stashed ambient onto whatever shaders just joined
+        // so callers can `scene.ambient(...)` before any models are added
+        // and still see the value carry through. Empty / no-shaders adds
+        // (Camera, Light) skip the write silently — the next Model add
+        // will pick it up.
+        if let Some(amb) = *self.inner.ambient.read() {
+            for shader in pass.object.shaders.read().iter() {
+                let _ = shader.set("lights.ambient", amb);
+            }
+        }
         Ok(self)
+    }
+
+    #[lsp_doc("docs/api/scene/scene/ambient.md")]
+    pub fn ambient(&self, color: [f32; 3]) -> &Self {
+        *self.inner.ambient.write() = Some(color);
+        // Stamp onto every shader currently in the scene. Future Models
+        // added via `Scene::add` pick the value up from the stash.
+        for pass in self.inner.extra_passes.read().iter() {
+            for shader in pass.object.shaders.read().iter() {
+                let _ = shader.set("lights.ambient", color);
+            }
+        }
+        if let Some(pass) = self.inner.default_pass.read().as_ref() {
+            for shader in pass.object.shaders.read().iter() {
+                let _ = shader.set("lights.ambient", color);
+            }
+        }
+        self
     }
 
     #[lsp_doc("docs/api/scene/scene/add_pass.md")]
@@ -270,8 +302,8 @@ mod tests {
         assert_eq!(pos, [0.0, 0.0, 5.0]);
         let light_color: [f32; 3] = material
             .shader()
-            .get("light.color")
-            .expect("light.color");
+            .get("lights.lights[0].color")
+            .expect("lights.lights[0].color");
         assert_eq!(light_color, [1.0, 1.0, 1.0]);
         // Sticky flags now true — second pass through is a no-op.
         assert!(*scene.inner.has_camera.read());
@@ -305,7 +337,7 @@ mod tests {
         scene.add(&light).expect("light");
 
         let _ = scene.passes();
-        let color: [f32; 3] = material.shader().get("light.color").unwrap();
+        let color: [f32; 3] = material.shader().get("lights.lights[0].color").unwrap();
         assert_eq!(color, [0.5, 0.0, 0.0]);
     }
 

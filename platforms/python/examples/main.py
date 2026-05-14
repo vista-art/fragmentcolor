@@ -119,6 +119,7 @@ def run_all():
         'scene/model/translate.py',
         'scene/scene/add.py',
         'scene/scene/add_pass.py',
+        'scene/scene/ambient.py',
         'scene/scene/load.py',
         'scene/scene/new.py',
         'targets/target/Target.py',

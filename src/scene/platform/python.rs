@@ -259,6 +259,12 @@ impl Scene {
         self.add_pass(pass);
     }
 
+    #[pyo3(name = "ambient")]
+    #[lsp_doc("docs/api/scene/scene/ambient.md")]
+    pub fn ambient_py(&self, color: [f32; 3]) {
+        self.ambient(color);
+    }
+
     // Internal duck-typed interface used by PyRenderable dispatch — not part
     // of public docs.
     #[doc(hidden)]
