@@ -120,6 +120,14 @@ pub struct App {
     // Global registry of API objects by key (Shader, Pass, Vec<Pass>, ...)
     objects: RwLock<HashMap<String, Arc<dyn Any + Send + Sync>>>,
 
+    // Side-band registry for user state that isn't `Renderable` — camera
+    // handles, GLB paths, animation clocks, anything the setup callback
+    // wants to hand the draw callback. Parallel to `objects` so the
+    // semantic separation ("things that get rendered" vs "things I just
+    // want to stash on the App") is visible in the surface area; sharing
+    // one map would also work but flattens the intent.
+    state: RwLock<HashMap<String, Arc<dyn Any + Send + Sync>>>,
+
     // Blueprints to create at resume (if empty, create a single default window)
     blueprints: Vec<WindowAttributes>,
 
@@ -151,6 +159,7 @@ impl App {
             windows: HashMap::new(),
             targets: RwLock::new(HashMap::new()),
             objects: RwLock::new(HashMap::new()),
+            state: RwLock::new(HashMap::new()),
             blueprints: Vec::new(),
             on_draw: RwLock::new(Vec::new()),
             primary_by_kind: RwLock::new(HashMap::new()),
@@ -192,6 +201,44 @@ impl App {
         T: crate::renderer::Renderable + Send + Sync + 'static,
     {
         self.objects
+            .read()
+            .get(key)
+            .cloned()
+            .and_then(|a| a.downcast::<T>().ok())
+    }
+
+    /// Stash arbitrary user state on the App's typed registry. Parallel
+    /// to `add` (which requires `Renderable`); use this for camera
+    /// handles, animation clocks, asset paths, frame counters —
+    /// anything the `on_start` callback wants to hand the `on_draw`
+    /// callback that doesn't itself participate in rendering.
+    ///
+    /// The store is `Arc<dyn Any + Send + Sync>` under the hood, same
+    /// shape as the Renderable registry. For interior mutability, wrap
+    /// the value (`Arc<RwLock<T>>` / `Arc<Mutex<T>>`) before adding —
+    /// the registry doesn't lock for you because the right locking
+    /// granularity is caller-specific.
+    ///
+    /// Note: App is the Rust-side examples / demo wrapper. The state
+    /// registry is a Rust convenience and is intentionally not
+    /// cross-platform — for Python / JS / Swift / Kotlin apps own the
+    /// event loop and manage state in their host language.
+    pub fn add_state<T>(&self, key: &str, value: T)
+    where
+        T: Send + Sync + 'static,
+    {
+        self.state
+            .write()
+            .insert(key.to_string(), Arc::new(value));
+    }
+
+    /// Read a previously stashed state value by key. Returns `None` if
+    /// the key was never set or the stored type doesn't match `T`.
+    pub fn get_state<T>(&self, key: &str) -> Option<Arc<T>>
+    where
+        T: Send + Sync + 'static,
+    {
+        self.state
             .read()
             .get(key)
             .cloned()
@@ -688,6 +735,62 @@ define_typed_device_handlers! {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Story: arbitrary user state stashed via add_state round-trips through
+    // get_state with the original type. Mismatched types return None.
+    #[test]
+    fn state_registry_round_trips_typed_values() {
+        let app = App::new(Renderer::new());
+
+        // Simple Copy value.
+        app.add_state("frame_count", 42u32);
+        let count = app.get_state::<u32>("frame_count").expect("registered");
+        assert_eq!(*count, 42);
+
+        // Composite struct.
+        struct PreviewState {
+            start_time: std::time::Instant,
+            glb_path: String,
+        }
+        let when = std::time::Instant::now();
+        app.add_state(
+            "preview",
+            PreviewState {
+                start_time: when,
+                glb_path: "model.glb".into(),
+            },
+        );
+        let preview = app
+            .get_state::<PreviewState>("preview")
+            .expect("registered");
+        assert_eq!(preview.glb_path, "model.glb");
+        assert_eq!(preview.start_time, when);
+
+        // Wrong type → None (downcast failure).
+        assert!(app.get_state::<u32>("preview").is_none());
+
+        // Wrong key → None.
+        assert!(app.get_state::<u32>("nope").is_none());
+    }
+
+    // Story: interior mutability works through Arc<RwLock<...>> — the
+    // pattern users reach for when they need per-frame writes to stashed
+    // state without an extra registry method.
+    #[test]
+    fn state_registry_supports_interior_mutability_via_arc_rwlock() {
+        let app = App::new(Renderer::new());
+        app.add_state("counter", parking_lot::RwLock::new(0u32));
+        {
+            let handle = app
+                .get_state::<parking_lot::RwLock<u32>>("counter")
+                .expect("registered");
+            *handle.write() = 7;
+        }
+        let handle = app
+            .get_state::<parking_lot::RwLock<u32>>("counter")
+            .expect("still there");
+        assert_eq!(*handle.read(), 7);
+    }
 
     // Story: App can register windows and callbacks without running the event loop.
     #[test]
