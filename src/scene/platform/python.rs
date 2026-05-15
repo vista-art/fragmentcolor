@@ -59,6 +59,18 @@ impl Model {
     pub fn scale_py(&self, factor: [f32; 3]) {
         self.scale(factor);
     }
+
+    #[pyo3(name = "visible")]
+    #[lsp_doc("docs/api/scene/model/visible.md")]
+    pub fn visible_py(&self) -> bool {
+        self.visible()
+    }
+
+    #[pyo3(name = "set_visible")]
+    #[lsp_doc("docs/api/scene/model/set_visible.md")]
+    pub fn set_visible_py(&self, visible: bool) {
+        self.set_visible(visible);
+    }
 }
 
 #[pymethods]

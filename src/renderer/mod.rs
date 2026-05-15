@@ -878,6 +878,13 @@ impl RenderContext {
 
         let mut opaque_groups: HashMap<(usize, usize), Vec<u8>> = HashMap::new();
         for entry in entries.iter() {
+            // `Model::set_visible(false)` removes the entry from this frame's
+            // draw queue. Checked here so it cuts both the opaque-batched
+            // and blend-sorted paths in one place (no instance-buffer row
+            // packed, no BlendDraw queued, no eye-Z computed).
+            if !*entry.visible.read() {
+                continue;
+            }
             let alpha_mode = *entry.shader.alpha_mode.read();
             let key = (
                 Arc::as_ptr(&entry.shader) as usize,

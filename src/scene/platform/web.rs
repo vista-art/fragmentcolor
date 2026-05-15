@@ -81,6 +81,18 @@ impl Model {
         self.scale(arr);
         Ok(())
     }
+
+    #[wasm_bindgen(js_name = "visible")]
+    #[lsp_doc("docs/api/scene/model/visible.md")]
+    pub fn visible_js(&self) -> bool {
+        self.visible()
+    }
+
+    #[wasm_bindgen(js_name = "setVisible")]
+    #[lsp_doc("docs/api/scene/model/set_visible.md")]
+    pub fn set_visible_js(&self, visible: bool) {
+        self.set_visible(visible);
+    }
 }
 
 #[wasm_bindgen]

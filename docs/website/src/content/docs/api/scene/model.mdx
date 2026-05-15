@@ -778,6 +778,131 @@ lang="kotlin"
 
 ---
 
+### Model::set_visible
+
+Toggle the Model in or out of the next frame. Hidden Models are skipped
+by the renderer in both the opaque-batched and blend-sorted draw paths â
+no Pass rebuild needed.
+
+The flag is Arc-shared with `ModelEntry` (the renderer's queue), so
+toggles take effect on the very next `Renderer::render` call. Cheap:
+one bool flip + one entry check during the draw-queue build.
+
+Typical uses:
+
+- LOD switches that hide whole sets of detail Models at a distance.
+- Level / chapter transitions that swap which subset of a Scene
+  renders without rebuilding the Scene.
+- Temporary hides for editor gizmos, debug helpers, or selection
+  highlights.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Material, Mesh, Model, Vertex};
+
+let mesh = Mesh::new();
+mesh.add_vertex(Vertex::pbr([0.0, 0.5, 0.0]));
+let blob = Model::new(mesh, Material::pbr()?);
+
+// Wide zoom level â skip the detail blobs.
+blob.set_visible(false);
+// Zoom back in â turn them on again.
+blob.set_visible(true);
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 12-13}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Material, Mesh, Model, Vertex } from "fragmentcolor";
+
+const mesh = new Mesh();
+mesh.addVertex(Vertex.pbr([0.0, 0.5, 0.0]));
+const blob = new Model(mesh, Material.pbr()?);
+
+// Wide zoom level â skip the detail blobs.
+blob.setVisible(false);
+// Zoom back in â turn them on again.
+blob.setVisible(true);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Material, Mesh, Model, Vertex
+
+mesh = Mesh()
+mesh.add_vertex(Vertex.pbr([0.0, 0.5, 0.0]))
+blob = Model(mesh, Material.pbr())
+
+# Wide zoom level â skip the detail blobs.
+blob.set_visible(false)
+# Zoom back in â turn them on again.
+blob.set_visible(true)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let mesh = Mesh()
+try mesh.addVertex(Vertex.pbr([0.0, 0.5, 0.0]))
+let blob = Model(mesh, Material.pbr()?)
+
+// Wide zoom level â skip the detail blobs.
+blob.setVisible(false)
+// Zoom back in â turn them on again.
+blob.setVisible(true)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val mesh = Mesh()
+mesh.addVertex(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)))
+val blob = Model(mesh, Material.pbr()?)
+
+// Wide zoom level â skip the detail blobs.
+blob.setVisible(false)
+// Zoom back in â turn them on again.
+blob.setVisible(true)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
 ### Model::transform
 
 Read the Model's current 4Ã4 transform in column-major order, matching
@@ -1006,6 +1131,103 @@ mesh.addVertex( Vertex.new(listOf(0.0f, 0.0f, 0.0f)).set(Vertex.NORMAL, floatArr
 
 val model = Model(mesh, Material.pbr()?)
 model.translate(listOf(5.0f, 0.0f, -2.0f))
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Model::visible
+
+Read the current visibility flag. Returns `true` for newly-built Models;
+toggle with [`Model::set_visible`](/api/scene/model/set_visible).
+
+The renderer reads this every frame â hidden Models are skipped in both
+the opaque-batched and blend-sorted draw paths without requiring a Pass
+rebuild.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Material, Mesh, Model, Vertex};
+
+let mesh = Mesh::new();
+mesh.add_vertex(Vertex::pbr([0.0, 0.5, 0.0]));
+let model = Model::new(mesh, Material::pbr()?);
+assert!(model.visible());
+let _ = model.visible();
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 7-7, 9-10}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Material, Mesh, Model, Vertex } from "fragmentcolor";
+
+const mesh = new Mesh();
+mesh.addVertex(Vertex.pbr([0.0, 0.5, 0.0]));
+const model = new Model(mesh, Material.pbr()?);
+const _ = model.visible();
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Material, Mesh, Model, Vertex
+
+mesh = Mesh()
+mesh.add_vertex(Vertex.pbr([0.0, 0.5, 0.0]))
+model = Model(mesh, Material.pbr())
+_ = model.visible()
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let mesh = Mesh()
+try mesh.addVertex(Vertex.pbr([0.0, 0.5, 0.0]))
+let model = Model(mesh, Material.pbr()?)
+let _ = model.visible()
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val mesh = Mesh()
+mesh.addVertex(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)))
+val model = Model(mesh, Material.pbr()?)
+
 `}
 lang="kotlin"
 />

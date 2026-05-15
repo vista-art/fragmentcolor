@@ -46,6 +46,11 @@ pub struct Model {
     // time. Mutating `Model::translate` after `pass.add(&model)` is picked
     // up on the next render — no re-add needed.
     pub(crate) transform: Arc<RwLock<Mat4>>,
+    /// Live visibility flag. The renderer skips the entry in both the
+    /// opaque-batched and blend-sorted draw paths when this is `false` —
+    /// so callers can toggle Models in and out per frame without
+    /// re-attaching to the Pass. Defaults to `true`.
+    pub(crate) visible: Arc<RwLock<bool>>,
 }
 
 impl SceneObject for Model {
@@ -93,6 +98,7 @@ impl SceneObject for Model {
             shader: shader_arc.clone(),
             mesh: self.mesh.object.clone(),
             transform: self.transform.clone(),
+            visible: self.visible.clone(),
         });
         Ok(())
     }
@@ -107,7 +113,24 @@ impl Model {
             mesh,
             material,
             transform: Arc::new(RwLock::new(Mat4::IDENTITY)),
+            visible: Arc::new(RwLock::new(true)),
         }
+    }
+
+    /// Read the current visibility flag.
+    #[lsp_doc("docs/api/scene/model/visible.md")]
+    pub fn visible(&self) -> bool {
+        *self.visible.read()
+    }
+
+    /// Toggle the Model in or out of the next render. Hidden Models are
+    /// skipped by the renderer in both the opaque-batched and
+    /// blend-sorted draw paths — no re-attach needed. Useful for
+    /// LOD switches, level transitions, or temporarily hiding helpers
+    /// without rebuilding the Scene.
+    #[lsp_doc("docs/api/scene/model/set_visible.md")]
+    pub fn set_visible(&self, visible: bool) {
+        *self.visible.write() = visible;
     }
 
     #[lsp_doc("docs/api/scene/model/mesh.md")]
@@ -175,6 +198,11 @@ pub(crate) struct ModelEntry {
     pub(crate) shader: Arc<ShaderObject>,
     pub(crate) mesh: Arc<MeshObject>,
     pub(crate) transform: Arc<RwLock<Mat4>>,
+    /// Live visibility — when `false`, the renderer skips the entry in
+    /// both the opaque-batched and blend-sorted draw paths. Shared via
+    /// Arc with the originating `Model::visible` so toggles propagate
+    /// without re-attach.
+    pub(crate) visible: Arc<RwLock<bool>>,
 }
 
 #[cfg(test)]
@@ -305,5 +333,73 @@ mod tests {
         let entries = pass.object.model_entries.read();
         let live = entries[0].transform.read().to_cols_array_2d();
         assert_eq!(live[3], [9.0, 0.0, 0.0, 1.0]);
+    }
+
+    #[test]
+    fn visible_defaults_true_and_toggles() {
+        let m = Model::new(pbr_triangle_mesh(), pbr_material());
+        assert!(m.visible(), "default visibility must be true");
+        m.set_visible(false);
+        assert!(!m.visible());
+        m.set_visible(true);
+        assert!(m.visible());
+    }
+
+    #[test]
+    fn pass_entry_shares_visibility_flag_with_model() {
+        // The Pass holds an Arc-clone of the Model's visibility flag — same
+        // share semantics as the transform — so toggling on the Model
+        // shows up in the renderer's view of the entry immediately.
+        let pass = crate::Pass::new("scene");
+        let m = Model::new(pbr_triangle_mesh(), pbr_material());
+        pass.add(&m).expect("add_model");
+
+        m.set_visible(false);
+        let entries = pass.object.model_entries.read();
+        assert!(
+            !*entries[0].visible.read(),
+            "visibility flag should propagate live through the Arc"
+        );
+    }
+
+    #[test]
+    fn hidden_model_does_not_render() {
+        // Sanity check that the renderer's draw-queue build honours the
+        // visibility flag. We can't directly observe the queue (PassDraws
+        // is private to the renderer module), but a hidden Model + a
+        // visible Model on the same Pass should produce the same image as
+        // just the visible Model alone — and a fully-hidden Pass should
+        // produce the clear-color-only image.
+        pollster::block_on(async move {
+            let renderer = crate::Renderer::new();
+            let target = renderer
+                .create_texture_target([16u32, 16u32])
+                .await
+                .expect("texture target");
+            let model = Model::new(
+                pbr_triangle_mesh(),
+                Material::pbr()
+                    .expect("pbr")
+                    .base_color([0.6, 0.2, 0.8, 1.0]),
+            );
+            model.set_visible(false);
+            let scene = crate::Scene::new();
+            scene.add(&model).expect("add");
+            renderer.render(&scene, &target).expect("render");
+            use crate::Target;
+            let image = target.get_image().await;
+            // Hidden Model + clear-color background. Every pixel's RGB
+            // should be the clear color's RGB (default black, [0, 0, 0]);
+            // the triangle's purple [0.6, 0.2, 0.8] never lands in the
+            // buffer. The alpha component depends on the clear color's
+            // default — we don't constrain it here.
+            for px in image.chunks_exact(4) {
+                assert_eq!(
+                    [px[0], px[1], px[2]],
+                    [0, 0, 0],
+                    "hidden model should not contribute to the rendered pixels"
+                );
+            }
+        });
     }
 }

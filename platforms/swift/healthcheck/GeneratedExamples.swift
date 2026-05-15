@@ -1179,6 +1179,18 @@ private enum _GeneratedExamples {
         ])
     }
 
+    static func _example_scene_model_set_visible() async throws {
+
+        let mesh = Mesh()
+        try mesh.addVertex(Vertex.pbr([0.0, 0.5, 0.0]))
+        let blob = Model(mesh, Material.pbr()?)
+
+        // Wide zoom level — skip the detail blobs.
+        blob.setVisible(false)
+        // Zoom back in — turn them on again.
+        blob.setVisible(true)
+    }
+
     static func _example_scene_model_transform() async throws {
 
         let renderer = Renderer()
@@ -1201,6 +1213,14 @@ private enum _GeneratedExamples {
 
         let model = Model(mesh, Material.pbr()?)
         model.translate([5.0, 0.0, -2.0])
+    }
+
+    static func _example_scene_model_visible() async throws {
+
+        let mesh = Mesh()
+        try mesh.addVertex(Vertex.pbr([0.0, 0.5, 0.0]))
+        let model = Model(mesh, Material.pbr()?)
+        let _ = model.visible()
     }
 
     static func _example_scene_scene_add() async throws {

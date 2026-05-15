@@ -92,6 +92,18 @@ impl Model {
         self.scale(arr);
         Ok(())
     }
+
+    #[uniffi::method(name = "visible")]
+    #[lsp_doc("docs/api/scene/model/visible.md")]
+    pub fn visible_mobile(self: Arc<Self>) -> bool {
+        self.visible()
+    }
+
+    #[uniffi::method(name = "setVisible")]
+    #[lsp_doc("docs/api/scene/model/set_visible.md")]
+    pub fn set_visible_mobile(self: Arc<Self>, visible: bool) {
+        self.set_visible(visible);
+    }
 }
 
 #[uniffi::export]

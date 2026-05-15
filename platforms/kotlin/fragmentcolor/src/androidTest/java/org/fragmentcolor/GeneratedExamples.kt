@@ -1098,6 +1098,18 @@ class GeneratedExamples {
         model.setTransform(arrayOf(listOf(2.0f, 0.0f, 0.0f, 0.0f), listOf(0.0f, 2.0f, 0.0f, 0.0f), listOf(0.0f, 0.0f, 2.0f, 0.0f), listOf(3.0f, 0.0f, 0.0f, 1.0f),))
     }
 
+    @Suppress("unused") private suspend fun _example_scene_model_set_visible() {
+
+        val mesh = Mesh()
+        mesh.addVertex(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)))
+        val blob = Model(mesh, Material.pbr()?)
+
+        // Wide zoom level — skip the detail blobs.
+        blob.setVisible(false)
+        // Zoom back in — turn them on again.
+        blob.setVisible(true)
+    }
+
     @Suppress("unused") private suspend fun _example_scene_model_transform() {
 
         val renderer = Renderer()
@@ -1116,6 +1128,13 @@ class GeneratedExamples {
 
         val model = Model(mesh, Material.pbr()?)
         model.translate(listOf(5.0f, 0.0f, -2.0f))
+    }
+
+    @Suppress("unused") private suspend fun _example_scene_model_visible() {
+
+        val mesh = Mesh()
+        mesh.addVertex(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)))
+        val model = Model(mesh, Material.pbr()?)
     }
 
     @Suppress("unused") private suspend fun _example_scene_scene_add() {
