@@ -37,33 +37,20 @@ pub(crate) struct CameraObject {
     attached_passes: RwLock<Vec<Weak<PassObject>>>,
 }
 
-/// Construction-parameter snapshot for the Camera's projection. Kept
-/// alongside the cached `proj` matrix so `set_aspect` (and future partial
-/// setters like `set_fovy`) can rebuild the matrix from the remembered
-/// values; the matrix alone isn't invertible to its parameters without
-/// loss of precision. Internal-only — exposed surface uses `[[f32; 4]; 4]`.
-///
-/// `#[allow(dead_code)]` on the fields not read by `set_aspect` today —
-/// they document the construction params end-to-end and unlock partial
-/// setters (`set_fovy`, `set_near_far`, `set_orthographic_extent`)
-/// without a re-design when those land.
+/// Tag + perspective-rebuild parameters for the Camera's projection.
+/// `set_aspect` reads `fovy_radians` / `near` / `far` to recompute the
+/// projection matrix when the caller hands a new aspect ratio;
+/// `Orthographic` is a unit variant whose only job is to make
+/// `set_aspect` log + bail when the projection isn't perspective.
+/// Internal-only — the public surface uses `[[f32; 4]; 4]`.
 #[derive(Debug, Clone, Copy)]
-#[allow(dead_code)]
 enum Projection {
     Perspective {
         fovy_radians: f32,
-        aspect: f32,
         near: f32,
         far: f32,
     },
-    Orthographic {
-        left: f32,
-        right: f32,
-        bottom: f32,
-        top: f32,
-        near: f32,
-        far: f32,
-    },
+    Orthographic,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -104,7 +91,6 @@ impl Camera {
         Self::from_state(CameraState {
             projection: Projection::Perspective {
                 fovy_radians,
-                aspect,
                 near,
                 far,
             },
@@ -127,14 +113,7 @@ impl Camera {
         far: f32,
     ) -> Self {
         Self::from_state(CameraState {
-            projection: Projection::Orthographic {
-                left,
-                right,
-                bottom,
-                top,
-                near,
-                far,
-            },
+            projection: Projection::Orthographic,
             view: Mat4::IDENTITY,
             proj: Mat4::orthographic_rh(left, right, bottom, top, near, far),
             position: Vec3::ZERO,
@@ -162,17 +141,10 @@ impl Camera {
                     fovy_radians,
                     near,
                     far,
-                    ..
                 } => {
-                    state.projection = Projection::Perspective {
-                        fovy_radians,
-                        aspect,
-                        near,
-                        far,
-                    };
                     state.proj = Mat4::perspective_rh(fovy_radians, aspect, near, far);
                 }
-                Projection::Orthographic { .. } => {
+                Projection::Orthographic => {
                     log::warn!(
                         "Camera::set_aspect ignored: orthographic cameras don't carry an aspect ratio — use `Camera::orthographic(...)` to replace the projection"
                     );
