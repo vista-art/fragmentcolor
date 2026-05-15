@@ -1,5 +1,8 @@
 import { Material, Renderer } from "fragmentcolor";
 
 const renderer = new Renderer();
-const texture = await renderer.createTexture([ 255, 200, 120, 255, 255,  240, 180, 255, 230,  180, 100, 255, 255,  220, 150, 255, ][..]);
-const mat = Material.pbr()?.baseColorTexture(texture);
+const albedo = await renderer.createTexture([ 255, 200, 120, 255, 255,  240, 180, 255, 230,  180, 100, 255, 255,  220, 150, 255, ][..]);
+
+// 279 blob Materials all sample the same uploaded `albedo` — one GPU
+// texture, 279 shader references.
+const blob_materials = (0..279).map(|_| Material.pbr().unwrap().baseColorTexture(albedo)).collect();

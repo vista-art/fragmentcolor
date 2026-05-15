@@ -611,4 +611,53 @@ mod tests {
             );
         });
     }
+
+    #[test]
+    fn shared_texture_handle_is_reused_across_materials() {
+        // One GPU upload, N shader references. The texture ID stored in
+        // each Material's `base_color_map` uniform points at the same
+        // underlying TextureObject; the renderer's texture registry
+        // dedupes by ID at draw time, so N Materials all wallpapered with
+        // the same `&shared` texture pay for one GPU resource.
+        pollster::block_on(async move {
+            let renderer = Renderer::new();
+            #[rustfmt::skip]
+            let pixels: [u8; 16] = [
+                255, 0, 0, 255,    0, 255, 0, 255,
+                  0, 0, 255, 255,  255, 255, 255, 255,
+            ];
+            let shared = renderer
+                .create_texture((&pixels[..], crate::Size::from((2u32, 2u32))))
+                .await
+                .expect("texture");
+            let shared_id = *shared.id();
+
+            // 4 Materials, all reading `&shared`. Each Material's
+            // `base_color_map` uniform stores the same texture ID.
+            let mats: Vec<Material> = (0..4)
+                .map(|_| {
+                    Material::pbr()
+                        .expect("pbr")
+                        .base_color_texture(&shared)
+                })
+                .collect();
+
+            for mat in &mats {
+                let data = mat
+                    .shader()
+                    .object
+                    .get_uniform_data("base_color_map")
+                    .expect("base_color_map");
+                match data {
+                    crate::UniformData::Texture(meta) => {
+                        assert_eq!(
+                            meta.id, shared_id,
+                            "each Material's base_color_map must point at the shared texture's ID"
+                        );
+                    }
+                    other => panic!("expected UniformData::Texture, got {other:?}"),
+                }
+            }
+        });
+    }
 }

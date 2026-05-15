@@ -499,6 +499,11 @@ Bind a texture to the canonical `base_color_map` slot. The default PBR
 shader samples it in `fs_main` and multiplies by the factor: per-fragment
 albedo is `material.base_color * textureSample(base_color_map, sampler, in.uv)`.
 
+Accepts any `Into<TextureInput>`:
+
+- A pre-built [`&Texture`](/api/texture/texture) â the eager path. The setter stores the texture's ID immediately and the GPU texture stays Arc-shared across every Material that points at it. Passing the same `&shared_texture` to N Materials produces one GPU upload + N shader-uniform references â the cheap way to wallpaper a brush stroke across a scene full of impasto blobs without paying for N texture allocations.
+- Bytes / path / URL / `DynamicImage` â the lazy path. The setter queues the input on the Material's Shader; the renderer drains queued uploads on the first [`Renderer::render`](/api/core/renderer/render) (or earlier via the explicit [`Renderer::load`](/api/core/renderer/load)).
+
 Unset, this slot resolves to a 1Ã1 white default the renderer hands out
 lazily â so calling `Material::pbr()?` without binding a
 texture renders correctly under the factor alone.
@@ -514,19 +519,24 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Material, Renderer};
 
 let renderer = Renderer::new();
-let texture = renderer.create_texture(&[
+let albedo = renderer.create_texture(&[
     255u8, 200, 120, 255,
     255,  240, 180, 255,
     230,  180, 100, 255,
     255,  220, 150, 255,
 ][..]).await?;
-let mat = Material::pbr()?.base_color_texture(&texture);
-let _ = mat;
+
+// 279 blob Materials all sample the same uploaded `albedo` â one GPU
+// texture, 279 shader references.
+let blob_materials: Vec<_> = (0..279)
+    .map(|_| Material::pbr().unwrap().base_color_texture(&albedo))
+    .collect();
+let _ = blob_materials;
 Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 12-15}"
+lang="rust" meta="collapse={1-1, 17-20}"
 />
 
 </TabItem>
@@ -537,8 +547,11 @@ code={`
 import { Material, Renderer } from "fragmentcolor";
 
 const renderer = new Renderer();
-const texture = await renderer.createTexture([ 255, 200, 120, 255, 255,  240, 180, 255, 230,  180, 100, 255, 255,  220, 150, 255, ][..]);
-const mat = Material.pbr()?.baseColorTexture(texture);
+const albedo = await renderer.createTexture([ 255, 200, 120, 255, 255,  240, 180, 255, 230,  180, 100, 255, 255,  220, 150, 255, ][..]);
+
+// 279 blob Materials all sample the same uploaded \`albedo\` â one GPU
+// texture, 279 shader references.
+const blob_materials = (0..279).map(|_| Material.pbr().unwrap().baseColorTexture(albedo)).collect();
 `}
 lang="js"
 />
@@ -551,13 +564,16 @@ code={`
 from fragmentcolor import Material, Renderer
 
 renderer = Renderer()
-texture = renderer.create_texture([
+albedo = renderer.create_texture([
     255, 200, 120, 255,
     255,  240, 180, 255,
     230,  180, 100, 255,
     255,  220, 150, 255,
 ][..])
-mat = Material.pbr().base_color_texture(texture)
+
+# 279 blob Materials all sample the same uploaded \`albedo\` â one GPU
+# texture, 279 shader references.
+blob_materials = (0..279).map(|_| Material.pbr().base_color_texture(albedo)).collect()
 `}
 lang="python"
 />
@@ -570,13 +586,16 @@ code={`
 import FragmentColor
 
 let renderer = Renderer()
-let texture = renderer.createTexture([
+let albedo = renderer.createTexture([
     255, 200, 120, 255,
     255,  240, 180, 255,
     230,  180, 100, 255,
     255,  220, 150, 255,
 try await ])
-let mat = Material.pbr()?.baseColorTexture(texture)
+
+// 279 blob Materials all sample the same uploaded """albedo""" â one GPU
+// texture, 279 shader references.
+let blob_materials = try! (0...279).map(|_| Material.pbr().baseColorTexture(albedo)).collect()
 `}
 lang="swift"
 />
@@ -589,8 +608,11 @@ code={`
 import org.fragmentcolor.*
 
 val renderer = Renderer()
-val texture = renderer.createTexture(arrayOf(255, 200, 120, 255, 255,  240, 180, 255, 230,  180, 100, 255, 255,  220, 150, 255, await))
-val mat = Material.pbr()?.baseColorTexture(texture)
+val albedo = renderer.createTexture(arrayOf(255, 200, 120, 255, 255,  240, 180, 255, 230,  180, 100, 255, 255,  220, 150, 255, await))
+
+// 279 blob Materials all sample the same uploaded """albedo""" â one GPU
+// texture, 279 shader references.
+val blob_materials = (0..279).map(|_| Material.pbr().baseColorTexture(albedo)).collect()
 `}
 lang="kotlin"
 />

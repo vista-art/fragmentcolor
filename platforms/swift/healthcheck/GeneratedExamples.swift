@@ -962,13 +962,16 @@ private enum _GeneratedExamples {
     static func _example_scene_material_base_color_texture() async throws {
 
         let renderer = Renderer()
-        let texture = renderer.createTexture([
+        let albedo = renderer.createTexture([
             255, 200, 120, 255,
             255,  240, 180, 255,
             230,  180, 100, 255,
             255,  220, 150, 255,
         try await ])
-        let mat = Material.pbr()?.baseColorTexture(texture)
+
+        // 279 blob Materials all sample the same uploaded """albedo""" — one GPU
+        // texture, 279 shader references.
+        let blob_materials = try! (0...279).map(|_| Material.pbr().baseColorTexture(albedo)).collect()
     }
 
     static func _example_scene_material_custom() async throws {
