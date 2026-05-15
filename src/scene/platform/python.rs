@@ -90,6 +90,12 @@ impl Camera {
         self.clone().look_at(eye, target, up)
     }
 
+    #[pyo3(name = "set_aspect")]
+    #[lsp_doc("docs/api/scene/camera/set_aspect.md")]
+    pub fn set_aspect_py(&self, aspect: f32) -> Self {
+        self.set_aspect(aspect)
+    }
+
     #[pyo3(name = "view_proj")]
     #[lsp_doc("docs/api/scene/camera/view_proj.md")]
     pub fn view_proj_py(&self) -> [[f32; 4]; 4] {

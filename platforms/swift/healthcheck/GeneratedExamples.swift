@@ -813,6 +813,14 @@ private enum _GeneratedExamples {
         let eye = camera.position()
     }
 
+    static func _example_scene_camera_set_aspect() async throws {
+
+        let camera = Camera.perspective(60.0.toRadians(), 1.0, 0.1, 100.0)
+
+        // Window resize: 1920×1080 → wide-screen aspect.
+        camera.setAspect(1920.0 / 1080.0)
+    }
+
     static func _example_scene_camera_view_proj() async throws {
 
         let camera = Camera.perspective(60.0.toRadians(), 16.0 / 9.0, 0.1, 100.0).lookAt([0.0, 0.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])

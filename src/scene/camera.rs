@@ -37,8 +37,53 @@ pub(crate) struct CameraObject {
     attached_passes: RwLock<Vec<Weak<PassObject>>>,
 }
 
+/// Construction-parameter snapshot for the Camera's projection. Kept
+/// alongside the cached `proj` matrix so `set_aspect` (and future partial
+/// setters like `set_fovy`) can rebuild the matrix from the remembered
+/// values; the matrix alone isn't invertible to its parameters without
+/// loss of precision.
+#[derive(Debug, Clone, Copy)]
+enum Projection {
+    Perspective {
+        fovy_radians: f32,
+        aspect: f32,
+        near: f32,
+        far: f32,
+    },
+    Orthographic {
+        left: f32,
+        right: f32,
+        bottom: f32,
+        top: f32,
+        near: f32,
+        far: f32,
+    },
+}
+
+impl Projection {
+    fn to_mat4(self) -> Mat4 {
+        match self {
+            Projection::Perspective {
+                fovy_radians,
+                aspect,
+                near,
+                far,
+            } => Mat4::perspective_rh(fovy_radians, aspect, near, far),
+            Projection::Orthographic {
+                left,
+                right,
+                bottom,
+                top,
+                near,
+                far,
+            } => Mat4::orthographic_rh(left, right, bottom, top, near, far),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 struct CameraState {
+    projection: Projection,
     view: Mat4,
     proj: Mat4,
     position: Vec3,
@@ -71,9 +116,16 @@ impl Camera {
     /// identity (eye at origin, looking down -Z, +Y up).
     #[lsp_doc("docs/api/scene/camera/perspective.md")]
     pub fn perspective(fovy_radians: f32, aspect: f32, near: f32, far: f32) -> Self {
+        let projection = Projection::Perspective {
+            fovy_radians,
+            aspect,
+            near,
+            far,
+        };
         Self::from_state(CameraState {
+            projection,
             view: Mat4::IDENTITY,
-            proj: Mat4::perspective_rh(fovy_radians, aspect, near, far),
+            proj: projection.to_mat4(),
             position: Vec3::ZERO,
         })
     }
@@ -90,11 +142,64 @@ impl Camera {
         near: f32,
         far: f32,
     ) -> Self {
+        let projection = Projection::Orthographic {
+            left,
+            right,
+            bottom,
+            top,
+            near,
+            far,
+        };
         Self::from_state(CameraState {
+            projection,
             view: Mat4::IDENTITY,
-            proj: Mat4::orthographic_rh(left, right, bottom, top, near, far),
+            proj: projection.to_mat4(),
             position: Vec3::ZERO,
         })
+    }
+
+    /// Update the perspective camera's aspect ratio. The typical caller is
+    /// a resize handler: hand the new `width / height` after the window
+    /// resizes and the projection matrix recomputes in place, propagating
+    /// to every shader (and the Pass camera snapshot used by the
+    /// transparency sort) without dropping the Camera handle.
+    ///
+    /// No-op with a `log::warn!` when called on an orthographic camera —
+    /// "aspect" isn't well-defined for an arbitrary frustum. Use
+    /// `Camera::orthographic(...)` to replace the projection wholesale,
+    /// or extend with a `set_orthographic_params` setter if you need one.
+    ///
+    /// Returns a handle to the same Camera (Arc-shared) for chaining.
+    #[lsp_doc("docs/api/scene/camera/set_aspect.md")]
+    pub fn set_aspect(&self, aspect: f32) -> Self {
+        {
+            let mut state = self.object.state.write();
+            match state.projection {
+                Projection::Perspective {
+                    fovy_radians,
+                    near,
+                    far,
+                    ..
+                } => {
+                    let projection = Projection::Perspective {
+                        fovy_radians,
+                        aspect,
+                        near,
+                        far,
+                    };
+                    state.projection = projection;
+                    state.proj = projection.to_mat4();
+                }
+                Projection::Orthographic { .. } => {
+                    log::warn!(
+                        "Camera::set_aspect ignored: orthographic cameras don't carry an aspect ratio — use `Camera::orthographic(...)` to replace the projection"
+                    );
+                    return self.clone();
+                }
+            }
+        }
+        self.propagate();
+        self.clone()
     }
 
     /// Position the camera in world space. `eye` is where the camera is,
@@ -343,5 +448,53 @@ mod tests {
         assert_eq!(snap2.position, [0.0, 0.0, 10.0]);
         let translation2 = snap2.view[3];
         assert!((translation2[2] + 10.0).abs() < 1.0e-5, "got {translation2:?}");
+    }
+
+    #[test]
+    fn set_aspect_recomputes_projection_in_place() {
+        // Same camera, different aspects → distinct view_proj outputs. The
+        // perspective projection's [0][0] term is `1 / (aspect * tan(fovy/2))`
+        // so doubling aspect halves the X-axis scale.
+        let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0);
+        let m_before = camera.view_proj();
+        camera.set_aspect(2.0);
+        let m_after = camera.view_proj();
+        assert!(
+            (m_before[0][0] - 2.0 * m_after[0][0]).abs() < 1.0e-4,
+            "set_aspect should halve X-scale when aspect doubles; before={m_before:?} after={m_after:?}"
+        );
+    }
+
+    #[test]
+    fn set_aspect_on_orthographic_is_a_noop() {
+        // Orthographic frustums don't carry an aspect ratio; calling
+        // set_aspect on one should log a warning and leave the projection
+        // unchanged.
+        let camera = Camera::orthographic(-1.0, 1.0, -1.0, 1.0, 0.1, 100.0);
+        let before = camera.view_proj();
+        camera.set_aspect(2.0);
+        let after = camera.view_proj();
+        assert_eq!(before, after);
+    }
+
+    #[test]
+    fn set_aspect_propagates_to_attached_shaders() {
+        // After adding a Camera to a pass and rendering one frame, calling
+        // set_aspect should update the attached shader's `camera.view_proj`
+        // uniform without re-adding.
+        let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0);
+        let material = Material::pbr().expect("pbr");
+        let model = crate::scene::Model::new(pbr_triangle_mesh(), material.clone());
+        let pass = crate::Pass::new("scene");
+        pass.add(&model).expect("add_model");
+        pass.add(&camera);
+
+        let before: [[f32; 4]; 4] = material.shader().get("camera.view_proj").unwrap();
+        camera.set_aspect(2.0);
+        let after: [[f32; 4]; 4] = material.shader().get("camera.view_proj").unwrap();
+        assert!(
+            before != after,
+            "set_aspect should propagate a new view_proj to attached shaders"
+        );
     }
 }

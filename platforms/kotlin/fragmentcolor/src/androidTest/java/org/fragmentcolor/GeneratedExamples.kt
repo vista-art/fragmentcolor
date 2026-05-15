@@ -779,6 +779,14 @@ class GeneratedExamples {
         val eye = camera.position()
     }
 
+    @Suppress("unused") private suspend fun _example_scene_camera_set_aspect() {
+
+        val camera = Camera.perspective(60.0.toRadians(), 1.0, 0.1, 100.0)
+
+        // Window resize: 1920×1080 → wide-screen aspect.
+        camera.setAspect(1920.0 / 1080.0)
+    }
+
     @Suppress("unused") private suspend fun _example_scene_camera_view_proj() {
 
         val camera = Camera.perspective(60.0.toRadians(), 16.0 / 9.0, 0.1, 100.0).lookAt(listOf(0.0f, 0.0f, 5.0f), listOf(0.0f, 0.0f, 0.0f), listOf(0.0f, 1.0f, 0.0f))

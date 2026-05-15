@@ -134,6 +134,12 @@ impl Camera {
         Ok(Arc::new((*self).clone().look_at(eye, target, up)))
     }
 
+    #[uniffi::method(name = "setAspect")]
+    #[lsp_doc("docs/api/scene/camera/set_aspect.md")]
+    pub fn set_aspect_mobile(self: Arc<Self>, aspect: f32) -> Arc<Self> {
+        Arc::new(self.set_aspect(aspect))
+    }
+
     #[uniffi::method(name = "viewProj")]
     #[lsp_doc("docs/api/scene/camera/view_proj.md")]
     pub fn view_proj_mobile(self: Arc<Self>) -> Vec<f32> {

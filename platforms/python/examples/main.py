@@ -75,6 +75,7 @@ def run_all():
         'scene/camera/orthographic.py',
         'scene/camera/perspective.py',
         'scene/camera/position.py',
+        'scene/camera/set_aspect.py',
         'scene/camera/view_proj.py',
         'scene/light/color.py',
         'scene/light/direction.py',

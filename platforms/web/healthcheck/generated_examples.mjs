@@ -68,6 +68,7 @@ const EXAMPLES = [
   '../examples/scene/camera/orthographic.js',
   '../examples/scene/camera/perspective.js',
   '../examples/scene/camera/position.js',
+  '../examples/scene/camera/set_aspect.js',
   '../examples/scene/camera/view_proj.js',
   '../examples/scene/light/color.js',
   '../examples/scene/light/direction.js',

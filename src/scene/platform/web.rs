@@ -118,6 +118,12 @@ impl Camera {
         Ok(self.clone().look_at(eye, target, up))
     }
 
+    #[wasm_bindgen(js_name = "setAspect")]
+    #[lsp_doc("docs/api/scene/camera/set_aspect.md")]
+    pub fn set_aspect_js(&self, aspect: f32) -> Camera {
+        self.set_aspect(aspect)
+    }
+
     #[wasm_bindgen(js_name = "viewProj")]
     #[lsp_doc("docs/api/scene/camera/view_proj.md")]
     pub fn view_proj_js(&self) -> Vec<f32> {
