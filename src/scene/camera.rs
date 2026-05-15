@@ -41,8 +41,14 @@ pub(crate) struct CameraObject {
 /// alongside the cached `proj` matrix so `set_aspect` (and future partial
 /// setters like `set_fovy`) can rebuild the matrix from the remembered
 /// values; the matrix alone isn't invertible to its parameters without
-/// loss of precision.
+/// loss of precision. Internal-only — exposed surface uses `[[f32; 4]; 4]`.
+///
+/// `#[allow(dead_code)]` on the fields not read by `set_aspect` today —
+/// they document the construction params end-to-end and unlock partial
+/// setters (`set_fovy`, `set_near_far`, `set_orthographic_extent`)
+/// without a re-design when those land.
 #[derive(Debug, Clone, Copy)]
+#[allow(dead_code)]
 enum Projection {
     Perspective {
         fovy_radians: f32,
@@ -58,27 +64,6 @@ enum Projection {
         near: f32,
         far: f32,
     },
-}
-
-impl Projection {
-    fn to_mat4(self) -> Mat4 {
-        match self {
-            Projection::Perspective {
-                fovy_radians,
-                aspect,
-                near,
-                far,
-            } => Mat4::perspective_rh(fovy_radians, aspect, near, far),
-            Projection::Orthographic {
-                left,
-                right,
-                bottom,
-                top,
-                near,
-                far,
-            } => Mat4::orthographic_rh(left, right, bottom, top, near, far),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -116,16 +101,15 @@ impl Camera {
     /// identity (eye at origin, looking down -Z, +Y up).
     #[lsp_doc("docs/api/scene/camera/perspective.md")]
     pub fn perspective(fovy_radians: f32, aspect: f32, near: f32, far: f32) -> Self {
-        let projection = Projection::Perspective {
-            fovy_radians,
-            aspect,
-            near,
-            far,
-        };
         Self::from_state(CameraState {
-            projection,
+            projection: Projection::Perspective {
+                fovy_radians,
+                aspect,
+                near,
+                far,
+            },
             view: Mat4::IDENTITY,
-            proj: projection.to_mat4(),
+            proj: Mat4::perspective_rh(fovy_radians, aspect, near, far),
             position: Vec3::ZERO,
         })
     }
@@ -142,18 +126,17 @@ impl Camera {
         near: f32,
         far: f32,
     ) -> Self {
-        let projection = Projection::Orthographic {
-            left,
-            right,
-            bottom,
-            top,
-            near,
-            far,
-        };
         Self::from_state(CameraState {
-            projection,
+            projection: Projection::Orthographic {
+                left,
+                right,
+                bottom,
+                top,
+                near,
+                far,
+            },
             view: Mat4::IDENTITY,
-            proj: projection.to_mat4(),
+            proj: Mat4::orthographic_rh(left, right, bottom, top, near, far),
             position: Vec3::ZERO,
         })
     }
@@ -181,14 +164,13 @@ impl Camera {
                     far,
                     ..
                 } => {
-                    let projection = Projection::Perspective {
+                    state.projection = Projection::Perspective {
                         fovy_radians,
                         aspect,
                         near,
                         far,
                     };
-                    state.projection = projection;
-                    state.proj = projection.to_mat4();
+                    state.proj = Mat4::perspective_rh(fovy_radians, aspect, near, far);
                 }
                 Projection::Orthographic { .. } => {
                     log::warn!(
