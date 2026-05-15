@@ -227,22 +227,37 @@ impl App {
     where
         T: Send + Sync + 'static,
     {
-        self.state
+        let previous = self
+            .state
             .write()
             .insert(key.to_string(), Arc::new(value));
+        if previous.is_some() {
+            log::warn!(
+                "App::add_state replaced existing entry under key '{key}' — call sites should pick unique keys"
+            );
+        }
     }
 
     /// Read a previously stashed state value by key. Returns `None` if
-    /// the key was never set or the stored type doesn't match `T`.
+    /// the key was never set or the stored type doesn't match `T`. A type
+    /// mismatch logs a warning because it almost always means the caller
+    /// is reaching for the wrong type — missing keys are routine and stay
+    /// silent.
     pub fn get_state<T>(&self, key: &str) -> Option<Arc<T>>
     where
         T: Send + Sync + 'static,
     {
-        self.state
-            .read()
-            .get(key)
-            .cloned()
-            .and_then(|a| a.downcast::<T>().ok())
+        let entry = self.state.read().get(key).cloned()?;
+        match entry.downcast::<T>() {
+            Ok(typed) => Some(typed),
+            Err(_) => {
+                log::warn!(
+                    "App::get_state<{}> for key '{key}' found an entry of a different type — returning None",
+                    std::any::type_name::<T>()
+                );
+                None
+            }
+        }
     }
 
     // Register a callback that runs on every RedrawRequested (use to animate/update uniforms).
@@ -350,6 +365,20 @@ impl App {
         if let Some(target) = self.targets.write().get_mut(&id) {
             target.resize(size);
         }
+    }
+
+    /// Runs this App using winit's event loop. Must be called from the main
+    /// thread; blocks forever.
+    pub fn run(&mut self) {
+        let event_loop = match EventLoop::new() {
+            Ok(e) => e,
+            Err(e) => {
+                log::error!("Failed to create EventLoop: {}", e);
+                return;
+            }
+        };
+        event_loop.set_control_flow(ControlFlow::Poll);
+        let _ = event_loop.run_app(self);
     }
 }
 
@@ -471,20 +500,6 @@ impl ApplicationHandler for App {
             }
         }
     }
-}
-
-/// Runs the given App using winit's event loop.
-/// Needs to be called from the main thread. Blocks forever.
-pub fn run(app: &mut App) {
-    let event_loop = match EventLoop::new() {
-        Ok(e) => e,
-        Err(e) => {
-            log::error!("Failed to create EventLoop: {}", e);
-            return;
-        }
-    };
-    event_loop.set_control_flow(ControlFlow::Poll);
-    let _ = event_loop.run_app(app);
 }
 
 //-----------------------------------------------------

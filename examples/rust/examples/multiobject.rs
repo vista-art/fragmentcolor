@@ -1,5 +1,5 @@
 use fastrand::Rng;
-use fragmentcolor::{App, Pass, Renderer, SetupResult, Shader, Size, call, run};
+use fragmentcolor::{App, Pass, Renderer, SetupResult, Shader, Size, call};
 use std::sync::Arc;
 use winit::dpi::PhysicalSize;
 use winit::window::Window;
@@ -84,5 +84,5 @@ fn main() {
         .on_resize(on_resize)
         .on_redraw_requested(draw);
 
-    run(&mut app);
+    app.run();
 }

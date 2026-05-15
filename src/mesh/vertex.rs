@@ -20,69 +20,63 @@ pub struct Vertex {
     pub(crate) next_location: u32,
 }
 
-pub trait IntoVertexPositionFull {
-    fn into_v4_and_dimensions(self) -> (glam::Vec4, u8);
+pub(crate) trait IntoVertexPositionFull {
+    fn into_v4_and_dimensions(self) -> ([f32; 4], u8);
 }
 
 impl IntoVertexPositionFull for [f32; 2] {
-    fn into_v4_and_dimensions(self) -> (glam::Vec4, u8) {
-        (glam::Vec4::new(self[0], self[1], 0.0, 1.0), 2)
+    fn into_v4_and_dimensions(self) -> ([f32; 4], u8) {
+        ([self[0], self[1], 0.0, 1.0], 2)
     }
 }
 impl IntoVertexPositionFull for [f32; 3] {
-    fn into_v4_and_dimensions(self) -> (glam::Vec4, u8) {
-        (glam::Vec4::new(self[0], self[1], self[2], 1.0), 3)
+    fn into_v4_and_dimensions(self) -> ([f32; 4], u8) {
+        ([self[0], self[1], self[2], 1.0], 3)
     }
 }
 impl IntoVertexPositionFull for [f32; 4] {
-    fn into_v4_and_dimensions(self) -> (glam::Vec4, u8) {
-        (glam::Vec4::from(self), 4)
+    fn into_v4_and_dimensions(self) -> ([f32; 4], u8) {
+        (self, 4)
     }
 }
 impl IntoVertexPositionFull for (f32, f32) {
-    fn into_v4_and_dimensions(self) -> (glam::Vec4, u8) {
-        (glam::Vec4::new(self.0, self.1, 0.0, 1.0), 2)
+    fn into_v4_and_dimensions(self) -> ([f32; 4], u8) {
+        ([self.0, self.1, 0.0, 1.0], 2)
     }
 }
 impl IntoVertexPositionFull for (f32, f32, f32) {
-    fn into_v4_and_dimensions(self) -> (glam::Vec4, u8) {
-        (glam::Vec4::new(self.0, self.1, self.2, 1.0), 3)
+    fn into_v4_and_dimensions(self) -> ([f32; 4], u8) {
+        ([self.0, self.1, self.2, 1.0], 3)
     }
 }
 impl IntoVertexPositionFull for (f32, f32, f32, f32) {
-    fn into_v4_and_dimensions(self) -> (glam::Vec4, u8) {
-        (glam::Vec4::new(self.0, self.1, self.2, self.3), 4)
+    fn into_v4_and_dimensions(self) -> ([f32; 4], u8) {
+        ([self.0, self.1, self.2, self.3], 4)
     }
 }
 impl IntoVertexPositionFull for f32 {
-    fn into_v4_and_dimensions(self) -> (glam::Vec4, u8) {
-        (glam::Vec4::new(self, 0.0, 0.0, 1.0), 1)
+    fn into_v4_and_dimensions(self) -> ([f32; 4], u8) {
+        ([self, 0.0, 0.0, 1.0], 1)
     }
 }
 impl IntoVertexPositionFull for (u32, u32) {
-    fn into_v4_and_dimensions(self) -> (glam::Vec4, u8) {
-        (glam::Vec4::new(self.0 as f32, self.1 as f32, 0.0, 1.0), 2)
+    fn into_v4_and_dimensions(self) -> ([f32; 4], u8) {
+        ([self.0 as f32, self.1 as f32, 0.0, 1.0], 2)
     }
 }
 impl IntoVertexPositionFull for (u32, u32, u32) {
-    fn into_v4_and_dimensions(self) -> (glam::Vec4, u8) {
-        (
-            glam::Vec4::new(self.0 as f32, self.1 as f32, self.2 as f32, 1.0),
-            3,
-        )
+    fn into_v4_and_dimensions(self) -> ([f32; 4], u8) {
+        ([self.0 as f32, self.1 as f32, self.2 as f32, 1.0], 3)
     }
 }
 impl IntoVertexPositionFull for [u32; 2] {
-    fn into_v4_and_dimensions(self) -> (glam::Vec4, u8) {
-        (glam::Vec4::new(self[0] as f32, self[1] as f32, 0.0, 1.0), 2)
+    fn into_v4_and_dimensions(self) -> ([f32; 4], u8) {
+        ([self[0] as f32, self[1] as f32, 0.0, 1.0], 2)
     }
 }
 impl IntoVertexPositionFull for [u32; 3] {
-    fn into_v4_and_dimensions(self) -> (glam::Vec4, u8) {
-        (
-            glam::Vec4::new(self[0] as f32, self[1] as f32, self[2] as f32, 1.0),
-            3,
-        )
+    fn into_v4_and_dimensions(self) -> ([f32; 4], u8) {
+        ([self[0] as f32, self[1] as f32, self[2] as f32, 1.0], 3)
     }
 }
 
@@ -97,7 +91,6 @@ impl Vertex {
     /// layers or vertex colour palettes. For meshes with a single texcoord
     /// and a single colour, plain string `"uv"` / `"color"` literals remain
     /// valid (FC matches by string).
-    pub const POSITION: &'static str = "position";
     pub const NORMAL: &'static str = "normal";
     pub const TANGENT: &'static str = "tangent";
     pub const UV0: &'static str = "uv0";
@@ -106,10 +99,11 @@ impl Vertex {
     pub const COLOR1: &'static str = "color1";
 
     #[lsp_doc("docs/api/geometry/vertex/new.md")]
+    #[allow(private_bounds)]
     pub fn new<P: IntoVertexPositionFull>(position: P) -> Self {
         let (v4, dimensions) = position.into_v4_and_dimensions();
         Self {
-            position: VertexPosition(v4),
+            position: VertexPosition(glam::Vec4::from(v4)),
             dimensions,
             properties: HashMap::new(),
             prop_locations: HashMap::new(),
@@ -118,6 +112,7 @@ impl Vertex {
     }
 
     #[lsp_doc("docs/api/geometry/vertex/pbr.md")]
+    #[allow(private_bounds)]
     pub fn pbr<P: IntoVertexPositionFull>(position: P) -> Self {
         // Seed every attribute `Material::pbr` reads in its vertex shader
         // with a neutral identity value. Chain `.set(...)` afterwards to
@@ -446,10 +441,10 @@ mod tests {
 
     #[test]
     fn attribute_name_constants_match_string_lookup() {
-        // The Vertex::POSITION / NORMAL / TANGENT / UV0 / UV1 / COLOR0 /
-        // COLOR1 constants are conveniences for the common attribute keys;
-        // they must resolve to the same string the bare literal does so
-        // mixing the two styles in a codebase doesn't drift.
+        // The Vertex::NORMAL / TANGENT / UV0 / UV1 / COLOR0 / COLOR1
+        // constants are conveniences for the common attribute keys; they
+        // must resolve to the same string the bare literal does so mixing
+        // the two styles in a codebase doesn't drift.
         let v = Vertex::new([0.0f32, 0.0, 0.0])
             .set(Vertex::UV0, [0.5f32, 0.5])
             .set(Vertex::COLOR0, [1.0f32, 1.0, 1.0, 1.0])
@@ -459,7 +454,6 @@ mod tests {
         assert!(v.properties.contains_key("normal"));
         // Constants are plain `&'static str`, so they're directly comparable
         // to literal strings — no PartialEq impl required.
-        assert_eq!(Vertex::POSITION, "position");
         assert_eq!(Vertex::TANGENT, "tangent");
         assert_eq!(Vertex::UV1, "uv1");
         assert_eq!(Vertex::COLOR1, "color1");

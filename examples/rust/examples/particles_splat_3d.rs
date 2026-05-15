@@ -1,4 +1,4 @@
-use fragmentcolor::{App, Pass, SetupResult, Shader, TextureFormat, call, run};
+use fragmentcolor::{App, Pass, SetupResult, Shader, TextureFormat, call};
 use std::sync::Arc;
 use winit::window::Window;
 
@@ -323,5 +323,5 @@ fn main() {
             }
         });
 
-    run(&mut app);
+    app.run();
 }

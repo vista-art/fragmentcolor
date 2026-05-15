@@ -30,8 +30,9 @@ plumbing is what's idiomatic per runtime.
 | Kotlin (Android) | `GLSurfaceView.onDrawFrame` | `Renderer.render` |
 | Swift (iOS) | `MTKView.draw(in:)` | `Renderer.render` |
 
-The Rust-with-App tutorial is available today. Other platform pages are
-planned.
+Rust is documented today. Python (RenderCanvas), JavaScript (RAF), Kotlin
+(GLSurfaceView), and Swift (MTKView) follow the same five-section shape and
+ship as they're written.
 
 ## Where the cross-platform parts live
 

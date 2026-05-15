@@ -1,4 +1,4 @@
-use fragmentcolor::{App, Pass, Renderer, SetupResult, Shader, call, run};
+use fragmentcolor::{App, Pass, Renderer, SetupResult, Shader, call};
 use std::path::PathBuf;
 use std::sync::Arc;
 use winit::dpi::PhysicalSize;
@@ -63,5 +63,5 @@ fn main() {
     app.on_start(call!(setup))
         .on_resize(resize)
         .on_redraw_requested(draw);
-    run(&mut app);
+    app.run();
 }

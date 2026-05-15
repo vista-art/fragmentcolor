@@ -142,10 +142,9 @@ shape so state lookups stay uniform.
 ## 5. Drive the loop
 
 ```rust,no_run
-# fn main() -> Result<(), Box<dyn std::error::Error>> {
+# fn main() {
 # let mut app = fragmentcolor::App::new(fragmentcolor::Renderer::new());
-app.run()?;
-# Ok(())
+app.run();
 # }
 ```
 
