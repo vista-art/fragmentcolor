@@ -1223,7 +1223,9 @@ private enum _GeneratedExamples {
         let mesh = Mesh()
         try mesh.addVertex(Vertex.pbr([0.0, 0.5, 0.0]))
         let model = Model(mesh, Material.pbr()?)
-        let _ = model.visible()
+
+        // Models start visible; toggle with """set_visible""".
+        let visible_now = model.visible()
     }
 
     static func _example_scene_scene_add() async throws {
