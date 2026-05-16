@@ -3,7 +3,7 @@
 use lsp_doc::lsp_doc;
 use pyo3::prelude::*;
 
-use crate::material::{AlphaMode, Material, set_or_warn, set_texture_or_warn};
+use crate::material::{AlphaMode, Material};
 use crate::Shader;
 
 #[pymethods]
@@ -34,96 +34,91 @@ impl Material {
 
     #[pyo3(name = "base_color")]
     #[lsp_doc("docs/api/scene/material/base_color.md")]
-    pub fn base_color_py(&self, color: [f32; 4]) {
-        set_or_warn(&self.shader, "material.base_color", color);
+    pub fn base_color_py(&self, color: [f32; 4]) -> Self {
+        self.base_color(color)
     }
 
     #[pyo3(name = "metallic")]
     #[lsp_doc("docs/api/scene/material/metallic.md")]
-    pub fn metallic_py(&self, value: f32) {
-        set_or_warn(&self.shader, "material.metallic", value);
+    pub fn metallic_py(&self, value: f32) -> Self {
+        self.metallic(value)
     }
 
     #[pyo3(name = "roughness")]
     #[lsp_doc("docs/api/scene/material/roughness.md")]
-    pub fn roughness_py(&self, value: f32) {
-        set_or_warn(&self.shader, "material.roughness", value);
+    pub fn roughness_py(&self, value: f32) -> Self {
+        self.roughness(value)
     }
 
     #[pyo3(name = "normal_scale")]
     #[lsp_doc("docs/api/scene/material/normal_scale.md")]
-    pub fn normal_scale_py(&self, value: f32) {
-        set_or_warn(&self.shader, "material.normal_scale", value);
+    pub fn normal_scale_py(&self, value: f32) -> Self {
+        self.normal_scale(value)
     }
 
     #[pyo3(name = "occlusion_strength")]
     #[lsp_doc("docs/api/scene/material/occlusion_strength.md")]
-    pub fn occlusion_strength_py(&self, value: f32) {
-        set_or_warn(&self.shader, "material.occlusion_strength", value);
+    pub fn occlusion_strength_py(&self, value: f32) -> Self {
+        self.occlusion_strength(value)
     }
 
     #[pyo3(name = "emissive")]
     #[lsp_doc("docs/api/scene/material/emissive.md")]
-    pub fn emissive_py(&self, factor: [f32; 3]) {
-        set_or_warn(&self.shader, "material.emissive", factor);
+    pub fn emissive_py(&self, factor: [f32; 3]) -> Self {
+        self.emissive(factor)
     }
 
     #[pyo3(name = "alpha_cutoff")]
     #[lsp_doc("docs/api/scene/material/alpha_cutoff.md")]
-    pub fn alpha_cutoff_py(&self, value: f32) {
-        set_or_warn(&self.shader, "material.alpha_cutoff", value);
+    pub fn alpha_cutoff_py(&self, value: f32) -> Self {
+        self.alpha_cutoff(value)
     }
 
     #[pyo3(name = "uv_transform")]
     #[lsp_doc("docs/api/scene/material/uv_transform.md")]
-    pub fn uv_transform_py(&self, offset: [f32; 2], scale: [f32; 2], rotation: f32) {
-        set_or_warn(&self.shader, "material.uv_offset", offset);
-        set_or_warn(&self.shader, "material.uv_scale", scale);
-        set_or_warn(&self.shader, "material.uv_rotation", rotation);
+    pub fn uv_transform_py(&self, offset: [f32; 2], scale: [f32; 2], rotation: f32) -> Self {
+        self.uv_transform(offset, scale, rotation)
     }
 
     #[pyo3(name = "alpha_mode")]
     #[lsp_doc("docs/api/scene/material/alpha_mode.md")]
-    pub fn alpha_mode_py(&self, mode: AlphaMode) {
-        *self.alpha_mode.write() = mode;
-        self.shader.object.set_alpha_mode(mode);
-        set_or_warn(&self.shader, "material.alpha_mode_flag", mode.flag());
+    pub fn alpha_mode_py(&self, mode: AlphaMode) -> Self {
+        self.alpha_mode(mode)
     }
 
     #[pyo3(name = "double_sided")]
     #[lsp_doc("docs/api/scene/material/double_sided.md")]
-    pub fn double_sided_py(&self, value: bool) {
-        *self.double_sided.write() = value;
-        self.shader.object.set_double_sided(value);
+    pub fn double_sided_py(&self, value: bool) -> Self {
+        self.double_sided(value)
     }
 
     #[pyo3(name = "base_color_texture")]
     #[lsp_doc("docs/api/scene/material/base_color_texture.md")]
-    pub fn base_color_texture_py(&self, texture: &crate::texture::Texture) {
-        set_texture_or_warn(&self.shader, "base_color_map", texture);
+    pub fn base_color_texture_py(&self, texture: &crate::texture::Texture) -> Self {
+        self.base_color_texture(texture)
     }
 
     #[pyo3(name = "metallic_roughness_texture")]
     #[lsp_doc("docs/api/scene/material/metallic_roughness_texture.md")]
-    pub fn metallic_roughness_texture_py(&self, texture: &crate::texture::Texture) {
-        set_texture_or_warn(&self.shader, "metallic_roughness_map", texture);
+    pub fn metallic_roughness_texture_py(&self, texture: &crate::texture::Texture) -> Self {
+        self.metallic_roughness_texture(texture)
     }
 
     #[pyo3(name = "normal_texture")]
     #[lsp_doc("docs/api/scene/material/normal_texture.md")]
-    pub fn normal_texture_py(&self, texture: &crate::texture::Texture) {
-        set_texture_or_warn(&self.shader, "normal_map", texture);
+    pub fn normal_texture_py(&self, texture: &crate::texture::Texture) -> Self {
+        self.normal_texture(texture)
     }
 
     #[pyo3(name = "occlusion_texture")]
     #[lsp_doc("docs/api/scene/material/occlusion_texture.md")]
-    pub fn occlusion_texture_py(&self, texture: &crate::texture::Texture) {
-        set_texture_or_warn(&self.shader, "occlusion_map", texture);
+    pub fn occlusion_texture_py(&self, texture: &crate::texture::Texture) -> Self {
+        self.occlusion_texture(texture)
     }
 
     #[pyo3(name = "emissive_texture")]
     #[lsp_doc("docs/api/scene/material/emissive_texture.md")]
-    pub fn emissive_texture_py(&self, texture: &crate::texture::Texture) {
-        set_texture_or_warn(&self.shader, "emissive_map", texture);
+    pub fn emissive_texture_py(&self, texture: &crate::texture::Texture) -> Self {
+        self.emissive_texture(texture)
     }
 }

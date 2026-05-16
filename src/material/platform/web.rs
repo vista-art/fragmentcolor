@@ -3,7 +3,7 @@
 use lsp_doc::lsp_doc;
 use wasm_bindgen::prelude::*;
 
-use crate::material::{AlphaMode, Material, set_or_warn, set_texture_or_warn};
+use crate::material::{AlphaMode, Material};
 use crate::Shader;
 
 #[wasm_bindgen]
@@ -28,48 +28,46 @@ impl Material {
 
     #[wasm_bindgen(js_name = "baseColor")]
     #[lsp_doc("docs/api/scene/material/base_color.md")]
-    pub fn base_color_js(&self, color: Vec<f32>) -> Result<(), JsError> {
+    pub fn base_color_js(&self, color: Vec<f32>) -> Result<Material, JsError> {
         let arr = vec4_from_vec(&color, "base_color")?;
-        set_or_warn(&self.shader, "material.base_color", arr);
-        Ok(())
+        Ok(self.base_color(arr))
     }
 
     #[wasm_bindgen(js_name = "metallic")]
     #[lsp_doc("docs/api/scene/material/metallic.md")]
-    pub fn metallic_js(&self, value: f32) {
-        set_or_warn(&self.shader, "material.metallic", value);
+    pub fn metallic_js(&self, value: f32) -> Self {
+        self.metallic(value)
     }
 
     #[wasm_bindgen(js_name = "roughness")]
     #[lsp_doc("docs/api/scene/material/roughness.md")]
-    pub fn roughness_js(&self, value: f32) {
-        set_or_warn(&self.shader, "material.roughness", value);
+    pub fn roughness_js(&self, value: f32) -> Self {
+        self.roughness(value)
     }
 
     #[wasm_bindgen(js_name = "normalScale")]
     #[lsp_doc("docs/api/scene/material/normal_scale.md")]
-    pub fn normal_scale_js(&self, value: f32) {
-        set_or_warn(&self.shader, "material.normal_scale", value);
+    pub fn normal_scale_js(&self, value: f32) -> Self {
+        self.normal_scale(value)
     }
 
     #[wasm_bindgen(js_name = "occlusionStrength")]
     #[lsp_doc("docs/api/scene/material/occlusion_strength.md")]
-    pub fn occlusion_strength_js(&self, value: f32) {
-        set_or_warn(&self.shader, "material.occlusion_strength", value);
+    pub fn occlusion_strength_js(&self, value: f32) -> Self {
+        self.occlusion_strength(value)
     }
 
     #[wasm_bindgen(js_name = "emissive")]
     #[lsp_doc("docs/api/scene/material/emissive.md")]
-    pub fn emissive_js(&self, factor: Vec<f32>) -> Result<(), JsError> {
+    pub fn emissive_js(&self, factor: Vec<f32>) -> Result<Material, JsError> {
         let arr = vec3_from_vec(&factor, "emissive")?;
-        set_or_warn(&self.shader, "material.emissive", arr);
-        Ok(())
+        Ok(self.emissive(arr))
     }
 
     #[wasm_bindgen(js_name = "alphaCutoff")]
     #[lsp_doc("docs/api/scene/material/alpha_cutoff.md")]
-    pub fn alpha_cutoff_js(&self, value: f32) {
-        set_or_warn(&self.shader, "material.alpha_cutoff", value);
+    pub fn alpha_cutoff_js(&self, value: f32) -> Self {
+        self.alpha_cutoff(value)
     }
 
     #[wasm_bindgen(js_name = "uvTransform")]
@@ -79,58 +77,52 @@ impl Material {
         offset: Vec<f32>,
         scale: Vec<f32>,
         rotation: f32,
-    ) -> Result<(), JsError> {
+    ) -> Result<Material, JsError> {
         let o = vec2_from_vec(&offset, "Material.uvTransform offset")?;
         let s = vec2_from_vec(&scale, "Material.uvTransform scale")?;
-        set_or_warn(&self.shader, "material.uv_offset", o);
-        set_or_warn(&self.shader, "material.uv_scale", s);
-        set_or_warn(&self.shader, "material.uv_rotation", rotation);
-        Ok(())
+        Ok(self.uv_transform(o, s, rotation))
     }
 
     #[wasm_bindgen(js_name = "alphaMode")]
     #[lsp_doc("docs/api/scene/material/alpha_mode.md")]
-    pub fn alpha_mode_js(&self, mode: AlphaMode) {
-        *self.alpha_mode.write() = mode;
-        self.shader.object.set_alpha_mode(mode);
-        set_or_warn(&self.shader, "material.alpha_mode_flag", mode.flag());
+    pub fn alpha_mode_js(&self, mode: AlphaMode) -> Self {
+        self.alpha_mode(mode)
     }
 
     #[wasm_bindgen(js_name = "doubleSided")]
     #[lsp_doc("docs/api/scene/material/double_sided.md")]
-    pub fn double_sided_js(&self, value: bool) {
-        *self.double_sided.write() = value;
-        self.shader.object.set_double_sided(value);
+    pub fn double_sided_js(&self, value: bool) -> Self {
+        self.double_sided(value)
     }
 
     #[wasm_bindgen(js_name = "baseColorTexture")]
     #[lsp_doc("docs/api/scene/material/base_color_texture.md")]
-    pub fn base_color_texture_js(&self, texture: &crate::texture::Texture) {
-        set_texture_or_warn(&self.shader, "base_color_map", texture);
+    pub fn base_color_texture_js(&self, texture: &crate::texture::Texture) -> Self {
+        self.base_color_texture(texture)
     }
 
     #[wasm_bindgen(js_name = "metallicRoughnessTexture")]
     #[lsp_doc("docs/api/scene/material/metallic_roughness_texture.md")]
-    pub fn metallic_roughness_texture_js(&self, texture: &crate::texture::Texture) {
-        set_texture_or_warn(&self.shader, "metallic_roughness_map", texture);
+    pub fn metallic_roughness_texture_js(&self, texture: &crate::texture::Texture) -> Self {
+        self.metallic_roughness_texture(texture)
     }
 
     #[wasm_bindgen(js_name = "normalTexture")]
     #[lsp_doc("docs/api/scene/material/normal_texture.md")]
-    pub fn normal_texture_js(&self, texture: &crate::texture::Texture) {
-        set_texture_or_warn(&self.shader, "normal_map", texture);
+    pub fn normal_texture_js(&self, texture: &crate::texture::Texture) -> Self {
+        self.normal_texture(texture)
     }
 
     #[wasm_bindgen(js_name = "occlusionTexture")]
     #[lsp_doc("docs/api/scene/material/occlusion_texture.md")]
-    pub fn occlusion_texture_js(&self, texture: &crate::texture::Texture) {
-        set_texture_or_warn(&self.shader, "occlusion_map", texture);
+    pub fn occlusion_texture_js(&self, texture: &crate::texture::Texture) -> Self {
+        self.occlusion_texture(texture)
     }
 
     #[wasm_bindgen(js_name = "emissiveTexture")]
     #[lsp_doc("docs/api/scene/material/emissive_texture.md")]
-    pub fn emissive_texture_js(&self, texture: &crate::texture::Texture) {
-        set_texture_or_warn(&self.shader, "emissive_map", texture);
+    pub fn emissive_texture_js(&self, texture: &crate::texture::Texture) -> Self {
+        self.emissive_texture(texture)
     }
 }
 

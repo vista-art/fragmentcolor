@@ -3,7 +3,7 @@
 use lsp_doc::lsp_doc;
 use std::sync::Arc;
 
-use crate::material::{AlphaMode, Material, set_or_warn, set_texture_or_warn};
+use crate::material::{AlphaMode, Material};
 use crate::renderer::platform::mobile::FragmentColorError;
 use crate::texture::Texture;
 use crate::Shader;
@@ -32,34 +32,36 @@ impl Material {
 
     #[uniffi::method(name = "baseColor")]
     #[lsp_doc("docs/api/scene/material/base_color.md")]
-    pub fn base_color_mobile(self: Arc<Self>, color: Vec<f32>) -> Result<(), FragmentColorError> {
+    pub fn base_color_mobile(
+        self: Arc<Self>,
+        color: Vec<f32>,
+    ) -> Result<Arc<Self>, FragmentColorError> {
         let arr = take_vec4(&color, "base_color")?;
-        set_or_warn(&self.shader, "material.base_color", arr);
-        Ok(())
+        Ok(Arc::new(self.base_color(arr)))
     }
 
     #[uniffi::method(name = "metallic")]
     #[lsp_doc("docs/api/scene/material/metallic.md")]
-    pub fn metallic_mobile(self: Arc<Self>, value: f32) {
-        set_or_warn(&self.shader, "material.metallic", value);
+    pub fn metallic_mobile(self: Arc<Self>, value: f32) -> Arc<Self> {
+        Arc::new(self.metallic(value))
     }
 
     #[uniffi::method(name = "roughness")]
     #[lsp_doc("docs/api/scene/material/roughness.md")]
-    pub fn roughness_mobile(self: Arc<Self>, value: f32) {
-        set_or_warn(&self.shader, "material.roughness", value);
+    pub fn roughness_mobile(self: Arc<Self>, value: f32) -> Arc<Self> {
+        Arc::new(self.roughness(value))
     }
 
     #[uniffi::method(name = "normalScale")]
     #[lsp_doc("docs/api/scene/material/normal_scale.md")]
-    pub fn normal_scale_mobile(self: Arc<Self>, value: f32) {
-        set_or_warn(&self.shader, "material.normal_scale", value);
+    pub fn normal_scale_mobile(self: Arc<Self>, value: f32) -> Arc<Self> {
+        Arc::new(self.normal_scale(value))
     }
 
     #[uniffi::method(name = "occlusionStrength")]
     #[lsp_doc("docs/api/scene/material/occlusion_strength.md")]
-    pub fn occlusion_strength_mobile(self: Arc<Self>, value: f32) {
-        set_or_warn(&self.shader, "material.occlusion_strength", value);
+    pub fn occlusion_strength_mobile(self: Arc<Self>, value: f32) -> Arc<Self> {
+        Arc::new(self.occlusion_strength(value))
     }
 
     #[uniffi::method(name = "emissive")]
@@ -67,16 +69,15 @@ impl Material {
     pub fn emissive_mobile(
         self: Arc<Self>,
         factor: Vec<f32>,
-    ) -> Result<(), FragmentColorError> {
+    ) -> Result<Arc<Self>, FragmentColorError> {
         let arr = take_vec3(&factor, "emissive")?;
-        set_or_warn(&self.shader, "material.emissive", arr);
-        Ok(())
+        Ok(Arc::new(self.emissive(arr)))
     }
 
     #[uniffi::method(name = "alphaCutoff")]
     #[lsp_doc("docs/api/scene/material/alpha_cutoff.md")]
-    pub fn alpha_cutoff_mobile(self: Arc<Self>, value: f32) {
-        set_or_warn(&self.shader, "material.alpha_cutoff", value);
+    pub fn alpha_cutoff_mobile(self: Arc<Self>, value: f32) -> Arc<Self> {
+        Arc::new(self.alpha_cutoff(value))
     }
 
     #[uniffi::method(name = "uvTransform")]
@@ -86,58 +87,52 @@ impl Material {
         offset: Vec<f32>,
         scale: Vec<f32>,
         rotation: f32,
-    ) -> Result<(), FragmentColorError> {
+    ) -> Result<Arc<Self>, FragmentColorError> {
         let o = take_vec2(&offset, "uvTransform offset")?;
         let s = take_vec2(&scale, "uvTransform scale")?;
-        set_or_warn(&self.shader, "material.uv_offset", o);
-        set_or_warn(&self.shader, "material.uv_scale", s);
-        set_or_warn(&self.shader, "material.uv_rotation", rotation);
-        Ok(())
+        Ok(Arc::new(self.uv_transform(o, s, rotation)))
     }
 
     #[uniffi::method(name = "alphaMode")]
     #[lsp_doc("docs/api/scene/material/alpha_mode.md")]
-    pub fn alpha_mode_mobile(self: Arc<Self>, mode: AlphaMode) {
-        *self.alpha_mode.write() = mode;
-        self.shader.object.set_alpha_mode(mode);
-        set_or_warn(&self.shader, "material.alpha_mode_flag", mode.flag());
+    pub fn alpha_mode_mobile(self: Arc<Self>, mode: AlphaMode) -> Arc<Self> {
+        Arc::new(self.alpha_mode(mode))
     }
 
     #[uniffi::method(name = "doubleSided")]
     #[lsp_doc("docs/api/scene/material/double_sided.md")]
-    pub fn double_sided_mobile(self: Arc<Self>, value: bool) {
-        *self.double_sided.write() = value;
-        self.shader.object.set_double_sided(value);
+    pub fn double_sided_mobile(self: Arc<Self>, value: bool) -> Arc<Self> {
+        Arc::new(self.double_sided(value))
     }
 
     #[uniffi::method(name = "baseColorTexture")]
     #[lsp_doc("docs/api/scene/material/base_color_texture.md")]
-    pub fn base_color_texture_mobile(self: Arc<Self>, texture: Arc<Texture>) {
-        set_texture_or_warn(&self.shader, "base_color_map", &texture);
+    pub fn base_color_texture_mobile(self: Arc<Self>, texture: Arc<Texture>) -> Arc<Self> {
+        Arc::new(self.base_color_texture(&*texture))
     }
 
     #[uniffi::method(name = "metallicRoughnessTexture")]
     #[lsp_doc("docs/api/scene/material/metallic_roughness_texture.md")]
-    pub fn metallic_roughness_texture_mobile(self: Arc<Self>, texture: Arc<Texture>) {
-        set_texture_or_warn(&self.shader, "metallic_roughness_map", &texture);
+    pub fn metallic_roughness_texture_mobile(self: Arc<Self>, texture: Arc<Texture>) -> Arc<Self> {
+        Arc::new(self.metallic_roughness_texture(&*texture))
     }
 
     #[uniffi::method(name = "normalTexture")]
     #[lsp_doc("docs/api/scene/material/normal_texture.md")]
-    pub fn normal_texture_mobile(self: Arc<Self>, texture: Arc<Texture>) {
-        set_texture_or_warn(&self.shader, "normal_map", &texture);
+    pub fn normal_texture_mobile(self: Arc<Self>, texture: Arc<Texture>) -> Arc<Self> {
+        Arc::new(self.normal_texture(&*texture))
     }
 
     #[uniffi::method(name = "occlusionTexture")]
     #[lsp_doc("docs/api/scene/material/occlusion_texture.md")]
-    pub fn occlusion_texture_mobile(self: Arc<Self>, texture: Arc<Texture>) {
-        set_texture_or_warn(&self.shader, "occlusion_map", &texture);
+    pub fn occlusion_texture_mobile(self: Arc<Self>, texture: Arc<Texture>) -> Arc<Self> {
+        Arc::new(self.occlusion_texture(&*texture))
     }
 
     #[uniffi::method(name = "emissiveTexture")]
     #[lsp_doc("docs/api/scene/material/emissive_texture.md")]
-    pub fn emissive_texture_mobile(self: Arc<Self>, texture: Arc<Texture>) {
-        set_texture_or_warn(&self.shader, "emissive_map", &texture);
+    pub fn emissive_texture_mobile(self: Arc<Self>, texture: Arc<Texture>) -> Arc<Self> {
+        Arc::new(self.emissive_texture(&*texture))
     }
 }
 

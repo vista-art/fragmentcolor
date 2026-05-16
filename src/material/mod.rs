@@ -19,8 +19,6 @@
 //! handle to the same underlying shader state, not an independent copy.
 
 use lsp_doc::lsp_doc;
-use parking_lot::RwLock;
-use std::sync::Arc;
 
 #[cfg(python)]
 use pyo3::prelude::*;
@@ -48,15 +46,6 @@ const PBR_MAIN: &str = include_str!("pbr_main.wgsl");
 #[lsp_doc("docs/api/scene/material/material.md")]
 pub struct Material {
     pub(crate) shader: Shader,
-    /// Pipeline-state alpha mode. Mutable through `&self` so the cross-
-    /// language bindings (which can't take `self` by value) and the Rust
-    /// builder both write through to the same slot — and so cloned handles
-    /// see each other's updates, matching the shallow-Clone share semantics
-    /// the rest of Material already follows.
-    pub(crate) alpha_mode: Arc<RwLock<AlphaMode>>,
-    /// Pipeline-state double-sided flag. Same share semantics as
-    /// `alpha_mode`.
-    pub(crate) double_sided: Arc<RwLock<bool>>,
 }
 
 crate::impl_fc_kind!(Material, "Material");
@@ -77,15 +66,11 @@ impl Material {
     #[lsp_doc("docs/api/scene/material/pbr.md")]
     pub fn pbr() -> Result<Self, ShaderError> {
         let shader = Shader::new(["mesh/transform", "material/pbr", PBR_MAIN])?;
-        let material = Self {
-            shader,
-            alpha_mode: Arc::new(RwLock::new(AlphaMode::default())),
-            double_sided: Arc::new(RwLock::new(false)),
-        };
+        let material = Self { shader };
         material.apply_defaults();
-        // Seed the ShaderObject back-references. The default ShaderObject
-        // double_sided is `true` (preserves the pre-Material no-cull behaviour
-        // for raw Shader callers); Material::pbr flips it to `false` to follow
+        // Seed the ShaderObject. The default ShaderObject double_sided is
+        // `true` (preserves the pre-Material no-cull behaviour for raw
+        // Shader callers); Material::pbr flips it to `false` to follow
         // glTF 2.0's single-sided default.
         material.shader.object.set_alpha_mode(AlphaMode::default());
         material.shader.object.set_double_sided(false);
@@ -94,11 +79,7 @@ impl Material {
 
     #[lsp_doc("docs/api/scene/material/custom.md")]
     pub fn custom(shader: Shader) -> Self {
-        let mat = Self {
-            shader,
-            alpha_mode: Arc::new(RwLock::new(AlphaMode::default())),
-            double_sided: Arc::new(RwLock::new(false)),
-        };
+        let mat = Self { shader };
         // Same single-sided default as Material::pbr — opting into Material
         // semantics means opting into glTF 2.0 defaults, even when the
         // underlying Shader was originally constructed standalone.
@@ -148,7 +129,7 @@ impl Material {
         // Material renders correctly without any Light attached; the
         // first `pass.add(&light)` writes to slot 0 too, overwriting the
         // defaults. Subsequent Lights take slots 1, 2, … up to
-        // `PBR_MAX_LIGHTS` (8). Ambient is a small grey tint so unlit
+        // `PBR_MAX_LIGHTS` (32). Ambient is a small grey tint so unlit
         // faces don't read as pitch-black — matches the prior shader's
         // hardcoded `* 0.03` term.
         let _ = self.shader.set("lights.count", 1_u32);
@@ -179,72 +160,77 @@ impl Material {
     }
 
     // --- factor setters ---
+    //
+    // Every setter takes `&self` and returns `Self` (an Arc-cloned handle
+    // to the same Material). This is the same shape Light and Camera use:
+    // chains naturally and stays callable on a borrowed Material, so the
+    // Python / JavaScript / Swift / Kotlin bindings can mirror the Rust
+    // signature exactly and the docs stay one-spelling-fits-all across
+    // languages.
 
     #[lsp_doc("docs/api/scene/material/base_color.md")]
-    pub fn base_color(self, color: [f32; 4]) -> Self {
+    pub fn base_color(&self, color: [f32; 4]) -> Self {
         set_or_warn(&self.shader, "material.base_color", color);
-        self
+        self.clone()
     }
 
     #[lsp_doc("docs/api/scene/material/metallic.md")]
-    pub fn metallic(self, value: f32) -> Self {
+    pub fn metallic(&self, value: f32) -> Self {
         set_or_warn(&self.shader, "material.metallic", value);
-        self
+        self.clone()
     }
 
     #[lsp_doc("docs/api/scene/material/roughness.md")]
-    pub fn roughness(self, value: f32) -> Self {
+    pub fn roughness(&self, value: f32) -> Self {
         set_or_warn(&self.shader, "material.roughness", value);
-        self
+        self.clone()
     }
 
     #[lsp_doc("docs/api/scene/material/normal_scale.md")]
-    pub fn normal_scale(self, value: f32) -> Self {
+    pub fn normal_scale(&self, value: f32) -> Self {
         set_or_warn(&self.shader, "material.normal_scale", value);
-        self
+        self.clone()
     }
 
     #[lsp_doc("docs/api/scene/material/occlusion_strength.md")]
-    pub fn occlusion_strength(self, value: f32) -> Self {
+    pub fn occlusion_strength(&self, value: f32) -> Self {
         set_or_warn(&self.shader, "material.occlusion_strength", value);
-        self
+        self.clone()
     }
 
     #[lsp_doc("docs/api/scene/material/emissive.md")]
-    pub fn emissive(self, factor: [f32; 3]) -> Self {
+    pub fn emissive(&self, factor: [f32; 3]) -> Self {
         set_or_warn(&self.shader, "material.emissive", factor);
-        self
+        self.clone()
     }
 
     #[lsp_doc("docs/api/scene/material/alpha_cutoff.md")]
-    pub fn alpha_cutoff(self, value: f32) -> Self {
+    pub fn alpha_cutoff(&self, value: f32) -> Self {
         set_or_warn(&self.shader, "material.alpha_cutoff", value);
-        self
+        self.clone()
     }
 
     #[lsp_doc("docs/api/scene/material/uv_transform.md")]
-    pub fn uv_transform(self, offset: [f32; 2], scale: [f32; 2], rotation: f32) -> Self {
+    pub fn uv_transform(&self, offset: [f32; 2], scale: [f32; 2], rotation: f32) -> Self {
         set_or_warn(&self.shader, "material.uv_offset", offset);
         set_or_warn(&self.shader, "material.uv_scale", scale);
         set_or_warn(&self.shader, "material.uv_rotation", rotation);
-        self
+        self.clone()
     }
 
     // --- pipeline-state flags ---
 
     #[lsp_doc("docs/api/scene/material/alpha_mode.md")]
-    pub fn alpha_mode(self, mode: AlphaMode) -> Self {
-        *self.alpha_mode.write() = mode;
+    pub fn alpha_mode(&self, mode: AlphaMode) -> Self {
         self.shader.object.set_alpha_mode(mode);
         set_or_warn(&self.shader, "material.alpha_mode_flag", mode.flag());
-        self
+        self.clone()
     }
 
     #[lsp_doc("docs/api/scene/material/double_sided.md")]
-    pub fn double_sided(self, value: bool) -> Self {
-        *self.double_sided.write() = value;
+    pub fn double_sided(&self, value: bool) -> Self {
         self.shader.object.set_double_sided(value);
-        self
+        self.clone()
     }
 
     // --- texture setters ---
@@ -264,58 +250,58 @@ impl Material {
     // `(source, TextureFormat::...)` to override.
 
     #[lsp_doc("docs/api/scene/material/base_color_texture.md")]
-    pub fn base_color_texture(self, source: impl Into<crate::TextureInput>) -> Self {
+    pub fn base_color_texture(&self, source: impl Into<crate::TextureInput>) -> Self {
         queue_texture_or_warn(
             &self.shader,
             "base_color_map",
             source.into(),
             Some(crate::TextureFormat::Rgba8UnormSrgb),
         );
-        self
+        self.clone()
     }
 
     #[lsp_doc("docs/api/scene/material/metallic_roughness_texture.md")]
-    pub fn metallic_roughness_texture(self, source: impl Into<crate::TextureInput>) -> Self {
+    pub fn metallic_roughness_texture(&self, source: impl Into<crate::TextureInput>) -> Self {
         queue_texture_or_warn(
             &self.shader,
             "metallic_roughness_map",
             source.into(),
             Some(crate::TextureFormat::Rgba8Unorm),
         );
-        self
+        self.clone()
     }
 
     #[lsp_doc("docs/api/scene/material/normal_texture.md")]
-    pub fn normal_texture(self, source: impl Into<crate::TextureInput>) -> Self {
+    pub fn normal_texture(&self, source: impl Into<crate::TextureInput>) -> Self {
         queue_texture_or_warn(
             &self.shader,
             "normal_map",
             source.into(),
             Some(crate::TextureFormat::Rgba8Unorm),
         );
-        self
+        self.clone()
     }
 
     #[lsp_doc("docs/api/scene/material/occlusion_texture.md")]
-    pub fn occlusion_texture(self, source: impl Into<crate::TextureInput>) -> Self {
+    pub fn occlusion_texture(&self, source: impl Into<crate::TextureInput>) -> Self {
         queue_texture_or_warn(
             &self.shader,
             "occlusion_map",
             source.into(),
             Some(crate::TextureFormat::Rgba8Unorm),
         );
-        self
+        self.clone()
     }
 
     #[lsp_doc("docs/api/scene/material/emissive_texture.md")]
-    pub fn emissive_texture(self, source: impl Into<crate::TextureInput>) -> Self {
+    pub fn emissive_texture(&self, source: impl Into<crate::TextureInput>) -> Self {
         queue_texture_or_warn(
             &self.shader,
             "emissive_map",
             source.into(),
             Some(crate::TextureFormat::Rgba8UnormSrgb),
         );
-        self
+        self.clone()
     }
 }
 
@@ -336,15 +322,16 @@ pub(crate) fn queue_texture_or_warn(
     mut input: crate::TextureInput,
     srgb_hint: Option<crate::TextureFormat>,
 ) {
-    if let Some(hint) = srgb_hint {
-        if input.options.format == crate::TextureFormat::default() {
-            input.options.format = hint;
-        }
+    if let Some(hint) = srgb_hint
+        && input.options.format == crate::TextureFormat::default()
+    {
+        input.options.format = hint;
     }
     if let Err(e) = shader.object.queue_or_set_texture(key, input) {
         log::warn!("Material texture '{key}' did not apply: {e}");
     }
 }
+
 
 #[cfg(test)]
 mod tests {
@@ -401,10 +388,10 @@ mod tests {
     #[test]
     fn alpha_mode_setter_threads_to_shader_back_reference() {
         let mat = Material::pbr().expect("pbr").alpha_mode(AlphaMode::Mask);
-        assert_eq!(*mat.alpha_mode.read(), AlphaMode::Mask);
-        // ShaderObject back-reference picks up the new mode for the pipeline
-        // cache key; the alpha_mode_flag uniform picks it up too so fs_main's
-        // Mask discard branch fires.
+        // ShaderObject picks up the new mode for the pipeline cache key;
+        // the alpha_mode_flag uniform picks it up too so fs_main's Mask
+        // discard branch fires.
+        assert_eq!(*mat.shader.object.alpha_mode.read(), AlphaMode::Mask);
         let flag: u32 = mat.shader().get("material.alpha_mode_flag").unwrap();
         assert_eq!(flag, AlphaMode::Mask.flag());
     }
@@ -412,7 +399,6 @@ mod tests {
     #[test]
     fn double_sided_setter_threads_to_shader_back_reference() {
         let mat = Material::pbr().expect("pbr").double_sided(true);
-        assert!(*mat.double_sided.read());
         assert!(*mat.shader.object.double_sided.read());
     }
 
