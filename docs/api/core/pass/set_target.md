@@ -1,8 +1,8 @@
-# Pass::add_target(target)
+# Pass::set_target(target)
 
 Attach a per-pass color render target. When set, this pass renders into the provided texture instead of the final Target.
 
-Use this to render intermediate results (e.g., a shadow map) that later passes can sample.
+A Pass has at most one color target — call `set_target` again to swap it. Use this to render intermediate results (e.g., a shadow map) that later passes can sample.
 
 ## Example
 
@@ -14,7 +14,7 @@ let r = Renderer::new();
 let tex_target = r.create_texture_target([512, 512]).await?;
 
 let p = Pass::new("shadow");
-p.add_target(&tex_target);
+p.set_target(&tex_target)?;
 
 # Ok(())
 # }

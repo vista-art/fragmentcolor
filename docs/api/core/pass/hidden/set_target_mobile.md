@@ -1,6 +1,6 @@
-# Pass::addTarget (mobile)
+# Pass::setTarget (mobile)
 
-Mobile binding for `Pass::add_target`. Accepts a `TargetHandle::Texture`
+Mobile binding for `Pass::set_target`. Accepts a `TargetHandle::Texture`
 variant; window targets are rejected with an error because they cannot be used
 as render-to-texture colour targets.
 

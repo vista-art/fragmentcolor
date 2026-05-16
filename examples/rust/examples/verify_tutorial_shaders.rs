@@ -202,7 +202,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let particle_pass = Pass::from_shader("particles", &particle_shader);
         particle_pass.add_mesh(&mesh)?;
-        particle_pass.add_target(&intermediate)?;
+        particle_pass.set_target(&intermediate)?;
 
         let postfx = Shader::new([
             "postfx/chromatic_offsets",

@@ -1,18 +1,22 @@
 # Camera::look_at
 
-Position the camera in world space. `eye` is where the camera is, `target`
-is the point it aims at, and `up` is the world-space up vector that
-orients the roll (almost always `[0, 1, 0]`). Returns a handle to the
-same Camera (Arc-shared backing) so it chains cleanly off a `perspective`
-or `orthographic` constructor and can be called again after the Camera
-has been added to a Material — the new view propagates live.
+Position the camera in world space. `position` is where the camera sits,
+`target` is the point it aims at, and `up` is the world-space up vector
+that orients the roll (almost always `[0, 1, 0]`). Matches `Light`'s
+`position` vocabulary so both scene types describe "where this object is
+in the world" the same way.
+
+Returns a handle to the same Camera (Arc-shared backing) so it chains
+cleanly off a `perspective` or `orthographic` constructor and can be
+called again after the Camera has been added to a Pass — the new view
+propagates live to every Material the Pass renders.
 
 Internally builds the view matrix with `glam::Mat4::look_at_rh`. The
 result is a right-handed view matrix that pairs with the right-handed
 projection produced by [`perspective`](https://fragmentcolor.org/api/scene/camera/perspective)
 and [`orthographic`](https://fragmentcolor.org/api/scene/camera/orthographic).
 
-The eye position is cached on the Camera and exposed via
+The world-space position is cached on the Camera and exposed via
 [`position`](https://fragmentcolor.org/api/scene/camera/position) so
 shaders that need it (specular highlights, fresnel) don't have to invert
 the view matrix on every frame.
