@@ -50,7 +50,9 @@ pub mod material;
 ///
 /// Top-level container for the real-world things you render — Models,
 /// Cameras, Lights, custom SceneObjects. See [Scene](crate::Scene),
-/// [Model](crate::Model), [Camera](crate::Camera), and [Light](crate::Light).
+/// [Model](crate::Model), [Camera](crate::Camera), and the unified
+/// [Light](crate::Light) type with directional / point / spot
+/// constructors.
 pub mod scene;
 
 /// # Error module

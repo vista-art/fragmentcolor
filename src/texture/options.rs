@@ -170,22 +170,25 @@ pub struct TextureOptions {
     /// so textured surfaces stay smooth at any zoom or rotation. Set to false
     /// to skip the CPU work for textures that won't be sampled at distance.
     pub mipmaps: bool,
-    /// Optional `wgpu::TextureUsages` override, stored as the underlying
+    /// Optional [`crate::TextureUsage`] override, stored as the underlying
     /// `u32` bit mask so it crosses every FFI cleanly. `None` lets the
     /// renderer pick per-method defaults:
+    ///
     /// - `create_texture` → `TEXTURE_BINDING | COPY_DST`
     /// - `create_storage_texture` → `STORAGE_BINDING | TEXTURE_BINDING | COPY_SRC | COPY_DST`
-    /// Set with `.with_usage(wgpu::TextureUsages::STORAGE_BINDING | ...)` for
+    ///
+    /// Set with `.with_usage(TextureUsage::STORAGE_BINDING | ...)` for
     /// readability on the Rust side.
     pub usage: Option<u32>,
 }
 
 impl TextureOptions {
-    /// Builder-style helper that stores the typed `wgpu::TextureUsages` as
-    /// raw bits — keeps Rust call sites readable while preserving the
-    /// FFI-friendly `u32` field type.
-    pub fn with_usage(mut self, usage: wgpu::TextureUsages) -> Self {
-        self.usage = Some(usage.bits());
+    /// Builder-style helper that stores the typed [`crate::TextureUsage`] as
+    /// raw bits. Keeps Rust call sites readable while preserving the
+    /// FFI-friendly `u32` field type. The wgpu bit layout is identical, so
+    /// the conversion is a no-op at runtime.
+    pub fn with_usage(mut self, usage: crate::TextureUsage) -> Self {
+        self.usage = Some(usage.raw_bits());
         self
     }
 }

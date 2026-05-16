@@ -54,6 +54,12 @@ impl CanvasTarget {
     }
 }
 
+impl crate::target::TargetInternal for CanvasTarget {
+    fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, crate::SurfaceError> {
+        self.inner.lock().get_current_frame()
+    }
+}
+
 impl Target for CanvasTarget {
     fn size(&self) -> Size {
         self.inner.lock().size()
@@ -61,10 +67,6 @@ impl Target for CanvasTarget {
 
     fn resize(&mut self, size: impl Into<Size>) {
         self.inner.lock().resize(size);
-    }
-
-    fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, crate::SurfaceError> {
-        self.inner.lock().get_current_frame()
     }
 
     async fn get_image(&self) -> Vec<u8> {

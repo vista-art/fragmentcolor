@@ -15,6 +15,9 @@ pub use sampler::*;
 pub mod format;
 pub use format::*;
 
+pub mod usage;
+pub use usage::TextureUsage;
+
 pub(crate) mod ktx2_loader;
 
 mod platform;
@@ -236,8 +239,8 @@ impl Mipmap {
 
 impl Mipmap {
     #[lsp_doc("docs/api/texture/mipmap/format.md")]
-    pub fn format(&self) -> wgpu::TextureFormat {
-        self.format
+    pub fn format(&self) -> crate::TextureFormat {
+        self.format.into()
     }
 
     #[lsp_doc("docs/api/texture/mipmap/size.md")]
@@ -1850,7 +1853,7 @@ mod tests {
                 .expect("prepare ok");
         assert_eq!(chain.count(), 4);
         assert_eq!(chain.size(), (8, 8));
-        assert_eq!(chain.format(), wgpu::TextureFormat::Rgba8UnormSrgb);
+        assert_eq!(chain.format(), crate::TextureFormat::Rgba8UnormSrgb);
         let expected = [4 * 8 * 8, 4 * 4 * 4, 4 * 2 * 2, 4];
         for (i, level) in chain.levels().iter().enumerate() {
             assert_eq!(level.len(), expected[i], "level {i} byte count");

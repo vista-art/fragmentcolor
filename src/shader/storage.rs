@@ -618,6 +618,11 @@ impl UniformStorage {
     pub(crate) fn clear_storage_dirty(&mut self, root: &str) {
         self.storage_dirty.remove(root);
     }
+    /// True iff the shader's source declared a top-level storage binding
+    /// named `root` (i.e. there is a CPU-side blob for it).
+    pub(crate) fn has_storage(&self, root: &str) -> bool {
+        self.storage_blobs.contains_key(root)
+    }
 }
 
 // -------------------------------

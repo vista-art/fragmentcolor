@@ -36,6 +36,14 @@ impl TextureTarget {
     }
 }
 
+impl crate::target::TargetInternal for TextureTarget {
+    fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, crate::SurfaceError> {
+        let view = self.texture.create_view();
+        let format = self.texture.format();
+        Ok(Box::new(TextureFrame { view, format }))
+    }
+}
+
 impl Target for TextureTarget {
     #[lsp_doc("docs/api/targets/target/size.md")]
     fn size(&self) -> Size {
@@ -50,13 +58,6 @@ impl Target for TextureTarget {
             self.texture.format(),
         );
         self.texture = Arc::new(new_texture);
-    }
-
-    #[lsp_doc("docs/api/targets/target/hidden/get_current_frame.md")]
-    fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, crate::SurfaceError> {
-        let view = self.texture.create_view();
-        let format = self.texture.format();
-        Ok(Box::new(TextureFrame { view, format }))
     }
 
     /// Read back the offscreen texture contents as packed RGBA8 bytes

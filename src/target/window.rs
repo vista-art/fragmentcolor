@@ -25,6 +25,13 @@ impl WindowTarget {
     }
 }
 
+impl crate::target::TargetInternal for WindowTarget {
+    fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, SurfaceError> {
+        let frame = self.acquire_frame()?;
+        Ok(Box::new(frame))
+    }
+}
+
 impl Target for WindowTarget {
     #[lsp_doc("docs/api/targets/target/size.md")]
     fn size(&self) -> Size {
@@ -37,12 +44,6 @@ impl Target for WindowTarget {
         self.config.width = size.width;
         self.config.height = size.height;
         self.surface.configure(&self.context.device, &self.config);
-    }
-
-    #[lsp_doc("docs/api/targets/target/hidden/get_current_frame.md")]
-    fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, SurfaceError> {
-        let frame = self.acquire_frame()?;
-        Ok(Box::new(frame))
     }
 
     /// Reading back from a presentable surface needs `COPY_SRC` on the

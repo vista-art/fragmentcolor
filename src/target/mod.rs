@@ -60,7 +60,7 @@ impl std::error::Error for SurfaceError {}
 /// Convert a [`wgpu::CurrentSurfaceTexture`] into the previous `Result<SurfaceTexture, _>` shape.
 /// `Suboptimal` frames are treated as success (the texture is still usable, the caller may
 /// choose to reconfigure out-of-band).
-pub fn surface_texture_from(
+pub(crate) fn surface_texture_from(
     result: wgpu::CurrentSurfaceTexture,
 ) -> Result<wgpu::SurfaceTexture, SurfaceError> {
     match result {
@@ -75,13 +75,22 @@ pub fn surface_texture_from(
     }
 }
 
+/// Frame-acquisition entry point. Sealed (crate-private supertrait of
+/// [`Target`]) so external callers can't implement [`Target`] for their own
+/// types — every wgpu-touching method lives here. Custom adapters go
+/// through the existing [`crate::Renderer::create_target`] /
+/// [`crate::Renderer::create_texture_target`] constructors, which produce
+/// the canonical impls.
+pub(crate) trait TargetInternal {
+    fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, SurfaceError>;
+}
+
 #[lsp_doc("docs/api/targets/target/target.md")]
-pub trait Target {
+#[allow(private_bounds)]
+pub trait Target: TargetInternal {
     fn size(&self) -> Size;
 
     fn resize(&mut self, size: impl Into<Size>);
-
-    fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, SurfaceError>;
 
     /// Read back the target's current contents as packed RGBA8 bytes
     /// (row-major, top-left origin). Async because GPU readback is
@@ -100,7 +109,7 @@ pub trait Target {
     async fn get_image(&self) -> Vec<u8>;
 }
 
-pub trait TargetFrame {
+pub(crate) trait TargetFrame {
     fn view(&self) -> &wgpu::TextureView;
     fn format(&self) -> wgpu::TextureFormat;
     fn present(self: Box<Self>);

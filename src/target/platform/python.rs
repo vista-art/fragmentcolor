@@ -140,21 +140,7 @@ pub struct RenderCanvasFrame {
     view: wgpu::TextureView,
 }
 
-impl Target for RenderCanvasTarget {
-    fn size(&self) -> Size {
-        if let Some(target) = &self.target {
-            target.size()
-        } else {
-            Size::default()
-        }
-    }
-
-    fn resize(&mut self, size: impl Into<Size>) {
-        if let Some(target) = &mut self.target {
-            target.resize(size.into());
-        }
-    }
-
+impl crate::target::TargetInternal for RenderCanvasTarget {
     fn get_current_frame(&self) -> Result<Box<dyn crate::TargetFrame>, crate::SurfaceError> {
         let target = if let Some(target) = &self.target {
             target
@@ -172,6 +158,22 @@ impl Target for RenderCanvasTarget {
             format: target.config.format,
             view,
         }))
+    }
+}
+
+impl Target for RenderCanvasTarget {
+    fn size(&self) -> Size {
+        if let Some(target) = &self.target {
+            target.size()
+        } else {
+            Size::default()
+        }
+    }
+
+    fn resize(&mut self, size: impl Into<Size>) {
+        if let Some(target) = &mut self.target {
+            target.resize(size.into());
+        }
     }
 
     async fn get_image(&self) -> Vec<u8> {
@@ -301,6 +303,12 @@ impl PyTargetFrame {
     }
 }
 
+impl crate::target::TargetInternal for PyTextureTarget {
+    fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, crate::SurfaceError> {
+        self.inner.get_current_frame()
+    }
+}
+
 impl Target for PyTextureTarget {
     fn size(&self) -> Size {
         self.inner.size()
@@ -308,10 +316,6 @@ impl Target for PyTextureTarget {
 
     fn resize(&mut self, size: impl Into<Size>) {
         <crate::TextureTarget as Target>::resize(&mut self.inner, size);
-    }
-
-    fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, crate::SurfaceError> {
-        self.inner.get_current_frame()
     }
 
     async fn get_image(&self) -> Vec<u8> {
