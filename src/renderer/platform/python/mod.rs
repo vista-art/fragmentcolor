@@ -169,6 +169,13 @@ impl Renderer {
         })
     }
 
+    #[pyo3(name = "read_storage")]
+    #[lsp_doc("docs/api/core/renderer/read_storage.md")]
+    pub fn read_storage_py(&self, shader: &crate::Shader, binding: &str) -> Result<Vec<u8>, PyErr> {
+        pollster::block_on(self.read_storage(shader, binding))
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
+    }
+
     #[pyo3(name = "render")]
     #[lsp_doc("docs/api/core/renderer/render.md")]
     pub fn render_py(&self, renderable: Py<PyAny>, target: Py<PyAny>) -> Result<(), PyErr> {

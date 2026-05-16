@@ -216,6 +216,18 @@ impl Renderer {
         ))
     }
 
+    #[wasm_bindgen(js_name = "readStorage")]
+    #[lsp_doc("docs/api/core/renderer/read_storage.md")]
+    pub async fn read_storage_js(
+        &self,
+        shader: &Shader,
+        binding: String,
+    ) -> Result<Vec<u8>, JsError> {
+        self.read_storage(shader, &binding)
+            .await
+            .map_err(|e| JsError::new(&e.to_string()))
+    }
+
     #[wasm_bindgen(js_name = "render")]
     #[lsp_doc("docs/api/core/renderer/render.md")]
     pub fn render_js(&self, renderable: &JsValue, target: &JsValue) -> Result<(), RendererError> {
