@@ -1,13 +1,11 @@
 # Light::direction
 
-Read the world-space direction the light travels along, as `[x, y, z]`.
-`[0, -1, 0]` is straight down (noon sun); `[0, 1, 0]` is straight up (the
-light is coming from below).
-
-The vector is whatever was passed to
-[`Light::directional`](https://fragmentcolor.org/api/scene/light/directional);
-it isn't normalized here. Shaders that need a unit vector normalize at
-sample time.
+Read the world-space direction the light travels along. Returns
+`Some([x, y, z])` for a directional or spot light, `None` for a point
+light (point sources radiate omnidirectionally — no direction to report).
+Call
+[`set_direction`](https://fragmentcolor.org/api/scene/light/set_direction)
+to update it.
 
 ## Example
 
@@ -16,8 +14,9 @@ sample time.
 use fragmentcolor::Light;
 
 let sun = Light::directional([0.3, -1.0, -0.4], [1.0, 1.0, 1.0]);
-let dir = sun.direction();
-# assert_eq!(dir, [0.3, -1.0, -0.4]);
+let lamp = Light::point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0]);
+# assert_eq!(sun.direction(), Some([0.3, -1.0, -0.4]));
+# assert!(lamp.direction().is_none());
 # Ok(())
 # }
 ```

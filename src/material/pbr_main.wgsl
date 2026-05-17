@@ -81,15 +81,17 @@ struct Light {
 // shaded color so unlit faces don't read as pitch-black (replaces the
 // hardcoded `albedo * 0.03` from the prior single-light shader).
 //
-// `PBR_MAX_LIGHTS = 8` keeps the uniform under 600 bytes (1 u32 + vec3
-// ambient + 8 × Light(64) = 32 + 512 = 544 bytes), well inside wgpu's
-// per-binding limit and small enough to stay in fast on-chip caches.
-const PBR_MAX_LIGHTS: u32 = 8u;
+// `PBR_MAX_LIGHTS = 32` keeps the uniform near 2 KiB (1 u32 + vec3
+// ambient + 32 × Light(64) = 32 + 2048 = 2080 bytes), well inside wgpu's
+// per-binding limit. Beyond a few dozen lights the forward-shaded loop
+// becomes the bottleneck; a clustered / storage-buffer path is on the
+// roadmap for scenes that need hundreds.
+const PBR_MAX_LIGHTS: u32 = 32u;
 
 struct LightArray {
   count: u32,
   ambient: vec3<f32>,
-  lights: array<Light, 8>,
+  lights: array<Light, 32>,
 }
 
 @group(0) @binding(0) var<uniform> camera: Camera;

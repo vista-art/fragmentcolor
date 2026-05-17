@@ -1,10 +1,11 @@
 # Light::position
 
-Read the world-space position as `[x, y, z]`. Meaningful for
-[`Light::point`](https://fragmentcolor.org/api/scene/light/point) and
-[`Light::spot`](https://fragmentcolor.org/api/scene/light/spot); ignored
-by the shader for directional lights, where rays are parallel and the
-position has no physical meaning.
+Read the world-space position the light radiates from. Returns
+`Some([x, y, z])` for a point or spot light, `None` for a directional
+light (directional rays travel from infinitely far away — no position to
+report). Call
+[`set_position`](https://fragmentcolor.org/api/scene/light/set_position)
+to update it.
 
 ## Example
 
@@ -12,9 +13,10 @@ position has no physical meaning.
 # fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Light;
 
-let bulb = Light::point([3.0, 2.5, -1.0], [1.0, 1.0, 1.0]);
-let pos = bulb.position();
-# assert_eq!(pos, [3.0, 2.5, -1.0]);
+let lamp = Light::point([0.0, 2.5, 0.0], [1.0, 1.0, 1.0]);
+let sun = Light::directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
+# assert_eq!(lamp.position(), Some([0.0, 2.5, 0.0]));
+# assert!(sun.position().is_none());
 # Ok(())
 # }
 ```

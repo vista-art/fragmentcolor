@@ -20,6 +20,7 @@
 use std::path::PathBuf;
 
 use glam::{Mat4, Quat, Vec3};
+use lsp_doc::lsp_doc;
 
 use crate::scene::{Camera, Light, Scene};
 use crate::{Material, Mesh, Model, TextureData, TextureInput};
@@ -33,20 +34,35 @@ pub enum SceneSource {
 }
 
 impl SceneSource {
-    /// Build a `SceneSource::Gltf` from anything that converts into a
-    /// [`GltfSource`] — `&str` / `&Path` / `PathBuf` for file inputs,
-    /// `Vec<u8>` / `&[u8]` for in-memory `.glb` bytes.
-    pub fn gltf(source: impl Into<GltfSource>) -> Self {
-        Self::Gltf(source.into())
+    /// Build a [`GltfSource`] from anything that converts into one — `&str`
+    /// / `&Path` / `PathBuf` for file inputs, `Vec<u8>` / `&[u8]` for
+    /// in-memory `.glb` bytes. Chains naturally with the filter methods on
+    /// `GltfSource` (`cameras`, `lights`, …); the resulting `GltfSource`
+    /// converts to `SceneSource` automatically when handed to
+    /// [`Scene::load`](crate::Scene::load), so `Scene::load(SceneSource::gltf(path))`
+    /// keeps working unchanged.
+    pub fn gltf(source: impl Into<GltfSource>) -> GltfSource {
+        source.into()
     }
 }
 
-/// Payload for `SceneSource::Gltf`. The path variant handles both `.gltf`
-/// JSON (with external buffer + image references) and `.glb` binary
-/// containers. The bytes variant is `.glb`-only — JSON-with-external-URIs
-/// has no anchor for the relative paths to resolve against.
+/// Payload for `SceneSource::Gltf`. Carries the file-or-bytes input plus
+/// per-load filter options that decide which glTF node kinds the loader
+/// instantiates as FragmentColor objects.
+///
+/// Built via the `From` impls below — `&str` / `String` / `&Path` / `PathBuf`
+/// for file inputs, `Vec<u8>` / `&[u8]` for in-memory `.glb` bytes. Filter
+/// methods chain after the conversion: `SceneSource::gltf("model.glb")
+/// .cameras(false).lights(false)` skips embedded camera + light nodes
+/// during the walk, leaving the user free to attach their own.
 #[derive(Debug, Clone)]
-pub enum GltfSource {
+pub struct GltfSource {
+    payload: GltfPayload,
+    options: GltfOptions,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum GltfPayload {
     Path(PathBuf),
     /// In-memory bytes of a `.glb` binary container. JSON `.gltf` payloads
     /// with external buffer/image URIs cannot be parsed from raw bytes
@@ -55,34 +71,91 @@ pub enum GltfSource {
     Bytes(Vec<u8>),
 }
 
+/// Per-load loader filters. Adding a new filter means one extra `bool` here
+/// plus one extra check in `visit_node`. Stay additive — every filter has
+/// `true` as the inclusive default so the no-arg path keeps loading
+/// everything the loader is capable of.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct GltfOptions {
+    pub(crate) cameras: bool,
+    pub(crate) lights: bool,
+}
+
+impl Default for GltfOptions {
+    fn default() -> Self {
+        Self {
+            cameras: true,
+            lights: true,
+        }
+    }
+}
+
+impl GltfSource {
+    fn from_payload(payload: GltfPayload) -> Self {
+        Self {
+            payload,
+            options: GltfOptions::default(),
+        }
+    }
+
+    /// Toggle glTF camera-node instantiation. Default `true`; pass `false`
+    /// when the consumer brings its own [`Camera`](crate::Camera) and the
+    /// embedded camera would just fight for the same shader uniforms.
+    #[lsp_doc("docs/api/scene/gltf_source/cameras.md")]
+    pub fn cameras(mut self, on: bool) -> Self {
+        self.options.cameras = on;
+        self
+    }
+
+    /// Toggle `KHR_lights_punctual` light-node instantiation. Default `true`;
+    /// pass `false` when the consumer brings its own [`Light`](crate::Light)
+    /// rig (cursor lighting, animated key/fill, …) and the embedded lights
+    /// would compete for the same `lights.lights[..]` slots.
+    #[lsp_doc("docs/api/scene/gltf_source/lights.md")]
+    pub fn lights(mut self, on: bool) -> Self {
+        self.options.lights = on;
+        self
+    }
+
+    pub(crate) fn into_parts(self) -> (GltfPayload, GltfOptions) {
+        (self.payload, self.options)
+    }
+}
+
 impl From<&str> for GltfSource {
     fn from(s: &str) -> Self {
-        GltfSource::Path(PathBuf::from(s))
+        Self::from_payload(GltfPayload::Path(PathBuf::from(s)))
     }
 }
 impl From<String> for GltfSource {
     fn from(s: String) -> Self {
-        GltfSource::Path(PathBuf::from(s))
+        Self::from_payload(GltfPayload::Path(PathBuf::from(s)))
     }
 }
 impl From<&std::path::Path> for GltfSource {
     fn from(p: &std::path::Path) -> Self {
-        GltfSource::Path(p.to_path_buf())
+        Self::from_payload(GltfPayload::Path(p.to_path_buf()))
     }
 }
 impl From<PathBuf> for GltfSource {
     fn from(p: PathBuf) -> Self {
-        GltfSource::Path(p)
+        Self::from_payload(GltfPayload::Path(p))
     }
 }
 impl From<Vec<u8>> for GltfSource {
     fn from(b: Vec<u8>) -> Self {
-        GltfSource::Bytes(b)
+        Self::from_payload(GltfPayload::Bytes(b))
     }
 }
 impl From<&[u8]> for GltfSource {
     fn from(b: &[u8]) -> Self {
-        GltfSource::Bytes(b.to_vec())
+        Self::from_payload(GltfPayload::Bytes(b.to_vec()))
+    }
+}
+
+impl From<GltfSource> for SceneSource {
+    fn from(g: GltfSource) -> Self {
+        SceneSource::Gltf(g)
     }
 }
 
@@ -106,12 +179,23 @@ pub(crate) fn load(source: SceneSource) -> Result<Scene, SceneLoadError> {
 }
 
 fn load_gltf(source: GltfSource) -> Result<Scene, SceneLoadError> {
+    let (payload, options) = source.into_parts();
     // The gltf crate's `import` resolves external buffers + images from
     // the file's directory; `import_slice` walks bytes alone and only
-    // supports `.glb` containers (no external URI resolution).
-    let (document, buffers, images) = match source {
-        GltfSource::Path(p) => gltf::import(p)?,
-        GltfSource::Bytes(b) => gltf::import_slice(&b)?,
+    // supports `.glb` containers (no external URI resolution). The Path
+    // variant goes through `std::fs`, which doesn't exist on the
+    // wasm32-unknown-unknown target — wasm callers must hand the bytes
+    // themselves (typically via `fetch` + `Uint8Array`).
+    let (document, buffers, images) = match payload {
+        #[cfg(not(wasm))]
+        GltfPayload::Path(p) => gltf::import(p)?,
+        #[cfg(wasm)]
+        GltfPayload::Path(_) => {
+            return Err(SceneLoadError::Invalid(
+                "Scene::load(SceneSource::gltf(path)) is not supported on wasm32 — fetch the bytes from JS and pass them via SceneSource::gltf(bytes)".into(),
+            ));
+        }
+        GltfPayload::Bytes(b) => gltf::import_slice(&b)?,
     };
 
     let scene = Scene::new();
@@ -119,9 +203,24 @@ fn load_gltf(source: GltfSource) -> Result<Scene, SceneLoadError> {
         .default_scene()
         .or_else(|| document.scenes().next());
 
+    // glTF files routinely share one Material across many primitives. The
+    // cache key is the glTF material index (`None` is the spec's default
+    // material) so a file with 100 indexed primitives produces one
+    // Material handle instead of 100 shader allocations.
+    let mut material_cache: std::collections::HashMap<Option<usize>, Material> =
+        std::collections::HashMap::new();
+
     if let Some(gltf_scene) = default_gltf_scene {
         for node in gltf_scene.nodes() {
-            visit_node(&node, Mat4::IDENTITY, &buffers, &images, &scene)?;
+            visit_node(
+                &node,
+                Mat4::IDENTITY,
+                &buffers,
+                &images,
+                &scene,
+                &mut material_cache,
+                &options,
+            )?;
         }
     }
 
@@ -130,21 +229,33 @@ fn load_gltf(source: GltfSource) -> Result<Scene, SceneLoadError> {
 
 /// Depth-first walk over the glTF node tree. Multiplies the node's local
 /// transform into the inherited world matrix and dispatches on the node's
-/// payload (mesh / camera / KHR_lights_punctual light).
+/// payload (mesh / camera / KHR_lights_punctual light). Filter toggles in
+/// [`GltfOptions`] short-circuit the camera and light branches when the
+/// caller opted out.
 fn visit_node(
     node: &gltf::Node<'_>,
     parent_world: Mat4,
     buffers: &[gltf::buffer::Data],
     images: &[gltf::image::Data],
     scene: &Scene,
+    material_cache: &mut std::collections::HashMap<Option<usize>, Material>,
+    options: &GltfOptions,
 ) -> Result<(), SceneLoadError> {
     let local = local_transform(node);
     let world = parent_world * local;
 
     if let Some(mesh) = node.mesh() {
         for primitive in mesh.primitives() {
-            let (fc_mesh, fc_material) =
-                build_mesh_and_material(&primitive, buffers, images)?;
+            let fc_mesh = build_mesh(&primitive, buffers)?;
+            let mat_key = primitive.material().index();
+            let fc_material = match material_cache.get(&mat_key) {
+                Some(m) => m.clone(),
+                None => {
+                    let m = build_material(&primitive.material(), images)?;
+                    material_cache.insert(mat_key, m.clone());
+                    m
+                }
+            };
             let model = Model::new(fc_mesh, fc_material);
             model.set_transform(world.to_cols_array_2d());
             scene.add(&model).map_err(|e| {
@@ -153,22 +264,23 @@ fn visit_node(
         }
     }
 
-    if let Some(gltf_camera) = node.camera() {
+    if options.cameras
+        && let Some(gltf_camera) = node.camera()
+    {
         let camera = build_camera(&gltf_camera, world);
         scene.add(&camera).map_err(|e| {
             SceneLoadError::Invalid(format!("attaching glTF Camera to Scene: {e}"))
         })?;
     }
 
-    if let Some(gltf_light) = node.light() {
-        let light = build_light(&gltf_light, world);
-        scene.add(&light).map_err(|e| {
-            SceneLoadError::Invalid(format!("attaching glTF Light to Scene: {e}"))
-        })?;
+    if options.lights
+        && let Some(gltf_light) = node.light()
+    {
+        add_light(&gltf_light, world, scene)?;
     }
 
     for child in node.children() {
-        visit_node(&child, world, buffers, images, scene)?;
+        visit_node(&child, world, buffers, images, scene, material_cache, options)?;
     }
     Ok(())
 }
@@ -191,11 +303,10 @@ fn local_transform(node: &gltf::Node<'_>) -> Mat4 {
     }
 }
 
-fn build_mesh_and_material(
+fn build_mesh(
     primitive: &gltf::Primitive<'_>,
     buffers: &[gltf::buffer::Data],
-    images: &[gltf::image::Data],
-) -> Result<(Mesh, Material), SceneLoadError> {
+) -> Result<Mesh, SceneLoadError> {
     let mesh = Mesh::new();
     let reader = primitive.reader(|buffer| Some(&buffers[buffer.index()]));
 
@@ -269,8 +380,7 @@ fn build_mesh_and_material(
         mesh.set_indices(idx);
     }
 
-    let material = build_material(&primitive.material(), images)?;
-    Ok((mesh, material))
+    Ok(mesh)
 }
 
 /// Smooth per-vertex normals from positions + an optional index buffer.
@@ -360,7 +470,11 @@ fn build_material(
         .roughness(pbr.roughness_factor())
         .emissive(gltf_material.emissive_factor())
         .alpha_cutoff(gltf_material.alpha_cutoff().unwrap_or(0.5))
-        .alpha_mode(map_alpha_mode(gltf_material.alpha_mode()))
+        .alpha_mode(match gltf_material.alpha_mode() {
+            gltf::material::AlphaMode::Opaque => crate::material::AlphaMode::Opaque,
+            gltf::material::AlphaMode::Mask => crate::material::AlphaMode::Mask,
+            gltf::material::AlphaMode::Blend => crate::material::AlphaMode::Blend,
+        })
         .double_sided(gltf_material.double_sided());
 
     if let Some(scale) = gltf_material
@@ -377,12 +491,13 @@ fn build_material(
     }
 
     if let Some(info) = pbr.base_color_texture() {
-        material = material.base_color_texture(image_to_texture_input(&info.texture(), images)?);
+        if let Some(input) = try_image_to_texture_input(&info.texture(), images, "base_color")? {
+            material = material.base_color_texture(input);
+        }
         // KHR_texture_transform on the base-color slot is the most common
         // usage of the extension; promote it to the Material's global
-        // transform. Other map-specific transforms (rare) are ignored
-        // today — per-map transforms land alongside the per-map
-        // `texCoord` selector.
+        // transform. The non-base-color slots warn-and-ignore — see the
+        // `warn_unused_*` helpers below.
         if let Some(t) = info.texture_transform() {
             let offset = t.offset();
             let scale = t.scale();
@@ -391,38 +506,63 @@ fn build_material(
         }
     }
     if let Some(info) = pbr.metallic_roughness_texture() {
-        material =
-            material.metallic_roughness_texture(image_to_texture_input(&info.texture(), images)?);
+        warn_unused_uv_transform(&info, "metallic_roughness");
+        if let Some(input) =
+            try_image_to_texture_input(&info.texture(), images, "metallic_roughness")?
+        {
+            material = material.metallic_roughness_texture(input);
+        }
     }
-    if let Some(info) = gltf_material.normal_texture() {
-        material = material.normal_texture(image_to_texture_input(&info.texture(), images)?);
+    if let Some(info) = gltf_material.normal_texture()
+        && let Some(input) = try_image_to_texture_input(&info.texture(), images, "normal")?
+    {
+        material = material.normal_texture(input);
     }
-    if let Some(info) = gltf_material.occlusion_texture() {
-        material = material.occlusion_texture(image_to_texture_input(&info.texture(), images)?);
+    if let Some(info) = gltf_material.occlusion_texture()
+        && let Some(input) = try_image_to_texture_input(&info.texture(), images, "occlusion")?
+    {
+        material = material.occlusion_texture(input);
     }
     if let Some(info) = gltf_material.emissive_texture() {
-        material = material.emissive_texture(image_to_texture_input(&info.texture(), images)?);
+        warn_unused_uv_transform(&info, "emissive");
+        if let Some(input) = try_image_to_texture_input(&info.texture(), images, "emissive")? {
+            material = material.emissive_texture(input);
+        }
     }
 
     Ok(material)
 }
 
-fn map_alpha_mode(mode: gltf::material::AlphaMode) -> crate::material::AlphaMode {
-    match mode {
-        gltf::material::AlphaMode::Opaque => crate::material::AlphaMode::Opaque,
-        gltf::material::AlphaMode::Mask => crate::material::AlphaMode::Mask,
-        gltf::material::AlphaMode::Blend => crate::material::AlphaMode::Blend,
+/// Warn when a non-base-color glTF texture carries a
+/// `KHR_texture_transform` payload that the current PBR shader can't
+/// apply. Only `base_color` plumbs through to the Material's global
+/// `uv_transform`; the other four slots silently use the identity
+/// transform, so a glTF file that ships per-map transforms on those
+/// slots will render at the wrong UVs without this warning. The gltf
+/// crate's `NormalTexture` / `OcclusionTexture` don't expose
+/// `texture_transform()` so the helper only covers the three slots
+/// reached through `texture::Info` (metallic_roughness, emissive,
+/// base_color — base_color itself reads its transform separately).
+fn warn_unused_uv_transform(info: &gltf::texture::Info<'_>, slot: &str) {
+    if info.texture_transform().is_some() {
+        log::warn!(
+            "Scene::load ignoring KHR_texture_transform on `{slot}` slot — only `base_color` honours per-map transforms today"
+        );
     }
 }
 
 /// Convert a glTF image reference into a TextureInput the lazy Material
-/// setter will queue. The gltf crate has already decoded the image bytes,
-/// so we wrap them as a `DynamicImage` (no second decode pass) and hand
-/// the renderer-side format choice off to the Material's slot hint.
-fn image_to_texture_input(
+/// setter will queue. Returns `Ok(None)` for unsupported pixel formats so
+/// the caller can skip that slot and the Material falls back to its 1×1
+/// default — losing the whole `Scene::load` to one stray 16-bit-per-channel
+/// PNG was the prior behaviour and it's worse than silently degraded
+/// shading on a single map. Hard errors (missing image, mismatched byte
+/// counts) still bubble up.
+fn try_image_to_texture_input(
     texture: &gltf::Texture<'_>,
     images: &[gltf::image::Data],
-) -> Result<TextureInput, SceneLoadError> {
+    slot: &str,
+) -> Result<Option<TextureInput>, SceneLoadError> {
     let image = images
         .get(texture.source().index())
         .ok_or_else(|| SceneLoadError::Invalid("glTF texture references missing image".into()))?;
@@ -457,20 +597,21 @@ fn image_to_texture_input(
             )
         }
         other => {
-            return Err(SceneLoadError::Invalid(format!(
-                "glTF image format {other:?} is not yet supported by the loader"
-            )));
+            log::warn!(
+                "Scene::load skipping `{slot}` slot: glTF image format {other:?} is not yet supported by the loader; falling back to the Material's 1×1 default for this slot"
+            );
+            return Ok(None);
         }
     };
 
     let sampler_options = map_sampler_options(&texture.sampler());
-    Ok(TextureInput {
+    Ok(Some(TextureInput {
         data: TextureData::DynamicImage(dynamic),
         options: crate::TextureOptions {
             sampler: sampler_options,
             ..Default::default()
         },
-    })
+    }))
 }
 
 /// Lift a glTF camera node into a FragmentColor [`Camera`]. The node's
@@ -498,7 +639,7 @@ fn build_camera(gltf_camera: &gltf::Camera<'_>, world: Mat4) -> Camera {
     // Derive eye + target + up from the world matrix. glTF nodes that
     // hold a camera look down `-Z` with `+Y` up by convention, so we
     // transform those local axes by the world matrix.
-    let (_, rotation, translation) = decompose_trs(world);
+    let (_, rotation, translation) = world.to_scale_rotation_translation();
     let eye: [f32; 3] = translation.into();
     let forward = rotation * Vec3::new(0.0, 0.0, -1.0);
     let up = rotation * Vec3::new(0.0, 1.0, 0.0);
@@ -506,37 +647,51 @@ fn build_camera(gltf_camera: &gltf::Camera<'_>, world: Mat4) -> Camera {
     camera.look_at(eye, target_v.into(), up.into())
 }
 
-/// Lift a `KHR_lights_punctual` node into a FragmentColor [`Light`]. The
-/// world matrix gives the position (point/spot) and the rotated `-Z`
-/// direction (directional/spot).
-fn build_light(gltf_light: &gltf::khr_lights_punctual::Light<'_>, world: Mat4) -> Light {
+/// Lift a `KHR_lights_punctual` node into the unified [`Light`] type and
+/// attach it to the Scene. The world matrix gives the position
+/// (point/spot) and the rotated `-Z` direction (directional/spot). The
+/// kind-specific setters (`set_range`, `set_cone_angles`) are called only
+/// on the kinds that accept them — directional gets the universal
+/// `set_intensity` only.
+fn add_light(
+    gltf_light: &gltf::khr_lights_punctual::Light<'_>,
+    world: Mat4,
+    scene: &Scene,
+) -> Result<(), SceneLoadError> {
     let color = gltf_light.color();
     let intensity = gltf_light.intensity();
-    let range = gltf_light.range().unwrap_or(0.0);
-    let (_, rotation, translation) = decompose_trs(world);
+    let range = gltf_light.range().unwrap_or(0.0).max(0.0);
+    let (_, rotation, translation) = world.to_scale_rotation_translation();
     // glTF spec: lights look down `-Z` in their local frame.
     let direction: [f32; 3] = (rotation * Vec3::new(0.0, 0.0, -1.0)).into();
     let position: [f32; 3] = translation.into();
 
-    match gltf_light.kind() {
-        gltf::khr_lights_punctual::Kind::Directional => Light::directional(direction, color)
-            .set_intensity(intensity),
-        gltf::khr_lights_punctual::Kind::Point => Light::point(position, color)
-            .set_intensity(intensity)
-            .set_range(range),
+    let attach_err =
+        |e: crate::PassError| SceneLoadError::Invalid(format!("attaching glTF Light to Scene: {e}"));
+    let setter_err = |e: crate::scene::LightError| {
+        SceneLoadError::Invalid(format!("configuring glTF Light: {e}"))
+    };
+
+    let light = match gltf_light.kind() {
+        gltf::khr_lights_punctual::Kind::Directional => {
+            Light::directional(direction, color).set_intensity(intensity)
+        }
+        gltf::khr_lights_punctual::Kind::Point => {
+            let l = Light::point(position, color).set_intensity(intensity);
+            l.set_range(range).map_err(setter_err)?
+        }
         gltf::khr_lights_punctual::Kind::Spot {
             inner_cone_angle,
             outer_cone_angle,
-        } => Light::spot(position, direction, color)
-            .set_intensity(intensity)
-            .set_range(range)
-            .set_cone_angles(inner_cone_angle, outer_cone_angle),
-    }
-}
-
-fn decompose_trs(m: Mat4) -> (Vec3, Quat, Vec3) {
-    let (scale, rotation, translation) = m.to_scale_rotation_translation();
-    (scale, rotation, translation)
+        } => {
+            let l = Light::spot(position, direction, color).set_intensity(intensity);
+            let l = l.set_range(range).map_err(setter_err)?;
+            l.set_cone_angles(inner_cone_angle, outer_cone_angle)
+                .map_err(setter_err)?
+        }
+    };
+    scene.add(&light).map_err(attach_err)?;
+    Ok(())
 }
 
 #[cfg(test)]
@@ -560,7 +715,7 @@ mod tests {
 
         let json = r#"{"scene":0,"scenes":[{"nodes":[0]}],"nodes":[{"mesh":0}],"meshes":[{"primitives":[{"attributes":{"POSITION":0},"mode":4}]}],"buffers":[{"byteLength":36}],"bufferViews":[{"buffer":0,"byteLength":36,"byteOffset":0}],"accessors":[{"bufferView":0,"byteOffset":0,"componentType":5126,"count":3,"type":"VEC3","min":[-0.5,-0.5,0.0],"max":[0.5,0.5,0.0]}],"asset":{"version":"2.0"}}"#;
         let mut json_bytes = json.as_bytes().to_vec();
-        while json_bytes.len() % 4 != 0 {
+        while !json_bytes.len().is_multiple_of(4) {
             json_bytes.push(b' ');
         }
         let json_len = json_bytes.len() as u32;
@@ -577,6 +732,87 @@ mod tests {
         glb.extend_from_slice(b"BIN\0");
         glb.extend_from_slice(&bin);
         glb
+    }
+
+    /// Same triangle as `build_minimal_triangle_glb` but with one extra
+    /// node that holds a perspective camera, and one directional light
+    /// declared via `KHR_lights_punctual`. Gives the filter tests a real
+    /// camera + light to drop.
+    fn build_triangle_with_camera_and_light_glb() -> Vec<u8> {
+        #[rustfmt::skip]
+        let positions: [f32; 9] = [
+             0.0,  0.5, 0.0,
+            -0.5, -0.5, 0.0,
+             0.5, -0.5, 0.0,
+        ];
+        let bin: Vec<u8> = positions.iter().flat_map(|f| f.to_le_bytes()).collect();
+        let bin_len = bin.len() as u32;
+
+        // Scene with three nodes: mesh (0), camera (1), light (2).
+        // glTF camera uses perspective; KHR_lights_punctual adds one
+        // directional light at extension index 0.
+        // (Kept on one line — `scripts/no_panics.rs` does a line-by-line
+        // brace scan that doesn't track multi-line raw strings, and an
+        // un-tracked raw string in test code throws off the test-region
+        // detection elsewhere in this file.)
+        let json = r#"{"asset":{"version":"2.0"},"extensionsUsed":["KHR_lights_punctual"],"extensions":{"KHR_lights_punctual":{"lights":[{"type":"directional","color":[1.0,0.95,0.9],"intensity":2.0}]}},"scene":0,"scenes":[{"nodes":[0,1,2]}],"nodes":[{"mesh":0},{"camera":0},{"extensions":{"KHR_lights_punctual":{"light":0}}}],"cameras":[{"type":"perspective","perspective":{"aspectRatio":1.5,"yfov":1.0,"znear":0.1,"zfar":100.0}}],"meshes":[{"primitives":[{"attributes":{"POSITION":0},"mode":4}]}],"buffers":[{"byteLength":36}],"bufferViews":[{"buffer":0,"byteLength":36,"byteOffset":0}],"accessors":[{"bufferView":0,"byteOffset":0,"componentType":5126,"count":3,"type":"VEC3","min":[-0.5,-0.5,0.0],"max":[0.5,0.5,0.0]}]}"#;
+        let mut json_bytes = json.as_bytes().to_vec();
+        while !json_bytes.len().is_multiple_of(4) {
+            json_bytes.push(b' ');
+        }
+        let json_len = json_bytes.len() as u32;
+        let total = 12 + 8 + json_len + 8 + bin_len;
+
+        let mut glb = Vec::with_capacity(total as usize);
+        glb.extend_from_slice(b"glTF");
+        glb.extend_from_slice(&2u32.to_le_bytes());
+        glb.extend_from_slice(&total.to_le_bytes());
+        glb.extend_from_slice(&json_len.to_le_bytes());
+        glb.extend_from_slice(b"JSON");
+        glb.extend_from_slice(&json_bytes);
+        glb.extend_from_slice(&bin_len.to_le_bytes());
+        glb.extend_from_slice(b"BIN\0");
+        glb.extend_from_slice(&bin);
+        glb
+    }
+
+    #[test]
+    fn load_default_options_keeps_gltf_camera_and_light() {
+        let bytes = build_triangle_with_camera_and_light_glb();
+        let scene = Scene::load(SceneSource::gltf(bytes)).expect("load");
+        assert_eq!(scene.models().len(), 1, "geometry stays");
+        assert_eq!(scene.cameras().len(), 1, "default options load the embedded camera");
+        assert_eq!(scene.lights().len(), 1, "default options load the embedded light");
+    }
+
+    #[test]
+    fn cameras_filter_skips_gltf_camera_nodes() {
+        let bytes = build_triangle_with_camera_and_light_glb();
+        let scene = Scene::load(SceneSource::gltf(bytes).cameras(false)).expect("load");
+        assert_eq!(scene.models().len(), 1, "geometry stays");
+        assert!(scene.cameras().is_empty(), "cameras filter drops the camera node");
+        assert_eq!(scene.lights().len(), 1, "lights still load by default");
+    }
+
+    #[test]
+    fn lights_filter_skips_khr_lights_punctual() {
+        let bytes = build_triangle_with_camera_and_light_glb();
+        let scene = Scene::load(SceneSource::gltf(bytes).lights(false)).expect("load");
+        assert_eq!(scene.models().len(), 1);
+        assert_eq!(scene.cameras().len(), 1, "cameras still load by default");
+        assert!(scene.lights().is_empty(), "lights filter drops the light node");
+    }
+
+    #[test]
+    fn both_filters_off_yields_geometry_only_scene() {
+        let bytes = build_triangle_with_camera_and_light_glb();
+        let scene = Scene::load(
+            SceneSource::gltf(bytes).cameras(false).lights(false),
+        )
+        .expect("load");
+        assert_eq!(scene.models().len(), 1, "geometry survives every filter");
+        assert!(scene.cameras().is_empty());
+        assert!(scene.lights().is_empty());
     }
 
     #[test]

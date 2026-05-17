@@ -1,12 +1,11 @@
 # Light::set_position
 
-Update the world-space position. The new value is written into every
-Material that absorbed this Light via [`Pass::add`](https://fragmentcolor.org/api/core/pass#add).
-
-Returns a handle to the same Light (Arc-shared) for chaining. Only
-[`Light::point`](https://fragmentcolor.org/api/scene/light/point) and
-[`Light::spot`](https://fragmentcolor.org/api/scene/light/spot) consult
-this value; directional lights store but ignore it.
+Update the world-space position. Defined for point and spot lights only —
+returns `Ok(self)` for chaining. Calling this on a directional light
+returns `Err(LightError::FieldNotApplicable { kind: Directional, field:
+"set_position" })` because directional rays carry no position. The new
+value propagates live to every shader the Light has already been wired
+into; no re-attach needed.
 
 ## Example
 
@@ -14,9 +13,14 @@ this value; directional lights store but ignore it.
 # fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Light;
 
-let bulb = Light::point([0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
-bulb.set_position([2.0, 3.0, -1.0]);
-# assert_eq!(bulb.position(), [2.0, 3.0, -1.0]);
+let lamp = Light::point([0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
+lamp.set_position([3.0, 1.5, -2.0])?;
+
+// Directional lights have no position — the call errors.
+let sun = Light::directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
+let result = sun.set_position([0.0, 0.0, 0.0]);
+# assert_eq!(lamp.position(), Some([3.0, 1.5, -2.0]));
+# assert!(result.is_err());
 # Ok(())
 # }
 ```

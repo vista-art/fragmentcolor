@@ -1,13 +1,11 @@
 # Light::set_intensity
 
-Update the scalar intensity multiplier. The shader uses
-`color * intensity * attenuation` as the per-fragment radiance, so this
-scales the brightness without disturbing the chromaticity.
-
-Returns a handle to the same Light (Arc-shared) for chaining. Negative
-values are accepted and stored verbatim; they produce a "negative light"
-that subtracts radiance, which is occasionally useful for shadowed-zone
-hacks but generally not what you want.
+Update the scalar intensity multiplier. Defined for every kind — returns
+`Self` for chaining. The shader multiplies the
+[`color`](https://fragmentcolor.org/api/scene/light/color) by this value
+when accumulating, so doubling intensity doubles every channel uniformly.
+The new value propagates live to every shader the Light has already been
+wired into.
 
 ## Example
 
@@ -15,9 +13,10 @@ hacks but generally not what you want.
 # fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Light;
 
-let lamp = Light::point([0.0, 1.0, 0.0], [1.0, 0.95, 0.8]);
-lamp.set_intensity(15.0);
-# assert!((lamp.intensity() - 15.0).abs() < 1.0e-6);
+let torch = Light::spot([0.0, 1.8, 1.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
+
+torch.set_intensity(8.0);
+# assert!((torch.intensity() - 8.0).abs() < 1.0e-6);
 # Ok(())
 # }
 ```

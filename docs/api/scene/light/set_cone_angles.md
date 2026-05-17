@@ -1,13 +1,18 @@
 # Light::set_cone_angles
 
-Update the inner and outer cone half-angles (radians). Inside the inner
-cone the light contributes at full intensity; between inner and outer
-the contribution falls off smoothly to zero; beyond the outer cone the
-light contributes nothing.
+Update the inner and outer cone half-angles (radians). Defined for spot
+lights only — returns `Ok(self)` for chaining. Calling this on a
+directional or point light returns
+`Err(LightError::FieldNotApplicable { kind, field: "set_cone_angles" })`.
 
-Returns a handle to the same Light (Arc-shared) for chaining. Only
-[`Light::spot`](https://fragmentcolor.org/api/scene/light/spot) consults
-these values; directional and point lights store but ignore them.
+The inner half-angle is the band where the light reaches full intensity;
+between the inner and outer the contribution smoothly rolls off; beyond
+the outer the fragment receives nothing from this light. Pass equal
+values for a hard-edged spot, or pass `(0.0, π/4)` for the default
+soft 45° cone.
+
+The new values propagate live to every shader the Light has already
+been wired into; no re-attach needed.
 
 ## Example
 
@@ -15,10 +20,15 @@ these values; directional and point lights store but ignore them.
 # fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Light;
 
-let torch = Light::spot([0.0, 1.0, 0.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
-torch.set_cone_angles(0.15, 0.5);
-# assert!((torch.inner_cone_angle() - 0.15).abs() < 1.0e-6);
-# assert!((torch.outer_cone_angle() - 0.5).abs() < 1.0e-6);
+let torch = Light::spot([0.0, 1.8, 1.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
+torch.set_cone_angles(0.15, 0.4)?;
+
+// Non-spot lights error.
+let lamp = Light::point([0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
+let unsupported = lamp.set_cone_angles(0.15, 0.4);
+# assert!((torch.inner_cone_angle().unwrap() - 0.15).abs() < 1.0e-6);
+# assert!((torch.outer_cone_angle().unwrap() - 0.4).abs() < 1.0e-6);
+# assert!(unsupported.is_err());
 # Ok(())
 # }
 ```

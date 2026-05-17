@@ -1,13 +1,12 @@
 # Light::range
 
-Read the maximum influence radius (world units). `0.0` means unlimited —
-the inverse-square falloff still applies but is never clipped. Any value
-above zero adds a smooth cutoff: the contribution rolls off and reaches
-zero at exactly `range`.
-
-Only meaningful for [`Light::point`](https://fragmentcolor.org/api/scene/light/point)
-and [`Light::spot`](https://fragmentcolor.org/api/scene/light/spot). Matches
-glTF `KHR_lights_punctual`'s `range`.
+Read the influence-radius cap. Returns `Some(value)` for a point or spot
+light, `None` for a directional light (parallel rays have no distance
+falloff). A value of `0.0` means "unlimited", matching glTF
+`KHR_lights_punctual`'s default; positive values cut the contribution off
+smoothly past that distance. Call
+[`set_range`](https://fragmentcolor.org/api/scene/light/set_range) to
+update it.
 
 ## Example
 
@@ -15,9 +14,10 @@ glTF `KHR_lights_punctual`'s `range`.
 # fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Light;
 
-let bulb = Light::point([0.0, 0.0, 0.0], [1.0, 1.0, 1.0]).set_range(8.0);
-let cutoff = bulb.range();
-# assert!((cutoff - 8.0).abs() < 1.0e-6);
+let lamp = Light::point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0]);
+let sun = Light::directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
+# assert_eq!(lamp.range(), Some(0.0));
+# assert!(sun.range().is_none());
 # Ok(())
 # }
 ```

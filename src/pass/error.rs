@@ -8,6 +8,8 @@ pub enum PassError {
     AliasConflict,
     #[error("No compatible shader exists for this mesh")]
     NoCompatibleShader,
+    #[error("Shader has reached the {cap}-light cap; drop a Light first or split into multiple Passes")]
+    LightCapReached { cap: u32 },
     #[error("Invalid color target: {0}")]
     InvalidColorTarget(String),
     #[error("Self dependency is not allowed")]

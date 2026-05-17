@@ -1,12 +1,14 @@
 # Light::outer_cone_angle
 
-Read the outer cone half-angle (radians). Beyond this angle from the cone
-axis (`-direction`), the light contributes zero. Between the inner and
-outer cone, the contribution falls off smoothly.
-
-Only meaningful for [`Light::spot`](https://fragmentcolor.org/api/scene/light/spot).
-Defaults to `π / 4` (a 45° outer cone). Matches glTF
-`KHR_lights_punctual`'s `spot.outerConeAngle`.
+Read the outer cone half-angle (radians). Returns `Some(value)` only for a
+spot light, `None` for directional and point lights. The outer cone is
+where the light's contribution reaches zero — beyond this angle the
+fragment receives nothing from this light. Between the inner and outer
+cones the contribution smoothly rolls off; see
+[`inner_cone_angle`](https://fragmentcolor.org/api/scene/light/inner_cone_angle).
+Call
+[`set_cone_angles`](https://fragmentcolor.org/api/scene/light/set_cone_angles)
+to update both at once.
 
 ## Example
 
@@ -14,10 +16,11 @@ Defaults to `π / 4` (a 45° outer cone). Matches glTF
 # fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Light;
 
-let torch = Light::spot([0.0, 1.0, 0.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
-    .set_cone_angles(0.2, 0.5);
-let outer = torch.outer_cone_angle();
-# assert!((outer - 0.5).abs() < 1.0e-6);
+let torch = Light::spot([0.0, 1.8, 1.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
+    .set_cone_angles(0.15, 0.4)?;
+let sun = Light::directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
+# assert!((torch.outer_cone_angle().unwrap() - 0.4).abs() < 1.0e-6);
+# assert!(sun.outer_cone_angle().is_none());
 # Ok(())
 # }
 ```
