@@ -3,7 +3,7 @@
 use lsp_doc::lsp_doc;
 use wasm_bindgen::prelude::*;
 
-use crate::scene::{Camera, Light, Model, Scene};
+use crate::scene::{Camera, Light, LightKind, Model, Scene};
 use crate::{Material, Mesh, Pass};
 
 #[wasm_bindgen]
@@ -120,14 +120,14 @@ impl Camera {
     #[lsp_doc("docs/api/scene/camera/look_at.md")]
     pub fn look_at_js(
         &self,
-        eye: Vec<f32>,
+        position: Vec<f32>,
         target: Vec<f32>,
         up: Vec<f32>,
     ) -> Result<Camera, JsError> {
-        let eye = vec3(&eye, "Camera.lookAt eye")?;
+        let pos = vec3(&position, "Camera.lookAt position")?;
         let target = vec3(&target, "Camera.lookAt target")?;
         let up = vec3(&up, "Camera.lookAt up")?;
-        Ok(self.clone().look_at(eye, target, up))
+        Ok(self.look_at(pos, target, up))
     }
 
     #[wasm_bindgen(js_name = "setAspect")]
@@ -152,8 +152,11 @@ impl Camera {
     pub fn position_js(&self) -> Vec<f32> {
         self.position().to_vec()
     }
-
 }
+
+// Bridge so the unified Scene.add / Pass.add dispatchers can detect a Light
+// inside a JsValue without exporting the type name in every file.
+crate::impl_js_bridge!(Light, crate::PassError);
 
 #[wasm_bindgen]
 impl Light {
@@ -186,16 +189,14 @@ impl Light {
         Ok(Light::spot(position, direction, color))
     }
 
-    #[wasm_bindgen(js_name = "direction")]
-    #[lsp_doc("docs/api/scene/light/direction.md")]
-    pub fn direction_js(&self) -> Vec<f32> {
-        self.direction().to_vec()
-    }
-
-    #[wasm_bindgen(js_name = "position")]
-    #[lsp_doc("docs/api/scene/light/position.md")]
-    pub fn position_js(&self) -> Vec<f32> {
-        self.position().to_vec()
+    #[wasm_bindgen(js_name = "kind")]
+    #[lsp_doc("docs/api/scene/light/kind.md")]
+    pub fn kind_js(&self) -> String {
+        match self.kind() {
+            LightKind::Directional => "directional".to_string(),
+            LightKind::Point => "point".to_string(),
+            LightKind::Spot => "spot".to_string(),
+        }
     }
 
     #[wasm_bindgen(js_name = "color")]
@@ -210,36 +211,34 @@ impl Light {
         self.intensity()
     }
 
+    #[wasm_bindgen(js_name = "position")]
+    #[lsp_doc("docs/api/scene/light/position.md")]
+    pub fn position_js(&self) -> Option<Vec<f32>> {
+        self.position().map(|p| p.to_vec())
+    }
+
+    #[wasm_bindgen(js_name = "direction")]
+    #[lsp_doc("docs/api/scene/light/direction.md")]
+    pub fn direction_js(&self) -> Option<Vec<f32>> {
+        self.direction().map(|d| d.to_vec())
+    }
+
     #[wasm_bindgen(js_name = "range")]
     #[lsp_doc("docs/api/scene/light/range.md")]
-    pub fn range_js(&self) -> f32 {
+    pub fn range_js(&self) -> Option<f32> {
         self.range()
     }
 
     #[wasm_bindgen(js_name = "innerConeAngle")]
     #[lsp_doc("docs/api/scene/light/inner_cone_angle.md")]
-    pub fn inner_cone_angle_js(&self) -> f32 {
+    pub fn inner_cone_angle_js(&self) -> Option<f32> {
         self.inner_cone_angle()
     }
 
     #[wasm_bindgen(js_name = "outerConeAngle")]
     #[lsp_doc("docs/api/scene/light/outer_cone_angle.md")]
-    pub fn outer_cone_angle_js(&self) -> f32 {
+    pub fn outer_cone_angle_js(&self) -> Option<f32> {
         self.outer_cone_angle()
-    }
-
-    #[wasm_bindgen(js_name = "setDirection")]
-    #[lsp_doc("docs/api/scene/light/set_direction.md")]
-    pub fn set_direction_js(&self, direction: Vec<f32>) -> Result<Light, JsError> {
-        let direction = vec3(&direction, "Light.setDirection")?;
-        Ok(self.set_direction(direction))
-    }
-
-    #[wasm_bindgen(js_name = "setPosition")]
-    #[lsp_doc("docs/api/scene/light/set_position.md")]
-    pub fn set_position_js(&self, position: Vec<f32>) -> Result<Light, JsError> {
-        let position = vec3(&position, "Light.setPosition")?;
-        Ok(self.set_position(position))
     }
 
     #[wasm_bindgen(js_name = "setColor")]
@@ -255,16 +254,38 @@ impl Light {
         self.set_intensity(value)
     }
 
+    #[wasm_bindgen(js_name = "setPosition")]
+    #[lsp_doc("docs/api/scene/light/set_position.md")]
+    pub fn set_position_js(&self, position: Vec<f32>) -> Result<Light, JsError> {
+        let position = vec3(&position, "Light.setPosition")?;
+        self.set_position(position)
+            .map_err(|e| JsError::new(&e.to_string()))
+    }
+
+    #[wasm_bindgen(js_name = "setDirection")]
+    #[lsp_doc("docs/api/scene/light/set_direction.md")]
+    pub fn set_direction_js(&self, direction: Vec<f32>) -> Result<Light, JsError> {
+        let direction = vec3(&direction, "Light.setDirection")?;
+        self.set_direction(direction)
+            .map_err(|e| JsError::new(&e.to_string()))
+    }
+
     #[wasm_bindgen(js_name = "setRange")]
     #[lsp_doc("docs/api/scene/light/set_range.md")]
-    pub fn set_range_js(&self, value: f32) -> Light {
+    pub fn set_range_js(&self, value: f32) -> Result<Light, JsError> {
         self.set_range(value)
+            .map_err(|e| JsError::new(&e.to_string()))
     }
 
     #[wasm_bindgen(js_name = "setConeAngles")]
     #[lsp_doc("docs/api/scene/light/set_cone_angles.md")]
-    pub fn set_cone_angles_js(&self, inner_radians: f32, outer_radians: f32) -> Light {
+    pub fn set_cone_angles_js(
+        &self,
+        inner_radians: f32,
+        outer_radians: f32,
+    ) -> Result<Light, JsError> {
         self.set_cone_angles(inner_radians, outer_radians)
+            .map_err(|e| JsError::new(&e.to_string()))
     }
 }
 
@@ -293,22 +314,23 @@ impl Scene {
         Scene::load(scene_source).map_err(|e| JsError::new(&e.to_string()))
     }
 
-    #[wasm_bindgen(js_name = "addModel")]
+    /// Unified `Scene.add` — branches on the runtime JS type. Adding a new
+    /// `SceneObject` Rust-side means adding one extra try-cast arm here.
+    #[wasm_bindgen(js_name = "add")]
     #[lsp_doc("docs/api/scene/scene/add.md")]
-    pub fn add_model_js(&self, model: &Model) -> Result<(), JsError> {
-        self.add(model).map(|_| ()).map_err(|e| e.into())
-    }
-
-    #[wasm_bindgen(js_name = "addCamera")]
-    #[lsp_doc("docs/api/scene/scene/add.md")]
-    pub fn add_camera_js(&self, camera: &Camera) -> Result<(), JsError> {
-        self.add(camera).map(|_| ()).map_err(|e| e.into())
-    }
-
-    #[wasm_bindgen(js_name = "addLight")]
-    #[lsp_doc("docs/api/scene/scene/add.md")]
-    pub fn add_light_js(&self, light: &Light) -> Result<(), JsError> {
-        self.add(light).map(|_| ()).map_err(|e| e.into())
+    pub fn add_js(&self, object: &JsValue) -> Result<(), JsError> {
+        if let Ok(model) = Model::try_from(object) {
+            return self.add(&model).map(|_| ()).map_err(|e| e.into());
+        }
+        if let Ok(camera) = Camera::try_from(object) {
+            return self.add(&camera).map(|_| ()).map_err(|e| e.into());
+        }
+        if let Ok(light) = Light::try_from(object) {
+            return self.add(&light).map(|_| ()).map_err(|e| e.into());
+        }
+        Err(JsError::new(
+            "Scene.add: expected a Model, Camera, or Light",
+        ))
     }
 
     #[wasm_bindgen(js_name = "addPass")]
@@ -324,11 +346,31 @@ impl Scene {
         self.ambient(c);
         Ok(())
     }
+
+    #[wasm_bindgen(js_name = "models")]
+    #[lsp_doc("docs/api/scene/scene/models.md")]
+    pub fn models_js(&self) -> Vec<Model> {
+        self.models()
+    }
+
+    #[wasm_bindgen(js_name = "cameras")]
+    #[lsp_doc("docs/api/scene/scene/cameras.md")]
+    pub fn cameras_js(&self) -> Vec<Camera> {
+        self.cameras()
+    }
+
+    #[wasm_bindgen(js_name = "lights")]
+    #[lsp_doc("docs/api/scene/scene/lights.md")]
+    pub fn lights_js(&self) -> Vec<Light> {
+        self.lights()
+    }
 }
 
 // JsValue -> Scene bridge so the Renderer's `render` dispatch can detect a
 // Scene the same way it detects a Pass / Shader / Mesh.
 crate::impl_js_bridge!(Scene, crate::PassError);
+crate::impl_js_bridge!(Model, crate::PassError);
+crate::impl_js_bridge!(Camera, crate::PassError);
 
 fn material_share(material: &Material) -> Material {
     // Share the Material's shader (Arc-clone) so the JS handle and the new

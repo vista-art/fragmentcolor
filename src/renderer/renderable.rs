@@ -75,6 +75,21 @@ pub enum TargetHandle {
     Texture(Arc<crate::MobileTextureTarget>),
 }
 
+/// Uniffi-marshallable union of every type that implements
+/// [`crate::scene::SceneObject`]. Mobile bindings carry a concrete enum
+/// because uniffi can't marshal `&impl SceneObject`. The Rust core stays
+/// generic; this enum exists so Swift / Kotlin can call `scene.add(...)`
+/// or `pass.add(...)` through a single mobile entry point — the Swift /
+/// Kotlin extension files supply natural overloads that wrap the
+/// concrete handle into the matching variant invisibly.
+#[cfg(mobile)]
+#[derive(Debug, Clone, uniffi::Enum)]
+pub enum SceneObjectHandle {
+    Model(Arc<crate::Model>),
+    Camera(Arc<crate::scene::Camera>),
+    Light(Arc<crate::scene::Light>),
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -23,6 +23,24 @@ renderer.render(&postfx_pass, &final_target)?;
 The Pass is cloned (shallow Arc-share) when stored, so further changes you
 make to the original handle reach the Scene's copy as well.
 
+### Each new Pass clears by default
+
+Every `Pass::new(name)` starts with a clear-to-transparent input — the
+first render of the frame for that Pass wipes its colour attachment to
+`[0, 0, 0, 0]`. When you chain passes that read each other's output
+(e.g. `[backdrop, shadow_overlay]`), the second Pass will clear the
+first Pass's output unless you opt out:
+
+- Call `pass.load_previous()` on the downstream Pass to keep the
+  previous frame contents around (the wgpu `LoadOp::Load` equivalent).
+- Or call `pass.set_clear_color([r, g, b, a])` to choose a specific
+  clear value (still a clear; just a different colour).
+
+`Scene::add_pass` accepts each pre-pass independently — there's no
+automatic chaining of their attachments. If you need two passes to
+share a target, route them through the same `set_target(...)` and use
+`load_previous` to compose.
+
 ## Example
 
 ```rust

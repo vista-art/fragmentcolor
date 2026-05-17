@@ -3,7 +3,8 @@
 A `Scene` is the top-level container for the real-world things you render:
 [Models](https://fragmentcolor.org/api/scene/model),
 [Cameras](https://fragmentcolor.org/api/scene/camera),
-[Lights](https://fragmentcolor.org/api/scene/light), and any custom
+[Lights](https://fragmentcolor.org/api/scene/light) (directional / point /
+spot — all one type), and any custom
 [SceneObject](https://fragmentcolor.org/api/scene). It owns one or more
 [Passes](https://fragmentcolor.org/api/core/pass) underneath and implements
 [Renderable](https://fragmentcolor.org/api/core/renderable), so you hand
@@ -33,8 +34,9 @@ Scene injects sensible defaults when the user hasn't supplied them:
 
 - **Default Camera** — `Camera::perspective(60°, 1.0, 0.1, 100.0)` looking
   from `[0, 0, 5]` at the origin with `+Y` up.
-- **Default Light** — `Light::directional([0.3, -1.0, -0.4], [1, 1, 1])`,
-  a slightly off-axis white directional light.
+- **Default Light** — a `Light::directional` aimed at
+  `[0.0, -0.3, -1.0]` with full-white color, providing a forward-tilted
+  fill so a front-facing quad reads as lit rather than silhouetted.
 
 These only fire when no user Camera / Light has been added; as soon as you
 add your own, your values win.
@@ -44,8 +46,10 @@ add your own, your values win.
 | name        | what it does                                                |
 | ----------- | ----------------------------------------------------------- |
 | `new`       | construct an empty Scene                                    |
-| `add`       | absorb a `SceneObject` (Model / Camera / Light / custom)   |
+| `load`      | construct a Scene from a `SceneSource` (e.g. glTF bytes, path, or URL) |
+| `add`       | absorb a `SceneObject` (Model / Camera / Light / custom)    |
 | `add_pass`  | absorb a user-built [Pass](https://fragmentcolor.org/api/core/pass) for explicit pipeline ordering (shadows, post-fx, …) |
+| `ambient`   | set the ambient color that lifts every Material's base lighting |
 
 ## Example
 

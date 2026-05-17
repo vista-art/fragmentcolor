@@ -18,7 +18,7 @@ use lsp_doc::lsp_doc;
 use crate::pass::error::PassError;
 use crate::pass::{Pass, PassInput};
 use crate::renderer::platform::mobile::FragmentColorError;
-use crate::renderer::renderable::{RenderableHandle, TargetHandle};
+use crate::renderer::renderable::{RenderableHandle, SceneObjectHandle, TargetHandle};
 use crate::{Mesh, ScreenRegion, Shader};
 
 // -----------------------------------------------------------------
@@ -90,55 +90,46 @@ impl Pass {
             .map_err(|e: PassError| FragmentColorError::Render(e.to_string()))
     }
 
-    /// Add a Model (Mesh + Material + transform) to this pass in one call.
-    #[uniffi::method(name = "addModel")]
+    /// Unified `Pass.add` — branches on the runtime mobile handle. Adding
+    /// a new `SceneObject` Rust-side means adding one extra variant to
+    /// [`SceneObjectHandle`](crate::SceneObjectHandle) and one arm here.
+    #[uniffi::method(name = "add")]
     #[lsp_doc("docs/api/core/pass/add.md")]
-    pub fn add_model_mobile(
+    pub fn add_mobile(
         &self,
-        model: Arc<crate::Model>,
+        object: SceneObjectHandle,
     ) -> Result<(), FragmentColorError> {
-        self.add(model.as_ref())
-            .map(|_| ())
-            .map_err(|e: PassError| FragmentColorError::Render(e.to_string()))
-    }
-
-    #[uniffi::method(name = "addCamera")]
-    #[lsp_doc("docs/api/core/pass/add.md")]
-    pub fn add_camera_mobile(
-        &self,
-        camera: Arc<crate::scene::Camera>,
-    ) -> Result<(), FragmentColorError> {
-        self.add(camera.as_ref())
-            .map(|_| ())
-            .map_err(|e: PassError| FragmentColorError::Render(e.to_string()))
-    }
-
-    #[uniffi::method(name = "addLight")]
-    #[lsp_doc("docs/api/core/pass/add.md")]
-    pub fn add_light_mobile(
-        &self,
-        light: Arc<crate::scene::Light>,
-    ) -> Result<(), FragmentColorError> {
-        self.add(light.as_ref())
-            .map(|_| ())
-            .map_err(|e: PassError| FragmentColorError::Render(e.to_string()))
+        match object {
+            SceneObjectHandle::Model(m) => self
+                .add(m.as_ref())
+                .map(|_| ())
+                .map_err(|e: PassError| FragmentColorError::Render(e.to_string())),
+            SceneObjectHandle::Camera(c) => self
+                .add(c.as_ref())
+                .map(|_| ())
+                .map_err(|e: PassError| FragmentColorError::Render(e.to_string())),
+            SceneObjectHandle::Light(l) => self
+                .add(l.as_ref())
+                .map(|_| ())
+                .map_err(|e: PassError| FragmentColorError::Render(e.to_string())),
+        }
     }
 
     /// Set the render target (color attachment) for this pass.
     ///
     /// The `target` must be a `TargetHandle::Texture` variant; window targets
     /// cannot be used as a render-to-texture colour target.
-    #[uniffi::method(name = "addTarget")]
-    #[lsp_doc("docs/api/core/pass/hidden/add_target_mobile.md")]
-    pub fn add_target_mobile(&self, target: TargetHandle) -> Result<(), FragmentColorError> {
+    #[uniffi::method(name = "setTarget")]
+    #[lsp_doc("docs/api/core/pass/hidden/set_target_mobile.md")]
+    pub fn set_target_mobile(&self, target: TargetHandle) -> Result<(), FragmentColorError> {
         match target {
             TargetHandle::Texture(mt) => {
                 let tex_target = mt.texture_target();
-                self.add_target(&tex_target)
+                self.set_target(&tex_target)
                     .map_err(|e: PassError| FragmentColorError::Render(e.to_string()))
             }
             TargetHandle::Window(_) => Err(FragmentColorError::Render(
-                "addTarget: WindowTarget cannot be used as a Pass colour target; use TextureTarget instead".into(),
+                "setTarget: WindowTarget cannot be used as a Pass colour target; use TextureTarget instead".into(),
             )),
         }
     }
@@ -147,17 +138,17 @@ impl Pass {
     ///
     /// The `target` must be a `TargetHandle::Texture` variant wrapping a
     /// depth-format texture (e.g. `Depth32Float`).
-    #[uniffi::method(name = "addDepthTarget")]
-    #[lsp_doc("docs/api/core/pass/hidden/add_depth_target_mobile.md")]
-    pub fn add_depth_target_mobile(&self, target: TargetHandle) -> Result<(), FragmentColorError> {
+    #[uniffi::method(name = "setDepthTarget")]
+    #[lsp_doc("docs/api/core/pass/hidden/set_depth_target_mobile.md")]
+    pub fn set_depth_target_mobile(&self, target: TargetHandle) -> Result<(), FragmentColorError> {
         match target {
             TargetHandle::Texture(mt) => {
                 let tex_target = mt.texture_target();
-                self.add_depth_target(&tex_target)
+                self.set_depth_target(&tex_target)
                     .map_err(|e: PassError| FragmentColorError::Render(e.to_string()))
             }
             TargetHandle::Window(_) => Err(FragmentColorError::Render(
-                "addDepthTarget: WindowTarget cannot be used as a depth attachment; use a depth Texture instead".into(),
+                "setDepthTarget: WindowTarget cannot be used as a depth attachment; use a depth Texture instead".into(),
             )),
         }
     }

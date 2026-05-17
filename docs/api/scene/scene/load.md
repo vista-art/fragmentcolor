@@ -20,6 +20,22 @@ transforms flattened into Model matrices, glTF camera nodes, and
 material extensions beyond PBR-MR are out of scope; they parse cleanly
 and the loader ignores them.
 
+### Threading + WASM
+
+`Scene::load` is fully synchronous: the underlying `gltf::import` decodes
+embedded images and buffers on the calling thread. A 100 MB `.glb`
+freezes the calling thread for the duration of the decode. Two
+implications:
+
+- **Native**: spawn `Scene::load` on a worker thread (`std::thread::spawn`,
+  `tokio::task::spawn_blocking`, etc.) if you can't afford a frame stall.
+- **WASM**: a sync load on the main thread freezes the page. Fetch the
+  `.glb` bytes via `fetch`, hand them to `SceneSource::gltf(bytes)` from
+  inside a Web Worker, then transfer the produced Scene back. The path
+  variant (`SceneSource::gltf(some_path)`) returns
+  `SceneLoadError::Invalid` on WASM because the gltf crate's `import`
+  goes through `std::fs`, which isn't available.
+
 ## Example
 
 ```rust,no_run

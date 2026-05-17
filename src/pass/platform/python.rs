@@ -65,22 +65,29 @@ impl Pass {
         self.add_mesh(mesh).map_err(|e| e.into())
     }
 
-    #[pyo3(name = "add_model")]
+    /// Unified `Pass.add` — branches on the runtime Python type. Adding a
+    /// new `SceneObject` Rust-side means adding one extra cast arm below.
+    #[pyo3(name = "add")]
     #[lsp_doc("docs/api/core/pass/add.md")]
-    pub fn add_model_py(&self, model: &crate::Model) -> Result<(), PyErr> {
-        self.add(model).map(|_| ()).map_err(|e| e.into())
-    }
-
-    #[pyo3(name = "add_camera")]
-    #[lsp_doc("docs/api/core/pass/add.md")]
-    pub fn add_camera_py(&self, camera: &crate::scene::Camera) -> Result<(), PyErr> {
-        self.add(camera).map(|_| ()).map_err(|e| e.into())
-    }
-
-    #[pyo3(name = "add_light")]
-    #[lsp_doc("docs/api/core/pass/add.md")]
-    pub fn add_light_py(&self, light: &crate::scene::Light) -> Result<(), PyErr> {
-        self.add(light).map(|_| ()).map_err(|e| e.into())
+    pub fn add_py(&self, object: Py<PyAny>) -> Result<(), PyErr> {
+        Python::attach(|py| -> Result<(), PyErr> {
+            let bound = object.bind(py);
+            if let Ok(model) = bound.cast::<crate::Model>() {
+                let m = model.borrow();
+                return self.add(&*m).map(|_| ()).map_err(|e| e.into());
+            }
+            if let Ok(camera) = bound.cast::<crate::scene::Camera>() {
+                let c = camera.borrow();
+                return self.add(&*c).map(|_| ()).map_err(|e| e.into());
+            }
+            if let Ok(light) = bound.cast::<crate::scene::Light>() {
+                let l = light.borrow();
+                return self.add(&*l).map(|_| ()).map_err(|e| e.into());
+            }
+            Err(pyo3::exceptions::PyTypeError::new_err(
+                "Pass.add: expected a Model, Camera, or Light",
+            ))
+        })
     }
 
     #[pyo3(name = "set_clear_color")]
@@ -101,19 +108,19 @@ impl Pass {
         self.object.set_compute_dispatch(x, y, z);
     }
 
-    #[pyo3(name = "add_target")]
-    #[lsp_doc("docs/api/core/pass/add_target.md")]
-    pub fn add_target_py(&self, target: Py<PyAny>) -> Result<(), PyErr> {
+    #[pyo3(name = "set_target")]
+    #[lsp_doc("docs/api/core/pass/set_target.md")]
+    pub fn set_target_py(&self, target: Py<PyAny>) -> Result<(), PyErr> {
         Python::attach(|py| -> Result<(), PyErr> {
             // Try TextureTarget wrapper first
             if let Ok(bound) = target.bind(py).cast::<crate::target::PyTextureTarget>() {
                 let tt = bound.borrow();
-                return self.add_target(&tt.inner).map_err(|e| e.into());
+                return self.set_target(&tt.inner).map_err(|e| e.into());
             }
             // Try Texture handle
             if let Ok(tex) = target.bind(py).cast::<crate::texture::Texture>() {
                 let t = tex.borrow();
-                return self.add_target(&*t).map_err(|e| e.into());
+                return self.set_target(&*t).map_err(|e| e.into());
             }
             Err(PyErr::new::<pyo3::exceptions::PyTypeError, _>(
                 "Unsupported target type. Expected TextureTarget or Texture",
@@ -121,19 +128,19 @@ impl Pass {
         })
     }
 
-    #[pyo3(name = "add_depth_target")]
-    #[lsp_doc("docs/api/core/pass/add_depth_target.md")]
-    pub fn add_depth_target_py(&self, target: Py<PyAny>) -> Result<(), PyErr> {
+    #[pyo3(name = "set_depth_target")]
+    #[lsp_doc("docs/api/core/pass/set_depth_target.md")]
+    pub fn set_depth_target_py(&self, target: Py<PyAny>) -> Result<(), PyErr> {
         Python::attach(|py| -> Result<(), PyErr> {
             // Depth textures are Texture handles
             if let Ok(tex) = target.bind(py).cast::<crate::texture::Texture>() {
                 let t = tex.borrow();
-                return self.add_depth_target(&*t).map_err(|e| e.into());
+                return self.set_depth_target(&*t).map_err(|e| e.into());
             }
             // Or a TextureTarget (if provided)
             if let Ok(bound) = target.bind(py).cast::<crate::target::PyTextureTarget>() {
                 let tt = bound.borrow();
-                return self.add_depth_target(&tt.inner).map_err(|e| e.into());
+                return self.set_depth_target(&tt.inner).map_err(|e| e.into());
             }
             Err(PyErr::new::<pyo3::exceptions::PyTypeError, _>(
                 "Unsupported depth target type. Expected Texture or TextureTarget",

@@ -4,7 +4,8 @@ use lsp_doc::lsp_doc;
 use std::sync::Arc;
 
 use crate::renderer::platform::mobile::FragmentColorError;
-use crate::scene::{Camera, Light, Model, Scene};
+use crate::renderer::renderable::SceneObjectHandle;
+use crate::scene::{Camera, Light, LightKind, Model, Scene};
 use crate::{Material, Mesh, Pass};
 
 #[uniffi::export]
@@ -136,14 +137,14 @@ impl Camera {
     #[lsp_doc("docs/api/scene/camera/look_at.md")]
     pub fn look_at_mobile(
         self: Arc<Self>,
-        eye: Vec<f32>,
+        position: Vec<f32>,
         target: Vec<f32>,
         up: Vec<f32>,
     ) -> Result<Arc<Self>, FragmentColorError> {
-        let eye = take_vec3(&eye, "Camera.lookAt eye")?;
+        let pos = take_vec3(&position, "Camera.lookAt position")?;
         let target = take_vec3(&target, "Camera.lookAt target")?;
         let up = take_vec3(&up, "Camera.lookAt up")?;
-        Ok(Arc::new((*self).clone().look_at(eye, target, up)))
+        Ok(Arc::new(self.look_at(pos, target, up)))
     }
 
     #[uniffi::method(name = "setAspect")]
@@ -168,7 +169,6 @@ impl Camera {
     pub fn position_mobile(self: Arc<Self>) -> Vec<f32> {
         self.position().to_vec()
     }
-
 }
 
 #[uniffi::export]
@@ -208,16 +208,14 @@ impl Light {
         Ok(Arc::new(Light::spot(position, direction, color)))
     }
 
-    #[uniffi::method(name = "direction")]
-    #[lsp_doc("docs/api/scene/light/direction.md")]
-    pub fn direction_mobile(self: Arc<Self>) -> Vec<f32> {
-        self.direction().to_vec()
-    }
-
-    #[uniffi::method(name = "position")]
-    #[lsp_doc("docs/api/scene/light/position.md")]
-    pub fn position_mobile(self: Arc<Self>) -> Vec<f32> {
-        self.position().to_vec()
+    #[uniffi::method(name = "kind")]
+    #[lsp_doc("docs/api/scene/light/kind.md")]
+    pub fn kind_mobile(self: Arc<Self>) -> String {
+        match self.kind() {
+            LightKind::Directional => "directional".to_string(),
+            LightKind::Point => "point".to_string(),
+            LightKind::Spot => "spot".to_string(),
+        }
     }
 
     #[uniffi::method(name = "color")]
@@ -232,42 +230,34 @@ impl Light {
         self.intensity()
     }
 
+    #[uniffi::method(name = "position")]
+    #[lsp_doc("docs/api/scene/light/position.md")]
+    pub fn position_mobile(self: Arc<Self>) -> Option<Vec<f32>> {
+        self.position().map(|p| p.to_vec())
+    }
+
+    #[uniffi::method(name = "direction")]
+    #[lsp_doc("docs/api/scene/light/direction.md")]
+    pub fn direction_mobile(self: Arc<Self>) -> Option<Vec<f32>> {
+        self.direction().map(|d| d.to_vec())
+    }
+
     #[uniffi::method(name = "range")]
     #[lsp_doc("docs/api/scene/light/range.md")]
-    pub fn range_mobile(self: Arc<Self>) -> f32 {
+    pub fn range_mobile(self: Arc<Self>) -> Option<f32> {
         self.range()
     }
 
     #[uniffi::method(name = "innerConeAngle")]
     #[lsp_doc("docs/api/scene/light/inner_cone_angle.md")]
-    pub fn inner_cone_angle_mobile(self: Arc<Self>) -> f32 {
+    pub fn inner_cone_angle_mobile(self: Arc<Self>) -> Option<f32> {
         self.inner_cone_angle()
     }
 
     #[uniffi::method(name = "outerConeAngle")]
     #[lsp_doc("docs/api/scene/light/outer_cone_angle.md")]
-    pub fn outer_cone_angle_mobile(self: Arc<Self>) -> f32 {
+    pub fn outer_cone_angle_mobile(self: Arc<Self>) -> Option<f32> {
         self.outer_cone_angle()
-    }
-
-    #[uniffi::method(name = "setDirection")]
-    #[lsp_doc("docs/api/scene/light/set_direction.md")]
-    pub fn set_direction_mobile(
-        self: Arc<Self>,
-        direction: Vec<f32>,
-    ) -> Result<Arc<Self>, FragmentColorError> {
-        let direction = take_vec3(&direction, "Light.setDirection")?;
-        Ok(Arc::new(self.set_direction(direction)))
-    }
-
-    #[uniffi::method(name = "setPosition")]
-    #[lsp_doc("docs/api/scene/light/set_position.md")]
-    pub fn set_position_mobile(
-        self: Arc<Self>,
-        position: Vec<f32>,
-    ) -> Result<Arc<Self>, FragmentColorError> {
-        let position = take_vec3(&position, "Light.setPosition")?;
-        Ok(Arc::new(self.set_position(position)))
     }
 
     #[uniffi::method(name = "setColor")]
@@ -286,10 +276,39 @@ impl Light {
         Arc::new(self.set_intensity(value))
     }
 
+    #[uniffi::method(name = "setPosition")]
+    #[lsp_doc("docs/api/scene/light/set_position.md")]
+    pub fn set_position_mobile(
+        self: Arc<Self>,
+        position: Vec<f32>,
+    ) -> Result<Arc<Self>, FragmentColorError> {
+        let position = take_vec3(&position, "Light.setPosition")?;
+        self.set_position(position)
+            .map(Arc::new)
+            .map_err(|e| FragmentColorError::Render(e.to_string()))
+    }
+
+    #[uniffi::method(name = "setDirection")]
+    #[lsp_doc("docs/api/scene/light/set_direction.md")]
+    pub fn set_direction_mobile(
+        self: Arc<Self>,
+        direction: Vec<f32>,
+    ) -> Result<Arc<Self>, FragmentColorError> {
+        let direction = take_vec3(&direction, "Light.setDirection")?;
+        self.set_direction(direction)
+            .map(Arc::new)
+            .map_err(|e| FragmentColorError::Render(e.to_string()))
+    }
+
     #[uniffi::method(name = "setRange")]
     #[lsp_doc("docs/api/scene/light/set_range.md")]
-    pub fn set_range_mobile(self: Arc<Self>, value: f32) -> Arc<Self> {
-        Arc::new(self.set_range(value))
+    pub fn set_range_mobile(
+        self: Arc<Self>,
+        value: f32,
+    ) -> Result<Arc<Self>, FragmentColorError> {
+        self.set_range(value)
+            .map(Arc::new)
+            .map_err(|e| FragmentColorError::Render(e.to_string()))
     }
 
     #[uniffi::method(name = "setConeAngles")]
@@ -298,8 +317,10 @@ impl Light {
         self: Arc<Self>,
         inner_radians: f32,
         outer_radians: f32,
-    ) -> Arc<Self> {
-        Arc::new(self.set_cone_angles(inner_radians, outer_radians))
+    ) -> Result<Arc<Self>, FragmentColorError> {
+        self.set_cone_angles(inner_radians, outer_radians)
+            .map(Arc::new)
+            .map_err(|e| FragmentColorError::Render(e.to_string()))
     }
 }
 
@@ -322,37 +343,29 @@ impl Scene {
             .map_err(|e| FragmentColorError::Render(e.to_string()))
     }
 
-    #[uniffi::method(name = "addModel")]
+    /// Unified `Scene.add` — branches on the runtime mobile handle. Adding
+    /// a new `SceneObject` Rust-side means adding one extra variant to
+    /// [`SceneObjectHandle`](crate::SceneObjectHandle) and one arm here.
+    #[uniffi::method(name = "add")]
     #[lsp_doc("docs/api/scene/scene/add.md")]
-    pub fn add_model_mobile(
+    pub fn add_mobile(
         self: Arc<Self>,
-        model: Arc<Model>,
+        object: SceneObjectHandle,
     ) -> Result<(), FragmentColorError> {
-        self.add(model.as_ref())
-            .map(|_| ())
-            .map_err(|e| FragmentColorError::Render(e.to_string()))
-    }
-
-    #[uniffi::method(name = "addCamera")]
-    #[lsp_doc("docs/api/scene/scene/add.md")]
-    pub fn add_camera_mobile(
-        self: Arc<Self>,
-        camera: Arc<Camera>,
-    ) -> Result<(), FragmentColorError> {
-        self.add(camera.as_ref())
-            .map(|_| ())
-            .map_err(|e| FragmentColorError::Render(e.to_string()))
-    }
-
-    #[uniffi::method(name = "addLight")]
-    #[lsp_doc("docs/api/scene/scene/add.md")]
-    pub fn add_light_mobile(
-        self: Arc<Self>,
-        light: Arc<Light>,
-    ) -> Result<(), FragmentColorError> {
-        self.add(light.as_ref())
-            .map(|_| ())
-            .map_err(|e| FragmentColorError::Render(e.to_string()))
+        match object {
+            SceneObjectHandle::Model(m) => self
+                .add(m.as_ref())
+                .map(|_| ())
+                .map_err(|e| FragmentColorError::Render(e.to_string())),
+            SceneObjectHandle::Camera(c) => self
+                .add(c.as_ref())
+                .map(|_| ())
+                .map_err(|e| FragmentColorError::Render(e.to_string())),
+            SceneObjectHandle::Light(l) => self
+                .add(l.as_ref())
+                .map(|_| ())
+                .map_err(|e| FragmentColorError::Render(e.to_string())),
+        }
     }
 
     #[uniffi::method(name = "addPass")]
@@ -370,6 +383,24 @@ impl Scene {
         let c = take_vec3(&color, "Scene.ambient")?;
         self.ambient(c);
         Ok(())
+    }
+
+    #[uniffi::method(name = "models")]
+    #[lsp_doc("docs/api/scene/scene/models.md")]
+    pub fn models_mobile(self: Arc<Self>) -> Vec<Arc<Model>> {
+        self.models().into_iter().map(Arc::new).collect()
+    }
+
+    #[uniffi::method(name = "cameras")]
+    #[lsp_doc("docs/api/scene/scene/cameras.md")]
+    pub fn cameras_mobile(self: Arc<Self>) -> Vec<Arc<Camera>> {
+        self.cameras().into_iter().map(Arc::new).collect()
+    }
+
+    #[uniffi::method(name = "lights")]
+    #[lsp_doc("docs/api/scene/scene/lights.md")]
+    pub fn lights_mobile(self: Arc<Self>) -> Vec<Arc<Light>> {
+        self.lights().into_iter().map(Arc::new).collect()
     }
 }
 

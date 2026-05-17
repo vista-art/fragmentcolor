@@ -1,7 +1,6 @@
 use crate::{Color, Mesh, Renderable, ScreenRegion, Shader, ShaderObject};
 use lsp_doc::lsp_doc;
 use parking_lot::RwLock;
-use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -153,8 +152,8 @@ impl Pass {
         self.object.set_compute_dispatch(x, y, z);
     }
 
-    #[lsp_doc("docs/api/core/pass/add_target.md")]
-    pub fn add_target<T>(&self, target: T) -> Result<(), PassError>
+    #[lsp_doc("docs/api/core/pass/set_target.md")]
+    pub fn set_target<T>(&self, target: T) -> Result<(), PassError>
     where
         T: TryInto<ColorTarget, Error = PassError>,
     {
@@ -163,8 +162,8 @@ impl Pass {
         Ok(())
     }
 
-    #[lsp_doc("docs/api/core/pass/add_depth_target.md")]
-    pub fn add_depth_target<T>(&self, target: T) -> Result<(), PassError>
+    #[lsp_doc("docs/api/core/pass/set_depth_target.md")]
+    pub fn set_depth_target<T>(&self, target: T) -> Result<(), PassError>
     where
         T: TryInto<DepthTarget, Error = PassError>,
     {
@@ -342,13 +341,6 @@ static GRAPH_VERSION: AtomicU64 = AtomicU64::new(1);
 /// `propagate` runs (i.e. on `Camera::look_at` after `pass.add(&camera)`).
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct CameraSnapshot {
-    /// World-space eye position. Mirrors `Camera::position()`. Carried
-    /// alongside `view` so downstream uses that want eye-position-relative
-    /// effects (LOD selection, billboards) can pull both from one
-    /// snapshot — keeping the renderer's "Pass owns the camera state"
-    /// guarantee from fragmenting into per-feature shader reads.
-    #[allow(dead_code)]
-    pub(crate) position: [f32; 3],
     /// View matrix (world → camera), column-major. Mirrors the `view`
     /// component of `Camera::view_proj`. The renderer needs this for the
     /// sort — eye-space Z is `(view * world)[2]`, not just `length(eye -
@@ -403,9 +395,6 @@ pub struct PassObject {
     pub(crate) color_target: RwLock<Option<crate::texture::TextureId>>,
     // Optional per-pass depth attachment (Depth32Float for now)
     pub(crate) depth_target: RwLock<Option<crate::texture::TextureId>>,
-    // Milestone B (placeholders): storage alias map
-    pub(crate) _storage_alias: RwLock<HashMap<String, String>>,
-    pub(crate) present_to_target: RwLock<bool>,
     // DAG metadata and cached traversal
     pub(crate) dependencies: RwLock<Vec<Arc<PassObject>>>,
     pub(crate) dependency_names: RwLock<std::collections::HashSet<Arc<str>>>,
@@ -429,8 +418,6 @@ impl PassObject {
             compute_dispatch: RwLock::new((1, 1, 1)),
             color_target: RwLock::new(None),
             depth_target: RwLock::new(None),
-            _storage_alias: RwLock::new(HashMap::new()),
-            present_to_target: RwLock::new(false),
             dependencies: RwLock::new(Vec::new()),
             dependency_names: RwLock::new(std::collections::HashSet::new()),
             flat: RwLock::new(Arc::from(Vec::<Arc<PassObject>>::new().into_boxed_slice())),
@@ -482,8 +469,6 @@ impl PassObject {
 
     pub fn set_color_target(&self, id: crate::texture::TextureId) {
         *self.color_target.write() = Some(id);
-        // Selecting a color target marks this pass as intermediate by default
-        *self.present_to_target.write() = false;
     }
 
     /// Set per-pass depth attachment by TextureId.
