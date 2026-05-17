@@ -6,9 +6,10 @@ A single vertex: a required 2D or 3D position plus any per-vertex attributes you
 
 For the channels you'll reach for most often, use the typed constants instead of bare strings — the loader, the shader, and any later glTF import all agree on names without bikeshedding:
 
+Position is set via `Vertex::new(...)` and is not part of the constants table; the rest live as `&'static str` literals on `Vertex`:
+
 | Constant | Value | Notes |
 |---|---|---|
-| `Vertex::POSITION` | `"position"` | Set implicitly by `Vertex::new(...)`; you rarely set this by hand. |
 | `Vertex::NORMAL` | `"normal"` | Per-vertex normal. |
 | `Vertex::TANGENT` | `"tangent"` | Per-vertex tangent (for normal-mapped shading). |
 | `Vertex::UV0` / `UV1` | `"uv0"` / `"uv1"` | Texture coordinates. Use the numbered form when a mesh carries multiple UV sets (typical for glTF). |

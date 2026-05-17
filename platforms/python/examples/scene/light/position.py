@@ -1,4 +1,4 @@
 from fragmentcolor import Light
 
-bulb = Light.point([3.0, 2.5, -1.0], [1.0, 1.0, 1.0])
-pos = bulb.position()
+lamp = Light.point([0.0, 2.5, 0.0], [1.0, 1.0, 1.0])
+sun = Light.directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0])

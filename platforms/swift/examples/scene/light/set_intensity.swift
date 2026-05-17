@@ -1,4 +1,5 @@
 import FragmentColor
 
-let lamp = Light.point([0.0, 1.0, 0.0], [1.0, 0.95, 0.8])
-lamp.setIntensity(15.0)
+let torch = Light.spot([0.0, 1.8, 1.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
+
+torch.setIntensity(8.0)

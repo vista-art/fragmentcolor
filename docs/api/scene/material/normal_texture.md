@@ -2,10 +2,10 @@
 
 Bind a tangent-space normal map to the canonical `normal_map` slot. The
 default PBR shader samples the map in `fs_main`, decodes the stored
-`[0,1]` bytes into `[-1,1]` floats, scales XY by `material.normal_scale`,
-and adds the result to the interpolated world normal — a placeholder
-combine that demonstrates the binding works while the full tangent-space
-TBN transform is finished as a follow-up.
+`[0, 1]` bytes into `[-1, 1]` floats, scales the XY components by
+`material.normal_scale`, and rotates the perturbed normal from tangent
+space into world space using the per-vertex tangent (the glTF `tangent.w`
+handedness flag is preserved).
 
 Unset, this slot resolves to a 1×1 flat tangent-space default
 `(128, 128, 255, 255)` so the decoded normal is `(0, 0, 1)` and the world

@@ -1,6 +1,5 @@
 import org.fragmentcolor.*
 
-val renderer = Renderer()
 val mesh = Mesh()
 mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, floatArrayOf(0.5f, 1.0f)), )
 

@@ -1,4 +1,3 @@
-from fragmentcolor import Material, Renderer
+from fragmentcolor import Material
 
-renderer = Renderer()
 chrome = Material.pbr().metallic(1.0).roughness(0.05)

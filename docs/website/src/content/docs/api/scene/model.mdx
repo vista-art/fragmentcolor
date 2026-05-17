@@ -56,13 +56,17 @@ own Mesh.
 
 ### Model::material
 
-Borrow the Material the Model owns. The Material wraps a Shader; reach
-through `model.material().shader()` if you need direct uniform manipulation
-(camera state, custom uniforms not exposed by Material's setters).
+Borrow the Material handle the Model owns. The Material wraps a Shader;
+reach through `model.material().shader()` if you need direct uniform
+manipulation (camera state, custom uniforms not exposed by Material's
+setters).
 
-Note: this returns the Model's *own* Material (independent of whatever
-template was passed to `Model::new`), so tweaking it affects this Model
-alone.
+Note: `Material::clone` is a shallow Arc-share, so the handle stored on this
+Model points at the same underlying shader state as whatever Material was
+passed to `Model::new`. Mutations made through `model.material()` are
+visible to every other Model that received the same source handle (and vice
+versa). To detach a Model's appearance, construct a fresh `Material::pbr()`
+or `Material::custom()` rather than cloning.
 
 #### Example
 
@@ -71,10 +75,9 @@ alone.
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Material, Mesh, Model, Renderer, Vertex};
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Material, Mesh, Model, Vertex};
 
-let renderer = Renderer::new();
 let mesh = Mesh::new();
 mesh.add_vertex(
     Vertex::new([0.0, 0.0, 0.0])
@@ -86,9 +89,8 @@ let model = Model::new(mesh, Material::pbr()?);
 model.material().shader().set("camera.position", [0.0_f32, 0.0, 5.0])?;
 Ok(())
 }
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 14-16}"
+lang="rust" meta="collapse={1-1, 13-14}"
 />
 
 </TabItem>
@@ -96,9 +98,8 @@ lang="rust" meta="collapse={1-1, 14-16}"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Material, Mesh, Model, Renderer, Vertex } from "fragmentcolor";
+import { Material, Mesh, Model, Vertex } from "fragmentcolor";
 
-const renderer = new Renderer();
 const mesh = new Mesh();
 mesh.addVertex( Vertex.new([0.0, 0.0, 0.0]) .set(Vertex.NORMAL, [0.0, 1.0, 0.0]) .set(Vertex.UV0, [0.0, 0.0]), );
 
@@ -113,9 +114,8 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Material, Mesh, Model, Renderer, Vertex
+from fragmentcolor import Material, Mesh, Model, Vertex
 
-renderer = Renderer()
 mesh = Mesh()
 mesh.add_vertex(
     Vertex([0.0, 0.0, 0.0]).set(Vertex.NORMAL, [0.0, 1.0, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
@@ -134,7 +134,6 @@ lang="python"
 code={`
 import FragmentColor
 
-let renderer = Renderer()
 let mesh = Mesh()
 try mesh.addVertex(
     try Vertex([0.0, 0.0, 0.0]).set(Vertex.nORMAL, [0.0, 1.0, 0.0]).set(Vertex.uV0, [0.0, 0.0]),
@@ -153,7 +152,6 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 
-val renderer = Renderer()
 val mesh = Mesh()
 mesh.addVertex( Vertex.new(listOf(0.0f, 0.0f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 1.0f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
 
@@ -183,11 +181,10 @@ handle.
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Material, Mesh, Model, Renderer, Vertex};
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Material, Mesh, Model, Vertex};
 
-let renderer = Renderer::new();
-let mut mesh = Mesh::new();
+let mesh = Mesh::new();
 mesh.add_vertex(
     Vertex::pbr([0.0, 0.5, 0.0]).set(Vertex::UV0, [0.5, 1.0]),
 );
@@ -200,9 +197,8 @@ model.mesh().add_vertex(
 );
 Ok(())
 }
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 16-18}"
+lang="rust" meta="collapse={1-1, 15-16}"
 />
 
 </TabItem>
@@ -210,9 +206,8 @@ lang="rust" meta="collapse={1-1, 16-18}"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Material, Mesh, Model, Renderer, Vertex } from "fragmentcolor";
+import { Material, Mesh, Model, Vertex } from "fragmentcolor";
 
-const renderer = new Renderer();
 const mesh = new Mesh();
 mesh.addVertex( Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]), );
 
@@ -227,9 +222,8 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Material, Mesh, Model, Renderer, Vertex
+from fragmentcolor import Material, Mesh, Model, Vertex
 
-renderer = Renderer()
 mesh = Mesh()
 mesh.add_vertex(
     Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
@@ -250,7 +244,6 @@ lang="python"
 code={`
 import FragmentColor
 
-let renderer = Renderer()
 let mesh = Mesh()
 try mesh.addVertex(
     try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.uV0, [0.5, 1.0]),
@@ -271,7 +264,6 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 
-val renderer = Renderer()
 val mesh = Mesh()
 mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, floatArrayOf(0.5f, 1.0f)), )
 
@@ -314,11 +306,10 @@ via `Material::custom(...)` can use any layout.
 <TabItem label="Rust">
 <Code
 code={`
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Material, Mesh, Model, Renderer, Vertex};
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Material, Mesh, Model, Vertex};
 
-let renderer = Renderer::new();
-let mut mesh = Mesh::new();
+let mesh = Mesh::new();
 mesh.add_vertex(
     Vertex::new([0.0, 0.0, 0.0])
         .set(Vertex::NORMAL, [0.0, 1.0, 0.0])
@@ -327,12 +318,11 @@ mesh.add_vertex(
 
 let model = Model::new(mesh, Material::pbr()?);
 
-let _ = model;
+let _model = model;
 Ok(())
 }
-fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 14-17}"
+lang="rust" meta="collapse={1-1, 13-15}"
 />
 
 </TabItem>
@@ -340,9 +330,8 @@ lang="rust" meta="collapse={1-1, 14-17}"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Material, Mesh, Model, Renderer, Vertex } from "fragmentcolor";
+import { Material, Mesh, Model, Vertex } from "fragmentcolor";
 
-const renderer = new Renderer();
 const mesh = new Mesh();
 mesh.addVertex( Vertex.new([0.0, 0.0, 0.0]) .set(Vertex.NORMAL, [0.0, 1.0, 0.0]) .set(Vertex.UV0, [0.0, 0.0]), );
 
@@ -357,9 +346,8 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Material, Mesh, Model, Renderer, Vertex
+from fragmentcolor import Material, Mesh, Model, Vertex
 
-renderer = Renderer()
 mesh = Mesh()
 mesh.add_vertex(
     Vertex([0.0, 0.0, 0.0]).set(Vertex.NORMAL, [0.0, 1.0, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
@@ -378,7 +366,6 @@ lang="python"
 code={`
 import FragmentColor
 
-let renderer = Renderer()
 let mesh = Mesh()
 try mesh.addVertex(
     try Vertex([0.0, 0.0, 0.0]).set(Vertex.nORMAL, [0.0, 1.0, 0.0]).set(Vertex.uV0, [0.0, 0.0]),
@@ -396,7 +383,6 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 
-val renderer = Renderer()
 val mesh = Mesh()
 mesh.addVertex( Vertex.new(listOf(0.0f, 0.0f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 1.0f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
 
@@ -421,7 +407,7 @@ origin. The axis is normalised internally; a zero-length axis is rejected
 with a debug log and no change.
 
 For pure world-space rotations (e.g. tumbling around a fixed pivot), compose
-the matrix yourself and call [set_transform](/api/scene/model#modelset_transform).
+the matrix yourself and call [set_transform](/api/scene/model#set_transform).
 
 #### Example
 
@@ -655,7 +641,7 @@ to apply it directly without composing through `translate` / `rotate` /
 
 Writes the four columns into the Mesh's per-instance attribute stream
 immediately (locations 3..6). To read the current transform, see
-[Model::transform](/api/scene/model#modeltransform).
+[Model::transform](/api/scene/model#transform).
 
 #### Example
 
@@ -910,7 +896,7 @@ WGSL's `mat4x4<f32>` layout and glam's `to_cols_array_2d`. The transform
 starts at the identity matrix and is modified by `set_transform`,
 `translate`, `rotate`, and `scale`.
 
-For the setter, see [Model::set_transform](/api/scene/model#modelset_transform).
+For the setter, see [Model::set_transform](/api/scene/model#set_transform).
 Rust doesn't allow getter/setter overloads on the same name, so the read
 side is `transform` and the write side is `set_transform`.
 

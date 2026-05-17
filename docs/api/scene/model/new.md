@@ -20,11 +20,10 @@ via `Material::custom(...)` can use any layout.
 ## Example
 
 ```rust
-# async fn run() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Material, Mesh, Model, Renderer, Vertex};
+# fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Material, Mesh, Model, Vertex};
 
-let renderer = Renderer::new();
-let mut mesh = Mesh::new();
+let mesh = Mesh::new();
 mesh.add_vertex(
     Vertex::new([0.0, 0.0, 0.0])
         .set(Vertex::NORMAL, [0.0, 1.0, 0.0])
@@ -33,8 +32,7 @@ mesh.add_vertex(
 
 let model = Model::new(mesh, Material::pbr()?);
 
-# let _ = model;
+# let _model = model;
 # Ok(())
 # }
-# fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 ```

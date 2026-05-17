@@ -67,29 +67,6 @@ class GeneratedExamples {
         camera.lookAt(listOf(3.0f, 1.0f, 5.0f), listOf(0.0f, 0.0f, 0.0f), listOf(0.0f, 1.0f, 0.0f))
     }
 
-    @Suppress("unused") private suspend fun _example_core_pass_add_depth_target() {
-
-        val renderer = Renderer()
-        val target = renderer.createTextureTarget(64u, 64u)
-
-        // One depth attachment shared across the 3D-content pass.
-        val depth = renderer.createDepthTexture(64u, 64u)
-
-        val mesh = Mesh()
-        mesh.addVertex(Vertex(listOf(0.0f, 0.0f, 0.0f)))
-        mesh.addVertex(Vertex(listOf(1.0f, 0.0f, 0.0f)))
-        mesh.addVertex(Vertex(listOf(0.0f, 1.0f, 0.0f)))
-        mesh.addVertex(Vertex(listOf(1.0f, 1.0f, 0.0f)))
-        val shader = Shader.fromMesh(mesh)
-        val pass = Pass("blobs"); pass.addShader(shader)
-
-        // Depth-test on — closer fragments win, the pass writes to the depth
-        // buffer so subsequent draws within the same pass see the depth.
-        pass.addDepthTarget(depth)
-
-        renderer.render(pass, target)
-    }
-
     @Suppress("unused") private suspend fun _example_core_pass_add_mesh() {
 
         val mesh = Mesh()
@@ -118,15 +95,6 @@ class GeneratedExamples {
         val shader = Shader.default()
         val pass = Pass("p")
         pass.addShader(shader)
-    }
-
-    @Suppress("unused") private suspend fun _example_core_pass_add_target() {
-
-        val r = Renderer()
-        val tex_target = r.createTextureTarget(512u, 512u)
-
-        val p = Pass("shadow")
-        p.addTarget(tex_target)
     }
 
     @Suppress("unused") private suspend fun _example_core_pass_compute() {
@@ -212,6 +180,38 @@ class GeneratedExamples {
         val cs = Shader("@compute @workgroup_size(8,8,1) fn cs_main() {}")
         val pass = Pass("compute"); pass.addShader(cs)
         pass.setComputeDispatch(64u,64u,1u)
+    }
+
+    @Suppress("unused") private suspend fun _example_core_pass_set_depth_target() {
+
+        val renderer = Renderer()
+        val target = renderer.createTextureTarget(64u, 64u)
+
+        // One depth attachment shared across the 3D-content pass.
+        val depth = renderer.createDepthTexture(64u, 64u)
+
+        val mesh = Mesh()
+        mesh.addVertex(Vertex(listOf(0.0f, 0.0f, 0.0f)))
+        mesh.addVertex(Vertex(listOf(1.0f, 0.0f, 0.0f)))
+        mesh.addVertex(Vertex(listOf(0.0f, 1.0f, 0.0f)))
+        mesh.addVertex(Vertex(listOf(1.0f, 1.0f, 0.0f)))
+        val shader = Shader.fromMesh(mesh)
+        val pass = Pass("blobs"); pass.addShader(shader)
+
+        // Depth-test on — closer fragments win, the pass writes to the depth
+        // buffer so subsequent draws within the same pass see the depth.
+        pass.setDepthTarget(depth)
+
+        renderer.render(pass, target)
+    }
+
+    @Suppress("unused") private suspend fun _example_core_pass_set_target() {
+
+        val r = Renderer()
+        val tex_target = r.createTextureTarget(512u, 512u)
+
+        val p = Pass("shadow")
+        p.setTarget(tex_target)
     }
 
     @Suppress("unused") private suspend fun _example_core_pass_set_viewport() {
@@ -329,6 +329,23 @@ class GeneratedExamples {
 
         val renderer = Renderer()
         val texture_target = renderer.createTextureTarget(16u, 16u)
+    }
+
+    @Suppress("unused") private suspend fun _example_core_renderer_read_storage() {
+        use bytemuck
+
+        val renderer = Renderer()
+        val target = renderer.createTextureTarget(16u, 16u)
+
+        val compute = Shader.new( r#"; struct Out { values: array<f32, 4> }; @group(0) @binding(0) var<storage, read_write> out: Out; @compute @workgroup_size(1) fn main() { out.values[0] = 1.0; out.values[1] = 2.0; out.values[2] = 3.0; out.values[3] = 4.0; }; "#, )
+
+        val pass = Pass.compute("seed")
+        pass.setComputeDispatch(1u,1u,1u)
+        pass.addShader(compute)
+        renderer.render(pass, target)
+
+        val bytes = renderer.readStorage(compute, "out")
+        val values = bytemuck.castSlice(bytes)
     }
 
     @Suppress("unused") private suspend fun _example_core_renderer_read_texture() {
@@ -791,19 +808,18 @@ class GeneratedExamples {
 
         val camera = Camera.perspective(60.0.toRadians(), 16.0 / 9.0, 0.1, 100.0).lookAt(listOf(0.0f, 0.0f, 5.0f), listOf(0.0f, 0.0f, 0.0f), listOf(0.0f, 1.0f, 0.0f))
 
-        val m = camera.viewProj()
+        val view_proj = camera.viewProj()
     }
 
     @Suppress("unused") private suspend fun _example_scene_light_color() {
 
-        val warm = Light.directional(listOf(0.0f, -1.0f, 0.0f), listOf(1.0f, 0.85f, 0.7f))
-        val color = warm.color()
+        val warm_lamp = Light.point(listOf(0.0f, 2.0f, 0.0f), listOf(1.0f, 0.7f, 0.4f))
     }
 
     @Suppress("unused") private suspend fun _example_scene_light_direction() {
 
         val sun = Light.directional(listOf(0.3f, -1.0f, -0.4f), listOf(1.0f, 1.0f, 1.0f))
-        val dir = sun.direction()
+        val lamp = Light.point(listOf(0.0f, 2.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f))
     }
 
     @Suppress("unused") private suspend fun _example_scene_light_directional() {
@@ -813,20 +829,26 @@ class GeneratedExamples {
 
     @Suppress("unused") private suspend fun _example_scene_light_inner_cone_angle() {
 
-        val torch = Light.spot(listOf(0.0f, 1.0f, 0.0f), listOf(0.0f, -1.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f)).setConeAngles(0.2, 0.5)
-        val inner = torch.innerConeAngle()
+        val torch = Light.spot(listOf(0.0f, 1.8f, 1.0f), listOf(0.0f, -1.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f)).setConeAngles(0.15, 0.4)
+        val lamp = Light.point(listOf(0.0f, 0.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f))
     }
 
     @Suppress("unused") private suspend fun _example_scene_light_intensity() {
 
-        val lamp = Light.point(listOf(0.0f, 1.0f, 0.0f), listOf(1.0f, 0.95f, 0.8f)).setIntensity(12.0)
-        val scale = lamp.intensity()
+        val bright = Light.point(listOf(0.0f, 2.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f)).setIntensity(5.0)
+    }
+
+    @Suppress("unused") private suspend fun _example_scene_light_kind() {
+
+        val sun = Light.directional(listOf(0.0f, -1.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f))
+        val bulb = Light.point(listOf(0.0f, 2.5f, 0.0f), listOf(1.0f, 1.0f, 1.0f))
+        val torch = Light.spot(listOf(0.0f, 1.8f, 1.0f), listOf(0.0f, -1.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f))
     }
 
     @Suppress("unused") private suspend fun _example_scene_light_outer_cone_angle() {
 
-        val torch = Light.spot(listOf(0.0f, 1.0f, 0.0f), listOf(0.0f, -1.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f)).setConeAngles(0.2, 0.5)
-        val outer = torch.outerConeAngle()
+        val torch = Light.spot(listOf(0.0f, 1.8f, 1.0f), listOf(0.0f, -1.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f)).setConeAngles(0.15, 0.4)
+        val sun = Light.directional(listOf(0.0f, -1.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f))
     }
 
     @Suppress("unused") private suspend fun _example_scene_light_point() {
@@ -836,52 +858,71 @@ class GeneratedExamples {
 
     @Suppress("unused") private suspend fun _example_scene_light_position() {
 
-        val bulb = Light.point(listOf(3.0f, 2.5f, -1.0f), listOf(1.0f, 1.0f, 1.0f))
-        val pos = bulb.position()
+        val lamp = Light.point(listOf(0.0f, 2.5f, 0.0f), listOf(1.0f, 1.0f, 1.0f))
+        val sun = Light.directional(listOf(0.0f, -1.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f))
     }
 
     @Suppress("unused") private suspend fun _example_scene_light_range() {
 
-        val bulb = Light.point(listOf(0.0f, 0.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f)).setRange(8.0)
-        val cutoff = bulb.range()
+        val lamp = Light.point(listOf(0.0f, 2.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f))
+        val sun = Light.directional(listOf(0.0f, -1.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f))
     }
 
     @Suppress("unused") private suspend fun _example_scene_light_set_color() {
 
-        val lamp = Light.directional(listOf(0.0f, -1.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f))
-        // Warm-tinted bulb after the user toggles the warm-light switch.
-        lamp.setColor(listOf(1.0f, 0.85f, 0.7f))
+        val lamp = Light.point(listOf(0.0f, 2.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f))
+
+        // Warm-tint the lamp later — every Pass that absorbed """lamp""" sees the
+        // color on the next render.
+        lamp.setColor(listOf(1.0f, 0.7f, 0.4f))
     }
 
     @Suppress("unused") private suspend fun _example_scene_light_set_cone_angles() {
 
-        val torch = Light.spot(listOf(0.0f, 1.0f, 0.0f), listOf(0.0f, -1.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f))
-        torch.setConeAngles(0.15, 0.5)
+        val torch = Light.spot(listOf(0.0f, 1.8f, 1.0f), listOf(0.0f, -1.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f))
+        torch.setConeAngles(0.15, 0.4)
+
+        // Non-spot lights error.
+        val lamp = Light.point(listOf(0.0f, 0.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f))
+        val unsupported = lamp.setConeAngles(0.15, 0.4)
     }
 
     @Suppress("unused") private suspend fun _example_scene_light_set_direction() {
 
         val sun = Light.directional(listOf(0.0f, -1.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f))
-        // Reorient to a late-afternoon angle.
-        sun.setDirection(listOf(0.7f, -0.5f, -0.5f))
+        sun.setDirection(listOf(0.3f, -0.8f, -0.5f))
+
+        // Point lights have no direction — the call errors.
+        val lamp = Light.point(listOf(0.0f, 2.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f))
+        val result = lamp.setDirection(listOf(0.0f, -1.0f, 0.0f))
     }
 
     @Suppress("unused") private suspend fun _example_scene_light_set_intensity() {
 
-        val lamp = Light.point(listOf(0.0f, 1.0f, 0.0f), listOf(1.0f, 0.95f, 0.8f))
-        lamp.setIntensity(15.0)
+        val torch = Light.spot(listOf(0.0f, 1.8f, 1.0f), listOf(0.0f, -1.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f))
+
+        torch.setIntensity(8.0)
     }
 
     @Suppress("unused") private suspend fun _example_scene_light_set_position() {
 
-        val bulb = Light.point(listOf(0.0f, 0.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f))
-        bulb.setPosition(listOf(2.0f, 3.0f, -1.0f))
+        val lamp = Light.point(listOf(0.0f, 0.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f))
+        lamp.setPosition(listOf(3.0f, 1.5f, -2.0f))
+
+        // Directional lights have no position — the call errors.
+        val sun = Light.directional(listOf(0.0f, -1.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f))
+        val result = sun.setPosition(listOf(0.0f, 0.0f, 0.0f))
     }
 
     @Suppress("unused") private suspend fun _example_scene_light_set_range() {
 
-        val bulb = Light.point(listOf(0.0f, 0.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f))
-        bulb.setRange(8.0)
+        val lamp = Light.point(listOf(0.0f, 2.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f))
+        lamp.setRange(8.0)
+        val negative = lamp.setRange(-1.0)
+
+        // Directional lights have no range — the call errors.
+        val sun = Light.directional(listOf(0.0f, -1.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f))
+        val unsupported = sun.setRange(5.0)
     }
 
     @Suppress("unused") private suspend fun _example_scene_light_spot() {
@@ -891,7 +932,6 @@ class GeneratedExamples {
 
     @Suppress("unused") private suspend fun _example_scene_material_Material() {
 
-        val renderer = Renderer()
         val mesh = Mesh()
         mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, floatArrayOf(0.5f, 1.0f)), )
 
@@ -902,13 +942,11 @@ class GeneratedExamples {
 
     @Suppress("unused") private suspend fun _example_scene_material_alpha_cutoff() {
 
-        val renderer = Renderer()
         val foliage = Material.pbr()?.alphaCutoff(0.3)
     }
 
     @Suppress("unused") private suspend fun _example_scene_material_alpha_mode() {
 
-        val renderer = Renderer()
         val foliage = Material.pbr()?.alphaMode(AlphaMode.Mask).alphaCutoff(0.3)
 
         val glass = Material.pbr()?.baseColor(listOf(0.9f, 0.95f, 1.0f, 0.25f)).alphaMode(AlphaMode.Blend)
@@ -929,7 +967,10 @@ class GeneratedExamples {
 
         // 279 blob Materials all sample the same uploaded """albedo""" — one GPU
         // texture, 279 shader references.
-        val blob_materials = (0..279).map(|_| Material.pbr().baseColorTexture(albedo)).collect()
+        val blob_materials = Vec.withCapacity(279)
+        for _ in 0..279 {
+            blob_materials.push(Material.pbr()?.baseColorTexture(albedo))
+        }
     }
 
     @Suppress("unused") private suspend fun _example_scene_material_custom() {
@@ -978,7 +1019,6 @@ class GeneratedExamples {
 
     @Suppress("unused") private suspend fun _example_scene_material_metallic() {
 
-        val renderer = Renderer()
         val chrome = Material.pbr()?.metallic(1.0).roughness(0.05)
     }
 
@@ -991,7 +1031,6 @@ class GeneratedExamples {
 
     @Suppress("unused") private suspend fun _example_scene_material_normal_scale() {
 
-        val renderer = Renderer()
         val detailed = Material.pbr()?.normalScale(1.5)
     }
 
@@ -1004,7 +1043,6 @@ class GeneratedExamples {
 
     @Suppress("unused") private suspend fun _example_scene_material_occlusion_strength() {
 
-        val renderer = Renderer()
         val crevices = Material.pbr()?.occlusionStrength(0.8)
     }
 
@@ -1017,7 +1055,6 @@ class GeneratedExamples {
 
     @Suppress("unused") private suspend fun _example_scene_material_pbr() {
 
-        val renderer = Renderer()
         val bronze = Material.pbr()?.baseColor(listOf(0.8f, 0.5f, 0.2f, 1.0f)).metallic(1.0).roughness(0.3)
     }
 
@@ -1031,7 +1068,6 @@ class GeneratedExamples {
 
         // Direct uniform access for a custom field that isn't covered by the
         // Material setters or by Camera / Light.
-        val renderer = Renderer()
         val material = Material.pbr()
         material.shader().set("material.alphaCutoff", 0.25)
     }
@@ -1044,7 +1080,6 @@ class GeneratedExamples {
 
     @Suppress("unused") private suspend fun _example_scene_model_material() {
 
-        val renderer = Renderer()
         val mesh = Mesh()
         mesh.addVertex( Vertex.new(listOf(0.0f, 0.0f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 1.0f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
 
@@ -1054,7 +1089,6 @@ class GeneratedExamples {
 
     @Suppress("unused") private suspend fun _example_scene_model_mesh() {
 
-        val renderer = Renderer()
         val mesh = Mesh()
         mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, floatArrayOf(0.5f, 1.0f)), )
 
@@ -1064,7 +1098,6 @@ class GeneratedExamples {
 
     @Suppress("unused") private suspend fun _example_scene_model_new() {
 
-        val renderer = Renderer()
         val mesh = Mesh()
         mesh.addVertex( Vertex.new(listOf(0.0f, 0.0f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 1.0f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
 
@@ -1196,6 +1229,28 @@ class GeneratedExamples {
         renderer.render(scene, target)
     }
 
+    @Suppress("unused") private suspend fun _example_scene_scene_cameras() {
+
+        val scene = Scene.load(SceneSource.gltf("path/to/model.glb"))
+
+        // glTF shipped a camera — animate it per frame instead of supplying our own.
+        if let Some(camera) = scene.cameras().intoIter().next() {
+            camera.lookAt(listOf(0.0f, 1.5f, 4.0f), listOf(0.0f, 0.0f, 0.0f), listOf(0.0f, 1.0f, 0.0f))
+            camera.setAspect(16.0 / 9.0)
+        }
+    }
+
+    @Suppress("unused") private suspend fun _example_scene_scene_lights() {
+
+        val scene = Scene.load(SceneSource.gltf("path/to/model.glb"))
+
+        // Darken every loaded light to half intensity for a moody pass.
+        for light in scene.lights() {
+        val current = light.intensity()
+            light.setIntensity(current * 0.5)
+        }
+    }
+
     @Suppress("unused") private suspend fun _example_scene_scene_load() {
 
         // File path — covers both """.gltf""" JSON (with external buffers/images)
@@ -1206,6 +1261,22 @@ class GeneratedExamples {
         // in another format.
         val glb_bytes = [/* … */]
         val scene2 = Scene.load(SceneSource.gltf(glb_bytes))
+    }
+
+    @Suppress("unused") private suspend fun _example_scene_scene_models() {
+
+        val mesh = Mesh()
+        mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, floatArrayOf(0.5f, 1.0f)), )
+        val model = Model(mesh, Material.pbr()?)
+
+        val scene = Scene()
+        scene.add(model)
+
+        // LOD switch: hide every model the user just loaded, based on a
+        // camera-distance heuristic the caller computes elsewhere.
+        for m in scene.models() {
+            m.setVisible(false)
+        }
     }
 
     @Suppress("unused") private suspend fun _example_scene_scene_new() {
@@ -1372,6 +1443,7 @@ class GeneratedExamples {
 
         val pixels = ByteArray(4 * 4 * 4)
         val chain = Mipmap.build(pixels, TextureFormat.RGBA8_UNORM_SRGB, Size(width=4u, height=4u, depth=null))
+        val format = chain.format()
     }
 
     @Suppress("unused") private suspend fun _example_texture_mipmap_levels() {

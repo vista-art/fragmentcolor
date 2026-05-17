@@ -17,7 +17,7 @@ path.
 ## Example
 
 ```rust
-use fragmentcolor::mesh::{Mesh, Vertex};
+use fragmentcolor::{Mesh, Vertex};
 
 // A quad split into two triangles via explicit indexing. The four corners
 // happen to carry distinct UVs (only positions repeat), so we keep them

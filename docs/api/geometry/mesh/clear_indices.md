@@ -10,7 +10,7 @@ deduplicated unique set, the same way a freshly built mesh behaves.
 ## Example
 
 ```rust
-use fragmentcolor::mesh::{Mesh, Vertex};
+use fragmentcolor::{Mesh, Vertex};
 
 let mesh = Mesh::new();
 mesh.add_vertices([

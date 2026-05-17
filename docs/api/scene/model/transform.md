@@ -5,7 +5,7 @@ WGSL's `mat4x4<f32>` layout and glam's `to_cols_array_2d`. The transform
 starts at the identity matrix and is modified by `set_transform`,
 `translate`, `rotate`, and `scale`.
 
-For the setter, see [Model::set_transform](https://fragmentcolor.org/api/scene/model#modelset_transform).
+For the setter, see [Model::set_transform](https://fragmentcolor.org/api/scene/model#set_transform).
 Rust doesn't allow getter/setter overloads on the same name, so the read
 side is `transform` and the write side is `set_transform`.
 

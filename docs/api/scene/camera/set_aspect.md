@@ -1,10 +1,10 @@
 # Camera::set_aspect
 
-Update the perspective camera's aspect ratio (width / height) in place.
-The projection matrix recomputes and propagates to every shader the
-Camera was added to, plus the Pass-level camera snapshot the renderer
-reads for transparency depth-sorting — no need to drop and recreate the
-Camera handle.
+Update the camera's aspect ratio (width / height) in place. The
+projection matrix recomputes and propagates to every shader the Camera
+was added to, plus the Pass-level camera snapshot the renderer reads for
+transparency depth-sorting — no need to drop and recreate the Camera
+handle.
 
 Typical use: window-resize handler. On `WindowEvent::Resized`, call
 `camera.set_aspect(width as f32 / height as f32)` and the next frame
@@ -12,10 +12,15 @@ renders without distortion.
 
 Returns a handle to the same Camera (Arc-shared backing) for chaining.
 
-No-op (with a `log::warn!`) when called on an orthographic camera —
-"aspect" isn't well-defined for a free frustum. Use
-[`Camera::orthographic`](https://fragmentcolor.org/api/scene/camera/orthographic)
-to replace the projection wholesale.
+Behaviour by projection kind:
+
+- **Perspective**: rebuilds from `fovy_radians / near / far` with the
+  new aspect — the vertical FOV is preserved, horizontal grows or
+  shrinks.
+- **Orthographic**: keeps the current vertical extent and rescales the
+  horizontal extents so `(right - left) / (top - bottom)` matches the
+  new aspect, centred on the existing horizontal midpoint. The frustum
+  height stays put; the width tracks the window.
 
 ## Example
 

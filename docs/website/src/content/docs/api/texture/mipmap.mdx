@@ -344,10 +344,11 @@ let chain = Mipmap::build((
     TextureFormat::Rgba8UnormSrgb,
     [4, 4],
 ))?;
-let _ = chain.format();
+let format = chain.format();
+let _format = format;
 Ok::<(), Box<dyn std::error::Error>>(())
 `}
-lang="rust" meta="collapse={10-10}"
+lang="rust" meta="collapse={10-11}"
 />
 
 </TabItem>
@@ -407,7 +408,7 @@ import org.fragmentcolor.*
 
 val pixels = ByteArray(4 * 4 * 4)
 val chain = Mipmap.build(pixels, TextureFormat.RGBA8_UNORM_SRGB, Size(width=4u, height=4u, depth=null))
-
+val format = chain.format()
 `}
 lang="kotlin"
 />
@@ -441,10 +442,10 @@ let chain = Mipmap::build((
 let (width, height) = chain.size();
 assert_eq!(width, 16);
 assert_eq!(height, 16);
-let _ = (width, height);
+let _size = (width, height);
 Ok::<(), Box<dyn std::error::Error>>(())
 `}
-lang="rust" meta="collapse={10-11, 13-13}"
+lang="rust" meta="collapse={10-13}"
 />
 
 </TabItem>
@@ -512,7 +513,6 @@ val chain = Mipmap.build(pixels, TextureFormat.RGBA8_UNORM_SRGB, Size(width=16u,
 val tmp_size = chain.size()
 val width = tmp_size.width
 val height = tmp_size.height
-
 `}
 lang="kotlin"
 />
@@ -545,10 +545,10 @@ let chain = Mipmap::build((
 ))?;
 let level_zero_bytes = &chain.levels()[0];
 assert_eq!(level_zero_bytes.len(), 8 * 8 * 4);
-let _ = level_zero_bytes;
+let _level_zero_bytes = level_zero_bytes;
 Ok::<(), Box<dyn std::error::Error>>(())
 `}
-lang="rust" meta="collapse={10-10, 12-12}"
+lang="rust" meta="collapse={10-12}"
 />
 
 </TabItem>
@@ -611,7 +611,6 @@ import org.fragmentcolor.*
 val pixels = ByteArray(8 * 8 * 4)
 val chain = Mipmap.build(pixels, TextureFormat.RGBA8_UNORM_SRGB, Size(width=8u, height=8u, depth=null))
 val level_zero_bytes = chain.level(0u)
-
 `}
 lang="kotlin"
 />
@@ -644,10 +643,10 @@ let chain = Mipmap::build((
 ))?;
 let count = chain.count();
 assert_eq!(count, 4); // 8, 4, 2, 1
-let _ = count;
+let _count = count;
 Ok::<(), Box<dyn std::error::Error>>(())
 `}
-lang="rust" meta="collapse={10-10, 12-12}"
+lang="rust" meta="collapse={10-12}"
 />
 
 </TabItem>
@@ -710,7 +709,6 @@ import org.fragmentcolor.*
 val pixels = ByteArray(8 * 8 * 4)
 val chain = Mipmap.build(pixels, TextureFormat.RGBA8_UNORM_SRGB, Size(width=8u, height=8u, depth=null))
 val count = chain.count()
-
 `}
 lang="kotlin"
 />

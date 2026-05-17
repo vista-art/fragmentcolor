@@ -10,4 +10,7 @@ albedo = renderer.create_texture([
 
 # 279 blob Materials all sample the same uploaded `albedo` — one GPU
 # texture, 279 shader references.
-blob_materials = (0..279).map(|_| Material.pbr().base_color_texture(albedo)).collect()
+blob_materials = Vec.with_capacity(279)
+for _ in 0..279 {
+    blob_materials.push(Material.pbr().base_color_texture(albedo))
+}

@@ -13,6 +13,7 @@ let chain = Mipmap::build((
     TextureFormat::Rgba8UnormSrgb,
     [4, 4],
 ))?;
-let _ = chain.format();
+let format = chain.format();
+# let _format = format;
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```

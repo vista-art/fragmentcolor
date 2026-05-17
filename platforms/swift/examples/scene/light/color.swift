@@ -1,4 +1,3 @@
 import FragmentColor
 
-let warm = Light.directional([0.0, -1.0, 0.0], [1.0, 0.85, 0.7])
-let color = warm.color()
+let warm_lamp = Light.point([0.0, 2.0, 0.0], [1.0, 0.7, 0.4])

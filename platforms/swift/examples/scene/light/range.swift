@@ -1,4 +1,4 @@
 import FragmentColor
 
-let bulb = Light.point([0.0, 0.0, 0.0], [1.0, 1.0, 1.0]).setRange(8.0)
-let cutoff = bulb.range()
+let lamp = Light.point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0])
+let sun = Light.directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0])

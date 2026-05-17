@@ -5,4 +5,5 @@ const albedo = await renderer.createTexture([ 255, 200, 120, 255, 255,  240, 180
 
 // 279 blob Materials all sample the same uploaded `albedo` — one GPU
 // texture, 279 shader references.
-const blob_materials = (0..279).map(|_| Material.pbr().unwrap().baseColorTexture(albedo)).collect();
+const blob_materials = Vec.withCapacity(279);
+for _ in 0..279 { blob_materials.push(Material.pbr()?.baseColorTexture(albedo)); };

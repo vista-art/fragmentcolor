@@ -59,29 +59,6 @@ private enum _GeneratedExamples {
         camera.lookAt([3.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
     }
 
-    static func _example_core_pass_add_depth_target() async throws {
-
-        let renderer = Renderer()
-        let target = try await renderer.createTextureTarget([64, 64])
-
-        // One depth attachment shared across the 3D-content pass.
-        let depth = try await renderer.createDepthTexture([64, 64])
-
-        let mesh = Mesh()
-        try mesh.addVertex([0.0, 0.0, 0.0])
-        try mesh.addVertex([1.0, 0.0, 0.0])
-        try mesh.addVertex([0.0, 1.0, 0.0])
-        try mesh.addVertex([1.0, 1.0, 0.0])
-        let shader = Shader.fromMesh(mesh)
-        let pass = Pass("blobs"); pass.addShader(shader)
-
-        // Depth-test on — closer fragments win, the pass writes to the depth
-        // buffer so subsequent draws within the same pass see the depth.
-        try pass.addDepthTarget(depth)
-
-        try renderer.render(pass, target)
-    }
-
     static func _example_core_pass_add_mesh() async throws {
 
         let mesh = Mesh()
@@ -110,15 +87,6 @@ private enum _GeneratedExamples {
         let shader = Shader.default()
         let pass = Pass("p")
         pass.addShader(shader)
-    }
-
-    static func _example_core_pass_add_target() async throws {
-
-        let r = Renderer()
-        let tex_target = try await r.createTextureTarget([512, 512])
-
-        let p = Pass("shadow")
-        try p.addTarget(tex_target)
     }
 
     static func _example_core_pass_compute() async throws {
@@ -204,6 +172,38 @@ private enum _GeneratedExamples {
         let cs = try! Shader("@compute @workgroup_size(8,8,1) fn cs_main() {}")
         let pass = Pass("compute"); pass.addShader(cs)
         pass.setComputeDispatch(64, 64, 1)
+    }
+
+    static func _example_core_pass_set_depth_target() async throws {
+
+        let renderer = Renderer()
+        let target = try await renderer.createTextureTarget([64, 64])
+
+        // One depth attachment shared across the 3D-content pass.
+        let depth = try await renderer.createDepthTexture([64, 64])
+
+        let mesh = Mesh()
+        try mesh.addVertex([0.0, 0.0, 0.0])
+        try mesh.addVertex([1.0, 0.0, 0.0])
+        try mesh.addVertex([0.0, 1.0, 0.0])
+        try mesh.addVertex([1.0, 1.0, 0.0])
+        let shader = Shader.fromMesh(mesh)
+        let pass = Pass("blobs"); pass.addShader(shader)
+
+        // Depth-test on — closer fragments win, the pass writes to the depth
+        // buffer so subsequent draws within the same pass see the depth.
+        pass.setDepthTarget(depth)
+
+        try renderer.render(pass, target)
+    }
+
+    static func _example_core_pass_set_target() async throws {
+
+        let r = Renderer()
+        let tex_target = try await r.createTextureTarget([512, 512])
+
+        let p = Pass("shadow")
+        p.setTarget(tex_target)
     }
 
     static func _example_core_pass_set_viewport() async throws {
@@ -327,6 +327,34 @@ private enum _GeneratedExamples {
 
         let renderer = Renderer()
         let texture_target = try await renderer.createTextureTarget([16, 16])
+    }
+
+    static func _example_core_renderer_read_storage() async throws {
+        use bytemuck
+
+        let renderer = Renderer()
+        let target = try await renderer.createTextureTarget([16, 16])
+
+        let compute = try Shader.new(
+            r#"
+            struct Out { values: array<f32, 4> }
+            @group(0) @binding(0) var<storage, read_write> out: Out
+            @compute @workgroup_size(1) fn main() {
+                out.values[0] = 1.0
+                out.values[1] = 2.0
+                out.values[2] = 3.0
+                out.values[3] = 4.0
+            }
+            "#,
+        )
+
+        let pass = Pass.compute("seed")
+        pass.setComputeDispatch(1, 1, 1)
+        pass.addShader(compute)
+        try renderer.render(pass, target)
+
+        let bytes = try await renderer.readStorage(compute, "out")
+        let values = bytemuck.castSlice(bytes)
     }
 
     static func _example_core_renderer_read_texture() async throws {
@@ -825,20 +853,18 @@ private enum _GeneratedExamples {
 
         let camera = Camera.perspective(60.0.toRadians(), 16.0 / 9.0, 0.1, 100.0).lookAt([0.0, 0.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
 
-        let m = camera.viewProj()
-        let _ = m
+        let view_proj = camera.viewProj()
     }
 
     static func _example_scene_light_color() async throws {
 
-        let warm = Light.directional([0.0, -1.0, 0.0], [1.0, 0.85, 0.7])
-        let color = warm.color()
+        let warm_lamp = Light.point([0.0, 2.0, 0.0], [1.0, 0.7, 0.4])
     }
 
     static func _example_scene_light_direction() async throws {
 
         let sun = Light.directional([0.3, -1.0, -0.4], [1.0, 1.0, 1.0])
-        let dir = sun.direction()
+        let lamp = Light.point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0])
     }
 
     static func _example_scene_light_directional() async throws {
@@ -848,20 +874,26 @@ private enum _GeneratedExamples {
 
     static func _example_scene_light_inner_cone_angle() async throws {
 
-        let torch = Light.spot([0.0, 1.0, 0.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0]).setConeAngles(0.2, 0.5)
-        let inner = torch.innerConeAngle()
+        let torch = Light.spot([0.0, 1.8, 1.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0]).setConeAngles(0.15, 0.4)
+        let lamp = Light.point([0.0, 0.0, 0.0], [1.0, 1.0, 1.0])
     }
 
     static func _example_scene_light_intensity() async throws {
 
-        let lamp = Light.point([0.0, 1.0, 0.0], [1.0, 0.95, 0.8]).setIntensity(12.0)
-        let scale = lamp.intensity()
+        let bright = Light.point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0]).setIntensity(5.0)
+    }
+
+    static func _example_scene_light_kind() async throws {
+
+        let sun = Light.directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
+        let bulb = Light.point([0.0, 2.5, 0.0], [1.0, 1.0, 1.0])
+        let torch = Light.spot([0.0, 1.8, 1.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
     }
 
     static func _example_scene_light_outer_cone_angle() async throws {
 
-        let torch = Light.spot([0.0, 1.0, 0.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0]).setConeAngles(0.2, 0.5)
-        let outer = torch.outerConeAngle()
+        let torch = Light.spot([0.0, 1.8, 1.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0]).setConeAngles(0.15, 0.4)
+        let sun = Light.directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
     }
 
     static func _example_scene_light_point() async throws {
@@ -871,52 +903,71 @@ private enum _GeneratedExamples {
 
     static func _example_scene_light_position() async throws {
 
-        let bulb = Light.point([3.0, 2.5, -1.0], [1.0, 1.0, 1.0])
-        let pos = bulb.position()
+        let lamp = Light.point([0.0, 2.5, 0.0], [1.0, 1.0, 1.0])
+        let sun = Light.directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
     }
 
     static func _example_scene_light_range() async throws {
 
-        let bulb = Light.point([0.0, 0.0, 0.0], [1.0, 1.0, 1.0]).setRange(8.0)
-        let cutoff = bulb.range()
+        let lamp = Light.point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0])
+        let sun = Light.directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
     }
 
     static func _example_scene_light_set_color() async throws {
 
-        let lamp = Light.directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
-        // Warm-tinted bulb after the user toggles the warm-light switch.
-        lamp.setColor([1.0, 0.85, 0.7])
+        let lamp = Light.point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0])
+
+        // Warm-tint the lamp later — every Pass that absorbed """lamp""" sees the
+        // color on the next render.
+        lamp.setColor([1.0, 0.7, 0.4])
     }
 
     static func _example_scene_light_set_cone_angles() async throws {
 
-        let torch = Light.spot([0.0, 1.0, 0.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
-        torch.setConeAngles(0.15, 0.5)
+        let torch = Light.spot([0.0, 1.8, 1.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
+        torch.setConeAngles(0.15, 0.4)
+
+        // Non-spot lights error.
+        let lamp = Light.point([0.0, 0.0, 0.0], [1.0, 1.0, 1.0])
+        let unsupported = lamp.setConeAngles(0.15, 0.4)
     }
 
     static func _example_scene_light_set_direction() async throws {
 
         let sun = Light.directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
-        // Reorient to a late-afternoon angle.
-        sun.setDirection([0.7, -0.5, -0.5])
+        sun.setDirection([0.3, -0.8, -0.5])
+
+        // Point lights have no direction — the call errors.
+        let lamp = Light.point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0])
+        let result = lamp.setDirection([0.0, -1.0, 0.0])
     }
 
     static func _example_scene_light_set_intensity() async throws {
 
-        let lamp = Light.point([0.0, 1.0, 0.0], [1.0, 0.95, 0.8])
-        lamp.setIntensity(15.0)
+        let torch = Light.spot([0.0, 1.8, 1.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
+
+        torch.setIntensity(8.0)
     }
 
     static func _example_scene_light_set_position() async throws {
 
-        let bulb = Light.point([0.0, 0.0, 0.0], [1.0, 1.0, 1.0])
-        bulb.setPosition([2.0, 3.0, -1.0])
+        let lamp = Light.point([0.0, 0.0, 0.0], [1.0, 1.0, 1.0])
+        lamp.setPosition([3.0, 1.5, -2.0])
+
+        // Directional lights have no position — the call errors.
+        let sun = Light.directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
+        let result = sun.setPosition([0.0, 0.0, 0.0])
     }
 
     static func _example_scene_light_set_range() async throws {
 
-        let bulb = Light.point([0.0, 0.0, 0.0], [1.0, 1.0, 1.0])
-        bulb.setRange(8.0)
+        let lamp = Light.point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0])
+        lamp.setRange(8.0)
+        let negative = lamp.setRange(-1.0)
+
+        // Directional lights have no range — the call errors.
+        let sun = Light.directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
+        let unsupported = sun.setRange(5.0)
     }
 
     static func _example_scene_light_spot() async throws {
@@ -926,7 +977,6 @@ private enum _GeneratedExamples {
 
     static func _example_scene_material_Material() async throws {
 
-        let renderer = Renderer()
         let mesh = Mesh()
         try mesh.addVertex(
             try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.uV0, [0.5, 1.0]),
@@ -939,13 +989,11 @@ private enum _GeneratedExamples {
 
     static func _example_scene_material_alpha_cutoff() async throws {
 
-        let renderer = Renderer()
         let foliage = Material.pbr()?.alphaCutoff(0.3)
     }
 
     static func _example_scene_material_alpha_mode() async throws {
 
-        let renderer = Renderer()
         let foliage = Material.pbr()?.alphaMode(AlphaMode.mask).alphaCutoff(0.3)
 
         let glass = Material.pbr()?.baseColor([0.9, 0.95, 1.0, 0.25]).alphaMode(AlphaMode.blend)
@@ -971,7 +1019,10 @@ private enum _GeneratedExamples {
 
         // 279 blob Materials all sample the same uploaded """albedo""" — one GPU
         // texture, 279 shader references.
-        let blob_materials = try! (0...279).map(|_| Material.pbr().baseColorTexture(albedo)).collect()
+        let blob_materials = Vec.withCapacity(279)
+        for _ in 0...279 {
+            blob_materials.push(Material.pbr()?.baseColorTexture(albedo))
+        }
     }
 
     static func _example_scene_material_custom() async throws {
@@ -1025,7 +1076,6 @@ private enum _GeneratedExamples {
 
     static func _example_scene_material_metallic() async throws {
 
-        let renderer = Renderer()
         let chrome = Material.pbr()?.metallic(1.0).roughness(0.05)
     }
 
@@ -1043,7 +1093,6 @@ private enum _GeneratedExamples {
 
     static func _example_scene_material_normal_scale() async throws {
 
-        let renderer = Renderer()
         let detailed = Material.pbr()?.normalScale(1.5)
     }
 
@@ -1061,7 +1110,6 @@ private enum _GeneratedExamples {
 
     static func _example_scene_material_occlusion_strength() async throws {
 
-        let renderer = Renderer()
         let crevices = Material.pbr()?.occlusionStrength(0.8)
     }
 
@@ -1079,7 +1127,6 @@ private enum _GeneratedExamples {
 
     static func _example_scene_material_pbr() async throws {
 
-        let renderer = Renderer()
         let bronze = Material.pbr()?.baseColor([0.8, 0.5, 0.2, 1.0]).metallic(1.0).roughness(0.3)
     }
 
@@ -1093,7 +1140,6 @@ private enum _GeneratedExamples {
 
         // Direct uniform access for a custom field that isn't covered by the
         // Material setters or by Camera / Light.
-        let renderer = Renderer()
         let material = Material.pbr()
         try material.shader().set("material.alphaCutoff", 0.25)
     }
@@ -1106,7 +1152,6 @@ private enum _GeneratedExamples {
 
     static func _example_scene_model_material() async throws {
 
-        let renderer = Renderer()
         let mesh = Mesh()
         try mesh.addVertex(
             try Vertex([0.0, 0.0, 0.0]).set(Vertex.nORMAL, [0.0, 1.0, 0.0]).set(Vertex.uV0, [0.0, 0.0]),
@@ -1118,7 +1163,6 @@ private enum _GeneratedExamples {
 
     static func _example_scene_model_mesh() async throws {
 
-        let renderer = Renderer()
         let mesh = Mesh()
         try mesh.addVertex(
             try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.uV0, [0.5, 1.0]),
@@ -1132,7 +1176,6 @@ private enum _GeneratedExamples {
 
     static func _example_scene_model_new() async throws {
 
-        let renderer = Renderer()
         let mesh = Mesh()
         try mesh.addVertex(
             try Vertex([0.0, 0.0, 0.0]).set(Vertex.nORMAL, [0.0, 1.0, 0.0]).set(Vertex.uV0, [0.0, 0.0]),
@@ -1287,6 +1330,28 @@ private enum _GeneratedExamples {
         try renderer.render(scene, target)
     }
 
+    static func _example_scene_scene_cameras() async throws {
+
+        let scene = Scene.load(SceneSource.gltf("path/to/model.glb"))
+
+        // glTF shipped a camera — animate it per frame instead of supplying our own.
+        if let Some(camera) = scene.cameras().intoIter().next() {
+            camera.lookAt([0.0, 1.5, 4.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+            camera.setAspect(16.0 / 9.0)
+        }
+    }
+
+    static func _example_scene_scene_lights() async throws {
+
+        let scene = Scene.load(SceneSource.gltf("path/to/model.glb"))
+
+        // Darken every loaded light to half intensity for a moody pass.
+        for light in scene.lights() {
+        let current = light.intensity()
+            light.setIntensity(current * 0.5)
+        }
+    }
+
     static func _example_scene_scene_load() async throws {
 
         // File path — covers both """.gltf""" JSON (with external buffers/images)
@@ -1297,6 +1362,24 @@ private enum _GeneratedExamples {
         // in another format.
         let glb_bytes = [/* … */]
         let scene2 = Scene.load(SceneSource.gltf(glb_bytes))
+    }
+
+    static func _example_scene_scene_models() async throws {
+
+        let mesh = Mesh()
+        try mesh.addVertex(
+            try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.uV0, [0.5, 1.0]),
+        )
+        let model = Model(mesh, Material.pbr()?)
+
+        let scene = Scene()
+        scene.add(model)
+
+        // LOD switch: hide every model the user just loaded, based on a
+        // camera-distance heuristic the caller computes elsewhere.
+        for m in scene.models() {
+            m.setVisible(false)
+        }
     }
 
     static func _example_scene_scene_new() async throws {

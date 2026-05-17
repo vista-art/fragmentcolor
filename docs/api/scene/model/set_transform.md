@@ -7,7 +7,7 @@ to apply it directly without composing through `translate` / `rotate` /
 
 Writes the four columns into the Mesh's per-instance attribute stream
 immediately (locations 3..6). To read the current transform, see
-[Model::transform](https://fragmentcolor.org/api/scene/model#modeltransform).
+[Model::transform](https://fragmentcolor.org/api/scene/model#transform).
 
 ## Example
 

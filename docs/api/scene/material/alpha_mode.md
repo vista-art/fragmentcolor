@@ -19,10 +19,10 @@ The three variants:
   fades, decals that need soft edges. The renderer sorts blend Models on the Pass
   back-to-front by eye-space Z before drawing, using the Camera attached via
   `Pass::add(&camera)`. Translucent surfaces over-blend in the right order without the
-  caller managing it. Limitation: sorts by per-Model origin (not per-fragment), so
-  self-intersecting or interpenetrating translucent meshes can still show artifacts;
-  cross-Material interleaving falls back to per-shader sort (one translucent Material
-  shared across many Models is the path that's order-correct).
+  caller managing it. Limitation: sorts by per-Model AABB centroid (not per-fragment),
+  so self-intersecting or interpenetrating translucent meshes can still show artifacts.
+  Cross-Material interleaving works correctly — translucent draws across every shader
+  in the Pass merge into one globally-sorted back-to-front pass.
 
 This is a pipeline-state flag — changing it forces the renderer to rebuild the pipeline
 for the affected `(shader, alpha_mode, double_sided)` key. Switching it every frame is
@@ -32,10 +32,9 @@ draw call inside a frame.
 ## Example
 
 ```rust
-# async fn run() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{AlphaMode, Material, Renderer};
+# fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{AlphaMode, Material};
 
-let renderer = Renderer::new();
 let foliage = Material::pbr()?
     .alpha_mode(AlphaMode::Mask)
     .alpha_cutoff(0.3);
@@ -48,5 +47,4 @@ let solid = Material::pbr()?.alpha_mode(AlphaMode::Opaque);
 # let _ = (foliage, glass, solid);
 # Ok(())
 # }
-# fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 ```

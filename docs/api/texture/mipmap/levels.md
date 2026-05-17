@@ -15,6 +15,6 @@ let chain = Mipmap::build((
 ))?;
 let level_zero_bytes = &chain.levels()[0];
 # assert_eq!(level_zero_bytes.len(), 8 * 8 * 4);
-let _ = level_zero_bytes;
+# let _level_zero_bytes = level_zero_bytes;
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```

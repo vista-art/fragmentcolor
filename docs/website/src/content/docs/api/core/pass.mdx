@@ -906,15 +906,15 @@ lang="kotlin"
 Absorb any [`SceneObject`](/api/scene) â a
 [Model](/api/scene/model),
 [Camera](/api/scene/camera),
-[Light](/api/scene/light), or a user-defined node
-that implements the trait â into the pass. Each kind brings its own attach
-behaviour: a Model queues a draw with its own per-instance transform; a
-Camera or Light wires its uniforms into every shader the pass renders, both
-the ones already there and the ones added afterwards.
+[Light](/api/scene/light), or a user-defined
+node that implements the trait â into the pass. Each kind brings its
+own attach behaviour: a Model queues a draw with its own per-instance
+transform; a Camera or Light wires its uniforms into every shader the
+pass renders, both the ones already there and the ones added afterwards.
 
-Camera and Light hold Arc-shared state, so subsequent mutations on the same
-value (`camera.look_at(...)`, `light.set_color(...)`) propagate to every
-shader on the pass with no further `add` call.
+Camera and Light hold Arc-shared state, so subsequent mutations on the
+same value (`camera.look_at(...)`, `light.set_color(...)`) propagate to
+every shader on the pass with no further `add` call.
 
 Returns `Result<&Pass, PassError>` â Models can fail at attach time when
 the Mesh layout doesn't match the Material's shader; Cameras and Lights
@@ -1421,11 +1421,11 @@ lang="kotlin"
 
 ---
 
-### Pass::add_target(target)
+### Pass::set_target(target)
 
 Attach a per-pass color render target. When set, this pass renders into the provided texture instead of the final Target.
 
-Use this to render intermediate results (e.g., a shadow map) that later passes can sample.
+A Pass has at most one color target â call `set_target` again to swap it. Use this to render intermediate results (e.g., a shadow map) that later passes can sample.
 
 #### Example
 
@@ -1441,7 +1441,7 @@ let r = Renderer::new();
 let tex_target = r.create_texture_target([512, 512]).await?;
 
 let p = Pass::new("shadow");
-p.add_target(&tex_target);
+p.set_target(&tex_target)?;
 
 Ok(())
 }
@@ -1461,7 +1461,7 @@ const r = new Renderer();
 const tex_target = await r.createTextureTarget([512, 512]);
 
 const p = new Pass("shadow");
-p.addTarget(tex_target);
+p.setTarget(tex_target);
 
 `}
 lang="js"
@@ -1478,7 +1478,7 @@ r = Renderer()
 tex_target = r.create_texture_target([512, 512])
 
 p = Pass("shadow")
-p.add_target(tex_target)
+p.set_target(tex_target)
 
 `}
 lang="python"
@@ -1495,7 +1495,7 @@ let r = Renderer()
 let tex_target = try await r.createTextureTarget([512, 512])
 
 let p = Pass("shadow")
-try p.addTarget(tex_target)
+p.setTarget(tex_target)
 `}
 lang="swift"
 />
@@ -1511,7 +1511,7 @@ val r = Renderer()
 val tex_target = r.createTextureTarget(512u, 512u)
 
 val p = Pass("shadow")
-p.addTarget(tex_target)
+p.setTarget(tex_target)
 `}
 lang="kotlin"
 />
@@ -1523,13 +1523,15 @@ lang="kotlin"
 
 ---
 
-### Pass::add_depth_target
+### Pass::set_depth_target
 
 Attach a depth texture to this pass. Once attached, the renderer builds the pipeline with a matching depth-stencil state and **depth-test is enabled** â fragments behind the current contents of the depth buffer are discarded, and the pass writes to the depth buffer as it draws. That's what you want for 3D meshes that occlude each other.
 
+A Pass has at most one depth attachment â call `set_depth_target` again to swap it.
+
 The target must be a depth texture (`Depth32Float` is the canonical format) created by the same `Renderer` via [`create_depth_texture`](/api/core/renderer/create_depth_texture). The depth attachment's sample count must match the color attachments' â mixing 1Ã and 4Ã MSAA in the same pass returns `RendererError::DepthSampleCountMismatch`.
 
-To **opt out** of depth testing, simply don't call `add_depth_target` â the pass renders without depth-state, painter's-algorithm style (later draws win).
+To **opt out** of depth testing, simply don't call `set_depth_target` â the pass renders without depth-state, painter's-algorithm style (later draws win).
 
 #### Example
 
@@ -1557,7 +1559,7 @@ let pass = Pass::from_shader("blobs", &shader);
 
 // Depth-test on â closer fragments win, the pass writes to the depth
 // buffer so subsequent draws within the same pass see the depth.
-pass.add_depth_target(&depth)?;
+pass.set_depth_target(&depth)?;
 
 renderer.render(&pass, &target)?;
 Ok(())
@@ -1590,7 +1592,7 @@ const pass = new Pass("blobs"); pass.addShader(shader);
 
 // Depth-test on â closer fragments win, the pass writes to the depth
 // buffer so subsequent draws within the same pass see the depth.
-pass.addDepthTarget(depth);
+pass.setDepthTarget(depth);
 
 renderer.render(pass, target);
 `}
@@ -1620,7 +1622,7 @@ rpass = Pass("blobs"); rpass.add_shader(shader)
 
 # Depth-test on â closer fragments win, the rpass writes to the depth
 # buffer so subsequent draws within the same rpass see the depth.
-rpass.add_depth_target(depth)
+rpass.set_depth_target(depth)
 
 renderer.render(rpass, target)
 `}
@@ -1650,7 +1652,7 @@ let pass = Pass("blobs"); pass.addShader(shader)
 
 // Depth-test on â closer fragments win, the pass writes to the depth
 // buffer so subsequent draws within the same pass see the depth.
-try pass.addDepthTarget(depth)
+pass.setDepthTarget(depth)
 
 try renderer.render(pass, target)
 `}
@@ -1680,7 +1682,7 @@ val pass = Pass("blobs"); pass.addShader(shader)
 
 // Depth-test on â closer fragments win, the pass writes to the depth
 // buffer so subsequent draws within the same pass see the depth.
-pass.addDepthTarget(depth)
+pass.setDepthTarget(depth)
 
 renderer.render(pass, target)
 `}

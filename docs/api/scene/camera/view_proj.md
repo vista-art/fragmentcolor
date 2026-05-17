@@ -5,9 +5,9 @@ matches WGSL's `mat4x4<f32>` storage and glam's `to_cols_array_2d()`, so
 the result is ready to feed directly into a Shader's `camera.view_proj`
 uniform via `Shader::set(...)` if you need direct control. For the common
 case, pass the Camera to
-[`Material::add`](https://fragmentcolor.org/api/scene/material#add) — the
-Material seeds `camera.view_proj` + `camera.position` and keeps them in
-sync with later updates.
+[`Pass::add`](https://fragmentcolor.org/api/core/pass#add) — the Pass seeds
+`camera.view_proj` + `camera.position` on every Material attached to it
+and keeps them in sync with later updates.
 
 ## Example
 
@@ -18,10 +18,10 @@ use fragmentcolor::Camera;
 let camera = Camera::perspective(60.0_f32.to_radians(), 16.0 / 9.0, 0.1, 100.0)
     .look_at([0.0, 0.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
 
-let m = camera.view_proj();
+let view_proj = camera.view_proj();
 # // Column 3 (translation) reflects the eye offset baked into the view matrix.
-# assert!(m[3][2] != 0.0);
-let _ = m;
+# assert!(view_proj[3][2] != 0.0);
+# let _view_proj = view_proj;
 # Ok(())
 # }
 ```

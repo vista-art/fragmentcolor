@@ -53,11 +53,10 @@ own Mesh.
 ## Example
 
 ```rust
-# async fn run() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Material, Mesh, Model, Renderer, Vertex};
+# fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Material, Mesh, Model, Vertex};
 
-let renderer = Renderer::new();
-let mut mesh = Mesh::new();
+let mesh = Mesh::new();
 mesh.add_vertex(
     Vertex::pbr([0.0, 0.5, 0.0]).set(Vertex::UV0, [0.5, 1.0]),
 );
@@ -69,5 +68,4 @@ model.scale([1.5, 1.5, 1.5]);
 
 # Ok(())
 # }
-# fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 ```

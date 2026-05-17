@@ -1,5 +1,7 @@
 import { Light } from "fragmentcolor";
 
-const lamp = Light.directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
-// Warm-tinted bulb after the user toggles the warm-light switch.
-lamp.setColor([1.0, 0.85, 0.7]);
+const lamp = Light.point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0]);
+
+// Warm-tint the lamp later — every Pass that absorbed `lamp` sees the
+// new color on the next render.
+lamp.setColor([1.0, 0.7, 0.4]);

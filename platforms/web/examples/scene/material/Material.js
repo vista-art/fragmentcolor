@@ -1,6 +1,5 @@
-import { Material, Mesh, Model, Renderer, Vertex } from "fragmentcolor";
+import { Material, Mesh, Model, Vertex } from "fragmentcolor";
 
-const renderer = new Renderer();
 const mesh = new Mesh();
 mesh.addVertex( Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]), );
 

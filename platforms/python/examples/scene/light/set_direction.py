@@ -1,5 +1,8 @@
 from fragmentcolor import Light
 
 sun = Light.directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
-# Reorient to a late-afternoon angle.
-sun.set_direction([0.7, -0.5, -0.5])
+sun.set_direction([0.3, -0.8, -0.5])
+
+# Point lights have no direction — the call errors.
+lamp = Light.point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0])
+result = lamp.set_direction([0.0, -1.0, 0.0])

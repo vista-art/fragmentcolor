@@ -1,4 +1,4 @@
 import { Light } from "fragmentcolor";
 
-const bulb = Light.point([3.0, 2.5, -1.0], [1.0, 1.0, 1.0]);
-const pos = bulb.position();
+const lamp = Light.point([0.0, 2.5, 0.0], [1.0, 1.0, 1.0]);
+const sun = Light.directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);

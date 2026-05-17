@@ -23,3 +23,8 @@ let visible_now = model.visible();
 # Ok(())
 # }
 ```
+
+## See also
+
+- [`Model::set_visible`](https://fragmentcolor.org/api/scene/model/set_visible) — the setter side.
+- [`Model`](https://fragmentcolor.org/api/scene/model) — the parent page (full methods table).

@@ -10,3 +10,9 @@
 #   unlabeled:<workspace-relative-file>:<fn_name>
 
 gap:docs/api/targets/texture_target/texture.md:python,swift,kotlin
+# GltfSource builder filters — Rust-only for now. Bindings reach the same
+# behaviour through their `Scene.load(...)` shim; exposing the typed
+# builder cross-platform is a separate follow-up (likely an options-bag
+# parameter on `Scene.load`, not a 1:1 mirror of the Rust builder).
+gap:docs/api/scene/gltf_source/cameras.md:web,python,swift,kotlin
+gap:docs/api/scene/gltf_source/lights.md:web,python,swift,kotlin

@@ -11,13 +11,11 @@ perturbation by this value before combining with the world-space normal.
 ## Example
 
 ```rust
-# async fn run() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Material, Renderer};
+# fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::Material;
 
-let renderer = Renderer::new();
 let detailed = Material::pbr()?.normal_scale(1.5);
-# let _ = detailed;
+# let _detailed = detailed;
 # Ok(())
 # }
-# fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 ```

@@ -12,13 +12,11 @@ under the factor-driven defaults.
 ## Example
 
 ```rust
-# async fn run() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Material, Renderer};
+# fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::Material;
 
-let renderer = Renderer::new();
 let chrome = Material::pbr()?.metallic(1.0).roughness(0.05);
-# let _ = chrome;
+# let _chrome = chrome;
 # Ok(())
 # }
-# fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 ```

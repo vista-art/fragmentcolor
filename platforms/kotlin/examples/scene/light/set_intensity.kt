@@ -1,4 +1,5 @@
 import org.fragmentcolor.*
 
-val lamp = Light.point(listOf(0.0f, 1.0f, 0.0f), listOf(1.0f, 0.95f, 0.8f))
-lamp.setIntensity(15.0)
+val torch = Light.spot(listOf(0.0f, 1.8f, 1.0f), listOf(0.0f, -1.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f))
+
+torch.setIntensity(8.0)

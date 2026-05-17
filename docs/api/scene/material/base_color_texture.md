@@ -13,6 +13,22 @@ Unset, this slot resolves to a 1×1 white default the renderer hands out
 lazily — so calling `Material::pbr()?` without binding a
 texture renders correctly under the factor alone.
 
+### Errors are surfaced lazily
+
+The setter itself is infallible — it queues the upload (lazy path) or
+takes an Arc-clone (eager path) and returns. Failures from the lazy
+path — file not found, decode error, unsupported format — surface when
+the renderer actually drains the queue: either at first render or when
+you call [`Renderer::load(&material).await`](https://fragmentcolor.org/api/core/renderer/load).
+Until then the Material renders against its 1×1 default and a
+`log::warn!` line names the slot.
+
+For deterministic error handling, pre-build the texture eagerly:
+`renderer.create_texture(path).await?` returns a `Texture` that can't
+fail at setter time, and `Material::base_color_texture(&texture)` takes
+an Arc-shared reference. The lazy path stays useful when the URL /
+path resolves at render time but the caller doesn't want to await yet.
+
 ## Example — sharing one texture across many Materials
 
 ```rust,no_run
@@ -29,10 +45,11 @@ let albedo = renderer.create_texture(&[
 
 // 279 blob Materials all sample the same uploaded `albedo` — one GPU
 // texture, 279 shader references.
-let blob_materials: Vec<_> = (0..279)
-    .map(|_| Material::pbr().unwrap().base_color_texture(&albedo))
-    .collect();
-# let _ = blob_materials;
+let mut blob_materials = Vec::with_capacity(279);
+for _ in 0..279 {
+    blob_materials.push(Material::pbr()?.base_color_texture(&albedo));
+}
+# let _blob_materials = blob_materials;
 # Ok(())
 # }
 # fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }

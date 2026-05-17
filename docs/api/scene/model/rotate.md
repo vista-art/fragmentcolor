@@ -7,7 +7,7 @@ origin. The axis is normalised internally; a zero-length axis is rejected
 with a debug log and no change.
 
 For pure world-space rotations (e.g. tumbling around a fixed pivot), compose
-the matrix yourself and call [set_transform](https://fragmentcolor.org/api/scene/model#modelset_transform).
+the matrix yourself and call [set_transform](https://fragmentcolor.org/api/scene/model#set_transform).
 
 ## Example
 

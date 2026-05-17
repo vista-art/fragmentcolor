@@ -11,13 +11,11 @@ the result into the diffuse term.
 ## Example
 
 ```rust
-# async fn run() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Material, Renderer};
+# fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::Material;
 
-let renderer = Renderer::new();
 let crevices = Material::pbr()?.occlusion_strength(0.8);
-# let _ = crevices;
+# let _crevices = crevices;
 # Ok(())
 # }
-# fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 ```

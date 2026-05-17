@@ -1,4 +1,3 @@
-from fragmentcolor import Material, Renderer
+from fragmentcolor import Material
 
-renderer = Renderer()
 detailed = Material.pbr().normal_scale(1.5)

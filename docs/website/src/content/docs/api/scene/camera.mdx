@@ -238,11 +238,11 @@ lang="kotlin"
 
 ### Camera::set_aspect
 
-Update the perspective camera's aspect ratio (width / height) in place.
-The projection matrix recomputes and propagates to every shader the
-Camera was added to, plus the Pass-level camera snapshot the renderer
-reads for transparency depth-sorting â no need to drop and recreate the
-Camera handle.
+Update the camera's aspect ratio (width / height) in place. The
+projection matrix recomputes and propagates to every shader the Camera
+was added to, plus the Pass-level camera snapshot the renderer reads for
+transparency depth-sorting â no need to drop and recreate the Camera
+handle.
 
 Typical use: window-resize handler. On `WindowEvent::Resized`, call
 `camera.set_aspect(width as f32 / height as f32)` and the next frame
@@ -250,10 +250,15 @@ renders without distortion.
 
 Returns a handle to the same Camera (Arc-shared backing) for chaining.
 
-No-op (with a `log::warn!`) when called on an orthographic camera â
-"aspect" isn't well-defined for a free frustum. Use
-[`Camera::orthographic`](/api/scene/camera/orthographic)
-to replace the projection wholesale.
+Behaviour by projection kind:
+
+- **Perspective**: rebuilds from `fovy_radians / near / far` with the
+  new aspect â the vertical FOV is preserved, horizontal grows or
+  shrinks.
+- **Orthographic**: keeps the current vertical extent and rescales the
+  horizontal extents so `(right - left) / (top - bottom)` matches the
+  new aspect, centred on the existing horizontal midpoint. The frustum
+  height stays put; the width tracks the window.
 
 #### Example
 
@@ -344,19 +349,23 @@ lang="kotlin"
 
 ### Camera::look_at
 
-Position the camera in world space. `eye` is where the camera is, `target`
-is the point it aims at, and `up` is the world-space up vector that
-orients the roll (almost always `[0, 1, 0]`). Returns a handle to the
-same Camera (Arc-shared backing) so it chains cleanly off a `perspective`
-or `orthographic` constructor and can be called again after the Camera
-has been added to a Material â the new view propagates live.
+Position the camera in world space. `position` is where the camera sits,
+`target` is the point it aims at, and `up` is the world-space up vector
+that orients the roll (almost always `[0, 1, 0]`). Matches `Light`'s
+`position` vocabulary so both scene types describe "where this object is
+in the world" the same way.
+
+Returns a handle to the same Camera (Arc-shared backing) so it chains
+cleanly off a `perspective` or `orthographic` constructor and can be
+called again after the Camera has been added to a Pass â the new view
+propagates live to every Material the Pass renders.
 
 Internally builds the view matrix with `glam::Mat4::look_at_rh`. The
 result is a right-handed view matrix that pairs with the right-handed
 projection produced by [`perspective`](/api/scene/camera/perspective)
 and [`orthographic`](/api/scene/camera/orthographic).
 
-The eye position is cached on the Camera and exposed via
+The world-space position is cached on the Camera and exposed via
 [`position`](/api/scene/camera/position) so
 shaders that need it (specular highlights, fresnel) don't have to invert
 the view matrix on every frame.
@@ -445,9 +454,9 @@ matches WGSL's `mat4x4<f32>` storage and glam's `to_cols_array_2d()`, so
 the result is ready to feed directly into a Shader's `camera.view_proj`
 uniform via `Shader::set(...)` if you need direct control. For the common
 case, pass the Camera to
-[`Material::add`](/api/scene/material#add) â the
-Material seeds `camera.view_proj` + `camera.position` and keeps them in
-sync with later updates.
+[`Pass::add`](/api/core/pass#add) â the Pass seeds
+`camera.view_proj` + `camera.position` on every Material attached to it
+and keeps them in sync with later updates.
 
 #### Example
 
@@ -462,14 +471,14 @@ use fragmentcolor::Camera;
 let camera = Camera::perspective(60.0_f32.to_radians(), 16.0 / 9.0, 0.1, 100.0)
     .look_at([0.0, 0.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
 
-let m = camera.view_proj();
+let view_proj = camera.view_proj();
 // Column 3 (translation) reflects the eye offset baked into the view matrix.
-assert!(m[3][2] != 0.0);
-let _ = m;
+assert!(view_proj[3][2] != 0.0);
+let _view_proj = view_proj;
 Ok(())
 }
 `}
-lang="rust" meta="collapse={1-1, 8-9, 11-12}"
+lang="rust" meta="collapse={1-1, 8-12}"
 />
 
 </TabItem>
@@ -481,8 +490,7 @@ import { Camera } from "fragmentcolor";
 
 const camera = Camera.perspective(60.0.toRadians(), 16.0 / 9.0, 0.1, 100.0).lookAt([0.0, 0.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
 
-const m = camera.viewProj();
-const _ = m;
+const view_proj = camera.viewProj();
 `}
 lang="js"
 />
@@ -496,8 +504,7 @@ from fragmentcolor import Camera
 
 camera = Camera.perspective(60.0_.to_radians(), 16.0 / 9.0, 0.1, 100.0).look_at([0.0, 0.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
 
-m = camera.view_proj()
-_ = m
+view_proj = camera.view_proj()
 `}
 lang="python"
 />
@@ -511,8 +518,7 @@ import FragmentColor
 
 let camera = Camera.perspective(60.0.toRadians(), 16.0 / 9.0, 0.1, 100.0).lookAt([0.0, 0.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
 
-let m = camera.viewProj()
-let _ = m
+let view_proj = camera.viewProj()
 `}
 lang="swift"
 />
@@ -526,8 +532,7 @@ import org.fragmentcolor.*
 
 val camera = Camera.perspective(60.0.toRadians(), 16.0 / 9.0, 0.1, 100.0).lookAt(listOf(0.0f, 0.0f, 5.0f), listOf(0.0f, 0.0f, 0.0f), listOf(0.0f, 1.0f, 0.0f))
 
-val m = camera.viewProj()
-
+val view_proj = camera.viewProj()
 `}
 lang="kotlin"
 />
@@ -548,9 +553,9 @@ view is identity, with the eye at the origin).
 
 Shaders that need the eye position (specular highlights, fresnel,
 parallax) typically pull it from the `camera.position` uniform seeded by
-[`Material::add`](/api/scene/material#add) when
-the Camera is absorbed â caching it here keeps every frame cheap (no
-view-matrix inversion on the GPU side).
+[`Pass::add`](/api/core/pass#add) when the Camera
+is absorbed â caching it here keeps every frame cheap (no view-matrix
+inversion on the GPU side).
 
 #### Example
 

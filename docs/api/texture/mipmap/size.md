@@ -16,6 +16,6 @@ let chain = Mipmap::build((
 let (width, height) = chain.size();
 # assert_eq!(width, 16);
 # assert_eq!(height, 16);
-let _ = (width, height);
+# let _size = (width, height);
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```

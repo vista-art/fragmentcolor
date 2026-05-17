@@ -1,6 +1,6 @@
 ---
 title: Scene
-description: "A `Scene` is the top-level container for the real-world things you render: [Models](/api/scene/model), [Cameras](/api/scene/camera), [Lights](/api/scene/light), and any custom [SceneObject](/api/scene). It owns one or more [Passes](/api/core/pass) underneath and implements [Renderable](/api/core/renderable), so you hand the whole scene to the [Renderer](/api/core/renderer) in a single call."
+description: "A `Scene` is the top-level container for the real-world things you render: [Models](/api/scene/model), [Cameras](/api/scene/camera), [Lights](/api/scene/light) (directional / point / spot â all one type), and any custom [SceneObject](/api/scene). It owns one or more [Passes](/api/core/pass) underneath and implements [Renderable](/api/core/renderable), so you hand the whole scene to the [Renderer](/api/core/renderer) in a single call."
 category: scene
 categoryLabel: Scene
 sidebar:
@@ -14,7 +14,8 @@ import { Code, Tabs, TabItem, Aside } from "@astrojs/starlight/components";
 A `Scene` is the top-level container for the real-world things you render:
 [Models](/api/scene/model),
 [Cameras](/api/scene/camera),
-[Lights](/api/scene/light), and any custom
+[Lights](/api/scene/light) (directional / point /
+spot â all one type), and any custom
 [SceneObject](/api/scene). It owns one or more
 [Passes](/api/core/pass) underneath and implements
 [Renderable](/api/core/renderable), so you hand
@@ -44,8 +45,9 @@ Scene injects sensible defaults when the user hasn't supplied them:
 
 - **Default Camera** â `Camera::perspective(60Â°, 1.0, 0.1, 100.0)` looking
   from `[0, 0, 5]` at the origin with `+Y` up.
-- **Default Light** â `Light::directional([0.3, -1.0, -0.4], [1, 1, 1])`,
-  a slightly off-axis white directional light.
+- **Default Light** â a `Light::directional` aimed at
+  `[0.0, -0.3, -1.0]` with full-white color, providing a forward-tilted
+  fill so a front-facing quad reads as lit rather than silhouetted.
 
 These only fire when no user Camera / Light has been added; as soon as you
 add your own, your values win.
@@ -77,6 +79,22 @@ transforms flattened into Model matrices, glTF camera nodes, and
 `KHR_lights_punctual` lights. Animation, skinning, morph targets, and
 material extensions beyond PBR-MR are out of scope; they parse cleanly
 and the loader ignores them.
+
+##### Threading + WASM
+
+`Scene::load` is fully synchronous: the underlying `gltf::import` decodes
+embedded images and buffers on the calling thread. A 100 MB `.glb`
+freezes the calling thread for the duration of the decode. Two
+implications:
+
+- **Native**: spawn `Scene::load` on a worker thread (`std::thread::spawn`,
+  `tokio::task::spawn_blocking`, etc.) if you can't afford a frame stall.
+- **WASM**: a sync load on the main thread freezes the page. Fetch the
+  `.glb` bytes via `fetch`, hand them to `SceneSource::gltf(bytes)` from
+  inside a Web Worker, then transfer the produced Scene back. The path
+  variant (`SceneSource::gltf(some_path)`) returns
+  `SceneLoadError::Invalid` on WASM because the gltf crate's `import`
+  goes through `std::fs`, which isn't available.
 
 #### Example
 
@@ -282,15 +300,15 @@ lang="kotlin"
 Absorb any [`SceneObject`](/api/scene) â a
 [Model](/api/scene/model),
 [Camera](/api/scene/camera),
-[Light](/api/scene/light), or a user-defined node
-that implements the trait â into the scene. The Scene routes it onto its
-default [Pass](/api/core/pass), which is created
-lazily on the first call.
+[Light](/api/scene/light), or a user-defined
+node that implements the trait â into the scene. The Scene routes it
+onto its default [Pass](/api/core/pass), which
+is created lazily on the first call.
 
 Each kind brings its own attach behaviour: a Model queues a draw with its
-own per-instance transform; a Camera or Light wires its uniforms into every
-shader the pass renders, both the ones already there and the ones added
-afterwards. Camera and Light hold Arc-shared state, so subsequent
+own per-instance transform; a Camera or Light wires its uniforms into
+every shader the pass renders, both the ones already there and the ones
+added afterwards. Camera and Light hold Arc-shared state, so subsequent
 mutations (`camera.look_at(...)`, `light.set_color(...)`) propagate to
 every shader on the pass with no further `add` call.
 
@@ -298,10 +316,10 @@ Returns `Result<&Scene, PassError>` so Models can fail at attach time when
 the Mesh layout doesn't match the Material's shader; Cameras and Lights
 always succeed. Chain with `?` between calls.
 
-If you add Models without adding a Camera or a Light, the Scene injects
+If you add Models without adding a Camera or any Light, the Scene injects
 sensible defaults at render time (`Camera::perspective` looking from
-`[0, 0, 5]`, white directional `Light` pointing slightly off-axis) so the
-first frame renders something recognisable. Add your own to take over.
+`[0, 0, 5]`, a white `Light::directional` pointing slightly off-axis) so
+the first frame renders something recognisable. Add your own to take over.
 
 #### Example
 
@@ -446,6 +464,386 @@ scene.add(model)?.add(camera)?.add(sun)
 // Updating the camera later is enough â every shader on the scene picks
 // the view_proj up at the next render.
 camera.lookAt(listOf(3.0f, 1.0f, 5.0f), listOf(0.0f, 0.0f, 0.0f), listOf(0.0f, 1.0f, 0.0f))
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Scene::models
+
+Return a snapshot of every [`Model`](/api/scene/model)
+added to this Scene via [`Scene::add`](/api/scene/scene/add)
+â including Models the loader instantiated from glTF `mesh` nodes.
+
+Each entry is an Arc-shared clone of the original handle. Mutating one
+of them (`set_visible`, `translate`, `set_transform`, â¦) propagates live
+to every shader the Model was wired into, no re-attach needed. The
+returned `Vec` is the *snapshot at call time* â adding more Models after
+the call doesn't grow this `Vec`, but the handles you already have stay
+live.
+
+Order: insertion order. Loader-produced Models appear in glTF node-walk
+order; user-added Models appear after.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Material, Mesh, Model, Scene, Vertex};
+
+let mesh = Mesh::new();
+mesh.add_vertex(
+    Vertex::pbr([0.0, 0.5, 0.0]).set(Vertex::UV0, [0.5, 1.0]),
+);
+let model = Model::new(mesh, Material::pbr()?);
+
+let scene = Scene::new();
+scene.add(&model)?;
+
+// LOD switch: hide every model the user just loaded, based on a
+// camera-distance heuristic the caller computes elsewhere.
+for m in scene.models() {
+    m.set_visible(false);
+}
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 18-19}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Material, Mesh, Model, Scene, Vertex } from "fragmentcolor";
+
+const mesh = new Mesh();
+mesh.addVertex( Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]), );
+const model = new Model(mesh, Material.pbr()?);
+
+const scene = new Scene();
+scene.add(model);
+
+// LOD switch: hide every model the user just loaded, based on a
+// camera-distance heuristic the caller computes elsewhere.
+for m in scene.models() { m.setVisible(false); };
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Material, Mesh, Model, Scene, Vertex
+
+mesh = Mesh()
+mesh.add_vertex(
+    Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
+)
+model = Model(mesh, Material.pbr())
+
+scene = Scene()
+scene.add(model)
+
+# LOD switch: hide every model the user just loaded, based on a
+# camera-distance heuristic the caller computes elsewhere.
+for m in scene.models() {
+    m.set_visible(false)
+}
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let mesh = Mesh()
+try mesh.addVertex(
+    try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.uV0, [0.5, 1.0]),
+)
+let model = Model(mesh, Material.pbr()?)
+
+let scene = Scene()
+scene.add(model)
+
+// LOD switch: hide every model the user just loaded, based on a
+// camera-distance heuristic the caller computes elsewhere.
+for m in scene.models() {
+    m.setVisible(false)
+}
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val mesh = Mesh()
+mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, floatArrayOf(0.5f, 1.0f)), )
+val model = Model(mesh, Material.pbr()?)
+
+val scene = Scene()
+scene.add(model)
+
+// LOD switch: hide every model the user just loaded, based on a
+// camera-distance heuristic the caller computes elsewhere.
+for m in scene.models() {
+    m.setVisible(false)
+}
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Scene::cameras
+
+Return a snapshot of every [`Camera`](/api/scene/camera)
+added to this Scene via [`Scene::add`](/api/scene/scene/add)
+â including Cameras the loader instantiated from glTF `camera` nodes
+(when [`GltfSource::cameras`](/api/scene/gltf_source/cameras)
+is left on, which is the default).
+
+Each entry is an Arc-shared clone of the original handle.
+`camera.look_at(...)` / `camera.set_aspect(...)` on a returned handle
+propagates the new view + projection to every shader the Camera is wired
+into â same live semantics as the Camera handle you originally added.
+
+When the Scene rendered with a defaulted Camera (no user-supplied Camera
+when the first render landed), the auto-injected default appears in
+this list too â so a consumer who wants to drive the default camera per
+frame can grab `scene.cameras().first()` and call `look_at` on it.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Scene, SceneSource};
+
+let scene = Scene::load(SceneSource::gltf("path/to/model.glb"))?;
+
+// glTF shipped a camera â animate it per frame instead of supplying our own.
+if let Some(camera) = scene.cameras().into_iter().next() {
+    camera.look_at([0.0, 1.5, 4.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+    camera.set_aspect(16.0 / 9.0);
+}
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 11-12}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Scene, SceneSource } from "fragmentcolor";
+
+const scene = Scene.load(SceneSource.gltf("path/to/model.glb"));
+
+// glTF shipped a camera â animate it per frame instead of supplying our own.
+if let Some(camera) = scene.cameras().intoIter().next() { camera.lookAt([0.0, 1.5, 4.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]); camera.setAspect(16.0 / 9.0); };
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Scene, SceneSource
+
+scene = Scene.load(SceneSource.gltf("path/to/model.glb"))
+
+# glTF shipped a camera â animate it per frame instead of supplying our own.
+if let Some(camera) = scene.cameras().into_iter().next() {
+    camera.look_at([0.0, 1.5, 4.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+    camera.set_aspect(16.0 / 9.0)
+}
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let scene = Scene.load(SceneSource.gltf("path/to/model.glb"))
+
+// glTF shipped a camera â animate it per frame instead of supplying our own.
+if let Some(camera) = scene.cameras().intoIter().next() {
+    camera.lookAt([0.0, 1.5, 4.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+    camera.setAspect(16.0 / 9.0)
+}
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val scene = Scene.load(SceneSource.gltf("path/to/model.glb"))
+
+// glTF shipped a camera â animate it per frame instead of supplying our own.
+if let Some(camera) = scene.cameras().intoIter().next() {
+    camera.lookAt(listOf(0.0f, 1.5f, 4.0f), listOf(0.0f, 0.0f, 0.0f), listOf(0.0f, 1.0f, 0.0f))
+    camera.setAspect(16.0 / 9.0)
+}
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Scene::lights
+
+Return a snapshot of every [`Light`](/api/scene/light)
+added to this Scene via [`Scene::add`](/api/scene/scene/add)
+â including Lights the loader instantiated from glTF
+`KHR_lights_punctual` nodes (when
+[`GltfSource::lights`](/api/scene/gltf_source/lights)
+is left on, which is the default).
+
+Each entry is an Arc-shared clone. Mutating a returned handle
+(`set_color`, `set_intensity`, `set_position`, â¦) propagates to every
+shader the Light occupies a slot in.
+
+The default-injected Light (auto-fired when the Scene first renders with
+no user-supplied Light) appears in this list too, so consumers can grab
+the default and tweak it instead of supplanting it.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Scene, SceneSource};
+
+let scene = Scene::load(SceneSource::gltf("path/to/model.glb"))?;
+
+// Darken every loaded light to half intensity for a moody pass.
+for light in scene.lights() {
+    let current = light.intensity();
+    light.set_intensity(current * 0.5);
+}
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 11-12}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Scene, SceneSource } from "fragmentcolor";
+
+const scene = Scene.load(SceneSource.gltf("path/to/model.glb"));
+
+// Darken every loaded light to half intensity for a moody pass.
+for light in scene.lights() { let current = light.intensity(); light.setIntensity(current * 0.5); };
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Scene, SceneSource
+
+scene = Scene.load(SceneSource.gltf("path/to/model.glb"))
+
+# Darken every loaded light to half intensity for a moody pass.
+for light in scene.lights() {
+current = light.intensity()
+    light.set_intensity(current * 0.5)
+}
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let scene = Scene.load(SceneSource.gltf("path/to/model.glb"))
+
+// Darken every loaded light to half intensity for a moody pass.
+for light in scene.lights() {
+let current = light.intensity()
+    light.setIntensity(current * 0.5)
+}
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val scene = Scene.load(SceneSource.gltf("path/to/model.glb"))
+
+// Darken every loaded light to half intensity for a moody pass.
+for light in scene.lights() {
+val current = light.intensity()
+    light.setIntensity(current * 0.5)
+}
 `}
 lang="kotlin"
 />
@@ -636,6 +1034,24 @@ renderer.render(&postfx_pass, &final_target)?;
 
 The Pass is cloned (shallow Arc-share) when stored, so further changes you
 make to the original handle reach the Scene's copy as well.
+
+##### Each new Pass clears by default
+
+Every `Pass::new(name)` starts with a clear-to-transparent input â the
+first render of the frame for that Pass wipes its colour attachment to
+`[0, 0, 0, 0]`. When you chain passes that read each other's output
+(e.g. `[backdrop, shadow_overlay]`), the second Pass will clear the
+first Pass's output unless you opt out:
+
+- Call `pass.load_previous()` on the downstream Pass to keep the
+  previous frame contents around (the wgpu `LoadOp::Load` equivalent).
+- Or call `pass.set_clear_color([r, g, b, a])` to choose a specific
+  clear value (still a clear; just a different colour).
+
+`Scene::add_pass` accepts each pre-pass independently â there's no
+automatic chaining of their attachments. If you need two passes to
+share a target, route them through the same `set_target(...)` and use
+`load_previous` to compose.
 
 #### Example
 

@@ -1,4 +1,3 @@
-from fragmentcolor import Material, Renderer
+from fragmentcolor import Material
 
-renderer = Renderer()
 foliage = Material.pbr().alpha_cutoff(0.3)

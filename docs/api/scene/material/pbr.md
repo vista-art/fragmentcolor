@@ -6,11 +6,12 @@ glTF 2.0 PBR-MR defaults, lightly tweaked so a freshly-constructed Material
 renders as a clean white surface under the default light rather than dark
 gunmetal.
 
-`pbr` takes the `Renderer` so it can seed each of the five glTF texture
-slots with a sensible 1×1 default pulled from the renderer's lazy texture
-cache. That way the underlying shader has every binding it needs out of the
-box and the per-factor render is correct even when no map is attached. Call
-the texture setters to override any of them.
+The five glTF texture slots (`base_color_map`, `metallic_roughness_map`,
+`normal_map`, `occlusion_map`, `emissive_map`) start unbound; the renderer
+resolves each one to a sensible 1×1 default from its lazy texture cache the
+first time a Pass renders the Material. That way the underlying shader has
+every binding it needs and the per-factor render is correct even when no map
+is attached. Call the texture setters to override any of them.
 
 The shader uses:
 
@@ -56,7 +57,7 @@ mismatch — use `Material::custom(...)` to bring your own vertex layout.
 | `light.color`                | `[1, 1, 1]`          |
 
 The camera and light are the user's domain, not the Material's. Pass them
-to [`Material::add`](https://fragmentcolor.org/api/scene/material#add) — the
+to [`Pass::add`](https://fragmentcolor.org/api/core/pass#add) — the
 typed [Camera](https://fragmentcolor.org/api/scene/camera) and
 [Light](https://fragmentcolor.org/api/scene/light) handles seed the matching
 `camera.*` / `light.*` uniforms and propagate any later updates back into
@@ -66,17 +67,15 @@ is still supported if you need it.
 ## Example
 
 ```rust
-# async fn run() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Material, Renderer};
+# fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::Material;
 
-let renderer = Renderer::new();
 let bronze = Material::pbr()?
     .base_color([0.8, 0.5, 0.2, 1.0])
     .metallic(1.0)
     .roughness(0.3);
 
-# let _ = bronze;
+# let _bronze = bronze;
 # Ok(())
 # }
-# fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 ```

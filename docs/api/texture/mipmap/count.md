@@ -15,6 +15,6 @@ let chain = Mipmap::build((
 ))?;
 let count = chain.count();
 # assert_eq!(count, 4); // 8, 4, 2, 1
-let _ = count;
+# let _count = count;
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```

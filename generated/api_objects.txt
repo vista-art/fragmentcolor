@@ -20,4 +20,5 @@ Texture
 TextureId
 TextureOptions
 TextureTarget
+TextureUsage
 Vertex
