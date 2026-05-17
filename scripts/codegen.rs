@@ -675,15 +675,11 @@ struct ObjectProperty {
         let mut pub_uses = Vec::new();
         for item in &items {
             match item {
-                Item::Mod(item_mod) => {
-                    if !matches!(item_mod.vis, Visibility::Public(_)) {
-                        private_modules.insert(item_mod.ident.to_string());
-                    }
+                Item::Mod(item_mod) if !matches!(item_mod.vis, Visibility::Public(_)) => {
+                    private_modules.insert(item_mod.ident.to_string());
                 }
-                Item::Use(item_use) => {
-                    if matches!(item_use.vis, Visibility::Public(_)) {
-                        pub_uses.push(item_use.clone());
-                    }
+                Item::Use(item_use) if matches!(item_use.vis, Visibility::Public(_)) => {
+                    pub_uses.push(item_use.clone());
                 }
                 _ => {}
             }

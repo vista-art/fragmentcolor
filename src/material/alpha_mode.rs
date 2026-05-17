@@ -30,9 +30,10 @@ use wasm_bindgen::prelude::*;
 #[cfg_attr(wasm, wasm_bindgen)]
 #[cfg_attr(python, pyclass(eq, eq_int))]
 #[cfg_attr(mobile, derive(uniffi::Enum))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum AlphaMode {
     /// Depth-test on, blending off, no alpha cutoff. Default.
+    #[default]
     Opaque,
     /// Depth-test on, blending off, fragment discarded if
     /// `material.base_color.a < material.alpha_cutoff`.
@@ -40,12 +41,6 @@ pub enum AlphaMode {
     /// Depth-test on (depth-write off), standard `SrcAlpha / OneMinusSrcAlpha`
     /// over-blend.
     Blend,
-}
-
-impl Default for AlphaMode {
-    fn default() -> Self {
-        Self::Opaque
-    }
 }
 
 impl AlphaMode {
