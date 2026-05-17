@@ -1,10 +1,12 @@
 //! Scene module — higher-level abstractions on top of Mesh + Material.
 //!
 //! Houses [`Scene`] (the top-level container), [`Model`] (Mesh + Material +
-//! transform), [`Camera`], [`Light`], and the [`SceneObject`] trait that
-//! ties them together. The split mirrors glTF / USD: a Scene is a flat list
-//! of nodes (geometry, viewpoints, lights), and the renderer walks the
-//! scene to produce a frame.
+//! transform), [`Camera`], the unified [`Light`] type with three
+//! constructors (`Light::directional` / `Light::point` / `Light::spot`),
+//! and the [`SceneObject`] trait that ties them together. The split
+//! mirrors glTF / USD: a Scene is a flat list of nodes (geometry,
+//! viewpoints, lights), and the renderer walks the scene to produce a
+//! frame.
 
 use glam::{Mat4, Vec3};
 use lsp_doc::lsp_doc;
@@ -25,6 +27,7 @@ mod light;
 mod loader;
 mod object;
 mod platform;
+#[allow(clippy::module_inception)]
 mod scene;
 
 pub use camera::*;
@@ -32,6 +35,17 @@ pub use light::*;
 pub use loader::{GltfSource, SceneLoadError, SceneSource};
 pub use object::SceneObject;
 pub use scene::Scene;
+
+/// Per-Model live state read by the renderer's draw-queue build. Folded
+/// into one lock so the per-frame `build_pass_draws` walk takes a single
+/// acquisition per entry. Hidden Models skip the queue entirely, so
+/// reading `visible` and `transform` together under one lock is the
+/// natural shape.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ModelState {
+    pub(crate) transform: Mat4,
+    pub(crate) visible: bool,
+}
 
 #[cfg_attr(wasm, wasm_bindgen)]
 #[cfg_attr(python, pyclass(from_py_object))]
@@ -41,16 +55,13 @@ pub use scene::Scene;
 pub struct Model {
     pub(crate) mesh: Mesh,
     pub(crate) material: Material,
-    // Arc-shared so the Pass can hold a *live* reference to the transform
-    // through `Pass::add`; the renderer reads the current value at draw
-    // time. Mutating `Model::translate` after `pass.add(&model)` is picked
-    // up on the next render — no re-add needed.
-    pub(crate) transform: Arc<RwLock<Mat4>>,
-    /// Live visibility flag. The renderer skips the entry in both the
-    /// opaque-batched and blend-sorted draw paths when this is `false` —
-    /// so callers can toggle Models in and out per frame without
-    /// re-attaching to the Pass. Defaults to `true`.
-    pub(crate) visible: Arc<RwLock<bool>>,
+    // Arc-shared so the Pass can hold a *live* reference through
+    // `Pass::add`; the renderer reads the current values at draw time.
+    // Mutating `Model::translate`, `Model::set_visible`, etc., after
+    // `pass.add(&model)` is picked up on the next render — no re-add
+    // needed. One lock covers transform + visibility so the renderer's
+    // per-Model walk halves its lock acquisitions.
+    pub(crate) state: Arc<RwLock<ModelState>>,
 }
 
 impl SceneObject for Model {
@@ -71,7 +82,7 @@ impl SceneObject for Model {
         // shaders linearly and a doubled entry would set pipeline + bind
         // groups twice for the same draws. When a new shader joins, replay
         // every scene object on the pass against it so order-of-add (Camera
-        // before Model, Light after Model, …) doesn't matter.
+        // before Model, lights after Model, …) doesn't matter.
         let shader_present = pass
             .object
             .shaders
@@ -97,8 +108,7 @@ impl SceneObject for Model {
         pass.object.model_entries.write().push(ModelEntry {
             shader: shader_arc.clone(),
             mesh: self.mesh.object.clone(),
-            transform: self.transform.clone(),
-            visible: self.visible.clone(),
+            state: self.state.clone(),
         });
         Ok(())
     }
@@ -112,15 +122,17 @@ impl Model {
         Self {
             mesh,
             material,
-            transform: Arc::new(RwLock::new(Mat4::IDENTITY)),
-            visible: Arc::new(RwLock::new(true)),
+            state: Arc::new(RwLock::new(ModelState {
+                transform: Mat4::IDENTITY,
+                visible: true,
+            })),
         }
     }
 
     /// Read the current visibility flag.
     #[lsp_doc("docs/api/scene/model/visible.md")]
     pub fn visible(&self) -> bool {
-        *self.visible.read()
+        self.state.read().visible
     }
 
     /// Toggle the Model in or out of the next render. Hidden Models are
@@ -130,7 +142,7 @@ impl Model {
     /// without rebuilding the Scene.
     #[lsp_doc("docs/api/scene/model/set_visible.md")]
     pub fn set_visible(&self, visible: bool) {
-        *self.visible.write() = visible;
+        self.state.write().visible = visible;
     }
 
     #[lsp_doc("docs/api/scene/model/mesh.md")]
@@ -147,21 +159,21 @@ impl Model {
     /// `mat4x4<f32>` storage and glam `to_cols_array_2d()`.
     #[lsp_doc("docs/api/scene/model/transform.md")]
     pub fn transform(&self) -> [[f32; 4]; 4] {
-        self.transform.read().to_cols_array_2d()
+        self.state.read().transform.to_cols_array_2d()
     }
 
     /// Replace the model matrix wholesale, in column-major order.
     #[lsp_doc("docs/api/scene/model/set_transform.md")]
     pub fn set_transform(&self, matrix: [[f32; 4]; 4]) {
-        *self.transform.write() = Mat4::from_cols_array_2d(&matrix);
+        self.state.write().transform = Mat4::from_cols_array_2d(&matrix);
     }
 
     /// Pre-multiply by a world-space translation. Result: the model moves by
     /// `offset` in world coordinates.
     #[lsp_doc("docs/api/scene/model/translate.md")]
     pub fn translate(&self, offset: [f32; 3]) {
-        let mut t = self.transform.write();
-        *t = Mat4::from_translation(Vec3::from(offset)) * *t;
+        let mut s = self.state.write();
+        s.transform = Mat4::from_translation(Vec3::from(offset)) * s.transform;
     }
 
     /// Post-multiply by a rotation around the given axis (in local space).
@@ -175,34 +187,31 @@ impl Model {
             log::warn!("Model::rotate ignored: axis is zero-length");
             return;
         }
-        let mut t = self.transform.write();
-        *t = *t * Mat4::from_axis_angle(axis_vec / length, radians);
+        let mut s = self.state.write();
+        s.transform *= Mat4::from_axis_angle(axis_vec / length, radians);
     }
 
     /// Post-multiply by a per-axis scale (in local space). Result: the model
     /// grows or shrinks around its local origin without moving its origin.
     #[lsp_doc("docs/api/scene/model/scale.md")]
     pub fn scale(&self, factor: [f32; 3]) {
-        let mut t = self.transform.write();
-        *t = *t * Mat4::from_scale(Vec3::from(factor));
+        let mut s = self.state.write();
+        s.transform *= Mat4::from_scale(Vec3::from(factor));
     }
 }
 
 /// A single Model queued on a Pass: the Material's Shader, the Model's Mesh,
-/// and a live Arc reference to the Model's transform. The renderer groups
-/// entries by (Shader, Mesh) and builds a per-Pass instance buffer (4 vec4
-/// columns per entry, taken at draw time so transform mutations between
-/// `add_model` and `render` are picked up live).
+/// and a live Arc reference to the Model's transform + visibility. The
+/// renderer groups entries by (Shader, Mesh) and builds a per-Pass instance
+/// buffer (4 vec4 columns per entry, taken at draw time so transform
+/// mutations between `add_model` and `render` are picked up live). One
+/// lock covers both fields so the per-frame walk takes a single read per
+/// Model.
 #[derive(Debug, Clone)]
 pub(crate) struct ModelEntry {
     pub(crate) shader: Arc<ShaderObject>,
     pub(crate) mesh: Arc<MeshObject>,
-    pub(crate) transform: Arc<RwLock<Mat4>>,
-    /// Live visibility — when `false`, the renderer skips the entry in
-    /// both the opaque-batched and blend-sorted draw paths. Shared via
-    /// Arc with the originating `Model::visible` so toggles propagate
-    /// without re-attach.
-    pub(crate) visible: Arc<RwLock<bool>>,
+    pub(crate) state: Arc<RwLock<ModelState>>,
 }
 
 #[cfg(test)]
@@ -331,7 +340,7 @@ mod tests {
             [9.0, 0.0, 0.0, 1.0],
         ]);
         let entries = pass.object.model_entries.read();
-        let live = entries[0].transform.read().to_cols_array_2d();
+        let live = entries[0].state.read().transform.to_cols_array_2d();
         assert_eq!(live[3], [9.0, 0.0, 0.0, 1.0]);
     }
 
@@ -357,7 +366,7 @@ mod tests {
         m.set_visible(false);
         let entries = pass.object.model_entries.read();
         assert!(
-            !*entries[0].visible.read(),
+            !entries[0].state.read().visible,
             "visibility flag should propagate live through the Arc"
         );
     }

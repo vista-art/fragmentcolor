@@ -340,6 +340,16 @@ impl ShaderObject {
         Ok(uniform.data.clone())
     }
 
+    /// True iff the shader declares a top-level storage binding named
+    /// `root`. Used by [`crate::Renderer::read_storage`] as a precondition
+    /// before issuing the GPU readback. Not part of the user-facing API —
+    /// the outer `Shader` doesn't re-export this; callers reach for
+    /// `Renderer::read_storage` which surfaces `StorageBindingNotFound` on
+    /// the same condition.
+    pub(crate) fn has_storage(&self, root: &str) -> bool {
+        self.storage.read().has_storage(root)
+    }
+
     /// Tells weather the shader is a compute shader.
     pub fn is_compute(&self) -> bool {
         self.module

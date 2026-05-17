@@ -37,12 +37,14 @@ pub(crate) struct CameraObject {
     attached_passes: RwLock<Vec<Weak<PassObject>>>,
 }
 
-/// Tag + perspective-rebuild parameters for the Camera's projection.
-/// `set_aspect` reads `fovy_radians` / `near` / `far` to recompute the
-/// projection matrix when the caller hands a new aspect ratio;
-/// `Orthographic` is a unit variant whose only job is to make
-/// `set_aspect` log + bail when the projection isn't perspective.
-/// Internal-only — the public surface uses `[[f32; 4]; 4]`.
+/// Tag + rebuild parameters for the Camera's projection. `set_aspect`
+/// reads these to recompute the projection matrix in place when the
+/// caller hands a new aspect ratio — for `Perspective` it rebuilds from
+/// `fovy_radians / near / far`; for `Orthographic` it keeps the current
+/// vertical extent and rescales the horizontal so `(right - left) /
+/// (top - bottom)` matches the new aspect, centered on the existing
+/// horizontal midpoint. Internal-only — the public surface uses
+/// `[[f32; 4]; 4]`.
 #[derive(Debug, Clone, Copy)]
 enum Projection {
     Perspective {
@@ -50,7 +52,14 @@ enum Projection {
         near: f32,
         far: f32,
     },
-    Orthographic,
+    Orthographic {
+        left: f32,
+        right: f32,
+        bottom: f32,
+        top: f32,
+        near: f32,
+        far: f32,
+    },
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -113,23 +122,33 @@ impl Camera {
         far: f32,
     ) -> Self {
         Self::from_state(CameraState {
-            projection: Projection::Orthographic,
+            projection: Projection::Orthographic {
+                left,
+                right,
+                bottom,
+                top,
+                near,
+                far,
+            },
             view: Mat4::IDENTITY,
             proj: Mat4::orthographic_rh(left, right, bottom, top, near, far),
             position: Vec3::ZERO,
         })
     }
 
-    /// Update the perspective camera's aspect ratio. The typical caller is
-    /// a resize handler: hand the new `width / height` after the window
-    /// resizes and the projection matrix recomputes in place, propagating
-    /// to every shader (and the Pass camera snapshot used by the
-    /// transparency sort) without dropping the Camera handle.
+    /// Update the camera's aspect ratio. The typical caller is a resize
+    /// handler: hand the new `width / height` after the window resizes
+    /// and the projection matrix recomputes in place, propagating to every
+    /// shader (and the Pass camera snapshot used by the transparency sort)
+    /// without dropping the Camera handle.
     ///
-    /// No-op with a `log::warn!` when called on an orthographic camera —
-    /// "aspect" isn't well-defined for an arbitrary frustum. Use
-    /// `Camera::orthographic(...)` to replace the projection wholesale,
-    /// or extend with a `set_orthographic_params` setter if you need one.
+    /// Behaviour by projection kind:
+    /// - **Perspective**: rebuilds from `fovy_radians / near / far` with
+    ///   the new aspect.
+    /// - **Orthographic**: keeps the current vertical extent and rescales
+    ///   the horizontal extents so `(right - left) / (top - bottom)`
+    ///   matches the new aspect, centred on the existing horizontal
+    ///   midpoint. Frustum height stays put.
     ///
     /// Returns a handle to the same Camera (Arc-shared) for chaining.
     #[lsp_doc("docs/api/scene/camera/set_aspect.md")]
@@ -144,11 +163,29 @@ impl Camera {
                 } => {
                     state.proj = Mat4::perspective_rh(fovy_radians, aspect, near, far);
                 }
-                Projection::Orthographic => {
-                    log::warn!(
-                        "Camera::set_aspect ignored: orthographic cameras don't carry an aspect ratio — use `Camera::orthographic(...)` to replace the projection"
-                    );
-                    return self.clone();
+                Projection::Orthographic {
+                    left,
+                    right,
+                    bottom,
+                    top,
+                    near,
+                    far,
+                } => {
+                    let height = top - bottom;
+                    let mid_x = 0.5 * (left + right);
+                    let half_w = 0.5 * aspect * height;
+                    let new_left = mid_x - half_w;
+                    let new_right = mid_x + half_w;
+                    state.projection = Projection::Orthographic {
+                        left: new_left,
+                        right: new_right,
+                        bottom,
+                        top,
+                        near,
+                        far,
+                    };
+                    state.proj =
+                        Mat4::orthographic_rh(new_left, new_right, bottom, top, near, far);
                 }
             }
         }
@@ -156,17 +193,19 @@ impl Camera {
         self.clone()
     }
 
-    /// Position the camera in world space. `eye` is where the camera is,
-    /// `target` is the point it aims at, `up` is the world-up vector that
-    /// orients the roll (typically `[0, 1, 0]`). Returns a handle to the
-    /// same Camera (Arc-shared backing) for chaining.
+    /// Position the camera in world space. `position` is where the camera
+    /// sits, `target` is the point it aims at, `up` is the world-up vector
+    /// that orients the roll (typically `[0, 1, 0]`). Matches Light's
+    /// `position` vocabulary so both scene types describe "where this
+    /// object is in the world" the same way. Returns a handle to the same
+    /// Camera (Arc-shared backing) for chaining.
     #[lsp_doc("docs/api/scene/camera/look_at.md")]
-    pub fn look_at(&self, eye: [f32; 3], target: [f32; 3], up: [f32; 3]) -> Self {
-        let eye_v = Vec3::from(eye);
+    pub fn look_at(&self, position: [f32; 3], target: [f32; 3], up: [f32; 3]) -> Self {
+        let pos_v = Vec3::from(position);
         {
             let mut state = self.object.state.write();
-            state.view = Mat4::look_at_rh(eye_v, Vec3::from(target), Vec3::from(up));
-            state.position = eye_v;
+            state.view = Mat4::look_at_rh(pos_v, Vec3::from(target), Vec3::from(up));
+            state.position = pos_v;
         }
         self.propagate();
         self.clone()
@@ -192,17 +231,23 @@ impl Camera {
     /// absorbed this Camera so the renderer can read world-space eye
     /// position and view matrix without going through a shader uniform.
     fn propagate(&self) {
-        let vp = self.view_proj();
-        let pos = self.position();
-        let snapshot = CameraSnapshot {
-            position: pos,
-            view: self.view(),
+        // One state read computes the three values every consumer needs;
+        // the public getters each take their own lock, but the propagate
+        // hot path stays at a single acquisition.
+        let (view, view_proj, position) = {
+            let s = self.object.state.read();
+            (
+                s.view.to_cols_array_2d(),
+                (s.proj * s.view).to_cols_array_2d(),
+                s.position.to_array(),
+            )
         };
+        let snapshot = CameraSnapshot { view };
         let mut attached = self.object.attached.write();
         attached.retain(|weak| {
             if let Some(shader) = weak.upgrade() {
-                let _ = shader.set("camera.view_proj", vp);
-                let _ = shader.set("camera.position", pos);
+                let _ = shader.set("camera.view_proj", view_proj);
+                let _ = shader.set("camera.position", position);
                 true
             } else {
                 false
@@ -218,31 +263,37 @@ impl Camera {
             }
         });
     }
-
-    /// Read the view matrix as a column-major 4×4. Mirrors
-    /// `Camera::view_proj`'s storage layout (WGSL `mat4x4<f32>` /
-    /// `glam::Mat4::to_cols_array_2d`).
-    fn view(&self) -> [[f32; 4]; 4] {
-        self.object.state.read().view.to_cols_array_2d()
-    }
 }
 
 impl SceneObject for Camera {
     fn attach(&self, pass: &crate::Pass) -> Result<(), crate::PassError> {
-        // Apply current state to every shader already on the pass.
+        // One state read produces every snapshot the attach path needs
+        // (view, view_proj, position). The cached locals feed both the
+        // per-shader push and the Pass camera snapshot.
+        let (view, view_proj, position) = {
+            let s = self.object.state.read();
+            (
+                s.view.to_cols_array_2d(),
+                (s.proj * s.view).to_cols_array_2d(),
+                s.position.to_array(),
+            )
+        };
+        // Apply the cached values to every shader already on the pass.
         let shaders: Vec<Arc<ShaderObject>> =
             pass.object.shaders.read().iter().cloned().collect();
-        for s in shaders {
-            self.apply_to_shader(&Shader::from(s));
+        {
+            let mut attached = self.object.attached.write();
+            for s in shaders {
+                let _ = s.set("camera.view_proj", view_proj);
+                let _ = s.set("camera.position", position);
+                attached.push(Arc::downgrade(&s));
+            }
         }
         // Stamp the Pass's camera snapshot so the renderer can sort translucent
         // draws back-to-front without going through `Shader::get`. Register a
         // Weak<PassObject> on the Camera so subsequent `Camera::look_at` mutations
         // refresh the snapshot in step with every absorbing Pass.
-        *pass.object.camera_snapshot.write() = Some(CameraSnapshot {
-            position: self.position(),
-            view: self.view(),
-        });
+        *pass.object.camera_snapshot.write() = Some(CameraSnapshot { view });
         self.object
             .attached_passes
             .write()
@@ -323,7 +374,7 @@ mod tests {
 
         let pass = crate::Pass::new("scene");
         pass.add(&model).expect("add_model");
-        pass.add(&camera);
+        pass.add(&camera).expect("camera attach is infallible in unit tests");
 
         let m: [[f32; 4]; 4] = material
             .shader()
@@ -348,7 +399,7 @@ mod tests {
 
         let pass = crate::Pass::new("scene");
         pass.add(&model).expect("add_model");
-        pass.add(&camera);
+        pass.add(&camera).expect("camera attach is infallible in unit tests");
 
         camera.look_at([5.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
         let p: [f32; 3] = material.shader().get("camera.position").unwrap();
@@ -364,7 +415,7 @@ mod tests {
         let material = Material::pbr().expect("pbr");
 
         let pass = crate::Pass::new("scene");
-        pass.add(&camera);
+        pass.add(&camera).expect("camera attach is infallible in unit tests");
 
         let model = crate::scene::Model::new(pbr_triangle_mesh(), material.clone());
         pass.add(&model).expect("add_model");
@@ -385,10 +436,9 @@ mod tests {
 
         let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0)
             .look_at([0.0, 0.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
-        pass.add(&camera);
+        pass.add(&camera).expect("camera attach is infallible in unit tests");
 
         let snap = pass.object.camera_snapshot.read().expect("snapshot stamped");
-        assert_eq!(snap.position, [0.0, 0.0, 5.0]);
         // View matrix translates world by -5 along +Z (eye at +5 → world origin
         // lands at -5 in eye space). Right-handed look_at_rh: the eye sits at
         // the negation of the view matrix's third column's first three rows.
@@ -399,7 +449,6 @@ mod tests {
         // look_at should refresh the snapshot
         camera.look_at([0.0, 0.0, 10.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
         let snap2 = pass.object.camera_snapshot.read().expect("snapshot refreshed");
-        assert_eq!(snap2.position, [0.0, 0.0, 10.0]);
         let translation2 = snap2.view[3];
         assert!((translation2[2] + 10.0).abs() < 1.0e-5, "got {translation2:?}");
     }
@@ -420,15 +469,27 @@ mod tests {
     }
 
     #[test]
-    fn set_aspect_on_orthographic_is_a_noop() {
-        // Orthographic frustums don't carry an aspect ratio; calling
-        // set_aspect on one should log a warning and leave the projection
-        // unchanged.
+    fn set_aspect_on_orthographic_rescales_horizontal_extent() {
+        // Orthographic frustums absorb the new aspect by keeping the
+        // vertical extent and rescaling the horizontal extents around the
+        // current horizontal midpoint. Starting from a centred 2×2 frustum,
+        // an aspect of 2.0 should land at a 4×2 frustum (left=-2, right=2).
         let camera = Camera::orthographic(-1.0, 1.0, -1.0, 1.0, 0.1, 100.0);
-        let before = camera.view_proj();
         camera.set_aspect(2.0);
+        // The [0][0] term of an orthographic projection is `2 / (right - left)`.
+        // For a 4-wide frustum that's 0.5; for the original 2-wide it was 1.0.
         let after = camera.view_proj();
-        assert_eq!(before, after);
+        assert!(
+            (after[0][0] - 0.5).abs() < 1.0e-5,
+            "expected [0][0] ≈ 0.5 for width-4 ortho, got {}",
+            after[0][0]
+        );
+        // The [1][1] term (vertical scale) stays at 1.0 — height unchanged.
+        assert!(
+            (after[1][1] - 1.0).abs() < 1.0e-5,
+            "vertical scale should be unchanged, got {}",
+            after[1][1]
+        );
     }
 
     #[test]
@@ -441,7 +502,7 @@ mod tests {
         let model = crate::scene::Model::new(pbr_triangle_mesh(), material.clone());
         let pass = crate::Pass::new("scene");
         pass.add(&model).expect("add_model");
-        pass.add(&camera);
+        pass.add(&camera).expect("camera attach is infallible in unit tests");
 
         let before: [[f32; 4]; 4] = material.shader().get("camera.view_proj").unwrap();
         camera.set_aspect(2.0);

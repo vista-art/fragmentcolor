@@ -107,6 +107,79 @@ fn renders_two_blend_quads_at_different_depths() {
 }
 
 #[test]
+fn cross_shader_blend_sorts_globally() {
+    // Two translucent Materials (red and blue glass) on the same Pass,
+    // each owning three Models interleaved on the eye axis. The
+    // back-to-front sort should treat all six entries as one global
+    // sequence, not two per-shader buckets. We add the Models in an
+    // intentionally scrambled order; the result hinges on the final
+    // global Z order, not on insertion order.
+    pollster::block_on(async move {
+        let renderer = Renderer::new();
+        let target = renderer
+            .create_texture_target([16u32, 16u32])
+            .await
+            .expect("texture target");
+
+        let red_mat = Material::pbr()
+            .expect("pbr")
+            .base_color([1.0, 0.0, 0.0, 0.5])
+            .alpha_mode(AlphaMode::Blend);
+        let blue_mat = Material::pbr()
+            .expect("pbr")
+            .base_color([0.0, 0.0, 1.0, 0.5])
+            .alpha_mode(AlphaMode::Blend);
+
+        // Six quads interleaved on the eye axis. Red at -3, -1, 1; blue at
+        // -2, 0, 2. With a correct global sort the nearest-camera quad is
+        // the blue one at z=2 — which means the dominant top layer is blue.
+        // A per-shader sort would draw red's nearest (z=1) after blue's
+        // nearest (z=2), inverting the result.
+        let mut models: Vec<Model> = Vec::new();
+        for (mat, zs) in [(red_mat.clone(), [-3.0_f32, -1.0, 1.0]),
+                          (blue_mat.clone(), [-2.0_f32, 0.0, 2.0])] {
+            for z in zs {
+                let m = Model::new(unit_quad(), mat.clone());
+                m.translate([0.0, 0.0, z]);
+                models.push(m);
+            }
+        }
+
+        let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0)
+            .look_at([0.0, 0.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+        let sun = Light::directional([0.0, 0.0, -1.0], [1.0, 1.0, 1.0]);
+
+        let scene = Scene::new();
+        // Scramble the insertion order so the test exercises the sort,
+        // not the insertion-order accident.
+        let order = [3usize, 0, 4, 1, 5, 2];
+        let mut s = scene
+            .add(&camera)
+            .expect("camera")
+            .add(&sun)
+            .expect("sun");
+        for i in order {
+            s = s.add(&models[i]).expect("model");
+        }
+
+        renderer.render(&scene, &target).expect("render");
+        let image = target.get_image().await;
+        assert_eq!(image.len(), 16 * 16 * 4);
+
+        let center_idx = ((8 * 16 + 8) * 4) as usize;
+        let r = image[center_idx];
+        let b = image[center_idx + 2];
+        // With the correct global sort the topmost quad is blue
+        // (z=2 is nearest the eye at z=5), so the over-blended result
+        // at the center is biased toward blue.
+        assert!(
+            b >= r.saturating_sub(40),
+            "global cross-shader sort wrong: r={r}, b={b}"
+        );
+    });
+}
+
+#[test]
 fn opaque_and_blend_in_same_pass_render_without_panic() {
     // Mixing opaque and blend models in one Pass exercises the partition
     // logic in `build_pass_draws`. The renderer should batch the opaque

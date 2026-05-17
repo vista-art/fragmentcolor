@@ -221,6 +221,14 @@ pub(crate) struct MeshObject {
     // Optional override for instance count (allows drawing without instance buffer)
     override_instances: RwLock<Option<u32>>,
 
+    // Axis-aligned bounding box of the mesh's vertex positions, in local
+    // (mesh) space. Updated incrementally as `add_vertex` runs. The
+    // renderer reads this through `MeshObject::aabb_local` to compute a
+    // world-space centroid for translucent eye-Z sort. Sentinel pair
+    // (`+inf` / `-inf`) flags a degenerate (empty) mesh.
+    aabb_min: RwLock<glam::Vec3>,
+    aabb_max: RwLock<glam::Vec3>,
+
     // GPU resources (created lazily)
     gpu: RwLock<Option<GpuStreams>>,
 
@@ -265,6 +273,8 @@ impl MeshObject {
             dirty_vertices: RwLock::new(false),
             dirty_instances: RwLock::new(false),
             override_instances: RwLock::new(None),
+            aabb_min: RwLock::new(glam::Vec3::splat(f32::INFINITY)),
+            aabb_max: RwLock::new(glam::Vec3::splat(f32::NEG_INFINITY)),
             gpu: RwLock::new(None),
             gpu_cache: RwLock::new(None),
             cache_valid: RwLock::new(false),
@@ -272,9 +282,27 @@ impl MeshObject {
     }
 
     fn add_vertex(&self, v: Vertex) {
+        // Grow the local-space AABB before stashing the Vertex. 2D positions
+        // contribute z = 0, which is the same value the vertex shader sees
+        // (the `position` slot zero-pads the missing components).
+        let p = glam::Vec3::new(v.position.0.x, v.position.0.y, v.position.0.z);
+        let mut lo = self.aabb_min.write();
+        let mut hi = self.aabb_max.write();
+        *lo = lo.min(p);
+        *hi = hi.max(p);
+        drop(lo);
+        drop(hi);
         self.verts.write().push(v);
         *self.dirty_vertices.write() = true;
         self.invalidate_cache();
+    }
+
+    /// Local-space AABB of every Vertex added so far. Returns the sentinel
+    /// pair (`+inf`, `-inf`) for an empty mesh; callers detect this and
+    /// fall back to a centroid of zero. Internal-only — glam types stay
+    /// inside the crate per the no-glam-on-public-API rule.
+    pub(crate) fn aabb_local(&self) -> (glam::Vec3, glam::Vec3) {
+        (*self.aabb_min.read(), *self.aabb_max.read())
     }
 
     fn add_instance(&self, i: Instance) {
