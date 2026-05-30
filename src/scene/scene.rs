@@ -143,8 +143,8 @@ impl Scene {
 
     /// Snapshot of every [`Camera`](crate::Camera) added to this Scene via
     /// [`Scene::add`] (including Cameras the loader created from glTF
-    /// `camera` nodes when [`GltfSource::cameras`](crate::scene::GltfSource::cameras)
-    /// is left on). Each entry is an Arc-shared clone — `camera.look_at(...)`
+    /// `camera` nodes, unless you skipped them via the loader's camera
+    /// filter). Each entry is an Arc-shared clone — `camera.look_at(...)`
     /// on a returned handle drives every shader the Camera is wired into.
     #[lsp_doc("docs/api/scene/scene/cameras.md")]
     pub fn cameras(&self) -> Vec<Camera> {
@@ -153,8 +153,8 @@ impl Scene {
 
     /// Snapshot of every [`Light`](crate::Light) added to this Scene via
     /// [`Scene::add`] (including Lights the loader created from glTF
-    /// `KHR_lights_punctual` nodes when [`GltfSource::lights`](crate::scene::GltfSource::lights)
-    /// is left on). Each entry is an Arc-shared clone — `light.set_color(...)`
+    /// `KHR_lights_punctual` nodes, unless you skipped them via the loader's
+    /// light filter). Each entry is an Arc-shared clone — `light.set_color(...)`
     /// on a returned handle drives every shader the Light occupies a slot in.
     #[lsp_doc("docs/api/scene/scene/lights.md")]
     pub fn lights(&self) -> Vec<Light> {

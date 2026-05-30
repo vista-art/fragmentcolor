@@ -1,10 +1,8 @@
-from fragmentcolor import Scene, SceneSource
+from fragmentcolor import Scene
 
-# File path — covers both `.gltf` JSON (with external buffers/images)
-# and `.glb` binary containers.
-scene = Scene.load(SceneSource.gltf("path/to/model.gltf"))
+# A path — `.gltf` JSON (with external buffers/images) or a `.glb` container.
+scene = Scene.load("path/to/model.gltf")
 
-# In-memory `.glb` bytes — fetched from disk, network, or a BIN chunk
-# in another format.
-glb_bytes = [/* … */]
-scene2 = Scene.load(SceneSource.gltf(glb_bytes))
+# In-memory `.glb` bytes — from disk, the network, or another asset pipeline.
+glb_bytes = open("path/to/model.glb", "rb").read()
+scene2 = Scene.load(glb_bytes)

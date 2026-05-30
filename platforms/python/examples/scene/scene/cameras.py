@@ -1,6 +1,6 @@
-from fragmentcolor import Scene, SceneSource
+from fragmentcolor import Scene
 
-scene = Scene.load(SceneSource.gltf("path/to/model.glb"))
+scene = Scene.load("path/to/model.glb")
 
 # glTF shipped a camera — animate it per frame instead of supplying our own.
 if let Some(camera) = scene.cameras().into_iter().next() {

@@ -1231,7 +1231,7 @@ class GeneratedExamples {
 
     @Suppress("unused") private suspend fun _example_scene_scene_cameras() {
 
-        val scene = Scene.load(SceneSource.gltf("path/to/model.glb"))
+        val scene = Scene.load("path/to/model.glb")
 
         // glTF shipped a camera — animate it per frame instead of supplying our own.
         if let Some(camera) = scene.cameras().intoIter().next() {
@@ -1242,7 +1242,7 @@ class GeneratedExamples {
 
     @Suppress("unused") private suspend fun _example_scene_scene_lights() {
 
-        val scene = Scene.load(SceneSource.gltf("path/to/model.glb"))
+        val scene = Scene.load("path/to/model.glb")
 
         // Darken every loaded light to half intensity for a moody pass.
         for light in scene.lights() {
@@ -1253,14 +1253,12 @@ class GeneratedExamples {
 
     @Suppress("unused") private suspend fun _example_scene_scene_load() {
 
-        // File path — covers both """.gltf""" JSON (with external buffers/images)
-        // and """.glb""" binary containers.
-        val scene = Scene.load(SceneSource.gltf("path/to/model.gltf"))
+        // A path — """.gltf""" JSON (with external buffers/images) or a """.glb""" container.
+        val scene = Scene.load("path/to/model.gltf")
 
-        // In-memory """.glb""" bytes — fetched from disk, network, or a BIN chunk
-        // in another format.
-        val glb_bytes = [/* … */]
-        val scene2 = Scene.load(SceneSource.gltf(glb_bytes))
+        // In-memory """.glb""" bytes — from disk, the network, or another asset pipeline.
+        val glb_bytes = "/healthcheck/public/favicon.png"
+        val scene2 = Scene.load(glb_bytes)
     }
 
     @Suppress("unused") private suspend fun _example_scene_scene_models() {

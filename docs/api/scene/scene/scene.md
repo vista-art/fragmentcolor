@@ -46,7 +46,7 @@ add your own, your values win.
 | name        | what it does                                                |
 | ----------- | ----------------------------------------------------------- |
 | `new`       | construct an empty Scene                                    |
-| `load`      | construct a Scene from a `SceneSource` (e.g. glTF bytes, path, or URL) |
+| `load`      | construct a Scene from a 3D file (glTF `.gltf` / `.glb` path or in-memory `.glb` bytes) |
 | `add`       | absorb a `SceneObject` (Model / Camera / Light / custom)    |
 | `add_pass`  | absorb a user-built [Pass](https://fragmentcolor.org/api/core/pass) for explicit pipeline ordering (shadows, post-fx, …) |
 | `ambient`   | set the ambient color that lifts every Material's base lighting |

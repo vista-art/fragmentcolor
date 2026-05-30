@@ -1,10 +1,8 @@
 import FragmentColor
 
-// File path — covers both """.gltf""" JSON (with external buffers/images)
-// and """.glb""" binary containers.
-let scene = Scene.load(SceneSource.gltf("path/to/model.gltf"))
+// A path — """.gltf""" JSON (with external buffers/images) or a """.glb""" container.
+let scene = Scene.load("path/to/model.gltf")
 
-// In-memory """.glb""" bytes — fetched from disk, network, or a BIN chunk
-// in another format.
-let glb_bytes = [/* … */]
-let scene2 = Scene.load(SceneSource.gltf(glb_bytes))
+// In-memory """.glb""" bytes — from disk, the network, or another asset pipeline.
+let glb_bytes = "/healthcheck/public/favicon.png"
+let scene2 = Scene.load(glb_bytes)

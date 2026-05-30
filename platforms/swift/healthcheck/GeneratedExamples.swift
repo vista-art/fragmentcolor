@@ -1332,7 +1332,7 @@ private enum _GeneratedExamples {
 
     static func _example_scene_scene_cameras() async throws {
 
-        let scene = Scene.load(SceneSource.gltf("path/to/model.glb"))
+        let scene = Scene.load("path/to/model.glb")
 
         // glTF shipped a camera — animate it per frame instead of supplying our own.
         if let Some(camera) = scene.cameras().intoIter().next() {
@@ -1343,7 +1343,7 @@ private enum _GeneratedExamples {
 
     static func _example_scene_scene_lights() async throws {
 
-        let scene = Scene.load(SceneSource.gltf("path/to/model.glb"))
+        let scene = Scene.load("path/to/model.glb")
 
         // Darken every loaded light to half intensity for a moody pass.
         for light in scene.lights() {
@@ -1354,14 +1354,12 @@ private enum _GeneratedExamples {
 
     static func _example_scene_scene_load() async throws {
 
-        // File path — covers both """.gltf""" JSON (with external buffers/images)
-        // and """.glb""" binary containers.
-        let scene = Scene.load(SceneSource.gltf("path/to/model.gltf"))
+        // A path — """.gltf""" JSON (with external buffers/images) or a """.glb""" container.
+        let scene = Scene.load("path/to/model.gltf")
 
-        // In-memory """.glb""" bytes — fetched from disk, network, or a BIN chunk
-        // in another format.
-        let glb_bytes = [/* … */]
-        let scene2 = Scene.load(SceneSource.gltf(glb_bytes))
+        // In-memory """.glb""" bytes — from disk, the network, or another asset pipeline.
+        let glb_bytes = "/healthcheck/public/favicon.png"
+        let scene2 = Scene.load(glb_bytes)
     }
 
     static func _example_scene_scene_models() async throws {

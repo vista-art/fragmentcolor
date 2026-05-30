@@ -1,10 +1,10 @@
 //! Scene loader — `Scene::load` and the `SceneSource` transport.
 //!
-//! The loader is format-tagged: every entry into `Scene::load` carries a
-//! [`SceneSource`] variant that names which file format the bytes-or-path
-//! payload should be parsed as. glTF 2.0 (with its `.glb` binary container)
-//! is the first format; the enum exists so future additions land without a
-//! breaking change to the public method.
+//! `Scene::load` accepts a path or in-memory bytes directly; the input is
+//! converted into a format-tagged [`SceneSource`] internally so the loader
+//! knows which parser to dispatch. glTF 2.0 (with its `.glb` binary
+//! container) is the first format; the enum gains a variant per future
+//! format without changing the public method.
 //!
 //! The shape mirrors `Material::pbr()` and `Camera::perspective(...)`: sync
 //! return, no `Renderer` argument. Any texture inputs the parser produces
@@ -20,7 +20,6 @@
 use std::path::PathBuf;
 
 use glam::{Mat4, Quat, Vec3};
-use lsp_doc::lsp_doc;
 
 use crate::scene::{Camera, Light, Scene};
 use crate::{Material, Mesh, Model, TextureData, TextureInput};
@@ -36,11 +35,11 @@ pub enum SceneSource {
 impl SceneSource {
     /// Build a [`GltfSource`] from anything that converts into one — `&str`
     /// / `&Path` / `PathBuf` for file inputs, `Vec<u8>` / `&[u8]` for
-    /// in-memory `.glb` bytes. Chains naturally with the filter methods on
-    /// `GltfSource` (`cameras`, `lights`, …); the resulting `GltfSource`
-    /// converts to `SceneSource` automatically when handed to
-    /// [`Scene::load`](crate::Scene::load), so `Scene::load(SceneSource::gltf(path))`
-    /// keeps working unchanged.
+    /// in-memory `.glb` bytes. Use this when you need the per-load filter
+    /// methods (`cameras`, `lights`); the resulting `GltfSource` converts to
+    /// `SceneSource` automatically when handed to
+    /// [`Scene::load`](crate::Scene::load). For the common case, pass the
+    /// path or bytes straight to `Scene::load` instead.
     pub fn gltf(source: impl Into<GltfSource>) -> GltfSource {
         source.into()
     }
@@ -101,7 +100,6 @@ impl GltfSource {
     /// Toggle glTF camera-node instantiation. Default `true`; pass `false`
     /// when the consumer brings its own [`Camera`](crate::Camera) and the
     /// embedded camera would just fight for the same shader uniforms.
-    #[lsp_doc("docs/api/scene/gltf_source/cameras.md")]
     pub fn cameras(mut self, on: bool) -> Self {
         self.options.cameras = on;
         self
@@ -111,7 +109,6 @@ impl GltfSource {
     /// pass `false` when the consumer brings its own [`Light`](crate::Light)
     /// rig (cursor lighting, animated key/fill, …) and the embedded lights
     /// would compete for the same `lights.lights[..]` slots.
-    #[lsp_doc("docs/api/scene/gltf_source/lights.md")]
     pub fn lights(mut self, on: bool) -> Self {
         self.options.lights = on;
         self
@@ -159,6 +156,41 @@ impl From<GltfSource> for SceneSource {
     }
 }
 
+// Direct conversions so `Scene::load(path)` / `Scene::load(bytes)` work
+// without the caller naming a format. Every raw input is glTF today; when a
+// second format arrives, branch here on the file extension (path inputs) or
+// a magic-byte sniff (byte inputs) to pick the variant.
+impl From<&str> for SceneSource {
+    fn from(s: &str) -> Self {
+        SceneSource::Gltf(GltfSource::from(s))
+    }
+}
+impl From<String> for SceneSource {
+    fn from(s: String) -> Self {
+        SceneSource::Gltf(GltfSource::from(s))
+    }
+}
+impl From<&std::path::Path> for SceneSource {
+    fn from(p: &std::path::Path) -> Self {
+        SceneSource::Gltf(GltfSource::from(p))
+    }
+}
+impl From<PathBuf> for SceneSource {
+    fn from(p: PathBuf) -> Self {
+        SceneSource::Gltf(GltfSource::from(p))
+    }
+}
+impl From<Vec<u8>> for SceneSource {
+    fn from(b: Vec<u8>) -> Self {
+        SceneSource::Gltf(GltfSource::from(b))
+    }
+}
+impl From<&[u8]> for SceneSource {
+    fn from(b: &[u8]) -> Self {
+        SceneSource::Gltf(GltfSource::from(b))
+    }
+}
+
 /// Errors from `Scene::load`. Wraps the upstream parser's typed error
 /// surface where we can.
 #[derive(Debug, thiserror::Error)]
@@ -192,7 +224,7 @@ fn load_gltf(source: GltfSource) -> Result<Scene, SceneLoadError> {
         #[cfg(wasm)]
         GltfPayload::Path(_) => {
             return Err(SceneLoadError::Invalid(
-                "Scene::load(SceneSource::gltf(path)) is not supported on wasm32 — fetch the bytes from JS and pass them via SceneSource::gltf(bytes)".into(),
+                "Scene::load(path) is not supported on wasm32 — fetch the bytes from JS and pass them to Scene::load(bytes)".into(),
             ));
         }
         GltfPayload::Bytes(b) => gltf::import_slice(&b)?,
@@ -779,7 +811,7 @@ mod tests {
     #[test]
     fn load_default_options_keeps_gltf_camera_and_light() {
         let bytes = build_triangle_with_camera_and_light_glb();
-        let scene = Scene::load(SceneSource::gltf(bytes)).expect("load");
+        let scene = Scene::load(bytes).expect("load");
         assert_eq!(scene.models().len(), 1, "geometry stays");
         assert_eq!(scene.cameras().len(), 1, "default options load the embedded camera");
         assert_eq!(scene.lights().len(), 1, "default options load the embedded light");
@@ -818,7 +850,7 @@ mod tests {
     #[test]
     fn load_minimal_triangle_glb_returns_scene_with_one_model() {
         let bytes = build_minimal_triangle_glb();
-        let scene = Scene::load(SceneSource::gltf(bytes)).expect("load triangle.glb");
+        let scene = Scene::load(bytes).expect("load triangle.glb");
         let passes = scene.passes();
         assert_eq!(passes.len(), 1, "expected one default pass");
         // The Scene's default pass should hold one Model entry (one
@@ -832,9 +864,10 @@ mod tests {
 
     #[test]
     fn load_falls_back_through_into_for_path_inputs() {
-        // Just exercises the From<&str> -> GltfSource -> SceneSource chain;
-        // the actual file IO error is what we want to see.
-        let result = Scene::load(SceneSource::gltf("/definitely/not/a/real/path.glb"));
+        // Exercises the From<&str> -> SceneSource conversion (bare path, no
+        // SceneSource named in the call); the actual file IO error is what
+        // we want to see.
+        let result = Scene::load("/definitely/not/a/real/path.glb");
         assert!(result.is_err(), "expected a load error for a bogus path");
     }
 
