@@ -1,6 +1,6 @@
 ---
 title: Scene
-description: "A `Scene` is the top-level container for the real-world things you render: [Models](/api/scene/model), [Cameras](/api/scene/camera), [Lights](/api/scene/light) (directional / point / spot â all one type), and any custom [SceneObject](/api/scene). It owns one or more [Passes](/api/core/pass) underneath and implements [Renderable](/api/core/renderable), so you hand the whole scene to the [Renderer](/api/core/renderer) in a single call."
+description: "A `Scene` is the top-level container for the real-world things you render: [Models](/api/scene/model), [Cameras](/api/scene/camera), [Lights](/api/scene/light) (directional / point / spot — all one type), and any custom [SceneObject](/api/scene). It owns one or more [Passes](/api/core/pass) underneath and implements [Renderable](/api/core/renderable), so you hand the whole scene to the [Renderer](/api/core/renderer) in a single call."
 category: scene
 categoryLabel: Scene
 sidebar:
@@ -15,7 +15,7 @@ A `Scene` is the top-level container for the real-world things you render:
 [Models](/api/scene/model),
 [Cameras](/api/scene/camera),
 [Lights](/api/scene/light) (directional / point /
-spot â all one type), and any custom
+spot — all one type), and any custom
 [SceneObject](/api/scene). It owns one or more
 [Passes](/api/core/pass) underneath and implements
 [Renderable](/api/core/renderable), so you hand
@@ -33,7 +33,7 @@ underneath and don't leak into the call site.
 `Scene::new()` is synchronous and takes no `Renderer`. The first time a
 [SceneObject](/api/scene) is added, the Scene
 creates a default Pass to absorb it. The first time the Scene is rendered,
-the underlying GPU resources initialise on demand â exactly the lazy-init
+the underlying GPU resources initialise on demand — exactly the lazy-init
 pattern the rest of FragmentColor follows.
 
 ## Default Camera + Light at render time
@@ -43,9 +43,9 @@ camera projection and at least one light for the lighting term to be
 non-zero. To make the "hello world" path render something recognisable, the
 Scene injects sensible defaults when the user hasn't supplied them:
 
-- **Default Camera** â `Camera::perspective(60Â°, 1.0, 0.1, 100.0)` looking
+- **Default Camera** — `Camera::perspective(60°, 1.0, 0.1, 100.0)` looking
   from `[0, 0, 5]` at the origin with `+Y` up.
-- **Default Light** â a `Light::directional` aimed at
+- **Default Light** — a `Light::directional` aimed at
   `[0.0, -0.3, -1.0]` with full-white color, providing a forward-tilted
   fill so a front-facing quad reads as lit rather than silhouetted.
 
@@ -60,41 +60,60 @@ add your own, your values win.
 
 ### Scene::load
 
-Build a `Scene` from a serialized 3D format. The input is a
-[`SceneSource`](/api/scene/scene_source) â a
-format-tagged enum so the loader knows which parser to dispatch. Today the
-only variant is `Gltf`, covering glTF 2.0 JSON and `.glb` binary
-containers; future formats slot in as new variants without disturbing the
-public method.
+Build a `Scene` from a serialized 3D file. Pass a **path** (`.gltf` or `.glb`)
+or in-memory **`.glb` bytes** straight to `Scene::load` — the format is
+inferred from the input, so there's nothing extra to name.
 
-`Scene::load` is sync and takes no `Renderer`. Any textures the parser
-encounters are queued as pending [`TextureInput`](/api/texture/texture_input)
-entries on the resulting Materials; the renderer drains them on first
-render, or earlier if you call
+`Scene::load` is synchronous and takes no `Renderer`. Any textures the parser
+encounters are queued as pending uploads on the resulting Materials; the
+renderer drains them on first render, or earlier if you call
 [`Renderer::load`](/api/core/renderer/load).
 
-Today's coverage: static glTF â mesh primitives (POSITION + NORMAL + UV0
-+ indices), PBR-MR materials with all five texture slots, per-node
-transforms flattened into Model matrices, glTF camera nodes, and
-`KHR_lights_punctual` lights. Animation, skinning, morph targets, and
-material extensions beyond PBR-MR are out of scope; they parse cleanly
-and the loader ignores them.
+Today's coverage: static glTF — mesh primitives (POSITION + NORMAL + UV0 +
+indices), PBR-MR materials with all five texture slots, per-node transforms
+flattened into Model matrices, glTF camera nodes, and `KHR_lights_punctual`
+lights. Animation, skinning, morph targets, and material extensions beyond
+PBR-MR are out of scope; they parse cleanly and the loader ignores them.
 
-##### Threading + WASM
+#### Skipping embedded cameras and lights
 
-`Scene::load` is fully synchronous: the underlying `gltf::import` decodes
-embedded images and buffers on the calling thread. A 100 MB `.glb`
-freezes the calling thread for the duration of the decode. Two
-implications:
+By default the loader instantiates the glTF file's own camera and light nodes.
+When you bring your own — a spring-arm rig, a UI-locked overlay camera, an
+animated key/fill setup — the embedded ones would only fight for the same
+shader uniforms. Load through `gltf(...)` to get a builder with `cameras(false)`
+and `lights(false)` toggles:
+
+```rust,no_run collapse={1-1, 15-16}
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Camera, Scene, SceneSource};
+
+// Load geometry + materials only; drop the file's camera and lights.
+let scene = Scene::load(
+    SceneSource::gltf("path/to/model.glb")
+        .cameras(false)
+        .lights(false),
+)?;
+
+// Supply your own camera; it's now the only one the Scene tracks.
+let camera = Camera::perspective(60.0_f32.to_radians(), 16.0 / 9.0, 0.1, 100.0)
+    .look_at([0.0, 1.5, 4.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+scene.add(&camera)?;
+Ok(())
+}
+```
+
+#### Threading and WASM
+
+`Scene::load` is fully synchronous: the underlying importer decodes embedded
+images and buffers on the calling thread. A 100 MB `.glb` freezes that thread
+for the duration. Two implications:
 
 - **Native**: spawn `Scene::load` on a worker thread (`std::thread::spawn`,
-  `tokio::task::spawn_blocking`, etc.) if you can't afford a frame stall.
-- **WASM**: a sync load on the main thread freezes the page. Fetch the
-  `.glb` bytes via `fetch`, hand them to `SceneSource::gltf(bytes)` from
-  inside a Web Worker, then transfer the produced Scene back. The path
-  variant (`SceneSource::gltf(some_path)`) returns
-  `SceneLoadError::Invalid` on WASM because the gltf crate's `import`
-  goes through `std::fs`, which isn't available.
+  `tokio::task::spawn_blocking`, …) if you can't afford a frame stall.
+- **WASM**: a sync load on the main thread freezes the page, and the path form
+  isn't available (the importer goes through `std::fs`). Fetch the `.glb` bytes
+  via `fetch` inside a Web Worker, hand them to `Scene::load(bytes)`, then
+  transfer the produced Scene back.
 
 #### Example
 
@@ -104,21 +123,19 @@ implications:
 <Code
 code={`
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Scene, SceneSource};
+use fragmentcolor::Scene;
 
-// File path â covers both `.gltf` JSON (with external buffers/images)
-// and `.glb` binary containers.
-let scene = Scene::load(SceneSource::gltf("path/to/model.gltf"))?;
+// A path — \`.gltf\` JSON (with external buffers/images) or a \`.glb\` container.
+let scene = Scene::load("path/to/model.gltf")?;
 
-// In-memory `.glb` bytes â fetched from disk, network, or a BIN chunk
-// in another format.
-let glb_bytes: Vec<u8> = vec![/* â¦ */];
-let scene2 = Scene::load(SceneSource::gltf(glb_bytes))?;
+// In-memory \`.glb\` bytes — from disk, the network, or another asset pipeline.
+let glb_bytes: Vec<u8> = std::fs::read("path/to/model.glb")?;
+let scene2 = Scene::load(glb_bytes)?;
 let _ = (scene, scene2);
 Ok(())
 }
 `}
-lang="rust" meta="collapse={1-1, 12-14}"
+lang="rust" meta="collapse={1-1, 10-12}"
 />
 
 </TabItem>
@@ -126,16 +143,14 @@ lang="rust" meta="collapse={1-1, 12-14}"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Scene, SceneSource } from "fragmentcolor";
+import { Scene } from "fragmentcolor";
 
-// File path â covers both \`.gltf\` JSON (with external buffers/images)
-// and \`.glb\` binary containers.
-const scene = Scene.load(SceneSource.gltf("path/to/model.gltf"));
+// A path — \`.gltf\` JSON (with external buffers/images) or a \`.glb\` container.
+const scene = Scene.load("path/to/model.gltf");
 
-// In-memory \`.glb\` bytes â fetched from disk, network, or a BIN chunk
-// in another format.
-const glb_bytes = [/* â¦ */];
-const scene2 = Scene.load(SceneSource.gltf(glb_bytes));
+// In-memory \`.glb\` bytes — from disk, the network, or another asset pipeline.
+const glb_bytes = "/healthcheck/public/favicon.png";
+const scene2 = Scene.load(glb_bytes);
 `}
 lang="js"
 />
@@ -145,16 +160,14 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Scene, SceneSource
+from fragmentcolor import Scene
 
-# File path â covers both \`.gltf\` JSON (with external buffers/images)
-# and \`.glb\` binary containers.
-scene = Scene.load(SceneSource.gltf("path/to/model.gltf"))
+# A path — \`.gltf\` JSON (with external buffers/images) or a \`.glb\` container.
+scene = Scene.load("path/to/model.gltf")
 
-# In-memory \`.glb\` bytes â fetched from disk, network, or a BIN chunk
-# in another format.
-glb_bytes = [/* â¦ */]
-scene2 = Scene.load(SceneSource.gltf(glb_bytes))
+# In-memory \`.glb\` bytes — from disk, the network, or another asset pipeline.
+glb_bytes = open("path/to/model.glb", "rb").read()
+scene2 = Scene.load(glb_bytes)
 `}
 lang="python"
 />
@@ -166,14 +179,12 @@ lang="python"
 code={`
 import FragmentColor
 
-// File path â covers both """.gltf""" JSON (with external buffers/images)
-// and """.glb""" binary containers.
-let scene = Scene.load(SceneSource.gltf("path/to/model.gltf"))
+// A path — """.gltf""" JSON (with external buffers/images) or a """.glb""" container.
+let scene = Scene.load("path/to/model.gltf")
 
-// In-memory """.glb""" bytes â fetched from disk, network, or a BIN chunk
-// in another format.
-let glb_bytes = [/* â¦ */]
-let scene2 = Scene.load(SceneSource.gltf(glb_bytes))
+// In-memory """.glb""" bytes — from disk, the network, or another asset pipeline.
+let glb_bytes = "/healthcheck/public/favicon.png"
+let scene2 = Scene.load(glb_bytes)
 `}
 lang="swift"
 />
@@ -185,14 +196,12 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 
-// File path â covers both """.gltf""" JSON (with external buffers/images)
-// and """.glb""" binary containers.
-val scene = Scene.load(SceneSource.gltf("path/to/model.gltf"))
+// A path — """.gltf""" JSON (with external buffers/images) or a """.glb""" container.
+val scene = Scene.load("path/to/model.gltf")
 
-// In-memory """.glb""" bytes â fetched from disk, network, or a BIN chunk
-// in another format.
-val glb_bytes = [/* â¦ */]
-val scene2 = Scene.load(SceneSource.gltf(glb_bytes))
+// In-memory """.glb""" bytes — from disk, the network, or another asset pipeline.
+val glb_bytes = "/healthcheck/public/favicon.png"
+val scene2 = Scene.load(glb_bytes)
 `}
 lang="kotlin"
 />
@@ -207,7 +216,7 @@ lang="kotlin"
 ### Scene::new
 
 Build an empty `Scene`. No `Renderer` argument, no async, nothing to await
-â the Scene's GPU resources initialise lazily when it's first rendered.
+— the Scene's GPU resources initialise lazily when it's first rendered.
 
 The first call to [`Scene::add`](/api/scene/scene/add)
 creates a default [Pass](/api/core/pass) under the
@@ -216,7 +225,7 @@ hood and routes the object into it. Multiple
 unless you explicitly add more via
 [`Scene::add_pass`](/api/scene/scene/add_pass).
 
-`Scene` is `Clone` (shallow Arc-share) â cloning gives another handle to
+`Scene` is `Clone` (shallow Arc-share) — cloning gives another handle to
 the same underlying scene, so mutations on one clone are visible on the
 other.
 
@@ -230,7 +239,7 @@ code={`
 use fragmentcolor::Scene;
 
 let scene = Scene::new();
-// scene is empty; add Models / Cameras / Lights with `scene.add(...)`.
+// scene is empty; add Models / Cameras / Lights with \`scene.add(...)\`.
 let _ = scene;
 `}
 lang="rust" meta="collapse={5-5}"
@@ -297,11 +306,11 @@ lang="kotlin"
 
 ### Scene::add
 
-Absorb any [`SceneObject`](/api/scene) â a
+Absorb any [`SceneObject`](/api/scene) — a
 [Model](/api/scene/model),
 [Camera](/api/scene/camera),
 [Light](/api/scene/light), or a user-defined
-node that implements the trait â into the scene. The Scene routes it
+node that implements the trait — into the scene. The Scene routes it
 onto its default [Pass](/api/core/pass), which
 is created lazily on the first call.
 
@@ -349,7 +358,7 @@ scene
     .add(&camera)?
     .add(&sun)?;
 
-// Updating the camera later is enough â every shader on the scene picks
+// Updating the camera later is enough — every shader on the scene picks
 // the new view_proj up at the next render.
 camera.look_at([3.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
 let _ = renderer;
@@ -379,7 +388,7 @@ const sun = Light.directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9]);
 const scene = new Scene();
 scene.add(model)?.add(camera)?.add(sun);
 
-// Updating the camera later is enough â every shader on the scene picks
+// Updating the camera later is enough — every shader on the scene picks
 // the new view_proj up at the next render.
 camera.lookAt([3.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
 `}
@@ -407,7 +416,7 @@ sun = Light.directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9])
 scene = Scene()
 scene.add(model).add(camera).add(sun)
 
-# Updating the camera later is enough â every shader on the scene picks
+# Updating the camera later is enough — every shader on the scene picks
 # the new view_proj up at the next render.
 camera.look_at([3.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
 `}
@@ -435,7 +444,7 @@ let sun = Light.directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9])
 let scene = Scene()
 scene.add(model)?.add(camera)?.add(sun)
 
-// Updating the camera later is enough â every shader on the scene picks
+// Updating the camera later is enough — every shader on the scene picks
 // the view_proj up at the next render.
 camera.lookAt([3.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
 `}
@@ -461,7 +470,7 @@ val sun = Light.directional(listOf(0.3f, -1.0f, -0.4f), listOf(1.0f, 0.95f, 0.9f
 val scene = Scene()
 scene.add(model)?.add(camera)?.add(sun)
 
-// Updating the camera later is enough â every shader on the scene picks
+// Updating the camera later is enough — every shader on the scene picks
 // the view_proj up at the next render.
 camera.lookAt(listOf(3.0f, 1.0f, 5.0f), listOf(0.0f, 0.0f, 0.0f), listOf(0.0f, 1.0f, 0.0f))
 `}
@@ -479,12 +488,12 @@ lang="kotlin"
 
 Return a snapshot of every [`Model`](/api/scene/model)
 added to this Scene via [`Scene::add`](/api/scene/scene/add)
-â including Models the loader instantiated from glTF `mesh` nodes.
+— including Models the loader instantiated from glTF `mesh` nodes.
 
 Each entry is an Arc-shared clone of the original handle. Mutating one
-of them (`set_visible`, `translate`, `set_transform`, â¦) propagates live
+of them (`set_visible`, `translate`, `set_transform`, …) propagates live
 to every shader the Model was wired into, no re-attach needed. The
-returned `Vec` is the *snapshot at call time* â adding more Models after
+returned `Vec` is the *snapshot at call time* — adding more Models after
 the call doesn't grow this `Vec`, but the handles you already have stay
 live.
 
@@ -626,18 +635,18 @@ lang="kotlin"
 
 Return a snapshot of every [`Camera`](/api/scene/camera)
 added to this Scene via [`Scene::add`](/api/scene/scene/add)
-â including Cameras the loader instantiated from glTF `camera` nodes
-(when [`GltfSource::cameras`](/api/scene/gltf_source/cameras)
-is left on, which is the default).
+— including Cameras the loader instantiated from glTF `camera` nodes
+(unless you skipped them via the camera filter on
+[`Scene::load`](/api/scene/scene/load)).
 
 Each entry is an Arc-shared clone of the original handle.
 `camera.look_at(...)` / `camera.set_aspect(...)` on a returned handle
 propagates the new view + projection to every shader the Camera is wired
-into â same live semantics as the Camera handle you originally added.
+into — same live semantics as the Camera handle you originally added.
 
 When the Scene rendered with a defaulted Camera (no user-supplied Camera
 when the first render landed), the auto-injected default appears in
-this list too â so a consumer who wants to drive the default camera per
+this list too — so a consumer who wants to drive the default camera per
 frame can grab `scene.cameras().first()` and call `look_at` on it.
 
 #### Example
@@ -648,11 +657,11 @@ frame can grab `scene.cameras().first()` and call `look_at` on it.
 <Code
 code={`
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Scene, SceneSource};
+use fragmentcolor::Scene;
 
-let scene = Scene::load(SceneSource::gltf("path/to/model.glb"))?;
+let scene = Scene::load("path/to/model.glb")?;
 
-// glTF shipped a camera â animate it per frame instead of supplying our own.
+// glTF shipped a camera — animate it per frame instead of supplying our own.
 if let Some(camera) = scene.cameras().into_iter().next() {
     camera.look_at([0.0, 1.5, 4.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
     camera.set_aspect(16.0 / 9.0);
@@ -668,11 +677,11 @@ lang="rust" meta="collapse={1-1, 11-12}"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Scene, SceneSource } from "fragmentcolor";
+import { Scene } from "fragmentcolor";
 
-const scene = Scene.load(SceneSource.gltf("path/to/model.glb"));
+const scene = Scene.load("path/to/model.glb");
 
-// glTF shipped a camera â animate it per frame instead of supplying our own.
+// glTF shipped a camera — animate it per frame instead of supplying our own.
 if let Some(camera) = scene.cameras().intoIter().next() { camera.lookAt([0.0, 1.5, 4.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]); camera.setAspect(16.0 / 9.0); };
 `}
 lang="js"
@@ -683,11 +692,11 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Scene, SceneSource
+from fragmentcolor import Scene
 
-scene = Scene.load(SceneSource.gltf("path/to/model.glb"))
+scene = Scene.load("path/to/model.glb")
 
-# glTF shipped a camera â animate it per frame instead of supplying our own.
+# glTF shipped a camera — animate it per frame instead of supplying our own.
 if let Some(camera) = scene.cameras().into_iter().next() {
     camera.look_at([0.0, 1.5, 4.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
     camera.set_aspect(16.0 / 9.0)
@@ -703,9 +712,9 @@ lang="python"
 code={`
 import FragmentColor
 
-let scene = Scene.load(SceneSource.gltf("path/to/model.glb"))
+let scene = Scene.load("path/to/model.glb")
 
-// glTF shipped a camera â animate it per frame instead of supplying our own.
+// glTF shipped a camera — animate it per frame instead of supplying our own.
 if let Some(camera) = scene.cameras().intoIter().next() {
     camera.lookAt([0.0, 1.5, 4.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
     camera.setAspect(16.0 / 9.0)
@@ -721,9 +730,9 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 
-val scene = Scene.load(SceneSource.gltf("path/to/model.glb"))
+val scene = Scene.load("path/to/model.glb")
 
-// glTF shipped a camera â animate it per frame instead of supplying our own.
+// glTF shipped a camera — animate it per frame instead of supplying our own.
 if let Some(camera) = scene.cameras().intoIter().next() {
     camera.lookAt(listOf(0.0f, 1.5f, 4.0f), listOf(0.0f, 0.0f, 0.0f), listOf(0.0f, 1.0f, 0.0f))
     camera.setAspect(16.0 / 9.0)
@@ -743,13 +752,12 @@ lang="kotlin"
 
 Return a snapshot of every [`Light`](/api/scene/light)
 added to this Scene via [`Scene::add`](/api/scene/scene/add)
-â including Lights the loader instantiated from glTF
-`KHR_lights_punctual` nodes (when
-[`GltfSource::lights`](/api/scene/gltf_source/lights)
-is left on, which is the default).
+— including Lights the loader instantiated from glTF
+`KHR_lights_punctual` nodes (unless you skipped them via the light filter
+on [`Scene::load`](/api/scene/scene/load)).
 
 Each entry is an Arc-shared clone. Mutating a returned handle
-(`set_color`, `set_intensity`, `set_position`, â¦) propagates to every
+(`set_color`, `set_intensity`, `set_position`, …) propagates to every
 shader the Light occupies a slot in.
 
 The default-injected Light (auto-fired when the Scene first renders with
@@ -764,9 +772,9 @@ the default and tweak it instead of supplanting it.
 <Code
 code={`
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{Scene, SceneSource};
+use fragmentcolor::Scene;
 
-let scene = Scene::load(SceneSource::gltf("path/to/model.glb"))?;
+let scene = Scene::load("path/to/model.glb")?;
 
 // Darken every loaded light to half intensity for a moody pass.
 for light in scene.lights() {
@@ -784,9 +792,9 @@ lang="rust" meta="collapse={1-1, 11-12}"
 <TabItem label="JavaScript">
 <Code
 code={`
-import { Scene, SceneSource } from "fragmentcolor";
+import { Scene } from "fragmentcolor";
 
-const scene = Scene.load(SceneSource.gltf("path/to/model.glb"));
+const scene = Scene.load("path/to/model.glb");
 
 // Darken every loaded light to half intensity for a moody pass.
 for light in scene.lights() { let current = light.intensity(); light.setIntensity(current * 0.5); };
@@ -799,9 +807,9 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from fragmentcolor import Scene, SceneSource
+from fragmentcolor import Scene
 
-scene = Scene.load(SceneSource.gltf("path/to/model.glb"))
+scene = Scene.load("path/to/model.glb")
 
 # Darken every loaded light to half intensity for a moody pass.
 for light in scene.lights() {
@@ -819,7 +827,7 @@ lang="python"
 code={`
 import FragmentColor
 
-let scene = Scene.load(SceneSource.gltf("path/to/model.glb"))
+let scene = Scene.load("path/to/model.glb")
 
 // Darken every loaded light to half intensity for a moody pass.
 for light in scene.lights() {
@@ -837,7 +845,7 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 
-val scene = Scene.load(SceneSource.gltf("path/to/model.glb"))
+val scene = Scene.load("path/to/model.glb")
 
 // Darken every loaded light to half intensity for a moody pass.
 for light in scene.lights() {
@@ -866,7 +874,7 @@ Defaults: every Material seeded by `Material::pbr()` starts with
 `ambient = [0.03, 0.03, 0.03]` (the dim grey the PBR shader had
 hardcoded before this knob existed). Calling `Scene::ambient` overrides
 that for every shader the scene visits today *and* for any Models added
-afterwards â the value is stashed on the Scene and re-stamped onto
+afterwards — the value is stashed on the Scene and re-stamped onto
 shaders that join later via `Scene::add`.
 
 Returns a handle to the same Scene (Arc-shared) for chaining.
@@ -890,7 +898,7 @@ mesh.add_vertex(
 );
 
 let scene = Scene::new();
-// Warm dusk ambient â applies to every Material added below.
+// Warm dusk ambient — applies to every Material added below.
 scene.ambient([0.06, 0.04, 0.03]);
 scene.add(&Model::new(mesh, Material::pbr()?))?;
 scene.add(&Light::directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9]))?;
@@ -917,7 +925,7 @@ const mesh = new Mesh();
 mesh.addVertex( Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]), );
 
 const scene = new Scene();
-// Warm dusk ambient â applies to every Material added below.
+// Warm dusk ambient — applies to every Material added below.
 scene.ambient([0.06, 0.04, 0.03]);
 scene.add(Model.new(mesh, Material.pbr()?));
 scene.add(Light.directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9]));
@@ -943,7 +951,7 @@ mesh.add_vertex(
 )
 
 scene = Scene()
-# Warm dusk ambient â applies to every Material added below.
+# Warm dusk ambient — applies to every Material added below.
 scene.ambient([0.06, 0.04, 0.03])
 scene.add(Model(mesh, Material.pbr()))
 scene.add(Light.directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9]))
@@ -969,7 +977,7 @@ try mesh.addVertex(
 )
 
 let scene = Scene()
-// Warm dusk ambient â applies to every Material added below.
+// Warm dusk ambient — applies to every Material added below.
 scene.ambient([0.06, 0.04, 0.03])
 scene.add(Model.new(mesh, Material.pbr()?))
 scene.add(Light.directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9]))
@@ -993,7 +1001,7 @@ val mesh = Mesh()
 mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, floatArrayOf(0.5f, 1.0f)), )
 
 val scene = Scene()
-// Warm dusk ambient â applies to every Material added below.
+// Warm dusk ambient — applies to every Material added below.
 scene.ambient(listOf(0.06f, 0.04f, 0.03f))
 scene.add(Model.new(mesh, Material.pbr()?))
 scene.add(Light.directional(listOf(0.3f, -1.0f, -0.4f), listOf(1.0f, 0.95f, 0.9f)))
@@ -1014,17 +1022,17 @@ lang="kotlin"
 
 Append a user-built [Pass](/api/core/pass) to the
 scene's pre-pass list. The Scene renders these passes in insertion order
-*before* its internal default Pass â that's the hook for shadow maps,
+*before* its internal default Pass — that's the hook for shadow maps,
 depth pre-passes, screen-space backdrops, anything that has to run *before*
 the scene's main geometry draw.
 
 The default Pass that holds the Scene's [SceneObjects](/api/scene)
 is *not* affected by `add_pass`; it's an internal pipeline owned by the
 Scene. Use `add_pass` only when you want a dedicated Pass with its own
-shaders / clear logic â for ordinary geometry, `scene.add(&model)?` is what
+shaders / clear logic — for ordinary geometry, `scene.add(&model)?` is what
 you want.
 
-For *post*-effects (bloom, tonemap, â¦), keep the post-pass outside the
+For *post*-effects (bloom, tonemap, …), keep the post-pass outside the
 Scene and combine them at render time:
 
 ```text
@@ -1037,7 +1045,7 @@ make to the original handle reach the Scene's copy as well.
 
 ##### Each new Pass clears by default
 
-Every `Pass::new(name)` starts with a clear-to-transparent input â the
+Every `Pass::new(name)` starts with a clear-to-transparent input — the
 first render of the frame for that Pass wipes its colour attachment to
 `[0, 0, 0, 0]`. When you chain passes that read each other's output
 (e.g. `[backdrop, shadow_overlay]`), the second Pass will clear the
@@ -1048,7 +1056,7 @@ first Pass's output unless you opt out:
 - Or call `pass.set_clear_color([r, g, b, a])` to choose a specific
   clear value (still a clear; just a different colour).
 
-`Scene::add_pass` accepts each pre-pass independently â there's no
+`Scene::add_pass` accepts each pre-pass independently — there's no
 automatic chaining of their attachments. If you need two passes to
 share a target, route them through the same `set_target(...)` and use
 `load_previous` to compose.

@@ -1,6 +1,6 @@
 ---
 title: Vertex
-description: "A single vertex: a required 2D or 3D position plus any per-vertex attributes your shader declares â commonly `uv` and `color`, but any key the shader's vertex stage reads is fair game. Build vertices and feed them into a [Mesh](/api/geometry/mesh) to draw."
+description: "A single vertex: a required 2D or 3D position plus any per-vertex attributes your shader declares — commonly `uv` and `color`, but any key the shader's vertex stage reads is fair game. Build vertices and feed them into a [Mesh](/api/geometry/mesh) to draw."
 category: geometry
 categoryLabel: Geometry
 sidebar:
@@ -11,11 +11,11 @@ import { Code, Tabs, TabItem, Aside } from "@astrojs/starlight/components";
 
 ## Description
 
-A single vertex: a required 2D or 3D position plus any per-vertex attributes your shader declares â commonly `uv` and `color`, but any key the shader's vertex stage reads is fair game. Build vertices and feed them into a [Mesh](/api/geometry/mesh) to draw.
+A single vertex: a required 2D or 3D position plus any per-vertex attributes your shader declares — commonly `uv` and `color`, but any key the shader's vertex stage reads is fair game. Build vertices and feed them into a [Mesh](/api/geometry/mesh) to draw.
 
 ## Canonical attribute names
 
-For the channels you'll reach for most often, use the typed constants instead of bare strings â the loader, the shader, and any later glTF import all agree on names without bikeshedding:
+For the channels you'll reach for most often, use the typed constants instead of bare strings — the loader, the shader, and any later glTF import all agree on names without bikeshedding:
 
 Position is set via `Vertex::new(...)` and is not part of the constants table; the rest live as `&'static str` literals on `Vertex`:
 
@@ -26,7 +26,7 @@ Position is set via `Vertex::new(...)` and is not part of the constants table; t
 | `Vertex::UV0` / `UV1` | `"uv0"` / `"uv1"` | Texture coordinates. Use the numbered form when a mesh carries multiple UV sets (typical for glTF). |
 | `Vertex::COLOR0` / `COLOR1` | `"color0"` / `"color1"` | Vertex colours. |
 
-The constants are plain `&'static str` literals â `vertex.set(Vertex::UV0, [...])` and `vertex.set("uv0", [...])` do the same thing. Mix the two styles freely; the constants exist to prevent typos and to give the glTF loader a stable vocabulary.
+The constants are plain `&'static str` literals — `vertex.set(Vertex::UV0, [...])` and `vertex.set("uv0", [...])` do the same thing. Mix the two styles freely; the constants exist to prevent typos and to give the glTF loader a stable vocabulary.
 
 
 
@@ -178,7 +178,7 @@ default; chain `.set(...)` to override the slots a real mesh has data for.
 
 A vertex built with `Vertex::pbr(pos)` alone renders the same way
 [`Scene::load`](/api/scene/scene/load) renders a
-glTF primitive that carries only POSITION â face-normal computation, UV
+glTF primitive that carries only POSITION — face-normal computation, UV
 defaults, vertex tint, and tangents all collapse to the values the loader
 falls back to. Useful for building PBR meshes by hand without spelling
 out every default attribute.

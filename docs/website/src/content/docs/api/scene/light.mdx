@@ -1,6 +1,6 @@
 ---
 title: Light
-description: "`Light` is the unified type covering the three glTF `KHR_lights_punctual` kinds: **directional** (parallel rays â sun / sky / fill), **point** (radiates from a position with inverse-square falloff â lamps / candles / fireballs), and **spot** (point light constrained to a cone â flashlights / headlamps / theatre lighting). The kind is set once at construction via [`Light::directional`](/api/scene/light/directional), [`Light::point`](/api/scene/light/point), or [`Light::spot`](/api/scene/light/spot)."
+description: "`Light` is the unified type covering the three glTF `KHR_lights_punctual` kinds: **directional** (parallel rays — sun / sky / fill), **point** (radiates from a position with inverse-square falloff — lamps / candles / fireballs), and **spot** (point light constrained to a cone — flashlights / headlamps / theatre lighting). The kind is set once at construction via [`Light::directional`](/api/scene/light/directional), [`Light::point`](/api/scene/light/point), or [`Light::spot`](/api/scene/light/spot)."
 category: scene
 categoryLabel: Scene
 sidebar:
@@ -12,9 +12,9 @@ import { Code, Tabs, TabItem, Aside } from "@astrojs/starlight/components";
 ## Description
 
 `Light` is the unified type covering the three glTF `KHR_lights_punctual`
-kinds: **directional** (parallel rays â sun / sky / fill), **point**
-(radiates from a position with inverse-square falloff â lamps / candles /
-fireballs), and **spot** (point light constrained to a cone â flashlights /
+kinds: **directional** (parallel rays — sun / sky / fill), **point**
+(radiates from a position with inverse-square falloff — lamps / candles /
+fireballs), and **spot** (point light constrained to a cone — flashlights /
 headlamps / theatre lighting). The kind is set once at construction via
 [`Light::directional`](/api/scene/light/directional),
 [`Light::point`](/api/scene/light/point), or
@@ -25,10 +25,10 @@ The unified surface keeps the public API simple: one type, one
 [`Pass::add`](/api/core/pass/add) method, and one
 binding per platform. Setters fall into two groups:
 
-- **Universal** â [`set_color`](/api/scene/light/set_color)
+- **Universal** — [`set_color`](/api/scene/light/set_color)
   and [`set_intensity`](/api/scene/light/set_intensity)
   apply to every kind and return `Self` for chaining.
-- **Kind-specific** â [`set_position`](/api/scene/light/set_position),
+- **Kind-specific** — [`set_position`](/api/scene/light/set_position),
   [`set_direction`](/api/scene/light/set_direction),
   [`set_range`](/api/scene/light/set_range), and
   [`set_cone_angles`](/api/scene/light/set_cone_angles)
@@ -49,14 +49,14 @@ been wired into.
 
 ## Cost model
 
-The default Material::pbr shader uses **forward shading** â every fragment
+The default Material::pbr shader uses **forward shading** — every fragment
 loops over every active light and accumulates the contribution. That makes
-the per-frame cost roughly `O(fragments Ã lights)`, so the practical
+the per-frame cost roughly `O(fragments × lights)`, so the practical
 ceiling depends on resolution and overdraw. The current cap of **32
 lights** fits the forward path comfortably; for scenes with hundreds of
 lights, a clustered / storage-buffer path is on the roadmap.
 
-### Cap semantics â lights bind to the shader, not the Pass
+### Cap semantics — lights bind to the shader, not the Pass
 
 The 32-light cap is enforced **per `ShaderObject`**, not per `Pass`. Two
 Passes that share the same Material (and therefore the same shader)
@@ -65,7 +65,7 @@ share its light slots:
 - Adding the same `Light` to Pass A and Pass B reuses one shader slot
   (the dedup is by shader-pointer identity). Both Passes render with
   that light visible.
-- Adding two different `Light`s â one to Pass A, one to Pass B â packs
+- Adding two different `Light`s — one to Pass A, one to Pass B — packs
   them into two separate slots on the shared shader. **Both lights
   illuminate both Passes**, even though each was only `add(&...)`-ed
   to one. That's surprising if you think of a Pass as an isolated
@@ -77,7 +77,7 @@ share its light slots:
 For genuinely independent lighting setups, build a separate Material
 per scene (each `Material::pbr()?` allocates a fresh shader, so its 32
 slots are independent) or pass your own shader to `Material::custom`.
-A single scene with one Material covers the typical case â the per-
+A single scene with one Material covers the typical case — the per-
 shader semantic is what lets `Scene::add(&light)` propagate through
 every Pass that renders the Scene without re-attaching.
 
@@ -98,11 +98,11 @@ every Pass that renders the Scene without re-attaching.
 ### Light::directional
 
 Construct a directional light. `direction` is the world-space vector the
-light travels along (so `[0, -1, 0]` is straight down â noon sun); `color`
+light travels along (so `[0, -1, 0]` is straight down — noon sun); `color`
 is linear-RGB intensity (`[1, 1, 1]` for full white, scaled values for
 dimmer or tinted lights).
 
-Use this for sun / moon / fill / key lights â anything where every shaded
+Use this for sun / moon / fill / key lights — anything where every shaded
 surface should receive parallel rays from a fixed direction. For positioned
 sources, see [`Light::point`](/api/scene/light/point)
 and [`Light::spot`](/api/scene/light/spot).
@@ -192,13 +192,13 @@ lang="kotlin"
 
 Construct a point light. `position` is the world-space location the light
 radiates from; `color` is linear-RGB intensity (`[1, 1, 1]` for full white).
-Falloff is inverse-square distance â bring
+Falloff is inverse-square distance — bring
 [`set_range`](/api/scene/light/set_range) in to
 cap the influence radius, and
 [`set_intensity`](/api/scene/light/set_intensity)
 to scale the color uniformly.
 
-Use this for lamps, candles, fireballs â anything where light radiates
+Use this for lamps, candles, fireballs — anything where light radiates
 outward from a fixed point. For a parallel-ray sun-like light see
 [`Light::directional`](/api/scene/light/directional);
 for a cone-constrained beam see
@@ -294,14 +294,14 @@ radiates from; `direction` is the world-space vector the cone aims along
 (the cone axis is `-direction`); `color` is linear-RGB intensity.
 
 Falloff is inverse-square distance with a smooth cone roll-off between an
-inner and outer cone angle (defaults: `0` and `Ï/4`). Tighten the beam
+inner and outer cone angle (defaults: `0` and `π/4`). Tighten the beam
 with [`set_cone_angles`](/api/scene/light/set_cone_angles),
 cap the influence with
 [`set_range`](/api/scene/light/set_range), and
 scale the radiance with
 [`set_intensity`](/api/scene/light/set_intensity).
 
-Use this for flashlights, headlamps, theatre lighting, mood key-lights â
+Use this for flashlights, headlamps, theatre lighting, mood key-lights —
 anything where the lit volume is a cone aimed at a target. For an
 unconstrained point source see
 [`Light::point`](/api/scene/light/point);
@@ -490,7 +490,7 @@ lang="kotlin"
 ### Light::color
 
 Read the linear-RGB color the light emits. Defined for every kind. The
-returned value is the `[r, g, b]` triple stored on the Light â call
+returned value is the `[r, g, b]` triple stored on the Light — call
 [`set_color`](/api/scene/light/set_color) to
 update it. The scalar
 [`intensity`](/api/scene/light/intensity)
@@ -653,7 +653,7 @@ lang="kotlin"
 
 ### Light::set_color
 
-Update the linear-RGB color the light emits. Defined for every kind â
+Update the linear-RGB color the light emits. Defined for every kind —
 returns `Self` for chaining. The new value propagates live to every
 shader the Light has already been wired into; no re-attach needed.
 
@@ -669,7 +669,7 @@ use fragmentcolor::Light;
 
 let lamp = Light::point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0]);
 
-// Warm-tint the lamp later â every Pass that absorbed `lamp` sees the
+// Warm-tint the lamp later — every Pass that absorbed \`lamp\` sees the
 // new color on the next render.
 lamp.set_color([1.0, 0.7, 0.4]);
 assert_eq!(lamp.color(), [1.0, 0.7, 0.4]);
@@ -688,7 +688,7 @@ import { Light } from "fragmentcolor";
 
 const lamp = Light.point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0]);
 
-// Warm-tint the lamp later â every Pass that absorbed \`lamp\` sees the
+// Warm-tint the lamp later — every Pass that absorbed \`lamp\` sees the
 // new color on the next render.
 lamp.setColor([1.0, 0.7, 0.4]);
 `}
@@ -704,7 +704,7 @@ from fragmentcolor import Light
 
 lamp = Light.point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0])
 
-# Warm-tint the lamp later â every Pass that absorbed \`lamp\` sees the
+# Warm-tint the lamp later — every Pass that absorbed \`lamp\` sees the
 # new color on the next render.
 lamp.set_color([1.0, 0.7, 0.4])
 `}
@@ -720,7 +720,7 @@ import FragmentColor
 
 let lamp = Light.point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0])
 
-// Warm-tint the lamp later â every Pass that absorbed """lamp""" sees the
+// Warm-tint the lamp later — every Pass that absorbed """lamp""" sees the
 // color on the next render.
 lamp.setColor([1.0, 0.7, 0.4])
 `}
@@ -736,7 +736,7 @@ import org.fragmentcolor.*
 
 val lamp = Light.point(listOf(0.0f, 2.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f))
 
-// Warm-tint the lamp later â every Pass that absorbed """lamp""" sees the
+// Warm-tint the lamp later — every Pass that absorbed """lamp""" sees the
 // color on the next render.
 lamp.setColor(listOf(1.0f, 0.7f, 0.4f))
 `}
@@ -752,7 +752,7 @@ lang="kotlin"
 
 ### Light::set_intensity
 
-Update the scalar intensity multiplier. Defined for every kind â returns
+Update the scalar intensity multiplier. Defined for every kind — returns
 `Self` for chaining. The shader multiplies the
 [`color`](/api/scene/light/color) by this value
 when accumulating, so doubling intensity doubles every channel uniformly.
@@ -846,7 +846,7 @@ lang="kotlin"
 
 Read the world-space position the light radiates from. Returns
 `Some([x, y, z])` for a point or spot light, `None` for a directional
-light (directional rays travel from infinitely far away â no position to
+light (directional rays travel from infinitely far away — no position to
 report). Call
 [`set_position`](/api/scene/light/set_position)
 to update it.
@@ -934,7 +934,7 @@ lang="kotlin"
 
 Read the world-space direction the light travels along. Returns
 `Some([x, y, z])` for a directional or spot light, `None` for a point
-light (point sources radiate omnidirectionally â no direction to report).
+light (point sources radiate omnidirectionally — no direction to report).
 Call
 [`set_direction`](/api/scene/light/set_direction)
 to update it.
@@ -1202,7 +1202,7 @@ lang="kotlin"
 
 Read the outer cone half-angle (radians). Returns `Some(value)` only for a
 spot light, `None` for directional and point lights. The outer cone is
-where the light's contribution reaches zero â beyond this angle the
+where the light's contribution reaches zero — beyond this angle the
 fragment receives nothing from this light. Between the inner and outer
 cones the contribution smoothly rolls off; see
 [`inner_cone_angle`](/api/scene/light/inner_cone_angle).
@@ -1292,7 +1292,7 @@ lang="kotlin"
 
 ### Light::set_position
 
-Update the world-space position. Defined for point and spot lights only â
+Update the world-space position. Defined for point and spot lights only —
 returns `Ok(self)` for chaining. Calling this on a directional light
 returns `Err(LightError::FieldNotApplicable { kind: Directional, field:
 "set_position" })` because directional rays carry no position. The new
@@ -1312,7 +1312,7 @@ use fragmentcolor::Light;
 let lamp = Light::point([0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
 lamp.set_position([3.0, 1.5, -2.0])?;
 
-// Directional lights have no position â the call errors.
+// Directional lights have no position — the call errors.
 let sun = Light::directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
 let result = sun.set_position([0.0, 0.0, 0.0]);
 assert_eq!(lamp.position(), Some([3.0, 1.5, -2.0]));
@@ -1333,7 +1333,7 @@ import { Light } from "fragmentcolor";
 const lamp = Light.point([0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
 lamp.setPosition([3.0, 1.5, -2.0]);
 
-// Directional lights have no position â the call errors.
+// Directional lights have no position — the call errors.
 const sun = Light.directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
 const result = sun.setPosition([0.0, 0.0, 0.0]);
 `}
@@ -1350,7 +1350,7 @@ from fragmentcolor import Light
 lamp = Light.point([0.0, 0.0, 0.0], [1.0, 1.0, 1.0])
 lamp.set_position([3.0, 1.5, -2.0])
 
-# Directional lights have no position â the call errors.
+# Directional lights have no position — the call errors.
 sun = Light.directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
 result = sun.set_position([0.0, 0.0, 0.0])
 `}
@@ -1367,7 +1367,7 @@ import FragmentColor
 let lamp = Light.point([0.0, 0.0, 0.0], [1.0, 1.0, 1.0])
 lamp.setPosition([3.0, 1.5, -2.0])
 
-// Directional lights have no position â the call errors.
+// Directional lights have no position — the call errors.
 let sun = Light.directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
 let result = sun.setPosition([0.0, 0.0, 0.0])
 `}
@@ -1384,7 +1384,7 @@ import org.fragmentcolor.*
 val lamp = Light.point(listOf(0.0f, 0.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f))
 lamp.setPosition(listOf(3.0f, 1.5f, -2.0f))
 
-// Directional lights have no position â the call errors.
+// Directional lights have no position — the call errors.
 val sun = Light.directional(listOf(0.0f, -1.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f))
 val result = sun.setPosition(listOf(0.0f, 0.0f, 0.0f))
 `}
@@ -1401,7 +1401,7 @@ lang="kotlin"
 ### Light::set_direction
 
 Update the world-space direction. Defined for directional and spot lights
-only â returns `Ok(self)` for chaining. Calling this on a point light
+only — returns `Ok(self)` for chaining. Calling this on a point light
 returns `Err(LightError::FieldNotApplicable { kind: Point, field:
 "set_direction" })` because point sources radiate omnidirectionally. The
 new value propagates live to every shader the Light has already been
@@ -1420,7 +1420,7 @@ use fragmentcolor::Light;
 let sun = Light::directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
 sun.set_direction([0.3, -0.8, -0.5])?;
 
-// Point lights have no direction â the call errors.
+// Point lights have no direction — the call errors.
 let lamp = Light::point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0]);
 let result = lamp.set_direction([0.0, -1.0, 0.0]);
 assert_eq!(sun.direction(), Some([0.3, -0.8, -0.5]));
@@ -1441,7 +1441,7 @@ import { Light } from "fragmentcolor";
 const sun = Light.directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
 sun.setDirection([0.3, -0.8, -0.5]);
 
-// Point lights have no direction â the call errors.
+// Point lights have no direction — the call errors.
 const lamp = Light.point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0]);
 const result = lamp.setDirection([0.0, -1.0, 0.0]);
 `}
@@ -1458,7 +1458,7 @@ from fragmentcolor import Light
 sun = Light.directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
 sun.set_direction([0.3, -0.8, -0.5])
 
-# Point lights have no direction â the call errors.
+# Point lights have no direction — the call errors.
 lamp = Light.point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0])
 result = lamp.set_direction([0.0, -1.0, 0.0])
 `}
@@ -1475,7 +1475,7 @@ import FragmentColor
 let sun = Light.directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
 sun.setDirection([0.3, -0.8, -0.5])
 
-// Point lights have no direction â the call errors.
+// Point lights have no direction — the call errors.
 let lamp = Light.point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0])
 let result = lamp.setDirection([0.0, -1.0, 0.0])
 `}
@@ -1492,7 +1492,7 @@ import org.fragmentcolor.*
 val sun = Light.directional(listOf(0.0f, -1.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f))
 sun.setDirection(listOf(0.3f, -0.8f, -0.5f))
 
-// Point lights have no direction â the call errors.
+// Point lights have no direction — the call errors.
 val lamp = Light.point(listOf(0.0f, 2.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f))
 val result = lamp.setDirection(listOf(0.0f, -1.0f, 0.0f))
 `}
@@ -1508,7 +1508,7 @@ lang="kotlin"
 
 ### Light::set_range
 
-Update the influence-radius cap. Defined for point and spot lights only â
+Update the influence-radius cap. Defined for point and spot lights only —
 returns `Ok(self)` for chaining. Calling this on a directional light
 returns `Err(LightError::FieldNotApplicable { kind: Directional, field:
 "set_range" })` because parallel rays have no distance falloff. Passing a
@@ -1534,7 +1534,7 @@ let lamp = Light::point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0]);
 lamp.set_range(8.0)?;
 let negative = lamp.set_range(-1.0);
 
-// Directional lights have no range â the call errors.
+// Directional lights have no range — the call errors.
 let sun = Light::directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
 let unsupported = sun.set_range(5.0);
 assert_eq!(lamp.range(), Some(8.0));
@@ -1557,7 +1557,7 @@ const lamp = Light.point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0]);
 lamp.setRange(8.0);
 const negative = lamp.setRange(-1.0);
 
-// Directional lights have no range â the call errors.
+// Directional lights have no range — the call errors.
 const sun = Light.directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
 const unsupported = sun.setRange(5.0);
 `}
@@ -1575,7 +1575,7 @@ lamp = Light.point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0])
 lamp.set_range(8.0)
 negative = lamp.set_range(-1.0)
 
-# Directional lights have no range â the call errors.
+# Directional lights have no range — the call errors.
 sun = Light.directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
 unsupported = sun.set_range(5.0)
 `}
@@ -1593,7 +1593,7 @@ let lamp = Light.point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0])
 lamp.setRange(8.0)
 let negative = lamp.setRange(-1.0)
 
-// Directional lights have no range â the call errors.
+// Directional lights have no range — the call errors.
 let sun = Light.directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
 let unsupported = sun.setRange(5.0)
 `}
@@ -1611,7 +1611,7 @@ val lamp = Light.point(listOf(0.0f, 2.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f))
 lamp.setRange(8.0)
 val negative = lamp.setRange(-1.0)
 
-// Directional lights have no range â the call errors.
+// Directional lights have no range — the call errors.
 val sun = Light.directional(listOf(0.0f, -1.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f))
 val unsupported = sun.setRange(5.0)
 `}
@@ -1628,15 +1628,15 @@ lang="kotlin"
 ### Light::set_cone_angles
 
 Update the inner and outer cone half-angles (radians). Defined for spot
-lights only â returns `Ok(self)` for chaining. Calling this on a
+lights only — returns `Ok(self)` for chaining. Calling this on a
 directional or point light returns
 `Err(LightError::FieldNotApplicable { kind, field: "set_cone_angles" })`.
 
 The inner half-angle is the band where the light reaches full intensity;
 between the inner and outer the contribution smoothly rolls off; beyond
 the outer the fragment receives nothing from this light. Pass equal
-values for a hard-edged spot, or pass `(0.0, Ï/4)` for the default
-soft 45Â° cone.
+values for a hard-edged spot, or pass `(0.0, π/4)` for the default
+soft 45° cone.
 
 The new values propagate live to every shader the Light has already
 been wired into; no re-attach needed.

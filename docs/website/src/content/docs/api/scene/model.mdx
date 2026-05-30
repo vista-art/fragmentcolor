@@ -1,6 +1,6 @@
 ---
 title: Model
-description: "A `Model` pairs a [Mesh](/api/geometry/mesh) with a [Material](/api/scene/material) and adds a per-Model 4Ã4 transform. It's the unit you actually add to a `Pass` when rendering 3D content; the Material handles shading, the Mesh handles geometry, the Model handles \"where in the world\"."
+description: "A `Model` pairs a [Mesh](/api/geometry/mesh) with a [Material](/api/scene/material) and adds a per-Model 4×4 transform. It's the unit you actually add to a `Pass` when rendering 3D content; the Material handles shading, the Mesh handles geometry, the Model handles \"where in the world\"."
 category: scene
 categoryLabel: Scene
 sidebar:
@@ -13,39 +13,39 @@ import { Code, Tabs, TabItem, Aside } from "@astrojs/starlight/components";
 
 A `Model` pairs a [Mesh](/api/geometry/mesh) with a
 [Material](/api/scene/material) and adds a per-Model
-4Ã4 transform. It's the unit you actually add to a `Pass` when rendering 3D
+4×4 transform. It's the unit you actually add to a `Pass` when rendering 3D
 content; the Material handles shading, the Mesh handles geometry, the Model
 handles "where in the world".
 
 Each `Model::new` takes ownership of the Material it's given. Cloning the
-Material before passing it in is cheap â `Material::clone` is an Arc-clone
+Material before passing it in is cheap — `Material::clone` is an Arc-clone
 (handle share), not a deep duplicate. The per-Model transform is *not* a
 Material uniform: it's written as four `vec4<f32>` columns into the Mesh's
 per-instance attribute stream at locations 3..6. Many Models can share one
 Material's Shader without colliding because each Model writes its transform
 to **its own** Mesh's instance buffer.
 
-For RemixBrush-style fan-out (one Material, many positioned instances on
+For the fan-out case (one Material, many positioned instances on
 unique geometries), the pattern is:
 
 ```text
 template = Material::pbr().base_color(...)
-for each blob:
-  model = Model::new(blob.mesh, template.clone())
-  model.set_transform(blob.matrix)
+for each item:
+  model = Model::new(item.mesh, template.clone())
+  model.set_transform(item.matrix)
   pass.add(&model)
 ```
 
 Pipeline cached once by shader hash; one bind-group setup per pass; N draws
-(one per unique Mesh). For *batched* instancing â one shared Mesh, many
-transforms in one draw â drop down to `Mesh::add_instance(...)` directly
+(one per unique Mesh). For *batched* instancing — one shared Mesh, many
+transforms in one draw — drop down to `Mesh::add_instance(...)` directly
 with a `Material::custom(shader_that_reads_instance_attrs)`. The Model API
 is for one logical thing per draw, not for managing your own per-instance
 buffers.
 
 **Caveat:** the Mesh's instance buffer is Arc-shared via `Mesh::clone`. Two
 Models that share a Mesh handle (`mesh.clone()`) collide on the same instance
-buffer â the most recent transform-mutating call wins. Give each Model its
+buffer — the most recent transform-mutating call wins. Give each Model its
 own Mesh.
 
 
@@ -283,7 +283,7 @@ lang="kotlin"
 ### Model::new
 
 Construct a `Model` from a `Mesh` and a `Material`. Both arguments are taken
-by value â the Model owns them. The transform starts at the 4Ã4 identity
+by value — the Model owns them. The transform starts at the 4×4 identity
 matrix; `Model::sync_transform` writes it as a single instance into the
 Mesh's per-instance attribute stream (four `vec4<f32>` columns at locations
 3..6).
@@ -521,7 +521,7 @@ Scale the Model by per-axis `factor` (in local space). Post-multiplies the
 current transform by a scale matrix, so the Model grows or shrinks around
 its own origin without sliding through space.
 
-Use uniform scales (`[s, s, s]`) when possible â non-uniform scale breaks
+Use uniform scales (`[s, s, s]`) when possible — non-uniform scale breaks
 the cheap normal-transform path the default PBR shader uses, so a stretched
 Model will shade slightly off. For a correct non-uniform-scale normal, use
 `Material::custom` with a shader that ships the explicit cofactor matrix.
@@ -634,7 +634,7 @@ lang="kotlin"
 
 ### Model::set_transform
 
-Replace the Model's 4Ã4 transform wholesale, in column-major order. Useful
+Replace the Model's 4×4 transform wholesale, in column-major order. Useful
 when you already have a matrix from a math library or a glTF node and want
 to apply it directly without composing through `translate` / `rotate` /
 `scale`.
@@ -767,7 +767,7 @@ lang="kotlin"
 ### Model::set_visible
 
 Toggle the Model in or out of the next frame. Hidden Models are skipped
-by the renderer in both the opaque-batched and blend-sorted draw paths â
+by the renderer in both the opaque-batched and blend-sorted draw paths —
 no Pass rebuild needed.
 
 The flag is Arc-shared with `ModelEntry` (the renderer's queue), so
@@ -796,9 +796,9 @@ let mesh = Mesh::new();
 mesh.add_vertex(Vertex::pbr([0.0, 0.5, 0.0]));
 let blob = Model::new(mesh, Material::pbr()?);
 
-// Wide zoom level â skip the detail blobs.
+// Wide zoom level — skip the detail blobs.
 blob.set_visible(false);
-// Zoom back in â turn them on again.
+// Zoom back in — turn them on again.
 blob.set_visible(true);
 Ok(())
 }
@@ -817,9 +817,9 @@ const mesh = new Mesh();
 mesh.addVertex(Vertex.pbr([0.0, 0.5, 0.0]));
 const blob = new Model(mesh, Material.pbr()?);
 
-// Wide zoom level â skip the detail blobs.
+// Wide zoom level — skip the detail blobs.
 blob.setVisible(false);
-// Zoom back in â turn them on again.
+// Zoom back in — turn them on again.
 blob.setVisible(true);
 `}
 lang="js"
@@ -836,9 +836,9 @@ mesh = Mesh()
 mesh.add_vertex(Vertex.pbr([0.0, 0.5, 0.0]))
 blob = Model(mesh, Material.pbr())
 
-# Wide zoom level â skip the detail blobs.
+# Wide zoom level — skip the detail blobs.
 blob.set_visible(false)
-# Zoom back in â turn them on again.
+# Zoom back in — turn them on again.
 blob.set_visible(true)
 `}
 lang="python"
@@ -855,9 +855,9 @@ let mesh = Mesh()
 try mesh.addVertex(Vertex.pbr([0.0, 0.5, 0.0]))
 let blob = Model(mesh, Material.pbr()?)
 
-// Wide zoom level â skip the detail blobs.
+// Wide zoom level — skip the detail blobs.
 blob.setVisible(false)
-// Zoom back in â turn them on again.
+// Zoom back in — turn them on again.
 blob.setVisible(true)
 `}
 lang="swift"
@@ -874,9 +874,9 @@ val mesh = Mesh()
 mesh.addVertex(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)))
 val blob = Model(mesh, Material.pbr()?)
 
-// Wide zoom level â skip the detail blobs.
+// Wide zoom level — skip the detail blobs.
 blob.setVisible(false)
-// Zoom back in â turn them on again.
+// Zoom back in — turn them on again.
 blob.setVisible(true)
 `}
 lang="kotlin"
@@ -891,7 +891,7 @@ lang="kotlin"
 
 ### Model::transform
 
-Read the Model's current 4Ã4 transform in column-major order, matching
+Read the Model's current 4×4 transform in column-major order, matching
 WGSL's `mat4x4<f32>` layout and glam's `to_cols_array_2d`. The transform
 starts at the identity matrix and is modified by `set_transform`,
 `translate`, `rotate`, and `scale`.
@@ -1013,7 +1013,7 @@ lang="kotlin"
 
 Move the Model by `offset` in world coordinates. Pre-multiplies the current
 transform by a translation matrix, so the result is independent of the
-Model's current rotation â `translate([1, 0, 0])` always moves one unit
+Model's current rotation — `translate([1, 0, 0])` always moves one unit
 along the world X axis.
 
 #### Example
@@ -1133,7 +1133,7 @@ lang="kotlin"
 Read the current visibility flag. Returns `true` for newly-built Models;
 toggle with [`Model::set_visible`](/api/scene/model/set_visible).
 
-The renderer reads this every frame â hidden Models are skipped in both
+The renderer reads this every frame — hidden Models are skipped in both
 the opaque-batched and blend-sorted draw paths without requiring a Pass
 rebuild.
 
@@ -1151,7 +1151,7 @@ let mesh = Mesh::new();
 mesh.add_vertex(Vertex::pbr([0.0, 0.5, 0.0]));
 let model = Model::new(mesh, Material::pbr()?);
 
-// Models start visible; toggle with `set_visible`.
+// Models start visible; toggle with \`set_visible\`.
 let visible_now = model.visible();
 assert!(visible_now);
 Ok(())

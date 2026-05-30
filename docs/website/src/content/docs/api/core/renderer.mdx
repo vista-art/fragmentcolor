@@ -183,7 +183,7 @@ Create a new [Renderer](/api/core/renderer).
 The renderer's GPU adapter and device are initialized lazily on the first
 target you create, so the same `Renderer` works whether you end up
 rendering offscreen or attaching it to a window. By the time `render()`
-is called the GPU resources are already in place â `render` requires a
+is called the GPU resources are already in place — `render` requires a
 [Target](/api/core/target), and the only way to
 build one is through this renderer:
 
@@ -631,9 +631,9 @@ Create a storage-class texture for compute shaders, image store/load, or as a re
 
 Common forms:
 
-- `(size, format)` â empty storage texture, no initial data.
-- `(size, format, bytes)` â storage texture pre-seeded with `bytes`.
-- A full `TextureInput { data, options }` literal â pass `options.usage` (via `TextureOptions::with_usage(...)`) for non-default usage flags.
+- `(size, format)` — empty storage texture, no initial data.
+- `(size, format, bytes)` — storage texture pre-seeded with `bytes`.
+- A full `TextureInput { data, options }` literal — pass `options.usage` (via `TextureOptions::with_usage(...)`) for non-default usage flags.
 
 `size` is required; storage textures have no source to infer dimensions from. Missing it returns `TextureError::InvalidInput`.
 
@@ -755,7 +755,7 @@ lang="kotlin"
 Create a depth texture using `Depth32Float`.
 
 The created depth texture inherits the renderer's current sample count:
-- If you called create_target(window) (surface-backed), it matches the negotiated MSAA (e.g., 2Ã/4Ã) for that surface.
+- If you called create_target(window) (surface-backed), it matches the negotiated MSAA (e.g., 2×/4×) for that surface.
 - If you are rendering offscreen via create_texture_target, it defaults to 1.
 
 This ensures the depth attachment sample_count matches the pass sample_count.
@@ -833,7 +833,7 @@ lang="kotlin"
 
 ### Renderer::unregister_texture(id)
 
-Explicitly remove a texture from the rendererâs registry.
+Explicitly remove a texture from the renderer’s registry.
 
 - Call this when you replace a texture, stop a video stream, or tear down a scene, to release GPU memory.
 - If the texture is still referenced elsewhere, it will remain alive until all strong references are dropped.
@@ -1038,7 +1038,7 @@ The `source` argument is platform-specific:
   over the uniffi boundary).
 - **Android**: a `SurfaceTexture` handle (passed as a raw `ULong` pointer).
 
-Currently returns an error on every platform â the public signature is
+Currently returns an error on every platform — the public signature is
 stable; native-side decode hookup is on the roadmap. Track support via
 the typed `RendererError` you get back.
 
@@ -1129,7 +1129,7 @@ lang="kotlin"
 ### Renderer::load
 
 Realize every pending GPU upload referenced by a renderable. Material's
-texture setters (`base_color_texture`, `metallic_roughness_texture`, â¦)
+texture setters (`base_color_texture`, `metallic_roughness_texture`, …)
 accept paths, bytes, URLs, and `DynamicImage` values in addition to
 already-uploaded [`Texture`](/api/texture/texture)
 handles; the path / bytes / URL variants are stored on the Material's
@@ -1141,7 +1141,7 @@ for each, and writes the resulting `Texture` into the matching uniform.
 [`Renderer::render`](/api/core/renderer/render)
 calls `load` automatically the first time it sees a renderable with
 pending uploads, so explicit `load` is optional. Reach for it when you
-want to amortize the decode + upload cost outside the render loop â for
+want to amortize the decode + upload cost outside the render loop — for
 example, in a loading screen that prepares the scene before the first
 frame goes out.
 
@@ -1162,9 +1162,9 @@ let mesh = Mesh::new();
 mesh.add_vertex(
     Vertex::pbr([0.0, 0.5, 0.0]).set(Vertex::UV0, [0.5, 1.0]),
 );
-// Raw 2Ã2 RGBA pixel bytes â uploaded lazily by `Renderer::load` below.
+// Raw 2×2 RGBA pixel bytes — uploaded lazily by \`Renderer::load\` below.
 // In practice the loader hands the setter encoded PNG/JPEG bytes (from a
-// BIN chunk) or a file path (from a URI); the same `Into<TextureInput>`
+// BIN chunk) or a file path (from a URI); the same \`Into<TextureInput>\`
 // vocabulary covers all of them.
 let red_pixels: Vec<u8> = vec![
     255,   0,   0, 255,    0, 255,   0, 255,
@@ -1175,7 +1175,7 @@ let model = Model::new(mesh, material);
 let scene = Scene::new();
 scene.add(&model)?;
 
-// Eager prewarm â uploads the pending texture(s) so the next render is
+// Eager prewarm — uploads the pending texture(s) so the next render is
 // GPU-only.
 renderer.load(&scene).await?;
 renderer.render(&scene, &target)?;
@@ -1198,7 +1198,7 @@ const target = await renderer.createTextureTarget([64, 64]);
 
 const mesh = new Mesh();
 mesh.addVertex( Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]), );
-// Raw 2Ã2 RGBA pixel bytes â uploaded lazily by \`Renderer.load\` below.
+// Raw 2×2 RGBA pixel bytes — uploaded lazily by \`Renderer.load\` below.
 // In practice the loader hands the setter encoded PNG/JPEG bytes (from a
 // BIN chunk) or a file path (from a URI); the same \`Into<TextureInput>\`
 // vocabulary covers all of them.
@@ -1208,7 +1208,7 @@ const model = new Model(mesh, material);
 const scene = new Scene();
 scene.add(model);
 
-// Eager prewarm â uploads the pending texture(s) so the next render is
+// Eager prewarm — uploads the pending texture(s) so the next render is
 // GPU-only.
 await renderer.load(scene);
 renderer.render(scene, target);
@@ -1230,7 +1230,7 @@ mesh = Mesh()
 mesh.add_vertex(
     Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
 )
-# Raw 2Ã2 RGBA pixel bytes â uploaded lazily by \`Renderer.load\` below.
+# Raw 2×2 RGBA pixel bytes — uploaded lazily by \`Renderer.load\` below.
 # In practice the loader hands the setter encoded PNG/JPEG bytes (from a
 # BIN chunk) or a file path (from a URI); the same \`Into<TextureInput>\`
 # vocabulary covers all of them.
@@ -1243,7 +1243,7 @@ model = Model(mesh, material)
 scene = Scene()
 scene.add(model)
 
-# Eager prewarm â uploads the pending texture(s) so the next render is
+# Eager prewarm — uploads the pending texture(s) so the next render is
 # GPU-only.
 renderer.load(scene)
 renderer.render(scene, target)
@@ -1265,7 +1265,7 @@ let mesh = Mesh()
 try mesh.addVertex(
     try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.uV0, [0.5, 1.0]),
 )
-// Raw 2Ã2 RGBA pixel bytes â uploaded lazily by """Renderer.load""" below.
+// Raw 2×2 RGBA pixel bytes — uploaded lazily by """Renderer.load""" below.
 // In practice the loader hands the setter encoded PNG/JPEG bytes (from a
 // BIN chunk) or a file path (from a URI); the same """Into<TextureInput>"""
 // vocabulary covers all of them.
@@ -1278,7 +1278,7 @@ let model = Model(mesh, material)
 let scene = Scene()
 scene.add(model)
 
-// Eager prewarm â uploads the pending texture(s) so the next render is
+// Eager prewarm — uploads the pending texture(s) so the next render is
 // GPU-only.
 try await renderer.load(scene)
 try renderer.render(scene, target)
@@ -1298,7 +1298,7 @@ val target = renderer.createTextureTarget(64u, 64u)
 
 val mesh = Mesh()
 mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, floatArrayOf(0.5f, 1.0f)), )
-// Raw 2Ã2 RGBA pixel bytes â uploaded lazily by """Renderer.load""" below.
+// Raw 2×2 RGBA pixel bytes — uploaded lazily by """Renderer.load""" below.
  
 // vocabulary covers all of them.
 val red_pixels = listOf(255.0f, 0.0f, 0.0f, 255.0f, 0.0f, 255.0f, 0.0f, 255.0f, 0.0f, 0.0f, 255.0f, 255.0f, 255.0f, 255.0f, 255.0f, 255.0f, .0f)
@@ -1307,7 +1307,7 @@ val model = Model(mesh, material)
 val scene = Scene()
 scene.add(model)
 
-// Eager prewarm â uploads the pending texture(s) so the next render is
+// Eager prewarm — uploads the pending texture(s) so the next render is
 // GPU-only.
 renderer.load(scene)
 renderer.render(scene, target)
@@ -1330,10 +1330,10 @@ storage buffer into a pooled readback staging buffer, maps it, and returns
 the bytes.
 
 This is the only way to observe what a compute pass *wrote* into a storage
-binding. The cheap CPU-mirror accessors â
+binding. The cheap CPU-mirror accessors —
 [`Shader::get`](/api/shaders/shader/get) and
 [`Shader::get_bytes`](/api/shaders/shader/get_bytes)
-â reflect what was last set on the CPU side; GPU writes are not visible
+— reflect what was last set on the CPU side; GPU writes are not visible
 through them.
 
 `read_storage` is `async` on every platform because the underlying

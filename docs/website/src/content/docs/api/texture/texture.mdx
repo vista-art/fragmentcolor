@@ -694,9 +694,9 @@ lang="kotlin"
 Same as `Texture::write`, but writes into a sub-region of the texture and/or with explicit source data layout.
 
 The `region` argument accepts anything convertible into a `TextureRegion`:
-- `[w, h]` / `(w, h)` â full size, origin `(0, 0, 0)`
-- `[x, y, w, h]` / `(x, y, w, h)` â 2D rectangle
-- `[x, y, z, w, h, d]` â 3D box (for layered or 3D textures)
+- `[w, h]` / `(w, h)` — full size, origin `(0, 0, 0)`
+- `[x, y, w, h]` / `(x, y, w, h)` — 2D rectangle
+- `[x, y, z, w, h, d]` — 3D box (for layered or 3D textures)
 - A `TextureRegion` constructed explicitly with `.with_stride(...)` / `.with_rows(...)` for advanced data-layout control
 
 #### Notes
@@ -720,7 +720,7 @@ let bytes = vec![0u8; 64 * 32 * 4];
 // Simple sub-rectangle update.
 texture.write_region(&bytes, [0, 0, 64, 32])?;
 
-// Explicit data layout (advanced â when source rows are padded).
+// Explicit data layout (advanced — when source rows are padded).
 let region = TextureRegion::from([0, 0, 64, 32])
     .with_stride(256)
     .with_rows(32);
@@ -785,7 +785,7 @@ let bytes = Array(repeating: 0, count: 64 * 32 * 4)
 // Simple sub-rectangle update.
 try texture.writeRegion(bytes, [0, 0, 64, 32])
 
-// Explicit data layout (advanced â when source rows are padded).
+// Explicit data layout (advanced — when source rows are padded).
 let region = TextureRegionMobile.from([0, 0, 64, 32]).withStride(256).withRows(32)
 try texture.writeRegion(bytes, region)
 `}
@@ -805,7 +805,7 @@ val bytes = ByteArray(64 * 32 * 4)
 // Simple sub-rectangle update.
 texture.writeRegion(bytes, TextureRegionMobile(0u, 0u, 0u, 64u, 32u, 0u, null, null))
 
-// Explicit data layout (advanced â when source rows are padded).
+// Explicit data layout (advanced — when source rows are padded).
 val region = TextureRegionMobile(0u, 0u, 0u, 64u, 32u, 0u, 256u, 32u)
 texture.writeRegion(bytes, region)
 `}

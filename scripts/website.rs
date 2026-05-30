@@ -23,7 +23,12 @@ mod website {
         top_categories: &std::collections::HashSet<String>,
     ) -> String {
         let base = site_base();
-        let mut out = String::new();
+        // Byte buffer rather than String: the scanner copies source bytes
+        // verbatim, so a `String` push of `bytes[i] as char` would reinterpret
+        // each UTF-8 continuation byte as its own Latin-1 codepoint and mangle
+        // every non-ASCII character (em dashes, ellipses, accents) into mojibake.
+        // Everything inserted here is ASCII, so the result stays valid UTF-8.
+        let mut out: Vec<u8> = Vec::with_capacity(mdx.len());
         let bytes = mdx.as_bytes();
         let mut i = 0usize;
 
@@ -49,17 +54,17 @@ mod website {
             }
 
             if let Some(m) = matched {
-                out.push_str("](");
+                out.extend_from_slice(b"](");
                 i += m.len();
-                out.push_str(&base);
-                out.push('/');
+                out.extend_from_slice(base.as_bytes());
+                out.push(b'/');
                 while i < bytes.len() && bytes[i] != b')' {
-                    out.push(bytes[i] as char);
+                    out.push(bytes[i]);
                     i += 1;
                 }
             } else if i + 2 <= bytes.len() && bytes[i] == b']' && bytes[i + 1] == b'(' {
-                out.push(']');
-                out.push('(');
+                out.push(b']');
+                out.push(b'(');
                 i += 2;
                 let start = i;
                 while i < bytes.len() && bytes[i] != b')' {
@@ -76,25 +81,25 @@ mod website {
                     || lower.starts_with("tel:")
                     || lower.starts_with("data:");
                 if is_abs {
-                    out.push_str(href_trim);
+                    out.extend_from_slice(href_trim.as_bytes());
                 } else {
                     let top = href_trim.split('/').next().unwrap_or("");
                     if top_categories.contains(top) {
-                        out.push_str(&base);
+                        out.extend_from_slice(base.as_bytes());
                         if !href_trim.starts_with('/') {
-                            out.push('/');
+                            out.push(b'/');
                         }
-                        out.push_str(href_trim);
+                        out.extend_from_slice(href_trim.as_bytes());
                     } else {
-                        out.push_str(href_trim);
+                        out.extend_from_slice(href_trim.as_bytes());
                     }
                 }
             } else {
-                out.push(bytes[i] as char);
+                out.push(bytes[i]);
                 i += 1;
             }
         }
-        out
+        String::from_utf8_lossy(&out).into_owned()
     }
 
     // Canonicalize a name for fuzzy matching (lowercase, alphanumeric only)
@@ -1237,7 +1242,12 @@ mod website {
         tabs.push_str("<TabItem label=\"Rust\">\n");
         tabs.push_str("<Code\n");
         tabs.push_str("code={`\n");
-        tabs.push_str(&rust_processed);
+        // Escape backticks so a Rust doc-comment like `// see `Foo` ` doesn't
+        // close the MDX template literal early. The JS/Python/Swift/Kotlin tabs
+        // below already run their code through this; the Rust tab was the one
+        // omission, which broke any page whose example carried a backtick in a
+        // comment.
+        tabs.push_str(&sanitize_for_template(&rust_processed));
         tabs.push_str("\n`}\n");
         tabs.push_str("lang=\"rust\"");
         tabs.push_str(&meta_attr);

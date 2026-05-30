@@ -731,7 +731,7 @@ lang="kotlin"
 Attach a Mesh to this Pass.
 
 - The mesh is attached to the last shader previously added to this Pass.
-- Validates compatibility with that shaderâs vertex inputs.
+- Validates compatibility with that shader’s vertex inputs.
 - Returns Result`Result<(), ShaderError>`; on error, the mesh is not attached.
 
 If a Shader wasn't provided earlier, FragmentColor will create a default one.
@@ -903,11 +903,11 @@ lang="kotlin"
 
 ### Pass::add
 
-Absorb any [`SceneObject`](/api/scene) â a
+Absorb any [`SceneObject`](/api/scene) — a
 [Model](/api/scene/model),
 [Camera](/api/scene/camera),
 [Light](/api/scene/light), or a user-defined
-node that implements the trait â into the pass. Each kind brings its
+node that implements the trait — into the pass. Each kind brings its
 own attach behaviour: a Model queues a draw with its own per-instance
 transform; a Camera or Light wires its uniforms into every shader the
 pass renders, both the ones already there and the ones added afterwards.
@@ -916,7 +916,7 @@ Camera and Light hold Arc-shared state, so subsequent mutations on the
 same value (`camera.look_at(...)`, `light.set_color(...)`) propagate to
 every shader on the pass with no further `add` call.
 
-Returns `Result<&Pass, PassError>` â Models can fail at attach time when
+Returns `Result<&Pass, PassError>` — Models can fail at attach time when
 the Mesh layout doesn't match the Material's shader; Cameras and Lights
 always succeed. Chain with `?` between calls.
 
@@ -947,7 +947,7 @@ pass.add(&model)?
     .add(&camera)?
     .add(&sun)?;
 
-// Updating the camera later is enough â every Model already on the pass
+// Updating the camera later is enough — every Model already on the pass
 // picks the new view_proj up at the next render.
 camera.look_at([3.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
 let _ = renderer;
@@ -977,7 +977,7 @@ const sun = Light.directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9]);
 const pass = new Pass("scene");
 pass.add(model)?.add(camera)?.add(sun);
 
-// Updating the camera later is enough â every Model already on the pass
+// Updating the camera later is enough — every Model already on the pass
 // picks the new view_proj up at the next render.
 camera.lookAt([3.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
 `}
@@ -1005,7 +1005,7 @@ sun = Light.directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9])
 rpass = Pass("scene")
 rpass.add(model).add(camera).add(sun)
 
-# Updating the camera later is enough â every Model already on the rpass
+# Updating the camera later is enough — every Model already on the rpass
 # picks the new view_proj up at the next render.
 camera.look_at([3.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
 `}
@@ -1033,7 +1033,7 @@ let sun = Light.directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9])
 let pass = Pass("scene")
 pass.add(model)?.add(camera)?.add(sun)
 
-// Updating the camera later is enough â every Model already on the pass
+// Updating the camera later is enough — every Model already on the pass
 // picks the view_proj up at the next render.
 camera.lookAt([3.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
 `}
@@ -1059,7 +1059,7 @@ val sun = Light.directional(listOf(0.3f, -1.0f, -0.4f), listOf(1.0f, 0.95f, 0.9f
 val pass = Pass("scene")
 pass.add(model)?.add(camera)?.add(sun)
 
-// Updating the camera later is enough â every Model already on the pass
+// Updating the camera later is enough — every Model already on the pass
 // picks the view_proj up at the next render.
 camera.lookAt(listOf(3.0f, 1.0f, 5.0f), listOf(0.0f, 0.0f, 0.0f), listOf(0.0f, 1.0f, 0.0f))
 `}
@@ -1079,7 +1079,7 @@ Sets the viewport region for this [Pass](/api/core/pass).
 
 The viewport restricts drawing to a rectangular area of the [Target](/api/core/target).
 
-The `viewport` argument accepts anything convertible into a `ScreenRegion` â an `[x, y, w, h]` array, a `(w, h)` tuple, or a `ScreenRegion` constructed explicitly.
+The `viewport` argument accepts anything convertible into a `ScreenRegion` — an `[x, y, w, h]` array, a `(w, h)` tuple, or a `ScreenRegion` constructed explicitly.
 
 #### Example
 
@@ -1425,7 +1425,7 @@ lang="kotlin"
 
 Attach a per-pass color render target. When set, this pass renders into the provided texture instead of the final Target.
 
-A Pass has at most one color target â call `set_target` again to swap it. Use this to render intermediate results (e.g., a shadow map) that later passes can sample.
+A Pass has at most one color target — call `set_target` again to swap it. Use this to render intermediate results (e.g., a shadow map) that later passes can sample.
 
 #### Example
 
@@ -1525,13 +1525,13 @@ lang="kotlin"
 
 ### Pass::set_depth_target
 
-Attach a depth texture to this pass. Once attached, the renderer builds the pipeline with a matching depth-stencil state and **depth-test is enabled** â fragments behind the current contents of the depth buffer are discarded, and the pass writes to the depth buffer as it draws. That's what you want for 3D meshes that occlude each other.
+Attach a depth texture to this pass. Once attached, the renderer builds the pipeline with a matching depth-stencil state and **depth-test is enabled** — fragments behind the current contents of the depth buffer are discarded, and the pass writes to the depth buffer as it draws. That's what you want for 3D meshes that occlude each other.
 
-A Pass has at most one depth attachment â call `set_depth_target` again to swap it.
+A Pass has at most one depth attachment — call `set_depth_target` again to swap it.
 
-The target must be a depth texture (`Depth32Float` is the canonical format) created by the same `Renderer` via [`create_depth_texture`](/api/core/renderer/create_depth_texture). The depth attachment's sample count must match the color attachments' â mixing 1Ã and 4Ã MSAA in the same pass returns `RendererError::DepthSampleCountMismatch`.
+The target must be a depth texture (`Depth32Float` is the canonical format) created by the same `Renderer` via [`create_depth_texture`](/api/core/renderer/create_depth_texture). The depth attachment's sample count must match the color attachments' — mixing 1× and 4× MSAA in the same pass returns `RendererError::DepthSampleCountMismatch`.
 
-To **opt out** of depth testing, simply don't call `set_depth_target` â the pass renders without depth-state, painter's-algorithm style (later draws win).
+To **opt out** of depth testing, simply don't call `set_depth_target` — the pass renders without depth-state, painter's-algorithm style (later draws win).
 
 #### Example
 
@@ -1557,7 +1557,7 @@ mesh.add_vertex([1.0, 1.0, 0.0]);
 let shader = Shader::from_mesh(&mesh);
 let pass = Pass::from_shader("blobs", &shader);
 
-// Depth-test on â closer fragments win, the pass writes to the depth
+// Depth-test on — closer fragments win, the pass writes to the depth
 // buffer so subsequent draws within the same pass see the depth.
 pass.set_depth_target(&depth)?;
 
@@ -1590,7 +1590,7 @@ mesh.addVertex([1.0, 1.0, 0.0]);
 const shader = Shader.fromMesh(mesh);
 const pass = new Pass("blobs"); pass.addShader(shader);
 
-// Depth-test on â closer fragments win, the pass writes to the depth
+// Depth-test on — closer fragments win, the pass writes to the depth
 // buffer so subsequent draws within the same pass see the depth.
 pass.setDepthTarget(depth);
 
@@ -1620,7 +1620,7 @@ mesh.add_vertex([1.0, 1.0, 0.0])
 shader = Shader.from_mesh(mesh)
 rpass = Pass("blobs"); rpass.add_shader(shader)
 
-# Depth-test on â closer fragments win, the rpass writes to the depth
+# Depth-test on — closer fragments win, the rpass writes to the depth
 # buffer so subsequent draws within the same rpass see the depth.
 rpass.set_depth_target(depth)
 
@@ -1650,7 +1650,7 @@ try mesh.addVertex([1.0, 1.0, 0.0])
 let shader = Shader.fromMesh(mesh)
 let pass = Pass("blobs"); pass.addShader(shader)
 
-// Depth-test on â closer fragments win, the pass writes to the depth
+// Depth-test on — closer fragments win, the pass writes to the depth
 // buffer so subsequent draws within the same pass see the depth.
 pass.setDepthTarget(depth)
 
@@ -1680,7 +1680,7 @@ mesh.addVertex(Vertex(listOf(1.0f, 1.0f, 0.0f)))
 val shader = Shader.fromMesh(mesh)
 val pass = Pass("blobs"); pass.addShader(shader)
 
-// Depth-test on â closer fragments win, the pass writes to the depth
+// Depth-test on — closer fragments win, the pass writes to the depth
 // buffer so subsequent draws within the same pass see the depth.
 pass.setDepthTarget(depth)
 
