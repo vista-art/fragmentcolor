@@ -28,7 +28,7 @@ use wasm_bindgen::prelude::*;
 ///   sorting required. Sort granularity is per-Model (not per-fragment),
 ///   so self-intersecting translucent meshes can still show artifacts.
 #[cfg_attr(wasm, wasm_bindgen)]
-#[cfg_attr(python, pyclass(eq, eq_int))]
+#[cfg_attr(python, pyclass(eq, eq_int, from_py_object))]
 #[cfg_attr(mobile, derive(uniffi::Enum))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum AlphaMode {
