@@ -14,14 +14,14 @@ per-instance attribute stream at locations 3..6. Many Models can share one
 Material's Shader without colliding because each Model writes its transform
 to **its own** Mesh's instance buffer.
 
-For RemixBrush-style fan-out (one Material, many positioned instances on
+For the fan-out case (one Material, many positioned instances on
 unique geometries), the pattern is:
 
 ```text
 template = Material::pbr().base_color(...)
-for each blob:
-  model = Model::new(blob.mesh, template.clone())
-  model.set_transform(blob.matrix)
+for each item:
+  model = Model::new(item.mesh, template.clone())
+  model.set_transform(item.matrix)
   pass.add(&model)
 ```
 

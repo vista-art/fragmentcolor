@@ -1960,8 +1960,8 @@ mod tests {
     }
 
     // Story: A prepared chain feeds back into create_texture and produces a
-    // texture with the expected format + mip chain — the round-trip RemixBrush
-    // uses for off-main-thread mip generation. Exercises both the
+    // texture with the expected format + mip chain — the round-trip consumers
+    // use for off-main-thread mip generation. Exercises both the
     // TextureInput::Prepared variant (Rust ergonomics) and the dedicated
     // create_texture_prepared cross-language entry point.
     #[test]

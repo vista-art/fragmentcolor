@@ -27,15 +27,7 @@ fn enforce_no_panic_policy() -> Result<(), String> {
         Err(_) => PathBuf::from("."),
     };
 
-    let scan_roots = [
-        manifest_dir.join("src"),
-        manifest_dir.join("crates/kyoso-components/src"),
-        manifest_dir.join("crates/kyoso-core/src"),
-        manifest_dir.join("crates/kyoso-crdt/src"),
-        manifest_dir.join("crates/kyoso-ecs/src"),
-        manifest_dir.join("crates/kyoso-renderer/src"),
-        manifest_dir.join("crates/kyoso-scheduler/src"),
-    ];
+    let scan_roots = [manifest_dir.join("src")];
 
     let mut findings: Vec<(PathBuf, Vec<Offense>)> = Vec::new();
     for root in scan_roots.iter() {

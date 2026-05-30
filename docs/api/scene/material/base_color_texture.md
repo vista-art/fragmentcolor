@@ -1,19 +1,17 @@
 # Material::base_color_texture
 
-Bind a texture to the canonical `base_color_map` slot. The default PBR
-shader samples it in `fs_main` and multiplies by the factor: per-fragment
-albedo is `material.base_color * textureSample(base_color_map, sampler, in.uv)`.
+Bind a texture to the `base_color_map` slot. The default PBR shader samples it in `fs_main` and multiplies by the factor. The albedo for each fragment is `material.base_color * textureSample(base_color_map, sampler, in.uv)`.
 
 Accepts any `Into<TextureInput>`:
 
-- A pre-built [`&Texture`](https://fragmentcolor.org/api/texture/texture) — the eager path. The setter stores the texture's ID immediately and the GPU texture stays Arc-shared across every Material that points at it. Passing the same `&shared_texture` to N Materials produces one GPU upload + N shader-uniform references — the cheap way to wallpaper a brush stroke across a scene full of impasto blobs without paying for N texture allocations.
-- Bytes / path / URL / `DynamicImage` — the lazy path. The setter queues the input on the Material's Shader; the renderer drains queued uploads on the first [`Renderer::render`](https://fragmentcolor.org/api/core/renderer/render) (or earlier via the explicit [`Renderer::load`](https://fragmentcolor.org/api/core/renderer/load)).
+- A pre-built [`&Texture`](https://fragmentcolor.org/api/texture/texture). The setter stores the texture's ID immediately and the GPU texture stays Arc-shared across every Material that points at it. Passing the same `&shared_texture` to N Materials produces one GPU upload + N shader-uniform references — the cheap way to reuse one texture map across a scene full of objects without paying for N texture allocations.
+- Bytes / path / URL / `DynamicImage`. The setter queues the input on the Material's Shader, and the renderer drains queued uploads on the first [`Renderer::render`](https://fragmentcolor.org/api/core/renderer/render) (or earlier via the explicit [`Renderer::load`](https://fragmentcolor.org/api/core/renderer/load)).
 
 Unset, this slot resolves to a 1×1 white default the renderer hands out
 lazily — so calling `Material::pbr()?` without binding a
 texture renders correctly under the factor alone.
 
-### Errors are surfaced lazily
+## Errors are surfaced lazily
 
 The setter itself is infallible — it queues the upload (lazy path) or
 takes an Arc-clone (eager path) and returns. Failures from the lazy

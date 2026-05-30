@@ -64,7 +64,7 @@ let tex   = renderer.create_texture(chain).await?;                    // pre-bak
 
 The same call shapes work in JavaScript, Python, Swift, and Kotlin, with each binding using its native syntax for the tuple/options.
 
-**`TextureMipChain` is a new public type on every binding.** It builds the CPU mipmap chain off-thread from encoded image bytes or raw pixels, so a tile-cache loader on its own worker thread can fold the resize pass into the same hop and hand the renderer a finished chain. In RemixBrush, painted-canvas tile uploads dropped from 30–50 ms of GPU-thread work to a single `queue.write_texture` call.
+**`TextureMipChain` is a new public type on every binding.** It builds the CPU mipmap chain off-thread from encoded image bytes or raw pixels, so a tile-cache loader on its own worker thread can fold the resize pass into the same hop and hand the renderer a finished chain. In one consumer app, tile uploads dropped from 30–50 ms of GPU-thread work to a single `queue.write_texture` call.
 
 **`Renderer::create_texture` no longer blocks the renderer thread on native targets.** Decoding, the Triangle-filter mipmap chain, and the per-level texture writes run on a named background worker; the public API stays `await`-shaped, but the caller's GPU and event-loop threads are no longer pinned for the duration. On the web, the work runs inline because the underlying GPU types can't be moved across threads — drop heavy decode into a Web Worker yourself if you need parallelism there.
 
@@ -136,7 +136,7 @@ The same class of TBDR bug also affects `compute → render` sequences inside on
 
 ### `R16Unorm` (and the 16-bit norm family) now works on every adapter that advertises it
 
-A bug surfaced through RemixBrush's painting shader path: an `R16Unorm` `TextureMipChain` that round-tripped cleanly through `prepare → device.create_texture` produced a silently-invalid texture on Apple Silicon, then exploded on the first `create_view()` with an `InvalidResource` cascade that drowned consumer logs 60 times per second. Same for `Rg16Unorm`, `Rgba16Unorm`, and the three `*Snorm` variants.
+A bug surfaced through a consumer's shader path: an `R16Unorm` `TextureMipChain` that round-tripped cleanly through `prepare → device.create_texture` produced a silently-invalid texture on Apple Silicon, then exploded on the first `create_view()` with an `InvalidResource` cascade that drowned consumer logs 60 times per second. Same for `Rg16Unorm`, `Rgba16Unorm`, and the three `*Snorm` variants.
 
 Three layered fixes, so the failure mode no longer reaches the user:
 

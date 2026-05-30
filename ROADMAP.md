@@ -103,8 +103,8 @@ opportunistic compression-feature requests at device creation, dispatch for
 RGBA8 / RGBA16F / R16 / Rg16 / Bgra8 / BC1-7 / ASTC 4×4 + 8×8 / ETC2,
 pre-baked mip chain uploaded verbatim, capability-aware errors when the
 active GPU lacks a required compression feature, synthetic in-memory KTX2
-round-trip test. The remaining work below covers the gaps RemixBrush and
-similar consumers will hit as scope grows.
+round-trip test. The remaining work below covers the gaps consumers will
+hit as scope grows.
 
 - [ ] Magic-number sniff in `TextureInput::Bytes` and `.ktx2` extension recognition in `TextureInput::Path` so existing `Renderer::create_texture(path)` auto-routes to the KTX2 loader without callers picking the explicit `Ktx2Path` / `Ktx2Bytes` variant
 - [ ] Cube map support (KTX2 `faceCount = 6`): upload all 6 faces into one texture; expose a `TextureViewDimension::Cube` view (currently rejected with a clear error)

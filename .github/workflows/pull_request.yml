@@ -106,7 +106,7 @@ jobs:
       #     name: image-diffs
       #     overwrite: true
       #     compression-level: 0
-      #     path: photograph/src/filters/tests/error/
+      #     path: target/image-diffs/
 
       - name: Build example triangle
         run: cargo build -p fce --example triangle

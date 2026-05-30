@@ -2978,7 +2978,7 @@ fn main(v: VOut) -> @location(0) vec4<f32> {
     }
 
     // Story: Bind an R16Unorm texture (prepared mip chain) into a shader and
-    // render. This is the consumer's failing path (RemixBrush, FC-BUG report
+    // render. This is the consumer's failing path (FC-BUG report
     // 2026-05-04): without TEXTURE_FORMAT_16BIT_NORM in the device candidates,
     // the texture is silently invalid and `create_view` cascades into an
     // InvalidResource validation error at every frame. With the fix, this
@@ -3014,7 +3014,7 @@ fn main(v: VOut) -> @location(0) vec4<f32> {
             "#;
             let shader = crate::Shader::new(wgsl).expect("shader");
 
-            // 4×4 R16Unorm raw data — same shape as RemixBrush's height tile.
+            // 4×4 R16Unorm raw data — same shape as a consumer's height tile.
             let words: Vec<u16> = (0..16).map(|i| i * 4096).collect();
             let mut bytes: Vec<u8> = Vec::with_capacity(words.len() * 2);
             for w in &words {
