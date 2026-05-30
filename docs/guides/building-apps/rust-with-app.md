@@ -43,7 +43,7 @@ handles for any per-window setup.
 
 ```rust,no_run
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-use fragmentcolor::{App, Camera, Material, Renderer, Scene, SceneSource};
+use fragmentcolor::{App, Camera, Material, Renderer, Scene};
 use std::time::Instant;
 
 struct PreviewState {
@@ -56,7 +56,7 @@ let renderer = Renderer::new();
 let mut app = App::new(renderer);
 
 app.on_start(|app, _windows| {
-    let scene = Scene::load(SceneSource::gltf("model.glb"))?;
+    let scene = Scene::load("model.glb")?;
     let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0)
         .look_at([0.0, 0.0, 3.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
     scene.add(&camera)?;
@@ -102,7 +102,8 @@ app.on_draw(|app, window_id, _event| {
         [0.0, 1.0, 0.0],
     );
 
-    app.with_target(window_id, |renderer, target| {
+    let renderer = app.renderer();
+    app.with_target(window_id, |target| {
         renderer.render(&preview.scene, target).expect("render");
     });
 });
