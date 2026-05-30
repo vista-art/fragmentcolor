@@ -64,8 +64,12 @@ fn nrm(p: vec3<f32>) -> vec3<f32> {
 }
 @fragment fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let uv = in.uv * 2.0 - vec2<f32>(1.0);
-    let ro = vec3<f32>(0.0, 0.0, -2.5);
-    let rd = normalize(vec3<f32>(uv, 1.5));
+    let ro = vec3<f32>(1.4, 1.25, -1.7);
+    let ta = vec3<f32>(0.0, 0.0, 0.0);
+    let ww = normalize(ta - ro);
+    let uu = normalize(cross(vec3<f32>(0.0, 1.0, 0.0), ww));
+    let vv = cross(ww, uu);
+    let rd = normalize(uu * uv.x + vv * uv.y + ww * 1.5);
     let t = march(ro, rd);
     if (t < 0.0) { return vec4<f32>(0.10, 0.12, 0.18, 1.0); }
     let p = ro + rd * t;
@@ -106,8 +110,12 @@ fn nrm(p: vec3<f32>) -> vec3<f32> {
 }
 @fragment fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let uv = in.uv * 2.0 - vec2<f32>(1.0);
-    let ro = vec3<f32>(0.0, 0.0, -2.5);
-    let rd = normalize(vec3<f32>(uv, 1.5));
+    let ro = vec3<f32>(1.4, 1.25, -1.7);
+    let ta = vec3<f32>(0.0, 0.0, 0.0);
+    let ww = normalize(ta - ro);
+    let uu = normalize(cross(vec3<f32>(0.0, 1.0, 0.0), ww));
+    let vv = cross(ww, uu);
+    let rd = normalize(uu * uv.x + vv * uv.y + ww * 1.5);
     let t = march(ro, rd);
     if (t < 0.0) { return vec4<f32>(0.10, 0.12, 0.18, 1.0); }
     let p = ro + rd * t;
@@ -121,12 +129,17 @@ fn nrm(p: vec3<f32>) -> vec3<f32> {
         },
         Composition {
             name: "cone",
-            description: "Cone with half-angle ~25 deg, recentered so the apex sits high on screen.",
+            description: "Cone with half-angle ~25 deg, apex up and centered.",
             slugs: &["sdf/cone"],
             fragment: r#"
 fn scene(p: vec3<f32>) -> f32 {
-    let q = p + vec3<f32>(0.0, 0.55, 0.0);
-    return max(cone(q, vec2<f32>(0.4226, 0.9063)), -q.y - 1.0);
+    // Center the cone in view; flip y so the infinite cone (which opens
+    // toward -y) points apex-up on screen, then cap the base. c = (sin, cos)
+    // of the slant; (sin 65, cos 65) gives a slim cone (~25-deg half-angle
+    // measured from the axis) rather than the squat wide-angle default.
+    let q = p + vec3<f32>(0.0, 0.7, 0.0);
+    let c = vec2<f32>(0.9063, 0.4226);
+    return max(cone(vec3<f32>(q.x, -q.y, q.z), c), q.y - 1.4);
 }
 fn march(ro: vec3<f32>, rd: vec3<f32>) -> f32 {
     var t = 0.0;
@@ -149,8 +162,12 @@ fn nrm(p: vec3<f32>) -> vec3<f32> {
 }
 @fragment fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let uv = in.uv * 2.0 - vec2<f32>(1.0);
-    let ro = vec3<f32>(0.0, 0.0, -2.5);
-    let rd = normalize(vec3<f32>(uv, 1.5));
+    let ro = vec3<f32>(1.4, 1.25, -1.7);
+    let ta = vec3<f32>(0.0, 0.0, 0.0);
+    let ww = normalize(ta - ro);
+    let uu = normalize(cross(vec3<f32>(0.0, 1.0, 0.0), ww));
+    let vv = cross(ww, uu);
+    let rd = normalize(uu * uv.x + vv * uv.y + ww * 1.5);
     let t = march(ro, rd);
     if (t < 0.0) { return vec4<f32>(0.10, 0.12, 0.18, 1.0); }
     let p = ro + rd * t;
@@ -191,8 +208,12 @@ fn nrm(p: vec3<f32>) -> vec3<f32> {
 }
 @fragment fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let uv = in.uv * 2.0 - vec2<f32>(1.0);
-    let ro = vec3<f32>(0.0, 0.0, -2.5);
-    let rd = normalize(vec3<f32>(uv, 1.5));
+    let ro = vec3<f32>(1.4, 1.25, -1.7);
+    let ta = vec3<f32>(0.0, 0.0, 0.0);
+    let ww = normalize(ta - ro);
+    let uu = normalize(cross(vec3<f32>(0.0, 1.0, 0.0), ww));
+    let vv = cross(ww, uu);
+    let rd = normalize(uu * uv.x + vv * uv.y + ww * 1.5);
     let t = march(ro, rd);
     if (t < 0.0) { return vec4<f32>(0.10, 0.12, 0.18, 1.0); }
     let p = ro + rd * t;
@@ -233,8 +254,12 @@ fn nrm(p: vec3<f32>) -> vec3<f32> {
 }
 @fragment fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let uv = in.uv * 2.0 - vec2<f32>(1.0);
-    let ro = vec3<f32>(0.0, 0.0, -2.5);
-    let rd = normalize(vec3<f32>(uv, 1.5));
+    let ro = vec3<f32>(1.4, 1.25, -1.7);
+    let ta = vec3<f32>(0.0, 0.0, 0.0);
+    let ww = normalize(ta - ro);
+    let uu = normalize(cross(vec3<f32>(0.0, 1.0, 0.0), ww));
+    let vv = cross(ww, uu);
+    let rd = normalize(uu * uv.x + vv * uv.y + ww * 1.5);
     let t = march(ro, rd);
     if (t < 0.0) { return vec4<f32>(0.10, 0.12, 0.18, 1.0); }
     let p = ro + rd * t;
@@ -275,8 +300,12 @@ fn nrm(p: vec3<f32>) -> vec3<f32> {
 }
 @fragment fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let uv = in.uv * 2.0 - vec2<f32>(1.0);
-    let ro = vec3<f32>(0.0, 0.0, -2.5);
-    let rd = normalize(vec3<f32>(uv, 1.5));
+    let ro = vec3<f32>(1.4, 1.25, -1.7);
+    let ta = vec3<f32>(0.0, 0.0, 0.0);
+    let ww = normalize(ta - ro);
+    let uu = normalize(cross(vec3<f32>(0.0, 1.0, 0.0), ww));
+    let vv = cross(ww, uu);
+    let rd = normalize(uu * uv.x + vv * uv.y + ww * 1.5);
     let t = march(ro, rd);
     if (t < 0.0) { return vec4<f32>(0.10, 0.12, 0.18, 1.0); }
     let p = ro + rd * t;
@@ -317,8 +346,12 @@ fn nrm(p: vec3<f32>) -> vec3<f32> {
 }
 @fragment fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let uv = in.uv * 2.0 - vec2<f32>(1.0);
-    let ro = vec3<f32>(0.0, 0.0, -2.5);
-    let rd = normalize(vec3<f32>(uv, 1.5));
+    let ro = vec3<f32>(1.4, 1.25, -1.7);
+    let ta = vec3<f32>(0.0, 0.0, 0.0);
+    let ww = normalize(ta - ro);
+    let uu = normalize(cross(vec3<f32>(0.0, 1.0, 0.0), ww));
+    let vv = cross(ww, uu);
+    let rd = normalize(uu * uv.x + vv * uv.y + ww * 1.5);
     let t = march(ro, rd);
     if (t < 0.0) { return vec4<f32>(0.10, 0.12, 0.18, 1.0); }
     let p = ro + rd * t;
@@ -360,8 +393,12 @@ fn nrm(p: vec3<f32>) -> vec3<f32> {
 }
 @fragment fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let uv = in.uv * 2.0 - vec2<f32>(1.0);
-    let ro = vec3<f32>(0.0, 0.0, -2.5);
-    let rd = normalize(vec3<f32>(uv, 1.5));
+    let ro = vec3<f32>(1.4, 1.25, -1.7);
+    let ta = vec3<f32>(0.0, 0.0, 0.0);
+    let ww = normalize(ta - ro);
+    let uu = normalize(cross(vec3<f32>(0.0, 1.0, 0.0), ww));
+    let vv = cross(ww, uu);
+    let rd = normalize(uu * uv.x + vv * uv.y + ww * 1.5);
     let t = march(ro, rd);
     if (t < 0.0) { return vec4<f32>(0.10, 0.12, 0.18, 1.0); }
     let p = ro + rd * t;
@@ -403,8 +440,12 @@ fn nrm(p: vec3<f32>) -> vec3<f32> {
 }
 @fragment fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let uv = in.uv * 2.0 - vec2<f32>(1.0);
-    let ro = vec3<f32>(0.0, 0.0, -2.5);
-    let rd = normalize(vec3<f32>(uv, 1.5));
+    let ro = vec3<f32>(1.4, 1.25, -1.7);
+    let ta = vec3<f32>(0.0, 0.0, 0.0);
+    let ww = normalize(ta - ro);
+    let uu = normalize(cross(vec3<f32>(0.0, 1.0, 0.0), ww));
+    let vv = cross(ww, uu);
+    let rd = normalize(uu * uv.x + vv * uv.y + ww * 1.5);
     let t = march(ro, rd);
     if (t < 0.0) { return vec4<f32>(0.10, 0.12, 0.18, 1.0); }
     let p = ro + rd * t;
@@ -447,8 +488,12 @@ fn nrm(p: vec3<f32>) -> vec3<f32> {
 }
 @fragment fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let uv = in.uv * 2.0 - vec2<f32>(1.0);
-    let ro = vec3<f32>(0.0, 0.0, -2.5);
-    let rd = normalize(vec3<f32>(uv, 1.5));
+    let ro = vec3<f32>(1.4, 1.25, -1.7);
+    let ta = vec3<f32>(0.0, 0.0, 0.0);
+    let ww = normalize(ta - ro);
+    let uu = normalize(cross(vec3<f32>(0.0, 1.0, 0.0), ww));
+    let vv = cross(ww, uu);
+    let rd = normalize(uu * uv.x + vv * uv.y + ww * 1.5);
     let t = march(ro, rd);
     if (t < 0.0) { return vec4<f32>(0.10, 0.12, 0.18, 1.0); }
     let p = ro + rd * t;
@@ -490,8 +535,12 @@ fn nrm(p: vec3<f32>) -> vec3<f32> {
 }
 @fragment fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let uv = in.uv * 2.0 - vec2<f32>(1.0);
-    let ro = vec3<f32>(0.0, 0.0, -2.5);
-    let rd = normalize(vec3<f32>(uv, 1.5));
+    let ro = vec3<f32>(1.4, 1.25, -1.7);
+    let ta = vec3<f32>(0.0, 0.0, 0.0);
+    let ww = normalize(ta - ro);
+    let uu = normalize(cross(vec3<f32>(0.0, 1.0, 0.0), ww));
+    let vv = cross(ww, uu);
+    let rd = normalize(uu * uv.x + vv * uv.y + ww * 1.5);
     let t = march(ro, rd);
     if (t < 0.0) { return vec4<f32>(0.10, 0.12, 0.18, 1.0); }
     let p = ro + rd * t;
@@ -534,8 +583,12 @@ fn nrm(p: vec3<f32>) -> vec3<f32> {
 }
 @fragment fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let uv = in.uv * 2.0 - vec2<f32>(1.0);
-    let ro = vec3<f32>(0.0, 0.0, -2.5);
-    let rd = normalize(vec3<f32>(uv, 1.5));
+    let ro = vec3<f32>(1.4, 1.25, -1.7);
+    let ta = vec3<f32>(0.0, 0.0, 0.0);
+    let ww = normalize(ta - ro);
+    let uu = normalize(cross(vec3<f32>(0.0, 1.0, 0.0), ww));
+    let vv = cross(ww, uu);
+    let rd = normalize(uu * uv.x + vv * uv.y + ww * 1.5);
     let t = march(ro, rd);
     if (t < 0.0) { return vec4<f32>(0.10, 0.12, 0.18, 1.0); }
     let p = ro + rd * t;
@@ -577,8 +630,12 @@ fn nrm(p: vec3<f32>) -> vec3<f32> {
 }
 @fragment fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let uv = in.uv * 2.0 - vec2<f32>(1.0);
-    let ro = vec3<f32>(0.0, 0.0, -2.5);
-    let rd = normalize(vec3<f32>(uv, 1.5));
+    let ro = vec3<f32>(1.4, 1.25, -1.7);
+    let ta = vec3<f32>(0.0, 0.0, 0.0);
+    let ww = normalize(ta - ro);
+    let uu = normalize(cross(vec3<f32>(0.0, 1.0, 0.0), ww));
+    let vv = cross(ww, uu);
+    let rd = normalize(uu * uv.x + vv * uv.y + ww * 1.5);
     let t = march(ro, rd);
     if (t < 0.0) { return vec4<f32>(0.10, 0.12, 0.18, 1.0); }
     let p = ro + rd * t;
@@ -619,8 +676,12 @@ fn nrm(p: vec3<f32>) -> vec3<f32> {
 }
 @fragment fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let uv = in.uv * 2.0 - vec2<f32>(1.0);
-    let ro = vec3<f32>(0.0, 0.0, -2.5);
-    let rd = normalize(vec3<f32>(uv, 1.5));
+    let ro = vec3<f32>(1.4, 1.25, -1.7);
+    let ta = vec3<f32>(0.0, 0.0, 0.0);
+    let ww = normalize(ta - ro);
+    let uu = normalize(cross(vec3<f32>(0.0, 1.0, 0.0), ww));
+    let vv = cross(ww, uu);
+    let rd = normalize(uu * uv.x + vv * uv.y + ww * 1.5);
     let t = march(ro, rd);
     if (t < 0.0) { return vec4<f32>(0.10, 0.12, 0.18, 1.0); }
     let p = ro + rd * t;
@@ -663,8 +724,12 @@ fn nrm(p: vec3<f32>) -> vec3<f32> {
 }
 @fragment fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let uv = in.uv * 2.0 - vec2<f32>(1.0);
-    let ro = vec3<f32>(0.0, 0.0, -2.5);
-    let rd = normalize(vec3<f32>(uv, 1.5));
+    let ro = vec3<f32>(1.4, 1.25, -1.7);
+    let ta = vec3<f32>(0.0, 0.0, 0.0);
+    let ww = normalize(ta - ro);
+    let uu = normalize(cross(vec3<f32>(0.0, 1.0, 0.0), ww));
+    let vv = cross(ww, uu);
+    let rd = normalize(uu * uv.x + vv * uv.y + ww * 1.5);
     let t = march(ro, rd);
     if (t < 0.0) { return vec4<f32>(0.10, 0.12, 0.18, 1.0); }
     let p = ro + rd * t;
@@ -707,8 +772,12 @@ fn nrm(p: vec3<f32>) -> vec3<f32> {
 }
 @fragment fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let uv = in.uv * 2.0 - vec2<f32>(1.0);
-    let ro = vec3<f32>(0.0, 0.0, -2.5);
-    let rd = normalize(vec3<f32>(uv, 1.5));
+    let ro = vec3<f32>(1.4, 1.25, -1.7);
+    let ta = vec3<f32>(0.0, 0.0, 0.0);
+    let ww = normalize(ta - ro);
+    let uu = normalize(cross(vec3<f32>(0.0, 1.0, 0.0), ww));
+    let vv = cross(ww, uu);
+    let rd = normalize(uu * uv.x + vv * uv.y + ww * 1.5);
     let t = march(ro, rd);
     if (t < 0.0) { return vec4<f32>(0.10, 0.12, 0.18, 1.0); }
     let p = ro + rd * t;
@@ -751,8 +820,12 @@ fn nrm(p: vec3<f32>) -> vec3<f32> {
 }
 @fragment fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let uv = in.uv * 2.0 - vec2<f32>(1.0);
-    let ro = vec3<f32>(0.0, 0.0, -2.5);
-    let rd = normalize(vec3<f32>(uv, 1.5));
+    let ro = vec3<f32>(1.4, 1.25, -1.7);
+    let ta = vec3<f32>(0.0, 0.0, 0.0);
+    let ww = normalize(ta - ro);
+    let uu = normalize(cross(vec3<f32>(0.0, 1.0, 0.0), ww));
+    let vv = cross(ww, uu);
+    let rd = normalize(uu * uv.x + vv * uv.y + ww * 1.5);
     let t = march(ro, rd);
     if (t < 0.0) { return vec4<f32>(0.10, 0.12, 0.18, 1.0); }
     let p = ro + rd * t;
@@ -795,8 +868,12 @@ fn nrm(p: vec3<f32>) -> vec3<f32> {
 }
 @fragment fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let uv = in.uv * 2.0 - vec2<f32>(1.0);
-    let ro = vec3<f32>(0.0, 0.0, -2.5);
-    let rd = normalize(vec3<f32>(uv, 1.5));
+    let ro = vec3<f32>(1.4, 1.25, -1.7);
+    let ta = vec3<f32>(0.0, 0.0, 0.0);
+    let ww = normalize(ta - ro);
+    let uu = normalize(cross(vec3<f32>(0.0, 1.0, 0.0), ww));
+    let vv = cross(ww, uu);
+    let rd = normalize(uu * uv.x + vv * uv.y + ww * 1.5);
     let t = march(ro, rd);
     if (t < 0.0) { return vec4<f32>(0.10, 0.12, 0.18, 1.0); }
     let p = ro + rd * t;
@@ -838,8 +915,12 @@ fn nrm(p: vec3<f32>) -> vec3<f32> {
 }
 @fragment fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let uv = in.uv * 2.0 - vec2<f32>(1.0);
-    let ro = vec3<f32>(0.0, 0.0, -2.5);
-    let rd = normalize(vec3<f32>(uv, 1.5));
+    let ro = vec3<f32>(1.4, 1.25, -1.7);
+    let ta = vec3<f32>(0.0, 0.0, 0.0);
+    let ww = normalize(ta - ro);
+    let uu = normalize(cross(vec3<f32>(0.0, 1.0, 0.0), ww));
+    let vv = cross(ww, uu);
+    let rd = normalize(uu * uv.x + vv * uv.y + ww * 1.5);
     let t = march(ro, rd);
     if (t < 0.0) { return vec4<f32>(0.10, 0.12, 0.18, 1.0); }
     let p = ro + rd * t;
@@ -882,8 +963,12 @@ fn nrm(p: vec3<f32>) -> vec3<f32> {
 }
 @fragment fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let uv = in.uv * 2.0 - vec2<f32>(1.0);
-    let ro = vec3<f32>(0.0, 0.0, -2.5);
-    let rd = normalize(vec3<f32>(uv, 1.5));
+    let ro = vec3<f32>(1.4, 1.25, -1.7);
+    let ta = vec3<f32>(0.0, 0.0, 0.0);
+    let ww = normalize(ta - ro);
+    let uu = normalize(cross(vec3<f32>(0.0, 1.0, 0.0), ww));
+    let vv = cross(ww, uu);
+    let rd = normalize(uu * uv.x + vv * uv.y + ww * 1.5);
     let t = march(ro, rd);
     if (t < 0.0) { return vec4<f32>(0.10, 0.12, 0.18, 1.0); }
     let p = ro + rd * t;
@@ -926,8 +1011,12 @@ fn nrm(p: vec3<f32>) -> vec3<f32> {
 }
 @fragment fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let uv = in.uv * 2.0 - vec2<f32>(1.0);
-    let ro = vec3<f32>(0.0, 0.0, -2.5);
-    let rd = normalize(vec3<f32>(uv, 1.5));
+    let ro = vec3<f32>(1.4, 1.25, -1.7);
+    let ta = vec3<f32>(0.0, 0.0, 0.0);
+    let ww = normalize(ta - ro);
+    let uu = normalize(cross(vec3<f32>(0.0, 1.0, 0.0), ww));
+    let vv = cross(ww, uu);
+    let rd = normalize(uu * uv.x + vv * uv.y + ww * 1.5);
     let t = march(ro, rd);
     if (t < 0.0) { return vec4<f32>(0.10, 0.12, 0.18, 1.0); }
     let p = ro + rd * t;
@@ -968,8 +1057,12 @@ fn nrm(p: vec3<f32>) -> vec3<f32> {
 }
 @fragment fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let uv = in.uv * 2.0 - vec2<f32>(1.0);
-    let ro = vec3<f32>(0.0, 0.0, -2.5);
-    let rd = normalize(vec3<f32>(uv, 1.5));
+    let ro = vec3<f32>(1.4, 1.25, -1.7);
+    let ta = vec3<f32>(0.0, 0.0, 0.0);
+    let ww = normalize(ta - ro);
+    let uu = normalize(cross(vec3<f32>(0.0, 1.0, 0.0), ww));
+    let vv = cross(ww, uu);
+    let rd = normalize(uu * uv.x + vv * uv.y + ww * 1.5);
     let t = march(ro, rd);
     if (t < 0.0) { return vec4<f32>(0.10, 0.12, 0.18, 1.0); }
     let p = ro + rd * t;
@@ -1010,8 +1103,12 @@ fn nrm(p: vec3<f32>) -> vec3<f32> {
 }
 @fragment fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let uv = in.uv * 2.0 - vec2<f32>(1.0);
-    let ro = vec3<f32>(0.0, 0.0, -2.5);
-    let rd = normalize(vec3<f32>(uv, 1.5));
+    let ro = vec3<f32>(1.4, 1.25, -1.7);
+    let ta = vec3<f32>(0.0, 0.0, 0.0);
+    let ww = normalize(ta - ro);
+    let uu = normalize(cross(vec3<f32>(0.0, 1.0, 0.0), ww));
+    let vv = cross(ww, uu);
+    let rd = normalize(uu * uv.x + vv * uv.y + ww * 1.5);
     let t = march(ro, rd);
     if (t < 0.0) { return vec4<f32>(0.10, 0.12, 0.18, 1.0); }
     let p = ro + rd * t;
@@ -1052,8 +1149,12 @@ fn nrm(p: vec3<f32>) -> vec3<f32> {
 }
 @fragment fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let uv = in.uv * 2.0 - vec2<f32>(1.0);
-    let ro = vec3<f32>(0.0, 0.0, -2.5);
-    let rd = normalize(vec3<f32>(uv, 1.5));
+    let ro = vec3<f32>(1.4, 1.25, -1.7);
+    let ta = vec3<f32>(0.0, 0.0, 0.0);
+    let ww = normalize(ta - ro);
+    let uu = normalize(cross(vec3<f32>(0.0, 1.0, 0.0), ww));
+    let vv = cross(ww, uu);
+    let rd = normalize(uu * uv.x + vv * uv.y + ww * 1.5);
     let t = march(ro, rd);
     if (t < 0.0) { return vec4<f32>(0.10, 0.12, 0.18, 1.0); }
     let p = ro + rd * t;

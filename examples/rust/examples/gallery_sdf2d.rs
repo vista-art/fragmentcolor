@@ -83,14 +83,14 @@ fn compositions() -> Vec<Composition> {
         },
         Composition {
             name: "heart",
-            description: "Heart shape at scale 1.5, recentered so the apex sits below midline.",
+            description: "Heart shape, centered and filling most of the canvas.",
             slugs: &["sdf2d/heart"],
             fragment: r#"
 @fragment fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    // Center the heart vertically: shape fills y in [0, 1] in math coords,
-    // so we shift the apex down to y = -0.65 before the y-flip.
-    let p = (in.uv - vec2<f32>(0.5, 0.75)) * 2.0;
-    let d = heart(vec2<f32>(p.x, -p.y), 1.5);
+    // Larger heart scale ~doubles the on-screen size vs the old preview; the
+    // y offset recenters the shape's body on the canvas before the y-flip.
+    let p = (in.uv - vec2<f32>(0.5, 0.87)) * 2.0;
+    let d = heart(vec2<f32>(p.x, -p.y), 1.45);
     let inside = 1.0 - smoothstep(-0.005, 0.005, d);
     let bg = vec3<f32>(0.10, 0.12, 0.18);
     let fg = vec3<f32>(0.95, 0.40, 0.50);
