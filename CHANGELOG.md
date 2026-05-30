@@ -1,8 +1,8 @@
 # Changelog
 
-## 0.11.2 — Texture pipeline + API refinement
+## 0.11.2 — 3D scenes: glTF loading, PBR materials, and a texture pipeline
 
-The catalog/integration cycle: texture creation moved off the main thread, KTX2 + 16-bit format support landed, the public API thinned to a single transport per operation, and the texture-related public surface gets a structural cleanup before tagging.
+The cycle that made FragmentColor render real 3D assets: a top-level `Scene` graph, a glTF 2.0 loader (`Scene::load`), full PBR metallic-roughness materials (texture sampling, alpha modes, tangent-space normal mapping, `KHR_texture_transform`), a unified `Light` type, and `Camera` / `Model` as first-class scene objects. Underneath, texture creation moved off the main thread with KTX2 + 16-bit format support, the public API thinned to a single transport per operation, and the texture-related public surface got a structural cleanup before tagging.
 
 ### `Vertex::pbr` convenience helper
 
@@ -197,7 +197,6 @@ Closes the v0.11.2 wishlist item "per-mesh transform" without polluting Mesh wit
 - [x] **Docs:** new `docs/api/scene/{material,model}/` group (16 + 9 method pages, both `_index.md` group orderings), plus `docs/api/core/pass/add_model.md`.
 - [x] **Example:** `examples/rust/examples/model_pbr_triangle.rs` — single PBR-shaded triangle rendered through Model + Material + Pass::add_model, including camera and light overrides on the underlying Shader.
 - [x] **Tests:** unit tests covering Material defaults, builder setters, shallow-clone share semantics, custom-shader silent no-op, Model transform composition (identity, pre-mult translate, post-mult rotate/scale, zero-axis rejection), live-reference share across `Model::clone`, Pass-entry dedupe for shared shaders, and the live-transform pickup between `add_model` and render. 213 lib tests, 116 doctests, all passing at this stage; the integrated v0.11.2 totals (after the parallel commits) land higher.
-- [ ] **RemixBrush migration commit (separate repo)** — adopt `Model::new(blob.mesh, pollster::block_on(Material::pbr(&renderer))?.base_color(blob_color).alpha_mode(...).base_color_texture(&map))` for the impasto-blob pipeline; replace the hand-rolled per-blob uniform plumbing. No FC-side change needed.
 - [ ] **`Scene` object.** Collection of Models with traversal / sort / light management. Currently `src/scene/` houses `Model`, `Camera`, and `Light`; the module name reserves the spot for the collection type.
 - [ ] **glTF loader.** Coming in a separate commit this cycle. The Material field set, indexed Mesh, AlphaMode/double-sided state, and PBR texture sampling are all in place ahead of the loader.
 
@@ -264,7 +263,7 @@ the same shader cache to distinct pipelines.
 
 ### `R16Unorm` and the 16-bit norm family
 
-Diagnosed against RemixBrush's painting shader saga (`docs/PHASE-3.3.5a-runtime-saga.md` in the consumer repo): an `R16Unorm` `TextureMipChain` that round-tripped fine through `prepare → from_chain → device.create_texture` produced a silently-invalid texture on Apple Silicon, then exploded on first `create_view()` with an `InvalidResource` cascade that drowned stderr 60 times per second. Same for `Rg16Unorm`, `Rgba16Unorm`, and the three `*Snorm` variants.
+Diagnosed against a consumer's failing shader path: an `R16Unorm` `TextureMipChain` that round-tripped fine through `prepare → from_chain → device.create_texture` produced a silently-invalid texture on Apple Silicon, then exploded on first `create_view()` with an `InvalidResource` cascade that drowned stderr 60 times per second. Same for `Rg16Unorm`, `Rgba16Unorm`, and the three `*Snorm` variants.
 
 - [x] **Adapter feature probe widened.** `request_device` opportunistically requests `TEXTURE_FORMAT_16BIT_NORM` and `FLOAT32_FILTERABLE` alongside the texture-compression features. Apple Silicon and modern desktop adapters get a working `R16Unorm` + `TEXTURE_BINDING` path; opt-in via `adapter.features().contains(...)` so non-supporting adapters still get a working device.
 - [x] **Fail-fast on adapters without the feature.** New `TextureError::UnsupportedFormatForUsage { format, missing_feature }` variant + `check_format(features, format, usage)` guard at every user-controlled `device.create_texture` site (`TextureObject::{new, from_input}`, KTX2 loader). Typed error at the API boundary instead of the cascade-50-frames-later landmine.
@@ -359,7 +358,7 @@ Canonical string keys for the common per-vertex channels so the (forthcoming) gl
 
 The depth-test path was already implicit: `Pass::add_depth_target(depth_tex)` enables depth-test and depth-write for the pass; not calling it means painter's-algorithm rendering. The behaviour is consistent and adequate for 3D mesh occlusion, but the docs underplayed it.
 
-- [x] `docs/api/core/pass/add_depth_target.md` rewritten to lead with "depth-test is enabled" and surface the opt-out (just don't attach). Example reframed as a 3D-mesh-over-quad pattern matching the canonical RemixBrush-style consumer.
+- [x] `docs/api/core/pass/add_depth_target.md` rewritten to lead with "depth-test is enabled" and surface the opt-out (just don't attach). Example reframed as a 3D-mesh-over-quad pattern matching the canonical consumer use case.
 - [ ] (Deferred) Explicit `Pass::set_depth_test_enabled(bool)` / `set_depth_write_enabled(bool)` setters for the depth-attached-but-test-disabled case (translucent overlays). Holding until a real consumer needs it.
 
 ### Texture group restructure (Mipmap + Texture out of `core/`)
@@ -368,7 +367,6 @@ The depth-test path was already implicit: `Pass::add_depth_target(depth_tex)` en
 - [x] Restructure docs groups: new `docs/api/texture/` containing `Texture` and `Mipmap`. `core/` shrinks to `Renderer`, `Shader`, `Pass`. Texture is reframed as an external input alongside Vertex (in `geometry/`); future texture helpers (Sprite, Atlas, etc.) get a home.
 - [x] Migrate platform examples: `platforms/{python,web,kotlin,swift}/examples/core/texture/` → `…/examples/texture/texture/`; `…/examples/core/texture_mip_chain/` → `…/examples/texture/mipmap/`.
 - [x] Update `lsp_doc("…")` paths, `generated/api_objects.txt`, `generated/api_map.rs`, `_index.md` files for both old and new groups.
-- [ ] RemixBrush migration commit (separate, in the consumer repo): `TextureMipChain` → `Mipmap`, `prepare` → `build`, `level_count` → `count`.
 
 ## 0.11.1 Embedded shader registry by default, network behind a feature flag
 
