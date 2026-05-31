@@ -3,7 +3,7 @@
 Add many per-instance attribute sets to the mesh in one call.
 
 Each `Instance` is a bag of named attributes (transform, color, id, …) sent to
-the shader's per-instance inputs. Instances carry no position — the mesh's
+the shader's per-instance inputs. Instances carry no position; the mesh's
 vertices are reused for every instance.
 
 Adding instances also clears any previously set instance count override

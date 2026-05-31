@@ -1,6 +1,6 @@
 # Light::set_color
 
-Update the linear-RGB color the light emits. Defined for every kind —
+Update the linear-RGB color the light emits. Defined for every kind;
 returns `Self` for chaining. The new value propagates live to every
 shader the Light has already been wired into; no re-attach needed.
 

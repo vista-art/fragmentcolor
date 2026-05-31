@@ -1,6 +1,6 @@
 # Light::set_intensity
 
-Update the scalar intensity multiplier. Defined for every kind — returns
+Update the scalar intensity multiplier. Defined for every kind; returns
 `Self` for chaining. The shader multiplies the
 [`color`](https://fragmentcolor.org/api/scene/light/color) by this value
 when accumulating, so doubling intensity doubles every channel uniformly.

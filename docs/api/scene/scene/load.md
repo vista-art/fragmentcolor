@@ -1,7 +1,7 @@
 # Scene::load
 
 Build a `Scene` from a serialized 3D file. Pass a **path** (`.gltf` or `.glb`)
-or in-memory **`.glb` bytes** straight to `Scene::load` — the format is
+or in-memory **`.glb` bytes** straight to `Scene::load`. The format is
 inferred from the input, so there's nothing extra to name.
 
 `Scene::load` is synchronous and takes no `Renderer`. Any textures the parser
@@ -9,7 +9,7 @@ encounters are queued as pending uploads on the resulting Materials; the
 renderer drains them on first render, or earlier if you call
 [`Renderer::load`](https://fragmentcolor.org/api/core/renderer/load).
 
-Today's coverage: static glTF — mesh primitives (POSITION + NORMAL + UV0 +
+Today's coverage: static glTF, meaning mesh primitives (POSITION + NORMAL + UV0 +
 indices), PBR-MR materials with all five texture slots, per-node transforms
 flattened into Model matrices, glTF camera nodes, and `KHR_lights_punctual`
 lights. Animation, skinning, morph targets, and material extensions beyond
@@ -18,8 +18,8 @@ PBR-MR are out of scope; they parse cleanly and the loader ignores them.
 ## Skipping embedded cameras and lights
 
 By default the loader instantiates the glTF file's own camera and light nodes.
-When you bring your own — a spring-arm rig, a UI-locked overlay camera, an
-animated key/fill setup — the embedded ones would only fight for the same
+When you bring your own (a spring-arm rig, a UI-locked overlay camera, an
+animated key/fill setup) the embedded ones would only fight for the same
 shader uniforms. Load through `gltf(...)` to get a builder with `cameras(false)`
 and `lights(false)` toggles:
 

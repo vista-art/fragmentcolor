@@ -1,8 +1,8 @@
 # Scene::lights
 
 Return a snapshot of every [`Light`](https://fragmentcolor.org/api/scene/light)
-added to this Scene via [`Scene::add`](https://fragmentcolor.org/api/scene/scene/add)
-— including Lights the loader instantiated from glTF
+added to this Scene via [`Scene::add`](https://fragmentcolor.org/api/scene/scene/add),
+including Lights the loader instantiated from glTF
 `KHR_lights_punctual` nodes (unless you skipped them via the light filter
 on [`Scene::load`](https://fragmentcolor.org/api/scene/scene/load)).
 

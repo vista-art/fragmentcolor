@@ -1,6 +1,6 @@
 ---
 title: Mipmap
-description: "A `Mipmap` is a finished CPU mip chain — the base image plus every half-size copy down to 1x1 — ready to upload as a [Texture](/api/texture/texture). Mipmaps are what lets a sampler pick a smaller, pre-filtered copy when a textured surface shrinks in screen space; without them, minified textures shimmer and alias. FragmentColor generates the chain for you whenever you call `Renderer::create_texture(bytes)`, so you rarely need to build one by hand."
+description: "A `Mipmap` is a finished CPU mip chain (the base image plus every half-size copy down to 1x1) ready to upload as a [Texture](/api/texture/texture). Mipmaps are what lets a sampler pick a smaller, pre-filtered copy when a textured surface shrinks in screen space; without them, minified textures shimmer and alias. FragmentColor generates the chain for you whenever you call `Renderer::create_texture(bytes)`, so you rarely need to build one by hand."
 category: texture
 categoryLabel: Texture
 sidebar:
@@ -11,9 +11,9 @@ import { Code, Tabs, TabItem, Aside } from "@astrojs/starlight/components";
 
 ## Description
 
-A `Mipmap` is a finished CPU mip chain — the base image plus every half-size copy down to 1x1 — ready to upload as a [Texture](/api/texture/texture). Mipmaps are what lets a sampler pick a smaller, pre-filtered copy when a textured surface shrinks in screen space; without them, minified textures shimmer and alias. FragmentColor generates the chain for you whenever you call `Renderer::create_texture(bytes)`, so you rarely need to build one by hand.
+A `Mipmap` is a finished CPU mip chain (the base image plus every half-size copy down to 1x1) ready to upload as a [Texture](/api/texture/texture). Mipmaps are what lets a sampler pick a smaller, pre-filtered copy when a textured surface shrinks in screen space; without them, minified textures shimmer and alias. FragmentColor generates the chain for you whenever you call `Renderer::create_texture(bytes)`, so you rarely need to build one by hand.
 
-Reach for `Mipmap` when you want to drive the decode and resize work yourself — on a worker thread, in a tile-cache pipeline, or wherever you already own threading and want the renderer thread to do nothing but `queue.write_texture`. That's the whole point of the type: keep CPU prep off the renderer thread, and hand the upload a chain that's already done.
+Reach for `Mipmap` when you want to drive the decode and resize work yourself: on a worker thread, in a tile-cache pipeline, or wherever you already own threading and want the renderer thread to do nothing but `queue.write_texture`. That's the whole point of the type: keep CPU prep off the renderer thread, and hand the upload a chain that's already done.
 
 Typical reasons to build one explicitly:
 
@@ -23,8 +23,8 @@ Typical reasons to build one explicitly:
 
 Build with [Mipmap::build(input)](/api/texture/mipmap/build); the input shapes match what [Renderer::create_texture](/api/core/renderer/create_texture) accepts. Whether the bytes get decoded depends on whether you pass a `size`:
 
-- `build((bytes, format))` — encoded image (PNG, JPEG, BMP, HDR, ...). FC decodes and infers the dimensions.
-- `build((bytes, format, size))` — raw pixel bytes already laid out for `format` at `size`. No decode.
+- `build((bytes, format))`: encoded image (PNG, JPEG, BMP, HDR, ...). FC decodes and infers the dimensions.
+- `build((bytes, format, size))`: raw pixel bytes already laid out for `format` at `size`. No decode.
 
 Then hand the chain to `Renderer::create_texture(chain)` for the upload. The cross-language bindings expose `build(bytes, format, size?)` with `size` optional.
 
@@ -165,12 +165,12 @@ lang="kotlin"
 
 ### Mipmap::build
 
-Build a mip chain on the calling thread, then hand it to [Renderer::create_texture](/api/core/renderer/create_texture) for a GPU-only upload. The work is pure CPU — decode (if needed), then downsample to 1x1 — so call it from wherever you already do heavy work: a worker thread, a thread pool, an async task, a Web Worker. The renderer thread sees only the finished chain.
+Build a mip chain on the calling thread, then hand it to [Renderer::create_texture](/api/core/renderer/create_texture) for a GPU-only upload. The work is pure CPU (decode if needed, then downsample to 1x1), so call it from wherever you already do heavy work: a worker thread, a thread pool, an async task, a Web Worker. The renderer thread sees only the finished chain.
 
 `build(input)` takes the same input shapes as `Renderer::create_texture` and `Renderer::create_storage_texture`, so you write the call the same way regardless of which entry point you target. Whether `build` decodes the bytes depends on whether you pass a `size`:
 
-- **Encoded path — `size` absent.** The bytes get decoded as PNG / JPEG / BMP / HDR / etc., and the chain inherits the image's dimensions. Use this when you have an encoded blob from disk, the network, or a decoder that emits encoded data.
-- **Raw path — `size` present.** The bytes are treated as already laid out for `format` at `size`. Use this when your decoder already produced pixel-format-matching bytes (typical for tile-cache pipelines that fold mip generation into the same step that produced the tile).
+- **Encoded path, `size` absent.** The bytes get decoded as PNG / JPEG / BMP / HDR / etc., and the chain inherits the image's dimensions. Use this when you have an encoded blob from disk, the network, or a decoder that emits encoded data.
+- **Raw path, `size` present.** The bytes are treated as already laid out for `format` at `size`. Use this when your decoder already produced pixel-format-matching bytes (typical for tile-cache pipelines that fold mip generation into the same step that produced the tile).
 
 `build` runs synchronously and accepts only sync-friendly inputs: bytes, a `DynamicImage`, or a file path. URL inputs (which need an async fetch), KTX2 inputs (already pre-baked), an existing chain, an existing texture, and empty inputs all return `TextureError::InvalidInput` with a message pointing at the right entry point.
 
@@ -327,7 +327,7 @@ lang="kotlin"
 
 ### Mipmap::format
 
-Return the wgpu texture format the chain was built for — the same `format` you passed to `build(...)`. Useful when you receive a chain you didn't build yourself (passed in from another thread or stored in a cache) and need to confirm it matches the format your shader expects before uploading.
+Return the wgpu texture format the chain was built for: the same `format` you passed to `build(...)`. Useful when you receive a chain you didn't build yourself (passed in from another thread or stored in a cache) and need to confirm it matches the format your shader expects before uploading.
 
 #### Example
 
@@ -526,7 +526,7 @@ lang="kotlin"
 
 ### Mipmap::levels
 
-Return the tightly-packed bytes for each mip level, level 0 first. Each level holds `bytes_per_pixel(format) * max(1, base_w >> level) * max(1, base_h >> level)` bytes. Reach for this when you want to inspect a level, dump the chain to disk, or feed the bytes into a tool that isn't FragmentColor — when you upload via `Renderer::create_texture(chain)`, the renderer reads the bytes directly and you don't need to touch them yourself.
+Return the tightly-packed bytes for each mip level, level 0 first. Each level holds `bytes_per_pixel(format) * max(1, base_w >> level) * max(1, base_h >> level)` bytes. Reach for this when you want to inspect a level, dump the chain to disk, or feed the bytes into a tool that isn't FragmentColor. When you upload via `Renderer::create_texture(chain)`, the renderer reads the bytes directly and you don't need to touch them yourself.
 
 #### Example
 
@@ -624,7 +624,7 @@ lang="kotlin"
 
 ### Mipmap::count
 
-Return how many mip levels the chain holds (always at least 1). For a base size of `w x h`, that's `1 + floor(log2(max(w, h)))` — e.g. an 8x8 source yields four levels (8, 4, 2, 1). Handy for asserting that the chain has the depth you expected before you upload, or for sizing a fixed-array view of the levels in your own code.
+Return how many mip levels the chain holds (always at least 1). For a base size of `w x h`, that's `1 + floor(log2(max(w, h)))`. So an 8x8 source yields four levels (8, 4, 2, 1). Handy for asserting that the chain has the depth you expected before you upload, or for sizing a fixed-array view of the levels in your own code.
 
 #### Example
 

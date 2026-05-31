@@ -8,7 +8,7 @@ in the world" the same way.
 
 Returns a handle to the same Camera (Arc-shared backing) so it chains
 cleanly off a `perspective` or `orthographic` constructor and can be
-called again after the Camera has been added to a Pass — the new view
+called again after the Camera has been added to a Pass. The new view
 propagates live to every Material the Pass renders.
 
 Internally builds the view matrix with `glam::Mat4::look_at_rh`. The

@@ -1,7 +1,7 @@
 # Light::set_cone_angles
 
 Update the inner and outer cone half-angles (radians). Defined for spot
-lights only — returns `Ok(self)` for chaining. Calling this on a
+lights only; returns `Ok(self)` for chaining. Calling this on a
 directional or point light returns
 `Err(LightError::FieldNotApplicable { kind, field: "set_cone_angles" })`.
 

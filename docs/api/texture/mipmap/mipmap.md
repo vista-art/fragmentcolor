@@ -1,8 +1,8 @@
 # Mipmap
 
-A `Mipmap` is a finished CPU mip chain — the base image plus every half-size copy down to 1x1 — ready to upload as a [Texture](https://fragmentcolor.org/api/texture/texture). Mipmaps are what lets a sampler pick a smaller, pre-filtered copy when a textured surface shrinks in screen space; without them, minified textures shimmer and alias. FragmentColor generates the chain for you whenever you call `Renderer::create_texture(bytes)`, so you rarely need to build one by hand.
+A `Mipmap` is a finished CPU mip chain (the base image plus every half-size copy down to 1x1) ready to upload as a [Texture](https://fragmentcolor.org/api/texture/texture). Mipmaps are what lets a sampler pick a smaller, pre-filtered copy when a textured surface shrinks in screen space; without them, minified textures shimmer and alias. FragmentColor generates the chain for you whenever you call `Renderer::create_texture(bytes)`, so you rarely need to build one by hand.
 
-Reach for `Mipmap` when you want to drive the decode and resize work yourself — on a worker thread, in a tile-cache pipeline, or wherever you already own threading and want the renderer thread to do nothing but `queue.write_texture`. That's the whole point of the type: keep CPU prep off the renderer thread, and hand the upload a chain that's already done.
+Reach for `Mipmap` when you want to drive the decode and resize work yourself: on a worker thread, in a tile-cache pipeline, or wherever you already own threading and want the renderer thread to do nothing but `queue.write_texture`. That's the whole point of the type: keep CPU prep off the renderer thread, and hand the upload a chain that's already done.
 
 Typical reasons to build one explicitly:
 
@@ -12,8 +12,8 @@ Typical reasons to build one explicitly:
 
 Build with [Mipmap::build(input)](https://fragmentcolor.org/api/texture/mipmap/build); the input shapes match what [Renderer::create_texture](https://fragmentcolor.org/api/core/renderer/create_texture) accepts. Whether the bytes get decoded depends on whether you pass a `size`:
 
-- `build((bytes, format))` — encoded image (PNG, JPEG, BMP, HDR, ...). FC decodes and infers the dimensions.
-- `build((bytes, format, size))` — raw pixel bytes already laid out for `format` at `size`. No decode.
+- `build((bytes, format))`: encoded image (PNG, JPEG, BMP, HDR, ...). FC decodes and infers the dimensions.
+- `build((bytes, format, size))`: raw pixel bytes already laid out for `format` at `size`. No decode.
 
 Then hand the chain to `Renderer::create_texture(chain)` for the upload. The cross-language bindings expose `build(bytes, format, size?)` with `size` optional.
 

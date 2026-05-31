@@ -1,6 +1,6 @@
 ---
 title: Material
-description: "A `Material` bundles a `Shader` with the glTF 2.0 PBR-MR field set — base color, metallic, roughness, emissive, normal scale, occlusion strength, alpha cutoff, plus the matching set of optional textures — and exposes each as a builder-style setter."
+description: "A `Material` bundles a `Shader` with the glTF 2.0 PBR-MR field set (base color, metallic, roughness, emissive, normal scale, occlusion strength, alpha cutoff, plus the matching set of optional textures) and exposes each as a builder-style setter."
 category: scene
 categoryLabel: Scene
 sidebar:
@@ -11,9 +11,9 @@ import { Code, Tabs, TabItem, Aside } from "@astrojs/starlight/components";
 
 ## Description
 
-A `Material` bundles a `Shader` with the glTF 2.0 PBR-MR field set — base
+A `Material` bundles a `Shader` with the glTF 2.0 PBR-MR field set (base
 color, metallic, roughness, emissive, normal scale, occlusion strength,
-alpha cutoff, plus the matching set of optional textures — and exposes
+alpha cutoff, plus the matching set of optional textures) and exposes
 each as a builder-style setter.
 
 The default `Material::pbr` constructs the bundle from FragmentColor's
@@ -25,13 +25,13 @@ each one to a 1×1 default from its lazy texture cache the first time a Pass
 renders the Material, so the Material's shader has every binding it needs
 without any further setup. `Material::pbr` returns `Result` because the
 helper snippets it composes (`mesh/transform`, `material/pbr`) must be
-available at build time — they ship in the default `shaders-all` feature,
+available at build time. They ship in the default `shaders-all` feature,
 so this is only an error path for slim opt-out builds. You can also call
 `Material::custom(shader)` to wrap your own shader; the same setters apply
 best-effort, no-op-ing for uniform paths the shader doesn't declare.
 
 Materials are typically combined with a [Mesh](/api/geometry/mesh)
-into a [Model](/api/scene/model) — that's the
+into a [Model](/api/scene/model), which is the
 object you actually add to a `Pass`. The Material itself doesn't render
 anything on its own.
 
@@ -54,7 +54,7 @@ hundreds of Models without per-instance shader duplication.
 
 When you genuinely need an independent material, build a fresh
 `Material::pbr()` (and re-set the factor / texture slots you care about).
-The "many handles to one shader" share semantics is the right default —
+The "many handles to one shader" share semantics is the right default;
 the explicit-fresh-Material path is the escape hatch.
 
 ## What lives where
@@ -69,7 +69,7 @@ the explicit-fresh-Material path is the escape hatch.
   bind group is always complete.
 - **Per-Model transform** rides the **per-instance vertex attribute** stream
   at locations 3..6 (four `vec4<f32>` columns of `mat4x4<f32>`), populated by
-  `Model::sync_transform`. It's *not* a Material uniform — that way Models
+  `Model::sync_transform`. It's *not* a Material uniform, so Models
   sharing one Material don't collide on a `mesh.model` slot.
 
 ## Pipeline state
@@ -202,7 +202,7 @@ lang="kotlin"
 
 ### Material::alpha_cutoff
 
-Sets the alpha threshold used by `AlphaMode::Mask` — fragments whose
+Sets the alpha threshold used by `AlphaMode::Mask`. Fragments whose
 `base_color.a` falls below this value are `discard`ed in the fragment
 shader. Stored on `material.alpha_cutoff`; default `0.5`, matching glTF 2.0.
 
@@ -286,30 +286,30 @@ lang="kotlin"
 ### Material::alpha_mode
 
 Set how the renderer interprets the alpha channel of the material's output. Mirrors the
-glTF 2.0 `alphaMode` semantics — pipeline state is baked into the WebGPU pipeline, so
+glTF 2.0 `alphaMode` semantics. Pipeline state is baked into the WebGPU pipeline, so
 different `AlphaMode` values for the same shader cache to distinct pipelines.
 
 The three variants:
 
-- `AlphaMode::Opaque` (default) — depth-test is on, blending is off. Alpha is written
+- `AlphaMode::Opaque` (default): depth-test is on, blending is off. Alpha is written
   out but ignored by the framebuffer. Pick this for solid surfaces; it's the cheapest
   option and the only one that lets the depth buffer fully describe the geometry.
-- `AlphaMode::Mask` — depth-test is on, blending is off, but the fragment shader
+- `AlphaMode::Mask`: depth-test is on, blending is off, but the fragment shader
   `discard`s any pixel whose `material.base_color.a` falls below `material.alpha_cutoff`.
   The classic foliage / chain-link / decal trick: keeps the perf profile of opaque
   geometry (no order dependence, full depth writes) while letting silhouettes punch
   out hard-edged transparency. Tune the cut-off with `Material::alpha_cutoff`.
-- `AlphaMode::Blend` — depth-test stays on but depth-write turns off, and the color
+- `AlphaMode::Blend`: depth-test stays on but depth-write turns off, and the color
   target uses standard `SrcAlpha / OneMinusSrcAlpha` over-blend. Use for glass, smoke,
   fades, decals that need soft edges. The renderer sorts blend Models on the Pass
   back-to-front by eye-space Z before drawing, using the Camera attached via
   `Pass::add(&camera)`. Translucent surfaces over-blend in the right order without the
   caller managing it. Limitation: sorts by per-Model AABB centroid (not per-fragment),
   so self-intersecting or interpenetrating translucent meshes can still show artifacts.
-  Cross-Material interleaving works correctly — translucent draws across every shader
+  Cross-Material interleaving works correctly: translucent draws across every shader
   in the Pass merge into one globally-sorted back-to-front pass.
 
-This is a pipeline-state flag — changing it forces the renderer to rebuild the pipeline
+This is a pipeline-state flag. Changing it forces the renderer to rebuild the pipeline
 for the affected `(shader, alpha_mode, double_sided)` key. Switching it every frame is
 fine in practice (the second build hits the cache from then on) but avoid toggling per
 draw call inside a frame.
@@ -421,7 +421,7 @@ Maps to the `material.base_color` uniform on the underlying shader. Default
 is `[1, 1, 1, 1]`.
 
 Returns a handle to the same Material (Arc-shared) so calls chain. See
-[Material — Cloning is an Arc-share](/api/scene/material#cloning-is-an-arc-share-not-a-deep-copy)
+[Material: Cloning is an Arc-share](/api/scene/material#cloning-is-an-arc-share-not-a-deep-copy)
 for what that means for mutation visibility.
 
 #### Example
@@ -509,18 +509,18 @@ Bind a texture to the `base_color_map` slot. The default PBR shader samples it i
 
 Accepts any `Into<TextureInput>`:
 
-- A pre-built [`&Texture`](/api/texture/texture). The setter stores the texture's ID immediately and the GPU texture stays Arc-shared across every Material that points at it. Passing the same `&shared_texture` to N Materials produces one GPU upload + N shader-uniform references — the cheap way to reuse one texture map across a scene full of objects without paying for N texture allocations.
+- A pre-built [`&Texture`](/api/texture/texture). The setter stores the texture's ID immediately and the GPU texture stays Arc-shared across every Material that points at it. Passing the same `&shared_texture` to N Materials produces one GPU upload and N shader-uniform references: the cheap way to reuse one texture map across a scene full of objects without paying for N texture allocations.
 - Bytes / path / URL / `DynamicImage`. The setter queues the input on the Material's Shader, and the renderer drains queued uploads on the first [`Renderer::render`](/api/core/renderer/render) (or earlier via the explicit [`Renderer::load`](/api/core/renderer/load)).
 
 Unset, this slot resolves to a 1×1 white default the renderer hands out
-lazily — so calling `Material::pbr()?` without binding a
+lazily, so calling `Material::pbr()?` without binding a
 texture renders correctly under the factor alone.
 
 #### Errors are surfaced lazily
 
-The setter itself is infallible — it queues the upload (lazy path) or
+The setter itself is infallible: it queues the upload (lazy path) or
 takes an Arc-clone (eager path) and returns. Failures from the lazy
-path — file not found, decode error, unsupported format — surface when
+path (file not found, decode error, unsupported format) surface when
 the renderer actually drains the queue: either at first render or when
 you call [`Renderer::load(&material).await`](/api/core/renderer/load).
 Until then the Material renders against its 1×1 default and a
@@ -663,13 +663,13 @@ lang="kotlin"
 
 Wrap an arbitrary `Shader` as a `Material` so it can be paired with a
 `Mesh` to form a `Model`. The PBR-named setters (`base_color`, `metallic`,
-…) still work — they call `shader.set(...)` under matching uniform paths
+…) still work; they call `shader.set(...)` under matching uniform paths
 (`material.base_color`, etc.). If your shader doesn't declare those
 uniforms the setters log-warn and return self unchanged; set custom uniforms
 directly via `material.shader().set(...)`.
 
 `Material::custom` is the escape hatch for any shading model that isn't
-glTF-spec PBR — toon shading, flat unlit colors, wireframe debug views,
+glTF-spec PBR: toon shading, flat unlit colors, wireframe debug views,
 volumetric or post-process effects that you want to attach to a `Mesh`.
 
 #### What custom shaders should declare for full Material-style ergonomics
@@ -677,9 +677,9 @@ volumetric or post-process effects that you want to attach to a `Mesh`.
 Optional but recommended:
 
 - `struct PbrMaterial { base_color: vec4<f32>, … }` at `@group(1) @binding(1)`
-  bound as `material` — lets the PBR factor setters work as-is.
+  bound as `material`. This lets the PBR factor setters work as-is.
 - `struct MeshTransform { model: mat4x4<f32>, … }` at `@group(1) @binding(0)`
-  bound as `mesh` — lets `Model::transform` / `translate` / `rotate` /
+  bound as `mesh`. This lets `Model::transform` / `translate` / `rotate` /
   `scale` work as-is.
 
 Without these the Material is still functional; only the high-level setters
@@ -842,12 +842,12 @@ lang="kotlin"
 
 Toggle backface culling for this material's pipeline. When `true`, the renderer skips
 its default back-face cull and draws both faces of every triangle. When `false`
-(the default), back faces are culled — the standard CCW-winding-is-front convention.
+(the default), back faces are culled, the standard CCW-winding-is-front convention.
 
 Mirrors glTF 2.0's `doubleSided`. Reach for it on thin geometry that legitimately reads
-from both sides — a single-quad leaf card, a cloth banner, decals applied to non-closed
+from both sides: a single-quad leaf card, a cloth banner, decals applied to non-closed
 meshes, or any authored asset that comes out of a tool that didn't bother to mirror its
-back faces. For closed solid geometry, leave it off — the culled back faces are a free
+back faces. For closed solid geometry, leave it off; the culled back faces are a free
 ~50% fragment-shader saving on every draw.
 
 Like `alpha_mode`, this is a pipeline-state flag and bakes into the WebGPU pipeline.
@@ -959,7 +959,7 @@ lang="kotlin"
 
 ### Material::emissive
 
-Set the emissive factor (linear RGB) — light the surface emits regardless of
+Set the emissive factor (linear RGB): light the surface emits regardless of
 incident illumination. Added on top of the PBR shading and clamped only by
 the output format; for tonemapped pipelines use values in `[0, 1]`, for HDR
 you can go beyond.
@@ -1245,7 +1245,7 @@ lang="kotlin"
 
 Bind a texture to the canonical `metallic_roughness_map` slot. Following
 glTF 2.0, the green channel encodes per-fragment roughness, the blue channel
-encodes metallic — both multiplied by their respective factors at sample
+encodes metallic. Both are multiplied by their respective factors at sample
 time inside the default PBR shader.
 
 Unset, this slot resolves to a 1×1 default with `(R=0, G=1, B=1, A=1)` so
@@ -1761,19 +1761,19 @@ The shader uses:
   Fresnel and metalness.
 - **One directional light** (uniform `light`), one camera (uniform `camera`),
   per-Model transform via the instance-attribute stream.
-- **glTF 2.0 PBR-MR texture sampling** — five sampled maps (`base_color_map`,
+- **glTF 2.0 PBR-MR texture sampling**: five sampled maps (`base_color_map`,
   `metallic_roughness_map`, `normal_map`, `occlusion_map`, `emissive_map`)
   combined with their matching factors per the spec.
 
 The vertex inputs the shader expects, in this order:
 
-- `@location(0) position : vec3<f32>` — set as `Vertex::new([...])`.
-- `@location(1) normal   : vec3<f32>` — set as `.set(Vertex::NORMAL, ...)`.
-- `@location(2) uv0      : vec2<f32>` — set as `.set(Vertex::UV0, ...)`.
+- `@location(0) position : vec3<f32>`, set as `Vertex::new([...])`.
+- `@location(1) normal   : vec3<f32>`, set as `.set(Vertex::NORMAL, ...)`.
+- `@location(2) uv0      : vec2<f32>`, set as `.set(Vertex::UV0, ...)`.
 
 If your Mesh's first vertex doesn't carry these three properties in this
 order, attaching it to the Material's shader will fail with a layout
-mismatch — use `Material::custom(...)` to bring your own vertex layout.
+mismatch. Use `Material::custom(...)` to bring your own vertex layout.
 
 #### Defaults (post-construction)
 
@@ -1797,7 +1797,7 @@ mismatch — use `Material::custom(...)` to bring your own vertex layout.
 | `light.color`                | `[1, 1, 1]`          |
 
 The camera and light are the user's domain, not the Material's. Pass them
-to [`Pass::add`](/api/core/pass#add) — the
+to [`Pass::add`](/api/core/pass#add). The
 typed [Camera](/api/scene/camera) and
 [Light](/api/scene/light) handles seed the matching
 `camera.*` / `light.*` uniforms and propagate any later updates back into
@@ -1973,8 +1973,8 @@ lang="kotlin"
 
 ### Material::shader
 
-Borrow the underlying `Shader` to drop down to direct uniform manipulation —
-the escape hatch when the Material's typed setters don't cover what you need
+Borrow the underlying `Shader` to drop down to direct uniform manipulation.
+This is the escape hatch when the Material's typed setters don't cover what you need
 (custom uniforms beyond the glTF PBR field set, raw texture binds, anything
 the [Camera](/api/scene/camera) and
 [Light](/api/scene/light) helpers don't speak to).
@@ -1982,7 +1982,7 @@ the [Camera](/api/scene/camera) and
 The returned reference is the same `Shader` the Material is built around, so
 changes propagate immediately to every Model that uses this Material. If you
 want a Material variant with different state, build a fresh
-`Material::pbr()?.<setters>` rather than cloning — `Material`
+`Material::pbr()?.<setters>` rather than cloning. `Material`
 clones share their Shader handle (Arc-clone) so mutations are visible across
 all clones.
 
@@ -1990,7 +1990,7 @@ For camera + light state, prefer absorbing the typed
 [Camera](/api/scene/camera) and
 [Light](/api/scene/light) handles into the
 [Pass](/api/core/pass) that's about to render this
-Material rather than calling `shader().set(...)` by hand — the typed
+Material rather than calling `shader().set(...)` by hand. The typed
 handles propagate updates live across every absorbed shader.
 
 #### Example

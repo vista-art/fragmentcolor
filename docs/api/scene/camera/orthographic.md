@@ -7,7 +7,7 @@ gameplay, isometric scenes) or for shadow-map style passes where you want
 parallel projection.
 
 Built on `glam::Mat4::orthographic_rh`, which targets wgpu's NDC depth
-range `[0, 1]` — pair with a depth attachment configured for that range
+range `[0, 1]`. Pair with a depth attachment configured for that range
 when you add the Camera to a Pass that does depth testing.
 
 The view component starts at identity: eye at the world origin, looking

@@ -6,10 +6,10 @@ storage buffer into a pooled readback staging buffer, maps it, and returns
 the bytes.
 
 This is the only way to observe what a compute pass *wrote* into a storage
-binding. The cheap CPU-mirror accessors —
-[`Shader::get`](https://fragmentcolor.org/api/shaders/shader/get) and
-[`Shader::get_bytes`](https://fragmentcolor.org/api/shaders/shader/get_bytes)
-— reflect what was last set on the CPU side; GPU writes are not visible
+binding. The cheap CPU-mirror accessors
+([`Shader::get`](https://fragmentcolor.org/api/shaders/shader/get) and
+[`Shader::get_bytes`](https://fragmentcolor.org/api/shaders/shader/get_bytes))
+reflect what was last set on the CPU side; GPU writes are not visible
 through them.
 
 `read_storage` is `async` on every platform because the underlying

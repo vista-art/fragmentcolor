@@ -5,7 +5,7 @@ pointer to a `CVPixelBuffer` so uniffi can marshal it across the FFI
 boundary; the public Swift extension wraps a real `CVPixelBuffer` and hands
 the underlying pointer in.
 
-Currently a stub — every call returns
+Currently a stub: every call returns
 `FragmentColorError.render("not implemented yet")` until the iOS plumbing
 to map a `CVPixelBuffer` into a `wgpu::ExternalTexture` lands.
 

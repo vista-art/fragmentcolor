@@ -1,6 +1,6 @@
 # Mipmap::format
 
-Return the wgpu texture format the chain was built for — the same `format` you passed to `build(...)`. Useful when you receive a chain you didn't build yourself (passed in from another thread or stored in a cache) and need to confirm it matches the format your shader expects before uploading.
+Return the wgpu texture format the chain was built for: the same `format` you passed to `build(...)`. Useful when you receive a chain you didn't build yourself (passed in from another thread or stored in a cache) and need to confirm it matches the format your shader expects before uploading.
 
 ## Example
 

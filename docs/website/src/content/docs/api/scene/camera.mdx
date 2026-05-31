@@ -29,7 +29,7 @@ Internally a Camera carries:
 - A `view` matrix initialized to identity (eye at origin, looking down `-Z`,
   with `+Y` up). Call [`look_at`](/api/scene/camera/look_at)
   to position the camera in world space.
-- The world-space `position` of the eye — kept alongside the view matrix so
+- The world-space `position` of the eye, kept alongside the view matrix so
   shaders that need it (specular highlights, fresnel) don't have to invert
   the view matrix on every frame.
 
@@ -50,7 +50,7 @@ vertical field of view (use `degrees.to_radians()` if you're starting from
 degrees); `aspect` is width / height; `near` and `far` clip the depth range.
 
 Built on `glam::Mat4::perspective_rh`, which targets wgpu's NDC depth
-range `[0, 1]` — pair with a depth attachment configured for that range
+range `[0, 1]`. Pair with a depth attachment configured for that range
 when you add the Camera to a Pass that does depth testing.
 
 The view component starts at identity: eye at the world origin, looking
@@ -145,7 +145,7 @@ gameplay, isometric scenes) or for shadow-map style passes where you want
 parallel projection.
 
 Built on `glam::Mat4::orthographic_rh`, which targets wgpu's NDC depth
-range `[0, 1]` — pair with a depth attachment configured for that range
+range `[0, 1]`. Pair with a depth attachment configured for that range
 when you add the Camera to a Pass that does depth testing.
 
 The view component starts at identity: eye at the world origin, looking
@@ -241,7 +241,7 @@ lang="kotlin"
 Update the camera's aspect ratio (width / height) in place. The
 projection matrix recomputes and propagates to every shader the Camera
 was added to, plus the Pass-level camera snapshot the renderer reads for
-transparency depth-sorting — no need to drop and recreate the Camera
+transparency depth-sorting. No need to drop and recreate the Camera
 handle.
 
 Typical use: window-resize handler. On `WindowEvent::Resized`, call
@@ -253,7 +253,7 @@ Returns a handle to the same Camera (Arc-shared backing) for chaining.
 Behaviour by projection kind:
 
 - **Perspective**: rebuilds from `fovy_radians / near / far` with the
-  new aspect — the vertical FOV is preserved, horizontal grows or
+  new aspect. The vertical FOV is preserved, horizontal grows or
   shrinks.
 - **Orthographic**: keeps the current vertical extent and rescales the
   horizontal extents so `(right - left) / (top - bottom)` matches the
@@ -357,7 +357,7 @@ in the world" the same way.
 
 Returns a handle to the same Camera (Arc-shared backing) so it chains
 cleanly off a `perspective` or `orthographic` constructor and can be
-called again after the Camera has been added to a Pass — the new view
+called again after the Camera has been added to a Pass. The new view
 propagates live to every Material the Pass renders.
 
 Internally builds the view matrix with `glam::Mat4::look_at_rh`. The
@@ -454,7 +454,7 @@ matches WGSL's `mat4x4<f32>` storage and glam's `to_cols_array_2d()`, so
 the result is ready to feed directly into a Shader's `camera.view_proj`
 uniform via `Shader::set(...)` if you need direct control. For the common
 case, pass the Camera to
-[`Pass::add`](/api/core/pass#add) — the Pass seeds
+[`Pass::add`](/api/core/pass#add). The Pass seeds
 `camera.view_proj` + `camera.position` on every Material attached to it
 and keeps them in sync with later updates.
 
@@ -554,7 +554,7 @@ view is identity, with the eye at the origin).
 Shaders that need the eye position (specular highlights, fresnel,
 parallax) typically pull it from the `camera.position` uniform seeded by
 [`Pass::add`](/api/core/pass#add) when the Camera
-is absorbed — caching it here keeps every frame cheap (no view-matrix
+is absorbed. Caching it here keeps every frame cheap (no view-matrix
 inversion on the GPU side).
 
 #### Example

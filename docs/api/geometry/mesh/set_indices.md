@@ -1,13 +1,13 @@
 # Mesh::set_indices
 
 Provide the index buffer directly, bypassing the mesh's automatic vertex
-dedup pass. Use this when an asset already carries its own indexing — glTF
+dedup pass. Use this when an asset already carries its own indexing: glTF
 loaders, OBJ importers, or hand-authored meshes whose corners share
 positions but need to keep distinct UVs, normals, or tangents (the typical
 case for sharp creases and texture seams).
 
 By default the mesh dedupes vertices by full attribute equality before
-producing an index array — fine for hand-built meshes, wrong for assets
+producing an index array. That's fine for hand-built meshes, wrong for assets
 where two corners with identical positions must stay separate because
 their other attributes differ. After `set_indices`, every vertex you added
 with `add_vertex` is packed in insertion order and the indices you supply

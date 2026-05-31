@@ -2,7 +2,7 @@
 
 Move the Model by `offset` in world coordinates. Pre-multiplies the current
 transform by a translation matrix, so the result is independent of the
-Model's current rotation — `translate([1, 0, 0])` always moves one unit
+Model's current rotation. `translate([1, 0, 0])` always moves one unit
 along the world X axis.
 
 ## Example

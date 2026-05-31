@@ -2,7 +2,7 @@
 
 Bind a texture to the canonical `metallic_roughness_map` slot. Following
 glTF 2.0, the green channel encodes per-fragment roughness, the blue channel
-encodes metallic — both multiplied by their respective factors at sample
+encodes metallic. Both are multiplied by their respective factors at sample
 time inside the default PBR shader.
 
 Unset, this slot resolves to a 1×1 default with `(R=0, G=1, B=1, A=1)` so

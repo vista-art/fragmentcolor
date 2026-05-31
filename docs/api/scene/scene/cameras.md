@@ -1,19 +1,19 @@
 # Scene::cameras
 
 Return a snapshot of every [`Camera`](https://fragmentcolor.org/api/scene/camera)
-added to this Scene via [`Scene::add`](https://fragmentcolor.org/api/scene/scene/add)
-— including Cameras the loader instantiated from glTF `camera` nodes
+added to this Scene via [`Scene::add`](https://fragmentcolor.org/api/scene/scene/add),
+including Cameras the loader instantiated from glTF `camera` nodes
 (unless you skipped them via the camera filter on
 [`Scene::load`](https://fragmentcolor.org/api/scene/scene/load)).
 
 Each entry is an Arc-shared clone of the original handle.
 `camera.look_at(...)` / `camera.set_aspect(...)` on a returned handle
 propagates the new view + projection to every shader the Camera is wired
-into — same live semantics as the Camera handle you originally added.
+into, the same live semantics as the Camera handle you originally added.
 
 When the Scene rendered with a defaulted Camera (no user-supplied Camera
 when the first render landed), the auto-injected default appears in
-this list too — so a consumer who wants to drive the default camera per
+this list too, so a consumer who wants to drive the default camera per
 frame can grab `scene.cameras().first()` and call `look_at` on it.
 
 ## Example

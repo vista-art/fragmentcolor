@@ -1,10 +1,10 @@
 # Pass::add
 
-Absorb any [`SceneObject`](https://fragmentcolor.org/api/scene) — a
+Absorb any [`SceneObject`](https://fragmentcolor.org/api/scene) (a
 [Model](https://fragmentcolor.org/api/scene/model),
 [Camera](https://fragmentcolor.org/api/scene/camera),
 [Light](https://fragmentcolor.org/api/scene/light), or a user-defined
-node that implements the trait — into the pass. Each kind brings its
+node that implements the trait) into the pass. Each kind brings its
 own attach behaviour: a Model queues a draw with its own per-instance
 transform; a Camera or Light wires its uniforms into every shader the
 pass renders, both the ones already there and the ones added afterwards.
@@ -13,7 +13,7 @@ Camera and Light hold Arc-shared state, so subsequent mutations on the
 same value (`camera.look_at(...)`, `light.set_color(...)`) propagate to
 every shader on the pass with no further `add` call.
 
-Returns `Result<&Pass, PassError>` — Models can fail at attach time when
+Returns `Result<&Pass, PassError>`. Models can fail at attach time when
 the Mesh layout doesn't match the Material's shader; Cameras and Lights
 always succeed. Chain with `?` between calls.
 

@@ -2,14 +2,14 @@
 
 Append a user-built [Pass](https://fragmentcolor.org/api/core/pass) to the
 scene's pre-pass list. The Scene renders these passes in insertion order
-*before* its internal default Pass — that's the hook for shadow maps,
+*before* its internal default Pass. That's the hook for shadow maps,
 depth pre-passes, screen-space backdrops, anything that has to run *before*
 the scene's main geometry draw.
 
 The default Pass that holds the Scene's [SceneObjects](https://fragmentcolor.org/api/scene)
 is *not* affected by `add_pass`; it's an internal pipeline owned by the
 Scene. Use `add_pass` only when you want a dedicated Pass with its own
-shaders / clear logic — for ordinary geometry, `scene.add(&model)?` is what
+shaders / clear logic. For ordinary geometry, `scene.add(&model)?` is what
 you want.
 
 For *post*-effects (bloom, tonemap, …), keep the post-pass outside the
@@ -25,7 +25,7 @@ make to the original handle reach the Scene's copy as well.
 
 ### Each new Pass clears by default
 
-Every `Pass::new(name)` starts with a clear-to-transparent input — the
+Every `Pass::new(name)` starts with a clear-to-transparent input. The
 first render of the frame for that Pass wipes its colour attachment to
 `[0, 0, 0, 0]`. When you chain passes that read each other's output
 (e.g. `[backdrop, shadow_overlay]`), the second Pass will clear the
@@ -36,7 +36,7 @@ first Pass's output unless you opt out:
 - Or call `pass.set_clear_color([r, g, b, a])` to choose a specific
   clear value (still a clear; just a different colour).
 
-`Scene::add_pass` accepts each pre-pass independently — there's no
+`Scene::add_pass` accepts each pre-pass independently. There's no
 automatic chaining of their attachments. If you need two passes to
 share a target, route them through the same `set_target(...)` and use
 `load_previous` to compose.

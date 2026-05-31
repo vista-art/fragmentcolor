@@ -2,7 +2,7 @@
 
 Read the world-space position the light radiates from. Returns
 `Some([x, y, z])` for a point or spot light, `None` for a directional
-light (directional rays travel from infinitely far away — no position to
+light (directional rays travel from infinitely far away, so there's no position to
 report). Call
 [`set_position`](https://fragmentcolor.org/api/scene/light/set_position)
 to update it.

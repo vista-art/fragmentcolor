@@ -1,8 +1,8 @@
 # Material
 
-A `Material` bundles a `Shader` with the glTF 2.0 PBR-MR field set — base
+A `Material` bundles a `Shader` with the glTF 2.0 PBR-MR field set (base
 color, metallic, roughness, emissive, normal scale, occlusion strength,
-alpha cutoff, plus the matching set of optional textures — and exposes
+alpha cutoff, plus the matching set of optional textures) and exposes
 each as a builder-style setter.
 
 The default `Material::pbr` constructs the bundle from FragmentColor's
@@ -14,13 +14,13 @@ each one to a 1×1 default from its lazy texture cache the first time a Pass
 renders the Material, so the Material's shader has every binding it needs
 without any further setup. `Material::pbr` returns `Result` because the
 helper snippets it composes (`mesh/transform`, `material/pbr`) must be
-available at build time — they ship in the default `shaders-all` feature,
+available at build time. They ship in the default `shaders-all` feature,
 so this is only an error path for slim opt-out builds. You can also call
 `Material::custom(shader)` to wrap your own shader; the same setters apply
 best-effort, no-op-ing for uniform paths the shader doesn't declare.
 
 Materials are typically combined with a [Mesh](https://fragmentcolor.org/api/geometry/mesh)
-into a [Model](https://fragmentcolor.org/api/scene/model) — that's the
+into a [Model](https://fragmentcolor.org/api/scene/model), which is the
 object you actually add to a `Pass`. The Material itself doesn't render
 anything on its own.
 
@@ -43,7 +43,7 @@ hundreds of Models without per-instance shader duplication.
 
 When you genuinely need an independent material, build a fresh
 `Material::pbr()` (and re-set the factor / texture slots you care about).
-The "many handles to one shader" share semantics is the right default —
+The "many handles to one shader" share semantics is the right default;
 the explicit-fresh-Material path is the escape hatch.
 
 ## What lives where
@@ -58,7 +58,7 @@ the explicit-fresh-Material path is the escape hatch.
   bind group is always complete.
 - **Per-Model transform** rides the **per-instance vertex attribute** stream
   at locations 3..6 (four `vec4<f32>` columns of `mat4x4<f32>`), populated by
-  `Model::sync_transform`. It's *not* a Material uniform — that way Models
+  `Model::sync_transform`. It's *not* a Material uniform, so Models
   sharing one Material don't collide on a `mesh.model` slot.
 
 ## Pipeline state

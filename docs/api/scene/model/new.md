@@ -1,7 +1,7 @@
 # Model::new
 
 Construct a `Model` from a `Mesh` and a `Material`. Both arguments are taken
-by value — the Model owns them. The transform starts at the 4×4 identity
+by value; the Model owns them. The transform starts at the 4×4 identity
 matrix; `Model::sync_transform` writes it as a single instance into the
 Mesh's per-instance attribute stream (four `vec4<f32>` columns at locations
 3..6).

@@ -1,6 +1,6 @@
 ---
 title: Scene
-description: "A `Scene` is the top-level container for the real-world things you render: [Models](/api/scene/model), [Cameras](/api/scene/camera), [Lights](/api/scene/light) (directional / point / spot — all one type), and any custom [SceneObject](/api/scene). It owns one or more [Passes](/api/core/pass) underneath and implements [Renderable](/api/core/renderable), so you hand the whole scene to the [Renderer](/api/core/renderer) in a single call."
+description: "A `Scene` is the top-level container for the real-world things you render: [Models](/api/scene/model), [Cameras](/api/scene/camera), [Lights](/api/scene/light) (directional, point, and spot are all one type), and any custom [SceneObject](/api/scene). It owns one or more [Passes](/api/core/pass) underneath and implements [Renderable](/api/core/renderable), so you hand the whole scene to the [Renderer](/api/core/renderer) in a single call."
 category: scene
 categoryLabel: Scene
 sidebar:
@@ -14,8 +14,8 @@ import { Code, Tabs, TabItem, Aside } from "@astrojs/starlight/components";
 A `Scene` is the top-level container for the real-world things you render:
 [Models](/api/scene/model),
 [Cameras](/api/scene/camera),
-[Lights](/api/scene/light) (directional / point /
-spot — all one type), and any custom
+[Lights](/api/scene/light) (directional, point, and
+spot are all one type), and any custom
 [SceneObject](/api/scene). It owns one or more
 [Passes](/api/core/pass) underneath and implements
 [Renderable](/api/core/renderable), so you hand
@@ -33,7 +33,7 @@ underneath and don't leak into the call site.
 `Scene::new()` is synchronous and takes no `Renderer`. The first time a
 [SceneObject](/api/scene) is added, the Scene
 creates a default Pass to absorb it. The first time the Scene is rendered,
-the underlying GPU resources initialise on demand — exactly the lazy-init
+the underlying GPU resources initialise on demand. This is the lazy-init
 pattern the rest of FragmentColor follows.
 
 ## Default Camera + Light at render time
@@ -43,9 +43,9 @@ camera projection and at least one light for the lighting term to be
 non-zero. To make the "hello world" path render something recognisable, the
 Scene injects sensible defaults when the user hasn't supplied them:
 
-- **Default Camera** — `Camera::perspective(60°, 1.0, 0.1, 100.0)` looking
+- **Default Camera**: `Camera::perspective(60°, 1.0, 0.1, 100.0)` looking
   from `[0, 0, 5]` at the origin with `+Y` up.
-- **Default Light** — a `Light::directional` aimed at
+- **Default Light**: a `Light::directional` aimed at
   `[0.0, -0.3, -1.0]` with full-white color, providing a forward-tilted
   fill so a front-facing quad reads as lit rather than silhouetted.
 
@@ -61,7 +61,7 @@ add your own, your values win.
 ### Scene::load
 
 Build a `Scene` from a serialized 3D file. Pass a **path** (`.gltf` or `.glb`)
-or in-memory **`.glb` bytes** straight to `Scene::load` — the format is
+or in-memory **`.glb` bytes** straight to `Scene::load`. The format is
 inferred from the input, so there's nothing extra to name.
 
 `Scene::load` is synchronous and takes no `Renderer`. Any textures the parser
@@ -69,7 +69,7 @@ encounters are queued as pending uploads on the resulting Materials; the
 renderer drains them on first render, or earlier if you call
 [`Renderer::load`](/api/core/renderer/load).
 
-Today's coverage: static glTF — mesh primitives (POSITION + NORMAL + UV0 +
+Today's coverage: static glTF, meaning mesh primitives (POSITION + NORMAL + UV0 +
 indices), PBR-MR materials with all five texture slots, per-node transforms
 flattened into Model matrices, glTF camera nodes, and `KHR_lights_punctual`
 lights. Animation, skinning, morph targets, and material extensions beyond
@@ -78,8 +78,8 @@ PBR-MR are out of scope; they parse cleanly and the loader ignores them.
 #### Skipping embedded cameras and lights
 
 By default the loader instantiates the glTF file's own camera and light nodes.
-When you bring your own — a spring-arm rig, a UI-locked overlay camera, an
-animated key/fill setup — the embedded ones would only fight for the same
+When you bring your own (a spring-arm rig, a UI-locked overlay camera, an
+animated key/fill setup) the embedded ones would only fight for the same
 shader uniforms. Load through `gltf(...)` to get a builder with `cameras(false)`
 and `lights(false)` toggles:
 
@@ -215,8 +215,8 @@ lang="kotlin"
 
 ### Scene::new
 
-Build an empty `Scene`. No `Renderer` argument, no async, nothing to await
-— the Scene's GPU resources initialise lazily when it's first rendered.
+Build an empty `Scene`. No `Renderer` argument, no async, nothing to await.
+The Scene's GPU resources initialise lazily when it's first rendered.
 
 The first call to [`Scene::add`](/api/scene/scene/add)
 creates a default [Pass](/api/core/pass) under the
@@ -225,7 +225,7 @@ hood and routes the object into it. Multiple
 unless you explicitly add more via
 [`Scene::add_pass`](/api/scene/scene/add_pass).
 
-`Scene` is `Clone` (shallow Arc-share) — cloning gives another handle to
+`Scene` is `Clone` (shallow Arc-share); cloning gives another handle to
 the same underlying scene, so mutations on one clone are visible on the
 other.
 
@@ -306,11 +306,11 @@ lang="kotlin"
 
 ### Scene::add
 
-Absorb any [`SceneObject`](/api/scene) — a
+Absorb any [`SceneObject`](/api/scene) (a
 [Model](/api/scene/model),
 [Camera](/api/scene/camera),
 [Light](/api/scene/light), or a user-defined
-node that implements the trait — into the scene. The Scene routes it
+node that implements the trait) into the scene. The Scene routes it
 onto its default [Pass](/api/core/pass), which
 is created lazily on the first call.
 
@@ -487,13 +487,13 @@ lang="kotlin"
 ### Scene::models
 
 Return a snapshot of every [`Model`](/api/scene/model)
-added to this Scene via [`Scene::add`](/api/scene/scene/add)
-— including Models the loader instantiated from glTF `mesh` nodes.
+added to this Scene via [`Scene::add`](/api/scene/scene/add),
+including Models the loader instantiated from glTF `mesh` nodes.
 
 Each entry is an Arc-shared clone of the original handle. Mutating one
 of them (`set_visible`, `translate`, `set_transform`, …) propagates live
 to every shader the Model was wired into, no re-attach needed. The
-returned `Vec` is the *snapshot at call time* — adding more Models after
+returned `Vec` is the *snapshot at call time*. Adding more Models after
 the call doesn't grow this `Vec`, but the handles you already have stay
 live.
 
@@ -634,19 +634,19 @@ lang="kotlin"
 ### Scene::cameras
 
 Return a snapshot of every [`Camera`](/api/scene/camera)
-added to this Scene via [`Scene::add`](/api/scene/scene/add)
-— including Cameras the loader instantiated from glTF `camera` nodes
+added to this Scene via [`Scene::add`](/api/scene/scene/add),
+including Cameras the loader instantiated from glTF `camera` nodes
 (unless you skipped them via the camera filter on
 [`Scene::load`](/api/scene/scene/load)).
 
 Each entry is an Arc-shared clone of the original handle.
 `camera.look_at(...)` / `camera.set_aspect(...)` on a returned handle
 propagates the new view + projection to every shader the Camera is wired
-into — same live semantics as the Camera handle you originally added.
+into, the same live semantics as the Camera handle you originally added.
 
 When the Scene rendered with a defaulted Camera (no user-supplied Camera
 when the first render landed), the auto-injected default appears in
-this list too — so a consumer who wants to drive the default camera per
+this list too, so a consumer who wants to drive the default camera per
 frame can grab `scene.cameras().first()` and call `look_at` on it.
 
 #### Example
@@ -751,8 +751,8 @@ lang="kotlin"
 ### Scene::lights
 
 Return a snapshot of every [`Light`](/api/scene/light)
-added to this Scene via [`Scene::add`](/api/scene/scene/add)
-— including Lights the loader instantiated from glTF
+added to this Scene via [`Scene::add`](/api/scene/scene/add),
+including Lights the loader instantiated from glTF
 `KHR_lights_punctual` nodes (unless you skipped them via the light filter
 on [`Scene::load`](/api/scene/scene/load)).
 
@@ -874,7 +874,7 @@ Defaults: every Material seeded by `Material::pbr()` starts with
 `ambient = [0.03, 0.03, 0.03]` (the dim grey the PBR shader had
 hardcoded before this knob existed). Calling `Scene::ambient` overrides
 that for every shader the scene visits today *and* for any Models added
-afterwards — the value is stashed on the Scene and re-stamped onto
+afterwards: the value is stashed on the Scene and re-stamped onto
 shaders that join later via `Scene::add`.
 
 Returns a handle to the same Scene (Arc-shared) for chaining.
@@ -1022,14 +1022,14 @@ lang="kotlin"
 
 Append a user-built [Pass](/api/core/pass) to the
 scene's pre-pass list. The Scene renders these passes in insertion order
-*before* its internal default Pass — that's the hook for shadow maps,
+*before* its internal default Pass. That's the hook for shadow maps,
 depth pre-passes, screen-space backdrops, anything that has to run *before*
 the scene's main geometry draw.
 
 The default Pass that holds the Scene's [SceneObjects](/api/scene)
 is *not* affected by `add_pass`; it's an internal pipeline owned by the
 Scene. Use `add_pass` only when you want a dedicated Pass with its own
-shaders / clear logic — for ordinary geometry, `scene.add(&model)?` is what
+shaders / clear logic. For ordinary geometry, `scene.add(&model)?` is what
 you want.
 
 For *post*-effects (bloom, tonemap, …), keep the post-pass outside the
@@ -1045,7 +1045,7 @@ make to the original handle reach the Scene's copy as well.
 
 ##### Each new Pass clears by default
 
-Every `Pass::new(name)` starts with a clear-to-transparent input — the
+Every `Pass::new(name)` starts with a clear-to-transparent input. The
 first render of the frame for that Pass wipes its colour attachment to
 `[0, 0, 0, 0]`. When you chain passes that read each other's output
 (e.g. `[backdrop, shadow_overlay]`), the second Pass will clear the
@@ -1056,7 +1056,7 @@ first Pass's output unless you opt out:
 - Or call `pass.set_clear_color([r, g, b, a])` to choose a specific
   clear value (still a clear; just a different colour).
 
-`Scene::add_pass` accepts each pre-pass independently — there's no
+`Scene::add_pass` accepts each pre-pass independently. There's no
 automatic chaining of their attachments. If you need two passes to
 share a target, route them through the same `set_target(...)` and use
 `load_previous` to compose.

@@ -8,7 +8,7 @@ Maps to the `material.base_color` uniform on the underlying shader. Default
 is `[1, 1, 1, 1]`.
 
 Returns a handle to the same Material (Arc-shared) so calls chain. See
-[Material — Cloning is an Arc-share](https://fragmentcolor.org/api/scene/material#cloning-is-an-arc-share-not-a-deep-copy)
+[Material: Cloning is an Arc-share](https://fragmentcolor.org/api/scene/material#cloning-is-an-arc-share-not-a-deep-copy)
 for what that means for mutation visibility.
 
 ## Example

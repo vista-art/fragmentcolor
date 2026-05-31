@@ -1,8 +1,8 @@
-# TextureTarget::texture() — JS/web
+# TextureTarget::texture() (JS/web)
 
 Returns a [`Texture`](https://fragmentcolor.org/api/texture/texture) handle for the offscreen render target.
 
-Use this to bind the texture as a shader uniform — for example when rendering a
+Use this to bind the texture as a shader uniform, for example when rendering a
 post-processing pass that reads the output of a previous render step.
 
 This is a web-specific binding because on WASM the texture handle is needed

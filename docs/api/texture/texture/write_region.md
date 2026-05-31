@@ -3,9 +3,9 @@
 Same as `Texture::write`, but writes into a sub-region of the texture and/or with explicit source data layout.
 
 The `region` argument accepts anything convertible into a `TextureRegion`:
-- `[w, h]` / `(w, h)` — full size, origin `(0, 0, 0)`
-- `[x, y, w, h]` / `(x, y, w, h)` — 2D rectangle
-- `[x, y, z, w, h, d]` — 3D box (for layered or 3D textures)
+- `[w, h]` / `(w, h)`: full size, origin `(0, 0, 0)`
+- `[x, y, w, h]` / `(x, y, w, h)`: 2D rectangle
+- `[x, y, z, w, h, d]`: 3D box (for layered or 3D textures)
 - A `TextureRegion` constructed explicitly with `.with_stride(...)` / `.with_rows(...)` for advanced data-layout control
 
 ## Notes

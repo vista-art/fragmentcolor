@@ -1,7 +1,7 @@
 # Light::set_direction
 
 Update the world-space direction. Defined for directional and spot lights
-only — returns `Ok(self)` for chaining. Calling this on a point light
+only; returns `Ok(self)` for chaining. Calling this on a point light
 returns `Err(LightError::FieldNotApplicable { kind: Point, field:
 "set_direction" })` because point sources radiate omnidirectionally. The
 new value propagates live to every shader the Light has already been

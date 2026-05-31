@@ -1,12 +1,12 @@
 # Pass::set_depth_target
 
-Attach a depth texture to this pass. Once attached, the renderer builds the pipeline with a matching depth-stencil state and **depth-test is enabled** — fragments behind the current contents of the depth buffer are discarded, and the pass writes to the depth buffer as it draws. That's what you want for 3D meshes that occlude each other.
+Attach a depth texture to this pass. Once attached, the renderer builds the pipeline with a matching depth-stencil state and **depth-test is enabled**: fragments behind the current contents of the depth buffer are discarded, and the pass writes to the depth buffer as it draws. That's what you want for 3D meshes that occlude each other.
 
-A Pass has at most one depth attachment — call `set_depth_target` again to swap it.
+A Pass has at most one depth attachment. Call `set_depth_target` again to swap it.
 
-The target must be a depth texture (`Depth32Float` is the canonical format) created by the same `Renderer` via [`create_depth_texture`](https://fragmentcolor.org/api/core/renderer/create_depth_texture). The depth attachment's sample count must match the color attachments' — mixing 1× and 4× MSAA in the same pass returns `RendererError::DepthSampleCountMismatch`.
+The target must be a depth texture (`Depth32Float` is the canonical format) created by the same `Renderer` via [`create_depth_texture`](https://fragmentcolor.org/api/core/renderer/create_depth_texture). The depth attachment's sample count must match the color attachments'. Mixing 1× and 4× MSAA in the same pass returns `RendererError::DepthSampleCountMismatch`.
 
-To **opt out** of depth testing, simply don't call `set_depth_target` — the pass renders without depth-state, painter's-algorithm style (later draws win).
+To **opt out** of depth testing, simply don't call `set_depth_target`. The pass then renders without depth-state, painter's-algorithm style (later draws win).
 
 ## Example
 

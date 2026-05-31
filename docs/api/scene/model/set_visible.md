@@ -1,7 +1,7 @@
 # Model::set_visible
 
 Toggle the Model in or out of the next frame. Hidden Models are skipped
-by the renderer in both the opaque-batched and blend-sorted draw paths —
+by the renderer in both the opaque-batched and blend-sorted draw paths;
 no Pass rebuild needed.
 
 The flag is Arc-shared with `ModelEntry` (the renderer's queue), so

@@ -1,13 +1,13 @@
 # Scene::models
 
 Return a snapshot of every [`Model`](https://fragmentcolor.org/api/scene/model)
-added to this Scene via [`Scene::add`](https://fragmentcolor.org/api/scene/scene/add)
-— including Models the loader instantiated from glTF `mesh` nodes.
+added to this Scene via [`Scene::add`](https://fragmentcolor.org/api/scene/scene/add),
+including Models the loader instantiated from glTF `mesh` nodes.
 
 Each entry is an Arc-shared clone of the original handle. Mutating one
 of them (`set_visible`, `translate`, `set_transform`, …) propagates live
 to every shader the Model was wired into, no re-attach needed. The
-returned `Vec` is the *snapshot at call time* — adding more Models after
+returned `Vec` is the *snapshot at call time*. Adding more Models after
 the call doesn't grow this `Vec`, but the handles you already have stay
 live.
 

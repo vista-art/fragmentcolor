@@ -1,11 +1,11 @@
 # Light::directional
 
 Construct a directional light. `direction` is the world-space vector the
-light travels along (so `[0, -1, 0]` is straight down — noon sun); `color`
+light travels along (so `[0, -1, 0]` is straight down, the noon sun); `color`
 is linear-RGB intensity (`[1, 1, 1]` for full white, scaled values for
 dimmer or tinted lights).
 
-Use this for sun / moon / fill / key lights — anything where every shaded
+Use this for sun / moon / fill / key lights: anything where every shaded
 surface should receive parallel rays from a fixed direction. For positioned
 sources, see [`Light::point`](https://fragmentcolor.org/api/scene/light/point)
 and [`Light::spot`](https://fragmentcolor.org/api/scene/light/spot).

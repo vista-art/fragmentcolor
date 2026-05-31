@@ -1,6 +1,6 @@
 # Light::set_position
 
-Update the world-space position. Defined for point and spot lights only —
+Update the world-space position. Defined for point and spot lights only;
 returns `Ok(self)` for chaining. Calling this on a directional light
 returns `Err(LightError::FieldNotApplicable { kind: Directional, field:
 "set_position" })` because directional rays carry no position. The new

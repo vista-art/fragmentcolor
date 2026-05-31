@@ -13,8 +13,8 @@ for each, and writes the resulting `Texture` into the matching uniform.
 [`Renderer::render`](https://fragmentcolor.org/api/core/renderer/render)
 calls `load` automatically the first time it sees a renderable with
 pending uploads, so explicit `load` is optional. Reach for it when you
-want to amortize the decode + upload cost outside the render loop — for
-example, in a loading screen that prepares the scene before the first
+want to amortize the decode + upload cost outside the render loop, for
+example in a loading screen that prepares the scene before the first
 frame goes out.
 
 ## Example

@@ -2,7 +2,7 @@
 
 Read the outer cone half-angle (radians). Returns `Some(value)` only for a
 spot light, `None` for directional and point lights. The outer cone is
-where the light's contribution reaches zero — beyond this angle the
+where the light's contribution reaches zero. Beyond this angle the
 fragment receives nothing from this light. Between the inner and outer
 cones the contribution smoothly rolls off; see
 [`inner_cone_angle`](https://fragmentcolor.org/api/scene/light/inner_cone_angle).

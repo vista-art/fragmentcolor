@@ -5,7 +5,7 @@ vertical field of view (use `degrees.to_radians()` if you're starting from
 degrees); `aspect` is width / height; `near` and `far` clip the depth range.
 
 Built on `glam::Mat4::perspective_rh`, which targets wgpu's NDC depth
-range `[0, 1]` — pair with a depth attachment configured for that range
+range `[0, 1]`. Pair with a depth attachment configured for that range
 when you add the Camera to a Pass that does depth testing.
 
 The view component starts at identity: eye at the world origin, looking

@@ -73,7 +73,7 @@ struct MyUniform {
 @group(0) @binding(0) var<uniform> u: MyUniform;
 ```
 
-FragmentColor handles std140-style 16-byte alignment for you, and large uniform blobs are pooled internally — there is nothing to configure.
+FragmentColor handles std140-style 16-byte alignment for you, and large uniform blobs are pooled internally. There is nothing to configure.
 
 ## Textures and Samplers
 
@@ -123,7 +123,7 @@ struct Buf { a: vec4<f32> };
 @group(0) @binding(0) var<storage, read> ssbo: Buf;
 ```
 
-Read-only buffers bind with `read-only` storage access; `read_write` allows writes where the device supports it. CPU-side updates use the same `shader.set("path", value)` API as uniforms, with array indexing (e.g. `buf.items[2].v`). Buffer byte spans are computed from the WGSL shape — arrays and structs honor stride and alignment automatically — and large buffers are pooled internally.
+Read-only buffers bind with `read-only` storage access; `read_write` allows writes where the device supports it. CPU-side updates use the same `shader.set("path", value)` API as uniforms, with array indexing (e.g. `buf.items[2].v`). Buffer byte spans are computed from the WGSL shape (arrays and structs honor stride and alignment automatically) and large buffers are pooled internally.
 
 ## Push Constants
 

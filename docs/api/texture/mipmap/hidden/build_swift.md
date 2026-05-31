@@ -3,7 +3,7 @@
 Swift override for `Mipmap::build`. The Swift binding (uniffi
 constructor) takes positional args `(bytes: Data, format: TextureFormat,
 size: Size?)` with `size` optional. The override sticks to native
-positional Swift syntax — wrapping the call in a Rust-style tuple
+positional Swift syntax. Wrapping the call in a Rust-style tuple
 (`build((bytes, format, size))`) crashes the swift-frontend type
 checker (see CI healthcheck failures up to 87e61e5a).
 

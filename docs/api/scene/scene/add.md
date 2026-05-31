@@ -1,10 +1,10 @@
 # Scene::add
 
-Absorb any [`SceneObject`](https://fragmentcolor.org/api/scene) — a
+Absorb any [`SceneObject`](https://fragmentcolor.org/api/scene) (a
 [Model](https://fragmentcolor.org/api/scene/model),
 [Camera](https://fragmentcolor.org/api/scene/camera),
 [Light](https://fragmentcolor.org/api/scene/light), or a user-defined
-node that implements the trait — into the scene. The Scene routes it
+node that implements the trait) into the scene. The Scene routes it
 onto its default [Pass](https://fragmentcolor.org/api/core/pass), which
 is created lazily on the first call.
 

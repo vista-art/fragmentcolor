@@ -18,7 +18,7 @@ Internally a Camera carries:
 - A `view` matrix initialized to identity (eye at origin, looking down `-Z`,
   with `+Y` up). Call [`look_at`](https://fragmentcolor.org/api/scene/camera/look_at)
   to position the camera in world space.
-- The world-space `position` of the eye — kept alongside the view matrix so
+- The world-space `position` of the eye, kept alongside the view matrix so
   shaders that need it (specular highlights, fresnel) don't have to invert
   the view matrix on every frame.
 

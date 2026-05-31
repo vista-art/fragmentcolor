@@ -4,7 +4,7 @@ Kotlin wrapper for `Renderer::create_external_texture`. Takes a raw
 `ULong` pointer to a `SurfaceTexture` (or any equivalent native handle)
 so uniffi can marshal it across the FFI boundary.
 
-Currently a stub — every call returns
+Currently a stub: every call returns
 `FragmentColorError.Render("not implemented yet")` until the Android
 plumbing to map a `SurfaceTexture` into a `wgpu::ExternalTexture` lands.
 

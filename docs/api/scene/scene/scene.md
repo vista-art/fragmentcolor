@@ -3,8 +3,8 @@
 A `Scene` is the top-level container for the real-world things you render:
 [Models](https://fragmentcolor.org/api/scene/model),
 [Cameras](https://fragmentcolor.org/api/scene/camera),
-[Lights](https://fragmentcolor.org/api/scene/light) (directional / point /
-spot — all one type), and any custom
+[Lights](https://fragmentcolor.org/api/scene/light) (directional, point, and
+spot are all one type), and any custom
 [SceneObject](https://fragmentcolor.org/api/scene). It owns one or more
 [Passes](https://fragmentcolor.org/api/core/pass) underneath and implements
 [Renderable](https://fragmentcolor.org/api/core/renderable), so you hand
@@ -22,7 +22,7 @@ underneath and don't leak into the call site.
 `Scene::new()` is synchronous and takes no `Renderer`. The first time a
 [SceneObject](https://fragmentcolor.org/api/scene) is added, the Scene
 creates a default Pass to absorb it. The first time the Scene is rendered,
-the underlying GPU resources initialise on demand — exactly the lazy-init
+the underlying GPU resources initialise on demand. This is the lazy-init
 pattern the rest of FragmentColor follows.
 
 ## Default Camera + Light at render time
@@ -32,9 +32,9 @@ camera projection and at least one light for the lighting term to be
 non-zero. To make the "hello world" path render something recognisable, the
 Scene injects sensible defaults when the user hasn't supplied them:
 
-- **Default Camera** — `Camera::perspective(60°, 1.0, 0.1, 100.0)` looking
+- **Default Camera**: `Camera::perspective(60°, 1.0, 0.1, 100.0)` looking
   from `[0, 0, 5]` at the origin with `+Y` up.
-- **Default Light** — a `Light::directional` aimed at
+- **Default Light**: a `Light::directional` aimed at
   `[0.0, -0.3, -1.0]` with full-white color, providing a forward-tilted
   fill so a front-facing quad reads as lit rather than silhouetted.
 

@@ -1,6 +1,6 @@
 # Light::set_range
 
-Update the influence-radius cap. Defined for point and spot lights only —
+Update the influence-radius cap. Defined for point and spot lights only;
 returns `Ok(self)` for chaining. Calling this on a directional light
 returns `Err(LightError::FieldNotApplicable { kind: Directional, field:
 "set_range" })` because parallel rays have no distance falloff. Passing a

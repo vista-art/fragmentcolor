@@ -5,7 +5,7 @@ matches WGSL's `mat4x4<f32>` storage and glam's `to_cols_array_2d()`, so
 the result is ready to feed directly into a Shader's `camera.view_proj`
 uniform via `Shader::set(...)` if you need direct control. For the common
 case, pass the Camera to
-[`Pass::add`](https://fragmentcolor.org/api/core/pass#add) — the Pass seeds
+[`Pass::add`](https://fragmentcolor.org/api/core/pass#add). The Pass seeds
 `camera.view_proj` + `camera.position` on every Material attached to it
 and keeps them in sync with later updates.
 

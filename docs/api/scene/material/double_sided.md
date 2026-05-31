@@ -2,12 +2,12 @@
 
 Toggle backface culling for this material's pipeline. When `true`, the renderer skips
 its default back-face cull and draws both faces of every triangle. When `false`
-(the default), back faces are culled — the standard CCW-winding-is-front convention.
+(the default), back faces are culled, the standard CCW-winding-is-front convention.
 
 Mirrors glTF 2.0's `doubleSided`. Reach for it on thin geometry that legitimately reads
-from both sides — a single-quad leaf card, a cloth banner, decals applied to non-closed
+from both sides: a single-quad leaf card, a cloth banner, decals applied to non-closed
 meshes, or any authored asset that comes out of a tool that didn't bother to mirror its
-back faces. For closed solid geometry, leave it off — the culled back faces are a free
+back faces. For closed solid geometry, leave it off; the culled back faces are a free
 ~50% fragment-shader saving on every draw.
 
 Like `alpha_mode`, this is a pipeline-state flag and bakes into the WebGPU pipeline.

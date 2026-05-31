@@ -2,7 +2,7 @@
 
 Attach a per-pass color render target. When set, this pass renders into the provided texture instead of the final Target.
 
-A Pass has at most one color target — call `set_target` again to swap it. Use this to render intermediate results (e.g., a shadow map) that later passes can sample.
+A Pass has at most one color target. Call `set_target` again to swap it. Use this to render intermediate results (e.g., a shadow map) that later passes can sample.
 
 ## Example
 

@@ -8,7 +8,7 @@ view is identity, with the eye at the origin).
 Shaders that need the eye position (specular highlights, fresnel,
 parallax) typically pull it from the `camera.position` uniform seeded by
 [`Pass::add`](https://fragmentcolor.org/api/core/pass#add) when the Camera
-is absorbed — caching it here keeps every frame cheap (no view-matrix
+is absorbed. Caching it here keeps every frame cheap (no view-matrix
 inversion on the GPU side).
 
 ## Example

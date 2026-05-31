@@ -1,6 +1,6 @@
 # Material::emissive
 
-Set the emissive factor (linear RGB) — light the surface emits regardless of
+Set the emissive factor (linear RGB): light the surface emits regardless of
 incident illumination. Added on top of the PBR shading and clamped only by
 the output format; for tonemapped pipelines use values in `[0, 1]`, for HDR
 you can go beyond.

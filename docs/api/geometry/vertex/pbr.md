@@ -7,7 +7,7 @@ default; chain `.set(...)` to override the slots a real mesh has data for.
 
 A vertex built with `Vertex::pbr(pos)` alone renders the same way
 [`Scene::load`](https://fragmentcolor.org/api/scene/scene/load) renders a
-glTF primitive that carries only POSITION — face-normal computation, UV
+glTF primitive that carries only POSITION. Face-normal computation, UV
 defaults, vertex tint, and tangents all collapse to the values the loader
 falls back to. Useful for building PBR meshes by hand without spelling
 out every default attribute.

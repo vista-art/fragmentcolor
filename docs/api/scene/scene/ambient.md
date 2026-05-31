@@ -9,7 +9,7 @@ Defaults: every Material seeded by `Material::pbr()` starts with
 `ambient = [0.03, 0.03, 0.03]` (the dim grey the PBR shader had
 hardcoded before this knob existed). Calling `Scene::ambient` overrides
 that for every shader the scene visits today *and* for any Models added
-afterwards — the value is stashed on the Scene and re-stamped onto
+afterwards: the value is stashed on the Scene and re-stamped onto
 shaders that join later via `Scene::add`.
 
 Returns a handle to the same Scene (Arc-shared) for chaining.

@@ -903,11 +903,11 @@ lang="kotlin"
 
 ### Pass::add
 
-Absorb any [`SceneObject`](/api/scene) — a
+Absorb any [`SceneObject`](/api/scene) (a
 [Model](/api/scene/model),
 [Camera](/api/scene/camera),
 [Light](/api/scene/light), or a user-defined
-node that implements the trait — into the pass. Each kind brings its
+node that implements the trait) into the pass. Each kind brings its
 own attach behaviour: a Model queues a draw with its own per-instance
 transform; a Camera or Light wires its uniforms into every shader the
 pass renders, both the ones already there and the ones added afterwards.
@@ -916,7 +916,7 @@ Camera and Light hold Arc-shared state, so subsequent mutations on the
 same value (`camera.look_at(...)`, `light.set_color(...)`) propagate to
 every shader on the pass with no further `add` call.
 
-Returns `Result<&Pass, PassError>` — Models can fail at attach time when
+Returns `Result<&Pass, PassError>`. Models can fail at attach time when
 the Mesh layout doesn't match the Material's shader; Cameras and Lights
 always succeed. Chain with `?` between calls.
 
@@ -1079,7 +1079,7 @@ Sets the viewport region for this [Pass](/api/core/pass).
 
 The viewport restricts drawing to a rectangular area of the [Target](/api/core/target).
 
-The `viewport` argument accepts anything convertible into a `ScreenRegion` — an `[x, y, w, h]` array, a `(w, h)` tuple, or a `ScreenRegion` constructed explicitly.
+The `viewport` argument accepts anything convertible into a `ScreenRegion`: an `[x, y, w, h]` array, a `(w, h)` tuple, or a `ScreenRegion` constructed explicitly.
 
 #### Example
 
@@ -1425,7 +1425,7 @@ lang="kotlin"
 
 Attach a per-pass color render target. When set, this pass renders into the provided texture instead of the final Target.
 
-A Pass has at most one color target — call `set_target` again to swap it. Use this to render intermediate results (e.g., a shadow map) that later passes can sample.
+A Pass has at most one color target. Call `set_target` again to swap it. Use this to render intermediate results (e.g., a shadow map) that later passes can sample.
 
 #### Example
 
@@ -1525,13 +1525,13 @@ lang="kotlin"
 
 ### Pass::set_depth_target
 
-Attach a depth texture to this pass. Once attached, the renderer builds the pipeline with a matching depth-stencil state and **depth-test is enabled** — fragments behind the current contents of the depth buffer are discarded, and the pass writes to the depth buffer as it draws. That's what you want for 3D meshes that occlude each other.
+Attach a depth texture to this pass. Once attached, the renderer builds the pipeline with a matching depth-stencil state and **depth-test is enabled**: fragments behind the current contents of the depth buffer are discarded, and the pass writes to the depth buffer as it draws. That's what you want for 3D meshes that occlude each other.
 
-A Pass has at most one depth attachment — call `set_depth_target` again to swap it.
+A Pass has at most one depth attachment. Call `set_depth_target` again to swap it.
 
-The target must be a depth texture (`Depth32Float` is the canonical format) created by the same `Renderer` via [`create_depth_texture`](/api/core/renderer/create_depth_texture). The depth attachment's sample count must match the color attachments' — mixing 1× and 4× MSAA in the same pass returns `RendererError::DepthSampleCountMismatch`.
+The target must be a depth texture (`Depth32Float` is the canonical format) created by the same `Renderer` via [`create_depth_texture`](/api/core/renderer/create_depth_texture). The depth attachment's sample count must match the color attachments'. Mixing 1× and 4× MSAA in the same pass returns `RendererError::DepthSampleCountMismatch`.
 
-To **opt out** of depth testing, simply don't call `set_depth_target` — the pass renders without depth-state, painter's-algorithm style (later draws win).
+To **opt out** of depth testing, simply don't call `set_depth_target`. The pass then renders without depth-state, painter's-algorithm style (later draws win).
 
 #### Example
 

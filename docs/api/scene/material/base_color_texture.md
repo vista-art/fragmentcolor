@@ -4,18 +4,18 @@ Bind a texture to the `base_color_map` slot. The default PBR shader samples it i
 
 Accepts any `Into<TextureInput>`:
 
-- A pre-built [`&Texture`](https://fragmentcolor.org/api/texture/texture). The setter stores the texture's ID immediately and the GPU texture stays Arc-shared across every Material that points at it. Passing the same `&shared_texture` to N Materials produces one GPU upload + N shader-uniform references — the cheap way to reuse one texture map across a scene full of objects without paying for N texture allocations.
+- A pre-built [`&Texture`](https://fragmentcolor.org/api/texture/texture). The setter stores the texture's ID immediately and the GPU texture stays Arc-shared across every Material that points at it. Passing the same `&shared_texture` to N Materials produces one GPU upload and N shader-uniform references: the cheap way to reuse one texture map across a scene full of objects without paying for N texture allocations.
 - Bytes / path / URL / `DynamicImage`. The setter queues the input on the Material's Shader, and the renderer drains queued uploads on the first [`Renderer::render`](https://fragmentcolor.org/api/core/renderer/render) (or earlier via the explicit [`Renderer::load`](https://fragmentcolor.org/api/core/renderer/load)).
 
 Unset, this slot resolves to a 1×1 white default the renderer hands out
-lazily — so calling `Material::pbr()?` without binding a
+lazily, so calling `Material::pbr()?` without binding a
 texture renders correctly under the factor alone.
 
 ## Errors are surfaced lazily
 
-The setter itself is infallible — it queues the upload (lazy path) or
+The setter itself is infallible: it queues the upload (lazy path) or
 takes an Arc-clone (eager path) and returns. Failures from the lazy
-path — file not found, decode error, unsupported format — surface when
+path (file not found, decode error, unsupported format) surface when
 the renderer actually drains the queue: either at first render or when
 you call [`Renderer::load(&material).await`](https://fragmentcolor.org/api/core/renderer/load).
 Until then the Material renders against its 1×1 default and a
@@ -27,7 +27,7 @@ fail at setter time, and `Material::base_color_texture(&texture)` takes
 an Arc-shared reference. The lazy path stays useful when the URL /
 path resolves at render time but the caller doesn't want to await yet.
 
-## Example — sharing one texture across many Materials
+## Example: sharing one texture across many Materials
 
 ```rust,no_run
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {

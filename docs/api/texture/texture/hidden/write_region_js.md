@@ -3,9 +3,9 @@
 JavaScript wrapper for `Texture::write_region`.
 
 The `region` argument accepts:
-- `[w, h]` — size only, origin `(0, 0, 0)`
-- `[x, y, w, h]` — 2D rectangle
-- `[x, y, z, w, h, d]` — 3D box
+- `[w, h]`: size only, origin `(0, 0, 0)`
+- `[x, y, w, h]`: 2D rectangle
+- `[x, y, z, w, h, d]`: 3D box
 - `{ x, y, z?, width, height, depth?, bytesPerRow?, rowsPerImage? }`
 - `{ minX, minY, maxX, maxY, minZ?, maxZ?, bytesPerRow?, rowsPerImage? }`
 

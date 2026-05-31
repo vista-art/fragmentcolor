@@ -12,7 +12,7 @@ cap the influence with
 scale the radiance with
 [`set_intensity`](https://fragmentcolor.org/api/scene/light/set_intensity).
 
-Use this for flashlights, headlamps, theatre lighting, mood key-lights —
+Use this for flashlights, headlamps, theatre lighting, mood key-lights:
 anything where the lit volume is a cone aimed at a target. For an
 unconstrained point source see
 [`Light::point`](https://fragmentcolor.org/api/scene/light/point);

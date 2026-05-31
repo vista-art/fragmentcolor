@@ -1,6 +1,6 @@
 # Mipmap::count
 
-Return how many mip levels the chain holds (always at least 1). For a base size of `w x h`, that's `1 + floor(log2(max(w, h)))` — e.g. an 8x8 source yields four levels (8, 4, 2, 1). Handy for asserting that the chain has the depth you expected before you upload, or for sizing a fixed-array view of the levels in your own code.
+Return how many mip levels the chain holds (always at least 1). For a base size of `w x h`, that's `1 + floor(log2(max(w, h)))`. So an 8x8 source yields four levels (8, 4, 2, 1). Handy for asserting that the chain has the depth you expected before you upload, or for sizing a fixed-array view of the levels in your own code.
 
 ## Example
 

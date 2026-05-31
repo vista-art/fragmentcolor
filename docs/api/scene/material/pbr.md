@@ -21,19 +21,19 @@ The shader uses:
   Fresnel and metalness.
 - **One directional light** (uniform `light`), one camera (uniform `camera`),
   per-Model transform via the instance-attribute stream.
-- **glTF 2.0 PBR-MR texture sampling** — five sampled maps (`base_color_map`,
+- **glTF 2.0 PBR-MR texture sampling**: five sampled maps (`base_color_map`,
   `metallic_roughness_map`, `normal_map`, `occlusion_map`, `emissive_map`)
   combined with their matching factors per the spec.
 
 The vertex inputs the shader expects, in this order:
 
-- `@location(0) position : vec3<f32>` — set as `Vertex::new([...])`.
-- `@location(1) normal   : vec3<f32>` — set as `.set(Vertex::NORMAL, ...)`.
-- `@location(2) uv0      : vec2<f32>` — set as `.set(Vertex::UV0, ...)`.
+- `@location(0) position : vec3<f32>`, set as `Vertex::new([...])`.
+- `@location(1) normal   : vec3<f32>`, set as `.set(Vertex::NORMAL, ...)`.
+- `@location(2) uv0      : vec2<f32>`, set as `.set(Vertex::UV0, ...)`.
 
 If your Mesh's first vertex doesn't carry these three properties in this
 order, attaching it to the Material's shader will fail with a layout
-mismatch — use `Material::custom(...)` to bring your own vertex layout.
+mismatch. Use `Material::custom(...)` to bring your own vertex layout.
 
 ## Defaults (post-construction)
 
@@ -57,7 +57,7 @@ mismatch — use `Material::custom(...)` to bring your own vertex layout.
 | `light.color`                | `[1, 1, 1]`          |
 
 The camera and light are the user's domain, not the Material's. Pass them
-to [`Pass::add`](https://fragmentcolor.org/api/core/pass#add) — the
+to [`Pass::add`](https://fragmentcolor.org/api/core/pass#add). The
 typed [Camera](https://fragmentcolor.org/api/scene/camera) and
 [Light](https://fragmentcolor.org/api/scene/light) handles seed the matching
 `camera.*` / `light.*` uniforms and propagate any later updates back into

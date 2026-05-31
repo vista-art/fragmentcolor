@@ -1,6 +1,6 @@
 # Material::alpha_cutoff
 
-Sets the alpha threshold used by `AlphaMode::Mask` — fragments whose
+Sets the alpha threshold used by `AlphaMode::Mask`. Fragments whose
 `base_color.a` falls below this value are `discard`ed in the fragment
 shader. Stored on `material.alpha_cutoff`; default `0.5`, matching glTF 2.0.
 

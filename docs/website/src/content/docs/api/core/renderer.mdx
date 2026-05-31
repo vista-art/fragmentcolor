@@ -183,7 +183,7 @@ Create a new [Renderer](/api/core/renderer).
 The renderer's GPU adapter and device are initialized lazily on the first
 target you create, so the same `Renderer` works whether you end up
 rendering offscreen or attaching it to a window. By the time `render()`
-is called the GPU resources are already in place — `render` requires a
+is called the GPU resources are already in place. `render` requires a
 [Target](/api/core/target), and the only way to
 build one is through this renderer:
 
@@ -631,9 +631,9 @@ Create a storage-class texture for compute shaders, image store/load, or as a re
 
 Common forms:
 
-- `(size, format)` — empty storage texture, no initial data.
-- `(size, format, bytes)` — storage texture pre-seeded with `bytes`.
-- A full `TextureInput { data, options }` literal — pass `options.usage` (via `TextureOptions::with_usage(...)`) for non-default usage flags.
+- `(size, format)`: empty storage texture, no initial data.
+- `(size, format, bytes)`: storage texture pre-seeded with `bytes`.
+- A full `TextureInput { data, options }` literal: pass `options.usage` (via `TextureOptions::with_usage(...)`) for non-default usage flags.
 
 `size` is required; storage textures have no source to infer dimensions from. Missing it returns `TextureError::InvalidInput`.
 
@@ -1038,7 +1038,7 @@ The `source` argument is platform-specific:
   over the uniffi boundary).
 - **Android**: a `SurfaceTexture` handle (passed as a raw `ULong` pointer).
 
-Currently returns an error on every platform — the public signature is
+Currently returns an error on every platform. The public signature is
 stable; native-side decode hookup is on the roadmap. Track support via
 the typed `RendererError` you get back.
 
@@ -1141,8 +1141,8 @@ for each, and writes the resulting `Texture` into the matching uniform.
 [`Renderer::render`](/api/core/renderer/render)
 calls `load` automatically the first time it sees a renderable with
 pending uploads, so explicit `load` is optional. Reach for it when you
-want to amortize the decode + upload cost outside the render loop — for
-example, in a loading screen that prepares the scene before the first
+want to amortize the decode + upload cost outside the render loop, for
+example in a loading screen that prepares the scene before the first
 frame goes out.
 
 #### Example
@@ -1330,10 +1330,10 @@ storage buffer into a pooled readback staging buffer, maps it, and returns
 the bytes.
 
 This is the only way to observe what a compute pass *wrote* into a storage
-binding. The cheap CPU-mirror accessors —
-[`Shader::get`](/api/shaders/shader/get) and
-[`Shader::get_bytes`](/api/shaders/shader/get_bytes)
-— reflect what was last set on the CPU side; GPU writes are not visible
+binding. The cheap CPU-mirror accessors
+([`Shader::get`](/api/shaders/shader/get) and
+[`Shader::get_bytes`](/api/shaders/shader/get_bytes))
+reflect what was last set on the CPU side; GPU writes are not visible
 through them.
 
 `read_storage` is `async` on every platform because the underlying

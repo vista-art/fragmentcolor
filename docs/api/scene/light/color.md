@@ -1,7 +1,7 @@
 # Light::color
 
 Read the linear-RGB color the light emits. Defined for every kind. The
-returned value is the `[r, g, b]` triple stored on the Light — call
+returned value is the `[r, g, b]` triple stored on the Light. Call
 [`set_color`](https://fragmentcolor.org/api/scene/light/set_color) to
 update it. The scalar
 [`intensity`](https://fragmentcolor.org/api/scene/light/intensity)
