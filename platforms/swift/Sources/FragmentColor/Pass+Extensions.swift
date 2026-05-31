@@ -66,13 +66,13 @@ extension Pass {
     // MARK: - Targets
 
     /// Set the colour attachment target for this pass.
-    public func addTarget(_ target: MobileTextureTarget) throws {
-        try self.addTarget(target: .texture(target))
+    public func setTarget(_ target: MobileTextureTarget) throws {
+        try self.setTarget(target: .texture(target))
     }
 
     /// Set the depth attachment target for this pass.
-    public func addDepthTarget(_ target: MobileTextureTarget) throws {
-        try self.addDepthTarget(target: .texture(target))
+    public func setDepthTarget(_ target: MobileTextureTarget) throws {
+        try self.setDepthTarget(target: .texture(target))
     }
 
     // MARK: - Clear colour

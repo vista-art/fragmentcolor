@@ -1,6 +1,8 @@
 name: Healthcheck iOS (Swift)
 
 on:
+  push:
+    branches: [v0.12.0-swift]
   pull_request:
     paths:
       - 'src/**'
