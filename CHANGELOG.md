@@ -1,8 +1,8 @@
 # Changelog
 
-## 0.11.2 — 3D scenes: glTF loading, PBR materials, and a texture pipeline
+## 0.12.0 — 3D scenes: glTF loading, PBR materials, and a texture pipeline
 
-The cycle that made FragmentColor render real 3D assets: a top-level `Scene` graph, a glTF 2.0 loader (`Scene::load`), full PBR metallic-roughness materials (texture sampling, alpha modes, tangent-space normal mapping, `KHR_texture_transform`), a unified `Light` type, and `Camera` / `Model` as first-class scene objects. Underneath, texture creation moved off the main thread with KTX2 + 16-bit format support, the public API thinned to a single transport per operation, and the texture-related public surface got a structural cleanup before tagging.
+The cycle that made FragmentColor render 3D assets: a top-level `Scene` graph, a glTF 2.0 loader (`Scene::load`), full PBR metallic-roughness materials (texture sampling, alpha modes, tangent-space normal mapping, `KHR_texture_transform`), a unified `Light` type, and `Camera` / `Model` as first-class scene objects. Underneath, texture creation moved off the main thread with KTX2 + 16-bit format support, the public API thinned to a single transport per operation, and the texture-related public surface got a structural cleanup before tagging.
 
 ### `Vertex::pbr` convenience helper
 

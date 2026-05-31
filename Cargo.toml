@@ -1,6 +1,6 @@
 [package]
 name = "fragmentcolor"
-version = "0.11.2"
+version = "0.12.0"
 homepage = "https://fragmentcolor.org"
 repository = "https://github.com/vista-art/fragmentcolor"
 description = "Universal GPU abstraction for Javascript, Python, Swift and Kotlin"
