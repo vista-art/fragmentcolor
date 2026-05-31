@@ -19,8 +19,16 @@ use crate::Shader;
 /// [`SceneObject::attach`]; types that want live propagation when *new*
 /// shaders join the pass after attachment override
 /// [`SceneObject::apply_to_shader`].
+///
+/// The trait requires `Send + Sync` on every target except wasm32. wgpu's
+/// Web backend uses `Rc`/`RefCell` for browser resources (see
+/// `wgpu::backend::webgpu::WebBuffer`), so the GPU handles transitively
+/// owned by Mesh, Camera and Light are `!Send + !Sync` on wasm. The web
+/// runtime is single-threaded. `render()` never crosses a thread boundary
+/// there, so dropping the bound is sound.
+#[cfg(not(wasm))]
 pub trait SceneObject: std::fmt::Debug + Send + Sync + 'static {
-    /// Attach to a Pass. The implementation owns the bookkeeping —
+    /// Attach to a Pass. The implementation owns the bookkeeping:
     /// registering on the appropriate storage list, applying initial state
     /// to existing shaders, validating against the pass, anything else.
     fn attach(&self, pass: &crate::Pass) -> Result<(), crate::PassError>;
@@ -28,8 +36,22 @@ pub trait SceneObject: std::fmt::Debug + Send + Sync + 'static {
     /// Hook the pass invokes when a new shader joins after attachment.
     /// Default is a no-op; Camera and the light types override it to write
     /// their current state into the new shader so order of attachment
-    /// doesn't matter. Model doesn't need this — its work is one-shot at
+    /// doesn't matter. Model doesn't need this. Its work is one-shot at
     /// attach.
+    fn apply_to_shader(&self, shader: &Shader) {
+        let _ = shader;
+    }
+}
+
+/// wasm32 variant: same contract, no `Send + Sync` bound. See the
+/// non-wasm doc for rationale.
+#[cfg(wasm)]
+pub trait SceneObject: std::fmt::Debug + 'static {
+    /// Attach to a Pass. See the non-wasm definition for the contract.
+    fn attach(&self, pass: &crate::Pass) -> Result<(), crate::PassError>;
+
+    /// Hook the pass invokes when a new shader joins after attachment.
+    /// See the non-wasm definition for the contract.
     fn apply_to_shader(&self, shader: &Shader) {
         let _ = shader;
     }
