@@ -28,7 +28,7 @@ buffers are allocated lazily on first bind).
 
 ```rust
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-use bytemuck;
+# use bytemuck;
 use fragmentcolor::{Pass, Renderer, Shader};
 
 let renderer = Renderer::new();
@@ -53,7 +53,7 @@ pass.add_shader(&compute);
 renderer.render(&pass, &target)?;
 
 let bytes = renderer.read_storage(&compute, "out").await?;
-let values: &[f32] = bytemuck::cast_slice(&bytes);
+# let values: &[f32] = bytemuck::cast_slice(&bytes);
 # assert_eq!(values, &[1.0, 2.0, 3.0, 4.0]);
 # Ok(())
 # }
