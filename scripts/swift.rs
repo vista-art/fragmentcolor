@@ -175,6 +175,34 @@ mod swift {
         //     Also rewrite the follow-up `let _ = (width, height)` → `let _ = size`.
         out = rewrite_size_tuple(&out);
 
+        // 18. Inline `Vertex.UV0` (and the rest of the SCREAMING_SNAKE
+        //     attribute-name constants) as the bare string literal value.
+        //     Uniffi has no equivalent of pyo3 classattr or Kotlin static const
+        //     to surface the Rust-side `pub const UV0: &str = "uv0"` on the
+        //     Swift binding; the transpiler resolves the lookup here so
+        //     example code keeps reading `Vertex::UV0` on the Rust side.
+        out = inline_vertex_attr_constants(&out);
+
+        out
+    }
+
+    /// Replace `Vertex.UV0` etc. with the bare string literal value. Matches
+    /// the Rust-side `pub const UV0: &str = "uv0"` declarations in
+    /// `src/mesh/vertex.rs` so example code that writes `Vertex::UV0` keeps
+    /// resolving on Swift, where uniffi can't surface the constant.
+    fn inline_vertex_attr_constants(line: &str) -> String {
+        const ATTRS: &[(&str, &str)] = &[
+            ("Vertex.UV0", "\"uv0\""),
+            ("Vertex.UV1", "\"uv1\""),
+            ("Vertex.NORMAL", "\"normal\""),
+            ("Vertex.TANGENT", "\"tangent\""),
+            ("Vertex.COLOR0", "\"color0\""),
+            ("Vertex.COLOR1", "\"color1\""),
+        ];
+        let mut out = line.to_string();
+        for (needle, repl) in ATTRS {
+            out = out.replace(needle, repl);
+        }
         out
     }
 
@@ -240,11 +268,25 @@ mod swift {
                     // Peek ahead: the char after the uppercase letter must be alphanumeric
                     // (this is a PascalCase enum case, not e.g. `.utf8` or `.init`).
                     if i + 2 < chars.len() && (chars[i + 2].is_ascii_alphanumeric() || chars[i + 2] == '_') {
-                        out.push('.');
-                        // Lowercase the first letter.
-                        out.push(chars[i + 1].to_ascii_lowercase());
-                        i += 2;
-                        continue;
+                        // Read the full identifier so we can distinguish PascalCase
+                        // enum cases (Rgba8UnormSrgb) from SCREAMING_SNAKE constants
+                        // (UV0, NORMAL, COLOR0, FRAC_PI_4). Only the former should be
+                        // lowercased here; the latter are class-level constants whose
+                        // names round-trip verbatim.
+                        let mut end = i + 1;
+                        while end < chars.len() && (chars[end].is_ascii_alphanumeric() || chars[end] == '_') {
+                            end += 1;
+                        }
+                        let ident: String = chars[i + 1..end].iter().collect();
+                        let is_screaming = !ident.is_empty()
+                            && ident.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_');
+                        if !is_screaming {
+                            out.push('.');
+                            // Lowercase the first letter.
+                            out.push(chars[i + 1].to_ascii_lowercase());
+                            i += 2;
+                            continue;
+                        }
                     }
                 }
             }

@@ -183,7 +183,33 @@ mod kotlin {
         // Kotlin requires `for (x in y) { ... }`; Rust uses `for x in y { ... }`.
         // Add the parens so the binding declaration parses correctly.
         out = wrap_for_in_parens(&out);
+        // Inline `Vertex.<UV0|UV1|NORMAL|TANGENT|COLOR0|COLOR1>` as the bare
+        // string literal. Uniffi has no equivalent of pyo3 classattr or Swift
+        // static let to surface the Rust-side `pub const UV0: &str = "uv0"`
+        // declarations on the binding; the transpiler resolves the lookup
+        // here so example code keeps reading `Vertex.UV0` on the Rust side.
+        out = inline_vertex_attr_constants(&out);
 
+        out
+    }
+
+    /// Replace `Vertex.UV0` etc. with the bare string literal value. Matches
+    /// the Rust-side `pub const UV0: &str = "uv0"` declarations in
+    /// `src/mesh/vertex.rs` so example code that writes `Vertex::UV0` keeps
+    /// resolving on platforms where uniffi can't surface the constant.
+    fn inline_vertex_attr_constants(line: &str) -> String {
+        const ATTRS: &[(&str, &str)] = &[
+            ("Vertex.UV0", "\"uv0\""),
+            ("Vertex.UV1", "\"uv1\""),
+            ("Vertex.NORMAL", "\"normal\""),
+            ("Vertex.TANGENT", "\"tangent\""),
+            ("Vertex.COLOR0", "\"color0\""),
+            ("Vertex.COLOR1", "\"color1\""),
+        ];
+        let mut out = line.to_string();
+        for (needle, repl) in ATTRS {
+            out = out.replace(needle, repl);
+        }
         out
     }
 
