@@ -195,7 +195,14 @@ const ARTIFACT_DIR = process.env.ARTIFACT_DIR || path.join(process.cwd(), 'platf
     try { await fs.writeFile(path.join(ARTIFACT_DIR, 'page.html'), await page.content()); } catch {}
   }
 
-  await browser.close();
+  // browser.close() can block indefinitely if the wasm renderer keeps the
+  // GPU surface alive (a busy raymarcher loop or a dangling wgpu submission).
+  // Race it against a 10 s ceiling, then force-exit either way so the CI
+  // step terminates promptly.
+  await Promise.race([
+    browser.close(),
+    new Promise((resolve) => setTimeout(resolve, 10_000)),
+  ]).catch(() => {});
 
   if (!ok || errors.length) {
     if (!ok) {
@@ -207,5 +214,6 @@ const ARTIFACT_DIR = process.env.ARTIFACT_DIR || path.join(process.cwd(), 'platf
     process.exit(1);
   }
   console.log('Web healthcheck PASS');
+  process.exit(0);
 })();
 
