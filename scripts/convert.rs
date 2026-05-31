@@ -892,10 +892,35 @@ mod convert {
         // Remove stray Rust error-propagation '?' for both langs (JS/Py)
         match lang {
             Lang::Js | Lang::Swift | Lang::Kotlin => {
-                // Replace common patterns
-                let mut s = out.replace(")?;", ");");
-                s = s.replace(")?\n", ")\n");
-                s = s.replace(")? ", ") ");
+                // The `?` operator always follows a fallible expression that
+                // ends in `)` (a function call returning Result) or a bare
+                // identifier (`option?`). Strip any `)?` followed by a
+                // non-identifier character: closes the same set of contexts
+                // as the original allowlist (`;`, `\n`, ` `) plus `,` and
+                // `)` which appear when `?` is on a nested call inside a
+                // function call: `Model.new(mesh, Material.pbr()?)`.
+                let chars: Vec<char> = out.chars().collect();
+                let mut s = String::with_capacity(out.len());
+                let mut i = 0usize;
+                while i < chars.len() {
+                    if chars[i] == ')'
+                        && i + 1 < chars.len()
+                        && chars[i + 1] == '?'
+                    {
+                        let next = chars.get(i + 2).copied();
+                        let strip = matches!(
+                            next,
+                            None | Some(';' | ',' | ')' | ' ' | '\t' | '\n' | '.')
+                        );
+                        if strip {
+                            s.push(')');
+                            i += 2; // skip ')' '?'
+                            continue;
+                        }
+                    }
+                    s.push(chars[i]);
+                    i += 1;
+                }
                 if s.trim_end().ends_with('?') {
                     s = s.trim_end_matches('?').to_string();
                 }

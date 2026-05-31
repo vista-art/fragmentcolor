@@ -289,7 +289,13 @@ mod swift {
         // Types where `.new(...)` → `try Type(...)` (throwing inits).
         const THROWING_TYPES_WITH_DOT_NEW: &[&str] = &["Vertex"];
         // Types where `.new(...)` → `Type(...)` (non-throwing).
-        const NON_THROWING_TYPES_WITH_DOT_NEW: &[&str] = &["Instance"];
+        // Every uniffi-bound type whose Rust `::new(args) -> Self` constructor
+        // surfaces in `docs/api/**/*.md` examples. `Shader.new(` is the
+        // throwing exception and is handled separately in
+        // `insert_try_for_throws::THROWING_STATIC_METHODS`.
+        const NON_THROWING_TYPES_WITH_DOT_NEW: &[&str] = &[
+            "Instance", "Mesh", "Model", "Pass", "Quad", "Renderer", "Scene",
+        ];
         let mut out = line.to_string();
         for ty in THROWING_TYPES_WITH_DOT_NEW {
             let pat = format!("{}.new(", ty);

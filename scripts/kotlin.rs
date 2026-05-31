@@ -37,6 +37,8 @@ mod kotlin {
         let hidden_var_stubs: &[(&str, &str)] = &[
             ("encoded_png_bytes", "val encoded_png_bytes: ByteArray = byteArrayOf()"),
             ("raw_rgba", "val raw_rgba: ByteArray = ByteArray(8 * 8 * 4)"),
+            ("glb_bytes", "val glb_bytes: ByteArray = byteArrayOf()"),
+            ("bytes", "val bytes: ByteArray = byteArrayOf()"),
         ];
 
         for raw in js.lines() {
@@ -172,8 +174,52 @@ mod kotlin {
         out = rewrite_arrayof_float_to_listof(&out);
         out = drop_underscore_val(&out);
         out = rewrite_levels_indexing(&out);
+        // Generic fallback: strip `.new(` from any remaining
+        // `<UpperCamelCase>.new(...)` constructor call that the specific
+        // rewrites above didn't claim. Must run last so handlers like
+        // `rewrite_shader_new_to_compose` (which matches `Shader.new(`)
+        // get to fire first.
+        out = drop_dot_new(&out);
+        // Kotlin requires `for (x in y) { ... }`; Rust uses `for x in y { ... }`.
+        // Add the parens so the binding declaration parses correctly.
+        out = wrap_for_in_parens(&out);
 
         out
+    }
+
+    /// Kotlin's `for` loop requires parens around the in-pattern, unlike
+    /// Rust's `for x in y { ... }`. Rewrite a line whose first non-whitespace
+    /// token is `for ` followed by an identifier, ` in `, an expression, and a
+    /// trailing `{`. Conservative: only when the line ends with `{` and the
+    /// pattern is a single identifier (not a tuple destructure).
+    fn wrap_for_in_parens(line: &str) -> String {
+        let indent: String = line.chars().take_while(|c| c.is_whitespace()).collect();
+        let trimmed = line.trim_start();
+        if !trimmed.starts_with("for ") {
+            return line.to_string();
+        }
+        let body_open = match trimmed.rfind('{') {
+            Some(i) if trimmed[i..].trim() == "{" => i,
+            _ => return line.to_string(),
+        };
+        let head = trimmed[..body_open].trim_end();
+        // Split into `for IDENT in REST`.
+        let after_for = &head[4..]; // strip `for `
+        let in_pos = match after_for.find(" in ") {
+            Some(p) => p,
+            None => return line.to_string(),
+        };
+        let ident = after_for[..in_pos].trim();
+        let rest = after_for[in_pos + 4..].trim();
+        // Already parenthesized? Bail.
+        if ident.starts_with('(') {
+            return line.to_string();
+        }
+        // Only rewrite simple identifiers (including `_`).
+        if !ident.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+            return line.to_string();
+        }
+        format!("{}for ({} in {}) {{", indent, ident, rest)
     }
 
     // Drop `.unwrap()` — Kotlin uses exceptions, not Result types.
@@ -1305,6 +1351,50 @@ mod kotlin {
                 let right_ok =
                     i + 4 < chars.len() && (chars[i + 4].is_alphabetic() || chars[i + 4] == '_');
                 if left_ok && right_ok {
+                    i += 4;
+                    continue;
+                }
+            }
+            out.push(chars[i]);
+            i += 1;
+        }
+        out
+    }
+
+    /// Strip `.new(` from `<UpperCamelCase>.new(...)` constructor calls so
+    /// they become `<UpperCamelCase>(...)`. The Rust-side `Type::new(args)`
+    /// pattern translates to JS as `new Type(args)` (handled by
+    /// `drop_new_keyword` above), but the same source emitted via Kotlin
+    /// lands as `Type.new(args)` (because `::` → `.` happens before the
+    /// rewrite that strips `.new`). Kotlin / Swift use bare-type call
+    /// syntax for constructors, so strip the `.new` token.
+    ///
+    /// Conservative match: requires an identifier whose first character is
+    /// uppercase immediately before `.new(`. Lower-case `foo.new(` would be
+    /// a method call on an instance and is left alone.
+    fn drop_dot_new(line: &str) -> String {
+        let chars: Vec<char> = line.chars().collect();
+        let mut out = String::with_capacity(line.len());
+        let mut i = 0usize;
+        while i < chars.len() {
+            // Look for `.new(` preceded by an uppercase-led identifier.
+            if i + 4 < chars.len()
+                && chars[i] == '.'
+                && chars[i + 1] == 'n'
+                && chars[i + 2] == 'e'
+                && chars[i + 3] == 'w'
+                && chars[i + 4] == '('
+                && i > 0
+                && is_ident_char(chars[i - 1])
+            {
+                // Walk back to the start of the identifier and check that
+                // its first character is uppercase (UpperCamelCase = type).
+                let mut start = i;
+                while start > 0 && is_ident_char(chars[start - 1]) {
+                    start -= 1;
+                }
+                if chars[start].is_ascii_uppercase() {
+                    // Skip `.new`, the `(` immediately follows in the output.
                     i += 4;
                     continue;
                 }
