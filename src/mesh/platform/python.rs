@@ -212,6 +212,30 @@ fn py_to_instance(obj: &Bound<'_, PyAny>) -> PyResult<Instance> {
 
 #[pymethods]
 impl Vertex {
+    // Attribute-name constants mirror the Rust-side `pub const` declarations
+    // on `Vertex`, exposed to Python as class attributes so example code can
+    // write `Vertex.set(Vertex.UV0, ...)` instead of the bare string `"uv0"`.
+    // The string values must match the Rust source of truth in
+    // `src/mesh/vertex.rs`.
+    #[classattr]
+    #[allow(non_snake_case)]
+    pub const NORMAL: &str = "normal";
+    #[classattr]
+    #[allow(non_snake_case)]
+    pub const TANGENT: &str = "tangent";
+    #[classattr]
+    #[allow(non_snake_case)]
+    pub const UV0: &str = "uv0";
+    #[classattr]
+    #[allow(non_snake_case)]
+    pub const UV1: &str = "uv1";
+    #[classattr]
+    #[allow(non_snake_case)]
+    pub const COLOR0: &str = "color0";
+    #[classattr]
+    #[allow(non_snake_case)]
+    pub const COLOR1: &str = "color1";
+
     #[new]
     #[lsp_doc("docs/api/geometry/vertex/new.md")]
     pub fn new_py(position: Py<PyAny>) -> PyResult<Self> {
