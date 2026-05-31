@@ -64,13 +64,13 @@ let tex   = renderer.create_texture(chain).await?;                    // pre-bak
 
 The same call shapes work in JavaScript, Python, Swift, and Kotlin, with each binding using its native syntax for the tuple/options.
 
-**`TextureMipChain` is a new public type on every binding.** It builds the CPU mipmap chain off-thread from encoded image bytes or raw pixels, so a tile-cache loader on its own worker thread can fold the resize pass into the same hop and hand the renderer a finished chain. In one consumer app, tile uploads dropped from 30–50 ms of GPU-thread work to a single `queue.write_texture` call.
+**`TextureMipChain` is a new public type on every binding.** It builds the CPU mipmap chain off-thread from encoded image bytes or raw pixels, so a tile-cache loader on its own worker thread can fold the resize pass into the same hop and hand the renderer a finished chain. In one consumer app, tile uploads dropped from 30-50 ms of GPU-thread work to a single `queue.write_texture` call.
 
-**`Renderer::create_texture` no longer blocks the renderer thread on native targets.** Decoding, the Triangle-filter mipmap chain, and the per-level texture writes run on a named background worker; the public API stays `await`-shaped, but the caller's GPU and event-loop threads are no longer pinned for the duration. On the web, the work runs inline because the underlying GPU types can't be moved across threads — drop heavy decode into a Web Worker yourself if you need parallelism there.
+**`Renderer::create_texture` no longer blocks the renderer thread on native targets.** Decoding, the Triangle-filter mipmap chain, and the per-level texture writes run on a named background worker; the public API stays `await`-shaped, but the caller's GPU and event-loop threads are no longer pinned for the duration. On the web, the work runs inline because the underlying GPU types can't be moved across threads. Drop heavy decode into a Web Worker yourself if you need parallelism there.
 
 ### Shader composition
 
-`Shader::new` now classifies its input by shape: a single string is raw WGSL/GLSL **source**, a registry **slug** like `"sdf2d/circle"`, an `https://` **URL**, or a local **path**. An array mixing any of those is resolved (fetched, read, looked up), deduplicated by source hash, and concatenated in order before validation.
+`Shader::new` now classifies its input by shape: a single string is raw WGSL/GLSL **source**, a registry **slug** like `"sdf2d/circle"`, an `https://` **URL**, or a local **path**. An array mixing any of those is resolved (fetched, read, looked up), deduped by source hash, and concatenated in order before validation.
 
 ```rust
 let shader = Shader::new(["sdf2d/circle", "noise/simplex2", main_src])?;
@@ -80,24 +80,24 @@ let shader = Shader::new("sdf2d/circle")?;  // resolves through the registry
 
 `Shader::fetch` is the async path; it classifies input the same way as `new` and is available on every binding (`await Shader.fetch(...)` in JS and Python, `try await Shader.fetch(...)` in Swift, `Shader.fetch(...)` in Kotlin). Override the slug base URL with `Shader::set_registry(base_url)`.
 
-This is the on-ramp to the curated registry that lands in v0.14.x. The composition machinery — parts, dedup, slug-to-URL resolution — is in place today; the shader collection at `shaders.fragmentcolor.org` fills in over the 0.11.x → 0.14.x window. GLSL is supported as a single part; mixing GLSL with WGSL or with other parts is rejected.
+This is the on-ramp to the curated registry that lands in v0.14.x. The composition machinery (parts, dedup, slug-to-URL resolution) is in place today; the shader collection at `shaders.fragmentcolor.org` fills in over the 0.11.x to 0.14.x window. GLSL is supported as a single part; mixing GLSL with WGSL or with other parts is rejected.
 
 ### Production texture loading: KTX2 and wider formats
 
-**KTX2 container support.** `TextureInput` gained three KTX2 variants — `Ktx2Bytes`, `Ktx2Path`, `Ktx2Url` — that go through the regular `Renderer::create_texture` entry point alongside JPEG and PNG. KTX2 inputs trust the file's declared format and pre-baked mip chain; `TextureOptions.format` and `TextureOptions.mipmaps` are deliberately ignored for them, because re-running either step would round-trip through a worse approximation.
+**KTX2 container support.** `TextureInput` gained three KTX2 variants (`Ktx2Bytes`, `Ktx2Path`, `Ktx2Url`) that go through the regular `Renderer::create_texture` entry point alongside JPEG and PNG. KTX2 inputs trust the file's declared format and pre-baked mip chain; `TextureOptions.format` and `TextureOptions.mipmaps` are deliberately ignored for them, because re-running either step would round-trip through a worse approximation.
 
 Format coverage:
 
 - Uncompressed RGBA8, RGBA16F, and the R / G / RG / RGBA 8- and 16-bit families.
-- BC1–BC7.
+- BC1-BC7.
 - ETC2 RGB, RGBA, and RGB-A1.
 - ASTC 4×4 and 8×8.
 
-The mapping from Vulkan `VkFormat` values follows the KTX2 spec. Compression features are requested opportunistically at device creation, so adapters without a given feature still get a working device — a KTX2 load that targets a format the GPU can't sample fails at upload with a clear error rather than at sample time.
+The mapping from Vulkan `VkFormat` values follows the KTX2 spec. Compression features are requested opportunistically at device creation, so adapters without a given feature still get a working device. A KTX2 load that targets a format the GPU can't sample fails at upload with a clear error rather than at sample time.
 
-**Wider source-image coverage.** Source-image decoding now picks the right pixel buffer for the target format: `R8Unorm` via `to_luma8`, `R16Unorm` via `to_luma16`, `Rg8Unorm` via `to_luma_alpha8`, `Rg16Unorm` via `to_luma_alpha16`, and `Rgba16Unorm` via `to_rgba16`. The previous code path went through `to_rgba8` for everything, silently truncating 16-bit-per-channel input — height maps and mask buffers loaded through `Renderer::create_texture(path)` were producing 8-bit output without a warning.
+**Wider source-image coverage.** Source-image decoding now picks the right pixel buffer for the target format: `R8Unorm` via `to_luma8`, `R16Unorm` via `to_luma16`, `Rg8Unorm` via `to_luma_alpha8`, `Rg16Unorm` via `to_luma_alpha16`, and `Rgba16Unorm` via `to_rgba16`. The previous code path went through `to_rgba8` for everything, silently truncating 16-bit-per-channel input. Height maps and mask buffers loaded through `Renderer::create_texture(path)` were producing 8-bit output without a warning.
 
-**Mipmaps and trilinear filtering by default.** `Renderer::create_texture` now generates a full mipmap chain at upload (Triangle filter via `image::imageops::resize`), and the default linear sampler picks `mipmap_filter: Linear` when `smooth: true`. The moving moiré you'd see when zooming out on a textured quad with high-frequency detail — canvas weave in painted JPEGs is the canonical case — is gone. Opt out with `TextureOptions { mipmaps: false, .. }` for textures you'll only ever sample at 1:1.
+**Mipmaps and trilinear filtering by default.** `Renderer::create_texture` now generates a full mipmap chain at upload (Triangle filter via `image::imageops::resize`), and the default linear sampler picks `mipmap_filter: Linear` when `smooth: true`. The moving moiré you'd see when zooming out on a textured quad with high-frequency detail (canvas weave in painted JPEGs is the canonical case) is gone. Opt out with `TextureOptions { mipmaps: false, .. }` for textures you'll only ever sample at 1:1.
 
 ### Compute API improvements
 
@@ -132,7 +132,7 @@ Apple Silicon needs a submission boundary to flush tile-based storage writes bef
 
 v0.11.0 detects the platform and inserts the boundary automatically between sequential compute passes on macOS and iOS. There's nothing to opt into; non-Apple targets are unaffected.
 
-The same class of TBDR bug also affects `compute → render` sequences inside one command buffer; the auto-split for that case is queued for v0.11.x. Until it lands, the workaround is to issue two separate `Renderer::render` calls — each one ends with its own submission, which is enough of a boundary in practice.
+The same class of TBDR bug also affects `compute → render` sequences inside one command buffer; the auto-split for that case is queued for v0.11.x. Until it lands, the workaround is to issue two separate `Renderer::render` calls. Each one ends with its own submission, which is enough of a boundary in practice.
 
 ### `R16Unorm` (and the 16-bit norm family) now works on every adapter that advertises it
 
@@ -180,7 +180,7 @@ The same migration applies in JS, Python, Swift, and Kotlin: pass the array dire
 
 The internal wgpu/naga stack moves from 27.0.1 to 29.0.1; the public FragmentColor API is unchanged. The upgrade involved a sizeable adapter pass internally: `SurfaceError` was removed, push constants were renamed to "immediates", `depth_write_enabled` became `Option`-typed, bind-group-layout slots became gap-tolerant, and the instance descriptor changed shape.
 
-The one user-visible WGSL change comes from that rename: wgpu 29 accepts `var<immediate>` where 27 accepted `var<push_constant>`. Update any shader that still uses the old spelling — naga's WGSL front end no longer recognizes it.
+The one user-visible WGSL change comes from that rename: wgpu 29 accepts `var<immediate>` where 27 accepted `var<push_constant>`. Update any shader that still uses the old spelling; naga's WGSL front end no longer recognizes it.
 
 ### Roadmap
 
@@ -221,4 +221,4 @@ pip install fragmentcolor rendercanvas glfw
 Release notes: [GitHub v0.11.0](https://github.com/vista-art/fragmentcolor/releases/tag/v0.11.0).
 
 
-— Rafael
+Rafael

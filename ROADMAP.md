@@ -1,15 +1,15 @@
 # Roadmap
 
 Themed checklist organized by minor version. Within a minor version, work
-ships in patch releases as it lands; the roadmap doesn't try to predict patch
-order — only what's in scope for the milestone.
+ships in patch releases as it lands. The roadmap doesn't try to predict patch
+order, only what's in scope for the milestone.
 
 **Versioning policy.** The minor version is defined by a theme milestone (0.11
-= iOS + Android). API additions alone do not bump the minor — they land as
+= iOS + Android). API additions alone do not bump the minor; they land as
 patches on the current minor. Breaking changes bump the minor before 1.0.
 
 **Current priorities.** 0.12.0 shipped the first slice of the asset pipeline
-early — `Scene` graph, glTF 2.0 loader, PBR materials, unified Lights,
+early: `Scene` graph, glTF 2.0 loader, PBR materials, unified Lights,
 first-class Cameras / Models, plus initial KTX2 + 16-bit format dispatch.
 The remaining 0.12.x work below (KTX2 dimension extensions, streaming,
 Basis Universal, glTF skinning, post-processing templates) lands as
@@ -19,9 +19,9 @@ REPL with WGSL composition (0.14.x) follow.
 
 ---
 
-## 0.11.x — Mobile launch follow-through
+## 0.11.x: Mobile launch follow-through
 
-**Status: deferred — rolling into 0.12.x patches.** The 0.12.0
+**Status: deferred, rolling into 0.12.x patches.** The 0.12.0
 asset-pipeline cycle landed ahead of this milestone's stability + examples
 + tutorials work; those items are still in scope, just shipping alongside
 the 0.12.x asset-pipeline tail as bandwidth permits.
@@ -31,13 +31,13 @@ surface, expand examples and tutorials, seed a small shader collection that
 demonstrates the registry mechanism shipped in the 0.11.0 shader-composition
 work.
 
-### 0.11.1 — pre-shipping unblockers
+### 0.11.1: pre-shipping unblockers
 - [ ] **`external_texture` minimum-viable example.** The cross-platform API
       surface was renamed in 0.11.0 but every implementation is still a stub
       returning `RendererError::Error("not implemented yet")`. We can't
       ship the public-facing `docs/api/web/external_texture.md` until at
       least one concrete runtime example works end-to-end (web's
-      `HTMLVideoElement` → `wgpu::ExternalTexture` path is the obvious
+      `HTMLVideoElement` to `wgpu::ExternalTexture` path is the obvious
       first; full per-platform plumbing is tracked in 0.13.x). Until that
       example exists the doc stays parked at `docs/api/web/hidden/`.
 
@@ -46,8 +46,8 @@ work.
 - [ ] Extend the existing `compute → compute` auto-split (shipped 0.11.0) to also cover the `compute (storage-write) → render (sampled-read)` hazard in a single command buffer (Apple TBDR flush)
 - [ ] Staging-belt style uploads for uniforms (adopt `wgpu::util::StagingBelt` or adapt `BufferPool` to per-frame belt flush; honor uniform alignment + backend constraints)
 - [ ] Sampler cache + texture-view cache keyed by descriptor (LRU caps); no behavior change until later features consume them
-- [ ] Async pipeline warming — background precompile per `(ShaderHash, format, sample_count)` when shaders/passes register; feature-gated
-- [ ] Surface frame-acquire telemetry — throttled counters / log-once warnings distinguishing target-local vs centralized retries on `Lost` / `Outdated`
+- [ ] Async pipeline warming: background precompile per `(ShaderHash, format, sample_count)` when shaders/passes register; feature-gated
+- [ ] Surface frame-acquire telemetry: throttled counters / log-once warnings distinguishing target-local vs centralized retries on `Lost` / `Outdated`
 
 ### Examples + tutorials
 - [ ] Hello ShaderToy Clone
@@ -58,7 +58,7 @@ work.
 - [ ] Hello multiple screens
 - [ ] Hello screen regions / viewport
 - [ ] Let's build a simple image editor
-- [ ] Hello Shader Organ — per-frame post-process stack mutation (base FBM render + keyboard-toggled stack of warp/chromatic/blur/pixelate/invert/vignette/feedback-decay passes; exercises per-frame `Vec<Pass>` mutation and `TextureTarget` reuse)
+- [ ] Hello Shader Organ: per-frame post-process stack mutation (base FBM render + keyboard-toggled stack of warp/chromatic/blur/pixelate/invert/vignette/feedback-decay passes; exercises per-frame `Vec<Pass>` mutation and `TextureTarget` reuse)
 - [ ] Step-by-step tutorials in `docs/api/*` (multi-block format; the goal is full tutorials, not just hover-doc fodder)
 
 ### Snapshot testing
@@ -78,8 +78,8 @@ work.
 - [ ] Publish Swift Package to the Swift Package Index (register repo after first tag)
 
 ### API refinement
-- [ ] Core helper `create_target_from_surface(surface, size)` — removes duplication across Web / Python / iOS / Android
-- [ ] Revamp `RenderPass` API — expose `wgpu::RenderPass` customizations with sensible defaults
+- [ ] Core helper `create_target_from_surface(surface, size)` to remove duplication across Web / Python / iOS / Android
+- [ ] Revamp `RenderPass` API: expose `wgpu::RenderPass` customizations with sensible defaults
 - [ ] Specialized aliases: `Compute` newtype for `Shader` (compute-only); `RenderPass` newtype for `Pass` (render-only); `ComputePass` newtype for `Pass` (compute-only)
 - [ ] Custom blending
 - [ ] JSON save/load: `Mesh::load_*` helpers + JSON inputs; pass / pipeline setup save & load; shader state save & load (uniform values, textures) + JSON schema for default uniform values; re-add optional JSON shader source (feature-flagged; was removed in 0.11)
@@ -90,26 +90,26 @@ work.
 - [ ] Jupyter
 
 ### Shader collection
-- [ ] Curate ~10–20 WGSL shaders into the registry mechanism (sdf primitives, hash/noise, color helpers); seed `shaders.fragmentcolor.org` content for the registry that ships in 0.14.x
+- [ ] Curate ~10-20 WGSL shaders into the registry mechanism (sdf primitives, hash/noise, color helpers); seed `shaders.fragmentcolor.org` content for the registry that ships in 0.14.x
 
 ### Upstream
 - [ ] Contribute struct-rename support to uniffi upstream (only if needed for naming parity across bindings)
 
 ---
 
-## 0.12.x — Asset pipeline: textures + 3D models
+## 0.12.x: Asset pipeline: textures + 3D models
 
 KTX2 container support with compressed texture formats and progressive
 streaming; glTF/PBR model loading with skinning; post-processing stack
-templates. The production-content cut — anything that ships textures or
-geometry from a real authoring pipeline.
+templates. The production-content cut, covering anything that ships textures
+or geometry from a real authoring pipeline.
 
 ### Shipped in 0.12.0
 
-The opening slice — see CHANGELOG for detail.
+The opening slice. See CHANGELOG for detail.
 
 - [x] `Scene` graph: top-level container implementing `Renderable`, default `Camera` + `Light` injected at render time, Arc-shared `Camera` / `Light` with live propagation, back-to-front depth sort for `alpha_mode: Blend`
-- [x] glTF 2.0 loader (`Scene::load`): static glTF — mesh primitives (POSITION + NORMAL + UV0, plus `COLOR_0` + `TEXCOORD_1`), face-normal fallback when normals are absent, PBR-MR materials with all five texture slots, per-node transforms flattened into Model matrices, embedded cameras and `KHR_lights_punctual` lights, `KHR_texture_transform` via `Material::uv_transform`
+- [x] glTF 2.0 loader (`Scene::load`): static glTF, with mesh primitives (POSITION + NORMAL + UV0, plus `COLOR_0` + `TEXCOORD_1`), face-normal fallback when normals are absent, PBR-MR materials with all five texture slots, per-node transforms flattened into Model matrices, embedded cameras and `KHR_lights_punctual` lights, `KHR_texture_transform` via `Material::uv_transform`
 - [x] `Material::pbr()` registry with metallic-roughness, `AlphaMode` (`Opaque` / `Mask` / `Blend`), `double_sided`, tangent-space normal mapping, all five texture slots, lazy texture upload via `Renderer::load`
 - [x] Unified `Light` type with point / spot / directional kind-tagged constructors, Scene-level ambient, light array cap raised 8 → 32
 - [x] `Camera` and `Model` as first-class scene objects (`Camera::look_at` / `set_aspect`, `Model::set_visible`, instanced per-Model transforms)
@@ -137,10 +137,10 @@ hit as scope grows.
 - [ ] Decompress KTX2 supercompression: `SupercompressionScheme::Zstandard` and `::ZLIB`. BasisLZ is covered in the Basis Universal section below; loads of supercompressed payloads currently fail with a clear error pointing at this gap
 - [ ] Public `TextureFormat` enum gains the BC family (`Bc1RgbaUnorm/Srgb`, `Bc2RgbaUnorm/Srgb`, `Bc3RgbaUnorm/Srgb`, `Bc4RUnorm/Snorm`, `Bc5RgUnorm/Snorm`, `Bc6hRgbUfloat/Float`, `Bc7RgbaUnorm/Srgb`) so callers can request these via `TextureOptions.format`. The KTX2 path uses `wgpu::TextureFormat` directly today, bypassing the public enum
 - [ ] Public `TextureFormat` enum gains ASTC variants (4×4 through 12×12, Unorm + UnormSrgb + HDR), ETC2 (`Etc2Rgb8Unorm/Srgb`, `Etc2Rgb8A1Unorm/Srgb`, `Etc2Rgba8Unorm/Srgb`), and EAC (`EacR11Unorm/Snorm`, `EacRg11Unorm/Snorm`)
-- [ ] `bytes_per_pixel` becomes `bytes_per_block(format) -> (u32, BlockSize)` — the unit of upload for compressed formats is the 4×4 (or larger) block, not the pixel; current name is misleading
+- [ ] `bytes_per_pixel` becomes `bytes_per_block(format) -> (u32, BlockSize)`. The unit of upload for compressed formats is the 4×4 (or larger) block, not the pixel; current name is misleading
 - [ ] Per-platform CI fixtures + tests: pre-baked BC7 on desktop, ASTC 4×4 on Apple, ETC2 on Android emulator; cube-map smoke test (6-face); failure-mode test (BC7 loaded on a no-BC adapter returns the capability error, not silent garbage)
 - [ ] Per-platform availability matrix in `docs/guides/loading-compressed-textures.md` (desktop / iOS / Android / WebGPU)
-- [ ] WebGL2 compressed-texture coverage explicitly tracked as a non-goal — Basis Universal handles it instead
+- [ ] WebGL2 compressed-texture coverage explicitly tracked as a non-goal; Basis Universal handles it instead
 
 ### Progressive texture streaming
 KTX2 stores levels in reverse order (smallest mip last), which is perfect for
@@ -149,7 +149,7 @@ immediately, fetch larger levels in the background and bump the sampler's
 `lod_min_clamp` down as each one arrives.
 
 - [ ] New public type `StreamingTexture` wrapping `Texture` plus loading state (`Loading { available, total } | Complete`); `Deref<Target = Texture>` so it drops in anywhere a `Texture` works
-- [ ] `Renderer::stream_texture(input) -> StreamingTexture` — synchronous preface fetches the KTX2 header + smallest mip, then returns; rendering proceeds with `lod_min_clamp` set to whatever's loaded
+- [ ] `Renderer::stream_texture(input) -> StreamingTexture`: synchronous preface fetches the KTX2 header + smallest mip, then returns; rendering proceeds with `lod_min_clamp` set to whatever's loaded
 - [ ] Background mip arrival pumps the texture: each new level uploaded via `queue.write_texture` at the right `mip_level`; `lod_min_clamp` decremented; no re-creation, no bind-group churn
 - [ ] `StreamingTexture::on_progress(impl FnMut(StreamingState) + Send + 'static)` hook for UIs (progress bars, "loading…" overlays); `Drop` cancels in-flight fetches
 - [ ] Web fetch path: `fetch(url, { headers: { Range: "bytes=N-M" } })` with bounded concurrency
@@ -162,7 +162,7 @@ immediately, fetch larger levels in the background and bump the sampler's
 Basis Universal is the "author once, deploy everywhere" supercompression
 layer. A single UASTC- or ETC1S-encoded KTX2 file transcodes at load time into
 the target device's native compressed format (BC7 / ASTC / ETC2). Solves the
-shipping problem the compressed-format work above exposes — without Basis,
+shipping problem the compressed-format work above exposes: without Basis,
 callers have to ship per-platform asset bundles. Heavy enough (C++ dep, ~5 MiB
 compiled) that it ships behind a feature flag.
 
@@ -170,18 +170,18 @@ compiled) that it ships behind a feature flag.
 - [ ] Detect Basis-encoded payloads in KTX2 (`supercompressionScheme = BasisLZ` or UASTC) and route through the transcoder instead of uploading raw
 - [ ] Adapter capability detection picks the transcode target: desktop with BC → `Bc7RgbaUnorm` (UASTC) / `Bc1RgbaUnorm` + `Bc3RgbaUnorm` (ETC1S); Apple with ASTC → `Astc4x4Unorm` (both); Android with ETC2 → `Etc2Rgba8Unorm` (both); universal fallback → `Rgba8Unorm` (slowest, ~4× memory, only when no compressed format is available)
 - [ ] Compatible with streaming above: each mip transcoded on arrival rather than waiting for the full chain
-- [ ] When the `basis` feature is off, Basis-encoded files fail with `TextureError::BasisFeatureDisabled` whose message points at the feature flag — no silent uncompressed fallback (would be surprising and slow)
+- [ ] When the `basis` feature is off, Basis-encoded files fail with `TextureError::BasisFeatureDisabled` whose message points at the feature flag; no silent uncompressed fallback (would be surprising and slow)
 - [ ] Healthcheck: same Basis-encoded `.ktx2` fixture uploaded on every CI matrix entry; readback compares against per-platform tolerance (lossy compression, exact-equal isn't realistic)
 - [ ] Docs: `docs/guides/basis-universal-workflow.md` covering the asset pipeline (`basisu` CLI to author files; fragmentcolor with `--features basis` to consume them)
 
 ### glTF / glb model loading
-- [ ] `Mesh::from_gltf("model.glb")` — positions, normals, UVs, tangents, vertex colors, skin weights
+- [ ] `Mesh::from_gltf("model.glb")` covers positions, normals, UVs, tangents, vertex colors, skin weights
 - [ ] `Mesh::from_gltf_all(...) -> Vec<Mesh>` for multi-primitive models
 - [ ] Skinned animation: joint matrices uploaded as a storage buffer; vertex shader samples per-vertex
-- [x] PBR material registry — shipped as `Material::pbr()` with metallic-roughness, alpha modes, normal mapping, `KHR_texture_transform`
+- [x] PBR material registry shipped as `Material::pbr()` with metallic-roughness, alpha modes, normal mapping, `KHR_texture_transform`
 - [x] Auto-bind glTF materials: baseColor / normal / metallic-roughness / emissive / occlusion textures wired up automatically by `Scene::load`
 - [ ] Other formats considered as the ecosystem demands (USD/USDZ for Apple workflows, OBJ for legacy assets); glTF first since it's the de-facto modern interchange
-- [x] Example: Hello glTF — shipped as `examples/rust/examples/model_viewer.rs` (windowed orbit-camera viewer using `App` + `Scene::load`)
+- [x] Example: Hello glTF shipped as `examples/rust/examples/model_viewer.rs` (windowed orbit-camera viewer using `App` + `Scene::load`)
 
 ### Post-processing stack templates
 - [ ] `postfx([Bloom::default(), ToneMap::aces(), Vignette::subtle()]) -> Vec<Pass>`
@@ -191,10 +191,10 @@ compiled) that it ships behind a feature flag.
 
 ---
 
-## 0.13.x — Live media + interactive inputs
+## 0.13.x: Live media + interactive inputs
 
 External textures (video), audio-reactive textures, magic uniforms, live input
-sources (webcam, microphone, gamepad, touch). The interactive-content cut —
+sources (webcam, microphone, gamepad, touch). The interactive-content cut:
 what creative coders need for music videos, game prototypes, AR/VR demos.
 
 ### External textures (video)
@@ -207,7 +207,7 @@ per-platform plumbing so video frames sample zero-copy in WGSL via
 - [ ] Web: real `HTMLVideoElement` → `wgpu::ExternalTexture` mapping (wgpu-web already exposes the import hooks; the stub at [src/renderer/external_texture.rs](src/renderer/external_texture.rs) is where the impl lands)
 - [ ] iOS: `CVPixelBuffer` → `wgpu::ExternalTexture` via `CVMetalTextureCacheCreateTextureFromImage`; Swift extension wraps the uniffi shim around a real `CVPixelBuffer` argument so callers don't see the raw pointer
 - [ ] Android: `SurfaceTexture` → `EGLImage` → `OES_EGL_image_external` sampled texture; Kotlin extension wraps the uniffi shim around a real `SurfaceTexture` argument
-- [ ] Python: decide whether to expose at all (Python lacks a portable native video-frame source — current docs steer to `Texture.write()`); if adding, accept a `numpy.ndarray` or raw bytes + format/size
+- [ ] Python: decide whether to expose at all (Python lacks a portable native video-frame source, so current docs steer to `Texture.write()`); if adding, accept a `numpy.ndarray` or raw bytes + format/size
 - [ ] Move the public doc back to `docs/api/core/renderer/create_external_texture.md` (currently parked at `docs/api/core/renderer/hidden/`); re-flow per-language `_js.md` / `_py.md` / `_swift.md` / `_kotlin.md` overrides into idiomatic per-platform examples
 - [ ] Healthcheck: smoke test that decodes one frame on each platform and reads back via `Renderer::read_texture`
 
@@ -215,28 +215,28 @@ per-platform plumbing so video frames sample zero-copy in WGSL via
 - [ ] Auto-populated recognized names: `time`, `delta_time`, `frame`, `resolution`, `mouse` (xy + click state), `scroll`, `aspect`
 - [ ] Auto-bind policy: only populate if the shader declares a matching-type uniform; never overwrite an explicit `shader.set()`
 - [ ] Same convention across Rust, Web, Python, Swift, Kotlin
-- [ ] `Shader::from_shadertoy(url)` — fetch public Shadertoy, translate GLSL→WGSL via naga, wrap the `mainImage(out vec4, in vec2)` contract
-- [ ] `Shader::toy(source)` — accept pasted bodies
+- [ ] `Shader::from_shadertoy(url)`: fetch public Shadertoy, translate GLSL→WGSL via naga, wrap the `mainImage(out vec4, in vec2)` contract
+- [ ] `Shader::toy(source)` accepts pasted bodies
 - [ ] Auto-map `iTime`, `iResolution`, `iMouse`, `iFrame`, `iChannel0..3` → magic uniforms + texture bindings
 - [ ] Multi-buffer Shadertoy layouts (Buffer A/B/C/D) → multi-pass `Vec<Pass>` automatically
 - [ ] Registry shorthand: `@toy/abcdef` → Shadertoy ID
 - [ ] Example: Hello ShaderToy
 
 ### Audio-reactive
-- [ ] `renderer.create_audio_texture(source)` — FFT bins + waveform as `texture_1d<f32>`
+- [ ] `renderer.create_audio_texture(source)`: FFT bins + waveform as `texture_1d<f32>`
 - [ ] Sources: `<audio>` element, `AudioContext` node, microphone, URL, file (native)
 - [ ] Configurable sample rate + FFT size; defaults suitable for music viz
 - [ ] Example: Hello Audio-Reactive (rings / spectrum visualization)
 
 ### Live input
-- [ ] `renderer.create_webcam_texture()` — live camera feed as `texture_2d<f32>` (web: `getUserMedia`; desktop: platform APIs; mobile later)
+- [ ] `renderer.create_webcam_texture()`: live camera feed as `texture_2d<f32>` (web: `getUserMedia`; desktop: platform APIs; mobile later)
 - [ ] Unify `create_video_texture(path_or_url)` across web and desktop
 - [ ] Unified input uniforms (build on Magic uniforms above): `mouse`, `keyboard` (bitset), `gamepad` (stick + buttons), `touches` (array of xy)
 - [ ] Example: Hello Webcam (live video post-processing)
 
 ---
 
-## 0.14.x — Live coding REPL + WGSL composition
+## 0.14.x: Live coding REPL + WGSL composition
 
 Hot reload, browser REPL with auto-generated uniform UI, shader sharing, and
 function-level WGSL composition with a hosted registry. The
@@ -246,8 +246,8 @@ Prototyping is one of the reasons this library exists; hot reload is day-one
 UX, not polish.
 
 ### Hot reload
-- [ ] `Shader::new_watched("./scene.wgsl")` on desktop — re-parses and re-compiles on file change; preserves last-known-good on compile error (no canvas teardown)
-- [ ] `Shader::update_source(new_source)` — fallible swap that preserves previous on error
+- [ ] `Shader::new_watched("./scene.wgsl")` on desktop: re-parses and re-compiles on file change; preserves last-known-good on compile error (no canvas teardown)
+- [ ] `Shader::update_source(new_source)`: fallible swap that preserves previous on error
 - [ ] `ShaderHealth { Ok | Stale { error } }` observable so UIs can surface diagnostics
 - [ ] Uniform-state preservation across reloads: matching names keep values; new uniforms take defaults; removed uniforms drop silently
 - [ ] Vite plugin (or documented convention) that forwards `.wgsl` file changes to `shader.update_source()` on the JS side; canvas keeps rendering last-good on compile error
@@ -257,7 +257,7 @@ UX, not polish.
 - [ ] Monaco (or CodeMirror 6) with WGSL syntax highlighting
 - [ ] Auto-apply on keystroke with 250 ms debounce
 - [ ] Inline error highlighting: underline offending line, tooltip with naga's message
-- [ ] `Renderer::panel(&shader)` — auto-generated debug UI
+- [ ] `Renderer::panel(&shader)`: auto-generated debug UI
 - [ ] Widget rules per uniform type: slider (f32), stepper (i32/u32), checkbox (bool), XY pad (vec2), three sliders or color picker (vec3), four sliders or RGBA picker (vec4), expandable grid (matrices), file picker (textures)
 - [ ] WGSL comment annotations: `// @range a..b @step s @default d`, `// @color`, `// @xy`, `// @file`
 - [ ] Backend-agnostic rendering: egui on desktop, HTML form on web (mobile native is stretch)
@@ -266,7 +266,7 @@ UX, not polish.
 ### Sharing + gallery
 - [ ] Shareable URLs: encode `{ source, uniforms, inputs }` as gzip + base64 in URL hash; decoding re-hydrates full REPL state
 - [ ] "Save to gist" button (anonymous)
-- [ ] `/gallery` route with 20–30 hand-picked demos: glTF viewer, audio-reactive music viz, compute simulation (fluid or boids or slime mold), SDF raymarcher, post-processing stack demo, Shadertoy port, "build a shader in 10 lines" teaser
+- [ ] `/gallery` route with 20-30 hand-picked demos: glTF viewer, audio-reactive music viz, compute simulation (fluid or boids or slime mold), SDF raymarcher, post-processing stack demo, Shadertoy port, "build a shader in 10 lines" teaser
 - [ ] Each card: thumbnail, description, "Open in REPL", "View source"
 - [ ] "Shader of the Day" rotation on homepage
 - [ ] Example: Hello Live-Coding (REPL walkthrough)
@@ -274,7 +274,7 @@ UX, not polish.
 ### Composition: preprocessor
 - [ ] Preprocessor pipeline: tokenize minimally → hoist `use` imports → walk deps (DAG, cycle detection) → tree-shake → mangle names → emit
 - [ ] Form A syntax: `use @fc/sdf/sphere;`, `use @fc/sdf/smooth_min as smin;` at top of WGSL file
-- [ ] Form B syntax: `@fc/sdf/sphere(p, 1.0)` anywhere in a WGSL body — slug/URL immediately followed by `(`; preprocessor rewrites to a mangled call and hoists a synthetic `use`; full `https://…(...)` URLs accepted the same way; `use … as <alias>` takes precedence when a name also appears inline
+- [ ] Form B syntax: `@fc/sdf/sphere(p, 1.0)` anywhere in a WGSL body, with slug/URL immediately followed by `(`; preprocessor rewrites to a mangled call and hoists a synthetic `use`; full `https://…(...)` URLs accepted the same way; `use … as <alias>` takes precedence when a name also appears inline
 - [ ] Transitive deps: imported functions may themselves `use` other slugs
 - [ ] Tree-shaking: only emit functions reachable from user entry points; unused imports are warnings, not errors
 - [ ] Name mangling: imported functions prefixed (`__fc_sdf_sphere`); user-facing names are thin alias shims
@@ -285,7 +285,7 @@ UX, not polish.
 - [ ] `Shader::new("@fc/bloom")` / `Shader::new("/bloom")` / `Shader::new("@alice/neon-grid")` resolution
 - [ ] Version pinning: `@fc/bloom@1.2`, `@fc/bloom#sha256:abc…`; full-URL pinning works the same
 - [ ] Local cache (platform data dir native, IndexedDB web); keyed by sha256 of manifest+body; default 256 MiB LRU cap
-- [ ] `Renderer::new_with_resolve_policy(Latest | Locked | Offline)` — `Locked` refuses unpinned slugs at build time; `Offline` serves only from cache
+- [ ] `Renderer::new_with_resolve_policy(Latest | Locked | Offline)`: `Locked` refuses unpinned slugs at build time; `Offline` serves only from cache
 - [ ] `ShaderError::ResolveError { slug, cause }` for network / 404 / hash mismatch
 - [ ] Hosted registry at `shaders.fragmentcolor.org` (static origin, immutable content-addressed entries)
 - [ ] Registry entry model: TOML manifest + WGSL body, declared function signature, transitive deps
@@ -295,16 +295,16 @@ UX, not polish.
 ### Composition: pipeline-level + WGSL stdlib rollout
 - [ ] `compose(["scene", "/bloom", "/tonemap"]) -> Vec<Pass>` where each stage samples the previous pass's output
 - [ ] Chainable builder: `shader.then("bloom").then("tonemap")`
-- [ ] `@fc/sdf/*` — sphere, box, torus, capsule, plane, union, intersect, subtract, smooth_min, smooth_max
-- [ ] `@fc/hash/*` — pcg2d, wang, hash11, hash21, hash31
-- [ ] `@fc/noise/*` — value2, fbm2, simplex2, simplex3, worley2, gradient2
-- [ ] `@fc/color/*` — srgb_to_linear, linear_to_srgb, hsl_to_rgb, rgb_to_hsl, oklab_to_linear_srgb, kelvin_to_rgb, gamma
-- [ ] `@fc/map/*` — rotate2, twirl, barrel, fisheye, kaleidoscope
-- [ ] `@fc/camera/*` — perspective, orthographic, look_at, screen_to_world
-- [ ] `@fc/lighting/*` — lambert, blinn_phong, ggx, fresnel_schlick, cook_torrance
-- [ ] `@fc/easing/*` — in_out_cubic, elastic_out, bounce_out, back_in_out
-- [ ] `@fc/gradient/*` — palette_iq, turbo, viridis, magma
-- [ ] `@fc/sample/*` — halton, blue_noise, hemisphere_cosine
+- [ ] `@fc/sdf/*`: sphere, box, torus, capsule, plane, union, intersect, subtract, smooth_min, smooth_max
+- [ ] `@fc/hash/*`: pcg2d, wang, hash11, hash21, hash31
+- [ ] `@fc/noise/*`: value2, fbm2, simplex2, simplex3, worley2, gradient2
+- [ ] `@fc/color/*`: srgb_to_linear, linear_to_srgb, hsl_to_rgb, rgb_to_hsl, oklab_to_linear_srgb, kelvin_to_rgb, gamma
+- [ ] `@fc/map/*`: rotate2, twirl, barrel, fisheye, kaleidoscope
+- [ ] `@fc/camera/*`: perspective, orthographic, look_at, screen_to_world
+- [ ] `@fc/lighting/*`: lambert, blinn_phong, ggx, fresnel_schlick, cook_torrance
+- [ ] `@fc/easing/*`: in_out_cubic, elastic_out, bounce_out, back_in_out
+- [ ] `@fc/gradient/*`: palette_iq, turbo, viridis, magma
+- [ ] `@fc/sample/*`: halton, blue_noise, hemisphere_cosine
 - [ ] Example: Hello Composition
 
 ### Build-time minification
@@ -313,7 +313,7 @@ UX, not polish.
 
 ---
 
-## 0.15.x — Backend expansion + community ecosystem
+## 0.15.x: Backend expansion + community ecosystem
 
 WebGL2 fallback for downlevel browsers, capability detection, community shader
 gallery with submissions and remix flow.
@@ -321,7 +321,7 @@ gallery with submissions and remix flow.
 ### Backend expansion
 - [ ] WebGL2 downlevel for fragment-only single-pass shaders; detect at init, fall back gracefully
 - [ ] Canvas2D fallback for `texture_external` video filters (the "always something renders" promise)
-- [ ] `Renderer::capabilities()` — feature-detection API (compute, storage textures, push constants, compressed format families, …)
+- [ ] `Renderer::capabilities()`: feature-detection API (compute, storage textures, push constants, compressed format families, …)
 
 ### Community shaders
 - [ ] Registry-backed submissions with review
@@ -332,7 +332,7 @@ gallery with submissions and remix flow.
 
 ---
 
-## 1.0.0 — Stable release
+## 1.0.0: Stable release
 
 - [ ] Lock public API surface; document stability guarantees
 - [ ] LLM copilot support: `llms.txt` + [MCP](https://modelcontextprotocol.io/introduction) server so assistants author correct FragmentColor code without hallucinating
@@ -341,14 +341,14 @@ gallery with submissions and remix flow.
 
 ---
 
-## Post-1.0.0 — `fragmentcolor-kit` (separate package)
+## Post-1.0.0: `fragmentcolor-kit` (separate package)
 
 Higher-level framework, shipped separately (analogous to SvelteKit / Next.js).
 Only if the community asks; the core library stands on its own.
 
-- [x] `Scene` with transform hierarchy; lights — shipped in 0.12.0 core (not deferred to the kit after all)
-- [x] Cameras: perspective / orthographic — shipped in 0.12.0 core (cubemap variant still deferred)
-- [x] PBR material preset — shipped in 0.12.0 core as `Material::pbr()`
+- [x] `Scene` with transform hierarchy; lights shipped in 0.12.0 core (not deferred to the kit after all)
+- [x] Cameras: perspective / orthographic shipped in 0.12.0 core (cubemap variant still deferred)
+- [x] PBR material preset shipped in 0.12.0 core as `Material::pbr()`
 - [ ] Material presets: Toon, Unlit, Glass
 - [ ] Scene-level features: frustum culling, sorting, LOD, shadow mapping
 - [ ] GPU-driven particle system (compute)
@@ -369,7 +369,7 @@ points already cover the real cases.
 
 Rough ideas without a concrete target yet. Promote to a version when active.
 
-- [ ] MSAA edge cases (`resolve_target` in `RenderPassColorAttachments` — beyond current MSAA)
+- [ ] MSAA edge cases (`resolve_target` in `RenderPassColorAttachments`, beyond current MSAA)
 - [ ] Composition mixin-level: merging multiple pass-shaders into one pipeline stage (binding-conflict policy, `use … remap(0, 1)` syntax)
 - [ ] Public preprocessor API: `Shader::preprocess(source) -> String` for inspection / shipping pre-resolved shaders
 - [ ] Registry: signed uploads to deter namespace squatting
