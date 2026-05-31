@@ -13,6 +13,8 @@ on:
       - 'uniffi_bindgen.rs'
       - 'build_android'
       - '.github/workflows/healthcheck_android.yml'
+  push:
+    branches: [v0.12.0-kotlin]
   workflow_dispatch:
 
 permissions:

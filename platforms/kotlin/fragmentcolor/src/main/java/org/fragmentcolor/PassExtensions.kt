@@ -36,13 +36,13 @@ fun Pass.require(deps: List<RenderableHandle>) {
 // ── Targets ───────────────────────────────────────────────────────────────────
 
 /** Set the colour attachment target for this pass. */
-fun Pass.addTarget(target: MobileTextureTarget) {
-    addTarget(TargetHandle.Texture(target))
+fun Pass.setTarget(target: MobileTextureTarget) {
+    setTarget(TargetHandle.Texture(target))
 }
 
 /** Set the depth attachment target for this pass. */
-fun Pass.addDepthTarget(target: MobileTextureTarget) {
-    addDepthTarget(TargetHandle.Texture(target))
+fun Pass.setDepthTarget(target: MobileTextureTarget) {
+    setDepthTarget(TargetHandle.Texture(target))
 }
 
 // ── Clear colour ──────────────────────────────────────────────────────────────
@@ -68,10 +68,10 @@ fun Pass.setComputeDispatch(x: Int, y: Int, z: Int) {
  *
  * The Kotlin/uniffi binding wraps the texture handle into a [MobileTextureTarget]
  * and passes it as [TargetHandle.Texture]. The underlying Rust type is the same
- * Arc<dyn Target> — the depth-format is carried as a texture attribute.
+ * Arc<dyn Target>; the depth-format is carried as a texture attribute.
  */
-fun Pass.addDepthTarget(texture: Texture) {
+fun Pass.setDepthTarget(texture: Texture) {
     // Re-wrap the depth texture handle as a MobileTextureTarget for the TargetHandle
     val asMobileTarget = MobileTextureTarget(UniffiWithHandle, texture.uniffiCloneHandle())
-    addDepthTarget(TargetHandle.Texture(asMobileTarget))
+    setDepthTarget(TargetHandle.Texture(asMobileTarget))
 }
