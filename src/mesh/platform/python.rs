@@ -213,28 +213,44 @@ fn py_to_instance(obj: &Bound<'_, PyAny>) -> PyResult<Instance> {
 #[pymethods]
 impl Vertex {
     // Attribute-name constants mirror the Rust-side `pub const` declarations
-    // on `Vertex`, exposed to Python as class attributes so example code can
-    // write `Vertex.set(Vertex.UV0, ...)` instead of the bare string `"uv0"`.
-    // The string values must match the Rust source of truth in
-    // `src/mesh/vertex.rs`.
+    // on `Vertex` (see `src/mesh/vertex.rs`), exposed to Python as class
+    // attributes so example code can write `Vertex.set(Vertex.UV0, ...)`
+    // instead of the bare string `"uv0"`. The classattr functions delegate
+    // to the same Rust const so the two stay in lock-step.
+    //
+    // Rust forbids two `pub const NORMAL` items on the same type, so this
+    // can't be a second `pub const`; the function-form classattr is the
+    // supported pyo3 pattern for re-exporting an existing const.
     #[classattr]
-    #[allow(non_snake_case)]
-    pub const NORMAL: &str = "normal";
+    #[pyo3(name = "NORMAL")]
+    fn normal_attr() -> &'static str {
+        Self::NORMAL
+    }
     #[classattr]
-    #[allow(non_snake_case)]
-    pub const TANGENT: &str = "tangent";
+    #[pyo3(name = "TANGENT")]
+    fn tangent_attr() -> &'static str {
+        Self::TANGENT
+    }
     #[classattr]
-    #[allow(non_snake_case)]
-    pub const UV0: &str = "uv0";
+    #[pyo3(name = "UV0")]
+    fn uv0_attr() -> &'static str {
+        Self::UV0
+    }
     #[classattr]
-    #[allow(non_snake_case)]
-    pub const UV1: &str = "uv1";
+    #[pyo3(name = "UV1")]
+    fn uv1_attr() -> &'static str {
+        Self::UV1
+    }
     #[classattr]
-    #[allow(non_snake_case)]
-    pub const COLOR0: &str = "color0";
+    #[pyo3(name = "COLOR0")]
+    fn color0_attr() -> &'static str {
+        Self::COLOR0
+    }
     #[classattr]
-    #[allow(non_snake_case)]
-    pub const COLOR1: &str = "color1";
+    #[pyo3(name = "COLOR1")]
+    fn color1_attr() -> &'static str {
+        Self::COLOR1
+    }
 
     #[new]
     #[lsp_doc("docs/api/geometry/vertex/new.md")]
