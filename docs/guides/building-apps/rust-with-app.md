@@ -7,12 +7,12 @@ the event loop, hides winit's lifecycle (pre-init → resumed → resize →
 redraw), and exposes a small set of `on_*` callbacks so the app code
 stays focused on what to render.
 
-`App` is Rust-only — it depends on winit, which requires main-thread
+`App` is Rust-only. It depends on winit, which requires main-thread
 ownership of the event loop. Python, JS, Swift, and Kotlin each have
 their own native answers; see the other pages in this guide for those.
 
-The cross-platform contract — `Renderer`, `Pass`, `Scene`, `Material`,
-`Mesh`, `Camera`, `Light` — is identical across runtimes. The five
+The cross-platform contract (`Renderer`, `Pass`, `Scene`, `Material`,
+`Mesh`, `Camera`, `Light`) is identical across runtimes. The five
 sections below show how to wire them into the Rust event loop.
 
 ## 1. Wire the Renderer to a window
@@ -36,7 +36,7 @@ to create one. `App` does that on your behalf and wires the resulting
 
 ## 2. Run async setup
 
-Loading textures, building a `Scene`, decoding a `.glb` — all the work
+Loading textures, building a `Scene`, decoding a `.glb`: all the work
 that needs the renderer up but only runs once goes into `on_start`. It
 fires after windows are created and gets the list of `Arc<Window>`
 handles for any per-window setup.
@@ -111,7 +111,7 @@ app.on_draw(|app, window_id, _event| {
 # }
 ```
 
-`Camera::look_at` mutates the same Arc-shared backing — the propagation
+`Camera::look_at` mutates the same Arc-shared backing. The propagation
 hook updates every shader and the Pass-level camera snapshot inline, so
 the next frame renders the new view without re-adding the camera.
 
@@ -119,7 +119,7 @@ the next frame renders the new view without re-adding the camera.
 
 The window's aspect ratio changes whenever the user drags the corner.
 Pair `on_resize` with `Camera::set_aspect` so the projection stays
-square. Same Arc-shared backing — no Scene rebuild.
+square. Same Arc-shared backing, no Scene rebuild.
 
 ```rust,no_run
 # struct PreviewState { scene: fragmentcolor::Scene, camera: fragmentcolor::Camera, start_time: std::time::Instant }
@@ -135,7 +135,7 @@ app.on_resize(|app, size| {
 # }
 ```
 
-Keyboard, mouse, scroll, IME — every winit `WindowEvent` has a matching
+Keyboard, mouse, scroll, IME: every winit `WindowEvent` has a matching
 `on_*` callback (see `examples/rust/examples/app_healthcheck.rs` for the
 exhaustive list). They all take the same `(app, window_id, event_data)`
 shape so state lookups stay uniform.
@@ -151,7 +151,7 @@ app.run();
 
 `App::run` calls into winit's `EventLoop::run`. It blocks the main
 thread until the window closes, dispatching events through the
-registered callbacks. There's no separate render thread — winit's
+registered callbacks. There's no separate render thread; winit's
 `RedrawRequested` is the frame tick, and you call `renderer.render`
 directly from there.
 
@@ -168,5 +168,5 @@ directly from there.
   per window.
 
 In all three cases the cross-platform `Renderer` / `Pass` / `Scene`
-APIs work the same — you just drive `renderer.render(...)` from
-wherever your loop ticks. `App` is one shim; you can write your own.
+APIs work the same. Just drive `renderer.render(...)` from wherever
+your loop ticks. `App` is one shim; you can write your own.

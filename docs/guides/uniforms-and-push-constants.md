@@ -1,6 +1,6 @@
 # Guide: Uniforms and push constants (simple parameters)
 
-Let’s give our shader a couple of knobs. We’ll use a uniform for position (u.offset) and a push constant for color (pc.color). On desktop, push constants are used natively; on the web, FragmentColor rewrites them into uniforms automatically — you don’t need to change your code.
+Let’s give our shader a couple of knobs. We’ll use a uniform for position (u.offset) and a push constant for color (pc.color). On desktop, push constants are used natively; on the web, FragmentColor rewrites them into uniforms automatically, so you don’t need to change your code.
 
 Why this matters
 - You can parameterize your shader with simple values
@@ -62,7 +62,7 @@ assert_eq!(image.len(), 64 * 64 * 4);
 
 What’s happening under the hood
 - u.offset uploads as a uniform; pc.color uses native push constants on desktop.
-- On the web, FragmentColor rewrites push constants to uniforms seamlessly — same set("pc.*") calls work.
+- On the web, FragmentColor rewrites push constants to uniforms seamlessly; the same set("pc.*") calls work.
 
 Pitfalls / gotchas
 - Keep values in the expected shapes: vec2 for offset, vec4 for color in this example.

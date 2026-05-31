@@ -1,7 +1,7 @@
 # Building Apps with FragmentColor
 
-FragmentColor's render API — `Renderer`, `Pass`, `Scene`, `Material`,
-`Mesh`, `Camera`, `Light` — is identical across every runtime. What
+FragmentColor's render API (`Renderer`, `Pass`, `Scene`, `Material`,
+`Mesh`, `Camera`, `Light`) is identical across every runtime. What
 differs is how the **render loop** ticks: each runtime has its own
 ownership model for the event loop and its own conventions for window /
 canvas / surface management.
@@ -39,12 +39,12 @@ ship as they're written.
 The Renderer / Pass / Scene / Material / Mesh / Camera / Light surface
 is documented in [`docs/api/`](../../api/). The platforms differ on:
 
-- **Loop driver** — `EventLoop::run` (Rust), browser RAF (JS),
+- **Loop driver**: `EventLoop::run` (Rust), browser RAF (JS),
   `request_draw_callback` (Python), `onDrawFrame` (Android),
   `draw(in:)` (iOS).
-- **Surface creation** — winit `Window` (Rust), `<canvas>` (JS),
+- **Surface creation**: winit `Window` (Rust), `<canvas>` (JS),
   `RenderCanvas` (Python), `GLSurfaceView` (Android), `MTKView` (iOS).
-- **State management** — Rust uses owned structs or App's typed registry;
+- **State management**: Rust uses owned structs or App's typed registry;
   JS / Python idiomatically close over their state in callbacks; Android
   and iOS lean on the framework's view-controller / activity lifecycle.
 

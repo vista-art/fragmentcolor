@@ -1,6 +1,6 @@
 # Guide: Hello Triangle (first pixels)
 
-Let's draw our very first pixels. We'll render a fullscreen triangle into a tiny offscreen image. No window needed — perfect for tests and CI.
+Let's draw our very first pixels. We'll render a fullscreen triangle into a tiny offscreen image. No window needed, so this runs cleanly in tests and CI.
 
 What we'll build
 
@@ -11,7 +11,7 @@ What we'll build
 Why this matters
 
 - It shows the core flow: Shader → Pass → render(Target)
-- It introduces the Shader, the heart of FragmentColor — set values by name and it “just works”
+- It introduces the Shader, the heart of FragmentColor. Set values by name and it “just works”
 
 ```rust
 # // Hidden harness so this runs as a doctest and transpiles to other languages
