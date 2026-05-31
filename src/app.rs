@@ -227,10 +227,7 @@ impl App {
     where
         T: Send + Sync + 'static,
     {
-        let previous = self
-            .state
-            .write()
-            .insert(key.to_string(), Arc::new(value));
+        let previous = self.state.write().insert(key.to_string(), Arc::new(value));
         if previous.is_some() {
             log::warn!(
                 "App::add_state replaced existing entry under key '{key}' — call sites should pick unique keys"

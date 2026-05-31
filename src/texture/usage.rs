@@ -89,9 +89,8 @@ mod tests {
 
     #[test]
     fn composes_with_bit_or_and_contains() {
-        let u = TextureUsage::STORAGE_BINDING
-            | TextureUsage::TEXTURE_BINDING
-            | TextureUsage::COPY_SRC;
+        let u =
+            TextureUsage::STORAGE_BINDING | TextureUsage::TEXTURE_BINDING | TextureUsage::COPY_SRC;
         assert!(u.contains(TextureUsage::STORAGE_BINDING));
         assert!(u.contains(TextureUsage::TEXTURE_BINDING));
         assert!(u.contains(TextureUsage::COPY_SRC));

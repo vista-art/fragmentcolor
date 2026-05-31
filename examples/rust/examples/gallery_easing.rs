@@ -89,34 +89,152 @@ fn compositions() -> Vec<Composition> {
     // Each entry: (slug, fn-call expression, accent). We Box::leak the
     // generated fragment string so the Composition can hold a 'static &str.
     let specs: &[(&str, &str, &str, (f32, f32, f32), &str)] = &[
-        ("in_back", "easing/in_back", "in_back(t)", WARM_C, "Cubic with overshoot before start (Penner constants)."),
-        ("in_cubic", "easing/in_cubic", "in_cubic(t)", WARM_A, "t^3 — slow start, steep finish."),
-        ("in_expo", "easing/in_expo", "in_expo(t)", WARM_D, "2^(10*(t-1)) with snap at t = 0."),
-        ("in_out_cubic", "easing/in_out_cubic", "in_out_cubic(t)", NEUT_A, "Cubic curve mirrored at t = 0.5."),
-        ("in_out_expo", "easing/in_out_expo", "in_out_expo(t)", NEUT_B, "Symmetric exponential, snaps at endpoints."),
-        ("in_out_quad", "easing/in_out_quad", "in_out_quad(t)", NEUT_C, "Quadratic curve mirrored at t = 0.5."),
-        ("in_out_quart", "easing/in_out_quart", "in_out_quart(t)", NEUT_D, "Quartic curve mirrored at t = 0.5."),
-        ("in_out_sine", "easing/in_out_sine", "in_out_sine(t)", NEUT_E, "-(cos(pi*t) - 1) / 2 — smooth S-curve."),
-        ("in_quad", "easing/in_quad", "in_quad(t)", WARM_B, "t^2 — gentle slow start."),
-        ("in_quart", "easing/in_quart", "in_quart(t)", WARM_E, "t^4 — very slow start."),
-        ("in_sine", "easing/in_sine", "in_sine(t)", WARM_B, "1 - cos(t * pi/2) — quarter-sine ramp in."),
-        ("linear", "easing/linear", "linear(t)", LINEAR_C, "Identity curve — no easing."),
-        ("out_back", "easing/out_back", "out_back(t)", COOL_C, "Overshoots past 1 then settles."),
-        ("out_bounce", "easing/out_bounce", "out_bounce(t)", COOL_E, "Three-step Penner bounce-out."),
-        ("out_cubic", "easing/out_cubic", "out_cubic(t)", COOL_A, "1 - (1 - t)^3 — fast start, smooth landing."),
-        ("out_elastic", "easing/out_elastic", "out_elastic(t)", COOL_E, "Damped oscillation that settles to 1."),
-        ("out_expo", "easing/out_expo", "out_expo(t)", COOL_D, "1 - 2^(-10t) with snap at t = 1."),
-        ("out_quad", "easing/out_quad", "out_quad(t)", COOL_B, "1 - (1 - t)^2 — gentle landing."),
-        ("out_quart", "easing/out_quart", "out_quart(t)", COOL_A, "1 - (1 - t)^4 — very gentle landing."),
-        ("out_sine", "easing/out_sine", "out_sine(t)", COOL_B, "sin(t * pi/2) — quarter-sine ramp out."),
+        (
+            "in_back",
+            "easing/in_back",
+            "in_back(t)",
+            WARM_C,
+            "Cubic with overshoot before start (Penner constants).",
+        ),
+        (
+            "in_cubic",
+            "easing/in_cubic",
+            "in_cubic(t)",
+            WARM_A,
+            "t^3 — slow start, steep finish.",
+        ),
+        (
+            "in_expo",
+            "easing/in_expo",
+            "in_expo(t)",
+            WARM_D,
+            "2^(10*(t-1)) with snap at t = 0.",
+        ),
+        (
+            "in_out_cubic",
+            "easing/in_out_cubic",
+            "in_out_cubic(t)",
+            NEUT_A,
+            "Cubic curve mirrored at t = 0.5.",
+        ),
+        (
+            "in_out_expo",
+            "easing/in_out_expo",
+            "in_out_expo(t)",
+            NEUT_B,
+            "Symmetric exponential, snaps at endpoints.",
+        ),
+        (
+            "in_out_quad",
+            "easing/in_out_quad",
+            "in_out_quad(t)",
+            NEUT_C,
+            "Quadratic curve mirrored at t = 0.5.",
+        ),
+        (
+            "in_out_quart",
+            "easing/in_out_quart",
+            "in_out_quart(t)",
+            NEUT_D,
+            "Quartic curve mirrored at t = 0.5.",
+        ),
+        (
+            "in_out_sine",
+            "easing/in_out_sine",
+            "in_out_sine(t)",
+            NEUT_E,
+            "-(cos(pi*t) - 1) / 2 — smooth S-curve.",
+        ),
+        (
+            "in_quad",
+            "easing/in_quad",
+            "in_quad(t)",
+            WARM_B,
+            "t^2 — gentle slow start.",
+        ),
+        (
+            "in_quart",
+            "easing/in_quart",
+            "in_quart(t)",
+            WARM_E,
+            "t^4 — very slow start.",
+        ),
+        (
+            "in_sine",
+            "easing/in_sine",
+            "in_sine(t)",
+            WARM_B,
+            "1 - cos(t * pi/2) — quarter-sine ramp in.",
+        ),
+        (
+            "linear",
+            "easing/linear",
+            "linear(t)",
+            LINEAR_C,
+            "Identity curve — no easing.",
+        ),
+        (
+            "out_back",
+            "easing/out_back",
+            "out_back(t)",
+            COOL_C,
+            "Overshoots past 1 then settles.",
+        ),
+        (
+            "out_bounce",
+            "easing/out_bounce",
+            "out_bounce(t)",
+            COOL_E,
+            "Three-step Penner bounce-out.",
+        ),
+        (
+            "out_cubic",
+            "easing/out_cubic",
+            "out_cubic(t)",
+            COOL_A,
+            "1 - (1 - t)^3 — fast start, smooth landing.",
+        ),
+        (
+            "out_elastic",
+            "easing/out_elastic",
+            "out_elastic(t)",
+            COOL_E,
+            "Damped oscillation that settles to 1.",
+        ),
+        (
+            "out_expo",
+            "easing/out_expo",
+            "out_expo(t)",
+            COOL_D,
+            "1 - 2^(-10t) with snap at t = 1.",
+        ),
+        (
+            "out_quad",
+            "easing/out_quad",
+            "out_quad(t)",
+            COOL_B,
+            "1 - (1 - t)^2 — gentle landing.",
+        ),
+        (
+            "out_quart",
+            "easing/out_quart",
+            "out_quart(t)",
+            COOL_A,
+            "1 - (1 - t)^4 — very gentle landing.",
+        ),
+        (
+            "out_sine",
+            "easing/out_sine",
+            "out_sine(t)",
+            COOL_B,
+            "sin(t * pi/2) — quarter-sine ramp out.",
+        ),
     ];
 
     let mut out = Vec::with_capacity(specs.len());
     for (name, slug, call, accent, desc) in specs.iter().copied() {
-        let fragment: &'static str =
-            Box::leak(plot_fragment(call, accent).into_boxed_str());
-        let slugs: &'static [&'static str] =
-            Box::leak(vec![slug].into_boxed_slice());
+        let fragment: &'static str = Box::leak(plot_fragment(call, accent).into_boxed_str());
+        let slugs: &'static [&'static str] = Box::leak(vec![slug].into_boxed_slice());
         out.push(Composition {
             name,
             description: desc,

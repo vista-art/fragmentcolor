@@ -3,8 +3,8 @@
 use lsp_doc::lsp_doc;
 use pyo3::prelude::*;
 
-use crate::material::{AlphaMode, Material};
 use crate::Shader;
+use crate::material::{AlphaMode, Material};
 
 #[pymethods]
 impl Material {

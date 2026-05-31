@@ -1,7 +1,7 @@
 #![cfg(python)]
 
 use crate::SamplerOptions;
-use crate::texture::{Texture, TextureId, Mipmap};
+use crate::texture::{Mipmap, Texture, TextureId};
 use crate::{Size, TextureFormat};
 use lsp_doc::lsp_doc;
 use pyo3::prelude::*;

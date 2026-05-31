@@ -79,10 +79,12 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Build the scene up front: `Scene::load` is synchronous and renderer-free,
     // so it doesn't need to wait for the window. The Scene injects a default
     // light at render time, so the model reads as lit without us adding one.
-    let scene = Scene::load(SceneSource::gltf(build_minimal_triangle_glb()))
-        .expect("Scene::load");
-    let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0)
-        .look_at([0.0, 1.0, 3.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+    let scene = Scene::load(SceneSource::gltf(build_minimal_triangle_glb())).expect("Scene::load");
+    let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0).look_at(
+        [0.0, 1.0, 3.0],
+        [0.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0],
+    );
     scene.add(&camera).expect("scene.add(camera)");
     app.add_state(
         "viewer",

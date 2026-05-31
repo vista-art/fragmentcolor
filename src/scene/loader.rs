@@ -300,9 +300,9 @@ fn visit_node(
         && let Some(gltf_camera) = node.camera()
     {
         let camera = build_camera(&gltf_camera, world);
-        scene.add(&camera).map_err(|e| {
-            SceneLoadError::Invalid(format!("attaching glTF Camera to Scene: {e}"))
-        })?;
+        scene
+            .add(&camera)
+            .map_err(|e| SceneLoadError::Invalid(format!("attaching glTF Camera to Scene: {e}")))?;
     }
 
     if options.lights
@@ -312,7 +312,15 @@ fn visit_node(
     }
 
     for child in node.children() {
-        visit_node(&child, world, buffers, images, scene, material_cache, options)?;
+        visit_node(
+            &child,
+            world,
+            buffers,
+            images,
+            scene,
+            material_cache,
+            options,
+        )?;
     }
     Ok(())
 }
@@ -344,9 +352,7 @@ fn build_mesh(
 
     let positions: Vec<[f32; 3]> = reader
         .read_positions()
-        .ok_or_else(|| {
-            SceneLoadError::Invalid("glTF primitive has no POSITION attribute".into())
-        })?
+        .ok_or_else(|| SceneLoadError::Invalid("glTF primitive has no POSITION attribute".into()))?
         .collect();
     let supplied_normals: Option<Vec<[f32; 3]>> = reader.read_normals().map(|it| it.collect());
     let uvs: Option<Vec<[f32; 2]>> = reader.read_tex_coords(0).map(|it| it.into_f32().collect());
@@ -439,7 +445,12 @@ fn compute_vertex_normals(positions: &[[f32; 3]], indices: Option<&[u32]>) -> Ve
     };
     if let Some(idx) = indices {
         for tri in idx.chunks_exact(3) {
-            visit_triangle(tri[0] as usize, tri[1] as usize, tri[2] as usize, &mut accum);
+            visit_triangle(
+                tri[0] as usize,
+                tri[1] as usize,
+                tri[2] as usize,
+                &mut accum,
+            );
         }
     } else {
         let mut i = 0;
@@ -509,10 +520,7 @@ fn build_material(
         })
         .double_sided(gltf_material.double_sided());
 
-    if let Some(scale) = gltf_material
-        .normal_texture()
-        .map(|info| info.scale())
-    {
+    if let Some(scale) = gltf_material.normal_texture().map(|info| info.scale()) {
         material = material.normal_scale(scale);
     }
     if let Some(strength) = gltf_material
@@ -601,33 +609,27 @@ fn try_image_to_texture_input(
 
     let buffer = image.pixels.clone();
     let dynamic = match image.format {
-        gltf::image::Format::R8G8B8A8 => {
-            image::DynamicImage::ImageRgba8(
-                image::RgbaImage::from_raw(image.width, image.height, buffer).ok_or_else(|| {
-                    SceneLoadError::Invalid(
-                        "glTF RGBA image has fewer bytes than width × height × 4".into(),
-                    )
-                })?,
-            )
-        }
-        gltf::image::Format::R8G8B8 => {
-            image::DynamicImage::ImageRgb8(
-                image::RgbImage::from_raw(image.width, image.height, buffer).ok_or_else(|| {
-                    SceneLoadError::Invalid(
-                        "glTF RGB image has fewer bytes than width × height × 3".into(),
-                    )
-                })?,
-            )
-        }
-        gltf::image::Format::R8 => {
-            image::DynamicImage::ImageLuma8(
-                image::GrayImage::from_raw(image.width, image.height, buffer).ok_or_else(|| {
-                    SceneLoadError::Invalid(
-                        "glTF luminance image has fewer bytes than width × height".into(),
-                    )
-                })?,
-            )
-        }
+        gltf::image::Format::R8G8B8A8 => image::DynamicImage::ImageRgba8(
+            image::RgbaImage::from_raw(image.width, image.height, buffer).ok_or_else(|| {
+                SceneLoadError::Invalid(
+                    "glTF RGBA image has fewer bytes than width × height × 4".into(),
+                )
+            })?,
+        ),
+        gltf::image::Format::R8G8B8 => image::DynamicImage::ImageRgb8(
+            image::RgbImage::from_raw(image.width, image.height, buffer).ok_or_else(|| {
+                SceneLoadError::Invalid(
+                    "glTF RGB image has fewer bytes than width × height × 3".into(),
+                )
+            })?,
+        ),
+        gltf::image::Format::R8 => image::DynamicImage::ImageLuma8(
+            image::GrayImage::from_raw(image.width, image.height, buffer).ok_or_else(|| {
+                SceneLoadError::Invalid(
+                    "glTF luminance image has fewer bytes than width × height".into(),
+                )
+            })?,
+        ),
         other => {
             log::warn!(
                 "Scene::load skipping `{slot}` slot: glTF image format {other:?} is not yet supported by the loader; falling back to the Material's 1×1 default for this slot"
@@ -698,8 +700,9 @@ fn add_light(
     let direction: [f32; 3] = (rotation * Vec3::new(0.0, 0.0, -1.0)).into();
     let position: [f32; 3] = translation.into();
 
-    let attach_err =
-        |e: crate::PassError| SceneLoadError::Invalid(format!("attaching glTF Light to Scene: {e}"));
+    let attach_err = |e: crate::PassError| {
+        SceneLoadError::Invalid(format!("attaching glTF Light to Scene: {e}"))
+    };
     let setter_err = |e: crate::scene::LightError| {
         SceneLoadError::Invalid(format!("configuring glTF Light: {e}"))
     };
@@ -813,8 +816,16 @@ mod tests {
         let bytes = build_triangle_with_camera_and_light_glb();
         let scene = Scene::load(bytes).expect("load");
         assert_eq!(scene.models().len(), 1, "geometry stays");
-        assert_eq!(scene.cameras().len(), 1, "default options load the embedded camera");
-        assert_eq!(scene.lights().len(), 1, "default options load the embedded light");
+        assert_eq!(
+            scene.cameras().len(),
+            1,
+            "default options load the embedded camera"
+        );
+        assert_eq!(
+            scene.lights().len(),
+            1,
+            "default options load the embedded light"
+        );
     }
 
     #[test]
@@ -822,7 +833,10 @@ mod tests {
         let bytes = build_triangle_with_camera_and_light_glb();
         let scene = Scene::load(SceneSource::gltf(bytes).cameras(false)).expect("load");
         assert_eq!(scene.models().len(), 1, "geometry stays");
-        assert!(scene.cameras().is_empty(), "cameras filter drops the camera node");
+        assert!(
+            scene.cameras().is_empty(),
+            "cameras filter drops the camera node"
+        );
         assert_eq!(scene.lights().len(), 1, "lights still load by default");
     }
 
@@ -832,16 +846,17 @@ mod tests {
         let scene = Scene::load(SceneSource::gltf(bytes).lights(false)).expect("load");
         assert_eq!(scene.models().len(), 1);
         assert_eq!(scene.cameras().len(), 1, "cameras still load by default");
-        assert!(scene.lights().is_empty(), "lights filter drops the light node");
+        assert!(
+            scene.lights().is_empty(),
+            "lights filter drops the light node"
+        );
     }
 
     #[test]
     fn both_filters_off_yields_geometry_only_scene() {
         let bytes = build_triangle_with_camera_and_light_glb();
-        let scene = Scene::load(
-            SceneSource::gltf(bytes).cameras(false).lights(false),
-        )
-        .expect("load");
+        let scene =
+            Scene::load(SceneSource::gltf(bytes).cameras(false).lights(false)).expect("load");
         assert_eq!(scene.models().len(), 1, "geometry survives every filter");
         assert!(scene.cameras().is_empty());
         assert!(scene.lights().is_empty());
@@ -938,6 +953,9 @@ mod tests {
         let opts = map_sampler_options(&sampler);
         assert!(opts.repeat_x);
         assert!(opts.repeat_y);
-        assert!(!opts.smooth, "magFilter=9728 (NEAREST) should set smooth=false");
+        assert!(
+            !opts.smooth,
+            "magFilter=9728 (NEAREST) should set smooth=false"
+        );
     }
 }

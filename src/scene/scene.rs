@@ -221,8 +221,11 @@ impl Scene {
             // it with conventional +Y up. Fine for offscreen test targets and
             // for someone trying the API for the first time; users with a
             // non-square target supply their own Camera.
-            let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0)
-                .look_at([0.0, 0.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+            let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0).look_at(
+                [0.0, 0.0, 5.0],
+                [0.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+            );
             // Camera::attach always succeeds — discard the never-error result.
             let _ = pass.add(&camera);
             self.inner.cameras.write().push(camera);
@@ -281,9 +284,7 @@ mod tests {
             ([-0.5, -0.5, 0.0], [0.0, 0.0]),
             ([0.5, -0.5, 0.0], [1.0, 0.0]),
         ] {
-            mesh.add_vertex(
-                Vertex::pbr(p).set(Vertex::UV0, uv),
-            );
+            mesh.add_vertex(Vertex::pbr(p).set(Vertex::UV0, uv));
         }
         mesh
     }
@@ -332,8 +333,7 @@ mod tests {
         assert_eq!(list[0].name.as_ref(), "backdrop");
         // Default Pass is named "Scene Default Pass".
         assert!(
-            list.iter()
-                .any(|p| p.name.as_ref() == "Scene Default Pass"),
+            list.iter().any(|p| p.name.as_ref() == "Scene Default Pass"),
             "expected default scene pass in {:?}",
             list.iter().map(|p| p.name.as_ref()).collect::<Vec<_>>()
         );
@@ -375,8 +375,11 @@ mod tests {
         scene.add(&model).expect("add");
         // User-supplied camera at [3, 0, 0]. After this `add`, has_camera is
         // sticky-true and the default-Camera at [0, 0, 5] should never appear.
-        let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0)
-            .look_at([3.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+        let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0).look_at(
+            [3.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+        );
         scene.add(&camera).expect("camera");
 
         let _ = scene.passes();
@@ -405,7 +408,10 @@ mod tests {
         let scene = Scene::new();
         let alias = scene.clone();
         alias
-            .add(&Model::new(pbr_triangle_mesh(), Material::pbr().expect("pbr")))
+            .add(&Model::new(
+                pbr_triangle_mesh(),
+                Material::pbr().expect("pbr"),
+            ))
             .expect("add via alias");
         assert!(scene.inner.default_pass.read().is_some());
     }
@@ -416,8 +422,11 @@ mod tests {
         // the three getters return Arc-shared clones of what was added.
         let scene = Scene::new();
         let model = Model::new(pbr_triangle_mesh(), Material::pbr().expect("pbr"));
-        let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0)
-            .look_at([1.0, 2.0, 3.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+        let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0).look_at(
+            [1.0, 2.0, 3.0],
+            [0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+        );
         let light = Light::directional([0.0, -1.0, 0.0], [1.0, 0.95, 0.9]);
 
         scene.add(&model).expect("model");
@@ -455,11 +464,7 @@ mod tests {
         // Defaults are real handles — drive the default camera per frame:
         let default_camera = scene.cameras().into_iter().next().unwrap();
         default_camera.look_at([7.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
-        let p: [f32; 3] = model
-            .material()
-            .shader()
-            .get("camera.position")
-            .unwrap();
+        let p: [f32; 3] = model.material().shader().get("camera.position").unwrap();
         assert_eq!(p, [7.0, 0.0, 0.0]);
     }
 

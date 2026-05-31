@@ -95,10 +95,7 @@ impl Pass {
     /// [`SceneObjectHandle`](crate::SceneObjectHandle) and one arm here.
     #[uniffi::method(name = "add")]
     #[lsp_doc("docs/api/core/pass/add.md")]
-    pub fn add_mobile(
-        &self,
-        object: SceneObjectHandle,
-    ) -> Result<(), FragmentColorError> {
+    pub fn add_mobile(&self, object: SceneObjectHandle) -> Result<(), FragmentColorError> {
         match object {
             SceneObjectHandle::Model(m) => self
                 .add(m.as_ref())

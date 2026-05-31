@@ -143,7 +143,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Step 1 — URL-loaded triangle. Skip in this offline check; the
         // URL fetch goes to the network. Validation is exercised by the
         // existing tutorial_01_hello_triangle_three_lines example.
-        println!("  · step 1 (three-lines, URL): exercised by tutorial_01_hello_triangle_three_lines");
+        println!(
+            "  · step 1 (three-lines, URL): exercised by tutorial_01_hello_triangle_three_lines"
+        );
 
         // Step 2 — resolution-uniform: inline only, exercised by its own example.
         println!("  · step 2 (resolution-uniform): exercised by its own example");
@@ -155,7 +157,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("  · step 4 (vertex-gradient): exercised by its own example");
 
         // Step 5 — easing/in_out_sine + inline particle source.
-        check("step 5 (particle-trail)", &["easing/in_out_sine", STEP_5_PARTICLE]);
+        check(
+            "step 5 (particle-trail)",
+            &["easing/in_out_sine", STEP_5_PARTICLE],
+        );
 
         // Step 6 — four registry slugs + inline postfx main.
         check(
@@ -183,18 +188,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let mesh = Mesh::new();
         mesh.add_vertices([
             Vertex::new([-0.7, -0.4, 0.0]).set("color", [0.95, 0.30, 0.42]),
-            Vertex::new([ 0.7, -0.4, 0.0]).set("color", [0.30, 0.85, 0.55]),
-            Vertex::new([ 0.0,  0.8, 0.0]).set("color", [0.30, 0.55, 0.95]),
+            Vertex::new([0.7, -0.4, 0.0]).set("color", [0.30, 0.85, 0.55]),
+            Vertex::new([0.0, 0.8, 0.0]).set("color", [0.30, 0.55, 0.95]),
         ]);
         // Use a Vertex template so instance properties get auto-incrementing
         // locations starting at 1 instead of 0 — keeping clear of the
         // vertex `position` slot at @location(0).
-        mesh.add_instances([
-            Vertex::new([0.0, 0.0])
-                .set("center", [0.0_f32, 0.0])
-                .set("phase", 0.0_f32)
-                .set("tint", [1.0_f32, 1.0, 1.0]),
-        ]);
+        mesh.add_instances([Vertex::new([0.0, 0.0])
+            .set("center", [0.0_f32, 0.0])
+            .set("phase", 0.0_f32)
+            .set("tint", [1.0_f32, 1.0, 1.0])]);
         particle_shader.add_mesh(&mesh)?;
 
         let intermediate = renderer.create_texture_target([256, 256]).await?;
@@ -223,7 +226,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if bytes.is_empty() {
             return Err("step 5 multipass render returned empty buffer".into());
         }
-        println!("  ✓ step 5 multipass renders end-to-end ({} bytes)", bytes.len());
+        println!(
+            "  ✓ step 5 multipass renders end-to-end ({} bytes)",
+            bytes.len()
+        );
 
         println!("All tutorial shaders verified.");
         Ok(())

@@ -746,13 +746,25 @@ impl RenderContext {
         };
         // Defaults chosen so `factor * sample = factor` in the shader.
         let bundle = Arc::new(PbrDefaults {
-            base_color: (make("PBR default base_color", [255, 255, 255, 255]), sampler.clone()),
+            base_color: (
+                make("PBR default base_color", [255, 255, 255, 255]),
+                sampler.clone(),
+            ),
             // glTF stores metallic in .b and roughness in .g; the shader's
             // .bgr swizzle puts metallic in .r (=1) and roughness in .g (=1).
-            metallic_roughness: (make("PBR default metallic_roughness", [0, 255, 255, 255]), sampler.clone()),
+            metallic_roughness: (
+                make("PBR default metallic_roughness", [0, 255, 255, 255]),
+                sampler.clone(),
+            ),
             // Neutral tangent-space normal (0, 0, 1) after the * 2.0 - 1.0 decode.
-            normal: (make("PBR default normal", [128, 128, 255, 255]), sampler.clone()),
-            occlusion: (make("PBR default occlusion", [255, 255, 255, 255]), sampler.clone()),
+            normal: (
+                make("PBR default normal", [128, 128, 255, 255]),
+                sampler.clone(),
+            ),
+            occlusion: (
+                make("PBR default occlusion", [255, 255, 255, 255]),
+                sampler.clone(),
+            ),
             emissive: (make("PBR default emissive", [255, 255, 255, 255]), sampler),
         });
         *self.pbr_defaults.write() = Some(bundle.clone());
@@ -976,9 +988,7 @@ impl RenderContext {
                     };
                     let centroid_world =
                         transform * glam::Vec4::new(centroid.x, centroid.y, centroid.z, 1.0);
-                    let eye_z = view_mat
-                        .map(|v| (v * centroid_world).z)
-                        .unwrap_or(0.0);
+                    let eye_z = view_mat.map(|v| (v * centroid_world).z).unwrap_or(0.0);
                     out.blend_draws.push(BlendDraw {
                         shader_ptr: key.0,
                         mesh: entry.mesh.clone(),
@@ -1007,8 +1017,11 @@ impl RenderContext {
         // right-handed view space (the camera looks down its -Z axis, so
         // farther geometry has a *more negative* Z and a *smaller* `eye_z`
         // value). We want to draw the smallest values first.
-        out.blend_draws
-            .sort_by(|a, b| a.eye_z.partial_cmp(&b.eye_z).unwrap_or(std::cmp::Ordering::Equal));
+        out.blend_draws.sort_by(|a, b| {
+            a.eye_z
+                .partial_cmp(&b.eye_z)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
 
         // Materialize one tiny instance buffer per blend draw — 64 bytes
         // each. The per-draw payload is the column-major model matrix
@@ -1248,8 +1261,8 @@ impl RenderContext {
                             // No user texture — fall back to the PBR default for
                             // the known glTF slot names so `Material::pbr` works
                             // without the caller supplying every map.
-                            let defaults = pbr_defaults_handle
-                                .get_or_insert_with(|| self.pbr_defaults());
+                            let defaults =
+                                pbr_defaults_handle.get_or_insert_with(|| self.pbr_defaults());
                             if let Some((view, sampler)) = defaults.slot(name) {
                                 let group_entry = groups.entry(uniform.group).or_default();
                                 group_entry.views.push((uniform.binding, view.clone()));
@@ -1569,29 +1582,23 @@ impl RenderContext {
                             // referenced this shader+mesh); the fall-through path
                             // is for Meshes whose instances came from a direct
                             // `Mesh::add_instance` call (crowd rendering, etc.).
-                            let override_key =
-                                (shader_ptr, Arc::as_ptr(mesh_object) as usize);
-                            let instance_count = if let Some((buf, count)) =
-                                model_overrides.get(&override_key)
-                            {
-                                render_pass.set_vertex_buffer(1, buf.slice(..));
-                                *count
-                            } else {
-                                if let Some(instance_buffer) = &refs.instance_buffer {
-                                    render_pass.set_vertex_buffer(1, instance_buffer.slice(..));
-                                }
-                                counts.instance_count
-                            };
+                            let override_key = (shader_ptr, Arc::as_ptr(mesh_object) as usize);
+                            let instance_count =
+                                if let Some((buf, count)) = model_overrides.get(&override_key) {
+                                    render_pass.set_vertex_buffer(1, buf.slice(..));
+                                    *count
+                                } else {
+                                    if let Some(instance_buffer) = &refs.instance_buffer {
+                                        render_pass.set_vertex_buffer(1, instance_buffer.slice(..));
+                                    }
+                                    counts.instance_count
+                                };
 
                             render_pass.set_index_buffer(
                                 refs.index_buffer.slice(..),
                                 wgpu::IndexFormat::Uint32,
                             );
-                            render_pass.draw_indexed(
-                                0..counts.index_count,
-                                0,
-                                0..instance_count,
-                            );
+                            render_pass.draw_indexed(0..counts.index_count, 0, 0..instance_count);
                         }
                     }
                     crate::material::AlphaMode::Blend => {
@@ -1632,10 +1639,8 @@ impl RenderContext {
                 let (refs, counts) = draw.mesh.vertex_buffers(&self.device, &self.queue)?;
                 render_pass.set_vertex_buffer(0, refs.vertex_buffer.slice(..));
                 render_pass.set_vertex_buffer(1, buf.slice(..));
-                render_pass.set_index_buffer(
-                    refs.index_buffer.slice(..),
-                    wgpu::IndexFormat::Uint32,
-                );
+                render_pass
+                    .set_index_buffer(refs.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
                 render_pass.draw_indexed(0..counts.index_count, 0, 0..1);
             }
         }
@@ -2580,11 +2585,8 @@ fn create_render_pipeline(
                 //   Blend         -> standard SrcAlpha/OneMinusSrcAlpha
                 //                    over-blend.
                 blend: match alpha_mode {
-                    crate::material::AlphaMode::Opaque
-                    | crate::material::AlphaMode::Mask => None,
-                    crate::material::AlphaMode::Blend => {
-                        Some(wgpu::BlendState::ALPHA_BLENDING)
-                    }
+                    crate::material::AlphaMode::Opaque | crate::material::AlphaMode::Mask => None,
+                    crate::material::AlphaMode::Blend => Some(wgpu::BlendState::ALPHA_BLENDING),
                 },
                 // Custom (non-glTF-MR) blend equations are tracked under
                 // the roadmap's "Custom blending" item — Material's

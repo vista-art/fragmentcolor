@@ -64,8 +64,11 @@ fn main() {
         let blue = Model::new(quad(), blue_glass);
         blue.translate([0.0, 0.0, 1.0]);
 
-        let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0)
-            .look_at([0.0, 0.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+        let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0).look_at(
+            [0.0, 0.0, 5.0],
+            [0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+        );
         let sun = Light::directional([0.2, -0.5, -1.0], [1.0, 1.0, 1.0]);
 
         let scene = Scene::new();

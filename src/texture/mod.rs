@@ -1848,9 +1848,8 @@ mod tests {
         img.write_to(&mut std::io::Cursor::new(&mut buf), image::ImageFormat::Png)
             .unwrap();
         // From<(&[u8], TextureFormat)> — encoded image path.
-        let chain =
-            Mipmap::build((buf.as_slice(), crate::TextureFormat::Rgba8UnormSrgb))
-                .expect("prepare ok");
+        let chain = Mipmap::build((buf.as_slice(), crate::TextureFormat::Rgba8UnormSrgb))
+            .expect("prepare ok");
         assert_eq!(chain.count(), 4);
         assert_eq!(chain.size(), (8, 8));
         assert_eq!(chain.format(), crate::TextureFormat::Rgba8UnormSrgb);
@@ -1908,9 +1907,8 @@ mod tests {
     fn prepare_error_variants_are_distinct() {
         // 1) Decode failure → MalformedImageError (from `image::ImageError`).
         let garbage = vec![0xFFu8; 32];
-        let err =
-            Mipmap::build((garbage.as_slice(), crate::TextureFormat::Rgba8UnormSrgb))
-                .expect_err("garbage bytes should fail to decode");
+        let err = Mipmap::build((garbage.as_slice(), crate::TextureFormat::Rgba8UnormSrgb))
+            .expect_err("garbage bytes should fail to decode");
         assert!(
             matches!(err, TextureError::MalformedImageError(_)),
             "expected MalformedImageError, got {err:?}"
@@ -1947,12 +1945,8 @@ mod tests {
         );
 
         // 4) Zero size (raw path) → InvalidInput.
-        let err = Mipmap::build((
-            &[][..],
-            crate::TextureFormat::Rgba8UnormSrgb,
-            (0u32, 16u32),
-        ))
-        .expect_err("zero-width raw input should fail");
+        let err = Mipmap::build((&[][..], crate::TextureFormat::Rgba8UnormSrgb, (0u32, 16u32)))
+            .expect_err("zero-width raw input should fail");
         assert!(
             matches!(err, TextureError::InvalidInput(_)),
             "expected InvalidInput, got {err:?}"
@@ -1973,9 +1967,8 @@ mod tests {
             let mut buf = Vec::new();
             img.write_to(&mut std::io::Cursor::new(&mut buf), image::ImageFormat::Png)
                 .unwrap();
-            let chain =
-                Mipmap::build((buf.as_slice(), crate::TextureFormat::Rgba8UnormSrgb))
-                    .expect("prepare ok");
+            let chain = Mipmap::build((buf.as_slice(), crate::TextureFormat::Rgba8UnormSrgb))
+                .expect("prepare ok");
             let level_count = chain.count() as u32;
             let r = crate::Renderer::new();
             let tex = r

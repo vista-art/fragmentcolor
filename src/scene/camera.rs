@@ -17,10 +17,10 @@ use pyo3::prelude::*;
 #[cfg(wasm)]
 use wasm_bindgen::prelude::*;
 
+use crate::Shader;
 use crate::pass::{CameraSnapshot, PassObject};
 use crate::scene::SceneObject;
 use crate::shader::ShaderObject;
-use crate::Shader;
 
 #[derive(Debug)]
 pub(crate) struct CameraObject {
@@ -113,14 +113,7 @@ impl Camera {
     /// the frustum planes in view space; pair with a depth attachment
     /// configured for wgpu's [0, 1] NDC depth range.
     #[lsp_doc("docs/api/scene/camera/orthographic.md")]
-    pub fn orthographic(
-        left: f32,
-        right: f32,
-        bottom: f32,
-        top: f32,
-        near: f32,
-        far: f32,
-    ) -> Self {
+    pub fn orthographic(left: f32, right: f32, bottom: f32, top: f32, near: f32, far: f32) -> Self {
         Self::from_state(CameraState {
             projection: Projection::Orthographic {
                 left,
@@ -184,8 +177,7 @@ impl Camera {
                         near,
                         far,
                     };
-                    state.proj =
-                        Mat4::orthographic_rh(new_left, new_right, bottom, top, near, far);
+                    state.proj = Mat4::orthographic_rh(new_left, new_right, bottom, top, near, far);
                 }
             }
         }
@@ -279,8 +271,7 @@ impl SceneObject for Camera {
             )
         };
         // Apply the cached values to every shader already on the pass.
-        let shaders: Vec<Arc<ShaderObject>> =
-            pass.object.shaders.read().iter().cloned().collect();
+        let shaders: Vec<Arc<ShaderObject>> = pass.object.shaders.read().iter().cloned().collect();
         {
             let mut attached = self.object.attached.write();
             for s in shaders {
@@ -301,7 +292,10 @@ impl SceneObject for Camera {
         // Store a handle so future shaders joining via Model::attach also pick
         // the camera state up (and so the renderer can re-invoke apply on a
         // per-shader basis).
-        pass.object.scene_objects.write().push(Box::new(self.clone()));
+        pass.object
+            .scene_objects
+            .write()
+            .push(Box::new(self.clone()));
         Ok(())
     }
 
@@ -335,7 +329,10 @@ mod tests {
         let m = camera.view_proj();
         // Perspective encodes the homogeneous-w divide as a -1 in [2][3].
         assert!((m[2][3] + 1.0).abs() < 1.0e-5, "got {m:?}");
-        assert!(m != identity(), "perspective(...) view_proj must not be identity");
+        assert!(
+            m != identity(),
+            "perspective(...) view_proj must not be identity"
+        );
     }
 
     #[test]
@@ -367,14 +364,18 @@ mod tests {
 
     #[test]
     fn pass_add_seeds_shader_uniforms() {
-        let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0)
-            .look_at([1.0, 2.0, 3.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+        let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0).look_at(
+            [1.0, 2.0, 3.0],
+            [0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+        );
         let material = Material::pbr().expect("pbr");
         let model = crate::scene::Model::new(pbr_triangle_mesh(), material.clone());
 
         let pass = crate::Pass::new("scene");
         pass.add(&model).expect("add_model");
-        pass.add(&camera).expect("camera attach is infallible in unit tests");
+        pass.add(&camera)
+            .expect("camera attach is infallible in unit tests");
 
         let m: [[f32; 4]; 4] = material
             .shader()
@@ -399,7 +400,8 @@ mod tests {
 
         let pass = crate::Pass::new("scene");
         pass.add(&model).expect("add_model");
-        pass.add(&camera).expect("camera attach is infallible in unit tests");
+        pass.add(&camera)
+            .expect("camera attach is infallible in unit tests");
 
         camera.look_at([5.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
         let p: [f32; 3] = material.shader().get("camera.position").unwrap();
@@ -410,12 +412,16 @@ mod tests {
     fn pass_add_before_model_still_reaches_the_new_shader() {
         // Camera added before any models — the pass remembers it and applies
         // to each shader as `add_model` brings them in.
-        let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0)
-            .look_at([0.0, 0.0, 7.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+        let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0).look_at(
+            [0.0, 0.0, 7.0],
+            [0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+        );
         let material = Material::pbr().expect("pbr");
 
         let pass = crate::Pass::new("scene");
-        pass.add(&camera).expect("camera attach is infallible in unit tests");
+        pass.add(&camera)
+            .expect("camera attach is infallible in unit tests");
 
         let model = crate::scene::Model::new(pbr_triangle_mesh(), material.clone());
         pass.add(&model).expect("add_model");
@@ -434,11 +440,19 @@ mod tests {
         let pass = crate::Pass::new("scene");
         assert!(pass.object.camera_snapshot.read().is_none());
 
-        let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0)
-            .look_at([0.0, 0.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
-        pass.add(&camera).expect("camera attach is infallible in unit tests");
+        let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0).look_at(
+            [0.0, 0.0, 5.0],
+            [0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+        );
+        pass.add(&camera)
+            .expect("camera attach is infallible in unit tests");
 
-        let snap = pass.object.camera_snapshot.read().expect("snapshot stamped");
+        let snap = pass
+            .object
+            .camera_snapshot
+            .read()
+            .expect("snapshot stamped");
         // View matrix translates world by -5 along +Z (eye at +5 → world origin
         // lands at -5 in eye space). Right-handed look_at_rh: the eye sits at
         // the negation of the view matrix's third column's first three rows.
@@ -448,9 +462,16 @@ mod tests {
 
         // look_at should refresh the snapshot
         camera.look_at([0.0, 0.0, 10.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
-        let snap2 = pass.object.camera_snapshot.read().expect("snapshot refreshed");
+        let snap2 = pass
+            .object
+            .camera_snapshot
+            .read()
+            .expect("snapshot refreshed");
         let translation2 = snap2.view[3];
-        assert!((translation2[2] + 10.0).abs() < 1.0e-5, "got {translation2:?}");
+        assert!(
+            (translation2[2] + 10.0).abs() < 1.0e-5,
+            "got {translation2:?}"
+        );
     }
 
     #[test]
@@ -502,7 +523,8 @@ mod tests {
         let model = crate::scene::Model::new(pbr_triangle_mesh(), material.clone());
         let pass = crate::Pass::new("scene");
         pass.add(&model).expect("add_model");
-        pass.add(&camera).expect("camera attach is infallible in unit tests");
+        pass.add(&camera)
+            .expect("camera attach is infallible in unit tests");
 
         let before: [[f32; 4]; 4] = material.shader().get("camera.view_proj").unwrap();
         camera.set_aspect(2.0);

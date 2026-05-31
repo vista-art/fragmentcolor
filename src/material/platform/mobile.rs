@@ -3,10 +3,10 @@
 use lsp_doc::lsp_doc;
 use std::sync::Arc;
 
+use crate::Shader;
 use crate::material::{AlphaMode, Material};
 use crate::renderer::platform::mobile::FragmentColorError;
 use crate::texture::Texture;
-use crate::Shader;
 
 #[uniffi::export]
 impl Material {

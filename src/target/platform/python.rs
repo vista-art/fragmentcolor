@@ -234,7 +234,8 @@ impl PyTextureTarget {
     #[doc(hidden)]
     pub fn get_current_frame(&self) -> PyTargetFrame {
         // TextureTarget::get_current_frame format mirrors inner texture format; fall back to a sane default
-        let format = match <crate::TextureTarget as TargetInternal>::get_current_frame(&self.inner) {
+        let format = match <crate::TextureTarget as TargetInternal>::get_current_frame(&self.inner)
+        {
             Ok(frame) => frame.format(),
             Err(_) => wgpu::TextureFormat::Rgba8Unorm,
         };

@@ -57,7 +57,10 @@ fn compositions() -> Vec<Composition> {
         Composition {
             name: "quaternion_conjugate",
             description: "Conjugate of a quaternion built from UV-driven axis/angle, |q'.xyz|.",
-            slugs: &["geom/quaternion_from_axis_angle", "geom/quaternion_conjugate"],
+            slugs: &[
+                "geom/quaternion_from_axis_angle",
+                "geom/quaternion_conjugate",
+            ],
             fragment: r#"
 @fragment fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let p = (in.uv - vec2<f32>(0.5)) * 2.0;
@@ -100,7 +103,10 @@ fn compositions() -> Vec<Composition> {
         Composition {
             name: "quaternion_rotate_vec",
             description: "Rotate +Z by a UV-driven quaternion; |result.xyz| as RGB.",
-            slugs: &["geom/quaternion_from_axis_angle", "geom/quaternion_rotate_vec"],
+            slugs: &[
+                "geom/quaternion_from_axis_angle",
+                "geom/quaternion_rotate_vec",
+            ],
             fragment: r#"
 @fragment fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let p = (in.uv - vec2<f32>(0.5)) * 2.0;

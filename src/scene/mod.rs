@@ -226,9 +226,7 @@ mod tests {
             ([-0.5, -0.5, 0.0], [0.0, 0.0]),
             ([0.5, -0.5, 0.0], [1.0, 0.0]),
         ] {
-            mesh.add_vertex(
-                Vertex::pbr(p).set(Vertex::UV0, uv),
-            );
+            mesh.add_vertex(Vertex::pbr(p).set(Vertex::UV0, uv));
         }
         mesh
     }

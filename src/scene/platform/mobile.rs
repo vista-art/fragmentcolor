@@ -62,10 +62,7 @@ impl Model {
 
     #[uniffi::method(name = "translate")]
     #[lsp_doc("docs/api/scene/model/translate.md")]
-    pub fn translate_mobile(
-        self: Arc<Self>,
-        offset: Vec<f32>,
-    ) -> Result<(), FragmentColorError> {
+    pub fn translate_mobile(self: Arc<Self>, offset: Vec<f32>) -> Result<(), FragmentColorError> {
         let arr = take_vec3(&offset, "Model.translate")?;
         self.translate(arr);
         Ok(())
@@ -85,10 +82,7 @@ impl Model {
 
     #[uniffi::method(name = "scale")]
     #[lsp_doc("docs/api/scene/model/scale.md")]
-    pub fn scale_mobile(
-        self: Arc<Self>,
-        factor: Vec<f32>,
-    ) -> Result<(), FragmentColorError> {
+    pub fn scale_mobile(self: Arc<Self>, factor: Vec<f32>) -> Result<(), FragmentColorError> {
         let arr = take_vec3(&factor, "Model.scale")?;
         self.scale(arr);
         Ok(())
@@ -111,12 +105,7 @@ impl Model {
 impl Camera {
     #[uniffi::constructor(name = "perspective")]
     #[lsp_doc("docs/api/scene/camera/perspective.md")]
-    pub fn perspective_mobile(
-        fovy_radians: f32,
-        aspect: f32,
-        near: f32,
-        far: f32,
-    ) -> Arc<Self> {
+    pub fn perspective_mobile(fovy_radians: f32, aspect: f32, near: f32, far: f32) -> Arc<Self> {
         Arc::new(Camera::perspective(fovy_radians, aspect, near, far))
     }
 
@@ -302,10 +291,7 @@ impl Light {
 
     #[uniffi::method(name = "setRange")]
     #[lsp_doc("docs/api/scene/light/set_range.md")]
-    pub fn set_range_mobile(
-        self: Arc<Self>,
-        value: f32,
-    ) -> Result<Arc<Self>, FragmentColorError> {
+    pub fn set_range_mobile(self: Arc<Self>, value: f32) -> Result<Arc<Self>, FragmentColorError> {
         self.set_range(value)
             .map(Arc::new)
             .map_err(|e| FragmentColorError::Render(e.to_string()))
@@ -376,10 +362,7 @@ impl Scene {
 
     #[uniffi::method(name = "ambient")]
     #[lsp_doc("docs/api/scene/scene/ambient.md")]
-    pub fn ambient_mobile(
-        self: Arc<Self>,
-        color: Vec<f32>,
-    ) -> Result<(), FragmentColorError> {
+    pub fn ambient_mobile(self: Arc<Self>, color: Vec<f32>) -> Result<(), FragmentColorError> {
         let c = take_vec3(&color, "Scene.ambient")?;
         self.ambient(c);
         Ok(())

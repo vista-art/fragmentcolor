@@ -3,8 +3,8 @@
 use lsp_doc::lsp_doc;
 use wasm_bindgen::prelude::*;
 
-use crate::material::{AlphaMode, Material};
 use crate::Shader;
+use crate::material::{AlphaMode, Material};
 
 #[wasm_bindgen]
 impl Material {

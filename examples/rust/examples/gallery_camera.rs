@@ -321,7 +321,11 @@ fn sd_box(p: vec3<f32>, b: vec3<f32>) -> f32 {
         Composition {
             name: "screen_to_world",
             description: "Unprojects each UV at depth 0.5 through a perspective view; colors by world XY.",
-            slugs: &["camera/screen_to_world", "camera/perspective", "camera/look_at"],
+            slugs: &[
+                "camera/screen_to_world",
+                "camera/perspective",
+                "camera/look_at",
+            ],
             fragment: r#"
 @fragment fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let view = look_at(vec3<f32>(0.0, 0.0, 3.0), vec3<f32>(0.0), vec3<f32>(0.0, 1.0, 0.0));

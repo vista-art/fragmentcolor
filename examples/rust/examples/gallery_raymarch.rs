@@ -43,8 +43,7 @@ fn compositions() -> Vec<Composition> {
     vec![
         Composition {
             name: "normal_from_sdf_taps",
-            description:
-                "6-tap central-difference normal from sphere SDF samples after a sphere-trace hit.",
+            description: "6-tap central-difference normal from sphere SDF samples after a sphere-trace hit.",
             slugs: &["raymarch/normal_from_sdf_taps", "sdf/sphere"],
             fragment: r#"
 fn scene(p: vec3<f32>) -> f32 {
@@ -87,8 +86,7 @@ fn scene(p: vec3<f32>) -> f32 {
         },
         Composition {
             name: "normal_from_sdf_tetra",
-            description:
-                "Cheaper 4-tap tetrahedral normal from sphere SDF samples after a sphere-trace hit.",
+            description: "Cheaper 4-tap tetrahedral normal from sphere SDF samples after a sphere-trace hit.",
             slugs: &["raymarch/normal_from_sdf_tetra", "sdf/sphere"],
             fragment: r#"
 fn scene(p: vec3<f32>) -> f32 {

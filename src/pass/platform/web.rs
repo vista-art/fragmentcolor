@@ -95,9 +95,7 @@ impl Pass {
         if let Ok(light) = crate::scene::Light::try_from(object) {
             return self.add(&light).map(|_| ()).map_err(|e| e.into());
         }
-        Err(JsError::new(
-            "Pass.add: expected a Model, Camera, or Light",
-        ))
+        Err(JsError::new("Pass.add: expected a Model, Camera, or Light"))
     }
 
     #[wasm_bindgen(js_name = "setClearColor")]

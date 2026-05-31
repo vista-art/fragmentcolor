@@ -75,7 +75,9 @@ fn workspace_root() -> PathBuf {
     }
     let p = PathBuf::from(cargo_manifest);
     // examples/rust -> repo root is two levels up.
-    p.parent().and_then(|p| p.parent()).map_or(p.clone(), |p| p.to_path_buf())
+    p.parent()
+        .and_then(|p| p.parent())
+        .map_or(p.clone(), |p| p.to_path_buf())
 }
 
 fn load_store() -> Result<Store, String> {
@@ -131,14 +133,20 @@ fn resolve_post(store: &Store, query: &str) -> Result<String, String> {
         _ => Err(format!(
             "`{}` matches multiple posts:\n  {}",
             query,
-            suffix.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("\n  ")
+            suffix
+                .iter()
+                .map(|s| s.as_str())
+                .collect::<Vec<_>>()
+                .join("\n  ")
         )),
     }
 }
 
 fn cmd_status(store: &Store) {
     if store.blocks.is_empty() {
-        println!("No lock blocks tracked yet. Add `<Lock id=\"...\">...</Lock>` to an MDX file and rebuild.");
+        println!(
+            "No lock blocks tracked yet. Add `<Lock id=\"...\">...</Lock>` to an MDX file and rebuild."
+        );
         return;
     }
     // Group by post_id.
@@ -182,10 +190,7 @@ fn cmd_history(store: &Store, post_query: &str, lock_filter: Option<&str>) -> Re
     let blocks: Vec<&Block> = store
         .blocks
         .iter()
-        .filter(|b| {
-            b.post_id == post
-                && lock_filter.map(|f| b.lock_id == f).unwrap_or(true)
-        })
+        .filter(|b| b.post_id == post && lock_filter.map(|f| b.lock_id == f).unwrap_or(true))
         .collect();
 
     if blocks.is_empty() {
@@ -200,7 +205,12 @@ fn cmd_history(store: &Store, post_query: &str, lock_filter: Option<&str>) -> Re
 
     println!("{}\n", post);
     for b in blocks {
-        println!("[{}] (currently v{}, hash {})", b.lock_id, b.current_version, short_hash(&b.current_hash));
+        println!(
+            "[{}] (currently v{}, hash {})",
+            b.lock_id,
+            b.current_version,
+            short_hash(&b.current_hash)
+        );
         if let Some(d) = &b.description {
             println!("  description: {}", d);
         }
@@ -208,7 +218,11 @@ fn cmd_history(store: &Store, post_query: &str, lock_filter: Option<&str>) -> Re
             println!("  comments:    {}", c);
         }
         for s in &b.history {
-            let tag = if s.version == b.current_version { "*" } else { " " };
+            let tag = if s.version == b.current_version {
+                "*"
+            } else {
+                " "
+            };
             let dup = if s.version != b.current_version && s.hash == b.current_hash {
                 " (matches current)"
             } else {
@@ -228,7 +242,11 @@ fn cmd_history(store: &Store, post_query: &str, lock_filter: Option<&str>) -> Re
     Ok(())
 }
 
-fn pick_versions(b: &Block, va: Option<u64>, vb: Option<u64>) -> Result<(Snapshot, Snapshot), String> {
+fn pick_versions(
+    b: &Block,
+    va: Option<u64>,
+    vb: Option<u64>,
+) -> Result<(Snapshot, Snapshot), String> {
     let find = |v: u64| -> Option<Snapshot> { b.history.iter().find(|s| s.version == v).cloned() };
     match (va, vb) {
         (None, None) => {
@@ -240,7 +258,11 @@ fn pick_versions(b: &Block, va: Option<u64>, vb: Option<u64>) -> Result<(Snapsho
         }
         (Some(a), None) => {
             let sa = find(a).ok_or_else(|| format!("v{} not found", a))?;
-            let cur = b.history.last().cloned().ok_or_else(|| "history empty".to_string())?;
+            let cur = b
+                .history
+                .last()
+                .cloned()
+                .ok_or_else(|| "history empty".to_string())?;
             Ok((sa, cur))
         }
         (Some(a), Some(c)) => {
@@ -327,15 +349,21 @@ fn main() -> ExitCode {
             Ok(())
         }
         Some("history") => {
-            let post = args.get(1).ok_or_else(|| "history requires <post>".to_string());
+            let post = args
+                .get(1)
+                .ok_or_else(|| "history requires <post>".to_string());
             match post {
                 Ok(post) => cmd_history(&store, post, args.get(2).map(|s| s.as_str())),
                 Err(e) => Err(e),
             }
         }
         Some("diff") => {
-            let post = args.get(1).ok_or_else(|| "diff requires <post>".to_string());
-            let lock_id = args.get(2).ok_or_else(|| "diff requires <lock_id>".to_string());
+            let post = args
+                .get(1)
+                .ok_or_else(|| "diff requires <post>".to_string());
+            let lock_id = args
+                .get(2)
+                .ok_or_else(|| "diff requires <lock_id>".to_string());
             match (post, lock_id) {
                 (Ok(post), Ok(lock_id)) => {
                     let va = args.get(3).and_then(|s| s.parse::<u64>().ok());

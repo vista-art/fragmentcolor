@@ -13,7 +13,7 @@ use std::sync::Arc;
 
 use crate::renderer::platform::mobile::FragmentColorError;
 use crate::texture::TextureRegionMobile;
-use crate::{SamplerOptions, Size, Texture, TextureFormat, TextureId, Mipmap};
+use crate::{Mipmap, SamplerOptions, Size, Texture, TextureFormat, TextureId};
 
 #[uniffi::export]
 impl Texture {

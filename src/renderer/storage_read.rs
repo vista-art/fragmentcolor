@@ -51,7 +51,9 @@ pub(crate) async fn read_buffer_bytes(
         timeout: Some(std::time::Duration::from_secs(5)),
     }) {
         log::error!("Device poll error during storage readback mapping: {:?}", e);
-        return Err(RendererError::Error(format!("storage readback poll: {e:?}")));
+        return Err(RendererError::Error(format!(
+            "storage readback poll: {e:?}"
+        )));
     }
 
     match rx.await {

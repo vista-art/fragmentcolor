@@ -21,9 +21,9 @@ use pyo3::prelude::*;
 #[cfg(wasm)]
 use wasm_bindgen::prelude::*;
 
+use crate::Shader;
 use crate::scene::SceneObject;
 use crate::shader::ShaderObject;
-use crate::Shader;
 
 /// Discriminant for the three light kinds. Wire-compatible with the WGSL
 /// `light.kind` field in `pbr_main.wgsl`: directional=0, point=1, spot=2.
@@ -131,8 +131,7 @@ impl LightObject {
     }
 
     fn attach_to_pass(self: &Arc<Self>, pass: &crate::Pass) -> Result<(), crate::PassError> {
-        let shaders: Vec<Arc<ShaderObject>> =
-            pass.object.shaders.read().iter().cloned().collect();
+        let shaders: Vec<Arc<ShaderObject>> = pass.object.shaders.read().iter().cloned().collect();
         // Pre-check the cap on every shader. A Light already attached to a
         // shader rides on its existing slot (no new allocation), so the
         // pre-check mirrors the dedup logic in `apply_to_shader` rather
@@ -439,7 +438,10 @@ impl Light {
 impl SceneObject for Light {
     fn attach(&self, pass: &crate::Pass) -> Result<(), crate::PassError> {
         self.object.attach_to_pass(pass)?;
-        pass.object.scene_objects.write().push(Box::new(self.clone()));
+        pass.object
+            .scene_objects
+            .write()
+            .push(Box::new(self.clone()));
         Ok(())
     }
 
@@ -489,35 +491,55 @@ mod tests {
         let directional = Light::directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
         assert!(matches!(
             directional.set_position([1.0, 0.0, 0.0]),
-            Err(LightError::FieldNotApplicable { kind: LightKind::Directional, field: "set_position" }),
+            Err(LightError::FieldNotApplicable {
+                kind: LightKind::Directional,
+                field: "set_position"
+            }),
         ));
         assert!(matches!(
             directional.set_range(5.0),
-            Err(LightError::FieldNotApplicable { kind: LightKind::Directional, field: "set_range" }),
+            Err(LightError::FieldNotApplicable {
+                kind: LightKind::Directional,
+                field: "set_range"
+            }),
         ));
         assert!(matches!(
             directional.set_cone_angles(0.2, 0.6),
-            Err(LightError::FieldNotApplicable { kind: LightKind::Directional, field: "set_cone_angles" }),
+            Err(LightError::FieldNotApplicable {
+                kind: LightKind::Directional,
+                field: "set_cone_angles"
+            }),
         ));
 
         let point = Light::point([0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
         assert!(matches!(
             point.set_direction([0.0, -1.0, 0.0]),
-            Err(LightError::FieldNotApplicable { kind: LightKind::Point, field: "set_direction" }),
+            Err(LightError::FieldNotApplicable {
+                kind: LightKind::Point,
+                field: "set_direction"
+            }),
         ));
         assert!(matches!(
             point.set_cone_angles(0.2, 0.6),
-            Err(LightError::FieldNotApplicable { kind: LightKind::Point, field: "set_cone_angles" }),
+            Err(LightError::FieldNotApplicable {
+                kind: LightKind::Point,
+                field: "set_cone_angles"
+            }),
         ));
 
         // set_range on negative values errors regardless of kind.
-        assert!(matches!(point.set_range(-1.0), Err(LightError::NegativeRange(_))));
+        assert!(matches!(
+            point.set_range(-1.0),
+            Err(LightError::NegativeRange(_))
+        ));
     }
 
     #[test]
     fn kind_specific_setters_ok_and_round_trip_on_right_kind() {
         let point = Light::point([0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
-        point.set_position([3.0, 1.5, -2.0]).expect("position on point");
+        point
+            .set_position([3.0, 1.5, -2.0])
+            .expect("position on point");
         point.set_range(8.0).expect("range on point");
         assert_eq!(point.position(), Some([3.0, 1.5, -2.0]));
         assert_eq!(point.range(), Some(8.0));
@@ -526,13 +548,21 @@ mod tests {
         assert!(point.outer_cone_angle().is_none());
 
         let spot = Light::spot([0.0, 0.0, 0.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
-        spot.set_position([0.0, 2.0, 0.0]).expect("position on spot");
-        spot.set_direction([0.0, 0.0, -1.0]).expect("direction on spot");
+        spot.set_position([0.0, 2.0, 0.0])
+            .expect("position on spot");
+        spot.set_direction([0.0, 0.0, -1.0])
+            .expect("direction on spot");
         spot.set_cone_angles(0.2, 0.6).expect("cone angles on spot");
         assert_eq!(spot.position(), Some([0.0, 2.0, 0.0]));
         assert_eq!(spot.direction(), Some([0.0, 0.0, -1.0]));
-        assert_eq!(spot.inner_cone_angle().map(|a| (a - 0.2).abs() < 1.0e-6), Some(true));
-        assert_eq!(spot.outer_cone_angle().map(|a| (a - 0.6).abs() < 1.0e-6), Some(true));
+        assert_eq!(
+            spot.inner_cone_angle().map(|a| (a - 0.2).abs() < 1.0e-6),
+            Some(true)
+        );
+        assert_eq!(
+            spot.outer_cone_angle().map(|a| (a - 0.6).abs() < 1.0e-6),
+            Some(true)
+        );
     }
 
     #[test]

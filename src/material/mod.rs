@@ -100,7 +100,9 @@ impl Material {
         // you're loading a texture-driven glTF material, but a bad first-
         // frame for someone calling `Material::pbr()?` and rendering a
         // flat-color cube).
-        let _ = self.shader.set("material.base_color", [1.0_f32, 1.0, 1.0, 1.0]);
+        let _ = self
+            .shader
+            .set("material.base_color", [1.0_f32, 1.0, 1.0, 1.0]);
         let _ = self.shader.set("material.metallic", 0.0_f32);
         let _ = self.shader.set("material.roughness", 1.0_f32);
         let _ = self.shader.set("material.normal_scale", 1.0_f32);
@@ -133,9 +135,7 @@ impl Material {
         // faces don't read as pitch-black — matches the prior shader's
         // hardcoded `* 0.03` term.
         let _ = self.shader.set("lights.count", 1_u32);
-        let _ = self
-            .shader
-            .set("lights.ambient", [0.03_f32, 0.03, 0.03]);
+        let _ = self.shader.set("lights.ambient", [0.03_f32, 0.03, 0.03]);
         let _ = self.shader.set("lights.lights[0].kind", 0_u32);
         let _ = self
             .shader
@@ -146,13 +146,9 @@ impl Material {
         let _ = self
             .shader
             .set("lights.lights[0].color", [1.0_f32, 1.0, 1.0]);
-        let _ = self
-            .shader
-            .set("lights.lights[0].intensity", 1.0_f32);
+        let _ = self.shader.set("lights.lights[0].intensity", 1.0_f32);
         let _ = self.shader.set("lights.lights[0].range", 0.0_f32);
-        let _ = self
-            .shader
-            .set("lights.lights[0].inner_cone_cos", 1.0_f32);
+        let _ = self.shader.set("lights.lights[0].inner_cone_cos", 1.0_f32);
         let _ = self.shader.set(
             "lights.lights[0].outer_cone_cos",
             std::f32::consts::FRAC_PI_4.cos(),
@@ -332,7 +328,6 @@ pub(crate) fn queue_texture_or_warn(
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -428,9 +423,7 @@ mod tests {
             ([-0.5, -0.5, 0.0], [0.0, 0.0]),
             ([0.5, -0.5, 0.0], [1.0, 0.0]),
         ] {
-            mesh.add_vertex(
-                Vertex::pbr(p).set(Vertex::UV0, uv),
-            );
+            mesh.add_vertex(Vertex::pbr(p).set(Vertex::UV0, uv));
         }
         mesh
     }
@@ -483,9 +476,15 @@ mod tests {
                 .base_color([1.0, 1.0, 1.0, 1.0])
                 .base_color_texture(&tex);
 
-            mat.shader().set("camera.position", [0.0_f32, 0.0, 1.0]).ok();
-            mat.shader().set("lights.lights[0].direction", [0.0_f32, 0.0, -1.0]).ok();
-            mat.shader().set("lights.lights[0].color", [1.0_f32, 1.0, 1.0]).ok();
+            mat.shader()
+                .set("camera.position", [0.0_f32, 0.0, 1.0])
+                .ok();
+            mat.shader()
+                .set("lights.lights[0].direction", [0.0_f32, 0.0, -1.0])
+                .ok();
+            mat.shader()
+                .set("lights.lights[0].color", [1.0_f32, 1.0, 1.0])
+                .ok();
 
             let mesh = Mesh::new();
             for (pos, uv) in [
@@ -493,9 +492,7 @@ mod tests {
                 ([-1.0, -1.0, 0.0], [0.0, 0.0]),
                 ([1.0, -1.0, 0.0], [1.0, 0.0]),
             ] {
-                mesh.add_vertex(
-                    Vertex::pbr(pos).set(Vertex::UV0, uv),
-                );
+                mesh.add_vertex(Vertex::pbr(pos).set(Vertex::UV0, uv));
             }
             let model = crate::scene::Model::new(mesh, mat);
             let pass = Pass::new("textured-triangle");
@@ -621,11 +618,7 @@ mod tests {
             // 4 Materials, all reading `&shared`. Each Material's
             // `base_color_map` uniform stores the same texture ID.
             let mats: Vec<Material> = (0..4)
-                .map(|_| {
-                    Material::pbr()
-                        .expect("pbr")
-                        .base_color_texture(&shared)
-                })
+                .map(|_| Material::pbr().expect("pbr").base_color_texture(&shared))
                 .collect();
 
             for mat in &mats {

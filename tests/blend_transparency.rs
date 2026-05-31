@@ -61,8 +61,11 @@ fn renders_two_blend_quads_at_different_depths() {
         let near_model = Model::new(unit_quad(), near_mat);
         near_model.translate([0.0, 0.0, 0.0]);
 
-        let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0)
-            .look_at([0.0, 0.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+        let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0).look_at(
+            [0.0, 0.0, 5.0],
+            [0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+        );
         let sun = Light::directional([0.0, 0.0, -1.0], [1.0, 1.0, 1.0]);
 
         let scene = Scene::new();
@@ -136,8 +139,10 @@ fn cross_shader_blend_sorts_globally() {
         // A per-shader sort would draw red's nearest (z=1) after blue's
         // nearest (z=2), inverting the result.
         let mut models: Vec<Model> = Vec::new();
-        for (mat, zs) in [(red_mat.clone(), [-3.0_f32, -1.0, 1.0]),
-                          (blue_mat.clone(), [-2.0_f32, 0.0, 2.0])] {
+        for (mat, zs) in [
+            (red_mat.clone(), [-3.0_f32, -1.0, 1.0]),
+            (blue_mat.clone(), [-2.0_f32, 0.0, 2.0]),
+        ] {
             for z in zs {
                 let m = Model::new(unit_quad(), mat.clone());
                 m.translate([0.0, 0.0, z]);
@@ -145,19 +150,18 @@ fn cross_shader_blend_sorts_globally() {
             }
         }
 
-        let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0)
-            .look_at([0.0, 0.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+        let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0).look_at(
+            [0.0, 0.0, 5.0],
+            [0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+        );
         let sun = Light::directional([0.0, 0.0, -1.0], [1.0, 1.0, 1.0]);
 
         let scene = Scene::new();
         // Scramble the insertion order so the test exercises the sort,
         // not the insertion-order accident.
         let order = [3usize, 0, 4, 1, 5, 2];
-        let mut s = scene
-            .add(&camera)
-            .expect("camera")
-            .add(&sun)
-            .expect("sun");
+        let mut s = scene.add(&camera).expect("camera").add(&sun).expect("sun");
         for i in order {
             s = s.add(&models[i]).expect("model");
         }
@@ -204,8 +208,11 @@ fn opaque_and_blend_in_same_pass_render_without_panic() {
         let glass = Model::new(unit_quad(), blend_mat);
         glass.translate([0.0, 0.0, 0.0]);
 
-        let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0)
-            .look_at([0.0, 0.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+        let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0).look_at(
+            [0.0, 0.0, 5.0],
+            [0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+        );
         let sun = Light::directional([0.0, 0.0, -1.0], [1.0, 1.0, 1.0]);
 
         let scene = Scene::new();

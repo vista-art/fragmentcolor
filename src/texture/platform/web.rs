@@ -3,9 +3,7 @@
 use lsp_doc::lsp_doc;
 use wasm_bindgen::prelude::*;
 
-use crate::{
-    CompareFunction, SamplerOptions, Size, Texture, TextureFormat, TextureId, Mipmap,
-};
+use crate::{CompareFunction, Mipmap, SamplerOptions, Size, Texture, TextureFormat, TextureId};
 
 #[wasm_bindgen]
 impl Mipmap {
