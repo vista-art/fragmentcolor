@@ -148,17 +148,24 @@ run_ios_examples() {
   # (`fragmentcolor-healthcheck`). `xcodebuild -list` from
   # `platforms/swift/healthcheck/` lists exactly one scheme:
   # `FragmentColorHealthcheck`.
+  #
+  # GeneratedExamples.swift is the auto-generated aggregator of every
+  # transpiled Swift example. Cross-platform API parity is a hard guarantee
+  # of FragmentColor: if any example fails to compile here it means the
+  # transpiler (`scripts/convert.rs::to_swift` + `scripts/swift.rs`) or the
+  # underlying uniffi binding is out of sync with the Rust source. Fix the
+  # source — this step is a hard fail.
   if (cd "$ROOT_DIR/platforms/swift/healthcheck" \
         && xcodebuild \
              -scheme FragmentColorHealthcheck \
              -destination "generic/platform=iOS Simulator" \
              build); then
     log_test_ok "$name"
+    return 0
   else
-    printf "warn %s ... transpiler-drift compile errors in GeneratedExamples.swift; tracked for v0.11.x.\n" "$name"
-    printf "     bindings test passed (above) — public API surface is healthy.\n"
+    log_test_fail "$name"
+    return 1
   fi
-  return 0
 }
 
 run_android() {
