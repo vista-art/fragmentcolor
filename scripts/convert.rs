@@ -157,6 +157,16 @@ mod convert {
                     }
                 }
                 if let Some(after) = consumed {
+                    // The numeric-token loop above greedily consumes the
+                    // `_` separator that precedes the suffix (it matches
+                    // the inner-loop allowlist for digit-group separators
+                    // like `1_000`). When we strip a suffix like `f32`,
+                    // the dangling `_` would survive in `out` and produce
+                    // `100.0_` instead of `100.0`. Drop it here so the
+                    // emitted literal parses in every target language.
+                    if out.ends_with('_') {
+                        out.pop();
+                    }
                     i = after;
                 }
                 continue;
@@ -1331,9 +1341,27 @@ mod convert {
             Some((n_hash, pos_after_quote))
         }
 
-        // Try to find opener on this same line after 'new('
-        let opener = parse_raw_opener(after_new)?;
-        let (n_hash, pos_after_quote_in_after_new) = opener;
+        // Try to find opener on this same line after 'new('. If the line
+        // is `let var = Type::new(` with the `r#"..."#` opener on the NEXT
+        // line, look one line ahead.
+        let (n_hash, pos_after_quote_in_after_new, opener_line_idx) =
+            if let Some((nh, pos)) = parse_raw_opener(after_new) {
+                (nh, pos, start_idx)
+            } else if after_new.trim().is_empty() {
+                let next = src.get(start_idx + 1)?.as_str();
+                let (nh, _pos) = parse_raw_opener(next)?;
+                // Opener consumed on `next` line; body content starts after
+                // the opening quote on that same line.
+                let pos = {
+                    let s_trim = next.trim_start();
+                    let off = next.len() - s_trim.len();
+                    // off + 'r' + n_hash + '"'
+                    off + 1 + nh + 1
+                };
+                (nh, pos, start_idx + 1)
+            } else {
+                return None;
+            };
 
         // Collect body lines until closing '"###...#'
         let closing = {
@@ -1345,7 +1373,14 @@ mod convert {
         };
 
         let mut body_lines: Vec<String> = Vec::new();
-        let first_tail = &after_new[pos_after_quote_in_after_new..];
+        let opener_line_full = src.get(opener_line_idx)?.as_str();
+        // For the same-line case, the slice is computed against `after_new`;
+        // for the next-line case it's computed against the next line itself.
+        let first_tail: &str = if opener_line_idx == start_idx {
+            &after_new[pos_after_quote_in_after_new..]
+        } else {
+            &opener_line_full[pos_after_quote_in_after_new..]
+        };
         if !first_tail.is_empty() {
             // Content on same line after the opening quote
             // Stop early if the closing is also on this line
@@ -1353,34 +1388,46 @@ mod convert {
                 // All inside one line raw string
                 let content = &first_tail[..pos];
                 body_lines.push(content.to_string());
-                // next_idx is still current line (consumed only 1 line)
+                // next_idx is one past the line that held the closing
                 let mapped = render_raw_string_assignment(
                     lang,
                     &var_out,
                     ty_opt.as_deref(),
                     &body_lines,
                 );
-                return Some((mapped, start_idx + 1));
+                return Some((mapped, opener_line_idx + 1));
             } else {
                 body_lines.push(first_tail.to_string());
             }
         }
 
         // Scan subsequent lines until closing marker is found
-        let mut j = start_idx + 1;
+        let mut j = opener_line_idx + 1;
         while j < src.len() {
             let l = &src[j];
             if let Some(pos) = l.find(&closing) {
                 let content = &l[..pos];
                 body_lines.push(content.to_string());
-                // Done; compute output and return next index after closing line
+                // Done; compute output and return next index after closing line.
+                // When the original Rust was a multi-line call
+                //   let var = Type::new(\n  r#"..."#,\n)?;
+                // the call's closing `)?;` (or `);` / `)?`) sits on the line
+                // after the raw-string terminator. Skip it so we don't emit
+                // a dangling close-paren in the target language.
+                let mut after = j + 1;
+                if let Some(next) = src.get(after) {
+                    let nt = next.trim();
+                    if nt == ")?;" || nt == ");" || nt == ")?" || nt == ")" {
+                        after += 1;
+                    }
+                }
                 let mapped = render_raw_string_assignment(
                     lang,
                     &var_out,
                     ty_opt.as_deref(),
                     &body_lines,
                 );
-                return Some((mapped, j + 1));
+                return Some((mapped, after));
             } else {
                 body_lines.push(l.clone());
                 j += 1;
