@@ -168,4 +168,12 @@ extension Renderer {
     public func render(_ passes: [Pass], _ target: MobileTextureTarget) throws {
         try self.render(renderable: .passes(passes), target: .texture(target))
     }
+
+    public func render(_ scene: Scene, _ target: MobileWindowTarget) throws {
+        try self.render(renderable: .scene(scene), target: .window(target))
+    }
+
+    public func render(_ scene: Scene, _ target: MobileTextureTarget) throws {
+        try self.render(renderable: .scene(scene), target: .texture(target))
+    }
 }
