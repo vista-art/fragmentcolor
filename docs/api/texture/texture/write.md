@@ -16,7 +16,7 @@ Efficiently upload raw pixel data into an existing texture. Ideal for video play
 use fragmentcolor::{Renderer, TextureFormat};
 let renderer = Renderer::new();
 let texture = renderer.create_storage_texture(([64, 64], TextureFormat::Rgba)).await?;
-let frame_bytes = vec![0u8; 64 * 64 * 4];
+let frame_bytes = vec![0; 64 * 64 * 4];
 
 texture.write(&frame_bytes)?;
 # Ok(())

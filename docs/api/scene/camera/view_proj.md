@@ -15,7 +15,7 @@ and keeps them in sync with later updates.
 # fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Camera;
 
-let camera = Camera::perspective(60.0_f32.to_radians(), 16.0 / 9.0, 0.1, 100.0)
+let camera = Camera::perspective(60.0.to_radians(), 16.0 / 9.0, 0.1, 100.0)
     .look_at([0.0, 0.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
 
 let view_proj = camera.view_proj();

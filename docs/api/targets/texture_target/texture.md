@@ -17,7 +17,7 @@ registration). The returned handle is `Clone`; pass it around freely.
 use fragmentcolor::{Renderer, Shader};
 
 let renderer = Renderer::new();
-let target = renderer.create_texture_target([256u32, 256u32]).await?;
+let target = renderer.create_texture_target([256, 256]).await?;
 
 // Bind the offscreen target's contents as a uniform on a downstream
 // post-processing shader.

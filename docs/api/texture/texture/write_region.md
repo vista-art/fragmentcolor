@@ -19,7 +19,7 @@ The `region` argument accepts anything convertible into a `TextureRegion`:
 use fragmentcolor::{Renderer, TextureFormat, TextureRegion};
 let renderer = Renderer::new();
 let texture = renderer.create_storage_texture(([64, 32], TextureFormat::Rgba)).await?;
-let bytes = vec![0u8; 64 * 32 * 4];
+let bytes = vec![0; 64 * 32 * 4];
 
 // Simple sub-rectangle update.
 texture.write_region(&bytes, [0, 0, 64, 32])?;

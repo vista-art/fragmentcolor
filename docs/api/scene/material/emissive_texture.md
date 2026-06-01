@@ -15,7 +15,7 @@ use fragmentcolor::{Material, Renderer};
 
 let renderer = Renderer::new();
 let glow = renderer.create_texture(&[
-    255u8, 0, 0, 255,
+    255, 0, 0, 255,
     255,   0, 0, 255,
     255,   0, 0, 255,
     255,   0, 0, 255,

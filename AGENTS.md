@@ -82,6 +82,7 @@ Big‑picture architecture (how things fit together)
 
 Module‑level invariants (authoritative AGENTS.md files)
 - These short rule files are the source of truth for non‑negotiable behavior. Do not introduce code that violates them.
+  - docs/api/AGENTS.md (canonical doc source: no numeric type suffixes in literals, hidden line placement, patterns the transpiler can / can't translate, no drift tolerance)
   - src/renderer/AGENTS.md (pipelines, targets/present, MSAA/resolve, bind‑group hygiene, thin public API)
   - src/shader/AGENTS.md (mesh ownership, strict attach‑time validation, reflection/mapping order, precise errors)
   - src/mesh/AGENTS.md (schema derivation, CPU/GPU buffer packing/caching, instance handling, validation contract)

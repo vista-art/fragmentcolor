@@ -29,7 +29,7 @@ use fragmentcolor::Material;
 // Direct uniform access for a custom field that isn't covered by the
 // Material setters or by Camera / Light.
 let material = Material::pbr()?;
-material.shader().set("material.alpha_cutoff", 0.25_f32)?;
+material.shader().set("material.alpha_cutoff", 0.25)?;
 # Ok(())
 # }
 ```

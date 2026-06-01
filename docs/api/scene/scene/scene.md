@@ -58,7 +58,7 @@ add your own, your values win.
 use fragmentcolor::{Camera, Light, Material, Mesh, Model, Renderer, Scene, Vertex};
 
 let renderer = Renderer::new();
-let target = renderer.create_texture_target([256u32, 256u32]).await?;
+let target = renderer.create_texture_target([256, 256]).await?;
 
 let mesh = Mesh::new();
 mesh.add_vertex(
@@ -66,7 +66,7 @@ mesh.add_vertex(
 );
 let model = Model::new(mesh, Material::pbr()?.base_color([0.8, 0.3, 0.2, 1.0]));
 
-let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0)
+let camera = Camera::perspective(60.0.to_radians(), 1.0, 0.1, 100.0)
     .look_at([0.0, 0.0, 3.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
 let sun = Light::directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9]);
 

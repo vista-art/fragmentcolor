@@ -25,7 +25,7 @@ let tex = r.create_storage_texture(([64, 64], TextureFormat::Rgba)).await?;
 # _ = tex;
 
 // Pre-seeded with bytes.
-let pixels = vec![0u8; 64 * 64 * 4];
+let pixels = vec![0; 64 * 64 * 4];
 let tex2 = r
     .create_storage_texture(([64, 64], TextureFormat::Rgba, pixels))
     .await?;

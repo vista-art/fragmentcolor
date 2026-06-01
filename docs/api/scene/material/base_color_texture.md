@@ -35,7 +35,7 @@ use fragmentcolor::{Material, Renderer};
 
 let renderer = Renderer::new();
 let albedo = renderer.create_texture(&[
-    255u8, 200, 120, 255,
+    255, 200, 120, 255,
     255,  240, 180, 255,
     230,  180, 100, 255,
     255,  220, 150, 255,

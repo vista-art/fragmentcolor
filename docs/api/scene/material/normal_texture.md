@@ -19,7 +19,7 @@ use fragmentcolor::{Material, Renderer};
 
 let renderer = Renderer::new();
 let normal_map = renderer.create_texture(&[
-    128u8, 128, 255, 255,
+    128, 128, 255, 255,
     128,   128, 255, 255,
     128,   128, 255, 255,
     128,   128, 255, 255,

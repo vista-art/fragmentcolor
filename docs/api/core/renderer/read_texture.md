@@ -12,7 +12,7 @@ Read back the mip-0 contents of a registered texture as tightly-packed bytes in 
 use fragmentcolor::{Renderer, TextureFormat};
 let renderer = Renderer::new();
 let texture = renderer.create_storage_texture(([64, 64], TextureFormat::Rgba)).await?;
-texture.write(&vec![0u8; 64 * 64 * 4])?;
+texture.write(&vec![0; 64 * 64 * 4])?;
 
 let bytes = renderer.read_texture(*texture.id()).await?;
 # assert_eq!(bytes.len(), 64 * 64 * 4);

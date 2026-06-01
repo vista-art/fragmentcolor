@@ -12,7 +12,7 @@ Read back the mip-0 contents of this texture as tightly-packed bytes in the text
 use fragmentcolor::{Renderer, TextureFormat};
 let renderer = Renderer::new();
 let texture = renderer.create_storage_texture(([64, 64], TextureFormat::Rgba)).await?;
-texture.write(&vec![0u8; 64 * 64 * 4])?;
+texture.write(&vec![0; 64 * 64 * 4])?;
 
 let bytes = texture.get_image().await?;
 # assert_eq!(bytes.len(), 64 * 64 * 4);

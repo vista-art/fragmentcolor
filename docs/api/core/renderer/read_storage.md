@@ -32,7 +32,7 @@ buffers are allocated lazily on first bind).
 use fragmentcolor::{Pass, Renderer, Shader};
 
 let renderer = Renderer::new();
-let target = renderer.create_texture_target([16u32, 16u32]).await?;
+let target = renderer.create_texture_target([16, 16]).await?;
 
 let compute = Shader::new(
     r#"

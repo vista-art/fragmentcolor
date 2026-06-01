@@ -24,7 +24,7 @@ frame goes out.
 use fragmentcolor::{Material, Mesh, Model, Renderer, Scene, Vertex};
 
 let renderer = Renderer::new();
-let target = renderer.create_texture_target([64u32, 64u32]).await?;
+let target = renderer.create_texture_target([64, 64]).await?;
 
 let mesh = Mesh::new();
 mesh.add_vertex(
@@ -38,7 +38,7 @@ let red_pixels: Vec<u8> = vec![
     255,   0,   0, 255,    0, 255,   0, 255,
       0,   0, 255, 255,  255, 255, 255, 255,
 ];
-let material = Material::pbr()?.base_color_texture((red_pixels, [2u32, 2u32]));
+let material = Material::pbr()?.base_color_texture((red_pixels, [2, 2]));
 let model = Model::new(mesh, material);
 let scene = Scene::new();
 scene.add(&model)?;

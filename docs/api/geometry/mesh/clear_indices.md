@@ -18,6 +18,6 @@ mesh.add_vertices([
     Vertex::new([ 0.5, -0.5]),
     Vertex::new([ 0.0,  0.5]),
 ]);
-mesh.set_indices([0u32, 1, 2]);
+mesh.set_indices([0, 1, 2]);
 mesh.clear_indices(); // back to auto-derived dedup
 ```

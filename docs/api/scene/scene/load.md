@@ -35,7 +35,7 @@ let scene = Scene::load(
 )?;
 
 // Supply your own camera; it's now the only one the Scene tracks.
-let camera = Camera::perspective(60.0_f32.to_radians(), 16.0 / 9.0, 0.1, 100.0)
+let camera = Camera::perspective(60.0.to_radians(), 16.0 / 9.0, 0.1, 100.0)
     .look_at([0.0, 1.5, 4.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
 scene.add(&camera)?;
 # Ok(())

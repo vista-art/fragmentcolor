@@ -33,5 +33,5 @@ mesh.add_vertices([
     Vertex::new([ 0.5,  0.5]).set("uv", uv11),
     Vertex::new([-0.5,  0.5]).set("uv", uv01),
 ]);
-mesh.set_indices([0u32, 1, 2, 0, 2, 3]);
+mesh.set_indices([0, 1, 2, 0, 2, 3]);
 ```

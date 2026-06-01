@@ -33,7 +33,7 @@ use fragmentcolor::{Mipmap, Renderer, TextureFormat};
 // The dimensions come from the decoded image.
 let chain = Mipmap::build((encoded_png_bytes, TextureFormat::Rgba8UnormSrgb))?;
 
-# let raw_rgba = vec![200u8; 8 * 8 * 4];
+# let raw_rgba = vec![200; 8 * 8 * 4];
 // Raw path: include the size so build skips decoding.
 let chain_raw = Mipmap::build((
     raw_rgba.as_slice(),

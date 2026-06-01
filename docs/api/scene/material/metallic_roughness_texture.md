@@ -17,7 +17,7 @@ use fragmentcolor::{Material, Renderer};
 
 let renderer = Renderer::new();
 let mr_map = renderer.create_texture(&[
-    0u8, 200, 50, 255,
+    0, 200, 50, 255,
     0,   240, 80, 255,
     0,   180, 30, 255,
     0,   220, 60, 255,
