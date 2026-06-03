@@ -23,7 +23,7 @@ mesh.add_vertex(
         .set(Vertex::UV0, [0.0, 0.0]),
 );
 
-let model = Model::new(mesh, Material::pbr()?);
+let model = Model::new(mesh, Material::pbr());
 let identity = model.transform();
 # assert_eq!(identity[0], [1.0, 0.0, 0.0, 0.0]);
 # assert_eq!(identity[3], [0.0, 0.0, 0.0, 1.0]);

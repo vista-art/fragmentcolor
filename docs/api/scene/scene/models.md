@@ -24,7 +24,7 @@ let mesh = Mesh::new();
 mesh.add_vertex(
     Vertex::pbr([0.0, 0.5, 0.0]).set(Vertex::UV0, [0.5, 1.0]),
 );
-let model = Model::new(mesh, Material::pbr()?);
+let model = Model::new(mesh, Material::pbr());
 
 let scene = Scene::new();
 scene.add(&model)?;

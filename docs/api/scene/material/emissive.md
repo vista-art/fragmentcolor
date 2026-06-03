@@ -14,7 +14,7 @@ Maps to the `material.emissive` uniform. Default is `[0, 0, 0]`.
 use fragmentcolor::{Material, Renderer};
 
 let renderer = Renderer::new();
-let lava = Material::pbr()?
+let lava = Material::pbr()
     .base_color([0.1, 0.05, 0.0, 1.0])
     .emissive([1.5, 0.4, 0.1]);
 # let _ = lava;

@@ -31,12 +31,12 @@ inner shader. Mutating one handle changes the state every other handle
 reads:
 
 ```text
-let red = Material::pbr()?.base_color([1.0, 0.0, 0.0, 1.0]);
+let red = Material::pbr().base_color([1.0, 0.0, 0.0, 1.0]);
 let same = red.clone();
 same.base_color([0.0, 1.0, 0.0, 1.0]); // both `red` and `same` now read green
 ```
 
-Same goes for the chained-setter return: `Material::pbr()?.metallic(...)`
+Same goes for the chained-setter return: `Material::pbr().metallic(...)`
 gives you back a handle to the same shader, not a fresh copy. This is the
 mechanic that makes setters chain cheaply and lets one Material drive
 hundreds of Models without per-instance shader duplication.
@@ -87,7 +87,7 @@ mesh.add_vertex(
     Vertex::pbr([0.0, 0.5, 0.0]).set(Vertex::UV0, [0.5, 1.0]),
 );
 
-let material = Material::pbr()?
+let material = Material::pbr()
     .base_color([0.85, 0.2, 0.2, 1.0])
     .metallic(0.0)
     .roughness(0.4)

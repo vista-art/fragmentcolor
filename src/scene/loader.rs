@@ -507,7 +507,7 @@ fn build_material(
     images: &[gltf::image::Data],
 ) -> Result<Material, SceneLoadError> {
     let pbr = gltf_material.pbr_metallic_roughness();
-    let mut material = Material::pbr()?
+    let mut material = Material::pbr()
         .base_color(pbr.base_color_factor())
         .metallic(pbr.metallic_factor())
         .roughness(pbr.roughness_factor())

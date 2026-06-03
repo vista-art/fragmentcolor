@@ -35,15 +35,15 @@ draw call inside a frame.
 # fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{AlphaMode, Material};
 
-let foliage = Material::pbr()?
+let foliage = Material::pbr()
     .alpha_mode(AlphaMode::Mask)
     .alpha_cutoff(0.3);
 
-let glass = Material::pbr()?
+let glass = Material::pbr()
     .base_color([0.9, 0.95, 1.0, 0.25])
     .alpha_mode(AlphaMode::Blend);
 
-let solid = Material::pbr()?.alpha_mode(AlphaMode::Opaque);
+let solid = Material::pbr().alpha_mode(AlphaMode::Opaque);
 # let _ = (foliage, glass, solid);
 # Ok(())
 # }

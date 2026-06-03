@@ -64,7 +64,7 @@ share its light slots:
   returns `Err(PassError::LightCapReached { cap: 32 })`.
 
 For genuinely independent lighting setups, build a separate Material
-per scene (each `Material::pbr()?` allocates a fresh shader, so its 32
+per scene (each `Material::pbr()` allocates a fresh shader, so its 32
 slots are independent) or pass your own shader to `Material::custom`.
 A single scene with one Material covers the typical case. The per-
 shader semantic is what lets `Scene::add(&light)` propagate through
@@ -108,7 +108,7 @@ let mesh = Mesh::new();
 mesh.add_vertex(
     Vertex::pbr([0.0, 0.5, 0.0]).set(Vertex::UV0, [0.5, 1.0]),
 );
-let model = Model::new(mesh, Material::pbr()?);
+let model = Model::new(mesh, Material::pbr());
 
 let sun = Light::directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9])
     .set_intensity(1.5);

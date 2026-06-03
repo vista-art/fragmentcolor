@@ -27,6 +27,7 @@ use crate::shader::ShaderObject;
 
 /// Discriminant for the three light kinds. Wire-compatible with the WGSL
 /// `light.kind` field in `pbr_main.wgsl`: directional=0, point=1, spot=2.
+#[cfg_attr(python, pyo3::pyclass(eq, eq_int))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u32)]
 pub enum LightKind {

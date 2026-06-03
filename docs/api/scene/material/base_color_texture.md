@@ -8,7 +8,7 @@ Accepts any `Into<TextureInput>`:
 - Bytes / path / URL / `DynamicImage`. The setter queues the input on the Material's Shader, and the renderer drains queued uploads on the first [`Renderer::render`](https://fragmentcolor.org/api/core/renderer/render) (or earlier via the explicit [`Renderer::load`](https://fragmentcolor.org/api/core/renderer/load)).
 
 Unset, this slot resolves to a 1×1 white default the renderer hands out
-lazily, so calling `Material::pbr()?` without binding a
+lazily, so calling `Material::pbr()` without binding a
 texture renders correctly under the factor alone.
 
 ## Errors are surfaced lazily
@@ -45,7 +45,7 @@ let albedo = renderer.create_texture(&[
 // texture, 279 shader references.
 let mut blob_materials = Vec::with_capacity(279);
 for _ in 0..279 {
-    blob_materials.push(Material::pbr()?.base_color_texture(&albedo));
+    blob_materials.push(Material::pbr().base_color_texture(&albedo));
 }
 # let _blob_materials = blob_materials;
 # Ok(())

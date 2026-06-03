@@ -14,7 +14,7 @@ perturbation by this value before combining with the world-space normal.
 # fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Material;
 
-let detailed = Material::pbr()?.normal_scale(1.5);
+let detailed = Material::pbr().normal_scale(1.5);
 # let _detailed = detailed;
 # Ok(())
 # }

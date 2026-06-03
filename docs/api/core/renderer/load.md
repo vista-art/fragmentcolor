@@ -38,7 +38,7 @@ let red_pixels: Vec<u8> = vec![
     255,   0,   0, 255,    0, 255,   0, 255,
       0,   0, 255, 255,  255, 255, 255, 255,
 ];
-let material = Material::pbr()?.base_color_texture((red_pixels, [2, 2]));
+let material = Material::pbr().base_color_texture((red_pixels, [2, 2]));
 let model = Model::new(mesh, material);
 let scene = Scene::new();
 scene.add(&model)?;

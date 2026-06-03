@@ -23,8 +23,8 @@ mesh.add_vertex(
         .set(Vertex::UV0, [0.0, 0.0]),
 );
 
-let model = Model::new(mesh, Material::pbr()?);
-model.rotate([0.0, 1.0, 0.0], std::f32::consts::FRAC_PI_2);
+let model = Model::new(mesh, Material::pbr());
+model.rotate([0.0, 1.0, 0.0], 1.571); // 90° around Y
 # Ok(())
 # }
 # fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }

@@ -11,8 +11,8 @@ impl Material {
     #[staticmethod]
     #[pyo3(name = "pbr")]
     #[lsp_doc("docs/api/scene/material/pbr.md")]
-    pub fn pbr_py() -> Result<Self, PyErr> {
-        Material::pbr().map_err(|e| e.into())
+    pub fn pbr_py() -> Self {
+        Material::pbr()
     }
 
     #[staticmethod]

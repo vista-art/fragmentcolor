@@ -24,7 +24,7 @@ let normal_map = renderer.create_texture(&[
     128,   128, 255, 255,
     128,   128, 255, 255,
 ][..]).await?;
-let mat = Material::pbr()?.normal_texture(&normal_map).normal_scale(1.2);
+let mat = Material::pbr().normal_texture(&normal_map).normal_scale(1.2);
 # let _ = mat;
 # Ok(())
 # }

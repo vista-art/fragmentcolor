@@ -22,12 +22,12 @@ use fragmentcolor::Light;
 
 let torch = Light::spot([0.0, 1.8, 1.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
 torch.set_cone_angles(0.15, 0.4)?;
-
-// Non-spot lights error.
-let lamp = Light::point([0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
-let unsupported = lamp.set_cone_angles(0.15, 0.4);
 # assert!((torch.inner_cone_angle().unwrap() - 0.15).abs() < 1.0e-6);
 # assert!((torch.outer_cone_angle().unwrap() - 0.4).abs() < 1.0e-6);
+#
+# // Non-spot lights error.
+# let lamp = Light::point([0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
+# let unsupported = lamp.set_cone_angles(0.15, 0.4);
 # assert!(unsupported.is_err());
 # Ok(())
 # }

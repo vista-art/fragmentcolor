@@ -18,7 +18,7 @@ to position the camera before binding it.
 # fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Camera;
 
-let camera = Camera::perspective(60.0.to_radians(), 16.0 / 9.0, 0.1, 100.0);
+let camera = Camera::perspective(1.047, 16.0 / 9.0, 0.1, 100.0);
 
 # // Perspective collapses the depth axis into a non-trivial matrix; the
 # // [2][3] term encodes the -1 wgpu uses for the homogeneous w divide.

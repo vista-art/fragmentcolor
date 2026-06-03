@@ -30,7 +30,7 @@ mesh.add_vertex(
         .set(Vertex::UV0, [0.0, 0.0]),
 );
 
-let model = Model::new(mesh, Material::pbr()?);
+let model = Model::new(mesh, Material::pbr());
 
 # let _model = model;
 # Ok(())

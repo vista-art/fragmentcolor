@@ -14,7 +14,7 @@ the result into the diffuse term.
 # fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Material;
 
-let crevices = Material::pbr()?.occlusion_strength(0.8);
+let crevices = Material::pbr().occlusion_strength(0.8);
 # let _crevices = crevices;
 # Ok(())
 # }

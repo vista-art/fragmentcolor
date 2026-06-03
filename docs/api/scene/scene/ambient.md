@@ -31,7 +31,7 @@ mesh.add_vertex(
 let scene = Scene::new();
 // Warm dusk ambient — applies to every Material added below.
 scene.ambient([0.06, 0.04, 0.03]);
-scene.add(&Model::new(mesh, Material::pbr()?))?;
+scene.add(&Model::new(mesh, Material::pbr()))?;
 scene.add(&Light::directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9]))?;
 
 renderer.render(&scene, &target)?;

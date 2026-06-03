@@ -15,7 +15,7 @@ mesh.add_vertex(
     Vertex::pbr([0.0, 0.5, 0.0]).set(Vertex::UV0, [0.5, 1.0]),
 );
 
-let model = Model::new(mesh, Material::pbr()?);
+let model = Model::new(mesh, Material::pbr());
 model.mesh().add_vertex(
     Vertex::new([-0.5, -0.5, 0.0])
         .set(Vertex::NORMAL, [0.0, 0.0, 1.0])

@@ -61,7 +61,7 @@ mesh.add_vertex(
     Vertex::pbr([0.0, 0.5, 0.0]).set(Vertex::UV0, [0.5, 1.0]),
 );
 
-let mat = Material::pbr()?.base_color([0.3, 0.6, 1.0, 1.0]);
+let mat = Material::pbr().base_color([0.3, 0.6, 1.0, 1.0]);
 let model = Model::new(mesh, mat);
 model.translate([2.0, 0.0, 0.0]);
 model.scale([1.5, 1.5, 1.5]);

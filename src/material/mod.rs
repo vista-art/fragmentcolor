@@ -25,7 +25,7 @@ use pyo3::prelude::*;
 #[cfg(wasm)]
 use wasm_bindgen::prelude::*;
 
-use crate::{Shader, ShaderError, UniformData};
+use crate::{Shader, UniformData};
 
 mod alpha_mode;
 pub use alpha_mode::AlphaMode;
@@ -53,19 +53,23 @@ crate::impl_fc_kind!(Material, "Material");
 impl Material {
     /// Build a Material with FragmentColor's default physically-based shader.
     ///
-    /// Returns `Err(ShaderError)` only when the registry slugs
-    /// `mesh/transform` and `material/pbr` can't be resolved — i.e. on a
-    /// build that opted out of both the `shaders-mesh` and
-    /// `shaders-material` Cargo features (the default `shaders-all`
-    /// includes both). For web slim builds (`--no-default-features`),
-    /// enable them explicitly:
+    /// Infallible on every supported build configuration. The two registry
+    /// slugs the shader composes from (`mesh/transform` and `material/pbr`)
+    /// are shipped by the default `shaders-all` feature; opting out of both
+    /// `shaders-mesh` and `shaders-material` (rare slim-WASM build) leaves
+    /// the registry unable to satisfy the lookup, which is a programmer
+    /// configuration error and panics with a clear message at construction
+    /// time. For web slim builds (`--no-default-features`), enable the
+    /// shaders explicitly:
     ///
     /// ```text
     /// --features=shaders-mesh,shaders-material
     /// ```
     #[lsp_doc("docs/api/scene/material/pbr.md")]
-    pub fn pbr() -> Result<Self, ShaderError> {
-        let shader = Shader::new(["mesh/transform", "material/pbr", PBR_MAIN])?;
+    pub fn pbr() -> Self {
+        let shader = Shader::new(["mesh/transform", "material/pbr", PBR_MAIN]).expect(
+            "Material::pbr requires the `shaders-mesh` and `shaders-material` cargo features",
+        );
         let material = Self { shader };
         material.apply_defaults();
         // Seed the ShaderObject. The default ShaderObject double_sided is
@@ -74,7 +78,7 @@ impl Material {
         // glTF 2.0's single-sided default.
         material.shader.object.set_alpha_mode(AlphaMode::default());
         material.shader.object.set_double_sided(false);
-        Ok(material)
+        material
     }
 
     #[lsp_doc("docs/api/scene/material/custom.md")]
@@ -98,7 +102,7 @@ impl Material {
         // default `metallic=0` and `roughness=1` instead of glTF's
         // `metallic=1, roughness=1` (which renders as dark gunmetal — fine if
         // you're loading a texture-driven glTF material, but a bad first-
-        // frame for someone calling `Material::pbr()?` and rendering a
+        // frame for someone calling `Material::pbr()` and rendering a
         // flat-color cube).
         let _ = self
             .shader

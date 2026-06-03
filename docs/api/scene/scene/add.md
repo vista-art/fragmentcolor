@@ -36,9 +36,9 @@ let mesh = Mesh::new();
 mesh.add_vertex(
     Vertex::pbr([0.0, 0.5, 0.0]).set(Vertex::UV0, [0.5, 1.0]),
 );
-let model = Model::new(mesh, Material::pbr()?);
+let model = Model::new(mesh, Material::pbr());
 
-let camera = Camera::perspective(60.0.to_radians(), 1.0, 0.1, 100.0)
+let camera = Camera::perspective(1.047, 1.0, 0.1, 100.0)
     .look_at([0.0, 0.0, 3.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
 let sun = Light::directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9]);
 

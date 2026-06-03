@@ -14,7 +14,7 @@ when you want hard-edged cut-out transparency (foliage, chain-link, decals).
 # fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Material;
 
-let foliage = Material::pbr()?.alpha_cutoff(0.3);
+let foliage = Material::pbr().alpha_cutoff(0.3);
 # let _foliage = foliage;
 # Ok(())
 # }

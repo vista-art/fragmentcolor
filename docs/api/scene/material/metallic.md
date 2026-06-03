@@ -15,7 +15,7 @@ under the factor-driven defaults.
 # fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Material;
 
-let chrome = Material::pbr()?.metallic(1.0).roughness(0.05);
+let chrome = Material::pbr().metallic(1.0).roughness(0.05);
 # let _chrome = chrome;
 # Ok(())
 # }

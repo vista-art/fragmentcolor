@@ -12,8 +12,9 @@ without breaking transpilation.
 **Never write type suffixes on numeric literals.** Bare numbers only.
 
 ```
-GOOD: Camera::perspective(60.0.to_radians(), 16.0 / 9.0, 0.1, 100.0)
+GOOD: Camera::perspective(1.047, 16.0 / 9.0, 0.1, 100.0)    // 60° FOV
 BAD : Camera::perspective(60.0_f32.to_radians(), 16.0 / 9.0, 0.1, 100.0)
+BAD : Camera::perspective(60.0.to_radians(), 16.0 / 9.0, 0.1, 100.0)
 
 GOOD: renderer.create_texture_target([16, 16]).await?
 BAD : renderer.create_texture_target([16u32, 16u32]).await?
@@ -36,6 +37,37 @@ the source removes a class of transpiler bugs at the root.
 
 Verification: `cargo test --doc` still passes; the language tabs in the
 generated website show the same clean literal.
+
+## Angles
+
+Every FragmentColor function that takes an angle takes **radians**.
+This is consistent across `Camera::perspective`, `Model::rotate`,
+`Material::uv_transform`, `Light::set_cone_angles`, and any future
+angle-bearing API. Examples must pass radian literals directly. Add
+an inline comment with the degree equivalent for readability when the
+intent helps.
+
+```
+GOOD: Camera::perspective(1.047, 16.0 / 9.0, 0.1, 100.0)    // 60° FOV
+GOOD: Material::pbr().uv_transform([0.5, 0.0], [4.0, 4.0], 0.785)  // 45°
+BAD : Camera::perspective(60.0.to_radians(), 16.0 / 9.0, 0.1, 100.0)
+BAD : Camera::perspective(std::f32::consts::FRAC_PI_3, …, …, …)
+```
+
+Why: `.to_radians()` is a Rust `f32` / `f64` inherent method that has no
+equivalent on Python's `float`, Swift's `Double`, or Kotlin's `Float`
+without a per-language transpiler map. `std::f32::consts::FRAC_PI_4`
+similarly has no clean cross-language translation. A bare numeric
+literal works in every language unchanged.
+
+Reference values worth memorising:
+
+| degrees | radians  | constant   |
+| ------- | -------- | ---------- |
+| 30°     | 0.524    | π / 6      |
+| 45°     | 0.785    | π / 4      |
+| 60°     | 1.047    | π / 3      |
+| 90°     | 1.571    | π / 2      |
 
 ## Hidden lines
 
