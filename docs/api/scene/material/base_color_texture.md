@@ -34,12 +34,13 @@ path resolves at render time but the caller doesn't want to await yet.
 use fragmentcolor::{Material, Renderer};
 
 let renderer = Renderer::new();
-let albedo = renderer.create_texture(&[
+let albedo_bytes: Vec<u8> = vec![
     255, 200, 120, 255,
-    255,  240, 180, 255,
-    230,  180, 100, 255,
-    255,  220, 150, 255,
-][..]).await?;
+    255, 240, 180, 255,
+    230, 180, 100, 255,
+    255, 220, 150, 255,
+];
+let albedo = renderer.create_texture((albedo_bytes, [2, 2])).await?;
 
 // Every Material that points at `albedo` reuses the same uploaded GPU
 // texture; passing the same handle into N Material instances costs one

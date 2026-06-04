@@ -1685,7 +1685,13 @@ mod convert {
                 &mut js_renames,
                 &mut need_rendercanvas_import,
             ) {
-                out.push(mapped);
+                // Preserve the original line's leading whitespace so the
+                // mapped line stays inside any enclosing block (matters for
+                // Python where indentation is grammar). `handle_let_assignment`
+                // accepts the trimmed `t` and emits the body without indent.
+                let indent: String =
+                    s.chars().take_while(|c| c.is_whitespace()).collect();
+                out.push(format!("{}{}", indent, mapped));
                 idx += 1;
                 continue;
             }
@@ -1849,7 +1855,8 @@ mod convert {
                 .into_iter()
                 .map(|line| {
                     let l = capitalize_py_bool_literals(&line);
-                    drop_rust_slice_suffix_py(&l)
+                    let l = drop_rust_slice_suffix_py(&l);
+                    rewrite_py_create_texture_pixels_tuple(&l)
                 })
                 .collect();
             out = rewrite_py_braced_blocks(out);
@@ -1864,6 +1871,79 @@ mod convert {
     /// need the conversion, so drop it.
     fn drop_rust_slice_suffix_py(line: &str) -> String {
         line.replace("[..]", "")
+    }
+
+    /// Rewrite `renderer.create_texture((bytes, [w, h]))` →
+    /// `renderer.create_texture(bytes, size=[w, h])`. The Rust API takes
+    /// a tuple via `impl Into<TextureInput>`; the Python binding uses
+    /// keyword arguments instead (`create_texture(input, size=...)`).
+    /// Only fires when the outer call's single argument is a parenthesised
+    /// tuple of exactly two top-level elements.
+    fn rewrite_py_create_texture_pixels_tuple(line: &str) -> String {
+        let needle = "create_texture(";
+        let Some(start) = line.find(needle) else {
+            return line.to_string();
+        };
+        let chars: Vec<char> = line.chars().collect();
+        let arg_start = start + needle.len();
+        if arg_start >= chars.len() || chars[arg_start] != '(' {
+            return line.to_string();
+        }
+        // Walk the outer paren of the tuple to find its closing `)`.
+        let mut depth = 0i32;
+        let mut j = arg_start;
+        let mut tuple_end = None;
+        while j < chars.len() {
+            match chars[j] {
+                '(' => depth += 1,
+                ')' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        tuple_end = Some(j);
+                        break;
+                    }
+                }
+                _ => {}
+            }
+            j += 1;
+        }
+        let Some(tuple_end) = tuple_end else {
+            return line.to_string();
+        };
+        // The next char after `tuple_end` must be `)` so the entire
+        // `create_texture( ... )` call closes immediately after the tuple.
+        if tuple_end + 1 >= chars.len() || chars[tuple_end + 1] != ')' {
+            return line.to_string();
+        }
+        // Split the tuple body at the top-level comma.
+        let body: String = chars[arg_start + 1..tuple_end].iter().collect();
+        let mut depth = 0i32;
+        let mut split_at = None;
+        for (idx, c) in body.chars().enumerate() {
+            match c {
+                '(' | '[' | '{' => depth += 1,
+                ')' | ']' | '}' => depth -= 1,
+                ',' if depth == 0 => {
+                    split_at = Some(idx);
+                    break;
+                }
+                _ => {}
+            }
+        }
+        let Some(split_at) = split_at else {
+            return line.to_string();
+        };
+        let bytes_part = body[..split_at].trim();
+        let size_part = body[split_at + 1..].trim();
+        let mut out = String::new();
+        out.push_str(&chars[..arg_start].iter().collect::<String>());
+        out.push('(');
+        out.push_str(bytes_part);
+        out.push_str(", size=");
+        out.push_str(size_part);
+        out.push(')');
+        out.push_str(&chars[tuple_end + 2..].iter().collect::<String>());
+        out
     }
 
     /// Convert Rust-style braced bodies (`for x in y { ... }`,

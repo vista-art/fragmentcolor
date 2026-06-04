@@ -14,12 +14,13 @@ emission falls back to the `material.emissive` factor as-is.
 use fragmentcolor::{Material, Renderer};
 
 let renderer = Renderer::new();
-let glow = renderer.create_texture(&[
+let glow_bytes: Vec<u8> = vec![
     255, 0, 0, 255,
     255,   0, 0, 255,
     255,   0, 0, 255,
     255,   0, 0, 255,
-][..]).await?;
+];
+let glow = renderer.create_texture((glow_bytes, [2, 2])).await?;
 let mat = Material::pbr()
     .emissive([0.8, 0.0, 0.0])
     .emissive_texture(&glow);

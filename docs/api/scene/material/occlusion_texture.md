@@ -15,12 +15,13 @@ occlusion factor is `1.0` and no darkening is applied.
 use fragmentcolor::{Material, Renderer};
 
 let renderer = Renderer::new();
-let ao = renderer.create_texture(&[
+let ao_bytes: Vec<u8> = vec![
     220, 0, 0, 255,
     180,   0, 0, 255,
     200,   0, 0, 255,
     160,   0, 0, 255,
-][..]).await?;
+];
+let ao = renderer.create_texture((ao_bytes, [2, 2])).await?;
 let mat = Material::pbr().occlusion_texture(&ao);
 # let _ = mat;
 # Ok(())

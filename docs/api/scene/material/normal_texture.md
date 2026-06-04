@@ -18,12 +18,13 @@ normal passes through unchanged.
 use fragmentcolor::{Material, Renderer};
 
 let renderer = Renderer::new();
-let normal_map = renderer.create_texture(&[
+let normal_map_bytes: Vec<u8> = vec![
     128, 128, 255, 255,
     128,   128, 255, 255,
     128,   128, 255, 255,
     128,   128, 255, 255,
-][..]).await?;
+];
+let normal_map = renderer.create_texture((normal_map_bytes, [2, 2])).await?;
 let mat = Material::pbr().normal_texture(&normal_map).normal_scale(1.2);
 # let _ = mat;
 # Ok(())

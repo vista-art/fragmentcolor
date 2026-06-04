@@ -16,12 +16,13 @@ the factor multiplication passes both `material.metallic` and
 use fragmentcolor::{Material, Renderer};
 
 let renderer = Renderer::new();
-let mr_map = renderer.create_texture(&[
+let mr_map_bytes: Vec<u8> = vec![
     0, 200, 50, 255,
     0,   240, 80, 255,
     0,   180, 30, 255,
     0,   220, 60, 255,
-][..]).await?;
+];
+let mr_map = renderer.create_texture((mr_map_bytes, [2, 2])).await?;
 let mat = Material::pbr().metallic_roughness_texture(&mr_map);
 # let _ = mat;
 # Ok(())
