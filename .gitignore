@@ -8,6 +8,12 @@
 **/.build/
 /.claude/
 
+# Minimal glTF test fixtures materialised by build.rs so the
+# `Scene::load("path/to/model.glb")` examples have a real file to open
+# when the Python healthcheck runs. Regenerated on every cargo build via
+# scripts/website.rs::write_scene_load_fixtures(); never committed.
+/path/
+
 # Gradle / Android per-machine + build outputs
 **/.gradle/
 platforms/kotlin/local.properties
