@@ -278,6 +278,15 @@ impl PyTextureTarget {
             Ok(arr.unbind())
         })
     }
+
+    /// Return a sampleable `Texture` handle that aliases this target's
+    /// offscreen storage. Mirrors the Rust-side `TextureTarget::texture`
+    /// inherent method so the Python binding has the same single-call
+    /// shape `target.texture()` the docs example uses.
+    #[lsp_doc("docs/api/targets/texture_target/texture.md")]
+    pub fn texture(&self) -> crate::texture::Texture {
+        self.inner.texture()
+    }
 }
 
 impl From<crate::TextureTarget> for PyTextureTarget {

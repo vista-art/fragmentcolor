@@ -9,4 +9,4 @@
 #   unresolved:<lsp_doc_path>:<comma_separated_credited_platforms>
 #   unlabeled:<workspace-relative-file>:<fn_name>
 
-gap:docs/api/targets/texture_target/texture.md:python,swift,kotlin
+gap:docs/api/targets/texture_target/texture.md:swift,kotlin
