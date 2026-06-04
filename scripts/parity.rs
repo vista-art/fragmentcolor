@@ -763,7 +763,7 @@ mod parity {
                 continue;
             }
             let name = p.file_name().and_then(|s| s.to_str()).unwrap_or_default();
-            if name == "README.md" || name == "_index.md" {
+            if name == "README.md" || name == "_index.md" || name == "AGENTS.md" {
                 continue;
             }
             // Skip object-level docs (e.g. `core/shader/shader.md`). Those describe
