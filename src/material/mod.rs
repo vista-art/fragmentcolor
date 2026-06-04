@@ -67,9 +67,10 @@ impl Material {
     /// ```
     #[lsp_doc("docs/api/scene/material/pbr.md")]
     pub fn pbr() -> Self {
-        let shader = Shader::new(["mesh/transform", "material/pbr", PBR_MAIN]).expect(
-            "SAFETY: Material::pbr depends on the `shaders-mesh` and `shaders-material` registry entries shipped by the default `shaders-all` feature. A build that opts out of both is a programmer configuration error, not a runtime fault, so the panic here surfaces the misconfiguration at the call site instead of leaking through every caller as a Result."
-        );
+        // SAFETY-justified expect: the two registry slugs the PBR shader composes from are shipped
+        // by the default `shaders-all` feature. A build that opts out of both `shaders-mesh` and
+        // `shaders-material` is a programmer configuration error, not a runtime fault.
+        let shader = Shader::new(["mesh/transform", "material/pbr", PBR_MAIN]).expect("SAFETY: requires `shaders-mesh` + `shaders-material` cargo features; default `shaders-all` provides both");
         let material = Self { shader };
         material.apply_defaults();
         // Seed the ShaderObject. The default ShaderObject double_sided is
