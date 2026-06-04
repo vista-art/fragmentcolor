@@ -1935,9 +1935,11 @@ mod convert {
         };
         let bytes_part = body[..split_at].trim();
         let size_part = body[split_at + 1..].trim();
+        // `chars[..arg_start]` already includes the outer `create_texture(`
+        // paren; emit the new args and the matching outer `)` directly.
+        // `tuple_end + 1` is the outer closing `)`; skip past it.
         let mut out = String::new();
         out.push_str(&chars[..arg_start].iter().collect::<String>());
-        out.push('(');
         out.push_str(bytes_part);
         out.push_str(", size=");
         out.push_str(size_part);
