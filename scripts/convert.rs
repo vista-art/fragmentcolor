@@ -1838,8 +1838,171 @@ mod convert {
             out = out2;
         }
 
+        // Python: capitalize `true` / `false` to Python's `True` / `False`.
+        // Match standalone identifier tokens only (no leading/trailing ident
+        // char), and skip lines that look like string literals or comments.
+        // Also strip the Rust full-range slice tail `[..]` and convert
+        // `for x in y { ... }` blocks into Python `for x in y: ...` with
+        // the body re-indented one level under the `for:` header.
+        if matches!(lang, Lang::Py) {
+            out = out
+                .into_iter()
+                .map(|line| {
+                    let l = capitalize_py_bool_literals(&line);
+                    drop_rust_slice_suffix_py(&l)
+                })
+                .collect();
+            out = rewrite_py_braced_blocks(out);
+        }
+
         // Normalize ending newline joining in caller
         out.join("\n")
+    }
+
+    /// Strip Rust's full-range slice tail `[..]`. Used to coerce
+    /// `&[..]` / `array[..]` into a `&[T]` slice in Rust; Python doesn't
+    /// need the conversion, so drop it.
+    fn drop_rust_slice_suffix_py(line: &str) -> String {
+        line.replace("[..]", "")
+    }
+
+    /// Convert Rust-style braced bodies (`for x in y { ... }`,
+    /// `if expr { ... }`, `while expr { ... }`) into Python `:` + indent
+    /// form. Operates on the line vector after every per-line rewrite so
+    /// the brace + content already match Rust shape verbatim. Conservative:
+    /// only matches headers that end with `{` and bodies that close with
+    /// a standalone `}` on its own line.
+    fn rewrite_py_braced_blocks(lines: Vec<String>) -> Vec<String> {
+        let mut out: Vec<String> = Vec::with_capacity(lines.len());
+        let header_pat = regex_simple_header;
+        // Track open-block context as a stack of (header_indent_len)
+        let mut block_stack: Vec<usize> = Vec::new();
+        for raw in lines {
+            let trimmed = raw.trim_start();
+            let indent_len = raw.len() - trimmed.len();
+            // Close any blocks whose body ended with a bare `}` line.
+            if trimmed == "}" || trimmed.starts_with("} ") || trimmed.starts_with("}\t") {
+                // Pop one block; emit nothing (Python ends a block by dedent).
+                block_stack.pop();
+                continue;
+            }
+            // Header rewrite: `for x in y {` / `while cond {` / `if cond {`.
+            if let Some(header_no_brace) = header_pat(trimmed) {
+                let indent: String = raw.chars().take_while(|c| c.is_whitespace()).collect();
+                out.push(format!("{}{}:", indent, header_no_brace));
+                block_stack.push(indent_len);
+                continue;
+            }
+            out.push(raw);
+        }
+        out
+    }
+
+    /// Recognise a Rust-style block header line and return the header text
+    /// without the trailing `{`. Supports `for x in y`, `if expr`,
+    /// `while expr`, `loop`. Body must be on subsequent lines (header ends
+    /// with `{`).
+    fn regex_simple_header(trimmed: &str) -> Option<String> {
+        let trimmed = trimmed.trim_end();
+        if !trimmed.ends_with('{') {
+            return None;
+        }
+        let head = trimmed[..trimmed.len() - 1].trim_end();
+        // Translate `0..N` ranges inside for-headers to `range(N)` for
+        // Python: only the simple `for IDENT in 0..N` shape; richer
+        // expressions are out of scope here.
+        if let Some(rest) = head.strip_prefix("for ") {
+            // Find ` in ` separator.
+            if let Some(in_pos) = rest.find(" in ") {
+                let var = rest[..in_pos].trim();
+                let iter_expr = rest[in_pos + 4..].trim();
+                // `0..N` → `range(N)`; `a..b` → `range(a, b)`.
+                let py_iter = if let Some((lo, hi)) = iter_expr.split_once("..") {
+                    let lo = lo.trim();
+                    let hi = hi.trim();
+                    if lo == "0" {
+                        format!("range({})", hi)
+                    } else {
+                        format!("range({}, {})", lo, hi)
+                    }
+                } else {
+                    iter_expr.to_string()
+                };
+                return Some(format!("for {} in {}", var, py_iter));
+            }
+        }
+        if let Some(rest) = head.strip_prefix("if ") {
+            return Some(format!("if {}", rest.trim()));
+        }
+        if let Some(rest) = head.strip_prefix("while ") {
+            return Some(format!("while {}", rest.trim()));
+        }
+        if head == "loop" {
+            return Some("while True".to_string());
+        }
+        None
+    }
+
+    /// Replace standalone `true` / `false` tokens with Python's `True` /
+    /// `False`. Skips matches inside double-quoted strings and after a `#`
+    /// comment marker. Word-boundary aware so identifiers like
+    /// `is_truthy` or `falseflag` are left alone.
+    fn capitalize_py_bool_literals(line: &str) -> String {
+        let chars: Vec<char> = line.chars().collect();
+        let mut out = String::with_capacity(line.len());
+        let mut i = 0usize;
+        let mut in_string: Option<char> = None;
+        let mut in_comment = false;
+        while i < chars.len() {
+            let c = chars[i];
+            if in_comment {
+                out.push(c);
+                i += 1;
+                continue;
+            }
+            if let Some(q) = in_string {
+                out.push(c);
+                if c == q && (i == 0 || chars[i - 1] != '\\') {
+                    in_string = None;
+                }
+                i += 1;
+                continue;
+            }
+            if c == '"' || c == '\'' {
+                in_string = Some(c);
+                out.push(c);
+                i += 1;
+                continue;
+            }
+            if c == '#' {
+                in_comment = true;
+                out.push(c);
+                i += 1;
+                continue;
+            }
+            // Try to match `true` or `false` at word boundary.
+            let left_ok = i == 0 || !is_ident_char(chars[i - 1]);
+            if left_ok {
+                let rest: String = chars[i..].iter().collect();
+                if rest.starts_with("true")
+                    && rest.chars().nth(4).is_none_or(|n| !is_ident_char(n))
+                {
+                    out.push_str("True");
+                    i += 4;
+                    continue;
+                }
+                if rest.starts_with("false")
+                    && rest.chars().nth(5).is_none_or(|n| !is_ident_char(n))
+                {
+                    out.push_str("False");
+                    i += 5;
+                    continue;
+                }
+            }
+            out.push(c);
+            i += 1;
+        }
+        out
     }
 
     // Replace occurrences of Type.new(args) -> Type(args) in a best-effort way (no regex).

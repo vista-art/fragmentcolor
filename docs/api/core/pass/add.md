@@ -36,9 +36,9 @@ let camera = Camera::perspective(1.047, 1.0, 0.1, 100.0)
 let sun = Light::directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9]);
 
 let pass = Pass::new("scene");
-pass.add(&model)?
-    .add(&camera)?
-    .add(&sun)?;
+pass.add(&model)?;
+pass.add(&camera)?;
+pass.add(&sun)?;
 
 // Updating the camera later is enough — every Model already on the pass
 // picks the new view_proj up at the next render.

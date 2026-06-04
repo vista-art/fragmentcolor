@@ -41,13 +41,11 @@ let albedo = renderer.create_texture(&[
     255,  220, 150, 255,
 ][..]).await?;
 
-// 279 blob Materials all sample the same uploaded `albedo` — one GPU
-// texture, 279 shader references.
-let mut blob_materials = Vec::with_capacity(279);
-for _ in 0..279 {
-    blob_materials.push(Material::pbr().base_color_texture(&albedo));
-}
-# let _blob_materials = blob_materials;
+// Every Material that points at `albedo` reuses the same uploaded GPU
+// texture; passing the same handle into N Material instances costs one
+// upload and N shader-uniform references.
+let blob = Material::pbr().base_color_texture(&albedo);
+# let _ = blob;
 # Ok(())
 # }
 # fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }

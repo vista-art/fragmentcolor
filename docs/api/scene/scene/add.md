@@ -43,10 +43,9 @@ let camera = Camera::perspective(1.047, 1.0, 0.1, 100.0)
 let sun = Light::directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9]);
 
 let scene = Scene::new();
-scene
-    .add(&model)?
-    .add(&camera)?
-    .add(&sun)?;
+scene.add(&model)?;
+scene.add(&camera)?;
+scene.add(&sun)?;
 
 // Updating the camera later is enough — every shader on the scene picks
 // the new view_proj up at the next render.
