@@ -833,6 +833,8 @@ mod swift {
             ".baseColor(",
             ".emissive(",
             ".uvTransform(",
+            // Scene (extension)
+            ".ambient(",
         ];
         // Constructors (type inits) that are `throws`.
         // Matched as `let x = TypeName(` or standalone `TypeName(`.

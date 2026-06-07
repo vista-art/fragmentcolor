@@ -48,6 +48,24 @@ extension Texture {
         try writeRegion(bytes.map { UInt8(clamping: $0) }, rect)
     }
 
+    // Pre-built `TextureRegionMobile` overload — used by the
+    // `TextureRegionMobile.from(_:).withStride(_:).withRows(_:)` builder
+    // chain in `write_region.md`. Without this the Swift overload resolver
+    // picks the `[Int]` overload above and complains that a
+    // `TextureRegionMobile` can't be passed where `[Int]` is expected.
+
+    public func writeRegion(_ bytes: Data, _ region: TextureRegionMobile) throws {
+        try writeRegion(bytes: bytes, region: region)
+    }
+
+    public func writeRegion(_ bytes: [UInt8], _ region: TextureRegionMobile) throws {
+        try writeRegion(Data(bytes), region)
+    }
+
+    public func writeRegion(_ bytes: [Int], _ region: TextureRegionMobile) throws {
+        try writeRegion(bytes.map { UInt8(clamping: $0) }, region)
+    }
+
     // MARK: - setSamplerOptions convenience
 
     public func setSamplerOptions(_ opts: SamplerOptions) {

@@ -286,14 +286,13 @@ ensure_playwright() {
   echo "[ensure_playwright] pnpm i in $dir"
   ( cd "$dir" && timeout 300 pnpm i --no-frozen-lockfile --no-optional --ignore-scripts ) || \
     echo "[ensure_playwright] pnpm i failed/timed out (continuing)"
-  # Install BOTH chromium and chromium-headless-shell. Playwright 1.49+
-  # uses a separate headless-shell binary for headless: true mode; the
-  # plain `chromium` install no longer bundles it, so a launch with
-  # headless:true throws "Executable doesn't exist at .../chromium_headless_shell-…".
-  # Listing both browsers in one install command keeps the network hop
-  # to a single hop and avoids the previous silent retry hang.
-  echo "[ensure_playwright] pnpm exec playwright install chromium chromium-headless-shell"
-  ( cd "$dir" && timeout 600 pnpm exec playwright install chromium chromium-headless-shell ) || \
+  # Install only `chromium-headless-shell`. Playwright 1.49+ ships the
+  # headless-shell binary as a separate package; `chromium.launch({headless:true})`
+  # uses it directly. Installing the full `chromium` build (head + headless
+  # shell) doubles the download (~340 MB total) and pushed the previous run
+  # past the 10-min step timeout. Headless-shell alone is ~70 MB.
+  echo "[ensure_playwright] pnpm exec playwright install chromium-headless-shell"
+  ( cd "$dir" && timeout 300 pnpm exec playwright install chromium-headless-shell ) || \
     echo "[ensure_playwright] playwright install failed/timed out (continuing)"
 }
 
