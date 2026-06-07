@@ -1,6 +1,6 @@
 # 01-hello-triangle
 
-This directory holds only the **code** for the four steps of the tutorial.
+This directory holds only the **code** for the six steps of the tutorial.
 Each step has an `example.rs` (canonical Rust source, registered as a
 `cargo --example` target) and an `example.js` (hand-written JS port the
 docs-site `<Demo>` component imports).

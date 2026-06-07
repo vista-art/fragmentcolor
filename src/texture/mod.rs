@@ -15,6 +15,9 @@ pub use sampler::*;
 pub mod format;
 pub use format::*;
 
+pub mod usage;
+pub use usage::TextureUsage;
+
 pub(crate) mod ktx2_loader;
 
 mod platform;
@@ -66,26 +69,22 @@ pub enum TextureData {
     Ktx2Path(std::path::PathBuf),
     /// HTTP(S) URL pointing at a `.ktx2` file. Fetched the same way as `Url`.
     Ktx2Url(String),
-    /// A pre-computed CPU mipmap chain produced by
-    /// [`TextureMipChain::prepare`] (encoded image bytes) or
-    /// [`TextureMipChain::prepare_raw`] (raw pixel bytes). Lets a worker
-    /// thread (or any non-render thread) do the decode + mip generation,
-    /// then hand the prepared chain to `Renderer::create_texture` for a
-    /// GPU-only upload. The library already runs that prep on a background
-    /// thread for `Bytes`/`Path`/`Url`/`DynamicImage` inputs; reach for this
-    /// only when sharing a chain across textures or when you want explicit
-    /// control over which thread does the work. Cross-language callers
-    /// typically don't construct this variant — they hand `TextureMipChain` directly to
-    /// constructing this variant directly. They hand a `TextureMipChain`
-    /// straight to `Renderer::create_texture` and the unified entry point
-    /// dispatches via `From<TextureMipChain> for TextureInput`.
-    Prepared(TextureMipChain),
+    /// A pre-computed CPU mipmap chain produced by [`Mipmap::build`]. Lets a
+    /// worker thread (or any non-render thread) do the decode + mip
+    /// generation, then hand the prepared chain to `Renderer::create_texture`
+    /// for a GPU-only upload. The library already runs that prep on a
+    /// background thread for `Bytes`/`Path`/`Url`/`DynamicImage` inputs; reach
+    /// for this only when sharing a chain across textures or when you want
+    /// explicit control over which thread does the work. Cross-language
+    /// callers typically don't construct this variant directly — they hand a
+    /// [`Mipmap`] straight to `Renderer::create_texture` and the unified
+    /// entry point dispatches via `From<Mipmap> for TextureInput`.
+    Prepared(Mipmap),
 }
 
-/// A pre-computed CPU mipmap chain. Build with [`TextureMipChain::prepare`]
-/// (encoded image bytes) or [`TextureMipChain::prepare_raw`] (raw pixel bytes),
-/// then pass to [`crate::Renderer::create_texture`] (the unified entry
-/// point dispatches via `From<TextureMipChain> for TextureInput`).
+/// A pre-computed CPU mipmap chain. Build with [`Mipmap::build`], then pass
+/// to [`crate::Renderer::create_texture`] (the unified entry point
+/// dispatches via `From<Mipmap> for TextureInput`).
 ///
 /// Levels are tightly-packed bytes, level 0 first, with `bytes_per_pixel(format) *
 /// max(1, base_w >> level) * max(1, base_h >> level)` bytes per level.
@@ -93,8 +92,8 @@ pub enum TextureData {
 #[cfg_attr(python, pyclass(from_py_object))]
 #[cfg_attr(mobile, derive(uniffi::Object))]
 #[derive(Debug, Clone)]
-#[lsp_doc("docs/api/core/texture_mip_chain/texture_mip_chain.md")]
-pub struct TextureMipChain {
+#[lsp_doc("docs/api/texture/mipmap/mipmap.md")]
+pub struct Mipmap {
     pub(crate) format: wgpu::TextureFormat,
     pub(crate) base_size: (u32, u32),
     /// Tightly-packed mip levels, level 0 first. Wrapped in `Arc` so cloning
@@ -103,13 +102,13 @@ pub struct TextureMipChain {
     pub(crate) levels: std::sync::Arc<Vec<Vec<u8>>>,
 }
 
-crate::impl_fc_kind!(TextureMipChain, "TextureMipChain");
+crate::impl_fc_kind!(Mipmap, "Mipmap");
 // Brand-anchored TryFrom<&JsValue> so the JS dispatch in TextureInput's
-// TryFrom can detect a TextureMipChain handle (recovered via __wbg_ptr +
+// TryFrom can detect a Mipmap handle (recovered via __wbg_ptr +
 // __fc_kind brand) and route it as TextureInput::Prepared.
-crate::impl_js_bridge!(TextureMipChain, crate::texture::TextureError);
+crate::impl_js_bridge!(Mipmap, crate::texture::TextureError);
 
-impl TextureMipChain {
+impl Mipmap {
     /// Build a mip chain from a [`TextureInput`]. Pure CPU work — call from
     /// any thread (worker, thread pool, async task), then hand the chain to
     /// [`crate::Renderer::create_texture`] on the renderer thread for a
@@ -121,13 +120,13 @@ impl TextureMipChain {
     ///
     /// ```ignore
     /// // Encoded image bytes (PNG / JPEG / etc.) — size inferred from the image.
-    /// TextureMipChain::prepare((png_bytes, TextureFormat::Rgba8UnormSrgb))?;
+    /// Mipmap::build((png_bytes, TextureFormat::Rgba8UnormSrgb))?;
     ///
     /// // Raw pixel bytes — caller declares the dimensions.
-    /// TextureMipChain::prepare((rgba_bytes, TextureFormat::Rgba8UnormSrgb, [w, h]))?;
+    /// Mipmap::build((rgba_bytes, TextureFormat::Rgba8UnormSrgb, [w, h]))?;
     /// ```
     ///
-    /// `prepare` requires a sync-friendly `data` variant: `Bytes`,
+    /// `build` requires a sync-friendly `data` variant: `Bytes`,
     /// `DynamicImage`, or `Path` (file IO). `Url` (needs async fetch),
     /// `Ktx2*` (already pre-baked), `Prepared` (already a chain),
     /// `CloneOf` (existing texture), and `Empty` (nothing to chain) all
@@ -137,8 +136,8 @@ impl TextureMipChain {
     /// `Rgba8UnormSrgb`, `Bgra8Unorm`, `Bgra8UnormSrgb`, `R8Unorm`,
     /// `Rg8Unorm`, `R16Unorm`, `Rg16Unorm`, `Rgba16Unorm`. Other formats
     /// return [`TextureError::UnsupportedMipmapFormat`].
-    #[lsp_doc("docs/api/core/texture_mip_chain/prepare.md")]
-    pub fn prepare(input: impl Into<crate::TextureInput>) -> Result<TextureMipChain, TextureError> {
+    #[lsp_doc("docs/api/texture/mipmap/build.md")]
+    pub fn build(input: impl Into<crate::TextureInput>) -> Result<Mipmap, TextureError> {
         let crate::TextureInput { data, options } = input.into();
         let public_format = options.format;
         let wfmt: wgpu::TextureFormat = public_format.into();
@@ -156,14 +155,14 @@ impl TextureMipChain {
                     let extent: wgpu::Extent3d = size.into();
                     if extent.width == 0 || extent.height == 0 {
                         return Err(TextureError::InvalidInput(
-                            "prepare: size must be non-zero in both dimensions".into(),
+                            "build: size must be non-zero in both dimensions".into(),
                         ));
                     }
                     let bpp = bytes_per_pixel(wfmt) as usize;
                     let expected = bpp * (extent.width as usize) * (extent.height as usize);
                     if bytes.len() < expected {
                         return Err(TextureError::InvalidInput(format!(
-                            "prepare: expected {} bytes for {}x{} @ {} bpp, got {}",
+                            "build: expected {} bytes for {}x{} @ {} bpp, got {}",
                             expected,
                             extent.width,
                             extent.height,
@@ -182,27 +181,27 @@ impl TextureMipChain {
             // on for shape mismatches.
             TextureData::Empty => {
                 return Err(TextureError::InvalidInput(
-                    "prepare: TextureData::Empty has no bytes to chain".into(),
+                    "build: TextureData::Empty has no bytes to chain".into(),
                 ));
             }
             TextureData::Url(_) => {
                 return Err(TextureError::InvalidInput(
-                    "prepare: TextureData::Url requires async fetch — fetch bytes first, then call prepare with the bytes".into(),
+                    "build: TextureData::Url requires async fetch — fetch bytes first, then call build with the bytes".into(),
                 ));
             }
             TextureData::Ktx2Bytes(_) | TextureData::Ktx2Path(_) | TextureData::Ktx2Url(_) => {
                 return Err(TextureError::InvalidInput(
-                    "prepare: KTX2 inputs already carry a pre-baked mip chain — pass them directly to Renderer::create_texture".into(),
+                    "build: KTX2 inputs already carry a pre-baked mip chain — pass them directly to Renderer::create_texture".into(),
                 ));
             }
             TextureData::Prepared(_) => {
                 return Err(TextureError::InvalidInput(
-                    "prepare: TextureData::Prepared is already a TextureMipChain — pass it directly to Renderer::create_texture".into(),
+                    "build: TextureData::Prepared is already a Mipmap — pass it directly to Renderer::create_texture".into(),
                 ));
             }
             TextureData::CloneOf(_) => {
                 return Err(TextureError::InvalidInput(
-                    "prepare: TextureData::CloneOf wraps an existing texture; nothing to chain"
+                    "build: TextureData::CloneOf wraps an existing texture; nothing to chain"
                         .into(),
                 ));
             }
@@ -214,11 +213,11 @@ impl TextureMipChain {
         image: &DynamicImage,
         public_format: crate::TextureFormat,
         format: wgpu::TextureFormat,
-    ) -> Result<TextureMipChain, TextureError> {
+    ) -> Result<Mipmap, TextureError> {
         let (width, height) = image.dimensions();
         if width == 0 || height == 0 {
             return Err(TextureError::InvalidInput(
-                "prepare: decoded image has zero width or height".into(),
+                "build: decoded image has zero width or height".into(),
             ));
         }
         let levels = build_mip_chain(image, format).map_err(|err| match err {
@@ -230,7 +229,7 @@ impl TextureMipChain {
             },
             other => other,
         })?;
-        Ok(TextureMipChain {
+        Ok(Mipmap {
             format,
             base_size: (width, height),
             levels: std::sync::Arc::new(levels),
@@ -238,24 +237,24 @@ impl TextureMipChain {
     }
 }
 
-impl TextureMipChain {
-    /// The wgpu format the chain was prepared for.
-    pub fn format(&self) -> wgpu::TextureFormat {
-        self.format
+impl Mipmap {
+    #[lsp_doc("docs/api/texture/mipmap/format.md")]
+    pub fn format(&self) -> crate::TextureFormat {
+        self.format.into()
     }
 
-    /// Base level dimensions (level 0).
-    pub fn base_size(&self) -> (u32, u32) {
+    #[lsp_doc("docs/api/texture/mipmap/size.md")]
+    pub fn size(&self) -> (u32, u32) {
         self.base_size
     }
 
-    /// Tightly-packed bytes per mip level, level 0 first.
+    #[lsp_doc("docs/api/texture/mipmap/levels.md")]
     pub fn levels(&self) -> &[Vec<u8>] {
         &self.levels
     }
 
-    /// Number of mip levels in the chain (>= 1).
-    pub fn level_count(&self) -> usize {
+    #[lsp_doc("docs/api/texture/mipmap/count.md")]
+    pub fn count(&self) -> usize {
         self.levels.len()
     }
 }
@@ -295,8 +294,8 @@ impl From<&Texture> for TextureData {
         TextureData::CloneOf(t.clone())
     }
 }
-impl From<TextureMipChain> for TextureData {
-    fn from(chain: TextureMipChain) -> Self {
+impl From<Mipmap> for TextureData {
+    fn from(chain: Mipmap) -> Self {
         TextureData::Prepared(chain)
     }
 }
@@ -318,7 +317,7 @@ pub enum TextureInputMobile {
     Path(String),
     Url(String),
     CloneOf(std::sync::Arc<Texture>),
-    Prepared(std::sync::Arc<TextureMipChain>),
+    Prepared(std::sync::Arc<Mipmap>),
     Ktx2Bytes(Vec<u8>),
     Ktx2Path(String),
     Ktx2Url(String),
@@ -348,11 +347,11 @@ impl TryFrom<&wasm_bindgen::JsValue> for TextureData {
         use js_sys::{Array, ArrayBuffer, Uint8Array, Uint8ClampedArray};
         use wasm_bindgen::JsCast;
 
-        // Case: TextureMipChain handle (built off-thread via TextureMipChain.prepare).
+        // Case: Mipmap handle (built off-thread via Mipmap.build).
         // Detected through the branded __fc_kind + __wbg_ptr anchor so it
         // survives bundler renaming. Must come before the Uint8Array / object
         // cases because wasm-bindgen handles also satisfy `is_object()`.
-        if let Ok(chain) = TextureMipChain::try_from(value) {
+        if let Ok(chain) = Mipmap::try_from(value) {
             return Ok(TextureData::Prepared(chain));
         }
 
@@ -562,7 +561,7 @@ impl std::fmt::Display for TextureId {
 #[cfg_attr(python, pyclass(from_py_object))]
 #[cfg_attr(mobile, derive(uniffi::Object))]
 #[derive(Clone, Debug)]
-#[lsp_doc("docs/api/core/texture/texture.md")]
+#[lsp_doc("docs/api/texture/texture/texture.md")]
 pub struct Texture {
     pub(crate) context: Arc<RenderContext>,
     pub(crate) object: Arc<TextureObject>,
@@ -587,35 +586,35 @@ impl Texture {
 
     /// Return the stable TextureId for this texture.
     /// The id is valid within the Renderer that created it.
-    #[lsp_doc("docs/api/core/texture/id.md")]
+    #[lsp_doc("docs/api/texture/texture/id.md")]
     pub fn id(&self) -> &TextureId {
         &self.id
     }
 
-    #[lsp_doc("docs/api/core/texture/size.md")]
+    #[lsp_doc("docs/api/texture/texture/size.md")]
     pub fn size(&self) -> crate::Size {
         self.object.size()
     }
 
-    #[lsp_doc("docs/api/core/texture/aspect.md")]
+    #[lsp_doc("docs/api/texture/texture/aspect.md")]
     pub fn aspect(&self) -> f32 {
         self.object.aspect()
     }
 
-    #[lsp_doc("docs/api/core/texture/set_sampler_options.md")]
+    #[lsp_doc("docs/api/texture/texture/set_sampler_options.md")]
     pub fn set_sampler_options(&self, options: SamplerOptions) {
         self.object
             .set_sampler_options(&self.context.device, options);
     }
 
-    #[lsp_doc("docs/api/core/texture/write.md")]
+    #[lsp_doc("docs/api/texture/texture/write.md")]
     pub fn write(&self, data: &[u8]) -> Result<(), TextureError> {
         // Whole-texture write: TextureRegion::default() carries zeros that the
         // write path interprets as "infer the full extent".
         write::write(self, data, TextureRegion::default())
     }
 
-    #[lsp_doc("docs/api/core/texture/write_region.md")]
+    #[lsp_doc("docs/api/texture/texture/write_region.md")]
     pub fn write_region(
         &self,
         data: &[u8],
@@ -624,7 +623,7 @@ impl Texture {
         write::write(self, data, region.into())
     }
 
-    #[lsp_doc("docs/api/core/texture/get_image.md")]
+    #[lsp_doc("docs/api/texture/texture/get_image.md")]
     pub async fn get_image(&self) -> Result<Vec<u8>, TextureError> {
         read::get_image(self).await
     }
@@ -890,16 +889,16 @@ impl TextureObject {
 
     /// Create a TextureObject from a pre-built CPU mip chain. Pure GPU writes —
     /// no decode, no resize. Used by the `TextureInput::Prepared` path.
-    fn from_chain(context: &RenderContext, chain: TextureMipChain) -> Result<Self, TextureError> {
+    fn from_chain(context: &RenderContext, chain: Mipmap) -> Result<Self, TextureError> {
         let (w, h) = chain.base_size;
         if w == 0 || h == 0 {
             return Err(TextureError::CreateTextureError(
-                "TextureMipChain base_size must be non-zero".into(),
+                "Mipmap size must be non-zero".into(),
             ));
         }
         if chain.levels.is_empty() {
             return Err(TextureError::CreateTextureError(
-                "TextureMipChain must contain at least one level".into(),
+                "Mipmap must contain at least one level".into(),
             ));
         }
         let levels = chain.levels.as_slice();
@@ -909,7 +908,7 @@ impl TextureObject {
         let bpp = bytes_per_pixel(format);
         if bpp == 0 {
             return Err(TextureError::CreateTextureError(format!(
-                "TextureMipChain format {:?} has zero bytes-per-pixel",
+                "Mipmap format {:?} has zero bytes-per-pixel",
                 format
             )));
         }
@@ -920,7 +919,7 @@ impl TextureObject {
             let expected = (bpp as usize) * (level_w as usize) * (level_h as usize);
             if level_bytes.len() != expected {
                 return Err(TextureError::CreateTextureError(format!(
-                    "TextureMipChain level {} has {} bytes, expected {} ({}x{} @ {} bpp)",
+                    "Mipmap level {} has {} bytes, expected {} ({}x{} @ {} bpp)",
                     i,
                     level_bytes.len(),
                     expected,
@@ -1379,7 +1378,7 @@ pub(crate) fn bytes_as_image(
     })
 }
 
-/// Pure-CPU mip chain builder used by [`TextureMipChain::prepare`]. Mirrors the format
+/// Pure-CPU mip chain builder used by [`Mipmap::build`]. Mirrors the format
 /// dispatch in [`write_image_levels`] but buffers each level's bytes into a
 /// `Vec<u8>` instead of writing to a wgpu texture. Caller must have validated
 /// that `format` is in [`supports_cpu_mipmaps`].
@@ -1849,12 +1848,11 @@ mod tests {
         img.write_to(&mut std::io::Cursor::new(&mut buf), image::ImageFormat::Png)
             .unwrap();
         // From<(&[u8], TextureFormat)> — encoded image path.
-        let chain =
-            TextureMipChain::prepare((buf.as_slice(), crate::TextureFormat::Rgba8UnormSrgb))
-                .expect("prepare ok");
-        assert_eq!(chain.level_count(), 4);
-        assert_eq!(chain.base_size(), (8, 8));
-        assert_eq!(chain.format(), wgpu::TextureFormat::Rgba8UnormSrgb);
+        let chain = Mipmap::build((buf.as_slice(), crate::TextureFormat::Rgba8UnormSrgb))
+            .expect("prepare ok");
+        assert_eq!(chain.count(), 4);
+        assert_eq!(chain.size(), (8, 8));
+        assert_eq!(chain.format(), crate::TextureFormat::Rgba8UnormSrgb);
         let expected = [4 * 8 * 8, 4 * 4 * 4, 4 * 2 * 2, 4];
         for (i, level) in chain.levels().iter().enumerate() {
             assert_eq!(level.len(), expected[i], "level {i} byte count");
@@ -1868,27 +1866,27 @@ mod tests {
     fn prepare_raw_builds_chain_from_raw_pixels() {
         let pixels = vec![200u8; 8 * 8 * 4];
         // From<(&[u8], TextureFormat, (u32, u32))>
-        let chain = TextureMipChain::prepare((
+        let chain = Mipmap::build((
             pixels.as_slice(),
             crate::TextureFormat::Rgba8UnormSrgb,
             (8u32, 8u32),
         ))
         .expect("prepare with tuple size");
-        assert_eq!(chain.level_count(), 4);
-        assert_eq!(chain.base_size(), (8, 8));
+        assert_eq!(chain.count(), 4);
+        assert_eq!(chain.size(), (8, 8));
 
         // From<(&[u8], TextureFormat, [u32; 2])>
-        let chain2 = TextureMipChain::prepare((
+        let chain2 = Mipmap::build((
             pixels.as_slice(),
             crate::TextureFormat::Rgba8UnormSrgb,
             [8u32, 8u32],
         ))
         .expect("prepare with array size");
-        assert_eq!(chain2.base_size(), (8, 8));
+        assert_eq!(chain2.size(), (8, 8));
 
         // Explicit `TextureInput` struct literal — same transport as
         // `Renderer::create_texture` and `create_storage_texture`.
-        let chain3 = TextureMipChain::prepare(crate::TextureInput {
+        let chain3 = Mipmap::build(crate::TextureInput {
             data: crate::TextureData::Bytes(pixels.clone()),
             options: crate::TextureOptions {
                 size: Some(crate::Size::from([8u32, 8u32])),
@@ -1897,7 +1895,7 @@ mod tests {
             },
         })
         .expect("prepare with explicit TextureInput");
-        assert_eq!(chain3.base_size(), (8, 8));
+        assert_eq!(chain3.size(), (8, 8));
     }
 
     // Story: prepare's three failure modes (decode, format, shape) surface as
@@ -1909,9 +1907,8 @@ mod tests {
     fn prepare_error_variants_are_distinct() {
         // 1) Decode failure → MalformedImageError (from `image::ImageError`).
         let garbage = vec![0xFFu8; 32];
-        let err =
-            TextureMipChain::prepare((garbage.as_slice(), crate::TextureFormat::Rgba8UnormSrgb))
-                .expect_err("garbage bytes should fail to decode");
+        let err = Mipmap::build((garbage.as_slice(), crate::TextureFormat::Rgba8UnormSrgb))
+            .expect_err("garbage bytes should fail to decode");
         assert!(
             matches!(err, TextureError::MalformedImageError(_)),
             "expected MalformedImageError, got {err:?}"
@@ -1925,7 +1922,7 @@ mod tests {
         let mut buf = Vec::new();
         img.write_to(&mut std::io::Cursor::new(&mut buf), image::ImageFormat::Png)
             .unwrap();
-        let err = TextureMipChain::prepare((buf.as_slice(), crate::TextureFormat::Rgba32Float))
+        let err = Mipmap::build((buf.as_slice(), crate::TextureFormat::Rgba32Float))
             .expect_err("Rgba32Float not supported by CPU mipmap path");
         match err {
             TextureError::UnsupportedMipmapFormat { format } => {
@@ -1936,7 +1933,7 @@ mod tests {
 
         // 3) Shape mismatch (raw path) → InvalidInput.
         let too_few_bytes = vec![0u8; 16];
-        let err = TextureMipChain::prepare((
+        let err = Mipmap::build((
             too_few_bytes.as_slice(),
             crate::TextureFormat::Rgba8UnormSrgb,
             (32u32, 32u32),
@@ -1948,12 +1945,8 @@ mod tests {
         );
 
         // 4) Zero size (raw path) → InvalidInput.
-        let err = TextureMipChain::prepare((
-            &[][..],
-            crate::TextureFormat::Rgba8UnormSrgb,
-            (0u32, 16u32),
-        ))
-        .expect_err("zero-width raw input should fail");
+        let err = Mipmap::build((&[][..], crate::TextureFormat::Rgba8UnormSrgb, (0u32, 16u32)))
+            .expect_err("zero-width raw input should fail");
         assert!(
             matches!(err, TextureError::InvalidInput(_)),
             "expected InvalidInput, got {err:?}"
@@ -1961,8 +1954,8 @@ mod tests {
     }
 
     // Story: A prepared chain feeds back into create_texture and produces a
-    // texture with the expected format + mip chain — the round-trip RemixBrush
-    // uses for off-main-thread mip generation. Exercises both the
+    // texture with the expected format + mip chain — the round-trip consumers
+    // use for off-main-thread mip generation. Exercises both the
     // TextureInput::Prepared variant (Rust ergonomics) and the dedicated
     // create_texture_prepared cross-language entry point.
     #[test]
@@ -1974,10 +1967,9 @@ mod tests {
             let mut buf = Vec::new();
             img.write_to(&mut std::io::Cursor::new(&mut buf), image::ImageFormat::Png)
                 .unwrap();
-            let chain =
-                TextureMipChain::prepare((buf.as_slice(), crate::TextureFormat::Rgba8UnormSrgb))
-                    .expect("prepare ok");
-            let level_count = chain.level_count() as u32;
+            let chain = Mipmap::build((buf.as_slice(), crate::TextureFormat::Rgba8UnormSrgb))
+                .expect("prepare ok");
+            let level_count = chain.count() as u32;
             let r = crate::Renderer::new();
             let tex = r
                 .create_texture(TextureData::Prepared(chain.clone()))
@@ -1990,7 +1982,7 @@ mod tests {
             assert_eq!(sz.height, 8);
 
             // create_texture(chain) reaches the same path via
-            // From<TextureMipChain> for TextureInput. No second method needed.
+            // From<Mipmap> for TextureInput. No second method needed.
             let tex2 = r
                 .create_texture(chain)
                 .await

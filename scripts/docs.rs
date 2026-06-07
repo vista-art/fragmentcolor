@@ -12,7 +12,7 @@ mod docs {
     use std::path::{Path, PathBuf};
 
     /// CamelCase object name → snake_case directory slug.
-    /// `TextureMipChain` → `texture_mip_chain`.
+    /// `WindowTarget` → `window_target`.
     pub fn object_dir_name(object: &str) -> String {
         let mut out = String::new();
         for (i, ch) in object.chars().enumerate() {
@@ -29,7 +29,7 @@ mod docs {
     }
 
     /// Inverse of `object_dir_name`.
-    /// `texture_mip_chain` → `TextureMipChain`.
+    /// `window_target` → `WindowTarget`.
     pub fn dir_to_object_name(dir: &str) -> String {
         let mut out = String::new();
         let mut capitalize = true;

@@ -731,7 +731,7 @@ lang="kotlin"
 Attach a Mesh to this Pass.
 
 - The mesh is attached to the last shader previously added to this Pass.
-- Validates compatibility with that shaderâs vertex inputs.
+- Validates compatibility with that shader’s vertex inputs.
 - Returns Result`Result<(), ShaderError>`; on error, the mesh is not attached.
 
 If a Shader wasn't provided earlier, FragmentColor will create a default one.
@@ -901,13 +901,193 @@ lang="kotlin"
 
 ---
 
+### Pass::add
+
+Absorb any [`SceneObject`](/api/scene) (a
+[Model](/api/scene/model),
+[Camera](/api/scene/camera),
+[Light](/api/scene/light), or a user-defined
+node that implements the trait) into the pass. Each kind brings its
+own attach behaviour: a Model queues a draw with its own per-instance
+transform; a Camera or Light wires its uniforms into every shader the
+pass renders, both the ones already there and the ones added afterwards.
+
+Camera and Light hold Arc-shared state, so subsequent mutations on the
+same value (`camera.look_at(...)`, `light.set_color(...)`) propagate to
+every shader on the pass with no further `add` call.
+
+Returns `Result<&Pass, PassError>`. Models can fail at attach time when
+the Mesh layout doesn't match the Material's shader; Cameras and Lights
+always succeed. Chain with `?` between calls.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Camera, Light, Material, Mesh, Model, Pass, Renderer, Vertex};
+
+let renderer = Renderer::new();
+
+let mesh = Mesh::new();
+mesh.add_vertex(
+    Vertex::pbr([0.0, 0.5, 0.0]).set(Vertex::UV0, [0.5, 1.0]),
+);
+let model = Model::new(mesh, Material::pbr());
+
+let camera = Camera::perspective(1.047, 1.0, 0.1, 100.0)
+    .look_at([0.0, 0.0, 2.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+let sun = Light::directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9]);
+
+let pass = Pass::new("scene");
+pass.add(&model)?;
+pass.add(&camera)?;
+pass.add(&sun)?;
+
+// Updating the camera later is enough — every Model already on the pass
+// picks the new view_proj up at the next render.
+camera.look_at([3.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+let _ = renderer;
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+`}
+lang="rust" meta="collapse={1-1, 24-27}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Camera, Light, Material, Mesh, Model, Pass, Renderer, Vertex } from "fragmentcolor";
+
+const renderer = new Renderer();
+
+const mesh = new Mesh();
+mesh.addVertex( Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0]), );
+const model = new Model(mesh, Material.pbr());
+
+const camera = Camera.perspective(1.047, 1.0, 0.1, 100.0).lookAt([0.0, 0.0, 2.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+const sun = Light.directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9]);
+
+const pass = new Pass("scene");
+pass.add(model);
+pass.add(camera);
+pass.add(sun);
+
+// Updating the camera later is enough — every Model already on the pass
+// picks the new view_proj up at the next render.
+camera.lookAt([3.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Camera, Light, Material, Mesh, Model, Pass, Renderer, Vertex
+
+renderer = Renderer()
+
+mesh = Mesh()
+mesh.add_vertex(
+    Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
+)
+model = Model(mesh, Material.pbr())
+
+camera = Camera.perspective(1.047, 1.0, 0.1, 100.0).look_at([0.0, 0.0, 2.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+sun = Light.directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9])
+
+rpass = Pass("scene")
+rpass.add(model)
+rpass.add(camera)
+rpass.add(sun)
+
+# Updating the camera later is enough — every Model already on the rpass
+# picks the new view_proj up at the next render.
+camera.look_at([3.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let renderer = Renderer()
+
+let mesh = Mesh()
+try mesh.addVertex(
+    try Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0])
+)
+let model = Model(mesh, Material.pbr())
+
+let camera = try Camera.perspective(1.047, 1.0, 0.1, 100.0).lookAt([0.0, 0.0, 2.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+let sun = try Light.directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9])
+
+let pass = Pass("scene")
+try pass.add(model)
+try pass.add(camera)
+try pass.add(sun)
+
+// Updating the camera later is enough — every Model already on the pass
+// picks the view_proj up at the next render.
+try camera.lookAt([3.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val renderer = Renderer()
+
+val mesh = Mesh()
+mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set("uv0", floatArrayOf(0.5f, 1.0f)), )
+val model = Model(mesh, Material.pbr())
+
+val camera = Camera.perspective(1.047f, 1.0f, 0.1f, 100.0f).lookAt(listOf(0.0f, 0.0f, 2.0f), listOf(0.0f, 0.0f, 0.0f), listOf(0.0f, 1.0f, 0.0f))
+val sun = Light.directional(listOf(0.3f, -1.0f, -0.4f), listOf(1.0f, 0.95f, 0.9f))
+
+val pass = Pass("scene")
+pass.add(model)
+pass.add(camera)
+pass.add(sun)
+
+// Updating the camera later is enough — every Model already on the pass
+// picks the view_proj up at the next render.
+camera.lookAt(listOf(3.0f, 1.0f, 5.0f), listOf(0.0f, 0.0f, 0.0f), listOf(0.0f, 1.0f, 0.0f))
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
 ### Pass::set_viewport(viewport)
 
 Sets the viewport region for this [Pass](/api/core/pass).
 
 The viewport restricts drawing to a rectangular area of the [Target](/api/core/target).
 
-The `viewport` argument accepts anything convertible into a `ScreenRegion` â an `[x, y, w, h]` array, a `(w, h)` tuple, or a `ScreenRegion` constructed explicitly.
+The `viewport` argument accepts anything convertible into a `ScreenRegion`: an `[x, y, w, h]` array, a `(w, h)` tuple, or a `ScreenRegion` constructed explicitly.
 
 #### Example
 
@@ -1249,11 +1429,11 @@ lang="kotlin"
 
 ---
 
-### Pass::add_target(target)
+### Pass::set_target(target)
 
 Attach a per-pass color render target. When set, this pass renders into the provided texture instead of the final Target.
 
-Use this to render intermediate results (e.g., a shadow map) that later passes can sample.
+A Pass has at most one color target. Call `set_target` again to swap it. Use this to render intermediate results (e.g., a shadow map) that later passes can sample.
 
 #### Example
 
@@ -1269,7 +1449,7 @@ let r = Renderer::new();
 let tex_target = r.create_texture_target([512, 512]).await?;
 
 let p = Pass::new("shadow");
-p.add_target(&tex_target);
+p.set_target(&tex_target)?;
 
 Ok(())
 }
@@ -1289,7 +1469,7 @@ const r = new Renderer();
 const tex_target = await r.createTextureTarget([512, 512]);
 
 const p = new Pass("shadow");
-p.addTarget(tex_target);
+p.setTarget(tex_target);
 
 `}
 lang="js"
@@ -1306,7 +1486,7 @@ r = Renderer()
 tex_target = r.create_texture_target([512, 512])
 
 p = Pass("shadow")
-p.add_target(tex_target)
+p.set_target(tex_target)
 
 `}
 lang="python"
@@ -1323,7 +1503,7 @@ let r = Renderer()
 let tex_target = try await r.createTextureTarget([512, 512])
 
 let p = Pass("shadow")
-try p.addTarget(tex_target)
+try p.setTarget(tex_target)
 `}
 lang="swift"
 />
@@ -1339,7 +1519,7 @@ val r = Renderer()
 val tex_target = r.createTextureTarget(512u, 512u)
 
 val p = Pass("shadow")
-p.addTarget(tex_target)
+p.setTarget(tex_target)
 `}
 lang="kotlin"
 />
@@ -1351,14 +1531,15 @@ lang="kotlin"
 
 ---
 
-### Pass::add_depth_target
+### Pass::set_depth_target
 
-Select a depth attachment for this pass.
+Attach a depth texture to this pass. Once attached, the renderer builds the pipeline with a matching depth-stencil state and **depth-test is enabled**: fragments behind the current contents of the depth buffer are discarded, and the pass writes to the depth buffer as it draws. That's what you want for 3D meshes that occlude each other.
 
-The target must be a stable texture created by the same Renderer with create_depth_texture().
+A Pass has at most one depth attachment. Call `set_depth_target` again to swap it.
 
-When a depth target is attached, the renderer will create a render pipeline with a depth-stencil
-matching the texture format (e.g., `Depth32Float`) of the created texture.
+The target must be a depth texture (`Depth32Float` is the canonical format) created by the same `Renderer` via [`create_depth_texture`](/api/core/renderer/create_depth_texture). The depth attachment's sample count must match the color attachments'. Mixing 1× and 4× MSAA in the same pass returns `RendererError::DepthSampleCountMismatch`.
+
+To **opt out** of depth testing, simply don't call `set_depth_target`. The pass then renders without depth-state, painter's-algorithm style (later draws win).
 
 #### Example
 
@@ -1373,7 +1554,7 @@ use fragmentcolor::{Renderer, Pass, Shader, Mesh};
 let renderer = Renderer::new();
 let target = renderer.create_texture_target([64, 64]).await?;
 
-// Create a depth texture usable as a per-pass attachment
+// One depth attachment shared across the 3D-content pass.
 let depth = renderer.create_depth_texture([64, 64]).await?;
 
 let mut mesh = Mesh::new();
@@ -1382,19 +1563,18 @@ mesh.add_vertex([1.0, 0.0, 0.0]);
 mesh.add_vertex([0.0, 1.0, 0.0]);
 mesh.add_vertex([1.0, 1.0, 0.0]);
 let shader = Shader::from_mesh(&mesh);
-let pass = Pass::from_shader("scene", &shader);
+let pass = Pass::from_shader("blobs", &shader);
 
-// Attach depth texture to enable depth testing.
-// Pipeline will include a matching depth-stencil state
-pass.add_depth_target(&depth)?;
+// Depth-test on — closer fragments win, the pass writes to the depth
+// buffer so subsequent draws within the same pass see the depth.
+pass.set_depth_target(&depth)?;
 
-// Render as usual
 renderer.render(&pass, &target)?;
 Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 24-26}"
+lang="rust" meta="collapse={1-1, 23-25}"
 />
 
 </TabItem>
@@ -1407,7 +1587,7 @@ import { Renderer, Pass, Shader, Mesh } from "fragmentcolor";
 const renderer = new Renderer();
 const target = await renderer.createTextureTarget([64, 64]);
 
-// Create a depth texture usable as a per-pass attachment
+// One depth attachment shared across the 3D-content pass.
 const depth = await renderer.createDepthTexture([64, 64]);
 
 const mesh = new Mesh();
@@ -1416,13 +1596,12 @@ mesh.addVertex([1.0, 0.0, 0.0]);
 mesh.addVertex([0.0, 1.0, 0.0]);
 mesh.addVertex([1.0, 1.0, 0.0]);
 const shader = Shader.fromMesh(mesh);
-const pass = new Pass("scene"); pass.addShader(shader);
+const pass = new Pass("blobs"); pass.addShader(shader);
 
-// Attach depth texture to enable depth testing.
-// Pipeline will include a matching depth-stencil state
-pass.addDepthTarget(depth);
+// Depth-test on — closer fragments win, the pass writes to the depth
+// buffer so subsequent draws within the same pass see the depth.
+pass.setDepthTarget(depth);
 
-// Render as usual
 renderer.render(pass, target);
 `}
 lang="js"
@@ -1438,7 +1617,7 @@ from fragmentcolor import Renderer, Pass, Shader, Mesh
 renderer = Renderer()
 target = renderer.create_texture_target([64, 64])
 
-# Create a depth texture usable as a per-pass attachment
+# One depth attachment shared across the 3D-content pass.
 depth = renderer.create_depth_texture([64, 64])
 
 mesh = Mesh()
@@ -1447,13 +1626,12 @@ mesh.add_vertex([1.0, 0.0, 0.0])
 mesh.add_vertex([0.0, 1.0, 0.0])
 mesh.add_vertex([1.0, 1.0, 0.0])
 shader = Shader.from_mesh(mesh)
-rpass = Pass("scene"); rpass.add_shader(shader)
+rpass = Pass("blobs"); rpass.add_shader(shader)
 
-# Attach depth texture to enable depth testing.
-# Pipeline will include a matching depth-stencil state
-rpass.add_depth_target(depth)
+# Depth-test on — closer fragments win, the rpass writes to the depth
+# buffer so subsequent draws within the same rpass see the depth.
+rpass.set_depth_target(depth)
 
-# Render as usual
 renderer.render(rpass, target)
 `}
 lang="python"
@@ -1469,7 +1647,7 @@ import FragmentColor
 let renderer = Renderer()
 let target = try await renderer.createTextureTarget([64, 64])
 
-// Create a depth texture usable as a per-pass attachment
+// One depth attachment shared across the 3D-content pass.
 let depth = try await renderer.createDepthTexture([64, 64])
 
 let mesh = Mesh()
@@ -1478,13 +1656,12 @@ try mesh.addVertex([1.0, 0.0, 0.0])
 try mesh.addVertex([0.0, 1.0, 0.0])
 try mesh.addVertex([1.0, 1.0, 0.0])
 let shader = Shader.fromMesh(mesh)
-let pass = Pass("scene"); pass.addShader(shader)
+let pass = Pass("blobs"); pass.addShader(shader)
 
-// Attach depth texture to enable depth testing.
-// Pipeline will include a matching depth-stencil state
-try pass.addDepthTarget(depth)
+// Depth-test on — closer fragments win, the pass writes to the depth
+// buffer so subsequent draws within the same pass see the depth.
+try pass.setDepthTarget(depth)
 
-// Render as usual
 try renderer.render(pass, target)
 `}
 lang="swift"
@@ -1500,7 +1677,7 @@ import org.fragmentcolor.*
 val renderer = Renderer()
 val target = renderer.createTextureTarget(64u, 64u)
 
-// Create a depth texture usable as a per-pass attachment
+// One depth attachment shared across the 3D-content pass.
 val depth = renderer.createDepthTexture(64u, 64u)
 
 val mesh = Mesh()
@@ -1509,13 +1686,12 @@ mesh.addVertex(Vertex(listOf(1.0f, 0.0f, 0.0f)))
 mesh.addVertex(Vertex(listOf(0.0f, 1.0f, 0.0f)))
 mesh.addVertex(Vertex(listOf(1.0f, 1.0f, 0.0f)))
 val shader = Shader.fromMesh(mesh)
-val pass = Pass("scene"); pass.addShader(shader)
+val pass = Pass("blobs"); pass.addShader(shader)
 
-// Attach depth texture to enable depth testing.
-// Pipeline will include a matching depth-stencil state
-pass.addDepthTarget(depth)
+// Depth-test on — closer fragments win, the pass writes to the depth
+// buffer so subsequent draws within the same pass see the depth.
+pass.setDepthTarget(depth)
 
-// Render as usual
 renderer.render(pass, target)
 `}
 lang="kotlin"

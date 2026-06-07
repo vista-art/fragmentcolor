@@ -1,6 +1,6 @@
 [package]
 name = "fragmentcolor"
-version = "0.11.1"
+version = "0.12.0"
 homepage = "https://fragmentcolor.org"
 repository = "https://github.com/vista-art/fragmentcolor"
 description = "Universal GPU abstraction for Javascript, Python, Swift and Kotlin"
@@ -78,7 +78,9 @@ shaders-hash     = []
 shaders-intersect = []
 shaders-lighting = []
 shaders-map      = []
+shaders-material = []
 shaders-math     = []
+shaders-mesh     = []
 shaders-noise    = []
 shaders-pattern  = []
 shaders-postfx   = []
@@ -100,6 +102,8 @@ shaders-3d = [
     "shaders-camera",
     "shaders-color",
     "shaders-lighting",
+    "shaders-material",
+    "shaders-mesh",
     "shaders-noise",
     "shaders-raymarch",
     "shaders-sample",
@@ -117,7 +121,9 @@ shaders-all = [
     "shaders-intersect",
     "shaders-lighting",
     "shaders-map",
+    "shaders-material",
     "shaders-math",
+    "shaders-mesh",
     "shaders-noise",
     "shaders-pattern",
     "shaders-postfx",
@@ -154,6 +160,11 @@ image = { version = "0.25", default-features = false, features = [
     "hdr",
 ] }
 ktx2 = "0.5"
+# Read-only glTF 2.0 / GLB loader. `import` is the default file-I/O surface
+# (`gltf::import` / `import_slice`); `utils` adds the typed accessors that
+# decode `u8`/`u16` indices and tightly-packed vertex attributes; the
+# `KHR_lights_punctual` extension is opt-in.
+gltf = { version = "1", features = ["KHR_lights_punctual", "KHR_texture_transform"] }
 
 # Python FFI (optional)
 pyo3 = { version = "0.28", features = [

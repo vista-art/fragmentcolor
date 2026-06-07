@@ -434,8 +434,8 @@ lang="kotlin"
 
 Add a single per-instance attribute set to the mesh.
 
-An `Instance` is a bag of named attributes (transform, color, id, â¦) sent to
-the shader's per-instance inputs. It carries no position â the mesh's vertices
+An `Instance` is a bag of named attributes (transform, color, id, …) sent to
+the shader's per-instance inputs. It carries no position; the mesh's vertices
 are reused for every instance.
 
 Adding an instance also clears any previously set instance count override
@@ -468,7 +468,7 @@ import { Mesh, Instance } from "fragmentcolor";
 const m = new Mesh();
 const offset = [0.25, 0.10];
 const tint = [1.0, 0.0, 0.0, 1.0];
-m.addInstance(Instance.new().set("offset", offset).set("tint", tint));
+m.addInstance(new Instance().set("offset", offset).set("tint", tint));
 `}
 lang="js"
 />
@@ -529,8 +529,8 @@ lang="kotlin"
 
 Add many per-instance attribute sets to the mesh in one call.
 
-Each `Instance` is a bag of named attributes (transform, color, id, â¦) sent to
-the shader's per-instance inputs. Instances carry no position â the mesh's
+Each `Instance` is a bag of named attributes (transform, color, id, …) sent to
+the shader's per-instance inputs. Instances carry no position; the mesh's
 vertices are reused for every instance.
 
 Adding instances also clears any previously set instance count override
@@ -569,7 +569,7 @@ const m = new Mesh();
 const red = [1.0, 0.0, 0.0, 1.0];
 const green = [0.0, 1.0, 0.0, 1.0];
 const blue = [0.0, 0.0, 1.0, 1.0];
-m.addInstances([ Instance.new().set("tint", red), Instance.new().set("tint", green), Instance.new().set("tint", blue), ]);
+m.addInstances([ new Instance().set("tint", red), new Instance().set("tint", green), new Instance().set("tint", blue), ]);
 `}
 lang="js"
 />
@@ -674,7 +674,7 @@ import { Mesh, Instance } from "fragmentcolor";
 
 const m = new Mesh();
 const red = [1.0, 0.0, 0.0, 1.0];
-m.addInstance(Instance.new().set("tint", red));
+m.addInstance(new Instance().set("tint", red));
 m.clearInstances(); // back to a single uninstanced draw;
 `}
 lang="js"
@@ -737,7 +737,7 @@ lang="kotlin"
 Override how many instances to draw without providing per-instance attributes.
 
 Use this when driving instance data from a storage buffer and indexing via
-`@builtin(instance_index)` in the vertex shader â common for compute-driven
+`@builtin(instance_index)` in the vertex shader. Common for compute-driven
 simulations and large particle systems.
 
 The override is automatically cleared if you later call `add_instance` /
@@ -823,6 +823,256 @@ val m = Mesh()
 m.addVertices(listOf(Vertex(listOf(-0.01f, -0.01f)), Vertex(listOf(0.01f, -0.01f)), Vertex(listOf(0.00f, 0.01f))))
 // Draw one million instances, fetching per-particle data from a storage buffer.
 m.setInstanceCount(1_000_000u)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Mesh::set_indices
+
+Provide the index buffer directly, bypassing the mesh's automatic vertex
+dedup pass. Use this when an asset already carries its own indexing: glTF
+loaders, OBJ importers, or hand-authored meshes whose corners share
+positions but need to keep distinct UVs, normals, or tangents (the typical
+case for sharp creases and texture seams).
+
+By default the mesh dedupes vertices by full attribute equality before
+producing an index array. That's fine for hand-built meshes, wrong for assets
+where two corners with identical positions must stay separate because
+their other attributes differ. After `set_indices`, every vertex you added
+with `add_vertex` is packed in insertion order and the indices you supply
+are used verbatim. Call `clear_indices` to return to the auto-derived
+path.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::{Mesh, Vertex};
+
+// A quad split into two triangles via explicit indexing. The four corners
+// happen to carry distinct UVs (only positions repeat), so we keep them
+// all and reference each by index.
+let mesh = Mesh::new();
+let uv00: [f32; 2] = [0.0, 0.0];
+let uv10: [f32; 2] = [1.0, 0.0];
+let uv11: [f32; 2] = [1.0, 1.0];
+let uv01: [f32; 2] = [0.0, 1.0];
+mesh.add_vertices([
+    Vertex::new([-0.5, -0.5]).set("uv", uv00),
+    Vertex::new([ 0.5, -0.5]).set("uv", uv10),
+    Vertex::new([ 0.5,  0.5]).set("uv", uv11),
+    Vertex::new([-0.5,  0.5]).set("uv", uv01),
+]);
+mesh.set_indices([0, 1, 2, 0, 2, 3]);
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Mesh, Vertex } from "fragmentcolor";
+
+// A quad split into two triangles via explicit indexing. The four corners
+// happen to carry distinct UVs (only positions repeat), so we keep them
+// all and reference each by index.
+const mesh = new Mesh();
+const uv00 = [0.0, 0.0];
+const uv10 = [1.0, 0.0];
+const uv11 = [1.0, 1.0];
+const uv01 = [0.0, 1.0];
+mesh.addVertices([ new Vertex([-0.5, -0.5]).set("uv", uv00), new Vertex([ 0.5, -0.5]).set("uv", uv10), new Vertex([ 0.5,  0.5]).set("uv", uv11), new Vertex([-0.5,  0.5]).set("uv", uv01), ]);
+mesh.setIndices([0, 1, 2, 0, 2, 3]);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Mesh, Vertex
+
+# A quad split into two triangles via explicit indexing. The four corners
+# happen to carry distinct UVs (only positions repeat), so we keep them
+# all and reference each by index.
+mesh = Mesh()
+uv00 = [0.0, 0.0]
+uv10 = [1.0, 0.0]
+uv11 = [1.0, 1.0]
+uv01 = [0.0, 1.0]
+mesh.add_vertices([
+    Vertex([-0.5, -0.5]).set("uv", uv00),
+    Vertex([ 0.5, -0.5]).set("uv", uv10),
+    Vertex([ 0.5,  0.5]).set("uv", uv11),
+    Vertex([-0.5,  0.5]).set("uv", uv01),
+])
+mesh.set_indices([0, 1, 2, 0, 2, 3])
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+// A quad split into two triangles via explicit indexing. The four corners
+// happen to carry distinct UVs (only positions repeat), so we keep them
+// all and reference each by index.
+let mesh = Mesh()
+let uv00 = [0.0, 0.0]
+let uv10 = [1.0, 0.0]
+let uv11 = [1.0, 1.0]
+let uv01 = [0.0, 1.0]
+try mesh.addVertices([
+    try Vertex([-0.5, -0.5]).set("uv", uv00),
+    try Vertex([ 0.5, -0.5]).set("uv", uv10),
+    try Vertex([ 0.5,  0.5]).set("uv", uv11),
+    try Vertex([-0.5,  0.5]).set("uv", uv01),
+])
+try mesh.setIndices([0, 1, 2, 0, 2, 3])
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+// A quad split into two triangles via explicit indexing. The four corners
+// happen to carry distinct UVs (only positions repeat), so we keep them
+// all and reference each by index.
+val mesh = Mesh()
+val uv00 = listOf(0.0f, 0.0f)
+val uv10 = listOf(1.0f, 0.0f)
+val uv11 = listOf(1.0f, 1.0f)
+val uv01 = listOf(0.0f, 1.0f)
+mesh.addVertices(listOf(Vertex(listOf(-0.5f, -0.5f)).set("uv", uv00), Vertex(listOf(0.5f, -0.5f)).set("uv", uv10), Vertex(listOf(0.5f, 0.5f)).set("uv", uv11), Vertex(listOf(-0.5f, 0.5f)).set("uv", uv01)))
+mesh.setIndices(listOf(0u, 1u, 2u, 0u, 2u, 3u))
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Mesh::clear_indices
+
+Drop the user-supplied index buffer and return to auto-derived indexing.
+
+After `set_indices` the mesh draws vertices in insertion order using the
+indices you provided. `clear_indices` reverses that: the next render
+re-runs the vertex dedup pass and rebuilds the index buffer from the
+deduplicated unique set, the same way a freshly built mesh behaves.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+use fragmentcolor::{Mesh, Vertex};
+
+let mesh = Mesh::new();
+mesh.add_vertices([
+    Vertex::new([-0.5, -0.5]),
+    Vertex::new([ 0.5, -0.5]),
+    Vertex::new([ 0.0,  0.5]),
+]);
+mesh.set_indices([0, 1, 2]);
+mesh.clear_indices(); // back to auto-derived dedup
+`}
+lang="rust"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Mesh, Vertex } from "fragmentcolor";
+
+const mesh = new Mesh();
+mesh.addVertices([ new Vertex([-0.5, -0.5]), new Vertex([ 0.5, -0.5]), new Vertex([ 0.0,  0.5]), ]);
+mesh.setIndices([0, 1, 2]);
+mesh.clearIndices(); // back to auto-derived dedup;
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Mesh, Vertex
+
+mesh = Mesh()
+mesh.add_vertices([
+    Vertex([-0.5, -0.5]),
+    Vertex([ 0.5, -0.5]),
+    Vertex([ 0.0,  0.5]),
+])
+mesh.set_indices([0, 1, 2])
+mesh.clear_indices(); # back to auto-derived dedup
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let mesh = Mesh()
+try mesh.addVertices([
+    try Vertex([-0.5, -0.5]),
+    try Vertex([ 0.5, -0.5]),
+    try Vertex([ 0.0,  0.5]),
+])
+try mesh.setIndices([0, 1, 2])
+mesh.clearIndices(); // back to auto-derived dedup
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val mesh = Mesh()
+mesh.addVertices(listOf(Vertex(listOf(-0.5f, -0.5f)), Vertex(listOf(0.5f, -0.5f)), Vertex(listOf(0.0f, 0.5f))))
+mesh.setIndices(listOf(0u, 1u, 2u))
+mesh.clearIndices(); // back to auto-derived dedup
 `}
 lang="kotlin"
 />

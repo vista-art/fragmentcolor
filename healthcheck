@@ -99,7 +99,9 @@ run_ios_bindings() {
   if (cd "$ROOT_DIR/platforms/swift" \
         && xcodebuild \
              -scheme FragmentColor \
-             -destination "generic/platform=iOS Simulator" \
+             -destination "generic/platform=iOS Simulator,arch=arm64" \
+             -sdk iphonesimulator \
+             ARCHS=arm64 ONLY_ACTIVE_ARCH=YES SUPPORTS_MACCATALYST=NO \
              build); then
     log_test_ok "$name"
     return 0
@@ -148,17 +150,26 @@ run_ios_examples() {
   # (`fragmentcolor-healthcheck`). `xcodebuild -list` from
   # `platforms/swift/healthcheck/` lists exactly one scheme:
   # `FragmentColorHealthcheck`.
+  #
+  # GeneratedExamples.swift is the auto-generated aggregator of every
+  # transpiled Swift example. Cross-platform API parity is a hard guarantee
+  # of FragmentColor: if any example fails to compile here it means the
+  # transpiler (`scripts/convert.rs::to_swift` + `scripts/swift.rs`) or the
+  # underlying uniffi binding is out of sync with the Rust source. Fix the
+  # source — this step is a hard fail.
   if (cd "$ROOT_DIR/platforms/swift/healthcheck" \
         && xcodebuild \
              -scheme FragmentColorHealthcheck \
-             -destination "generic/platform=iOS Simulator" \
+             -destination "generic/platform=iOS Simulator,arch=arm64" \
+             -sdk iphonesimulator \
+             ARCHS=arm64 ONLY_ACTIVE_ARCH=YES SUPPORTS_MACCATALYST=NO \
              build); then
     log_test_ok "$name"
+    return 0
   else
-    printf "warn %s ... transpiler-drift compile errors in GeneratedExamples.swift; tracked for v0.11.x.\n" "$name"
-    printf "     bindings test passed (above) — public API surface is healthy.\n"
+    log_test_fail "$name"
+    return 1
   fi
-  return 0
 }
 
 run_android() {
@@ -243,8 +254,12 @@ start_static_server() {
     echo "Hint: set PORT to a free port (e.g., PORT=8876) or stop the process above." >&2
     return 1
   fi
-  # Use Node COOP/COEP server to enable SharedArrayBuffer/WebGPU readbacks
-  PORT="$port" node "$ROOT_DIR/platforms/web/healthcheck/serve.mjs" >/dev/null 2>&1 &
+  # Use Node COOP/COEP server to enable SharedArrayBuffer/WebGPU readbacks.
+  # Send the server's own stdout/stderr to a log file so a crashed server
+  # leaves a forensics trail in CI artifacts instead of failing silently.
+  local srv_log="$ROOT_DIR/platforms/web/healthcheck/playwright-artifacts/serve.log"
+  mkdir -p "$(dirname "$srv_log")" 2>/dev/null || true
+  PORT="$port" node "$ROOT_DIR/platforms/web/healthcheck/serve.mjs" >"$srv_log" 2>&1 &
   echo $!
 }
 
@@ -268,8 +283,71 @@ ensure_playwright() {
       corepack enable pnpm >/dev/null 2>&1 || true
     fi
   fi
-  ( cd "$dir" && pnpm i --no-frozen-lockfile --no-optional --ignore-scripts >/dev/null 2>&1 || true )
-  ( cd "$dir" && pnpm exec playwright install chromium >/dev/null 2>&1 || true )
+  # Print output so a hang here is visible in CI logs (was previously
+  # silenced into /dev/null which made the whole step look frozen).
+  # Cap each command at 5 min so a stalled network request fails the
+  # step instead of stalling the whole job for 6 hours.
+  echo "[ensure_playwright] pnpm i in $dir"
+  ( cd "$dir" && timeout 300 pnpm i --no-frozen-lockfile --no-optional --ignore-scripts ) || \
+    echo "[ensure_playwright] pnpm i failed/timed out (continuing)"
+  # Manual download + extract — round 10's log made the failure mode
+  # finally legible. `pw:install` printed "extracting archive" and then
+  # went silent for 10 min before timing out, with only
+  # `chromium-1194/chrome-linux/icudtl.dat` on disk. That's a stuck
+  # Playwright extractor (known issue, e.g. microsoft/playwright#29262
+  # surfaces in headless GitHub-Actions environments). Avoid the
+  # built-in extractor entirely: pull the same zip from Playwright's
+  # CDN with curl, unzip with the system `unzip`, and let
+  # `chromium.launch()` find the binaries under the canonical
+  # `chromium-<build>/chrome-linux/` and
+  # `chromium_headless_shell-<build>/chrome-linux/` paths.
+  #
+  # The build version is pinned by the installed Playwright version
+  # (1.56.0 → build 1194 per round 10's log). Hard-coding it is safe
+  # because the lockfile pins playwright@1.56.0; bump both together.
+  local pw_build=1194
+  local pw_cache="${PLAYWRIGHT_BROWSERS_PATH:-$HOME/.cache/ms-playwright}"
+  mkdir -p "$pw_cache"
+  # Tier 1: try the Playwright installer once — if Microsoft fixed
+  # this in a future release it's still the simplest path.
+  echo "[ensure_playwright] pnpm exec playwright install --no-shell chromium (best-effort)"
+  ( cd "$dir" && DEBUG=pw:install timeout 240 pnpm exec playwright install --no-shell chromium ) || \
+    echo "[ensure_playwright] official installer didn't finish; falling through to manual"
+  # Tier 2: any binary we still don't have, fetch + extract manually.
+  if [ ! -x "$pw_cache/chromium-$pw_build/chrome-linux/chrome" ]; then
+    local url="https://cdn.playwright.dev/dbazure/download/playwright/builds/chromium/$pw_build/chromium-linux.zip"
+    local zip="$pw_cache/chromium-$pw_build.zip"
+    echo "[ensure_playwright] curl + unzip chromium from $url"
+    rm -rf "$pw_cache/chromium-$pw_build"
+    mkdir -p "$pw_cache/chromium-$pw_build"
+    if curl -fL --retry 3 --retry-delay 2 -o "$zip" "$url" \
+        && unzip -q -o "$zip" -d "$pw_cache/chromium-$pw_build" \
+        && rm -f "$zip"; then
+      echo "[ensure_playwright] chromium ready under $pw_cache/chromium-$pw_build/"
+    else
+      echo "[ensure_playwright] manual chromium download failed (continuing)"
+    fi
+  else
+    echo "[ensure_playwright] chromium binary already present"
+  fi
+  if [ ! -x "$pw_cache/chromium_headless_shell-$pw_build/chrome-linux/headless_shell" ]; then
+    local url="https://cdn.playwright.dev/dbazure/download/playwright/builds/chromium/$pw_build/chromium-headless-shell-linux.zip"
+    local zip="$pw_cache/chromium_headless_shell-$pw_build.zip"
+    echo "[ensure_playwright] curl + unzip chromium-headless-shell from $url"
+    rm -rf "$pw_cache/chromium_headless_shell-$pw_build"
+    mkdir -p "$pw_cache/chromium_headless_shell-$pw_build"
+    if curl -fL --retry 3 --retry-delay 2 -o "$zip" "$url" \
+        && unzip -q -o "$zip" -d "$pw_cache/chromium_headless_shell-$pw_build" \
+        && rm -f "$zip"; then
+      echo "[ensure_playwright] chromium-headless-shell ready under $pw_cache/chromium_headless_shell-$pw_build/"
+    else
+      echo "[ensure_playwright] manual chromium-headless-shell download failed (continuing)"
+    fi
+  else
+    echo "[ensure_playwright] chromium-headless-shell binary already present"
+  fi
+  echo "[ensure_playwright] final cache layout:"
+  ls -la "$pw_cache/" 2>/dev/null || true
 }
 
 run_web() {
@@ -299,6 +377,10 @@ run_web() {
   mkdir -p "$hc_pkg"
   rsync -a --delete "$pkg_dir/" "$hc_pkg/" 2>/dev/null || cp -a "$pkg_dir/." "$hc_pkg/"
 
+  # Diagnostic markers — when CI hangs we lose all stderr otherwise; these
+  # let us see exactly which step stalled. Lightweight echo, no perf hit.
+  echo "[run_web] static server starting on port $PORT…"
+
   # Start static server and run Playwright against it
   local pid
   pid=$(start_static_server "$ROOT_DIR/platforms/web" "$PORT")
@@ -307,18 +389,23 @@ run_web() {
   cleanup() { if [ -n "${pid:-}" ] && ps -p "$pid" >/dev/null 2>&1; then kill "$pid" >/dev/null 2>&1 || true; fi; }
   trap cleanup EXIT
   if [ "$srv_status" -ne 0 ]; then
+    echo "[run_web] static server failed to start" >&2
     cleanup
     log_test_fail "$name"
     trap - EXIT
     return 1
   fi
+  echo "[run_web] static server pid=$pid"
 
+  echo "[run_web] waiting for http://localhost:$PORT/healthcheck/index.html"
   if ! wait_for_http "http://localhost:$PORT/healthcheck/index.html"; then
+    echo "[run_web] static server never answered http within timeout" >&2
     cleanup
     log_test_fail "$name"
     trap - EXIT
     return 1
   fi
+  echo "[run_web] static server is answering"
 
   if ! command -v node >/dev/null 2>&1; then
     echo "Node.js is required to run the web healthcheck." >&2
@@ -328,11 +415,14 @@ run_web() {
     return 1
   fi
 
+  echo "[run_web] ensure_playwright (pnpm i + playwright install chromium)…"
   ensure_playwright
+  echo "[run_web] ensure_playwright done"
   local hc_url="http://localhost:$PORT/healthcheck/"
   if [ "${FC_HEALTHCHECK_VERBOSE:-0}" = "1" ]; then
     hc_url="${hc_url}?verbose=1"
   fi
+  echo "[run_web] launching playwright.mjs against $hc_url"
   if node "$ROOT_DIR/platforms/web/healthcheck/playwright.mjs" "$hc_url"; then
     cleanup
     trap - EXIT

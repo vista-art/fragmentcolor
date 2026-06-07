@@ -137,7 +137,7 @@ impl Renderer {
     }
 
     /// Single Python entry point. Accepts bytes, list, str (path or URL),
-    /// numpy ndarray, or a TextureMipChain handle. Optional kwargs:
+    /// numpy ndarray, or a Mipmap handle. Optional kwargs:
     /// `size=(w, h)` (forces raw-pixel interpretation of bytes),
     /// `format=TextureFormat.X`, `mipmaps=True/False`.
     #[pyo3(
@@ -157,6 +157,23 @@ impl Renderer {
             let tex = pollster::block_on(self.create_texture(spec))?;
             Ok(tex)
         })
+    }
+
+    #[pyo3(name = "load")]
+    #[lsp_doc("docs/api/core/renderer/load.md")]
+    pub fn load_py(&self, renderable: Py<PyAny>) -> Result<(), PyErr> {
+        Python::attach(|py| -> Result<(), PyErr> {
+            let r = crate::PyRenderable::from_any(renderable.bind(py))?;
+            pollster::block_on(self.load(&r))?;
+            Ok(())
+        })
+    }
+
+    #[pyo3(name = "read_storage")]
+    #[lsp_doc("docs/api/core/renderer/read_storage.md")]
+    pub fn read_storage_py(&self, shader: &crate::Shader, binding: &str) -> Result<Vec<u8>, PyErr> {
+        pollster::block_on(self.read_storage(shader, binding))
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
     }
 
     #[pyo3(name = "render")]
@@ -346,8 +363,8 @@ fn py_to_texture_spec(
             });
         }
     }
-    // TextureMipChain handle (built off-thread via TextureMipChain.prepare).
-    if let Ok(chain_ref) = input.cast::<crate::texture::TextureMipChain>() {
+    // Mipmap handle (built off-thread via Mipmap.build).
+    if let Ok(chain_ref) = input.cast::<crate::texture::Mipmap>() {
         let chain = chain_ref.borrow().clone();
         return Ok(TextureInput {
             data: TextureData::Prepared(chain),
@@ -355,6 +372,6 @@ fn py_to_texture_spec(
         });
     }
     Err(crate::error::PyFragmentColorError::new_err(
-        "Unsupported input for create_texture (expected bytes, list, str path, numpy ndarray, or TextureMipChain)",
+        "Unsupported input for create_texture (expected bytes, list, str path, numpy ndarray, or Mipmap)",
     ))
 }

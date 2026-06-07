@@ -1,0 +1,31 @@
+# Material::metallic_roughness_texture
+
+Bind a texture to the canonical `metallic_roughness_map` slot. Following
+glTF 2.0, the green channel encodes per-fragment roughness, the blue channel
+encodes metallic. Both are multiplied by their respective factors at sample
+time inside the default PBR shader.
+
+Unset, this slot resolves to a 1×1 default with `(R=0, G=1, B=1, A=1)` so
+the factor multiplication passes both `material.metallic` and
+`material.roughness` through unchanged.
+
+## Example
+
+```rust,no_run
+# async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Material, Renderer};
+
+let renderer = Renderer::new();
+let mr_map_bytes: Vec<u8> = vec![
+    0, 200, 50, 255,
+    0,   240, 80, 255,
+    0,   180, 30, 255,
+    0,   220, 60, 255,
+];
+let mr_map = renderer.create_texture((mr_map_bytes, [2, 2])).await?;
+let mat = Material::pbr().metallic_roughness_texture(&mr_map);
+# let _ = mat;
+# Ok(())
+# }
+# fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+```

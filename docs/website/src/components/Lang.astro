@@ -1,0 +1,35 @@
+---
+// <Lang /> — inline text that swaps with the active language tab.
+//
+// Reads the active label from localStorage (Starlight's syncKey "lang")
+// and re-renders when the reader clicks a different language tab inside
+// any `<starlight-tabs[data-sync-key="lang"]>` on the page. Defaults to
+// the language name itself, so a bare `<Lang />` reads as "Rust" /
+// "JavaScript" / etc. Override per-language for arbitrary substitutions:
+//
+//   the change took five lines of <Lang />.
+//   open a <Lang rust="winit window" js="canvas" py="window" /> and...
+//
+// IMPORTANT: this component renders ONLY the inline <span> on purpose.
+// The page-level wiring (CSS + script) lives in `astro.config.mjs` so
+// the inline context here doesn't get sibling DOM nodes which would
+// introduce visible whitespace between the substitution and the
+// surrounding prose (e.g. "Rust ." instead of "Rust.").
+
+interface Props {
+  rust?: string;
+  js?: string;
+  py?: string;
+  swift?: string;
+  kotlin?: string;
+}
+
+const {
+  rust = "Rust",
+  js = "JavaScript",
+  py = "Python",
+  swift = "Swift",
+  kotlin = "Kotlin",
+} = Astro.props;
+---
+<span class="lang-text" data-rust={rust} data-js={js} data-py={py} data-swift={swift} data-kotlin={kotlin}>{rust}</span>

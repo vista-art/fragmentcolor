@@ -1,0 +1,165 @@
+---
+title: "2D SDFs"
+description: A catalog of 2D signed-distance functions in the FragmentColor shader registry.
+---
+
+A **2D signed-distance function** maps a point on the plane to a single
+`f32`: the shortest distance from that point to the surface of a shape.
+The sign tells you which side you're on — negative inside the shape,
+positive outside, zero exactly on the boundary. From that one number you
+can render filled shapes, hollow outlines, soft borders, drop shadows,
+boolean unions and intersections, and more, all without a vertex buffer.
+
+Every entry below is a single pure WGSL function in the registry. Pull
+one into a composition by slug, then call it from your fragment stage:
+
+```rust
+let main = r#"
+@fragment fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+    let p = (in.uv - vec2<f32>(0.5)) * 2.0;
+    let d = circle(p, 0.7);
+    let inside = 1.0 - smoothstep(-0.005, 0.005, d);
+    return vec4<f32>(vec3<f32>(0.95, 0.55, 0.85) * inside, 1.0);
+}
+"#;
+let shader = Shader::new(&["sdf2d/circle", main])?;
+```
+
+Each preview below renders the SDF on a UV grid remapped to `[-1, 1]` and
+threshold-shades the result against a flat background. Tune the parameters
+to your own scene; the registry shape is just the function.
+
+## box
+
+Axis-aligned rectangle centered at the origin with half-extents `b`.
+
+```wgsl
+fn box(p: vec2<f32>, b: vec2<f32>) -> f32
+```
+
+![sdf2d/box preview](/shaders/sdf2d/box.png)
+
+## circle
+
+Signed distance to a circle of radius `r` at the origin.
+
+```wgsl
+fn circle(p: vec2<f32>, r: f32) -> f32
+```
+
+![sdf2d/circle preview](/shaders/sdf2d/circle.png)
+
+## equilateral_triangle
+
+Equilateral triangle centered at the origin with circumradius `r`,
+pointing in the `+y` direction (math coordinates). Flip `p.y` at the call
+site if you want the apex pointing up on a y-down UV surface.
+
+```wgsl
+fn equilateral_triangle(p: vec2<f32>, r: f32) -> f32
+```
+
+![sdf2d/equilateral_triangle preview](/shaders/sdf2d/equilateral_triangle.png)
+
+## heart
+
+Heart shape with the apex (the pointy bottom) at the origin and the lobes
+at positive `y`. Scale by `s`. For a y-down UV surface, pass
+`heart(vec2<f32>(p.x, -p.y), s)` to flip it upright.
+
+```wgsl
+fn heart(p: vec2<f32>, s: f32) -> f32
+```
+
+![sdf2d/heart preview](/shaders/sdf2d/heart.png)
+
+## hexagon
+
+Regular hexagon with circumradius `r` and a flat top.
+
+```wgsl
+fn hexagon(p: vec2<f32>, r: f32) -> f32
+```
+
+![sdf2d/hexagon preview](/shaders/sdf2d/hexagon.png)
+
+## pie
+
+Pie-slice with radius `r` and full opening angle `2 * theta`, where `c` is
+`vec2<f32>(sin(theta), cos(theta))` — the sin and cos of the half-angle.
+
+```wgsl
+fn pie(p: vec2<f32>, c: vec2<f32>, r: f32) -> f32
+```
+
+![sdf2d/pie preview](/shaders/sdf2d/pie.png)
+
+## rhombus
+
+Rhombus centered at the origin, with axis half-lengths `b.x` (horizontal)
+and `b.y` (vertical).
+
+```wgsl
+fn rhombus(p: vec2<f32>, b: vec2<f32>) -> f32
+```
+
+![sdf2d/rhombus preview](/shaders/sdf2d/rhombus.png)
+
+## ring
+
+Annulus (a ring) centered at the origin with outer radius `r` and
+thickness `th`.
+
+```wgsl
+fn ring(p: vec2<f32>, r: f32, th: f32) -> f32
+```
+
+![sdf2d/ring preview](/shaders/sdf2d/ring.png)
+
+## rounded_box
+
+Axis-aligned rectangle with per-corner radii. The `r` vector follows
+Inigo Quilez's convention: `r.x` = top-right corner, `r.y` = bottom-right,
+`r.z` = bottom-left, `r.w` = top-left, with `b` the rectangle half-extents.
+
+```wgsl
+fn rounded_box(p: vec2<f32>, b: vec2<f32>, r: vec4<f32>) -> f32
+```
+
+![sdf2d/rounded_box preview](/shaders/sdf2d/rounded_box.png)
+
+## segment
+
+Unsigned distance from `p` to the line segment between endpoints `a` and
+`b`. To render a stroked line, subtract a thickness from the result before
+shading.
+
+```wgsl
+fn segment(p: vec2<f32>, a: vec2<f32>, b: vec2<f32>) -> f32
+```
+
+![sdf2d/segment preview](/shaders/sdf2d/segment.png)
+
+## star
+
+`n`-pointed star centered at the origin, outer radius `r`. The float
+parameter `m` lives in the open interval `(2, n)` and controls sharpness:
+values near `n` produce blunt points; values near `2` produce sharp ones.
+
+```wgsl
+fn star(p: vec2<f32>, r: f32, n: u32, m: f32) -> f32
+```
+
+![sdf2d/star preview](/shaders/sdf2d/star.png)
+
+## trapezoid
+
+Isoceles trapezoid centered at the origin. `r1` is the top half-width,
+`r2` is the bottom half-width, and `h` is the half-height. Pass through a
+y-flip if you want the wider base at the bottom of a y-down UV surface.
+
+```wgsl
+fn trapezoid(p: vec2<f32>, r1: f32, r2: f32, h: f32) -> f32
+```
+
+![sdf2d/trapezoid preview](/shaders/sdf2d/trapezoid.png)

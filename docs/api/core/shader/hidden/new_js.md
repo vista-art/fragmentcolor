@@ -2,12 +2,12 @@
 
 JavaScript override for `Shader::new`. The Rust example shows two flows
 (single source string and registry-slug composition) in two `## Example`
-blocks. The website builder concatenates both into a single JS file —
+blocks. The website builder concatenates both into a single JS file,
 which produces a duplicate `import { Shader }` and a `Shader.new([...])`
-call without `new` — so we override here with the JS-shaped variant.
+call without `new`, so we override here with the JS-shaped variant.
 
 In WASM the constructor cannot perform network requests, so registry
-slugs / URLs go through `Shader.fetch(...)` instead — the override below
+slugs / URLs go through `Shader.fetch(...)` instead. The override below
 sticks to a single raw WGSL source.
 
 ## Example

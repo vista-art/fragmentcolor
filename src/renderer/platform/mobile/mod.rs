@@ -164,6 +164,29 @@ impl Renderer {
     /// `renderer.render(pass, target)`, etc.) that wrap the concrete value
     /// into the matching enum variant invisibly, so callers never see the
     /// mobile-only mirror types.
+    #[uniffi::method(name = "load")]
+    #[lsp_doc("docs/api/core/renderer/load.md")]
+    pub async fn load_mobile(
+        self: Arc<Self>,
+        renderable: crate::renderer::renderable::RenderableHandle,
+    ) -> Result<(), FragmentColorError> {
+        self.load(&renderable)
+            .await
+            .map_err(FragmentColorError::from)
+    }
+
+    #[uniffi::method(name = "readStorage")]
+    #[lsp_doc("docs/api/core/renderer/read_storage.md")]
+    pub async fn read_storage_mobile(
+        self: Arc<Self>,
+        shader: Arc<crate::Shader>,
+        binding: String,
+    ) -> Result<Vec<u8>, FragmentColorError> {
+        self.read_storage(&shader, &binding)
+            .await
+            .map_err(FragmentColorError::from)
+    }
+
     #[uniffi::method(name = "render")]
     #[lsp_doc("docs/api/core/renderer/render.md")]
     pub fn render_mobile(

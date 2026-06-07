@@ -24,6 +24,12 @@ crossterm = "0.29"
 ratatui = "0.29"
 anyhow = "1"
 
+# Lock-versioning CLI (examples/locks.rs) — reads `.claude/locks/locks.json`
+# and renders status / history / diff.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+similar = "2"
+
 [build-dependencies]
 cfg_aliases = "0.2"
 
@@ -36,13 +42,21 @@ name = "tutorial_01_hello_triangle_three_lines"
 path = "../../docs/tutorials/01-hello-triangle/01-three-lines/example.rs"
 
 [[example]]
+name = "tutorial_01_hello_triangle_resolution_uniform"
+path = "../../docs/tutorials/01-hello-triangle/02-resolution-uniform/example.rs"
+
+[[example]]
+name = "tutorial_01_hello_triangle_compose_noise"
+path = "../../docs/tutorials/01-hello-triangle/03-compose-noise/example.rs"
+
+[[example]]
 name = "tutorial_01_hello_triangle_vertex_gradient"
-path = "../../docs/tutorials/01-hello-triangle/02-vertex-gradient/example.rs"
+path = "../../docs/tutorials/01-hello-triangle/04-vertex-gradient/example.rs"
 
 [[example]]
 name = "tutorial_01_hello_triangle_particle_trail"
-path = "../../docs/tutorials/01-hello-triangle/03-particle-trail/example.rs"
+path = "../../docs/tutorials/01-hello-triangle/05-particle-trail/example.rs"
 
 [[example]]
 name = "tutorial_01_hello_triangle_postfx_pass"
-path = "../../docs/tutorials/01-hello-triangle/04-postfx-pass/example.rs"
+path = "../../docs/tutorials/01-hello-triangle/06-postfx-pass/example.rs"

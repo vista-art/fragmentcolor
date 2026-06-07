@@ -1,0 +1,1673 @@
+---
+title: Light
+description: "`Light` is the unified type covering the three glTF `KHR_lights_punctual` kinds: **directional** (parallel rays for sun, sky, fill), **point** (radiates from a position with inverse-square falloff: lamps, candles, fireballs), and **spot** (point light constrained to a cone: flashlights, headlamps, theatre lighting). The kind is set once at construction via [`Light::directional`](/api/scene/light/directional), [`Light::point`](/api/scene/light/point), or [`Light::spot`](/api/scene/light/spot)."
+category: scene
+categoryLabel: Scene
+sidebar:
+  order: 4
+---
+
+import { Code, Tabs, TabItem, Aside } from "@astrojs/starlight/components";
+
+## Description
+
+`Light` is the unified type covering the three glTF `KHR_lights_punctual`
+kinds: **directional** (parallel rays for sun, sky, fill), **point**
+(radiates from a position with inverse-square falloff: lamps, candles,
+fireballs), and **spot** (point light constrained to a cone: flashlights,
+headlamps, theatre lighting). The kind is set once at construction via
+[`Light::directional`](/api/scene/light/directional),
+[`Light::point`](/api/scene/light/point), or
+[`Light::spot`](/api/scene/light/spot).
+
+The unified surface keeps the public API simple: one type, one
+[`Scene::add`](/api/scene/scene/add) method, one
+[`Pass::add`](/api/core/pass/add) method, and one
+binding per platform. Setters fall into two groups:
+
+- **Universal**: [`set_color`](/api/scene/light/set_color)
+  and [`set_intensity`](/api/scene/light/set_intensity)
+  apply to every kind and return `Self` for chaining.
+- **Kind-specific**: [`set_position`](/api/scene/light/set_position),
+  [`set_direction`](/api/scene/light/set_direction),
+  [`set_range`](/api/scene/light/set_range), and
+  [`set_cone_angles`](/api/scene/light/set_cone_angles)
+  return `Result<Self, LightError>`. Calling one on the wrong kind returns
+  `LightError::FieldNotApplicable { kind, field }`.
+
+The matching getters use `Option<T>` for the kind-specific fields:
+[`position`](/api/scene/light/position),
+[`direction`](/api/scene/light/direction),
+[`range`](/api/scene/light/range),
+[`inner_cone_angle`](/api/scene/light/inner_cone_angle),
+[`outer_cone_angle`](/api/scene/light/outer_cone_angle)
+return `Some` only on the kinds that carry the value, `None` otherwise.
+
+Lights hold Arc-shared state, so a single handle can be absorbed by
+multiple Passes; later mutators propagate to every shader the Light has
+been wired into.
+
+## Cost model
+
+The default Material::pbr shader uses **forward shading**. Every fragment
+loops over every active light and accumulates the contribution. That makes
+the per-frame cost roughly `O(fragments × lights)`, so the practical
+ceiling depends on resolution and overdraw. The current cap of **32
+lights** fits the forward path comfortably; for scenes with hundreds of
+lights, a clustered / storage-buffer path is on the roadmap.
+
+### Cap semantics: lights bind to the shader, not the Pass
+
+The 32-light cap is enforced **per `ShaderObject`**, not per `Pass`. Two
+Passes that share the same Material (and therefore the same shader)
+share its light slots:
+
+- Adding the same `Light` to Pass A and Pass B reuses one shader slot
+  (the dedup is by shader-pointer identity). Both Passes render with
+  that light visible.
+- Adding two different `Light`s, one to Pass A, one to Pass B, packs
+  them into two separate slots on the shared shader. **Both lights
+  illuminate both Passes**, even though each was only `add(&...)`-ed
+  to one. That's surprising if you think of a Pass as an isolated
+  scene; it's the right answer if you think of a Material as the
+  lighting model and the Passes as views into the same lit world.
+- The cap exceeds at 32 *distinct* Lights on one shader. The 33rd
+  returns `Err(PassError::LightCapReached { cap: 32 })`.
+
+For genuinely independent lighting setups, build a separate Material
+per scene (each `Material::pbr()` allocates a fresh shader, so its 32
+slots are independent) or pass your own shader to `Material::custom`.
+A single scene with one Material covers the typical case. The per-
+shader semantic is what lets `Scene::add(&light)` propagate through
+every Pass that renders the Scene without re-attaching.
+
+## Constructors
+
+| name          | what it does                                                |
+| ------------- | ----------------------------------------------------------- |
+| `directional` | parallel rays from a world-space direction                  |
+| `point`       | radiates from a world-space position with distance falloff  |
+| `spot`        | point light constrained to a cone                           |
+
+
+## Methods
+
+
+---
+
+### Light::directional
+
+Construct a directional light. `direction` is the world-space vector the
+light travels along (so `[0, -1, 0]` is straight down, the noon sun); `color`
+is linear-RGB intensity (`[1, 1, 1]` for full white, scaled values for
+dimmer or tinted lights).
+
+Use this for sun / moon / fill / key lights: anything where every shaded
+surface should receive parallel rays from a fixed direction. For positioned
+sources, see [`Light::point`](/api/scene/light/point)
+and [`Light::spot`](/api/scene/light/spot).
+
+A directional light carries no position. Calling
+[`set_position`](/api/scene/light/set_position),
+[`set_range`](/api/scene/light/set_range), or
+[`set_cone_angles`](/api/scene/light/set_cone_angles)
+on a directional light returns `LightError::FieldNotApplicable`.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::Light;
+
+let sun = Light::directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9]);
+assert_eq!(sun.direction(), Some([0.3, -1.0, -0.4]));
+assert_eq!(sun.color(), [1.0, 0.95, 0.9]);
+assert!(sun.position().is_none());
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 5-9}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Light } from "fragmentcolor";
+
+const sun = Light.directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9]);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Light
+
+sun = Light.directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9])
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let sun = try Light.directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9])
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val sun = Light.directional(listOf(0.3f, -1.0f, -0.4f), listOf(1.0f, 0.95f, 0.9f))
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Light::point
+
+Construct a point light. `position` is the world-space location the light
+radiates from; `color` is linear-RGB intensity (`[1, 1, 1]` for full white).
+Falloff is inverse-square distance. Bring
+[`set_range`](/api/scene/light/set_range) in to
+cap the influence radius, and
+[`set_intensity`](/api/scene/light/set_intensity)
+to scale the color uniformly.
+
+Use this for lamps, candles, fireballs: anything where light radiates
+outward from a fixed point. For a parallel-ray sun-like light see
+[`Light::directional`](/api/scene/light/directional);
+for a cone-constrained beam see
+[`Light::spot`](/api/scene/light/spot).
+
+A point light carries no direction or cone. Calling
+[`set_direction`](/api/scene/light/set_direction)
+or [`set_cone_angles`](/api/scene/light/set_cone_angles)
+on a point light returns `LightError::FieldNotApplicable`.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::Light;
+
+let bulb = Light::point([0.0, 2.5, 0.0], [1.0, 0.95, 0.8]).set_intensity(15.0);
+
+assert_eq!(bulb.position(), Some([0.0, 2.5, 0.0]));
+assert_eq!(bulb.color(), [1.0, 0.95, 0.8]);
+assert!((bulb.intensity() - 15.0).abs() < 1.0e-6);
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 6-10}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Light } from "fragmentcolor";
+
+const bulb = Light.point([0.0, 2.5, 0.0], [1.0, 0.95, 0.8]).setIntensity(15.0);
+
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Light
+
+bulb = Light.point([0.0, 2.5, 0.0], [1.0, 0.95, 0.8]).set_intensity(15.0)
+
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let bulb = try Light.point([0.0, 2.5, 0.0], [1.0, 0.95, 0.8]).setIntensity(15.0)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val bulb = Light.point(listOf(0.0f, 2.5f, 0.0f), listOf(1.0f, 0.95f, 0.8f)).setIntensity(15.0f)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Light::spot
+
+Construct a spot light. `position` is the world-space location the light
+radiates from; `direction` is the world-space vector the cone aims along
+(the cone axis is `-direction`); `color` is linear-RGB intensity.
+
+Falloff is inverse-square distance with a smooth cone roll-off between an
+inner and outer cone angle (defaults: `0` and `π/4`). Tighten the beam
+with [`set_cone_angles`](/api/scene/light/set_cone_angles),
+cap the influence with
+[`set_range`](/api/scene/light/set_range), and
+scale the radiance with
+[`set_intensity`](/api/scene/light/set_intensity).
+
+Use this for flashlights, headlamps, theatre lighting, mood key-lights:
+anything where the lit volume is a cone aimed at a target. For an
+unconstrained point source see
+[`Light::point`](/api/scene/light/point);
+for parallel-ray illumination see
+[`Light::directional`](/api/scene/light/directional).
+
+A spot light carries every kind-specific field, so every kind-specific
+setter (`set_position`, `set_direction`, `set_range`, `set_cone_angles`)
+succeeds with `Ok(self)`.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::Light;
+
+let torch = Light::spot([0.0, 1.8, 1.0], [0.0, -0.3, -1.0], [1.0, 0.9, 0.7])
+    .set_intensity(5.0)
+    .set_cone_angles(0.15, 0.4)?;
+
+assert_eq!(torch.position(), Some([0.0, 1.8, 1.0]));
+assert_eq!(torch.direction(), Some([0.0, -0.3, -1.0]));
+assert!((torch.outer_cone_angle().unwrap() - 0.4).abs() < 1.0e-6);
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 8-12}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Light } from "fragmentcolor";
+
+const torch = Light.spot([0.0, 1.8, 1.0], [0.0, -0.3, -1.0], [1.0, 0.9, 0.7]).setIntensity(5.0).setConeAngles(0.15, 0.4);
+
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Light
+
+torch = Light.spot([0.0, 1.8, 1.0], [0.0, -0.3, -1.0], [1.0, 0.9, 0.7]).set_intensity(5.0).set_cone_angles(0.15, 0.4)
+
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let torch = try Light.spot([0.0, 1.8, 1.0], [0.0, -0.3, -1.0], [1.0, 0.9, 0.7]).setIntensity(5.0).setConeAngles(0.15, 0.4)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val torch = Light.spot(listOf(0.0f, 1.8f, 1.0f), listOf(0.0f, -0.3f, -1.0f), listOf(1.0f, 0.9f, 0.7f)).setIntensity(5.0f).setConeAngles(0.15f, 0.4f)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Light::kind
+
+Read which kind this Light was constructed as. Returns a `LightKind` value
+(`Directional`, `Point`, or `Spot`). Bindings expose this as a string
+literal (`"directional"`, `"point"`, `"spot"`) so the kind tag round-trips
+the same way it does in glTF's `KHR_lights_punctual`.
+
+Use this when inspecting a Light built elsewhere (e.g. loaded from a
+glTF scene) to decide which kind-specific setters or getters to call.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Light, LightKind};
+
+let sun = Light::directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
+let bulb = Light::point([0.0, 2.5, 0.0], [1.0, 1.0, 1.0]);
+let torch = Light::spot([0.0, 1.8, 1.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
+assert_eq!(sun.kind(), LightKind::Directional);
+assert_eq!(bulb.kind(), LightKind::Point);
+assert_eq!(torch.kind(), LightKind::Spot);
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 7-11}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Light, LightKind } from "fragmentcolor";
+
+const sun = Light.directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
+const bulb = Light.point([0.0, 2.5, 0.0], [1.0, 1.0, 1.0]);
+const torch = Light.spot([0.0, 1.8, 1.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Light, LightKind
+
+sun = Light.directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
+bulb = Light.point([0.0, 2.5, 0.0], [1.0, 1.0, 1.0])
+torch = Light.spot([0.0, 1.8, 1.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let sun = try Light.directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
+let bulb = try Light.point([0.0, 2.5, 0.0], [1.0, 1.0, 1.0])
+let torch = try Light.spot([0.0, 1.8, 1.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val sun = Light.directional(listOf(0.0f, -1.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f))
+val bulb = Light.point(listOf(0.0f, 2.5f, 0.0f), listOf(1.0f, 1.0f, 1.0f))
+val torch = Light.spot(listOf(0.0f, 1.8f, 1.0f), listOf(0.0f, -1.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f))
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Light::color
+
+Read the linear-RGB color the light emits. Defined for every kind. The
+returned value is the `[r, g, b]` triple stored on the Light. Call
+[`set_color`](/api/scene/light/set_color) to
+update it. The scalar
+[`intensity`](/api/scene/light/intensity)
+multiplier is separate and multiplies the color uniformly in the shader.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::Light;
+
+let warm_lamp = Light::point([0.0, 2.0, 0.0], [1.0, 0.7, 0.4]);
+assert_eq!(warm_lamp.color(), [1.0, 0.7, 0.4]);
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 5-7}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Light } from "fragmentcolor";
+
+const warm_lamp = Light.point([0.0, 2.0, 0.0], [1.0, 0.7, 0.4]);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Light
+
+warm_lamp = Light.point([0.0, 2.0, 0.0], [1.0, 0.7, 0.4])
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let warm_lamp = try Light.point([0.0, 2.0, 0.0], [1.0, 0.7, 0.4])
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val warm_lamp = Light.point(listOf(0.0f, 2.0f, 0.0f), listOf(1.0f, 0.7f, 0.4f))
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Light::intensity
+
+Read the scalar intensity multiplier. Defined for every kind. The shader
+multiplies the [`color`](/api/scene/light/color)
+by this value when accumulating the light's contribution, so doubling
+intensity doubles every channel uniformly. Call
+[`set_intensity`](/api/scene/light/set_intensity)
+to update it.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::Light;
+
+let bright = Light::point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0]).set_intensity(5.0);
+assert!((bright.intensity() - 5.0).abs() < 1.0e-6);
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 5-7}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Light } from "fragmentcolor";
+
+const bright = Light.point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0]).setIntensity(5.0);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Light
+
+bright = Light.point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0]).set_intensity(5.0)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let bright = try Light.point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0]).setIntensity(5.0)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val bright = Light.point(listOf(0.0f, 2.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f)).setIntensity(5.0f)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Light::set_color
+
+Update the linear-RGB color the light emits. Defined for every kind;
+returns `Self` for chaining. The new value propagates live to every
+shader the Light has already been wired into; no re-attach needed.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::Light;
+
+let lamp = Light::point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0]);
+
+// Warm-tint the lamp later — every Pass that absorbed \`lamp\` sees the
+// new color on the next render.
+lamp.set_color([1.0, 0.7, 0.4]);
+assert_eq!(lamp.color(), [1.0, 0.7, 0.4]);
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 9-11}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Light } from "fragmentcolor";
+
+const lamp = Light.point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0]);
+
+// Warm-tint the lamp later — every Pass that absorbed \`lamp\` sees the
+// new color on the next render.
+lamp.setColor([1.0, 0.7, 0.4]);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Light
+
+lamp = Light.point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0])
+
+# Warm-tint the lamp later — every Pass that absorbed \`lamp\` sees the
+# new color on the next render.
+lamp.set_color([1.0, 0.7, 0.4])
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let lamp = try Light.point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0])
+
+// Warm-tint the lamp later — every Pass that absorbed """lamp""" sees the
+// color on the next render.
+try lamp.setColor([1.0, 0.7, 0.4])
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val lamp = Light.point(listOf(0.0f, 2.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f))
+
+// Warm-tint the lamp later — every Pass that absorbed """lamp""" sees the
+// color on the next render.
+lamp.setColor(listOf(1.0f, 0.7f, 0.4f))
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Light::set_intensity
+
+Update the scalar intensity multiplier. Defined for every kind; returns
+`Self` for chaining. The shader multiplies the
+[`color`](/api/scene/light/color) by this value
+when accumulating, so doubling intensity doubles every channel uniformly.
+The new value propagates live to every shader the Light has already been
+wired into.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::Light;
+
+let torch = Light::spot([0.0, 1.8, 1.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
+
+torch.set_intensity(8.0);
+assert!((torch.intensity() - 8.0).abs() < 1.0e-6);
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 7-9}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Light } from "fragmentcolor";
+
+const torch = Light.spot([0.0, 1.8, 1.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
+
+torch.setIntensity(8.0);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Light
+
+torch = Light.spot([0.0, 1.8, 1.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
+
+torch.set_intensity(8.0)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let torch = try Light.spot([0.0, 1.8, 1.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
+
+torch.setIntensity(8.0)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val torch = Light.spot(listOf(0.0f, 1.8f, 1.0f), listOf(0.0f, -1.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f))
+
+torch.setIntensity(8.0f)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Light::position
+
+Read the world-space position the light radiates from. Returns
+`Some([x, y, z])` for a point or spot light, `None` for a directional
+light (directional rays travel from infinitely far away, so there's no position to
+report). Call
+[`set_position`](/api/scene/light/set_position)
+to update it.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::Light;
+
+let lamp = Light::point([0.0, 2.5, 0.0], [1.0, 1.0, 1.0]);
+let sun = Light::directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
+assert_eq!(lamp.position(), Some([0.0, 2.5, 0.0]));
+assert!(sun.position().is_none());
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 6-9}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Light } from "fragmentcolor";
+
+const lamp = Light.point([0.0, 2.5, 0.0], [1.0, 1.0, 1.0]);
+const sun = Light.directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Light
+
+lamp = Light.point([0.0, 2.5, 0.0], [1.0, 1.0, 1.0])
+sun = Light.directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let lamp = try Light.point([0.0, 2.5, 0.0], [1.0, 1.0, 1.0])
+let sun = try Light.directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val lamp = Light.point(listOf(0.0f, 2.5f, 0.0f), listOf(1.0f, 1.0f, 1.0f))
+val sun = Light.directional(listOf(0.0f, -1.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f))
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Light::direction
+
+Read the world-space direction the light travels along. Returns
+`Some([x, y, z])` for a directional or spot light, `None` for a point
+light (point sources radiate omnidirectionally, so there's no direction to report).
+Call
+[`set_direction`](/api/scene/light/set_direction)
+to update it.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::Light;
+
+let sun = Light::directional([0.3, -1.0, -0.4], [1.0, 1.0, 1.0]);
+let lamp = Light::point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0]);
+assert_eq!(sun.direction(), Some([0.3, -1.0, -0.4]));
+assert!(lamp.direction().is_none());
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 6-9}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Light } from "fragmentcolor";
+
+const sun = Light.directional([0.3, -1.0, -0.4], [1.0, 1.0, 1.0]);
+const lamp = Light.point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0]);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Light
+
+sun = Light.directional([0.3, -1.0, -0.4], [1.0, 1.0, 1.0])
+lamp = Light.point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0])
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let sun = try Light.directional([0.3, -1.0, -0.4], [1.0, 1.0, 1.0])
+let lamp = try Light.point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0])
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val sun = Light.directional(listOf(0.3f, -1.0f, -0.4f), listOf(1.0f, 1.0f, 1.0f))
+val lamp = Light.point(listOf(0.0f, 2.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f))
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Light::range
+
+Read the influence-radius cap. Returns `Some(value)` for a point or spot
+light, `None` for a directional light (parallel rays have no distance
+falloff). A value of `0.0` means "unlimited", matching glTF
+`KHR_lights_punctual`'s default; positive values cut the contribution off
+smoothly past that distance. Call
+[`set_range`](/api/scene/light/set_range) to
+update it.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::Light;
+
+let lamp = Light::point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0]);
+let sun = Light::directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
+assert_eq!(lamp.range(), Some(0.0));
+assert!(sun.range().is_none());
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 6-9}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Light } from "fragmentcolor";
+
+const lamp = Light.point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0]);
+const sun = Light.directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Light
+
+lamp = Light.point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0])
+sun = Light.directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let lamp = try Light.point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0])
+let sun = try Light.directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val lamp = Light.point(listOf(0.0f, 2.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f))
+val sun = Light.directional(listOf(0.0f, -1.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f))
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Light::inner_cone_angle
+
+Read the inner cone half-angle (radians). Returns `Some(value)` only for a
+spot light, `None` for directional and point lights. The inner cone is the
+band where the light reaches full intensity; beyond it the contribution
+smoothly rolls off until it reaches zero at the outer cone (see
+[`outer_cone_angle`](/api/scene/light/outer_cone_angle)).
+Call
+[`set_cone_angles`](/api/scene/light/set_cone_angles)
+to update both at once.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::Light;
+
+let torch = Light::spot([0.0, 1.8, 1.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
+    .set_cone_angles(0.15, 0.4)?;
+let lamp = Light::point([0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
+assert!((torch.inner_cone_angle().unwrap() - 0.15).abs() < 1.0e-6);
+assert!(lamp.inner_cone_angle().is_none());
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 7-10}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Light } from "fragmentcolor";
+
+const torch = Light.spot([0.0, 1.8, 1.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0]).setConeAngles(0.15, 0.4);
+const lamp = Light.point([0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Light
+
+torch = Light.spot([0.0, 1.8, 1.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0]).set_cone_angles(0.15, 0.4)
+lamp = Light.point([0.0, 0.0, 0.0], [1.0, 1.0, 1.0])
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let torch = try Light.spot([0.0, 1.8, 1.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0]).setConeAngles(0.15, 0.4)
+let lamp = try Light.point([0.0, 0.0, 0.0], [1.0, 1.0, 1.0])
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val torch = Light.spot(listOf(0.0f, 1.8f, 1.0f), listOf(0.0f, -1.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f)).setConeAngles(0.15f, 0.4f)
+val lamp = Light.point(listOf(0.0f, 0.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f))
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Light::outer_cone_angle
+
+Read the outer cone half-angle (radians). Returns `Some(value)` only for a
+spot light, `None` for directional and point lights. The outer cone is
+where the light's contribution reaches zero. Beyond this angle the
+fragment receives nothing from this light. Between the inner and outer
+cones the contribution smoothly rolls off; see
+[`inner_cone_angle`](/api/scene/light/inner_cone_angle).
+Call
+[`set_cone_angles`](/api/scene/light/set_cone_angles)
+to update both at once.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::Light;
+
+let torch = Light::spot([0.0, 1.8, 1.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
+    .set_cone_angles(0.15, 0.4)?;
+let sun = Light::directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
+assert!((torch.outer_cone_angle().unwrap() - 0.4).abs() < 1.0e-6);
+assert!(sun.outer_cone_angle().is_none());
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 7-10}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Light } from "fragmentcolor";
+
+const torch = Light.spot([0.0, 1.8, 1.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0]).setConeAngles(0.15, 0.4);
+const sun = Light.directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Light
+
+torch = Light.spot([0.0, 1.8, 1.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0]).set_cone_angles(0.15, 0.4)
+sun = Light.directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let torch = try Light.spot([0.0, 1.8, 1.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0]).setConeAngles(0.15, 0.4)
+let sun = try Light.directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val torch = Light.spot(listOf(0.0f, 1.8f, 1.0f), listOf(0.0f, -1.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f)).setConeAngles(0.15f, 0.4f)
+val sun = Light.directional(listOf(0.0f, -1.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f))
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Light::set_position
+
+Update the world-space position. Defined for point and spot lights only;
+returns `Ok(self)` for chaining. Calling this on a directional light
+returns `Err(LightError::FieldNotApplicable { kind: Directional, field:
+"set_position" })` because directional rays carry no position. The new
+value propagates live to every shader the Light has already been wired
+into; no re-attach needed.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::Light;
+
+let lamp = Light::point([0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
+lamp.set_position([3.0, 1.5, -2.0])?;
+assert_eq!(lamp.position(), Some([3.0, 1.5, -2.0]));
+
+// Directional lights have no position; the call errors.
+let sun = Light::directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
+let result = sun.set_position([0.0, 0.0, 0.0]);
+assert!(result.is_err());
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 6-13}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Light } from "fragmentcolor";
+
+const lamp = Light.point([0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
+lamp.setPosition([3.0, 1.5, -2.0]);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Light
+
+lamp = Light.point([0.0, 0.0, 0.0], [1.0, 1.0, 1.0])
+lamp.set_position([3.0, 1.5, -2.0])
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let lamp = try Light.point([0.0, 0.0, 0.0], [1.0, 1.0, 1.0])
+try lamp.setPosition([3.0, 1.5, -2.0])
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val lamp = Light.point(listOf(0.0f, 0.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f))
+lamp.setPosition(listOf(3.0f, 1.5f, -2.0f))
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Light::set_direction
+
+Update the world-space direction. Defined for directional and spot lights
+only; returns `Ok(self)` for chaining. Calling this on a point light
+returns `Err(LightError::FieldNotApplicable { kind: Point, field:
+"set_direction" })` because point sources radiate omnidirectionally. The
+new value propagates live to every shader the Light has already been
+wired into; no re-attach needed.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::Light;
+
+let sun = Light::directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
+sun.set_direction([0.3, -0.8, -0.5])?;
+assert_eq!(sun.direction(), Some([0.3, -0.8, -0.5]));
+
+// Point lights have no direction; the call errors.
+let lamp = Light::point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0]);
+let result = lamp.set_direction([0.0, -1.0, 0.0]);
+assert!(result.is_err());
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 6-13}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Light } from "fragmentcolor";
+
+const sun = Light.directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
+sun.setDirection([0.3, -0.8, -0.5]);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Light
+
+sun = Light.directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
+sun.set_direction([0.3, -0.8, -0.5])
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let sun = try Light.directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
+try sun.setDirection([0.3, -0.8, -0.5])
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val sun = Light.directional(listOf(0.0f, -1.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f))
+sun.setDirection(listOf(0.3f, -0.8f, -0.5f))
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Light::set_range
+
+Update the influence-radius cap. Defined for point and spot lights only;
+returns `Ok(self)` for chaining. Calling this on a directional light
+returns `Err(LightError::FieldNotApplicable { kind: Directional, field:
+"set_range" })` because parallel rays have no distance falloff. Passing a
+negative value returns `Err(LightError::NegativeRange(value))` regardless
+of kind.
+
+A value of `0.0` means "unlimited", matching glTF `KHR_lights_punctual`'s
+default; positive values cut the contribution off smoothly past that
+distance. The new value propagates live to every shader the Light has
+already been wired into.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::Light;
+
+let lamp = Light::point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0]);
+lamp.set_range(8.0)?;
+assert_eq!(lamp.range(), Some(8.0));
+
+// Negative values error regardless of kind.
+let negative = lamp.set_range(-1.0);
+assert!(negative.is_err());
+
+// Directional lights have no range; the call errors.
+let sun = Light::directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
+let unsupported = sun.set_range(5.0);
+assert!(unsupported.is_err());
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 6-17}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Light } from "fragmentcolor";
+
+const lamp = Light.point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0]);
+lamp.setRange(8.0);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Light
+
+lamp = Light.point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0])
+lamp.set_range(8.0)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let lamp = try Light.point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0])
+try lamp.setRange(8.0)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val lamp = Light.point(listOf(0.0f, 2.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f))
+lamp.setRange(8.0f)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Light::set_cone_angles
+
+Update the inner and outer cone half-angles (radians). Defined for spot
+lights only; returns `Ok(self)` for chaining. Calling this on a
+directional or point light returns
+`Err(LightError::FieldNotApplicable { kind, field: "set_cone_angles" })`.
+
+The inner half-angle is the band where the light reaches full intensity;
+between the inner and outer the contribution smoothly rolls off; beyond
+the outer the fragment receives nothing from this light. Pass equal
+values for a hard-edged spot, or pass `(0.0, π/4)` for the default
+soft 45° cone.
+
+The new values propagate live to every shader the Light has already
+been wired into; no re-attach needed.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::Light;
+
+let torch = Light::spot([0.0, 1.8, 1.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
+torch.set_cone_angles(0.15, 0.4)?;
+assert!((torch.inner_cone_angle().unwrap() - 0.15).abs() < 1.0e-6);
+assert!((torch.outer_cone_angle().unwrap() - 0.4).abs() < 1.0e-6);
+
+// Non-spot lights error.
+let lamp = Light::point([0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
+let unsupported = lamp.set_cone_angles(0.15, 0.4);
+assert!(unsupported.is_err());
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 6-14}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Light } from "fragmentcolor";
+
+const torch = Light.spot([0.0, 1.8, 1.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
+torch.setConeAngles(0.15, 0.4);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Light
+
+torch = Light.spot([0.0, 1.8, 1.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
+torch.set_cone_angles(0.15, 0.4)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let torch = try Light.spot([0.0, 1.8, 1.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
+try torch.setConeAngles(0.15, 0.4)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val torch = Light.spot(listOf(0.0f, 1.8f, 1.0f), listOf(0.0f, -1.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f))
+torch.setConeAngles(0.15f, 0.4f)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>

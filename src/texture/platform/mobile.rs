@@ -13,7 +13,7 @@ use std::sync::Arc;
 
 use crate::renderer::platform::mobile::FragmentColorError;
 use crate::texture::TextureRegionMobile;
-use crate::{SamplerOptions, Size, Texture, TextureFormat, TextureId, TextureMipChain};
+use crate::{Mipmap, SamplerOptions, Size, Texture, TextureFormat, TextureId};
 
 #[uniffi::export]
 impl Texture {
@@ -21,7 +21,7 @@ impl Texture {
     /// valid within the `Renderer` that created it. Mobile callers receive
     /// a copy (uniffi::Record) so no lifetime plumbing is needed.
     #[uniffi::method(name = "id")]
-    #[lsp_doc("docs/api/core/texture/id.md")]
+    #[lsp_doc("docs/api/texture/texture/id.md")]
     pub fn id_mobile(&self) -> TextureId {
         *self.id()
     }
@@ -29,14 +29,14 @@ impl Texture {
     /// Return the texture size (w × h[× d]). Mirrors the canonical
     /// `Texture::size()` — see [`crate::Size`].
     #[uniffi::method(name = "size")]
-    #[lsp_doc("docs/api/core/texture/size.md")]
+    #[lsp_doc("docs/api/texture/texture/size.md")]
     pub fn size_mobile(&self) -> Size {
         self.size()
     }
 
     /// Return the aspect ratio (width / height) as an `f32`.
     #[uniffi::method(name = "aspect")]
-    #[lsp_doc("docs/api/core/texture/aspect.md")]
+    #[lsp_doc("docs/api/texture/texture/aspect.md")]
     pub fn aspect_mobile(&self) -> f32 {
         self.aspect()
     }
@@ -48,7 +48,7 @@ impl Texture {
     /// `setSamplerOptions(opts)` (Kotlin) once the extension shims map
     /// the camelCase form back onto a single overload.
     #[uniffi::method(name = "setSamplerOptions")]
-    #[lsp_doc("docs/api/core/texture/set_sampler_options.md")]
+    #[lsp_doc("docs/api/texture/texture/set_sampler_options.md")]
     pub fn set_sampler_options_mobile(&self, opts: SamplerOptions) {
         self.set_sampler_options(opts);
     }
@@ -57,7 +57,7 @@ impl Texture {
     /// packed for the texture's format; see `Texture::write` for supported
     /// formats and alignment rules. Mirrors `Texture::write(&[u8])`.
     #[uniffi::method(name = "write")]
-    #[lsp_doc("docs/api/core/texture/write.md")]
+    #[lsp_doc("docs/api/texture/texture/write.md")]
     pub fn write_mobile(&self, bytes: Vec<u8>) -> Result<(), FragmentColorError> {
         self.write(&bytes).map_err(FragmentColorError::from)
     }
@@ -66,7 +66,7 @@ impl Texture {
     /// `TextureRegionMobile` with all-zero `size_*` fields for a whole-texture
     /// write (equivalent to `write()`). Mirrors `Texture::write_region`.
     #[uniffi::method(name = "writeRegion")]
-    #[lsp_doc("docs/api/core/texture/write_region.md")]
+    #[lsp_doc("docs/api/texture/texture/write_region.md")]
     pub fn write_region_mobile(
         &self,
         bytes: Vec<u8>,
@@ -82,14 +82,14 @@ impl Texture {
     /// await this in a coroutine or `Task`; the underlying GPU readback is
     /// driven by the async `texture::read::read_pixels` path.
     #[uniffi::method(name = "getImage")]
-    #[lsp_doc("docs/api/core/texture/get_image.md")]
+    #[lsp_doc("docs/api/texture/texture/get_image.md")]
     pub async fn get_image_mobile(self: Arc<Self>) -> Result<Vec<u8>, FragmentColorError> {
         self.get_image().await.map_err(FragmentColorError::from)
     }
 }
 
 #[uniffi::export]
-impl TextureMipChain {
+impl Mipmap {
     /// Build a chain from raw bytes + format (+ optional size). If
     /// `size` is `None`, `bytes` is decoded as an image (PNG / JPEG / etc.);
     /// if `Some(size)`, `bytes` is treated as raw pixel data already laid
@@ -99,12 +99,12 @@ impl TextureMipChain {
     ///
     /// Mobile shim takes the fields directly because uniffi can't marshal
     /// `impl Into<TextureInput>`. Swift / Kotlin extensions wrap this
-    /// constructor so end users call `TextureMipChain.prepare(bytes:format:)`
-    /// (encoded) or `TextureMipChain.prepare(bytes:format:size:)` (raw)
+    /// constructor so end users call `Mipmap.build(bytes:format:)`
+    /// (encoded) or `Mipmap.build(bytes:format:size:)` (raw)
     /// without seeing the underlying `TextureInput` plumbing.
-    #[uniffi::constructor(name = "prepare")]
-    #[lsp_doc("docs/api/core/texture_mip_chain/prepare.md")]
-    pub fn prepare_mobile(
+    #[uniffi::constructor(name = "build")]
+    #[lsp_doc("docs/api/texture/mipmap/build.md")]
+    pub fn build_mobile(
         bytes: Vec<u8>,
         format: TextureFormat,
         size: Option<Size>,
@@ -117,34 +117,34 @@ impl TextureMipChain {
                 ..Default::default()
             },
         };
-        Self::prepare(input)
+        Self::build(input)
             .map(Arc::new)
             .map_err(FragmentColorError::from)
     }
 
     #[uniffi::method(name = "format")]
-    #[lsp_doc("docs/api/core/texture_mip_chain/format.md")]
+    #[lsp_doc("docs/api/texture/mipmap/format.md")]
     pub fn format_mobile(&self) -> TextureFormat {
         self.format.into()
     }
 
-    #[uniffi::method(name = "baseSize")]
-    #[lsp_doc("docs/api/core/texture_mip_chain/base_size.md")]
-    pub fn base_size_mobile(&self) -> Size {
-        let (w, h) = self.base_size();
+    #[uniffi::method(name = "size")]
+    #[lsp_doc("docs/api/texture/mipmap/size.md")]
+    pub fn size_mobile(&self) -> Size {
+        let (w, h) = self.size();
         Size::from([w, h])
     }
 
-    #[uniffi::method(name = "levelCount")]
-    #[lsp_doc("docs/api/core/texture_mip_chain/level_count.md")]
-    pub fn level_count_mobile(&self) -> u32 {
-        self.level_count() as u32
+    #[uniffi::method(name = "count")]
+    #[lsp_doc("docs/api/texture/mipmap/count.md")]
+    pub fn count_mobile(&self) -> u32 {
+        self.count() as u32
     }
 
-    /// Return the bytes for a single mip level. Use `levelCount()` to discover
+    /// Return the bytes for a single mip level. Use `count()` to discover
     /// the valid range.
     #[uniffi::method(name = "level")]
-    #[lsp_doc("docs/api/core/texture_mip_chain/levels.md")]
+    #[lsp_doc("docs/api/texture/mipmap/levels.md")]
     pub fn level_mobile(&self, index: u32) -> Result<Vec<u8>, FragmentColorError> {
         let levels = self.levels();
         let idx = index as usize;

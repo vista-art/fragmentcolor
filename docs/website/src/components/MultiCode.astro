@@ -1,0 +1,59 @@
+---
+// MultiCode.astro — inline multi-language code block.
+//
+// Snippet is the right tool for tutorial regions sliced from real
+// example.rs / example.js files; this is the lighter cousin for
+// freestanding illustrative blocks (e.g. simplified host-bootstrap
+// snippets that don't need to be backed by a real cargo target).
+//
+// All language props are optional; tabs are rendered only for languages
+// you provide. The outer Tabs uses syncKey="lang" so it stays in step
+// with the page-level <LangSelector /> and every <Snippet> on the page.
+//
+// Usage in MDX:
+//   <MultiCode
+//     rust={`let r = Renderer::new();`}
+//     js={`const r = new Renderer();`}
+//     py={`r = Renderer()`}
+//   />
+
+import { Code, Tabs, TabItem } from "@astrojs/starlight/components";
+
+interface Props {
+  rust?: string;
+  js?: string;
+  py?: string;
+  swift?: string;
+  kotlin?: string;
+}
+
+const { rust, js, py, swift, kotlin } = Astro.props;
+---
+
+<Tabs syncKey="lang">
+  {rust && (
+    <TabItem label="Rust">
+      <Code code={rust} lang="rust" />
+    </TabItem>
+  )}
+  {js && (
+    <TabItem label="JavaScript">
+      <Code code={js} lang="javascript" />
+    </TabItem>
+  )}
+  {py && (
+    <TabItem label="Python">
+      <Code code={py} lang="python" />
+    </TabItem>
+  )}
+  {swift && (
+    <TabItem label="Swift">
+      <Code code={swift} lang="swift" />
+    </TabItem>
+  )}
+  {kotlin && (
+    <TabItem label="Kotlin">
+      <Code code={kotlin} lang="kotlin" />
+    </TabItem>
+  )}
+</Tabs>

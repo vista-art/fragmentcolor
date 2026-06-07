@@ -1,70 +1,80 @@
 ---
-title: Hello, 1000 triangles
-description: Three ways to draw a triangle with FragmentColor — from a one-shot URL to a few thousand animated copies.
+title: Hello, 15000 triangles!
+description: Six steps from a three-line triangle to a fifteen-hundred-particle scene with a cinematic post-processing stack.
 draft: true
+tableOfContents: false
 ---
 
 import Snippet from "../../../components/Snippet.astro";
 import Demo from "../../../components/Demo.astro";
+import Lang from "../../../components/Lang.astro";
+import LangSelector from "../../../components/LangSelector.astro";
+import MultiCode from "../../../components/MultiCode.astro";
+import ColorTriangle from "../../../components/ColorTriangle.astro";
+import Lock from "../../../components/Lock.astro";
 
-There's a rite of passage in graphics programming: drawing your first triangle!
+<LangSelector />
 
-**This typically takes thousands of lines of code.**
-Pick any tutorial for OpenGL, Vulkan, or raw WebGPU, and you'll spend an
-afternoon picking pixel formats, allocating command pools, and binding
-descriptor sets before a single colored pixel shows up on your screen.
+<Lock id="opening" description="article opener" comments="voice already iterated; do not paraphrase">
 
-We're going to do it in **six** lines. Then we'll add a few thousand more.
+There's a rite of passage in graphics programming:  **Drawing your first triangle.**
 
-This tutorial walks through the same triangle four times. Each version
-adds one more thing FragmentColor can do. By the end, you'll have a tiny
-particle field on screen run through a postfx pass, and you'll have met
-every object in the core API.
+**This typically takes thousands of lines of code.** Pick any tutorial for OpenGL, Vulkan, or raw WebGPU, and you'll spend an afternoon setting pixel formats, allocating command pools, and wiring descriptor sets & binding groups before any colored pixel reaches the screen.
 
-## Step 1 — Load, set, render
+**We're going to do it in 5 lines of <Lang/>**.
 
-To draw anything anywhere, we need two things: a **surface** to draw to, and
-**something that draws**. In FragmentColor those are a `Target` (wraps a
-canvas or window) and a `Renderer`. Let's create them!
+</Lock>
 
-```rust
-// canvas is platform-specific
+## Step 1 — Hello, triangle!
+
+To draw anything anywhere, we need at least two things: 
+- a **surface** to draw to, 
+- and **something that draws**.
+
+In FragmentColor those are a `Target`  and a `Renderer`. Let's create them!
+
+<MultiCode
+  rust={`// canvas is a winit Window
 let renderer = Renderer::new();
-let target = renderer.create_target(canvas).await?;
-```
+let target = renderer.create_target(canvas).await?;`}
+  js={`// canvas is the <canvas> DOM element
+const renderer = new Renderer();
+const target = await renderer.createTarget(canvas);`}
+  py={`# canvas is platform-specific (typically glfw)
+renderer = Renderer()
+target = await renderer.create_target(canvas)`}
+  swift={`// canvas is platform-specific (UIView, NSView, ...)
+let renderer = Renderer()
+let target = try await renderer.createTarget(canvas)`}
+  kotlin={`// canvas is platform-specific (SurfaceView, ...)
+val renderer = Renderer()
+val target = renderer.createTarget(canvas)`}
+/>
 
-Our surface and Renderer are ready. Now we need to decide: *what* to draw?
 
-That's what a **`Shader`** does: it's a tiny program that runs once per pixel.
-It's the smallest unit FragmentColor can render, and we don't need anything
-else to see cool things on the screen. Let's bring a quick example:
+Surface and Renderer are ready. Now we need to decide: *what* to draw?
 
-```rust
-let shader = Shader::new("https://fragmentcolor.org/triangle.wgsl")?;
-shader.set("color", [0.95, 0.30, 0.42, 1.0])?;
-renderer.render(&shader, &target);
-```
+That's what a **`Shader`** does. Shaders are tiny programs that run once per pixel. It's the smallest unit FragmentColor can render, and we don't need anything else to see cool things on screen. Let's grab a quick example from our  [shader catalog](/shaders/)  :
+
+<ColorTriangle />
 
 Congratulations! You just drew your first triangle!
 
-Well, maybe it's not your first — I'm sure you remember that moment fondly,
-though.
+Well, maybe it's not your first — I'm sure you remember that moment fondly, though.
 
-These three lines are deceptively simple. Behind the scenes, FragmentColor
-validated the WGSL, compiled a shader program from it, built a render pipeline,
-allocated the buffers to move data between the CPU and GPU, created binding
-groups, set up a render pass, and dispatched the draw call.
+What you'd actually see if you ran those three lines as a one-shot program is a single, static, pink triangle just sitting there — `set("color", ...)` once, `render(...)` once, then the program exits and the GPU goes home. Don't be fooled, though: those three lines are doing a lot. Behind the scenes, FragmentColor validated the WGSL, compiled a shader program, built a render pipeline, allocated GPU buffers to move data between CPU and GPU, created bind groups, set up a render pass, and dispatched the draw call. Our little shader runs **once for every pixel**. On a 1080p surface that's about 2 million invocations, all in parallel.
 
-Our little shader runs **once for every pixel, on every frame**. On a
-1080p surface at 60 fps, that's roughly 125 million invocations per
-second, running in parallel on your GPU.
+To turn the static frame into an animation, we run those last two lines (`set` and `render`) inside a render loop, changing the color input each tick:
+
+<Snippet file="01-hello-triangle/01-three-lines/example.rs" region="frame" />
+
+Same shader handle, one new `set("color", ...)` per frame, one `render(...)` per frame. Every pixel gets the new color next frame. Press play:
 
 <Demo file="01-hello-triangle/01-three-lines/example.rs" />
 
-Let's take a closer look at what happened. The shader at that URL declares
-one `color` uniform and bakes its own three vertex positions into the
-program. FragmentColor parsed the WGSL, saw the `color` uniform, and made
-it settable by name. Here it is:
+At 60 fps that's about 125 million pixel invocations per second, all driving the same triangle from a single uniform. We have one input. Time to give the program more to play with!
+
+Before we move on, let's peek at the shader living at that URL — it's the other half of the story:
 
 ```wgsl
 struct VOut { @builtin(position) pos: vec4<f32> };
@@ -73,10 +83,11 @@ struct VOut { @builtin(position) pos: vec4<f32> };
 
 @vertex
 fn vs_main(@builtin(vertex_index) i: u32) -> VOut {
+    // Equilateral triangle in NDC, centroid at origin.
     var p = array<vec2<f32>, 3>(
-        vec2<f32>(-0.6, -0.5),
-        vec2<f32>( 0.6, -0.5),
-        vec2<f32>( 0.0,  0.7),
+        vec2<f32>(-0.7, -0.4),
+        vec2<f32>( 0.7, -0.4),
+        vec2<f32>( 0.0,  0.8),
     );
     var out: VOut;
     out.pos = vec4<f32>(p[i], 0.0, 1.0);
@@ -89,151 +100,136 @@ fn fs_main() -> @location(0) vec4<f32> {
 }
 ```
 
-The `@group(0) @binding(0) var<uniform> color: vec4<f32>` line is what made
-`shader.set("color", ...)` work — FragmentColor reflected the binding off
-the WGSL source. The `@vertex` stage ran three times and picked one of the
-three positions. The `@fragment` stage returned the uniform as the pixel
-colour. One triangle, one colour.
+The `@group(0) @binding(0) var<uniform> color: vec4<f32>` line is what made `shader.set("color", ...)` work — FragmentColor reflected the binding right off the WGSL source. The `@vertex` stage runs three times and picks one of three positions. The `@fragment` stage returns the uniform as the pixel color. One triangle, one color.
 
-The triangle above isn't static — every frame the example sets the `color`
-uniform to a new value and calls `render(...)` again:
+## Step 2 — A second uniform
 
-<Snippet file="01-hello-triangle/01-three-lines/example.rs" region="frame" />
+Try resizing the page wider, then taller. Watch the triangle in step 1's demo.
 
-Same shader handle, one new `set("color", ...)` per frame, one render
-call. Every pixel gets the new colour next frame. We have one input.
-Time to give the program more to play with.
+It stretches. The shape we see isn't really a triangle anymore on a wide canvas — it's a wide isoceles thing, scaled along x to fill the canvas. That's because we hardcoded the positions in **NDC** (normalized device coordinates), where `[-1, 1]` maps across the canvas independently along each axis. When the canvas isn't square, our shape isn't either.
 
-## Step 2 — Bring your own vertices
+The fix is information the shader doesn't have yet: the canvas aspect ratio. We need another input. Same `Shader` API, one more `set("...", ...)` call per frame:
 
-Same triangle on screen, but now the program owns the geometry. We're
-going to introduce two new objects from the core API:
+<Snippet file="01-hello-triangle/02-resolution-uniform/example.rs" region="frame" />
 
-- **`Vertex`** — one point in space. Carries a position and any extra
-  attributes you want to attach (colour, UVs, normals, whatever).
+And in the shader, we declare a second uniform and use it to squeeze whichever axis is longer:
+
+<Snippet file="01-hello-triangle/02-resolution-uniform/example.rs" region="shader" />
+
+`@group(0) @binding(1) var<uniform> resolution: vec2<f32>` is reflected by FragmentColor exactly the way `color` was — `set("resolution", [w, h])` finds it by name. The `max(.., 1.0)` is just paranoia: WGSL uniforms default to zero, and we'd rather render at 1:1 than divide by it.
+
+<Demo file="01-hello-triangle/02-resolution-uniform/example.rs" />
+
+Try resizing the page now. The triangle holds its shape. Two uniforms instead of one, and the shader stops caring about the canvas. Every shader from here on carries a `resolution` uniform alongside its other inputs — the demos handle it for you.
+
+## Step 3 — Compose from the catalog
+
+Same `Shader::new` constructor, only this time we pass an *array*. It can mix any number of inline source strings, URLs, file paths, **or registry slugs** — short paths into FragmentColor's [shader catalog](/shaders/), each one a small pure WGSL function we can pull in by name.
+
+Here's the same triangle, but now with a soft simplex-noise breath shimmering across its surface. The host points the constructor at one slug (`noise/simplex2`) and one inline source:
+
+<Snippet file="01-hello-triangle/03-compose-noise/example.rs" region="setup" />
+
+The inline source calls `simplex2(...)` straight from the fragment stage as if it were a normal WGSL function — because, well, it now is:
+
+<Snippet file="01-hello-triangle/03-compose-noise/example.rs" region="shader" />
+
+`Shader::new` fetches each slug (the registry is embedded by default — no network), validates the merged source through naga, and links everything into one program. Slugs are content-addressed, so importing the same helper from two different shaders compiles it once and reuses it.
+
+<Demo file="01-hello-triangle/03-compose-noise/example.rs" />
+
+There are 225 of these helpers in the catalog right now — easing curves, color spaces, post-processing kernels, lighting models, hashes, SDFs in 2D and 3D. We'll keep dipping in for the rest of this tutorial.
+
+## Step 4 — Bring your own vertices
+
+Same triangle on screen, but now the program owns the geometry. Two new objects from the core API:
+
+- **`Vertex`** — one point in space. Carries a position and any extra attributes you want to attach (color, UVs, normals, whatever).
 - **`Mesh`** — a bag of vertices.
 
-We hand the mesh to the shader, and the shader's vertex stage reads from
-it instead of making things up.
+We hand the mesh to the shader, and the shader's vertex stage reads from it instead of making things up.
 
-<Snippet file="01-hello-triangle/02-vertex-gradient/example.rs" region="setup" />
+<Snippet file="01-hello-triangle/04-vertex-gradient/example.rs" region="setup" />
 
-Three vertices, each with its own position and its own colour. The shader
-reads `position` at `@location(0)` and `color` at `@location(1)`,
-interpolates the colour across the surface of the triangle, and writes it
-out per pixel.
+Three vertices, each with its own position and its own color. The shader reads `position` at `@location(0)` and `color` at `@location(1)`, interpolates the color across the surface of the triangle, and writes it out per pixel.
 
-<Snippet file="01-hello-triangle/02-vertex-gradient/example.rs" region="shader" />
+<Snippet file="01-hello-triangle/04-vertex-gradient/example.rs" region="shader" />
 
-<Demo file="01-hello-triangle/02-vertex-gradient/example.rs" />
+<Demo file="01-hello-triangle/04-vertex-gradient/example.rs" />
 
-A smooth gradient — pink in one corner, green in another, blue at the top.
-Each vertex pulled the colour towards itself and the GPU blended the rest.
-You didn't write any "blend the colours" code; that's just what happens
-when you let the rasterizer interpolate a vertex output.
+A smooth gradient — pink in one corner, green in another, blue at the top. Each vertex pulled the color toward itself and the GPU blended the rest. You didn't write any "blend the colors" code — that's just what happens when the rasterizer interpolates a vertex output.
 
-The interesting thing here isn't the gradient. It's that the same `Shader`
-instance you had in step 1 is now drawing geometry the program decides on,
-and the change took five lines of Rust.
+The interesting thing here isn't the gradient. It's that the same `Shader` instance you had in step 1 is now drawing geometry the program decides on, and the change took five lines of <Lang />.
 
-## Step 3 — A whole lot more triangles
+## Step 5 — A field of instances
 
 One triangle is fine. Let's draw fifteen hundred.
 
-We don't need fifteen hundred meshes. We need fifteen hundred *instances*
-of the same mesh — same three vertices, drawn over and over with a
-per-instance offset, phase, and tint. The GPU handles them all in a
-single draw call.
+We don't need fifteen hundred meshes. We need fifteen hundred *instances* of the same mesh — same three vertices, drawn over and over with a per-instance offset, phase, and tint. The GPU handles them all in a single draw call.
 
-This is where the **`Instance`** object comes in. An instance carries
-attributes the same way a vertex does, but they apply to the whole copy of
-the mesh rather than to one vertex of it.
+This is where the **`Instance`** object comes in. An instance carries attributes the same way a vertex does, but they apply to the whole copy of the mesh rather than to one vertex of it.
 
-<Snippet file="01-hello-triangle/03-particle-trail/example.rs" region="setup" />
+The host wires up the mesh and the instances:
 
-The vertex shader takes both vertex attributes and instance attributes.
-Vertex stuff drives the three points of *one* triangle; instance stuff
-drives where the triangle goes and what colour it shifts towards. We also
-pass a `time` uniform so the GPU can wobble each instance independently
-using its phase.
+<Snippet file="01-hello-triangle/05-particle-trail/example.rs" region="setup" />
 
-<Snippet file="01-hello-triangle/03-particle-trail/example.rs" region="shader" />
+The shader pulls in `easing/in_out_sine` from the catalog so the per-instance pulse rides a smoother bell curve than a raw sine, and calls the imported function on the very last lines before assembling the output:
 
-Per frame, all we change is one number — the `time` uniform — and the
-shader animates every triangle from that.
+<Snippet file="01-hello-triangle/05-particle-trail/example.rs" region="shader" />
 
-<Snippet file="01-hello-triangle/03-particle-trail/example.rs" region="frame" />
+The vertex shader takes both vertex attributes and instance attributes. Vertex stuff drives the three points of *one* triangle; instance stuff drives where the triangle goes and what color it shifts towards. We also pass a `time` uniform so the GPU can wobble each instance independently using its phase.
 
-<Demo file="01-hello-triangle/03-particle-trail/example.rs" />
+Per frame, all we change is one number — the `time` uniform — and the shader animates every triangle from that:
 
-Fifteen hundred wobbling, breathing little gradient triangles, and the
-hot path is two function calls per frame.
+<Snippet file="01-hello-triangle/05-particle-trail/example.rs" region="frame" />
 
-## Step 4 — Run it through a postfx pass
+<Demo file="01-hello-triangle/05-particle-trail/example.rs" />
 
-Let's make this look properly cinematic. We're going to render the
-particle scene into a *texture* instead of straight to the canvas, then
-hand that texture to a second shader that adds a vignette and a touch of
-film grain. Two more objects from the core API show up here:
+Fifteen hundred wobbling, breathing little gradient triangles, and the hot path is two function calls per frame.
+
+## Step 6 — Run it through a cinematic postfx pass
+
+Let's make it look properly cinematic! We're going to render the particle scene into a *texture* instead of straight to the canvas, then hand that texture to a second shader that stacks four registry helpers on top:
+
+- `postfx/chromatic_offsets` — three UVs for a subtle RGB channel split
+- `color/tonemap_filmic` — Hejl/Burgess-Dawson highlight roll-off
+- `postfx/vignette` — multiplier that darkens the edges
+- `postfx/film_grain` — additive per-frame noise
+
+Two more objects from the core API show up here:
 
 - **`Pass`** — the unit of "render this to that". Lets you chain effects.
 - **`Texture`** — the bridge between two passes (or a sampleable input).
 
-And we get to use FragmentColor's **shader composition** system
-for the postfx itself: instead of writing the vignette and grain by hand,
-we pull them out of the [public registry](https://fragmentcolor.org/shaders/)
-and let `Shader::new` glue them together with a small main shader.
+The host owns the wiring (texture target, two passes, the dependency between them):
 
-<Snippet file="01-hello-triangle/04-postfx-pass/example.rs" region="postfx-shader" />
+<Snippet file="01-hello-triangle/06-postfx-pass/example.rs" region="setup" />
 
-`Shader::new` accepts an array of "things" — raw source strings, registry
-slugs, URLs, file paths, you name it. It fetches the helpers, hashes
-them, glues everything together, and validates the result with naga
-before any GPU work happens. Two pure WGSL functions live in the registry
-forever; we just borrow them.
+The fragment shader is the recipe — four catalog calls fan out into one final color:
 
-Now we wire the two passes together. The particle pass writes to the
-intermediate texture; the postfx pass reads from it and writes to the
-canvas. `Pass::require` declares the dependency so the renderer knows
-the order:
+<Snippet file="01-hello-triangle/06-postfx-pass/example.rs" region="postfx-shader" />
 
-<Snippet file="01-hello-triangle/04-postfx-pass/example.rs" region="setup" />
+`Shader::new` glues every helper into one program; `Pass::require` declares the dependency so the renderer knows the order. The particle pass writes to the intermediate texture; the postfx pass reads from it and writes to the canvas.
 
 Two passes in one render call:
 
-<Snippet file="01-hello-triangle/04-postfx-pass/example.rs" region="frame" />
+<Snippet file="01-hello-triangle/06-postfx-pass/example.rs" region="frame" />
 
-<Demo file="01-hello-triangle/04-postfx-pass/example.rs" />
+<Demo file="01-hello-triangle/06-postfx-pass/example.rs" />
 
-The same fifteen hundred triangles, but now with darkened corners and a
-subtle grain shimmer riding on top. The particles never knew anything
-changed; the postfx pass took care of itself.
+The same fifteen hundred triangles, but now with split-channel edges, a filmic roll-off, darkened corners, and a subtle grain shimmer riding on top. The particles never knew anything changed; the postfx pass took care of itself.
 
 ## What just happened
 
-In one tutorial we touched every object in FragmentColor's core API.
-Each one earned its keep on a different step:
+In one tutorial we touched every object in FragmentColor's core API. Each one earned its keep on a different step:
 
-- **`Shader`** — the GPU program. Loaded from a URL in step 1, from
-  inline source in steps 2 and 3, *composed from a registry* in step 4.
-- **`Vertex`** — one point with attributes (position, colour, anything
-  you want). Step 2 introduced it.
-- **`Mesh`** — a bag of vertices, optionally with instances. Step 2 used
-  it for the gradient triangle; step 3 reused it for the particle field.
-- **`Pass`** — the unit of rendering. Step 4 chained two of them: one
-  drawing into a texture, one reading from it.
-- **`Texture`** — sampleable image data on the GPU. Step 4 used a
-  texture as the bridge between the two passes; the same object can also
-  hold a loaded image, a CPU-uploaded byte buffer, or compute output.
-- **`Renderer`** — the thing that actually draws. Same `render(...)`
-  call worked for all four steps; everything else above just changes
-  what gets rendered.
+- **`Shader`** — the GPU program. Loaded from a URL in step 1, *composed from the catalog* in steps 2, 5, and 6; written inline alongside in steps 3 and 4. Took a single uniform in step 1, two in step 3, several per stage by the end.
+- **`Vertex`** — one point with attributes (position, color, anything you want). Step 4 introduced it.
+- **`Mesh`** — a bag of vertices, optionally with instances. Step 4 used one vertex per corner; step 5 reused the same mesh with 1500 instances.
+- **`Pass`** — the unit of rendering. Step 6 chained two of them: one drawing into a texture, one reading from it.
+- **`Texture`** — sampleable image data on the GPU. Step 6 used a texture as the bridge between the two passes; the same object can also hold a loaded image, a CPU-uploaded byte buffer, or compute output.
+- **`Renderer`** — the thing that actually draws. Same `render(...)` call worked for all six steps; everything else above just changes what gets rendered.
 
-That's the entire core. Compute shaders are a `Shader` with a
-`@compute` entry point — same object, different stage — and they slot
-into a `Pass` exactly like a graphics shader does.
+That's the entire core. Compute shaders are a `Shader` with a `@compute` entry point — same object, different stage — and they slot into a `Pass` exactly like a graphics shader does.
 
-The tutorials after this one stop building from scratch and start
-building real applications: a UI component, a generative-art piece, a
-signed-distance-field playground. Each picks a slice of the API and
-goes deep.
+The tutorials after this one stop building from scratch and start building real applications: a UI component, a generative-art piece, a signed-distance-field playground. Each picks a slice of the API and goes deep.

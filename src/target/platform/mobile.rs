@@ -74,6 +74,12 @@ impl MobileWindowTarget {
     }
 }
 
+impl crate::target::TargetInternal for MobileWindowTarget {
+    fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, SurfaceError> {
+        self.inner.lock().get_current_frame()
+    }
+}
+
 // Expose the inner `Target` impl for use in `Renderer::render` dispatch.
 impl Target for MobileWindowTarget {
     fn size(&self) -> Size {
@@ -82,10 +88,6 @@ impl Target for MobileWindowTarget {
 
     fn resize(&mut self, size: impl Into<Size>) {
         Target::resize(&mut *self.inner.lock(), size.into());
-    }
-
-    fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, SurfaceError> {
-        self.inner.lock().get_current_frame()
     }
 
     async fn get_image(&self) -> Vec<u8> {
@@ -115,7 +117,7 @@ impl MobileTextureTarget {
 
     /// Return a clone of the underlying `TextureTarget`.
     ///
-    /// Used by `Pass::add_target` and `Pass::add_depth_target` which need a
+    /// Used by `Pass::set_target` and `Pass::set_depth_target` which need a
     /// typed `&TextureTarget` to dispatch through the `TryInto<ColorTarget>`
     /// / `TryInto<DepthTarget>` conversions.
     pub fn texture_target(&self) -> TextureTarget {
@@ -154,6 +156,22 @@ impl MobileTextureTarget {
         let inner = self.inner.read().clone();
         inner.get_image().await
     }
+
+    /// Return a sampleable [`Texture`](crate::texture::Texture) handle that
+    /// aliases this target's offscreen storage. Mirrors the inherent
+    /// `TextureTarget::texture()` on every other binding so the docs example
+    /// reads `target.texture()` identically across Python, Swift, Kotlin, JS.
+    #[uniffi::method(name = "texture")]
+    #[lsp_doc("docs/api/targets/texture_target/texture.md")]
+    pub fn texture_mobile(&self) -> Arc<crate::texture::Texture> {
+        Arc::new(self.inner.read().texture())
+    }
+}
+
+impl crate::target::TargetInternal for MobileTextureTarget {
+    fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, SurfaceError> {
+        self.inner.read().get_current_frame()
+    }
 }
 
 // Expose the inner `Target` impl for use in `Renderer::render` dispatch.
@@ -164,10 +182,6 @@ impl Target for MobileTextureTarget {
 
     fn resize(&mut self, size: impl Into<Size>) {
         Target::resize(&mut *self.inner.write(), size.into());
-    }
-
-    fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, SurfaceError> {
-        self.inner.read().get_current_frame()
     }
 
     async fn get_image(&self) -> Vec<u8> {

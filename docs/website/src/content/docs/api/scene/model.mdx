@@ -1,0 +1,1233 @@
+---
+title: Model
+description: "A `Model` pairs a [Mesh](/api/geometry/mesh) with a [Material](/api/scene/material) and adds a per-Model 4×4 transform. It's the unit you actually add to a `Pass` when rendering 3D content; the Material handles shading, the Mesh handles geometry, the Model handles \"where in the world\"."
+category: scene
+categoryLabel: Scene
+sidebar:
+  order: 1
+---
+
+import { Code, Tabs, TabItem, Aside } from "@astrojs/starlight/components";
+
+## Description
+
+A `Model` pairs a [Mesh](/api/geometry/mesh) with a
+[Material](/api/scene/material) and adds a per-Model
+4×4 transform. It's the unit you actually add to a `Pass` when rendering 3D
+content; the Material handles shading, the Mesh handles geometry, the Model
+handles "where in the world".
+
+Each `Model::new` takes ownership of the Material it's given. Cloning the
+Material before passing it in is cheap: `Material::clone` is an Arc-clone
+(handle share), not a deep duplicate. The per-Model transform is *not* a
+Material uniform: it's written as four `vec4<f32>` columns into the Mesh's
+per-instance attribute stream at locations 3..6. Many Models can share one
+Material's Shader without colliding because each Model writes its transform
+to **its own** Mesh's instance buffer.
+
+For the fan-out case (one Material, many positioned instances on
+unique geometries), the pattern is:
+
+```text
+template = Material::pbr().base_color(...)
+for each item:
+  model = Model::new(item.mesh, template.clone())
+  model.set_transform(item.matrix)
+  pass.add(&model)
+```
+
+Pipeline cached once by shader hash; one bind-group setup per pass; N draws
+(one per unique Mesh). For *batched* instancing (one shared Mesh, many
+transforms in one draw) drop down to `Mesh::add_instance(...)` directly
+with a `Material::custom(shader_that_reads_instance_attrs)`. The Model API
+is for one logical thing per draw, not for managing your own per-instance
+buffers.
+
+**Caveat:** the Mesh's instance buffer is Arc-shared via `Mesh::clone`. Two
+Models that share a Mesh handle (`mesh.clone()`) collide on the same instance
+buffer; the most recent transform-mutating call wins. Give each Model its
+own Mesh.
+
+
+## Methods
+
+
+---
+
+### Model::material
+
+Borrow the Material handle the Model owns. The Material wraps a Shader;
+reach through `model.material().shader()` if you need direct uniform
+manipulation (camera state, custom uniforms not exposed by Material's
+setters).
+
+Note: `Material::clone` is a shallow Arc-share, so the handle stored on this
+Model points at the same underlying shader state as whatever Material was
+passed to `Model::new`. Mutations made through `model.material()` are
+visible to every other Model that received the same source handle (and vice
+versa). To detach a Model's appearance, construct a fresh `Material::pbr()`
+or `Material::custom()` rather than cloning.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Material, Mesh, Model, Vertex};
+
+let mesh = Mesh::new();
+mesh.add_vertex(
+    Vertex::new([0.0, 0.0, 0.0])
+        .set(Vertex::NORMAL, [0.0, 1.0, 0.0])
+        .set(Vertex::UV0, [0.0, 0.0]),
+);
+
+let model = Model::new(mesh, Material::pbr());
+model.material().shader().set("camera.position", [0.0, 0.0, 5.0])?;
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 13-14}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Material, Mesh, Model, Vertex } from "fragmentcolor";
+
+const mesh = new Mesh();
+mesh.addVertex( new Vertex([0.0, 0.0, 0.0]) .set("normal", [0.0, 1.0, 0.0]) .set("uv0", [0.0, 0.0]), );
+
+const model = new Model(mesh, Material.pbr());
+model.material().shader().set("camera.position", [0.0, 0.0, 5.0]);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Material, Mesh, Model, Vertex
+
+mesh = Mesh()
+mesh.add_vertex(
+    Vertex([0.0, 0.0, 0.0]).set(Vertex.NORMAL, [0.0, 1.0, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+)
+
+model = Model(mesh, Material.pbr())
+model.material().shader().set("camera.position", [0.0, 0.0, 5.0])
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let mesh = Mesh()
+try mesh.addVertex(
+    try Vertex([0.0, 0.0, 0.0]).set("normal", [0.0, 1.0, 0.0]).set("uv0", [0.0, 0.0])
+)
+
+let model = Model(mesh, Material.pbr())
+try model.material().shader().set("camera.position", [0.0, 0.0, 5.0])
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val mesh = Mesh()
+mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set("normal", floatArrayOf(0.0f, 1.0f, 0.0f)).set("uv0", listOf(0.0f, 0.0f)), )
+
+val model = Model(mesh, Material.pbr())
+model.material().shader().set("camera.position", floatArrayOf(0.0f, 0.0f, 5.0f))
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Model::mesh
+
+Borrow the Mesh the Model owns. Useful for adding more vertices or instances
+to the geometry after construction without losing access through the Model
+handle.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Material, Mesh, Model, Vertex};
+
+let mesh = Mesh::new();
+mesh.add_vertex(
+    Vertex::pbr([0.0, 0.5, 0.0]).set(Vertex::UV0, [0.5, 1.0]),
+);
+
+let model = Model::new(mesh, Material::pbr());
+model.mesh().add_vertex(
+    Vertex::new([-0.5, -0.5, 0.0])
+        .set(Vertex::NORMAL, [0.0, 0.0, 1.0])
+        .set(Vertex::UV0, [0.0, 0.0]),
+);
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 15-16}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Material, Mesh, Model, Vertex } from "fragmentcolor";
+
+const mesh = new Mesh();
+mesh.addVertex( Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0]), );
+
+const model = new Model(mesh, Material.pbr());
+model.mesh().addVertex( new Vertex([-0.5, -0.5, 0.0]) .set("normal", [0.0, 0.0, 1.0]) .set("uv0", [0.0, 0.0]), );
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Material, Mesh, Model, Vertex
+
+mesh = Mesh()
+mesh.add_vertex(
+    Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
+)
+
+model = Model(mesh, Material.pbr())
+model.mesh().add_vertex(
+    Vertex([-0.5, -0.5, 0.0]).set(Vertex.NORMAL, [0.0, 0.0, 1.0]).set(Vertex.UV0, [0.0, 0.0]),
+)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let mesh = Mesh()
+try mesh.addVertex(
+    try Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0])
+)
+
+let model = Model(mesh, Material.pbr())
+try model.mesh().addVertex(
+    try Vertex([-0.5, -0.5, 0.0]).set("normal", [0.0, 0.0, 1.0]).set("uv0", [0.0, 0.0])
+)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val mesh = Mesh()
+mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set("uv0", floatArrayOf(0.5f, 1.0f)), )
+
+val model = Model(mesh, Material.pbr())
+model.mesh().addVertex( Vertex(listOf(-0.5f, -0.5f, 0.0f)).set("normal", floatArrayOf(0.0f, 0.0f, 1.0f)).set("uv0", listOf(0.0f, 0.0f)), )
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Model::new
+
+Construct a `Model` from a `Mesh` and a `Material`. Both arguments are taken
+by value; the Model owns them. The transform starts at the 4×4 identity
+matrix; `Model::sync_transform` writes it as a single instance into the
+Mesh's per-instance attribute stream (four `vec4<f32>` columns at locations
+3..6).
+
+If you want several Models that share a look, clone the Material before each
+`Model::new`. `Material::clone` is a cheap Arc-clone (handle share, not a
+deep duplicate), so the Models share one pipeline + one bind-group setup.
+Per-Model transforms don't collide because each Model owns its own Mesh, and
+the transform lives on the Mesh's instance buffer, not the Material's Shader.
+
+`Material::pbr` requires the Mesh's first vertex to declare position
+(`vec3`), normal (`vec3`), and uv0 (`vec2`) in that exact insertion order,
+so the locations align with the PBR shader's vertex inputs. Custom shaders
+via `Material::custom(...)` can use any layout.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Material, Mesh, Model, Vertex};
+
+let mesh = Mesh::new();
+mesh.add_vertex(
+    Vertex::new([0.0, 0.0, 0.0])
+        .set(Vertex::NORMAL, [0.0, 1.0, 0.0])
+        .set(Vertex::UV0, [0.0, 0.0]),
+);
+
+let model = Model::new(mesh, Material::pbr());
+
+let _model = model;
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 13-15}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Material, Mesh, Model, Vertex } from "fragmentcolor";
+
+const mesh = new Mesh();
+mesh.addVertex( new Vertex([0.0, 0.0, 0.0]) .set("normal", [0.0, 1.0, 0.0]) .set("uv0", [0.0, 0.0]), );
+
+const model = new Model(mesh, Material.pbr());
+
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Material, Mesh, Model, Vertex
+
+mesh = Mesh()
+mesh.add_vertex(
+    Vertex([0.0, 0.0, 0.0]).set(Vertex.NORMAL, [0.0, 1.0, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+)
+
+model = Model(mesh, Material.pbr())
+
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let mesh = Mesh()
+try mesh.addVertex(
+    try Vertex([0.0, 0.0, 0.0]).set("normal", [0.0, 1.0, 0.0]).set("uv0", [0.0, 0.0])
+)
+
+let model = Model(mesh, Material.pbr())
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val mesh = Mesh()
+mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set("normal", floatArrayOf(0.0f, 1.0f, 0.0f)).set("uv0", listOf(0.0f, 0.0f)), )
+
+val model = Model(mesh, Material.pbr())
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Model::rotate
+
+Rotate the Model around `axis` (in local space) by `radians`. Post-multiplies
+the current transform by an axis-angle rotation, so a rotated-then-translated
+Model spins in place around its own origin rather than orbiting the world
+origin. The axis is normalised internally; a zero-length axis is rejected
+with a debug log and no change.
+
+For pure world-space rotations (e.g. tumbling around a fixed pivot), compose
+the matrix yourself and call [set_transform](/api/scene/model#set_transform).
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Material, Mesh, Model, Renderer, Vertex};
+
+let renderer = Renderer::new();
+let mesh = Mesh::new();
+mesh.add_vertex(
+    Vertex::new([0.0, 0.0, 0.0])
+        .set(Vertex::NORMAL, [0.0, 1.0, 0.0])
+        .set(Vertex::UV0, [0.0, 0.0]),
+);
+
+let model = Model::new(mesh, Material::pbr());
+model.rotate([0.0, 1.0, 0.0], 1.571); // 90° around Y
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+`}
+lang="rust" meta="collapse={1-1, 14-16}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Material, Mesh, Model, Renderer, Vertex } from "fragmentcolor";
+
+const renderer = new Renderer();
+const mesh = new Mesh();
+mesh.addVertex( new Vertex([0.0, 0.0, 0.0]) .set("normal", [0.0, 1.0, 0.0]) .set("uv0", [0.0, 0.0]), );
+
+const model = new Model(mesh, Material.pbr());
+model.rotate([0.0, 1.0, 0.0], 1.571); // 90° around Y;
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Material, Mesh, Model, Renderer, Vertex
+
+renderer = Renderer()
+mesh = Mesh()
+mesh.add_vertex(
+    Vertex([0.0, 0.0, 0.0]).set(Vertex.NORMAL, [0.0, 1.0, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+)
+
+model = Model(mesh, Material.pbr())
+model.rotate([0.0, 1.0, 0.0], 1.571); # 90° around Y
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let renderer = Renderer()
+let mesh = Mesh()
+try mesh.addVertex(
+    try Vertex([0.0, 0.0, 0.0]).set("normal", [0.0, 1.0, 0.0]).set("uv0", [0.0, 0.0])
+)
+
+let model = Model(mesh, Material.pbr())
+try model.rotate([0.0, 1.0, 0.0], 1.571); // 90° around Y
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val renderer = Renderer()
+val mesh = Mesh()
+mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set("normal", floatArrayOf(0.0f, 1.0f, 0.0f)).set("uv0", listOf(0.0f, 0.0f)), )
+
+val model = Model(mesh, Material.pbr())
+model.rotate(listOf(0.0f, 1.0f, 0.0f), 1.571f); // 90° around Y
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Model::scale
+
+Scale the Model by per-axis `factor` (in local space). Post-multiplies the
+current transform by a scale matrix, so the Model grows or shrinks around
+its own origin without sliding through space.
+
+Use uniform scales (`[s, s, s]`) when possible. Non-uniform scale breaks
+the cheap normal-transform path the default PBR shader uses, so a stretched
+Model will shade slightly off. For a correct non-uniform-scale normal, use
+`Material::custom` with a shader that ships the explicit cofactor matrix.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Material, Mesh, Model, Renderer, Vertex};
+
+let renderer = Renderer::new();
+let mesh = Mesh::new();
+mesh.add_vertex(
+    Vertex::new([0.0, 0.0, 0.0])
+        .set(Vertex::NORMAL, [0.0, 1.0, 0.0])
+        .set(Vertex::UV0, [0.0, 0.0]),
+);
+
+let model = Model::new(mesh, Material::pbr());
+model.scale([2.0, 2.0, 2.0]);
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+`}
+lang="rust" meta="collapse={1-1, 14-16}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Material, Mesh, Model, Renderer, Vertex } from "fragmentcolor";
+
+const renderer = new Renderer();
+const mesh = new Mesh();
+mesh.addVertex( new Vertex([0.0, 0.0, 0.0]) .set("normal", [0.0, 1.0, 0.0]) .set("uv0", [0.0, 0.0]), );
+
+const model = new Model(mesh, Material.pbr());
+model.scale([2.0, 2.0, 2.0]);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Material, Mesh, Model, Renderer, Vertex
+
+renderer = Renderer()
+mesh = Mesh()
+mesh.add_vertex(
+    Vertex([0.0, 0.0, 0.0]).set(Vertex.NORMAL, [0.0, 1.0, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+)
+
+model = Model(mesh, Material.pbr())
+model.scale([2.0, 2.0, 2.0])
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let renderer = Renderer()
+let mesh = Mesh()
+try mesh.addVertex(
+    try Vertex([0.0, 0.0, 0.0]).set("normal", [0.0, 1.0, 0.0]).set("uv0", [0.0, 0.0])
+)
+
+let model = Model(mesh, Material.pbr())
+try model.scale([2.0, 2.0, 2.0])
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val renderer = Renderer()
+val mesh = Mesh()
+mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set("normal", floatArrayOf(0.0f, 1.0f, 0.0f)).set("uv0", listOf(0.0f, 0.0f)), )
+
+val model = Model(mesh, Material.pbr())
+model.scale(listOf(2.0f, 2.0f, 2.0f))
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Model::set_transform
+
+Replace the Model's 4×4 transform wholesale, in column-major order. Useful
+when you already have a matrix from a math library or a glTF node and want
+to apply it directly without composing through `translate` / `rotate` /
+`scale`.
+
+Writes the four columns into the Mesh's per-instance attribute stream
+immediately (locations 3..6). To read the current transform, see
+[Model::transform](/api/scene/model#transform).
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Material, Mesh, Model, Renderer, Vertex};
+
+let renderer = Renderer::new();
+let mesh = Mesh::new();
+mesh.add_vertex(
+    Vertex::new([0.0, 0.0, 0.0])
+        .set(Vertex::NORMAL, [0.0, 1.0, 0.0])
+        .set(Vertex::UV0, [0.0, 0.0]),
+);
+
+let model = Model::new(mesh, Material::pbr());
+model.set_transform([
+    [2.0, 0.0, 0.0, 0.0],
+    [0.0, 2.0, 0.0, 0.0],
+    [0.0, 0.0, 2.0, 0.0],
+    [3.0, 0.0, 0.0, 1.0],
+]);
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+`}
+lang="rust" meta="collapse={1-1, 19-21}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Material, Mesh, Model, Renderer, Vertex } from "fragmentcolor";
+
+const renderer = new Renderer();
+const mesh = new Mesh();
+mesh.addVertex( new Vertex([0.0, 0.0, 0.0]) .set("normal", [0.0, 1.0, 0.0]) .set("uv0", [0.0, 0.0]), );
+
+const model = new Model(mesh, Material.pbr());
+model.setTransform([2.0, 0.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 0.0, 2.0, 0.0, 3.0, 0.0, 0.0, 1.0]);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Material, Mesh, Model, Renderer, Vertex
+
+renderer = Renderer()
+mesh = Mesh()
+mesh.add_vertex(
+    Vertex([0.0, 0.0, 0.0]).set(Vertex.NORMAL, [0.0, 1.0, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+)
+
+model = Model(mesh, Material.pbr())
+model.set_transform([
+    [2.0, 0.0, 0.0, 0.0],
+    [0.0, 2.0, 0.0, 0.0],
+    [0.0, 0.0, 2.0, 0.0],
+    [3.0, 0.0, 0.0, 1.0],
+])
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let renderer = Renderer()
+let mesh = Mesh()
+try mesh.addVertex(
+    try Vertex([0.0, 0.0, 0.0]).set("normal", [0.0, 1.0, 0.0]).set("uv0", [0.0, 0.0])
+)
+
+let model = Model(mesh, Material.pbr())
+try model.setTransform([
+    [2.0, 0.0, 0.0, 0.0],
+    [0.0, 2.0, 0.0, 0.0],
+    [0.0, 0.0, 2.0, 0.0],
+    [3.0, 0.0, 0.0, 1.0],
+])
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val renderer = Renderer()
+val mesh = Mesh()
+mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set("normal", floatArrayOf(0.0f, 1.0f, 0.0f)).set("uv0", listOf(0.0f, 0.0f)), )
+
+val model = Model(mesh, Material.pbr())
+model.setTransform(listOf(2.0f, 0.0f, 0.0f, 0.0f, 0.0f, 2.0f, 0.0f, 0.0f, 0.0f, 0.0f, 2.0f, 0.0f, 3.0f, 0.0f, 0.0f, 1.0f))
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Model::set_visible
+
+Toggle the Model in or out of the next frame. Hidden Models are skipped
+by the renderer in both the opaque-batched and blend-sorted draw paths;
+no Pass rebuild needed.
+
+The flag is Arc-shared with `ModelEntry` (the renderer's queue), so
+toggles take effect on the very next `Renderer::render` call. Cheap:
+one bool flip + one entry check during the draw-queue build.
+
+Typical uses:
+
+- LOD switches that hide whole sets of detail Models at a distance.
+- Level / chapter transitions that swap which subset of a Scene
+  renders without rebuilding the Scene.
+- Temporary hides for editor gizmos, debug helpers, or selection
+  highlights.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Material, Mesh, Model, Vertex};
+
+let mesh = Mesh::new();
+mesh.add_vertex(Vertex::pbr([0.0, 0.5, 0.0]));
+let blob = Model::new(mesh, Material::pbr());
+
+// Wide zoom level — skip the detail blobs.
+blob.set_visible(false);
+// Zoom back in — turn them on again.
+blob.set_visible(true);
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 12-13}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Material, Mesh, Model, Vertex } from "fragmentcolor";
+
+const mesh = new Mesh();
+mesh.addVertex(Vertex.pbr([0.0, 0.5, 0.0]));
+const blob = new Model(mesh, Material.pbr());
+
+// Wide zoom level — skip the detail blobs.
+blob.setVisible(false);
+// Zoom back in — turn them on again.
+blob.setVisible(true);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Material, Mesh, Model, Vertex
+
+mesh = Mesh()
+mesh.add_vertex(Vertex.pbr([0.0, 0.5, 0.0]))
+blob = Model(mesh, Material.pbr())
+
+# Wide zoom level — skip the detail blobs.
+blob.set_visible(False)
+# Zoom back in — turn them on again.
+blob.set_visible(True)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let mesh = Mesh()
+try mesh.addVertex(Vertex.pbr([0.0, 0.5, 0.0]))
+let blob = Model(mesh, Material.pbr())
+
+// Wide zoom level — skip the detail blobs.
+blob.setVisible(false)
+// Zoom back in — turn them on again.
+blob.setVisible(true)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val mesh = Mesh()
+mesh.addVertex(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)))
+val blob = Model(mesh, Material.pbr())
+
+// Wide zoom level — skip the detail blobs.
+blob.setVisible(false)
+// Zoom back in — turn them on again.
+blob.setVisible(true)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Model::transform
+
+Read the Model's current 4×4 transform in column-major order, matching
+WGSL's `mat4x4<f32>` layout and glam's `to_cols_array_2d`. The transform
+starts at the identity matrix and is modified by `set_transform`,
+`translate`, `rotate`, and `scale`.
+
+For the setter, see [Model::set_transform](/api/scene/model#set_transform).
+Rust doesn't allow getter/setter overloads on the same name, so the read
+side is `transform` and the write side is `set_transform`.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Material, Mesh, Model, Renderer, Vertex};
+
+let renderer = Renderer::new();
+let mesh = Mesh::new();
+mesh.add_vertex(
+    Vertex::new([0.0, 0.0, 0.0])
+        .set(Vertex::NORMAL, [0.0, 1.0, 0.0])
+        .set(Vertex::UV0, [0.0, 0.0]),
+);
+
+let model = Model::new(mesh, Material::pbr());
+let identity = model.transform();
+assert_eq!(identity[0], [1.0, 0.0, 0.0, 0.0]);
+assert_eq!(identity[3], [0.0, 0.0, 0.0, 1.0]);
+let _ = identity;
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+`}
+lang="rust" meta="collapse={1-1, 14-19}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Material, Mesh, Model, Renderer, Vertex } from "fragmentcolor";
+
+const renderer = new Renderer();
+const mesh = new Mesh();
+mesh.addVertex( new Vertex([0.0, 0.0, 0.0]) .set("normal", [0.0, 1.0, 0.0]) .set("uv0", [0.0, 0.0]), );
+
+const model = new Model(mesh, Material.pbr());
+const identity = model.transform();
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Material, Mesh, Model, Renderer, Vertex
+
+renderer = Renderer()
+mesh = Mesh()
+mesh.add_vertex(
+    Vertex([0.0, 0.0, 0.0]).set(Vertex.NORMAL, [0.0, 1.0, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+)
+
+model = Model(mesh, Material.pbr())
+identity = model.transform()
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let renderer = Renderer()
+let mesh = Mesh()
+try mesh.addVertex(
+    try Vertex([0.0, 0.0, 0.0]).set("normal", [0.0, 1.0, 0.0]).set("uv0", [0.0, 0.0])
+)
+
+let model = Model(mesh, Material.pbr())
+let identity = model.transform()
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val renderer = Renderer()
+val mesh = Mesh()
+mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set("normal", floatArrayOf(0.0f, 1.0f, 0.0f)).set("uv0", listOf(0.0f, 0.0f)), )
+
+val model = Model(mesh, Material.pbr())
+val identity = model.transform()
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Model::translate
+
+Move the Model by `offset` in world coordinates. Pre-multiplies the current
+transform by a translation matrix, so the result is independent of the
+Model's current rotation. `translate([1, 0, 0])` always moves one unit
+along the world X axis.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Material, Mesh, Model, Renderer, Vertex};
+
+let renderer = Renderer::new();
+let mesh = Mesh::new();
+mesh.add_vertex(
+    Vertex::new([0.0, 0.0, 0.0])
+        .set(Vertex::NORMAL, [0.0, 1.0, 0.0])
+        .set(Vertex::UV0, [0.0, 0.0]),
+);
+
+let model = Model::new(mesh, Material::pbr());
+model.translate([5.0, 0.0, -2.0]);
+
+let m = model.transform();
+// The translation lives in the fourth column when column-major.
+assert_eq!(m[3], [5.0, 0.0, -2.0, 1.0]);
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+`}
+lang="rust" meta="collapse={1-1, 15-20}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Material, Mesh, Model, Renderer, Vertex } from "fragmentcolor";
+
+const renderer = new Renderer();
+const mesh = new Mesh();
+mesh.addVertex( new Vertex([0.0, 0.0, 0.0]) .set("normal", [0.0, 1.0, 0.0]) .set("uv0", [0.0, 0.0]), );
+
+const model = new Model(mesh, Material.pbr());
+model.translate([5.0, 0.0, -2.0]);
+
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Material, Mesh, Model, Renderer, Vertex
+
+renderer = Renderer()
+mesh = Mesh()
+mesh.add_vertex(
+    Vertex([0.0, 0.0, 0.0]).set(Vertex.NORMAL, [0.0, 1.0, 0.0]).set(Vertex.UV0, [0.0, 0.0]),
+)
+
+model = Model(mesh, Material.pbr())
+model.translate([5.0, 0.0, -2.0])
+
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let renderer = Renderer()
+let mesh = Mesh()
+try mesh.addVertex(
+    try Vertex([0.0, 0.0, 0.0]).set("normal", [0.0, 1.0, 0.0]).set("uv0", [0.0, 0.0])
+)
+
+let model = Model(mesh, Material.pbr())
+try model.translate([5.0, 0.0, -2.0])
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val renderer = Renderer()
+val mesh = Mesh()
+mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set("normal", floatArrayOf(0.0f, 1.0f, 0.0f)).set("uv0", listOf(0.0f, 0.0f)), )
+
+val model = Model(mesh, Material.pbr())
+model.translate(listOf(5.0f, 0.0f, -2.0f))
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Model::visible
+
+Read the current visibility flag. Returns `true` for newly-built Models;
+toggle with [`Model::set_visible`](/api/scene/model/set_visible).
+
+The renderer reads this every frame. Hidden Models are skipped in both
+the opaque-batched and blend-sorted draw paths without requiring a Pass
+rebuild.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Material, Mesh, Model, Vertex};
+
+let mesh = Mesh::new();
+mesh.add_vertex(Vertex::pbr([0.0, 0.5, 0.0]));
+let model = Model::new(mesh, Material::pbr());
+
+// Models start visible; toggle with \`set_visible\`.
+let visible_now = model.visible();
+assert!(visible_now);
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 10-12}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Material, Mesh, Model, Vertex } from "fragmentcolor";
+
+const mesh = new Mesh();
+mesh.addVertex(Vertex.pbr([0.0, 0.5, 0.0]));
+const model = new Model(mesh, Material.pbr());
+
+// Models start visible; toggle with \`set_visible\`.
+const visible_now = model.visible();
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Material, Mesh, Model, Vertex
+
+mesh = Mesh()
+mesh.add_vertex(Vertex.pbr([0.0, 0.5, 0.0]))
+model = Model(mesh, Material.pbr())
+
+# Models start visible; toggle with \`set_visible\`.
+visible_now = model.visible()
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let mesh = Mesh()
+try mesh.addVertex(Vertex.pbr([0.0, 0.5, 0.0]))
+let model = Model(mesh, Material.pbr())
+
+// Models start visible; toggle with """set_visible""".
+let visible_now = model.visible()
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val mesh = Mesh()
+mesh.addVertex(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)))
+val model = Model(mesh, Material.pbr())
+
+// Models start visible; toggle with """set_visible""".
+val visible_now = model.visible()
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>

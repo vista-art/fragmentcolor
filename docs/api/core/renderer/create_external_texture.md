@@ -11,8 +11,9 @@ The `source` argument is platform-specific:
   over the uniffi boundary).
 - **Android**: a `SurfaceTexture` handle (passed as a raw `ULong` pointer).
 
-Returns an error on every platform today — the API surface is in place, the
-implementation is a follow-up.
+Currently returns an error on every platform. The public signature is
+stable; native-side decode hookup is on the roadmap. Track support via
+the typed `RendererError` you get back.
 
 ## Example
 

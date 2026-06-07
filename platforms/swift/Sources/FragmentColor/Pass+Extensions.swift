@@ -17,6 +17,18 @@ extension Pass {
         self.init(name: name)
     }
 
+    /// Compute-pass constructor with an unlabeled name argument.
+    public static func compute(_ name: String) -> Pass {
+        return Pass.compute(name: name)
+    }
+
+    // `Pass.fromShader(_:)` deliberately omitted: uniffi generates the
+    // factory as `Pass(fromShader: ...)` (a convenience init), not as a
+    // static method. Adding a static func with the same base name shadows
+    // the constructor and the compiler picks the static, then fails to
+    // find a matching label. Callers can write `Pass(fromShader: shader)`
+    // directly — it reads the same as the JS / Python spelling.
+
     // MARK: - Shader / Mesh (unlabeled overloads)
 
     /// Attach a shader to this pass (unlabeled overload).
@@ -34,6 +46,28 @@ extension Pass {
     // ignored the receiver. The uniffi-generated method is gone, so this
     // wrapper went with it. Callers attach a mesh to a specific shader by
     // calling `shader.addMesh(mesh)` directly.
+
+    // MARK: - Scene objects (add)
+    //
+    // The mobile binding takes a SceneObjectHandle enum (Model / Camera /
+    // Light) and dispatches internally; these overloads let callers pass the
+    // concrete types directly so example code reads pass.add(model) instead
+    // of pass.add(object: .model(model)).
+
+    /// Attach a `Model` to the pass.
+    public func add(_ model: Model) throws {
+        try self.add(object: .model(model))
+    }
+
+    /// Attach a `Camera` to the pass.
+    public func add(_ camera: Camera) throws {
+        try self.add(object: .camera(camera))
+    }
+
+    /// Attach a `Light` to the pass.
+    public func add(_ light: Light) throws {
+        try self.add(object: .light(light))
+    }
 
     // MARK: - Dependencies (require)
 
@@ -66,13 +100,26 @@ extension Pass {
     // MARK: - Targets
 
     /// Set the colour attachment target for this pass.
-    public func addTarget(_ target: MobileTextureTarget) throws {
-        try self.addTarget(target: .texture(target))
+    public func setTarget(_ target: MobileTextureTarget) throws {
+        try self.setTarget(target: .texture(target))
     }
 
     /// Set the depth attachment target for this pass.
-    public func addDepthTarget(_ target: MobileTextureTarget) throws {
-        try self.addDepthTarget(target: .texture(target))
+    public func setDepthTarget(_ target: MobileTextureTarget) throws {
+        try self.setDepthTarget(target: .texture(target))
+    }
+
+    /// Attach a depth `Texture` (created via `Renderer.createDepthTexture`)
+    /// as the depth-stencil attachment. Mirrors the Kotlin
+    /// `Pass.setDepthTarget(Texture)` extension: the uniffi layer takes a
+    /// `MobileTextureTarget`, but the depth-texture handle is the natural
+    /// shape for the doc example.
+    public func setDepthTarget(_ texture: Texture) throws {
+        // The depth-texture handle shares the underlying Arc<dyn Target>;
+        // re-wrap as a `MobileTextureTarget` so the `TargetHandle.texture`
+        // variant accepts it.
+        let asMobile = MobileTextureTarget(unsafeFromHandle: texture.uniffiCloneHandle())
+        try self.setDepthTarget(target: .texture(asMobile))
     }
 
     // MARK: - Clear colour

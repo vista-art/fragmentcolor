@@ -1,0 +1,171 @@
+---
+title: "Geometry"
+description: A catalog of geometric helper functions in the FragmentColor shader registry.
+---
+
+The `geom/` category collects pure WGSL helpers for everyday vector and
+linear-algebra work: barycentric coordinates, triangle area and normal,
+2D and 3D rotation matrices, TBN bases, and a small quaternion toolkit
+(construct, multiply, conjugate, rotate a vector, slerp). Every entry is
+a single function with no globals; pull one into your shader by slug and
+call it from your fragment or vertex stage.
+
+```rust
+let main = r#"
+@fragment fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+    let p = (in.uv - vec2<f32>(0.5)) * 2.0;
+    let m = rotate_2d(0.7);
+    let q = m * p;
+    let stripes = 0.5 + 0.5 * sin(q.x * 18.84);
+    return vec4<f32>(vec3<f32>(stripes), 1.0);
+}
+"#;
+let shader = Shader::new(&["geom/rotate_2d", main])?;
+```
+
+Each preview below visualises the function across a UV grid: scalar
+results map to a colour ramp, vector results render as `abs(v)` so the
+x/y/z components show up as RGB, and the barycentric example tints a
+fixed triangle by its (u, v, w) coordinates.
+
+## barycentric
+
+Barycentric coordinates of a point `p` in triangle `(a, b, c)`. Returns
+`(u, v, w)` summing to 1; negative components mean `p` is outside.
+
+```wgsl
+fn barycentric(p: vec3<f32>, a: vec3<f32>, b: vec3<f32>, c: vec3<f32>) -> vec3<f32>
+```
+
+![geom/barycentric preview](/shaders/geom/barycentric.png)
+
+## quaternion_conjugate
+
+Negate the imaginary part of a quaternion (xyzw layout). For a unit
+quaternion this is also the inverse.
+
+```wgsl
+fn quaternion_conjugate(q: vec4<f32>) -> vec4<f32>
+```
+
+![geom/quaternion_conjugate preview](/shaders/geom/quaternion_conjugate.png)
+
+## quaternion_from_axis_angle
+
+Build a unit quaternion (xyzw) from a rotation axis and an angle in
+radians. The axis is normalised internally.
+
+```wgsl
+fn quaternion_from_axis_angle(axis: vec3<f32>, angle: f32) -> vec4<f32>
+```
+
+![geom/quaternion_from_axis_angle preview](/shaders/geom/quaternion_from_axis_angle.png)
+
+## quaternion_mul
+
+Hamilton product of two quaternions in xyzw layout. Apply rotations by
+multiplying: `q_total = q_b * q_a` rotates first by `q_a`, then by `q_b`.
+
+```wgsl
+fn quaternion_mul(a: vec4<f32>, b: vec4<f32>) -> vec4<f32>
+```
+
+![geom/quaternion_mul preview](/shaders/geom/quaternion_mul.png)
+
+## quaternion_rotate_vec
+
+Rotate a `vec3` by a unit quaternion. Cheaper than building a matrix and
+multiplying when you only need to rotate a few vectors.
+
+```wgsl
+fn quaternion_rotate_vec(q: vec4<f32>, v: vec3<f32>) -> vec3<f32>
+```
+
+![geom/quaternion_rotate_vec preview](/shaders/geom/quaternion_rotate_vec.png)
+
+## quaternion_slerp
+
+Spherical linear interpolation between two unit quaternions, with the
+shorter-path sign flip and a fallback to `mix` for nearly-parallel
+inputs. `t` in `[0, 1]`.
+
+```wgsl
+fn quaternion_slerp(a: vec4<f32>, b: vec4<f32>, t: f32) -> vec4<f32>
+```
+
+![geom/quaternion_slerp preview](/shaders/geom/quaternion_slerp.png)
+
+## rotate_2d
+
+`2x2` rotation matrix for a counter-clockwise rotation by `a` radians.
+Apply with `m * p` where `p` is a `vec2`.
+
+```wgsl
+fn rotate_2d(a: f32) -> mat2x2<f32>
+```
+
+![geom/rotate_2d preview](/shaders/geom/rotate_2d.png)
+
+## rotate_3d_x
+
+`3x3` rotation matrix around the `+X` axis by `a` radians.
+
+```wgsl
+fn rotate_3d_x(a: f32) -> mat3x3<f32>
+```
+
+![geom/rotate_3d_x preview](/shaders/geom/rotate_3d_x.png)
+
+## rotate_3d_y
+
+`3x3` rotation matrix around the `+Y` axis by `a` radians.
+
+```wgsl
+fn rotate_3d_y(a: f32) -> mat3x3<f32>
+```
+
+![geom/rotate_3d_y preview](/shaders/geom/rotate_3d_y.png)
+
+## rotate_3d_z
+
+`3x3` rotation matrix around the `+Z` axis by `a` radians.
+
+```wgsl
+fn rotate_3d_z(a: f32) -> mat3x3<f32>
+```
+
+![geom/rotate_3d_z preview](/shaders/geom/rotate_3d_z.png)
+
+## tbn_from_normal
+
+Build a tangent-bitangent-normal basis from a unit normal, picking an
+arbitrary tangent. Useful for normal mapping when you don't have a
+mesh-supplied tangent. Columns are `(T, B, N)`.
+
+```wgsl
+fn tbn_from_normal(n: vec3<f32>) -> mat3x3<f32>
+```
+
+![geom/tbn_from_normal preview](/shaders/geom/tbn_from_normal.png)
+
+## triangle_area
+
+Area of a 3D triangle given its three vertices. Half the magnitude of
+the edge cross-product.
+
+```wgsl
+fn triangle_area(a: vec3<f32>, b: vec3<f32>, c: vec3<f32>) -> f32
+```
+
+![geom/triangle_area preview](/shaders/geom/triangle_area.png)
+
+## triangle_normal
+
+Unit face normal of a 3D triangle, computed from the cross-product of
+two edges.
+
+```wgsl
+fn triangle_normal(a: vec3<f32>, b: vec3<f32>, c: vec3<f32>) -> vec3<f32>
+```
+
+![geom/triangle_normal preview](/shaders/geom/triangle_normal.png)

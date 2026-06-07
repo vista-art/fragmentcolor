@@ -1,7 +1,6 @@
 use crate::{Color, Mesh, Renderable, ScreenRegion, Shader, ShaderObject};
 use lsp_doc::lsp_doc;
 use parking_lot::RwLock;
-use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -117,6 +116,27 @@ impl Pass {
         self.object.add_mesh(mesh)
     }
 
+    /// Absorb a [`SceneObject`](crate::scene::SceneObject) — Model, Camera,
+    /// Light, or any custom node — into this pass. Each implementation owns
+    /// its own attach behaviour: Model queues a draw, Camera and Light wire
+    /// their uniforms into every shader the pass renders (current and
+    /// future). Chainable; errors short-circuit the chain.
+    #[lsp_doc("docs/api/core/pass/add.md")]
+    pub fn add<O: crate::scene::SceneObject>(&self, object: &O) -> Result<&Self, PassError> {
+        object.attach(self)?;
+        Ok(self)
+    }
+
+    /// Re-invoke `apply_to_shader` on every absorbed scene object for the
+    /// given shader. Called by `Model::attach` when a Model brings a new
+    /// shader to the pass; the Camera / Light objects that opted into live
+    /// propagation see the new shader and write their state into it.
+    pub(crate) fn replay_scene_objects(&self, shader: &crate::Shader) {
+        for object in self.object.scene_objects.read().iter() {
+            object.apply_to_shader(shader);
+        }
+    }
+
     #[lsp_doc("docs/api/core/pass/set_viewport.md")]
     pub fn set_viewport(&self, viewport: impl Into<ScreenRegion>) {
         self.object.set_viewport(viewport);
@@ -132,8 +152,8 @@ impl Pass {
         self.object.set_compute_dispatch(x, y, z);
     }
 
-    #[lsp_doc("docs/api/core/pass/add_target.md")]
-    pub fn add_target<T>(&self, target: T) -> Result<(), PassError>
+    #[lsp_doc("docs/api/core/pass/set_target.md")]
+    pub fn set_target<T>(&self, target: T) -> Result<(), PassError>
     where
         T: TryInto<ColorTarget, Error = PassError>,
     {
@@ -142,8 +162,8 @@ impl Pass {
         Ok(())
     }
 
-    #[lsp_doc("docs/api/core/pass/add_depth_target.md")]
-    pub fn add_depth_target<T>(&self, target: T) -> Result<(), PassError>
+    #[lsp_doc("docs/api/core/pass/set_depth_target.md")]
+    pub fn set_depth_target<T>(&self, target: T) -> Result<(), PassError>
     where
         T: TryInto<DepthTarget, Error = PassError>,
     {
@@ -309,23 +329,72 @@ crate::impl_js_bridge!(Pass, PassError);
 
 static GRAPH_VERSION: AtomicU64 = AtomicU64::new(1);
 
+/// World-space camera state cached on a Pass via `Camera::attach`. Carried
+/// here (not just inside the shader uniform) so the renderer can read the
+/// eye position and view matrix without round-tripping through the shader's
+/// `Shader::get("camera.position")` path — which would only work for
+/// shaders that happen to expose those uniforms under canonical names.
+///
+/// Used by `process_render_pass` to sort the `Pass::model_entries` whose
+/// Material declares `alpha_mode: Blend` back-to-front by eye-space depth
+/// before submitting the blend phase. Updated whenever the Camera's
+/// `propagate` runs (i.e. on `Camera::look_at` after `pass.add(&camera)`).
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct CameraSnapshot {
+    /// View matrix (world → camera), column-major. Mirrors the `view`
+    /// component of `Camera::view_proj`. The renderer needs this for the
+    /// sort — eye-space Z is `(view * world)[2]`, not just `length(eye -
+    /// world)`. World-space distance ties incorrectly for objects spread
+    /// laterally on a vertical plane (a row of glass panels viewed
+    /// edge-on); eye-Z resolves them in the right order.
+    pub(crate) view: [[f32; 4]; 4],
+}
+
 #[derive(Debug)]
 pub struct PassObject {
     pub pass_type: RwLock<PassType>,
     pub(crate) name: Arc<str>,
     pub(crate) input: RwLock<PassInput>,
     pub(crate) shaders: RwLock<Vec<Arc<ShaderObject>>>,
+    // Per-Pass live references to Models queued via `Pass::add_model`. Each entry
+    // carries an Arc-shared transform so the renderer reads the current value at
+    // draw time. Grouped by (shader, mesh) the entries become the rows of a
+    // Pass-owned instance buffer — that's the batched-instancing path: many
+    // Models sharing a (Material, Mesh) pair collapse to one draw with N
+    // instances, with no shader duplication and no mutation of the Mesh's own
+    // instance buffer (so the same Mesh in another Pass with different Models
+    // doesn't clobber state).
+    pub(crate) model_entries: RwLock<Vec<crate::scene::ModelEntry>>,
+    // Scene-level objects (Camera, Light, ...) absorbed via `Pass::add`.
+    // Each one's `apply_to_shader` hook is re-invoked when a new shader
+    // joins the pass via `Model::attach`, so order of attachment doesn't
+    // matter. Implementors that need live propagation (Camera, Light)
+    // track their own `Weak<ShaderObject>` list so subsequent mutations
+    // on the source value reach every absorbed shader without a second
+    // `add` call. Model doesn't go in this list (its work is one-shot).
+    pub(crate) scene_objects: RwLock<Vec<Box<dyn crate::scene::SceneObject>>>,
     pub(crate) viewport: RwLock<Option<ScreenRegion>>,
     pub(crate) required_buffer_size: RwLock<u64>,
+    /// Snapshot of the most recently attached Camera's `(view, position)`,
+    /// taken when `Camera::attach` runs (and refreshed by `Camera::look_at`
+    /// through `Camera::propagate`). The renderer reads this to sort
+    /// translucent draws (`alpha_mode: Blend`) back-to-front by per-Model
+    /// eye-space depth. `None` means no Camera was attached to this pass
+    /// — the renderer falls back to insertion order, which is correct for
+    /// opaque-only passes and the best it can do otherwise.
+    ///
+    /// Storing the view matrix (not just the eye position) lets the sort
+    /// account for non-axis-aligned cameras — eye-Z depth in camera space
+    /// is what matters for over-blend correctness, not world-space
+    /// distance from the eye. Stored as a column-major `[[f32; 4]; 4]` to
+    /// match `Camera::view_proj` and `glam::Mat4::to_cols_array_2d`.
+    pub(crate) camera_snapshot: RwLock<Option<CameraSnapshot>>,
     // For compute passes: dispatch size (defaults to 1,1,1)
     pub(crate) compute_dispatch: RwLock<(u32, u32, u32)>,
     // Milestone A: optional per-pass color target
     pub(crate) color_target: RwLock<Option<crate::texture::TextureId>>,
     // Optional per-pass depth attachment (Depth32Float for now)
     pub(crate) depth_target: RwLock<Option<crate::texture::TextureId>>,
-    // Milestone B (placeholders): storage alias map
-    pub(crate) _storage_alias: RwLock<HashMap<String, String>>,
-    pub(crate) present_to_target: RwLock<bool>,
     // DAG metadata and cached traversal
     pub(crate) dependencies: RwLock<Vec<Arc<PassObject>>>,
     pub(crate) dependency_names: RwLock<std::collections::HashSet<Arc<str>>>,
@@ -339,15 +408,16 @@ impl PassObject {
         Self {
             name: Arc::from(name),
             shaders: RwLock::new(Vec::new()),
+            model_entries: RwLock::new(Vec::new()),
+            scene_objects: RwLock::new(Vec::new()),
             viewport: RwLock::new(None),
             input: RwLock::new(PassInput::clear(Color::transparent())),
             required_buffer_size: RwLock::new(0),
+            camera_snapshot: RwLock::new(None),
             pass_type: RwLock::new(pass_type),
             compute_dispatch: RwLock::new((1, 1, 1)),
             color_target: RwLock::new(None),
             depth_target: RwLock::new(None),
-            _storage_alias: RwLock::new(HashMap::new()),
-            present_to_target: RwLock::new(false),
             dependencies: RwLock::new(Vec::new()),
             dependency_names: RwLock::new(std::collections::HashSet::new()),
             flat: RwLock::new(Arc::from(Vec::<Arc<PassObject>>::new().into_boxed_slice())),
@@ -399,8 +469,6 @@ impl PassObject {
 
     pub fn set_color_target(&self, id: crate::texture::TextureId) {
         *self.color_target.write() = Some(id);
-        // Selecting a color target marks this pass as intermediate by default
-        *self.present_to_target.write() = false;
     }
 
     /// Set per-pass depth attachment by TextureId.

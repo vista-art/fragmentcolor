@@ -23,7 +23,12 @@ mod website {
         top_categories: &std::collections::HashSet<String>,
     ) -> String {
         let base = site_base();
-        let mut out = String::new();
+        // Byte buffer rather than String: the scanner copies source bytes
+        // verbatim, so a `String` push of `bytes[i] as char` would reinterpret
+        // each UTF-8 continuation byte as its own Latin-1 codepoint and mangle
+        // every non-ASCII character (em dashes, ellipses, accents) into mojibake.
+        // Everything inserted here is ASCII, so the result stays valid UTF-8.
+        let mut out: Vec<u8> = Vec::with_capacity(mdx.len());
         let bytes = mdx.as_bytes();
         let mut i = 0usize;
 
@@ -49,17 +54,17 @@ mod website {
             }
 
             if let Some(m) = matched {
-                out.push_str("](");
+                out.extend_from_slice(b"](");
                 i += m.len();
-                out.push_str(&base);
-                out.push('/');
+                out.extend_from_slice(base.as_bytes());
+                out.push(b'/');
                 while i < bytes.len() && bytes[i] != b')' {
-                    out.push(bytes[i] as char);
+                    out.push(bytes[i]);
                     i += 1;
                 }
             } else if i + 2 <= bytes.len() && bytes[i] == b']' && bytes[i + 1] == b'(' {
-                out.push(']');
-                out.push('(');
+                out.push(b']');
+                out.push(b'(');
                 i += 2;
                 let start = i;
                 while i < bytes.len() && bytes[i] != b')' {
@@ -76,25 +81,25 @@ mod website {
                     || lower.starts_with("tel:")
                     || lower.starts_with("data:");
                 if is_abs {
-                    out.push_str(href_trim);
+                    out.extend_from_slice(href_trim.as_bytes());
                 } else {
                     let top = href_trim.split('/').next().unwrap_or("");
                     if top_categories.contains(top) {
-                        out.push_str(&base);
+                        out.extend_from_slice(base.as_bytes());
                         if !href_trim.starts_with('/') {
-                            out.push('/');
+                            out.push(b'/');
                         }
-                        out.push_str(href_trim);
+                        out.extend_from_slice(href_trim.as_bytes());
                     } else {
-                        out.push_str(href_trim);
+                        out.extend_from_slice(href_trim.as_bytes());
                     }
                 }
             } else {
-                out.push(bytes[i] as char);
+                out.push(bytes[i]);
                 i += 1;
             }
         }
-        out
+        String::from_utf8_lossy(&out).into_owned()
     }
 
     // Canonicalize a name for fuzzy matching (lowercase, alphanumeric only)
@@ -759,6 +764,10 @@ mod website {
         swift_out.push_str("//      export to Swift.\n");
         swift_out.push_str("// Fix the source — this file is regenerated on every cargo build.\n");
         swift_out.push('\n');
+        // Foundation gives us `Data`, which the texture-input examples need
+        // when wrapping `[UInt8]` byte arrays. Importing FragmentColor alone
+        // doesn't transitively re-export Foundation symbols into this file.
+        swift_out.push_str("import Foundation\n");
         swift_out.push_str("import FragmentColor\n");
         swift_out.push('\n');
         swift_out.push_str("@available(iOS 16.0, *)\n");
@@ -769,19 +778,26 @@ mod website {
             let example_path = root.join("platforms/swift/examples").join(rel);
             let body = std::fs::read_to_string(&example_path).unwrap_or_default();
             let body_clean = strip_lang_lines(&body, &["import "]);
+            // Wrap each example body in a `do { ... }` block so its `let`
+            // declarations live in a private lexical scope. Two examples
+            // that both declare `let shader = ...` would otherwise collide
+            // (Swift's enum-scope name resolution treats the surrounding
+            // static-func body as a single scope when names clash).
             swift_out.push_str(&format!(
                 "    static func _example_{}() async throws {{\n",
                 slug
             ));
+            swift_out.push_str("        do {\n");
             for line in body_clean.lines() {
                 if line.trim().is_empty() {
                     swift_out.push('\n');
                 } else {
-                    swift_out.push_str("        ");
+                    swift_out.push_str("            ");
                     swift_out.push_str(line);
                     swift_out.push('\n');
                 }
             }
+            swift_out.push_str("        }\n");
             swift_out.push_str("    }\n\n");
         }
         swift_out.push_str("}\n");
@@ -851,6 +867,94 @@ mod website {
         }
         k_out.push_str("}\n");
         let _ = super::meta::write_if_changed(&kotlin_aggregator_path, &k_out);
+    }
+
+    /// Materialise the minimal glTF fixture the docs/api examples load by
+    /// path. Every example that demonstrates `Scene::load("path/to/model.glb")`
+    /// (or `.gltf`) needs the file to actually exist when the Python
+    /// healthcheck runs — Rust's `,no_run` skips execution and the Swift /
+    /// Kotlin healthchecks are compile-only, but Python's runner uses
+    /// `runpy.run_path` which actually invokes `Scene.load`. The fixture is
+    /// the same 3-vertex triangle the `Scene::load` integration tests build
+    /// privately; mirrored here so the build harness can write it to the
+    /// workspace root before any Python test runs.
+    ///
+    /// Writes both `.glb` and `.gltf` variants. The directory `path/` at the
+    /// workspace root is gitignored.
+    pub fn write_scene_load_fixtures() {
+        let root = meta::workspace_root();
+        let dir = root.join("path/to");
+        if std::fs::create_dir_all(&dir).is_err() {
+            return;
+        }
+        let glb = build_minimal_triangle_glb();
+        let _ = super::meta::write_if_changed_bytes(&dir.join("model.glb"), &glb);
+        // The `.gltf` variant carries the same single triangle as embedded
+        // base64 data URI so the example that passes a `.gltf` path also
+        // resolves with no external buffer file. `gltf::import` accepts
+        // either container as long as the buffer URIs resolve.
+        let _ = super::meta::write_if_changed_bytes(
+            &dir.join("model.gltf"),
+            build_minimal_triangle_gltf().as_bytes(),
+        );
+
+        // The web healthcheck runs in a browser with no filesystem, so the
+        // JS `Scene.load` examples fetch the `.glb` bytes over HTTP instead
+        // of reading a path. The static server (`platforms/web/healthcheck/
+        // serve.mjs`) serves only `platforms/web/`, so drop a copy of the
+        // fixture into the healthcheck's `public/` dir where the JS overrides
+        // fetch it from `/healthcheck/public/model.glb`. Gitignored.
+        let web_public = root.join("platforms/web/healthcheck/public");
+        if std::fs::create_dir_all(&web_public).is_ok() {
+            let _ = super::meta::write_if_changed_bytes(&web_public.join("model.glb"), &glb);
+        }
+    }
+
+    /// Inline copy of the test-only helper in `src/scene/loader.rs:741` so
+    /// the build script can build the fixture without depending on
+    /// `#[cfg(test)]` code. Three vertices, positions-only, packed via the
+    /// glTF BIN chunk.
+    fn build_minimal_triangle_glb() -> Vec<u8> {
+        #[rustfmt::skip]
+        let positions: [f32; 9] = [
+             0.0,  0.5, 0.0,
+            -0.5, -0.5, 0.0,
+             0.5, -0.5, 0.0,
+        ];
+        let bin: Vec<u8> = positions.iter().flat_map(|f| f.to_le_bytes()).collect();
+        let bin_len = bin.len() as u32;
+        let json = r#"{"scene":0,"scenes":[{"nodes":[0]}],"nodes":[{"mesh":0}],"meshes":[{"primitives":[{"attributes":{"POSITION":0},"mode":4}]}],"buffers":[{"byteLength":36}],"bufferViews":[{"buffer":0,"byteLength":36,"byteOffset":0}],"accessors":[{"bufferView":0,"byteOffset":0,"componentType":5126,"count":3,"type":"VEC3","min":[-0.5,-0.5,0.0],"max":[0.5,0.5,0.0]}],"asset":{"version":"2.0"}}"#;
+        let mut json_bytes = json.as_bytes().to_vec();
+        while !json_bytes.len().is_multiple_of(4) {
+            json_bytes.push(b' ');
+        }
+        let json_len = json_bytes.len() as u32;
+        let total = 12 + 8 + json_len + 8 + bin_len;
+        let mut glb = Vec::with_capacity(total as usize);
+        glb.extend_from_slice(b"glTF");
+        glb.extend_from_slice(&2u32.to_le_bytes());
+        glb.extend_from_slice(&total.to_le_bytes());
+        glb.extend_from_slice(&json_len.to_le_bytes());
+        glb.extend_from_slice(b"JSON");
+        glb.extend_from_slice(&json_bytes);
+        glb.extend_from_slice(&bin_len.to_le_bytes());
+        glb.extend_from_slice(b"BIN\0");
+        glb.extend_from_slice(&bin);
+        glb
+    }
+
+    /// Build a `.gltf` JSON document that carries the same triangle as
+    /// `build_minimal_triangle_glb`, with the position buffer inlined as a
+    /// base64 data URI so the loader doesn't need a sibling `.bin` file.
+    fn build_minimal_triangle_gltf() -> String {
+        // The three position vec3s encoded little-endian: 9 × 4 = 36 bytes.
+        // Pre-encoded with the standard base64 alphabet so the build does
+        // not depend on a base64 crate.
+        const POSITIONS_B64: &str = "AAAAAAAAAD8AAAAAAAAAvwAAAL8AAAAAAAAAPwAAAL8AAAAA";
+        format!(
+            r#"{{"asset":{{"version":"2.0"}},"scene":0,"scenes":[{{"nodes":[0]}}],"nodes":[{{"mesh":0}}],"meshes":[{{"primitives":[{{"attributes":{{"POSITION":0}},"mode":4}}]}}],"buffers":[{{"byteLength":36,"uri":"data:application/octet-stream;base64,{}"}}],"bufferViews":[{{"buffer":0,"byteLength":36,"byteOffset":0}}],"accessors":[{{"bufferView":0,"byteOffset":0,"componentType":5126,"count":3,"type":"VEC3","min":[-0.5,-0.5,0.0],"max":[0.5,0.5,0.0]}}]}}"#,
+            POSITIONS_B64
+        )
     }
 
     fn ident_slug(s: &str) -> String {
@@ -1045,7 +1149,7 @@ mod website {
             || text.contains("no public example")
     }
 
-    /// `Texture` → `texture`, `TextureMipChain` → `texture_mip_chain`,
+    /// `Texture` → `texture`, `WindowTarget` → `window_target`,
     /// `read_texture` → `read_texture` (already snake). Used by
     /// `read_lang_override` to fall back to the source-file naming
     /// convention when the lookup uses the CamelCase struct name as
@@ -1073,7 +1177,7 @@ mod website {
         lang_suffix: &str,
     ) -> Option<String> {
         // Class entry-point examples use the CamelCase struct name as the
-        // `file_stem` (e.g. `Texture`, `TextureMipChain`), so the natural
+        // `file_stem` (e.g. `Texture`, `Mipmap`), so the natural
         // override path is `Texture_py.md`. The earlier convention put the
         // override at the snake_cased source-file stem (`texture_py.md`) —
         // both happen to coexist in `git ls-files` because macOS HFS+ is
@@ -1237,7 +1341,12 @@ mod website {
         tabs.push_str("<TabItem label=\"Rust\">\n");
         tabs.push_str("<Code\n");
         tabs.push_str("code={`\n");
-        tabs.push_str(&rust_processed);
+        // Escape backticks so a Rust doc-comment like `// see `Foo` ` doesn't
+        // close the MDX template literal early. The JS/Python/Swift/Kotlin tabs
+        // below already run their code through this; the Rust tab was the one
+        // omission, which broke any page whose example carried a backtick in a
+        // comment.
+        tabs.push_str(&sanitize_for_template(&rust_processed));
         tabs.push_str("\n`}\n");
         tabs.push_str("lang=\"rust\"");
         tabs.push_str(&meta_attr);

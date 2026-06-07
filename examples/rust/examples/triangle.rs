@@ -1,4 +1,4 @@
-use fragmentcolor::{App, Pass, Renderer, SetupResult, Shader, call, run};
+use fragmentcolor::{App, Pass, Renderer, SetupResult, Shader, call};
 use std::sync::Arc;
 use winit::dpi::PhysicalSize;
 use winit::window::Window;
@@ -36,6 +36,6 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     app.on_start(call!(setup))
         .on_resize(resize)
         .on_redraw_requested(draw);
-    run(&mut app);
+    app.run();
     Ok(())
 }

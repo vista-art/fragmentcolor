@@ -27,11 +27,24 @@ pub fn fragmentcolor(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Mesh primitives
     m.add_class::<crate::mesh::Quad>()?;
 
+    // Scene graph: Scene + Model + Camera + Light + Material + AlphaMode are
+    // the v0.12.0 surface for 3D content. Their pyclass impls live next to
+    // the Rust types (see `src/scene/platform/python.rs`,
+    // `src/material/platform/python.rs`); registering them here makes them
+    // importable as `from fragmentcolor import Scene, Model, ...`.
+    m.add_class::<crate::scene::Scene>()?;
+    m.add_class::<crate::scene::Model>()?;
+    m.add_class::<crate::scene::Camera>()?;
+    m.add_class::<crate::scene::Light>()?;
+    m.add_class::<crate::scene::LightKind>()?;
+    m.add_class::<crate::material::Material>()?;
+    m.add_class::<crate::material::AlphaMode>()?;
+
     // Texture handle + format
     m.add_class::<crate::texture::Texture>()?;
     m.add_class::<crate::texture::TextureId>()?;
     m.add_class::<crate::TextureFormat>()?;
-    m.add_class::<crate::texture::TextureMipChain>()?;
+    m.add_class::<crate::texture::Mipmap>()?;
     m.add_class::<crate::SamplerOptions>()?;
 
     // TextureTarget (headless) API

@@ -212,10 +212,67 @@ fn py_to_instance(obj: &Bound<'_, PyAny>) -> PyResult<Instance> {
 
 #[pymethods]
 impl Vertex {
+    // Attribute-name constants mirror the Rust-side `pub const` declarations
+    // on `Vertex` (see `src/mesh/vertex.rs`), exposed to Python as class
+    // attributes so example code can write `Vertex.set(Vertex.UV0, ...)`
+    // instead of the bare string `"uv0"`. The classattr functions delegate
+    // to the same Rust const so the two stay in lock-step.
+    //
+    // Rust forbids two `pub const NORMAL` items on the same type, so this
+    // can't be a second `pub const`; the function-form classattr is the
+    // supported pyo3 pattern for re-exporting an existing const.
+    #[classattr]
+    #[pyo3(name = "NORMAL")]
+    fn normal_attr() -> &'static str {
+        Self::NORMAL
+    }
+    #[classattr]
+    #[pyo3(name = "TANGENT")]
+    fn tangent_attr() -> &'static str {
+        Self::TANGENT
+    }
+    #[classattr]
+    #[pyo3(name = "UV0")]
+    fn uv0_attr() -> &'static str {
+        Self::UV0
+    }
+    #[classattr]
+    #[pyo3(name = "UV1")]
+    fn uv1_attr() -> &'static str {
+        Self::UV1
+    }
+    #[classattr]
+    #[pyo3(name = "COLOR0")]
+    fn color0_attr() -> &'static str {
+        Self::COLOR0
+    }
+    #[classattr]
+    #[pyo3(name = "COLOR1")]
+    fn color1_attr() -> &'static str {
+        Self::COLOR1
+    }
+
     #[new]
     #[lsp_doc("docs/api/geometry/vertex/new.md")]
     pub fn new_py(position: Py<PyAny>) -> PyResult<Self> {
         Python::attach(|py| py_to_vertex(position.bind(py)))
+    }
+
+    #[staticmethod]
+    #[pyo3(name = "pbr")]
+    #[lsp_doc("docs/api/geometry/vertex/pbr.md")]
+    pub fn pbr_py(position: Py<PyAny>) -> PyResult<Self> {
+        Python::attach(|py| -> PyResult<Self> {
+            // Build the base Vertex from the position, then layer the
+            // PBR identity defaults via the same `.set(...)` chain
+            // `Vertex::pbr` uses on the Rust side.
+            let v = py_to_vertex(position.bind(py))?;
+            Ok(v.set(Self::NORMAL, [0.0_f32, 0.0, 1.0])
+                .set(Self::UV0, [0.0_f32, 0.0])
+                .set(Self::COLOR0, [1.0_f32, 1.0, 1.0, 1.0])
+                .set(Self::UV1, [0.0_f32, 0.0])
+                .set(Self::TANGENT, [1.0_f32, 0.0, 0.0, 1.0]))
+        })
     }
 
     #[pyo3(name = "set")]
@@ -339,6 +396,28 @@ impl Mesh {
     #[lsp_doc("docs/api/geometry/mesh/set_instance_count.md")]
     pub fn set_instance_count_py(&mut self, n: u32) {
         self.set_instance_count(n);
+    }
+
+    #[pyo3(name = "set_indices")]
+    #[lsp_doc("docs/api/geometry/mesh/set_indices.md")]
+    pub fn set_indices_py(&mut self, indices: Py<PyAny>) -> PyResult<()> {
+        Python::attach(|py| -> PyResult<()> {
+            let seq = indices.bind(py).cast::<PySequence>()?;
+            let len = seq.len()?;
+            let mut out: Vec<u32> = Vec::with_capacity(len);
+            for i in 0..len {
+                let item = seq.get_item(i)?;
+                out.push(item.extract::<u32>()?);
+            }
+            self.set_indices(out);
+            Ok(())
+        })
+    }
+
+    #[pyo3(name = "clear_indices")]
+    #[lsp_doc("docs/api/geometry/mesh/clear_indices.md")]
+    pub fn clear_indices_py(&mut self) {
+        self.clear_indices();
     }
 }
 

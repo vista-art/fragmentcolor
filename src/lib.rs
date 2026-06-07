@@ -39,6 +39,22 @@ pub mod pass;
 /// Mesh represents geometry (vertices, indices, instances) and can be attached to a Pass.
 pub mod mesh;
 
+/// # Material Module
+///
+/// Material bundles PBR factors / textures with the Shader that knows how to
+/// shade them. See [Material::pbr](crate::Material::pbr) for the built-in
+/// physically-based default.
+pub mod material;
+
+/// # Scene Module
+///
+/// Top-level container for the real-world things you render — Models,
+/// Cameras, Lights, custom SceneObjects. See [Scene](crate::Scene),
+/// [Model](crate::Model), [Camera](crate::Camera), and the unified
+/// [Light](crate::Light) type with directional / point / spot
+/// constructors.
+pub mod scene;
+
 /// # Error module
 ///
 /// Common errors used across the library.
@@ -90,6 +106,6 @@ mod platforms;
 pub mod fc_kind;
 
 pub use {
-    color::*, error::*, fc_kind::*, mesh::*, pass::*, region::*, renderer::*, shader::*, size::*,
-    target::*, texture::*,
+    color::*, error::*, fc_kind::*, material::*, mesh::*, pass::*, region::*, renderer::*,
+    scene::*, shader::*, size::*, target::*, texture::*,
 };

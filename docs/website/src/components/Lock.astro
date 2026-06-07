@@ -1,0 +1,37 @@
+---
+// <Lock id="..."> ... </Lock>
+//
+// Marks an MDX region as a "locked block" tracked by the build-time
+// versioning script (scripts/locks.rs, run from build.rs). The script
+// scans MDX files for these tags, hashes the inner content, and
+// records version history in `.claude/locks/locks.json` (gitignored,
+// chmod 600).
+//
+// At render time the component is a pass-through — it has no visual
+// presence in production. The metadata lives in the source file
+// (attributes on the open tag) and in the off-tree store, not in the
+// rendered HTML.
+//
+// Required props:
+//   id          — unique-per-post identifier. The lock id + post path
+//                 form the primary key in the store.
+//
+// Optional props (surface in CLI history/diff output):
+//   description — short human-readable label.
+//   comments    — longer context, e.g. "voice tweaks: don't paraphrase".
+//
+// Constraints (enforced by the build script):
+//   * Locks must close. Unpaired `<Lock>` fails the build.
+//   * Locks cannot nest.
+//   * Attributes use double-quoted string literals
+//     (`<Lock id="opening">`, not `<Lock id={"opening"}>`).
+//
+// See AGENTS.md > "Lock blocks" for the convention sub-agents follow.
+
+const _props = Astro.props as {
+  id: string;
+  description?: string;
+  comments?: string;
+};
+---
+<slot />

@@ -7,7 +7,6 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
-pub type Commands = Vec<wgpu::CommandBuffer>;
 
 #[cfg(wasm)]
 use wasm_bindgen::prelude::*;
@@ -31,6 +30,7 @@ mod texture_pool;
 pub use texture_pool::*;
 pub(crate) mod background;
 mod external_texture;
+mod storage_read;
 mod unregister;
 
 /// The Renderer accepts a generic window handle as input
@@ -142,7 +142,7 @@ impl Renderer {
     /// entry point for every shape — bare bytes / path / URL / file (encoded),
     /// `(input, [w, h])` or `(input, Size)` for raw pixel bytes,
     /// `(input, TextureFormat)` for an explicit format override,
-    /// `(input, TextureOptions)` for full control, or a `TextureMipChain`
+    /// `(input, TextureOptions)` for full control, or a `Mipmap`
     /// (built off the renderer thread) for a GPU-only upload.
     ///
     /// The CPU work (decode, mipmap chain, raw-byte wrap) runs on a background
@@ -331,12 +331,82 @@ impl Renderer {
         external_texture::ExternalTextureHandle::from_video(self, video)
     }
 
+    /// Realize every pending GPU upload referenced by `renderable` — the
+    /// texture inputs queued by Material's lazy `*_texture` setters, the
+    /// loader-built Scenes, and so on. After `load` returns, `render` against
+    /// the same renderable is GPU-only.
+    ///
+    /// `render` runs `load` automatically the first time it sees a renderable
+    /// with pending uploads, so calling `load` is optional; reach for it when
+    /// you want to amortize the decode + upload cost outside the render loop.
+    #[lsp_doc("docs/api/core/renderer/load.md")]
+    pub async fn load(&self, renderable: &impl Renderable) -> Result<(), RendererError> {
+        for pass in renderable.passes().iter() {
+            let shaders: Vec<Arc<crate::shader::ShaderObject>> =
+                pass.shaders.read().iter().cloned().collect();
+            for shader in shaders {
+                let pending = shader.drain_pending_textures();
+                if pending.is_empty() {
+                    continue;
+                }
+                for entry in pending {
+                    let texture = self.create_texture(entry.input).await?;
+                    let meta = crate::texture::TextureMeta::with_id_only(*texture.id());
+                    let _ = shader.set(&entry.key, UniformData::Texture(meta));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Read the GPU-side bytes of a storage binding back to the CPU.
+    ///
+    /// Submits any pending CPU→GPU uploads, copies the storage buffer into a
+    /// pooled readback staging buffer, maps it, and returns the raw bytes.
+    /// The caller is expected to `bytemuck::cast_slice::<T>` (or equivalent)
+    /// to recover the typed view.
+    ///
+    /// Returns [`RendererError::StorageBindingNotFound`] when the shader does
+    /// not declare `binding`, or when no render pass has yet materialised the
+    /// GPU-side buffer (the registry is populated lazily on first bind).
+    ///
+    /// This is intentionally explicit and async because the underlying
+    /// `map_async` is async on every platform — keeping it visible at the
+    /// call site so callers don't accidentally pay a GPU sync per frame.
+    /// The cheap CPU-mirror accessors ([`Shader::get`], [`Shader::get_bytes`])
+    /// remain available for "what did I last set on the CPU side" reads.
+    #[lsp_doc("docs/api/core/renderer/read_storage.md")]
+    pub async fn read_storage(
+        &self,
+        shader: &crate::Shader,
+        binding: &str,
+    ) -> Result<Vec<u8>, RendererError> {
+        if !shader.object.has_storage(binding) {
+            return Err(RendererError::StorageBindingNotFound(binding.to_string()));
+        }
+        let context = self.context(None).await?;
+        let (buffer, span) = context
+            .storage_registry
+            .get(binding)
+            .map(|entry| (entry.0.clone(), entry.1))
+            .ok_or_else(|| RendererError::StorageBindingNotFound(binding.to_string()))?;
+        storage_read::read_buffer_bytes(&context, &buffer, span).await
+    }
+
     #[lsp_doc("docs/api/core/renderer/render.md")]
     pub fn render(
         &self,
         renderable: &impl Renderable,
         target: &impl Target,
     ) -> Result<(), RendererError> {
+        // Drain any pending texture uploads from lazy Material setters before
+        // we touch the GPU. Cheap when nothing is pending — the load future
+        // doesn't await anything in that case. On native we block via
+        // `futures::executor`; on wasm there's no blocking executor, so the
+        // wasm async wrapper (`render_js`) is responsible for awaiting
+        // `load` explicitly.
+        #[cfg(not(wasm))]
+        futures::executor::block_on(self.load(renderable))?;
         if let Some(context) = self.context.read().as_ref() {
             context.render(renderable, target)
         } else {
@@ -444,6 +514,57 @@ impl Renderer {
     }
 }
 
+/// One translucent draw to issue inside the blend phase of a pass. The
+/// renderer builds these from `Pass::model_entries` whose Material declares
+/// `alpha_mode: Blend`, sorts them back-to-front by `eye_z`, then walks the
+/// sorted list reusing each shader's already-built pipeline + bind groups
+/// with a fresh single-instance vertex buffer per draw. Per-entry buffers
+/// kill the instance-batching for blend draws (which is unavoidable when
+/// over-blending needs strict depth ordering) but every other allocation
+/// stays cached across draws.
+#[derive(Debug)]
+struct BlendDraw {
+    /// Pointer identity of the shader Arc. Same key the opaque batching
+    /// uses, looked up by the blend-phase loop to find the cached
+    /// pipeline + bind groups (filed under this key in `process_render_pass`).
+    shader_ptr: usize,
+    /// Strong handle to the mesh so we can fetch its vertex + index buffers
+    /// when the draw runs. Also keeps the matching `MeshObject` alive
+    /// across the render pass, so the renderer's pipeline + vertex-buffer
+    /// lookups (keyed by the underlying pointer) stay valid.
+    mesh: Arc<crate::mesh::MeshObject>,
+    /// World matrix snapshot taken at queue-build time. Same value used to
+    /// compute `eye_z` — keeping them in sync per draw is what makes the
+    /// "live transform" semantics work correctly across the blend phase.
+    transform: glam::Mat4,
+    /// Eye-space Z of the model origin: `(view * transform * vec4(0,0,0,1)).z`.
+    /// Sort comparator field — smaller is farther from the camera (the
+    /// camera looks down -Z in right-handed view space), so we sort
+    /// ascending and draw farthest-first.
+    eye_z: f32,
+    /// Single-instance vertex buffer holding this entry's `transform` as
+    /// four `vec4<f32>` columns. Populated lazily in `build_pass_draws`
+    /// after the sort lands so the buffers don't churn during the sort
+    /// compare callback.
+    instance_buffer: Option<wgpu::Buffer>,
+}
+
+/// Output of `Renderer::build_pass_draws`. Splits the pass's Model entries
+/// into the two draw-time categories the renderer cares about: batched
+/// opaque/mask draws (one instanced GPU call per `(shader, mesh)` pair)
+/// and individually-ordered blend draws.
+#[derive(Default, Debug)]
+struct PassDraws {
+    /// Per-(shader_ptr, mesh_ptr) instance buffer + instance count. Keys
+    /// match the `Pass::add_model` dedupe identity. Bound at vertex slot 1
+    /// for the corresponding shader+mesh draw.
+    opaque_overrides: HashMap<(usize, usize), (wgpu::Buffer, u32)>,
+    /// Translucent draws, **sorted back-to-front** by eye-space Z. The
+    /// renderer walks this list inside the blend phase, looking each
+    /// shader's pipeline + bind groups up by `shader_ptr`.
+    blend_draws: Vec<BlendDraw>,
+}
+
 /// Key for caching render pipelines
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct RenderPipelineKey {
@@ -451,6 +572,14 @@ struct RenderPipelineKey {
     color_format: wgpu::TextureFormat,
     depth_format: Option<wgpu::TextureFormat>,
     sample_count: u32,
+    /// `Material::alpha_mode` bakes into the pipeline: `Opaque`/`Mask`
+    /// turn blending off, `Blend` flips on standard alpha-over and disables
+    /// depth-write. Different modes against the same shader hash therefore
+    /// need different pipelines.
+    alpha_mode: crate::material::AlphaMode,
+    /// `Material::double_sided` flips the `cull_mode` on the primitive
+    /// state, so it also baked into the pipeline.
+    double_sided: bool,
 }
 
 // Key for caching compute pipelines
@@ -490,6 +619,52 @@ pub struct RenderContext {
 
     // MSAA sample count negotiated for current target/format
     sample_count: AtomicU32,
+
+    // Lazy-init 1x1 fallback textures for the default PBR shader's glTF
+    // texture-map bindings. Populated synchronously on first use inside
+    // `process_render_pass`, so `Material::pbr` doesn't need a Renderer.
+    pbr_defaults: RwLock<Option<Arc<PbrDefaults>>>,
+
+    // Reusable scratch buffers for `build_pass_draws`. Cleared at the
+    // start of each call and reused across frames, avoiding the per-frame
+    // `Vec` allocations the previous shape paid.
+    scratch: RwLock<RenderScratch>,
+}
+
+/// Frame-local scratch allocations cached on `RenderContext`. Cleared at
+/// the start of each `build_pass_draws` invocation and reused across
+/// frames so the per-frame draw-queue build doesn't churn allocations.
+#[derive(Debug, Default)]
+struct RenderScratch {
+    /// Insertion-ordered opaque groups keyed by `(shader_ptr, mesh_ptr)`.
+    /// Each entry carries the byte-packed instance buffer for that group.
+    opaque_groups: Vec<((usize, usize), Vec<u8>)>,
+}
+
+#[derive(Debug)]
+pub(crate) struct PbrDefaults {
+    /// Five (view, sampler) pairs the renderer binds to the PBR-named slots
+    /// when a Material::pbr Shader doesn't have a user-supplied texture for
+    /// the slot. The byte payload is chosen so `factor * sample = factor`
+    /// (binding the default is equivalent to "no map").
+    pub(crate) base_color: (wgpu::TextureView, wgpu::Sampler),
+    pub(crate) metallic_roughness: (wgpu::TextureView, wgpu::Sampler),
+    pub(crate) normal: (wgpu::TextureView, wgpu::Sampler),
+    pub(crate) occlusion: (wgpu::TextureView, wgpu::Sampler),
+    pub(crate) emissive: (wgpu::TextureView, wgpu::Sampler),
+}
+
+impl PbrDefaults {
+    fn slot(&self, uniform_name: &str) -> Option<&(wgpu::TextureView, wgpu::Sampler)> {
+        match uniform_name {
+            "base_color_map" => Some(&self.base_color),
+            "metallic_roughness_map" => Some(&self.metallic_roughness),
+            "normal_map" => Some(&self.normal),
+            "occlusion_map" => Some(&self.occlusion),
+            "emissive_map" => Some(&self.emissive),
+            _ => None,
+        }
+    }
 }
 
 impl RenderContext {
@@ -515,7 +690,85 @@ impl RenderContext {
             next_id: AtomicU64::new(1),
             storage_registry: DashMap::new(),
             sample_count: AtomicU32::new(1),
+            pbr_defaults: RwLock::new(None),
+            scratch: RwLock::new(RenderScratch::default()),
         }
+    }
+
+    /// Borrow the lazy 1x1 PBR fallback textures, creating them on first use.
+    /// Used to fill the default PBR shader's texture-map bindings when a
+    /// `Material::pbr` doesn't supply its own texture for the slot. Pure
+    /// sync calls against the wgpu device — no FC texture registry, no
+    /// async hop.
+    fn pbr_defaults(&self) -> Arc<PbrDefaults> {
+        if let Some(existing) = self.pbr_defaults.read().clone() {
+            return existing;
+        }
+        let sampler = self.device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("PBR default sampler"),
+            ..Default::default()
+        });
+        let make = |label: &'static str, rgba: [u8; 4]| -> wgpu::TextureView {
+            let tex = self.device.create_texture(&wgpu::TextureDescriptor {
+                label: Some(label),
+                size: wgpu::Extent3d {
+                    width: 1,
+                    height: 1,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Rgba8Unorm,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                view_formats: &[],
+            });
+            self.queue.write_texture(
+                wgpu::TexelCopyTextureInfo {
+                    texture: &tex,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
+                },
+                &rgba,
+                wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(4),
+                    rows_per_image: Some(1),
+                },
+                wgpu::Extent3d {
+                    width: 1,
+                    height: 1,
+                    depth_or_array_layers: 1,
+                },
+            );
+            tex.create_view(&wgpu::TextureViewDescriptor::default())
+        };
+        // Defaults chosen so `factor * sample = factor` in the shader.
+        let bundle = Arc::new(PbrDefaults {
+            base_color: (
+                make("PBR default base_color", [255, 255, 255, 255]),
+                sampler.clone(),
+            ),
+            // glTF stores metallic in .b and roughness in .g; the shader's
+            // .bgr swizzle puts metallic in .r (=1) and roughness in .g (=1).
+            metallic_roughness: (
+                make("PBR default metallic_roughness", [0, 255, 255, 255]),
+                sampler.clone(),
+            ),
+            // Neutral tangent-space normal (0, 0, 1) after the * 2.0 - 1.0 decode.
+            normal: (
+                make("PBR default normal", [128, 128, 255, 255]),
+                sampler.clone(),
+            ),
+            occlusion: (
+                make("PBR default occlusion", [255, 255, 255, 255]),
+                sampler.clone(),
+            ),
+            emissive: (make("PBR default emissive", [255, 255, 255, 255]), sampler),
+        });
+        *self.pbr_defaults.write() = Some(bundle.clone());
+        bundle
     }
 
     /// Renders any `Renderable` (Shader, Pass, or iterable of Pass) to a Target.
@@ -644,6 +897,151 @@ impl RenderContext {
         }
     }
 
+    /// Per-Model draw buffers gathered from a Pass, split by alpha mode.
+    ///
+    /// Opaque/Mask entries collapse to one batched instance buffer per
+    /// `(shader_ptr, mesh_ptr)` pair — the auto-instancing path. The
+    /// renderer binds the buffer at vertex_buffer(1) and issues a single
+    /// `draw_indexed(.., 0..count)`, which is the cheapest path for
+    /// crowds of shared-material geometry.
+    ///
+    /// Blend entries are *not* batched: each blend draw needs to be
+    /// submitted back-to-front by eye-space depth for correct
+    /// over-blending, so we carry per-entry singleton buffers plus a
+    /// snapshot of the camera-space Z each entry's transform lands at.
+    /// The renderer sorts these by `eye_z` (descending = far→near)
+    /// inside the blend phase. If the pass has no camera attached (no
+    /// `pass.add(&camera)` call), `eye_z` defaults to 0.0 and the
+    /// resulting order is insertion-order — correct for a single
+    /// translucent object, best-effort for multiple.
+    fn build_pass_draws(&self, pass: &PassObject) -> PassDraws {
+        let entries = pass.model_entries.read();
+        let mut out = PassDraws::default();
+        if entries.is_empty() {
+            return out;
+        }
+
+        // Compute eye-Z via the cached view matrix; `None` means no Camera
+        // was attached to the pass, in which case we leave `eye_z` at 0
+        // and the sort is a no-op (stable, insertion order preserved).
+        let view_mat: Option<glam::Mat4> = pass
+            .camera_snapshot
+            .read()
+            .as_ref()
+            .map(|snap| glam::Mat4::from_cols_array_2d(&snap.view));
+
+        // Opaque grouping in stable insertion order: a glTF scene that
+        // depends on `pass.add(...)` ordering for layering (e.g. additive
+        // glow stacked behind a base mesh) was previously seeing random
+        // frame-to-frame ordering because `HashMap` iteration is
+        // non-deterministic. The linear-scan over a `Vec` is fine for
+        // typical pass sizes — most passes have a single-digit number of
+        // `(shader, mesh)` groups. The Vec lives on `self.scratch` so the
+        // allocation amortises across frames.
+        let mut scratch = self.scratch.write();
+        let opaque_groups = &mut scratch.opaque_groups;
+        for (_, bytes) in opaque_groups.iter_mut() {
+            bytes.clear();
+        }
+        opaque_groups.clear();
+        for entry in entries.iter() {
+            // One state read serves both checks. Hidden Models exit before
+            // the alpha-mode branch packs an instance row or queues a
+            // BlendDraw, so visibility and the transform snapshot stay
+            // under a single lock acquisition per entry.
+            let model_state = *entry.state.read();
+            if !model_state.visible {
+                continue;
+            }
+            let alpha_mode = *entry.shader.alpha_mode.read();
+            let key = (
+                Arc::as_ptr(&entry.shader) as usize,
+                Arc::as_ptr(&entry.mesh) as usize,
+            );
+            let transform = model_state.transform;
+            match alpha_mode {
+                crate::material::AlphaMode::Opaque | crate::material::AlphaMode::Mask => {
+                    let m = transform.to_cols_array_2d();
+                    let idx = match opaque_groups.iter().position(|(k, _)| *k == key) {
+                        Some(i) => i,
+                        None => {
+                            opaque_groups.push((key, Vec::new()));
+                            opaque_groups.len() - 1
+                        }
+                    };
+                    let slot = &mut opaque_groups[idx].1;
+                    slot.extend_from_slice(bytemuck::cast_slice(&m));
+                }
+                crate::material::AlphaMode::Blend => {
+                    // Eye-space Z of the mesh's local-space AABB centroid in
+                    // world coordinates: `view * transform * vec4(centroid, 1)`.
+                    // An elongated translucent mesh centered away from its
+                    // local origin sorts against its visible extent rather
+                    // than its pivot. Empty meshes (sentinel `+inf` / `-inf`)
+                    // fall back to the origin so we never multiply a non-finite
+                    // value into the view matrix.
+                    let (lo, hi) = entry.mesh.aabb_local();
+                    let centroid = if lo.is_finite() && hi.is_finite() {
+                        0.5 * (lo + hi)
+                    } else {
+                        glam::Vec3::ZERO
+                    };
+                    let centroid_world =
+                        transform * glam::Vec4::new(centroid.x, centroid.y, centroid.z, 1.0);
+                    let eye_z = view_mat.map(|v| (v * centroid_world).z).unwrap_or(0.0);
+                    out.blend_draws.push(BlendDraw {
+                        shader_ptr: key.0,
+                        mesh: entry.mesh.clone(),
+                        transform,
+                        eye_z,
+                        instance_buffer: None,
+                    });
+                }
+            }
+        }
+
+        for (key, bytes) in opaque_groups.iter() {
+            let count = (bytes.len() / 64) as u32;
+            let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("Pass model instance buffer"),
+                size: bytes.len() as u64,
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+            self.queue.write_buffer(&buffer, 0, bytes);
+            out.opaque_overrides.insert(*key, (buffer, count));
+        }
+        drop(scratch);
+
+        // Back-to-front: highest `eye_z` is closest to the eye in
+        // right-handed view space (the camera looks down its -Z axis, so
+        // farther geometry has a *more negative* Z and a *smaller* `eye_z`
+        // value). We want to draw the smallest values first.
+        out.blend_draws.sort_by(|a, b| {
+            a.eye_z
+                .partial_cmp(&b.eye_z)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+
+        // Materialize one tiny instance buffer per blend draw — 64 bytes
+        // each. The per-draw payload is the column-major model matrix
+        // already in `transform`, copied via a single bytemuck slice.
+        for draw in out.blend_draws.iter_mut() {
+            let m = draw.transform.to_cols_array_2d();
+            let bytes: &[u8] = bytemuck::cast_slice(&m);
+            let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("Pass blend model instance buffer"),
+                size: bytes.len() as u64,
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+            self.queue.write_buffer(&buffer, 0, bytes);
+            draw.instance_buffer = Some(buffer);
+        }
+
+        out
+    }
+
     fn process_render_pass(
         &self,
         encoder: &mut wgpu::CommandEncoder,
@@ -653,6 +1051,16 @@ impl RenderContext {
     ) -> Result<(), RendererError> {
         self.buffer_pool.write().reset();
         self.storage_pool.write().reset();
+
+        // Snapshot per-Model transforms for this Pass into GPU instance
+        // buffers BEFORE begin_render_pass — the wgpu::Buffer handles need
+        // to outlive the render_pass. Opaque/Mask entries collapse to one
+        // batched buffer per `(shader_ptr, mesh_ptr)` (auto-instancing);
+        // Blend entries get one buffer each, kept in a sorted Vec so the
+        // blend phase can walk them back-to-front by eye-space depth.
+        let pass_draws = self.build_pass_draws(pass);
+        let model_overrides = &pass_draws.opaque_overrides;
+        let blend_draws = &pass_draws.blend_draws;
 
         let load_op = match pass.get_input().load {
             true => wgpu::LoadOp::Load,
@@ -768,6 +1176,17 @@ impl RenderContext {
             .write()
             .ensure_capacity(required_size, &self.device);
 
+        // Per-shader render state captured during the opaque phase and
+        // looked up again in the global blend phase so translucent draws
+        // can switch pipelines/bind-groups as they walk `blend_draws` in
+        // back-to-front order across every Material on the pass.
+        struct ShaderRenderState {
+            pipeline: wgpu::RenderPipeline,
+            bind_groups: Vec<(u32, wgpu::BindGroup)>,
+            immediates: Option<Vec<u8>>,
+        }
+        let mut shader_states: HashMap<usize, ShaderRenderState> = HashMap::new();
+
         for shader in pass.shaders.read().iter() {
             shader.flush_pending();
             let shader_meshes = shader.meshes.read().clone();
@@ -780,11 +1199,18 @@ impl RenderContext {
                 None
             };
 
+            // Snapshot the Material-owned pipeline-state flags from the
+            // shader's back-references. Drop the read locks immediately so
+            // we don't hold them across the pipeline build.
+            let alpha_mode = *shader.alpha_mode.read();
+            let double_sided = *shader.double_sided.read();
             let pipeline_key = RenderPipelineKey {
                 shader_hash: shader.hash,
                 color_format,
                 depth_format,
                 sample_count,
+                alpha_mode,
+                double_sided,
             };
             let cached_pipeline = self
                 .render_pipelines
@@ -797,6 +1223,8 @@ impl RenderContext {
                         sample_count,
                         layouts,
                         depth_format,
+                        alpha_mode,
+                        double_sided,
                     )
                 });
 
@@ -814,6 +1242,7 @@ impl RenderContext {
             }
 
             let mut groups: HashMap<u32, BindGroupResources> = HashMap::new();
+            let mut pbr_defaults_handle: Option<Arc<PbrDefaults>> = None;
             for name in &shader.list_uniforms() {
                 let uniform = shader.get_uniform(name)?;
 
@@ -829,11 +1258,22 @@ impl RenderContext {
                             group_entry.views.push((uniform.binding, view));
                             group_entry.last_texture_sampler = Some(sampler);
                         } else {
-                            log::warn!(
-                                "Texture handle {:?} not found for uniform {}",
-                                meta.id,
-                                name
-                            );
+                            // No user texture — fall back to the PBR default for
+                            // the known glTF slot names so `Material::pbr` works
+                            // without the caller supplying every map.
+                            let defaults =
+                                pbr_defaults_handle.get_or_insert_with(|| self.pbr_defaults());
+                            if let Some((view, sampler)) = defaults.slot(name) {
+                                let group_entry = groups.entry(uniform.group).or_default();
+                                group_entry.views.push((uniform.binding, view.clone()));
+                                group_entry.last_texture_sampler = Some(sampler.clone());
+                            } else {
+                                log::warn!(
+                                    "Texture handle {:?} not found for uniform {}",
+                                    meta.id,
+                                    name
+                                );
+                            }
                         }
                     }
                     UniformData::Sampler(info) => {
@@ -1099,34 +1539,109 @@ impl RenderContext {
             // Set native immediate data just before draw if applicable.
             // Blocking read for the same reason as the storage-buffer snapshot
             // earlier in this function.
+            let mut immediate_bytes: Option<Vec<u8>> = None;
             if let Some(PushMode::Native { root, .. }) = &cached_pipeline.push_mode {
                 let storage = shader.storage.read();
                 if let Some(bytes) = storage.get_bytes(root) {
                     render_pass.set_immediates(0, bytes);
+                    immediate_bytes = Some(bytes.to_vec());
                 }
             }
 
+            let shader_ptr = Arc::as_ptr(shader) as usize;
+            // Snapshot the pipeline + bind-groups + native immediate bytes
+            // so the blend phase below can re-bind them per draw without
+            // walking the bind-group construction again. wgpu types are
+            // Arc-backed, so the clones are cheap (single refcount bump).
+            shader_states.insert(
+                shader_ptr,
+                ShaderRenderState {
+                    pipeline: cached_pipeline.pipeline.clone(),
+                    bind_groups: bind_groups.clone(),
+                    immediates: immediate_bytes,
+                },
+            );
+
             match shader_meshes.len() {
                 0 => render_pass.draw(0..3, 0..1),
-                _ => {
-                    for mesh_object in shader_meshes.iter() {
-                        let (refs, counts) =
-                            mesh_object.vertex_buffers(&self.device, &self.queue)?;
-                        render_pass.set_vertex_buffer(0, refs.vertex_buffer.slice(..));
-                        if let Some(instance_buffer) = &refs.instance_buffer {
-                            render_pass.set_vertex_buffer(1, instance_buffer.slice(..));
+                _ => match alpha_mode {
+                    crate::material::AlphaMode::Opaque | crate::material::AlphaMode::Mask => {
+                        // Auto-instancing path: one batched draw per
+                        // (shader, mesh) pair regardless of how many
+                        // Models contributed. The instance override map
+                        // packs all queued model matrices into one
+                        // vertex buffer at slot 1.
+                        for mesh_object in shader_meshes.iter() {
+                            let (refs, counts) =
+                                mesh_object.vertex_buffers(&self.device, &self.queue)?;
+                            render_pass.set_vertex_buffer(0, refs.vertex_buffer.slice(..));
+
+                            // Per-Pass Model override takes precedence over the
+                            // Mesh's own instance buffer. The override carries N
+                            // model matrices (one per Model::add_model call that
+                            // referenced this shader+mesh); the fall-through path
+                            // is for Meshes whose instances came from a direct
+                            // `Mesh::add_instance` call (crowd rendering, etc.).
+                            let override_key = (shader_ptr, Arc::as_ptr(mesh_object) as usize);
+                            let instance_count =
+                                if let Some((buf, count)) = model_overrides.get(&override_key) {
+                                    render_pass.set_vertex_buffer(1, buf.slice(..));
+                                    *count
+                                } else {
+                                    if let Some(instance_buffer) = &refs.instance_buffer {
+                                        render_pass.set_vertex_buffer(1, instance_buffer.slice(..));
+                                    }
+                                    counts.instance_count
+                                };
+
+                            render_pass.set_index_buffer(
+                                refs.index_buffer.slice(..),
+                                wgpu::IndexFormat::Uint32,
+                            );
+                            render_pass.draw_indexed(0..counts.index_count, 0, 0..instance_count);
                         }
-                        render_pass.set_index_buffer(
-                            refs.index_buffer.slice(..),
-                            wgpu::IndexFormat::Uint32,
-                        );
-                        render_pass.draw_indexed(
-                            0..counts.index_count,
-                            0,
-                            0..counts.instance_count,
-                        );
                     }
+                    crate::material::AlphaMode::Blend => {
+                        // Blend draws run in the global back-to-front phase
+                        // below, after every shader has registered its
+                        // pipeline + bind groups in `shader_states`. Nothing
+                        // to do here.
+                    }
+                },
+            }
+        }
+
+        // Global blend phase: walk every `BlendDraw` in eye-Z far→near
+        // order (already sorted in `build_pass_draws`) and rebind the
+        // owning shader's pipeline + bind groups whenever the active
+        // shader_ptr changes. Two translucent Materials in one Pass now
+        // interleave correctly — A-far, B-mid, A-near sequences emit in
+        // global Z order rather than per-shader buckets.
+        if !blend_draws.is_empty() {
+            let mut current_shader_ptr: Option<usize> = None;
+            for draw in blend_draws.iter() {
+                let Some(buf) = draw.instance_buffer.as_ref() else {
+                    continue;
+                };
+                let Some(state) = shader_states.get(&draw.shader_ptr) else {
+                    continue;
+                };
+                if current_shader_ptr != Some(draw.shader_ptr) {
+                    render_pass.set_pipeline(&state.pipeline);
+                    for (group, bg) in state.bind_groups.iter() {
+                        render_pass.set_bind_group(*group, bg, &[]);
+                    }
+                    if let Some(bytes) = state.immediates.as_deref() {
+                        render_pass.set_immediates(0, bytes);
+                    }
+                    current_shader_ptr = Some(draw.shader_ptr);
                 }
+                let (refs, counts) = draw.mesh.vertex_buffers(&self.device, &self.queue)?;
+                render_pass.set_vertex_buffer(0, refs.vertex_buffer.slice(..));
+                render_pass.set_vertex_buffer(1, buf.slice(..));
+                render_pass
+                    .set_index_buffer(refs.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+                render_pass.draw_indexed(0..counts.index_count, 0, 0..1);
             }
         }
 
@@ -1506,75 +2021,40 @@ fn vertex_buffer_layouts(
     let (vertex_location, vertex_locations) = mesh.vertex_location_map();
     let instance_locations = mesh.instance_location_map();
 
+    // Match each shader vertex-input to a mesh attribute. Name match wins
+    // over location match: shaders that use fixed `@location(...)` slots
+    // (e.g. the PBR shader's `model_0..model_3` at locations 3..6) collide
+    // with the vertex's auto-incremented locations once the vertex carries
+    // many attributes (NORMAL, UV0, COLOR0, UV1, ...). The mesh's
+    // location_map numbers in its own buffer-local space, not the shader's
+    // global one, so a shader-location of 4 means "model_1" for the
+    // instance buffer but might be "uv1" in the vertex map. Falling back to
+    // location-match would then mis-attribute the slot. Name-first kills
+    // the ambiguity — `position`, `model_*`, `color0`, etc. resolve by
+    // string. Location-based matching catches the remaining case where the
+    // shader's input name doesn't appear in either map (raw / generated
+    // shaders).
     for vertex_input in vertex_inputs.iter() {
         let mut placed = false;
 
-        // 1) Try instance by explicit index
-        if let Some(name) = instance_locations.get(&vertex_input.location)
-            && let Some((offset, format_mesh)) =
-                instance_map.as_ref().and_then(|map| map.get(name)).cloned()
-        {
+        let assert_format = |format_mesh: wgpu::VertexFormat,
+                             stream: &'static str|
+         -> Result<(), RendererError> {
             if vertex_input.format != format_mesh {
                 return Err(RendererError::Error(format!(
-                    "Type mismatch for shader input '{}' @location({}): shader expects {:?}, mesh has {:?}",
+                    "Type mismatch for shader input '{}' @location({}) ({stream}): shader expects {:?}, mesh has {:?}",
                     vertex_input.name, vertex_input.location, vertex_input.format, format_mesh
                 )));
             }
-            instance_attributes.push(wgpu::VertexAttribute {
-                format: vertex_input.format,
-                offset,
-                shader_location: vertex_input.location,
-            });
-            placed = true;
-        }
-        // 2) Try vertex by explicit index (position or property)
-        if !placed {
-            // position index
-            if vertex_input.location == vertex_location
-                && let Some((offset, format_mesh)) = vertex_map.get("position").cloned()
-            {
-                if vertex_input.format != format_mesh {
-                    return Err(RendererError::Error(format!(
-                        "Type mismatch for vertex 'position' @location({}): shader expects {:?}, mesh has {:?}",
-                        vertex_input.location, vertex_input.format, format_mesh
-                    )));
-                }
-                vertex_attributes.push(wgpu::VertexAttribute {
-                    format: vertex_input.format,
-                    offset,
-                    shader_location: vertex_input.location,
-                });
-                placed = true;
-            }
-            if !placed
-                && let Some(name) = vertex_locations.get(&vertex_input.location)
-                && let Some((offset, format_mesh)) = vertex_map.get(name.as_str()).cloned()
-            {
-                if vertex_input.format != format_mesh {
-                    return Err(RendererError::Error(format!(
-                        "Type mismatch for shader input '{}' @location({}): shader expects {:?}, mesh has {:?}",
-                        vertex_input.name, vertex_input.location, vertex_input.format, format_mesh
-                    )));
-                }
-                vertex_attributes.push(wgpu::VertexAttribute {
-                    format: vertex_input.format,
-                    offset,
-                    shader_location: vertex_input.location,
-                });
-                placed = true;
-            }
-        }
-        // 3) Fallback: match by name (instance then vertex)
-        if !placed
-            && let Some(ref mi) = instance_map
+            Ok(())
+        };
+
+        // 1) Name match against instance (handles `model_*` at fixed shader
+        //    locations regardless of the mesh's instance-side numbering).
+        if let Some(ref mi) = instance_map
             && let Some((offset, format_mesh)) = mi.get(vertex_input.name.as_str()).cloned()
         {
-            if vertex_input.format != format_mesh {
-                return Err(RendererError::Error(format!(
-                    "Type mismatch for shader input '{}' @location({}): shader expects {:?}, mesh has {:?}",
-                    vertex_input.name, vertex_input.location, vertex_input.format, format_mesh
-                )));
-            }
+            assert_format(format_mesh, "instance")?;
             instance_attributes.push(wgpu::VertexAttribute {
                 format: vertex_input.format,
                 offset,
@@ -1582,15 +2062,54 @@ fn vertex_buffer_layouts(
             });
             placed = true;
         }
+        // 2) Name match against vertex (handles NORMAL / UV0 / UV1 /
+        //    COLOR0 / TANGENT regardless of insertion order).
         if !placed
             && let Some((offset, format_mesh)) = vertex_map.get(vertex_input.name.as_str()).cloned()
         {
-            if vertex_input.format != format_mesh {
-                return Err(RendererError::Error(format!(
-                    "Type mismatch for shader input '{}' @location({}): shader expects {:?}, mesh has {:?}",
-                    vertex_input.name, vertex_input.location, vertex_input.format, format_mesh
-                )));
-            }
+            assert_format(format_mesh, "vertex")?;
+            vertex_attributes.push(wgpu::VertexAttribute {
+                format: vertex_input.format,
+                offset,
+                shader_location: vertex_input.location,
+            });
+            placed = true;
+        }
+        // 3) Position fallback — the only vertex slot that's commonly
+        //    unnamed in the mesh map.
+        if !placed
+            && vertex_input.location == vertex_location
+            && let Some((offset, format_mesh)) = vertex_map.get("position").cloned()
+        {
+            assert_format(format_mesh, "vertex/position")?;
+            vertex_attributes.push(wgpu::VertexAttribute {
+                format: vertex_input.format,
+                offset,
+                shader_location: vertex_input.location,
+            });
+            placed = true;
+        }
+        // 4) Instance match by buffer-local location index (for instance
+        //    schemas built without canonical names).
+        if !placed
+            && let Some(name) = instance_locations.get(&vertex_input.location)
+            && let Some((offset, format_mesh)) =
+                instance_map.as_ref().and_then(|map| map.get(name)).cloned()
+        {
+            assert_format(format_mesh, "instance/loc")?;
+            instance_attributes.push(wgpu::VertexAttribute {
+                format: vertex_input.format,
+                offset,
+                shader_location: vertex_input.location,
+            });
+            placed = true;
+        }
+        // 5) Vertex match by buffer-local location index.
+        if !placed
+            && let Some(name) = vertex_locations.get(&vertex_input.location)
+            && let Some((offset, format_mesh)) = vertex_map.get(name.as_str()).cloned()
+        {
+            assert_format(format_mesh, "vertex/loc")?;
             vertex_attributes.push(wgpu::VertexAttribute {
                 format: vertex_input.format,
                 offset,
@@ -1851,6 +2370,7 @@ fn bind_group_layouts(
     layouts
 }
 
+#[allow(clippy::too_many_arguments)]
 fn create_render_pipeline(
     device: &wgpu::Device,
     shader: &crate::ShaderObject,
@@ -1858,6 +2378,8 @@ fn create_render_pipeline(
     sample_count: u32,
     vertex_layouts: Option<VertexLayouts>,
     depth_format: Option<wgpu::TextureFormat>,
+    alpha_mode: crate::material::AlphaMode,
+    double_sided: bool,
 ) -> RenderPipeline {
     let mut layouts = bind_group_layouts(device, shader);
 
@@ -2055,87 +2577,47 @@ fn create_render_pipeline(
             entry_point: Some(fs_entry.as_deref().unwrap_or("fs_main")),
             targets: &[Some(wgpu::ColorTargetState {
                 format,
-                blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
-                // @TODO implement more granular control over blending
-                //
-                // Linear Interpolation Formula: Fa*Fc + (1-Fa)*Bc
-                //
-                // In wgpu:
-                // FACTOR * Src (OPERATION) FACTOR * Dst
-                //
-                // Where:
-                // Src is the Foreground (image on top)
-                // Dst is the Background (image on bottom)
-                //
-                // FACTOR can be:
-                //   /// 0.0
-                //   Zero = 0,
-                //   /// 1.0
-                //   One = 1,
-                //   /// S.color
-                //   Src = 2,
-                //   /// 1.0 - S.color
-                //   OneMinusSrc = 3,
-                //   /// S.alpha
-                //   SrcAlpha = 4,
-                //   /// 1.0 - S.alpha
-                //   OneMinusSrcAlpha = 5,
-                //   /// D.color
-                //   Dst = 6,
-                //   /// 1.0 - D.color
-                //   OneMinusDst = 7,
-                //   /// D.alpha
-                //   DstAlpha = 8,
-                //   /// 1.0 - D.alpha
-                //   OneMinusDstAlpha = 9,
-                //   /// min(S.alpha, 1.0 - D.alpha)
-                //   SrcAlphaSaturated = 10,
-                //   /// Constant
-                //   Constant = 11,
-                //   /// 1.0 - Constant
-                //   OneMinusConstant = 12,
-                //   /// S1.color
-                //   Src1 = 13,
-                //   /// 1.0 - S1.color
-                //   OneMinusSrc1 = 14,
-                //   /// S1.alpha
-                //   Src1Alpha = 15,
-                //   /// 1.0 - S1.alpha
-                //   OneMinusSrc1Alpha = 16,
-                //
-                // OPERATION Can be:
-                //   /// Src + Dst
-                //   #[default]
-                //   Add = 0,
-                //   /// Src - Dst
-                //   Subtract = 1,
-                //   /// Dst - Src
-                //   ReverseSubtract = 2,
-                //   /// min(Src, Dst)
-                //   Min = 3,
-                //   /// max(Src, Dst)
-                //   Max = 4,
-                //
-                // blend: Some(wgpu::BlendState {
-                //     color: wgpu::BlendComponent {
-                //         src_factor: wgpu::BlendFactor::One,
-                //         dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
-                //         operation: wgpu::BlendOperation::Add,
-                //     },
-                //     alpha: wgpu::BlendComponent {
-                //         src_factor: wgpu::BlendFactor::One,
-                //         dst_factor: wgpu::BlendFactor::Zero,
-                //         operation: wgpu::BlendOperation::Add,
-                //     },
-                // }),
+                // Blend state baked from Material::alpha_mode:
+                //   Opaque / Mask -> no blending (alpha bits go to the FB
+                //                    but the equation ignores them; Mask
+                //                    does its work via `discard` in the
+                //                    fragment shader).
+                //   Blend         -> standard SrcAlpha/OneMinusSrcAlpha
+                //                    over-blend.
+                blend: match alpha_mode {
+                    crate::material::AlphaMode::Opaque | crate::material::AlphaMode::Mask => None,
+                    crate::material::AlphaMode::Blend => Some(wgpu::BlendState::ALPHA_BLENDING),
+                },
+                // Custom (non-glTF-MR) blend equations are tracked under
+                // the roadmap's "Custom blending" item — Material's
+                // AlphaMode covers the three glTF 2.0 modes; anything more
+                // exotic will ride on a separate per-Material slot.
                 write_mask: wgpu::ColorWrites::ALL,
             })],
             compilation_options: wgpu::PipelineCompilationOptions::default(),
         }),
-        primitive: wgpu::PrimitiveState::default(),
+        primitive: wgpu::PrimitiveState {
+            // `double_sided=true` (the ShaderObject default) leaves
+            // `cull_mode: None`, matching the renderer's pre-Material
+            // behaviour. `Material::pbr` (and `Material::custom`) flip
+            // it to `false`, which engages standard back-face culling —
+            // the glTF 2.0 default for single-sided materials.
+            cull_mode: if double_sided {
+                None
+            } else {
+                Some(wgpu::Face::Back)
+            },
+            ..wgpu::PrimitiveState::default()
+        },
         depth_stencil: depth_format.map(|format| wgpu::DepthStencilState {
             format,
-            depth_write_enabled: Some(true),
+            // Blend disables depth-write so translucent fragments don't
+            // occlude later geometry in the same pass. Opaque / Mask keep
+            // depth-write on.
+            depth_write_enabled: Some(matches!(
+                alpha_mode,
+                crate::material::AlphaMode::Opaque | crate::material::AlphaMode::Mask
+            )),
             depth_compare: Some(wgpu::CompareFunction::LessEqual),
             stencil: wgpu::StencilState::default(),
             bias: wgpu::DepthBiasState::default(),
@@ -2498,7 +2980,7 @@ fn main(v: VOut) -> @location(0) vec4<f32> {
     }
 
     // Story: Bind an R16Unorm texture (prepared mip chain) into a shader and
-    // render. This is the consumer's failing path (RemixBrush, FC-BUG report
+    // render. This is the consumer's failing path (FC-BUG report
     // 2026-05-04): without TEXTURE_FORMAT_16BIT_NORM in the device candidates,
     // the texture is silently invalid and `create_view` cascades into an
     // InvalidResource validation error at every frame. With the fix, this
@@ -2534,18 +3016,18 @@ fn main(v: VOut) -> @location(0) vec4<f32> {
             "#;
             let shader = crate::Shader::new(wgsl).expect("shader");
 
-            // 4×4 R16Unorm raw data — same shape as RemixBrush's height tile.
+            // 4×4 R16Unorm raw data — same shape as a consumer's height tile.
             let words: Vec<u16> = (0..16).map(|i| i * 4096).collect();
             let mut bytes: Vec<u8> = Vec::with_capacity(words.len() * 2);
             for w in &words {
                 bytes.extend_from_slice(&w.to_le_bytes());
             }
-            let chain = crate::texture::TextureMipChain::prepare((
+            let chain = crate::texture::Mipmap::build((
                 bytes.as_slice(),
                 crate::TextureFormat::R16Unorm,
                 [4u32, 4u32],
             ))
-            .expect("prepare R16Unorm chain");
+            .expect("build R16Unorm chain");
             let tex = renderer
                 .create_texture(chain)
                 .await
@@ -3131,11 +3613,7 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,1.,0.,1.); }
             }
         }
 
-        impl crate::Target for DummyTarget {
-            fn size(&self) -> crate::Size {
-                self.size
-            }
-            fn resize(&mut self, _s: impl Into<crate::Size>) {}
+        impl crate::target::TargetInternal for DummyTarget {
             fn get_current_frame(
                 &self,
             ) -> Result<Box<dyn crate::TargetFrame>, crate::SurfaceError> {
@@ -3144,6 +3622,12 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,1.,0.,1.); }
                     .pop_front()
                     .unwrap_or_else(|| Ok(Box::new(DummyFrame)))
             }
+        }
+        impl crate::Target for DummyTarget {
+            fn size(&self) -> crate::Size {
+                self.size
+            }
+            fn resize(&mut self, _s: impl Into<crate::Size>) {}
             async fn get_image(&self) -> Vec<u8> {
                 Vec::new()
             }
@@ -3312,7 +3796,8 @@ fn main() -> @location(0) vec4<f32> { return vec4<f32>(0.8, 0.2, 0.1, 1.0); }
             "#;
             let shader = crate::Shader::new(wgsl).expect("shader");
             let pass = Pass::from_shader("off", &shader);
-            pass.add_target(&color_target).expect("add color target");
+            pass.set_target(&color_target)
+                .expect("SAFETY: tests construct color_target via Renderer::create_texture so target.id() resolves");
 
             let res = renderer.render(&pass, &present_target);
             assert!(

@@ -1,3 +1,4 @@
+use crate::target::TargetInternal;
 use crate::{Size, SurfaceError, Target, TargetFrame, TextureTarget, WindowTarget};
 
 pub enum RenderTarget {
@@ -26,6 +27,15 @@ impl From<TextureTarget> for RenderTarget {
     }
 }
 
+impl TargetInternal for RenderTarget {
+    fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, SurfaceError> {
+        match self {
+            RenderTarget::Window(w) => w.get_current_frame(),
+            RenderTarget::Texture(t) => t.get_current_frame(),
+        }
+    }
+}
+
 impl Target for RenderTarget {
     fn size(&self) -> Size {
         match self {
@@ -38,13 +48,6 @@ impl Target for RenderTarget {
         match self {
             RenderTarget::Window(w) => w.resize(size),
             RenderTarget::Texture(t) => t.resize(size),
-        }
-    }
-
-    fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, SurfaceError> {
-        match self {
-            RenderTarget::Window(w) => w.get_current_frame(),
-            RenderTarget::Texture(t) => t.get_current_frame(),
         }
     }
 

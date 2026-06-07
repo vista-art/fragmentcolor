@@ -1,6 +1,6 @@
 # Renderer::readTexture(textureId)
 
-JavaScript/WASM wrapper for `Renderer::read_texture`. Returns a `Promise<Uint8Array>` — await it to get the tightly-packed pixel bytes for the registered texture in its native format.
+JavaScript/WASM wrapper for `Renderer::read_texture`. Returns a `Promise<Uint8Array>`. Await it to get the tightly-packed pixel bytes for the registered texture in its native format.
 
 ## Example
 

@@ -36,6 +36,14 @@ impl TextureTarget {
     }
 }
 
+impl crate::target::TargetInternal for TextureTarget {
+    fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, crate::SurfaceError> {
+        let view = self.texture.create_view();
+        let format = self.texture.format();
+        Ok(Box::new(TextureFrame { view, format }))
+    }
+}
+
 impl Target for TextureTarget {
     #[lsp_doc("docs/api/targets/target/size.md")]
     fn size(&self) -> Size {
@@ -50,13 +58,6 @@ impl Target for TextureTarget {
             self.texture.format(),
         );
         self.texture = Arc::new(new_texture);
-    }
-
-    #[lsp_doc("docs/api/targets/target/hidden/get_current_frame.md")]
-    fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, crate::SurfaceError> {
-        let view = self.texture.create_view();
-        let format = self.texture.format();
-        Ok(Box::new(TextureFrame { view, format }))
     }
 
     /// Read back the offscreen texture contents as packed RGBA8 bytes
@@ -77,7 +78,7 @@ impl Target for TextureTarget {
 }
 
 impl TextureTarget {
-    /// Obtain a sampleable Texture handle for binding in shaders.
+    #[lsp_doc("docs/api/targets/texture_target/texture.md")]
     pub fn texture(&self) -> crate::texture::Texture {
         if let Some(id) = *self.id.read() {
             return crate::texture::Texture::new(self.context.clone(), self.texture.clone(), id);

@@ -1,0 +1,64 @@
+---
+title: "Dither"
+description: Ordered and noise-based dithering patterns from the FragmentColor shader registry.
+---
+
+Dithering trades smooth tonal range for spatial noise so an image can survive
+quantization (8-bit output, low-bit colour palettes, alpha cut-outs) without
+visible banding. Each function below returns a per-pixel threshold in
+`[0, 1)` that you compare against your value before snapping it.
+
+Pull one in by slug and apply it inline:
+
+```rust
+let main = r#"
+@fragment fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+    let v = in.uv.x;                              // smooth source
+    let t = bayer4x4(vec2<i32>(in.position.xy));   // threshold
+    let q = step(t, v);                           // 1-bit dither
+    return vec4<f32>(vec3<f32>(q), 1.0);
+}
+"#;
+let shader = Shader::new(&["dither/bayer4x4", main])?;
+```
+
+## bayer2x2
+
+Ordered dither threshold in `[0, 1)` for an integer pixel coord.
+
+```wgsl
+fn bayer2x2(p: vec2<i32>) -> f32
+```
+
+![dither/bayer2x2 preview](/shaders/dither/bayer2x2.png)
+
+## bayer4x4
+
+Ordered dither threshold in `[0, 1)` for an integer pixel coord.
+
+```wgsl
+fn bayer4x4(p: vec2<i32>) -> f32
+```
+
+![dither/bayer4x4 preview](/shaders/dither/bayer4x4.png)
+
+## bayer8x8
+
+8x8 ordered dither threshold in `[0, 1)` for an integer pixel coord.
+
+```wgsl
+fn bayer8x8(p: vec2<i32>) -> f32
+```
+
+![dither/bayer8x8 preview](/shaders/dither/bayer8x8.png)
+
+## interleaved_gradient_noise
+
+Jorge Jimenez's IGN — a fast, blue-noise-flavoured dither that breaks up
+banding without the regular grid look of Bayer matrices.
+
+```wgsl
+fn interleaved_gradient_noise(p: vec2<f32>) -> f32
+```
+
+![dither/interleaved_gradient_noise preview](/shaders/dither/interleaved_gradient_noise.png)

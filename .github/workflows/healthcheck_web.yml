@@ -61,6 +61,11 @@ jobs:
 
       - name: Run Web healthcheck (Playwright)
         id: healthcheck
+        # Cap the step at 15 min: cold playwright install runs ~6 min,
+        # wasm-pack ~3 min, static server + 20 s wait + browser shutdown
+        # add ~1 min. Past 15 min fail the job and upload artifacts
+        # below so we get a diagnostic instead of a 6-hour silent stall.
+        timeout-minutes: 15
         env:
           FC_HEALTHCHECK_VERBOSE: 1
           PORT: 8765

@@ -645,59 +645,142 @@ struct ObjectProperty {
         let crate_root = super::meta::workspace_root();
         let (entry_path, parsed) = parse_lib_entry_point(&crate_root);
         let mut catalog = ApiCatalog::default();
-        walk_catalog(&entry_path, parsed.items, &mut catalog);
+        walk_catalog(&entry_path, parsed.items, &mut catalog, NameFilter::Global);
         catalog
     }
 
-    fn walk_catalog(path: &Path, items: Vec<Item>, catalog: &mut ApiCatalog) {
+    /// Recursive AST walker that populates the [`ApiCatalog`].
+    ///
+    /// Mirrors `traverse_and_extract`'s handling of the standard Rust
+    /// "implementation in a private module, exposed via `pub use`" idiom:
+    /// types declared as `pub struct Foo` inside `mod foo;` (private) and
+    /// re-exported by a sibling `pub use foo::*` are part of the public API
+    /// and must appear in the catalog. Without this, doc validation would
+    /// silently skip every type living in such a module — Camera, Light, and
+    /// Scene under `src/scene/` were exactly this case.
+    ///
+    /// `name_filter` controls which items count as publicly re-exported:
+    /// `Global` accepts everything (the natural top-level / `pub use mod::*`
+    /// shape); `Specific(name)` accepts only the named struct/impl (the
+    /// `pub use mod::Foo` shape); `Rename(orig, alias)` records the alias
+    /// (the `pub use mod::Foo as Bar` shape).
+    fn walk_catalog(
+        path: &Path,
+        items: Vec<Item>,
+        catalog: &mut ApiCatalog,
+        name_filter: NameFilter,
+    ) {
+        // First pass: collect private modules and pub-use statements.
+        let mut private_modules: HashSet<String> = HashSet::new();
+        let mut pub_uses = Vec::new();
+        for item in &items {
+            match item {
+                Item::Mod(item_mod) if !matches!(item_mod.vis, Visibility::Public(_)) => {
+                    private_modules.insert(item_mod.ident.to_string());
+                }
+                Item::Use(item_use) if matches!(item_use.vis, Visibility::Public(_)) => {
+                    pub_uses.push(item_use.clone());
+                }
+                _ => {}
+            }
+        }
+
+        // Second pass: figure out which private modules are publicly
+        // re-exported and under which filter.
+        let mut reexported_modules: HashMap<String, Vec<NameFilter>> = HashMap::new();
+        for item_use in pub_uses {
+            if let syn::UseTree::Path(use_path) = &item_use.tree {
+                let full_path = extract_full_path_from_use_tree(&item_use.tree);
+                if let Some(last_segment) = full_path.last() {
+                    let mod_name = last_segment.to_string();
+                    if private_modules.contains(&mod_name) {
+                        let mut mod_items = extract_names_from_use_tree(&use_path.tree);
+                        match reexported_modules.entry(mod_name) {
+                            Entry::Vacant(entry) if !mod_items.is_empty() => {
+                                entry.insert(mod_items);
+                            }
+                            Entry::Occupied(mut entry) => {
+                                entry.get_mut().append(&mut mod_items);
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+        }
+
+        // Third pass: process items.
         for item in items {
             match item {
                 Item::Mod(m) => {
                     if let Visibility::Public(_) = m.vis {
                         let (mod_path, mod_items) = parse_module(path, &m);
-                        walk_catalog(&mod_path, mod_items, catalog);
+                        walk_catalog(&mod_path, mod_items, catalog, NameFilter::Global);
+                    } else {
+                        let mod_name = m.ident.to_string();
+                        if let Some(filters) = reexported_modules.get(&mod_name).cloned() {
+                            for filter in filters {
+                                let (mod_path, mod_items) = parse_module(path, &m);
+                                walk_catalog(&mod_path, mod_items, catalog, filter);
+                            }
+                        }
                     }
                 }
                 Item::Struct(s) => {
-                    if let Visibility::Public(_) = s.vis {
-                        let mut inner_types = Vec::new();
-                        match &s.fields {
-                            syn::Fields::Unnamed(unnamed) => {
-                                if unnamed.unnamed.len() == 1 {
-                                    collect_type_idents(
-                                        &unnamed.unnamed[0].ty,
-                                        &mut inner_types,
-                                    );
-                                }
-                            }
-                            syn::Fields::Named(named) => {
-                                for f in named.named.iter() {
-                                    collect_type_idents(&f.ty, &mut inner_types);
-                                }
-                            }
-                            syn::Fields::Unit => {}
-                        }
-                        inner_types.sort();
-                        inner_types.dedup();
-                        catalog.structs.push(StructEntry {
-                            name: s.ident.to_string(),
-                            is_doc_hidden: is_doc_hidden(&s.attrs),
-                            has_lsp_doc: has_lsp_doc(&s.attrs),
-                            attrs: s.attrs,
-                            inner_types,
-                        });
+                    if !matches!(s.vis, Visibility::Public(_)) {
+                        continue;
                     }
+                    let recorded_name = match &name_filter {
+                        NameFilter::Global => s.ident.to_string(),
+                        NameFilter::Specific(name) if s.ident == name => name.clone(),
+                        NameFilter::Rename(orig, alias) if s.ident == orig => alias.clone(),
+                        _ => continue,
+                    };
+                    let mut inner_types = Vec::new();
+                    match &s.fields {
+                        syn::Fields::Unnamed(unnamed) => {
+                            if unnamed.unnamed.len() == 1 {
+                                collect_type_idents(
+                                    &unnamed.unnamed[0].ty,
+                                    &mut inner_types,
+                                );
+                            }
+                        }
+                        syn::Fields::Named(named) => {
+                            for f in named.named.iter() {
+                                collect_type_idents(&f.ty, &mut inner_types);
+                            }
+                        }
+                        syn::Fields::Unit => {}
+                    }
+                    inner_types.sort();
+                    inner_types.dedup();
+                    catalog.structs.push(StructEntry {
+                        name: recorded_name,
+                        is_doc_hidden: is_doc_hidden(&s.attrs),
+                        has_lsp_doc: has_lsp_doc(&s.attrs),
+                        attrs: s.attrs,
+                        inner_types,
+                    });
                 }
                 Item::Impl(item_impl) => {
                     if let syn::Type::Path(type_path) = *item_impl.self_ty {
                         let type_name =
                             type_path.path.segments.last().unwrap().ident.to_string();
+                        let recorded_type = match &name_filter {
+                            NameFilter::Global => type_name,
+                            NameFilter::Specific(name) if type_name == *name => name.clone(),
+                            NameFilter::Rename(orig, alias) if type_name == *orig => {
+                                alias.clone()
+                            }
+                            _ => continue,
+                        };
                         for impl_item in item_impl.items {
                             if let ImplItem::Fn(method) = impl_item
                                 && matches!(method.vis, Visibility::Public(_))
                             {
                                 catalog.methods.push(MethodEntry {
-                                    type_name: type_name.clone(),
+                                    type_name: recorded_type.clone(),
                                     method_name: method.sig.ident.to_string(),
                                     has_lsp_doc: has_lsp_doc(&method.attrs),
                                     is_doc_hidden: is_doc_hidden(&method.attrs),

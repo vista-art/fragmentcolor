@@ -81,6 +81,23 @@ impl Pass {
         Ok(self.add_mesh(mesh)?)
     }
 
+    /// Unified `Pass.add` — branches on the runtime JS type. Adding a new
+    /// `SceneObject` Rust-side means adding one extra try-cast arm here.
+    #[wasm_bindgen(js_name = "add")]
+    #[lsp_doc("docs/api/core/pass/add.md")]
+    pub fn add_js(&self, object: &JsValue) -> Result<(), JsError> {
+        if let Ok(model) = crate::Model::try_from(object) {
+            return self.add(&model).map(|_| ()).map_err(|e| e.into());
+        }
+        if let Ok(camera) = crate::scene::Camera::try_from(object) {
+            return self.add(&camera).map(|_| ()).map_err(|e| e.into());
+        }
+        if let Ok(light) = crate::scene::Light::try_from(object) {
+            return self.add(&light).map(|_| ()).map_err(|e| e.into());
+        }
+        Err(JsError::new("Pass.add: expected a Model, Camera, or Light"))
+    }
+
     #[wasm_bindgen(js_name = "setClearColor")]
     #[lsp_doc("docs/api/core/pass/set_clear_color.md")]
     pub fn set_clear_color_js(&self, color: &JsValue) -> Result<(), JsError> {
@@ -103,34 +120,34 @@ impl Pass {
         Ok(())
     }
 
-    #[wasm_bindgen(js_name = "addTarget")]
-    #[lsp_doc("docs/api/core/pass/add_target.md")]
-    pub fn add_target_js(&self, target: &JsValue) -> Result<(), JsError> {
+    #[wasm_bindgen(js_name = "setTarget")]
+    #[lsp_doc("docs/api/core/pass/set_target.md")]
+    pub fn set_target_js(&self, target: &JsValue) -> Result<(), JsError> {
         if let Ok(tt) = TextureTarget::try_from(target) {
-            return Ok(self.add_target(&tt)?);
+            return Ok(self.set_target(&tt)?);
         }
 
         if let Ok(tex) = Texture::try_from(target) {
             return self
-                .add_target(&tex)
+                .set_target(&tex)
                 .map_err(|e| JsError::new(&format!("{}", e)));
         }
-        Err(JsError::new("addTarget: expected TextureTarget or Texture"))
+        Err(JsError::new("setTarget: expected TextureTarget or Texture"))
     }
 
-    #[wasm_bindgen(js_name = "addDepthTarget")]
-    #[lsp_doc("docs/api/core/pass/add_depth_target.md")]
-    pub fn add_depth_target_js(&self, target: &JsValue) -> Result<(), JsError> {
+    #[wasm_bindgen(js_name = "setDepthTarget")]
+    #[lsp_doc("docs/api/core/pass/set_depth_target.md")]
+    pub fn set_depth_target_js(&self, target: &JsValue) -> Result<(), JsError> {
         if let Ok(tt) = TextureTarget::try_from(target) {
-            return Ok(self.add_depth_target(&tt)?);
+            return Ok(self.set_depth_target(&tt)?);
         }
         if let Ok(tex) = Texture::try_from(target) {
             return self
-                .add_depth_target(&tex)
+                .set_depth_target(&tex)
                 .map_err(|e| JsError::new(&format!("{}", e)));
         }
         Err(JsError::new(
-            "addDepthTarget: expected TextureTarget or Texture",
+            "setDepthTarget: expected TextureTarget or Texture",
         ))
     }
 

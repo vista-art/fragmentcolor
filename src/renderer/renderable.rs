@@ -33,6 +33,9 @@ pub enum RenderableHandle {
     Shader(Arc<crate::Shader>),
     Pass(Arc<crate::Pass>),
     Mesh(Arc<crate::Mesh>),
+    /// Top-level [`Scene`](crate::Scene) — emits its pre-passes followed
+    /// by the default Pass that absorbs the scene's `SceneObject`s.
+    Scene(Arc<crate::Scene>),
     /// Iterable of `Pass` instances — emits passes in order.
     Passes(Vec<Arc<crate::Pass>>),
 }
@@ -44,6 +47,7 @@ impl Renderable for RenderableHandle {
             Self::Shader(s) => s.passes(),
             Self::Pass(p) => p.passes(),
             Self::Mesh(m) => m.passes(),
+            Self::Scene(s) => s.passes(),
             Self::Passes(ps) => {
                 let mut all: Vec<Arc<PassObject>> = Vec::new();
                 for p in ps {
@@ -69,6 +73,21 @@ impl Renderable for RenderableHandle {
 pub enum TargetHandle {
     Window(Arc<crate::MobileWindowTarget>),
     Texture(Arc<crate::MobileTextureTarget>),
+}
+
+/// Uniffi-marshallable union of every type that implements
+/// [`crate::scene::SceneObject`]. Mobile bindings carry a concrete enum
+/// because uniffi can't marshal `&impl SceneObject`. The Rust core stays
+/// generic; this enum exists so Swift / Kotlin can call `scene.add(...)`
+/// or `pass.add(...)` through a single mobile entry point — the Swift /
+/// Kotlin extension files supply natural overloads that wrap the
+/// concrete handle into the matching variant invisibly.
+#[cfg(mobile)]
+#[derive(Debug, Clone, uniffi::Enum)]
+pub enum SceneObjectHandle {
+    Model(Arc<crate::Model>),
+    Camera(Arc<crate::scene::Camera>),
+    Light(Arc<crate::scene::Light>),
 }
 
 #[cfg(test)]

@@ -1,0 +1,2193 @@
+---
+title: Material
+description: "A `Material` bundles a `Shader` with the glTF 2.0 PBR-MR field set (base color, metallic, roughness, emissive, normal scale, occlusion strength, alpha cutoff, plus the matching set of optional textures) and exposes each as a builder-style setter."
+category: scene
+categoryLabel: Scene
+sidebar:
+  order: 2
+---
+
+import { Code, Tabs, TabItem, Aside } from "@astrojs/starlight/components";
+
+## Description
+
+A `Material` bundles a `Shader` with the glTF 2.0 PBR-MR field set (base
+color, metallic, roughness, emissive, normal scale, occlusion strength,
+alpha cutoff, plus the matching set of optional textures) and exposes
+each as a builder-style setter.
+
+The default `Material::pbr` constructs the bundle from FragmentColor's
+built-in physically-based shader (Cook-Torrance specular with GGX + Smith +
+Schlick, Lambertian diffuse with energy conservation, glTF-spec texture
+sampling on top of the factor uniforms), pre-populated with sensible
+defaults. The five glTF texture slots start unbound; the renderer resolves
+each one to a 1×1 default from its lazy texture cache the first time a Pass
+renders the Material, so the Material's shader has every binding it needs
+without any further setup. `Material::pbr` returns `Result` because the
+helper snippets it composes (`mesh/transform`, `material/pbr`) must be
+available at build time. They ship in the default `shaders-all` feature,
+so this is only an error path for slim opt-out builds. You can also call
+`Material::custom(shader)` to wrap your own shader; the same setters apply
+best-effort, no-op-ing for uniform paths the shader doesn't declare.
+
+Materials are typically combined with a [Mesh](/api/geometry/mesh)
+into a [Model](/api/scene/model), which is the
+object you actually add to a `Pass`. The Material itself doesn't render
+anything on its own.
+
+## Cloning is an Arc-share, not a deep copy
+
+`Material` clones (and every setter's return value) point at the same
+inner shader. Mutating one handle changes the state every other handle
+reads:
+
+```text
+let red = Material::pbr().base_color([1.0, 0.0, 0.0, 1.0]);
+let same = red.clone();
+same.base_color([0.0, 1.0, 0.0, 1.0]); // both `red` and `same` now read green
+```
+
+Same goes for the chained-setter return: `Material::pbr().metallic(...)`
+gives you back a handle to the same shader, not a fresh copy. This is the
+mechanic that makes setters chain cheaply and lets one Material drive
+hundreds of Models without per-instance shader duplication.
+
+When you genuinely need an independent material, build a fresh
+`Material::pbr()` (and re-set the factor / texture slots you care about).
+The "many handles to one shader" share semantics is the right default;
+the explicit-fresh-Material path is the escape hatch.
+
+## What lives where
+
+- **Factor uniforms** (base color, metallic, …) are stored on the shader as
+  `material.<name>` fields and read every frame. They're per-Material, so
+  many Models that share a Material share these values.
+- **Texture bindings** (base color texture, …) are stored under the
+  canonical glTF binding names (`base_color_map`, `metallic_roughness_map`,
+  `normal_map`, `occlusion_map`, `emissive_map`) and sampled by the default
+  shader. Unset slots resolve to the renderer's 1×1 defaults so the shader's
+  bind group is always complete.
+- **Per-Model transform** rides the **per-instance vertex attribute** stream
+  at locations 3..6 (four `vec4<f32>` columns of `mat4x4<f32>`), populated by
+  `Model::sync_transform`. It's *not* a Material uniform, so Models
+  sharing one Material don't collide on a `mesh.model` slot.
+
+## Pipeline state
+
+`alpha_mode` (`Opaque` / `Mask` / `Blend`) and `double_sided` are wired
+through to the pipeline. See `Material::alpha_mode` and
+`Material::double_sided`. Mask mode uses `material.alpha_cutoff` to discard
+transparent fragments; Blend uses standard `SrcAlpha/OneMinusSrcAlpha`
+over-blend with depth-write turned off.
+
+Tangent-space TBN normal mapping is supported via the default PBR shader:
+the sampled normal is decoded from the stored `[0, 1]` bytes, the XY
+components are scaled by `material.normal_scale`, and the result is rotated
+from tangent space into world space using the per-vertex tangent (with the
+glTF `tangent.w` handedness flag preserved). For custom TBN beyond the
+bundled implementation, use `Material::custom`.
+
+
+
+## Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Material, Mesh, Model, Vertex};
+
+let mesh = Mesh::new();
+mesh.add_vertex(
+    Vertex::pbr([0.0, 0.5, 0.0]).set(Vertex::UV0, [0.5, 1.0]),
+);
+
+let material = Material::pbr()
+    .base_color([0.85, 0.2, 0.2, 1.0])
+    .metallic(0.0)
+    .roughness(0.4)
+    .emissive([0.0, 0.0, 0.05]);
+
+let model = Model::new(mesh, material);
+let _model = model;
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 16-18}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Material, Mesh, Model, Vertex } from "fragmentcolor";
+
+const mesh = new Mesh();
+mesh.addVertex( Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0]), );
+
+const material = Material.pbr().baseColor([0.85, 0.2, 0.2, 1.0]).metallic(0.0).roughness(0.4).emissive([0.0, 0.0, 0.05]);
+
+const model = new Model(mesh, material);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Material, Mesh, Model, Vertex
+
+mesh = Mesh()
+mesh.add_vertex(
+    Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
+)
+
+material = Material.pbr().base_color([0.85, 0.2, 0.2, 1.0]).metallic(0.0).roughness(0.4).emissive([0.0, 0.0, 0.05])
+
+model = Model(mesh, material)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let mesh = Mesh()
+try mesh.addVertex(
+    try Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0])
+)
+
+let material = try Material.pbr().baseColor([0.85, 0.2, 0.2, 1.0]).metallic(0.0).roughness(0.4).emissive([0.0, 0.0, 0.05])
+
+let model = Model(mesh, material)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val mesh = Mesh()
+mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set("uv0", floatArrayOf(0.5f, 1.0f)), )
+
+val material = Material.pbr().baseColor(listOf(0.85f, 0.2f, 0.2f, 1.0f)).metallic(0.0f).roughness(0.4f).emissive(listOf(0.0f, 0.0f, 0.05f))
+
+val model = Model(mesh, material)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+## Methods
+
+
+---
+
+### Material::alpha_cutoff
+
+Sets the alpha threshold used by `AlphaMode::Mask`. Fragments whose
+`base_color.a` falls below this value are `discard`ed in the fragment
+shader. Stored on `material.alpha_cutoff`; default `0.5`, matching glTF 2.0.
+
+Only `AlphaMode::Mask` reads this value; in `Opaque` and `Blend` modes the
+fragment shader ignores it. Use it together with `Material::alpha_mode`
+when you want hard-edged cut-out transparency (foliage, chain-link, decals).
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::Material;
+
+let foliage = Material::pbr().alpha_cutoff(0.3);
+let _foliage = foliage;
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 5-7}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Material } from "fragmentcolor";
+
+const foliage = Material.pbr().alphaCutoff(0.3);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Material
+
+foliage = Material.pbr().alpha_cutoff(0.3)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let foliage = Material.pbr().alphaCutoff(0.3)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val foliage = Material.pbr().alphaCutoff(0.3f)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Material::alpha_mode
+
+Set how the renderer interprets the alpha channel of the material's output. Mirrors the
+glTF 2.0 `alphaMode` semantics. Pipeline state is baked into the WebGPU pipeline, so
+different `AlphaMode` values for the same shader cache to distinct pipelines.
+
+The three variants:
+
+- `AlphaMode::Opaque` (default): depth-test is on, blending is off. Alpha is written
+  out but ignored by the framebuffer. Pick this for solid surfaces; it's the cheapest
+  option and the only one that lets the depth buffer fully describe the geometry.
+- `AlphaMode::Mask`: depth-test is on, blending is off, but the fragment shader
+  `discard`s any pixel whose `material.base_color.a` falls below `material.alpha_cutoff`.
+  The classic foliage / chain-link / decal trick: keeps the perf profile of opaque
+  geometry (no order dependence, full depth writes) while letting silhouettes punch
+  out hard-edged transparency. Tune the cut-off with `Material::alpha_cutoff`.
+- `AlphaMode::Blend`: depth-test stays on but depth-write turns off, and the color
+  target uses standard `SrcAlpha / OneMinusSrcAlpha` over-blend. Use for glass, smoke,
+  fades, decals that need soft edges. The renderer sorts blend Models on the Pass
+  back-to-front by eye-space Z before drawing, using the Camera attached via
+  `Pass::add(&camera)`. Translucent surfaces over-blend in the right order without the
+  caller managing it. Limitation: sorts by per-Model AABB centroid (not per-fragment),
+  so self-intersecting or interpenetrating translucent meshes can still show artifacts.
+  Cross-Material interleaving works correctly: translucent draws across every shader
+  in the Pass merge into one globally-sorted back-to-front pass.
+
+This is a pipeline-state flag. Changing it forces the renderer to rebuild the pipeline
+for the affected `(shader, alpha_mode, double_sided)` key. Switching it every frame is
+fine in practice (the second build hits the cache from then on) but avoid toggling per
+draw call inside a frame.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{AlphaMode, Material};
+
+let foliage = Material::pbr()
+    .alpha_mode(AlphaMode::Mask)
+    .alpha_cutoff(0.3);
+
+let glass = Material::pbr()
+    .base_color([0.9, 0.95, 1.0, 0.25])
+    .alpha_mode(AlphaMode::Blend);
+
+let solid = Material::pbr().alpha_mode(AlphaMode::Opaque);
+let _ = (foliage, glass, solid);
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 13-15}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { AlphaMode, Material } from "fragmentcolor";
+
+const foliage = Material.pbr().alphaMode(AlphaMode.Mask).alphaCutoff(0.3);
+
+const glass = Material.pbr().baseColor([0.9, 0.95, 1.0, 0.25]).alphaMode(AlphaMode.Blend);
+
+const solid = Material.pbr().alphaMode(AlphaMode.Opaque);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import AlphaMode, Material
+
+foliage = Material.pbr().alpha_mode(AlphaMode.Mask).alpha_cutoff(0.3)
+
+glass = Material.pbr().base_color([0.9, 0.95, 1.0, 0.25]).alpha_mode(AlphaMode.Blend)
+
+solid = Material.pbr().alpha_mode(AlphaMode.Opaque)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let foliage = Material.pbr().alphaMode(AlphaMode.mask).alphaCutoff(0.3)
+
+let glass = try Material.pbr().baseColor([0.9, 0.95, 1.0, 0.25]).alphaMode(AlphaMode.blend)
+
+let solid = Material.pbr().alphaMode(AlphaMode.opaque)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val foliage = Material.pbr().alphaMode(AlphaMode.MASK).alphaCutoff(0.3f)
+
+val glass = Material.pbr().baseColor(listOf(0.9f, 0.95f, 1.0f, 0.25f)).alphaMode(AlphaMode.BLEND)
+
+val solid = Material.pbr().alphaMode(AlphaMode.OPAQUE)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Material::base_color
+
+Set the base color factor (linear RGBA). For dielectrics this is the diffuse
+albedo; for metals it's the F0 reflectance. Alpha goes through the fragment
+output unchanged.
+
+Maps to the `material.base_color` uniform on the underlying shader. Default
+is `[1, 1, 1, 1]`.
+
+Returns a handle to the same Material (Arc-shared) so calls chain. See
+[Material: Cloning is an Arc-share](/api/scene/material#cloning-is-an-arc-share-not-a-deep-copy)
+for what that means for mutation visibility.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Material, Renderer};
+
+let renderer = Renderer::new();
+let red = Material::pbr().base_color([1.0, 0.2, 0.2, 1.0]);
+let _ = red;
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+`}
+lang="rust" meta="collapse={1-1, 6-9}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Material, Renderer } from "fragmentcolor";
+
+const renderer = new Renderer();
+const red = Material.pbr().baseColor([1.0, 0.2, 0.2, 1.0]);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Material, Renderer
+
+renderer = Renderer()
+red = Material.pbr().base_color([1.0, 0.2, 0.2, 1.0])
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let renderer = Renderer()
+let red = try Material.pbr().baseColor([1.0, 0.2, 0.2, 1.0])
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val renderer = Renderer()
+val red = Material.pbr().baseColor(listOf(1.0f, 0.2f, 0.2f, 1.0f))
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Material::base_color_texture
+
+Bind a texture to the `base_color_map` slot. The default PBR shader samples it in `fs_main` and multiplies by the factor. The albedo for each fragment is `material.base_color * textureSample(base_color_map, sampler, in.uv)`.
+
+Accepts any `Into<TextureInput>`:
+
+- A pre-built [`&Texture`](/api/texture/texture). The setter stores the texture's ID immediately and the GPU texture stays Arc-shared across every Material that points at it. Passing the same `&shared_texture` to N Materials produces one GPU upload and N shader-uniform references: the cheap way to reuse one texture map across a scene full of objects without paying for N texture allocations.
+- Bytes / path / URL / `DynamicImage`. The setter queues the input on the Material's Shader, and the renderer drains queued uploads on the first [`Renderer::render`](/api/core/renderer/render) (or earlier via the explicit [`Renderer::load`](/api/core/renderer/load)).
+
+Unset, this slot resolves to a 1×1 white default the renderer hands out
+lazily, so calling `Material::pbr()` without binding a
+texture renders correctly under the factor alone.
+
+#### Errors are surfaced lazily
+
+The setter itself is infallible: it queues the upload (lazy path) or
+takes an Arc-clone (eager path) and returns. Failures from the lazy
+path (file not found, decode error, unsupported format) surface when
+the renderer actually drains the queue: either at first render or when
+you call [`Renderer::load(&material).await`](/api/core/renderer/load).
+Until then the Material renders against its 1×1 default and a
+`log::warn!` line names the slot.
+
+For deterministic error handling, pre-build the texture eagerly:
+`renderer.create_texture(path).await?` returns a `Texture` that can't
+fail at setter time, and `Material::base_color_texture(&texture)` takes
+an Arc-shared reference. The lazy path stays useful when the URL /
+path resolves at render time but the caller doesn't want to await yet.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Material, Renderer};
+
+let renderer = Renderer::new();
+let albedo_bytes: Vec<u8> = vec![
+    255, 200, 120, 255,
+    255, 240, 180, 255,
+    230, 180, 100, 255,
+    255, 220, 150, 255,
+];
+let albedo = renderer.create_texture((albedo_bytes, [2, 2])).await?;
+
+// Every Material that points at \`albedo\` reuses the same uploaded GPU
+// texture; passing the same handle into N Material instances costs one
+// upload and N shader-uniform references.
+let blob = Material::pbr().base_color_texture(&albedo);
+let _ = blob;
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+`}
+lang="rust" meta="collapse={1-1, 17-20}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Material, Renderer } from "fragmentcolor";
+
+const renderer = new Renderer();
+const albedo_bytes = [ 255, 200, 120, 255, 255, 240, 180, 255, 230, 180, 100, 255, 255, 220, 150, 255, ];
+const albedo = await renderer.createTexture(albedo_bytes, [2, 2]);
+
+// Every Material that points at \`albedo\` reuses the same uploaded GPU
+// texture; passing the same handle into N Material instances costs one
+// upload and N shader-uniform references.
+const blob = Material.pbr().baseColorTexture(albedo);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Material, Renderer
+
+renderer = Renderer()
+albedo_bytes = [
+    255, 200, 120, 255,
+    255, 240, 180, 255,
+    230, 180, 100, 255,
+    255, 220, 150, 255,
+]
+albedo = renderer.create_texture(albedo_bytes, size=[2, 2])
+
+# Every Material that points at \`albedo\` reuses the same uploaded GPU
+# texture; passing the same handle into N Material instances costs one
+# upload and N shader-uniform references.
+blob = Material.pbr().base_color_texture(albedo)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let renderer = Renderer()
+let albedo_bytes = [
+    255, 200, 120, 255,
+    255, 240, 180, 255,
+    230, 180, 100, 255,
+    255, 220, 150, 255,
+]
+let albedo = try await renderer.createTexture((albedo_bytes, [2, 2]))
+
+// Every Material that points at """albedo""" reuses the same uploaded GPU
+// texture; passing the same handle into N Material instances costs one
+// upload and N shader-uniform references.
+let blob = Material.pbr().baseColorTexture(albedo)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val renderer = Renderer()
+val albedo_bytes = listOf(255.0f, 200.0f, 120.0f, 255.0f, 255.0f, 240.0f, 180.0f, 255.0f, 230.0f, 180.0f, 100.0f, 255.0f, 255.0f, 220.0f, 150.0f, 255.0f, .0f)
+val albedo = renderer.createTexture(TextureInputMobile.Bytes(albedo_bytes.let { ba -> ByteArray(ba.size) { i -> ba[i].toInt().and(0xFF).toByte() } }), null)
+
+// Every Material that points at """albedo""" reuses the same uploaded GPU
+// texture; passing the same handle into N Material instances costs one
+// upload and N shader-uniform references.
+val blob = Material.pbr().baseColorTexture(albedo)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Material::custom
+
+Wrap an arbitrary `Shader` as a `Material` so it can be paired with a
+`Mesh` to form a `Model`. The PBR-named setters (`base_color`, `metallic`,
+…) still work; they call `shader.set(...)` under matching uniform paths
+(`material.base_color`, etc.). If your shader doesn't declare those
+uniforms the setters log-warn and return self unchanged; set custom uniforms
+directly via `material.shader().set(...)`.
+
+`Material::custom` is the escape hatch for any shading model that isn't
+glTF-spec PBR: toon shading, flat unlit colors, wireframe debug views,
+volumetric or post-process effects that you want to attach to a `Mesh`.
+
+#### What custom shaders should declare for full Material-style ergonomics
+
+Optional but recommended:
+
+- `struct PbrMaterial { base_color: vec4<f32>, … }` at `@group(1) @binding(1)`
+  bound as `material`. This lets the PBR factor setters work as-is.
+- `struct MeshTransform { model: mat4x4<f32>, … }` at `@group(1) @binding(0)`
+  bound as `mesh`. This lets `Model::transform` / `translate` / `rotate` /
+  `scale` work as-is.
+
+Without these the Material is still functional; only the high-level setters
+become no-ops.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Material, Shader};
+
+let wireframe = Shader::new(r#"
+    struct MeshTransform { model: mat4x4<f32> }
+    struct Camera { view_proj: mat4x4<f32>, position: vec3<f32> }
+    @group(0) @binding(0) var<uniform> camera: Camera;
+    @group(1) @binding(0) var<uniform> mesh: MeshTransform;
+
+    @vertex
+    fn vs_main(@location(0) p: vec3<f32>) -> @builtin(position) vec4<f32> {
+        return camera.view_proj * mesh.model * vec4<f32>(p, 1.0);
+    }
+    @fragment fn fs_main() -> @location(0) vec4<f32> {
+        return vec4<f32>(0.0, 1.0, 0.4, 1.0);
+    }
+"#)?;
+
+let wire_mat = Material::custom(wireframe);
+let _ = wire_mat;
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 20-22}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Material, Shader } from "fragmentcolor";
+
+const wireframe = new Shader(\`
+
+    struct MeshTransform { model: mat4x4<f32> }
+    struct Camera { view_proj: mat4x4<f32>, position: vec3<f32> }
+    @group(0) @binding(0) var<uniform> camera: Camera;
+    @group(1) @binding(0) var<uniform> mesh: MeshTransform;
+
+    @vertex
+    fn vs_main(@location(0) p: vec3<f32>) -> @builtin(position) vec4<f32> {
+        return camera.view_proj * mesh.model * vec4<f32>(p, 1.0);
+    }
+    @fragment fn fs_main() -> @location(0) vec4<f32> {
+        return vec4<f32>(0.0, 1.0, 0.4, 1.0);
+    }
+
+\`);
+
+const wire_mat = Material.custom(wireframe);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Material, Shader
+
+wireframe = Shader("""
+    struct MeshTransform { model: mat4x4<f32> }
+    struct Camera { view_proj: mat4x4<f32>, position: vec3<f32> }
+    @group(0) @binding(0) var<uniform> camera: Camera;
+    @group(1) @binding(0) var<uniform> mesh: MeshTransform;
+
+    @vertex
+    fn vs_main(@location(0) p: vec3<f32>) -> @builtin(position) vec4<f32> {
+        return camera.view_proj * mesh.model * vec4<f32>(p, 1.0);
+    }
+    @fragment fn fs_main() -> @location(0) vec4<f32> {
+        return vec4<f32>(0.0, 1.0, 0.4, 1.0);
+    }
+
+""")
+
+wire_mat = Material.custom(wireframe)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let wireframe = try Shader("""
+    struct MeshTransform { model: mat4x4<f32> }
+    struct Camera { view_proj: mat4x4<f32>, position: vec3<f32> }
+    @group(0) @binding(0) var<uniform> camera: Camera
+    @group(1) @binding(0) var<uniform> mesh: MeshTransform
+
+    @vertex
+    fn vs_main(@location(0) p: vec3<f32>) -> @builtin(position) vec4<f32> {
+        return camera.view_proj * mesh.model * vec4<f32>(p, 1.0)
+    }
+    @fragment fn fs_main() -> @location(0) vec4<f32> {
+        return vec4<f32>(0.0, 1.0, 0.4, 1.0)
+    }
+
+""")
+
+let wire_mat = Material.custom(wireframe)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val wireframe = Shader("""
+    struct MeshTransform { model: mat4x4<f32> }
+    struct Camera { view_proj: mat4x4<f32>, position: vec3<f32> }
+    @group(0) @binding(0) var<uniform> camera: Camera
+    @group(1) @binding(0) var<uniform> mesh: MeshTransform
+
+    @vertex
+    fn vs_main(@location(0) p: vec3<f32>) -> @builtin(position) vec4<f32> {
+        return camera.view_proj * mesh.model * vec4<f32>(p, 1.0)
+    }
+    @fragment fn fs_main() -> @location(0) vec4<f32> {
+        return vec4<f32>(0.0, 1.0, 0.4, 1.0)
+    }
+
+""")
+
+val wire_mat = Material.custom(wireframe)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Material::double_sided
+
+Toggle backface culling for this material's pipeline. When `true`, the renderer skips
+its default back-face cull and draws both faces of every triangle. When `false`
+(the default), back faces are culled, the standard CCW-winding-is-front convention.
+
+Mirrors glTF 2.0's `doubleSided`. Reach for it on thin geometry that legitimately reads
+from both sides: a single-quad leaf card, a cloth banner, decals applied to non-closed
+meshes, or any authored asset that comes out of a tool that didn't bother to mirror its
+back faces. For closed solid geometry, leave it off; the culled back faces are a free
+~50% fragment-shader saving on every draw.
+
+Like `alpha_mode`, this is a pipeline-state flag and bakes into the WebGPU pipeline.
+The renderer caches a separate pipeline per `(shader, alpha_mode, double_sided)` key,
+so toggling it doesn't fight the shader cache as long as you stay on a small set of
+values.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{AlphaMode, Material, Renderer};
+
+let renderer = Renderer::new();
+// Leaf cards: thin, single-quad geometry; needs both sides + alpha cut-out.
+let leaf = Material::pbr()
+    .double_sided(true)
+    .alpha_mode(AlphaMode::Mask)
+    .alpha_cutoff(0.5);
+
+// Default is single-sided — back-face culling on.
+let solid_mesh = Material::pbr().double_sided(false);
+let _ = (leaf, solid_mesh);
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+`}
+lang="rust" meta="collapse={1-1, 13-16}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { AlphaMode, Material, Renderer } from "fragmentcolor";
+
+const renderer = new Renderer();
+// Leaf cards: thin, single-quad geometry; needs both sides + alpha cut-out.
+const leaf = Material.pbr().doubleSided(true).alphaMode(AlphaMode.Mask).alphaCutoff(0.5);
+
+// Default is single-sided — back-face culling on.
+const solid_mesh = Material.pbr().doubleSided(false);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import AlphaMode, Material, Renderer
+
+renderer = Renderer()
+# Leaf cards: thin, single-quad geometry; needs both sides + alpha cut-out.
+leaf = Material.pbr().double_sided(True).alpha_mode(AlphaMode.Mask).alpha_cutoff(0.5)
+
+# Default is single-sided — back-face culling on.
+solid_mesh = Material.pbr().double_sided(False)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let renderer = Renderer()
+// Leaf cards: thin, single-quad geometry; needs both sides + alpha cut-out.
+let leaf = Material.pbr().doubleSided(true).alphaMode(AlphaMode.mask).alphaCutoff(0.5)
+
+// Default is single-sided — back-face culling on.
+let solid_mesh = Material.pbr().doubleSided(false)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val renderer = Renderer()
+// Leaf cards: thin, single-quad geometry; needs both sides + alpha cut-out.
+val leaf = Material.pbr().doubleSided(true).alphaMode(AlphaMode.MASK).alphaCutoff(0.5f)
+
+// Default is single-sided — back-face culling on.
+val solid_mesh = Material.pbr().doubleSided(false)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Material::emissive
+
+Set the emissive factor (linear RGB): light the surface emits regardless of
+incident illumination. Added on top of the PBR shading and clamped only by
+the output format; for tonemapped pipelines use values in `[0, 1]`, for HDR
+you can go beyond.
+
+Maps to the `material.emissive` uniform. Default is `[0, 0, 0]`.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Material, Renderer};
+
+let renderer = Renderer::new();
+let lava = Material::pbr()
+    .base_color([0.1, 0.05, 0.0, 1.0])
+    .emissive([1.5, 0.4, 0.1]);
+let _ = lava;
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+`}
+lang="rust" meta="collapse={1-1, 8-11}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Material, Renderer } from "fragmentcolor";
+
+const renderer = new Renderer();
+const lava = Material.pbr().baseColor([0.1, 0.05, 0.0, 1.0]).emissive([1.5, 0.4, 0.1]);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Material, Renderer
+
+renderer = Renderer()
+lava = Material.pbr().base_color([0.1, 0.05, 0.0, 1.0]).emissive([1.5, 0.4, 0.1])
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let renderer = Renderer()
+let lava = try Material.pbr().baseColor([0.1, 0.05, 0.0, 1.0]).emissive([1.5, 0.4, 0.1])
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val renderer = Renderer()
+val lava = Material.pbr().baseColor(listOf(0.1f, 0.05f, 0.0f, 1.0f)).emissive(listOf(1.5f, 0.4f, 0.1f))
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Material::emissive_texture
+
+Bind an emissive map to the canonical `emissive_map` slot. The default PBR
+shader samples it in `fs_main` and multiplies by the factor: per-fragment
+emission is `material.emissive * textureSample(emissive_map, sampler, in.uv).rgb`.
+
+Unset, this slot resolves to a 1×1 white default so the multiplied
+emission falls back to the `material.emissive` factor as-is.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Material, Renderer};
+
+let renderer = Renderer::new();
+let glow_bytes: Vec<u8> = vec![
+    255, 0, 0, 255,
+    255,   0, 0, 255,
+    255,   0, 0, 255,
+    255,   0, 0, 255,
+];
+let glow = renderer.create_texture((glow_bytes, [2, 2])).await?;
+let mat = Material::pbr()
+    .emissive([0.8, 0.0, 0.0])
+    .emissive_texture(&glow);
+let _ = mat;
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+`}
+lang="rust" meta="collapse={1-1, 15-18}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Material, Renderer } from "fragmentcolor";
+
+const renderer = new Renderer();
+const glow_bytes = [ 255, 0, 0, 255, 255,   0, 0, 255, 255,   0, 0, 255, 255,   0, 0, 255, ];
+const glow = await renderer.createTexture(glow_bytes, [2, 2]);
+const mat = Material.pbr().emissive([0.8, 0.0, 0.0]).emissiveTexture(glow);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Material, Renderer
+
+renderer = Renderer()
+glow_bytes = [
+    255, 0, 0, 255,
+    255,   0, 0, 255,
+    255,   0, 0, 255,
+    255,   0, 0, 255,
+]
+glow = renderer.create_texture(glow_bytes, size=[2, 2])
+mat = Material.pbr().emissive([0.8, 0.0, 0.0]).emissive_texture(glow)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let renderer = Renderer()
+let glow_bytes = [
+    255, 0, 0, 255,
+    255,   0, 0, 255,
+    255,   0, 0, 255,
+    255,   0, 0, 255,
+]
+let glow = try await renderer.createTexture((glow_bytes, [2, 2]))
+let mat = try Material.pbr().emissive([0.8, 0.0, 0.0]).emissiveTexture(glow)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val renderer = Renderer()
+val glow_bytes = listOf(255.0f, 0.0f, 0.0f, 255.0f, 255.0f, 0.0f, 0.0f, 255.0f, 255.0f, 0.0f, 0.0f, 255.0f, 255.0f, 0.0f, 0.0f, 255.0f, .0f)
+val glow = renderer.createTexture(TextureInputMobile.Bytes(glow_bytes.let { ba -> ByteArray(ba.size) { i -> ba[i].toInt().and(0xFF).toByte() } }), null)
+val mat = Material.pbr().emissive(listOf(0.8f, 0.0f, 0.0f)).emissiveTexture(glow)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Material::metallic
+
+Set the metallic factor in `[0, 1]`. `0` is a pure dielectric (uses the
+default F0 of 0.04), `1` is a pure metal (F0 = `base_color`). Values in
+between linearly interpolate.
+
+Maps to the `material.metallic` uniform. Default is `0.0` (dielectric);
+`Material::pbr` deviates from the glTF spec's `1.0` default here so the
+out-of-the-box surface reads as a clean dielectric rather than dark gunmetal
+under the factor-driven defaults.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::Material;
+
+let chrome = Material::pbr().metallic(1.0).roughness(0.05);
+let _chrome = chrome;
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 5-7}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Material } from "fragmentcolor";
+
+const chrome = Material.pbr().metallic(1.0).roughness(0.05);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Material
+
+chrome = Material.pbr().metallic(1.0).roughness(0.05)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let chrome = Material.pbr().metallic(1.0).roughness(0.05)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val chrome = Material.pbr().metallic(1.0f).roughness(0.05f)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Material::metallic_roughness_texture
+
+Bind a texture to the canonical `metallic_roughness_map` slot. Following
+glTF 2.0, the green channel encodes per-fragment roughness, the blue channel
+encodes metallic. Both are multiplied by their respective factors at sample
+time inside the default PBR shader.
+
+Unset, this slot resolves to a 1×1 default with `(R=0, G=1, B=1, A=1)` so
+the factor multiplication passes both `material.metallic` and
+`material.roughness` through unchanged.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Material, Renderer};
+
+let renderer = Renderer::new();
+let mr_map_bytes: Vec<u8> = vec![
+    0, 200, 50, 255,
+    0,   240, 80, 255,
+    0,   180, 30, 255,
+    0,   220, 60, 255,
+];
+let mr_map = renderer.create_texture((mr_map_bytes, [2, 2])).await?;
+let mat = Material::pbr().metallic_roughness_texture(&mr_map);
+let _ = mat;
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+`}
+lang="rust" meta="collapse={1-1, 13-16}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Material, Renderer } from "fragmentcolor";
+
+const renderer = new Renderer();
+const mr_map_bytes = [ 0, 200, 50, 255, 0,   240, 80, 255, 0,   180, 30, 255, 0,   220, 60, 255, ];
+const mr_map = await renderer.createTexture(mr_map_bytes, [2, 2]);
+const mat = Material.pbr().metallicRoughnessTexture(mr_map);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Material, Renderer
+
+renderer = Renderer()
+mr_map_bytes = [
+    0, 200, 50, 255,
+    0,   240, 80, 255,
+    0,   180, 30, 255,
+    0,   220, 60, 255,
+]
+mr_map = renderer.create_texture(mr_map_bytes, size=[2, 2])
+mat = Material.pbr().metallic_roughness_texture(mr_map)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let renderer = Renderer()
+let mr_map_bytes = [
+    0, 200, 50, 255,
+    0,   240, 80, 255,
+    0,   180, 30, 255,
+    0,   220, 60, 255,
+]
+let mr_map = try await renderer.createTexture((mr_map_bytes, [2, 2]))
+let mat = Material.pbr().metallicRoughnessTexture(mr_map)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val renderer = Renderer()
+val mr_map_bytes = listOf(0.0f, 200.0f, 50.0f, 255.0f, 0.0f, 240.0f, 80.0f, 255.0f, 0.0f, 180.0f, 30.0f, 255.0f, 0.0f, 220.0f, 60.0f, 255.0f, .0f)
+val mr_map = renderer.createTexture(TextureInputMobile.Bytes(mr_map_bytes.let { ba -> ByteArray(ba.size) { i -> ba[i].toInt().and(0xFF).toByte() } }), null)
+val mat = Material.pbr().metallicRoughnessTexture(mr_map)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Material::normal_scale
+
+Scales the per-fragment normal perturbation read from a tangent-space normal
+map, mirroring glTF 2.0's `normalTextureInfo.scale`. Higher values exaggerate
+the bumps; values below 1 soften them.
+
+Maps to the `material.normal_scale` uniform. Default is `1.0`. The default
+PBR shader samples `normal_map`, decodes the bytes, and scales the XY
+perturbation by this value before combining with the world-space normal.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::Material;
+
+let detailed = Material::pbr().normal_scale(1.5);
+let _detailed = detailed;
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 5-7}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Material } from "fragmentcolor";
+
+const detailed = Material.pbr().normalScale(1.5);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Material
+
+detailed = Material.pbr().normal_scale(1.5)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let detailed = Material.pbr().normalScale(1.5)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val detailed = Material.pbr().normalScale(1.5f)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Material::normal_texture
+
+Bind a tangent-space normal map to the canonical `normal_map` slot. The
+default PBR shader samples the map in `fs_main`, decodes the stored
+`[0, 1]` bytes into `[-1, 1]` floats, scales the XY components by
+`material.normal_scale`, and rotates the perturbed normal from tangent
+space into world space using the per-vertex tangent (the glTF `tangent.w`
+handedness flag is preserved).
+
+Unset, this slot resolves to a 1×1 flat tangent-space default
+`(128, 128, 255, 255)` so the decoded normal is `(0, 0, 1)` and the world
+normal passes through unchanged.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Material, Renderer};
+
+let renderer = Renderer::new();
+let normal_map_bytes: Vec<u8> = vec![
+    128, 128, 255, 255,
+    128,   128, 255, 255,
+    128,   128, 255, 255,
+    128,   128, 255, 255,
+];
+let normal_map = renderer.create_texture((normal_map_bytes, [2, 2])).await?;
+let mat = Material::pbr().normal_texture(&normal_map).normal_scale(1.2);
+let _ = mat;
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+`}
+lang="rust" meta="collapse={1-1, 13-16}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Material, Renderer } from "fragmentcolor";
+
+const renderer = new Renderer();
+const normal_map_bytes = [ 128, 128, 255, 255, 128,   128, 255, 255, 128,   128, 255, 255, 128,   128, 255, 255, ];
+const normal_map = await renderer.createTexture(normal_map_bytes, [2, 2]);
+const mat = Material.pbr().normalTexture(normal_map).normalScale(1.2);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Material, Renderer
+
+renderer = Renderer()
+normal_map_bytes = [
+    128, 128, 255, 255,
+    128,   128, 255, 255,
+    128,   128, 255, 255,
+    128,   128, 255, 255,
+]
+normal_map = renderer.create_texture(normal_map_bytes, size=[2, 2])
+mat = Material.pbr().normal_texture(normal_map).normal_scale(1.2)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let renderer = Renderer()
+let normal_map_bytes = [
+    128, 128, 255, 255,
+    128,   128, 255, 255,
+    128,   128, 255, 255,
+    128,   128, 255, 255,
+]
+let normal_map = try await renderer.createTexture((normal_map_bytes, [2, 2]))
+let mat = Material.pbr().normalTexture(normal_map).normalScale(1.2)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val renderer = Renderer()
+val normal_map_bytes = listOf(128.0f, 128.0f, 255.0f, 255.0f, 128.0f, 128.0f, 255.0f, 255.0f, 128.0f, 128.0f, 255.0f, 255.0f, 128.0f, 128.0f, 255.0f, 255.0f, .0f)
+val normal_map = renderer.createTexture(TextureInputMobile.Bytes(normal_map_bytes.let { ba -> ByteArray(ba.size) { i -> ba[i].toInt().and(0xFF).toByte() } }), null)
+val mat = Material.pbr().normalTexture(normal_map).normalScale(1.2f)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Material::occlusion_strength
+
+Blends the per-fragment ambient-occlusion factor (read from an occlusion
+map) toward `1.0`, matching glTF 2.0's `occlusionTextureInfo.strength`.
+`1.0` uses the map's value as-is; `0.0` ignores the map entirely.
+
+Maps to the `material.occlusion_strength` uniform. Default is `1.0`. The
+default PBR shader samples `occlusion_map.r` and `mix(1.0, sampled, strength)`s
+the result into the diffuse term.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::Material;
+
+let crevices = Material::pbr().occlusion_strength(0.8);
+let _crevices = crevices;
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 5-7}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Material } from "fragmentcolor";
+
+const crevices = Material.pbr().occlusionStrength(0.8);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Material
+
+crevices = Material.pbr().occlusion_strength(0.8)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let crevices = Material.pbr().occlusionStrength(0.8)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val crevices = Material.pbr().occlusionStrength(0.8f)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Material::occlusion_texture
+
+Bind an ambient-occlusion map to the canonical `occlusion_map` slot.
+Following glTF 2.0, only the red channel is read; the sampled value is
+blended toward `1.0` by `1 - material.occlusion_strength` inside the
+default PBR shader, then multiplied into the diffuse term.
+
+Unset, this slot resolves to a 1×1 white default so the multiplied
+occlusion factor is `1.0` and no darkening is applied.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Material, Renderer};
+
+let renderer = Renderer::new();
+let ao_bytes: Vec<u8> = vec![
+    220, 0, 0, 255,
+    180,   0, 0, 255,
+    200,   0, 0, 255,
+    160,   0, 0, 255,
+];
+let ao = renderer.create_texture((ao_bytes, [2, 2])).await?;
+let mat = Material::pbr().occlusion_texture(&ao);
+let _ = mat;
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+`}
+lang="rust" meta="collapse={1-1, 13-16}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Material, Renderer } from "fragmentcolor";
+
+const renderer = new Renderer();
+const ao_bytes = [ 220, 0, 0, 255, 180,   0, 0, 255, 200,   0, 0, 255, 160,   0, 0, 255, ];
+const ao = await renderer.createTexture(ao_bytes, [2, 2]);
+const mat = Material.pbr().occlusionTexture(ao);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Material, Renderer
+
+renderer = Renderer()
+ao_bytes = [
+    220, 0, 0, 255,
+    180,   0, 0, 255,
+    200,   0, 0, 255,
+    160,   0, 0, 255,
+]
+ao = renderer.create_texture(ao_bytes, size=[2, 2])
+mat = Material.pbr().occlusion_texture(ao)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let renderer = Renderer()
+let ao_bytes = [
+    220, 0, 0, 255,
+    180,   0, 0, 255,
+    200,   0, 0, 255,
+    160,   0, 0, 255,
+]
+let ao = try await renderer.createTexture((ao_bytes, [2, 2]))
+let mat = Material.pbr().occlusionTexture(ao)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val renderer = Renderer()
+val ao_bytes = listOf(220.0f, 0.0f, 0.0f, 255.0f, 180.0f, 0.0f, 0.0f, 255.0f, 200.0f, 0.0f, 0.0f, 255.0f, 160.0f, 0.0f, 0.0f, 255.0f, .0f)
+val ao = renderer.createTexture(TextureInputMobile.Bytes(ao_bytes.let { ba -> ByteArray(ba.size) { i -> ba[i].toInt().and(0xFF).toByte() } }), null)
+val mat = Material.pbr().occlusionTexture(ao)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Material::pbr
+
+Construct a `Material` whose shader is FragmentColor's built-in
+physically-based-rendering default. The bundle ships pre-configured with
+glTF 2.0 PBR-MR defaults, lightly tweaked so a freshly-constructed Material
+renders as a clean white surface under the default light rather than dark
+gunmetal.
+
+The five glTF texture slots (`base_color_map`, `metallic_roughness_map`,
+`normal_map`, `occlusion_map`, `emissive_map`) start unbound; the renderer
+resolves each one to a sensible 1×1 default from its lazy texture cache the
+first time a Pass renders the Material. That way the underlying shader has
+every binding it needs and the per-factor render is correct even when no map
+is attached. Call the texture setters to override any of them.
+
+The shader uses:
+
+- **Cook-Torrance specular** with GGX normal distribution, Smith geometry,
+  and Schlick Fresnel.
+- **Lambertian diffuse** with energy conservation against the specular
+  Fresnel and metalness.
+- **One directional light** (uniform `light`), one camera (uniform `camera`),
+  per-Model transform via the instance-attribute stream.
+- **glTF 2.0 PBR-MR texture sampling**: five sampled maps (`base_color_map`,
+  `metallic_roughness_map`, `normal_map`, `occlusion_map`, `emissive_map`)
+  combined with their matching factors per the spec.
+
+The vertex inputs the shader expects, in this order:
+
+- `@location(0) position : vec3<f32>`, set as `Vertex::new([...])`.
+- `@location(1) normal   : vec3<f32>`, set as `.set(Vertex::NORMAL, ...)`.
+- `@location(2) uv0      : vec2<f32>`, set as `.set(Vertex::UV0, ...)`.
+
+If your Mesh's first vertex doesn't carry these three properties in this
+order, attaching it to the Material's shader will fail with a layout
+mismatch. Use `Material::custom(...)` to bring your own vertex layout.
+
+#### Defaults (post-construction)
+
+| key                          | value                |
+| ---------------------------- | -------------------- |
+| `material.base_color`        | `[1, 1, 1, 1]`       |
+| `material.metallic`          | `0.0`                |
+| `material.roughness`         | `1.0`                |
+| `material.normal_scale`      | `1.0`                |
+| `material.occlusion_strength`| `1.0`                |
+| `material.emissive`          | `[0, 0, 0]`          |
+| `material.alpha_cutoff`      | `0.5`                |
+| `base_color_map`             | 1×1 white            |
+| `metallic_roughness_map`     | 1×1 (R=0, G=1, B=1)  |
+| `normal_map`                 | 1×1 flat (128,128,255) |
+| `occlusion_map`              | 1×1 white            |
+| `emissive_map`               | 1×1 white            |
+| `camera.view_proj`           | identity 4×4         |
+| `camera.position`            | `[0, 0, 0]`          |
+| `light.direction`            | `[0, -1, 0]` (down)  |
+| `light.color`                | `[1, 1, 1]`          |
+
+The camera and light are the user's domain, not the Material's. Pass them
+to [`Pass::add`](/api/core/pass#add). The
+typed [Camera](/api/scene/camera) and
+[Light](/api/scene/light) handles seed the matching
+`camera.*` / `light.*` uniforms and propagate any later updates back into
+the Material's shader. Dropping down to `material.shader().set(...)` directly
+is still supported if you need it.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::Material;
+
+let bronze = Material::pbr()
+    .base_color([0.8, 0.5, 0.2, 1.0])
+    .metallic(1.0)
+    .roughness(0.3);
+
+let _bronze = bronze;
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 9-11}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Material } from "fragmentcolor";
+
+const bronze = Material.pbr().baseColor([0.8, 0.5, 0.2, 1.0]).metallic(1.0).roughness(0.3);
+
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Material
+
+bronze = Material.pbr().base_color([0.8, 0.5, 0.2, 1.0]).metallic(1.0).roughness(0.3)
+
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let bronze = try Material.pbr().baseColor([0.8, 0.5, 0.2, 1.0]).metallic(1.0).roughness(0.3)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val bronze = Material.pbr().baseColor(listOf(0.8f, 0.5f, 0.2f, 1.0f)).metallic(1.0f).roughness(0.3f)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Material::roughness
+
+Set the surface roughness in `[0, 1]`. `0` is a perfect mirror; `1` is a
+fully matte surface. The PBR shader uses the squared form (alpha = r²) for
+the GGX normal distribution, which is the GGX/Trowbridge-Reitz convention
+shared with glTF 2.0.
+
+Maps to the `material.roughness` uniform. Default is `1.0`.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Material, Renderer};
+
+let renderer = Renderer::new();
+let satin = Material::pbr().roughness(0.35);
+let _ = satin;
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+`}
+lang="rust" meta="collapse={1-1, 6-9}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Material, Renderer } from "fragmentcolor";
+
+const renderer = new Renderer();
+const satin = Material.pbr().roughness(0.35);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Material, Renderer
+
+renderer = Renderer()
+satin = Material.pbr().roughness(0.35)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let renderer = Renderer()
+let satin = Material.pbr().roughness(0.35)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val renderer = Renderer()
+val satin = Material.pbr().roughness(0.35f)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Material::shader
+
+Borrow the underlying `Shader` to drop down to direct uniform manipulation.
+This is the escape hatch when the Material's typed setters don't cover what you need
+(custom uniforms beyond the glTF PBR field set, raw texture binds, anything
+the [Camera](/api/scene/camera) and
+[Light](/api/scene/light) helpers don't speak to).
+
+The returned reference is the same `Shader` the Material is built around, so
+changes propagate immediately to every Model that uses this Material. If you
+want a Material variant with different state, build a fresh
+`Material::pbr().<setters>` rather than cloning. `Material`
+clones share their Shader handle (Arc-clone) so mutations are visible across
+all clones.
+
+For camera + light state, prefer absorbing the typed
+[Camera](/api/scene/camera) and
+[Light](/api/scene/light) handles into the
+[Pass](/api/core/pass) that's about to render this
+Material rather than calling `shader().set(...)` by hand. The typed
+handles propagate updates live across every absorbed shader.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::Material;
+
+// Direct uniform access for a custom field that isn't covered by the
+// Material setters or by Camera / Light.
+let material = Material::pbr();
+material.shader().set("material.alpha_cutoff", 0.25)?;
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 8-9}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Material } from "fragmentcolor";
+
+// Direct uniform access for a custom field that isn't covered by the
+// Material setters or by Camera / Light.
+const material = Material.pbr();
+material.shader().set("material.alpha_cutoff", 0.25);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Material
+
+# Direct uniform access for a custom field that isn't covered by the
+# Material setters or by Camera / Light.
+material = Material.pbr()
+material.shader().set("material.alpha_cutoff", 0.25)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+// Direct uniform access for a custom field that isn't covered by the
+// Material setters or by Camera / Light.
+let material = Material.pbr()
+try material.shader().set("material.alpha_cutoff", 0.25)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+// Direct uniform access for a custom field that isn't covered by the
+// Material setters or by Camera / Light.
+val material = Material.pbr()
+material.shader().set("material.alpha_cutoff", 0.25)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Material::uv_transform
+
+Set a global UV transform applied to every map sample. Matches glTF's
+[`KHR_texture_transform`](https://github.com/KhronosGroup/glTF/tree/main/extensions/2.0/Khronos/KHR_texture_transform)
+composition: scale → rotate → offset, with the result fed to every
+`textureSample` in the PBR fragment shader.
+
+- `offset` translates the UV after scale + rotation (`[0, 0]` is no translation)
+- `scale` multiplies the UV first (`[1, 1]` is no scale)
+- `rotation` rotates the scaled UV in radians (positive = counter-clockwise
+  in WGSL's `(u, v)` convention)
+
+Defaults to identity (scale `[1, 1]`, rotation `0`, offset `[0, 0]`) so an
+unset Material samples textures untransformed. The transform is shared
+across all five texture slots; per-map transforms (and the per-map
+`texCoord` selector that picks `UV0` vs `UV1`) are out of scope for the
+built-in PBR shader. For glTFs that carry `KHR_texture_transform` only on
+the base-color map (the most common case), the global path is lossless.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::Material;
+
+// Tile the texture 4× in both directions, rotate 45°, shift by half a tile.
+let brick = Material::pbr()
+    .uv_transform([0.5, 0.0], [4.0, 4.0], 0.785); // 45° in radians
+let _ = brick;
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 7-9}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Material } from "fragmentcolor";
+
+// Tile the texture 4× in both directions, rotate 45°, shift by half a tile.
+const brick = Material.pbr().uvTransform([0.5, 0.0], [4.0, 4.0], 0.785); // 45° in radians;
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Material
+
+# Tile the texture 4× in both directions, rotate 45°, shift by half a tile.
+brick = Material.pbr().uv_transform([0.5, 0.0], [4.0, 4.0], 0.785); # 45° in radians
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+// Tile the texture 4× in both directions, rotate 45°, shift by half a tile.
+let brick = try Material.pbr().uvTransform([0.5, 0.0], [4.0, 4.0], 0.785); // 45° in radians
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+// Tile the texture 4× in both directions, rotate 45°, shift by half a tile.
+val brick = Material.pbr().uvTransform(listOf(0.5f, 0.0f), listOf(4.0f, 4.0f), 0.785f); // 45° in radians
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>

@@ -67,6 +67,12 @@ extension Renderer {
         )
     }
 
+    /// Create a storage texture from a `([width, height], format, bytes)` tuple
+    /// where bytes are `[Int]` (convenient for `Array(repeating: 0, count: N)`).
+    public func createStorageTexture(_ sizeFormatData: ([Int], TextureFormat, [Int])) async throws -> Texture {
+        try await createStorageTexture((sizeFormatData.0, sizeFormatData.1, sizeFormatData.2.map { UInt8($0) }))
+    }
+
     /// Create a storage texture from a `([width, height], format, bytes)` tuple.
     public func createStorageTexture(_ sizeFormatData: ([Int], TextureFormat, [UInt8])) async throws -> Texture {
         let sz = sizeFormatData.0
@@ -116,9 +122,16 @@ extension Renderer {
         return try await createTexture(input: .path(path), options: nil)
     }
 
-    /// Create a texture from a `TextureMipChain`.
-    public func createTexture(_ chain: TextureMipChain) async throws -> Texture {
+    /// Create a texture from a `Mipmap`.
+    public func createTexture(_ chain: Mipmap) async throws -> Texture {
         return try await createTexture(input: .prepared(chain), options: nil)
+    }
+
+    /// Default-options overload: drop the trailing `options: nil` from
+    /// idiomatic call sites. Mirrors the JS / Python bindings where
+    /// `create_texture(input)` is fine without an explicit options arg.
+    public func createTexture(input: TextureInputMobile) async throws -> Texture {
+        return try await createTexture(input: input, options: nil)
     }
 
     // MARK: - unregisterTexture convenience
@@ -126,6 +139,20 @@ extension Renderer {
     /// Unregister a texture by its `TextureId` record.
     public func unregisterTexture(_ id: TextureId) throws {
         try unregisterTexture(textureId: id.id)
+    }
+
+    // MARK: - readStorage / readTexture convenience
+
+    /// Read back a shader's storage binding by `(shader, binding)` pair.
+    /// Mirrors the JS / Python call shape so doc examples read identically.
+    public func readStorage(_ shader: Shader, _ binding: String) async throws -> Data {
+        return try await readStorage(shader: shader, binding: binding)
+    }
+
+    /// Read back a registered texture by its `TextureId` (raw u64 underneath).
+    /// Mirrors the JS / Python call shape so doc examples read identically.
+    public func readTexture(_ id: TextureId) async throws -> Data {
+        return try await readTexture(textureId: id.id)
     }
 
     // MARK: - render (unlabeled overloads)
@@ -167,5 +194,41 @@ extension Renderer {
 
     public func render(_ passes: [Pass], _ target: MobileTextureTarget) throws {
         try self.render(renderable: .passes(passes), target: .texture(target))
+    }
+
+    public func render(_ scene: Scene, _ target: MobileWindowTarget) throws {
+        try self.render(renderable: .scene(scene), target: .window(target))
+    }
+
+    public func render(_ scene: Scene, _ target: MobileTextureTarget) throws {
+        try self.render(renderable: .scene(scene), target: .texture(target))
+    }
+
+    // MARK: - load (unlabeled overloads)
+    //
+    // Mirrors the `render(...)` family above. The uniffi-generated
+    // `load(renderable:)` takes a `RenderableHandle`; these overloads wrap
+    // each concrete type into its variant so doc examples can write
+    // `try await renderer.load(scene)` (or `pass`, `mesh`, `shader`,
+    // `[pass1, pass2]`) the same way every other binding does.
+
+    public func load(_ shader: Shader) async throws {
+        try await self.load(renderable: .shader(shader))
+    }
+
+    public func load(_ pass: Pass) async throws {
+        try await self.load(renderable: .pass(pass))
+    }
+
+    public func load(_ mesh: Mesh) async throws {
+        try await self.load(renderable: .mesh(mesh))
+    }
+
+    public func load(_ passes: [Pass]) async throws {
+        try await self.load(renderable: .passes(passes))
+    }
+
+    public func load(_ scene: Scene) async throws {
+        try await self.load(renderable: .scene(scene))
     }
 }

@@ -51,7 +51,7 @@ spec_from_input!(
     &std::path::PathBuf,
     &crate::Texture,
     crate::TextureData,
-    crate::texture::TextureMipChain,
+    crate::texture::Mipmap,
 );
 
 // ---------------------------------------------------------------------------
@@ -86,14 +86,14 @@ spec_from_input_with_options!(
     &std::path::PathBuf,
     &crate::Texture,
     crate::TextureData,
-    crate::texture::TextureMipChain,
+    crate::texture::Mipmap,
 );
 
 // ---------------------------------------------------------------------------
 // Storage / size-driven shapes — `(size, format)` allocates an empty storage
 // texture (data = TextureData::Empty); `(size, format, bytes)` pre-seeds it.
 // These are the same `TextureInput` type the source-driven paths use, so
-// `create_texture`, `create_storage_texture`, and `TextureMipChain::prepare`
+// `create_texture`, `create_storage_texture`, and `Mipmap::build`
 // all read from one transport. The methods themselves do the validation
 // (`create_storage_texture` requires `options.size.is_some()`; `prepare`
 // requires `data` to be a sync-friendly variant).
@@ -112,7 +112,7 @@ impl<S: Into<Size>, F: Into<TextureFormat>> From<(S, F)> for TextureInput {
     }
 }
 
-// Source-first 3-tuple: `(bytes, format, size)` — used by `TextureMipChain::prepare`
+// Source-first 3-tuple: `(bytes, format, size)` — used by `Mipmap::build`
 // for the raw-pixel path and by `Renderer::create_texture` whenever the caller
 // has already-decoded bytes plus a known size + format. The size-first
 // counterpart `(size, format, bytes)` lives below for the storage idiom; the
@@ -170,22 +170,25 @@ pub struct TextureOptions {
     /// so textured surfaces stay smooth at any zoom or rotation. Set to false
     /// to skip the CPU work for textures that won't be sampled at distance.
     pub mipmaps: bool,
-    /// Optional `wgpu::TextureUsages` override, stored as the underlying
+    /// Optional [`crate::TextureUsage`] override, stored as the underlying
     /// `u32` bit mask so it crosses every FFI cleanly. `None` lets the
     /// renderer pick per-method defaults:
+    ///
     /// - `create_texture` → `TEXTURE_BINDING | COPY_DST`
     /// - `create_storage_texture` → `STORAGE_BINDING | TEXTURE_BINDING | COPY_SRC | COPY_DST`
-    /// Set with `.with_usage(wgpu::TextureUsages::STORAGE_BINDING | ...)` for
+    ///
+    /// Set with `.with_usage(TextureUsage::STORAGE_BINDING | ...)` for
     /// readability on the Rust side.
     pub usage: Option<u32>,
 }
 
 impl TextureOptions {
-    /// Builder-style helper that stores the typed `wgpu::TextureUsages` as
-    /// raw bits — keeps Rust call sites readable while preserving the
-    /// FFI-friendly `u32` field type.
-    pub fn with_usage(mut self, usage: wgpu::TextureUsages) -> Self {
-        self.usage = Some(usage.bits());
+    /// Builder-style helper that stores the typed [`crate::TextureUsage`] as
+    /// raw bits. Keeps Rust call sites readable while preserving the
+    /// FFI-friendly `u32` field type. The wgpu bit layout is identical, so
+    /// the conversion is a no-op at runtime.
+    pub fn with_usage(mut self, usage: crate::TextureUsage) -> Self {
+        self.usage = Some(usage.raw_bits());
         self
     }
 }

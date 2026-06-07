@@ -6,6 +6,25 @@
 // is omitted the tab shows the full file. Region content is sliced from the
 // canonical Rust source; JS comes from the hand-written example.js companion;
 // Py / Swift / Kotlin are line-level transpilations.
+//
+// Two-region (host + shader) form:
+// <Snippet
+//   file="01-hello-triangle/04-postfx-pass/example.rs"
+//   regions={["setup", "postfx-shader"]}
+//   labels={["Host", "Shader"]} />
+//
+// When `regions` (plural) is provided, an inner pair of tabs (default
+// labels "Host" / "Shader") is rendered inside each language tab. The first
+// inner tab follows the outer tab's language; the second is treated as
+// WGSL whenever its region name contains "shader" / "wgsl" (case-insensitive)
+// or its slice is identical across all languages — this keeps inline shader
+// constants (which are the same WGSL bytes regardless of the host language)
+// from being mis-highlighted as Rust/JS/Python.
+//
+// Design choice: inner Tabs (rather than stacking host above shader) was
+// selected because it preserves vertical density on the tutorial pages and
+// lets the reader focus on one piece at a time. The inner Tabs use a
+// dedicated syncKey so they never sync with the outer language Tabs.
 
 import { Code, Tabs, TabItem } from "@astrojs/starlight/components";
 import { tutorials, type LangSlice } from "../generated/tutorials";
@@ -13,9 +32,11 @@ import { tutorials, type LangSlice } from "../generated/tutorials";
 interface Props {
   file: string;
   region?: string;
+  regions?: [string, string];
+  labels?: [string, string];
 }
 
-const { file, region } = Astro.props;
+const { file, region, regions, labels } = Astro.props;
 
 const entry = tutorials[file];
 if (!entry) {
@@ -24,44 +45,148 @@ if (!entry) {
   );
 }
 
-let slice: LangSlice;
-if (region) {
-  const r = entry.regions[region];
+type Lang = "rust" | "js" | "py" | "swift" | "kotlin";
+const LANGS: Lang[] = ["rust", "js", "py", "swift", "kotlin"];
+const LANG_LABEL: Record<Lang, string> = {
+  rust: "Rust",
+  js: "JavaScript",
+  py: "Python",
+  swift: "Swift",
+  kotlin: "Kotlin",
+};
+const LANG_HIGHLIGHT: Record<Lang, string> = {
+  rust: "rust",
+  js: "javascript",
+  py: "python",
+  swift: "swift",
+  kotlin: "kotlin",
+};
+
+function pickRegion(name: string): LangSlice {
+  const r = entry.regions[name];
   if (!r) {
     throw new Error(
-      `<Snippet>: no region "${region}" in "${file}". Available: ${Object.keys(entry.regions).join(", ")}`
+      `<Snippet>: no region "${name}" in "${file}". Available: ${Object.keys(entry.regions).join(", ")}`
     );
   }
-  slice = r;
+  return r;
+}
+
+// Treat a region as WGSL if either:
+//   - its name (case-insensitive) contains "shader" or "wgsl", OR
+//   - its slice text is identical across every language present.
+function isWgslRegion(name: string, slice: LangSlice): boolean {
+  const n = name.toLowerCase();
+  if (n.includes("shader") || n.includes("wgsl")) return true;
+  const present = LANGS.map((l) => slice[l]).filter(
+    (v): v is string => typeof v === "string" && v.length > 0
+  );
+  if (present.length < 2) return false;
+  return present.every((v) => v === present[0]);
+}
+
+// For the WGSL view, prefer the rust-tab content (since inline shader
+// strings are written in the .rs source). Fall back to any present lang.
+function wgslSourceOf(slice: LangSlice): string {
+  return (
+    slice.rust ?? slice.js ?? slice.py ?? slice.swift ?? slice.kotlin ?? ""
+  );
+}
+
+type CodeBlock = { code: string; lang: string };
+
+function codeFor(slice: LangSlice, lang: Lang): CodeBlock | null {
+  const code = slice[lang];
+  if (!code) return null;
+  return { code, lang: LANG_HIGHLIGHT[lang] };
+}
+
+// One side of a paired snippet for a particular outer-language tab.
+function pairedSide(slice: LangSlice, lang: Lang, asWgsl: boolean): CodeBlock | null {
+  if (asWgsl) {
+    const code = wgslSourceOf(slice);
+    if (!code) return null;
+    return { code, lang: "wgsl" };
+  }
+  return codeFor(slice, lang);
+}
+
+// Pre-resolve the slices for both branches (single vs paired) so the
+// template stays simple.
+type PairedRow = {
+  lang: Lang;
+  outerLabel: string;
+  first: CodeBlock | null;
+  second: CodeBlock | null;
+};
+
+let singleSlice: LangSlice | null = null;
+let pairedRows: PairedRow[] = [];
+const pairedLabels: [string, string] = labels ?? ["Host", "Shader"];
+
+if (regions && regions.length === 2) {
+  const firstSlice = pickRegion(regions[0]);
+  const secondSlice = pickRegion(regions[1]);
+  const firstIsWgsl = isWgslRegion(regions[0], firstSlice);
+  const secondIsWgsl = isWgslRegion(regions[1], secondSlice);
+  pairedRows = LANGS.map((lang) => ({
+    lang,
+    outerLabel: LANG_LABEL[lang],
+    first: pairedSide(firstSlice, lang, firstIsWgsl),
+    second: pairedSide(secondSlice, lang, secondIsWgsl),
+  })).filter((row) => row.first || row.second);
+} else if (region) {
+  singleSlice = pickRegion(region);
 } else {
-  slice = entry.full;
+  singleSlice = entry.full;
 }
 ---
 
-<Tabs syncKey="lang">
-  {slice.rust && (
-    <TabItem label="Rust">
-      <Code code={slice.rust} lang="rust" />
-    </TabItem>
-  )}
-  {slice.js && (
-    <TabItem label="JavaScript">
-      <Code code={slice.js} lang="javascript" />
-    </TabItem>
-  )}
-  {slice.py && (
-    <TabItem label="Python">
-      <Code code={slice.py} lang="python" />
-    </TabItem>
-  )}
-  {slice.swift && (
-    <TabItem label="Swift">
-      <Code code={slice.swift} lang="swift" />
-    </TabItem>
-  )}
-  {slice.kotlin && (
-    <TabItem label="Kotlin">
-      <Code code={slice.kotlin} lang="kotlin" />
-    </TabItem>
-  )}
-</Tabs>
+{regions ? (
+  <Tabs syncKey="lang">
+    {pairedRows.map((row) => (
+      <TabItem label={row.outerLabel}>
+        <Tabs syncKey="snippet-inner">
+          {row.first && (
+            <TabItem label={pairedLabels[0]}>
+              <Code code={row.first.code} lang={row.first.lang as any} />
+            </TabItem>
+          )}
+          {row.second && (
+            <TabItem label={pairedLabels[1]}>
+              <Code code={row.second.code} lang={row.second.lang as any} />
+            </TabItem>
+          )}
+        </Tabs>
+      </TabItem>
+    ))}
+  </Tabs>
+) : (
+  <Tabs syncKey="lang">
+    {singleSlice?.rust && (
+      <TabItem label="Rust">
+        <Code code={singleSlice.rust} lang="rust" />
+      </TabItem>
+    )}
+    {singleSlice?.js && (
+      <TabItem label="JavaScript">
+        <Code code={singleSlice.js} lang="javascript" />
+      </TabItem>
+    )}
+    {singleSlice?.py && (
+      <TabItem label="Python">
+        <Code code={singleSlice.py} lang="python" />
+      </TabItem>
+    )}
+    {singleSlice?.swift && (
+      <TabItem label="Swift">
+        <Code code={singleSlice.swift} lang="swift" />
+      </TabItem>
+    )}
+    {singleSlice?.kotlin && (
+      <TabItem label="Kotlin">
+        <Code code={singleSlice.kotlin} lang="kotlin" />
+      </TabItem>
+    )}
+  </Tabs>
+)}

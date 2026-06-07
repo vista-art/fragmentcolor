@@ -84,8 +84,8 @@ impl Renderer {
 
     /// JS: Create a Texture from any input shape — Uint8Array bytes, URL
     /// string, file path, CSS selector, HTMLImageElement, ImageData, OffscreenCanvas,
-    /// HTMLCanvasElement, or a `TextureMipChain` handle (built off-thread via
-    /// `TextureMipChain.prepare`). Optional second argument is an options object
+    /// HTMLCanvasElement, or a `Mipmap` handle (built off-thread via
+    /// `Mipmap.build`). Optional second argument is an options object
     /// `{ size?, format?, mipmaps?, sampler? }`. When `size` is present, `bytes`
     /// is treated as raw pixel data; otherwise it's decoded as an encoded image.
     #[wasm_bindgen(js_name = "createTexture")]
@@ -184,6 +184,50 @@ impl Renderer {
         self.create_external_texture(video)
     }
 
+    #[wasm_bindgen(js_name = "load")]
+    #[lsp_doc("docs/api/core/renderer/load.md")]
+    pub async fn load_js(&self, renderable: &JsValue) -> Result<(), JsError> {
+        if let Ok(shader) = Shader::try_from(renderable) {
+            return self
+                .load(&shader)
+                .await
+                .map_err(|e| JsError::new(&e.to_string()));
+        }
+        if let Ok(pass) = Pass::try_from(renderable) {
+            return self
+                .load(&pass)
+                .await
+                .map_err(|e| JsError::new(&e.to_string()));
+        }
+        if let Ok(mesh) = Mesh::try_from(renderable) {
+            return self
+                .load(&mesh)
+                .await
+                .map_err(|e| JsError::new(&e.to_string()));
+        }
+        if let Ok(scene) = crate::Scene::try_from(renderable) {
+            return self
+                .load(&scene)
+                .await
+                .map_err(|e| JsError::new(&e.to_string()));
+        }
+        Err(JsError::new(
+            "Renderer.load: unsupported renderable type (expected Shader, Pass, Mesh, or Scene)",
+        ))
+    }
+
+    #[wasm_bindgen(js_name = "readStorage")]
+    #[lsp_doc("docs/api/core/renderer/read_storage.md")]
+    pub async fn read_storage_js(
+        &self,
+        shader: &Shader,
+        binding: String,
+    ) -> Result<Vec<u8>, JsError> {
+        self.read_storage(shader, &binding)
+            .await
+            .map_err(|e| JsError::new(&e.to_string()))
+    }
+
     #[wasm_bindgen(js_name = "render")]
     #[lsp_doc("docs/api/core/renderer/render.md")]
     pub fn render_js(&self, renderable: &JsValue, target: &JsValue) -> Result<(), RendererError> {
@@ -195,6 +239,8 @@ impl Renderer {
                 return self.render(&pass, &canvas_target);
             } else if let Ok(mesh) = Mesh::try_from(renderable) {
                 return self.render(&mesh, &canvas_target);
+            } else if let Ok(scene) = crate::Scene::try_from(renderable) {
+                return self.render(&scene, &canvas_target);
             } else if Array::is_array(renderable) {
                 for item in Array::from(renderable) {
                     self.render_js(&item, target)?;
@@ -209,6 +255,8 @@ impl Renderer {
                 return self.render(&pass, &texture_target);
             } else if let Ok(mesh) = Mesh::try_from(renderable) {
                 return self.render(&mesh, &texture_target);
+            } else if let Ok(scene) = crate::Scene::try_from(renderable) {
+                return self.render(&scene, &texture_target);
             } else if Array::is_array(renderable) {
                 for item in Array::from(renderable) {
                     self.render_js(&item, target)?;

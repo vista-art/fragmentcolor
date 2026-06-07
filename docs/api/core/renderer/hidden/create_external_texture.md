@@ -11,8 +11,9 @@ The `source` argument is platform-specific:
   uniffi boundary).
 - **Android**: a `SurfaceTexture` handle.
 
-Returns `RendererError::Error("not implemented yet")` on every platform
-today — the API surface is in place, the implementation is a follow-up.
+Currently returns `RendererError::Error("not implemented yet")` on every
+platform. The public signature is stable; native-side decode hookup is
+on the roadmap.
 
 ## Example
 

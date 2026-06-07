@@ -1,0 +1,54 @@
+---
+title: "Shader Catalog"
+description: An indexed catalog of every WGSL function in the FragmentColor shader registry, with a preview image per shader.
+---
+
+The **shader registry** is a collection of small, pure WGSL functions you can
+pull into any `Shader` by slug. They're not full programs — they're the parts
+you'd otherwise rewrite every project: SDFs, noise fields, easing curves,
+post-processing kernels, lighting models, hashes, palettes, projections.
+
+Compose them into a shader with `Shader::new`:
+
+```rust
+let main = r#"
+@fragment fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+    let n = simplex2(in.uv * 6.0);
+    let v = vignette(in.uv, 0.55, 0.40);
+    return vec4<f32>(vec3<f32>(n * v), 1.0);
+}
+"#;
+let shader = Shader::new(&[
+    "noise/simplex2",
+    "postfx/vignette",
+    main,
+])?;
+```
+
+`Shader::new` fetches each slug (the registry is embedded by default — see
+the `network` feature for fetching at runtime), validates the combined source
+with naga, and emits one ready-to-render program. Slugs are content-addressed,
+so importing the same helper from two different shaders compiles it once.
+
+## Categories
+
+- [Camera](/shaders/camera/) — projections, view matrices, ray construction (11)
+- [Color](/shaders/color/) — space conversions, palettes, mixing (19)
+- [Dither](/shaders/dither/) — Bayer matrices, blue-noise-flavoured threshold patterns (4)
+- [Easing](/shaders/easing/) — 1D ease curves: linear, quad, cubic, sine, expo, etc. (20)
+- [Encode](/shaders/encode/) — pack/unpack helpers for compact storage (8)
+- [Geometry](/shaders/geom/) — triangle area, barycentric, reflect/refract, TBN (13)
+- [Gradients](/shaders/gradient/) — linear, radial, conic, multi-stop palettes (11)
+- [Hash](/shaders/hash/) — pcg, wang, IQ-style hashes — scalar and vector (12)
+- [Intersection Tests](/shaders/intersect/) — ray–sphere, ray–AABB, ray–plane, ray–triangle (7)
+- [Lighting](/shaders/lighting/) — Lambert, Phong, Blinn, GGX, Schlick, Fresnel (14)
+- [Coordinate Maps](/shaders/map/) — barrel, fisheye, polar, mirror, kaleidoscope, twirl (15)
+- [Math](/shaders/math/) — smoothstep, remap, clamp, custom curves (12)
+- [Noise](/shaders/noise/) — simplex, value, worley, FBM, ridged, curl (10)
+- [Patterns](/shaders/pattern/) — dots, stripes, grids, checkerboards, hexagons (9)
+- [Post-Processing](/shaders/postfx/) — vignette, grain, scanlines, sharpen, sobel, posterize (12)
+- [Raymarching](/shaders/raymarch/) — sphere-trace + tetrahedral normal helpers (2)
+- [Sampling](/shaders/sample/) — Halton, Hammersley, Vogel disk, hemisphere distributions (10)
+- [3D SDFs](/shaders/sdf/) — primitives + boolean and domain operators (24)
+- [2D SDFs](/shaders/sdf2d/) — circle, box, heart, hexagon, star, segment, ring (12)
+

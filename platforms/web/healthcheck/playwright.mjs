@@ -10,7 +10,20 @@ const WEB_ROOT = path.resolve(path.join(__dirname, '..'));
 const url = process.argv[2] || 'http://localhost:8765/healthcheck/';
 const ARTIFACT_DIR = process.env.ARTIFACT_DIR || path.join(process.cwd(), 'platforms/web/healthcheck/playwright-artifacts');
 
+// Hard watchdog: if any of the awaits below hang, this hammer fires and
+// forces process.exit so CI logs a failure instead of stalling for the
+// 6-hour job ceiling. 5 minutes is plenty for the healthy run (~30 s
+// total) and short enough that a stuck Playwright / wgpu adapter shows
+// up promptly. Independent of the workflow `timeout-minutes` knob.
+const WATCHDOG_MS = 5 * 60 * 1000;
+const WATCHDOG = setTimeout(() => {
+  console.error(`[watchdog] script exceeded ${WATCHDOG_MS / 1000}s; forcing exit(2)`);
+  process.exit(2);
+}, WATCHDOG_MS);
+WATCHDOG.unref?.();
+
 (async () => {
+  console.log('[playwright] starting; target:', url);
   await fs.mkdir(ARTIFACT_DIR, { recursive: true }).catch(() => {});
 
   const isMac = process.platform === 'darwin';
@@ -42,6 +55,7 @@ const ARTIFACT_DIR = process.env.ARTIFACT_DIR || path.join(process.cwd(), 'platf
         '--enable-unsafe-webgpu',
       ];
 
+  console.log('[playwright] launching chromium…');
   const browser = await chromium.launch({
     // Use new headless mode which has better WebGPU support
     headless: true,
@@ -49,7 +63,9 @@ const ARTIFACT_DIR = process.env.ARTIFACT_DIR || path.join(process.cwd(), 'platf
     ignoreDefaultArgs: ['--disable-gpu'],
     args,
   });
+  console.log('[playwright] chromium launched; opening newPage…');
   const page = await browser.newPage();
+  console.log('[playwright] newPage ready');
 
   let ok = false;
   const errors = [];
@@ -160,22 +176,32 @@ const ARTIFACT_DIR = process.env.ARTIFACT_DIR || path.join(process.cwd(), 'platf
     }
   });
 
+  console.log('[playwright] page.goto…');
   await page.goto(url, { waitUntil: 'load', timeout: 60000 });
+  console.log('[playwright] page loaded');
 
-  // Optional: probe WebGPU to report adapter details if available
+  // Optional: probe WebGPU to report adapter details if available.
+  // Race against a 10-second deadline so a stuck adapter never blocks
+  // the script — `requestAdapter` is known to hang on misconfigured
+  // headless GPUs.
   try {
-    const probe = await page.evaluate(async () => {
-      if (!('gpu' in navigator)) return { supported: false };
-      const adapter = await navigator.gpu.requestAdapter();
-      if (!adapter) return { supported: true, gotAdapter: false };
-      const info = { name: adapter.name, features: Array.from(adapter.features || []) };
-      // Some implementations expose isFallbackAdapter
-      if ('isFallbackAdapter' in adapter) info.isFallbackAdapter = adapter.isFallbackAdapter;
-      return { supported: true, gotAdapter: true, info };
-    });
+    const probe = await Promise.race([
+      page.evaluate(async () => {
+        if (!('gpu' in navigator)) return { supported: false };
+        const adapter = await navigator.gpu.requestAdapter();
+        if (!adapter) return { supported: true, gotAdapter: false };
+        const info = { name: adapter.name, features: Array.from(adapter.features || []) };
+        if ('isFallbackAdapter' in adapter) info.isFallbackAdapter = adapter.isFallbackAdapter;
+        return { supported: true, gotAdapter: true, info };
+      }),
+      new Promise((resolve) => setTimeout(() => resolve({ probeTimedOut: true }), 10_000)),
+    ]);
     console.log('[gpu-probe]', JSON.stringify(probe));
-  } catch {}
+  } catch (e) {
+    console.log('[gpu-probe] threw:', e?.message || String(e));
+  }
 
+  console.log('[playwright] waiting for healthcheck console marker (20 s)…');
   // Prefer waiting for the success message rather than fixed sleep
   try {
     await page.waitForEvent('console', {
@@ -186,7 +212,9 @@ const ARTIFACT_DIR = process.env.ARTIFACT_DIR || path.join(process.cwd(), 'platf
       timeout: 20000,
     });
     ok = true;
+    console.log('[playwright] marker seen; ok=true');
   } catch (e) {
+    console.log('[playwright] marker not seen within 20 s');
     // fall through, we'll handle as failure below
   }
 
@@ -195,7 +223,16 @@ const ARTIFACT_DIR = process.env.ARTIFACT_DIR || path.join(process.cwd(), 'platf
     try { await fs.writeFile(path.join(ARTIFACT_DIR, 'page.html'), await page.content()); } catch {}
   }
 
-  await browser.close();
+  // browser.close() can block indefinitely if the wasm renderer keeps the
+  // GPU surface alive (a busy raymarcher loop or a dangling wgpu submission).
+  // Race it against a 5 s ceiling, then force-exit either way so the CI
+  // step terminates promptly. The watchdog above is the final safety net.
+  console.log('[playwright] closing browser…');
+  await Promise.race([
+    browser.close(),
+    new Promise((resolve) => setTimeout(resolve, 5_000)),
+  ]).catch(() => {});
+  console.log('[playwright] browser close returned');
 
   if (!ok || errors.length) {
     if (!ok) {
@@ -207,5 +244,12 @@ const ARTIFACT_DIR = process.env.ARTIFACT_DIR || path.join(process.cwd(), 'platf
     process.exit(1);
   }
   console.log('Web healthcheck PASS');
-})();
+  process.exit(0);
+})().catch((err) => {
+  // Promote a top-level rejection into an explicit error so the watchdog
+  // isn't the only line of defence.
+  console.error('[playwright] top-level rejection:', err?.message || String(err));
+  if (err?.stack) console.error(err.stack);
+  process.exit(3);
+});
 

@@ -1,0 +1,181 @@
+---
+title: "Post-Processing"
+description: A catalog of post-processing helpers in the FragmentColor shader registry.
+---
+
+**Post-processing effects** run after your scene has been drawn. In
+FragmentColor they typically live in a fullscreen-triangle pass that
+samples a previously-rendered scene texture and reshapes it — darkening
+the corners, splitting RGB channels, snapping to a low-resolution grid,
+quantizing colors, sharpening edges. The registry exposes each effect as
+a single pure WGSL function so you can mix and match without committing
+to a full pipeline.
+
+Pull one into a composition by slug, then call it from your fragment
+stage. The previews below apply each helper to a synthetic input image
+(soft rings on a gradient) so the effect is visible in isolation:
+
+```rust
+let main = r#"
+@fragment fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+    let v = vignette(in.uv, 0.4, 0.45);
+    let scene = textureSample(scene_tex, scene_sampler, in.uv).rgb;
+    return vec4<f32>(scene * v, 1.0);
+}
+"#;
+let shader = Shader::new(&["postfx/vignette", main])?;
+```
+
+## chromatic_offsets
+
+Returns three UVs (R, G, B) packed as the columns of a `mat3x2<f32>`,
+split radially from the center by `strength`. Use the columns to drive
+three separate texture samples for a chromatic-aberration look.
+
+```wgsl
+fn chromatic_offsets(uv: vec2<f32>, strength: f32) -> mat3x2<f32>
+```
+
+![postfx/chromatic_offsets preview](/shaders/postfx/chromatic_offsets.png)
+
+## crt_curvature
+
+CRT-style barrel warp. Returns the warped UV in `.xy` and an
+out-of-bounds flag in `.z` (negative when the warped sample falls outside
+the unit square). Multiply your sampled color by `step(0.0, .z)` to mask
+the corners.
+
+```wgsl
+fn crt_curvature(uv: vec2<f32>, amount: f32) -> vec3<f32>
+```
+
+![postfx/crt_curvature preview](/shaders/postfx/crt_curvature.png)
+
+## film_grain
+
+Additive grain scalar in `[-1, 1]`, derived from a hash of `uv` and a
+seed. Multiply by a strength factor and add to your color. Vary `seed`
+per frame (e.g. with a time uniform) to decorrelate grain across frames.
+
+```wgsl
+fn film_grain(uv: vec2<f32>, seed: f32) -> f32
+```
+
+![postfx/film_grain preview](/shaders/postfx/film_grain.png)
+
+## gaussian_weight_1d
+
+1D Gaussian weight at offset `x` with standard deviation `sigma`. Use to
+build separable blur kernels — sample the same function at neighbor
+offsets, accumulate weighted samples, and divide by the summed weights.
+The preview plots the function as a vertical bar height across `x`.
+
+```wgsl
+fn gaussian_weight_1d(x: f32, sigma: f32) -> f32
+```
+
+![postfx/gaussian_weight_1d preview](/shaders/postfx/gaussian_weight_1d.png)
+
+## invert
+
+Per-channel color inversion (`1 - c`). Trivial, but having it in the
+registry keeps composed shader sources self-documenting.
+
+```wgsl
+fn invert(c: vec3<f32>) -> vec3<f32>
+```
+
+![postfx/invert preview](/shaders/postfx/invert.png)
+
+## pixelate_uv
+
+Snap a UV to a grid of `cells` cells per unit side. Use it as a
+pre-sample hook: sample your texture with the snapped UV instead of the
+raw fragment UV, and the result reads as low-resolution pixels.
+
+```wgsl
+fn pixelate_uv(uv: vec2<f32>, cells: vec2<f32>) -> vec2<f32>
+```
+
+![postfx/pixelate_uv preview](/shaders/postfx/pixelate_uv.png)
+
+## posterize
+
+Quantize a color to `steps` discrete levels per channel. Larger `steps`
+keeps more tonal detail; smaller values produce a hard, poster-like look.
+
+```wgsl
+fn posterize(c: vec3<f32>, steps: f32) -> vec3<f32>
+```
+
+![postfx/posterize preview](/shaders/postfx/posterize.png)
+
+## scanlines
+
+Horizontal scanline multiplier in `[1 - strength, 1]`. `lines` controls
+density (lines per UV unit) and `strength` controls how dark the dark
+bands get. Multiply against your color.
+
+```wgsl
+fn scanlines(uv: vec2<f32>, lines: f32, strength: f32) -> f32
+```
+
+![postfx/scanlines preview](/shaders/postfx/scanlines.png)
+
+## sharpen_3x3
+
+Center-weighted sharpen kernel applied to a 3x3 neighborhood. Pass the
+nine already-sampled colors in row-major order (`c00` top-left through
+`c22` bottom-right) and an `amount` in `[0, 1]`: `0` returns the center
+color unchanged, larger values lift edges harder.
+
+```wgsl
+fn sharpen_3x3(
+    c00: vec3<f32>, c10: vec3<f32>, c20: vec3<f32>,
+    c01: vec3<f32>, c11: vec3<f32>, c21: vec3<f32>,
+    c02: vec3<f32>, c12: vec3<f32>, c22: vec3<f32>,
+    amount: f32,
+) -> vec3<f32>
+```
+
+![postfx/sharpen_3x3 preview](/shaders/postfx/sharpen_3x3.png)
+
+## sobel_magnitude
+
+Sobel edge magnitude from a 3x3 luminance neighborhood. Pass the nine
+luminances (row-major, `l00` top-left through `l22` bottom-right) and
+multiply or threshold the result for a quick edge-detection pass.
+
+```wgsl
+fn sobel_magnitude(
+    l00: f32, l10: f32, l20: f32,
+    l01: f32, l11: f32, l21: f32,
+    l02: f32, l12: f32, l22: f32,
+) -> f32
+```
+
+![postfx/sobel_magnitude preview](/shaders/postfx/sobel_magnitude.png)
+
+## threshold
+
+Binary step per channel at threshold `t`: components below `t` become
+`0`, components at or above become `1`. Useful for masks and stylized
+high-contrast looks.
+
+```wgsl
+fn threshold(c: vec3<f32>, t: f32) -> vec3<f32>
+```
+
+![postfx/threshold preview](/shaders/postfx/threshold.png)
+
+## vignette
+
+Multiplier in `[0, 1]` that darkens edges. `radius` is the distance from
+the center where the falloff begins, and `softness` is its width.
+Multiply against your scene color for a classic vignette.
+
+```wgsl
+fn vignette(uv: vec2<f32>, radius: f32, softness: f32) -> f32
+```
+
+![postfx/vignette preview](/shaders/postfx/vignette.png)

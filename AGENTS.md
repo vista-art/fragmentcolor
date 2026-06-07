@@ -70,6 +70,8 @@ Big‑picture architecture (how things fit together)
 - CI gates (what must pass on PR)
   - Clippy with warnings denied; rustfmt check; `cargo test` for Rust; build several example binaries; Web healthcheck (Playwright); Python wheel healthcheck; iOS healthcheck (xcodebuild on macos-14); Android healthcheck (gradle + emulator on ubuntu-latest KVM); dependency license audit (cargo-deny).
   - Each platform has its own workflow so a broken runner doesn't block the others: `.github/workflows/{pull_request,healthcheck_python,healthcheck_web,healthcheck_ios,healthcheck_android}.yml`.
+- Branch naming for releases
+  - In-flight version branches are named `vMAJOR.MINOR.PATCH-dev` (e.g. `v0.12.0-dev`); the GitHub Release tag drops the `-dev` suffix (e.g. `v0.12.0`). Without the suffix the branch name collides with the tag and one of them has to be renamed at release time. See `CONTRIBUTING.md` ("Starting a new version" / "Release process") for the full flow.
 - Release gates (what happens on tag published)
   - `publish_crates.yml` → crates.io.
   - `publish_npm.yml` → npm.
@@ -80,6 +82,7 @@ Big‑picture architecture (how things fit together)
 
 Module‑level invariants (authoritative AGENTS.md files)
 - These short rule files are the source of truth for non‑negotiable behavior. Do not introduce code that violates them.
+  - docs/api/AGENTS.md (canonical doc source: no numeric type suffixes in literals, hidden line placement, patterns the transpiler can / can't translate, no drift tolerance)
   - src/renderer/AGENTS.md (pipelines, targets/present, MSAA/resolve, bind‑group hygiene, thin public API)
   - src/shader/AGENTS.md (mesh ownership, strict attach‑time validation, reflection/mapping order, precise errors)
   - src/mesh/AGENTS.md (schema derivation, CPU/GPU buffer packing/caching, instance handling, validation contract)
@@ -96,3 +99,18 @@ Conventions you’ll see enforced in code
 
 Notes and tiny suggestions
 - The per‑module AGENTS.md files are concise and clear. Keep them authoritative and link to them from PRs when changes touch those areas. Refresh the relevant module file in the same commit whenever the invariants change.
+
+## Lock blocks (MDX) — content the user has hand-tuned
+
+Some MDX regions are wrapped in `<Lock id="..." description="..." comments="...">…</Lock>`. **Do not edit content between an open and close `<Lock>` tag.** Don't paraphrase, don't reformat, don't "improve." The wrapping signals the user has iterated on those words and wants them preserved verbatim across agent runs.
+
+If you genuinely think a locked region needs changing, surface it to the user in your final report rather than editing through.
+
+How the system works (so you understand what you're respecting):
+
+- `docs/website/integrations/locks.ts` is the Astro integration that owns the lock store. It runs in two places: `astro:server:setup` does an initial scan and then watches `docs/website/src/content/docs/**/*.{md,mdx}` via Vite's file watcher (re-scans only the changed file on save); `astro:build:start` does a full scan on production builds. Either path hashes the inner content of every `<Lock>` block (SHA-256), upserts into `docs/website/.locks/locks.json` (co-located with the website, gitignored, `chmod 600`), and bumps a per-block version when content changes. An unpaired or nested `<Lock>` fails the production build with a clear error; on the dev server the same error logs as a warning so the page still renders.
+- The Rust build pipeline does NOT touch the lock store. Editing prose should never trigger a `cargo build`.
+- `cargo run --release -p fce --example locks -- status | history | diff` is a thin Rust CLI that READS the JSON and surfaces history + coloured diffs. Read-only.
+- The hash store is convention-protected, not enforced — any process running as the user can write to it. The protection is that you (the agent) are reading this and choosing to respect the marker.
+
+You **can** add new content **outside** locked regions, and you can re-format / restructure unlocked content normally. If you create new lock blocks of your own, that's also fine — the build script will pick them up and start a version history.

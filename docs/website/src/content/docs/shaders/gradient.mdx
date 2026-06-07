@@ -1,0 +1,151 @@
+---
+title: "Gradients"
+description: A catalog of gradient and colormap functions in the FragmentColor shader registry.
+---
+
+A **gradient** in this catalog is a pure WGSL function that maps a scalar
+`t` (typically in `[0, 1]`) to an RGB triple. They include perceptually
+uniform scientific colormaps (Viridis, Magma, Inferno, Plasma, Cividis,
+Turbo), classic ramps (Jet, Spectral, Grayscale), and parameterised
+families like Cubehelix and the Inigo Quilez cosine palette.
+
+Pull one into a composition by slug, then call it from your fragment
+stage with whatever drives `t` in your scene — UV.x for a horizontal
+ramp, `length(uv - 0.5)` for radial, `atan2` for conic, or any custom
+field:
+
+```rust
+let main = r#"
+@fragment fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+    return vec4<f32>(viridis(in.uv.x), 1.0);
+}
+"#;
+let shader = Shader::new(&["gradient/viridis", main])?;
+```
+
+Each preview below renders the colormap directly to a 256×256 frame using
+a UV-derived `t` chosen to show the palette's character.
+
+## cividis
+
+Matplotlib's Cividis fit — perceptually uniform and color-vision-deficient
+friendly. Driven horizontally across the frame.
+
+```wgsl
+fn cividis(t: f32) -> vec3<f32>
+```
+
+![gradient/cividis preview](/shaders/gradient/cividis.png)
+
+## cubehelix
+
+Dave Green's cubehelix ramp: gentle rotating hue with linear lightness.
+Preview uses defaults `start=0.5`, `rot=-1.5`, `hue=1.0`, `gamma=1.0`.
+
+```wgsl
+fn cubehelix(t: f32, start: f32, rot: f32, hue: f32, gamma: f32) -> vec3<f32>
+```
+
+![gradient/cubehelix preview](/shaders/gradient/cubehelix.png)
+
+## grayscale
+
+Linear gray ramp from black to white.
+
+```wgsl
+fn grayscale(t: f32) -> vec3<f32>
+```
+
+![gradient/grayscale preview](/shaders/gradient/grayscale.png)
+
+## inferno
+
+Matplotlib's Inferno colormap — a perceptually uniform black-purple-red-yellow
+ramp. Driven horizontally across the frame.
+
+```wgsl
+fn inferno(t: f32) -> vec3<f32>
+```
+
+![gradient/inferno preview](/shaders/gradient/inferno.png)
+
+## jet
+
+Classic MATLAB Jet (not perceptually uniform; prefer Turbo for new
+visualisations). Swept radially in the preview to highlight all bands.
+
+```wgsl
+fn jet(t: f32) -> vec3<f32>
+```
+
+![gradient/jet preview](/shaders/gradient/jet.png)
+
+## magma
+
+Matplotlib's Magma colormap — a perceptually uniform black-purple-pink-cream
+ramp. Driven horizontally across the frame.
+
+```wgsl
+fn magma(t: f32) -> vec3<f32>
+```
+
+![gradient/magma preview](/shaders/gradient/magma.png)
+
+## palette_iq
+
+Inigo Quilez cosine palette: `a + b * cos(2π * (c*t + d))`. The four
+`vec3<f32>` parameters control offset, amplitude, frequency, and phase.
+Preview uses `(0.5, 0.5, 0.5)`, `(0.5, 0.5, 0.5)`, `(1, 1, 1)`,
+`(0, 0.33, 0.67)` swept around the frame as a conic gradient.
+
+```wgsl
+fn palette_iq(t: f32, a: vec3<f32>, b: vec3<f32>, c: vec3<f32>, d: vec3<f32>) -> vec3<f32>
+```
+
+![gradient/palette_iq preview](/shaders/gradient/palette_iq.png)
+
+## plasma
+
+Matplotlib's Plasma colormap — a perceptually uniform purple-pink-yellow
+ramp. Driven horizontally across the frame.
+
+```wgsl
+fn plasma(t: f32) -> vec3<f32>
+```
+
+![gradient/plasma preview](/shaders/gradient/plasma.png)
+
+## spectral
+
+ColorBrewer-style spectral rainbow (not perceptually uniform). Useful as
+a quick diverging or qualitative palette. Swept radially in the preview.
+
+```wgsl
+fn spectral(t: f32) -> vec3<f32>
+```
+
+![gradient/spectral preview](/shaders/gradient/spectral.png)
+
+## turbo
+
+Polynomial fit to Google's Turbo colormap — a perceptually balanced
+rainbow that replaces Jet for most use cases. Driven horizontally across
+the frame.
+
+```wgsl
+fn turbo(t: f32) -> vec3<f32>
+```
+
+![gradient/turbo preview](/shaders/gradient/turbo.png)
+
+## viridis
+
+Matplotlib's Viridis approximated via the IQ cosine palette — the
+default perceptually uniform colormap for scientific visualisation.
+Driven horizontally across the frame.
+
+```wgsl
+fn viridis(t: f32) -> vec3<f32>
+```
+
+![gradient/viridis preview](/shaders/gradient/viridis.png)

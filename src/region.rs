@@ -102,23 +102,6 @@ impl ScreenRegion {
         ]
     }
 
-    pub fn from_wgpu_size(size: wgpu::Extent3d) -> Self {
-        Self {
-            min_x: 0,
-            min_y: 0,
-            max_x: size.width,
-            max_y: size.height,
-        }
-    }
-
-    pub fn to_wgpu_size(&self) -> wgpu::Extent3d {
-        wgpu::Extent3d {
-            width: self.width(),
-            height: self.height(),
-            depth_or_array_layers: 1,
-        }
-    }
-
     pub fn from_size(width: u32, height: u32) -> Self {
         Self {
             min_x: 0,

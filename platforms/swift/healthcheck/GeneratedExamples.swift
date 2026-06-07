@@ -13,988 +13,1955 @@
 //      export to Swift.
 // Fix the source — this file is regenerated on every cargo build.
 
+import Foundation
 import FragmentColor
 
 @available(iOS 16.0, *)
 private enum _GeneratedExamples {
     static func _example_core_pass_Pass() async throws {
+        do {
 
 
-        let renderer = Renderer()
-        // iOS: window/canvas provided by CAMetalLayer at runtime
-        let target = try await renderer.createTextureTarget([800, 600])
-        let shader = Shader.default()
+            let renderer = Renderer()
+            // iOS: window/canvas provided by CAMetalLayer at runtime
+            let target = try await renderer.createTextureTarget([800, 600])
+            let shader = Shader.default()
 
-        let pass = Pass("First Pass")
-        pass.addShader(shader)
+            let pass = Pass("First Pass")
+            pass.addShader(shader)
 
-        let pass2 = Pass("Second Pass")
-        pass2.addShader(shader)
+            let pass2 = Pass("Second Pass")
+            pass2.addShader(shader)
 
-        // standalone
-        try renderer.render(pass, target)
+            // standalone
+            try renderer.render(pass, target)
 
-        // vector of passes rendered in order (any iterable of Pass is renderable)
-        try renderer.render([pass, pass2], target)
+            // vector of passes rendered in order (any iterable of Pass is renderable)
+            try renderer.render([pass, pass2], target)
+        }
     }
 
-    static func _example_core_pass_add_depth_target() async throws {
+    static func _example_core_pass_add() async throws {
+        do {
 
-        let renderer = Renderer()
-        let target = try await renderer.createTextureTarget([64, 64])
+            let renderer = Renderer()
 
-        // Create a depth texture usable as a per-pass attachment
-        let depth = try await renderer.createDepthTexture([64, 64])
+            let mesh = Mesh()
+            try mesh.addVertex(
+                try Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0])
+            )
+            let model = Model(mesh, Material.pbr())
 
-        let mesh = Mesh()
-        try mesh.addVertex([0.0, 0.0, 0.0])
-        try mesh.addVertex([1.0, 0.0, 0.0])
-        try mesh.addVertex([0.0, 1.0, 0.0])
-        try mesh.addVertex([1.0, 1.0, 0.0])
-        let shader = Shader.fromMesh(mesh)
-        let pass = Pass("scene"); pass.addShader(shader)
+            let camera = try Camera.perspective(1.047, 1.0, 0.1, 100.0).lookAt([0.0, 0.0, 2.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+            let sun = try Light.directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9])
 
-        // Attach depth texture to enable depth testing.
-        // Pipeline will include a matching depth-stencil state
-        try pass.addDepthTarget(depth)
+            let pass = Pass("scene")
+            try pass.add(model)
+            try pass.add(camera)
+            try pass.add(sun)
 
-        // Render as usual
-        try renderer.render(pass, target)
+            // Updating the camera later is enough — every Model already on the pass
+            // picks the view_proj up at the next render.
+            try camera.lookAt([3.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+        }
     }
 
     static func _example_core_pass_add_mesh() async throws {
+        do {
 
-        let mesh = Mesh()
-        try mesh.addVertex([0.0, 0.0])
+            let mesh = Mesh()
+            try mesh.addVertex([0.0, 0.0])
 
-        let shader = try Shader("""
-          struct VOut { @builtin(position) pos: vec4<f32> }
-          @vertex
-          fn vs_main(@location(0) pos: vec2<f32>) -> VOut {
-            var out: VOut
-            out.pos = vec4<f32>(pos, 0.0, 1.0)
-            return out
-          }
-          @fragment
-          fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
+            let shader = try Shader("""
+              struct VOut { @builtin(position) pos: vec4<f32> }
+              @vertex
+              fn vs_main(@location(0) pos: vec2<f32>) -> VOut {
+                var out: VOut
+                out.pos = vec4<f32>(pos, 0.0, 1.0)
+                return out
+              }
+              @fragment
+              fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
 
-        """)
+            """)
 
-        let pass = Pass("pass"); pass.addShader(shader)
+            let pass = Pass("pass"); pass.addShader(shader)
 
-        try pass.addMesh(mesh)
+            try pass.addMesh(mesh)
+        }
     }
 
     static func _example_core_pass_add_shader() async throws {
+        do {
 
-        let shader = Shader.default()
-        let pass = Pass("p")
-        pass.addShader(shader)
-    }
-
-    static func _example_core_pass_add_target() async throws {
-
-        let r = Renderer()
-        let tex_target = try await r.createTextureTarget([512, 512])
-
-        let p = Pass("shadow")
-        try p.addTarget(tex_target)
+            let shader = Shader.default()
+            let pass = Pass("p")
+            pass.addShader(shader)
+        }
     }
 
     static func _example_core_pass_compute() async throws {
+        do {
 
-        let cs = try! Shader("@compute @workgroup_size(8,8,1) fn cs_main() {}")
-        let pass = Pass("compute"); pass.addShader(cs)
+            let cs = try! Shader("@compute @workgroup_size(8,8,1) fn cs_main() {}")
+            let pass = Pass("compute"); pass.addShader(cs)
+        }
     }
 
     static func _example_core_pass_from_shader() async throws {
+        do {
 
-        let shader = Shader.default()
-        let pass = Pass("single"); pass.addShader(shader)
+            let shader = Shader.default()
+            let pass = Pass("single"); pass.addShader(shader)
+        }
     }
 
     static func _example_core_pass_get_input() async throws {
+        do {
 
-        let pass = Pass("example")
-        let input = pass.getInput()
+            let pass = Pass("example")
+            let input = pass.getInput()
+        }
     }
 
     static func _example_core_pass_is_compute() async throws {
+        do {
 
-        let shader = try Shader("""
-        @compute @workgroup_size(1)
-        fn cs_main() { }
+            let shader = try Shader("""
+            @compute @workgroup_size(1)
+            fn cs_main() { }
 
-        """)
-        let pass = Pass("p"); pass.addShader(shader)
+            """)
+            let pass = Pass("p"); pass.addShader(shader)
 
-        // Call the method
-        let is_compute = pass.isCompute()
+            // Call the method
+            let is_compute = pass.isCompute()
+        }
     }
 
     static func _example_core_pass_load_previous() async throws {
+        do {
 
 
-        let renderer = Renderer()
-        let target = try await renderer.createTextureTarget([64, 64])
+            let renderer = Renderer()
+            let target = try await renderer.createTextureTarget([64, 64])
 
-        let shader = Shader.default()
-        let pass = Pass("blend with previous")
-        pass.addShader(shader)
-        pass.loadPrevious()
+            let shader = Shader.default()
+            let pass = Pass("blend with previous")
+            pass.addShader(shader)
+            pass.loadPrevious()
 
-        try renderer.render(pass, target)
+            try renderer.render(pass, target)
+        }
     }
 
     static func _example_core_pass_new() async throws {
+        do {
 
-        let pass = Pass("first pass")
+            let pass = Pass("first pass")
+        }
     }
 
     static func _example_core_pass_require() async throws {
-        let renderer = Renderer()
-        let target = try await renderer.createTextureTarget([100,100])
-        let color = Pass("color")
-        let blurx = Pass("blur_x")
-        try blurx.require(color); // color before blur_x
-        let blury = Pass("blur_y")
-        try blury.require(blurx); // blur_x before blur_y
-        let compose = Pass("compose")
-        try compose.require(color)
-        try compose.require(blury); // fan-in; color and blur_y before compose
-        try renderer.render(compose, target); // compose renders last
+        do {
+            let renderer = Renderer()
+            let target = try await renderer.createTextureTarget([100,100])
+            let color = Pass("color")
+            let blurx = Pass("blur_x")
+            try blurx.require(color); // color before blur_x
+            let blury = Pass("blur_y")
+            try blury.require(blurx); // blur_x before blur_y
+            let compose = Pass("compose")
+            try compose.require(color)
+            try compose.require(blury); // fan-in; color and blur_y before compose
+            try renderer.render(compose, target); // compose renders last
+        }
     }
 
     static func _example_core_pass_set_clear_color() async throws {
+        do {
 
 
-        let renderer = Renderer()
-        let target = try await renderer.createTextureTarget([64, 64])
+            let renderer = Renderer()
+            let target = try await renderer.createTextureTarget([64, 64])
 
-        let shader = Shader.default()
-        let pass = Pass("solid background")
-        pass.addShader(shader)
+            let shader = Shader.default()
+            let pass = Pass("solid background")
+            pass.addShader(shader)
 
-        try pass.setClearColor([0.1, 0.2, 0.3, 1.0])
+            try pass.setClearColor([0.1, 0.2, 0.3, 1.0])
 
-        try renderer.render(pass, target)
+            try renderer.render(pass, target)
+        }
     }
 
     static func _example_core_pass_set_compute_dispatch() async throws {
-        let cs = try! Shader("@compute @workgroup_size(8,8,1) fn cs_main() {}")
-        let pass = Pass("compute"); pass.addShader(cs)
-        pass.setComputeDispatch(64, 64, 1)
+        do {
+            let cs = try! Shader("@compute @workgroup_size(8,8,1) fn cs_main() {}")
+            let pass = Pass("compute"); pass.addShader(cs)
+            pass.setComputeDispatch(64, 64, 1)
+        }
+    }
+
+    static func _example_core_pass_set_depth_target() async throws {
+        do {
+
+            let renderer = Renderer()
+            let target = try await renderer.createTextureTarget([64, 64])
+
+            // One depth attachment shared across the 3D-content pass.
+            let depth = try await renderer.createDepthTexture([64, 64])
+
+            let mesh = Mesh()
+            try mesh.addVertex([0.0, 0.0, 0.0])
+            try mesh.addVertex([1.0, 0.0, 0.0])
+            try mesh.addVertex([0.0, 1.0, 0.0])
+            try mesh.addVertex([1.0, 1.0, 0.0])
+            let shader = Shader.fromMesh(mesh)
+            let pass = Pass("blobs"); pass.addShader(shader)
+
+            // Depth-test on — closer fragments win, the pass writes to the depth
+            // buffer so subsequent draws within the same pass see the depth.
+            try pass.setDepthTarget(depth)
+
+            try renderer.render(pass, target)
+        }
+    }
+
+    static func _example_core_pass_set_target() async throws {
+        do {
+
+            let r = Renderer()
+            let tex_target = try await r.createTextureTarget([512, 512])
+
+            let p = Pass("shadow")
+            try p.setTarget(tex_target)
+        }
     }
 
     static func _example_core_pass_set_viewport() async throws {
+        do {
 
 
-        let renderer = Renderer()
-        let target = try await renderer.createTextureTarget([64, 64])
+            let renderer = Renderer()
+            let target = try await renderer.createTextureTarget([64, 64])
 
-        let shader = Shader.default()
-        let pass = Pass("clipped")
-        pass.addShader(shader)
+            let shader = Shader.default()
+            let pass = Pass("clipped")
+            pass.addShader(shader)
 
-        pass.setViewport([(0, 0), (32, 32)])
+            pass.setViewport([(0, 0), (32, 32)])
 
-        try renderer.render(pass, target)
+            try renderer.render(pass, target)
+        }
     }
 
     static func _example_core_renderer_Renderer() async throws {
+        do {
 
 
-        let renderer = Renderer()
+            let renderer = Renderer()
 
-        // Use your platform's windowing system to create a window
-        // iOS: window/canvas provided by CAMetalLayer at runtime
+            // Use your platform's windowing system to create a window
+            // iOS: window/canvas provided by CAMetalLayer at runtime
 
-        // Create a Target from it
-        let target = try await renderer.createTextureTarget([800, 600])
-        let texture_target = try await renderer.createTextureTarget([16, 16])
+            // Create a Target from it
+            let target = try await renderer.createTextureTarget([800, 600])
+            let texture_target = try await renderer.createTextureTarget([16, 16])
 
-        // RENDERING
-        try renderer.render(Shader(""), texture_target)
+            // RENDERING
+            try renderer.render(Shader(""), texture_target)
 
-        // That's it. Welcome to FragmentColor!
+            // That's it. Welcome to FragmentColor!
+        }
     }
 
     static func _example_core_renderer_create_depth_texture() async throws {
-        let r = Renderer()
-        let depth = try await r.createDepthTexture([800, 600])
+        do {
+            let r = Renderer()
+            let depth = try await r.createDepthTexture([800, 600])
+        }
     }
 
     static func _example_core_renderer_create_external_texture() async throws {
-        // Once supported:
-        //   let renderer = Renderer()
-        //   let pixelBuffer: CVPixelBuffer = /* from AVPlayerItemVideoOutput */
-        //   let ptr = UInt64(UInt(bitPattern: Unmanaged.passUnretained(pixelBuffer).toOpaque()))
-        //   let handle = try renderer.createExternalTexture(sourcePtr: ptr)
+        do {
+            // Once supported:
+            //   let renderer = Renderer()
+            //   let pixelBuffer: CVPixelBuffer = /* from AVPlayerItemVideoOutput */
+            //   let ptr = UInt64(UInt(bitPattern: Unmanaged.passUnretained(pixelBuffer).toOpaque()))
+            //   let handle = try renderer.createExternalTexture(sourcePtr: ptr)
+        }
     }
 
     static func _example_core_renderer_create_storage_texture() async throws {
+        do {
 
-        let r = Renderer()
+            let r = Renderer()
 
-        // Empty storage texture.
-        let tex = try await r.createStorageTexture(([64, 64], TextureFormat.rgba))
+            // Empty storage texture.
+            let tex = try await r.createStorageTexture(([64, 64], TextureFormat.rgba))
 
-        // Pre-seeded with bytes.
-        let pixels = Array(repeating: 0, count: 64 * 64 * 4)
-        let tex2 = try await r.createStorageTexture(([64, 64], TextureFormat.rgba, pixels))
+            // Pre-seeded with bytes.
+            let pixels = Array(repeating: 0, count: 64 * 64 * 4)
+            let tex2 = try await r.createStorageTexture(([64, 64], TextureFormat.rgba, pixels))
+        }
     }
 
     static func _example_core_renderer_create_target() async throws {
+        do {
 
 
-        let renderer = Renderer()
+            let renderer = Renderer()
 
-        // Use your platform's windowing system to create a window.
-        // iOS: window/canvas provided by CAMetalLayer at runtime
+            // Use your platform's windowing system to create a window.
+            // iOS: window/canvas provided by CAMetalLayer at runtime
 
-        let target = try await renderer.createTextureTarget([800, 600])
+            let target = try await renderer.createTextureTarget([800, 600])
+        }
     }
 
     static func _example_core_renderer_create_texture() async throws {
-        let renderer = Renderer()
-        let image = "/healthcheck/public/favicon.png"
-        let tex = try await renderer.createTexture(image)
+        do {
+            let renderer = Renderer()
+            let image = "/healthcheck/public/favicon.png"
+            let tex = try await renderer.createTexture(image)
+        }
     }
 
     static func _example_core_renderer_create_texture_target() async throws {
+        do {
 
-        let renderer = Renderer()
+            let renderer = Renderer()
 
-        // Create an offscreen texture target with a size of 64x64 pixels.
-        let target = try await renderer.createTextureTarget([64, 64])
+            // Create an offscreen texture target with a size of 64x64 pixels.
+            let target = try await renderer.createTextureTarget([64, 64])
 
-        try renderer.render(Shader(""), target)
+            try renderer.render(Shader(""), target)
 
-        // get the rendered image
-        let image = try await target.getImage()
+            // get the rendered image
+            let image = try await target.getImage()
+        }
+    }
+
+    static func _example_core_renderer_load() async throws {
+        do {
+
+            let renderer = Renderer()
+            let target = try await renderer.createTextureTarget([64, 64])
+
+            let mesh = Mesh()
+            try mesh.addVertex(
+                try Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0])
+            )
+            // Raw 2×2 RGBA pixel bytes — uploaded lazily by """Renderer.load""" below.
+            // In practice the loader hands the setter encoded PNG/JPEG bytes (from a
+            // BIN chunk) or a file path (from a URI); the same """Into<TextureInput>"""
+            // vocabulary covers all of them.
+            let red_pixels = [
+                255,   0,   0, 255,    0, 255,   0, 255,
+                  0,   0, 255, 255,  255, 255, 255, 255,
+            ]
+            let red_tex = try await renderer.createTexture((red_pixels, [2, 2]))
+            let material = Material.pbr().baseColorTexture(red_tex)
+            let model = Model(mesh, material)
+            let scene = Scene()
+            try scene.add(model)
+
+            // Eager prewarm — uploads the pending texture(s) so the next render is
+            // GPU-only.
+            try await renderer.load(scene)
+            try renderer.render(scene, target)
+        }
     }
 
     static func _example_core_renderer_new() async throws {
+        do {
 
 
-        let renderer = Renderer()
-        let texture_target = try await renderer.createTextureTarget([16, 16])
+            let renderer = Renderer()
+            let texture_target = try await renderer.createTextureTarget([16, 16])
+        }
+    }
+
+    static func _example_core_renderer_read_storage() async throws {
+        do {
+
+            let renderer = Renderer()
+            let target = try await renderer.createTextureTarget([16, 16])
+
+            let compute = try Shader("""
+                struct Out { values: array<f32, 4> }
+                @group(0) @binding(0) var<storage, read_write> out: Out
+                @compute @workgroup_size(1) fn main() {
+                    out.values[0] = 1.0
+                    out.values[1] = 2.0
+                    out.values[2] = 3.0
+                    out.values[3] = 4.0
+                }
+
+            """)
+
+            let pass = Pass.compute("seed")
+            pass.setComputeDispatch(1, 1, 1)
+            pass.addShader(compute)
+            try renderer.render(pass, target)
+
+            let bytes = try await renderer.readStorage(compute, "out")
+        }
     }
 
     static func _example_core_renderer_read_texture() async throws {
-        let renderer = Renderer()
-        let texture = try await renderer.createStorageTexture(([64, 64], TextureFormat.rgba))
-        try texture.write(Array(repeating: 0, count: 64 * 64 * 4))
+        do {
+            let renderer = Renderer()
+            let texture = try await renderer.createStorageTexture(([64, 64], TextureFormat.rgba))
+            try texture.write(Array(repeating: 0, count: 64 * 64 * 4))
 
-        let bytes = try await renderer.readTexture(texture.id())
+            let bytes = try await renderer.readTexture(texture.id())
+        }
     }
 
     static func _example_core_renderer_render() async throws {
+        do {
 
 
-        let renderer = Renderer()
-        let target = try await renderer.createTextureTarget([10, 10])
-        let shader = Shader.default()
+            let renderer = Renderer()
+            let target = try await renderer.createTextureTarget([10, 10])
+            let shader = Shader.default()
 
-        try renderer.render(shader, target)
+            try renderer.render(shader, target)
+        }
     }
 
     static func _example_core_renderer_unregister_texture() async throws {
-        let renderer = Renderer()
-        let texture = try await renderer.createStorageTexture(([16, 16], TextureFormat.rgba))
-        let id = texture.id()
+        do {
+            let renderer = Renderer()
+            let texture = try await renderer.createStorageTexture(([16, 16], TextureFormat.rgba))
+            let id = texture.id()
 
-        try renderer.unregisterTexture(id)
+            try renderer.unregisterTexture(id)
+        }
     }
 
     static func _example_core_shader_Shader() async throws {
+        do {
 
 
-        let shader = try Shader("""
-            @vertex
-            fn vs_main(@builtin(vertex_index) index: u32) -> @builtin(position) vec4<f32> {
-                var pos = array<vec2<f32>, 3>(
-                    vec2<f32>(-1.0, -1.0),
-                    vec2<f32>( 3.0, -1.0),
-                    vec2<f32>(-1.0,  3.0)
-                )
-                return vec4<f32>(pos[index], 0.0, 1.0)
-            }
+            let shader = try Shader("""
+                @vertex
+                fn vs_main(@builtin(vertex_index) index: u32) -> @builtin(position) vec4<f32> {
+                    var pos = array<vec2<f32>, 3>(
+                        vec2<f32>(-1.0, -1.0),
+                        vec2<f32>( 3.0, -1.0),
+                        vec2<f32>(-1.0,  3.0)
+                    )
+                    return vec4<f32>(pos[index], 0.0, 1.0)
+                }
 
-            @group(0) @binding(0)
-            var<uniform> resolution: vec2<f32>
+                @group(0) @binding(0)
+                var<uniform> resolution: vec2<f32>
 
-            @fragment
-            fn fs_main() -> @location(0) vec4<f32> {
-                return vec4<f32>(1.0, 0.0, 0.0, 1.0); // Red
-            }
+                @fragment
+                fn fs_main() -> @location(0) vec4<f32> {
+                    return vec4<f32>(1.0, 0.0, 0.0, 1.0); // Red
+                }
 
-        """)
+            """)
 
-        // Set the "resolution" uniform
-        try shader.set("resolution", [800.0, 600.0])
-        let res = try shader.get("resolution")
+            // Set the "resolution" uniform
+            try shader.set("resolution", [800.0, 600.0])
+            let res = try shader.get("resolution")
 
-        let renderer = Renderer()
-        let target = try await renderer.createTextureTarget([16, 16])
-        try renderer.render(shader, target)
+            let renderer = Renderer()
+            let target = try await renderer.createTextureTarget([16, 16])
+            try renderer.render(shader, target)
+        }
     }
 
     static func _example_core_shader_add_mesh() async throws {
+        do {
 
-        let shader = try Shader("""
-          @vertex fn vs_main(@location(0) pos: vec3<f32>) -> @builtin(position) vec4<f32> {
-            return vec4<f32>(pos, 1.0)
-          }
-          @fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
+            let shader = try Shader("""
+              @vertex fn vs_main(@location(0) pos: vec3<f32>) -> @builtin(position) vec4<f32> {
+                return vec4<f32>(pos, 1.0)
+              }
+              @fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
 
-        """)
+            """)
 
-        let mesh = Mesh()
-        try mesh.addVertex([0.0, 0.0, 0.0])
+            let mesh = Mesh()
+            try mesh.addVertex([0.0, 0.0, 0.0])
 
-        // Attach mesh to this shader (errors if incompatible)
-        try shader.addMesh(mesh)
+            // Attach mesh to this shader (errors if incompatible)
+            try shader.addMesh(mesh)
 
-        // Renderer will draw the mesh when rendering this pass.
-        // Each Shader represents a RenderPipeline or ComputePipeline
-        // in the GPU. Adding multiple meshes to it will draw all meshes
-        // and all its instances in the same Pipeline.
+            // Renderer will draw the mesh when rendering this pass.
+            // Each Shader represents a RenderPipeline or ComputePipeline
+            // in the GPU. Adding multiple meshes to it will draw all meshes
+            // and all its instances in the same Pipeline.
+        }
     }
 
     static func _example_core_shader_clear_meshes() async throws {
+        do {
 
-        let shader = try Shader("""
-          struct VOut { @builtin(position) pos: vec4<f32> }
-          @vertex
-          fn vs_main(@location(0) pos: vec2<f32>) -> VOut {
-            var out: VOut
-            out.pos = vec4<f32>(pos, 0.0, 1.0)
-            return out
-          }
-          @fragment
-          fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.0,0.0,0.0,1.0); }
+            let shader = try Shader("""
+              struct VOut { @builtin(position) pos: vec4<f32> }
+              @vertex
+              fn vs_main(@location(0) pos: vec2<f32>) -> VOut {
+                var out: VOut
+                out.pos = vec4<f32>(pos, 0.0, 1.0)
+                return out
+              }
+              @fragment
+              fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.0,0.0,0.0,1.0); }
 
-        """)
+            """)
 
-        let mesh = Mesh()
-        try mesh.addVertex([0.0, 0.0])
-        try shader.addMesh(mesh)
+            let mesh = Mesh()
+            try mesh.addVertex([0.0, 0.0])
+            try shader.addMesh(mesh)
 
-        // Clear all
-        shader.clearMeshes()
+            // Clear all
+            shader.clearMeshes()
+        }
     }
 
     static func _example_core_shader_fetch() async throws {
+        do {
 
 
-        // Full registry URL.
-        let shader = try await Shader.fetch("https://fragmentcolor.org/shaders/sdf2d/circle.wgsl")
+            // Full registry URL.
+            let shader = try await Shader.fetch("https://fragmentcolor.org/shaders/sdf2d/circle.wgsl")
 
-        // Equivalent shorthand using the registry slug.
-        let shader2 = try await Shader.fetch("sdf2d/circle")
+            // Equivalent shorthand using the registry slug.
+            let shader2 = try await Shader.fetch("sdf2d/circle")
+        }
     }
 
     static func _example_core_shader_from_mesh() async throws {
+        do {
 
-        let mesh = Mesh()
-        try mesh.addVertex([0.0, 0.0, 0.0])
-        let shader = Shader.fromMesh(mesh)
+            let mesh = Mesh()
+            try mesh.addVertex([0.0, 0.0, 0.0])
+            let shader = Shader.fromMesh(mesh)
+        }
     }
 
     static func _example_core_shader_from_vertex() async throws {
+        do {
 
-        let vertex = try Vertex([0.0, 0.0, 0.0])
-        let shader = Shader.fromVertex(vertex)
+            let vertex = try Vertex([0.0, 0.0, 0.0])
+            let shader = Shader.fromVertex(vertex)
+        }
     }
 
     static func _example_core_shader_get() async throws {
+        do {
 
-        let shader = Shader.default()
-        try shader.set("resolution", [800.0, 600.0])
-        let res = try shader.get("resolution")
+            let shader = Shader.default()
+            try shader.set("resolution", [800.0, 600.0])
+            let res = try shader.get("resolution")
+        }
     }
 
     static func _example_core_shader_is_compute() async throws {
+        do {
 
-        let shader = try Shader("""
-        @compute @workgroup_size(1)
-        fn cs_main() { }
+            let shader = try Shader("""
+            @compute @workgroup_size(1)
+            fn cs_main() { }
 
-        """)
+            """)
 
-        // Call the method
-        let is_compute = shader.isCompute()
+            // Call the method
+            let is_compute = shader.isCompute()
+        }
     }
 
     static func _example_core_shader_list_keys() async throws {
+        do {
 
 
-        let shader = Shader.default()
-        let keys = shader.listKeys()
+            let shader = Shader.default()
+            let keys = shader.listKeys()
+        }
     }
 
     static func _example_core_shader_list_uniforms() async throws {
+        do {
 
-        let shader = Shader.default()
-        let list = shader.listUniforms()
+            let shader = Shader.default()
+            let list = shader.listUniforms()
+        }
     }
 
     static func _example_core_shader_new() async throws {
+        do {
 
 
-        let shader = try Shader("""
-            @vertex
-            fn vs_main(@builtin(vertex_index) index: u32) -> @builtin(position) vec4<f32> {
-                var pos = array<vec2<f32>, 3>(
-                    vec2<f32>(-1.0, -1.0),
-                    vec2<f32>( 3.0, -1.0),
-                    vec2<f32>(-1.0,  3.0)
-                )
-                return vec4<f32>(pos[index], 0.0, 1.0)
-            }
+            let shader = try Shader("""
+                @vertex
+                fn vs_main(@builtin(vertex_index) index: u32) -> @builtin(position) vec4<f32> {
+                    var pos = array<vec2<f32>, 3>(
+                        vec2<f32>(-1.0, -1.0),
+                        vec2<f32>( 3.0, -1.0),
+                        vec2<f32>(-1.0,  3.0)
+                    )
+                    return vec4<f32>(pos[index], 0.0, 1.0)
+                }
 
-            @group(0) @binding(0)
-            var<uniform> resolution: vec2<f32>
+                @group(0) @binding(0)
+                var<uniform> resolution: vec2<f32>
 
-            @fragment
-            fn fs_main() -> @location(0) vec4<f32> {
-                return vec4<f32>(1.0, 0.0, 0.0, 1.0); // Red
-            }
+                @fragment
+                fn fs_main() -> @location(0) vec4<f32> {
+                    return vec4<f32>(1.0, 0.0, 0.0, 1.0); // Red
+                }
 
-        """)
+            """)
 
 
-        let main = """
-            @vertex fn vs(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
-                let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.))
-                return vec4<f32>(p[i], 0.0, 1.0)
-            }
+            let main = """
+                @vertex fn vs(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+                    let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.))
+                    return vec4<f32>(p[i], 0.0, 1.0)
+                }
 
-            @fragment fn fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
-                let d = circle(pos.xy - vec2<f32>(400.0, 300.0), 100.0)
-                let n = simplex2(pos.xy * 0.01)
-                return vec4<f32>(vec3<f32>(step(0.0, d) + n * 0.1), 1.0)
-            }
+                @fragment fn fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
+                    let d = circle(pos.xy - vec2<f32>(400.0, 300.0), 100.0)
+                    let n = simplex2(pos.xy * 0.01)
+                    return vec4<f32>(vec3<f32>(step(0.0, d) + n * 0.1), 1.0)
+                }
 
-        """
+            """
 
-        let shader = try Shader.new([
-            "sdf2d/circle",      // pure function: fn circle(p: vec2<f32>, r: f32) -> f32
-            "noise/simplex2",    // pure function: fn simplex2(v: vec2<f32>) -> f32
-            main,
-        ])
+            let shader2 = try Shader.new([
+                "sdf2d/circle",      // pure function: fn circle(p: vec2<f32>, r: f32) -> f32
+                "noise/simplex2",    // pure function: fn simplex2(v: vec2<f32>) -> f32
+                main,
+            ])
+        }
     }
 
     static func _example_core_shader_remove_mesh() async throws {
+        do {
 
-        let shader = try Shader("""
-          struct VOut { @builtin(position) pos: vec4<f32> }
-          @vertex
-          fn vs_main(@location(0) pos: vec2<f32>) -> VOut {
-            var out: VOut
-            out.pos = vec4<f32>(pos, 0.0, 1.0)
-            return out
-          }
-          @fragment
-          fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.0,0.0,0.0,1.0); }
+            let shader = try Shader("""
+              struct VOut { @builtin(position) pos: vec4<f32> }
+              @vertex
+              fn vs_main(@location(0) pos: vec2<f32>) -> VOut {
+                var out: VOut
+                out.pos = vec4<f32>(pos, 0.0, 1.0)
+                return out
+              }
+              @fragment
+              fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.0,0.0,0.0,1.0); }
 
-        """)
+            """)
 
-        let mesh = Mesh()
-        try mesh.addVertex([0.0, 0.0])
-        try shader.addMesh(mesh)
+            let mesh = Mesh()
+            try mesh.addVertex([0.0, 0.0])
+            try shader.addMesh(mesh)
 
-        // Detach the mesh
-        try shader.removeMesh(mesh)
+            // Detach the mesh
+            try shader.removeMesh(mesh)
+        }
     }
 
     static func _example_core_shader_remove_meshes() async throws {
+        do {
 
-        let shader = try Shader("""
-          struct VOut { @builtin(position) pos: vec4<f32> }
-          @vertex
-          fn vs_main(@location(0) pos: vec2<f32>) -> VOut {
-            var out: VOut
-            out.pos = vec4<f32>(pos, 0.0, 1.0)
-            return out
-          }
-          @fragment
-          fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.0,0.0,0.0,1.0); }
+            let shader = try Shader("""
+              struct VOut { @builtin(position) pos: vec4<f32> }
+              @vertex
+              fn vs_main(@location(0) pos: vec2<f32>) -> VOut {
+                var out: VOut
+                out.pos = vec4<f32>(pos, 0.0, 1.0)
+                return out
+              }
+              @fragment
+              fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.0,0.0,0.0,1.0); }
 
-        """)
+            """)
 
-        let m1 = Mesh()
-        try m1.addVertex([0.0, 0.0])
-        let m2 = Mesh()
-        try m2.addVertex([0.5, 0.0])
+            let m1 = Mesh()
+            try m1.addVertex([0.0, 0.0])
+            let m2 = Mesh()
+            try m2.addVertex([0.5, 0.0])
 
-        try shader.addMesh(m1)
-        try shader.addMesh(m2)
+            try shader.addMesh(m1)
+            try shader.addMesh(m2)
 
-        shader.removeMeshes([m1, m2])
+            shader.removeMeshes([m1, m2])
+        }
     }
 
     static func _example_core_shader_set() async throws {
-        let r = Renderer()
-        let shader = try Shader("""
-        @group(0) @binding(0) var<uniform> resolution: vec2<f32>
+        do {
+            let r = Renderer()
+            let shader = try Shader("""
+            @group(0) @binding(0) var<uniform> resolution: vec2<f32>
 
-        struct VOut { @builtin(position) pos: vec4<f32> }
-        @vertex fn vs_main(@builtin(vertex_index) i: u32) -> VOut {
-          var p = array<vec2<f32>, 3>(vec2<f32>(-1.,-1.), vec2<f32>(3.,-1.), vec2<f32>(-1.,3.))
-          var out: VOut
-          out.pos = vec4<f32>(p[i], 0., 1.)
-          return out
+            struct VOut { @builtin(position) pos: vec4<f32> }
+            @vertex fn vs_main(@builtin(vertex_index) i: u32) -> VOut {
+              var p = array<vec2<f32>, 3>(vec2<f32>(-1.,-1.), vec2<f32>(3.,-1.), vec2<f32>(-1.,3.))
+              var out: VOut
+              out.pos = vec4<f32>(p[i], 0., 1.)
+              return out
+            }
+            @fragment fn main() -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
+
+            """)
+
+            // Set scalars/vectors on declared uniforms
+            try shader.set("resolution", [800.0, 600.0])
         }
-        @fragment fn main() -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
-
-        """)
-
-        // Set scalars/vectors on declared uniforms
-        try shader.set("resolution", [800.0, 600.0])
     }
 
     static func _example_core_shader_set_registry() async throws {
+        do {
 
 
-        // Point at your own mirror of the registry
-        Shader.setRegistry("https://cdn.example.com/shaders/")
+            // Point at your own mirror of the registry
+            Shader.setRegistry("https://cdn.example.com/shaders/")
 
-        // Now the slug "sdf2d/circle" resolves to https://cdn.example.com/shaders/sdf2d/circle.wgsl
-        // (Skipping the actual fetch in this doctest)
+            // Now the slug "sdf2d/circle" resolves to https://cdn.example.com/shaders/sdf2d/circle.wgsl
+            // (Skipping the actual fetch in this doctest)
+        }
     }
 
     static func _example_core_shader_validate_mesh() async throws {
+        do {
 
-        let shader = try Shader("""
-        struct VOut { @builtin(position) pos: vec4<f32> }
-        @vertex fn vs_main(@location(0) pos: vec3<f32>) -> VOut {
-          var out: VOut
-          out.pos = vec4<f32>(pos, 1.0)
-          return out
+            let shader = try Shader("""
+            struct VOut { @builtin(position) pos: vec4<f32> }
+            @vertex fn vs_main(@location(0) pos: vec3<f32>) -> VOut {
+              var out: VOut
+              out.pos = vec4<f32>(pos, 1.0)
+              return out
+            }
+            @fragment fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
+
+            """)
+            let pass = Pass("p"); pass.addShader(shader)
+
+            let mesh = Mesh()
+            try mesh.addVertices([
+              [-0.5, -0.5, 0.0],
+              [ 0.5, -0.5, 0.0],
+              [ 0.0,  0.5, 0.0],
+            ])
+
+            try shader.validateMesh(mesh); // Ok
+            try pass.addMesh(mesh)
         }
-        @fragment fn fs_main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,0.,0.,1.); }
-
-        """)
-        let pass = Pass("p"); pass.addShader(shader)
-
-        let mesh = Mesh()
-        try mesh.addVertices([
-          [-0.5, -0.5, 0.0],
-          [ 0.5, -0.5, 0.0],
-          [ 0.0,  0.5, 0.0],
-        ])
-
-        try shader.validateMesh(mesh); // Ok
-        try pass.addMesh(mesh)
-    }
-
-    static func _example_core_texture_Texture() async throws {
-
-        let renderer = Renderer()
-        let shader = try Shader("""
-        @group(0) @binding(0) var my_texture: texture_2d<f32>
-        @group(0) @binding(1) var my_sampler: sampler
-        @vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
-          let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.))
-          return vec4f(p[i], 0., 1.)
-        }
-        @fragment fn main() -> @location(0) vec4<f32> { return vec4f(1.,1.,1.,1.); }
-
-        """)
-
-        // 1x1 white pixel. Passing a size tells create_texture to read the bytes
-        // as raw pixels; the default format is Rgba (sRGB-aware).
-        let pixels = [255, 255, 255, 255]
-        let texture = try await renderer.createTexture((pixels, [1, 1]))
-
-        // Bind the texture to the uniform name declared in WGSL.
-        try shader.set("my_texture", texture)
-    }
-
-    static func _example_core_texture_aspect() async throws {
-
-
-        let renderer = Renderer()
-        // 1x1 RGBA (white) raw pixel bytes
-        let pixels = [255,255,255,255]
-        let tex = try await renderer.createTexture((pixels, [1, 1]))
-        let a = tex.aspect()
-    }
-
-    static func _example_core_texture_get_image() async throws {
-        let renderer = Renderer()
-        let texture = try await renderer.createStorageTexture(([64, 64], TextureFormat.rgba))
-        try texture.write(Array(repeating: 0, count: 64 * 64 * 4))
-
-        let bytes = try await texture.getImage()
-    }
-
-    static func _example_core_texture_id() async throws {
-        let renderer = Renderer()
-        let texture = try await renderer.createStorageTexture(([64, 64], TextureFormat.rgba))
-        let id = texture.id()
-    }
-
-    static func _example_core_texture_set_sampler_options() async throws {
-
-        let renderer = Renderer()
-        let pixels: [UInt8] = [255, 255, 255, 255]
-        let options = TextureOptions(
-            size: Size(width: 1, height: 1, depth: nil),
-            format: .rgba8UnormSrgb,
-            sampler: SamplerOptions(repeatX: false, repeatY: false, smooth: true, compare: nil),
-            mipmaps: false,
-            usage: nil
-        )
-        let texture = try await renderer.createTexture(input: .bytes(pixels), options: options)
-
-        let opts = SamplerOptions(repeatX: true, repeatY: true, smooth: true, compare: nil)
-        texture.setSamplerOptions(opts: opts)
-    }
-
-    static func _example_core_texture_size() async throws {
-        let renderer = Renderer()
-        let pixels = [255,255,255,255]
-        let tex = try await renderer.createTexture((pixels, [1, 1]))
-        let sz = tex.size()
-    }
-
-    static func _example_core_texture_write() async throws {
-        let renderer = Renderer()
-        let texture = try await renderer.createStorageTexture(([64, 64], TextureFormat.rgba))
-        let frame_bytes = Array(repeating: 0, count: 64 * 64 * 4)
-
-        try texture.write(frame_bytes)
-    }
-
-    static func _example_core_texture_write_region() async throws {
-        let renderer = Renderer()
-        let texture = try await renderer.createStorageTexture(([64, 32], TextureFormat.rgba))
-        let bytes = Array(repeating: 0, count: 64 * 32 * 4)
-
-        // Simple sub-rectangle update.
-        try texture.writeRegion(bytes, [0, 0, 64, 32])
-
-        // Explicit data layout (advanced — when source rows are padded).
-        let region = TextureRegionMobile.from([0, 0, 64, 32]).withStride(256).withRows(32)
-        try texture.writeRegion(bytes, region)
-    }
-
-    static func _example_core_texture_mip_chain_TextureMipChain() async throws {
-
-        let renderer = Renderer()
-
-        // Minimal 1×1 RGBA raw pixel bytes.
-        let pixels = Data([255, 0, 0, 255])
-        let chain = try TextureMipChain.prepare(
-            bytes: pixels,
-            format: .rgba8UnormSrgb,
-            size: Size(width: 1, height: 1, depth: nil)
-        )
-
-        // Hand the chain to the unified create_texture entry.
-        let texture = try await renderer.createTexture(input: .prepared(chain))
-        let _ = texture.size()
-    }
-
-    static func _example_core_texture_mip_chain_base_size() async throws {
-
-        let pixels = Data(repeating: 0, count: 16 * 16 * 4)
-        let chain = try TextureMipChain.prepare(
-            bytes: pixels,
-            format: .rgba8UnormSrgb,
-            size: Size(width: 16, height: 16, depth: nil)
-        )
-        let sz = chain.baseSize()
-        let width = sz.width
-        let height = sz.height
-        let _ = (width, height)
-    }
-
-    static func _example_core_texture_mip_chain_format() async throws {
-
-        let pixels = Data(repeating: 200, count: 4 * 4 * 4)
-        let chain = try TextureMipChain.prepare(
-            bytes: pixels,
-            format: .rgba8UnormSrgb,
-            size: Size(width: 4, height: 4, depth: nil)
-        )
-        let _ = chain.format()
-    }
-
-    static func _example_core_texture_mip_chain_level_count() async throws {
-
-        let pixels = Data(repeating: 0, count: 8 * 8 * 4)
-        let chain = try TextureMipChain.prepare(
-            bytes: pixels,
-            format: .rgba8UnormSrgb,
-            size: Size(width: 8, height: 8, depth: nil)
-        )
-        let count = chain.levelCount()
-        let _ = count
-    }
-
-    static func _example_core_texture_mip_chain_levels() async throws {
-
-        let pixels = Data(repeating: 0, count: 8 * 8 * 4)
-        let chain = try TextureMipChain.prepare(
-            bytes: pixels,
-            format: .rgba8UnormSrgb,
-            size: Size(width: 8, height: 8, depth: nil)
-        )
-        let levelZeroBytes = try chain.level(index: 0)
-        let _ = levelZeroBytes
-    }
-
-    static func _example_core_texture_mip_chain_prepare() async throws {
-
-        // Raw RGBA path: include the size so prepare skips decoding.
-        let rawRgba = Data(repeating: 200, count: 8 * 8 * 4)
-        let chainRaw = try TextureMipChain.prepare(
-            bytes: rawRgba,
-            format: .rgba8UnormSrgb,
-            size: Size(width: 8, height: 8, depth: nil)
-        )
-
-        // Upload the chain through the regular createTexture entry point.
-        let renderer = Renderer()
-        let texture = try await renderer.createTexture(input: .prepared(chainRaw))
-        let _ = chainRaw.levelCount()
-        let __ = texture.size()
     }
 
     static func _example_geometry_mesh_Mesh() async throws {
+        do {
 
-        let mesh = Mesh()
-        try mesh.addVertex([0.0, 0.5, 0.0])
-        try mesh.addVertex([-0.5, -0.5, 0.0])
-        try mesh.addVertex([0.5, -0.5, 0.0])
+            let mesh = Mesh()
+            try mesh.addVertex([0.0, 0.5, 0.0])
+            try mesh.addVertex([-0.5, -0.5, 0.0])
+            try mesh.addVertex([0.5, -0.5, 0.0])
+        }
     }
 
     static func _example_geometry_mesh_add_instance() async throws {
+        do {
 
-        let m = Mesh()
-        let offset = [0.25, 0.10]
-        let tint = [1.0, 0.0, 0.0, 1.0]
-        try m.addInstance(Instance().set("offset", offset).set("tint", tint))
+            let m = Mesh()
+            let offset = [0.25, 0.10]
+            let tint = [1.0, 0.0, 0.0, 1.0]
+            try m.addInstance(Instance().set("offset", offset).set("tint", tint))
+        }
     }
 
     static func _example_geometry_mesh_add_instances() async throws {
+        do {
 
-        let m = Mesh()
-        let red = [1.0, 0.0, 0.0, 1.0]
-        let green = [0.0, 1.0, 0.0, 1.0]
-        let blue = [0.0, 0.0, 1.0, 1.0]
-        m.addInstances([
-            try Instance().set("tint", red),
-            try Instance().set("tint", green),
-            try Instance().set("tint", blue),
-        ])
+            let m = Mesh()
+            let red = [1.0, 0.0, 0.0, 1.0]
+            let green = [0.0, 1.0, 0.0, 1.0]
+            let blue = [0.0, 0.0, 1.0, 1.0]
+            m.addInstances([
+                try Instance().set("tint", red),
+                try Instance().set("tint", green),
+                try Instance().set("tint", blue),
+            ])
+        }
     }
 
     static func _example_geometry_mesh_add_vertex() async throws {
-        let m = Mesh()
-        try m.addVertex([0.0, 0.0])
+        do {
+            let m = Mesh()
+            try m.addVertex([0.0, 0.0])
+        }
     }
 
     static func _example_geometry_mesh_add_vertices() async throws {
-        let m = Mesh()
-        try m.addVertices([
-          [0.0, 0.0],
-          [1.0, 0.0],
-        ])
+        do {
+            let m = Mesh()
+            try m.addVertices([
+              [0.0, 0.0],
+              [1.0, 0.0],
+            ])
+        }
+    }
+
+    static func _example_geometry_mesh_clear_indices() async throws {
+        do {
+
+            let mesh = Mesh()
+            try mesh.addVertices([
+                try Vertex([-0.5, -0.5]),
+                try Vertex([ 0.5, -0.5]),
+                try Vertex([ 0.0,  0.5]),
+            ])
+            try mesh.setIndices([0, 1, 2])
+            mesh.clearIndices(); // back to auto-derived dedup
+        }
     }
 
     static func _example_geometry_mesh_clear_instances() async throws {
+        do {
 
-        let m = Mesh()
-        let red = [1.0, 0.0, 0.0, 1.0]
-        try m.addInstance(Instance().set("tint", red))
-        m.clearInstances(); // back to a single uninstanced draw
+            let m = Mesh()
+            let red = [1.0, 0.0, 0.0, 1.0]
+            try m.addInstance(Instance().set("tint", red))
+            m.clearInstances(); // back to a single uninstanced draw
+        }
     }
 
     static func _example_geometry_mesh_from_vertices() async throws {
+        do {
 
-        let mesh = try Mesh.fromVertices([
-            [0.0, 0.0],
-            [1.0, 0.0],
-            [0.0, 1.0],
-        ])
+            let mesh = try Mesh.fromVertices([
+                [0.0, 0.0],
+                [1.0, 0.0],
+                [0.0, 1.0],
+            ])
+        }
     }
 
     static func _example_geometry_mesh_new() async throws {
-        let m = Mesh()
+        do {
+            let m = Mesh()
+        }
+    }
+
+    static func _example_geometry_mesh_set_indices() async throws {
+        do {
+
+            // A quad split into two triangles via explicit indexing. The four corners
+            // happen to carry distinct UVs (only positions repeat), so we keep them
+            // all and reference each by index.
+            let mesh = Mesh()
+            let uv00 = [0.0, 0.0]
+            let uv10 = [1.0, 0.0]
+            let uv11 = [1.0, 1.0]
+            let uv01 = [0.0, 1.0]
+            try mesh.addVertices([
+                try Vertex([-0.5, -0.5]).set("uv", uv00),
+                try Vertex([ 0.5, -0.5]).set("uv", uv10),
+                try Vertex([ 0.5,  0.5]).set("uv", uv11),
+                try Vertex([-0.5,  0.5]).set("uv", uv01),
+            ])
+            try mesh.setIndices([0, 1, 2, 0, 2, 3])
+        }
     }
 
     static func _example_geometry_mesh_set_instance_count() async throws {
-        let m = Mesh()
-        try m.addVertices([
-            [-0.01, -0.01],
-            [ 0.01, -0.01],
-            [ 0.00,  0.01],
-        ])
-        // Draw one million instances, fetching per-particle data from a storage buffer.
-        m.setInstanceCount(1_000_000)
+        do {
+            let m = Mesh()
+            try m.addVertices([
+                [-0.01, -0.01],
+                [ 0.01, -0.01],
+                [ 0.00,  0.01],
+            ])
+            // Draw one million instances, fetching per-particle data from a storage buffer.
+            m.setInstanceCount(1_000_000)
+        }
     }
 
     static func _example_geometry_quad_Quad() async throws {
+        do {
 
-        let quad = try Quad([-0.5, -0.5], [0.5, 0.5])
+            let quad = try Quad([-0.5, -0.5], [0.5, 0.5])
+        }
     }
 
     static func _example_geometry_quad_get_mesh() async throws {
+        do {
 
-        let quad = try Quad([-0.5, -0.5], [0.5, 0.5])
-        let mesh = quad.getMesh()
+            let quad = try Quad([-0.5, -0.5], [0.5, 0.5])
+            let mesh = quad.getMesh()
+        }
     }
 
     static func _example_geometry_quad_new() async throws {
+        do {
 
-        let quad = try Quad([-0.5, -0.5], [0.5, 0.5])
+            let quad = try Quad([-0.5, -0.5], [0.5, 0.5])
+        }
     }
 
     static func _example_geometry_vertex_Vertex() async throws {
-        let v = try Vertex([0.0, 0.0, 0.0]).set("uv", [0.5, 0.5])
+        do {
+            let v = try Vertex([0.0, 0.0, 0.0]).set("uv0", [0.5, 0.5]).set("normal", [0.0, 1.0, 0.0])
+        }
     }
 
     static func _example_geometry_vertex_create_instance() async throws {
-        let v = try Vertex([0.0, 0.0])
-        let inst = v.createInstance()
+        do {
+            let v = try Vertex([0.0, 0.0])
+            let inst = v.createInstance()
+        }
     }
 
     static func _example_geometry_vertex_new() async throws {
-        let v = try Vertex([0.0, 0.0])
+        do {
+            let v = try Vertex([0.0, 0.0])
+        }
+    }
+
+    static func _example_geometry_vertex_pbr() async throws {
+        do {
+
+            // Build a triangle; override only what the mesh actually carries — NORMAL
+            // / COLOR0 / UV1 / TANGENT use their identity defaults from Vertex.pbr.
+            let mesh = Mesh()
+            try mesh.addVertex(Vertex.pbr([ 0.0,  0.5, 0.0]).set("uv0", [0.5, 1.0]))
+            try mesh.addVertex(Vertex.pbr([-0.5, -0.5, 0.0]).set("uv0", [0.0, 0.0]))
+            try mesh.addVertex(Vertex.pbr([ 0.5, -0.5, 0.0]).set("uv0", [1.0, 0.0]))
+        }
     }
 
     static func _example_geometry_vertex_set() async throws {
-        let v = try Vertex([0.0, 0.0, 0.0]).set("weight", 1.0).set("color",[1.0, 0.0, 0.0])
+        do {
+            let v = try Vertex([0.0, 0.0, 0.0]).set("weight", 1.0).set("color",[1.0, 0.0, 0.0])
+        }
+    }
+
+    static func _example_scene_camera_look_at() async throws {
+        do {
+
+            let camera = try Camera.perspective(1.047, 16.0 / 9.0, 0.1, 100.0).lookAt([0.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+        }
+    }
+
+    static func _example_scene_camera_orthographic() async throws {
+        do {
+
+            // A 16:9 viewport, 10 world units tall, depth range 0.1...100.
+            let camera = Camera.orthographic(-8.0, 8.0, -4.5, 4.5, 0.1, 100.0)
+        }
+    }
+
+    static func _example_scene_camera_perspective() async throws {
+        do {
+
+            let camera = Camera.perspective(1.047, 16.0 / 9.0, 0.1, 100.0)
+        }
+    }
+
+    static func _example_scene_camera_position() async throws {
+        do {
+
+            let camera = try Camera.perspective(1.047, 16.0 / 9.0, 0.1, 100.0).lookAt([3.0, 2.0, 8.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+
+            let eye = camera.position()
+        }
+    }
+
+    static func _example_scene_camera_set_aspect() async throws {
+        do {
+
+            let camera = Camera.perspective(1.047, 1.0, 0.1, 100.0)
+
+            // Window resize: 1920×1080 → wide-screen aspect.
+            camera.setAspect(1920.0 / 1080.0)
+        }
+    }
+
+    static func _example_scene_camera_view_proj() async throws {
+        do {
+
+            let camera = try Camera.perspective(1.047, 16.0 / 9.0, 0.1, 100.0).lookAt([0.0, 0.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+
+            let view_proj = camera.viewProj()
+        }
+    }
+
+    static func _example_scene_light_color() async throws {
+        do {
+
+            let warm_lamp = try Light.point([0.0, 2.0, 0.0], [1.0, 0.7, 0.4])
+        }
+    }
+
+    static func _example_scene_light_direction() async throws {
+        do {
+
+            let sun = try Light.directional([0.3, -1.0, -0.4], [1.0, 1.0, 1.0])
+            let lamp = try Light.point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0])
+        }
+    }
+
+    static func _example_scene_light_directional() async throws {
+        do {
+
+            let sun = try Light.directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9])
+        }
+    }
+
+    static func _example_scene_light_inner_cone_angle() async throws {
+        do {
+
+            let torch = try Light.spot([0.0, 1.8, 1.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0]).setConeAngles(0.15, 0.4)
+            let lamp = try Light.point([0.0, 0.0, 0.0], [1.0, 1.0, 1.0])
+        }
+    }
+
+    static func _example_scene_light_intensity() async throws {
+        do {
+
+            let bright = try Light.point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0]).setIntensity(5.0)
+        }
+    }
+
+    static func _example_scene_light_kind() async throws {
+        do {
+
+            let sun = try Light.directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
+            let bulb = try Light.point([0.0, 2.5, 0.0], [1.0, 1.0, 1.0])
+            let torch = try Light.spot([0.0, 1.8, 1.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
+        }
+    }
+
+    static func _example_scene_light_outer_cone_angle() async throws {
+        do {
+
+            let torch = try Light.spot([0.0, 1.8, 1.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0]).setConeAngles(0.15, 0.4)
+            let sun = try Light.directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
+        }
+    }
+
+    static func _example_scene_light_point() async throws {
+        do {
+
+            let bulb = try Light.point([0.0, 2.5, 0.0], [1.0, 0.95, 0.8]).setIntensity(15.0)
+        }
+    }
+
+    static func _example_scene_light_position() async throws {
+        do {
+
+            let lamp = try Light.point([0.0, 2.5, 0.0], [1.0, 1.0, 1.0])
+            let sun = try Light.directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
+        }
+    }
+
+    static func _example_scene_light_range() async throws {
+        do {
+
+            let lamp = try Light.point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0])
+            let sun = try Light.directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
+        }
+    }
+
+    static func _example_scene_light_set_color() async throws {
+        do {
+
+            let lamp = try Light.point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0])
+
+            // Warm-tint the lamp later — every Pass that absorbed """lamp""" sees the
+            // color on the next render.
+            try lamp.setColor([1.0, 0.7, 0.4])
+        }
+    }
+
+    static func _example_scene_light_set_cone_angles() async throws {
+        do {
+
+            let torch = try Light.spot([0.0, 1.8, 1.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
+            try torch.setConeAngles(0.15, 0.4)
+        }
+    }
+
+    static func _example_scene_light_set_direction() async throws {
+        do {
+
+            let sun = try Light.directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
+            try sun.setDirection([0.3, -0.8, -0.5])
+        }
+    }
+
+    static func _example_scene_light_set_intensity() async throws {
+        do {
+
+            let torch = try Light.spot([0.0, 1.8, 1.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
+
+            torch.setIntensity(8.0)
+        }
+    }
+
+    static func _example_scene_light_set_position() async throws {
+        do {
+
+            let lamp = try Light.point([0.0, 0.0, 0.0], [1.0, 1.0, 1.0])
+            try lamp.setPosition([3.0, 1.5, -2.0])
+        }
+    }
+
+    static func _example_scene_light_set_range() async throws {
+        do {
+
+            let lamp = try Light.point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0])
+            try lamp.setRange(8.0)
+        }
+    }
+
+    static func _example_scene_light_spot() async throws {
+        do {
+
+            let torch = try Light.spot([0.0, 1.8, 1.0], [0.0, -0.3, -1.0], [1.0, 0.9, 0.7]).setIntensity(5.0).setConeAngles(0.15, 0.4)
+        }
+    }
+
+    static func _example_scene_material_Material() async throws {
+        do {
+
+            let mesh = Mesh()
+            try mesh.addVertex(
+                try Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0])
+            )
+
+            let material = try Material.pbr().baseColor([0.85, 0.2, 0.2, 1.0]).metallic(0.0).roughness(0.4).emissive([0.0, 0.0, 0.05])
+
+            let model = Model(mesh, material)
+        }
+    }
+
+    static func _example_scene_material_alpha_cutoff() async throws {
+        do {
+
+            let foliage = Material.pbr().alphaCutoff(0.3)
+        }
+    }
+
+    static func _example_scene_material_alpha_mode() async throws {
+        do {
+
+            let foliage = Material.pbr().alphaMode(AlphaMode.mask).alphaCutoff(0.3)
+
+            let glass = try Material.pbr().baseColor([0.9, 0.95, 1.0, 0.25]).alphaMode(AlphaMode.blend)
+
+            let solid = Material.pbr().alphaMode(AlphaMode.opaque)
+        }
+    }
+
+    static func _example_scene_material_base_color() async throws {
+        do {
+
+            let renderer = Renderer()
+            let red = try Material.pbr().baseColor([1.0, 0.2, 0.2, 1.0])
+        }
+    }
+
+    static func _example_scene_material_base_color_texture() async throws {
+        do {
+
+            let renderer = Renderer()
+            let albedo_bytes = [
+                255, 200, 120, 255,
+                255, 240, 180, 255,
+                230, 180, 100, 255,
+                255, 220, 150, 255,
+            ]
+            let albedo = try await renderer.createTexture((albedo_bytes, [2, 2]))
+
+            // Every Material that points at """albedo""" reuses the same uploaded GPU
+            // texture; passing the same handle into N Material instances costs one
+            // upload and N shader-uniform references.
+            let blob = Material.pbr().baseColorTexture(albedo)
+        }
+    }
+
+    static func _example_scene_material_custom() async throws {
+        do {
+
+            let wireframe = try Shader("""
+                struct MeshTransform { model: mat4x4<f32> }
+                struct Camera { view_proj: mat4x4<f32>, position: vec3<f32> }
+                @group(0) @binding(0) var<uniform> camera: Camera
+                @group(1) @binding(0) var<uniform> mesh: MeshTransform
+
+                @vertex
+                fn vs_main(@location(0) p: vec3<f32>) -> @builtin(position) vec4<f32> {
+                    return camera.view_proj * mesh.model * vec4<f32>(p, 1.0)
+                }
+                @fragment fn fs_main() -> @location(0) vec4<f32> {
+                    return vec4<f32>(0.0, 1.0, 0.4, 1.0)
+                }
+
+            """)
+
+            let wire_mat = Material.custom(wireframe)
+        }
+    }
+
+    static func _example_scene_material_double_sided() async throws {
+        do {
+
+            let renderer = Renderer()
+            // Leaf cards: thin, single-quad geometry; needs both sides + alpha cut-out.
+            let leaf = Material.pbr().doubleSided(true).alphaMode(AlphaMode.mask).alphaCutoff(0.5)
+
+            // Default is single-sided — back-face culling on.
+            let solid_mesh = Material.pbr().doubleSided(false)
+        }
+    }
+
+    static func _example_scene_material_emissive() async throws {
+        do {
+
+            let renderer = Renderer()
+            let lava = try Material.pbr().baseColor([0.1, 0.05, 0.0, 1.0]).emissive([1.5, 0.4, 0.1])
+        }
+    }
+
+    static func _example_scene_material_emissive_texture() async throws {
+        do {
+
+            let renderer = Renderer()
+            let glow_bytes = [
+                255, 0, 0, 255,
+                255,   0, 0, 255,
+                255,   0, 0, 255,
+                255,   0, 0, 255,
+            ]
+            let glow = try await renderer.createTexture((glow_bytes, [2, 2]))
+            let mat = try Material.pbr().emissive([0.8, 0.0, 0.0]).emissiveTexture(glow)
+        }
+    }
+
+    static func _example_scene_material_metallic() async throws {
+        do {
+
+            let chrome = Material.pbr().metallic(1.0).roughness(0.05)
+        }
+    }
+
+    static func _example_scene_material_metallic_roughness_texture() async throws {
+        do {
+
+            let renderer = Renderer()
+            let mr_map_bytes = [
+                0, 200, 50, 255,
+                0,   240, 80, 255,
+                0,   180, 30, 255,
+                0,   220, 60, 255,
+            ]
+            let mr_map = try await renderer.createTexture((mr_map_bytes, [2, 2]))
+            let mat = Material.pbr().metallicRoughnessTexture(mr_map)
+        }
+    }
+
+    static func _example_scene_material_normal_scale() async throws {
+        do {
+
+            let detailed = Material.pbr().normalScale(1.5)
+        }
+    }
+
+    static func _example_scene_material_normal_texture() async throws {
+        do {
+
+            let renderer = Renderer()
+            let normal_map_bytes = [
+                128, 128, 255, 255,
+                128,   128, 255, 255,
+                128,   128, 255, 255,
+                128,   128, 255, 255,
+            ]
+            let normal_map = try await renderer.createTexture((normal_map_bytes, [2, 2]))
+            let mat = Material.pbr().normalTexture(normal_map).normalScale(1.2)
+        }
+    }
+
+    static func _example_scene_material_occlusion_strength() async throws {
+        do {
+
+            let crevices = Material.pbr().occlusionStrength(0.8)
+        }
+    }
+
+    static func _example_scene_material_occlusion_texture() async throws {
+        do {
+
+            let renderer = Renderer()
+            let ao_bytes = [
+                220, 0, 0, 255,
+                180,   0, 0, 255,
+                200,   0, 0, 255,
+                160,   0, 0, 255,
+            ]
+            let ao = try await renderer.createTexture((ao_bytes, [2, 2]))
+            let mat = Material.pbr().occlusionTexture(ao)
+        }
+    }
+
+    static func _example_scene_material_pbr() async throws {
+        do {
+
+            let bronze = try Material.pbr().baseColor([0.8, 0.5, 0.2, 1.0]).metallic(1.0).roughness(0.3)
+        }
+    }
+
+    static func _example_scene_material_roughness() async throws {
+        do {
+
+            let renderer = Renderer()
+            let satin = Material.pbr().roughness(0.35)
+        }
+    }
+
+    static func _example_scene_material_shader() async throws {
+        do {
+
+            // Direct uniform access for a custom field that isn't covered by the
+            // Material setters or by Camera / Light.
+            let material = Material.pbr()
+            try material.shader().set("material.alpha_cutoff", 0.25)
+        }
+    }
+
+    static func _example_scene_material_uv_transform() async throws {
+        do {
+
+            // Tile the texture 4× in both directions, rotate 45°, shift by half a tile.
+            let brick = try Material.pbr().uvTransform([0.5, 0.0], [4.0, 4.0], 0.785); // 45° in radians
+        }
+    }
+
+    static func _example_scene_model_material() async throws {
+        do {
+
+            let mesh = Mesh()
+            try mesh.addVertex(
+                try Vertex([0.0, 0.0, 0.0]).set("normal", [0.0, 1.0, 0.0]).set("uv0", [0.0, 0.0])
+            )
+
+            let model = Model(mesh, Material.pbr())
+            try model.material().shader().set("camera.position", [0.0, 0.0, 5.0])
+        }
+    }
+
+    static func _example_scene_model_mesh() async throws {
+        do {
+
+            let mesh = Mesh()
+            try mesh.addVertex(
+                try Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0])
+            )
+
+            let model = Model(mesh, Material.pbr())
+            try model.mesh().addVertex(
+                try Vertex([-0.5, -0.5, 0.0]).set("normal", [0.0, 0.0, 1.0]).set("uv0", [0.0, 0.0])
+            )
+        }
+    }
+
+    static func _example_scene_model_new() async throws {
+        do {
+
+            let mesh = Mesh()
+            try mesh.addVertex(
+                try Vertex([0.0, 0.0, 0.0]).set("normal", [0.0, 1.0, 0.0]).set("uv0", [0.0, 0.0])
+            )
+
+            let model = Model(mesh, Material.pbr())
+        }
+    }
+
+    static func _example_scene_model_rotate() async throws {
+        do {
+
+            let renderer = Renderer()
+            let mesh = Mesh()
+            try mesh.addVertex(
+                try Vertex([0.0, 0.0, 0.0]).set("normal", [0.0, 1.0, 0.0]).set("uv0", [0.0, 0.0])
+            )
+
+            let model = Model(mesh, Material.pbr())
+            try model.rotate([0.0, 1.0, 0.0], 1.571); // 90° around Y
+        }
+    }
+
+    static func _example_scene_model_scale() async throws {
+        do {
+
+            let renderer = Renderer()
+            let mesh = Mesh()
+            try mesh.addVertex(
+                try Vertex([0.0, 0.0, 0.0]).set("normal", [0.0, 1.0, 0.0]).set("uv0", [0.0, 0.0])
+            )
+
+            let model = Model(mesh, Material.pbr())
+            try model.scale([2.0, 2.0, 2.0])
+        }
+    }
+
+    static func _example_scene_model_set_transform() async throws {
+        do {
+
+            let renderer = Renderer()
+            let mesh = Mesh()
+            try mesh.addVertex(
+                try Vertex([0.0, 0.0, 0.0]).set("normal", [0.0, 1.0, 0.0]).set("uv0", [0.0, 0.0])
+            )
+
+            let model = Model(mesh, Material.pbr())
+            try model.setTransform([
+                [2.0, 0.0, 0.0, 0.0],
+                [0.0, 2.0, 0.0, 0.0],
+                [0.0, 0.0, 2.0, 0.0],
+                [3.0, 0.0, 0.0, 1.0],
+            ])
+        }
+    }
+
+    static func _example_scene_model_set_visible() async throws {
+        do {
+
+            let mesh = Mesh()
+            try mesh.addVertex(Vertex.pbr([0.0, 0.5, 0.0]))
+            let blob = Model(mesh, Material.pbr())
+
+            // Wide zoom level — skip the detail blobs.
+            blob.setVisible(false)
+            // Zoom back in — turn them on again.
+            blob.setVisible(true)
+        }
+    }
+
+    static func _example_scene_model_transform() async throws {
+        do {
+
+            let renderer = Renderer()
+            let mesh = Mesh()
+            try mesh.addVertex(
+                try Vertex([0.0, 0.0, 0.0]).set("normal", [0.0, 1.0, 0.0]).set("uv0", [0.0, 0.0])
+            )
+
+            let model = Model(mesh, Material.pbr())
+            let identity = model.transform()
+        }
+    }
+
+    static func _example_scene_model_translate() async throws {
+        do {
+
+            let renderer = Renderer()
+            let mesh = Mesh()
+            try mesh.addVertex(
+                try Vertex([0.0, 0.0, 0.0]).set("normal", [0.0, 1.0, 0.0]).set("uv0", [0.0, 0.0])
+            )
+
+            let model = Model(mesh, Material.pbr())
+            try model.translate([5.0, 0.0, -2.0])
+        }
+    }
+
+    static func _example_scene_model_visible() async throws {
+        do {
+
+            let mesh = Mesh()
+            try mesh.addVertex(Vertex.pbr([0.0, 0.5, 0.0]))
+            let model = Model(mesh, Material.pbr())
+
+            // Models start visible; toggle with """set_visible""".
+            let visible_now = model.visible()
+        }
+    }
+
+    static func _example_scene_scene_add() async throws {
+        do {
+
+            let renderer = Renderer()
+
+            let mesh = Mesh()
+            try mesh.addVertex(
+                try Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0])
+            )
+            let model = Model(mesh, Material.pbr())
+
+            let camera = try Camera.perspective(1.047, 1.0, 0.1, 100.0).lookAt([0.0, 0.0, 3.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+            let sun = try Light.directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9])
+
+            let scene = Scene()
+            try scene.add(model)
+            try scene.add(camera)
+            try scene.add(sun)
+
+            // Updating the camera later is enough — every shader on the scene picks
+            // the view_proj up at the next render.
+            try camera.lookAt([3.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+        }
+    }
+
+    static func _example_scene_scene_add_pass() async throws {
+        do {
+
+            let renderer = Renderer()
+
+            let mesh = Mesh()
+            try mesh.addVertex(
+                try Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0])
+            )
+            let model = Model(mesh, Material.pbr())
+
+            // A backdrop pass that clears to a soft blue before the scene's main draw.
+            let backdrop = Pass("backdrop")
+            try backdrop.setClearColor([0.05, 0.08, 0.12, 1.0])
+
+            let scene = Scene()
+            scene.addPass(backdrop)
+            try scene.add(model)
+        }
+    }
+
+    static func _example_scene_scene_ambient() async throws {
+        do {
+
+            let renderer = Renderer()
+            let target = try await renderer.createTextureTarget([64, 64])
+
+            let mesh = Mesh()
+            try mesh.addVertex(
+                try Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0])
+            )
+
+            let scene = Scene()
+            // Warm dusk ambient — applies to every Material added below.
+            try scene.ambient([0.06, 0.04, 0.03])
+            try scene.add(Model(mesh, Material.pbr()))
+            try scene.add(Light.directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9]))
+
+            try renderer.render(scene, target)
+        }
+    }
+
+    static func _example_scene_scene_cameras() async throws {
+        do {
+
+            let scene = try await Scene.load("path/to/model.glb")
+
+            // Animate every camera the glTF shipped per frame instead of supplying
+            // our own. Most scenes carry a single camera, so the loop body usually
+            // runs once.
+            for camera in scene.cameras() {
+                try camera.lookAt([0.0, 1.5, 4.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+                camera.setAspect(16.0 / 9.0)
+            }
+        }
+    }
+
+    static func _example_scene_scene_lights() async throws {
+        do {
+
+            let scene = try await Scene.load("path/to/model.glb")
+
+            // Darken every loaded light to half intensity for a moody pass.
+            for light in scene.lights() {
+                let current = light.intensity()
+                light.setIntensity(current * 0.5)
+            }
+        }
+    }
+
+    static func _example_scene_scene_load() async throws {
+        do {
+
+            // A path — """.gltf""" JSON (with external buffers/images) or a """.glb""" container.
+            let scene = try await Scene.load("path/to/model.gltf")
+
+            // In-memory """.glb""" bytes — fetched from disk, the network, or another
+            // asset pipeline before this point.
+            let glb_bytes = "/healthcheck/public/favicon.png"
+            let scene2 = try await Scene.load(glb_bytes)
+        }
+    }
+
+    static func _example_scene_scene_models() async throws {
+        do {
+
+            let mesh = Mesh()
+            try mesh.addVertex(
+                try Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0])
+            )
+            let model = Model(mesh, Material.pbr())
+
+            let scene = Scene()
+            try scene.add(model)
+
+            // LOD switch: hide every model the user just loaded, based on a
+            // camera-distance heuristic the caller computes elsewhere.
+            for m in scene.models() {
+                m.setVisible(false)
+            }
+        }
+    }
+
+    static func _example_scene_scene_new() async throws {
+        do {
+
+            let scene = Scene()
+            // scene is empty; add Models / Cameras / Lights with """scene.add(...)""".
+        }
     }
 
     static func _example_targets_target_Target() async throws {
+        do {
 
 
-        let renderer = Renderer()
+            let renderer = Renderer()
 
-        // Use your platform's windowing system to create a window.
-        // iOS: window/canvas provided by CAMetalLayer at runtime
+            // Use your platform's windowing system to create a window.
+            // iOS: window/canvas provided by CAMetalLayer at runtime
 
-        let target = try await renderer.createTextureTarget([800, 600])
+            let target = try await renderer.createTextureTarget([800, 600])
 
-        // To animate, render again in your event loop...
-        try renderer.render(Shader(""), target)
-        try renderer.render(Shader(""), target)
+            // To animate, render again in your event loop...
+            try renderer.render(Shader(""), target)
+            try renderer.render(Shader(""), target)
+        }
     }
 
     static func _example_targets_target_get_image() async throws {
+        do {
 
 
-        let renderer = Renderer()
-        let target = try await renderer.createTextureTarget([16, 16])
-        try renderer.render(Shader(""), target)
+            let renderer = Renderer()
+            let target = try await renderer.createTextureTarget([16, 16])
+            try renderer.render(Shader(""), target)
 
-        let image = try await target.getImage()
+            let image = try await target.getImage()
+        }
     }
 
     static func _example_targets_target_resize() async throws {
+        do {
 
 
-        let renderer = Renderer()
-        let target = try await renderer.createTextureTarget([64, 32])
+            let renderer = Renderer()
+            let target = try await renderer.createTextureTarget([64, 32])
 
-        target.resize([128, 64])
+            target.resize([128, 64])
+        }
     }
 
     static func _example_targets_target_size() async throws {
+        do {
 
 
-        let renderer = Renderer()
-        let target = try await renderer.createTextureTarget([64, 32])
-        let size = target.size()
-        let width = size.width
-        let height = size.height
-        let depth = size.depth
+            let renderer = Renderer()
+            let target = try await renderer.createTextureTarget([64, 32])
+            let size = target.size()
+            let width = size.width
+            let height = size.height
+            let depth = size.depth
+        }
     }
 
     static func _example_targets_texture_target_TextureTarget() async throws {
+        do {
 
 
-        let renderer = Renderer()
-        let target = try await renderer.createTextureTarget([64, 64])
+            let renderer = Renderer()
+            let target = try await renderer.createTextureTarget([64, 64])
 
-        let shader = Shader.default()
-        try renderer.render(shader, target)
+            let shader = Shader.default()
+            try renderer.render(shader, target)
 
-        let image = try await target.getImage()
+            let image = try await target.getImage()
+        }
     }
 
-    static func _example_targets_texture_target_get_image() async throws {
+    static func _example_targets_texture_target_texture() async throws {
+        do {
 
+            let renderer = Renderer()
+            let target = try await renderer.createTextureTarget([256, 256])
 
-        let renderer = Renderer()
-        let target = try await renderer.createTextureTarget([16, 16])
-        try renderer.render(Shader(""), target)
+            // Bind the offscreen target's contents as a uniform on a downstream
+            // post-processing shader.
+            let post = try Shader("""
+                @group(0) @binding(0) var input_image : texture_2d<f32>
+                @group(0) @binding(1) var input_sampler : sampler
 
-        let image = try await target.getImage()
-    }
+                @vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+                    let p = array<vec2<f32>, 3>(vec2f(-1.0,-1.0), vec2f(3.0,-1.0), vec2f(-1.0,3.0))
+                    return vec4<f32>(p[i], 0.0, 1.0)
+                }
+                @fragment fn fs_main(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
+                    return textureSample(input_image, input_sampler, vec2<f32>(0.5, 0.5))
+                }
 
-    static func _example_targets_texture_target_resize() async throws {
-
-
-        let renderer = Renderer()
-        let target = try await renderer.createTextureTarget([64, 64])
-
-        target.resize([128, 32])
-    }
-
-    static func _example_targets_texture_target_size() async throws {
-
-
-        let renderer = Renderer()
-        let target = try await renderer.createTextureTarget([64, 64])
-        let size = target.size()
-        let width = size.width
-        let height = size.height
-        let depth = size.depth
+            """)
+            try post.set("input_image", target.texture())
+        }
     }
 
     static func _example_targets_window_target_WindowTarget() async throws {
+        do {
 
 
-        // Use your platform's windowing system to create a window.
-        // iOS: window/canvas provided by CAMetalLayer at runtime
+            // Use your platform's windowing system to create a window.
+            // iOS: window/canvas provided by CAMetalLayer at runtime
 
-        let renderer = Renderer()
-        let target = try await renderer.createTextureTarget([800, 600])
+            let renderer = Renderer()
+            let target = try await renderer.createTextureTarget([800, 600])
 
-        try renderer.render(Shader(""), target)
+            try renderer.render(Shader(""), target)
+        }
     }
 
     static func _example_targets_window_target_get_image() async throws {
+        do {
 
 
-        let renderer = Renderer()
-        let target = try await renderer.createTextureTarget([16, 16])
-        try renderer.render(Shader(""), target)
+            let renderer = Renderer()
+            let target = try await renderer.createTextureTarget([16, 16])
+            try renderer.render(Shader(""), target)
 
-        let image = try await target.getImage()
+            let image = try await target.getImage()
+        }
     }
 
     static func _example_targets_window_target_resize() async throws {
+        do {
 
 
-        let renderer = Renderer()
-        let target = try await renderer.createTextureTarget([64, 32])
+            let renderer = Renderer()
+            let target = try await renderer.createTextureTarget([64, 32])
 
-        target.resize([128, 64])
+            target.resize([128, 64])
+        }
     }
 
     static func _example_targets_window_target_size() async throws {
+        do {
 
 
-        let renderer = Renderer()
-        let target = try await renderer.createTextureTarget([64, 32])
+            let renderer = Renderer()
+            let target = try await renderer.createTextureTarget([64, 32])
+        }
+    }
+
+    static func _example_texture_mipmap_Mipmap() async throws {
+        do {
+
+            let renderer = Renderer()
+
+            // Minimal 1×1 RGBA raw pixel bytes.
+            let pixels = Data([255, 0, 0, 255])
+            let chain = try Mipmap.build(
+                bytes: pixels,
+                format: .rgba8UnormSrgb,
+                size: Size(width: 1, height: 1, depth: nil)
+            )
+
+            // Hand the chain to the unified create_texture entry.
+            let texture = try await renderer.createTexture(input: .prepared(chain))
+            let _ = texture.size()
+        }
+    }
+
+    static func _example_texture_mipmap_build() async throws {
+        do {
+
+            // Raw RGBA path: include the size so build skips decoding.
+            let rawRgba = Data(repeating: 200, count: 8 * 8 * 4)
+            let chainRaw = try Mipmap.build(
+                bytes: rawRgba,
+                format: .rgba8UnormSrgb,
+                size: Size(width: 8, height: 8, depth: nil)
+            )
+
+            // Upload the chain through the regular createTexture entry point.
+            let renderer = Renderer()
+            let texture = try await renderer.createTexture(input: .prepared(chainRaw))
+            let _ = chainRaw.count()
+            let __ = texture.size()
+        }
+    }
+
+    static func _example_texture_mipmap_count() async throws {
+        do {
+
+            let pixels = Data(repeating: 0, count: 8 * 8 * 4)
+            let chain = try Mipmap.build(
+                bytes: pixels,
+                format: .rgba8UnormSrgb,
+                size: Size(width: 8, height: 8, depth: nil)
+            )
+            let count = chain.count()
+            let _ = count
+        }
+    }
+
+    static func _example_texture_mipmap_format() async throws {
+        do {
+
+            let pixels = Data(repeating: 200, count: 4 * 4 * 4)
+            let chain = try Mipmap.build(
+                bytes: pixels,
+                format: .rgba8UnormSrgb,
+                size: Size(width: 4, height: 4, depth: nil)
+            )
+            let _ = chain.format()
+        }
+    }
+
+    static func _example_texture_mipmap_levels() async throws {
+        do {
+
+            let pixels = Data(repeating: 0, count: 8 * 8 * 4)
+            let chain = try Mipmap.build(
+                bytes: pixels,
+                format: .rgba8UnormSrgb,
+                size: Size(width: 8, height: 8, depth: nil)
+            )
+            let levelZeroBytes = try chain.level(index: 0)
+            let _ = levelZeroBytes
+        }
+    }
+
+    static func _example_texture_mipmap_size() async throws {
+        do {
+
+            let pixels = Data(repeating: 0, count: 16 * 16 * 4)
+            let chain = try Mipmap.build(
+                bytes: pixels,
+                format: .rgba8UnormSrgb,
+                size: Size(width: 16, height: 16, depth: nil)
+            )
+            let sz = chain.size()
+            let width = sz.width
+            let height = sz.height
+            let _ = (width, height)
+        }
+    }
+
+    static func _example_texture_texture_Texture() async throws {
+        do {
+
+            let renderer = Renderer()
+            let shader = try Shader("""
+            @group(0) @binding(0) var my_texture: texture_2d<f32>
+            @group(0) @binding(1) var my_sampler: sampler
+            @vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+              let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.))
+              return vec4f(p[i], 0., 1.)
+            }
+            @fragment fn main() -> @location(0) vec4<f32> { return vec4f(1.,1.,1.,1.); }
+
+            """)
+
+            // 1x1 white pixel. Passing a size tells create_texture to read the bytes
+            // as raw pixels; the default format is Rgba (sRGB-aware).
+            let pixels = [255, 255, 255, 255]
+            let texture = try await renderer.createTexture((pixels, [1, 1]))
+
+            // Bind the texture to the uniform name declared in WGSL.
+            try shader.set("my_texture", texture)
+        }
+    }
+
+    static func _example_texture_texture_aspect() async throws {
+        do {
+
+
+            let renderer = Renderer()
+            // 1x1 RGBA (white) raw pixel bytes
+            let pixels = [255,255,255,255]
+            let tex = try await renderer.createTexture((pixels, [1, 1]))
+            let a = tex.aspect()
+        }
+    }
+
+    static func _example_texture_texture_get_image() async throws {
+        do {
+            let renderer = Renderer()
+            let texture = try await renderer.createStorageTexture(([64, 64], TextureFormat.rgba))
+            try texture.write(Array(repeating: 0, count: 64 * 64 * 4))
+
+            let bytes = try await texture.getImage()
+        }
+    }
+
+    static func _example_texture_texture_id() async throws {
+        do {
+            let renderer = Renderer()
+            let texture = try await renderer.createStorageTexture(([64, 64], TextureFormat.rgba))
+            let id = texture.id()
+        }
+    }
+
+    static func _example_texture_texture_set_sampler_options() async throws {
+        do {
+
+            let renderer = Renderer()
+            let pixels: [UInt8] = [255, 255, 255, 255]
+            let options = TextureOptions(
+                size: Size(width: 1, height: 1, depth: nil),
+                format: .rgba8UnormSrgb,
+                sampler: SamplerOptions(repeatX: false, repeatY: false, smooth: true, compare: nil),
+                mipmaps: false,
+                usage: nil
+            )
+            // `.bytes(_:)` carries `Data`, not `[UInt8]`, so wrap the array explicitly.
+            let texture = try await renderer.createTexture(input: .bytes(Data(pixels)), options: options)
+
+            let opts = SamplerOptions(repeatX: true, repeatY: true, smooth: true, compare: nil)
+            texture.setSamplerOptions(opts: opts)
+        }
+    }
+
+    static func _example_texture_texture_size() async throws {
+        do {
+            let renderer = Renderer()
+            let pixels = [255,255,255,255]
+            let tex = try await renderer.createTexture((pixels, [1, 1]))
+            let sz = tex.size()
+        }
+    }
+
+    static func _example_texture_texture_write() async throws {
+        do {
+            let renderer = Renderer()
+            let texture = try await renderer.createStorageTexture(([64, 64], TextureFormat.rgba))
+            let frame_bytes = Array(repeating: 0, count: 64 * 64 * 4)
+
+            try texture.write(frame_bytes)
+        }
+    }
+
+    static func _example_texture_texture_write_region() async throws {
+        do {
+            let renderer = Renderer()
+            let texture = try await renderer.createStorageTexture(([64, 32], TextureFormat.rgba))
+            let bytes = Array(repeating: 0, count: 64 * 32 * 4)
+
+            // Simple sub-rectangle update.
+            try texture.writeRegion(bytes, [0, 0, 64, 32])
+
+            // Explicit data layout (advanced — when source rows are padded).
+            let region = TextureRegionMobile.from([0, 0, 64, 32]).withStride(256).withRows(32)
+            try texture.writeRegion(bytes, region)
+        }
     }
 
 }

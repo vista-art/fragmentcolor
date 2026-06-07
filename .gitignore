@@ -8,6 +8,15 @@
 **/.build/
 /.claude/
 
+# Minimal glTF test fixtures materialised by build.rs so the
+# `Scene::load("path/to/model.glb")` examples have a real file to open
+# when the Python healthcheck runs. Regenerated on every cargo build via
+# scripts/website.rs::write_scene_load_fixtures(); never committed.
+/path/
+# Same fixture, copied into the web healthcheck's served tree so the JS
+# `Scene.load` examples can fetch the `.glb` bytes over HTTP.
+/platforms/web/healthcheck/public/model.glb
+
 # Gradle / Android per-machine + build outputs
 **/.gradle/
 platforms/kotlin/local.properties
@@ -47,6 +56,7 @@ venv/
 *.egg-info/
 .installed.cfg
 *.egg
+out/
 
 # Installer logs
 pip-log.txt
@@ -101,3 +111,9 @@ fragmentcolor.code-workspace
 # Local-only example outputs (gallery PNGs, scratch renders, etc.).
 # Will become the registry catalog thumbnails on the website later.
 examples/rust/out/
+
+# Lock-block versioning store (dev-mode metadata, not persisted).
+# The website's Astro integration (docs/website/integrations/locks.ts)
+# writes here; the locks CLI (examples/rust/examples/locks.rs) reads
+# from here. Co-located with the website that owns it.
+docs/website/.locks/

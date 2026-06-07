@@ -167,6 +167,13 @@ impl Shader {
 ///
 /// The ShaderObject is wrapped in an Arc and managed by the Shader struct.
 /// This allows it to be shared between multiple passes and render pipelines.
+///
+/// `alpha_mode` and `double_sided` are pipeline-state back-references owned
+/// by Material (see `src/material/`). The renderer reads them when building
+/// a `RenderPipelineKey` so different Material configurations cache to
+/// distinct pipelines. They live here rather than on Material because the
+/// renderer iterates `pass.shaders` (Arc<ShaderObject>) at draw time and
+/// doesn't otherwise know which Material a shader belongs to.
 #[derive(Debug)]
 pub(crate) struct ShaderObject {
     pub(crate) hash: ShaderHash,
@@ -175,6 +182,29 @@ pub(crate) struct ShaderObject {
     pub(crate) total_bytes: u64,
     pub(crate) pending: DashMap<String, UniformData>,
     pub(crate) meshes: RwLock<Vec<Arc<crate::mesh::MeshObject>>>,
+    pub(crate) alpha_mode: RwLock<crate::material::AlphaMode>,
+    pub(crate) double_sided: RwLock<bool>,
+    /// Number of user-attached Lights on this Shader. `Light::apply_to_shader`
+    /// consults this counter to allocate the next free slot in the WGSL
+    /// `lights.lights[..]` array. Material::pbr seeds slot 0 with a dim
+    /// directional default; the first `Light` attached overwrites that
+    /// slot (so adding one Light replaces the placeholder rather than
+    /// double-lighting the scene).
+    pub(crate) user_lights_attached: RwLock<u32>,
+    /// Texture uploads queued by lazy setters (typically the Material's
+    /// `*_texture(impl Into<TextureInput>)` family). The renderer drains
+    /// this list at first render and via the explicit `Renderer::load`
+    /// surface; each entry becomes a real GPU texture + a
+    /// `UniformData::Texture` write under the recorded key.
+    pub(crate) pending_textures: RwLock<Vec<PendingTexture>>,
+}
+
+/// A texture upload waiting to be realized — slot key plus the TextureInput
+/// the renderer will hand to `create_texture`.
+#[derive(Debug, Clone)]
+pub(crate) struct PendingTexture {
+    pub key: String,
+    pub input: crate::TextureInput,
 }
 
 impl Default for ShaderObject {
@@ -278,6 +308,20 @@ impl ShaderObject {
         self.meshes.write().clear();
     }
 
+    /// Set the pipeline-state alpha mode for this shader. Called by
+    /// `Material::alpha_mode`; the renderer reads it when building a
+    /// `RenderPipelineKey`. See [`crate::material::AlphaMode`].
+    pub(crate) fn set_alpha_mode(&self, mode: crate::material::AlphaMode) {
+        *self.alpha_mode.write() = mode;
+    }
+
+    /// Set the pipeline-state double-sided flag for this shader. Called by
+    /// `Material::double_sided`; the renderer reads it to flip the
+    /// `cull_mode` and key it into the pipeline cache.
+    pub(crate) fn set_double_sided(&self, value: bool) {
+        *self.double_sided.write() = value;
+    }
+
     /// Get a uniform value as UniformData enum.
     ///
     /// Blocking read: waits briefly (microseconds) for any in-flight `set`
@@ -294,6 +338,16 @@ impl ShaderObject {
             .get(key)
             .ok_or(ShaderError::UniformNotFound(key.into()))?;
         Ok(uniform.data.clone())
+    }
+
+    /// True iff the shader declares a top-level storage binding named
+    /// `root`. Used by [`crate::Renderer::read_storage`] as a precondition
+    /// before issuing the GPU readback. Not part of the user-facing API —
+    /// the outer `Shader` doesn't re-export this; callers reach for
+    /// `Renderer::read_storage` which surfaces `StorageBindingNotFound` on
+    /// the same condition.
+    pub(crate) fn has_storage(&self, root: &str) -> bool {
+        self.storage.read().has_storage(root)
     }
 
     /// Tells weather the shader is a compute shader.
@@ -328,7 +382,47 @@ impl ShaderObject {
             total_bytes,
             pending: DashMap::new(),
             meshes: RwLock::new(Vec::new()),
+            alpha_mode: RwLock::new(crate::material::AlphaMode::default()),
+            // Default `double_sided=true` for shaders used directly: this
+            // preserves the pre-Material renderer behaviour (no back-face
+            // cull) for callers who build a Shader without going through
+            // Material. `Material::pbr()` flips it back to `false` so that
+            // path follows the glTF 2.0 default (single-sided = back-face
+            // cull on).
+            double_sided: RwLock::new(true),
+            pending_textures: RwLock::new(Vec::new()),
+            user_lights_attached: RwLock::new(0),
         })
+    }
+
+    /// Either set a texture uniform immediately (if the input wraps an
+    /// already-uploaded `Texture` via `TextureData::CloneOf`) or queue the
+    /// upload for the renderer to drain on the next `load` / `render`.
+    ///
+    /// Used by the Material `*_texture` setters so callers can pass either
+    /// a pre-built `Texture` (eager path) or a path / bytes / URL
+    /// (lazy path) through the same builder method.
+    pub(crate) fn queue_or_set_texture(
+        &self,
+        key: impl Into<String>,
+        input: crate::TextureInput,
+    ) -> Result<(), ShaderError> {
+        use crate::shader::UniformData;
+        use crate::texture::TextureMeta;
+        let key = key.into();
+        if let crate::TextureData::CloneOf(ref tex) = input.data {
+            let meta = TextureMeta::with_id_only(*tex.id());
+            return self.set(&key, UniformData::Texture(meta));
+        }
+        self.pending_textures
+            .write()
+            .push(PendingTexture { key, input });
+        Ok(())
+    }
+
+    /// Take the current pending-texture queue, leaving the slot empty.
+    pub(crate) fn drain_pending_textures(&self) -> Vec<PendingTexture> {
+        std::mem::take(&mut *self.pending_textures.write())
     }
 
     /// Get a uniform value as Uniform struct.
@@ -393,7 +487,13 @@ impl ShaderObject {
             }
         };
 
-        // Build maps from the first instance (if present)
+        // Build maps from the first instance (if present), falling back to
+        // the schema declared on the Mesh when no instances are present yet.
+        // `Pass::add_model` declares the model-instance schema (the four vec4
+        // columns of mat4x4) without populating any instances on the Mesh —
+        // the per-Model transforms ride a Pass-owned instance buffer instead.
+        // Without this fall-through, validate_mesh would reject the Material's
+        // PBR shader because `model_0..3` look unprovisioned.
         let (i_loc_map, i_name_map) = {
             let insts = mesh.insts.read();
             if let Some(i) = insts.first() {
@@ -406,6 +506,16 @@ impl ShaderObject {
                     }
                 }
                 (loc, by_name)
+            } else if let Some(schema) = mesh.instance_schema.read().as_ref() {
+                // Schema-only mode: locations aren't known (no prop_locations
+                // without an Instance), so only the by-name map is populated.
+                // The renderer's vertex_buffer_layouts has the same name-based
+                // fallback and the pipeline layout matches.
+                let mut by_name: HashMap<String, wgpu::VertexFormat> = HashMap::new();
+                for field in schema.fields.iter() {
+                    by_name.insert(field.name.clone(), field.fmt);
+                }
+                (HashMap::new(), by_name)
             } else {
                 (HashMap::new(), HashMap::new())
             }
@@ -414,12 +524,64 @@ impl ShaderObject {
         // position location is assumed to be 0
         let pos_loc: u32 = 0;
 
-        // Validate each shader input
+        // Validate each shader input. Name match wins over location match —
+        // see the parallel comment in `Renderer::vertex_buffer_layouts` for
+        // the why: shader `@location(...)` indices and the mesh's
+        // buffer-local location maps live in different namespaces, so any
+        // shader that mixes fixed locations with the Vertex's
+        // auto-incremented ones (e.g. PBR with `model_0..model_3` at 3..6
+        // alongside `color0` / `uv1` on the vertex side) trips the
+        // location-first matcher.
         for inp in inputs.iter() {
             let mut matched = false;
 
-            // 1) Try instance by explicit location
-            if let Some((_, f)) = i_loc_map.get(&inp.location) {
+            // 1) Name match against instance (e.g. `model_*`).
+            if let Some(fmt) = i_name_map.get(&inp.name) {
+                if *fmt == inp.format {
+                    matched = true;
+                } else {
+                    return Err(ShaderError::TypeMismatch(format!(
+                        "Type mismatch for shader input '{}' by name: shader expects {:?}, mesh has {:?}",
+                        inp.name, inp.format, fmt
+                    )));
+                }
+            }
+
+            // 2) Name match against vertex (NORMAL / UV0 / UV1 / COLOR0 /
+            //    TANGENT etc.).
+            if !matched && let Some(fmt) = v_name_map.get(&inp.name) {
+                if *fmt == inp.format {
+                    matched = true;
+                } else {
+                    return Err(ShaderError::TypeMismatch(format!(
+                        "Type mismatch for shader input '{}' by name: shader expects {:?}, mesh has {:?}",
+                        inp.name, inp.format, fmt
+                    )));
+                }
+            }
+
+            // 3) Position fallback — the only vertex slot that's commonly
+            //    unnamed on the shader side.
+            if !matched && inp.location == pos_loc {
+                if let Some(pos_fmt) = pos_fmt_opt {
+                    if pos_fmt == inp.format {
+                        matched = true;
+                    } else {
+                        return Err(ShaderError::TypeMismatch(format!(
+                            "Type mismatch for vertex 'position' @location({}): shader expects {:?}, mesh has {:?}",
+                            inp.location, inp.format, pos_fmt
+                        )));
+                    }
+                } else {
+                    return Err(ShaderError::InvalidKey(
+                        "Mesh has no vertices to provide 'position'".into(),
+                    ));
+                }
+            }
+
+            // 4) Instance match by buffer-local location index (raw shaders
+            //    without canonical names).
+            if !matched && let Some((_, f)) = i_loc_map.get(&inp.location) {
                 if *f == inp.format {
                     matched = true;
                 } else {
@@ -430,55 +592,15 @@ impl ShaderObject {
                 }
             }
 
-            // 2) Try vertex by explicit location (position or other property)
-            if !matched {
-                if inp.location == pos_loc {
-                    if let Some(pos_fmt) = pos_fmt_opt {
-                        if pos_fmt == inp.format {
-                            matched = true;
-                        } else {
-                            return Err(ShaderError::TypeMismatch(format!(
-                                "Type mismatch for vertex 'position' @location({}): shader expects {:?}, mesh has {:?}",
-                                inp.location, inp.format, pos_fmt
-                            )));
-                        }
-                    } else {
-                        return Err(ShaderError::InvalidKey(
-                            "Mesh has no vertices to provide 'position'".into(),
-                        ));
-                    }
-                } else if let Some((_, f)) = v_loc_map.get(&inp.location) {
-                    if *f == inp.format {
-                        matched = true;
-                    } else {
-                        return Err(ShaderError::TypeMismatch(format!(
-                            "Type mismatch for shader input '{}' @location({}): shader expects {:?}, mesh has {:?}",
-                            inp.name, inp.location, inp.format, *f
-                        )));
-                    }
-                }
-            }
-
-            // 3) Fallback by name: instance first, then vertex
-            if !matched {
-                if let Some(fmt) = i_name_map.get(&inp.name) {
-                    if *fmt == inp.format {
-                        matched = true;
-                    } else {
-                        return Err(ShaderError::TypeMismatch(format!(
-                            "Type mismatch for shader input '{}' by name: shader expects {:?}, mesh has {:?}",
-                            inp.name, inp.format, fmt
-                        )));
-                    }
-                } else if let Some(fmt) = v_name_map.get(&inp.name) {
-                    if *fmt == inp.format {
-                        matched = true;
-                    } else {
-                        return Err(ShaderError::TypeMismatch(format!(
-                            "Type mismatch for shader input '{}' by name: shader expects {:?}, mesh has {:?}",
-                            inp.name, inp.format, fmt
-                        )));
-                    }
+            // 5) Vertex match by buffer-local location index.
+            if !matched && let Some((_, f)) = v_loc_map.get(&inp.location) {
+                if *f == inp.format {
+                    matched = true;
+                } else {
+                    return Err(ShaderError::TypeMismatch(format!(
+                        "Type mismatch for shader input '{}' @location({}): shader expects {:?}, mesh has {:?}",
+                        inp.name, inp.location, inp.format, *f
+                    )));
                 }
             }
 

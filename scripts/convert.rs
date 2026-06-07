@@ -29,7 +29,205 @@ mod convert {
         // `kotlin::rewrite_shader_new_to_compose`, swift's tuple→Size
         // baseSize rewrite) rely on the original Rust shape.
         let raw = convert(items, Lang::Js, /*aggressive_js_flatten=*/ true);
-        flatten_tuple_call_args_js_multiline(&raw)
+        let out = flatten_tuple_call_args_js_multiline(&raw);
+        // Rust `for x in iter { ... }` survives the per-line emitter verbatim,
+        // which is a SyntaxError in JS. Rewrite the header into a `for...of`.
+        let out = rewrite_for_in_to_for_of_js(&out);
+        // Nested `Type::new(...)` constructors become `Type.new(...)` via the
+        // generic `::` → `.` pass; the top-level handler only rewrites
+        // `let x = Type::new(...)`. Promote any leftover `Type.new(` (e.g.
+        // `scene.add(Model.new(...))`) to the JS `new Type(...)` form. And
+        // flatten a `[[f32;4];4]` mat4 literal to the flat 16-float array the
+        // `setTransform` binding expects (mirrors scripts/kotlin.rs).
+        let out = out
+            .lines()
+            .map(|l| rewrite_settransform_mat4_flatten_js(&rewrite_dotnew_to_new_js(l)))
+            .collect::<Vec<_>>()
+            .join("\n")
+            + if out.ends_with('\n') { "\n" } else { "" };
+        // wasm-bindgen doesn't expose the Rust-side `pub const UV0: &str = "uv0"`
+        // declarations on the JS class — `Vertex.UV0` resolves to `undefined`
+        // at runtime, which then trips `set(undefined, ...)` with
+        // "expected a string argument, found undefined". Mirror the inline
+        // rewrite that scripts/swift.rs and scripts/kotlin.rs already do.
+        inline_vertex_attr_constants_js(&out)
+    }
+
+    /// Rewrite a Rust `for <ident> in <expr> {` loop header into JavaScript's
+    /// `for (const <ident> of <expr>) {`. The per-line emitter passes the
+    /// Rust header through untouched; left as-is it is a JS SyntaxError
+    /// (`Unexpected identifier 'camera'`). Only single-identifier binders are
+    /// rewritten — anything with a destructuring pattern or a missing brace on
+    /// the same line is left alone, so unrelated lines (including hand-written
+    /// `for (let i = 0; …)` overrides) pass through unchanged.
+    fn rewrite_for_in_to_for_of_js(src: &str) -> String {
+        let ends_with_newline = src.ends_with('\n');
+        let mut out: Vec<String> = Vec::new();
+        for line in src.lines() {
+            out.push(rewrite_for_in_line_js(line));
+        }
+        let mut joined = out.join("\n");
+        if ends_with_newline {
+            joined.push('\n');
+        }
+        joined
+    }
+
+    fn rewrite_for_in_line_js(line: &str) -> String {
+        let indent_len = line.len() - line.trim_start().len();
+        let (indent, rest) = line.split_at(indent_len);
+        let Some(after_for) = rest.strip_prefix("for ") else {
+            return line.to_string();
+        };
+        // The loop body must open on this same line (flattened or not).
+        let Some(brace_pos) = after_for.find('{') else {
+            return line.to_string();
+        };
+        let header = &after_for[..brace_pos];
+        let tail = &after_for[brace_pos..];
+        let Some(in_pos) = header.find(" in ") else {
+            return line.to_string();
+        };
+        let var = header[..in_pos].trim();
+        // Only a bare single identifier binder; skip destructuring / patterns.
+        if var.is_empty() || !var.chars().all(is_ident_char) {
+            return line.to_string();
+        }
+        let iter_expr = header[in_pos + 4..].trim();
+        if iter_expr.is_empty() {
+            return line.to_string();
+        }
+        format!("{indent}for (const {var} of {iter_expr}) {tail}")
+    }
+
+    /// Promote a nested `Type.new(` constructor to JavaScript's `new Type(`.
+    /// The top-level `let x = Type::new(...)` case is handled inside `convert`;
+    /// this catches the leftover `Type.new(` the generic `::` → `.` pass
+    /// produces inside another call, e.g. `scene.add(Model.new(mesh, mat))`.
+    /// Only uppercase-initial type names are rewritten, and matches inside
+    /// string literals are skipped.
+    fn rewrite_dotnew_to_new_js(line: &str) -> String {
+        let chars: Vec<char> = line.chars().collect();
+        let mut out = String::with_capacity(line.len());
+        let mut i = 0usize;
+        let mut in_string: Option<char> = None;
+        while i < chars.len() {
+            let c = chars[i];
+            if let Some(q) = in_string {
+                out.push(c);
+                if c == q && (i == 0 || chars[i - 1] != '\\') {
+                    in_string = None;
+                }
+                i += 1;
+                continue;
+            }
+            if c == '"' || c == '\'' || c == '`' {
+                in_string = Some(c);
+                out.push(c);
+                i += 1;
+                continue;
+            }
+            // Identifier boundary: previous char neither ident-char nor `.`,
+            // so we capture a whole type name (not a field access tail).
+            let boundary = i == 0 || (!is_ident_char(chars[i - 1]) && chars[i - 1] != '.');
+            if boundary && c.is_ascii_uppercase() {
+                let mut j = i;
+                while j < chars.len() && is_ident_char(chars[j]) {
+                    j += 1;
+                }
+                if j + 5 <= chars.len() && chars[j..j + 5] == ['.', 'n', 'e', 'w', '('] {
+                    let ident: String = chars[i..j].iter().collect();
+                    out.push_str("new ");
+                    out.push_str(&ident);
+                    out.push('(');
+                    i = j + 5;
+                    continue;
+                }
+            }
+            out.push(c);
+            i += 1;
+        }
+        out
+    }
+
+    /// Flatten a `[[…], […], […], […]]` 4×4 mat4 literal passed to
+    /// `setTransform(...)` into the flat 16-float array the wasm-bindgen
+    /// binding expects (`Vec<f32>`). The Rust source writes the readable row
+    /// form; Kotlin does the same flatten (`rewrite_settransform_mat4_flatten`).
+    fn rewrite_settransform_mat4_flatten_js(line: &str) -> String {
+        let needle = ".setTransform([";
+        let Some(start) = line.find(needle) else {
+            return line.to_string();
+        };
+        let chars: Vec<char> = line.chars().collect();
+        // Index of the outer `[` (last char of the needle).
+        let open = start + needle.chars().count() - 1;
+        let Some(close) = match_bracket_js(&chars, open) else {
+            return line.to_string();
+        };
+        // The `setTransform(` paren must close immediately after the array.
+        if close + 1 >= chars.len() || chars[close + 1] != ')' {
+            return line.to_string();
+        }
+        // Collect numeric tokens, ignoring the inner `[` `]` row delimiters.
+        let inner: String = chars[open + 1..close]
+            .iter()
+            .map(|&c| if c == '[' || c == ']' { ' ' } else { c })
+            .collect();
+        let nums: Vec<String> = inner
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+        if nums.len() != 16 || !nums.iter().all(|n| n.parse::<f64>().is_ok()) {
+            return line.to_string();
+        }
+        let prefix: String = chars[..start].iter().collect();
+        let suffix: String = chars[close + 2..].iter().collect();
+        format!("{}.setTransform([{}]){}", prefix, nums.join(", "), suffix)
+    }
+
+    /// Return the index of the `]` matching the `[` at `open`, ignoring
+    /// brackets inside string literals.
+    fn match_bracket_js(chars: &[char], open: usize) -> Option<usize> {
+        let mut depth = 0usize;
+        let mut in_string: Option<char> = None;
+        for (i, &c) in chars.iter().enumerate().skip(open) {
+            if let Some(q) = in_string {
+                if c == q && chars[i - 1] != '\\' {
+                    in_string = None;
+                }
+                continue;
+            }
+            match c {
+                '"' | '\'' | '`' => in_string = Some(c),
+                '[' => depth += 1,
+                ']' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        return Some(i);
+                    }
+                }
+                _ => {}
+            }
+        }
+        None
+    }
+
+    fn inline_vertex_attr_constants_js(src: &str) -> String {
+        const ATTRS: &[(&str, &str)] = &[
+            ("Vertex.UV0", "\"uv0\""),
+            ("Vertex.UV1", "\"uv1\""),
+            ("Vertex.NORMAL", "\"normal\""),
+            ("Vertex.TANGENT", "\"tangent\""),
+            ("Vertex.COLOR0", "\"color0\""),
+            ("Vertex.COLOR1", "\"color1\""),
+        ];
+        let mut out = src.to_string();
+        for (needle, repl) in ATTRS {
+            out = out.replace(needle, repl);
+        }
+        out
     }
 
     pub fn to_py(items: &[(String, bool)]) -> String {
@@ -157,6 +355,16 @@ mod convert {
                     }
                 }
                 if let Some(after) = consumed {
+                    // The numeric-token loop above greedily consumes the
+                    // `_` separator that precedes the suffix (it matches
+                    // the inner-loop allowlist for digit-group separators
+                    // like `1_000`). When we strip a suffix like `f32`,
+                    // the dangling `_` would survive in `out` and produce
+                    // `100.0_` instead of `100.0`. Drop it here so the
+                    // emitted literal parses in every target language.
+                    if out.ends_with('_') {
+                        out.pop();
+                    }
                     i = after;
                 }
                 continue;
@@ -740,8 +948,27 @@ mod convert {
         let mut out = String::with_capacity(line.len());
         let chars: Vec<char> = line.chars().collect();
         let mut i = 0usize;
+        // Track string-literal state so a `.snake_case` substring inside a
+        // string (e.g. the uniform key `"material.alpha_cutoff"` or a WGSL
+        // shader body in a backtick template) is never camelized — only
+        // actual method names after a `.` are.
+        let mut in_string: Option<char> = None;
         while i < chars.len() {
             let c = chars[i];
+            if let Some(q) = in_string {
+                out.push(c);
+                if c == q && (i == 0 || chars[i - 1] != '\\') {
+                    in_string = None;
+                }
+                i += 1;
+                continue;
+            }
+            if c == '"' || c == '\'' || c == '`' {
+                in_string = Some(c);
+                out.push(c);
+                i += 1;
+                continue;
+            }
             out.push(c);
             if c == '.' {
                 // capture identifier after '.'
@@ -882,10 +1109,35 @@ mod convert {
         // Remove stray Rust error-propagation '?' for both langs (JS/Py)
         match lang {
             Lang::Js | Lang::Swift | Lang::Kotlin => {
-                // Replace common patterns
-                let mut s = out.replace(")?;", ");");
-                s = s.replace(")?\n", ")\n");
-                s = s.replace(")? ", ") ");
+                // The `?` operator always follows a fallible expression that
+                // ends in `)` (a function call returning Result) or a bare
+                // identifier (`option?`). Strip any `)?` followed by a
+                // non-identifier character: closes the same set of contexts
+                // as the original allowlist (`;`, `\n`, ` `) plus `,` and
+                // `)` which appear when `?` is on a nested call inside a
+                // function call: `Model.new(mesh, Material.pbr()?)`.
+                let chars: Vec<char> = out.chars().collect();
+                let mut s = String::with_capacity(out.len());
+                let mut i = 0usize;
+                while i < chars.len() {
+                    if chars[i] == ')'
+                        && i + 1 < chars.len()
+                        && chars[i + 1] == '?'
+                    {
+                        let next = chars.get(i + 2).copied();
+                        let strip = matches!(
+                            next,
+                            None | Some(';' | ',' | ')' | ' ' | '\t' | '\n' | '.')
+                        );
+                        if strip {
+                            s.push(')');
+                            i += 2; // skip ')' '?'
+                            continue;
+                        }
+                    }
+                    s.push(chars[i]);
+                    i += 1;
+                }
                 if s.trim_end().ends_with('?') {
                     s = s.trim_end_matches('?').to_string();
                 }
@@ -1331,9 +1583,27 @@ mod convert {
             Some((n_hash, pos_after_quote))
         }
 
-        // Try to find opener on this same line after 'new('
-        let opener = parse_raw_opener(after_new)?;
-        let (n_hash, pos_after_quote_in_after_new) = opener;
+        // Try to find opener on this same line after 'new('. If the line
+        // is `let var = Type::new(` with the `r#"..."#` opener on the NEXT
+        // line, look one line ahead.
+        let (n_hash, pos_after_quote_in_after_new, opener_line_idx) =
+            if let Some((nh, pos)) = parse_raw_opener(after_new) {
+                (nh, pos, start_idx)
+            } else if after_new.trim().is_empty() {
+                let next = src.get(start_idx + 1)?.as_str();
+                let (nh, _pos) = parse_raw_opener(next)?;
+                // Opener consumed on `next` line; body content starts after
+                // the opening quote on that same line.
+                let pos = {
+                    let s_trim = next.trim_start();
+                    let off = next.len() - s_trim.len();
+                    // off + 'r' + n_hash + '"'
+                    off + 1 + nh + 1
+                };
+                (nh, pos, start_idx + 1)
+            } else {
+                return None;
+            };
 
         // Collect body lines until closing '"###...#'
         let closing = {
@@ -1345,7 +1615,14 @@ mod convert {
         };
 
         let mut body_lines: Vec<String> = Vec::new();
-        let first_tail = &after_new[pos_after_quote_in_after_new..];
+        let opener_line_full = src.get(opener_line_idx)?.as_str();
+        // For the same-line case, the slice is computed against `after_new`;
+        // for the next-line case it's computed against the next line itself.
+        let first_tail: &str = if opener_line_idx == start_idx {
+            &after_new[pos_after_quote_in_after_new..]
+        } else {
+            &opener_line_full[pos_after_quote_in_after_new..]
+        };
         if !first_tail.is_empty() {
             // Content on same line after the opening quote
             // Stop early if the closing is also on this line
@@ -1353,34 +1630,46 @@ mod convert {
                 // All inside one line raw string
                 let content = &first_tail[..pos];
                 body_lines.push(content.to_string());
-                // next_idx is still current line (consumed only 1 line)
+                // next_idx is one past the line that held the closing
                 let mapped = render_raw_string_assignment(
                     lang,
                     &var_out,
                     ty_opt.as_deref(),
                     &body_lines,
                 );
-                return Some((mapped, start_idx + 1));
+                return Some((mapped, opener_line_idx + 1));
             } else {
                 body_lines.push(first_tail.to_string());
             }
         }
 
         // Scan subsequent lines until closing marker is found
-        let mut j = start_idx + 1;
+        let mut j = opener_line_idx + 1;
         while j < src.len() {
             let l = &src[j];
             if let Some(pos) = l.find(&closing) {
                 let content = &l[..pos];
                 body_lines.push(content.to_string());
-                // Done; compute output and return next index after closing line
+                // Done; compute output and return next index after closing line.
+                // When the original Rust was a multi-line call
+                //   let var = Type::new(\n  r#"..."#,\n)?;
+                // the call's closing `)?;` (or `);` / `)?`) sits on the line
+                // after the raw-string terminator. Skip it so we don't emit
+                // a dangling close-paren in the target language.
+                let mut after = j + 1;
+                if let Some(next) = src.get(after) {
+                    let nt = next.trim();
+                    if nt == ")?;" || nt == ");" || nt == ")?" || nt == ")" {
+                        after += 1;
+                    }
+                }
                 let mapped = render_raw_string_assignment(
                     lang,
                     &var_out,
                     ty_opt.as_deref(),
                     &body_lines,
                 );
-                return Some((mapped, j + 1));
+                return Some((mapped, after));
             } else {
                 body_lines.push(l.clone());
                 j += 1;
@@ -1613,7 +1902,13 @@ mod convert {
                 &mut js_renames,
                 &mut need_rendercanvas_import,
             ) {
-                out.push(mapped);
+                // Preserve the original line's leading whitespace so the
+                // mapped line stays inside any enclosing block (matters for
+                // Python where indentation is grammar). `handle_let_assignment`
+                // accepts the trimmed `t` and emits the body without indent.
+                let indent: String =
+                    s.chars().take_while(|c| c.is_whitespace()).collect();
+                out.push(format!("{}{}", indent, mapped));
                 idx += 1;
                 continue;
             }
@@ -1766,8 +2061,247 @@ mod convert {
             out = out2;
         }
 
+        // Python: capitalize `true` / `false` to Python's `True` / `False`.
+        // Match standalone identifier tokens only (no leading/trailing ident
+        // char), and skip lines that look like string literals or comments.
+        // Also strip the Rust full-range slice tail `[..]` and convert
+        // `for x in y { ... }` blocks into Python `for x in y: ...` with
+        // the body re-indented one level under the `for:` header.
+        if matches!(lang, Lang::Py) {
+            out = out
+                .into_iter()
+                .map(|line| {
+                    let l = capitalize_py_bool_literals(&line);
+                    let l = drop_rust_slice_suffix_py(&l);
+                    rewrite_py_create_texture_pixels_tuple(&l)
+                })
+                .collect();
+            out = rewrite_py_braced_blocks(out);
+        }
+
         // Normalize ending newline joining in caller
         out.join("\n")
+    }
+
+    /// Strip Rust's full-range slice tail `[..]`. Used to coerce
+    /// `&[..]` / `array[..]` into a `&[T]` slice in Rust; Python doesn't
+    /// need the conversion, so drop it.
+    fn drop_rust_slice_suffix_py(line: &str) -> String {
+        line.replace("[..]", "")
+    }
+
+    /// Rewrite `renderer.create_texture((bytes, [w, h]))` →
+    /// `renderer.create_texture(bytes, size=[w, h])`. The Rust API takes
+    /// a tuple via `impl Into<TextureInput>`; the Python binding uses
+    /// keyword arguments instead (`create_texture(input, size=...)`).
+    /// Only fires when the outer call's single argument is a parenthesised
+    /// tuple of exactly two top-level elements.
+    fn rewrite_py_create_texture_pixels_tuple(line: &str) -> String {
+        let needle = "create_texture(";
+        let Some(start) = line.find(needle) else {
+            return line.to_string();
+        };
+        let chars: Vec<char> = line.chars().collect();
+        let arg_start = start + needle.len();
+        if arg_start >= chars.len() || chars[arg_start] != '(' {
+            return line.to_string();
+        }
+        // Walk the outer paren of the tuple to find its closing `)`.
+        let mut depth = 0i32;
+        let mut j = arg_start;
+        let mut tuple_end = None;
+        while j < chars.len() {
+            match chars[j] {
+                '(' => depth += 1,
+                ')' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        tuple_end = Some(j);
+                        break;
+                    }
+                }
+                _ => {}
+            }
+            j += 1;
+        }
+        let Some(tuple_end) = tuple_end else {
+            return line.to_string();
+        };
+        // The next char after `tuple_end` must be `)` so the entire
+        // `create_texture( ... )` call closes immediately after the tuple.
+        if tuple_end + 1 >= chars.len() || chars[tuple_end + 1] != ')' {
+            return line.to_string();
+        }
+        // Split the tuple body at the top-level comma.
+        let body: String = chars[arg_start + 1..tuple_end].iter().collect();
+        let mut depth = 0i32;
+        let mut split_at = None;
+        for (idx, c) in body.chars().enumerate() {
+            match c {
+                '(' | '[' | '{' => depth += 1,
+                ')' | ']' | '}' => depth -= 1,
+                ',' if depth == 0 => {
+                    split_at = Some(idx);
+                    break;
+                }
+                _ => {}
+            }
+        }
+        let Some(split_at) = split_at else {
+            return line.to_string();
+        };
+        let bytes_part = body[..split_at].trim();
+        let size_part = body[split_at + 1..].trim();
+        // `chars[..arg_start]` already includes the outer `create_texture(`
+        // paren; emit the new args and the matching outer `)` directly.
+        // `tuple_end + 1` is the outer closing `)`; skip past it.
+        let mut out = String::new();
+        out.push_str(&chars[..arg_start].iter().collect::<String>());
+        out.push_str(bytes_part);
+        out.push_str(", size=");
+        out.push_str(size_part);
+        out.push(')');
+        out.push_str(&chars[tuple_end + 2..].iter().collect::<String>());
+        out
+    }
+
+    /// Convert Rust-style braced bodies (`for x in y { ... }`,
+    /// `if expr { ... }`, `while expr { ... }`) into Python `:` + indent
+    /// form. Operates on the line vector after every per-line rewrite so
+    /// the brace + content already match Rust shape verbatim. Conservative:
+    /// only matches headers that end with `{` and bodies that close with
+    /// a standalone `}` on its own line.
+    fn rewrite_py_braced_blocks(lines: Vec<String>) -> Vec<String> {
+        let mut out: Vec<String> = Vec::with_capacity(lines.len());
+        let header_pat = regex_simple_header;
+        // Track open-block context as a stack of (header_indent_len)
+        let mut block_stack: Vec<usize> = Vec::new();
+        for raw in lines {
+            let trimmed = raw.trim_start();
+            let indent_len = raw.len() - trimmed.len();
+            // Close any blocks whose body ended with a bare `}` line.
+            if trimmed == "}" || trimmed.starts_with("} ") || trimmed.starts_with("}\t") {
+                // Pop one block; emit nothing (Python ends a block by dedent).
+                block_stack.pop();
+                continue;
+            }
+            // Header rewrite: `for x in y {` / `while cond {` / `if cond {`.
+            if let Some(header_no_brace) = header_pat(trimmed) {
+                let indent: String = raw.chars().take_while(|c| c.is_whitespace()).collect();
+                out.push(format!("{}{}:", indent, header_no_brace));
+                block_stack.push(indent_len);
+                continue;
+            }
+            out.push(raw);
+        }
+        out
+    }
+
+    /// Recognise a Rust-style block header line and return the header text
+    /// without the trailing `{`. Supports `for x in y`, `if expr`,
+    /// `while expr`, `loop`. Body must be on subsequent lines (header ends
+    /// with `{`).
+    fn regex_simple_header(trimmed: &str) -> Option<String> {
+        let trimmed = trimmed.trim_end();
+        if !trimmed.ends_with('{') {
+            return None;
+        }
+        let head = trimmed[..trimmed.len() - 1].trim_end();
+        // Translate `0..N` ranges inside for-headers to `range(N)` for
+        // Python: only the simple `for IDENT in 0..N` shape; richer
+        // expressions are out of scope here.
+        if let Some(rest) = head.strip_prefix("for ") {
+            // Find ` in ` separator.
+            if let Some(in_pos) = rest.find(" in ") {
+                let var = rest[..in_pos].trim();
+                let iter_expr = rest[in_pos + 4..].trim();
+                // `0..N` → `range(N)`; `a..b` → `range(a, b)`.
+                let py_iter = if let Some((lo, hi)) = iter_expr.split_once("..") {
+                    let lo = lo.trim();
+                    let hi = hi.trim();
+                    if lo == "0" {
+                        format!("range({})", hi)
+                    } else {
+                        format!("range({}, {})", lo, hi)
+                    }
+                } else {
+                    iter_expr.to_string()
+                };
+                return Some(format!("for {} in {}", var, py_iter));
+            }
+        }
+        if let Some(rest) = head.strip_prefix("if ") {
+            return Some(format!("if {}", rest.trim()));
+        }
+        if let Some(rest) = head.strip_prefix("while ") {
+            return Some(format!("while {}", rest.trim()));
+        }
+        if head == "loop" {
+            return Some("while True".to_string());
+        }
+        None
+    }
+
+    /// Replace standalone `true` / `false` tokens with Python's `True` /
+    /// `False`. Skips matches inside double-quoted strings and after a `#`
+    /// comment marker. Word-boundary aware so identifiers like
+    /// `is_truthy` or `falseflag` are left alone.
+    fn capitalize_py_bool_literals(line: &str) -> String {
+        let chars: Vec<char> = line.chars().collect();
+        let mut out = String::with_capacity(line.len());
+        let mut i = 0usize;
+        let mut in_string: Option<char> = None;
+        let mut in_comment = false;
+        while i < chars.len() {
+            let c = chars[i];
+            if in_comment {
+                out.push(c);
+                i += 1;
+                continue;
+            }
+            if let Some(q) = in_string {
+                out.push(c);
+                if c == q && (i == 0 || chars[i - 1] != '\\') {
+                    in_string = None;
+                }
+                i += 1;
+                continue;
+            }
+            if c == '"' || c == '\'' {
+                in_string = Some(c);
+                out.push(c);
+                i += 1;
+                continue;
+            }
+            if c == '#' {
+                in_comment = true;
+                out.push(c);
+                i += 1;
+                continue;
+            }
+            // Try to match `true` or `false` at word boundary.
+            let left_ok = i == 0 || !is_ident_char(chars[i - 1]);
+            if left_ok {
+                let rest: String = chars[i..].iter().collect();
+                if rest.starts_with("true")
+                    && rest.chars().nth(4).is_none_or(|n| !is_ident_char(n))
+                {
+                    out.push_str("True");
+                    i += 4;
+                    continue;
+                }
+                if rest.starts_with("false")
+                    && rest.chars().nth(5).is_none_or(|n| !is_ident_char(n))
+                {
+                    out.push_str("False");
+                    i += 5;
+                    continue;
+                }
+            }
+            out.push(c);
+            i += 1;
+        }
+        out
     }
 
     // Replace occurrences of Type.new(args) -> Type(args) in a best-effort way (no regex).

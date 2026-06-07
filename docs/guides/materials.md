@@ -7,7 +7,7 @@ Why this is nice
 
 - Mesh stays pure geometry
 - Shader holds the texture (and other parameters)
-- The renderer can reuse the same pipeline while swapping textures — it feels like magic
+- The renderer can reuse the same pipeline while swapping textures
 
 ```rust
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {

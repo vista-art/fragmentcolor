@@ -1,0 +1,177 @@
+---
+title: "Coordinate Maps"
+description: UV remappings — distortion, polar, mirror, tile, twirl — from the FragmentColor shader registry.
+---
+
+A UV map is a small function that takes a UV and returns another UV.
+Compose it with a sampler — procedural or texture-backed — and you can
+distort, tile, mirror, warp, or wrap the underlying image without
+touching its pixels.
+
+Pull one in by slug and apply it inline before sampling:
+
+```rust
+let main = r#"
+fn checker(uv: vec2<f32>) -> vec3<f32> {
+    let c = step(vec2<f32>(0.5), fract(uv * 8.0));
+    return mix(vec3<f32>(0.18), vec3<f32>(0.95), c.x * c.y + (1.0 - c.x) * (1.0 - c.y));
+}
+
+@fragment fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+    let warped = barrel(in.uv, 0.4);
+    return vec4<f32>(checker(warped), 1.0);
+}
+"#;
+let shader = Shader::new(&["map/barrel", main])?;
+```
+
+## barrel
+
+Radial lens distortion around UV center `(0.5, 0.5)`.
+
+```wgsl
+fn barrel(uv: vec2<f32>, k: f32) -> vec2<f32>
+```
+
+![map/barrel preview](/shaders/map/barrel.png)
+
+## cartesian
+
+Inverse of `polar`: `(angle/TAU, radius)` → UV around `center`.
+
+```wgsl
+fn cartesian(pr: vec2<f32>, center: vec2<f32>) -> vec2<f32>
+```
+
+![map/cartesian preview](/shaders/map/cartesian.png)
+
+## fisheye
+
+Spherical fisheye mapping.
+
+```wgsl
+fn fisheye(uv: vec2<f32>, strength: f32) -> vec2<f32>
+```
+
+![map/fisheye preview](/shaders/map/fisheye.png)
+
+## kaleidoscope
+
+`n`-fold rotational symmetry fold around the UV center.
+
+```wgsl
+fn kaleidoscope(uv: vec2<f32>, n: u32) -> vec2<f32>
+```
+
+![map/kaleidoscope preview](/shaders/map/kaleidoscope.png)
+
+## mirror_x
+
+Fold UV across `x = 0.5`. Useful for horizontal symmetry.
+
+```wgsl
+fn mirror_x(uv: vec2<f32>) -> vec2<f32>
+```
+
+![map/mirror_x preview](/shaders/map/mirror_x.png)
+
+## mirror_y
+
+Fold UV across `y = 0.5`. Useful for vertical symmetry.
+
+```wgsl
+fn mirror_y(uv: vec2<f32>) -> vec2<f32>
+```
+
+![map/mirror_y preview](/shaders/map/mirror_y.png)
+
+## pincushion
+
+Inverse of barrel distortion (`k` always positive for pincushion).
+
+```wgsl
+fn pincushion(uv: vec2<f32>, k: f32) -> vec2<f32>
+```
+
+![map/pincushion preview](/shaders/map/pincushion.png)
+
+## polar
+
+`(uv - center)` → `(angle/TAU, radius)`. Handy for radial patterns.
+
+```wgsl
+fn polar(uv: vec2<f32>, center: vec2<f32>) -> vec2<f32>
+```
+
+![map/polar preview](/shaders/map/polar.png)
+
+## ripple
+
+Radial ripple emanating from `center`. `amp` scales UV displacement.
+
+```wgsl
+fn ripple(uv: vec2<f32>, center: vec2<f32>, freq: f32, phase: f32, amp: f32) -> vec2<f32>
+```
+
+![map/ripple preview](/shaders/map/ripple.png)
+
+## rotate2
+
+Rotate a 2D point by `a` radians around the origin.
+
+```wgsl
+fn rotate2(p: vec2<f32>, a: f32) -> vec2<f32>
+```
+
+![map/rotate2 preview](/shaders/map/rotate2.png)
+
+## scale2
+
+Non-uniform 2D scale about a pivot.
+
+```wgsl
+fn scale2(p: vec2<f32>, pivot: vec2<f32>, s: vec2<f32>) -> vec2<f32>
+```
+
+![map/scale2 preview](/shaders/map/scale2.png)
+
+## tile
+
+Tile UVs by `cells` per unit side. Returns UVs in `[0, 1)` per cell.
+
+```wgsl
+fn tile(uv: vec2<f32>, cells: vec2<f32>) -> vec2<f32>
+```
+
+![map/tile preview](/shaders/map/tile.png)
+
+## translate2
+
+Translate a 2D point.
+
+```wgsl
+fn translate2(p: vec2<f32>, t: vec2<f32>) -> vec2<f32>
+```
+
+![map/translate2 preview](/shaders/map/translate2.png)
+
+## twirl
+
+UV twirl around `center`. Falls off smoothly with distance.
+
+```wgsl
+fn twirl(uv: vec2<f32>, center: vec2<f32>, strength: f32) -> vec2<f32>
+```
+
+![map/twirl preview](/shaders/map/twirl.png)
+
+## wave
+
+Horizontal sine displacement of UVs. `amp` is in UV units, `freq` in
+cycles per unit.
+
+```wgsl
+fn wave(uv: vec2<f32>, freq: f32, phase: f32, amp: f32) -> vec2<f32>
+```
+
+![map/wave preview](/shaders/map/wave.png)

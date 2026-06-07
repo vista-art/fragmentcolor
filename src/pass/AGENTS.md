@@ -5,8 +5,8 @@ Role
 - Public methods stay thin and forward to internal objects or helpers.
 
 Targets
-- `Pass::add_target(target)` attaches an offscreen color target for intermediate rendering.
-- `Pass::add_depth_target(target)` attaches an offscreen depth target; sample counts must match the color target.
+- `Pass::set_target(target)` attaches an offscreen color target for intermediate rendering (one per pass; subsequent calls overwrite).
+- `Pass::set_depth_target(target)` attaches an offscreen depth target; sample counts must match the color target.
 - There is no explicit `present(pass)` API — the last render pass in the executed DAG presents to the final frame by default.
 
 Compute vs render

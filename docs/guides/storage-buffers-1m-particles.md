@@ -1,4 +1,4 @@
-# Guide: Storage buffers — one million particles
+# Guide: Storage buffers (one million particles)
 
 Let's render a big crowd with minimal CPU work. We'll keep geometry tiny (a triangle)
 and drive positions/colors from a storage buffer, indexing by the instance index.

@@ -1,0 +1,63 @@
+---
+title: "Raymarching"
+description: A catalog of raymarching helpers in the FragmentColor shader registry.
+---
+
+**Raymarching** renders a signed-distance scene by stepping a ray
+forward by the current SDF distance until it lands on the surface.
+Once the ray hits, you usually want a surface normal so you can shade
+the result — and the cheapest way to get one is to sample the SDF a
+few times around the hit point and read the gradient out of those
+samples.
+
+This category collects pure normal-from-SDF helpers. The caller owns
+the raymarching loop and the scene definition; each helper just turns
+a small bundle of distance samples into a unit normal. Pull a helper
+into a composition by slug, define your `scene(p)` SDF, and call the
+helper after the trace lands:
+
+```rust
+let main = r#"
+fn scene(p: vec3<f32>) -> f32 { return sphere(p, 0.7); }
+
+@fragment fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+    // ... sphere-trace inline, then:
+    let e = 0.001;
+    let k1 = scene(p + e * vec3<f32>( 1.0, -1.0, -1.0));
+    let k2 = scene(p + e * vec3<f32>(-1.0, -1.0,  1.0));
+    let k3 = scene(p + e * vec3<f32>(-1.0,  1.0, -1.0));
+    let k4 = scene(p + e * vec3<f32>( 1.0,  1.0,  1.0));
+    let n  = normal_from_sdf_tetra(k1, k2, k3, k4);
+    // ... shade with n
+}
+"#;
+let shader = Shader::new(&["raymarch/normal_from_sdf_tetra", "sdf/sphere", main])?;
+```
+
+Each preview below sphere-traces a single sphere of radius 0.7,
+computes the normal with the helper, and shades it with simple
+Lambert against a fixed light direction.
+
+## normal_from_sdf_taps
+
+Estimates a surface normal from six central-difference SDF taps
+(`±x`, `±y`, `±z`). Most accurate of the two, at the cost of six
+scene evaluations per pixel.
+
+```wgsl
+fn normal_from_sdf_taps(d_px: f32, d_nx: f32, d_py: f32, d_ny: f32, d_pz: f32, d_nz: f32) -> vec3<f32>
+```
+
+![raymarch/normal_from_sdf_taps preview](/shaders/raymarch/normal_from_sdf_taps.png)
+
+## normal_from_sdf_tetra
+
+Cheaper four-tap tetrahedral normal. Pass the SDF values at the four
+tetrahedral offsets `(+1,-1,-1)`, `(-1,-1,+1)`, `(-1,+1,-1)`,
+`(+1,+1,+1)`; the helper combines them into a unit normal.
+
+```wgsl
+fn normal_from_sdf_tetra(k1: f32, k2: f32, k3: f32, k4: f32) -> vec3<f32>
+```
+
+![raymarch/normal_from_sdf_tetra preview](/shaders/raymarch/normal_from_sdf_tetra.png)

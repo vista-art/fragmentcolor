@@ -1,0 +1,33 @@
+---
+// LangSelector.astro — language tab row at the top of an article.
+//
+// Renders Starlight Tabs with the same `syncKey="lang"` that Snippet uses,
+// so picking a language up here switches every code block + every <Lang />
+// substitution on the page (and is persisted across navigation via the
+// usual Starlight localStorage key). The empty TabItems are intentional;
+// their panels are hidden via CSS so only the row of tab buttons shows.
+
+import { Tabs, TabItem } from "@astrojs/starlight/components";
+---
+
+<div class="lang-selector not-content" aria-label="Code language">
+  <Tabs syncKey="lang">
+    <TabItem label="Rust">{" "}</TabItem>
+    <TabItem label="JavaScript">{" "}</TabItem>
+    <TabItem label="Python">{" "}</TabItem>
+    <TabItem label="Swift">{" "}</TabItem>
+    <TabItem label="Kotlin">{" "}</TabItem>
+  </Tabs>
+</div>
+
+<style>
+  .lang-selector {
+    margin: 0 0 2rem;
+  }
+  .lang-selector :global([role="tabpanel"]) {
+    display: none;
+  }
+  .lang-selector :global([role="tablist"]) {
+    margin-bottom: 0;
+  }
+</style>

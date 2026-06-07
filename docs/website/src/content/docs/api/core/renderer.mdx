@@ -183,7 +183,7 @@ Create a new [Renderer](/api/core/renderer).
 The renderer's GPU adapter and device are initialized lazily on the first
 target you create, so the same `Renderer` works whether you end up
 rendering offscreen or attaching it to a window. By the time `render()`
-is called the GPU resources are already in place â `render` requires a
+is called the GPU resources are already in place. `render` requires a
 [Target](/api/core/target), and the only way to
 build one is through this renderer:
 
@@ -519,7 +519,7 @@ lang="kotlin"
 
 ### Renderer::create_texture
 
-Create a [Texture](/api/core/texture) from bytes, a file path, a URL, a KTX2 container, or a pre-built [TextureMipChain](/api/core/texture-mip-chain).
+Create a [Texture](/api/texture/texture) from bytes, a file path, a URL, a KTX2 container, or a pre-built [Mipmap](/api/texture/mipmap).
 
 When you pass a `size`, the bytes are treated as raw pixels in the chosen format. Without a size, the bytes (or the file/URL contents) are decoded as PNG, JPEG, BMP, HDR, etc.
 
@@ -527,9 +527,9 @@ Decode and mipmap generation run on a background worker on native platforms. On 
 
 #### Per-language shapes
 
-- **Rust:** `create_texture(input)`. `input` accepts bare bytes, `(bytes, [w, h])`, `(bytes, format)`, `(bytes, options)`, a path, a URL, a `TextureMipChain`, or a KTX2 input.
-- **JS:** `await renderer.createTexture(input, options?)`. `input` is `Uint8Array` / `ArrayBuffer` / URL string / CSS selector / `HTMLImageElement` / `HTMLCanvasElement` / `OffscreenCanvas` / `ImageData` / a `TextureMipChain` handle. `options` is `{ size?, format?, mipmaps? }`; when `size` is set, `input` is read as raw pixel bytes.
-- **Python:** `renderer.create_texture(input, size=None, format=None, mipmaps=None)`. `input` is `bytes` / `list[int]` / `str` (path) / numpy `ndarray[H, W, C]` / `TextureMipChain`. Numpy arrays fill in `size` for you.
+- **Rust:** `create_texture(input)`. `input` accepts bare bytes, `(bytes, [w, h])`, `(bytes, format)`, `(bytes, options)`, a path, a URL, a `Mipmap`, or a KTX2 input.
+- **JS:** `await renderer.createTexture(input, options?)`. `input` is `Uint8Array` / `ArrayBuffer` / URL string / CSS selector / `HTMLImageElement` / `HTMLCanvasElement` / `OffscreenCanvas` / `ImageData` / a `Mipmap` handle. `options` is `{ size?, format?, mipmaps? }`; when `size` is set, `input` is read as raw pixel bytes.
+- **Python:** `renderer.create_texture(input, size=None, format=None, mipmaps=None)`. `input` is `bytes` / `list[int]` / `str` (path) / numpy `ndarray[H, W, C]` / `Mipmap`. Numpy arrays fill in `size` for you.
 - **Swift / Kotlin:** `try await renderer.createTexture(bytes)` or `renderer.createTexture(chain)`. Overloads in the binding wrap the underlying enum, so you write the natural call.
 
 #### How the discriminator works
@@ -540,7 +540,7 @@ Decode and mipmap generation run on a background worker on native platforms. On 
 | `(bytes, size)` / options with `size` set | Raw pixel bytes; `bpp(format) * width * height` long, no decode. |
 | `(bytes, format)` / options with `format` set | Encoded image reinterpreted as `format` (e.g. `Rgba8Unorm` for normal-map data, `R16Unorm` for 16-bit grayscale). |
 | `path` / `URL` | File or HTTP fetch, then decoded. |
-| `TextureMipChain` | Pre-built CPU mip chain; GPU-only upload. Build via [TextureMipChain::prepare](/api/core/texture-mip-chain/prepare) on a worker thread. |
+| `Mipmap` | Pre-built CPU mip chain; GPU-only upload. Build via [Mipmap::build](/api/texture/mipmap/build) on a worker thread. |
 | `Ktx2Bytes` / `Ktx2Path` / `Ktx2Url` | KTX2 container (BC / ETC2 / ASTC / uncompressed); the file's declared format and pre-baked mip chain win. |
 
 A full mipmap chain is generated for source images by default (`options.mipmaps = true`). Set to `false` to skip the CPU work for textures that won't be sampled at distance.
@@ -612,6 +612,7 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 val renderer = Renderer()
+val png: ByteArray = byteArrayOf()
 val image = "/healthcheck/public/favicon.png"
 val tex = renderer.createTexture(TextureInputMobile.Path(image), null)
 `}
@@ -627,13 +628,13 @@ lang="kotlin"
 
 ### Renderer::create_storage_texture
 
-Create a storage-class texture for compute shaders, image store/load, or as a render target. The input shapes mirror `Renderer::create_texture` and `TextureMipChain::prepare`.
+Create a storage-class texture for compute shaders, image store/load, or as a render target. The input shapes mirror `Renderer::create_texture` and `Mipmap::build`.
 
 Common forms:
 
-- `(size, format)` â empty storage texture, no initial data.
-- `(size, format, bytes)` â storage texture pre-seeded with `bytes`.
-- A full `TextureInput { data, options }` literal â pass `options.usage` (via `TextureOptions::with_usage(...)`) for non-default usage flags.
+- `(size, format)`: empty storage texture, no initial data.
+- `(size, format, bytes)`: storage texture pre-seeded with `bytes`.
+- A full `TextureInput { data, options }` literal: pass `options.usage` (via `TextureOptions::with_usage(...)`) for non-default usage flags.
 
 `size` is required; storage textures have no source to infer dimensions from. Missing it returns `TextureError::InvalidInput`.
 
@@ -656,7 +657,7 @@ let tex = r.create_storage_texture(([64, 64], TextureFormat::Rgba)).await?;
 _ = tex;
 
 // Pre-seeded with bytes.
-let pixels = vec![0u8; 64 * 64 * 4];
+let pixels = vec![0; 64 * 64 * 4];
 let tex2 = r
     .create_storage_texture(([64, 64], TextureFormat::Rgba, pixels))
     .await?;
@@ -736,6 +737,7 @@ val r = Renderer()
 // Empty storage texture.
 val tex = r.createStorageTexture(Size(width=64u, height=64u, depth=null), TextureFormat.RGBA, null, null)
 
+val bytes: ByteArray = byteArrayOf()
 // Pre-seeded with bytes.
 val pixels = ByteArray(64 * 64 * 4)
 val tex2 = r.createStorageTexture(Size(width=64u, height=64u, depth=null), TextureFormat.RGBA, pixels, null)
@@ -755,7 +757,7 @@ lang="kotlin"
 Create a depth texture using `Depth32Float`.
 
 The created depth texture inherits the renderer's current sample count:
-- If you called create_target(window) (surface-backed), it matches the negotiated MSAA (e.g., 2Ã/4Ã) for that surface.
+- If you called create_target(window) (surface-backed), it matches the negotiated MSAA (e.g., 2×/4×) for that surface.
 - If you are rendering offscreen via create_texture_target, it defaults to 1.
 
 This ensures the depth attachment sample_count matches the pass sample_count.
@@ -833,7 +835,7 @@ lang="kotlin"
 
 ### Renderer::unregister_texture(id)
 
-Explicitly remove a texture from the rendererâs registry.
+Explicitly remove a texture from the renderer’s registry.
 
 - Call this when you replace a texture, stop a video stream, or tear down a scene, to release GPU memory.
 - If the texture is still referenced elsewhere, it will remain alive until all strong references are dropped.
@@ -947,7 +949,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Renderer, TextureFormat};
 let renderer = Renderer::new();
 let texture = renderer.create_storage_texture(([64, 64], TextureFormat::Rgba)).await?;
-texture.write(&vec![0u8; 64 * 64 * 4])?;
+texture.write(&vec![0; 64 * 64 * 4])?;
 
 let bytes = renderer.read_texture(*texture.id()).await?;
 assert_eq!(bytes.len(), 64 * 64 * 4);
@@ -1038,8 +1040,9 @@ The `source` argument is platform-specific:
   over the uniffi boundary).
 - **Android**: a `SurfaceTexture` handle (passed as a raw `ULong` pointer).
 
-Returns an error on every platform today â the API surface is in place, the
-implementation is a follow-up.
+Currently returns an error on every platform. The public signature is
+stable; native-side decode hookup is on the roadmap. Track support via
+the typed `RendererError` you get back.
 
 #### Example
 
@@ -1114,6 +1117,412 @@ import org.fragmentcolor.*
 //   val surfaceTexture: SurfaceTexture = /* from MediaCodec / Camera2 */
 //   val ptr: ULong = surfaceTexture.nativeHandle()  // hypothetical helper
 //   val handle = renderer.createExternalTexture(ptr)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Renderer::load
+
+Realize every pending GPU upload referenced by a renderable. Material's
+texture setters (`base_color_texture`, `metallic_roughness_texture`, …)
+accept paths, bytes, URLs, and `DynamicImage` values in addition to
+already-uploaded [`Texture`](/api/texture/texture)
+handles; the path / bytes / URL variants are stored on the Material's
+Shader as *pending* uploads. `load` walks every Shader the renderable
+visits, drains its pending list, calls
+[`Renderer::create_texture`](/api/core/renderer/create_texture)
+for each, and writes the resulting `Texture` into the matching uniform.
+
+[`Renderer::render`](/api/core/renderer/render)
+calls `load` automatically the first time it sees a renderable with
+pending uploads, so explicit `load` is optional. Reach for it when you
+want to amortize the decode + upload cost outside the render loop, for
+example in a loading screen that prepares the scene before the first
+frame goes out.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Material, Mesh, Model, Renderer, Scene, Vertex};
+
+let renderer = Renderer::new();
+let target = renderer.create_texture_target([64, 64]).await?;
+
+let mesh = Mesh::new();
+mesh.add_vertex(
+    Vertex::pbr([0.0, 0.5, 0.0]).set(Vertex::UV0, [0.5, 1.0]),
+);
+// Raw 2×2 RGBA pixel bytes — uploaded lazily by \`Renderer::load\` below.
+// In practice the loader hands the setter encoded PNG/JPEG bytes (from a
+// BIN chunk) or a file path (from a URI); the same \`Into<TextureInput>\`
+// vocabulary covers all of them.
+let red_pixels: Vec<u8> = vec![
+    255,   0,   0, 255,    0, 255,   0, 255,
+      0,   0, 255, 255,  255, 255, 255, 255,
+];
+let red_tex = renderer.create_texture((red_pixels, [2, 2])).await?;
+let material = Material::pbr().base_color_texture(&red_tex);
+let model = Model::new(mesh, material);
+let scene = Scene::new();
+scene.add(&model)?;
+
+// Eager prewarm — uploads the pending texture(s) so the next render is
+// GPU-only.
+renderer.load(&scene).await?;
+renderer.render(&scene, &target)?;
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+`}
+lang="rust" meta="collapse={1-1, 29-31}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Material, Mesh, Model, Renderer, Scene, Vertex } from "fragmentcolor";
+
+const renderer = new Renderer();
+const target = await renderer.createTextureTarget([64, 64]);
+
+const mesh = new Mesh();
+mesh.addVertex( Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0]), );
+// Raw 2×2 RGBA pixel bytes — uploaded lazily by \`Renderer.load\` below.
+// In practice the loader hands the setter encoded PNG/JPEG bytes (from a
+// BIN chunk) or a file path (from a URI); the same \`Into<TextureInput>\`
+// vocabulary covers all of them.
+const red_pixels = [ 255,   0,   0, 255,    0, 255,   0, 255, 0,   0, 255, 255,  255, 255, 255, 255, ];
+const red_tex = await renderer.createTexture(red_pixels, [2, 2]);
+const material = Material.pbr().baseColorTexture(red_tex);
+const model = new Model(mesh, material);
+const scene = new Scene();
+scene.add(model);
+
+// Eager prewarm — uploads the pending texture(s) so the next render is
+// GPU-only.
+await renderer.load(scene);
+renderer.render(scene, target);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Material, Mesh, Model, Renderer, Scene, Vertex
+
+renderer = Renderer()
+target = renderer.create_texture_target([64, 64])
+
+mesh = Mesh()
+mesh.add_vertex(
+    Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
+)
+# Raw 2×2 RGBA pixel bytes — uploaded lazily by \`Renderer.load\` below.
+# In practice the loader hands the setter encoded PNG/JPEG bytes (from a
+# BIN chunk) or a file path (from a URI); the same \`Into<TextureInput>\`
+# vocabulary covers all of them.
+red_pixels = [
+    255,   0,   0, 255,    0, 255,   0, 255,
+      0,   0, 255, 255,  255, 255, 255, 255,
+]
+red_tex = renderer.create_texture(red_pixels, size=[2, 2])
+material = Material.pbr().base_color_texture(red_tex)
+model = Model(mesh, material)
+scene = Scene()
+scene.add(model)
+
+# Eager prewarm — uploads the pending texture(s) so the next render is
+# GPU-only.
+renderer.load(scene)
+renderer.render(scene, target)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let renderer = Renderer()
+let target = try await renderer.createTextureTarget([64, 64])
+
+let mesh = Mesh()
+try mesh.addVertex(
+    try Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0])
+)
+// Raw 2×2 RGBA pixel bytes — uploaded lazily by """Renderer.load""" below.
+// In practice the loader hands the setter encoded PNG/JPEG bytes (from a
+// BIN chunk) or a file path (from a URI); the same """Into<TextureInput>"""
+// vocabulary covers all of them.
+let red_pixels = [
+    255,   0,   0, 255,    0, 255,   0, 255,
+      0,   0, 255, 255,  255, 255, 255, 255,
+]
+let red_tex = try await renderer.createTexture((red_pixels, [2, 2]))
+let material = Material.pbr().baseColorTexture(red_tex)
+let model = Model(mesh, material)
+let scene = Scene()
+try scene.add(model)
+
+// Eager prewarm — uploads the pending texture(s) so the next render is
+// GPU-only.
+try await renderer.load(scene)
+try renderer.render(scene, target)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val renderer = Renderer()
+val target = renderer.createTextureTarget(64u, 64u)
+
+val mesh = Mesh()
+mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set("uv0", floatArrayOf(0.5f, 1.0f)), )
+val bytes: ByteArray = byteArrayOf()
+// Raw 2×2 RGBA pixel bytes — uploaded lazily by """Renderer.load""" below.
+ 
+// vocabulary covers all of them.
+val red_pixels = listOf(255.0f, 0.0f, 0.0f, 255.0f, 0.0f, 255.0f, 0.0f, 255.0f, 0.0f, 0.0f, 255.0f, 255.0f, 255.0f, 255.0f, 255.0f, 255.0f, .0f)
+val red_tex = renderer.createTexture(TextureInputMobile.Bytes(red_pixels.let { ba -> ByteArray(ba.size) { i -> ba[i].toInt().and(0xFF).toByte() } }), null)
+val material = Material.pbr().baseColorTexture(red_tex)
+val model = Model(mesh, material)
+val scene = Scene()
+scene.add(model)
+
+// Eager prewarm — uploads the pending texture(s) so the next render is
+// GPU-only.
+renderer.load(scene)
+renderer.render(scene, target)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Renderer::read_storage
+
+Round-trip the GPU-side bytes of a [`Shader`](/api/shaders/shader)'s
+storage binding back to the CPU. Submits any pending uploads, copies the
+storage buffer into a pooled readback staging buffer, maps it, and returns
+the bytes.
+
+This is the only way to observe what a compute pass *wrote* into a storage
+binding. The cheap CPU-mirror accessors
+([`Shader::get`](/api/shaders/shader/get) and
+[`Shader::get_bytes`](/api/shaders/shader/get_bytes))
+reflect what was last set on the CPU side; GPU writes are not visible
+through them.
+
+`read_storage` is `async` on every platform because the underlying
+`map_async` requires an awaited callback. On native the implementation
+drives the device forward (`device.poll(Wait)`) before awaiting, so callers
+don't have to spin their own poll loop. On Web the browser schedules the
+callback; the helper just awaits.
+
+Returns
+[`RendererError::StorageBindingNotFound`](/api/core/renderer/error)
+when the shader does not declare a storage binding called `binding`, or
+when no render pass has yet materialised the GPU-side buffer (storage
+buffers are allocated lazily on first bind).
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use bytemuck;
+use fragmentcolor::{Pass, Renderer, Shader};
+
+let renderer = Renderer::new();
+let target = renderer.create_texture_target([16, 16]).await?;
+
+let compute = Shader::new(
+    r#"
+    struct Out { values: array<f32, 4> };
+    @group(0) @binding(0) var<storage, read_write> out: Out;
+    @compute @workgroup_size(1) fn main() {
+        out.values[0] = 1.0;
+        out.values[1] = 2.0;
+        out.values[2] = 3.0;
+        out.values[3] = 4.0;
+    }
+    "#,
+)?;
+
+let pass = Pass::compute("seed");
+pass.set_compute_dispatch(1, 1, 1);
+pass.add_shader(&compute);
+renderer.render(&pass, &target)?;
+
+let bytes = renderer.read_storage(&compute, "out").await?;
+let values: &[f32] = bytemuck::cast_slice(&bytes);
+assert_eq!(values, &[1.0, 2.0, 3.0, 4.0]);
+Ok(())
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
+`}
+lang="rust" meta="collapse={1-2, 27-31}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Pass, Renderer, Shader } from "fragmentcolor";
+
+const renderer = new Renderer();
+const target = await renderer.createTextureTarget([16, 16]);
+
+const compute = new Shader(\`
+
+    struct Out { values: array<f32, 4> };
+    @group(0) @binding(0) var<storage, read_write> out: Out;
+    @compute @workgroup_size(1) fn main() {
+        out.values[0] = 1.0;
+        out.values[1] = 2.0;
+        out.values[2] = 3.0;
+        out.values[3] = 4.0;
+    }
+    
+\`);
+
+const pass = Pass.compute("seed");
+pass.setComputeDispatch(1, 1, 1);
+pass.addShader(compute);
+renderer.render(pass, target);
+
+const bytes = await renderer.readStorage(compute, "out");
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Pass, Renderer, Shader
+
+renderer = Renderer()
+target = renderer.create_texture_target([16, 16])
+
+compute = Shader("""
+    struct Out { values: array<f32, 4> };
+    @group(0) @binding(0) var<storage, read_write> out: Out;
+    @compute @workgroup_size(1) fn main() {
+        out.values[0] = 1.0;
+        out.values[1] = 2.0;
+        out.values[2] = 3.0;
+        out.values[3] = 4.0;
+    }
+    
+""")
+
+rpass = Pass.compute("seed")
+rpass.set_compute_dispatch(1, 1, 1)
+rpass.add_shader(compute)
+renderer.render(rpass, target)
+
+bytes = renderer.read_storage(compute, "out")
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let renderer = Renderer()
+let target = try await renderer.createTextureTarget([16, 16])
+
+let compute = try Shader("""
+    struct Out { values: array<f32, 4> }
+    @group(0) @binding(0) var<storage, read_write> out: Out
+    @compute @workgroup_size(1) fn main() {
+        out.values[0] = 1.0
+        out.values[1] = 2.0
+        out.values[2] = 3.0
+        out.values[3] = 4.0
+    }
+    
+""")
+
+let pass = Pass.compute("seed")
+pass.setComputeDispatch(1, 1, 1)
+pass.addShader(compute)
+try renderer.render(pass, target)
+
+let bytes = try await renderer.readStorage(compute, "out")
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val renderer = Renderer()
+val target = renderer.createTextureTarget(16u, 16u)
+
+val compute = Shader("""
+    struct Out { values: array<f32, 4> }
+    @group(0) @binding(0) var<storage, read_write> out: Out
+    @compute @workgroup_size(1) fn main() {
+        out.values[0] = 1.0
+        out.values[1] = 2.0
+        out.values[2] = 3.0
+        out.values[3] = 4.0
+    }
+    
+""")
+
+val pass = Pass.compute("seed")
+pass.setComputeDispatch(1u,1u,1u)
+pass.addShader(compute)
+renderer.render(pass, target)
+
+val bytes = renderer.readStorage(compute, "out")
 `}
 lang="kotlin"
 />

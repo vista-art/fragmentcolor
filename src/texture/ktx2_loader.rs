@@ -25,7 +25,7 @@ use parking_lot::RwLock;
 /// Returns `None` for formats FragmentColor doesn't decode today; callers turn
 /// that into a [`TextureError`] explaining which format showed up.
 ///
-/// The supported set covers the formats RemixBrush and similar consumers ship:
+/// The supported set covers the formats consumers commonly ship:
 /// uncompressed 8-bit / 16-bit RGBA, BC1–7 (desktop), ETC2 (Android),
 /// ASTC 4×4 / 8×8 (mobile + WebGPU). Anything else falls through to `None`
 /// for now — extending the table is a one-line change per format.

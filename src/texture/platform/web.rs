@@ -3,12 +3,10 @@
 use lsp_doc::lsp_doc;
 use wasm_bindgen::prelude::*;
 
-use crate::{
-    CompareFunction, SamplerOptions, Size, Texture, TextureFormat, TextureId, TextureMipChain,
-};
+use crate::{CompareFunction, Mipmap, SamplerOptions, Size, Texture, TextureFormat, TextureId};
 
 #[wasm_bindgen]
-impl TextureMipChain {
+impl Mipmap {
     /// Build a chain from `bytes` for `format`. If `size` is undefined / null,
     /// `bytes` is decoded as an image (PNG / JPEG / etc.); if `size` is
     /// provided, `bytes` is treated as raw pixel data already laid out for
@@ -22,13 +20,13 @@ impl TextureMipChain {
     /// construct a wasm-bindgen `Size` instance (which has no JS-side
     /// constructor anyway) would break parity with `createStorageTexture`,
     /// `createTextureTarget`, and friends.
-    #[wasm_bindgen(js_name = "prepare")]
-    #[lsp_doc("docs/api/core/texture_mip_chain/prepare.md")]
-    pub fn prepare_js(
+    #[wasm_bindgen(js_name = "build")]
+    #[lsp_doc("docs/api/texture/mipmap/build.md")]
+    pub fn build_js(
         bytes: &JsValue,
         format: TextureFormat,
         size: &JsValue,
-    ) -> Result<TextureMipChain, JsError> {
+    ) -> Result<Mipmap, JsError> {
         let bytes = crate::texture::js_to_texture_bytes(bytes)?;
         let size: Option<Size> = if size.is_undefined() || size.is_null() {
             None
@@ -43,33 +41,33 @@ impl TextureMipChain {
                 ..Default::default()
             },
         };
-        Ok(Self::prepare(input)?)
+        Ok(Self::build(input)?)
     }
 
     #[wasm_bindgen(js_name = "format")]
-    #[lsp_doc("docs/api/core/texture_mip_chain/format.md")]
+    #[lsp_doc("docs/api/texture/mipmap/format.md")]
     pub fn format_js(&self) -> TextureFormat {
         self.format.into()
     }
 
-    #[wasm_bindgen(js_name = "baseSize")]
-    #[lsp_doc("docs/api/core/texture_mip_chain/base_size.md")]
-    pub fn base_size_js(&self) -> Size {
-        let (w, h) = self.base_size();
+    #[wasm_bindgen(js_name = "size")]
+    #[lsp_doc("docs/api/texture/mipmap/size.md")]
+    pub fn size_js(&self) -> Size {
+        let (w, h) = self.size();
         Size::from([w, h])
     }
 
-    #[wasm_bindgen(js_name = "levelCount")]
-    #[lsp_doc("docs/api/core/texture_mip_chain/level_count.md")]
-    pub fn level_count_js(&self) -> u32 {
-        self.level_count() as u32
+    #[wasm_bindgen(js_name = "count")]
+    #[lsp_doc("docs/api/texture/mipmap/count.md")]
+    pub fn count_js(&self) -> u32 {
+        self.count() as u32
     }
 
     /// Return the bytes for a single mip level as a `Uint8Array`. Use
-    /// `levelCount()` to discover the valid range. Returns an error if the
+    /// `count()` to discover the valid range. Returns an error if the
     /// requested level is out of range.
     #[wasm_bindgen(js_name = "level")]
-    #[lsp_doc("docs/api/core/texture_mip_chain/levels.md")]
+    #[lsp_doc("docs/api/texture/mipmap/levels.md")]
     pub fn level_js(&self, index: u32) -> Result<js_sys::Uint8Array, JsError> {
         let levels = self.levels();
         let idx = index as usize;
@@ -87,25 +85,25 @@ impl TextureMipChain {
 #[wasm_bindgen]
 impl Texture {
     #[wasm_bindgen(js_name = "id")]
-    #[lsp_doc("docs/api/core/texture/id.md")]
+    #[lsp_doc("docs/api/texture/texture/id.md")]
     pub fn id_js(&self) -> TextureId {
         self.id
     }
 
     #[wasm_bindgen(js_name = "size")]
-    #[lsp_doc("docs/api/core/texture/size.md")]
+    #[lsp_doc("docs/api/texture/texture/size.md")]
     pub fn size_js(&self) -> Size {
         self.size()
     }
 
     #[wasm_bindgen(js_name = "aspect")]
-    #[lsp_doc("docs/api/core/texture/aspect.md")]
+    #[lsp_doc("docs/api/texture/texture/aspect.md")]
     pub fn aspect_js(&self) -> f32 {
         self.aspect()
     }
 
     #[wasm_bindgen(js_name = "setSamplerOptions")]
-    #[lsp_doc("docs/api/core/texture/set_sampler_options.md")]
+    #[lsp_doc("docs/api/texture/texture/set_sampler_options.md")]
     pub fn set_sampler_options_js(&self, options: &JsValue) -> Result<(), JsError> {
         let opts = js_to_sampler_options(options)?;
         self.set_sampler_options(opts);
@@ -113,7 +111,7 @@ impl Texture {
     }
 
     #[wasm_bindgen(js_name = "write")]
-    #[lsp_doc("docs/api/core/texture/write.md")]
+    #[lsp_doc("docs/api/texture/texture/write.md")]
     pub fn write_js(&self, data: &JsValue) -> Result<(), JsError> {
         let bytes = crate::texture::js_to_texture_bytes(data)?;
         self.write(&bytes)?;
@@ -121,7 +119,7 @@ impl Texture {
     }
 
     #[wasm_bindgen(js_name = "writeRegion")]
-    #[lsp_doc("docs/api/core/texture/write_region.md")]
+    #[lsp_doc("docs/api/texture/texture/write_region.md")]
     pub fn write_region_js(&self, data: &JsValue, region: &JsValue) -> Result<(), JsError> {
         let bytes = crate::texture::js_to_texture_bytes(data)?;
         let r: crate::TextureRegion = region.try_into()?;
@@ -130,7 +128,7 @@ impl Texture {
     }
 
     #[wasm_bindgen(js_name = "getImage")]
-    #[lsp_doc("docs/api/core/texture/get_image.md")]
+    #[lsp_doc("docs/api/texture/texture/get_image.md")]
     pub async fn get_image_js(&self) -> Result<js_sys::Uint8Array, JsError> {
         let bytes = self
             .get_image()

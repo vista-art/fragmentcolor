@@ -93,13 +93,59 @@ impl UniformStorage {
                         base_offset + field_offset,
                         field_data.size(),
                         Uniform {
-                            name: key,
+                            name: key.clone(),
                             group: uniform.group,
                             binding: uniform.binding,
                             data: field_data.clone(),
                         },
                     ),
                 );
+
+                // Array-of-struct field: expand every element's struct
+                // fields too, so callers can read / write
+                // `<root>.<field>[i].<inner_field>` via the fast-path
+                // index. The slow-path in `update`/`get_bytes` already
+                // resolved writes correctly; this expansion is what
+                // unlocks `Shader::get(...)` on the same paths.
+                if let UniformData::Array(items) = field_data
+                    && let Some(ArrayElement {
+                        ty: elem_ty,
+                        count,
+                        stride,
+                    }) = items.first()
+                    && let Some(UniformData::Struct(StructShape {
+                        fields: elem_fields,
+                        ..
+                    })) = elem_ty.first()
+                {
+                    for i in 0..*count {
+                        let elem_base = base_offset + field_offset + i * *stride;
+                        for StructField {
+                            offset: ef_offset,
+                            name: ef_name,
+                            ty: ef_ty,
+                        } in elem_fields
+                        {
+                            let Some(ef_data) = ef_ty.first() else {
+                                continue;
+                            };
+                            let ek = format!("{}[{}].{}", key, i, ef_name);
+                            self.uniforms.insert(
+                                ek.clone(),
+                                (
+                                    elem_base + ef_offset,
+                                    ef_data.size(),
+                                    Uniform {
+                                        name: ek,
+                                        group: uniform.group,
+                                        binding: uniform.binding,
+                                        data: ef_data.clone(),
+                                    },
+                                ),
+                            );
+                        }
+                    }
+                }
             }
         }
 
@@ -571,6 +617,11 @@ impl UniformStorage {
     }
     pub(crate) fn clear_storage_dirty(&mut self, root: &str) {
         self.storage_dirty.remove(root);
+    }
+    /// True iff the shader's source declared a top-level storage binding
+    /// named `root` (i.e. there is a CPU-side blob for it).
+    pub(crate) fn has_storage(&self, root: &str) -> bool {
+        self.storage_blobs.contains_key(root)
     }
 }
 

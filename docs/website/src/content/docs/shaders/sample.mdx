@@ -1,0 +1,127 @@
+---
+title: "Sampling"
+description: Sample distributions and low-discrepancy sequences from the FragmentColor shader registry.
+---
+
+These helpers generate sample points — on the disk, on the hemisphere,
+across a low-discrepancy sequence — that you can use as offsets into a
+texture, as importance-sampled directions for shading, or as the input
+side of a Monte Carlo estimator. Inputs are typically a `(rnd, n)` pair;
+outputs are positions or directions.
+
+Pull one in by slug and use it inside your fragment:
+
+```rust
+let main = r#"
+@fragment fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+    let p = vogel_disk(u32(in.position.x) % 128u, 128u);
+    let d = length(in.uv * 2.0 - 1.0 - p);
+    return vec4<f32>(vec3<f32>(1.0 - smoothstep(0.0, 0.04, d)), 1.0);
+}
+"#;
+let shader = Shader::new(&["sample/vogel_disk", main])?;
+```
+
+## disk_concentric
+
+Shirley's concentric mapping from `[0, 1]^2` to the unit disk. Preserves
+relative position better than naive polar sampling.
+
+```wgsl
+fn disk_concentric(rnd: vec2<f32>) -> vec2<f32>
+```
+
+![sample/disk_concentric preview](/shaders/sample/disk_concentric.png)
+
+## disk_uniform
+
+Uniform sample on the unit disk via sqrt warp.
+
+```wgsl
+fn disk_uniform(rnd: vec2<f32>) -> vec2<f32>
+```
+
+![sample/disk_uniform preview](/shaders/sample/disk_uniform.png)
+
+## halton
+
+1D low-discrepancy Halton sample for index `i` and prime `base`.
+
+```wgsl
+fn halton(i: u32, base: u32) -> f32
+```
+
+![sample/halton preview](/shaders/sample/halton.png)
+
+## hammersley
+
+2D Hammersley sample (`i / n`, van der Corput base-2).
+
+```wgsl
+fn hammersley(i: u32, n: u32) -> vec2<f32>
+```
+
+![sample/hammersley preview](/shaders/sample/hammersley.png)
+
+## hemisphere_cosine
+
+Cosine-weighted hemisphere direction around normal `n`. Use for
+diffuse-ish importance sampling.
+
+```wgsl
+fn hemisphere_cosine(rnd: vec2<f32>, n: vec3<f32>) -> vec3<f32>
+```
+
+![sample/hemisphere_cosine preview](/shaders/sample/hemisphere_cosine.png)
+
+## hemisphere_uniform
+
+Uniform hemisphere direction around normal `n`.
+
+```wgsl
+fn hemisphere_uniform(rnd: vec2<f32>, n: vec3<f32>) -> vec3<f32>
+```
+
+![sample/hemisphere_uniform preview](/shaders/sample/hemisphere_uniform.png)
+
+## interleaved_gradient_noise
+
+Jorge Jimenez's IGN. Pixel-coord in, scalar in `[0, 1)` out. Useful as
+per-pixel decorrelation for any of the sample sequences above.
+
+```wgsl
+fn interleaved_gradient_noise(p: vec2<f32>) -> f32
+```
+
+![sample/interleaved_gradient_noise preview](/shaders/sample/interleaved_gradient_noise.png)
+
+## sphere_uniform
+
+Uniform direction on the unit sphere.
+
+```wgsl
+fn sphere_uniform(rnd: vec2<f32>) -> vec3<f32>
+```
+
+![sample/sphere_uniform preview](/shaders/sample/sphere_uniform.png)
+
+## van_der_corput
+
+Base-2 van der Corput radical inverse of a `u32` index.
+
+```wgsl
+fn van_der_corput(i: u32) -> f32
+```
+
+![sample/van_der_corput preview](/shaders/sample/van_der_corput.png)
+
+## vogel_disk
+
+`k`-th of `n` Vogel sunflower disk samples. The golden-angle spiral with a
+sqrt-r radius gives even areal coverage with no clustering.
+
+```wgsl
+fn vogel_disk(k: u32, n: u32) -> vec2<f32>
+```
+
+![sample/vogel_disk preview](/shaders/sample/vogel_disk.png)

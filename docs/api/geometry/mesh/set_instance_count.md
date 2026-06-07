@@ -3,7 +3,7 @@
 Override how many instances to draw without providing per-instance attributes.
 
 Use this when driving instance data from a storage buffer and indexing via
-`@builtin(instance_index)` in the vertex shader — common for compute-driven
+`@builtin(instance_index)` in the vertex shader. Common for compute-driven
 simulations and large particle systems.
 
 The override is automatically cleared if you later call `add_instance` /
