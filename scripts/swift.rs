@@ -101,6 +101,135 @@ mod swift {
             out.push(rewrite_line(&line));
         }
 
+        // Multi-line trailing comma strip. The convert layer emits
+        // calls like
+        //
+        //   try mesh.addVertex(
+        //       try Vertex.pbr(...).set("uv0", [0.5, 1.0]),
+        //   )
+        //
+        // Swift parses the dangling `,\n)` as the empty-element tuple
+        // shape and bails with "unexpected ',' separator". The per-line
+        // strip in `rewrite_line` only sees single lines, so handle
+        // the cross-line case at the joined-text level: replace any
+        // `,<whitespace>)` (including newlines) with `<whitespace>)`.
+        let joined = out.join("\n");
+        let joined = strip_trailing_comma_multiline(&joined);
+        // Also handle two-pass duplicate `let <name>` declarations
+        // inside a single static-func scope. Two `let shader = ...` in
+        // the same scope are a Swift compile error; rename the second
+        // and onwards to `<name>2`, `<name>3`, etc.
+        rename_duplicate_let(&joined)
+    }
+
+    /// Cross-line scan that removes a `,` immediately followed by
+    /// whitespace (possibly newlines) and a `)`. Strings and triple-
+    /// quoted blocks are skipped so WGSL inside `"""..."""` literals is
+    /// left alone.
+    fn strip_trailing_comma_multiline(src: &str) -> String {
+        let chars: Vec<char> = src.chars().collect();
+        let mut out: Vec<char> = Vec::with_capacity(chars.len());
+        let mut in_dq = false;
+        let mut in_tq = false;
+        let mut i = 0usize;
+        while i < chars.len() {
+            if i + 2 < chars.len()
+                && chars[i] == '"'
+                && chars[i + 1] == '"'
+                && chars[i + 2] == '"'
+            {
+                in_tq = !in_tq;
+                out.push('"');
+                out.push('"');
+                out.push('"');
+                i += 3;
+                continue;
+            }
+            if !in_tq && chars[i] == '"' {
+                in_dq = !in_dq;
+                out.push('"');
+                i += 1;
+                continue;
+            }
+            if !in_dq && !in_tq && chars[i] == ',' {
+                // Look past whitespace (incl. newlines) for the next
+                // non-whitespace char. If it's `)`, drop the comma.
+                let mut j = i + 1;
+                while j < chars.len() && chars[j].is_whitespace() {
+                    j += 1;
+                }
+                if j < chars.len() && chars[j] == ')' {
+                    i += 1;
+                    continue;
+                }
+            }
+            out.push(chars[i]);
+            i += 1;
+        }
+        out.into_iter().collect()
+    }
+
+    /// Rename duplicate `let <name>` declarations inside a single
+    /// static-func body. Swift's enum/static-func scope can't shadow
+    /// existing bindings — two `let shader = ...` lines collide with
+    /// "invalid redeclaration of 'shader'". We track names per
+    /// `static func` and rewrite the second occurrence (and later)
+    /// to `<name>2`, `<name>3`, … within the same function body.
+    ///
+    /// Conservative shape: only matches lines whose trimmed form
+    /// starts with `let <ident> = ` or `let <ident>: …`. Names declared
+    /// inside `if let`/`guard let`/destructuring `let (...)` are left
+    /// alone (those forms don't appear in our generated example bodies).
+    fn rename_duplicate_let(src: &str) -> String {
+        let mut out: Vec<String> = Vec::with_capacity(src.lines().count());
+        let mut declared: std::collections::HashMap<String, u32> =
+            std::collections::HashMap::new();
+        let mut in_tq = false;
+        for raw in src.lines() {
+            // Decide first whether the line *started* inside a triple-quoted
+            // string. Then toggle the state for subsequent lines. A line that
+            // opens `"""` carries valid Swift code before the marker, so we
+            // still want to process it.
+            let was_in_tq = in_tq;
+            let tq_count = raw.matches("\"\"\"").count();
+            if tq_count % 2 == 1 {
+                in_tq = !in_tq;
+            }
+            if was_in_tq {
+                out.push(raw.to_string());
+                continue;
+            }
+            // Reset declared map at every `static func` boundary so each
+            // example body starts fresh.
+            if raw.trim_start().starts_with("static func ") {
+                declared.clear();
+            }
+            let trimmed = raw.trim_start();
+            // Only handle `let <ident> = ...` or `let <ident>: ...`.
+            if let Some(rest) = trimmed.strip_prefix("let ") {
+                // Ident is the run of identifier chars.
+                let end = rest
+                    .find(|c: char| !c.is_ascii_alphanumeric() && c != '_')
+                    .unwrap_or(rest.len());
+                let ident = &rest[..end];
+                let after = rest[end..].trim_start();
+                let is_decl = after.starts_with('=') || after.starts_with(':');
+                if !ident.is_empty() && is_decl {
+                    let count = declared.entry(ident.to_string()).or_insert(0);
+                    *count += 1;
+                    if *count > 1 {
+                        let n = *count;
+                        let new_ident = format!("{}{}", ident, n);
+                        let indent_len = raw.len() - trimmed.len();
+                        let indent = &raw[..indent_len];
+                        // Reconstruct: indent + "let <new_ident>" + rest[end..]
+                        out.push(format!("{}let {}{}", indent, new_ident, &rest[end..]));
+                        continue;
+                    }
+                }
+            }
+            out.push(raw.to_string());
+        }
         out.join("\n")
     }
 
@@ -602,6 +731,7 @@ mod swift {
         // Methods that are `async throws` in Swift but appear without `await` in JS output.
         const ASYNC_THROWING_METHODS: &[&str] = &[
             ".createDepthTexture(",
+            ".load(",
         ];
 
         let trimmed = line.trim_start();
@@ -660,6 +790,7 @@ mod swift {
             ".addVertex(",
             ".addVertices(",
             ".fromVertices(",
+            ".setIndices(",
             // Shader
             ".addMesh(",
             ".validateMesh(",
@@ -672,6 +803,10 @@ mod swift {
             ".addDepthTarget(",
             ".require(",
             ".setClearColor(",
+            ".setTarget(",
+            ".setDepthTarget(",
+            // Pass.add(Model/Camera/Light) extension wraps a throwing call.
+            ".add(",
             // Renderer (sync variants)
             ".render(",
             ".unregisterTexture(",
@@ -681,6 +816,23 @@ mod swift {
             ".write(",
             ".writeRegion(",
             ".setSamplerOptions(",
+            // Camera (extension)
+            ".lookAt(",
+            // Light (extension)
+            ".setColor(",
+            ".setPosition(",
+            ".setDirection(",
+            ".setRange(",
+            ".setConeAngles(",
+            // Model (extension)
+            ".setTransform(",
+            ".translate(",
+            ".rotate(",
+            ".scale(",
+            // Material (extension)
+            ".baseColor(",
+            ".emissive(",
+            ".uvTransform(",
         ];
         // Constructors (type inits) that are `throws`.
         // Matched as `let x = TypeName(` or standalone `TypeName(`.
@@ -694,6 +846,11 @@ mod swift {
         const THROWING_STATIC_METHODS: &[&str] = &[
             "Shader.new(",
             "Mipmap.build(",
+            "Vertex.pbr(",
+            "Mesh.fromVertices(",
+            "Light.directional(",
+            "Light.point(",
+            "Light.spot(",
         ];
 
         let trimmed = line.trim_start();

@@ -39,6 +39,20 @@ extension Mesh {
         try addVertices(vertices: positions.map { try Vertex(position: $0.map { Float($0) }) })
     }
 
+    /// Append multiple already-constructed vertices (drops the `vertices:` label).
+    public func addVertices(_ vertices: [Vertex]) throws {
+        try addVertices(vertices: vertices)
+    }
+
+    /// Explicit indices, dropping the `indices:` label.
+    public func setIndices(_ indices: [UInt32]) {
+        setIndices(indices: indices)
+    }
+    /// Explicit indices from a `[Int]` literal (convenient for example code).
+    public func setIndices(_ indices: [Int]) {
+        setIndices(indices: indices.map { UInt32($0) })
+    }
+
     /// Build a Mesh from an array of float-array positions.
     public static func fromVertices(_ positions: [[Float]]) throws -> Mesh {
         let m = Mesh()
@@ -63,6 +77,14 @@ extension Vertex {
     /// Convenience: construct a Vertex from an unlabeled double array.
     public convenience init(_ position: [Double]) throws {
         try self.init(position: position.map { Float($0) })
+    }
+
+    /// Unlabeled `Vertex.pbr([x, y, z])` matching the JS / Python spelling.
+    public static func pbr(_ position: [Float]) throws -> Vertex {
+        return try Vertex.pbr(position: position)
+    }
+    public static func pbr(_ position: [Double]) throws -> Vertex {
+        return try Vertex.pbr(position: position.map { Float($0) })
     }
 
     /// Set a vertex attribute with a Float array value (dispatches by length).

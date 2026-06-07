@@ -19,4 +19,9 @@ extension Scene {
     public func add(_ light: Light) throws {
         try self.add(object: .light(light))
     }
+
+    /// Attach a [Pass] to the scene (unlabeled overload).
+    public func addPass(_ pass: Pass) {
+        addPass(pass: pass)
+    }
 }

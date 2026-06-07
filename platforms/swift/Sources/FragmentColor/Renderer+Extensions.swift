@@ -67,6 +67,12 @@ extension Renderer {
         )
     }
 
+    /// Create a storage texture from a `([width, height], format, bytes)` tuple
+    /// where bytes are `[Int]` (convenient for `Array(repeating: 0, count: N)`).
+    public func createStorageTexture(_ sizeFormatData: ([Int], TextureFormat, [Int])) async throws -> Texture {
+        try await createStorageTexture((sizeFormatData.0, sizeFormatData.1, sizeFormatData.2.map { UInt8($0) }))
+    }
+
     /// Create a storage texture from a `([width, height], format, bytes)` tuple.
     public func createStorageTexture(_ sizeFormatData: ([Int], TextureFormat, [UInt8])) async throws -> Texture {
         let sz = sizeFormatData.0
@@ -126,6 +132,20 @@ extension Renderer {
     /// Unregister a texture by its `TextureId` record.
     public func unregisterTexture(_ id: TextureId) throws {
         try unregisterTexture(textureId: id.id)
+    }
+
+    // MARK: - readStorage / readTexture convenience
+
+    /// Read back a shader's storage binding by `(shader, binding)` pair.
+    /// Mirrors the JS / Python call shape so doc examples read identically.
+    public func readStorage(_ shader: Shader, _ binding: String) async throws -> Data {
+        return try await readStorage(shader: shader, binding: binding)
+    }
+
+    /// Read back a registered texture by its `TextureId` (raw u64 underneath).
+    /// Mirrors the JS / Python call shape so doc examples read identically.
+    public func readTexture(_ id: TextureId) async throws -> Data {
+        return try await readTexture(textureId: id.id)
     }
 
     // MARK: - render (unlabeled overloads)

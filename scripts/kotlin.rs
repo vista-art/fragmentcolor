@@ -199,6 +199,13 @@ mod kotlin {
         // the integer indices into `0.0f, 1.0f, 2.0f` and the type mismatch
         // surfaces in kotlinc.
         out = rewrite_setindices_array_to_uint_list(&out);
+        // Flatten the 4×4 row form into a single 16-float list for
+        // `Model.setTransform`. The source writes
+        // `[[2,0,0,0], [0,2,0,0], [0,0,2,0], [3,0,0,1]]`; after the
+        // bracket→arrayOf pass that becomes
+        // `arrayOf(arrayOf(...), arrayOf(...), ...)`. The binding takes
+        // `List<Float>` of 16, not `Array<List<Float>>`.
+        out = rewrite_settransform_mat4_flatten(&out);
         // Float-arg coverage on signatures whose mobile binding uses single-
         // precision floats. Kotlin literal `0.3` is Double, so these need an
         // explicit `f` suffix or kotlinc rejects the call.
@@ -1131,6 +1138,66 @@ mod kotlin {
         result
     }
 
+    /// `.setTransform(arrayOf(arrayOf(...), arrayOf(...), arrayOf(...), arrayOf(...)))`
+    /// becomes `.setTransform(listOf(<16 floats>))`. The 4×4 row form reads
+    /// well in source but the binding takes the column-major mat4 as a flat
+    /// 16-element `List<Float>`. Walks the outer arrayOf, flattens each inner
+    /// numeric arrayOf into the parts list, then rejoins.
+    fn rewrite_settransform_mat4_flatten(line: &str) -> String {
+        let needle = ".setTransform(arrayOf(";
+        let Some(start) = line.find(needle) else {
+            return line.to_string();
+        };
+        let chars: Vec<char> = line.chars().collect();
+        // Open paren of inner `arrayOf(` (the outer-list constructor).
+        let inner_open = start + needle.len() - 1;
+        let Some((inner, inner_close)) = find_paren_pair(&chars, inner_open) else {
+            return line.to_string();
+        };
+        // Outer setTransform paren must close right after the inner arrayOf.
+        if inner_close + 1 >= chars.len() || chars[inner_close + 1] != ')' {
+            return line.to_string();
+        }
+        // Each row is its own `arrayOf(a, b, c, d)`. Walk the comma-separated
+        // top-level args, strip the `arrayOf(...)` shell, and collect floats.
+        let parts = split_args(&inner);
+        let mut flat: Vec<String> = Vec::with_capacity(16);
+        for raw in parts {
+            let s = raw.trim();
+            // Strip `arrayOf(...)` or `listOf(...)` wrapper.
+            let body = if let Some(b) = s
+                .strip_prefix("arrayOf(")
+                .and_then(|b| b.strip_suffix(')'))
+            {
+                b
+            } else if let Some(b) = s
+                .strip_prefix("listOf(")
+                .and_then(|b| b.strip_suffix(')'))
+            {
+                b
+            } else {
+                // Not a recognised row shape — bail out and leave the line alone.
+                return line.to_string();
+            };
+            for el in split_args(body) {
+                flat.push(floatify_if_numeric(el.trim()));
+            }
+        }
+        if flat.len() != 16 {
+            // Only flatten when the shape is exactly 16 floats; otherwise the
+            // call is probably something we shouldn't rewrite.
+            return line.to_string();
+        }
+        let prefix = &line[..start];
+        let suffix = &line[inner_close + 2..];
+        format!(
+            "{}.setTransform(listOf({})){}",
+            prefix,
+            flat.join(", "),
+            suffix
+        )
+    }
+
     /// `mesh.setIndices(arrayOf(0, 1, 2))` → `mesh.setIndices(listOf(0u, 1u, 2u))`.
     /// The uniffi binding takes `List<UInt>`. The bracket-to-arrayOf pass already
     /// converted `[0, 1, 2]`; we catch the `setIndices(arrayOf(...))` shape and
@@ -1295,28 +1362,105 @@ mod kotlin {
     /// (integer or float, possibly negative). Otherwise returns `s` unchanged.
     fn floatify_if_numeric(s: &str) -> String {
         let t = s.trim();
+        floatify_if_numeric_inner(t)
+            .map(|v| v)
+            .unwrap_or_else(|| {
+                // Not a bare number — try simple binary-op shapes like `a / b` or
+                // `current * 0.5`. Walk operators outside of parens and floatify
+                // each numeric-looking operand. Identifiers / sub-expressions pass
+                // through unchanged.
+                if let Some(expr) = floatify_binary_op_operands(t) {
+                    expr
+                } else {
+                    s.to_string()
+                }
+            })
+    }
+
+    fn floatify_if_numeric_inner(t: &str) -> Option<String> {
         if t.is_empty() {
-            return s.to_string();
+            return None;
         }
-        // Already f-suffixed?
         if t.ends_with('f') || t.ends_with('F') {
-            return s.to_string();
+            return Some(t.to_string());
         }
-        // Strip optional leading `-` and check digit-and-dot only.
         let body = t.strip_prefix('-').unwrap_or(t);
         if body.is_empty() {
-            return s.to_string();
+            return None;
         }
         let is_numeric = body.chars().all(|c| c.is_ascii_digit() || c == '.' || c == '_');
         if !is_numeric {
-            return s.to_string();
+            return None;
         }
-        // Integer → append `.0f`; float → append `f`.
-        if body.contains('.') {
+        Some(if body.contains('.') {
             format!("{}f", t)
         } else {
             format!("{}.0f", t)
+        })
+    }
+
+    /// Walk a flat arithmetic expression and floatify every numeric operand at
+    /// depth 0. Operators handled: `+ - * /`. Identifiers, function calls,
+    /// parenthesised sub-expressions pass through unchanged. Returns `None` if
+    /// the expression doesn't contain any top-level operator (so the bare-
+    /// literal path handles it on its own).
+    fn floatify_binary_op_operands(s: &str) -> Option<String> {
+        let chars: Vec<char> = s.chars().collect();
+        let mut depth = 0i32;
+        let mut parts: Vec<String> = Vec::new();
+        let mut ops: Vec<char> = Vec::new();
+        let mut current = String::new();
+        let mut prev_was_op = true; // a leading `-` is unary, not separator
+        for (i, &c) in chars.iter().enumerate() {
+            match c {
+                '(' | '[' | '{' => {
+                    depth += 1;
+                    current.push(c);
+                    prev_was_op = false;
+                }
+                ')' | ']' | '}' => {
+                    depth -= 1;
+                    current.push(c);
+                    prev_was_op = false;
+                }
+                '+' | '-' | '*' | '/' if depth == 0 && !prev_was_op => {
+                    // Treat as separator only if followed by something other
+                    // than another operator (avoids `--` / `*=` collapse).
+                    let next = chars.get(i + 1).copied().unwrap_or(' ');
+                    if next.is_whitespace() || next.is_ascii_digit() || next == '-' || next.is_ascii_alphabetic() || next == '_' || next == '(' {
+                        parts.push(current.trim().to_string());
+                        current = String::new();
+                        ops.push(c);
+                        prev_was_op = true;
+                        continue;
+                    }
+                    current.push(c);
+                    prev_was_op = false;
+                }
+                _ => {
+                    current.push(c);
+                    if !c.is_whitespace() {
+                        prev_was_op = false;
+                    }
+                }
+            }
         }
+        if ops.is_empty() {
+            return None;
+        }
+        parts.push(current.trim().to_string());
+        // Floatify each operand if it's a bare number; otherwise pass through.
+        let mut result = String::new();
+        for (i, part) in parts.iter().enumerate() {
+            let mapped = floatify_if_numeric_inner(part).unwrap_or_else(|| part.clone());
+            result.push_str(&mapped);
+            if let Some(&op) = ops.get(i) {
+                result.push(' ');
+                result.push(op);
+                result.push(' ');
+            }
+        }
+        Some(result)
     }
 
     // Rewrite TextureFormat camelCase to SCREAMING_SNAKE_CASE for Kotlin enum.
