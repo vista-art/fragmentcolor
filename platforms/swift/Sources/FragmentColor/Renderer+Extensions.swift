@@ -176,4 +176,32 @@ extension Renderer {
     public func render(_ scene: Scene, _ target: MobileTextureTarget) throws {
         try self.render(renderable: .scene(scene), target: .texture(target))
     }
+
+    // MARK: - load (unlabeled overloads)
+    //
+    // Mirrors the `render(...)` family above. The uniffi-generated
+    // `load(renderable:)` takes a `RenderableHandle`; these overloads wrap
+    // each concrete type into its variant so doc examples can write
+    // `try await renderer.load(scene)` (or `pass`, `mesh`, `shader`,
+    // `[pass1, pass2]`) the same way every other binding does.
+
+    public func load(_ shader: Shader) async throws {
+        try await self.load(renderable: .shader(shader))
+    }
+
+    public func load(_ pass: Pass) async throws {
+        try await self.load(renderable: .pass(pass))
+    }
+
+    public func load(_ mesh: Mesh) async throws {
+        try await self.load(renderable: .mesh(mesh))
+    }
+
+    public func load(_ passes: [Pass]) async throws {
+        try await self.load(renderable: .passes(passes))
+    }
+
+    public func load(_ scene: Scene) async throws {
+        try await self.load(renderable: .scene(scene))
+    }
 }

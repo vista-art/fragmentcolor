@@ -12,11 +12,25 @@ const targetArg = process.argv[2] || resolve(__dirname, 'pkg', 'fragmentcolor.js
 const path = resolve(targetArg);
 let src = readFileSync(path, 'utf8');
 
-// Regex to find the specific wasm-bindgen shim that constructs a Uint8Array from an ArrayBuffer
-// Pattern is tolerant to whitespace variations
-const re = /imports\.wbg\.(__wbg_new_[a-z0-9]+)\s*=\s*function\(arg0\)\s*\{\s*const\s+ret\s*=\s*new\s+Uint8Array\(arg0\);\s*return\s+ret;\s*\};/g;
+// Two wasm-bindgen glue shapes have shipped since this patch was first written.
+// Older releases assigned each shim directly:
+//
+//   imports.wbg.<fn> = function(arg0) { const ret = new Uint8Array(arg0); return ret; };
+//
+// Current releases inline the shim as a property of the `imports.wbg` object literal:
+//
+//   <fn>: function(arg0) {
+//       const ret = new Uint8Array(arg0);
+//       return ret;
+//   },
+//
+// We match both. The replacement keeps the same wrapping syntax so neighbouring
+// commas / semicolons don't drift.
 
-const replacementFor = (fn) => `imports.wbg.${fn} = function(arg0) {
+const bodyAssignment = /imports\.wbg\.(__wbg_new_[a-z0-9]+)\s*=\s*function\(arg0\)\s*\{\s*const\s+ret\s*=\s*new\s+Uint8Array\(arg0\);\s*return\s+ret;\s*\};/g;
+const bodyObjectLit = /(__wbg_new_[a-z0-9]+)\s*:\s*function\(arg0\)\s*\{\s*const\s+ret\s*=\s*new\s+Uint8Array\(arg0\);\s*return\s+ret;\s*\},/g;
+
+const guardedBody = `function(arg0) {
     try {
         return new Uint8Array(arg0);
     } catch (err) {
@@ -28,10 +42,17 @@ const replacementFor = (fn) => `imports.wbg.${fn} = function(arg0) {
         } catch {}
         return new Uint8Array(0);
     }
-};`;
+}`;
 
 let count = 0;
-src = src.replace(re, (m, fn) => { count++; return replacementFor(fn); });
+src = src.replace(bodyAssignment, (_m, fn) => {
+    count++;
+    return `imports.wbg.${fn} = ${guardedBody};`;
+});
+src = src.replace(bodyObjectLit, (_m, fn) => {
+    count++;
+    return `${fn}: ${guardedBody},`;
+});
 
 if (count === 0) {
   console.warn(`[patch_glue] No Uint8Array shim matched in ${path}; glue format may have changed.`);

@@ -35,6 +35,28 @@ extension Pass {
     // wrapper went with it. Callers attach a mesh to a specific shader by
     // calling `shader.addMesh(mesh)` directly.
 
+    // MARK: - Scene objects (add)
+    //
+    // The mobile binding takes a SceneObjectHandle enum (Model / Camera /
+    // Light) and dispatches internally; these overloads let callers pass the
+    // concrete types directly so example code reads pass.add(model) instead
+    // of pass.add(object: .model(model)).
+
+    /// Attach a `Model` to the pass.
+    public func add(_ model: Model) throws {
+        try self.add(object: .model(model))
+    }
+
+    /// Attach a `Camera` to the pass.
+    public func add(_ camera: Camera) throws {
+        try self.add(object: .camera(camera))
+    }
+
+    /// Attach a `Light` to the pass.
+    public func add(_ light: Light) throws {
+        try self.add(object: .light(light))
+    }
+
     // MARK: - Dependencies (require)
 
     /// Declare a `Shader` as a dependency of this pass.

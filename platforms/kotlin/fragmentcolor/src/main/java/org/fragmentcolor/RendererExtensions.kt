@@ -79,6 +79,33 @@ fun Renderer.render(scene: Scene, target: MobileTextureTarget) {
 }
 
 /**
+ * Eager-prewarm overloads matching the `load(...)` family from the JavaScript
+ * and Python bindings. The uniffi layer exports one concrete
+ * `load(renderable)` taking a [RenderableHandle] enum; these wrap the concrete
+ * value into the matching variant so callers write `renderer.load(scene)` or
+ * `renderer.load(pass)` directly.
+ */
+suspend fun Renderer.load(shader: Shader) {
+    load(RenderableHandle.Shader(shader))
+}
+
+suspend fun Renderer.load(pass: Pass) {
+    load(RenderableHandle.Pass(pass))
+}
+
+suspend fun Renderer.load(mesh: Mesh) {
+    load(RenderableHandle.Mesh(mesh))
+}
+
+suspend fun Renderer.load(passes: List<Pass>) {
+    load(RenderableHandle.Passes(passes))
+}
+
+suspend fun Renderer.load(scene: Scene) {
+    load(RenderableHandle.Scene(scene))
+}
+
+/**
  * Unregister a texture by its [TextureId] wrapper. Unwraps to the underlying
  * [ULong] handle that the uniffi API expects.
  */

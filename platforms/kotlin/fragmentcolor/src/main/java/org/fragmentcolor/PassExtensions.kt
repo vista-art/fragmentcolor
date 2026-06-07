@@ -33,6 +33,28 @@ fun Pass.require(deps: List<RenderableHandle>) {
     require(deps)
 }
 
+// ── Scene objects (add) ───────────────────────────────────────────────────────
+
+// The mobile binding takes a SceneObjectHandle enum (Model / Camera / Light)
+// and dispatches internally; these overloads let callers pass the concrete
+// types directly so example code reads pass.add(model) instead of
+// pass.add(SceneObjectHandle.Model(model)).
+
+/** Attach a [Model] to the pass. */
+fun Pass.add(model: Model) {
+    add(SceneObjectHandle.Model(model))
+}
+
+/** Attach a [Camera] to the pass. */
+fun Pass.add(camera: Camera) {
+    add(SceneObjectHandle.Camera(camera))
+}
+
+/** Attach a [Light] to the pass. */
+fun Pass.add(light: Light) {
+    add(SceneObjectHandle.Light(light))
+}
+
 // ── Targets ───────────────────────────────────────────────────────────────────
 
 /** Set the colour attachment target for this pass. */

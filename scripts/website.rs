@@ -764,6 +764,10 @@ mod website {
         swift_out.push_str("//      export to Swift.\n");
         swift_out.push_str("// Fix the source — this file is regenerated on every cargo build.\n");
         swift_out.push('\n');
+        // Foundation gives us `Data`, which the texture-input examples need
+        // when wrapping `[UInt8]` byte arrays. Importing FragmentColor alone
+        // doesn't transitively re-export Foundation symbols into this file.
+        swift_out.push_str("import Foundation\n");
         swift_out.push_str("import FragmentColor\n");
         swift_out.push('\n');
         swift_out.push_str("@available(iOS 16.0, *)\n");
@@ -774,19 +778,26 @@ mod website {
             let example_path = root.join("platforms/swift/examples").join(rel);
             let body = std::fs::read_to_string(&example_path).unwrap_or_default();
             let body_clean = strip_lang_lines(&body, &["import "]);
+            // Wrap each example body in a `do { ... }` block so its `let`
+            // declarations live in a private lexical scope. Two examples
+            // that both declare `let shader = ...` would otherwise collide
+            // (Swift's enum-scope name resolution treats the surrounding
+            // static-func body as a single scope when names clash).
             swift_out.push_str(&format!(
                 "    static func _example_{}() async throws {{\n",
                 slug
             ));
+            swift_out.push_str("        do {\n");
             for line in body_clean.lines() {
                 if line.trim().is_empty() {
                     swift_out.push('\n');
                 } else {
-                    swift_out.push_str("        ");
+                    swift_out.push_str("            ");
                     swift_out.push_str(line);
                     swift_out.push('\n');
                 }
             }
+            swift_out.push_str("        }\n");
             swift_out.push_str("    }\n\n");
         }
         swift_out.push_str("}\n");

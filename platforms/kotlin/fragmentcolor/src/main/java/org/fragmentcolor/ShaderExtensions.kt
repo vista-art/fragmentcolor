@@ -19,6 +19,15 @@ fun Shader.set(key: String, value: Float) {
     set(key, UniformData.Float(value))
 }
 
+/**
+ * Set a Float uniform from a Kotlin [Double] literal. Lets example code
+ * write `shader.set("k", 0.5)` without the `f` suffix; the value is downcast
+ * to f32 before the FFI hop, matching every other binding's behaviour.
+ */
+fun Shader.set(key: String, value: Double) {
+    set(key, UniformData.Float(value.toFloat()))
+}
+
 /** Set an Int (i32) uniform. */
 fun Shader.set(key: String, value: Int) {
     set(key, UniformData.Int(value))

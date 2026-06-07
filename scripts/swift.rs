@@ -175,6 +175,15 @@ mod swift {
         //     Also rewrite the follow-up `let _ = (width, height)` → `let _ = size`.
         out = rewrite_size_tuple(&out);
 
+        // 18a. Strip trailing commas inside parens: `foo(a, b,)` → `foo(a, b)`.
+        //      The convert-layer emits these from multi-line Rust calls that
+        //      had a trailing comma before the close paren. Swift parses
+        //      `(...,)` as the malformed empty-element tuple, raising
+        //      "unexpected ',' separator". The strip is safe because Swift
+        //      does not have trailing-comma semantics outside arrays and
+        //      tuples we already round-trip through JS array literals.
+        out = strip_trailing_comma_before_close_paren(&out);
+
         // 18. Inline `Vertex.UV0` (and the rest of the SCREAMING_SNAKE
         //     attribute-name constants) as the bare string literal value.
         //     Uniffi has no equivalent of pyo3 classattr or Kotlin static const
@@ -184,6 +193,61 @@ mod swift {
         out = inline_vertex_attr_constants(&out);
 
         out
+    }
+
+    /// Strip a comma that immediately precedes a `)` at the top level of a
+    /// line, ignoring whitespace and contents of double-quoted / triple-
+    /// quoted strings. Common shape:
+    ///
+    ///   `try mesh.addVertex(try Vertex(...).set("uv0", [0.5, 1.0]),)`
+    ///
+    /// becomes
+    ///
+    ///   `try mesh.addVertex(try Vertex(...).set("uv0", [0.5, 1.0]))`
+    fn strip_trailing_comma_before_close_paren(line: &str) -> String {
+        let chars: Vec<char> = line.chars().collect();
+        let mut out: Vec<char> = Vec::with_capacity(chars.len());
+        let mut in_dq = false;
+        let mut in_tq = false;
+        let mut i = 0usize;
+        while i < chars.len() {
+            // Toggle triple-quote string.
+            if i + 2 < chars.len()
+                && chars[i] == '"'
+                && chars[i + 1] == '"'
+                && chars[i + 2] == '"'
+            {
+                in_tq = !in_tq;
+                out.push('"');
+                out.push('"');
+                out.push('"');
+                i += 3;
+                continue;
+            }
+            if !in_tq && chars[i] == '"' {
+                in_dq = !in_dq;
+                out.push('"');
+                i += 1;
+                continue;
+            }
+            if !in_dq && !in_tq && chars[i] == ',' {
+                // Peek over whitespace to find next non-space char.
+                let mut j = i + 1;
+                while j < chars.len() && chars[j].is_whitespace() {
+                    j += 1;
+                }
+                if j < chars.len() && chars[j] == ')' {
+                    // Drop the comma. Keep the intervening whitespace
+                    // (preserves source-shape on multi-line) and let the
+                    // close paren land naturally.
+                    i += 1;
+                    continue;
+                }
+            }
+            out.push(chars[i]);
+            i += 1;
+        }
+        out.iter().collect()
     }
 
     /// Replace `Vertex.UV0` etc. with the bare string literal value. Matches

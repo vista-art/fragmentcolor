@@ -39,6 +39,7 @@ mod kotlin {
             ("raw_rgba", "val raw_rgba: ByteArray = ByteArray(8 * 8 * 4)"),
             ("glb_bytes", "val glb_bytes: ByteArray = byteArrayOf()"),
             ("bytes", "val bytes: ByteArray = byteArrayOf()"),
+            ("png", "val png: ByteArray = byteArrayOf()"),
         ];
 
         for raw in js.lines() {
@@ -68,6 +69,10 @@ mod kotlin {
             // Before rewriting: check if this line references any known hidden-doc variables
             // that were defined in `# ...` Rust lines (invisible to the transpiler). If so,
             // emit a stub declaration before the first reference to each such variable.
+            //
+            // Skip the stub when the current line itself declares the same variable
+            // (`val <name>` or `val <name>:`): the visible line is the real definition,
+            // and emitting a stub on top of it produces a conflicting redeclaration.
             let indent_len = line.len() - trimmed.len();
             let indent = &line[..indent_len];
             for (var_name, stub_decl) in hidden_var_stubs {
@@ -86,11 +91,32 @@ mod kotlin {
                     }
                     found
                 };
+                let declares_self = {
+                    // The IR coming from convert.rs uses JS-style `const` for
+                    // local bindings; kotlin::finalize then rewrites that to
+                    // `val`. Either form (plus a literal `let` / `var`) means
+                    // the visible line itself defines this variable, so the
+                    // stub would shadow a real declaration.
+                    let after_var = |rest: &str| {
+                        rest.starts_with(' ')
+                            || rest.starts_with('=')
+                            || rest.starts_with(':')
+                            || rest.starts_with('\t')
+                    };
+                    ["val ", "let ", "const ", "var "].iter().any(|kw| {
+                        let prefix = format!("{}{}", kw, var_name);
+                        trimmed.starts_with(&prefix)
+                            && after_var(&trimmed[prefix.len()..])
+                    })
+                };
                 let already_declared = emitted_stubs.contains(*var_name)
                     || declared_vals.contains_key(*var_name);
-                if used && !already_declared {
+                if used && !already_declared && !declares_self {
                     out.push(format!("{}{}", indent, stub_decl));
                     emitted_stubs.insert(var_name.to_string());
+                    // Register the stub identifier so rename_duplicate_val sees later
+                    // declarations as duplicates and disambiguates them.
+                    declared_vals.insert(var_name.to_string(), 1);
                 }
             }
 
@@ -162,6 +188,24 @@ mod kotlin {
         out = rewrite_shader_set_array(&out);
         out = rewrite_readtexture_to_getimage(&out);
         out = rewrite_textureformat_camel_to_screaming(&out);
+        // Uniffi exposes Rust enum variants in SCREAMING_SNAKE_CASE on Kotlin —
+        // mirror what `TextureFormat` already does for `AlphaMode`. Run before
+        // any float-list conversion so the variant lookups parse cleanly.
+        out = rewrite_alphamode_variant_to_screaming(&out);
+        // `mesh.setIndices(arrayOf(0, 1, 2))` must become
+        // `mesh.setIndices(listOf(0u, 1u, 2u))` — indices are UInt on the
+        // uniffi binding. Run BEFORE rewrite_arrayof_float_to_listof so we
+        // grab the all-numeric arrayOf first; otherwise the float pass turns
+        // the integer indices into `0.0f, 1.0f, 2.0f` and the type mismatch
+        // surfaces in kotlinc.
+        out = rewrite_setindices_array_to_uint_list(&out);
+        // Float-arg coverage on signatures whose mobile binding uses single-
+        // precision floats. Kotlin literal `0.3` is Double, so these need an
+        // explicit `f` suffix or kotlinc rejects the call.
+        out = rewrite_float_arg_call_sites(&out);
+        // Same idea for `floatArrayOf(...)` calls — every numeric arg becomes
+        // `f`-suffixed so the array binds to FloatArray rather than DoubleArray.
+        out = rewrite_floatarrayof_promote_doubles(&out);
         out = rewrite_instance_new(&out);
         out = rewrite_arrayof_byte_literals(&out);
         out = rewrite_shader_new_to_compose(&out);
@@ -1035,6 +1079,244 @@ mod kotlin {
     // no rewrite needed. The old `readTextureAsync` no longer exists.
     fn rewrite_readtexture_to_getimage(line: &str) -> String {
         line.to_string()
+    }
+
+    /// Find the slice between the opening `(` and its matching `)`, starting from
+    /// `open_index` (the index of `(` in `chars`). Returns `(inner_text, close_index)`.
+    fn find_paren_pair(chars: &[char], open_index: usize) -> Option<(String, usize)> {
+        if open_index >= chars.len() || chars[open_index] != '(' {
+            return None;
+        }
+        let inner_start = open_index + 1;
+        let mut depth = 0i32;
+        let mut j = inner_start;
+        while j < chars.len() {
+            match chars[j] {
+                '(' => depth += 1,
+                ')' => {
+                    if depth == 0 {
+                        let inner: String = chars[inner_start..j].iter().collect();
+                        return Some((inner, j));
+                    }
+                    depth -= 1;
+                }
+                _ => {}
+            }
+            j += 1;
+        }
+        None
+    }
+
+    /// Mirror `rewrite_textureformat_camel_to_screaming` for `AlphaMode`.
+    /// `AlphaMode.Mask` → `AlphaMode.MASK`, `AlphaMode.Blend` → `AlphaMode.BLEND`,
+    /// `AlphaMode.Opaque` → `AlphaMode.OPAQUE`. Uniffi's Kotlin codegen uppercases
+    /// enum variants, so the doc source's `AlphaMode::Mask` (which the convert
+    /// layer rewrites to `AlphaMode.Mask`) has to be matched here.
+    fn rewrite_alphamode_variant_to_screaming(line: &str) -> String {
+        let needle = "AlphaMode.";
+        let mut result = String::with_capacity(line.len());
+        let mut remaining = line;
+        while let Some(start) = remaining.find(needle) {
+            result.push_str(&remaining[..start + needle.len()]);
+            let rest = &remaining[start + needle.len()..];
+            let end = rest
+                .find(|c: char| !c.is_ascii_alphanumeric() && c != '_')
+                .unwrap_or(rest.len());
+            let variant = &rest[..end];
+            let screaming = camel_to_screaming_snake(variant);
+            result.push_str(&screaming);
+            remaining = &rest[end..];
+        }
+        result.push_str(remaining);
+        result
+    }
+
+    /// `mesh.setIndices(arrayOf(0, 1, 2))` → `mesh.setIndices(listOf(0u, 1u, 2u))`.
+    /// The uniffi binding takes `List<UInt>`. The bracket-to-arrayOf pass already
+    /// converted `[0, 1, 2]`; we catch the `setIndices(arrayOf(...))` shape and
+    /// rewrite it before the generic `arrayOf` → `listOf<Float>` pass clobbers it.
+    fn rewrite_setindices_array_to_uint_list(line: &str) -> String {
+        let needle = ".setIndices(arrayOf(";
+        let Some(start) = line.find(needle) else {
+            return line.to_string();
+        };
+        let chars: Vec<char> = line.chars().collect();
+        let inner_open = start + needle.len() - 1; // index of inner `(`
+        let Some((inner, inner_close)) = find_paren_pair(&chars, inner_open) else {
+            return line.to_string();
+        };
+        // Outer paren of `setIndices(` — must close immediately after `arrayOf(...)`.
+        if inner_close + 1 >= chars.len() || chars[inner_close + 1] != ')' {
+            return line.to_string();
+        }
+        let parts: Vec<String> = inner
+            .split(',')
+            .map(|p| {
+                let t = p.trim();
+                if t.parse::<u64>().is_ok() {
+                    format!("{}u", t)
+                } else if let Ok(f) = t.parse::<f64>() {
+                    // Float literal in source — coerce back to integer index.
+                    format!("{}u", f as u64)
+                } else {
+                    t.to_string()
+                }
+            })
+            .collect();
+        let prefix = &line[..start];
+        let suffix = &line[inner_close + 2..]; // skip ')' of arrayOf and ')' of setIndices
+        format!("{}.setIndices(listOf({})){}", prefix, parts.join(", "), suffix)
+    }
+
+    /// Promote bare Double literals to Float literals at known single-precision
+    /// call sites. Doesn't touch nested calls or string literals — only the
+    /// top-level args of the matched call.
+    fn rewrite_float_arg_call_sites(line: &str) -> String {
+        // Top-level call signatures whose binding takes Float (f32) args.
+        //
+        // The match is `<prefix>(` (immediately followed by `(`). For each one
+        // we split the arg list at depth 0 and floatify any element that's a
+        // bare numeric literal — anything nested (list, function call) passes
+        // through unchanged.
+        const FLOAT_CALL_PREFIXES: &[&str] = &[
+            "Camera.perspective",
+            "Camera.orthographic",
+            ".lookAt",
+            ".perspective",
+            ".orthographic",
+            ".setAspect",
+            ".alphaCutoff",
+            ".metallic",
+            ".roughness",
+            ".normalScale",
+            ".occlusionStrength",
+            ".alphaCutoff",
+            ".scale",
+            ".setRange",
+            ".setConeAngles",
+            ".setIntensity",
+            ".setColor",
+            ".setDirection",
+            ".setPosition",
+            ".translate",
+            ".rotate",
+            ".setTransform",
+            ".uvTransform",
+        ];
+        let mut out = line.to_string();
+        for prefix in FLOAT_CALL_PREFIXES {
+            out = floatify_top_level_args(&out, prefix);
+        }
+        out
+    }
+
+    /// Apply float-suffix promotion to every numeric arg of every `<prefix>(...)` call
+    /// in `line`. Nested calls aren't touched. Handles multiple occurrences on the
+    /// same line (e.g. chained `.metallic(0.5).roughness(0.5)`).
+    fn floatify_top_level_args(line: &str, prefix: &str) -> String {
+        let pat = format!("{}(", prefix);
+        let mut result = String::with_capacity(line.len());
+        let mut remaining = line;
+        loop {
+            let Some(idx) = remaining.find(&pat) else {
+                result.push_str(remaining);
+                break;
+            };
+            // Ensure the prefix isn't a substring of a larger identifier.
+            // Only check the char before the prefix (no alnum / `_`) when the
+            // prefix is itself a free identifier (e.g. `Camera.perspective`).
+            // Method-call prefixes start with `.` and may legitimately follow
+            // any expression terminator (an identifier, `)`, `]`, …); leaving
+            // the check on would skip every `<receiver>.method(...)` site.
+            let starts_with_dot = prefix.starts_with('.');
+            let before_ok = if starts_with_dot || idx == 0 {
+                true
+            } else {
+                let prev = remaining.as_bytes()[idx - 1];
+                !prev.is_ascii_alphanumeric() && prev != b'_'
+            };
+            // Push everything up through and including the `(`.
+            let head_end = idx + pat.len();
+            result.push_str(&remaining[..head_end]);
+            if !before_ok {
+                remaining = &remaining[head_end..];
+                continue;
+            }
+            let chars: Vec<char> = remaining[head_end..].chars().collect();
+            // Find the matching close paren.
+            let mut depth = 0i32;
+            let mut close: Option<usize> = None;
+            let mut j = 0usize;
+            while j < chars.len() {
+                match chars[j] {
+                    '(' => depth += 1,
+                    ')' => {
+                        if depth == 0 {
+                            close = Some(j);
+                            break;
+                        }
+                        depth -= 1;
+                    }
+                    _ => {}
+                }
+                j += 1;
+            }
+            let Some(close) = close else {
+                // Unbalanced — bail out cleanly.
+                result.push_str(&remaining[head_end..]);
+                break;
+            };
+            let inner: String = chars[..close].iter().collect();
+            let parts = split_args(&inner);
+            let mapped: Vec<String> = parts
+                .iter()
+                .map(|p| floatify_if_numeric(p.trim()))
+                .collect();
+            result.push_str(&mapped.join(", "));
+            result.push(')');
+            // Advance `remaining` past the close-paren.
+            let byte_close = remaining[head_end..]
+                .char_indices()
+                .nth(close + 1)
+                .map(|(b, _)| head_end + b)
+                .unwrap_or(remaining.len());
+            remaining = &remaining[byte_close..];
+        }
+        result
+    }
+
+    /// `floatArrayOf(0.0, 0.5, 0.0)` → `floatArrayOf(0.0f, 0.5f, 0.0f)`.
+    /// Top-level numeric args only. Repeated occurrences are handled.
+    fn rewrite_floatarrayof_promote_doubles(line: &str) -> String {
+        floatify_top_level_args(line, "floatArrayOf")
+    }
+
+    /// Returns `s` with the `f` suffix appended if it's a bare numeric literal
+    /// (integer or float, possibly negative). Otherwise returns `s` unchanged.
+    fn floatify_if_numeric(s: &str) -> String {
+        let t = s.trim();
+        if t.is_empty() {
+            return s.to_string();
+        }
+        // Already f-suffixed?
+        if t.ends_with('f') || t.ends_with('F') {
+            return s.to_string();
+        }
+        // Strip optional leading `-` and check digit-and-dot only.
+        let body = t.strip_prefix('-').unwrap_or(t);
+        if body.is_empty() {
+            return s.to_string();
+        }
+        let is_numeric = body.chars().all(|c| c.is_ascii_digit() || c == '.' || c == '_');
+        if !is_numeric {
+            return s.to_string();
+        }
+        // Integer → append `.0f`; float → append `f`.
+        if body.contains('.') {
+            format!("{}f", t)
+        } else {
+            format!("{}.0f", t)
+        }
     }
 
     // Rewrite TextureFormat camelCase to SCREAMING_SNAKE_CASE for Kotlin enum.

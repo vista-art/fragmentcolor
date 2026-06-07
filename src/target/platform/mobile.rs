@@ -156,6 +156,16 @@ impl MobileTextureTarget {
         let inner = self.inner.read().clone();
         inner.get_image().await
     }
+
+    /// Return a sampleable [`Texture`](crate::texture::Texture) handle that
+    /// aliases this target's offscreen storage. Mirrors the inherent
+    /// `TextureTarget::texture()` on every other binding so the docs example
+    /// reads `target.texture()` identically across Python, Swift, Kotlin, JS.
+    #[uniffi::method(name = "texture")]
+    #[lsp_doc("docs/api/targets/texture_target/texture.md")]
+    pub fn texture_mobile(&self) -> Arc<crate::texture::Texture> {
+        Arc::new(self.inner.read().texture())
+    }
 }
 
 impl crate::target::TargetInternal for MobileTextureTarget {
