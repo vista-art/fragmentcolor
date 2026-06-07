@@ -29,7 +29,29 @@ mod convert {
         // `kotlin::rewrite_shader_new_to_compose`, swift's tuple→Size
         // baseSize rewrite) rely on the original Rust shape.
         let raw = convert(items, Lang::Js, /*aggressive_js_flatten=*/ true);
-        flatten_tuple_call_args_js_multiline(&raw)
+        let out = flatten_tuple_call_args_js_multiline(&raw);
+        // wasm-bindgen doesn't expose the Rust-side `pub const UV0: &str = "uv0"`
+        // declarations on the JS class — `Vertex.UV0` resolves to `undefined`
+        // at runtime, which then trips `set(undefined, ...)` with
+        // "expected a string argument, found undefined". Mirror the inline
+        // rewrite that scripts/swift.rs and scripts/kotlin.rs already do.
+        inline_vertex_attr_constants_js(&out)
+    }
+
+    fn inline_vertex_attr_constants_js(src: &str) -> String {
+        const ATTRS: &[(&str, &str)] = &[
+            ("Vertex.UV0", "\"uv0\""),
+            ("Vertex.UV1", "\"uv1\""),
+            ("Vertex.NORMAL", "\"normal\""),
+            ("Vertex.TANGENT", "\"tangent\""),
+            ("Vertex.COLOR0", "\"color0\""),
+            ("Vertex.COLOR1", "\"color1\""),
+        ];
+        let mut out = src.to_string();
+        for (needle, repl) in ATTRS {
+            out = out.replace(needle, repl);
+        }
+        out
     }
 
     pub fn to_py(items: &[(String, bool)]) -> String {
