@@ -67,7 +67,7 @@ code={`
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Camera;
 
-let camera = Camera::perspective(60.0_f32.to_radians(), 16.0 / 9.0, 0.1, 100.0);
+let camera = Camera::perspective(1.047, 16.0 / 9.0, 0.1, 100.0);
 
 // Perspective collapses the depth axis into a non-trivial matrix; the
 // [2][3] term encodes the -1 wgpu uses for the homogeneous w divide.
@@ -86,7 +86,7 @@ lang="rust" meta="collapse={1-1, 6-11}"
 code={`
 import { Camera } from "fragmentcolor";
 
-const camera = Camera.perspective(60.0.toRadians(), 16.0 / 9.0, 0.1, 100.0);
+const camera = Camera.perspective(1.047, 16.0 / 9.0, 0.1, 100.0);
 
 `}
 lang="js"
@@ -99,7 +99,7 @@ lang="js"
 code={`
 from fragmentcolor import Camera
 
-camera = Camera.perspective(60.0_.to_radians(), 16.0 / 9.0, 0.1, 100.0)
+camera = Camera.perspective(1.047, 16.0 / 9.0, 0.1, 100.0)
 
 `}
 lang="python"
@@ -112,7 +112,7 @@ lang="python"
 code={`
 import FragmentColor
 
-let camera = Camera.perspective(60.0.toRadians(), 16.0 / 9.0, 0.1, 100.0)
+let camera = Camera.perspective(1.047, 16.0 / 9.0, 0.1, 100.0)
 `}
 lang="swift"
 />
@@ -124,7 +124,7 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 
-val camera = Camera.perspective(60.0.toRadians(), 16.0 / 9.0, 0.1, 100.0)
+val camera = Camera.perspective(1.047f, 16.0f / 9.0f, 0.1f, 100.0f)
 `}
 lang="kotlin"
 />
@@ -224,7 +224,7 @@ code={`
 import org.fragmentcolor.*
 
 // A 16:9 viewport, 10 world units tall, depth range 0.1..100.
-val camera = Camera.orthographic(-8.0, 8.0, -4.5, 4.5, 0.1, 100.0)
+val camera = Camera.orthographic(-8.0f, 8.0f, -4.5f, 4.5f, 0.1f, 100.0f)
 `}
 lang="kotlin"
 />
@@ -270,7 +270,7 @@ code={`
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Camera;
 
-let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0);
+let camera = Camera::perspective(1.047, 1.0, 0.1, 100.0);
 
 // Window resize: 1920×1080 → wide-screen aspect.
 camera.set_aspect(1920.0 / 1080.0);
@@ -287,7 +287,7 @@ lang="rust" meta="collapse={1-1, 8-9}"
 code={`
 import { Camera } from "fragmentcolor";
 
-const camera = Camera.perspective(60.0.toRadians(), 1.0, 0.1, 100.0);
+const camera = Camera.perspective(1.047, 1.0, 0.1, 100.0);
 
 // Window resize: 1920×1080 → wide-screen aspect.
 camera.setAspect(1920.0 / 1080.0);
@@ -302,7 +302,7 @@ lang="js"
 code={`
 from fragmentcolor import Camera
 
-camera = Camera.perspective(60.0_.to_radians(), 1.0, 0.1, 100.0)
+camera = Camera.perspective(1.047, 1.0, 0.1, 100.0)
 
 # Window resize: 1920×1080 → wide-screen aspect.
 camera.set_aspect(1920.0 / 1080.0)
@@ -317,7 +317,7 @@ lang="python"
 code={`
 import FragmentColor
 
-let camera = Camera.perspective(60.0.toRadians(), 1.0, 0.1, 100.0)
+let camera = Camera.perspective(1.047, 1.0, 0.1, 100.0)
 
 // Window resize: 1920×1080 → wide-screen aspect.
 camera.setAspect(1920.0 / 1080.0)
@@ -332,10 +332,10 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 
-val camera = Camera.perspective(60.0.toRadians(), 1.0, 0.1, 100.0)
+val camera = Camera.perspective(1.047f, 1.0f, 0.1f, 100.0f)
 
 // Window resize: 1920×1080 → wide-screen aspect.
-camera.setAspect(1920.0 / 1080.0)
+camera.setAspect(1920.0f / 1080.0f)
 `}
 lang="kotlin"
 />
@@ -380,7 +380,7 @@ code={`
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Camera;
 
-let camera = Camera::perspective(60.0_f32.to_radians(), 16.0 / 9.0, 0.1, 100.0)
+let camera = Camera::perspective(1.047, 16.0 / 9.0, 0.1, 100.0)
     .look_at([0.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
 
 assert_eq!(camera.position(), [0.0, 1.0, 5.0]);
@@ -397,7 +397,7 @@ lang="rust" meta="collapse={1-1, 7-9}"
 code={`
 import { Camera } from "fragmentcolor";
 
-const camera = Camera.perspective(60.0.toRadians(), 16.0 / 9.0, 0.1, 100.0).lookAt([0.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+const camera = Camera.perspective(1.047, 16.0 / 9.0, 0.1, 100.0).lookAt([0.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
 
 `}
 lang="js"
@@ -410,7 +410,7 @@ lang="js"
 code={`
 from fragmentcolor import Camera
 
-camera = Camera.perspective(60.0_.to_radians(), 16.0 / 9.0, 0.1, 100.0).look_at([0.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+camera = Camera.perspective(1.047, 16.0 / 9.0, 0.1, 100.0).look_at([0.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
 
 `}
 lang="python"
@@ -423,7 +423,7 @@ lang="python"
 code={`
 import FragmentColor
 
-let camera = Camera.perspective(60.0.toRadians(), 16.0 / 9.0, 0.1, 100.0).lookAt([0.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+let camera = try Camera.perspective(1.047, 16.0 / 9.0, 0.1, 100.0).lookAt([0.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
 `}
 lang="swift"
 />
@@ -435,7 +435,7 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 
-val camera = Camera.perspective(60.0.toRadians(), 16.0 / 9.0, 0.1, 100.0).lookAt(listOf(0.0f, 1.0f, 5.0f), listOf(0.0f, 0.0f, 0.0f), listOf(0.0f, 1.0f, 0.0f))
+val camera = Camera.perspective(1.047f, 16.0f / 9.0f, 0.1f, 100.0f).lookAt(listOf(0.0f, 1.0f, 5.0f), listOf(0.0f, 0.0f, 0.0f), listOf(0.0f, 1.0f, 0.0f))
 `}
 lang="kotlin"
 />
@@ -468,7 +468,7 @@ code={`
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Camera;
 
-let camera = Camera::perspective(60.0_f32.to_radians(), 16.0 / 9.0, 0.1, 100.0)
+let camera = Camera::perspective(1.047, 16.0 / 9.0, 0.1, 100.0)
     .look_at([0.0, 0.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
 
 let view_proj = camera.view_proj();
@@ -488,7 +488,7 @@ lang="rust" meta="collapse={1-1, 8-12}"
 code={`
 import { Camera } from "fragmentcolor";
 
-const camera = Camera.perspective(60.0.toRadians(), 16.0 / 9.0, 0.1, 100.0).lookAt([0.0, 0.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+const camera = Camera.perspective(1.047, 16.0 / 9.0, 0.1, 100.0).lookAt([0.0, 0.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
 
 const view_proj = camera.viewProj();
 `}
@@ -502,7 +502,7 @@ lang="js"
 code={`
 from fragmentcolor import Camera
 
-camera = Camera.perspective(60.0_.to_radians(), 16.0 / 9.0, 0.1, 100.0).look_at([0.0, 0.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+camera = Camera.perspective(1.047, 16.0 / 9.0, 0.1, 100.0).look_at([0.0, 0.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
 
 view_proj = camera.view_proj()
 `}
@@ -516,7 +516,7 @@ lang="python"
 code={`
 import FragmentColor
 
-let camera = Camera.perspective(60.0.toRadians(), 16.0 / 9.0, 0.1, 100.0).lookAt([0.0, 0.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+let camera = try Camera.perspective(1.047, 16.0 / 9.0, 0.1, 100.0).lookAt([0.0, 0.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
 
 let view_proj = camera.viewProj()
 `}
@@ -530,7 +530,7 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 
-val camera = Camera.perspective(60.0.toRadians(), 16.0 / 9.0, 0.1, 100.0).lookAt(listOf(0.0f, 0.0f, 5.0f), listOf(0.0f, 0.0f, 0.0f), listOf(0.0f, 1.0f, 0.0f))
+val camera = Camera.perspective(1.047f, 16.0f / 9.0f, 0.1f, 100.0f).lookAt(listOf(0.0f, 0.0f, 5.0f), listOf(0.0f, 0.0f, 0.0f), listOf(0.0f, 1.0f, 0.0f))
 
 val view_proj = camera.viewProj()
 `}
@@ -567,7 +567,7 @@ code={`
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Camera;
 
-let camera = Camera::perspective(60.0_f32.to_radians(), 16.0 / 9.0, 0.1, 100.0)
+let camera = Camera::perspective(1.047, 16.0 / 9.0, 0.1, 100.0)
     .look_at([3.0, 2.0, 8.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
 
 let eye = camera.position();
@@ -585,7 +585,7 @@ lang="rust" meta="collapse={1-1, 8-10}"
 code={`
 import { Camera } from "fragmentcolor";
 
-const camera = Camera.perspective(60.0.toRadians(), 16.0 / 9.0, 0.1, 100.0).lookAt([3.0, 2.0, 8.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+const camera = Camera.perspective(1.047, 16.0 / 9.0, 0.1, 100.0).lookAt([3.0, 2.0, 8.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
 
 const eye = camera.position();
 `}
@@ -599,7 +599,7 @@ lang="js"
 code={`
 from fragmentcolor import Camera
 
-camera = Camera.perspective(60.0_.to_radians(), 16.0 / 9.0, 0.1, 100.0).look_at([3.0, 2.0, 8.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+camera = Camera.perspective(1.047, 16.0 / 9.0, 0.1, 100.0).look_at([3.0, 2.0, 8.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
 
 eye = camera.position()
 `}
@@ -613,7 +613,7 @@ lang="python"
 code={`
 import FragmentColor
 
-let camera = Camera.perspective(60.0.toRadians(), 16.0 / 9.0, 0.1, 100.0).lookAt([3.0, 2.0, 8.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+let camera = try Camera.perspective(1.047, 16.0 / 9.0, 0.1, 100.0).lookAt([3.0, 2.0, 8.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
 
 let eye = camera.position()
 `}
@@ -627,7 +627,7 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 
-val camera = Camera.perspective(60.0.toRadians(), 16.0 / 9.0, 0.1, 100.0).lookAt(listOf(3.0f, 2.0f, 8.0f), listOf(0.0f, 0.0f, 0.0f), listOf(0.0f, 1.0f, 0.0f))
+val camera = Camera.perspective(1.047f, 16.0f / 9.0f, 0.1f, 100.0f).lookAt(listOf(3.0f, 2.0f, 8.0f), listOf(0.0f, 0.0f, 0.0f), listOf(0.0f, 1.0f, 0.0f))
 
 val eye = camera.position()
 `}

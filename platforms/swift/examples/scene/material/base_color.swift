@@ -1,4 +1,4 @@
 import FragmentColor
 
 let renderer = Renderer()
-let red = Material.pbr()?.baseColor([1.0, 0.2, 0.2, 1.0])
+let red = try Material.pbr().baseColor([1.0, 0.2, 0.2, 1.0])

@@ -15,7 +15,8 @@ red_pixels = [
     255,   0,   0, 255,    0, 255,   0, 255,
       0,   0, 255, 255,  255, 255, 255, 255,
 ]
-material = Material.pbr().base_color_texture((red_pixels, [2, 2]))
+red_tex = renderer.create_texture(red_pixels, size=[2, 2])
+material = Material.pbr().base_color_texture(red_tex)
 model = Model(mesh, material)
 scene = Scene()
 scene.add(model)

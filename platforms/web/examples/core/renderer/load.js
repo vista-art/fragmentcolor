@@ -4,13 +4,14 @@ const renderer = new Renderer();
 const target = await renderer.createTextureTarget([64, 64]);
 
 const mesh = new Mesh();
-mesh.addVertex( Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]), );
+mesh.addVertex( Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0]), );
 // Raw 2×2 RGBA pixel bytes — uploaded lazily by `Renderer.load` below.
 // In practice the loader hands the setter encoded PNG/JPEG bytes (from a
 // BIN chunk) or a file path (from a URI); the same `Into<TextureInput>`
 // vocabulary covers all of them.
 const red_pixels = [ 255,   0,   0, 255,    0, 255,   0, 255, 0,   0, 255, 255,  255, 255, 255, 255, ];
-const material = Material.pbr()?.baseColorTexture(red_pixels, [2, 2]);
+const red_tex = await renderer.createTexture(red_pixels, [2, 2]);
+const material = Material.pbr().baseColorTexture(red_tex);
 const model = new Model(mesh, material);
 const scene = new Scene();
 scene.add(model);

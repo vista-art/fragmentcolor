@@ -14,4 +14,4 @@ try mesh.addVertices([
     try Vertex([ 0.5,  0.5]).set("uv", uv11),
     try Vertex([-0.5,  0.5]).set("uv", uv01),
 ])
-mesh.setIndices([0, 1, 2, 0, 2, 3])
+try mesh.setIndices([0, 1, 2, 0, 2, 3])

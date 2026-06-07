@@ -8,11 +8,13 @@ mesh.add_vertex(
 )
 model = Model(mesh, Material.pbr())
 
-camera = Camera.perspective(60.0_.to_radians(), 1.0, 0.1, 100.0).look_at([0.0, 0.0, 2.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+camera = Camera.perspective(1.047, 1.0, 0.1, 100.0).look_at([0.0, 0.0, 2.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
 sun = Light.directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9])
 
 rpass = Pass("scene")
-rpass.add(model).add(camera).add(sun)
+rpass.add(model)
+rpass.add(camera)
+rpass.add(sun)
 
 # Updating the camera later is enough — every Model already on the rpass
 # picks the new view_proj up at the next render.

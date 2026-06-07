@@ -8,11 +8,13 @@ mesh.add_vertex(
 )
 model = Model(mesh, Material.pbr())
 
-camera = Camera.perspective(60.0_.to_radians(), 1.0, 0.1, 100.0).look_at([0.0, 0.0, 3.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+camera = Camera.perspective(1.047, 1.0, 0.1, 100.0).look_at([0.0, 0.0, 3.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
 sun = Light.directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9])
 
 scene = Scene()
-scene.add(model).add(camera).add(sun)
+scene.add(model)
+scene.add(camera)
+scene.add(sun)
 
 # Updating the camera later is enough — every shader on the scene picks
 # the new view_proj up at the next render.

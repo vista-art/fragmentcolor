@@ -16,6 +16,6 @@ let pass = Pass("blobs"); pass.addShader(shader)
 
 // Depth-test on — closer fragments win, the pass writes to the depth
 // buffer so subsequent draws within the same pass see the depth.
-pass.setDepthTarget(depth)
+try pass.setDepthTarget(depth)
 
 try renderer.render(pass, target)

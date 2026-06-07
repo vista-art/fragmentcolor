@@ -3,8 +3,8 @@ import org.fragmentcolor.*
 val renderer = Renderer()
 
 val mesh = Mesh()
-mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, floatArrayOf(0.5f, 1.0f)), )
-val model = Model(mesh, Material.pbr()?)
+mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set("uv0", floatArrayOf(0.5f, 1.0f)), )
+val model = Model(mesh, Material.pbr())
 
 // A backdrop pass that clears to a soft blue before the scene's main draw.
 val backdrop = Pass("backdrop")

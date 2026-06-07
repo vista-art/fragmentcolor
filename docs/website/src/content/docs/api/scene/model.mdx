@@ -85,8 +85,8 @@ mesh.add_vertex(
         .set(Vertex::UV0, [0.0, 0.0]),
 );
 
-let model = Model::new(mesh, Material::pbr()?);
-model.material().shader().set("camera.position", [0.0_f32, 0.0, 5.0])?;
+let model = Model::new(mesh, Material::pbr());
+model.material().shader().set("camera.position", [0.0, 0.0, 5.0])?;
 Ok(())
 }
 `}
@@ -101,9 +101,9 @@ code={`
 import { Material, Mesh, Model, Vertex } from "fragmentcolor";
 
 const mesh = new Mesh();
-mesh.addVertex( Vertex.new([0.0, 0.0, 0.0]) .set(Vertex.NORMAL, [0.0, 1.0, 0.0]) .set(Vertex.UV0, [0.0, 0.0]), );
+mesh.addVertex( new Vertex([0.0, 0.0, 0.0]) .set("normal", [0.0, 1.0, 0.0]) .set("uv0", [0.0, 0.0]), );
 
-const model = new Model(mesh, Material.pbr()?);
+const model = new Model(mesh, Material.pbr());
 model.material().shader().set("camera.position", [0.0, 0.0, 5.0]);
 `}
 lang="js"
@@ -122,7 +122,7 @@ mesh.add_vertex(
 )
 
 model = Model(mesh, Material.pbr())
-model.material().shader().set("camera.position", [0.0_, 0.0, 5.0])
+model.material().shader().set("camera.position", [0.0, 0.0, 5.0])
 `}
 lang="python"
 />
@@ -136,10 +136,10 @@ import FragmentColor
 
 let mesh = Mesh()
 try mesh.addVertex(
-    try Vertex([0.0, 0.0, 0.0]).set(Vertex.nORMAL, [0.0, 1.0, 0.0]).set(Vertex.uV0, [0.0, 0.0]),
+    try Vertex([0.0, 0.0, 0.0]).set("normal", [0.0, 1.0, 0.0]).set("uv0", [0.0, 0.0])
 )
 
-let model = Model(mesh, Material.pbr()?)
+let model = Model(mesh, Material.pbr())
 try model.material().shader().set("camera.position", [0.0, 0.0, 5.0])
 `}
 lang="swift"
@@ -153,9 +153,9 @@ code={`
 import org.fragmentcolor.*
 
 val mesh = Mesh()
-mesh.addVertex( Vertex.new(listOf(0.0f, 0.0f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 1.0f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
+mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set("normal", floatArrayOf(0.0f, 1.0f, 0.0f)).set("uv0", listOf(0.0f, 0.0f)), )
 
-val model = Model(mesh, Material.pbr()?)
+val model = Model(mesh, Material.pbr())
 model.material().shader().set("camera.position", floatArrayOf(0.0f, 0.0f, 5.0f))
 `}
 lang="kotlin"
@@ -189,7 +189,7 @@ mesh.add_vertex(
     Vertex::pbr([0.0, 0.5, 0.0]).set(Vertex::UV0, [0.5, 1.0]),
 );
 
-let model = Model::new(mesh, Material::pbr()?);
+let model = Model::new(mesh, Material::pbr());
 model.mesh().add_vertex(
     Vertex::new([-0.5, -0.5, 0.0])
         .set(Vertex::NORMAL, [0.0, 0.0, 1.0])
@@ -209,10 +209,10 @@ code={`
 import { Material, Mesh, Model, Vertex } from "fragmentcolor";
 
 const mesh = new Mesh();
-mesh.addVertex( Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]), );
+mesh.addVertex( Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0]), );
 
-const model = new Model(mesh, Material.pbr()?);
-model.mesh().addVertex( Vertex.new([-0.5, -0.5, 0.0]) .set(Vertex.NORMAL, [0.0, 0.0, 1.0]) .set(Vertex.UV0, [0.0, 0.0]), );
+const model = new Model(mesh, Material.pbr());
+model.mesh().addVertex( new Vertex([-0.5, -0.5, 0.0]) .set("normal", [0.0, 0.0, 1.0]) .set("uv0", [0.0, 0.0]), );
 `}
 lang="js"
 />
@@ -246,12 +246,12 @@ import FragmentColor
 
 let mesh = Mesh()
 try mesh.addVertex(
-    try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.uV0, [0.5, 1.0]),
+    try Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0])
 )
 
-let model = Model(mesh, Material.pbr()?)
+let model = Model(mesh, Material.pbr())
 try model.mesh().addVertex(
-    try Vertex([-0.5, -0.5, 0.0]).set(Vertex.nORMAL, [0.0, 0.0, 1.0]).set(Vertex.uV0, [0.0, 0.0]),
+    try Vertex([-0.5, -0.5, 0.0]).set("normal", [0.0, 0.0, 1.0]).set("uv0", [0.0, 0.0])
 )
 `}
 lang="swift"
@@ -265,10 +265,10 @@ code={`
 import org.fragmentcolor.*
 
 val mesh = Mesh()
-mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, floatArrayOf(0.5f, 1.0f)), )
+mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set("uv0", floatArrayOf(0.5f, 1.0f)), )
 
-val model = Model(mesh, Material.pbr()?)
-model.mesh().addVertex( Vertex.new(listOf(-0.5f, -0.5f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 0.0f, 1.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
+val model = Model(mesh, Material.pbr())
+model.mesh().addVertex( Vertex(listOf(-0.5f, -0.5f, 0.0f)).set("normal", floatArrayOf(0.0f, 0.0f, 1.0f)).set("uv0", listOf(0.0f, 0.0f)), )
 `}
 lang="kotlin"
 />
@@ -316,7 +316,7 @@ mesh.add_vertex(
         .set(Vertex::UV0, [0.0, 0.0]),
 );
 
-let model = Model::new(mesh, Material::pbr()?);
+let model = Model::new(mesh, Material::pbr());
 
 let _model = model;
 Ok(())
@@ -333,9 +333,9 @@ code={`
 import { Material, Mesh, Model, Vertex } from "fragmentcolor";
 
 const mesh = new Mesh();
-mesh.addVertex( Vertex.new([0.0, 0.0, 0.0]) .set(Vertex.NORMAL, [0.0, 1.0, 0.0]) .set(Vertex.UV0, [0.0, 0.0]), );
+mesh.addVertex( new Vertex([0.0, 0.0, 0.0]) .set("normal", [0.0, 1.0, 0.0]) .set("uv0", [0.0, 0.0]), );
 
-const model = new Model(mesh, Material.pbr()?);
+const model = new Model(mesh, Material.pbr());
 
 `}
 lang="js"
@@ -368,10 +368,10 @@ import FragmentColor
 
 let mesh = Mesh()
 try mesh.addVertex(
-    try Vertex([0.0, 0.0, 0.0]).set(Vertex.nORMAL, [0.0, 1.0, 0.0]).set(Vertex.uV0, [0.0, 0.0]),
+    try Vertex([0.0, 0.0, 0.0]).set("normal", [0.0, 1.0, 0.0]).set("uv0", [0.0, 0.0])
 )
 
-let model = Model(mesh, Material.pbr()?)
+let model = Model(mesh, Material.pbr())
 `}
 lang="swift"
 />
@@ -384,9 +384,9 @@ code={`
 import org.fragmentcolor.*
 
 val mesh = Mesh()
-mesh.addVertex( Vertex.new(listOf(0.0f, 0.0f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 1.0f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
+mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set("normal", floatArrayOf(0.0f, 1.0f, 0.0f)).set("uv0", listOf(0.0f, 0.0f)), )
 
-val model = Model(mesh, Material.pbr()?)
+val model = Model(mesh, Material.pbr())
 `}
 lang="kotlin"
 />
@@ -427,8 +427,8 @@ mesh.add_vertex(
         .set(Vertex::UV0, [0.0, 0.0]),
 );
 
-let model = Model::new(mesh, Material::pbr()?);
-model.rotate([0.0, 1.0, 0.0], std::f32::consts::FRAC_PI_2);
+let model = Model::new(mesh, Material::pbr());
+model.rotate([0.0, 1.0, 0.0], 1.571); // 90° around Y
 Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
@@ -445,10 +445,10 @@ import { Material, Mesh, Model, Renderer, Vertex } from "fragmentcolor";
 
 const renderer = new Renderer();
 const mesh = new Mesh();
-mesh.addVertex( Vertex.new([0.0, 0.0, 0.0]) .set(Vertex.NORMAL, [0.0, 1.0, 0.0]) .set(Vertex.UV0, [0.0, 0.0]), );
+mesh.addVertex( new Vertex([0.0, 0.0, 0.0]) .set("normal", [0.0, 1.0, 0.0]) .set("uv0", [0.0, 0.0]), );
 
-const model = new Model(mesh, Material.pbr()?);
-model.rotate([0.0, 1.0, 0.0], std.f32.consts.FRACPI2);
+const model = new Model(mesh, Material.pbr());
+model.rotate([0.0, 1.0, 0.0], 1.571); // 90° around Y;
 `}
 lang="js"
 />
@@ -467,7 +467,7 @@ mesh.add_vertex(
 )
 
 model = Model(mesh, Material.pbr())
-model.rotate([0.0, 1.0, 0.0], std.f32.consts.FRAC_PI_2)
+model.rotate([0.0, 1.0, 0.0], 1.571); # 90° around Y
 `}
 lang="python"
 />
@@ -482,11 +482,11 @@ import FragmentColor
 let renderer = Renderer()
 let mesh = Mesh()
 try mesh.addVertex(
-    try Vertex([0.0, 0.0, 0.0]).set(Vertex.nORMAL, [0.0, 1.0, 0.0]).set(Vertex.uV0, [0.0, 0.0]),
+    try Vertex([0.0, 0.0, 0.0]).set("normal", [0.0, 1.0, 0.0]).set("uv0", [0.0, 0.0])
 )
 
-let model = Model(mesh, Material.pbr()?)
-model.rotate([0.0, 1.0, 0.0], std.f32.consts.fRACPI2)
+let model = Model(mesh, Material.pbr())
+try model.rotate([0.0, 1.0, 0.0], 1.571); // 90° around Y
 `}
 lang="swift"
 />
@@ -500,10 +500,10 @@ import org.fragmentcolor.*
 
 val renderer = Renderer()
 val mesh = Mesh()
-mesh.addVertex( Vertex.new(listOf(0.0f, 0.0f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 1.0f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
+mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set("normal", floatArrayOf(0.0f, 1.0f, 0.0f)).set("uv0", listOf(0.0f, 0.0f)), )
 
-val model = Model(mesh, Material.pbr()?)
-model.rotate(listOf(0.0f, 1.0f, 0.0f), std.f32.consts.FRACPI2)
+val model = Model(mesh, Material.pbr())
+model.rotate(listOf(0.0f, 1.0f, 0.0f), 1.571f); // 90° around Y
 `}
 lang="kotlin"
 />
@@ -544,7 +544,7 @@ mesh.add_vertex(
         .set(Vertex::UV0, [0.0, 0.0]),
 );
 
-let model = Model::new(mesh, Material::pbr()?);
+let model = Model::new(mesh, Material::pbr());
 model.scale([2.0, 2.0, 2.0]);
 Ok(())
 }
@@ -562,9 +562,9 @@ import { Material, Mesh, Model, Renderer, Vertex } from "fragmentcolor";
 
 const renderer = new Renderer();
 const mesh = new Mesh();
-mesh.addVertex( Vertex.new([0.0, 0.0, 0.0]) .set(Vertex.NORMAL, [0.0, 1.0, 0.0]) .set(Vertex.UV0, [0.0, 0.0]), );
+mesh.addVertex( new Vertex([0.0, 0.0, 0.0]) .set("normal", [0.0, 1.0, 0.0]) .set("uv0", [0.0, 0.0]), );
 
-const model = new Model(mesh, Material.pbr()?);
+const model = new Model(mesh, Material.pbr());
 model.scale([2.0, 2.0, 2.0]);
 `}
 lang="js"
@@ -599,11 +599,11 @@ import FragmentColor
 let renderer = Renderer()
 let mesh = Mesh()
 try mesh.addVertex(
-    try Vertex([0.0, 0.0, 0.0]).set(Vertex.nORMAL, [0.0, 1.0, 0.0]).set(Vertex.uV0, [0.0, 0.0]),
+    try Vertex([0.0, 0.0, 0.0]).set("normal", [0.0, 1.0, 0.0]).set("uv0", [0.0, 0.0])
 )
 
-let model = Model(mesh, Material.pbr()?)
-model.scale([2.0, 2.0, 2.0])
+let model = Model(mesh, Material.pbr())
+try model.scale([2.0, 2.0, 2.0])
 `}
 lang="swift"
 />
@@ -617,9 +617,9 @@ import org.fragmentcolor.*
 
 val renderer = Renderer()
 val mesh = Mesh()
-mesh.addVertex( Vertex.new(listOf(0.0f, 0.0f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 1.0f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
+mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set("normal", floatArrayOf(0.0f, 1.0f, 0.0f)).set("uv0", listOf(0.0f, 0.0f)), )
 
-val model = Model(mesh, Material.pbr()?)
+val model = Model(mesh, Material.pbr())
 model.scale(listOf(2.0f, 2.0f, 2.0f))
 `}
 lang="kotlin"
@@ -661,7 +661,7 @@ mesh.add_vertex(
         .set(Vertex::UV0, [0.0, 0.0]),
 );
 
-let model = Model::new(mesh, Material::pbr()?);
+let model = Model::new(mesh, Material::pbr());
 model.set_transform([
     [2.0, 0.0, 0.0, 0.0],
     [0.0, 2.0, 0.0, 0.0],
@@ -684,10 +684,10 @@ import { Material, Mesh, Model, Renderer, Vertex } from "fragmentcolor";
 
 const renderer = new Renderer();
 const mesh = new Mesh();
-mesh.addVertex( Vertex.new([0.0, 0.0, 0.0]) .set(Vertex.NORMAL, [0.0, 1.0, 0.0]) .set(Vertex.UV0, [0.0, 0.0]), );
+mesh.addVertex( new Vertex([0.0, 0.0, 0.0]) .set("normal", [0.0, 1.0, 0.0]) .set("uv0", [0.0, 0.0]), );
 
-const model = new Model(mesh, Material.pbr()?);
-model.setTransform([ [2.0, 0.0, 0.0, 0.0], [0.0, 2.0, 0.0, 0.0], [0.0, 0.0, 2.0, 0.0], [3.0, 0.0, 0.0, 1.0], ]);
+const model = new Model(mesh, Material.pbr());
+model.setTransform([2.0, 0.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 0.0, 2.0, 0.0, 3.0, 0.0, 0.0, 1.0]);
 `}
 lang="js"
 />
@@ -726,11 +726,11 @@ import FragmentColor
 let renderer = Renderer()
 let mesh = Mesh()
 try mesh.addVertex(
-    try Vertex([0.0, 0.0, 0.0]).set(Vertex.nORMAL, [0.0, 1.0, 0.0]).set(Vertex.uV0, [0.0, 0.0]),
+    try Vertex([0.0, 0.0, 0.0]).set("normal", [0.0, 1.0, 0.0]).set("uv0", [0.0, 0.0])
 )
 
-let model = Model(mesh, Material.pbr()?)
-model.setTransform([
+let model = Model(mesh, Material.pbr())
+try model.setTransform([
     [2.0, 0.0, 0.0, 0.0],
     [0.0, 2.0, 0.0, 0.0],
     [0.0, 0.0, 2.0, 0.0],
@@ -749,10 +749,10 @@ import org.fragmentcolor.*
 
 val renderer = Renderer()
 val mesh = Mesh()
-mesh.addVertex( Vertex.new(listOf(0.0f, 0.0f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 1.0f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
+mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set("normal", floatArrayOf(0.0f, 1.0f, 0.0f)).set("uv0", listOf(0.0f, 0.0f)), )
 
-val model = Model(mesh, Material.pbr()?)
-model.setTransform(arrayOf(listOf(2.0f, 0.0f, 0.0f, 0.0f), listOf(0.0f, 2.0f, 0.0f, 0.0f), listOf(0.0f, 0.0f, 2.0f, 0.0f), listOf(3.0f, 0.0f, 0.0f, 1.0f),))
+val model = Model(mesh, Material.pbr())
+model.setTransform(listOf(2.0f, 0.0f, 0.0f, 0.0f, 0.0f, 2.0f, 0.0f, 0.0f, 0.0f, 0.0f, 2.0f, 0.0f, 3.0f, 0.0f, 0.0f, 1.0f))
 `}
 lang="kotlin"
 />
@@ -794,7 +794,7 @@ use fragmentcolor::{Material, Mesh, Model, Vertex};
 
 let mesh = Mesh::new();
 mesh.add_vertex(Vertex::pbr([0.0, 0.5, 0.0]));
-let blob = Model::new(mesh, Material::pbr()?);
+let blob = Model::new(mesh, Material::pbr());
 
 // Wide zoom level — skip the detail blobs.
 blob.set_visible(false);
@@ -815,7 +815,7 @@ import { Material, Mesh, Model, Vertex } from "fragmentcolor";
 
 const mesh = new Mesh();
 mesh.addVertex(Vertex.pbr([0.0, 0.5, 0.0]));
-const blob = new Model(mesh, Material.pbr()?);
+const blob = new Model(mesh, Material.pbr());
 
 // Wide zoom level — skip the detail blobs.
 blob.setVisible(false);
@@ -837,9 +837,9 @@ mesh.add_vertex(Vertex.pbr([0.0, 0.5, 0.0]))
 blob = Model(mesh, Material.pbr())
 
 # Wide zoom level — skip the detail blobs.
-blob.set_visible(false)
+blob.set_visible(False)
 # Zoom back in — turn them on again.
-blob.set_visible(true)
+blob.set_visible(True)
 `}
 lang="python"
 />
@@ -853,7 +853,7 @@ import FragmentColor
 
 let mesh = Mesh()
 try mesh.addVertex(Vertex.pbr([0.0, 0.5, 0.0]))
-let blob = Model(mesh, Material.pbr()?)
+let blob = Model(mesh, Material.pbr())
 
 // Wide zoom level — skip the detail blobs.
 blob.setVisible(false)
@@ -872,7 +872,7 @@ import org.fragmentcolor.*
 
 val mesh = Mesh()
 mesh.addVertex(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)))
-val blob = Model(mesh, Material.pbr()?)
+val blob = Model(mesh, Material.pbr())
 
 // Wide zoom level — skip the detail blobs.
 blob.setVisible(false)
@@ -918,7 +918,7 @@ mesh.add_vertex(
         .set(Vertex::UV0, [0.0, 0.0]),
 );
 
-let model = Model::new(mesh, Material::pbr()?);
+let model = Model::new(mesh, Material::pbr());
 let identity = model.transform();
 assert_eq!(identity[0], [1.0, 0.0, 0.0, 0.0]);
 assert_eq!(identity[3], [0.0, 0.0, 0.0, 1.0]);
@@ -939,9 +939,9 @@ import { Material, Mesh, Model, Renderer, Vertex } from "fragmentcolor";
 
 const renderer = new Renderer();
 const mesh = new Mesh();
-mesh.addVertex( Vertex.new([0.0, 0.0, 0.0]) .set(Vertex.NORMAL, [0.0, 1.0, 0.0]) .set(Vertex.UV0, [0.0, 0.0]), );
+mesh.addVertex( new Vertex([0.0, 0.0, 0.0]) .set("normal", [0.0, 1.0, 0.0]) .set("uv0", [0.0, 0.0]), );
 
-const model = new Model(mesh, Material.pbr()?);
+const model = new Model(mesh, Material.pbr());
 const identity = model.transform();
 `}
 lang="js"
@@ -976,10 +976,10 @@ import FragmentColor
 let renderer = Renderer()
 let mesh = Mesh()
 try mesh.addVertex(
-    try Vertex([0.0, 0.0, 0.0]).set(Vertex.nORMAL, [0.0, 1.0, 0.0]).set(Vertex.uV0, [0.0, 0.0]),
+    try Vertex([0.0, 0.0, 0.0]).set("normal", [0.0, 1.0, 0.0]).set("uv0", [0.0, 0.0])
 )
 
-let model = Model(mesh, Material.pbr()?)
+let model = Model(mesh, Material.pbr())
 let identity = model.transform()
 `}
 lang="swift"
@@ -994,9 +994,9 @@ import org.fragmentcolor.*
 
 val renderer = Renderer()
 val mesh = Mesh()
-mesh.addVertex( Vertex.new(listOf(0.0f, 0.0f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 1.0f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
+mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set("normal", floatArrayOf(0.0f, 1.0f, 0.0f)).set("uv0", listOf(0.0f, 0.0f)), )
 
-val model = Model(mesh, Material.pbr()?)
+val model = Model(mesh, Material.pbr())
 val identity = model.transform()
 `}
 lang="kotlin"
@@ -1034,7 +1034,7 @@ mesh.add_vertex(
         .set(Vertex::UV0, [0.0, 0.0]),
 );
 
-let model = Model::new(mesh, Material::pbr()?);
+let model = Model::new(mesh, Material::pbr());
 model.translate([5.0, 0.0, -2.0]);
 
 let m = model.transform();
@@ -1056,9 +1056,9 @@ import { Material, Mesh, Model, Renderer, Vertex } from "fragmentcolor";
 
 const renderer = new Renderer();
 const mesh = new Mesh();
-mesh.addVertex( Vertex.new([0.0, 0.0, 0.0]) .set(Vertex.NORMAL, [0.0, 1.0, 0.0]) .set(Vertex.UV0, [0.0, 0.0]), );
+mesh.addVertex( new Vertex([0.0, 0.0, 0.0]) .set("normal", [0.0, 1.0, 0.0]) .set("uv0", [0.0, 0.0]), );
 
-const model = new Model(mesh, Material.pbr()?);
+const model = new Model(mesh, Material.pbr());
 model.translate([5.0, 0.0, -2.0]);
 
 `}
@@ -1095,11 +1095,11 @@ import FragmentColor
 let renderer = Renderer()
 let mesh = Mesh()
 try mesh.addVertex(
-    try Vertex([0.0, 0.0, 0.0]).set(Vertex.nORMAL, [0.0, 1.0, 0.0]).set(Vertex.uV0, [0.0, 0.0]),
+    try Vertex([0.0, 0.0, 0.0]).set("normal", [0.0, 1.0, 0.0]).set("uv0", [0.0, 0.0])
 )
 
-let model = Model(mesh, Material.pbr()?)
-model.translate([5.0, 0.0, -2.0])
+let model = Model(mesh, Material.pbr())
+try model.translate([5.0, 0.0, -2.0])
 `}
 lang="swift"
 />
@@ -1113,9 +1113,9 @@ import org.fragmentcolor.*
 
 val renderer = Renderer()
 val mesh = Mesh()
-mesh.addVertex( Vertex.new(listOf(0.0f, 0.0f, 0.0f)).set(Vertex.NORMAL, floatArrayOf(0.0f, 1.0f, 0.0f)).set(Vertex.UV0, listOf(0.0f, 0.0f)), )
+mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set("normal", floatArrayOf(0.0f, 1.0f, 0.0f)).set("uv0", listOf(0.0f, 0.0f)), )
 
-val model = Model(mesh, Material.pbr()?)
+val model = Model(mesh, Material.pbr())
 model.translate(listOf(5.0f, 0.0f, -2.0f))
 `}
 lang="kotlin"
@@ -1149,7 +1149,7 @@ use fragmentcolor::{Material, Mesh, Model, Vertex};
 
 let mesh = Mesh::new();
 mesh.add_vertex(Vertex::pbr([0.0, 0.5, 0.0]));
-let model = Model::new(mesh, Material::pbr()?);
+let model = Model::new(mesh, Material::pbr());
 
 // Models start visible; toggle with \`set_visible\`.
 let visible_now = model.visible();
@@ -1169,7 +1169,7 @@ import { Material, Mesh, Model, Vertex } from "fragmentcolor";
 
 const mesh = new Mesh();
 mesh.addVertex(Vertex.pbr([0.0, 0.5, 0.0]));
-const model = new Model(mesh, Material.pbr()?);
+const model = new Model(mesh, Material.pbr());
 
 // Models start visible; toggle with \`set_visible\`.
 const visible_now = model.visible();
@@ -1203,7 +1203,7 @@ import FragmentColor
 
 let mesh = Mesh()
 try mesh.addVertex(Vertex.pbr([0.0, 0.5, 0.0]))
-let model = Model(mesh, Material.pbr()?)
+let model = Model(mesh, Material.pbr())
 
 // Models start visible; toggle with """set_visible""".
 let visible_now = model.visible()
@@ -1220,7 +1220,7 @@ import org.fragmentcolor.*
 
 val mesh = Mesh()
 mesh.addVertex(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)))
-val model = Model(mesh, Material.pbr()?)
+val model = Model(mesh, Material.pbr())
 
 // Models start visible; toggle with """set_visible""".
 val visible_now = model.visible()

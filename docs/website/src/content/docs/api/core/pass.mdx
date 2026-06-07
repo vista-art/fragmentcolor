@@ -936,16 +936,16 @@ let mesh = Mesh::new();
 mesh.add_vertex(
     Vertex::pbr([0.0, 0.5, 0.0]).set(Vertex::UV0, [0.5, 1.0]),
 );
-let model = Model::new(mesh, Material::pbr()?);
+let model = Model::new(mesh, Material::pbr());
 
-let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0)
+let camera = Camera::perspective(1.047, 1.0, 0.1, 100.0)
     .look_at([0.0, 0.0, 2.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
 let sun = Light::directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9]);
 
 let pass = Pass::new("scene");
-pass.add(&model)?
-    .add(&camera)?
-    .add(&sun)?;
+pass.add(&model)?;
+pass.add(&camera)?;
+pass.add(&sun)?;
 
 // Updating the camera later is enough — every Model already on the pass
 // picks the new view_proj up at the next render.
@@ -968,14 +968,16 @@ import { Camera, Light, Material, Mesh, Model, Pass, Renderer, Vertex } from "fr
 const renderer = new Renderer();
 
 const mesh = new Mesh();
-mesh.addVertex( Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]), );
-const model = new Model(mesh, Material.pbr()?);
+mesh.addVertex( Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0]), );
+const model = new Model(mesh, Material.pbr());
 
-const camera = Camera.perspective(60.0.toRadians(), 1.0, 0.1, 100.0).lookAt([0.0, 0.0, 2.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+const camera = Camera.perspective(1.047, 1.0, 0.1, 100.0).lookAt([0.0, 0.0, 2.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
 const sun = Light.directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9]);
 
 const pass = new Pass("scene");
-pass.add(model)?.add(camera)?.add(sun);
+pass.add(model);
+pass.add(camera);
+pass.add(sun);
 
 // Updating the camera later is enough — every Model already on the pass
 // picks the new view_proj up at the next render.
@@ -999,11 +1001,13 @@ mesh.add_vertex(
 )
 model = Model(mesh, Material.pbr())
 
-camera = Camera.perspective(60.0_.to_radians(), 1.0, 0.1, 100.0).look_at([0.0, 0.0, 2.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+camera = Camera.perspective(1.047, 1.0, 0.1, 100.0).look_at([0.0, 0.0, 2.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
 sun = Light.directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9])
 
 rpass = Pass("scene")
-rpass.add(model).add(camera).add(sun)
+rpass.add(model)
+rpass.add(camera)
+rpass.add(sun)
 
 # Updating the camera later is enough — every Model already on the rpass
 # picks the new view_proj up at the next render.
@@ -1023,19 +1027,21 @@ let renderer = Renderer()
 
 let mesh = Mesh()
 try mesh.addVertex(
-    try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.uV0, [0.5, 1.0]),
+    try Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0])
 )
-let model = Model(mesh, Material.pbr()?)
+let model = Model(mesh, Material.pbr())
 
-let camera = Camera.perspective(60.0.toRadians(), 1.0, 0.1, 100.0).lookAt([0.0, 0.0, 2.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
-let sun = Light.directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9])
+let camera = try Camera.perspective(1.047, 1.0, 0.1, 100.0).lookAt([0.0, 0.0, 2.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+let sun = try Light.directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9])
 
 let pass = Pass("scene")
-pass.add(model)?.add(camera)?.add(sun)
+try pass.add(model)
+try pass.add(camera)
+try pass.add(sun)
 
 // Updating the camera later is enough — every Model already on the pass
 // picks the view_proj up at the next render.
-camera.lookAt([3.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+try camera.lookAt([3.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
 `}
 lang="swift"
 />
@@ -1050,14 +1056,16 @@ import org.fragmentcolor.*
 val renderer = Renderer()
 
 val mesh = Mesh()
-mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, floatArrayOf(0.5f, 1.0f)), )
-val model = Model(mesh, Material.pbr()?)
+mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set("uv0", floatArrayOf(0.5f, 1.0f)), )
+val model = Model(mesh, Material.pbr())
 
-val camera = Camera.perspective(60.0.toRadians(), 1.0, 0.1, 100.0).lookAt(listOf(0.0f, 0.0f, 2.0f), listOf(0.0f, 0.0f, 0.0f), listOf(0.0f, 1.0f, 0.0f))
+val camera = Camera.perspective(1.047f, 1.0f, 0.1f, 100.0f).lookAt(listOf(0.0f, 0.0f, 2.0f), listOf(0.0f, 0.0f, 0.0f), listOf(0.0f, 1.0f, 0.0f))
 val sun = Light.directional(listOf(0.3f, -1.0f, -0.4f), listOf(1.0f, 0.95f, 0.9f))
 
 val pass = Pass("scene")
-pass.add(model)?.add(camera)?.add(sun)
+pass.add(model)
+pass.add(camera)
+pass.add(sun)
 
 // Updating the camera later is enough — every Model already on the pass
 // picks the view_proj up at the next render.
@@ -1495,7 +1503,7 @@ let r = Renderer()
 let tex_target = try await r.createTextureTarget([512, 512])
 
 let p = Pass("shadow")
-p.setTarget(tex_target)
+try p.setTarget(tex_target)
 `}
 lang="swift"
 />
@@ -1652,7 +1660,7 @@ let pass = Pass("blobs"); pass.addShader(shader)
 
 // Depth-test on — closer fragments win, the pass writes to the depth
 // buffer so subsequent draws within the same pass see the depth.
-pass.setDepthTarget(depth)
+try pass.setDepthTarget(depth)
 
 try renderer.render(pass, target)
 `}

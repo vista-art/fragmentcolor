@@ -1,5 +1,6 @@
 import org.fragmentcolor.*
 
 val renderer = Renderer()
-val ao = renderer.createTexture(arrayOf(220, 0, 0, 255, 180,   0, 0, 255, 200,   0, 0, 255, 160,   0, 0, 255, await))
-val mat = Material.pbr()?.occlusionTexture(ao)
+val ao_bytes = listOf(220.0f, 0.0f, 0.0f, 255.0f, 180.0f, 0.0f, 0.0f, 255.0f, 200.0f, 0.0f, 0.0f, 255.0f, 160.0f, 0.0f, 0.0f, 255.0f, .0f)
+val ao = renderer.createTexture(TextureInputMobile.Bytes(ao_bytes.let { ba -> ByteArray(ba.size) { i -> ba[i].toInt().and(0xFF).toByte() } }), null)
+val mat = Material.pbr().occlusionTexture(ao)

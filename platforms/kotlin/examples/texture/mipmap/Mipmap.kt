@@ -1,5 +1,6 @@
 import org.fragmentcolor.*
 
+val png: ByteArray = byteArrayOf()
 // Imagine """png""" came off your asset loader on a worker thread.
 
 // Decode + mipmap generation. Pure CPU; run it wherever you like.

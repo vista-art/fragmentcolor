@@ -51,7 +51,7 @@ lang="rust"
 <Code
 code={`
 import { Vertex } from "fragmentcolor";
-const v = new Vertex([0.0, 0.0, 0.0]).set(Vertex.UV0, [0.5, 0.5]).set(Vertex.NORMAL, [0.0, 1.0, 0.0]);
+const v = new Vertex([0.0, 0.0, 0.0]).set("uv0", [0.5, 0.5]).set("normal", [0.0, 1.0, 0.0]);
 `}
 lang="js"
 />
@@ -73,7 +73,7 @@ lang="python"
 <Code
 code={`
 import FragmentColor
-let v = try Vertex([0.0, 0.0, 0.0]).set(Vertex.uV0, [0.5, 0.5]).set(Vertex.nORMAL, [0.0, 1.0, 0.0])
+let v = try Vertex([0.0, 0.0, 0.0]).set("uv0", [0.5, 0.5]).set("normal", [0.0, 1.0, 0.0])
 `}
 lang="swift"
 />
@@ -84,7 +84,7 @@ lang="swift"
 <Code
 code={`
 import org.fragmentcolor.*
-val v = Vertex(listOf(0.0f, 0.0f, 0.0f)).set(Vertex.UV0, floatArrayOf(0.5f, 0.5f)).set(Vertex.NORMAL, listOf(0.0f, 1.0f, 0.0f))
+val v = Vertex(listOf(0.0f, 0.0f, 0.0f)).set("uv0", floatArrayOf(0.5f, 0.5f)).set("normal", listOf(0.0f, 1.0f, 0.0f))
 `}
 lang="kotlin"
 />
@@ -203,20 +203,16 @@ code={`
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Mesh, Vertex};
 
+// Build a triangle; override only what the mesh actually carries — NORMAL
+// / COLOR0 / UV1 / TANGENT use their identity defaults from Vertex::pbr.
 let mesh = Mesh::new();
-for (pos, uv) in [
-    ([0.0_f32, 0.5, 0.0], [0.5_f32, 1.0]),
-    ([-0.5, -0.5, 0.0], [0.0, 0.0]),
-    ([0.5, -0.5, 0.0], [1.0, 0.0]),
-] {
-    // Override only what the mesh actually carries; NORMAL / COLOR0 / UV1 /
-    // TANGENT use their identity defaults.
-    mesh.add_vertex(Vertex::pbr(pos).set(Vertex::UV0, uv));
-}
+mesh.add_vertex(Vertex::pbr([ 0.0,  0.5, 0.0]).set(Vertex::UV0, [0.5, 1.0]));
+mesh.add_vertex(Vertex::pbr([-0.5, -0.5, 0.0]).set(Vertex::UV0, [0.0, 0.0]));
+mesh.add_vertex(Vertex::pbr([ 0.5, -0.5, 0.0]).set(Vertex::UV0, [1.0, 0.0]));
 Ok(())
 }
 `}
-lang="rust" meta="collapse={1-1, 14-15}"
+lang="rust" meta="collapse={1-1, 10-11}"
 />
 
 </TabItem>
@@ -226,10 +222,12 @@ lang="rust" meta="collapse={1-1, 14-15}"
 code={`
 import { Mesh, Vertex } from "fragmentcolor";
 
+// Build a triangle; override only what the mesh actually carries — NORMAL
+// / COLOR0 / UV1 / TANGENT use their identity defaults from Vertex.pbr.
 const mesh = new Mesh();
-for (pos, uv) in [ ([0.0, 0.5, 0.0], [0.5, 1.0]), ([-0.5, -0.5, 0.0], [0.0, 0.0]), ([0.5, -0.5, 0.0], [1.0, 0.0]), ] { // Override only what the mesh actually carries; NORMAL / COLOR0 / UV1 /
-    // TANGENT use their identity defaults.
-    mesh.addVertex(Vertex.pbr(pos).set(Vertex.UV0, uv)); };
+mesh.addVertex(Vertex.pbr([ 0.0,  0.5, 0.0]).set("uv0", [0.5, 1.0]));
+mesh.addVertex(Vertex.pbr([-0.5, -0.5, 0.0]).set("uv0", [0.0, 0.0]));
+mesh.addVertex(Vertex.pbr([ 0.5, -0.5, 0.0]).set("uv0", [1.0, 0.0]));
 `}
 lang="js"
 />
@@ -241,16 +239,12 @@ lang="js"
 code={`
 from fragmentcolor import Mesh, Vertex
 
+# Build a triangle; override only what the mesh actually carries — NORMAL
+# / COLOR0 / UV1 / TANGENT use their identity defaults from Vertex.pbr.
 mesh = Mesh()
-for (pos, uv) in [
-    ([0.0_, 0.5, 0.0], [0.5_, 1.0]),
-    ([-0.5, -0.5, 0.0], [0.0, 0.0]),
-    ([0.5, -0.5, 0.0], [1.0, 0.0]),
-] {
-# Override only what the mesh actually carries; NORMAL / COLOR0 / UV1 /
-# TANGENT use their identity defaults.
-    mesh.add_vertex(Vertex.pbr(pos).set(Vertex.UV0, uv))
-}
+mesh.add_vertex(Vertex.pbr([ 0.0,  0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]))
+mesh.add_vertex(Vertex.pbr([-0.5, -0.5, 0.0]).set(Vertex.UV0, [0.0, 0.0]))
+mesh.add_vertex(Vertex.pbr([ 0.5, -0.5, 0.0]).set(Vertex.UV0, [1.0, 0.0]))
 `}
 lang="python"
 />
@@ -262,16 +256,12 @@ lang="python"
 code={`
 import FragmentColor
 
+// Build a triangle; override only what the mesh actually carries — NORMAL
+// / COLOR0 / UV1 / TANGENT use their identity defaults from Vertex.pbr.
 let mesh = Mesh()
-for (pos, uv) in [
-    ([0.0, 0.5, 0.0], [0.5, 1.0]),
-    ([-0.5, -0.5, 0.0], [0.0, 0.0]),
-    ([0.5, -0.5, 0.0], [1.0, 0.0]),
-] {
-    // Override only what the mesh actually carries; NORMAL / COLOR0 / UV1 /
-    // TANGENT use their identity defaults.
-    try mesh.addVertex(Vertex.pbr(pos).set(Vertex.uV0, uv))
-}
+try mesh.addVertex(Vertex.pbr([ 0.0,  0.5, 0.0]).set("uv0", [0.5, 1.0]))
+try mesh.addVertex(Vertex.pbr([-0.5, -0.5, 0.0]).set("uv0", [0.0, 0.0]))
+try mesh.addVertex(Vertex.pbr([ 0.5, -0.5, 0.0]).set("uv0", [1.0, 0.0]))
 `}
 lang="swift"
 />
@@ -283,12 +273,12 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 
+// Build a triangle; override only what the mesh actually carries — NORMAL
+// / COLOR0 / UV1 / TANGENT use their identity defaults from Vertex.pbr.
 val mesh = Mesh()
-for (pos, uv) in arrayOf((listOf(0.0f, 0.5f, 0.0f), listOf(0.5f, 1.0f)), (listOf(-0.5f, -0.5f, 0.0f), listOf(0.0f, 0.0f)), (listOf(0.5f, -0.5f, 0.0f), listOf(1.0f, 0.0f)),) {
-    // Override only what the mesh actually carries; NORMAL / COLOR0 / UV1 /
-    // TANGENT use their identity defaults.
-    mesh.addVertex(Vertex.pbr(pos).set(Vertex.UV0, uv))
-}
+mesh.addVertex(Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set("uv0", floatArrayOf(0.5f, 1.0f)))
+mesh.addVertex(Vertex.pbr(listOf(-0.5f, -0.5f, 0.0f)).set("uv0", floatArrayOf(0.0f, 0.0f)))
+mesh.addVertex(Vertex.pbr(listOf(0.5f, -0.5f, 0.0f)).set("uv0", floatArrayOf(1.0f, 0.0f)))
 `}
 lang="kotlin"
 />

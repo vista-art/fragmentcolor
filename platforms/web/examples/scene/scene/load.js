@@ -1,8 +1,7 @@
 import { Scene } from "fragmentcolor";
 
-// A path — `.gltf` JSON (with external buffers/images) or a `.glb` container.
-const scene = Scene.load("path/to/model.gltf");
-
-// In-memory `.glb` bytes — from disk, the network, or another asset pipeline.
-const glb_bytes = "/healthcheck/public/favicon.png";
-const scene2 = Scene.load(glb_bytes);
+// Fetch the `.glb` container as bytes, then load it. The same call accepts
+// a path string on native; on web pass the bytes instead.
+const response = await fetch("/healthcheck/public/model.glb");
+const bytes = new Uint8Array(await response.arrayBuffer());
+const scene = Scene.load(bytes);

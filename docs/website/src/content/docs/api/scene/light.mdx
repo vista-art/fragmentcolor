@@ -75,7 +75,7 @@ share its light slots:
   returns `Err(PassError::LightCapReached { cap: 32 })`.
 
 For genuinely independent lighting setups, build a separate Material
-per scene (each `Material::pbr()?` allocates a fresh shader, so its 32
+per scene (each `Material::pbr()` allocates a fresh shader, so its 32
 slots are independent) or pass your own shader to `Material::custom`.
 A single scene with one Material covers the typical case. The per-
 shader semantic is what lets `Scene::add(&light)` propagate through
@@ -164,7 +164,7 @@ lang="python"
 code={`
 import FragmentColor
 
-let sun = Light.directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9])
+let sun = try Light.directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9])
 `}
 lang="swift"
 />
@@ -263,7 +263,7 @@ lang="python"
 code={`
 import FragmentColor
 
-let bulb = Light.point([0.0, 2.5, 0.0], [1.0, 0.95, 0.8]).setIntensity(15.0)
+let bulb = try Light.point([0.0, 2.5, 0.0], [1.0, 0.95, 0.8]).setIntensity(15.0)
 `}
 lang="swift"
 />
@@ -275,7 +275,7 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 
-val bulb = Light.point(listOf(0.0f, 2.5f, 0.0f), listOf(1.0f, 0.95f, 0.8f)).setIntensity(15.0)
+val bulb = Light.point(listOf(0.0f, 2.5f, 0.0f), listOf(1.0f, 0.95f, 0.8f)).setIntensity(15.0f)
 `}
 lang="kotlin"
 />
@@ -368,7 +368,7 @@ lang="python"
 code={`
 import FragmentColor
 
-let torch = Light.spot([0.0, 1.8, 1.0], [0.0, -0.3, -1.0], [1.0, 0.9, 0.7]).setIntensity(5.0).setConeAngles(0.15, 0.4)
+let torch = try Light.spot([0.0, 1.8, 1.0], [0.0, -0.3, -1.0], [1.0, 0.9, 0.7]).setIntensity(5.0).setConeAngles(0.15, 0.4)
 `}
 lang="swift"
 />
@@ -380,7 +380,7 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 
-val torch = Light.spot(listOf(0.0f, 1.8f, 1.0f), listOf(0.0f, -0.3f, -1.0f), listOf(1.0f, 0.9f, 0.7f)).setIntensity(5.0).setConeAngles(0.15, 0.4)
+val torch = Light.spot(listOf(0.0f, 1.8f, 1.0f), listOf(0.0f, -0.3f, -1.0f), listOf(1.0f, 0.9f, 0.7f)).setIntensity(5.0f).setConeAngles(0.15f, 0.4f)
 `}
 lang="kotlin"
 />
@@ -459,9 +459,9 @@ lang="python"
 code={`
 import FragmentColor
 
-let sun = Light.directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
-let bulb = Light.point([0.0, 2.5, 0.0], [1.0, 1.0, 1.0])
-let torch = Light.spot([0.0, 1.8, 1.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
+let sun = try Light.directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
+let bulb = try Light.point([0.0, 2.5, 0.0], [1.0, 1.0, 1.0])
+let torch = try Light.spot([0.0, 1.8, 1.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
 `}
 lang="swift"
 />
@@ -545,7 +545,7 @@ lang="python"
 code={`
 import FragmentColor
 
-let warm_lamp = Light.point([0.0, 2.0, 0.0], [1.0, 0.7, 0.4])
+let warm_lamp = try Light.point([0.0, 2.0, 0.0], [1.0, 0.7, 0.4])
 `}
 lang="swift"
 />
@@ -627,7 +627,7 @@ lang="python"
 code={`
 import FragmentColor
 
-let bright = Light.point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0]).setIntensity(5.0)
+let bright = try Light.point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0]).setIntensity(5.0)
 `}
 lang="swift"
 />
@@ -639,7 +639,7 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 
-val bright = Light.point(listOf(0.0f, 2.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f)).setIntensity(5.0)
+val bright = Light.point(listOf(0.0f, 2.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f)).setIntensity(5.0f)
 `}
 lang="kotlin"
 />
@@ -718,11 +718,11 @@ lang="python"
 code={`
 import FragmentColor
 
-let lamp = Light.point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0])
+let lamp = try Light.point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0])
 
 // Warm-tint the lamp later — every Pass that absorbed """lamp""" sees the
 // color on the next render.
-lamp.setColor([1.0, 0.7, 0.4])
+try lamp.setColor([1.0, 0.7, 0.4])
 `}
 lang="swift"
 />
@@ -814,7 +814,7 @@ lang="python"
 code={`
 import FragmentColor
 
-let torch = Light.spot([0.0, 1.8, 1.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
+let torch = try Light.spot([0.0, 1.8, 1.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
 
 torch.setIntensity(8.0)
 `}
@@ -830,7 +830,7 @@ import org.fragmentcolor.*
 
 val torch = Light.spot(listOf(0.0f, 1.8f, 1.0f), listOf(0.0f, -1.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f))
 
-torch.setIntensity(8.0)
+torch.setIntensity(8.0f)
 `}
 lang="kotlin"
 />
@@ -904,8 +904,8 @@ lang="python"
 code={`
 import FragmentColor
 
-let lamp = Light.point([0.0, 2.5, 0.0], [1.0, 1.0, 1.0])
-let sun = Light.directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
+let lamp = try Light.point([0.0, 2.5, 0.0], [1.0, 1.0, 1.0])
+let sun = try Light.directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
 `}
 lang="swift"
 />
@@ -992,8 +992,8 @@ lang="python"
 code={`
 import FragmentColor
 
-let sun = Light.directional([0.3, -1.0, -0.4], [1.0, 1.0, 1.0])
-let lamp = Light.point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0])
+let sun = try Light.directional([0.3, -1.0, -0.4], [1.0, 1.0, 1.0])
+let lamp = try Light.point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0])
 `}
 lang="swift"
 />
@@ -1081,8 +1081,8 @@ lang="python"
 code={`
 import FragmentColor
 
-let lamp = Light.point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0])
-let sun = Light.directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
+let lamp = try Light.point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0])
+let sun = try Light.directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
 `}
 lang="swift"
 />
@@ -1172,8 +1172,8 @@ lang="python"
 code={`
 import FragmentColor
 
-let torch = Light.spot([0.0, 1.8, 1.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0]).setConeAngles(0.15, 0.4)
-let lamp = Light.point([0.0, 0.0, 0.0], [1.0, 1.0, 1.0])
+let torch = try Light.spot([0.0, 1.8, 1.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0]).setConeAngles(0.15, 0.4)
+let lamp = try Light.point([0.0, 0.0, 0.0], [1.0, 1.0, 1.0])
 `}
 lang="swift"
 />
@@ -1185,7 +1185,7 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 
-val torch = Light.spot(listOf(0.0f, 1.8f, 1.0f), listOf(0.0f, -1.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f)).setConeAngles(0.15, 0.4)
+val torch = Light.spot(listOf(0.0f, 1.8f, 1.0f), listOf(0.0f, -1.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f)).setConeAngles(0.15f, 0.4f)
 val lamp = Light.point(listOf(0.0f, 0.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f))
 `}
 lang="kotlin"
@@ -1264,8 +1264,8 @@ lang="python"
 code={`
 import FragmentColor
 
-let torch = Light.spot([0.0, 1.8, 1.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0]).setConeAngles(0.15, 0.4)
-let sun = Light.directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
+let torch = try Light.spot([0.0, 1.8, 1.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0]).setConeAngles(0.15, 0.4)
+let sun = try Light.directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
 `}
 lang="swift"
 />
@@ -1277,7 +1277,7 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 
-val torch = Light.spot(listOf(0.0f, 1.8f, 1.0f), listOf(0.0f, -1.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f)).setConeAngles(0.15, 0.4)
+val torch = Light.spot(listOf(0.0f, 1.8f, 1.0f), listOf(0.0f, -1.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f)).setConeAngles(0.15f, 0.4f)
 val sun = Light.directional(listOf(0.0f, -1.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f))
 `}
 lang="kotlin"
@@ -1311,16 +1311,16 @@ use fragmentcolor::Light;
 
 let lamp = Light::point([0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
 lamp.set_position([3.0, 1.5, -2.0])?;
+assert_eq!(lamp.position(), Some([3.0, 1.5, -2.0]));
 
-// Directional lights have no position — the call errors.
+// Directional lights have no position; the call errors.
 let sun = Light::directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
 let result = sun.set_position([0.0, 0.0, 0.0]);
-assert_eq!(lamp.position(), Some([3.0, 1.5, -2.0]));
 assert!(result.is_err());
 Ok(())
 }
 `}
-lang="rust" meta="collapse={1-1, 10-13}"
+lang="rust" meta="collapse={1-1, 6-13}"
 />
 
 </TabItem>
@@ -1332,10 +1332,6 @@ import { Light } from "fragmentcolor";
 
 const lamp = Light.point([0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
 lamp.setPosition([3.0, 1.5, -2.0]);
-
-// Directional lights have no position — the call errors.
-const sun = Light.directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
-const result = sun.setPosition([0.0, 0.0, 0.0]);
 `}
 lang="js"
 />
@@ -1349,10 +1345,6 @@ from fragmentcolor import Light
 
 lamp = Light.point([0.0, 0.0, 0.0], [1.0, 1.0, 1.0])
 lamp.set_position([3.0, 1.5, -2.0])
-
-# Directional lights have no position — the call errors.
-sun = Light.directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
-result = sun.set_position([0.0, 0.0, 0.0])
 `}
 lang="python"
 />
@@ -1364,12 +1356,8 @@ lang="python"
 code={`
 import FragmentColor
 
-let lamp = Light.point([0.0, 0.0, 0.0], [1.0, 1.0, 1.0])
-lamp.setPosition([3.0, 1.5, -2.0])
-
-// Directional lights have no position — the call errors.
-let sun = Light.directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
-let result = sun.setPosition([0.0, 0.0, 0.0])
+let lamp = try Light.point([0.0, 0.0, 0.0], [1.0, 1.0, 1.0])
+try lamp.setPosition([3.0, 1.5, -2.0])
 `}
 lang="swift"
 />
@@ -1383,10 +1371,6 @@ import org.fragmentcolor.*
 
 val lamp = Light.point(listOf(0.0f, 0.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f))
 lamp.setPosition(listOf(3.0f, 1.5f, -2.0f))
-
-// Directional lights have no position — the call errors.
-val sun = Light.directional(listOf(0.0f, -1.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f))
-val result = sun.setPosition(listOf(0.0f, 0.0f, 0.0f))
 `}
 lang="kotlin"
 />
@@ -1419,16 +1403,16 @@ use fragmentcolor::Light;
 
 let sun = Light::directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
 sun.set_direction([0.3, -0.8, -0.5])?;
+assert_eq!(sun.direction(), Some([0.3, -0.8, -0.5]));
 
-// Point lights have no direction — the call errors.
+// Point lights have no direction; the call errors.
 let lamp = Light::point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0]);
 let result = lamp.set_direction([0.0, -1.0, 0.0]);
-assert_eq!(sun.direction(), Some([0.3, -0.8, -0.5]));
 assert!(result.is_err());
 Ok(())
 }
 `}
-lang="rust" meta="collapse={1-1, 10-13}"
+lang="rust" meta="collapse={1-1, 6-13}"
 />
 
 </TabItem>
@@ -1440,10 +1424,6 @@ import { Light } from "fragmentcolor";
 
 const sun = Light.directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
 sun.setDirection([0.3, -0.8, -0.5]);
-
-// Point lights have no direction — the call errors.
-const lamp = Light.point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0]);
-const result = lamp.setDirection([0.0, -1.0, 0.0]);
 `}
 lang="js"
 />
@@ -1457,10 +1437,6 @@ from fragmentcolor import Light
 
 sun = Light.directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
 sun.set_direction([0.3, -0.8, -0.5])
-
-# Point lights have no direction — the call errors.
-lamp = Light.point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0])
-result = lamp.set_direction([0.0, -1.0, 0.0])
 `}
 lang="python"
 />
@@ -1472,12 +1448,8 @@ lang="python"
 code={`
 import FragmentColor
 
-let sun = Light.directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
-sun.setDirection([0.3, -0.8, -0.5])
-
-// Point lights have no direction — the call errors.
-let lamp = Light.point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0])
-let result = lamp.setDirection([0.0, -1.0, 0.0])
+let sun = try Light.directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
+try sun.setDirection([0.3, -0.8, -0.5])
 `}
 lang="swift"
 />
@@ -1491,10 +1463,6 @@ import org.fragmentcolor.*
 
 val sun = Light.directional(listOf(0.0f, -1.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f))
 sun.setDirection(listOf(0.3f, -0.8f, -0.5f))
-
-// Point lights have no direction — the call errors.
-val lamp = Light.point(listOf(0.0f, 2.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f))
-val result = lamp.setDirection(listOf(0.0f, -1.0f, 0.0f))
 `}
 lang="kotlin"
 />
@@ -1532,18 +1500,20 @@ use fragmentcolor::Light;
 
 let lamp = Light::point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0]);
 lamp.set_range(8.0)?;
-let negative = lamp.set_range(-1.0);
+assert_eq!(lamp.range(), Some(8.0));
 
-// Directional lights have no range — the call errors.
+// Negative values error regardless of kind.
+let negative = lamp.set_range(-1.0);
+assert!(negative.is_err());
+
+// Directional lights have no range; the call errors.
 let sun = Light::directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
 let unsupported = sun.set_range(5.0);
-assert_eq!(lamp.range(), Some(8.0));
-assert!(negative.is_err());
 assert!(unsupported.is_err());
 Ok(())
 }
 `}
-lang="rust" meta="collapse={1-1, 11-15}"
+lang="rust" meta="collapse={1-1, 6-17}"
 />
 
 </TabItem>
@@ -1555,11 +1525,6 @@ import { Light } from "fragmentcolor";
 
 const lamp = Light.point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0]);
 lamp.setRange(8.0);
-const negative = lamp.setRange(-1.0);
-
-// Directional lights have no range — the call errors.
-const sun = Light.directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
-const unsupported = sun.setRange(5.0);
 `}
 lang="js"
 />
@@ -1573,11 +1538,6 @@ from fragmentcolor import Light
 
 lamp = Light.point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0])
 lamp.set_range(8.0)
-negative = lamp.set_range(-1.0)
-
-# Directional lights have no range — the call errors.
-sun = Light.directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
-unsupported = sun.set_range(5.0)
 `}
 lang="python"
 />
@@ -1589,13 +1549,8 @@ lang="python"
 code={`
 import FragmentColor
 
-let lamp = Light.point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0])
-lamp.setRange(8.0)
-let negative = lamp.setRange(-1.0)
-
-// Directional lights have no range — the call errors.
-let sun = Light.directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
-let unsupported = sun.setRange(5.0)
+let lamp = try Light.point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0])
+try lamp.setRange(8.0)
 `}
 lang="swift"
 />
@@ -1608,12 +1563,7 @@ code={`
 import org.fragmentcolor.*
 
 val lamp = Light.point(listOf(0.0f, 2.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f))
-lamp.setRange(8.0)
-val negative = lamp.setRange(-1.0)
-
-// Directional lights have no range — the call errors.
-val sun = Light.directional(listOf(0.0f, -1.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f))
-val unsupported = sun.setRange(5.0)
+lamp.setRange(8.0f)
 `}
 lang="kotlin"
 />
@@ -1653,17 +1603,17 @@ use fragmentcolor::Light;
 
 let torch = Light::spot([0.0, 1.8, 1.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
 torch.set_cone_angles(0.15, 0.4)?;
+assert!((torch.inner_cone_angle().unwrap() - 0.15).abs() < 1.0e-6);
+assert!((torch.outer_cone_angle().unwrap() - 0.4).abs() < 1.0e-6);
 
 // Non-spot lights error.
 let lamp = Light::point([0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
 let unsupported = lamp.set_cone_angles(0.15, 0.4);
-assert!((torch.inner_cone_angle().unwrap() - 0.15).abs() < 1.0e-6);
-assert!((torch.outer_cone_angle().unwrap() - 0.4).abs() < 1.0e-6);
 assert!(unsupported.is_err());
 Ok(())
 }
 `}
-lang="rust" meta="collapse={1-1, 10-14}"
+lang="rust" meta="collapse={1-1, 6-14}"
 />
 
 </TabItem>
@@ -1675,10 +1625,6 @@ import { Light } from "fragmentcolor";
 
 const torch = Light.spot([0.0, 1.8, 1.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
 torch.setConeAngles(0.15, 0.4);
-
-// Non-spot lights error.
-const lamp = Light.point([0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
-const unsupported = lamp.setConeAngles(0.15, 0.4);
 `}
 lang="js"
 />
@@ -1692,10 +1638,6 @@ from fragmentcolor import Light
 
 torch = Light.spot([0.0, 1.8, 1.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
 torch.set_cone_angles(0.15, 0.4)
-
-# Non-spot lights error.
-lamp = Light.point([0.0, 0.0, 0.0], [1.0, 1.0, 1.0])
-unsupported = lamp.set_cone_angles(0.15, 0.4)
 `}
 lang="python"
 />
@@ -1707,12 +1649,8 @@ lang="python"
 code={`
 import FragmentColor
 
-let torch = Light.spot([0.0, 1.8, 1.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
-torch.setConeAngles(0.15, 0.4)
-
-// Non-spot lights error.
-let lamp = Light.point([0.0, 0.0, 0.0], [1.0, 1.0, 1.0])
-let unsupported = lamp.setConeAngles(0.15, 0.4)
+let torch = try Light.spot([0.0, 1.8, 1.0], [0.0, -1.0, 0.0], [1.0, 1.0, 1.0])
+try torch.setConeAngles(0.15, 0.4)
 `}
 lang="swift"
 />
@@ -1725,11 +1663,7 @@ code={`
 import org.fragmentcolor.*
 
 val torch = Light.spot(listOf(0.0f, 1.8f, 1.0f), listOf(0.0f, -1.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f))
-torch.setConeAngles(0.15, 0.4)
-
-// Non-spot lights error.
-val lamp = Light.point(listOf(0.0f, 0.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f))
-val unsupported = lamp.setConeAngles(0.15, 0.4)
+torch.setConeAngles(0.15f, 0.4f)
 `}
 lang="kotlin"
 />

@@ -164,6 +164,7 @@ val shader = Shader("""
 
 """)
 
+val bytes: ByteArray = byteArrayOf()
 // 1x1 white pixel. Passing a size tells create_texture to read the bytes
 // as raw pixels; the default format is Rgba (sRGB-aware).
 val pixels = listOf(255.0f, 255.0f, 255.0f, 255.0f)
@@ -451,6 +452,7 @@ code={`
 import org.fragmentcolor.*
 
 val renderer = Renderer()
+val bytes: ByteArray = byteArrayOf()
 // 1x1 RGBA (white) raw pixel bytes
 val pixels = listOf(255.0f, 255.0f, 255.0f, 255.0f)
 val tex = renderer.createTexture(TextureInputMobile.Bytes(pixels.let { ba -> ByteArray(ba.size) { i -> ba[i].toInt().and(0xFF).toByte() } }), null)
@@ -538,6 +540,7 @@ lang="python"
 <Code
 code={`
 import FragmentColor
+import Foundation
 
 let renderer = Renderer()
 let pixels: [UInt8] = [255, 255, 255, 255]
@@ -548,7 +551,8 @@ let options = TextureOptions(
     mipmaps: false,
     usage: nil
 )
-let texture = try await renderer.createTexture(input: .bytes(pixels), options: options)
+// \`.bytes(_:)\` carries \`Data\`, not \`[UInt8]\`, so wrap the array explicitly.
+let texture = try await renderer.createTexture(input: .bytes(Data(pixels)), options: options)
 
 let opts = SamplerOptions(repeatX: true, repeatY: true, smooth: true, compare: nil)
 texture.setSamplerOptions(opts: opts)
@@ -610,7 +614,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Renderer, TextureFormat};
 let renderer = Renderer::new();
 let texture = renderer.create_storage_texture(([64, 64], TextureFormat::Rgba)).await?;
-let frame_bytes = vec![0u8; 64 * 64 * 4];
+let frame_bytes = vec![0; 64 * 64 * 4];
 
 texture.write(&frame_bytes)?;
 Ok(())
@@ -715,7 +719,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Renderer, TextureFormat, TextureRegion};
 let renderer = Renderer::new();
 let texture = renderer.create_storage_texture(([64, 32], TextureFormat::Rgba)).await?;
-let bytes = vec![0u8; 64 * 32 * 4];
+let bytes = vec![0; 64 * 32 * 4];
 
 // Simple sub-rectangle update.
 texture.write_region(&bytes, [0, 0, 64, 32])?;
@@ -838,7 +842,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Renderer, TextureFormat};
 let renderer = Renderer::new();
 let texture = renderer.create_storage_texture(([64, 64], TextureFormat::Rgba)).await?;
-texture.write(&vec![0u8; 64 * 64 * 4])?;
+texture.write(&vec![0; 64 * 64 * 4])?;
 
 let bytes = texture.get_image().await?;
 assert_eq!(bytes.len(), 64 * 64 * 4);

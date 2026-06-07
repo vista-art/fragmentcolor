@@ -612,6 +612,7 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 val renderer = Renderer()
+val png: ByteArray = byteArrayOf()
 val image = "/healthcheck/public/favicon.png"
 val tex = renderer.createTexture(TextureInputMobile.Path(image), null)
 `}
@@ -656,7 +657,7 @@ let tex = r.create_storage_texture(([64, 64], TextureFormat::Rgba)).await?;
 _ = tex;
 
 // Pre-seeded with bytes.
-let pixels = vec![0u8; 64 * 64 * 4];
+let pixels = vec![0; 64 * 64 * 4];
 let tex2 = r
     .create_storage_texture(([64, 64], TextureFormat::Rgba, pixels))
     .await?;
@@ -736,6 +737,7 @@ val r = Renderer()
 // Empty storage texture.
 val tex = r.createStorageTexture(Size(width=64u, height=64u, depth=null), TextureFormat.RGBA, null, null)
 
+val bytes: ByteArray = byteArrayOf()
 // Pre-seeded with bytes.
 val pixels = ByteArray(64 * 64 * 4)
 val tex2 = r.createStorageTexture(Size(width=64u, height=64u, depth=null), TextureFormat.RGBA, pixels, null)
@@ -947,7 +949,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Renderer, TextureFormat};
 let renderer = Renderer::new();
 let texture = renderer.create_storage_texture(([64, 64], TextureFormat::Rgba)).await?;
-texture.write(&vec![0u8; 64 * 64 * 4])?;
+texture.write(&vec![0; 64 * 64 * 4])?;
 
 let bytes = renderer.read_texture(*texture.id()).await?;
 assert_eq!(bytes.len(), 64 * 64 * 4);
@@ -1156,7 +1158,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Material, Mesh, Model, Renderer, Scene, Vertex};
 
 let renderer = Renderer::new();
-let target = renderer.create_texture_target([64u32, 64u32]).await?;
+let target = renderer.create_texture_target([64, 64]).await?;
 
 let mesh = Mesh::new();
 mesh.add_vertex(
@@ -1170,7 +1172,8 @@ let red_pixels: Vec<u8> = vec![
     255,   0,   0, 255,    0, 255,   0, 255,
       0,   0, 255, 255,  255, 255, 255, 255,
 ];
-let material = Material::pbr()?.base_color_texture((red_pixels, [2u32, 2u32]));
+let red_tex = renderer.create_texture((red_pixels, [2, 2])).await?;
+let material = Material::pbr().base_color_texture(&red_tex);
 let model = Model::new(mesh, material);
 let scene = Scene::new();
 scene.add(&model)?;
@@ -1183,7 +1186,7 @@ Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 28-30}"
+lang="rust" meta="collapse={1-1, 29-31}"
 />
 
 </TabItem>
@@ -1197,13 +1200,14 @@ const renderer = new Renderer();
 const target = await renderer.createTextureTarget([64, 64]);
 
 const mesh = new Mesh();
-mesh.addVertex( Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]), );
+mesh.addVertex( Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0]), );
 // Raw 2×2 RGBA pixel bytes — uploaded lazily by \`Renderer.load\` below.
 // In practice the loader hands the setter encoded PNG/JPEG bytes (from a
 // BIN chunk) or a file path (from a URI); the same \`Into<TextureInput>\`
 // vocabulary covers all of them.
 const red_pixels = [ 255,   0,   0, 255,    0, 255,   0, 255, 0,   0, 255, 255,  255, 255, 255, 255, ];
-const material = Material.pbr()?.baseColorTexture(red_pixels, [2, 2]);
+const red_tex = await renderer.createTexture(red_pixels, [2, 2]);
+const material = Material.pbr().baseColorTexture(red_tex);
 const model = new Model(mesh, material);
 const scene = new Scene();
 scene.add(model);
@@ -1238,7 +1242,8 @@ red_pixels = [
     255,   0,   0, 255,    0, 255,   0, 255,
       0,   0, 255, 255,  255, 255, 255, 255,
 ]
-material = Material.pbr().base_color_texture((red_pixels, [2, 2]))
+red_tex = renderer.create_texture(red_pixels, size=[2, 2])
+material = Material.pbr().base_color_texture(red_tex)
 model = Model(mesh, material)
 scene = Scene()
 scene.add(model)
@@ -1263,7 +1268,7 @@ let target = try await renderer.createTextureTarget([64, 64])
 
 let mesh = Mesh()
 try mesh.addVertex(
-    try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.uV0, [0.5, 1.0]),
+    try Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0])
 )
 // Raw 2×2 RGBA pixel bytes — uploaded lazily by """Renderer.load""" below.
 // In practice the loader hands the setter encoded PNG/JPEG bytes (from a
@@ -1273,10 +1278,11 @@ let red_pixels = [
     255,   0,   0, 255,    0, 255,   0, 255,
       0,   0, 255, 255,  255, 255, 255, 255,
 ]
-let material = Material.pbr()?.baseColorTexture((red_pixels, [2, 2]))
+let red_tex = try await renderer.createTexture((red_pixels, [2, 2]))
+let material = Material.pbr().baseColorTexture(red_tex)
 let model = Model(mesh, material)
 let scene = Scene()
-scene.add(model)
+try scene.add(model)
 
 // Eager prewarm — uploads the pending texture(s) so the next render is
 // GPU-only.
@@ -1297,12 +1303,14 @@ val renderer = Renderer()
 val target = renderer.createTextureTarget(64u, 64u)
 
 val mesh = Mesh()
-mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, floatArrayOf(0.5f, 1.0f)), )
+mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set("uv0", floatArrayOf(0.5f, 1.0f)), )
+val bytes: ByteArray = byteArrayOf()
 // Raw 2×2 RGBA pixel bytes — uploaded lazily by """Renderer.load""" below.
  
 // vocabulary covers all of them.
 val red_pixels = listOf(255.0f, 0.0f, 0.0f, 255.0f, 0.0f, 255.0f, 0.0f, 255.0f, 0.0f, 0.0f, 255.0f, 255.0f, 255.0f, 255.0f, 255.0f, 255.0f, .0f)
-val material = Material.pbr()?.baseColorTexture((red_pixels, listOf(2.0f, 2.0f)))
+val red_tex = renderer.createTexture(TextureInputMobile.Bytes(red_pixels.let { ba -> ByteArray(ba.size) { i -> ba[i].toInt().and(0xFF).toByte() } }), null)
+val material = Material.pbr().baseColorTexture(red_tex)
 val model = Model(mesh, material)
 val scene = Scene()
 scene.add(model)
@@ -1360,7 +1368,7 @@ use bytemuck;
 use fragmentcolor::{Pass, Renderer, Shader};
 
 let renderer = Renderer::new();
-let target = renderer.create_texture_target([16u32, 16u32]).await?;
+let target = renderer.create_texture_target([16, 16]).await?;
 
 let compute = Shader::new(
     r#"
@@ -1387,7 +1395,7 @@ Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 28-31}"
+lang="rust" meta="collapse={1-2, 27-31}"
 />
 
 </TabItem>
@@ -1395,7 +1403,6 @@ lang="rust" meta="collapse={1-1, 28-31}"
 <TabItem label="JavaScript">
 <Code
 code={`
-use bytemuck;
 import { Pass, Renderer, Shader } from "fragmentcolor";
 
 const renderer = new Renderer();
@@ -1420,7 +1427,6 @@ pass.addShader(compute);
 renderer.render(pass, target);
 
 const bytes = await renderer.readStorage(compute, "out");
-const values = bytemuck.castSlice(bytes);
 `}
 lang="js"
 />
@@ -1430,24 +1436,22 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-use bytemuck
 from fragmentcolor import Pass, Renderer, Shader
 
 renderer = Renderer()
 target = renderer.create_texture_target([16, 16])
 
-compute = Shader(
-    r#"
-    struct Out { values: array<f32, 4> }
-    @group(0) @binding(0) var<storage, read_write> out: Out
+compute = Shader("""
+    struct Out { values: array<f32, 4> };
+    @group(0) @binding(0) var<storage, read_write> out: Out;
     @compute @workgroup_size(1) fn main() {
-        out.values[0] = 1.0
-        out.values[1] = 2.0
-        out.values[2] = 3.0
-        out.values[3] = 4.0
+        out.values[0] = 1.0;
+        out.values[1] = 2.0;
+        out.values[2] = 3.0;
+        out.values[3] = 4.0;
     }
-    "#,
-)
+    
+""")
 
 rpass = Pass.compute("seed")
 rpass.set_compute_dispatch(1, 1, 1)
@@ -1455,7 +1459,6 @@ rpass.add_shader(compute)
 renderer.render(rpass, target)
 
 bytes = renderer.read_storage(compute, "out")
-values = bytemuck.cast_slice(bytes)
 `}
 lang="python"
 />
@@ -1465,14 +1468,12 @@ lang="python"
 <TabItem label="Swift">
 <Code
 code={`
-use bytemuck
 import FragmentColor
 
 let renderer = Renderer()
 let target = try await renderer.createTextureTarget([16, 16])
 
-let compute = try Shader.new(
-    r#"
+let compute = try Shader("""
     struct Out { values: array<f32, 4> }
     @group(0) @binding(0) var<storage, read_write> out: Out
     @compute @workgroup_size(1) fn main() {
@@ -1481,8 +1482,8 @@ let compute = try Shader.new(
         out.values[2] = 3.0
         out.values[3] = 4.0
     }
-    "#,
-)
+    
+""")
 
 let pass = Pass.compute("seed")
 pass.setComputeDispatch(1, 1, 1)
@@ -1490,7 +1491,6 @@ pass.addShader(compute)
 try renderer.render(pass, target)
 
 let bytes = try await renderer.readStorage(compute, "out")
-let values = bytemuck.castSlice(bytes)
 `}
 lang="swift"
 />
@@ -1500,13 +1500,22 @@ lang="swift"
 <TabItem label="Kotlin">
 <Code
 code={`
-use bytemuck
 import org.fragmentcolor.*
 
 val renderer = Renderer()
 val target = renderer.createTextureTarget(16u, 16u)
 
-val compute = Shader.new( r#"; struct Out { values: array<f32, 4> }; @group(0) @binding(0) var<storage, read_write> out: Out; @compute @workgroup_size(1) fn main() { out.values[0] = 1.0; out.values[1] = 2.0; out.values[2] = 3.0; out.values[3] = 4.0; }; "#, )
+val compute = Shader("""
+    struct Out { values: array<f32, 4> }
+    @group(0) @binding(0) var<storage, read_write> out: Out
+    @compute @workgroup_size(1) fn main() {
+        out.values[0] = 1.0
+        out.values[1] = 2.0
+        out.values[2] = 3.0
+        out.values[3] = 4.0
+    }
+    
+""")
 
 val pass = Pass.compute("seed")
 pass.setComputeDispatch(1u,1u,1u)
@@ -1514,7 +1523,6 @@ pass.addShader(compute)
 renderer.render(pass, target)
 
 val bytes = renderer.readStorage(compute, "out")
-val values = bytemuck.castSlice(bytes)
 `}
 lang="kotlin"
 />

@@ -11,6 +11,5 @@ scene.add(model)
 
 # LOD switch: hide every model the user just loaded, based on a
 # camera-distance heuristic the caller computes elsewhere.
-for m in scene.models() {
-    m.set_visible(false)
-}
+for m in scene.models():
+    m.set_visible(False)

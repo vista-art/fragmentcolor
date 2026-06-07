@@ -42,12 +42,12 @@ inner shader. Mutating one handle changes the state every other handle
 reads:
 
 ```text
-let red = Material::pbr()?.base_color([1.0, 0.0, 0.0, 1.0]);
+let red = Material::pbr().base_color([1.0, 0.0, 0.0, 1.0]);
 let same = red.clone();
 same.base_color([0.0, 1.0, 0.0, 1.0]); // both `red` and `same` now read green
 ```
 
-Same goes for the chained-setter return: `Material::pbr()?.metallic(...)`
+Same goes for the chained-setter return: `Material::pbr().metallic(...)`
 gives you back a handle to the same shader, not a fresh copy. This is the
 mechanic that makes setters chain cheaply and lets one Material drive
 hundreds of Models without per-instance shader duplication.
@@ -104,7 +104,7 @@ mesh.add_vertex(
     Vertex::pbr([0.0, 0.5, 0.0]).set(Vertex::UV0, [0.5, 1.0]),
 );
 
-let material = Material::pbr()?
+let material = Material::pbr()
     .base_color([0.85, 0.2, 0.2, 1.0])
     .metallic(0.0)
     .roughness(0.4)
@@ -126,9 +126,9 @@ code={`
 import { Material, Mesh, Model, Vertex } from "fragmentcolor";
 
 const mesh = new Mesh();
-mesh.addVertex( Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]), );
+mesh.addVertex( Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0]), );
 
-const material = Material.pbr()?.baseColor([0.85, 0.2, 0.2, 1.0]).metallic(0.0).roughness(0.4).emissive([0.0, 0.0, 0.05]);
+const material = Material.pbr().baseColor([0.85, 0.2, 0.2, 1.0]).metallic(0.0).roughness(0.4).emissive([0.0, 0.0, 0.05]);
 
 const model = new Model(mesh, material);
 `}
@@ -163,10 +163,10 @@ import FragmentColor
 
 let mesh = Mesh()
 try mesh.addVertex(
-    try Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.uV0, [0.5, 1.0]),
+    try Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0])
 )
 
-let material = Material.pbr()?.baseColor([0.85, 0.2, 0.2, 1.0]).metallic(0.0).roughness(0.4).emissive([0.0, 0.0, 0.05])
+let material = try Material.pbr().baseColor([0.85, 0.2, 0.2, 1.0]).metallic(0.0).roughness(0.4).emissive([0.0, 0.0, 0.05])
 
 let model = Model(mesh, material)
 `}
@@ -181,9 +181,9 @@ code={`
 import org.fragmentcolor.*
 
 val mesh = Mesh()
-mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set(Vertex.UV0, floatArrayOf(0.5f, 1.0f)), )
+mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set("uv0", floatArrayOf(0.5f, 1.0f)), )
 
-val material = Material.pbr()?.baseColor(listOf(0.85f, 0.2f, 0.2f, 1.0f)).metallic(0.0).roughness(0.4).emissive(listOf(0.0f, 0.0f, 0.05f))
+val material = Material.pbr().baseColor(listOf(0.85f, 0.2f, 0.2f, 1.0f)).metallic(0.0f).roughness(0.4f).emissive(listOf(0.0f, 0.0f, 0.05f))
 
 val model = Model(mesh, material)
 `}
@@ -220,7 +220,7 @@ code={`
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Material;
 
-let foliage = Material::pbr()?.alpha_cutoff(0.3);
+let foliage = Material::pbr().alpha_cutoff(0.3);
 let _foliage = foliage;
 Ok(())
 }
@@ -235,7 +235,7 @@ lang="rust" meta="collapse={1-1, 5-7}"
 code={`
 import { Material } from "fragmentcolor";
 
-const foliage = Material.pbr()?.alphaCutoff(0.3);
+const foliage = Material.pbr().alphaCutoff(0.3);
 `}
 lang="js"
 />
@@ -259,7 +259,7 @@ lang="python"
 code={`
 import FragmentColor
 
-let foliage = Material.pbr()?.alphaCutoff(0.3)
+let foliage = Material.pbr().alphaCutoff(0.3)
 `}
 lang="swift"
 />
@@ -271,7 +271,7 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 
-val foliage = Material.pbr()?.alphaCutoff(0.3)
+val foliage = Material.pbr().alphaCutoff(0.3f)
 `}
 lang="kotlin"
 />
@@ -324,15 +324,15 @@ code={`
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{AlphaMode, Material};
 
-let foliage = Material::pbr()?
+let foliage = Material::pbr()
     .alpha_mode(AlphaMode::Mask)
     .alpha_cutoff(0.3);
 
-let glass = Material::pbr()?
+let glass = Material::pbr()
     .base_color([0.9, 0.95, 1.0, 0.25])
     .alpha_mode(AlphaMode::Blend);
 
-let solid = Material::pbr()?.alpha_mode(AlphaMode::Opaque);
+let solid = Material::pbr().alpha_mode(AlphaMode::Opaque);
 let _ = (foliage, glass, solid);
 Ok(())
 }
@@ -347,11 +347,11 @@ lang="rust" meta="collapse={1-1, 13-15}"
 code={`
 import { AlphaMode, Material } from "fragmentcolor";
 
-const foliage = Material.pbr()?.alphaMode(AlphaMode.Mask).alphaCutoff(0.3);
+const foliage = Material.pbr().alphaMode(AlphaMode.Mask).alphaCutoff(0.3);
 
-const glass = Material.pbr()?.baseColor([0.9, 0.95, 1.0, 0.25]).alphaMode(AlphaMode.Blend);
+const glass = Material.pbr().baseColor([0.9, 0.95, 1.0, 0.25]).alphaMode(AlphaMode.Blend);
 
-const solid = Material.pbr()?.alphaMode(AlphaMode.Opaque);
+const solid = Material.pbr().alphaMode(AlphaMode.Opaque);
 `}
 lang="js"
 />
@@ -379,11 +379,11 @@ lang="python"
 code={`
 import FragmentColor
 
-let foliage = Material.pbr()?.alphaMode(AlphaMode.mask).alphaCutoff(0.3)
+let foliage = Material.pbr().alphaMode(AlphaMode.mask).alphaCutoff(0.3)
 
-let glass = Material.pbr()?.baseColor([0.9, 0.95, 1.0, 0.25]).alphaMode(AlphaMode.blend)
+let glass = try Material.pbr().baseColor([0.9, 0.95, 1.0, 0.25]).alphaMode(AlphaMode.blend)
 
-let solid = Material.pbr()?.alphaMode(AlphaMode.opaque)
+let solid = Material.pbr().alphaMode(AlphaMode.opaque)
 `}
 lang="swift"
 />
@@ -395,11 +395,11 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 
-val foliage = Material.pbr()?.alphaMode(AlphaMode.Mask).alphaCutoff(0.3)
+val foliage = Material.pbr().alphaMode(AlphaMode.MASK).alphaCutoff(0.3f)
 
-val glass = Material.pbr()?.baseColor(listOf(0.9f, 0.95f, 1.0f, 0.25f)).alphaMode(AlphaMode.Blend)
+val glass = Material.pbr().baseColor(listOf(0.9f, 0.95f, 1.0f, 0.25f)).alphaMode(AlphaMode.BLEND)
 
-val solid = Material.pbr()?.alphaMode(AlphaMode.Opaque)
+val solid = Material.pbr().alphaMode(AlphaMode.OPAQUE)
 `}
 lang="kotlin"
 />
@@ -435,7 +435,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Material, Renderer};
 
 let renderer = Renderer::new();
-let red = Material::pbr()?.base_color([1.0, 0.2, 0.2, 1.0]);
+let red = Material::pbr().base_color([1.0, 0.2, 0.2, 1.0]);
 let _ = red;
 Ok(())
 }
@@ -452,7 +452,7 @@ code={`
 import { Material, Renderer } from "fragmentcolor";
 
 const renderer = new Renderer();
-const red = Material.pbr()?.baseColor([1.0, 0.2, 0.2, 1.0]);
+const red = Material.pbr().baseColor([1.0, 0.2, 0.2, 1.0]);
 `}
 lang="js"
 />
@@ -478,7 +478,7 @@ code={`
 import FragmentColor
 
 let renderer = Renderer()
-let red = Material.pbr()?.baseColor([1.0, 0.2, 0.2, 1.0])
+let red = try Material.pbr().baseColor([1.0, 0.2, 0.2, 1.0])
 `}
 lang="swift"
 />
@@ -491,7 +491,7 @@ code={`
 import org.fragmentcolor.*
 
 val renderer = Renderer()
-val red = Material.pbr()?.baseColor(listOf(1.0f, 0.2f, 0.2f, 1.0f))
+val red = Material.pbr().baseColor(listOf(1.0f, 0.2f, 0.2f, 1.0f))
 `}
 lang="kotlin"
 />
@@ -513,7 +513,7 @@ Accepts any `Into<TextureInput>`:
 - Bytes / path / URL / `DynamicImage`. The setter queues the input on the Material's Shader, and the renderer drains queued uploads on the first [`Renderer::render`](/api/core/renderer/render) (or earlier via the explicit [`Renderer::load`](/api/core/renderer/load)).
 
 Unset, this slot resolves to a 1×1 white default the renderer hands out
-lazily, so calling `Material::pbr()?` without binding a
+lazily, so calling `Material::pbr()` without binding a
 texture renders correctly under the factor alone.
 
 #### Errors are surfaced lazily
@@ -543,25 +543,24 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Material, Renderer};
 
 let renderer = Renderer::new();
-let albedo = renderer.create_texture(&[
-    255u8, 200, 120, 255,
-    255,  240, 180, 255,
-    230,  180, 100, 255,
-    255,  220, 150, 255,
-][..]).await?;
+let albedo_bytes: Vec<u8> = vec![
+    255, 200, 120, 255,
+    255, 240, 180, 255,
+    230, 180, 100, 255,
+    255, 220, 150, 255,
+];
+let albedo = renderer.create_texture((albedo_bytes, [2, 2])).await?;
 
-// 279 blob Materials all sample the same uploaded \`albedo\` — one GPU
-// texture, 279 shader references.
-let mut blob_materials = Vec::with_capacity(279);
-for _ in 0..279 {
-    blob_materials.push(Material::pbr()?.base_color_texture(&albedo));
-}
-let _blob_materials = blob_materials;
+// Every Material that points at \`albedo\` reuses the same uploaded GPU
+// texture; passing the same handle into N Material instances costs one
+// upload and N shader-uniform references.
+let blob = Material::pbr().base_color_texture(&albedo);
+let _ = blob;
 Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 18-21}"
+lang="rust" meta="collapse={1-1, 17-20}"
 />
 
 </TabItem>
@@ -572,12 +571,13 @@ code={`
 import { Material, Renderer } from "fragmentcolor";
 
 const renderer = new Renderer();
-const albedo = await renderer.createTexture([ 255, 200, 120, 255, 255,  240, 180, 255, 230,  180, 100, 255, 255,  220, 150, 255, ][..]);
+const albedo_bytes = [ 255, 200, 120, 255, 255, 240, 180, 255, 230, 180, 100, 255, 255, 220, 150, 255, ];
+const albedo = await renderer.createTexture(albedo_bytes, [2, 2]);
 
-// 279 blob Materials all sample the same uploaded \`albedo\` — one GPU
-// texture, 279 shader references.
-const blob_materials = Vec.withCapacity(279);
-for _ in 0..279 { blob_materials.push(Material.pbr()?.baseColorTexture(albedo)); };
+// Every Material that points at \`albedo\` reuses the same uploaded GPU
+// texture; passing the same handle into N Material instances costs one
+// upload and N shader-uniform references.
+const blob = Material.pbr().baseColorTexture(albedo);
 `}
 lang="js"
 />
@@ -590,19 +590,18 @@ code={`
 from fragmentcolor import Material, Renderer
 
 renderer = Renderer()
-albedo = renderer.create_texture([
+albedo_bytes = [
     255, 200, 120, 255,
-    255,  240, 180, 255,
-    230,  180, 100, 255,
-    255,  220, 150, 255,
-][..])
+    255, 240, 180, 255,
+    230, 180, 100, 255,
+    255, 220, 150, 255,
+]
+albedo = renderer.create_texture(albedo_bytes, size=[2, 2])
 
-# 279 blob Materials all sample the same uploaded \`albedo\` — one GPU
-# texture, 279 shader references.
-blob_materials = Vec.with_capacity(279)
-for _ in 0..279 {
-    blob_materials.push(Material.pbr().base_color_texture(albedo))
-}
+# Every Material that points at \`albedo\` reuses the same uploaded GPU
+# texture; passing the same handle into N Material instances costs one
+# upload and N shader-uniform references.
+blob = Material.pbr().base_color_texture(albedo)
 `}
 lang="python"
 />
@@ -615,19 +614,18 @@ code={`
 import FragmentColor
 
 let renderer = Renderer()
-let albedo = renderer.createTexture([
+let albedo_bytes = [
     255, 200, 120, 255,
-    255,  240, 180, 255,
-    230,  180, 100, 255,
-    255,  220, 150, 255,
-try await ])
+    255, 240, 180, 255,
+    230, 180, 100, 255,
+    255, 220, 150, 255,
+]
+let albedo = try await renderer.createTexture((albedo_bytes, [2, 2]))
 
-// 279 blob Materials all sample the same uploaded """albedo""" — one GPU
-// texture, 279 shader references.
-let blob_materials = Vec.withCapacity(279)
-for _ in 0...279 {
-    blob_materials.push(Material.pbr()?.baseColorTexture(albedo))
-}
+// Every Material that points at """albedo""" reuses the same uploaded GPU
+// texture; passing the same handle into N Material instances costs one
+// upload and N shader-uniform references.
+let blob = Material.pbr().baseColorTexture(albedo)
 `}
 lang="swift"
 />
@@ -640,14 +638,13 @@ code={`
 import org.fragmentcolor.*
 
 val renderer = Renderer()
-val albedo = renderer.createTexture(arrayOf(255, 200, 120, 255, 255,  240, 180, 255, 230,  180, 100, 255, 255,  220, 150, 255, await))
+val albedo_bytes = listOf(255.0f, 200.0f, 120.0f, 255.0f, 255.0f, 240.0f, 180.0f, 255.0f, 230.0f, 180.0f, 100.0f, 255.0f, 255.0f, 220.0f, 150.0f, 255.0f, .0f)
+val albedo = renderer.createTexture(TextureInputMobile.Bytes(albedo_bytes.let { ba -> ByteArray(ba.size) { i -> ba[i].toInt().and(0xFF).toByte() } }), null)
 
-// 279 blob Materials all sample the same uploaded """albedo""" — one GPU
-// texture, 279 shader references.
-val blob_materials = Vec.withCapacity(279)
-for _ in 0..279 {
-    blob_materials.push(Material.pbr()?.baseColorTexture(albedo))
-}
+// Every Material that points at """albedo""" reuses the same uploaded GPU
+// texture; passing the same handle into N Material instances costs one
+// upload and N shader-uniform references.
+val blob = Material.pbr().baseColorTexture(albedo)
 `}
 lang="kotlin"
 />
@@ -867,13 +864,13 @@ use fragmentcolor::{AlphaMode, Material, Renderer};
 
 let renderer = Renderer::new();
 // Leaf cards: thin, single-quad geometry; needs both sides + alpha cut-out.
-let leaf = Material::pbr()?
+let leaf = Material::pbr()
     .double_sided(true)
     .alpha_mode(AlphaMode::Mask)
     .alpha_cutoff(0.5);
 
 // Default is single-sided — back-face culling on.
-let solid_mesh = Material::pbr()?.double_sided(false);
+let solid_mesh = Material::pbr().double_sided(false);
 let _ = (leaf, solid_mesh);
 Ok(())
 }
@@ -891,10 +888,10 @@ import { AlphaMode, Material, Renderer } from "fragmentcolor";
 
 const renderer = new Renderer();
 // Leaf cards: thin, single-quad geometry; needs both sides + alpha cut-out.
-const leaf = Material.pbr()?.doubleSided(true).alphaMode(AlphaMode.Mask).alphaCutoff(0.5);
+const leaf = Material.pbr().doubleSided(true).alphaMode(AlphaMode.Mask).alphaCutoff(0.5);
 
 // Default is single-sided — back-face culling on.
-const solid_mesh = Material.pbr()?.doubleSided(false);
+const solid_mesh = Material.pbr().doubleSided(false);
 `}
 lang="js"
 />
@@ -908,10 +905,10 @@ from fragmentcolor import AlphaMode, Material, Renderer
 
 renderer = Renderer()
 # Leaf cards: thin, single-quad geometry; needs both sides + alpha cut-out.
-leaf = Material.pbr().double_sided(true).alpha_mode(AlphaMode.Mask).alpha_cutoff(0.5)
+leaf = Material.pbr().double_sided(True).alpha_mode(AlphaMode.Mask).alpha_cutoff(0.5)
 
 # Default is single-sided — back-face culling on.
-solid_mesh = Material.pbr().double_sided(false)
+solid_mesh = Material.pbr().double_sided(False)
 `}
 lang="python"
 />
@@ -925,10 +922,10 @@ import FragmentColor
 
 let renderer = Renderer()
 // Leaf cards: thin, single-quad geometry; needs both sides + alpha cut-out.
-let leaf = Material.pbr()?.doubleSided(true).alphaMode(AlphaMode.mask).alphaCutoff(0.5)
+let leaf = Material.pbr().doubleSided(true).alphaMode(AlphaMode.mask).alphaCutoff(0.5)
 
 // Default is single-sided — back-face culling on.
-let solid_mesh = Material.pbr()?.doubleSided(false)
+let solid_mesh = Material.pbr().doubleSided(false)
 `}
 lang="swift"
 />
@@ -942,10 +939,10 @@ import org.fragmentcolor.*
 
 val renderer = Renderer()
 // Leaf cards: thin, single-quad geometry; needs both sides + alpha cut-out.
-val leaf = Material.pbr()?.doubleSided(true).alphaMode(AlphaMode.Mask).alphaCutoff(0.5)
+val leaf = Material.pbr().doubleSided(true).alphaMode(AlphaMode.MASK).alphaCutoff(0.5f)
 
 // Default is single-sided — back-face culling on.
-val solid_mesh = Material.pbr()?.doubleSided(false)
+val solid_mesh = Material.pbr().doubleSided(false)
 `}
 lang="kotlin"
 />
@@ -977,7 +974,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Material, Renderer};
 
 let renderer = Renderer::new();
-let lava = Material::pbr()?
+let lava = Material::pbr()
     .base_color([0.1, 0.05, 0.0, 1.0])
     .emissive([1.5, 0.4, 0.1]);
 let _ = lava;
@@ -996,7 +993,7 @@ code={`
 import { Material, Renderer } from "fragmentcolor";
 
 const renderer = new Renderer();
-const lava = Material.pbr()?.baseColor([0.1, 0.05, 0.0, 1.0]).emissive([1.5, 0.4, 0.1]);
+const lava = Material.pbr().baseColor([0.1, 0.05, 0.0, 1.0]).emissive([1.5, 0.4, 0.1]);
 `}
 lang="js"
 />
@@ -1022,7 +1019,7 @@ code={`
 import FragmentColor
 
 let renderer = Renderer()
-let lava = Material.pbr()?.baseColor([0.1, 0.05, 0.0, 1.0]).emissive([1.5, 0.4, 0.1])
+let lava = try Material.pbr().baseColor([0.1, 0.05, 0.0, 1.0]).emissive([1.5, 0.4, 0.1])
 `}
 lang="swift"
 />
@@ -1035,7 +1032,7 @@ code={`
 import org.fragmentcolor.*
 
 val renderer = Renderer()
-val lava = Material.pbr()?.baseColor(listOf(0.1f, 0.05f, 0.0f, 1.0f)).emissive(listOf(1.5f, 0.4f, 0.1f))
+val lava = Material.pbr().baseColor(listOf(0.1f, 0.05f, 0.0f, 1.0f)).emissive(listOf(1.5f, 0.4f, 0.1f))
 `}
 lang="kotlin"
 />
@@ -1067,13 +1064,14 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Material, Renderer};
 
 let renderer = Renderer::new();
-let glow = renderer.create_texture(&[
-    255u8, 0, 0, 255,
+let glow_bytes: Vec<u8> = vec![
+    255, 0, 0, 255,
     255,   0, 0, 255,
     255,   0, 0, 255,
     255,   0, 0, 255,
-][..]).await?;
-let mat = Material::pbr()?
+];
+let glow = renderer.create_texture((glow_bytes, [2, 2])).await?;
+let mat = Material::pbr()
     .emissive([0.8, 0.0, 0.0])
     .emissive_texture(&glow);
 let _ = mat;
@@ -1081,7 +1079,7 @@ Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 14-17}"
+lang="rust" meta="collapse={1-1, 15-18}"
 />
 
 </TabItem>
@@ -1092,8 +1090,9 @@ code={`
 import { Material, Renderer } from "fragmentcolor";
 
 const renderer = new Renderer();
-const glow = await renderer.createTexture([ 255, 0, 0, 255, 255,   0, 0, 255, 255,   0, 0, 255, 255,   0, 0, 255, ][..]);
-const mat = Material.pbr()?.emissive([0.8, 0.0, 0.0]).emissiveTexture(glow);
+const glow_bytes = [ 255, 0, 0, 255, 255,   0, 0, 255, 255,   0, 0, 255, 255,   0, 0, 255, ];
+const glow = await renderer.createTexture(glow_bytes, [2, 2]);
+const mat = Material.pbr().emissive([0.8, 0.0, 0.0]).emissiveTexture(glow);
 `}
 lang="js"
 />
@@ -1106,12 +1105,13 @@ code={`
 from fragmentcolor import Material, Renderer
 
 renderer = Renderer()
-glow = renderer.create_texture([
+glow_bytes = [
     255, 0, 0, 255,
     255,   0, 0, 255,
     255,   0, 0, 255,
     255,   0, 0, 255,
-][..])
+]
+glow = renderer.create_texture(glow_bytes, size=[2, 2])
 mat = Material.pbr().emissive([0.8, 0.0, 0.0]).emissive_texture(glow)
 `}
 lang="python"
@@ -1125,13 +1125,14 @@ code={`
 import FragmentColor
 
 let renderer = Renderer()
-let glow = renderer.createTexture([
+let glow_bytes = [
     255, 0, 0, 255,
     255,   0, 0, 255,
     255,   0, 0, 255,
     255,   0, 0, 255,
-try await ])
-let mat = Material.pbr()?.emissive([0.8, 0.0, 0.0]).emissiveTexture(glow)
+]
+let glow = try await renderer.createTexture((glow_bytes, [2, 2]))
+let mat = try Material.pbr().emissive([0.8, 0.0, 0.0]).emissiveTexture(glow)
 `}
 lang="swift"
 />
@@ -1144,8 +1145,9 @@ code={`
 import org.fragmentcolor.*
 
 val renderer = Renderer()
-val glow = renderer.createTexture(arrayOf(255, 0, 0, 255, 255,   0, 0, 255, 255,   0, 0, 255, 255,   0, 0, 255, await))
-val mat = Material.pbr()?.emissive(listOf(0.8f, 0.0f, 0.0f)).emissiveTexture(glow)
+val glow_bytes = listOf(255.0f, 0.0f, 0.0f, 255.0f, 255.0f, 0.0f, 0.0f, 255.0f, 255.0f, 0.0f, 0.0f, 255.0f, 255.0f, 0.0f, 0.0f, 255.0f, .0f)
+val glow = renderer.createTexture(TextureInputMobile.Bytes(glow_bytes.let { ba -> ByteArray(ba.size) { i -> ba[i].toInt().and(0xFF).toByte() } }), null)
+val mat = Material.pbr().emissive(listOf(0.8f, 0.0f, 0.0f)).emissiveTexture(glow)
 `}
 lang="kotlin"
 />
@@ -1178,7 +1180,7 @@ code={`
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Material;
 
-let chrome = Material::pbr()?.metallic(1.0).roughness(0.05);
+let chrome = Material::pbr().metallic(1.0).roughness(0.05);
 let _chrome = chrome;
 Ok(())
 }
@@ -1193,7 +1195,7 @@ lang="rust" meta="collapse={1-1, 5-7}"
 code={`
 import { Material } from "fragmentcolor";
 
-const chrome = Material.pbr()?.metallic(1.0).roughness(0.05);
+const chrome = Material.pbr().metallic(1.0).roughness(0.05);
 `}
 lang="js"
 />
@@ -1217,7 +1219,7 @@ lang="python"
 code={`
 import FragmentColor
 
-let chrome = Material.pbr()?.metallic(1.0).roughness(0.05)
+let chrome = Material.pbr().metallic(1.0).roughness(0.05)
 `}
 lang="swift"
 />
@@ -1229,7 +1231,7 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 
-val chrome = Material.pbr()?.metallic(1.0).roughness(0.05)
+val chrome = Material.pbr().metallic(1.0f).roughness(0.05f)
 `}
 lang="kotlin"
 />
@@ -1263,19 +1265,20 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Material, Renderer};
 
 let renderer = Renderer::new();
-let mr_map = renderer.create_texture(&[
-    0u8, 200, 50, 255,
+let mr_map_bytes: Vec<u8> = vec![
+    0, 200, 50, 255,
     0,   240, 80, 255,
     0,   180, 30, 255,
     0,   220, 60, 255,
-][..]).await?;
-let mat = Material::pbr()?.metallic_roughness_texture(&mr_map);
+];
+let mr_map = renderer.create_texture((mr_map_bytes, [2, 2])).await?;
+let mat = Material::pbr().metallic_roughness_texture(&mr_map);
 let _ = mat;
 Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 12-15}"
+lang="rust" meta="collapse={1-1, 13-16}"
 />
 
 </TabItem>
@@ -1286,8 +1289,9 @@ code={`
 import { Material, Renderer } from "fragmentcolor";
 
 const renderer = new Renderer();
-const mr_map = await renderer.createTexture([ 0, 200, 50, 255, 0,   240, 80, 255, 0,   180, 30, 255, 0,   220, 60, 255, ][..]);
-const mat = Material.pbr()?.metallicRoughnessTexture(mr_map);
+const mr_map_bytes = [ 0, 200, 50, 255, 0,   240, 80, 255, 0,   180, 30, 255, 0,   220, 60, 255, ];
+const mr_map = await renderer.createTexture(mr_map_bytes, [2, 2]);
+const mat = Material.pbr().metallicRoughnessTexture(mr_map);
 `}
 lang="js"
 />
@@ -1300,12 +1304,13 @@ code={`
 from fragmentcolor import Material, Renderer
 
 renderer = Renderer()
-mr_map = renderer.create_texture([
+mr_map_bytes = [
     0, 200, 50, 255,
     0,   240, 80, 255,
     0,   180, 30, 255,
     0,   220, 60, 255,
-][..])
+]
+mr_map = renderer.create_texture(mr_map_bytes, size=[2, 2])
 mat = Material.pbr().metallic_roughness_texture(mr_map)
 `}
 lang="python"
@@ -1319,13 +1324,14 @@ code={`
 import FragmentColor
 
 let renderer = Renderer()
-let mr_map = renderer.createTexture([
+let mr_map_bytes = [
     0, 200, 50, 255,
     0,   240, 80, 255,
     0,   180, 30, 255,
     0,   220, 60, 255,
-try await ])
-let mat = Material.pbr()?.metallicRoughnessTexture(mr_map)
+]
+let mr_map = try await renderer.createTexture((mr_map_bytes, [2, 2]))
+let mat = Material.pbr().metallicRoughnessTexture(mr_map)
 `}
 lang="swift"
 />
@@ -1338,8 +1344,9 @@ code={`
 import org.fragmentcolor.*
 
 val renderer = Renderer()
-val mr_map = renderer.createTexture(arrayOf(0, 200, 50, 255, 0,   240, 80, 255, 0,   180, 30, 255, 0,   220, 60, 255, await))
-val mat = Material.pbr()?.metallicRoughnessTexture(mr_map)
+val mr_map_bytes = listOf(0.0f, 200.0f, 50.0f, 255.0f, 0.0f, 240.0f, 80.0f, 255.0f, 0.0f, 180.0f, 30.0f, 255.0f, 0.0f, 220.0f, 60.0f, 255.0f, .0f)
+val mr_map = renderer.createTexture(TextureInputMobile.Bytes(mr_map_bytes.let { ba -> ByteArray(ba.size) { i -> ba[i].toInt().and(0xFF).toByte() } }), null)
+val mat = Material.pbr().metallicRoughnessTexture(mr_map)
 `}
 lang="kotlin"
 />
@@ -1371,7 +1378,7 @@ code={`
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Material;
 
-let detailed = Material::pbr()?.normal_scale(1.5);
+let detailed = Material::pbr().normal_scale(1.5);
 let _detailed = detailed;
 Ok(())
 }
@@ -1386,7 +1393,7 @@ lang="rust" meta="collapse={1-1, 5-7}"
 code={`
 import { Material } from "fragmentcolor";
 
-const detailed = Material.pbr()?.normalScale(1.5);
+const detailed = Material.pbr().normalScale(1.5);
 `}
 lang="js"
 />
@@ -1410,7 +1417,7 @@ lang="python"
 code={`
 import FragmentColor
 
-let detailed = Material.pbr()?.normalScale(1.5)
+let detailed = Material.pbr().normalScale(1.5)
 `}
 lang="swift"
 />
@@ -1422,7 +1429,7 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 
-val detailed = Material.pbr()?.normalScale(1.5)
+val detailed = Material.pbr().normalScale(1.5f)
 `}
 lang="kotlin"
 />
@@ -1458,19 +1465,20 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Material, Renderer};
 
 let renderer = Renderer::new();
-let normal_map = renderer.create_texture(&[
-    128u8, 128, 255, 255,
+let normal_map_bytes: Vec<u8> = vec![
+    128, 128, 255, 255,
     128,   128, 255, 255,
     128,   128, 255, 255,
     128,   128, 255, 255,
-][..]).await?;
-let mat = Material::pbr()?.normal_texture(&normal_map).normal_scale(1.2);
+];
+let normal_map = renderer.create_texture((normal_map_bytes, [2, 2])).await?;
+let mat = Material::pbr().normal_texture(&normal_map).normal_scale(1.2);
 let _ = mat;
 Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 12-15}"
+lang="rust" meta="collapse={1-1, 13-16}"
 />
 
 </TabItem>
@@ -1481,8 +1489,9 @@ code={`
 import { Material, Renderer } from "fragmentcolor";
 
 const renderer = new Renderer();
-const normal_map = await renderer.createTexture([ 128, 128, 255, 255, 128,   128, 255, 255, 128,   128, 255, 255, 128,   128, 255, 255, ][..]);
-const mat = Material.pbr()?.normalTexture(normal_map).normalScale(1.2);
+const normal_map_bytes = [ 128, 128, 255, 255, 128,   128, 255, 255, 128,   128, 255, 255, 128,   128, 255, 255, ];
+const normal_map = await renderer.createTexture(normal_map_bytes, [2, 2]);
+const mat = Material.pbr().normalTexture(normal_map).normalScale(1.2);
 `}
 lang="js"
 />
@@ -1495,12 +1504,13 @@ code={`
 from fragmentcolor import Material, Renderer
 
 renderer = Renderer()
-normal_map = renderer.create_texture([
+normal_map_bytes = [
     128, 128, 255, 255,
     128,   128, 255, 255,
     128,   128, 255, 255,
     128,   128, 255, 255,
-][..])
+]
+normal_map = renderer.create_texture(normal_map_bytes, size=[2, 2])
 mat = Material.pbr().normal_texture(normal_map).normal_scale(1.2)
 `}
 lang="python"
@@ -1514,13 +1524,14 @@ code={`
 import FragmentColor
 
 let renderer = Renderer()
-let normal_map = renderer.createTexture([
+let normal_map_bytes = [
     128, 128, 255, 255,
     128,   128, 255, 255,
     128,   128, 255, 255,
     128,   128, 255, 255,
-try await ])
-let mat = Material.pbr()?.normalTexture(normal_map).normalScale(1.2)
+]
+let normal_map = try await renderer.createTexture((normal_map_bytes, [2, 2]))
+let mat = Material.pbr().normalTexture(normal_map).normalScale(1.2)
 `}
 lang="swift"
 />
@@ -1533,8 +1544,9 @@ code={`
 import org.fragmentcolor.*
 
 val renderer = Renderer()
-val normal_map = renderer.createTexture(arrayOf(128, 128, 255, 255, 128,   128, 255, 255, 128,   128, 255, 255, 128,   128, 255, 255, await))
-val mat = Material.pbr()?.normalTexture(normal_map).normalScale(1.2)
+val normal_map_bytes = listOf(128.0f, 128.0f, 255.0f, 255.0f, 128.0f, 128.0f, 255.0f, 255.0f, 128.0f, 128.0f, 255.0f, 255.0f, 128.0f, 128.0f, 255.0f, 255.0f, .0f)
+val normal_map = renderer.createTexture(TextureInputMobile.Bytes(normal_map_bytes.let { ba -> ByteArray(ba.size) { i -> ba[i].toInt().and(0xFF).toByte() } }), null)
+val mat = Material.pbr().normalTexture(normal_map).normalScale(1.2f)
 `}
 lang="kotlin"
 />
@@ -1566,7 +1578,7 @@ code={`
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Material;
 
-let crevices = Material::pbr()?.occlusion_strength(0.8);
+let crevices = Material::pbr().occlusion_strength(0.8);
 let _crevices = crevices;
 Ok(())
 }
@@ -1581,7 +1593,7 @@ lang="rust" meta="collapse={1-1, 5-7}"
 code={`
 import { Material } from "fragmentcolor";
 
-const crevices = Material.pbr()?.occlusionStrength(0.8);
+const crevices = Material.pbr().occlusionStrength(0.8);
 `}
 lang="js"
 />
@@ -1605,7 +1617,7 @@ lang="python"
 code={`
 import FragmentColor
 
-let crevices = Material.pbr()?.occlusionStrength(0.8)
+let crevices = Material.pbr().occlusionStrength(0.8)
 `}
 lang="swift"
 />
@@ -1617,7 +1629,7 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 
-val crevices = Material.pbr()?.occlusionStrength(0.8)
+val crevices = Material.pbr().occlusionStrength(0.8f)
 `}
 lang="kotlin"
 />
@@ -1650,19 +1662,20 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Material, Renderer};
 
 let renderer = Renderer::new();
-let ao = renderer.create_texture(&[
-    220u8, 0, 0, 255,
+let ao_bytes: Vec<u8> = vec![
+    220, 0, 0, 255,
     180,   0, 0, 255,
     200,   0, 0, 255,
     160,   0, 0, 255,
-][..]).await?;
-let mat = Material::pbr()?.occlusion_texture(&ao);
+];
+let ao = renderer.create_texture((ao_bytes, [2, 2])).await?;
+let mat = Material::pbr().occlusion_texture(&ao);
 let _ = mat;
 Ok(())
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> { pollster::block_on(run()) }
 `}
-lang="rust" meta="collapse={1-1, 12-15}"
+lang="rust" meta="collapse={1-1, 13-16}"
 />
 
 </TabItem>
@@ -1673,8 +1686,9 @@ code={`
 import { Material, Renderer } from "fragmentcolor";
 
 const renderer = new Renderer();
-const ao = await renderer.createTexture([ 220, 0, 0, 255, 180,   0, 0, 255, 200,   0, 0, 255, 160,   0, 0, 255, ][..]);
-const mat = Material.pbr()?.occlusionTexture(ao);
+const ao_bytes = [ 220, 0, 0, 255, 180,   0, 0, 255, 200,   0, 0, 255, 160,   0, 0, 255, ];
+const ao = await renderer.createTexture(ao_bytes, [2, 2]);
+const mat = Material.pbr().occlusionTexture(ao);
 `}
 lang="js"
 />
@@ -1687,12 +1701,13 @@ code={`
 from fragmentcolor import Material, Renderer
 
 renderer = Renderer()
-ao = renderer.create_texture([
+ao_bytes = [
     220, 0, 0, 255,
     180,   0, 0, 255,
     200,   0, 0, 255,
     160,   0, 0, 255,
-][..])
+]
+ao = renderer.create_texture(ao_bytes, size=[2, 2])
 mat = Material.pbr().occlusion_texture(ao)
 `}
 lang="python"
@@ -1706,13 +1721,14 @@ code={`
 import FragmentColor
 
 let renderer = Renderer()
-let ao = renderer.createTexture([
+let ao_bytes = [
     220, 0, 0, 255,
     180,   0, 0, 255,
     200,   0, 0, 255,
     160,   0, 0, 255,
-try await ])
-let mat = Material.pbr()?.occlusionTexture(ao)
+]
+let ao = try await renderer.createTexture((ao_bytes, [2, 2]))
+let mat = Material.pbr().occlusionTexture(ao)
 `}
 lang="swift"
 />
@@ -1725,8 +1741,9 @@ code={`
 import org.fragmentcolor.*
 
 val renderer = Renderer()
-val ao = renderer.createTexture(arrayOf(220, 0, 0, 255, 180,   0, 0, 255, 200,   0, 0, 255, 160,   0, 0, 255, await))
-val mat = Material.pbr()?.occlusionTexture(ao)
+val ao_bytes = listOf(220.0f, 0.0f, 0.0f, 255.0f, 180.0f, 0.0f, 0.0f, 255.0f, 200.0f, 0.0f, 0.0f, 255.0f, 160.0f, 0.0f, 0.0f, 255.0f, .0f)
+val ao = renderer.createTexture(TextureInputMobile.Bytes(ao_bytes.let { ba -> ByteArray(ba.size) { i -> ba[i].toInt().and(0xFF).toByte() } }), null)
+val mat = Material.pbr().occlusionTexture(ao)
 `}
 lang="kotlin"
 />
@@ -1814,7 +1831,7 @@ code={`
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Material;
 
-let bronze = Material::pbr()?
+let bronze = Material::pbr()
     .base_color([0.8, 0.5, 0.2, 1.0])
     .metallic(1.0)
     .roughness(0.3);
@@ -1833,7 +1850,7 @@ lang="rust" meta="collapse={1-1, 9-11}"
 code={`
 import { Material } from "fragmentcolor";
 
-const bronze = Material.pbr()?.baseColor([0.8, 0.5, 0.2, 1.0]).metallic(1.0).roughness(0.3);
+const bronze = Material.pbr().baseColor([0.8, 0.5, 0.2, 1.0]).metallic(1.0).roughness(0.3);
 
 `}
 lang="js"
@@ -1859,7 +1876,7 @@ lang="python"
 code={`
 import FragmentColor
 
-let bronze = Material.pbr()?.baseColor([0.8, 0.5, 0.2, 1.0]).metallic(1.0).roughness(0.3)
+let bronze = try Material.pbr().baseColor([0.8, 0.5, 0.2, 1.0]).metallic(1.0).roughness(0.3)
 `}
 lang="swift"
 />
@@ -1871,7 +1888,7 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 
-val bronze = Material.pbr()?.baseColor(listOf(0.8f, 0.5f, 0.2f, 1.0f)).metallic(1.0).roughness(0.3)
+val bronze = Material.pbr().baseColor(listOf(0.8f, 0.5f, 0.2f, 1.0f)).metallic(1.0f).roughness(0.3f)
 `}
 lang="kotlin"
 />
@@ -1903,7 +1920,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::{Material, Renderer};
 
 let renderer = Renderer::new();
-let satin = Material::pbr()?.roughness(0.35);
+let satin = Material::pbr().roughness(0.35);
 let _ = satin;
 Ok(())
 }
@@ -1920,7 +1937,7 @@ code={`
 import { Material, Renderer } from "fragmentcolor";
 
 const renderer = new Renderer();
-const satin = Material.pbr()?.roughness(0.35);
+const satin = Material.pbr().roughness(0.35);
 `}
 lang="js"
 />
@@ -1946,7 +1963,7 @@ code={`
 import FragmentColor
 
 let renderer = Renderer()
-let satin = Material.pbr()?.roughness(0.35)
+let satin = Material.pbr().roughness(0.35)
 `}
 lang="swift"
 />
@@ -1959,7 +1976,7 @@ code={`
 import org.fragmentcolor.*
 
 val renderer = Renderer()
-val satin = Material.pbr()?.roughness(0.35)
+val satin = Material.pbr().roughness(0.35f)
 `}
 lang="kotlin"
 />
@@ -1982,7 +1999,7 @@ the [Camera](/api/scene/camera) and
 The returned reference is the same `Shader` the Material is built around, so
 changes propagate immediately to every Model that uses this Material. If you
 want a Material variant with different state, build a fresh
-`Material::pbr()?.<setters>` rather than cloning. `Material`
+`Material::pbr().<setters>` rather than cloning. `Material`
 clones share their Shader handle (Arc-clone) so mutations are visible across
 all clones.
 
@@ -2005,8 +2022,8 @@ use fragmentcolor::Material;
 
 // Direct uniform access for a custom field that isn't covered by the
 // Material setters or by Camera / Light.
-let material = Material::pbr()?;
-material.shader().set("material.alpha_cutoff", 0.25_f32)?;
+let material = Material::pbr();
+material.shader().set("material.alpha_cutoff", 0.25)?;
 Ok(())
 }
 `}
@@ -2023,7 +2040,7 @@ import { Material } from "fragmentcolor";
 // Direct uniform access for a custom field that isn't covered by the
 // Material setters or by Camera / Light.
 const material = Material.pbr();
-material.shader().set("material.alphaCutoff", 0.25);
+material.shader().set("material.alpha_cutoff", 0.25);
 `}
 lang="js"
 />
@@ -2038,7 +2055,7 @@ from fragmentcolor import Material
 # Direct uniform access for a custom field that isn't covered by the
 # Material setters or by Camera / Light.
 material = Material.pbr()
-material.shader().set("material.alpha_cutoff", 0.25_)
+material.shader().set("material.alpha_cutoff", 0.25)
 `}
 lang="python"
 />
@@ -2053,7 +2070,7 @@ import FragmentColor
 // Direct uniform access for a custom field that isn't covered by the
 // Material setters or by Camera / Light.
 let material = Material.pbr()
-try material.shader().set("material.alphaCutoff", 0.25)
+try material.shader().set("material.alpha_cutoff", 0.25)
 `}
 lang="swift"
 />
@@ -2068,7 +2085,7 @@ import org.fragmentcolor.*
 // Direct uniform access for a custom field that isn't covered by the
 // Material setters or by Camera / Light.
 val material = Material.pbr()
-material.shader().set("material.alphaCutoff", 0.25)
+material.shader().set("material.alpha_cutoff", 0.25)
 `}
 lang="kotlin"
 />
@@ -2110,8 +2127,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Material;
 
 // Tile the texture 4× in both directions, rotate 45°, shift by half a tile.
-let brick = Material::pbr()?
-    .uv_transform([0.5, 0.0], [4.0, 4.0], std::f32::consts::FRAC_PI_4);
+let brick = Material::pbr()
+    .uv_transform([0.5, 0.0], [4.0, 4.0], 0.785); // 45° in radians
 let _ = brick;
 Ok(())
 }
@@ -2127,7 +2144,7 @@ code={`
 import { Material } from "fragmentcolor";
 
 // Tile the texture 4× in both directions, rotate 45°, shift by half a tile.
-const brick = Material.pbr()?.uvTransform([0.5, 0.0], [4.0, 4.0], std.f32.consts.FRACPI4);
+const brick = Material.pbr().uvTransform([0.5, 0.0], [4.0, 4.0], 0.785); // 45° in radians;
 `}
 lang="js"
 />
@@ -2140,7 +2157,7 @@ code={`
 from fragmentcolor import Material
 
 # Tile the texture 4× in both directions, rotate 45°, shift by half a tile.
-brick = Material.pbr().uv_transform([0.5, 0.0], [4.0, 4.0], std.f32.consts.FRAC_PI_4)
+brick = Material.pbr().uv_transform([0.5, 0.0], [4.0, 4.0], 0.785); # 45° in radians
 `}
 lang="python"
 />
@@ -2153,7 +2170,7 @@ code={`
 import FragmentColor
 
 // Tile the texture 4× in both directions, rotate 45°, shift by half a tile.
-let brick = Material.pbr()?.uvTransform([0.5, 0.0], [4.0, 4.0], std.f32.consts.fRACPI4)
+let brick = try Material.pbr().uvTransform([0.5, 0.0], [4.0, 4.0], 0.785); // 45° in radians
 `}
 lang="swift"
 />
@@ -2166,7 +2183,7 @@ code={`
 import org.fragmentcolor.*
 
 // Tile the texture 4× in both directions, rotate 45°, shift by half a tile.
-val brick = Material.pbr()?.uvTransform(listOf(0.5f, 0.0f), listOf(4.0f, 4.0f), std.f32.consts.FRACPI4)
+val brick = Material.pbr().uvTransform(listOf(0.5f, 0.0f), listOf(4.0f, 4.0f), 0.785f); // 45° in radians
 `}
 lang="kotlin"
 />

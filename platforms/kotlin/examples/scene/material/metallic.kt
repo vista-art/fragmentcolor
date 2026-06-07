@@ -1,3 +1,3 @@
 import org.fragmentcolor.*
 
-val chrome = Material.pbr()?.metallic(1.0).roughness(0.05)
+val chrome = Material.pbr().metallic(1.0f).roughness(0.05f)

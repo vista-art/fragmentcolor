@@ -6,4 +6,4 @@ mesh.add_vertex(
 )
 
 model = Model(mesh, Material.pbr())
-model.material().shader().set("camera.position", [0.0_, 0.0, 5.0])
+model.material().shader().set("camera.position", [0.0, 0.0, 5.0])

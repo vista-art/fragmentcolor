@@ -1,4 +1,3 @@
-use bytemuck;
 import { Pass, Renderer, Shader } from "fragmentcolor";
 
 const renderer = new Renderer();
@@ -23,4 +22,3 @@ pass.addShader(compute);
 renderer.render(pass, target);
 
 const bytes = await renderer.readStorage(compute, "out");
-const values = bytemuck.castSlice(bytes);

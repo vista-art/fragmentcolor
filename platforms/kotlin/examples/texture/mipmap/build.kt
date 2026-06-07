@@ -1,6 +1,7 @@
 import org.fragmentcolor.*
 
 
+val bytes: ByteArray = byteArrayOf()
 // Encoded path: bytes plus the format you want the chain to live in.
 // The dimensions come from the decoded image.
 val encoded_png_bytes: ByteArray = byteArrayOf()

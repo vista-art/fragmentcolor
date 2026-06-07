@@ -3,8 +3,8 @@ import { Material, Mesh, Model, Pass, Renderer, Scene, Vertex } from "fragmentco
 const renderer = new Renderer();
 
 const mesh = new Mesh();
-mesh.addVertex( Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]), );
-const model = new Model(mesh, Material.pbr()?);
+mesh.addVertex( Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0]), );
+const model = new Model(mesh, Material.pbr());
 
 // A backdrop pass that clears to a soft blue before the scene's main draw.
 const backdrop = new Pass("backdrop");

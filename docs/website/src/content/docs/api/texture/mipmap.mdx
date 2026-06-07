@@ -141,6 +141,7 @@ lang="swift"
 code={`
 import org.fragmentcolor.*
 
+val png: ByteArray = byteArrayOf()
 // Imagine """png""" came off your asset loader on a worker thread.
 
 // Decode + mipmap generation. Pure CPU; run it wherever you like.
@@ -202,7 +203,7 @@ let encoded_png_bytes = png_buf.as_slice();
 // The dimensions come from the decoded image.
 let chain = Mipmap::build((encoded_png_bytes, TextureFormat::Rgba8UnormSrgb))?;
 
-let raw_rgba = vec![200u8; 8 * 8 * 4];
+let raw_rgba = vec![200; 8 * 8 * 4];
 // Raw path: include the size so build skips decoding.
 let chain_raw = Mipmap::build((
     raw_rgba.as_slice(),
@@ -302,6 +303,7 @@ code={`
 import org.fragmentcolor.*
 
 
+val bytes: ByteArray = byteArrayOf()
 // Encoded path: bytes plus the format you want the chain to live in.
 // The dimensions come from the decoded image.
 val encoded_png_bytes: ByteArray = byteArrayOf()
