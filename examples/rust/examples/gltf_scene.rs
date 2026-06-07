@@ -49,7 +49,7 @@ fn build_minimal_triangle_glb() -> Vec<u8> {
 
     let json = r#"{"scene":0,"scenes":[{"nodes":[0]}],"nodes":[{"mesh":0}],"meshes":[{"primitives":[{"attributes":{"POSITION":0},"mode":4}]}],"buffers":[{"byteLength":36}],"bufferViews":[{"buffer":0,"byteLength":36,"byteOffset":0}],"accessors":[{"bufferView":0,"byteOffset":0,"componentType":5126,"count":3,"type":"VEC3","min":[-0.5,-0.5,0.0],"max":[0.5,0.5,0.0]}],"asset":{"version":"2.0"}}"#;
     let mut json_bytes = json.as_bytes().to_vec();
-    while json_bytes.len() % 4 != 0 {
+    while !json_bytes.len().is_multiple_of(4) {
         json_bytes.push(b' ');
     }
     let json_len = json_bytes.len() as u32;

@@ -14,7 +14,7 @@
 // main shader that ties them together.
 
 use fragmentcolor::mesh::{Mesh, Vertex};
-use fragmentcolor::{App, Pass, Renderer, SetupResult, Shader, call, run};
+use fragmentcolor::{App, Pass, Renderer, SetupResult, Shader, call};
 use std::sync::{Arc, OnceLock};
 use std::time::Instant;
 use winit::dpi::PhysicalSize;
@@ -176,7 +176,7 @@ async fn setup(app: &App, windows: Vec<Arc<Window>>) -> SetupResult {
     // Pass 1: render the particles INTO the intermediate texture.
     let particle_pass = Pass::from_shader("particles", &particle_shader);
     particle_pass.add_mesh(&mesh)?;
-    particle_pass.add_target(&intermediate)?;
+    particle_pass.set_target(&intermediate)?;
     particle_pass.set_clear_color([0.04, 0.05, 0.08, 1.0]);
 
     // Pass 2: sample the intermediate, apply postfx, render to the canvas.
@@ -229,6 +229,6 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     app.on_start(call!(setup))
         .on_resize(resize)
         .on_redraw_requested(draw);
-    run(&mut app);
+    app.run();
     Ok(())
 }

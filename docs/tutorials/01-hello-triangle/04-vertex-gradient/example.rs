@@ -8,7 +8,7 @@
 // over so the gradient triangle keeps its shape on any canvas.
 
 use fragmentcolor::mesh::{Mesh, Vertex};
-use fragmentcolor::{App, Renderer, SetupResult, Shader, Target, call, run};
+use fragmentcolor::{App, Renderer, SetupResult, Shader, Target, call};
 use std::sync::Arc;
 use winit::dpi::PhysicalSize;
 use winit::window::Window;
@@ -93,6 +93,6 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     app.on_start(call!(setup))
         .on_resize(resize)
         .on_redraw_requested(draw);
-    run(&mut app);
+    app.run();
     Ok(())
 }

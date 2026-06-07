@@ -88,6 +88,7 @@ const LINEAR_C: (f32, f32, f32) = (0.75, 0.80, 0.85);
 fn compositions() -> Vec<Composition> {
     // Each entry: (slug, fn-call expression, accent). We Box::leak the
     // generated fragment string so the Composition can hold a 'static &str.
+    #[allow(clippy::type_complexity)]
     let specs: &[(&str, &str, &str, (f32, f32, f32), &str)] = &[
         (
             "in_back",

@@ -385,8 +385,7 @@ mod tests {
                 .expect("texture target");
             let model = Model::new(
                 pbr_triangle_mesh(),
-                Material::pbr()
-                    .base_color([0.6, 0.2, 0.8, 1.0]),
+                Material::pbr().base_color([0.6, 0.2, 0.8, 1.0]),
             );
             model.set_visible(false);
             let scene = crate::Scene::new();

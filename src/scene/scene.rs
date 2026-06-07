@@ -408,10 +408,7 @@ mod tests {
         let scene = Scene::new();
         let alias = scene.clone();
         alias
-            .add(&Model::new(
-                pbr_triangle_mesh(),
-                Material::pbr(),
-            ))
+            .add(&Model::new(pbr_triangle_mesh(), Material::pbr()))
             .expect("add via alias");
         assert!(scene.inner.default_pass.read().is_some());
     }
@@ -495,8 +492,7 @@ mod tests {
                 .expect("texture target");
             let model = Model::new(
                 pbr_triangle_mesh(),
-                Material::pbr()
-                    .base_color([0.6, 0.2, 0.8, 1.0]),
+                Material::pbr().base_color([0.6, 0.2, 0.8, 1.0]),
             );
             let scene = Scene::new();
             scene.add(&model).expect("add model");

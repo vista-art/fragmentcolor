@@ -313,7 +313,6 @@ fn cmd_diff(
 
 fn print_help() {
     println!(
-        "{}",
         "\
 locks — inspect the lock-block versioning store
 

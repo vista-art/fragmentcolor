@@ -380,8 +380,7 @@ mod tests {
 
     #[test]
     fn clone_shares_shader_state() {
-        let original = Material::pbr()
-            .base_color([1.0, 0.0, 0.0, 1.0]);
+        let original = Material::pbr().base_color([1.0, 0.0, 0.0, 1.0]);
         let handle_b = original.clone();
         let _ = handle_b
             .shader()
@@ -449,8 +448,7 @@ mod tests {
                 .create_texture_target([8u32, 8u32])
                 .await
                 .expect("texture target");
-            let mat = Material::pbr()
-                .base_color([0.6, 0.2, 0.8, 1.0]);
+            let mat = Material::pbr().base_color([0.6, 0.2, 0.8, 1.0]);
             let model = crate::scene::Model::new(pbr_triangle_mesh(), mat);
             let pass = Pass::new("defaults-only");
             pass.add(&model).expect("add_model");
@@ -549,8 +547,7 @@ mod tests {
                 255, 0, 0, 255,    0, 255, 0, 255,
                   0, 0, 255, 255,  255, 255, 255, 255,
             ];
-            let mat = Material::pbr()
-                .base_color_texture((pixels, [2u32, 2u32]));
+            let mat = Material::pbr().base_color_texture((pixels, [2u32, 2u32]));
 
             // Before any render: one entry queued on the Shader, no Texture
             // uniform yet (the default 1×1 white texture meta from

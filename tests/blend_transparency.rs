@@ -191,8 +191,7 @@ fn opaque_and_blend_in_same_pass_render_without_panic() {
             .await
             .expect("texture target");
 
-        let opaque_mat = Material::pbr()
-            .base_color([0.5, 0.5, 0.5, 1.0]);
+        let opaque_mat = Material::pbr().base_color([0.5, 0.5, 0.5, 1.0]);
         let blend_mat = Material::pbr()
             .base_color([1.0, 1.0, 1.0, 0.5])
             .alpha_mode(AlphaMode::Blend);

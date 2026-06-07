@@ -9,7 +9,7 @@
 // output. Same `Shader` API, one more `set("...", ...)` call per
 // frame.
 
-use fragmentcolor::{App, Renderer, SetupResult, Shader, Target, call, run};
+use fragmentcolor::{App, Renderer, SetupResult, Shader, Target, call};
 use std::sync::{Arc, OnceLock};
 use std::time::Instant;
 use winit::dpi::PhysicalSize;
@@ -100,6 +100,6 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     app.on_start(call!(setup))
         .on_resize(resize)
         .on_redraw_requested(draw);
-    run(&mut app);
+    app.run();
     Ok(())
 }

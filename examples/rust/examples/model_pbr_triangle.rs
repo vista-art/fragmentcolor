@@ -29,7 +29,6 @@ fn main() {
         }
 
         let material = Material::pbr()
-            .expect("PBR Material requires shaders-mesh + shaders-material features (default)")
             .base_color([0.85, 0.4, 0.2, 1.0])
             .metallic(0.0)
             .roughness(0.35);
