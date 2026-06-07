@@ -100,7 +100,8 @@ run_ios_bindings() {
         && xcodebuild \
              -scheme FragmentColor \
              -destination "generic/platform=iOS Simulator,arch=arm64" \
-             ARCHS=arm64 ONLY_ACTIVE_ARCH=YES \
+             -sdk iphonesimulator \
+             ARCHS=arm64 ONLY_ACTIVE_ARCH=YES SUPPORTS_MACCATALYST=NO \
              build); then
     log_test_ok "$name"
     return 0
@@ -160,7 +161,8 @@ run_ios_examples() {
         && xcodebuild \
              -scheme FragmentColorHealthcheck \
              -destination "generic/platform=iOS Simulator,arch=arm64" \
-             ARCHS=arm64 ONLY_ACTIVE_ARCH=YES \
+             -sdk iphonesimulator \
+             ARCHS=arm64 ONLY_ACTIVE_ARCH=YES SUPPORTS_MACCATALYST=NO \
              build); then
     log_test_ok "$name"
     return 0
