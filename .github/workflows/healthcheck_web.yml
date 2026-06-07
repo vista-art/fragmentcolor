@@ -61,6 +61,11 @@ jobs:
 
       - name: Run Web healthcheck (Playwright)
         id: healthcheck
+        # Cap the step at 10 min. The healthy run finishes in ~3 min
+        # (wasm-pack + static server + 20 s Playwright wait). If the
+        # step hangs past 10 min, fail the job and upload the artifacts
+        # below so we get a diagnostic instead of a 6-hour silent stall.
+        timeout-minutes: 10
         env:
           FC_HEALTHCHECK_VERBOSE: 1
           PORT: 8765

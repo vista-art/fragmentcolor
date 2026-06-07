@@ -250,8 +250,12 @@ start_static_server() {
     echo "Hint: set PORT to a free port (e.g., PORT=8876) or stop the process above." >&2
     return 1
   fi
-  # Use Node COOP/COEP server to enable SharedArrayBuffer/WebGPU readbacks
-  PORT="$port" node "$ROOT_DIR/platforms/web/healthcheck/serve.mjs" >/dev/null 2>&1 &
+  # Use Node COOP/COEP server to enable SharedArrayBuffer/WebGPU readbacks.
+  # Send the server's own stdout/stderr to a log file so a crashed server
+  # leaves a forensics trail in CI artifacts instead of failing silently.
+  local srv_log="$ROOT_DIR/platforms/web/healthcheck/playwright-artifacts/serve.log"
+  mkdir -p "$(dirname "$srv_log")" 2>/dev/null || true
+  PORT="$port" node "$ROOT_DIR/platforms/web/healthcheck/serve.mjs" >"$srv_log" 2>&1 &
   echo $!
 }
 
@@ -275,8 +279,16 @@ ensure_playwright() {
       corepack enable pnpm >/dev/null 2>&1 || true
     fi
   fi
-  ( cd "$dir" && pnpm i --no-frozen-lockfile --no-optional --ignore-scripts >/dev/null 2>&1 || true )
-  ( cd "$dir" && pnpm exec playwright install chromium >/dev/null 2>&1 || true )
+  # Print output so a hang here is visible in CI logs (was previously
+  # silenced into /dev/null which made the whole step look frozen).
+  # Cap each command at 5 min so a stalled network request fails the
+  # step instead of stalling the whole job for 6 hours.
+  echo "[ensure_playwright] pnpm i in $dir"
+  ( cd "$dir" && timeout 300 pnpm i --no-frozen-lockfile --no-optional --ignore-scripts ) || \
+    echo "[ensure_playwright] pnpm i failed/timed out (continuing)"
+  echo "[ensure_playwright] pnpm exec playwright install chromium"
+  ( cd "$dir" && timeout 300 pnpm exec playwright install chromium ) || \
+    echo "[ensure_playwright] playwright install failed/timed out (continuing)"
 }
 
 run_web() {
@@ -306,6 +318,10 @@ run_web() {
   mkdir -p "$hc_pkg"
   rsync -a --delete "$pkg_dir/" "$hc_pkg/" 2>/dev/null || cp -a "$pkg_dir/." "$hc_pkg/"
 
+  # Diagnostic markers — when CI hangs we lose all stderr otherwise; these
+  # let us see exactly which step stalled. Lightweight echo, no perf hit.
+  echo "[run_web] static server starting on port $PORT…"
+
   # Start static server and run Playwright against it
   local pid
   pid=$(start_static_server "$ROOT_DIR/platforms/web" "$PORT")
@@ -314,18 +330,23 @@ run_web() {
   cleanup() { if [ -n "${pid:-}" ] && ps -p "$pid" >/dev/null 2>&1; then kill "$pid" >/dev/null 2>&1 || true; fi; }
   trap cleanup EXIT
   if [ "$srv_status" -ne 0 ]; then
+    echo "[run_web] static server failed to start" >&2
     cleanup
     log_test_fail "$name"
     trap - EXIT
     return 1
   fi
+  echo "[run_web] static server pid=$pid"
 
+  echo "[run_web] waiting for http://localhost:$PORT/healthcheck/index.html"
   if ! wait_for_http "http://localhost:$PORT/healthcheck/index.html"; then
+    echo "[run_web] static server never answered http within timeout" >&2
     cleanup
     log_test_fail "$name"
     trap - EXIT
     return 1
   fi
+  echo "[run_web] static server is answering"
 
   if ! command -v node >/dev/null 2>&1; then
     echo "Node.js is required to run the web healthcheck." >&2
@@ -335,11 +356,14 @@ run_web() {
     return 1
   fi
 
+  echo "[run_web] ensure_playwright (pnpm i + playwright install chromium)…"
   ensure_playwright
+  echo "[run_web] ensure_playwright done"
   local hc_url="http://localhost:$PORT/healthcheck/"
   if [ "${FC_HEALTHCHECK_VERBOSE:-0}" = "1" ]; then
     hc_url="${hc_url}?verbose=1"
   fi
+  echo "[run_web] launching playwright.mjs against $hc_url"
   if node "$ROOT_DIR/platforms/web/healthcheck/playwright.mjs" "$hc_url"; then
     cleanup
     trap - EXIT
