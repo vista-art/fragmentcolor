@@ -295,14 +295,29 @@ ensure_playwright() {
   # prunes anything NOT in its argument list, so running them
   # sequentially had the second install delete the first one's binary
   # ("Removing unused browser at .../chromium-1194" in round 8's log).
-  # The combined download is ~250 MB; allow up to 9 min including
-  # extraction and post-install steps.
-  echo "[ensure_playwright] pnpm exec playwright install chromium chromium-headless-shell"
-  ( cd "$dir" && timeout 540 pnpm exec playwright install chromium chromium-headless-shell ) || \
+  # The combined download is ~250 MB.
+  #
+  # `DEBUG=pw:install` tells playwright-core to emit verbose install
+  # progress — round 9 saw the chromium zip download finish in 1 s,
+  # then 9 minutes of complete silence before the timeout fired. With
+  # the debug channel on, the actual stalled step (zip extraction?
+  # post-install verify? `chrome-sandbox` chmod?) will show up.
+  echo "[ensure_playwright] pnpm exec playwright install chromium chromium-headless-shell (DEBUG=pw:install)"
+  ( cd "$dir" && DEBUG=pw:install timeout 600 pnpm exec playwright install chromium chromium-headless-shell ) || \
     echo "[ensure_playwright] playwright install failed/timed out (continuing)"
   echo "[ensure_playwright] ms-playwright cache contents:"
   ls -la "$HOME/.cache/ms-playwright/" 2>/dev/null || \
     ls -la "$HOME/Library/Caches/ms-playwright/" 2>/dev/null || true
+  # If headless-shell directory exists but its binary doesn't, dump
+  # what IS there so we know what the install actually produced.
+  if [ -d "$HOME/.cache/ms-playwright/chromium_headless_shell-1194" ]; then
+    echo "[ensure_playwright] chromium_headless_shell-1194 tree:"
+    find "$HOME/.cache/ms-playwright/chromium_headless_shell-1194" -maxdepth 3 | head -40
+  fi
+  if [ -d "$HOME/.cache/ms-playwright/chromium-1194" ]; then
+    echo "[ensure_playwright] chromium-1194 tree:"
+    find "$HOME/.cache/ms-playwright/chromium-1194" -maxdepth 3 | head -40
+  fi
 }
 
 run_web() {
