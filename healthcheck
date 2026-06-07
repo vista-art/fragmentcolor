@@ -290,22 +290,16 @@ ensure_playwright() {
   echo "[ensure_playwright] pnpm i in $dir"
   ( cd "$dir" && timeout 300 pnpm i --no-frozen-lockfile --no-optional --ignore-scripts ) || \
     echo "[ensure_playwright] pnpm i failed/timed out (continuing)"
-  # Install both `chromium` (~174 MB) AND `chromium-headless-shell`
-  # (~70 MB). Playwright 1.49+ split the headless-shell binary out of
-  # the main chromium install: `chromium.launch({headless: true})` in
-  # 1.49+ resolves to the headless-shell binary by default (see release
-  # notes), and a plain `playwright install chromium` does NOT pull it
-  # down. The launch then fails with
-  # "Executable doesn't exist at .../chromium_headless_shell-XXXX/...".
-  # Install the two in sequence with separate timeouts so a hang in one
-  # doesn't take down the other; print the cache state afterwards so we
-  # can confirm what actually landed on disk.
-  echo "[ensure_playwright] pnpm exec playwright install chromium"
-  ( cd "$dir" && timeout 360 pnpm exec playwright install chromium ) || \
-    echo "[ensure_playwright] chromium install failed/timed out"
-  echo "[ensure_playwright] pnpm exec playwright install chromium-headless-shell"
-  ( cd "$dir" && timeout 240 pnpm exec playwright install chromium-headless-shell ) || \
-    echo "[ensure_playwright] chromium-headless-shell install failed/timed out"
+  # Install both `chromium` AND `chromium-headless-shell` in ONE
+  # command. Splitting them was a trap: `playwright install <browser>`
+  # prunes anything NOT in its argument list, so running them
+  # sequentially had the second install delete the first one's binary
+  # ("Removing unused browser at .../chromium-1194" in round 8's log).
+  # The combined download is ~250 MB; allow up to 9 min including
+  # extraction and post-install steps.
+  echo "[ensure_playwright] pnpm exec playwright install chromium chromium-headless-shell"
+  ( cd "$dir" && timeout 540 pnpm exec playwright install chromium chromium-headless-shell ) || \
+    echo "[ensure_playwright] playwright install failed/timed out (continuing)"
   echo "[ensure_playwright] ms-playwright cache contents:"
   ls -la "$HOME/.cache/ms-playwright/" 2>/dev/null || \
     ls -la "$HOME/Library/Caches/ms-playwright/" 2>/dev/null || true
