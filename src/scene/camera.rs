@@ -369,7 +369,7 @@ mod tests {
             [0.0, 0.0, 0.0],
             [0.0, 1.0, 0.0],
         );
-        let material = Material::pbr().expect("pbr");
+        let material = Material::pbr();
         let model = crate::scene::Model::new(pbr_triangle_mesh(), material.clone());
 
         let pass = crate::Pass::new("scene");
@@ -395,7 +395,7 @@ mod tests {
         // The same camera absorbed by a pass shows live updates on every
         // shader the pass wires it into, with no second `add` call.
         let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0);
-        let material = Material::pbr().expect("pbr");
+        let material = Material::pbr();
         let model = crate::scene::Model::new(pbr_triangle_mesh(), material.clone());
 
         let pass = crate::Pass::new("scene");
@@ -417,7 +417,7 @@ mod tests {
             [0.0, 0.0, 0.0],
             [0.0, 1.0, 0.0],
         );
-        let material = Material::pbr().expect("pbr");
+        let material = Material::pbr();
 
         let pass = crate::Pass::new("scene");
         pass.add(&camera)
@@ -519,7 +519,7 @@ mod tests {
         // set_aspect should update the attached shader's `camera.view_proj`
         // uniform without re-adding.
         let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0);
-        let material = Material::pbr().expect("pbr");
+        let material = Material::pbr();
         let model = crate::scene::Model::new(pbr_triangle_mesh(), material.clone());
         let pass = crate::Pass::new("scene");
         pass.add(&model).expect("add_model");

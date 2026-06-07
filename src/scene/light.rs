@@ -27,6 +27,7 @@ use crate::shader::ShaderObject;
 
 /// Discriminant for the three light kinds. Wire-compatible with the WGSL
 /// `light.kind` field in `pbr_main.wgsl`: directional=0, point=1, spot=2.
+#[cfg_attr(wasm, wasm_bindgen)]
 #[cfg_attr(python, pyo3::pyclass(eq, eq_int, from_py_object))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u32)]
@@ -576,7 +577,7 @@ mod tests {
         let torch = Light::spot([0.0, 3.0, 0.0], [0.0, -1.0, 0.0], [1.0, 1.0, 0.8])
             .set_cone_angles(0.2, 0.6)
             .expect("spot cones");
-        let material = Material::pbr().expect("pbr");
+        let material = Material::pbr();
         let model = crate::scene::Model::new(pbr_triangle_mesh(), material.clone());
         let pass = crate::Pass::new("scene");
         pass.add(&model)
@@ -610,7 +611,7 @@ mod tests {
         // shader check in `apply_to_shader`, each replay would claim a
         // fresh slot and saturate the cap after a few Model adds.
         let light = Light::directional([0.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
-        let material = Material::pbr().expect("pbr");
+        let material = Material::pbr();
         let model = crate::scene::Model::new(pbr_triangle_mesh(), material.clone());
         let pass = crate::Pass::new("scene");
         pass.add(&light).expect("light");
@@ -627,7 +628,7 @@ mod tests {
         // Add `PBR_MAX_LIGHTS + 1` distinct lights; the last one should fail
         // with the typed cap error and `cap` should report the configured
         // ceiling.
-        let material = Material::pbr().expect("pbr");
+        let material = Material::pbr();
         let model = crate::scene::Model::new(pbr_triangle_mesh(), material.clone());
         let pass = crate::Pass::new("scene");
         pass.add(&model).expect("model");
@@ -650,7 +651,7 @@ mod tests {
         // in Pass B's render because both reach into the same shader. The
         // doc on `Light` warns about this; this test pins the contract so
         // any future "per-Pass cap" refactor flags it explicitly.
-        let material = Material::pbr().expect("pbr");
+        let material = Material::pbr();
         let model_a = crate::scene::Model::new(pbr_triangle_mesh(), material.clone());
         let model_b = crate::scene::Model::new(pbr_triangle_mesh(), material.clone());
 
@@ -676,7 +677,7 @@ mod tests {
     fn ambient_default_seeds_to_dim_grey() {
         // Material::apply_defaults seeds `lights.ambient = [0.03; 3]` so
         // a fresh material's shader has a sensible non-zero ambient.
-        let material = Material::pbr().expect("pbr");
+        let material = Material::pbr();
         let amb: [f32; 3] = material.shader().get("lights.ambient").unwrap();
         assert_eq!(amb, [0.03, 0.03, 0.03]);
     }

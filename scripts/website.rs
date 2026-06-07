@@ -887,10 +887,8 @@ mod website {
         if std::fs::create_dir_all(&dir).is_err() {
             return;
         }
-        let _ = super::meta::write_if_changed_bytes(
-            &dir.join("model.glb"),
-            &build_minimal_triangle_glb(),
-        );
+        let glb = build_minimal_triangle_glb();
+        let _ = super::meta::write_if_changed_bytes(&dir.join("model.glb"), &glb);
         // The `.gltf` variant carries the same single triangle as embedded
         // base64 data URI so the example that passes a `.gltf` path also
         // resolves with no external buffer file. `gltf::import` accepts
@@ -899,6 +897,17 @@ mod website {
             &dir.join("model.gltf"),
             build_minimal_triangle_gltf().as_bytes(),
         );
+
+        // The web healthcheck runs in a browser with no filesystem, so the
+        // JS `Scene.load` examples fetch the `.glb` bytes over HTTP instead
+        // of reading a path. The static server (`platforms/web/healthcheck/
+        // serve.mjs`) serves only `platforms/web/`, so drop a copy of the
+        // fixture into the healthcheck's `public/` dir where the JS overrides
+        // fetch it from `/healthcheck/public/model.glb`. Gitignored.
+        let web_public = root.join("platforms/web/healthcheck/public");
+        if std::fs::create_dir_all(&web_public).is_ok() {
+            let _ = super::meta::write_if_changed_bytes(&web_public.join("model.glb"), &glb);
+        }
     }
 
     /// Inline copy of the test-only helper in `src/scene/loader.rs:741` so
@@ -916,7 +925,7 @@ mod website {
         let bin_len = bin.len() as u32;
         let json = r#"{"scene":0,"scenes":[{"nodes":[0]}],"nodes":[{"mesh":0}],"meshes":[{"primitives":[{"attributes":{"POSITION":0},"mode":4}]}],"buffers":[{"byteLength":36}],"bufferViews":[{"buffer":0,"byteLength":36,"byteOffset":0}],"accessors":[{"bufferView":0,"byteOffset":0,"componentType":5126,"count":3,"type":"VEC3","min":[-0.5,-0.5,0.0],"max":[0.5,0.5,0.0]}],"asset":{"version":"2.0"}}"#;
         let mut json_bytes = json.as_bytes().to_vec();
-        while json_bytes.len() % 4 != 0 {
+        while !json_bytes.len().is_multiple_of(4) {
             json_bytes.push(b' ');
         }
         let json_len = json_bytes.len() as u32;

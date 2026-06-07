@@ -1363,7 +1363,6 @@ mod kotlin {
     fn floatify_if_numeric(s: &str) -> String {
         let t = s.trim();
         floatify_if_numeric_inner(t)
-            .map(|v| v)
             .unwrap_or_else(|| {
                 // Not a bare number — try simple binary-op shapes like `a / b` or
                 // `current * 0.5`. Walk operators outside of parens and floatify

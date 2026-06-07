@@ -33,11 +33,27 @@ pub use alpha_mode::AlphaMode;
 mod platform;
 
 /// Assembled vertex+fragment+uniform block for the built-in PBR shader. The
-/// `mesh/transform` and `material/pbr` registry snippets are pulled in as
-/// composition parts at construction time — they declare no bindings of
-/// their own, only helper functions, so they slot in cleanly alongside this
-/// main body.
+/// `mesh/transform` and `material/pbr` snippets are pulled in as composition
+/// parts at construction time — they declare no bindings of their own, only
+/// helper functions, so they slot in cleanly alongside this main body.
 const PBR_MAIN: &str = include_str!("pbr_main.wgsl");
+
+/// The two registry snippets the built-in PBR shader composes from, baked in
+/// directly rather than resolved through the shader registry. They power the
+/// engine's own `Material::pbr()`, so they must be present on every platform
+/// regardless of which `shaders-<category>` features the consumer enabled —
+/// including the slim web build (`--no-default-features`), whose synchronous
+/// constructor cannot fetch them over the network. Embedding the two files
+/// (a few KB) keeps `Material::pbr()` infallible and offline everywhere
+/// without dragging the rest of the registry into the wasm bundle.
+const MESH_TRANSFORM: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/docs/website/public/shaders/mesh/transform.wgsl"
+));
+const MATERIAL_PBR: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/docs/website/public/shaders/material/pbr.wgsl"
+));
 
 #[cfg_attr(wasm, wasm_bindgen)]
 #[cfg_attr(python, pyclass(from_py_object))]
@@ -53,24 +69,18 @@ crate::impl_fc_kind!(Material, "Material");
 impl Material {
     /// Build a Material with FragmentColor's default physically-based shader.
     ///
-    /// Infallible on every supported build configuration. The two registry
-    /// slugs the shader composes from (`mesh/transform` and `material/pbr`)
-    /// are shipped by the default `shaders-all` feature; opting out of both
-    /// `shaders-mesh` and `shaders-material` (rare slim-WASM build) leaves
-    /// the registry unable to satisfy the lookup, which is a programmer
-    /// configuration error and panics with a clear message at construction
-    /// time. For web slim builds (`--no-default-features`), enable the
-    /// shaders explicitly:
-    ///
-    /// ```text
-    /// --features=shaders-mesh,shaders-material
-    /// ```
+    /// Infallible on every supported build configuration. The two snippets the
+    /// shader composes from (`mesh/transform` and `material/pbr`) are baked
+    /// into the binary directly, so construction needs no shader registry and
+    /// no network — it works the same on native, mobile, and the slim web
+    /// build (`--no-default-features`), whose synchronous constructor cannot
+    /// fetch over `fetch`.
     #[lsp_doc("docs/api/scene/material/pbr.md")]
     pub fn pbr() -> Self {
-        // SAFETY-justified expect: the two registry slugs the PBR shader composes from are shipped
-        // by the default `shaders-all` feature. A build that opts out of both `shaders-mesh` and
-        // `shaders-material` is a programmer configuration error, not a runtime fault.
-        let shader = Shader::new(["mesh/transform", "material/pbr", PBR_MAIN]).expect("SAFETY: requires `shaders-mesh` + `shaders-material` cargo features; default `shaders-all` provides both");
+        // SAFETY-justified expect: the three parts are WGSL source compiled into the binary at build
+        // time. The only way this fails is a malformed shader file in the repo, which is a build-time
+        // programmer error caught by the doctests and healthchecks, not a runtime fault.
+        let shader = Shader::new([MESH_TRANSFORM, MATERIAL_PBR, PBR_MAIN]).expect("SAFETY: built-in PBR shader parts are compiled-in WGSL source; a parse failure is a build-time error, not a runtime fault");
         let material = Self { shader };
         material.apply_defaults();
         // Seed the ShaderObject. The default ShaderObject double_sided is
@@ -341,7 +351,7 @@ mod tests {
 
     #[test]
     fn pbr_seeds_default_uniforms() {
-        let mat = Material::pbr().expect("pbr");
+        let mat = Material::pbr();
         let base: [f32; 4] = mat.shader().get("material.base_color").expect("base_color");
         assert_eq!(base, [1.0, 1.0, 1.0, 1.0]);
         let metallic: f32 = mat.shader().get("material.metallic").expect("metallic");
@@ -353,7 +363,6 @@ mod tests {
     #[test]
     fn builder_setters_update_uniforms() {
         let mat = Material::pbr()
-            .expect("pbr")
             .base_color([0.4, 0.7, 0.2, 0.8])
             .metallic(0.6)
             .roughness(0.25)
@@ -372,7 +381,6 @@ mod tests {
     #[test]
     fn clone_shares_shader_state() {
         let original = Material::pbr()
-            .expect("pbr")
             .base_color([1.0, 0.0, 0.0, 1.0]);
         let handle_b = original.clone();
         let _ = handle_b
@@ -387,7 +395,7 @@ mod tests {
 
     #[test]
     fn alpha_mode_setter_threads_to_shader_back_reference() {
-        let mat = Material::pbr().expect("pbr").alpha_mode(AlphaMode::Mask);
+        let mat = Material::pbr().alpha_mode(AlphaMode::Mask);
         // ShaderObject picks up the new mode for the pipeline cache key;
         // the alpha_mode_flag uniform picks it up too so fs_main's Mask
         // discard branch fires.
@@ -398,7 +406,7 @@ mod tests {
 
     #[test]
     fn double_sided_setter_threads_to_shader_back_reference() {
-        let mat = Material::pbr().expect("pbr").double_sided(true);
+        let mat = Material::pbr().double_sided(true);
         assert!(*mat.shader.object.double_sided.read());
     }
 
@@ -442,7 +450,6 @@ mod tests {
                 .await
                 .expect("texture target");
             let mat = Material::pbr()
-                .expect("pbr")
                 .base_color([0.6, 0.2, 0.8, 1.0]);
             let model = crate::scene::Model::new(pbr_triangle_mesh(), mat);
             let pass = Pass::new("defaults-only");
@@ -477,7 +484,6 @@ mod tests {
                 ..Default::default()
             });
             let mat = Material::pbr()
-                .expect("pbr")
                 .base_color([1.0, 1.0, 1.0, 1.0])
                 .base_color_texture(&tex);
 
@@ -544,7 +550,6 @@ mod tests {
                   0, 0, 255, 255,  255, 255, 255, 255,
             ];
             let mat = Material::pbr()
-                .expect("pbr")
                 .base_color_texture((pixels, [2u32, 2u32]));
 
             // Before any render: one entry queued on the Shader, no Texture
@@ -592,7 +597,7 @@ mod tests {
                 .await
                 .expect("texture");
 
-            let mat = Material::pbr().expect("pbr").base_color_texture(&tex);
+            let mat = Material::pbr().base_color_texture(&tex);
             assert!(
                 mat.shader.object.pending_textures.read().is_empty(),
                 "eager texture path must not queue"
@@ -623,7 +628,7 @@ mod tests {
             // 4 Materials, all reading `&shared`. Each Material's
             // `base_color_map` uniform stores the same texture ID.
             let mats: Vec<Material> = (0..4)
-                .map(|_| Material::pbr().expect("pbr").base_color_texture(&shared))
+                .map(|_| Material::pbr().base_color_texture(&shared))
                 .collect();
 
             for mat in &mats {

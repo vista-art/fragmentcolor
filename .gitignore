@@ -13,6 +13,9 @@
 # when the Python healthcheck runs. Regenerated on every cargo build via
 # scripts/website.rs::write_scene_load_fixtures(); never committed.
 /path/
+# Same fixture, copied into the web healthcheck's served tree so the JS
+# `Scene.load` examples can fetch the `.glb` bytes over HTTP.
+/platforms/web/healthcheck/public/model.glb
 
 # Gradle / Android per-machine + build outputs
 **/.gradle/

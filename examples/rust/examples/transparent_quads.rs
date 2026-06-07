@@ -43,15 +43,12 @@ fn main() {
         // shares the PBR shader (single pipeline + single bind group); only
         // the base-color factor and the alpha differ.
         let red_glass = Material::pbr()
-            .expect("pbr")
             .base_color([1.0, 0.2, 0.2, 0.45])
             .alpha_mode(AlphaMode::Blend);
         let green_glass = Material::pbr()
-            .expect("pbr")
             .base_color([0.2, 1.0, 0.2, 0.45])
             .alpha_mode(AlphaMode::Blend);
         let blue_glass = Material::pbr()
-            .expect("pbr")
             .base_color([0.2, 0.4, 1.0, 0.45])
             .alpha_mode(AlphaMode::Blend);
 

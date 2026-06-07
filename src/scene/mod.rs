@@ -232,7 +232,7 @@ mod tests {
     }
 
     fn pbr_material() -> Material {
-        Material::pbr().expect("pbr")
+        Material::pbr()
     }
 
     #[test]
@@ -386,7 +386,6 @@ mod tests {
             let model = Model::new(
                 pbr_triangle_mesh(),
                 Material::pbr()
-                    .expect("pbr")
                     .base_color([0.6, 0.2, 0.8, 1.0]),
             );
             model.set_visible(false);

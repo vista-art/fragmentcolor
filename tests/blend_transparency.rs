@@ -48,11 +48,9 @@ fn renders_two_blend_quads_at_different_depths() {
             .expect("texture target");
 
         let far_mat = Material::pbr()
-            .expect("pbr")
             .base_color([1.0, 0.0, 0.0, 0.5])
             .alpha_mode(AlphaMode::Blend);
         let near_mat = Material::pbr()
-            .expect("pbr")
             .base_color([0.0, 0.0, 1.0, 0.5])
             .alpha_mode(AlphaMode::Blend);
 
@@ -125,11 +123,9 @@ fn cross_shader_blend_sorts_globally() {
             .expect("texture target");
 
         let red_mat = Material::pbr()
-            .expect("pbr")
             .base_color([1.0, 0.0, 0.0, 0.5])
             .alpha_mode(AlphaMode::Blend);
         let blue_mat = Material::pbr()
-            .expect("pbr")
             .base_color([0.0, 0.0, 1.0, 0.5])
             .alpha_mode(AlphaMode::Blend);
 
@@ -196,10 +192,8 @@ fn opaque_and_blend_in_same_pass_render_without_panic() {
             .expect("texture target");
 
         let opaque_mat = Material::pbr()
-            .expect("pbr")
             .base_color([0.5, 0.5, 0.5, 1.0]);
         let blend_mat = Material::pbr()
-            .expect("pbr")
             .base_color([1.0, 1.0, 1.0, 0.5])
             .alpha_mode(AlphaMode::Blend);
 

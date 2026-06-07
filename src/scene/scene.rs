@@ -305,7 +305,7 @@ mod tests {
     #[test]
     fn add_creates_default_pass_lazily() {
         let scene = Scene::new();
-        let model = Model::new(pbr_triangle_mesh(), Material::pbr().expect("pbr"));
+        let model = Model::new(pbr_triangle_mesh(), Material::pbr());
         scene.add(&model).expect("add");
         assert!(scene.inner.default_pass.read().is_some());
     }
@@ -324,7 +324,7 @@ mod tests {
         let scene = Scene::new();
         let backdrop = Pass::new("backdrop");
         scene.add_pass(&backdrop);
-        let model = Model::new(pbr_triangle_mesh(), Material::pbr().expect("pbr"));
+        let model = Model::new(pbr_triangle_mesh(), Material::pbr());
         scene.add(&model).expect("add");
 
         let list = scene.passes();
@@ -342,7 +342,7 @@ mod tests {
     #[test]
     fn defaults_inject_camera_and_light_when_missing() {
         let scene = Scene::new();
-        let material = Material::pbr().expect("pbr");
+        let material = Material::pbr();
         let model = Model::new(pbr_triangle_mesh(), material.clone());
         scene.add(&model).expect("add");
 
@@ -370,7 +370,7 @@ mod tests {
     #[test]
     fn user_camera_skips_default_injection() {
         let scene = Scene::new();
-        let material = Material::pbr().expect("pbr");
+        let material = Material::pbr();
         let model = Model::new(pbr_triangle_mesh(), material.clone());
         scene.add(&model).expect("add");
         // User-supplied camera at [3, 0, 0]. After this `add`, has_camera is
@@ -390,7 +390,7 @@ mod tests {
     #[test]
     fn user_light_skips_default_injection() {
         let scene = Scene::new();
-        let material = Material::pbr().expect("pbr");
+        let material = Material::pbr();
         let model = Model::new(pbr_triangle_mesh(), material.clone());
         scene.add(&model).expect("add");
         let light = Light::directional([0.0, -1.0, 0.0], [0.5, 0.0, 0.0]);
@@ -410,7 +410,7 @@ mod tests {
         alias
             .add(&Model::new(
                 pbr_triangle_mesh(),
-                Material::pbr().expect("pbr"),
+                Material::pbr(),
             ))
             .expect("add via alias");
         assert!(scene.inner.default_pass.read().is_some());
@@ -421,7 +421,7 @@ mod tests {
         // Each `Scene::add` call routes through the typed-lane bookkeeping;
         // the three getters return Arc-shared clones of what was added.
         let scene = Scene::new();
-        let model = Model::new(pbr_triangle_mesh(), Material::pbr().expect("pbr"));
+        let model = Model::new(pbr_triangle_mesh(), Material::pbr());
         let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0).look_at(
             [1.0, 2.0, 3.0],
             [0.0, 0.0, 0.0],
@@ -454,7 +454,7 @@ mod tests {
         // straight to `pass.add(...)` — the typed lanes must still pick
         // those up so consumers can grab the default camera/light back.
         let scene = Scene::new();
-        let model = Model::new(pbr_triangle_mesh(), Material::pbr().expect("pbr"));
+        let model = Model::new(pbr_triangle_mesh(), Material::pbr());
         scene.add(&model).expect("model");
         assert!(scene.cameras().is_empty(), "no camera before passes()");
         assert!(scene.lights().is_empty(), "no light before passes()");
@@ -496,7 +496,6 @@ mod tests {
             let model = Model::new(
                 pbr_triangle_mesh(),
                 Material::pbr()
-                    .expect("pbr")
                     .base_color([0.6, 0.2, 0.8, 1.0]),
             );
             let scene = Scene::new();

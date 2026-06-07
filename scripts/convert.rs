@@ -30,12 +30,188 @@ mod convert {
         // baseSize rewrite) rely on the original Rust shape.
         let raw = convert(items, Lang::Js, /*aggressive_js_flatten=*/ true);
         let out = flatten_tuple_call_args_js_multiline(&raw);
+        // Rust `for x in iter { ... }` survives the per-line emitter verbatim,
+        // which is a SyntaxError in JS. Rewrite the header into a `for...of`.
+        let out = rewrite_for_in_to_for_of_js(&out);
+        // Nested `Type::new(...)` constructors become `Type.new(...)` via the
+        // generic `::` → `.` pass; the top-level handler only rewrites
+        // `let x = Type::new(...)`. Promote any leftover `Type.new(` (e.g.
+        // `scene.add(Model.new(...))`) to the JS `new Type(...)` form. And
+        // flatten a `[[f32;4];4]` mat4 literal to the flat 16-float array the
+        // `setTransform` binding expects (mirrors scripts/kotlin.rs).
+        let out = out
+            .lines()
+            .map(|l| rewrite_settransform_mat4_flatten_js(&rewrite_dotnew_to_new_js(l)))
+            .collect::<Vec<_>>()
+            .join("\n")
+            + if out.ends_with('\n') { "\n" } else { "" };
         // wasm-bindgen doesn't expose the Rust-side `pub const UV0: &str = "uv0"`
         // declarations on the JS class — `Vertex.UV0` resolves to `undefined`
         // at runtime, which then trips `set(undefined, ...)` with
         // "expected a string argument, found undefined". Mirror the inline
         // rewrite that scripts/swift.rs and scripts/kotlin.rs already do.
         inline_vertex_attr_constants_js(&out)
+    }
+
+    /// Rewrite a Rust `for <ident> in <expr> {` loop header into JavaScript's
+    /// `for (const <ident> of <expr>) {`. The per-line emitter passes the
+    /// Rust header through untouched; left as-is it is a JS SyntaxError
+    /// (`Unexpected identifier 'camera'`). Only single-identifier binders are
+    /// rewritten — anything with a destructuring pattern or a missing brace on
+    /// the same line is left alone, so unrelated lines (including hand-written
+    /// `for (let i = 0; …)` overrides) pass through unchanged.
+    fn rewrite_for_in_to_for_of_js(src: &str) -> String {
+        let ends_with_newline = src.ends_with('\n');
+        let mut out: Vec<String> = Vec::new();
+        for line in src.lines() {
+            out.push(rewrite_for_in_line_js(line));
+        }
+        let mut joined = out.join("\n");
+        if ends_with_newline {
+            joined.push('\n');
+        }
+        joined
+    }
+
+    fn rewrite_for_in_line_js(line: &str) -> String {
+        let indent_len = line.len() - line.trim_start().len();
+        let (indent, rest) = line.split_at(indent_len);
+        let Some(after_for) = rest.strip_prefix("for ") else {
+            return line.to_string();
+        };
+        // The loop body must open on this same line (flattened or not).
+        let Some(brace_pos) = after_for.find('{') else {
+            return line.to_string();
+        };
+        let header = &after_for[..brace_pos];
+        let tail = &after_for[brace_pos..];
+        let Some(in_pos) = header.find(" in ") else {
+            return line.to_string();
+        };
+        let var = header[..in_pos].trim();
+        // Only a bare single identifier binder; skip destructuring / patterns.
+        if var.is_empty() || !var.chars().all(is_ident_char) {
+            return line.to_string();
+        }
+        let iter_expr = header[in_pos + 4..].trim();
+        if iter_expr.is_empty() {
+            return line.to_string();
+        }
+        format!("{indent}for (const {var} of {iter_expr}) {tail}")
+    }
+
+    /// Promote a nested `Type.new(` constructor to JavaScript's `new Type(`.
+    /// The top-level `let x = Type::new(...)` case is handled inside `convert`;
+    /// this catches the leftover `Type.new(` the generic `::` → `.` pass
+    /// produces inside another call, e.g. `scene.add(Model.new(mesh, mat))`.
+    /// Only uppercase-initial type names are rewritten, and matches inside
+    /// string literals are skipped.
+    fn rewrite_dotnew_to_new_js(line: &str) -> String {
+        let chars: Vec<char> = line.chars().collect();
+        let mut out = String::with_capacity(line.len());
+        let mut i = 0usize;
+        let mut in_string: Option<char> = None;
+        while i < chars.len() {
+            let c = chars[i];
+            if let Some(q) = in_string {
+                out.push(c);
+                if c == q && (i == 0 || chars[i - 1] != '\\') {
+                    in_string = None;
+                }
+                i += 1;
+                continue;
+            }
+            if c == '"' || c == '\'' || c == '`' {
+                in_string = Some(c);
+                out.push(c);
+                i += 1;
+                continue;
+            }
+            // Identifier boundary: previous char neither ident-char nor `.`,
+            // so we capture a whole type name (not a field access tail).
+            let boundary = i == 0 || (!is_ident_char(chars[i - 1]) && chars[i - 1] != '.');
+            if boundary && c.is_ascii_uppercase() {
+                let mut j = i;
+                while j < chars.len() && is_ident_char(chars[j]) {
+                    j += 1;
+                }
+                if j + 5 <= chars.len() && chars[j..j + 5] == ['.', 'n', 'e', 'w', '('] {
+                    let ident: String = chars[i..j].iter().collect();
+                    out.push_str("new ");
+                    out.push_str(&ident);
+                    out.push('(');
+                    i = j + 5;
+                    continue;
+                }
+            }
+            out.push(c);
+            i += 1;
+        }
+        out
+    }
+
+    /// Flatten a `[[…], […], […], […]]` 4×4 mat4 literal passed to
+    /// `setTransform(...)` into the flat 16-float array the wasm-bindgen
+    /// binding expects (`Vec<f32>`). The Rust source writes the readable row
+    /// form; Kotlin does the same flatten (`rewrite_settransform_mat4_flatten`).
+    fn rewrite_settransform_mat4_flatten_js(line: &str) -> String {
+        let needle = ".setTransform([";
+        let Some(start) = line.find(needle) else {
+            return line.to_string();
+        };
+        let chars: Vec<char> = line.chars().collect();
+        // Index of the outer `[` (last char of the needle).
+        let open = start + needle.chars().count() - 1;
+        let Some(close) = match_bracket_js(&chars, open) else {
+            return line.to_string();
+        };
+        // The `setTransform(` paren must close immediately after the array.
+        if close + 1 >= chars.len() || chars[close + 1] != ')' {
+            return line.to_string();
+        }
+        // Collect numeric tokens, ignoring the inner `[` `]` row delimiters.
+        let inner: String = chars[open + 1..close]
+            .iter()
+            .map(|&c| if c == '[' || c == ']' { ' ' } else { c })
+            .collect();
+        let nums: Vec<String> = inner
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+        if nums.len() != 16 || !nums.iter().all(|n| n.parse::<f64>().is_ok()) {
+            return line.to_string();
+        }
+        let prefix: String = chars[..start].iter().collect();
+        let suffix: String = chars[close + 2..].iter().collect();
+        format!("{}.setTransform([{}]){}", prefix, nums.join(", "), suffix)
+    }
+
+    /// Return the index of the `]` matching the `[` at `open`, ignoring
+    /// brackets inside string literals.
+    fn match_bracket_js(chars: &[char], open: usize) -> Option<usize> {
+        let mut depth = 0usize;
+        let mut in_string: Option<char> = None;
+        for (i, &c) in chars.iter().enumerate().skip(open) {
+            if let Some(q) = in_string {
+                if c == q && chars[i - 1] != '\\' {
+                    in_string = None;
+                }
+                continue;
+            }
+            match c {
+                '"' | '\'' | '`' => in_string = Some(c),
+                '[' => depth += 1,
+                ']' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        return Some(i);
+                    }
+                }
+                _ => {}
+            }
+        }
+        None
     }
 
     fn inline_vertex_attr_constants_js(src: &str) -> String {
@@ -772,8 +948,27 @@ mod convert {
         let mut out = String::with_capacity(line.len());
         let chars: Vec<char> = line.chars().collect();
         let mut i = 0usize;
+        // Track string-literal state so a `.snake_case` substring inside a
+        // string (e.g. the uniform key `"material.alpha_cutoff"` or a WGSL
+        // shader body in a backtick template) is never camelized — only
+        // actual method names after a `.` are.
+        let mut in_string: Option<char> = None;
         while i < chars.len() {
             let c = chars[i];
+            if let Some(q) = in_string {
+                out.push(c);
+                if c == q && (i == 0 || chars[i - 1] != '\\') {
+                    in_string = None;
+                }
+                i += 1;
+                continue;
+            }
+            if c == '"' || c == '\'' || c == '`' {
+                in_string = Some(c);
+                out.push(c);
+                i += 1;
+                continue;
+            }
             out.push(c);
             if c == '.' {
                 // capture identifier after '.'
