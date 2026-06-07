@@ -127,6 +127,13 @@ extension Renderer {
         return try await createTexture(input: .prepared(chain), options: nil)
     }
 
+    /// Default-options overload: drop the trailing `options: nil` from
+    /// idiomatic call sites. Mirrors the JS / Python bindings where
+    /// `create_texture(input)` is fine without an explicit options arg.
+    public func createTexture(input: TextureInputMobile) async throws -> Texture {
+        return try await createTexture(input: input, options: nil)
+    }
+
     // MARK: - unregisterTexture convenience
 
     /// Unregister a texture by its `TextureId` record.

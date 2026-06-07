@@ -24,4 +24,18 @@ extension Scene {
     public func addPass(_ pass: Pass) {
         addPass(pass: pass)
     }
+
+    /// Set the scene ambient colour from a `[r, g, b]` array (unlabeled overload).
+    public func ambient(_ color: [Float]) throws {
+        try ambient(color: color)
+    }
+    public func ambient(_ color: [Double]) throws {
+        try ambient(color: color.map { Float($0) })
+    }
+
+    /// `Scene.load("path/to/model.glb")` — unlabeled path overload matching
+    /// the JS / Python spelling.
+    public static func load(_ path: String) throws -> Scene {
+        return try Scene.load(path: path)
+    }
 }

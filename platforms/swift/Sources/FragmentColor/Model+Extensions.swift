@@ -25,6 +25,16 @@ extension Model {
         try setTransform(matrix: matrix.map { Float($0) })
     }
 
+    /// Nested 4×4 row form — flatten on the way through. The docs example
+    /// reads `model.setTransform([[2,0,0,0], [0,2,0,0], ...])`; the binding
+    /// takes a flat 16-float column-major matrix.
+    public func setTransform(_ rows: [[Float]]) throws {
+        try setTransform(matrix: rows.flatMap { $0 })
+    }
+    public func setTransform(_ rows: [[Double]]) throws {
+        try setTransform(matrix: rows.flatMap { $0 }.map { Float($0) })
+    }
+
     public func translate(_ offset: [Float]) throws {
         try translate(offset: offset)
     }
