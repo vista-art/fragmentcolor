@@ -290,34 +290,64 @@ ensure_playwright() {
   echo "[ensure_playwright] pnpm i in $dir"
   ( cd "$dir" && timeout 300 pnpm i --no-frozen-lockfile --no-optional --ignore-scripts ) || \
     echo "[ensure_playwright] pnpm i failed/timed out (continuing)"
-  # Install both `chromium` AND `chromium-headless-shell` in ONE
-  # command. Splitting them was a trap: `playwright install <browser>`
-  # prunes anything NOT in its argument list, so running them
-  # sequentially had the second install delete the first one's binary
-  # ("Removing unused browser at .../chromium-1194" in round 8's log).
-  # The combined download is ~250 MB.
+  # Manual download + extract — round 10's log made the failure mode
+  # finally legible. `pw:install` printed "extracting archive" and then
+  # went silent for 10 min before timing out, with only
+  # `chromium-1194/chrome-linux/icudtl.dat` on disk. That's a stuck
+  # Playwright extractor (known issue, e.g. microsoft/playwright#29262
+  # surfaces in headless GitHub-Actions environments). Avoid the
+  # built-in extractor entirely: pull the same zip from Playwright's
+  # CDN with curl, unzip with the system `unzip`, and let
+  # `chromium.launch()` find the binaries under the canonical
+  # `chromium-<build>/chrome-linux/` and
+  # `chromium_headless_shell-<build>/chrome-linux/` paths.
   #
-  # `DEBUG=pw:install` tells playwright-core to emit verbose install
-  # progress — round 9 saw the chromium zip download finish in 1 s,
-  # then 9 minutes of complete silence before the timeout fired. With
-  # the debug channel on, the actual stalled step (zip extraction?
-  # post-install verify? `chrome-sandbox` chmod?) will show up.
-  echo "[ensure_playwright] pnpm exec playwright install chromium chromium-headless-shell (DEBUG=pw:install)"
-  ( cd "$dir" && DEBUG=pw:install timeout 600 pnpm exec playwright install chromium chromium-headless-shell ) || \
-    echo "[ensure_playwright] playwright install failed/timed out (continuing)"
-  echo "[ensure_playwright] ms-playwright cache contents:"
-  ls -la "$HOME/.cache/ms-playwright/" 2>/dev/null || \
-    ls -la "$HOME/Library/Caches/ms-playwright/" 2>/dev/null || true
-  # If headless-shell directory exists but its binary doesn't, dump
-  # what IS there so we know what the install actually produced.
-  if [ -d "$HOME/.cache/ms-playwright/chromium_headless_shell-1194" ]; then
-    echo "[ensure_playwright] chromium_headless_shell-1194 tree:"
-    find "$HOME/.cache/ms-playwright/chromium_headless_shell-1194" -maxdepth 3 | head -40
+  # The build version is pinned by the installed Playwright version
+  # (1.56.0 → build 1194 per round 10's log). Hard-coding it is safe
+  # because the lockfile pins playwright@1.56.0; bump both together.
+  local pw_build=1194
+  local pw_cache="${PLAYWRIGHT_BROWSERS_PATH:-$HOME/.cache/ms-playwright}"
+  mkdir -p "$pw_cache"
+  # Tier 1: try the Playwright installer once — if Microsoft fixed
+  # this in a future release it's still the simplest path.
+  echo "[ensure_playwright] pnpm exec playwright install --no-shell chromium (best-effort)"
+  ( cd "$dir" && DEBUG=pw:install timeout 240 pnpm exec playwright install --no-shell chromium ) || \
+    echo "[ensure_playwright] official installer didn't finish; falling through to manual"
+  # Tier 2: any binary we still don't have, fetch + extract manually.
+  if [ ! -x "$pw_cache/chromium-$pw_build/chrome-linux/chrome" ]; then
+    local url="https://cdn.playwright.dev/dbazure/download/playwright/builds/chromium/$pw_build/chromium-linux.zip"
+    local zip="$pw_cache/chromium-$pw_build.zip"
+    echo "[ensure_playwright] curl + unzip chromium from $url"
+    rm -rf "$pw_cache/chromium-$pw_build"
+    mkdir -p "$pw_cache/chromium-$pw_build"
+    if curl -fL --retry 3 --retry-delay 2 -o "$zip" "$url" \
+        && unzip -q -o "$zip" -d "$pw_cache/chromium-$pw_build" \
+        && rm -f "$zip"; then
+      echo "[ensure_playwright] chromium ready under $pw_cache/chromium-$pw_build/"
+    else
+      echo "[ensure_playwright] manual chromium download failed (continuing)"
+    fi
+  else
+    echo "[ensure_playwright] chromium binary already present"
   fi
-  if [ -d "$HOME/.cache/ms-playwright/chromium-1194" ]; then
-    echo "[ensure_playwright] chromium-1194 tree:"
-    find "$HOME/.cache/ms-playwright/chromium-1194" -maxdepth 3 | head -40
+  if [ ! -x "$pw_cache/chromium_headless_shell-$pw_build/chrome-linux/headless_shell" ]; then
+    local url="https://cdn.playwright.dev/dbazure/download/playwright/builds/chromium/$pw_build/chromium-headless-shell-linux.zip"
+    local zip="$pw_cache/chromium_headless_shell-$pw_build.zip"
+    echo "[ensure_playwright] curl + unzip chromium-headless-shell from $url"
+    rm -rf "$pw_cache/chromium_headless_shell-$pw_build"
+    mkdir -p "$pw_cache/chromium_headless_shell-$pw_build"
+    if curl -fL --retry 3 --retry-delay 2 -o "$zip" "$url" \
+        && unzip -q -o "$zip" -d "$pw_cache/chromium_headless_shell-$pw_build" \
+        && rm -f "$zip"; then
+      echo "[ensure_playwright] chromium-headless-shell ready under $pw_cache/chromium_headless_shell-$pw_build/"
+    else
+      echo "[ensure_playwright] manual chromium-headless-shell download failed (continuing)"
+    fi
+  else
+    echo "[ensure_playwright] chromium-headless-shell binary already present"
   fi
+  echo "[ensure_playwright] final cache layout:"
+  ls -la "$pw_cache/" 2>/dev/null || true
 }
 
 run_web() {
