@@ -99,7 +99,8 @@ run_ios_bindings() {
   if (cd "$ROOT_DIR/platforms/swift" \
         && xcodebuild \
              -scheme FragmentColor \
-             -destination "generic/platform=iOS Simulator" \
+             -destination "generic/platform=iOS Simulator,arch=arm64" \
+             ARCHS=arm64 ONLY_ACTIVE_ARCH=YES \
              build); then
     log_test_ok "$name"
     return 0
@@ -158,7 +159,8 @@ run_ios_examples() {
   if (cd "$ROOT_DIR/platforms/swift/healthcheck" \
         && xcodebuild \
              -scheme FragmentColorHealthcheck \
-             -destination "generic/platform=iOS Simulator" \
+             -destination "generic/platform=iOS Simulator,arch=arm64" \
+             ARCHS=arm64 ONLY_ACTIVE_ARCH=YES \
              build); then
     log_test_ok "$name"
     return 0
@@ -286,13 +288,16 @@ ensure_playwright() {
   echo "[ensure_playwright] pnpm i in $dir"
   ( cd "$dir" && timeout 300 pnpm i --no-frozen-lockfile --no-optional --ignore-scripts ) || \
     echo "[ensure_playwright] pnpm i failed/timed out (continuing)"
-  # Install only `chromium-headless-shell`. Playwright 1.49+ ships the
-  # headless-shell binary as a separate package; `chromium.launch({headless:true})`
-  # uses it directly. Installing the full `chromium` build (head + headless
-  # shell) doubles the download (~340 MB total) and pushed the previous run
-  # past the 10-min step timeout. Headless-shell alone is ~70 MB.
-  echo "[ensure_playwright] pnpm exec playwright install chromium-headless-shell"
-  ( cd "$dir" && timeout 300 pnpm exec playwright install chromium-headless-shell ) || \
+  # Install `chromium`. Per Playwright 1.49+ this also pulls down
+  # `chromium-headless-shell` (the binary `chromium.launch({headless:true})`
+  # actually loads), so one install command covers both. The previous
+  # `chromium-headless-shell` standalone install consistently hit the 5-min
+  # timeout — the package's manifest currently lists no version Playwright
+  # 1.56 is willing to resolve standalone, so the resolve step retries
+  # silently and never makes progress. 8-min budget is comfortable: a
+  # cold install measured ~6 min in earlier rounds.
+  echo "[ensure_playwright] pnpm exec playwright install chromium"
+  ( cd "$dir" && timeout 480 pnpm exec playwright install chromium ) || \
     echo "[ensure_playwright] playwright install failed/timed out (continuing)"
 }
 
