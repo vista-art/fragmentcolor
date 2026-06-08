@@ -48,6 +48,7 @@ work.
 - [ ] Sampler cache + texture-view cache keyed by descriptor (LRU caps); no behavior change until later features consume them
 - [ ] Async pipeline warming: background precompile per `(ShaderHash, format, sample_count)` when shaders/passes register; feature-gated
 - [ ] Surface frame-acquire telemetry: throttled counters / log-once warnings distinguishing target-local vs centralized retries on `Lost` / `Outdated`
+- [ ] Texture worker enhancements: multi-worker pool, drop-cancellation, shader-compile / buffer-upload offload, and `TextureInput` marshalling across FFI for the prepared-chain path
 
 ### Examples + tutorials
 - [ ] Hello ShaderToy Clone
@@ -76,12 +77,15 @@ work.
 - [ ] Expand iOS + Android healthchecks beyond headless smoke tests: textures, immediates, frames
 - [ ] Publish Kotlin AAR to Maven Central (Sonatype OSSRH credentials + GPG signing)
 - [ ] Publish Swift Package to the Swift Package Index (register repo after first tag)
+- [ ] Split `src/renderer/platform/mobile/` into per-language `ios.rs` + `android.rs` so each platform's idioms get their own translation layer
 
 ### API refinement
 - [ ] Core helper `create_target_from_surface(surface, size)` to remove duplication across Web / Python / iOS / Android
 - [ ] Revamp `RenderPass` API: expose `wgpu::RenderPass` customizations with sensible defaults
 - [ ] Specialized aliases: `Compute` newtype for `Shader` (compute-only); `RenderPass` newtype for `Pass` (render-only); `ComputePass` newtype for `Pass` (compute-only)
 - [ ] Custom blending
+- [ ] Cube-map `Camera` variant for environment capture (reflection probes, point-light shadow maps); perspective / orthographic shipped in 0.12.0, the cube-map face capture is deferred
+- [ ] Explicit `Pass::set_depth_test_enabled(bool)` / `set_depth_write_enabled(bool)` for the depth-attached-but-test-disabled case (translucent overlays); today attaching a depth target enables both
 - [ ] JSON save/load: `Mesh::load_*` helpers + JSON inputs; pass / pipeline setup save & load; shader state save & load (uniform values, textures) + JSON schema for default uniform values; re-add optional JSON shader source (feature-flagged; was removed in 0.11)
 
 ### Python window integrations
@@ -103,20 +107,6 @@ KTX2 container support with compressed texture formats and progressive
 streaming; glTF/PBR model loading with skinning; post-processing stack
 templates. The production-content cut, covering anything that ships textures
 or geometry from a real authoring pipeline.
-
-### Shipped in 0.12.0
-
-The opening slice. See CHANGELOG for detail.
-
-- [x] `Scene` graph: top-level container implementing `Renderable`, default `Camera` + `Light` injected at render time, Arc-shared `Camera` / `Light` with live propagation, back-to-front depth sort for `alpha_mode: Blend`
-- [x] glTF 2.0 loader (`Scene::load`): static glTF, with mesh primitives (POSITION + NORMAL + UV0, plus `COLOR_0` + `TEXCOORD_1`), face-normal fallback when normals are absent, PBR-MR materials with all five texture slots, per-node transforms flattened into Model matrices, embedded cameras and `KHR_lights_punctual` lights, `KHR_texture_transform` via `Material::uv_transform`
-- [x] `Material::pbr()` registry with metallic-roughness, `AlphaMode` (`Opaque` / `Mask` / `Blend`), `double_sided`, tangent-space normal mapping, all five texture slots, lazy texture upload via `Renderer::load`
-- [x] Unified `Light` type with point / spot / directional kind-tagged constructors, Scene-level ambient, light array cap raised 8 → 32
-- [x] `Camera` and `Model` as first-class scene objects (`Camera::look_at` / `set_aspect`, `Model::set_visible`, instanced per-Model transforms)
-- [x] Initial KTX2 container support + 16-bit format dispatch (uncompressed RGBA8 / RGBA16F / R16 / Rg16 / Bgra8 plus BC1-7 / ASTC 4×4 / ASTC 8×8 / ETC2)
-- [x] Texture creation off the main thread on native targets
-- [x] `Renderer::read_storage` for GPU→CPU buffer readback
-- [x] Windowed "Hello glTF" model-viewer example (`examples/rust/examples/model_viewer.rs`)
 
 ### KTX2 container + compressed texture formats
 
@@ -178,10 +168,7 @@ compiled) that it ships behind a feature flag.
 - [ ] `Mesh::from_gltf("model.glb")` covers positions, normals, UVs, tangents, vertex colors, skin weights
 - [ ] `Mesh::from_gltf_all(...) -> Vec<Mesh>` for multi-primitive models
 - [ ] Skinned animation: joint matrices uploaded as a storage buffer; vertex shader samples per-vertex
-- [x] PBR material registry shipped as `Material::pbr()` with metallic-roughness, alpha modes, normal mapping, `KHR_texture_transform`
-- [x] Auto-bind glTF materials: baseColor / normal / metallic-roughness / emissive / occlusion textures wired up automatically by `Scene::load`
 - [ ] Other formats considered as the ecosystem demands (USD/USDZ for Apple workflows, OBJ for legacy assets); glTF first since it's the de-facto modern interchange
-- [x] Example: Hello glTF shipped as `examples/rust/examples/model_viewer.rs` (windowed orbit-camera viewer using `App` + `Scene::load`)
 
 ### Post-processing stack templates
 - [ ] `postfx([Bloom::default(), ToneMap::aces(), Vignette::subtle()]) -> Vec<Pass>`
@@ -346,9 +333,6 @@ gallery with submissions and remix flow.
 Higher-level framework, shipped separately (analogous to SvelteKit / Next.js).
 Only if the community asks; the core library stands on its own.
 
-- [x] `Scene` with transform hierarchy; lights shipped in 0.12.0 core (not deferred to the kit after all)
-- [x] Cameras: perspective / orthographic shipped in 0.12.0 core (cubemap variant still deferred)
-- [x] PBR material preset shipped in 0.12.0 core as `Material::pbr()`
 - [ ] Material presets: Toon, Unlit, Glass
 - [ ] Scene-level features: frustum culling, sorting, LOD, shadow mapping
 - [ ] GPU-driven particle system (compute)
