@@ -215,29 +215,27 @@ impl Scene {
 
     #[lsp_doc("docs/api/scene/scene/remove_pass.md")]
     pub fn remove_pass(&self, pass: &Pass) -> bool {
-        let removed = {
-            let mut passes = self.inner.passes.write();
-            match passes
-                .iter()
-                .position(|p| Arc::ptr_eq(&p.object, &pass.object))
-            {
-                Some(idx) => {
-                    passes.remove(idx);
-                    true
-                }
-                None => false,
-            }
+        // Lock order: `passes` first, `absorb_pass` second (see
+        // `ensure_absorb_pass`).
+        let mut passes = self.inner.passes.write();
+        let Some(idx) = passes
+            .iter()
+            .position(|p| Arc::ptr_eq(&p.object, &pass.object))
+        else {
+            return false;
         };
+        passes.remove(idx);
         // Forget the absorb handle if it pointed at the pass we just removed,
         // so the next `add` rebuilds one instead of attaching to a Pass the
         // graph no longer renders.
-        if removed
-            && let Some(absorb) = self.inner.absorb_pass.read().clone()
-            && Arc::ptr_eq(&absorb.object, &pass.object)
-        {
-            *self.inner.absorb_pass.write() = None;
+        let mut slot = self.inner.absorb_pass.write();
+        let was_absorb = slot
+            .as_ref()
+            .is_some_and(|absorb| Arc::ptr_eq(&absorb.object, &pass.object));
+        if was_absorb {
+            *slot = None;
         }
-        removed
+        true
     }
 
     #[lsp_doc("docs/api/scene/scene/get_pass.md")]
@@ -252,20 +250,19 @@ impl Scene {
 
     #[lsp_doc("docs/api/scene/scene/set_passes.md")]
     pub fn set_passes(&self, passes: Vec<Pass>) {
-        // Snapshot the absorb handle before swapping the vec so we can tell
-        // whether it survived the replacement.
-        let absorb = self.inner.absorb_pass.read().clone();
-        *self.inner.passes.write() = passes;
-        if let Some(absorb) = absorb {
-            let still_present = self
-                .inner
-                .passes
-                .read()
+        // Lock order: `passes` first, `absorb_pass` second (see
+        // `ensure_absorb_pass`).
+        let mut current = self.inner.passes.write();
+        *current = passes;
+        // Drop the absorb handle if the replacement no longer contains it.
+        let mut slot = self.inner.absorb_pass.write();
+        let dropped = slot.as_ref().is_some_and(|absorb| {
+            !current
                 .iter()
-                .any(|p| Arc::ptr_eq(&p.object, &absorb.object));
-            if !still_present {
-                *self.inner.absorb_pass.write() = None;
-            }
+                .any(|p| Arc::ptr_eq(&p.object, &absorb.object))
+        });
+        if dropped {
+            *slot = None;
         }
     }
 
@@ -309,22 +306,22 @@ impl Scene {
     /// debuggers (RenderDoc, Xcode GPU frame capture). If the caller dropped
     /// a previously-built absorb Pass from the graph (via `remove_pass` /
     /// `set_passes`), a fresh one is appended at the current end.
+    ///
+    /// Lock order: `passes` is taken first, `absorb_pass` second — the same
+    /// order [`Scene::remove_pass`] and [`Scene::set_passes`] use, so the
+    /// three can't deadlock against each other under concurrent mutation.
     fn ensure_absorb_pass(&self) -> Pass {
-        let mut slot = self.inner.absorb_pass.write();
-        if let Some(p) = slot.clone() {
-            let still_present = self
-                .inner
-                .passes
-                .read()
-                .iter()
-                .any(|x| Arc::ptr_eq(&x.object, &p.object));
-            if still_present {
-                return p;
-            }
+        let mut passes = self.inner.passes.write();
+        // Reuse the existing absorb Pass only if it's still in the graph.
+        let existing = self.inner.absorb_pass.read().clone();
+        if let Some(p) = existing
+            && passes.iter().any(|x| Arc::ptr_eq(&x.object, &p.object))
+        {
+            return p;
         }
         let pass = Pass::new("Scene Default Pass");
-        self.inner.passes.write().push(pass.clone());
-        *slot = Some(pass.clone());
+        passes.push(pass.clone());
+        *self.inner.absorb_pass.write() = Some(pass.clone());
         pass
     }
 
@@ -688,7 +685,10 @@ mod tests {
         let drop = Pass::new("drop");
         scene.add_pass(&keep).add_pass(&drop);
 
-        assert!(scene.remove_pass(&drop), "removing a present pass returns true");
+        assert!(
+            scene.remove_pass(&drop),
+            "removing a present pass returns true"
+        );
         let names: Vec<String> = scene
             .list_passes()
             .iter()
@@ -728,7 +728,10 @@ mod tests {
             .iter()
             .map(|p| p.object.name.to_string())
             .collect();
-        assert_eq!(names, vec!["x".to_string(), "y".to_string(), "z".to_string()]);
+        assert_eq!(
+            names,
+            vec!["x".to_string(), "y".to_string(), "z".to_string()]
+        );
     }
 
     #[test]
@@ -772,7 +775,10 @@ mod tests {
         assert!(scene.cameras().is_empty());
         assert!(scene.lights().is_empty());
         assert!(
-            material.shader().get::<[f32; 3]>("camera.position").is_err(),
+            material
+                .shader()
+                .get::<[f32; 3]>("camera.position")
+                .is_err(),
             "no default camera should have written camera.position"
         );
     }
