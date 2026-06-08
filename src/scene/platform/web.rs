@@ -339,6 +339,60 @@ impl Scene {
         self.add_pass(pass);
     }
 
+    #[wasm_bindgen(js_name = "removePass")]
+    #[lsp_doc("docs/api/scene/scene/remove_pass.md")]
+    pub fn remove_pass_js(&self, pass: &Pass) -> bool {
+        self.remove_pass(pass)
+    }
+
+    #[wasm_bindgen(js_name = "getPass")]
+    #[lsp_doc("docs/api/scene/scene/get_pass.md")]
+    pub fn get_pass_js(&self, index: usize) -> Option<Pass> {
+        self.get_pass(index)
+    }
+
+    #[wasm_bindgen(js_name = "listPasses")]
+    #[lsp_doc("docs/api/scene/scene/list_passes.md")]
+    pub fn list_passes_js(&self) -> Vec<Pass> {
+        self.list_passes()
+    }
+
+    #[wasm_bindgen(js_name = "setPasses")]
+    #[lsp_doc("docs/api/scene/scene/set_passes.md")]
+    pub fn set_passes_js(&self, passes: Vec<Pass>) {
+        self.set_passes(passes);
+    }
+
+    #[wasm_bindgen(js_name = "noDefaults")]
+    #[lsp_doc("docs/api/scene/scene/no_defaults.md")]
+    pub fn no_defaults_js(&self) {
+        self.no_defaults();
+    }
+
+    #[wasm_bindgen(js_name = "noDefaultCamera")]
+    #[lsp_doc("docs/api/scene/scene/no_default_camera.md")]
+    pub fn no_default_camera_js(&self) {
+        self.no_default_camera();
+    }
+
+    #[wasm_bindgen(js_name = "noDefaultLight")]
+    #[lsp_doc("docs/api/scene/scene/no_default_light.md")]
+    pub fn no_default_light_js(&self) {
+        self.no_default_light();
+    }
+
+    #[wasm_bindgen(js_name = "setDefaultCamera")]
+    #[lsp_doc("docs/api/scene/scene/set_default_camera.md")]
+    pub fn set_default_camera_js(&self, camera: &Camera) {
+        self.set_default_camera(camera);
+    }
+
+    #[wasm_bindgen(js_name = "setDefaultLight")]
+    #[lsp_doc("docs/api/scene/scene/set_default_light.md")]
+    pub fn set_default_light_js(&self, light: &Light) {
+        self.set_default_light(light);
+    }
+
     #[wasm_bindgen(js_name = "ambient")]
     #[lsp_doc("docs/api/scene/scene/ambient.md")]
     pub fn ambient_js(&self, color: Vec<f32>) -> Result<(), JsError> {

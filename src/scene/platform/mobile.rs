@@ -360,6 +360,60 @@ impl Scene {
         self.add_pass(pass.as_ref());
     }
 
+    #[uniffi::method(name = "removePass")]
+    #[lsp_doc("docs/api/scene/scene/remove_pass.md")]
+    pub fn remove_pass_mobile(self: Arc<Self>, pass: Arc<Pass>) -> bool {
+        self.remove_pass(pass.as_ref())
+    }
+
+    #[uniffi::method(name = "getPass")]
+    #[lsp_doc("docs/api/scene/scene/get_pass.md")]
+    pub fn get_pass_mobile(self: Arc<Self>, index: u64) -> Option<Arc<Pass>> {
+        self.get_pass(index as usize).map(Arc::new)
+    }
+
+    #[uniffi::method(name = "listPasses")]
+    #[lsp_doc("docs/api/scene/scene/list_passes.md")]
+    pub fn list_passes_mobile(self: Arc<Self>) -> Vec<Arc<Pass>> {
+        self.list_passes().into_iter().map(Arc::new).collect()
+    }
+
+    #[uniffi::method(name = "setPasses")]
+    #[lsp_doc("docs/api/scene/scene/set_passes.md")]
+    pub fn set_passes_mobile(self: Arc<Self>, passes: Vec<Arc<Pass>>) {
+        self.set_passes(passes.iter().map(|p| (**p).clone()).collect());
+    }
+
+    #[uniffi::method(name = "noDefaults")]
+    #[lsp_doc("docs/api/scene/scene/no_defaults.md")]
+    pub fn no_defaults_mobile(self: Arc<Self>) {
+        self.no_defaults();
+    }
+
+    #[uniffi::method(name = "noDefaultCamera")]
+    #[lsp_doc("docs/api/scene/scene/no_default_camera.md")]
+    pub fn no_default_camera_mobile(self: Arc<Self>) {
+        self.no_default_camera();
+    }
+
+    #[uniffi::method(name = "noDefaultLight")]
+    #[lsp_doc("docs/api/scene/scene/no_default_light.md")]
+    pub fn no_default_light_mobile(self: Arc<Self>) {
+        self.no_default_light();
+    }
+
+    #[uniffi::method(name = "setDefaultCamera")]
+    #[lsp_doc("docs/api/scene/scene/set_default_camera.md")]
+    pub fn set_default_camera_mobile(self: Arc<Self>, camera: Arc<Camera>) {
+        self.set_default_camera(camera.as_ref());
+    }
+
+    #[uniffi::method(name = "setDefaultLight")]
+    #[lsp_doc("docs/api/scene/scene/set_default_light.md")]
+    pub fn set_default_light_mobile(self: Arc<Self>, light: Arc<Light>) {
+        self.set_default_light(light.as_ref());
+    }
+
     #[uniffi::method(name = "ambient")]
     #[lsp_doc("docs/api/scene/scene/ambient.md")]
     pub fn ambient_mobile(self: Arc<Self>, color: Vec<f32>) -> Result<(), FragmentColorError> {

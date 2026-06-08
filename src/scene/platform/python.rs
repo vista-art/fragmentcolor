@@ -307,6 +307,60 @@ impl Scene {
         self.add_pass(pass);
     }
 
+    #[pyo3(name = "remove_pass")]
+    #[lsp_doc("docs/api/scene/scene/remove_pass.md")]
+    pub fn remove_pass_py(&self, pass: &Pass) -> bool {
+        self.remove_pass(pass)
+    }
+
+    #[pyo3(name = "get_pass")]
+    #[lsp_doc("docs/api/scene/scene/get_pass.md")]
+    pub fn get_pass_py(&self, index: usize) -> Option<Pass> {
+        self.get_pass(index)
+    }
+
+    #[pyo3(name = "list_passes")]
+    #[lsp_doc("docs/api/scene/scene/list_passes.md")]
+    pub fn list_passes_py(&self) -> Vec<Pass> {
+        self.list_passes()
+    }
+
+    #[pyo3(name = "set_passes")]
+    #[lsp_doc("docs/api/scene/scene/set_passes.md")]
+    pub fn set_passes_py(&self, passes: Vec<Pass>) {
+        self.set_passes(passes);
+    }
+
+    #[pyo3(name = "no_defaults")]
+    #[lsp_doc("docs/api/scene/scene/no_defaults.md")]
+    pub fn no_defaults_py(&self) {
+        self.no_defaults();
+    }
+
+    #[pyo3(name = "no_default_camera")]
+    #[lsp_doc("docs/api/scene/scene/no_default_camera.md")]
+    pub fn no_default_camera_py(&self) {
+        self.no_default_camera();
+    }
+
+    #[pyo3(name = "no_default_light")]
+    #[lsp_doc("docs/api/scene/scene/no_default_light.md")]
+    pub fn no_default_light_py(&self) {
+        self.no_default_light();
+    }
+
+    #[pyo3(name = "set_default_camera")]
+    #[lsp_doc("docs/api/scene/scene/set_default_camera.md")]
+    pub fn set_default_camera_py(&self, camera: &Camera) {
+        self.set_default_camera(camera);
+    }
+
+    #[pyo3(name = "set_default_light")]
+    #[lsp_doc("docs/api/scene/scene/set_default_light.md")]
+    pub fn set_default_light_py(&self, light: &Light) {
+        self.set_default_light(light);
+    }
+
     #[pyo3(name = "ambient")]
     #[lsp_doc("docs/api/scene/scene/ambient.md")]
     pub fn ambient_py(&self, color: [f32; 3]) {
