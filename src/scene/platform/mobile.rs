@@ -369,7 +369,10 @@ impl Scene {
     #[uniffi::method(name = "getPass")]
     #[lsp_doc("docs/api/scene/scene/get_pass.md")]
     pub fn get_pass_mobile(self: Arc<Self>, index: u64) -> Option<Arc<Pass>> {
-        self.get_pass(index as usize).map(Arc::new)
+        // An index past usize::MAX can't address a pass; treat it as
+        // out-of-range rather than truncating on a 32-bit target.
+        let index = usize::try_from(index).ok()?;
+        self.get_pass(index).map(Arc::new)
     }
 
     #[uniffi::method(name = "listPasses")]
