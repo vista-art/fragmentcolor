@@ -151,9 +151,6 @@ fn generate_docs() {
         &outcome.ex_kotlin,
     );
 
-    println!("==> website::write_scene_load_fixtures()");
-    website::write_scene_load_fixtures();
-
     println!("✅ Website export done!\n");
 
     println!("📚 Building tutorials manifest...");

@@ -48,20 +48,6 @@ mod meta {
         }
     }
 
-    /// Same as `write_if_changed` but for binary payloads (test fixtures,
-    /// asset blobs). Skips the text-comparison short-circuit and always
-    /// rewrites when the byte-for-byte contents differ.
-    pub fn write_if_changed_bytes(path: &Path, contents: &[u8]) -> io::Result<bool> {
-        match fs::read(path) {
-            Ok(existing) if existing == contents => Ok(false),
-            _ => {
-                ensure_parent_dir(path)?;
-                fs::write(path, contents)?;
-                Ok(true)
-            }
-        }
-    }
-
     /// Ensure the parent directory for the given file exists.
     pub fn ensure_parent_dir(path: &Path) -> io::Result<()> {
         if let Some(parent) = path.parent() {

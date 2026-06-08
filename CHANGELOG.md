@@ -199,8 +199,6 @@ Closes the v0.11.2 wishlist item "per-mesh transform" without polluting Mesh wit
 - [x] **Docs:** new `docs/api/scene/{material,model}/` group (16 + 9 method pages, both `_index.md` group orderings), plus `docs/api/core/pass/add_model.md`.
 - [x] **Example:** `examples/rust/examples/model_pbr_triangle.rs` renders a single PBR-shaded triangle through Model + Material + Pass::add_model, including camera and light overrides on the underlying Shader.
 - [x] **Tests:** unit tests covering Material defaults, builder setters, shallow-clone share semantics, custom-shader silent no-op, Model transform composition (identity, pre-mult translate, post-mult rotate/scale, zero-axis rejection), live-reference share across `Model::clone`, Pass-entry dedupe for shared shaders, and the live-transform pickup between `add_model` and render. 213 lib tests, 116 doctests, all passing at this stage; the integrated v0.11.2 totals (after the parallel commits) land higher.
-- [ ] **`Scene` object.** Collection of Models with traversal / sort / light management. Currently `src/scene/` houses `Model`, `Camera`, and `Light`; the module name reserves the spot for the collection type.
-- [ ] **glTF loader.** Coming in a separate commit this cycle. The Material field set, indexed Mesh, AlphaMode/double-sided state, and PBR texture sampling are all in place ahead of the loader.
 
 ### Material alpha mode + double-sided
 
@@ -298,7 +296,6 @@ Multi-slice refactor: collapses `_with_*` method families into single canonical 
 - [x] **Cross-language brand detection for `TextureMipChain` handles in JS** via the existing `__fc_kind` + `__wbg_ptr` anchor pattern (`impl_js_bridge!`).
 - [x] **Net surface delta:** ~9 Rust methods → 4. ~24 FFI shims → ~9. Three transport types → one. Same `TextureInput` flows through all three texture paths.
 - [x] **Trade-offs accepted:** "size required for storage" + "data must be sync-friendly for prepare" are runtime validations, not compile-time guarantees. Same convention as the existing KTX2 paths silently ignoring `options.format` / `options.mipmaps`.
-- [ ] **Follow-up (not in this change):** structurally splitting `src/renderer/platform/mobile/` into per-language `ios.rs` + `android.rs` so each language's idioms get their own translation layer.
 
 ### Texture creation off the main thread
 
@@ -309,7 +306,6 @@ Multi-slice refactor: collapses `_with_*` method families into single canonical 
 - [x] **Typed error surface for prepare:** `MalformedImageError(image::ImageError)` (decode failure), `UnsupportedMipmapFormat { format }` (target format unsupported by CPU mipmap dispatcher), `InvalidInput(String)` (bytes parsed but didn't match declared shape: zero size, byte count too small for `bpp * width * height`).
 - [x] **`prepare_raw` accepts `impl Into<Size>`** on the canonical Rust signature; bindings still take a concrete `Size` (uniffi / wasm-bindgen / pyo3 don't marshal generics).
 - [x] **No new dependencies.** Worker uses `std::thread` + `std::sync::mpsc` for the job queue and `futures::channel::oneshot` (already a dep) for the per-call reply.
-- [ ] **Out of scope (deferred):** multi-worker pool, drop-cancellation, shader-compile / buffer-upload offload, `TextureInput` marshalling across FFI for the prepared-chain path.
 
 ### KTX2 container support (BC / ETC2 / ASTC + uncompressed)
 
@@ -317,7 +313,6 @@ Multi-slice refactor: collapses `_with_*` method families into single canonical 
 - [x] **The KTX2 path trusts the file's declared format and pre-baked mip chain.** `options.format` and `options.mipmaps` are intentionally ignored for KTX2 inputs; encoders pick the format and chain on purpose, and doing it twice would only round-trip through a worse approximation.
 - [x] **Compression GPU features requested opportunistically at device creation:** `TEXTURE_COMPRESSION_BC` / `_ETC2` / `_ASTC` (and SLICED_3D / HDR variants) per adapter advertisement. Adapters without a given feature still get a working device; KTX2 loads of unsupported formats fail at upload with a clear error rather than crashing inside wgpu validation.
 - [x] **Format coverage** (Vulkan `VkFormat` → `wgpu::TextureFormat`): RGBA8 UNORM/SRGB, BGRA8 UNORM/SRGB, R8/Rg8/R16/Rg16/Rgba16 UNORM, RGBA16F, BC1-BC7 (UNORM and SRGB), ETC2 RGB/RGBA/RGB-A1 (UNORM and SRGB), ASTC 4×4 and 8×8 (UNORM and SRGB). Other VkFormats fail loudly.
-- [ ] **Out of scope (deferred):** Basis Universal transcoding (`VK_FORMAT_UNDEFINED` payloads), supercompression schemes (zstd / zlib / BasisLZ), cube maps, array textures, 3D textures, progressive intra-file mip streaming.
 
 ### Wider source-image format support (R8 / Rg8 / R16 / Rg16 / Rgba16)
 
@@ -361,7 +356,6 @@ Canonical string keys for the common per-vertex channels so the (forthcoming) gl
 The depth-test path was already implicit: `Pass::add_depth_target(depth_tex)` enables depth-test and depth-write for the pass; not calling it means painter's-algorithm rendering. The behaviour is consistent and adequate for 3D mesh occlusion, but the docs underplayed it.
 
 - [x] `docs/api/core/pass/add_depth_target.md` rewritten to lead with "depth-test is enabled" and surface the opt-out (just don't attach). Example reframed as a 3D-mesh-over-quad pattern matching the canonical consumer use case.
-- [ ] (Deferred) Explicit `Pass::set_depth_test_enabled(bool)` / `set_depth_write_enabled(bool)` setters for the depth-attached-but-test-disabled case (translucent overlays). Holding until a real consumer needs it.
 
 ### Texture group restructure (Mipmap + Texture out of `core/`)
 

@@ -36,14 +36,21 @@ jobs:
         run: |
           set -euo pipefail
           echo "Waiting for npm, PyPI and the xcframework release asset to be available..."
-          for i in $(seq 1 60); do
+          # The PyPI wheel matrix and the Swift xcframework build can take ~30 min
+          # to land, so wait up to 40 min (240 × 10s) before giving up.
+          OK=0
+          for i in $(seq 1 240); do
             NPM_OK=0; PYPI_OK=0; XCF_OK=0
             if npm view "fragmentcolor@$VERSION" version >/dev/null 2>&1; then NPM_OK=1; fi
             if curl -sSf "https://pypi.org/pypi/fragmentcolor/$VERSION/json" >/dev/null 2>&1; then PYPI_OK=1; fi
             if gh release view "v$VERSION" --json assets -q '.assets[].name' 2>/dev/null | grep -q "FragmentColorFFI.xcframework.zip"; then XCF_OK=1; fi
-            if [ "$NPM_OK" = "1" ] && [ "$PYPI_OK" = "1" ] && [ "$XCF_OK" = "1" ]; then echo "OK"; break; fi
-            echo "Not available yet (npm=$NPM_OK pypi=$PYPI_OK xcf=$XCF_OK), retrying in 10s... ($i/60)"; sleep 10
+            if [ "$NPM_OK" = "1" ] && [ "$PYPI_OK" = "1" ] && [ "$XCF_OK" = "1" ]; then echo "OK"; OK=1; break; fi
+            echo "Not available yet (npm=$NPM_OK pypi=$PYPI_OK xcf=$XCF_OK), retrying in 10s... ($i/240)"; sleep 10
           done
+          if [ "$OK" != "1" ]; then
+            echo "::error::Timed out after 40 min waiting for registries (npm=$NPM_OK pypi=$PYPI_OK xcf=$XCF_OK). Re-run this workflow once the publish jobs have all finished."
+            exit 1
+          fi
 
       - name: Pin Swift Package.swift to the released xcframework
         id: swift_pin
