@@ -1244,6 +1244,16 @@ class GeneratedExamples {
         }
     }
 
+    @Suppress("unused") private suspend fun _example_scene_scene_get_pass() {
+
+        val scene = Scene()
+        scene.addPass(Pass("backdrop"))
+        scene.addPass(Pass("geometry"))
+
+        val second = scene.getPass(1).expect("two passes were added")
+        second.loadPrevious()
+    }
+
     @Suppress("unused") private suspend fun _example_scene_scene_lights() {
 
         val scene = Scene.load("path/to/model.glb")
@@ -1252,6 +1262,19 @@ class GeneratedExamples {
         for (light in scene.lights()) {
             val current = light.intensity()
             light.setIntensity(current * 0.5f)
+        }
+    }
+
+    @Suppress("unused") private suspend fun _example_scene_scene_list_passes() {
+
+        val mesh = Mesh()
+        mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set("uv0", floatArrayOf(0.5f, 1.0f)), )
+        val scene = Scene()
+        scene.add(Model(mesh, Material.pbr()))
+
+        // Compose, don't clear: keep whatever the previous pass drew.
+        for (pass in scene.listPasses()) {
+            pass.loadPrevious()
         }
     }
 
@@ -1288,6 +1311,83 @@ class GeneratedExamples {
 
         val scene = Scene()
         // scene is empty; add Models / Cameras / Lights with """scene.add(...)""".
+    }
+
+    @Suppress("unused") private suspend fun _example_scene_scene_no_default_camera() {
+
+        val mesh = Mesh()
+        mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set("uv0", floatArrayOf(0.5f, 1.0f)), )
+        val scene = Scene()
+        scene.add(Model(mesh, Material.pbr()))
+
+        scene.noDefaultCamera()
+    }
+
+    @Suppress("unused") private suspend fun _example_scene_scene_no_default_light() {
+
+        val mesh = Mesh()
+        mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set("uv0", floatArrayOf(0.5f, 1.0f)), )
+        val scene = Scene()
+        scene.add(Model(mesh, Material.pbr()))
+
+        scene.noDefaultLight()
+    }
+
+    @Suppress("unused") private suspend fun _example_scene_scene_no_defaults() {
+
+        val mesh = Mesh()
+        mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set("uv0", floatArrayOf(0.5f, 1.0f)), )
+        val scene = Scene()
+        scene.add(Model(mesh, Material.pbr()))
+
+        // The host overrides every uniform, so suppress FC's stock camera + light.
+        scene.noDefaults()
+        for (pass in scene.listPasses()) {
+            pass.loadPrevious()
+        }
+    }
+
+    @Suppress("unused") private suspend fun _example_scene_scene_remove_pass() {
+
+        val scene = Scene()
+        val backdrop = Pass("backdrop")
+        val overlay = Pass("overlay")
+        scene.addPass(backdrop)
+        scene.addPass(overlay)
+
+        // Drop the backdrop; the overlay stays.
+        val removed = scene.removePass(backdrop)
+    }
+
+    @Suppress("unused") private suspend fun _example_scene_scene_set_default_camera() {
+
+        val mesh = Mesh()
+        mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set("uv0", floatArrayOf(0.5f, 1.0f)), )
+        val scene = Scene()
+        scene.add(Model(mesh, Material.pbr()))
+
+        val camera = Camera.perspective(1.047f, 16.0f / 9.0f, 0.1f, 100.0f).lookAt(listOf(0.0f, 1.5f, 4.0f), listOf(0.0f, 0.0f, 0.0f), listOf(0.0f, 1.0f, 0.0f))
+        scene.setDefaultCamera(camera)
+    }
+
+    @Suppress("unused") private suspend fun _example_scene_scene_set_default_light() {
+
+        val mesh = Mesh()
+        mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set("uv0", floatArrayOf(0.5f, 1.0f)), )
+        val scene = Scene()
+        scene.add(Model(mesh, Material.pbr()))
+
+        val key = Light.directional(listOf(0.3f, -1.0f, -0.4f), listOf(1.0f, 0.95f, 0.9f))
+        scene.setDefaultLight(key)
+    }
+
+    @Suppress("unused") private suspend fun _example_scene_scene_set_passes() {
+
+        val scene = Scene()
+        scene.addPass(Pass("scratch"))
+
+        // Swap in a deliberate order: shadow map, then geometry, then overlay.
+        scene.setPasses(arrayOf(Pass("shadow"), Pass("geometry"), Pass("overlay"),))
     }
 
     @Suppress("unused") private suspend fun _example_targets_target_Target() {

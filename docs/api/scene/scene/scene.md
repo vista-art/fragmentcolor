@@ -21,9 +21,26 @@ underneath and don't leak into the call site.
 
 `Scene::new()` is synchronous and takes no `Renderer`. The first time a
 [SceneObject](https://fragmentcolor.org/api/scene) is added, the Scene
-creates a default Pass to absorb it. The first time the Scene is rendered,
-the underlying GPU resources initialise on demand. This is the lazy-init
-pattern the rest of FragmentColor follows.
+creates a Pass to absorb it. The first time the Scene is rendered, the
+underlying GPU resources initialise on demand. This is the lazy-init pattern
+the rest of FragmentColor follows.
+
+## An open, composable pass graph
+
+A `Scene` owns one ordered `Vec<Pass>`. Loaders, builders, and your own code
+all append into the same list, and the renderer walks it in order. No pass is
+privileged: the one that absorbs `scene.add(&model)` geometry is an ordinary
+member, slotted in at the point of your first `add`. After
+[`Scene::load`](https://fragmentcolor.org/api/scene/scene/load) the whole
+graph is in your hands. Read it with
+[`list_passes`](https://fragmentcolor.org/api/scene/scene/list_passes) or
+[`get_pass`](https://fragmentcolor.org/api/scene/scene/get_pass), restructure
+it with [`add_pass`](https://fragmentcolor.org/api/scene/scene/add_pass),
+[`remove_pass`](https://fragmentcolor.org/api/scene/scene/remove_pass), and
+[`set_passes`](https://fragmentcolor.org/api/scene/scene/set_passes), and
+configure each pass (`load_previous`, clear color, viewport, target) the same
+way you would a hand-built one. That makes a loaded Scene compose onto any
+other Pass in a frame, instead of clearing whatever it lands on.
 
 ## Default Camera + Light at render time
 
@@ -39,17 +56,30 @@ Scene injects sensible defaults when the user hasn't supplied them:
   fill so a front-facing quad reads as lit rather than silhouetted.
 
 These only fire when no user Camera / Light has been added; as soon as you
-add your own, your values win.
+add your own, your values win. A composition caller that drives every uniform
+from the host can suppress them with
+[`no_defaults`](https://fragmentcolor.org/api/scene/scene/no_defaults) (or the
+per-kind `no_default_camera` / `no_default_light`), or swap the stock values
+out with `set_default_camera` / `set_default_light`.
 
 ## Methods
 
-| name        | what it does                                                |
-| ----------- | ----------------------------------------------------------- |
-| `new`       | construct an empty Scene                                    |
-| `load`      | construct a Scene from a 3D file (glTF `.gltf` / `.glb` path or in-memory `.glb` bytes) |
-| `add`       | absorb a `SceneObject` (Model / Camera / Light / custom)    |
-| `add_pass`  | absorb a user-built [Pass](https://fragmentcolor.org/api/core/pass) for explicit pipeline ordering (shadows, post-fx, …) |
-| `ambient`   | set the ambient color that lifts every Material's base lighting |
+| name                 | what it does                                                |
+| -------------------- | ---------------------------------------------------------- |
+| `new`                | construct an empty Scene                                   |
+| `load`               | construct a Scene from a 3D file (glTF `.gltf` / `.glb` path or in-memory `.glb` bytes) |
+| `add`                | absorb a `SceneObject` (Model / Camera / Light / custom)   |
+| `add_pass`           | append a user-built [Pass](https://fragmentcolor.org/api/core/pass) to the graph |
+| `remove_pass`        | remove a Pass from the graph by handle                     |
+| `get_pass`           | read one Pass by index, in render order                    |
+| `list_passes`        | snapshot the whole pass graph in render order              |
+| `set_passes`         | replace the whole pass graph with a new ordered list       |
+| `no_defaults`        | suppress default-Camera and default-Light injection        |
+| `no_default_camera`  | suppress default-Camera injection only                     |
+| `no_default_light`   | suppress default-Light injection only                      |
+| `set_default_camera` | inject your own Camera instead of the stock default        |
+| `set_default_light`  | inject your own Light instead of the stock default         |
+| `ambient`            | set the ambient color that lifts every Material's base lighting |
 
 ## Example
 
