@@ -18,9 +18,14 @@ let scene = Scene::new();
 scene.add_pass(&Pass::new("backdrop"));
 scene.add_pass(&Pass::new("geometry"));
 
-let second = scene.get_pass(1).expect("two passes were added");
-second.load_previous();
+// Fetch the second pass (index 1) to reconfigure it. An out-of-range
+// index returns None instead.
+let geometry = scene.get_pass(1);
+# assert!(geometry.is_some());
 # assert!(scene.get_pass(2).is_none());
+# if let Some(pass) = geometry {
+#     pass.load_previous();
+# }
 # Ok(())
 # }
 ```

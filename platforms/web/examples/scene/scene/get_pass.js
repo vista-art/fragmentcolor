@@ -4,5 +4,6 @@ const scene = new Scene();
 scene.addPass(new Pass("backdrop"));
 scene.addPass(new Pass("geometry"));
 
-const second = scene.getPass(1).expect("two passes were added");
-second.loadPrevious();
+// Fetch the second pass (index 1) to reconfigure it. An out-of-range
+// index returns null instead.
+const geometry = scene.getPass(1);

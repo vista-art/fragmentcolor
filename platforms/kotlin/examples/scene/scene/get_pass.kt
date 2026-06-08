@@ -4,5 +4,6 @@ val scene = Scene()
 scene.addPass(Pass("backdrop"))
 scene.addPass(Pass("geometry"))
 
-val second = scene.getPass(1).expect("two passes were added")
-second.loadPrevious()
+// Fetch the second pass (index 1) to reconfigure it. An out-of-range
+// index returns null instead.
+val geometry = scene.getPass(1)

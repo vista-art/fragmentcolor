@@ -1391,13 +1391,18 @@ let scene = Scene::new();
 scene.add_pass(&Pass::new("backdrop"));
 scene.add_pass(&Pass::new("geometry"));
 
-let second = scene.get_pass(1).expect("two passes were added");
-second.load_previous();
+// Fetch the second pass (index 1) to reconfigure it. An out-of-range
+// index returns None instead.
+let geometry = scene.get_pass(1);
+assert!(geometry.is_some());
 assert!(scene.get_pass(2).is_none());
+if let Some(pass) = geometry {
+    pass.load_previous();
+}
 Ok(())
 }
 `}
-lang="rust" meta="collapse={1-1, 10-12}"
+lang="rust" meta="collapse={1-1, 11-17}"
 />
 
 </TabItem>
@@ -1411,8 +1416,9 @@ const scene = new Scene();
 scene.addPass(new Pass("backdrop"));
 scene.addPass(new Pass("geometry"));
 
-const second = scene.getPass(1).expect("two passes were added");
-second.loadPrevious();
+// Fetch the second pass (index 1) to reconfigure it. An out-of-range
+// index returns null instead.
+const geometry = scene.getPass(1);
 `}
 lang="js"
 />
@@ -1428,8 +1434,9 @@ scene = Scene()
 scene.add_pass(Pass("backdrop"))
 scene.add_pass(Pass("geometry"))
 
-second = scene.get_pass(1).expect("two passes were added")
-second.load_previous()
+# Fetch the second pass (index 1) to reconfigure it. An out-of-range
+# index returns None instead.
+geometry = scene.get_pass(1)
 `}
 lang="python"
 />
@@ -1445,8 +1452,9 @@ let scene = Scene()
 scene.addPass(Pass("backdrop"))
 scene.addPass(Pass("geometry"))
 
-let second = scene.getPass(1).expect("two passes were added")
-second.loadPrevious()
+// Fetch the second pass (index 1) to reconfigure it. An out-of-range
+// index returns nil instead.
+let geometry = scene.getPass(1)
 `}
 lang="swift"
 />
@@ -1462,8 +1470,9 @@ val scene = Scene()
 scene.addPass(Pass("backdrop"))
 scene.addPass(Pass("geometry"))
 
-val second = scene.getPass(1).expect("two passes were added")
-second.loadPrevious()
+// Fetch the second pass (index 1) to reconfigure it. An out-of-range
+// index returns null instead.
+val geometry = scene.getPass(1)
 `}
 lang="kotlin"
 />

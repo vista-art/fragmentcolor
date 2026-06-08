@@ -4,5 +4,6 @@ scene = Scene()
 scene.add_pass(Pass("backdrop"))
 scene.add_pass(Pass("geometry"))
 
-second = scene.get_pass(1).expect("two passes were added")
-second.load_previous()
+# Fetch the second pass (index 1) to reconfigure it. An out-of-range
+# index returns None instead.
+geometry = scene.get_pass(1)
