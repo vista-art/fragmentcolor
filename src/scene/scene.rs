@@ -7,15 +7,27 @@
 //! [`Renderer`](crate::Renderer) in a single call.
 //!
 //! `Scene::new()` is sync — no `Renderer` argument, no async, nothing to
-//! await. The first time a SceneObject is added the Scene allocates a
-//! default Pass to absorb it; the first time the Scene is rendered the
-//! underlying GPU resources initialise on demand. Same lazy-init pattern
-//! the rest of FragmentColor follows.
+//! await. The first time a SceneObject is added the Scene allocates a Pass
+//! to absorb it; the first time the Scene is rendered the underlying GPU
+//! resources initialise on demand. Same lazy-init pattern the rest of
+//! FragmentColor follows.
+//!
+//! A Scene owns one ordered `Vec<Pass>`. Loaders, builders, and user code
+//! all append into the same vec, and `Renderable for Scene` iterates it in
+//! order. There's no privileged "default" pass: the pass that absorbs
+//! `Scene::add` objects is an ordinary member of the vec, and the CRUD
+//! surface (`add_pass`, `remove_pass`, `get_pass`, `list_passes`,
+//! `set_passes`) lets the caller read, append, reorder, or replace the
+//! whole graph — the same composability every layer below `Scene` already
+//! has.
 //!
 //! When the user has added Models but no Camera or Light, the Scene injects
 //! sensible defaults at render time so the "hello world" path renders
 //! something recognisable. As soon as you add your own Camera / Light, the
-//! defaults stop firing.
+//! defaults stop firing. Composition callers that drive every uniform
+//! themselves can turn the injection off with `no_defaults` (or the
+//! per-kind `no_default_camera` / `no_default_light`), or replace the stock
+//! values with `set_default_camera` / `set_default_light`.
 
 use lsp_doc::lsp_doc;
 use parking_lot::RwLock;
@@ -40,17 +52,34 @@ pub struct Scene {
 
 #[derive(Debug)]
 pub(crate) struct SceneInner {
-    /// Lazy default Pass — created on the first `Scene::add` so an empty
-    /// Scene allocates no GPU bookkeeping at all.
-    pub(crate) default_pass: RwLock<Option<Pass>>,
-    /// Pre-passes added via `Scene::add_pass`. Rendered in insertion order
-    /// *before* the default Pass.
-    pub(crate) extra_passes: RwLock<Vec<Pass>>,
+    /// The Scene's ordered pass graph. Loaders, builders, `add_pass`, and
+    /// the lazily-created absorb Pass all push into this one vec;
+    /// `Renderable for Scene` iterates it in order. Empty until the first
+    /// `add` / `add_pass`, so a fresh Scene allocates no GPU bookkeeping.
+    pub(crate) passes: RwLock<Vec<Pass>>,
+    /// Handle to the Pass inside `passes` that absorbs `Scene::add` objects
+    /// (Models / Cameras / Lights). Created lazily on the first `add` and
+    /// appended to `passes` at that point, so it keeps its insertion-order
+    /// position relative to any `add_pass` calls. `None` until then, and
+    /// cleared again if the caller removes it from the graph via
+    /// `remove_pass` / `set_passes`.
+    pub(crate) absorb_pass: RwLock<Option<Pass>>,
     /// Sticky once-set flags so the default-Camera / default-Light injection
     /// at `passes()` time only fires once and only when the user hasn't
     /// supplied their own.
     pub(crate) has_camera: RwLock<bool>,
     pub(crate) has_light: RwLock<bool>,
+    /// User-facing injection toggles (both default `true`). Cleared by
+    /// `no_defaults` / `no_default_camera` / `no_default_light` so a
+    /// composition caller that overrides every uniform never gets FC's
+    /// stock Camera / Light injected on top.
+    pub(crate) inject_camera: RwLock<bool>,
+    pub(crate) inject_light: RwLock<bool>,
+    /// Optional caller-supplied replacements for the stock default Camera /
+    /// Light. Set via `set_default_camera` / `set_default_light`; consumed
+    /// by the injection path at first render in place of FC's stock values.
+    pub(crate) default_camera: RwLock<Option<Camera>>,
+    pub(crate) default_light: RwLock<Option<Light>>,
     /// Scene-wide ambient color (`lights.ambient` in the PBR shader). Set
     /// via `Scene::ambient`; cached so Models added afterwards inherit it.
     pub(crate) ambient: RwLock<Option<[f32; 3]>>,
@@ -84,10 +113,14 @@ impl Scene {
     pub fn new() -> Self {
         Self {
             inner: Arc::new(SceneInner {
-                default_pass: RwLock::new(None),
-                extra_passes: RwLock::new(Vec::new()),
+                passes: RwLock::new(Vec::new()),
+                absorb_pass: RwLock::new(None),
                 has_camera: RwLock::new(false),
                 has_light: RwLock::new(false),
+                inject_camera: RwLock::new(true),
+                inject_light: RwLock::new(true),
+                default_camera: RwLock::new(None),
+                default_light: RwLock::new(None),
                 ambient: RwLock::new(None),
                 models: RwLock::new(Vec::new()),
                 cameras: RwLock::new(Vec::new()),
@@ -98,7 +131,7 @@ impl Scene {
 
     #[lsp_doc("docs/api/scene/scene/add.md")]
     pub fn add<O: SceneObject + 'static>(&self, object: &O) -> Result<&Self, PassError> {
-        let pass = self.ensure_default_pass();
+        let pass = self.ensure_absorb_pass();
         pass.add(object)?;
         // Stash a typed Arc-clone of the object alongside the pass attach
         // so `scene.cameras()` / `lights()` / `models()` can hand back live
@@ -166,12 +199,7 @@ impl Scene {
         *self.inner.ambient.write() = Some(color);
         // Stamp onto every shader currently in the scene. Future Models
         // added via `Scene::add` pick the value up from the stash.
-        for pass in self.inner.extra_passes.read().iter() {
-            for shader in pass.object.shaders.read().iter() {
-                let _ = shader.set("lights.ambient", color);
-            }
-        }
-        if let Some(pass) = self.inner.default_pass.read().as_ref() {
+        for pass in self.inner.passes.read().iter() {
             for shader in pass.object.shaders.read().iter() {
                 let _ = shader.set("lights.ambient", color);
             }
@@ -181,64 +209,177 @@ impl Scene {
 
     #[lsp_doc("docs/api/scene/scene/add_pass.md")]
     pub fn add_pass(&self, pass: &Pass) -> &Self {
-        self.inner.extra_passes.write().push(pass.clone());
+        self.inner.passes.write().push(pass.clone());
         self
     }
 
-    /// Lazily build the default Pass on first `add`. The Pass is named so it
-    /// shows up identifiably in graphics debuggers (RenderDoc, Xcode GPU
-    /// frame capture).
-    fn ensure_default_pass(&self) -> Pass {
-        if let Some(p) = self.inner.default_pass.read().clone() {
-            return p;
+    #[lsp_doc("docs/api/scene/scene/remove_pass.md")]
+    pub fn remove_pass(&self, pass: &Pass) -> bool {
+        let removed = {
+            let mut passes = self.inner.passes.write();
+            match passes
+                .iter()
+                .position(|p| Arc::ptr_eq(&p.object, &pass.object))
+            {
+                Some(idx) => {
+                    passes.remove(idx);
+                    true
+                }
+                None => false,
+            }
+        };
+        // Forget the absorb handle if it pointed at the pass we just removed,
+        // so the next `add` rebuilds one instead of attaching to a Pass the
+        // graph no longer renders.
+        if removed
+            && let Some(absorb) = self.inner.absorb_pass.read().clone()
+            && Arc::ptr_eq(&absorb.object, &pass.object)
+        {
+            *self.inner.absorb_pass.write() = None;
         }
-        let mut slot = self.inner.default_pass.write();
-        // Re-check under the write lock in case a concurrent caller raced us.
+        removed
+    }
+
+    #[lsp_doc("docs/api/scene/scene/get_pass.md")]
+    pub fn get_pass(&self, index: usize) -> Option<Pass> {
+        self.inner.passes.read().get(index).cloned()
+    }
+
+    #[lsp_doc("docs/api/scene/scene/list_passes.md")]
+    pub fn list_passes(&self) -> Vec<Pass> {
+        self.inner.passes.read().clone()
+    }
+
+    #[lsp_doc("docs/api/scene/scene/set_passes.md")]
+    pub fn set_passes(&self, passes: Vec<Pass>) {
+        // Snapshot the absorb handle before swapping the vec so we can tell
+        // whether it survived the replacement.
+        let absorb = self.inner.absorb_pass.read().clone();
+        *self.inner.passes.write() = passes;
+        if let Some(absorb) = absorb {
+            let still_present = self
+                .inner
+                .passes
+                .read()
+                .iter()
+                .any(|p| Arc::ptr_eq(&p.object, &absorb.object));
+            if !still_present {
+                *self.inner.absorb_pass.write() = None;
+            }
+        }
+    }
+
+    #[lsp_doc("docs/api/scene/scene/no_defaults.md")]
+    pub fn no_defaults(&self) -> &Self {
+        *self.inner.inject_camera.write() = false;
+        *self.inner.inject_light.write() = false;
+        self
+    }
+
+    #[lsp_doc("docs/api/scene/scene/no_default_camera.md")]
+    pub fn no_default_camera(&self) -> &Self {
+        *self.inner.inject_camera.write() = false;
+        self
+    }
+
+    #[lsp_doc("docs/api/scene/scene/no_default_light.md")]
+    pub fn no_default_light(&self) -> &Self {
+        *self.inner.inject_light.write() = false;
+        self
+    }
+
+    #[lsp_doc("docs/api/scene/scene/set_default_camera.md")]
+    pub fn set_default_camera(&self, camera: &Camera) -> &Self {
+        *self.inner.default_camera.write() = Some(camera.clone());
+        // Naming a default camera is an explicit request to inject it, so
+        // re-arm injection even if `no_default_camera` ran earlier.
+        *self.inner.inject_camera.write() = true;
+        self
+    }
+
+    #[lsp_doc("docs/api/scene/scene/set_default_light.md")]
+    pub fn set_default_light(&self, light: &Light) -> &Self {
+        *self.inner.default_light.write() = Some(light.clone());
+        *self.inner.inject_light.write() = true;
+        self
+    }
+
+    /// Lazily build the absorb Pass on first `add` and append it to the
+    /// pass graph. The Pass is named so it shows up identifiably in graphics
+    /// debuggers (RenderDoc, Xcode GPU frame capture). If the caller dropped
+    /// a previously-built absorb Pass from the graph (via `remove_pass` /
+    /// `set_passes`), a fresh one is appended at the current end.
+    fn ensure_absorb_pass(&self) -> Pass {
+        let mut slot = self.inner.absorb_pass.write();
         if let Some(p) = slot.clone() {
-            return p;
+            let still_present = self
+                .inner
+                .passes
+                .read()
+                .iter()
+                .any(|x| Arc::ptr_eq(&x.object, &p.object));
+            if still_present {
+                return p;
+            }
         }
         let pass = Pass::new("Scene Default Pass");
+        self.inner.passes.write().push(pass.clone());
         *slot = Some(pass.clone());
         pass
     }
 
-    /// Inject default Camera / Light into the default Pass when the user
-    /// hasn't supplied their own. Idempotent — the sticky `has_camera` /
-    /// `has_light` flags flip on first injection, so subsequent `passes()`
-    /// calls are no-ops on this front. Defaults are also stashed into the
-    /// Scene's typed lanes so `scene.cameras()` / `scene.lights()` surface
-    /// them — anyone fishing the default camera back out to drive it per
-    /// frame should hit the getter and find it there.
+    /// Inject default Camera / Light into the absorb Pass when injection is
+    /// enabled and the user hasn't supplied their own. Idempotent — the
+    /// sticky `has_camera` / `has_light` flags flip on first injection, so
+    /// subsequent `passes()` calls are no-ops on this front. Defaults are
+    /// also stashed into the Scene's typed lanes so `scene.cameras()` /
+    /// `scene.lights()` surface them — anyone fishing the default camera
+    /// back out to drive it per frame should hit the getter and find it
+    /// there. With no absorb Pass (a pure `add_pass` composition) there's
+    /// nothing to attach to, so injection is skipped.
     fn ensure_render_defaults(&self) {
-        let Some(pass) = self.inner.default_pass.read().clone() else {
+        let needs_camera = *self.inner.inject_camera.read() && !*self.inner.has_camera.read();
+        let needs_light = *self.inner.inject_light.read() && !*self.inner.has_light.read();
+        if !needs_camera && !needs_light {
+            return;
+        }
+        let Some(pass) = self.inner.absorb_pass.read().clone() else {
             return;
         };
-        let needs_camera = !*self.inner.has_camera.read();
-        let needs_light = !*self.inner.has_light.read();
         if needs_camera {
-            // 60° vertical FOV, square aspect, a comfortable [0.1, 100] depth
-            // range. The eye sits five units back from the origin looking at
-            // it with conventional +Y up. Fine for offscreen test targets and
-            // for someone trying the API for the first time; users with a
-            // non-square target supply their own Camera.
-            let camera = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0).look_at(
-                [0.0, 0.0, 5.0],
-                [0.0, 0.0, 0.0],
-                [0.0, 1.0, 0.0],
-            );
+            // A caller-supplied default (set_default_camera) wins; otherwise
+            // fall back to the stock one: 60° vertical FOV, square aspect, a
+            // comfortable [0.1, 100] depth range, eye five units back from
+            // the origin looking at it with conventional +Y up. Fine for
+            // offscreen test targets and for someone trying the API for the
+            // first time; users with a non-square target supply their own
+            // Camera.
+            let camera = self.inner.default_camera.read().clone().unwrap_or_else(|| {
+                Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0).look_at(
+                    [0.0, 0.0, 5.0],
+                    [0.0, 0.0, 0.0],
+                    [0.0, 1.0, 0.0],
+                )
+            });
             // Camera::attach always succeeds — discard the never-error result.
             let _ = pass.add(&camera);
             self.inner.cameras.write().push(camera);
             *self.inner.has_camera.write() = true;
         }
         if needs_light {
-            // White directional light aimed roughly toward the default
-            // Camera's view direction (-Z), with a small Y tilt so a
+            // A caller-supplied default (set_default_light) wins; otherwise
+            // fall back to a white directional light aimed roughly toward the
+            // default Camera's view direction (-Z), with a small Y tilt so a
             // front-facing quad gets visible shading without becoming
             // perfectly flat. The -Z hit is what matters: a glTF mesh
             // imported with no lights and rendered through the default
             // Scene+Camera setup must read as lit, not silhouetted.
-            let light = Light::directional([0.0, -0.3, -1.0], [1.0, 1.0, 1.0]);
+            let light = self
+                .inner
+                .default_light
+                .read()
+                .clone()
+                .unwrap_or_else(|| Light::directional([0.0, -0.3, -1.0], [1.0, 1.0, 1.0]));
             let _ = pass.add(&light);
             self.inner.lights.write().push(light);
             *self.inner.has_light.write() = true;
@@ -250,24 +391,20 @@ impl Renderable for Scene {
     fn passes(&self) -> Arc<[Arc<PassObject>]> {
         self.ensure_render_defaults();
         let mut all: Vec<Arc<PassObject>> = Vec::new();
-        for pass in self.inner.extra_passes.read().iter() {
-            all.extend(pass.passes().iter().cloned());
-        }
-        if let Some(pass) = self.inner.default_pass.read().as_ref() {
+        for pass in self.inner.passes.read().iter() {
             all.extend(pass.passes().iter().cloned());
         }
         all.into()
     }
 
     fn roots(&self) -> Arc<[Arc<PassObject>]> {
-        let mut roots: Vec<Arc<PassObject>> = Vec::new();
-        for pass in self.inner.extra_passes.read().iter() {
-            roots.push(pass.object.clone());
-        }
-        if let Some(pass) = self.inner.default_pass.read().as_ref() {
-            roots.push(pass.object.clone());
-        }
-        roots.into()
+        self.inner
+            .passes
+            .read()
+            .iter()
+            .map(|pass| pass.object.clone())
+            .collect::<Vec<_>>()
+            .into()
     }
 }
 
@@ -292,36 +429,39 @@ mod tests {
     #[test]
     fn new_starts_empty() {
         let scene = Scene::new();
-        // No default pass exists until something gets added — stays cheap when
-        // the user wires up the scene from a config and only later attaches
+        // No passes exist until something gets added — stays cheap when the
+        // user wires up the scene from a config and only later attaches
         // anything.
-        assert!(scene.inner.default_pass.read().is_none());
-        assert!(scene.inner.extra_passes.read().is_empty());
+        assert!(scene.inner.passes.read().is_empty());
+        assert!(scene.inner.absorb_pass.read().is_none());
         // Nothing rendered, no defaults injected — passes() on an empty scene
         // returns an empty list.
         assert!(scene.passes().is_empty());
     }
 
     #[test]
-    fn add_creates_default_pass_lazily() {
+    fn add_creates_absorb_pass_lazily() {
         let scene = Scene::new();
         let model = Model::new(pbr_triangle_mesh(), Material::pbr());
         scene.add(&model).expect("add");
-        assert!(scene.inner.default_pass.read().is_some());
+        assert!(scene.inner.absorb_pass.read().is_some());
+        assert_eq!(scene.inner.passes.read().len(), 1);
     }
 
     #[test]
-    fn add_pass_appends_to_extras() {
+    fn add_pass_appends_to_graph() {
         let scene = Scene::new();
         let backdrop = Pass::new("backdrop");
         scene.add_pass(&backdrop);
         scene.add_pass(&Pass::new("shadow"));
-        assert_eq!(scene.inner.extra_passes.read().len(), 2);
+        assert_eq!(scene.inner.passes.read().len(), 2);
     }
 
     #[test]
-    fn passes_lists_extras_then_default() {
+    fn passes_render_in_insertion_order() {
         let scene = Scene::new();
+        // add_pass first, then a Model — the absorb Pass is appended after
+        // the backdrop, so the render order follows insertion order.
         let backdrop = Pass::new("backdrop");
         scene.add_pass(&backdrop);
         let model = Model::new(pbr_triangle_mesh(), Material::pbr());
@@ -329,12 +469,32 @@ mod tests {
 
         let list = scene.passes();
         assert!(list.len() >= 2, "got {} passes", list.len());
-        // Backdrop should come before the default.
+        // Backdrop was inserted first, so it renders first.
         assert_eq!(list[0].name.as_ref(), "backdrop");
-        // Default Pass is named "Scene Default Pass".
+        // The absorb Pass is named "Scene Default Pass".
         assert!(
             list.iter().any(|p| p.name.as_ref() == "Scene Default Pass"),
-            "expected default scene pass in {:?}",
+            "expected absorb pass in {:?}",
+            list.iter().map(|p| p.name.as_ref()).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn add_after_add_pass_follows_call_order() {
+        // The absorb Pass is no longer privileged: a Pass added after the
+        // geometry renders after it, unlike the old "extras always first"
+        // behaviour.
+        let scene = Scene::new();
+        let model = Model::new(pbr_triangle_mesh(), Material::pbr());
+        scene.add(&model).expect("add"); // absorb pass first
+        let overlay = Pass::new("overlay");
+        scene.add_pass(&overlay); // overlay second
+
+        let list = scene.passes();
+        assert_eq!(
+            list.last().map(|p| p.name.as_ref()),
+            Some("overlay"),
+            "overlay added last should render last, in {:?}",
             list.iter().map(|p| p.name.as_ref()).collect::<Vec<_>>()
         );
     }
@@ -410,7 +570,7 @@ mod tests {
         alias
             .add(&Model::new(pbr_triangle_mesh(), Material::pbr()))
             .expect("add via alias");
-        assert!(scene.inner.default_pass.read().is_some());
+        assert!(scene.inner.absorb_pass.read().is_some());
     }
 
     #[test]
@@ -500,5 +660,206 @@ mod tests {
             let image = target.get_image().await;
             assert_eq!(image.len(), 64 * 64 * 4);
         });
+    }
+
+    #[test]
+    fn list_and_get_pass_expose_the_graph() {
+        let scene = Scene::new();
+        let a = Pass::new("a");
+        let b = Pass::new("b");
+        scene.add_pass(&a).add_pass(&b);
+
+        let list = scene.list_passes();
+        assert_eq!(list.len(), 2);
+        assert_eq!(list[0].object.name.as_ref(), "a");
+        assert_eq!(list[1].object.name.as_ref(), "b");
+
+        assert_eq!(
+            scene.get_pass(1).map(|p| p.object.name.to_string()),
+            Some("b".to_string())
+        );
+        assert!(scene.get_pass(2).is_none(), "out-of-range returns None");
+    }
+
+    #[test]
+    fn remove_pass_takes_a_pass_out_of_the_graph() {
+        let scene = Scene::new();
+        let keep = Pass::new("keep");
+        let drop = Pass::new("drop");
+        scene.add_pass(&keep).add_pass(&drop);
+
+        assert!(scene.remove_pass(&drop), "removing a present pass returns true");
+        let names: Vec<String> = scene
+            .list_passes()
+            .iter()
+            .map(|p| p.object.name.to_string())
+            .collect();
+        assert_eq!(names, vec!["keep".to_string()]);
+
+        // Removing one that's already gone returns false.
+        assert!(!scene.remove_pass(&drop));
+    }
+
+    #[test]
+    fn remove_pass_forgets_the_absorb_handle() {
+        // After removing the absorb Pass, the next `add` must rebuild one
+        // instead of attaching to a Pass the graph no longer holds.
+        let scene = Scene::new();
+        scene
+            .add(&Model::new(pbr_triangle_mesh(), Material::pbr()))
+            .expect("add");
+        let absorb = scene.list_passes()[0].clone();
+        assert!(scene.remove_pass(&absorb));
+        assert!(scene.inner.absorb_pass.read().is_none());
+
+        scene
+            .add(&Model::new(pbr_triangle_mesh(), Material::pbr()))
+            .expect("add again");
+        assert_eq!(scene.list_passes().len(), 1, "a fresh absorb pass appears");
+    }
+
+    #[test]
+    fn set_passes_replaces_the_whole_graph() {
+        let scene = Scene::new();
+        scene.add_pass(&Pass::new("old"));
+        scene.set_passes(vec![Pass::new("x"), Pass::new("y"), Pass::new("z")]);
+        let names: Vec<String> = scene
+            .list_passes()
+            .iter()
+            .map(|p| p.object.name.to_string())
+            .collect();
+        assert_eq!(names, vec!["x".to_string(), "y".to_string(), "z".to_string()]);
+    }
+
+    #[test]
+    fn set_passes_drops_a_stale_absorb_handle() {
+        let scene = Scene::new();
+        scene
+            .add(&Model::new(pbr_triangle_mesh(), Material::pbr()))
+            .expect("add");
+        assert!(scene.inner.absorb_pass.read().is_some());
+        // Replace the graph with passes that don't include the absorb pass.
+        scene.set_passes(vec![Pass::new("fresh")]);
+        assert!(scene.inner.absorb_pass.read().is_none());
+    }
+
+    #[test]
+    fn set_passes_keeps_a_surviving_absorb_handle() {
+        let scene = Scene::new();
+        scene
+            .add(&Model::new(pbr_triangle_mesh(), Material::pbr()))
+            .expect("add");
+        let absorb = scene.list_passes()[0].clone();
+        // Reorder, keeping the absorb pass in the graph.
+        scene.set_passes(vec![Pass::new("before"), absorb]);
+        assert!(
+            scene.inner.absorb_pass.read().is_some(),
+            "absorb handle survives a reorder that keeps it"
+        );
+    }
+
+    #[test]
+    fn no_defaults_skips_camera_and_light_injection() {
+        let scene = Scene::new();
+        let material = Material::pbr();
+        let model = Model::new(pbr_triangle_mesh(), material.clone());
+        scene.add(&model).expect("add");
+        scene.no_defaults();
+
+        let _ = scene.passes();
+        // Neither default was injected, so the typed lanes stay empty and the
+        // shader never received a camera position.
+        assert!(scene.cameras().is_empty());
+        assert!(scene.lights().is_empty());
+        assert!(
+            material.shader().get::<[f32; 3]>("camera.position").is_err(),
+            "no default camera should have written camera.position"
+        );
+    }
+
+    #[test]
+    fn no_default_camera_keeps_default_light() {
+        let scene = Scene::new();
+        let model = Model::new(pbr_triangle_mesh(), Material::pbr());
+        scene.add(&model).expect("add");
+        scene.no_default_camera();
+
+        let _ = scene.passes();
+        assert!(scene.cameras().is_empty(), "camera injection is off");
+        assert_eq!(scene.lights().len(), 1, "light injection still fires");
+    }
+
+    #[test]
+    fn no_default_light_keeps_default_camera() {
+        let scene = Scene::new();
+        let model = Model::new(pbr_triangle_mesh(), Material::pbr());
+        scene.add(&model).expect("add");
+        scene.no_default_light();
+
+        let _ = scene.passes();
+        assert_eq!(scene.cameras().len(), 1, "camera injection still fires");
+        assert!(scene.lights().is_empty(), "light injection is off");
+    }
+
+    #[test]
+    fn set_default_camera_injects_the_override() {
+        let scene = Scene::new();
+        let material = Material::pbr();
+        let model = Model::new(pbr_triangle_mesh(), material.clone());
+        scene.add(&model).expect("add");
+
+        let custom = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0).look_at(
+            [4.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+        );
+        scene.set_default_camera(&custom);
+
+        let _ = scene.passes();
+        let pos: [f32; 3] = material
+            .shader()
+            .get("camera.position")
+            .expect("camera.position");
+        assert_eq!(pos, [4.0, 0.0, 0.0], "the override camera was injected");
+    }
+
+    #[test]
+    fn set_default_light_injects_the_override() {
+        let scene = Scene::new();
+        let material = Material::pbr();
+        let model = Model::new(pbr_triangle_mesh(), material.clone());
+        scene.add(&model).expect("add");
+
+        let custom = Light::directional([0.0, -1.0, 0.0], [0.2, 0.4, 0.6]);
+        scene.set_default_light(&custom);
+
+        let _ = scene.passes();
+        let color: [f32; 3] = material
+            .shader()
+            .get("lights.lights[0].color")
+            .expect("light color");
+        assert_eq!(color, [0.2, 0.4, 0.6], "the override light was injected");
+    }
+
+    #[test]
+    fn set_default_camera_rearms_after_no_default_camera() {
+        // no_default_camera turns injection off; a later set_default_camera
+        // is an explicit request, so it re-arms injection.
+        let scene = Scene::new();
+        let material = Material::pbr();
+        let model = Model::new(pbr_triangle_mesh(), material.clone());
+        scene.add(&model).expect("add");
+
+        scene.no_default_camera();
+        let custom = Camera::perspective(60.0_f32.to_radians(), 1.0, 0.1, 100.0).look_at(
+            [0.0, 6.0, 0.0],
+            [0.0, 0.0, 0.0],
+            [0.0, 0.0, -1.0],
+        );
+        scene.set_default_camera(&custom);
+
+        let _ = scene.passes();
+        let pos: [f32; 3] = material.shader().get("camera.position").unwrap();
+        assert_eq!(pos, [0.0, 6.0, 0.0]);
     }
 }

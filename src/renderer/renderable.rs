@@ -33,8 +33,8 @@ pub enum RenderableHandle {
     Shader(Arc<crate::Shader>),
     Pass(Arc<crate::Pass>),
     Mesh(Arc<crate::Mesh>),
-    /// Top-level [`Scene`](crate::Scene) — emits its pre-passes followed
-    /// by the default Pass that absorbs the scene's `SceneObject`s.
+    /// Top-level [`Scene`](crate::Scene) — emits its ordered pass graph,
+    /// including the Pass that absorbs the scene's `SceneObject`s.
     Scene(Arc<crate::Scene>),
     /// Iterable of `Pass` instances — emits passes in order.
     Passes(Vec<Arc<crate::Pass>>),
