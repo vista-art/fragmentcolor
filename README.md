@@ -20,7 +20,7 @@ Check the website for the Getting Started guide and full reference:
 
 ```toml
 [dependencies]
-fragmentcolor = "0.12.1"
+fragmentcolor = "0.12.2"
 ```
 
 We also support JavaScript and Python:
