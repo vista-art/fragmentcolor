@@ -15,6 +15,10 @@ One behaviour change: passes render in list order, so a pass added after the geo
 
 Every method ships on Rust, Python, JavaScript, Swift, and Kotlin.
 
+## 0.12.1: Publishing fix
+
+A patch release that gets 0.12.0 onto crates.io. The 0.12.0 upload failed because `build.rs` generated the `Scene::load` example fixtures into the source tree, and `cargo publish` rebuilds the crate in a clean directory and rejects a build that writes there. The fixtures (`path/to/model.glb`, `path/to/model.gltf`, and the web healthcheck copy) now ship as committed static assets, and the build no longer writes them. There are no API changes.
+
 ## 0.12.0: 3D scenes: glTF loading, PBR materials, and a texture pipeline
 
 Large release that implements support for 3D assets.
