@@ -27,17 +27,17 @@ fun Scene.add(light: Light) {
 
 /** Add a [Model] to the Pass at [index]. */
 fun Scene.addTo(index: Int, model: Model) {
-    addTo(PassTarget.Index(index.toULong()), SceneObjectHandle.Model(model))
+    addTo(PassTarget.Index(index.toLong()), SceneObjectHandle.Model(model))
 }
 
 /** Add a [Camera] to the Pass at [index]. */
 fun Scene.addTo(index: Int, camera: Camera) {
-    addTo(PassTarget.Index(index.toULong()), SceneObjectHandle.Camera(camera))
+    addTo(PassTarget.Index(index.toLong()), SceneObjectHandle.Camera(camera))
 }
 
 /** Add a [Light] to the Pass at [index]. */
 fun Scene.addTo(index: Int, light: Light) {
-    addTo(PassTarget.Index(index.toULong()), SceneObjectHandle.Light(light))
+    addTo(PassTarget.Index(index.toLong()), SceneObjectHandle.Light(light))
 }
 
 /** Add a [Model] to the Pass named [name]. */
@@ -58,8 +58,8 @@ fun Scene.addTo(name: String, light: Light) {
 // Numeric / collection convenience overloads so example code can pass an Int
 // index and an array literal without converting to ULong / List by hand.
 
-/** Read a Pass by [index] (Int convenience over the ULong binding). */
-fun Scene.getPass(index: Int): Pass? = getPass(index.toULong())
+/** Read a Pass by [index] (Int convenience over the Long binding). */
+fun Scene.getPass(index: Int): Pass? = getPass(index.toLong())
 
 /** Replace the whole pass graph from an array of passes. */
 fun Scene.setPasses(passes: Array<Pass>) {

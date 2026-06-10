@@ -12,9 +12,15 @@ use crate::{Material, Mesh, Pass};
 /// name. Uniffi can't marshal `impl Into<PassRef>`, so Swift / Kotlin pick a
 /// variant; the `Scene+Extensions` / `SceneExtensions` files wrap it behind
 /// natural `addTo(index, object)` / `addTo(name, object)` overloads.
+///
+/// The index is a signed `i64`, not `u64`: Kotlin rejects a bare integer
+/// literal in a `ULong` position ("conversion of signed constants to unsigned
+/// ones is prohibited"), so `scene.getPass(1)` / `scene.addTo(0, ...)` would
+/// not compile against an unsigned binding. A negative index addresses no
+/// pass and resolves to `None` / `PassNotFound`.
 #[derive(Debug, Clone, uniffi::Enum)]
 pub enum PassTarget {
-    Index(u64),
+    Index(i64),
     Name(String),
 }
 
@@ -378,9 +384,9 @@ impl Scene {
 
     #[uniffi::method(name = "getPass")]
     #[lsp_doc("docs/api/scene/scene/get_pass.md")]
-    pub fn get_pass_mobile(self: Arc<Self>, index: u64) -> Option<Arc<Pass>> {
-        // An index past usize::MAX can't address a pass; treat it as
-        // out-of-range rather than truncating on a 32-bit target.
+    pub fn get_pass_mobile(self: Arc<Self>, index: i64) -> Option<Arc<Pass>> {
+        // A negative index (or one past usize::MAX) can't address a pass;
+        // treat it as out-of-range rather than truncating.
         let index = usize::try_from(index).ok()?;
         self.get_pass(index).map(Arc::new)
     }
@@ -413,7 +419,7 @@ impl Scene {
                     FragmentColorError::Render("Scene.addTo: index out of range".into())
                 })?;
                 crate::scene::PassRef::Index(index)
-            }
+            } // negative / oversized indices fail try_from above
             PassTarget::Name(name) => crate::scene::PassRef::Name(name),
         };
         let result = match object {

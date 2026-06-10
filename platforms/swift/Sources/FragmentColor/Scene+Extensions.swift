@@ -44,7 +44,7 @@ extension Scene {
     public func removePass(_ pass: Pass) -> Bool {
         return removePass(pass: pass)
     }
-    public func getPass(_ index: UInt64) -> Pass? {
+    public func getPass(_ index: Int64) -> Pass? {
         return getPass(index: index)
     }
     public func findPass(_ name: String) -> Pass? {
@@ -63,13 +63,13 @@ extension Scene {
     // add_to overloads: target a Pass by index or name, passing the concrete
     // object type directly instead of wrapping it in PassTarget /
     // SceneObjectHandle.
-    public func addTo(_ index: UInt64, _ model: Model) throws {
+    public func addTo(_ index: Int64, _ model: Model) throws {
         try addTo(target: .index(index), object: .model(model))
     }
-    public func addTo(_ index: UInt64, _ camera: Camera) throws {
+    public func addTo(_ index: Int64, _ camera: Camera) throws {
         try addTo(target: .index(index), object: .camera(camera))
     }
-    public func addTo(_ index: UInt64, _ light: Light) throws {
+    public func addTo(_ index: Int64, _ light: Light) throws {
         try addTo(target: .index(index), object: .light(light))
     }
     public func addTo(_ name: String, _ model: Model) throws {
