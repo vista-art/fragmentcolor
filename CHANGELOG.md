@@ -1,45 +1,19 @@
 # Changelog
 
-## 0.12.2: Composable Scene — an open pass graph
+## 0.12.2: Composable Scene
 
-`Scene` was the one layer that didn't compose. It looked like a thin convenience over `Pass` / `Renderer`, but in practice it sealed its passes behind a private "default Pass + extra passes" split: you could read what landed inside with `scene.models()` / `cameras()` / `lights()`, but you couldn't touch the pass graph itself. As soon as a loaded Scene had to render *on top of* another Pass, the default Pass cleared whatever was underneath, and the only escape was to drop to the substrate, pull the Models out, and rebuild the Pass by hand.
+`Scene` now exposes its render passes the way `Pass` and `Renderer` already do. A scene owns one ordered list of passes that you can read, append, remove, reorder, and replace, so a scene loaded from glTF composes on top of another pass in a frame instead of clearing it. `Scene::load(...)` is unchanged and still returns a renderable scene with sensible defaults.
 
-This release makes `Scene` transparent the same way every layer below it already is. A Scene now owns one ordered `Vec<Pass>`. Loaders, builders, and user code all append into the same vec, and `Renderable for Scene` iterates it in order. No pass is privileged in render order: the default pass that `scene.add(&model)` routes geometry into is an ordinary member, slotted in at the point of the first `add`. After `Scene::load`, the whole graph is in the caller's hands to read, append, remove, reorder, replace, and configure (`load_previous`, clear color, viewport, target).
+What's new:
 
-Standalone-viewer convenience is unchanged: `Scene::load(SceneSource::gltf(...))?` still returns a fully renderable Scene with sensible defaults injected. The convenience is now opt-in defaults plus a loader appending into the pass vec, not a sealed box.
+- Read and edit the pass graph with `add_pass`, `remove_pass`, `get_pass`, `find_pass`, `list_passes`, and `set_passes`.
+- Add a `Model`, `Camera`, or `Light` to a chosen pass by index or name with `add_to`.
+- Decide whether the stock Camera and Light inject at first render with `no_defaults`, `no_default_camera`, `no_default_light`, `set_default_camera`, and `set_default_light`.
+- Read a pass's label with `Pass::name`.
 
-### Pass-graph CRUD
+One behaviour change: passes render in list order, so a pass added after the geometry now renders after it. A pass added before it (the common backdrop case) is unaffected.
 
-The private `default_pass: Option<Pass>` + `extra_passes: Vec<Pass>` split collapses into one `passes: Vec<Pass>`. The `default_pass` handle is kept, but now it only records which ordinary member of that vec `Scene::add` routes objects into (it's no longer a privileged pass that always renders last). The accessor surface is uniform and matches the rest of FragmentColor (`models()` / `lights()` already return Arc-shared snapshot `Vec`s, so the pass accessors do the same instead of the borrowed-slice shapes the original proposal sketched).
-
-- [x] **`Scene::add_pass(&Pass) -> &Self`** now appends to the single graph (behaviour: appends to the end, in insertion order).
-- [x] **`Scene::remove_pass(&Pass) -> bool`** removes by handle identity (`Arc::ptr_eq`); forgets the default-pass handle if it pointed at the removed pass, so the next `add` rebuilds one.
-- [x] **`Scene::get_pass(usize) -> Option<Pass>`** reads one pass by index in render order; `None` when out of range.
-- [x] **`Scene::list_passes() -> Vec<Pass>`** snapshots the whole graph in render order. The composition hook: walk it, `load_previous()` each, render.
-- [x] **`Scene::set_passes(Vec<Pass>)`** replaces the whole graph; keeps a surviving default-pass handle, drops a stale one.
-- [x] **Behaviour change:** there's no longer a privileged "default Pass" that always renders after `add_pass` passes. Render order follows insertion / vec order, so a Pass added *after* the geometry now renders after it. A Pass added *before* the geometry (the common backdrop case) is unaffected.
-
-### Default-injection control
-
-The stock default Camera + Light still inject at first render when the user supplied neither, but a composition caller that drives every uniform from the host can now opt out or substitute, instead of the old workaround of adding a throwaway Camera + Light just to flip the sticky flags.
-
-- [x] **`Scene::no_defaults() -> &Self`** suppresses both default-Camera and default-Light injection.
-- [x] **`Scene::no_default_camera() -> &Self` / `Scene::no_default_light() -> &Self`** opt out per kind.
-- [x] **`Scene::set_default_camera(&Camera) -> &Self` / `Scene::set_default_light(&Light) -> &Self`** inject the caller's own value instead of FC's stock one. Naming a default re-arms injection if a prior `no_default_*` turned it off. An explicit `scene.add(&camera)` still wins.
-
-### Targeting a Pass by index or name
-
-`scene.add(&obj)` routes into the default pass; once a scene holds more than one, you often want to pick the target. Index targeting already worked through `scene.get_pass(i)` plus the public `Pass::add`, so this rounds it out with name addressing and a one-call convenience.
-
-- [x] **`Pass::name() -> String`** reads a pass's name (the label from `Pass::new`, also what graphics debuggers show). Names aren't required unique.
-- [x] **`Scene::find_pass(&str) -> Option<Pass>`** is the name-addressed counterpart to `get_pass`; returns the first match in render order.
-- [x] **`Scene::add_to(impl Into<PassRef>, &obj) -> Result<&Self, PassError>`** adds a `SceneObject` to a specific Pass by index or name, with the same Scene-level bookkeeping as `add` (typed lanes, sticky injection flags, ambient stamp). An out-of-range index or unknown name returns the new `PassError::PassNotFound`. `PassRef` is `Into`-built from `usize` / `&str` / `String`; on mobile a `PassTarget` enum carries the same choice, and Swift / Kotlin `addTo(index, obj)` / `addTo(name, obj)` overloads wrap it.
-
-### Cross-platform parity, docs, tests
-
-- [x] **Bindings:** every new method exposed on Python (`remove_pass`, `get_pass`, `find_pass`, `list_passes`, `set_passes`, `add_to`, `no_defaults`, `no_default_camera`, `no_default_light`, `set_default_camera`, `set_default_light`, plus `Pass.name`), JS / wasm-bindgen (camelCase: `removePass`, `getPass`, `findPass`, `listPasses`, `setPasses`, `addTo`, `noDefaults`, `noDefaultCamera`, `noDefaultLight`, `setDefaultCamera`, `setDefaultLight`, `Pass.name`), and Swift / Kotlin via uniffi (same camelCase).
-- [x] **Docs:** one `docs/api/scene/scene/*.md` page per new method, plus rewrites of `scene.md` (the "open, composable pass graph" section + the methods table) and `add_pass.md` (the old "renders before the internal default Pass" claim is gone).
-- [x] **Tests:** the existing `scene.rs` suite updated for the unified graph, plus new coverage for each CRUD method (including stale-default-pass-handle handling on `remove_pass` / `set_passes`), name addressing (`find_pass`, `add_to` by index and name, unknown-target errors), and each injection switch (suppression, per-kind, override, and re-arm-after-opt-out).
+Every method ships on Rust, Python, JavaScript, Swift, and Kotlin.
 
 ## 0.12.0: 3D scenes: glTF loading, PBR materials, and a texture pipeline
 
