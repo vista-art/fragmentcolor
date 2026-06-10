@@ -34,7 +34,7 @@ pub enum RenderableHandle {
     Pass(Arc<crate::Pass>),
     Mesh(Arc<crate::Mesh>),
     /// Top-level [`Scene`](crate::Scene) — emits its ordered pass graph,
-    /// including the Pass that absorbs the scene's `SceneObject`s.
+    /// including the default Pass that holds the scene's `SceneObject`s.
     Scene(Arc<crate::Scene>),
     /// Iterable of `Pass` instances — emits passes in order.
     Passes(Vec<Arc<crate::Pass>>),

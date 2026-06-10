@@ -21,7 +21,7 @@ underneath and don't leak into the call site.
 
 `Scene::new()` is synchronous and takes no `Renderer`. The first time a
 [SceneObject](https://fragmentcolor.org/api/scene) is added, the Scene
-creates a Pass to absorb it. The first time the Scene is rendered, the
+creates a default Pass to hold it. The first time the Scene is rendered, the
 underlying GPU resources initialise on demand. This is the lazy-init pattern
 the rest of FragmentColor follows.
 
@@ -29,8 +29,8 @@ the rest of FragmentColor follows.
 
 A `Scene` owns one ordered `Vec<Pass>`. Loaders, builders, and your own code
 all append into the same list, and the renderer walks it in order. No pass is
-privileged: the one that absorbs `scene.add(&model)` geometry is an ordinary
-member, slotted in at the point of your first `add`. After
+privileged in render order: the default Pass that `scene.add(&model)` targets
+is an ordinary member, slotted in at the point of your first `add`. After
 [`Scene::load`](https://fragmentcolor.org/api/scene/scene/load) the whole
 graph is in your hands. Read it with
 [`list_passes`](https://fragmentcolor.org/api/scene/scene/list_passes) or
@@ -68,7 +68,7 @@ out with `set_default_camera` / `set_default_light`.
 | -------------------- | ---------------------------------------------------------- |
 | `new`                | construct an empty Scene                                   |
 | `load`               | construct a Scene from a 3D file (glTF `.gltf` / `.glb` path or in-memory `.glb` bytes) |
-| `add`                | absorb a `SceneObject` (Model / Camera / Light / custom)   |
+| `add`                | add a `SceneObject` (Model / Camera / Light / custom) to the default pass |
 | `add_pass`           | append a user-built [Pass](https://fragmentcolor.org/api/core/pass) to the graph |
 | `remove_pass`        | remove a Pass from the graph by handle                     |
 | `get_pass`           | read one Pass by index, in render order                    |

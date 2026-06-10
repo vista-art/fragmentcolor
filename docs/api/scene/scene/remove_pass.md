@@ -6,9 +6,9 @@ handle you pass in is matched against the graph by pointer, not by name.
 Returns `true` when a pass left the graph, `false` when the handle wasn't
 there.
 
-If the removed pass was the one absorbing [`Scene::add`](https://fragmentcolor.org/api/scene/scene/add)
-objects, the Scene forgets it. The next `add` builds a fresh absorb pass at
-the end of the graph.
+If the removed pass was the default pass that [`Scene::add`](https://fragmentcolor.org/api/scene/scene/add)
+routes objects into, the Scene forgets it. The next `add` builds a fresh
+default pass at the end of the graph.
 
 ## Example
 

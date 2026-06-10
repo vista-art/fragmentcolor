@@ -3,8 +3,8 @@
 Append a user-built [Pass](https://fragmentcolor.org/api/core/pass) to the
 scene's pass graph. A `Scene` owns one ordered list of passes, and `add_pass`
 pushes onto the end. Order is the order you build it: passes render in vec
-order, and the pass that absorbs `scene.add(&model)` geometry is an ordinary
-member of that list, slotted in at the point of your first `add`.
+order, and the default pass that holds `scene.add(&model)` geometry is an
+ordinary member of that list, slotted in at the point of your first `add`.
 
 That makes `add_pass` the hook for shadow maps, depth pre-passes, screen-space
 backdrops, and post-effects alike. Insert before your geometry for a backdrop,

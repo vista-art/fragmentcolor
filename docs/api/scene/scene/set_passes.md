@@ -7,9 +7,9 @@ rather hand over a fresh ordering than call
 [`add_pass`](https://fragmentcolor.org/api/scene/scene/add_pass) one at a
 time.
 
-If the pass that was absorbing [`Scene::add`](https://fragmentcolor.org/api/scene/scene/add)
-objects survives in the new list, the Scene keeps using it. If you drop it,
-the Scene forgets it and the next `add` builds a fresh one at the end.
+If the default pass that [`Scene::add`](https://fragmentcolor.org/api/scene/scene/add)
+routes objects into survives in the new list, the Scene keeps using it. If you
+drop it, the Scene forgets it and the next `add` builds a fresh one at the end.
 
 ## Example
 

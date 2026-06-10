@@ -32,7 +32,7 @@ underneath and don't leak into the call site.
 
 `Scene::new()` is synchronous and takes no `Renderer`. The first time a
 [SceneObject](/api/scene) is added, the Scene
-creates a Pass to absorb it. The first time the Scene is rendered, the
+creates a default Pass to hold it. The first time the Scene is rendered, the
 underlying GPU resources initialise on demand. This is the lazy-init pattern
 the rest of FragmentColor follows.
 
@@ -40,8 +40,8 @@ the rest of FragmentColor follows.
 
 A `Scene` owns one ordered `Vec<Pass>`. Loaders, builders, and your own code
 all append into the same list, and the renderer walks it in order. No pass is
-privileged: the one that absorbs `scene.add(&model)` geometry is an ordinary
-member, slotted in at the point of your first `add`. After
+privileged in render order: the default Pass that `scene.add(&model)` targets
+is an ordinary member, slotted in at the point of your first `add`. After
 [`Scene::load`](/api/scene/scene/load) the whole
 graph is in your hands. Read it with
 [`list_passes`](/api/scene/scene/list_passes) or
@@ -1073,8 +1073,8 @@ lang="kotlin"
 Append a user-built [Pass](/api/core/pass) to the
 scene's pass graph. A `Scene` owns one ordered list of passes, and `add_pass`
 pushes onto the end. Order is the order you build it: passes render in vec
-order, and the pass that absorbs `scene.add(&model)` geometry is an ordinary
-member of that list, slotted in at the point of your first `add`.
+order, and the default pass that holds `scene.add(&model)` geometry is an
+ordinary member of that list, slotted in at the point of your first `add`.
 
 That makes `add_pass` the hook for shadow maps, depth pre-passes, screen-space
 backdrops, and post-effects alike. Insert before your geometry for a backdrop,
@@ -1254,9 +1254,9 @@ handle you pass in is matched against the graph by pointer, not by name.
 Returns `true` when a pass left the graph, `false` when the handle wasn't
 there.
 
-If the removed pass was the one absorbing [`Scene::add`](/api/scene/scene/add)
-objects, the Scene forgets it. The next `add` builds a fresh absorb pass at
-the end of the graph.
+If the removed pass was the default pass that [`Scene::add`](/api/scene/scene/add)
+routes objects into, the Scene forgets it. The next `add` builds a fresh
+default pass at the end of the graph.
 
 #### Example
 
@@ -1622,9 +1622,9 @@ rather hand over a fresh ordering than call
 [`add_pass`](/api/scene/scene/add_pass) one at a
 time.
 
-If the pass that was absorbing [`Scene::add`](/api/scene/scene/add)
-objects survives in the new list, the Scene keeps using it. If you drop it,
-the Scene forgets it and the next `add` builds a fresh one at the end.
+If the default pass that [`Scene::add`](/api/scene/scene/add)
+routes objects into survives in the new list, the Scene keeps using it. If you
+drop it, the Scene forgets it and the next `add` builds a fresh one at the end.
 
 #### Example
 

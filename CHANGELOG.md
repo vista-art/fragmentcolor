@@ -4,19 +4,19 @@
 
 `Scene` was the one layer that didn't compose. It looked like a thin convenience over `Pass` / `Renderer`, but in practice it sealed its passes behind a private "default Pass + extra passes" split: you could read what landed inside with `scene.models()` / `cameras()` / `lights()`, but you couldn't touch the pass graph itself. As soon as a loaded Scene had to render *on top of* another Pass, the default Pass cleared whatever was underneath, and the only escape was to drop to the substrate, pull the Models out, and rebuild the Pass by hand.
 
-This release makes `Scene` transparent the same way every layer below it already is. A Scene now owns one ordered `Vec<Pass>`. Loaders, builders, and user code all append into the same vec, and `Renderable for Scene` iterates it in order. No pass is privileged: the one that absorbs `scene.add(&model)` geometry is an ordinary member, slotted in at the point of the first `add`. After `Scene::load`, the whole graph is in the caller's hands to read, append, remove, reorder, replace, and configure (`load_previous`, clear color, viewport, target).
+This release makes `Scene` transparent the same way every layer below it already is. A Scene now owns one ordered `Vec<Pass>`. Loaders, builders, and user code all append into the same vec, and `Renderable for Scene` iterates it in order. No pass is privileged in render order: the default pass that `scene.add(&model)` routes geometry into is an ordinary member, slotted in at the point of the first `add`. After `Scene::load`, the whole graph is in the caller's hands to read, append, remove, reorder, replace, and configure (`load_previous`, clear color, viewport, target).
 
 Standalone-viewer convenience is unchanged: `Scene::load(SceneSource::gltf(...))?` still returns a fully renderable Scene with sensible defaults injected. The convenience is now opt-in defaults plus a loader appending into the pass vec, not a sealed box.
 
 ### Pass-graph CRUD
 
-The private `default_pass: Option<Pass>` + `extra_passes: Vec<Pass>` split collapses into one `passes: Vec<Pass>` plus an `absorb_pass` handle that tracks which member absorbs `Scene::add` objects. The accessor surface is uniform and matches the rest of FragmentColor (`models()` / `lights()` already return Arc-shared snapshot `Vec`s, so the pass accessors do the same instead of the borrowed-slice shapes the original proposal sketched).
+The private `default_pass: Option<Pass>` + `extra_passes: Vec<Pass>` split collapses into one `passes: Vec<Pass>`. The `default_pass` handle is kept, but now it only records which ordinary member of that vec `Scene::add` routes objects into (it's no longer a privileged pass that always renders last). The accessor surface is uniform and matches the rest of FragmentColor (`models()` / `lights()` already return Arc-shared snapshot `Vec`s, so the pass accessors do the same instead of the borrowed-slice shapes the original proposal sketched).
 
 - [x] **`Scene::add_pass(&Pass) -> &Self`** now appends to the single graph (behaviour: appends to the end, in insertion order).
-- [x] **`Scene::remove_pass(&Pass) -> bool`** removes by handle identity (`Arc::ptr_eq`); forgets the absorb handle if it pointed at the removed pass, so the next `add` rebuilds one.
+- [x] **`Scene::remove_pass(&Pass) -> bool`** removes by handle identity (`Arc::ptr_eq`); forgets the default-pass handle if it pointed at the removed pass, so the next `add` rebuilds one.
 - [x] **`Scene::get_pass(usize) -> Option<Pass>`** reads one pass by index in render order; `None` when out of range.
 - [x] **`Scene::list_passes() -> Vec<Pass>`** snapshots the whole graph in render order. The composition hook: walk it, `load_previous()` each, render.
-- [x] **`Scene::set_passes(Vec<Pass>)`** replaces the whole graph; keeps a surviving absorb handle, drops a stale one.
+- [x] **`Scene::set_passes(Vec<Pass>)`** replaces the whole graph; keeps a surviving default-pass handle, drops a stale one.
 - [x] **Behaviour change:** there's no longer a privileged "default Pass" that always renders after `add_pass` passes. Render order follows insertion / vec order, so a Pass added *after* the geometry now renders after it. A Pass added *before* the geometry (the common backdrop case) is unaffected.
 
 ### Default-injection control
@@ -31,7 +31,7 @@ The stock default Camera + Light still inject at first render when the user supp
 
 - [x] **Bindings:** every new method exposed on Python (`remove_pass`, `get_pass`, `list_passes`, `set_passes`, `no_defaults`, `no_default_camera`, `no_default_light`, `set_default_camera`, `set_default_light`), JS / wasm-bindgen (camelCase: `removePass`, `getPass`, `listPasses`, `setPasses`, `noDefaults`, `noDefaultCamera`, `noDefaultLight`, `setDefaultCamera`, `setDefaultLight`), and Swift / Kotlin via uniffi (same camelCase).
 - [x] **Docs:** one `docs/api/scene/scene/*.md` page per new method, plus rewrites of `scene.md` (the "open, composable pass graph" section + the methods table) and `add_pass.md` (the old "renders before the internal default Pass" claim is gone).
-- [x] **Tests:** the existing `scene.rs` suite updated for the unified graph, plus new coverage for each CRUD method (including stale-absorb-handle handling on `remove_pass` / `set_passes`) and each injection switch (suppression, per-kind, override, and re-arm-after-opt-out).
+- [x] **Tests:** the existing `scene.rs` suite updated for the unified graph, plus new coverage for each CRUD method (including stale-default-pass-handle handling on `remove_pass` / `set_passes`) and each injection switch (suppression, per-kind, override, and re-arm-after-opt-out).
 
 ## 0.12.0: 3D scenes: glTF loading, PBR materials, and a texture pipeline
 

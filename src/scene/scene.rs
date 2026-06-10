@@ -7,15 +7,15 @@
 //! [`Renderer`](crate::Renderer) in a single call.
 //!
 //! `Scene::new()` is sync — no `Renderer` argument, no async, nothing to
-//! await. The first time a SceneObject is added the Scene allocates a Pass
-//! to absorb it; the first time the Scene is rendered the underlying GPU
-//! resources initialise on demand. Same lazy-init pattern the rest of
-//! FragmentColor follows.
+//! await. The first time a SceneObject is added the Scene allocates a
+//! default Pass to hold it; the first time the Scene is rendered the
+//! underlying GPU resources initialise on demand. Same lazy-init pattern
+//! the rest of FragmentColor follows.
 //!
 //! A Scene owns one ordered `Vec<Pass>`. Loaders, builders, and user code
 //! all append into the same vec, and `Renderable for Scene` iterates it in
-//! order. There's no privileged "default" pass: the pass that absorbs
-//! `Scene::add` objects is an ordinary member of the vec, and the CRUD
+//! order. No pass is privileged in render order: the default Pass that
+//! `Scene::add` targets is an ordinary member of the vec, and the CRUD
 //! surface (`add_pass`, `remove_pass`, `get_pass`, `list_passes`,
 //! `set_passes`) lets the caller read, append, reorder, or replace the
 //! whole graph — the same composability every layer below `Scene` already
@@ -53,17 +53,19 @@ pub struct Scene {
 #[derive(Debug)]
 pub(crate) struct SceneInner {
     /// The Scene's ordered pass graph. Loaders, builders, `add_pass`, and
-    /// the lazily-created absorb Pass all push into this one vec;
+    /// the lazily-created default Pass all push into this one vec;
     /// `Renderable for Scene` iterates it in order. Empty until the first
     /// `add` / `add_pass`, so a fresh Scene allocates no GPU bookkeeping.
     pub(crate) passes: RwLock<Vec<Pass>>,
-    /// Handle to the Pass inside `passes` that absorbs `Scene::add` objects
-    /// (Models / Cameras / Lights). Created lazily on the first `add` and
-    /// appended to `passes` at that point, so it keeps its insertion-order
-    /// position relative to any `add_pass` calls. `None` until then, and
-    /// cleared again if the caller removes it from the graph via
-    /// `remove_pass` / `set_passes`.
-    pub(crate) absorb_pass: RwLock<Option<Pass>>,
+    /// Handle to the default Pass inside `passes` — the one `Scene::add`
+    /// routes objects into (Models / Cameras / Lights). It's an ordinary
+    /// member of `passes`, not privileged in render order; this handle just
+    /// records which member is the current `add` target. Created lazily on
+    /// the first `add` and appended to `passes` at that point, so it keeps
+    /// its insertion-order position relative to any `add_pass` calls. `None`
+    /// until then, and cleared again if the caller removes it from the graph
+    /// via `remove_pass` / `set_passes`.
+    pub(crate) default_pass: RwLock<Option<Pass>>,
     /// Sticky once-set flags so the default-Camera / default-Light injection
     /// at `passes()` time only fires once and only when the user hasn't
     /// supplied their own.
@@ -114,7 +116,7 @@ impl Scene {
         Self {
             inner: Arc::new(SceneInner {
                 passes: RwLock::new(Vec::new()),
-                absorb_pass: RwLock::new(None),
+                default_pass: RwLock::new(None),
                 has_camera: RwLock::new(false),
                 has_light: RwLock::new(false),
                 inject_camera: RwLock::new(true),
@@ -131,7 +133,7 @@ impl Scene {
 
     #[lsp_doc("docs/api/scene/scene/add.md")]
     pub fn add<O: SceneObject + 'static>(&self, object: &O) -> Result<&Self, PassError> {
-        let pass = self.ensure_absorb_pass();
+        let pass = self.ensure_default_pass();
         pass.add(object)?;
         // Stash a typed Arc-clone of the object alongside the pass attach
         // so `scene.cameras()` / `lights()` / `models()` can hand back live
@@ -215,8 +217,8 @@ impl Scene {
 
     #[lsp_doc("docs/api/scene/scene/remove_pass.md")]
     pub fn remove_pass(&self, pass: &Pass) -> bool {
-        // Lock order: `passes` first, `absorb_pass` second (see
-        // `ensure_absorb_pass`).
+        // Lock order: `passes` first, `default_pass` second (see
+        // `ensure_default_pass`).
         let mut passes = self.inner.passes.write();
         let Some(idx) = passes
             .iter()
@@ -225,14 +227,14 @@ impl Scene {
             return false;
         };
         passes.remove(idx);
-        // Forget the absorb handle if it pointed at the pass we just removed,
+        // Forget the default-pass handle if it pointed at the pass we just removed,
         // so the next `add` rebuilds one instead of attaching to a Pass the
         // graph no longer renders.
-        let mut slot = self.inner.absorb_pass.write();
-        let was_absorb = slot
+        let mut slot = self.inner.default_pass.write();
+        let was_default_pass = slot
             .as_ref()
-            .is_some_and(|absorb| Arc::ptr_eq(&absorb.object, &pass.object));
-        if was_absorb {
+            .is_some_and(|default_pass| Arc::ptr_eq(&default_pass.object, &pass.object));
+        if was_default_pass {
             *slot = None;
         }
         true
@@ -250,16 +252,16 @@ impl Scene {
 
     #[lsp_doc("docs/api/scene/scene/set_passes.md")]
     pub fn set_passes(&self, passes: Vec<Pass>) {
-        // Lock order: `passes` first, `absorb_pass` second (see
-        // `ensure_absorb_pass`).
+        // Lock order: `passes` first, `default_pass` second (see
+        // `ensure_default_pass`).
         let mut current = self.inner.passes.write();
         *current = passes;
-        // Drop the absorb handle if the replacement no longer contains it.
-        let mut slot = self.inner.absorb_pass.write();
-        let dropped = slot.as_ref().is_some_and(|absorb| {
+        // Drop the default-pass handle if the replacement no longer contains it.
+        let mut slot = self.inner.default_pass.write();
+        let dropped = slot.as_ref().is_some_and(|default_pass| {
             !current
                 .iter()
-                .any(|p| Arc::ptr_eq(&p.object, &absorb.object))
+                .any(|p| Arc::ptr_eq(&p.object, &default_pass.object))
         });
         if dropped {
             *slot = None;
@@ -301,19 +303,19 @@ impl Scene {
         self
     }
 
-    /// Lazily build the absorb Pass on first `add` and append it to the
+    /// Lazily build the default Pass on first `add` and append it to the
     /// pass graph. The Pass is named so it shows up identifiably in graphics
     /// debuggers (RenderDoc, Xcode GPU frame capture). If the caller dropped
-    /// a previously-built absorb Pass from the graph (via `remove_pass` /
+    /// a previously-built default Pass from the graph (via `remove_pass` /
     /// `set_passes`), a fresh one is appended at the current end.
     ///
-    /// Lock order: `passes` is taken first, `absorb_pass` second — the same
+    /// Lock order: `passes` is taken first, `default_pass` second — the same
     /// order [`Scene::remove_pass`] and [`Scene::set_passes`] use, so the
     /// three can't deadlock against each other under concurrent mutation.
-    fn ensure_absorb_pass(&self) -> Pass {
+    fn ensure_default_pass(&self) -> Pass {
         let mut passes = self.inner.passes.write();
-        // Reuse the existing absorb Pass only if it's still in the graph.
-        let existing = self.inner.absorb_pass.read().clone();
+        // Reuse the existing default Pass only if it's still in the graph.
+        let existing = self.inner.default_pass.read().clone();
         if let Some(p) = existing
             && passes.iter().any(|x| Arc::ptr_eq(&x.object, &p.object))
         {
@@ -321,18 +323,18 @@ impl Scene {
         }
         let pass = Pass::new("Scene Default Pass");
         passes.push(pass.clone());
-        *self.inner.absorb_pass.write() = Some(pass.clone());
+        *self.inner.default_pass.write() = Some(pass.clone());
         pass
     }
 
-    /// Inject default Camera / Light into the absorb Pass when injection is
+    /// Inject default Camera / Light into the default Pass when injection is
     /// enabled and the user hasn't supplied their own. Idempotent — the
     /// sticky `has_camera` / `has_light` flags flip on first injection, so
     /// subsequent `passes()` calls are no-ops on this front. Defaults are
     /// also stashed into the Scene's typed lanes so `scene.cameras()` /
     /// `scene.lights()` surface them — anyone fishing the default camera
     /// back out to drive it per frame should hit the getter and find it
-    /// there. With no absorb Pass (a pure `add_pass` composition) there's
+    /// there. With no default Pass (a pure `add_pass` composition) there's
     /// nothing to attach to, so injection is skipped.
     fn ensure_render_defaults(&self) {
         let needs_camera = *self.inner.inject_camera.read() && !*self.inner.has_camera.read();
@@ -340,7 +342,7 @@ impl Scene {
         if !needs_camera && !needs_light {
             return;
         }
-        let Some(pass) = self.inner.absorb_pass.read().clone() else {
+        let Some(pass) = self.inner.default_pass.read().clone() else {
             return;
         };
         if needs_camera {
@@ -430,18 +432,18 @@ mod tests {
         // user wires up the scene from a config and only later attaches
         // anything.
         assert!(scene.inner.passes.read().is_empty());
-        assert!(scene.inner.absorb_pass.read().is_none());
+        assert!(scene.inner.default_pass.read().is_none());
         // Nothing rendered, no defaults injected — passes() on an empty scene
         // returns an empty list.
         assert!(scene.passes().is_empty());
     }
 
     #[test]
-    fn add_creates_absorb_pass_lazily() {
+    fn add_creates_default_pass_lazily() {
         let scene = Scene::new();
         let model = Model::new(pbr_triangle_mesh(), Material::pbr());
         scene.add(&model).expect("add");
-        assert!(scene.inner.absorb_pass.read().is_some());
+        assert!(scene.inner.default_pass.read().is_some());
         assert_eq!(scene.inner.passes.read().len(), 1);
     }
 
@@ -457,7 +459,7 @@ mod tests {
     #[test]
     fn passes_render_in_insertion_order() {
         let scene = Scene::new();
-        // add_pass first, then a Model — the absorb Pass is appended after
+        // add_pass first, then a Model — the default Pass is appended after
         // the backdrop, so the render order follows insertion order.
         let backdrop = Pass::new("backdrop");
         scene.add_pass(&backdrop);
@@ -468,22 +470,22 @@ mod tests {
         assert!(list.len() >= 2, "got {} passes", list.len());
         // Backdrop was inserted first, so it renders first.
         assert_eq!(list[0].name.as_ref(), "backdrop");
-        // The absorb Pass is named "Scene Default Pass".
+        // The default Pass is named "Scene Default Pass".
         assert!(
             list.iter().any(|p| p.name.as_ref() == "Scene Default Pass"),
-            "expected absorb pass in {:?}",
+            "expected default pass in {:?}",
             list.iter().map(|p| p.name.as_ref()).collect::<Vec<_>>()
         );
     }
 
     #[test]
     fn add_after_add_pass_follows_call_order() {
-        // The absorb Pass is no longer privileged: a Pass added after the
+        // The default Pass is no longer privileged: a Pass added after the
         // geometry renders after it, unlike the old "extras always first"
         // behaviour.
         let scene = Scene::new();
         let model = Model::new(pbr_triangle_mesh(), Material::pbr());
-        scene.add(&model).expect("add"); // absorb pass first
+        scene.add(&model).expect("add"); // default pass first
         let overlay = Pass::new("overlay");
         scene.add_pass(&overlay); // overlay second
 
@@ -567,7 +569,7 @@ mod tests {
         alias
             .add(&Model::new(pbr_triangle_mesh(), Material::pbr()))
             .expect("add via alias");
-        assert!(scene.inner.absorb_pass.read().is_some());
+        assert!(scene.inner.default_pass.read().is_some());
     }
 
     #[test]
@@ -701,21 +703,21 @@ mod tests {
     }
 
     #[test]
-    fn remove_pass_forgets_the_absorb_handle() {
-        // After removing the absorb Pass, the next `add` must rebuild one
+    fn remove_pass_forgets_the_default_pass_handle() {
+        // After removing the default Pass, the next `add` must rebuild one
         // instead of attaching to a Pass the graph no longer holds.
         let scene = Scene::new();
         scene
             .add(&Model::new(pbr_triangle_mesh(), Material::pbr()))
             .expect("add");
-        let absorb = scene.list_passes()[0].clone();
-        assert!(scene.remove_pass(&absorb));
-        assert!(scene.inner.absorb_pass.read().is_none());
+        let default_pass = scene.list_passes()[0].clone();
+        assert!(scene.remove_pass(&default_pass));
+        assert!(scene.inner.default_pass.read().is_none());
 
         scene
             .add(&Model::new(pbr_triangle_mesh(), Material::pbr()))
             .expect("add again");
-        assert_eq!(scene.list_passes().len(), 1, "a fresh absorb pass appears");
+        assert_eq!(scene.list_passes().len(), 1, "a fresh default pass appears");
     }
 
     #[test]
@@ -735,29 +737,29 @@ mod tests {
     }
 
     #[test]
-    fn set_passes_drops_a_stale_absorb_handle() {
+    fn set_passes_drops_a_stale_default_pass_handle() {
         let scene = Scene::new();
         scene
             .add(&Model::new(pbr_triangle_mesh(), Material::pbr()))
             .expect("add");
-        assert!(scene.inner.absorb_pass.read().is_some());
-        // Replace the graph with passes that don't include the absorb pass.
+        assert!(scene.inner.default_pass.read().is_some());
+        // Replace the graph with passes that don't include the default pass.
         scene.set_passes(vec![Pass::new("fresh")]);
-        assert!(scene.inner.absorb_pass.read().is_none());
+        assert!(scene.inner.default_pass.read().is_none());
     }
 
     #[test]
-    fn set_passes_keeps_a_surviving_absorb_handle() {
+    fn set_passes_keeps_a_surviving_default_pass_handle() {
         let scene = Scene::new();
         scene
             .add(&Model::new(pbr_triangle_mesh(), Material::pbr()))
             .expect("add");
-        let absorb = scene.list_passes()[0].clone();
-        // Reorder, keeping the absorb pass in the graph.
-        scene.set_passes(vec![Pass::new("before"), absorb]);
+        let default_pass = scene.list_passes()[0].clone();
+        // Reorder, keeping the default pass in the graph.
+        scene.set_passes(vec![Pass::new("before"), default_pass]);
         assert!(
-            scene.inner.absorb_pass.read().is_some(),
-            "absorb handle survives a reorder that keeps it"
+            scene.inner.default_pass.read().is_some(),
+            "default-pass handle survives a reorder that keeps it"
         );
     }
 
