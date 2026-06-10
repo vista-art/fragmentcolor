@@ -27,11 +27,19 @@ The stock default Camera + Light still inject at first render when the user supp
 - [x] **`Scene::no_default_camera() -> &Self` / `Scene::no_default_light() -> &Self`** opt out per kind.
 - [x] **`Scene::set_default_camera(&Camera) -> &Self` / `Scene::set_default_light(&Light) -> &Self`** inject the caller's own value instead of FC's stock one. Naming a default re-arms injection if a prior `no_default_*` turned it off. An explicit `scene.add(&camera)` still wins.
 
+### Targeting a Pass by index or name
+
+`scene.add(&obj)` routes into the default pass; once a scene holds more than one, you often want to pick the target. Index targeting already worked through `scene.get_pass(i)` plus the public `Pass::add`, so this rounds it out with name addressing and a one-call convenience.
+
+- [x] **`Pass::name() -> String`** reads a pass's name (the label from `Pass::new`, also what graphics debuggers show). Names aren't required unique.
+- [x] **`Scene::find_pass(&str) -> Option<Pass>`** is the name-addressed counterpart to `get_pass`; returns the first match in render order.
+- [x] **`Scene::add_to(impl Into<PassRef>, &obj) -> Result<&Self, PassError>`** adds a `SceneObject` to a specific Pass by index or name, with the same Scene-level bookkeeping as `add` (typed lanes, sticky injection flags, ambient stamp). An out-of-range index or unknown name returns the new `PassError::PassNotFound`. `PassRef` is `Into`-built from `usize` / `&str` / `String`; on mobile a `PassTarget` enum carries the same choice, and Swift / Kotlin `addTo(index, obj)` / `addTo(name, obj)` overloads wrap it.
+
 ### Cross-platform parity, docs, tests
 
-- [x] **Bindings:** every new method exposed on Python (`remove_pass`, `get_pass`, `list_passes`, `set_passes`, `no_defaults`, `no_default_camera`, `no_default_light`, `set_default_camera`, `set_default_light`), JS / wasm-bindgen (camelCase: `removePass`, `getPass`, `listPasses`, `setPasses`, `noDefaults`, `noDefaultCamera`, `noDefaultLight`, `setDefaultCamera`, `setDefaultLight`), and Swift / Kotlin via uniffi (same camelCase).
+- [x] **Bindings:** every new method exposed on Python (`remove_pass`, `get_pass`, `find_pass`, `list_passes`, `set_passes`, `add_to`, `no_defaults`, `no_default_camera`, `no_default_light`, `set_default_camera`, `set_default_light`, plus `Pass.name`), JS / wasm-bindgen (camelCase: `removePass`, `getPass`, `findPass`, `listPasses`, `setPasses`, `addTo`, `noDefaults`, `noDefaultCamera`, `noDefaultLight`, `setDefaultCamera`, `setDefaultLight`, `Pass.name`), and Swift / Kotlin via uniffi (same camelCase).
 - [x] **Docs:** one `docs/api/scene/scene/*.md` page per new method, plus rewrites of `scene.md` (the "open, composable pass graph" section + the methods table) and `add_pass.md` (the old "renders before the internal default Pass" claim is gone).
-- [x] **Tests:** the existing `scene.rs` suite updated for the unified graph, plus new coverage for each CRUD method (including stale-default-pass-handle handling on `remove_pass` / `set_passes`) and each injection switch (suppression, per-kind, override, and re-arm-after-opt-out).
+- [x] **Tests:** the existing `scene.rs` suite updated for the unified graph, plus new coverage for each CRUD method (including stale-default-pass-handle handling on `remove_pass` / `set_passes`), name addressing (`find_pass`, `add_to` by index and name, unknown-target errors), and each injection switch (suppression, per-kind, override, and re-arm-after-opt-out).
 
 ## 0.12.0: 3D scenes: glTF loading, PBR materials, and a texture pipeline
 
