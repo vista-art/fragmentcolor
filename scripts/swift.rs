@@ -807,6 +807,8 @@ mod swift {
             ".setDepthTarget(",
             // Pass.add(Model/Camera/Light) extension wraps a throwing call.
             ".add(",
+            // Scene.addTo(index/name, Model/Camera/Light) extension throws.
+            ".addTo(",
             // Renderer (sync variants)
             ".render(",
             ".unregisterTexture(",
