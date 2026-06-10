@@ -6,4 +6,4 @@ const scene = new Scene();
 scene.add(new Model(mesh, Material.pbr()));
 
 // Compose, don't clear: keep whatever the previous pass drew.
-for (const pass of scene.listPasses()) { pass.loadPrevious(); };
+for (const p of scene.listPasses()) { p.loadPrevious(); };

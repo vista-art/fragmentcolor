@@ -26,8 +26,8 @@ let scene = Scene::new();
 scene.add(&Model::new(mesh, Material::pbr()))?;
 
 // Compose, don't clear: keep whatever the previous pass drew.
-for pass in scene.list_passes() {
-    pass.load_previous();
+for p in scene.list_passes() {
+    p.load_previous();
 }
 # Ok(())
 # }

@@ -6,6 +6,6 @@ val scene = Scene()
 scene.add(Model(mesh, Material.pbr()))
 
 // Compose, don't clear: keep whatever the previous pass drew.
-for (pass in scene.listPasses()) {
-    pass.loadPrevious()
+for (p in scene.listPasses()) {
+    p.loadPrevious()
 }

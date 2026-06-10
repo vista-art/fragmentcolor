@@ -29,8 +29,8 @@ scene.add(&Model::new(mesh, Material::pbr()))?;
 
 // The host overrides every uniform, so suppress FC's stock camera + light.
 scene.no_defaults();
-for pass in scene.list_passes() {
-    pass.load_previous();
+for p in scene.list_passes() {
+    p.load_previous();
 }
 # Ok(())
 # }

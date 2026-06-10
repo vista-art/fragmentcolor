@@ -1643,8 +1643,8 @@ private enum _GeneratedExamples {
             try scene.add(Model(mesh, Material.pbr()))
 
             // Compose, don't clear: keep whatever the previous pass drew.
-            for pass in scene.listPasses() {
-                pass.loadPrevious()
+            for p in scene.listPasses() {
+                p.loadPrevious()
             }
         }
     }
@@ -1730,8 +1730,8 @@ private enum _GeneratedExamples {
 
             // The host overrides every uniform, so suppress FC's stock camera + light.
             scene.noDefaults()
-            for pass in scene.listPasses() {
-                pass.loadPrevious()
+            for p in scene.listPasses() {
+                p.loadPrevious()
             }
         }
     }
