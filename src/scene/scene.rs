@@ -898,16 +898,20 @@ mod tests {
         scene.no_defaults();
 
         let _ = scene.passes();
-        // Neither default was injected, so the typed lanes stay empty and the
-        // shader never received a camera position.
+        // Neither default was injected, so the typed lanes stay empty. The PBR
+        // shader declares a `camera` uniform that reads back as its zero
+        // default; what matters is that the stock default camera (eye at
+        // [0, 0, 5]) was never written.
         assert!(scene.cameras().is_empty());
         assert!(scene.lights().is_empty());
-        assert!(
-            material
-                .shader()
-                .get::<[f32; 3]>("camera.position")
-                .is_err(),
-            "no default camera should have written camera.position"
+        let pos: [f32; 3] = material
+            .shader()
+            .get("camera.position")
+            .unwrap_or([0.0, 0.0, 0.0]);
+        assert_ne!(
+            pos,
+            [0.0, 0.0, 5.0],
+            "the stock default camera should not have been injected"
         );
     }
 
