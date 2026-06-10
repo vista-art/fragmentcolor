@@ -69,9 +69,11 @@ out with `set_default_camera` / `set_default_light`.
 | `new`                | construct an empty Scene                                   |
 | `load`               | construct a Scene from a 3D file (glTF `.gltf` / `.glb` path or in-memory `.glb` bytes) |
 | `add`                | add a `SceneObject` (Model / Camera / Light / custom) to the default pass |
+| `add_to`             | add a `SceneObject` to a specific Pass, by index or name   |
 | `add_pass`           | append a user-built [Pass](https://fragmentcolor.org/api/core/pass) to the graph |
 | `remove_pass`        | remove a Pass from the graph by handle                     |
 | `get_pass`           | read one Pass by index, in render order                    |
+| `find_pass`          | find a Pass by name                                        |
 | `list_passes`        | snapshot the whole pass graph in render order              |
 | `set_passes`         | replace the whole pass graph with a new ordered list       |
 | `no_defaults`        | suppress default-Camera and default-Light injection        |

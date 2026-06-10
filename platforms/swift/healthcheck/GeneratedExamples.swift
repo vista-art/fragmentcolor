@@ -155,6 +155,14 @@ private enum _GeneratedExamples {
         }
     }
 
+    static func _example_core_pass_name() async throws {
+        do {
+
+            let shadow = Pass("shadow")
+            let label = shadow.name()
+        }
+    }
+
     static func _example_core_pass_new() async throws {
         do {
 
@@ -1532,6 +1540,23 @@ private enum _GeneratedExamples {
         }
     }
 
+    static func _example_scene_scene_add_to() async throws {
+        do {
+
+            let mesh = Mesh()
+            try mesh.addVertex(
+                try Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0])
+            )
+            let model = Model(mesh, Material.pbr())
+
+            let scene = Scene()
+            scene.addPass(Pass("geometry"))
+
+            // Target the pass by name (or pass its index: scene.addTo(0, model)).
+            try scene.addTo("geometry", model)
+        }
+    }
+
     static func _example_scene_scene_ambient() async throws {
         do {
 
@@ -1565,6 +1590,19 @@ private enum _GeneratedExamples {
                 try camera.lookAt([0.0, 1.5, 4.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
                 camera.setAspect(16.0 / 9.0)
             }
+        }
+    }
+
+    static func _example_scene_scene_find_pass() async throws {
+        do {
+
+            let scene = Scene()
+            scene.addPass(Pass("backdrop"))
+            scene.addPass(Pass("geometry"))
+
+            // Look the geometry pass up by name to reconfigure it. A name with no
+            // match returns nil instead.
+            let geometry = scene.findPass("geometry")
         }
     }
 

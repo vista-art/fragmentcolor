@@ -144,6 +144,12 @@ class GeneratedExamples {
         renderer.render(pass, target)
     }
 
+    @Suppress("unused") private suspend fun _example_core_pass_name() {
+
+        val shadow = Pass("shadow")
+        val label = shadow.name()
+    }
+
     @Suppress("unused") private suspend fun _example_core_pass_new() {
 
         val pass = Pass("first pass")
@@ -1214,6 +1220,19 @@ class GeneratedExamples {
         scene.add(model)
     }
 
+    @Suppress("unused") private suspend fun _example_scene_scene_add_to() {
+
+        val mesh = Mesh()
+        mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set("uv0", floatArrayOf(0.5f, 1.0f)), )
+        val model = Model(mesh, Material.pbr())
+
+        val scene = Scene()
+        scene.addPass(Pass("geometry"))
+
+        // Target the pass by name (or pass its index: scene.addTo(0, model)).
+        scene.addTo("geometry", model)
+    }
+
     @Suppress("unused") private suspend fun _example_scene_scene_ambient() {
 
         val renderer = Renderer()
@@ -1242,6 +1261,17 @@ class GeneratedExamples {
             camera.lookAt(listOf(0.0f, 1.5f, 4.0f), listOf(0.0f, 0.0f, 0.0f), listOf(0.0f, 1.0f, 0.0f))
             camera.setAspect(16.0f / 9.0f)
         }
+    }
+
+    @Suppress("unused") private suspend fun _example_scene_scene_find_pass() {
+
+        val scene = Scene()
+        scene.addPass(Pass("backdrop"))
+        scene.addPass(Pass("geometry"))
+
+        // Look the geometry pass up by name to reconfigure it. A name with no
+        // match returns null instead.
+        val geometry = scene.findPass("geometry")
     }
 
     @Suppress("unused") private suspend fun _example_scene_scene_get_pass() {
