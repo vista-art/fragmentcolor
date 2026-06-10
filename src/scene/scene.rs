@@ -97,6 +97,35 @@ pub(crate) struct SceneInner {
 
 crate::impl_fc_kind!(Scene, "Scene");
 
+/// Which Pass in a [`Scene`]'s graph a [`Scene::add_to`] call targets:
+/// a position (index) or a pass name. Built from a `usize` or a `&str` /
+/// `String` via `Into`, so callers write `scene.add_to(0, &model)` or
+/// `scene.add_to("geometry", &model)` without naming this type. Transport
+/// plumbing — there's no separate doc page for it.
+#[derive(Debug, Clone)]
+pub enum PassRef {
+    Index(usize),
+    Name(String),
+}
+
+impl From<usize> for PassRef {
+    fn from(index: usize) -> Self {
+        PassRef::Index(index)
+    }
+}
+
+impl From<&str> for PassRef {
+    fn from(name: &str) -> Self {
+        PassRef::Name(name.to_string())
+    }
+}
+
+impl From<String> for PassRef {
+    fn from(name: String) -> Self {
+        PassRef::Name(name)
+    }
+}
+
 impl Default for Scene {
     fn default() -> Self {
         Self::new()
@@ -134,14 +163,37 @@ impl Scene {
     #[lsp_doc("docs/api/scene/scene/add.md")]
     pub fn add<O: SceneObject + 'static>(&self, object: &O) -> Result<&Self, PassError> {
         let pass = self.ensure_default_pass();
+        self.record_add(&pass, object)?;
+        Ok(self)
+    }
+
+    #[lsp_doc("docs/api/scene/scene/add_to.md")]
+    pub fn add_to<O: SceneObject + 'static>(
+        &self,
+        target: impl Into<PassRef>,
+        object: &O,
+    ) -> Result<&Self, PassError> {
+        let pass = self.resolve_pass(target.into())?;
+        self.record_add(&pass, object)?;
+        Ok(self)
+    }
+
+    /// Attach `object` to `pass` and run the Scene-level bookkeeping shared
+    /// by [`Scene::add`] and [`Scene::add_to`]: stash a typed Arc-clone so
+    /// `scene.cameras()` / `lights()` / `models()` hand back live handles,
+    /// flip the sticky default-injection flags, and re-stamp the cached
+    /// ambient onto the shaders that just joined.
+    fn record_add<O: SceneObject + 'static>(
+        &self,
+        pass: &Pass,
+        object: &O,
+    ) -> Result<(), PassError> {
         pass.add(object)?;
-        // Stash a typed Arc-clone of the object alongside the pass attach
-        // so `scene.cameras()` / `lights()` / `models()` can hand back live
-        // handles. TypeId equality is exact — wrapping a Camera in a user
-        // newtype counts as "user-supplied" and skips the typed lane (it
-        // still rides the pass as a `SceneObject`); custom types just
-        // wouldn't show up in the typed-getter slot, which matches what
-        // the user asked for by reaching for a custom type.
+        // TypeId equality is exact — wrapping a Camera in a user newtype
+        // counts as "user-supplied" and skips the typed lane (it still rides
+        // the pass as a `SceneObject`); custom types just wouldn't show up in
+        // the typed-getter slot, which matches what the user asked for by
+        // reaching for a custom type.
         let any = object as &dyn std::any::Any;
         if let Some(camera) = any.downcast_ref::<Camera>() {
             self.inner.cameras.write().push(camera.clone());
@@ -162,7 +214,23 @@ impl Scene {
                 let _ = shader.set("lights.ambient", amb);
             }
         }
-        Ok(self)
+        Ok(())
+    }
+
+    /// Resolve a [`PassRef`] against the current graph, erroring when no
+    /// member matches. Name lookup returns the first pass with that name.
+    fn resolve_pass(&self, target: PassRef) -> Result<Pass, PassError> {
+        let found = match &target {
+            PassRef::Index(index) => self.get_pass(*index),
+            PassRef::Name(name) => self.find_pass(name),
+        };
+        found.ok_or_else(|| {
+            let what = match target {
+                PassRef::Index(index) => format!("index {index}"),
+                PassRef::Name(name) => format!("name {name:?}"),
+            };
+            PassError::PassNotFound(what)
+        })
     }
 
     /// Snapshot of every [`Model`](crate::Model) added to this Scene via
@@ -243,6 +311,16 @@ impl Scene {
     #[lsp_doc("docs/api/scene/scene/get_pass.md")]
     pub fn get_pass(&self, index: usize) -> Option<Pass> {
         self.inner.passes.read().get(index).cloned()
+    }
+
+    #[lsp_doc("docs/api/scene/scene/find_pass.md")]
+    pub fn find_pass(&self, name: &str) -> Option<Pass> {
+        self.inner
+            .passes
+            .read()
+            .iter()
+            .find(|pass| pass.object.name.as_ref() == name)
+            .cloned()
     }
 
     #[lsp_doc("docs/api/scene/scene/list_passes.md")]
@@ -678,6 +756,54 @@ mod tests {
             Some("b".to_string())
         );
         assert!(scene.get_pass(2).is_none(), "out-of-range returns None");
+    }
+
+    #[test]
+    fn find_pass_locates_by_name() {
+        let scene = Scene::new();
+        scene
+            .add_pass(&Pass::new("backdrop"))
+            .add_pass(&Pass::new("geometry"));
+        assert_eq!(
+            scene.find_pass("geometry").map(|p| p.name()),
+            Some("geometry".to_string())
+        );
+        assert!(scene.find_pass("missing").is_none());
+    }
+
+    #[test]
+    fn add_to_targets_pass_by_index_and_name() {
+        let scene = Scene::new();
+        scene.add_pass(&Pass::new("a")).add_pass(&Pass::new("b"));
+        let by_index = Model::new(pbr_triangle_mesh(), Material::pbr());
+        let by_name = Model::new(pbr_triangle_mesh(), Material::pbr());
+        scene.add_to(0usize, &by_index).expect("by index");
+        scene.add_to("b", &by_name).expect("by name");
+
+        // Both Models surface in the typed lane (record_add bookkeeping).
+        assert_eq!(scene.models().len(), 2);
+        // Each Model landed on the Pass it targeted.
+        assert_eq!(
+            scene.get_pass(0).unwrap().object.model_entries.read().len(),
+            1
+        );
+        assert_eq!(
+            scene.get_pass(1).unwrap().object.model_entries.read().len(),
+            1
+        );
+    }
+
+    #[test]
+    fn add_to_unknown_target_errors() {
+        let scene = Scene::new();
+        let model = Model::new(pbr_triangle_mesh(), Material::pbr());
+        assert!(
+            scene.add_to(3usize, &model).is_err(),
+            "out-of-range index errors"
+        );
+        assert!(scene.add_to("nope", &model).is_err(), "unknown name errors");
+        // A failed add_to records nothing.
+        assert!(scene.models().is_empty());
     }
 
     #[test]
