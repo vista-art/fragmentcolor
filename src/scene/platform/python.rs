@@ -307,6 +307,102 @@ impl Scene {
         self.add_pass(pass);
     }
 
+    #[pyo3(name = "remove_pass")]
+    #[lsp_doc("docs/api/scene/scene/remove_pass.md")]
+    pub fn remove_pass_py(&self, pass: &Pass) -> bool {
+        self.remove_pass(pass)
+    }
+
+    #[pyo3(name = "get_pass")]
+    #[lsp_doc("docs/api/scene/scene/get_pass.md")]
+    pub fn get_pass_py(&self, index: usize) -> Option<Pass> {
+        self.get_pass(index)
+    }
+
+    #[pyo3(name = "find_pass")]
+    #[lsp_doc("docs/api/scene/scene/find_pass.md")]
+    pub fn find_pass_py(&self, name: &str) -> Option<Pass> {
+        self.find_pass(name)
+    }
+
+    #[pyo3(name = "list_passes")]
+    #[lsp_doc("docs/api/scene/scene/list_passes.md")]
+    pub fn list_passes_py(&self) -> Vec<Pass> {
+        self.list_passes()
+    }
+
+    /// Add a SceneObject to a specific Pass, addressed by an `int` index or
+    /// a `str` name. Branches on the runtime Python type the same way
+    /// `Scene.add` does.
+    #[pyo3(name = "add_to")]
+    #[lsp_doc("docs/api/scene/scene/add_to.md")]
+    pub fn add_to_py(&self, target: Py<PyAny>, object: Py<PyAny>) -> Result<(), PyErr> {
+        Python::attach(|py| -> Result<(), PyErr> {
+            let target = target.bind(py);
+            let target = if let Ok(index) = target.extract::<usize>() {
+                crate::scene::PassRef::Index(index)
+            } else if let Ok(name) = target.extract::<String>() {
+                crate::scene::PassRef::Name(name)
+            } else {
+                return Err(pyo3::exceptions::PyTypeError::new_err(
+                    "Scene.add_to: target must be an int index or a str name",
+                ));
+            };
+            let object = object.bind(py);
+            if let Ok(model) = object.cast::<Model>() {
+                let m = model.borrow();
+                return self.add_to(target, &*m).map(|_| ()).map_err(|e| e.into());
+            }
+            if let Ok(camera) = object.cast::<Camera>() {
+                let c = camera.borrow();
+                return self.add_to(target, &*c).map(|_| ()).map_err(|e| e.into());
+            }
+            if let Ok(light) = object.cast::<Light>() {
+                let l = light.borrow();
+                return self.add_to(target, &*l).map(|_| ()).map_err(|e| e.into());
+            }
+            Err(pyo3::exceptions::PyTypeError::new_err(
+                "Scene.add_to: expected a Model, Camera, or Light",
+            ))
+        })
+    }
+
+    #[pyo3(name = "set_passes")]
+    #[lsp_doc("docs/api/scene/scene/set_passes.md")]
+    pub fn set_passes_py(&self, passes: Vec<Pass>) {
+        self.set_passes(passes);
+    }
+
+    #[pyo3(name = "no_defaults")]
+    #[lsp_doc("docs/api/scene/scene/no_defaults.md")]
+    pub fn no_defaults_py(&self) {
+        self.no_defaults();
+    }
+
+    #[pyo3(name = "no_default_camera")]
+    #[lsp_doc("docs/api/scene/scene/no_default_camera.md")]
+    pub fn no_default_camera_py(&self) {
+        self.no_default_camera();
+    }
+
+    #[pyo3(name = "no_default_light")]
+    #[lsp_doc("docs/api/scene/scene/no_default_light.md")]
+    pub fn no_default_light_py(&self) {
+        self.no_default_light();
+    }
+
+    #[pyo3(name = "set_default_camera")]
+    #[lsp_doc("docs/api/scene/scene/set_default_camera.md")]
+    pub fn set_default_camera_py(&self, camera: &Camera) {
+        self.set_default_camera(camera);
+    }
+
+    #[pyo3(name = "set_default_light")]
+    #[lsp_doc("docs/api/scene/scene/set_default_light.md")]
+    pub fn set_default_light_py(&self, light: &Light) {
+        self.set_default_light(light);
+    }
+
     #[pyo3(name = "ambient")]
     #[lsp_doc("docs/api/scene/scene/ambient.md")]
     pub fn ambient_py(&self, color: [f32; 3]) {

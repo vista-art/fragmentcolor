@@ -176,6 +176,7 @@ mod kotlin {
         out = rewrite_mipmap_build_tuple(&out);
         out = rewrite_setviewport_tuple(&out);
         out = rewrite_setcomputedispatch_int_to_uint(&out);
+        out = rewrite_getpass_int_to_uint(&out);
         out = rewrite_render_array_to_list(&out);
         out = rewrite_shader_fetch_array_to_list(&out);
         out = rewrite_removemeshes_array_to_list(&out);
@@ -840,6 +841,47 @@ mod kotlin {
         let before = &line[..call_start];
         let after = &line[end..];
         format!("{}{}{}", before, new_inner, after)
+    }
+
+    // `scene.getPass(1)` → `scene.getPass(1u)`
+    //
+    // Same reasoning as `rewrite_setcomputedispatch_int_to_uint`: the uniffi
+    // member takes a `UInt` index and Kotlin won't coerce a signed literal
+    // into an unsigned parameter. The argument is always a single index, so a
+    // bare integer literal gets the `u` suffix; a non-literal (variable) is
+    // left for the Int extension overload in `SceneExtensions.kt`.
+    fn rewrite_getpass_int_to_uint(line: &str) -> String {
+        let needle = ".getPass(";
+        let Some(start) = line.find(needle) else {
+            return line.to_string();
+        };
+        let call_start = start + needle.len();
+        let chars: Vec<char> = line.chars().collect();
+        let mut depth = 0i32;
+        let mut end = call_start;
+        let mut j = call_start;
+        while j < chars.len() {
+            match chars[j] {
+                '(' => depth += 1,
+                ')' => {
+                    if depth == 0 {
+                        end = j;
+                        break;
+                    }
+                    depth -= 1;
+                }
+                _ => {}
+            }
+            j += 1;
+        }
+        let inner: String = chars[call_start..end].iter().collect();
+        let trimmed = inner.trim();
+        if trimmed.parse::<u64>().is_ok() {
+            let before = &line[..call_start];
+            let after = &line[end..];
+            return format!("{}{}u{}", before, trimmed, after);
+        }
+        line.to_string()
     }
 
     // `shader.removeMeshes(arrayOf(m1, m2))` → `shader.removeMeshes(listOf(m1, m2))`

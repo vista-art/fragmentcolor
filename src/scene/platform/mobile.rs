@@ -8,6 +8,21 @@ use crate::renderer::renderable::SceneObjectHandle;
 use crate::scene::{Camera, Light, LightKind, Model, Scene};
 use crate::{Material, Mesh, Pass};
 
+/// Mobile-marshallable target for [`Scene::add_to`]: a pass index or a pass
+/// name. Uniffi can't marshal `impl Into<PassRef>`, so Swift / Kotlin pick a
+/// variant; the `Scene+Extensions` / `SceneExtensions` files wrap it behind
+/// natural `addTo(index, object)` / `addTo(name, object)` overloads.
+///
+/// The index is `u32` (→ Kotlin `UInt`, Swift `UInt32`): a pass position is
+/// never negative. Kotlin can't coerce a bare `1` into an unsigned parameter,
+/// so the transpiler suffixes the literal (`getPass(1u)`) the same way it does
+/// for `setComputeDispatch`.
+#[derive(Debug, Clone, uniffi::Enum)]
+pub enum PassTarget {
+    Index(u32),
+    Name(String),
+}
+
 #[uniffi::export]
 impl Model {
     #[uniffi::constructor(name = "new")]
@@ -358,6 +373,88 @@ impl Scene {
     #[lsp_doc("docs/api/scene/scene/add_pass.md")]
     pub fn add_pass_mobile(self: Arc<Self>, pass: Arc<Pass>) {
         self.add_pass(pass.as_ref());
+    }
+
+    #[uniffi::method(name = "removePass")]
+    #[lsp_doc("docs/api/scene/scene/remove_pass.md")]
+    pub fn remove_pass_mobile(self: Arc<Self>, pass: Arc<Pass>) -> bool {
+        self.remove_pass(pass.as_ref())
+    }
+
+    #[uniffi::method(name = "getPass")]
+    #[lsp_doc("docs/api/scene/scene/get_pass.md")]
+    pub fn get_pass_mobile(self: Arc<Self>, index: u32) -> Option<Arc<Pass>> {
+        self.get_pass(index as usize).map(Arc::new)
+    }
+
+    #[uniffi::method(name = "findPass")]
+    #[lsp_doc("docs/api/scene/scene/find_pass.md")]
+    pub fn find_pass_mobile(self: Arc<Self>, name: String) -> Option<Arc<Pass>> {
+        self.find_pass(&name).map(Arc::new)
+    }
+
+    #[uniffi::method(name = "listPasses")]
+    #[lsp_doc("docs/api/scene/scene/list_passes.md")]
+    pub fn list_passes_mobile(self: Arc<Self>) -> Vec<Arc<Pass>> {
+        self.list_passes().into_iter().map(Arc::new).collect()
+    }
+
+    /// Add a SceneObject to a specific Pass, addressed by index or name via
+    /// [`PassTarget`]. The Swift / Kotlin extension files supply natural
+    /// `addTo(index, object)` / `addTo(name, object)` overloads on top.
+    #[uniffi::method(name = "addTo")]
+    #[lsp_doc("docs/api/scene/scene/add_to.md")]
+    pub fn add_to_mobile(
+        self: Arc<Self>,
+        target: PassTarget,
+        object: SceneObjectHandle,
+    ) -> Result<(), FragmentColorError> {
+        let target = match target {
+            PassTarget::Index(index) => crate::scene::PassRef::Index(index as usize),
+            PassTarget::Name(name) => crate::scene::PassRef::Name(name),
+        };
+        let result = match object {
+            SceneObjectHandle::Model(m) => self.add_to(target, m.as_ref()).map(|_| ()),
+            SceneObjectHandle::Camera(c) => self.add_to(target, c.as_ref()).map(|_| ()),
+            SceneObjectHandle::Light(l) => self.add_to(target, l.as_ref()).map(|_| ()),
+        };
+        result.map_err(|e| FragmentColorError::Render(e.to_string()))
+    }
+
+    #[uniffi::method(name = "setPasses")]
+    #[lsp_doc("docs/api/scene/scene/set_passes.md")]
+    pub fn set_passes_mobile(self: Arc<Self>, passes: Vec<Arc<Pass>>) {
+        self.set_passes(passes.iter().map(|p| (**p).clone()).collect());
+    }
+
+    #[uniffi::method(name = "noDefaults")]
+    #[lsp_doc("docs/api/scene/scene/no_defaults.md")]
+    pub fn no_defaults_mobile(self: Arc<Self>) {
+        self.no_defaults();
+    }
+
+    #[uniffi::method(name = "noDefaultCamera")]
+    #[lsp_doc("docs/api/scene/scene/no_default_camera.md")]
+    pub fn no_default_camera_mobile(self: Arc<Self>) {
+        self.no_default_camera();
+    }
+
+    #[uniffi::method(name = "noDefaultLight")]
+    #[lsp_doc("docs/api/scene/scene/no_default_light.md")]
+    pub fn no_default_light_mobile(self: Arc<Self>) {
+        self.no_default_light();
+    }
+
+    #[uniffi::method(name = "setDefaultCamera")]
+    #[lsp_doc("docs/api/scene/scene/set_default_camera.md")]
+    pub fn set_default_camera_mobile(self: Arc<Self>, camera: Arc<Camera>) {
+        self.set_default_camera(camera.as_ref());
+    }
+
+    #[uniffi::method(name = "setDefaultLight")]
+    #[lsp_doc("docs/api/scene/scene/set_default_light.md")]
+    pub fn set_default_light_mobile(self: Arc<Self>, light: Arc<Light>) {
+        self.set_default_light(light.as_ref());
     }
 
     #[uniffi::method(name = "ambient")]

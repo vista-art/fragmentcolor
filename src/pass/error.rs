@@ -8,6 +8,8 @@ pub enum PassError {
     AliasConflict,
     #[error("No compatible shader exists for this mesh")]
     NoCompatibleShader,
+    #[error("No pass in the scene matches the target: {0}")]
+    PassNotFound(String),
     #[error(
         "Shader has reached the {cap}-light cap; drop a Light first or split into multiple Passes"
     )]

@@ -34,7 +34,7 @@ pub use camera::*;
 pub use light::*;
 pub use loader::{GltfSource, SceneLoadError, SceneSource};
 pub use object::SceneObject;
-pub use scene::Scene;
+pub use scene::{PassRef, Scene};
 
 /// Per-Model live state read by the renderer's draw-queue build. Folded
 /// into one lock so the per-frame `build_pass_draws` walk takes a single

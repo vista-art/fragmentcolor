@@ -229,4 +229,10 @@ impl Pass {
     pub fn load_previous_mobile(&self) {
         self.load_previous();
     }
+
+    #[uniffi::method(name = "name")]
+    #[lsp_doc("docs/api/core/pass/name.md")]
+    pub fn name_mobile(&self) -> String {
+        self.name()
+    }
 }

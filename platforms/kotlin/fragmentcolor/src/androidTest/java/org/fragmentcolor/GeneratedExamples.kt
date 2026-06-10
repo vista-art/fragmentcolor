@@ -144,6 +144,12 @@ class GeneratedExamples {
         renderer.render(pass, target)
     }
 
+    @Suppress("unused") private suspend fun _example_core_pass_name() {
+
+        val shadow = Pass("shadow")
+        val label = shadow.name()
+    }
+
     @Suppress("unused") private suspend fun _example_core_pass_new() {
 
         val pass = Pass("first pass")
@@ -1214,6 +1220,19 @@ class GeneratedExamples {
         scene.add(model)
     }
 
+    @Suppress("unused") private suspend fun _example_scene_scene_add_to() {
+
+        val mesh = Mesh()
+        mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set("uv0", floatArrayOf(0.5f, 1.0f)), )
+        val model = Model(mesh, Material.pbr())
+
+        val scene = Scene()
+        scene.addPass(Pass("geometry"))
+
+        // Target the pass by name (or pass its index: scene.addTo(0, model)).
+        scene.addTo("geometry", model)
+    }
+
     @Suppress("unused") private suspend fun _example_scene_scene_ambient() {
 
         val renderer = Renderer()
@@ -1244,6 +1263,28 @@ class GeneratedExamples {
         }
     }
 
+    @Suppress("unused") private suspend fun _example_scene_scene_find_pass() {
+
+        val scene = Scene()
+        scene.addPass(Pass("backdrop"))
+        scene.addPass(Pass("geometry"))
+
+        // Look the geometry pass up by name to reconfigure it. A name with no
+        // match returns null instead.
+        val geometry = scene.findPass("geometry")
+    }
+
+    @Suppress("unused") private suspend fun _example_scene_scene_get_pass() {
+
+        val scene = Scene()
+        scene.addPass(Pass("backdrop"))
+        scene.addPass(Pass("geometry"))
+
+        // Fetch the second pass (index 1) to reconfigure it. An out-of-range
+        // index returns null instead.
+        val geometry = scene.getPass(1u)
+    }
+
     @Suppress("unused") private suspend fun _example_scene_scene_lights() {
 
         val scene = Scene.load("path/to/model.glb")
@@ -1252,6 +1293,19 @@ class GeneratedExamples {
         for (light in scene.lights()) {
             val current = light.intensity()
             light.setIntensity(current * 0.5f)
+        }
+    }
+
+    @Suppress("unused") private suspend fun _example_scene_scene_list_passes() {
+
+        val mesh = Mesh()
+        mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set("uv0", floatArrayOf(0.5f, 1.0f)), )
+        val scene = Scene()
+        scene.add(Model(mesh, Material.pbr()))
+
+        // Compose, don't clear: keep whatever the previous pass drew.
+        for (p in scene.listPasses()) {
+            p.loadPrevious()
         }
     }
 
@@ -1288,6 +1342,83 @@ class GeneratedExamples {
 
         val scene = Scene()
         // scene is empty; add Models / Cameras / Lights with """scene.add(...)""".
+    }
+
+    @Suppress("unused") private suspend fun _example_scene_scene_no_default_camera() {
+
+        val mesh = Mesh()
+        mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set("uv0", floatArrayOf(0.5f, 1.0f)), )
+        val scene = Scene()
+        scene.add(Model(mesh, Material.pbr()))
+
+        scene.noDefaultCamera()
+    }
+
+    @Suppress("unused") private suspend fun _example_scene_scene_no_default_light() {
+
+        val mesh = Mesh()
+        mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set("uv0", floatArrayOf(0.5f, 1.0f)), )
+        val scene = Scene()
+        scene.add(Model(mesh, Material.pbr()))
+
+        scene.noDefaultLight()
+    }
+
+    @Suppress("unused") private suspend fun _example_scene_scene_no_defaults() {
+
+        val mesh = Mesh()
+        mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set("uv0", floatArrayOf(0.5f, 1.0f)), )
+        val scene = Scene()
+        scene.add(Model(mesh, Material.pbr()))
+
+        // The host overrides every uniform, so suppress FC's stock camera + light.
+        scene.noDefaults()
+        for (p in scene.listPasses()) {
+            p.loadPrevious()
+        }
+    }
+
+    @Suppress("unused") private suspend fun _example_scene_scene_remove_pass() {
+
+        val scene = Scene()
+        val backdrop = Pass("backdrop")
+        val overlay = Pass("overlay")
+        scene.addPass(backdrop)
+        scene.addPass(overlay)
+
+        // Drop the backdrop; the overlay stays.
+        val removed = scene.removePass(backdrop)
+    }
+
+    @Suppress("unused") private suspend fun _example_scene_scene_set_default_camera() {
+
+        val mesh = Mesh()
+        mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set("uv0", floatArrayOf(0.5f, 1.0f)), )
+        val scene = Scene()
+        scene.add(Model(mesh, Material.pbr()))
+
+        val camera = Camera.perspective(1.047f, 16.0f / 9.0f, 0.1f, 100.0f).lookAt(listOf(0.0f, 1.5f, 4.0f), listOf(0.0f, 0.0f, 0.0f), listOf(0.0f, 1.0f, 0.0f))
+        scene.setDefaultCamera(camera)
+    }
+
+    @Suppress("unused") private suspend fun _example_scene_scene_set_default_light() {
+
+        val mesh = Mesh()
+        mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set("uv0", floatArrayOf(0.5f, 1.0f)), )
+        val scene = Scene()
+        scene.add(Model(mesh, Material.pbr()))
+
+        val key = Light.directional(listOf(0.3f, -1.0f, -0.4f), listOf(1.0f, 0.95f, 0.9f))
+        scene.setDefaultLight(key)
+    }
+
+    @Suppress("unused") private suspend fun _example_scene_scene_set_passes() {
+
+        val scene = Scene()
+        scene.addPass(Pass("scratch"))
+
+        // Swap in a deliberate order: shadow map, then geometry, then overlay.
+        scene.setPasses(arrayOf(Pass("shadow"), Pass("geometry"), Pass("overlay"),))
     }
 
     @Suppress("unused") private suspend fun _example_targets_target_Target() {

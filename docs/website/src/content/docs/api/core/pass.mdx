@@ -429,6 +429,97 @@ lang="kotlin"
 
 ---
 
+### Pass::name
+
+Read the pass's name — the string passed to
+[`Pass::new`](/api/core/pass/new) (or the label a
+loader gave it). Names are how you address a pass by something other than its
+index: pair this with
+[`Scene::find_pass`](/api/scene/scene/find_pass) to
+locate a pass in a scene's graph, and it's the label graphics debuggers
+(RenderDoc, Xcode GPU capture) show for the pass.
+
+Names aren't required to be unique. If two passes share a name, name lookup
+returns the first one.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::Pass;
+
+let shadow = Pass::new("shadow");
+let label = shadow.name();
+assert_eq!(label, "shadow");
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 6-8}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Pass } from "fragmentcolor";
+
+const shadow = new Pass("shadow");
+const label = shadow.name();
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Pass
+
+shadow = Pass("shadow")
+label = shadow.name()
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let shadow = Pass("shadow")
+let label = shadow.name()
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val shadow = Pass("shadow")
+val label = shadow.name()
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
 ### Pass::load_previous()
 
 Configures this [Pass](/api/core/pass) to load the previous contents of the [Target](/api/core/target) instead of clearing it.

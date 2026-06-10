@@ -32,9 +32,26 @@ underneath and don't leak into the call site.
 
 `Scene::new()` is synchronous and takes no `Renderer`. The first time a
 [SceneObject](/api/scene) is added, the Scene
-creates a default Pass to absorb it. The first time the Scene is rendered,
-the underlying GPU resources initialise on demand. This is the lazy-init
-pattern the rest of FragmentColor follows.
+creates a default Pass to hold it. The first time the Scene is rendered, the
+underlying GPU resources initialise on demand. This is the lazy-init pattern
+the rest of FragmentColor follows.
+
+## An open, composable pass graph
+
+A `Scene` owns one ordered `Vec<Pass>`. Loaders, builders, and your own code
+all append into the same list, and the renderer walks it in order. No pass is
+privileged in render order: the default Pass that `scene.add(&model)` targets
+is an ordinary member, slotted in at the point of your first `add`. After
+[`Scene::load`](/api/scene/scene/load) the whole
+graph is in your hands. Read it with
+[`list_passes`](/api/scene/scene/list_passes) or
+[`get_pass`](/api/scene/scene/get_pass), restructure
+it with [`add_pass`](/api/scene/scene/add_pass),
+[`remove_pass`](/api/scene/scene/remove_pass), and
+[`set_passes`](/api/scene/scene/set_passes), and
+configure each pass (`load_previous`, clear color, viewport, target) the same
+way you would a hand-built one. That makes a loaded Scene compose onto any
+other Pass in a frame, instead of clearing whatever it lands on.
 
 ## Default Camera + Light at render time
 
@@ -50,7 +67,11 @@ Scene injects sensible defaults when the user hasn't supplied them:
   fill so a front-facing quad reads as lit rather than silhouetted.
 
 These only fire when no user Camera / Light has been added; as soon as you
-add your own, your values win.
+add your own, your values win. A composition caller that drives every uniform
+from the host can suppress them with
+[`no_defaults`](/api/scene/scene/no_defaults) (or the
+per-kind `no_default_camera` / `no_default_light`), or swap the stock values
+out with `set_default_camera` / `set_default_light`.
 
 
 ## Methods
@@ -485,6 +506,141 @@ scene.add(sun)
 // Updating the camera later is enough — every shader on the scene picks
 // the view_proj up at the next render.
 camera.lookAt(listOf(3.0f, 1.0f, 5.0f), listOf(0.0f, 0.0f, 0.0f), listOf(0.0f, 1.0f, 0.0f))
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Scene::add_to
+
+Add a [`SceneObject`](/api/scene) (Model / Camera /
+Light / custom) to a specific Pass in the graph, addressed by index or by
+name. It's the targeted form of
+[`add`](/api/scene/scene/add): where `add` routes
+into the scene's default pass, `add_to` lets you pick the pass yourself, which
+matters once a scene holds more than one.
+
+Pass an index (matching [`get_pass`](/api/scene/scene/get_pass))
+or a name (matching [`find_pass`](/api/scene/scene/find_pass)).
+An index out of range, or a name that matches nothing, is an error. The
+Scene-level bookkeeping is identical to `add`: the object surfaces in
+`models()` / `cameras()` / `lights()`, and a Camera or Light there still
+suppresses the matching default-injection.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Material, Mesh, Model, Pass, Scene, Vertex};
+
+let mesh = Mesh::new();
+mesh.add_vertex(
+    Vertex::pbr([0.0, 0.5, 0.0]).set(Vertex::UV0, [0.5, 1.0]),
+);
+let model = Model::new(mesh, Material::pbr());
+
+let scene = Scene::new();
+scene.add_pass(&Pass::new("geometry"));
+
+// Target the pass by name (or pass its index: scene.add_to(0, &model)).
+scene.add_to("geometry", &model)?;
+assert_eq!(scene.models().len(), 1);
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 15-17}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Material, Mesh, Model, Pass, Scene, Vertex } from "fragmentcolor";
+
+const mesh = new Mesh();
+mesh.addVertex( Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0]), );
+const model = new Model(mesh, Material.pbr());
+
+const scene = new Scene();
+scene.addPass(new Pass("geometry"));
+
+// Target the pass by name (or pass its index: scene.addTo(0, model)).
+scene.addTo("geometry", model);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Material, Mesh, Model, Pass, Scene, Vertex
+
+mesh = Mesh()
+mesh.add_vertex(
+    Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
+)
+model = Model(mesh, Material.pbr())
+
+scene = Scene()
+scene.add_pass(Pass("geometry"))
+
+# Target the pass by name (or pass its index: scene.add_to(0, model)).
+scene.add_to("geometry", model)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let mesh = Mesh()
+try mesh.addVertex(
+    try Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0])
+)
+let model = Model(mesh, Material.pbr())
+
+let scene = Scene()
+scene.addPass(Pass("geometry"))
+
+// Target the pass by name (or pass its index: scene.addTo(0, model)).
+try scene.addTo("geometry", model)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val mesh = Mesh()
+mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set("uv0", floatArrayOf(0.5f, 1.0f)), )
+val model = Model(mesh, Material.pbr())
+
+val scene = Scene()
+scene.addPass(Pass("geometry"))
+
+// Target the pass by name (or pass its index: scene.addTo(0, model)).
+scene.addTo("geometry", model)
 `}
 lang="kotlin"
 />
@@ -1050,45 +1206,37 @@ lang="kotlin"
 ### Scene::add_pass
 
 Append a user-built [Pass](/api/core/pass) to the
-scene's pre-pass list. The Scene renders these passes in insertion order
-*before* its internal default Pass. That's the hook for shadow maps,
-depth pre-passes, screen-space backdrops, anything that has to run *before*
-the scene's main geometry draw.
+scene's pass graph. A `Scene` owns one ordered list of passes, and `add_pass`
+pushes onto the end. Order is the order you build it: passes render in vec
+order, and the default pass that holds `scene.add(&model)` geometry is an
+ordinary member of that list, slotted in at the point of your first `add`.
 
-The default Pass that holds the Scene's [SceneObjects](/api/scene)
-is *not* affected by `add_pass`; it's an internal pipeline owned by the
-Scene. Use `add_pass` only when you want a dedicated Pass with its own
-shaders / clear logic. For ordinary geometry, `scene.add(&model)?` is what
-you want.
-
-For *post*-effects (bloom, tonemap, …), keep the post-pass outside the
-Scene and combine them at render time:
-
-```text
-renderer.render(&scene, &offscreen_target)?;
-renderer.render(&postfx_pass, &final_target)?;
-```
+That makes `add_pass` the hook for shadow maps, depth pre-passes, screen-space
+backdrops, and post-effects alike. Insert before your geometry for a backdrop,
+after it for an overlay. To inspect or reorder the result, reach for
+[`list_passes`](/api/scene/scene/list_passes),
+[`get_pass`](/api/scene/scene/get_pass),
+[`remove_pass`](/api/scene/scene/remove_pass), and
+[`set_passes`](/api/scene/scene/set_passes).
 
 The Pass is cloned (shallow Arc-share) when stored, so further changes you
-make to the original handle reach the Scene's copy as well.
+make to the original handle reach the Scene's copy too.
 
 ##### Each new Pass clears by default
 
-Every `Pass::new(name)` starts with a clear-to-transparent input. The
-first render of the frame for that Pass wipes its colour attachment to
-`[0, 0, 0, 0]`. When you chain passes that read each other's output
-(e.g. `[backdrop, shadow_overlay]`), the second Pass will clear the
-first Pass's output unless you opt out:
+Every `Pass::new(name)` starts with a clear-to-transparent input. The first
+render of the frame for that Pass wipes its colour attachment to
+`[0, 0, 0, 0]`. When you chain passes that read each other's output, the
+downstream Pass clears the upstream Pass's output unless you opt out:
 
-- Call `pass.load_previous()` on the downstream Pass to keep the
-  previous frame contents around (the wgpu `LoadOp::Load` equivalent).
-- Or call `pass.set_clear_color([r, g, b, a])` to choose a specific
-  clear value (still a clear; just a different colour).
+- Call `pass.load_previous()` on the downstream Pass to keep the previous
+  contents around (the wgpu `LoadOp::Load` equivalent).
+- Or call `pass.set_clear_color([r, g, b, a])` to choose a specific clear
+  value (still a clear, just a different colour).
 
-`Scene::add_pass` accepts each pre-pass independently. There's no
-automatic chaining of their attachments. If you need two passes to
-share a target, route them through the same `set_target(...)` and use
-`load_previous` to compose.
+`Scene::add_pass` stores each pass independently. There's no automatic
+chaining of their attachments. To share a target between two passes, route
+them through the same `set_target(...)` and use `load_previous` to compose.
 
 #### Example
 
@@ -1222,6 +1370,1219 @@ backdrop.setClearColor(listOf(0.05f, 0.08f, 0.12f, 1.0f))
 val scene = Scene()
 scene.addPass(backdrop)
 scene.add(model)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Scene::remove_pass
+
+Remove a [`Pass`](/api/core/pass) from the scene's
+pass graph. Identity is by handle: `Pass` is `Clone` and Arc-backed, so the
+handle you pass in is matched against the graph by pointer, not by name.
+Returns `true` when a pass left the graph, `false` when the handle wasn't
+there.
+
+If the removed pass was the default pass that [`Scene::add`](/api/scene/scene/add)
+routes objects into, the Scene forgets it. The next `add` builds a fresh
+default pass at the end of the graph.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Pass, Scene};
+
+let scene = Scene::new();
+let backdrop = Pass::new("backdrop");
+let overlay = Pass::new("overlay");
+scene.add_pass(&backdrop);
+scene.add_pass(&overlay);
+
+// Drop the backdrop; the overlay stays.
+let removed = scene.remove_pass(&backdrop);
+assert!(removed);
+assert_eq!(scene.list_passes().len(), 1);
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 12-15}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Pass, Scene } from "fragmentcolor";
+
+const scene = new Scene();
+const backdrop = new Pass("backdrop");
+const overlay = new Pass("overlay");
+scene.addPass(backdrop);
+scene.addPass(overlay);
+
+// Drop the backdrop; the overlay stays.
+const removed = scene.removePass(backdrop);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Pass, Scene
+
+scene = Scene()
+backdrop = Pass("backdrop")
+overlay = Pass("overlay")
+scene.add_pass(backdrop)
+scene.add_pass(overlay)
+
+# Drop the backdrop; the overlay stays.
+removed = scene.remove_pass(backdrop)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let scene = Scene()
+let backdrop = Pass("backdrop")
+let overlay = Pass("overlay")
+scene.addPass(backdrop)
+scene.addPass(overlay)
+
+// Drop the backdrop; the overlay stays.
+let removed = scene.removePass(backdrop)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val scene = Scene()
+val backdrop = Pass("backdrop")
+val overlay = Pass("overlay")
+scene.addPass(backdrop)
+scene.addPass(overlay)
+
+// Drop the backdrop; the overlay stays.
+val removed = scene.removePass(backdrop)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Scene::get_pass
+
+Read one [`Pass`](/api/core/pass) from the graph by
+index, in render order. Returns `None` when the index is out of range.
+
+The returned `Pass` is an Arc-shared clone of the one the Scene renders.
+Configuring it (`load_previous`, `set_clear_color`, `set_target`) drives the
+live pass, no re-insert needed. To borrow the whole graph at once, use
+[`Scene::list_passes`](/api/scene/scene/list_passes).
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Pass, Scene};
+
+let scene = Scene::new();
+scene.add_pass(&Pass::new("backdrop"));
+scene.add_pass(&Pass::new("geometry"));
+
+// Fetch the second pass (index 1) to reconfigure it. An out-of-range
+// index returns None instead.
+let geometry = scene.get_pass(1);
+assert!(geometry.is_some());
+assert!(scene.get_pass(2).is_none());
+if let Some(pass) = geometry {
+    pass.load_previous();
+}
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 11-17}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Pass, Scene } from "fragmentcolor";
+
+const scene = new Scene();
+scene.addPass(new Pass("backdrop"));
+scene.addPass(new Pass("geometry"));
+
+// Fetch the second pass (index 1) to reconfigure it. An out-of-range
+// index returns null instead.
+const geometry = scene.getPass(1);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Pass, Scene
+
+scene = Scene()
+scene.add_pass(Pass("backdrop"))
+scene.add_pass(Pass("geometry"))
+
+# Fetch the second pass (index 1) to reconfigure it. An out-of-range
+# index returns None instead.
+geometry = scene.get_pass(1)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let scene = Scene()
+scene.addPass(Pass("backdrop"))
+scene.addPass(Pass("geometry"))
+
+// Fetch the second pass (index 1) to reconfigure it. An out-of-range
+// index returns nil instead.
+let geometry = scene.getPass(1)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val scene = Scene()
+scene.addPass(Pass("backdrop"))
+scene.addPass(Pass("geometry"))
+
+// Fetch the second pass (index 1) to reconfigure it. An out-of-range
+// index returns null instead.
+val geometry = scene.getPass(1u)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Scene::find_pass
+
+Find a [`Pass`](/api/core/pass) in the scene's graph
+by name, returning `None` when nothing matches. Names come from
+[`Pass::new`](/api/core/pass/new) (or whatever label a
+loader assigned), and you can read one back with
+[`Pass::name`](/api/core/pass/name).
+
+This is the name-addressed counterpart to
+[`get_pass`](/api/scene/scene/get_pass), which
+addresses by index. Names aren't required to be unique; `find_pass` returns the
+first match in render order. The returned `Pass` is an Arc-shared clone, so
+configuring it drives the pass the Scene renders.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Pass, Scene};
+
+let scene = Scene::new();
+scene.add_pass(&Pass::new("backdrop"));
+scene.add_pass(&Pass::new("geometry"));
+
+// Look the geometry pass up by name to reconfigure it. A name with no
+// match returns None instead.
+let geometry = scene.find_pass("geometry");
+assert!(geometry.is_some());
+assert!(scene.find_pass("missing").is_none());
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 11-14}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Pass, Scene } from "fragmentcolor";
+
+const scene = new Scene();
+scene.addPass(new Pass("backdrop"));
+scene.addPass(new Pass("geometry"));
+
+// Look the geometry pass up by name to reconfigure it. A name with no
+// match returns null instead.
+const geometry = scene.findPass("geometry");
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Pass, Scene
+
+scene = Scene()
+scene.add_pass(Pass("backdrop"))
+scene.add_pass(Pass("geometry"))
+
+# Look the geometry pass up by name to reconfigure it. A name with no
+# match returns None instead.
+geometry = scene.find_pass("geometry")
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let scene = Scene()
+scene.addPass(Pass("backdrop"))
+scene.addPass(Pass("geometry"))
+
+// Look the geometry pass up by name to reconfigure it. A name with no
+// match returns nil instead.
+let geometry = scene.findPass("geometry")
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val scene = Scene()
+scene.addPass(Pass("backdrop"))
+scene.addPass(Pass("geometry"))
+
+// Look the geometry pass up by name to reconfigure it. A name with no
+// match returns null instead.
+val geometry = scene.findPass("geometry")
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Scene::list_passes
+
+Return a snapshot of every [`Pass`](/api/core/pass)
+in the scene, in render order. Each entry is an Arc-shared clone, so
+configuring one (`load_previous`, `set_clear_color`, `set_viewport`,
+`set_target`) drives the pass the Scene renders. The returned `Vec` is the
+snapshot at call time; appending passes afterward doesn't grow it.
+
+This is the composition hook. After
+[`Scene::load`](/api/scene/scene/load) the whole
+pass graph is in your hands: walk it and call `load_previous` so the scene
+composes onto a previous draw instead of clearing it, then hand the Scene to
+the renderer alongside whatever else the frame needs.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Material, Mesh, Model, Scene, Vertex};
+
+let mesh = Mesh::new();
+mesh.add_vertex(
+    Vertex::pbr([0.0, 0.5, 0.0]).set(Vertex::UV0, [0.5, 1.0]),
+);
+let scene = Scene::new();
+scene.add(&Model::new(mesh, Material::pbr()))?;
+
+// Compose, don't clear: keep whatever the previous pass drew.
+for p in scene.list_passes() {
+    p.load_previous();
+}
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 15-16}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Material, Mesh, Model, Scene, Vertex } from "fragmentcolor";
+
+const mesh = new Mesh();
+mesh.addVertex( Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0]), );
+const scene = new Scene();
+scene.add(new Model(mesh, Material.pbr()));
+
+// Compose, don't clear: keep whatever the previous pass drew.
+for (const p of scene.listPasses()) { p.loadPrevious(); };
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Material, Mesh, Model, Scene, Vertex
+
+mesh = Mesh()
+mesh.add_vertex(
+    Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
+)
+scene = Scene()
+scene.add(Model(mesh, Material.pbr()))
+
+# Compose, don't clear: keep whatever the previous pass drew.
+for p in scene.list_passes():
+    p.load_previous()
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let mesh = Mesh()
+try mesh.addVertex(
+    try Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0])
+)
+let scene = Scene()
+try scene.add(Model(mesh, Material.pbr()))
+
+// Compose, don't clear: keep whatever the previous pass drew.
+for p in scene.listPasses() {
+    p.loadPrevious()
+}
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val mesh = Mesh()
+mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set("uv0", floatArrayOf(0.5f, 1.0f)), )
+val scene = Scene()
+scene.add(Model(mesh, Material.pbr()))
+
+// Compose, don't clear: keep whatever the previous pass drew.
+for (p in scene.listPasses()) {
+    p.loadPrevious()
+}
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Scene::set_passes
+
+Replace the scene's entire pass graph with a new ordered list. The passes
+render in vec order. This is the sugar for "load, reorder, render" when you'd
+rather hand over a fresh ordering than call
+[`remove_pass`](/api/scene/scene/remove_pass) and
+[`add_pass`](/api/scene/scene/add_pass) one at a
+time.
+
+If the default pass that [`Scene::add`](/api/scene/scene/add)
+routes objects into survives in the new list, the Scene keeps using it. If you
+drop it, the Scene forgets it and the next `add` builds a fresh one at the end.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Pass, Scene};
+
+let scene = Scene::new();
+scene.add_pass(&Pass::new("scratch"));
+
+// Swap in a deliberate order: shadow map, then geometry, then overlay.
+scene.set_passes(vec![
+    Pass::new("shadow"),
+    Pass::new("geometry"),
+    Pass::new("overlay"),
+]);
+assert_eq!(scene.list_passes().len(), 3);
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 13-15}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Pass, Scene } from "fragmentcolor";
+
+const scene = new Scene();
+scene.addPass(new Pass("scratch"));
+
+// Swap in a deliberate order: shadow map, then geometry, then overlay.
+scene.setPasses([ new Pass("shadow"), new Pass("geometry"), new Pass("overlay"), ]);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Pass, Scene
+
+scene = Scene()
+scene.add_pass(Pass("scratch"))
+
+# Swap in a deliberate order: shadow map, then geometry, then overlay.
+scene.set_passes([
+    Pass("shadow"),
+    Pass("geometry"),
+    Pass("overlay"),
+])
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let scene = Scene()
+scene.addPass(Pass("scratch"))
+
+// Swap in a deliberate order: shadow map, then geometry, then overlay.
+scene.setPasses([
+    Pass("shadow"),
+    Pass("geometry"),
+    Pass("overlay"),
+])
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val scene = Scene()
+scene.addPass(Pass("scratch"))
+
+// Swap in a deliberate order: shadow map, then geometry, then overlay.
+scene.setPasses(arrayOf(Pass("shadow"), Pass("geometry"), Pass("overlay"),))
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Scene::no_defaults
+
+Turn off both default-Camera and default-Light injection. By default a Scene
+carrying Models but no Camera or Light injects a stock perspective camera and
+a white directional light at first render, so the hello-world path shows
+something recognisable. A composition caller that drives `view_proj` and the
+light slots from the host doesn't want those stock values layered on top.
+`no_defaults` leaves the pass graph exactly as built.
+
+For finer control, reach for the per-kind switches
+[`no_default_camera`](/api/scene/scene/no_default_camera)
+and [`no_default_light`](/api/scene/scene/no_default_light).
+To keep injection on but swap the stock values for your own, use
+[`set_default_camera`](/api/scene/scene/set_default_camera)
+and [`set_default_light`](/api/scene/scene/set_default_light).
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Material, Mesh, Model, Scene, Vertex};
+
+let mesh = Mesh::new();
+mesh.add_vertex(
+    Vertex::pbr([0.0, 0.5, 0.0]).set(Vertex::UV0, [0.5, 1.0]),
+);
+let scene = Scene::new();
+scene.add(&Model::new(mesh, Material::pbr()))?;
+
+// The host overrides every uniform, so suppress FC's stock camera + light.
+scene.no_defaults();
+for p in scene.list_passes() {
+    p.load_previous();
+}
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 16-17}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Material, Mesh, Model, Scene, Vertex } from "fragmentcolor";
+
+const mesh = new Mesh();
+mesh.addVertex( Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0]), );
+const scene = new Scene();
+scene.add(new Model(mesh, Material.pbr()));
+
+// The host overrides every uniform, so suppress FC's stock camera + light.
+scene.noDefaults();
+for (const p of scene.listPasses()) { p.loadPrevious(); };
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Material, Mesh, Model, Scene, Vertex
+
+mesh = Mesh()
+mesh.add_vertex(
+    Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
+)
+scene = Scene()
+scene.add(Model(mesh, Material.pbr()))
+
+# The host overrides every uniform, so suppress FC's stock camera + light.
+scene.no_defaults()
+for p in scene.list_passes():
+    p.load_previous()
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let mesh = Mesh()
+try mesh.addVertex(
+    try Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0])
+)
+let scene = Scene()
+try scene.add(Model(mesh, Material.pbr()))
+
+// The host overrides every uniform, so suppress FC's stock camera + light.
+scene.noDefaults()
+for p in scene.listPasses() {
+    p.loadPrevious()
+}
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val mesh = Mesh()
+mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set("uv0", floatArrayOf(0.5f, 1.0f)), )
+val scene = Scene()
+scene.add(Model(mesh, Material.pbr()))
+
+// The host overrides every uniform, so suppress FC's stock camera + light.
+scene.noDefaults()
+for (p in scene.listPasses()) {
+    p.loadPrevious()
+}
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Scene::no_default_camera
+
+Turn off default-Camera injection while leaving the default Light in place.
+By default a Scene with Models but no Camera injects a stock perspective
+camera at first render. Call this when the host supplies the view projection
+and the stock camera would only fight for the same uniform.
+
+To turn off both kinds at once, use
+[`no_defaults`](/api/scene/scene/no_defaults). To
+keep injection on but supply your own camera, use
+[`set_default_camera`](/api/scene/scene/set_default_camera).
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Material, Mesh, Model, Scene, Vertex};
+
+let mesh = Mesh::new();
+mesh.add_vertex(
+    Vertex::pbr([0.0, 0.5, 0.0]).set(Vertex::UV0, [0.5, 1.0]),
+);
+let scene = Scene::new();
+scene.add(&Model::new(mesh, Material::pbr()))?;
+
+scene.no_default_camera();
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 12-13}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Material, Mesh, Model, Scene, Vertex } from "fragmentcolor";
+
+const mesh = new Mesh();
+mesh.addVertex( Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0]), );
+const scene = new Scene();
+scene.add(new Model(mesh, Material.pbr()));
+
+scene.noDefaultCamera();
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Material, Mesh, Model, Scene, Vertex
+
+mesh = Mesh()
+mesh.add_vertex(
+    Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
+)
+scene = Scene()
+scene.add(Model(mesh, Material.pbr()))
+
+scene.no_default_camera()
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let mesh = Mesh()
+try mesh.addVertex(
+    try Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0])
+)
+let scene = Scene()
+try scene.add(Model(mesh, Material.pbr()))
+
+scene.noDefaultCamera()
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val mesh = Mesh()
+mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set("uv0", floatArrayOf(0.5f, 1.0f)), )
+val scene = Scene()
+scene.add(Model(mesh, Material.pbr()))
+
+scene.noDefaultCamera()
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Scene::no_default_light
+
+Turn off default-Light injection while leaving the default Camera in place.
+By default a Scene with Models but no Light injects a white directional light
+at first render so the geometry reads as lit. Call this when the host owns the
+light rig and the stock light would only compete for the same
+`lights.lights[..]` slots.
+
+To turn off both kinds at once, use
+[`no_defaults`](/api/scene/scene/no_defaults). To
+keep injection on but supply your own light, use
+[`set_default_light`](/api/scene/scene/set_default_light).
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Material, Mesh, Model, Scene, Vertex};
+
+let mesh = Mesh::new();
+mesh.add_vertex(
+    Vertex::pbr([0.0, 0.5, 0.0]).set(Vertex::UV0, [0.5, 1.0]),
+);
+let scene = Scene::new();
+scene.add(&Model::new(mesh, Material::pbr()))?;
+
+scene.no_default_light();
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 12-13}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Material, Mesh, Model, Scene, Vertex } from "fragmentcolor";
+
+const mesh = new Mesh();
+mesh.addVertex( Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0]), );
+const scene = new Scene();
+scene.add(new Model(mesh, Material.pbr()));
+
+scene.noDefaultLight();
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Material, Mesh, Model, Scene, Vertex
+
+mesh = Mesh()
+mesh.add_vertex(
+    Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
+)
+scene = Scene()
+scene.add(Model(mesh, Material.pbr()))
+
+scene.no_default_light()
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let mesh = Mesh()
+try mesh.addVertex(
+    try Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0])
+)
+let scene = Scene()
+try scene.add(Model(mesh, Material.pbr()))
+
+scene.noDefaultLight()
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val mesh = Mesh()
+mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set("uv0", floatArrayOf(0.5f, 1.0f)), )
+val scene = Scene()
+scene.add(Model(mesh, Material.pbr()))
+
+scene.noDefaultLight()
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Scene::set_default_camera
+
+Supply your own default [`Camera`](/api/scene/camera)
+for the Scene to inject at first render in place of FC's stock perspective
+camera. This fires only when no Camera arrived through
+[`Scene::add`](/api/scene/scene/add); an explicit
+`scene.add(&camera)` still wins.
+
+Naming a default re-arms injection. If
+[`no_default_camera`](/api/scene/scene/no_default_camera)
+ran earlier, calling `set_default_camera` turns camera injection back on with
+the camera you pass.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Camera, Material, Mesh, Model, Scene, Vertex};
+
+let mesh = Mesh::new();
+mesh.add_vertex(
+    Vertex::pbr([0.0, 0.5, 0.0]).set(Vertex::UV0, [0.5, 1.0]),
+);
+let scene = Scene::new();
+scene.add(&Model::new(mesh, Material::pbr()))?;
+
+let camera = Camera::perspective(1.047, 16.0 / 9.0, 0.1, 100.0)
+    .look_at([0.0, 1.5, 4.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+scene.set_default_camera(&camera);
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 14-15}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Camera, Material, Mesh, Model, Scene, Vertex } from "fragmentcolor";
+
+const mesh = new Mesh();
+mesh.addVertex( Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0]), );
+const scene = new Scene();
+scene.add(new Model(mesh, Material.pbr()));
+
+const camera = Camera.perspective(1.047, 16.0 / 9.0, 0.1, 100.0).lookAt([0.0, 1.5, 4.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+scene.setDefaultCamera(camera);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Camera, Material, Mesh, Model, Scene, Vertex
+
+mesh = Mesh()
+mesh.add_vertex(
+    Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
+)
+scene = Scene()
+scene.add(Model(mesh, Material.pbr()))
+
+camera = Camera.perspective(1.047, 16.0 / 9.0, 0.1, 100.0).look_at([0.0, 1.5, 4.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+scene.set_default_camera(camera)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let mesh = Mesh()
+try mesh.addVertex(
+    try Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0])
+)
+let scene = Scene()
+try scene.add(Model(mesh, Material.pbr()))
+
+let camera = try Camera.perspective(1.047, 16.0 / 9.0, 0.1, 100.0).lookAt([0.0, 1.5, 4.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+scene.setDefaultCamera(camera)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val mesh = Mesh()
+mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set("uv0", floatArrayOf(0.5f, 1.0f)), )
+val scene = Scene()
+scene.add(Model(mesh, Material.pbr()))
+
+val camera = Camera.perspective(1.047f, 16.0f / 9.0f, 0.1f, 100.0f).lookAt(listOf(0.0f, 1.5f, 4.0f), listOf(0.0f, 0.0f, 0.0f), listOf(0.0f, 1.0f, 0.0f))
+scene.setDefaultCamera(camera)
+`}
+lang="kotlin"
+/>
+
+</TabItem>
+
+</Tabs>
+
+
+---
+
+### Scene::set_default_light
+
+Supply your own default [`Light`](/api/scene/light)
+for the Scene to inject at first render in place of FC's stock white
+directional light. This fires only when no Light arrived through
+[`Scene::add`](/api/scene/scene/add); an explicit
+`scene.add(&light)` still wins.
+
+Naming a default re-arms injection. If
+[`no_default_light`](/api/scene/scene/no_default_light)
+ran earlier, calling `set_default_light` turns light injection back on with
+the light you pass.
+
+#### Example
+
+<Tabs>
+
+<TabItem label="Rust">
+<Code
+code={`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+use fragmentcolor::{Light, Material, Mesh, Model, Scene, Vertex};
+
+let mesh = Mesh::new();
+mesh.add_vertex(
+    Vertex::pbr([0.0, 0.5, 0.0]).set(Vertex::UV0, [0.5, 1.0]),
+);
+let scene = Scene::new();
+scene.add(&Model::new(mesh, Material::pbr()))?;
+
+let key = Light::directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9]);
+scene.set_default_light(&key);
+Ok(())
+}
+`}
+lang="rust" meta="collapse={1-1, 13-14}"
+/>
+
+</TabItem>
+
+<TabItem label="JavaScript">
+<Code
+code={`
+import { Light, Material, Mesh, Model, Scene, Vertex } from "fragmentcolor";
+
+const mesh = new Mesh();
+mesh.addVertex( Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0]), );
+const scene = new Scene();
+scene.add(new Model(mesh, Material.pbr()));
+
+const key = Light.directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9]);
+scene.setDefaultLight(key);
+`}
+lang="js"
+/>
+
+</TabItem>
+
+<TabItem label="Python">
+<Code
+code={`
+from fragmentcolor import Light, Material, Mesh, Model, Scene, Vertex
+
+mesh = Mesh()
+mesh.add_vertex(
+    Vertex.pbr([0.0, 0.5, 0.0]).set(Vertex.UV0, [0.5, 1.0]),
+)
+scene = Scene()
+scene.add(Model(mesh, Material.pbr()))
+
+key = Light.directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9])
+scene.set_default_light(key)
+`}
+lang="python"
+/>
+
+</TabItem>
+
+<TabItem label="Swift">
+<Code
+code={`
+import FragmentColor
+
+let mesh = Mesh()
+try mesh.addVertex(
+    try Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0])
+)
+let scene = Scene()
+try scene.add(Model(mesh, Material.pbr()))
+
+let key = try Light.directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9])
+scene.setDefaultLight(key)
+`}
+lang="swift"
+/>
+
+</TabItem>
+
+<TabItem label="Kotlin">
+<Code
+code={`
+import org.fragmentcolor.*
+
+val mesh = Mesh()
+mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set("uv0", floatArrayOf(0.5f, 1.0f)), )
+val scene = Scene()
+scene.add(Model(mesh, Material.pbr()))
+
+val key = Light.directional(listOf(0.3f, -1.0f, -0.4f), listOf(1.0f, 0.95f, 0.9f))
+scene.setDefaultLight(key)
 `}
 lang="kotlin"
 />

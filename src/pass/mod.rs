@@ -93,6 +93,11 @@ impl Pass {
         Self { object: obj }
     }
 
+    #[lsp_doc("docs/api/core/pass/name.md")]
+    pub fn name(&self) -> String {
+        self.object.name.to_string()
+    }
+
     #[lsp_doc("docs/api/core/pass/load_previous.md")]
     pub fn load_previous(&self) {
         *self.object.input.write() = PassInput {

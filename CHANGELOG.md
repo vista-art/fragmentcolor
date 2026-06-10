@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.12.2: Composable Scene
+
+`Scene` now exposes its render passes the way `Pass` and `Renderer` already do. A scene owns one ordered list of passes that you can read, append, remove, reorder, and replace, so a scene loaded from glTF composes on top of another pass in a frame instead of clearing it. `Scene::load(...)` is unchanged and still returns a renderable scene with sensible defaults.
+
+What's new:
+
+- Read and edit the pass graph with `add_pass`, `remove_pass`, `get_pass`, `find_pass`, `list_passes`, and `set_passes`.
+- Add a `Model`, `Camera`, or `Light` to a chosen pass by index or name with `add_to`.
+- Decide whether the stock Camera and Light inject at first render with `no_defaults`, `no_default_camera`, `no_default_light`, `set_default_camera`, and `set_default_light`.
+- Read a pass's label with `Pass::name`.
+
+One behaviour change: passes render in list order, so a pass added after the geometry now renders after it. A pass added before it (the common backdrop case) is unaffected.
+
+Every method ships on Rust, Python, JavaScript, Swift, and Kotlin.
+
+## 0.12.1: Publishing fix
+
+A patch release that gets 0.12.0 onto crates.io. The 0.12.0 upload failed because `build.rs` generated the `Scene::load` example fixtures into the source tree, and `cargo publish` rebuilds the crate in a clean directory and rejects a build that writes there. The fixtures (`path/to/model.glb`, `path/to/model.gltf`, and the web healthcheck copy) now ship as committed static assets, and the build no longer writes them. There are no API changes.
+
 ## 0.12.0: 3D scenes: glTF loading, PBR materials, and a texture pipeline
 
 Large release that implements support for 3D assets.

@@ -201,20 +201,24 @@ WATCHDOG.unref?.();
     console.log('[gpu-probe] threw:', e?.message || String(e));
   }
 
-  console.log('[playwright] waiting for healthcheck console marker (20 s)…');
-  // Prefer waiting for the success message rather than fixed sleep
+  console.log('[playwright] waiting for healthcheck console marker (90 s)…');
+  // Prefer waiting for the success message rather than fixed sleep. The
+  // headroom covers verbose runs (FC_HEALTHCHECK_VERBOSE=1), where every
+  // example's WGSL parse logs per-expression resolution lines that Playwright
+  // captures one by one — the wall-clock grows with the example suite, not
+  // because anything hung.
   try {
     await page.waitForEvent('console', {
       predicate: (m) => {
         const t = m.text();
         return t.includes('Headless JS render completed successfully') || t.includes('✅ test result: ok');
       },
-      timeout: 20000,
+      timeout: 90000,
     });
     ok = true;
     console.log('[playwright] marker seen; ok=true');
   } catch (e) {
-    console.log('[playwright] marker not seen within 20 s');
+    console.log('[playwright] marker not seen within 90 s');
     // fall through, we'll handle as failure below
   }
 

@@ -155,6 +155,14 @@ private enum _GeneratedExamples {
         }
     }
 
+    static func _example_core_pass_name() async throws {
+        do {
+
+            let shadow = Pass("shadow")
+            let label = shadow.name()
+        }
+    }
+
     static func _example_core_pass_new() async throws {
         do {
 
@@ -1532,6 +1540,23 @@ private enum _GeneratedExamples {
         }
     }
 
+    static func _example_scene_scene_add_to() async throws {
+        do {
+
+            let mesh = Mesh()
+            try mesh.addVertex(
+                try Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0])
+            )
+            let model = Model(mesh, Material.pbr())
+
+            let scene = Scene()
+            scene.addPass(Pass("geometry"))
+
+            // Target the pass by name (or pass its index: scene.addTo(0, model)).
+            try scene.addTo("geometry", model)
+        }
+    }
+
     static func _example_scene_scene_ambient() async throws {
         do {
 
@@ -1568,6 +1593,32 @@ private enum _GeneratedExamples {
         }
     }
 
+    static func _example_scene_scene_find_pass() async throws {
+        do {
+
+            let scene = Scene()
+            scene.addPass(Pass("backdrop"))
+            scene.addPass(Pass("geometry"))
+
+            // Look the geometry pass up by name to reconfigure it. A name with no
+            // match returns nil instead.
+            let geometry = scene.findPass("geometry")
+        }
+    }
+
+    static func _example_scene_scene_get_pass() async throws {
+        do {
+
+            let scene = Scene()
+            scene.addPass(Pass("backdrop"))
+            scene.addPass(Pass("geometry"))
+
+            // Fetch the second pass (index 1) to reconfigure it. An out-of-range
+            // index returns nil instead.
+            let geometry = scene.getPass(1)
+        }
+    }
+
     static func _example_scene_scene_lights() async throws {
         do {
 
@@ -1577,6 +1628,23 @@ private enum _GeneratedExamples {
             for light in scene.lights() {
                 let current = light.intensity()
                 light.setIntensity(current * 0.5)
+            }
+        }
+    }
+
+    static func _example_scene_scene_list_passes() async throws {
+        do {
+
+            let mesh = Mesh()
+            try mesh.addVertex(
+                try Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0])
+            )
+            let scene = Scene()
+            try scene.add(Model(mesh, Material.pbr()))
+
+            // Compose, don't clear: keep whatever the previous pass drew.
+            for p in scene.listPasses() {
+                p.loadPrevious()
             }
         }
     }
@@ -1619,6 +1687,111 @@ private enum _GeneratedExamples {
 
             let scene = Scene()
             // scene is empty; add Models / Cameras / Lights with """scene.add(...)""".
+        }
+    }
+
+    static func _example_scene_scene_no_default_camera() async throws {
+        do {
+
+            let mesh = Mesh()
+            try mesh.addVertex(
+                try Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0])
+            )
+            let scene = Scene()
+            try scene.add(Model(mesh, Material.pbr()))
+
+            scene.noDefaultCamera()
+        }
+    }
+
+    static func _example_scene_scene_no_default_light() async throws {
+        do {
+
+            let mesh = Mesh()
+            try mesh.addVertex(
+                try Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0])
+            )
+            let scene = Scene()
+            try scene.add(Model(mesh, Material.pbr()))
+
+            scene.noDefaultLight()
+        }
+    }
+
+    static func _example_scene_scene_no_defaults() async throws {
+        do {
+
+            let mesh = Mesh()
+            try mesh.addVertex(
+                try Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0])
+            )
+            let scene = Scene()
+            try scene.add(Model(mesh, Material.pbr()))
+
+            // The host overrides every uniform, so suppress FC's stock camera + light.
+            scene.noDefaults()
+            for p in scene.listPasses() {
+                p.loadPrevious()
+            }
+        }
+    }
+
+    static func _example_scene_scene_remove_pass() async throws {
+        do {
+
+            let scene = Scene()
+            let backdrop = Pass("backdrop")
+            let overlay = Pass("overlay")
+            scene.addPass(backdrop)
+            scene.addPass(overlay)
+
+            // Drop the backdrop; the overlay stays.
+            let removed = scene.removePass(backdrop)
+        }
+    }
+
+    static func _example_scene_scene_set_default_camera() async throws {
+        do {
+
+            let mesh = Mesh()
+            try mesh.addVertex(
+                try Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0])
+            )
+            let scene = Scene()
+            try scene.add(Model(mesh, Material.pbr()))
+
+            let camera = try Camera.perspective(1.047, 16.0 / 9.0, 0.1, 100.0).lookAt([0.0, 1.5, 4.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+            scene.setDefaultCamera(camera)
+        }
+    }
+
+    static func _example_scene_scene_set_default_light() async throws {
+        do {
+
+            let mesh = Mesh()
+            try mesh.addVertex(
+                try Vertex.pbr([0.0, 0.5, 0.0]).set("uv0", [0.5, 1.0])
+            )
+            let scene = Scene()
+            try scene.add(Model(mesh, Material.pbr()))
+
+            let key = try Light.directional([0.3, -1.0, -0.4], [1.0, 0.95, 0.9])
+            scene.setDefaultLight(key)
+        }
+    }
+
+    static func _example_scene_scene_set_passes() async throws {
+        do {
+
+            let scene = Scene()
+            scene.addPass(Pass("scratch"))
+
+            // Swap in a deliberate order: shadow map, then geometry, then overlay.
+            scene.setPasses([
+                Pass("shadow"),
+                Pass("geometry"),
+                Pass("overlay"),
+            ])
         }
     }
 
