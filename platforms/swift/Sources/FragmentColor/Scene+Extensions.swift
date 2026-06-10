@@ -38,4 +38,26 @@ extension Scene {
     public static func load(_ path: String) throws -> Scene {
         return try Scene.load(path: path)
     }
+
+    // add_to overloads: target a Pass by index or name, passing the concrete
+    // object type directly instead of wrapping it in PassTarget /
+    // SceneObjectHandle.
+    public func addTo(_ index: UInt64, _ model: Model) throws {
+        try addTo(target: .index(index), object: .model(model))
+    }
+    public func addTo(_ index: UInt64, _ camera: Camera) throws {
+        try addTo(target: .index(index), object: .camera(camera))
+    }
+    public func addTo(_ index: UInt64, _ light: Light) throws {
+        try addTo(target: .index(index), object: .light(light))
+    }
+    public func addTo(_ name: String, _ model: Model) throws {
+        try addTo(target: .name(name), object: .model(model))
+    }
+    public func addTo(_ name: String, _ camera: Camera) throws {
+        try addTo(target: .name(name), object: .camera(camera))
+    }
+    public func addTo(_ name: String, _ light: Light) throws {
+        try addTo(target: .name(name), object: .light(light))
+    }
 }

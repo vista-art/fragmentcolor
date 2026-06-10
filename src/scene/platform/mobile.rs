@@ -8,6 +8,16 @@ use crate::renderer::renderable::SceneObjectHandle;
 use crate::scene::{Camera, Light, LightKind, Model, Scene};
 use crate::{Material, Mesh, Pass};
 
+/// Mobile-marshallable target for [`Scene::add_to`]: a pass index or a pass
+/// name. Uniffi can't marshal `impl Into<PassRef>`, so Swift / Kotlin pick a
+/// variant; the `Scene+Extensions` / `SceneExtensions` files wrap it behind
+/// natural `addTo(index, object)` / `addTo(name, object)` overloads.
+#[derive(Debug, Clone, uniffi::Enum)]
+pub enum PassTarget {
+    Index(u64),
+    Name(String),
+}
+
 #[uniffi::export]
 impl Model {
     #[uniffi::constructor(name = "new")]
@@ -375,10 +385,43 @@ impl Scene {
         self.get_pass(index).map(Arc::new)
     }
 
+    #[uniffi::method(name = "findPass")]
+    #[lsp_doc("docs/api/scene/scene/find_pass.md")]
+    pub fn find_pass_mobile(self: Arc<Self>, name: String) -> Option<Arc<Pass>> {
+        self.find_pass(&name).map(Arc::new)
+    }
+
     #[uniffi::method(name = "listPasses")]
     #[lsp_doc("docs/api/scene/scene/list_passes.md")]
     pub fn list_passes_mobile(self: Arc<Self>) -> Vec<Arc<Pass>> {
         self.list_passes().into_iter().map(Arc::new).collect()
+    }
+
+    /// Add a SceneObject to a specific Pass, addressed by index or name via
+    /// [`PassTarget`]. The Swift / Kotlin extension files supply natural
+    /// `addTo(index, object)` / `addTo(name, object)` overloads on top.
+    #[uniffi::method(name = "addTo")]
+    #[lsp_doc("docs/api/scene/scene/add_to.md")]
+    pub fn add_to_mobile(
+        self: Arc<Self>,
+        target: PassTarget,
+        object: SceneObjectHandle,
+    ) -> Result<(), FragmentColorError> {
+        let target = match target {
+            PassTarget::Index(index) => {
+                let index = usize::try_from(index).map_err(|_| {
+                    FragmentColorError::Render("Scene.addTo: index out of range".into())
+                })?;
+                crate::scene::PassRef::Index(index)
+            }
+            PassTarget::Name(name) => crate::scene::PassRef::Name(name),
+        };
+        let result = match object {
+            SceneObjectHandle::Model(m) => self.add_to(target, m.as_ref()).map(|_| ()),
+            SceneObjectHandle::Camera(c) => self.add_to(target, c.as_ref()).map(|_| ()),
+            SceneObjectHandle::Light(l) => self.add_to(target, l.as_ref()).map(|_| ()),
+        };
+        result.map_err(|e| FragmentColorError::Render(e.to_string()))
     }
 
     #[uniffi::method(name = "setPasses")]

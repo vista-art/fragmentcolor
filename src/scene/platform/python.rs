@@ -319,10 +319,52 @@ impl Scene {
         self.get_pass(index)
     }
 
+    #[pyo3(name = "find_pass")]
+    #[lsp_doc("docs/api/scene/scene/find_pass.md")]
+    pub fn find_pass_py(&self, name: &str) -> Option<Pass> {
+        self.find_pass(name)
+    }
+
     #[pyo3(name = "list_passes")]
     #[lsp_doc("docs/api/scene/scene/list_passes.md")]
     pub fn list_passes_py(&self) -> Vec<Pass> {
         self.list_passes()
+    }
+
+    /// Add a SceneObject to a specific Pass, addressed by an `int` index or
+    /// a `str` name. Branches on the runtime Python type the same way
+    /// `Scene.add` does.
+    #[pyo3(name = "add_to")]
+    #[lsp_doc("docs/api/scene/scene/add_to.md")]
+    pub fn add_to_py(&self, target: Py<PyAny>, object: Py<PyAny>) -> Result<(), PyErr> {
+        Python::attach(|py| -> Result<(), PyErr> {
+            let target = target.bind(py);
+            let target = if let Ok(index) = target.extract::<usize>() {
+                crate::scene::PassRef::Index(index)
+            } else if let Ok(name) = target.extract::<String>() {
+                crate::scene::PassRef::Name(name)
+            } else {
+                return Err(pyo3::exceptions::PyTypeError::new_err(
+                    "Scene.add_to: target must be an int index or a str name",
+                ));
+            };
+            let object = object.bind(py);
+            if let Ok(model) = object.cast::<Model>() {
+                let m = model.borrow();
+                return self.add_to(target, &*m).map(|_| ()).map_err(|e| e.into());
+            }
+            if let Ok(camera) = object.cast::<Camera>() {
+                let c = camera.borrow();
+                return self.add_to(target, &*c).map(|_| ()).map_err(|e| e.into());
+            }
+            if let Ok(light) = object.cast::<Light>() {
+                let l = light.borrow();
+                return self.add_to(target, &*l).map(|_| ()).map_err(|e| e.into());
+            }
+            Err(pyo3::exceptions::PyTypeError::new_err(
+                "Scene.add_to: expected a Model, Camera, or Light",
+            ))
+        })
     }
 
     #[pyo3(name = "set_passes")]

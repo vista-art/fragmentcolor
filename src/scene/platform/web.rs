@@ -351,10 +351,53 @@ impl Scene {
         self.get_pass(index)
     }
 
+    #[wasm_bindgen(js_name = "findPass")]
+    #[lsp_doc("docs/api/scene/scene/find_pass.md")]
+    pub fn find_pass_js(&self, name: &str) -> Option<Pass> {
+        self.find_pass(name)
+    }
+
     #[wasm_bindgen(js_name = "listPasses")]
     #[lsp_doc("docs/api/scene/scene/list_passes.md")]
     pub fn list_passes_js(&self) -> Vec<Pass> {
         self.list_passes()
+    }
+
+    /// Add a SceneObject to a specific Pass, addressed by a numeric index or
+    /// a string name. Branches on the runtime JS type like `Scene.add`.
+    #[wasm_bindgen(js_name = "addTo")]
+    #[lsp_doc("docs/api/scene/scene/add_to.md")]
+    pub fn add_to_js(&self, target: &JsValue, object: &JsValue) -> Result<(), JsError> {
+        let target = if let Some(index) = target.as_f64() {
+            crate::scene::PassRef::Index(index as usize)
+        } else if let Some(name) = target.as_string() {
+            crate::scene::PassRef::Name(name)
+        } else {
+            return Err(JsError::new(
+                "Scene.addTo: target must be an index or a name",
+            ));
+        };
+        if let Ok(model) = Model::try_from(object) {
+            return self
+                .add_to(target, &model)
+                .map(|_| ())
+                .map_err(|e| e.into());
+        }
+        if let Ok(camera) = Camera::try_from(object) {
+            return self
+                .add_to(target, &camera)
+                .map(|_| ())
+                .map_err(|e| e.into());
+        }
+        if let Ok(light) = Light::try_from(object) {
+            return self
+                .add_to(target, &light)
+                .map(|_| ())
+                .map_err(|e| e.into());
+        }
+        Err(JsError::new(
+            "Scene.addTo: expected a Model, Camera, or Light",
+        ))
     }
 
     #[wasm_bindgen(js_name = "setPasses")]

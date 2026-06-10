@@ -41,6 +41,12 @@ impl Pass {
         crate::PyPassIterator(vec![self.object.clone()])
     }
 
+    #[pyo3(name = "name")]
+    #[lsp_doc("docs/api/core/pass/name.md")]
+    pub fn name_py(&self) -> String {
+        self.name()
+    }
+
     #[pyo3(name = "load_previous")]
     #[lsp_doc("docs/api/core/pass/load_previous.md")]
     pub fn load_previous_py(&self) {

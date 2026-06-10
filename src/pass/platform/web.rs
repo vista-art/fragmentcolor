@@ -57,6 +57,12 @@ impl Pass {
         }
     }
 
+    #[wasm_bindgen(js_name = "name")]
+    #[lsp_doc("docs/api/core/pass/name.md")]
+    pub fn name_js(&self) -> String {
+        self.name()
+    }
+
     #[wasm_bindgen(js_name = "loadPrevious")]
     #[lsp_doc("docs/api/core/pass/load_previous.md")]
     pub fn load_previous_js(&self) {
