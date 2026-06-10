@@ -13,14 +13,13 @@ use crate::{Material, Mesh, Pass};
 /// variant; the `Scene+Extensions` / `SceneExtensions` files wrap it behind
 /// natural `addTo(index, object)` / `addTo(name, object)` overloads.
 ///
-/// The index is a signed `i64`, not `u64`: Kotlin rejects a bare integer
-/// literal in a `ULong` position ("conversion of signed constants to unsigned
-/// ones is prohibited"), so `scene.getPass(1)` / `scene.addTo(0, ...)` would
-/// not compile against an unsigned binding. A negative index addresses no
-/// pass and resolves to `None` / `PassNotFound`.
+/// The index is `u32` (→ Kotlin `UInt`, Swift `UInt32`): a pass position is
+/// never negative. Kotlin can't coerce a bare `1` into an unsigned parameter,
+/// so the transpiler suffixes the literal (`getPass(1u)`) the same way it does
+/// for `setComputeDispatch`.
 #[derive(Debug, Clone, uniffi::Enum)]
 pub enum PassTarget {
-    Index(i64),
+    Index(u32),
     Name(String),
 }
 
@@ -384,11 +383,8 @@ impl Scene {
 
     #[uniffi::method(name = "getPass")]
     #[lsp_doc("docs/api/scene/scene/get_pass.md")]
-    pub fn get_pass_mobile(self: Arc<Self>, index: i64) -> Option<Arc<Pass>> {
-        // A negative index (or one past usize::MAX) can't address a pass;
-        // treat it as out-of-range rather than truncating.
-        let index = usize::try_from(index).ok()?;
-        self.get_pass(index).map(Arc::new)
+    pub fn get_pass_mobile(self: Arc<Self>, index: u32) -> Option<Arc<Pass>> {
+        self.get_pass(index as usize).map(Arc::new)
     }
 
     #[uniffi::method(name = "findPass")]
@@ -414,12 +410,7 @@ impl Scene {
         object: SceneObjectHandle,
     ) -> Result<(), FragmentColorError> {
         let target = match target {
-            PassTarget::Index(index) => {
-                let index = usize::try_from(index).map_err(|_| {
-                    FragmentColorError::Render("Scene.addTo: index out of range".into())
-                })?;
-                crate::scene::PassRef::Index(index)
-            } // negative / oversized indices fail try_from above
+            PassTarget::Index(index) => crate::scene::PassRef::Index(index as usize),
             PassTarget::Name(name) => crate::scene::PassRef::Name(name),
         };
         let result = match object {
