@@ -54,3 +54,14 @@ fun Scene.addTo(name: String, camera: Camera) {
 fun Scene.addTo(name: String, light: Light) {
     addTo(PassTarget.Name(name), SceneObjectHandle.Light(light))
 }
+
+// Numeric / collection convenience overloads so example code can pass an Int
+// index and an array literal without converting to ULong / List by hand.
+
+/** Read a Pass by [index] (Int convenience over the ULong binding). */
+fun Scene.getPass(index: Int): Pass? = getPass(index.toULong())
+
+/** Replace the whole pass graph from an array of passes. */
+fun Scene.setPasses(passes: Array<Pass>) {
+    setPasses(passes.toList())
+}
