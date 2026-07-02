@@ -184,7 +184,7 @@ objc2 = { version = "0.6" }
 # Android & iOS FFI (uniffi lives here so it's available on every non-wasm target,
 # including desktop so that `cargo run --bin uniffi-bindgen` works locally)
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-uniffi = { version = "0.31", features = ["cli"] }
+uniffi = { version = "0.32", features = ["cli"] }
 winit = { version = "0.30", features = ["serde"], optional = true }
 pollster = { version = "0.4", optional = true }
 
@@ -246,7 +246,7 @@ syn = { version = "2.0", features = ["full"] }
 phf_codegen = "0.13"
 cfg_aliases = "0.2"
 quote = "1"
-uniffi = { version = "0.31", features = ["build"] }
+uniffi = { version = "0.32", features = ["build"] }
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3"
