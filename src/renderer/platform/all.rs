@@ -26,6 +26,7 @@ pub async fn request_adapter(
             power_preference: wgpu::PowerPreference::HighPerformance,
             compatible_surface: surface,
             force_fallback_adapter: false,
+            apply_limit_buckets: false,
         })
         .await?;
 
@@ -108,6 +109,7 @@ pub fn configure_surface(
     let config = wgpu::SurfaceConfiguration {
         usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
         format,
+        color_space: wgpu::SurfaceColorSpace::Auto,
         width: u32::max(size.width, 1),
         height: u32::max(size.height, 1),
         present_mode: wgpu::PresentMode::AutoVsync,

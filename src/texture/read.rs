@@ -88,9 +88,11 @@ fn prepare_readback(
     })
 }
 
-fn extract_pixels(plan: &ReadbackPlan) -> Vec<u8> {
+fn extract_pixels(plan: &ReadbackPlan) -> Result<Vec<u8>, TextureError> {
     let slice = plan.buffer.slice(..);
-    let view = slice.get_mapped_range();
+    let view = slice.get_mapped_range().map_err(|e| {
+        TextureError::Error(format!("texture readback get_mapped_range failed: {e:?}"))
+    })?;
     let layer_stride = plan.padded_row_bytes as usize * plan.height as usize;
     let mut pixels = Vec::with_capacity(
         plan.width as usize * plan.height as usize * plan.depth as usize * plan.bpp as usize,
@@ -103,7 +105,7 @@ fn extract_pixels(plan: &ReadbackPlan) -> Vec<u8> {
     }
     drop(view);
     plan.buffer.unmap();
-    pixels
+    Ok(pixels)
 }
 
 /// Read the mip-0 contents of `texture` as tightly-packed bytes in the texture's
@@ -136,7 +138,7 @@ pub(crate) async fn read_pixels(
 
     let _ = rx.await;
 
-    Ok(extract_pixels(&plan))
+    extract_pixels(&plan)
 }
 
 pub(super) async fn get_image(texture: &Texture) -> Result<Vec<u8>, TextureError> {

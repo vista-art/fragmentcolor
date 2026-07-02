@@ -817,7 +817,7 @@ impl RenderContext {
         self.queue.submit(Some(encoder.finish()));
 
         if frame.auto_present() {
-            frame.present();
+            frame.present(&self.queue);
         }
 
         Ok(())
@@ -2561,11 +2561,11 @@ fn create_render_pipeline(
             entry_point: Some(vs_entry.as_deref().unwrap_or("vs_main")),
             buffers: {
                 // Build a local Vec to keep the layouts alive for this call
-                let mut tmp: Vec<wgpu::VertexBufferLayout> = Vec::new();
+                let mut tmp: Vec<Option<wgpu::VertexBufferLayout>> = Vec::new();
                 if let Some((v, instance_buffer)) = vertex_layouts {
-                    tmp.push(v.clone());
+                    tmp.push(Some(v.clone()));
                     if let Some(i) = instance_buffer {
-                        tmp.push(i.clone());
+                        tmp.push(Some(i.clone()));
                     }
                 }
                 Box::leak(tmp.into_boxed_slice())
@@ -2784,7 +2784,7 @@ mod tests {
         fn format(&self) -> wgpu::TextureFormat {
             self.format
         }
-        fn present(self: Box<Self>) {}
+        fn present(self: Box<Self>, _queue: &wgpu::Queue) {}
         fn auto_present(&self) -> bool {
             false
         }
@@ -3593,7 +3593,7 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,1.,0.,1.); }
             fn format(&self) -> wgpu::TextureFormat {
                 wgpu::TextureFormat::Rgba8Unorm
             }
-            fn present(self: Box<Self>) {}
+            fn present(self: Box<Self>, _queue: &wgpu::Queue) {}
             fn auto_present(&self) -> bool {
                 false
             }

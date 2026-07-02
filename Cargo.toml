@@ -134,8 +134,8 @@ shaders-all = [
 ]
 
 [dependencies]
-wgpu = { version = "29", features = ["glsl", "wgsl", "webgl", "naga-ir"] }
-naga = { version = "29", features = ["wgsl-in", "glsl-in"] }
+wgpu = { version = "30", features = ["glsl", "wgsl", "webgl", "naga-ir"] }
+naga = { version = "30", features = ["wgsl-in", "glsl-in"] }
 parking_lot = "0.12"
 derive-new = "0.7"
 thiserror = "2.0"
