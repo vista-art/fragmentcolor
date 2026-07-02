@@ -241,9 +241,9 @@ web-sys = { version = "0.3", features = [
 ] }
 
 [build-dependencies]
-phf = { version = "0.13", features = ["macros"] }
+phf = { version = "0.14", features = ["macros"] }
 syn = { version = "2.0", features = ["full"] }
-phf_codegen = "0.13"
+phf_codegen = "0.14"
 cfg_aliases = "0.2"
 quote = "1"
 uniffi = { version = "0.32", features = ["build"] }
