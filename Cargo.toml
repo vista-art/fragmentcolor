@@ -215,7 +215,11 @@ console_error_panic_hook = "0.1"
 wasm-bindgen-futures = "0.4"
 serde-wasm-bindgen = "0.6"
 wasm-bindgen-test = "0.3"
-wasm-bindgen = "0.2"
+# Pinned to 0.2.118, the last version compatible with the `impl_js_bridge!`
+# macro in `src/macros.rs`. wasm-bindgen 0.2.126 changed the `RefFromWasmAbi`
+# ABI from `u32` to `WasmPtr`, and the macro hands that ABI a raw pointer.
+# Lift the pin once the macro is updated for the new ABI.
+wasm-bindgen = "=0.2.118"
 console_log = "1"
 lsp_doc = "0.2"
 js-sys = "0.3"
