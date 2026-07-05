@@ -112,7 +112,7 @@ pub trait Target: TargetInternal {
 pub(crate) trait TargetFrame {
     fn view(&self) -> &wgpu::TextureView;
     fn format(&self) -> wgpu::TextureFormat;
-    fn present(self: Box<Self>);
+    fn present(self: Box<Self>, queue: &wgpu::Queue);
     fn auto_present(&self) -> bool {
         true
     }

@@ -116,7 +116,7 @@ impl RenderCanvasTarget {
             if let Some(target) = &self.target {
                 match target.get_current_frame() {
                     Ok(frame) => {
-                        frame.present();
+                        frame.present(&target.context.queue);
                         dict.set_item("method", "screen")?;
                     }
                     Err(e) => {
@@ -191,8 +191,8 @@ impl TargetFrame for RenderCanvasFrame {
         self.format
     }
 
-    fn present(self: Box<Self>) {
-        self.surface_texture.present();
+    fn present(self: Box<Self>, queue: &wgpu::Queue) {
+        queue.present(self.surface_texture);
     }
 
     /// Prevents the Renderer to call present() automatically

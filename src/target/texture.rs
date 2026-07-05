@@ -114,7 +114,7 @@ impl TargetFrame for TextureFrame {
         self.format
     }
 
-    fn present(self: Box<Self>) {
+    fn present(self: Box<Self>, _queue: &wgpu::Queue) {
         // No-op for textures
     }
 }

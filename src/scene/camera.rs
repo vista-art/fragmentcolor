@@ -7,6 +7,7 @@
 //! later mutations (`camera.look_at(...)`) propagate to every shader the
 //! Camera has been wired into.
 
+use glam::camera::rh::{proj::directx, view};
 use glam::{Mat4, Vec3};
 use lsp_doc::lsp_doc;
 use parking_lot::RwLock;
@@ -104,7 +105,7 @@ impl Camera {
                 far,
             },
             view: Mat4::IDENTITY,
-            proj: Mat4::perspective_rh(fovy_radians, aspect, near, far),
+            proj: directx::perspective(fovy_radians, aspect, near, far),
             position: Vec3::ZERO,
         })
     }
@@ -124,7 +125,7 @@ impl Camera {
                 far,
             },
             view: Mat4::IDENTITY,
-            proj: Mat4::orthographic_rh(left, right, bottom, top, near, far),
+            proj: directx::orthographic(left, right, bottom, top, near, far),
             position: Vec3::ZERO,
         })
     }
@@ -154,7 +155,7 @@ impl Camera {
                     near,
                     far,
                 } => {
-                    state.proj = Mat4::perspective_rh(fovy_radians, aspect, near, far);
+                    state.proj = directx::perspective(fovy_radians, aspect, near, far);
                 }
                 Projection::Orthographic {
                     left,
@@ -177,7 +178,7 @@ impl Camera {
                         near,
                         far,
                     };
-                    state.proj = Mat4::orthographic_rh(new_left, new_right, bottom, top, near, far);
+                    state.proj = directx::orthographic(new_left, new_right, bottom, top, near, far);
                 }
             }
         }
@@ -196,7 +197,7 @@ impl Camera {
         let pos_v = Vec3::from(position);
         {
             let mut state = self.object.state.write();
-            state.view = Mat4::look_at_rh(pos_v, Vec3::from(target), Vec3::from(up));
+            state.view = view::look_at_mat4(pos_v, Vec3::from(target), Vec3::from(up));
             state.position = pos_v;
         }
         self.propagate();

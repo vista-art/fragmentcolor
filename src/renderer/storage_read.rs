@@ -70,7 +70,9 @@ pub(crate) async fn read_buffer_bytes(
         }
     }
 
-    let view = slice.get_mapped_range();
+    let view = slice.get_mapped_range().map_err(|e| {
+        RendererError::Error(format!("storage readback get_mapped_range failed: {e:?}"))
+    })?;
     let bytes = view.to_vec();
     drop(view);
     staging.unmap();

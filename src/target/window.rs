@@ -109,7 +109,7 @@ impl TargetFrame for WindowFrame {
         self.format
     }
 
-    fn present(self: Box<Self>) {
-        self.surface_texture.present();
+    fn present(self: Box<Self>, queue: &wgpu::Queue) {
+        queue.present(self.surface_texture);
     }
 }

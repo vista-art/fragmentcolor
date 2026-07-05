@@ -1,6 +1,6 @@
 [package]
 name = "fragmentcolor"
-version = "0.12.2"
+version = "0.12.3"
 homepage = "https://fragmentcolor.org"
 repository = "https://github.com/vista-art/fragmentcolor"
 description = "Universal GPU abstraction for Javascript, Python, Swift and Kotlin"
@@ -134,8 +134,8 @@ shaders-all = [
 ]
 
 [dependencies]
-wgpu = { version = "29", features = ["glsl", "wgsl", "webgl", "naga-ir"] }
-naga = { version = "29", features = ["wgsl-in", "glsl-in"] }
+wgpu = { version = "30", features = ["glsl", "wgsl", "webgl", "naga-ir"] }
+naga = { version = "30", features = ["wgsl-in", "glsl-in"] }
 parking_lot = "0.12"
 derive-new = "0.7"
 thiserror = "2.0"
@@ -143,7 +143,7 @@ bytemuck = "1.0"
 futures = "0.3"
 lsp_doc = "0.2"
 dashmap = "6.1"
-glam = "0.32"
+glam = "0.33"
 sha2 = "0.11"
 log = "0.4"
 
@@ -167,12 +167,11 @@ ktx2 = "0.5"
 gltf = { version = "1", features = ["KHR_lights_punctual", "KHR_texture_transform"] }
 
 # Python FFI (optional)
-pyo3 = { version = "0.28", features = [
+pyo3 = { version = "0.29", features = [
     "abi3-py39",
     "experimental-async",
-    "generate-import-lib",
 ], optional = true }
-numpy = { version = "0.28", optional = true }
+numpy = { version = "0.29", optional = true }
 
 # MacOS
 [target.'cfg(target_os = "macos")'.dependencies]
@@ -185,7 +184,7 @@ objc2 = { version = "0.6" }
 # Android & iOS FFI (uniffi lives here so it's available on every non-wasm target,
 # including desktop so that `cargo run --bin uniffi-bindgen` works locally)
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-uniffi = { version = "0.31", features = ["cli"] }
+uniffi = { version = "0.32", features = ["cli"] }
 winit = { version = "0.30", features = ["serde"], optional = true }
 pollster = { version = "0.4", optional = true }
 
@@ -216,7 +215,11 @@ console_error_panic_hook = "0.1"
 wasm-bindgen-futures = "0.4"
 serde-wasm-bindgen = "0.6"
 wasm-bindgen-test = "0.3"
-wasm-bindgen = "0.2"
+# Pinned to 0.2.118, the last version compatible with the `impl_js_bridge!`
+# macro in `src/macros.rs`. wasm-bindgen 0.2.126 changed the `RefFromWasmAbi`
+# ABI from `u32` to `WasmPtr`, and the macro hands that ABI a raw pointer.
+# Lift the pin once the macro is updated for the new ABI.
+wasm-bindgen = "=0.2.118"
 console_log = "1"
 lsp_doc = "0.2"
 js-sys = "0.3"
@@ -242,12 +245,12 @@ web-sys = { version = "0.3", features = [
 ] }
 
 [build-dependencies]
-phf = { version = "0.13", features = ["macros"] }
+phf = { version = "0.14", features = ["macros"] }
 syn = { version = "2.0", features = ["full"] }
-phf_codegen = "0.13"
+phf_codegen = "0.14"
 cfg_aliases = "0.2"
 quote = "1"
-uniffi = { version = "0.31", features = ["build"] }
+uniffi = { version = "0.32", features = ["build"] }
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3"
