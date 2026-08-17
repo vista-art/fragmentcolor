@@ -52,12 +52,17 @@ impl Target for TextureTarget {
 
     #[lsp_doc("docs/api/targets/target/resize.md")]
     fn resize(&mut self, size: impl Into<Size>) {
-        let new_texture = TextureObject::create_destination_texture(
+        let new_texture = Arc::new(TextureObject::create_destination_texture(
             self.context.as_ref(),
             size.into().into(),
             self.texture.format(),
-        );
-        self.texture = Arc::new(new_texture);
+        ));
+        self.texture = new_texture.clone();
+        // Repoint the registered id so Pass color attachments and shader
+        // bindings holding it draw into and sample the live texture.
+        if let Some(id) = *self.id.read() {
+            self.context.update_texture(id, new_texture);
+        }
     }
 
     /// Read back the offscreen texture contents as packed RGBA8 bytes
