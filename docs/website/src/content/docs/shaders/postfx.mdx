@@ -54,7 +54,9 @@ fn crt_curvature(uv: vec2<f32>, amount: f32) -> vec3<f32>
 ## film_grain
 
 Additive grain scalar in `[-1, 1]`, derived from a hash of `uv` and a
-seed. Multiply by a strength factor and add to your color. Vary `seed`
+seed. Pass the normalized fragment coordinate; the hash scales it
+internally so neighboring pixels decorrelate into per-pixel grain.
+Multiply by a strength factor and add to your color. Vary `seed`
 per frame (e.g. with a time uniform) to decorrelate grain across frames.
 
 ```wgsl
