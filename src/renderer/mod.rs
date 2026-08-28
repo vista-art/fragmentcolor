@@ -859,6 +859,17 @@ impl RenderContext {
         self.textures.get(id).map(|texture| texture.clone())
     }
 
+    /// Point an already registered id at a new texture object.
+    /// Keeps a resized target's id valid for every Pass attachment
+    /// and shader binding that resolves textures at render time.
+    pub(crate) fn update_texture(
+        &self,
+        id: crate::texture::TextureId,
+        texture: Arc<crate::TextureObject>,
+    ) {
+        self.textures.insert(id, texture);
+    }
+
     pub(crate) fn set_sample_count(&self, count: u32) {
         self.sample_count.store(count.max(1), Ordering::Relaxed);
     }

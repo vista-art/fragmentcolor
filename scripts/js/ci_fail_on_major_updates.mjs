@@ -16,6 +16,18 @@ This ignores minor/patch updates as requested.
 
 import { spawn } from 'node:child_process';
 
+// Majors we cannot take yet. Each hold names the blocking constraint and
+// stops applying as soon as `latest` moves past `latestMajor`.
+const HOLDS = [
+  {
+    dir: 'docs/website',
+    name: 'typescript',
+    latestMajor: 7,
+    reason:
+      '@astrojs/check and @astrojs/language-server peer-depend on typescript ^5 || ^6; astro check crashes under 7',
+  },
+];
+
 function parseArgs(argv) {
   const dirs = [];
   for (let i = 2; i < argv.length; i++) {
@@ -72,18 +84,30 @@ async function checkDir(dir) {
     if (Array.isArray(parsed.packages)) {
       items = parsed.packages;
     } else {
-      items = Object.values(parsed);
+      // pnpm's map form keys entries by package name
+      items = Object.entries(parsed).map(([key, info]) => ({ name: key, ...info }));
     }
   } else {
     return list;
   }
 
+  const normalized = String(dir).replace(/\\/g, '/');
   for (const item of items) {
     const wantedMaj = major(item.wanted);
     const latestMaj = major(item.latest);
     if (wantedMaj == null || latestMaj == null) continue;
     if (latestMaj > wantedMaj) {
       const name = item.package ?? item.name ?? item.depName ?? item.id ?? 'unknown';
+      const hold = HOLDS.find(
+        (h) =>
+          h.name === name &&
+          latestMaj <= h.latestMajor &&
+          (normalized === h.dir || normalized.endsWith('/' + h.dir)),
+      );
+      if (hold) {
+        console.log(`Holding ${name} at ${item.wanted} (${hold.reason})`);
+        continue;
+      }
       list.push({ name, wanted: item.wanted, latest: item.latest });
     }
   }
