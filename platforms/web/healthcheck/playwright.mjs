@@ -245,12 +245,16 @@ WATCHDOG.unref?.();
     glPage.on('pageerror', (err) => {
       errors.push({ type: 'pageerror:webgl2', message: err?.message || String(err) });
     });
-    try {
-      await glPage.goto(glUrl, { waitUntil: 'load', timeout: 60000 });
-      await glPage.waitForEvent('console', {
+    // Armed before navigation so a marker logged during page load is not missed.
+    const glMarker = glPage
+      .waitForEvent('console', {
         predicate: (m) => m.text().includes('✅ webgl2 test result: ok'),
         timeout: 60000,
-      });
+      })
+      .then(() => true, () => false);
+    try {
+      await glPage.goto(glUrl, { waitUntil: 'load', timeout: 60000 });
+      if (!(await glMarker) && !okGl) throw new Error('webgl2 marker timeout');
       okGl = true;
       console.log('[playwright] webgl2 marker seen; okGl=true');
     } catch (e) {
