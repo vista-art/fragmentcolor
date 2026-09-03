@@ -34,9 +34,14 @@ pub(crate) async fn yield_to_event_loop() {
     use wasm_bindgen::JsCast;
     let promise = js_sys::Promise::new(&mut |resolve, _reject| {
         let callback: &js_sys::Function = resolve.unchecked_ref();
-        if let Some(window) = web_sys::window() {
-            let _ = window.set_timeout_with_callback_and_timeout_and_arguments_0(callback, 0);
-        } else {
+        let scheduled = web_sys::window()
+            .map(|window| {
+                window
+                    .set_timeout_with_callback_and_timeout_and_arguments_0(callback, 0)
+                    .is_ok()
+            })
+            .unwrap_or(false);
+        if !scheduled {
             let _ = callback.call0(&wasm_bindgen::JsValue::NULL);
         }
     });
