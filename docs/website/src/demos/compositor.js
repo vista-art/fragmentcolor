@@ -20,6 +20,9 @@ struct CompGlobals {
   fade: f32,
   aberration: f32,
   grain: f32,
+  // pads the block to 32 bytes for WebGL2
+  pad0: f32,
+  pad1: f32,
 }
 
 @group(0) @binding(0) var<uniform> u: CompGlobals;
