@@ -23,6 +23,7 @@
 .sl-markdown-content > starlight-tabs,
 .sl-markdown-content > .expressive-code,
 .sl-markdown-content > tutorial-demo,
+.sl-markdown-content > shader-gallery,
 .sl-markdown-content > .color-triangle {
   margin-top: 1.5rem;     /* compact: text leads into the code */
   margin-bottom: 3.5rem;  /* generous: breathing room after the code */
