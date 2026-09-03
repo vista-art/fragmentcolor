@@ -1,0 +1,420 @@
+---
+// <ShaderGallery mode="hero" /> cycles the artworks in a framed panel that
+// reacts to the pointer without capturing scroll. mode="page" fills the
+// viewport and enables drag, wheel zoom, keyboard navigation, and fullscreen.
+import { ARTWORKS } from "../demos/artworks/index.js";
+
+interface Props {
+  mode?: "hero" | "page";
+}
+
+const { mode = "hero" } = Astro.props;
+const artworks = ARTWORKS.map(({ title, hint }) => ({ title, hint }));
+const poster = `/artworks/${ARTWORKS[0].id}.webp`;
+---
+
+<shader-gallery class={`${mode} not-content`} data-mode={mode}>
+  <div class="stage" style={`background-image: url(${poster})`}>
+    <canvas aria-hidden="true"></canvas>
+    <div class="veil"></div>
+    <div class="ui">
+      <div class="plaque">
+        <span class="index">01</span>
+        <span class="title">{artworks[0].title}</span>
+        <span class="hint">{artworks[0].hint}</span>
+      </div>
+      <div class="controls">
+        <nav class="dots" aria-label="Artworks">
+          {
+            artworks.map((a, i) => (
+              <button
+                type="button"
+                data-index={i}
+                aria-label={a.title}
+                title={a.title}
+                class={i === 0 ? "active" : ""}
+              />
+            ))
+          }
+        </nav>
+        <button type="button" class="chip fullscreen" title="Fullscreen (F)" aria-label="Fullscreen">
+          ⤢
+        </button>
+      </div>
+    </div>
+    <div class="fallback" hidden>
+      <p>
+        These artworks render live on the GPU through WebGPU or WebGL2. This browser could
+        not start either; a recent Chrome, Edge, Safari, or Firefox will show them moving.
+      </p>
+    </div>
+  </div>
+</shader-gallery>
+
+<style>
+  shader-gallery {
+    display: block;
+    --ink: #e8e4dc;
+    --ink-dim: rgba(232, 228, 220, 0.55);
+    --ink-faint: rgba(232, 228, 220, 0.3);
+  }
+
+  shader-gallery.hero {
+    margin: 3rem 0 1rem;
+  }
+
+  /* the poster covers the WASM boot and stands in when no GPU backend starts */
+  .stage {
+    position: relative;
+    overflow: hidden;
+    background: #060608 center / cover no-repeat;
+    color: var(--ink);
+    border-radius: 12px;
+    font-family: var(--sl-font, system-ui, sans-serif);
+  }
+
+  .hero .stage {
+    height: clamp(360px, 58vh, 640px);
+  }
+
+  .page .stage {
+    height: max(420px, calc(100svh - var(--sl-nav-height, 4rem) - 2.5rem));
+  }
+
+  .stage:fullscreen {
+    height: 100vh;
+    border-radius: 0;
+  }
+
+  canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    touch-action: pan-y;
+    cursor: crosshair;
+    opacity: 0;
+    transition: opacity 0.9s ease;
+  }
+
+  shader-gallery.live canvas {
+    opacity: 1;
+  }
+
+  .veil {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: linear-gradient(to top, rgba(4, 4, 6, 0.6), transparent 30%);
+    transition: opacity 1.2s ease;
+  }
+
+  .ui {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    gap: 10px;
+    padding: clamp(14px, 2.5vw, 28px);
+    transition: opacity 1.2s ease;
+  }
+
+  .ui[hidden] {
+    display: none;
+  }
+
+  shader-gallery.idle .ui,
+  shader-gallery.idle .veil {
+    opacity: 0;
+  }
+
+  .plaque {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    max-width: 60ch;
+    text-shadow: 0 1px 12px rgba(0, 0, 0, 0.65);
+    transition: opacity 0.6s ease;
+  }
+
+  .plaque.dim {
+    opacity: 0;
+  }
+
+  .index {
+    font-size: 11px;
+    letter-spacing: 0.35em;
+    color: var(--ink-faint);
+  }
+
+  .title {
+    font-size: 1.3rem;
+    font-weight: 500;
+    line-height: 1.1;
+  }
+
+  .page .title,
+  shader-gallery.fullscreen .title {
+    font-size: clamp(1.6rem, 3.2vw, 2.4rem);
+  }
+
+  .hint {
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-dim);
+  }
+
+  .controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .dots {
+    pointer-events: auto;
+    display: flex;
+    gap: 10px;
+    margin-left: -8px;
+  }
+
+  .dots button {
+    position: relative;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+  }
+
+  .dots button::after {
+    content: "";
+    position: absolute;
+    inset: 50%;
+    width: 5px;
+    height: 5px;
+    margin: -2.5px;
+    border-radius: 50%;
+    background: var(--ink-faint);
+    transition:
+      transform 0.35s ease,
+      background 0.35s ease,
+      box-shadow 0.35s ease;
+  }
+
+  .dots button:hover::after {
+    background: var(--ink-dim);
+    transform: scale(1.4);
+  }
+
+  .dots button.active::after {
+    background: var(--ink);
+    transform: scale(1.55);
+    box-shadow: 0 0 12px rgba(232, 228, 220, 0.55);
+  }
+
+  .chip {
+    pointer-events: auto;
+    width: 34px;
+    height: 34px;
+    border: 1px solid var(--ink-faint);
+    border-radius: 999px;
+    background: rgba(10, 10, 14, 0.35);
+    color: var(--ink-dim);
+    font-size: 15px;
+    line-height: 1;
+    cursor: pointer;
+    backdrop-filter: blur(6px);
+    transition:
+      color 0.3s,
+      border-color 0.3s;
+  }
+
+  .chip:hover {
+    color: var(--ink);
+    border-color: var(--ink-dim);
+  }
+
+  .fallback {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+    text-align: center;
+    color: var(--ink);
+    text-shadow: 0 1px 12px rgba(0, 0, 0, 0.8);
+    background: rgba(6, 6, 8, 0.35);
+  }
+
+  .fallback[hidden] {
+    display: none;
+  }
+
+  .fallback p {
+    max-width: 40ch;
+    font-size: 0.9rem;
+    line-height: 1.6;
+  }
+</style>
+
+<script>
+  // @ts-nocheck
+  import { Gallery, ARTWORKS } from "../demos/gallery.js";
+
+  const COARSE = window.matchMedia?.("(pointer: coarse)").matches ?? false;
+  const REDUCED = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+  const IDLE_MS = 3500;
+
+  // Hero mode arms wheel zoom on click so the page keeps scrolling until
+  // the reader opts in; touch keeps the page scrollable there, so the
+  // hint drops zoom altogether.
+  function hintFor(artwork, page) {
+    let hint = artwork.hint;
+    if (COARSE) {
+      hint = hint
+        .replaceAll("scroll to zoom", page ? "pinch to zoom" : "")
+        .replaceAll("click", "tap")
+        .replaceAll("move", "touch")
+        .replace(/\s*·\s*$/, "");
+    } else if (!page) {
+      hint = hint.replaceAll("scroll to zoom", "click, then scroll to zoom");
+    }
+    return hint;
+  }
+
+  if (!customElements.get("shader-gallery")) {
+    class ShaderGallery extends HTMLElement {
+      #gallery = null;
+      #page = false;
+      #idleTimer = 0;
+      #plaqueTimer = 0;
+      #cleanups = [];
+
+      connectedCallback() {
+        const page = this.dataset.mode === "page";
+        this.#page = page;
+        const canvas = this.querySelector("canvas");
+
+        this.#gallery = new Gallery(canvas, {
+          autoAdvance: REDUCED ? 0 : page ? 45 : 12,
+          wheelZoom: page,
+          touchDrag: page,
+          onChange: (i) => this.#announce(i),
+        });
+        this.gallery = this.#gallery;
+
+        for (const button of this.querySelectorAll(".dots button")) {
+          button.addEventListener("click", () => {
+            this.#gallery.goTo(Number(button.dataset.index));
+            this.#poke();
+          });
+        }
+        this.querySelector(".fullscreen")?.addEventListener("click", () => this.#toggleFullscreen());
+
+        const poke = () => this.#poke();
+        this.addEventListener("pointermove", poke);
+        this.addEventListener("pointerdown", poke);
+
+        const stage = this.querySelector(".stage");
+        const isFull = () => document.fullscreenElement === stage;
+        // Mouse events stay clear of the pointer-capture boundary events a
+        // click triggers, so arming survives the click that armed it.
+        if (!page) {
+          canvas.addEventListener("mousedown", () => {
+            this.#gallery.options.wheelZoom = true;
+          });
+          stage.addEventListener("mouseleave", () => {
+            if (!isFull()) this.#gallery.options.wheelZoom = false;
+          });
+        }
+        const onFullscreen = () => {
+          const full = isFull();
+          this.classList.toggle("fullscreen", full);
+          this.#gallery.options.wheelZoom = page || full;
+          this.#gallery.options.touchDrag = page || full;
+          this.#poke();
+        };
+        document.addEventListener("fullscreenchange", onFullscreen);
+        this.#cleanups.push(() => document.removeEventListener("fullscreenchange", onFullscreen));
+
+        {
+          const onKey = (e) => {
+            if (!page && !isFull()) return;
+            if (e.metaKey || e.ctrlKey || e.altKey || e.repeat) return;
+            if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+            if (e.key === "ArrowRight") this.#gallery.next();
+            else if (e.key === "ArrowLeft") this.#gallery.prev();
+            else if (e.key >= "1" && e.key <= String(ARTWORKS.length)) {
+              this.#gallery.goTo(Number(e.key) - 1);
+            } else if (e.key === "f" || e.key === "F") this.#toggleFullscreen();
+            else return;
+            this.#poke();
+          };
+          window.addEventListener("keydown", onKey);
+          this.#cleanups.push(() => window.removeEventListener("keydown", onKey));
+        }
+
+        this.#announce(0, true);
+        this.#poke();
+        this.#gallery
+          .start()
+          .then(() => this.classList.add("live"))
+          .catch((err) => {
+            console.error("[shader-gallery] start failed", err);
+            this.#fail();
+          });
+      }
+
+      disconnectedCallback() {
+        this.#gallery?.destroy();
+        clearTimeout(this.#idleTimer);
+        clearTimeout(this.#plaqueTimer);
+        for (const fn of this.#cleanups) fn();
+        this.#cleanups = [];
+      }
+
+      #poke() {
+        this.classList.remove("idle");
+        clearTimeout(this.#idleTimer);
+        this.#idleTimer = setTimeout(() => this.classList.add("idle"), IDLE_MS);
+      }
+
+      #announce(index, immediate = false) {
+        this.querySelectorAll(".dots button").forEach((b, i) => b.classList.toggle("active", i === index));
+        const plaque = this.querySelector(".plaque");
+        const apply = () => {
+          this.querySelector(".index").textContent = String(index + 1).padStart(2, "0");
+          this.querySelector(".title").textContent = ARTWORKS[index].title;
+          this.querySelector(".hint").textContent = hintFor(ARTWORKS[index], this.#page);
+          plaque.classList.remove("dim");
+        };
+        clearTimeout(this.#plaqueTimer);
+        if (immediate) {
+          apply();
+          return;
+        }
+        this.#poke();
+        plaque.classList.add("dim");
+        this.#plaqueTimer = setTimeout(apply, 850);
+      }
+
+      #toggleFullscreen() {
+        if (document.fullscreenElement) document.exitFullscreen();
+        else this.querySelector(".stage")?.requestFullscreen?.();
+      }
+
+      #fail() {
+        this.querySelector(".fallback").hidden = false;
+        this.querySelector(".ui").hidden = true;
+        this.classList.remove("idle");
+      }
+    }
+    customElements.define("shader-gallery", ShaderGallery);
+  }
+</script>

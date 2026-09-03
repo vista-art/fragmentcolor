@@ -212,6 +212,7 @@ export default defineConfig({
             // Each item here is one entry in the navigation menu.
             { label: "Start Here", link: "/welcome" },
             { label: "Platform Support", link: "/welcome/platforms" },
+            { label: "Demos", link: "/demos" },
             // { label: "Playground", link: "/welcome/playground" }, // @TODO uncomment when JS integration is ready
           ],
         },
