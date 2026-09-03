@@ -128,21 +128,26 @@ pub(crate) async fn read_pixels(
     });
 
     #[cfg(not(wasm))]
-    if let Err(e) = context.device.poll(wgpu::PollType::Wait {
-        submission_index: None,
-        timeout: Some(std::time::Duration::from_secs(5)),
-    }) {
-        log::error!("Device poll error during readback mapping: {:?}", e);
-        return Ok(Vec::new());
+    {
+        context
+            .device
+            .poll(wgpu::PollType::Wait {
+                submission_index: None,
+                timeout: Some(std::time::Duration::from_secs(5)),
+            })
+            .map_err(|e| TextureError::Readback(format!("device poll: {e:?}")))?;
+        match rx.await {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => return Err(TextureError::Readback(format!("map_async: {e:?}"))),
+            Err(_) => return Err(TextureError::Readback("map callback dropped".into())),
+        }
     }
-
-    #[cfg(not(wasm))]
-    let _ = rx.await;
 
     #[cfg(wasm)]
     if !await_map_on_web(context, rx).await {
-        log::error!("Texture readback mapping timed out");
-        return Ok(Vec::new());
+        return Err(TextureError::Readback(
+            "mapping did not complete before the timeout".into(),
+        ));
     }
 
     extract_pixels(&plan)
