@@ -56,6 +56,14 @@ pub(crate) async fn read_buffer_bytes(
         )));
     }
 
+    #[cfg(wasm)]
+    if !crate::texture::read::await_map_on_web(context, rx).await {
+        return Err(RendererError::Error(
+            "storage readback mapping did not complete".into(),
+        ));
+    }
+
+    #[cfg(not(wasm))]
     match rx.await {
         Ok(Ok(())) => {}
         Ok(Err(e)) => {

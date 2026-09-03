@@ -31,7 +31,7 @@ pub use error::*;
 mod options;
 pub use options::*;
 
-mod read;
+pub(crate) mod read;
 pub mod region;
 mod write;
 

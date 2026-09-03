@@ -113,8 +113,8 @@ fn extract_pixels(plan: &ReadbackPlan) -> Result<Vec<u8>, TextureError> {
 ///
 /// On native the caller must still drive the device forward for the map callback to fire;
 /// this function does a synchronous `device.poll(Wait)` before awaiting so callers do not
-/// have to. On web the browser schedules the callback automatically, so the poll is a
-/// no-op / ignored.
+/// have to. On web, WebGPU schedules the callback itself, while the WebGL2 backend only
+/// fires it from a poll, so the web path issues a non-blocking poll before awaiting.
 pub(crate) async fn read_pixels(
     context: &RenderContext,
     texture: &TextureObject,
@@ -136,11 +136,38 @@ pub(crate) async fn read_pixels(
         return Ok(Vec::new());
     }
 
+    #[cfg(not(wasm))]
     let _ = rx.await;
+
+    #[cfg(wasm)]
+    if !await_map_on_web(context, rx).await {
+        log::error!("Texture readback mapping timed out");
+        return Ok(Vec::new());
+    }
 
     extract_pixels(&plan)
 }
 
 pub(super) async fn get_image(texture: &Texture) -> Result<Vec<u8>, TextureError> {
     read_pixels(&texture.context, &texture.object).await
+}
+
+/// Drives the device until the map callback fires. WebGPU resolves the map
+/// on its own, but the WebGL2 backend only signals it from a poll after its
+/// fence completes, so the loop yields to the event loop between polls.
+#[cfg(wasm)]
+pub(crate) async fn await_map_on_web(
+    context: &RenderContext,
+    mut rx: futures::channel::oneshot::Receiver<Result<(), wgpu::BufferAsyncError>>,
+) -> bool {
+    // ~10 s of zero-delay timers before giving up
+    for _ in 0..2000 {
+        let _ = context.device.poll(wgpu::PollType::Poll);
+        match rx.try_recv() {
+            Ok(Some(Ok(()))) => return true,
+            Ok(Some(Err(_))) | Err(_) => return false,
+            Ok(None) => crate::platforms::web::yield_to_event_loop().await,
+        }
+    }
+    false
 }
