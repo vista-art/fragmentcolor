@@ -193,19 +193,19 @@ mod readme {
     pub fn generate_readmes() {
         // Track changes for cargo builds
         println!("cargo::rerun-if-changed=README.md");
-        println!("cargo::rerun-if-changed=README_JS.tpl.md");
-        println!("cargo::rerun-if-changed=README_PY.tpl.md");
+        println!("cargo::rerun-if-changed=platforms/web/README.tpl.md");
+        println!("cargo::rerun-if-changed=platforms/python/README.tpl.md");
 
         let root_readme = read("README.md");
         let sections = parse_sections_with_blocks(&root_readme);
 
-        let tpl_js = read("README_JS.tpl.md");
-        let tpl_py = read("README_PY.tpl.md");
+        let tpl_js = read("platforms/web/README.tpl.md");
+        let tpl_py = read("platforms/python/README.tpl.md");
 
         let out_js = generate_from_template(&tpl_js, &sections, "js");
         let out_py = generate_from_template(&tpl_py, &sections, "python");
 
-        write_if_changed("README_JS.md", &out_js);
-        write_if_changed("README_PY.md", &out_py);
+        write_if_changed("platforms/web/README.md", &out_js);
+        write_if_changed("platforms/python/README.md", &out_py);
     }
 }

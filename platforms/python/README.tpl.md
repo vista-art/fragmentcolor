@@ -2,7 +2,7 @@
 
 [FragmentColor](https://fragmentcolor.org) is a cross‑platform GPU programming library implemented in Rust and wgpu, with Python bindings via PyO3.
 
-This README is specific to the PyPI package. For Rust usage, see the repository README.md. For JavaScript, see README_JS.md.
+This README is specific to the PyPI package. For Rust usage, see the repository README.md. For JavaScript, see `platforms/web/README.md` in the repository.
 
 - Documentation: https://fragmentcolor.org/welcome
 - API Reference: https://fragmentcolor.org/api
@@ -90,7 +90,7 @@ loop.run()
 
 ```bash
 # Quick run helper: build wheel into dist/, create venv, and run an example
-./run_py main      # or: ./run_py multiobject | ./run_py headless
+./fc run_py main      # or: ./fc run_py multiobject | ./fc run_py headless
 
 # Manual alternative
 pipx install maturin
@@ -128,4 +128,4 @@ Platform support is aligned with upstream wgpu:
 
 ---
 
-Note on generation: this README_PY.md is generated from this template (README_PY.tpl.md) and the repository README.md examples by the build script. Do not edit the generated README_PY.md directly.
+Note on generation: this README.md is generated from README.tpl.md (same directory) and the repository README.md examples by the build script. Do not edit the generated README.md directly.
