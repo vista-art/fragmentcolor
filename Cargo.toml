@@ -19,7 +19,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 # host so mobile build scripts can run `cargo run --bin uniffi-bindgen generate ...`.
 [[bin]]
 name = "uniffi-bindgen"
-path = "uniffi_bindgen.rs"
+path = "src/bin/uniffi-bindgen.rs"
 
 [workspace]
 resolver = "3"
