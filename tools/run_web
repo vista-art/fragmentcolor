@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# fc: Serve the web examples (gallery, repl, or visual)
 set -euo pipefail
 
 # Run web dev servers and open a page.
@@ -8,7 +9,7 @@ set -euo pipefail
 #   bash run_web visual                # opens a minimal visual page (REPL server)
 #   REPL_PORT=5190 bash run_web repl   # custom Vite dev server port
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PAGE="${1:-gallery}"
 
 # Utilities
@@ -40,7 +41,7 @@ pick_free_port() {
 }
 
 # Ensure local WASM pkg is built and distributed to subprojects
-"$ROOT_DIR/build_web" --debug
+"$ROOT_DIR/tools/build_web" --debug
 
 # Serve gallery
 if [ "$PAGE" = "gallery" ]; then

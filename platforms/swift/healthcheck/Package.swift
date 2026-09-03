@@ -1,8 +1,8 @@
 // swift-tools-version: 5.9
 //
 // Minimal SPM executable that links against the FragmentColor Swift Package
-// and runs a headless render smoke test. Invoked by `./healthcheck ios`
-// once `./build_ios` has produced the xcframework.
+// and runs a headless render smoke test. Invoked by `./fc healthcheck ios`
+// once `./fc build_ios` has produced the xcframework.
 
 import PackageDescription
 

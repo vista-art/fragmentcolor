@@ -6,7 +6,7 @@ use parking_lot::RwLock;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 
 #[cfg(wasm)]
 use wasm_bindgen::prelude::*;
@@ -503,6 +503,11 @@ impl Renderer {
             let adapter = request_adapter(instance.as_ref(), surface).await?;
             let (device, queue) = request_device(&adapter).await?;
             let context = Arc::new(RenderContext::new(device, queue));
+            let flags = adapter.get_downlevel_capabilities().flags;
+            context.aligned_uniform_bindings.store(
+                !flags.contains(wgpu::DownlevelFlags::BUFFER_BINDINGS_NOT_16_BYTE_ALIGNED),
+                Ordering::Relaxed,
+            );
 
             self.adapter.write().replace(adapter);
             self.context.write().replace(context.clone());
@@ -612,6 +617,9 @@ pub struct RenderContext {
 
     // Texture registry: id -> TextureObject
     textures: DashMap<crate::texture::TextureId, Arc<crate::TextureObject>>,
+    /// True on backends that reject uniform bindings not aligned to 16
+    /// bytes (OpenGL, WebGL2); shaders then compile a padded module.
+    aligned_uniform_bindings: AtomicBool,
     next_id: AtomicU64,
 
     // Persistent storage buffer registry: root name -> (buffer, span)
@@ -687,6 +695,7 @@ impl RenderContext {
             texture_pool: RwLock::new(TexturePool::new(16)),
 
             textures: DashMap::new(),
+            aligned_uniform_bindings: AtomicBool::new(false),
             next_id: AtomicU64::new(1),
             storage_registry: DashMap::new(),
             sample_count: AtomicU32::new(1),
@@ -1236,6 +1245,7 @@ impl RenderContext {
                         depth_format,
                         alpha_mode,
                         double_sided,
+                        self.aligned_uniform_bindings.load(Ordering::Relaxed),
                     )
                 });
 
@@ -2391,6 +2401,7 @@ fn create_render_pipeline(
     depth_format: Option<wgpu::TextureFormat>,
     alpha_mode: crate::material::AlphaMode,
     double_sided: bool,
+    pad_uniforms: bool,
 ) -> RenderPipeline {
     let mut layouts = bind_group_layouts(device, shader);
 
@@ -2449,7 +2460,7 @@ fn create_render_pipeline(
                 size: *sz,
             });
         }
-        let module = Cow::Owned(shader.module.clone());
+        let module = Cow::Owned(shader.module_for_pipeline(pad_uniforms).clone());
         device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Shader"),
             source: wgpu::ShaderSource::Naga(module),
@@ -2468,7 +2479,7 @@ fn create_render_pipeline(
 
         // Assign bindings following the discovered push_roots order.
         // push_roots preserves the order we collected from storage.uniforms / naga globals.
-        let mut module = shader.module.clone();
+        let mut module = shader.module_for_pipeline(pad_uniforms).clone();
 
         // Map root name -> binding index according to push_roots sequence
         let mut ordered_map: std::collections::HashMap<String, u32> =
@@ -3407,6 +3418,45 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(0.1,0.9,0.1,1.0);
         // Keep texture alive by capturing it in the view's lifetime (wgpu keeps texture alive internally)
         // Explicit binding not necessary here.
         TestFrame { view, format }
+    }
+
+    // Story: with padding forced on, a bare f32 uniform still renders the
+    // expected color, so the padded module is a drop-in for the original.
+    #[test]
+    fn padded_uniform_module_renders() {
+        pollster::block_on(async move {
+            let renderer = crate::Renderer::new();
+            let target = renderer
+                .create_texture_target([8, 8])
+                .await
+                .expect("create_texture_target failed");
+            let context = renderer.context(None).await.expect("context");
+            context
+                .aligned_uniform_bindings
+                .store(true, Ordering::Relaxed);
+
+            let shader = crate::Shader::new(
+                r#"
+@group(0) @binding(0) var<uniform> k: f32;
+struct VOut { @builtin(position) pos: vec4<f32> };
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> VOut {
+  var p = array<vec2<f32>, 3>(vec2<f32>(-1.0, -1.0), vec2<f32>(3.0, -1.0), vec2<f32>(-1.0, 3.0));
+  return VOut(vec4<f32>(p[i], 0.0, 1.0));
+}
+@fragment fn fs_main() -> @location(0) vec4<f32> { return vec4<f32>(k, 1.0 - k, 0.0, 1.0); }
+"#,
+            )
+            .expect("shader");
+            shader.set("k", 1.0f32).expect("set");
+            renderer.render(&shader, &target).expect("render");
+
+            let img = target.get_image().await;
+            assert!(
+                img[0] > 250 && img[1] < 5 && img[3] == 255,
+                "padded uniform should render red, got {:?}",
+                &img[..4]
+            );
+        });
     }
 
     #[test]

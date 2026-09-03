@@ -26,3 +26,24 @@ pub fn set_log_level(level: &str) {
     };
     log::set_max_level(lvl);
 }
+
+/// Resolves after one turn of the browser event loop (a zero-delay timer).
+/// Lets GPU fences advance between device polls, which the WebGL2 backend
+/// needs before a buffer map callback can fire.
+pub(crate) async fn yield_to_event_loop() {
+    use wasm_bindgen::JsCast;
+    let promise = js_sys::Promise::new(&mut |resolve, _reject| {
+        let callback: &js_sys::Function = resolve.unchecked_ref();
+        let scheduled = web_sys::window()
+            .map(|window| {
+                window
+                    .set_timeout_with_callback_and_timeout_and_arguments_0(callback, 0)
+                    .is_ok()
+            })
+            .unwrap_or(false);
+        if !scheduled {
+            let _ = callback.call0(&wasm_bindgen::JsValue::NULL);
+        }
+    });
+    let _ = wasm_bindgen_futures::JsFuture::from(promise).await;
+}

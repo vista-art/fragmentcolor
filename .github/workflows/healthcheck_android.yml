@@ -10,8 +10,7 @@ on:
       - 'platforms/kotlin/**'
       - 'docs/api/**'
       - 'uniffi.toml'
-      - 'uniffi_bindgen.rs'
-      - 'build_android'
+      - 'tools/**'
       - '.github/workflows/healthcheck_android.yml'
   workflow_dispatch:
 
@@ -91,9 +90,9 @@ jobs:
 
       - name: Build .so for emulator ABI + regenerate Kotlin bindings
         run: |
-          chmod +x ./build_android
+          chmod +x ./tools/build_android
           # Only build for the emulator's ABI in CI to keep the job fast.
-          ./build_android x86_64-linux-android
+          ./tools/build_android x86_64-linux-android
 
       # `reactivecircus/android-emulator-runner` creates the AVD, boots the
       # emulator, waits for `sys.boot_completed=1`, and runs the supplied

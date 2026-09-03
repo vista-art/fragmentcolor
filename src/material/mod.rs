@@ -514,7 +514,7 @@ mod tests {
 
             let mut has_red = false;
             let mut has_blue = false;
-            for px in img.chunks_exact(4) {
+            for px in img.as_chunks::<4>().0 {
                 if px[0] > 80 && px[1] < 60 && px[2] < 60 {
                     has_red = true;
                 }

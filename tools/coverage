@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
+# fc: Run cargo llvm-cov for the workspace
 set -euo pipefail
+
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 # Exclude platform- and feature-specific glue and winit window target from coverage.
 # We exercise targets via TextureTarget headlessly in CI.

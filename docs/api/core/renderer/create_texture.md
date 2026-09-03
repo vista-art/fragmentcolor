@@ -32,7 +32,7 @@ A full mipmap chain is generated for source images by default (`options.mipmaps 
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
 use fragmentcolor::Renderer;
 let renderer = Renderer::new();
-let image = std::fs::read("logo.png")?;
+let image = std::fs::read("examples/assets/logo.png")?;
 let tex = renderer.create_texture(&image[..]).await?;
 # _ = tex.size();
 # Ok(())

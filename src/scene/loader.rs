@@ -444,7 +444,7 @@ fn compute_vertex_normals(positions: &[[f32; 3]], indices: Option<&[u32]>) -> Ve
         accum[c] += face;
     };
     if let Some(idx) = indices {
-        for tri in idx.chunks_exact(3) {
+        for tri in idx.as_chunks::<3>().0 {
             visit_triangle(
                 tri[0] as usize,
                 tri[1] as usize,

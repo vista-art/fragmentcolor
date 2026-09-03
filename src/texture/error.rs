@@ -29,6 +29,9 @@ pub enum TextureError {
     /// blob but didn't match what you said they were.
     #[error("Invalid texture input: {0}")]
     InvalidInput(String),
+
+    #[error("Texture readback failed: {0}")]
+    Readback(String),
     /// The active device doesn't have the wgpu feature required to use the
     /// requested format with the requested usage. Common case: `R16Unorm`
     /// (and its Rg/Rgba/Snorm cousins) need

@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# Runs a repository tool by name: ./fc <tool> [args...]
+# Tools live in tools/. Run ./fc with no arguments to list them.
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+TOOLS_DIR="$ROOT_DIR/tools"
+
+list_tools() {
+  echo "Usage: ./fc <tool> [args...]"
+  echo
+  echo "Tools:"
+  for path in "$TOOLS_DIR"/*; do
+    [ -f "$path" ] || continue
+    name="$(basename "$path")"
+    case "$name" in README.md) continue ;; esac
+    summary="$(grep -m1 '^# fc: ' "$path" | sed 's/^# fc: //' || true)"
+    printf "  %-18s %s\n" "${name%.py}" "$summary"
+  done
+}
+
+if [ $# -eq 0 ] || [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
+  list_tools
+  exit 0
+fi
+
+name="$1"
+shift
+if [ -x "$TOOLS_DIR/$name" ]; then
+  exec "$TOOLS_DIR/$name" "$@"
+elif [ -f "$TOOLS_DIR/$name.py" ]; then
+  exec python3 "$TOOLS_DIR/$name.py" "$@"
+else
+  echo "fc: unknown tool '$name'" >&2
+  echo >&2
+  list_tools >&2
+  exit 1
+fi

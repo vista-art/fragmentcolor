@@ -78,8 +78,8 @@ jobs:
 
       - name: Build .so for all 4 ABIs + regenerate Kotlin bindings
         run: |
-          chmod +x ./build_android
-          ./build_android
+          chmod +x ./tools/build_android
+          ./tools/build_android
 
       - name: Assemble AAR
         run: |

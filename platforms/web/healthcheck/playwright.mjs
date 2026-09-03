@@ -227,6 +227,43 @@ WATCHDOG.unref?.();
     try { await fs.writeFile(path.join(ARTIFACT_DIR, 'page.html'), await page.content()); } catch {}
   }
 
+  // Second pass: the same package on the WebGL2 backend. Deleting
+  // `navigator.gpu` before any script runs forces the engine's GL fallback.
+  let okGl = false;
+  if (ok) {
+    const glUrl = new URL('webgl2.html', url).href;
+    console.log('[playwright] webgl2 pass:', glUrl);
+    const glPage = await browser.newPage();
+    await glPage.addInitScript(() => {
+      Object.defineProperty(navigator, 'gpu', { get: () => undefined, configurable: true });
+    });
+    glPage.on('console', (msg) => {
+      const text = msg.text();
+      console.log('[console:webgl2]', text);
+      if (text.includes('✅ webgl2 test result: ok')) okGl = true;
+    });
+    glPage.on('pageerror', (err) => {
+      errors.push({ type: 'pageerror:webgl2', message: err?.message || String(err) });
+    });
+    // Armed before navigation so a marker logged during page load is not missed.
+    const glMarker = glPage
+      .waitForEvent('console', {
+        predicate: (m) => m.text().includes('✅ webgl2 test result: ok'),
+        timeout: 60000,
+      })
+      .then(() => true, () => false);
+    try {
+      await glPage.goto(glUrl, { waitUntil: 'load', timeout: 60000 });
+      if (!(await glMarker) && !okGl) throw new Error('webgl2 marker timeout');
+      okGl = true;
+      console.log('[playwright] webgl2 marker seen; okGl=true');
+    } catch (e) {
+      console.log('[playwright] webgl2 marker not seen:', e?.message || String(e));
+      try { await glPage.screenshot({ path: path.join(ARTIFACT_DIR, 'failure-webgl2.png'), fullPage: true }); } catch {}
+    }
+    if (!okGl) errors.push({ type: 'webgl2', message: 'WebGL2 healthcheck marker not found' });
+  }
+
   // browser.close() can block indefinitely if the wasm renderer keeps the
   // GPU surface alive (a busy raymarcher loop or a dangling wgpu submission).
   // Race it against a 5 s ceiling, then force-exit either way so the CI

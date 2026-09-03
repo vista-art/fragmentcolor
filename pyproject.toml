@@ -9,9 +9,9 @@ features = ["python", "pyo3/extension-module"]
 
 [project]
 name = "fragmentcolor"
-version = "0.12.4"
+version = "0.12.5"
 description = "Easy cross-platform GPU Rendering for Javascript, Python, Swift and Kotlin"
-readme = "README_PY.md"
+readme = "platforms/python/README.md"
 requires-python = ">=3.9"
 license = "MIT"
 keywords = ["graphics", "rendering", "wgpu", "cross-platform", "art"]

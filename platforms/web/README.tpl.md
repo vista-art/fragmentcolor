@@ -2,7 +2,7 @@
 
 [FragmentColor](https://fragmentcolor.org) is a cross‑platform GPU programming library implemented in Rust and wgpu, compiled to WebAssembly for JavaScript.
 
-This README is specific to the npm package. For Rust usage, see the repository README.md. For Python, see README_PY.md.
+This README is specific to the npm package. For Rust usage, see the repository README.md. For Python, see `platforms/python/README.md` in the repository.
 
 - Documentation: https://fragmentcolor.org/welcome
 - API Reference: https://fragmentcolor.org/api
@@ -100,10 +100,10 @@ start();
 
 ```bash
 # Build WASM package (wasm-pack target web) and sync into local JS examples
-./build_web        # add --debug for a debug build
+./fc build_web        # add --debug for a debug build
 
 # Run JS demos (Vite dev server) and open browser
-./run_web repl     # or: ./run_web multipass | ./run_web headless
+./fc run_web repl     # or: ./fc run_web multipass | ./fc run_web headless
 
 # Manual alternative
 pnpm --dir examples/javascript install
@@ -139,4 +139,4 @@ Platform support is aligned with upstream wgpu:
 
 ---
 
-Note on generation: this README_JS.md is generated from this template (README_JS.tpl.md) and the repository README.md examples by the build script. Do not edit the generated README_JS.md directly.
+Note on generation: this README.md is generated from README.tpl.md (same directory) and the repository README.md examples by the build script. Do not edit the generated README.md directly.

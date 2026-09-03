@@ -398,7 +398,7 @@ mod tests {
             // the triangle's purple [0.6, 0.2, 0.8] never lands in the
             // buffer. The alpha component depends on the clear color's
             // default — we don't constrain it here.
-            for px in image.chunks_exact(4) {
+            for px in image.as_chunks::<4>().0 {
                 assert_eq!(
                     [px[0], px[1], px[2]],
                     [0, 0, 0],
