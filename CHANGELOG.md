@@ -10,6 +10,8 @@ Shaders with uniform bindings whose size is not a multiple of 16 bytes, such as 
 
 GPU validation errors now reach the browser console. The error handler printed through stdout, which WebAssembly discards; it logs through the console instead. The web healthcheck gained a second pass that runs with `navigator.gpu` removed so the WebGL2 path stays covered.
 
+The repository root is tidier for first visitors. The build, run, and check scripts live in `tools/` behind a single `./fc` dispatcher (`./fc` lists them, `./fc test` runs one), the `uniffi-bindgen` helper moved into `src/bin`, the npm and PyPI READMEs sit beside their packages under `platforms/`, and three stale files are gone. CI and the documentation call the new paths.
+
 ## 0.12.4: Resize and grain fixes
 
 A patch release with two fixes found while building a multi-pass demo against the public API. There are no API changes.
