@@ -91,7 +91,11 @@ export class Gallery {
 
   async start() {
     if (!supportsWebGPU()) throw new Error("WebGPU is not available");
-    runtime ??= loadRuntime();
+    // A failed boot clears the cache so a later start() can retry.
+    runtime ??= loadRuntime().catch((err) => {
+      runtime = undefined;
+      throw err;
+    });
     const { Renderer, Shader, Pass } = await runtime;
     if (this.destroyed) return;
 
