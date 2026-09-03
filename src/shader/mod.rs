@@ -31,6 +31,7 @@ pub(crate) mod embedded;
 
 mod glsl;
 mod input;
+mod pad_uniforms;
 mod platform;
 mod storage;
 use storage::*;
@@ -178,6 +179,13 @@ impl Shader {
 pub(crate) struct ShaderObject {
     pub(crate) hash: ShaderHash,
     pub(crate) module: Module,
+    /// WGSL text the module was parsed from. Feeds the uniform padding
+    /// pass, which rewrites declarations by source span.
+    pub(crate) source: String,
+    /// Module with uniform bindings padded to 16-byte multiples, built on
+    /// first use by a backend that requires it. `None` when no binding
+    /// needs padding or the rewrite fails.
+    padded: std::sync::OnceLock<Option<Module>>,
     pub(crate) storage: RwLock<UniformStorage>,
     pub(crate) total_bytes: u64,
     pub(crate) pending: DashMap<String, UniformData>,
@@ -378,6 +386,8 @@ impl ShaderObject {
         Ok(Self {
             hash,
             module,
+            source: source.to_string(),
+            padded: std::sync::OnceLock::new(),
             storage,
             total_bytes,
             pending: DashMap::new(),
@@ -393,6 +403,37 @@ impl ShaderObject {
             pending_textures: RwLock::new(Vec::new()),
             user_lights_attached: RwLock::new(0),
         })
+    }
+
+    /// Module to compile for a pipeline. Backends that reject uniform
+    /// bindings not aligned to 16 bytes get the padded variant.
+    pub(crate) fn module_for_pipeline(&self, pad_uniforms: bool) -> &Module {
+        if !pad_uniforms {
+            return &self.module;
+        }
+        self.padded
+            .get_or_init(|| {
+                let padded = pad_uniforms::pad_uniform_blocks(&self.source, &self.module)?;
+                match naga::front::wgsl::parse_str(&padded) {
+                    Ok(module) => {
+                        let mut validator =
+                            Validator::new(ValidationFlags::all(), Capabilities::all());
+                        match validator.validate(&module) {
+                            Ok(_) => Some(module),
+                            Err(e) => {
+                                log::warn!("padded uniform module failed validation: {e}");
+                                None
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        log::warn!("padded uniform source failed to parse: {e}");
+                        None
+                    }
+                }
+            })
+            .as_ref()
+            .unwrap_or(&self.module)
     }
 
     /// Either set a texture uniform immediately (if the input wraps an
