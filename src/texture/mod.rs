@@ -1561,8 +1561,10 @@ pub(crate) fn write_levels(
 /// u16-aligned) and matches WebGPU's element ordering for 16-bit formats.
 fn bytes_to_u16_vec(bytes: &[u8]) -> Vec<u16> {
     bytes
-        .chunks_exact(2)
-        .map(|c| u16::from_le_bytes([c[0], c[1]]))
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|c| u16::from_le_bytes(*c))
         .collect()
 }
 

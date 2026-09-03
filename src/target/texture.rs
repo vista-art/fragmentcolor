@@ -99,7 +99,7 @@ fn swap_bgra_to_rgba(pixels: &mut [u8], format: wgpu::TextureFormat) {
         format,
         wgpu::TextureFormat::Bgra8Unorm | wgpu::TextureFormat::Bgra8UnormSrgb
     ) {
-        for px in pixels.chunks_exact_mut(4) {
+        for px in pixels.as_chunks_mut::<4>().0 {
             px.swap(0, 2);
         }
     }
