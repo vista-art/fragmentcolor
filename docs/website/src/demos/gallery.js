@@ -350,18 +350,17 @@ export class Gallery {
       input.pressTarget = 0;
     });
 
-    if (this.options.wheelZoom) {
-      on(
-        canvas,
-        "wheel",
-        (e) => {
-          e.preventDefault();
-          input.zoomTarget = clamp(input.zoomTarget * Math.exp(-e.deltaY * 0.0012), 0.5, 2.4);
-          this.poke();
-        },
-        { passive: false },
-      );
-    }
+    on(
+      canvas,
+      "wheel",
+      (e) => {
+        if (!this.options.wheelZoom) return;
+        e.preventDefault();
+        input.zoomTarget = clamp(input.zoomTarget * Math.exp(-e.deltaY * 0.0012), 0.5, 2.4);
+        this.poke();
+      },
+      { passive: false },
+    );
 
     on(document, "visibilitychange", () => {
       if (document.hidden) this.pause();

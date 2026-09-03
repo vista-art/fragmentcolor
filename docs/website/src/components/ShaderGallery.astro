@@ -13,7 +13,7 @@ const artworks = ARTWORKS.map(({ title, hint }) => ({ title, hint }));
 const poster = `/artworks/${ARTWORKS[0].id}.webp`;
 ---
 
-<shader-gallery class={mode} data-mode={mode}>
+<shader-gallery class={`${mode} not-content`} data-mode={mode}>
   <div class="stage" style={`background-image: url(${poster})`}>
     <canvas aria-hidden="true"></canvas>
     <div class="veil"></div>
@@ -37,13 +37,9 @@ const poster = `/artworks/${ARTWORKS[0].id}.webp`;
             ))
           }
         </nav>
-        {
-          mode === "page" && (
-            <button type="button" class="chip fullscreen" title="Fullscreen (F)" aria-label="Fullscreen">
-              ⤢
-            </button>
-          )
-        }
+        <button type="button" class="chip fullscreen" title="Fullscreen (F)" aria-label="Fullscreen">
+          ⤢
+        </button>
       </div>
     </div>
     <div class="fallback" hidden>
@@ -160,7 +156,8 @@ const poster = `/artworks/${ARTWORKS[0].id}.webp`;
     line-height: 1.1;
   }
 
-  .page .title {
+  .page .title,
+  shader-gallery.fullscreen .title {
     font-size: clamp(1.6rem, 3.2vw, 2.4rem);
   }
 
@@ -274,23 +271,34 @@ const poster = `/artworks/${ARTWORKS[0].id}.webp`;
   const REDUCED = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
   const IDLE_MS = 3500;
 
-  function hintFor(artwork) {
-    if (!COARSE) return artwork.hint;
-    return artwork.hint
-      .replaceAll("scroll to zoom", "pinch to zoom")
-      .replaceAll("click", "tap")
-      .replaceAll("move", "touch");
+  // Hero mode arms wheel zoom on click so the page keeps scrolling until
+  // the reader opts in; touch keeps the page scrollable there, so the
+  // hint drops zoom altogether.
+  function hintFor(artwork, page) {
+    let hint = artwork.hint;
+    if (COARSE) {
+      hint = hint
+        .replaceAll("scroll to zoom", page ? "pinch to zoom" : "")
+        .replaceAll("click", "tap")
+        .replaceAll("move", "touch")
+        .replace(/\s*·\s*$/, "");
+    } else if (!page) {
+      hint = hint.replaceAll("scroll to zoom", "click, then scroll to zoom");
+    }
+    return hint;
   }
 
   if (!customElements.get("shader-gallery")) {
     class ShaderGallery extends HTMLElement {
       #gallery = null;
+      #page = false;
       #idleTimer = 0;
       #plaqueTimer = 0;
       #cleanups = [];
 
       connectedCallback() {
         const page = this.dataset.mode === "page";
+        this.#page = page;
         const canvas = this.querySelector("canvas");
         if (!supportsWebGPU()) {
           this.#fail();
@@ -303,6 +311,7 @@ const poster = `/artworks/${ARTWORKS[0].id}.webp`;
           touchDrag: page,
           onChange: (i) => this.#announce(i),
         });
+        this.gallery = this.#gallery;
 
         for (const button of this.querySelectorAll(".dots button")) {
           button.addEventListener("click", () => {
@@ -316,8 +325,31 @@ const poster = `/artworks/${ARTWORKS[0].id}.webp`;
         this.addEventListener("pointermove", poke);
         this.addEventListener("pointerdown", poke);
 
-        if (page) {
+        const stage = this.querySelector(".stage");
+        const isFull = () => document.fullscreenElement === stage;
+        // Mouse events stay clear of the pointer-capture boundary events a
+        // click triggers, so arming survives the click that armed it.
+        if (!page) {
+          canvas.addEventListener("mousedown", () => {
+            this.#gallery.options.wheelZoom = true;
+          });
+          stage.addEventListener("mouseleave", () => {
+            if (!isFull()) this.#gallery.options.wheelZoom = false;
+          });
+        }
+        const onFullscreen = () => {
+          const full = isFull();
+          this.classList.toggle("fullscreen", full);
+          this.#gallery.options.wheelZoom = page || full;
+          this.#gallery.options.touchDrag = page || full;
+          this.#poke();
+        };
+        document.addEventListener("fullscreenchange", onFullscreen);
+        this.#cleanups.push(() => document.removeEventListener("fullscreenchange", onFullscreen));
+
+        {
           const onKey = (e) => {
+            if (!page && !isFull()) return;
             if (e.metaKey || e.ctrlKey || e.altKey || e.repeat) return;
             if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
             if (e.key === "ArrowRight") this.#gallery.next();
@@ -363,7 +395,7 @@ const poster = `/artworks/${ARTWORKS[0].id}.webp`;
         const apply = () => {
           this.querySelector(".index").textContent = String(index + 1).padStart(2, "0");
           this.querySelector(".title").textContent = ARTWORKS[index].title;
-          this.querySelector(".hint").textContent = hintFor(ARTWORKS[index]);
+          this.querySelector(".hint").textContent = hintFor(ARTWORKS[index], this.#page);
           plaque.classList.remove("dim");
         };
         clearTimeout(this.#plaqueTimer);
