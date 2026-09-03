@@ -20,8 +20,8 @@
 
 import PackageDescription
 
-let fragmentcolorVersion = "0.12.4"
-let fragmentcolorChecksum = "62e84ba8274481eb4e0f5369ec70daeaf95de65cb83030361efee5e106efcd44"
+let fragmentcolorVersion = "0.12.5"
+let fragmentcolorChecksum = "ce50a432f7cab41057b08f9b72bfd7a118679e9951db9cda55bc51117c1cf3aa"
 
 let package = Package(
     name: "FragmentColor",
