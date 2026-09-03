@@ -1,0 +1,58 @@
+---
+title: Demos
+description: Live GPU artworks rendered in the browser by FragmentColor.
+template: splash
+---
+
+import ShaderGallery from "../../components/ShaderGallery.astro";
+
+<ShaderGallery mode="page" />
+
+Every pixel above is drawn by the same `fragmentcolor` package you install from npm. Each artwork is one fragment shader assembled from [shader catalog](/shaders/) functions by slug. It renders into an offscreen `TextureTarget`, and a second `Pass` samples that texture back to crossfade between artworks while adding film grain, chromatic aberration, and a vignette.
+
+Move the pointer, hold the mouse button, drag, and scroll to zoom. The arrow keys switch artworks and `F` toggles fullscreen.
+
+## The artworks
+
+**Nebula.** Fractal noise folded over itself until it ignites. The cursor is a gravity well; hold to feed it. Built from `noise/fbm2`, `hash/hash12`, and `color/tonemap_aces`.
+
+**Rose Window.** A pane of living stained glass. Horizontal motion refolds the symmetry, vertical motion twists the light. Built from `map/kaleidoscope`, `map/twirl`, `noise/fbm2`, `gradient/palette_iq`, and `color/tonemap_aces`.
+
+**Plankton.** Bioluminescent cells adrift in a dark tide, pressing against the light in your hand. Built from `noise/worley2`, `noise/fbm2`, `hash/hash12`, and `color/tonemap_aces`.
+
+**Monolith.** An obsidian body carved from signed distance fields and orbited by three moons. Hold to charge its core. Raymarched with `sdf/octahedron`, `sdf/torus`, `sdf/box`, `sdf/op_smooth_union`, `sdf/op_smooth_subtract`, `sdf/op_twist`, `raymarch/normal_from_sdf_tetra`, `lighting/fresnel_schlick`, `lighting/rim`, `gradient/palette_iq`, and `color/tonemap_aces`.
+
+**Signal.** A late broadcast curving across old glass. It degrades when touched. Built from `postfx/crt_curvature`, `postfx/scanlines`, `postfx/film_grain`, `noise/fbm2`, `gradient/palette_iq`, and `hash/hash12`.
+
+## How it is wired
+
+The whole render graph is a handful of calls. Each artwork gets a `Pass` that draws into a texture target, and the compositor binds that target's texture as a uniform:
+
+```js
+import init, { Renderer, Shader, Pass } from "fragmentcolor";
+
+await init();
+const renderer = new Renderer();
+const target = await renderer.createTarget(canvas);
+const offscreen = await renderer.createTextureTarget([width, height]);
+
+// catalog slugs first, then the artwork's own WGSL
+const nebula = await Shader.fetch(["noise/fbm2", "hash/hash12", "color/tonemap_aces", source]);
+const room = new Pass("nebula");
+room.addShader(nebula);
+room.setTarget(offscreen);
+
+const compositor = await Shader.fetch(["postfx/film_grain", "postfx/vignette", compositeSource]);
+compositor.set("tex_from", offscreen.texture());
+const composite = new Pass("composite");
+composite.addShader(compositor);
+
+function frame(time) {
+  nebula.set("u.time", time / 1000);
+  renderer.render([room, composite], target);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+```
+
+The uniforms the artworks read (`u.mouse`, `u.drag`, `u.zoom`, `u.press`, `u.pulse`) are plain values set from pointer events with [`Shader.set`](/api/core/shader/set). See [Pass](/api/core/pass) and [TextureTarget](/api/targets/texturetarget) for the pieces this page builds on.
