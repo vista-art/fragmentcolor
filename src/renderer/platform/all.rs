@@ -89,7 +89,9 @@ pub async fn request_device(
         let runner = std::env::var("FC_RUNNER").unwrap_or_else(|_| "".into());
         let current = std::env::var("FC_CURRENT_TEST").unwrap_or_else(|_| "".into());
 
-        println!(
+        // log::error! reaches every platform's sink, including the browser
+        // console on wasm where stdout is discarded.
+        log::error!(
             "\n\n==== GPU error ({} v{} | {} | git {} | built {}) ====\nRunner: {}\nContext: {}\n\n{:#?}\n",
             pkg, ver, profile, git, built, runner, current, error
         );
