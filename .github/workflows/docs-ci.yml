@@ -4,10 +4,12 @@ on:
   pull_request:
     paths:
       - 'docs/website/**'
+      - 'tools/**'
       - '.github/workflows/docs-ci.yml'
   push:
     paths:
       - 'docs/website/**'
+      - 'tools/**'
       - '.github/workflows/docs-ci.yml'
 
 jobs:
@@ -33,14 +35,14 @@ jobs:
 
       - name: Sync JS dependencies
         run: |
-          chmod +x ./sync_js
-          ./sync_js
+          chmod +x ./tools/sync_js
+          ./tools/sync_js
 
       - name: Install dependencies (docs/website)
         run: pnpm --dir docs/website install
 
       - name: Fail on major version updates (docs/website)
-        run: node scripts/js/ci_fail_on_major_updates.mjs --dir docs/website
+        run: node tools/js/ci_fail_on_major_updates.mjs --dir docs/website
 
   build-docs:
     name: Build docs site

@@ -38,6 +38,7 @@ jobs:
               - "**/*.toml"
               - "*.toml"
               - "**/*.sh"
+              - "tools/**"
               - ".github/**/*"
             web:
               - "platforms/web/**/*"
@@ -177,8 +178,8 @@ jobs:
 
       - name: Sync JS dependencies (major-only policy)
         run: |
-          chmod +x ./sync_js
-          ./sync_js
+          chmod +x ./tools/sync_js
+          ./tools/sync_js
 
       - name: Install system dependencies for headless GPU
         run: |
@@ -187,8 +188,8 @@ jobs:
 
       - name: Build web package
         run: |
-          chmod +x ./build_web
-          ./build_web
+          chmod +x ./tools/build_web
+          ./tools/build_web
 
       - uses: pnpm/action-setup@v4
         with:
@@ -203,8 +204,8 @@ jobs:
           FC_HEALTHCHECK_VERBOSE: 1
           PORT: 8765
         run: |
-          chmod +x ./healthcheck
-          ./healthcheck web
+          chmod +x ./tools/healthcheck
+          ./tools/healthcheck web
 
       - name: Upload Playwright artifacts (on failure)
         if: failure()

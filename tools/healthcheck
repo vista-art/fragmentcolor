@@ -1,19 +1,20 @@
 #!/usr/bin/env bash
+# fc: Run the platform healthchecks (web, py, ios, android, or all)
 # Run FragmentColor healthchecks (Python, Web, iOS, Android) with
 # cargo-like output. Each runner asserts against the generated bindings
 # and fails fast on regressions.
 #
 # Usage:
-#   ./healthcheck              # run all available platforms
-#   ./healthcheck all|*|complete
-#   ./healthcheck py|python|p              # python only
-#   ./healthcheck js|javascript|j|web|w|wasm  # web only
-#   ./healthcheck ios|swift                # iOS only (Xcode + simulator)
-#   ./healthcheck android|kotlin|a|k       # Android only (cargo-ndk + emulator)
+#   ./fc healthcheck              # run all available platforms
+#   ./fc healthcheck all|*|complete
+#   ./fc healthcheck py|python|p              # python only
+#   ./fc healthcheck js|javascript|j|web|w|wasm  # web only
+#   ./fc healthcheck ios|swift                # iOS only (Xcode + simulator)
+#   ./fc healthcheck android|kotlin|a|k       # Android only (cargo-ndk + emulator)
 
 set -u -o pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PORT="${PORT:-8765}"
 
 GREEN="\033[1;32m"
@@ -53,7 +54,7 @@ run_py() {
     export RUST_BACKTRACE=${RUST_BACKTRACE:-1}
   fi
   # Build a fresh wheel to ensure latest sources are tested
-  if bash "$ROOT_DIR/run_py" headless; then
+  if bash "$ROOT_DIR/tools/run_py" headless; then
     log_test_ok "$name"
     return 0
   else
@@ -63,7 +64,7 @@ run_py() {
 }
 
 # Internal: build the xcframework once. Cached across the two iOS sub-tests
-# below so we don't pay for `./build_ios` twice when running both. Returns 0
+# below so we don't pay for `./fc build_ios` twice when running both. Returns 0
 # on success; 1 on failure (any subsequent iOS sub-test should short-circuit).
 _ios_build_xcframework_done=""
 _ios_build_xcframework_rc=0
@@ -71,7 +72,7 @@ ensure_ios_xcframework() {
   if [ -n "$_ios_build_xcframework_done" ]; then
     return "$_ios_build_xcframework_rc"
   fi
-  if bash "$ROOT_DIR/build_ios"; then
+  if bash "$ROOT_DIR/tools/build_ios"; then
     _ios_build_xcframework_rc=0
   else
     _ios_build_xcframework_rc=1
@@ -186,7 +187,7 @@ run_android() {
 
   # Build the native libs + regenerate Kotlin bindings, then run the
   # androidTest suite on a connected device or emulator (gradle picks it up).
-  if bash "$ROOT_DIR/build_android" >/dev/null 2>&1 \
+  if bash "$ROOT_DIR/tools/build_android" >/dev/null 2>&1 \
      && (cd "$ROOT_DIR/platforms/kotlin" && ./gradlew fragmentcolor:connectedAndroidTest >/dev/null 2>&1); then
     log_test_ok "$name"
     return 0
@@ -358,7 +359,7 @@ run_web() {
   if [ "${FC_WEB_RELEASE:-0}" = "1" ]; then
     web_build_flag=""
   fi
-  if ! bash "$ROOT_DIR/build_web" $web_build_flag; then
+  if ! bash "$ROOT_DIR/tools/build_web" $web_build_flag; then
     echo "Failed to build web package" >&2
     log_test_fail "$name"
     return 1

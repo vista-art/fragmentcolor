@@ -15,7 +15,7 @@
 //
 // For local development against a freshly-built xcframework, use
 // `platforms/swift/Package.swift` instead (it points at `build/ios-macos/`,
-// which `./build_ios` always produces — with an extra macOS arm64 slice
+// which `./fc build_ios` always produces — with an extra macOS arm64 slice
 // when the `aarch64-apple-darwin` Rust target is installed).
 
 import PackageDescription

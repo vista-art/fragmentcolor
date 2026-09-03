@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
+# fc: Build Python wheels with maturin
 set -euo pipefail
+
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 # Enable shell trace only when explicitly requested
 if [[ -n "${FC_VERBOSE:-}" ]]; then
@@ -11,8 +14,8 @@ fi
 # RECORD accurate by repacking with the 'wheel' tool.
 #
 # Usage:
-#   ./build_py            # release build
-#   CODESIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" ./build_py
+#   ./fc build_py            # release build
+#   CODESIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" ./fc build_py
 #
 # Requirements:
 #   - maturin installed in PATH (pipx install maturin)

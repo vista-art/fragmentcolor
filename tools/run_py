@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# fc: Build the wheel into a venv and run a Python example
 set -euo pipefail
 
 # Enable shell trace only when explicitly requested
@@ -10,15 +11,15 @@ fi
 # Keeps platform flow consistent with run_web.
 #
 # Usage:
-#   ./run_py                      # build wheel (release), create venv, run examples/python/main.py
-#   ./run_py headless             # run the headless healthcheck
-#   ./run_py multiobject          # run examples/python/multiobject.py
-#   ./run_py --no-build main      # skip building the wheel, use existing dist/*.whl
+#   ./fc run_py                      # build wheel (release), create venv, run examples/python/main.py
+#   ./fc run_py headless             # run the headless healthcheck
+#   ./fc run_py multiobject          # run examples/python/multiobject.py
+#   ./fc run_py --no-build main      # skip building the wheel, use existing dist/*.whl
 #
 # Optional: on macOS, you can prebuild signed wheels with:
-#   CODESIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" ./build_py
+#   CODESIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" ./fc build_py
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VENV_DIR="$ROOT_DIR/.venv"
 OUT_DIR="$ROOT_DIR/dist"
 
@@ -36,8 +37,8 @@ if [[ "$NO_BUILD" -eq 0 ]]; then
     echo "maturin is required. Install it (e.g., pipx install maturin) and re-run." >&2
     exit 1
   fi
-  chmod +x "$ROOT_DIR/build_py"
-  "$ROOT_DIR/build_py"
+  chmod +x "$ROOT_DIR/tools/build_py"
+  "$ROOT_DIR/tools/build_py"
 fi
 
 # Ensure virtualenv exists

@@ -8,41 +8,42 @@ Project summary
 - Toolchain: rust-toolchain set to stable with clippy/rustfmt and common cross targets (desktop, wasm, iOS aarch64 + sim, all 4 Android ABIs).
 
 Common commands
+- Repository scripts live in `tools/`; `./fc` lists them and `./fc <tool> [args]` runs one.
 - Rust core
   - Build: `cargo build`
-  - Test (workspace): `./test` (runs clippy, all Rust tests, and crate doctests)
+  - Test (workspace): `./fc test` (runs clippy, all Rust tests, and crate doctests)
   - Test (single):
     - Unit/integration by name: `cargo test -p fragmentcolor <name> -- --exact --nocapture`
     - Specific integration file: `cargo test -p fragmentcolor --test e2e <name>`
-  - Examples: interactive runner `./example`, or directly `cargo run -p fce --example triangle`
+  - Examples: interactive runner `./fc example`, or directly `cargo run -p fce --example triangle`
 - Lint & format
   - Fast check: `cargo clippy --all-targets --all-features -- -D warnings`
-  - Preferred flow: `./clippy` (formats first); autofix: `./clippy fix`
+  - Preferred flow: `./fc clippy` (formats first); autofix: `./fc clippy fix`
 - Cross‑platform healthchecks (generated samples)
-  - All: `./healthcheck`
-  - Web only: `./healthcheck web` (uses Playwright; respects `PORT`, `FC_HEALTHCHECK_VERBOSE=1`)
-  - Python only: `./healthcheck py`
-  - iOS only: `./healthcheck ios` (runs Swift examples against the generated xcframework on an iOS simulator — requires Xcode)
-  - Android only: `./healthcheck android` (runs Kotlin examples against the generated AAR on an Android emulator — requires cargo-ndk + Android SDK + emulator image)
+  - All: `./fc healthcheck`
+  - Web only: `./fc healthcheck web` (uses Playwright; respects `PORT`, `FC_HEALTHCHECK_VERBOSE=1`)
+  - Python only: `./fc healthcheck py`
+  - iOS only: `./fc healthcheck ios` (runs Swift examples against the generated xcframework on an iOS simulator — requires Xcode)
+  - Android only: `./fc healthcheck android` (runs Kotlin examples against the generated AAR on an Android emulator — requires cargo-ndk + Android SDK + emulator image)
 - Web (WASM)
-  - Build pkg: `./build_web` (debug: `./build_web --debug`)
-  - Dev servers: `./run_web [gallery|repl|visual]` (respects `PORT`, `REPL_PORT`)
-  - Sync JS deps: `./sync_js`
+  - Build pkg: `./fc build_web` (debug: `./fc build_web --debug`)
+  - Dev servers: `./fc run_web [gallery|repl|visual]` (respects `PORT`, `REPL_PORT`)
+  - Sync JS deps: `./fc sync_js`
 - Python
-  - Local run helper: `./run_py [main|multiobject|headless]` (builds wheel, manages venv)
-  - Manual build: `pipx install maturin && ./build_py`
+  - Local run helper: `./fc run_py [main|multiobject|headless]` (builds wheel, manages venv)
+  - Manual build: `pipx install maturin && ./fc build_py`
 - iOS (Swift)
-  - Build xcframework + regenerate Swift bindings: `./build_ios`
+  - Build xcframework + regenerate Swift bindings: `./fc build_ios`
   - Produces `build/ios/fragmentcolor.xcframework` and Swift sources under `platforms/swift/Sources/FragmentColor/generated/`
   - Example app: `platforms/swift/examples/` (opened via Xcode)
 - Android (Kotlin)
-  - Build `.so` per ABI + regenerate Kotlin bindings: `./build_android [TARGET]`
+  - Build `.so` per ABI + regenerate Kotlin bindings: `./fc build_android [TARGET]`
   - Requires: `cargo install cargo-ndk` and `ANDROID_NDK_HOME` pointing at a valid NDK
   - Produces `jniLibs/<abi>/libfragmentcolor.so` plus Kotlin sources under `platforms/kotlin/fragmentcolor/src/main/java/org/fragmentcolor/generated/`
   - Example app: `platforms/kotlin/examples/`
 - Docs site (Astro/Starlight)
-  - Dev: `./run_docs` (port via `--port` or `DOCS_PORT`)
-  - Preview (built): `./run_docs preview`
+  - Dev: `./fc run_docs` (port via `--port` or `DOCS_PORT`)
+  - Preview (built): `./fc run_docs preview`
 
 Big‑picture architecture (how things fit together)
 - Public API surface (src/lib.rs)

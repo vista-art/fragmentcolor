@@ -8,6 +8,7 @@ on:
       - 'build.rs'
       - 'platforms/python/**'
       - 'docs/api/**'
+      - 'tools/**'
       - '.github/workflows/healthcheck_python.yml'
   workflow_dispatch:
 
@@ -43,8 +44,8 @@ jobs:
 
       - name: Build wheel
         run: |
-          chmod +x ./build_py
-          ./build_py
+          chmod +x ./tools/build_py
+          ./tools/build_py
 
       - name: Create venv and install wheel
         run: |

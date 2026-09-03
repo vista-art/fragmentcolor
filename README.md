@@ -5,7 +5,7 @@
 The API encourages a simple shader composition workflow, where you can use **WGSL** or **GLSL** shaders as the source of truth
 for visual consistency across platforms, while **avoiding the verbosity of modern GPU APIs**.
 
-It has bindings for [**JavaScript**](./README_JS.md) (WASM), [**Python**](./README_PY.md), **Swift** (iOS / macOS), and **Kotlin** (Android).
+It has bindings for [**JavaScript**](./platforms/web/README.md) (WASM), [**Python**](./platforms/python/README.md), **Swift** (iOS / macOS), and **Kotlin** (Android).
 It targets each platform's native graphics API: **Vulkan**, **Metal**, **DirectX**, **OpenGL**, **WebGL**, and **WebGPU**.
 See [Platform Support](#platform-support) for details.
 
@@ -25,8 +25,8 @@ fragmentcolor = "0.12.5"
 
 We also support JavaScript and Python:
 
-- JavaScript users, see: [README_JS.md](./README_JS.md)
-- Python users, see: [README_PY.md](./README_PY.md)
+- JavaScript users, see: [platforms/web/README.md](./platforms/web/README.md)
+- Python users, see: [platforms/python/README.md](./platforms/python/README.md)
 
 ## Quick start
 
@@ -120,7 +120,7 @@ for i in 0..10 {
 See the examples project under `examples/rust` for implementation details.
 
 ```bash
-> ./example
+> ./fc example
 
 Available FragmentColor examples:
 =================================
@@ -183,27 +183,27 @@ Platform support is aligned with upstream [wgpu](https://github.com/gfx-rs/wgpu)
 cargo build
 
 # Test (all)
-./test
+./fc test
 
 # Lint & Format
-./clippy
+./fc clippy
 
 # Healthcheck (all platforms)
-./healthcheck
+./fc healthcheck
 
 # Filtered Healthcheck
-./healthcheck web
-./healthcheck py
+./fc healthcheck web
+./fc healthcheck py
 ```
 
 ### Web (WASM)
 
 ```bash
 # Build WASM package (wasm-pack target web) and sync into local JS examples
-./build_web        # add --debug for a debug build
+./fc build_web        # add --debug for a debug build
 
 # Run JS demos (Vite dev server) and open browser
-./run_web repl     # or: ./run_web multipass | ./run_web headless
+./fc run_web repl     # or: ./fc run_web gallery | ./fc run_web visual
 
 # Manual alternative
 pnpm --dir examples/javascript install
@@ -214,7 +214,7 @@ pnpm --dir examples/javascript dev
 
 ```bash
 # Quick run helper: build wheel into dist/, create venv, and run an example
-./run_py main      # or: ./run_py multiobject | ./run_py headless
+./fc run_py main      # or: ./fc run_py multiobject | ./fc run_py headless
 
 # Manual alternative
 pipx install maturin
@@ -230,8 +230,7 @@ python examples/python/main.py
 - Doc examples follow async + pollster patterns.
 
 ```bash
-./build_docs                    # from root, builds and tests the site
-./run_docs                      # from root, runs the dev server
+./fc run_docs                      # from root, runs the dev server
 
 # or
 pnpm --dir docs/website install

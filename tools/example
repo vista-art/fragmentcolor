@@ -1,4 +1,5 @@
 #!/bin/bash
+# fc: Interactive picker for the Rust examples
 
 # FragmentColor Example Runner
 # ============================
@@ -6,10 +7,10 @@
 # This script allows you to easily run FragmentColor examples:
 # 
 # Usage:
-#   ./example                    # Show interactive menu
-#   ./example triangle           # Run example by name
-#   ./example 1                  # Run first example (alphabetical order)
-#   ./example 999                # Run last example (out-of-bounds becomes last)
+#   ./fc example                    # Show interactive menu
+#   ./fc example triangle           # Run example by name
+#   ./fc example 1                  # Run first example (alphabetical order)
+#   ./fc example 999                # Run last example (out-of-bounds becomes last)
 # 
 # In interactive mode:
 #   - Type example name or number and press Enter
@@ -20,7 +21,7 @@
 set -e
 
 EXAMPLES_DIR="examples/rust/examples"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # Change to the examples/rust directory for cargo commands
 cd "$SCRIPT_DIR/examples/rust"

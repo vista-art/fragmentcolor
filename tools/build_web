@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# fc: Build the npm package with wasm-pack (--debug for a debug build)
 set -e
 
 if [ "$1" = "--debug" ]; then
@@ -10,7 +11,8 @@ else
 fi
 
 # Portable way to get repo root (works on macOS and Linux)
-SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)"
+cd "$SOURCE_DIR"
 
 # Build WASM package.
 #
@@ -29,8 +31,8 @@ else
 fi
 
 # Ensure npm package has a language-specific README
-if [ -f "$SOURCE_DIR/README_JS.md" ]; then
-  cp "$SOURCE_DIR/README_JS.md" "$SOURCE_DIR/platforms/web/pkg/README.md"
+if [ -f "$SOURCE_DIR/platforms/web/README.md" ]; then
+  cp "$SOURCE_DIR/platforms/web/README.md" "$SOURCE_DIR/platforms/web/pkg/README.md"
 fi
 
 # Distribute the pkg to web subprojects so local dev servers can import from ./pkg

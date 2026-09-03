@@ -739,7 +739,7 @@ mod website {
         // Each generated `.swift` example is read from disk, its `import`
         // lines stripped, and the body inlined inside a private function.
         // The compiler type-checks every body during the SPM build run by
-        // `./healthcheck ios`; failures here mean either a `convert::to_swift`
+        // `./fc healthcheck ios`; failures here mean either a `convert::to_swift`
         // shortcoming or a missing uniffi export, not an aggregator bug.
         let mut swift_list: Vec<String> = ex_swift.iter().cloned().collect();
         swift_list.sort();
@@ -807,7 +807,7 @@ mod website {
         // Lives under `androidTest/` so it's compiled (and the @Test class
         // executed as a no-op) by the existing
         // `gradle fragmentcolor:connectedAndroidTest` invocation in
-        // `./healthcheck android`. The wrappers are private suspend fns
+        // `./fc healthcheck android`. The wrappers are private suspend fns
         // that the Kotlin compiler type-checks at build time.
         let mut kotlin_list: Vec<String> = ex_kotlin.iter().cloned().collect();
         kotlin_list.sort();

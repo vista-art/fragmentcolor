@@ -10,8 +10,7 @@ on:
       - 'platforms/swift/**'
       - 'docs/api/**'
       - 'uniffi.toml'
-      - 'uniffi_bindgen.rs'
-      - 'build_ios'
+      - 'tools/**'
       - '.github/workflows/healthcheck_ios.yml'
   workflow_dispatch:
 
@@ -45,15 +44,15 @@ jobs:
 
       - name: Build xcframework + regenerate Swift bindings
         run: |
-          chmod +x ./build_ios
-          ./build_ios
+          chmod +x ./tools/build_ios
+          ./tools/build_ios
 
       - name: Run Swift healthcheck on iOS simulator
         env:
           FC_HEALTHCHECK_VERBOSE: "1"
         run: |
-          chmod +x ./healthcheck
-          ./healthcheck ios
+          chmod +x ./tools/healthcheck
+          ./tools/healthcheck ios
 
       - name: Upload generated Swift bindings (for inspection)
         if: always()

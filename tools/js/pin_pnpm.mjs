@@ -3,11 +3,11 @@
 Pin the pnpm packageManager version across JS subprojects in this repo.
 
 Usage:
-  node scripts/js/pin_pnpm.mjs [version]
+  node tools/js/pin_pnpm.mjs [version]
 
 Examples:
-  node scripts/js/pin_pnpm.mjs 10.15.1
-  node scripts/js/pin_pnpm.mjs 10.14.0
+  node tools/js/pin_pnpm.mjs 10.15.1
+  node tools/js/pin_pnpm.mjs 10.14.0
 
 Notes:
 - Scans these roots: docs/website, platforms/web/**, examples/**
