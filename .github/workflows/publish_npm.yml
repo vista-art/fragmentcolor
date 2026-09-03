@@ -37,8 +37,8 @@ jobs:
 
       - name: Build web package (wasm)
         run: |
-          chmod +x ./build_web
-          ./build_web
+          chmod +x ./tools/build_web
+          ./tools/build_web
 
       - name: Read package version
         id: get_version

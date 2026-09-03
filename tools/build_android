@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# fc: Build the Android .so per ABI and regenerate the Kotlin bindings
 # Build FragmentColor for Android: one .so per ABI into the Kotlin module's
 # jniLibs/ tree, plus a single set of generated Kotlin bindings.
 #
@@ -11,13 +12,14 @@
 #   platforms/kotlin/fragmentcolor/src/main/java/org/fragmentcolor/generated/*.kt
 #
 # Usage:
-#   ./build_android                        # all ABIs
-#   ./build_android aarch64-linux-android  # one target
+#   ./fc build_android                        # all ABIs
+#   ./fc build_android aarch64-linux-android  # one target
 
 set -euo pipefail
 
 NAME="fragmentcolor"
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT_DIR"
 BUILD_DIR="$ROOT_DIR/build"
 BINDINGS_DIR="$ROOT_DIR/platforms/kotlin/fragmentcolor/src/main"
 

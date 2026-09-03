@@ -52,8 +52,8 @@ jobs:
 
       - name: Build xcframework
         run: |
-          chmod +x ./build_ios
-          ./build_ios
+          chmod +x ./tools/build_ios
+          ./tools/build_ios
 
       - name: Zip xcframework
         run: |

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# fc: Build the iOS xcframework and regenerate the Swift bindings
 # Build FragmentColor for iOS: one static library per arch, one Swift
 # binding set, one xcframework. Depends on Xcode + a working `cargo` that
 # can target `aarch64-apple-ios` and `aarch64-apple-ios-sim` (both are in
@@ -23,17 +24,18 @@
 # binary module name must match that import exactly.
 #
 # Usage:
-#   ./build_ios                 # release build
-#   FC_VERBOSE=1 ./build_ios    # verbose cargo output
+#   ./fc build_ios                 # release build
+#   FC_VERBOSE=1 ./fc build_ios    # verbose cargo output
 
 set -euo pipefail
 
 RUST_NAME="fragmentcolor"     # cargo crate name (lib<RUST_NAME>.a)
 FFI_NAME="FragmentColorFFI"   # xcframework / binary module name used by Swift
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT_DIR"
 BUILD_DIR="$ROOT_DIR/build"
 SWIFT_GENERATED="$ROOT_DIR/platforms/swift/Sources/FragmentColor/generated"
-MACOS_STUBS_C="$ROOT_DIR/scripts/swift/macos_stubs.c"
+MACOS_STUBS_C="$ROOT_DIR/tools/swift/macos_stubs.c"
 
 CARGO_FLAGS=(--release)
 if [[ -z "${FC_VERBOSE:-}" ]]; then

@@ -8,7 +8,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 // Mirrors platforms/python/healthcheck.py against the Android binding.
-// Run via `./healthcheck android` on a connected emulator with a working
+// Run via `./fc healthcheck android` on a connected emulator with a working
 // Vulkan / GLES driver (API 28+).
 //
 // DOC: This file is the source of truth for Kotlin code snippets shown

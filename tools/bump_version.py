@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
+# fc: Bump the crate version across every manifest and badge
 
+import os
 import re
 import sys
 
@@ -136,6 +138,8 @@ def bump_version(file_path, bump_type):
 
 
 if __name__ == "__main__":
+    # the manifests are addressed relative to the repository root
+    os.chdir(Path(__file__).resolve().parent.parent)
     bump = sys.argv[1] if len(sys.argv) > 1 else ''
     new_ver = bump_version('Cargo.toml', bump)
     bump_version('pyproject.toml', bump)

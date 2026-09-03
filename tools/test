@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
+# fc: Run clippy, every workspace test, and the crate doctests
 set -euo pipefail
 
-./clippy
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+
+"$(dirname "${BASH_SOURCE[0]}")/clippy"
 cargo test --all --workspace --all-features --all-targets "$@"
 cargo test -p fragmentcolor --doc -- --nocapture

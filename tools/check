@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# fc: Pre-push validator: formatting, clippy, tests, and lockfile checks
 # Pre-push fast validator. Mirrors what CI rejects, without the full
 # artifact builds (wasm-pack, maturin, cargo-ndk, xcodebuild). Catches:
 #   * platform-specific compile errors (iOS / wasm / Android targets)
@@ -9,17 +10,17 @@
 #     check, so each target invocation re-validates parity)
 #
 # Usage:
-#   ./check           # cargo check --lib (host + iOS + wasm + Android, -D warnings) + cargo test --doc
-#   ./check fast      # host check only (skip cross-target checks AND doctests)
-#   ./check lint      # adds cargo fmt --check + cargo clippy across all targets/features
-#   ./check all       # everything: lint + cross-targets + doctests + JS lockfile sync check
+#   ./fc check           # cargo check --lib (host + iOS + wasm + Android, -D warnings) + cargo test --doc
+#   ./fc check fast      # host check only (skip cross-target checks AND doctests)
+#   ./fc check lint      # adds cargo fmt --check + cargo clippy across all targets/features
+#   ./fc check all       # everything: lint + cross-targets + doctests + JS lockfile sync check
 #
 # Targets are skipped gracefully if the matching `rustup target` isn't
 # installed; the script reports what was skipped at the end.
 
 set -uo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)"
 cd "$ROOT_DIR"
 
 GREEN="\033[1;32m"
@@ -113,7 +114,7 @@ if [ "$ARG" = "lint" ] || [ "$ARG" = "all" ]; then
     ok "fmt"
     RAN+=("fmt")
   else
-    fail "fmt (run \`./clippy\` to fix)"
+    fail "fmt (run \`./fc clippy\` to fix)"
   fi
 
   step "cargo clippy --all --workspace --all-features --all-targets -- -D warnings"
@@ -127,9 +128,9 @@ fi
 
 # ── all mode: also verify JS lockfile is in sync ──────────────────────────
 if [ "$ARG" = "all" ]; then
-  if [ -x "$ROOT_DIR/sync_js" ]; then
-    step "./sync_js (JS lockfile sync — CI runs --frozen-lockfile)"
-    if "$ROOT_DIR/sync_js"; then
+  if [ -x "$ROOT_DIR/tools/sync_js" ]; then
+    step "./fc sync_js (JS lockfile sync — CI runs --frozen-lockfile)"
+    if "$ROOT_DIR/tools/sync_js"; then
       if git diff --exit-code -- 'docs/website/pnpm-lock.yaml' 'docs/website/package.json' >/dev/null; then
         ok "js-lockfile (in sync)"
         RAN+=("js-lockfile")
@@ -140,7 +141,7 @@ if [ "$ARG" = "all" ]; then
       fail "js-lockfile (sync_js failed)"
     fi
   else
-    skip "js-lockfile (./sync_js not found)"
+    skip "js-lockfile (./fc sync_js not found)"
   fi
 fi
 

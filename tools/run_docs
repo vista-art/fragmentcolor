@@ -1,21 +1,22 @@
 #!/usr/bin/env bash
+# fc: Serve the documentation website (preview for the built site)
 set -euo pipefail
 
 # Run or preview the documentation website (Astro/Starlight) from the repo root.
 # Usage:
-#   ./run_docs [dev|preview] [--port <port>|-p <port>] [--no-open] [--clean] [--help]
+#   ./fc run_docs [dev|preview] [--port <port>|-p <port>] [--no-open] [--clean] [--help]
 # Examples:
-#   ./run_docs
-#   ./run_docs --port 4000
-#   ./run_docs preview --no-open
-#   DOCS_PORT=4000 ./run_docs dev
+#   ./fc run_docs
+#   ./fc run_docs --port 4000
+#   ./fc run_docs preview --no-open
+#   DOCS_PORT=4000 ./fc run_docs dev
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SITE_DIR="$ROOT_DIR/docs/website"
 
 show_help() {
   cat <<'EOF'
-Usage: ./run_docs [dev|debug|dbg|preview|prod|production|live] [options]
+Usage: ./fc run_docs [dev|debug|dbg|preview|prod|production|live] [options]
 
 Run or preview the documentation site (Astro/Starlight) located at docs/website.
 
@@ -30,12 +31,12 @@ Options:
   -h, --help          Show this help
 
 Examples:
-  ./run_docs
-  ./run_docs --port 4000
-  ./run_docs preview --no-open
-  ./run_docs prod --no-open
-  ./run_docs debug --no-open
-  DOCS_PORT=4000 ./run_docs dev
+  ./fc run_docs
+  ./fc run_docs --port 4000
+  ./fc run_docs preview --no-open
+  ./fc run_docs prod --no-open
+  ./fc run_docs debug --no-open
+  DOCS_PORT=4000 ./fc run_docs dev
 EOF
 }
 

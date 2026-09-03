@@ -4,7 +4,7 @@
 //
 //  Mirrors platforms/python/healthcheck.py — exercises the full uniffi
 //  surface against a real Metal device on an iOS simulator. Run via
-//  xcodebuild in `./healthcheck ios`; assertions drive the process exit
+//  xcodebuild in `./fc healthcheck ios`; assertions drive the process exit
 //  code so the top-level runner can report pass/fail.
 //
 //  DOC: This file is the source of truth for Swift code snippets shown on

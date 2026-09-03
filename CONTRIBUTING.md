@@ -33,7 +33,7 @@ Contributions are welcome! This document outlines the current workflow for devel
 ## Starting a new version
 
 1. Create a new branch from `main`: `vMAJOR.MINOR.PATCH-dev` (the `-dev` suffix keeps the branch name out of the way of the release tag, which is `vMAJOR.MINOR.PATCH` without a suffix).
-2. Run `./bump_version.py` to bump:
+2. Run `./fc bump_version.py` to bump:
    - `Cargo.toml`
    - `pyproject.toml`
    - `docs/website/package.json` (version only)
@@ -43,7 +43,7 @@ Contributions are welcome! This document outlines the current workflow for devel
 ## Release process
 
 1. Create a version branch from `main`: `vMAJOR.MINOR.PATCH-dev`. The `-dev` suffix keeps the branch out of the way of the release tag created in step 5 — without it, the branch and tag share a name and one of them has to be renamed at release time.
-2. Run `./bump_version.py` to bump versions in `Cargo.toml`, `pyproject.toml`, and the top-level version in `docs/website/package.json`.
+2. Run `./fc bump_version.py` to bump versions in `Cargo.toml`, `pyproject.toml`, and the top-level version in `docs/website/package.json`.
    It should also refresh launch-facing version references such as the root README, Python example requirements, and the website version badge.
 3. Open a PR and iterate until all checks are green (lint, fmt, tests, healthchecks, docs site build). Keep `main` protected and green.
 4. Merge the PR to `main`.

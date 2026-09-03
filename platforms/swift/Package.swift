@@ -5,7 +5,7 @@
 // The `FragmentColor` target is a thin Swift layer on top of the
 // uniffi-generated sources in `Sources/FragmentColor/generated/` plus the
 // pre-built `FragmentColorFFI.xcframework` at `../../build/ios-macos/`. Run
-// `./build_ios` at the repo root to regenerate the iOS slices; the macOS
+// `./fc build_ios` at the repo root to regenerate the iOS slices; the macOS
 // slice is assembled automatically from `target/debug/libfragmentcolor.dylib`
 // for local development.
 //

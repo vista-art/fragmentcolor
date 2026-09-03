@@ -3,7 +3,7 @@
 Fail only on major updates for pnpm projects by inspecting pnpm outdated --json.
 
 Usage:
-  node scripts/js/ci_fail_on_major_updates.mjs --dir <path> [--dir <path> ...]
+  node tools/js/ci_fail_on_major_updates.mjs --dir <path> [--dir <path> ...]
 
 Behavior:
 - For each provided directory, run: pnpm --dir <path> outdated --json
