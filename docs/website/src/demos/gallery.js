@@ -10,10 +10,6 @@ export { ARTWORKS };
 
 let runtime;
 
-export function supportsWebGPU() {
-  return typeof navigator !== "undefined" && !!navigator.gpu;
-}
-
 // Boots the WASM module once per page and resolves catalog slugs against
 // the site's own /shaders/ tree, so dev works offline and prod serves the
 // same files fragmentcolor.org publishes.
@@ -90,8 +86,8 @@ export class Gallery {
   }
 
   async start() {
-    if (!supportsWebGPU()) throw new Error("WebGPU is not available");
-    // A failed boot clears the cache so a later start() can retry.
+    // The engine picks WebGPU or falls back to WebGL2 on its own; a failed
+    // boot clears the cache so a later start() can retry.
     runtime ??= loadRuntime().catch((err) => {
       runtime = undefined;
       throw err;

@@ -44,8 +44,8 @@ const poster = `/artworks/${ARTWORKS[0].id}.webp`;
     </div>
     <div class="fallback" hidden>
       <p>
-        These artworks render live with WebGPU. Open this page in a recent Chrome, Edge,
-        Safari, or Firefox to see them move.
+        These artworks render live on the GPU through WebGPU or WebGL2. This browser could
+        not start either; a recent Chrome, Edge, Safari, or Firefox will show them moving.
       </p>
     </div>
   </div>
@@ -63,7 +63,7 @@ const poster = `/artworks/${ARTWORKS[0].id}.webp`;
     margin: 3rem 0 1rem;
   }
 
-  /* the poster covers the WASM boot and stands in when WebGPU is missing */
+  /* the poster covers the WASM boot and stands in when no GPU backend starts */
   .stage {
     position: relative;
     overflow: hidden;
@@ -265,7 +265,7 @@ const poster = `/artworks/${ARTWORKS[0].id}.webp`;
 
 <script>
   // @ts-nocheck
-  import { Gallery, ARTWORKS, supportsWebGPU } from "../demos/gallery.js";
+  import { Gallery, ARTWORKS } from "../demos/gallery.js";
 
   const COARSE = window.matchMedia?.("(pointer: coarse)").matches ?? false;
   const REDUCED = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
@@ -300,10 +300,6 @@ const poster = `/artworks/${ARTWORKS[0].id}.webp`;
         const page = this.dataset.mode === "page";
         this.#page = page;
         const canvas = this.querySelector("canvas");
-        if (!supportsWebGPU()) {
-          this.#fail();
-          return;
-        }
 
         this.#gallery = new Gallery(canvas, {
           autoAdvance: REDUCED ? 0 : page ? 45 : 12,
