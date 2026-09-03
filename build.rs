@@ -7,8 +7,8 @@ fn main() {
     generate_docs();
     // Generate language-specific READMEs from templates + Rust examples
     println!("cargo::rerun-if-changed=README.md");
-    println!("cargo::rerun-if-changed=README_JS.tpl.md");
-    println!("cargo::rerun-if-changed=README_PY.tpl.md");
+    println!("cargo::rerun-if-changed=platforms/web/README.tpl.md");
+    println!("cargo::rerun-if-changed=platforms/python/README.tpl.md");
     readme::generate_readmes();
 }
 
