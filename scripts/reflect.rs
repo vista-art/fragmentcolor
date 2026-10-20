@@ -361,6 +361,8 @@ mod reflect {
         /// Empty for slices, references and other types without a path.
         pub self_ident: String,
         pub self_ty: Type,
+        /// First segment of a qualified self type, such as `wgpu` in `wgpu::Color`.
+        pub self_root: Option<String>,
         pub is_trait_impl: bool,
         /// The implemented trait with its generic arguments, such as `From<f32>`.
         pub trait_path: Option<syn::Path>,
@@ -422,6 +424,8 @@ mod reflect {
         pub types: Vec<TypeDef>,
         pub impls: Vec<ImplDef>,
         pub free_fns: Vec<FnDef>,
+        /// Names of the crate's modules, at any depth.
+        modules: BTreeSet<String>,
         macros: Vec<MacroDef>,
         pending: Vec<Invocation>,
     }
@@ -472,14 +476,25 @@ mod reflect {
             self.types_in(build).find(|t| t.ident == ident)
         }
 
-        /// Impls of the trait named `trait_ident` that compile in `build`.
+        /// Impls of the trait named `trait_ident` for this crate's types that
+        /// compile in `build`. An impl for another crate's type, such as
+        /// `From<Color> for wgpu::Color`, says nothing about this crate's API.
         pub fn trait_impls(
             &self,
             trait_ident: &str,
             build: Build,
         ) -> impl Iterator<Item = &ImplDef> {
             self.impls.iter().filter(move |imp| {
-                imp.cfg.holds(build) && imp.trait_ident().as_deref() == Some(trait_ident)
+                imp.cfg.holds(build)
+                    && imp.trait_ident().as_deref() == Some(trait_ident)
+                    && !self.is_foreign(imp)
+            })
+        }
+
+        /// Whether the impl's self type is a path into another crate.
+        fn is_foreign(&self, imp: &ImplDef) -> bool {
+            imp.self_root.as_deref().is_some_and(|root| {
+                !matches!(root, "crate" | "self" | "super" | "Self") && !self.modules.contains(root)
             })
         }
 
@@ -614,6 +629,7 @@ mod reflect {
                 Item::Mod(m) => {
                     let mod_cfg = cfg.and(&m.attrs);
                     let name = m.ident.to_string();
+                    model.modules.insert(name.clone());
                     match &m.content {
                         Some((_, inner)) => {
                             walk_items(inner, file, &child_dir.join(&name), &mod_cfg, model)
@@ -665,14 +681,16 @@ mod reflect {
                     });
                 }
                 Item::Impl(imp) => {
-                    let self_ident = match strip_type(&imp.self_ty) {
-                        Type::Path(p) => p
-                            .path
-                            .segments
-                            .last()
-                            .map(|s| s.ident.to_string())
-                            .unwrap_or_default(),
-                        _ => String::new(),
+                    let (self_ident, self_root) = match strip_type(&imp.self_ty) {
+                        Type::Path(p) => {
+                            let segments = &p.path.segments;
+                            let last = segments.last().map(|s| s.ident.to_string());
+                            let root = (segments.len() > 1)
+                                .then(|| segments.first().map(|s| s.ident.to_string()))
+                                .flatten();
+                            (last.unwrap_or_default(), root)
+                        }
+                        _ => (String::new(), None),
                     };
                     let impl_cfg = cfg.and(&imp.attrs);
                     let fns = imp
@@ -711,6 +729,7 @@ mod reflect {
                         file: file.to_path_buf(),
                         self_ident,
                         self_ty: (*imp.self_ty).clone(),
+                        self_root,
                         is_trait_impl: imp.trait_.is_some(),
                         trait_path: imp.trait_.as_ref().map(|(_, path, _)| path.clone()),
                         generics: imp.generics.clone(),
