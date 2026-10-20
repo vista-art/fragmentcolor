@@ -796,7 +796,14 @@ impl RenderContext {
                 label: Some("Command Encoder"),
             });
 
-        let frame = self.acquire_frame(target)?;
+        let pass_list = renderable.passes();
+
+        // Compute passes never draw into the target, so a
+        // render made only of compute passes acquires no frame.
+        let frame = match pass_list.iter().any(|pass| !pass.is_compute()) {
+            true => Some(self.acquire_frame(target)?),
+            false => None,
+        };
 
         // Uploads land at the next submit, so every pass recorded
         // before it needs its own pool offsets. Rewind once per render:
@@ -804,7 +811,6 @@ impl RenderContext {
         self.buffer_pool.write().reset();
         self.storage_pool.write().reset();
 
-        let pass_list = renderable.passes();
         // Apple's Metal driver does not reliably flush tile-based storage-texture writes between
         // two compute passes recorded in the same command buffer, so a subsequent sampled
         // (`texture_2d<…>`) read returns zeros on Apple Silicon. Submitting the encoder between
@@ -828,14 +834,16 @@ impl RenderContext {
             }
             if pass.is_compute() {
                 self.process_compute_pass(&mut encoder, pass)?
-            } else {
-                self.process_render_pass(&mut encoder, pass, frame.as_ref(), target.size().into())?
+            } else if let Some(frame) = frame.as_deref() {
+                self.process_render_pass(&mut encoder, pass, frame, target.size().into())?
             }
         }
 
         self.queue.submit(Some(encoder.finish()));
 
-        if frame.auto_present() {
+        if let Some(frame) = frame
+            && frame.auto_present()
+        {
             frame.present(&self.queue);
         }
 
@@ -3738,6 +3746,53 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,1.,0.,1.); }
             ]);
             let f3 = ctx.acquire_frame(&t3);
             assert!(matches!(f3, Err(crate::SurfaceError::Timeout)));
+        });
+    }
+
+    // Story: A render made only of compute passes acquires no frame; one with a render pass still does.
+    #[test]
+    fn compute_only_render_skips_frame_acquisition() {
+        struct FramelessTarget;
+        impl crate::target::TargetInternal for FramelessTarget {
+            fn get_current_frame(
+                &self,
+            ) -> Result<Box<dyn crate::TargetFrame>, crate::SurfaceError> {
+                Err(crate::SurfaceError::Occluded)
+            }
+        }
+        impl crate::Target for FramelessTarget {
+            fn size(&self) -> crate::Size {
+                crate::Size::from((1u32, 1u32))
+            }
+            fn resize(&mut self, _size: impl Into<crate::Size>) {}
+            async fn get_image(&self) -> Vec<u8> {
+                Vec::new()
+            }
+        }
+
+        pollster::block_on(async move {
+            let (_adapter, device, queue) = create_device_and_queue().await;
+            let ctx = RenderContext::new(device, queue);
+            let compute = Shader::new("@compute @workgroup_size(1)\nfn cs_main() {}\n")
+                .expect("compute shader");
+            let draw = Shader::default();
+
+            let compute_only = vec![
+                Pass::from_shader("first", &compute),
+                Pass::from_shader("second", &compute),
+            ];
+            ctx.render(&compute_only, &FramelessTarget)
+                .expect("compute-only render needs no frame");
+
+            let mixed = vec![
+                Pass::from_shader("compute", &compute),
+                Pass::from_shader("draw", &draw),
+            ];
+            let result = ctx.render(&mixed, &FramelessTarget);
+            assert!(matches!(
+                result,
+                Err(RendererError::SurfaceError(crate::SurfaceError::Occluded))
+            ));
         });
     }
 
