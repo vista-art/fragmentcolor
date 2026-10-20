@@ -28,7 +28,7 @@ impl Model {
     #[uniffi::constructor(name = "new")]
     #[lsp_doc("docs/api/scene/model/new.md")]
     pub fn new_mobile(mesh: Arc<Mesh>, material: Arc<Material>) -> Arc<Self> {
-        Arc::new(Model::new((*mesh).clone(), material_share(&material)))
+        Arc::new(Model::new((*mesh).clone(), (*material).clone()))
     }
 
     #[uniffi::method(name = "mesh")]
@@ -40,7 +40,7 @@ impl Model {
     #[uniffi::method(name = "material")]
     #[lsp_doc("docs/api/scene/model/material.md")]
     pub fn material_mobile(self: Arc<Self>) -> Arc<Material> {
-        Arc::new(material_share(&self.material))
+        Arc::new(self.material.clone())
     }
 
     #[uniffi::method(name = "transform")]
@@ -482,10 +482,6 @@ impl Scene {
     pub fn lights_mobile(self: Arc<Self>) -> Vec<Arc<Light>> {
         self.lights().into_iter().map(Arc::new).collect()
     }
-}
-
-fn material_share(material: &Material) -> Material {
-    Material::custom(material.shader.clone())
 }
 
 fn take_vec3(v: &[f32], field: &str) -> Result<[f32; 3], FragmentColorError> {

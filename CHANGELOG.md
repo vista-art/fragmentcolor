@@ -8,6 +8,8 @@ A patch release with fixes for the language bindings.
 
 On Android, `renderer.createTarget(surface)` builds the target on the renderer you call it on. The JNI path created a new `Renderer` for every surface, so the target lived on a different GPU device than the renderer drawing into it, and `render` either failed with `NoContext` or mixed the two devices. The JNI helper now only turns the `Surface` into an `ANativeWindow` pointer, and the Kotlin extension passes that pointer to the calling renderer's `createTarget`.
 
+`Model(mesh, material)` and `model.material()` no longer reset the Material on Swift, Kotlin, JavaScript, and Python. Both rebuilt the Material with `Material::custom`, which put the caller's Material back to the `Opaque` alpha mode and single-sided culling but left the shader's alpha flag untouched, so `Mask` and `Blend` materials drew with mismatched pipeline state. The bindings now share the Material the way Rust does.
+
 ## 0.12.5: WebGL2 fixes
 
 A patch release that makes the WebGL2 fallback work. There are no API changes.

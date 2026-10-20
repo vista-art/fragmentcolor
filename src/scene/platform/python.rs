@@ -23,11 +23,9 @@ impl Model {
     #[pyo3(name = "material")]
     #[lsp_doc("docs/api/scene/model/material.md")]
     pub fn material_py(&self) -> Material {
-        // Material is Clone (deep clone via Shader::duplicate). For the
-        // Python accessor we want share semantics: cheap, mutates propagate.
-        // We can't reach into Material here without duplicating; expose a
-        // shallow share by reconstructing from the existing Arc-shared Shader.
-        Material::custom(self.material.shader.clone())
+        // Material::clone is a shallow Arc-share, so mutations through the
+        // returned handle reach the Model's Material.
+        self.material.clone()
     }
 
     #[pyo3(name = "transform")]

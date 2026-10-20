@@ -14,7 +14,7 @@ impl Model {
         // Materials and Meshes are wrapped around Arc internally, so cloning
         // here is an Arc::clone — cheap, share semantics. The JS caller keeps
         // their original handle live.
-        Model::new(mesh.clone(), material_share(material))
+        Model::new(mesh.clone(), material.clone())
     }
 
     #[wasm_bindgen(js_name = "mesh")]
@@ -26,7 +26,7 @@ impl Model {
     #[wasm_bindgen(js_name = "material")]
     #[lsp_doc("docs/api/scene/model/material.md")]
     pub fn material_js(&self) -> Material {
-        material_share(&self.material)
+        self.material.clone()
     }
 
     #[wasm_bindgen(js_name = "transform")]
@@ -468,13 +468,6 @@ impl Scene {
 crate::impl_js_bridge!(Scene, crate::PassError);
 crate::impl_js_bridge!(Model, crate::PassError);
 crate::impl_js_bridge!(Camera, crate::PassError);
-
-fn material_share(material: &Material) -> Material {
-    // Share the Material's shader (Arc-clone) so the JS handle and the new
-    // Material observe the same uniform state. Material::clone is itself a
-    // shallow Arc-share — the same shape, just routed through the derive.
-    Material::custom(material.shader.clone())
-}
 
 fn vec3(v: &[f32], field: &str) -> Result<[f32; 3], JsError> {
     if v.len() != 3 {
