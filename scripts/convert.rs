@@ -1,8 +1,8 @@
 mod convert {
-    use std::collections::BTreeSet;
+    use std::collections::{BTreeMap, BTreeSet};
 
     use crate::reflect::{Build, Reflection, StrConst, inline_str_consts};
-    use crate::source_text::is_ident_char;
+    use crate::source_text::{closing, is_ident_char, split_args};
     use crate::js_region_new_to_array;
 
     /// API facts the converter reads, derived from the source model.
@@ -13,6 +13,8 @@ mod convert {
         js_exports: BTreeSet<String>,
         /// Names an example can import from `fragmentcolor` in Python.
         py_exports: BTreeSet<String>,
+        /// The parameters of each Python method, by name, one list per method of that name.
+        py_methods: BTreeMap<String, Vec<Vec<(String, bool)>>>,
     }
 
     static FACTS: std::sync::OnceLock<Facts> = std::sync::OnceLock::new();
@@ -23,6 +25,10 @@ mod convert {
             js_consts: model.str_consts(Build::Wasm),
             js_exports: model.wasm_exports(),
             py_exports: model.python_exports(&crate::meta::workspace_root()),
+            py_methods: model.python_methods().into_iter().fold(BTreeMap::new(), |mut by_name, m| {
+                by_name.entry(m.name).or_insert_with(Vec::new).push(m.params);
+                by_name
+            }),
         });
     }
 
@@ -1928,7 +1934,8 @@ mod convert {
         // Python: capitalize `true` / `false` to Python's `True` / `False`.
         // Match standalone identifier tokens only (no leading/trailing ident
         // char), and skip lines that look like string literals or comments.
-        // Also strip the Rust full-range slice tail `[..]` and convert
+        // Also strip the Rust full-range slice tail `[..]`, spread tuple
+        // arguments over the method's parameters, and convert
         // `for x in y { ... }` blocks into Python `for x in y: ...` with
         // the body re-indented one level under the `for:` header.
         if matches!(lang, Lang::Py) {
@@ -1937,7 +1944,7 @@ mod convert {
                 .map(|line| {
                     let l = capitalize_py_bool_literals(&line);
                     let l = drop_rust_slice_suffix_py(&l);
-                    rewrite_py_create_texture_pixels_tuple(&l)
+                    spread_py_tuple_args(&l)
                 })
                 .collect();
             out = rewrite_py_braced_blocks(out);
@@ -1954,79 +1961,62 @@ mod convert {
         line.replace("[..]", "")
     }
 
-    /// Rewrite `renderer.create_texture((bytes, [w, h]))` →
-    /// `renderer.create_texture(bytes, size=[w, h])`. The Rust API takes
-    /// a tuple via `impl Into<TextureInput>`; the Python binding uses
-    /// keyword arguments instead (`create_texture(input, size=...)`).
-    /// Only fires when the outer call's single argument is a parenthesised
-    /// tuple of exactly two top-level elements.
-    fn rewrite_py_create_texture_pixels_tuple(line: &str) -> String {
-        let needle = "create_texture(";
-        let Some(start) = line.find(needle) else {
-            return line.to_string();
-        };
-        let chars: Vec<char> = line.chars().collect();
-        let arg_start = start + needle.len();
-        if arg_start >= chars.len() || chars[arg_start] != '(' {
-            return line.to_string();
-        }
-        // Walk the outer paren of the tuple to find its closing `)`.
-        let mut depth = 0i32;
-        let mut j = arg_start;
-        let mut tuple_end = None;
-        while j < chars.len() {
-            match chars[j] {
-                '(' => depth += 1,
-                ')' => {
-                    depth -= 1;
-                    if depth == 0 {
-                        tuple_end = Some(j);
-                        break;
-                    }
+    /// `renderer.create_texture((bytes, [2, 2]))` → `renderer.create_texture(bytes, size=[2, 2])`.
+    /// A Rust tuple argument spreads over the parameters of the Python method it calls,
+    /// and an item that lands on a parameter with a default goes by keyword.
+    fn spread_py_tuple_args(line: &str) -> String {
+        let mut out = String::with_capacity(line.len());
+        let mut at = 0;
+        while let Some(found) = line[at..].find("((").map(|p| at + p) {
+            let head = &line[..found];
+            let name = &head[head.trim_end_matches(is_ident_char).len()..];
+            let is_method = !name.is_empty() && head[..head.len() - name.len()].ends_with('.');
+            let tuple = &line[found + 1..];
+            match is_method.then(|| py_spread(name, tuple)).flatten() {
+                Some((args, used)) => {
+                    out.push_str(&line[at..=found]);
+                    out.push_str(&args);
+                    at = found + 1 + used;
                 }
-                _ => {}
-            }
-            j += 1;
-        }
-        let Some(tuple_end) = tuple_end else {
-            return line.to_string();
-        };
-        // The next char after `tuple_end` must be `)` so the entire
-        // `create_texture( ... )` call closes immediately after the tuple.
-        if tuple_end + 1 >= chars.len() || chars[tuple_end + 1] != ')' {
-            return line.to_string();
-        }
-        // Split the tuple body at the top-level comma.
-        let body: String = chars[arg_start + 1..tuple_end].iter().collect();
-        let mut depth = 0i32;
-        let mut split_at = None;
-        for (idx, c) in body.chars().enumerate() {
-            match c {
-                '(' | '[' | '{' => depth += 1,
-                ')' | ']' | '}' => depth -= 1,
-                ',' if depth == 0 => {
-                    split_at = Some(idx);
-                    break;
+                None => {
+                    out.push_str(&line[at..=found]);
+                    at = found + 1;
                 }
-                _ => {}
             }
         }
-        let Some(split_at) = split_at else {
-            return line.to_string();
-        };
-        let bytes_part = body[..split_at].trim();
-        let size_part = body[split_at + 1..].trim();
-        // `chars[..arg_start]` already includes the outer `create_texture(`
-        // paren; emit the new args and the matching outer `)` directly.
-        // `tuple_end + 1` is the outer closing `)`; skip past it.
-        let mut out = String::new();
-        out.push_str(&chars[..arg_start].iter().collect::<String>());
-        out.push_str(bytes_part);
-        out.push_str(", size=");
-        out.push_str(size_part);
-        out.push(')');
-        out.push_str(&chars[tuple_end + 2..].iter().collect::<String>());
+        out.push_str(&line[at..]);
         out
+    }
+
+    /// The arguments the tuple `tuple` starts with spreads into for the method `name`,
+    /// and the byte length of the tuple, when it is the call's only argument
+    /// and every method of that name takes its items the same way.
+    fn py_spread(name: &str, tuple: &str) -> Option<(String, usize)> {
+        let close = closing(tuple, 0)?;
+        if !tuple[close + 1..].starts_with(')') {
+            return None;
+        }
+        let items = split_args(&tuple[1..close]);
+        if items.len() < 2 {
+            return None;
+        }
+        let spellings: BTreeSet<Option<String>> = facts()
+            .py_methods
+            .get(name)?
+            .iter()
+            .map(|params| {
+                let spelled: Vec<String> = items
+                    .iter()
+                    .zip(params)
+                    .map(|(item, (param, default))| if *default { format!("{param}={item}") } else { item.clone() })
+                    .collect();
+                (items.len() <= params.len()).then(|| spelled.join(", "))
+            })
+            .collect();
+        match Vec::from_iter(spellings).as_slice() {
+            [Some(only)] => Some((only.clone(), close + 1)),
+            _ => None,
+        }
     }
 
     /// Convert Rust-style braced bodies (`for x in y { ... }`,

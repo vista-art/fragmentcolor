@@ -1253,6 +1253,58 @@ mod reflect {
                 .map(|f| exported_name(f, Build::Wasm));
             types.chain(fns).collect()
         }
+
+        /// The methods of the `#[pymethods]` blocks, with the parameters Python passes.
+        pub fn python_methods(&self) -> Vec<PyMethod> {
+            self.binding_impls(Build::Python, "pymethods")
+                .flat_map(|imp| {
+                    imp.fns
+                        .iter()
+                        .filter(|f| f.cfg.holds(Build::Python) && f.sig.receiver().is_some())
+                        .map(|f| PyMethod {
+                            name: exported_name(f, Build::Python),
+                            params: python_params(f),
+                        })
+                })
+                .collect()
+        }
+    }
+
+    /// A method a `#[pymethods]` block exposes.
+    pub struct PyMethod {
+        /// The name Python calls it by.
+        pub name: String,
+        /// Each parameter's name, and whether `#[pyo3(signature)]` gives it a default.
+        pub params: Vec<(String, bool)>,
+    }
+
+    /// The parameters Python passes to `f`: those of its `#[pyo3(signature)]`,
+    /// else every parameter but the receiver and a `Python` token.
+    fn python_params(f: &FnDef) -> Vec<(String, bool)> {
+        let signature = metas(&f.attrs, Build::Python)
+            .iter()
+            .filter(|m| meta_ident(m) == "pyo3")
+            .find_map(|m| arg_value(&meta_args(m), "signature"));
+        if let Some(signature) = signature {
+            return split_top_level(&signature)
+                .into_iter()
+                .filter(|part| !part.starts_with('*') && part != "/")
+                .map(|part| match part.split_once('=') {
+                    Some((name, _)) => (name.trim().to_string(), true),
+                    None => (part, false),
+                })
+                .collect();
+        }
+        f.sig
+            .inputs
+            .iter()
+            .filter_map(|arg| match arg {
+                syn::FnArg::Typed(t) if last_ident(&t.ty).as_deref() != Some("Python") => {
+                    Some((pattern_name(&t.pat), false))
+                }
+                _ => None,
+            })
+            .collect()
     }
 
     /// The name a binding exports a function under: `js_name` on the web,
@@ -1598,18 +1650,23 @@ mod reflect {
             .collect()
     }
 
-    /// Parameter names after the receiver. A pattern other than a name counts as `_`.
+    /// Parameter names after the receiver.
     fn param_names(sig: &Signature) -> Vec<String> {
         sig.inputs
             .iter()
             .filter_map(|arg| match arg {
-                syn::FnArg::Typed(t) => Some(match &*t.pat {
-                    syn::Pat::Ident(p) => p.ident.to_string(),
-                    _ => "_".to_string(),
-                }),
+                syn::FnArg::Typed(t) => Some(pattern_name(&t.pat)),
                 syn::FnArg::Receiver(_) => None,
             })
             .collect()
+    }
+
+    /// The name a parameter pattern binds. A pattern other than a name counts as `_`.
+    fn pattern_name(pat: &syn::Pat) -> String {
+        match pat {
+            syn::Pat::Ident(p) => p.ident.to_string(),
+            _ => "_".to_string(),
+        }
     }
 
     fn return_type(sig: &Signature) -> Option<&Type> {
