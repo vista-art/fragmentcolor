@@ -14,6 +14,8 @@ The committed Swift wrapper in `platforms/swift/Sources/FragmentColor/generated/
 
 `Shader.set` on the web checks what it receives before binding a texture. Any object exported by the library used to pass as a `Texture`, so handing it a `Shader`, `Pass`, or `Mesh`, or a plain object with a copied `__wbg_ptr` field, read that object's memory as a texture. A `Texture` binds as before. Anything else throws a type mismatch error, as it does in Python.
 
+The npm package no longer ships the test harness. `wasm-bindgen-test` was a runtime dependency of the web build, so the package exported a `WasmBindgenTestContext` class and the `__wbgtest_*` helpers next to the real API. It is a development dependency now, and the bundle carries only the library's own exports.
+
 ## 0.12.5: WebGL2 fixes
 
 A patch release that makes the WebGL2 fallback work. There are no API changes.

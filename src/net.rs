@@ -11,7 +11,7 @@
 //!   network.
 
 #[cfg(wasm)]
-use wasm_bindgen_test::__rt::wasm_bindgen::JsValue;
+use wasm_bindgen::JsValue;
 
 /// Single error type for HTTP fetches across every target. `Display` carries
 /// a human-readable message; `From<ureq::Error>` is provided when the
