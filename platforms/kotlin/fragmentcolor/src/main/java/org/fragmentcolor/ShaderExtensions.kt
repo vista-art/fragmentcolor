@@ -14,98 +14,37 @@ import kotlinx.coroutines.withContext
 // when this file calls Shader.setRegistry(baseUrl) (the call resolves to the
 // shadowing extension, not the underlying companion method).
 
-/** Set a Float uniform. */
-fun Shader.set(key: String, value: Float) {
-    set(key, UniformData.Float(value))
-}
+// Each overload only says what kind of value it carries. Rust shapes it to
+// the uniform's declared WGSL type, so `3` fits an f32, i32 or u32 uniform
+// and four numbers fit a vec4 or a mat2x2. The generated member
+// `set(key, UniformValue)` wins inside each body, so there is no recursion.
 
-/**
- * Set a Float uniform from a Kotlin [Double] literal. Lets example code
- * write `shader.set("k", 0.5)` without the `f` suffix; the value is downcast
- * to f32 before the FFI hop, matching every other binding's behaviour.
- */
-fun Shader.set(key: String, value: Double) {
-    set(key, UniformData.Float(value.toFloat()))
-}
+fun Shader.set(key: String, value: Float) = set(key, UniformValue.Number(value.toDouble()))
 
-/** Set an Int (i32) uniform. */
-fun Shader.set(key: String, value: Int) {
-    set(key, UniformData.Int(value))
-}
+fun Shader.set(key: String, value: Double) = set(key, UniformValue.Number(value))
 
-/** Set a UInt (u32) uniform. */
-fun Shader.set(key: String, value: UInt) {
-    set(key, UniformData.UInt(value))
-}
+fun Shader.set(key: String, value: Int) = set(key, UniformValue.Number(value.toDouble()))
 
-/** Set a Bool uniform. */
-fun Shader.set(key: String, value: Boolean) {
-    set(key, UniformData.Bool(value))
-}
+fun Shader.set(key: String, value: UInt) = set(key, UniformValue.Number(value.toDouble()))
 
-/** Float array — dispatches to Float / Vec2..4 / Mat3 / Mat4 by length. */
-fun Shader.set(key: String, value: FloatArray) {
-    val list = value.toList()
-    val uniform = when (value.size) {
-        1 -> UniformData.Float(list[0])
-        2 -> UniformData.Vec2(list)
-        3 -> UniformData.Vec3(list)
-        4 -> UniformData.Vec4(list)
-        9 -> UniformData.Mat3(list)
-        16 -> UniformData.Mat4(list)
-        else -> throw FragmentColorException.Shader(
-            "Unsupported float array length: ${value.size} (expected 1/2/3/4/9/16)"
-        )
-    }
-    set(key, uniform)
-}
+fun Shader.set(key: String, value: Boolean) = set(key, UniformValue.Bool(value))
 
-/** Int (i32) array — dispatches to Int / IVec2..4 by length. */
-fun Shader.set(key: String, value: IntArray) {
-    val list = value.toList()
-    val uniform = when (value.size) {
-        1 -> UniformData.Int(list[0])
-        2 -> UniformData.IVec2(list)
-        3 -> UniformData.IVec3(list)
-        4 -> UniformData.IVec4(list)
-        else -> throw FragmentColorException.Shader(
-            "Unsupported int array length: ${value.size} (expected 1/2/3/4)"
-        )
-    }
-    set(key, uniform)
-}
+fun Shader.set(key: String, value: FloatArray) =
+    set(key, UniformValue.Numbers(value.map { it.toDouble() }))
 
-/** UInt (u32) array — dispatches to UInt / UVec2..4 by length. */
-fun Shader.set(key: String, value: UIntArray) {
-    val list = value.toList()
-    val uniform = when (value.size) {
-        1 -> UniformData.UInt(list[0])
-        2 -> UniformData.UVec2(list)
-        3 -> UniformData.UVec3(list)
-        4 -> UniformData.UVec4(list)
-        else -> throw FragmentColorException.Shader(
-            "Unsupported uint array length: ${value.size} (expected 1/2/3/4)"
-        )
-    }
-    set(key, uniform)
-}
+fun Shader.set(key: String, value: DoubleArray) = set(key, UniformValue.Numbers(value.toList()))
 
-/**
- * Pass a [Texture] handle for a sampler/texture binding. Storage merges
- * the user-supplied id with the shader-parsed metadata at set time, so
- * the placeholder values for `dim` / `arrayed` / `class` / `sampled`
- * here are overwritten by the real reflection data.
- */
-fun Shader.set(key: String, texture: Texture) {
-    val meta = TextureMeta(
-        id = texture.id(),
-        dim = TextureDim.D2,
-        arrayed = false,
-        `class` = TextureClass.Sampled(TextureScalarKind.FLOAT, false),
-        sampled = true
-    )
-    set(key, UniformData.Texture(meta))
-}
+fun Shader.set(key: String, value: IntArray) =
+    set(key, UniformValue.Numbers(value.map { it.toDouble() }))
+
+fun Shader.set(key: String, value: UIntArray) =
+    set(key, UniformValue.Numbers(value.map { it.toDouble() }))
+
+/** Raw bytes for a storage-buffer or push-constant root. */
+fun Shader.set(key: String, bytes: ByteArray) = set(key, UniformValue.Bytes(bytes))
+
+/** Bind a [Texture] created by a [Renderer] to a texture uniform. */
+fun Shader.set(key: String, texture: Texture) = set(key, UniformValue.Texture(texture.id()))
 
 // ---------------------------------------------------------------------------
 // Async fetch factory helpers

@@ -19,7 +19,37 @@ use lsp_doc::lsp_doc;
 use crate::Shader;
 use crate::mesh::{Mesh, Vertex};
 use crate::renderer::platform::mobile::FragmentColorError;
+use crate::shader::UniformInput;
 use crate::shader::uniform::UniformData;
+use crate::texture::TextureId;
+
+/// A `Shader.set` value as Swift and Kotlin hand it over.
+/// The uniform's declared WGSL type decides how Rust reads it.
+#[derive(uniffi::Enum, Debug, Clone, PartialEq)]
+pub enum UniformValue {
+    /// Writes 1 or 0 into a numeric uniform.
+    Bool(bool),
+    /// One `f32`, `i32` or `u32`.
+    Number(f64),
+    /// A vector, a matrix, or a one-element scalar.
+    Numbers(Vec<f64>),
+    /// A texture created by a `Renderer`.
+    Texture(TextureId),
+    /// Raw bytes for a storage-buffer or push-constant root.
+    Bytes(Vec<u8>),
+}
+
+impl From<UniformValue> for UniformInput {
+    fn from(value: UniformValue) -> Self {
+        match value {
+            UniformValue::Bool(flag) => Self::Bool(flag),
+            UniformValue::Number(number) => Self::Number(number),
+            UniformValue::Numbers(numbers) => Self::Numbers(numbers),
+            UniformValue::Texture(id) => Self::Texture(id),
+            UniformValue::Bytes(bytes) => Self::Bytes(bytes),
+        }
+    }
+}
 
 #[uniffi::export]
 impl Shader {
@@ -104,8 +134,10 @@ impl Shader {
 
     #[uniffi::method(name = "set")]
     #[lsp_doc("docs/api/core/shader/set.md")]
-    pub fn set_mobile(&self, key: String, value: UniformData) -> Result<(), FragmentColorError> {
-        self.set(&key, value).map_err(FragmentColorError::from)
+    pub fn set_mobile(&self, key: String, value: UniformValue) -> Result<(), FragmentColorError> {
+        self.object
+            .set_input(&key, value.into())
+            .map_err(FragmentColorError::from)
     }
 
     #[uniffi::method(name = "get")]

@@ -3,6 +3,9 @@ package org.fragmentcolor
 import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import kotlinx.coroutines.runBlocking
+import kotlin.test.assertContentEquals
+import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import org.junit.Assume
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -58,6 +61,49 @@ class Healthcheck {
             }
             throw e
         }
+    }
+
+    // Shader.set shapes each Kotlin value to the uniform's declared WGSL type.
+    // Setting and reading uniforms touches no GPU, so this runs on any emulator.
+    @Test
+    fun shaderSetShapesValues() {
+        val shader = Shader(
+            """
+            struct Particles { items: array<vec4<f32>, 2> };
+            @group(0) @binding(0) var<uniform> count: u32;
+            @group(0) @binding(1) var<uniform> cell: vec2<i32>;
+            @group(0) @binding(2) var<uniform> rot: mat2x2<f32>;
+            @group(0) @binding(3) var<uniform> offset: vec2<f32>;
+            @group(0) @binding(4) var<storage, read> particles: Particles;
+            @vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+              let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.));
+              return vec4f(p[i], 0., 1.);
+            }
+            @fragment fn main() -> @location(0) vec4<f32> {
+              let x = f32(count) + f32(cell.x) + rot[0].x + offset.x + particles.items[0].x;
+              return vec4f(x, 0., 0., 1.);
+            }
+            """.trimIndent()
+        )
+
+        shader.set("count", 3)
+        assertEquals(UniformData.UInt(3u), shader.get("count"))
+        shader.set("cell", intArrayOf(2, -1))
+        assertEquals(UniformData.IVec2(listOf(2, -1)), shader.get("cell"))
+        shader.set("rot", floatArrayOf(1f, 2f, 3f, 4f))
+        assertEquals(UniformData.Mat2(listOf(1f, 2f, 3f, 4f)), shader.get("rot"))
+        shader.set("offset", intArrayOf(5, 6))
+        assertEquals(UniformData.Vec2(listOf(5f, 6f)), shader.get("offset"))
+
+        assertFailsWith<FragmentColorException> { shader.set("offset", floatArrayOf(1f, 2f, 3f)) }
+        assertEquals(UniformData.Vec2(listOf(5f, 6f)), shader.get("offset"))
+        assertFailsWith<FragmentColorException> { shader.set("count", -1) }
+        assertFailsWith<FragmentColorException> { shader.set("offset", ByteArray(8)) }
+
+        val blob = ByteArray(32) { it.toByte() }
+        shader.set("particles", blob)
+        val (bytes) = shader.get("particles") as UniformData.Bytes
+        assertContentEquals(blob, bytes)
     }
 
     private suspend fun runHeadlessRenderSmoke() {

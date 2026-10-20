@@ -529,6 +529,22 @@ fileprivate struct FfiConverterFloat: FfiConverterPrimitive {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterDouble: FfiConverterPrimitive {
+    typealias FfiType = Double
+    typealias SwiftType = Double
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Double {
+        return try lift(readDouble(&buf))
+    }
+
+    public static func write(_ value: Double, into buf: inout [UInt8]) {
+        writeDouble(&buf, lower(value))
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterBool : FfiConverter {
     typealias FfiType = Int8
     typealias SwiftType = Bool
@@ -4114,7 +4130,7 @@ public protocol ShaderProtocol: AnyObject, Sendable {
      */
     func removeMeshes(meshes: [Mesh]) 
     
-    func set(key: String, value: UniformData) throws 
+    func set(key: String, value: UniformValue) throws 
     
     /**
      * Check whether a `Mesh`'s vertex/instance layout is compatible with
@@ -4394,12 +4410,12 @@ open func removeMeshes(meshes: [Mesh])  {try! rustCall() {
 }
 }
     
-open func set(key: String, value: UniformData)throws   {try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
+open func set(key: String, value: UniformValue)throws   {try rustCallWithError(FfiConverterTypeFragmentColorError_lift) {
         uniffiCallStatus in
     uniffi_fragmentcolor_fn_method_shader_set(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(key),
-        FfiConverterTypeUniformData_lower(value),uniffiCallStatus
+        FfiConverterTypeUniformValue_lower(value),uniffiCallStatus
     )
 }
 }
@@ -8253,6 +8269,127 @@ public func FfiConverterTypeUniformData_lower(_ value: UniformData) -> RustBuffe
 
 
 
+/**
+ * A `Shader.set` value as Swift and Kotlin hand it over.
+ * The uniform's declared WGSL type decides how Rust reads it.
+ */
+
+public enum UniformValue: Equatable, Hashable {
+    
+    /**
+     * Writes 1 or 0 into a numeric uniform.
+     */
+    case bool(Bool
+    )
+    /**
+     * One `f32`, `i32` or `u32`.
+     */
+    case number(Double
+    )
+    /**
+     * A vector, a matrix, or a one-element scalar.
+     */
+    case numbers([Double]
+    )
+    /**
+     * A texture created by a `Renderer`.
+     */
+    case texture(TextureId
+    )
+    /**
+     * Raw bytes for a storage-buffer or push-constant root.
+     */
+    case bytes(Data
+    )
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension UniformValue: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeUniformValue: FfiConverterRustBuffer {
+    typealias SwiftType = UniformValue
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> UniformValue {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .bool(try FfiConverterBool.read(from: &buf)
+        )
+        
+        case 2: return .number(try FfiConverterDouble.read(from: &buf)
+        )
+        
+        case 3: return .numbers(try FfiConverterSequenceDouble.read(from: &buf)
+        )
+        
+        case 4: return .texture(try FfiConverterTypeTextureId.read(from: &buf)
+        )
+        
+        case 5: return .bytes(try FfiConverterData.read(from: &buf)
+        )
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: UniformValue, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case let .bool(v1):
+            writeInt(&buf, Int32(1))
+            FfiConverterBool.write(v1, into: &buf)
+            
+        
+        case let .number(v1):
+            writeInt(&buf, Int32(2))
+            FfiConverterDouble.write(v1, into: &buf)
+            
+        
+        case let .numbers(v1):
+            writeInt(&buf, Int32(3))
+            FfiConverterSequenceDouble.write(v1, into: &buf)
+            
+        
+        case let .texture(v1):
+            writeInt(&buf, Int32(4))
+            FfiConverterTypeTextureId.write(v1, into: &buf)
+            
+        
+        case let .bytes(v1):
+            writeInt(&buf, Int32(5))
+            FfiConverterData.write(v1, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeUniformValue_lift(_ buf: RustBuffer) throws -> UniformValue {
+    return try FfiConverterTypeUniformValue.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeUniformValue_lower(_ value: UniformValue) -> RustBuffer {
+    return FfiConverterTypeUniformValue.lower(value)
+}
+
+
+
 
 public enum VertexValue: Equatable, Hashable {
     
@@ -8686,6 +8823,31 @@ fileprivate struct FfiConverterSequenceFloat: FfiConverterRustBuffer {
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterFloat.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceDouble: FfiConverterRustBuffer {
+    typealias SwiftType = [Double]
+
+    public static func write(_ value: [Double], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterDouble.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [Double] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [Double]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterDouble.read(from: &buf))
         }
         return seq
     }
@@ -9425,7 +9587,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fragmentcolor_checksum_method_shader_removemeshes() != 20268) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_fragmentcolor_checksum_method_shader_set() != 10681) {
+    if (uniffi_fragmentcolor_checksum_method_shader_set() != 8819) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fragmentcolor_checksum_method_shader_validatemesh() != 2752) {
