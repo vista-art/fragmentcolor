@@ -30,6 +30,64 @@ impl Default for SamplerOptions {
     }
 }
 
+/// `SamplerOptions` from Python: the class itself, or a dict of its fields.
+#[cfg(python)]
+#[derive(pyo3::FromPyObject)]
+pub(crate) enum PySamplerOptions {
+    #[pyo3(annotation = "SamplerOptions")]
+    Options(SamplerOptions),
+    #[pyo3(annotation = "dict[str, bool | CompareFunction | None]")]
+    Dict(std::collections::HashMap<String, PySamplerValue>),
+}
+
+/// One value of the `PySamplerOptions` dict.
+#[cfg(python)]
+#[derive(pyo3::FromPyObject)]
+pub(crate) enum PySamplerValue {
+    #[pyo3(annotation = "bool")]
+    Flag(bool),
+    #[pyo3(annotation = "CompareFunction | None")]
+    Compare(Option<CompareFunction>),
+}
+
+#[cfg(python)]
+impl TryFrom<PySamplerOptions> for SamplerOptions {
+    type Error = pyo3::PyErr;
+
+    /// Missing keys keep the defaults, and unknown keys are ignored.
+    fn try_from(input: PySamplerOptions) -> Result<Self, Self::Error> {
+        use pyo3::exceptions::PyTypeError;
+
+        let fields = match input {
+            PySamplerOptions::Options(options) => return Ok(options),
+            PySamplerOptions::Dict(fields) => fields,
+        };
+        let defaults = Self::default();
+        let flag = |key: &str, default: bool| match fields.get(key) {
+            None => Ok(default),
+            Some(PySamplerValue::Flag(flag)) => Ok(*flag),
+            Some(PySamplerValue::Compare(_)) => {
+                Err(PyTypeError::new_err(format!("'{key}' must be a bool")))
+            }
+        };
+        let compare = match fields.get("compare") {
+            None => defaults.compare,
+            Some(PySamplerValue::Compare(compare)) => *compare,
+            Some(PySamplerValue::Flag(_)) => {
+                return Err(PyTypeError::new_err(
+                    "'compare' must be a CompareFunction or None",
+                ));
+            }
+        };
+        Ok(Self {
+            repeat_x: flag("repeat_x", defaults.repeat_x)?,
+            repeat_y: flag("repeat_y", defaults.repeat_y)?,
+            smooth: flag("smooth", defaults.smooth)?,
+            compare,
+        })
+    }
+}
+
 pub fn create_default_sampler(device: &wgpu::Device) -> wgpu::Sampler {
     create_sampler(device, SamplerOptions::default())
 }

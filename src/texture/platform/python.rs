@@ -1,7 +1,7 @@
 #![cfg(python)]
 
-use crate::SamplerOptions;
 use crate::TextureFormat;
+use crate::texture::PySamplerOptions;
 use crate::texture::region::PyTextureRegion;
 use crate::texture::{Mipmap, PyTextureBytes, Texture, TextureId, TextureRegion};
 use lsp_doc::lsp_doc;
@@ -94,40 +94,13 @@ impl Texture {
         self.aspect()
     }
 
-    /// Accepts a dict with keys repeat_x, repeat_y, smooth, compare
+    /// Accepts `SamplerOptions` or a dict with keys repeat_x, repeat_y, smooth, compare
     #[pyo3(name = "set_sampler_options")]
     #[lsp_doc("docs/api/texture/texture/set_sampler_options.md")]
-    pub fn set_sampler_options_py(
-        &self,
-        options: pyo3::Py<pyo3::types::PyAny>,
-    ) -> pyo3::PyResult<()> {
-        pyo3::Python::attach(|py| -> pyo3::PyResult<()> {
-            let any = options.bind(py);
-            let opts = if let Ok(d) = any.cast::<pyo3::types::PyDict>() {
-                let mut o = SamplerOptions::default();
-                if let Some(v) = d.get_item("repeat_x")? {
-                    o.repeat_x = v.extract()?;
-                }
-                if let Some(v) = d.get_item("repeat_y")? {
-                    o.repeat_y = v.extract()?;
-                }
-                if let Some(v) = d.get_item("smooth")? {
-                    o.smooth = v.extract()?;
-                }
-                if let Some(v) = d.get_item("compare")? {
-                    if v.is_none() {
-                        o.compare = None;
-                    } else {
-                        o.compare = Some(v.extract()?);
-                    }
-                }
-                o
-            } else {
-                any.extract::<SamplerOptions>()?
-            };
-            self.set_sampler_options(opts);
-            Ok(())
-        })
+    #[allow(private_interfaces)]
+    pub fn set_sampler_options_py(&self, options: PySamplerOptions) -> pyo3::PyResult<()> {
+        self.set_sampler_options(options.try_into()?);
+        Ok(())
     }
 
     #[pyo3(name = "write")]
