@@ -10,9 +10,10 @@
 #   build/ios-macos/FragmentColorFFI.xcframework   (iOS + optional macOS slice — for local dev)
 #   platforms/swift/Sources/FragmentColor/generated/*.swift (wrapper)
 #
-# `build/ios/` is the canonical iOS-only artifact zipped + uploaded by
-# `.github/workflows/publish_swift.yml` (the published consumer-facing
-# Swift Package Manager artifact). `build/ios-macos/` is what the dev
+# `build/ios/` is the canonical iOS-only artifact that
+# `.github/workflows/prepare_release.yml` zips and attaches to the draft
+# release (the published consumer-facing Swift Package Manager artifact).
+# `build/ios-macos/` is what the dev
 # `platforms/swift/Package.swift` binaryTarget points at; it always contains
 # the iOS slices, plus a macOS arm64 slice when `aarch64-apple-darwin` is
 # installed locally so a developer can run `swift build` on macOS without

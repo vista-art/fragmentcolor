@@ -43,26 +43,33 @@ Contributions are welcome! This document outlines the current workflow for devel
 
 ## Release process
 
-1. Create a version branch from `main`: `vMAJOR.MINOR.PATCH-dev`. The `-dev` suffix keeps the branch out of the way of the release tag created in step 5 — without it, the branch and tag share a name and one of them has to be renamed at release time.
+1. Create a version branch from `main`: `vMAJOR.MINOR.PATCH-dev`. The `-dev` suffix keeps the branch out of the way of the release tag created in step 6. Without it, the branch and tag share a name and one of them has to be renamed at release time.
 2. Run `./fc bump_version.py` to bump versions in `Cargo.toml`, `pyproject.toml`, and the top-level version in `docs/website/package.json`.
    It should also refresh launch-facing version references such as the root README, Python example requirements, and the website version badge.
 3. Open a PR and iterate until all checks are green (lint, fmt, tests, healthchecks, docs site build). Keep `main` protected and green.
 4. Merge the PR to `main`.
-5. Create a GitHub Release (annotated) tagged `vMAJOR.MINOR.PATCH` (no `-dev`) targeting the merge commit on `main`.
-6. On release published, CI will (in parallel):
+5. Run the **Prepare release** workflow (`prepare_release.yml`) on `main`, from the Actions tab or with `gh workflow run prepare_release.yml --ref main`. It:
+   - Builds the iOS **xcframework** from `main`, and fails if the committed Swift wrapper differs from what `./fc build_ios` generates.
+   - Commits the root `Package.swift` pin (`fragmentcolorVersion` / `fragmentcolorChecksum`) on top of that commit and pushes it to `release/vMAJOR.MINOR.PATCH`.
+   - Creates a draft GitHub Release `vMAJOR.MINOR.PATCH` that targets the pinned commit, with `FragmentColorFFI.xcframework.zip` attached. The notes are the `CHANGELOG.md` entry followed by GitHub's generated list of changes.
+
+   Running it again replaces the binary, the pin commit, and the draft's target, and keeps the draft's notes.
+6. Review the draft and publish it. Publishing creates the `vMAJOR.MINOR.PATCH` tag on the pinned commit, one commit ahead of the merge commit on `main`. Swift Package Manager resolves `from: "X.Y.Z"` to that tag, so consumers get the xcframework built from the tag's own sources. Don't create the release by hand: a tag without the pin ships the previous release's binary next to the new Swift wrapper.
+7. On release published, CI will (in parallel):
    - Build & publish the Web package to npm (skip if already published).
-   - Build & publish Python wheels to PyPI (skip existing).
+   - Build & publish Python wheels to PyPI (skip existing). This workflow runs on the tag push.
    - Publish the Rust crate to crates.io (skip if version exists).
-   - Build the iOS **xcframework** and upload `fragmentcolor.xcframework.zip` to the GitHub Release as an asset.
+   - Check the attached xcframework against the tagged `Package.swift` pin and build the Swift package for the iOS Simulator from the release URL (`publish_swift.yml`). It never rebuilds the xcframework, because static libraries are not bit-reproducible and a rebuild would not match the pin.
    - Build the Android **AAR** (all 4 ABIs) and upload `fragmentcolor-<version>.aar` to the GitHub Release as an asset.
-7. The `post_publish_update` workflow waits for npm, PyPI **and** the xcframework asset to land, then:
+8. The `post_publish_update` workflow waits for npm and PyPI to land, then:
    - Bumps `fragmentcolor` dependency in `docs/website/package.json` and `examples/javascript/package.json` to the released version and refreshes lockfiles.
    - Updates `docs/website/src/components/VersionBadge.astro`.
-   - Pins the root-level `Package.swift` `fragmentcolorVersion` / `fragmentcolorChecksum` to the just-published xcframework so Swift Package Manager consumers on `from: "X.Y.Z"` get a matching binary.
+   - Copies the `Package.swift` pin from the tag, so `main` points at the latest release's xcframework.
+   - Deletes the `release/vMAJOR.MINOR.PATCH` branch. The tag keeps the pinned commit.
    - Opens a pull request with those consumer updates.
-8. Vercel auto-deploys `docs/website` (subfolder). Its Ignored Build Step skips build when neither `docs/website` nor `docs/api` changed.
-9. Swift consumers: `dependencies: [.package(url: "https://github.com/vista-art/fragmentcolor", from: "X.Y.Z")]` — SPM resolves to the matching tag and downloads the xcframework release asset.
-10. Kotlin / Android consumers: for 0.11.x, download `fragmentcolor-<version>.aar` from the GitHub Release and drop it into `libs/`; Maven Central publishing is tracked as follow-up work (CHANGELOG "Unfinished work").
+9. Vercel auto-deploys `docs/website` (subfolder). Its Ignored Build Step skips build when neither `docs/website` nor `docs/api` changed.
+10. Swift consumers add `.package(url: "https://github.com/vista-art/fragmentcolor", from: "X.Y.Z")` to their dependencies. SPM resolves the matching tag and downloads the xcframework that the tag's `Package.swift` pins.
+11. Kotlin / Android consumers: for 0.11.x, download `fragmentcolor-<version>.aar` from the GitHub Release and drop it into `libs/`; Maven Central publishing is tracked as follow-up work (CHANGELOG "Unfinished work").
 
 ### Ad-hoc website updates
 
@@ -75,7 +82,7 @@ Contributions are welcome! This document outlines the current workflow for devel
 - `NPM_SECRET` for npm publish.
 - `PYPI_API_TOKEN` for PyPI upload.
 - `CARGO_REGISTRY_TOKEN` for crates.io publish.
-- Swift / Android publish workflows use the default `GITHUB_TOKEN` for release-asset uploads — no extra secret needed until Maven Central support lands.
+- The prepare, Swift, and Android workflows use the default `GITHUB_TOKEN` for the release branch, the draft release, and asset uploads. No extra secret is needed until Maven Central support lands.
 
 ### Tooling versions
 
