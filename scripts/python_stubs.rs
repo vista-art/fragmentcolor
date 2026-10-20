@@ -894,7 +894,9 @@ mod python_stubs {
 
     /// A variant's `#[pyo3(annotation = "...")]` when it narrows a container
     /// its Rust type leaves untyped, such as `list[int]` for a `Bound<PyList>`.
-    /// Every name in it must be a builtin or a class Python can hold.
+    /// Every name in it must be a builtin or a class Python can hold. A dict
+    /// parameter stays `dict[str, Any]`: `dict` is invariant, so a narrower
+    /// hint would turn away a caller's `dict[str, int]`.
     fn annotated(atoms: Vec<Atom>, attrs: &[Attribute], mode: Mode, ctx: &Ctx) -> Vec<Atom> {
         const BUILTINS: &[&str] = &[
             "int", "float", "str", "bytes", "bool", "None", "list", "dict", "tuple",
@@ -905,7 +907,8 @@ mod python_stubs {
         let narrows = |generic: &str, kind: &str| {
             atoms == [Atom::Name(generic.into())] && annotation.starts_with(kind)
         };
-        if !(narrows("list[Any]", "list[") || narrows("dict[str, Any]", "dict[")) {
+        let dict = mode == Mode::Return && narrows("dict[str, Any]", "dict[");
+        if !(narrows("list[Any]", "list[") || dict) {
             return atoms;
         }
         let mut text = annotation.clone();

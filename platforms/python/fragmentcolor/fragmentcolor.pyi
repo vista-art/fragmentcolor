@@ -4318,7 +4318,7 @@ class Texture:
         texture.write(frame)
         ```
         """
-    def write_region(self, data: _PyTextureBytes, region: ScreenRegion | dict[str, int | None] | Sequence[int] | None) -> None:
+    def write_region(self, data: _PyTextureBytes, region: ScreenRegion | dict[str, Any] | Sequence[int] | None) -> None:
         """
         Same as `Texture::write`, but writes into a sub-region of the texture and/or with explicit source data layout.
 
