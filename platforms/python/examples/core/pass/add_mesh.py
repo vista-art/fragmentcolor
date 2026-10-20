@@ -16,6 +16,6 @@ shader = Shader("""
 
 """)
 
-rpass = Pass.from_shader("rpass", shader)
+rpass = Pass.from_shader("pass", shader)
 
 rpass.add_mesh(mesh)

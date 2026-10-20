@@ -972,7 +972,7 @@ class Pass:
         ```python
         from fragmentcolor import Pass
 
-        rpass = Pass("first rpass")
+        rpass = Pass("first pass")
         ```
         """
     @staticmethod
@@ -1115,7 +1115,7 @@ class Pass:
 
         \"\"\")
 
-        rpass = Pass.from_shader("rpass", shader)
+        rpass = Pass.from_shader("pass", shader)
 
         rpass.add_mesh(mesh)
         ```
@@ -1160,7 +1160,7 @@ class Pass:
         rpass.add(camera)
         rpass.add(sun)
 
-        # Updating the camera later is enough — every Model already on the rpass
+        # Updating the camera later is enough — every Model already on the pass
         # picks the new view_proj up at the next render.
         camera.look_at([3.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
         ```
@@ -1277,8 +1277,8 @@ class Pass:
         shader = Shader.from_mesh(mesh)
         rpass = Pass.from_shader("blobs", shader)
 
-        # Depth-test on — closer fragments win, the rpass writes to the depth
-        # buffer so subsequent draws within the same rpass see the depth.
+        # Depth-test on — closer fragments win, the pass writes to the depth
+        # buffer so subsequent draws within the same pass see the depth.
         rpass.set_depth_target(depth)
 
         renderer.render(rpass, target)

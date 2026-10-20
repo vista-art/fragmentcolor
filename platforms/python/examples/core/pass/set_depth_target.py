@@ -14,8 +14,8 @@ mesh.add_vertex([1.0, 1.0, 0.0])
 shader = Shader.from_mesh(mesh)
 rpass = Pass.from_shader("blobs", shader)
 
-# Depth-test on — closer fragments win, the rpass writes to the depth
-# buffer so subsequent draws within the same rpass see the depth.
+# Depth-test on — closer fragments win, the pass writes to the depth
+# buffer so subsequent draws within the same pass see the depth.
 rpass.set_depth_target(depth)
 
 renderer.render(rpass, target)
