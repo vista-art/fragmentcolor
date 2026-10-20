@@ -101,8 +101,8 @@ impl TextureRegion {
         }
     }
 
-    /// Set `bytes_per_row` (must be a multiple of 256 when calling
-    /// `Texture::write_region`). Use this when the source data has row padding.
+    /// Set `bytes_per_row` for source data with row padding.
+    /// It must be at least the region width times the bytes per pixel.
     pub fn with_stride(mut self, bytes_per_row: u32) -> Self {
         self.bytes_per_row = Some(bytes_per_row);
         self

@@ -53,16 +53,11 @@ pub(super) fn write(
         ));
     }
 
-    // Compute or validate layout
+    // Only buffer copies need 256-byte rows. Queue::write_texture takes
+    // any stride, so rows are tightly packed unless the caller sets one.
     let row_stride = region.size[0].saturating_mul(bpp);
     let bytes_per_row = match region.bytes_per_row {
         Some(bpr) => {
-            if bpr % wgpu::COPY_BYTES_PER_ROW_ALIGNMENT != 0 {
-                return Err(TextureError::Error(format!(
-                    "bytes_per_row ({bpr}) must be a multiple of {}",
-                    wgpu::COPY_BYTES_PER_ROW_ALIGNMENT
-                )));
-            }
             if bpr < row_stride {
                 return Err(TextureError::Error(
                     "bytes_per_row smaller than row stride".into(),
@@ -70,11 +65,7 @@ pub(super) fn write(
             }
             bpr
         }
-        None => {
-            // Align up to 256
-            let align = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
-            row_stride.div_ceil(align) * align
-        }
+        None => row_stride,
     };
     let rows_per_image = region.rows_per_image.unwrap_or(region.size[1]);
     if let Some(rpi) = region.rows_per_image

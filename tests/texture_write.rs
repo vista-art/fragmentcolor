@@ -37,23 +37,84 @@ fn texture_write_full_ok() {
 }
 
 #[test]
-fn texture_write_invalid_bpr_alignment() {
+fn texture_write_explicit_tight_stride_ok() {
     pollster::block_on(async move {
         let r = Renderer::new();
         let tex = r
-            .create_storage_texture(([4u32, 1u32], TextureFormat::Rgba))
+            .create_storage_texture(([4u32, 2u32], TextureFormat::Rgba))
             .await
             .expect("create storage tex");
-        let width = 4u32;
-        let stride = width * 4;
-        // Intentionally use stride (not 256-aligned) for bpr
-        let data = vec![0u8; stride as usize];
+        // A stride of 16 bytes is not a multiple of 256, which write_texture allows
+        let stride = 4u32 * 4;
+        let data = vec![0u8; (stride * 2) as usize];
         let region = TextureRegion::default().with_stride(stride);
-        let err = tex
-            .write_region(&data, region)
-            .expect_err("bad bpr must error");
-        let s = format!("{}", err);
-        assert!(s.contains("bytes_per_row") || s.contains("multiple"));
+        tex.write_region(&data, region)
+            .expect("tight explicit stride must succeed");
+    });
+}
+
+#[test]
+fn texture_write_tightly_packed_round_trip() {
+    pollster::block_on(async move {
+        let r = Renderer::new();
+        // 3 * 4 = 12 bytes per row, far from a multiple of 256
+        let tex = r
+            .create_storage_texture(([3u32, 2u32], TextureFormat::Rgba))
+            .await
+            .expect("create storage tex");
+        let data: Vec<u8> = (0..3u8 * 2 * 4).collect();
+        tex.write(&data).expect("tightly packed write");
+
+        let image = tex.get_image().await.expect("read back");
+        assert_eq!(image, data);
+    });
+}
+
+#[test]
+fn texture_write_tightly_packed_too_small() {
+    pollster::block_on(async move {
+        let r = Renderer::new();
+        let tex = r
+            .create_storage_texture(([3u32, 2u32], TextureFormat::Rgba))
+            .await
+            .expect("create storage tex");
+        let data = vec![0u8; 3 * 2 * 4 - 1];
+        let err = tex.write(&data).expect_err("one byte short must err");
+        assert!(format!("{err}").contains("smaller than required"));
+    });
+}
+
+#[test]
+fn texture_write_region_tightly_packed_round_trip() {
+    pollster::block_on(async move {
+        let r = Renderer::new();
+        let (w, h) = (5usize, 3usize);
+        let tex = r
+            .create_storage_texture(([w as u32, h as u32], TextureFormat::Rgba))
+            .await
+            .expect("create storage tex");
+        let clear = vec![0u8; w * h * 4];
+        tex.write(&clear).expect("clear");
+
+        // A 3x2 rectangle at (1, 1), packed at 12 bytes per row
+        let (x0, y0, rw, rh) = (1usize, 1usize, 3usize, 2usize);
+        let patch: Vec<u8> = (1..=(rw * rh * 4) as u8).collect();
+        tex.write_region(&patch, [x0 as u32, y0 as u32, rw as u32, rh as u32])
+            .expect("tightly packed region write");
+
+        let image = tex.get_image().await.expect("read back");
+        for y in 0..h {
+            for x in 0..w {
+                let got = &image[(y * w + x) * 4..][..4];
+                let inside = (x0..x0 + rw).contains(&x) && (y0..y0 + rh).contains(&y);
+                if inside {
+                    let i = ((y - y0) * rw + (x - x0)) * 4;
+                    assert_eq!(got, &patch[i..i + 4], "pixel ({x}, {y})");
+                } else {
+                    assert_eq!(got, &[0u8; 4], "pixel ({x}, {y}) outside the region");
+                }
+            }
+        }
     });
 }
 
