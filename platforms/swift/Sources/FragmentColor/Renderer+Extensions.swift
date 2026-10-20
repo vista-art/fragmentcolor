@@ -21,6 +21,11 @@ extension Renderer {
         return try self.createTarget(metalLayerPtr: ptr)
     }
 
+    /// Build a `MobileWindowTarget` from a `CAMetalLayer`, unlabeled like every other platform's call.
+    public func createTarget(_ layer: CAMetalLayer) throws -> MobileWindowTarget {
+        try createTarget(layer: layer)
+    }
+
     // MARK: - createTextureTarget convenience
 
     /// Create a headless texture target from a `[width, height]` array.
