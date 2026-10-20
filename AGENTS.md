@@ -34,7 +34,7 @@ Common commands
   - Manual build: `pipx install maturin && ./fc build_py`
 - iOS (Swift)
   - Build xcframework + regenerate Swift bindings: `./fc build_ios`
-  - Produces `build/ios/fragmentcolor.xcframework` and Swift sources under `platforms/swift/Sources/FragmentColor/generated/`
+  - Produces `build/ios/FragmentColorFFI.xcframework` and Swift sources under `platforms/swift/Sources/FragmentColor/generated/`
   - Commit the regenerated `generated/FragmentColor.swift` whenever the uniffi surface changes. SPM consumers compile it from the release tag, and the iOS healthcheck fails when it differs from `build_ios` output.
   - Example app: `platforms/swift/examples/` (opened via Xcode)
 - Android (Kotlin)
