@@ -964,11 +964,11 @@ mod kotlin {
         if is_literal { format!("{arg}u") } else { arg.to_string() }
     }
 
-    /// A spread element as the unsigned type `ty`:
-    /// literals stay for the suffix, other values convert.
+    /// A value as the unsigned type `ty`.
+    /// `64` → `64u`, `w` → `w.toUInt()`, and other literals stay as written.
     fn to_unsigned(item: &str, ty: &str) -> String {
         if item.starts_with(|c: char| c.is_ascii_digit()) {
-            item.to_string()
+            unsigned_literal(item)
         } else {
             format!("{item}.to{ty}()")
         }
@@ -1116,22 +1116,6 @@ mod kotlin {
         line.to_string()
     }
 
-    // Convert an integer literal argument to UInt form.
-    // `64` → `64u`  (Kotlin UInt literal suffix)
-    // `64u` → `64u` (already done)
-    // `myVar` → `myVar.toUInt()` (variable)
-    fn to_uint_arg(s: &str) -> String {
-        let s = s.trim();
-        if s.ends_with('u') {
-            return s.to_string(); // already UInt
-        }
-        if s.chars().all(|c| c.is_ascii_digit() || c == '_') {
-            return format!("{}u", s);
-        }
-        // Variable or expression — coerce
-        format!("{}.toUInt()", s)
-    }
-
     // `createStorageTexture((arrayOf(w, h), TextureFormat.X))` →
     // `createStorageTexture(Size(width=w.toUInt(), height=h.toUInt(), depth=null), TextureFormat.X, null, null)`
     //
@@ -1203,8 +1187,8 @@ mod kotlin {
             let inner = &s[1..s.len() - 1];
             let args: Vec<&str> = inner.splitn(2, ',').collect();
             if args.len() == 2 {
-                let w = to_uint_arg(args[0].trim());
-                let h = to_uint_arg(args[1].trim());
+                let w = to_unsigned(args[0].trim(), "UInt");
+                let h = to_unsigned(args[1].trim(), "UInt");
                 return format!("Size(width={}, height={}, depth=null)", w, h);
             }
         }
@@ -1213,8 +1197,8 @@ mod kotlin {
             let inner = &s["arrayOf(".len()..s.len() - 1];
             let args: Vec<&str> = inner.splitn(2, ',').collect();
             if args.len() == 2 {
-                let w = to_uint_arg(args[0].trim());
-                let h = to_uint_arg(args[1].trim());
+                let w = to_unsigned(args[0].trim(), "UInt");
+                let h = to_unsigned(args[1].trim(), "UInt");
                 return format!("Size(width={}, height={}, depth=null)", w, h);
             }
         }
@@ -2324,10 +2308,10 @@ mod kotlin {
         let coords = split_args(&coords_str);
         if coords.len() < 4 { return None; }
 
-        let x = to_uint_arg(coords[0].trim());
-        let y = to_uint_arg(coords[1].trim());
-        let w = to_uint_arg(coords[2].trim());
-        let h = to_uint_arg(coords[3].trim());
+        let x = to_unsigned(coords[0].trim(), "UInt");
+        let y = to_unsigned(coords[1].trim(), "UInt");
+        let w = to_unsigned(coords[2].trim(), "UInt");
+        let h = to_unsigned(coords[3].trim(), "UInt");
 
         // Parse optional .withStride(N).withRows(M) chain
         let mut bytes_per_row = "null".to_string();
@@ -2336,11 +2320,11 @@ mod kotlin {
         while remaining.starts_with(".with") {
             if let Some(r) = remaining.strip_prefix(".withStride(") {
                 let close = r.find(')')?;
-                bytes_per_row = to_uint_arg(r[..close].trim());
+                bytes_per_row = to_unsigned(r[..close].trim(), "UInt");
                 remaining = r[close + 1..].trim_start();
             } else if let Some(r) = remaining.strip_prefix(".withRows(") {
                 let close = r.find(')')?;
-                rows_per_image = to_uint_arg(r[..close].trim());
+                rows_per_image = to_unsigned(r[..close].trim(), "UInt");
                 remaining = r[close + 1..].trim_start();
             } else {
                 break;
@@ -2395,10 +2379,10 @@ mod kotlin {
         let coords = split_args(array_inner);
         if coords.len() < 4 { return line.to_string(); }
 
-        let x = to_uint_arg(coords[0].trim());
-        let y = to_uint_arg(coords[1].trim());
-        let w = to_uint_arg(coords[2].trim());
-        let h = to_uint_arg(coords[3].trim());
+        let x = to_unsigned(coords[0].trim(), "UInt");
+        let y = to_unsigned(coords[1].trim(), "UInt");
+        let w = to_unsigned(coords[2].trim(), "UInt");
+        let h = to_unsigned(coords[3].trim(), "UInt");
 
         let before = &line[..start];
         let after: String = chars[call_end + 1..].iter().collect();
