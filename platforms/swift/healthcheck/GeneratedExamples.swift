@@ -672,7 +672,7 @@ private enum _GeneratedExamples {
             try shader.addMesh(mesh)
 
             // Detach the mesh
-            try shader.removeMesh(mesh)
+            shader.removeMesh(mesh)
         }
     }
 
@@ -826,7 +826,7 @@ private enum _GeneratedExamples {
                 try Vertex([ 0.5, -0.5]),
                 try Vertex([ 0.0,  0.5]),
             ])
-            try mesh.setIndices([0, 1, 2])
+            mesh.setIndices([0, 1, 2])
             mesh.clearIndices(); // back to auto-derived dedup
         }
     }
@@ -875,7 +875,7 @@ private enum _GeneratedExamples {
                 try Vertex([ 0.5,  0.5]).set("uv", uv11),
                 try Vertex([-0.5,  0.5]).set("uv", uv01),
             ])
-            try mesh.setIndices([0, 1, 2, 0, 2, 3])
+            mesh.setIndices([0, 1, 2, 0, 2, 3])
         }
     }
 
@@ -1581,7 +1581,7 @@ private enum _GeneratedExamples {
     static func _example_scene_scene_cameras() async throws {
         do {
 
-            let scene = try await Scene.load("path/to/model.glb")
+            let scene = try Scene.load("path/to/model.glb")
 
             // Animate every camera the glTF shipped per frame instead of supplying
             // our own. Most scenes carry a single camera, so the loop body usually
@@ -1622,7 +1622,7 @@ private enum _GeneratedExamples {
     static func _example_scene_scene_lights() async throws {
         do {
 
-            let scene = try await Scene.load("path/to/model.glb")
+            let scene = try Scene.load("path/to/model.glb")
 
             // Darken every loaded light to half intensity for a moody pass.
             for light in scene.lights() {
@@ -1653,12 +1653,12 @@ private enum _GeneratedExamples {
         do {
 
             // A path — """.gltf""" JSON (with external buffers/images) or a """.glb""" container.
-            let scene = try await Scene.load("path/to/model.gltf")
+            let scene = try Scene.load("path/to/model.gltf")
 
             // In-memory """.glb""" bytes — fetched from disk, the network, or another
             // asset pipeline before this point.
             let glb_bytes = "/healthcheck/public/favicon.png"
-            let scene2 = try await Scene.load(glb_bytes)
+            let scene2 = try Scene.load(glb_bytes)
         }
     }
 

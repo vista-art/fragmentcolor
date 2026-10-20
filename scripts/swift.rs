@@ -27,29 +27,201 @@ mod swift {
     //! 10. `x..y` range operator → `x...y` (Swift uses `...` not `..`).
     //! 11. `.Rgba` / `.Rgba8UnormSrgb` enum case first-letter lowercasing.
     //! 12. `.unwrap()` on a throwing init → `try!` prefix.
-    //! 13. `Vertex.new([...])` → `Vertex([...])` (Rust .new() → Swift init).
-    //! 14. `try` insertion for known throwing methods called without `await`
-    //!     (uniffi marks most methods `throws`; JS equivalents are synchronous).
+    //! 13. `Vertex.new([...])` → `Vertex([...])`
+    //!     when an unlabeled init takes those arguments.
+    //! 14. `try` / `await` before a statement whose calls throw or suspend.
+    //!
+    //! Rules 13 and 14 read the uniffi exports for iOS
+    //! and the declarations in the hand-written `*+Extensions.swift` files.
+
+    use std::collections::BTreeMap;
+    use std::fs;
+
+    use crate::reflect::{Build, CallKind, Reflection, StrConst};
+    use crate::source_text::{
+        Nesting, arg_spans, closing, code_only, extension_files, read_ident, skip_space, split_args,
+        string_end, top_level_words,
+    };
+
+    /// The extension files that add Swift overloads on top of uniffi's.
+    const EXTENSIONS_DIR: &str = "platforms/swift/Sources/FragmentColor";
+
+    /// Keywords that lead a statement no `try` or `await` can precede.
+    const STATEMENT_KEYWORDS: &[&str] =
+        &["return", "if", "guard", "for", "while", "switch", "else", "case", "defer", "throw"];
+
+    /// What a call needs at its call site: `await`, `try`, or both.
+    #[derive(Clone, Copy, Default)]
+    struct Effects {
+        is_async: bool,
+        throws: bool,
+    }
+
+    impl Effects {
+        fn merge(&mut self, other: Effects) {
+            self.is_async |= other.is_async;
+            self.throws |= other.throws;
+        }
+
+        fn keyword(self) -> Option<&'static str> {
+            match (self.is_async, self.throws) {
+                (true, true) => Some("try await"),
+                (true, false) => Some("await"),
+                (false, true) => Some("try"),
+                (false, false) => None,
+            }
+        }
+    }
+
+    /// A Swift function or initializer, from uniffi or an extension file.
+    struct Decl {
+        owner: String,
+        name: String,
+        kind: CallKind,
+        effects: Effects,
+        /// Parameter types when every parameter is unlabeled.
+        unlabeled: Option<Vec<String>>,
+    }
 
     /// API facts the Swift rewrites read, derived from the source model.
     struct Facts {
         /// String constants the Swift bindings don't expose.
-        consts: Vec<crate::reflect::StrConst>,
+        consts: Vec<StrConst>,
+        /// Instance methods by name, merged over every type that has one.
+        /// A line rewriter can't type a receiver variable.
+        methods: BTreeMap<String, Effects>,
+        /// Static functions by type and name.
+        statics: BTreeMap<(String, String), Effects>,
+        /// Initializers by type, merged over overloads.
+        inits: BTreeMap<String, Effects>,
+        /// Parameter types of each unlabeled initializer, by type.
+        unlabeled_inits: BTreeMap<String, Vec<Vec<String>>>,
     }
 
     static FACTS: std::sync::OnceLock<Facts> = std::sync::OnceLock::new();
 
     /// Derive the Swift rewrites' API facts. Runs once before any example converts.
-    pub fn install(model: &crate::reflect::Reflection) {
-        let _ = FACTS.set(Facts {
-            consts: model.str_consts(crate::reflect::Build::Ios),
+    pub fn install(model: &Reflection) {
+        let mut facts = Facts {
+            consts: model.str_consts(Build::Ios),
+            methods: BTreeMap::new(),
+            statics: BTreeMap::new(),
+            inits: BTreeMap::new(),
+            unlabeled_inits: BTreeMap::new(),
+        };
+        let exported = model.uniffi_fns(Build::Ios).into_iter().map(|f| Decl {
+            effects: Effects {
+                is_async: f.is_async,
+                throws: f.throws,
+            },
+            // uniffi labels every parameter it generates.
+            unlabeled: f.params.is_empty().then(Vec::new),
+            owner: f.owner,
+            name: f.name,
+            kind: f.kind,
         });
+        for decl in exported.chain(extension_decls()) {
+            match decl.kind {
+                CallKind::Method => facts.methods.entry(decl.name).or_default().merge(decl.effects),
+                CallKind::Static => facts
+                    .statics
+                    .entry((decl.owner, decl.name))
+                    .or_default()
+                    .merge(decl.effects),
+                CallKind::Init => {
+                    facts.inits.entry(decl.owner.clone()).or_default().merge(decl.effects);
+                    if let Some(params) = decl.unlabeled {
+                        facts.unlabeled_inits.entry(decl.owner).or_default().push(params);
+                    }
+                }
+            }
+        }
+        let _ = FACTS.set(facts);
     }
 
     fn facts() -> &'static Facts {
         FACTS
             .get()
             .unwrap_or_else(|| panic!("swift::install must run before examples convert"))
+    }
+
+    /// Every `func` and `init` declared
+    /// in an `extension T { ... }` block
+    /// of the `*+Extensions.swift` files.
+    fn extension_decls() -> Vec<Decl> {
+        let mut decls = Vec::new();
+        for path in extension_files(EXTENSIONS_DIR, "+Extensions.swift") {
+            let text = fs::read_to_string(&path)
+                .unwrap_or_else(|e| panic!("swift: cannot read {}: {e}", path.display()));
+            let code = code_only(&text);
+            for (owner, body) in top_level_blocks(&code, "extension") {
+                extension_members(body, owner, &mut decls);
+            }
+        }
+        decls
+    }
+
+    /// The `func` and `init` declarations directly inside one extension body.
+    fn extension_members(body: &str, owner: &str, decls: &mut Vec<Decl>) {
+        for (keyword, at) in top_level_words(body, &["func", "init"]) {
+            let (name, after) = match keyword {
+                "init" => ("new", at + keyword.len()),
+                _ => read_ident(body, skip_space(body, at + keyword.len())),
+            };
+            let Some(open) = body[after..].find('(').map(|p| after + p) else {
+                continue;
+            };
+            let Some(close) = closing(body, open) else {
+                continue;
+            };
+            let modifiers = &body[body[..at].rfind('\n').map_or(0, |p| p + 1)..at];
+            let tail = &body[close + 1..];
+            let signature_tail = &tail[..tail.find(['{', '-']).unwrap_or(tail.len())];
+            let kind = match keyword {
+                "init" => CallKind::Init,
+                _ if has_word(modifiers, "static") => CallKind::Static,
+                _ => CallKind::Method,
+            };
+            decls.push(Decl {
+                owner: owner.to_string(),
+                name: name.to_string(),
+                kind,
+                effects: Effects {
+                    is_async: has_word(signature_tail, "async"),
+                    throws: has_word(signature_tail, "throws"),
+                },
+                unlabeled: unlabeled_params(&body[open + 1..close]),
+            });
+        }
+    }
+
+    /// The types of `_ name: Type` parameters, or `None` when one is labeled.
+    fn unlabeled_params(params: &str) -> Option<Vec<String>> {
+        arg_spans(params, Nesting::Types)
+            .into_iter()
+            .map(|span| {
+                let (names, ty) = params[span].split_once(':')?;
+                (names.split_whitespace().next() == Some("_"))
+                    .then(|| ty.split('=').next().unwrap_or(ty).trim().to_string())
+            })
+            .collect()
+    }
+
+    /// `(name, body)` for each `keyword name ... { body }` at brace depth 0.
+    fn top_level_blocks<'a>(code: &'a str, keyword: &str) -> Vec<(&'a str, &'a str)> {
+        top_level_words(code, &[keyword])
+            .into_iter()
+            .filter_map(|(_, at)| {
+                let (name, after) = read_ident(code, skip_space(code, at + keyword.len()));
+                let open = after + code[after..].find('{')?;
+                let close = closing(code, open)?;
+                Some((name, &code[open + 1..close]))
+            })
+            .collect()
+    }
+
+    fn has_word(text: &str, word: &str) -> bool {
+        text.split(|c: char| !is_ident_char(c)).any(|w| w == word)
     }
 
     /// Finalize the Swift output emitted by `convert(_, Lang::Swift, _)`.
@@ -281,65 +453,57 @@ mod swift {
 
         // Swift-specific rewrites beyond the JS baseline:
 
-        // 8. `TextureRegion` → `TextureRegionMobile` (uniffi-side rename for FFI compat).
+        // 9. `TextureRegion` → `TextureRegionMobile` (uniffi-side rename for FFI compat).
         out = replace_whole_word(&out, "TextureRegion", "TextureRegionMobile");
 
-        // 9. `x..y` Rust exclusive-range operator → `x...y` (Swift closed range `...`).
-        //    Only rewrite `..` when NOT preceded or followed by `.` (avoids `...`).
+        // 10. `x..y` Rust exclusive-range operator → `x...y` (Swift closed range `...`).
+        //     Only rewrite `..` when NOT preceded or followed by `.` (avoids `...`).
         out = fix_rust_range_operator(&out);
 
-        // 10. Enum case first-letter lowercasing: `.Rgba` → `.rgba`, `.Rgba8UnormSrgb` → `.rgba8UnormSrgb`.
+        // 11. Enum case first-letter lowercasing: `.Rgba` → `.rgba`, `.Rgba8UnormSrgb` → `.rgba8UnormSrgb`.
         //     Applies to patterns like `TextureFormat.XYZ` or `.XYZ` in call argument position.
         out = lowercase_enum_cases(&out);
 
-        // 11. `.unwrap()` after a throwing init — rewrite `Foo(...).unwrap()` → `try! Foo(...)`.
+        // 12. `.unwrap()` after a throwing init: rewrite `Foo(...).unwrap()` → `try! Foo(...)`.
         out = rewrite_unwrap(&out);
 
-        // 12. `Vertex.new([...])` or `Instance.new()` — Rust `.new()` call → Swift init/static.
-        //     `.new()` with no args → `()` (already handled by drop_new_keyword for `new Type()` form,
-        //     but `.new([...])` is a chained method not a constructor prefix).
+        // 13. `Vertex.new([...])` or `Instance.new()`, a nested Rust `::new`,
+        //     becomes a Swift init call.
         out = rewrite_dot_new(&out);
 
-        // 13. Add `try` to known throwing method calls not already prefixed with try/await.
-        //     The uniffi-generated Swift API marks many synchronous methods `throws` that
-        //     appear as plain calls in the JS output.
-        out = insert_try_for_throws(&out);
+        // 14. `try` / `await` for calls the JS output makes synchronously.
+        out = insert_effects(&out);
 
-        // 14. Add `try await` to known async-throws method calls that appear
-        //     without `await` in the JS output (because JS may call them synchronously
-        //     but the Swift FFI binding is `async throws`).
-        out = insert_try_await_for_async_throws(&out);
-
-        // 15. Strip Rust slice notation `identifier[...]` → `identifier` when `...`
-        //     is the only content inside brackets (a full-range slice).
-        //     e.g. `image[...]` → `image`, `pixels.asSlice()` → `pixels`.
+        // Strip Rust slice notation `identifier[...]` → `identifier` when `...`
+        // is the only content inside brackets (a full-range slice).
+        // e.g. `image[...]` → `image`, `pixels.asSlice()` → `pixels`.
         out = strip_rust_slice_notation(&out);
 
-        // 17. Fix `.bytes(identifier)` → `.bytes(Data(identifier))` so `[UInt8]` arrays
-        //     pass into `TextureInputMobile.bytes(Data)` correctly.
+        // Fix `.bytes(identifier)` → `.bytes(Data(identifier))` so `[UInt8]` arrays
+        // pass into `TextureInputMobile.bytes(Data)` correctly.
         out = fix_texture_input_bytes(&out);
 
-        // 16. Rewrite `let (width, height) = expr.baseSize()` → `let size = expr.baseSize()`.
-        //     Swift's `baseSize()` returns a `Size` struct, not a tuple; the Rust doc
-        //     example uses tuple destructuring which doesn't translate directly.
-        //     Also rewrite the follow-up `let _ = (width, height)` → `let _ = size`.
+        // Rewrite `let (width, height) = expr.baseSize()` → `let size = expr.baseSize()`.
+        // Swift's `baseSize()` returns a `Size` struct, not a tuple; the Rust doc
+        // example uses tuple destructuring which doesn't translate directly.
+        // Also rewrite the follow-up `let _ = (width, height)` → `let _ = size`.
         out = rewrite_size_tuple(&out);
 
-        // 18a. Strip trailing commas inside parens: `foo(a, b,)` → `foo(a, b)`.
-        //      The convert-layer emits these from multi-line Rust calls that
-        //      had a trailing comma before the close paren. Swift parses
-        //      `(...,)` as the malformed empty-element tuple, raising
-        //      "unexpected ',' separator". The strip is safe because Swift
-        //      does not have trailing-comma semantics outside arrays and
-        //      tuples we already round-trip through JS array literals.
+        // Strip trailing commas inside parens: `foo(a, b,)` → `foo(a, b)`.
+        // The convert-layer emits these from multi-line Rust calls that
+        // had a trailing comma before the close paren. Swift parses
+        // `(...,)` as the malformed empty-element tuple, raising
+        // "unexpected ',' separator". The strip is safe because Swift
+        // does not have trailing-comma semantics outside arrays and
+        // tuples we already round-trip through JS array literals.
         out = strip_trailing_comma_before_close_paren(&out);
 
-        // 18. Inline `Vertex.UV0` (and the rest of the SCREAMING_SNAKE
-        //     attribute-name constants) as the bare string literal value.
-        //     Uniffi has no equivalent of pyo3 classattr or Kotlin static const
-        //     to surface the Rust-side `pub const UV0: &str = "uv0"` on the
-        //     Swift binding; the transpiler resolves the lookup here so
-        //     example code keeps reading `Vertex::UV0` on the Rust side.
+        // Inline `Vertex.UV0` (and the rest of the SCREAMING_SNAKE
+        // attribute-name constants) as the bare string literal value.
+        // Uniffi has no equivalent of pyo3 classattr or Kotlin static const
+        // to surface the Rust-side `pub const UV0: &str = "uv0"` on the
+        // Swift binding; the transpiler resolves the lookup here so
+        // example code keeps reading `Vertex::UV0` on the Rust side.
         out = inline_vertex_attr_constants(&out);
 
         out
@@ -524,71 +688,51 @@ mod swift {
         }
     }
 
-    /// Rewrite `.new(args)` chained calls on known types.
-    /// e.g. `Vertex.new([...])` → `try Vertex([...])`, `Instance.new()` → `Instance()`.
-    /// This is different from `drop_new_keyword` which handles `new Type(...)` prefix form.
+    /// `T.new(args)` → `T(args)` when an unlabeled initializer of `T`
+    /// takes that many arguments, array literals only where it takes arrays.
+    /// The call gets `try` when an initializer of `T` throws, and nested calls
+    /// get the same rewrite. Otherwise `T.new` stays, as for the static `Shader.new([...])`.
     fn rewrite_dot_new(line: &str) -> String {
-        // Types where `.new(...)` → `try Type(...)` (throwing inits).
-        const THROWING_TYPES_WITH_DOT_NEW: &[&str] = &["Vertex"];
-        // Types where `.new(...)` → `Type(...)` (non-throwing).
-        // Every uniffi-bound type whose Rust `::new(args) -> Self` constructor
-        // surfaces in `docs/api/**/*.md` examples. `Shader.new(` is the
-        // throwing exception and is handled separately in
-        // `insert_try_for_throws::THROWING_STATIC_METHODS`.
-        const NON_THROWING_TYPES_WITH_DOT_NEW: &[&str] = &[
-            "Instance", "Mesh", "Model", "Pass", "Quad", "Renderer", "Scene",
-        ];
-        let mut out = line.to_string();
-        for ty in THROWING_TYPES_WITH_DOT_NEW {
-            let pat = format!("{}.new(", ty);
-            while let Some(pos) = out.find(&pat) {
-                let arg_start = pos + pat.len();
-                let chars: Vec<char> = out.chars().collect();
-                let mut depth = 1i32;
-                let mut k = arg_start;
-                while k < chars.len() && depth > 0 {
-                    match chars[k] {
-                        '(' => depth += 1,
-                        ')' => depth -= 1,
-                        _ => {}
-                    }
-                    k += 1;
+        let facts = facts();
+        let mut out = String::with_capacity(line.len());
+        let mut rest = line;
+        while let Some(at) = rest.find(".new(") {
+            let head = &rest[..at];
+            let before = head.trim_end_matches(is_ident_char);
+            let ty = &head[before.len()..];
+            let open = at + ".new".len();
+            let call = match (facts.unlabeled_inits.get(ty), closing(rest, open)) {
+                (Some(inits), Some(close)) if !before.ends_with('.') => {
+                    let inner = &rest[open + 1..close];
+                    let args = split_args(inner);
+                    let fits = inits.iter().any(|params| {
+                        params.len() == args.len()
+                            && args
+                                .iter()
+                                .zip(params)
+                                .all(|(arg, param)| !arg.starts_with('[') || param.starts_with('['))
+                    });
+                    fits.then(|| {
+                        let throws = facts.inits.get(ty).is_some_and(|fx| fx.throws);
+                        let prefix = if throws { "try " } else { "" };
+                        (format!("{prefix}{ty}({})", rewrite_dot_new(inner)), close)
+                    })
                 }
-                let args: String = out[arg_start..k - 1].to_string();
-                let replacement = if args.is_empty() {
-                    format!("try {}()", ty)
-                } else {
-                    format!("try {}({})", ty, args)
-                };
-                let new_out = format!("{}{}{}", &out[..pos], replacement, &out[k..]);
-                out = new_out;
+                _ => None,
+            };
+            match call {
+                Some((call, close)) => {
+                    out.push_str(before);
+                    out.push_str(&call);
+                    rest = &rest[close + 1..];
+                }
+                None => {
+                    out.push_str(&rest[..open]);
+                    rest = &rest[open..];
+                }
             }
         }
-        for ty in NON_THROWING_TYPES_WITH_DOT_NEW {
-            let pat = format!("{}.new(", ty);
-            while let Some(pos) = out.find(&pat) {
-                let arg_start = pos + pat.len();
-                let chars: Vec<char> = out.chars().collect();
-                let mut depth = 1i32;
-                let mut k = arg_start;
-                while k < chars.len() && depth > 0 {
-                    match chars[k] {
-                        '(' => depth += 1,
-                        ')' => depth -= 1,
-                        _ => {}
-                    }
-                    k += 1;
-                }
-                let args: String = out[arg_start..k - 1].to_string();
-                let replacement = if args.is_empty() {
-                    format!("{}()", ty)
-                } else {
-                    format!("{}({})", ty, args)
-                };
-                let new_out = format!("{}{}{}", &out[..pos], replacement, &out[k..]);
-                out = new_out;
-            }
-        }
+        out.push_str(rest);
         out
     }
 
@@ -730,213 +874,90 @@ mod swift {
         out
     }
 
-    /// Insert `try await ` before calls to methods known to be `async throws` in the
-    /// uniffi Swift API when they appear without any existing `await` on the line.
-    /// These are methods the JS binding treats as synchronous (no `await`) but the
-    /// uniffi-generated Swift method is `async throws`.
-    fn insert_try_await_for_async_throws(line: &str) -> String {
-        // Methods that are `async throws` in Swift but appear without `await` in JS output.
-        const ASYNC_THROWING_METHODS: &[&str] = &[
-            ".createDepthTexture(",
-            ".load(",
-        ];
-
+    /// Prefix a statement with the `try` and `await` its calls need.
+    /// A `let`, `var` or `return` gets them in front of its value instead.
+    /// Lines that already carry either, and lines led by another keyword, stay as written.
+    fn insert_effects(line: &str) -> String {
         let trimmed = line.trim_start();
-
-        // Already has try/await — nothing to do.
-        if trimmed.starts_with("try ") || trimmed.starts_with("try!") || trimmed.contains("await ") {
+        let skip = ["try ", "try!", "//", "/*", "*", "\""];
+        if skip.iter().any(|s| trimmed.starts_with(s)) || trimmed.contains("await ") {
             return line.to_string();
         }
-        // Skip comments and string literals.
-        if trimmed.starts_with("//") || trimmed.starts_with("/*") || trimmed.starts_with("\"") {
+        let indent = &line[..line.len() - trimmed.len()];
+        let Some((lead, expr)) = effect_site(trimmed) else {
+            return line.to_string();
+        };
+        if expr.starts_with("try ") || expr.starts_with("try!") {
             return line.to_string();
         }
-
-        let indent: String = line.chars().take_while(|c| c.is_whitespace()).collect();
-
-        // Assignment: `let x = obj.asyncMethod(...)` → `let x = try await obj.asyncMethod(...)`
-        for prefix in &["let ", "var "] {
-            if let Some(rest) = trimmed.strip_prefix(prefix)
-                && let Some(eq_pos) = rest.find('=') {
-                    let rhs = rest[eq_pos + 1..].trim_start();
-                    let var_part = &rest[..eq_pos + 1];
-                    for meth in ASYNC_THROWING_METHODS {
-                        if rhs.contains(meth) && !rhs.starts_with("try ") && !rhs.contains("await ") {
-                            return format!("{}{}{} try await {}", indent, prefix, var_part, rhs);
-                        }
-                    }
-                }
+        match call_effects(expr).keyword() {
+            Some(effect) => format!("{indent}{lead}{effect} {expr}"),
+            None => line.to_string(),
         }
-
-        // Standalone call: `obj.asyncMethod(...)`
-        for meth in ASYNC_THROWING_METHODS {
-            if trimmed.contains(meth)
-                && trimmed.starts_with(|c: char| c.is_alphanumeric() || c == '_') {
-                    return format!("{}try await {}", indent, trimmed);
-                }
-        }
-
-        line.to_string()
     }
 
-    /// Insert `try ` before calls to methods known to be `throws` in the uniffi API
-    /// when they appear without any existing `try` or `await` prefix on the line.
-    ///
-    /// Strategy: if the line (trimmed) starts with one of the known throwing method
-    /// names (as a standalone call), or if the RHS of a `let x = method(...)` is
-    /// a known throwing call, prepend `try`.
-    ///
-    /// We keep the list conservative: only methods that are demonstrably `throws`
-    /// in the extension files and that appear as plain calls in the generated examples.
-    fn insert_try_for_throws(line: &str) -> String {
-        // Methods that are `throws` in the Swift extensions but appear as plain calls
-        // in the JS/Swift transpilation output (no `await`, so `prepend_try_to_await`
-        // doesn't catch them).
-        const THROWING_METHODS: &[&str] = &[
-            // Mesh
-            ".addVertex(",
-            ".addVertices(",
-            ".fromVertices(",
-            ".setIndices(",
-            // Shader
-            ".addMesh(",
-            ".validateMesh(",
-            ".set(",
-            ".get(",
-            ".removeMesh(",
-            // Pass
-            ".addMeshToShader(",
-            ".addTarget(",
-            ".addDepthTarget(",
-            ".require(",
-            ".setClearColor(",
-            ".setTarget(",
-            ".setDepthTarget(",
-            // Pass.add(Model/Camera/Light) extension wraps a throwing call.
-            ".add(",
-            // Scene.addTo(index/name, Model/Camera/Light) extension throws.
-            ".addTo(",
-            // Renderer (sync variants)
-            ".render(",
-            ".unregisterTexture(",
-            ".waitIdle(",
-            ".readTexture(",
-            // Texture
-            ".write(",
-            ".writeRegion(",
-            ".setSamplerOptions(",
-            // Camera (extension)
-            ".lookAt(",
-            // Light (extension)
-            ".setColor(",
-            ".setPosition(",
-            ".setDirection(",
-            ".setRange(",
-            ".setConeAngles(",
-            // Model (extension)
-            ".setTransform(",
-            ".translate(",
-            ".rotate(",
-            ".scale(",
-            // Material (extension)
-            ".baseColor(",
-            ".emissive(",
-            ".uvTransform(",
-            // Scene (extension)
-            ".ambient(",
-        ];
-        // Constructors (type inits) that are `throws`.
-        // Matched as `let x = TypeName(` or standalone `TypeName(`.
-        const THROWING_CTORS: &[&str] = &[
-            "Shader(",
-            "Vertex(",
-            "Quad(",
-        ];
-        // Static methods that are `throws` (matched as `TypeName.method(` on the RHS
-        // or as a standalone expression).
-        const THROWING_STATIC_METHODS: &[&str] = &[
-            "Shader.new(",
-            "Mipmap.build(",
-            "Vertex.pbr(",
-            "Mesh.fromVertices(",
-            "Light.directional(",
-            "Light.point(",
-            "Light.spot(",
-        ];
-
-        let trimmed = line.trim_start();
-
-        // Skip lines already starting with `try`, `await`, `//`, string literals, etc.
-        if trimmed.starts_with("try ")
-            || trimmed.starts_with("try!")
-            || trimmed.starts_with("//")
-            || trimmed.starts_with("/*")
-            || trimmed.starts_with("*")
-            || trimmed.starts_with("\"")
-        {
-            return line.to_string();
-        }
-
-        let indent: String = line.chars().take_while(|c| c.is_whitespace()).collect();
-
-        // Case 1: `let x = <throwing_call>` or `var x = <throwing_call>`.
-        for prefix in &["let ", "var "] {
-            if let Some(rest) = trimmed.strip_prefix(prefix)
-                && let Some(eq_pos) = rest.find('=') {
-                    let rhs = rest[eq_pos + 1..].trim_start();
-                    let var_part = &rest[..eq_pos + 1]; // "varname ="
-                    // Check throwing method calls.
-                    for meth in THROWING_METHODS {
-                        if rhs.contains(meth) && !rhs.starts_with("try ") && !rhs.contains("await ") {
-                            let new_rhs = insert_try_before_method(rhs, meth);
-                            return format!("{}{}{} {}", indent, prefix, var_part, new_rhs);
-                        }
-                    }
-                    // Check throwing constructors.
-                    for ctor in THROWING_CTORS {
-                        if rhs.starts_with(ctor) && !rhs.starts_with("try ") && !rhs.contains("await ") {
-                            return format!("{}{}{} try {}", indent, prefix, var_part, rhs);
-                        }
-                    }
-                    // Check throwing static methods (e.g. `Shader.new(`, `Mipmap.build(`).
-                    for sm in THROWING_STATIC_METHODS {
-                        if rhs.starts_with(sm) && !rhs.starts_with("try ") && !rhs.contains("await ") {
-                            return format!("{}{}{} try {}", indent, prefix, var_part, rhs);
-                        }
-                    }
-                }
-        }
-
-        // Case 2: Standalone statement that is a throwing method call.
-        // Pattern: `obj.method(...)` or `Type.method(...)` as the whole line.
-        for meth in THROWING_METHODS {
-            if trimmed.contains(meth) && !trimmed.starts_with("try ") && !trimmed.contains("await ") {
-                // Make sure this is a statement (not inside a string or a declaration).
-                // Heuristic: if the trimmed line starts with a method call chain.
-                if trimmed.starts_with(|c: char| c.is_alphanumeric() || c == '_' || c == '(') {
-                    return format!("{}try {}", indent, trimmed);
-                }
+    /// Split a statement into the text that stays in front of `try` / `await`
+    /// and the expression they cover, or `None` when they can't go in.
+    fn effect_site(statement: &str) -> Option<(String, &str)> {
+        for keyword in ["let ", "var "] {
+            if let Some(rest) = statement.strip_prefix(keyword)
+                && let Some(eq) = rest.find('=')
+            {
+                return Some((format!("{keyword}{} ", &rest[..=eq]), rest[eq + 1..].trim_start()));
             }
         }
-
-        // Case 3: Standalone throwing static method call (`Shader.new(`, `Mipmap.build(`).
-        for sm in THROWING_STATIC_METHODS {
-            if trimmed.starts_with(sm) && !trimmed.starts_with("try ") && !trimmed.contains("await ") {
-                return format!("{}try {}", indent, trimmed);
-            }
+        let (word, end) = read_ident(statement, 0);
+        if word == "return" {
+            let value = statement[end..].trim_start();
+            return (!value.is_empty()).then(|| ("return ".to_string(), value));
         }
-
-        line.to_string()
+        let leads = statement.starts_with(|c: char| c.is_alphanumeric() || c == '_' || c == '(');
+        (leads && !STATEMENT_KEYWORDS.contains(&word)).then(|| (String::new(), statement))
     }
 
-    /// Insert `try ` directly before a method reference within an expression.
-    fn insert_try_before_method(rhs: &str, _meth: &str) -> String {
-        // Simple heuristic: if rhs doesn't start with `try`, prepend it.
-        if rhs.starts_with("try ") {
-            rhs.to_string()
-        } else {
-            format!("try {}", rhs)
+    /// The merged effects of every call in `code`. `T.name(` with a type name `T`
+    /// is a static call, `T(` an initializer, and any other `.name(`
+    /// an instance method known only by its name.
+    fn call_effects(code: &str) -> Effects {
+        let facts = facts();
+        let mut effects = Effects::default();
+        let mut at = 0;
+        while let Some(c) = code[at..].chars().next() {
+            if c == '"' {
+                at += string_end(&code[at..]);
+                continue;
+            }
+            let head = &code[..at];
+            if !(c.is_ascii_alphabetic() || c == '_') || head.ends_with(is_ident_char) {
+                at += c.len_utf8();
+                continue;
+            }
+            let (name, end) = read_ident(code, at);
+            if code[end..].starts_with('(') {
+                let found = match head.strip_suffix('.') {
+                    Some(before) => {
+                        let receiver = &before[before.trim_end_matches(is_ident_char).len()..];
+                        let bare = !before[..before.len() - receiver.len()].ends_with('.');
+                        if bare && is_type_name(receiver) {
+                            facts.statics.get(&(receiver.to_string(), name.to_string()))
+                        } else {
+                            facts.methods.get(name)
+                        }
+                    }
+                    None if is_type_name(name) => facts.inits.get(name),
+                    None => None,
+                };
+                if let Some(found) = found {
+                    effects.merge(*found);
+                }
+            }
+            at = end;
         }
+        effects
+    }
+
+    fn is_type_name(ident: &str) -> bool {
+        ident.starts_with(|c: char| c.is_ascii_uppercase())
     }
 
     /// `Array(N).fill(expr)` (the JS shape `convert.rs` emits for

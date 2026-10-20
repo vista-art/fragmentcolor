@@ -18,4 +18,4 @@ try mesh.addVertex([0.0, 0.0])
 try shader.addMesh(mesh)
 
 // Detach the mesh
-try shader.removeMesh(mesh)
+shader.removeMesh(mesh)

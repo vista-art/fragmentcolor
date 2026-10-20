@@ -1,6 +1,6 @@
 import FragmentColor
 
-let scene = try await Scene.load("path/to/model.glb")
+let scene = try Scene.load("path/to/model.glb")
 
 // Animate every camera the glTF shipped per frame instead of supplying
 // our own. Most scenes carry a single camera, so the loop body usually

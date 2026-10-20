@@ -202,12 +202,12 @@ code={`
 import FragmentColor
 
 // A path — """.gltf""" JSON (with external buffers/images) or a """.glb""" container.
-let scene = try await Scene.load("path/to/model.gltf")
+let scene = try Scene.load("path/to/model.gltf")
 
 // In-memory """.glb""" bytes — fetched from disk, the network, or another
 // asset pipeline before this point.
 let glb_bytes = "/healthcheck/public/favicon.png"
-let scene2 = try await Scene.load(glb_bytes)
+let scene2 = try Scene.load(glb_bytes)
 `}
 lang="swift"
 />
@@ -889,7 +889,7 @@ lang="python"
 code={`
 import FragmentColor
 
-let scene = try await Scene.load("path/to/model.glb")
+let scene = try Scene.load("path/to/model.glb")
 
 // Animate every camera the glTF shipped per frame instead of supplying
 // our own. Most scenes carry a single camera, so the loop body usually
@@ -1012,7 +1012,7 @@ lang="python"
 code={`
 import FragmentColor
 
-let scene = try await Scene.load("path/to/model.glb")
+let scene = try Scene.load("path/to/model.glb")
 
 // Darken every loaded light to half intensity for a moody pass.
 for light in scene.lights() {

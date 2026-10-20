@@ -13,6 +13,7 @@ mod reflect {
     use std::fs;
     use std::path::{Path, PathBuf};
 
+    use heck::ToLowerCamelCase;
     use proc_macro2::{TokenStream, TokenTree};
     use quote::ToTokens;
     use syn::punctuated::Punctuated;
@@ -1078,5 +1079,105 @@ mod reflect {
             ty: field.ty.clone(),
             attrs: field.attrs.clone(),
         }
+    }
+
+    // ------------------------------------------------------------------
+    // Mobile bindings
+    // ------------------------------------------------------------------
+
+    /// How Swift and Kotlin call a function, exported or hand-written.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub enum CallKind {
+        /// The constructor named `new`, called as `T(...)`.
+        Init,
+        /// Any other constructor, called as `T.name(...)`.
+        Static,
+        /// A method called on an instance.
+        Method,
+    }
+
+    /// A function an `#[uniffi::export]` impl block exposes.
+    pub struct UniffiFn {
+        /// The exported type. uniffi keeps its Rust name.
+        pub owner: String,
+        /// The camelCase name callers use.
+        pub name: String,
+        pub kind: CallKind,
+        pub is_async: bool,
+        /// Whether it returns a `Result`, which Swift marks `throws`.
+        pub throws: bool,
+        /// Parameter types, receiver excluded.
+        pub params: Vec<Type>,
+    }
+
+    impl Reflection {
+        /// Functions the uniffi bindings export in `build`.
+        pub fn uniffi_fns(&self, build: Build) -> Vec<UniffiFn> {
+            self.uniffi_defs(build)
+                .map(|(owner, f)| {
+                    let ctor = metas(&f.attrs, build)
+                        .iter()
+                        .any(|m| meta_ident(m) == "constructor");
+                    let name = uniffi_name(f, build);
+                    let kind = match (ctor, name.as_str()) {
+                        (true, "new") => CallKind::Init,
+                        (true, _) => CallKind::Static,
+                        (false, _) => CallKind::Method,
+                    };
+                    UniffiFn {
+                        owner: owner.to_string(),
+                        name,
+                        kind,
+                        is_async: f.sig.asyncness.is_some(),
+                        throws: returns_result(&f.sig),
+                        params: typed_params(&f.sig),
+                    }
+                })
+                .collect()
+        }
+
+        /// Every function of a uniffi export block in `build`, with its type.
+        fn uniffi_defs(&self, build: Build) -> impl Iterator<Item = (&str, &FnDef)> {
+            self.binding_impls(build, build.binding_attr()).flat_map(move |imp| {
+                imp.fns
+                    .iter()
+                    .filter(move |f| f.cfg.holds(build))
+                    .map(move |f| (imp.self_ident.as_str(), f))
+            })
+        }
+    }
+
+    /// The name uniffi gives a function: its `name` argument or Rust name, in lowerCamelCase.
+    fn uniffi_name(f: &FnDef, build: Build) -> String {
+        exported_name(f, build).to_lower_camel_case()
+    }
+
+    /// Parameter types after the receiver.
+    fn typed_params(sig: &Signature) -> Vec<Type> {
+        sig.inputs
+            .iter()
+            .filter_map(|arg| match arg {
+                syn::FnArg::Typed(t) => Some((*t.ty).clone()),
+                syn::FnArg::Receiver(_) => None,
+            })
+            .collect()
+    }
+
+    fn return_type(sig: &Signature) -> Option<&Type> {
+        match &sig.output {
+            syn::ReturnType::Type(_, ty) => Some(ty),
+            syn::ReturnType::Default => None,
+        }
+    }
+
+    fn last_ident(ty: &Type) -> Option<String> {
+        match ty {
+            Type::Path(p) => p.path.segments.last().map(|s| s.ident.to_string()),
+            _ => None,
+        }
+    }
+
+    fn returns_result(sig: &Signature) -> bool {
+        return_type(sig).and_then(last_ident).as_deref() == Some("Result")
     }
 }

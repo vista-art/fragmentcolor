@@ -1138,6 +1138,7 @@ dependencies = [
  "futures",
  "glam",
  "gltf",
+ "heck",
  "image",
  "image-compare",
  "jni",

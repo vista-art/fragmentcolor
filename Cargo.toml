@@ -243,6 +243,7 @@ phf = { version = "0.14", features = ["macros"] }
 syn = { version = "2.0", features = ["full"] }
 phf_codegen = "0.14"
 cfg_aliases = "0.2"
+heck = "0.5"
 quote = "1"
 proc-macro2 = "1"
 uniffi = { version = "0.32", features = ["build"] }
