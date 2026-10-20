@@ -47,8 +47,8 @@ mod kotlin {
         List(Box<KType>),
         /// `Array<T>`, which `arrayOf(...)` already builds.
         Array,
-        /// `FloatArray`, `ByteArray` and the other primitive arrays.
-        PrimitiveArray,
+        /// `FloatArray`, `ByteArray` and the other primitive arrays, by name.
+        PrimitiveArray(String),
         /// Any other type, by name.
         Named(String),
     }
@@ -90,6 +90,8 @@ mod kotlin {
         wrap: Option<String>,
         /// The record an `arrayOf(numbers)` here fills by position, such as `Size`.
         record: Option<String>,
+        /// Every receiver takes a `FloatArray` here, which `arrayOf(numbers)` becomes.
+        float_array: bool,
     }
 
     /// How a list's elements change when `arrayOf` becomes `listOf`.
@@ -235,7 +237,9 @@ mod kotlin {
             ("f64" | "i8" | "i16" | "i32" | "i64", _) => KType::Number,
             ("Option" | "Arc" | "Box", Some(t)) => uniffi_type(t),
             // uniffi passes bytes as a `ByteArray`.
-            ("Vec", Some(t)) if uniffi_type(t) == KType::Unsigned("UByte".into()) => KType::PrimitiveArray,
+            ("Vec", Some(t)) if uniffi_type(t) == KType::Unsigned("UByte".into()) => {
+                KType::PrimitiveArray("ByteArray".into())
+            }
             ("Vec", Some(t)) => KType::List(Box::new(uniffi_type(t))),
             _ => KType::Named(ident),
         }
@@ -252,7 +256,7 @@ mod kotlin {
             "UInt" | "ULong" | "UShort" | "UByte" => KType::Unsigned(text.to_string()),
             "Double" | "Int" | "Long" | "Short" | "Byte" => KType::Number,
             _ if text.starts_with("Array<") => KType::Array,
-            _ if text.ends_with("Array") => KType::PrimitiveArray,
+            _ if text.ends_with("Array") => KType::PrimitiveArray(text.to_string()),
             _ => KType::Named(text.to_string()),
         }
     }
@@ -450,7 +454,11 @@ mod kotlin {
     }
 
     fn is_array(t: &KType) -> bool {
-        matches!(t, KType::Array | KType::PrimitiveArray)
+        matches!(t, KType::Array | KType::PrimitiveArray(_))
+    }
+
+    fn is_float_array(t: &KType) -> bool {
+        matches!(t, KType::PrimitiveArray(name) if name == "FloatArray")
     }
 
     /// `Array<T>`, the only parameter type an `arrayOf(...)` already fits, so it needs no `listOf`.
@@ -471,6 +479,8 @@ mod kotlin {
             list: list_slot(receivers, wraps, conflicts),
             wrap: wrap_slot(receivers, wraps),
             record: record_slot(receivers, records),
+            float_array: !receivers.by_owner.is_empty()
+                && receivers.owners(|ts| !has(ts, is_float_array)).is_empty(),
         }
     }
 
@@ -835,14 +845,12 @@ mod kotlin {
         // Before the generic `arrayOf` → `listOf<Float>` fallback, which
         // would turn integer indices into `0.0f`.
         out = rewrite_list_args(&out);
-        out = rewrite_shader_set_array(&out);
         out = rewrite_flat_enum_variants(&out);
         out = rewrite_float_args(&out);
         out = rewrite_shader_new_to_compose(&out);
         out = rename_stand_ins(&out);
         out = rewrite_texture_region_builder(&out);
         out = rewrite_write_region_array_arg(&out);
-        out = rewrite_instance_set_vertex_value(&out);
         out = rewrite_arrayof_float_to_listof(&out);
         out = drop_underscore_val(&out);
         // Generic fallback: strip `.new(` from any remaining
@@ -964,6 +972,7 @@ mod kotlin {
     /// such as `Vertex`, `arrayOf(numbers)` becomes `Vertex(listOf(...))`.
     /// Where it is a record filled by position, such as `Size`,
     /// `arrayOf(numbers)` becomes `Size(width=8u, height=8u, depth=null)`.
+    /// Where every receiver takes a `FloatArray` instead, it becomes `floatArrayOf(...)`.
     fn rewrite_list_args(line: &str) -> String {
         map_calls(line, &|needle, args| {
             let slots = slots_of(needle, args.len())?;
@@ -975,6 +984,9 @@ mod kotlin {
                         (Some(elems), _, _) => array_to_list(arg, elems),
                         (None, Some(ty), _) => scalar_items(arg).map(|items| float_list_of(ty, &items)),
                         (None, None, Some(record)) => scalar_items(arg).and_then(|items| record_of(record, &items)),
+                        (None, None, None) if slot.float_array => {
+                            scalar_items(arg).map(|items| format!("floatArrayOf({})", float_args(&items)))
+                        }
                         (None, None, None) => None,
                     };
                     rewritten.unwrap_or_else(|| arg.clone())
@@ -1470,41 +1482,6 @@ mod kotlin {
             result.push(current);
         }
         result
-    }
-
-    // `shader.set("key", arrayOf(x, y))` → `shader.set("key", floatArrayOf(xf, yf))`
-    // ShaderExtensions.kt has `fun Shader.set(key: String, value: FloatArray)`.
-    fn rewrite_shader_set_array(line: &str) -> String {
-        // Match `.set(<key>, arrayOf(...))`
-        let needle = ", arrayOf(";
-        if line.contains(".set(") && line.contains(needle)
-            && let Some(array_start) = line.find(needle) {
-                let inner_start = array_start + needle.len();
-                let chars: Vec<char> = line.chars().collect();
-                let mut depth = 0i32;
-                let mut array_end = inner_start;
-                let mut j = inner_start;
-                while j < chars.len() {
-                    match chars[j] {
-                        '(' => depth += 1,
-                        ')' => {
-                            if depth == 0 { array_end = j; break; }
-                            depth -= 1;
-                        }
-                        _ => {}
-                    }
-                    j += 1;
-                }
-                let floats_str: String = chars[inner_start..array_end].iter().collect();
-                let after_array: String = chars[array_end + 1..].iter().collect();
-                // Check this closes the set() call
-                if let Some(rest) = after_array.strip_prefix(')') {
-                    let before = &line[..array_start];
-                    let floats = float_args(&split_args(&floats_str));
-                    return format!("{}, floatArrayOf({})){}",  before, floats, rest);
-                }
-            }
-        line.to_string()
     }
 
     /// Returns `s` with the `f` suffix appended if it's a bare numeric literal
@@ -2249,62 +2226,6 @@ mod kotlin {
             "{}writeRegion({}, TextureRegionMobile({}, {}, 0u, {}, {}, 0u, null, null)){}",
             before, bytes_arg, x, y, w, h, after
         )
-    }
-
-    // Convert `Instance().set("key", arrayOf(...))` where the arrayOf value
-    // should be a `List<Float>`. Since we added extension methods for
-    // `Instance.set(key, List<Float>)` and `Vertex.set(key, List<Float>)`,
-    // we just need to convert `arrayOf(0.25, 0.10)` → `listOf(0.25f, 0.10f)`.
-    fn rewrite_instance_set_vertex_value(line: &str) -> String {
-        // Look for `.set("key", arrayOf(...))`
-        let needle = ".set(";
-        if !line.contains(needle) || !line.contains("arrayOf(") { return line.to_string(); }
-
-        let chars: Vec<char> = line.chars().collect();
-        let mut out = String::with_capacity(line.len());
-        let mut i = 0usize;
-
-        while i < chars.len() {
-            // Look for `.set(`
-            let rem: String = chars[i..].iter().collect();
-            if rem.starts_with(".set(") {
-                // find the set call's closing paren
-                let set_start = i + ".set(".len();
-                let mut depth2 = 0i32;
-                let mut set_end = None;
-                let mut k = set_start;
-                while k < chars.len() {
-                    match chars[k] {
-                        '(' => depth2 += 1,
-                        ')' => {
-                            if depth2 == 0 { set_end = Some(k); break; }
-                            depth2 -= 1;
-                        }
-                        _ => {}
-                    }
-                    k += 1;
-                }
-                if let Some(set_end) = set_end {
-                    let inner: String = chars[set_start..set_end].iter().collect();
-                    let parts = split_args(&inner);
-                    if parts.len() == 2 {
-                        let key_arg = parts[0].trim();
-                        let val_arg = parts[1].trim();
-                        // Convert arrayOf(doubles) → listOf(floats)
-                        if val_arg.starts_with("arrayOf(") && val_arg.ends_with(')') {
-                            let floats_str = &val_arg["arrayOf(".len()..val_arg.len() - 1];
-                            let list_floats = float_args(&split_args(floats_str));
-                            out.push_str(&format!(".set({}, listOf({}))", key_arg, list_floats));
-                            i = set_end + 1;
-                            continue;
-                        }
-                    }
-                }
-            }
-            out.push(chars[i]);
-            i += 1;
-        }
-        out
     }
 
     // Drop lines that are `val _ = ...` (Kotlin reserves `_`).

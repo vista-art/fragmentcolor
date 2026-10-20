@@ -767,7 +767,7 @@ class GeneratedExamples {
     }
 
     @Suppress("unused") private suspend fun _example_geometry_vertex_Vertex() {
-        val v = Vertex(listOf(0.0f, 0.0f, 0.0f)).set("uv0", floatArrayOf(0.5f, 0.5f)).set("normal", listOf(0.0f, 1.0f, 0.0f))
+        val v = Vertex(listOf(0.0f, 0.0f, 0.0f)).set("uv0", floatArrayOf(0.5f, 0.5f)).set("normal", floatArrayOf(0.0f, 1.0f, 0.0f))
     }
 
     @Suppress("unused") private suspend fun _example_geometry_vertex_create_instance() {
@@ -790,7 +790,7 @@ class GeneratedExamples {
     }
 
     @Suppress("unused") private suspend fun _example_geometry_vertex_set() {
-        val v = Vertex(listOf(0.0f, 0.0f, 0.0f)).set("weight", 1.0).set("color", listOf(1.0f, 0.0f, 0.0f))
+        val v = Vertex(listOf(0.0f, 0.0f, 0.0f)).set("weight", 1.0).set("color",floatArrayOf(1.0f, 0.0f, 0.0f))
     }
 
     @Suppress("unused") private suspend fun _example_scene_camera_look_at() {
@@ -1087,7 +1087,7 @@ class GeneratedExamples {
     @Suppress("unused") private suspend fun _example_scene_model_material() {
 
         val mesh = Mesh()
-        mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set("normal", floatArrayOf(0.0f, 1.0f, 0.0f)).set("uv0", listOf(0.0f, 0.0f)), )
+        mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set("normal", floatArrayOf(0.0f, 1.0f, 0.0f)).set("uv0", floatArrayOf(0.0f, 0.0f)), )
 
         val model = Model(mesh, Material.pbr())
         model.material().shader().set("camera.position", floatArrayOf(0.0f, 0.0f, 5.0f))
@@ -1099,13 +1099,13 @@ class GeneratedExamples {
         mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set("uv0", floatArrayOf(0.5f, 1.0f)), )
 
         val model = Model(mesh, Material.pbr())
-        model.mesh().addVertex( Vertex(listOf(-0.5f, -0.5f, 0.0f)).set("normal", floatArrayOf(0.0f, 0.0f, 1.0f)).set("uv0", listOf(0.0f, 0.0f)), )
+        model.mesh().addVertex( Vertex(listOf(-0.5f, -0.5f, 0.0f)).set("normal", floatArrayOf(0.0f, 0.0f, 1.0f)).set("uv0", floatArrayOf(0.0f, 0.0f)), )
     }
 
     @Suppress("unused") private suspend fun _example_scene_model_new() {
 
         val mesh = Mesh()
-        mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set("normal", floatArrayOf(0.0f, 1.0f, 0.0f)).set("uv0", listOf(0.0f, 0.0f)), )
+        mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set("normal", floatArrayOf(0.0f, 1.0f, 0.0f)).set("uv0", floatArrayOf(0.0f, 0.0f)), )
 
         val model = Model(mesh, Material.pbr())
     }
@@ -1114,7 +1114,7 @@ class GeneratedExamples {
 
         val renderer = Renderer()
         val mesh = Mesh()
-        mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set("normal", floatArrayOf(0.0f, 1.0f, 0.0f)).set("uv0", listOf(0.0f, 0.0f)), )
+        mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set("normal", floatArrayOf(0.0f, 1.0f, 0.0f)).set("uv0", floatArrayOf(0.0f, 0.0f)), )
 
         val model = Model(mesh, Material.pbr())
         model.rotate(listOf(0.0f, 1.0f, 0.0f), 1.571f); // 90° around Y
@@ -1124,7 +1124,7 @@ class GeneratedExamples {
 
         val renderer = Renderer()
         val mesh = Mesh()
-        mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set("normal", floatArrayOf(0.0f, 1.0f, 0.0f)).set("uv0", listOf(0.0f, 0.0f)), )
+        mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set("normal", floatArrayOf(0.0f, 1.0f, 0.0f)).set("uv0", floatArrayOf(0.0f, 0.0f)), )
 
         val model = Model(mesh, Material.pbr())
         model.scale(listOf(2.0f, 2.0f, 2.0f))
@@ -1134,7 +1134,7 @@ class GeneratedExamples {
 
         val renderer = Renderer()
         val mesh = Mesh()
-        mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set("normal", floatArrayOf(0.0f, 1.0f, 0.0f)).set("uv0", listOf(0.0f, 0.0f)), )
+        mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set("normal", floatArrayOf(0.0f, 1.0f, 0.0f)).set("uv0", floatArrayOf(0.0f, 0.0f)), )
 
         val model = Model(mesh, Material.pbr())
         model.setTransform(listOf(2.0f, 0.0f, 0.0f, 0.0f, 0.0f, 2.0f, 0.0f, 0.0f, 0.0f, 0.0f, 2.0f, 0.0f, 3.0f, 0.0f, 0.0f, 1.0f))
@@ -1156,7 +1156,7 @@ class GeneratedExamples {
 
         val renderer = Renderer()
         val mesh = Mesh()
-        mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set("normal", floatArrayOf(0.0f, 1.0f, 0.0f)).set("uv0", listOf(0.0f, 0.0f)), )
+        mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set("normal", floatArrayOf(0.0f, 1.0f, 0.0f)).set("uv0", floatArrayOf(0.0f, 0.0f)), )
 
         val model = Model(mesh, Material.pbr())
         val identity = model.transform()
@@ -1166,7 +1166,7 @@ class GeneratedExamples {
 
         val renderer = Renderer()
         val mesh = Mesh()
-        mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set("normal", floatArrayOf(0.0f, 1.0f, 0.0f)).set("uv0", listOf(0.0f, 0.0f)), )
+        mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set("normal", floatArrayOf(0.0f, 1.0f, 0.0f)).set("uv0", floatArrayOf(0.0f, 0.0f)), )
 
         val model = Model(mesh, Material.pbr())
         model.translate(listOf(5.0f, 0.0f, -2.0f))

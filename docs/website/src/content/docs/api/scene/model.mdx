@@ -153,7 +153,7 @@ code={`
 import org.fragmentcolor.*
 
 val mesh = Mesh()
-mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set("normal", floatArrayOf(0.0f, 1.0f, 0.0f)).set("uv0", listOf(0.0f, 0.0f)), )
+mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set("normal", floatArrayOf(0.0f, 1.0f, 0.0f)).set("uv0", floatArrayOf(0.0f, 0.0f)), )
 
 val model = Model(mesh, Material.pbr())
 model.material().shader().set("camera.position", floatArrayOf(0.0f, 0.0f, 5.0f))
@@ -268,7 +268,7 @@ val mesh = Mesh()
 mesh.addVertex( Vertex.pbr(listOf(0.0f, 0.5f, 0.0f)).set("uv0", floatArrayOf(0.5f, 1.0f)), )
 
 val model = Model(mesh, Material.pbr())
-model.mesh().addVertex( Vertex(listOf(-0.5f, -0.5f, 0.0f)).set("normal", floatArrayOf(0.0f, 0.0f, 1.0f)).set("uv0", listOf(0.0f, 0.0f)), )
+model.mesh().addVertex( Vertex(listOf(-0.5f, -0.5f, 0.0f)).set("normal", floatArrayOf(0.0f, 0.0f, 1.0f)).set("uv0", floatArrayOf(0.0f, 0.0f)), )
 `}
 lang="kotlin"
 />
@@ -384,7 +384,7 @@ code={`
 import org.fragmentcolor.*
 
 val mesh = Mesh()
-mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set("normal", floatArrayOf(0.0f, 1.0f, 0.0f)).set("uv0", listOf(0.0f, 0.0f)), )
+mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set("normal", floatArrayOf(0.0f, 1.0f, 0.0f)).set("uv0", floatArrayOf(0.0f, 0.0f)), )
 
 val model = Model(mesh, Material.pbr())
 `}
@@ -500,7 +500,7 @@ import org.fragmentcolor.*
 
 val renderer = Renderer()
 val mesh = Mesh()
-mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set("normal", floatArrayOf(0.0f, 1.0f, 0.0f)).set("uv0", listOf(0.0f, 0.0f)), )
+mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set("normal", floatArrayOf(0.0f, 1.0f, 0.0f)).set("uv0", floatArrayOf(0.0f, 0.0f)), )
 
 val model = Model(mesh, Material.pbr())
 model.rotate(listOf(0.0f, 1.0f, 0.0f), 1.571f); // 90° around Y
@@ -617,7 +617,7 @@ import org.fragmentcolor.*
 
 val renderer = Renderer()
 val mesh = Mesh()
-mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set("normal", floatArrayOf(0.0f, 1.0f, 0.0f)).set("uv0", listOf(0.0f, 0.0f)), )
+mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set("normal", floatArrayOf(0.0f, 1.0f, 0.0f)).set("uv0", floatArrayOf(0.0f, 0.0f)), )
 
 val model = Model(mesh, Material.pbr())
 model.scale(listOf(2.0f, 2.0f, 2.0f))
@@ -749,7 +749,7 @@ import org.fragmentcolor.*
 
 val renderer = Renderer()
 val mesh = Mesh()
-mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set("normal", floatArrayOf(0.0f, 1.0f, 0.0f)).set("uv0", listOf(0.0f, 0.0f)), )
+mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set("normal", floatArrayOf(0.0f, 1.0f, 0.0f)).set("uv0", floatArrayOf(0.0f, 0.0f)), )
 
 val model = Model(mesh, Material.pbr())
 model.setTransform(listOf(2.0f, 0.0f, 0.0f, 0.0f, 0.0f, 2.0f, 0.0f, 0.0f, 0.0f, 0.0f, 2.0f, 0.0f, 3.0f, 0.0f, 0.0f, 1.0f))
@@ -994,7 +994,7 @@ import org.fragmentcolor.*
 
 val renderer = Renderer()
 val mesh = Mesh()
-mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set("normal", floatArrayOf(0.0f, 1.0f, 0.0f)).set("uv0", listOf(0.0f, 0.0f)), )
+mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set("normal", floatArrayOf(0.0f, 1.0f, 0.0f)).set("uv0", floatArrayOf(0.0f, 0.0f)), )
 
 val model = Model(mesh, Material.pbr())
 val identity = model.transform()
@@ -1113,7 +1113,7 @@ import org.fragmentcolor.*
 
 val renderer = Renderer()
 val mesh = Mesh()
-mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set("normal", floatArrayOf(0.0f, 1.0f, 0.0f)).set("uv0", listOf(0.0f, 0.0f)), )
+mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set("normal", floatArrayOf(0.0f, 1.0f, 0.0f)).set("uv0", floatArrayOf(0.0f, 0.0f)), )
 
 val model = Model(mesh, Material.pbr())
 model.translate(listOf(5.0f, 0.0f, -2.0f))
