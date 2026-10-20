@@ -17,19 +17,81 @@ mod kotlin {
     //!   - Import becomes `import org.fragmentcolor.*`.
     //!   - Trailing semicolons are optional and we strip them.
     //!
+    //! Float literal suffixes (`0.5f`) follow the parameter types
+    //! of the uniffi exports for Android and of the hand-written `*Extensions.kt` files.
+    //!
     //! Enum entries follow the flat uniffi enums.
 
-    use std::collections::BTreeMap;
+    use std::collections::{BTreeMap, BTreeSet};
 
     use heck::ToShoutySnakeCase;
 
-    use crate::reflect::{Build, Reflection, StrConst};
-    use crate::source_text::read_ident;
+    use crate::reflect::{Build, CallKind, Reflection, StrConst};
+    use crate::source_text::{
+        Nesting, arg_spans, closing, code_only, extension_files, read_ident, skip_space, split_args,
+        top_level_words,
+    };
+
+    /// The extension functions written by hand on top of uniffi's Kotlin.
+    const EXTENSIONS_DIR: &str = "platforms/kotlin/fragmentcolor/src/main/java/org/fragmentcolor";
+
+    /// A Kotlin parameter type, reduced to what the call-site rewrites need.
+    #[derive(Clone, PartialEq, Eq)]
+    enum KType {
+        /// `Float`. A Kotlin `0.5` is a `Double` and doesn't convert.
+        Float,
+        /// `UInt`, `ULong`, `UShort` or `UByte`.
+        Unsigned,
+        /// Any other number: `Double`, `Int`, `Long`, `Short` or `Byte`.
+        Number,
+        /// Any other type.
+        Other,
+    }
+
+    /// A function Kotlin code can call, from uniffi or an extension file.
+    struct Callable {
+        /// The type it belongs to. `None` for a top-level function.
+        owner: Option<String>,
+        /// How a call starts: `.render(`, `Vertex(`, `Vertex.new(` or `ShaderFetch(`.
+        needle: String,
+        params: Vec<KType>,
+        /// How many trailing parameters have a default.
+        defaults: usize,
+    }
+
+    impl Callable {
+        /// Whether a call with `argc` arguments can resolve to it.
+        fn takes(&self, argc: usize) -> bool {
+            (self.params.len() - self.defaults..=self.params.len()).contains(&argc)
+        }
+    }
+
+    /// What a literal argument needs at one position of a call.
+    struct Slot {
+        /// A number needs the `f` suffix.
+        float: bool,
+    }
+
+    /// Slots by needle, then by argument count.
+    type CallPlans = BTreeMap<String, BTreeMap<usize, Vec<Slot>>>;
+
+    /// A call position whose receivers want opposite rewrites, so the rewrites skip it.
+    struct Conflict {
+        needle: String,
+        argc: usize,
+        position: usize,
+        /// Which receivers disagree, and on what.
+        reason: String,
+        /// Whether the skipped rewrite would change an argument.
+        changes: fn(&str) -> bool,
+    }
 
     /// API facts the Kotlin rewrites read, derived from the source model.
     struct Facts {
         /// String constants the Kotlin bindings don't expose.
         consts: Vec<StrConst>,
+        calls: CallPlans,
+        conflicts: Vec<Conflict>,
         /// Kotlin spelling of each flat enum entry,
         /// keyed by its Rust and its Kotlin spelling.
         enums: BTreeMap<String, BTreeMap<String, String>>,
@@ -39,6 +101,25 @@ mod kotlin {
 
     /// Derive the Kotlin rewrites' API facts. Runs once before any example converts.
     pub fn install(model: &Reflection) {
+        let mut callables = Vec::new();
+        for f in model.uniffi_fns(Build::Android) {
+            let params: Vec<KType> = f.params.iter().map(uniffi_type).collect();
+            let needles = match f.kind {
+                CallKind::Init => vec![format!("{}(", f.owner), format!("{}.new(", f.owner)],
+                CallKind::Static | CallKind::Method => vec![format!(".{}(", f.name)],
+            };
+            for needle in needles {
+                callables.push(Callable {
+                    owner: Some(f.owner.clone()),
+                    needle,
+                    params: params.clone(),
+                    defaults: 0,
+                });
+            }
+        }
+        callables.extend(extension_callables());
+        let mut conflicts = Vec::new();
+        let calls = plan_calls(&callables, &mut conflicts);
         let enums = model
             .flat_enums(Build::Android)
             .into_iter()
@@ -56,6 +137,8 @@ mod kotlin {
             .collect();
         let _ = FACTS.set(Facts {
             consts: model.str_consts(Build::Android),
+            calls,
+            conflicts,
             enums,
         });
     }
@@ -64,6 +147,225 @@ mod kotlin {
         FACTS
             .get()
             .unwrap_or_else(|| panic!("kotlin::install must run before examples convert"))
+    }
+
+    /// The Kotlin type uniffi generates for a Rust parameter type.
+    fn uniffi_type(ty: &syn::Type) -> KType {
+        let segment = match ty {
+            syn::Type::Reference(r) => return uniffi_type(&r.elem),
+            syn::Type::Path(p) => p.path.segments.last(),
+            _ => None,
+        };
+        let Some(segment) = segment else {
+            return KType::Other;
+        };
+        let inner = match &segment.arguments {
+            syn::PathArguments::AngleBracketed(args) => args.args.iter().find_map(|arg| match arg {
+                syn::GenericArgument::Type(t) => Some(t),
+                _ => None,
+            }),
+            _ => None,
+        };
+        let ident = segment.ident.to_string();
+        match (ident.as_str(), inner) {
+            ("f32", _) => KType::Float,
+            ("u8" | "u16" | "u32" | "u64", _) => KType::Unsigned,
+            ("f64" | "i8" | "i16" | "i32" | "i64", _) => KType::Number,
+            ("Option" | "Arc" | "Box", Some(t)) => uniffi_type(t),
+            _ => KType::Other,
+        }
+    }
+
+    /// The type a Kotlin parameter declaration such as `Float` names.
+    fn kotlin_type(text: &str) -> KType {
+        let text = text.trim().trim_end_matches('?');
+        match text {
+            "Float" => KType::Float,
+            "UInt" | "ULong" | "UShort" | "UByte" => KType::Unsigned,
+            "Double" | "Int" | "Long" | "Short" | "Byte" => KType::Number,
+            _ => KType::Other,
+        }
+    }
+
+    /// Every top-level `fun` in the `*Extensions.kt` files:
+    /// `fun T.name(`, `fun T.Companion.name(` or `fun name(`.
+    fn extension_callables() -> Vec<Callable> {
+        let mut callables = Vec::new();
+        for path in extension_files(EXTENSIONS_DIR, "Extensions.kt") {
+            let text = std::fs::read_to_string(&path)
+                .unwrap_or_else(|e| panic!("kotlin: cannot read {}: {e}", path.display()));
+            let code = code_only(&text);
+            for (keyword, at) in top_level_words(&code, &["fun"]) {
+                let start = skip_space(&code, at + keyword.len());
+                let Some(open) = code[start..].find('(').map(|p| start + p) else {
+                    continue;
+                };
+                let Some(close) = closing(&code, open) else {
+                    continue;
+                };
+                let path: Vec<&str> = code[start..open].trim().split('.').collect();
+                let (owner, needle) = match path.as_slice() {
+                    [name] => (None, format!("{name}(")),
+                    [owner, name] | [owner, "Companion", name] => (Some(owner.to_string()), format!(".{name}(")),
+                    _ => continue,
+                };
+                let params = kotlin_params(&code[open + 1..close]);
+                callables.push(Callable {
+                    owner,
+                    needle,
+                    defaults: params.iter().filter(|(_, default)| *default).count(),
+                    params: params.into_iter().map(|(ty, _)| ty).collect(),
+                });
+            }
+        }
+        callables
+    }
+
+    /// The type of each `name: Type [= default]` parameter, and whether it has a default.
+    fn kotlin_params(params: &str) -> Vec<(KType, bool)> {
+        arg_spans(params, Nesting::Types)
+            .into_iter()
+            .filter_map(|span| {
+                let (_, rest) = params[span].split_once(':')?;
+                let (ty, default) = match rest.split_once('=') {
+                    Some((ty, _)) => (ty, true),
+                    None => (rest, false),
+                };
+                Some((kotlin_type(ty), default))
+            })
+            .collect()
+    }
+
+    /// Slots for every needle and argument count some overload takes.
+    /// Positions where receivers need opposite rewrites land in `conflicts` and get none.
+    fn plan_calls(callables: &[Callable], conflicts: &mut Vec<Conflict>) -> CallPlans {
+        let mut by_needle: BTreeMap<&str, Vec<&Callable>> = BTreeMap::new();
+        for c in callables {
+            by_needle.entry(&c.needle).or_default().push(c);
+        }
+        let mut plans = CallPlans::new();
+        for (needle, overloads) in by_needle {
+            let counts: BTreeSet<usize> = overloads
+                .iter()
+                .flat_map(|c| c.params.len() - c.defaults..=c.params.len())
+                .collect();
+            for argc in counts {
+                let fitting: Vec<&Callable> =
+                    overloads.iter().copied().filter(|c| c.takes(argc)).collect();
+                let slots = (0..argc)
+                    .map(|i| Receivers::new(needle, argc, i, &fitting))
+                    .map(|receivers| plan_slot(&receivers, conflicts))
+                    .collect();
+                plans.entry(needle.to_string()).or_default().insert(argc, slots);
+            }
+        }
+        plans
+    }
+
+    /// The overloads of a call that take `argc` arguments, seen from the argument at `position`.
+    struct Receivers<'a> {
+        needle: &'a str,
+        argc: usize,
+        position: usize,
+        /// The types each owner takes at `position`.
+        by_owner: BTreeMap<&'a str, Vec<&'a KType>>,
+    }
+
+    impl<'a> Receivers<'a> {
+        fn new(
+            needle: &'a str,
+            argc: usize,
+            position: usize,
+            overloads: &'a [&'a Callable],
+        ) -> Self {
+            let mut by_owner: BTreeMap<&str, Vec<&KType>> = BTreeMap::new();
+            for c in overloads {
+                let owner = c.owner.as_deref().unwrap_or("a top-level function");
+                by_owner.entry(owner).or_default().push(&c.params[position]);
+            }
+            Receivers {
+                needle,
+                argc,
+                position,
+                by_owner,
+            }
+        }
+
+        fn types(&self) -> impl Iterator<Item = &'a KType> + '_ {
+            self.by_owner.values().flatten().copied()
+        }
+
+        /// Whether some receiver takes a type that passes `test`.
+        fn any(&self, test: fn(&KType) -> bool) -> bool {
+            self.types().any(test)
+        }
+
+        /// The owners whose types at `position` pass `test`.
+        fn owners(&self, test: impl Fn(&[&KType]) -> bool) -> Vec<&'a str> {
+            self.by_owner
+                .iter()
+                .filter(|(_, types)| test(types))
+                .map(|(owner, _)| *owner)
+                .collect()
+        }
+
+        /// A conflict at `position`, for a rewrite that would change
+        /// the arguments `changes` accepts, explained by `reason`.
+        fn conflict(&self, reason: String, changes: fn(&str) -> bool) -> Conflict {
+            Conflict {
+                needle: self.needle.to_string(),
+                argc: self.argc,
+                position: self.position,
+                reason,
+                changes,
+            }
+        }
+
+        /// A conflict where `wants` take `what` at `position` and `rejects` don't.
+        fn disagreement(
+            &self,
+            what: &str,
+            wants: &[&str],
+            rejects: &[&str],
+            changes: fn(&str) -> bool,
+        ) -> Conflict {
+            let (n, wants, rejects) = (self.position + 1, wants.join(", "), rejects.join(", "));
+            let reason = format!("it takes {what} at argument {n} on {wants} but not on {rejects}");
+            self.conflict(reason, changes)
+        }
+    }
+
+    /// Whether one of `types` passes `test`.
+    fn has(types: &[&KType], test: fn(&KType) -> bool) -> bool {
+        types.iter().any(|t| test(t))
+    }
+
+    fn is_float(t: &KType) -> bool {
+        *t == KType::Float
+    }
+
+    /// `Double`, `Int` and the other numbers a `Float` literal doesn't fit.
+    fn is_other_number(t: &KType) -> bool {
+        matches!(t, KType::Number | KType::Unsigned)
+    }
+
+    /// What the argument at one position of a call needs.
+    fn plan_slot(receivers: &Receivers, conflicts: &mut Vec<Conflict>) -> Slot {
+        Slot {
+            float: float_slot(receivers, conflicts),
+        }
+    }
+
+    /// Whether a number here needs the `f` suffix.
+    fn float_slot(receivers: &Receivers, conflicts: &mut Vec<Conflict>) -> bool {
+        let wants = receivers.owners(|ts| has(ts, is_float) && !has(ts, is_other_number));
+        let rejects = receivers.owners(|ts| has(ts, is_other_number) && !has(ts, is_float));
+        if !wants.is_empty() && !rejects.is_empty() {
+            let changes = |arg: &str| floatify_if_numeric(arg) != arg;
+            conflicts.push(receivers.disagreement("a Float", &wants, &rejects, changes));
+            return false;
+        }
+        receivers.any(is_float) && !receivers.any(is_other_number)
     }
 
     /// Finalize the Kotlin output emitted by `convert(_, Lang::Kotlin, _)`.
@@ -187,7 +489,44 @@ mod kotlin {
             out.push(rewritten);
         }
 
-        out.join("\n")
+        let kotlin = out.join("\n");
+        check_conflicts(&kotlin);
+        kotlin
+    }
+
+    /// Fail the build where a call passes, at a position whose receivers disagree,
+    /// an argument the skipped rewrite would have changed. Kotlin would not compile it
+    /// for the receivers that wanted the rewrite, and the rewriter can't tell them apart.
+    fn check_conflicts(kotlin: &str) {
+        let conflicts = &facts().conflicts;
+        if conflicts.is_empty() {
+            return;
+        }
+        let code = code_only(kotlin);
+        for (at, _) in code.char_indices() {
+            let Some(needle) = needle_at(&code, at) else {
+                continue;
+            };
+            let open = at + needle.len() - 1;
+            let Some(close) = closing(&code, open) else {
+                continue;
+            };
+            let spans = arg_spans(&code[open + 1..close], Nesting::Call);
+            let here = conflicts.iter().filter(|c| c.needle == needle && c.argc == spans.len());
+            for conflict in here {
+                let span = &spans[conflict.position];
+                let arg = kotlin[open + 1 + span.start..open + 1 + span.end].trim();
+                if (conflict.changes)(arg) {
+                    panic!(
+                        "kotlin: `{needle}` gets `{arg}` as argument {} of {}, where {}. \
+                         Kotlin would not compile one of those calls.",
+                        conflict.position + 1,
+                        conflict.argc,
+                        conflict.reason,
+                    );
+                }
+            }
+        }
     }
 
     fn rewrite_line(src: &str) -> String {
@@ -252,12 +591,9 @@ mod kotlin {
         // `arrayOf(arrayOf(...), arrayOf(...), ...)`. The binding takes
         // `List<Float>` of 16, not `Array<List<Float>>`.
         out = rewrite_settransform_mat4_flatten(&out);
-        // Float-arg coverage on signatures whose mobile binding uses single-
-        // precision floats. Kotlin literal `0.3` is Double, so these need an
-        // explicit `f` suffix or kotlinc rejects the call.
-        out = rewrite_float_arg_call_sites(&out);
-        // Same idea for `floatArrayOf(...)` calls — every numeric arg becomes
-        // `f`-suffixed so the array binds to FloatArray rather than DoubleArray.
+        out = rewrite_float_args(&out);
+        // Every numeric `floatArrayOf(...)` arg becomes `f`-suffixed so the
+        // array binds to FloatArray rather than DoubleArray.
         out = rewrite_floatarrayof_promote_doubles(&out);
         out = rewrite_instance_new(&out);
         out = rewrite_arrayof_byte_literals(&out);
@@ -299,6 +635,101 @@ mod kotlin {
     /// A Kotlin string literal holding `value`; `$` would start a template.
     fn kotlin_quoted(value: &str) -> String {
         crate::convert::quoted(value).replace('$', "\\$")
+    }
+
+    /// Rewrites the trimmed arguments of one call, given its needle. `None` keeps them.
+    type ArgRewrite<'a> = &'a dyn Fn(&str, &[String]) -> Option<Vec<String>>;
+
+    /// Rewrite the arguments of every call on `line`
+    /// whose needle the facts know, inner calls first.
+    /// `rewrite` gets the needle and the trimmed arguments,
+    /// and returns replacements, possibly a different number.
+    fn map_calls(line: &str, rewrite: ArgRewrite) -> String {
+        let mut out = String::with_capacity(line.len());
+        let mut at = 0;
+        while let Some(c) = line[at..].chars().next() {
+            let call = needle_at(line, at).and_then(|needle| {
+                let open = at + needle.len() - 1;
+                closing(line, open).map(|close| (needle, open, close))
+            });
+            let Some((needle, open, close)) = call else {
+                out.push(c);
+                at += c.len_utf8();
+                continue;
+            };
+            out.push_str(&line[at..=open]);
+            out.push_str(&map_args(&line[open + 1..close], needle, rewrite));
+            out.push(')');
+            at = close + 1;
+        }
+        out
+    }
+
+    /// The known needle of a call starting at byte `at`.
+    fn needle_at(line: &str, at: usize) -> Option<&'static str> {
+        let dot = line[at..].starts_with('.');
+        if !dot && line[..at].ends_with(|c: char| is_ident_char(c) || c == '.') {
+            return None;
+        }
+        let (ident, end) = read_ident(line, if dot { at + 1 } else { at });
+        let after = &line[end..];
+        let needle = match (dot, after.starts_with('('), after.starts_with(".new(")) {
+            _ if ident.is_empty() => return None,
+            (true, true, _) => format!(".{ident}("),
+            (false, true, _) => format!("{ident}("),
+            (false, false, true) => format!("{ident}.new("),
+            _ => return None,
+        };
+        facts().calls.get_key_value(&needle).map(|(key, _)| key.as_str())
+    }
+
+    /// The arguments of one call, rewritten.
+    /// Separators and the whitespace around each argument stay as written.
+    fn map_args(inner: &str, needle: &str, rewrite: ArgRewrite) -> String {
+        let spans = arg_spans(inner, Nesting::Call);
+        let args: Vec<String> = spans.iter().map(|s| map_calls(&inner[s.clone()], rewrite)).collect();
+        let trimmed: Vec<String> = args.iter().map(|a| a.trim().to_string()).collect();
+        let replaced = rewrite(needle, &trimmed);
+        if let Some(new) = replaced.as_ref().filter(|new| new.len() != spans.len()) {
+            return new.join(", ");
+        }
+        let mut out = String::with_capacity(inner.len());
+        let mut last = 0;
+        for (k, span) in spans.iter().enumerate() {
+            out.push_str(&inner[last..span.start]);
+            let arg = &args[k];
+            match &replaced {
+                Some(new) => {
+                    let lead = arg.len() - arg.trim_start().len();
+                    let tail = lead + arg[lead..].trim_end().len();
+                    out.push_str(&arg[..lead]);
+                    out.push_str(&new[k]);
+                    out.push_str(&arg[tail..]);
+                }
+                None => out.push_str(arg),
+            }
+            last = span.end;
+        }
+        out.push_str(&inner[last..]);
+        out
+    }
+
+    /// The slots of a call to `needle` with `argc` arguments.
+    fn slots_of(needle: &str, argc: usize) -> Option<&'static [Slot]> {
+        facts().calls.get(needle)?.get(&argc).map(Vec::as_slice)
+    }
+
+    /// Give number literals an `f` where the parameter is a `Float`.
+    fn rewrite_float_args(line: &str) -> String {
+        map_calls(line, &|needle, args| {
+            let slots = slots_of(needle, args.len())?;
+            let new: Vec<String> = args
+                .iter()
+                .zip(slots)
+                .map(|(arg, slot)| if slot.float { floatify_if_numeric(arg) } else { arg.clone() })
+                .collect();
+            (new != args).then_some(new)
+        })
     }
 
     /// `AlphaMode.Mask` → `AlphaMode.MASK`. uniffi renders a flat enum
@@ -1317,51 +1748,9 @@ mod kotlin {
         format!("{}.setIndices(listOf({})){}", prefix, parts.join(", "), suffix)
     }
 
-    /// Promote bare Double literals to Float literals at known single-precision
-    /// call sites. Doesn't touch nested calls or string literals — only the
-    /// top-level args of the matched call.
-    fn rewrite_float_arg_call_sites(line: &str) -> String {
-        // Top-level call signatures whose binding takes Float (f32) args.
-        //
-        // The match is `<prefix>(` (immediately followed by `(`). For each one
-        // we split the arg list at depth 0 and floatify any element that's a
-        // bare numeric literal — anything nested (list, function call) passes
-        // through unchanged.
-        const FLOAT_CALL_PREFIXES: &[&str] = &[
-            "Camera.perspective",
-            "Camera.orthographic",
-            ".lookAt",
-            ".perspective",
-            ".orthographic",
-            ".setAspect",
-            ".alphaCutoff",
-            ".metallic",
-            ".roughness",
-            ".normalScale",
-            ".occlusionStrength",
-            ".alphaCutoff",
-            ".scale",
-            ".setRange",
-            ".setConeAngles",
-            ".setIntensity",
-            ".setColor",
-            ".setDirection",
-            ".setPosition",
-            ".translate",
-            ".rotate",
-            ".setTransform",
-            ".uvTransform",
-        ];
-        let mut out = line.to_string();
-        for prefix in FLOAT_CALL_PREFIXES {
-            out = floatify_top_level_args(&out, prefix);
-        }
-        out
-    }
-
-    /// Apply float-suffix promotion to every numeric arg of every `<prefix>(...)` call
-    /// in `line`. Nested calls aren't touched. Handles multiple occurrences on the
-    /// same line (e.g. chained `.metallic(0.5).roughness(0.5)`).
+    /// Apply float-suffix promotion to every numeric arg of every `<prefix>(...)` call in `line`.
+    ///
+    /// Nested calls aren't touched. Handles multiple occurrences on the same line.
     fn floatify_top_level_args(line: &str, prefix: &str) -> String {
         let pat = format!("{}(", prefix);
         let mut result = String::with_capacity(line.len());
@@ -1372,15 +1761,7 @@ mod kotlin {
                 break;
             };
             // Ensure the prefix isn't a substring of a larger identifier.
-            // Only check the char before the prefix (no alnum / `_`) when the
-            // prefix is itself a free identifier (e.g. `Camera.perspective`).
-            // Method-call prefixes start with `.` and may legitimately follow
-            // any expression terminator (an identifier, `)`, `]`, …); leaving
-            // the check on would skip every `<receiver>.method(...)` site.
-            let starts_with_dot = prefix.starts_with('.');
-            let before_ok = if starts_with_dot || idx == 0 {
-                true
-            } else {
+            let before_ok = idx == 0 || {
                 let prev = remaining.as_bytes()[idx - 1];
                 !prev.is_ascii_alphanumeric() && prev != b'_'
             };
@@ -1579,29 +1960,6 @@ mod kotlin {
             return format!("{}.0f", s);
         }
         s.to_string()
-    }
-
-    // Split a string by commas at depth 0 (respecting nested parens/brackets)
-    fn split_args(s: &str) -> Vec<String> {
-        let mut parts: Vec<String> = Vec::new();
-        let mut current = String::new();
-        let mut depth = 0i32;
-        for c in s.chars() {
-            match c {
-                '(' | '[' => { depth += 1; current.push(c); }
-                ')' | ']' => { depth -= 1; current.push(c); }
-                ',' if depth == 0 => {
-                    parts.push(current.trim().to_string());
-                    current = String::new();
-                }
-                _ => current.push(c),
-            }
-        }
-        let last = current.trim().to_string();
-        if !last.is_empty() {
-            parts.push(last);
-        }
-        parts
     }
 
     /// `[a, b, c]` (JS / Swift array literal) → `arrayOf(a, b, c)` for
