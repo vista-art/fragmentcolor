@@ -1,6 +1,7 @@
 mod website {
     use super::*;
     use crate::codegen::ApiMap;
+    use crate::example::{Example, Lang};
 
     // Public outcome for the export phase so steps can be run independently.
     pub struct ExportOutcome {
@@ -348,7 +349,7 @@ mod website {
                 // Use the struct name as file stem per user preference
                 let dir_slug = obj_dirname;
                 let tabs = build_tabs_for_example(
-                    &lines_to_items(&main_rust),
+                    &parse_example(&main_rust, obj_dir, obj_dirname),
                     cat_rel,
                     dir_slug,
                     object,
@@ -408,9 +409,8 @@ mod website {
 
                 // Build example tabs via shared helper
                 let dir_slug = obj_dir.file_name().and_then(|s| s.to_str()).unwrap_or("");
-                let items = lines_to_items(&rust_body);
                 let tabs = build_tabs_for_example(
-                    &items,
+                    &parse_example(&rust_body, obj_dir, file),
                     cat_rel,
                     dir_slug,
                     file,
@@ -1058,31 +1058,18 @@ mod website {
         out
     }
 
-    // Reusable: turn a Rust code body into (text, hidden) items using doc-test '#'
-    fn lines_to_items(rust: &str) -> Vec<(String, bool)> {
-        let mut items: Vec<(String, bool)> = Vec::new();
-        for l in rust.lines() {
-            let trimmed = l.trim_start();
-            let indent_len = l.len() - trimmed.len();
-            if trimmed.starts_with('#') {
-                let after = if let Some(stripped) = trimmed.strip_prefix('#') {
-                    stripped
-                } else {
-                    trimmed
-                };
-                // Optional single space after '#'
-                let after = if let Some(stripped) = after.strip_prefix(' ') {
-                    stripped
-                } else {
-                    after
-                };
-                let new_text = format!("{}{}", &l[..indent_len], after);
-                items.push((new_text, true));
-            } else {
-                items.push((l.to_string(), false));
-            }
+    /// The example in `stem.md` under `dir`. Fails the build on a hidden block it can't place.
+    fn parse_example(rust: &str, dir: &std::path::Path, stem: &str) -> Example {
+        Example::parse(rust).unwrap_or_else(|e| panic!("{}: {e}", dir.join(format!("{stem}.md")).display()))
+    }
+
+    /// ` meta="collapse={1-3, 9-10}"` for the hidden line ranges of a tab, or nothing.
+    fn collapse_attr(ranges: &[(usize, usize)]) -> String {
+        if ranges.is_empty() {
+            return String::new();
         }
-        items
+        let ranges: Vec<String> = ranges.iter().map(|(start, end)| format!("{start}-{end}")).collect();
+        format!(" meta=\"collapse={{{}}}\"", ranges.join(", "))
     }
 
     fn extract_first_code_block(md: &str) -> Option<(String, String)> {
@@ -1138,13 +1125,45 @@ mod website {
         out
     }
 
+    /// The example in `lang`, with its hidden line ranges:
+    /// a hand-written page when one exists, the transpiled Rust example otherwise.
+    fn lang_code(
+        example: &Example,
+        lang: Lang,
+        root: &std::path::Path,
+        cat_rel: &str,
+        obj_dir_slug: &str,
+        file_stem: &str,
+    ) -> (String, Vec<(usize, usize)>) {
+        read_lang_override(root, cat_rel, obj_dir_slug, file_stem, lang)
+            .unwrap_or_else(|| transpile(example, lang))
+    }
+
+    /// `example`'s Rust lines in `lang`, between that language's hidden lines.
+    fn transpile(example: &Example, lang: Lang) -> (String, Vec<(usize, usize)>) {
+        let items = &example.rust;
+        let body = match lang {
+            Lang::Js => crate::convert::to_js(items),
+            Lang::Python => crate::convert::to_py(items),
+            Lang::Swift => crate::convert::to_swift(items),
+            Lang::Kotlin => crate::convert::to_kotlin(items),
+        };
+        example.harness(lang).wrap(&body)
+    }
+
     fn read_lang_override(
         root: &std::path::Path,
         cat_rel: &str,
         obj_dir_slug: &str,
         file_stem: &str,
-        lang_suffix: &str,
-    ) -> Option<String> {
+        lang: Lang,
+    ) -> Option<(String, Vec<(usize, usize)>)> {
+        let lang_suffix = match lang {
+            Lang::Js => "js",
+            Lang::Python => "py",
+            Lang::Swift => "swift",
+            Lang::Kotlin => "kotlin",
+        };
         // Class entry-point examples use the CamelCase struct name as the
         // `file_stem` (e.g. `Texture`, `Mipmap`), so the natural
         // override path is `Texture_py.md`. The earlier convention put the
@@ -1175,33 +1194,25 @@ mod website {
             )),
         ];
         let hidden = candidates.into_iter().find(|p| p.exists())?;
-        let md = std::fs::read_to_string(hidden).ok()?;
-        let (lang, code) = extract_first_code_block(&md)?;
+        let md = std::fs::read_to_string(&hidden).ok()?;
+        let (fence, code) = extract_first_code_block(&md)?;
         if is_placeholder_example(&code) {
             return None;
         }
-        let is_rust = lang.is_empty() || lang == "rust" || lang.starts_with("rust,");
+        let is_rust = fence.is_empty() || fence == "rust" || fence.starts_with("rust,");
         if !is_rust {
-            return Some(code);
+            return Some((code, Vec::new()));
         }
-
-        let items = lines_to_items(&code);
-        match lang_suffix {
-            "js" => Some(crate::convert::to_js(&items)),
-            "py" => Some(crate::convert::to_py(&items)),
-            "swift" => Some(crate::convert::to_swift(&items)),
-            "kotlin" => Some(crate::convert::to_kotlin(&items)),
-            _ => Some(code),
-        }
+        let example = Example::parse(&code).unwrap_or_else(|e| panic!("{}: {e}", hidden.display()));
+        Some(transpile(&example, lang))
     }
 
-    // Central helper to build Tabs for an example and persist JS/Py files.
-    // Nine args is more than clippy's default, but each one is load-bearing
-    // and the four `ex_*` sets carry distinct per-language state — folding
-    // them into a struct would just trade arg count for boilerplate.
+    // Build the Tabs for an example and write each language's healthcheck file.
+    // Nine args is more than clippy's default, but each one is load-bearing,
+    // and the four `ex_*` sets carry distinct per-language state.
     #[allow(clippy::too_many_arguments)]
     fn build_tabs_for_example(
-        items: &[(String, bool)],
+        example: &Example,
         cat_rel: &str,
         obj_dir_slug: &str,
         file_stem: &str,
@@ -1211,7 +1222,8 @@ mod website {
         ex_swift: &mut std::collections::HashSet<String>,
         ex_kotlin: &mut std::collections::HashSet<String>,
     ) -> String {
-        // Compute collapse ranges (1-based inclusive) from hidden runs
+        // Collapse ranges (1-based inclusive) over the hidden runs
+        let items = &example.rust;
         let mut ranges: Vec<(usize, usize)> = Vec::new();
         let mut i_ln = 0usize;
         while i_ln < items.len() {
@@ -1228,125 +1240,56 @@ mod website {
         }
         let rust_lines: Vec<String> = items.iter().map(|(t, _)| t.clone()).collect();
         let rust_processed = rust_lines.join("\n");
-        let meta_attr = if ranges.is_empty() {
-            String::new()
-        } else {
-            let mut s = String::from(" meta=\"collapse={");
-            for (idx, (s1, e1)) in ranges.iter().enumerate() {
-                if idx > 0 {
-                    s.push_str(", ");
-                }
-                s.push_str(&format!("{}-{}", s1, e1));
-            }
-            s.push_str("}\"");
-            s
-        };
 
-        // Convert to JS/Python
-        let js_code = read_lang_override(root, cat_rel, obj_dir_slug, file_stem, "js")
-            .unwrap_or_else(|| crate::convert::to_js(items));
-        let py_code = read_lang_override(root, cat_rel, obj_dir_slug, file_stem, "py")
-            .unwrap_or_else(|| crate::convert::to_py(items));
-
-        // Persist example files for healthchecks
-        let js_rel = if cat_rel.is_empty() {
-            format!("{}/{}.js", obj_dir_slug, file_stem)
-        } else {
-            format!("{}/{}/{}.js", cat_rel, obj_dir_slug, file_stem)
-        };
-        let py_rel = if cat_rel.is_empty() {
-            format!("{}/{}.py", obj_dir_slug, file_stem)
-        } else {
-            format!("{}/{}/{}.py", cat_rel, obj_dir_slug, file_stem)
-        };
-        let js_abs = root.join("platforms/web/examples").join(&js_rel);
-        let py_abs = root.join("platforms/python/examples").join(&py_rel);
-        if let Some(p) = js_abs.parent() {
-            let _ = std::fs::create_dir_all(p);
-        }
-        if let Some(p) = py_abs.parent() {
-            let _ = std::fs::create_dir_all(p);
-        }
-        let _ = super::meta::write_if_changed(&js_abs, &js_code);
-        let _ = super::meta::write_if_changed(&py_abs, &py_code);
-        ex_js.insert(js_rel.clone());
-        ex_py.insert(py_rel.clone());
-
-        // Swift/Kotlin: transpile from the same Rust items that produced
-        // the JS/Python outputs (uses the JS output internally as a
-        // starting point — see scripts/swift.rs and scripts/kotlin.rs).
-        let swift_code = read_lang_override(root, cat_rel, obj_dir_slug, file_stem, "swift")
-            .unwrap_or_else(|| crate::convert::to_swift(items));
-        let kotlin_code = read_lang_override(root, cat_rel, obj_dir_slug, file_stem, "kotlin")
-            .unwrap_or_else(|| crate::convert::to_kotlin(items));
-
-        let swift_rel = if cat_rel.is_empty() {
-            format!("{}/{}.swift", obj_dir_slug, file_stem)
-        } else {
-            format!("{}/{}/{}.swift", cat_rel, obj_dir_slug, file_stem)
-        };
-        let kotlin_rel = if cat_rel.is_empty() {
-            format!("{}/{}.kt", obj_dir_slug, file_stem)
-        } else {
-            format!("{}/{}/{}.kt", cat_rel, obj_dir_slug, file_stem)
-        };
-        let swift_abs = root.join("platforms/swift/examples").join(&swift_rel);
-        let kotlin_abs = root.join("platforms/kotlin/examples").join(&kotlin_rel);
-        if let Some(parent) = swift_abs.parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
-        if let Some(parent) = kotlin_abs.parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
-        let _ = super::meta::write_if_changed(&swift_abs, &swift_code);
-        let _ = super::meta::write_if_changed(&kotlin_abs, &kotlin_code);
-        ex_swift.insert(swift_rel.clone());
-        ex_kotlin.insert(kotlin_rel.clone());
-
-        // Build Tabs snippet
         let mut tabs = String::new();
         tabs.push_str("<Tabs>\n\n");
+        push_tab(&mut tabs, "Rust", "rust", &rust_processed, &ranges);
 
-        tabs.push_str("<TabItem label=\"Rust\">\n");
-        tabs.push_str("<Code\n");
-        tabs.push_str("code={`\n");
-        // Escape backticks so a Rust doc-comment like `// see `Foo` ` doesn't
-        // close the MDX template literal early. The JS/Python/Swift/Kotlin tabs
-        // below already run their code through this; the Rust tab was the one
-        // omission, which broke any page whose example carried a backtick in a
-        // comment.
-        tabs.push_str(&sanitize_for_template(&rust_processed));
-        tabs.push_str("\n`}\n");
-        tabs.push_str("lang=\"rust\"");
-        tabs.push_str(&meta_attr);
-        tabs.push_str("\n/>\n\n</TabItem>\n\n");
-
-        tabs.push_str("<TabItem label=\"JavaScript\">\n");
-        tabs.push_str("<Code\n");
-        tabs.push_str("code={`\n");
-        tabs.push_str(&sanitize_for_template(&js_code));
-        tabs.push_str("\n`}\nlang=\"js\"\n/>\n\n</TabItem>\n\n");
-
-        tabs.push_str("<TabItem label=\"Python\">\n");
-        tabs.push_str("<Code\n");
-        tabs.push_str("code={`\n");
-        tabs.push_str(&sanitize_for_template(&py_code));
-        tabs.push_str("\n`}\nlang=\"python\"\n/>\n\n</TabItem>\n\n");
-
-        tabs.push_str("<TabItem label=\"Swift\">\n");
-        tabs.push_str("<Code\n");
-        tabs.push_str("code={`\n");
-        tabs.push_str(&sanitize_for_template(&swift_code));
-        tabs.push_str("\n`}\nlang=\"swift\"\n/>\n\n</TabItem>\n\n");
-
-        tabs.push_str("<TabItem label=\"Kotlin\">\n");
-        tabs.push_str("<Code\n");
-        tabs.push_str("code={`\n");
-        tabs.push_str(&sanitize_for_template(&kotlin_code));
-        tabs.push_str("\n`}\nlang=\"kotlin\"\n/>\n\n</TabItem>\n\n");
+        // Each language's example is both a tab and a healthcheck file.
+        let outputs: [(Lang, &str, &str, &str, &str, &mut std::collections::HashSet<String>); 4] = [
+            (Lang::Js, "JavaScript", "js", "js", "platforms/web/examples", ex_js),
+            (Lang::Python, "Python", "python", "py", "platforms/python/examples", ex_py),
+            (Lang::Swift, "Swift", "swift", "swift", "platforms/swift/examples", ex_swift),
+            (Lang::Kotlin, "Kotlin", "kotlin", "kt", "platforms/kotlin/examples", ex_kotlin),
+        ];
+        for (lang, label, fence, ext, dir, written) in outputs {
+            let (code, hidden) = lang_code(example, lang, root, cat_rel, obj_dir_slug, file_stem);
+            let rel = if cat_rel.is_empty() {
+                format!("{}/{}.{}", obj_dir_slug, file_stem, ext)
+            } else {
+                format!("{}/{}/{}.{}", cat_rel, obj_dir_slug, file_stem, ext)
+            };
+            let abs = root.join(dir).join(&rel);
+            if let Some(parent) = abs.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            let _ = super::meta::write_if_changed(&abs, &code);
+            written.insert(rel);
+            push_tab(&mut tabs, label, fence, &code, &hidden);
+        }
 
         tabs.push_str("</Tabs>\n\n");
         tabs
+    }
+
+    /// One `<TabItem>` holding `code`, with its hidden lines collapsed.
+    fn push_tab(tabs: &mut String, label: &str, fence: &str, code: &str, hidden: &[(usize, usize)]) {
+        tabs.push_str(&format!("<TabItem label=\"{label}\">\n"));
+        tabs.push_str("<Code\n");
+        tabs.push_str("code={`\n");
+        // Escape backticks so a comment like `// see `Foo` ` doesn't close the template literal early.
+        tabs.push_str(&sanitize_for_template(code));
+        tabs.push_str("\n`}\n");
+        tabs.push_str(&format!("lang=\"{fence}\""));
+        // The Code component numbers lines from the first one with text.
+        let blank = code.lines().take_while(|line| line.trim_end().is_empty()).count();
+        let hidden: Vec<(usize, usize)> = hidden
+            .iter()
+            .filter(|(_, end)| *end > blank)
+            .map(|(start, end)| (start.saturating_sub(blank).max(1), end - blank))
+            .collect();
+        tabs.push_str(&collapse_attr(&hidden));
+        tabs.push_str("\n/>\n\n</TabItem>\n\n");
     }
 
     fn first_paragraph(md: &str) -> String {
@@ -1517,37 +1460,15 @@ mod website {
         }
 
         fn process_rust_block(header: &str, body: &[String]) -> (String, Vec<String>) {
-            // Build items with hidden flags by stripping leading '#'
-            let mut items: Vec<LineItem> = Vec::with_capacity(body.len());
-            for l in body {
-                let trimmed = l.trim_start();
-                let indent_len = l.len() - trimmed.len();
-                if trimmed.starts_with('#') {
-                    // Strip one leading '#' and one optional following space
-                    let after = if let Some(stripped) = trimmed.strip_prefix('#') {
-                        stripped
-                    } else {
-                        trimmed
-                    };
-
-                    let after = if let Some(stripped) = after.strip_prefix(' ') {
-                        stripped
-                    } else {
-                        after
-                    };
-
-                    let new_text = format!("{}{}", &l[..indent_len], after);
-                    items.push(LineItem {
-                        text: new_text,
-                        hidden: true,
-                    });
-                } else {
-                    items.push(LineItem {
-                        text: l.clone(),
-                        hidden: false,
-                    });
-                }
-            }
+            // Hidden lines lose their '#', and other languages' hidden lines leave the Rust code
+            let code: String = body.iter().map(|line| format!("{line}\n")).collect();
+            let example =
+                Example::parse(&code).unwrap_or_else(|e| panic!("in a Rust code fence: {e}\n{code}"));
+            let items: Vec<LineItem> = example
+                .rust
+                .into_iter()
+                .map(|(text, hidden)| LineItem { text, hidden })
+                .collect();
 
             // Compute collapse ranges over final items
             let mut ranges: Vec<(usize, usize)> = Vec::new();

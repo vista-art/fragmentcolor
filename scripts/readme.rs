@@ -3,6 +3,8 @@ mod readme {
     use std::fs;
     use std::path::PathBuf;
 
+    use crate::example::{Example, Lang};
+
     #[derive(Clone, Debug)]
     struct CodeBlock {
         body: String,
@@ -110,23 +112,6 @@ mod readme {
         out
     }
 
-    // Replicate the hidden-line handling used by docs exporter: strip leading '#' and optional space
-    fn lines_to_items(rust: &str) -> Vec<(String, bool)> {
-        let mut items: Vec<(String, bool)> = Vec::new();
-        for l in rust.lines() {
-            let trimmed = l.trim_start();
-            let indent_len = l.len() - trimmed.len();
-            if trimmed.starts_with('#') {
-                let after = trimmed.trim_start_matches('#').trim_start();
-                let new_text = format!("{}{}", &l[..indent_len], after);
-                items.push((new_text, true));
-            } else {
-                items.push((l.to_string(), false));
-            }
-        }
-        items
-    }
-
     fn generate_from_template(
         tpl: &str,
         sections: &HashMap<String, Section>,
@@ -159,11 +144,13 @@ mod readme {
                 let mut code = String::new();
                 if prefer == "rust" {
                     if let Some(rust) = &sect.first_rust {
-                        let items = lines_to_items(&rust.body);
-                        code = match target {
-                            "js" => crate::convert::to_js(&items),
-                            _ => crate::convert::to_py(&items),
+                        let example = Example::parse(&rust.body)
+                            .unwrap_or_else(|e| panic!("README.md, '{}': {e}", heading));
+                        let (lang, body) = match target {
+                            "js" => (Lang::Js, crate::convert::to_js(&example.rust)),
+                            _ => (Lang::Python, crate::convert::to_py(&example.rust)),
                         };
+                        code = example.harness(lang).wrap(&body).0;
                     } else if copy_native {
                         match target {
                             "js" => {

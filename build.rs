@@ -202,6 +202,7 @@ include!("scripts/no_panics.rs");
 include!("scripts/reflect.rs");
 include!("scripts/codegen.rs");
 include!("scripts/convert.rs");
+include!("scripts/example.rs");
 include!("scripts/source_text.rs");
 include!("scripts/swift.rs");
 include!("scripts/kotlin.rs");
