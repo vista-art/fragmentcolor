@@ -2271,6 +2271,7 @@ mod convert {
     /// `ScreenRegion.new((x, y), (w, h))` → an array literal.
     /// JS reads `[x, y, w, h]` as the origin and size `ScreenRegion::new` takes,
     /// while the Swift and Kotlin rewrites read `[(x, y), (w, h)]`.
+    /// Both read the second pair as the far corner, so they match Rust only at origin (0, 0).
     fn region_new_to_array(line: &str, lang: Lang) -> String {
         let needle = "ScreenRegion.new(";
         let Some(start) = line.find(needle) else {
