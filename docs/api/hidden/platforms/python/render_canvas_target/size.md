@@ -1,6 +1,6 @@
-# RenderCanvasTarget::size() -> [u32, u32]
+# RenderCanvasTarget::size() -> Size
 
-Returns the current size in pixels of the backing [WindowTarget](https://fragmentcolor.org/api/targets/windowtarget).
+Returns the current size in pixels of the backing [WindowTarget](https://fragmentcolor.org/api/targets/windowtarget) as a `Size`.
 
 ## Example
 
