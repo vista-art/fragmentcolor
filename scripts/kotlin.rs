@@ -16,19 +16,47 @@ mod kotlin {
     //!     coroutine scope (the healthcheck wrapper handles this).
     //!   - Import becomes `import org.fragmentcolor.*`.
     //!   - Trailing semicolons are optional and we strip them.
+    //!
+    //! Enum entries follow the flat uniffi enums.
+
+    use std::collections::BTreeMap;
+
+    use heck::ToShoutySnakeCase;
+
+    use crate::reflect::{Build, Reflection, StrConst};
+    use crate::source_text::read_ident;
 
     /// API facts the Kotlin rewrites read, derived from the source model.
     struct Facts {
         /// String constants the Kotlin bindings don't expose.
-        consts: Vec<crate::reflect::StrConst>,
+        consts: Vec<StrConst>,
+        /// Kotlin spelling of each flat enum entry,
+        /// keyed by its Rust and its Kotlin spelling.
+        enums: BTreeMap<String, BTreeMap<String, String>>,
     }
 
     static FACTS: std::sync::OnceLock<Facts> = std::sync::OnceLock::new();
 
     /// Derive the Kotlin rewrites' API facts. Runs once before any example converts.
-    pub fn install(model: &crate::reflect::Reflection) {
+    pub fn install(model: &Reflection) {
+        let enums = model
+            .flat_enums(Build::Android)
+            .into_iter()
+            .map(|e| {
+                let spellings = e
+                    .variants
+                    .iter()
+                    .flat_map(|v| {
+                        let entry = v.to_shouty_snake_case();
+                        [(v.clone(), entry.clone()), (entry.clone(), entry)]
+                    })
+                    .collect();
+                (e.ident, spellings)
+            })
+            .collect();
         let _ = FACTS.set(Facts {
-            consts: model.str_consts(crate::reflect::Build::Android),
+            consts: model.str_consts(Build::Android),
+            enums,
         });
     }
 
@@ -209,11 +237,7 @@ mod kotlin {
         out = rewrite_setclearcolor_array(&out);
         out = rewrite_shader_set_array(&out);
         out = rewrite_readtexture_to_getimage(&out);
-        out = rewrite_textureformat_camel_to_screaming(&out);
-        // Uniffi exposes Rust enum variants in SCREAMING_SNAKE_CASE on Kotlin —
-        // mirror what `TextureFormat` already does for `AlphaMode`. Run before
-        // any float-list conversion so the variant lookups parse cleanly.
-        out = rewrite_alphamode_variant_to_screaming(&out);
+        out = rewrite_flat_enum_variants(&out);
         // `mesh.setIndices(arrayOf(0, 1, 2))` must become
         // `mesh.setIndices(listOf(0u, 1u, 2u))` — indices are UInt on the
         // uniffi binding. Run BEFORE rewrite_arrayof_float_to_listof so we
@@ -275,6 +299,34 @@ mod kotlin {
     /// A Kotlin string literal holding `value`; `$` would start a template.
     fn kotlin_quoted(value: &str) -> String {
         crate::convert::quoted(value).replace('$', "\\$")
+    }
+
+    /// `AlphaMode.Mask` → `AlphaMode.MASK`. uniffi renders a flat enum
+    /// as an `enum class` whose entries are in SCREAMING_SNAKE_CASE.
+    fn rewrite_flat_enum_variants(line: &str) -> String {
+        let mut out = line.to_string();
+        for (ident, spellings) in &facts().enums {
+            let needle = format!("{ident}.");
+            let mut done = String::with_capacity(out.len());
+            let mut rest = out.as_str();
+            while let Some(at) = rest.find(&needle) {
+                done.push_str(&rest[..at]);
+                let bounded = !done.ends_with(|c: char| is_ident_char(c) || c == '.');
+                done.push_str(&needle);
+                rest = &rest[at + needle.len()..];
+                let (variant, end) = read_ident(rest, 0);
+                if bounded && !variant.is_empty() {
+                    let entry = spellings
+                        .get(variant)
+                        .unwrap_or_else(|| panic!("kotlin: `{ident}.{variant}` names no variant of {ident}"));
+                    done.push_str(entry);
+                    rest = &rest[end..];
+                }
+            }
+            done.push_str(rest);
+            out = done;
+        }
+        out
     }
 
     /// Kotlin's `for` loop requires parens around the in-pattern, unlike
@@ -478,12 +530,12 @@ mod kotlin {
         match parts.as_slice() {
             [size_expr, format_expr] => {
                 let size = parse_size_to_kotlin(size_expr.trim());
-                let fmt = rewrite_textureformat_camel_to_screaming(format_expr.trim());
+                let fmt = rewrite_flat_enum_variants(format_expr.trim());
                 format!("{}({}, {}, null, null){}", before, size, fmt, after_tuple)
             }
             [size_expr, format_expr, data_expr] => {
                 let size = parse_size_to_kotlin(size_expr.trim());
-                let fmt = rewrite_textureformat_camel_to_screaming(format_expr.trim());
+                let fmt = rewrite_flat_enum_variants(format_expr.trim());
                 let data = convert_array_to_bytearray(data_expr.trim());
                 format!("{}({}, {}, {}, null){}", before, size, fmt, data, after_tuple)
             }
@@ -671,13 +723,13 @@ mod kotlin {
 
         match parts.as_slice() {
             [bytes_expr, format_expr] => {
-                let fmt = rewrite_textureformat_camel_to_screaming(format_expr.trim());
+                let fmt = rewrite_flat_enum_variants(format_expr.trim());
                 // Bytes could be raw variable or arrayOf — wrap in ByteArray if needed
                 let b = bytes_to_bytearray(bytes_expr.trim());
                 format!("{}({}, {}, null){}", before, b, fmt, after_tuple)
             }
             [bytes_expr, format_expr, size_expr] => {
-                let fmt = rewrite_textureformat_camel_to_screaming(format_expr.trim());
+                let fmt = rewrite_flat_enum_variants(format_expr.trim());
                 let b = bytes_to_bytearray(bytes_expr.trim());
                 let size = parse_size_to_kotlin(size_expr.trim());
                 format!("{}({}, {}, {}){}", before, b, fmt, size, after_tuple)
@@ -1168,30 +1220,6 @@ mod kotlin {
         None
     }
 
-    /// Mirror `rewrite_textureformat_camel_to_screaming` for `AlphaMode`.
-    /// `AlphaMode.Mask` → `AlphaMode.MASK`, `AlphaMode.Blend` → `AlphaMode.BLEND`,
-    /// `AlphaMode.Opaque` → `AlphaMode.OPAQUE`. Uniffi's Kotlin codegen uppercases
-    /// enum variants, so the doc source's `AlphaMode::Mask` (which the convert
-    /// layer rewrites to `AlphaMode.Mask`) has to be matched here.
-    fn rewrite_alphamode_variant_to_screaming(line: &str) -> String {
-        let needle = "AlphaMode.";
-        let mut result = String::with_capacity(line.len());
-        let mut remaining = line;
-        while let Some(start) = remaining.find(needle) {
-            result.push_str(&remaining[..start + needle.len()]);
-            let rest = &remaining[start + needle.len()..];
-            let end = rest
-                .find(|c: char| !c.is_ascii_alphanumeric() && c != '_')
-                .unwrap_or(rest.len());
-            let variant = &rest[..end];
-            let screaming = camel_to_screaming_snake(variant);
-            result.push_str(&screaming);
-            remaining = &rest[end..];
-        }
-        result.push_str(remaining);
-        result
-    }
-
     /// `.setTransform(arrayOf(arrayOf(...), arrayOf(...), arrayOf(...), arrayOf(...)))`
     /// becomes `.setTransform(listOf(<16 floats>))`. The 4×4 row form reads
     /// well in source but the binding takes the column-major mat4 as a flat
@@ -1514,55 +1542,6 @@ mod kotlin {
             }
         }
         Some(result)
-    }
-
-    // Rewrite TextureFormat camelCase to SCREAMING_SNAKE_CASE for Kotlin enum.
-    // `TextureFormat.Rgba8UnormSrgb` → `TextureFormat.RGBA8_UNORM_SRGB`
-    // `TextureFormat.Rgba` → `TextureFormat.RGBA` (Kotlin enum)
-    fn rewrite_textureformat_camel_to_screaming(line: &str) -> String {
-        let needle = "TextureFormat.";
-        let mut result = String::with_capacity(line.len());
-        let mut remaining = line;
-        while let Some(start) = remaining.find(needle) {
-            result.push_str(&remaining[..start + needle.len()]);
-            let rest = &remaining[start + needle.len()..];
-            let end = rest.find(|c: char| !c.is_ascii_alphanumeric() && c != '_').unwrap_or(rest.len());
-            let variant = &rest[..end];
-            let screaming = camel_to_screaming_snake(variant);
-            result.push_str(&screaming);
-            remaining = &rest[end..];
-        }
-        result.push_str(remaining);
-        result
-    }
-
-    // Convert CamelCase to SCREAMING_SNAKE_CASE.
-    // `Rgba8UnormSrgb` → `RGBA8_UNORM_SRGB`
-    // `Rgba` → `RGBA` (but actually in the enum it's just `RGBA`)
-    fn camel_to_screaming_snake(s: &str) -> String {
-        // If already all-caps or all-caps + digits/underscore, return as-is
-        if s.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_') {
-            return s.to_string();
-        }
-        let mut out = String::with_capacity(s.len() * 2);
-        let chars: Vec<char> = s.chars().collect();
-        for (i, &c) in chars.iter().enumerate() {
-            if c.is_ascii_uppercase() && i > 0 {
-                // Insert underscore before uppercase letter unless previous was also uppercase
-                // or previous was a digit (handles cases like `RGBA8` → don't add _ after digit)
-                let prev = chars[i - 1];
-                if !prev.is_ascii_uppercase() && !prev.is_ascii_digit() {
-                    out.push('_');
-                } else if i + 1 < chars.len() && chars[i + 1].is_ascii_lowercase() {
-                    // e.g. `RGBa` — uppercase followed by lowercase in sequence
-                    out.push('_');
-                }
-            } else if c.is_ascii_digit() && i > 0 && chars[i - 1].is_ascii_alphabetic() {
-                // Don't insert underscore before digit — `Rgba8` → `RGBA8` not `RGBA_8`
-            }
-            out.push(c.to_ascii_uppercase());
-        }
-        out
     }
 
     // `Instance.new()` → `Instance()` (drop `.new`)

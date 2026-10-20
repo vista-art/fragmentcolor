@@ -1110,6 +1110,14 @@ mod reflect {
         pub params: Vec<Type>,
     }
 
+    /// A uniffi enum whose variants carry no data. Kotlin renders it
+    /// as an `enum class` and every other uniffi enum as a sealed class.
+    pub struct FlatEnum {
+        pub ident: String,
+        /// Variant names as Rust spells them.
+        pub variants: Vec<String>,
+    }
+
     impl Reflection {
         /// Functions the uniffi bindings export in `build`.
         pub fn uniffi_fns(&self, build: Build) -> Vec<UniffiFn> {
@@ -1136,6 +1144,22 @@ mod reflect {
                 .collect()
         }
 
+        /// Enums that derive `uniffi::Enum` in `build`
+        /// and have only unit variants once the variants' own `cfg`s apply.
+        pub fn flat_enums(&self, build: Build) -> Vec<FlatEnum> {
+            self.types_in(build)
+                .filter(|t| t.kind == TypeKind::Enum && derives_uniffi(&t.attrs, build, "Enum"))
+                .filter_map(|t| {
+                    let variants: Vec<&VariantDef> =
+                        t.variants.iter().filter(|v| v.cfg.holds(build)).collect();
+                    variants.iter().all(|v| v.is_unit).then(|| FlatEnum {
+                        ident: t.ident.clone(),
+                        variants: variants.iter().map(|v| v.ident.clone()).collect(),
+                    })
+                })
+                .collect()
+        }
+
         /// Every function of a uniffi export block in `build`, with its type.
         fn uniffi_defs(&self, build: Build) -> impl Iterator<Item = (&str, &FnDef)> {
             self.binding_impls(build, build.binding_attr()).flat_map(move |imp| {
@@ -1150,6 +1174,25 @@ mod reflect {
     /// The name uniffi gives a function: its `name` argument or Rust name, in lowerCamelCase.
     fn uniffi_name(f: &FnDef, build: Build) -> String {
         exported_name(f, build).to_lower_camel_case()
+    }
+
+    /// Whether `attrs` derive `uniffi::{name}` in `build`.
+    fn derives_uniffi(attrs: &[Attribute], build: Build, name: &str) -> bool {
+        metas(attrs, build).iter().any(|m| {
+            let Meta::List(list) = m else {
+                return false;
+            };
+            list.path.is_ident("derive")
+                && list
+                    .parse_args_with(Punctuated::<syn::Path, Token![,]>::parse_terminated)
+                    .is_ok_and(|paths| {
+                        paths.iter().any(|p| {
+                            let segments: Vec<String> =
+                                p.segments.iter().map(|s| s.ident.to_string()).collect();
+                            segments == ["uniffi", name]
+                        })
+                    })
+        })
     }
 
     /// Parameter types after the receiver.
