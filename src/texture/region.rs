@@ -103,6 +103,8 @@ impl TextureRegion {
 
     /// Set `bytes_per_row` for source data with row padding.
     /// It must be at least the region width times the bytes per pixel.
+    /// When unset, rows are tightly packed unless the data is exactly the size
+    /// of rows padded to 256 bytes, in which case they read at the padded stride.
     pub fn with_stride(mut self, bytes_per_row: u32) -> Self {
         self.bytes_per_row = Some(bytes_per_row);
         self

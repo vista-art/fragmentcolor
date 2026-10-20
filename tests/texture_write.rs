@@ -71,6 +71,55 @@ fn texture_write_tightly_packed_round_trip() {
 }
 
 #[test]
+fn texture_write_padded_rows_without_stride() {
+    pollster::block_on(async move {
+        let r = Renderer::new();
+        let tex = r
+            .create_storage_texture(([3u32, 2u32], TextureFormat::Rgba))
+            .await
+            .expect("create storage tex");
+        // Each 12-byte row padded to 256, with exactly height * 256 bytes
+        let tight: Vec<u8> = (0..3u8 * 2 * 4).collect();
+        let mut padded = vec![0xEEu8; 256 * 2];
+        padded[..12].copy_from_slice(&tight[..12]);
+        padded[256..256 + 12].copy_from_slice(&tight[12..]);
+        tex.write(&padded).expect("padded write");
+
+        let image = tex.get_image().await.expect("read back");
+        assert_eq!(image, tight);
+    });
+}
+
+#[test]
+fn texture_write_region_padded_rows_without_stride() {
+    pollster::block_on(async move {
+        let r = Renderer::new();
+        let tex = r
+            .create_storage_texture(([4u32, 3u32], TextureFormat::Rgba))
+            .await
+            .expect("create storage tex");
+        let clear = vec![0u8; 4 * 3 * 4];
+        tex.write(&clear).expect("clear");
+
+        // A 2x2 rectangle at (1, 1), each 8-byte row padded to 256
+        let mut padded = vec![0xEEu8; 256 * 2];
+        padded[..8].copy_from_slice(&[1, 2, 3, 4, 5, 6, 7, 8]);
+        padded[256..256 + 8].copy_from_slice(&[9, 10, 11, 12, 13, 14, 15, 16]);
+        tex.write_region(&padded, [1u32, 1, 2, 2])
+            .expect("padded region write");
+
+        let image = tex.get_image().await.expect("read back");
+        let row = |y: usize| &image[y * 16..(y + 1) * 16];
+        assert_eq!(row(0), &[0u8; 16]);
+        assert_eq!(row(1), &[0, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 0, 0, 0, 0]);
+        assert_eq!(
+            row(2),
+            &[0, 0, 0, 0, 9, 10, 11, 12, 13, 14, 15, 16, 0, 0, 0, 0]
+        );
+    });
+}
+
+#[test]
 fn texture_write_tightly_packed_too_small() {
     pollster::block_on(async move {
         let r = Renderer::new();

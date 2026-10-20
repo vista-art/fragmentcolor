@@ -53,8 +53,15 @@ pub(super) fn write(
         ));
     }
 
-    // Only buffer copies need 256-byte rows. Queue::write_texture takes
-    // any stride, so rows are tightly packed unless the caller sets one.
+    // Compute or validate layout
+    let rows_per_image = region.rows_per_image.unwrap_or(region.size[1]);
+    if let Some(rpi) = region.rows_per_image
+        && rpi < region.size[1]
+    {
+        return Err(TextureError::Error(
+            "rows_per_image must be greater than or equal to region height".into(),
+        ));
+    }
     let row_stride = region.size[0].saturating_mul(bpp);
     let bytes_per_row = match region.bytes_per_row {
         Some(bpr) => {
@@ -65,16 +72,8 @@ pub(super) fn write(
             }
             bpr
         }
-        None => row_stride,
+        None => default_stride(data.len(), row_stride, rows_per_image, region.size[2]),
     };
-    let rows_per_image = region.rows_per_image.unwrap_or(region.size[1]);
-    if let Some(rpi) = region.rows_per_image
-        && rpi < region.size[1]
-    {
-        return Err(TextureError::Error(
-            "rows_per_image must be greater than or equal to region height".into(),
-        ));
-    }
 
     // Required minimum size per WebGPU: bpr*(h-1) + width_in_bytes + (depth-1)*rows_per_image*bpr
     let width_in_bytes = (region.size[0] as u64).saturating_mul(bpp as u64);
@@ -119,4 +118,20 @@ pub(super) fn write(
     );
 
     Ok(())
+}
+
+/// Row stride for data passed without `bytes_per_row`.
+/// Rows are tightly packed, since `Queue::write_texture` takes any stride.
+/// Data sized exactly for rows padded to 256 bytes reads at the padded stride.
+fn default_stride(len: usize, row_stride: u32, rows_per_image: u32, depth: u32) -> u32 {
+    let align = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
+    let padded = row_stride.div_ceil(align).saturating_mul(align);
+    let padded_len = (padded as u64)
+        .saturating_mul(rows_per_image as u64)
+        .saturating_mul(depth as u64);
+    if padded != row_stride && len as u64 == padded_len {
+        padded
+    } else {
+        row_stride
+    }
 }
