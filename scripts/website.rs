@@ -822,6 +822,10 @@ mod website {
         // doesn't transitively re-export Foundation symbols into this file.
         swift_out.push_str("import Foundation\n");
         swift_out.push_str("import FragmentColor\n");
+        for import in example_imports(&root.join("platforms/swift/examples"), &swift_list, &swift_out) {
+            swift_out.push_str(&import);
+            swift_out.push('\n');
+        }
         swift_out.push('\n');
         swift_out.push_str("@available(iOS 16.0, *)\n");
         swift_out.push_str("private enum _GeneratedExamples {\n");
@@ -889,7 +893,15 @@ mod website {
         k_out.push('\n');
         k_out.push_str("import androidx.test.ext.junit.runners.AndroidJUnit4\n");
         k_out.push_str("import org.junit.Test\n");
-        k_out.push_str("import org.junit.runner.RunWith\n\n");
+        k_out.push_str("import org.junit.runner.RunWith\n");
+        let kotlin_dir = root.join("platforms/kotlin/examples");
+        // The aggregator sits in the package itself.
+        let in_package = "import org.fragmentcolor.*\n".to_string() + &k_out;
+        for import in example_imports(&kotlin_dir, &kotlin_list, &in_package) {
+            k_out.push_str(&import);
+            k_out.push('\n');
+        }
+        k_out.push('\n');
         k_out.push_str("@RunWith(AndroidJUnit4::class)\n");
         k_out.push_str("class GeneratedExamples {\n");
         k_out.push_str("    @Test\n");
@@ -920,6 +932,22 @@ mod website {
         }
         k_out.push_str("}\n");
         let _ = super::meta::write_if_changed(&kotlin_aggregator_path, &k_out);
+    }
+
+    /// The import lines of the examples at `rels` under `dir`
+    /// that `header` doesn't import yet, sorted, each once.
+    fn example_imports(dir: &std::path::Path, rels: &[String], header: &str) -> Vec<String> {
+        let imported: std::collections::BTreeSet<&str> = header.lines().collect();
+        let mut imports = std::collections::BTreeSet::new();
+        for rel in rels {
+            let body = std::fs::read_to_string(dir.join(rel)).unwrap_or_default();
+            for line in body.lines().map(str::trim) {
+                if line.starts_with("import ") && !imported.contains(line) {
+                    imports.insert(line.to_string());
+                }
+            }
+        }
+        imports.into_iter().collect()
     }
 
     fn ident_slug(s: &str) -> String {
