@@ -1267,7 +1267,19 @@ mod kotlin {
         if !ident.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
             return line.to_string();
         }
-        format!("{}for ({} in {}) {{", indent, ident, rest)
+        format!("{}for ({} in {}) {{", indent, ident, kotlin_range(rest))
+    }
+
+    /// A Rust range in Kotlin: `a..b` → `a until b` and `a..=b` → `a..b`.
+    /// Anything else stays as written.
+    fn kotlin_range(expr: &str) -> String {
+        match expr.split_once("..") {
+            Some((lo, hi)) if !hi.contains("..") => match hi.strip_prefix('=') {
+                Some(hi) => format!("{}..{}", lo.trim(), hi.trim()),
+                None => format!("{} until {}", lo.trim(), hi.trim()),
+            },
+            _ => expr.to_string(),
+        }
     }
 
     // Drop `.unwrap()` — Kotlin uses exceptions, not Result types.

@@ -20,7 +20,7 @@ mod swift {
     //! 8. `document.createElement("canvas")` lines → dropped (iOS has no DOM).
     //!    The subsequent `createTarget(canvas)` → `createTextureTarget([800, 600])`.
     //! 9. `TextureRegion` → `TextureRegionMobile`, the mobile-only type that converts into it.
-    //! 10. `x..y` range operator → `x...y` (Swift uses `...` not `..`).
+    //! 10. `x..y` range → `x..<y`, and `x..=y` → `x...y`.
     //! 11. `.Rgba` / `.Rgba8UnormSrgb` enum case first-letter lowercasing.
     //! 12. `.unwrap()` on a throwing init → `try!` prefix.
     //! 13. `Vertex.new([...])` → `Vertex([...])`
@@ -471,9 +471,8 @@ mod swift {
             out = replace_whole_word(&out, &s.ty, &s.stand_in);
         }
 
-        // 10. `x..y` Rust exclusive-range operator → `x...y` (Swift closed range `...`).
-        //     Only rewrite `..` when NOT preceded or followed by `.` (avoids `...`).
-        out = fix_rust_range_operator(&out);
+        // 10. `x..y` → `x..<y` and `x..=y` → `x...y`.
+        out = swift_ranges(&out);
 
         // 11. Enum case first-letter lowercasing: `.Rgba` → `.rgba`, `.Rgba8UnormSrgb` → `.rgba8UnormSrgb`.
         //     Applies to patterns like `TextureFormat.XYZ` or `.XYZ` in call argument position.
@@ -513,33 +512,32 @@ mod swift {
         crate::reflect::inline_str_consts(line, &facts().consts, crate::convert::quoted)
     }
 
-    /// Fix Rust `x..y` exclusive-range into Swift `x...y` (closed range).
-    /// We use a simple scan: `..` that is not already `...` becomes `...`.
-    fn fix_rust_range_operator(line: &str) -> String {
-        let chars: Vec<char> = line.chars().collect();
+    /// Rust ranges in Swift: `a..b` → `a..<b` and `a..=b` → `a...b`.
+    /// Strings, comments and the full-range slice `[..]` stay as written.
+    fn swift_ranges(line: &str) -> String {
+        let code = code_only(line);
         let mut out = String::with_capacity(line.len() + 4);
-        let mut i = 0usize;
-        while i < chars.len() {
-            // Look for `..` that is not already `...`
-            if i + 1 < chars.len() && chars[i] == '.' && chars[i + 1] == '.' {
-                if i + 2 < chars.len() && chars[i + 2] == '.' {
-                    // Already `...`, pass through.
-                    out.push('.');
-                    out.push('.');
-                    out.push('.');
-                    i += 3;
-                } else {
-                    // Bare `..` → `...`
-                    out.push('.');
-                    out.push('.');
-                    out.push('.');
-                    i += 2;
-                }
-                continue;
+        let mut last = 0;
+        let mut at = 0;
+        while let Some(found) = code[at..].find("..").map(|p| at + p) {
+            let after = &code[found + 2..];
+            let (swift, len) = if after.starts_with('.') {
+                (None, 3)
+            } else if code[..found].ends_with('[') && after.starts_with(']') {
+                (None, 2)
+            } else if after.starts_with('=') {
+                (Some("..."), 3)
+            } else {
+                (Some("..<"), 2)
+            };
+            if let Some(swift) = swift {
+                out.push_str(&line[last..found]);
+                out.push_str(swift);
+                last = found + len;
             }
-            out.push(chars[i]);
-            i += 1;
+            at = found + len;
         }
+        out.push_str(&line[last..]);
         out
     }
 
@@ -680,38 +678,13 @@ mod swift {
     }
 
     /// Strip Rust slice / `as_slice()` notation that has no equivalent in Swift:
-    /// - `identifier[...]`  → `identifier`  (full-range borrow `&x[..]` after `&`-strip → `x[...]`)
+    /// - `identifier[..]`   → `identifier`  (full-range borrow `&x[..]` after `&`-strip)
     /// - `.asSlice()`        → ``            (Rust `.as_slice()` method — just drop it)
     fn strip_rust_slice_notation(line: &str) -> String {
         // 1. Remove `.asSlice()` (comes from Rust `.as_slice()` transliterated by to_js).
         let line = line.replace(".asSlice()", "");
-        // 2. Remove `[...]` when it's a full-range slice: `ident[...]` → `ident`.
-        //    We look for `]` at end of word preceded by `[...]` (exactly three dots).
-        let mut out = String::with_capacity(line.len());
-        let chars: Vec<char> = line.chars().collect();
-        let mut i = 0usize;
-        while i < chars.len() {
-            // Look for `[...` pattern: opening bracket followed by exactly three dots
-            // and then `]` (no other content inside).
-            if chars[i] == '[' {
-                // Check if next chars are `...`
-                if i + 4 <= chars.len()
-                    && chars[i + 1] == '.'
-                    && chars[i + 2] == '.'
-                    && chars[i + 3] == '.'
-                {
-                    // Check if this `...` is followed immediately by `]`
-                    if i + 4 < chars.len() && chars[i + 4] == ']' {
-                        // Skip `[...]` entirely.
-                        i += 5;
-                        continue;
-                    }
-                }
-            }
-            out.push(chars[i]);
-            i += 1;
-        }
-        out
+        // 2. Remove the full-range slice: `ident[..]` → `ident`.
+        line.replace("[..]", "")
     }
 
     /// Prefix a statement with the `try` and `await` its calls need.
