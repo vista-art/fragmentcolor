@@ -65,7 +65,7 @@ class GeneratedExamples {
         pass.add(sun)
 
         // Updating the camera later is enough — every Model already on the pass
-        // picks the view_proj up at the next render.
+        // picks the new view_proj up at the next render.
         camera.lookAt(listOf(3.0f, 1.0f, 5.0f), listOf(0.0f, 0.0f, 0.0f), listOf(0.0f, 1.0f, 0.0f))
     }
 
@@ -903,7 +903,7 @@ class GeneratedExamples {
         val lamp = Light.point(listOf(0.0f, 2.0f, 0.0f), listOf(1.0f, 1.0f, 1.0f))
 
         // Warm-tint the lamp later — every Pass that absorbed """lamp""" sees the
-        // color on the next render.
+        // new color on the next render.
         lamp.setColor(listOf(1.0f, 0.7f, 0.4f))
     }
 
@@ -1209,7 +1209,7 @@ class GeneratedExamples {
         scene.add(sun)
 
         // Updating the camera later is enough — every shader on the scene picks
-        // the view_proj up at the next render.
+        // the new view_proj up at the next render.
         camera.lookAt(listOf(3.0f, 1.0f, 5.0f), listOf(0.0f, 0.0f, 0.0f), listOf(0.0f, 1.0f, 0.0f))
     }
 

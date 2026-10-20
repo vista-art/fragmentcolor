@@ -61,7 +61,7 @@ private enum _GeneratedExamples {
             try pass.add(sun)
 
             // Updating the camera later is enough — every Model already on the pass
-            // picks the view_proj up at the next render.
+            // picks the new view_proj up at the next render.
             try camera.lookAt([3.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
         }
     }
@@ -1096,7 +1096,7 @@ private enum _GeneratedExamples {
             let lamp = try Light.point([0.0, 2.0, 0.0], [1.0, 1.0, 1.0])
 
             // Warm-tint the lamp later — every Pass that absorbed """lamp""" sees the
-            // color on the next render.
+            // new color on the next render.
             try lamp.setColor([1.0, 0.7, 0.4])
         }
     }
@@ -1526,7 +1526,7 @@ private enum _GeneratedExamples {
             try scene.add(sun)
 
             // Updating the camera later is enough — every shader on the scene picks
-            // the view_proj up at the next render.
+            // the new view_proj up at the next render.
             try camera.lookAt([3.0, 1.0, 5.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0])
         }
     }

@@ -15,5 +15,5 @@ scene.add(camera)
 scene.add(sun)
 
 // Updating the camera later is enough — every shader on the scene picks
-// the view_proj up at the next render.
+// the new view_proj up at the next render.
 camera.lookAt(listOf(3.0f, 1.0f, 5.0f), listOf(0.0f, 0.0f, 0.0f), listOf(0.0f, 1.0f, 0.0f))
