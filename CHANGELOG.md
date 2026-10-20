@@ -81,6 +81,8 @@ Compute passes reuse their pipelines. The compute pipeline cache keyed on the me
 
 The Rust examples for `TextureTarget.size` and `TextureTarget.resize` compile, and the API pages print each generic type once. Only the Python, web, and mobile wrappers carry the two `TextureTarget` pages, so no Rust build checked their examples, which called the `Target` methods without importing the trait, compared a `Size` with an array, and compared the `Option<u32>` depth with `1`. The `size` heading now gives `depth` its `Option<u32>` type. The website export wraps a generic type such as `Vec<u8>` in a code span so MDX does not read it as a tag, but it also left the type's name in front of the span, so the `Target.get_image` heading read `Vec` twice and the `Pass`, `Shader`, and `Quad` pages repeated `Result` and `vec2`.
 
+Python `TextureTarget.get_image()` returns an array of shape `(height, width, 4)`, indexed `image[y, x]`. It returned `(width, height, 4)` indexed `[x, y]`, the transpose of what `Renderer.create_texture`, `Mipmap.build`, Pillow, and Matplotlib read, so `create_texture(target.get_image())` mirrored the image across its diagonal and swapped the width and height of a target that is not square. This breaks code that indexes the result as `[x, y]`. Swap the two indices, or call `image.transpose(1, 0, 2)` for the old layout. The array's memory now holds the same bytes that `get_image` returns in Rust, JavaScript, Swift, and Kotlin.
+
 ## 0.12.5: WebGL2 fixes
 
 A patch release that makes the WebGL2 fallback work. There are no API changes.
