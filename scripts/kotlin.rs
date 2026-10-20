@@ -702,17 +702,6 @@ mod kotlin {
                 continue;
             }
 
-            // HEADLESS guard: lines that use the browser DOM API (document.createElement)
-            // have no equivalent on Android. Replace the whole line with a comment so the
-            // function still compiles. The `createTarget(canvas)` call on the next line
-            // must also be removed — handled by rewrite_line via the createTarget pattern.
-            if trimmed.contains("document.createElement") {
-                let indent_len = line.len() - trimmed.len();
-                let indent = &line[..indent_len];
-                out.push(format!("{}// HEADLESS: canvas creation not needed on Android", indent));
-                continue;
-            }
-
             // Before rewriting: check if this line references any known hidden-doc variables
             // that were defined in `# ...` Rust lines (invisible to the transpiler). If so,
             // emit a stub declaration before the first reference to each such variable.

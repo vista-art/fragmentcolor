@@ -17,18 +17,16 @@ mod swift {
     //! 5. `const x = ...` → `let x = ...`.
     //! 6. `await foo(...)` → `try await foo(...)` (Swift requires `try` on async throws).
     //! 7. `null` → `nil`.
-    //! 8. `document.createElement("canvas")` lines → dropped (iOS has no DOM).
-    //!    The subsequent `createTarget(canvas)` → `createTextureTarget([800, 600])`.
-    //! 9. `TextureRegion` → `TextureRegionMobile`, the mobile-only type that converts into it.
-    //! 10. `x..y` range → `x..<y`, and `x..=y` → `x...y`.
-    //! 11. `.Rgba` / `.Rgba8UnormSrgb` enum case first-letter lowercasing.
-    //! 12. `.unwrap()` on a throwing init → `try!` prefix.
-    //! 13. `Vertex.new([...])` → `Vertex([...])`
+    //! 8. `TextureRegion` → `TextureRegionMobile`, the mobile-only type that converts into it.
+    //! 9. `x..y` range → `x..<y`, and `x..=y` → `x...y`.
+    //! 10. `.Rgba` / `.Rgba8UnormSrgb` enum case first-letter lowercasing.
+    //! 11. `.unwrap()` on a throwing init → `try!` prefix.
+    //! 12. `Vertex.new([...])` → `Vertex([...])`
     //!     when an unlabeled init takes those arguments.
-    //! 14. `try` / `await` before a statement whose calls throw or suspend.
+    //! 13. `try` / `await` before a statement whose calls throw or suspend.
     //!
-    //! Rule 9 reads the `From` impls of the types uniffi exports for iOS.
-    //! Rules 13 and 14 read the uniffi exports for iOS
+    //! Rule 8 reads the `From` impls of the types uniffi exports for iOS.
+    //! Rules 12 and 13 read the uniffi exports for iOS
     //! and the declarations in the hand-written `*+Extensions.swift` files.
 
     use std::collections::BTreeMap;
@@ -233,9 +231,6 @@ mod swift {
 
         let mut out: Vec<String> = Vec::with_capacity(js.lines().count());
         let mut has_fragmentcolor_import = false;
-        // Track if the previous non-empty line was a `document.createElement("canvas")` assignment.
-        // We need to know the variable name so we can rewrite `createTarget(<varname>)`.
-        let mut pending_canvas_var: Option<String> = None;
         let mut in_string = false;
 
         for raw in js.lines() {
@@ -249,7 +244,7 @@ mod swift {
                 out.push(raw.to_string());
                 continue;
             }
-            let mut line = raw.to_string();
+            let line = raw.to_string();
             let trimmed: String = line.trim_start().to_string();
 
             if trimmed.starts_with("import ") && trimmed.contains("from \"fragmentcolor\"") {
@@ -258,48 +253,6 @@ mod swift {
                     has_fragmentcolor_import = true;
                 }
                 continue;
-            }
-
-            // Drop lines that assign `document.createElement("canvas")` — iOS has no DOM.
-            // Keep a comment explaining why it was dropped so the healthcheck is readable.
-            if trimmed.contains("document.createElement") {
-                // Extract variable name for subsequent `createTarget` rewrite.
-                // Pattern: `const <varname> = document.createElement(...)` (JS) or
-                //           `let <varname> = document.createElement(...)` (already-processed)
-                for decl_prefix in &["const ", "let ", "var "] {
-                    if let Some(var_part) = trimmed.strip_prefix(decl_prefix)
-                        && let Some(eq_pos) = var_part.find('=') {
-                            let var_name = var_part[..eq_pos].trim().to_string();
-                            pending_canvas_var = Some(var_name);
-                            break;
-                        }
-                }
-                let indent: String = line.chars().take_while(|c| c.is_whitespace()).collect();
-                out.push(format!("{}// iOS: window/canvas provided by CAMetalLayer at runtime", indent));
-                continue;
-            }
-
-            // Replace `createTarget(<canvas_var>)` with `createTextureTarget([800, 600])`
-            // when we know the preceding line was a canvas assignment.
-            // Also drop any standalone `canvas.width = ..` / `canvas.height = ..` lines.
-            if let Some(ref cvar) = pending_canvas_var.clone() {
-                // Drop dimension-setting lines like `canvas.width = 100`
-                if trimmed.starts_with(cvar.as_str()) && (trimmed.contains(".width") || trimmed.contains(".height")) {
-                    let indent: String = line.chars().take_while(|c| c.is_whitespace()).collect();
-                    out.push(format!("{}// (size set via createTextureTarget)", indent));
-                    continue;
-                }
-                let pat = format!("createTarget({})", cvar);
-                if line.contains(&pat) {
-                    line = line.replace(&pat, "createTextureTarget([800, 600])");
-                    pending_canvas_var = None;
-                }
-                // Also handle trailing comma / paren variants.
-                let pat2 = format!("createTarget({},", cvar);
-                if line.contains(&pat2) {
-                    line = line.replace(&pat2, "createTextureTarget([800, 600],");
-                    pending_canvas_var = None;
-                }
             }
 
             out.push(rewrite_line(&line, starts_in_string));

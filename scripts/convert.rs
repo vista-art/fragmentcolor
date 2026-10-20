@@ -305,8 +305,7 @@ mod convert {
     /// produces a JS-shaped intermediate (Swift shares JS's control flow),
     /// then `swift::finalize` finishes the syntactic swaps that don't
     /// fit a per-line model — backtick template literals → `"""`,
-    /// `null` → `nil`, `try` insertion for throwing inits, the canvas →
-    /// `createTextureTarget` rewrite for headless examples, etc.
+    /// `null` → `nil`, `try` insertion for throwing inits, etc.
     pub fn to_swift(items: &[(String, bool)]) -> String {
         let ir = convert(items, Lang::Swift, /*aggressive_js_flatten=*/ false);
         super::swift::finalize(&ir)
@@ -1264,8 +1263,6 @@ mod convert {
         line: &str,
         lang: Lang,
         py_renames: &mut std::collections::HashMap<String, String>,
-        js_renames: &mut std::collections::HashMap<String, String>,
-        need_rendercanvas_import: &mut bool,
     ) -> Option<String> {
         let t = line.trim_start();
         if !t.starts_with("let ") {
@@ -1289,50 +1286,16 @@ mod convert {
         // Remove trailing ';'
         rhs = strip_trailing_semicolon(&rhs);
 
-        // Replace fragmentcolor headless helpers with native canvases
-        // Python: fragmentcolor::headless_window([w,h]) -> RenderCanvas(size=(w,h))
-        // JS: fragmentcolor.headlessWindow([w,h]) -> (()=>{const c=document.createElement('canvas');c.width=w;c.height=h;return c;})()
-        let rhs_lc = rhs.replace("::", ".");
-        if rhs_lc.contains("headless_window(") || rhs_lc.contains("headlessWindow(") {
-            match lang {
-                Lang::Py => {
-                    if let (Some(lp), Some(rp)) = (rhs.find('('), rhs.rfind(')')) {
-                        let inside = rhs[lp + 1..rp].trim();
-                        let inner = inside
-                            .trim_start_matches('[')
-                            .trim_end_matches(']')
-                            .trim_start_matches('(')
-                            .trim_end_matches(')')
-                            .trim();
-                        rhs = format!("RenderCanvas(size=({}))", inner);
-                        *need_rendercanvas_import = true;
-                        if var == "window" {
-                            // rename variable to canvas in Python output and future references
-                            py_renames.insert("window".into(), "canvas".into());
-                        }
-                    }
-                }
-                Lang::Js | Lang::Swift | Lang::Kotlin => {
-                    if let (Some(_), Some(_)) = (rhs.find('('), rhs.rfind(')')) {
-                        rhs = "document.createElement('canvas');".to_string();
-                        if var == "window" {
-                            js_renames.insert("window".into(), "canvas".into());
-                        }
-                    }
-                }
-            }
-        } else {
-            // Type::new(args)
-            if let Some(pos) = rhs.find("::new(") {
-                let ty = rhs[..pos].trim().rsplit("::").next().unwrap_or("");
-                let args_with = &rhs[pos + "::new(".len()..];
-                if let Some(endp) = args_with.rfind(')') {
-                    let args = &args_with[..endp];
-                    rhs = match lang {
-                        Lang::Js | Lang::Swift | Lang::Kotlin => format!("new {}({})", ty, args.trim()),
-                        Lang::Py => format!("{}({})", ty, args.trim()),
-                    };
-                }
+        // Type::new(args)
+        if let Some(pos) = rhs.find("::new(") {
+            let ty = rhs[..pos].trim().rsplit("::").next().unwrap_or("");
+            let args_with = &rhs[pos + "::new(".len()..];
+            if let Some(endp) = args_with.rfind(')') {
+                let args = &args_with[..endp];
+                rhs = match lang {
+                    Lang::Js | Lang::Swift | Lang::Kotlin => format!("new {}({})", ty, args.trim()),
+                    Lang::Py => format!("{}({})", ty, args.trim()),
+                };
             }
         }
         // UFCS associated calls remaining: Type::method( -> Type.method(
@@ -1385,25 +1348,13 @@ mod convert {
             rhs = replace_py_size_calls(&rhs);
         }
 
-        // Var rename for Python reserved keyword "pass" and window->canvas mapping
+        // Var rename for Python reserved keyword "pass"
         let var_out: &str = match lang {
-            Lang::Py => {
-                if var == "pass" {
-                    py_renames.insert("pass".into(), "rpass".into());
-                    "rpass"
-                } else if var == "window" && py_renames.get("window").is_some() {
-                    "canvas"
-                } else {
-                    var
-                }
+            Lang::Py if var == "pass" => {
+                py_renames.insert("pass".into(), "rpass".into());
+                "rpass"
             }
-            Lang::Js | Lang::Swift | Lang::Kotlin => {
-                if var == "window" && js_renames.get("window").is_some() {
-                    "canvas"
-                } else {
-                    var
-                }
-            }
+            _ => var,
         };
 
         // If RHS references the variable itself, use its renamed form for Python
@@ -1416,11 +1367,10 @@ mod convert {
         // Convert Rust vec! macros and Vec::new() in RHS to JS/Python arrays
         rhs = convert_vec_syntax(&rhs);
 
-        // Apply pending variable renames inside RHS for both languages (e.g., window->canvas)
-        rhs = match lang {
-            Lang::Py => apply_renames_py(&rhs, py_renames),
-            Lang::Js | Lang::Swift | Lang::Kotlin => apply_renames_py(&rhs, js_renames),
-        };
+        // Apply pending Python variable renames inside RHS (pass -> rpass)
+        if let Lang::Py = lang {
+            rhs = apply_renames_py(&rhs, py_renames);
+        }
 
         let mut line_out = match lang {
             Lang::Js | Lang::Swift | Lang::Kotlin => ensure_js_semicolon(&format!("const {} = {}", var_out, rhs)),
@@ -1522,7 +1472,6 @@ mod convert {
         start_idx: usize,
         lang: Lang,
         py_renames: &mut std::collections::HashMap<String, String>,
-        _js_renames: &mut std::collections::HashMap<String, String>,
     ) -> Option<(String, usize)> {
         let line = src.get(start_idx)?.as_str();
         let t = line.trim_start();
@@ -1795,8 +1744,6 @@ mod convert {
 
         let mut out: Vec<String> = Vec::new();
         let mut py_renames: HashMap<String, String> = HashMap::new();
-        let mut js_renames: HashMap<String, String> = HashMap::new();
-        let mut need_rendercanvas_import: bool = false;
 
         let mut idx = 0usize;
         while idx < src.len() {
@@ -1817,7 +1764,7 @@ mod convert {
 
             // Special-case: let var = Type::new(r#"..."#) with multi-line raw string
             if let Some((mapped, next_idx)) =
-                try_handle_raw_string_new(&src, idx, lang, &mut py_renames, &mut js_renames)
+                try_handle_raw_string_new(&src, idx, lang, &mut py_renames)
             {
                 out.push(mapped);
                 idx = next_idx;
@@ -1855,13 +1802,7 @@ mod convert {
             }
 
             // let assignments (single-line cases)
-            if let Some(mapped) = handle_let_assignment(
-                t,
-                lang,
-                &mut py_renames,
-                &mut js_renames,
-                &mut need_rendercanvas_import,
-            ) {
+            if let Some(mapped) = handle_let_assignment(t, lang, &mut py_renames) {
                 // Preserve the original line's leading whitespace so the
                 // mapped line stays inside any enclosing block (matters for
                 // Python where indentation is grammar). `handle_let_assignment`
@@ -1959,26 +1900,13 @@ mod convert {
                 }
             }
 
-            // 9) Apply var renames in Python/JS lines after we possibly introduced references
-            match lang {
-                Lang::Py => {
-                    line = apply_renames_py(&line, &py_renames);
-                }
-                Lang::Js | Lang::Swift | Lang::Kotlin => {
-                    line = apply_renames_py(&line, &js_renames);
-                }
+            // 9) Apply var renames in Python lines after we possibly introduced references
+            if let Lang::Py = lang {
+                line = apply_renames_py(&line, &py_renames);
             }
 
             out.push(line);
             idx += 1;
-        }
-
-        // Prepend RenderCanvas import if needed for Python examples
-        if need_rendercanvas_import {
-            let mut out2 = Vec::with_capacity(out.len() + 1);
-            out2.push("from rendercanvas.auto import RenderCanvas, loop".to_string());
-            out2.extend(out);
-            out = out2;
         }
 
         // Python: capitalize `true` / `false` to Python's `True` / `False`.
