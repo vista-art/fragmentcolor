@@ -849,7 +849,6 @@ mod kotlin {
         out = rewrite_flat_enum_variants(&out);
         out = rewrite_float_args(&out);
         out = rename_stand_ins(&out);
-        out = rewrite_write_region_array_arg(&out);
         out = rewrite_arrayof_float_to_listof(&out);
         out = drop_underscore_val(&out);
         // `Shader.new(...)` → `Shader(...)`, after the argument rewrites,
@@ -1996,63 +1995,6 @@ mod kotlin {
             .stand_ins
             .iter()
             .fold(line.to_string(), |out, s| replace_qualified(&out, &s.ty, &s.stand_in))
-    }
-
-    // `texture.writeRegion(bytes, arrayOf(x, y, w, h))` →
-    // `texture.writeRegion(bytes, TextureRegionMobile(x.toUInt(), y.toUInt(), 0u, w.toUInt(), h.toUInt(), 0u, null, null))`
-    // Also converts `bytes` to ByteArray if it's Array<Int>.
-    fn rewrite_write_region_array_arg(line: &str) -> String {
-        let needle = "writeRegion(";
-        let Some(start) = line.find(needle) else { return line.to_string(); };
-        let call_start = start + needle.len();
-        let chars: Vec<char> = line.chars().collect();
-
-        // Find the closing paren for the whole writeRegion call
-        let mut depth = 0i32;
-        let mut call_end = None;
-        let mut j = call_start;
-        while j < chars.len() {
-            match chars[j] {
-                '(' => depth += 1,
-                ')' => {
-                    if depth == 0 { call_end = Some(j); break; }
-                    depth -= 1;
-                }
-                _ => {}
-            }
-            j += 1;
-        }
-        let Some(call_end) = call_end else { return line.to_string(); };
-        let inner: String = chars[call_start..call_end].iter().collect();
-        let parts = split_args(&inner);
-        if parts.len() != 2 { return line.to_string(); }
-
-        let bytes_arg = parts[0].trim();
-        let region_arg = parts[1].trim();
-
-        // Only convert if region is an arrayOf(...)
-        if !region_arg.starts_with("arrayOf(") || !region_arg.ends_with(')') {
-            return line.to_string();
-        }
-
-        let array_inner = &region_arg["arrayOf(".len()..region_arg.len() - 1];
-        let coords = split_args(array_inner);
-        if coords.len() < 4 { return line.to_string(); }
-
-        let x = to_unsigned(coords[0].trim(), "UInt");
-        let y = to_unsigned(coords[1].trim(), "UInt");
-        let w = to_unsigned(coords[2].trim(), "UInt");
-        let h = to_unsigned(coords[3].trim(), "UInt");
-
-        let before = &line[..start];
-        let after: String = chars[call_end + 1..].iter().collect();
-
-        // bytes arg: if it's Array<Int> pattern, note we can't tell at transpile time;
-        // just pass through — ByteArray should come from rewrite_array_fill or context
-        format!(
-            "{}writeRegion({}, TextureRegionMobile({}, {}, 0u, {}, {}, 0u, null, null)){}",
-            before, bytes_arg, x, y, w, h, after
-        )
     }
 
     // Drop lines that are `val _ = ...` (Kotlin reserves `_`).
