@@ -4613,6 +4613,10 @@ class TextureTarget:
         """
         Returns the current contents of the target as a byte array in RGBA8 format.
 
+        Rows run from top to bottom with no padding, so the pixel at `(x, y)` starts at byte `(y * width + x) * 4`.
+
+        Python returns a NumPy array of shape `(height, width, 4)`, indexed `image[y, x]`. That is the layout `Renderer.create_texture` reads, so `renderer.create_texture(target.get_image())` uploads the same image.
+
         Example:
 
         ```python
