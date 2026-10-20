@@ -192,9 +192,11 @@ impl UniformBufferPool {
         }
     }
 
-    /// Resets the pool for reuse in the next frame.
+    /// Rewinds the write cursor to the start of the pool.
     ///
-    /// Must be called at the start or the end of every frame.
+    /// Call it once per render, before any pass uploads.
+    /// Uploads apply at the next submit, so a rewind between
+    /// passes of one submit lets later passes overwrite earlier ones.
     pub fn reset(&mut self) {
         self.current_chunk = 0;
         self.current_offset = 0;

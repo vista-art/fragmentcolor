@@ -794,6 +794,12 @@ impl RenderContext {
 
         let frame = self.acquire_frame(target)?;
 
+        // Uploads land at the next submit, so every pass recorded
+        // before it needs its own pool offsets. Rewind once per render:
+        // a rewind per pass makes every pass read the last pass's uniforms.
+        self.buffer_pool.write().reset();
+        self.storage_pool.write().reset();
+
         let pass_list = renderable.passes();
         // Apple's Metal driver does not reliably flush tile-based storage-texture writes between
         // two compute passes recorded in the same command buffer, so a subsequent sampled
@@ -1069,9 +1075,6 @@ impl RenderContext {
         frame: &dyn TargetFrame,
         size: wgpu::Extent3d,
     ) -> Result<(), RendererError> {
-        self.buffer_pool.write().reset();
-        self.storage_pool.write().reset();
-
         // Snapshot per-Model transforms for this Pass into GPU instance
         // buffers BEFORE begin_render_pass — the wgpu::Buffer handles need
         // to outlive the render_pass. Opaque/Mask entries collapse to one
@@ -1686,9 +1689,6 @@ impl RenderContext {
         pass: &PassObject,
     ) -> Result<(), RendererError> {
         // Similar resource binding as render pass, but no target
-        self.buffer_pool.write().reset();
-        self.storage_pool.write().reset();
-
         for (shader_index, shader) in pass.shaders.read().iter().enumerate() {
             shader.flush_pending();
             // Build or fetch pipeline

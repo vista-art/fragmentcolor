@@ -20,6 +20,7 @@ MSAA & resolves
 Bind groups & alignment
 - Sort bind group entries by binding index; create empty groups for expected-but-unused groups so indices stay stable.
 - Uniforms: align to `device.limits().min_uniform_buffer_offset_alignment`.
+- Uniform and storage pools rewind once per `render`, never per pass. `queue.write_buffer` applies at submit, so passes that share a submit need distinct offsets.
 - Storage buffers: bind the full buffer (`size: None`) to avoid backend padding surprises.
 - Push constants: prefer native push constants when the adapter supports them; fall back to a per-root uniform buffer otherwise (single source of truth in `PushMode`).
 
