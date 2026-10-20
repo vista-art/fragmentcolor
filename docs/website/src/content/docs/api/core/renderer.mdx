@@ -81,7 +81,7 @@ const target = await renderer.createTarget(canvas);
 const texture_target = await renderer.createTextureTarget([16, 16]);
 
 // RENDERING
-renderer.render(new Shader(""), texture_target);
+renderer.render(Shader.default(), texture_target);
 
 // That's it. Welcome to FragmentColor!
 
@@ -108,7 +108,7 @@ target = renderer.create_target(canvas)
 texture_target = renderer.create_texture_target([16, 16])
 
 # RENDERING
-renderer.render(Shader(""), texture_target)
+renderer.render(Shader.default(), texture_target)
 
 # That's it. Welcome to FragmentColor!
 
@@ -134,7 +134,7 @@ let target = try await renderer.createTextureTarget([800, 600])
 let texture_target = try await renderer.createTextureTarget([16, 16])
 
 // RENDERING
-try renderer.render(Shader(""), texture_target)
+try renderer.render(Shader.default(), texture_target)
 
 // That's it. Welcome to FragmentColor!
 `}
@@ -159,7 +159,7 @@ val target = renderer.createTextureTarget(800u, 600u)
 val texture_target = renderer.createTextureTarget(16u, 16u)
 
 // RENDERING
-renderer.render(Shader(""), texture_target)
+renderer.render(Shader.default(), texture_target)
 
 // That's it. Welcome to FragmentColor!
 `}
@@ -439,7 +439,7 @@ const renderer = new Renderer();
 // Create an offscreen texture target with a size of 64x64 pixels.
 const target = await renderer.createTextureTarget([64, 64]);
 
-renderer.render(new Shader(""), target);
+renderer.render(Shader.default(), target);
 
 // get the rendered image
 const image = await target.getImage();
@@ -453,7 +453,6 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from rendercanvas.auto import RenderCanvas, loop
 
 from fragmentcolor import Renderer, Shader
 renderer = Renderer()
@@ -461,7 +460,7 @@ renderer = Renderer()
 # Create an offscreen texture target with a size of 64x64 pixels.
 target = renderer.create_texture_target([64, 64])
 
-renderer.render(Shader(""), target)
+renderer.render(Shader.default(), target)
 
 # get the rendered image
 image = target.get_image()
@@ -482,7 +481,7 @@ let renderer = Renderer()
 // Create an offscreen texture target with a size of 64x64 pixels.
 let target = try await renderer.createTextureTarget([64, 64])
 
-try renderer.render(Shader(""), target)
+try renderer.render(Shader.default(), target)
 
 // get the rendered image
 let image = try await target.getImage()
@@ -502,7 +501,7 @@ val renderer = Renderer()
 // Create an offscreen texture target with a size of 64x64 pixels.
 val target = renderer.createTextureTarget(64u, 64u)
 
-renderer.render(Shader(""), target)
+renderer.render(Shader.default(), target)
 
 // get the rendered image
 val image = target.getImage()

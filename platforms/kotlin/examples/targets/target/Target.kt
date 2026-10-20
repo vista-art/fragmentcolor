@@ -9,5 +9,5 @@ val renderer = Renderer()
 val target = renderer.createTextureTarget(800u, 600u)
 
 // To animate, render again in your event loop...
-renderer.render(Shader(""), target)
-renderer.render(Shader(""), target)
+renderer.render(Shader.default(), target)
+renderer.render(Shader.default(), target)

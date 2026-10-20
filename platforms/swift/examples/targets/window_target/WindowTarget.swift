@@ -7,4 +7,4 @@ import FragmentColor
 let renderer = Renderer()
 let target = try await renderer.createTextureTarget([800, 600])
 
-try renderer.render(Shader(""), target)
+try renderer.render(Shader.default(), target)

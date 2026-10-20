@@ -79,7 +79,7 @@ class Renderer:
     texture_target = renderer.create_texture_target([16, 16])
 
     # RENDERING
-    renderer.render(Shader(""), texture_target)
+    renderer.render(Shader.default(), texture_target)
 
     # That's it. Welcome to FragmentColor!
     ```
@@ -135,15 +135,13 @@ class Renderer:
         Example:
 
         ```python
-        from rendercanvas.auto import RenderCanvas, loop
-
         from fragmentcolor import Renderer, Shader
         renderer = Renderer()
 
         # Create an offscreen texture target with a size of 64x64 pixels.
         target = renderer.create_texture_target([64, 64])
 
-        renderer.render(Shader(""), target)
+        renderer.render(Shader.default(), target)
 
         # get the rendered image
         image = target.get_image()
@@ -4680,13 +4678,11 @@ class RenderCanvasTarget:
         Example:
 
         ```python
-        from rendercanvas.auto import RenderCanvas, loop
-
         from fragmentcolor import Renderer, Shader
 
         renderer = Renderer()
         target = renderer.create_texture_target([16, 16])
-        renderer.render(Shader(""), target)
+        renderer.render(Shader.default(), target)
 
         image = target.get_image()
         ```

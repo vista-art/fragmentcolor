@@ -63,8 +63,8 @@ const canvas = document.createElement('canvas');
 const target = await renderer.createTarget(canvas);
 
 // To animate, render again in your event loop...
-renderer.render(new Shader(""), target);
-renderer.render(new Shader(""), target);
+renderer.render(Shader.default(), target);
+renderer.render(Shader.default(), target);
 
 `}
 lang="js"
@@ -114,8 +114,8 @@ let renderer = Renderer()
 let target = try await renderer.createTextureTarget([800, 600])
 
 // To animate, render again in your event loop...
-try renderer.render(Shader(""), target)
-try renderer.render(Shader(""), target)
+try renderer.render(Shader.default(), target)
+try renderer.render(Shader.default(), target)
 `}
 lang="swift"
 />
@@ -136,8 +136,8 @@ val renderer = Renderer()
 val target = renderer.createTextureTarget(800u, 600u)
 
 // To animate, render again in your event loop...
-renderer.render(Shader(""), target)
-renderer.render(Shader(""), target)
+renderer.render(Shader.default(), target)
+renderer.render(Shader.default(), target)
 `}
 lang="kotlin"
 />
@@ -191,7 +191,7 @@ import { Shader, Renderer } from "fragmentcolor";
 
 const renderer = new Renderer();
 const target = await renderer.createTextureTarget([16, 16]);
-renderer.render(new Shader(""), target);
+renderer.render(Shader.default(), target);
 
 const image = await target.getImage();
 
@@ -204,13 +204,12 @@ lang="js"
 <TabItem label="Python">
 <Code
 code={`
-from rendercanvas.auto import RenderCanvas, loop
 
 from fragmentcolor import Shader, Renderer
 
 renderer = Renderer()
 target = renderer.create_texture_target([16, 16])
-renderer.render(Shader(""), target)
+renderer.render(Shader.default(), target)
 
 image = target.get_image()
 
@@ -228,7 +227,7 @@ import FragmentColor
 
 let renderer = Renderer()
 let target = try await renderer.createTextureTarget([16, 16])
-try renderer.render(Shader(""), target)
+try renderer.render(Shader.default(), target)
 
 let image = try await target.getImage()
 `}
@@ -245,7 +244,7 @@ import org.fragmentcolor.*
 
 val renderer = Renderer()
 val target = renderer.createTextureTarget(16u, 16u)
-renderer.render(Shader(""), target)
+renderer.render(Shader.default(), target)
 
 val image = target.getImage()
 `}

@@ -278,7 +278,7 @@ private enum _GeneratedExamples {
             let texture_target = try await renderer.createTextureTarget([16, 16])
 
             // RENDERING
-            try renderer.render(Shader(""), texture_target)
+            try renderer.render(Shader.default(), texture_target)
 
             // That's it. Welcome to FragmentColor!
         }
@@ -344,7 +344,7 @@ private enum _GeneratedExamples {
             // Create an offscreen texture target with a size of 64x64 pixels.
             let target = try await renderer.createTextureTarget([64, 64])
 
-            try renderer.render(Shader(""), target)
+            try renderer.render(Shader.default(), target)
 
             // get the rendered image
             let image = try await target.getImage()
@@ -1807,8 +1807,8 @@ private enum _GeneratedExamples {
             let target = try await renderer.createTextureTarget([800, 600])
 
             // To animate, render again in your event loop...
-            try renderer.render(Shader(""), target)
-            try renderer.render(Shader(""), target)
+            try renderer.render(Shader.default(), target)
+            try renderer.render(Shader.default(), target)
         }
     }
 
@@ -1818,7 +1818,7 @@ private enum _GeneratedExamples {
 
             let renderer = Renderer()
             let target = try await renderer.createTextureTarget([16, 16])
-            try renderer.render(Shader(""), target)
+            try renderer.render(Shader.default(), target)
 
             let image = try await target.getImage()
         }
@@ -1897,7 +1897,7 @@ private enum _GeneratedExamples {
             let renderer = Renderer()
             let target = try await renderer.createTextureTarget([800, 600])
 
-            try renderer.render(Shader(""), target)
+            try renderer.render(Shader.default(), target)
         }
     }
 
@@ -1907,7 +1907,7 @@ private enum _GeneratedExamples {
 
             let renderer = Renderer()
             let target = try await renderer.createTextureTarget([16, 16])
-            try renderer.render(Shader(""), target)
+            try renderer.render(Shader.default(), target)
 
             let image = try await target.getImage()
         }

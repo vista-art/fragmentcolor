@@ -1851,29 +1851,6 @@ mod convert {
             // 1.1) Convert Vec syntax (vec![], Vec::new()) into JS/Py arrays
             line = convert_vec_syntax(&line);
 
-            // 3) Handling for Shader::default();
-            if line.contains("Shader::default()")
-                || line.contains("Shader.default()")
-                || line.contains("fragmentcolor::Shader::default()")
-                || line.contains("fragmentcolor::Shader.default()")
-            {
-                line = match lang {
-                    Lang::Js | Lang::Swift | Lang::Kotlin => line
-                        .replace("Shader::default()", "new Shader(\"\")")
-                        .replace("fragmentcolor::Shader::default()", "new Shader(\"\")")
-                        .replace("Shader.default()", "new Shader(\"\")")
-                        .replace("fragmentcolor::Shader.default()", "new Shader(\"\")"),
-                    Lang::Py => {
-                        // Add import at the top later if needed
-                        need_rendercanvas_import = true;
-                        line.replace("Shader::default()", "Shader(\"\")")
-                            .replace("fragmentcolor::Shader::default()", "Shader(\"\")")
-                            .replace("Shader.default()", "Shader(\"\")")
-                            .replace("fragmentcolor::Shader.default()", "Shader(\"\")")
-                    }
-                };
-            }
-
             // 4) Strip refs
             // Python fix: map std.fs.read(path) -> open(path, "rb").read()
             if let Lang::Py = lang

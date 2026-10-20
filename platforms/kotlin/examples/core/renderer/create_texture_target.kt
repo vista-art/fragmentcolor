@@ -5,7 +5,7 @@ val renderer = Renderer()
 // Create an offscreen texture target with a size of 64x64 pixels.
 val target = renderer.createTextureTarget(64u, 64u)
 
-renderer.render(Shader(""), target)
+renderer.render(Shader.default(), target)
 
 // get the rendered image
 val image = target.getImage()

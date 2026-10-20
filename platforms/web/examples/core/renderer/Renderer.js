@@ -11,6 +11,6 @@ const target = await renderer.createTarget(canvas);
 const texture_target = await renderer.createTextureTarget([16, 16]);
 
 // RENDERING
-renderer.render(new Shader(""), texture_target);
+renderer.render(Shader.default(), texture_target);
 
 // That's it. Welcome to FragmentColor!

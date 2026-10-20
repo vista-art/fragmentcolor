@@ -250,7 +250,7 @@ class GeneratedExamples {
         val texture_target = renderer.createTextureTarget(16u, 16u)
 
         // RENDERING
-        renderer.render(Shader(""), texture_target)
+        renderer.render(Shader.default(), texture_target)
 
         // That's it. Welcome to FragmentColor!
     }
@@ -306,7 +306,7 @@ class GeneratedExamples {
         // Create an offscreen texture target with a size of 64x64 pixels.
         val target = renderer.createTextureTarget(64u, 64u)
 
-        renderer.render(Shader(""), target)
+        renderer.render(Shader.default(), target)
 
         // get the rendered image
         val image = target.getImage()
@@ -1432,8 +1432,8 @@ class GeneratedExamples {
         val target = renderer.createTextureTarget(800u, 600u)
 
         // To animate, render again in your event loop...
-        renderer.render(Shader(""), target)
-        renderer.render(Shader(""), target)
+        renderer.render(Shader.default(), target)
+        renderer.render(Shader.default(), target)
     }
 
     @Suppress("unused") private suspend fun _example_targets_target_get_image() {
@@ -1441,7 +1441,7 @@ class GeneratedExamples {
 
         val renderer = Renderer()
         val target = renderer.createTextureTarget(16u, 16u)
-        renderer.render(Shader(""), target)
+        renderer.render(Shader.default(), target)
 
         val image = target.getImage()
     }
@@ -1510,7 +1510,7 @@ class GeneratedExamples {
         val renderer = Renderer()
         val target = renderer.createTextureTarget(800u, 600u)
 
-        renderer.render(Shader(""), target)
+        renderer.render(Shader.default(), target)
     }
 
     @Suppress("unused") private suspend fun _example_targets_window_target_get_image() {
@@ -1518,7 +1518,7 @@ class GeneratedExamples {
 
         val renderer = Renderer()
         val target = renderer.createTextureTarget(16u, 16u)
-        renderer.render(Shader(""), target)
+        renderer.render(Shader.default(), target)
 
         val image = target.getImage()
     }

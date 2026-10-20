@@ -11,6 +11,6 @@ val target = renderer.createTextureTarget(800u, 600u)
 val texture_target = renderer.createTextureTarget(16u, 16u)
 
 // RENDERING
-renderer.render(Shader(""), texture_target)
+renderer.render(Shader.default(), texture_target)
 
 // That's it. Welcome to FragmentColor!
