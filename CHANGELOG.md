@@ -79,6 +79,8 @@ Compute passes reuse their pipelines. The compute pipeline cache keyed on the me
 
 `TextureOptions.sampler` takes effect when a texture is created. `Renderer.create_texture` and `Renderer.create_storage_texture` built every texture with the default sampler and dropped the options they were given, so a texture wrapped and filtered as asked only after a call to `Texture.set_sampler_options`. Textures loaded from glTF use the wrap and filter settings of their glTF sampler. glTF repeats by default, so UVs outside 0 to 1 now tile the texture where they used to clamp to its edge.
 
+The Rust examples for `TextureTarget.size` and `TextureTarget.resize` compile, and the API pages print each generic type once. Only the Python, web, and mobile wrappers carry the two `TextureTarget` pages, so no Rust build checked their examples, which called the `Target` methods without importing the trait, compared a `Size` with an array, and compared the `Option<u32>` depth with `1`. The `size` heading now gives `depth` its `Option<u32>` type. The website export wraps a generic type such as `Vec<u8>` in a code span so MDX does not read it as a tag, but it also left the type's name in front of the span, so the `Target.get_image` heading read `Vec` twice and the `Pass`, `Shader`, and `Quad` pages repeated `Result` and `vec2`.
+
 ## 0.12.5: WebGL2 fixes
 
 A patch release that makes the WebGL2 fallback work. There are no API changes.
