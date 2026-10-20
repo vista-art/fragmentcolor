@@ -19,5 +19,5 @@ try mesh.addVertices([
   [ 0.0,  0.5, 0.0],
 ])
 
-try shader.validateMesh(mesh); // Ok
+try shader.validateMesh(mesh) // Ok
 try pass.addMesh(mesh)

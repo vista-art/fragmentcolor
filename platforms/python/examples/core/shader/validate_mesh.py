@@ -19,5 +19,5 @@ mesh.add_vertices([
   [ 0.0,  0.5, 0.0],
 ])
 
-shader.validate_mesh(mesh); # Ok
+shader.validate_mesh(mesh) # Ok
 rpass.add_mesh(mesh)

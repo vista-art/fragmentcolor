@@ -7,4 +7,4 @@ try mesh.addVertex(
 )
 
 let model = Model(mesh, Material.pbr())
-try model.rotate([0.0, 1.0, 0.0], 1.571); // 90° around Y
+try model.rotate([0.0, 1.0, 0.0], 1.571) // 90° around Y

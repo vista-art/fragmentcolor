@@ -160,13 +160,13 @@ class GeneratedExamples {
         val target = renderer.createTextureTarget(100u, 100u)
         val color = Pass("color")
         val blurx = Pass("blur_x")
-        blurx.require(color); // color before blur_x
+        blurx.require(color) // color before blur_x
         val blury = Pass("blur_y")
-        blury.require(blurx); // blur_x before blur_y
+        blury.require(blurx) // blur_x before blur_y
         val compose = Pass("compose")
         compose.require(color)
-        compose.require(blury); // fan-in; color and blur_y before compose
-        renderer.render(compose, target); // compose renders last
+        compose.require(blury) // fan-in; color and blur_y before compose
+        renderer.render(compose, target) // compose renders last
     }
 
     @Suppress("unused") private suspend fun _example_core_pass_set_clear_color() {
@@ -675,7 +675,7 @@ class GeneratedExamples {
         val mesh = Mesh()
         mesh.addVertices(listOf(Vertex(listOf(-0.5f, -0.5f, 0.0f)), Vertex(listOf(0.5f, -0.5f, 0.0f)), Vertex(listOf(0.0f, 0.5f, 0.0f))))
 
-        shader.validateMesh(mesh); // Ok
+        shader.validateMesh(mesh) // Ok
         pass.addMesh(mesh)
     }
 
@@ -719,7 +719,7 @@ class GeneratedExamples {
         val mesh = Mesh()
         mesh.addVertices(listOf(Vertex(listOf(-0.5f, -0.5f)), Vertex(listOf(0.5f, -0.5f)), Vertex(listOf(0.0f, 0.5f))))
         mesh.setIndices(listOf(0u, 1u, 2u))
-        mesh.clearIndices(); // back to auto-derived dedup
+        mesh.clearIndices() // back to auto-derived dedup
     }
 
     @Suppress("unused") private suspend fun _example_geometry_mesh_clear_instances() {
@@ -727,7 +727,7 @@ class GeneratedExamples {
         val m = Mesh()
         val red = listOf(1.0f, 0.0f, 0.0f, 1.0f)
         m.addInstance(Instance().set("tint", red))
-        m.clearInstances(); // back to a single uninstanced draw
+        m.clearInstances() // back to a single uninstanced draw
     }
 
     @Suppress("unused") private suspend fun _example_geometry_mesh_from_vertices() {
@@ -1091,7 +1091,7 @@ class GeneratedExamples {
     @Suppress("unused") private suspend fun _example_scene_material_uv_transform() {
 
         // Tile the texture 4× in both directions, rotate 45°, shift by half a tile.
-        val brick = Material.pbr().uvTransform(listOf(0.5f, 0.0f), listOf(4.0f, 4.0f), 0.785f); // 45° in radians
+        val brick = Material.pbr().uvTransform(listOf(0.5f, 0.0f), listOf(4.0f, 4.0f), 0.785f) // 45° in radians
     }
 
     @Suppress("unused") private suspend fun _example_scene_model_material() {
@@ -1127,7 +1127,7 @@ class GeneratedExamples {
         mesh.addVertex( Vertex(listOf(0.0f, 0.0f, 0.0f)).set("normal", floatArrayOf(0.0f, 1.0f, 0.0f)).set("uv0", floatArrayOf(0.0f, 0.0f)), )
 
         val model = Model(mesh, Material.pbr())
-        model.rotate(listOf(0.0f, 1.0f, 0.0f), 1.571f); // 90° around Y
+        model.rotate(listOf(0.0f, 1.0f, 0.0f), 1.571f) // 90° around Y
     }
 
     @Suppress("unused") private suspend fun _example_scene_model_scale() {

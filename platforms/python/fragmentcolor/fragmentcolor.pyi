@@ -801,7 +801,7 @@ class Shader:
           [ 0.0,  0.5, 0.0],
         ])
 
-        shader.validate_mesh(mesh); # Ok
+        shader.validate_mesh(mesh) # Ok
         rpass.add_mesh(mesh)
         ```
         """
@@ -1335,13 +1335,13 @@ class Pass:
         target = renderer.create_texture_target([100,100])
         color = Pass("color")
         blurx = Pass("blur_x")
-        blurx.require(color); # color before blur_x
+        blurx.require(color) # color before blur_x
         blury = Pass("blur_y")
-        blury.require(blurx); # blur_x before blur_y
+        blury.require(blurx) # blur_x before blur_y
         compose = Pass("compose")
         compose.require(color)
-        compose.require(blury); # fan-in; color and blur_y before compose
-        renderer.render(compose, target); # compose renders last
+        compose.require(blury) # fan-in; color and blur_y before compose
+        renderer.render(compose, target) # compose renders last
         ```
         """
     def renderable_type(self) -> str: ...
@@ -1519,7 +1519,7 @@ class Mesh:
         m = Mesh()
         red = [1.0, 0.0, 0.0, 1.0]
         m.add_instance(Instance().set("tint", red))
-        m.clear_instances(); # back to a single uninstanced draw
+        m.clear_instances() # back to a single uninstanced draw
         ```
         """
     def set_instance_count(self, n: int) -> None:
@@ -1606,7 +1606,7 @@ class Mesh:
             Vertex([ 0.0,  0.5]),
         ])
         mesh.set_indices([0, 1, 2])
-        mesh.clear_indices(); # back to auto-derived dedup
+        mesh.clear_indices() # back to auto-derived dedup
         ```
         """
     def renderable_type(self) -> str: ...
@@ -2799,7 +2799,7 @@ class Model:
         )
 
         model = Model(mesh, Material.pbr())
-        model.rotate([0.0, 1.0, 0.0], 1.571); # 90° around Y
+        model.rotate([0.0, 1.0, 0.0], 1.571) # 90° around Y
         ```
         """
     def scale(self, factor: Sequence[float]) -> None:
@@ -3961,7 +3961,7 @@ class Material:
         from fragmentcolor import Material
 
         # Tile the texture 4× in both directions, rotate 45°, shift by half a tile.
-        brick = Material.pbr().uv_transform([0.5, 0.0], [4.0, 4.0], 0.785); # 45° in radians
+        brick = Material.pbr().uv_transform([0.5, 0.0], [4.0, 4.0], 0.785) # 45° in radians
         ```
         """
     def alpha_mode(self, mode: AlphaMode) -> Material:

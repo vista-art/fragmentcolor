@@ -675,7 +675,7 @@ import { Mesh, Instance } from "fragmentcolor";
 const m = new Mesh();
 const red = [1.0, 0.0, 0.0, 1.0];
 m.addInstance(new Instance().set("tint", red));
-m.clearInstances(); // back to a single uninstanced draw;
+m.clearInstances(); // back to a single uninstanced draw
 `}
 lang="js"
 />
@@ -690,7 +690,7 @@ from fragmentcolor import Mesh, Instance
 m = Mesh()
 red = [1.0, 0.0, 0.0, 1.0]
 m.add_instance(Instance().set("tint", red))
-m.clear_instances(); # back to a single uninstanced draw
+m.clear_instances() # back to a single uninstanced draw
 `}
 lang="python"
 />
@@ -705,7 +705,7 @@ import FragmentColor
 let m = Mesh()
 let red = [1.0, 0.0, 0.0, 1.0]
 try m.addInstance(Instance().set("tint", red))
-m.clearInstances(); // back to a single uninstanced draw
+m.clearInstances() // back to a single uninstanced draw
 `}
 lang="swift"
 />
@@ -720,7 +720,7 @@ import org.fragmentcolor.*
 val m = Mesh()
 val red = listOf(1.0f, 0.0f, 0.0f, 1.0f)
 m.addInstance(Instance().set("tint", red))
-m.clearInstances(); // back to a single uninstanced draw
+m.clearInstances() // back to a single uninstanced draw
 `}
 lang="kotlin"
 />
@@ -1019,7 +1019,7 @@ import { Mesh, Vertex } from "fragmentcolor";
 const mesh = new Mesh();
 mesh.addVertices([ new Vertex([-0.5, -0.5]), new Vertex([ 0.5, -0.5]), new Vertex([ 0.0,  0.5]), ]);
 mesh.setIndices([0, 1, 2]);
-mesh.clearIndices(); // back to auto-derived dedup;
+mesh.clearIndices(); // back to auto-derived dedup
 `}
 lang="js"
 />
@@ -1038,7 +1038,7 @@ mesh.add_vertices([
     Vertex([ 0.0,  0.5]),
 ])
 mesh.set_indices([0, 1, 2])
-mesh.clear_indices(); # back to auto-derived dedup
+mesh.clear_indices() # back to auto-derived dedup
 `}
 lang="python"
 />
@@ -1057,7 +1057,7 @@ try mesh.addVertices([
     try Vertex([ 0.0,  0.5]),
 ])
 mesh.setIndices([0, 1, 2])
-mesh.clearIndices(); // back to auto-derived dedup
+mesh.clearIndices() // back to auto-derived dedup
 `}
 lang="swift"
 />
@@ -1072,7 +1072,7 @@ import org.fragmentcolor.*
 val mesh = Mesh()
 mesh.addVertices(listOf(Vertex(listOf(-0.5f, -0.5f)), Vertex(listOf(0.5f, -0.5f)), Vertex(listOf(0.0f, 0.5f))))
 mesh.setIndices(listOf(0u, 1u, 2u))
-mesh.clearIndices(); // back to auto-derived dedup
+mesh.clearIndices() // back to auto-derived dedup
 `}
 lang="kotlin"
 />

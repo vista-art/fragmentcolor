@@ -176,13 +176,13 @@ private enum _GeneratedExamples {
             let target = try await renderer.createTextureTarget([100,100])
             let color = Pass("color")
             let blurx = Pass("blur_x")
-            try blurx.require(color); // color before blur_x
+            try blurx.require(color) // color before blur_x
             let blury = Pass("blur_y")
-            try blury.require(blurx); // blur_x before blur_y
+            try blury.require(blurx) // blur_x before blur_y
             let compose = Pass("compose")
             try compose.require(color)
-            try compose.require(blury); // fan-in; color and blur_y before compose
-            try renderer.render(compose, target); // compose renders last
+            try compose.require(blury) // fan-in; color and blur_y before compose
+            try renderer.render(compose, target) // compose renders last
         }
     }
 
@@ -772,7 +772,7 @@ private enum _GeneratedExamples {
               [ 0.0,  0.5, 0.0],
             ])
 
-            try shader.validateMesh(mesh); // Ok
+            try shader.validateMesh(mesh) // Ok
             try pass.addMesh(mesh)
         }
     }
@@ -839,7 +839,7 @@ private enum _GeneratedExamples {
                 try Vertex([ 0.0,  0.5]),
             ])
             mesh.setIndices([0, 1, 2])
-            mesh.clearIndices(); // back to auto-derived dedup
+            mesh.clearIndices() // back to auto-derived dedup
         }
     }
 
@@ -849,7 +849,7 @@ private enum _GeneratedExamples {
             let m = Mesh()
             let red = [1.0, 0.0, 0.0, 1.0]
             try m.addInstance(Instance().set("tint", red))
-            m.clearInstances(); // back to a single uninstanced draw
+            m.clearInstances() // back to a single uninstanced draw
         }
     }
 
@@ -1361,7 +1361,7 @@ private enum _GeneratedExamples {
         do {
 
             // Tile the texture 4× in both directions, rotate 45°, shift by half a tile.
-            let brick = try Material.pbr().uvTransform([0.5, 0.0], [4.0, 4.0], 0.785); // 45° in radians
+            let brick = try Material.pbr().uvTransform([0.5, 0.0], [4.0, 4.0], 0.785) // 45° in radians
         }
     }
 
@@ -1415,7 +1415,7 @@ private enum _GeneratedExamples {
             )
 
             let model = Model(mesh, Material.pbr())
-            try model.rotate([0.0, 1.0, 0.0], 1.571); // 90° around Y
+            try model.rotate([0.0, 1.0, 0.0], 1.571) // 90° around Y
         }
     }
 

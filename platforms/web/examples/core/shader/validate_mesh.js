@@ -16,5 +16,5 @@ const pass = Pass.fromShader("p", shader);
 const mesh = new Mesh();
 mesh.addVertices([ [-0.5, -0.5, 0.0], [ 0.5, -0.5, 0.0], [ 0.0,  0.5, 0.0], ]);
 
-shader.validateMesh(mesh); // Ok;
+shader.validateMesh(mesh); // Ok
 pass.addMesh(mesh);

@@ -2072,7 +2072,7 @@ const pass = Pass.fromShader("p", shader);
 const mesh = new Mesh();
 mesh.addVertices([ [-0.5, -0.5, 0.0], [ 0.5, -0.5, 0.0], [ 0.0,  0.5, 0.0], ]);
 
-shader.validateMesh(mesh); // Ok;
+shader.validateMesh(mesh); // Ok
 pass.addMesh(mesh);
 
 `}
@@ -2105,7 +2105,7 @@ mesh.add_vertices([
   [ 0.0,  0.5, 0.0],
 ])
 
-shader.validate_mesh(mesh); # Ok
+shader.validate_mesh(mesh) # Ok
 rpass.add_mesh(mesh)
 
 `}
@@ -2138,7 +2138,7 @@ try mesh.addVertices([
   [ 0.0,  0.5, 0.0],
 ])
 
-try shader.validateMesh(mesh); // Ok
+try shader.validateMesh(mesh) // Ok
 try pass.addMesh(mesh)
 `}
 lang="swift"
@@ -2166,7 +2166,7 @@ val pass = Pass.fromShader("p", shader)
 val mesh = Mesh()
 mesh.addVertices(listOf(Vertex(listOf(-0.5f, -0.5f, 0.0f)), Vertex(listOf(0.5f, -0.5f, 0.0f)), Vertex(listOf(0.0f, 0.5f, 0.0f))))
 
-shader.validateMesh(mesh); // Ok
+shader.validateMesh(mesh) // Ok
 pass.addMesh(mesh)
 `}
 lang="kotlin"
