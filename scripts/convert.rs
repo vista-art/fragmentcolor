@@ -2,7 +2,7 @@ mod convert {
     use std::collections::{BTreeMap, BTreeSet};
 
     use crate::reflect::{Build, Reflection, StrConst, inline_str_consts};
-    use crate::source_text::{closing, is_ident_char, split_args};
+    use crate::source_text::{Nesting, arg_spans, closing, is_ident_char, split_args};
     use crate::js_region_new_to_array;
 
     /// API facts the converter reads, derived from the source model.
@@ -11,6 +11,8 @@ mod convert {
         js_consts: Vec<StrConst>,
         /// Names an example can import from `fragmentcolor` in JS.
         js_exports: BTreeSet<String>,
+        /// The argument positions where every JS method of a name takes a flat list of numbers.
+        js_flat_lists: BTreeMap<String, BTreeSet<usize>>,
         /// Names an example can import from `fragmentcolor` in Python.
         py_exports: BTreeSet<String>,
         /// The parameters of each Python method, by name, one list per method of that name.
@@ -24,6 +26,7 @@ mod convert {
         let _ = FACTS.set(Facts {
             js_consts: model.str_consts(Build::Wasm),
             js_exports: model.wasm_exports(),
+            js_flat_lists: flat_list_positions(model.wasm_methods()),
             py_exports: model.python_exports(&crate::meta::workspace_root()),
             py_methods: model.python_methods().into_iter().fold(BTreeMap::new(), |mut by_name, m| {
                 by_name.entry(m.name).or_insert_with(Vec::new).push(m.params);
@@ -79,11 +82,10 @@ mod convert {
         // generic `::` → `.` pass; the top-level handler only rewrites
         // `let x = Type::new(...)`. Promote any leftover `Type.new(` (e.g.
         // `scene.add(Model.new(...))`) to the JS `new Type(...)` form. And
-        // flatten a `[[f32;4];4]` mat4 literal to the flat 16-float array the
-        // `setTransform` binding expects (mirrors scripts/kotlin.rs).
+        // flatten rows of numbers where the binding takes a flat list.
         let out = out
             .lines()
-            .map(|l| rewrite_settransform_mat4_flatten_js(&rewrite_dotnew_to_new_js(l)))
+            .map(|l| flatten_rows_js(&rewrite_dotnew_to_new_js(l)))
             .collect::<Vec<_>>()
             .join("\n")
             + if out.ends_with('\n') { "\n" } else { "" };
@@ -189,68 +191,109 @@ mod convert {
         out
     }
 
-    /// Flatten a `[[…], […], […], […]]` 4×4 mat4 literal passed to
-    /// `setTransform(...)` into the flat 16-float array the wasm-bindgen
-    /// binding expects (`Vec<f32>`). The Rust source writes the readable row
-    /// form; Kotlin does the same flatten (`rewrite_settransform_mat4_flatten`).
-    fn rewrite_settransform_mat4_flatten_js(line: &str) -> String {
-        let needle = ".setTransform([";
-        let Some(start) = line.find(needle) else {
-            return line.to_string();
-        };
-        let chars: Vec<char> = line.chars().collect();
-        // Index of the outer `[` (last char of the needle).
-        let open = start + needle.chars().count() - 1;
-        let Some(close) = match_bracket_js(&chars, open) else {
-            return line.to_string();
-        };
-        // The `setTransform(` paren must close immediately after the array.
-        if close + 1 >= chars.len() || chars[close + 1] != ')' {
-            return line.to_string();
+    /// `model.setTransform([[1, 0], [0, 1]])` → `model.setTransform([1, 0, 0, 1])`
+    /// where every JS method of that name takes a flat list of numbers at that position.
+    fn flatten_rows_js(line: &str) -> String {
+        let mut out = line.to_string();
+        for (name, positions) in &facts().js_flat_lists {
+            let needle = format!(".{name}(");
+            let mut done = String::with_capacity(out.len());
+            let mut rest = out.as_str();
+            while let Some(at) = rest.find(&needle) {
+                let open = at + needle.len() - 1;
+                let Some(close) = closing(rest, open) else {
+                    break;
+                };
+                let inner = &rest[open + 1..close];
+                done.push_str(&rest[..=open]);
+                let mut last = 0;
+                for (k, span) in arg_spans(inner, Nesting::Call).into_iter().enumerate() {
+                    done.push_str(&inner[last..span.start]);
+                    let arg = &inner[span.clone()];
+                    let flat = positions.contains(&k).then(|| flat_numbers(arg.trim())).flatten();
+                    match flat {
+                        Some(flat) => {
+                            let lead = arg.len() - arg.trim_start().len();
+                            done.push_str(&arg[..lead]);
+                            done.push_str(&flat);
+                            done.push_str(&arg[lead + arg.trim().len()..]);
+                        }
+                        None => done.push_str(arg),
+                    }
+                    last = span.end;
+                }
+                done.push_str(&inner[last..]);
+                done.push(')');
+                rest = &rest[close + 1..];
+            }
+            done.push_str(rest);
+            out = done;
         }
-        // Collect numeric tokens, ignoring the inner `[` `]` row delimiters.
-        let inner: String = chars[open + 1..close]
-            .iter()
-            .map(|&c| if c == '[' || c == ']' { ' ' } else { c })
-            .collect();
-        let nums: Vec<String> = inner
-            .split(',')
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty())
-            .collect();
-        if nums.len() != 16 || !nums.iter().all(|n| n.parse::<f64>().is_ok()) {
-            return line.to_string();
-        }
-        let prefix: String = chars[..start].iter().collect();
-        let suffix: String = chars[close + 2..].iter().collect();
-        format!("{}.setTransform([{}]){}", prefix, nums.join(", "), suffix)
+        out
     }
 
-    /// Return the index of the `]` matching the `[` at `open`, ignoring
-    /// brackets inside string literals.
-    fn match_bracket_js(chars: &[char], open: usize) -> Option<usize> {
-        let mut depth = 0usize;
-        let mut in_string: Option<char> = None;
-        for (i, &c) in chars.iter().enumerate().skip(open) {
-            if let Some(q) = in_string {
-                if c == q && chars[i - 1] != '\\' {
-                    in_string = None;
-                }
-                continue;
-            }
-            match c {
-                '"' | '\'' | '`' => in_string = Some(c),
-                '[' => depth += 1,
-                ']' => {
-                    depth -= 1;
-                    if depth == 0 {
-                        return Some(i);
-                    }
-                }
-                _ => {}
-            }
+    /// `[[1, 0], [0, 1]]` → `[1, 0, 0, 1]`: the numbers of an array literal of rows, in order.
+    /// `None` for a literal without rows, or with anything but numbers in them.
+    fn flat_numbers(arg: &str) -> Option<String> {
+        let inner = arg.strip_prefix('[')?.strip_suffix(']')?;
+        if !inner.trim_start().starts_with('[') {
+            return None;
         }
-        None
+        let nums: Vec<&str> = inner
+            .split(['[', ']', ','])
+            .map(str::trim)
+            .filter(|n| !n.is_empty())
+            .collect();
+        nums.iter()
+            .all(|n| n.parse::<f64>().is_ok())
+            .then(|| format!("[{}]", nums.join(", ")))
+    }
+
+    /// The positions where every method of a name takes a flat list of numbers,
+    /// such as the `Vec<f32>` of `Model.setTransform`, by method name.
+    fn flat_list_positions(methods: Vec<(String, Vec<syn::Type>)>) -> BTreeMap<String, BTreeSet<usize>> {
+        let mut by_name: BTreeMap<String, Vec<Vec<syn::Type>>> = BTreeMap::new();
+        for (name, params) in methods {
+            by_name.entry(name).or_default().push(params);
+        }
+        by_name
+            .into_iter()
+            .map(|(name, overloads)| {
+                let widest = overloads.iter().map(Vec::len).max().unwrap_or(0);
+                let positions = (0..widest)
+                    .filter(|&k| overloads.iter().all(|params| params.get(k).is_some_and(is_number_list)))
+                    .collect();
+                (name, positions)
+            })
+            .filter(|(_, positions): &(String, BTreeSet<usize>)| !positions.is_empty())
+            .collect()
+    }
+
+    /// Whether `ty` is a `Vec` or slice of a primitive number type.
+    fn is_number_list(ty: &syn::Type) -> bool {
+        let element = match crate::reflect::strip_type(ty) {
+            syn::Type::Slice(slice) => &*slice.elem,
+            syn::Type::Path(p) => match p.path.segments.last() {
+                Some(segment) if segment.ident == "Vec" => match &segment.arguments {
+                    syn::PathArguments::AngleBracketed(args) => match args.args.first() {
+                        Some(syn::GenericArgument::Type(t)) => t,
+                        _ => return false,
+                    },
+                    _ => return false,
+                },
+                _ => return false,
+            },
+            _ => return false,
+        };
+        let syn::Type::Path(p) = element else {
+            return false;
+        };
+        p.path.get_ident().is_some_and(|ident| {
+            matches!(
+                ident.to_string().as_str(),
+                "f32" | "f64" | "u8" | "u16" | "u32" | "u64" | "i8" | "i16" | "i32" | "i64"
+            )
+        })
     }
 
     pub fn to_py(items: &[(String, bool)]) -> String {

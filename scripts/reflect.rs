@@ -1254,6 +1254,16 @@ mod reflect {
             types.chain(fns).collect()
         }
 
+        /// The methods of the `#[wasm_bindgen]` impl blocks: the name JS calls each by,
+        /// and its parameter types after the receiver.
+        pub fn wasm_methods(&self) -> Vec<(String, Vec<Type>)> {
+            self.binding_impls(Build::Wasm, "wasm_bindgen")
+                .flat_map(|imp| imp.fns.iter())
+                .filter(|f| f.cfg.holds(Build::Wasm) && f.sig.receiver().is_some())
+                .map(|f| (exported_name(f, Build::Wasm), typed_params(&f.sig)))
+                .collect()
+        }
+
         /// The methods of the `#[pymethods]` blocks, with the parameters Python passes.
         pub fn python_methods(&self) -> Vec<PyMethod> {
             self.binding_impls(Build::Python, "pymethods")
