@@ -156,6 +156,38 @@ def check_ndarray_layouts(renderer):
     print("ndarray texture bytes read in row-major order for every layout")
 
 
+EDGES_SHADER = """
+@vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  let p = array<vec2<f32>,3>(vec2f(-1.,-1.), vec2f(3.,-1.), vec2f(-1.,3.));
+  return vec4f(p[i], 0., 1.);
+}
+@fragment fn main(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
+  return vec4f(select(0., 1., pos.x < 1.), select(0., 1., pos.y < 1.), 0., 1.);
+}
+"""
+
+
+def check_image_layout(renderer):
+    """get_image returns (height, width, 4) rows top to bottom, the layout create_texture reads."""
+    target = renderer.create_texture_target([3, 2])
+    renderer.render(Shader(EDGES_SHADER), target)
+    image = target.get_image()
+    assert image.shape == (2, 3, 4), f"get_image shape {image.shape}, expected (height, width, 4)"
+    assert image.flags["C_CONTIGUOUS"]
+    assert (image[:, 0, 0] == 255).all() and (image[:, 1:, 0] == 0).all(), "red is not the left column"
+    assert (image[0, :, 1] == 255).all() and (image[1:, :, 1] == 0).all(), "green is not the top row"
+    assert image.tobytes() == bytes(target.texture().get_image())
+
+    texture = renderer.create_texture(image, format=TextureFormat.Rgba)
+    assert (texture.size.width, texture.size.height) == (3, 2)
+    shader = Shader(LOAD_TEXELS_SHADER)
+    shader.set("tex", texture)
+    copy = renderer.create_texture_target([3, 2])
+    renderer.render(shader, copy)
+    assert np.array_equal(copy.get_image(), image), "create_texture(get_image()) changed the image"
+    print("get_image returns (height, width, 4) and round-trips through create_texture")
+
+
 INTEGER_ATTRIBUTES_SHADER = """
 struct VOut {
   @builtin(position) pos: vec4<f32>,
@@ -323,8 +355,8 @@ fn main(pixel: VertexOutput) -> @location(0) vec4<f32> {
     image = target.get_image()
     print(f"Image shape: {image.shape}, dtype: {image.dtype}")
     assert image.ndim == 3
-    assert image.shape[0] == 32
-    assert image.shape[1] == 64
+    assert image.shape[0] == 64  # height
+    assert image.shape[1] == 32  # width
     assert image.shape[2] == 4
     assert image.dtype == np.dtype(np.uint8)
 
@@ -398,6 +430,7 @@ fn main(v: VOut) -> @location(0) vec4<f32> {
     check_sampler_options(tex)
     check_size(renderer, tex)
     check_ndarray_layouts(renderer)
+    check_image_layout(renderer)
     check_vertex_values()
     check_mesh_inputs()
 

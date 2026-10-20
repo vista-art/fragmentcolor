@@ -13,7 +13,7 @@ This README is specific to the PyPI package. For Rust usage, see the repository 
 pip install fragmentcolor rendercanvas glfw
 ```
 
-NumPy installs with the package as a required dependency. `TextureTarget.get_image()` returns its pixels as a NumPy array, and `Renderer.create_texture` accepts one as input.
+NumPy installs with the package as a required dependency. `TextureTarget.get_image()` returns its pixels as a NumPy array of shape `(height, width, 4)`, and `Renderer.create_texture` accepts one as input.
 
 ## Quick start
 

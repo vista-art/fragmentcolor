@@ -222,7 +222,7 @@ impl PyTextureTarget {
         PyTargetFrame { format }
     }
 
-    /// Read back the RGBA image as a Python list of ints (byte values).
+    /// Read back the RGBA image as a `(height, width, 4)` uint8 NumPy array.
     #[lsp_doc("docs/api/targets/texture_target/get_image.md")]
     pub fn get_image(&self) -> Result<Py<numpy::PyArray3<u8>>, PyErr> {
         const BPP: usize = 4; // Bytes per pixel (RGBA8)
@@ -239,22 +239,8 @@ impl PyTextureTarget {
         }
 
         Python::attach(|py| -> Result<Py<numpy::PyArray3<u8>>, PyErr> {
-            // SAFETY: https://docs.rs/numpy/0.26.0/numpy/array/type.PyArray2.html#safety
-            let arr = unsafe {
-                let arr = numpy::PyArray3::<u8>::new(py, (width, height, BPP), false);
-
-                for w in 0..width {
-                    for h in 0..height {
-                        for p in 0..BPP {
-                            arr.uget_raw([w, h, p])
-                                .write(data[(h * width + w) * BPP + p]);
-                        }
-                    }
-                }
-
-                arr
-            };
-
+            // The readback is row-major, so it takes the image shape without a copy.
+            let arr = numpy::PyArray1::from_vec(py, data).reshape([height, width, BPP])?;
             Ok(arr.unbind())
         })
     }
