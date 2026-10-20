@@ -53,6 +53,8 @@ Shaders that share a source get one pipeline per vertex layout. The pipeline cac
 
 A render made only of compute passes leaves the target alone. `Renderer::render` acquired a frame even when no pass drew into it and presented that frame untouched, so compute work failed whenever the target had no frame to give, as with a minimized window. Compute-only calls now skip the frame.
 
+Compute passes reuse their pipelines. The compute pipeline cache keyed on the memory addresses of bind group layouts that every render built from scratch, so the key never matched. Each compute pass compiled a new shader module and pipeline on every frame and kept all of them, which grew memory for as long as the app ran. The key now holds the layout entries themselves, and layouts are built only along with a new pipeline.
+
 ## 0.12.5: WebGL2 fixes
 
 A patch release that makes the WebGL2 fallback work. There are no API changes.
