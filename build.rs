@@ -153,6 +153,10 @@ fn generate_docs() {
 
     println!("✅ Website export done!\n");
 
+    println!("🐍 Generating Python type stubs...");
+    python_stubs::generate(&workspace);
+    println!("✅ Python stubs written.\n");
+
     println!("📚 Building tutorials manifest...");
     tutorials::build();
     println!("✅ Tutorials manifest written.\n");
@@ -171,3 +175,4 @@ include!("scripts/tutorials.rs");
 include!("scripts/meta.rs");
 include!("scripts/readme.rs");
 include!("scripts/embedded_shaders.rs");
+include!("scripts/python_stubs.rs");

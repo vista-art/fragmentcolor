@@ -20,6 +20,8 @@ Unused build inputs are gone. The web build no longer declares `serde-wasm-bindg
 
 The Python package declares NumPy as a dependency. `TextureTarget.get_image()` returns a NumPy array, but the wheel did not require NumPy, so on an environment without it the call failed with a panic from the NumPy bridge instead of returning pixels. `pip install fragmentcolor` now pulls in `numpy>=1.16`.
 
+The Python type stub tracks the API again. `fragmentcolor.pyi` ships in the wheel and feeds editor hovers and type checkers, but it had been frozen since May and lacked `Scene`, `Model`, `Material`, `Camera`, `Light`, and `Mipmap`. The build regenerates it on every run. Signatures come from the pyo3 bindings, so a new method or a changed parameter shows up without a manual edit. Each docstring carries the method's text from the API docs and the same Python example the website shows.
+
 ## 0.12.5: WebGL2 fixes
 
 A patch release that makes the WebGL2 fallback work. There are no API changes.
