@@ -1363,6 +1363,16 @@ mod reflect {
         pub accessor: Option<String>,
     }
 
+    /// A struct uniffi exports as a record.
+    pub struct UniffiRecord {
+        pub ident: String,
+        /// Field names and types, in declaration order.
+        pub fields: Vec<(String, Type)>,
+        /// Whether the crate's `T::new` takes the fields in that order,
+        /// so an array literal fills them by position.
+        pub positional: bool,
+    }
+
     /// A crate type uniffi doesn't export, and the mobile-only type that converts into it.
     /// Swift and Kotlin code names the second where Rust names the first.
     pub struct StandIn {
@@ -1432,6 +1442,29 @@ mod reflect {
                         is_async: f.sig.asyncness.is_some(),
                         throws: returns_result(&f.sig),
                         params: typed_params(&f.sig),
+                    }
+                })
+                .collect()
+        }
+
+        /// Structs that derive `uniffi::Record` in `build`.
+        pub fn uniffi_records(&self, build: Build) -> Vec<UniffiRecord> {
+            self.types_in(build)
+                .filter(|t| t.kind == TypeKind::Struct && derives_uniffi(&t.attrs, build, "Record"))
+                .map(|t| {
+                    let fields: Vec<(String, Type)> = t
+                        .fields
+                        .iter()
+                        .filter_map(|f| Some((f.ident.clone()?, f.ty.clone())))
+                        .collect();
+                    let names: Vec<&str> = fields.iter().map(|(name, _)| name.as_str()).collect();
+                    let positional = self.plain_fns(&t.ident, build).any(|f| {
+                        f.sig.ident == "new" && f.sig.receiver().is_none() && param_names(&f.sig) == names
+                    });
+                    UniffiRecord {
+                        ident: t.ident.clone(),
+                        fields,
+                        positional,
                     }
                 })
                 .collect()
@@ -1560,6 +1593,20 @@ mod reflect {
             .iter()
             .filter_map(|arg| match arg {
                 syn::FnArg::Typed(t) => Some((*t.ty).clone()),
+                syn::FnArg::Receiver(_) => None,
+            })
+            .collect()
+    }
+
+    /// Parameter names after the receiver. A pattern other than a name counts as `_`.
+    fn param_names(sig: &Signature) -> Vec<String> {
+        sig.inputs
+            .iter()
+            .filter_map(|arg| match arg {
+                syn::FnArg::Typed(t) => Some(match &*t.pat {
+                    syn::Pat::Ident(p) => p.ident.to_string(),
+                    _ => "_".to_string(),
+                }),
                 syn::FnArg::Receiver(_) => None,
             })
             .collect()

@@ -17,12 +17,14 @@ mod kotlin {
     //!
     //! Literal suffixes (`0.5f`, `1u`) and `arrayOf` → `listOf` follow the parameter types
     //! of the uniffi exports for Android and of the hand-written `*Extensions.kt` files.
+    //! So does a Rust tuple argument, which spreads over those parameters,
+    //! and an array literal at a record parameter, which fills the record's fields in order.
     //!
     //! Enum entries follow the flat uniffi enums.
 
     use std::collections::{BTreeMap, BTreeSet};
 
-    use heck::ToShoutySnakeCase;
+    use heck::{ToLowerCamelCase, ToShoutySnakeCase};
 
     use crate::reflect::{Build, CallKind, Reflection, SliceGetter, StandIn, StrConst, replace_qualified};
     use crate::source_text::{
@@ -60,6 +62,9 @@ mod kotlin {
         params: Vec<KType>,
         /// How many trailing parameters have a default.
         defaults: usize,
+        /// How many trailing parameters are a Rust `Option`,
+        /// which a call to a uniffi export still passes, as `null`.
+        nullable: usize,
         /// Whether uniffi generates it.
         generated: bool,
     }
@@ -83,6 +88,8 @@ mod kotlin {
         list: Option<Elems>,
         /// The type an `arrayOf(numbers)` here builds through its constructor.
         wrap: Option<String>,
+        /// The record an `arrayOf(numbers)` here fills by position, such as `Size`.
+        record: Option<String>,
     }
 
     /// How a list's elements change when `arrayOf` becomes `listOf`.
@@ -97,6 +104,17 @@ mod kotlin {
 
     /// Slots by needle, then by argument count.
     type CallPlans = BTreeMap<String, BTreeMap<usize, Vec<Slot>>>;
+
+    /// One field of a uniffi record, as Kotlin names it.
+    struct Field {
+        name: String,
+        ty: KType,
+        /// Whether it holds a Rust `Option`.
+        optional: bool,
+    }
+
+    /// The fields of each record an array literal fills by position, by record name.
+    type Records = BTreeMap<String, Vec<Field>>;
 
     /// A call position whose receivers want opposite rewrites, so the rewrites skip it.
     struct Conflict {
@@ -117,6 +135,9 @@ mod kotlin {
         stand_ins: Vec<StandIn>,
         calls: CallPlans,
         conflicts: Vec<Conflict>,
+        /// How many arguments a tuple of n items spreads into, by needle and then n.
+        spreads: BTreeMap<String, BTreeMap<usize, usize>>,
+        records: Records,
         /// Kotlin spelling of each flat enum entry,
         /// keyed by its Rust and its Kotlin spelling.
         enums: BTreeMap<String, BTreeMap<String, String>>,
@@ -130,6 +151,7 @@ mod kotlin {
         let mut callables = Vec::new();
         for f in model.uniffi_fns(Build::Android) {
             let params: Vec<KType> = f.params.iter().map(uniffi_type).collect();
+            let nullable = f.params.iter().rev().take_while(|t| is_option(t)).count();
             let needles = match f.kind {
                 CallKind::Init => vec![format!("{}(", f.owner), format!("{}.new(", f.owner)],
                 CallKind::Static | CallKind::Method => vec![format!(".{}(", f.name)],
@@ -140,18 +162,22 @@ mod kotlin {
                     needle,
                     params: params.clone(),
                     defaults: 0,
+                    nullable,
                     generated: true,
                 });
             }
         }
         callables.extend(extension_callables());
+        let records = positional_records(model);
         let mut conflicts = Vec::new();
-        let calls = plan_calls(&callables, &mut conflicts);
+        let calls = plan_calls(&callables, &records, &mut conflicts);
         let _ = FACTS.set(Facts {
             consts: model.str_consts(Build::Android),
             stand_ins: model.stand_ins(Build::Android),
             calls,
             conflicts,
+            spreads: plan_spreads(&callables),
+            records,
             enums: flat_enum_spellings(model),
             slice_getters: model.slice_getters(Build::Android),
         });
@@ -259,6 +285,7 @@ mod kotlin {
                     needle,
                     defaults: params.iter().filter(|(_, default)| *default).count(),
                     params: params.into_iter().map(|(ty, _)| ty).collect(),
+                    nullable: 0,
                     generated: false,
                 });
             }
@@ -283,7 +310,7 @@ mod kotlin {
 
     /// Slots for every needle and argument count some overload takes.
     /// Positions where receivers need opposite rewrites land in `conflicts` and get none.
-    fn plan_calls(callables: &[Callable], conflicts: &mut Vec<Conflict>) -> CallPlans {
+    fn plan_calls(callables: &[Callable], records: &Records, conflicts: &mut Vec<Conflict>) -> CallPlans {
         let wraps = float_list_types(callables);
         let mut by_needle: BTreeMap<&str, Vec<&Callable>> = BTreeMap::new();
         for c in callables {
@@ -300,7 +327,7 @@ mod kotlin {
                     overloads.iter().copied().filter(|c| c.takes(argc)).collect();
                 let slots = (0..argc)
                     .map(|i| Receivers::new(needle, argc, i, &fitting))
-                    .map(|receivers| plan_slot(&receivers, &wraps, conflicts))
+                    .map(|receivers| plan_slot(&receivers, &wraps, records, conflicts))
                     .collect();
                 plans.entry(needle.to_string()).or_default().insert(argc, slots);
             }
@@ -435,6 +462,7 @@ mod kotlin {
     fn plan_slot(
         receivers: &Receivers,
         wraps: &BTreeSet<&str>,
+        records: &Records,
         conflicts: &mut Vec<Conflict>,
     ) -> Slot {
         Slot {
@@ -442,6 +470,7 @@ mod kotlin {
             unsigned: unsigned_slot(receivers, conflicts),
             list: list_slot(receivers, wraps, conflicts),
             wrap: wrap_slot(receivers, wraps),
+            record: record_slot(receivers, records),
         }
     }
 
@@ -536,6 +565,71 @@ mod kotlin {
             [only] => Some(only.to_string()),
             _ => None,
         }
+    }
+
+    /// The one record an `arrayOf(numbers)` here fills, such as `Size`,
+    /// when every receiver takes that record.
+    fn record_slot(receivers: &Receivers, records: &Records) -> Option<String> {
+        let names: BTreeSet<&str> = receivers
+            .types()
+            .map(|t| match t {
+                KType::Named(name) if records.contains_key(name) => Some(name.as_str()),
+                _ => None,
+            })
+            .collect::<Option<_>>()?;
+        match names.into_iter().collect::<Vec<_>>().as_slice() {
+            [only] => Some(only.to_string()),
+            _ => None,
+        }
+    }
+
+    /// Whether a Rust type is an `Option`.
+    fn is_option(ty: &syn::Type) -> bool {
+        matches!(ty, syn::Type::Path(p) if p.path.segments.last().is_some_and(|s| s.ident == "Option"))
+    }
+
+    /// The uniffi records whose crate constructor takes their fields in order,
+    /// so an array literal fills them by position.
+    fn positional_records(model: &Reflection) -> Records {
+        model
+            .uniffi_records(Build::Android)
+            .into_iter()
+            .filter(|r| r.positional)
+            .map(|r| {
+                let fields = r
+                    .fields
+                    .iter()
+                    .map(|(name, ty)| Field {
+                        name: name.to_lower_camel_case(),
+                        ty: uniffi_type(ty),
+                        optional: is_option(ty),
+                    })
+                    .collect();
+                (r.ident, fields)
+            })
+            .collect()
+    }
+
+    /// How many arguments a tuple of n items spreads into, by needle and then n.
+    /// A uniffi export takes its trailing `Option` parameters as `null`,
+    /// and an extension function falls back to its defaults.
+    /// A count where overloads disagree is left out.
+    fn plan_spreads(callables: &[Callable]) -> BTreeMap<String, BTreeMap<usize, usize>> {
+        let mut widths: BTreeMap<(&str, usize), BTreeSet<usize>> = BTreeMap::new();
+        for c in callables {
+            let len = c.params.len();
+            for n in len - c.defaults - c.nullable..=len {
+                let width = if c.nullable > 0 { len } else { n };
+                widths.entry((&c.needle, n)).or_default().insert(width);
+            }
+        }
+        let mut spreads: BTreeMap<String, BTreeMap<usize, usize>> = BTreeMap::new();
+        for ((needle, n), width) in widths {
+            if let [only] = Vec::from_iter(width).as_slice() {
+                spreads.entry(needle.to_string()).or_default().insert(n, *only);
+            }
+        }
+        spreads
     }
 
     /// Finalize the Kotlin output emitted by `convert(_, Lang::Kotlin, _)`.
@@ -730,11 +824,11 @@ mod kotlin {
         }
         // API-specific rewrites (all now see arrayOf(...) for array literals)
         out = rewrite_create_target_canvas(&out);
-        out = rewrite_createstoragetexture_tuple(&out);
         out = rewrite_createtexture_path(&out);
         out = rewrite_createtexture_pixels_tuple(&out);
-        out = rewrite_mipmap_build_tuple(&out);
         out = rewrite_setviewport_tuple(&out);
+        // After the rewrites above, which still read the tuple of their own call.
+        out = spread_tuple_args(&out);
         // Before the unsigned pass, which suffixes the index it moves into the call.
         out = rewrite_index_accessors(&out);
         out = rewrite_unsigned_args(&out);
@@ -875,6 +969,8 @@ mod kotlin {
     ///
     /// Where the parameter is a type built from a float list,
     /// such as `Vertex`, `arrayOf(numbers)` becomes `Vertex(listOf(...))`.
+    /// Where it is a record filled by position, such as `Size`,
+    /// `arrayOf(numbers)` becomes `Size(width=8u, height=8u, depth=null)`.
     fn rewrite_list_args(line: &str) -> String {
         map_calls(line, &|needle, args| {
             let slots = slots_of(needle, args.len())?;
@@ -882,16 +978,62 @@ mod kotlin {
                 .iter()
                 .zip(slots)
                 .map(|(arg, slot)| {
-                    let rewritten = match (&slot.list, &slot.wrap) {
-                        (Some(elems), _) => array_to_list(arg, elems),
-                        (None, Some(ty)) => scalar_items(arg).map(|items| float_list_of(ty, &items)),
-                        (None, None) => None,
+                    let rewritten = match (&slot.list, &slot.wrap, &slot.record) {
+                        (Some(elems), _, _) => array_to_list(arg, elems),
+                        (None, Some(ty), _) => scalar_items(arg).map(|items| float_list_of(ty, &items)),
+                        (None, None, Some(record)) => scalar_items(arg).and_then(|items| record_of(record, &items)),
+                        (None, None, None) => None,
                     };
                     rewritten.unwrap_or_else(|| arg.clone())
                 })
                 .collect();
             (new != args).then_some(new)
         })
+    }
+
+    /// `f((a, b))` → `f(a, b, null)`.
+    /// A Rust tuple argument spreads over the parameters of the function it calls,
+    /// and the trailing `Option` parameters of a uniffi export it leaves out take `null`.
+    fn spread_tuple_args(line: &str) -> String {
+        map_calls(line, &|needle, args| {
+            let [only] = args else {
+                return None;
+            };
+            let inner = only.strip_prefix('(')?.strip_suffix(')')?;
+            if closing(only, 0) != Some(only.len() - 1) {
+                return None;
+            }
+            let mut items = split_args(inner);
+            if items.len() < 2 {
+                return None;
+            }
+            let width = *facts().spreads.get(needle)?.get(&items.len())?;
+            items.resize(width, "null".to_string());
+            Some(items)
+        })
+    }
+
+    /// `Size(width=8u, height=8u, depth=null)` from the items of an `arrayOf(...)`,
+    /// or `None` when they can't fill the record's fields in order.
+    fn record_of(record: &str, items: &[String]) -> Option<String> {
+        let fields = facts().records.get(record)?;
+        if items.len() > fields.len() || fields[items.len()..].iter().any(|f| !f.optional) {
+            return None;
+        }
+        let values: Vec<String> = fields
+            .iter()
+            .enumerate()
+            .map(|(k, field)| {
+                let value = match (items.get(k), &field.ty) {
+                    (None, _) => "null".to_string(),
+                    (Some(item), KType::Unsigned(ty)) => to_unsigned(item, ty),
+                    (Some(item), KType::Float) => floatify_if_numeric(item),
+                    (Some(item), _) => item.clone(),
+                };
+                format!("{}={value}", field.name)
+            })
+            .collect();
+        Some(format!("{record}({})", values.join(", ")))
     }
 
     /// `arg` as a `listOf(...)`, or `None` when it isn't one `arrayOf(...)`.
@@ -1148,95 +1290,6 @@ mod kotlin {
         line.to_string()
     }
 
-    // `createStorageTexture((arrayOf(w, h), TextureFormat.X))` →
-    // `createStorageTexture(Size(width=w.toUInt(), height=h.toUInt(), depth=null), TextureFormat.X, null, null)`
-    //
-    // Also handles the three-arg form:
-    // `createStorageTexture((arrayOf(w, h), TextureFormat.X, pixels))` →
-    // `createStorageTexture(Size(...), TextureFormat.X, pixels.toByteArray(), null)`
-    fn rewrite_createstoragetexture_tuple(line: &str) -> String {
-        let needle = "createStorageTexture(";
-        let Some(start) = line.find(needle) else { return line.to_string(); };
-        let call_start = start + needle.len();
-        let chars: Vec<char> = line.chars().collect();
-
-        // The next char should be `(` (a JS-style tuple argument)
-        if call_start >= chars.len() || chars[call_start] != '(' {
-            return line.to_string();
-        }
-
-        // Walk the outer paren from call_start to find the matching `)` of the tuple
-        let mut depth = 0i32;
-        let mut tuple_end = None;
-        let mut j = call_start;
-        while j < chars.len() {
-            match chars[j] {
-                '(' => depth += 1,
-                ')' => {
-                    depth -= 1;
-                    if depth == 0 { tuple_end = Some(j); break; }
-                }
-                _ => {}
-            }
-            j += 1;
-        }
-
-        let Some(tuple_end) = tuple_end else { return line.to_string(); };
-        if tuple_end <= call_start { return line.to_string(); }
-
-        // The content between the outer parens
-        let tuple_inner: String = chars[call_start + 1..tuple_end].iter().collect();
-        // There may be a trailing `)` after tuple_end that closes the createStorageTexture call
-        // We need to find the closing `)` of createStorageTexture()
-        let after_tuple: String = chars[tuple_end + 1..].iter().collect();
-        let after_tuple = after_tuple.trim_start_matches(')');
-
-        // Parse the comma-separated parts of the tuple
-        // We need to split respecting nested parens
-        let parts = split_args(&tuple_inner);
-        let before = &line[..start + needle.len() - 1]; // everything up to but not including the `(`
-
-        match parts.as_slice() {
-            [size_expr, format_expr] => {
-                let size = parse_size_to_kotlin(size_expr.trim());
-                let fmt = rewrite_flat_enum_variants(format_expr.trim());
-                format!("{}({}, {}, null, null){}", before, size, fmt, after_tuple)
-            }
-            [size_expr, format_expr, data_expr] => {
-                let size = parse_size_to_kotlin(size_expr.trim());
-                let fmt = rewrite_flat_enum_variants(format_expr.trim());
-                format!("{}({}, {}, {}, null){}", before, size, fmt, data_expr.trim(), after_tuple)
-            }
-            _ => line.to_string(),
-        }
-    }
-
-    // Convert `[w, h]` or `arrayOf(w, h)` → `Size(width=Xu, height=Yu, depth=null)`
-    fn parse_size_to_kotlin(s: &str) -> String {
-        // Handle `[w, h]` form (JS array literal, before bracket rewrite)
-        if s.starts_with('[') && s.ends_with(']') {
-            let inner = &s[1..s.len() - 1];
-            let args: Vec<&str> = inner.splitn(2, ',').collect();
-            if args.len() == 2 {
-                let w = to_unsigned(args[0].trim(), "UInt");
-                let h = to_unsigned(args[1].trim(), "UInt");
-                return format!("Size(width={}, height={}, depth=null)", w, h);
-            }
-        }
-        // Handle `arrayOf(w, h)` form (after bracket rewrite)
-        if s.starts_with("arrayOf(") && s.ends_with(')') {
-            let inner = &s["arrayOf(".len()..s.len() - 1];
-            let args: Vec<&str> = inner.splitn(2, ',').collect();
-            if args.len() == 2 {
-                let w = to_unsigned(args[0].trim(), "UInt");
-                let h = to_unsigned(args[1].trim(), "UInt");
-                return format!("Size(width={}, height={}, depth=null)", w, h);
-            }
-        }
-        // Fallback: pass through (may be already correct)
-        s.to_string()
-    }
-
     // `createTexture(image[..])` → `createTexture(TextureInputMobile.Path(image), null)`
     // The `[..]` was already stripped by `drop_rust_slice_suffix`, so the
     // variable name is already clean.
@@ -1340,75 +1393,6 @@ mod kotlin {
             }
             _ => line.to_string(),
         }
-    }
-
-    // `Mipmap.build((bytes, format))` or
-    // `Mipmap.build((bytes, format, arrayOf(w,h)))` →
-    // `Mipmap.build(bytes, format, null)` or
-    // `Mipmap.build(bytes, format, Size(...))`
-    fn rewrite_mipmap_build_tuple(line: &str) -> String {
-        let needle = "Mipmap.build(";
-        let Some(start) = line.find(needle) else { return line.to_string(); };
-        let call_start = start + needle.len();
-        let chars: Vec<char> = line.chars().collect();
-
-        if call_start >= chars.len() || chars[call_start] != '(' {
-            return line.to_string();
-        }
-
-        // Walk the outer tuple paren
-        let mut depth = 0i32;
-        let mut tuple_end = None;
-        let mut j = call_start;
-        while j < chars.len() {
-            match chars[j] {
-                '(' => depth += 1,
-                ')' => {
-                    depth -= 1;
-                    if depth == 0 { tuple_end = Some(j); break; }
-                }
-                _ => {}
-            }
-            j += 1;
-        }
-
-        let Some(tuple_end) = tuple_end else { return line.to_string(); };
-        if tuple_end <= call_start { return line.to_string(); }
-
-        let tuple_inner: String = chars[call_start + 1..tuple_end].iter().collect();
-        let after_tuple: String = chars[tuple_end + 1..].iter().collect();
-        let after_tuple = after_tuple.trim_start_matches(')');
-
-        let parts = split_args(&tuple_inner);
-        let before = &line[..start + needle.len() - 1];
-
-        match parts.as_slice() {
-            [bytes_expr, format_expr] => {
-                let fmt = rewrite_flat_enum_variants(format_expr.trim());
-                // Bytes could be raw variable or arrayOf — wrap in ByteArray if needed
-                let b = bytes_to_bytearray(bytes_expr.trim());
-                format!("{}({}, {}, null){}", before, b, fmt, after_tuple)
-            }
-            [bytes_expr, format_expr, size_expr] => {
-                let fmt = rewrite_flat_enum_variants(format_expr.trim());
-                let b = bytes_to_bytearray(bytes_expr.trim());
-                let size = parse_size_to_kotlin(size_expr.trim());
-                format!("{}({}, {}, {}){}", before, b, fmt, size, after_tuple)
-            }
-            _ => line.to_string(),
-        }
-    }
-
-    // Convert a bytes expression to a ByteArray form Kotlin can use.
-    // `Array(N) { 0 }` → convert to ByteArray
-    // plain variable → `.let { ba -> ByteArray(ba.size) { i -> ba[i].toByte() } }` if it looks like an Int array
-    fn bytes_to_bytearray(s: &str) -> String {
-        if s.starts_with("Array(") {
-            // `Array(N) { 0 }` — convert to ByteArray
-            return format!("ByteArray({}.size) {{ i -> {}[i].toByte() }}", s, s);
-        }
-        // Unknown — pass through (may already be ByteArray from override file)
-        s.to_string()
     }
 
     // `pass.setViewport(arrayOf((0, 0), (32, 32)))` →
