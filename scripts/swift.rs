@@ -240,8 +240,14 @@ mod swift {
 
         for raw in js.lines() {
             let starts_in_string = in_string;
-            if raw.matches("\"\"\"").count() % 2 == 1 {
+            let quotes = raw.matches("\"\"\"").count();
+            if quotes % 2 == 1 {
                 in_string = !in_string;
+            }
+            // A line wholly inside a `\"\"\"` literal is shader source: keep it as written.
+            if starts_in_string && quotes == 0 {
+                out.push(raw.to_string());
+                continue;
             }
             let mut line = raw.to_string();
             let trimmed: String = line.trim_start().to_string();
