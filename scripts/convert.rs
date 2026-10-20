@@ -68,10 +68,9 @@ mod convert {
     pub fn to_js(items: &[(String, bool)]) -> String {
         // Web JS output: collapse multi-line statements and unwrap Rust
         // 1-tuple-wrapped call args (`f((a, b))` → `f(a, b)`). The Swift
-        // and Kotlin emitters skip both peephole passes because their own
-        // tuple-aware rewrites (`kotlin::rewrite_texturemipchain_prepare_tuple`,
-        // `kotlin::rewrite_shader_new_to_compose`, swift's tuple→Size
-        // baseSize rewrite) rely on the original Rust shape.
+        // and Kotlin emitters skip both peephole passes: Swift passes the
+        // tuple to its tuple overloads, and Kotlin spreads it over the
+        // parameters of the call it reaches.
         let raw = convert(items, Lang::Js, /*aggressive_js_flatten=*/ true);
         let out = flatten_tuple_call_args_js_multiline(&raw);
         // Rust `for x in iter { ... }` survives the per-line emitter verbatim,
@@ -1740,12 +1739,10 @@ mod convert {
         //
         // Gated behind `aggressive_js_flatten` because the Swift / Kotlin
         // emitters call `convert(_, _, /*aggressive_js_flatten=*/ false)`
-        // and rely on the original line layout (e.g.
-        // `Shader.new([\n    "...",\n])` is detected by
-        // `kotlin::rewrite_shader_new_to_compose` only after `kotlin::finalize`
-        // does its own array→arrayOf substitution; if we join here, the
-        // array elements end up on a single line with line comments
-        // slurping subsequent items).
+        // and rely on the original line layout: joining
+        // `Shader.new([\n    "...", // comment\n])` here would put the
+        // array elements on one line, where each line comment swallows
+        // the items after it.
         if aggressive_js_flatten {
             src = reassemble_open_bracket_lines(src);
         }
