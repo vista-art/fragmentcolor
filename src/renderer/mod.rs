@@ -591,11 +591,12 @@ struct RenderPipelineKey {
     vertex_layouts: Option<VertexLayouts>,
 }
 
-// Key for caching compute pipelines
+/// Key for caching compute pipelines
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct ComputePipelineKey {
     shader_hash: ShaderHash,
-    layout_signature: u64,
+    /// The layout entries the pipeline's bind group layouts are built from.
+    bind_group_entries: BindGroupEntries,
 }
 
 #[doc(hidden)]
@@ -1704,37 +1705,15 @@ impl RenderContext {
         // Similar resource binding as render pass, but no target
         for (shader_index, shader) in pass.shaders.read().iter().enumerate() {
             shader.flush_pending();
-            // Build or fetch pipeline
-            // Layout signature: hash the bind group layouts
-            let layouts = bind_group_layouts(&self.device, shader);
-
-            use sha2::{Digest, Sha256};
-            let mut hasher = Sha256::new();
-            for (g, l) in layouts.iter() {
-                hasher.update(g.to_le_bytes());
-                // Hash the address as a proxy (layout contents are derived from uniforms)
-                let ptr = (l as *const _ as usize) as u64;
-                hasher.update(ptr.to_le_bytes());
-            }
-            let sig_bytes = hasher.finalize();
-            let sig = u64::from_le_bytes([
-                sig_bytes[0],
-                sig_bytes[1],
-                sig_bytes[2],
-                sig_bytes[3],
-                sig_bytes[4],
-                sig_bytes[5],
-                sig_bytes[6],
-                sig_bytes[7],
-            ]);
-
+            let entries = bind_group_entries(shader);
             let cached = self
                 .compute_pipelines
                 .entry(ComputePipelineKey {
                     shader_hash: shader.hash,
-                    layout_signature: sig,
+                    bind_group_entries: entries.clone(),
                 })
                 .or_insert_with(|| {
+                    let layouts = create_bind_group_layouts(&self.device, &entries);
                     let mut sorted_groups: Vec<_> = layouts.keys().cloned().collect();
                     sorted_groups.sort();
                     let mut sorted_layouts: Vec<Option<&wgpu::BindGroupLayout>> = Vec::new();
@@ -2205,12 +2184,13 @@ fn vertex_buffer_layouts(
     Ok(Some(VertexLayouts { vertex, instance }))
 }
 
-fn bind_group_layouts(
-    device: &wgpu::Device,
-    shader: &crate::ShaderObject,
-) -> HashMap<u32, wgpu::BindGroupLayout> {
+/// Bind group layout entries by group index, each group sorted by binding.
+type BindGroupEntries = std::collections::BTreeMap<u32, Vec<wgpu::BindGroupLayoutEntry>>;
+
+/// Layout entries for the shader's bind groups, derived from its reflected uniforms.
+fn bind_group_entries(shader: &crate::ShaderObject) -> BindGroupEntries {
     let uniforms = &shader.storage.read().uniforms;
-    let mut group_entries: HashMap<u32, Vec<wgpu::BindGroupLayoutEntry>> = HashMap::new();
+    let mut group_entries = BindGroupEntries::new();
     for (_, size, uniform) in uniforms.values() {
         if uniform.name.contains('.') {
             continue;
@@ -2410,13 +2390,23 @@ fn bind_group_layouts(
         group_entries.entry(uniform.group).or_default().push(entry);
     }
 
+    for entries in group_entries.values_mut() {
+        entries.sort_by_key(|entry| entry.binding);
+    }
+    group_entries
+}
+
+fn create_bind_group_layouts(
+    device: &wgpu::Device,
+    group_entries: &BindGroupEntries,
+) -> HashMap<u32, wgpu::BindGroupLayout> {
     let mut layouts = HashMap::new();
     for (group, entries) in group_entries {
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some(&format!("Bind Group Layout for group: {}", group)),
             entries: entries.as_slice(),
         });
-        layouts.insert(group, layout);
+        layouts.insert(*group, layout);
     }
 
     layouts
@@ -2434,7 +2424,7 @@ fn create_render_pipeline(
     double_sided: bool,
     pad_uniforms: bool,
 ) -> RenderPipeline {
-    let mut layouts = bind_group_layouts(device, shader);
+    let mut layouts = create_bind_group_layouts(device, &bind_group_entries(shader));
 
     let mut vs_entry = None;
     let mut fs_entry = None;
@@ -2837,6 +2827,25 @@ mod tests {
         fn present(self: Box<Self>, _queue: &wgpu::Queue) {}
         fn auto_present(&self) -> bool {
             false
+        }
+    }
+
+    /// A target that never has a frame, like a minimized window.
+    struct FramelessTarget;
+
+    impl crate::target::TargetInternal for FramelessTarget {
+        fn get_current_frame(&self) -> Result<Box<dyn TargetFrame>, crate::SurfaceError> {
+            Err(crate::SurfaceError::Occluded)
+        }
+    }
+
+    impl crate::Target for FramelessTarget {
+        fn size(&self) -> crate::Size {
+            crate::Size::from((1u32, 1u32))
+        }
+        fn resize(&mut self, _size: impl Into<crate::Size>) {}
+        async fn get_image(&self) -> Vec<u8> {
+            Vec::new()
         }
     }
 
@@ -3752,24 +3761,6 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,1.,0.,1.); }
     // Story: A render made only of compute passes acquires no frame; one with a render pass still does.
     #[test]
     fn compute_only_render_skips_frame_acquisition() {
-        struct FramelessTarget;
-        impl crate::target::TargetInternal for FramelessTarget {
-            fn get_current_frame(
-                &self,
-            ) -> Result<Box<dyn crate::TargetFrame>, crate::SurfaceError> {
-                Err(crate::SurfaceError::Occluded)
-            }
-        }
-        impl crate::Target for FramelessTarget {
-            fn size(&self) -> crate::Size {
-                crate::Size::from((1u32, 1u32))
-            }
-            fn resize(&mut self, _size: impl Into<crate::Size>) {}
-            async fn get_image(&self) -> Vec<u8> {
-                Vec::new()
-            }
-        }
-
         pollster::block_on(async move {
             let (_adapter, device, queue) = create_device_and_queue().await;
             let ctx = RenderContext::new(device, queue);
@@ -3793,6 +3784,34 @@ fn main(_v: VOut) -> @location(0) vec4<f32> { return vec4<f32>(1.,1.,0.,1.); }
                 result,
                 Err(RendererError::SurfaceError(crate::SurfaceError::Occluded))
             ));
+        });
+    }
+
+    // Story: Repeated compute renders reuse one cached pipeline, shared by shaders with the same source.
+    #[test]
+    fn compute_pipeline_cache_reuses_pipelines() {
+        pollster::block_on(async move {
+            let (_adapter, device, queue) = create_device_and_queue().await;
+            let ctx = RenderContext::new(device, queue);
+            let source = "
+@group(0) @binding(0) var<uniform> scale: f32;
+@group(0) @binding(1) var<storage, read_write> cache_probe: array<f32, 4>;
+@compute @workgroup_size(1)
+fn cs_main() { cache_probe[0] = scale; }
+";
+            let first = Shader::new(source).expect("compute shader");
+            let second = Shader::new(source).expect("compute shader");
+            let passes = vec![
+                Pass::from_shader("first", &first),
+                Pass::from_shader("second", &second),
+            ];
+
+            for _ in 0..3 {
+                ctx.render(&passes, &FramelessTarget)
+                    .expect("compute render");
+            }
+
+            assert_eq!(ctx.compute_pipelines.len(), 1);
         });
     }
 
