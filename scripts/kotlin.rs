@@ -897,8 +897,13 @@ mod kotlin {
 
     /// `T(listOf(...))` with every number a `Float`.
     fn float_list_of(ty: &str, items: &[String]) -> String {
+        format!("{ty}(listOf({}))", float_args(items))
+    }
+
+    /// `items` joined as arguments, with every number a `Float`.
+    fn float_args(items: &[String]) -> String {
         let floats: Vec<String> = items.iter().map(|i| floatify_if_numeric(i)).collect();
-        format!("{ty}(listOf({}))", floats.join(", "))
+        floats.join(", ")
     }
 
     /// The text inside `arg` when it is exactly one `arrayOf(...)`.
@@ -1488,8 +1493,8 @@ mod kotlin {
                 // Check this closes the set() call
                 if let Some(rest) = after_array.strip_prefix(')') {
                     let before = &line[..array_start];
-                    let float_args = convert_to_float_args(&floats_str);
-                    return format!("{}, floatArrayOf({})){}",  before, float_args, rest);
+                    let floats = float_args(&split_args(&floats_str));
+                    return format!("{}, floatArrayOf({})){}",  before, floats, rest);
                 }
             }
         line.to_string()
@@ -1664,7 +1669,8 @@ mod kotlin {
         Some(result)
     }
 
-    // Convert comma-separated float values to Kotlin `f`-suffixed floats
+    // Convert comma-separated float values to Kotlin `f`-suffixed floats.
+    // Unlike `float_args`, a trailing comma adds a `.0f` element, which the generated examples carry.
     fn convert_to_float_list(s: &str) -> String {
         s.split(',')
             .map(|v| {
@@ -1673,11 +1679,6 @@ mod kotlin {
             })
             .collect::<Vec<_>>()
             .join(", ")
-    }
-
-    // Convert comma-separated float values to Kotlin floatArrayOf-compatible args
-    fn convert_to_float_args(s: &str) -> String {
-        convert_to_float_list(s)
     }
 
     // Convert a double literal `0.0` or `800.0` to a Kotlin float literal `0.0f`
@@ -2446,7 +2447,7 @@ mod kotlin {
                         // Convert arrayOf(doubles) → listOf(floats)
                         if val_arg.starts_with("arrayOf(") && val_arg.ends_with(')') {
                             let floats_str = &val_arg["arrayOf(".len()..val_arg.len() - 1];
-                            let list_floats = convert_to_float_list(floats_str);
+                            let list_floats = float_args(&split_args(floats_str));
                             out.push_str(&format!(".set({}, listOf({}))", key_arg, list_floats));
                             i = set_end + 1;
                             continue;
