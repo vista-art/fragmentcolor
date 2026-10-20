@@ -2,7 +2,7 @@
 
 Renders the given object to the given [Target](https://fragmentcolor.org/api/core/target).
 
-`renderable` can be a `Shader`, a `Pass`, or any iterable of `Pass` (`Vec<Pass>`, `&[Pass]`, `&[&Pass]`). Passes in an iterable are rendered in order.
+`renderable` can be a `Shader`, a `Pass`, a `Mesh`, a `Scene`, or any iterable of `Pass` (`Vec<Pass>`, `&[Pass]`, `&[&Pass]`). Passes in an iterable are rendered in order.
 
 ## Example
 
