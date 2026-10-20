@@ -244,7 +244,7 @@ mod swift {
             if quotes % 2 == 1 {
                 in_string = !in_string;
             }
-            // A line wholly inside a `\"\"\"` literal is shader source: keep it as written.
+            // A line wholly inside a triple-quoted literal is shader source: keep it as written.
             if starts_in_string && quotes == 0 {
                 out.push(raw.to_string());
                 continue;
