@@ -54,8 +54,11 @@ extension TextureRegionMobile {
     // MARK: - Builder-style setters
 
     /// Set `bytes_per_row` for source data with row padding.
-    /// It must be at least the region width times the bytes per pixel.
+    ///
     /// Returns a new value, since `TextureRegionMobile` is a value type.
+    /// The stride must be at least the region width times the bytes per pixel.
+    /// When unset, rows are tightly packed unless the data is exactly the size
+    /// of rows padded to 256 bytes, in which case they read at the padded stride.
     public func withStride(_ bytesPerRow: UInt32) -> TextureRegionMobile {
         return TextureRegionMobile(
             originX: originX, originY: originY, originZ: originZ,

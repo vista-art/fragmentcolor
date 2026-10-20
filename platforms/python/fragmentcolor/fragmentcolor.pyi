@@ -4319,7 +4319,7 @@ class Texture:
 
         - Whole texture updates: use `Texture.write(&bytes)`.
         - Sub-rectangle updates or explicit data layout: use `Texture.write_region(&bytes, region)`.
-        - `bytes` holds tightly packed rows: each row is the texture width times the bytes per pixel, with no padding. For padded rows, pass the stride to `Texture.write_region`.
+        - `bytes` holds tightly packed rows: each row is the texture width times the bytes per pixel, with no padding. Data sized exactly for rows padded to 256 bytes reads at that padded stride. For any other padding, pass the stride to `Texture.write_region`.
 
         ## Notes
         - Supported formats initially: `Rgba8Unorm`, `Rgba8UnormSrgb`, `Bgra8Unorm`, `Bgra8UnormSrgb`, and other 4-bytes-per-pixel formats. Unsupported formats return an error.
@@ -4350,7 +4350,7 @@ class Texture:
 
         ## Notes
         - See `Texture::write` for format and row layout details.
-        - `bytes_per_row` (set via `.with_stride(...)`) defaults to the region width times the bytes per pixel. A larger value skips the padding at the end of each source row.
+        - `bytes_per_row` (set via `.with_stride(...)`) defaults to the region width times the bytes per pixel, or to that row padded to 256 bytes when the data is exactly that size. A larger value skips the padding at the end of each source row.
         - `rows_per_image` (set via `.with_rows(...)`) defaults to the region height.
 
         Example:
