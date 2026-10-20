@@ -1321,27 +1321,6 @@ mod convert {
             rhs = rhs.replace("None", "null");
             // 2) ScreenRegion.new((x, y), (w, h)) -> an array literal
             rhs = region_new_to_array(&rhs, lang);
-            // 3) std.fs.read(path) -> "/healthcheck/public/favicon.png" (served by healthcheck server)
-            if let Some(i) = rhs.find("std.fs.read(") {
-                let before = &rhs[..i];
-                let after = &rhs[i + "std.fs.read(".len()..];
-                if let Some(rp) = after.find(')') {
-                    let tail = &after[rp + 1..];
-                    rhs = format!("{}\"/healthcheck/public/favicon.png\"{}", before, tail);
-                }
-            }
-        }
-        // Python fix: map std.fs.read(path) -> open(path, "rb").read() in RHS
-        if let Lang::Py = lang
-            && let Some(i) = rhs.find("std.fs.read(")
-        {
-            let before = &rhs[..i];
-            let after = &rhs[i + "std.fs.read(".len()..];
-            if let Some(rp) = after.find(')') {
-                let args = &after[..rp];
-                let tail = &after[rp + 1..];
-                rhs = format!("{}open({}, \"rb\").read(){}", before, args.trim(), tail);
-            }
         }
         // Python: convert `.size()` calls on RHS into `.size` property
         if let Lang::Py = lang {
@@ -1732,7 +1711,16 @@ mod convert {
                 );
             }
         }
-        // Enforce no visible pollster
+        // Enforce no visible file reads: each language reads its file in hidden lines
+        for line in &src {
+            if line.contains("std::fs::") {
+                panic!(
+                    "Visible std::fs found in an example. Read the file in hidden lines, Rust's '#' and each language's block: \n {}",
+                    line
+                );
+            }
+        }
+        // Enforce no visible assert_eq
         for line in &src {
             if line.contains("assert_eq") {
                 panic!(
@@ -1825,15 +1813,6 @@ mod convert {
                 line = line.replace("None", "null");
                 // ScreenRegion.new((x, y), (w, h)) -> an array literal
                 line = region_new_to_array(&line, lang);
-                // std.fs.read("...") -> "/healthcheck/public/favicon.png"
-                if let Some(i) = line.find("std.fs.read(") {
-                    let before = &line[..i];
-                    let after = &line[i + "std.fs.read(".len()..];
-                    if let Some(rp) = after.find(')') {
-                        let tail = &after[rp + 1..];
-                        line = format!("{}\"/healthcheck/public/favicon.png\"{}", before, tail);
-                    }
-                }
             }
 
             // 1.1) Python: simplify Type.new(args) -> Type(args)
@@ -1849,18 +1828,6 @@ mod convert {
             line = convert_vec_syntax(&line);
 
             // 4) Strip refs
-            // Python fix: map std.fs.read(path) -> open(path, "rb").read()
-            if let Lang::Py = lang
-                && let Some(i) = line.find("std.fs.read(")
-            {
-                let before = &line[..i];
-                let after = &line[i + "std.fs.read(".len()..];
-                if let Some(rp) = after.find(')') {
-                    let args = &after[..rp];
-                    let tail = &after[rp + 1..];
-                    line = format!("{}open({}, \"rb\").read(){}", before, args.trim(), tail);
-                }
-            }
             line = strip_refs(&line);
 
             // 5) Await / remove error '?' artifacts
